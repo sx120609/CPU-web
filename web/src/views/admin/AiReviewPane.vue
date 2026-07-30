@@ -509,6 +509,7 @@ const form = reactive<SiteConfig>({
   siteOrigin: "",
   siteFilingNumber: "",
   assistantModel: "gpt-5.6-terra",
+  learningAssistantAccessMode: "guest-unlimited",
   aiReviewEnabled: false,
   aiReviewProvider: "deepseek",
   aiReviewApiUrl: "https://api.deepseek.com/chat/completions",

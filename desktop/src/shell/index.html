@@ -44,7 +44,7 @@
             <span class="switch-track"><span class="switch-thumb"></span></span>
             <span class="switch-text"><strong>后台自动连接校园网</strong><small>稍后在工具页填学号密码才会真正生效</small></span>
           </label>
-          <p class="ob-fine">答案来自独立答题 AI，只发送当前题目内容，不携带站内知识库或用户资料；会消耗你的每日额度。</p>
+          <p class="ob-fine">答案来自独立答题 AI，只发送当前题目内容，不携带站内知识库或用户资料；访问与额度策略由服务器实时下发。</p>
           <button class="ob-primary" id="ob-done">进入药大拾间<span class="ob-arrow">→</span></button>
         </div>
       </div>
@@ -118,7 +118,7 @@
             <button class="primary sponsor-button" id="auth-sponsor-go" type="button">前往赞助</button>
           </div>
 
-          <p class="muted" id="auth-hint">登录后即可使用学习通 AI 解答。</p>
+          <p class="muted" id="auth-hint">正在读取学习通助手访问策略…</p>
           <div class="actions">
             <button class="primary" id="auth-login" type="button" hidden>去首页登录</button>
             <button class="ghost" id="auth-logout" type="button" hidden>退出登录</button>
@@ -236,7 +236,7 @@
             <label class="switch">
               <input type="checkbox" id="cfg-aiEnabled" />
               <span class="switch-track"><span class="switch-thumb"></span></span>
-              <span class="switch-text"><strong>用独立 AI 作答</strong><small>只发送当前题干、选项与题目图片，不携带站内知识库或用户资料；消耗你的每日额度</small></span>
+              <span class="switch-text"><strong>用独立 AI 作答</strong><small id="ai-policy-copy">只发送当前题干、选项与题目图片，不携带站内知识库或用户资料；访问与额度策略由服务器实时下发</small></span>
             </label>
             <p class="muted small">模型由站点后台统一设定，客户端不参与选择。</p>
           </div>

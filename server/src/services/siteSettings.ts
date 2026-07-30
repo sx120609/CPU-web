@@ -40,10 +40,12 @@ export type AssistantDailyQuotaConfig = {
   level: number;
   quota: number;
 };
+export type LearningAssistantAccessMode = "guest-unlimited" | "account-quota";
 export type SiteConfig = {
   siteOrigin: string;
   siteFilingNumber: string;
   assistantModel: string;
+  learningAssistantAccessMode: LearningAssistantAccessMode;
   aiReviewEnabled: boolean;
   aiReviewProvider: string;
   aiReviewApiUrl: string;
@@ -215,6 +217,8 @@ const ANONYMOUS_TIERS_KEY = "forum.anonymous.tiers";
 const REPUTATION_LEVELS_KEY = "forum.reputation.levels";
 const ASSISTANT_MODEL_KEY = "assistant.model";
 const ASSISTANT_DAILY_QUOTAS_KEY = "assistant.dailyQuotas";
+const LEARNING_ASSISTANT_ACCESS_MODE_KEY = "assistant.learningAccessMode";
+export const DEFAULT_LEARNING_ASSISTANT_ACCESS_MODE: LearningAssistantAccessMode = "guest-unlimited";
 
 export const DEFAULT_AI_PROMPTS = {
   topicReviewSystem: "你是校园社区文字内容安全审核助手。你只根据标题、正文中的文字内容做判断，不要根据图片、图片占位符、图片链接、附件、分享卡片或外链落地页的想象内容加重风险。本站用户均为成年人，因此不需要对普通成人表达、恋爱讨论、两性话题、情绪吐槽采取过严标准；仅在出现违法、露骨色情、骚扰引导、仇恨攻击、性别对立煽动、隐私泄露、联系方式引流、诈骗、诽谤、极端政治动员等明确风险时提高分数。只返回 JSON。",
@@ -359,6 +363,7 @@ const configCache: SiteConfig = {
   siteOrigin: "",
   siteFilingNumber: "",
   assistantModel: DEFAULT_CAMPUS_ASSISTANT_MODEL,
+  learningAssistantAccessMode: DEFAULT_LEARNING_ASSISTANT_ACCESS_MODE,
   aiReviewEnabled: false,
   aiReviewProvider: "deepseek",
   aiReviewApiUrl: "https://api.deepseek.com/chat/completions",
@@ -570,6 +575,7 @@ export async function loadFeatures(): Promise<void> {
           REPUTATION_LEVELS_KEY,
           ASSISTANT_MODEL_KEY,
           ASSISTANT_DAILY_QUOTAS_KEY,
+          LEARNING_ASSISTANT_ACCESS_MODE_KEY,
         ],
       },
     },
@@ -845,6 +851,10 @@ export async function loadFeatures(): Promise<void> {
     }
     if (r.key === ASSISTANT_DAILY_QUOTAS_KEY) {
       configCache.assistantDailyQuotas = normalizeAssistantDailyQuotas(r.value, DEFAULT_ASSISTANT_DAILY_QUOTAS);
+      continue;
+    }
+    if (r.key === LEARNING_ASSISTANT_ACCESS_MODE_KEY) {
+      configCache.learningAssistantAccessMode = normalizeLearningAssistantAccessMode(r.value);
       continue;
     }
     if (r.key === GLOBAL_PINNED_TOPICS_KEY) {
@@ -1195,6 +1205,16 @@ function sanitizeAiReviewConfig() {
 function sanitizeCampusAssistantConfig() {
   configCache.assistantModel = String(configCache.assistantModel || DEFAULT_CAMPUS_ASSISTANT_MODEL).trim()
     || DEFAULT_CAMPUS_ASSISTANT_MODEL;
+  configCache.learningAssistantAccessMode = normalizeLearningAssistantAccessMode(
+    configCache.learningAssistantAccessMode
+  );
+}
+
+export function normalizeLearningAssistantAccessMode(input: unknown): LearningAssistantAccessMode {
+  if (input === "guest-unlimited") return "guest-unlimited";
+  if (input === "account-quota") return "account-quota";
+  if (input === undefined || input === null || input === "") return DEFAULT_LEARNING_ASSISTANT_ACCESS_MODE;
+  return "account-quota";
 }
 
 function upgradeLegacyImageReviewPrompts() {
@@ -1547,6 +1567,18 @@ export async function setCampusAssistantModel(input: string | null | undefined):
   });
   configCache.assistantModel = assistantModel;
   sanitizeCampusAssistantConfig();
+  await broadcastSiteSettingsReload();
+  return getSiteConfig();
+}
+
+export async function setLearningAssistantAccessMode(input: unknown): Promise<SiteConfig> {
+  const learningAssistantAccessMode = normalizeLearningAssistantAccessMode(input);
+  await prisma.siteSetting.upsert({
+    where: { key: LEARNING_ASSISTANT_ACCESS_MODE_KEY },
+    update: { value: learningAssistantAccessMode },
+    create: { key: LEARNING_ASSISTANT_ACCESS_MODE_KEY, value: learningAssistantAccessMode },
+  });
+  configCache.learningAssistantAccessMode = learningAssistantAccessMode;
   await broadcastSiteSettingsReload();
   return getSiteConfig();
 }

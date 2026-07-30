@@ -5,6 +5,7 @@ export type SiteConfig = {
   siteOrigin: string;
   siteFilingNumber: string;
   assistantModel: string;
+  learningAssistantAccessMode: "guest-unlimited" | "account-quota";
   aiReviewEnabled: boolean;
   aiReviewProvider: string;
   aiReviewApiUrl: string;
@@ -774,6 +775,7 @@ export const adminApi = {
     siteOrigin?: string;
     siteFilingNumber?: string;
     assistantModel?: string;
+    learningAssistantAccessMode?: "guest-unlimited" | "account-quota";
     aiReviewEnabled?: boolean;
     aiReviewProvider?: string;
     aiReviewApiUrl?: string;

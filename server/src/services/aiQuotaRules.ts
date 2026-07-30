@@ -13,6 +13,12 @@ import { nextCampusAssistantResetAt } from "./campusAssistantQuota";
  * 这里只暴露规则本身，不含任何用户数据，可以公开读。
  */
 export type AiQuotaRules = {
+  /** 桌面端学习通助手当前访问策略；客户端每次打开和答题都以服务端为准。 */
+  learningAssistant: {
+    accessMode: "guest-unlimited" | "account-quota";
+    requiresLogin: boolean;
+    unlimited: boolean;
+  };
   /** 等级 -> 每日免费次数 */
   dailyQuotas: { level: number; quota: number }[];
   /** 信誉分 -> 等级 */
@@ -42,6 +48,11 @@ export async function getAiQuotaRules(): Promise<AiQuotaRules> {
   const sponsor = await getSponsorConfig();
 
   return {
+    learningAssistant: {
+      accessMode: site.learningAssistantAccessMode,
+      requiresLogin: site.learningAssistantAccessMode === "account-quota",
+      unlimited: site.learningAssistantAccessMode === "guest-unlimited",
+    },
     dailyQuotas: site.assistantDailyQuotas.map((item) => ({ level: item.level, quota: item.quota })),
     levels: site.reputationLevels.map((item) => ({
       level: item.level,

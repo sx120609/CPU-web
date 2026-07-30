@@ -117,16 +117,22 @@ const renderAuthSyncing = () => {
 const renderAuth = (session) => {
   currentAuthStatus = session;
   const loggedIn = Boolean(session?.loggedIn);
+  const guestUnlimited = quotaRules?.learningAssistant?.accessMode === "guest-unlimited";
   const user = session?.user || {};
-  el("auth-pill").textContent = loggedIn ? "已登录" : session?.expired ? "已过期" : "未登录";
-  el("auth-pill").dataset.state = loggedIn ? "ok" : "";
+  el("auth-pill").textContent = loggedIn ? "已登录" : guestUnlimited ? "限时开放" : session?.expired ? "已过期" : "未登录";
+  el("auth-pill").dataset.state = loggedIn || guestUnlimited ? "ok" : "";
   el("auth-fields").hidden = !loggedIn;
-  el("auth-login").hidden = loggedIn;
+  el("auth-login").hidden = loggedIn || guestUnlimited;
   el("auth-logout").hidden = !loggedIn;
   el("auth-hint").hidden = loggedIn;
   if (!loggedIn) {
     el("auth-howto").hidden = true;
     el("auth-sponsor").hidden = true;
+    if (guestUnlimited) {
+      el("auth-hint").textContent = "新生限时开放中：安装客户端即可使用学习通助手，AI 刷题暂不限次数，无需药大拾间账号。";
+      el("quota-text").textContent = "限时无限";
+      return;
+    }
     // 到期本来会自动续（主站还登着就静默换新的），走到这里说明主站也退了
     el("auth-hint").textContent = session?.expired
       ? "登录状态已失效。在「首页 · 药大拾间」里登录一次即可，这里会自动同步。"
@@ -167,10 +173,19 @@ const renderAuth = (session) => {
   const balance = num(user.aiBalance);
   el("auth-balance").textContent = balance === null ? "—" : `${balance} 次`;
   el("auth-expires").textContent = formatDate(session.expiresAt);
-  el("quota-text").textContent = balance === null ? "—" : `剩 ${balance}`;
+  el("quota-text").textContent = guestUnlimited
+    ? "限时无限"
+    : balance === null ? "—" : `剩 ${balance}`;
 
-  renderHowTo(user);
-  renderSponsorEntry();
+  if (guestUnlimited) {
+    el("auth-usage").textContent = "限时不限次数";
+    el("auth-balance").textContent = "限时不限次数";
+    el("auth-howto").hidden = true;
+    el("auth-sponsor").hidden = true;
+  } else {
+    renderHowTo(user);
+    renderSponsorEntry();
+  }
 };
 
 /* -------------------------------------------------- 怎么提升免费额度 */
@@ -179,9 +194,28 @@ const renderAuth = (session) => {
 
 let quotaRules = null;
 
+const renderLearningAssistantPolicy = () => {
+  const copy = el("ai-policy-copy");
+  if (!copy) return;
+  copy.textContent = quotaRules?.learningAssistant?.unlimited
+    ? "只发送当前题干、选项与题目图片，不携带站内知识库或用户资料；当前为新生限时免登录、不限次数"
+    : "只发送当前题干、选项与题目图片，不携带站内知识库或用户资料；登录后按每日额度与 AI 点数使用";
+};
+
+const refreshQuotaRules = async () => {
+  try {
+    quotaRules = await shell.auth.getQuotaRules();
+  } catch {
+    quotaRules = null;
+  }
+  renderLearningAssistantPolicy();
+  if (currentAuthStatus) renderAuth(currentAuthStatus);
+  return quotaRules;
+};
+
 const renderHowTo = (user) => {
   const box = el("auth-howto");
-  if (!quotaRules) { box.hidden = true; return; }
+  if (!quotaRules || quotaRules.learningAssistant?.unlimited) { box.hidden = true; return; }
   box.hidden = false;
 
   const rep = quotaRules.reputation;
@@ -712,9 +746,7 @@ const afterOnboarding = async () => {
     renderTabs();
   } catch { /* 忽略 */ }
   // 规则先拿：renderAuth 里要用它渲染"怎么提升"，晚了那一段就是空的
-  try {
-    quotaRules = await shell.auth.getQuotaRules();
-  } catch { /* 拿不到就不显示那一段 */ }
+  await refreshQuotaRules();
   void renderSiteFooter();
   // 不先画一个假的“未登录”：让隐藏授权跑完后直接落到最终状态
   void refreshAuth({ sync: true });
@@ -757,7 +789,7 @@ const boot = async () => {
     renderTabs();
     const active = tabState.tabs.find((tab) => tab.id === tabState.activeId);
     if (active?.kind === "tools" && previousActive !== tabState.activeId) {
-      void refreshAuth({ sync: true });
+      void refreshQuotaRules().finally(() => refreshAuth({ sync: true }));
     }
   });
   shell.campusNet.onState(renderCampusState);

@@ -75,6 +75,13 @@ let scriptUpdateState: ScriptUpdateState = {
   source: "builtin",
   message: "正在载入学习通助手脚本",
 };
+type LearningAssistantAccessMode = "guest-unlimited" | "account-quota";
+type LearningAssistantPolicy = {
+  accessMode: LearningAssistantAccessMode;
+  requiresLogin: boolean;
+  unlimited: boolean;
+};
+let learningAssistantPolicyCache: { policy: LearningAssistantPolicy; expiresAt: number } | undefined;
 
 const recordScriptActivity = (entry: ScriptActivity): void => {
   scriptActivity.push(entry);
@@ -84,6 +91,35 @@ const recordScriptActivity = (entry: ScriptActivity): void => {
 };
 
 const resolveAsset = (...segments: string[]): string => path.join(app.getAppPath(), ...segments);
+
+const getLearningAssistantPolicy = async (force = false): Promise<LearningAssistantPolicy> => {
+  if (!force && learningAssistantPolicyCache && learningAssistantPolicyCache.expiresAt > Date.now()) {
+    return learningAssistantPolicyCache.policy;
+  }
+  const fallback: LearningAssistantPolicy = {
+    accessMode: "account-quota",
+    requiresLogin: true,
+    unlimited: false
+  };
+  try {
+    const response = await fetch(new URL("/api/site/ai-quota-rules", oauthConfig.origin).toString(), {
+      headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(10000)
+    });
+    if (!response.ok) return fallback;
+    const payload = await response.json() as {
+      data?: { learningAssistant?: Partial<LearningAssistantPolicy> };
+    };
+    const remote = payload.data?.learningAssistant;
+    const policy: LearningAssistantPolicy = remote?.accessMode === "guest-unlimited"
+      ? { accessMode: "guest-unlimited", requiresLogin: false, unlimited: true }
+      : fallback;
+    learningAssistantPolicyCache = { policy, expiresAt: Date.now() + 15_000 };
+    return policy;
+  } catch {
+    return fallback;
+  }
+};
 
 // 状态推送只发给主窗口：学习通窗口是第三方页面，不该收到应用内部事件。
 const broadcast = (channel: string, payload: unknown): void => {
@@ -613,9 +649,12 @@ const createTabs = async (window: BrowserWindow): Promise<void> => {
 };
 
 const openLearningPage = async (): Promise<void> => {
-  // 这里只判断 token，没必要为了开标签再拉一次资料
-  const auth = await getOAuthStatus({ refreshUser: false });
-  if (!auth.loggedIn) throw new Error("请先完成登录");
+  const policy = await getLearningAssistantPolicy();
+  if (policy.requiresLogin) {
+    // 这里只判断 token，没必要为了开标签再拉一次资料
+    const auth = await getOAuthStatus({ refreshUser: false });
+    if (!auth.loggedIn) throw new Error("限时免登录已结束，请先完成登录");
+  }
   await openMainWindow();
   await tabs?.openLearningTab(learningUrl);
 };
@@ -1194,15 +1233,52 @@ if (installMode || uninstallMode) {
     ipcMain.handle("userscript:request-ai", async (event, nonce: unknown, body: unknown) => {
       await authorize(event, nonce);
       if (typeof body !== "string") throw new Error("AI 请求格式无效");
-      const session = await readOAuthSession();
-      if (!session) throw new Error("请先完成 OAuth2 登录");
       const payload = sanitizeAiBody(body);
-      const response = await fetch(`${oauthConfig.origin}/api/oauth/v1/responses`, {
-        method: "POST",
-        headers: { "content-type": "application/json", Authorization: `${session.tokenType} ${session.accessToken}` },
-        body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(120000)
-      });
+      const policy = await getLearningAssistantPolicy();
+      let response: Response;
+      if (policy.accessMode === "guest-unlimited") {
+        response = await fetch(`${oauthConfig.origin}/api/site/learning-assistant/responses`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-cpu-desktop-client": "cpu-web-desktop",
+            "x-cpu-desktop-version": app.getVersion()
+          },
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(120000)
+        });
+        // 后台可能恰好在客户端缓存的 15 秒内关闭临时策略。服务端会立即拒绝，
+        // 此时重新取策略并落回账号模式，旧客户端缓存不能延长临时权限。
+        if (response.status === 401 || response.status === 403) {
+          learningAssistantPolicyCache = undefined;
+          await getLearningAssistantPolicy(true);
+          const session = await readOAuthSession();
+          if (!session) {
+            return { status: response.status, statusText: response.statusText, text: await response.text() };
+          }
+          response = await fetch(`${oauthConfig.origin}/api/oauth/v1/responses`, {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              Authorization: `${session.tokenType} ${session.accessToken}`
+            },
+            body: JSON.stringify(payload),
+            signal: AbortSignal.timeout(120000)
+          });
+        }
+      } else {
+        const session = await readOAuthSession();
+        if (!session) throw new Error("限时免登录已结束，请先完成 OAuth2 登录");
+        response = await fetch(`${oauthConfig.origin}/api/oauth/v1/responses`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            Authorization: `${session.tokenType} ${session.accessToken}`
+          },
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(120000)
+        });
+      }
       return { status: response.status, statusText: response.statusText, text: await response.text() };
     });
 

@@ -70,6 +70,40 @@
     <section class="settings-card" v-loading="loading">
       <div class="section-head">
         <div>
+          <h3>学习通助手访问策略</h3>
+          <p>策略由服务器实时下发。客户端安装一次支持动态策略后，今后切换免登录或恢复账号额度都不需要重新发布安装包。</p>
+        </div>
+        <el-button
+          type="primary"
+          :loading="savingAccessMode"
+          :disabled="Boolean(loadError) || learningAssistantAccessMode === savedLearningAssistantAccessMode"
+          @click="saveAccessMode"
+        >
+          保存访问策略
+        </el-button>
+      </div>
+      <el-radio-group v-model="learningAssistantAccessMode" class="access-mode-grid">
+        <el-radio-button value="guest-unlimited">
+          安装即用（免登录・不限次数）
+        </el-radio-button>
+        <el-radio-button value="account-quota">
+          账号额度（登录后使用）
+        </el-radio-button>
+      </el-radio-group>
+      <el-alert
+        v-if="learningAssistantAccessMode === 'guest-unlimited'"
+        type="warning"
+        :closable="false"
+        show-icon
+        title="临时开放期间不扣每日额度和 AI 点数；服务端仍保留异常请求限流。"
+        class="mode-alert"
+      />
+      <p v-else class="tip">恢复后，未登录客户端会立即停止答题；已登录用户继续按下方日额度和 AI 点数规则使用。</p>
+    </section>
+
+    <section class="settings-card" v-loading="loading">
+      <div class="section-head">
+        <div>
           <h3>等级日额度</h3>
           <p>先消耗等级对应的每日次数；当天次数用完后，每次调用再消耗 1 个点数。每日次数按北京时间 00:00 重置，点数不会自动过期。</p>
         </div>
@@ -373,6 +407,7 @@ const ledgerLoading = ref(false);
 const usersLoading = ref(false);
 const savingQuotas = ref(false);
 const savingAssistantModel = ref(false);
+const savingAccessMode = ref(false);
 const savingSponsorRate = ref(false);
 const backfillingSponsors = ref(false);
 const resetting = ref(false);
@@ -382,6 +417,8 @@ const reputationLevels = ref<Array<{ level: number; name: string; minReputation:
 const assistantModel = ref("gpt-5.6-terra");
 const savedAssistantModel = ref("gpt-5.6-terra");
 const assistantModelOptions = ref<string[]>(["gpt-5.6-terra"]);
+const learningAssistantAccessMode = ref<"guest-unlimited" | "account-quota">("guest-unlimited");
+const savedLearningAssistantAccessMode = ref<"guest-unlimited" | "account-quota">("guest-unlimited");
 const dailyQuotas = ref([
   { level: 0, quota: 5 },
   { level: 1, quota: 10 },
@@ -452,6 +489,8 @@ async function reload() {
     reputationLevels.value = (siteConfig.reputationLevels ?? []).map((item) => ({ ...item }));
     assistantModel.value = siteConfig.assistantModel || "gpt-5.6-terra";
     savedAssistantModel.value = assistantModel.value;
+    learningAssistantAccessMode.value = siteConfig.learningAssistantAccessMode || "guest-unlimited";
+    savedLearningAssistantAccessMode.value = learningAssistantAccessMode.value;
     assistantModelOptions.value = Array.from(new Set([
       assistantModel.value,
       siteConfig.aiReviewModel,
@@ -488,6 +527,28 @@ async function saveAssistantModel() {
     ElMessage.success(`AI 功能模型已切换为 ${config.assistantModel}`);
   } finally {
     savingAssistantModel.value = false;
+  }
+}
+
+async function saveAccessMode() {
+  if (
+    savingAccessMode.value
+    || learningAssistantAccessMode.value === savedLearningAssistantAccessMode.value
+  ) return;
+  savingAccessMode.value = true;
+  try {
+    const config = await adminApi.updateSiteConfig({
+      learningAssistantAccessMode: learningAssistantAccessMode.value,
+    });
+    learningAssistantAccessMode.value = config.learningAssistantAccessMode;
+    savedLearningAssistantAccessMode.value = config.learningAssistantAccessMode;
+    ElMessage.success(
+      config.learningAssistantAccessMode === "guest-unlimited"
+        ? "学习通助手已切换为限时免登录、不限次数"
+        : "学习通助手已恢复账号登录与额度限制"
+    );
+  } finally {
+    savingAccessMode.value = false;
   }
 }
 
@@ -1021,6 +1082,20 @@ function sourceType(source: string) {
   color: var(--cpu-text-muted);
   font-size: 12px;
   white-space: nowrap;
+}
+.access-mode-grid {
+  display: flex;
+  width: 100%;
+}
+.access-mode-grid :deep(.el-radio-button) {
+  flex: 1;
+}
+.access-mode-grid :deep(.el-radio-button__inner) {
+  width: 100%;
+  padding-block: 13px;
+}
+.mode-alert {
+  margin-top: 14px;
 }
 @media (max-width: 980px) {
   .overview-grid,

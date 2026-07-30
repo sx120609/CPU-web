@@ -27,6 +27,7 @@ import {
   setTopicGlobalPinned,
   setAiReviewConfig,
   setCampusAssistantModel,
+  setLearningAssistantAccessMode,
   setCommunityTrustConfig,
   setSiteOrigin,
   setTopNavigation,
@@ -2081,6 +2082,7 @@ const siteConfigPatchSchema = z.object({
   siteOrigin: z.string().trim().max(240).optional(),
   siteFilingNumber: z.string().trim().max(120).optional(),
   assistantModel: z.string().trim().min(1).max(80).optional(),
+  learningAssistantAccessMode: z.enum(["guest-unlimited", "account-quota"]).optional(),
   aiReviewEnabled: z.boolean().optional(),
   aiReviewProvider: z.string().trim().max(40).optional(),
   aiReviewApiUrl: z.string().trim().max(240).optional(),
@@ -2225,6 +2227,9 @@ adminRouter.patch("/site-config", adminOnly, validate(siteConfigPatchSchema), as
     }
     if (req.body.assistantModel !== undefined) {
       await setCampusAssistantModel(req.body.assistantModel);
+    }
+    if (req.body.learningAssistantAccessMode !== undefined) {
+      await setLearningAssistantAccessMode(req.body.learningAssistantAccessMode);
     }
     if (req.body.siteOrigin !== undefined) {
       await setSiteOrigin(req.body.siteOrigin ?? "");

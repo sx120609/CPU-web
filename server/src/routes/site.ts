@@ -2,9 +2,9 @@ import { Router } from "express";
 import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { config } from "../config";
-import { ok } from "../utils/response";
+import { Errors, ok } from "../utils/response";
 import { withCache } from "../services/cache";
-import { getFeatures, getSiteFilingNumber, getSiteOrigin, getTopNavigation } from "../services/siteSettings";
+import { getFeatures, getSiteConfig, getSiteFilingNumber, getSiteOrigin, getTopNavigation } from "../services/siteSettings";
 import {
   hasPdsShare,
   parseDesktopVersionFromFileName,
@@ -13,6 +13,12 @@ import {
 } from "../services/pdsShare";
 import { getAiQuotaRules } from "../services/aiQuotaRules";
 import { readDesktopUserScriptRelease } from "../services/desktopUserScript";
+import { securityRateLimit } from "../middleware/securityRateLimit";
+import {
+  learningAssistantAiBodySchema,
+  learningAssistantAiResponse,
+  requestLearningAssistantAi,
+} from "../services/learningAssistantAi";
 
 export const siteRouter = Router();
 
@@ -220,6 +226,56 @@ siteRouter.get("/ai-quota-rules", async (_req, res, next) => {
     ok(res, await withCache("site", ["ai-quota-rules"], 60_000, async () => getAiQuotaRules()));
   } catch (e) { next(e); }
 });
+
+/**
+ * 桌面端学习通助手的临时免登录答题入口。
+ *
+ * “无限”指不扣每日额度和 AI 点数；仍保留按 IP 的瞬时限流，避免异常循环拖垮服务。
+ * 访问策略每次请求都从服务端内存配置读取，后台切回 account-quota 后立即失效，
+ * 因而不能靠保留旧客户端继续使用临时权限。
+ */
+siteRouter.post(
+  "/learning-assistant/responses",
+  securityRateLimit("learning-assistant-guest", 60, 60_000),
+  async (req, res, next) => {
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    let responseCompleted = false;
+    try {
+      if (req.header("x-cpu-desktop-client") !== "cpu-web-desktop") {
+        throw Errors.forbidden("该入口仅供药大拾间桌面客户端使用");
+      }
+      if (getSiteConfig().learningAssistantAccessMode !== "guest-unlimited") {
+        throw Errors.unauthorized("限时免登录已结束，请登录后继续使用");
+      }
+      const body = learningAssistantAiBodySchema.parse(req.body);
+      const controller = new AbortController();
+      timeout = setTimeout(() => controller.abort(), 120_000);
+      res.on("close", () => {
+        if (!responseCompleted) controller.abort();
+      });
+      const clientVersion = String(req.header("x-cpu-desktop-version") || "unknown")
+        .replace(/[^\w.-]/g, "")
+        .slice(0, 32);
+      const result = await requestLearningAssistantAi(
+        body,
+        `desktop-guest-${clientVersion}`,
+        controller.signal
+      );
+      if (timeout) clearTimeout(timeout);
+      timeout = undefined;
+      responseCompleted = true;
+      res.status(result.status);
+      res.setHeader("Content-Type", result.contentType);
+      res.setHeader("Cache-Control", "no-store");
+      res.setHeader("X-Accel-Buffering", "no");
+      if (!result.ok) return res.send(result.errorBody);
+      return res.json(learningAssistantAiResponse(result.outputText || ""));
+    } catch (error) {
+      if (timeout) clearTimeout(timeout);
+      next(error);
+    }
+  }
+);
 
 /** 公开：顶部导航配置，仅包含展示字段。 */
 siteRouter.get("/navigation", async (_req, res, next) => {

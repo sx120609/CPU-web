@@ -30,6 +30,7 @@ import {
   DEFAULT_CAMPUS_ASSISTANT_MODEL,
   getSiteConfig,
   loadFeatures,
+  normalizeLearningAssistantAccessMode,
 } from "../src/services/siteSettings";
 import { prisma } from "../src/prisma";
 import {
@@ -122,7 +123,7 @@ test("删除标记会阻止旧本地或云端快照复活会话", () => {
 test("云端学习通助手脚本提供可校验的版本与正文", async () => {
   const release = await readDesktopUserScriptRelease();
   assert.equal(release.name, "药大拾间·学习通助手");
-  assert.equal(release.version, "2.2.2");
+  assert.equal(release.version, "2.2.3");
   assert.match(release.sha256, /^[a-f0-9]{64}$/);
   assert.equal(release.size, Buffer.byteLength(release.source, "utf8"));
   assert.match(release.source, /cpu-learning-personal-center-guide-v3/);
@@ -256,6 +257,13 @@ test("学习通 AI 请求只携带题目上下文与独立合规边界", () => {
   assert.match(OAUTH_AI_INSTRUCTIONS, /只依据本次请求中明确给出的题干、选项、图片和通用学科知识/);
   assert.match(OAUTH_AI_INSTRUCTIONS, /中华人民共和国现行法律法规/);
   assert.doesNotMatch(serialized, /knowledge=|玄武门校区|assistantPoints|DATABASE_URL|nickname/);
+});
+
+test("学习通助手访问策略默认临时开放且可由服务端恢复账号额度", () => {
+  assert.equal(normalizeLearningAssistantAccessMode(undefined), "guest-unlimited");
+  assert.equal(normalizeLearningAssistantAccessMode("guest-unlimited"), "guest-unlimited");
+  assert.equal(normalizeLearningAssistantAccessMode("account-quota"), "account-quota");
+  assert.equal(normalizeLearningAssistantAccessMode("unexpected-client-value"), "account-quota");
 });
 
 test("AI upstream requests apply explicit prompt cache key and 24-hour retention", async () => {
