@@ -64,6 +64,7 @@ Thumbs.db
 .parcel-cache/
 .eslintcache
 .vite/
+tmp/
 __pycache__/
 *.pyc
 
