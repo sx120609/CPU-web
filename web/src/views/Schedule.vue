@@ -1198,7 +1198,7 @@ const androidUpdateMenuLabel = computed(() => (
 const canShowAndroidClientDownload = computed(() => {
   if (isAndroidNativeApp() || isFlutterNativeShell()) return false;
   const platform = detectClientPlatform();
-  if (platform === "ios" || platform === "harmony" || isIosStandalone()) return false;
+  if (platform === "desktop" || platform === "ios" || platform === "harmony" || isIosStandalone()) return false;
   return true;
 });
 
@@ -2347,7 +2347,8 @@ function hasScheduleEditAuth() {
 function canUseScheduleEdit() {
   const client = detectClientPlatform();
   if (scheduleSource.value === "graduate" || scheduleSource.value === "graduate-debug") return false;
-  return (client === "android" || client === "ios" || client === "harmony") && hasScheduleEditAuth();
+  return (client === "android" || client === "ios" || client === "harmony" || client === "desktop")
+    && hasScheduleEditAuth();
 }
 
 function ensureScheduleEditEnabled() {
