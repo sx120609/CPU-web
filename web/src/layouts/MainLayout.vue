@@ -214,6 +214,7 @@
 
     <footer v-if="!hideChrome && !useNativeShell && !fullHeightContent" class="footer">
       <span class="footer-item">© 2026 药大拾间 · 校园互助与服务平台</span>
+      <router-link class="footer-item" to="/download">客户端下载</router-link>
       <a class="footer-item" href="https://github.com/sx120609/CPU-web" target="_blank" rel="noopener noreferrer">GitHub</a>
       <span class="footer-item">非学校官方站点</span>
       <a
@@ -354,6 +355,7 @@ import {
   Monitor,
   Compass,
   Link,
+  Download,
 } from "@element-plus/icons-vue";
 import type { TopNavigationIcon, TopNavigationItem } from "@/api/site";
 import UserAvatar from "@/components/common/UserAvatar.vue";
@@ -523,6 +525,7 @@ const drawerItems = computed(() => {
   for (const item of site.topNavigation.filter((candidate) => candidate.showInDrawer && navigationItemVisible(candidate))) {
     items.push({ id: `configured-${item.id}`, to: item.to, label: item.fullLabel || item.label, icon: navigationIconMap[item.icon], openInNewTab: item.openInNewTab });
   }
+  if (!items.some((item) => item.to === "/download")) items.push({ id: "system-download", to: "/download", label: "客户端下载", icon: Download });
   if (!items.some((item) => item.to === "/search")) items.push({ id: "system-search", to: "/search", label: "拾间AI", icon: Search });
   return items;
 });

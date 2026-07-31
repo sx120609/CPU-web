@@ -153,13 +153,22 @@ const CAMPUS_ASSISTANT_ROUTES: CampusAssistantRoute[] = [
   },
   {
     id: "desktop-client",
-    label: "药大拾间桌面客户端",
-    description: "下载 Windows 或 Apple Silicon Mac 客户端",
-    url: "/services?open=desktop",
+    label: "药大拾间客户端",
+    description: "统一查看 Android、iOS、Windows 与 Apple Silicon Mac 的安装方式",
+    url: "/download",
     icon: "🖥️",
-    owner: "校园服务",
+    owner: "药大拾间",
     requireLogin: false,
     keywords: [
+      "客户端下载",
+      "下载客户端",
+      "安装客户端",
+      "安卓客户端",
+      "android客户端",
+      "ios客户端",
+      "iphone客户端",
+      "ipad客户端",
+      "添加到主屏幕",
       "桌面客户端",
       "桌面版",
       "windows客户端",
@@ -343,7 +352,7 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
   },
   {
     relatedActionIds: ["schedule"],
-    fact: "课表：支持日视图、周视图、学期和周次切换。下载按钮按设备分流：Android 提供 Android 客户端，iPhone/iPad 提供添加到主屏幕说明，Windows 与 Apple Silicon Mac 只提供对应原生桌面客户端；桌面端不再提供 PWA 安装入口，以免与原生客户端混淆。课程日期按所选学期和周次计算。",
+    fact: "课表：支持日视图、周视图、学期和周次切换。课表页原有下载按钮和安装提示继续按设备分流；另有“客户端下载”页统一汇总 Android、iOS、Windows 与 Apple Silicon Mac 的安装方式。课程日期按所选学期和周次计算。",
   },
   {
     relatedActionIds: ["dorm-electric"],
@@ -410,7 +419,7 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
   },
   {
     relatedActionIds: ["desktop-client"],
-    fact: "药大拾间桌面客户端：旧的“CPU 网络连接助手”已停止作为独立产品宣传，校园网自动连接已整合进桌面客户端。当前提供 Windows 10/11 64 位版和 Apple Silicon（M1 及后续 M 系列）macOS 版，不支持 Intel Mac；客户端还包含“药大拾间·学习通助手”与桌面常驻能力。",
+    fact: "药大拾间客户端：统一下载页位于“/download”，汇总 Android 客户端、iPhone/iPad 添加到主屏幕、Windows 10/11 64 位客户端和 Apple Silicon（M1 及后续 M 系列）macOS 客户端。旧的“CPU 网络连接助手”已停止作为独立产品宣传，校园网自动连接已整合进桌面客户端；Intel Mac 暂不支持。桌面客户端还包含“药大拾间·学习通助手”与桌面常驻能力。",
   },
   {
     id: "client-recommendation-priority",

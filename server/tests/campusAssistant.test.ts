@@ -218,8 +218,16 @@ test("课程成绩问法不会误命中个人中心入口", () => {
 test("旧网络助手相关搜索统一引导到药大拾间桌面客户端", () => {
   const results = searchCampusAssistantActions("CPU 网络连接助手和校园网工具在哪里下载", context);
   assert.equal(results[0]?.id, "desktop-client");
-  assert.equal(results[0]?.url, "/services?open=desktop");
-  assert.match(results[0]?.description || "", /Windows.*Apple Silicon/);
+  assert.equal(results[0]?.url, "/download");
+  assert.match(results[0]?.description || "", /Android.*iOS.*Windows.*Apple Silicon/);
+});
+
+test("客户端下载搜索统一覆盖移动端与桌面端", () => {
+  for (const query of ["下载客户端", "安卓客户端", "iOS 客户端", "添加到主屏幕"]) {
+    const results = searchCampusAssistantActions(query, context);
+    assert.equal(results[0]?.id, "desktop-client", query);
+    assert.equal(results[0]?.url, "/download", query);
+  }
 });
 
 test("AI prompt cache keys are stable within a feature and isolated across features", () => {
