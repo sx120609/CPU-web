@@ -1,4 +1,4 @@
-import { Notification } from "electron";
+import { app, Notification } from "electron";
 import {
   CampusMode,
   Carrier,
@@ -302,7 +302,10 @@ export class CampusNetService {
     }
     this.stopped = false;
     this.lastSignature = networkSignature();
-    campusLog("info", "校园网自动连接已启动");
+    campusLog(
+      "info",
+      `校园网自动连接已启动（客户端 v${app.getVersion()}，临时认证故障会持续低频重试）`
+    );
     this.emit({ status: "unknown", message: STATUS_LABEL.unknown });
     this.watchNetworkChanges();
     this.reschedule(0);

@@ -84,14 +84,23 @@ const countRunning = async (exePath: string): Promise<number> => {
 
 // 升级前必须真的关掉旧版，光靠改名让路不够：旧进程还活着就还占着单实例锁，
 // 装完启动新版只会把旧窗口顶到前面，看起来像"更新了个寂寞"。
-const closeRunning = async (exePath: string): Promise<void> => {
-  if ((await countRunning(exePath)) === 0) return;
-  await powershell(
-    `Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq ${psQuote(exePath)} }`
-    + ` | Stop-Process -Force -ErrorAction SilentlyContinue`
-  );
-  // 进程退出后系统还要一会儿才真正释放文件映射
-  await delay(800);
+const closeRunning = async (exePath: string): Promise<boolean> => {
+  if ((await countRunning(exePath)) === 0) return true;
+
+  // Electron 有主进程和多个 renderer，旧版还可能正在完成退出前的会话落盘。
+  // 不能发一次 Stop-Process、固定等 800 ms 就当它已经退出；必须以完整路径反复
+  // 核对，直到所有旧进程确实消失，才允许覆盖和启动新版。
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await powershell(
+      `Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq ${psQuote(exePath)} }`
+      + ` | Stop-Process -Force -ErrorAction SilentlyContinue`
+    );
+    for (let poll = 0; poll < 15; poll += 1) {
+      await delay(200);
+      if ((await countRunning(exePath)) === 0) return true;
+    }
+  }
+  return false;
 };
 
 /** 正常启动时调用：清掉上次覆盖安装留下的、当时删不掉的旧文件 */
@@ -244,7 +253,13 @@ const runInstall = async (report: (p: Progress) => void): Promise<InstallResult>
   const exePath = path.join(to, exeName());
 
   report({ percent: 0, text: "正在准备" });
-  await closeRunning(exePath);
+  if (!(await closeRunning(exePath))) {
+    return {
+      ok: false,
+      message: "旧版本仍在运行，暂时无法安全更新。",
+      detail: "请从托盘菜单完全退出药大拾间，再重新运行安装包。"
+    };
+  }
 
   // 整个复制过程必须关掉 asar 补丁。Electron 给 fs 打过补丁：路径里只要含
   // ".asar" 就被当成"压缩包内的路径"去解析，于是 resources/app.asar 这个文件

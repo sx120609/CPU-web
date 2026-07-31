@@ -7,6 +7,7 @@
 // 看起来像笔误的地方其实不能"顺手整理"。改错了不会报错，只会认证失败。
 
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
 const path = require("node:path");
 
 const dist = path.join(__dirname, "..", "dist", "electron", "campus-net");
@@ -23,6 +24,7 @@ try {
 
 const { buildLoginUrl, parseJsonp, parseLoginResponse, redactUrl, resolveMode, isValidStudentId } = protocol;
 const { configuredIntervalMs, healthyProbeDelayMs, retryBackoffDelayMs } = schedule;
+const serviceSource = fs.readFileSync(path.join(__dirname, "..", "electron", "campus-net", "service.ts"), "utf8");
 const HINTS = ["密码", "账号", "欠费"];
 
 let passed = 0;
@@ -201,6 +203,11 @@ check("临时认证失败持续退避重试，不会在第 5 次后永久停止"
   assert.equal(retryBackoffDelayMs(15, 4), 240_000);
   assert.equal(retryBackoffDelayMs(15, 5), 300_000, "第 5 次失败后应进入低频重试");
   assert.equal(retryBackoffDelayMs(15, 100), 300_000, "长期维护期间仍应每 5 分钟探测");
+});
+
+check("启动日志写入客户端版本和临时故障重试策略，便于排除旧进程", () => {
+  assert.match(serviceSource, /客户端 v\$\{app\.getVersion\(\)\}/);
+  assert.match(serviceSource, /临时认证故障会持续低频重试/);
 });
 
 /* -------------------------------------------------------- 学号校验 */
