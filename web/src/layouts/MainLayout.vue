@@ -522,10 +522,10 @@ const drawerItems = computed(() => {
   if (auth.canAccessForum && site.features.forum) items.push({ id: "system-post", to: "/post", label: "发帖", icon: Edit });
   items.push({ id: "system-messages", to: "/messages", label: "消息", icon: Message });
   if (auth.canAccessModuleAdmin) items.push({ id: "system-admin", to: "/admin", label: "管理后台", icon: Tools });
-  for (const item of site.topNavigation.filter((candidate) => candidate.showInDrawer && navigationItemVisible(candidate))) {
+  if (!items.some((item) => item.to === "/download")) items.push({ id: "system-download", to: "/download", label: "客户端下载", icon: Download });
+  for (const item of site.topNavigation.filter((candidate) => candidate.to !== "/download" && candidate.showInDrawer && navigationItemVisible(candidate))) {
     items.push({ id: `configured-${item.id}`, to: item.to, label: item.fullLabel || item.label, icon: navigationIconMap[item.icon], openInNewTab: item.openInNewTab });
   }
-  if (!items.some((item) => item.to === "/download")) items.push({ id: "system-download", to: "/download", label: "客户端下载", icon: Download });
   if (!items.some((item) => item.to === "/search")) items.push({ id: "system-search", to: "/search", label: "拾间AI", icon: Search });
   return items;
 });
