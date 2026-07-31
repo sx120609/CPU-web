@@ -336,12 +336,27 @@ const identityBadgeText = computed(() => (
   isGraduateIdentity.value ? "自动识别：研究生课表" : "自动识别：本科教务"
 ));
 
+function syncFreshmanNotice() {
+  // 教务页是缓存优先路由，首次挂载时站内会话可能还在后台探测。
+  // 会话确认前不弹提示；确认已登录后也必须保持关闭。
+  if (!auth.ready || (auth.token && !auth.user)) {
+    freshmanNoticeVisible.value = false;
+    return;
+  }
+  freshmanNoticeVisible.value = !auth.isLoggedIn && shouldShowFreshmanNotice();
+}
+
 onMounted(() => {
   disposed = false;
   setupMobileViewportWatcher();
-  freshmanNoticeVisible.value = shouldShowFreshmanNotice();
+  syncFreshmanNotice();
   void initPage();
 });
+
+watch(
+  () => [auth.ready, auth.isLoggedIn] as const,
+  () => syncFreshmanNotice(),
+);
 
 onBeforeUnmount(() => {
   disposed = true;
