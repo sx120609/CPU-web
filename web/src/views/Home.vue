@@ -734,29 +734,41 @@ function normalizeHomeError(error: unknown) {
 
   .hero {
     border-radius: 12px;
-    padding: 22px 18px;
+    padding: 16px;
     align-items: stretch;
     flex-direction: column;
-    gap: 18px;
+    gap: 0;
   }
 
   .hero h1 {
-    font-size: 28px;
+    margin-bottom: 4px;
+    font-size: 24px;
   }
 
   .hero p {
-    font-size: 14px;
-    line-height: 1.6;
+    display: -webkit-box;
+    overflow: hidden;
+    margin-bottom: 12px;
+    font-size: 12px;
+    line-height: 1.5;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
   }
 
   .hero-actions {
     display: grid;
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
   }
 
   .hero-actions .el-button {
     width: 100%;
+    height: 38px;
+    min-height: 38px;
     margin-left: 0;
+    padding: 0 10px;
+    border-radius: 9px;
+    font-size: 13px;
   }
 
   .grid {

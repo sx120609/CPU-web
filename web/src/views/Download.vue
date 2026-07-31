@@ -3,7 +3,7 @@
     <section class="download-hero">
       <div class="hero-copy">
         <span class="hero-eyebrow">药大拾间客户端</span>
-        <h1>在你的设备上，更顺手地使用药大拾间</h1>
+        <h1>一个页面，装好药大拾间</h1>
         <p>
           Android、iOS、Windows 和 macOS 的入口都集中在这里。
           页面会优先推荐当前设备适合的版本，已有安装提示与更新弹窗仍会照常工作。
@@ -50,8 +50,8 @@
     <section id="platforms" class="platform-section" aria-labelledby="platform-title">
       <header class="section-head">
         <div>
-          <span>选择平台</span>
-          <h2 id="platform-title">每台设备都有清楚的安装方式</h2>
+          <span>Android · iOS · Windows · macOS</span>
+          <h2 id="platform-title">选择你的设备</h2>
         </div>
         <p>版本信息来自现有发布源，不在页面里写死桌面端下载地址。</p>
       </header>
@@ -311,24 +311,24 @@ onMounted(async () => {
 
 <style scoped>
 .download-page {
-  width: min(1160px, 100%);
+  width: min(1180px, 100%);
   margin: 0 auto;
-  padding: 28px 0 44px;
+  padding: 20px 0 36px;
   color: var(--cpu-text);
 }
 
 .download-hero {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.65fr);
-  gap: 42px;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+  gap: 32px;
   overflow: hidden;
-  padding: 52px 56px;
+  padding: 36px 40px;
   border: 1px solid color-mix(in srgb, var(--cpu-primary) 26%, var(--cpu-border-soft));
-  border-radius: 28px;
+  border-radius: 24px;
   background:
-    radial-gradient(circle at 88% 12%, color-mix(in srgb, var(--cpu-primary-light) 22%, transparent) 0, transparent 34%),
-    linear-gradient(145deg, color-mix(in srgb, var(--cpu-primary) 11%, var(--cpu-surface)) 0%, var(--cpu-surface) 58%);
+    radial-gradient(circle at 92% 8%, color-mix(in srgb, var(--cpu-primary-light) 25%, transparent) 0, transparent 34%),
+    linear-gradient(140deg, color-mix(in srgb, var(--cpu-primary) 12%, var(--cpu-surface)) 0%, var(--cpu-surface) 64%);
   box-shadow: var(--cpu-shadow-md);
 }
 
@@ -347,10 +347,10 @@ onMounted(async () => {
 }
 
 .hero-copy h1 {
-  max-width: 720px;
-  margin: 12px 0 16px;
-  font-size: clamp(32px, 4.2vw, 54px);
-  line-height: 1.12;
+  max-width: 680px;
+  margin: 10px 0 12px;
+  font-size: clamp(32px, 3.6vw, 46px);
+  line-height: 1.1;
   letter-spacing: -0.035em;
 }
 
@@ -358,16 +358,16 @@ onMounted(async () => {
   max-width: 700px;
   margin: 0;
   color: var(--cpu-text-secondary);
-  font-size: 16px;
-  line-height: 1.8;
+  font-size: 14px;
+  line-height: 1.7;
 }
 
 .hero-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 16px;
-  margin-top: 30px;
+  gap: 14px;
+  margin-top: 22px;
 }
 
 .primary-action,
@@ -377,10 +377,10 @@ onMounted(async () => {
   align-items: center;
   justify-content: center;
   gap: 12px;
-  min-height: 46px;
-  padding: 0 20px;
+  min-height: 42px;
+  padding: 0 18px;
   border: 1px solid var(--cpu-primary);
-  border-radius: 14px;
+  border-radius: 12px;
   background: var(--cpu-primary);
   color: #fff;
   font-size: 14px;
@@ -424,11 +424,11 @@ onMounted(async () => {
   align-self: center;
   display: flex;
   align-items: center;
-  gap: 18px;
+  gap: 14px;
   min-width: 0;
-  padding: 24px;
+  padding: 18px;
   border: 1px solid color-mix(in srgb, var(--cpu-primary) 20%, var(--cpu-border-soft));
-  border-radius: 22px;
+  border-radius: 18px;
   background: color-mix(in srgb, var(--cpu-surface) 82%, transparent);
   backdrop-filter: blur(16px);
 }
@@ -436,13 +436,13 @@ onMounted(async () => {
 .hero-logo {
   display: grid;
   flex: 0 0 auto;
-  width: 70px;
-  height: 70px;
+  width: 58px;
+  height: 58px;
   place-items: center;
-  border-radius: 20px;
+  border-radius: 17px;
   background: linear-gradient(145deg, var(--cpu-primary), var(--cpu-primary-dark));
   color: #ffd46b;
-  font-size: 34px;
+  font-size: 29px;
   font-weight: 900;
   box-shadow: 0 14px 30px color-mix(in srgb, var(--cpu-primary-dark) 24%, transparent);
 }
@@ -454,7 +454,7 @@ onMounted(async () => {
 }
 
 .hero-mark strong {
-  font-size: 21px;
+  font-size: 19px;
 }
 
 .hero-mark span {
@@ -464,7 +464,7 @@ onMounted(async () => {
 }
 
 .platform-section {
-  padding: 56px 0 0;
+  padding: 40px 0 0;
 }
 
 .section-head {
@@ -472,13 +472,13 @@ onMounted(async () => {
   align-items: end;
   justify-content: space-between;
   gap: 28px;
-  margin-bottom: 22px;
+  margin-bottom: 18px;
 }
 
 .section-head h2,
 .web-entry h2 {
   margin: 6px 0 0;
-  font-size: clamp(24px, 3vw, 34px);
+  font-size: clamp(24px, 2.6vw, 31px);
   line-height: 1.25;
   letter-spacing: -0.025em;
 }
@@ -494,8 +494,8 @@ onMounted(async () => {
 
 .platform-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
 }
 
 .platform-card {
@@ -503,11 +503,28 @@ onMounted(async () => {
   display: flex;
   min-width: 0;
   flex-direction: column;
-  padding: 24px;
+  overflow: hidden;
+  padding: 20px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 22px;
+  border-radius: 18px;
   background: var(--cpu-surface);
   box-shadow: var(--cpu-shadow-sm);
+  transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.platform-card::before {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: linear-gradient(90deg, var(--cpu-primary), color-mix(in srgb, var(--cpu-primary-light) 60%, transparent));
+  content: "";
+  opacity: 0.38;
+}
+
+.platform-card:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--cpu-primary) 35%, var(--cpu-border));
+  box-shadow: var(--cpu-shadow-md);
 }
 
 .platform-card.recommended {
@@ -519,17 +536,17 @@ onMounted(async () => {
 
 .platform-card-head {
   display: grid;
-  grid-template-columns: 52px minmax(0, 1fr) auto;
+  grid-template-columns: 46px minmax(0, 1fr);
   align-items: center;
-  gap: 13px;
+  gap: 11px;
 }
 
 .platform-symbol {
   display: grid;
-  width: 52px;
-  height: 52px;
+  width: 46px;
+  height: 46px;
   place-items: center;
-  border-radius: 16px;
+  border-radius: 14px;
   background: color-mix(in srgb, var(--cpu-primary) 11%, var(--cpu-surface-soft));
   color: var(--cpu-primary);
   font-size: 16px;
@@ -567,7 +584,7 @@ onMounted(async () => {
 }
 
 .platform-name-row strong {
-  font-size: 18px;
+  font-size: 17px;
 }
 
 .platform-name-row em {
@@ -589,6 +606,8 @@ onMounted(async () => {
 }
 
 .version-badge {
+  grid-column: 2;
+  justify-self: start;
   padding: 5px 9px;
   border: 1px solid var(--cpu-border-soft);
   border-radius: 999px;
@@ -603,17 +622,17 @@ onMounted(async () => {
 }
 
 .platform-summary {
-  min-height: 52px;
-  margin: 20px 0 16px;
+  min-height: 76px;
+  margin: 17px 0 14px;
   color: var(--cpu-text-secondary);
-  font-size: 14px;
-  line-height: 1.75;
+  font-size: 13px;
+  line-height: 1.65;
 }
 
 .feature-list {
   display: grid;
-  gap: 9px;
-  margin: 0 0 22px;
+  gap: 8px;
+  margin: 0 0 18px;
   padding: 0;
   list-style: none;
 }
@@ -640,13 +659,13 @@ onMounted(async () => {
 }
 
 .platform-action-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+  display: grid;
+  gap: 8px;
   margin-top: auto;
 }
 
 .platform-action {
+  width: 100%;
   min-height: 42px;
   padding: 0 16px;
   border-radius: 12px;
@@ -664,11 +683,12 @@ onMounted(async () => {
 .platform-action-row > span {
   color: var(--cpu-text-muted);
   font-size: 11px;
+  text-align: center;
 }
 
 .install-steps {
-  margin-top: 18px;
-  padding-top: 16px;
+  margin-top: 14px;
+  padding-top: 13px;
   border-top: 1px solid var(--cpu-border-soft);
 }
 
@@ -693,11 +713,11 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 30px;
-  margin-top: 22px;
-  padding: 28px 32px;
+  gap: 24px;
+  margin-top: 16px;
+  padding: 22px 26px;
   border: 1px solid color-mix(in srgb, var(--cpu-primary) 22%, var(--cpu-border-soft));
-  border-radius: 22px;
+  border-radius: 18px;
   background: color-mix(in srgb, var(--cpu-primary) 7%, var(--cpu-surface));
 }
 
@@ -753,6 +773,16 @@ onMounted(async () => {
 
   .hero-mark {
     max-width: 440px;
+  }
+}
+
+@media (max-width: 1100px) {
+  .platform-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .platform-summary {
+    min-height: 52px;
   }
 }
 
@@ -869,7 +899,8 @@ onMounted(async () => {
 @media (prefers-reduced-motion: reduce) {
   .primary-action,
   .platform-action,
-  .web-entry-actions a {
+  .web-entry-actions a,
+  .platform-card {
     transition: none;
   }
 }
