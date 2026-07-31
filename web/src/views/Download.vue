@@ -5,7 +5,7 @@
         <span class="hero-eyebrow">药大拾间客户端</span>
         <h1>一个页面，装好药大拾间</h1>
         <p>
-          Android、iOS、Windows 和 macOS 的入口都集中在这里。
+          安卓/鸿蒙卓易通、iOS、Windows 和 macOS 的入口都集中在这里。
           页面会优先推荐当前设备适合的版本，已有安装提示与更新弹窗仍会照常工作。
         </p>
         <div class="hero-actions">
@@ -50,7 +50,7 @@
     <section id="platforms" class="platform-section" aria-labelledby="platform-title">
       <header class="section-head">
         <div>
-          <span>Android · iOS · Windows · macOS</span>
+          <span>安卓/鸿蒙卓易通 · iOS · Windows · macOS</span>
           <h2 id="platform-title">选择你的设备</h2>
         </div>
         <p>版本信息来自现有发布源，不在页面里写死桌面端下载地址。</p>
@@ -128,7 +128,7 @@
         <span class="web-entry-kicker">不在自己的设备上？</span>
         <h2>也可以直接使用网页版</h2>
         <p>
-          网页版适合临时访问；Windows、M 芯片 Mac 和 Android
+          网页版适合临时访问；Windows、M 芯片 Mac 和安卓/鸿蒙卓易通
           仍优先推荐对应客户端，iPhone / iPad 可将课表添加到主屏幕。
         </p>
       </div>
@@ -200,7 +200,7 @@ const detectedPlatform = computed<DownloadPlatform | null>(() => {
 
 const detectedLabel = computed(() => {
   const labels: Record<DownloadPlatform, string> = {
-    android: "已识别为 Android 设备",
+    android: "已识别为安卓/鸿蒙设备",
     ios: "已识别为 iPhone / iPad",
     windows: "已识别为 Windows 设备",
     macos: "已识别为 Mac 设备",
@@ -220,16 +220,16 @@ const platformCards = computed<PlatformCard[]>(() => [
   {
     key: "android",
     symbol: "A",
-    name: "Android",
-    support: "Android 手机与平板",
-    summary: "原生客户端承载完整站点，并提供更适合手机的下载、通知和课表能力。",
+    name: "安卓/鸿蒙卓易通",
+    support: "安卓与鸿蒙手机、平板",
+    summary: "卓易通原生客户端承载完整站点，并提供更适合手机的下载、通知和课表能力。",
     features: ["课表与桌面小组件", "站内通知与文件下载", "跟随网站持续更新"],
     steps: [
       "点击下载 APK，并等待浏览器完成下载。",
       "打开安装包；若系统询问，请允许当前浏览器安装未知来源应用。",
       "安装完成后从桌面打开药大拾间。",
     ],
-    actionLabel: "下载 Android 客户端",
+    actionLabel: "下载安卓/鸿蒙卓易通",
     actionHint: "APK 安装包",
     versionLabel: `v${ANDROID_APP_LATEST_VERSION_NAME}`,
     loading: false,
