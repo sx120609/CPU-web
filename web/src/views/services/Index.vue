@@ -50,32 +50,33 @@
       </div>
     </section>
 
+    <!-- 客户端下载对访客也可见；电费查询仍需要教务登录 -->
+    <div class="quick-row">
+      <button v-if="jwxt.isLoggedIn && site.features.electric" type="button" class="quick-card electric-card" @click="electricOpen = true">
+        <span class="quick-icon">💡</span>
+        <div class="quick-body">
+          <div class="quick-title">宿舍电费查询</div>
+          <div class="quick-sub">站内查询本宿舍剩余电量、剩余金额与抄表时间</div>
+        </div>
+        <el-icon class="quick-arrow"><Right /></el-icon>
+      </button>
+      <button type="button" class="quick-card network-card" @click="router.push('/download')">
+        <span class="quick-icon">🖥️</span>
+        <div class="quick-body">
+          <div class="quick-title-row">
+            <div class="quick-title">药大拾间桌面客户端</div>
+            <span class="quick-badge">Windows</span>
+            <span class="quick-version">macOS M 芯片</span>
+          </div>
+          <div class="quick-sub">校园网自动连接、学习通辅助与桌面常驻能力都在客户端中</div>
+        </div>
+        <span class="quick-action">查看全部客户端</span>
+        <el-icon class="quick-arrow"><Right /></el-icon>
+      </button>
+    </div>
+
     <!-- 已登录：完整 i 服务面板 -->
     <template v-if="jwxt.isLoggedIn">
-      <!-- 常用快捷服务：移动端与桌面端使用同一套入口和提示逻辑 -->
-      <div class="quick-row">
-        <button v-if="site.features.electric" type="button" class="quick-card electric-card" @click="electricOpen = true">
-          <span class="quick-icon">💡</span>
-          <div class="quick-body">
-            <div class="quick-title">宿舍电费查询</div>
-            <div class="quick-sub">站内查询本宿舍剩余电量、剩余金额与抄表时间</div>
-          </div>
-          <el-icon class="quick-arrow"><Right /></el-icon>
-        </button>
-        <button type="button" class="quick-card network-card" @click="desktopClientOpen = true">
-          <span class="quick-icon">🖥️</span>
-          <div class="quick-body">
-            <div class="quick-title-row">
-              <div class="quick-title">药大拾间桌面客户端</div>
-              <span class="quick-badge">Windows</span>
-              <span class="quick-version">macOS M 芯片</span>
-            </div>
-            <div class="quick-sub">校园网自动连接、学习通辅助与桌面常驻能力都在客户端中</div>
-          </div>
-          <span class="quick-action">选择版本</span>
-          <el-icon class="quick-arrow"><Right /></el-icon>
-        </button>
-      </div>
       <IServicePane />
     </template>
 
@@ -146,7 +147,6 @@
     </div>
 
     <DormElectricDialog v-model="electricOpen" />
-    <CpuNetDownloadDialog v-model="desktopClientOpen" />
   </div>
 </template>
 
@@ -163,7 +163,6 @@ import { readViewCache, writeViewCache } from "@/utils/viewCache";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
 import IServicePane from "@/components/jwxt/IServicePane.vue";
 import DormElectricDialog from "@/components/services/DormElectricDialog.vue";
-import CpuNetDownloadDialog from "@/components/services/CpuNetDownloadDialog.vue";
 import { serviceTools, type ServiceTool } from "@/data/serviceTools";
 import { toolsApi, type ToolMeta } from "@/api/tools";
 
@@ -179,7 +178,6 @@ const captchaSubmitting = ref(false);
 const captchaRefreshing = ref(false);
 const captchaError = ref("");
 const electricOpen = ref(false);
-const desktopClientOpen = ref(false);
 const toolMetas = ref<ToolMeta[]>([]);
 const toolsLoading = ref(false);
 const toolsError = ref("");
@@ -193,7 +191,7 @@ watch(
   [() => route.query.open, () => site.features.electric],
   ([quickOpen, electricEnabled]) => {
     if (quickOpen === "electric" && electricEnabled) electricOpen.value = true;
-    if (quickOpen === "network" || quickOpen === "desktop") desktopClientOpen.value = true;
+    if (quickOpen === "network" || quickOpen === "desktop") void router.push("/download");
   },
   { immediate: true },
 );
