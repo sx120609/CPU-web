@@ -187,7 +187,7 @@ check("学习通助手品牌、版本和进入课程引导已写入内置回退�
   const fs = require("node:fs");
   const source = fs.readFileSync(path.join(__dirname, "..", "assets", "userscripts", "monkey.js"), "utf8");
   assert.match(source, /^\/\/ @name\s+药大拾间·学习通助手$/m);
-  assert.match(source, /^\/\/ @version\s+2\.2\.9$/m);
+  assert.match(source, /^\/\/ @version\s+2\.2\.10$/m);
   assert.match(source, /cpu-learning-personal-center-guide-v3/);
   assert.match(source, /cpu-learning-course-guide-v3/);
   assert.match(source, /章节、作业或考试/);

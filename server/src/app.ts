@@ -47,7 +47,8 @@ export function createApp() {
     },
     filestoreHandler,
   );
-  app.use(express.json({ limit: "10mb" }));
+  // 桌面端截图保持原始 PNG（最大 8MB）；Base64 与 JSON 封装后会略高于 10MB。
+  app.use(express.json({ limit: "12mb" }));
   app.use(express.urlencoded({ extended: false }));
   app.post(
     "/api/security/csp-report",

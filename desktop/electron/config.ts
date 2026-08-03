@@ -54,6 +54,9 @@ export const limits = {
   redirectHops: 3,
   aiInputItems: 32,
   aiTextLength: 32000,
+  // 截图使用原始 PNG 交给 OCR，不能沿用普通文字的 32KB 限制，也不能在客户端压缩。
+  // capturePage 已把 PNG 二进制限制在 8MB；Base64 Data URL 预留到 12MB。
+  aiImageDataUrlLength: 12 * 1024 * 1024,
   // 主站加载失败多久后落到本地启动台
   siteLoadTimeoutMs: 15000
 } as const;

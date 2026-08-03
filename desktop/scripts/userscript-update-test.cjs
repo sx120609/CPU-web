@@ -26,7 +26,7 @@ async function main() {
     size: Buffer.byteLength(source, "utf8"),
     sourceUrl: USER_SCRIPT_SOURCE_PATH,
   };
-  assert.deepEqual(identity, { name: "药大拾间·学习通助手", version: "2.2.9" });
+  assert.deepEqual(identity, { name: "药大拾间·学习通助手", version: "2.2.10" });
   assert.match(source, /章节、作业或考试/, "个人中心与课程引导应覆盖章节、作业和考试入口");
   assert.match(source, /customClass:\s*"cpu-learning-guide"/, "学习通引导应使用独立高层级样式");
   assert.match(source, /offset:\s*96/, "学习通引导应避开超星顶部导航");
@@ -49,7 +49,10 @@ async function main() {
   assert.match(source, /data\.learning_answer/, "AI 答题应优先读取服务端规范化的答案与解题思路");
   assert.match(source, /displayAnswer:\s*`\$\{answerLetter\}\. \$\{optionText\}`/, "单选题应同时显示选项字母和选项内容");
   assert.match(source, /waitUntilRunning/, "暂停状态应阻止继续处理下一项任务");
-  assert.match(source, /formatLearningDisplayText/, "题目和答案展示前应清理 HTML 并恢复上下标");
+  assert.match(source, /renderLearningMarkdown/, "题目、答案和解题思路应统一渲染 Markdown 与公式");
+  assert.match(source, /cpu-la-inline-image/, "图片题应在助手中显示并支持查看原图");
+  assert.match(source, /navigationGeneration/, "切换章节时应终止旧章节任务并扫描新章节");
+  assert.match(source, /taskCurrent/, "媒体与答题任务应在异步步骤后确认仍属于当前章节");
   assert.doesNotMatch(source, /切记填写完要刷新页面才会生效/, "不应继续显示旧版付费秘钥提示");
   assert.doesNotMatch(source, /题库秘钥配置请点击这个按钮|label:\s*"公告"|label:\s*"运行框"/, "旧配置提示、公告页和运行框不应残留");
   assert.doesNotMatch(source, /cpu-la-footer/, "章节测验提交开关不应残留在窗口底部");
@@ -82,7 +85,7 @@ async function main() {
       return new Response("", { status: 404 });
     };
 
-    const olderSource = source.replace("// @version      2.2.9", "// @version      2.1.9");
+    const olderSource = source.replace("// @version      2.2.10", "// @version      2.1.9");
     const updated = await checkUserScriptUpdate({
       origin: "https://cpu.lizmt.cn",
       cacheDirectory,
@@ -95,7 +98,7 @@ async function main() {
     assert.equal(new URL(requests[1]).searchParams.get("sha256"), manifest.sha256, "正文请求应使用发布哈希隔离缓存");
 
     const cached = await readCachedUserScript(cacheDirectory, () => undefined);
-    assert.equal(cached?.manifest.version, "2.2.9");
+    assert.equal(cached?.manifest.version, "2.2.10");
     assert.equal(cached?.source, source);
 
     requests.length = 0;

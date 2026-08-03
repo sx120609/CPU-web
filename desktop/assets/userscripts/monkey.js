@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         药大拾间·学习通助手
 // @namespace    askAuto
-// @version      2.2.9
+// @version      2.2.10
 // @author       shushoujiu
 // @description  药大拾间桌面端的学习通助手：自动完成任务点，章节测验与考试由独立答题 AI 作答。
 // @icon         https://vitejs.dev/logo.svg
@@ -1690,7 +1690,17 @@
     } catch {
       finish(false);
     }
-  }), removeHtml = (html) => null == html ? "" : html.replace(/<((?!img|sub|sup|br)[^>]+)>/g, "").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").replace(/<br\s*\/?>/g, "\n").replace(/<img.*?src="(.*?)".*?>/g, '<img src="$1"/>').trim(), learningSubscriptMap = { "0": "₀", "1": "₁", "2": "₂", "3": "₃", "4": "₄", "5": "₅", "6": "₆", "7": "₇", "8": "₈", "9": "₉", "+": "₊", "-": "₋", "=": "₌", "(": "₍", ")": "₎" }, learningSuperscriptMap = { "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴", "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹", "+": "⁺", "-": "⁻", "=": "⁼", "(": "⁽", ")": "⁾" }, mapLearningScriptText = (value, table) => String(value || "").replace(/<[^>]*>/g, "").split("").map((character) => table[character] || character).join(""), formatLearningDisplayText = (value) => {
+  }), removeHtml = (html, baseUrl = document.baseURI) => null == html ? "" : html.replace(/<((?!img|sub|sup|br)[^>]+)>/g, "").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").replace(/<br\s*\/?>/g, "\n").replace(/<img\b([^>]*)>/gi, (_match, attributes) => {
+    try {
+      const sourceMatch = /\b(?:src|data-src|data-original|data-original-src)\s*=\s*["']([^"']+)["']/i.exec(attributes);
+      const src = String(sourceMatch && sourceMatch[1] || "").trim();
+      if (/^data:image\/(?:jpeg|png|webp|gif);base64,/i.test(src)) return `<img src="${src}"/>`;
+      const resolved = new URL(src, baseUrl);
+      return resolved.protocol === "https:" || resolved.protocol === "http:" ? `<img src="${resolved.href}"/>` : "[图片]";
+    } catch {
+      return "[图片]";
+    }
+  }).trim(), learningSubscriptMap = { "0": "₀", "1": "₁", "2": "₂", "3": "₃", "4": "₄", "5": "₅", "6": "₆", "7": "₇", "8": "₈", "9": "₉", "+": "₊", "-": "₋", "=": "₌", "(": "₍", ")": "₎" }, learningSuperscriptMap = { "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴", "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹", "+": "⁺", "-": "⁻", "=": "⁼", "(": "⁽", ")": "⁾" }, mapLearningScriptText = (value, table) => String(value || "").replace(/<[^>]*>/g, "").split("").map((character) => table[character] || character).join(""), formatLearningDisplayText = (value) => {
     const raw = Array.isArray(value) ? value.join("\n") : String(value == null ? "" : value);
     const normalized = raw.replace(/\\(["'])/g, "$1").replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "").replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "").replace(/<img\b[^>]*>/gi, "[图片]").replace(/<br\s*\/?>/gi, "\n").replace(/<sub\b[^>]*>([\s\S]*?)<\/sub>/gi, (_match, content) => mapLearningScriptText(content, learningSubscriptMap)).replace(/<sup\b[^>]*>([\s\S]*?)<\/sup>/gi, (_match, content) => mapLearningScriptText(content, learningSuperscriptMap)).replace(/<sub\b[^>]*>([0-9+\-=()]+)/gi, (_match, content) => mapLearningScriptText(content, learningSubscriptMap)).replace(/<sup\b[^>]*>([0-9+\-=()]+)/gi, (_match, content) => mapLearningScriptText(content, learningSuperscriptMap));
     try {
@@ -1711,18 +1721,18 @@
     let questionHtml, questionText, questionTypeId, optionHtml, tokenHtml, workType, optionText, index;
     switch (type) {
       case "1":
-        return workType = "zj", questionHtml = Array.from(html.querySelectorAll(".clearfix .fontLabel")), questionText = cl(removeHtml(questionHtml[0].innerHTML)), questionTypeId = html.querySelectorAll("input[name^=answertype]")[0].value, optionHtml = Array.from(html.querySelectorAll("ul")[0].querySelectorAll("li .after")), tokenHtml = html.innerHTML, optionText = [], optionHtml.forEach(function(item) {
-          optionText.push(removeHtml(item.innerHTML));
+        return workType = "zj", questionHtml = Array.from(html.querySelectorAll(".clearfix .fontLabel")), questionText = cl(removeHtml(questionHtml[0].innerHTML, questionHtml[0].ownerDocument.baseURI)), questionTypeId = html.querySelectorAll("input[name^=answertype]")[0].value, optionHtml = Array.from(html.querySelectorAll("ul")[0].querySelectorAll("li .after")), tokenHtml = html.innerHTML, optionText = [], optionHtml.forEach(function(item) {
+          optionText.push(removeHtml(item.innerHTML, item.ownerDocument.baseURI));
         }), { question: questionText, options: optionText, type: questionTypeId, questionData: tokenHtml, workType };
       case "2":
-        workType = "zy", questionHtml = Array.from(html.querySelectorAll(".mark_name")), index = questionHtml[0].innerHTML.indexOf("</span>"), questionText = cl(removeHtml(questionHtml[0].innerHTML.substring(index + 7))), questionHtml[0].getElementsByTagName("span")[0].innerHTML.replace("(", "").replace(")", "").split(",")[0], questionTypeId = html.querySelectorAll("input[name^=answertype]")[0].value, optionHtml = Array.from(html.querySelectorAll(".answer_p")), tokenHtml = html.innerHTML, optionText = [];
+        workType = "zy", questionHtml = Array.from(html.querySelectorAll(".mark_name")), index = questionHtml[0].innerHTML.indexOf("</span>"), questionText = cl(removeHtml(questionHtml[0].innerHTML.substring(index + 7), questionHtml[0].ownerDocument.baseURI)), questionHtml[0].getElementsByTagName("span")[0].innerHTML.replace("(", "").replace(")", "").split(",")[0], questionTypeId = html.querySelectorAll("input[name^=answertype]")[0].value, optionHtml = Array.from(html.querySelectorAll(".answer_p")), tokenHtml = html.innerHTML, optionText = [];
         for (let i = 0; i < optionHtml.length; i++)
-          optionText.push(removeHtml(optionHtml[i].innerHTML));
+          optionText.push(removeHtml(optionHtml[i].innerHTML, optionHtml[i].ownerDocument.baseURI));
         return { question: questionText, options: optionText, type: questionTypeId, questionData: tokenHtml, workType };
       case "3":
-        workType = "ks", questionHtml = Array.from(document.getElementsByClassName("mark_name colorDeep")), index = questionHtml[0].innerHTML.indexOf("</span>"), questionText = cl(removeHtml(questionHtml[0].innerHTML.substring(index + 7))), questionHtml[0].getElementsByTagName("span")[0].innerHTML.replace("(", "").replace(")", "").split(",")[0], questionTypeId = document.querySelectorAll("input[name^=type]")[1].value, optionHtml = Array.from(document.getElementsByClassName("answer_p")), tokenHtml = document.getElementsByClassName("mark_table")[0].innerHTML, optionText = [];
+        workType = "ks", questionHtml = Array.from(document.getElementsByClassName("mark_name colorDeep")), index = questionHtml[0].innerHTML.indexOf("</span>"), questionText = cl(removeHtml(questionHtml[0].innerHTML.substring(index + 7), questionHtml[0].ownerDocument.baseURI)), questionHtml[0].getElementsByTagName("span")[0].innerHTML.replace("(", "").replace(")", "").split(",")[0], questionTypeId = document.querySelectorAll("input[name^=type]")[1].value, optionHtml = Array.from(document.getElementsByClassName("answer_p")), tokenHtml = document.getElementsByClassName("mark_table")[0].innerHTML, optionText = [];
         for (let i = 0; i < optionHtml.length; i++)
-          optionText.push(removeHtml(optionHtml[i].innerHTML));
+          optionText.push(removeHtml(optionHtml[i].innerHTML, optionHtml[i].ownerDocument.baseURI));
         return { question: questionText, options: optionText, type: questionTypeId, questionData: tokenHtml, workType };
     }
   }, decode = (iframeWindow) => {
@@ -1865,9 +1875,9 @@
   }, get(index) {
     return this.task.work.questionList[index];
   }, insert(question) {
-    this.task.work.questionList.push({ ...question, question: formatLearningDisplayText(question == null ? void 0 : question.question) });
+    this.task.work.questionList.push({ ...question, question: String(question == null ? "" : question.question || "") });
   }, update(index, question) {
-    this.task.work.questionList[index] = { ...question, question: formatLearningDisplayText(question == null ? void 0 : question.question) };
+    this.task.work.questionList[index] = { ...question, question: String(question == null ? "" : question.question || "") };
   }, log(msg, level = "info") {
     this.task.log.length > 20 && this.task.log.shift(), this.task.log.push({ time: (/* @__PURE__ */ new Date()).toLocaleTimeString(), msg, type: level }), reportToHost("log", msg);
   }, msg(msg) {
@@ -1888,8 +1898,9 @@
     }
     innerbook() {
     }
-    async audio(iframeWindow) {
+    async audio(iframeWindow, taskCurrent = () => true) {
       await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，点击“开始助手”后继续"));
+      if (!taskCurrent()) return;
       this.askStore.reset(), this.askStore.setActivity("音频任务", "正在加载音频", 0);
       const audio = iframeWindow.document.getElementById("audio_html5_api");
       return audio.muted = true, audio.autoplay = true, audio.volume = 0, audio.play().then(function() {
@@ -1900,18 +1911,24 @@
         } }) : console.error("视频播放失败，原因：", error);
       }), new Promise((resolve) => {
         const intervalId = setInterval(() => {
+          if (!taskCurrent()) {
+            audio.pause(), clearInterval(intervalId), resolve();
+            return;
+          }
           const duration = Number(audio.duration) || 0, current = Number(audio.currentTime) || 0, progress = duration > 0 ? current / duration * 100 : null;
           this.askStore.setActivity("音频任务", `${assistantRuntime.isPaused() ? "已暂停" : "正在自动播放"}${duration > 0 ? ` · ${formatMediaTime(current)} / ${formatMediaTime(duration)}` : ""}`, progress);
           audio.ended ? (this.askStore.setActivity("音频任务", "音频播放完成", 100, false), clearInterval(intervalId), log("监听到音频已完成", "success"), resolve()) : assistantRuntime.isPaused() ? audio.pause() : audio.paused && audio.play();
         }, 1e3);
         audio.addEventListener("ended", () => {
-          this.askStore.setActivity("音频任务", "音频播放完成", 100, false), log("监听到音频已完成1", "success"), audio.pause(), clearInterval(intervalId), resolve();
+          taskCurrent() && (this.askStore.setActivity("音频任务", "音频播放完成", 100, false), log("监听到音频已完成1", "success")), audio.pause(), clearInterval(intervalId), resolve();
         });
       });
     }
-    async video(iframeWindow) {
+    async video(iframeWindow, taskCurrent = () => true) {
       await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，点击“开始助手”后继续"));
+      if (!taskCurrent()) return;
       this.askStore.reset(), this.askStore.setActivity("视频任务", "正在加载视频", 0), await waitElementLoaded(iframeWindow, "#video_html5_api"), console.log("视频加载完成");
+      if (!taskCurrent()) return;
       const player = iframeWindow.videojs("video_html5_api"), playerButton = iframeWindow.document.querySelector(".vjs-big-play-button"), nativePlayerPause = player.pause.bind(player);
       player.muted(true), player.playbackRate(16), player.play();
 
@@ -1924,12 +1941,12 @@
       const scheduleRandomPause = () => {
         const delay = Math.floor(Math.random() * (93 - 30 + 1) + 30) * 1000;
         pauseTimer = setTimeout(() => {
-          if (!player.paused() && !assistantRuntime.isPaused()) {
+          if (taskCurrent() && !player.paused() && !assistantRuntime.isPaused()) {
             nativePlayerPause();
             console.log(`[视频] 已随机暂停，暂停时间: ${delay / 1000}秒`);
             // 暂停2-5秒后恢复播放
             setTimeout(() => {
-              if (!assistantRuntime.isPaused() && player.paused() && "isUnFinishJob" in iframeWindow && iframeWindow.isUnFinishJob()) {
+              if (taskCurrent() && !assistantRuntime.isPaused() && player.paused() && "isUnFinishJob" in iframeWindow && iframeWindow.isUnFinishJob()) {
                 player.play();
                 console.log("[视频] 已恢复播放");
                 scheduleRandomPause();
@@ -1978,8 +1995,8 @@
       const scheduleMouseMovement = () => {
         const delay = Math.floor(Math.random() * (8 - 3 + 1) + 3) * 1000;
         mouseMoveTimer = setTimeout(() => {
-          assistantRuntime.isPaused() || simulateMouseMovement();
-          if ("isUnFinishJob" in iframeWindow && iframeWindow.isUnFinishJob()) {
+          taskCurrent() && (assistantRuntime.isPaused() || simulateMouseMovement());
+          if (taskCurrent() && "isUnFinishJob" in iframeWindow && iframeWindow.isUnFinishJob()) {
             scheduleMouseMovement();
           }
         }, delay);
@@ -1988,6 +2005,10 @@
 
       await new Promise((resolve) => {
         const intervalId = setInterval(() => {
+          if (!taskCurrent()) {
+            nativePlayerPause(), clearInterval(intervalId), clearTimeout(pauseTimer), clearTimeout(mouseMoveTimer), resolve();
+            return;
+          }
           const duration = Number(player.duration()) || 0, current = Number(player.currentTime()) || 0, progress = duration > 0 ? current / duration * 100 : null;
           this.askStore.setActivity("视频任务", `${assistantRuntime.isPaused() ? "已暂停" : "正在自动播放"}${duration > 0 ? ` · ${formatMediaTime(current)} / ${formatMediaTime(duration)}` : ""}`, progress);
           if (assistantRuntime.isPaused()) {
@@ -1997,15 +2018,16 @@
           "isUnFinishJob" in iframeWindow && iframeWindow.isUnFinishJob() ? player.paused() && (playerButton == null ? void 0 : playerButton.click()) : (clearInterval(intervalId), clearTimeout(pauseTimer), clearTimeout(mouseMoveTimer), resolve());
         }, 1e3), pauseBase = player.pause;
         player.pause = function() {
-          player.currentTime() >= player.duration() && (console.log("视频播放完成"), player.pause = pauseBase, clearTimeout(pauseTimer), clearTimeout(mouseMoveTimer), resolve());
+          taskCurrent() && player.currentTime() >= player.duration() && (console.log("视频播放完成"), player.pause = pauseBase, clearTimeout(pauseTimer), clearTimeout(mouseMoveTimer), resolve());
         }, player.on("ended", () => {
-          this.askStore.setActivity("视频任务", "视频播放完成", 100, false), console.log("视频播放完成1"), player.pause = pauseBase, player.pause(), clearInterval(intervalId), clearTimeout(pauseTimer), clearTimeout(mouseMoveTimer), resolve();
+          taskCurrent() && (this.askStore.setActivity("视频任务", "视频播放完成", 100, false), console.log("视频播放完成1")), player.pause = pauseBase, player.pause(), clearInterval(intervalId), clearTimeout(pauseTimer), clearTimeout(mouseMoveTimer), resolve();
         });
-      }), this.askStore.setActivity("视频任务", "视频播放完成", 100, false), console.log("任务点完成");
+      }), taskCurrent() && (this.askStore.setActivity("视频任务", "视频播放完成", 100, false), console.log("任务点完成"));
     }
-    work(iframeWindow) {
+    work(iframeWindow, taskCurrent = () => true) {
       return new Promise(async (resolve) => {
         await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，点击“开始助手”后继续"));
+        if (!taskCurrent()) return void resolve();
         decode(iframeWindow);
         const Timu = iframeWindow.document.querySelectorAll(".TiMu");
         if (!Timu.length)
@@ -2017,18 +2039,48 @@
         }
         this.askStore.reset(), this.askStore.setActivity("章节测验", `已识别 ${ques.length} 道题，准备获取答案`, 0);
         for (let i = 0; i < ques.length; i++) {
+          if (!taskCurrent()) return void resolve();
           this.askStore.setActivity("章节测验", `正在处理第 ${i + 1}/${ques.length} 题`, Math.round(i / Math.max(1, ques.length) * 100));
           await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，点击“开始助手”后继续")), await randomSleep(this.defaultConfig.answerIntervalMin, this.defaultConfig.answerIntervalMax), await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，点击“开始助手”后继续")), this.askStore.insert(ques[i]), this.askStore.task.work.inx = i;
+          if (!taskCurrent()) return void resolve();
           let data = await getAnswers(ques[i], iframeWindow);
-          this.askStore.get(i).allAnswer = data.map((item) => ({ ...item, answer: learningAnswerDisplay(item, "暂无答案"), explanation: formatLearningDisplayText(item.explanation || "") }));
+          if (!taskCurrent()) return void resolve();
+          this.askStore.get(i).allAnswer = data.map((item) => ({ ...item, answer: learningAnswerDisplay(item, "暂无答案"), explanation: String(item.explanation || "") }));
           await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，点击“开始助手”后继续"));
+          if (!taskCurrent()) return void resolve();
           let tmp = fillAnswer(data, ques[i], Timu[i], iframeWindow);
           tmp ? (this.askStore.get(i).status = "primary", this.askStore.get(i).answer = learningAnswerDisplay(data[0], tmp), succ++) : (this.askStore.get(i).status = "danger", this.askStore.get(i).answer = "暂无答案"), this.askStore.get(i).dom = Timu[i];
         }
+        if (!taskCurrent()) return void resolve();
         const submitConfig = getConfig();
-        submitConfig.autoSubmit ? (succ / ques.length < submitConfig.minAccuracy ? (this.askStore.log("章节测验正确率不足，暂存", "error"), iframeWindow.alert = function(e) {
-          console.log("alert 方法被阻止", e);
-        }, iframeWindow.noSubmit()) : (await randomSleep(submitConfig.submitDelayMin, submitConfig.submitDelayMax), await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，不会提交章节测验")), iframeWindow.btnBlueSubmit(), await sleep(3), iframeWindow.submitCheckTimes(), this.askStore.log("章节测验已完成", "success"), await randomSleep(5, 10), await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，不会切换页面")), this.askStore.log("正在刷新页面...", "info"), iframeWindow.location.reload()), this.askStore.task.status = `章节测验已完成，等待切换,正确率:${succ}/${ques.length}`, resolve()) : (this.askStore.log("已填写章节测验答案；自动提交已关闭，请检查后手动提交", "success"), this.askStore.task.status = `等待手动提交,正确率:${succ}/${ques.length}`, resolve());
+        if (!submitConfig.autoSubmit) {
+          this.askStore.log("已填写章节测验答案；自动提交已关闭，请检查后手动提交", "success");
+          this.askStore.task.status = `等待手动提交,正确率:${succ}/${ques.length}`;
+          return void resolve();
+        }
+        if (succ / ques.length < submitConfig.minAccuracy) {
+          this.askStore.log("章节测验正确率不足，暂存", "error");
+          iframeWindow.alert = function(e) { console.log("alert 方法被阻止", e); };
+          iframeWindow.noSubmit();
+        } else {
+          await randomSleep(submitConfig.submitDelayMin, submitConfig.submitDelayMax);
+          if (!taskCurrent()) return void resolve();
+          await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，不会提交章节测验"));
+          if (!taskCurrent()) return void resolve();
+          iframeWindow.btnBlueSubmit();
+          await sleep(3);
+          if (!taskCurrent()) return void resolve();
+          iframeWindow.submitCheckTimes();
+          this.askStore.log("章节测验已完成", "success");
+          await randomSleep(5, 10);
+          if (!taskCurrent()) return void resolve();
+          await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，不会切换页面"));
+          if (!taskCurrent()) return void resolve();
+          this.askStore.log("正在刷新页面...", "info");
+          iframeWindow.location.reload();
+        }
+        if (taskCurrent()) this.askStore.task.status = `章节测验已完成，等待切换,正确率:${succ}/${ques.length}`;
+        resolve();
       });
     }
     homework() {
@@ -2047,7 +2099,7 @@
           this.askStore.setActivity("作业", `正在处理第 ${i + 1}/${ques.length} 题`, Math.round(i / Math.max(1, ques.length) * 100));
           await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，点击“开始助手”后继续")), await randomSleep(this.defaultConfig.answerIntervalMin, this.defaultConfig.answerIntervalMax), await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，点击“开始助手”后继续")), this.askStore.insert(ques[i]), this.askStore.task.work.inx = i;
           let data = await getAnswers(ques[i]);
-          this.askStore.get(i).allAnswer = data.map((item) => ({ ...item, answer: learningAnswerDisplay(item, "暂无答案"), explanation: formatLearningDisplayText(item.explanation || "") }));
+          this.askStore.get(i).allAnswer = data.map((item) => ({ ...item, answer: learningAnswerDisplay(item, "暂无答案"), explanation: String(item.explanation || "") }));
           await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，点击“开始助手”后继续"));
           let tmp = fillAnswer(data, ques[i], Timu[i], _unsafeWindow);
           tmp ? (this.askStore.get(i).status = "primary", this.askStore.get(i).answer = learningAnswerDisplay(data[0], tmp)) : (this.askStore.get(i).status = "danger", this.askStore.get(i).answer = "暂无答案"), this.askStore.get(i).dom = Timu[i];
@@ -2063,7 +2115,7 @@
         let data = getQuestion("3", _unsafeWindow.document.body);
         this.askStore.insert(data), this.askStore.task.work.inx = 0;
         let data1 = await getAnswers(data);
-        this.askStore.get(0).allAnswer = data1.map((item) => ({ ...item, answer: learningAnswerDisplay(item, "暂无答案"), explanation: formatLearningDisplayText(item.explanation || "") }));
+        this.askStore.get(0).allAnswer = data1.map((item) => ({ ...item, answer: learningAnswerDisplay(item, "暂无答案"), explanation: String(item.explanation || "") }));
         await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，点击“开始助手”后继续"));
         let tmp = fillAnswer(data1, data, document.getElementsByClassName("mark_table")[0], _unsafeWindow);
         if (tmp ? (this.askStore.get(0).status = "primary", this.askStore.get(0).answer = learningAnswerDisplay(data1[0], tmp)) : (this.askStore.get(0).status = "danger", this.askStore.get(0).answer = "暂无答案"), getConfig().autoExam) {
@@ -2225,8 +2277,10 @@
       #${panelId} .cpu-la-heading { min-width: 0; flex: 1; }
       #${panelId} .cpu-la-heading strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 17px; }
       #${panelId} .cpu-la-heading span { display: block; color: var(--cpu-la-muted); font-size: 12px; }
-      #${panelId} .cpu-la-run { min-width: 74px; min-height: 34px; padding: 0 12px; border: 0; border-radius: 10px; background: var(--cpu-la-primary-soft); color: var(--cpu-la-primary-strong); font-weight: 750; }
-      #${panelId} .cpu-la-shot { min-width: 54px; min-height: 34px; padding: 0 10px; border: 1px solid var(--cpu-la-border); border-radius: 10px; background: var(--cpu-la-card); color: var(--cpu-la-primary-strong); font-weight: 750; }
+      #${panelId} .cpu-la-run, #${panelId} .cpu-la-shot { display: grid; width: 38px; height: 38px; min-width: 38px; min-height: 38px; place-items: center; padding: 0; border-radius: 11px; color: var(--cpu-la-primary-strong); }
+      #${panelId} .cpu-la-run { border: 0; background: var(--cpu-la-primary-soft); }
+      #${panelId} .cpu-la-shot { border: 1px solid var(--cpu-la-border); background: var(--cpu-la-card); }
+      #${panelId} .cpu-la-run svg, #${panelId} .cpu-la-shot svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
       #${panelId}[data-paused="true"] .cpu-la-run { background: var(--cpu-la-warning-bg); color: var(--cpu-la-warning-text); }
       #${panelId} .cpu-la-icon { width: 34px; height: 34px; padding: 0; border: 1px solid var(--cpu-la-border); border-radius: 10px; background: var(--cpu-la-card); color: var(--cpu-la-muted-strong); font-size: 19px; }
       #${panelId} .cpu-la-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; padding: 8px 12px; background: var(--cpu-la-subtle); }
@@ -2240,8 +2294,33 @@
       #${panelId} .cpu-la-muted { color: var(--cpu-la-muted); }
       #${panelId} .cpu-la-progress { height: 6px; margin-top: 12px; overflow: hidden; border-radius: 999px; background: var(--cpu-la-border); }
       #${panelId} .cpu-la-progress i { display: block; height: 100%; border-radius: inherit; background: var(--cpu-la-primary); transition: width .2s ease; }
-      #${panelId} .cpu-la-question { margin: 10px 0 0; white-space: pre-wrap; word-break: break-word; font-size: 15px; font-weight: 650; }
-      #${panelId} .cpu-la-answer { margin: 10px 0 0; padding: 10px 12px; border-left: 3px solid var(--cpu-la-primary); border-radius: 0 9px 9px 0; background: var(--cpu-la-answer); white-space: pre-wrap; word-break: break-word; font: 14px/1.65 ui-monospace, SFMono-Regular, Consolas, monospace; }
+      #${panelId} .cpu-la-question { margin: 10px 0 0; word-break: break-word; font-size: 15px; font-weight: 650; }
+      #${panelId} .cpu-la-answer { margin: 10px 0 0; padding: 10px 12px; border-left: 3px solid var(--cpu-la-primary); border-radius: 0 9px 9px 0; background: var(--cpu-la-answer); word-break: break-word; }
+      #${panelId} .cpu-la-markdown { min-width: 0; line-height: 1.7; }
+      #${panelId} .cpu-la-markdown > :first-child { margin-top: 0; }
+      #${panelId} .cpu-la-markdown > :last-child { margin-bottom: 0; }
+      #${panelId} .cpu-la-markdown p { margin: 7px 0; }
+      #${panelId} .cpu-la-markdown ul, #${panelId} .cpu-la-markdown ol { margin: 7px 0; padding-left: 22px; }
+      #${panelId} .cpu-la-markdown li + li { margin-top: 4px; }
+      #${panelId} .cpu-la-markdown h1, #${panelId} .cpu-la-markdown h2, #${panelId} .cpu-la-markdown h3, #${panelId} .cpu-la-markdown h4 { margin: 10px 0 6px; line-height: 1.4; }
+      #${panelId} .cpu-la-markdown blockquote { margin: 8px 0; padding: 7px 10px; border-left: 3px solid var(--cpu-la-primary); background: var(--cpu-la-subtle); color: var(--cpu-la-muted-strong); }
+      #${panelId} .cpu-la-markdown code { padding: 1px 5px; border-radius: 5px; background: var(--cpu-la-subtle); font: .92em/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; }
+      #${panelId} .cpu-la-markdown pre { max-width: 100%; margin: 8px 0; padding: 10px; overflow: auto; border-radius: 8px; background: var(--cpu-la-subtle); }
+      #${panelId} .cpu-la-markdown pre code { padding: 0; background: transparent; }
+      #${panelId} .cpu-la-markdown a { color: var(--cpu-la-primary-strong); }
+      #${panelId} .cpu-la-math { display: inline-block; max-width: 100%; padding: 0 .12em; overflow-x: auto; vertical-align: -.06em; white-space: nowrap; font-family: Cambria Math, STIX Two Math, "Times New Roman", serif; }
+      #${panelId} .cpu-la-math.is-display { display: block; margin: 9px auto; padding: 8px; text-align: center; background: var(--cpu-la-subtle); border-radius: 8px; }
+      #${panelId} .cpu-la-frac { display: inline-grid; grid-template-rows: auto auto; margin: 0 .18em; vertical-align: middle; text-align: center; line-height: 1.15; }
+      #${panelId} .cpu-la-frac > span:first-child { padding: 0 .15em .08em; border-bottom: 1px solid currentColor; }
+      #${panelId} .cpu-la-frac > span:last-child { padding: .08em .15em 0; }
+      #${panelId} .cpu-la-root { display: inline-flex; align-items: flex-start; }
+      #${panelId} .cpu-la-root > span { border-top: 1px solid currentColor; }
+      #${panelId} .cpu-la-options { display: grid; gap: 6px; margin-top: 10px; }
+      #${panelId} .cpu-la-options > div { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 8px; align-items: start; padding: 7px 9px; border: 1px solid var(--cpu-la-border-soft); border-radius: 9px; background: var(--cpu-la-subtle); }
+      #${panelId} .cpu-la-options > div > b { display: grid; width: 24px; height: 24px; place-items: center; border-radius: 50%; background: var(--cpu-la-card); color: var(--cpu-la-primary-strong); }
+      #${panelId} .cpu-la-inline-image { display: grid; width: 100%; max-width: 100%; gap: 5px; margin: 8px 0; padding: 7px; border: 1px solid var(--cpu-la-border); border-radius: 10px; background: var(--cpu-la-card); color: var(--cpu-la-muted); text-align: center; }
+      #${panelId} .cpu-la-inline-image img { display: block; width: 100%; max-height: 220px; object-fit: contain; border-radius: 7px; background: var(--cpu-la-subtle); }
+      #${panelId} .cpu-la-inline-image span { font-size: 11px; }
       #${panelId} .cpu-la-empty { display: grid; min-height: 138px; place-content: center; text-align: center; color: var(--cpu-la-muted); }
       #${panelId} .cpu-la-empty b { display: block; margin-bottom: 7px; color: var(--cpu-la-text); font-size: 17px; }
       #${panelId} .cpu-la-activity { display: grid; grid-template-columns: 42px 1fr; gap: 12px; align-items: center; }
@@ -2253,11 +2332,11 @@
       #${panelId} .cpu-la-actions button:disabled { cursor: not-allowed; opacity: .42; }
       #${panelId} .cpu-la-sources { margin-top: 11px; border-top: 1px solid var(--cpu-la-border-soft); }
       #${panelId} .cpu-la-sources-title { padding-top: 10px; color: var(--cpu-la-primary-strong); font-weight: 700; }
-      #${panelId} .cpu-la-source { margin-top: 8px; padding: 9px 10px; border-radius: 9px; background: var(--cpu-la-subtle); white-space: pre-wrap; word-break: break-word; }
+      #${panelId} .cpu-la-source { margin-top: 8px; padding: 9px 10px; border-radius: 9px; background: var(--cpu-la-subtle); word-break: break-word; }
       #${panelId} .cpu-la-source b { display: block; margin-bottom: 3px; color: var(--cpu-la-muted-strong); font-size: 12px; }
       #${panelId} .cpu-la-reasoning { margin-top: 8px; border-top: 1px solid var(--cpu-la-border); color: var(--cpu-la-muted-strong); }
       #${panelId} .cpu-la-reasoning strong { display: block; padding-top: 7px; color: var(--cpu-la-primary-strong); font-size: 12px; }
-      #${panelId} .cpu-la-reasoning p { margin: 6px 0 0; white-space: pre-wrap; }
+      #${panelId} .cpu-la-reasoning p { margin: 6px 0 0; }
       #${panelId} .cpu-la-screenshot { width: 100%; max-height: 190px; margin-top: 10px; object-fit: contain; border: 1px solid var(--cpu-la-border); border-radius: 10px; background: var(--cpu-la-subtle); }
       #${panelId} .cpu-la-error { margin: 10px 0 0; color: var(--cpu-la-danger); white-space: pre-wrap; }
       #${panelId} .cpu-la-log { display: grid; grid-template-columns: 72px 1fr; gap: 8px; padding: 9px 0; border-bottom: 1px solid var(--cpu-la-border-soft); }
@@ -2282,6 +2361,9 @@
       #cpu-learning-screenshot-overlay { position: fixed; inset: 0; z-index: 2147483646; cursor: crosshair; background: rgba(8, 18, 16, .3); user-select: none; touch-action: none; }
       #cpu-learning-screenshot-overlay .cpu-la-capture-hint { position: fixed; left: 50%; top: 22px; transform: translateX(-50%); padding: 9px 14px; border-radius: 999px; background: rgba(14, 31, 27, .9); color: #fff; font: 650 13px system-ui, sans-serif; box-shadow: 0 8px 24px rgba(0,0,0,.22); }
       #cpu-learning-screenshot-overlay .cpu-la-capture-box { position: fixed; display: none; border: 2px solid #83dbc3; background: rgba(131, 219, 195, .12); box-shadow: 0 0 0 9999px rgba(8, 18, 16, .38); }
+      #cpu-learning-image-preview { position: fixed; inset: 0; z-index: 2147483647; display: grid; place-items: center; padding: 32px; background: rgba(4, 12, 10, .82); backdrop-filter: blur(4px); }
+      #cpu-learning-image-preview img { max-width: min(1180px, 94vw); max-height: 90vh; object-fit: contain; border-radius: 12px; background: #fff; box-shadow: 0 22px 70px rgba(0,0,0,.45); }
+      #cpu-learning-image-preview button { position: fixed; right: 24px; top: 20px; width: 42px; height: 42px; border: 1px solid rgba(255,255,255,.35); border-radius: 50%; background: rgba(20,32,29,.78); color: #fff; font: 26px/1 system-ui, sans-serif; cursor: pointer; }
       #${launcherId} { --cpu-la-launcher-bg: #4d907e; --cpu-la-launcher-text: #fff; --cpu-la-launcher-shadow: 0 12px 32px rgba(47, 111, 96, .3); position: fixed; right: 22px; bottom: 28px; z-index: 2147482998; min-height: 44px; padding: 0 17px; border: 0; border-radius: 999px; background: var(--cpu-la-launcher-bg); color: var(--cpu-la-launcher-text); box-shadow: var(--cpu-la-launcher-shadow); font: 700 14px system-ui, sans-serif; cursor: pointer; }
       @media (prefers-color-scheme: dark) {
         #${panelId} {
@@ -2301,8 +2383,7 @@
         #${panelId} .cpu-la-mark { width: 34px; height: 34px; border-radius: 11px; font-size: 16px; }
         #${panelId} .cpu-la-heading strong { font-size: 15px; }
         #${panelId} .cpu-la-heading span { display: none; }
-        #${panelId} .cpu-la-run { min-width: 56px; padding: 0 8px; }
-        #${panelId} .cpu-la-shot { min-width: 48px; padding: 0 7px; }
+        #${panelId} .cpu-la-run, #${panelId} .cpu-la-shot { width: 34px; height: 34px; min-width: 34px; min-height: 34px; padding: 0; }
         #${panelId} .cpu-la-icon { width: 32px; height: 32px; }
         #${panelId} .cpu-la-body { padding: 13px; }
         #${panelId} .cpu-la-header { cursor: default; touch-action: auto; }
@@ -2318,8 +2399,8 @@
       <header class="cpu-la-header" title="拖动调整窗口位置">
         <div class="cpu-la-mark">拾</div>
         <div class="cpu-la-heading"><strong>${assistantName}</strong><span>任务、答案与运行控制</span></div>
-        <button class="cpu-la-shot" type="button" data-action="screenshot-search" title="框选屏幕中的题目">截图搜题</button>
-        <button class="cpu-la-run" type="button" data-action="toggle-runtime"></button>
+        <button class="cpu-la-shot" type="button" data-action="screenshot-search" title="截图搜题" aria-label="截图搜题"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3H5a2 2 0 0 0-2 2v2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"></path><circle cx="12" cy="12" r="3.2"></circle></svg></button>
+        <button class="cpu-la-run" type="button" data-action="toggle-runtime" title="暂停助手" aria-label="暂停助手"></button>
         <button class="cpu-la-icon" type="button" data-action="close" aria-label="收起">×</button>
       </header>
       <nav class="cpu-la-tabs" aria-label="助手页面">
@@ -2387,6 +2468,111 @@
     host.addEventListener("resize", onWindowResize);
     restorePanelPosition();
     const escapeHtml = (value) => String(value == null ? "" : value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    // 与拾间 AI 一致：先把 Markdown 转成受控 HTML，再交给界面。这里不能直接把模型
+    // 返回值塞进 innerHTML；学习通题面还会带图片与上下标，必须逐项白名单化。
+    const learningMathCommands = {
+      times: "×", cdot: "·", div: "÷", pm: "±", mp: "∓", le: "≤", leq: "≤", ge: "≥", geq: "≥",
+      ne: "≠", neq: "≠", approx: "≈", to: "→", rightarrow: "→", leftarrow: "←", leftrightarrow: "↔",
+      infty: "∞", degree: "°", circ: "°", Delta: "Δ", delta: "δ", theta: "θ", lambda: "λ", mu: "μ",
+      alpha: "α", beta: "β", gamma: "γ", pi: "π", rho: "ρ", sigma: "σ", omega: "ω"
+    };
+    const renderLearningMath = (value, display = false) => {
+      let expression = String(value || "").trim();
+      const fragments = [];
+      const stash = (html) => `@@CPU_MATH_${fragments.push(html) - 1}@@`;
+      expression = expression.replace(/\\(?:dfrac|tfrac|frac)\{([^{}]*)\}\{([^{}]*)\}/g, (_match, numerator, denominator) => stash(`<span class="cpu-la-frac"><span>${renderLearningMath(numerator)}</span><span>${renderLearningMath(denominator)}</span></span>`));
+      expression = expression.replace(/\\sqrt\{([^{}]*)\}/g, (_match, content) => stash(`<span class="cpu-la-root">√<span>${renderLearningMath(content)}</span></span>`));
+      expression = expression.replace(/\\(?:text|mathrm|mathbf|operatorname)\{([^{}]*)\}/g, "$1");
+      expression = expression.replace(/\\(times|cdot|div|pm|mp|leq?|geq?|neq?|approx|to|rightarrow|leftarrow|leftrightarrow|infty|degree|circ|Delta|delta|theta|lambda|mu|alpha|beta|gamma|pi|rho|sigma|omega)\b/g, (_match, command) => learningMathCommands[command] || command);
+      expression = expression.replace(/\\(?:left|right|displaystyle|textstyle)\b/g, "").replace(/\\[,;!:\s]/g, " ").replace(/\\([A-Za-z]+)/g, "$1");
+      let html = escapeHtml(expression).replace(/\^\{?([A-Za-z0-9+\-=().]+)\}?/g, "<sup>$1</sup>").replace(/_\{?([A-Za-z0-9+\-=().]+)\}?/g, "<sub>$1</sub>").replace(/[{}]/g, "");
+      fragments.forEach((fragment, index) => { html = html.replace(`@@CPU_MATH_${index}@@`, fragment); });
+      return `<span class="cpu-la-math${display ? " is-display" : ""}">${html}</span>`;
+    };
+    const normalizeLearningRichSource = (value) => {
+      let source = Array.isArray(value) ? value.join("\n") : String(value == null ? "" : value);
+      const rich = [];
+      const stash = (html) => `@@CPU_RICH_${rich.push(html) - 1}@@`;
+      source = source.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "").replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "");
+      source = source.replace(/<img\b[^>]*>/gi, (tag) => {
+        try {
+          const parsed = new DOMParser().parseFromString(`<body>${tag}</body>`, "text/html");
+          const image = parsed.body.querySelector("img");
+          const candidate = String(image == null ? "" : image.getAttribute("src") || "").trim();
+          const url = new URL(candidate, doc.baseURI);
+          if (url.protocol !== "https:" && url.protocol !== "http:" && !candidate.startsWith("data:image/")) return "[图片]";
+          const src = candidate.startsWith("data:image/") ? candidate : url.href;
+          const alt = String(image == null ? "" : image.getAttribute("alt") || "题目图片").slice(0, 120);
+          return `\n${stash(`<button class="cpu-la-inline-image" type="button" data-action="preview-image" data-image-src="${escapeHtml(src)}" title="点击查看原图"><img src="${escapeHtml(src)}" alt="${escapeHtml(alt)}" loading="lazy" referrerpolicy="no-referrer"><span>点击查看原图</span></button>`)}\n`;
+        } catch {
+          return "[图片]";
+        }
+      });
+      source = source.replace(/<br\s*\/?>/gi, "\n").replace(/<sub\b[^>]*>([\s\S]*?)<\/sub>/gi, (_match, content) => mapLearningScriptText(content, learningSubscriptMap)).replace(/<sup\b[^>]*>([\s\S]*?)<\/sup>/gi, (_match, content) => mapLearningScriptText(content, learningSuperscriptMap));
+      source = source.replace(/<[^>]+>/g, "");
+      const decoder = doc.createElement("textarea");
+      decoder.innerHTML = source;
+      source = decoder.value.replace(/\u00a0/g, " ").replace(/\\n(?=\s|[-*#\d]|$)/g, "\n");
+      source = source.replace(/\\\[([\s\S]+?)\\\]/g, (_match, math) => `\n${stash(renderLearningMath(math, true))}\n`).replace(/\$\$([\s\S]+?)\$\$/g, (_match, math) => `\n${stash(renderLearningMath(math, true))}\n`).replace(/\\\(([\s\S]+?)\\\)/g, (_match, math) => stash(renderLearningMath(math))).replace(/\$(?!\$)([^$\n]+?)\$/g, (_match, math) => stash(renderLearningMath(math)));
+      return { source, rich };
+    };
+    const renderLearningInline = (value, rich) => {
+      const fragments = [...rich];
+      const stash = (html) => `@@CPU_RICH_${fragments.push(html) - 1}@@`;
+      let source = String(value || "");
+      source = source.replace(/`([^`\n]+)`/g, (_match, code) => stash(`<code>${escapeHtml(code)}</code>`));
+      source = source.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_match, label, href) => stash(`<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`));
+      let html = escapeHtml(source).replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>").replace(/__([^_\n]+)__/g, "<strong>$1</strong>").replace(/~~([^~\n]+)~~/g, "<del>$1</del>");
+      fragments.forEach((fragment, index) => { html = html.replaceAll(`@@CPU_RICH_${index}@@`, fragment); });
+      return html;
+    };
+    const renderLearningMarkdown = (value) => {
+      const normalized = normalizeLearningRichSource(value);
+      const lines = normalized.source.replace(/\r\n?/g, "\n").split("\n");
+      const output = [];
+      let index = 0;
+      while (index < lines.length) {
+        const line = lines[index], trimmed = line.trim();
+        if (!trimmed) { index += 1; continue; }
+        const fence = /^```\s*([\w-]*)\s*$/.exec(trimmed);
+        if (fence) {
+          const code = [];
+          for (index += 1; index < lines.length && !/^```\s*$/.test(lines[index].trim()); index += 1) code.push(lines[index]);
+          index += 1;
+          output.push(`<pre><code>${escapeHtml(code.join("\n"))}</code></pre>`);
+          continue;
+        }
+        const heading = /^(#{1,4})\s+(.+)$/.exec(trimmed);
+        if (heading) { output.push(`<h${heading[1].length}>${renderLearningInline(heading[2], normalized.rich)}</h${heading[1].length}>`); index += 1; continue; }
+        if (/^[-*+]\s+/.test(trimmed)) {
+          const items = [];
+          while (index < lines.length && /^[-*+]\s+/.test(lines[index].trim())) { items.push(lines[index].trim().replace(/^[-*+]\s+/, "")); index += 1; }
+          output.push(`<ul>${items.map((item) => `<li>${renderLearningInline(item, normalized.rich)}</li>`).join("")}</ul>`);
+          continue;
+        }
+        if (/^\d+[.)]\s+/.test(trimmed)) {
+          const items = [];
+          while (index < lines.length && /^\d+[.)]\s+/.test(lines[index].trim())) { items.push(lines[index].trim().replace(/^\d+[.)]\s+/, "")); index += 1; }
+          output.push(`<ol>${items.map((item) => `<li>${renderLearningInline(item, normalized.rich)}</li>`).join("")}</ol>`);
+          continue;
+        }
+        if (/^>\s?/.test(trimmed)) { output.push(`<blockquote>${renderLearningInline(trimmed.replace(/^>\s?/, ""), normalized.rich)}</blockquote>`); index += 1; continue; }
+        const paragraph = [trimmed];
+        for (index += 1; index < lines.length && lines[index].trim() && !/^(?:```|#{1,4}\s|[-*+]\s|\d+[.)]\s|>\s?)/.test(lines[index].trim()); index += 1) paragraph.push(lines[index].trim());
+        output.push(`<p>${paragraph.map((part) => renderLearningInline(part, normalized.rich)).join("<br>")}</p>`);
+      }
+      return output.join("") || '<p class="cpu-la-muted">暂无内容</p>';
+    };
+    const renderLearningOptions = (options) => Array.isArray(options) && options.length ? `<div class="cpu-la-options">${options.map((option, index) => `<div><b>${String.fromCharCode(65 + index)}</b><div class="cpu-la-markdown">${renderLearningMarkdown(option)}</div></div>`).join("")}</div>` : "";
+    const showLearningImagePreview = (src) => {
+      const existing = doc.getElementById("cpu-learning-image-preview");
+      existing == null ? void 0 : existing.remove();
+      const overlay = doc.createElement("div");
+      overlay.id = "cpu-learning-image-preview";
+      overlay.innerHTML = `<button type="button" aria-label="关闭图片预览">×</button><img src="${escapeHtml(src)}" alt="题目原图">`;
+      overlay.addEventListener("click", (event) => { if (event.target === overlay || event.target.closest("button")) overlay.remove(); });
+      doc.body.appendChild(overlay);
+    };
     const saveConfig = (name, value) => {
       const previous = { ...defaultConfig$1, ...getConfig() };
       if (name === "answerIntervalMax" && Number(value) < Number(previous.answerIntervalMin)) value = Number(previous.answerIntervalMin);
@@ -2497,14 +2683,20 @@
       if (signature === state.signature) return;
       state.signature = signature;
       panel.dataset.paused = String(paused);
-      panel.querySelector(".cpu-la-run").textContent = paused ? "开始助手" : "暂停助手";
+      const runButton = panel.querySelector(".cpu-la-run");
+      const runLabel = paused ? "继续助手" : "暂停助手";
+      runButton.title = runLabel;
+      runButton.setAttribute("aria-label", runLabel);
+      runButton.innerHTML = paused
+        ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7z"></path></svg>'
+        : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5v14M15 5v14"></path></svg>';
       panel.querySelectorAll("[data-tab]").forEach((button) => button.setAttribute("aria-selected", String(button.dataset.tab === state.tab)));
       const body = panel.querySelector(".cpu-la-body");
       if (state.tab === "task") {
         if (state.manual) {
           const manual = state.manual;
           const modeLabel = config.answerDepth === "max" ? "挑战难题" : config.answerDepth === "high" ? "深入分析" : "快速判断";
-          body.innerHTML = `<section class="cpu-la-card"><span class="cpu-la-kicker">截图搜题 · ${escapeHtml(modeLabel)}</span><h3 class="cpu-la-title">${manual.status === "loading" ? "正在识别并解答" : manual.status === "done" ? "识别完成" : "截图搜题未完成"}</h3>${manual.imageUrl ? `<img class="cpu-la-screenshot" src="${escapeHtml(manual.imageUrl)}" alt="框选的题目截图">` : ""}${manual.status === "loading" ? '<div class="cpu-la-progress"><i style="width:72%"></i></div><p class="cpu-la-muted">正在读取题面、选项并核对答案…</p>' : ""}${manual.answer ? `<pre class="cpu-la-answer">${escapeHtml(formatLearningDisplayText(manual.answer))}</pre>` : ""}${manual.explanation ? `<div class="cpu-la-reasoning"><strong>解题思路</strong><p>${escapeHtml(formatLearningDisplayText(manual.explanation))}</p></div>` : ""}${manual.error ? `<p class="cpu-la-error">${escapeHtml(manual.error)}</p>` : ""}<div class="cpu-la-actions"><button type="button" data-action="screenshot-search">重新截图</button>${manual.answer ? '<button type="button" data-action="copy-screenshot-answer">复制答案</button>' : ""}<button type="button" data-action="dismiss-screenshot">返回任务</button></div></section>`;
+          body.innerHTML = `<section class="cpu-la-card"><span class="cpu-la-kicker">截图搜题 · ${escapeHtml(modeLabel)}</span><h3 class="cpu-la-title">${manual.status === "loading" ? "正在识别并解答" : manual.status === "done" ? "识别完成" : "截图搜题未完成"}</h3>${manual.imageUrl ? `<button class="cpu-la-inline-image" type="button" data-action="preview-image" data-image-src="${escapeHtml(manual.imageUrl)}" title="点击查看原图"><img class="cpu-la-screenshot" src="${escapeHtml(manual.imageUrl)}" alt="框选的题目截图"><span>点击查看原图</span></button>` : ""}${manual.status === "loading" ? '<div class="cpu-la-progress"><i style="width:72%"></i></div><p class="cpu-la-muted">正在读取题面、选项并核对答案…</p>' : ""}${manual.answer ? `<div class="cpu-la-answer cpu-la-markdown">${renderLearningMarkdown(manual.answer)}</div>` : ""}${manual.explanation ? `<div class="cpu-la-reasoning"><strong>解题思路</strong><div class="cpu-la-markdown">${renderLearningMarkdown(manual.explanation)}</div></div>` : ""}${manual.error ? `<p class="cpu-la-error">${escapeHtml(manual.error)}</p>` : ""}<div class="cpu-la-actions"><button type="button" data-action="screenshot-search">重新截图</button>${manual.answer ? '<button type="button" data-action="copy-screenshot-answer">复制答案</button>' : ""}<button type="button" data-action="dismiss-screenshot">返回任务</button></div></section>`;
         } else if (!current) {
           const activity = task.activity && (task.activity.label || task.activity.detail) ? task.activity : null;
           if (activity) {
@@ -2514,8 +2706,8 @@
             body.innerHTML = `<div class="cpu-la-empty"><div><b>${paused ? "助手已暂停" : "等待任务加载"}</b><span>${paused ? "点击上方“开始助手”继续处理" : "进入章节、作业或考试后会自动识别"}</span></div></div>`;
           }
         } else {
-          const progress = Math.round((index + 1) / Math.max(1, questions.length) * 100), answer = formatLearningDisplayText(current.answer || ""), sources = Array.isArray(current.allAnswer) ? current.allAnswer : [], sourceDetails = sources.length ? `<section class="cpu-la-sources"><div class="cpu-la-sources-title">${sources.length} 个答案来源</div>${sources.map((item) => `<div class="cpu-la-source"><b>${escapeHtml(item.form || "答案来源")}</b>${escapeHtml(learningAnswerDisplay(item, "暂无答案"))}${item.explanation ? `<div class="cpu-la-reasoning"><strong>解题思路</strong><p>${escapeHtml(formatLearningDisplayText(item.explanation))}</p></div>` : ""}</div>`).join("")}</section>` : '<p class="cpu-la-muted">尚未收到答案</p>';
-          body.innerHTML = `<section class="cpu-la-card"><span class="cpu-la-kicker">${escapeHtml(task.name || "当前任务")} · ${index + 1}/${questions.length}</span><h3 class="cpu-la-title">${escapeHtml(task.status || (paused ? "已暂停" : "处理中"))}</h3><div class="cpu-la-progress"><i style="width:${progress}%"></i></div></section><section class="cpu-la-card"><span class="cpu-la-kicker">题目</span><div class="cpu-la-question">${escapeHtml(formatLearningDisplayText(current.question || ""))}</div>${answer ? `<pre class="cpu-la-answer">${escapeHtml(answer)}</pre>` : '<p class="cpu-la-muted">正在获取并填写答案…</p>'}${sourceDetails}<div class="cpu-la-actions"><button type="button" data-action="previous" ${index <= 0 ? "disabled" : ""}>上一题</button><button type="button" data-action="locate">定位原题</button>${answer ? '<button type="button" data-action="copy-answer">复制答案</button>' : ""}<button type="button" data-action="next" ${index >= questions.length - 1 ? "disabled" : ""}>下一题</button></div></section>`;
+          const progress = Math.round((index + 1) / Math.max(1, questions.length) * 100), answer = String(current.answer || ""), sources = Array.isArray(current.allAnswer) ? current.allAnswer : [], sourceDetails = sources.length ? `<section class="cpu-la-sources"><div class="cpu-la-sources-title">${sources.length} 个答案来源</div>${sources.map((item) => `<div class="cpu-la-source"><b>${escapeHtml(item.form || "答案来源")}</b><div class="cpu-la-markdown">${renderLearningMarkdown(item.displayAnswer || item.answer || "暂无答案")}</div>${item.explanation ? `<div class="cpu-la-reasoning"><strong>解题思路</strong><div class="cpu-la-markdown">${renderLearningMarkdown(item.explanation)}</div></div>` : ""}</div>`).join("")}</section>` : '<p class="cpu-la-muted">尚未收到答案</p>';
+          body.innerHTML = `<section class="cpu-la-card"><span class="cpu-la-kicker">${escapeHtml(task.name || "当前任务")} · ${index + 1}/${questions.length}</span><h3 class="cpu-la-title">${escapeHtml(task.status || (paused ? "已暂停" : "处理中"))}</h3><div class="cpu-la-progress"><i style="width:${progress}%"></i></div></section><section class="cpu-la-card"><span class="cpu-la-kicker">题目</span><div class="cpu-la-question cpu-la-markdown">${renderLearningMarkdown(current.question || "")}</div>${renderLearningOptions(current.options)}${answer ? `<div class="cpu-la-answer cpu-la-markdown">${renderLearningMarkdown(answer)}</div>` : '<p class="cpu-la-muted">正在获取并填写答案…</p>'}${sourceDetails}<div class="cpu-la-actions"><button type="button" data-action="previous" ${index <= 0 ? "disabled" : ""}>上一题</button><button type="button" data-action="locate">定位原题</button>${answer ? '<button type="button" data-action="copy-answer">复制答案</button>' : ""}<button type="button" data-action="next" ${index >= questions.length - 1 ? "disabled" : ""}>下一题</button></div></section>`;
         }
       } else if (state.tab === "logs") {
         body.innerHTML = logs.length ? `<section class="cpu-la-card">${logs.map((item) => `<div class="cpu-la-log" data-type="${escapeHtml(item.type || "info")}"><time>${escapeHtml(item.time || "")}</time><span>${escapeHtml(item.msg || "")}</span></div>`).join("")}<div class="cpu-la-actions"><button type="button" data-action="clear-logs">清空日志</button></div></section>` : '<div class="cpu-la-empty"><div><b>暂无运行日志</b><span>开始处理任务后，关键步骤会记录在这里</span></div></div>';
@@ -2534,6 +2726,9 @@
       }
       const store = state.store, questions = (store == null ? void 0 : store.task.work.questionList) || [], index = Number(store == null ? void 0 : store.task.work.inx) || 0;
       switch (target.dataset.action) {
+        case "preview-image":
+          if (target.dataset.imageSrc) showLearningImagePreview(target.dataset.imageSrc);
+          return;
         case "screenshot-search":
           void startScreenshotSearch();
           return;
@@ -2682,22 +2877,36 @@
       }
       const cxModel = new Cx();
       cxModel.askStore.log("脚本初始化成功！", "success");
-      let workRunning = false;
-      const startWork = async () => {
-        if (workRunning) return;
-        workRunning = true;
+      let navigationGeneration = 0;
+      const runningGenerations = /* @__PURE__ */ new Set();
+      const startWork = async (generation) => {
+        if (runningGenerations.has(generation)) return;
+        runningGenerations.add(generation);
+        const taskCurrent = () => generation === navigationGeneration;
+        const ensureCurrent = () => {
+          if (!taskCurrent()) {
+            const error = new Error("章节已切换，旧任务已取消");
+            error.name = "AssistantTaskCancelledError";
+            throw error;
+          }
+        };
         var _a, _b, _c, _d, _e;
         try {
           await assistantRuntime.waitUntilRunning(() => cxModel.askStore.msg("助手已暂停，点击“开始助手”后继续"));
+          ensureCurrent();
           cxModel.askStore.setActivity("任务扫描", "正在读取本章节的任务点");
           if (!await waitElementLoaded(_self, "#iframe")) return;
+          ensureCurrent();
           const cardsIframe = _self.document.querySelector("#iframe");
           if (!await waitIframeLoaded(cardsIframe)) return;
+          ensureCurrent();
           const _self1 = cardsIframe.contentWindow;
           top.scroll2Job();
           let jobList = _self1.document.querySelectorAll(".ans-job-icon") || [];
           for (let i = 0; i < jobList.length; i++) {
+          ensureCurrent();
           await assistantRuntime.waitUntilRunning(() => cxModel.askStore.msg("助手已暂停，点击“开始助手”后继续"));
+          ensureCurrent();
           const item = jobList[i];
           if ((_a = item.parentElement) == null ? void 0 : _a.classList.contains("ans-job-finished")) {
             const iframe = (_b = item.parentElement) == null ? void 0 : _b.querySelector("iframe");
@@ -2717,36 +2926,43 @@
                 cxModel.askStore.log("视频任务已跳过", "success");
                 continue;
               }
-              await cxModel.video(iframe.contentWindow), cxModel.askStore.log("视频任务已完成", "success");
+              await cxModel.video(iframe.contentWindow, taskCurrent), ensureCurrent(), cxModel.askStore.log("视频任务已完成", "success");
             } else if (iframe == null ? void 0 : iframe.src.match(/\/ananas\/modules\/work\/index.html/)) {
               cxModel.askStore.log("即将开始做作业", "info");
               const workIframe = (_e = iframe.contentWindow) == null ? void 0 : _e.document.querySelector("iframe");
-              workIframe && (await waitIframeLoaded(workIframe), await cxModel.work(workIframe.contentWindow), cxModel.askStore.log("作业任务已完成", "success"));
+              workIframe && (await waitIframeLoaded(workIframe), ensureCurrent(), await cxModel.work(workIframe.contentWindow, taskCurrent), ensureCurrent(), cxModel.askStore.log("作业任务已完成", "success"));
             } else if (iframe == null ? void 0 : iframe.src.match(/\/ananas\/modules\/audio\/index.html/)) {
               if (log("音频", "error"), !formStore.forminput.autoVideo) {
                 cxModel.askStore.log("音频任务已跳过", "success");
                 continue;
               }
-              iframe && (await waitIframeLoaded(iframe), await cxModel.audio(iframe.contentWindow), cxModel.askStore.log("音频任务已完成", "success"));
+              iframe && (await waitIframeLoaded(iframe), ensureCurrent(), await cxModel.audio(iframe.contentWindow, taskCurrent), ensureCurrent(), cxModel.askStore.log("音频任务已完成", "success"));
             } else
               (iframe == null ? void 0 : iframe.src.match(/\/ananas\/modules\/pdf\/index.html/)) ? (cxModel.askStore.setActivity("文档任务", "正在阅读文档任务点"), log("文档", "error"), iframe && (await waitIframeLoaded(iframe), await cxModel.pdf(iframe.contentWindow), cxModel.askStore.setActivity("文档任务", "文档任务已完成", 100, false), cxModel.askStore.log("pdf任务已完成", "success"))) : (cxModel.askStore.setActivity("未知任务", "当前任务类型暂不支持，已跳过", null, false), console.log(iframe == null ? void 0 : iframe.src, "未知"), cxModel.askStore.log("未知任务跳过", "success"));
           }
           }
-          await sleep(formStore.forminput.interval), await assistantRuntime.waitUntilRunning(() => cxModel.askStore.msg("助手已暂停，不会切换章节"));
+          await sleep(formStore.forminput.interval), ensureCurrent(), await assistantRuntime.waitUntilRunning(() => cxModel.askStore.msg("助手已暂停，不会切换章节")), ensureCurrent();
           const currentConfig = getConfig();
           !currentConfig.autoJump && (cxModel.askStore.setActivity("本节任务完成", "等待你手动切换章节", 100, false), cxModel.askStore.msg("由于未开启自动切换,请手动切换")), currentConfig.autoJump && (cxModel.askStore.setActivity("本节任务完成", "正在切换下一章节", 100, false), top == null ? void 0 : top.document.querySelector(".nextChapter").click());
         } catch (error) {
+          if ((error == null ? void 0 : error.name) === "AssistantTaskCancelledError" || !taskCurrent()) return;
           cxModel.askStore.setActivity("任务处理失败", "请在运行日志中查看详情", null, false), console.error("任务处理失败", error);
         } finally {
-          workRunning = false;
+          runningGenerations.delete(generation);
         }
       };
       setInterval(async () => {
-        if (workRunning || !await waitElementLoaded(_self, "#iframe")) return;
+        if (!await waitElementLoaded(_self, "#iframe")) return;
         const cardsIframe = _self.document.querySelector("#iframe");
         if (!await waitIframeLoaded(cardsIframe)) return;
         const _self1 = cardsIframe.contentWindow;
-        iframeCom != _self1.location.href && (iframeCom = _self1.location.href, cxModel.askStore.reset(), startWork());
+        if (iframeCom != _self1.location.href) {
+          iframeCom = _self1.location.href;
+          const generation = ++navigationGeneration;
+          cxModel.askStore.reset();
+          cxModel.askStore.setActivity("章节已切换", "正在读取新章节并重新扫描任务", 0);
+          void startWork(generation);
+        }
       }, 2e3);
       break;
     case "/mooc2-ans/mycourse/stu":
