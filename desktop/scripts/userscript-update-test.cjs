@@ -27,7 +27,7 @@ async function main() {
     size: Buffer.byteLength(source, "utf8"),
     sourceUrl: USER_SCRIPT_SOURCE_PATH,
   };
-  assert.deepEqual(identity, { name: "药大拾间·学习通助手", version: "2.2.12" });
+  assert.deepEqual(identity, { name: "药大拾间·学习通助手", version: "2.2.13" });
   assert.match(source, /章节、作业或考试/, "个人中心与课程引导应覆盖章节、作业和考试入口");
   assert.match(source, /customClass:\s*"cpu-learning-guide"/, "学习通引导应使用独立高层级样式");
   assert.match(source, /offset:\s*96/, "学习通引导应避开超星顶部导航");
@@ -40,6 +40,9 @@ async function main() {
   assert.match(source, /if \(succ < ques\.length\)/, "章节测验只有全部题目获得答案后才能自动提交");
   assert.doesNotMatch(source, /succ \/ ques\.length < submitConfig\.minAccuracy/, "不得再把答案覆盖率称为正确率");
   assert.doesNotMatch(source, /正确率:/, "助手运行状态不得再展示伪正确率");
+  const manualSubmitBranch = source.match(/if \(!submitConfig\.autoSubmit\) \{([\s\S]*?)return void resolve\(\);/)?.[1] ?? "";
+  assert.match(manualSubmitBranch, /iframeWindow\.noSubmit\(\)/, "关闭自动提交时也必须点击学习通的暂时保存");
+  assert.match(manualSubmitBranch, /答案已暂时保存/, "关闭自动提交时应明确告知用户已经暂存");
   assert.match(source, /data-action="copy-answer"/, "统一工作台应支持复制当前答案");
   assert.match(source, /data-action="locate"/, "统一工作台应支持定位原题");
   assert.match(source, /cpu-learning-assistant-position-v1/, "统一工作台应支持拖动并记住位置");
@@ -47,6 +50,8 @@ async function main() {
   assert.match(source, /解题思路/, "AI 答题应提供公开解题说明");
   assert.doesNotMatch(source, /<details class="cpu-la-(?:sources|reasoning)/, "答案来源与解题思路不应默认折叠");
   assert.match(source, /data-action="screenshot-search"/, "暂停时也应提供独立截图搜题入口");
+  assert.match(source, /\.cpu-la-run, #\$\{panelId\} \.cpu-la-shot, #\$\{panelId\} \.cpu-la-icon \{[^}]*border: 1px solid var\(--cpu-la-border\);[^}]*background: var\(--cpu-la-card\)/, "截图、运行与关闭按钮应使用统一尺寸、边框和底色");
+  assert.doesNotMatch(source, /\.cpu-la-run \{ border: 0;/, "运行按钮不应再单独使用无边框强调块");
   assert.match(source, /GM_cpuCaptureArea/, "截图搜题应通过受控桌面桥接获取画面");
   assert.match(source, /快速判断.*深入分析.*挑战难题/, "统一设置应提供三档答题模式");
   assert.match(source, /reasoningEffort/, "自动答题与截图搜题应把答题模式传给服务端");
@@ -92,7 +97,7 @@ async function main() {
       return new Response("", { status: 404 });
     };
 
-    const olderSource = source.replace("// @version      2.2.12", "// @version      2.1.9");
+    const olderSource = source.replace("// @version      2.2.13", "// @version      2.1.9");
     const updated = await checkUserScriptUpdate({
       origin: "https://cpu.lizmt.cn",
       cacheDirectory,
@@ -105,7 +110,7 @@ async function main() {
     assert.equal(new URL(requests[1]).searchParams.get("sha256"), manifest.sha256, "正文请求应使用发布哈希隔离缓存");
 
     const cached = await readCachedUserScript(cacheDirectory, () => undefined);
-    assert.equal(cached?.manifest.version, "2.2.12");
+    assert.equal(cached?.manifest.version, "2.2.13");
     assert.equal(cached?.source, source);
 
     requests.length = 0;

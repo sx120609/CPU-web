@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         药大拾间·学习通助手
 // @namespace    askAuto
-// @version      2.2.12
+// @version      2.2.13
 // @author       shushoujiu
 // @description  药大拾间桌面端的学习通助手：自动完成任务点，章节测验与考试由独立答题 AI 作答。
 // @icon         https://vitejs.dev/logo.svg
@@ -2068,8 +2068,10 @@
         if (!taskCurrent()) return void resolve();
         const submitConfig = getConfig();
         if (!submitConfig.autoSubmit) {
-          this.askStore.log("已填写章节测验答案；自动提交已关闭，请检查后手动提交", "success");
-          this.askStore.task.status = `等待手动提交，已填写 ${succ}/${ques.length} 题`;
+          iframeWindow.alert = function(e) { console.log("alert 方法被阻止", e); };
+          iframeWindow.noSubmit();
+          this.askStore.log("章节测验答案已暂时保存；自动提交已关闭，请检查后手动提交", "success");
+          this.askStore.task.status = `已暂时保存 ${succ}/${ques.length} 题，等待手动提交`;
           return void resolve();
         }
         if (succ < ques.length) {
@@ -2291,12 +2293,12 @@
       #${panelId} .cpu-la-heading { min-width: 0; flex: 1; }
       #${panelId} .cpu-la-heading strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 17px; }
       #${panelId} .cpu-la-heading span { display: block; color: var(--cpu-la-muted); font-size: 12px; }
-      #${panelId} .cpu-la-run, #${panelId} .cpu-la-shot { display: grid; width: 38px; height: 38px; min-width: 38px; min-height: 38px; place-items: center; padding: 0; border-radius: 11px; color: var(--cpu-la-primary-strong); }
-      #${panelId} .cpu-la-run { border: 0; background: var(--cpu-la-primary-soft); }
-      #${panelId} .cpu-la-shot { border: 1px solid var(--cpu-la-border); background: var(--cpu-la-card); }
+      #${panelId} .cpu-la-run, #${panelId} .cpu-la-shot, #${panelId} .cpu-la-icon { display: grid; width: 38px; height: 38px; min-width: 38px; min-height: 38px; place-items: center; padding: 0; border: 1px solid var(--cpu-la-border); border-radius: 11px; background: var(--cpu-la-card); color: var(--cpu-la-muted-strong); transition: background .16s ease, border-color .16s ease, color .16s ease; }
+      #${panelId} .cpu-la-run, #${panelId} .cpu-la-shot { color: var(--cpu-la-primary-strong); }
+      #${panelId} .cpu-la-run:hover, #${panelId} .cpu-la-shot:hover, #${panelId} .cpu-la-icon:hover { border-color: color-mix(in srgb, var(--cpu-la-primary) 55%, var(--cpu-la-border)); background: var(--cpu-la-subtle); }
       #${panelId} .cpu-la-run svg, #${panelId} .cpu-la-shot svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
-      #${panelId}[data-paused="true"] .cpu-la-run { background: var(--cpu-la-warning-bg); color: var(--cpu-la-warning-text); }
-      #${panelId} .cpu-la-icon { width: 34px; height: 34px; padding: 0; border: 1px solid var(--cpu-la-border); border-radius: 10px; background: var(--cpu-la-card); color: var(--cpu-la-muted-strong); font-size: 19px; }
+      #${panelId}[data-paused="true"] .cpu-la-run { color: var(--cpu-la-warning-text); }
+      #${panelId} .cpu-la-icon { font-size: 19px; line-height: 1; }
       #${panelId} .cpu-la-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; padding: 8px 12px; background: var(--cpu-la-subtle); }
       #${panelId} .cpu-la-tabs button { min-height: 34px; border: 0; border-radius: 9px; background: transparent; color: var(--cpu-la-muted); font-weight: 650; }
       #${panelId} .cpu-la-tabs button[aria-selected="true"] { background: var(--cpu-la-card); color: var(--cpu-la-primary-strong); box-shadow: var(--cpu-la-tab-shadow); }
@@ -2397,8 +2399,7 @@
         #${panelId} .cpu-la-mark { width: 34px; height: 34px; border-radius: 11px; font-size: 16px; }
         #${panelId} .cpu-la-heading strong { font-size: 15px; }
         #${panelId} .cpu-la-heading span { display: none; }
-        #${panelId} .cpu-la-run, #${panelId} .cpu-la-shot { width: 34px; height: 34px; min-width: 34px; min-height: 34px; padding: 0; }
-        #${panelId} .cpu-la-icon { width: 32px; height: 32px; }
+        #${panelId} .cpu-la-run, #${panelId} .cpu-la-shot, #${panelId} .cpu-la-icon { width: 34px; height: 34px; min-width: 34px; min-height: 34px; padding: 0; }
         #${panelId} .cpu-la-body { padding: 13px; }
         #${panelId} .cpu-la-header { cursor: default; touch-action: auto; }
         #${launcherId} { right: 14px; bottom: 76px; }
