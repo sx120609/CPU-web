@@ -24,7 +24,7 @@ export type EditableKey =
   | "autoVideo" | "autoJump" | "autoSubmit" | "autoExam"
   | "interval" | "answerIntervalMin" | "answerIntervalMax"
   | "submitDelayMin" | "submitDelayMax" | "minAccuracy"
-  | "aiEnabled";
+  | "aiEnabled" | "answerDepth";
 
 // 改动后是否需要重新打开学习窗口才生效。
 // 脚本在构造时对配置做了快照（this.defaultConfig），这些项读的是快照；
@@ -48,6 +48,7 @@ export const DEFAULT_SCRIPT_CONFIG: ScriptConfig = {
   submitDelayMax: 40,
   minAccuracy: 0.8,
   aiEnabled: true,
+  answerDepth: "low",
   // 服务端会用站点配置里的模型覆盖它，这里填什么都不影响结果；
   // 给个值只是因为脚本要求配置项齐全。
   aiModel: "deepseek-reasoner",
@@ -139,6 +140,7 @@ export const buildScriptConfig = (overrides: ScriptConfig): ScriptConfig => {
 
   // 这两条是脚本迁移分支的触发条件，必须钉死
   result.aiEnabled = asBool(source.aiEnabled, true);
+  result.answerDepth = source.answerDepth === "high" || source.answerDepth === "max" ? source.answerDepth : "low";
   result.deepseekEnabled = false;
 
   return result;

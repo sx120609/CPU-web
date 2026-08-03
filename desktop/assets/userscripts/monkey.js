@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         药大拾间·学习通助手
 // @namespace    askAuto
-// @version      2.2.8
+// @version      2.2.9
 // @author       shushoujiu
 // @description  药大拾间桌面端的学习通助手：自动完成任务点，章节测验与考试由独立答题 AI 作答。
 // @icon         https://vitejs.dev/logo.svg
@@ -32,6 +32,7 @@
 // @grant        GM_xmlhttpRequest
 // @grant        unsafeWindow
 // @grant        GM_cpuAIRequest
+// @grant        GM_cpuCaptureArea
 // @grant        GM_cpuReport
 // @run-at       document-end
 // 上游的两条 @antifeature（第三方接口广告、第三方题库付费）随对应代码一并移除：
@@ -54,7 +55,7 @@
     const t = GM_getResourceText(e);
     GM_addStyle(t);
   })("element-plus");
-  var _GM_getResourceText = (() => "undefined" != typeof GM_getResourceText ? GM_getResourceText : void 0)(), _GM_getValue = (() => "undefined" != typeof GM_getValue ? GM_getValue : void 0)(), _GM_info = (() => "undefined" != typeof GM_info ? GM_info : void 0)(), _GM_setValue = (() => "undefined" != typeof GM_setValue ? GM_setValue : void 0)(), _GM_xmlhttpRequest = (() => "undefined" != typeof GM_xmlhttpRequest ? GM_xmlhttpRequest : void 0)(), _GM_cpuAIRequest = (() => "undefined" != typeof GM_cpuAIRequest ? GM_cpuAIRequest : void 0)(), _unsafeWindow = (() => "undefined" != typeof unsafeWindow ? unsafeWindow : void 0)();
+  var _GM_getResourceText = (() => "undefined" != typeof GM_getResourceText ? GM_getResourceText : void 0)(), _GM_getValue = (() => "undefined" != typeof GM_getValue ? GM_getValue : void 0)(), _GM_info = (() => "undefined" != typeof GM_info ? GM_info : void 0)(), _GM_setValue = (() => "undefined" != typeof GM_setValue ? GM_setValue : void 0)(), _GM_xmlhttpRequest = (() => "undefined" != typeof GM_xmlhttpRequest ? GM_xmlhttpRequest : void 0)(), _GM_cpuAIRequest = (() => "undefined" != typeof GM_cpuAIRequest ? GM_cpuAIRequest : void 0)(), _GM_cpuCaptureArea = (() => "undefined" != typeof GM_cpuCaptureArea ? GM_cpuCaptureArea : void 0)(), _unsafeWindow = (() => "undefined" != typeof unsafeWindow ? unsafeWindow : void 0)();
   if (!_GM_cpuAIRequest) throw new Error("AI 桥接未注入：请通过药大拾间桌面端运行本脚本");
   // 状态上报是可选能力，宿主没提供就静默跳过，不影响刷课
   var _GM_cpuReport = (() => "undefined" != typeof GM_cpuReport ? GM_cpuReport : void 0)();
@@ -135,7 +136,7 @@
       _GM_setValue("config", config);
     }
     return config;
-  }, defaultConfig$1 = { debugger: false, autoAnswer: true, autoVideo: true, autoJump: true, autoSubmit: false, thtoken: "", yztoken: "", gptKey: "", gptModel: "gpt-3.5-turbo", gpt: false, gptType: ["0", "1", "2", "3", "4", "5", "6", "7"], interval: 3, answerIntervalMin: 8, answerIntervalMax: 20, submitDelayMin: 20, submitDelayMax: 40, minAccuracy: 0.8, autoExam: true, hideExam: false, notice: "答案来自独立答题 AI，只发送当前题目内容。访问与额度策略由服务器实时判定；新生限时开放期间免登录、不限次数。请遵守学校的学术规范。", deepseekKey: "", deepseekEnabled: false, deepseekModel: "deepseek-reasoner", customApiUrl: "", customApiKey: "", customApiEnabled: false, aiEnabled: true, aiApiKey: "", aiApiUrl: "", aiModel: "deepseek-reasoner" }, useformStore = pinia$1.defineStore({ id: "formstore", state: () => ({ forminput: getConfig() }) });
+  }, defaultConfig$1 = { debugger: false, autoAnswer: true, autoVideo: true, autoJump: true, autoSubmit: false, thtoken: "", yztoken: "", gptKey: "", gptModel: "gpt-3.5-turbo", gpt: false, gptType: ["0", "1", "2", "3", "4", "5", "6", "7"], interval: 3, answerIntervalMin: 8, answerIntervalMax: 20, submitDelayMin: 20, submitDelayMax: 40, minAccuracy: 0.8, autoExam: true, hideExam: false, notice: "答案来自独立答题 AI，只发送当前题目内容。访问与额度策略由服务器实时判定；新生限时开放期间免登录、不限次数。请遵守学校的学术规范。", deepseekKey: "", deepseekEnabled: false, deepseekModel: "deepseek-reasoner", customApiUrl: "", customApiKey: "", customApiEnabled: false, aiEnabled: true, aiApiKey: "", aiApiUrl: "", aiModel: "deepseek-reasoner", answerDepth: "low" }, useformStore = pinia$1.defineStore({ id: "formstore", state: () => ({ forminput: getConfig() }) });
   let defaultConfig = getConfig();
   class ServerApi {
     constructor(window2 = _unsafeWindow) {
@@ -353,6 +354,7 @@
         if (inputContent.length === 0) inputContent.push({ type: "input_text", text: prompt.trim() });
         const requestData = {
           model: config.aiModel || "deepseek-reasoner",
+          reasoningEffort: ["low", "high", "max"].includes(config.answerDepth) ? config.answerDepth : "low",
           input: [{ role: "user", content: inputContent }]
         };
         console.log("AI请求内容:", JSON.stringify(requestData, null, 2));
@@ -2208,7 +2210,7 @@
         --cpu-la-warning-bg: #fff0dc; --cpu-la-warning-text: #a85808; --cpu-la-on-primary: #fff;
         --cpu-la-tab-shadow: 0 1px 6px rgba(15, 23, 42, .09); --cpu-la-shadow: 0 24px 70px rgba(15, 23, 42, .2);
         position: fixed; right: 22px; top: 78px; z-index: 2147482998;
-        width: min(400px, calc(100vw - 32px)); max-height: calc(100vh - 116px);
+        width: min(430px, calc(100vw - 32px)); max-height: calc(100vh - 116px);
         display: flex; flex-direction: column; overflow: hidden;
         border: 1px solid color-mix(in srgb, var(--cpu-la-primary) 30%, transparent); border-radius: 20px;
         background: var(--cpu-la-surface); color: var(--cpu-la-text); color-scheme: light;
@@ -2224,6 +2226,7 @@
       #${panelId} .cpu-la-heading strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 17px; }
       #${panelId} .cpu-la-heading span { display: block; color: var(--cpu-la-muted); font-size: 12px; }
       #${panelId} .cpu-la-run { min-width: 74px; min-height: 34px; padding: 0 12px; border: 0; border-radius: 10px; background: var(--cpu-la-primary-soft); color: var(--cpu-la-primary-strong); font-weight: 750; }
+      #${panelId} .cpu-la-shot { min-width: 54px; min-height: 34px; padding: 0 10px; border: 1px solid var(--cpu-la-border); border-radius: 10px; background: var(--cpu-la-card); color: var(--cpu-la-primary-strong); font-weight: 750; }
       #${panelId}[data-paused="true"] .cpu-la-run { background: var(--cpu-la-warning-bg); color: var(--cpu-la-warning-text); }
       #${panelId} .cpu-la-icon { width: 34px; height: 34px; padding: 0; border: 1px solid var(--cpu-la-border); border-radius: 10px; background: var(--cpu-la-card); color: var(--cpu-la-muted-strong); font-size: 19px; }
       #${panelId} .cpu-la-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; padding: 8px 12px; background: var(--cpu-la-subtle); }
@@ -2249,12 +2252,14 @@
       #${panelId} .cpu-la-actions button { min-width: 88px; min-height: 35px; flex: 1; border: 1px solid var(--cpu-la-border); border-radius: 9px; background: var(--cpu-la-card); color: var(--cpu-la-primary-strong); }
       #${panelId} .cpu-la-actions button:disabled { cursor: not-allowed; opacity: .42; }
       #${panelId} .cpu-la-sources { margin-top: 11px; border-top: 1px solid var(--cpu-la-border-soft); }
-      #${panelId} .cpu-la-sources summary { padding-top: 10px; color: var(--cpu-la-primary-strong); cursor: pointer; font-weight: 650; }
+      #${panelId} .cpu-la-sources-title { padding-top: 10px; color: var(--cpu-la-primary-strong); font-weight: 700; }
       #${panelId} .cpu-la-source { margin-top: 8px; padding: 9px 10px; border-radius: 9px; background: var(--cpu-la-subtle); white-space: pre-wrap; word-break: break-word; }
       #${panelId} .cpu-la-source b { display: block; margin-bottom: 3px; color: var(--cpu-la-muted-strong); font-size: 12px; }
       #${panelId} .cpu-la-reasoning { margin-top: 8px; border-top: 1px solid var(--cpu-la-border); color: var(--cpu-la-muted-strong); }
-      #${panelId} .cpu-la-reasoning summary { padding-top: 7px; color: var(--cpu-la-primary-strong); font-size: 12px; }
+      #${panelId} .cpu-la-reasoning strong { display: block; padding-top: 7px; color: var(--cpu-la-primary-strong); font-size: 12px; }
       #${panelId} .cpu-la-reasoning p { margin: 6px 0 0; white-space: pre-wrap; }
+      #${panelId} .cpu-la-screenshot { width: 100%; max-height: 190px; margin-top: 10px; object-fit: contain; border: 1px solid var(--cpu-la-border); border-radius: 10px; background: var(--cpu-la-subtle); }
+      #${panelId} .cpu-la-error { margin: 10px 0 0; color: var(--cpu-la-danger); white-space: pre-wrap; }
       #${panelId} .cpu-la-log { display: grid; grid-template-columns: 72px 1fr; gap: 8px; padding: 9px 0; border-bottom: 1px solid var(--cpu-la-border-soft); }
       #${panelId} .cpu-la-log time { color: var(--cpu-la-muted); font-variant-numeric: tabular-nums; }
       #${panelId} .cpu-la-log[data-type="error"] span { color: var(--cpu-la-danger); }
@@ -2265,6 +2270,18 @@
       #${panelId} .cpu-la-setting small { margin-top: 2px; color: var(--cpu-la-muted); }
       #${panelId} .cpu-la-number-row { display: grid; grid-template-columns: 1fr 88px; gap: 12px; align-items: center; padding: 12px; border: 1px solid var(--cpu-la-border-soft); border-radius: 12px; background: var(--cpu-la-card); }
       #${panelId} .cpu-la-number-row input { width: 100%; padding: 7px 8px; border: 1px solid var(--cpu-la-border); border-radius: 8px; background: var(--cpu-la-surface); color: var(--cpu-la-text); }
+      #${panelId} .cpu-la-depth { padding: 12px; border: 1px solid var(--cpu-la-border-soft); border-radius: 12px; background: var(--cpu-la-card); }
+      #${panelId} .cpu-la-depth > strong, #${panelId} .cpu-la-depth > small { display: block; }
+      #${panelId} .cpu-la-depth > small { margin: 2px 0 9px; color: var(--cpu-la-muted); }
+      #${panelId} .cpu-la-depth-options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+      #${panelId} .cpu-la-depth-options label { display: grid; min-height: 58px; place-content: center; padding: 7px 5px; border: 1px solid var(--cpu-la-border); border-radius: 9px; text-align: center; cursor: pointer; }
+      #${panelId} .cpu-la-depth-options label:has(input:checked) { border-color: var(--cpu-la-primary); background: var(--cpu-la-primary-soft); color: var(--cpu-la-primary-strong); }
+      #${panelId} .cpu-la-depth-options input { position: absolute; opacity: 0; pointer-events: none; }
+      #${panelId} .cpu-la-depth-options b, #${panelId} .cpu-la-depth-options em { display: block; font-style: normal; }
+      #${panelId} .cpu-la-depth-options em { color: var(--cpu-la-muted); font-size: 11px; }
+      #cpu-learning-screenshot-overlay { position: fixed; inset: 0; z-index: 2147483646; cursor: crosshair; background: rgba(8, 18, 16, .3); user-select: none; touch-action: none; }
+      #cpu-learning-screenshot-overlay .cpu-la-capture-hint { position: fixed; left: 50%; top: 22px; transform: translateX(-50%); padding: 9px 14px; border-radius: 999px; background: rgba(14, 31, 27, .9); color: #fff; font: 650 13px system-ui, sans-serif; box-shadow: 0 8px 24px rgba(0,0,0,.22); }
+      #cpu-learning-screenshot-overlay .cpu-la-capture-box { position: fixed; display: none; border: 2px solid #83dbc3; background: rgba(131, 219, 195, .12); box-shadow: 0 0 0 9999px rgba(8, 18, 16, .38); }
       #${launcherId} { --cpu-la-launcher-bg: #4d907e; --cpu-la-launcher-text: #fff; --cpu-la-launcher-shadow: 0 12px 32px rgba(47, 111, 96, .3); position: fixed; right: 22px; bottom: 28px; z-index: 2147482998; min-height: 44px; padding: 0 17px; border: 0; border-radius: 999px; background: var(--cpu-la-launcher-bg); color: var(--cpu-la-launcher-text); box-shadow: var(--cpu-la-launcher-shadow); font: 700 14px system-ui, sans-serif; cursor: pointer; }
       @media (prefers-color-scheme: dark) {
         #${panelId} {
@@ -2285,6 +2302,7 @@
         #${panelId} .cpu-la-heading strong { font-size: 15px; }
         #${panelId} .cpu-la-heading span { display: none; }
         #${panelId} .cpu-la-run { min-width: 56px; padding: 0 8px; }
+        #${panelId} .cpu-la-shot { min-width: 48px; padding: 0 7px; }
         #${panelId} .cpu-la-icon { width: 32px; height: 32px; }
         #${panelId} .cpu-la-body { padding: 13px; }
         #${panelId} .cpu-la-header { cursor: default; touch-action: auto; }
@@ -2300,6 +2318,7 @@
       <header class="cpu-la-header" title="拖动调整窗口位置">
         <div class="cpu-la-mark">拾</div>
         <div class="cpu-la-heading"><strong>${assistantName}</strong><span>任务、答案与运行控制</span></div>
+        <button class="cpu-la-shot" type="button" data-action="screenshot-search" title="框选屏幕中的题目">截图搜题</button>
         <button class="cpu-la-run" type="button" data-action="toggle-runtime"></button>
         <button class="cpu-la-icon" type="button" data-action="close" aria-label="收起">×</button>
       </header>
@@ -2315,7 +2334,7 @@
     launcher.textContent = "打开学习助手";
     launcher.hidden = true;
     doc.body.append(panel, launcher);
-    const state = { store: initialStore, tab: "task", signature: "" };
+    const state = { store: initialStore, tab: "task", signature: "", manual: null, manualVersion: 0 };
     const positionKey = "cpu-learning-assistant-position-v1";
     let dragState = null;
     const clampPanelPosition = (left, topValue) => {
@@ -2378,9 +2397,102 @@
       state.signature = "";
       reportToHost("status", "学习通助手设置已保存");
     };
+    let captureOverlay = null;
+    const chooseScreenshotArea = () => new Promise((resolve) => {
+      captureOverlay == null ? void 0 : captureOverlay.remove();
+      const overlay = doc.createElement("div");
+      overlay.id = "cpu-learning-screenshot-overlay";
+      overlay.innerHTML = '<div class="cpu-la-capture-hint">拖动框选题目区域 · Esc 取消</div><div class="cpu-la-capture-box"></div>';
+      doc.body.appendChild(overlay);
+      captureOverlay = overlay;
+      const box = overlay.querySelector(".cpu-la-capture-box");
+      let start = null;
+      const cleanup = (result) => {
+        doc.removeEventListener("keydown", onKeyDown, true);
+        overlay.remove();
+        captureOverlay = null;
+        resolve(result);
+      };
+      const draw = (event) => {
+        if (!start) return;
+        const left = Math.min(start.x, event.clientX), topValue = Math.min(start.y, event.clientY);
+        const width = Math.abs(event.clientX - start.x), height = Math.abs(event.clientY - start.y);
+        box.style.display = "block", box.style.left = `${left}px`, box.style.top = `${topValue}px`, box.style.width = `${width}px`, box.style.height = `${height}px`;
+      };
+      const onKeyDown = (event) => {
+        if (event.key === "Escape") cleanup(null);
+      };
+      overlay.addEventListener("pointerdown", (event) => {
+        if (event.button !== 0) return;
+        start = { x: event.clientX, y: event.clientY };
+        overlay.setPointerCapture(event.pointerId);
+        draw(event);
+      });
+      overlay.addEventListener("pointermove", draw);
+      overlay.addEventListener("pointerup", (event) => {
+        if (!start) return;
+        const rect = {
+          x: Math.min(start.x, event.clientX),
+          y: Math.min(start.y, event.clientY),
+          width: Math.abs(event.clientX - start.x),
+          height: Math.abs(event.clientY - start.y)
+        };
+        cleanup(rect.width >= 24 && rect.height >= 24 ? rect : null);
+      });
+      doc.addEventListener("keydown", onKeyDown, true);
+    });
+    const startScreenshotSearch = async () => {
+      state.tab = "task";
+      if (!_GM_cpuCaptureArea) {
+        state.manual = { status: "error", error: "当前客户端版本不支持截图搜题，请先更新桌面客户端。" };
+        state.manualVersion += 1, state.signature = "", render();
+        return;
+      }
+      panel.hidden = true, launcher.hidden = true;
+      const rect = await chooseScreenshotArea();
+      if (!rect) {
+        panel.hidden = false, state.signature = "", render();
+        return;
+      }
+      try {
+        await new Promise((resolve) => host.setTimeout(resolve, 60));
+        const imageUrl = await _GM_cpuCaptureArea(rect);
+        panel.hidden = false;
+        state.manual = { status: "loading", imageUrl, answer: "", explanation: "", error: "" };
+        state.manualVersion += 1, state.signature = "", render();
+        const config = { ...defaultConfig$1, ...getConfig() };
+        const response = await _GM_cpuAIRequest({
+          model: config.aiModel || "deepseek-reasoner",
+          reasoningEffort: ["low", "high", "max"].includes(config.answerDepth) ? config.answerDepth : "low",
+          input: [{ role: "user", content: [
+            { type: "input_text", text: "请识别截图中的题目并作答。若有选项，请结合选项判断；若截图信息不足，请明确说明。严格使用纯文本格式返回：答案：... 换行 解题思路：..." },
+            { type: "input_image", image_url: imageUrl, detail: "high" }
+          ] }]
+        });
+        if (!response || response.status < 200 || response.status >= 300) {
+          let message = `截图搜题失败（${response == null ? "无响应" : response.status}）`;
+          try {
+            const payload = JSON.parse(response && response.text || "{}");
+            message = payload.message || (payload.error && (payload.error.message || payload.error)) || message;
+          } catch {}
+          throw new Error(message);
+        }
+        const data = JSON.parse(response.text || "{}");
+        const content = String(data.output_text || (data.output || []).flatMap((item) => item.content || []).filter((item) => item.type === "output_text").map((item) => item.text).join("") || "").trim();
+        const structured = data.learning_answer;
+        const parsed = structured && typeof structured === "object" ? { answer: String(structured.answer || "").trim(), explanation: String(structured.explanation || "").trim() } : parseLearningAiReply(content);
+        state.manual = { status: "done", imageUrl, answer: parsed.answer || content, explanation: parsed.explanation || "", error: "" };
+        reportToHost("status", "截图搜题已完成");
+      } catch (error) {
+        panel.hidden = false;
+        state.manual = { status: "error", imageUrl: state.manual && state.manual.imageUrl || "", answer: "", explanation: "", error: error instanceof Error ? error.message : String(error) };
+        reportToHost("status", state.manual.error);
+      }
+      state.manualVersion += 1, state.signature = "", render();
+    };
     const render = () => {
       const store = state.store, task = (store == null ? void 0 : store.task) || { name: "暂未加载", work: { questionList: [], inx: 0 }, log: [], status: "" }, questions = task.work && Array.isArray(task.work.questionList) ? task.work.questionList : [], index = Math.max(0, Math.min(Number(task.work && task.work.inx || 0), Math.max(0, questions.length - 1))), current = questions[index] || null, config = { ...defaultConfig$1, ...getConfig() }, logs = Array.isArray(task.log) ? task.log.slice(-30) : [], paused = assistantRuntime.isPaused();
-      const snapshot = { tab: state.tab, paused, name: task.name, status: task.status, activity: task.activity || null, count: questions.length, index, question: current == null ? "" : current.question, answer: current == null ? "" : current.answer, allAnswer: current == null ? [] : current.allAnswer, logs, autoSubmit: Boolean(config.autoSubmit), autoVideo: Boolean(config.autoVideo), autoJump: Boolean(config.autoJump), autoExam: Boolean(config.autoExam), answerIntervalMin: Number(config.answerIntervalMin), answerIntervalMax: Number(config.answerIntervalMax) };
+      const snapshot = { tab: state.tab, paused, name: task.name, status: task.status, activity: task.activity || null, count: questions.length, index, question: current == null ? "" : current.question, answer: current == null ? "" : current.answer, allAnswer: current == null ? [] : current.allAnswer, logs, autoSubmit: Boolean(config.autoSubmit), autoVideo: Boolean(config.autoVideo), autoJump: Boolean(config.autoJump), autoExam: Boolean(config.autoExam), answerIntervalMin: Number(config.answerIntervalMin), answerIntervalMax: Number(config.answerIntervalMax), answerDepth: config.answerDepth, manualVersion: state.manualVersion };
       const signature = JSON.stringify(snapshot);
       if (signature === state.signature) return;
       state.signature = signature;
@@ -2389,7 +2501,11 @@
       panel.querySelectorAll("[data-tab]").forEach((button) => button.setAttribute("aria-selected", String(button.dataset.tab === state.tab)));
       const body = panel.querySelector(".cpu-la-body");
       if (state.tab === "task") {
-        if (!current) {
+        if (state.manual) {
+          const manual = state.manual;
+          const modeLabel = config.answerDepth === "max" ? "挑战难题" : config.answerDepth === "high" ? "深入分析" : "快速判断";
+          body.innerHTML = `<section class="cpu-la-card"><span class="cpu-la-kicker">截图搜题 · ${escapeHtml(modeLabel)}</span><h3 class="cpu-la-title">${manual.status === "loading" ? "正在识别并解答" : manual.status === "done" ? "识别完成" : "截图搜题未完成"}</h3>${manual.imageUrl ? `<img class="cpu-la-screenshot" src="${escapeHtml(manual.imageUrl)}" alt="框选的题目截图">` : ""}${manual.status === "loading" ? '<div class="cpu-la-progress"><i style="width:72%"></i></div><p class="cpu-la-muted">正在读取题面、选项并核对答案…</p>' : ""}${manual.answer ? `<pre class="cpu-la-answer">${escapeHtml(formatLearningDisplayText(manual.answer))}</pre>` : ""}${manual.explanation ? `<div class="cpu-la-reasoning"><strong>解题思路</strong><p>${escapeHtml(formatLearningDisplayText(manual.explanation))}</p></div>` : ""}${manual.error ? `<p class="cpu-la-error">${escapeHtml(manual.error)}</p>` : ""}<div class="cpu-la-actions"><button type="button" data-action="screenshot-search">重新截图</button>${manual.answer ? '<button type="button" data-action="copy-screenshot-answer">复制答案</button>' : ""}<button type="button" data-action="dismiss-screenshot">返回任务</button></div></section>`;
+        } else if (!current) {
           const activity = task.activity && (task.activity.label || task.activity.detail) ? task.activity : null;
           if (activity) {
             const activityProgress = Number.isFinite(Number(activity.progress)) ? Math.max(0, Math.min(100, Number(activity.progress))) : null;
@@ -2398,13 +2514,13 @@
             body.innerHTML = `<div class="cpu-la-empty"><div><b>${paused ? "助手已暂停" : "等待任务加载"}</b><span>${paused ? "点击上方“开始助手”继续处理" : "进入章节、作业或考试后会自动识别"}</span></div></div>`;
           }
         } else {
-          const progress = Math.round((index + 1) / Math.max(1, questions.length) * 100), answer = formatLearningDisplayText(current.answer || ""), sources = Array.isArray(current.allAnswer) ? current.allAnswer : [], sourceDetails = sources.length ? `<details class="cpu-la-sources"><summary>查看 ${sources.length} 个答案来源</summary>${sources.map((item) => `<div class="cpu-la-source"><b>${escapeHtml(item.form || "答案来源")}</b>${escapeHtml(learningAnswerDisplay(item, "暂无答案"))}${item.explanation ? `<details class="cpu-la-reasoning"><summary>解题思路</summary><p>${escapeHtml(formatLearningDisplayText(item.explanation))}</p></details>` : ""}</div>`).join("")}</details>` : '<p class="cpu-la-muted">尚未收到答案</p>';
+          const progress = Math.round((index + 1) / Math.max(1, questions.length) * 100), answer = formatLearningDisplayText(current.answer || ""), sources = Array.isArray(current.allAnswer) ? current.allAnswer : [], sourceDetails = sources.length ? `<section class="cpu-la-sources"><div class="cpu-la-sources-title">${sources.length} 个答案来源</div>${sources.map((item) => `<div class="cpu-la-source"><b>${escapeHtml(item.form || "答案来源")}</b>${escapeHtml(learningAnswerDisplay(item, "暂无答案"))}${item.explanation ? `<div class="cpu-la-reasoning"><strong>解题思路</strong><p>${escapeHtml(formatLearningDisplayText(item.explanation))}</p></div>` : ""}</div>`).join("")}</section>` : '<p class="cpu-la-muted">尚未收到答案</p>';
           body.innerHTML = `<section class="cpu-la-card"><span class="cpu-la-kicker">${escapeHtml(task.name || "当前任务")} · ${index + 1}/${questions.length}</span><h3 class="cpu-la-title">${escapeHtml(task.status || (paused ? "已暂停" : "处理中"))}</h3><div class="cpu-la-progress"><i style="width:${progress}%"></i></div></section><section class="cpu-la-card"><span class="cpu-la-kicker">题目</span><div class="cpu-la-question">${escapeHtml(formatLearningDisplayText(current.question || ""))}</div>${answer ? `<pre class="cpu-la-answer">${escapeHtml(answer)}</pre>` : '<p class="cpu-la-muted">正在获取并填写答案…</p>'}${sourceDetails}<div class="cpu-la-actions"><button type="button" data-action="previous" ${index <= 0 ? "disabled" : ""}>上一题</button><button type="button" data-action="locate">定位原题</button>${answer ? '<button type="button" data-action="copy-answer">复制答案</button>' : ""}<button type="button" data-action="next" ${index >= questions.length - 1 ? "disabled" : ""}>下一题</button></div></section>`;
         }
       } else if (state.tab === "logs") {
         body.innerHTML = logs.length ? `<section class="cpu-la-card">${logs.map((item) => `<div class="cpu-la-log" data-type="${escapeHtml(item.type || "info")}"><time>${escapeHtml(item.time || "")}</time><span>${escapeHtml(item.msg || "")}</span></div>`).join("")}<div class="cpu-la-actions"><button type="button" data-action="clear-logs">清空日志</button></div></section>` : '<div class="cpu-la-empty"><div><b>暂无运行日志</b><span>开始处理任务后，关键步骤会记录在这里</span></div></div>';
       } else {
-        body.innerHTML = `<div class="cpu-la-settings"><label class="cpu-la-setting"><input type="checkbox" data-config="autoSubmit" ${config.autoSubmit ? "checked" : ""}><span><strong>章节测验答完自动提交</strong><small>只作用于章节测验；作业和考试始终由你手动交卷</small></span></label><label class="cpu-la-setting"><input type="checkbox" data-config="autoVideo" ${config.autoVideo ? "checked" : ""}><span><strong>自动播放视频与音频</strong><small>关闭后会跳过媒体任务点</small></span></label><label class="cpu-la-setting"><input type="checkbox" data-config="autoJump" ${config.autoJump ? "checked" : ""}><span><strong>完成后切换下一章</strong><small>暂停助手时不会发生章节切换</small></span></label><label class="cpu-la-setting"><input type="checkbox" data-config="autoExam" ${config.autoExam ? "checked" : ""}><span><strong>考试自动切换下一题</strong><small>只切题，不会替你最终交卷</small></span></label><div class="cpu-la-number-row"><span><strong>答题最短等待</strong><small class="cpu-la-muted">每题之间的秒数</small></span><input type="number" min="1" max="120" data-config-number="answerIntervalMin" value="${Number(config.answerIntervalMin) || 8}"></div><div class="cpu-la-number-row"><span><strong>答题最长等待</strong><small class="cpu-la-muted">不能小于最短等待</small></span><input type="number" min="1" max="180" data-config-number="answerIntervalMax" value="${Number(config.answerIntervalMax) || 20}"></div></div>`;
+        body.innerHTML = `<div class="cpu-la-settings"><section class="cpu-la-depth"><strong>答题模式</strong><small>越深入越适合复杂题，AI 点数按次消耗</small><div class="cpu-la-depth-options"><label><input type="radio" name="cpu-la-depth" data-config-depth value="low" ${config.answerDepth !== "high" && config.answerDepth !== "max" ? "checked" : ""}><b>快速判断</b><em>1 点</em></label><label><input type="radio" name="cpu-la-depth" data-config-depth value="high" ${config.answerDepth === "high" ? "checked" : ""}><b>深入分析</b><em>1.5 点</em></label><label><input type="radio" name="cpu-la-depth" data-config-depth value="max" ${config.answerDepth === "max" ? "checked" : ""}><b>挑战难题</b><em>2 点</em></label></div></section><label class="cpu-la-setting"><input type="checkbox" data-config="autoSubmit" ${config.autoSubmit ? "checked" : ""}><span><strong>章节测验答完自动提交</strong><small>只作用于章节测验；作业和考试始终由你手动交卷</small></span></label><label class="cpu-la-setting"><input type="checkbox" data-config="autoVideo" ${config.autoVideo ? "checked" : ""}><span><strong>自动播放视频与音频</strong><small>关闭后会跳过媒体任务点</small></span></label><label class="cpu-la-setting"><input type="checkbox" data-config="autoJump" ${config.autoJump ? "checked" : ""}><span><strong>完成后切换下一章</strong><small>暂停助手时不会发生章节切换</small></span></label><label class="cpu-la-setting"><input type="checkbox" data-config="autoExam" ${config.autoExam ? "checked" : ""}><span><strong>考试自动切换下一题</strong><small>只切题，不会替你最终交卷</small></span></label><div class="cpu-la-number-row"><span><strong>答题最短等待</strong><small class="cpu-la-muted">每题之间的秒数</small></span><input type="number" min="1" max="120" data-config-number="answerIntervalMin" value="${Number(config.answerIntervalMin) || 8}"></div><div class="cpu-la-number-row"><span><strong>答题最长等待</strong><small class="cpu-la-muted">不能小于最短等待</small></span><input type="number" min="1" max="180" data-config-number="answerIntervalMax" value="${Number(config.answerIntervalMax) || 20}"></div></div>`;
       }
     };
     panel.addEventListener("click", (event) => {
@@ -2418,6 +2534,19 @@
       }
       const store = state.store, questions = (store == null ? void 0 : store.task.work.questionList) || [], index = Number(store == null ? void 0 : store.task.work.inx) || 0;
       switch (target.dataset.action) {
+        case "screenshot-search":
+          void startScreenshotSearch();
+          return;
+        case "dismiss-screenshot":
+          state.manual = null, state.manualVersion += 1;
+          break;
+        case "copy-screenshot-answer": {
+          const answer = String(state.manual && state.manual.answer || "");
+          if (answer && host.navigator.clipboard && host.navigator.clipboard.writeText) {
+            host.navigator.clipboard.writeText(answer).then(() => reportToHost("status", "答案已复制")).catch(() => reportToHost("status", "复制失败，请手动选择答案"));
+          }
+          break;
+        }
         case "toggle-runtime":
           assistantRuntime.toggle();
           break;
@@ -2459,6 +2588,7 @@
     panel.addEventListener("change", (event) => {
       const target = event.target;
       if (target.matches("input[type=checkbox][data-config]")) saveConfig(target.dataset.config, target.checked);
+      if (target.matches("input[type=radio][data-config-depth]")) saveConfig("answerDepth", target.value);
       if (target.matches("input[type=number][data-config-number]")) {
         const value = Math.max(Number(target.min) || 1, Math.min(Number(target.max) || 180, Number(target.value) || Number(target.min) || 1));
         saveConfig(target.dataset.configNumber, value);
@@ -2485,6 +2615,7 @@
       doc.removeEventListener("pointermove", onPointerMove);
       doc.removeEventListener("pointerup", onPointerUp);
       host.removeEventListener("resize", onWindowResize);
+      captureOverlay == null ? void 0 : captureOverlay.remove();
       panel.remove();
       launcher.remove();
       style.remove();

@@ -17,6 +17,7 @@ import {
   buildLearningAssistantAiRequestBody,
   learningAssistantAiBodySchema,
   learningAssistantAiResponse,
+  learningAssistantPointCost,
   LEARNING_ASSISTANT_AI_INSTRUCTIONS,
   requestLearningAssistantAi,
   type LearningAssistantAiBody,
@@ -230,7 +231,8 @@ oauthRouter.post("/v1/responses", securityRateLimit("oauth-ai", 20, 60_000), asy
     userId = token.userId;
     if (!token.scope.split(/\s+/).includes("ai")) throw Errors.forbidden("token 没有 ai scope");
     const body = learningAssistantAiBodySchema.parse(req.body);
-    const consumedQuota = await consumeCampusAssistantQuota(token.userId);
+    const requestedPointCost = learningAssistantPointCost(body.reasoningEffort);
+    const consumedQuota = await consumeCampusAssistantQuota(token.userId, new Date(), requestedPointCost);
     quotaReservation = consumedQuota.reservation;
     const controller = new AbortController();
     timeout = setTimeout(() => controller.abort(), 120_000);
@@ -240,7 +242,7 @@ oauthRouter.post("/v1/responses", securityRateLimit("oauth-ai", 20, 60_000), asy
     const aiResult = await requestLearningAssistantAi(body, token.clientId, controller.signal, {
       createdById: token.userId,
       targetLabel: "学习通答题 · 已登录客户端",
-      pointCost: quotaReservation?.source === "points" ? 1 : 0,
+      pointCost: quotaReservation?.source === "points" ? (quotaReservation.pointCost ?? requestedPointCost) : 0,
     });
     res.status(aiResult.status);
     res.setHeader("Content-Type", aiResult.contentType);

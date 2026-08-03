@@ -411,6 +411,7 @@ const renderScriptConfig = () => {
     if (input) input.value = String(scriptConfig[key] ?? "");
   }
   el("cfg-aiEnabled").checked = Boolean(scriptConfig.aiEnabled);
+  el("cfg-answerDepth").value = ["low", "high", "max"].includes(scriptConfig.answerDepth) ? scriptConfig.answerDepth : "low";
   el("reload-hint").hidden = !pendingReload;
 };
 
@@ -567,6 +568,7 @@ const bindScript = () => {
     el(`cfg-${key}`)?.addEventListener("change", (event) => void pushScriptConfig(key, Number(event.target.value)));
   }
   el("cfg-aiEnabled").addEventListener("change", (event) => void pushScriptConfig("aiEnabled", event.target.checked));
+  el("cfg-answerDepth").addEventListener("change", (event) => void pushScriptConfig("answerDepth", event.target.value));
 
   el("script-check-update").addEventListener("click", async () => {
     const button = el("script-check-update");

@@ -26,6 +26,18 @@ export type LearningAssistantAnswer = {
   explanation: string;
 };
 
+export const LEARNING_ASSISTANT_DIFFICULTIES = {
+  low: { label: "快速判断", pointCost: 1 },
+  high: { label: "深入分析", pointCost: 1.5 },
+  max: { label: "挑战难题", pointCost: 2 },
+} as const;
+
+export type LearningAssistantDifficulty = keyof typeof LEARNING_ASSISTANT_DIFFICULTIES;
+
+export function learningAssistantPointCost(difficulty: LearningAssistantDifficulty) {
+  return LEARNING_ASSISTANT_DIFFICULTIES[difficulty].pointCost;
+}
+
 /**
  * 把模型的可见答复规范化为脚本可直接消费的数据。
  * explanation 只来自模型公开给学生的简短说明，不读取或暴露上游隐藏推理。
@@ -82,6 +94,7 @@ export const learningAssistantAiBodySchema = z.object({
     content: inputContentSchema,
   }).strict()).length(1),
   temperature: z.number().min(0).max(2).optional(),
+  reasoningEffort: z.enum(["low", "high", "max"]).default("low"),
   stream: z.literal(false).optional(),
 }).strict();
 
@@ -117,6 +130,7 @@ export function buildLearningAssistantAiRequestBody(
           : message.content,
       })),
       ...(body.temperature === undefined ? {} : { temperature: body.temperature }),
+      reasoning: { effort: body.reasoningEffort },
     };
   }
   return {
@@ -139,6 +153,7 @@ export function buildLearningAssistantAiRequestBody(
       })),
     ],
     ...(body.temperature === undefined ? {} : { temperature: body.temperature }),
+    reasoning_effort: body.reasoningEffort,
   };
 }
 

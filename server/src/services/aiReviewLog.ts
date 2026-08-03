@@ -25,7 +25,7 @@ export async function startAiReviewLog(input: AiReviewLogInput) {
       endpoint: input.endpoint?.slice(0, 240) || null,
       requestSummary: input.requestSummary?.slice(0, 4000) || "",
       createdById: input.createdById ?? null,
-      pointCost: Math.max(0, Math.trunc(input.pointCost ?? 0)),
+      pointCost: Math.max(0, Number(input.pointCost ?? 0) || 0),
       status: "started",
       startedAt: new Date(),
     },

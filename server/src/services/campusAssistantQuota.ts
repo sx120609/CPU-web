@@ -22,6 +22,7 @@ export type CampusAssistantQuotaReservation = {
   source: "daily" | "points";
   dateKey: string;
   transactionId?: number;
+  pointCost?: number;
 };
 
 export function campusAssistantDateKey(date = new Date()) {
@@ -94,7 +95,7 @@ export async function getCampusAssistantQuotaStatus(userId: number, date = new D
   return buildQuotaStatus(quota, usage?.used ?? 0, date);
 }
 
-export async function consumeCampusAssistantQuota(userId: number, date = new Date()) {
+export async function consumeCampusAssistantQuota(userId: number, date = new Date(), pointCost = 1) {
   const quota = await resolveUserQuota(userId);
   const dateKey = campusAssistantDateKey(date);
   if (quota.dailyQuota > 0) {
@@ -123,7 +124,8 @@ export async function consumeCampusAssistantQuota(userId: number, date = new Dat
     }
   }
 
-  const pointSpend = await spendAssistantPoint(userId);
+  const normalizedPointCost = Math.max(1, Math.round((Number(pointCost) || 1) * 2) / 2);
+  const pointSpend = await spendAssistantPoint(userId, normalizedPointCost);
   if (!pointSpend) {
     throw Errors.forbidden("今天的拾间 AI 额度和点数都已用完，日额度会在明天 00:00 自动恢复");
   }
@@ -139,6 +141,7 @@ export async function consumeCampusAssistantQuota(userId: number, date = new Dat
       source: "points",
       dateKey,
       transactionId: pointSpend.transactionId,
+      pointCost: pointSpend.points,
     } satisfies CampusAssistantQuotaReservation,
   };
 }

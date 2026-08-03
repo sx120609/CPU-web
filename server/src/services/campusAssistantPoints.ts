@@ -226,11 +226,12 @@ export async function backfillSponsorAssistantPoints(pointsPerYuan: number) {
   );
 }
 
-export async function spendAssistantPoint(userId: number) {
+export async function spendAssistantPoint(userId: number, amount = 1) {
+  const points = Math.max(0.5, Math.round((Number(amount) || 1) * 2) / 2);
   return prisma.$transaction(async (tx) => {
     const spent = await tx.user.updateMany({
-      where: { id: userId, assistantPoints: { gt: 0 } },
-      data: { assistantPoints: { decrement: 1 } },
+      where: { id: userId, assistantPoints: { gte: points } },
+      data: { assistantPoints: { decrement: points } },
     });
     if (spent.count !== 1) return null;
 
@@ -241,14 +242,14 @@ export async function spendAssistantPoint(userId: number) {
     const ledger = await tx.campusAssistantPointLedger.create({
       data: {
         userId,
-        delta: -1,
+        delta: -points,
         balanceAfter: user.assistantPoints,
         source: "ai_usage",
         reason: "拾间 AI 调用",
       },
       select: { id: true },
     });
-    return { transactionId: ledger.id, balance: user.assistantPoints };
+    return { transactionId: ledger.id, balance: user.assistantPoints, points };
   });
 }
 
@@ -256,8 +257,8 @@ export async function refundAssistantPoint(userId: number, transactionId: number
   try {
     await prisma.$transaction(async (tx) => {
       const original = await tx.campusAssistantPointLedger.findFirst({
-        where: { id: transactionId, userId, source: "ai_usage", delta: -1 },
-        select: { id: true },
+        where: { id: transactionId, userId, source: "ai_usage", delta: { lt: 0 } },
+        select: { id: true, delta: true },
       });
       if (!original) return;
 
@@ -274,13 +275,13 @@ export async function refundAssistantPoint(userId: number, transactionId: number
 
       const user = await tx.user.update({
         where: { id: userId },
-        data: { assistantPoints: { increment: 1 } },
+        data: { assistantPoints: { increment: Math.abs(original.delta) } },
         select: { assistantPoints: true },
       });
       await tx.campusAssistantPointLedger.create({
         data: {
           userId,
-          delta: 1,
+          delta: Math.abs(original.delta),
           balanceAfter: user.assistantPoints,
           source: "ai_refund",
           reason: "拾间 AI 调用失败返还",

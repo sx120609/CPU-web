@@ -353,6 +353,7 @@ const createInjection = (script: UserScript, nonce: string, seededValues: Record
         .catch((error) => settle(error instanceof Error ? error.message : String(error)));
     },
     GM_cpuAIRequest: async (body) => bridge.requestAi(nonce, JSON.stringify(body)),
+    GM_cpuCaptureArea: async (rect) => bridge.captureArea(nonce, rect),
     // 脚本把运行状态喊出来，客户端界面才能显示。脚本自己的面板只留 20 条日志，
     // 而且关掉面板就什么都看不见。
     GM_cpuReport: (kind, text) => {
@@ -841,6 +842,9 @@ const sanitizeAiBody = (raw: string): Record<string, unknown> => {
   if (typeof body.temperature === "number" && Number.isFinite(body.temperature) && body.temperature >= 0 && body.temperature <= 2) {
     sanitized.temperature = body.temperature;
   }
+  if (body.reasoningEffort === "low" || body.reasoningEffort === "high" || body.reasoningEffort === "max") {
+    sanitized.reasoningEffort = body.reasoningEffort;
+  }
   return sanitized;
 };
 
@@ -1280,6 +1284,22 @@ if (installMode || uninstallMode) {
         });
       }
       return { status: response.status, statusText: response.statusText, text: await response.text() };
+    });
+
+    ipcMain.handle("userscript:capture-area", async (event, nonce: unknown, rect: unknown) => {
+      await authorize(event, nonce);
+      if (!rect || typeof rect !== "object") throw new Error("截图范围无效");
+      const candidate = rect as Record<string, unknown>;
+      const x = Math.max(0, Math.round(Number(candidate.x)));
+      const y = Math.max(0, Math.round(Number(candidate.y)));
+      const width = Math.round(Number(candidate.width));
+      const height = Math.round(Number(candidate.height));
+      if (![x, y, width, height].every(Number.isFinite) || width < 24 || height < 24) throw new Error("截图范围太小");
+      if (width > 4096 || height > 4096 || width * height > 12_000_000) throw new Error("截图范围过大");
+      const image = await event.sender.capturePage({ x, y, width, height });
+      const png = image.toPNG();
+      if (!png.length || png.length > 8 * 1024 * 1024) throw new Error("截图生成失败或文件过大");
+      return `data:image/png;base64,${png.toString("base64")}`;
     });
 
     ipcMain.handle("oauth:login", () => startOAuthLogin(openAuthorizeWindow).then((session) => ({

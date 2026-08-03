@@ -49,7 +49,7 @@ model User {
   anonymousWeekKey       String?
   anonymousCreditsFrozen Boolean   @default(false)
   sponsorTotalCents      Int       @default(0)
-  assistantPoints        Int       @default(0)
+  assistantPoints        Float     @default(0)
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
 
@@ -142,8 +142,8 @@ model CampusAssistantDailyUsage {
 model CampusAssistantPointLedger {
   id            Int      @id @default(autoincrement())
   userId        Int
-  delta         Int
-  balanceAfter  Int
+  delta         Float
+  balanceAfter  Float
   source        String
   reason        String   @default("")
   referenceType String?
@@ -377,7 +377,7 @@ model AiReviewLog {
   startedAt       DateTime  @default(now())
   finishedAt      DateTime?
   durationMs      Int?
-  pointCost       Int       @default(0)
+  pointCost       Float     @default(0)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
