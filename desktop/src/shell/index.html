@@ -214,19 +214,11 @@
           </div>
 
           <div class="subsection">
-            <h3>节奏</h3>
-            <p class="muted small">间隔越短越省时间，但行为特征越明显。默认值是相对稳妥的取值。</p>
-            <div class="grid">
-              <label class="field"><span>换章等待（秒）</span><input type="number" id="cfg-interval" min="1" max="120" /></label>
-              <label class="field"><span>低于此正确率不自动提交</span><input type="number" id="cfg-minAccuracy" min="0" max="1" step="0.05" /></label>
-            </div>
+            <h3>答题节奏</h3>
+            <p class="muted small">只保留每道题之间的等待时间；切章与提交前等待由客户端采用稳妥默认值。</p>
             <div class="grid">
               <label class="field"><span>每题间隔最小（秒）</span><input type="number" id="cfg-answerIntervalMin" min="1" max="300" /></label>
               <label class="field"><span>每题间隔最大（秒）</span><input type="number" id="cfg-answerIntervalMax" min="1" max="300" /></label>
-            </div>
-            <div class="grid">
-              <label class="field"><span>提交前等待最小（秒）</span><input type="number" id="cfg-submitDelayMin" min="1" max="600" /></label>
-              <label class="field"><span>提交前等待最大（秒）</span><input type="number" id="cfg-submitDelayMax" min="1" max="600" /></label>
             </div>
             <p class="notice-inline" id="reload-hint" hidden>以上改动要重新打开学习通标签才生效。</p>
           </div>

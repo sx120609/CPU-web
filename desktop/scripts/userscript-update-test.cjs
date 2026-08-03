@@ -27,7 +27,7 @@ async function main() {
     size: Buffer.byteLength(source, "utf8"),
     sourceUrl: USER_SCRIPT_SOURCE_PATH,
   };
-  assert.deepEqual(identity, { name: "药大拾间·学习通助手", version: "2.2.11" });
+  assert.deepEqual(identity, { name: "药大拾间·学习通助手", version: "2.2.12" });
   assert.match(source, /章节、作业或考试/, "个人中心与课程引导应覆盖章节、作业和考试入口");
   assert.match(source, /customClass:\s*"cpu-learning-guide"/, "学习通引导应使用独立高层级样式");
   assert.match(source, /offset:\s*96/, "学习通引导应避开超星顶部导航");
@@ -37,6 +37,9 @@ async function main() {
   assert.match(source, /cpu-learning-assistant-panel/, "页面内应使用统一的助手工作台");
   assert.match(source, /data-action="toggle-runtime"/, "统一工作台应提供开始和暂停控制");
   assert.match(source, /章节测验答完自动提交/, "页面内应提供章节测验提交开关");
+  assert.match(source, /if \(succ < ques\.length\)/, "章节测验只有全部题目获得答案后才能自动提交");
+  assert.doesNotMatch(source, /succ \/ ques\.length < submitConfig\.minAccuracy/, "不得再把答案覆盖率称为正确率");
+  assert.doesNotMatch(source, /正确率:/, "助手运行状态不得再展示伪正确率");
   assert.match(source, /data-action="copy-answer"/, "统一工作台应支持复制当前答案");
   assert.match(source, /data-action="locate"/, "统一工作台应支持定位原题");
   assert.match(source, /cpu-learning-assistant-position-v1/, "统一工作台应支持拖动并记住位置");
@@ -89,7 +92,7 @@ async function main() {
       return new Response("", { status: 404 });
     };
 
-    const olderSource = source.replace("// @version      2.2.11", "// @version      2.1.9");
+    const olderSource = source.replace("// @version      2.2.12", "// @version      2.1.9");
     const updated = await checkUserScriptUpdate({
       origin: "https://cpu.lizmt.cn",
       cacheDirectory,
@@ -102,7 +105,7 @@ async function main() {
     assert.equal(new URL(requests[1]).searchParams.get("sha256"), manifest.sha256, "正文请求应使用发布哈希隔离缓存");
 
     const cached = await readCachedUserScript(cacheDirectory, () => undefined);
-    assert.equal(cached?.manifest.version, "2.2.11");
+    assert.equal(cached?.manifest.version, "2.2.12");
     assert.equal(cached?.source, source);
 
     requests.length = 0;

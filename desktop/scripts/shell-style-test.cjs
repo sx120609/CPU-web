@@ -38,6 +38,9 @@ assert.match(html, /id="script-version"/, "学习通助手区域应展示独立�
 assert.match(renderer, /shell\.script\.getUpdateState\(\)/, "学习通助手区域应读取云端更新状态");
 assert.match(html, /id="script-check-update"/, "学习通助手区域应提供手动检查更新按钮");
 assert.match(renderer, /shell\.script\.checkUpdate\(\)/, "手动检查助手更新应调用独立云端检查");
+assert.doesNotMatch(html, /cfg-(?:interval|minAccuracy|submitDelayMin|submitDelayMax)/, "工具页不应继续暴露无意义的正确率、切章和提交等待设置");
+assert.doesNotMatch(renderer, /"(?:interval|minAccuracy|submitDelayMin|submitDelayMax)"/, "已删除的节奏设置不应继续绑定到界面");
+assert.match(renderer, /仅在全部题目都已获得答案时提交/, "自动提交说明应准确描述答案完整性条件");
 const scriptBinding = renderer.slice(renderer.indexOf("const bindScript"), renderer.indexOf("const setAboutUpdateStatus"));
 const scriptUpdateBinding = scriptBinding.match(/el\("script-check-update"\)[\s\S]*?\n  \}\);/)?.[0] ?? "";
 assert.ok(scriptUpdateBinding, "应找到助手手动更新事件");

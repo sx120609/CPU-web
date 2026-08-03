@@ -130,7 +130,7 @@ test("删除标记会阻止旧本地或云端快照复活会话", () => {
 test("云端学习通助手脚本提供可校验的版本与正文", async () => {
   const release = await readDesktopUserScriptRelease();
   assert.equal(release.name, "药大拾间·学习通助手");
-  assert.equal(release.version, "2.2.11");
+  assert.equal(release.version, "2.2.12");
   assert.match(release.sha256, /^[a-f0-9]{64}$/);
   assert.equal(release.size, Buffer.byteLength(release.source, "utf8"));
   assert.match(release.source, /cpu-learning-personal-center-guide-v3/);

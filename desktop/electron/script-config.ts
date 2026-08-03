@@ -3,7 +3,7 @@
 // 脚本自己的 getConfig() 不做任何 merge：拿到一个对象就直接用，缺哪个键就是
 // undefined。后果不是报错而是静默变危险 ——
 //   缺 interval / answerInterval*  → sleep(undefined) → NaN → 逐题瞬间作答
-//   缺 minAccuracy                 → `正确率 < undefined` 恒为 false → 0% 也自动提交
+//   缺 minAccuracy                 → 旧版脚本的提交完整性判断失效
 // 所以客户端下发的配置必须是完整的一整份，不能只发用户改过的那几项。
 //
 // 另外两个必须遵守的形状约束（否则脚本的迁移分支会改写并回写我们的值）：
@@ -22,8 +22,7 @@ export type ScriptConfig = Record<string, unknown>;
 // 脚本里那几个题库函数（题库海/一之/言溪）连调用点都没有。
 export type EditableKey =
   | "autoVideo" | "autoJump" | "autoSubmit" | "autoExam"
-  | "interval" | "answerIntervalMin" | "answerIntervalMax"
-  | "submitDelayMin" | "submitDelayMax" | "minAccuracy"
+  | "answerIntervalMin" | "answerIntervalMax"
   | "aiEnabled" | "answerDepth";
 
 // 改动后是否需要重新打开学习窗口才生效。
@@ -31,8 +30,7 @@ export type EditableKey =
 // 而 AI 开关是每道题现读现用，所以能热改。
 export const NEEDS_RELOAD: readonly EditableKey[] = [
   "autoVideo", "autoJump", "autoSubmit", "autoExam",
-  "interval", "answerIntervalMin", "answerIntervalMax",
-  "submitDelayMin", "submitDelayMax", "minAccuracy"
+  "answerIntervalMin", "answerIntervalMax"
 ];
 
 export const DEFAULT_SCRIPT_CONFIG: ScriptConfig = {
@@ -41,12 +39,12 @@ export const DEFAULT_SCRIPT_CONFIG: ScriptConfig = {
   autoJump: true,
   autoSubmit: false,          // 脚本默认 true。默认不自动提交，让用户自己按一下更稳妥
   autoExam: false,            // 自动考试与视频挂机不是一个量级，默认关
-  interval: 3,
+  interval: 3,               // 固定安全值，不再作为用户设置暴露
   answerIntervalMin: 8,
   answerIntervalMax: 20,
-  submitDelayMin: 20,
+  submitDelayMin: 20,        // 固定安全值，不再作为用户设置暴露
   submitDelayMax: 40,
-  minAccuracy: 0.8,
+  minAccuracy: 1,            // 兼容旧版缓存脚本：必须全部题目都获得答案才提交
   aiEnabled: true,
   answerDepth: "low",
   // 服务端会用站点配置里的模型覆盖它，这里填什么都不影响结果；
@@ -77,11 +75,8 @@ export const DEFAULT_SCRIPT_CONFIG: ScriptConfig = {
 };
 
 const INTERVAL_LIMITS: Record<string, { min: number; max: number }> = {
-  interval: { min: 1, max: 120 },
   answerIntervalMin: { min: 1, max: 300 },
-  answerIntervalMax: { min: 1, max: 300 },
-  submitDelayMin: { min: 1, max: 600 },
-  submitDelayMax: { min: 1, max: 600 }
+  answerIntervalMax: { min: 1, max: 300 }
 };
 
 const asBool = (value: unknown, fallback: boolean): boolean => typeof value === "boolean" ? value : fallback;
@@ -125,11 +120,11 @@ export const buildScriptConfig = (overrides: ScriptConfig): ScriptConfig => {
   if ((result.answerIntervalMin as number) > (result.answerIntervalMax as number)) {
     result.answerIntervalMax = result.answerIntervalMin;
   }
-  if ((result.submitDelayMin as number) > (result.submitDelayMax as number)) {
-    result.submitDelayMax = result.submitDelayMin;
-  }
-  // 正确率必须是能参与数值比较的数；非数字会让"低于阈值就不提交"这条判断失效
-  result.minAccuracy = asClampedNumber(source.minAccuracy, 0.8, 0, 1);
+  // 这些参数属于实现细节。忽略历史 preferences.json 中的旧覆盖值，避免已删除的设置继续影响行为。
+  result.interval = DEFAULT_SCRIPT_CONFIG.interval;
+  result.submitDelayMin = DEFAULT_SCRIPT_CONFIG.submitDelayMin;
+  result.submitDelayMax = DEFAULT_SCRIPT_CONFIG.submitDelayMax;
+  result.minAccuracy = DEFAULT_SCRIPT_CONFIG.minAccuracy;
 
   result.aiModel = asTrimmed(source.aiModel, DEFAULT_SCRIPT_CONFIG.aiModel as string, 128)
     || (DEFAULT_SCRIPT_CONFIG.aiModel as string);

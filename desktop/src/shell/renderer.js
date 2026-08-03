@@ -18,21 +18,18 @@ let runtimePlatform = "";
 const AUTOMATION = [
   ["autoVideo", "自动播放视频与音频", "视频任务点自动播放并等待完成"],
   ["autoJump", "自动切换到下一章", "一章做完后自动往下走；关掉就停在原地等你"],
-  ["autoSubmit", "自动提交章节测验", "正确率低于下方阈值时仍会暂存不交"],
+  ["autoSubmit", "自动提交章节测验", "仅在全部题目都已获得答案时提交"],
   ["autoExam", "考试自动翻下一题", "只作用于考试页面"]
 ];
 
 // 脚本在标签打开时对配置做快照，这些项改了要重开标签
 const RELOAD_KEYS = [
   "autoVideo", "autoJump", "autoSubmit", "autoExam",
-  "interval", "answerIntervalMin", "answerIntervalMax",
-  "submitDelayMin", "submitDelayMax", "minAccuracy"
+  "answerIntervalMin", "answerIntervalMax"
 ];
 
 const NUMBER_KEYS = [
-  "interval", "minAccuracy",
-  "answerIntervalMin", "answerIntervalMax",
-  "submitDelayMin", "submitDelayMax"
+  "answerIntervalMin", "answerIntervalMax"
 ];
 
 const say = (message, error = false) => {

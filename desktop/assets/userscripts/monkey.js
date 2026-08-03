@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         药大拾间·学习通助手
 // @namespace    askAuto
-// @version      2.2.11
+// @version      2.2.12
 // @author       shushoujiu
 // @description  药大拾间桌面端的学习通助手：自动完成任务点，章节测验与考试由独立答题 AI 作答。
 // @icon         https://vitejs.dev/logo.svg
@@ -136,7 +136,7 @@
       _GM_setValue("config", config);
     }
     return config;
-  }, defaultConfig$1 = { debugger: false, autoAnswer: true, autoVideo: true, autoJump: true, autoSubmit: false, thtoken: "", yztoken: "", gptKey: "", gptModel: "gpt-3.5-turbo", gpt: false, gptType: ["0", "1", "2", "3", "4", "5", "6", "7"], interval: 3, answerIntervalMin: 8, answerIntervalMax: 20, submitDelayMin: 20, submitDelayMax: 40, minAccuracy: 0.8, autoExam: true, hideExam: false, notice: "答案来自独立答题 AI，只发送当前题目内容。访问与额度策略由服务器实时判定；新生限时开放期间免登录、不限次数。请遵守学校的学术规范。", deepseekKey: "", deepseekEnabled: false, deepseekModel: "deepseek-reasoner", customApiUrl: "", customApiKey: "", customApiEnabled: false, aiEnabled: true, aiApiKey: "", aiApiUrl: "", aiModel: "deepseek-reasoner", answerDepth: "low" }, useformStore = pinia$1.defineStore({ id: "formstore", state: () => ({ forminput: getConfig() }) });
+  }, defaultConfig$1 = { debugger: false, autoAnswer: true, autoVideo: true, autoJump: true, autoSubmit: false, thtoken: "", yztoken: "", gptKey: "", gptModel: "gpt-3.5-turbo", gpt: false, gptType: ["0", "1", "2", "3", "4", "5", "6", "7"], interval: 3, answerIntervalMin: 8, answerIntervalMax: 20, submitDelayMin: 20, submitDelayMax: 40, minAccuracy: 1, autoExam: true, hideExam: false, notice: "答案来自独立答题 AI，只发送当前题目内容。访问与额度策略由服务器实时判定；新生限时开放期间免登录、不限次数。请遵守学校的学术规范。", deepseekKey: "", deepseekEnabled: false, deepseekModel: "deepseek-reasoner", customApiUrl: "", customApiKey: "", customApiEnabled: false, aiEnabled: true, aiApiKey: "", aiApiUrl: "", aiModel: "deepseek-reasoner", answerDepth: "low" }, useformStore = pinia$1.defineStore({ id: "formstore", state: () => ({ forminput: getConfig() }) });
   let defaultConfig = getConfig();
   class ServerApi {
     constructor(window2 = _unsafeWindow) {
@@ -2069,11 +2069,11 @@
         const submitConfig = getConfig();
         if (!submitConfig.autoSubmit) {
           this.askStore.log("已填写章节测验答案；自动提交已关闭，请检查后手动提交", "success");
-          this.askStore.task.status = `等待手动提交,正确率:${succ}/${ques.length}`;
+          this.askStore.task.status = `等待手动提交，已填写 ${succ}/${ques.length} 题`;
           return void resolve();
         }
-        if (succ / ques.length < submitConfig.minAccuracy) {
-          this.askStore.log("章节测验正确率不足，暂存", "error");
+        if (succ < ques.length) {
+          this.askStore.log(`仍有 ${ques.length - succ} 道题未获得答案，已暂存且不会自动提交`, "error");
           iframeWindow.alert = function(e) { console.log("alert 方法被阻止", e); };
           iframeWindow.noSubmit();
         } else {
@@ -2093,7 +2093,7 @@
           this.askStore.log("正在刷新页面...", "info");
           iframeWindow.location.reload();
         }
-        if (taskCurrent()) this.askStore.task.status = `章节测验已完成，等待切换,正确率:${succ}/${ques.length}`;
+        if (taskCurrent()) this.askStore.task.status = `章节测验已完成，已填写 ${succ}/${ques.length} 题，等待切换`;
         resolve();
       });
     }
