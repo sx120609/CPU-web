@@ -122,7 +122,10 @@ export async function checkUserScriptUpdate(options: UpdateOptions): Promise<Use
     return { status: "current", source: options.currentSource, manifest };
   }
 
-  const sourceResponse = await fetchImpl(new URL(USER_SCRIPT_SOURCE_PATH, options.origin), {
+  const sourceUrl = new URL(manifest.sourceUrl, options.origin);
+  // 用发布哈希隔离每一版正文，避免反向代理把刚发布的清单与旧正文拼在一起。
+  sourceUrl.searchParams.set("sha256", manifest.sha256);
+  const sourceResponse = await fetchImpl(sourceUrl, {
     headers: { accept: "application/javascript" },
     cache: "no-store",
     signal: AbortSignal.timeout(15_000),

@@ -46,6 +46,10 @@ import {
 import { calculateSponsorAssistantPoints } from "../src/services/campusAssistantPoints";
 import { buildOAuthAiRequestBody, OAUTH_AI_INSTRUCTIONS } from "../src/routes/oauth";
 import { readDesktopUserScriptRelease } from "../src/services/desktopUserScript";
+import {
+  learningAssistantAiResponse,
+  parseLearningAssistantAnswer,
+} from "../src/services/learningAssistantAi";
 import { mergeAssistantHistorySessions } from "../../web/src/utils/assistantHistorySync";
 import { normalizeAdjacentStrongDelimiters } from "../../web/src/utils/markdownNormalize";
 
@@ -123,7 +127,7 @@ test("删除标记会阻止旧本地或云端快照复活会话", () => {
 test("云端学习通助手脚本提供可校验的版本与正文", async () => {
   const release = await readDesktopUserScriptRelease();
   assert.equal(release.name, "药大拾间·学习通助手");
-  assert.equal(release.version, "2.2.7");
+  assert.equal(release.version, "2.2.8");
   assert.match(release.sha256, /^[a-f0-9]{64}$/);
   assert.equal(release.size, Buffer.byteLength(release.source, "utf8"));
   assert.match(release.source, /cpu-learning-personal-center-guide-v3/);
@@ -135,10 +139,26 @@ test("云端学习通助手脚本提供可校验的版本与正文", async () =>
   assert.match(release.source, /章节测验答完自动提交/);
   assert.match(release.source, /cpu-learning-assistant-position-v1/);
   assert.match(release.source, /解题思路/);
+  assert.match(release.source, /data\.learning_answer/);
   assert.doesNotMatch(release.source, /cpu-la-footer/);
   assert.doesNotMatch(release.source, /切记填写完要刷新页面才会生效/);
   assert.doesNotMatch(release.source, /题库秘钥配置请点击这个按钮|label:\s*"公告"|label:\s*"运行框"/);
   assert.doesNotMatch(release.source, /Auto Ask/);
+});
+
+test("学习通答题 AI 返回独立的答案与公开解题思路字段", () => {
+  assert.deepEqual(
+    parseLearningAssistantAnswer("答案：C\n解题思路：由盖斯定律相减可得反应热。"),
+    { answer: "C", explanation: "由盖斯定律相减可得反应热。" },
+  );
+  assert.deepEqual(
+    parseLearningAssistantAnswer("**答案：** C\n**解题思路：** 比较四个选项的定义。"),
+    { answer: "C", explanation: "比较四个选项的定义。" },
+  );
+  assert.deepEqual(
+    learningAssistantAiResponse("答案：正确\n解题思路：题干符合定义。 ").learning_answer,
+    { answer: "正确", explanation: "题干符合定义。" },
+  );
 });
 
 test("电费问题能稳定匹配宿舍电费直达入口", () => {

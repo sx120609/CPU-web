@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         药大拾间·学习通助手
 // @namespace    askAuto
-// @version      2.2.7
+// @version      2.2.8
 // @author       shushoujiu
 // @description  药大拾间桌面端的学习通助手：自动完成任务点，章节测验与考试由独立答题 AI 作答。
 // @icon         https://vitejs.dev/logo.svg
@@ -370,7 +370,13 @@
               if (content) {
                 const typeNames = { "0": "单选题", "1": "多选题", "2": "填空题", "3": "判断题", "4": "简答题", "5": "名词解释", "6": "论述题", "7": "计算题" };
                 const typeName = typeNames[questionTypeId] || "单选题";
-                const parsedReply = parseLearningAiReply(content);
+                const structuredReply = data.learning_answer;
+                const parsedReply = structuredReply && typeof structuredReply === "object"
+                  ? {
+                      answer: String(structuredReply.answer || "").trim(),
+                      explanation: String(structuredReply.explanation || "").trim()
+                    }
+                  : parseLearningAiReply(content);
                 const answerContent = parsedReply.answer || content;
                 const explanation = parsedReply.explanation;
                 if (questionTypeId === "3") {

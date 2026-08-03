@@ -64,8 +64,12 @@ siteRouter.get("/userscripts/chaoxing-helper/source", async (req, res, next) => 
   try {
     const release = await readDesktopUserScriptRelease();
     const etag = `"sha256-${release.sha256}"`;
-    res.setHeader("Cache-Control", "public, max-age=300, must-revalidate");
+    // 清单和正文必须作为同一个发布读取。这里禁止中间代理缓存或压缩变换，
+    // 避免部署切换瞬间出现“新清单 + 旧正文”，被客户端的大小/哈希校验拒绝。
+    res.setHeader("Cache-Control", "no-store, no-transform");
+    res.setHeader("Pragma", "no-cache");
     res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+    res.setHeader("Content-Length", String(release.size));
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("ETag", etag);
     res.setHeader("X-Userscript-Version", release.version);
