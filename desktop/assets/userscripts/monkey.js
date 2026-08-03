@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         药大拾间·学习通助手
 // @namespace    askAuto
-// @version      2.2.5
+// @version      2.2.6
 // @author       shushoujiu
 // @description  药大拾间桌面端的学习通助手：自动完成任务点，章节测验与考试由独立答题 AI 作答。
 // @icon         https://vitejs.dev/logo.svg
@@ -40,25 +40,6 @@
 // 随客户端分发并长期维护，留着会让脚本管理器把我们的改动更新回上游版本。
 // 原脚本仍可在 https://greasyfork.org/scripts/436994 获取（见 THIRD_PARTY_NOTICES.md）。
 // ==/UserScript==
-
-(t=>{if(typeof GM_addStyle=="function"){GM_addStyle(t);return}const i=document.createElement("style");i.textContent=t,document.head.append(i)})(" .dialog-footer button[data-v-6ed29f7f]:first-child{margin-right:10px}#csbutton[data-v-6ed29f7f]{display:none!important}#zeokdjg[data-v-c3c6b09f]{position:fixed;left:10px;bottom:50vh;z-index:9999}.question_btn[data-v-c3c6b09f]{width:40px;height:40px;border-radius:5px;margin:5px}.question_div[data-v-c3c6b09f]{height:200px}.question_ti[data-v-c3c6b09f]{margin:10px 0 20px}.cx_log[data-v-c3c6b09f]{margin:2px 0}.status_log[data-v-c3c6b09f]{margin-top:10px}.dialog-footer button[data-v-c3c6b09f]:first-child{margin-right:10px} ");
-
-// 脚本自带的配置入口由客户端界面接管，这里只把它藏起来。
-// 注意用 CSS 隐藏而不是 remove()：这些节点由 Vue 管理，直接摘掉 DOM 但虚拟 DOM 里
-// 还留着对应 vnode，下次重渲染（每条日志、每道题都会触发）Vue 会在已 detach 的节点上
-// patch，报 "Cannot read properties of null (reading 'insertBefore')" 之类的错。
-const hideConfigControls = () => {
-  document.querySelectorAll("#csbutton, button, .el-text").forEach((element) => {
-    if (element.dataset.cpuHidden) return;
-    const text = element.textContent || "";
-    if (element.id === "csbutton" || text.includes("打开配置") || text.includes("题库秘钥配置请点击这个按钮")) {
-      element.dataset.cpuHidden = "1";
-      element.style.setProperty("display", "none", "important");
-    }
-  });
-};
-new MutationObserver(hideConfigControls).observe(document.documentElement, { childList: true, subtree: true });
-hideConfigControls();
 
 (async function (vue, pinia$1, ElementPlus, md5, $$1) {
   'use strict';
@@ -154,43 +135,7 @@ hideConfigControls();
       _GM_setValue("config", config);
     }
     return config;
-  }, defaultConfig$1 = { debugger: false, autoAnswer: true, autoVideo: true, autoJump: true, autoSubmit: false, thtoken: "", yztoken: "", gptKey: "", gptModel: "gpt-3.5-turbo", gpt: false, gptType: ["0", "1", "2", "3", "4", "5", "6", "7"], interval: 3, answerIntervalMin: 8, answerIntervalMax: 20, submitDelayMin: 20, submitDelayMax: 40, minAccuracy: 0.8, autoExam: true, hideExam: false, notice: "答案来自独立答题 AI，只发送当前题目内容。访问与额度策略由服务器实时判定；新生限时开放期间免登录、不限次数。请遵守学校的学术规范。", deepseekKey: "", deepseekEnabled: false, deepseekModel: "deepseek-reasoner", customApiUrl: "", customApiKey: "", customApiEnabled: false, aiEnabled: true, aiApiKey: "", aiApiUrl: "", aiModel: "deepseek-reasoner" }, userConfig = [{ name: "base", label: "基础配置", config: [{ name: "interval", label: "通用间隔(秒)", type: "number", value: defaultConfig$1.interval, desc: "通用间隔，用于脚本运行切换" }, { name: "answerIntervalMin", label: "答题间隔最小值(秒)", type: "number", value: defaultConfig$1.answerIntervalMax, desc: "每道题之间的最小等待时间" }, { name: "answerIntervalMax", label: "答题间隔最大值(秒)", type: "number", value: defaultConfig$1.answerIntervalMax, desc: "每道题之间的最大等待时间" }, { name: "submitDelayMin", label: "提交前延迟最小值(秒)", type: "number", value: defaultConfig$1.submitDelayMin, desc: "提交前的最小等待时间" }, { name: "submitDelayMax", label: "提交前延迟最大值(秒)", type: "number", value: defaultConfig$1.submitDelayMax, desc: "提交前的最大等待时间" }, { name: "customApiEnabled", label: "启用自定义题库", type: "switch", value: defaultConfig$1.customApiEnabled, desc: "开启后，会优先使用自定义题库接口查询答案" }, { name: "customApiUrl", label: "自定义题库地址", type: "input", value: defaultConfig$1.customApiUrl, desc: "你的题库服务器API地址，例如：http://localhost:8080/api/query" }, { name: "customApiKey", label: "自定义题库密钥", type: "input", value: defaultConfig$1.customApiKey, desc: "你的题库服务器API密钥（如果有的话）" }, { name: "aiEnabled", label: "启用AI自动答题", type: "switch", value: defaultConfig$1.aiEnabled, desc: "开启后，当题库查询失败时会调用CPU-web AI" }, { name: "aiModel", label: "AI模型名称", type: "input", value: defaultConfig$1.aiModel, desc: "CPU-web AI模型名称" }] }, { name: "chapter", label: "章节配置", config: [{ name: "autoAnswer", label: "自动答题", type: "switch", value: defaultConfig$1.autoAnswer, desc: "开启后，会自动答题" }, { name: "autoVideo", label: "自动视频", type: "switch", value: defaultConfig$1.autoVideo, desc: "开启后，会自动观看视频" }, { name: "autoJump", label: "自动切换", type: "switch", value: defaultConfig$1.autoVideo, desc: "开启后，会自动切换章节" }, { name: "autoSubmit", label: "答完后自动提交", type: "switch", value: defaultConfig$1.autoSubmit, desc: "关闭后只填写章节测验答案，等待你检查并手动提交" }, { name: "minAccuracy", label: "最低正确率", type: "input", value: defaultConfig$1.minAccuracy, desc: "不满足最低正确率则不会自动提交答案" }] }, { name: "exam", label: "作业/考试配置", config: [{ name: "autoExam", label: "考试自动切换", type: "switch", value: defaultConfig$1.autoExam, desc: "开启后，会考试会自动切换" }] }], useformStore = pinia$1.defineStore({ id: "formstore", state: () => ({ forminput: getConfig(), dialogV: false, activeName: "base" }), actions: { saveConfig(forminput) {
-    _GM_setValue("config", forminput);
-  } } });
-  var export_helper_default = (sfc, props) => {
-    let target = sfc.__vccOpts || sfc;
-    for (let [key, val] of props)
-      target[key] = val;
-    return target;
-  }, aim_vue_vue_type_script_lang_default = { name: "Aim" }, _hoisted_12$1 = { xmlns: "http://www.w3.org/2000/svg", viewBox: "0 0 1024 1024" }, _hoisted_42 = [vue.createElementVNode("path", { fill: "currentColor", d: "M512 896a384 384 0 1 0 0-768 384 384 0 0 0 0 768zm0 64a448 448 0 1 1 0-896 448 448 0 0 1 0 896z" }, null, -1), vue.createElementVNode("path", { fill: "currentColor", d: "M512 96a32 32 0 0 1 32 32v192a32 32 0 0 1-64 0V128a32 32 0 0 1 32-32zm0 576a32 32 0 0 1 32 32v192a32 32 0 1 1-64 0V704a32 32 0 0 1 32-32zM96 512a32 32 0 0 1 32-32h192a32 32 0 0 1 0 64H128a32 32 0 0 1-32-32zm576 0a32 32 0 0 1 32-32h192a32 32 0 1 1 0 64H704a32 32 0 0 1-32-32z" }, null, -1)];
-  var aim_default = export_helper_default(aim_vue_vue_type_script_lang_default, [["render", function(_ctx, _cache, $props, $setup, $data, $options) {
-    return vue.openBlock(), vue.createElementBlock("svg", _hoisted_12$1, _hoisted_42);
-  }], ["__file", "aim.vue"]]), setting_vue_vue_type_script_lang_default = { name: "Setting" }, _hoisted_1231 = { xmlns: "http://www.w3.org/2000/svg", viewBox: "0 0 1024 1024" }, _hoisted_3230 = [vue.createElementVNode("path", { fill: "currentColor", d: "M600.704 64a32 32 0 0 1 30.464 22.208l35.2 109.376c14.784 7.232 28.928 15.36 42.432 24.512l112.384-24.192a32 32 0 0 1 34.432 15.36L944.32 364.8a32 32 0 0 1-4.032 37.504l-77.12 85.12a357.12 357.12 0 0 1 0 49.024l77.12 85.248a32 32 0 0 1 4.032 37.504l-88.704 153.6a32 32 0 0 1-34.432 15.296L708.8 803.904c-13.44 9.088-27.648 17.28-42.368 24.512l-35.264 109.376A32 32 0 0 1 600.704 960H423.296a32 32 0 0 1-30.464-22.208L357.696 828.48a351.616 351.616 0 0 1-42.56-24.64l-112.32 24.256a32 32 0 0 1-34.432-15.36L79.68 659.2a32 32 0 0 1 4.032-37.504l77.12-85.248a357.12 357.12 0 0 1 0-48.896l-77.12-85.248A32 32 0 0 1 79.68 364.8l88.704-153.6a32 32 0 0 1 34.432-15.296l112.32 24.256c13.568-9.152 27.776-17.408 42.56-24.64l35.2-109.312A32 32 0 0 1 423.232 64H600.64zm-23.424 64H446.72l-36.352 113.088-24.512 11.968a294.113 294.113 0 0 0-34.816 20.096l-22.656 15.36-116.224-25.088-65.28 113.152 79.68 88.192-1.92 27.136a293.12 293.12 0 0 0 0 40.192l1.92 27.136-79.808 88.192 65.344 113.152 116.224-25.024 22.656 15.296a294.113 294.113 0 0 0 34.816 20.096l24.512 11.968L446.72 896h130.688l36.48-113.152 24.448-11.904a288.282 288.282 0 0 0 34.752-20.096l22.592-15.296 116.288 25.024 65.28-113.152-79.744-88.192 1.92-27.136a293.12 293.12 0 0 0 0-40.256l-1.92-27.136 79.808-88.128-65.344-113.152-116.288 24.96-22.592-15.232a287.616 287.616 0 0 0-34.752-20.096l-24.448-11.904L577.344 128zM512 320a192 192 0 1 1 0 384 192 192 0 0 1 0-384zm0 64a128 128 0 1 0 0 256 128 128 0 0 0 0-256z" }, null, -1)];
-  var setting_default = export_helper_default(setting_vue_vue_type_script_lang_default, [["render", function(_ctx, _cache, $props, $setup, $data, $options) {
-    return vue.openBlock(), vue.createElementBlock("svg", _hoisted_1231, _hoisted_3230);
-  }], ["__file", "setting.vue"]]);
-  const _sfc_main$1 = vue.defineComponent({ components: {}, setup() {
-    const formstoreObj = useformStore(), { forminput, dialogV, activeName } = pinia$1.storeToRefs(formstoreObj), ruleFormRef = vue.ref(), rules = vue.reactive({ interval: [{ required: true, message: "间隔时间不能为空" }, { type: "number", message: "间隔时间必须为数字" }, { validator: (rule, value) => value >= 1 ? Promise.resolve() : Promise.reject("间隔时间必须大于等于1") }], answerInterval: [{ required: true, message: "答题间隔不能为空" }, { type: "number", message: "答题间隔必须为数字" }, { validator: (rule, value) => value >= 1 ? Promise.resolve() : Promise.reject("答题间隔必须大于等于1") }], token: [{ validator: (rule, value) => {
-      if (value) {
-        return /^[a-zA-Z0-9]{6,}$/.test(value) ? Promise.resolve() : Promise.reject("token格式错误");
-      }
-      return Promise.resolve();
-    } }] });
-    return { dialogV, activeName, ruleFormRef, forminput, rules, submitForm: async (formEl) => {
-      formEl && await formEl.validate((valid, fields) => {
-        valid && (formstoreObj.saveConfig(forminput.value), ElementPlus.ElNotification({ title: "Success", message: "配置保存成功,请自行刷新页面", type: "success" }), dialogV.value = false);
-      });
-    }, userConfig, Setting: setting_default };
-  } }), _export_sfc = (sfc, props) => {
-    const target = sfc.__vccOpts || sfc;
-    for (const [key, val] of props)
-      target[key] = val;
-    return target;
-  }, _hoisted_1$1 = { class: "dialog-footer" };
-  const App = _export_sfc(_sfc_main$1, [["render", function(_ctx, _cache, $props, $setup, $data, $options) {
-    const _component_el_button = vue.resolveComponent("el-button"), _component_el_switch = vue.resolveComponent("el-switch"), _component_el_input = vue.resolveComponent("el-input"), _component_el_input_number = vue.resolveComponent("el-input-number"), _component_el_option = vue.resolveComponent("el-option"), _component_el_select = vue.resolveComponent("el-select"), _component_el_checkbox = vue.resolveComponent("el-checkbox"), _component_el_checkbox_group = vue.resolveComponent("el-checkbox-group"), _component_el_tooltip = vue.resolveComponent("el-tooltip"), _component_el_form_item = vue.resolveComponent("el-form-item"), _component_el_tab_pane = vue.resolveComponent("el-tab-pane"), _component_el_tabs = vue.resolveComponent("el-tabs"), _component_el_form = vue.resolveComponent("el-form"), _component_el_dialog = vue.resolveComponent("el-dialog");
-    return vue.openBlock(), vue.createElementBlock(vue.Fragment, null, [vue.createVNode(_component_el_button, { type: "danger", id: "csbutton", icon: _ctx.Setting, circle: "", onClick: _cache[0] || (_cache[0] = ($event) => _ctx.dialogV = !_ctx.dialogV) }, null, 8, ["icon"]), vue.createVNode(_component_el_dialog, { modelValue: _ctx.dialogV, "onUpdate:modelValue": _cache[4] || (_cache[4] = ($event) => _ctx.dialogV = $event), title: "药大拾间·学习通助手", width: "30%", modal: false, center: "", draggable: "" }, { footer: vue.withCtx(() => [vue.createElementVNode("span", _hoisted_1$1, [vue.createVNode(_component_el_button, { onClick: _cache[2] || (_cache[2] = ($event) => _ctx.dialogV = false) }, { default: vue.withCtx(() => [vue.createTextVNode("取消")]), _: 1 }), vue.createVNode(_component_el_button, { type: "primary", onClick: _cache[3] || (_cache[3] = ($event) => _ctx.submitForm(_ctx.ruleFormRef)) }, { default: vue.withCtx(() => [vue.createTextVNode("保存")]), _: 1 })])]), default: vue.withCtx(() => [vue.createVNode(_component_el_form, { ref: "ruleFormRef", rules: _ctx.rules, model: _ctx.forminput, class: "demo-ruleForm" }, { default: vue.withCtx(() => [vue.createVNode(_component_el_tabs, { class: "demo-tabs", modelValue: _ctx.activeName, "onUpdate:modelValue": _cache[1] || (_cache[1] = ($event) => _ctx.activeName = $event) }, { default: vue.withCtx(() => [(vue.openBlock(true), vue.createElementBlock(vue.Fragment, null, vue.renderList(_ctx.userConfig, (item) => (vue.openBlock(), vue.createBlock(_component_el_tab_pane, { key: item.name, label: item.label, name: item.name }, { default: vue.withCtx(() => [(vue.openBlock(true), vue.createElementBlock(vue.Fragment, null, vue.renderList(item.config, (item1) => (vue.openBlock(), vue.createBlock(_component_el_form_item, { label: item1.label, prop: item1.name }, { default: vue.withCtx(() => [vue.createVNode(_component_el_tooltip, { class: "box-item", effect: "dark", content: item1.desc || "", placement: "top" }, { default: vue.withCtx(() => ["switch" === item1.type ? (vue.openBlock(), vue.createBlock(_component_el_switch, { key: 0, modelValue: _ctx.forminput[item1.name], "onUpdate:modelValue": ($event) => _ctx.forminput[item1.name] = $event }, null, 8, ["modelValue", "onUpdate:modelValue"])) : "input" === item1.type ? (vue.openBlock(), vue.createBlock(_component_el_input, { key: 1, modelValue: _ctx.forminput[item1.name], "onUpdate:modelValue": ($event) => _ctx.forminput[item1.name] = $event }, null, 8, ["modelValue", "onUpdate:modelValue"])) : "number" === item1.type ? (vue.openBlock(), vue.createBlock(_component_el_input_number, { key: 2, modelValue: _ctx.forminput[item1.name], "onUpdate:modelValue": ($event) => _ctx.forminput[item1.name] = $event }, null, 8, ["modelValue", "onUpdate:modelValue"])) : "select" === item1.type ? (vue.openBlock(), vue.createBlock(_component_el_select, { key: 3, modelValue: _ctx.forminput[item1.name], "onUpdate:modelValue": ($event) => _ctx.forminput[item1.name] = $event, placeholder: "请选择" }, { default: vue.withCtx(() => [(vue.openBlock(true), vue.createElementBlock(vue.Fragment, null, vue.renderList(item1.options, (item2) => (vue.openBlock(), vue.createBlock(_component_el_option, { key: item2.value, label: item2.label, value: item2.value }, null, 8, ["label", "value"]))), 128))]), _: 2 }, 1032, ["modelValue", "onUpdate:modelValue"])) : "checkbox" === item1.type ? (vue.openBlock(), vue.createBlock(_component_el_checkbox_group, { key: 4, modelValue: _ctx.forminput[item1.name], "onUpdate:modelValue": ($event) => _ctx.forminput[item1.name] = $event }, { default: vue.withCtx(() => [(vue.openBlock(true), vue.createElementBlock(vue.Fragment, null, vue.renderList(item1.options, (item2) => (vue.openBlock(), vue.createBlock(_component_el_checkbox, { key: item2.value, label: item2.value, name: item2.value }, { default: vue.withCtx(() => [vue.createTextVNode(vue.toDisplayString(item2.label), 1)]), _: 2 }, 1032, ["label", "name"]))), 128))]), _: 2 }, 1032, ["modelValue", "onUpdate:modelValue"])) : vue.createCommentVNode("", true)]), _: 2 }, 1032, ["content"])]), _: 2 }, 1032, ["label", "prop"]))), 256))]), _: 2 }, 1032, ["label", "name"]))), 128))]), _: 1 }, 8, ["modelValue"])]), _: 1 }, 8, ["rules", "model"])]), _: 1 }, 8, ["modelValue"])], 64);
-  }], ["__scopeId", "data-v-6ed29f7f"]]);
+  }, defaultConfig$1 = { debugger: false, autoAnswer: true, autoVideo: true, autoJump: true, autoSubmit: false, thtoken: "", yztoken: "", gptKey: "", gptModel: "gpt-3.5-turbo", gpt: false, gptType: ["0", "1", "2", "3", "4", "5", "6", "7"], interval: 3, answerIntervalMin: 8, answerIntervalMax: 20, submitDelayMin: 20, submitDelayMax: 40, minAccuracy: 0.8, autoExam: true, hideExam: false, notice: "答案来自独立答题 AI，只发送当前题目内容。访问与额度策略由服务器实时判定；新生限时开放期间免登录、不限次数。请遵守学校的学术规范。", deepseekKey: "", deepseekEnabled: false, deepseekModel: "deepseek-reasoner", customApiUrl: "", customApiKey: "", customApiEnabled: false, aiEnabled: true, aiApiKey: "", aiApiUrl: "", aiModel: "deepseek-reasoner" }, useformStore = pinia$1.defineStore({ id: "formstore", state: () => ({ forminput: getConfig() }) });
   let defaultConfig = getConfig();
   class ServerApi {
     constructor(window2 = _unsafeWindow) {
@@ -1907,35 +1852,13 @@ hideConfigControls();
     this.task.log.length > 20 && this.task.log.shift(), this.task.log.push({ time: (/* @__PURE__ */ new Date()).toLocaleTimeString(), msg, type: level }), reportToHost("log", msg);
   }, msg(msg) {
     this.task.status = msg, reportToHost("status", msg);
-  } } }), _sfc_main = vue.defineComponent({ setup() {
-    const askstore = useAskStore(), { dialogVisible, count, questionList, task } = pinia$1.storeToRefs(askstore), askActiveName = vue.ref("first"), askActiveNames = vue.ref(["1"]), msg = vue.ref("<h3>药大拾间·学习通助手</h3><br><p>答案来自独立答题 AI，只发送当前题干、选项和题目图片，不携带站内知识库或用户资料。访问与额度策略由服务器实时判定；新生限时开放期间免登录、不限次数。</p><br><p style='color:#c2410c;'>请自行判断使用边界，并遵守学校的学术规范。</p><br><p>进入具体课程后，可打开章节、作业或考试页面；助手会自动开始，运行状态与处理进度可在本窗口的「运行框」和「运行日志」中查看。</p>"), formstoreObj = useformStore(), { forminput, dialogV, activeName } = pinia$1.storeToRefs(formstoreObj), ruleFormRef = vue.ref(), rules = vue.reactive({ interval: [{ required: true, message: "间隔时间不能为空" }, { type: "number", message: "间隔时间必须为数字" }, { validator: (rule, value) => value >= 1 ? Promise.resolve() : Promise.reject("间隔时间必须大于等于1") }], answerInterval: [{ required: true, message: "答题间隔不能为空" }, { type: "number", message: "答题间隔必须为数字" }, { validator: (rule, value) => value >= 1 ? Promise.resolve() : Promise.reject("答题间隔必须大于等于1") }], token: [{ validator: (rule, value) => {
-      if (value) {
-        return /^[a-zA-Z0-9]{6,}$/.test(value) ? Promise.resolve() : Promise.reject("token格式错误");
-      }
-      return Promise.resolve();
-    } }] });
-    return { count, dialogVisible, questionList, askActiveName, askActiveNames, task, msg, Aim: aim_default, handleClick: (e) => {
-      askstore.select(e);
-    }, dialogV, activeName, ruleFormRef, forminput, rules, submitForm: async (formEl) => {
-      formEl && await formEl.validate((valid, fields) => {
-        valid && (formstoreObj.saveConfig(forminput.value), ElementPlus.ElNotification({ title: "Success", message: "配置保存成功,请自行刷新页面", type: "success" }), dialogV.value = false);
-      });
-    }, userConfig, Setting: setting_default };
-  } }), _hoisted_1 = { class: "dialog-footer" }, _hoisted_2 = { key: 0 }, _hoisted_3 = { class: "question_div" }, _hoisted_4 = { class: "question_ti" }, _hoisted_5 = { key: 0 }, _hoisted_6 = { key: 1 }, _hoisted_7 = { key: 2 }, _hoisted_8 = ["innerHTML"], _hoisted_9 = { key: 0, style: { "margin-top": "20px" } }, _hoisted_10 = { key: 1 }, _hoisted_11 = { key: 2 }, _hoisted_12 = { height: "100px" }, _hoisted_13 = ["innerHTML"];
-  const Ask = _export_sfc(_sfc_main, [["render", function(_ctx, _cache, $props, $setup, $data, $options) {
-    const _component_el_button = vue.resolveComponent("el-button"), _component_el_switch = vue.resolveComponent("el-switch"), _component_el_input = vue.resolveComponent("el-input"), _component_el_input_number = vue.resolveComponent("el-input-number"), _component_el_option = vue.resolveComponent("el-option"), _component_el_select = vue.resolveComponent("el-select"), _component_el_checkbox = vue.resolveComponent("el-checkbox"), _component_el_checkbox_group = vue.resolveComponent("el-checkbox-group"), _component_el_tooltip = vue.resolveComponent("el-tooltip"), _component_el_form_item = vue.resolveComponent("el-form-item"), _component_el_tab_pane = vue.resolveComponent("el-tab-pane"), _component_el_tabs = vue.resolveComponent("el-tabs"), _component_el_form = vue.resolveComponent("el-form"), _component_el_dialog = vue.resolveComponent("el-dialog"), _component_el_text = vue.resolveComponent("el-text"), _component_el_skeleton = vue.resolveComponent("el-skeleton"), _component_el_card = vue.resolveComponent("el-card"), _component_el_divider = vue.resolveComponent("el-divider"), _component_el_col = vue.resolveComponent("el-col"), _component_el_row = vue.resolveComponent("el-row"), _component_el_scrollbar = vue.resolveComponent("el-scrollbar"), _component_el_tag = vue.resolveComponent("el-tag"), _component_el_alert = vue.resolveComponent("el-alert"), _component_el_empty = vue.resolveComponent("el-empty");
-    return vue.openBlock(), vue.createElementBlock(vue.Fragment, null, [vue.createVNode(_component_el_button, { type: "danger", id: "csbutton", icon: _ctx.Setting, circle: "", onClick: _cache[0] || (_cache[0] = ($event) => _ctx.dialogV = !_ctx.dialogV) }, null, 8, ["icon"]), vue.createVNode(_component_el_dialog, { modelValue: _ctx.dialogV, "onUpdate:modelValue": _cache[4] || (_cache[4] = ($event) => _ctx.dialogV = $event), title: "药大拾间·学习通助手", width: "30%", modal: false, center: "", draggable: "" }, { footer: vue.withCtx(() => [vue.createElementVNode("span", _hoisted_1, [vue.createVNode(_component_el_button, { onClick: _cache[2] || (_cache[2] = ($event) => _ctx.dialogV = false) }, { default: vue.withCtx(() => [vue.createTextVNode("取消")]), _: 1 }), vue.createVNode(_component_el_button, { type: "primary", onClick: _cache[3] || (_cache[3] = ($event) => _ctx.submitForm(_ctx.ruleFormRef)) }, { default: vue.withCtx(() => [vue.createTextVNode("保存")]), _: 1 })])]), default: vue.withCtx(() => [vue.createVNode(_component_el_form, { ref: "ruleFormRef", rules: _ctx.rules, model: _ctx.forminput, class: "demo-ruleForm" }, { default: vue.withCtx(() => [vue.createVNode(_component_el_tabs, { class: "demo-tabs", modelValue: _ctx.activeName, "onUpdate:modelValue": _cache[1] || (_cache[1] = ($event) => _ctx.activeName = $event) }, { default: vue.withCtx(() => [(vue.openBlock(true), vue.createElementBlock(vue.Fragment, null, vue.renderList(_ctx.userConfig, (item) => (vue.openBlock(), vue.createBlock(_component_el_tab_pane, { key: item.name, label: item.label, name: item.name }, { default: vue.withCtx(() => [(vue.openBlock(true), vue.createElementBlock(vue.Fragment, null, vue.renderList(item.config, (item1) => (vue.openBlock(), vue.createBlock(_component_el_form_item, { label: item1.label, prop: item1.name }, { default: vue.withCtx(() => [vue.createVNode(_component_el_tooltip, { class: "box-item", effect: "dark", content: item1.desc || "", placement: "top" }, { default: vue.withCtx(() => ["switch" === item1.type ? (vue.openBlock(), vue.createBlock(_component_el_switch, { key: 0, modelValue: _ctx.forminput[item1.name], "onUpdate:modelValue": ($event) => _ctx.forminput[item1.name] = $event }, null, 8, ["modelValue", "onUpdate:modelValue"])) : "input" === item1.type ? (vue.openBlock(), vue.createBlock(_component_el_input, { key: 1, modelValue: _ctx.forminput[item1.name], "onUpdate:modelValue": ($event) => _ctx.forminput[item1.name] = $event }, null, 8, ["modelValue", "onUpdate:modelValue"])) : "number" === item1.type ? (vue.openBlock(), vue.createBlock(_component_el_input_number, { key: 2, modelValue: _ctx.forminput[item1.name], "onUpdate:modelValue": ($event) => _ctx.forminput[item1.name] = $event }, null, 8, ["modelValue", "onUpdate:modelValue"])) : "select" === item1.type ? (vue.openBlock(), vue.createBlock(_component_el_select, { key: 3, modelValue: _ctx.forminput[item1.name], "onUpdate:modelValue": ($event) => _ctx.forminput[item1.name] = $event, placeholder: "请选择" }, { default: vue.withCtx(() => [(vue.openBlock(true), vue.createElementBlock(vue.Fragment, null, vue.renderList(item1.options, (item2) => (vue.openBlock(), vue.createBlock(_component_el_option, { key: item2.value, label: item2.label, value: item2.value }, null, 8, ["label", "value"]))), 128))]), _: 2 }, 1032, ["modelValue", "onUpdate:modelValue"])) : "checkbox" === item1.type ? (vue.openBlock(), vue.createBlock(_component_el_checkbox_group, { key: 4, modelValue: _ctx.forminput[item1.name], "onUpdate:modelValue": ($event) => _ctx.forminput[item1.name] = $event }, { default: vue.withCtx(() => [(vue.openBlock(true), vue.createElementBlock(vue.Fragment, null, vue.renderList(item1.options, (item2) => (vue.openBlock(), vue.createBlock(_component_el_checkbox, { key: item2.value, label: item2.value, name: item2.value }, { default: vue.withCtx(() => [vue.createTextVNode(vue.toDisplayString(item2.label), 1)]), _: 2 }, 1032, ["label", "name"]))), 128))]), _: 2 }, 1032, ["modelValue", "onUpdate:modelValue"])) : vue.createCommentVNode("", true)]), _: 2 }, 1032, ["content"])]), _: 2 }, 1032, ["label", "prop"]))), 256))]), _: 2 }, 1032, ["label", "name"]))), 128))]), _: 1 }, 8, ["modelValue"])]), _: 1 }, 8, ["rules", "model"])]), _: 1 }, 8, ["modelValue"]), (vue.openBlock(), vue.createBlock(vue.Teleport, { to: "body" }, [vue.createVNode(_component_el_button, { id: "zeokdjg", type: "success", plain: "", round: "", icon: _ctx.Aim, onClick: _cache[5] || (_cache[5] = ($event) => _ctx.dialogVisible = !_ctx.dialogVisible) }, { default: vue.withCtx(() => [vue.createTextVNode(vue.toDisplayString("暂未加载" == _ctx.task.name ? "等待任务加载" : "正在完成:" + _ctx.task.name), 1)]), _: 1 }, 8, ["icon"]), vue.createVNode(_component_el_dialog, { modelValue: _ctx.dialogVisible, "onUpdate:modelValue": _cache[8] || (_cache[8] = ($event) => _ctx.dialogVisible = $event), width: "400px", title: "药大拾间·学习通助手", modal: false, "append-to-body": false, "lock-scroll": false, center: "", draggable: "" }, { default: vue.withCtx(() => [vue.createVNode(_component_el_button, { style: { "margin-bottom": "20px" }, type: "primary", onClick: _cache[6] || (_cache[6] = ($event) => _ctx.dialogV = !_ctx.dialogV), plain: "" }, { default: vue.withCtx(() => [vue.createTextVNode("打开配置")]), _: 1 }), vue.createVNode(_component_el_text, { class: "mx-1", size: "large", type: "danger" }, { default: vue.withCtx(() => [vue.createTextVNode("题库秘钥配置请点击这个按钮")]), _: 1 }), vue.createVNode(_component_el_tabs, { modelValue: _ctx.askActiveName, "onUpdate:modelValue": _cache[7] || (_cache[7] = ($event) => _ctx.askActiveName = $event), class: "demo-tabs" }, { default: vue.withCtx(() => [vue.createVNode(_component_el_tab_pane, { label: "运行框", name: "first" }, { default: vue.withCtx(() => [_ctx.task.work.questionList.length > 0 ? (vue.openBlock(), vue.createElementBlock("div", _hoisted_2, [vue.createElementVNode("div", _hoisted_3, [vue.createVNode(_component_el_card, { shadow: "hover" }, { default: vue.withCtx(() => [vue.createElementVNode("h1", _hoisted_4, [vue.createVNode(_component_el_text, { size: "large", truncated: "" }, { default: vue.withCtx(() => [vue.createTextVNode(vue.toDisplayString(_ctx.task.work.inx + 1 + "." + _ctx.task.work.questionList[_ctx.task.work.inx].question), 1)]), _: 1 })]), _ctx.task.work.questionList[_ctx.task.work.inx].answer ? (vue.openBlock(), vue.createElementBlock("p", _hoisted_6, [vue.createElementVNode("p", null, [vue.createElementVNode("pre", null, vue.toDisplayString(_ctx.task.work.questionList[_ctx.task.work.inx].answer), 1)])])) : (vue.openBlock(), vue.createElementBlock("p", _hoisted_5, [vue.createVNode(_component_el_skeleton, { rows: 3, animated: "" })]))]), _: 1 })]), "考试" != _ctx.task.name ? (vue.openBlock(), vue.createBlock(_component_el_divider, { key: 0 }, { default: vue.withCtx(() => [vue.createTextVNode(" 题号 ")]), _: 1 })) : vue.createCommentVNode("", true), "考试" != _ctx.task.name ? (vue.openBlock(), vue.createBlock(_component_el_scrollbar, { key: 1, height: "100px" }, { default: vue.withCtx(() => [vue.createVNode(_component_el_row, null, { default: vue.withCtx(() => [(vue.openBlock(true), vue.createElementBlock(vue.Fragment, null, vue.renderList(_ctx.task.work.questionList, (item, index) => (vue.openBlock(), vue.createBlock(_component_el_col, { span: 4, key: index }, { default: vue.withCtx(() => [vue.createVNode(_component_el_button, { type: item.status || "info", plain: "", class: "question_btn", onClick: ($event) => _ctx.handleClick(index) }, { default: vue.withCtx(() => [vue.createTextVNode(vue.toDisplayString(index + 1), 1)]), _: 2 }, 1032, ["type", "onClick"])]), _: 2 }, 1024))), 128))]), _: 1 })]), _: 1 })) : vue.createCommentVNode("", true), _ctx.task.work.questionList[_ctx.task.work.inx].allAnswer ? (vue.openBlock(), vue.createElementBlock("div", _hoisted_7, [vue.createVNode(_component_el_divider, null, { default: vue.withCtx(() => [vue.createTextVNode(" 接口返回 ")]), _: 1 }), vue.createVNode(_component_el_tabs, { "tab-position": "left", style: { height: "200px" }, class: "demo-tabs" }, { default: vue.withCtx(() => [(vue.openBlock(true), vue.createElementBlock(vue.Fragment, null, vue.renderList(_ctx.task.work.questionList[_ctx.task.work.inx].allAnswer, (item, index) => (vue.openBlock(), vue.createBlock(_component_el_tab_pane, { label: item.form }, { default: vue.withCtx(() => [vue.createElementVNode("div", null, [vue.createElementVNode("div", { innerHTML: item.answer || "暂无答案" }, null, 8, _hoisted_8), null != item.num ? (vue.openBlock(), vue.createElementBlock("div", _hoisted_9, [vue.createElementVNode("div", null, [vue.createVNode(_component_el_tag, { class: "ml-2", type: "info" }, { default: vue.withCtx(() => [vue.createTextVNode("已用次数:" + vue.toDisplayString(item.usenum), 1)]), _: 2 }, 1024)]), vue.createElementVNode("div", null, [vue.createVNode(_component_el_tag, { class: "ml-2", type: "success" }, { default: vue.withCtx(() => [vue.createTextVNode("剩余次数:" + vue.toDisplayString(item.num), 1)]), _: 2 }, 1024)])])) : vue.createCommentVNode("", true)])]), _: 2 }, 1032, ["label"]))), 256))]), _: 1 })])) : vue.createCommentVNode("", true)])) : _ctx.task.video.status ? (vue.openBlock(), vue.createElementBlock("div", _hoisted_10, [vue.createVNode(_component_el_alert, { title: "倍速有风险，挂科两行泪", type: "error", center: "", "show-icon": "" }), vue.createVNode(_component_el_text, { class: "mx-1", size: "large", type: "danger" }, { default: vue.withCtx(() => [vue.createTextVNode(" 正在完成视频任务 ")]), _: 1 })])) : (vue.openBlock(), vue.createElementBlock("div", _hoisted_11, [vue.createElementVNode("div", _hoisted_12, [vue.createVNode(_component_el_empty, { description: _ctx.task.name }, null, 8, ["description"])])]))]), _: 1 }), vue.createVNode(_component_el_tab_pane, { label: "运行日志", name: "second" }, { default: vue.withCtx(() => [vue.createVNode(_component_el_scrollbar, { height: "200px" }, { default: vue.withCtx(() => [vue.createVNode(_component_el_row, null, { default: vue.withCtx(() => [vue.createVNode(_component_el_col, { span: 24 }, { default: vue.withCtx(() => [(vue.openBlock(true), vue.createElementBlock(vue.Fragment, null, vue.renderList(_ctx.task.log, (item, index) => (vue.openBlock(), vue.createElementBlock("p", { key: index, class: "cx_log" }, [vue.createVNode(_component_el_text, { size: "small", type: "info", class: "mx-1" }, { default: vue.withCtx(() => [vue.createTextVNode(vue.toDisplayString(item.time), 1)]), _: 2 }, 1024), vue.createVNode(_component_el_text, { class: "mx-1", type: "info" == item.type ? "" : item.type }, { default: vue.withCtx(() => [vue.createTextVNode(vue.toDisplayString(" " + item.msg), 1)]), _: 2 }, 1032, ["type"])]))), 128))]), _: 1 })]), _: 1 })]), _: 1 })]), _: 1 }), vue.createVNode(_component_el_tab_pane, { label: "公告", name: "msg" }, { default: vue.withCtx(() => [vue.createVNode(_component_el_card, { shadow: "hover" }, { default: vue.withCtx(() => [vue.createElementVNode("div", { innerHTML: _ctx.msg }, null, 8, _hoisted_13)]), _: 1 })]), _: 1 })]), _: 1 }, 8, ["modelValue"]), vue.createElementVNode("p", null, [_ctx.task.status ? (vue.openBlock(), vue.createBlock(_component_el_tag, { key: 0 }, { default: vue.withCtx(() => [vue.createTextVNode(vue.toDisplayString(_ctx.task.status), 1)]), _: 1 })) : vue.createCommentVNode("", true)])]), _: 1 }, 8, ["modelValue"])]))], 64);
-  }], ["__scopeId", "data-v-c3c6b09f"]]);
+  } } });
   class Cx {
     constructor() {
-      __publicField(this, "app");
       __publicField(this, "askStore");
       __publicField(this, "ServerApi");
       __publicField(this, "defaultConfig");
-      this.app = vue.createApp(Ask).use(ElementPlus).use(pinia$1.createPinia()), this.askStore = useAskStore(), this.ServerApi = new ServerApi(), this.defaultConfig = getConfig(), this.app.mount((() => {
-        const div = _unsafeWindow.top.document.createElement("div");
-        return div.id = "xxxxzx", _unsafeWindow.top.document.getElementById(div.id) || _unsafeWindow.top.document.body.append(div), div;
-      })());
+      this.askStore = useAskStore(pinia), this.ServerApi = new ServerApi(), this.defaultConfig = getConfig(), mountAssistantWorkspace(this.askStore);
     }
     innerbook() {
     }
@@ -2176,7 +2099,7 @@ hideConfigControls();
       await this.ServerApi.s(questionList, iframeWindow.location.href);
     }
   }
-  const pinia = pinia$1.createPinia(), app = vue.createApp(App).use(ElementPlus).use(pinia), _self = _unsafeWindow, top = _self.top, formStore = useformStore();
+  const pinia = pinia$1.createPinia(), _self = _unsafeWindow, top = _self.top, formStore = useformStore(pinia);
   const assistantName = "药大拾间·学习通助手";
   const assistantRuntime = (() => {
     let host = _self;
@@ -2228,63 +2151,238 @@ hideConfigControls();
     host[runtimeKey] = runtime;
     return runtime;
   })();
-  const mountAssistantRuntimeControls = () => {
-    if (_self !== top) return;
-    const controlId = "cpu-learning-runtime-controls";
-    if (top.document.getElementById(controlId)) return;
-    const style = top.document.createElement("style");
+  const mountAssistantWorkspace = (initialStore) => {
+    let host = _self;
+    try {
+      host = top && top.document ? top : _self;
+    } catch {
+      host = _self;
+    }
+    const workspaceKey = "__cpuLearningAssistantWorkspaceV2__";
+    if (host[workspaceKey]) {
+      host[workspaceKey].setStore(initialStore);
+      return host[workspaceKey];
+    }
+    const doc = host.document, panelId = "cpu-learning-assistant-panel", launcherId = "cpu-learning-assistant-launcher";
+    doc.getElementById("cpu-learning-runtime-controls") == null ? void 0 : doc.getElementById("cpu-learning-runtime-controls").remove();
+    const style = doc.createElement("style");
+    style.id = "cpu-learning-assistant-workspace-style";
     style.textContent = `
-      #${controlId} {
-        position: fixed;
-        left: 10px;
-        bottom: calc(50vh - 112px);
-        z-index: 2147482998;
-        width: 218px;
-        padding: 10px;
-        border: 1px solid #b7d7ce;
-        border-radius: 12px;
-        background: rgba(255, 255, 255, .96);
-        box-shadow: 0 8px 24px rgba(15, 23, 42, .14);
-        color: #334155;
-        font: 14px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      #${panelId}, #${panelId} *, #${launcherId}, #${launcherId} * { box-sizing: border-box; }
+      #${panelId}[hidden], #${launcherId}[hidden] { display: none !important; }
+      #${panelId} {
+        position: fixed; right: 22px; top: 78px; z-index: 2147482998;
+        width: min(440px, calc(100vw - 32px)); max-height: calc(100vh - 100px);
+        display: flex; flex-direction: column; overflow: hidden;
+        border: 1px solid rgba(77, 144, 126, .26); border-radius: 20px;
+        background: rgba(250, 253, 252, .98); color: #172033;
+        box-shadow: 0 24px 70px rgba(15, 23, 42, .2);
+        font: 14px/1.55 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       }
-      #${controlId} button {
-        width: 100%;
-        min-height: 36px;
-        border: 0;
-        border-radius: 9px;
-        background: #4d907e;
-        color: #fff;
-        font: inherit;
-        font-weight: 700;
-        cursor: pointer;
+      #${panelId} button, #${panelId} input { font: inherit; }
+      #${panelId} button { cursor: pointer; }
+      #${panelId} .cpu-la-header { display: flex; align-items: center; gap: 10px; padding: 16px 18px; border-bottom: 1px solid #dbe8e4; }
+      #${panelId} .cpu-la-mark { display: grid; place-items: center; width: 38px; height: 38px; flex: 0 0 auto; border-radius: 13px; background: #4d907e; color: #fff; font-size: 18px; font-weight: 800; }
+      #${panelId} .cpu-la-heading { min-width: 0; flex: 1; }
+      #${panelId} .cpu-la-heading strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 17px; }
+      #${panelId} .cpu-la-heading span { display: block; color: #728095; font-size: 12px; }
+      #${panelId} .cpu-la-run { min-width: 74px; min-height: 34px; padding: 0 12px; border: 0; border-radius: 10px; background: #e7f3ef; color: #2f6f60; font-weight: 750; }
+      #${panelId}[data-paused="true"] .cpu-la-run { background: #fff0dc; color: #a85808; }
+      #${panelId} .cpu-la-icon { width: 34px; height: 34px; padding: 0; border: 1px solid #dce5e9; border-radius: 10px; background: #fff; color: #667085; font-size: 19px; }
+      #${panelId} .cpu-la-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; padding: 8px 12px; background: #f1f6f4; }
+      #${panelId} .cpu-la-tabs button { min-height: 34px; border: 0; border-radius: 9px; background: transparent; color: #68758a; font-weight: 650; }
+      #${panelId} .cpu-la-tabs button[aria-selected="true"] { background: #fff; color: #2f6f60; box-shadow: 0 1px 6px rgba(15, 23, 42, .09); }
+      #${panelId} .cpu-la-body { min-height: 230px; overflow: auto; padding: 16px 18px; }
+      #${panelId} .cpu-la-card { padding: 14px; border: 1px solid #e1e9ec; border-radius: 14px; background: #fff; }
+      #${panelId} .cpu-la-card + .cpu-la-card { margin-top: 10px; }
+      #${panelId} .cpu-la-kicker { color: #4d907e; font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+      #${panelId} .cpu-la-title { margin: 4px 0 2px; font-size: 18px; line-height: 1.35; }
+      #${panelId} .cpu-la-muted { color: #728095; }
+      #${panelId} .cpu-la-progress { height: 6px; margin-top: 12px; overflow: hidden; border-radius: 999px; background: #e9efed; }
+      #${panelId} .cpu-la-progress i { display: block; height: 100%; border-radius: inherit; background: #4d907e; transition: width .2s ease; }
+      #${panelId} .cpu-la-question { margin: 10px 0 0; white-space: pre-wrap; word-break: break-word; font-size: 15px; font-weight: 650; }
+      #${panelId} .cpu-la-answer { margin: 10px 0 0; padding: 10px 12px; border-left: 3px solid #4d907e; border-radius: 0 9px 9px 0; background: #f2f8f6; white-space: pre-wrap; word-break: break-word; font: 14px/1.65 ui-monospace, SFMono-Regular, Consolas, monospace; }
+      #${panelId} .cpu-la-empty { display: grid; min-height: 230px; place-content: center; text-align: center; color: #8290a4; }
+      #${panelId} .cpu-la-empty b { display: block; margin-bottom: 7px; color: #405064; font-size: 17px; }
+      #${panelId} .cpu-la-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+      #${panelId} .cpu-la-actions button { min-width: 88px; min-height: 35px; flex: 1; border: 1px solid #d8e4e0; border-radius: 9px; background: #fff; color: #3e665c; }
+      #${panelId} .cpu-la-actions button:disabled { cursor: not-allowed; opacity: .42; }
+      #${panelId} .cpu-la-sources { margin-top: 11px; border-top: 1px solid #edf1f3; }
+      #${panelId} .cpu-la-sources summary { padding-top: 10px; color: #4d6f66; cursor: pointer; font-weight: 650; }
+      #${panelId} .cpu-la-source { margin-top: 8px; padding: 9px 10px; border-radius: 9px; background: #f6f8fa; white-space: pre-wrap; word-break: break-word; }
+      #${panelId} .cpu-la-source b { display: block; margin-bottom: 3px; color: #617083; font-size: 12px; }
+      #${panelId} .cpu-la-log { display: grid; grid-template-columns: 72px 1fr; gap: 8px; padding: 9px 0; border-bottom: 1px solid #edf1f3; }
+      #${panelId} .cpu-la-log time { color: #94a0b2; font-variant-numeric: tabular-nums; }
+      #${panelId} .cpu-la-log[data-type="error"] span { color: #b42318; }
+      #${panelId} .cpu-la-settings { display: grid; gap: 10px; }
+      #${panelId} .cpu-la-setting { display: flex; align-items: flex-start; gap: 10px; padding: 12px; border: 1px solid #e1e9ec; border-radius: 12px; background: #fff; cursor: pointer; }
+      #${panelId} .cpu-la-setting input { margin-top: 4px; accent-color: #4d907e; }
+      #${panelId} .cpu-la-setting strong, #${panelId} .cpu-la-setting small { display: block; }
+      #${panelId} .cpu-la-setting small { margin-top: 2px; color: #7a8799; }
+      #${panelId} .cpu-la-number-row { display: grid; grid-template-columns: 1fr 88px; gap: 12px; align-items: center; padding: 12px; border: 1px solid #e1e9ec; border-radius: 12px; background: #fff; }
+      #${panelId} .cpu-la-number-row input { width: 100%; padding: 7px 8px; border: 1px solid #ccd8dd; border-radius: 8px; color: #243041; }
+      #${panelId} .cpu-la-footer { display: flex; align-items: center; gap: 10px; padding: 12px 18px 14px; border-top: 1px solid #dbe8e4; background: #fff; }
+      #${panelId} .cpu-la-footer label { display: flex; min-width: 0; flex: 1; gap: 8px; align-items: center; cursor: pointer; }
+      #${panelId} .cpu-la-footer input { accent-color: #4d907e; }
+      #${panelId} .cpu-la-footer span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #516174; font-size: 13px; }
+      #${launcherId} { position: fixed; right: 22px; bottom: 28px; z-index: 2147482998; min-height: 44px; padding: 0 17px; border: 0; border-radius: 999px; background: #4d907e; color: #fff; box-shadow: 0 12px 32px rgba(47, 111, 96, .3); font: 700 14px system-ui, sans-serif; cursor: pointer; }
+      @media (max-width: 700px) {
+        #${panelId} { top: 64px; right: 10px; left: 10px; width: auto; max-height: calc(100vh - 78px); border-radius: 16px; }
+        #${panelId} .cpu-la-header { gap: 8px; padding: 12px; }
+        #${panelId} .cpu-la-mark { width: 34px; height: 34px; border-radius: 11px; font-size: 16px; }
+        #${panelId} .cpu-la-heading strong { font-size: 15px; }
+        #${panelId} .cpu-la-heading span { display: none; }
+        #${panelId} .cpu-la-run { min-width: 56px; padding: 0 8px; }
+        #${panelId} .cpu-la-icon { width: 32px; height: 32px; }
+        #${panelId} .cpu-la-body { padding: 13px; }
+        #${launcherId} { right: 14px; bottom: 76px; }
       }
-      #${controlId}[data-paused="true"] button { background: #d97706; }
-      #${controlId} label { display: flex; gap: 8px; align-items: flex-start; margin-top: 9px; cursor: pointer; }
-      #${controlId} input { margin-top: 3px; accent-color: #4d907e; }
-      #${controlId} small { display: block; margin-top: 5px; color: #64748b; }
     `;
-    top.document.head.appendChild(style);
-    const container = top.document.createElement("section");
-    container.id = controlId;
-    container.innerHTML = '<button type="button"></button><label><input type="checkbox"><span>章节测验答完自动提交</span></label><small>关闭后只填写；作业和考试始终由你手动交卷。</small>';
-    const toggleButton = container.querySelector("button"), submitCheckbox = container.querySelector("input");
-    submitCheckbox.checked = Boolean(getConfig().autoSubmit);
-    assistantRuntime.subscribe((paused) => {
-      container.dataset.paused = String(paused);
-      toggleButton.textContent = paused ? "开始助手" : "暂停助手";
-      toggleButton.setAttribute("aria-pressed", String(paused));
-    });
-    toggleButton.addEventListener("click", () => assistantRuntime.toggle());
-    submitCheckbox.addEventListener("change", () => {
-      const config = { ...defaultConfig$1, ...getConfig(), autoSubmit: submitCheckbox.checked };
+    doc.head.appendChild(style);
+    const panel = doc.createElement("aside"), launcher = doc.createElement("button");
+    panel.id = panelId;
+    panel.setAttribute("role", "dialog");
+    panel.setAttribute("aria-label", assistantName);
+    panel.innerHTML = `
+      <header class="cpu-la-header">
+        <div class="cpu-la-mark">拾</div>
+        <div class="cpu-la-heading"><strong>${assistantName}</strong><span>任务、答案与运行控制</span></div>
+        <button class="cpu-la-run" type="button" data-action="toggle-runtime"></button>
+        <button class="cpu-la-icon" type="button" data-action="close" aria-label="收起">×</button>
+      </header>
+      <nav class="cpu-la-tabs" aria-label="助手页面">
+        <button type="button" data-tab="task">当前任务</button>
+        <button type="button" data-tab="logs">运行日志</button>
+        <button type="button" data-tab="settings">设置</button>
+      </nav>
+      <main class="cpu-la-body"></main>
+      <footer class="cpu-la-footer"><label><input type="checkbox" data-config="autoSubmit"><span>章节测验答完自动提交</span></label><small class="cpu-la-muted">作业 / 考试手动交卷</small></footer>
+    `;
+    launcher.id = launcherId;
+    launcher.type = "button";
+    launcher.textContent = "打开学习助手";
+    launcher.hidden = true;
+    doc.body.append(panel, launcher);
+    const state = { store: initialStore, tab: "task", signature: "" };
+    const escapeHtml = (value) => String(value == null ? "" : value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    const saveConfig = (name, value) => {
+      const previous = { ...defaultConfig$1, ...getConfig() };
+      if (name === "answerIntervalMax" && Number(value) < Number(previous.answerIntervalMin)) value = Number(previous.answerIntervalMin);
+      const config = { ...previous, [name]: value };
+      if (name === "answerIntervalMin" && Number(config.answerIntervalMax) < Number(value)) config.answerIntervalMax = Number(value);
       _GM_setValue("config", config);
-      formStore.forminput.autoSubmit = config.autoSubmit;
-      reportToHost("status", config.autoSubmit ? "章节测验将自动提交" : "章节测验仅填写，不自动提交");
+      Object.assign(formStore.forminput, config);
+      state.signature = "";
+      reportToHost("status", "学习通助手设置已保存");
+    };
+    const render = () => {
+      const store = state.store, task = (store == null ? void 0 : store.task) || { name: "暂未加载", work: { questionList: [], inx: 0 }, log: [], status: "" }, questions = task.work && Array.isArray(task.work.questionList) ? task.work.questionList : [], index = Math.max(0, Math.min(Number(task.work && task.work.inx || 0), Math.max(0, questions.length - 1))), current = questions[index] || null, config = { ...defaultConfig$1, ...getConfig() }, logs = Array.isArray(task.log) ? task.log.slice(-30) : [], paused = assistantRuntime.isPaused();
+      const snapshot = { tab: state.tab, paused, name: task.name, status: task.status, count: questions.length, index, question: current == null ? "" : current.question, answer: current == null ? "" : current.answer, allAnswer: current == null ? [] : current.allAnswer, logs, autoSubmit: Boolean(config.autoSubmit), autoVideo: Boolean(config.autoVideo), autoJump: Boolean(config.autoJump), autoExam: Boolean(config.autoExam), answerIntervalMin: Number(config.answerIntervalMin), answerIntervalMax: Number(config.answerIntervalMax) };
+      const signature = JSON.stringify(snapshot);
+      if (signature === state.signature) return;
+      state.signature = signature;
+      panel.dataset.paused = String(paused);
+      panel.querySelector(".cpu-la-run").textContent = paused ? "开始助手" : "暂停助手";
+      panel.querySelectorAll("[data-tab]").forEach((button) => button.setAttribute("aria-selected", String(button.dataset.tab === state.tab)));
+      const submitCheckbox = panel.querySelector('.cpu-la-footer input[data-config="autoSubmit"]');
+      submitCheckbox.checked = Boolean(config.autoSubmit);
+      const body = panel.querySelector(".cpu-la-body");
+      if (state.tab === "task") {
+        if (!current) {
+          body.innerHTML = `<div class="cpu-la-empty"><div><b>${paused ? "助手已暂停" : "等待任务加载"}</b><span>${paused ? "点击上方“开始助手”继续处理" : "进入章节、作业或考试后会自动识别"}</span></div></div>`;
+        } else {
+          const progress = Math.round((index + 1) / Math.max(1, questions.length) * 100), answer = formatLearningDisplayText(current.answer || ""), sources = Array.isArray(current.allAnswer) ? current.allAnswer : [], sourceDetails = sources.length ? `<details class="cpu-la-sources"><summary>查看 ${sources.length} 个答案来源</summary>${sources.map((item) => `<div class="cpu-la-source"><b>${escapeHtml(item.form || "答案来源")}</b>${escapeHtml(formatLearningDisplayText(item.answer || "暂无答案"))}</div>`).join("")}</details>` : '<p class="cpu-la-muted">尚未收到答案</p>';
+          body.innerHTML = `<section class="cpu-la-card"><span class="cpu-la-kicker">${escapeHtml(task.name || "当前任务")} · ${index + 1}/${questions.length}</span><h3 class="cpu-la-title">${escapeHtml(task.status || (paused ? "已暂停" : "处理中"))}</h3><div class="cpu-la-progress"><i style="width:${progress}%"></i></div></section><section class="cpu-la-card"><span class="cpu-la-kicker">题目</span><div class="cpu-la-question">${escapeHtml(formatLearningDisplayText(current.question || ""))}</div>${answer ? `<pre class="cpu-la-answer">${escapeHtml(answer)}</pre>` : '<p class="cpu-la-muted">正在获取并填写答案…</p>'}${sourceDetails}<div class="cpu-la-actions"><button type="button" data-action="previous" ${index <= 0 ? "disabled" : ""}>上一题</button><button type="button" data-action="locate">定位原题</button>${answer ? '<button type="button" data-action="copy-answer">复制答案</button>' : ""}<button type="button" data-action="next" ${index >= questions.length - 1 ? "disabled" : ""}>下一题</button></div></section>`;
+        }
+      } else if (state.tab === "logs") {
+        body.innerHTML = logs.length ? `<section class="cpu-la-card">${logs.map((item) => `<div class="cpu-la-log" data-type="${escapeHtml(item.type || "info")}"><time>${escapeHtml(item.time || "")}</time><span>${escapeHtml(item.msg || "")}</span></div>`).join("")}<div class="cpu-la-actions"><button type="button" data-action="clear-logs">清空日志</button></div></section>` : '<div class="cpu-la-empty"><div><b>暂无运行日志</b><span>开始处理任务后，关键步骤会记录在这里</span></div></div>';
+      } else {
+        body.innerHTML = `<div class="cpu-la-settings"><label class="cpu-la-setting"><input type="checkbox" data-config="autoVideo" ${config.autoVideo ? "checked" : ""}><span><strong>自动播放视频与音频</strong><small>关闭后会跳过媒体任务点</small></span></label><label class="cpu-la-setting"><input type="checkbox" data-config="autoJump" ${config.autoJump ? "checked" : ""}><span><strong>完成后切换下一章</strong><small>暂停助手时不会发生章节切换</small></span></label><label class="cpu-la-setting"><input type="checkbox" data-config="autoExam" ${config.autoExam ? "checked" : ""}><span><strong>考试自动切换下一题</strong><small>只切题，不会替你最终交卷</small></span></label><div class="cpu-la-number-row"><span><strong>答题最短等待</strong><small class="cpu-la-muted">每题之间的秒数</small></span><input type="number" min="1" max="120" data-config-number="answerIntervalMin" value="${Number(config.answerIntervalMin) || 8}"></div><div class="cpu-la-number-row"><span><strong>答题最长等待</strong><small class="cpu-la-muted">不能小于最短等待</small></span><input type="number" min="1" max="180" data-config-number="answerIntervalMax" value="${Number(config.answerIntervalMax) || 20}"></div></div>`;
+      }
+    };
+    panel.addEventListener("click", (event) => {
+      const target = event.target.closest("button");
+      if (!target) return;
+      if (target.dataset.tab) {
+        state.tab = target.dataset.tab;
+        state.signature = "";
+        render();
+        return;
+      }
+      const store = state.store, questions = (store == null ? void 0 : store.task.work.questionList) || [], index = Number(store == null ? void 0 : store.task.work.inx) || 0;
+      switch (target.dataset.action) {
+        case "toggle-runtime":
+          assistantRuntime.toggle();
+          break;
+        case "close":
+          panel.hidden = true, launcher.hidden = false;
+          break;
+        case "previous":
+          index > 0 && store.select(index - 1);
+          break;
+        case "next":
+          index < questions.length - 1 && store.select(index + 1);
+          break;
+        case "locate":
+          questions[index] && store.select(index);
+          break;
+        case "copy-answer": {
+          const answer = formatLearningDisplayText(questions[index] == null ? "" : questions[index].answer || "");
+          if (answer && host.navigator.clipboard && host.navigator.clipboard.writeText) {
+            host.navigator.clipboard.writeText(answer).then(() => reportToHost("status", "答案已复制")).catch(() => reportToHost("status", "复制失败，请手动选择答案"));
+          } else if (answer) {
+            const textarea = doc.createElement("textarea");
+            textarea.value = answer, textarea.style.position = "fixed", textarea.style.opacity = "0", doc.body.appendChild(textarea), textarea.select();
+            try {
+              doc.execCommand("copy"), reportToHost("status", "答案已复制");
+            } catch {
+              reportToHost("status", "复制失败，请手动选择答案");
+            }
+            textarea.remove();
+          }
+          break;
+        }
+        case "clear-logs":
+          store && (store.task.log = []);
+          break;
+      }
+      state.signature = "";
+      render();
     });
-    top.document.body.appendChild(container);
+    panel.addEventListener("change", (event) => {
+      const target = event.target;
+      if (target.matches("input[type=checkbox][data-config]")) saveConfig(target.dataset.config, target.checked);
+      if (target.matches("input[type=number][data-config-number]")) {
+        const value = Math.max(Number(target.min) || 1, Math.min(Number(target.max) || 180, Number(target.value) || Number(target.min) || 1));
+        saveConfig(target.dataset.configNumber, value);
+      }
+      render();
+    });
+    launcher.addEventListener("click", () => {
+      launcher.hidden = true, panel.hidden = false, state.signature = "", render();
+    });
+    assistantRuntime.subscribe(() => {
+      state.signature = "";
+      render();
+    });
+    const renderTimer = host.setInterval(render, 400);
+    const api = { setStore(store) {
+      state.store = store;
+      state.signature = "";
+      panel.hidden = false;
+      launcher.hidden = true;
+      render();
+    }, render, destroy() {
+      host.clearInterval(renderTimer);
+      panel.remove();
+      launcher.remove();
+      style.remove();
+      delete host[workspaceKey];
+    } };
+    host[workspaceKey] = api;
+    render();
+    return api;
   };
-  mountAssistantRuntimeControls();
   const ensureGuideStyle = () => {
     const id = "cpu-learning-guide-style";
     if (_self.document.getElementById(id)) return;
@@ -2323,14 +2421,7 @@ hideConfigControls();
     });
   };
   var iframeCom = null;
-  switch (app.mount((() => {
-    try {
-      const div = top.document.createElement("div");
-      return div.id = "cccxapp", top.document.getElementById(div.id) ? div : (top.document.body.append(div), div);
-    } catch (e) {
-      log(e, "error");
-    }
-  })()), (() => {
+  switch ((() => {
     document.body.oncopy = null, document.body.oncut = null, document.body.onpaste = null, document.body.onselectstart = null, document.body.ondragstart = null;
     const style = document.createElement("style");
     style.innerHTML = "\n       * {\n           -webkit-user-select: auto !important;\n           -moz-user-select: auto !important;\n           -o-user-select: auto !important;\n           user-select: auto !important;\n       }\n   ", document.head.appendChild(style);
