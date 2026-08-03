@@ -12,7 +12,7 @@ import { CampusNetService, CampusState } from "./campus-net/service";
 import { clearChaoxingCredential, maskChaoxingAccount, readChaoxingCredential, writeChaoxingCredential } from "./chaoxing-credentials";
 import { onCampusLog, pruneCampusLogs, readCampusLogs } from "./campus-net/log";
 import { checkForUpdate, openUpdateDownload } from "./updater";
-import { checkAndDownload, getUpdateState, hasPendingUpdate, onUpdateState, runPendingUpdate, UpdateState } from "./auto-update";
+import { checkAndDownload, getUpdateState, onUpdateState, restorePendingUpdate, runPendingUpdate, UpdateState } from "./auto-update";
 import { CHROME_HEIGHT, TabKind, TabManager } from "./tabs";
 import { isInstallLaunch, openInstallerWindow, runUninstall, sweepReplacedFiles } from "./self-install";
 import { branding, chaoxingLoginHost, injectableHosts, learningUrl, limits, oauthConfig } from "./config";
@@ -868,6 +868,17 @@ if (installMode || uninstallMode) {
   app.on("web-contents-created", (_event, contents) => applyNavigationPolicy(contents));
 
   app.whenReady().then(async () => {
+    // 已下载的更新只在下一次主动启动时安装。用户本次选择“退出”必须真的退出，
+    // 不能在退出流程里启动安装器并把应用再次拉起来。
+    if (supportsAutomaticInstallerUpdates) {
+      const pending = await restorePendingUpdate();
+      if (pending.stage === "ready" && runPendingUpdate()) {
+        quitting = true;
+        app.exit(0);
+        return;
+      }
+    }
+
     buildApplicationMenu();
 
     // 上次覆盖安装时旧版正开着，那些文件当时只能改名不能删，现在收拾掉
@@ -1329,12 +1340,11 @@ if (installMode || uninstallMode) {
     campusNet?.stop();
     if (exitPreparationStarted) return;
 
-    // Chromium 会延迟写 Cookie 与 localStorage。这里先拦住退出，完成落盘后再启动
-    // 更新器，避免安装器强制关闭旧进程时只丢主站会话、却保留独立 OAuth 文件。
+    // Chromium 会延迟写 Cookie 与 localStorage。这里先拦住退出并完成落盘。
+    // 已下载的更新留到下次用户主动启动客户端时再安装，本次退出绝不拉起新进程。
     event.preventDefault();
     exitPreparationStarted = true;
     void flushBrowserSession().finally(() => {
-      if (supportsAutomaticInstallerUpdates && hasPendingUpdate()) runPendingUpdate();
       app.exit(0);
     });
   });

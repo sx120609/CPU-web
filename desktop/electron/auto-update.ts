@@ -2,14 +2,14 @@ import { app } from "electron";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
-import { mkdir, readdir, rm, stat } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
 import { oauthConfig } from "./config";
 import { compareVersions } from "./updater";
 
-// 自动更新：静默检测 → 后台下载 → 下好了告诉用户 → 退出时静默装上。
+// 自动更新：静默检测 → 后台下载 → 下好了告诉用户 → 下次主动启动时安装。
 //
 // 没有代码签名，所以不用 electron-updater：它在 Windows 上靠签名里的发布者信息
 // 验证更新包，未签名就只能关掉校验，那等于开了一条不可验真的代码执行通道。
@@ -48,6 +48,14 @@ type Remote = {
   contentHashName?: string;
 };
 
+type PendingUpdateMetadata = {
+  version: string;
+  fileName: string;
+  size: number;
+  contentHash: string;
+  contentHashName: string;
+};
+
 let state: UpdateState = {
   stage: "idle",
   current: app.getVersion(),
@@ -71,6 +79,7 @@ const emit = (patch: Partial<UpdateState>): void => {
 };
 
 const updatesDir = (): string => path.join(app.getPath("userData"), "updates");
+const pendingMetadataPath = (): string => path.join(updatesDir(), "pending.json");
 
 /** 下过的旧安装包留着白占几十 MB，每次开始新下载前先清空 */
 const clearDownloads = async (): Promise<void> => {
@@ -101,6 +110,60 @@ const hashFile = async (filePath: string, algorithm: string): Promise<string> =>
   const hash = createHash(algorithm);
   await pipeline(createReadStream(filePath), hash);
   return hash.digest("hex").toLowerCase();
+};
+
+const savePendingUpdate = async (remote: Remote, readyPath: string): Promise<void> => {
+  const metadata: PendingUpdateMetadata = {
+    version: String(remote.version ?? "").trim(),
+    fileName: path.basename(readyPath),
+    size: (await stat(readyPath)).size,
+    contentHash: String(remote.contentHash ?? "").trim().toLowerCase(),
+    contentHashName: String(remote.contentHashName ?? "").trim().toLowerCase()
+  };
+  await writeFile(pendingMetadataPath(), `${JSON.stringify(metadata, null, 2)}\n`, "utf8");
+};
+
+/**
+ * 启动时恢复上次已经下载并校验过的更新。安装包可能在两次启动之间被改动，
+ * 所以有哈希时必须再验一次；元数据只允许指向 updates 目录里的 basename。
+ */
+export const restorePendingUpdate = async (): Promise<UpdateState> => {
+  try {
+    const metadata = JSON.parse(await readFile(pendingMetadataPath(), "utf8")) as Partial<PendingUpdateMetadata>;
+    const latest = String(metadata.version ?? "").trim();
+    const fileName = path.basename(String(metadata.fileName ?? ""));
+    if (!latest || !fileName || !fileName.toLowerCase().endsWith(".exe")) throw new Error("更新元数据不完整");
+
+    if (compareVersions(latest, app.getVersion()) <= 0) {
+      await clearDownloads();
+      emit({ stage: "idle", latest, readyPath: "", message: "" });
+      return state;
+    }
+
+    const readyPath = path.join(updatesDir(), fileName);
+    const size = (await stat(readyPath)).size;
+    if (Number(metadata.size) > 0 && size !== Number(metadata.size)) throw new Error("更新包大小已改变");
+
+    const algorithm = String(metadata.contentHashName ?? "").toLowerCase();
+    const expected = String(metadata.contentHash ?? "").toLowerCase();
+    if (expected && (algorithm === "sha1" || algorithm === "sha256")) {
+      if (await hashFile(readyPath, algorithm) !== expected) throw new Error("更新包哈希已改变");
+    }
+
+    emit({
+      stage: "ready",
+      latest,
+      percent: 100,
+      receivedBytes: size,
+      totalBytes: size,
+      readyPath,
+      message: `v${latest} 已下载，将在本次启动前自动安装`
+    });
+  } catch {
+    await clearDownloads();
+    emit({ stage: "idle", latest: "", readyPath: "", message: "" });
+  }
+  return state;
 };
 
 /**
@@ -200,6 +263,7 @@ export const checkAndDownload = async (): Promise<UpdateState> => {
 
     emit({ stage: "downloading", latest, percent: 0, receivedBytes: 0, totalBytes: remote.size ?? 0, message: `正在下载 v${latest}` });
     const readyPath = await download(remote);
+    await savePendingUpdate(remote, readyPath);
     emit({ stage: "ready", percent: 100, readyPath, message: `v${latest} 已下载，重启后自动安装` });
   } catch (error) {
     emit({ stage: "error", message: error instanceof Error ? error.message : "更新失败", readyPath: "" });

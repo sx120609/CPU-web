@@ -50,12 +50,22 @@ async function main() {
     mainSource.indexOf('app.on("window-all-closed"', quitStart),
   );
   assert.match(quitHandler, /event\.preventDefault\(\)/, "正常退出应等待网站会话落盘");
+  assert.doesNotMatch(quitHandler, /runPendingUpdate\(|hasPendingUpdate\(/, "正常退出不得启动更新器并把客户端重新拉起");
+  const normalStartup = mainSource.slice(
+    mainSource.indexOf('app.whenReady().then(async () =>', mainSource.indexOf("requestSingleInstanceLock")),
+    mainSource.indexOf('ipcMain.handle("app:info"'),
+  );
+  assert.match(normalStartup, /await restorePendingUpdate\(\)/, "下次正常启动时应恢复已下载的更新");
   assert.ok(
-    quitHandler.indexOf("flushBrowserSession()") < quitHandler.indexOf("runPendingUpdate()"),
-    "退出自动更新也必须先保存网站会话",
+    normalStartup.indexOf("restorePendingUpdate()") < normalStartup.indexOf("buildApplicationMenu()"),
+    "更新安装必须发生在创建菜单和主窗口之前",
   );
 
-  console.log("桌面会话持久化检查通过：退出前会主动落盘站点存储与 Cookie。");
+  const autoUpdateSource = fs.readFileSync(path.join(__dirname, "..", "electron", "auto-update.ts"), "utf8");
+  assert.match(autoUpdateSource, /writeFile\(pendingMetadataPath\(\)/, "下载完成后应持久化待安装更新元数据");
+  assert.match(autoUpdateSource, /export const restorePendingUpdate/, "更新模块应支持跨重启恢复待安装包");
+
+  console.log("桌面退出与更新时机检查通过：退出只落盘会话，更新留到下次启动安装。");
 }
 
 main().catch((error) => {
