@@ -237,7 +237,11 @@ oauthRouter.post("/v1/responses", securityRateLimit("oauth-ai", 20, 60_000), asy
     res.on("close", () => {
       if (!responseCompleted) controller.abort();
     });
-    const aiResult = await requestLearningAssistantAi(body, token.clientId, controller.signal);
+    const aiResult = await requestLearningAssistantAi(body, token.clientId, controller.signal, {
+      createdById: token.userId,
+      targetLabel: "学习通答题 · 已登录客户端",
+      pointCost: quotaReservation?.source === "points" ? 1 : 0,
+    });
     res.status(aiResult.status);
     res.setHeader("Content-Type", aiResult.contentType);
     res.setHeader("Cache-Control", "no-cache, no-transform");

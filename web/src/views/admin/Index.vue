@@ -87,6 +87,7 @@
       <el-tab-pane label="💛 赞助" name="sponsor" v-if="auth.isAdmin"><SponsorPane v-if="tab === 'sponsor'" /></el-tab-pane>
       <el-tab-pane label="🤖 QQBot" name="qqbot" v-if="auth.isAdmin"><QqBotPane v-if="tab === 'qqbot'" /></el-tab-pane>
       <el-tab-pane label="🧠 审核" name="ai-review" v-if="auth.isAdmin"><AiReviewPane v-if="tab === 'ai-review'" /></el-tab-pane>
+      <el-tab-pane label="📊 AI 日志" name="ai-usage" v-if="auth.isAdmin"><AiUsagePane v-if="tab === 'ai-usage'" /></el-tab-pane>
       <el-tab-pane label="✨ AI 额度" name="ai-quota" v-if="auth.isAdmin"><AiQuotaPane v-if="tab === 'ai-quota'" /></el-tab-pane>
       <el-tab-pane label="🗄 数据备份" name="database" v-if="auth.isAdmin"><DatabasePane v-if="tab === 'database'" /></el-tab-pane>
       <el-tab-pane label="🗂 媒体存储" name="media-storage" v-if="auth.isAdmin"><MediaStoragePane v-if="tab === 'media-storage'" /></el-tab-pane>
@@ -118,6 +119,7 @@ const MarketPane = defineAsyncComponent(() => import("./MarketPane.vue"));
 const SponsorPane = defineAsyncComponent(() => import("./SponsorPane.vue"));
 const QqBotPane = defineAsyncComponent(() => import("./QqBotPane.vue"));
 const AiReviewPane = defineAsyncComponent(() => import("./AiReviewPane.vue"));
+const AiUsagePane = defineAsyncComponent(() => import("./AiUsagePane.vue"));
 const AiQuotaPane = defineAsyncComponent(() => import("./AiQuotaPane.vue"));
 const DatabasePane = defineAsyncComponent(() => import("./DatabasePane.vue"));
 const MediaStoragePane = defineAsyncComponent(() => import("./MediaStoragePane.vue"));

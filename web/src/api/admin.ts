@@ -274,7 +274,22 @@ export type AiReviewLogRow = {
   startedAt: string;
   finishedAt?: string | null;
   durationMs?: number | null;
+  pointCost: number;
   createdBy?: { id: number; nickname: string; username?: string } | null;
+};
+
+export type AiUsageLogPage = {
+  page: number;
+  size: number;
+  total: number;
+  list: AiReviewLogRow[];
+  summary: {
+    success: number;
+    error: number;
+    started: number;
+    averageDurationMs: number;
+    pointCost: number;
+  };
 };
 
 export type ForumImageSweepResult = {
@@ -853,6 +868,8 @@ export const adminApi = {
     }>("/admin/campus-assistant/points/backfill-sponsors", {}),
   aiReviewLogs: (params: { kind?: string; status?: string; page?: number; size?: number }, options?: RequestOptions) =>
     request.get<{ page: number; size: number; total: number; list: AiReviewLogRow[] }>("/admin/ai-review/logs", params, options),
+  aiUsageLogs: (params: { kind?: string; status?: string; q?: string; from?: string; to?: string; page?: number; size?: number }, options?: RequestOptions) =>
+    request.get<AiUsageLogPage>("/admin/ai-usage/logs", params, options),
   sweepForumImages: () =>
     request.post<ForumImageSweepResult>("/admin/ai-review/images/sweep", {}, { timeout: 120000 }),
   sweepForumVideos: () =>

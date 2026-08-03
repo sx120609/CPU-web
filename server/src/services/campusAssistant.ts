@@ -1,5 +1,6 @@
 import type { FeatureKey } from "./siteSettings";
 import { getSiteConfig } from "./siteSettings";
+import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } from "./aiReviewLog";
 import { requestAiJson } from "./topicAiReview";
 import {
   buildAiPromptCacheKey,
@@ -584,6 +585,7 @@ export async function askCampusAssistant(input: {
   message: string;
   history: CampusAssistantMessage[];
   context: CampusAssistantContext;
+  usage?: { createdById?: number | null; pointCost?: number };
 }): Promise<CampusAssistantResponse> {
   const message = input.message.trim();
   if (isCampusAssistantPublicTopicRestricted(message, input.history)) {
@@ -595,6 +597,19 @@ export async function askCampusAssistant(input: {
   if (!config.aiReviewEnabled || !config.aiReviewApiKey.trim()) {
     return fallbackAssistantResponse(deterministicActions, false);
   }
+
+  const endpoint = normalizeAiJsonApiUrl(config.aiReviewApiUrl, DEFAULT_REVIEW_API_URL);
+  const started = await startAiReviewLog({
+    kind: "campus-assistant",
+    targetLabel: "拾间AI 对话",
+    provider: config.aiReviewProvider || "ai-json-api",
+    model: config.assistantModel,
+    endpoint,
+    requestSummary: message,
+    createdById: input.usage?.createdById ?? null,
+    pointCost: input.usage?.pointCost ?? 0,
+  });
+  const logId = started?.id ?? null;
 
   try {
     const result = await requestAiJson((model) => buildAssistantMessages(
@@ -611,13 +626,18 @@ export async function askCampusAssistant(input: {
       enablePromptCacheRetention: true,
     });
     if (isCampusAssistantModelIdentityQuestion(message)) {
-      return modelIdentityResponse(result.model);
+      const response = modelIdentityResponse(result.model);
+      await finishAiReviewLogSuccess(logId, response.answer);
+      return response;
     }
     const parsed = parseAssistantJson(result.content);
-    return guardCampusAssistantResponse(filterUnavailableDataSuggestions(
+    const response = guardCampusAssistantResponse(filterUnavailableDataSuggestions(
       normalizeAssistantResponse(parsed, availableActions, deterministicActions),
     ));
+    await finishAiReviewLogSuccess(logId, response.answer);
+    return response;
   } catch (error) {
+    await finishAiReviewLogError(logId, error instanceof Error ? error.message : String(error));
     console.warn("[campus-assistant] AI request failed", error instanceof Error ? error.message : error);
     return fallbackAssistantResponse(deterministicActions, true);
   }
@@ -628,6 +648,7 @@ export async function streamCampusAssistant(input: {
   history: CampusAssistantMessage[];
   context: CampusAssistantContext;
   signal?: AbortSignal;
+  usage?: { createdById?: number | null; pointCost?: number };
 }, onAnswerDelta: (delta: string) => void | Promise<void>): Promise<CampusAssistantResponse> {
   const message = input.message.trim();
   if (isCampusAssistantPublicTopicRestricted(message, input.history)) {
@@ -644,6 +665,17 @@ export async function streamCampusAssistant(input: {
   const candidates = resolveModelCandidates(config.assistantModel, "");
   const modelIdentityRequested = isCampusAssistantModelIdentityQuestion(message);
   let lastError: unknown = null;
+  const started = await startAiReviewLog({
+    kind: "campus-assistant",
+    targetLabel: "拾间AI 流式对话",
+    provider: config.aiReviewProvider || "ai-json-api",
+    model: candidates[0] || config.assistantModel,
+    endpoint,
+    requestSummary: message,
+    createdById: input.usage?.createdById ?? null,
+    pointCost: input.usage?.pointCost ?? 0,
+  });
+  const logId = started?.id ?? null;
 
   for (let index = 0; index < candidates.length; index += 1) {
     const model = candidates[index];
@@ -693,19 +725,33 @@ export async function streamCampusAssistant(input: {
           emittedAnswer = visible;
         }
       });
-      if (restrictedOutput) return cloneRestrictedPublicTopicReply();
-      if (modelIdentityRequested) return modelIdentityResponse(model);
+      if (restrictedOutput) {
+        const response = cloneRestrictedPublicTopicReply();
+        await finishAiReviewLogSuccess(logId, response.answer);
+        return response;
+      }
+      if (modelIdentityRequested) {
+        const response = modelIdentityResponse(model);
+        await finishAiReviewLogSuccess(logId, response.answer);
+        return response;
+      }
       const parsed = parseAssistantJson(content);
-      return guardCampusAssistantResponse(filterUnavailableDataSuggestions(
+      const response = guardCampusAssistantResponse(filterUnavailableDataSuggestions(
         normalizeAssistantResponse(parsed, availableActions, deterministicActions),
       ));
+      await finishAiReviewLogSuccess(logId, response.answer);
+      return response;
     } catch (error) {
-      if (input.signal?.aborted) throw error;
+      if (input.signal?.aborted) {
+        await finishAiReviewLogError(logId, "请求已取消");
+        throw error;
+      }
       lastError = error;
       if (index < candidates.length - 1) continue;
     }
   }
 
+  await finishAiReviewLogError(logId, lastError instanceof Error ? lastError.message : String(lastError || "AI 请求失败"));
   console.warn("[campus-assistant] streaming AI request failed", lastError instanceof Error ? lastError.message : lastError);
   return fallbackAssistantResponse(deterministicActions, true);
 }

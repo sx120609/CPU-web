@@ -2581,6 +2581,71 @@ adminRouter.get("/ai-review/logs", adminOnly, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+adminRouter.get("/ai-usage/logs", adminOnly, async (req, res, next) => {
+  try {
+    const staleStartedBefore = new Date(Date.now() - 10 * 60 * 1000);
+    await prisma.aiReviewLog.updateMany({
+      where: { status: "started", startedAt: { lt: staleStartedBefore } },
+      data: {
+        status: "error",
+        errorMessage: "AI 请求中断或服务重启，未收到接口返回",
+        finishedAt: new Date(),
+      },
+    }).catch(() => null);
+    const kind = String(req.query.kind ?? "").trim().slice(0, 80);
+    const status = String(req.query.status ?? "").trim().slice(0, 30);
+    const q = String(req.query.q ?? "").trim().slice(0, 120);
+    const page = Math.max(1, Number(req.query.page ?? 1));
+    const size = Math.min(100, Math.max(10, Number(req.query.size ?? 30)));
+    const from = String(req.query.from ?? "").trim();
+    const to = String(req.query.to ?? "").trim();
+    const where: any = {};
+    if (kind) where.kind = kind;
+    if (status) where.status = status;
+    if (from || to) {
+      where.startedAt = {};
+      if (from && !Number.isNaN(Date.parse(from))) where.startedAt.gte = new Date(from);
+      if (to && !Number.isNaN(Date.parse(to))) where.startedAt.lte = new Date(to);
+    }
+    if (q) {
+      where.OR = [
+        { targetLabel: { contains: q } },
+        { requestSummary: { contains: q } },
+        { responseSummary: { contains: q } },
+        { model: { contains: q } },
+        { createdBy: { is: { OR: [{ nickname: { contains: q } }, { username: { contains: q } }] } } },
+      ];
+    }
+    const [list, total, success, error, startedCount, aggregate] = await Promise.all([
+      prisma.aiReviewLog.findMany({
+        where,
+        orderBy: { startedAt: "desc" },
+        skip: (page - 1) * size,
+        take: size,
+        include: { createdBy: { select: { id: true, nickname: true, username: true } } },
+      }),
+      prisma.aiReviewLog.count({ where }),
+      prisma.aiReviewLog.count({ where: { ...where, status: "success" } }),
+      prisma.aiReviewLog.count({ where: { ...where, status: "error" } }),
+      prisma.aiReviewLog.count({ where: { ...where, status: "started" } }),
+      prisma.aiReviewLog.aggregate({ where, _avg: { durationMs: true }, _sum: { pointCost: true } }),
+    ]);
+    ok(res, {
+      page,
+      size,
+      total,
+      list,
+      summary: {
+        success,
+        error,
+        started: startedCount,
+        averageDurationMs: Math.round(aggregate._avg.durationMs ?? 0),
+        pointCost: aggregate._sum.pointCost ?? 0,
+      },
+    });
+  } catch (e) { next(e); }
+});
+
 adminRouter.get("/features", adminOnly, (_req, res) => {
   ok(res, getFeatures());
 });

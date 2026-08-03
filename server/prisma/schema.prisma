@@ -377,6 +377,7 @@ model AiReviewLog {
   startedAt       DateTime  @default(now())
   finishedAt      DateTime?
   durationMs      Int?
+  pointCost       Int       @default(0)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 

@@ -1,7 +1,7 @@
 import { prisma } from "../prisma";
 
 export type AiReviewLogInput = {
-  kind: "topic" | "reply" | "topic-edit" | "image" | "video" | "qqbot-group-ad";
+  kind: "topic" | "reply" | "topic-edit" | "image" | "video" | "qqbot-group-ad" | "campus-assistant" | "learning-answer";
   targetId?: number | null;
   targetLabel?: string | null;
   targetUrl?: string | null;
@@ -10,6 +10,7 @@ export type AiReviewLogInput = {
   endpoint?: string | null;
   requestSummary?: string | null;
   createdById?: number | null;
+  pointCost?: number | null;
 };
 
 export async function startAiReviewLog(input: AiReviewLogInput) {
@@ -24,6 +25,7 @@ export async function startAiReviewLog(input: AiReviewLogInput) {
       endpoint: input.endpoint?.slice(0, 240) || null,
       requestSummary: input.requestSummary?.slice(0, 4000) || "",
       createdById: input.createdById ?? null,
+      pointCost: Math.max(0, Math.trunc(input.pointCost ?? 0)),
       status: "started",
       startedAt: new Date(),
     },
@@ -66,6 +68,7 @@ export async function finishAiReviewLogError(logId: number | null | undefined, e
       responseSummary: responseSummary?.slice(0, 4000) || "",
       finishedAt: now,
       durationMs,
+      pointCost: 0,
     },
   }).catch(() => null);
 }

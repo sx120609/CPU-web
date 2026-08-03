@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         药大拾间·学习通助手
 // @namespace    askAuto
-// @version      2.2.6
+// @version      2.2.7
 // @author       shushoujiu
 // @description  药大拾间桌面端的学习通助手：自动完成任务点，章节测验与考试由独立答题 AI 作答。
 // @icon         https://vitejs.dev/logo.svg
@@ -225,11 +225,11 @@
         }
         const questionTypeId = questionData.type;
         let prompt = "";
-        const basePrompt = `你是一位专业的学习辅导老师，具备广泛的知识面，能够解答各类学科和学习问题。`;
+        const basePrompt = `你是一位专业的学习辅导老师，具备广泛的知识面，能够解答各类学科和学习问题。请按“答案：”和“解题思路：”两个字段作答；解题思路只写可公开、可验证的简短依据，不要输出隐藏推理过程。`;
         if (questionTypeId === "3") {
           prompt = `${basePrompt}
 
-这是一道判断题，请根据你的专业知识，只返回"正确"或"错误"。
+这是一道判断题。答案字段只填写“正确”或“错误”，解题思路字段用一两句话说明判断依据。
 
 题目：${questionData.question}`;
         } else if (questionTypeId === "1") {
@@ -239,38 +239,38 @@
           }).join(" ");
           prompt = `${basePrompt}
 
-这是一道多选题，请根据你的专业知识，返回所有正确选项字母(如：AB、ACD、BC等)，不要有任何其他内容。
+这是一道多选题。答案字段只填写所有正确选项字母（如 AB、ACD、BC），解题思路字段简要说明选择依据。
 
 题目：${questionData.question}
 选项：${optionsText}`;
         } else if (questionTypeId === "2") {
           prompt = `${basePrompt}
 
-这是一道填空题，请根据你的专业知识，直接返回答案内容。如果有多个空，用"|"分隔每个空的答案。
+这是一道填空题。答案字段直接填写答案内容；如果有多个空，用“|”分隔。解题思路字段简要说明依据。
 
 题目：${questionData.question}`;
         } else if (questionTypeId === "4") {
           prompt = `${basePrompt}
 
-这是一道简答题，请根据你的专业知识，给出简洁准确的答案。
+这是一道简答题。答案字段给出简洁准确的作答内容，解题思路字段概括答题要点。
 
 题目：${questionData.question}`;
         } else if (questionTypeId === "5") {
           prompt = `${basePrompt}
 
-这是一道名词解释题，请根据你的专业知识，给出准确的名词解释。
+这是一道名词解释题。答案字段给出准确解释，解题思路字段概括定义中的关键点。
 
 题目：${questionData.question}`;
         } else if (questionTypeId === "6") {
           prompt = `${basePrompt}
 
-这是一道论述题，请根据你的专业知识，给出完整、有条理的论述答案。
+这是一道论述题。答案字段给出完整、有条理的论述，解题思路字段概括组织答案的主线。
 
 题目：${questionData.question}`;
         } else if (questionTypeId === "7") {
           prompt = `${basePrompt}
 
-这是一道计算题，请根据你的专业知识，给出计算过程和最终答案。
+这是一道计算题。答案字段给出最终答案，解题思路字段给出必要公式和可核验的简要计算过程。
 
 题目：${questionData.question}`;
         } else {
@@ -280,7 +280,7 @@
           }).join(" ");
           prompt = `${basePrompt}
 
-这是一道单选题，请根据你的专业知识，只返回正确选项字母(A/B/C/D)。
+这是一道单选题。答案字段只填写正确选项字母，解题思路字段简要说明选择依据。
 
 题目：${questionData.question}
 选项：${optionsText}`;
@@ -370,19 +370,23 @@
               if (content) {
                 const typeNames = { "0": "单选题", "1": "多选题", "2": "填空题", "3": "判断题", "4": "简答题", "5": "名词解释", "6": "论述题", "7": "计算题" };
                 const typeName = typeNames[questionTypeId] || "单选题";
+                const parsedReply = parseLearningAiReply(content);
+                const answerContent = parsedReply.answer || content;
+                const explanation = parsedReply.explanation;
                 if (questionTypeId === "3") {
-                  const isTrue = /正确|对|是|√|true/i.test(content);
-                  const isFalse = /错误|错|否|×|false/i.test(content);
+                  const isTrue = /正确|对|是|√|true/i.test(answerContent);
+                  const isFalse = /错误|错|否|×|false/i.test(answerContent);
                   if (isTrue || isFalse) {
                     const answerText = isTrue ? "正确" : "错误";
                     console.log(`AI解析成功(${typeName})，答案:`, answerText);
-                    resolve({ form: "AI", answer: [answerText] });
+                    resolve({ form: "AI", answer: [answerText], displayAnswer: answerText, explanation });
                   } else {
                     console.log("AI返回内容未匹配到判断结果:", content);
                     resolve({ form: "AI", answer: "" });
                   }
                 } else if (questionTypeId === "1") {
-                  const answerMatch = content.match(/[A-D]+/);
+                  const maxLetter = String.fromCharCode(64 + Math.min(26, questionData.options.length));
+                  const answerMatch = answerContent.toUpperCase().match(new RegExp(`[A-${maxLetter}]+`));
                   if (answerMatch) {
                     const answerLetters = answerMatch[0];
                     const answerOptions = [];
@@ -394,7 +398,7 @@
                     }
                     if (answerOptions.length > 0) {
                       console.log(`AI解析成功(${typeName})，答案:`, answerLetters);
-                      resolve({ form: "AI", answer: answerOptions });
+                      resolve({ form: "AI", answer: answerOptions, displayAnswer: `${answerLetters.split("").join("、")} · ${answerOptions.join("；")}`, optionLetters: answerLetters, explanation });
                     } else {
                       console.log("AI返回的选项超出范围");
                       resolve({ form: "AI", answer: "" });
@@ -404,29 +408,29 @@
                     resolve({ form: "AI", answer: "" });
                   }
                 } else if (questionTypeId === "0") {
-                  const answerMatch = content.match(/[A-D]/);
-                  if (answerMatch) {
-                    const answerLetter = answerMatch[0];
-                    const answerIndex = answerLetter.charCodeAt(0) - 65;
-                    if (answerIndex >= 0 && answerIndex < questionData.options.length) {
-                      console.log(`AI解析成功(${typeName})，答案:`, answerLetter);
-                      resolve({ form: "AI", answer: [questionData.options[answerIndex]] });
-                    } else {
-                      console.log("AI返回的选项超出范围");
-                      resolve({ form: "AI", answer: "" });
-                    }
+                  const maxLetter = String.fromCharCode(64 + Math.min(26, questionData.options.length));
+                  const answerMatch = answerContent.toUpperCase().match(new RegExp(`[A-${maxLetter}]`));
+                  const normalizedAnswer = formatLearningDisplayText(answerContent).replace(/\s+/g, "").toLowerCase();
+                  let answerIndex = answerMatch ? answerMatch[0].charCodeAt(0) - 65 : questionData.options.findIndex((option) => {
+                    const normalizedOption = formatLearningDisplayText(option).replace(/\s+/g, "").toLowerCase();
+                    return normalizedOption && (normalizedAnswer === normalizedOption || normalizedAnswer.includes(normalizedOption) || normalizedOption.includes(normalizedAnswer));
+                  });
+                  if (answerIndex >= 0 && answerIndex < questionData.options.length) {
+                    const answerLetter = String.fromCharCode(65 + answerIndex), optionText = questionData.options[answerIndex];
+                    console.log(`AI解析成功(${typeName})，答案:`, answerLetter);
+                    resolve({ form: "AI", answer: [optionText], displayAnswer: `${answerLetter}. ${optionText}`, optionLetters: answerLetter, explanation });
                   } else {
-                    console.log("AI返回内容未匹配到选项字母:", content);
+                    console.log("AI返回内容未匹配到选项字母或选项内容:", content);
                     resolve({ form: "AI", answer: "" });
                   }
                 } else {
-                  const textAnswers = content.split("|").map(s => s.trim()).filter(s => s.length > 0);
+                  const textAnswers = answerContent.split("|").map(s => s.trim()).filter(s => s.length > 0);
                   if (textAnswers.length > 0) {
                     console.log(`AI解析成功(${typeName})，答案:`, textAnswers);
-                    resolve({ form: "AI", answer: textAnswers });
-                  } else if (content.length > 0) {
-                    console.log(`AI解析成功(${typeName})，答案:`, content);
-                    resolve({ form: "AI", answer: [content] });
+                    resolve({ form: "AI", answer: textAnswers, displayAnswer: textAnswers.join("\n"), explanation });
+                  } else if (answerContent.length > 0) {
+                    console.log(`AI解析成功(${typeName})，答案:`, answerContent);
+                    resolve({ form: "AI", answer: [answerContent], displayAnswer: answerContent, explanation });
                   } else {
                     console.log("AI返回内容为空");
                     resolve({ form: "AI", answer: "" });
@@ -1687,7 +1691,15 @@
     } catch {
       return normalized.replace(/<[^>]*>/g, "").trim();
     }
-  }, formatLearningDisplayHtml = (value) => formatLearningDisplayText(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;").replace(/\n/g, "<br>"), cl = (str) => str.replace(/^【.*?】\s*/, "").replace(/\s*（\d+\.\d+分）$/, ""), getQuestion = (type, html) => {
+  }, formatLearningDisplayHtml = (value) => formatLearningDisplayText(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;").replace(/\n/g, "<br>"), parseLearningAiReply = (value) => {
+    const content = formatLearningDisplayText(value).replace(/```(?:json|text)?/gi, "").trim();
+    const tagged = content.match(/(?:^|\n)\s*答案\s*[:：]\s*([\s\S]*?)(?=\n\s*解题思路\s*[:：]|$)/i);
+    const explanation = content.match(/(?:^|\n)\s*解题思路\s*[:：]\s*([\s\S]*)$/i);
+    return {
+      answer: (tagged == null ? void 0 : tagged[1].trim()) || content.replace(/^(?:答案\s*[:：]\s*)/i, "").trim(),
+      explanation: (explanation == null ? void 0 : explanation[1].trim()) || ""
+    };
+  }, learningAnswerDisplay = (source, fallback = "") => formatLearningDisplayText(source && (source.displayAnswer || source.answer) || fallback || ""), cl = (str) => str.replace(/^【.*?】\s*/, "").replace(/\s*（\d+\.\d+分）$/, ""), getQuestion = (type, html) => {
     let questionHtml, questionText, questionTypeId, optionHtml, tokenHtml, workType, optionText, index;
     switch (type) {
       case "1":
@@ -1833,8 +1845,8 @@
         this.setContent("");
       });
     });
-  }, useAskStore = pinia$1.defineStore({ id: "ask", state: () => ({ dialogVisible: true, count: 0, questionList: [], task: { name: "暂未加载", work: { questionList: [], inx: 0 }, video: [], log: [], status: "" } }), actions: { reset() {
-    this.task.name = "暂未加载", this.task.work = { questionList: [], inx: 0 }, this.task.video = [], this.task.status = "", this.count = 0;
+  }, useAskStore = pinia$1.defineStore({ id: "ask", state: () => ({ task: { name: "暂未加载", work: { questionList: [], inx: 0 }, activity: { active: false, label: "", detail: "", progress: null }, log: [], status: "" } }), actions: { reset() {
+    this.task.name = "暂未加载", this.task.work = { questionList: [], inx: 0 }, this.task.activity = { active: false, label: "", detail: "", progress: null }, this.task.status = "";
   }, select(index) {
     this.task.work.questionList[index].selected = true, this.task.work.inx = index;
     try {
@@ -1852,7 +1864,13 @@
     this.task.log.length > 20 && this.task.log.shift(), this.task.log.push({ time: (/* @__PURE__ */ new Date()).toLocaleTimeString(), msg, type: level }), reportToHost("log", msg);
   }, msg(msg) {
     this.task.status = msg, reportToHost("status", msg);
+  }, setActivity(label, detail, progress = null, active = true) {
+    this.task.name = label || "当前任务", this.task.status = detail || "", this.task.activity = { active: Boolean(active), label: label || "当前任务", detail: detail || "", progress: Number.isFinite(Number(progress)) ? Math.max(0, Math.min(100, Number(progress))) : null };
   } } });
+  const formatMediaTime = (seconds) => {
+    const value = Math.max(0, Number(seconds) || 0), minutes = Math.floor(value / 60), rest = Math.floor(value % 60);
+    return `${String(minutes).padStart(2, "0")}:${String(rest).padStart(2, "0")}`;
+  };
   class Cx {
     constructor() {
       __publicField(this, "askStore");
@@ -1864,7 +1882,7 @@
     }
     async audio(iframeWindow) {
       await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，点击“开始助手”后继续"));
-      this.askStore.reset(), this.askStore.task.name = "视频音频";
+      this.askStore.reset(), this.askStore.setActivity("音频任务", "正在加载音频", 0);
       const audio = iframeWindow.document.getElementById("audio_html5_api");
       return audio.muted = true, audio.autoplay = true, audio.volume = 0, audio.play().then(function() {
         console.log("播放成功");
@@ -1874,16 +1892,18 @@
         } }) : console.error("视频播放失败，原因：", error);
       }), new Promise((resolve) => {
         const intervalId = setInterval(() => {
-          audio.ended ? (clearInterval(intervalId), log("监听到音频已完成", "success"), resolve()) : assistantRuntime.isPaused() ? audio.pause() : audio.paused && audio.play();
+          const duration = Number(audio.duration) || 0, current = Number(audio.currentTime) || 0, progress = duration > 0 ? current / duration * 100 : null;
+          this.askStore.setActivity("音频任务", `${assistantRuntime.isPaused() ? "已暂停" : "正在自动播放"}${duration > 0 ? ` · ${formatMediaTime(current)} / ${formatMediaTime(duration)}` : ""}`, progress);
+          audio.ended ? (this.askStore.setActivity("音频任务", "音频播放完成", 100, false), clearInterval(intervalId), log("监听到音频已完成", "success"), resolve()) : assistantRuntime.isPaused() ? audio.pause() : audio.paused && audio.play();
         }, 1e3);
-        audio.addEventListener("ended", function() {
-          log("监听到音频已完成1", "success"), audio.pause(), clearInterval(intervalId), resolve();
+        audio.addEventListener("ended", () => {
+          this.askStore.setActivity("音频任务", "音频播放完成", 100, false), log("监听到音频已完成1", "success"), audio.pause(), clearInterval(intervalId), resolve();
         });
       });
     }
     async video(iframeWindow) {
       await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，点击“开始助手”后继续"));
-      this.askStore.reset(), this.askStore.task.name = "视频", this.askStore.task.video.status = 1, await waitElementLoaded(iframeWindow, "#video_html5_api"), console.log("视频加载完成");
+      this.askStore.reset(), this.askStore.setActivity("视频任务", "正在加载视频", 0), await waitElementLoaded(iframeWindow, "#video_html5_api"), console.log("视频加载完成");
       const player = iframeWindow.videojs("video_html5_api"), playerButton = iframeWindow.document.querySelector(".vjs-big-play-button"), nativePlayerPause = player.pause.bind(player);
       player.muted(true), player.playbackRate(16), player.play();
 
@@ -1960,6 +1980,8 @@
 
       await new Promise((resolve) => {
         const intervalId = setInterval(() => {
+          const duration = Number(player.duration()) || 0, current = Number(player.currentTime()) || 0, progress = duration > 0 ? current / duration * 100 : null;
+          this.askStore.setActivity("视频任务", `${assistantRuntime.isPaused() ? "已暂停" : "正在自动播放"}${duration > 0 ? ` · ${formatMediaTime(current)} / ${formatMediaTime(duration)}` : ""}`, progress);
           if (assistantRuntime.isPaused()) {
             nativePlayerPause();
             return;
@@ -1969,9 +1991,9 @@
         player.pause = function() {
           player.currentTime() >= player.duration() && (console.log("视频播放完成"), player.pause = pauseBase, clearTimeout(pauseTimer), clearTimeout(mouseMoveTimer), resolve());
         }, player.on("ended", () => {
-          console.log("视频播放完成1"), player.pause = pauseBase, player.pause(), clearInterval(intervalId), clearTimeout(pauseTimer), clearTimeout(mouseMoveTimer), resolve();
+          this.askStore.setActivity("视频任务", "视频播放完成", 100, false), console.log("视频播放完成1"), player.pause = pauseBase, player.pause(), clearInterval(intervalId), clearTimeout(pauseTimer), clearTimeout(mouseMoveTimer), resolve();
         });
-      }), console.log("任务点完成");
+      }), this.askStore.setActivity("视频任务", "视频播放完成", 100, false), console.log("任务点完成");
     }
     work(iframeWindow) {
       return new Promise(async (resolve) => {
@@ -1985,14 +2007,15 @@
           let data = getQuestion("1", Timu[i]);
           console.log(data), ques.push(data);
         }
-        this.askStore.reset(), this.askStore.count = ques.length, this.askStore.task.name = "章节测验";
+        this.askStore.reset(), this.askStore.setActivity("章节测验", `已识别 ${ques.length} 道题，准备获取答案`, 0);
         for (let i = 0; i < ques.length; i++) {
+          this.askStore.setActivity("章节测验", `正在处理第 ${i + 1}/${ques.length} 题`, Math.round(i / Math.max(1, ques.length) * 100));
           await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，点击“开始助手”后继续")), await randomSleep(this.defaultConfig.answerIntervalMin, this.defaultConfig.answerIntervalMax), await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，点击“开始助手”后继续")), this.askStore.insert(ques[i]), this.askStore.task.work.inx = i;
           let data = await getAnswers(ques[i], iframeWindow);
-          this.askStore.get(i).allAnswer = data.map((item) => ({ ...item, answer: formatLearningDisplayHtml(item.answer || "暂无答案") }));
+          this.askStore.get(i).allAnswer = data.map((item) => ({ ...item, answer: learningAnswerDisplay(item, "暂无答案"), explanation: formatLearningDisplayText(item.explanation || "") }));
           await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，点击“开始助手”后继续"));
           let tmp = fillAnswer(data, ques[i], Timu[i], iframeWindow);
-          tmp ? (this.askStore.get(i).status = "primary", this.askStore.get(i).answer = formatLearningDisplayText(tmp), succ++) : (this.askStore.get(i).status = "danger", this.askStore.get(i).answer = "暂无答案"), this.askStore.get(i).dom = Timu[i];
+          tmp ? (this.askStore.get(i).status = "primary", this.askStore.get(i).answer = learningAnswerDisplay(data[0], tmp), succ++) : (this.askStore.get(i).status = "danger", this.askStore.get(i).answer = "暂无答案"), this.askStore.get(i).dom = Timu[i];
         }
         const submitConfig = getConfig();
         submitConfig.autoSubmit ? (succ / ques.length < submitConfig.minAccuracy ? (this.askStore.log("章节测验正确率不足，暂存", "error"), iframeWindow.alert = function(e) {
@@ -2011,14 +2034,15 @@
           let data = getQuestion("2", Timu[i]);
           ques.push(data);
         }
-        this.askStore.reset(), this.askStore.count = ques.length, this.askStore.task.name = "作业";
+        this.askStore.reset(), this.askStore.setActivity("作业", `已识别 ${ques.length} 道题，准备获取答案`, 0);
         for (let i = 0; i < ques.length; i++) {
+          this.askStore.setActivity("作业", `正在处理第 ${i + 1}/${ques.length} 题`, Math.round(i / Math.max(1, ques.length) * 100));
           await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，点击“开始助手”后继续")), await randomSleep(this.defaultConfig.answerIntervalMin, this.defaultConfig.answerIntervalMax), await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，点击“开始助手”后继续")), this.askStore.insert(ques[i]), this.askStore.task.work.inx = i;
           let data = await getAnswers(ques[i]);
-          this.askStore.get(i).allAnswer = data.map((item) => ({ ...item, answer: formatLearningDisplayHtml(item.answer || "暂无答案") }));
+          this.askStore.get(i).allAnswer = data.map((item) => ({ ...item, answer: learningAnswerDisplay(item, "暂无答案"), explanation: formatLearningDisplayText(item.explanation || "") }));
           await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，点击“开始助手”后继续"));
           let tmp = fillAnswer(data, ques[i], Timu[i], _unsafeWindow);
-          tmp ? (this.askStore.get(i).status = "primary", this.askStore.get(i).answer = formatLearningDisplayText(tmp)) : (this.askStore.get(i).status = "danger", this.askStore.get(i).answer = "暂无答案"), this.askStore.get(i).dom = Timu[i];
+          tmp ? (this.askStore.get(i).status = "primary", this.askStore.get(i).answer = learningAnswerDisplay(data[0], tmp)) : (this.askStore.get(i).status = "danger", this.askStore.get(i).answer = "暂无答案"), this.askStore.get(i).dom = Timu[i];
         }
         this.askStore.msg("作业答案已填写，请检查后手动提交");
         resolve();
@@ -2027,14 +2051,14 @@
     exam() {
       return new Promise(async (resolve) => {
         await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，点击“开始助手”后继续"));
-        this.askStore.reset(), this.askStore.count = 1, this.askStore.task.name = "考试";
+        this.askStore.reset(), this.askStore.setActivity("考试", "已识别当前题目，准备获取答案", 0);
         let data = getQuestion("3", _unsafeWindow.document.body);
         this.askStore.insert(data), this.askStore.task.work.inx = 0;
         let data1 = await getAnswers(data);
-        this.askStore.get(0).allAnswer = data1.map((item) => ({ ...item, answer: formatLearningDisplayHtml(item.answer || "暂无答案") }));
+        this.askStore.get(0).allAnswer = data1.map((item) => ({ ...item, answer: learningAnswerDisplay(item, "暂无答案"), explanation: formatLearningDisplayText(item.explanation || "") }));
         await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，点击“开始助手”后继续"));
         let tmp = fillAnswer(data1, data, document.getElementsByClassName("mark_table")[0], _unsafeWindow);
-        if (tmp ? (this.askStore.get(0).status = "primary", this.askStore.get(0).answer = formatLearningDisplayText(tmp)) : (this.askStore.get(0).status = "danger", this.askStore.get(0).answer = "暂无答案"), getConfig().autoExam) {
+        if (tmp ? (this.askStore.get(0).status = "primary", this.askStore.get(0).answer = learningAnswerDisplay(data1[0], tmp)) : (this.askStore.get(0).status = "danger", this.askStore.get(0).answer = "暂无答案"), getConfig().autoExam) {
           await randomSleep(this.defaultConfig.answerIntervalMin, this.defaultConfig.answerIntervalMax);
           await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，不会切换考试题目"));
           const nextButton = $('.nextDiv .jb_btn:contains("下一题")');
@@ -2171,61 +2195,83 @@
       #${panelId}, #${panelId} *, #${launcherId}, #${launcherId} * { box-sizing: border-box; }
       #${panelId}[hidden], #${launcherId}[hidden] { display: none !important; }
       #${panelId} {
+        --cpu-la-primary: #4d907e; --cpu-la-primary-strong: #2f6f60; --cpu-la-primary-soft: #e7f3ef;
+        --cpu-la-surface: rgba(250, 253, 252, .98); --cpu-la-card: #fff; --cpu-la-subtle: #f1f6f4; --cpu-la-answer: #f2f8f6;
+        --cpu-la-text: #172033; --cpu-la-muted: #728095; --cpu-la-muted-strong: #516174;
+        --cpu-la-border: #dbe8e4; --cpu-la-border-soft: #e1e9ec; --cpu-la-danger: #b42318;
+        --cpu-la-warning-bg: #fff0dc; --cpu-la-warning-text: #a85808; --cpu-la-on-primary: #fff;
+        --cpu-la-tab-shadow: 0 1px 6px rgba(15, 23, 42, .09); --cpu-la-shadow: 0 24px 70px rgba(15, 23, 42, .2);
         position: fixed; right: 22px; top: 78px; z-index: 2147482998;
-        width: min(440px, calc(100vw - 32px)); max-height: calc(100vh - 100px);
+        width: min(400px, calc(100vw - 32px)); max-height: calc(100vh - 116px);
         display: flex; flex-direction: column; overflow: hidden;
-        border: 1px solid rgba(77, 144, 126, .26); border-radius: 20px;
-        background: rgba(250, 253, 252, .98); color: #172033;
-        box-shadow: 0 24px 70px rgba(15, 23, 42, .2);
+        border: 1px solid color-mix(in srgb, var(--cpu-la-primary) 30%, transparent); border-radius: 20px;
+        background: var(--cpu-la-surface); color: var(--cpu-la-text); color-scheme: light;
+        box-shadow: var(--cpu-la-shadow);
         font: 14px/1.55 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       }
       #${panelId} button, #${panelId} input { font: inherit; }
       #${panelId} button { cursor: pointer; }
-      #${panelId} .cpu-la-header { display: flex; align-items: center; gap: 10px; padding: 16px 18px; border-bottom: 1px solid #dbe8e4; }
-      #${panelId} .cpu-la-mark { display: grid; place-items: center; width: 38px; height: 38px; flex: 0 0 auto; border-radius: 13px; background: #4d907e; color: #fff; font-size: 18px; font-weight: 800; }
+      #${panelId} .cpu-la-header { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--cpu-la-border); cursor: move; touch-action: none; user-select: none; }
+      #${panelId} .cpu-la-header button { cursor: pointer; }
+      #${panelId} .cpu-la-mark { display: grid; place-items: center; width: 38px; height: 38px; flex: 0 0 auto; border-radius: 13px; background: var(--cpu-la-primary); color: var(--cpu-la-on-primary); font-size: 18px; font-weight: 800; }
       #${panelId} .cpu-la-heading { min-width: 0; flex: 1; }
       #${panelId} .cpu-la-heading strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 17px; }
-      #${panelId} .cpu-la-heading span { display: block; color: #728095; font-size: 12px; }
-      #${panelId} .cpu-la-run { min-width: 74px; min-height: 34px; padding: 0 12px; border: 0; border-radius: 10px; background: #e7f3ef; color: #2f6f60; font-weight: 750; }
-      #${panelId}[data-paused="true"] .cpu-la-run { background: #fff0dc; color: #a85808; }
-      #${panelId} .cpu-la-icon { width: 34px; height: 34px; padding: 0; border: 1px solid #dce5e9; border-radius: 10px; background: #fff; color: #667085; font-size: 19px; }
-      #${panelId} .cpu-la-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; padding: 8px 12px; background: #f1f6f4; }
-      #${panelId} .cpu-la-tabs button { min-height: 34px; border: 0; border-radius: 9px; background: transparent; color: #68758a; font-weight: 650; }
-      #${panelId} .cpu-la-tabs button[aria-selected="true"] { background: #fff; color: #2f6f60; box-shadow: 0 1px 6px rgba(15, 23, 42, .09); }
-      #${panelId} .cpu-la-body { min-height: 230px; overflow: auto; padding: 16px 18px; }
-      #${panelId} .cpu-la-card { padding: 14px; border: 1px solid #e1e9ec; border-radius: 14px; background: #fff; }
+      #${panelId} .cpu-la-heading span { display: block; color: var(--cpu-la-muted); font-size: 12px; }
+      #${panelId} .cpu-la-run { min-width: 74px; min-height: 34px; padding: 0 12px; border: 0; border-radius: 10px; background: var(--cpu-la-primary-soft); color: var(--cpu-la-primary-strong); font-weight: 750; }
+      #${panelId}[data-paused="true"] .cpu-la-run { background: var(--cpu-la-warning-bg); color: var(--cpu-la-warning-text); }
+      #${panelId} .cpu-la-icon { width: 34px; height: 34px; padding: 0; border: 1px solid var(--cpu-la-border); border-radius: 10px; background: var(--cpu-la-card); color: var(--cpu-la-muted-strong); font-size: 19px; }
+      #${panelId} .cpu-la-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; padding: 8px 12px; background: var(--cpu-la-subtle); }
+      #${panelId} .cpu-la-tabs button { min-height: 34px; border: 0; border-radius: 9px; background: transparent; color: var(--cpu-la-muted); font-weight: 650; }
+      #${panelId} .cpu-la-tabs button[aria-selected="true"] { background: var(--cpu-la-card); color: var(--cpu-la-primary-strong); box-shadow: var(--cpu-la-tab-shadow); }
+      #${panelId} .cpu-la-body { min-height: 0; overflow: auto; padding: 14px 16px; }
+      #${panelId} .cpu-la-card { padding: 14px; border: 1px solid var(--cpu-la-border-soft); border-radius: 14px; background: var(--cpu-la-card); }
       #${panelId} .cpu-la-card + .cpu-la-card { margin-top: 10px; }
-      #${panelId} .cpu-la-kicker { color: #4d907e; font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+      #${panelId} .cpu-la-kicker { color: var(--cpu-la-primary); font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
       #${panelId} .cpu-la-title { margin: 4px 0 2px; font-size: 18px; line-height: 1.35; }
-      #${panelId} .cpu-la-muted { color: #728095; }
-      #${panelId} .cpu-la-progress { height: 6px; margin-top: 12px; overflow: hidden; border-radius: 999px; background: #e9efed; }
-      #${panelId} .cpu-la-progress i { display: block; height: 100%; border-radius: inherit; background: #4d907e; transition: width .2s ease; }
+      #${panelId} .cpu-la-muted { color: var(--cpu-la-muted); }
+      #${panelId} .cpu-la-progress { height: 6px; margin-top: 12px; overflow: hidden; border-radius: 999px; background: var(--cpu-la-border); }
+      #${panelId} .cpu-la-progress i { display: block; height: 100%; border-radius: inherit; background: var(--cpu-la-primary); transition: width .2s ease; }
       #${panelId} .cpu-la-question { margin: 10px 0 0; white-space: pre-wrap; word-break: break-word; font-size: 15px; font-weight: 650; }
-      #${panelId} .cpu-la-answer { margin: 10px 0 0; padding: 10px 12px; border-left: 3px solid #4d907e; border-radius: 0 9px 9px 0; background: #f2f8f6; white-space: pre-wrap; word-break: break-word; font: 14px/1.65 ui-monospace, SFMono-Regular, Consolas, monospace; }
-      #${panelId} .cpu-la-empty { display: grid; min-height: 230px; place-content: center; text-align: center; color: #8290a4; }
-      #${panelId} .cpu-la-empty b { display: block; margin-bottom: 7px; color: #405064; font-size: 17px; }
+      #${panelId} .cpu-la-answer { margin: 10px 0 0; padding: 10px 12px; border-left: 3px solid var(--cpu-la-primary); border-radius: 0 9px 9px 0; background: var(--cpu-la-answer); white-space: pre-wrap; word-break: break-word; font: 14px/1.65 ui-monospace, SFMono-Regular, Consolas, monospace; }
+      #${panelId} .cpu-la-empty { display: grid; min-height: 138px; place-content: center; text-align: center; color: var(--cpu-la-muted); }
+      #${panelId} .cpu-la-empty b { display: block; margin-bottom: 7px; color: var(--cpu-la-text); font-size: 17px; }
+      #${panelId} .cpu-la-activity { display: grid; grid-template-columns: 42px 1fr; gap: 12px; align-items: center; }
+      #${panelId} .cpu-la-activity-icon { display: grid; width: 42px; height: 42px; place-items: center; border-radius: 13px; background: var(--cpu-la-primary-soft); color: var(--cpu-la-primary-strong); font-size: 17px; font-weight: 800; }
+      #${panelId} .cpu-la-activity h3 { margin: 0; font-size: 17px; }
+      #${panelId} .cpu-la-activity p { margin: 3px 0 0; color: var(--cpu-la-muted); }
       #${panelId} .cpu-la-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-      #${panelId} .cpu-la-actions button { min-width: 88px; min-height: 35px; flex: 1; border: 1px solid #d8e4e0; border-radius: 9px; background: #fff; color: #3e665c; }
+      #${panelId} .cpu-la-actions button { min-width: 88px; min-height: 35px; flex: 1; border: 1px solid var(--cpu-la-border); border-radius: 9px; background: var(--cpu-la-card); color: var(--cpu-la-primary-strong); }
       #${panelId} .cpu-la-actions button:disabled { cursor: not-allowed; opacity: .42; }
-      #${panelId} .cpu-la-sources { margin-top: 11px; border-top: 1px solid #edf1f3; }
-      #${panelId} .cpu-la-sources summary { padding-top: 10px; color: #4d6f66; cursor: pointer; font-weight: 650; }
-      #${panelId} .cpu-la-source { margin-top: 8px; padding: 9px 10px; border-radius: 9px; background: #f6f8fa; white-space: pre-wrap; word-break: break-word; }
-      #${panelId} .cpu-la-source b { display: block; margin-bottom: 3px; color: #617083; font-size: 12px; }
-      #${panelId} .cpu-la-log { display: grid; grid-template-columns: 72px 1fr; gap: 8px; padding: 9px 0; border-bottom: 1px solid #edf1f3; }
-      #${panelId} .cpu-la-log time { color: #94a0b2; font-variant-numeric: tabular-nums; }
-      #${panelId} .cpu-la-log[data-type="error"] span { color: #b42318; }
+      #${panelId} .cpu-la-sources { margin-top: 11px; border-top: 1px solid var(--cpu-la-border-soft); }
+      #${panelId} .cpu-la-sources summary { padding-top: 10px; color: var(--cpu-la-primary-strong); cursor: pointer; font-weight: 650; }
+      #${panelId} .cpu-la-source { margin-top: 8px; padding: 9px 10px; border-radius: 9px; background: var(--cpu-la-subtle); white-space: pre-wrap; word-break: break-word; }
+      #${panelId} .cpu-la-source b { display: block; margin-bottom: 3px; color: var(--cpu-la-muted-strong); font-size: 12px; }
+      #${panelId} .cpu-la-reasoning { margin-top: 8px; border-top: 1px solid var(--cpu-la-border); color: var(--cpu-la-muted-strong); }
+      #${panelId} .cpu-la-reasoning summary { padding-top: 7px; color: var(--cpu-la-primary-strong); font-size: 12px; }
+      #${panelId} .cpu-la-reasoning p { margin: 6px 0 0; white-space: pre-wrap; }
+      #${panelId} .cpu-la-log { display: grid; grid-template-columns: 72px 1fr; gap: 8px; padding: 9px 0; border-bottom: 1px solid var(--cpu-la-border-soft); }
+      #${panelId} .cpu-la-log time { color: var(--cpu-la-muted); font-variant-numeric: tabular-nums; }
+      #${panelId} .cpu-la-log[data-type="error"] span { color: var(--cpu-la-danger); }
       #${panelId} .cpu-la-settings { display: grid; gap: 10px; }
-      #${panelId} .cpu-la-setting { display: flex; align-items: flex-start; gap: 10px; padding: 12px; border: 1px solid #e1e9ec; border-radius: 12px; background: #fff; cursor: pointer; }
-      #${panelId} .cpu-la-setting input { margin-top: 4px; accent-color: #4d907e; }
+      #${panelId} .cpu-la-setting { display: flex; align-items: flex-start; gap: 10px; padding: 12px; border: 1px solid var(--cpu-la-border-soft); border-radius: 12px; background: var(--cpu-la-card); cursor: pointer; }
+      #${panelId} .cpu-la-setting input { margin-top: 4px; accent-color: var(--cpu-la-primary); }
       #${panelId} .cpu-la-setting strong, #${panelId} .cpu-la-setting small { display: block; }
-      #${panelId} .cpu-la-setting small { margin-top: 2px; color: #7a8799; }
-      #${panelId} .cpu-la-number-row { display: grid; grid-template-columns: 1fr 88px; gap: 12px; align-items: center; padding: 12px; border: 1px solid #e1e9ec; border-radius: 12px; background: #fff; }
-      #${panelId} .cpu-la-number-row input { width: 100%; padding: 7px 8px; border: 1px solid #ccd8dd; border-radius: 8px; color: #243041; }
-      #${panelId} .cpu-la-footer { display: flex; align-items: center; gap: 10px; padding: 12px 18px 14px; border-top: 1px solid #dbe8e4; background: #fff; }
-      #${panelId} .cpu-la-footer label { display: flex; min-width: 0; flex: 1; gap: 8px; align-items: center; cursor: pointer; }
-      #${panelId} .cpu-la-footer input { accent-color: #4d907e; }
-      #${panelId} .cpu-la-footer span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #516174; font-size: 13px; }
-      #${launcherId} { position: fixed; right: 22px; bottom: 28px; z-index: 2147482998; min-height: 44px; padding: 0 17px; border: 0; border-radius: 999px; background: #4d907e; color: #fff; box-shadow: 0 12px 32px rgba(47, 111, 96, .3); font: 700 14px system-ui, sans-serif; cursor: pointer; }
+      #${panelId} .cpu-la-setting small { margin-top: 2px; color: var(--cpu-la-muted); }
+      #${panelId} .cpu-la-number-row { display: grid; grid-template-columns: 1fr 88px; gap: 12px; align-items: center; padding: 12px; border: 1px solid var(--cpu-la-border-soft); border-radius: 12px; background: var(--cpu-la-card); }
+      #${panelId} .cpu-la-number-row input { width: 100%; padding: 7px 8px; border: 1px solid var(--cpu-la-border); border-radius: 8px; background: var(--cpu-la-surface); color: var(--cpu-la-text); }
+      #${launcherId} { --cpu-la-launcher-bg: #4d907e; --cpu-la-launcher-text: #fff; --cpu-la-launcher-shadow: 0 12px 32px rgba(47, 111, 96, .3); position: fixed; right: 22px; bottom: 28px; z-index: 2147482998; min-height: 44px; padding: 0 17px; border: 0; border-radius: 999px; background: var(--cpu-la-launcher-bg); color: var(--cpu-la-launcher-text); box-shadow: var(--cpu-la-launcher-shadow); font: 700 14px system-ui, sans-serif; cursor: pointer; }
+      @media (prefers-color-scheme: dark) {
+        #${panelId} {
+          --cpu-la-primary: #79b8a7; --cpu-la-primary-strong: #9bd0c1; --cpu-la-primary-soft: #203c35;
+          --cpu-la-surface: rgba(17, 27, 25, .98); --cpu-la-card: #182724; --cpu-la-subtle: #13211e; --cpu-la-answer: #16332c;
+          --cpu-la-text: #edf7f4; --cpu-la-muted: #a4b7b1; --cpu-la-muted-strong: #c1d0cc;
+          --cpu-la-border: #324a43; --cpu-la-border-soft: #2a3e39; --cpu-la-danger: #ff8d85;
+          --cpu-la-warning-bg: #49361f; --cpu-la-warning-text: #ffc37d; --cpu-la-on-primary: #10231e;
+          --cpu-la-tab-shadow: 0 1px 7px rgba(0, 0, 0, .28); --cpu-la-shadow: 0 24px 70px rgba(0, 0, 0, .48);
+          color-scheme: dark;
+        }
+        #${launcherId} { --cpu-la-launcher-bg: #356f61; --cpu-la-launcher-text: #f3fffb; --cpu-la-launcher-shadow: 0 12px 34px rgba(0, 0, 0, .45); }
+      }
       @media (max-width: 700px) {
         #${panelId} { top: 64px; right: 10px; left: 10px; width: auto; max-height: calc(100vh - 78px); border-radius: 16px; }
         #${panelId} .cpu-la-header { gap: 8px; padding: 12px; }
@@ -2235,6 +2281,7 @@
         #${panelId} .cpu-la-run { min-width: 56px; padding: 0 8px; }
         #${panelId} .cpu-la-icon { width: 32px; height: 32px; }
         #${panelId} .cpu-la-body { padding: 13px; }
+        #${panelId} .cpu-la-header { cursor: default; touch-action: auto; }
         #${launcherId} { right: 14px; bottom: 76px; }
       }
     `;
@@ -2244,7 +2291,7 @@
     panel.setAttribute("role", "dialog");
     panel.setAttribute("aria-label", assistantName);
     panel.innerHTML = `
-      <header class="cpu-la-header">
+      <header class="cpu-la-header" title="拖动调整窗口位置">
         <div class="cpu-la-mark">拾</div>
         <div class="cpu-la-heading"><strong>${assistantName}</strong><span>任务、答案与运行控制</span></div>
         <button class="cpu-la-run" type="button" data-action="toggle-runtime"></button>
@@ -2256,7 +2303,6 @@
         <button type="button" data-tab="settings">设置</button>
       </nav>
       <main class="cpu-la-body"></main>
-      <footer class="cpu-la-footer"><label><input type="checkbox" data-config="autoSubmit"><span>章节测验答完自动提交</span></label><small class="cpu-la-muted">作业 / 考试手动交卷</small></footer>
     `;
     launcher.id = launcherId;
     launcher.type = "button";
@@ -2264,6 +2310,57 @@
     launcher.hidden = true;
     doc.body.append(panel, launcher);
     const state = { store: initialStore, tab: "task", signature: "" };
+    const positionKey = "cpu-learning-assistant-position-v1";
+    let dragState = null;
+    const clampPanelPosition = (left, topValue) => {
+      const width = panel.offsetWidth || 400, height = panel.offsetHeight || 320;
+      return {
+        left: Math.max(8, Math.min(left, Math.max(8, host.innerWidth - width - 8))),
+        top: Math.max(8, Math.min(topValue, Math.max(8, host.innerHeight - height - 8)))
+      };
+    };
+    const setPanelPosition = (left, topValue, persist = false) => {
+      if (host.innerWidth <= 700) {
+        panel.style.removeProperty("left"), panel.style.removeProperty("right"), panel.style.removeProperty("top");
+        return;
+      }
+      const next = clampPanelPosition(Number(left) || 0, Number(topValue) || 0);
+      panel.style.left = `${next.left}px`, panel.style.top = `${next.top}px`, panel.style.right = "auto";
+      if (persist) {
+        try {
+          host.sessionStorage.setItem(positionKey, JSON.stringify(next));
+        } catch {}
+      }
+    };
+    const restorePanelPosition = () => {
+      if (host.innerWidth <= 700) return setPanelPosition(0, 0);
+      try {
+        const saved = JSON.parse(host.sessionStorage.getItem(positionKey) || "null");
+        if (saved && Number.isFinite(Number(saved.left)) && Number.isFinite(Number(saved.top))) return setPanelPosition(saved.left, saved.top);
+      } catch {}
+      panel.style.removeProperty("left"), panel.style.removeProperty("right"), panel.style.removeProperty("top");
+    };
+    const onPointerMove = (event) => {
+      if (!dragState || event.pointerId !== dragState.pointerId) return;
+      setPanelPosition(dragState.left + event.clientX - dragState.clientX, dragState.top + event.clientY - dragState.clientY);
+    };
+    const onPointerUp = (event) => {
+      if (!dragState || event.pointerId !== dragState.pointerId) return;
+      const rect = panel.getBoundingClientRect();
+      dragState = null, setPanelPosition(rect.left, rect.top, true);
+    };
+    const onHeaderPointerDown = (event) => {
+      if (host.innerWidth <= 700 || event.button !== 0 || event.target.closest("button, input, a")) return;
+      const rect = panel.getBoundingClientRect();
+      dragState = { pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY, left: rect.left, top: rect.top };
+      event.preventDefault();
+    };
+    const onWindowResize = () => restorePanelPosition();
+    panel.querySelector(".cpu-la-header").addEventListener("pointerdown", onHeaderPointerDown);
+    doc.addEventListener("pointermove", onPointerMove);
+    doc.addEventListener("pointerup", onPointerUp);
+    host.addEventListener("resize", onWindowResize);
+    restorePanelPosition();
     const escapeHtml = (value) => String(value == null ? "" : value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
     const saveConfig = (name, value) => {
       const previous = { ...defaultConfig$1, ...getConfig() };
@@ -2277,27 +2374,31 @@
     };
     const render = () => {
       const store = state.store, task = (store == null ? void 0 : store.task) || { name: "暂未加载", work: { questionList: [], inx: 0 }, log: [], status: "" }, questions = task.work && Array.isArray(task.work.questionList) ? task.work.questionList : [], index = Math.max(0, Math.min(Number(task.work && task.work.inx || 0), Math.max(0, questions.length - 1))), current = questions[index] || null, config = { ...defaultConfig$1, ...getConfig() }, logs = Array.isArray(task.log) ? task.log.slice(-30) : [], paused = assistantRuntime.isPaused();
-      const snapshot = { tab: state.tab, paused, name: task.name, status: task.status, count: questions.length, index, question: current == null ? "" : current.question, answer: current == null ? "" : current.answer, allAnswer: current == null ? [] : current.allAnswer, logs, autoSubmit: Boolean(config.autoSubmit), autoVideo: Boolean(config.autoVideo), autoJump: Boolean(config.autoJump), autoExam: Boolean(config.autoExam), answerIntervalMin: Number(config.answerIntervalMin), answerIntervalMax: Number(config.answerIntervalMax) };
+      const snapshot = { tab: state.tab, paused, name: task.name, status: task.status, activity: task.activity || null, count: questions.length, index, question: current == null ? "" : current.question, answer: current == null ? "" : current.answer, allAnswer: current == null ? [] : current.allAnswer, logs, autoSubmit: Boolean(config.autoSubmit), autoVideo: Boolean(config.autoVideo), autoJump: Boolean(config.autoJump), autoExam: Boolean(config.autoExam), answerIntervalMin: Number(config.answerIntervalMin), answerIntervalMax: Number(config.answerIntervalMax) };
       const signature = JSON.stringify(snapshot);
       if (signature === state.signature) return;
       state.signature = signature;
       panel.dataset.paused = String(paused);
       panel.querySelector(".cpu-la-run").textContent = paused ? "开始助手" : "暂停助手";
       panel.querySelectorAll("[data-tab]").forEach((button) => button.setAttribute("aria-selected", String(button.dataset.tab === state.tab)));
-      const submitCheckbox = panel.querySelector('.cpu-la-footer input[data-config="autoSubmit"]');
-      submitCheckbox.checked = Boolean(config.autoSubmit);
       const body = panel.querySelector(".cpu-la-body");
       if (state.tab === "task") {
         if (!current) {
-          body.innerHTML = `<div class="cpu-la-empty"><div><b>${paused ? "助手已暂停" : "等待任务加载"}</b><span>${paused ? "点击上方“开始助手”继续处理" : "进入章节、作业或考试后会自动识别"}</span></div></div>`;
+          const activity = task.activity && (task.activity.label || task.activity.detail) ? task.activity : null;
+          if (activity) {
+            const activityProgress = Number.isFinite(Number(activity.progress)) ? Math.max(0, Math.min(100, Number(activity.progress))) : null;
+            body.innerHTML = `<section class="cpu-la-card"><div class="cpu-la-activity"><span class="cpu-la-activity-icon">${paused ? "Ⅱ" : activity.active === false ? "✓" : "↻"}</span><div><h3>${escapeHtml(paused ? "助手已暂停" : activity.label || "正在处理任务")}</h3><p>${escapeHtml(paused ? "点击上方“开始助手”继续处理" : activity.detail || "任务正在运行")}</p></div></div>${activityProgress == null ? "" : `<div class="cpu-la-progress"><i style="width:${activityProgress}%"></i></div>`}</section>`;
+          } else {
+            body.innerHTML = `<div class="cpu-la-empty"><div><b>${paused ? "助手已暂停" : "等待任务加载"}</b><span>${paused ? "点击上方“开始助手”继续处理" : "进入章节、作业或考试后会自动识别"}</span></div></div>`;
+          }
         } else {
-          const progress = Math.round((index + 1) / Math.max(1, questions.length) * 100), answer = formatLearningDisplayText(current.answer || ""), sources = Array.isArray(current.allAnswer) ? current.allAnswer : [], sourceDetails = sources.length ? `<details class="cpu-la-sources"><summary>查看 ${sources.length} 个答案来源</summary>${sources.map((item) => `<div class="cpu-la-source"><b>${escapeHtml(item.form || "答案来源")}</b>${escapeHtml(formatLearningDisplayText(item.answer || "暂无答案"))}</div>`).join("")}</details>` : '<p class="cpu-la-muted">尚未收到答案</p>';
+          const progress = Math.round((index + 1) / Math.max(1, questions.length) * 100), answer = formatLearningDisplayText(current.answer || ""), sources = Array.isArray(current.allAnswer) ? current.allAnswer : [], sourceDetails = sources.length ? `<details class="cpu-la-sources"><summary>查看 ${sources.length} 个答案来源</summary>${sources.map((item) => `<div class="cpu-la-source"><b>${escapeHtml(item.form || "答案来源")}</b>${escapeHtml(learningAnswerDisplay(item, "暂无答案"))}${item.explanation ? `<details class="cpu-la-reasoning"><summary>解题思路</summary><p>${escapeHtml(formatLearningDisplayText(item.explanation))}</p></details>` : ""}</div>`).join("")}</details>` : '<p class="cpu-la-muted">尚未收到答案</p>';
           body.innerHTML = `<section class="cpu-la-card"><span class="cpu-la-kicker">${escapeHtml(task.name || "当前任务")} · ${index + 1}/${questions.length}</span><h3 class="cpu-la-title">${escapeHtml(task.status || (paused ? "已暂停" : "处理中"))}</h3><div class="cpu-la-progress"><i style="width:${progress}%"></i></div></section><section class="cpu-la-card"><span class="cpu-la-kicker">题目</span><div class="cpu-la-question">${escapeHtml(formatLearningDisplayText(current.question || ""))}</div>${answer ? `<pre class="cpu-la-answer">${escapeHtml(answer)}</pre>` : '<p class="cpu-la-muted">正在获取并填写答案…</p>'}${sourceDetails}<div class="cpu-la-actions"><button type="button" data-action="previous" ${index <= 0 ? "disabled" : ""}>上一题</button><button type="button" data-action="locate">定位原题</button>${answer ? '<button type="button" data-action="copy-answer">复制答案</button>' : ""}<button type="button" data-action="next" ${index >= questions.length - 1 ? "disabled" : ""}>下一题</button></div></section>`;
         }
       } else if (state.tab === "logs") {
         body.innerHTML = logs.length ? `<section class="cpu-la-card">${logs.map((item) => `<div class="cpu-la-log" data-type="${escapeHtml(item.type || "info")}"><time>${escapeHtml(item.time || "")}</time><span>${escapeHtml(item.msg || "")}</span></div>`).join("")}<div class="cpu-la-actions"><button type="button" data-action="clear-logs">清空日志</button></div></section>` : '<div class="cpu-la-empty"><div><b>暂无运行日志</b><span>开始处理任务后，关键步骤会记录在这里</span></div></div>';
       } else {
-        body.innerHTML = `<div class="cpu-la-settings"><label class="cpu-la-setting"><input type="checkbox" data-config="autoVideo" ${config.autoVideo ? "checked" : ""}><span><strong>自动播放视频与音频</strong><small>关闭后会跳过媒体任务点</small></span></label><label class="cpu-la-setting"><input type="checkbox" data-config="autoJump" ${config.autoJump ? "checked" : ""}><span><strong>完成后切换下一章</strong><small>暂停助手时不会发生章节切换</small></span></label><label class="cpu-la-setting"><input type="checkbox" data-config="autoExam" ${config.autoExam ? "checked" : ""}><span><strong>考试自动切换下一题</strong><small>只切题，不会替你最终交卷</small></span></label><div class="cpu-la-number-row"><span><strong>答题最短等待</strong><small class="cpu-la-muted">每题之间的秒数</small></span><input type="number" min="1" max="120" data-config-number="answerIntervalMin" value="${Number(config.answerIntervalMin) || 8}"></div><div class="cpu-la-number-row"><span><strong>答题最长等待</strong><small class="cpu-la-muted">不能小于最短等待</small></span><input type="number" min="1" max="180" data-config-number="answerIntervalMax" value="${Number(config.answerIntervalMax) || 20}"></div></div>`;
+        body.innerHTML = `<div class="cpu-la-settings"><label class="cpu-la-setting"><input type="checkbox" data-config="autoSubmit" ${config.autoSubmit ? "checked" : ""}><span><strong>章节测验答完自动提交</strong><small>只作用于章节测验；作业和考试始终由你手动交卷</small></span></label><label class="cpu-la-setting"><input type="checkbox" data-config="autoVideo" ${config.autoVideo ? "checked" : ""}><span><strong>自动播放视频与音频</strong><small>关闭后会跳过媒体任务点</small></span></label><label class="cpu-la-setting"><input type="checkbox" data-config="autoJump" ${config.autoJump ? "checked" : ""}><span><strong>完成后切换下一章</strong><small>暂停助手时不会发生章节切换</small></span></label><label class="cpu-la-setting"><input type="checkbox" data-config="autoExam" ${config.autoExam ? "checked" : ""}><span><strong>考试自动切换下一题</strong><small>只切题，不会替你最终交卷</small></span></label><div class="cpu-la-number-row"><span><strong>答题最短等待</strong><small class="cpu-la-muted">每题之间的秒数</small></span><input type="number" min="1" max="120" data-config-number="answerIntervalMin" value="${Number(config.answerIntervalMin) || 8}"></div><div class="cpu-la-number-row"><span><strong>答题最长等待</strong><small class="cpu-la-muted">不能小于最短等待</small></span><input type="number" min="1" max="180" data-config-number="answerIntervalMax" value="${Number(config.answerIntervalMax) || 20}"></div></div>`;
       }
     };
     panel.addEventListener("click", (event) => {
@@ -2374,6 +2475,10 @@
       render();
     }, render, destroy() {
       host.clearInterval(renderTimer);
+      panel.querySelector(".cpu-la-header").removeEventListener("pointerdown", onHeaderPointerDown);
+      doc.removeEventListener("pointermove", onPointerMove);
+      doc.removeEventListener("pointerup", onPointerUp);
+      host.removeEventListener("resize", onWindowResize);
       panel.remove();
       launcher.remove();
       style.remove();
@@ -2447,6 +2552,7 @@
         var _a, _b, _c, _d, _e;
         try {
           await assistantRuntime.waitUntilRunning(() => cxModel.askStore.msg("助手已暂停，点击“开始助手”后继续"));
+          cxModel.askStore.setActivity("任务扫描", "正在读取本章节的任务点");
           if (!await waitElementLoaded(_self, "#iframe")) return;
           const cardsIframe = _self.document.querySelector("#iframe");
           if (!await waitIframeLoaded(cardsIframe)) return;
@@ -2469,7 +2575,7 @@
             const iframe = (_d = item.parentElement) == null ? void 0 : _d.querySelector("iframe");
             if (!iframe || !await waitIframeLoaded(iframe)) continue;
             const otherInfo = JSON.parse(iframe.getAttribute("data") || "{}");
-            if (cxModel.askStore.log(`正在完成任务:${otherInfo.name || otherInfo.title}`), iframe == null ? void 0 : iframe.src.match(/\/ananas\/modules\/video\/index\.html/)) {
+            if (cxModel.askStore.setActivity(otherInfo.name || otherInfo.title || "课程任务", "正在识别并处理任务点"), cxModel.askStore.log(`正在完成任务:${otherInfo.name || otherInfo.title}`), iframe == null ? void 0 : iframe.src.match(/\/ananas\/modules\/video\/index\.html/)) {
               if (!formStore.forminput.autoVideo) {
                 cxModel.askStore.log("视频任务已跳过", "success");
                 continue;
@@ -2486,14 +2592,14 @@
               }
               iframe && (await waitIframeLoaded(iframe), await cxModel.audio(iframe.contentWindow), cxModel.askStore.log("音频任务已完成", "success"));
             } else
-              (iframe == null ? void 0 : iframe.src.match(/\/ananas\/modules\/pdf\/index.html/)) ? (log("文档", "error"), iframe && (await waitIframeLoaded(iframe), await cxModel.pdf(iframe.contentWindow), cxModel.askStore.log("pdf任务已完成", "success"))) : (console.log(iframe == null ? void 0 : iframe.src, "未知"), cxModel.askStore.log("未知任务跳过", "success"));
+              (iframe == null ? void 0 : iframe.src.match(/\/ananas\/modules\/pdf\/index.html/)) ? (cxModel.askStore.setActivity("文档任务", "正在阅读文档任务点"), log("文档", "error"), iframe && (await waitIframeLoaded(iframe), await cxModel.pdf(iframe.contentWindow), cxModel.askStore.setActivity("文档任务", "文档任务已完成", 100, false), cxModel.askStore.log("pdf任务已完成", "success"))) : (cxModel.askStore.setActivity("未知任务", "当前任务类型暂不支持，已跳过", null, false), console.log(iframe == null ? void 0 : iframe.src, "未知"), cxModel.askStore.log("未知任务跳过", "success"));
           }
           }
           await sleep(formStore.forminput.interval), await assistantRuntime.waitUntilRunning(() => cxModel.askStore.msg("助手已暂停，不会切换章节"));
           const currentConfig = getConfig();
-          !currentConfig.autoJump && cxModel.askStore.msg("由于未开启自动切换,请手动切换"), currentConfig.autoJump && (top == null ? void 0 : top.document.querySelector(".nextChapter").click());
+          !currentConfig.autoJump && (cxModel.askStore.setActivity("本节任务完成", "等待你手动切换章节", 100, false), cxModel.askStore.msg("由于未开启自动切换,请手动切换")), currentConfig.autoJump && (cxModel.askStore.setActivity("本节任务完成", "正在切换下一章节", 100, false), top == null ? void 0 : top.document.querySelector(".nextChapter").click());
         } catch (error) {
-          console.error("任务处理失败", error);
+          cxModel.askStore.setActivity("任务处理失败", "请在运行日志中查看详情", null, false), console.error("任务处理失败", error);
         } finally {
           workRunning = false;
         }

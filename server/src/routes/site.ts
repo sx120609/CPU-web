@@ -259,7 +259,8 @@ siteRouter.post(
       const result = await requestLearningAssistantAi(
         body,
         `desktop-guest-${clientVersion}`,
-        controller.signal
+        controller.signal,
+        { targetLabel: `学习通答题 · 免登录客户端 ${clientVersion}` },
       );
       if (timeout) clearTimeout(timeout);
       timeout = undefined;

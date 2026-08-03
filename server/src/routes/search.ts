@@ -225,7 +225,7 @@ searchRouter.post(
       const role = req.user!.role;
       const forumAccessEnabled = await resolveForumAccess(userId, role);
       quotaReservation = (await consumeCampusAssistantQuota(userId)).reservation;
-      ok(res, await askCampusAssistant({
+      const response = await askCampusAssistant({
         message: req.body.message,
         history: req.body.history,
         context: {
@@ -233,7 +233,16 @@ searchRouter.post(
           forumAccessEnabled,
           loggedIn: true,
         },
-      }));
+        usage: {
+          createdById: userId,
+          pointCost: quotaReservation?.source === "points" ? 1 : 0,
+        },
+      });
+      if (response.fallback && quotaReservation) {
+        await refundCampusAssistantQuota(userId, quotaReservation);
+        quotaReservation = null;
+      }
+      ok(res, response);
     } catch (error) {
       if (quotaReservation) {
         await refundCampusAssistantQuota(req.user!.userId, quotaReservation).catch(() => {});
@@ -284,11 +293,19 @@ searchRouter.post(
             forumAccessEnabled,
             loggedIn: true,
           },
+          usage: {
+            createdById: userId,
+            pointCost: quotaReservation?.source === "points" ? 1 : 0,
+          },
           signal: controller.signal,
         }, (delta) => {
           if (!delta || res.writableEnded) return;
           writeAssistantEvent(res, "delta", { delta });
         });
+        if (response.fallback && quotaReservation) {
+          await refundCampusAssistantQuota(userId, quotaReservation);
+          quotaReservation = null;
+        }
         if (!res.writableEnded) writeAssistantEvent(res, "done", response);
         streamCompleted = true;
         res.end();

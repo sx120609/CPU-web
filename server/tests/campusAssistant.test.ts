@@ -123,7 +123,7 @@ test("删除标记会阻止旧本地或云端快照复活会话", () => {
 test("云端学习通助手脚本提供可校验的版本与正文", async () => {
   const release = await readDesktopUserScriptRelease();
   assert.equal(release.name, "药大拾间·学习通助手");
-  assert.equal(release.version, "2.2.6");
+  assert.equal(release.version, "2.2.7");
   assert.match(release.sha256, /^[a-f0-9]{64}$/);
   assert.equal(release.size, Buffer.byteLength(release.source, "utf8"));
   assert.match(release.source, /cpu-learning-personal-center-guide-v3/);
@@ -133,6 +133,9 @@ test("云端学习通助手脚本提供可校验的版本与正文", async () =>
   assert.match(release.source, /cpu-learning-assistant-panel/);
   assert.match(release.source, /data-action="toggle-runtime"/);
   assert.match(release.source, /章节测验答完自动提交/);
+  assert.match(release.source, /cpu-learning-assistant-position-v1/);
+  assert.match(release.source, /解题思路/);
+  assert.doesNotMatch(release.source, /cpu-la-footer/);
   assert.doesNotMatch(release.source, /切记填写完要刷新页面才会生效/);
   assert.doesNotMatch(release.source, /题库秘钥配置请点击这个按钮|label:\s*"公告"|label:\s*"运行框"/);
   assert.doesNotMatch(release.source, /Auto Ask/);
