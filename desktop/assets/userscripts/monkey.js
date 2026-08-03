@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         药大拾间·学习通助手
 // @namespace    askAuto
-// @version      2.2.4
+// @version      2.2.5
 // @author       shushoujiu
 // @description  药大拾间桌面端的学习通助手：自动完成任务点，章节测验与考试由独立答题 AI 作答。
 // @icon         https://vitejs.dev/logo.svg
@@ -154,7 +154,7 @@ hideConfigControls();
       _GM_setValue("config", config);
     }
     return config;
-  }, defaultConfig$1 = { debugger: false, autoAnswer: true, autoVideo: true, autoJump: true, autoSubmit: true, thtoken: "", yztoken: "", gptKey: "", gptModel: "gpt-3.5-turbo", gpt: false, gptType: ["0", "1", "2", "3", "4", "5", "6", "7"], interval: 3, answerIntervalMin: 8, answerIntervalMax: 20, submitDelayMin: 20, submitDelayMax: 40, minAccuracy: 0.8, autoExam: true, hideExam: false, notice: "答案来自独立答题 AI，只发送当前题目内容。访问与额度策略由服务器实时判定；新生限时开放期间免登录、不限次数。请遵守学校的学术规范。", deepseekKey: "", deepseekEnabled: false, deepseekModel: "deepseek-reasoner", customApiUrl: "", customApiKey: "", customApiEnabled: false, aiEnabled: true, aiApiKey: "", aiApiUrl: "", aiModel: "deepseek-reasoner" }, userConfig = [{ name: "base", label: "基础配置", config: [{ name: "interval", label: "通用间隔(秒)", type: "number", value: defaultConfig$1.interval, desc: "通用间隔，用于脚本运行切换" }, { name: "answerIntervalMin", label: "答题间隔最小值(秒)", type: "number", value: defaultConfig$1.answerIntervalMax, desc: "每道题之间的最小等待时间" }, { name: "answerIntervalMax", label: "答题间隔最大值(秒)", type: "number", value: defaultConfig$1.answerIntervalMax, desc: "每道题之间的最大等待时间" }, { name: "submitDelayMin", label: "提交前延迟最小值(秒)", type: "number", value: defaultConfig$1.submitDelayMin, desc: "提交前的最小等待时间" }, { name: "submitDelayMax", label: "提交前延迟最大值(秒)", type: "number", value: defaultConfig$1.submitDelayMax, desc: "提交前的最大等待时间" }, { name: "customApiEnabled", label: "启用自定义题库", type: "switch", value: defaultConfig$1.customApiEnabled, desc: "开启后，会优先使用自定义题库接口查询答案" }, { name: "customApiUrl", label: "自定义题库地址", type: "input", value: defaultConfig$1.customApiUrl, desc: "你的题库服务器API地址，例如：http://localhost:8080/api/query" }, { name: "customApiKey", label: "自定义题库密钥", type: "input", value: defaultConfig$1.customApiKey, desc: "你的题库服务器API密钥（如果有的话）" }, { name: "aiEnabled", label: "启用AI自动答题", type: "switch", value: defaultConfig$1.aiEnabled, desc: "开启后，当题库查询失败时会调用CPU-web AI" }, { name: "aiModel", label: "AI模型名称", type: "input", value: defaultConfig$1.aiModel, desc: "CPU-web AI模型名称" }] }, { name: "chapter", label: "章节配置", config: [{ name: "autoAnswer", label: "自动答题", type: "switch", value: defaultConfig$1.autoAnswer, desc: "开启后，会自动答题" }, { name: "autoVideo", label: "自动视频", type: "switch", value: defaultConfig$1.autoVideo, desc: "开启后，会自动观看视频" }, { name: "autoJump", label: "自动切换", type: "switch", value: defaultConfig$1.autoVideo, desc: "开启后，会自动切换章节" }, { name: "autoSubmit", label: "自动提交", type: "switch", value: defaultConfig$1.autoSubmit, desc: "开启后，会自动提交答案" }, { name: "minAccuracy", label: "最低正确率", type: "input", value: defaultConfig$1.minAccuracy, desc: "不满足最低正确率则不会自动提交答案" }] }, { name: "exam", label: "作业/考试配置", config: [{ name: "autoExam", label: "考试自动切换", type: "switch", value: defaultConfig$1.autoExam, desc: "开启后，会考试会自动切换" }] }], useformStore = pinia$1.defineStore({ id: "formstore", state: () => ({ forminput: getConfig(), dialogV: false, activeName: "base" }), actions: { saveConfig(forminput) {
+  }, defaultConfig$1 = { debugger: false, autoAnswer: true, autoVideo: true, autoJump: true, autoSubmit: false, thtoken: "", yztoken: "", gptKey: "", gptModel: "gpt-3.5-turbo", gpt: false, gptType: ["0", "1", "2", "3", "4", "5", "6", "7"], interval: 3, answerIntervalMin: 8, answerIntervalMax: 20, submitDelayMin: 20, submitDelayMax: 40, minAccuracy: 0.8, autoExam: true, hideExam: false, notice: "答案来自独立答题 AI，只发送当前题目内容。访问与额度策略由服务器实时判定；新生限时开放期间免登录、不限次数。请遵守学校的学术规范。", deepseekKey: "", deepseekEnabled: false, deepseekModel: "deepseek-reasoner", customApiUrl: "", customApiKey: "", customApiEnabled: false, aiEnabled: true, aiApiKey: "", aiApiUrl: "", aiModel: "deepseek-reasoner" }, userConfig = [{ name: "base", label: "基础配置", config: [{ name: "interval", label: "通用间隔(秒)", type: "number", value: defaultConfig$1.interval, desc: "通用间隔，用于脚本运行切换" }, { name: "answerIntervalMin", label: "答题间隔最小值(秒)", type: "number", value: defaultConfig$1.answerIntervalMax, desc: "每道题之间的最小等待时间" }, { name: "answerIntervalMax", label: "答题间隔最大值(秒)", type: "number", value: defaultConfig$1.answerIntervalMax, desc: "每道题之间的最大等待时间" }, { name: "submitDelayMin", label: "提交前延迟最小值(秒)", type: "number", value: defaultConfig$1.submitDelayMin, desc: "提交前的最小等待时间" }, { name: "submitDelayMax", label: "提交前延迟最大值(秒)", type: "number", value: defaultConfig$1.submitDelayMax, desc: "提交前的最大等待时间" }, { name: "customApiEnabled", label: "启用自定义题库", type: "switch", value: defaultConfig$1.customApiEnabled, desc: "开启后，会优先使用自定义题库接口查询答案" }, { name: "customApiUrl", label: "自定义题库地址", type: "input", value: defaultConfig$1.customApiUrl, desc: "你的题库服务器API地址，例如：http://localhost:8080/api/query" }, { name: "customApiKey", label: "自定义题库密钥", type: "input", value: defaultConfig$1.customApiKey, desc: "你的题库服务器API密钥（如果有的话）" }, { name: "aiEnabled", label: "启用AI自动答题", type: "switch", value: defaultConfig$1.aiEnabled, desc: "开启后，当题库查询失败时会调用CPU-web AI" }, { name: "aiModel", label: "AI模型名称", type: "input", value: defaultConfig$1.aiModel, desc: "CPU-web AI模型名称" }] }, { name: "chapter", label: "章节配置", config: [{ name: "autoAnswer", label: "自动答题", type: "switch", value: defaultConfig$1.autoAnswer, desc: "开启后，会自动答题" }, { name: "autoVideo", label: "自动视频", type: "switch", value: defaultConfig$1.autoVideo, desc: "开启后，会自动观看视频" }, { name: "autoJump", label: "自动切换", type: "switch", value: defaultConfig$1.autoVideo, desc: "开启后，会自动切换章节" }, { name: "autoSubmit", label: "答完后自动提交", type: "switch", value: defaultConfig$1.autoSubmit, desc: "关闭后只填写章节测验答案，等待你检查并手动提交" }, { name: "minAccuracy", label: "最低正确率", type: "input", value: defaultConfig$1.minAccuracy, desc: "不满足最低正确率则不会自动提交答案" }] }, { name: "exam", label: "作业/考试配置", config: [{ name: "autoExam", label: "考试自动切换", type: "switch", value: defaultConfig$1.autoExam, desc: "开启后，会考试会自动切换" }] }], useformStore = pinia$1.defineStore({ id: "formstore", state: () => ({ forminput: getConfig(), dialogV: false, activeName: "base" }), actions: { saveConfig(forminput) {
     _GM_setValue("config", forminput);
   } } });
   var export_helper_default = (sfc, props) => {
@@ -1733,7 +1733,16 @@ hideConfigControls();
     } catch {
       finish(false);
     }
-  }), removeHtml = (html) => null == html ? "" : html.replace(/<((?!img|sub|sup|br)[^>]+)>/g, "").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").replace(/<br\s*\/?>/g, "\n").replace(/<img.*?src="(.*?)".*?>/g, '<img src="$1"/>').trim(), cl = (str) => str.replace(/^【.*?】\s*/, "").replace(/\s*（\d+\.\d+分）$/, ""), getQuestion = (type, html) => {
+  }), removeHtml = (html) => null == html ? "" : html.replace(/<((?!img|sub|sup|br)[^>]+)>/g, "").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").replace(/<br\s*\/?>/g, "\n").replace(/<img.*?src="(.*?)".*?>/g, '<img src="$1"/>').trim(), learningSubscriptMap = { "0": "₀", "1": "₁", "2": "₂", "3": "₃", "4": "₄", "5": "₅", "6": "₆", "7": "₇", "8": "₈", "9": "₉", "+": "₊", "-": "₋", "=": "₌", "(": "₍", ")": "₎" }, learningSuperscriptMap = { "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴", "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹", "+": "⁺", "-": "⁻", "=": "⁼", "(": "⁽", ")": "⁾" }, mapLearningScriptText = (value, table) => String(value || "").replace(/<[^>]*>/g, "").split("").map((character) => table[character] || character).join(""), formatLearningDisplayText = (value) => {
+    const raw = Array.isArray(value) ? value.join("\n") : String(value == null ? "" : value);
+    const normalized = raw.replace(/\\(["'])/g, "$1").replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "").replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "").replace(/<img\b[^>]*>/gi, "[图片]").replace(/<br\s*\/?>/gi, "\n").replace(/<sub\b[^>]*>([\s\S]*?)<\/sub>/gi, (_match, content) => mapLearningScriptText(content, learningSubscriptMap)).replace(/<sup\b[^>]*>([\s\S]*?)<\/sup>/gi, (_match, content) => mapLearningScriptText(content, learningSuperscriptMap)).replace(/<sub\b[^>]*>([0-9+\-=()]+)/gi, (_match, content) => mapLearningScriptText(content, learningSubscriptMap)).replace(/<sup\b[^>]*>([0-9+\-=()]+)/gi, (_match, content) => mapLearningScriptText(content, learningSuperscriptMap));
+    try {
+      const parsed = new DOMParser().parseFromString(`<body>${normalized}</body>`, "text/html");
+      return (parsed.body.textContent || "").replace(/\u00a0/g, " ").replace(/[ \t]+\n/g, "\n").trim();
+    } catch {
+      return normalized.replace(/<[^>]*>/g, "").trim();
+    }
+  }, formatLearningDisplayHtml = (value) => formatLearningDisplayText(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;").replace(/\n/g, "<br>"), cl = (str) => str.replace(/^【.*?】\s*/, "").replace(/\s*（\d+\.\d+分）$/, ""), getQuestion = (type, html) => {
     let questionHtml, questionText, questionTypeId, optionHtml, tokenHtml, workType, optionText, index;
     switch (type) {
       case "1":
@@ -1891,9 +1900,9 @@ hideConfigControls();
   }, get(index) {
     return this.task.work.questionList[index];
   }, insert(question) {
-    this.task.work.questionList.push(question);
+    this.task.work.questionList.push({ ...question, question: formatLearningDisplayText(question == null ? void 0 : question.question) });
   }, update(index, question) {
-    this.task.work.questionList[index] = question;
+    this.task.work.questionList[index] = { ...question, question: formatLearningDisplayText(question == null ? void 0 : question.question) };
   }, log(msg, level = "info") {
     this.task.log.length > 20 && this.task.log.shift(), this.task.log.push({ time: (/* @__PURE__ */ new Date()).toLocaleTimeString(), msg, type: level }), reportToHost("log", msg);
   }, msg(msg) {
@@ -1915,7 +1924,7 @@ hideConfigControls();
   } }), _hoisted_1 = { class: "dialog-footer" }, _hoisted_2 = { key: 0 }, _hoisted_3 = { class: "question_div" }, _hoisted_4 = { class: "question_ti" }, _hoisted_5 = { key: 0 }, _hoisted_6 = { key: 1 }, _hoisted_7 = { key: 2 }, _hoisted_8 = ["innerHTML"], _hoisted_9 = { key: 0, style: { "margin-top": "20px" } }, _hoisted_10 = { key: 1 }, _hoisted_11 = { key: 2 }, _hoisted_12 = { height: "100px" }, _hoisted_13 = ["innerHTML"];
   const Ask = _export_sfc(_sfc_main, [["render", function(_ctx, _cache, $props, $setup, $data, $options) {
     const _component_el_button = vue.resolveComponent("el-button"), _component_el_switch = vue.resolveComponent("el-switch"), _component_el_input = vue.resolveComponent("el-input"), _component_el_input_number = vue.resolveComponent("el-input-number"), _component_el_option = vue.resolveComponent("el-option"), _component_el_select = vue.resolveComponent("el-select"), _component_el_checkbox = vue.resolveComponent("el-checkbox"), _component_el_checkbox_group = vue.resolveComponent("el-checkbox-group"), _component_el_tooltip = vue.resolveComponent("el-tooltip"), _component_el_form_item = vue.resolveComponent("el-form-item"), _component_el_tab_pane = vue.resolveComponent("el-tab-pane"), _component_el_tabs = vue.resolveComponent("el-tabs"), _component_el_form = vue.resolveComponent("el-form"), _component_el_dialog = vue.resolveComponent("el-dialog"), _component_el_text = vue.resolveComponent("el-text"), _component_el_skeleton = vue.resolveComponent("el-skeleton"), _component_el_card = vue.resolveComponent("el-card"), _component_el_divider = vue.resolveComponent("el-divider"), _component_el_col = vue.resolveComponent("el-col"), _component_el_row = vue.resolveComponent("el-row"), _component_el_scrollbar = vue.resolveComponent("el-scrollbar"), _component_el_tag = vue.resolveComponent("el-tag"), _component_el_alert = vue.resolveComponent("el-alert"), _component_el_empty = vue.resolveComponent("el-empty");
-    return vue.openBlock(), vue.createElementBlock(vue.Fragment, null, [vue.createVNode(_component_el_button, { type: "danger", id: "csbutton", icon: _ctx.Setting, circle: "", onClick: _cache[0] || (_cache[0] = ($event) => _ctx.dialogV = !_ctx.dialogV) }, null, 8, ["icon"]), vue.createVNode(_component_el_dialog, { modelValue: _ctx.dialogV, "onUpdate:modelValue": _cache[4] || (_cache[4] = ($event) => _ctx.dialogV = $event), title: "药大拾间·学习通助手", width: "30%", modal: false, center: "", draggable: "" }, { footer: vue.withCtx(() => [vue.createElementVNode("span", _hoisted_1, [vue.createVNode(_component_el_button, { onClick: _cache[2] || (_cache[2] = ($event) => _ctx.dialogV = false) }, { default: vue.withCtx(() => [vue.createTextVNode("取消")]), _: 1 }), vue.createVNode(_component_el_button, { type: "primary", onClick: _cache[3] || (_cache[3] = ($event) => _ctx.submitForm(_ctx.ruleFormRef)) }, { default: vue.withCtx(() => [vue.createTextVNode("保存")]), _: 1 })])]), default: vue.withCtx(() => [vue.createVNode(_component_el_form, { ref: "ruleFormRef", rules: _ctx.rules, model: _ctx.forminput, class: "demo-ruleForm" }, { default: vue.withCtx(() => [vue.createVNode(_component_el_tabs, { class: "demo-tabs", modelValue: _ctx.activeName, "onUpdate:modelValue": _cache[1] || (_cache[1] = ($event) => _ctx.activeName = $event) }, { default: vue.withCtx(() => [(vue.openBlock(true), vue.createElementBlock(vue.Fragment, null, vue.renderList(_ctx.userConfig, (item) => (vue.openBlock(), vue.createBlock(_component_el_tab_pane, { key: item.name, label: item.label, name: item.name }, { default: vue.withCtx(() => [(vue.openBlock(true), vue.createElementBlock(vue.Fragment, null, vue.renderList(item.config, (item1) => (vue.openBlock(), vue.createBlock(_component_el_form_item, { label: item1.label, prop: item1.name }, { default: vue.withCtx(() => [vue.createVNode(_component_el_tooltip, { class: "box-item", effect: "dark", content: item1.desc || "", placement: "top" }, { default: vue.withCtx(() => ["switch" === item1.type ? (vue.openBlock(), vue.createBlock(_component_el_switch, { key: 0, modelValue: _ctx.forminput[item1.name], "onUpdate:modelValue": ($event) => _ctx.forminput[item1.name] = $event }, null, 8, ["modelValue", "onUpdate:modelValue"])) : "input" === item1.type ? (vue.openBlock(), vue.createBlock(_component_el_input, { key: 1, modelValue: _ctx.forminput[item1.name], "onUpdate:modelValue": ($event) => _ctx.forminput[item1.name] = $event }, null, 8, ["modelValue", "onUpdate:modelValue"])) : "number" === item1.type ? (vue.openBlock(), vue.createBlock(_component_el_input_number, { key: 2, modelValue: _ctx.forminput[item1.name], "onUpdate:modelValue": ($event) => _ctx.forminput[item1.name] = $event }, null, 8, ["modelValue", "onUpdate:modelValue"])) : "select" === item1.type ? (vue.openBlock(), vue.createBlock(_component_el_select, { key: 3, modelValue: _ctx.forminput[item1.name], "onUpdate:modelValue": ($event) => _ctx.forminput[item1.name] = $event, placeholder: "请选择" }, { default: vue.withCtx(() => [(vue.openBlock(true), vue.createElementBlock(vue.Fragment, null, vue.renderList(item1.options, (item2) => (vue.openBlock(), vue.createBlock(_component_el_option, { key: item2.value, label: item2.label, value: item2.value }, null, 8, ["label", "value"]))), 128))]), _: 2 }, 1032, ["modelValue", "onUpdate:modelValue"])) : "checkbox" === item1.type ? (vue.openBlock(), vue.createBlock(_component_el_checkbox_group, { key: 4, modelValue: _ctx.forminput[item1.name], "onUpdate:modelValue": ($event) => _ctx.forminput[item1.name] = $event }, { default: vue.withCtx(() => [(vue.openBlock(true), vue.createElementBlock(vue.Fragment, null, vue.renderList(item1.options, (item2) => (vue.openBlock(), vue.createBlock(_component_el_checkbox, { key: item2.value, label: item2.value, name: item2.value }, { default: vue.withCtx(() => [vue.createTextVNode(vue.toDisplayString(item2.label), 1)]), _: 2 }, 1032, ["label", "name"]))), 128))]), _: 2 }, 1032, ["modelValue", "onUpdate:modelValue"])) : vue.createCommentVNode("", true)]), _: 2 }, 1032, ["content"])]), _: 2 }, 1032, ["label", "prop"]))), 256))]), _: 2 }, 1032, ["label", "name"]))), 128))]), _: 1 }, 8, ["modelValue"])]), _: 1 }, 8, ["rules", "model"])]), _: 1 }, 8, ["modelValue"]), (vue.openBlock(), vue.createBlock(vue.Teleport, { to: "body" }, [vue.createVNode(_component_el_button, { id: "zeokdjg", type: "success", plain: "", round: "", icon: _ctx.Aim, onClick: _cache[5] || (_cache[5] = ($event) => _ctx.dialogVisible = !_ctx.dialogVisible) }, { default: vue.withCtx(() => [vue.createTextVNode(vue.toDisplayString("暂未加载" == _ctx.task.name ? "等待任务加载" : "正在完成:" + _ctx.task.name), 1)]), _: 1 }, 8, ["icon"]), vue.createVNode(_component_el_dialog, { modelValue: _ctx.dialogVisible, "onUpdate:modelValue": _cache[8] || (_cache[8] = ($event) => _ctx.dialogVisible = $event), width: "400px", title: "药大拾间·学习通助手", modal: false, "append-to-body": false, "lock-scroll": false, center: "", draggable: "" }, { default: vue.withCtx(() => [vue.createVNode(_component_el_button, { style: { "margin-bottom": "20px" }, type: "primary", onClick: _cache[6] || (_cache[6] = ($event) => _ctx.dialogV = !_ctx.dialogV), plain: "" }, { default: vue.withCtx(() => [vue.createTextVNode("打开配置")]), _: 1 }), vue.createVNode(_component_el_text, { class: "mx-1", size: "large", type: "danger" }, { default: vue.withCtx(() => [vue.createTextVNode("题库秘钥配置请点击这个按钮")]), _: 1 }), vue.createVNode(_component_el_tabs, { modelValue: _ctx.askActiveName, "onUpdate:modelValue": _cache[7] || (_cache[7] = ($event) => _ctx.askActiveName = $event), class: "demo-tabs" }, { default: vue.withCtx(() => [vue.createVNode(_component_el_tab_pane, { label: "运行框", name: "first" }, { default: vue.withCtx(() => [_ctx.task.work.questionList.length > 0 ? (vue.openBlock(), vue.createElementBlock("div", _hoisted_2, [vue.createElementVNode("div", _hoisted_3, [vue.createVNode(_component_el_card, { shadow: "hover" }, { default: vue.withCtx(() => [vue.createElementVNode("h1", _hoisted_4, [vue.createVNode(_component_el_text, { size: "large", truncated: "" }, { default: vue.withCtx(() => [vue.createTextVNode(vue.toDisplayString(_ctx.task.work.inx + 1 + "." + _ctx.task.work.questionList[_ctx.task.work.inx].question), 1)]), _: 1 })]), _ctx.task.work.questionList[_ctx.task.work.inx].answer ? (vue.openBlock(), vue.createElementBlock("p", _hoisted_6, [vue.createElementVNode("p", null, [vue.createElementVNode("pre", null, vue.toDisplayString(_ctx.task.work.questionList[_ctx.task.work.inx].answer), 1)])])) : (vue.openBlock(), vue.createElementBlock("p", _hoisted_5, [vue.createVNode(_component_el_skeleton, { rows: 3, animated: "" })]))]), _: 1 })]), "考试" != _ctx.task.name ? (vue.openBlock(), vue.createBlock(_component_el_divider, { key: 0 }, { default: vue.withCtx(() => [vue.createTextVNode(" 题号 ")]), _: 1 })) : vue.createCommentVNode("", true), "考试" != _ctx.task.name ? (vue.openBlock(), vue.createBlock(_component_el_scrollbar, { key: 1, height: "100px" }, { default: vue.withCtx(() => [vue.createVNode(_component_el_row, null, { default: vue.withCtx(() => [(vue.openBlock(true), vue.createElementBlock(vue.Fragment, null, vue.renderList(_ctx.task.work.questionList, (item, index) => (vue.openBlock(), vue.createBlock(_component_el_col, { span: 4, key: index }, { default: vue.withCtx(() => [vue.createVNode(_component_el_button, { type: item.status || "info", plain: "", class: "question_btn", onClick: ($event) => _ctx.handleClick(index) }, { default: vue.withCtx(() => [vue.createTextVNode(vue.toDisplayString(index + 1), 1)]), _: 2 }, 1032, ["type", "onClick"])]), _: 2 }, 1024))), 128))]), _: 1 })]), _: 1 })) : vue.createCommentVNode("", true), _ctx.task.work.questionList[_ctx.task.work.inx].allAnswer ? (vue.openBlock(), vue.createElementBlock("div", _hoisted_7, [vue.createVNode(_component_el_divider, null, { default: vue.withCtx(() => [vue.createTextVNode(" 接口返回 ")]), _: 1 }), vue.createVNode(_component_el_tabs, { "tab-position": "left", style: { height: "200px" }, class: "demo-tabs" }, { default: vue.withCtx(() => [(vue.openBlock(true), vue.createElementBlock(vue.Fragment, null, vue.renderList(_ctx.task.work.questionList[_ctx.task.work.inx].allAnswer, (item, index) => (vue.openBlock(), vue.createBlock(_component_el_tab_pane, { label: item.form }, { default: vue.withCtx(() => [vue.createElementVNode("div", null, [vue.createElementVNode("div", { innerHTML: (item.answer || "暂无答案") + "<br><p style = 'color:red;'>如果要填写付费秘钥，在本悬浮窗最上方的打开配置中填入秘钥，切记填写完要刷新页面才会生效</p>" }, null, 8, _hoisted_8), null != item.num ? (vue.openBlock(), vue.createElementBlock("div", _hoisted_9, [vue.createElementVNode("div", null, [vue.createVNode(_component_el_tag, { class: "ml-2", type: "info" }, { default: vue.withCtx(() => [vue.createTextVNode("已用次数:" + vue.toDisplayString(item.usenum), 1)]), _: 2 }, 1024)]), vue.createElementVNode("div", null, [vue.createVNode(_component_el_tag, { class: "ml-2", type: "success" }, { default: vue.withCtx(() => [vue.createTextVNode("剩余次数:" + vue.toDisplayString(item.num), 1)]), _: 2 }, 1024)])])) : vue.createCommentVNode("", true)])]), _: 2 }, 1032, ["label"]))), 256))]), _: 1 })])) : vue.createCommentVNode("", true)])) : _ctx.task.video.status ? (vue.openBlock(), vue.createElementBlock("div", _hoisted_10, [vue.createVNode(_component_el_alert, { title: "倍速有风险，挂科两行泪", type: "error", center: "", "show-icon": "" }), vue.createVNode(_component_el_text, { class: "mx-1", size: "large", type: "danger" }, { default: vue.withCtx(() => [vue.createTextVNode(" 正在完成视频任务 ")]), _: 1 })])) : (vue.openBlock(), vue.createElementBlock("div", _hoisted_11, [vue.createElementVNode("div", _hoisted_12, [vue.createVNode(_component_el_empty, { description: _ctx.task.name }, null, 8, ["description"])])]))]), _: 1 }), vue.createVNode(_component_el_tab_pane, { label: "运行日志", name: "second" }, { default: vue.withCtx(() => [vue.createVNode(_component_el_scrollbar, { height: "200px" }, { default: vue.withCtx(() => [vue.createVNode(_component_el_row, null, { default: vue.withCtx(() => [vue.createVNode(_component_el_col, { span: 24 }, { default: vue.withCtx(() => [(vue.openBlock(true), vue.createElementBlock(vue.Fragment, null, vue.renderList(_ctx.task.log, (item, index) => (vue.openBlock(), vue.createElementBlock("p", { key: index, class: "cx_log" }, [vue.createVNode(_component_el_text, { size: "small", type: "info", class: "mx-1" }, { default: vue.withCtx(() => [vue.createTextVNode(vue.toDisplayString(item.time), 1)]), _: 2 }, 1024), vue.createVNode(_component_el_text, { class: "mx-1", type: "info" == item.type ? "" : item.type }, { default: vue.withCtx(() => [vue.createTextVNode(vue.toDisplayString(" " + item.msg), 1)]), _: 2 }, 1032, ["type"])]))), 128))]), _: 1 })]), _: 1 })]), _: 1 })]), _: 1 }), vue.createVNode(_component_el_tab_pane, { label: "公告", name: "msg" }, { default: vue.withCtx(() => [vue.createVNode(_component_el_card, { shadow: "hover" }, { default: vue.withCtx(() => [vue.createElementVNode("div", { innerHTML: _ctx.msg }, null, 8, _hoisted_13)]), _: 1 })]), _: 1 })]), _: 1 }, 8, ["modelValue"]), vue.createElementVNode("p", null, [_ctx.task.status ? (vue.openBlock(), vue.createBlock(_component_el_tag, { key: 0 }, { default: vue.withCtx(() => [vue.createTextVNode(vue.toDisplayString(_ctx.task.status), 1)]), _: 1 })) : vue.createCommentVNode("", true)])]), _: 1 }, 8, ["modelValue"])]))], 64);
+    return vue.openBlock(), vue.createElementBlock(vue.Fragment, null, [vue.createVNode(_component_el_button, { type: "danger", id: "csbutton", icon: _ctx.Setting, circle: "", onClick: _cache[0] || (_cache[0] = ($event) => _ctx.dialogV = !_ctx.dialogV) }, null, 8, ["icon"]), vue.createVNode(_component_el_dialog, { modelValue: _ctx.dialogV, "onUpdate:modelValue": _cache[4] || (_cache[4] = ($event) => _ctx.dialogV = $event), title: "药大拾间·学习通助手", width: "30%", modal: false, center: "", draggable: "" }, { footer: vue.withCtx(() => [vue.createElementVNode("span", _hoisted_1, [vue.createVNode(_component_el_button, { onClick: _cache[2] || (_cache[2] = ($event) => _ctx.dialogV = false) }, { default: vue.withCtx(() => [vue.createTextVNode("取消")]), _: 1 }), vue.createVNode(_component_el_button, { type: "primary", onClick: _cache[3] || (_cache[3] = ($event) => _ctx.submitForm(_ctx.ruleFormRef)) }, { default: vue.withCtx(() => [vue.createTextVNode("保存")]), _: 1 })])]), default: vue.withCtx(() => [vue.createVNode(_component_el_form, { ref: "ruleFormRef", rules: _ctx.rules, model: _ctx.forminput, class: "demo-ruleForm" }, { default: vue.withCtx(() => [vue.createVNode(_component_el_tabs, { class: "demo-tabs", modelValue: _ctx.activeName, "onUpdate:modelValue": _cache[1] || (_cache[1] = ($event) => _ctx.activeName = $event) }, { default: vue.withCtx(() => [(vue.openBlock(true), vue.createElementBlock(vue.Fragment, null, vue.renderList(_ctx.userConfig, (item) => (vue.openBlock(), vue.createBlock(_component_el_tab_pane, { key: item.name, label: item.label, name: item.name }, { default: vue.withCtx(() => [(vue.openBlock(true), vue.createElementBlock(vue.Fragment, null, vue.renderList(item.config, (item1) => (vue.openBlock(), vue.createBlock(_component_el_form_item, { label: item1.label, prop: item1.name }, { default: vue.withCtx(() => [vue.createVNode(_component_el_tooltip, { class: "box-item", effect: "dark", content: item1.desc || "", placement: "top" }, { default: vue.withCtx(() => ["switch" === item1.type ? (vue.openBlock(), vue.createBlock(_component_el_switch, { key: 0, modelValue: _ctx.forminput[item1.name], "onUpdate:modelValue": ($event) => _ctx.forminput[item1.name] = $event }, null, 8, ["modelValue", "onUpdate:modelValue"])) : "input" === item1.type ? (vue.openBlock(), vue.createBlock(_component_el_input, { key: 1, modelValue: _ctx.forminput[item1.name], "onUpdate:modelValue": ($event) => _ctx.forminput[item1.name] = $event }, null, 8, ["modelValue", "onUpdate:modelValue"])) : "number" === item1.type ? (vue.openBlock(), vue.createBlock(_component_el_input_number, { key: 2, modelValue: _ctx.forminput[item1.name], "onUpdate:modelValue": ($event) => _ctx.forminput[item1.name] = $event }, null, 8, ["modelValue", "onUpdate:modelValue"])) : "select" === item1.type ? (vue.openBlock(), vue.createBlock(_component_el_select, { key: 3, modelValue: _ctx.forminput[item1.name], "onUpdate:modelValue": ($event) => _ctx.forminput[item1.name] = $event, placeholder: "请选择" }, { default: vue.withCtx(() => [(vue.openBlock(true), vue.createElementBlock(vue.Fragment, null, vue.renderList(item1.options, (item2) => (vue.openBlock(), vue.createBlock(_component_el_option, { key: item2.value, label: item2.label, value: item2.value }, null, 8, ["label", "value"]))), 128))]), _: 2 }, 1032, ["modelValue", "onUpdate:modelValue"])) : "checkbox" === item1.type ? (vue.openBlock(), vue.createBlock(_component_el_checkbox_group, { key: 4, modelValue: _ctx.forminput[item1.name], "onUpdate:modelValue": ($event) => _ctx.forminput[item1.name] = $event }, { default: vue.withCtx(() => [(vue.openBlock(true), vue.createElementBlock(vue.Fragment, null, vue.renderList(item1.options, (item2) => (vue.openBlock(), vue.createBlock(_component_el_checkbox, { key: item2.value, label: item2.value, name: item2.value }, { default: vue.withCtx(() => [vue.createTextVNode(vue.toDisplayString(item2.label), 1)]), _: 2 }, 1032, ["label", "name"]))), 128))]), _: 2 }, 1032, ["modelValue", "onUpdate:modelValue"])) : vue.createCommentVNode("", true)]), _: 2 }, 1032, ["content"])]), _: 2 }, 1032, ["label", "prop"]))), 256))]), _: 2 }, 1032, ["label", "name"]))), 128))]), _: 1 }, 8, ["modelValue"])]), _: 1 }, 8, ["rules", "model"])]), _: 1 }, 8, ["modelValue"]), (vue.openBlock(), vue.createBlock(vue.Teleport, { to: "body" }, [vue.createVNode(_component_el_button, { id: "zeokdjg", type: "success", plain: "", round: "", icon: _ctx.Aim, onClick: _cache[5] || (_cache[5] = ($event) => _ctx.dialogVisible = !_ctx.dialogVisible) }, { default: vue.withCtx(() => [vue.createTextVNode(vue.toDisplayString("暂未加载" == _ctx.task.name ? "等待任务加载" : "正在完成:" + _ctx.task.name), 1)]), _: 1 }, 8, ["icon"]), vue.createVNode(_component_el_dialog, { modelValue: _ctx.dialogVisible, "onUpdate:modelValue": _cache[8] || (_cache[8] = ($event) => _ctx.dialogVisible = $event), width: "400px", title: "药大拾间·学习通助手", modal: false, "append-to-body": false, "lock-scroll": false, center: "", draggable: "" }, { default: vue.withCtx(() => [vue.createVNode(_component_el_button, { style: { "margin-bottom": "20px" }, type: "primary", onClick: _cache[6] || (_cache[6] = ($event) => _ctx.dialogV = !_ctx.dialogV), plain: "" }, { default: vue.withCtx(() => [vue.createTextVNode("打开配置")]), _: 1 }), vue.createVNode(_component_el_text, { class: "mx-1", size: "large", type: "danger" }, { default: vue.withCtx(() => [vue.createTextVNode("题库秘钥配置请点击这个按钮")]), _: 1 }), vue.createVNode(_component_el_tabs, { modelValue: _ctx.askActiveName, "onUpdate:modelValue": _cache[7] || (_cache[7] = ($event) => _ctx.askActiveName = $event), class: "demo-tabs" }, { default: vue.withCtx(() => [vue.createVNode(_component_el_tab_pane, { label: "运行框", name: "first" }, { default: vue.withCtx(() => [_ctx.task.work.questionList.length > 0 ? (vue.openBlock(), vue.createElementBlock("div", _hoisted_2, [vue.createElementVNode("div", _hoisted_3, [vue.createVNode(_component_el_card, { shadow: "hover" }, { default: vue.withCtx(() => [vue.createElementVNode("h1", _hoisted_4, [vue.createVNode(_component_el_text, { size: "large", truncated: "" }, { default: vue.withCtx(() => [vue.createTextVNode(vue.toDisplayString(_ctx.task.work.inx + 1 + "." + _ctx.task.work.questionList[_ctx.task.work.inx].question), 1)]), _: 1 })]), _ctx.task.work.questionList[_ctx.task.work.inx].answer ? (vue.openBlock(), vue.createElementBlock("p", _hoisted_6, [vue.createElementVNode("p", null, [vue.createElementVNode("pre", null, vue.toDisplayString(_ctx.task.work.questionList[_ctx.task.work.inx].answer), 1)])])) : (vue.openBlock(), vue.createElementBlock("p", _hoisted_5, [vue.createVNode(_component_el_skeleton, { rows: 3, animated: "" })]))]), _: 1 })]), "考试" != _ctx.task.name ? (vue.openBlock(), vue.createBlock(_component_el_divider, { key: 0 }, { default: vue.withCtx(() => [vue.createTextVNode(" 题号 ")]), _: 1 })) : vue.createCommentVNode("", true), "考试" != _ctx.task.name ? (vue.openBlock(), vue.createBlock(_component_el_scrollbar, { key: 1, height: "100px" }, { default: vue.withCtx(() => [vue.createVNode(_component_el_row, null, { default: vue.withCtx(() => [(vue.openBlock(true), vue.createElementBlock(vue.Fragment, null, vue.renderList(_ctx.task.work.questionList, (item, index) => (vue.openBlock(), vue.createBlock(_component_el_col, { span: 4, key: index }, { default: vue.withCtx(() => [vue.createVNode(_component_el_button, { type: item.status || "info", plain: "", class: "question_btn", onClick: ($event) => _ctx.handleClick(index) }, { default: vue.withCtx(() => [vue.createTextVNode(vue.toDisplayString(index + 1), 1)]), _: 2 }, 1032, ["type", "onClick"])]), _: 2 }, 1024))), 128))]), _: 1 })]), _: 1 })) : vue.createCommentVNode("", true), _ctx.task.work.questionList[_ctx.task.work.inx].allAnswer ? (vue.openBlock(), vue.createElementBlock("div", _hoisted_7, [vue.createVNode(_component_el_divider, null, { default: vue.withCtx(() => [vue.createTextVNode(" 接口返回 ")]), _: 1 }), vue.createVNode(_component_el_tabs, { "tab-position": "left", style: { height: "200px" }, class: "demo-tabs" }, { default: vue.withCtx(() => [(vue.openBlock(true), vue.createElementBlock(vue.Fragment, null, vue.renderList(_ctx.task.work.questionList[_ctx.task.work.inx].allAnswer, (item, index) => (vue.openBlock(), vue.createBlock(_component_el_tab_pane, { label: item.form }, { default: vue.withCtx(() => [vue.createElementVNode("div", null, [vue.createElementVNode("div", { innerHTML: item.answer || "暂无答案" }, null, 8, _hoisted_8), null != item.num ? (vue.openBlock(), vue.createElementBlock("div", _hoisted_9, [vue.createElementVNode("div", null, [vue.createVNode(_component_el_tag, { class: "ml-2", type: "info" }, { default: vue.withCtx(() => [vue.createTextVNode("已用次数:" + vue.toDisplayString(item.usenum), 1)]), _: 2 }, 1024)]), vue.createElementVNode("div", null, [vue.createVNode(_component_el_tag, { class: "ml-2", type: "success" }, { default: vue.withCtx(() => [vue.createTextVNode("剩余次数:" + vue.toDisplayString(item.num), 1)]), _: 2 }, 1024)])])) : vue.createCommentVNode("", true)])]), _: 2 }, 1032, ["label"]))), 256))]), _: 1 })])) : vue.createCommentVNode("", true)])) : _ctx.task.video.status ? (vue.openBlock(), vue.createElementBlock("div", _hoisted_10, [vue.createVNode(_component_el_alert, { title: "倍速有风险，挂科两行泪", type: "error", center: "", "show-icon": "" }), vue.createVNode(_component_el_text, { class: "mx-1", size: "large", type: "danger" }, { default: vue.withCtx(() => [vue.createTextVNode(" 正在完成视频任务 ")]), _: 1 })])) : (vue.openBlock(), vue.createElementBlock("div", _hoisted_11, [vue.createElementVNode("div", _hoisted_12, [vue.createVNode(_component_el_empty, { description: _ctx.task.name }, null, 8, ["description"])])]))]), _: 1 }), vue.createVNode(_component_el_tab_pane, { label: "运行日志", name: "second" }, { default: vue.withCtx(() => [vue.createVNode(_component_el_scrollbar, { height: "200px" }, { default: vue.withCtx(() => [vue.createVNode(_component_el_row, null, { default: vue.withCtx(() => [vue.createVNode(_component_el_col, { span: 24 }, { default: vue.withCtx(() => [(vue.openBlock(true), vue.createElementBlock(vue.Fragment, null, vue.renderList(_ctx.task.log, (item, index) => (vue.openBlock(), vue.createElementBlock("p", { key: index, class: "cx_log" }, [vue.createVNode(_component_el_text, { size: "small", type: "info", class: "mx-1" }, { default: vue.withCtx(() => [vue.createTextVNode(vue.toDisplayString(item.time), 1)]), _: 2 }, 1024), vue.createVNode(_component_el_text, { class: "mx-1", type: "info" == item.type ? "" : item.type }, { default: vue.withCtx(() => [vue.createTextVNode(vue.toDisplayString(" " + item.msg), 1)]), _: 2 }, 1032, ["type"])]))), 128))]), _: 1 })]), _: 1 })]), _: 1 })]), _: 1 }), vue.createVNode(_component_el_tab_pane, { label: "公告", name: "msg" }, { default: vue.withCtx(() => [vue.createVNode(_component_el_card, { shadow: "hover" }, { default: vue.withCtx(() => [vue.createElementVNode("div", { innerHTML: _ctx.msg }, null, 8, _hoisted_13)]), _: 1 })]), _: 1 })]), _: 1 }, 8, ["modelValue"]), vue.createElementVNode("p", null, [_ctx.task.status ? (vue.openBlock(), vue.createBlock(_component_el_tag, { key: 0 }, { default: vue.withCtx(() => [vue.createTextVNode(vue.toDisplayString(_ctx.task.status), 1)]), _: 1 })) : vue.createCommentVNode("", true)])]), _: 1 }, 8, ["modelValue"])]))], 64);
   }], ["__scopeId", "data-v-c3c6b09f"]]);
   class Cx {
     constructor() {
@@ -1931,6 +1940,7 @@ hideConfigControls();
     innerbook() {
     }
     async audio(iframeWindow) {
+      await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，点击“开始助手”后继续"));
       this.askStore.reset(), this.askStore.task.name = "视频音频";
       const audio = iframeWindow.document.getElementById("audio_html5_api");
       return audio.muted = true, audio.autoplay = true, audio.volume = 0, audio.play().then(function() {
@@ -1941,7 +1951,7 @@ hideConfigControls();
         } }) : console.error("视频播放失败，原因：", error);
       }), new Promise((resolve) => {
         const intervalId = setInterval(() => {
-          audio.ended ? (clearInterval(intervalId), log("监听到音频已完成", "success"), resolve()) : audio.paused && audio.play();
+          audio.ended ? (clearInterval(intervalId), log("监听到音频已完成", "success"), resolve()) : assistantRuntime.isPaused() ? audio.pause() : audio.paused && audio.play();
         }, 1e3);
         audio.addEventListener("ended", function() {
           log("监听到音频已完成1", "success"), audio.pause(), clearInterval(intervalId), resolve();
@@ -1949,8 +1959,9 @@ hideConfigControls();
       });
     }
     async video(iframeWindow) {
+      await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，点击“开始助手”后继续"));
       this.askStore.reset(), this.askStore.task.name = "视频", this.askStore.task.video.status = 1, await waitElementLoaded(iframeWindow, "#video_html5_api"), console.log("视频加载完成");
-      const player = iframeWindow.videojs("video_html5_api"), playerButton = iframeWindow.document.querySelector(".vjs-big-play-button");
+      const player = iframeWindow.videojs("video_html5_api"), playerButton = iframeWindow.document.querySelector(".vjs-big-play-button"), nativePlayerPause = player.pause.bind(player);
       player.muted(true), player.playbackRate(16), player.play();
 
       // 生成随机暂停时间（30-93秒）
@@ -1962,12 +1973,12 @@ hideConfigControls();
       const scheduleRandomPause = () => {
         const delay = Math.floor(Math.random() * (93 - 30 + 1) + 30) * 1000;
         pauseTimer = setTimeout(() => {
-          if (!player.paused()) {
-            player.pause();
+          if (!player.paused() && !assistantRuntime.isPaused()) {
+            nativePlayerPause();
             console.log(`[视频] 已随机暂停，暂停时间: ${delay / 1000}秒`);
             // 暂停2-5秒后恢复播放
             setTimeout(() => {
-              if (player.paused() && "isUnFinishJob" in iframeWindow && iframeWindow.isUnFinishJob()) {
+              if (!assistantRuntime.isPaused() && player.paused() && "isUnFinishJob" in iframeWindow && iframeWindow.isUnFinishJob()) {
                 player.play();
                 console.log("[视频] 已恢复播放");
                 scheduleRandomPause();
@@ -2016,7 +2027,7 @@ hideConfigControls();
       const scheduleMouseMovement = () => {
         const delay = Math.floor(Math.random() * (8 - 3 + 1) + 3) * 1000;
         mouseMoveTimer = setTimeout(() => {
-          simulateMouseMovement();
+          assistantRuntime.isPaused() || simulateMouseMovement();
           if ("isUnFinishJob" in iframeWindow && iframeWindow.isUnFinishJob()) {
             scheduleMouseMovement();
           }
@@ -2026,6 +2037,10 @@ hideConfigControls();
 
       await new Promise((resolve) => {
         const intervalId = setInterval(() => {
+          if (assistantRuntime.isPaused()) {
+            nativePlayerPause();
+            return;
+          }
           "isUnFinishJob" in iframeWindow && iframeWindow.isUnFinishJob() ? player.paused() && (playerButton == null ? void 0 : playerButton.click()) : (clearInterval(intervalId), clearTimeout(pauseTimer), clearTimeout(mouseMoveTimer), resolve());
         }, 1e3), pauseBase = player.pause;
         player.pause = function() {
@@ -2037,6 +2052,7 @@ hideConfigControls();
     }
     work(iframeWindow) {
       return new Promise(async (resolve) => {
+        await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，点击“开始助手”后继续"));
         decode(iframeWindow);
         const Timu = iframeWindow.document.querySelectorAll(".TiMu");
         if (!Timu.length)
@@ -2048,19 +2064,22 @@ hideConfigControls();
         }
         this.askStore.reset(), this.askStore.count = ques.length, this.askStore.task.name = "章节测验";
         for (let i = 0; i < ques.length; i++) {
-          await randomSleep(this.defaultConfig.answerIntervalMin, this.defaultConfig.answerIntervalMax), this.askStore.insert(ques[i]), this.askStore.task.work.inx = i;
+          await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，点击“开始助手”后继续")), await randomSleep(this.defaultConfig.answerIntervalMin, this.defaultConfig.answerIntervalMax), await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，点击“开始助手”后继续")), this.askStore.insert(ques[i]), this.askStore.task.work.inx = i;
           let data = await getAnswers(ques[i], iframeWindow);
-          this.askStore.get(i).allAnswer = data;
+          this.askStore.get(i).allAnswer = data.map((item) => ({ ...item, answer: formatLearningDisplayHtml(item.answer || "暂无答案") }));
+          await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，点击“开始助手”后继续"));
           let tmp = fillAnswer(data, ques[i], Timu[i], iframeWindow);
-          tmp ? (this.askStore.get(i).status = "primary", this.askStore.get(i).answer = tmp, succ++) : (this.askStore.get(i).status = "danger", this.askStore.get(i).answer = "暂无答案"), this.askStore.get(i).dom = Timu[i];
+          tmp ? (this.askStore.get(i).status = "primary", this.askStore.get(i).answer = formatLearningDisplayText(tmp), succ++) : (this.askStore.get(i).status = "danger", this.askStore.get(i).answer = "暂无答案"), this.askStore.get(i).dom = Timu[i];
         }
-        this.defaultConfig.autoSubmit ? (succ / ques.length < this.defaultConfig.minAccuracy ? (this.askStore.log("章节测验正确率不足，暂存", "error"), iframeWindow.alert = function(e) {
+        const submitConfig = getConfig();
+        submitConfig.autoSubmit ? (succ / ques.length < submitConfig.minAccuracy ? (this.askStore.log("章节测验正确率不足，暂存", "error"), iframeWindow.alert = function(e) {
           console.log("alert 方法被阻止", e);
-        }, iframeWindow.noSubmit()) : (await randomSleep(this.defaultConfig.submitDelayMin, this.defaultConfig.submitDelayMax), iframeWindow.btnBlueSubmit(), await sleep(3), iframeWindow.submitCheckTimes(), this.askStore.log("章节测验已完成", "success"), await randomSleep(5, 10), this.askStore.log("正在刷新页面...", "info"), iframeWindow.location.reload()), this.askStore.task.status = `章节测验已完成，等待切换,正确率:${succ}/${ques.length}`, resolve()) : (this.askStore.log("已完成答题，未开启自动提交，等待手动提交中", "success"), this.askStore.task.status = `正在等待手动提交,正确率:${succ}/${ques.length}`, resolve());
+        }, iframeWindow.noSubmit()) : (await randomSleep(submitConfig.submitDelayMin, submitConfig.submitDelayMax), await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，不会提交章节测验")), iframeWindow.btnBlueSubmit(), await sleep(3), iframeWindow.submitCheckTimes(), this.askStore.log("章节测验已完成", "success"), await randomSleep(5, 10), await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，不会切换页面")), this.askStore.log("正在刷新页面...", "info"), iframeWindow.location.reload()), this.askStore.task.status = `章节测验已完成，等待切换,正确率:${succ}/${ques.length}`, resolve()) : (this.askStore.log("已填写章节测验答案；自动提交已关闭，请检查后手动提交", "success"), this.askStore.task.status = `等待手动提交,正确率:${succ}/${ques.length}`, resolve());
       });
     }
     homework() {
       return new Promise(async (resolve) => {
+        await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，点击“开始助手”后继续"));
         const Timu = _unsafeWindow.document.querySelectorAll(".questionLi");
         if (!Timu.length)
           return void resolve();
@@ -2071,27 +2090,32 @@ hideConfigControls();
         }
         this.askStore.reset(), this.askStore.count = ques.length, this.askStore.task.name = "作业";
         for (let i = 0; i < ques.length; i++) {
-          await randomSleep(this.defaultConfig.answerIntervalMin, this.defaultConfig.answerIntervalMax), this.askStore.insert(ques[i]), this.askStore.task.work.inx = i;
+          await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，点击“开始助手”后继续")), await randomSleep(this.defaultConfig.answerIntervalMin, this.defaultConfig.answerIntervalMax), await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，点击“开始助手”后继续")), this.askStore.insert(ques[i]), this.askStore.task.work.inx = i;
           let data = await getAnswers(ques[i]);
-          this.askStore.get(i).allAnswer = data;
+          this.askStore.get(i).allAnswer = data.map((item) => ({ ...item, answer: formatLearningDisplayHtml(item.answer || "暂无答案") }));
+          await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，点击“开始助手”后继续"));
           let tmp = fillAnswer(data, ques[i], Timu[i], _unsafeWindow);
-          tmp ? (this.askStore.get(i).status = "primary", this.askStore.get(i).answer = tmp) : (this.askStore.get(i).status = "danger", this.askStore.get(i).answer = "暂无答案"), this.askStore.get(i).dom = Timu[i];
+          tmp ? (this.askStore.get(i).status = "primary", this.askStore.get(i).answer = formatLearningDisplayText(tmp)) : (this.askStore.get(i).status = "danger", this.askStore.get(i).answer = "暂无答案"), this.askStore.get(i).dom = Timu[i];
         }
+        this.askStore.msg("作业答案已填写，请检查后手动提交");
         resolve();
       });
     }
     exam() {
       return new Promise(async (resolve) => {
+        await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，点击“开始助手”后继续"));
         this.askStore.reset(), this.askStore.count = 1, this.askStore.task.name = "考试";
         let data = getQuestion("3", _unsafeWindow.document.body);
         this.askStore.insert(data), this.askStore.task.work.inx = 0;
         let data1 = await getAnswers(data);
-        this.askStore.get(0).allAnswer = data1;
+        this.askStore.get(0).allAnswer = data1.map((item) => ({ ...item, answer: formatLearningDisplayHtml(item.answer || "暂无答案") }));
+        await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，点击“开始助手”后继续"));
         let tmp = fillAnswer(data1, data, document.getElementsByClassName("mark_table")[0], _unsafeWindow);
-        if (tmp ? (this.askStore.get(0).status = "primary", this.askStore.get(0).answer = tmp) : (this.askStore.get(0).status = "danger", this.askStore.get(0).answer = "暂无答案"), this.defaultConfig.autoExam) {
+        if (tmp ? (this.askStore.get(0).status = "primary", this.askStore.get(0).answer = formatLearningDisplayText(tmp)) : (this.askStore.get(0).status = "danger", this.askStore.get(0).answer = "暂无答案"), getConfig().autoExam) {
           await randomSleep(this.defaultConfig.answerIntervalMin, this.defaultConfig.answerIntervalMax);
+          await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，不会切换考试题目"));
           const nextButton = $('.nextDiv .jb_btn:contains("下一题")');
-          nextButton ? nextButton.click() : (this.askStore.log("已完成答题，请自行检查答案填写后自行提交", "success"), this.askStore.task.status = "已完成答题，请自行检查答案填写后自行提交");
+          nextButton.length > 0 ? nextButton.click() : (this.askStore.log("已完成答题，请自行检查答案填写后自行提交", "success"), this.askStore.task.status = "已完成答题，请自行检查答案填写后自行提交");
         } else
           this.askStore.task.status = "未开启自动切换，等待手动切换";
         resolve();
@@ -2154,6 +2178,113 @@ hideConfigControls();
   }
   const pinia = pinia$1.createPinia(), app = vue.createApp(App).use(ElementPlus).use(pinia), _self = _unsafeWindow, top = _self.top, formStore = useformStore();
   const assistantName = "药大拾间·学习通助手";
+  const assistantRuntime = (() => {
+    let host = _self;
+    try {
+      host = top && top.document ? top : _self;
+    } catch {
+      host = _self;
+    }
+    const runtimeKey = "__cpuLearningAssistantRuntimeV1__";
+    if (host[runtimeKey]) return host[runtimeKey];
+    const pausedStorageKey = "cpu-learning-assistant-paused";
+    let paused = false;
+    try {
+      paused = host.sessionStorage.getItem(pausedStorageKey) === "1";
+    } catch {
+      // 会话存储不可用时仅不记忆暂停状态。
+    }
+    const waiters = /* @__PURE__ */ new Set(), listeners = /* @__PURE__ */ new Set();
+    const runtime = {
+      isPaused: () => paused,
+      setPaused(nextPaused) {
+        paused = Boolean(nextPaused);
+        try {
+          host.sessionStorage.setItem(pausedStorageKey, paused ? "1" : "0");
+        } catch {
+          // 会话存储不可用时仍允许本次暂停。
+        }
+        listeners.forEach((listener) => listener(paused));
+        if (!paused) {
+          waiters.forEach((resolve) => resolve());
+          waiters.clear();
+        }
+        reportToHost("status", paused ? "学习通助手已暂停" : "学习通助手已开始");
+      },
+      toggle() {
+        runtime.setPaused(!paused);
+      },
+      subscribe(listener) {
+        listeners.add(listener);
+        listener(paused);
+        return () => listeners.delete(listener);
+      },
+      waitUntilRunning(onPause) {
+        if (!paused) return Promise.resolve();
+        onPause == null ? void 0 : onPause();
+        return new Promise((resolve) => waiters.add(resolve));
+      }
+    };
+    host[runtimeKey] = runtime;
+    return runtime;
+  })();
+  const mountAssistantRuntimeControls = () => {
+    if (_self !== top) return;
+    const controlId = "cpu-learning-runtime-controls";
+    if (top.document.getElementById(controlId)) return;
+    const style = top.document.createElement("style");
+    style.textContent = `
+      #${controlId} {
+        position: fixed;
+        left: 10px;
+        bottom: calc(50vh - 112px);
+        z-index: 2147482998;
+        width: 218px;
+        padding: 10px;
+        border: 1px solid #b7d7ce;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, .96);
+        box-shadow: 0 8px 24px rgba(15, 23, 42, .14);
+        color: #334155;
+        font: 14px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      #${controlId} button {
+        width: 100%;
+        min-height: 36px;
+        border: 0;
+        border-radius: 9px;
+        background: #4d907e;
+        color: #fff;
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      #${controlId}[data-paused="true"] button { background: #d97706; }
+      #${controlId} label { display: flex; gap: 8px; align-items: flex-start; margin-top: 9px; cursor: pointer; }
+      #${controlId} input { margin-top: 3px; accent-color: #4d907e; }
+      #${controlId} small { display: block; margin-top: 5px; color: #64748b; }
+    `;
+    top.document.head.appendChild(style);
+    const container = top.document.createElement("section");
+    container.id = controlId;
+    container.innerHTML = '<button type="button"></button><label><input type="checkbox"><span>章节测验答完自动提交</span></label><small>关闭后只填写；作业和考试始终由你手动交卷。</small>';
+    const toggleButton = container.querySelector("button"), submitCheckbox = container.querySelector("input");
+    submitCheckbox.checked = Boolean(getConfig().autoSubmit);
+    assistantRuntime.subscribe((paused) => {
+      container.dataset.paused = String(paused);
+      toggleButton.textContent = paused ? "开始助手" : "暂停助手";
+      toggleButton.setAttribute("aria-pressed", String(paused));
+    });
+    toggleButton.addEventListener("click", () => assistantRuntime.toggle());
+    submitCheckbox.addEventListener("change", () => {
+      const config = { ...defaultConfig$1, ...getConfig(), autoSubmit: submitCheckbox.checked };
+      _GM_setValue("config", config);
+      formStore.forminput.autoSubmit = config.autoSubmit;
+      reportToHost("status", config.autoSubmit ? "章节测验将自动提交" : "章节测验仅填写，不自动提交");
+    });
+    top.document.body.appendChild(container);
+  };
+  mountAssistantRuntimeControls();
   const ensureGuideStyle = () => {
     const id = "cpu-learning-guide-style";
     if (_self.document.getElementById(id)) return;
@@ -2224,6 +2355,7 @@ hideConfigControls();
         workRunning = true;
         var _a, _b, _c, _d, _e;
         try {
+          await assistantRuntime.waitUntilRunning(() => cxModel.askStore.msg("助手已暂停，点击“开始助手”后继续"));
           if (!await waitElementLoaded(_self, "#iframe")) return;
           const cardsIframe = _self.document.querySelector("#iframe");
           if (!await waitIframeLoaded(cardsIframe)) return;
@@ -2231,6 +2363,7 @@ hideConfigControls();
           top.scroll2Job();
           let jobList = _self1.document.querySelectorAll(".ans-job-icon") || [];
           for (let i = 0; i < jobList.length; i++) {
+          await assistantRuntime.waitUntilRunning(() => cxModel.askStore.msg("助手已暂停，点击“开始助手”后继续"));
           const item = jobList[i];
           if ((_a = item.parentElement) == null ? void 0 : _a.classList.contains("ans-job-finished")) {
             const iframe = (_b = item.parentElement) == null ? void 0 : _b.querySelector("iframe");
@@ -2265,7 +2398,9 @@ hideConfigControls();
               (iframe == null ? void 0 : iframe.src.match(/\/ananas\/modules\/pdf\/index.html/)) ? (log("文档", "error"), iframe && (await waitIframeLoaded(iframe), await cxModel.pdf(iframe.contentWindow), cxModel.askStore.log("pdf任务已完成", "success"))) : (console.log(iframe == null ? void 0 : iframe.src, "未知"), cxModel.askStore.log("未知任务跳过", "success"));
           }
           }
-          await sleep(formStore.forminput.interval), !formStore.forminput.autoJump && cxModel.askStore.msg("由于未开启自动切换,请手动切换"), formStore.forminput.autoJump && (top == null ? void 0 : top.document.querySelector(".nextChapter").click());
+          await sleep(formStore.forminput.interval), await assistantRuntime.waitUntilRunning(() => cxModel.askStore.msg("助手已暂停，不会切换章节"));
+          const currentConfig = getConfig();
+          !currentConfig.autoJump && cxModel.askStore.msg("由于未开启自动切换,请手动切换"), currentConfig.autoJump && (top == null ? void 0 : top.document.querySelector(".nextChapter").click());
         } catch (error) {
           console.error("任务处理失败", error);
         } finally {
