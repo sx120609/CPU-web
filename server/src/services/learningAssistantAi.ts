@@ -14,7 +14,7 @@ import { getSiteConfig } from "./siteSettings";
 export const LEARNING_ASSISTANT_AI_INSTRUCTIONS = [
   "你是“药大拾间·学习通助手”使用的独立答题 AI。",
   "只依据本次请求中明确给出的题干、选项、图片和通用学科知识作答；不接收、不引用也不推断药大拾间的校园知识库、站内内容、用户资料、历史会话或其他业务数据。",
-  "严格服从题目要求的输出格式。若信息不足以确定答案，应简短说明无法确定，不得伪造依据。",
+  "严格服从题目要求的输出格式。若信息不足以确定答案，必须把“答案”字段留空，并只在“解题思路”字段简短说明原因；不得把“缺失图片无法完成”“无法作答”等状态说明冒充答案，不得伪造依据。",
   "若题目要求“解题思路”，只提供面向学生、可公开且可核验的简短说明；不得输出隐藏思维链、内部推理记录或逐字思考过程。",
   "当用户要求按“答案”和“解题思路”两个字段作答时，必须同时返回这两个字段，使用纯文本“答案：...”与“解题思路：...”，不要给字段名加 Markdown 标记。",
   "遵守中华人民共和国现行法律法规和中国大陆互联网内容规范；不得提供违法犯罪、暴恐极端、色情低俗、赌博毒品、诈骗欺诈、网络攻击或侵害隐私等内容的具体实施方法。遇到此类请求应拒绝，并尽量给出安全、合法的替代信息。",
@@ -49,8 +49,30 @@ export function parseLearningAssistantAnswer(outputText: string): LearningAssist
   const tagged = content.match(/(?:^|\n)\s*(?:\*\*)?\s*答案\s*[:：]\s*(?:\*\*)?\s*([\s\S]*?)(?=\n\s*(?:\*\*)?\s*解题思路\s*[:：]|$)/i);
   const explained = content.match(/(?:^|\n)\s*(?:\*\*)?\s*解题思路\s*[:：]\s*(?:\*\*)?\s*([\s\S]*)$/i);
   return {
-    answer: (tagged?.[1] || content).trim(),
+    answer: (tagged ? tagged[1] : content).trim(),
     explanation: (explained?.[1] || "").trim(),
+  };
+}
+
+/**
+ * 模型无法读取题面时可能把状态说明误放进答案字段。此类内容只能展示为说明，
+ * 绝不能被学习通脚本写进填空题或简答题输入框。
+ */
+export function isLearningAssistantNonAnswerFeedback(value: string): boolean {
+  const normalized = String(value || "").replace(/\s+/g, " ").trim();
+  if (!normalized) return false;
+  const imageUnavailable = /(?:缺失|未提供|未上传|无法(?:查看|读取|识别)|看不到|未能(?:查看|读取|识别)).{0,12}(?:图片|图像)|(?:图片|图像).{0,12}(?:缺失|未提供|未上传|不可用|无法(?:查看|读取|识别)|看不到)/i.test(normalized);
+  const cannotAnswer = /(?:无法|不能|没法|难以).{0,10}(?:完成|作答|回答|判断|确定|解答)|(?:完成|作答|回答|判断|确定|解答).{0,10}(?:不了|无法|不能)/i.test(normalized);
+  const incompleteQuestion = /(?:信息|条件|题干).{0,8}(?:不足|不完整|缺失).{0,16}(?:无法|不能|没法).{0,10}(?:确定|作答|回答|完成|判断|解答)/i.test(normalized);
+  const englishFeedback = /(?:missing|unavailable|not provided|cannot (?:see|read)|unable to (?:see|read)).{0,24}(?:image|picture).{0,40}(?:cannot|can't|unable to).{0,16}(?:answer|complete|determine)|(?:cannot|can't|unable to).{0,16}(?:answer|complete|determine).{0,40}(?:missing|unavailable|image|picture)/i.test(normalized);
+  return (imageUnavailable && cannotAnswer) || incompleteQuestion || englishFeedback;
+}
+
+export function sanitizeLearningAssistantAnswer(answer: LearningAssistantAnswer): LearningAssistantAnswer {
+  if (!isLearningAssistantNonAnswerFeedback(answer.answer)) return answer;
+  return {
+    answer: "",
+    explanation: answer.explanation || answer.answer,
   };
 }
 
@@ -65,7 +87,7 @@ function normalizeLearningAssistantImageUrl(value: string) {
 
 const inputImageSchema = z.object({
   type: z.literal("input_image"),
-  image_url: z.string().max(8 * 1024 * 1024).transform((value, ctx) => {
+  image_url: z.string().max(12 * 1024 * 1024).transform((value, ctx) => {
     try {
       return normalizeLearningAssistantImageUrl(value);
     } catch {
@@ -236,7 +258,7 @@ export async function requestLearningAssistantAi(
 }
 
 export function learningAssistantAiResponse(outputText: string) {
-  const learningAnswer = parseLearningAssistantAnswer(outputText);
+  const learningAnswer = sanitizeLearningAssistantAnswer(parseLearningAssistantAnswer(outputText));
   return {
     output_text: outputText,
     learning_answer: learningAnswer,

@@ -141,6 +141,9 @@ export class TabManager {
         sandbox: true,
         webSecurity: true,
         webviewTag: false,
+        // 学习通里的视频、音频和答题队列需要在窗口最小化、切到其他桌面后继续运行。
+        // 只为学习标签关闭 Chromium 后台节流，主站和工具页仍保持默认节能行为。
+        backgroundThrottling: kind !== "learning",
         additionalArguments: [`--cpu-desktop-version=${this.hooks.appVersion}`]
       }
     });

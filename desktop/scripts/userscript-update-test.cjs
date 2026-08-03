@@ -19,6 +19,7 @@ const scriptPath = path.join(__dirname, "..", "assets", "userscripts", "monkey.j
 
 async function main() {
   const source = await readFile(scriptPath, "utf8");
+  const tabsSource = await readFile(path.join(__dirname, "..", "electron", "tabs.ts"), "utf8");
   const identity = parseUserScriptIdentity(source);
   const manifest = {
     ...identity,
@@ -26,7 +27,7 @@ async function main() {
     size: Buffer.byteLength(source, "utf8"),
     sourceUrl: USER_SCRIPT_SOURCE_PATH,
   };
-  assert.deepEqual(identity, { name: "药大拾间·学习通助手", version: "2.2.10" });
+  assert.deepEqual(identity, { name: "药大拾间·学习通助手", version: "2.2.11" });
   assert.match(source, /章节、作业或考试/, "个人中心与课程引导应覆盖章节、作业和考试入口");
   assert.match(source, /customClass:\s*"cpu-learning-guide"/, "学习通引导应使用独立高层级样式");
   assert.match(source, /offset:\s*96/, "学习通引导应避开超星顶部导航");
@@ -53,6 +54,9 @@ async function main() {
   assert.match(source, /cpu-la-inline-image/, "图片题应在助手中显示并支持查看原图");
   assert.match(source, /navigationGeneration/, "切换章节时应终止旧章节任务并扫描新章节");
   assert.match(source, /taskCurrent/, "媒体与答题任务应在异步步骤后确认仍属于当前章节");
+  assert.match(source, /isLearningNonAnswerFeedback/, "填空与简答题不得把模型内部状态说明写入答案框");
+  assert.match(source, /题面缺失状态说明，已拦截且不会写入答案框/, "被拦截的非答案内容应留下可排查日志");
+  assert.match(tabsSource, /backgroundThrottling:\s*kind !== "learning"/, "学习通标签页在窗口最小化或切换桌面后不应被 Chromium 暂停");
   assert.doesNotMatch(source, /切记填写完要刷新页面才会生效/, "不应继续显示旧版付费秘钥提示");
   assert.doesNotMatch(source, /题库秘钥配置请点击这个按钮|label:\s*"公告"|label:\s*"运行框"/, "旧配置提示、公告页和运行框不应残留");
   assert.doesNotMatch(source, /cpu-la-footer/, "章节测验提交开关不应残留在窗口底部");
@@ -85,7 +89,7 @@ async function main() {
       return new Response("", { status: 404 });
     };
 
-    const olderSource = source.replace("// @version      2.2.10", "// @version      2.1.9");
+    const olderSource = source.replace("// @version      2.2.11", "// @version      2.1.9");
     const updated = await checkUserScriptUpdate({
       origin: "https://cpu.lizmt.cn",
       cacheDirectory,
@@ -98,7 +102,7 @@ async function main() {
     assert.equal(new URL(requests[1]).searchParams.get("sha256"), manifest.sha256, "正文请求应使用发布哈希隔离缓存");
 
     const cached = await readCachedUserScript(cacheDirectory, () => undefined);
-    assert.equal(cached?.manifest.version, "2.2.10");
+    assert.equal(cached?.manifest.version, "2.2.11");
     assert.equal(cached?.source, source);
 
     requests.length = 0;

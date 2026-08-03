@@ -47,6 +47,8 @@ import { calculateSponsorAssistantPoints } from "../src/services/campusAssistant
 import { buildOAuthAiRequestBody, OAUTH_AI_INSTRUCTIONS } from "../src/routes/oauth";
 import { readDesktopUserScriptRelease } from "../src/services/desktopUserScript";
 import {
+  isLearningAssistantNonAnswerFeedback,
+  learningAssistantAiBodySchema,
   learningAssistantAiResponse,
   learningAssistantPointCost,
   parseLearningAssistantAnswer,
@@ -128,7 +130,7 @@ test("删除标记会阻止旧本地或云端快照复活会话", () => {
 test("云端学习通助手脚本提供可校验的版本与正文", async () => {
   const release = await readDesktopUserScriptRelease();
   assert.equal(release.name, "药大拾间·学习通助手");
-  assert.equal(release.version, "2.2.10");
+  assert.equal(release.version, "2.2.11");
   assert.match(release.sha256, /^[a-f0-9]{64}$/);
   assert.equal(release.size, Buffer.byteLength(release.source, "utf8"));
   assert.match(release.source, /cpu-learning-personal-center-guide-v3/);
@@ -163,6 +165,33 @@ test("学习通答题 AI 返回独立的答案与公开解题思路字段", () =
     learningAssistantAiResponse("答案：正确\n解题思路：题干符合定义。 ").learning_answer,
     { answer: "正确", explanation: "题干符合定义。" },
   );
+  assert.equal(isLearningAssistantNonAnswerFeedback("缺失图片无法完成"), true);
+  assert.deepEqual(
+    learningAssistantAiResponse("答案：缺失图片，无法完成作答\n解题思路：题目图片没有成功提供。").learning_answer,
+    { answer: "", explanation: "题目图片没有成功提供。" },
+  );
+  assert.deepEqual(
+    learningAssistantAiResponse("答案：信息不足，无法确定").learning_answer,
+    { answer: "", explanation: "信息不足，无法确定" },
+  );
+  assert.deepEqual(
+    learningAssistantAiResponse("答案：\n解题思路：题目图片未提供，无法作答。").learning_answer,
+    { answer: "", explanation: "题目图片未提供，无法作答。" },
+  );
+  assert.equal(isLearningAssistantNonAnswerFeedback("图像缺失"), false, "合法的简短答案不应仅因包含图像二字被误拦截");
+});
+
+test("学习通截图搜题接收未压缩的 8MB PNG Data URL", () => {
+  const originalPngDataUrl = `data:image/png;base64,${"A".repeat(Math.ceil(8 * 1024 * 1024 * 4 / 3))}`;
+  const parsed = learningAssistantAiBodySchema.parse({
+    model: "test-model",
+    reasoningEffort: "high",
+    input: [{ role: "user", content: [
+      { type: "input_text", text: "请解答截图中的题目" },
+      { type: "input_image", image_url: originalPngDataUrl, detail: "original" },
+    ] }],
+  });
+  assert.equal((parsed.input[0].content as any[])[1].image_url, originalPngDataUrl);
 });
 
 test("电费问题能稳定匹配宿舍电费直达入口", () => {

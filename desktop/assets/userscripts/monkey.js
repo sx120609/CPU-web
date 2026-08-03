@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         药大拾间·学习通助手
 // @namespace    askAuto
-// @version      2.2.10
+// @version      2.2.11
 // @author       shushoujiu
 // @description  药大拾间桌面端的学习通助手：自动完成任务点，章节测验与考试由独立答题 AI 作答。
 // @icon         https://vitejs.dev/logo.svg
@@ -373,14 +373,20 @@
                 const typeNames = { "0": "单选题", "1": "多选题", "2": "填空题", "3": "判断题", "4": "简答题", "5": "名词解释", "6": "论述题", "7": "计算题" };
                 const typeName = typeNames[questionTypeId] || "单选题";
                 const structuredReply = data.learning_answer;
-                const parsedReply = structuredReply && typeof structuredReply === "object"
+                const hasStructuredReply = structuredReply && typeof structuredReply === "object";
+                const parsedReply = hasStructuredReply
                   ? {
                       answer: String(structuredReply.answer || "").trim(),
                       explanation: String(structuredReply.explanation || "").trim()
                     }
                   : parseLearningAiReply(content);
-                const answerContent = parsedReply.answer || content;
+                const answerContent = hasStructuredReply ? parsedReply.answer : parsedReply.answer || content;
                 const explanation = parsedReply.explanation;
+                if (isLearningNonAnswerFeedback(answerContent)) {
+                  console.log("AI 返回的是题面缺失状态说明，已拦截且不会写入答案框:", answerContent);
+                  resolve({ form: "AI", answer: "", explanation: explanation || answerContent });
+                  return;
+                }
                 if (questionTypeId === "3") {
                   const isTrue = /正确|对|是|√|true/i.test(answerContent);
                   const isFalse = /错误|错|否|×|false/i.test(answerContent);
@@ -1714,9 +1720,17 @@
     const tagged = content.match(/(?:^|\n)\s*答案\s*[:：]\s*([\s\S]*?)(?=\n\s*解题思路\s*[:：]|$)/i);
     const explanation = content.match(/(?:^|\n)\s*解题思路\s*[:：]\s*([\s\S]*)$/i);
     return {
-      answer: (tagged == null ? void 0 : tagged[1].trim()) || content.replace(/^(?:答案\s*[:：]\s*)/i, "").trim(),
+      answer: tagged ? tagged[1].trim() : content.replace(/^(?:答案\s*[:：]\s*)/i, "").trim(),
       explanation: (explanation == null ? void 0 : explanation[1].trim()) || ""
     };
+  }, isLearningNonAnswerFeedback = (value) => {
+    const normalized = formatLearningDisplayText(value).replace(/\s+/g, " ").trim();
+    if (!normalized) return false;
+    const imageUnavailable = /(?:缺失|未提供|未上传|无法(?:查看|读取|识别)|看不到|未能(?:查看|读取|识别)).{0,12}(?:图片|图像)|(?:图片|图像).{0,12}(?:缺失|未提供|未上传|不可用|无法(?:查看|读取|识别)|看不到)/i.test(normalized);
+    const cannotAnswer = /(?:无法|不能|没法|难以).{0,10}(?:完成|作答|回答|判断|确定|解答)|(?:完成|作答|回答|判断|确定|解答).{0,10}(?:不了|无法|不能)/i.test(normalized);
+    const incompleteQuestion = /(?:信息|条件|题干).{0,8}(?:不足|不完整|缺失).{0,16}(?:无法|不能|没法).{0,10}(?:确定|作答|回答|完成|判断|解答)/i.test(normalized);
+    const englishFeedback = /(?:missing|unavailable|not provided|cannot (?:see|read)|unable to (?:see|read)).{0,24}(?:image|picture).{0,40}(?:cannot|can't|unable to).{0,16}(?:answer|complete|determine)|(?:cannot|can't|unable to).{0,16}(?:answer|complete|determine).{0,40}(?:missing|unavailable|image|picture)/i.test(normalized);
+    return imageUnavailable && cannotAnswer || incompleteQuestion || englishFeedback;
   }, learningAnswerDisplay = (source, fallback = "") => formatLearningDisplayText(source && (source.displayAnswer || source.answer) || fallback || ""), cl = (str) => str.replace(/^【.*?】\s*/, "").replace(/\s*（\d+\.\d+分）$/, ""), getQuestion = (type, html) => {
     let questionHtml, questionText, questionTypeId, optionHtml, tokenHtml, workType, optionText, index;
     switch (type) {
@@ -1792,7 +1806,7 @@
 
     return [{ form: "AI", answer: "" }];
   }, fillAnswer = (answer, questionData, html, iframeWindow) => {
-    answer = answer.filter((item) => item.answer.length > 0), console.log(answer);
+    answer = answer.filter((item) => item.answer.length > 0 && !isLearningNonAnswerFeedback(item.answer)), console.log(answer);
     for (let i = 0; i < answer.length; i++) {
       if ("string" == typeof answer[i].answer) {
         if (-1 !== answer[i].answer.indexOf("付费题库") || -1 !== answer[i].answer.indexOf("暂无答案") || "略" == answer[i].answer)
