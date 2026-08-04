@@ -7,6 +7,9 @@ const path = require("node:path");
 const main = readFileSync(path.join(__dirname, "..", "dist", "electron", "main.js"), "utf8");
 const shell = readFileSync(path.join(__dirname, "..", "src", "shell", "renderer.js"), "utf8");
 
+assert.match(main, /userscript:get-learning-policy/, "the assistant must refresh answer-mode policy while the client is running");
+assert.match(main, /available === false/, "the host must reject a tier disabled during guest-unlimited access");
+
 assert.match(main, /guest-unlimited/, "客户端必须识别服务端临时免登录策略");
 assert.match(main, /\/api\/site\/learning-assistant\/responses/, "临时模式必须走服务端免额度入口");
 assert.match(main, /\/api\/oauth\/v1\/responses/, "恢复限制后必须走 OAuth 额度入口");

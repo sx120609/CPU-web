@@ -47,6 +47,8 @@ export type LearningAssistantTierConfig = {
   model: string;
   reasoningEffort: LearningAssistantReasoningEffort;
   pointMultiplier: number;
+  /** Whether this tier is available through the temporary guest-unlimited entry. */
+  freeInUnlimited: boolean;
 };
 export type LearningAssistantTiersConfig = Record<LearningAssistantTierKey, LearningAssistantTierConfig>;
 export type LearningPlatformKey = "chaoxing" | "zhihuishu" | "icve" | "zjy" | "icourse" | "yuketang";
@@ -165,9 +167,9 @@ export const DEFAULT_ASSISTANT_DAILY_QUOTAS: AssistantDailyQuotaConfig[] = [
 ];
 export const DEFAULT_CAMPUS_ASSISTANT_MODEL = "gpt-5.6-terra";
 export const DEFAULT_LEARNING_ASSISTANT_TIERS: LearningAssistantTiersConfig = {
-  low: { model: DEFAULT_CAMPUS_ASSISTANT_MODEL, reasoningEffort: "low", pointMultiplier: 1 },
-  high: { model: DEFAULT_CAMPUS_ASSISTANT_MODEL, reasoningEffort: "high", pointMultiplier: 1.5 },
-  max: { model: DEFAULT_CAMPUS_ASSISTANT_MODEL, reasoningEffort: "max", pointMultiplier: 2 },
+  low: { model: DEFAULT_CAMPUS_ASSISTANT_MODEL, reasoningEffort: "low", pointMultiplier: 1, freeInUnlimited: true },
+  high: { model: DEFAULT_CAMPUS_ASSISTANT_MODEL, reasoningEffort: "high", pointMultiplier: 1.5, freeInUnlimited: true },
+  max: { model: DEFAULT_CAMPUS_ASSISTANT_MODEL, reasoningEffort: "max", pointMultiplier: 2, freeInUnlimited: false },
 };
 export const ALL_LEARNING_PLATFORMS: LearningPlatformKey[] = ["chaoxing", "zhihuishu", "icve", "zjy", "icourse", "yuketang"];
 export const DEFAULT_LEARNING_PLATFORM_AVAILABILITY: LearningPlatformAvailability = {
@@ -1304,6 +1306,9 @@ function normalizeLearningAssistantTiers(input: unknown, fallbackModel: string):
       pointMultiplier: Number.isFinite(pointMultiplier) && pointMultiplier >= 0.1 && pointMultiplier <= 20
         ? Math.round(pointMultiplier * 10) / 10
         : defaults.pointMultiplier,
+      freeInUnlimited: typeof raw.freeInUnlimited === "boolean"
+        ? raw.freeInUnlimited
+        : defaults.freeInUnlimited,
     };
   };
   return { low: normalizeTier("low"), high: normalizeTier("high"), max: normalizeTier("max") };

@@ -306,6 +306,10 @@ siteRouter.post(
         throw Errors.unauthorized("限时免登录已结束，请登录后继续使用");
       }
       const body = learningAssistantAiBodySchema.parse(req.body);
+      const tier = getSiteConfig().learningAssistantTiers[body.reasoningEffort];
+      if (!tier.freeInUnlimited) {
+        throw Errors.forbidden("该答题档位不参与限时免费，请选择当前开放的档位");
+      }
       const controller = new AbortController();
       timeout = setTimeout(() => controller.abort(), 120_000);
       res.on("close", () => {

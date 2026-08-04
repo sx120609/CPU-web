@@ -28,6 +28,7 @@ import {
 import {
   DEFAULT_ASSISTANT_DAILY_QUOTAS,
   DEFAULT_CAMPUS_ASSISTANT_MODEL,
+  DEFAULT_LEARNING_ASSISTANT_TIERS,
   getSiteConfig,
   loadFeatures,
   normalizeLearningAssistantAccessMode,
@@ -56,6 +57,12 @@ import {
 } from "../src/services/learningAssistantAi";
 import { mergeAssistantHistorySessions } from "../../web/src/utils/assistantHistorySync";
 import { normalizeAdjacentStrongDelimiters } from "../../web/src/utils/markdownNormalize";
+
+test("learning assistant free-period tier defaults keep the highest tier gated", () => {
+  assert.equal(DEFAULT_LEARNING_ASSISTANT_TIERS.low.freeInUnlimited, true);
+  assert.equal(DEFAULT_LEARNING_ASSISTANT_TIERS.high.freeInUnlimited, true);
+  assert.equal(DEFAULT_LEARNING_ASSISTANT_TIERS.max.freeInUnlimited, false);
+});
 
 const enabledFeatures = {
   forum: true,

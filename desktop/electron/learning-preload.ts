@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld("cpuDesktopBridge", {
   fetchText: (nonce: string, url: string, options?: { method?: string; headers?: Record<string, string>; body?: string; responseType?: string; timeout?: number }) =>
     ipcRenderer.invoke("userscript:fetch-text", nonce, url, options),
   requestAi: (nonce: string, body: string) => ipcRenderer.invoke("userscript:request-ai", nonce, body),
+  getLearningPolicy: (nonce: string) => ipcRenderer.invoke("userscript:get-learning-policy", nonce),
   captureArea: (nonce: string, rect: { x: number; y: number; width: number; height: number }) =>
     ipcRenderer.invoke("userscript:capture-area", nonce, rect),
   pageAction: (nonce: string, action: unknown) => ipcRenderer.invoke("userscript:page-action", nonce, action),

@@ -10,6 +10,7 @@ export type SiteConfig = {
     model: string;
     reasoningEffort: "low" | "medium" | "high" | "xhigh" | "max";
     pointMultiplier: number;
+    freeInUnlimited: boolean;
   }>;
   learningAssistantAccessMode: "guest-unlimited" | "account-quota";
   learningPlatforms: LearningPlatformAvailability;

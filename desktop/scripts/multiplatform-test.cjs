@@ -18,6 +18,13 @@ const tabs = fs.readFileSync(path.join(root, "electron", "tabs.ts"), "utf8");
 const updater = fs.readFileSync(path.join(root, "electron", "userscript-update.ts"), "utf8");
 const pageActions = fs.readFileSync(path.join(root, "electron", "page-actions.ts"), "utf8");
 
+assert.match(main, /safeLearningPlatformAvailability/, "platform availability must fail closed when the remote switch cannot be read");
+assert.match(main, /getLearningPlatformAvailability\(true\)/, "platform opening, injection, and AI calls must force-refresh the remote switch");
+assert.match(main, /userscript:get-learning-policy/, "assistant panels must refresh tier policy without a client update");
+assert.match(main, /mode\?\.available === false/, "unavailable free-period tiers must be rejected in the desktop host");
+assert.match(source, /GM_cpuGetLearningPolicy/, "the bundled multiplatform assistant must live-refresh answer modes");
+assert.match(source, /限免期间未开放/, "disabled free-period tiers must be explained in the assistant UI");
+
 const header = source.match(/\/\/\s*==UserScript==([\s\S]*?)\/\/\s*==\/UserScript==/)?.[1] || "";
 assert.match(header, /@name\s+药大拾间·全平台网课助手/);
 assert.match(header, /@version\s+4\.15\.8/);

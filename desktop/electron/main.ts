@@ -133,12 +133,18 @@ type LearningAssistantPolicy = {
   accessMode: LearningAssistantAccessMode;
   requiresLogin: boolean;
   unlimited: boolean;
-  answerModes: Array<{ key: "low" | "high" | "max"; label: string; pointMultiplier: number }>;
+  answerModes: Array<{
+    key: "low" | "high" | "max";
+    label: string;
+    pointMultiplier: number;
+    freeInUnlimited: boolean;
+    available: boolean;
+  }>;
 };
 let learningAssistantPolicyCache: { policy: LearningAssistantPolicy; expiresAt: number } | undefined;
 type LearningPlatformAvailability = Record<LearningPlatformId, boolean>;
-const defaultLearningPlatformAvailability = Object.fromEntries(
-  learningPlatforms.map((platform) => [platform.id, true])
+const safeLearningPlatformAvailability = Object.fromEntries(
+  learningPlatforms.map((platform) => [platform.id, false])
 ) as LearningPlatformAvailability;
 let learningPlatformAvailabilityCache: { value: LearningPlatformAvailability; expiresAt: number } | undefined;
 
@@ -160,9 +166,9 @@ const getLearningAssistantPolicy = async (force = false): Promise<LearningAssist
     requiresLogin: true,
     unlimited: false,
     answerModes: [
-      { key: "low", label: "快速判断", pointMultiplier: 1 },
-      { key: "high", label: "深入分析", pointMultiplier: 1.5 },
-      { key: "max", label: "挑战难题", pointMultiplier: 2 }
+      { key: "low", label: "快速判断", pointMultiplier: 1, freeInUnlimited: true, available: true },
+      { key: "high", label: "深入分析", pointMultiplier: 1.5, freeInUnlimited: true, available: true },
+      { key: "max", label: "挑战难题", pointMultiplier: 2, freeInUnlimited: false, available: true }
     ]
   };
   try {
@@ -177,9 +183,15 @@ const getLearningAssistantPolicy = async (force = false): Promise<LearningAssist
     const remote = payload.data?.learningAssistant;
     const answerModes = Array.isArray(remote?.answerModes) && remote.answerModes.length === 3
       ? remote.answerModes
-        .filter((item): item is { key: "low" | "high" | "max"; label: string; pointMultiplier: number } =>
+        .filter((item): item is { key: "low" | "high" | "max"; label: string; pointMultiplier: number; freeInUnlimited: boolean; available: boolean } =>
           Boolean(item) && ["low", "high", "max"].includes(String(item.key)) && Number.isFinite(Number(item.pointMultiplier)))
-        .map((item) => ({ key: item.key, label: String(item.label || item.key), pointMultiplier: Number(item.pointMultiplier) }))
+        .map((item) => ({
+          key: item.key,
+          label: String(item.label || item.key),
+          pointMultiplier: Number(item.pointMultiplier),
+          freeInUnlimited: item.freeInUnlimited !== false,
+          available: item.available !== false,
+        }))
       : fallback.answerModes;
     const policy: LearningAssistantPolicy = remote?.accessMode === "guest-unlimited"
       ? { accessMode: "guest-unlimited", requiresLogin: false, unlimited: true, answerModes }
@@ -206,12 +218,14 @@ const getLearningPlatformAvailability = async (force = false): Promise<LearningP
     const remote = payload.data ?? {};
     const value = Object.fromEntries(learningPlatforms.map((platform) => [
       platform.id,
-      typeof remote[platform.id] === "boolean" ? remote[platform.id] : true,
+      typeof remote[platform.id] === "boolean" ? remote[platform.id] : safeLearningPlatformAvailability[platform.id],
     ])) as LearningPlatformAvailability;
     learningPlatformAvailabilityCache = { value, expiresAt: Date.now() + 15_000 };
     return value;
   } catch {
-    return learningPlatformAvailabilityCache?.value ?? { ...defaultLearningPlatformAvailability };
+    return force
+      ? { ...safeLearningPlatformAvailability }
+      : learningPlatformAvailabilityCache?.value ?? { ...safeLearningPlatformAvailability };
   }
 };
 
@@ -633,6 +647,7 @@ const createInjection = (script: UserScript, nonce: string, seededValues: Record
         .catch((error) => settle(error instanceof Error ? error.message : String(error)));
     },
     GM_cpuAIRequest: async (body) => bridge.requestAi(nonce, JSON.stringify(body)),
+    GM_cpuGetLearningPolicy: async () => bridge.getLearningPolicy(nonce),
     GM_cpuCaptureArea: async (rect) => bridge.captureArea(nonce, rect),
     GM_cpuPageAction: async (action) => bridge.pageAction(nonce, action),
     // 脚本把运行状态喊出来，客户端界面才能显示。脚本自己的面板只留 20 条日志，
@@ -682,7 +697,7 @@ const injectMatchingScripts = async (contents: Electron.WebContents): Promise<vo
   revokeGrants(contents.id);
   const platformId = contentsLearningPlatform.get(contents.id);
   if (platformId) {
-    const availability = await getLearningPlatformAvailability();
+    const availability = await getLearningPlatformAvailability(true);
     if (!availability[platformId]) {
       const platform = learningPlatforms.find((item) => item.id === platformId);
       recordScriptActivity({
@@ -1790,16 +1805,28 @@ if (installMode || uninstallMode) {
     ipcMain.handle("script:check-update", (_event, kind: unknown) =>
       checkCloudUserScript(kind === "multiplatform" ? "multiplatform" : "chaoxing"));
 
+    ipcMain.handle("userscript:get-learning-policy", async (event, nonce: unknown) => {
+      await authorize(event, nonce);
+      return getLearningAssistantPolicy(true);
+    });
+
     ipcMain.handle("userscript:request-ai", async (event, nonce: unknown, body: unknown) => {
       await authorize(event, nonce);
       const platformId = contentsLearningPlatform.get(event.sender.id);
-      if (platformId && !(await getLearningPlatformAvailability())[platformId]) {
+      if (platformId && !(await getLearningPlatformAvailability(true))[platformId]) {
         const platform = learningPlatforms.find((item) => item.id === platformId);
         throw new Error(`${platform?.name ?? "当前网课平台"}已由管理员暂时停用`);
       }
       if (typeof body !== "string") throw new Error("AI 请求格式无效");
       const payload = sanitizeAiBody(body);
-      const policy = await getLearningAssistantPolicy();
+      const policy = await getLearningAssistantPolicy(true);
+      const requestedMode = payload.reasoningEffort === "high" || payload.reasoningEffort === "max"
+        ? payload.reasoningEffort
+        : "low";
+      const mode = policy.answerModes.find((item) => item.key === requestedMode);
+      if (policy.accessMode === "guest-unlimited" && mode?.available === false) {
+        throw new Error(`${mode.label}当前不参与限时免费，请在助手设置中选择已开放档位`);
+      }
       let response: Response;
       if (policy.accessMode === "guest-unlimited") {
         response = await fetch(`${oauthConfig.origin}/api/site/learning-assistant/responses`, {

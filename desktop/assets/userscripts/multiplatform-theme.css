@@ -142,6 +142,8 @@ script-panel-element.cpu-assistant-custom-active > :not(.cpu-assistant-settings-
 .cpu-assistant-mode { position: relative; display: grid; min-width: 0; padding: 11px 10px; color: var(--cpu-ocs-muted); background: var(--cpu-ocs-bg); border: 1px solid var(--cpu-ocs-border); border-radius: 11px; cursor: pointer; }
 .cpu-assistant-mode:hover { border-color: var(--cpu-ocs-primary); }
 .cpu-assistant-mode.selected { color: var(--cpu-ocs-primary); background: var(--cpu-ocs-primary-soft); border-color: var(--cpu-ocs-primary); }
+.cpu-assistant-mode.is-disabled { opacity: .56; cursor: not-allowed; }
+.cpu-assistant-mode.is-disabled:hover { border-color: var(--cpu-ocs-border); }
 .cpu-assistant-mode input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .cpu-assistant-mode span { display: grid; gap: 3px; min-width: 0; }
 .cpu-assistant-mode strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }

@@ -22,6 +22,8 @@ export type AiQuotaRules = {
       key: "low" | "high" | "max";
       label: string;
       pointMultiplier: number;
+      freeInUnlimited: boolean;
+      available: boolean;
     }>;
   };
   /** 等级 -> 每日免费次数 */
@@ -58,9 +60,9 @@ export async function getAiQuotaRules(): Promise<AiQuotaRules> {
       requiresLogin: site.learningAssistantAccessMode === "account-quota",
       unlimited: site.learningAssistantAccessMode === "guest-unlimited",
       answerModes: [
-        { key: "low", label: "快速判断", pointMultiplier: site.learningAssistantTiers.low.pointMultiplier },
-        { key: "high", label: "深入分析", pointMultiplier: site.learningAssistantTiers.high.pointMultiplier },
-        { key: "max", label: "挑战难题", pointMultiplier: site.learningAssistantTiers.max.pointMultiplier },
+        { key: "low", label: "快速判断", pointMultiplier: site.learningAssistantTiers.low.pointMultiplier, freeInUnlimited: site.learningAssistantTiers.low.freeInUnlimited, available: site.learningAssistantAccessMode !== "guest-unlimited" || site.learningAssistantTiers.low.freeInUnlimited },
+        { key: "high", label: "深入分析", pointMultiplier: site.learningAssistantTiers.high.pointMultiplier, freeInUnlimited: site.learningAssistantTiers.high.freeInUnlimited, available: site.learningAssistantAccessMode !== "guest-unlimited" || site.learningAssistantTiers.high.freeInUnlimited },
+        { key: "max", label: "挑战难题", pointMultiplier: site.learningAssistantTiers.max.pointMultiplier, freeInUnlimited: site.learningAssistantTiers.max.freeInUnlimited, available: site.learningAssistantAccessMode !== "guest-unlimited" || site.learningAssistantTiers.max.freeInUnlimited },
       ],
     },
     dailyQuotas: site.assistantDailyQuotas.map((item) => ({ level: item.level, quota: item.quota })),

@@ -2379,6 +2379,7 @@
       #${panelId} .cpu-la-depth-options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
       #${panelId} .cpu-la-depth-options label { display: grid; min-height: 58px; place-content: center; padding: 7px 5px; border: 1px solid var(--cpu-la-border); border-radius: 9px; text-align: center; cursor: pointer; }
       #${panelId} .cpu-la-depth-options label:has(input:checked) { border-color: var(--cpu-la-primary); background: var(--cpu-la-primary-soft); color: var(--cpu-la-primary-strong); }
+      #${panelId} .cpu-la-depth-options label:has(input:disabled) { opacity: .56; cursor: not-allowed; }
       #${panelId} .cpu-la-depth-options input { position: absolute; opacity: 0; pointer-events: none; }
       #${panelId} .cpu-la-depth-options b, #${panelId} .cpu-la-depth-options em { display: block; font-style: normal; }
       #${panelId} .cpu-la-depth-options em { color: var(--cpu-la-muted); font-size: 11px; }
@@ -2699,11 +2700,29 @@
       }
       state.manualVersion += 1, state.signature = "", render();
     };
+    const refreshAnswerModes = async () => {
+      if (typeof GM_cpuGetLearningPolicy !== "function") return;
+      try {
+        const policy = await GM_cpuGetLearningPolicy();
+        const modes = Array.isArray(policy == null ? void 0 : policy.answerModes) ? policy.answerModes : [];
+        if (modes.length !== 3) return;
+        const current = getConfig();
+        const activeMode = modes.find((item) => item && item.key === current.answerDepth);
+        const fallbackMode = modes.find((item) => item && item.available !== false) || modes[0];
+        const nextDepth = activeMode && activeMode.available !== false ? current.answerDepth : fallbackMode.key;
+        if (JSON.stringify(current.answerModes || []) === JSON.stringify(modes) && current.answerDepth === nextDepth) return;
+        _GM_setValue("config", { ...current, answerModes: modes, answerDepth: nextDepth });
+        state.signature = "";
+        render();
+      } catch (error) {
+        reportToHost("log", `档位配置刷新失败：${error instanceof Error ? error.message : String(error)}`);
+      }
+    };
     const render = () => {
       const store = state.store, task = (store == null ? void 0 : store.task) || { name: "暂未加载", work: { questionList: [], inx: 0 }, log: [], status: "" }, questions = task.work && Array.isArray(task.work.questionList) ? task.work.questionList : [], index = Math.max(0, Math.min(Number(task.work && task.work.inx || 0), Math.max(0, questions.length - 1))), current = questions[index] || null, config = { ...defaultConfig$1, ...getConfig() }, logs = Array.isArray(task.log) ? task.log.slice(-30) : [], paused = assistantRuntime.isPaused();
       const answerModes = Array.isArray(config.answerModes) ? config.answerModes : [], modeMeta = (key, label, fallbackCost) => {
         const remote = answerModes.find((item) => item && item.key === key) || {};
-        return { label: String(remote.label || label), cost: Number.isFinite(Number(remote.pointMultiplier)) ? Number(remote.pointMultiplier) : fallbackCost };
+        return { label: String(remote.label || label), cost: Number.isFinite(Number(remote.pointMultiplier)) ? Number(remote.pointMultiplier) : fallbackCost, available: remote.available !== false };
       }, lowMode = modeMeta("low", "快速判断", 1), highMode = modeMeta("high", "深入分析", 1.5), maxMode = modeMeta("max", "挑战难题", 2);
       const snapshot = { tab: state.tab, paused, name: task.name, status: task.status, activity: task.activity || null, count: questions.length, index, question: current == null ? "" : current.question, answer: current == null ? "" : current.answer, allAnswer: current == null ? [] : current.allAnswer, logs, autoSubmit: Boolean(config.autoSubmit), autoVideo: Boolean(config.autoVideo), autoJump: Boolean(config.autoJump), autoExam: Boolean(config.autoExam), answerIntervalMin: Number(config.answerIntervalMin), answerIntervalMax: Number(config.answerIntervalMax), answerDepth: config.answerDepth, answerModes, manualVersion: state.manualVersion };
       const signature = JSON.stringify(snapshot);
@@ -2739,7 +2758,7 @@
       } else if (state.tab === "logs") {
         body.innerHTML = logs.length ? `<section class="cpu-la-card">${logs.map((item) => `<div class="cpu-la-log" data-type="${escapeHtml(item.type || "info")}"><time>${escapeHtml(item.time || "")}</time><span>${escapeHtml(item.msg || "")}</span></div>`).join("")}<div class="cpu-la-actions"><button type="button" data-action="clear-logs">清空日志</button></div></section>` : '<div class="cpu-la-empty"><div><b>暂无运行日志</b><span>开始处理任务后，关键步骤会记录在这里</span></div></div>';
       } else {
-        body.innerHTML = `<div class="cpu-la-settings"><section class="cpu-la-depth"><strong>答题模式</strong><small>越深入越适合复杂题，模型与点数倍率由站点后台实时配置</small><div class="cpu-la-depth-options"><label><input type="radio" name="cpu-la-depth" data-config-depth value="low" ${config.answerDepth !== "high" && config.answerDepth !== "max" ? "checked" : ""}><b>${escapeHtml(lowMode.label)}</b><em>${lowMode.cost} 点</em></label><label><input type="radio" name="cpu-la-depth" data-config-depth value="high" ${config.answerDepth === "high" ? "checked" : ""}><b>${escapeHtml(highMode.label)}</b><em>${highMode.cost} 点</em></label><label><input type="radio" name="cpu-la-depth" data-config-depth value="max" ${config.answerDepth === "max" ? "checked" : ""}><b>${escapeHtml(maxMode.label)}</b><em>${maxMode.cost} 点</em></label></div></section><label class="cpu-la-setting"><input type="checkbox" data-config="autoSubmit" ${config.autoSubmit ? "checked" : ""}><span><strong>章节测验答完自动提交</strong><small>只作用于章节测验；作业和考试始终由你手动交卷</small></span></label><label class="cpu-la-setting"><input type="checkbox" data-config="autoVideo" ${config.autoVideo ? "checked" : ""}><span><strong>自动播放视频与音频</strong><small>关闭后会跳过媒体任务点</small></span></label><label class="cpu-la-setting"><input type="checkbox" data-config="autoJump" ${config.autoJump ? "checked" : ""}><span><strong>完成后切换下一章</strong><small>暂停助手时不会发生章节切换</small></span></label><label class="cpu-la-setting"><input type="checkbox" data-config="autoExam" ${config.autoExam ? "checked" : ""}><span><strong>考试自动切换下一题</strong><small>只切题，不会替你最终交卷</small></span></label><div class="cpu-la-number-row"><span><strong>答题最短等待</strong><small class="cpu-la-muted">每题之间的秒数</small></span><input type="number" min="1" max="120" data-config-number="answerIntervalMin" value="${Number(config.answerIntervalMin) || 8}"></div><div class="cpu-la-number-row"><span><strong>答题最长等待</strong><small class="cpu-la-muted">不能小于最短等待</small></span><input type="number" min="1" max="180" data-config-number="answerIntervalMax" value="${Number(config.answerIntervalMax) || 20}"></div></div>`;
+        body.innerHTML = `<div class="cpu-la-settings"><section class="cpu-la-depth"><strong>答题模式</strong><small>越深入越适合复杂题，模型、点数倍率与限免状态由站点后台实时配置</small><div class="cpu-la-depth-options"><label><input type="radio" name="cpu-la-depth" data-config-depth value="low" ${config.answerDepth !== "high" && config.answerDepth !== "max" ? "checked" : ""} ${lowMode.available ? "" : "disabled"}><b>${escapeHtml(lowMode.label)}</b><em>${lowMode.available ? `${lowMode.cost} 点` : "限免未开放"}</em></label><label><input type="radio" name="cpu-la-depth" data-config-depth value="high" ${config.answerDepth === "high" ? "checked" : ""} ${highMode.available ? "" : "disabled"}><b>${escapeHtml(highMode.label)}</b><em>${highMode.available ? `${highMode.cost} 点` : "限免未开放"}</em></label><label><input type="radio" name="cpu-la-depth" data-config-depth value="max" ${config.answerDepth === "max" ? "checked" : ""} ${maxMode.available ? "" : "disabled"}><b>${escapeHtml(maxMode.label)}</b><em>${maxMode.available ? `${maxMode.cost} 点` : "限免未开放"}</em></label></div></section><label class="cpu-la-setting"><input type="checkbox" data-config="autoSubmit" ${config.autoSubmit ? "checked" : ""}><span><strong>章节测验答完自动提交</strong><small>只作用于章节测验；作业和考试始终由你手动交卷</small></span></label><label class="cpu-la-setting"><input type="checkbox" data-config="autoVideo" ${config.autoVideo ? "checked" : ""}><span><strong>自动播放视频与音频</strong><small>关闭后会跳过媒体任务点</small></span></label><label class="cpu-la-setting"><input type="checkbox" data-config="autoJump" ${config.autoJump ? "checked" : ""}><span><strong>完成后切换下一章</strong><small>暂停助手时不会发生章节切换</small></span></label><label class="cpu-la-setting"><input type="checkbox" data-config="autoExam" ${config.autoExam ? "checked" : ""}><span><strong>考试自动切换下一题</strong><small>只切题，不会替你最终交卷</small></span></label><div class="cpu-la-number-row"><span><strong>答题最短等待</strong><small class="cpu-la-muted">每题之间的秒数</small></span><input type="number" min="1" max="120" data-config-number="answerIntervalMin" value="${Number(config.answerIntervalMin) || 8}"></div><div class="cpu-la-number-row"><span><strong>答题最长等待</strong><small class="cpu-la-muted">不能小于最短等待</small></span><input type="number" min="1" max="180" data-config-number="answerIntervalMax" value="${Number(config.answerIntervalMax) || 20}"></div></div>`;
       }
     };
     panel.addEventListener("click", (event) => {
@@ -2749,6 +2768,7 @@
         state.tab = target.dataset.tab;
         state.signature = "";
         render();
+        if (state.tab === "settings") void refreshAnswerModes();
         return;
       }
       const store = state.store, questions = (store == null ? void 0 : store.task.work.questionList) || [], index = Number(store == null ? void 0 : store.task.work.inx) || 0;
@@ -2824,7 +2844,9 @@
       state.signature = "";
       render();
     });
+    void refreshAnswerModes();
     const renderTimer = host.setInterval(render, 400);
+    const policyTimer = host.setInterval(() => { void refreshAnswerModes(); }, 15e3);
     const api = { setStore(store) {
       state.store = store;
       state.signature = "";
@@ -2833,6 +2855,7 @@
       render();
     }, render, destroy() {
       host.clearInterval(renderTimer);
+      host.clearInterval(policyTimer);
       panel.querySelector(".cpu-la-header").removeEventListener("pointerdown", onHeaderPointerDown);
       doc.removeEventListener("pointermove", onPointerMove);
       doc.removeEventListener("pointerup", onPointerUp);

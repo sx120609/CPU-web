@@ -105,6 +105,16 @@
               <span>点数倍率</span>
               <el-input-number v-model="form.learningAssistantTiers[tier.key].pointMultiplier" :min="0.1" :max="20" :step="0.1" :precision="1" />
             </label>
+            <label class="learning-tier-free-toggle">
+              <span>限免期间开放</span>
+              <el-switch
+                v-model="form.learningAssistantTiers[tier.key].freeInUnlimited"
+                inline-prompt
+                active-text="免费"
+                inactive-text="停用"
+              />
+              <small>关闭后，临时免登录阶段不会向用户提供该档位。</small>
+            </label>
           </article>
         </div>
       </div>
@@ -540,9 +550,9 @@ const form = reactive<SiteConfig>({
   assistantModel: "gpt-5.6-terra",
   learningAssistantModel: "gpt-5.6-terra",
   learningAssistantTiers: {
-    low: { model: "gpt-5.6-terra", reasoningEffort: "low", pointMultiplier: 1 },
-    high: { model: "gpt-5.6-terra", reasoningEffort: "high", pointMultiplier: 1.5 },
-    max: { model: "gpt-5.6-terra", reasoningEffort: "max", pointMultiplier: 2 },
+    low: { model: "gpt-5.6-terra", reasoningEffort: "low", pointMultiplier: 1, freeInUnlimited: true },
+    high: { model: "gpt-5.6-terra", reasoningEffort: "high", pointMultiplier: 1.5, freeInUnlimited: true },
+    max: { model: "gpt-5.6-terra", reasoningEffort: "max", pointMultiplier: 2, freeInUnlimited: false },
   },
   learningAssistantAccessMode: "guest-unlimited",
   learningPlatforms: {
@@ -1072,6 +1082,18 @@ function requestMessage(error: unknown) {
 .learning-tier-card label {
   display: grid;
   gap: 5px;
+}
+
+.learning-tier-free-toggle {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  padding-top: 10px;
+  border-top: 1px solid var(--el-border-color-lighter);
+}
+
+.learning-tier-free-toggle > small {
+  grid-column: 1 / -1;
+  line-height: 1.55;
 }
 
 .settings-card {

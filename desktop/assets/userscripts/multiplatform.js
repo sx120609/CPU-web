@@ -21264,6 +21264,8 @@ script-panel-element.cpu-assistant-custom-active > :not(.cpu-assistant-settings-
 .cpu-assistant-mode { position: relative; display: grid; min-width: 0; padding: 11px 10px; color: var(--cpu-ocs-muted); background: var(--cpu-ocs-bg); border: 1px solid var(--cpu-ocs-border); border-radius: 11px; cursor: pointer; }
 .cpu-assistant-mode:hover { border-color: var(--cpu-ocs-primary); }
 .cpu-assistant-mode.selected { color: var(--cpu-ocs-primary); background: var(--cpu-ocs-primary-soft); border-color: var(--cpu-ocs-primary); }
+.cpu-assistant-mode.is-disabled { opacity: .56; cursor: not-allowed; }
+.cpu-assistant-mode.is-disabled:hover { border-color: var(--cpu-ocs-border); }
 .cpu-assistant-mode input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .cpu-assistant-mode span { display: grid; gap: 3px; min-width: 0; }
 .cpu-assistant-mode strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
@@ -21581,6 +21583,25 @@ function installCpuUnifiedSurface(root, container, bridge) {
     return next;
   };
 
+  const refreshAnswerModes = async () => {
+    if (typeof GM_cpuGetLearningPolicy !== "function") return false;
+    try {
+      const policy = await GM_cpuGetLearningPolicy();
+      const modes = Array.isArray(policy?.answerModes) ? policy.answerModes : [];
+      if (modes.length !== 3) return false;
+      const current = getConfig();
+      const activeMode = modes.find((item) => item?.key === current.answerDepth);
+      const fallbackMode = modes.find((item) => item?.available !== false) || modes[0];
+      const answerDepth = activeMode?.available !== false ? current.answerDepth : fallbackMode.key;
+      if (JSON.stringify(current.answerModes || []) === JSON.stringify(modes) && current.answerDepth === answerDepth) return false;
+      GM_setValue("config", { ...current, answerModes: modes, answerDepth });
+      return true;
+    } catch (error) {
+      if (typeof GM_cpuReport === "function") GM_cpuReport("log", `档位配置刷新失败：${error instanceof Error ? error.message : String(error)}`);
+      return false;
+    }
+  };
+
   const answerModeMarkup = (config) => {
     const modes = Array.isArray(config.answerModes) && config.answerModes.length > 0
       ? config.answerModes
@@ -21591,9 +21612,9 @@ function installCpuUnifiedSurface(root, container, bridge) {
         ];
     const active = ["low", "high", "max"].includes(config.answerDepth) ? config.answerDepth : "low";
     return modes.map((mode) => `
-      <label class="cpu-assistant-mode ${mode.key === active ? "selected" : ""}">
-        <input type="radio" name="cpu-answer-depth" value="${mode.key}" ${mode.key === active ? "checked" : ""}>
-        <span><strong>${mode.label}</strong><small>${Number(mode.pointMultiplier) || 1} 倍 AI 点数</small></span>
+      <label class="cpu-assistant-mode ${mode.key === active ? "selected" : ""} ${mode.available === false ? "is-disabled" : ""}">
+        <input type="radio" name="cpu-answer-depth" value="${mode.key}" ${mode.key === active ? "checked" : ""} ${mode.available === false ? "disabled" : ""}>
+        <span><strong>${mode.label}</strong><small>${mode.available === false ? "限免期间未开放" : `${Number(mode.pointMultiplier) || 1} 倍 AI 点数`}</small></span>
       </label>
     `).join("");
   };
@@ -21684,7 +21705,10 @@ function installCpuUnifiedSurface(root, container, bridge) {
   const selectTab = async (tab) => {
     selectedTab = tab === "settings" ? "settings" : "task";
     const tabs = root.querySelector(".cpu-assistant-tabs");
-    if (selectedTab === "settings") showSettingsWorkbench();
+    if (selectedTab === "settings") {
+      await refreshAnswerModes();
+      showSettingsWorkbench();
+    }
     else {
       hideSettingsWorkbench();
       await bridge.openTask();
@@ -21787,6 +21811,10 @@ function installCpuUnifiedSurface(root, container, bridge) {
   };
 
   mount();
+  setInterval(async () => {
+    if (selectedTab !== "settings") return;
+    if (await refreshAnswerModes()) showSettingsWorkbench();
+  }, 15_000);
   const observer = new MutationObserver(() => queueMicrotask(mount));
   observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["value", "disabled"] });
 }
