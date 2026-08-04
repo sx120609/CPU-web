@@ -1423,6 +1423,7 @@ do_update() {
   local prisma_changed=0
 
   changed_files_match '^server/' && server_changed=1
+  changed_files_match '^desktop/assets/userscripts/' && server_changed=1
   changed_files_match '^web/' && web_changed=1
   changed_files_match '^voicehub/' && voicehub_changed=1
   changed_files_match '^server/(package(-lock)?\.json|npm-shrinkwrap\.json)$' && server_dependencies_changed=1

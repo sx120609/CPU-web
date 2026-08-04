@@ -41,6 +41,7 @@ import {
   checkUserScriptUpdate,
   MULTIPLATFORM_USER_SCRIPT_CHANNEL,
   readCachedUserScript,
+  selectPreferredUserScriptSource,
   USER_SCRIPT_CHECK_INTERVAL_MS,
   UserScriptUpdateChannel,
   UserScriptUpdateResult,
@@ -282,13 +283,14 @@ const loadScriptChannel = async (kind: ScriptUpdateKind): Promise<UserScript | u
       (source) => validateCloudScriptCapabilities(source, builtInSource),
       definition.channel,
     );
-    const source = cached?.source ?? builtInSource;
+    const selected = selectPreferredUserScriptSource(builtInSource, cached?.source);
+    const source = selected.source;
     const script = { ...parseUserScript(source), id: definition.scriptId, values: {} };
     definition.setState({
       stage: "current",
       activeVersion: script.version,
-      source: cached ? "cache" : "builtin",
-      message: cached
+      source: selected.origin,
+      message: selected.origin === "cache"
         ? `正在使用云端缓存脚本 v${script.version}`
         : `正在使用内置脚本 v${script.version}`,
     });

@@ -7,9 +7,11 @@ const path = require("node:path");
 const { mkdtemp } = require("node:fs/promises");
 const {
   checkUserScriptUpdate,
+  compareUserScriptVersions,
   MULTIPLATFORM_USER_SCRIPT_CHANNEL,
   parseUserScriptIdentity,
   readCachedUserScript,
+  selectPreferredUserScriptSource,
   sha256Text,
   USER_SCRIPT_MANIFEST_PATH,
   USER_SCRIPT_SOURCE_PATH,
@@ -141,6 +143,10 @@ async function main() {
     size: Buffer.byteLength(multiplatformSource, "utf8"),
     sourceUrl: MULTIPLATFORM_USER_SCRIPT_CHANNEL.sourcePath,
   };
+  assert.equal(compareUserScriptVersions("4.15.4", "4.15.3"), 1);
+  assert.equal(compareUserScriptVersions("4.15.4", "4.15.4"), 0);
+  assert.equal(compareUserScriptVersions("4.15.4-beta.2", "4.15.4-beta.1"), 1);
+  assert.equal(compareUserScriptVersions("4.15.4", "4.15.4-beta.2"), 1);
   assert.deepEqual(multiplatformIdentity, { name: "药大拾间·全平台网课助手", version: "4.15.4" });
   assert.doesNotThrow(() => validateUserScriptRelease(
     multiplatformSource,
@@ -168,6 +174,11 @@ async function main() {
       return new Response("", { status: 404 });
     };
     const olderSource = multiplatformSource.replace("// @version      4.15.4", "// @version      4.15.3");
+    assert.deepEqual(
+      selectPreferredUserScriptSource(multiplatformSource, olderSource),
+      { source: multiplatformSource, origin: "builtin" },
+      "a newer built-in script must not be downgraded by an older cache",
+    );
     const updated = await checkUserScriptUpdate({
       origin: "https://cpu.lizmt.cn",
       cacheDirectory: multiplatformCache,
@@ -185,6 +196,36 @@ async function main() {
     );
     assert.equal(cached?.manifest.version, "4.15.4");
     assert.equal(cached?.source, multiplatformSource);
+
+    requests.length = 0;
+    const staleManifest = {
+      ...multiplatformManifest,
+      version: "4.15.3",
+      sha256: sha256Text(olderSource),
+      size: Buffer.byteLength(olderSource, "utf8"),
+    };
+    const staleFetch = async (url) => {
+      requests.push(String(url));
+      if (new URL(url).pathname === MULTIPLATFORM_USER_SCRIPT_CHANNEL.manifestPath) {
+        return new Response(JSON.stringify({ code: 0, data: staleManifest, message: "" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response(olderSource, { status: 200 });
+    };
+    const protectedFromDowngrade = await checkUserScriptUpdate({
+      origin: "https://cpu.lizmt.cn",
+      cacheDirectory: multiplatformCache,
+      currentSource: multiplatformSource,
+      validateSource: () => undefined,
+      channel: MULTIPLATFORM_USER_SCRIPT_CHANNEL,
+      fetchImpl: staleFetch,
+    });
+    assert.equal(protectedFromDowngrade.status, "current");
+    assert.equal(protectedFromDowngrade.manifest.version, "4.15.4");
+    assert.equal(protectedFromDowngrade.source, multiplatformSource);
+    assert.equal(requests.length, 1, "an older cloud script must not be downloaded over a newer client");
   } finally {
     await rm(multiplatformCache, { recursive: true, force: true });
   }

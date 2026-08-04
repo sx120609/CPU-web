@@ -78,6 +78,57 @@ export function parseUserScriptIdentity(source: string): { name: string; version
   return { name: value("name"), version: value("version") };
 }
 
+const parseComparableVersion = (value: string) => {
+  const match = /^(\d+)\.(\d+)\.(\d+)(?:-([^+]+))?(?:\+.+)?$/.exec(value);
+  if (!match) return undefined;
+  return {
+    core: [Number(match[1]), Number(match[2]), Number(match[3])] as const,
+    prerelease: match[4]?.split(".") ?? [],
+  };
+};
+
+export function compareUserScriptVersions(left: string, right: string): number {
+  const a = parseComparableVersion(left);
+  const b = parseComparableVersion(right);
+  if (!a || !b) return left.localeCompare(right, "en");
+  for (let index = 0; index < a.core.length; index += 1) {
+    if (a.core[index] !== b.core[index]) return a.core[index] > b.core[index] ? 1 : -1;
+  }
+  if (a.prerelease.length === 0 || b.prerelease.length === 0) {
+    if (a.prerelease.length === b.prerelease.length) return 0;
+    return a.prerelease.length === 0 ? 1 : -1;
+  }
+  const length = Math.max(a.prerelease.length, b.prerelease.length);
+  for (let index = 0; index < length; index += 1) {
+    const leftPart = a.prerelease[index];
+    const rightPart = b.prerelease[index];
+    if (leftPart === undefined || rightPart === undefined) return leftPart === undefined ? -1 : 1;
+    if (leftPart === rightPart) continue;
+    const leftNumber = /^\d+$/.test(leftPart) ? Number(leftPart) : undefined;
+    const rightNumber = /^\d+$/.test(rightPart) ? Number(rightPart) : undefined;
+    if (leftNumber !== undefined && rightNumber !== undefined) return leftNumber > rightNumber ? 1 : -1;
+    if (leftNumber !== undefined || rightNumber !== undefined) return leftNumber !== undefined ? -1 : 1;
+    return leftPart.localeCompare(rightPart, "en") > 0 ? 1 : -1;
+  }
+  return 0;
+}
+
+export function selectPreferredUserScriptSource(
+  builtInSource: string,
+  cachedSource?: string,
+): { source: string; origin: "builtin" | "cache" } {
+  if (!cachedSource) return { source: builtInSource, origin: "builtin" };
+  const builtIn = parseUserScriptIdentity(builtInSource);
+  const cached = parseUserScriptIdentity(cachedSource);
+  if (
+    cached.name === builtIn.name
+    && compareUserScriptVersions(cached.version, builtIn.version) >= 0
+  ) {
+    return { source: cachedSource, origin: "cache" };
+  }
+  return { source: builtInSource, origin: "builtin" };
+}
+
 export function validateUserScriptRelease(
   source: string,
   manifest: UserScriptUpdateManifest,
@@ -161,6 +212,24 @@ export async function checkUserScriptUpdate(options: UpdateOptions): Promise<Use
 
   if (sha256Text(options.currentSource) === manifest.sha256) {
     return { status: "current", source: options.currentSource, manifest };
+  }
+
+  const currentIdentity = parseUserScriptIdentity(options.currentSource);
+  if (
+    currentIdentity.name === channel.expectedName
+    && compareUserScriptVersions(manifest.version, currentIdentity.version) <= 0
+  ) {
+    return {
+      status: "current",
+      source: options.currentSource,
+      manifest: {
+        name: currentIdentity.name,
+        version: currentIdentity.version,
+        sha256: sha256Text(options.currentSource),
+        size: Buffer.byteLength(options.currentSource, "utf8"),
+        sourceUrl: channel.sourcePath,
+      },
+    };
   }
 
   const sourceUrl = new URL(manifest.sourceUrl, options.origin);
