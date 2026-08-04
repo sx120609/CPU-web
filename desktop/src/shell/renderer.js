@@ -206,6 +206,53 @@ const renderAuth = (session) => {
 
 let quotaRules = null;
 
+const QUOTA_RULES_CACHE_KEY = "cpu-web:last-ai-quota-rules";
+// 首次启动且完全离线时没有任何服务端缓存可读，只能展示一份保守的内置基线。
+// 一旦成功联网，后台下发值会立即覆盖这里并持久缓存；最高档默认关闭，避免离线首开误导用户。
+const FALLBACK_ANSWER_MODES = [
+  { key: "low", label: "快速判断", pointMultiplier: 1, available: true },
+  { key: "high", label: "深入分析", pointMultiplier: 1.5, available: true },
+  { key: "max", label: "挑战难题", pointMultiplier: 5, available: false }
+];
+
+const cachedQuotaRules = () => {
+  try {
+    const cached = JSON.parse(localStorage.getItem(QUOTA_RULES_CACHE_KEY) || "null");
+    return cached?.learningAssistant?.answerModes?.length ? cached : null;
+  } catch {
+    return null;
+  }
+};
+
+const currentAnswerModes = () => {
+  const modes = quotaRules?.learningAssistant?.answerModes;
+  return Array.isArray(modes) && modes.length ? modes : FALLBACK_ANSWER_MODES;
+};
+
+const renderAnswerModes = () => {
+  const select = el("cfg-answerDepth");
+  if (!select) return "low";
+  const requested = ["low", "high", "max"].includes(scriptConfig.answerDepth) ? scriptConfig.answerDepth : "low";
+  const modes = currentAnswerModes();
+  select.textContent = "";
+  for (const mode of modes) {
+    const option = document.createElement("option");
+    const cost = Number(mode.pointMultiplier);
+    const costText = Number.isFinite(cost) ? `${cost} 点` : "按后台配置扣点";
+    option.value = mode.key;
+    option.disabled = mode.available === false;
+    option.textContent = mode.available === false
+      ? `${mode.label} · 限免未开放（${costText}）`
+      : `${mode.label} · ${costText}`;
+    select.append(option);
+  }
+  const selected = modes.some((mode) => mode.key === requested && mode.available !== false)
+    ? requested
+    : modes.find((mode) => mode.available !== false)?.key || "low";
+  select.value = selected;
+  return selected;
+};
+
 const renderLearningAssistantPolicy = () => {
   const copy = el("ai-policy-copy");
   if (!copy) return;
@@ -215,12 +262,24 @@ const renderLearningAssistantPolicy = () => {
 };
 
 const refreshQuotaRules = async () => {
+  // 先同步画出缓存或离线基线，网络请求只能做后台增强，不能阻塞工具页首开。
+  quotaRules = cachedQuotaRules();
+  renderLearningAssistantPolicy();
+  if (Object.keys(scriptConfig).length) renderScriptConfig();
+  else renderAnswerModes();
+  if (currentAuthStatus) renderAuth(currentAuthStatus);
+
   try {
-    quotaRules = await shell.auth.getQuotaRules();
+    const remote = await shell.auth.getQuotaRules();
+    if (!remote?.learningAssistant?.answerModes?.length) throw new Error("quota rules unavailable");
+    quotaRules = remote;
+    localStorage.setItem(QUOTA_RULES_CACHE_KEY, JSON.stringify(remote));
   } catch {
-    quotaRules = null;
+    quotaRules = cachedQuotaRules();
   }
   renderLearningAssistantPolicy();
+  if (Object.keys(scriptConfig).length) renderScriptConfig();
+  else renderAnswerModes();
   if (currentAuthStatus) renderAuth(currentAuthStatus);
   return quotaRules;
 };
@@ -497,7 +556,14 @@ const renderScriptConfig = () => {
     if (input) input.value = String(scriptConfig[key] ?? "");
   }
   el("cfg-aiEnabled").checked = Boolean(scriptConfig.aiEnabled);
-  el("cfg-answerDepth").value = ["low", "high", "max"].includes(scriptConfig.answerDepth) ? scriptConfig.answerDepth : "low";
+  const requestedDepth = ["low", "high", "max"].includes(scriptConfig.answerDepth) ? scriptConfig.answerDepth : "low";
+  const effectiveDepth = renderAnswerModes();
+  if (scriptConfig.answerDepth && effectiveDepth !== requestedDepth) {
+    void shell.script.setConfig({ answerDepth: effectiveDepth }).then((updated) => {
+      scriptConfig = updated;
+      renderScriptConfig();
+    }).catch(() => {});
+  }
   el("reload-hint").hidden = !pendingReload;
 };
 
@@ -841,8 +907,8 @@ const afterOnboarding = async () => {
     tabState = await shell.tabs.getState();
     renderTabs();
   } catch { /* 忽略 */ }
-  // 规则先拿：renderAuth 里要用它渲染"怎么提升"，晚了那一段就是空的
-  await refreshQuotaRules();
+  // 规则使用本地缓存/内置基线立即渲染，远端刷新不能阻塞离线首开。
+  void refreshQuotaRules();
   void renderSiteFooter();
   // 不先画一个假的“未登录”：让隐藏授权跑完后直接落到最终状态
   void refreshAuth({ sync: true });

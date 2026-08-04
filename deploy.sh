@@ -1329,10 +1329,22 @@ do_agent_restart() {
 }
 do_agent_logs()    { ensure_pm2; pm2 logs "$AGENT_SERVICE_NAME"; }
 
+pull_latest_or_abort() {
+  local update_name="${1:-deployment}"
+  if git pull --ff-only; then
+    return 0
+  fi
+
+  warn "${update_name}: git pull failed; deployment has been stopped to avoid publishing stale code"
+  warn "Resolve the tracked changes shown below, then run the update again"
+  git status --short --untracked-files=no >&2 || true
+  return 1
+}
+
 do_update_legacy() {
   if [ -d .git ]; then
     log "拉取最新代码"
-    git pull --ff-only || warn "git pull 失败，继续部署当前代码"
+    pull_latest_or_abort "legacy update"
   else
     warn "非 git 仓库，跳过 git pull"
   fi
@@ -1372,9 +1384,7 @@ collect_update_changes() {
   fi
 
   log "Pulling latest code"
-  if ! git pull --ff-only; then
-    warn "git pull failed; considering only detected local changes"
-  fi
+  pull_latest_or_abort "incremental update"
   after="$(git rev-parse HEAD)"
   DEPLOY_TARGET_COMMIT="$after"
 
@@ -1475,7 +1485,7 @@ do_update() {
 do_proxy_update() {
   if [ -d .git ]; then
     log "拉取最新代码"
-    git pull --ff-only || warn "git pull 失败，继续部署当前代码"
+    pull_latest_or_abort "proxy update"
   else
     warn "非 git 仓库，跳过 git pull"
   fi
@@ -1490,7 +1500,7 @@ do_agent_update() {
   if [ -d .git ]; then
     log "拉取最新代码"
     before_pull="$(git rev-parse HEAD 2>/dev/null || true)"
-    git pull --ff-only || warn "git pull 失败，继续部署当前代码"
+    pull_latest_or_abort "agent update"
     after_pull="$(git rev-parse HEAD 2>/dev/null || true)"
     if [ "${CPU_AGENT_UPDATE_REEXEC:-0}" != "1" ] \
       && [ -n "$before_pull" ] \

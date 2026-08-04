@@ -168,7 +168,8 @@ const getLearningAssistantPolicy = async (force = false): Promise<LearningAssist
     answerModes: [
       { key: "low", label: "快速判断", pointMultiplier: 1, freeInUnlimited: true, available: true },
       { key: "high", label: "深入分析", pointMultiplier: 1.5, freeInUnlimited: true, available: true },
-      { key: "max", label: "挑战难题", pointMultiplier: 2, freeInUnlimited: false, available: true }
+      // 完全离线且尚无远端策略时采用保守基线：显示当前默认成本，但不开放最高档。
+      { key: "max", label: "挑战难题", pointMultiplier: 5, freeInUnlimited: false, available: false }
     ]
   };
   try {
