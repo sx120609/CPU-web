@@ -31,15 +31,18 @@ function installCpuScreenshotSearch(root, container) {
     try { typeof GM_cpuReport === "function" && GM_cpuReport("status", message); } catch { /* 不影响搜题 */ }
   };
   let resultPanel = null;
+  let hiddenPanels = [];
   const closeResult = () => {
     resultPanel?.remove();
     resultPanel = null;
+    for (const panel of hiddenPanels) panel.style.removeProperty("display");
+    hiddenPanels = [];
   };
   const showResult = ({ status, imageUrl = "", answer = "", explanation = "", error = "" }) => {
     closeResult();
     const panel = document.createElement("section");
-    panel.className = "cpu-ocs-shot-result";
-    panel.setAttribute("role", "dialog");
+    panel.className = "cpu-ocs-shot-workbench";
+    panel.setAttribute("role", "region");
     panel.setAttribute("aria-label", "截图搜题结果");
     panel.innerHTML = `
       <header><div><b>截图搜题</b><span>${status === "loading" ? "正在识别并解答" : status === "done" ? "识别完成" : "未能完成"}</span></div><button type="button" data-cpu-shot-action="close" title="关闭" aria-label="关闭">×</button></header>
@@ -60,7 +63,9 @@ function installCpuScreenshotSearch(root, container) {
         navigator.clipboard?.writeText(answer).then(() => report("截图答案已复制")).catch(() => report("复制失败，请手动选择答案"));
       }
     });
-    root.append(panel);
+    hiddenPanels = Array.from(container.body.children).filter((child) => child !== panel);
+    for (const current of hiddenPanels) current.style.setProperty("display", "none", "important");
+    container.body.append(panel);
     resultPanel = panel;
   };
   const chooseArea = () => new Promise((resolve) => {

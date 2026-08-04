@@ -12,6 +12,7 @@ declare module 'vue' {
     CpuNetDownloadDialog: typeof import('./src/components/services/CpuNetDownloadDialog.vue')['default']
     DesktopToolsPanel: typeof import('./src/components/common/DesktopToolsPanel.vue')['default']
     DormElectricDialog: typeof import('./src/components/services/DormElectricDialog.vue')['default']
+    DownloadSafetyGuideDialog: typeof import('./src/components/common/DownloadSafetyGuideDialog.vue')['default']
     ElAlert: typeof import('element-plus/es')['ElAlert']
     ElAvatar: typeof import('element-plus/es')['ElAvatar']
     ElBadge: typeof import('element-plus/es')['ElBadge']

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, ipcMain, Menu, nativeImage, net, Notification, powerMonitor, session, shell, Tray } from "electron";
+import { app, BrowserWindow, clipboard, ipcMain, Menu, nativeImage, net, Notification, powerMonitor, session, shell, Tray, webContents } from "electron";
 import { createHash, randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -47,6 +47,7 @@ import {
 } from "./userscript-update";
 import { flushPersistentSession } from "./session-persistence";
 import { sanitizeAiBody } from "./ai-request";
+import { LearningPageActions } from "./page-actions";
 
 let mainWindow: BrowserWindow | undefined;
 let tray: Tray | undefined;
@@ -81,6 +82,7 @@ const navigationOverrides = new Map<number, (url: string) => boolean>();
 // 不能拦（超星登录会连跳好几个白名单外的域名），主站标签则必须锁在白名单内。
 const contentsKind = new Map<number, TabKind>();
 const contentsLearningPlatform = new Map<number, LearningPlatformId>();
+const learningPageActions = new LearningPageActions();
 
 // 脚本回传的运行状态。脚本自己的面板只留 20 条日志且关掉面板就看不见，
 // 这里存一份好让客户端界面显示。
@@ -399,6 +401,8 @@ const buildMultiplatformSeed = (scriptConfig: Record<string, unknown>): Record<s
     "common.settings.randomWork-choice": false,
     "common.settings.randomWork-complete": false,
     "common.settings.notification": "only-notify",
+    "background.app.closeSync": true,
+    "background.update.autoNotify": false,
   };
 };
 
@@ -562,6 +566,7 @@ const createInjection = (script: UserScript, nonce: string, seededValues: Record
     },
     GM_cpuAIRequest: async (body) => bridge.requestAi(nonce, JSON.stringify(body)),
     GM_cpuCaptureArea: async (rect) => bridge.captureArea(nonce, rect),
+    GM_cpuPageAction: async (action) => bridge.pageAction(nonce, action),
     // 脚本把运行状态喊出来，客户端界面才能显示。脚本自己的面板只留 20 条日志，
     // 而且关掉面板就什么都看不见。
     GM_cpuReport: (kind, text) => {
@@ -847,6 +852,8 @@ const createTabManager = (window: BrowserWindow): TabManager => new TabManager(w
   registerKind: (webContentsId, kind, platformId) => {
     contentsKind.set(webContentsId, kind);
     if (platformId) contentsLearningPlatform.set(webContentsId, platformId);
+    const contents = webContents.fromId(webContentsId);
+    if (kind === "learning" && contents) learningPageActions.attach(contents);
   },
   openExternally,
   onNavigation: noteSiteNavigation,
@@ -1100,6 +1107,7 @@ const applyNavigationPolicy = (contents: Electron.WebContents): void => {
   contents.on("will-attach-webview", (event) => event.preventDefault());
   contents.on("destroyed", () => {
     revokeGrants(contents.id);
+    learningPageActions.detach(contents.id);
     contentsKind.delete(contents.id);
     contentsLearningPlatform.delete(contents.id);
   });
@@ -1645,6 +1653,12 @@ if (installMode || uninstallMode) {
       const png = image.toPNG();
       if (!png.length || png.length > 8 * 1024 * 1024) throw new Error("截图生成失败或文件过大");
       return `data:image/png;base64,${png.toString("base64")}`;
+    });
+
+    ipcMain.handle("userscript:page-action", async (event, nonce: unknown, action: unknown) => {
+      const script = await authorize(event, nonce);
+      if (script.id !== "builtin-multiplatform-helper") throw new Error("当前脚本无权控制网课页面");
+      return learningPageActions.perform(event.sender, action);
     });
 
     ipcMain.handle("oauth:login", () => startOAuthLogin(openAuthorizeWindow).then((session) => ({

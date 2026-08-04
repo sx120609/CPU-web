@@ -48,6 +48,20 @@ script-panel-element {
   padding: 4px 10px 14px;
 }
 .user-guide { display: none !important; }
+.tooltip-container { display: none !important; }
+.cpu-integrated-guide {
+  display: grid;
+  gap: 9px;
+  margin: 6px 4px;
+  padding: 14px;
+  color: var(--cpu-ocs-text);
+  background: var(--cpu-ocs-card);
+  border: 1px solid var(--cpu-ocs-border);
+  border-left: 4px solid var(--cpu-ocs-primary);
+  border-radius: 12px;
+  line-height: 1.65;
+}
+.cpu-integrated-guide p { margin: 0; color: var(--cpu-ocs-muted); }
 .dropdown-content {
   max-width: min(390px, calc(100vw - 32px));
   max-height: min(360px, calc(100vh - 110px));
@@ -150,35 +164,29 @@ header-element .extra-menu-bar .script-panel-link:hover {
   background: rgba(131, 219, 195, 0.12);
   box-shadow: 0 0 0 9999px rgba(8, 18, 16, 0.38);
 }
-.cpu-ocs-shot-result {
-  position: fixed;
-  z-index: 2147483646;
-  top: 50%;
-  left: 50%;
-  width: min(430px, calc(100vw - 28px));
-  max-height: min(720px, calc(100vh - 28px));
-  transform: translate(-50%, -50%);
+.cpu-ocs-shot-workbench {
+  display: block;
+  width: 100%;
+  min-height: 220px;
+  max-height: calc(100vh - 110px);
   overflow: auto;
   color: var(--cpu-ocs-text);
   background: var(--cpu-ocs-bg);
-  border: 1px solid var(--cpu-ocs-border);
-  border-radius: 18px;
-  box-shadow: 0 24px 72px rgba(16, 41, 34, 0.3);
-  backdrop-filter: blur(18px);
+  border-radius: 0 0 14px 14px;
 }
-.cpu-ocs-shot-result > header { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid var(--cpu-ocs-border); }
-.cpu-ocs-shot-result > header div { display: grid; gap: 2px; }
-.cpu-ocs-shot-result > header span { color: var(--cpu-ocs-muted); font-size: 12px; }
-.cpu-ocs-shot-result > header button { width: 34px; height: 34px; color: var(--cpu-ocs-muted); background: var(--cpu-ocs-card); border: 1px solid var(--cpu-ocs-border); border-radius: 10px; cursor: pointer; font-size: 21px; }
-.cpu-ocs-shot-result > main { display: grid; gap: 10px; padding: 14px 16px; }
-.cpu-ocs-shot-result > main > img { width: 100%; max-height: 220px; object-fit: contain; background: var(--cpu-ocs-primary-soft); border: 1px solid var(--cpu-ocs-border); border-radius: 12px; }
-.cpu-ocs-shot-result > footer { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 16px 14px; border-top: 1px solid var(--cpu-ocs-border); }
-.cpu-ocs-shot-result > footer button { margin: 0; }
+.cpu-ocs-shot-workbench > header { display: flex; align-items: center; justify-content: space-between; padding: 12px 10px; border-bottom: 1px solid var(--cpu-ocs-border); }
+.cpu-ocs-shot-workbench > header div { display: grid; gap: 2px; }
+.cpu-ocs-shot-workbench > header span { color: var(--cpu-ocs-muted); font-size: 12px; }
+.cpu-ocs-shot-workbench > header button { width: 32px; height: 32px; color: var(--cpu-ocs-muted); background: var(--cpu-ocs-card); border: 1px solid var(--cpu-ocs-border); border-radius: 9px; cursor: pointer; font-size: 20px; }
+.cpu-ocs-shot-workbench > main { display: grid; gap: 10px; padding: 12px 10px; }
+.cpu-ocs-shot-workbench > main > img { width: 100%; max-height: 220px; object-fit: contain; background: var(--cpu-ocs-primary-soft); border: 1px solid var(--cpu-ocs-border); border-radius: 12px; }
+.cpu-ocs-shot-workbench > footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; padding: 11px 10px 12px; border-top: 1px solid var(--cpu-ocs-border); }
+.cpu-ocs-shot-workbench > footer button { margin: 0; }
 .cpu-ocs-shot-card { padding: 11px 12px; overflow-wrap: anywhere; background: var(--cpu-ocs-card); border: 1px solid var(--cpu-ocs-border); border-radius: 12px; line-height: 1.65; }
 .cpu-ocs-shot-card > span { display: block; margin-bottom: 5px; color: var(--cpu-ocs-primary); font-size: 12px; font-weight: 700; }
 .cpu-ocs-shot-card code { padding: 1px 4px; background: var(--cpu-ocs-primary-soft); border-radius: 4px; }
 .cpu-ocs-shot-error { margin: 0; color: #d35f5f; overflow-wrap: anywhere; }
-.cpu-ocs-shot-result .muted { margin: 0; color: var(--cpu-ocs-muted); }
+.cpu-ocs-shot-workbench .muted { margin: 0; color: var(--cpu-ocs-muted); }
 .cpu-ocs-shot-progress { height: 5px; overflow: hidden; background: var(--cpu-ocs-primary-soft); border-radius: 999px; }
 .cpu-ocs-shot-progress i { display: block; width: 72%; height: 100%; background: var(--cpu-ocs-primary); border-radius: inherit; animation: cpu-ocs-shot-loading 1.2s ease-in-out infinite alternate; }
 @keyframes cpu-ocs-shot-loading { from { transform: translateX(-28%); } to { transform: translateX(55%); } }

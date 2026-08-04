@@ -1,7 +1,8 @@
 const fs = require("node:fs");
 const path = require("node:path");
 
-const EXPECTED_VERSION = "4.15.3";
+const EXPECTED_UPSTREAM_VERSION = "4.15.3";
+const INTEGRATION_VERSION = "4.15.4";
 const EXPECTED_COMMIT = "890686a5e54f9a6d52d1169bae9ea5971e0863c7";
 const OUTPUT = path.join(__dirname, "..", "assets", "userscripts", "multiplatform.js");
 const THEME = path.join(__dirname, "..", "assets", "userscripts", "multiplatform-theme.css");
@@ -20,8 +21,8 @@ const desktopTheme = fs.readFileSync(THEME, "utf8")
 const screenshotAddon = fs.readFileSync(SCREENSHOT_ADDON, "utf8").trim();
 const headerMatch = source.match(/\/\/\s*==UserScript==([\s\S]*?)\/\/\s*==\/UserScript==/);
 if (!headerMatch) throw new Error("输入文件不是有效的 OCS UserScript");
-if (!new RegExp(`^\\s*//\\s*@version\\s+${EXPECTED_VERSION.replace(/\./g, "\\.")}\\s*$`, "m").test(source)) {
-  throw new Error(`只允许整合已审核的 OCS ${EXPECTED_VERSION}`);
+if (!new RegExp(`^\\s*//\\s*@version\\s+${EXPECTED_UPSTREAM_VERSION.replace(/\./g, "\\.")}\\s*$`, "m").test(source)) {
+  throw new Error(`只允许整合已审核的 OCS ${EXPECTED_UPSTREAM_VERSION}`);
 }
 
 const matches = [...headerMatch[1].matchAll(/^\s*\/\/\s*@match\s+(.+?)\s*$/gm)]
@@ -35,7 +36,7 @@ const metadata = [
   "// ==UserScript==",
   "// @name         药大拾间·全平台网课助手",
   "// @namespace    cn.lizmt.cpuweb.ocs",
-  `// @version      ${EXPECTED_VERSION}`,
+  `// @version      ${INTEGRATION_VERSION}`,
   "// @description  药大拾间桌面端多平台网课助手；平台适配能力基于 OCS，答题只使用药大拾间独立 AI。",
   "// @author       enncy；药大拾间整合维护",
   "// @license      MIT",
@@ -58,10 +59,11 @@ const metadata = [
   "// @grant        GM_removeValueChangeListener",
   "// @grant        GM_cpuAIRequest",
   "// @grant        GM_cpuCaptureArea",
+  "// @grant        GM_cpuPageAction",
   "// @grant        GM_cpuReport",
   "// @run-at       document-start",
   "//",
-  `// OCS ${EXPECTED_VERSION}, commit ${EXPECTED_COMMIT}, Copyright (c) 2022 enncy, MIT License.`,
+  `// OCS ${EXPECTED_UPSTREAM_VERSION}, commit ${EXPECTED_COMMIT}, Copyright (c) 2022 enncy, MIT License.`,
   "// 药大拾间移除了 OCS 外部题库连接权限；题面只经桌面宿主发往本站独立答题 AI。",
   "// ==/UserScript==",
 ].join("\n");
@@ -71,14 +73,14 @@ output = output
   .replace("title: `OCS-${infos.script.version}`", "title: '药大拾间·全平台网课助手'")
   .replace(
     "        panelName: (name) => name || this.config.render.defaultPanelName || \"\"",
-    `        panelName: (name, urls = [location.href]) => {
+  `        panelName: (name, urls = [location.href]) => {
           const matched = utils_1.$.getMatchedScripts(this.projects, urls)
-            .filter((script) => !script.hideInPanel)
+            .filter((script) => !script.hideInPanel && !/^(common|background)\\./.test(String(script.namespace || "")))
             .sort((left, right) => Number(right.priority || 0) - Number(left.priority || 0));
-          const current = matched.find((script) => script.namespace === name || String(name || \"\").endsWith(\"-\" + script.name));
-          if (current && !String(current.namespace || \"\").startsWith(\"common.\")) return name;
-          const preferred = matched.find((script) => !String(script.namespace || \"\").startsWith(\"common.\"));
-          return preferred && preferred.namespace || name || this.config.render.defaultPanelName || \"\";
+          const current = matched.find((script) => script.namespace === name || script.fullName() === name || String(name || "").endsWith("-" + script.name));
+          if (current) return current.namespace || current.fullName();
+          const preferred = matched[0];
+          return preferred && (preferred.namespace || preferred.fullName()) || \"common.guide\";
         }`,
   )
   .replaceAll("this.defaults.panelName(currentPanelName)", "this.defaults.panelName(currentPanelName, this.defaults.urls(urls))")
@@ -134,6 +136,57 @@ output = output
     'if (false && !messageElement) { // 药大拾间桌面端关闭后台节流，不显示浏览器前台警告',
   );
 
+// OCS 上游把跨上下文点击与接口监听交给它自己的 localhost 程序。药大拾间桌面端
+// 直接通过受 nonce 保护的 Electron 桥实现同一套调用，不让用户再安装第二个桌面插件。
+output = output
+  .replace(
+    `          this.authToken = await request("http://localhost:15319/get-actions-key", {
+            type: "GM_xmlhttpRequest",
+            method: "get",
+            responseType: "text"
+          });`,
+    `          if (typeof GM_cpuPageAction !== "function") return void 0;
+          this.authToken = "cpu-desktop-integrated";`,
+  )
+  .replace(
+    `            const res = await request("/ocs-script-actions", {
+              type: "fetch",
+              method: "post",
+              responseType: ["waitForRequest", "waitForResponse", "reload"].includes(property) ? "json" : "text",
+              headers: {
+                "auth-token": authToken
+              },
+              data
+            });`,
+    `            const res = await GM_cpuPageAction(data);`,
+  )
+  .replace(
+    /  const \$playwright = \{[\s\S]*?\n  \};\n  const state\$5 =/,
+    `  const $playwright = {
+    showError: () => {
+      const message = "客户端页面控制暂时不可用，请更新药大拾间桌面客户端；已是最新版时请刷新当前网课标签后重试。";
+      lib.$message.error({ content: message, duration: 0 });
+      return new Error(message);
+    }
+  };
+  const state$5 =`,
+  )
+  .replace(
+    /  const createGuide = \(\) => \{[\s\S]*?\n  \};\n  function createSearchResultAlertElement/,
+    `  const createGuide = () => lib.h("div", { className: "cpu-integrated-guide" }, [
+    lib.h("b", "药大拾间·全平台网课助手"),
+    lib.h("p", "请进入具体课程，再打开章节、视频、作业或考试页面；识别到任务后会自动开始。"),
+    lib.h("p", "答题可在当前面板开始、暂停或继续，截图搜题也会在同一个工作台内显示。"),
+    lib.h("p", "学习通仍由药大拾间专用助手负责，不会被本助手重复接管。"),
+    lib.h("p", "本工具仅供个人学习辅助，严禁商业用途。")
+  ]);
+  function createSearchResultAlertElement`,
+  )
+  .replace(
+    'this.header = ui_1.$ui.tooltip((0, dom_1$4.h)("header-element", { title: "菜单栏-可拖动区域" }));',
+    'this.header = (0, dom_1$4.h)("header-element");',
+  );
+
 if (!output.includes("title: '药大拾间·全平台网课助手'")) {
   throw new Error("OCS 入口结构已变化，停止生成，需人工复核");
 }
@@ -145,6 +198,9 @@ if (!output.includes("CPU_DESKTOP_STYLE") || !output.includes("多平台助手�
 }
 if (!output.includes('alignItems: "center", width: "100%"') || !output.includes(".user-guide { display: none !important; }")) {
   throw new Error("OCS 精简标题栏或无关入口过滤未生成，停止发布");
+}
+if (!output.includes("GM_cpuPageAction(data)") || output.includes("http://localhost:15319/get-actions-key") || output.includes("docs.ocsjs.com/docs/script-helper")) {
+  throw new Error("OCS 桌面桥仍未完全内置，停止发布");
 }
 if (matches.some((rule) => /(?:chaoxing\.com|nbdlib\.cn|hnsyu\.net|gdhkmooc\.com)/.test(rule))) {
   throw new Error("OCS 仍会接管学习通域名，停止发布");

@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld("cpuDesktopBridge", {
   requestAi: (nonce: string, body: string) => ipcRenderer.invoke("userscript:request-ai", nonce, body),
   captureArea: (nonce: string, rect: { x: number; y: number; width: number; height: number }) =>
     ipcRenderer.invoke("userscript:capture-area", nonce, rect),
+  pageAction: (nonce: string, action: unknown) => ipcRenderer.invoke("userscript:page-action", nonce, action),
   // 脚本改了自己的配置时回传，让客户端界面与脚本保持同一份真相
   setValue: (nonce: string, key: string, json: string) => ipcRenderer.invoke("userscript:set-value", nonce, key, json),
   deleteValue: (nonce: string, key: string) => ipcRenderer.invoke("userscript:delete-value", nonce, key),

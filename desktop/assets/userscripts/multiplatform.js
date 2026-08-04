@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         药大拾间·全平台网课助手
 // @namespace    cn.lizmt.cpuweb.ocs
-// @version      4.15.3
+// @version      4.15.4
 // @description  药大拾间桌面端多平台网课助手；平台适配能力基于 OCS，答题只使用药大拾间独立 AI。
 // @author       enncy；药大拾间整合维护
 // @license      MIT
@@ -50,6 +50,7 @@
 // @grant        GM_removeValueChangeListener
 // @grant        GM_cpuAIRequest
 // @grant        GM_cpuCaptureArea
+// @grant        GM_cpuPageAction
 // @grant        GM_cpuReport
 // @run-at       document-start
 //
@@ -2281,7 +2282,7 @@ var __publicField = (obj, key, value) => {
   class ContainerElement extends interface_1$5.IElement {
     constructor() {
       super(...arguments);
-      this.header = ui_1.$ui.tooltip((0, dom_1$4.h)("header-element", { title: "菜单栏-可拖动区域" }));
+      this.header = (0, dom_1$4.h)("header-element");
       this.body = (0, dom_1$4.h)("div", { className: "body", clientHeight: window.innerHeight / 2 });
       this.footer = (0, dom_1$4.h)("div", { className: "footer" });
     }
@@ -2612,12 +2613,12 @@ var __publicField = (obj, key, value) => {
         urls: (urls) => urls && urls.length ? urls : [location.href],
         panelName: (name, urls = [location.href]) => {
           const matched = utils_1.$.getMatchedScripts(this.projects, urls)
-            .filter((script) => !script.hideInPanel)
+            .filter((script) => !script.hideInPanel && !/^(common|background)\./.test(String(script.namespace || "")))
             .sort((left, right) => Number(right.priority || 0) - Number(left.priority || 0));
-          const current = matched.find((script) => script.namespace === name || String(name || "").endsWith("-" + script.name));
-          if (current && !String(current.namespace || "").startsWith("common.")) return name;
-          const preferred = matched.find((script) => !String(script.namespace || "").startsWith("common."));
-          return preferred && preferred.namespace || name || this.config.render.defaultPanelName || "";
+          const current = matched.find((script) => script.namespace === name || script.fullName() === name || String(name || "").endsWith("-" + script.name));
+          if (current) return current.namespace || current.fullName();
+          const preferred = matched[0];
+          return preferred && (preferred.namespace || preferred.fullName()) || "common.guide";
         }
       };
       this.projects = projects;
@@ -3402,11 +3403,8 @@ var __publicField = (obj, key, value) => {
       }
       if (!this.authToken) {
         try {
-          this.authToken = await request("http://localhost:15319/get-actions-key", {
-            type: "GM_xmlhttpRequest",
-            method: "get",
-            responseType: "text"
-          });
+          if (typeof GM_cpuPageAction !== "function") return void 0;
+          this.authToken = "cpu-desktop-integrated";
           this.currentPage = this.createRemotePage(this.authToken, { show_debug_cursor, logger });
           return this.currentPage;
         } catch (e) {
@@ -3478,15 +3476,7 @@ var __publicField = (obj, key, value) => {
           }
           (_b = configs == null ? void 0 : configs.logger) == null ? void 0 : _b.call(configs, "[RP]: ", JSON.stringify(data));
           try {
-            const res = await request("/ocs-script-actions", {
-              type: "fetch",
-              method: "post",
-              responseType: ["waitForRequest", "waitForResponse", "reload"].includes(property) ? "json" : "text",
-              headers: {
-                "auth-token": authToken
-              },
-              data
-            });
+            const res = await GM_cpuPageAction(data);
             return res;
           } catch (e) {
             (_c = configs == null ? void 0 : configs.logger) == null ? void 0 : _c.call(configs, "[RP-ERROR]: ", JSON.stringify(data));
@@ -9794,106 +9784,13 @@ ${content}</tr>
       )
     );
   }
-  const createGuide = () => {
-    const showProjectDetails = (project2) => {
-      lib.$modal.simple({
-        title: project2.name,
-        width: 800,
-        content: lib.h("div", [
-          lib.h("div", [
-            "运行域名：",
-            ...(project2.domains || []).map(
-              (d) => lib.h(
-                "a",
-                { href: d.startsWith("http") ? d : "https://" + d, target: "_blank", style: { margin: "0px 4px" } },
-                d
-              )
-            )
-          ]),
-          lib.h("div", "脚本列表："),
-          lib.h(
-            "ul",
-            Object.keys(project2.scripts).sort((a, b) => project2.scripts[b].hideInPanel ? -1 : 1).map((key) => {
-              const script2 = project2.scripts[key];
-              return lib.h(
-                "li",
-                [
-                  lib.h("b", script2.name),
-                  lib.$ui.notes([
-                    lib.h("span", ["操作面板：", script2.hideInPanel ? "隐藏" : "显示"]),
-                    [
-                      "运行页面：",
-                      lib.h(
-                        "ul",
-                        script2.matches.map((m) => Array.isArray(m) ? m : ["无描述", m]).map(
-                          (i) => lib.h("li", [
-                            i[0],
-                            "：",
-                            i[1] instanceof RegExp ? i[1].toString().replace(/\\/g, "").slice(1, -1) : lib.h("span", i[1])
-                          ])
-                        )
-                      )
-                    ]
-                  ])
-                ],
-                (li) => {
-                  li.style.marginBottom = "12px";
-                }
-              );
-            }),
-            (ul) => {
-              ul.style.padding = "12px 24px";
-              ul.style.border = "1px solid #e1e1e1";
-              ul.style.borderRadius = "4px";
-              ul.style.maxHeight = "400px";
-              ul.style.overflow = "auto";
-              ul.style.paddingLeft = "42px";
-            }
-          )
-        ])
-      });
-    };
-    const gotoHome = lib.h("button", { className: "base-style-button-secondary" }, "🏡官网教程");
-    gotoHome.onclick = () => window.open("https://docs.ocsjs.com", "_blank");
-    const contactUs = lib.h("button", { className: "base-style-button-secondary" }, "🗨️交流群");
-    contactUs.onclick = () => window.open("https://docs.ocsjs.com/docs/about#交流方式", "_blank");
-    const changeLog = lib.h("button", { className: "base-style-button-secondary" }, "📄更新日志");
-    changeLog.onclick = () => CommonProject.scripts.apps.methods.showChangelog();
-    const closeGuide = lib.h("button", { className: "base-style-button-secondary" }, "📄如何关闭脚本？");
-    closeGuide.onclick = () => window.open("https://docs.ocsjs.com/docs/script#%E5%85%B3%E9%97%AD%E8%84%9A%E6%9C%AC%E6%95%99%E7%A8%8B", "_blank");
-    const cardStyle = {
-      border: "1px solid #eee",
-      borderRadius: "4px",
-      padding: "8px",
-      paddingTop: "4px"
-    };
-    return lib.h("div", { className: "user-guide" }, [
-      lib.h("div", { style: cardStyle }, [
-        lib.h("div", { style: { marginBottom: "4px", fontWeight: "bold" } }, [
-          "✨兼容的网课平台：",
-          lib.h("span", { className: "secondary", style: { fontWeight: "normal" } }, "（未适配的平台将无法运行，请等待适配）")
-        ]),
-        lib.h("div", [
-          ...[CXProject, ZHSProject, ZJYProject, IcveMoocProject, ICourseProject, YKTProject].map((project2) => {
-            const btn = lib.h("button", { className: "base-style-button-secondary", style: { margin: "4px" } }, [
-              project2.name
-            ]);
-            btn.onclick = () => {
-              showProjectDetails(project2);
-            };
-            return btn;
-          })
-        ])
-      ]),
-      lib.h("div", { style: { ...cardStyle, marginTop: "12px" } }, [
-        lib.h("div", { style: { marginBottom: "8px", fontWeight: "bold" } }, "🌐快捷访问："),
-        gotoHome,
-        contactUs,
-        changeLog,
-        closeGuide
-      ])
-    ]);
-  };
+  const createGuide = () => lib.h("div", { className: "cpu-integrated-guide" }, [
+    lib.h("b", "药大拾间·全平台网课助手"),
+    lib.h("p", "请进入具体课程，再打开章节、视频、作业或考试页面；识别到任务后会自动开始。"),
+    lib.h("p", "答题可在当前面板开始、暂停或继续，截图搜题也会在同一个工作台内显示。"),
+    lib.h("p", "学习通仍由药大拾间专用助手负责，不会被本助手重复接管。"),
+    lib.h("p", "本工具仅供个人学习辅助，严禁商业用途。")
+  ]);
   function createSearchResultAlertElement(result) {
     var _a;
     let info = null;
@@ -9970,21 +9867,9 @@ ${content}</tr>
   }
   const $playwright = {
     showError: () => {
-      const href = "https://docs.ocsjs.com/docs/script-helper";
-      const errorEl = lib.h("div", [
-        "当前页面需要下载OCS桌面端，并在桌面端中新建浏览器，在新建的浏览器中才能进行正常刷课，点击链接查看详情 => ",
-        lib.h("a", { href, target: "_blank" }, href)
-      ]);
-      lib.$modal.alert({
-        maskCloseable: false,
-        title: "⛔ 错误",
-        confirmButtonText: "查看详情",
-        content: errorEl.cloneNode(true),
-        onConfirm() {
-          window.open(href, "_blank");
-        }
-      });
-      lib.$message.error({ content: errorEl.cloneNode(true), duration: 0 });
+      const message = "客户端页面控制暂时不可用，请更新药大拾间桌面客户端；已是最新版时请刷新当前网课标签后重试。";
+      lib.$message.error({ content: message, duration: 0 });
+      return new Error(message);
     }
   };
   const state$5 = {
@@ -21273,6 +21158,20 @@ script-panel-element {
   padding: 4px 10px 14px;
 }
 .user-guide { display: none !important; }
+.tooltip-container { display: none !important; }
+.cpu-integrated-guide {
+  display: grid;
+  gap: 9px;
+  margin: 6px 4px;
+  padding: 14px;
+  color: var(--cpu-ocs-text);
+  background: var(--cpu-ocs-card);
+  border: 1px solid var(--cpu-ocs-border);
+  border-left: 4px solid var(--cpu-ocs-primary);
+  border-radius: 12px;
+  line-height: 1.65;
+}
+.cpu-integrated-guide p { margin: 0; color: var(--cpu-ocs-muted); }
 .dropdown-content {
   max-width: min(390px, calc(100vw - 32px));
   max-height: min(360px, calc(100vh - 110px));
@@ -21375,35 +21274,29 @@ header-element .extra-menu-bar .script-panel-link:hover {
   background: rgba(131, 219, 195, 0.12);
   box-shadow: 0 0 0 9999px rgba(8, 18, 16, 0.38);
 }
-.cpu-ocs-shot-result {
-  position: fixed;
-  z-index: 2147483646;
-  top: 50%;
-  left: 50%;
-  width: min(430px, calc(100vw - 28px));
-  max-height: min(720px, calc(100vh - 28px));
-  transform: translate(-50%, -50%);
+.cpu-ocs-shot-workbench {
+  display: block;
+  width: 100%;
+  min-height: 220px;
+  max-height: calc(100vh - 110px);
   overflow: auto;
   color: var(--cpu-ocs-text);
   background: var(--cpu-ocs-bg);
-  border: 1px solid var(--cpu-ocs-border);
-  border-radius: 18px;
-  box-shadow: 0 24px 72px rgba(16, 41, 34, 0.3);
-  backdrop-filter: blur(18px);
+  border-radius: 0 0 14px 14px;
 }
-.cpu-ocs-shot-result > header { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid var(--cpu-ocs-border); }
-.cpu-ocs-shot-result > header div { display: grid; gap: 2px; }
-.cpu-ocs-shot-result > header span { color: var(--cpu-ocs-muted); font-size: 12px; }
-.cpu-ocs-shot-result > header button { width: 34px; height: 34px; color: var(--cpu-ocs-muted); background: var(--cpu-ocs-card); border: 1px solid var(--cpu-ocs-border); border-radius: 10px; cursor: pointer; font-size: 21px; }
-.cpu-ocs-shot-result > main { display: grid; gap: 10px; padding: 14px 16px; }
-.cpu-ocs-shot-result > main > img { width: 100%; max-height: 220px; object-fit: contain; background: var(--cpu-ocs-primary-soft); border: 1px solid var(--cpu-ocs-border); border-radius: 12px; }
-.cpu-ocs-shot-result > footer { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 16px 14px; border-top: 1px solid var(--cpu-ocs-border); }
-.cpu-ocs-shot-result > footer button { margin: 0; }
+.cpu-ocs-shot-workbench > header { display: flex; align-items: center; justify-content: space-between; padding: 12px 10px; border-bottom: 1px solid var(--cpu-ocs-border); }
+.cpu-ocs-shot-workbench > header div { display: grid; gap: 2px; }
+.cpu-ocs-shot-workbench > header span { color: var(--cpu-ocs-muted); font-size: 12px; }
+.cpu-ocs-shot-workbench > header button { width: 32px; height: 32px; color: var(--cpu-ocs-muted); background: var(--cpu-ocs-card); border: 1px solid var(--cpu-ocs-border); border-radius: 9px; cursor: pointer; font-size: 20px; }
+.cpu-ocs-shot-workbench > main { display: grid; gap: 10px; padding: 12px 10px; }
+.cpu-ocs-shot-workbench > main > img { width: 100%; max-height: 220px; object-fit: contain; background: var(--cpu-ocs-primary-soft); border: 1px solid var(--cpu-ocs-border); border-radius: 12px; }
+.cpu-ocs-shot-workbench > footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; padding: 11px 10px 12px; border-top: 1px solid var(--cpu-ocs-border); }
+.cpu-ocs-shot-workbench > footer button { margin: 0; }
 .cpu-ocs-shot-card { padding: 11px 12px; overflow-wrap: anywhere; background: var(--cpu-ocs-card); border: 1px solid var(--cpu-ocs-border); border-radius: 12px; line-height: 1.65; }
 .cpu-ocs-shot-card > span { display: block; margin-bottom: 5px; color: var(--cpu-ocs-primary); font-size: 12px; font-weight: 700; }
 .cpu-ocs-shot-card code { padding: 1px 4px; background: var(--cpu-ocs-primary-soft); border-radius: 4px; }
 .cpu-ocs-shot-error { margin: 0; color: #d35f5f; overflow-wrap: anywhere; }
-.cpu-ocs-shot-result .muted { margin: 0; color: var(--cpu-ocs-muted); }
+.cpu-ocs-shot-workbench .muted { margin: 0; color: var(--cpu-ocs-muted); }
 .cpu-ocs-shot-progress { height: 5px; overflow: hidden; background: var(--cpu-ocs-primary-soft); border-radius: 999px; }
 .cpu-ocs-shot-progress i { display: block; width: 72%; height: 100%; background: var(--cpu-ocs-primary); border-radius: inherit; animation: cpu-ocs-shot-loading 1.2s ease-in-out infinite alternate; }
 @keyframes cpu-ocs-shot-loading { from { transform: translateX(-28%); } to { transform: translateX(55%); } }
@@ -21456,15 +21349,18 @@ function installCpuScreenshotSearch(root, container) {
     try { typeof GM_cpuReport === "function" && GM_cpuReport("status", message); } catch { /* 不影响搜题 */ }
   };
   let resultPanel = null;
+  let hiddenPanels = [];
   const closeResult = () => {
     resultPanel?.remove();
     resultPanel = null;
+    for (const panel of hiddenPanels) panel.style.removeProperty("display");
+    hiddenPanels = [];
   };
   const showResult = ({ status, imageUrl = "", answer = "", explanation = "", error = "" }) => {
     closeResult();
     const panel = document.createElement("section");
-    panel.className = "cpu-ocs-shot-result";
-    panel.setAttribute("role", "dialog");
+    panel.className = "cpu-ocs-shot-workbench";
+    panel.setAttribute("role", "region");
     panel.setAttribute("aria-label", "截图搜题结果");
     panel.innerHTML = `
       <header><div><b>截图搜题</b><span>${status === "loading" ? "正在识别并解答" : status === "done" ? "识别完成" : "未能完成"}</span></div><button type="button" data-cpu-shot-action="close" title="关闭" aria-label="关闭">×</button></header>
@@ -21485,7 +21381,9 @@ function installCpuScreenshotSearch(root, container) {
         navigator.clipboard?.writeText(answer).then(() => report("截图答案已复制")).catch(() => report("复制失败，请手动选择答案"));
       }
     });
-    root.append(panel);
+    hiddenPanels = Array.from(container.body.children).filter((child) => child !== panel);
+    for (const current of hiddenPanels) current.style.setProperty("display", "none", "important");
+    container.body.append(panel);
     resultPanel = panel;
   };
   const chooseArea = () => new Promise((resolve) => {

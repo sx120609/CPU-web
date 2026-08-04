@@ -151,12 +151,14 @@
       </section>
     </div>
   </section>
+  <DownloadSafetyGuideDialog v-model="downloadGuideVisible" />
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { Close, Connection, CopyDocument, Download, Monitor, Notebook } from "@element-plus/icons-vue";
 import { getDesktopDownload, getMacDesktopDownload, type DesktopDownloadInfo } from "@/api/site";
+import DownloadSafetyGuideDialog from "@/components/common/DownloadSafetyGuideDialog.vue";
 
 const emit = defineEmits<{ (event: "close"): void }>();
 type DesktopPlatform = "windows" | "macos";
@@ -168,6 +170,7 @@ const macDownload = ref<DesktopDownloadInfo>({ available: false, url: "", versio
 const downloadsLoaded = ref(false);
 const activePlatform = ref<DesktopPlatform>(detectPreferredPlatform());
 const copied = ref(false);
+const downloadGuideVisible = ref(false);
 const activeDownload = computed(() => activePlatform.value === "windows" ? download.value : macDownload.value);
 
 function detectPreferredPlatform(): DesktopPlatform {
@@ -176,7 +179,9 @@ function detectPreferredPlatform(): DesktopPlatform {
 }
 
 function openDownload() {
-  if (activeDownload.value.url) window.open(activeDownload.value.url, "_blank", "noopener");
+  if (!activeDownload.value.url) return;
+  window.open(activeDownload.value.url, "_blank", "noopener");
+  if (activePlatform.value === "windows") downloadGuideVisible.value = true;
 }
 
 async function copyPassword() {

@@ -141,7 +141,7 @@ async function main() {
     size: Buffer.byteLength(multiplatformSource, "utf8"),
     sourceUrl: MULTIPLATFORM_USER_SCRIPT_CHANNEL.sourcePath,
   };
-  assert.deepEqual(multiplatformIdentity, { name: "药大拾间·全平台网课助手", version: "4.15.3" });
+  assert.deepEqual(multiplatformIdentity, { name: "药大拾间·全平台网课助手", version: "4.15.4" });
   assert.doesNotThrow(() => validateUserScriptRelease(
     multiplatformSource,
     multiplatformManifest,
@@ -167,7 +167,7 @@ async function main() {
       }
       return new Response("", { status: 404 });
     };
-    const olderSource = multiplatformSource.replace("// @version      4.15.3", "// @version      4.15.2");
+    const olderSource = multiplatformSource.replace("// @version      4.15.4", "// @version      4.15.3");
     const updated = await checkUserScriptUpdate({
       origin: "https://cpu.lizmt.cn",
       cacheDirectory: multiplatformCache,
@@ -183,7 +183,7 @@ async function main() {
       () => undefined,
       MULTIPLATFORM_USER_SCRIPT_CHANNEL,
     );
-    assert.equal(cached?.manifest.version, "4.15.3");
+    assert.equal(cached?.manifest.version, "4.15.4");
     assert.equal(cached?.source, multiplatformSource);
   } finally {
     await rm(multiplatformCache, { recursive: true, force: true });
