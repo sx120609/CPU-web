@@ -7,7 +7,7 @@ import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } fr
 import { extractAiJsonTextResponse, normalizeAiJsonApiUrl, sendAiJsonRequest } from "./aiJsonApi";
 import { prepareMediaLocalFileForProcessing, resolveMediaLocalPathFromUploadUrl, resolveMediaPublicUrl } from "./mediaStorage";
 import { resolveModelCandidates, shouldFallbackToNextModel } from "./modelFallback";
-import { getSiteConfig } from "./siteSettings";
+import { getSiteConfig, resolveSharedAiProviderConfig } from "./siteSettings";
 
 const IMAGE_MARKDOWN_RE = /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
 const IMAGE_HTML_RE = /<img\b[^>]*\bsrc\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s"'=<>`]+))[^>]*>/gi;
@@ -116,11 +116,12 @@ export function startForumImageModerationPoller() {
 
 export function shouldRunImageReview() {
   const config = getSiteConfig();
+  const provider = resolveSharedAiProviderConfig(config);
   return Boolean(
     config.imageReviewEnabled
-    && config.imageReviewApiKey.trim()
+    && provider.apiKey
     && config.imageReviewModel.trim()
-    && config.imageReviewApiUrl.trim(),
+    && provider.apiUrl,
   );
 }
 
@@ -973,7 +974,8 @@ async function requestImageReview(input: {
   dataUrl: string;
 }): Promise<ImageReviewDecision> {
   const config = getSiteConfig();
-  const endpoint = normalizeAiJsonApiUrl(config.imageReviewApiUrl, "https://api.openai.com/v1/chat/completions");
+  const provider = resolveSharedAiProviderConfig(config);
+  const endpoint = normalizeAiJsonApiUrl(provider.apiUrl, "https://api.openai.com/v1/chat/completions");
   const candidates = resolveModelCandidates(config.imageReviewModel, config.imageReviewFallbackModels);
   const promptCacheKey = buildImageReviewPromptCacheKey({
     configHash: buildImageReviewConfigHash(config),
@@ -994,7 +996,7 @@ async function requestImageReview(input: {
     const logId = started?.id ?? null;
     const requestResult = await sendAiJsonRequest({
       endpoint,
-      apiKey: config.imageReviewApiKey,
+      apiKey: provider.apiKey,
       model,
       temperature: 0.1,
       promptCacheKey,
@@ -1071,7 +1073,8 @@ async function requestImageReview(input: {
 
 async function requestImageReviewBatch(inputs: PreparedImageReviewInput[]): Promise<ImageReviewDecision[]> {
   const config = getSiteConfig();
-  const endpoint = normalizeAiJsonApiUrl(config.imageReviewApiUrl, "https://api.openai.com/v1/chat/completions");
+  const provider = resolveSharedAiProviderConfig(config);
+  const endpoint = normalizeAiJsonApiUrl(provider.apiUrl, "https://api.openai.com/v1/chat/completions");
   const requestSummary = inputs
     .map((item, index) => `${index + 1}. ${item.mimeType} ${item.asset.url}`)
     .join("\n")
@@ -1109,7 +1112,7 @@ async function requestImageReviewBatch(inputs: PreparedImageReviewInput[]): Prom
     const logId = started?.id ?? null;
     const requestResult = await sendAiJsonRequest({
       endpoint,
-      apiKey: config.imageReviewApiKey,
+      apiKey: provider.apiKey,
       model,
       temperature: 0.1,
       promptCacheKey,
@@ -1330,7 +1333,7 @@ function buildBatchImageReviewPrompt(inputs: PreparedImageReviewInput[], promptT
 
 function buildImageReviewConfigHash(config: ReturnType<typeof getSiteConfig>) {
   return hashString([
-    config.imageReviewApiUrl,
+    resolveSharedAiProviderConfig(config).apiUrl,
     config.imageReviewModel,
     config.imageReviewFallbackModels,
     config.imageReviewThreshold,

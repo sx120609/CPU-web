@@ -25,6 +25,58 @@
       </template>
     </el-alert>
 
+    <section class="settings-card provider-card" :class="{ 'is-config-disabled': Boolean(configLoadError) }" v-loading="loadingConfig">
+      <div class="section-head">
+        <div>
+          <h3 class="section-title">共享 AI 服务</h3>
+          <p class="section-desc">API 地址和密钥只配置一次；拾间 AI、学习通解题与各类内容审核分别选择模型。</p>
+        </div>
+        <div class="provider-actions">
+          <el-button :loading="loadingModels" :disabled="!form.aiReviewApiUrl.trim()" @click="loadModels">
+            刷新模型列表
+          </el-button>
+          <el-button type="primary" :loading="saving" :disabled="saving || Boolean(configLoadError)" @click="saveConfig">
+            保存 AI 配置
+          </el-button>
+        </div>
+      </div>
+
+      <div class="ai-form provider-form">
+        <div class="ai-row ai-row--stretch">
+          <span class="ai-label">共享 API 请求地址</span>
+          <el-input v-model="form.aiReviewApiUrl" maxlength="240" placeholder="支持 /v1/responses 或 /v1/chat/completions" />
+          <small class="field-note">服务端会根据地址自动识别 Responses 或 Chat Completions 协议。</small>
+        </div>
+        <div class="ai-row ai-row--stretch">
+          <span class="ai-label">共享 API Key</span>
+          <el-input v-model="form.aiReviewApiKey" maxlength="240" show-password placeholder="sk-..." />
+        </div>
+      </div>
+
+      <el-alert
+        type="info"
+        :closable="false"
+        show-icon
+        :title="modelCatalogSummary"
+      />
+
+      <div class="model-grid">
+        <label v-for="item in modelAssignments" :key="item.key" class="model-field">
+          <span>{{ item.label }}</span>
+          <small>{{ item.description }}</small>
+          <el-select
+            v-model="form[item.key]"
+            filterable
+            allow-create
+            default-first-option
+            placeholder="选择或输入模型 ID"
+          >
+            <el-option v-for="model in modelOptions" :key="`${item.key}-${model}`" :label="model" :value="model" />
+          </el-select>
+        </label>
+      </div>
+    </section>
+
     <section class="settings-card" :class="{ 'is-config-disabled': Boolean(configLoadError) }" v-loading="loadingConfig">
       <div class="section-head">
         <div>
@@ -38,33 +90,9 @@
           <span class="ai-label">启用审核</span>
           <el-switch v-model="form.aiReviewEnabled" inline-prompt active-text="开" inactive-text="关" />
         </div>
-        <div class="ai-row">
-          <span class="ai-label">服务商</span>
-          <el-select
-            v-model="form.aiReviewProvider"
-            filterable
-            allow-create
-            default-first-option
-            placeholder="选择或输入服务商"
-          >
-            <el-option v-for="option in aiReviewProviderOptions" :key="option.value" :label="option.label" :value="option.value" />
-          </el-select>
-        </div>
-        <div class="ai-row">
-          <span class="ai-label">模型</span>
-          <el-input v-model="form.aiReviewModel" maxlength="80" placeholder="deepseek-v4-flash" />
-        </div>
-        <div class="ai-row ai-row--stretch">
-          <span class="ai-label">文字审核 API 地址</span>
-          <el-input v-model="form.aiReviewApiUrl" maxlength="240" placeholder="支持 /v1/chat/completions 或 /v1/responses" />
-        </div>
         <div class="ai-row ai-row--stretch">
           <span class="ai-label">模型备选</span>
           <el-input v-model="form.aiReviewFallbackModels" maxlength="400" placeholder="逗号分隔，例如 gpt-4.1, gpt-4o-mini" />
-        </div>
-        <div class="ai-row ai-row--stretch">
-          <span class="ai-label">API Key</span>
-          <el-input v-model="form.aiReviewApiKey" maxlength="240" show-password placeholder="sk-..." />
         </div>
         <div class="ai-row">
           <span class="ai-label">文字审核阈值</span>
@@ -129,33 +157,9 @@
           <span class="ai-label">启用广告过滤</span>
           <el-switch v-model="form.qqGroupAdReviewEnabled" inline-prompt active-text="开" inactive-text="关" />
         </div>
-        <div class="ai-row">
-          <span class="ai-label">服务商</span>
-          <el-select
-            v-model="form.qqGroupAdReviewProvider"
-            filterable
-            allow-create
-            default-first-option
-            placeholder="选择或输入服务商"
-          >
-            <el-option v-for="option in aiReviewProviderOptions" :key="`qq-group-ad-${option.value}`" :label="option.label" :value="option.value" />
-          </el-select>
-        </div>
-        <div class="ai-row">
-          <span class="ai-label">模型</span>
-          <el-input v-model="form.qqGroupAdReviewModel" maxlength="80" placeholder="deepseek-v4-flash" />
-        </div>
         <div class="ai-row ai-row--stretch">
           <span class="ai-label">模型备选</span>
           <el-input v-model="form.qqGroupAdReviewFallbackModels" maxlength="400" placeholder="逗号分隔，例如 gpt-4.1, gpt-4o-mini" />
-        </div>
-        <div class="ai-row ai-row--stretch">
-          <span class="ai-label">广告过滤 API 地址</span>
-          <el-input v-model="form.qqGroupAdReviewApiUrl" maxlength="240" placeholder="支持 /v1/chat/completions 或 /v1/responses" />
-        </div>
-        <div class="ai-row ai-row--stretch">
-          <span class="ai-label">API Key</span>
-          <el-input v-model="form.qqGroupAdReviewApiKey" maxlength="240" show-password placeholder="sk-..." />
         </div>
         <div class="ai-row">
           <span class="ai-label">拦截阈值</span>
@@ -205,21 +209,9 @@
           <span class="ai-label">启用图片审核</span>
           <el-switch v-model="form.imageReviewEnabled" inline-prompt active-text="开" inactive-text="关" />
         </div>
-        <div class="ai-row">
-          <span class="ai-label">图片模型</span>
-          <el-input v-model="form.imageReviewModel" maxlength="80" placeholder="gpt-4o-mini" />
-        </div>
         <div class="ai-row ai-row--stretch">
           <span class="ai-label">模型备选</span>
           <el-input v-model="form.imageReviewFallbackModels" maxlength="400" placeholder="逗号分隔，例如 gpt-4.1, gpt-4o-mini" />
-        </div>
-        <div class="ai-row ai-row--stretch">
-          <span class="ai-label">图片审核 API 地址</span>
-          <el-input v-model="form.imageReviewApiUrl" maxlength="240" placeholder="支持 /v1/chat/completions 或 /v1/responses" />
-        </div>
-        <div class="ai-row ai-row--stretch">
-          <span class="ai-label">图片审核 API Key</span>
-          <el-input v-model="form.imageReviewApiKey" maxlength="240" show-password placeholder="sk-..." />
         </div>
         <div class="ai-row">
           <span class="ai-label">并发请求数</span>
@@ -279,21 +271,9 @@
           <span class="ai-label">启用视频审核</span>
           <el-switch v-model="form.videoReviewEnabled" inline-prompt active-text="开" inactive-text="关" />
         </div>
-        <div class="ai-row">
-          <span class="ai-label">视频模型</span>
-          <el-input v-model="form.videoReviewModel" maxlength="80" placeholder="gpt-4o-mini" />
-        </div>
         <div class="ai-row ai-row--stretch">
           <span class="ai-label">模型备选</span>
           <el-input v-model="form.videoReviewFallbackModels" maxlength="400" placeholder="逗号分隔，例如 gpt-4.1, gpt-4o-mini" />
-        </div>
-        <div class="ai-row ai-row--stretch">
-          <span class="ai-label">视频审核 API 地址</span>
-          <el-input v-model="form.videoReviewApiUrl" maxlength="240" placeholder="支持 /v1/chat/completions 或 /v1/responses" />
-        </div>
-        <div class="ai-row ai-row--stretch">
-          <span class="ai-label">视频审核 API Key</span>
-          <el-input v-model="form.videoReviewApiKey" maxlength="240" show-password placeholder="sk-..." />
         </div>
         <div class="ai-row">
           <span class="ai-label">并发请求数</span>
@@ -469,6 +449,7 @@ import {
 import { fmtDate } from "@/utils/format";
 
 const loadingConfig = ref(false);
+const loadingModels = ref(false);
 const loadingLogs = ref(false);
 const saving = ref(false);
 const sweepingImages = ref(false);
@@ -489,6 +470,8 @@ const lastImageSweepSummary = ref("");
 const lastVideoSweepSummary = ref("");
 const videoRows = ref<ForumVideoQueueRow[]>([]);
 const promptDefaults = ref<SitePromptDefaults | null>(null);
+const modelOptions = ref<string[]>([]);
+const modelCatalogEndpoint = ref("");
 let configLoadSeq = 0;
 let promptDefaultsLoadSeq = 0;
 let logsLoadSeq = 0;
@@ -499,16 +482,19 @@ const videoFilters = reactive<{ status: "" | "pending" | "manual_review" | "reje
   page: 1,
   size: 20,
 });
-const aiReviewProviderOptions = [
-  { label: "DeepSeek", value: "deepseek" },
-  { label: "OpenAI", value: "openai" },
-  { label: "硅基流动", value: "siliconflow" },
-  { label: "火山方舟", value: "volcengine" },
-];
+const modelAssignments = [
+  { key: "assistantModel", label: "拾间 AI", description: "站内问答与校园服务咨询" },
+  { key: "learningAssistantModel", label: "学习通解题", description: "章节测验、作业与截图搜题" },
+  { key: "aiReviewModel", label: "文字审核", description: "帖子、回复与编辑相似度" },
+  { key: "qqGroupAdReviewModel", label: "QQ群广告过滤", description: "群消息广告与引流识别" },
+  { key: "imageReviewModel", label: "图片审核", description: "论坛图片安全审核" },
+  { key: "videoReviewModel", label: "视频审核", description: "关键帧、音轨与上下文审核" },
+] as const;
 const form = reactive<SiteConfig>({
   siteOrigin: "",
   siteFilingNumber: "",
   assistantModel: "gpt-5.6-terra",
+  learningAssistantModel: "gpt-5.6-terra",
   learningAssistantAccessMode: "guest-unlimited",
   aiReviewEnabled: false,
   aiReviewProvider: "deepseek",
@@ -572,6 +558,14 @@ const aiEditSimilarityPercent = computed({
     form.aiEditSimilarityThreshold = value / 100;
   },
 });
+const modelCatalogSummary = computed(() => {
+  if (loadingModels.value) return "正在从上游 /model 接口读取模型列表…";
+  if (modelOptions.value.length) {
+    const source = modelCatalogEndpoint.value ? ` · ${modelCatalogEndpoint.value}` : "";
+    return `已读取 ${modelOptions.value.length} 个模型${source}；下拉列表之外仍可手动填写模型 ID。`;
+  }
+  return "点击“刷新模型列表”会由服务端代为请求上游 /model 接口，浏览器不会直接连接上游。";
+});
 
 onMounted(async () => {
   await Promise.all([loadConfig(), loadLogs(), loadPromptDefaults(), loadVideos()]);
@@ -583,13 +577,49 @@ async function loadConfig() {
   configLoadError.value = "";
   try {
     const config = await adminApi.siteConfig({ suppressErrorMessage: true });
-    if (seq === configLoadSeq) Object.assign(form, config);
+    if (seq === configLoadSeq) {
+      Object.assign(form, config);
+      mergeModelOptions();
+    }
   } catch (error) {
     if (seq === configLoadSeq) {
       configLoadError.value = requestMessage(error) || "审核配置加载失败，请稍后重试";
     }
   } finally {
     if (seq === configLoadSeq) loadingConfig.value = false;
+  }
+}
+
+function mergeModelOptions(models: string[] = []) {
+  const configured = modelAssignments.map((item) => String(form[item.key] || ""));
+  const fallbackModels = [
+    form.aiReviewFallbackModels,
+    form.qqGroupAdReviewFallbackModels,
+    form.imageReviewFallbackModels,
+    form.videoReviewFallbackModels,
+  ].flatMap((value) => String(value || "").split(/[\s,]+/));
+  modelOptions.value = Array.from(new Set([
+    ...models,
+    ...configured,
+    ...fallbackModels,
+  ].map((model) => model.trim()).filter(Boolean)));
+}
+
+async function loadModels() {
+  if (loadingModels.value || !form.aiReviewApiUrl.trim()) return;
+  loadingModels.value = true;
+  try {
+    const catalog = await adminApi.aiModels({
+      apiUrl: form.aiReviewApiUrl.trim(),
+      apiKey: form.aiReviewApiKey.trim(),
+    });
+    modelCatalogEndpoint.value = catalog.endpoint;
+    mergeModelOptions(catalog.models);
+    ElMessage.success(`已从上游读取 ${catalog.models.length} 个模型`);
+  } catch (error) {
+    ElMessage.error(requestMessage(error) || "上游模型列表读取失败");
+  } finally {
+    loadingModels.value = false;
   }
 }
 
@@ -615,34 +645,34 @@ async function saveConfig() {
   saving.value = true;
   try {
     Object.assign(form, await adminApi.updateSiteConfig({
+      assistantModel: form.assistantModel,
+      learningAssistantModel: form.learningAssistantModel,
       aiReviewEnabled: form.aiReviewEnabled,
-      aiReviewProvider: form.aiReviewProvider,
       aiReviewApiUrl: form.aiReviewApiUrl,
       aiReviewModel: form.aiReviewModel,
       aiReviewFallbackModels: form.aiReviewFallbackModels,
       aiReviewApiKey: form.aiReviewApiKey,
       qqGroupAdReviewEnabled: form.qqGroupAdReviewEnabled,
-      qqGroupAdReviewProvider: form.qqGroupAdReviewProvider,
-      qqGroupAdReviewApiUrl: form.qqGroupAdReviewApiUrl,
+      qqGroupAdReviewApiUrl: form.aiReviewApiUrl,
       qqGroupAdReviewModel: form.qqGroupAdReviewModel,
       qqGroupAdReviewFallbackModels: form.qqGroupAdReviewFallbackModels,
-      qqGroupAdReviewApiKey: form.qqGroupAdReviewApiKey,
+      qqGroupAdReviewApiKey: form.aiReviewApiKey,
       qqGroupAdReviewSystemPrompt: form.qqGroupAdReviewSystemPrompt,
       qqGroupAdReviewUserPrompt: form.qqGroupAdReviewUserPrompt,
       imageReviewEnabled: form.imageReviewEnabled,
-      imageReviewApiUrl: form.imageReviewApiUrl,
+      imageReviewApiUrl: form.aiReviewApiUrl,
       imageReviewModel: form.imageReviewModel,
       imageReviewFallbackModels: form.imageReviewFallbackModels,
-      imageReviewApiKey: form.imageReviewApiKey,
+      imageReviewApiKey: form.aiReviewApiKey,
       imageReviewSystemPrompt: form.imageReviewSystemPrompt,
       imageReviewUserPrompt: form.imageReviewUserPrompt,
       imageReviewConcurrency: form.imageReviewConcurrency,
       imageReviewRequestGroupSize: form.imageReviewRequestGroupSize,
       videoReviewEnabled: form.videoReviewEnabled,
-      videoReviewApiUrl: form.videoReviewApiUrl,
+      videoReviewApiUrl: form.aiReviewApiUrl,
       videoReviewModel: form.videoReviewModel,
       videoReviewFallbackModels: form.videoReviewFallbackModels,
-      videoReviewApiKey: form.videoReviewApiKey,
+      videoReviewApiKey: form.aiReviewApiKey,
       videoReviewSystemPrompt: form.videoReviewSystemPrompt,
       videoReviewUserPrompt: form.videoReviewUserPrompt,
       videoReviewConcurrency: form.videoReviewConcurrency,
@@ -658,7 +688,8 @@ async function saveConfig() {
       aiEditSimilaritySystemPrompt: form.aiEditSimilaritySystemPrompt,
       aiEditSimilarityUserPrompt: form.aiEditSimilarityUserPrompt,
     }));
-    ElMessage.success("审核配置已保存");
+    mergeModelOptions();
+    ElMessage.success("AI 服务、模型与审核配置已保存");
   } finally {
     saving.value = false;
   }
@@ -892,15 +923,60 @@ function requestMessage(error: unknown) {
   gap: 14px;
 }
 
+.provider-card {
+  border-color: var(--el-color-primary-light-7);
+  background: var(--el-bg-color);
+}
+
+.provider-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.provider-form {
+  background: var(--el-fill-color-extra-light);
+  border-color: var(--el-border-color-lighter);
+}
+
+.model-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.model-field {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 14px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 12px;
+  background: var(--el-fill-color-blank);
+}
+
+.model-field > span {
+  color: var(--el-text-color-primary);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.model-field > small {
+  min-height: 34px;
+  color: var(--el-text-color-secondary);
+  line-height: 1.5;
+}
+
 .settings-card {
   display: flex;
   flex-direction: column;
   gap: 16px;
   padding: 18px;
-  border: 1px solid #e7edf5;
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 16px;
-  background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
-  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.04);
+  background: var(--cpu-card);
+  box-shadow: var(--cpu-shadow-sm);
 }
 
 .section-head {
@@ -914,14 +990,14 @@ function requestMessage(error: unknown) {
   margin: 0;
   font-size: 16px;
   font-weight: 700;
-  color: #111827;
+  color: var(--cpu-text);
 }
 
 .section-desc {
   margin: 6px 0 0;
   font-size: 13px;
   line-height: 1.7;
-  color: #667085;
+  color: var(--cpu-text-secondary);
 }
 
 .ai-form {
@@ -930,8 +1006,8 @@ function requestMessage(error: unknown) {
   gap: 12px;
   padding: 16px;
   border-radius: 14px;
-  background: #ffffff;
-  border: 1px solid #edf2f7;
+  background: var(--cpu-surface);
+  border: 1px solid var(--cpu-border-soft);
 }
 
 .ai-row {
@@ -950,7 +1026,13 @@ function requestMessage(error: unknown) {
 
 .ai-label {
   font-size: 12px;
-  color: #6b7280;
+  color: var(--cpu-text-secondary);
+}
+
+.field-note {
+  color: var(--cpu-text-muted);
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 .prompt-card {
@@ -959,8 +1041,8 @@ function requestMessage(error: unknown) {
   gap: 14px;
   padding: 16px;
   border-radius: 14px;
-  background: #fcfdff;
-  border: 1px dashed #d7e2f0;
+  background: var(--cpu-surface-soft);
+  border: 1px dashed var(--cpu-border);
 }
 
 .prompt-actions {
@@ -977,13 +1059,13 @@ function requestMessage(error: unknown) {
 .card-title {
   font-size: 15px;
   font-weight: 700;
-  color: #1f2937;
+  color: var(--cpu-text);
 }
 
 .desc {
   margin-top: 4px;
   font-size: 12px;
-  color: #6b7280;
+  color: var(--cpu-text-secondary);
   line-height: 1.6;
 }
 
@@ -1004,7 +1086,7 @@ function requestMessage(error: unknown) {
   flex-shrink: 0;
   margin-top: 2px;
   font-size: 18px;
-  color: #64748b;
+  color: var(--cpu-text-secondary);
   transition: transform 0.2s ease;
 }
 
@@ -1023,7 +1105,7 @@ function requestMessage(error: unknown) {
   margin: -4px 0 0;
   font-size: 12px;
   line-height: 1.7;
-  color: #667085;
+  color: var(--cpu-text-secondary);
 }
 
 .filters {
@@ -1074,18 +1156,18 @@ function requestMessage(error: unknown) {
 }
 
 .status-started {
-  background: #fff7ed;
-  color: #c2410c;
+  background: var(--el-color-warning-light-9);
+  color: var(--el-color-warning-dark-2);
 }
 
 .status-success {
-  background: #ecfdf5;
-  color: #166534;
+  background: var(--el-color-success-light-9);
+  color: var(--el-color-success-dark-2);
 }
 
 .status-error {
-  background: #fef2f2;
-  color: #b91c1c;
+  background: var(--el-color-danger-light-9);
+  color: var(--el-color-danger-dark-2);
 }
 
 @media (max-width: 768px) {
@@ -1097,6 +1179,15 @@ function requestMessage(error: unknown) {
   .ai-form {
     grid-template-columns: 1fr;
     padding: 14px;
+  }
+
+  .model-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .provider-actions,
+  .provider-actions :deep(.el-button) {
+    width: 100%;
   }
 
   .filters {

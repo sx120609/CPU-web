@@ -45,6 +45,7 @@ export type SiteConfig = {
   siteOrigin: string;
   siteFilingNumber: string;
   assistantModel: string;
+  learningAssistantModel: string;
   learningAssistantAccessMode: LearningAssistantAccessMode;
   aiReviewEnabled: boolean;
   aiReviewProvider: string;
@@ -216,6 +217,7 @@ const FORUM_ENABLED_BONUS_KEY = "forum.reputation.forumEnabledBonus";
 const ANONYMOUS_TIERS_KEY = "forum.anonymous.tiers";
 const REPUTATION_LEVELS_KEY = "forum.reputation.levels";
 const ASSISTANT_MODEL_KEY = "assistant.model";
+const LEARNING_ASSISTANT_MODEL_KEY = "assistant.learningModel";
 const ASSISTANT_DAILY_QUOTAS_KEY = "assistant.dailyQuotas";
 const LEARNING_ASSISTANT_ACCESS_MODE_KEY = "assistant.learningAccessMode";
 export const DEFAULT_LEARNING_ASSISTANT_ACCESS_MODE: LearningAssistantAccessMode = "guest-unlimited";
@@ -363,6 +365,7 @@ const configCache: SiteConfig = {
   siteOrigin: "",
   siteFilingNumber: "",
   assistantModel: DEFAULT_CAMPUS_ASSISTANT_MODEL,
+  learningAssistantModel: DEFAULT_CAMPUS_ASSISTANT_MODEL,
   learningAssistantAccessMode: DEFAULT_LEARNING_ASSISTANT_ACCESS_MODE,
   aiReviewEnabled: false,
   aiReviewProvider: "deepseek",
@@ -574,6 +577,7 @@ export async function loadFeatures(): Promise<void> {
           ANONYMOUS_TIERS_KEY,
           REPUTATION_LEVELS_KEY,
           ASSISTANT_MODEL_KEY,
+          LEARNING_ASSISTANT_MODEL_KEY,
           ASSISTANT_DAILY_QUOTAS_KEY,
           LEARNING_ASSISTANT_ACCESS_MODE_KEY,
         ],
@@ -846,6 +850,11 @@ export async function loadFeatures(): Promise<void> {
     }
     if (r.key === ASSISTANT_MODEL_KEY) {
       configCache.assistantModel = String(r.value || DEFAULT_CAMPUS_ASSISTANT_MODEL).trim()
+        || DEFAULT_CAMPUS_ASSISTANT_MODEL;
+      continue;
+    }
+    if (r.key === LEARNING_ASSISTANT_MODEL_KEY) {
+      configCache.learningAssistantModel = String(r.value || DEFAULT_CAMPUS_ASSISTANT_MODEL).trim()
         || DEFAULT_CAMPUS_ASSISTANT_MODEL;
       continue;
     }
@@ -1202,9 +1211,28 @@ function sanitizeAiReviewConfig() {
   configCache.videoReviewUserPrompt = normalizePromptTemplate(configCache.videoReviewUserPrompt, DEFAULT_VIDEO_REVIEW_PROMPTS.user);
 }
 
+export function resolveSharedAiProviderConfig(input: SiteConfig = getSiteConfig()) {
+  const canonical = {
+    apiUrl: String(input.aiReviewApiUrl || "").trim(),
+    apiKey: String(input.aiReviewApiKey || "").trim(),
+  };
+  if (canonical.apiKey) return canonical;
+
+  const legacy = [
+    { apiUrl: input.imageReviewApiUrl, apiKey: input.imageReviewApiKey },
+    { apiUrl: input.videoReviewApiUrl, apiKey: input.videoReviewApiKey },
+    { apiUrl: input.qqGroupAdReviewApiUrl, apiKey: input.qqGroupAdReviewApiKey },
+  ].find((item) => String(item.apiKey || "").trim());
+  return legacy
+    ? { apiUrl: String(legacy.apiUrl || "").trim(), apiKey: String(legacy.apiKey || "").trim() }
+    : canonical;
+}
+
 function sanitizeCampusAssistantConfig() {
   configCache.assistantModel = String(configCache.assistantModel || DEFAULT_CAMPUS_ASSISTANT_MODEL).trim()
     || DEFAULT_CAMPUS_ASSISTANT_MODEL;
+  configCache.learningAssistantModel = String(configCache.learningAssistantModel || configCache.assistantModel).trim()
+    || configCache.assistantModel;
   configCache.learningAssistantAccessMode = normalizeLearningAssistantAccessMode(
     configCache.learningAssistantAccessMode
   );
@@ -1566,6 +1594,20 @@ export async function setCampusAssistantModel(input: string | null | undefined):
     create: { key: ASSISTANT_MODEL_KEY, value: assistantModel },
   });
   configCache.assistantModel = assistantModel;
+  sanitizeCampusAssistantConfig();
+  await broadcastSiteSettingsReload();
+  return getSiteConfig();
+}
+
+export async function setLearningAssistantModel(input: string | null | undefined): Promise<SiteConfig> {
+  const learningAssistantModel = String(input || configCache.assistantModel || DEFAULT_CAMPUS_ASSISTANT_MODEL).trim()
+    || DEFAULT_CAMPUS_ASSISTANT_MODEL;
+  await prisma.siteSetting.upsert({
+    where: { key: LEARNING_ASSISTANT_MODEL_KEY },
+    update: { value: learningAssistantModel },
+    create: { key: LEARNING_ASSISTANT_MODEL_KEY, value: learningAssistantModel },
+  });
+  configCache.learningAssistantModel = learningAssistantModel;
   sanitizeCampusAssistantConfig();
   await broadcastSiteSettingsReload();
   return getSiteConfig();

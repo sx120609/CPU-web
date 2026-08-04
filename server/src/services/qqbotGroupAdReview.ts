@@ -3,7 +3,7 @@ import { Errors } from "../utils/response";
 import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } from "./aiReviewLog";
 import { extractAiJsonTextResponse, normalizeAiJsonApiUrl, sendAiJsonRequest } from "./aiJsonApi";
 import { resolveModelCandidates, shouldFallbackToNextModel } from "./modelFallback";
-import { getSiteConfig } from "./siteSettings";
+import { getSiteConfig, resolveSharedAiProviderConfig } from "./siteSettings";
 
 type QqGroupAdResponse = {
   risk_score?: number;
@@ -42,7 +42,7 @@ const localResultCache = new Map<string, { expiresAt: number; value: QqGroupAdRe
 
 export function shouldRunQqGroupAdReview() {
   const config = getSiteConfig();
-  return Boolean(config.qqGroupAdReviewEnabled && config.qqGroupAdReviewApiKey.trim());
+  return Boolean(config.qqGroupAdReviewEnabled && resolveSharedAiProviderConfig(config).apiKey);
 }
 
 export async function reviewQqGroupMessageForAd(input: {
@@ -54,7 +54,8 @@ export async function reviewQqGroupMessageForAd(input: {
   metadata?: Record<string, unknown> | null;
 }): Promise<QqGroupAdReviewResult> {
   const config = getSiteConfig();
-  if (!config.qqGroupAdReviewEnabled || !config.qqGroupAdReviewApiKey.trim()) {
+  const provider = resolveSharedAiProviderConfig(config);
+  if (!config.qqGroupAdReviewEnabled || !provider.apiKey) {
     return {
       action: "allow",
       riskScore: 0,
@@ -105,7 +106,7 @@ export async function reviewQqGroupMessageForAd(input: {
       }),
     },
   ];
-  const endpoint = normalizeAiJsonApiUrl(config.qqGroupAdReviewApiUrl, "https://api.deepseek.com/chat/completions");
+  const endpoint = normalizeAiJsonApiUrl(provider.apiUrl, "https://api.deepseek.com/chat/completions");
   const candidates = resolveModelCandidates(config.qqGroupAdReviewModel, config.qqGroupAdReviewFallbackModels);
   const promptCacheKey = buildQqGroupAdPromptCacheKey({
     configHash,
@@ -133,7 +134,7 @@ export async function reviewQqGroupMessageForAd(input: {
     try {
       const result = await sendAiJsonRequest({
         endpoint,
-        apiKey: config.qqGroupAdReviewApiKey,
+        apiKey: provider.apiKey,
         model,
         temperature: 0.1,
         messages,
@@ -248,7 +249,7 @@ function normalizeMessageForCache(input: string) {
 function buildQqGroupAdReviewConfigHash(config: ReturnType<typeof getSiteConfig>) {
   return hashString([
     config.qqGroupAdReviewProvider,
-    config.qqGroupAdReviewApiUrl,
+    resolveSharedAiProviderConfig(config).apiUrl,
     config.qqGroupAdReviewModel,
     config.qqGroupAdReviewFallbackModels,
     config.qqGroupAdReviewThreshold,

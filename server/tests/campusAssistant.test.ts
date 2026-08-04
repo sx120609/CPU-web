@@ -456,6 +456,7 @@ test("assistant quota and model settings are restored from the database after a 
   const siteSetting = prisma.siteSetting;
   const originalFindMany = siteSetting.findMany;
   const storedModel = "assistant-model-test";
+  const storedLearningModel = "learning-assistant-model-test";
   const storedQuotas = DEFAULT_ASSISTANT_DAILY_QUOTAS.map((item) => ({
     ...item,
     quota: item.quota + 7,
@@ -473,6 +474,10 @@ test("assistant quota and model settings are restored from the database after a 
           value: storedModel,
         },
         {
+          key: "assistant.learningModel",
+          value: storedLearningModel,
+        },
+        {
           key: "assistant.dailyQuotas",
           value: JSON.stringify(storedQuotas),
         },
@@ -482,13 +487,19 @@ test("assistant quota and model settings are restored from the database after a 
     await loadFeatures();
 
     assert.equal(requestedKeys.includes("assistant.model"), true);
+    assert.equal(requestedKeys.includes("assistant.learningModel"), true);
     assert.equal(requestedKeys.includes("assistant.dailyQuotas"), true);
     assert.equal(getSiteConfig().assistantModel, storedModel);
+    assert.equal(getSiteConfig().learningAssistantModel, storedLearningModel);
     assert.deepEqual(getSiteConfig().assistantDailyQuotas, storedQuotas);
   } finally {
     siteSetting.findMany = (async () => [
       {
         key: "assistant.model",
+        value: DEFAULT_CAMPUS_ASSISTANT_MODEL,
+      },
+      {
+        key: "assistant.learningModel",
         value: DEFAULT_CAMPUS_ASSISTANT_MODEL,
       },
       {

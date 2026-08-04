@@ -35,41 +35,6 @@
     <section class="settings-card" v-loading="loading">
       <div class="section-head">
         <div>
-          <h3>AI 功能模型</h3>
-          <p>拾问 AI 和通过本站授权接入的 AI 讲解统一使用这里的模型，不再跟随“文字 AI”审核模型变化。</p>
-        </div>
-        <el-button
-          type="primary"
-          :loading="savingAssistantModel"
-          :disabled="Boolean(loadError) || !assistantModel.trim() || !assistantModelDirty"
-          @click="saveAssistantModel"
-        >
-          保存模型
-        </el-button>
-      </div>
-      <div class="model-form">
-        <span>当前调用模型</span>
-        <el-select
-          v-model="assistantModel"
-          filterable
-          allow-create
-          default-first-option
-          placeholder="选择或输入模型 ID"
-        >
-          <el-option
-            v-for="model in assistantModelOptions"
-            :key="model"
-            :label="model"
-            :value="model"
-          />
-        </el-select>
-      </div>
-      <p class="tip">可选择已有模型，也可以直接输入上游支持的新模型 ID。接口地址、密钥和总开关仍复用“文字 AI”配置。</p>
-    </section>
-
-    <section class="settings-card" v-loading="loading">
-      <div class="section-head">
-        <div>
           <h3>学习通助手访问策略</h3>
           <p>策略由服务器实时下发。客户端安装一次支持动态策略后，今后切换免登录或恢复账号额度都不需要重新发布安装包。</p>
         </div>
@@ -406,7 +371,6 @@ const overviewLoading = ref(false);
 const ledgerLoading = ref(false);
 const usersLoading = ref(false);
 const savingQuotas = ref(false);
-const savingAssistantModel = ref(false);
 const savingAccessMode = ref(false);
 const savingSponsorRate = ref(false);
 const backfillingSponsors = ref(false);
@@ -414,9 +378,6 @@ const resetting = ref(false);
 const granting = ref(false);
 const loadError = ref("");
 const reputationLevels = ref<Array<{ level: number; name: string; minReputation: number }>>([]);
-const assistantModel = ref("gpt-5.6-terra");
-const savedAssistantModel = ref("gpt-5.6-terra");
-const assistantModelOptions = ref<string[]>(["gpt-5.6-terra"]);
 const learningAssistantAccessMode = ref<"guest-unlimited" | "account-quota">("guest-unlimited");
 const savedLearningAssistantAccessMode = ref<"guest-unlimited" | "account-quota">("guest-unlimited");
 const dailyQuotas = ref([
@@ -464,7 +425,6 @@ const grantRecipientCount = computed(() => (
 const sponsorRateDirty = computed(() => (
   Number(sponsorPointsPerYuan.value || 0) !== savedSponsorPointsPerYuan.value
 ));
-const assistantModelDirty = computed(() => assistantModel.value.trim() !== savedAssistantModel.value);
 const ledgerPageCount = computed(() => Math.max(1, Math.ceil(ledgerTotal.value / ledgerSize.value)));
 const ledgerFiltersActive = computed(() => Boolean(
   ledgerFilters.q.trim()
@@ -487,15 +447,8 @@ async function reload() {
       adminApi.assistantPointOverview({ suppressErrorMessage: true }),
     ]);
     reputationLevels.value = (siteConfig.reputationLevels ?? []).map((item) => ({ ...item }));
-    assistantModel.value = siteConfig.assistantModel || "gpt-5.6-terra";
-    savedAssistantModel.value = assistantModel.value;
     learningAssistantAccessMode.value = siteConfig.learningAssistantAccessMode || "guest-unlimited";
     savedLearningAssistantAccessMode.value = learningAssistantAccessMode.value;
-    assistantModelOptions.value = Array.from(new Set([
-      assistantModel.value,
-      siteConfig.aiReviewModel,
-      ...(siteConfig.aiReviewFallbackModels || "").split(/[\s,]+/),
-    ].map((model) => model.trim()).filter(Boolean)));
     dailyQuotas.value = (siteConfig.assistantDailyQuotas ?? []).map((item) => ({ ...item }));
     sponsorPointsPerYuan.value = sponsorConfig.assistantPointsPerYuan ?? 0;
     savedSponsorPointsPerYuan.value = sponsorPointsPerYuan.value;
@@ -511,23 +464,6 @@ async function reload() {
 function levelName(level: number) {
   if (level === 0) return "新账号（0 信誉）";
   return reputationLevels.value[level - 1]?.name || `等级 ${level}`;
-}
-
-async function saveAssistantModel() {
-  const model = assistantModel.value.trim();
-  if (savingAssistantModel.value || !model || model === savedAssistantModel.value) return;
-  savingAssistantModel.value = true;
-  try {
-    const config = await adminApi.updateSiteConfig({ assistantModel: model });
-    assistantModel.value = config.assistantModel;
-    savedAssistantModel.value = config.assistantModel;
-    if (!assistantModelOptions.value.includes(config.assistantModel)) {
-      assistantModelOptions.value.unshift(config.assistantModel);
-    }
-    ElMessage.success(`AI 功能模型已切换为 ${config.assistantModel}`);
-  } finally {
-    savingAssistantModel.value = false;
-  }
 }
 
 async function saveAccessMode() {
@@ -880,20 +816,10 @@ function sourceType(source: string) {
   gap: 18px;
 }
 .rate-form,
-.model-form,
 .grant-row {
   display: flex;
   align-items: center;
   gap: 12px;
-}
-.model-form {
-  margin-bottom: 10px;
-}
-.model-form > span {
-  flex: 0 0 auto;
-}
-.model-form :deep(.el-select) {
-  width: min(460px, 100%);
 }
 .rate-form {
   flex-wrap: wrap;
@@ -1122,7 +1048,6 @@ function sourceType(source: string) {
   }
   .section-head,
   .danger-row,
-  .model-form,
   .grant-row {
     align-items: stretch;
     flex-direction: column;

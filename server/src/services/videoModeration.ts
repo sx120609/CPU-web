@@ -9,7 +9,7 @@ import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } fr
 import { extractAiJsonTextResponse, normalizeAiJsonApiUrl, sendAiJsonRequest } from "./aiJsonApi";
 import { prepareMediaLocalFileForProcessing, resolveMediaLocalPathFromUploadUrl, resolveMediaPublicUrl } from "./mediaStorage";
 import { resolveModelCandidates, shouldFallbackToNextModel } from "./modelFallback";
-import { DEFAULT_VIDEO_REVIEW_PROMPTS, getSiteConfig } from "./siteSettings";
+import { DEFAULT_VIDEO_REVIEW_PROMPTS, getSiteConfig, resolveSharedAiProviderConfig } from "./siteSettings";
 
 const execFile = promisify(execFileCallback);
 
@@ -166,11 +166,12 @@ export function startForumVideoModerationPoller() {
 
 export function shouldRunVideoReview() {
   const config = getSiteConfig();
+  const provider = resolveSharedAiProviderConfig(config);
   return Boolean(
     config.videoReviewEnabled
-    && config.videoReviewApiKey.trim()
+    && provider.apiKey
     && config.videoReviewModel.trim()
-    && config.videoReviewApiUrl.trim(),
+    && provider.apiUrl,
   );
 }
 
@@ -696,7 +697,8 @@ async function applyVideoReviewDecision(input: PreparedVideoReviewInput, decisio
 
 async function requestVideoReview(input: PreparedVideoReviewInput): Promise<VideoReviewDecision> {
   const config = getSiteConfig();
-  const endpoint = normalizeAiJsonApiUrl(config.videoReviewApiUrl, "https://api.openai.com/v1/chat/completions");
+  const provider = resolveSharedAiProviderConfig(config);
+  const endpoint = normalizeAiJsonApiUrl(provider.apiUrl, "https://api.openai.com/v1/chat/completions");
   const requestSummary = buildVideoReviewTextPrompt(input).slice(0, 4000);
   const candidates = resolveModelCandidates(config.videoReviewModel, config.videoReviewFallbackModels);
   const promptCacheKey = buildVideoReviewPromptCacheKey({
@@ -718,7 +720,7 @@ async function requestVideoReview(input: PreparedVideoReviewInput): Promise<Vide
     const logId = started?.id ?? null;
     const requestResult = await sendAiJsonRequest({
       endpoint,
-      apiKey: config.videoReviewApiKey,
+      apiKey: provider.apiKey,
       model,
       temperature: 0.1,
       promptCacheKey,
@@ -792,7 +794,8 @@ async function requestVideoReview(input: PreparedVideoReviewInput): Promise<Vide
 
 async function transcribeVideoAudio(filePath: string) {
   const config = getSiteConfig();
-  const endpoint = normalizeTranscriptionsUrl(config.videoReviewApiUrl);
+  const provider = resolveSharedAiProviderConfig(config);
+  const endpoint = normalizeTranscriptionsUrl(provider.apiUrl);
   const tempDir = path.resolve(process.cwd(), "runtime", "video-review-audio");
   await mkdir(tempDir, { recursive: true });
   const audioPath = path.join(tempDir, `${path.basename(filePath)}-${Date.now()}.wav`);
@@ -819,7 +822,7 @@ async function transcribeVideoAudio(filePath: string) {
     const response = await fetch(endpoint, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${config.videoReviewApiKey}`,
+        Authorization: `Bearer ${provider.apiKey}`,
       },
       body: form,
     });
@@ -981,7 +984,7 @@ function buildVideoReviewTextPrompt(input: PreparedVideoReviewInput) {
 
 function buildVideoReviewConfigHash(config: ReturnType<typeof getSiteConfig>) {
   return hashString([
-    config.videoReviewApiUrl,
+    resolveSharedAiProviderConfig(config).apiUrl,
     config.videoReviewModel,
     config.videoReviewFallbackModels,
     config.videoReviewThreshold,

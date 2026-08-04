@@ -204,7 +204,7 @@ export async function requestLearningAssistantAi(
     "https://api.openai.com/v1/chat/completions"
   );
   const apiKey = siteConfig.aiReviewApiKey;
-  const model = siteConfig.assistantModel;
+  const model = siteConfig.learningAssistantModel;
   if (!siteConfig.aiReviewEnabled || !endpoint || !apiKey || !model) {
     throw Errors.server("AI 服务尚未配置或已关闭");
   }

@@ -27,6 +27,7 @@ import {
   setTopicGlobalPinned,
   setAiReviewConfig,
   setCampusAssistantModel,
+  setLearningAssistantModel,
   setLearningAssistantAccessMode,
   setCommunityTrustConfig,
   setSiteOrigin,
@@ -118,6 +119,7 @@ import { getJwxtAgentState, requestJwxtAgent } from "../../services/jwxtAgentGat
 import { getQueryAgentPoolSnapshot } from "../../services/jwxtAgentRemote";
 import { getSsoLoginPoolSnapshot } from "../../services/ssoLoginPool";
 import { resetCampusAssistantDailyUsage } from "../../services/campusAssistantQuota";
+import { fetchAiModelCatalog } from "../../services/aiModelCatalog";
 
 export const adminRouter = Router();
 const DATABASE_RESTORE_UPLOAD_DIR = path.join(tmpdir(), "cpu-web-db-restore-upload");
@@ -1847,6 +1849,23 @@ adminRouter.get("/site-config/prompt-defaults", adminOnly, (_req, res) => {
   ok(res, getSitePromptDefaults());
 });
 
+const aiModelCatalogSchema = z.object({
+  apiUrl: z.string().trim().url().max(240).optional(),
+  apiKey: z.string().trim().max(240).optional(),
+});
+
+adminRouter.post("/ai-models", adminOnly, validate(aiModelCatalogSchema), async (req, res, next) => {
+  try {
+    const siteConfig = getSiteConfig();
+    const apiUrl = req.body.apiUrl || siteConfig.aiReviewApiUrl;
+    const apiKey = req.body.apiKey ?? siteConfig.aiReviewApiKey;
+    ok(res, await fetchAiModelCatalog({ apiUrl, apiKey }));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "上游模型列表读取失败";
+    next(Errors.badRequest(`上游模型列表读取失败：${message}`));
+  }
+});
+
 const topNavigationItemSchema = z.object({
   id: z.string().trim().min(1).max(48).regex(/^[a-z0-9][a-z0-9_-]*$/, "标识仅支持小写字母、数字、横线和下划线"),
   label: z.string().trim().min(1).max(12),
@@ -2082,6 +2101,7 @@ const siteConfigPatchSchema = z.object({
   siteOrigin: z.string().trim().max(240).optional(),
   siteFilingNumber: z.string().trim().max(120).optional(),
   assistantModel: z.string().trim().min(1).max(80).optional(),
+  learningAssistantModel: z.string().trim().min(1).max(80).optional(),
   learningAssistantAccessMode: z.enum(["guest-unlimited", "account-quota"]).optional(),
   aiReviewEnabled: z.boolean().optional(),
   aiReviewProvider: z.string().trim().max(40).optional(),
@@ -2227,6 +2247,9 @@ adminRouter.patch("/site-config", adminOnly, validate(siteConfigPatchSchema), as
     }
     if (req.body.assistantModel !== undefined) {
       await setCampusAssistantModel(req.body.assistantModel);
+    }
+    if (req.body.learningAssistantModel !== undefined) {
+      await setLearningAssistantModel(req.body.learningAssistantModel);
     }
     if (req.body.learningAssistantAccessMode !== undefined) {
       await setLearningAssistantAccessMode(req.body.learningAssistantAccessMode);

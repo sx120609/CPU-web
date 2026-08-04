@@ -5,6 +5,7 @@ export type SiteConfig = {
   siteOrigin: string;
   siteFilingNumber: string;
   assistantModel: string;
+  learningAssistantModel: string;
   learningAssistantAccessMode: "guest-unlimited" | "account-quota";
   aiReviewEnabled: boolean;
   aiReviewProvider: string;
@@ -60,6 +61,11 @@ export type SiteConfig = {
   anonymousTiers: Array<{ reputation: number; quota: number }>;
   reputationLevels: Array<{ level: number; name: string; minReputation: number }>;
   assistantDailyQuotas: Array<{ level: number; quota: number }>;
+};
+
+export type AiModelCatalog = {
+  endpoint: string;
+  models: string[];
 };
 
 export type CampusAssistantQuotaResetResult = {
@@ -742,6 +748,8 @@ export const adminApi = {
     request.delete<{ deletedUserId: number; deletedTopics: number; deletedReplies: number }>(`/admin/users/${id}`),
   // 站点功能开关
   siteConfig: (options?: RequestOptions) => request.get<SiteConfig>("/admin/site-config", undefined, options),
+  aiModels: (payload?: { apiUrl?: string; apiKey?: string }) =>
+    request.post<AiModelCatalog>("/admin/ai-models", payload ?? {}),
   topNavigation: (options?: RequestOptions) => request.get<TopNavigationAdminPayload>("/admin/top-navigation", undefined, options),
   updateTopNavigation: (items: TopNavigationItem[]) => request.patch<TopNavigationAdminPayload>("/admin/top-navigation", { items }),
   resetTopNavigation: () => request.post<TopNavigationAdminPayload>("/admin/top-navigation/reset", {}),
@@ -790,6 +798,7 @@ export const adminApi = {
     siteOrigin?: string;
     siteFilingNumber?: string;
     assistantModel?: string;
+    learningAssistantModel?: string;
     learningAssistantAccessMode?: "guest-unlimited" | "account-quota";
     aiReviewEnabled?: boolean;
     aiReviewProvider?: string;

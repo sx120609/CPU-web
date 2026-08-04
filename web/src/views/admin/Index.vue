@@ -86,9 +86,7 @@
       <el-tab-pane label="🛍️ 商城" name="market" v-if="auth.isAdmin"><MarketPane v-if="tab === 'market'" /></el-tab-pane>
       <el-tab-pane label="💛 赞助" name="sponsor" v-if="auth.isAdmin"><SponsorPane v-if="tab === 'sponsor'" /></el-tab-pane>
       <el-tab-pane label="🤖 QQBot" name="qqbot" v-if="auth.isAdmin"><QqBotPane v-if="tab === 'qqbot'" /></el-tab-pane>
-      <el-tab-pane label="🧠 审核" name="ai-review" v-if="auth.isAdmin"><AiReviewPane v-if="tab === 'ai-review'" /></el-tab-pane>
-      <el-tab-pane label="📊 AI 日志" name="ai-usage" v-if="auth.isAdmin"><AiUsagePane v-if="tab === 'ai-usage'" /></el-tab-pane>
-      <el-tab-pane label="✨ AI 额度" name="ai-quota" v-if="auth.isAdmin"><AiQuotaPane v-if="tab === 'ai-quota'" /></el-tab-pane>
+      <el-tab-pane label="✨ AI 管理" name="ai" v-if="auth.isAdmin"><AiManagementPane v-if="tab === 'ai'" /></el-tab-pane>
       <el-tab-pane label="🗄 数据备份" name="database" v-if="auth.isAdmin"><DatabasePane v-if="tab === 'database'" /></el-tab-pane>
       <el-tab-pane label="🗂 媒体存储" name="media-storage" v-if="auth.isAdmin"><MediaStoragePane v-if="tab === 'media-storage'" /></el-tab-pane>
       <el-tab-pane label="📦 文件收集" name="filestore-settings" v-if="auth.isAdmin"><FilestoreSettingsPane v-if="tab === 'filestore-settings'" /></el-tab-pane>
@@ -118,9 +116,7 @@ const EpayPane = defineAsyncComponent(() => import("./EpayPane.vue"));
 const MarketPane = defineAsyncComponent(() => import("./MarketPane.vue"));
 const SponsorPane = defineAsyncComponent(() => import("./SponsorPane.vue"));
 const QqBotPane = defineAsyncComponent(() => import("./QqBotPane.vue"));
-const AiReviewPane = defineAsyncComponent(() => import("./AiReviewPane.vue"));
-const AiUsagePane = defineAsyncComponent(() => import("./AiUsagePane.vue"));
-const AiQuotaPane = defineAsyncComponent(() => import("./AiQuotaPane.vue"));
+const AiManagementPane = defineAsyncComponent(() => import("./AiManagementPane.vue"));
 const DatabasePane = defineAsyncComponent(() => import("./DatabasePane.vue"));
 const MediaStoragePane = defineAsyncComponent(() => import("./MediaStoragePane.vue"));
 const FilestoreSettingsPane = defineAsyncComponent(() => import("./FilestoreSettingsPane.vue"));
@@ -152,8 +148,12 @@ function allowedAdminTab(value: string) {
   return isCoreStaff.value;
 }
 
+function normalizeAdminTab(value: string) {
+  return ["ai-review", "ai-usage", "ai-quota"].includes(value) ? "ai" : value;
+}
+
 function defaultAdminTab() {
-  const requested = typeof route.query.tab === "string" ? route.query.tab : "";
+  const requested = typeof route.query.tab === "string" ? normalizeAdminTab(route.query.tab) : "";
   if (requested && allowedAdminTab(requested)) return requested;
   if (canManageUsers.value) return "users";
   if (canManageLostFound.value) return "lost-found";
@@ -310,8 +310,9 @@ function requestMessage(error: unknown) {
 }
 
 watch(() => route.query.tab, (next) => {
-  if (typeof next === "string" && next && next !== tab.value && allowedAdminTab(next)) {
-    tab.value = next;
+  const normalized = typeof next === "string" ? normalizeAdminTab(next) : "";
+  if (normalized && normalized !== tab.value && allowedAdminTab(normalized)) {
+    tab.value = normalized;
   }
 });
 
