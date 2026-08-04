@@ -127,7 +127,21 @@ export const sweepReplacedFiles = async (): Promise<void> => {
 const startMenuDir = (): string =>
   path.join(app.getPath("appData"), "Microsoft", "Windows", "Start Menu", "Programs");
 
-const writeShortcuts = (exePath: string): void => {
+// Early installers used productName ("药大拾间桌面端") while the current installer uses
+// windowTitle ("药大拾间"). Both links target the same executable, but Windows presents
+// them as two apps. Remove every known alias during upgrade/uninstall and keep one entry.
+const shortcutNames = Array.from(new Set([branding.windowTitle, branding.productName]));
+
+const removeKnownShortcuts = async (): Promise<void> => {
+  for (const dir of [app.getPath("desktop"), startMenuDir()]) {
+    for (const name of shortcutNames) {
+      await rm(path.join(dir, `${name}.lnk`), { force: true }).catch(() => undefined);
+    }
+  }
+};
+
+const writeShortcuts = async (exePath: string): Promise<void> => {
+  await removeKnownShortcuts();
   const options = {
     target: exePath,
     cwd: path.dirname(exePath),
@@ -277,7 +291,7 @@ const runInstall = async (report: (p: Progress) => void): Promise<InstallResult>
   if (!result.ok) return result;
 
   report({ percent: 92, text: "正在创建快捷方式" });
-  writeShortcuts(exePath);
+  await writeShortcuts(exePath);
 
   report({ percent: 96, text: "正在注册卸载信息" });
   await writeUninstallEntry(exePath, to, result.bytes ?? 0);
@@ -295,9 +309,7 @@ export const runUninstall = async (): Promise<void> => {
   // 本地存着校园网密码、学习通账号密码与登录凭据，卸载必须一并清掉
   const data = app.getPath("userData");
   await reg(["delete", UNINSTALL_KEY, "/f"]);
-  for (const base of [app.getPath("desktop"), startMenuDir()]) {
-    await rm(path.join(base, `${branding.windowTitle}.lnk`), { force: true }).catch(() => undefined);
-  }
+  await removeKnownShortcuts();
   // 必须整条命令交给 shell：`&` 与 `>` 若作为独立 argv 传给 cmd.exe，
   // Node 会把它们当普通参数加引号，链接与重定向双双失效，rmdir 根本不会执行。
   const child = spawn(

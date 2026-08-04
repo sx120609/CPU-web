@@ -25,4 +25,15 @@ assert.match(
 );
 assert.match(selfInstall, /旧版本仍在运行，暂时无法安全更新/, "旧版无法退出时必须中止覆盖并明确提示");
 
-console.log("Windows 安装检查通过：portable 高 DPI 预热与旧进程退出确认均已覆盖。");
+assert.match(
+  selfInstall,
+  /shortcutNames = Array\.from\(new Set\(\[branding\.windowTitle, branding\.productName\]\)\)/,
+  "升级时必须识别当前与旧版两种快捷方式名称"
+);
+assert.match(
+  selfInstall,
+  /const writeShortcuts = async[\s\S]*await removeKnownShortcuts\(\)[\s\S]*branding\.windowTitle/,
+  "创建规范快捷方式前必须清理旧版重复入口"
+);
+
+console.log("Windows 安装检查通过：portable 高 DPI 预热、旧进程退出确认与快捷方式迁移均已覆盖。");
