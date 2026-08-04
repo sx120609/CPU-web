@@ -4,7 +4,7 @@ import path from "node:path";
 import { config } from "../config";
 import { Errors, ok } from "../utils/response";
 import { withCache } from "../services/cache";
-import { getFeatures, getSiteConfig, getSiteFilingNumber, getSiteOrigin, getTopNavigation } from "../services/siteSettings";
+import { getFeatures, getLearningPlatformAvailability, getSiteConfig, getSiteFilingNumber, getSiteOrigin, getTopNavigation } from "../services/siteSettings";
 import {
   hasPdsShare,
   parseDesktopVersionFromFileName,
@@ -38,6 +38,12 @@ siteRouter.get("/config", async (_req, res, next) => {
       siteFilingNumber: getSiteFilingNumber(),
     })));
   } catch (e) { next(e); }
+});
+
+/** 公开：桌面端网课平台可用状态。只包含布尔开关，不暴露管理配置。 */
+siteRouter.get("/learning-platforms", (_req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  ok(res, getLearningPlatformAvailability());
 });
 
 /**

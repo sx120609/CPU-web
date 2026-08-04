@@ -12,6 +12,7 @@ export type SiteConfig = {
     pointMultiplier: number;
   }>;
   learningAssistantAccessMode: "guest-unlimited" | "account-quota";
+  learningPlatforms: LearningPlatformAvailability;
   aiReviewEnabled: boolean;
   aiReviewProvider: string;
   aiReviewApiUrl: string;
@@ -67,6 +68,11 @@ export type SiteConfig = {
   reputationLevels: Array<{ level: number; name: string; minReputation: number }>;
   assistantDailyQuotas: Array<{ level: number; quota: number }>;
 };
+
+export type LearningPlatformAvailability = Record<
+  "chaoxing" | "zhihuishu" | "icve" | "zjy" | "icourse" | "yuketang",
+  boolean
+>;
 
 export type AiModelCatalog = {
   endpoint: string;
@@ -806,6 +812,7 @@ export const adminApi = {
     learningAssistantModel?: string;
     learningAssistantTiers?: SiteConfig["learningAssistantTiers"];
     learningAssistantAccessMode?: "guest-unlimited" | "account-quota";
+    learningPlatforms?: LearningPlatformAvailability;
     aiReviewEnabled?: boolean;
     aiReviewProvider?: string;
     aiReviewApiUrl?: string;

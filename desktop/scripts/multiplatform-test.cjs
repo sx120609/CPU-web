@@ -118,6 +118,10 @@ assert.match(pageActions, /Network\.enable/);
 assert.match(pageActions, /Network\.getResponseBody/);
 assert.match(pageActions, /waitForResponse/);
 assert.match(pageActions, /executeJavaScript\(selectorScript/);
+assert.match(main, /\/api\/site\/learning-platforms/, "客户端必须从服务端读取网课平台启停状态");
+assert.match(main, /if \(!availability\[platformId\]\)/, "被停用的平台必须阻止脚本注入");
+assert.match(main, /userscript:request-ai[\s\S]*getLearningPlatformAvailability/, "被停用的平台必须阻止 AI 解题请求");
+assert.match(shellRenderer, /platform\.enabled === false/, "平台选择面板必须展示管理员停用状态");
 assert.match(learningPreload, /MutationObserver/, "动态登录弹窗出现后也应识别密码框");
 
 console.log("多平台助手检查通过：六个平台、CPU AI、统一截图搜题、提交保护、平台入口与加密凭据均已覆盖。");

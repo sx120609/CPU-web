@@ -188,16 +188,49 @@
         </div>
       </div>
     </section>
+
+    <section class="settings-card" v-loading="configLoading">
+      <div class="section-head">
+        <div>
+          <h3 class="section-title">桌面端网课平台</h3>
+          <p class="section-desc">可以单独暂停某个平台。关闭后客户端入口会标记为“暂时停用”，并阻止打开页面、注入助手与调用解题 AI。</p>
+        </div>
+        <div class="section-meta">当前开放 {{ enabledLearningPlatformCount }} / {{ learningPlatformMeta.length }}</div>
+      </div>
+
+      <div class="feature-grid">
+        <div v-for="platform in learningPlatformMeta" :key="platform.key" class="feature-row">
+          <div class="feature-head">
+            <div class="left">
+              <div class="card-title"><span class="icon">{{ platform.icon }}</span> {{ platform.title }}</div>
+              <div class="desc">{{ platform.desc }}</div>
+            </div>
+            <el-switch
+              :model-value="learningPlatforms[platform.key]"
+              :loading="pendingLearningPlatformKey === platform.key"
+              size="large"
+              inline-prompt
+              active-text="开"
+              inactive-text="关"
+              :disabled="configLoading || Boolean(loadError) || pendingLearningPlatformKey !== null"
+              @change="(v: boolean | string | number) => toggleLearningPlatform(platform.key, Boolean(v))"
+            />
+          </div>
+          <div class="paths">影响范围：<code>客户端入口 · 页面注入 · AI 解题</code></div>
+        </div>
+      </div>
+    </section>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, reactive, ref, onMounted } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { adminApi } from "@/api/admin";
+import { adminApi, type LearningPlatformAvailability } from "@/api/admin";
 import { useSiteStore } from "@/stores/site";
 
 type FKey = "forum" | "market" | "coursereview" | "electric" | "sponsor";
+type LearningPlatformKey = keyof LearningPlatformAvailability;
 
 const site = useSiteStore();
 const loading = ref(false);
@@ -205,6 +238,7 @@ const configLoading = ref(false);
 const loadError = ref("");
 const savingConfig = ref(false);
 const pendingKey = ref<FKey | null>(null);
+const pendingLearningPlatformKey = ref<LearningPlatformKey | null>(null);
 const aiConfigExpanded = ref(false);
 const aiPromptsExpanded = ref(false);
 const trustConfigExpanded = ref(false);
@@ -252,7 +286,16 @@ const reputationLevels = ref([
 const features = reactive<{ forum: boolean; market: boolean; coursereview: boolean; electric: boolean; sponsor: boolean }>({
   forum: true, market: true, coursereview: true, electric: true, sponsor: true,
 });
+const learningPlatforms = reactive<LearningPlatformAvailability>({
+  chaoxing: true,
+  zhihuishu: true,
+  icve: true,
+  zjy: true,
+  icourse: true,
+  yuketang: true,
+});
 const enabledFeatureCount = computed(() => featureMeta.filter((item) => features[item.key]).length);
+const enabledLearningPlatformCount = computed(() => learningPlatformMeta.filter((item) => learningPlatforms[item.key]).length);
 let featureLoadSeq = 0;
 
 const featureMeta: { key: FKey; icon: string; title: string; desc: string; paths: string[] }[] = [
@@ -283,6 +326,15 @@ const featureMeta: { key: FKey; icon: string; title: string; desc: string; paths
   },
 ];
 
+const learningPlatformMeta: Array<{ key: LearningPlatformKey; icon: string; title: string; desc: string }> = [
+  { key: "chaoxing", icon: "学习", title: "超星学习通", desc: "继续使用药大拾间专用学习通助手。" },
+  { key: "zhihuishu", icon: "智慧", title: "知到智慧树", desc: "共享课、视频与作业。" },
+  { key: "icve", icon: "职教", title: "智慧职教 / MOOC", desc: "职教课程、视频与测验。" },
+  { key: "zjy", icon: "职教", title: "职教云", desc: "职教云课程与作业。" },
+  { key: "icourse", icon: "大学", title: "中国大学 MOOC", desc: "课程视频、测验与作业。" },
+  { key: "yuketang", icon: "雨课", title: "雨课堂", desc: "课程、视频与课堂任务。" },
+];
+
 onMounted(reload);
 
 async function reload() {
@@ -300,6 +352,7 @@ async function reload() {
     site.apply(r);
     siteOrigin.value = config.siteOrigin;
     siteFilingNumber.value = config.siteFilingNumber;
+    Object.assign(learningPlatforms, config.learningPlatforms);
     aiReviewEnabled.value = config.aiReviewEnabled;
     aiReviewProvider.value = config.aiReviewProvider;
     aiReviewModel.value = config.aiReviewModel;
@@ -477,6 +530,38 @@ async function toggle(key: FKey, on: boolean) {
   } finally { pendingKey.value = null; }
 }
 
+async function toggleLearningPlatform(key: LearningPlatformKey, on: boolean) {
+  if (pendingLearningPlatformKey.value !== null || configLoading.value || loadError.value) {
+    learningPlatforms[key] = !on;
+    return;
+  }
+  pendingLearningPlatformKey.value = key;
+  if (!on) {
+    const title = learningPlatformMeta.find((item) => item.key === key)?.title || key;
+    const confirmed = await ElMessageBox.confirm(
+      `确认暂时停用「${title}」？\n客户端将不再允许打开或运行这个平台的助手。`,
+      "确认停用平台",
+      { type: "warning", confirmButtonText: "停用", cancelButtonText: "取消" }
+    ).then(() => true).catch(() => false);
+    if (!confirmed) {
+      learningPlatforms[key] = !on;
+      pendingLearningPlatformKey.value = null;
+      return;
+    }
+  }
+  try {
+    const config = await adminApi.updateSiteConfig({
+      learningPlatforms: { ...learningPlatforms, [key]: on },
+    });
+    Object.assign(learningPlatforms, config.learningPlatforms);
+    ElMessage.success(on ? "平台已开放" : "平台已停用");
+  } catch {
+    learningPlatforms[key] = !on;
+  } finally {
+    pendingLearningPlatformKey.value = null;
+  }
+}
+
 function requestMessage(error: unknown) {
   if (typeof error !== "object" || error === null) return "";
   const responseMessage = (error as { response?: { data?: { message?: unknown } } }).response?.data?.message;
@@ -613,6 +698,7 @@ function requestMessage(error: unknown) {
   font-size: 12px;
   color: var(--cpu-text-muted);
 }
+
 .section-toggle,
 .sub-toggle {
   width: 100%;

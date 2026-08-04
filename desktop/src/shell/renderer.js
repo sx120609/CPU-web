@@ -364,6 +364,7 @@ const renderLearningPlatforms = (state) => {
   for (const platform of state) {
     const card = document.createElement("article");
     card.className = "platform-option";
+    card.dataset.disabled = platform.enabled === false ? "true" : "false";
 
     const open = document.createElement("button");
     open.type = "button";
@@ -371,7 +372,10 @@ const renderLearningPlatforms = (state) => {
     open.innerHTML = `<span class="platform-mark"></span><span class="platform-copy"><span class="platform-name"></span><span class="platform-description"></span></span><span class="platform-arrow">›</span>`;
     open.querySelector(".platform-mark").textContent = platformMark(platform.short || platform.name);
     open.querySelector(".platform-name").textContent = platform.name;
-    open.querySelector(".platform-description").textContent = platform.description;
+    open.querySelector(".platform-description").textContent = platform.enabled === false
+      ? "管理员已暂时停用"
+      : platform.description;
+    open.disabled = platform.enabled === false;
     open.addEventListener("click", async () => {
       open.disabled = true;
       const dialog = el("platform-dialog");
@@ -397,6 +401,7 @@ const renderLearningPlatforms = (state) => {
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
     checkbox.checked = Boolean(platform.remember);
+    checkbox.disabled = platform.enabled === false;
     const rememberText = document.createElement("span");
     rememberText.textContent = "记住此平台账号密码";
     remember.append(checkbox, rememberText);
@@ -414,7 +419,9 @@ const renderLearningPlatforms = (state) => {
     });
     const saved = document.createElement("p");
     saved.className = "platform-saved";
-    saved.textContent = platform.remember
+    saved.textContent = platform.enabled === false
+      ? "该平台恢复开放后可继续使用已保存凭据"
+      : platform.remember
       ? (platform.hasCredential ? `已保存账号 ${platform.account}` : "登录时会自动保存账号密码")
       : "未启用密码保存";
     credential.append(remember, saved);

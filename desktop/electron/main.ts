@@ -136,6 +136,11 @@ type LearningAssistantPolicy = {
   answerModes: Array<{ key: "low" | "high" | "max"; label: string; pointMultiplier: number }>;
 };
 let learningAssistantPolicyCache: { policy: LearningAssistantPolicy; expiresAt: number } | undefined;
+type LearningPlatformAvailability = Record<LearningPlatformId, boolean>;
+const defaultLearningPlatformAvailability = Object.fromEntries(
+  learningPlatforms.map((platform) => [platform.id, true])
+) as LearningPlatformAvailability;
+let learningPlatformAvailabilityCache: { value: LearningPlatformAvailability; expiresAt: number } | undefined;
 
 const recordScriptActivity = (entry: ScriptActivity): void => {
   scriptActivity.push(entry);
@@ -183,6 +188,30 @@ const getLearningAssistantPolicy = async (force = false): Promise<LearningAssist
     return policy;
   } catch {
     return fallback;
+  }
+};
+
+const getLearningPlatformAvailability = async (force = false): Promise<LearningPlatformAvailability> => {
+  if (!force && learningPlatformAvailabilityCache && learningPlatformAvailabilityCache.expiresAt > Date.now()) {
+    return learningPlatformAvailabilityCache.value;
+  }
+  try {
+    const response = await fetch(new URL("/api/site/learning-platforms", oauthConfig.origin).toString(), {
+      headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(10000),
+      cache: "no-store",
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const payload = await response.json() as { data?: Partial<LearningPlatformAvailability> };
+    const remote = payload.data ?? {};
+    const value = Object.fromEntries(learningPlatforms.map((platform) => [
+      platform.id,
+      typeof remote[platform.id] === "boolean" ? remote[platform.id] : true,
+    ])) as LearningPlatformAvailability;
+    learningPlatformAvailabilityCache = { value, expiresAt: Date.now() + 15_000 };
+    return value;
+  } catch {
+    return learningPlatformAvailabilityCache?.value ?? { ...defaultLearningPlatformAvailability };
   }
 };
 
@@ -651,6 +680,19 @@ const injectMatchingScripts = async (contents: Electron.WebContents): Promise<vo
   const currentUrl = contents.getURL();
   // 上一页发放的票据在这里作废
   revokeGrants(contents.id);
+  const platformId = contentsLearningPlatform.get(contents.id);
+  if (platformId) {
+    const availability = await getLearningPlatformAvailability();
+    if (!availability[platformId]) {
+      const platform = learningPlatforms.find((item) => item.id === platformId);
+      recordScriptActivity({
+        at: Date.now(),
+        kind: "status",
+        text: `${platform?.name ?? "当前网课平台"}已由管理员暂时停用，助手不会在此页面运行`,
+      });
+      return;
+    }
+  }
   // 配置必须在注入前就绪：脚本在构造时对配置做快照，之后再改对一半的项无效
   const { scriptConfig } = await readPreferences();
   const learningPolicy = await getLearningAssistantPolicy();
@@ -1055,6 +1097,11 @@ const openLearningPage = async (requestedPlatform: unknown = "chaoxing"): Promis
     : undefined;
   const url = platformId ? learningPlatformUrl(platformId) : undefined;
   if (!platformId || !url) throw new Error("不支持这个网课平台");
+  const availability = await getLearningPlatformAvailability(true);
+  if (!availability[platformId]) {
+    const platform = learningPlatforms.find((item) => item.id === platformId);
+    throw new Error(`${platform?.name ?? "这个网课平台"}当前已由管理员暂时停用`);
+  }
   const policy = await getLearningAssistantPolicy();
   if (policy.requiresLogin) {
     // 这里只判断 token，没必要为了开标签再拉一次资料
@@ -1479,10 +1526,12 @@ if (installMode || uninstallMode) {
 
     const learningCredentialState = async () => {
       const preferences = await readPreferences();
+      const availability = await getLearningPlatformAvailability(true);
       return Promise.all(learningPlatforms.map(async (platform) => {
         const credential = await readLearningCredential(platform.id);
         return {
           ...platform,
+          enabled: availability[platform.id],
           remember: platformRemembered(preferences, platform.id),
           hasCredential: Boolean(credential),
           account: credential ? maskLearningAccount(credential.account) : "",
@@ -1743,6 +1792,11 @@ if (installMode || uninstallMode) {
 
     ipcMain.handle("userscript:request-ai", async (event, nonce: unknown, body: unknown) => {
       await authorize(event, nonce);
+      const platformId = contentsLearningPlatform.get(event.sender.id);
+      if (platformId && !(await getLearningPlatformAvailability())[platformId]) {
+        const platform = learningPlatforms.find((item) => item.id === platformId);
+        throw new Error(`${platform?.name ?? "当前网课平台"}已由管理员暂时停用`);
+      }
       if (typeof body !== "string") throw new Error("AI 请求格式无效");
       const payload = sanitizeAiBody(body);
       const policy = await getLearningAssistantPolicy();

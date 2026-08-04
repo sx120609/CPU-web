@@ -97,8 +97,8 @@
             </label>
             <label>
               <span>推理强度</span>
-              <el-select v-model="form.learningAssistantTiers[tier.key].reasoningEffort" disabled>
-                <el-option :label="tier.effortLabel" :value="tier.key" />
+              <el-select v-model="form.learningAssistantTiers[tier.key].reasoningEffort">
+                <el-option v-for="effort in reasoningEffortOptions" :key="effort.value" :label="effort.label" :value="effort.value" />
               </el-select>
             </label>
             <label>
@@ -523,9 +523,14 @@ const modelAssignments = [
   { key: "videoReviewModel", label: "视频审核", description: "关键帧、音轨与上下文审核" },
 ] as const;
 const learningTierAssignments = [
-  { key: "low", label: "快速判断", effortLabel: "低", description: "常规题目与快速作答" },
-  { key: "high", label: "深入分析", effortLabel: "高", description: "计算题与复杂推导" },
-  { key: "max", label: "挑战难题", effortLabel: "最高", description: "高难题与多步骤核验" },
+  { key: "low", label: "快速判断", description: "常规题目与快速作答" },
+  { key: "high", label: "深入分析", description: "计算题与复杂推导" },
+  { key: "max", label: "挑战难题", description: "高难题与多步骤核验" },
+] as const;
+const reasoningEffortOptions = [
+  { value: "low", label: "低" },
+  { value: "high", label: "高" },
+  { value: "max", label: "最高" },
 ] as const;
 const form = reactive<SiteConfig>({
   siteOrigin: "",
@@ -538,6 +543,14 @@ const form = reactive<SiteConfig>({
     max: { model: "gpt-5.6-terra", reasoningEffort: "max", pointMultiplier: 2 },
   },
   learningAssistantAccessMode: "guest-unlimited",
+  learningPlatforms: {
+    chaoxing: true,
+    zhihuishu: true,
+    icve: true,
+    zjy: true,
+    icourse: true,
+    yuketang: true,
+  },
   aiReviewEnabled: false,
   aiReviewProvider: "deepseek",
   aiReviewApiUrl: "https://api.deepseek.com/chat/completions",

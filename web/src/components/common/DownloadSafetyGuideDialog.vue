@@ -2,22 +2,57 @@
   <el-dialog
     :model-value="modelValue"
     :title="platform === 'windows' ? 'Windows 下载提示' : '安卓/鸿蒙下载提示'"
-    width="min(620px, calc(100vw - 32px))"
+    width="min(680px, calc(100vw - 32px))"
     append-to-body
     class="download-guide-dialog"
     @update:model-value="emit('update:modelValue', $event)"
   >
     <div v-if="platform === 'windows'" class="download-guide-content">
       <p>
-        Edge 第一次遇到新的安装包时，可能会显示“通常不会下载”或 SmartScreen 安全检查。
-        这是浏览器对未签名新文件的提醒，不代表下载失败。
+        Edge 第一次遇到新的安装包时，可能会连续显示两层安全提醒。
+        <strong>先处理“通常不会下载”，再处理“打开前请确保信任”</strong>；看到提醒不代表下载失败。
       </p>
 
-      <section class="edge-keep-card" aria-label="Edge 保留下载操作示意">
-        <div class="edge-keep-head">
-          <strong>最容易漏掉的一步</strong>
-          <span>不要直接点击“删除”</span>
+      <section class="edge-stage" aria-label="第一层：通常不会下载">
+        <div class="edge-stage-heading">
+          <span class="edge-stage-number">1</span>
+          <div>
+            <strong>先找到“通常不会下载”</strong>
+            <small>这是下载列表里的第一层提醒</small>
+          </div>
         </div>
+
+        <div class="edge-warning-mock">
+          <span class="edge-warning-mark" aria-hidden="true">!</span>
+          <span class="edge-warning-copy">
+            <strong>通常不会下载 药大拾间桌面端…安装版.exe</strong>
+            <small>请在打开前确保信任正在下载的文件或其源。</small>
+          </span>
+          <span class="edge-more-button" aria-label="更多操作">…</span>
+        </div>
+
+        <div class="edge-action-tip">
+          <strong>把鼠标移到这条下载记录上</strong>，点击右侧的 <b>…</b>，然后选择<strong>“保留”</strong>。
+        </div>
+        <div class="edge-keep-path" aria-label="第一层操作顺序">
+          <span>通常不会下载</span><i aria-hidden="true">→</i><span>… 更多操作</span><i aria-hidden="true">→</i><span>保留</span>
+        </div>
+      </section>
+
+      <div class="edge-stage-connector">
+        <span aria-hidden="true">↓</span>
+        <strong>完成第一层后，Edge 才会显示下面的确认界面</strong>
+      </div>
+
+      <section class="edge-stage" aria-label="第二层：打开前请确保信任">
+        <div class="edge-stage-heading">
+          <span class="edge-stage-number">2</span>
+          <div>
+            <strong>再处理“打开前请确保信任”</strong>
+            <small>不要直接点击“删除”</small>
+          </div>
+        </div>
+
         <div class="edge-download-mock">
           <span class="edge-file-mark" aria-hidden="true">↓</span>
           <span class="edge-file-name">药大拾间桌面端…安装版.exe</span>
@@ -28,23 +63,24 @@
         </div>
         <div class="edge-arrow-tip">
           <span aria-hidden="true">↑</span>
-          <strong>先点“删除”右边这一小格里的向下箭头</strong>
+          <strong>点“删除”右侧独立小格里的向下箭头，不要点“删除”文字</strong>
         </div>
-        <div class="edge-keep-path" aria-label="操作顺序">
-          <span>小箭头 ⌄</span><i aria-hidden="true">→</i><span>保留</span><i aria-hidden="true">→</i><span>仍然保留</span>
+        <div class="edge-keep-path" aria-label="第二层操作顺序">
+          <span>删除右侧小箭头 ⌄</span><i aria-hidden="true">→</i><span>保留</span><i aria-hidden="true">→</i><span>仍然保留</span>
         </div>
       </section>
 
       <ol>
         <li>点击 Edge 右上角带黄色警告的“下载”图标；找不到时可按 <kbd>Ctrl</kbd> + <kbd>J</kbd>。</li>
-        <li>找到安装包，在它右下角点击<strong>“删除”按钮最右侧的小箭头 ⌄</strong>，不要点“删除”文字本身。</li>
-        <li>在展开的菜单中点<strong>“保留”</strong>；下一层确认页再点<strong>“仍然保留”</strong>。</li>
+        <li>在<strong>“通常不会下载”</strong>的记录上点击右侧<strong>“…”</strong>，选择<strong>“保留”</strong>。</li>
+        <li>出现<strong>“打开前请确保信任”</strong>后，点击“删除”右侧的小箭头，再按页面提示选择<strong>“保留”或“仍然保留”</strong>。</li>
         <li>安装时若出现“Windows 已保护你的电脑”，依次点击“更多信息”→“仍要运行”。</li>
       </ol>
 
       <p class="download-guide-note">
         操作前请核对下载页面来自 <code>cpu.lizmt.cn</code>，文件名应以“药大拾间桌面端”或
-        “CPU-Web-Desktop”开头。浏览器界面会随 Edge 版本略有变化，但入口都在该文件的警告菜单中。
+        “CPU-Web-Desktop”开头。Edge 不同版本的按钮位置可能略有变化，但顺序都是
+        <strong>“通常不会下载”→“保留”→二次确认</strong>。
       </p>
     </div>
 
@@ -96,26 +132,134 @@ const emit = defineEmits<{ (event: "update:modelValue", value: boolean): void }>
 .download-guide-content li::marker { color: var(--cpu-primary); font-weight: 800; }
 .download-guide-content strong { color: var(--cpu-text); }
 
-.edge-keep-card {
+.edge-stage {
   display: grid;
-  gap: 10px;
+  gap: 11px;
   padding: 14px;
   border: 1px solid color-mix(in srgb, var(--cpu-primary) 28%, var(--cpu-border-soft));
   border-radius: 14px;
   background: color-mix(in srgb, var(--cpu-primary) 6%, var(--cpu-surface));
 }
 
-.edge-keep-head {
+.edge-stage-heading {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
 }
 
-.edge-keep-head span {
-  color: var(--cpu-danger, #c85d5d);
+.edge-stage-heading > div {
+  display: grid;
+  gap: 1px;
+}
+
+.edge-stage-heading small {
+  color: var(--cpu-text-muted);
   font-size: 12px;
-  font-weight: 700;
+}
+
+.edge-stage-number {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  background: var(--cpu-primary);
+  color: var(--cpu-on-primary, #fff);
+  font-weight: 800;
+}
+
+.edge-warning-mock {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 36px;
+  align-items: center;
+  gap: 10px;
+  min-height: 62px;
+  padding: 10px;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 11px;
+  background: var(--cpu-surface);
+}
+
+.edge-warning-mark,
+.edge-file-mark {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: var(--cpu-surface-soft);
+  color: var(--cpu-primary);
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.edge-warning-mark {
+  color: var(--cpu-warning, #b97920);
+}
+
+.edge-warning-copy {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.edge-warning-copy strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.edge-warning-copy small {
+  color: var(--cpu-text-muted);
+  font-size: 11px;
+}
+
+.edge-more-button {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--cpu-border);
+  border-radius: 9px;
+  background: var(--cpu-surface-soft);
+  color: var(--cpu-text);
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.edge-action-tip {
+  padding: 9px 11px;
+  border-radius: 9px;
+  background: var(--cpu-surface-soft);
+  color: var(--cpu-text-secondary);
+  font-size: 12px;
+}
+
+.edge-action-tip b {
+  display: inline-grid;
+  place-items: center;
+  min-width: 26px;
+  margin: 0 2px;
+  border: 1px solid var(--cpu-border);
+  border-radius: 6px;
+  background: var(--cpu-surface);
+  color: var(--cpu-text);
+  font-size: 16px;
+}
+
+.edge-stage-connector {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--cpu-primary-dark);
+  font-size: 12px;
+}
+
+.edge-stage-connector span {
+  font-size: 20px;
+  line-height: 1;
 }
 
 .edge-download-mock {
@@ -128,18 +272,6 @@ const emit = defineEmits<{ (event: "update:modelValue", value: boolean): void }>
   border: 1px solid var(--cpu-border-soft);
   border-radius: 11px;
   background: var(--cpu-surface);
-}
-
-.edge-file-mark {
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 9px;
-  background: var(--cpu-surface-soft);
-  color: var(--cpu-primary);
-  font-size: 20px;
-  font-weight: 800;
 }
 
 .edge-file-name {
@@ -237,8 +369,10 @@ kbd {
 }
 
 @media (max-width: 520px) {
-  .edge-keep-head { align-items: flex-start; flex-direction: column; gap: 2px; }
+  .edge-warning-mock { grid-template-columns: 30px minmax(0, 1fr) 34px; }
+  .edge-warning-copy small { display: none; }
   .edge-download-mock { grid-template-columns: 30px minmax(0, 1fr); }
   .edge-delete-button { grid-column: 1 / -1; justify-self: end; }
+  .edge-arrow-tip { justify-content: flex-start; }
 }
 </style>

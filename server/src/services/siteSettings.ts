@@ -42,12 +42,15 @@ export type AssistantDailyQuotaConfig = {
 };
 export type LearningAssistantAccessMode = "guest-unlimited" | "account-quota";
 export type LearningAssistantTierKey = "low" | "high" | "max";
+export type LearningAssistantReasoningEffort = "low" | "high" | "max";
 export type LearningAssistantTierConfig = {
   model: string;
-  reasoningEffort: LearningAssistantTierKey;
+  reasoningEffort: LearningAssistantReasoningEffort;
   pointMultiplier: number;
 };
 export type LearningAssistantTiersConfig = Record<LearningAssistantTierKey, LearningAssistantTierConfig>;
+export type LearningPlatformKey = "chaoxing" | "zhihuishu" | "icve" | "zjy" | "icourse" | "yuketang";
+export type LearningPlatformAvailability = Record<LearningPlatformKey, boolean>;
 export type SiteConfig = {
   siteOrigin: string;
   siteFilingNumber: string;
@@ -55,6 +58,7 @@ export type SiteConfig = {
   learningAssistantModel: string;
   learningAssistantTiers: LearningAssistantTiersConfig;
   learningAssistantAccessMode: LearningAssistantAccessMode;
+  learningPlatforms: LearningPlatformAvailability;
   aiReviewEnabled: boolean;
   aiReviewProvider: string;
   aiReviewApiUrl: string;
@@ -165,6 +169,15 @@ export const DEFAULT_LEARNING_ASSISTANT_TIERS: LearningAssistantTiersConfig = {
   high: { model: DEFAULT_CAMPUS_ASSISTANT_MODEL, reasoningEffort: "high", pointMultiplier: 1.5 },
   max: { model: DEFAULT_CAMPUS_ASSISTANT_MODEL, reasoningEffort: "max", pointMultiplier: 2 },
 };
+export const ALL_LEARNING_PLATFORMS: LearningPlatformKey[] = ["chaoxing", "zhihuishu", "icve", "zjy", "icourse", "yuketang"];
+export const DEFAULT_LEARNING_PLATFORM_AVAILABILITY: LearningPlatformAvailability = {
+  chaoxing: true,
+  zhihuishu: true,
+  icve: true,
+  zjy: true,
+  icourse: true,
+  yuketang: true,
+};
 
 const GLOBAL_PINNED_TOPICS_KEY = "forum.globalPinnedTopics";
 const SITE_ORIGIN_KEY = "site.origin";
@@ -232,6 +245,7 @@ const REPUTATION_LEVELS_KEY = "forum.reputation.levels";
 const ASSISTANT_MODEL_KEY = "assistant.model";
 const LEARNING_ASSISTANT_MODEL_KEY = "assistant.learningModel";
 const LEARNING_ASSISTANT_TIERS_KEY = "assistant.learningTiers";
+const LEARNING_PLATFORM_AVAILABILITY_KEY = "desktop.learningPlatforms";
 const ASSISTANT_DAILY_QUOTAS_KEY = "assistant.dailyQuotas";
 const LEARNING_ASSISTANT_ACCESS_MODE_KEY = "assistant.learningAccessMode";
 export const DEFAULT_LEARNING_ASSISTANT_ACCESS_MODE: LearningAssistantAccessMode = "guest-unlimited";
@@ -382,6 +396,7 @@ const configCache: SiteConfig = {
   learningAssistantModel: DEFAULT_CAMPUS_ASSISTANT_MODEL,
   learningAssistantTiers: structuredClone(DEFAULT_LEARNING_ASSISTANT_TIERS),
   learningAssistantAccessMode: DEFAULT_LEARNING_ASSISTANT_ACCESS_MODE,
+  learningPlatforms: { ...DEFAULT_LEARNING_PLATFORM_AVAILABILITY },
   aiReviewEnabled: false,
   aiReviewProvider: "deepseek",
   aiReviewApiUrl: "https://api.deepseek.com/chat/completions",
@@ -594,6 +609,7 @@ export async function loadFeatures(): Promise<void> {
           ASSISTANT_MODEL_KEY,
           LEARNING_ASSISTANT_MODEL_KEY,
           LEARNING_ASSISTANT_TIERS_KEY,
+          LEARNING_PLATFORM_AVAILABILITY_KEY,
           ASSISTANT_DAILY_QUOTAS_KEY,
           LEARNING_ASSISTANT_ACCESS_MODE_KEY,
         ],
@@ -878,6 +894,10 @@ export async function loadFeatures(): Promise<void> {
       configCache.learningAssistantTiers = normalizeLearningAssistantTiers(r.value, configCache.learningAssistantModel);
       continue;
     }
+    if (r.key === LEARNING_PLATFORM_AVAILABILITY_KEY) {
+      configCache.learningPlatforms = normalizeLearningPlatformAvailability(r.value);
+      continue;
+    }
     if (r.key === ASSISTANT_DAILY_QUOTAS_KEY) {
       configCache.assistantDailyQuotas = normalizeAssistantDailyQuotas(r.value, DEFAULT_ASSISTANT_DAILY_QUOTAS);
       continue;
@@ -946,6 +966,7 @@ export function getSiteConfig(): SiteConfig {
   return {
     ...configCache,
     learningAssistantTiers: structuredClone(configCache.learningAssistantTiers),
+    learningPlatforms: { ...configCache.learningPlatforms },
     anonymousTiers: configCache.anonymousTiers.map((item) => ({ ...item })),
     reputationLevels: configCache.reputationLevels.map((item) => ({ ...item })),
     assistantDailyQuotas: configCache.assistantDailyQuotas.map((item) => ({ ...item })),
@@ -1274,15 +1295,30 @@ function normalizeLearningAssistantTiers(input: unknown, fallbackModel: string):
     const defaults = DEFAULT_LEARNING_ASSISTANT_TIERS[key];
     const model = String(raw.model || fallbackModel || defaults.model).trim().slice(0, 200) || defaults.model;
     const pointMultiplier = Number(raw.pointMultiplier);
+    const reasoningEffort = ["low", "high", "max"].includes(String(raw.reasoningEffort))
+      ? raw.reasoningEffort as LearningAssistantReasoningEffort
+      : defaults.reasoningEffort;
     return {
       model,
-      reasoningEffort: key,
+      reasoningEffort,
       pointMultiplier: Number.isFinite(pointMultiplier) && pointMultiplier >= 0.1 && pointMultiplier <= 20
         ? Math.round(pointMultiplier * 10) / 10
         : defaults.pointMultiplier,
     };
   };
   return { low: normalizeTier("low"), high: normalizeTier("high"), max: normalizeTier("max") };
+}
+
+function normalizeLearningPlatformAvailability(input: unknown): LearningPlatformAvailability {
+  let source: unknown = input;
+  if (typeof input === "string") {
+    try { source = JSON.parse(input); } catch { source = null; }
+  }
+  const record = source && typeof source === "object" ? source as Record<string, unknown> : {};
+  return Object.fromEntries(ALL_LEARNING_PLATFORMS.map((key) => [
+    key,
+    typeof record[key] === "boolean" ? record[key] : DEFAULT_LEARNING_PLATFORM_AVAILABILITY[key],
+  ])) as LearningPlatformAvailability;
 }
 
 export function normalizeLearningAssistantAccessMode(input: unknown): LearningAssistantAccessMode {
@@ -1675,6 +1711,26 @@ export async function setLearningAssistantTiers(input: unknown): Promise<SiteCon
     update: { value: learningAssistantTiers.low.model },
     create: { key: LEARNING_ASSISTANT_MODEL_KEY, value: learningAssistantTiers.low.model },
   });
+  await broadcastSiteSettingsReload();
+  return getSiteConfig();
+}
+
+export function getLearningPlatformAvailability(): LearningPlatformAvailability {
+  return { ...configCache.learningPlatforms };
+}
+
+export function isLearningPlatformEnabled(platform: LearningPlatformKey): boolean {
+  return configCache.learningPlatforms[platform];
+}
+
+export async function setLearningPlatformAvailability(input: unknown): Promise<SiteConfig> {
+  const learningPlatforms = normalizeLearningPlatformAvailability(input);
+  await prisma.siteSetting.upsert({
+    where: { key: LEARNING_PLATFORM_AVAILABILITY_KEY },
+    update: { value: JSON.stringify(learningPlatforms) },
+    create: { key: LEARNING_PLATFORM_AVAILABILITY_KEY, value: JSON.stringify(learningPlatforms) },
+  });
+  configCache.learningPlatforms = learningPlatforms;
   await broadcastSiteSettingsReload();
   return getSiteConfig();
 }

@@ -30,6 +30,7 @@ import {
   setLearningAssistantModel,
   setLearningAssistantTiers,
   setLearningAssistantAccessMode,
+  setLearningPlatformAvailability,
   setCommunityTrustConfig,
   setSiteOrigin,
   setTopNavigation,
@@ -2104,9 +2105,17 @@ const siteConfigPatchSchema = z.object({
   assistantModel: z.string().trim().min(1).max(80).optional(),
   learningAssistantModel: z.string().trim().min(1).max(80).optional(),
   learningAssistantTiers: z.object({
-    low: z.object({ model: z.string().trim().min(1).max(200), reasoningEffort: z.literal("low"), pointMultiplier: z.number().min(0.1).max(20) }),
-    high: z.object({ model: z.string().trim().min(1).max(200), reasoningEffort: z.literal("high"), pointMultiplier: z.number().min(0.1).max(20) }),
-    max: z.object({ model: z.string().trim().min(1).max(200), reasoningEffort: z.literal("max"), pointMultiplier: z.number().min(0.1).max(20) }),
+    low: z.object({ model: z.string().trim().min(1).max(200), reasoningEffort: z.enum(["low", "high", "max"]), pointMultiplier: z.number().min(0.1).max(20) }),
+    high: z.object({ model: z.string().trim().min(1).max(200), reasoningEffort: z.enum(["low", "high", "max"]), pointMultiplier: z.number().min(0.1).max(20) }),
+    max: z.object({ model: z.string().trim().min(1).max(200), reasoningEffort: z.enum(["low", "high", "max"]), pointMultiplier: z.number().min(0.1).max(20) }),
+  }).optional(),
+  learningPlatforms: z.object({
+    chaoxing: z.boolean(),
+    zhihuishu: z.boolean(),
+    icve: z.boolean(),
+    zjy: z.boolean(),
+    icourse: z.boolean(),
+    yuketang: z.boolean(),
   }).optional(),
   learningAssistantAccessMode: z.enum(["guest-unlimited", "account-quota"]).optional(),
   aiReviewEnabled: z.boolean().optional(),
@@ -2262,6 +2271,9 @@ adminRouter.patch("/site-config", adminOnly, validate(siteConfigPatchSchema), as
     }
     if (req.body.learningAssistantAccessMode !== undefined) {
       await setLearningAssistantAccessMode(req.body.learningAssistantAccessMode);
+    }
+    if (req.body.learningPlatforms !== undefined) {
+      await setLearningPlatformAvailability(req.body.learningPlatforms);
     }
     if (req.body.siteOrigin !== undefined) {
       await setSiteOrigin(req.body.siteOrigin ?? "");
