@@ -6,6 +6,11 @@ export type SiteConfig = {
   siteFilingNumber: string;
   assistantModel: string;
   learningAssistantModel: string;
+  learningAssistantTiers: Record<"low" | "high" | "max", {
+    model: string;
+    reasoningEffort: "low" | "high" | "max";
+    pointMultiplier: number;
+  }>;
   learningAssistantAccessMode: "guest-unlimited" | "account-quota";
   aiReviewEnabled: boolean;
   aiReviewProvider: string;
@@ -799,6 +804,7 @@ export const adminApi = {
     siteFilingNumber?: string;
     assistantModel?: string;
     learningAssistantModel?: string;
+    learningAssistantTiers?: SiteConfig["learningAssistantTiers"];
     learningAssistantAccessMode?: "guest-unlimited" | "account-quota";
     aiReviewEnabled?: boolean;
     aiReviewProvider?: string;

@@ -178,9 +178,17 @@
         role="dialog"
         aria-label="PC 小工具"
       >
-        <DesktopToolsPanel @close="toolsWidgetOpen = false" />
+        <DesktopToolsPanel
+          @close="toolsWidgetOpen = false"
+          @download-guide="showDesktopDownloadGuide"
+        />
       </aside>
     </transition>
+
+    <DownloadSafetyGuideDialog
+      v-model="downloadSafetyGuideVisible"
+      platform="windows"
+    />
 
     <button
       v-if="showToolsFab"
@@ -362,6 +370,7 @@ import type { TopNavigationIcon, TopNavigationItem } from "@/api/site";
 import UserAvatar from "@/components/common/UserAvatar.vue";
 import ShijianAssistant from "@/views/search/Result.vue";
 import DesktopToolsPanel from "@/components/common/DesktopToolsPanel.vue";
+import DownloadSafetyGuideDialog from "@/components/common/DownloadSafetyGuideDialog.vue";
 import { useAuthStore } from "@/stores/auth";
 import { useMessageStore } from "@/stores/message";
 import { useSiteStore } from "@/stores/site";
@@ -378,6 +387,7 @@ const q = ref("");
 const mobileMenuOpen = ref(false);
 const assistantWidgetOpen = ref(false);
 const toolsWidgetOpen = ref(false);
+const downloadSafetyGuideVisible = ref(false);
 const keyboardOpen = ref(false);
 const keyboardGeometryOpen = ref(false);
 const mobileViewportHeight = ref(0);
@@ -432,6 +442,13 @@ const toggleAssistantWidget = () => {
 const toggleToolsWidget = () => {
   if (!toolsWidgetOpen.value) assistantWidgetOpen.value = false;
   toolsWidgetOpen.value = !toolsWidgetOpen.value;
+};
+
+const showDesktopDownloadGuide = () => {
+  // 下载会把焦点切到浏览器下载列表。说明框放在布局根节点，并关掉底层工具面板，
+  // 避免面板销毁或层叠上下文导致说明没有真正显示。
+  toolsWidgetOpen.value = false;
+  downloadSafetyGuideVisible.value = true;
 };
 const isPortraitViewport = computed(() => mobileViewportHeight.value >= mobileViewportWidth.value);
 const useTabbarFallback = computed(() => (

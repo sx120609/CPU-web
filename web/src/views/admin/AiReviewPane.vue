@@ -75,6 +75,39 @@
           </el-select>
         </label>
       </div>
+
+      <div class="learning-tier-panel">
+        <div class="section-head learning-tier-head">
+          <div>
+            <h4 class="card-title">网课解题三档策略</h4>
+            <p class="section-desc">用户看到的是答题模式；模型、实际推理强度和点数倍率均由服务端配置，客户端不能覆盖。</p>
+          </div>
+        </div>
+        <div class="learning-tier-grid">
+          <article v-for="tier in learningTierAssignments" :key="tier.key" class="learning-tier-card">
+            <div>
+              <strong>{{ tier.label }}</strong>
+              <small>{{ tier.description }}</small>
+            </div>
+            <label>
+              <span>模型</span>
+              <el-select v-model="form.learningAssistantTiers[tier.key].model" filterable allow-create default-first-option>
+                <el-option v-for="model in modelOptions" :key="`${tier.key}-${model}`" :label="model" :value="model" />
+              </el-select>
+            </label>
+            <label>
+              <span>推理强度</span>
+              <el-select v-model="form.learningAssistantTiers[tier.key].reasoningEffort" disabled>
+                <el-option :label="tier.effortLabel" :value="tier.key" />
+              </el-select>
+            </label>
+            <label>
+              <span>点数倍率</span>
+              <el-input-number v-model="form.learningAssistantTiers[tier.key].pointMultiplier" :min="0.1" :max="20" :step="0.1" :precision="1" />
+            </label>
+          </article>
+        </div>
+      </div>
     </section>
 
     <section class="settings-card" :class="{ 'is-config-disabled': Boolean(configLoadError) }" v-loading="loadingConfig">
@@ -484,17 +517,26 @@ const videoFilters = reactive<{ status: "" | "pending" | "manual_review" | "reje
 });
 const modelAssignments = [
   { key: "assistantModel", label: "拾间 AI", description: "站内问答与校园服务咨询" },
-  { key: "learningAssistantModel", label: "学习通解题", description: "章节测验、作业与截图搜题" },
   { key: "aiReviewModel", label: "文字审核", description: "帖子、回复与编辑相似度" },
   { key: "qqGroupAdReviewModel", label: "QQ群广告过滤", description: "群消息广告与引流识别" },
   { key: "imageReviewModel", label: "图片审核", description: "论坛图片安全审核" },
   { key: "videoReviewModel", label: "视频审核", description: "关键帧、音轨与上下文审核" },
+] as const;
+const learningTierAssignments = [
+  { key: "low", label: "快速判断", effortLabel: "低", description: "常规题目与快速作答" },
+  { key: "high", label: "深入分析", effortLabel: "高", description: "计算题与复杂推导" },
+  { key: "max", label: "挑战难题", effortLabel: "最高", description: "高难题与多步骤核验" },
 ] as const;
 const form = reactive<SiteConfig>({
   siteOrigin: "",
   siteFilingNumber: "",
   assistantModel: "gpt-5.6-terra",
   learningAssistantModel: "gpt-5.6-terra",
+  learningAssistantTiers: {
+    low: { model: "gpt-5.6-terra", reasoningEffort: "low", pointMultiplier: 1 },
+    high: { model: "gpt-5.6-terra", reasoningEffort: "high", pointMultiplier: 1.5 },
+    max: { model: "gpt-5.6-terra", reasoningEffort: "max", pointMultiplier: 2 },
+  },
   learningAssistantAccessMode: "guest-unlimited",
   aiReviewEnabled: false,
   aiReviewProvider: "deepseek",
@@ -592,6 +634,7 @@ async function loadConfig() {
 
 function mergeModelOptions(models: string[] = []) {
   const configured = modelAssignments.map((item) => String(form[item.key] || ""));
+  const learningModels = learningTierAssignments.map((item) => form.learningAssistantTiers[item.key].model);
   const fallbackModels = [
     form.aiReviewFallbackModels,
     form.qqGroupAdReviewFallbackModels,
@@ -601,6 +644,7 @@ function mergeModelOptions(models: string[] = []) {
   modelOptions.value = Array.from(new Set([
     ...models,
     ...configured,
+    ...learningModels,
     ...fallbackModels,
   ].map((model) => model.trim()).filter(Boolean)));
 }
@@ -646,7 +690,7 @@ async function saveConfig() {
   try {
     Object.assign(form, await adminApi.updateSiteConfig({
       assistantModel: form.assistantModel,
-      learningAssistantModel: form.learningAssistantModel,
+      learningAssistantTiers: form.learningAssistantTiers,
       aiReviewEnabled: form.aiReviewEnabled,
       aiReviewApiUrl: form.aiReviewApiUrl,
       aiReviewModel: form.aiReviewModel,
@@ -968,6 +1012,53 @@ function requestMessage(error: unknown) {
   line-height: 1.5;
 }
 
+.learning-tier-panel {
+  display: grid;
+  gap: 12px;
+  padding-top: 4px;
+}
+
+.learning-tier-head {
+  align-items: end;
+}
+
+.learning-tier-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.learning-tier-card {
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 12px;
+  background: var(--el-fill-color-extra-light);
+}
+
+.learning-tier-card > div {
+  display: grid;
+  gap: 4px;
+}
+
+.learning-tier-card strong,
+.learning-tier-card label > span {
+  color: var(--el-text-color-primary);
+}
+
+.learning-tier-card small,
+.learning-tier-card label > span {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.learning-tier-card label {
+  display: grid;
+  gap: 5px;
+}
+
 .settings-card {
   display: flex;
   flex-direction: column;
@@ -1182,6 +1273,10 @@ function requestMessage(error: unknown) {
   }
 
   .model-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .learning-tier-grid {
     grid-template-columns: 1fr;
   }
 

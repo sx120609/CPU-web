@@ -145,47 +145,10 @@
       安装包请只从本页或项目官方发布页获取。
     </p>
 
-    <el-dialog
+    <DownloadSafetyGuideDialog
       v-model="downloadGuideVisible"
-      :title="downloadGuidePlatform === 'windows' ? 'Windows 下载提示' : '安卓/鸿蒙下载提示'"
-      width="min(560px, calc(100vw - 32px))"
-      append-to-body
-      class="download-guide-dialog"
-    >
-      <div v-if="downloadGuidePlatform === 'windows'" class="download-guide-content">
-        <p class="download-guide-intro">
-          Windows 浏览器第一次遇到新的安装包时，可能会显示“通常不会下载”或安全检查提示。
-          这是浏览器对新文件的提醒，不代表安装包下载失败。
-        </p>
-        <ol class="download-guide-list">
-          <li>在 Edge 右上角打开下载列表，找到刚刚下载的 Windows 安装包。</li>
-          <li>点击文件右侧的警告按钮或“…”菜单，选择“保留”；如果再次确认，选择“仍要保留”。</li>
-          <li>打开安装包时若出现“Windows 已保护你的电脑”，点击“更多信息”，确认文件来源后再点“仍要运行”。</li>
-        </ol>
-        <p class="download-guide-note">
-          操作前请核对文件来自 <code>cpu.lizmt.cn</code>，文件名应以药大拾间或 CPU-Web-Desktop 开头。
-          不要根据其他网站或陌生弹窗的指引放行文件。
-        </p>
-      </div>
-
-      <div v-else class="download-guide-content">
-        <p class="download-guide-intro">
-          安卓/鸿蒙卓易通下载的是 APK 安装包，浏览器和系统可能会提示“未知来源”或进行安全检查。
-        </p>
-        <ol class="download-guide-list">
-          <li>下载完成后打开 APK；如果提示禁止安装，点击“设置”，只为当前浏览器打开“允许安装未知来源应用”。</li>
-          <li>返回安装界面继续安装；若系统提示“仍要安装”或“继续”，先确认文件来自药大拾间官网，再按提示确认。</li>
-          <li>鸿蒙设备若出现系统安全检查，按系统提示完成检查即可；安装完成后可关闭“允许此来源”。</li>
-        </ol>
-        <p class="download-guide-note">
-          只从 <code>cpu.lizmt.cn</code> 下载并核对应用名称。我们不建议关闭系统安全功能，也不要为陌生应用授予安装权限。
-        </p>
-      </div>
-
-      <template #footer>
-        <el-button type="primary" @click="downloadGuideVisible = false">知道了</el-button>
-      </template>
-    </el-dialog>
+      :platform="downloadGuidePlatform"
+    />
   </div>
 </template>
 
@@ -202,6 +165,7 @@ import {
   isLikelyAndroidDevice,
   isLikelyIosDevice,
 } from "@/utils/clientInfo";
+import DownloadSafetyGuideDialog from "@/components/common/DownloadSafetyGuideDialog.vue";
 
 type DownloadPlatform = "android" | "ios" | "windows" | "macos";
 

@@ -4,16 +4,18 @@ const path = require("node:path");
 const assetRoot = path.join(__dirname, "..", "assets", "userscripts");
 const outputPath = path.join(assetRoot, "multiplatform.js");
 const themePath = path.join(assetRoot, "multiplatform-theme.css");
+const surfacePath = path.join(assetRoot, "multiplatform-surface.js");
 const addonPath = path.join(assetRoot, "multiplatform-screenshot.js");
 const startMarker = "// CPU_DESKTOP_SCREENSHOT_ADDON_START";
 const endMarker = "// CPU_DESKTOP_SCREENSHOT_ADDON_END";
-const integrationVersion = "4.15.4";
+const integrationVersion = "4.15.5";
 
 const theme = fs.readFileSync(themePath, "utf8")
   .replaceAll("\\", "\\\\")
   .replaceAll("`", "\\`")
   .replaceAll("${", "\\${");
 const addon = fs.readFileSync(addonPath, "utf8").trim();
+const surfaceAddon = fs.readFileSync(surfacePath, "utf8").trim();
 let source = fs.readFileSync(outputPath, "utf8");
 
 source = source.replace(
@@ -43,26 +45,39 @@ source = source.replace(
 );
 source = source.replace(
   "/* eslint-disable no-undef */",
-  `${startMarker}\n${addon}\n${endMarker}\n\n/* eslint-disable no-undef */`,
+  `${startMarker}\n${surfaceAddon}\n\n${addon}\n${endMarker}\n\n/* eslint-disable no-undef */`,
 );
 source = source.replace(
-  "      this.container.append(...styles, this.messageContainer);\n      installCpuScreenshotSearch(this.root, this.container);",
+  /      this\.container\.append\(\.\.\.styles, this\.messageContainer\);\n(?:      installCpuUnifiedSurface[\s\S]*?\n      \}\);\n)?      installCpuScreenshotSearch\(this\.root, this\.container\);/,
   "      this.container.append(...styles, this.messageContainer);",
 ).replace(
   "      this.container.append(...styles, this.messageContainer);",
-  "      this.container.append(...styles, this.messageContainer);\n      installCpuScreenshotSearch(this.root, this.container);",
+  `      this.container.append(...styles, this.messageContainer);
+      installCpuUnifiedSurface(this.root, this.container, {
+        getCurrentPanel: () => this.config.store.getCurrentPanelName(),
+        openPanel: (name) => this.config.store.setCurrentPanelName(name),
+        openTask: async () => {
+          const urls = this.defaults.urls(await this.config.store.getRenderURLs());
+          await this.config.store.setCurrentPanelName(this.defaults.panelName("", urls));
+        },
+        hide: () => this.hidden()
+      });
+      installCpuScreenshotSearch(this.root, this.container);`,
 );
 source = source.replace(
   "请勿同时运行其他网课脚本，避免重复点击或提交。截图搜题与学习通定制工作台目前仅由学习通专用助手提供。",
   "请勿同时运行其他网课脚本，避免重复点击或提交。所有支持平台均可点击面板顶部的截图按钮手动搜题，建议先暂停自动任务。",
 );
 const desktopPanelResolver = `        panelName: (name, urls = [location.href]) => {
+          const allowedInternalPanels = new Set(["common.guide", "common.settings", "render.console"]);
           const matched = utils_1.$.getMatchedScripts(this.projects, urls)
-            .filter((script) => !script.hideInPanel && !/^(common|background)\\./.test(String(script.namespace || "")))
+            .filter((script) => !script.hideInPanel)
             .sort((left, right) => Number(right.priority || 0) - Number(left.priority || 0));
           const current = matched.find((script) => script.namespace === name || script.fullName() === name || String(name || "").endsWith("-" + script.name));
-          if (current) return current.namespace || current.fullName();
-          const preferred = matched[0];
+          if (current && (!/^(common|background)\\./.test(String(current.namespace || "")) || allowedInternalPanels.has(String(current.namespace || "")))) {
+            return current.namespace || current.fullName();
+          }
+          const preferred = matched.find((script) => !/^(common|background)\\./.test(String(script.namespace || "")));
           return preferred && (preferred.namespace || preferred.fullName()) || "common.guide";
         }`;
 source = source.replace(
@@ -144,14 +159,22 @@ source = source
     'this.header = (0, dom_1$4.h)("header-element");',
   );
 
-if (!source.includes("installCpuScreenshotSearch(this.root, this.container)")) {
+source = source.replace(
+  /(\bconst projects = definedProjects\(\);\r?\n)(\s*\r?\n\s*\/\/ 运行脚本)/,
+  "$1\t// CPU_DESKTOP_PROJECTS_CONFIGURED\n\tconfigureCpuDesktopProjects(projects);\n$2",
+);
+
+if (!source.includes("installCpuUnifiedSurface(this.root, this.container") || !source.includes("installCpuScreenshotSearch(this.root, this.container)")) {
   throw new Error("OCS 容器结构已变化，无法挂载多平台截图搜题");
 }
 if (!source.includes('display: "flex", alignItems: "center", width: "100%"')) {
   throw new Error("OCS 标题栏结构已变化，无法启用药大拾间精简模式");
 }
-if (!source.includes('/^(common|background)\\./.test(String(script.namespace || ""))')) {
+if (!source.includes('allowedInternalPanels = new Set(["common.guide", "common.settings", "render.console"])')) {
   throw new Error("OCS 默认面板过滤规则未写入，无法刷新");
+}
+if (!source.includes("CPU_DESKTOP_PROJECTS_CONFIGURED")) {
+  throw new Error("OCS 内部调试面板尚未从用户界面隔离");
 }
 if (!source.includes("GM_cpuPageAction(data)") || source.includes("http://localhost:15319/get-actions-key") || source.includes("docs.ocsjs.com/docs/script-helper")) {
   throw new Error("OCS 桌面桥仍未完全内置，无法刷新");

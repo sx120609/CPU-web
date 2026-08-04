@@ -114,6 +114,7 @@ type LearningAssistantPolicy = {
   accessMode: LearningAssistantAccessMode;
   requiresLogin: boolean;
   unlimited: boolean;
+  answerModes: Array<{ key: "low" | "high" | "max"; label: string; pointMultiplier: number }>;
 };
 let learningAssistantPolicyCache: { policy: LearningAssistantPolicy; expiresAt: number } | undefined;
 
@@ -133,7 +134,12 @@ const getLearningAssistantPolicy = async (force = false): Promise<LearningAssist
   const fallback: LearningAssistantPolicy = {
     accessMode: "account-quota",
     requiresLogin: true,
-    unlimited: false
+    unlimited: false,
+    answerModes: [
+      { key: "low", label: "快速判断", pointMultiplier: 1 },
+      { key: "high", label: "深入分析", pointMultiplier: 1.5 },
+      { key: "max", label: "挑战难题", pointMultiplier: 2 }
+    ]
   };
   try {
     const response = await fetch(new URL("/api/site/ai-quota-rules", oauthConfig.origin).toString(), {
@@ -145,9 +151,15 @@ const getLearningAssistantPolicy = async (force = false): Promise<LearningAssist
       data?: { learningAssistant?: Partial<LearningAssistantPolicy> };
     };
     const remote = payload.data?.learningAssistant;
+    const answerModes = Array.isArray(remote?.answerModes) && remote.answerModes.length === 3
+      ? remote.answerModes
+        .filter((item): item is { key: "low" | "high" | "max"; label: string; pointMultiplier: number } =>
+          Boolean(item) && ["low", "high", "max"].includes(String(item.key)) && Number.isFinite(Number(item.pointMultiplier)))
+        .map((item) => ({ key: item.key, label: String(item.label || item.key), pointMultiplier: Number(item.pointMultiplier) }))
+      : fallback.answerModes;
     const policy: LearningAssistantPolicy = remote?.accessMode === "guest-unlimited"
-      ? { accessMode: "guest-unlimited", requiresLogin: false, unlimited: true }
-      : fallback;
+      ? { accessMode: "guest-unlimited", requiresLogin: false, unlimited: true, answerModes }
+      : { ...fallback, answerModes };
     learningAssistantPolicyCache = { policy, expiresAt: Date.now() + 15_000 };
     return policy;
   } catch {
@@ -389,17 +401,23 @@ const cpuOcsAnswerer = {
   handler: "return (res)=>res&&res.answer?[[res.question,res.answer,{explanation:res.explanation||''}]]:[]",
 };
 
-const buildMultiplatformSeed = (scriptConfig: Record<string, unknown>): Record<string, unknown> => {
-  const config = buildScriptConfig(scriptConfig);
+const buildMultiplatformSeed = (
+  scriptConfig: Record<string, unknown>,
+  answerModes: LearningAssistantPolicy["answerModes"],
+): Record<string, unknown> => {
+  const config: Record<string, unknown> & { answerModes: LearningAssistantPolicy["answerModes"] } = {
+    ...buildScriptConfig(scriptConfig),
+    answerModes,
+  };
   return {
     ...scriptConfig,
     config,
-    "common.settings.answererWrappers": config.aiEnabled === false ? [] : [cpuOcsAnswerer],
+    "common.settings.answererWrappers": config["aiEnabled"] === false ? [] : [cpuOcsAnswerer],
     "common.settings.disabledAnswererWrapperNames": [],
     // 默认只暂存，不替用户正式交卷；用户显式打开自动提交后才要求全题有答案再交卷。
-    "common.settings.upload": config.autoSubmit === true ? "100" : "save",
+    "common.settings.upload": config["autoSubmit"] === true ? "100" : "save",
     "common.settings.thread": 1,
-    "common.settings.period": Math.max(1, Number(config.answerIntervalMin) || 8),
+    "common.settings.period": Math.max(1, Number(config["answerIntervalMin"]) || 8),
     "common.settings.randomWork-choice": false,
     "common.settings.randomWork-complete": false,
     "common.settings.notification": "only-notify",
@@ -616,6 +634,7 @@ const injectMatchingScripts = async (contents: Electron.WebContents): Promise<vo
   revokeGrants(contents.id);
   // 配置必须在注入前就绪：脚本在构造时对配置做快照，之后再改对一半的项无效
   const { scriptConfig } = await readPreferences();
+  const learningPolicy = await getLearningAssistantPolicy();
   const matching = (await getScripts()).filter((script) => scriptMatchesUrl(script, currentUrl));
   // 学习通保留药大拾间长期维护的专用引擎；其余正式平台使用 OCS 多平台引擎。
   // 两套自动化不能同时操作同一页面，否则会重复点击并重复请求 AI。
@@ -630,9 +649,10 @@ const injectMatchingScripts = async (contents: Electron.WebContents): Promise<vo
     });
   }
   for (const script of scripts) {
+    const effectiveConfig = { ...buildScriptConfig(scriptConfig), answerModes: learningPolicy.answerModes };
     const seeded = script.id === "builtin-multiplatform-helper"
-      ? buildMultiplatformSeed(scriptConfig)
-      : { config: buildScriptConfig(scriptConfig) };
+      ? buildMultiplatformSeed(scriptConfig, learningPolicy.answerModes)
+      : { config: effectiveConfig };
     const nonce = randomBytes(32).toString("base64url");
     grants.set(nonce, { scriptId: script.id, webContentsId: contents.id });
     const injection = createInjection(script, nonce, seeded);

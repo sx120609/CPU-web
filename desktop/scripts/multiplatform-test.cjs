@@ -20,7 +20,7 @@ const pageActions = fs.readFileSync(path.join(root, "electron", "page-actions.ts
 
 const header = source.match(/\/\/\s*==UserScript==([\s\S]*?)\/\/\s*==\/UserScript==/)?.[1] || "";
 assert.match(header, /@name\s+药大拾间·全平台网课助手/);
-assert.match(header, /@version\s+4\.15\.4/);
+assert.match(header, /@version\s+4\.15\.5/);
 assert.match(header, /@connect\s+desktop\.localhost/);
 const connects = [...header.matchAll(/^\s*\/\/\s*@connect\s+(.+?)\s*$/gm)].map((match) => match[1]);
 assert.deepEqual(connects, ["desktop.localhost"], "不得保留外部题库联网权限");
@@ -62,7 +62,7 @@ assert.match(main, /bridge\.requestAi/);
 assert.match(main, /userscript:page-action/);
 assert.match(main, /learningPageActions\.perform/);
 assert.match(main, /common\.settings\.upload/);
-assert.match(main, /config\.autoSubmit === true \? "100" : "save"/, "关闭提交时必须暂存答案");
+assert.match(main, /config\["autoSubmit"\] === true \? "100" : "save"/, "关闭提交时必须暂存答案");
 assert.match(main, /"globalThis", definition\.source/, "OCS 应在隔离代理里读取 GM 全局能力");
 assert.match(main, /Object\.prototype\.hasOwnProperty\.call\(gm, property\)/, "GM 全局兼容不得把特权接口挂到真实页面 window");
 assert.match(main, /definition\.name \+ " v" \+ definition\.version \+ " 已加载/, "注入完成后应向客户端回报可见状态");

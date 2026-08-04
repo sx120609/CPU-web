@@ -41,11 +41,19 @@ export type AssistantDailyQuotaConfig = {
   quota: number;
 };
 export type LearningAssistantAccessMode = "guest-unlimited" | "account-quota";
+export type LearningAssistantTierKey = "low" | "high" | "max";
+export type LearningAssistantTierConfig = {
+  model: string;
+  reasoningEffort: LearningAssistantTierKey;
+  pointMultiplier: number;
+};
+export type LearningAssistantTiersConfig = Record<LearningAssistantTierKey, LearningAssistantTierConfig>;
 export type SiteConfig = {
   siteOrigin: string;
   siteFilingNumber: string;
   assistantModel: string;
   learningAssistantModel: string;
+  learningAssistantTiers: LearningAssistantTiersConfig;
   learningAssistantAccessMode: LearningAssistantAccessMode;
   aiReviewEnabled: boolean;
   aiReviewProvider: string;
@@ -152,6 +160,11 @@ export const DEFAULT_ASSISTANT_DAILY_QUOTAS: AssistantDailyQuotaConfig[] = [
   { level: 5, quota: 80 },
 ];
 export const DEFAULT_CAMPUS_ASSISTANT_MODEL = "gpt-5.6-terra";
+export const DEFAULT_LEARNING_ASSISTANT_TIERS: LearningAssistantTiersConfig = {
+  low: { model: DEFAULT_CAMPUS_ASSISTANT_MODEL, reasoningEffort: "low", pointMultiplier: 1 },
+  high: { model: DEFAULT_CAMPUS_ASSISTANT_MODEL, reasoningEffort: "high", pointMultiplier: 1.5 },
+  max: { model: DEFAULT_CAMPUS_ASSISTANT_MODEL, reasoningEffort: "max", pointMultiplier: 2 },
+};
 
 const GLOBAL_PINNED_TOPICS_KEY = "forum.globalPinnedTopics";
 const SITE_ORIGIN_KEY = "site.origin";
@@ -218,6 +231,7 @@ const ANONYMOUS_TIERS_KEY = "forum.anonymous.tiers";
 const REPUTATION_LEVELS_KEY = "forum.reputation.levels";
 const ASSISTANT_MODEL_KEY = "assistant.model";
 const LEARNING_ASSISTANT_MODEL_KEY = "assistant.learningModel";
+const LEARNING_ASSISTANT_TIERS_KEY = "assistant.learningTiers";
 const ASSISTANT_DAILY_QUOTAS_KEY = "assistant.dailyQuotas";
 const LEARNING_ASSISTANT_ACCESS_MODE_KEY = "assistant.learningAccessMode";
 export const DEFAULT_LEARNING_ASSISTANT_ACCESS_MODE: LearningAssistantAccessMode = "guest-unlimited";
@@ -366,6 +380,7 @@ const configCache: SiteConfig = {
   siteFilingNumber: "",
   assistantModel: DEFAULT_CAMPUS_ASSISTANT_MODEL,
   learningAssistantModel: DEFAULT_CAMPUS_ASSISTANT_MODEL,
+  learningAssistantTiers: structuredClone(DEFAULT_LEARNING_ASSISTANT_TIERS),
   learningAssistantAccessMode: DEFAULT_LEARNING_ASSISTANT_ACCESS_MODE,
   aiReviewEnabled: false,
   aiReviewProvider: "deepseek",
@@ -578,6 +593,7 @@ export async function loadFeatures(): Promise<void> {
           REPUTATION_LEVELS_KEY,
           ASSISTANT_MODEL_KEY,
           LEARNING_ASSISTANT_MODEL_KEY,
+          LEARNING_ASSISTANT_TIERS_KEY,
           ASSISTANT_DAILY_QUOTAS_KEY,
           LEARNING_ASSISTANT_ACCESS_MODE_KEY,
         ],
@@ -858,6 +874,10 @@ export async function loadFeatures(): Promise<void> {
         || DEFAULT_CAMPUS_ASSISTANT_MODEL;
       continue;
     }
+    if (r.key === LEARNING_ASSISTANT_TIERS_KEY) {
+      configCache.learningAssistantTiers = normalizeLearningAssistantTiers(r.value, configCache.learningAssistantModel);
+      continue;
+    }
     if (r.key === ASSISTANT_DAILY_QUOTAS_KEY) {
       configCache.assistantDailyQuotas = normalizeAssistantDailyQuotas(r.value, DEFAULT_ASSISTANT_DAILY_QUOTAS);
       continue;
@@ -925,6 +945,7 @@ export function isFeatureOn(f: FeatureKey): boolean {
 export function getSiteConfig(): SiteConfig {
   return {
     ...configCache,
+    learningAssistantTiers: structuredClone(configCache.learningAssistantTiers),
     anonymousTiers: configCache.anonymousTiers.map((item) => ({ ...item })),
     reputationLevels: configCache.reputationLevels.map((item) => ({ ...item })),
     assistantDailyQuotas: configCache.assistantDailyQuotas.map((item) => ({ ...item })),
@@ -1233,9 +1254,35 @@ function sanitizeCampusAssistantConfig() {
     || DEFAULT_CAMPUS_ASSISTANT_MODEL;
   configCache.learningAssistantModel = String(configCache.learningAssistantModel || configCache.assistantModel).trim()
     || configCache.assistantModel;
+  configCache.learningAssistantTiers = normalizeLearningAssistantTiers(
+    configCache.learningAssistantTiers,
+    configCache.learningAssistantModel,
+  );
   configCache.learningAssistantAccessMode = normalizeLearningAssistantAccessMode(
     configCache.learningAssistantAccessMode
   );
+}
+
+function normalizeLearningAssistantTiers(input: unknown, fallbackModel: string): LearningAssistantTiersConfig {
+  let source: unknown = input;
+  if (typeof input === "string") {
+    try { source = JSON.parse(input); } catch { source = null; }
+  }
+  const record = source && typeof source === "object" ? source as Record<string, unknown> : {};
+  const normalizeTier = (key: LearningAssistantTierKey): LearningAssistantTierConfig => {
+    const raw = record[key] && typeof record[key] === "object" ? record[key] as Record<string, unknown> : {};
+    const defaults = DEFAULT_LEARNING_ASSISTANT_TIERS[key];
+    const model = String(raw.model || fallbackModel || defaults.model).trim().slice(0, 200) || defaults.model;
+    const pointMultiplier = Number(raw.pointMultiplier);
+    return {
+      model,
+      reasoningEffort: key,
+      pointMultiplier: Number.isFinite(pointMultiplier) && pointMultiplier >= 0.1 && pointMultiplier <= 20
+        ? Math.round(pointMultiplier * 10) / 10
+        : defaults.pointMultiplier,
+    };
+  };
+  return { low: normalizeTier("low"), high: normalizeTier("high"), max: normalizeTier("max") };
 }
 
 export function normalizeLearningAssistantAccessMode(input: unknown): LearningAssistantAccessMode {
@@ -1609,6 +1656,25 @@ export async function setLearningAssistantModel(input: string | null | undefined
   });
   configCache.learningAssistantModel = learningAssistantModel;
   sanitizeCampusAssistantConfig();
+  await broadcastSiteSettingsReload();
+  return getSiteConfig();
+}
+
+export async function setLearningAssistantTiers(input: unknown): Promise<SiteConfig> {
+  const learningAssistantTiers = normalizeLearningAssistantTiers(input, configCache.learningAssistantModel);
+  await prisma.siteSetting.upsert({
+    where: { key: LEARNING_ASSISTANT_TIERS_KEY },
+    update: { value: JSON.stringify(learningAssistantTiers) },
+    create: { key: LEARNING_ASSISTANT_TIERS_KEY, value: JSON.stringify(learningAssistantTiers) },
+  });
+  configCache.learningAssistantTiers = learningAssistantTiers;
+  // 保留旧字段给尚未更新的管理端读取，实际请求始终按所选档位取模型。
+  configCache.learningAssistantModel = learningAssistantTiers.low.model;
+  await prisma.siteSetting.upsert({
+    where: { key: LEARNING_ASSISTANT_MODEL_KEY },
+    update: { value: learningAssistantTiers.low.model },
+    create: { key: LEARNING_ASSISTANT_MODEL_KEY, value: learningAssistantTiers.low.model },
+  });
   await broadcastSiteSettingsReload();
   return getSiteConfig();
 }

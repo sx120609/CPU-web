@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         药大拾间·学习通助手
 // @namespace    askAuto
-// @version      2.2.13
+// @version      2.2.14
 // @author       shushoujiu
 // @description  药大拾间桌面端的学习通助手：自动完成任务点，章节测验与考试由独立答题 AI 作答。
 // @icon         https://vitejs.dev/logo.svg
@@ -226,65 +226,59 @@
         }
         const questionTypeId = questionData.type;
         let prompt = "";
-        const basePrompt = `你是一位专业的学习辅导老师，具备广泛的知识面，能够解答各类学科和学习问题。请按“答案：”和“解题思路：”两个字段作答；解题思路只写可公开、可验证的简短依据，不要输出隐藏推理过程。`;
+        const basePrompt = `你是一位专业的学习辅导老师，具备广泛的知识面，能够解答各类学科和学习问题。只返回 JSON：{"answer":"可直接提交的答案","explanation":"可公开、可验证的简短依据"}。explanation 绝不能混入 answer。`;
+        const allOptionsText = (questionData.options || []).map((opt, idx) => `${String.fromCharCode(65 + idx)}.${opt}`).join(" ");
+        const optionsPrompt = allOptionsText ? `\n候选项：${allOptionsText}` : "";
         if (questionTypeId === "3") {
           prompt = `${basePrompt}
 
 这是一道判断题。答案字段只填写“正确”或“错误”，解题思路字段用一两句话说明判断依据。
 
-题目：${questionData.question}`;
+题目：${questionData.question}${optionsPrompt}`;
         } else if (questionTypeId === "1") {
-          const optionsText = questionData.options.map((opt, idx) => {
-            const letter = String.fromCharCode(65 + idx);
-            return `${letter}.${opt}`;
-          }).join(" ");
           prompt = `${basePrompt}
 
 这是一道多选题。答案字段只填写所有正确选项字母（如 AB、ACD、BC），解题思路字段简要说明选择依据。
 
 题目：${questionData.question}
-选项：${optionsText}`;
+选项：${allOptionsText}`;
         } else if (questionTypeId === "2") {
           prompt = `${basePrompt}
 
 这是一道填空题。答案字段直接填写答案内容；如果有多个空，用“|”分隔。解题思路字段简要说明依据。
 
-题目：${questionData.question}`;
+题目：${questionData.question}${optionsPrompt}`;
         } else if (questionTypeId === "4") {
           prompt = `${basePrompt}
 
 这是一道简答题。答案字段给出简洁准确的作答内容，解题思路字段概括答题要点。
 
-题目：${questionData.question}`;
+题目：${questionData.question}${optionsPrompt}`;
         } else if (questionTypeId === "5") {
           prompt = `${basePrompt}
 
 这是一道名词解释题。答案字段给出准确解释，解题思路字段概括定义中的关键点。
 
-题目：${questionData.question}`;
+题目：${questionData.question}${optionsPrompt}`;
         } else if (questionTypeId === "6") {
           prompt = `${basePrompt}
 
 这是一道论述题。答案字段给出完整、有条理的论述，解题思路字段概括组织答案的主线。
 
-题目：${questionData.question}`;
+题目：${questionData.question}${optionsPrompt}`;
         } else if (questionTypeId === "7") {
           prompt = `${basePrompt}
 
 这是一道计算题。答案字段给出最终答案，解题思路字段给出必要公式和可核验的简要计算过程。
 
-题目：${questionData.question}`;
+题目：${questionData.question}${optionsPrompt}`;
         } else {
-          const optionsText = questionData.options.map((opt, idx) => {
-            const letter = String.fromCharCode(65 + idx);
-            return `${letter}.${opt}`;
-          }).join(" ");
           prompt = `${basePrompt}
 
 这是一道单选题。答案字段只填写正确选项字母，解题思路字段简要说明选择依据。
 
 题目：${questionData.question}
-选项：${optionsText}`;
+选项：${allOptionsText}`;
         }
         const imageUrls = [];
         const imageTagPattern = /<img\b[^>]*?\bsrc\s*=\s*["']([^"']+)["'][^>]*>/gi;
@@ -380,7 +374,7 @@
                       explanation: String(structuredReply.explanation || "").trim()
                     }
                   : parseLearningAiReply(content);
-                const answerContent = hasStructuredReply ? parsedReply.answer : parsedReply.answer || content;
+                const answerContent = parsedReply.answer;
                 const explanation = parsedReply.explanation;
                 if (isLearningNonAnswerFeedback(answerContent)) {
                   console.log("AI 返回的是题面缺失状态说明，已拦截且不会写入答案框:", answerContent);
@@ -1717,11 +1711,19 @@
     }
   }, formatLearningDisplayHtml = (value) => formatLearningDisplayText(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;").replace(/\n/g, "<br>"), parseLearningAiReply = (value) => {
     const content = formatLearningDisplayText(value).replace(/```(?:json|text)?/gi, "").trim();
+    try {
+      const parsed = JSON.parse(content);
+      if (parsed && "object" == typeof parsed && !Array.isArray(parsed)) return {
+        answer: "string" == typeof parsed.answer ? parsed.answer.trim() : "",
+        explanation: "string" == typeof parsed.explanation ? parsed.explanation.trim() : ""
+      };
+    } catch (e) {
+    }
     const tagged = content.match(/(?:^|\n)\s*答案\s*[:：]\s*([\s\S]*?)(?=\n\s*解题思路\s*[:：]|$)/i);
     const explanation = content.match(/(?:^|\n)\s*解题思路\s*[:：]\s*([\s\S]*)$/i);
     return {
-      answer: tagged ? tagged[1].trim() : content.replace(/^(?:答案\s*[:：]\s*)/i, "").trim(),
-      explanation: (explanation == null ? void 0 : explanation[1].trim()) || ""
+      answer: tagged ? tagged[1].trim() : "",
+      explanation: (explanation == null ? void 0 : explanation[1].trim()) || (tagged ? "" : content)
     };
   }, isLearningNonAnswerFeedback = (value) => {
     const normalized = formatLearningDisplayText(value).replace(/\s+/g, " ").trim();
@@ -1806,7 +1808,13 @@
 
     return [{ form: "AI", answer: "" }];
   }, fillAnswer = (answer, questionData, html, iframeWindow) => {
-    answer = answer.filter((item) => item.answer.length > 0 && !isLearningNonAnswerFeedback(item.answer)), console.log(answer);
+    answer = answer.filter((item) => {
+      const values = Array.isArray(item.answer) ? item.answer : [item.answer];
+      return values.length > 0 && values.every((value) => {
+        const text = formatLearningDisplayText(value).trim();
+        return text && !isLearningNonAnswerFeedback(text) && !/^\s*(?:解题思路|说明|原因)\s*[:：]/i.test(text);
+      });
+    }), console.log(answer);
     for (let i = 0; i < answer.length; i++) {
       if ("string" == typeof answer[i].answer) {
         if (-1 !== answer[i].answer.indexOf("付费题库") || -1 !== answer[i].answer.indexOf("暂无答案") || "略" == answer[i].answer)
@@ -2666,7 +2674,7 @@
           model: config.aiModel || "deepseek-reasoner",
           reasoningEffort: ["low", "high", "max"].includes(config.answerDepth) ? config.answerDepth : "low",
           input: [{ role: "user", content: [
-            { type: "input_text", text: "请识别截图中的题目并作答。若有选项，请结合选项判断；若截图信息不足，请明确说明。严格使用纯文本格式返回：答案：... 换行 解题思路：..." },
+            { type: "input_text", text: "请识别截图中的题目并作答。若有选项，请结合选项判断；若截图信息不足，将 answer 留空并在 explanation 说明。只返回 JSON：{\"answer\":\"可直接提交的答案\",\"explanation\":\"简短解题依据\"}，不要输出 JSON 之外的文字。" },
             { type: "input_image", image_url: imageUrl, detail: "high" }
           ] }]
         });
@@ -2682,7 +2690,7 @@
         const content = String(data.output_text || (data.output || []).flatMap((item) => item.content || []).filter((item) => item.type === "output_text").map((item) => item.text).join("") || "").trim();
         const structured = data.learning_answer;
         const parsed = structured && typeof structured === "object" ? { answer: String(structured.answer || "").trim(), explanation: String(structured.explanation || "").trim() } : parseLearningAiReply(content);
-        state.manual = { status: "done", imageUrl, answer: parsed.answer || content, explanation: parsed.explanation || "", error: "" };
+        state.manual = { status: "done", imageUrl, answer: parsed.answer, explanation: parsed.explanation || (!parsed.answer ? content : ""), error: "" };
         reportToHost("status", "截图搜题已完成");
       } catch (error) {
         panel.hidden = false;
@@ -2693,7 +2701,11 @@
     };
     const render = () => {
       const store = state.store, task = (store == null ? void 0 : store.task) || { name: "暂未加载", work: { questionList: [], inx: 0 }, log: [], status: "" }, questions = task.work && Array.isArray(task.work.questionList) ? task.work.questionList : [], index = Math.max(0, Math.min(Number(task.work && task.work.inx || 0), Math.max(0, questions.length - 1))), current = questions[index] || null, config = { ...defaultConfig$1, ...getConfig() }, logs = Array.isArray(task.log) ? task.log.slice(-30) : [], paused = assistantRuntime.isPaused();
-      const snapshot = { tab: state.tab, paused, name: task.name, status: task.status, activity: task.activity || null, count: questions.length, index, question: current == null ? "" : current.question, answer: current == null ? "" : current.answer, allAnswer: current == null ? [] : current.allAnswer, logs, autoSubmit: Boolean(config.autoSubmit), autoVideo: Boolean(config.autoVideo), autoJump: Boolean(config.autoJump), autoExam: Boolean(config.autoExam), answerIntervalMin: Number(config.answerIntervalMin), answerIntervalMax: Number(config.answerIntervalMax), answerDepth: config.answerDepth, manualVersion: state.manualVersion };
+      const answerModes = Array.isArray(config.answerModes) ? config.answerModes : [], modeMeta = (key, label, fallbackCost) => {
+        const remote = answerModes.find((item) => item && item.key === key) || {};
+        return { label: String(remote.label || label), cost: Number.isFinite(Number(remote.pointMultiplier)) ? Number(remote.pointMultiplier) : fallbackCost };
+      }, lowMode = modeMeta("low", "快速判断", 1), highMode = modeMeta("high", "深入分析", 1.5), maxMode = modeMeta("max", "挑战难题", 2);
+      const snapshot = { tab: state.tab, paused, name: task.name, status: task.status, activity: task.activity || null, count: questions.length, index, question: current == null ? "" : current.question, answer: current == null ? "" : current.answer, allAnswer: current == null ? [] : current.allAnswer, logs, autoSubmit: Boolean(config.autoSubmit), autoVideo: Boolean(config.autoVideo), autoJump: Boolean(config.autoJump), autoExam: Boolean(config.autoExam), answerIntervalMin: Number(config.answerIntervalMin), answerIntervalMax: Number(config.answerIntervalMax), answerDepth: config.answerDepth, answerModes, manualVersion: state.manualVersion };
       const signature = JSON.stringify(snapshot);
       if (signature === state.signature) return;
       state.signature = signature;
@@ -2710,7 +2722,7 @@
       if (state.tab === "task") {
         if (state.manual) {
           const manual = state.manual;
-          const modeLabel = config.answerDepth === "max" ? "挑战难题" : config.answerDepth === "high" ? "深入分析" : "快速判断";
+          const modeLabel = config.answerDepth === "max" ? maxMode.label : config.answerDepth === "high" ? highMode.label : lowMode.label;
           body.innerHTML = `<section class="cpu-la-card"><span class="cpu-la-kicker">截图搜题 · ${escapeHtml(modeLabel)}</span><h3 class="cpu-la-title">${manual.status === "loading" ? "正在识别并解答" : manual.status === "done" ? "识别完成" : "截图搜题未完成"}</h3>${manual.imageUrl ? `<button class="cpu-la-inline-image" type="button" data-action="preview-image" data-image-src="${escapeHtml(manual.imageUrl)}" title="点击查看原图"><img class="cpu-la-screenshot" src="${escapeHtml(manual.imageUrl)}" alt="框选的题目截图"><span>点击查看原图</span></button>` : ""}${manual.status === "loading" ? '<div class="cpu-la-progress"><i style="width:72%"></i></div><p class="cpu-la-muted">正在读取题面、选项并核对答案…</p>' : ""}${manual.answer ? `<div class="cpu-la-answer cpu-la-markdown">${renderLearningMarkdown(manual.answer)}</div>` : ""}${manual.explanation ? `<div class="cpu-la-reasoning"><strong>解题思路</strong><div class="cpu-la-markdown">${renderLearningMarkdown(manual.explanation)}</div></div>` : ""}${manual.error ? `<p class="cpu-la-error">${escapeHtml(manual.error)}</p>` : ""}<div class="cpu-la-actions"><button type="button" data-action="screenshot-search">重新截图</button>${manual.answer ? '<button type="button" data-action="copy-screenshot-answer">复制答案</button>' : ""}<button type="button" data-action="dismiss-screenshot">返回任务</button></div></section>`;
         } else if (!current) {
           const activity = task.activity && (task.activity.label || task.activity.detail) ? task.activity : null;
@@ -2727,7 +2739,7 @@
       } else if (state.tab === "logs") {
         body.innerHTML = logs.length ? `<section class="cpu-la-card">${logs.map((item) => `<div class="cpu-la-log" data-type="${escapeHtml(item.type || "info")}"><time>${escapeHtml(item.time || "")}</time><span>${escapeHtml(item.msg || "")}</span></div>`).join("")}<div class="cpu-la-actions"><button type="button" data-action="clear-logs">清空日志</button></div></section>` : '<div class="cpu-la-empty"><div><b>暂无运行日志</b><span>开始处理任务后，关键步骤会记录在这里</span></div></div>';
       } else {
-        body.innerHTML = `<div class="cpu-la-settings"><section class="cpu-la-depth"><strong>答题模式</strong><small>越深入越适合复杂题，AI 点数按次消耗</small><div class="cpu-la-depth-options"><label><input type="radio" name="cpu-la-depth" data-config-depth value="low" ${config.answerDepth !== "high" && config.answerDepth !== "max" ? "checked" : ""}><b>快速判断</b><em>1 点</em></label><label><input type="radio" name="cpu-la-depth" data-config-depth value="high" ${config.answerDepth === "high" ? "checked" : ""}><b>深入分析</b><em>1.5 点</em></label><label><input type="radio" name="cpu-la-depth" data-config-depth value="max" ${config.answerDepth === "max" ? "checked" : ""}><b>挑战难题</b><em>2 点</em></label></div></section><label class="cpu-la-setting"><input type="checkbox" data-config="autoSubmit" ${config.autoSubmit ? "checked" : ""}><span><strong>章节测验答完自动提交</strong><small>只作用于章节测验；作业和考试始终由你手动交卷</small></span></label><label class="cpu-la-setting"><input type="checkbox" data-config="autoVideo" ${config.autoVideo ? "checked" : ""}><span><strong>自动播放视频与音频</strong><small>关闭后会跳过媒体任务点</small></span></label><label class="cpu-la-setting"><input type="checkbox" data-config="autoJump" ${config.autoJump ? "checked" : ""}><span><strong>完成后切换下一章</strong><small>暂停助手时不会发生章节切换</small></span></label><label class="cpu-la-setting"><input type="checkbox" data-config="autoExam" ${config.autoExam ? "checked" : ""}><span><strong>考试自动切换下一题</strong><small>只切题，不会替你最终交卷</small></span></label><div class="cpu-la-number-row"><span><strong>答题最短等待</strong><small class="cpu-la-muted">每题之间的秒数</small></span><input type="number" min="1" max="120" data-config-number="answerIntervalMin" value="${Number(config.answerIntervalMin) || 8}"></div><div class="cpu-la-number-row"><span><strong>答题最长等待</strong><small class="cpu-la-muted">不能小于最短等待</small></span><input type="number" min="1" max="180" data-config-number="answerIntervalMax" value="${Number(config.answerIntervalMax) || 20}"></div></div>`;
+        body.innerHTML = `<div class="cpu-la-settings"><section class="cpu-la-depth"><strong>答题模式</strong><small>越深入越适合复杂题，模型与点数倍率由站点后台实时配置</small><div class="cpu-la-depth-options"><label><input type="radio" name="cpu-la-depth" data-config-depth value="low" ${config.answerDepth !== "high" && config.answerDepth !== "max" ? "checked" : ""}><b>${escapeHtml(lowMode.label)}</b><em>${lowMode.cost} 点</em></label><label><input type="radio" name="cpu-la-depth" data-config-depth value="high" ${config.answerDepth === "high" ? "checked" : ""}><b>${escapeHtml(highMode.label)}</b><em>${highMode.cost} 点</em></label><label><input type="radio" name="cpu-la-depth" data-config-depth value="max" ${config.answerDepth === "max" ? "checked" : ""}><b>${escapeHtml(maxMode.label)}</b><em>${maxMode.cost} 点</em></label></div></section><label class="cpu-la-setting"><input type="checkbox" data-config="autoSubmit" ${config.autoSubmit ? "checked" : ""}><span><strong>章节测验答完自动提交</strong><small>只作用于章节测验；作业和考试始终由你手动交卷</small></span></label><label class="cpu-la-setting"><input type="checkbox" data-config="autoVideo" ${config.autoVideo ? "checked" : ""}><span><strong>自动播放视频与音频</strong><small>关闭后会跳过媒体任务点</small></span></label><label class="cpu-la-setting"><input type="checkbox" data-config="autoJump" ${config.autoJump ? "checked" : ""}><span><strong>完成后切换下一章</strong><small>暂停助手时不会发生章节切换</small></span></label><label class="cpu-la-setting"><input type="checkbox" data-config="autoExam" ${config.autoExam ? "checked" : ""}><span><strong>考试自动切换下一题</strong><small>只切题，不会替你最终交卷</small></span></label><div class="cpu-la-number-row"><span><strong>答题最短等待</strong><small class="cpu-la-muted">每题之间的秒数</small></span><input type="number" min="1" max="120" data-config-number="answerIntervalMin" value="${Number(config.answerIntervalMin) || 8}"></div><div class="cpu-la-number-row"><span><strong>答题最长等待</strong><small class="cpu-la-muted">不能小于最短等待</small></span><input type="number" min="1" max="180" data-config-number="answerIntervalMax" value="${Number(config.answerIntervalMax) || 20}"></div></div>`;
       }
     };
     panel.addEventListener("click", (event) => {

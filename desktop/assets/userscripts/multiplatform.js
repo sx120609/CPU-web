@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         药大拾间·全平台网课助手
 // @namespace    cn.lizmt.cpuweb.ocs
-// @version      4.15.4
+// @version      4.15.5
 // @description  药大拾间桌面端多平台网课助手；平台适配能力基于 OCS，答题只使用药大拾间独立 AI。
 // @author       enncy；药大拾间整合维护
 // @license      MIT
@@ -2612,12 +2612,15 @@ var __publicField = (obj, key, value) => {
       this.defaults = {
         urls: (urls) => urls && urls.length ? urls : [location.href],
         panelName: (name, urls = [location.href]) => {
+          const allowedInternalPanels = new Set(["common.guide", "common.settings", "render.console"]);
           const matched = utils_1.$.getMatchedScripts(this.projects, urls)
-            .filter((script) => !script.hideInPanel && !/^(common|background)\./.test(String(script.namespace || "")))
+            .filter((script) => !script.hideInPanel)
             .sort((left, right) => Number(right.priority || 0) - Number(left.priority || 0));
           const current = matched.find((script) => script.namespace === name || script.fullName() === name || String(name || "").endsWith("-" + script.name));
-          if (current) return current.namespace || current.fullName();
-          const preferred = matched[0];
+          if (current && (!/^(common|background)\./.test(String(current.namespace || "")) || allowedInternalPanels.has(String(current.namespace || "")))) {
+            return current.namespace || current.fullName();
+          }
+          const preferred = matched.find((script) => !/^(common|background)\./.test(String(script.namespace || "")));
           return preferred && (preferred.namespace || preferred.fullName()) || "common.guide";
         }
       };
@@ -2635,6 +2638,15 @@ var __publicField = (obj, key, value) => {
       this.root.append(this.container);
       const styles = config2.render.styles.map((s) => (0, utils_1.h)("style", s));
       this.container.append(...styles, this.messageContainer);
+      installCpuUnifiedSurface(this.root, this.container, {
+        getCurrentPanel: () => this.config.store.getCurrentPanelName(),
+        openPanel: (name) => this.config.store.setCurrentPanelName(name),
+        openTask: async () => {
+          const urls = this.defaults.urls(await this.config.store.getRenderURLs());
+          await this.config.store.setCurrentPanelName(this.defaults.panelName("", urls));
+        },
+        hide: () => this.hidden()
+      });
       installCpuScreenshotSearch(this.root, this.container);
       const handlePosition = () => {
         const pos = config2.store.getPosition();
@@ -21120,8 +21132,9 @@ const CPU_DESKTOP_STYLE = `:host {
   font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif;
 }
 container-element {
-  min-width: 360px;
-  max-width: min(430px, calc(100vw - 24px));
+  width: min(660px, calc(100vw - 24px));
+  min-width: min(420px, calc(100vw - 24px));
+  max-width: min(660px, calc(100vw - 24px));
   max-height: calc(100vh - 24px);
   color: var(--cpu-ocs-text);
   border: 1px solid var(--cpu-ocs-border);
@@ -21132,14 +21145,76 @@ container-element {
   backdrop-filter: blur(16px);
 }
 header-element {
-  min-height: 52px;
-  padding: 8px 10px;
+  min-height: 108px;
+  padding: 10px 12px 0;
   color: var(--cpu-ocs-text);
   background: var(--cpu-ocs-bg);
   border-radius: 18px 18px 0 0;
   border-bottom: 1px solid var(--cpu-ocs-border);
 }
-header-element .profile { font-weight: 700; }
+header-element > div { display: grid !important; gap: 10px; width: 100%; }
+header-element > div > div:first-child { display: flex !important; align-items: center; gap: 10px; min-width: 0; }
+header-element .profile {
+  display: flex !important;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  gap: 10px;
+  padding: 0 !important;
+  font-weight: 700;
+  cursor: move;
+}
+.cpu-assistant-brand-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 46px;
+  width: 46px;
+  height: 46px;
+  color: white;
+  background: var(--cpu-ocs-primary);
+  border-radius: 14px;
+  font-size: 20px;
+}
+.cpu-assistant-brand-copy { display: grid; min-width: 0; gap: 2px; }
+.cpu-assistant-brand-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 17px; }
+.cpu-assistant-brand-copy small { color: var(--cpu-ocs-muted); font-size: 12px; font-weight: 400; }
+.cpu-assistant-close {
+  display: grid;
+  place-items: center;
+  flex: 0 0 42px;
+  width: 42px;
+  height: 42px;
+  margin-left: auto;
+  color: var(--cpu-ocs-muted);
+  background: var(--cpu-ocs-card);
+  border: 1px solid var(--cpu-ocs-border);
+  border-radius: 12px;
+  cursor: pointer;
+}
+.cpu-assistant-close:hover { color: var(--cpu-ocs-primary); background: var(--cpu-ocs-primary-soft); }
+.cpu-assistant-close svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.cpu-assistant-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  padding: 5px;
+  background: var(--cpu-ocs-primary-soft);
+  border-radius: 12px 12px 0 0;
+}
+.cpu-assistant-tabs button {
+  min-height: 38px;
+  color: var(--cpu-ocs-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 9px;
+  cursor: pointer;
+  font-weight: 700;
+}
+.cpu-assistant-tabs button.active {
+  color: var(--cpu-ocs-primary);
+  background: var(--cpu-ocs-card);
+  box-shadow: 0 4px 12px rgba(32, 71, 61, 0.08);
+}
 header-element .switch,
 header-element .close,
 header-element .dropdown { min-height: 34px; border-radius: 10px; }
@@ -21148,7 +21223,7 @@ header-element .dropdown:hover { background: var(--cpu-ocs-primary-soft); }
 header-element .extra-menu-bar { border-color: var(--cpu-ocs-border); }
 script-panel-element {
   display: block;
-  max-height: calc(100vh - 96px);
+  max-height: calc(100vh - 142px);
   overflow-x: hidden;
   overflow-y: auto;
   scrollbar-width: thin;
@@ -21243,6 +21318,38 @@ header-element .extra-menu-bar .script-panel-link:hover {
   border-radius: 10px;
   cursor: pointer;
 }
+header-element .switch,
+header-element .close,
+header-element .dropdown,
+header-element .extra-menu-bar,
+header-element .visual-switcher { display: none !important; }
+
+.modal-wrapper {
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 50 !important;
+  display: grid !important;
+  place-items: center !important;
+  padding: 12px !important;
+  border-radius: 18px !important;
+  background: rgba(18, 31, 28, 0.42) !important;
+  backdrop-filter: blur(4px);
+}
+modal-element {
+  width: min(400px, 100%) !important;
+  max-width: 100% !important;
+  max-height: calc(100vh - 72px) !important;
+  overflow: auto !important;
+  color: var(--cpu-ocs-text) !important;
+  background: var(--cpu-ocs-card) !important;
+  border: 1px solid var(--cpu-ocs-border) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 18px 48px rgba(12, 28, 24, 0.24) !important;
+}
+modal-element .modal-profile { display: none !important; }
+modal-element header,
+modal-element footer { border-color: var(--cpu-ocs-border) !important; }
+modal-element button { border-radius: 9px !important; }
 .cpu-ocs-shot-button:hover { background: var(--cpu-ocs-primary-soft); border-color: var(--cpu-ocs-primary); }
 .cpu-ocs-shot-button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; }
 .cpu-ocs-capture-overlay {
@@ -21313,9 +21420,127 @@ header-element .extra-menu-bar .script-panel-link:hover {
   .dropdown-content { color: var(--cpu-ocs-text); background: var(--cpu-ocs-card) !important; }
   .dropdown-option:hover { background: var(--cpu-ocs-primary-soft) !important; }
 }
+
+@media (max-width: 520px) {
+  container-element { width: calc(100vw - 16px); min-width: 0; max-width: calc(100vw - 16px); }
+  .cpu-assistant-brand-copy strong { font-size: 15px; }
+  .cpu-assistant-brand-copy small { display: none; }
+}
 `;
 
 // CPU_DESKTOP_SCREENSHOT_ADDON_START
+function configureCpuDesktopProjects(projects) {
+  for (const project of projects) {
+    for (const [key, script] of Object.entries(project.scripts || {})) {
+      script.projectName = project.name;
+
+      if (project.name === "后台") {
+        script.hideInPanel = key !== "console";
+        if (key === "console") script.name = "运行日志";
+        continue;
+      }
+
+      if (project.name === "通用") {
+        script.hideInPanel = !["guide", "settings"].includes(key);
+        if (key === "guide") script.name = "当前任务";
+        if (key === "settings") script.name = "设置";
+      }
+    }
+  }
+}
+
+function installCpuUnifiedSurface(root, container, bridge) {
+  let updating = false;
+
+  const currentTab = async () => {
+    const current = String(await bridge.getCurrentPanel() || "");
+    if (current === "render.console" || current.endsWith("-运行日志")) return "logs";
+    if (current === "common.settings" || current.endsWith("-设置")) return "settings";
+    return "task";
+  };
+
+  const updateActiveTab = async (tabs) => {
+    const active = await currentTab();
+    tabs.querySelectorAll("button[data-cpu-assistant-tab]").forEach((button) => {
+      const selected = button.dataset.cpuAssistantTab === active;
+      button.classList.toggle("active", selected);
+      button.setAttribute("aria-selected", selected ? "true" : "false");
+      button.tabIndex = selected ? 0 : -1;
+    });
+  };
+
+  const mount = () => {
+    if (updating) return;
+    updating = true;
+    try {
+      const header = root.querySelector("header-element");
+      const headerShell = header?.firstElementChild;
+      const toolbar = headerShell?.firstElementChild;
+      if (!header || !headerShell || !toolbar) return;
+
+      const profile = toolbar.querySelector(".profile");
+      if (profile && profile.dataset.cpuAssistantTitle !== "true") {
+        profile.dataset.cpuAssistantTitle = "true";
+        profile.title = "拖动助手窗口";
+        profile.replaceChildren();
+        const icon = document.createElement("span");
+        icon.className = "cpu-assistant-brand-icon";
+        icon.textContent = "拾";
+        const copy = document.createElement("span");
+        copy.className = "cpu-assistant-brand-copy";
+        copy.innerHTML = "<strong>药大拾间·全平台网课助手</strong><small>任务、答案与运行控制</small>";
+        profile.append(icon, copy);
+      }
+
+      if (!toolbar.querySelector(".cpu-assistant-close")) {
+        const close = document.createElement("button");
+        close.type = "button";
+        close.className = "cpu-assistant-close";
+        close.title = "隐藏助手";
+        close.setAttribute("aria-label", "隐藏助手");
+        close.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg>';
+        close.addEventListener("click", (event) => {
+          event.stopPropagation();
+          bridge.hide();
+        });
+        toolbar.append(close);
+      }
+
+      let tabs = headerShell.querySelector(".cpu-assistant-tabs");
+      if (!tabs) {
+        tabs = document.createElement("nav");
+        tabs.className = "cpu-assistant-tabs";
+        tabs.setAttribute("role", "tablist");
+        tabs.setAttribute("aria-label", "助手页面");
+        tabs.innerHTML = `
+          <button type="button" role="tab" data-cpu-assistant-tab="task">当前任务</button>
+          <button type="button" role="tab" data-cpu-assistant-tab="logs">运行日志</button>
+          <button type="button" role="tab" data-cpu-assistant-tab="settings">设置</button>
+        `;
+        tabs.addEventListener("click", async (event) => {
+          const button = event.target.closest("button[data-cpu-assistant-tab]");
+          if (!button) return;
+          event.stopPropagation();
+          const tab = button.dataset.cpuAssistantTab;
+          if (tab === "task") await bridge.openTask();
+          else if (tab === "logs") await bridge.openPanel("render.console");
+          else if (tab === "settings") await bridge.openPanel("common.settings");
+          await updateActiveTab(tabs);
+        });
+        headerShell.append(tabs);
+      }
+
+      void updateActiveTab(tabs);
+    } finally {
+      updating = false;
+    }
+  };
+
+  mount();
+  const observer = new MutationObserver(() => queueMicrotask(mount));
+  observer.observe(root, { childList: true, subtree: true });
+}
+
 function installCpuScreenshotSearch(root, container) {
   if (typeof GM_cpuCaptureArea !== "function" || typeof GM_cpuAIRequest !== "function") return;
 
@@ -21540,6 +21765,8 @@ const infos = GM_info;
 	'use strict';
 
 	const projects = definedProjects();
+	// CPU_DESKTOP_PROJECTS_CONFIGURED
+	configureCpuDesktopProjects(projects);
 
 	// 运行脚本
 	start({

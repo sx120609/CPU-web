@@ -18,6 +18,11 @@ export type AiQuotaRules = {
     accessMode: "guest-unlimited" | "account-quota";
     requiresLogin: boolean;
     unlimited: boolean;
+    answerModes: Array<{
+      key: "low" | "high" | "max";
+      label: string;
+      pointMultiplier: number;
+    }>;
   };
   /** 等级 -> 每日免费次数 */
   dailyQuotas: { level: number; quota: number }[];
@@ -52,6 +57,11 @@ export async function getAiQuotaRules(): Promise<AiQuotaRules> {
       accessMode: site.learningAssistantAccessMode,
       requiresLogin: site.learningAssistantAccessMode === "account-quota",
       unlimited: site.learningAssistantAccessMode === "guest-unlimited",
+      answerModes: [
+        { key: "low", label: "快速判断", pointMultiplier: site.learningAssistantTiers.low.pointMultiplier },
+        { key: "high", label: "深入分析", pointMultiplier: site.learningAssistantTiers.high.pointMultiplier },
+        { key: "max", label: "挑战难题", pointMultiplier: site.learningAssistantTiers.max.pointMultiplier },
+      ],
     },
     dailyQuotas: site.assistantDailyQuotas.map((item) => ({ level: item.level, quota: item.quota })),
     levels: site.reputationLevels.map((item) => ({

@@ -2,11 +2,12 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const EXPECTED_UPSTREAM_VERSION = "4.15.3";
-const INTEGRATION_VERSION = "4.15.4";
+const INTEGRATION_VERSION = "4.15.5";
 const EXPECTED_COMMIT = "890686a5e54f9a6d52d1169bae9ea5971e0863c7";
 const OUTPUT = path.join(__dirname, "..", "assets", "userscripts", "multiplatform.js");
 const THEME = path.join(__dirname, "..", "assets", "userscripts", "multiplatform-theme.css");
 const SCREENSHOT_ADDON = path.join(__dirname, "..", "assets", "userscripts", "multiplatform-screenshot.js");
+const SURFACE_ADDON = path.join(__dirname, "..", "assets", "userscripts", "multiplatform-surface.js");
 
 const input = process.argv[2];
 if (!input) {
@@ -19,6 +20,7 @@ const desktopTheme = fs.readFileSync(THEME, "utf8")
   .replaceAll("`", "\\`")
   .replaceAll("${", "\\${");
 const screenshotAddon = fs.readFileSync(SCREENSHOT_ADDON, "utf8").trim();
+const surfaceAddon = fs.readFileSync(SURFACE_ADDON, "utf8").trim();
 const headerMatch = source.match(/\/\/\s*==UserScript==([\s\S]*?)\/\/\s*==\/UserScript==/);
 if (!headerMatch) throw new Error("输入文件不是有效的 OCS UserScript");
 if (!new RegExp(`^\\s*//\\s*@version\\s+${EXPECTED_UPSTREAM_VERSION.replace(/\./g, "\\.")}\\s*$`, "m").test(source)) {
@@ -74,12 +76,15 @@ output = output
   .replace(
     "        panelName: (name) => name || this.config.render.defaultPanelName || \"\"",
   `        panelName: (name, urls = [location.href]) => {
+          const allowedInternalPanels = new Set(["common.guide", "common.settings", "render.console"]);
           const matched = utils_1.$.getMatchedScripts(this.projects, urls)
-            .filter((script) => !script.hideInPanel && !/^(common|background)\\./.test(String(script.namespace || "")))
+            .filter((script) => !script.hideInPanel)
             .sort((left, right) => Number(right.priority || 0) - Number(left.priority || 0));
           const current = matched.find((script) => script.namespace === name || script.fullName() === name || String(name || "").endsWith("-" + script.name));
-          if (current) return current.namespace || current.fullName();
-          const preferred = matched[0];
+          if (current && (!/^(common|background)\\./.test(String(current.namespace || "")) || allowedInternalPanels.has(String(current.namespace || "")))) {
+            return current.namespace || current.fullName();
+          }
+          const preferred = matched.find((script) => !/^(common|background)\\./.test(String(script.namespace || "")));
           return preferred && (preferred.namespace || preferred.fullName()) || \"common.guide\";
         }`,
   )
@@ -124,11 +129,21 @@ output = output
   )
   .replace(
     "/* eslint-disable no-undef */",
-    `// 药大拾间桌面端主题与截图搜题均位于 OCS 的封闭 ShadowRoot 内，不污染网课页面。\nconst CPU_DESKTOP_STYLE = \`${desktopTheme}\`;\n\n${screenshotAddon}\n\n/* eslint-disable no-undef */`,
+    `// 药大拾间桌面端主题与统一工作台均位于 OCS 的封闭 ShadowRoot 内，不污染网课页面。\nconst CPU_DESKTOP_STYLE = \`${desktopTheme}\`;\n\n${surfaceAddon}\n\n${screenshotAddon}\n\n/* eslint-disable no-undef */`,
   )
   .replace(
     "      this.container.append(...styles, this.messageContainer);",
-    "      this.container.append(...styles, this.messageContainer);\n      installCpuScreenshotSearch(this.root, this.container);",
+    `      this.container.append(...styles, this.messageContainer);
+      installCpuUnifiedSurface(this.root, this.container, {
+        getCurrentPanel: () => this.config.store.getCurrentPanelName(),
+        openPanel: (name) => this.config.store.setCurrentPanelName(name),
+        openTask: async () => {
+          const urls = this.defaults.urls(await this.config.store.getRenderURLs());
+          await this.config.store.setCurrentPanelName(this.defaults.panelName("", urls));
+        },
+        hide: () => this.hidden()
+      });
+      installCpuScreenshotSearch(this.root, this.container);`,
   )
   .replace("styles: [STYLE]", "styles: [STYLE, CPU_DESKTOP_STYLE]")
   .replace(
@@ -187,14 +202,22 @@ output = output
     'this.header = (0, dom_1$4.h)("header-element");',
   );
 
+output = output.replace(
+  /(\bconst projects = definedProjects\(\);\r?\n)(\s*\r?\n\s*\/\/ 运行脚本)/,
+  "$1\t// CPU_DESKTOP_PROJECTS_CONFIGURED\n\tconfigureCpuDesktopProjects(projects);\n$2",
+);
+
 if (!output.includes("title: '药大拾间·全平台网课助手'")) {
   throw new Error("OCS 入口结构已变化，停止生成，需人工复核");
 }
 if (!output.includes("药大拾间桌面端关闭后台节流")) {
   throw new Error("OCS 后台可见性检测结构已变化，停止生成，需人工复核");
 }
-if (!output.includes("CPU_DESKTOP_STYLE") || !output.includes("多平台助手已暂停") || !output.includes("installCpuScreenshotSearch(this.root, this.container)")) {
+if (!output.includes("CPU_DESKTOP_STYLE") || !output.includes("多平台助手已暂停") || !output.includes("installCpuUnifiedSurface(this.root, this.container") || !output.includes("installCpuScreenshotSearch(this.root, this.container)")) {
   throw new Error("药大拾间多平台引导、主题或状态桥结构未生成，停止发布");
+}
+if (!output.includes("CPU_DESKTOP_PROJECTS_CONFIGURED")) {
+  throw new Error("OCS 内部调试面板尚未从用户界面隔离，停止发布");
 }
 if (!output.includes('alignItems: "center", width: "100%"') || !output.includes(".user-guide { display: none !important; }")) {
   throw new Error("OCS 精简标题栏或无关入口过滤未生成，停止发布");

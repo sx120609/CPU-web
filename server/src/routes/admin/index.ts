@@ -28,6 +28,7 @@ import {
   setAiReviewConfig,
   setCampusAssistantModel,
   setLearningAssistantModel,
+  setLearningAssistantTiers,
   setLearningAssistantAccessMode,
   setCommunityTrustConfig,
   setSiteOrigin,
@@ -2102,6 +2103,11 @@ const siteConfigPatchSchema = z.object({
   siteFilingNumber: z.string().trim().max(120).optional(),
   assistantModel: z.string().trim().min(1).max(80).optional(),
   learningAssistantModel: z.string().trim().min(1).max(80).optional(),
+  learningAssistantTiers: z.object({
+    low: z.object({ model: z.string().trim().min(1).max(200), reasoningEffort: z.literal("low"), pointMultiplier: z.number().min(0.1).max(20) }),
+    high: z.object({ model: z.string().trim().min(1).max(200), reasoningEffort: z.literal("high"), pointMultiplier: z.number().min(0.1).max(20) }),
+    max: z.object({ model: z.string().trim().min(1).max(200), reasoningEffort: z.literal("max"), pointMultiplier: z.number().min(0.1).max(20) }),
+  }).optional(),
   learningAssistantAccessMode: z.enum(["guest-unlimited", "account-quota"]).optional(),
   aiReviewEnabled: z.boolean().optional(),
   aiReviewProvider: z.string().trim().max(40).optional(),
@@ -2250,6 +2256,9 @@ adminRouter.patch("/site-config", adminOnly, validate(siteConfigPatchSchema), as
     }
     if (req.body.learningAssistantModel !== undefined) {
       await setLearningAssistantModel(req.body.learningAssistantModel);
+    }
+    if (req.body.learningAssistantTiers !== undefined) {
+      await setLearningAssistantTiers(req.body.learningAssistantTiers);
     }
     if (req.body.learningAssistantAccessMode !== undefined) {
       await setLearningAssistantAccessMode(req.body.learningAssistantAccessMode);
