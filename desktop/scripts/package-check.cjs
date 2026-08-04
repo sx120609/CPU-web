@@ -65,9 +65,12 @@ for (const entry of required) {
 
 // vendor 副本数量要和清单对得上，少一个就意味着运行时会回落到 CDN
 const manifestPath = path.join(__dirname, "..", "assets", "vendor", "manifest.json");
-const expected = Object.keys(JSON.parse(fs.readFileSync(manifestPath, "utf8")).dependencies).length;
-const packed = entries.filter((entry) => entry.startsWith("/assets/vendor/") && entry.endsWith(".txt")).length;
-const vendorOk = packed === expected;
+const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+const expectedFiles = Object.values(manifest.dependencies).map((dependency) => `/assets/vendor/${dependency.file}`);
+const missingVendorFiles = expectedFiles.filter((entry) => !has(entry));
+const expected = expectedFiles.length;
+const packed = expected - missingVendorFiles.length;
+const vendorOk = missingVendorFiles.length === 0;
 if (!vendorOk) missing += 1;
 console.log(`${vendorOk ? "  ok  " : "  缺失"}  vendor 依赖副本 ${packed}/${expected}`);
 
