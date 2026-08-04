@@ -8,7 +8,7 @@ export type SiteConfig = {
   learningAssistantModel: string;
   learningAssistantTiers: Record<"low" | "high" | "max", {
     model: string;
-    reasoningEffort: "low" | "high" | "max";
+    reasoningEffort: "low" | "medium" | "high" | "xhigh" | "max";
     pointMultiplier: number;
   }>;
   learningAssistantAccessMode: "guest-unlimited" | "account-quota";

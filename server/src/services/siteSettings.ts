@@ -42,7 +42,7 @@ export type AssistantDailyQuotaConfig = {
 };
 export type LearningAssistantAccessMode = "guest-unlimited" | "account-quota";
 export type LearningAssistantTierKey = "low" | "high" | "max";
-export type LearningAssistantReasoningEffort = "low" | "high" | "max";
+export type LearningAssistantReasoningEffort = "low" | "medium" | "high" | "xhigh" | "max";
 export type LearningAssistantTierConfig = {
   model: string;
   reasoningEffort: LearningAssistantReasoningEffort;
@@ -1295,7 +1295,7 @@ function normalizeLearningAssistantTiers(input: unknown, fallbackModel: string):
     const defaults = DEFAULT_LEARNING_ASSISTANT_TIERS[key];
     const model = String(raw.model || fallbackModel || defaults.model).trim().slice(0, 200) || defaults.model;
     const pointMultiplier = Number(raw.pointMultiplier);
-    const reasoningEffort = ["low", "high", "max"].includes(String(raw.reasoningEffort))
+    const reasoningEffort = ["low", "medium", "high", "xhigh", "max"].includes(String(raw.reasoningEffort))
       ? raw.reasoningEffort as LearningAssistantReasoningEffort
       : defaults.reasoningEffort;
     return {

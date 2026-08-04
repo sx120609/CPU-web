@@ -2105,9 +2105,9 @@ const siteConfigPatchSchema = z.object({
   assistantModel: z.string().trim().min(1).max(80).optional(),
   learningAssistantModel: z.string().trim().min(1).max(80).optional(),
   learningAssistantTiers: z.object({
-    low: z.object({ model: z.string().trim().min(1).max(200), reasoningEffort: z.enum(["low", "high", "max"]), pointMultiplier: z.number().min(0.1).max(20) }),
-    high: z.object({ model: z.string().trim().min(1).max(200), reasoningEffort: z.enum(["low", "high", "max"]), pointMultiplier: z.number().min(0.1).max(20) }),
-    max: z.object({ model: z.string().trim().min(1).max(200), reasoningEffort: z.enum(["low", "high", "max"]), pointMultiplier: z.number().min(0.1).max(20) }),
+    low: z.object({ model: z.string().trim().min(1).max(200), reasoningEffort: z.enum(["low", "medium", "high", "xhigh", "max"]), pointMultiplier: z.number().min(0.1).max(20) }),
+    high: z.object({ model: z.string().trim().min(1).max(200), reasoningEffort: z.enum(["low", "medium", "high", "xhigh", "max"]), pointMultiplier: z.number().min(0.1).max(20) }),
+    max: z.object({ model: z.string().trim().min(1).max(200), reasoningEffort: z.enum(["low", "medium", "high", "xhigh", "max"]), pointMultiplier: z.number().min(0.1).max(20) }),
   }).optional(),
   learningPlatforms: z.object({
     chaoxing: z.boolean(),

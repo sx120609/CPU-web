@@ -528,9 +528,11 @@ const learningTierAssignments = [
   { key: "max", label: "挑战难题", description: "高难题与多步骤核验" },
 ] as const;
 const reasoningEffortOptions = [
-  { value: "low", label: "低" },
-  { value: "high", label: "高" },
-  { value: "max", label: "最高" },
+  { value: "low", label: "low（低）" },
+  { value: "medium", label: "medium（中）" },
+  { value: "high", label: "high（高）" },
+  { value: "xhigh", label: "xhigh（超高）" },
+  { value: "max", label: "max（最高）" },
 ] as const;
 const form = reactive<SiteConfig>({
   siteOrigin: "",

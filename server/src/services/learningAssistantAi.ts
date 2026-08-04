@@ -9,7 +9,7 @@ import {
 } from "./aiJsonApi";
 import { isCampusAssistantConversationRestricted } from "./campusAssistant";
 import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } from "./aiReviewLog";
-import { getSiteConfig } from "./siteSettings";
+import { getSiteConfig, type LearningAssistantReasoningEffort } from "./siteSettings";
 
 export const LEARNING_ASSISTANT_AI_INSTRUCTIONS = [
   "你是“药大拾间·学习通助手”使用的独立答题 AI。",
@@ -141,6 +141,9 @@ export const learningAssistantAiBodySchema = z.object({
 }).strict();
 
 export type LearningAssistantAiBody = z.infer<typeof learningAssistantAiBodySchema>;
+type LearningAssistantAiUpstreamBody = Omit<LearningAssistantAiBody, "reasoningEffort"> & {
+  reasoningEffort: LearningAssistantReasoningEffort;
+};
 
 export type LearningAssistantAiResult = {
   ok: boolean;
@@ -157,7 +160,7 @@ export type LearningAssistantAiUsageContext = {
 };
 
 export function buildLearningAssistantAiRequestBody(
-  body: LearningAssistantAiBody,
+  body: LearningAssistantAiUpstreamBody,
   model: string,
   endpoint: string
 ) {
@@ -226,7 +229,7 @@ export async function requestLearningAssistantAi(
   );
   const apiKey = siteConfig.aiReviewApiKey;
   const model = tier.model;
-  const effectiveBody: LearningAssistantAiBody = { ...body, reasoningEffort: tier.reasoningEffort };
+  const effectiveBody: LearningAssistantAiUpstreamBody = { ...body, reasoningEffort: tier.reasoningEffort };
   if (!siteConfig.aiReviewEnabled || !endpoint || !apiKey || !model) {
     throw Errors.server("AI 服务尚未配置或已关闭");
   }

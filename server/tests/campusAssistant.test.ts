@@ -48,6 +48,7 @@ import { buildOAuthAiRequestBody, OAUTH_AI_INSTRUCTIONS } from "../src/routes/oa
 import { readDesktopUserScriptRelease } from "../src/services/desktopUserScript";
 import {
   isLearningAssistantNonAnswerFeedback,
+  buildLearningAssistantAiRequestBody,
   learningAssistantAiBodySchema,
   learningAssistantAiResponse,
   learningAssistantPointCost,
@@ -354,6 +355,30 @@ test("学习通 AI 请求只携带题目上下文与独立合规边界", () => {
   assert.match(OAUTH_AI_INSTRUCTIONS, /只依据本次请求中明确给出的题干、选项、图片和通用学科知识/);
   assert.match(OAUTH_AI_INSTRUCTIONS, /中华人民共和国现行法律法规/);
   assert.doesNotMatch(serialized, /knowledge=|玄武门校区|assistantPoints|DATABASE_URL|nickname/);
+});
+
+test("网课解题会把后台配置的完整推理强度原样发送给上游", () => {
+  const input = {
+    model: "server-selected-model",
+    reasoningEffort: "xhigh" as const,
+    input: [{
+      role: "user" as const,
+      content: [{ type: "input_text" as const, text: "请回答这道测试题。" }],
+    }],
+  };
+  const chatBody = buildLearningAssistantAiRequestBody(
+    input,
+    "server-selected-model",
+    "https://api.example.com/v1/chat/completions",
+  ) as { reasoning_effort: string };
+  const responsesBody = buildLearningAssistantAiRequestBody(
+    input,
+    "server-selected-model",
+    "https://api.example.com/v1/responses",
+  ) as { reasoning: { effort: string } };
+
+  assert.equal(chatBody.reasoning_effort, "xhigh");
+  assert.equal(responsesBody.reasoning.effort, "xhigh");
 });
 
 test("学习通助手访问策略默认临时开放且可由服务端恢复账号额度", () => {
