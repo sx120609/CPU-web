@@ -152,6 +152,17 @@ test("云端学习通助手脚本提供可校验的版本与正文", async () =>
   assert.doesNotMatch(release.source, /Auto Ask/);
 });
 
+test("云端多平台助手脚本与客户端安装包分离发布", async () => {
+  const release = await readDesktopUserScriptRelease("multiplatform");
+  assert.equal(release.name, "药大拾间·全平台网课助手");
+  assert.equal(release.version, "4.15.3");
+  assert.match(release.sha256, /^[a-f0-9]{64}$/);
+  assert.equal(release.size, Buffer.byteLength(release.source, "utf8"));
+  assert.match(release.source, /fusioncourseh5\.zhihuishu\.com\/stuStudy/);
+  assert.match(release.source, /wisdom-mooc\.zhihuishu\.com\/study\/index/);
+  assert.match(release.source, /@connect\s+desktop\.localhost/);
+});
+
 test("学习通答题 AI 返回独立的答案与公开解题思路字段", () => {
   assert.deepEqual(
     parseLearningAssistantAnswer("答案：C\n解题思路：由盖斯定律相减可得反应热。"),

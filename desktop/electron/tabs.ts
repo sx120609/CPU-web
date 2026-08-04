@@ -31,6 +31,7 @@ export type TabState = {
   loading: boolean;
   closable: boolean;
   canGoBack: boolean;
+  muted: boolean;
   platformId?: LearningPlatformId;
 };
 
@@ -88,6 +89,7 @@ export class TabManager {
         loading: tab.loading,
         closable: tab.closable,
         canGoBack: tab.view ? tab.view.webContents.navigationHistory.canGoBack() : false,
+        muted: tab.view?.webContents.isAudioMuted() ?? false,
         ...(tab.platformId ? { platformId: tab.platformId } : {})
       })),
       activeId: this.activeId
@@ -269,6 +271,9 @@ export class TabManager {
     };
     this.tabs.push(tab);
     this.wire(tab);
+    // 网课标签默认静音。脚本即使因平台改版暂时没启动，也不会突然外放；
+    // 用户仍可在标签上独立恢复声音，不影响主站或其他网课标签。
+    tab.view!.webContents.setAudioMuted(true);
     this.activate(tab.id);
     try {
       await tab.view!.webContents.loadURL(url);
@@ -313,6 +318,13 @@ export class TabManager {
   goBack(id: string): void {
     const contents = this.find(id)?.view?.webContents;
     if (contents?.navigationHistory.canGoBack()) contents.navigationHistory.goBack();
+  }
+
+  setMuted(id: string, muted: boolean): void {
+    const contents = this.find(id)?.view?.webContents;
+    if (!contents || contents.isDestroyed()) return;
+    contents.setAudioMuted(muted);
+    this.emit();
   }
 
   async navigateSite(url: string): Promise<boolean> {

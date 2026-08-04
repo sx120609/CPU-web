@@ -2,10 +2,40 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-export const USER_SCRIPT_MANIFEST_PATH = "/api/site/userscripts/chaoxing-helper";
-export const USER_SCRIPT_SOURCE_PATH = "/api/site/userscripts/chaoxing-helper/source";
 export const USER_SCRIPT_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
-export const USER_SCRIPT_MAX_BYTES = 512 * 1024;
+
+export type UserScriptUpdateChannel = {
+  id: "chaoxing" | "multiplatform";
+  expectedName: string;
+  manifestPath: string;
+  sourcePath: string;
+  cacheFileName: string;
+  maxBytes: number;
+};
+
+export const CHAOXING_USER_SCRIPT_CHANNEL: UserScriptUpdateChannel = {
+  id: "chaoxing",
+  expectedName: "药大拾间·学习通助手",
+  manifestPath: "/api/site/userscripts/chaoxing-helper",
+  sourcePath: "/api/site/userscripts/chaoxing-helper/source",
+  cacheFileName: "chaoxing-helper-cache.json",
+  maxBytes: 512 * 1024,
+};
+
+export const MULTIPLATFORM_USER_SCRIPT_CHANNEL: UserScriptUpdateChannel = {
+  id: "multiplatform",
+  expectedName: "药大拾间·全平台网课助手",
+  manifestPath: "/api/site/userscripts/multiplatform-helper",
+  sourcePath: "/api/site/userscripts/multiplatform-helper/source",
+  cacheFileName: "multiplatform-helper-cache.json",
+  // 当前经审计的 OCS 构建约 800 KiB。独立上限避免放宽学习通脚本的边界。
+  maxBytes: 2 * 1024 * 1024,
+};
+
+// 保留旧导出名，已有测试与第三方构建脚本无需同步迁移。
+export const USER_SCRIPT_MANIFEST_PATH = CHAOXING_USER_SCRIPT_CHANNEL.manifestPath;
+export const USER_SCRIPT_SOURCE_PATH = CHAOXING_USER_SCRIPT_CHANNEL.sourcePath;
+export const USER_SCRIPT_MAX_BYTES = CHAOXING_USER_SCRIPT_CHANNEL.maxBytes;
 
 export type UserScriptUpdateManifest = {
   name: string;
@@ -31,10 +61,12 @@ type UpdateOptions = {
   cacheDirectory: string;
   currentSource: string;
   validateSource: (source: string) => void;
+  channel?: UserScriptUpdateChannel;
   fetchImpl?: typeof fetch;
 };
 
-const cachePath = (directory: string) => path.join(directory, "chaoxing-helper-cache.json");
+const cachePath = (directory: string, channel: UserScriptUpdateChannel) =>
+  path.join(directory, channel.cacheFileName);
 
 export const sha256Text = (source: string): string =>
   createHash("sha256").update(source, "utf8").digest("hex");
@@ -46,9 +78,13 @@ export function parseUserScriptIdentity(source: string): { name: string; version
   return { name: value("name"), version: value("version") };
 }
 
-export function validateUserScriptRelease(source: string, manifest: UserScriptUpdateManifest): void {
+export function validateUserScriptRelease(
+  source: string,
+  manifest: UserScriptUpdateManifest,
+  channel: UserScriptUpdateChannel = CHAOXING_USER_SCRIPT_CHANNEL,
+): void {
   const bytes = Buffer.byteLength(source, "utf8");
-  if (bytes === 0 || bytes > USER_SCRIPT_MAX_BYTES || bytes !== manifest.size) {
+  if (bytes === 0 || bytes > channel.maxBytes || bytes !== manifest.size) {
     throw new Error("云端脚本大小校验失败");
   }
   if (!/^[a-f0-9]{64}$/.test(manifest.sha256) || sha256Text(source) !== manifest.sha256) {
@@ -60,10 +96,13 @@ export function validateUserScriptRelease(source: string, manifest: UserScriptUp
   }
 }
 
-function parseManifest(value: unknown): UserScriptUpdateManifest {
+function parseManifest(
+  value: unknown,
+  channel: UserScriptUpdateChannel,
+): UserScriptUpdateManifest {
   const manifest = (value ?? {}) as Partial<UserScriptUpdateManifest>;
   if (
-    manifest.name !== "药大拾间·学习通助手"
+    manifest.name !== channel.expectedName
     || typeof manifest.version !== "string"
     || !/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(manifest.version)
     || typeof manifest.sha256 !== "string"
@@ -71,8 +110,8 @@ function parseManifest(value: unknown): UserScriptUpdateManifest {
     || typeof manifest.size !== "number"
     || !Number.isSafeInteger(manifest.size)
     || manifest.size <= 0
-    || manifest.size > USER_SCRIPT_MAX_BYTES
-    || manifest.sourceUrl !== USER_SCRIPT_SOURCE_PATH
+    || manifest.size > channel.maxBytes
+    || manifest.sourceUrl !== channel.sourcePath
   ) {
     throw new Error("云端脚本版本清单无效");
   }
@@ -94,12 +133,13 @@ async function replaceFileAtomically(target: string, content: string): Promise<v
 export async function readCachedUserScript(
   cacheDirectory: string,
   validateSource: (source: string) => void,
+  channel: UserScriptUpdateChannel = CHAOXING_USER_SCRIPT_CHANNEL,
 ): Promise<UserScriptUpdateResult | undefined> {
   try {
-    const envelope = JSON.parse(await readFile(cachePath(cacheDirectory), "utf8")) as Partial<CacheEnvelope>;
-    const manifest = parseManifest(envelope.manifest);
+    const envelope = JSON.parse(await readFile(cachePath(cacheDirectory, channel), "utf8")) as Partial<CacheEnvelope>;
+    const manifest = parseManifest(envelope.manifest, channel);
     if (typeof envelope.source !== "string") return undefined;
-    validateUserScriptRelease(envelope.source, manifest);
+    validateUserScriptRelease(envelope.source, manifest, channel);
     validateSource(envelope.source);
     return { status: "current", source: envelope.source, manifest };
   } catch {
@@ -109,14 +149,15 @@ export async function readCachedUserScript(
 
 export async function checkUserScriptUpdate(options: UpdateOptions): Promise<UserScriptUpdateResult> {
   const fetchImpl = options.fetchImpl ?? fetch;
-  const manifestResponse = await fetchImpl(new URL(USER_SCRIPT_MANIFEST_PATH, options.origin), {
+  const channel = options.channel ?? CHAOXING_USER_SCRIPT_CHANNEL;
+  const manifestResponse = await fetchImpl(new URL(channel.manifestPath, options.origin), {
     headers: { accept: "application/json" },
     cache: "no-store",
     signal: AbortSignal.timeout(10_000),
   });
   if (!manifestResponse.ok) throw new Error(`脚本版本检查失败：HTTP ${manifestResponse.status}`);
   const envelope = await manifestResponse.json() as { data?: unknown };
-  const manifest = parseManifest(envelope.data);
+  const manifest = parseManifest(envelope.data, channel);
 
   if (sha256Text(options.currentSource) === manifest.sha256) {
     return { status: "current", source: options.currentSource, manifest };
@@ -132,11 +173,11 @@ export async function checkUserScriptUpdate(options: UpdateOptions): Promise<Use
   });
   if (!sourceResponse.ok) throw new Error(`脚本下载失败：HTTP ${sourceResponse.status}`);
   const declaredSize = Number(sourceResponse.headers.get("content-length") || 0);
-  if (declaredSize > USER_SCRIPT_MAX_BYTES) throw new Error("云端脚本超过大小上限");
+  if (declaredSize > channel.maxBytes) throw new Error("云端脚本超过大小上限");
   const source = await sourceResponse.text();
-  validateUserScriptRelease(source, manifest);
+  validateUserScriptRelease(source, manifest, channel);
   options.validateSource(source);
 
-  await replaceFileAtomically(cachePath(options.cacheDirectory), JSON.stringify({ manifest, source }));
+  await replaceFileAtomically(cachePath(options.cacheDirectory, channel), JSON.stringify({ manifest, source }));
   return { status: "updated", source, manifest };
 }

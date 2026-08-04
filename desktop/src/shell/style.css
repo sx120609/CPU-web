@@ -139,7 +139,7 @@ body {
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
-.tab-close {
+.tab-close, .tab-mute {
   width: 16px;
   height: 16px;
   flex: none;
@@ -153,6 +153,13 @@ body {
 }
 
 .tab-close:hover { background: color-mix(in srgb, var(--cpu-danger) 16%, transparent); color: var(--cpu-danger); }
+.tab-mute {
+  display: inline-grid;
+  place-items: center;
+  font-size: 11px;
+  line-height: 1;
+}
+.tab-mute:hover { background: var(--cpu-primary-soft); color: var(--cpu-primary-dark); }
 
 .chips {
   display: flex;
@@ -269,6 +276,29 @@ body {
 
 .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
 .actions:empty { display: none; }
+.script-release-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+.script-release {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 12px;
+  background: var(--cpu-surface-soft);
+}
+.script-release > div { min-width: 0; }
+.script-release strong { display: block; font-size: 14px; }
+.script-release p { margin: 4px 0 0; overflow-wrap: anywhere; }
+.script-release button { flex: 0 0 auto; }
+@media (max-width: 720px) {
+  .script-release { align-items: stretch; flex-direction: column; }
+  .script-release button { align-self: flex-start; }
+}
 
 button.primary, button.ghost {
   border: 1px solid transparent;

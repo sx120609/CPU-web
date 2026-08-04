@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld("cpuShell", {
     close: (id: string) => ipcRenderer.invoke("tabs:close", id),
     reload: (id: string) => ipcRenderer.invoke("tabs:reload", id),
     goBack: (id: string) => ipcRenderer.invoke("tabs:go-back", id),
+    setMuted: (id: string, muted: boolean) => ipcRenderer.invoke("tabs:set-muted", id, muted),
     openLearning: (platformId?: string) => ipcRenderer.invoke("tabs:open-learning", platformId),
     openSponsor: () => ipcRenderer.invoke("tabs:open-sponsor"),
     onChange: (callback: (state: any) => void) => on("tabs:changed", callback)
@@ -61,9 +62,11 @@ contextBridge.exposeInMainWorld("cpuShell", {
     setConfig: (patch: Record<string, unknown>) => ipcRenderer.invoke("script:set-config", patch),
     getActivity: (limit?: number) => ipcRenderer.invoke("script:get-activity", limit),
     getUpdateState: () => ipcRenderer.invoke("script:get-update-state"),
-    checkUpdate: () => ipcRenderer.invoke("script:check-update"),
+    getUpdateStates: () => ipcRenderer.invoke("script:get-update-states"),
+    checkUpdate: (kind: "chaoxing" | "multiplatform" = "chaoxing") => ipcRenderer.invoke("script:check-update", kind),
     onActivity: (callback: (entry: any) => void) => on("script:activity", callback),
-    onUpdateState: (callback: (state: any) => void) => on("script:update-state", callback)
+    onUpdateState: (callback: (state: any) => void) => on("script:update-state", callback),
+    onUpdateStates: (callback: (state: any) => void) => on("script:update-states", callback)
   },
 
   learningCredentials: {

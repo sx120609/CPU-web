@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
 import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { config } from "../config";
@@ -13,6 +13,7 @@ import {
 } from "../services/pdsShare";
 import { getAiQuotaRules } from "../services/aiQuotaRules";
 import { readDesktopUserScriptRelease } from "../services/desktopUserScript";
+import type { DesktopUserScriptKind } from "../services/desktopUserScript";
 import { securityRateLimit } from "../middleware/securityRateLimit";
 import {
   learningAssistantAiBodySchema,
@@ -79,6 +80,53 @@ siteRouter.get("/userscripts/chaoxing-helper/source", async (req, res, next) => 
       return;
     }
     res.send(release.source);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/** 多平台 OCS 引擎使用与学习通助手完全相同的版本清单、哈希校验和正文发布模型。 */
+siteRouter.get("/userscripts/multiplatform-helper", async (_req, res, next) => {
+  try {
+    const release = await readDesktopUserScriptRelease("multiplatform");
+    res.setHeader("Cache-Control", "no-store");
+    ok(res, {
+      name: release.name,
+      version: release.version,
+      sha256: release.sha256,
+      size: release.size,
+      sourceUrl: "/api/site/userscripts/multiplatform-helper/source",
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+const sendDesktopUserScriptSource = async (
+  kind: DesktopUserScriptKind,
+  req: Request,
+  res: Response,
+) => {
+  const release = await readDesktopUserScriptRelease(kind);
+  const etag = `"sha256-${release.sha256}"`;
+  res.setHeader("Cache-Control", "no-store, no-transform");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+  res.setHeader("Content-Length", String(release.size));
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("ETag", etag);
+  res.setHeader("X-Userscript-Version", release.version);
+  res.setHeader("X-Content-SHA256", release.sha256);
+  if (req.get("if-none-match") === etag) {
+    res.status(304).end();
+    return;
+  }
+  res.send(release.source);
+};
+
+siteRouter.get("/userscripts/multiplatform-helper/source", async (req, res, next) => {
+  try {
+    await sendDesktopUserScriptSource("multiplatform", req, res);
   } catch (error) {
     next(error);
   }

@@ -9,14 +9,11 @@
 // @source       https://github.com/ocsjs/ocsjs
 // @match        https://*.zhihuishu.com/*
 // @match        https://*.hike-teaching-center.polymas.com/*
-// @match        https://*.chaoxing.com/*
 // @match        https://*.xueyinonline.com/*
-// @match        https://*.hnsyu.net/*
 // @match        https://*.qutjxjy.cn/*
 // @match        https://*.ynny.cn/*
 // @match        https://*.hnvist.cn/*
 // @match        https://*.fjlecb.cn/*
-// @match        https://*.gdhkmooc.com/*
 // @match        https://*.cugbonline.cn/*
 // @match        https://*.zjelib.cn/*
 // @match        https://*.cqrspx.cn/*
@@ -2613,7 +2610,15 @@ var __publicField = (obj, key, value) => {
       this.extraMenuBar = (0, utils_1.h)("div", { className: "extra-menu-bar" });
       this.defaults = {
         urls: (urls) => urls && urls.length ? urls : [location.href],
-        panelName: (name) => name || this.config.render.defaultPanelName || ""
+        panelName: (name, urls = [location.href]) => {
+          const matched = utils_1.$.getMatchedScripts(this.projects, urls)
+            .filter((script) => !script.hideInPanel)
+            .sort((left, right) => Number(right.priority || 0) - Number(left.priority || 0));
+          const current = matched.find((script) => script.namespace === name || String(name || "").endsWith("-" + script.name));
+          if (current && !String(current.namespace || "").startsWith("common.")) return name;
+          const preferred = matched.find((script) => !String(script.namespace || "").startsWith("common."));
+          return preferred && preferred.namespace || name || this.config.render.defaultPanelName || "";
+        }
       };
       this.projects = projects;
       this.inputStoreProvider = inputStoreProvider;
@@ -2629,6 +2634,7 @@ var __publicField = (obj, key, value) => {
       this.root.append(this.container);
       const styles = config2.render.styles.map((s) => (0, utils_1.h)("style", s));
       this.container.append(...styles, this.messageContainer);
+      installCpuScreenshotSearch(this.root, this.container);
       const handlePosition = () => {
         const pos = config2.store.getPosition();
         if (pos.x > document.documentElement.clientWidth || pos.x < 0) {
@@ -2686,7 +2692,7 @@ var __publicField = (obj, key, value) => {
       (() => __awaiter$1(this, void 0, void 0, function* () {
         const urls = yield config2.store.getRenderURLs();
         const currentPanelName = yield config2.store.getCurrentPanelName();
-        yield this.rerender(this.defaults.urls(urls), this.defaults.panelName(currentPanelName));
+        yield this.rerender(this.defaults.urls(urls), this.defaults.panelName(currentPanelName, this.defaults.urls(urls)));
       }))();
       initCorsModalSystem();
       initCorsMessageSystem();
@@ -2750,12 +2756,10 @@ var __publicField = (obj, key, value) => {
       this.container.header.visualSwitcher = visualSwitcher;
       this.container.header.replaceChildren();
       this.container.header.append((0, utils_1.h)("div", { style: { width: "100%" } }, [
-        (0, utils_1.h)("div", { style: { display: "flex", width: "100%" } }, [
+        (0, utils_1.h)("div", { style: { display: "flex", alignItems: "center", width: "100%" } }, [
           profile,
-          ...scriptDropdowns,
           this.container.header.visualSwitcher || ""
-        ]),
-        (0, utils_1.h)("div", { style: { display: "flex", width: "100%" } }, [this.extraMenuBar])
+        ])
       ]));
     }
     renderBody(currentPanelName) {
@@ -2797,13 +2801,13 @@ var __publicField = (obj, key, value) => {
     changeRenderURLs(urls) {
       return __awaiter$1(this, void 0, void 0, function* () {
         const currentPanelName = yield this.config.store.getCurrentPanelName();
-        yield this.rerender(this.defaults.urls(urls), this.defaults.panelName(currentPanelName));
+        yield this.rerender(this.defaults.urls(urls), this.defaults.panelName(currentPanelName, this.defaults.urls(urls)));
       });
     }
     changePanel(currentPanelName) {
       return __awaiter$1(this, void 0, void 0, function* () {
         const urls = (yield this.config.store.getRenderURLs()) || [location.href];
-        yield this.rerender(this.defaults.urls(urls), this.defaults.panelName(currentPanelName));
+        yield this.rerender(this.defaults.urls(urls), this.defaults.panelName(currentPanelName, this.defaults.urls(urls)));
       });
     }
     pin(script2) {
@@ -8009,6 +8013,7 @@ ${content}</tr>
       var _a, _b, _c, _d;
       await ((_a = options.beforeRunning) == null ? void 0 : _a.call(options));
       running = true;
+      typeof GM_cpuReport === "function" && GM_cpuReport("status", `${script2.name} · 运行中`);
       worker = options.workerProvider(workOptions);
       if (worker) {
         (_b = options.onWorkerCreated) == null ? void 0 : _b.call(options, worker);
@@ -8019,6 +8024,7 @@ ${content}</tr>
         running = false;
         globalControlPanel = null;
         controlBtn.disabled = true;
+        typeof GM_cpuReport === "function" && GM_cpuReport("status", `${script2.name} · 已完成`);
       });
     };
   }
@@ -8042,6 +8048,7 @@ ${content}</tr>
       const worker = options.workerProvider();
       (_a = worker == null ? void 0 : worker.emit) == null ? void 0 : _a.call(worker, stop ? "stop" : "continuate");
       controlBtn.value = stop ? "▶️继续" : "⏸️暂停";
+      typeof GM_cpuReport === "function" && GM_cpuReport("status", stop ? "多平台助手已暂停" : "多平台助手已继续");
       if (stop) {
         stopMessage = lib.$message.warn({ duration: 0, content: "暂停中..." });
       } else {
@@ -8396,10 +8403,11 @@ ${content}</tr>
         configs: {
           notes: {
             defaultValue: lib.$ui.notes([
-              "打开任意网课平台，进入视频、作业页面等待脚本运行，",
-              "⚠️ 禁止与其他脚本一起使用（不兼容），也不能开多个相同脚本",
-              "桌面客户端已启用后台运行，最小化或切换桌面不会主动暂停任务。",
-              "有疑问请访问下方交流群，进群后带截图进行反馈。"
+              "药大拾间·全平台网课助手已加载。请先进入具体课程，再打开章节、视频、作业或考试页面。",
+              "识别到可执行任务后会自动开始；答题任务也可在当前面板使用“开始答题 / 暂停”控制。",
+              "桌面客户端已启用后台运行并默认静音，最小化或切换桌面不会主动暂停任务；声音可在客户端标签栏单独恢复。",
+              "请勿同时运行其他网课脚本，避免重复点击或提交。所有支持平台均可点击面板顶部的截图按钮手动搜题，建议先暂停自动任务。",
+              "本工具仅供个人学习辅助，严禁商业用途。"
             ]).outerHTML
           }
         },
@@ -10472,8 +10480,10 @@ ${content}</tr>
         configs: {
           notes: {
             defaultValue: lib.$ui.notes([
-              "请手动进入视频、作业、考试页面，脚本会自动运行。",
-              "兴趣课会自动下一个，所以不提供脚本。"
+              "助手已识别智慧树。请进入具体课程，再打开需要学习的章节、视频、作业或考试页面。",
+              "进入支持页面后会自动加载任务；答题时可在助手面板开始、暂停或继续。",
+              "客户端已默认静音当前网课标签，需要声音时可点击标签上的扬声器按钮。",
+              "兴趣课由平台自动切换，助手不会重复接管。"
             ]).outerHTML
           }
         },
@@ -21211,6 +21221,388 @@ modal-element {
 }
 `;
 
+// 药大拾间桌面端主题：保留 OCS 成熟的平台控件与任务逻辑，只统一外观与信息层级。
+// 样式位于 OCS 的封闭 ShadowRoot 内，不会污染网课页面，也不会被平台 CSS 覆盖。
+const CPU_DESKTOP_STYLE = `:host {
+  --cpu-ocs-primary: #4f9480;
+  --cpu-ocs-primary-soft: #edf6f3;
+  --cpu-ocs-bg: rgba(250, 253, 252, 0.98);
+  --cpu-ocs-card: #ffffff;
+  --cpu-ocs-text: #172033;
+  --cpu-ocs-muted: #718096;
+  --cpu-ocs-border: #dce8e4;
+  color-scheme: light dark;
+  font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif;
+}
+container-element {
+  min-width: 360px;
+  max-width: min(430px, calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
+  color: var(--cpu-ocs-text);
+  border: 1px solid var(--cpu-ocs-border);
+  border-radius: 18px;
+  background: var(--cpu-ocs-bg);
+  box-shadow: 0 18px 48px rgba(32, 71, 61, 0.18);
+  overflow: visible;
+  backdrop-filter: blur(16px);
+}
+header-element {
+  min-height: 52px;
+  padding: 8px 10px;
+  color: var(--cpu-ocs-text);
+  background: var(--cpu-ocs-bg);
+  border-radius: 18px 18px 0 0;
+  border-bottom: 1px solid var(--cpu-ocs-border);
+}
+header-element .profile { font-weight: 700; }
+header-element .switch,
+header-element .close,
+header-element .dropdown { min-height: 34px; border-radius: 10px; }
+header-element .switch:hover,
+header-element .dropdown:hover { background: var(--cpu-ocs-primary-soft); }
+header-element .extra-menu-bar { border-color: var(--cpu-ocs-border); }
+script-panel-element {
+  display: block;
+  max-height: calc(100vh - 96px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  color: var(--cpu-ocs-text);
+  background: var(--cpu-ocs-bg);
+  border-radius: 0 0 18px 18px;
+  padding: 4px 10px 14px;
+}
+.user-guide { display: none !important; }
+.dropdown-content {
+  max-width: min(390px, calc(100vw - 32px));
+  max-height: min(360px, calc(100vh - 110px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+script-panel-element .separator {
+  margin: 8px 4px;
+  color: var(--cpu-ocs-primary);
+  font-weight: 700;
+}
+.card,
+.configs-container,
+.script-panel-body > div {
+  color: var(--cpu-ocs-text);
+  background: var(--cpu-ocs-card);
+  border-radius: 12px;
+}
+.notes {
+  margin: 8px 4px;
+  padding: 8px 10px;
+  color: var(--cpu-ocs-text);
+  background: var(--cpu-ocs-primary-soft);
+  border: 1px solid var(--cpu-ocs-border);
+  border-left: 4px solid var(--cpu-ocs-primary);
+  border-radius: 10px;
+}
+.base-style-button,
+.base-style-button-secondary,
+header-element .extra-menu-bar .script-panel-link {
+  min-height: 32px;
+  padding: 5px 10px;
+  border-color: var(--cpu-ocs-border);
+  border-radius: 9px;
+  color: var(--cpu-ocs-primary);
+  background: var(--cpu-ocs-card);
+  box-shadow: none;
+}
+.base-style-button:hover,
+.base-style-button-secondary:hover,
+header-element .extra-menu-bar .script-panel-link:hover {
+  color: var(--cpu-ocs-primary);
+  border-color: var(--cpu-ocs-primary);
+  background: var(--cpu-ocs-primary-soft);
+}
+.base-style-switch:checked { background: var(--cpu-ocs-primary); }
+.base-style-input,
+.project-selector select,
+.modal-input {
+  color: var(--cpu-ocs-text);
+  border: 1px solid var(--cpu-ocs-border);
+  border-radius: 9px;
+  background: var(--cpu-ocs-card);
+}
+.secondary { color: var(--cpu-ocs-muted); }
+.work-result-wrapper,
+.question-title,
+.question-answer { overflow-wrap: anywhere; }
+.cpu-ocs-shot-button {
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  margin-left: 5px;
+  padding: 0;
+  color: var(--cpu-ocs-primary);
+  background: var(--cpu-ocs-card);
+  border: 1px solid var(--cpu-ocs-border);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.cpu-ocs-shot-button:hover { background: var(--cpu-ocs-primary-soft); border-color: var(--cpu-ocs-primary); }
+.cpu-ocs-shot-button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.cpu-ocs-capture-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  cursor: crosshair;
+  background: rgba(8, 18, 16, 0.28);
+  user-select: none;
+  touch-action: none;
+}
+.cpu-ocs-capture-hint {
+  position: fixed;
+  top: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 9px 14px;
+  color: #fff;
+  background: rgba(14, 31, 27, 0.92);
+  border-radius: 999px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+  font-size: 13px;
+  font-weight: 650;
+}
+.cpu-ocs-capture-box {
+  position: fixed;
+  display: none;
+  border: 2px solid #83dbc3;
+  background: rgba(131, 219, 195, 0.12);
+  box-shadow: 0 0 0 9999px rgba(8, 18, 16, 0.38);
+}
+.cpu-ocs-shot-result {
+  position: fixed;
+  z-index: 2147483646;
+  top: 50%;
+  left: 50%;
+  width: min(430px, calc(100vw - 28px));
+  max-height: min(720px, calc(100vh - 28px));
+  transform: translate(-50%, -50%);
+  overflow: auto;
+  color: var(--cpu-ocs-text);
+  background: var(--cpu-ocs-bg);
+  border: 1px solid var(--cpu-ocs-border);
+  border-radius: 18px;
+  box-shadow: 0 24px 72px rgba(16, 41, 34, 0.3);
+  backdrop-filter: blur(18px);
+}
+.cpu-ocs-shot-result > header { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid var(--cpu-ocs-border); }
+.cpu-ocs-shot-result > header div { display: grid; gap: 2px; }
+.cpu-ocs-shot-result > header span { color: var(--cpu-ocs-muted); font-size: 12px; }
+.cpu-ocs-shot-result > header button { width: 34px; height: 34px; color: var(--cpu-ocs-muted); background: var(--cpu-ocs-card); border: 1px solid var(--cpu-ocs-border); border-radius: 10px; cursor: pointer; font-size: 21px; }
+.cpu-ocs-shot-result > main { display: grid; gap: 10px; padding: 14px 16px; }
+.cpu-ocs-shot-result > main > img { width: 100%; max-height: 220px; object-fit: contain; background: var(--cpu-ocs-primary-soft); border: 1px solid var(--cpu-ocs-border); border-radius: 12px; }
+.cpu-ocs-shot-result > footer { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 16px 14px; border-top: 1px solid var(--cpu-ocs-border); }
+.cpu-ocs-shot-result > footer button { margin: 0; }
+.cpu-ocs-shot-card { padding: 11px 12px; overflow-wrap: anywhere; background: var(--cpu-ocs-card); border: 1px solid var(--cpu-ocs-border); border-radius: 12px; line-height: 1.65; }
+.cpu-ocs-shot-card > span { display: block; margin-bottom: 5px; color: var(--cpu-ocs-primary); font-size: 12px; font-weight: 700; }
+.cpu-ocs-shot-card code { padding: 1px 4px; background: var(--cpu-ocs-primary-soft); border-radius: 4px; }
+.cpu-ocs-shot-error { margin: 0; color: #d35f5f; overflow-wrap: anywhere; }
+.cpu-ocs-shot-result .muted { margin: 0; color: var(--cpu-ocs-muted); }
+.cpu-ocs-shot-progress { height: 5px; overflow: hidden; background: var(--cpu-ocs-primary-soft); border-radius: 999px; }
+.cpu-ocs-shot-progress i { display: block; width: 72%; height: 100%; background: var(--cpu-ocs-primary); border-radius: inherit; animation: cpu-ocs-shot-loading 1.2s ease-in-out infinite alternate; }
+@keyframes cpu-ocs-shot-loading { from { transform: translateX(-28%); } to { transform: translateX(55%); } }
+@media (prefers-color-scheme: dark) {
+  :host {
+    --cpu-ocs-bg: rgba(24, 38, 34, 0.98);
+    --cpu-ocs-card: #20312c;
+    --cpu-ocs-text: #eef6f3;
+    --cpu-ocs-muted: #a7bbb5;
+    --cpu-ocs-border: rgba(163, 186, 179, 0.22);
+    --cpu-ocs-primary-soft: rgba(79, 148, 128, 0.18);
+  }
+  .base-style-active-form-control:focus:not([type='checkbox'], [type='radio']),
+  .dropdown-content { color: var(--cpu-ocs-text); background: var(--cpu-ocs-card) !important; }
+  .dropdown-option:hover { background: var(--cpu-ocs-primary-soft) !important; }
+}
+`;
+
+// CPU_DESKTOP_SCREENSHOT_ADDON_START
+function installCpuScreenshotSearch(root, container) {
+  if (typeof GM_cpuCaptureArea !== "function" || typeof GM_cpuAIRequest !== "function") return;
+
+  const escapeHtml = (value) => String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+  const renderText = (value) => escapeHtml(value)
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\r?\n/g, "<br>");
+  const parseReply = (content) => {
+    const text = String(content || "").trim();
+    const answerMatch = text.match(/(?:^|\n)\s*答案\s*[：:]\s*([\s\S]*?)(?=\n\s*解题思路\s*[：:]|$)/i);
+    const explanationMatch = text.match(/(?:^|\n)\s*解题思路\s*[：:]\s*([\s\S]*)$/i);
+    return {
+      answer: String(answerMatch ? answerMatch[1] : text).trim(),
+      explanation: String(explanationMatch ? explanationMatch[1] : "").trim(),
+    };
+  };
+  const extractOutputText = (payload) => String(
+    payload.output_text || (payload.output || [])
+      .flatMap((item) => item && item.content || [])
+      .filter((item) => item && item.type === "output_text")
+      .map((item) => item.text || "")
+      .join("") || "",
+  ).trim();
+  const report = (message) => {
+    try { typeof GM_cpuReport === "function" && GM_cpuReport("status", message); } catch { /* 不影响搜题 */ }
+  };
+  let resultPanel = null;
+  const closeResult = () => {
+    resultPanel?.remove();
+    resultPanel = null;
+  };
+  const showResult = ({ status, imageUrl = "", answer = "", explanation = "", error = "" }) => {
+    closeResult();
+    const panel = document.createElement("section");
+    panel.className = "cpu-ocs-shot-result";
+    panel.setAttribute("role", "dialog");
+    panel.setAttribute("aria-label", "截图搜题结果");
+    panel.innerHTML = `
+      <header><div><b>截图搜题</b><span>${status === "loading" ? "正在识别并解答" : status === "done" ? "识别完成" : "未能完成"}</span></div><button type="button" data-cpu-shot-action="close" title="关闭" aria-label="关闭">×</button></header>
+      <main>
+        ${imageUrl ? `<img src="${escapeHtml(imageUrl)}" alt="框选的题目截图">` : ""}
+        ${status === "loading" ? '<div class="cpu-ocs-shot-progress"><i></i></div><p class="muted">正在读取题面、选项并核对答案…</p>' : ""}
+        ${answer ? `<section class="cpu-ocs-shot-card"><span>答案</span><div>${renderText(answer)}</div></section>` : ""}
+        ${explanation ? `<section class="cpu-ocs-shot-card"><span>解题思路</span><div>${renderText(explanation)}</div></section>` : ""}
+        ${error ? `<p class="cpu-ocs-shot-error">${escapeHtml(error)}</p>` : ""}
+      </main>
+      <footer><button class="base-style-button-secondary" type="button" data-cpu-shot-action="retry">重新截图</button>${answer ? '<button class="base-style-button" type="button" data-cpu-shot-action="copy">复制答案</button>' : ""}<button class="base-style-button-secondary" type="button" data-cpu-shot-action="close">返回助手</button></footer>
+    `;
+    panel.addEventListener("click", (event) => {
+      const action = event.target.closest("[data-cpu-shot-action]")?.dataset.cpuShotAction;
+      if (action === "close") closeResult();
+      else if (action === "retry") { closeResult(); void startSearch(); }
+      else if (action === "copy" && answer) {
+        navigator.clipboard?.writeText(answer).then(() => report("截图答案已复制")).catch(() => report("复制失败，请手动选择答案"));
+      }
+    });
+    root.append(panel);
+    resultPanel = panel;
+  };
+  const chooseArea = () => new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "cpu-ocs-capture-overlay";
+    overlay.innerHTML = '<div class="cpu-ocs-capture-hint">拖动框选题目区域 · Esc 取消</div><div class="cpu-ocs-capture-box"></div>';
+    root.append(overlay);
+    const box = overlay.querySelector(".cpu-ocs-capture-box");
+    let start = null;
+    const finish = (result) => {
+      document.removeEventListener("keydown", onKeyDown, true);
+      overlay.remove();
+      resolve(result);
+    };
+    const draw = (event) => {
+      if (!start) return;
+      const left = Math.min(start.x, event.clientX);
+      const top = Math.min(start.y, event.clientY);
+      box.style.display = "block";
+      box.style.left = `${left}px`;
+      box.style.top = `${top}px`;
+      box.style.width = `${Math.abs(event.clientX - start.x)}px`;
+      box.style.height = `${Math.abs(event.clientY - start.y)}px`;
+    };
+    const onKeyDown = (event) => { if (event.key === "Escape") finish(null); };
+    overlay.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+      start = { x: event.clientX, y: event.clientY };
+      overlay.setPointerCapture(event.pointerId);
+      draw(event);
+    });
+    overlay.addEventListener("pointermove", draw);
+    overlay.addEventListener("pointerup", (event) => {
+      if (!start) return;
+      const rect = {
+        x: Math.min(start.x, event.clientX),
+        y: Math.min(start.y, event.clientY),
+        width: Math.abs(event.clientX - start.x),
+        height: Math.abs(event.clientY - start.y),
+      };
+      finish(rect.width >= 24 && rect.height >= 24 ? rect : null);
+    });
+    document.addEventListener("keydown", onKeyDown, true);
+  });
+  const startSearch = async () => {
+    if (container.dataset.cpuScreenshotBusy === "true") return;
+    container.dataset.cpuScreenshotBusy = "true";
+    closeResult();
+    container.style.visibility = "hidden";
+    const rect = await chooseArea();
+    if (!rect) {
+      container.style.visibility = "";
+      delete container.dataset.cpuScreenshotBusy;
+      return;
+    }
+    let imageUrl = "";
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      imageUrl = await GM_cpuCaptureArea(rect);
+      container.style.visibility = "";
+      showResult({ status: "loading", imageUrl });
+      const config = GM_getValue("config", {}) || {};
+      const response = await GM_cpuAIRequest({
+        model: config.aiModel || "deepseek-reasoner",
+        reasoningEffort: ["low", "high", "max"].includes(config.answerDepth) ? config.answerDepth : "low",
+        input: [{ role: "user", content: [
+          { type: "input_text", text: "请识别截图中的完整题目并作答。若有选项，请结合选项判断。只返回可供用户阅读的答案与简明解题思路，不得把‘图片缺失’、‘无法完成’等内部判断当作填空答案。严格使用纯文本格式：答案：... 换行 解题思路：..." },
+          { type: "input_image", image_url: imageUrl, detail: "high" },
+        ] }],
+      });
+      if (!response || response.status < 200 || response.status >= 300) {
+        let message = `截图搜题失败（${response ? response.status : "无响应"}）`;
+        try {
+          const payload = JSON.parse(response?.text || "{}");
+          message = payload.message || payload.error?.message || payload.error || message;
+        } catch { /* 保留状态码错误 */ }
+        throw new Error(message);
+      }
+      const payload = JSON.parse(response.text || "{}");
+      const structured = payload.learning_answer;
+      const parsed = structured && typeof structured === "object"
+        ? { answer: String(structured.answer || "").trim(), explanation: String(structured.explanation || "").trim() }
+        : parseReply(extractOutputText(payload));
+      showResult({ status: "done", imageUrl, answer: parsed.answer || "未识别到可提交答案", explanation: parsed.explanation });
+      report("截图搜题已完成");
+    } catch (error) {
+      container.style.visibility = "";
+      const message = error instanceof Error ? error.message : String(error);
+      showResult({ status: "error", imageUrl, error: message });
+      report(message);
+    } finally {
+      container.style.visibility = "";
+      delete container.dataset.cpuScreenshotBusy;
+    }
+  };
+  const mountButton = () => {
+    const header = root.querySelector("header-element");
+    if (!header || header.querySelector(".cpu-ocs-shot-button")) return false;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "cpu-ocs-shot-button";
+    button.title = "截图搜题（建议先暂停自动任务）";
+    button.setAttribute("aria-label", "截图搜题");
+    button.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3H5a2 2 0 0 0-2 2v2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"></path><circle cx="12" cy="12" r="3.2"></circle></svg>';
+    button.addEventListener("click", (event) => { event.stopPropagation(); void startSearch(); });
+    const toolbar = header.firstElementChild?.firstElementChild || header;
+    const minimizeButton = toolbar.lastElementChild;
+    if (minimizeButton && minimizeButton !== header) toolbar.insertBefore(button, minimizeButton);
+    else toolbar.append(button);
+    return true;
+  };
+  mountButton();
+  const observer = new MutationObserver(() => { mountButton(); });
+  observer.observe(root, { childList: true, subtree: true });
+}
+// CPU_DESKTOP_SCREENSHOT_ADDON_END
+
 /* eslint-disable no-undef */
 /// <reference path="./global.d.ts" />
 
@@ -21256,7 +21648,7 @@ const infos = GM_info;
 		projects: projects,
 		renderConfig: {
 			renderScript: RenderScript,
-			styles: [STYLE],
+			styles: [STYLE, CPU_DESKTOP_STYLE],
 			defaultPanelName: CommonProject.scripts.guide.namespace,
 			title: '药大拾间·全平台网课助手'
 		},

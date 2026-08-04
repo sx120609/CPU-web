@@ -7,6 +7,7 @@ const path = require("node:path");
 const { mkdtemp } = require("node:fs/promises");
 const {
   checkUserScriptUpdate,
+  MULTIPLATFORM_USER_SCRIPT_CHANNEL,
   parseUserScriptIdentity,
   readCachedUserScript,
   sha256Text,
@@ -128,6 +129,66 @@ async function main() {
   }
 
   console.log("学习通助手脚本热更新：版本、哈希、缓存与免重复下载检查通过。");
+
+  const multiplatformSource = await readFile(
+    path.join(__dirname, "..", "assets", "userscripts", "multiplatform.js"),
+    "utf8",
+  );
+  const multiplatformIdentity = parseUserScriptIdentity(multiplatformSource);
+  const multiplatformManifest = {
+    ...multiplatformIdentity,
+    sha256: sha256Text(multiplatformSource),
+    size: Buffer.byteLength(multiplatformSource, "utf8"),
+    sourceUrl: MULTIPLATFORM_USER_SCRIPT_CHANNEL.sourcePath,
+  };
+  assert.deepEqual(multiplatformIdentity, { name: "药大拾间·全平台网课助手", version: "4.15.3" });
+  assert.doesNotThrow(() => validateUserScriptRelease(
+    multiplatformSource,
+    multiplatformManifest,
+    MULTIPLATFORM_USER_SCRIPT_CHANNEL,
+  ));
+
+  const multiplatformCache = await mkdtemp(path.join(tmpdir(), "cpu-ocs-userscript-test-"));
+  try {
+    const requests = [];
+    const fetchImpl = async (url) => {
+      requests.push(String(url));
+      if (new URL(url).pathname === MULTIPLATFORM_USER_SCRIPT_CHANNEL.manifestPath) {
+        return new Response(JSON.stringify({ code: 0, data: multiplatformManifest, message: "" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (new URL(url).pathname === MULTIPLATFORM_USER_SCRIPT_CHANNEL.sourcePath) {
+        return new Response(multiplatformSource, {
+          status: 200,
+          headers: { "content-length": String(multiplatformManifest.size) },
+        });
+      }
+      return new Response("", { status: 404 });
+    };
+    const olderSource = multiplatformSource.replace("// @version      4.15.3", "// @version      4.15.2");
+    const updated = await checkUserScriptUpdate({
+      origin: "https://cpu.lizmt.cn",
+      cacheDirectory: multiplatformCache,
+      currentSource: olderSource,
+      validateSource: () => undefined,
+      channel: MULTIPLATFORM_USER_SCRIPT_CHANNEL,
+      fetchImpl,
+    });
+    assert.equal(updated.status, "updated");
+    assert.equal(requests.length, 2);
+    const cached = await readCachedUserScript(
+      multiplatformCache,
+      () => undefined,
+      MULTIPLATFORM_USER_SCRIPT_CHANNEL,
+    );
+    assert.equal(cached?.manifest.version, "4.15.3");
+    assert.equal(cached?.source, multiplatformSource);
+  } finally {
+    await rm(multiplatformCache, { recursive: true, force: true });
+  }
+  console.log("多平台 OCS 脚本热更新：独立清单、哈希、大文件上限与缓存检查通过。");
 }
 
 main().catch((error) => {

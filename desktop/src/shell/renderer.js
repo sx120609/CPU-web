@@ -67,6 +67,20 @@ const renderTabs = () => {
 
     button.addEventListener("click", () => void shell.tabs.activate(tab.id));
 
+    if (tab.kind === "learning") {
+      const mute = document.createElement("span");
+      mute.className = "tab-mute";
+      mute.textContent = tab.muted ? "🔇" : "🔊";
+      mute.title = tab.muted ? "恢复此标签声音" : "静音此标签";
+      mute.setAttribute("role", "button");
+      mute.setAttribute("aria-label", mute.title);
+      mute.addEventListener("click", (event) => {
+        event.stopPropagation();
+        void shell.tabs.setMuted(tab.id, !tab.muted);
+      });
+      button.append(mute);
+    }
+
     if (tab.closable) {
       const close = document.createElement("span");
       close.className = "tab-close";
@@ -360,9 +374,12 @@ const renderLearningPlatforms = (state) => {
     open.querySelector(".platform-description").textContent = platform.description;
     open.addEventListener("click", async () => {
       open.disabled = true;
+      const dialog = el("platform-dialog");
+      // 先撤掉原生 dialog 的 backdrop，再创建并激活内容标签。否则内容视图先切换时，
+      // Shell 里仍处于 modal 状态的遮罩会短暂覆盖整窗，看起来像页面一直没有获得焦点。
+      if (dialog.open) dialog.close();
       try {
         await shell.tabs.openLearning(platform.id);
-        el("platform-dialog").close();
         pendingReload = false;
         renderScriptConfig();
         say(`已打开${platform.name}。`);
@@ -513,17 +530,25 @@ const bindChrome = () => {
   });
 };
 
-const renderScriptUpdateState = (state) => {
+const renderScriptUpdateState = (state, kind = "chaoxing") => {
   if (!state) return;
+  const targetId = kind === "multiplatform" ? "multiplatform-script-version" : "script-version";
+  const label = kind === "multiplatform" ? "多平台助手" : "学习通助手";
   const version = state.activeVersion ? `v${state.activeVersion}` : "内置版本";
   const source = state.source === "cloud"
     ? "刚从云端更新"
     : state.source === "cache"
       ? "云端缓存"
       : "安装包内置";
-  el("script-version").textContent = state.stage === "checking"
-    ? `${version} · 正在检查学习通专用引擎更新… · 多平台引擎 OCS v4.15.3`
-    : `${version} · ${source} · ${state.message || "可用"} · 多平台引擎 OCS v4.15.3 随客户端更新`;
+  el(targetId).textContent = state.stage === "checking"
+    ? `${version} · 正在检查${label}云端更新…`
+    : `${version} · ${source} · ${state.message || "可用"}`;
+};
+
+const renderScriptUpdateStates = (states) => {
+  if (!states) return;
+  renderScriptUpdateState(states.chaoxing, "chaoxing");
+  renderScriptUpdateState(states.multiplatform, "multiplatform");
 };
 
 // 点状态芯片就切到工具标签
@@ -623,19 +648,28 @@ const bindScript = () => {
   el("cfg-aiEnabled").addEventListener("change", (event) => void pushScriptConfig("aiEnabled", event.target.checked));
   el("cfg-answerDepth").addEventListener("change", (event) => void pushScriptConfig("answerDepth", event.target.value));
 
-  el("script-check-update").addEventListener("click", async () => {
-    const button = el("script-check-update");
-    button.disabled = true;
-    el("script-version").textContent = "正在检查学习通助手云端更新…";
-    try {
-      const state = await shell.script.checkUpdate();
-      renderScriptUpdateState(state);
-    } catch (error) {
-      el("script-version").textContent = errorText(error, "无法检查学习通助手更新。");
-    } finally {
-      button.disabled = false;
-    }
-  });
+  const bindUpdateButton = (buttonId, targetId, kind, label) => {
+    el(buttonId).addEventListener("click", async () => {
+      const button = el(buttonId);
+      button.disabled = true;
+      el(targetId).textContent = `正在检查${label}云端更新…`;
+      try {
+        const state = await shell.script.checkUpdate(kind);
+        renderScriptUpdateState(state, kind);
+      } catch (error) {
+        el(targetId).textContent = errorText(error, `无法检查${label}更新。`);
+      } finally {
+        button.disabled = false;
+      }
+    });
+  };
+  bindUpdateButton("script-check-update", "script-version", "chaoxing", "学习通助手");
+  bindUpdateButton(
+    "multiplatform-script-check-update",
+    "multiplatform-script-version",
+    "multiplatform",
+    "多平台助手",
+  );
 };
 
 const setAboutUpdateStatus = (message, error = false) => {
@@ -815,7 +849,7 @@ const afterOnboarding = async () => {
     scriptConfig = await shell.script.getConfig();
     renderScriptConfig();
     renderScriptActivity(await shell.script.getActivity(80));
-    renderScriptUpdateState(await shell.script.getUpdateState());
+    renderScriptUpdateStates(await shell.script.getUpdateStates());
   } catch { /* 忽略 */ }
   try {
     renderLearningPlatforms(await shell.learningCredentials.getState());
@@ -854,6 +888,7 @@ const boot = async () => {
   shell.campusNet.onLog(() => void shell.campusNet.getLogs(120).then(renderCampusLogs));
   shell.script.onActivity(() => void shell.script.getActivity(80).then(renderScriptActivity));
   shell.script.onUpdateState?.(renderScriptUpdateState);
+  shell.script.onUpdateStates?.(renderScriptUpdateStates);
   shell.update.onAvailable(showUpdate);
   shell.update.onState?.(renderUpdateState);
 

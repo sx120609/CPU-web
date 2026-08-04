@@ -37,9 +37,12 @@ import {
   type LearningPlatformId,
 } from "./config";
 import {
+  CHAOXING_USER_SCRIPT_CHANNEL,
   checkUserScriptUpdate,
+  MULTIPLATFORM_USER_SCRIPT_CHANNEL,
   readCachedUserScript,
   USER_SCRIPT_CHECK_INTERVAL_MS,
+  UserScriptUpdateChannel,
   UserScriptUpdateResult,
 } from "./userscript-update";
 import { flushPersistentSession } from "./session-persistence";
@@ -96,6 +99,12 @@ let scriptUpdateState: ScriptUpdateState = {
   activeVersion: "",
   source: "builtin",
   message: "正在载入学习通助手脚本",
+};
+let multiplatformScriptUpdateState: ScriptUpdateState = {
+  stage: "loading",
+  activeVersion: "",
+  source: "builtin",
+  message: "正在载入多平台助手脚本",
 };
 type LearningAssistantAccessMode = "guest-unlimited" | "account-quota";
 type LearningAssistantPolicy = {
@@ -218,85 +227,134 @@ const validateCloudScriptCapabilities = (source: string, builtInSource: string):
 const setScriptUpdateState = (patch: Partial<ScriptUpdateState>): void => {
   scriptUpdateState = { ...scriptUpdateState, ...patch };
   broadcast("script:update-state", scriptUpdateState);
+  broadcast("script:update-states", {
+    chaoxing: scriptUpdateState,
+    multiplatform: multiplatformScriptUpdateState,
+  });
 };
 
-const loadBuiltInScripts = async (): Promise<UserScript[]> => {
-  const filePath = resolveAsset("assets", "userscripts", "monkey.js");
+const setMultiplatformScriptUpdateState = (patch: Partial<ScriptUpdateState>): void => {
+  multiplatformScriptUpdateState = { ...multiplatformScriptUpdateState, ...patch };
+  broadcast("multiplatform-script:update-state", multiplatformScriptUpdateState);
+  broadcast("script:update-states", {
+    chaoxing: scriptUpdateState,
+    multiplatform: multiplatformScriptUpdateState,
+  });
+};
+
+type ScriptUpdateKind = "chaoxing" | "multiplatform";
+type ScriptChannelDefinition = {
+  assetName: string;
+  scriptId: string;
+  label: string;
+  channel: UserScriptUpdateChannel;
+  getState: () => ScriptUpdateState;
+  setState: (patch: Partial<ScriptUpdateState>) => void;
+};
+
+const scriptChannel = (kind: ScriptUpdateKind): ScriptChannelDefinition => kind === "multiplatform"
+  ? {
+      assetName: "multiplatform.js",
+      scriptId: "builtin-multiplatform-helper",
+      label: "多平台助手",
+      channel: MULTIPLATFORM_USER_SCRIPT_CHANNEL,
+      getState: () => multiplatformScriptUpdateState,
+      setState: setMultiplatformScriptUpdateState,
+    }
+  : {
+      assetName: "monkey.js",
+      scriptId: "builtin-chaoxing-helper",
+      label: "学习通助手",
+      channel: CHAOXING_USER_SCRIPT_CHANNEL,
+      getState: () => scriptUpdateState,
+      setState: setScriptUpdateState,
+    };
+
+const loadScriptChannel = async (kind: ScriptUpdateKind): Promise<UserScript | undefined> => {
+  const definition = scriptChannel(kind);
+  const filePath = resolveAsset("assets", "userscripts", definition.assetName);
   try {
     const builtInSource = await readFile(filePath, "utf8");
     const cached = await readCachedUserScript(
       userScriptCacheDirectory(),
       (source) => validateCloudScriptCapabilities(source, builtInSource),
+      definition.channel,
     );
     const source = cached?.source ?? builtInSource;
-    const script = { ...parseUserScript(source), id: "builtin-chaoxing-helper", values: {} };
-    setScriptUpdateState({
+    const script = { ...parseUserScript(source), id: definition.scriptId, values: {} };
+    definition.setState({
       stage: "current",
       activeVersion: script.version,
       source: cached ? "cache" : "builtin",
-      message: cached ? `正在使用云端缓存脚本 v${script.version}` : `正在使用内置脚本 v${script.version}`,
+      message: cached
+        ? `正在使用云端缓存脚本 v${script.version}`
+        : `正在使用内置脚本 v${script.version}`,
     });
-    const multiplatformPath = resolveAsset("assets", "userscripts", "multiplatform.js");
-    const multiplatformSource = await readFile(multiplatformPath, "utf8");
-    const multiplatform = {
-      ...parseUserScript(multiplatformSource),
-      id: "builtin-multiplatform-helper",
-      values: {},
-    };
-    return [script, multiplatform];
+    return script;
   } catch (error) {
-    // 静默失败会表现为"界面正常但脚本毫无动静"，必须留下痕迹
-    console.error(`内置用户脚本加载失败：${filePath}`, error);
-    return [];
+    const message = error instanceof Error ? error.message : String(error);
+    definition.setState({ stage: "error", message: `${definition.label}载入失败：${message}` });
+    console.error(`${definition.label}内置用户脚本加载失败：${filePath}`, error);
+    return undefined;
   }
+};
+
+const loadBuiltInScripts = async (): Promise<UserScript[]> => {
+  const loaded = await Promise.all([loadScriptChannel("chaoxing"), loadScriptChannel("multiplatform")]);
+  return loaded.filter((script): script is UserScript => Boolean(script));
 };
 
 const getScripts = (): Promise<UserScript[]> => (scriptCache ??= loadBuiltInScripts());
 
-const applyUserScriptUpdate = (result: UserScriptUpdateResult): void => {
-  const script = { ...parseUserScript(result.source), id: "builtin-chaoxing-helper", values: {} };
+const applyUserScriptUpdate = (kind: ScriptUpdateKind, result: UserScriptUpdateResult): void => {
+  const definition = scriptChannel(kind);
+  const script = { ...parseUserScript(result.source), id: definition.scriptId, values: {} };
   const previous = scriptCache ?? loadBuiltInScripts();
   scriptCache = previous.then((current) => [script, ...current.filter((item) => item.id !== script.id)]);
-  setScriptUpdateState({
+  definition.setState({
     stage: result.status,
     activeVersion: script.version,
-    source: result.status === "updated" ? "cloud" : scriptUpdateState.source,
+    source: result.status === "updated" ? "cloud" : definition.getState().source,
     checkedAt: Date.now(),
     message: result.status === "updated"
-      ? `学习通助手脚本已更新到 v${script.version}，下次进入页面生效`
-      : `学习通助手脚本 v${script.version} 已是最新`,
+      ? `${definition.label}脚本已更新到 v${script.version}，下次进入页面生效`
+      : `${definition.label}脚本 v${script.version} 已是最新`,
   });
 };
 
-let cloudScriptUpdateCheck: Promise<ScriptUpdateState> | undefined;
-const checkCloudUserScript = (): Promise<ScriptUpdateState> => {
-  if (cloudScriptUpdateCheck) return cloudScriptUpdateCheck;
-  cloudScriptUpdateCheck = (async () => {
-    setScriptUpdateState({ stage: "checking", message: "正在检查学习通助手脚本更新" });
+const cloudScriptUpdateChecks: Partial<Record<ScriptUpdateKind, Promise<ScriptUpdateState>>> = {};
+const checkCloudUserScript = (kind: ScriptUpdateKind = "chaoxing"): Promise<ScriptUpdateState> => {
+  const pending = cloudScriptUpdateChecks[kind];
+  if (pending) return pending;
+  const definition = scriptChannel(kind);
+  const check = (async () => {
+    definition.setState({ stage: "checking", message: `正在检查${definition.label}脚本更新` });
     try {
-      const builtInSource = await readFile(resolveAsset("assets", "userscripts", "monkey.js"), "utf8");
-      const current = (await getScripts())[0];
-      if (!current) throw new Error("本地学习通助手脚本不可用");
+      const builtInSource = await readFile(resolveAsset("assets", "userscripts", definition.assetName), "utf8");
+      const current = (await getScripts()).find((script) => script.id === definition.scriptId);
+      if (!current) throw new Error(`本地${definition.label}脚本不可用`);
       const result = await checkUserScriptUpdate({
         origin: oauthConfig.origin,
         cacheDirectory: userScriptCacheDirectory(),
         currentSource: current.source,
         validateSource: (source) => validateCloudScriptCapabilities(source, builtInSource),
+        channel: definition.channel,
       });
-      applyUserScriptUpdate(result);
+      applyUserScriptUpdate(kind, result);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      setScriptUpdateState({
+      definition.setState({
         stage: "error",
         checkedAt: Date.now(),
-        message: `云端脚本检查失败，继续使用 v${scriptUpdateState.activeVersion || "内置版本"}：${message}`,
+        message: `云端脚本检查失败，继续使用 v${definition.getState().activeVersion || "内置版本"}：${message}`,
       });
     }
-    return scriptUpdateState;
+    return definition.getState();
   })().finally(() => {
-    cloudScriptUpdateCheck = undefined;
+    delete cloudScriptUpdateChecks[kind];
   });
-  return cloudScriptUpdateCheck;
+  cloudScriptUpdateChecks[kind] = check;
+  return check;
 };
 
 // @require / @resource 依赖优先走随包分发的本地副本，避免每次启动都从 CDN 取
@@ -461,8 +519,8 @@ const createInjection = (script: UserScript, nonce: string, seededValues: Record
               : questionType === "completion"
                 ? "填空题；多空答案用 # 分隔"
                 : "题目；直接填写可提交的答案";
-        const prompt = "你是药大拾间网课助手的独立答题 AI。请按『答案：』和『解题思路：』两个字段作答；不要输出隐藏思维过程。\n" +
-          "题型：" + typeHint + "\n题目：" + question + (options ? "\n选项：\n" + options : "");
+        const prompt = "你是药大拾间网课助手的独立答题 AI。请按『答案：』和『解题思路：』两个字段作答；不要输出隐藏思维过程。\\n" +
+          "题型：" + typeHint + "\\n题目：" + question + (options ? "\\n选项：\\n" + options : "");
         const config = seeded.config || {};
         return bridge.requestAi(nonce, JSON.stringify({
           model: config.aiModel || "deepseek-reasoner",
@@ -511,9 +569,36 @@ const createInjection = (script: UserScript, nonce: string, seededValues: Record
     },
     unsafeWindow: window
   };
+  // OCS 会从 globalThis 读取 GM_* 能力。直接把这些方法挂到真实 window 会把特权桥
+  // 暴露给网课页面自身；用只在用户脚本词法作用域内可见的代理兼容其检测与存储层。
+  const userscriptGlobal = new Proxy(window, {
+    get: (target, property) => Object.prototype.hasOwnProperty.call(gm, property)
+      ? gm[property]
+      : Reflect.get(target, property, target),
+    has: (target, property) => Object.prototype.hasOwnProperty.call(gm, property) || Reflect.has(target, property),
+    set: (target, property, value) => Reflect.set(target, property, value, target)
+  });
+  try {
+    bridge.report(nonce, JSON.stringify({ kind: "status", text: "正在加载 " + definition.name + " v" + definition.version }));
+  } catch { /* 状态反馈失败不阻止脚本 */ }
   loadDependencies()
-    .then((privateJQuery) => Function(...Object.keys(gm), "jQuery", "$", definition.source)(...Object.values(gm), privateJQuery, privateJQuery))
-    .catch((error) => console.error("用户脚本加载失败: " + definition.name, error));
+    .then((privateJQuery) => {
+      const result = Function(...Object.keys(gm), "jQuery", "$", "globalThis", definition.source)(
+        ...Object.values(gm), privateJQuery, privateJQuery, userscriptGlobal
+      );
+      try {
+        bridge.report(nonce, JSON.stringify({
+          kind: "status",
+          text: definition.name + " v" + definition.version + " 已加载 · " + location.hostname
+        }));
+      } catch { /* 状态反馈失败不阻止脚本 */ }
+      return result;
+    })
+    .catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      try { bridge.report(nonce, JSON.stringify({ kind: "status", text: definition.name + "加载失败：" + message })); } catch { /* ignore */ }
+      console.error("用户脚本加载失败: " + definition.name, error);
+    });
 })()`;
 
 // 每次页面加载完成后调用。标签管理器负责在合适的时机把 contents 交过来。
@@ -530,16 +615,30 @@ const injectMatchingScripts = async (contents: Electron.WebContents): Promise<vo
   const scripts = matching.some((script) => script.id === "builtin-chaoxing-helper")
     ? matching.filter((script) => script.id !== "builtin-multiplatform-helper")
     : matching;
+  if (scripts.length === 0) {
+    recordScriptActivity({
+      at: Date.now(),
+      kind: "status",
+      text: `当前页面尚未命中助手 · ${new URL(currentUrl).hostname}`,
+    });
+  }
   for (const script of scripts) {
     const seeded = script.id === "builtin-multiplatform-helper"
       ? buildMultiplatformSeed(scriptConfig)
       : { config: buildScriptConfig(scriptConfig) };
     const nonce = randomBytes(32).toString("base64url");
     grants.set(nonce, { scriptId: script.id, webContentsId: contents.id });
+    const injection = createInjection(script, nonce, seeded);
     try {
-      await contents.executeJavaScript(createInjection(script, nonce, seeded), false);
+      await contents.executeJavaScript(injection, false);
     } catch (error) {
       grants.delete(nonce);
+      const message = error instanceof Error ? error.message : String(error);
+      recordScriptActivity({
+        at: Date.now(),
+        kind: "status",
+        text: `${script.name} 注入失败：${message}`,
+      });
       console.error(`用户脚本注入失败：${script.name}`, error);
     }
   }
@@ -1176,6 +1275,9 @@ if (installMode || uninstallMode) {
     ipcMain.handle("tabs:close", (_event, id: unknown) => { if (typeof id === "string") tabs?.close(id); });
     ipcMain.handle("tabs:reload", (_event, id: unknown) => { if (typeof id === "string") tabs?.reload(id); });
     ipcMain.handle("tabs:go-back", (_event, id: unknown) => { if (typeof id === "string") tabs?.goBack(id); });
+    ipcMain.handle("tabs:set-muted", (_event, id: unknown, muted: unknown) => {
+      if (typeof id === "string" && typeof muted === "boolean") tabs?.setMuted(id, muted);
+    });
     ipcMain.handle("tabs:open-learning", (_event, platformId: unknown) => openLearningPage(platformId));
     ipcMain.handle("tabs:open-sponsor", () => tabs?.navigateSite(new URL("/profile#sponsor", oauthConfig.origin).href) ?? false);
 
@@ -1470,7 +1572,12 @@ if (installMode || uninstallMode) {
       entries: scriptActivity.slice(-(typeof limit === "number" ? Math.min(Math.max(limit, 1), 200) : 80))
     }));
     ipcMain.handle("script:get-update-state", () => scriptUpdateState);
-    ipcMain.handle("script:check-update", () => checkCloudUserScript());
+    ipcMain.handle("script:get-update-states", () => ({
+      chaoxing: scriptUpdateState,
+      multiplatform: multiplatformScriptUpdateState,
+    }));
+    ipcMain.handle("script:check-update", (_event, kind: unknown) =>
+      checkCloudUserScript(kind === "multiplatform" ? "multiplatform" : "chaoxing"));
 
     ipcMain.handle("userscript:request-ai", async (event, nonce: unknown, body: unknown) => {
       await authorize(event, nonce);
@@ -1606,9 +1713,15 @@ if (installMode || uninstallMode) {
       // 长期开着的实例（这个应用常驻托盘）也要能拿到更新，每 6 小时再探一次
       setInterval(() => void checkAndDownload(), 6 * 60 * 60 * 1000).unref?.();
     }
-    // 学习通助手脚本独立热更新，Windows 与 macOS 都可用。失败时保留已校验缓存或内置脚本。
-    setTimeout(() => void checkCloudUserScript(), 4000).unref?.();
-    setInterval(() => void checkCloudUserScript(), USER_SCRIPT_CHECK_INTERVAL_MS).unref?.();
+    // 两套助手脚本都独立热更新，Windows 与 macOS 共用。失败时保留已校验缓存或内置脚本。
+    setTimeout(() => {
+      void checkCloudUserScript("chaoxing");
+      void checkCloudUserScript("multiplatform");
+    }, 4000).unref?.();
+    setInterval(() => {
+      void checkCloudUserScript("chaoxing");
+      void checkCloudUserScript("multiplatform");
+    }, USER_SCRIPT_CHECK_INTERVAL_MS).unref?.();
   }).catch((error) => {
     // 没有这个 catch 的话，启动期任何异常都会变成被吞掉的 unhandled rejection，
     // 表现为"进程静默退出、没有任何输出"，完全无从排查。
