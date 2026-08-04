@@ -4,8 +4,7 @@ function configureCpuDesktopProjects(projects) {
       script.projectName = project.name;
 
       if (project.name === "后台") {
-        script.hideInPanel = key !== "console";
-        if (key === "console") script.name = "运行日志";
+        script.hideInPanel = true;
         continue;
       }
 
@@ -22,6 +21,11 @@ function installCpuUnifiedSurface(root, container, bridge) {
   let initialized = false;
   let selectedTab = "task";
   let lastRunControl = null;
+  let lastAnswererWrappers = Array.isArray(GM_getValue("common.settings.answererWrappers", []))
+    ? GM_getValue("common.settings.answererWrappers", [])
+    : [];
+
+  document.documentElement.dataset.cpuMultiplatformSurface = "ready";
 
   const readControlText = (control) => String(control?.value || control?.textContent || "").trim();
   const findRunControl = () => Array.from(root.querySelectorAll('button, input[type="button"], input[type="submit"]')).find((control) => {
@@ -74,6 +78,120 @@ function installCpuUnifiedSurface(root, container, bridge) {
     });
   };
 
+  const getConfig = () => {
+    const current = GM_getValue("config", {});
+    return current && typeof current === "object" && !Array.isArray(current) ? current : {};
+  };
+
+  const saveConfig = (patch, statusText = "设置已保存") => {
+    const current = getConfig();
+    const next = { ...current, ...patch };
+    next.answerIntervalMin = Math.min(300, Math.max(1, Number(next.answerIntervalMin) || 8));
+    next.answerIntervalMax = Math.min(300, Math.max(next.answerIntervalMin, Number(next.answerIntervalMax) || 20));
+    GM_setValue("config", next);
+
+    if (Object.prototype.hasOwnProperty.call(patch, "autoSubmit")) {
+      GM_setValue("common.settings.upload", next.autoSubmit === true ? "100" : "save");
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, "answerIntervalMin")) {
+      GM_setValue("common.settings.period", next.answerIntervalMin);
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, "aiEnabled")) {
+      const currentWrappers = GM_getValue("common.settings.answererWrappers", []);
+      if (Array.isArray(currentWrappers) && currentWrappers.length > 0) lastAnswererWrappers = currentWrappers;
+      if (next.aiEnabled === false) GM_setValue("common.settings.answererWrappers", []);
+      else if (lastAnswererWrappers.length > 0) GM_setValue("common.settings.answererWrappers", lastAnswererWrappers);
+    }
+
+    const status = container.body?.querySelector("[data-cpu-settings-status]");
+    if (status) status.textContent = statusText;
+    if (typeof GM_cpuReport === "function") GM_cpuReport("status", statusText);
+    return next;
+  };
+
+  const answerModeMarkup = (config) => {
+    const modes = Array.isArray(config.answerModes) && config.answerModes.length > 0
+      ? config.answerModes
+      : [
+          { key: "low", label: "快速判断", pointMultiplier: 1 },
+          { key: "high", label: "深入分析", pointMultiplier: 1.5 },
+          { key: "max", label: "挑战难题", pointMultiplier: 2 },
+        ];
+    const active = ["low", "high", "max"].includes(config.answerDepth) ? config.answerDepth : "low";
+    return modes.map((mode) => `
+      <label class="cpu-assistant-mode ${mode.key === active ? "selected" : ""}">
+        <input type="radio" name="cpu-answer-depth" value="${mode.key}" ${mode.key === active ? "checked" : ""}>
+        <span><strong>${mode.label}</strong><small>${Number(mode.pointMultiplier) || 1} 倍 AI 点数</small></span>
+      </label>
+    `).join("");
+  };
+
+  const renderSettingsWorkbench = (panel) => {
+    const config = getConfig();
+    const minimum = Math.min(300, Math.max(1, Number(config.answerIntervalMin) || 8));
+    const maximum = Math.min(300, Math.max(minimum, Number(config.answerIntervalMax) || 20));
+    panel.innerHTML = `
+      <header>
+        <span>助手设置</span>
+        <strong>直接调整本页正在使用的选项</strong>
+        <p>这里只保留会影响实际运行的设置。修改后会保存到桌面客户端；已开始的任务重新进入后会完整应用。</p>
+      </header>
+      <main>
+        <section class="cpu-assistant-setting-section">
+          <div class="cpu-assistant-setting-heading">
+            <div><strong>题目分析档位</strong><p>按题目难度选择回答质量与 AI 点数消耗。</p></div>
+          </div>
+          <div class="cpu-assistant-mode-grid">${answerModeMarkup(config)}</div>
+        </section>
+        <section class="cpu-assistant-setting-section cpu-assistant-setting-list">
+          <label class="cpu-assistant-setting-row">
+            <span><strong>使用 AI 解答</strong><small>关闭后不再请求药大拾间 AI。</small></span>
+            <input type="checkbox" data-cpu-config="aiEnabled" ${config.aiEnabled !== false ? "checked" : ""}>
+          </label>
+          <label class="cpu-assistant-setting-row">
+            <span><strong>章节测验答完自动提交</strong><small>作业和考试仍保持手动交卷。</small></span>
+            <input type="checkbox" data-cpu-config="autoSubmit" ${config.autoSubmit === true ? "checked" : ""}>
+          </label>
+        </section>
+        <section class="cpu-assistant-setting-section">
+          <div class="cpu-assistant-setting-heading">
+            <div><strong>每题等待时间</strong><p>保留自然的作答间隔，单位为秒。</p></div>
+          </div>
+          <div class="cpu-assistant-number-grid">
+            <label><span>最短</span><input type="number" min="1" max="300" step="1" value="${minimum}" data-cpu-number="answerIntervalMin"></label>
+            <label><span>最长</span><input type="number" min="1" max="300" step="1" value="${maximum}" data-cpu-number="answerIntervalMax"></label>
+          </div>
+        </section>
+      </main>
+      <footer>
+        <p data-cpu-settings-status>设置会自动保存 · 本工具仅供个人学习辅助，严禁商业用途。</p>
+        <button type="button" data-cpu-assistant-back>返回当前任务</button>
+      </footer>
+    `;
+
+    panel.querySelectorAll('input[name="cpu-answer-depth"]').forEach((input) => {
+      input.addEventListener("change", () => {
+        if (!input.checked) return;
+        saveConfig({ answerDepth: input.value }, "题目分析档位已保存");
+        panel.querySelectorAll(".cpu-assistant-mode").forEach((label) => label.classList.toggle("selected", label.contains(input)));
+      });
+    });
+    panel.querySelectorAll("input[data-cpu-config]").forEach((input) => {
+      input.addEventListener("change", () => {
+        const label = input.dataset.cpuConfig === "autoSubmit" ? "提交方式已保存" : "AI 解答设置已保存";
+        saveConfig({ [input.dataset.cpuConfig]: input.checked }, label);
+      });
+    });
+    panel.querySelectorAll("input[data-cpu-number]").forEach((input) => {
+      input.addEventListener("change", () => {
+        const next = saveConfig({ [input.dataset.cpuNumber]: Number(input.value) }, "答题等待时间已保存");
+        panel.querySelector('[data-cpu-number="answerIntervalMin"]').value = String(next.answerIntervalMin);
+        panel.querySelector('[data-cpu-number="answerIntervalMax"]').value = String(next.answerIntervalMax);
+      });
+    });
+    panel.querySelector("[data-cpu-assistant-back]")?.addEventListener("click", () => { void selectTab("task"); });
+  };
+
   const hideSettingsWorkbench = () => {
     container.body?.classList.remove("cpu-assistant-custom-active");
     container.body?.querySelector(".cpu-assistant-settings-workbench")?.remove();
@@ -85,54 +203,19 @@ function installCpuUnifiedSurface(root, container, bridge) {
     if (!panel) {
       panel = document.createElement("section");
       panel.className = "cpu-assistant-settings-workbench";
-      panel.innerHTML = `
-        <header>
-          <span>统一设置</span>
-          <strong>复杂参数已经替你收好</strong>
-          <p>多平台助手复用桌面客户端的 AI、节奏与提交策略，不再展示 OCS 的题库、线程、随机作答和通知回调等内部配置。</p>
-        </header>
-        <main>
-          <article>
-            <span class="cpu-assistant-settings-icon">自</span>
-            <div><strong>自动识别任务</strong><p>进入课程、章节、作业或考试后自动识别；没有任务时保持等待。</p></div>
-            <em>已开启</em>
-          </article>
-          <article>
-            <span class="cpu-assistant-settings-icon">静</span>
-            <div><strong>标签页默认静音</strong><p>后台学习时避免突然播放声音，需要时可在客户端标签栏恢复。</p></div>
-            <em>已开启</em>
-          </article>
-          <article>
-            <span class="cpu-assistant-settings-icon">交</span>
-            <div><strong>提交保护</strong><p>章节测验是否自动提交由客户端「工具」页统一控制；作业和考试始终由你手动交卷。</p></div>
-            <em>受保护</em>
-          </article>
-          <article>
-            <span class="cpu-assistant-settings-icon">AI</span>
-            <div><strong>AI 解答</strong><p>模型、题目档位和等待节奏均使用客户端「工具」页中的设置。</p></div>
-            <em>已托管</em>
-          </article>
-        </main>
-        <footer>
-          <p>要修改上述选项，请点击客户端顶部的「工具」。本工具仅供个人学习辅助，严禁商业用途。</p>
-          <button type="button" data-cpu-assistant-back>返回当前任务</button>
-        </footer>
-      `;
-      panel.querySelector("[data-cpu-assistant-back]")?.addEventListener("click", () => { void selectTab("task"); });
       container.body.append(panel);
     }
+    renderSettingsWorkbench(panel);
     container.body.classList.add("cpu-assistant-custom-active");
   };
 
   const selectTab = async (tab) => {
-    selectedTab = tab;
+    selectedTab = tab === "settings" ? "settings" : "task";
     const tabs = root.querySelector(".cpu-assistant-tabs");
-    if (tab === "settings") {
-      showSettingsWorkbench();
-    } else {
+    if (selectedTab === "settings") showSettingsWorkbench();
+    else {
       hideSettingsWorkbench();
-      if (tab === "logs") await bridge.openPanel("render.console");
-      else await bridge.openTask();
+      await bridge.openTask();
     }
     if (tabs) updateActiveTab(tabs);
   };
@@ -141,11 +224,9 @@ function installCpuUnifiedSurface(root, container, bridge) {
     if (initialized) return;
     initialized = true;
     const current = String(await bridge.getCurrentPanel() || "");
-    if (current === "render.console" || current.endsWith("-运行日志")) {
-      selectedTab = "logs";
-    } else {
-      selectedTab = "task";
-      if (current === "common.settings" || /(?:全局)?设置$/.test(current)) await bridge.openTask();
+    selectedTab = "task";
+    if (current === "common.settings" || current === "render.console" || /(?:全局)?设置$|运行日志$/.test(current)) {
+      await bridge.openTask();
     }
     const tabs = root.querySelector(".cpu-assistant-tabs");
     if (tabs) updateActiveTab(tabs);
@@ -215,7 +296,6 @@ function installCpuUnifiedSurface(root, container, bridge) {
         tabs.setAttribute("aria-label", "助手页面");
         tabs.innerHTML = `
           <button type="button" role="tab" data-cpu-assistant-tab="task">当前任务</button>
-          <button type="button" role="tab" data-cpu-assistant-tab="logs">运行日志</button>
           <button type="button" role="tab" data-cpu-assistant-tab="settings">设置</button>
         `;
         tabs.addEventListener("click", (event) => {

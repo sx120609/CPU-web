@@ -59,6 +59,8 @@ export type TabHooks = {
   onDidFinishLoad: (contents: Electron.WebContents) => void;
   /** 主框架地址变化（含 SPA 路由），用于识别主站刚完成登录 */
   onNavigation: (contents: Electron.WebContents) => void;
+  /** 当前文档内部的 SPA 路由变化；用于让网课助手重新判定课程/作业场景 */
+  onInPageNavigation?: (contents: Electron.WebContents) => void;
   /** 标签状态变化，推给外壳渲染 */
   onChange: (tabs: TabState[], activeId: string) => void;
 };
@@ -176,10 +178,12 @@ export class TabManager {
       if (isMainFrame) {
         tab.url = url;
         this.hooks.onNavigation(contents);
+        this.hooks.onInPageNavigation?.(contents);
         this.emit();
       }
     });
     contents.on("did-finish-load", () => this.hooks.onDidFinishLoad(contents));
+    contents.once("destroyed", () => this.removeDestroyedTab(tab.id));
 
     // 答题要复制粘贴，标签里也得有右键菜单
     contents.on("context-menu", (_event, params) => {
@@ -192,9 +196,78 @@ export class TabManager {
     // 一律开新标签而不是新窗口，也不丢给系统浏览器 —— 学习通的文档预览、
     // 主站里的外部链接都留在应用里。"不是通用浏览器"的边界靠没有地址栏来守。
     contents.setWindowOpenHandler(({ url }) => {
-      if (isWebUrl(url)) void this.openLearningTab(url, { trusted: true, platformId: tab.platformId });
+      // 智慧树会先 window.open("about:blank")，拿到子窗口后再写入真正的课程地址。
+      // 过去先 deny 再异步新建标签，页面拿不到 WindowProxy，随后会执行自己的首页兜底，
+      // 表现就是“点几下课程后突然退回智慧树首页”。直接把应用内标签的 webContents
+      // 作为新窗口返回，既保留单窗口体验，也让平台原本的弹窗导航完整执行。
+      if (url === "about:blank" || isWebUrl(url)) {
+        return {
+          action: "allow",
+          createWindow: (options) => this.createLearningPopupBridge(options, tab.platformId),
+        };
+      }
       return { action: "deny" };
     });
+  }
+
+  private createLearningPopupBridge(
+    options: Electron.BrowserWindowConstructorOptions,
+    platformId?: LearningPlatformId,
+  ): Electron.WebContents {
+    // setWindowOpenHandler 的 createWindow 只能返回“由当前 options 创建”的
+    // BrowserWindow.webContents，不能返回 BrowserView/WebContentsView 的内容，否则
+    // Electron 会在主进程抛 Invalid webContents。这里建立一个永不显示的中转窗口，
+    // 让站点拿到真实 WindowProxy；待 about:blank 被写入课程地址后，再把地址融合进
+    // 客户端标签并销毁中转窗口。用户全程不会看到第二个原生窗口。
+    const popup = new BrowserWindow({
+      ...options,
+      show: false,
+      focusable: false,
+      skipTaskbar: true,
+      parent: this.window,
+    });
+    popup.webContents.setAudioMuted(true);
+
+    let forwarded = false;
+    let cleanupTimer: NodeJS.Timeout | undefined;
+    const cleanup = (): void => {
+      if (cleanupTimer) clearTimeout(cleanupTimer);
+      cleanupTimer = undefined;
+      if (!popup.isDestroyed()) popup.destroy();
+    };
+    const forward = (candidate: string): void => {
+      if (forwarded || !isWebUrl(candidate)) return;
+      forwarded = true;
+      void this.openLearningTab(candidate, { trusted: true, platformId })
+        .finally(() => {
+          cleanupTimer = setTimeout(cleanup, 800);
+        });
+    };
+
+    popup.webContents.on("did-start-navigation", (_event, url, _isInPlace, isMainFrame) => {
+      if (isMainFrame) forward(url);
+    });
+    popup.webContents.on("did-navigate-in-page", (_event, url, isMainFrame) => {
+      if (isMainFrame) forward(url);
+    });
+    popup.webContents.on("did-fail-load", (_event, _code, _description, url, isMainFrame) => {
+      if (isMainFrame) forward(url);
+    });
+    cleanupTimer = setTimeout(cleanup, 20_000);
+    return popup.webContents;
+  }
+
+  private removeDestroyedTab(id: string): void {
+    const index = this.tabs.findIndex((tab) => tab.id === id);
+    if (index < 0) return;
+    const wasActive = this.activeId === id;
+    this.tabs.splice(index, 1);
+    if (wasActive) {
+      const next = this.tabs[Math.min(index, this.tabs.length - 1)];
+      this.activeId = next?.id ?? "";
+    }
+    this.layout();
+    this.emit();
   }
 
   /** 常驻的主站标签。loader 由调用方提供，好让它自己决定失败时回落到启动台 */

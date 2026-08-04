@@ -20,7 +20,7 @@ const pageActions = fs.readFileSync(path.join(root, "electron", "page-actions.ts
 
 const header = source.match(/\/\/\s*==UserScript==([\s\S]*?)\/\/\s*==\/UserScript==/)?.[1] || "";
 assert.match(header, /@name\s+药大拾间·全平台网课助手/);
-assert.match(header, /@version\s+4\.15\.7/);
+assert.match(header, /@version\s+4\.15\.8/);
 assert.match(header, /@connect\s+desktop\.localhost/);
 const connects = [...header.matchAll(/^\s*\/\/\s*@connect\s+(.+?)\s*$/gm)].map((match) => match[1]);
 assert.deepEqual(connects, ["desktop.localhost"], "不得保留外部题库联网权限");
@@ -58,7 +58,10 @@ assert.match(source, /className = "cpu-assistant-run"/, "统一标题栏必须�
 assert.match(source, /开始答题\|暂停\|继续/, "标题栏运行按钮必须代理 OCS 的实际任务控制");
 assert.match(source, /let selectedTab = "task"/, "选项卡状态必须由统一工作台自己控制");
 assert.match(source, /cpu-assistant-settings-workbench/, "设置页必须使用精简的客户端统一设置说明");
-assert.match(source, /不再展示 OCS 的题库、线程、随机作答和通知回调等内部配置/, "不得把 OCS 原始全局设置暴露给普通用户");
+assert.match(source, /data-cpu-config="aiEnabled"/, "AI 解答必须可在统一设置中直接调整");
+assert.match(source, /data-cpu-config="autoSubmit"/, "章节测验提交方式必须可在统一设置中直接调整");
+assert.match(source, /GM_setValue\("config", next\)/, "统一设置必须回写客户端脚本配置");
+assert.doesNotMatch(source, /data-cpu-assistant-tab="logs"/, "不得再显示独立的运行日志选项卡");
 assert.doesNotMatch(source, /else if \(tab === "settings"\) await bridge\.openPanel\("common\.settings"\)/, "设置选项卡不得再打开 OCS 原始设置面板");
 for (const host of ["zhihuishu.com", "icve.com.cn", "icourse163.org", "yuketang.cn"]) {
   assert.match(header, new RegExp(host.replaceAll(".", "\\.")), `缺少 ${host} 的脚本匹配`);
@@ -66,6 +69,8 @@ for (const host of ["zhihuishu.com", "icve.com.cn", "icourse163.org", "yuketang.
 }
 
 assert.match(main, /builtin-multiplatform-helper/);
+assert.match(main, /verifyWisdomTreeGuideContent/, "智慧树课程列表首屏空白时应只自动恢复一次");
+assert.match(main, /recoverLearningAssistantAfterSpaNavigation/, "智慧树 SPA 进入任务页时应重建助手实例");
 assert.match(main, /matching\.some\(\(script\) => script\.id === "builtin-chaoxing-helper"\)/, "超星必须避免双引擎并跑");
 assert.match(main, /https:\/\/desktop\.localhost\/ocs-ai/);
 assert.match(main, /bridge\.requestAi/);
@@ -88,6 +93,10 @@ assert.doesNotMatch(shellRenderer, /OCS v4\.15\.3 随客户端更新/, "OCS 不�
 
 assert.match(tabs, /webContents\.setAudioMuted\(true\)/, "网课标签应默认静音作为宿主层兜底");
 assert.match(tabs, /setMuted\(id: string, muted: boolean\)/, "用户应能按标签恢复或关闭声音");
+assert.match(tabs, /url === "about:blank"/, "智慧树先开空白子窗口的导航必须保留");
+assert.match(tabs, /createWindow: \(options\) => this\.createLearningPopupBridge/, "网课弹窗必须通过合法的中转窗口融合为应用内标签");
+assert.match(tabs, /show: false[\s\S]*skipTaskbar: true/, "中转窗口不得显示为独立弹窗");
+assert.match(tabs, /this\.openLearningTab\(candidate/, "捕获到真实课程地址后必须打开客户端标签");
 assert.match(shellRenderer, /shell\.tabs\.setMuted\(tab\.id, !tab\.muted\)/, "标签栏静音按钮应调用宿主音频控制");
 
 assert.match(shellHtml, /id="platform-dialog"/);

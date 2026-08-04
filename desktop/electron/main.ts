@@ -7,7 +7,7 @@ import { asInjectableUrl, asNavigableUrl, asSiteUrl, createAuthNavigationRule, s
 import { abortOAuthLogin, AuthorizeOpener, ensureOAuthSession, getOAuthStatus, logoutOAuth, OAuthStatus, startOAuthLogin } from "./oauth";
 import { readOAuthSession } from "./oauth-store";
 import { applyLaunchOnLogin, deleteScriptPreference, readPreferences, writePreferences } from "./preferences";
-import { buildScriptConfig } from "./script-config";
+import { buildScriptConfig, EDITABLE_KEYS } from "./script-config";
 import { CampusNetService, CampusState } from "./campus-net/service";
 import {
   clearChaoxingCredential,
@@ -84,6 +84,25 @@ const navigationOverrides = new Map<number, (url: string) => boolean>();
 const contentsKind = new Map<number, TabKind>();
 const contentsLearningPlatform = new Map<number, LearningPlatformId>();
 const learningPageActions = new LearningPageActions();
+const injectedLearningScopes = new Map<number, string>();
+const learningSpaReloadTimers = new Map<number, ReturnType<typeof setTimeout>>();
+const learningSurfaceRecovery = new Map<number, string>();
+const wisdomTreeGuideRecovery = new Map<number, string>();
+const wisdomTreeGuideTimers = new Map<number, ReturnType<typeof setTimeout>>();
+
+const wisdomTreeRouteScope = (value: string): "guide" | "task" | undefined => {
+  try {
+    const url = new URL(value);
+    const hostname = url.hostname.toLowerCase();
+    if (hostname !== "zhihuishu.com" && !hostname.endsWith(".zhihuishu.com")) return undefined;
+    const route = `${url.pathname}${url.hash}`.toLowerCase();
+    const taskHost = /^(?:studyvideo|studyplus|smartcourseexam|studentexamcomh5|examloop)\./.test(hostname);
+    const taskRoute = /(?:stuexamweb|stustudy|learnpage|sourcelearning|athomeworkexam|answer-homework|answer-exam|studentreviewtestorexam|reviewexam|\/study\/|\/exam(?:\/|$)|\/homework(?:\/|$))/.test(route);
+    return taskHost || taskRoute ? "task" : "guide";
+  } catch {
+    return undefined;
+  }
+};
 
 // 脚本回传的运行状态。脚本自己的面板只留 20 条日志且关掉面板就看不见，
 // 这里存一份好让客户端界面显示。
@@ -669,6 +688,11 @@ const injectMatchingScripts = async (contents: Electron.WebContents): Promise<vo
       console.error(`用户脚本注入失败：${script.name}`, error);
     }
   }
+  const learningScope = wisdomTreeRouteScope(currentUrl);
+  if (learningScope) injectedLearningScopes.set(contents.id, learningScope);
+  if (scripts.some((script) => script.id === "builtin-multiplatform-helper")) {
+    verifyMultiplatformSurface(contents, currentUrl);
+  }
 };
 
 /* ------------------------------------------------------------ 特权桥校验 */
@@ -868,6 +892,91 @@ const noteSiteNavigation = (contents: Electron.WebContents): void => {
   if (cameFromLogin) void syncAuth({ force: true });
 };
 
+const recoverLearningAssistantAfterSpaNavigation = (contents: Electron.WebContents): void => {
+  if (contentsKind.get(contents.id) !== "learning" || contents.isDestroyed()) return;
+  const nextScope = wisdomTreeRouteScope(contents.getURL());
+  const previousScope = injectedLearningScopes.get(contents.id);
+  if (!nextScope || !previousScope || nextScope === previousScope) return;
+
+  // 智慧树从首页进入课程时经常只做 pushState，不重新创建 document。OCS 在首次启动时
+  // 已经把“当前项目”固定为首页引导，继续沿用会导致助手不出现或仍显示错误面板。
+  // 只在 guide -> task 这一条边界做一次同地址重载，清掉旧实例；题目间切换不触发。
+  if (previousScope !== "guide" || nextScope !== "task") return;
+  const existing = learningSpaReloadTimers.get(contents.id);
+  if (existing) clearTimeout(existing);
+  injectedLearningScopes.set(contents.id, nextScope);
+  const expectedUrl = contents.getURL();
+  const timer = setTimeout(() => {
+    learningSpaReloadTimers.delete(contents.id);
+    if (contents.isDestroyed() || contents.getURL() !== expectedUrl) return;
+    recordScriptActivity({ at: Date.now(), kind: "status", text: "已进入智慧树任务页，正在重新加载助手" });
+    contents.reload();
+  }, 220);
+  learningSpaReloadTimers.set(contents.id, timer);
+};
+
+const verifyMultiplatformSurface = (contents: Electron.WebContents, expectedUrl: string): void => {
+  setTimeout(() => {
+    if (contents.isDestroyed() || contents.getURL() !== expectedUrl) return;
+    void contents.executeJavaScript(
+      'document.documentElement.dataset.cpuMultiplatformSurface === "ready"',
+      false,
+    ).then((ready) => {
+      if (ready === true) {
+        learningSurfaceRecovery.delete(contents.id);
+        return;
+      }
+      // 依赖加载或智慧树首屏初始化偶发错过时，用同一地址做一次干净恢复；绝不调用
+      // 返回首页，也不反复刷新。第二次仍失败会保留当前页面并在客户端状态区报错。
+      if (learningSurfaceRecovery.get(contents.id) === expectedUrl) {
+        recordScriptActivity({ at: Date.now(), kind: "status", text: "多平台助手未能显示，请点击标签页刷新后重试" });
+        return;
+      }
+      learningSurfaceRecovery.set(contents.id, expectedUrl);
+      recordScriptActivity({ at: Date.now(), kind: "status", text: "助手面板未完成初始化，正在自动恢复" });
+      contents.reload();
+    }).catch(() => undefined);
+  }, 4_000);
+};
+
+const verifyWisdomTreeGuideContent = (contents: Electron.WebContents, expectedUrl: string): void => {
+  let parsed: URL;
+  try {
+    parsed = new URL(expectedUrl);
+  } catch {
+    return;
+  }
+  if (parsed.hostname.toLowerCase() !== "onlineweb.zhihuishu.com" || wisdomTreeRouteScope(expectedUrl) !== "guide") return;
+
+  const previous = wisdomTreeGuideTimers.get(contents.id);
+  if (previous) clearTimeout(previous);
+  const timer = setTimeout(() => {
+    wisdomTreeGuideTimers.delete(contents.id);
+    if (contents.isDestroyed() || contents.getURL() !== expectedUrl) return;
+    void contents.executeJavaScript(`(() => {
+      const text = String(document.body?.innerText || "").replace(/\\s+/g, " ");
+      const hasCourseShell = /共享课|翻转课|兴趣课|智慧课程/.test(text);
+      const hasCourseEntry = /成绩分析|作业考试|加入课程|课程退课/.test(text);
+      return { ready: hasCourseShell && hasCourseEntry, textLength: text.length };
+    })()`, false).then((result) => {
+      if (result?.ready === true) {
+        wisdomTreeGuideRecovery.delete(contents.id);
+        return;
+      }
+      if (wisdomTreeGuideRecovery.get(contents.id) === expectedUrl) {
+        recordScriptActivity({ at: Date.now(), kind: "status", text: "智慧树课程列表仍未完成加载，请点击标签页刷新" });
+        return;
+      }
+      // 在线学堂偶发只渲染头部和页脚，课程接口初始化并未执行。只对同一地址恢复一次，
+      // 不跳回公开首页，也不在正常的慢网络下无限刷新。
+      wisdomTreeGuideRecovery.set(contents.id, expectedUrl);
+      recordScriptActivity({ at: Date.now(), kind: "status", text: "智慧树课程列表未完成初始化，正在自动恢复" });
+      contents.reload();
+    }).catch(() => undefined);
+  }, 4_500);
+  wisdomTreeGuideTimers.set(contents.id, timer);
+};
+
 const createTabManager = (window: BrowserWindow): TabManager => new TabManager(window, {
   appVersion: app.getVersion(),
   isNavigable: (url) => asNavigableUrl(url) !== undefined,
@@ -879,7 +988,9 @@ const createTabManager = (window: BrowserWindow): TabManager => new TabManager(w
   },
   openExternally,
   onNavigation: noteSiteNavigation,
+  onInPageNavigation: recoverLearningAssistantAfterSpaNavigation,
   onDidFinishLoad: (contents) => {
+    verifyWisdomTreeGuideContent(contents, contents.getURL());
     void injectMatchingScripts(contents);
   },
   onChange: (tabsState, activeId) => broadcast("tabs:changed", { tabs: tabsState, activeId })
@@ -1132,6 +1243,15 @@ const applyNavigationPolicy = (contents: Electron.WebContents): void => {
     learningPageActions.detach(contents.id);
     contentsKind.delete(contents.id);
     contentsLearningPlatform.delete(contents.id);
+    injectedLearningScopes.delete(contents.id);
+    learningSurfaceRecovery.delete(contents.id);
+    wisdomTreeGuideRecovery.delete(contents.id);
+    const timer = learningSpaReloadTimers.get(contents.id);
+    if (timer) clearTimeout(timer);
+    learningSpaReloadTimers.delete(contents.id);
+    const guideTimer = wisdomTreeGuideTimers.get(contents.id);
+    if (guideTimer) clearTimeout(guideTimer);
+    wisdomTreeGuideTimers.delete(contents.id);
   });
   // 页面加载失败本来是完全静默的，表现为"窗口开着但一片空白"
   contents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
@@ -1541,7 +1661,7 @@ if (installMode || uninstallMode) {
     });
 
     ipcMain.handle("userscript:set-value", async (event, nonce: unknown, key: unknown, json: unknown) => {
-      await authorize(event, nonce);
+      const script = await authorize(event, nonce);
       if (typeof key !== "string" || !key || key.length > 192) throw new Error("配置键无效");
       if (typeof json !== "string" || json.length > 256 * 1024) throw new Error("配置内容无效");
       let value: unknown;
@@ -1550,7 +1670,19 @@ if (installMode || uninstallMode) {
       } catch {
         throw new Error("配置内容无法解析");
       }
-      const saved = await writePreferences({ scriptConfig: { [key]: value } });
+      // 两个内置助手都会用 GM_setValue("config", 完整配置) 回写设置。旧逻辑把整份对象
+      // 存进了 scriptConfig.config，下一次启动 buildScriptConfig 根本读不到，造成“界面改了但
+      // 重进页面失效”。这里只提取客户端明确允许编辑的平铺字段，既能持久化，也不让脚本
+      // 借机塞入未审核的实现参数。
+      const patch = key === "config"
+        && (script.id === "builtin-chaoxing-helper" || script.id === "builtin-multiplatform-helper")
+        && value !== null && typeof value === "object" && !Array.isArray(value)
+        ? Object.fromEntries(EDITABLE_KEYS.map((editableKey) => [
+            editableKey,
+            buildScriptConfig(value as Record<string, unknown>)[editableKey],
+          ]))
+        : { [key]: value };
+      const saved = await writePreferences({ scriptConfig: patch });
       broadcast("script:config-changed", saved.scriptConfig);
     });
 

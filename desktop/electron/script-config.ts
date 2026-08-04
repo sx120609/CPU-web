@@ -20,10 +20,13 @@ export type ScriptConfig = Record<string, unknown>;
 //
 // 也不含 customApi*：本站的答案全部来自后台配置的 AI，没有题库这条路。
 // 脚本里那几个题库函数（题库海/一之/言溪）连调用点都没有。
-export type EditableKey =
-  | "autoVideo" | "autoJump" | "autoSubmit" | "autoExam"
-  | "answerIntervalMin" | "answerIntervalMax"
-  | "aiEnabled" | "answerDepth";
+export const EDITABLE_KEYS = [
+  "autoVideo", "autoJump", "autoSubmit", "autoExam",
+  "answerIntervalMin", "answerIntervalMax",
+  "aiEnabled", "answerDepth",
+] as const;
+
+export type EditableKey = typeof EDITABLE_KEYS[number];
 
 // 改动后是否需要重新打开学习窗口才生效。
 // 脚本在构造时对配置做了快照（this.defaultConfig），这些项读的是快照；

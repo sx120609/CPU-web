@@ -153,7 +153,7 @@ async function main() {
   assert.equal(compareUserScriptVersions("4.15.4", "4.15.4"), 0);
   assert.equal(compareUserScriptVersions("4.15.4-beta.2", "4.15.4-beta.1"), 1);
   assert.equal(compareUserScriptVersions("4.15.4", "4.15.4-beta.2"), 1);
-  assert.deepEqual(multiplatformIdentity, { name: "药大拾间·全平台网课助手", version: "4.15.7" });
+  assert.deepEqual(multiplatformIdentity, { name: "药大拾间·全平台网课助手", version: "4.15.8" });
   assert.doesNotThrow(() => validateUserScriptRelease(
     multiplatformSource,
     multiplatformManifest,
@@ -179,7 +179,7 @@ async function main() {
       }
       return new Response("", { status: 404 });
     };
-    const olderSource = multiplatformSource.replace("// @version      4.15.7", "// @version      4.15.6");
+    const olderSource = multiplatformSource.replace("// @version      4.15.8", "// @version      4.15.7");
     assert.deepEqual(
       selectPreferredUserScriptSource(multiplatformSource, olderSource),
       { source: multiplatformSource, origin: "builtin" },
@@ -200,7 +200,7 @@ async function main() {
       () => undefined,
       MULTIPLATFORM_USER_SCRIPT_CHANNEL,
     );
-    assert.equal(cached?.manifest.version, "4.15.7");
+    assert.equal(cached?.manifest.version, "4.15.8");
     assert.equal(cached?.source, multiplatformSource);
 
     requests.length = 0;
@@ -229,7 +229,7 @@ async function main() {
       fetchImpl: staleFetch,
     });
     assert.equal(protectedFromDowngrade.status, "current");
-    assert.equal(protectedFromDowngrade.manifest.version, "4.15.7");
+    assert.equal(protectedFromDowngrade.manifest.version, "4.15.8");
     assert.equal(protectedFromDowngrade.source, multiplatformSource);
     assert.equal(requests.length, 1, "an older cloud script must not be downloaded over a newer client");
   } finally {

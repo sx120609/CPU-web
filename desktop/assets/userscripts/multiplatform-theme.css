@@ -82,7 +82,7 @@ header-element .profile {
 .cpu-assistant-run svg path[d*="5.5"] { fill: currentColor; stroke: none; }
 .cpu-assistant-tabs {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
   padding: 5px;
   background: var(--cpu-ocs-primary-soft);
@@ -129,14 +129,35 @@ script-panel-element.cpu-assistant-custom-active > :not(.cpu-assistant-settings-
 .cpu-assistant-settings-workbench > header span { color: var(--cpu-ocs-primary); font-size: 12px; font-weight: 750; letter-spacing: .08em; }
 .cpu-assistant-settings-workbench > header strong { font-size: 18px; }
 .cpu-assistant-settings-workbench p { margin: 0; color: var(--cpu-ocs-muted); line-height: 1.65; }
-.cpu-assistant-settings-workbench > main { display: grid; padding: 2px 16px; }
-.cpu-assistant-settings-workbench article { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--cpu-ocs-border); }
-.cpu-assistant-settings-workbench article:last-child { border-bottom: 0; }
-.cpu-assistant-settings-workbench article div { display: grid; gap: 3px; min-width: 0; }
-.cpu-assistant-settings-workbench article strong { font-size: 14px; }
-.cpu-assistant-settings-workbench article p { font-size: 12px; }
-.cpu-assistant-settings-workbench article em { padding: 5px 8px; color: var(--cpu-ocs-primary); background: var(--cpu-ocs-primary-soft); border-radius: 999px; font-size: 11px; font-style: normal; font-weight: 700; white-space: nowrap; }
-.cpu-assistant-settings-icon { display: grid; place-items: center; width: 40px; height: 40px; color: var(--cpu-ocs-primary); background: var(--cpu-ocs-primary-soft); border-radius: 12px; font-size: 13px; font-weight: 800; }
+.cpu-assistant-settings-workbench > main { display: grid; gap: 0; padding: 2px 16px; }
+.cpu-assistant-setting-section { display: grid; gap: 12px; padding: 15px 0; border-bottom: 1px solid var(--cpu-ocs-border); }
+.cpu-assistant-setting-section:last-child { border-bottom: 0; }
+.cpu-assistant-setting-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.cpu-assistant-setting-heading > div { display: grid; gap: 3px; min-width: 0; }
+.cpu-assistant-setting-heading strong,
+.cpu-assistant-setting-row strong { font-size: 14px; }
+.cpu-assistant-setting-heading p,
+.cpu-assistant-setting-row small { color: var(--cpu-ocs-muted); font-size: 12px; line-height: 1.5; }
+.cpu-assistant-mode-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.cpu-assistant-mode { position: relative; display: grid; min-width: 0; padding: 11px 10px; color: var(--cpu-ocs-muted); background: var(--cpu-ocs-bg); border: 1px solid var(--cpu-ocs-border); border-radius: 11px; cursor: pointer; }
+.cpu-assistant-mode:hover { border-color: var(--cpu-ocs-primary); }
+.cpu-assistant-mode.selected { color: var(--cpu-ocs-primary); background: var(--cpu-ocs-primary-soft); border-color: var(--cpu-ocs-primary); }
+.cpu-assistant-mode input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.cpu-assistant-mode span { display: grid; gap: 3px; min-width: 0; }
+.cpu-assistant-mode strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.cpu-assistant-mode small { color: inherit; font-size: 11px; }
+.cpu-assistant-setting-list { gap: 0; }
+.cpu-assistant-setting-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; cursor: pointer; }
+.cpu-assistant-setting-row + .cpu-assistant-setting-row { border-top: 1px solid var(--cpu-ocs-border); }
+.cpu-assistant-setting-row > span { display: grid; gap: 3px; min-width: 0; }
+.cpu-assistant-setting-row input[type="checkbox"] { appearance: none; flex: 0 0 42px; width: 42px; height: 24px; margin: 0; padding: 2px; background: var(--cpu-ocs-border); border: 0; border-radius: 999px; cursor: pointer; transition: background .18s ease; }
+.cpu-assistant-setting-row input[type="checkbox"]::before { content: ""; display: block; width: 20px; height: 20px; background: var(--cpu-ocs-card); border-radius: 50%; box-shadow: 0 1px 4px rgba(20, 40, 34, .18); transition: transform .18s ease; }
+.cpu-assistant-setting-row input[type="checkbox"]:checked { background: var(--cpu-ocs-primary); }
+.cpu-assistant-setting-row input[type="checkbox"]:checked::before { transform: translateX(18px); }
+.cpu-assistant-number-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.cpu-assistant-number-grid label { display: grid; gap: 6px; color: var(--cpu-ocs-muted); font-size: 12px; }
+.cpu-assistant-number-grid input { box-sizing: border-box; width: 100%; min-height: 38px; padding: 7px 10px; color: var(--cpu-ocs-text); background: var(--cpu-ocs-bg); border: 1px solid var(--cpu-ocs-border); border-radius: 9px; outline: 0; }
+.cpu-assistant-number-grid input:focus { border-color: var(--cpu-ocs-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--cpu-ocs-primary) 18%, transparent); }
 .cpu-assistant-settings-workbench > footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 13px 16px; }
 .cpu-assistant-settings-workbench > footer p { font-size: 12px; }
 .cpu-assistant-settings-workbench > footer button { flex: 0 0 auto; min-height: 34px; padding: 5px 12px; color: var(--cpu-ocs-primary); background: var(--cpu-ocs-card); border: 1px solid var(--cpu-ocs-border); border-radius: 9px; cursor: pointer; font-weight: 700; }
@@ -320,7 +341,7 @@ modal-element button { border-radius: 9px !important; }
   container-element { width: calc(100vw - 16px); min-width: 0; max-width: calc(100vw - 16px); }
   .cpu-assistant-brand-copy strong { font-size: 15px; }
   .cpu-assistant-brand-copy small { display: none; }
-  .cpu-assistant-settings-workbench article { grid-template-columns: 36px minmax(0, 1fr); }
-  .cpu-assistant-settings-workbench article em { grid-column: 2; justify-self: start; }
+  .cpu-assistant-mode-grid { grid-template-columns: 1fr; }
+  .cpu-assistant-number-grid { grid-template-columns: 1fr; }
   .cpu-assistant-settings-workbench > footer { align-items: stretch; flex-direction: column; }
 }
