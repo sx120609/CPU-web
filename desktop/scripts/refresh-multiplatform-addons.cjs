@@ -8,7 +8,7 @@ const surfacePath = path.join(assetRoot, "multiplatform-surface.js");
 const addonPath = path.join(assetRoot, "multiplatform-screenshot.js");
 const startMarker = "// CPU_DESKTOP_SCREENSHOT_ADDON_START";
 const endMarker = "// CPU_DESKTOP_SCREENSHOT_ADDON_END";
-const integrationVersion = "4.15.6";
+const integrationVersion = "4.15.7";
 
 const theme = fs.readFileSync(themePath, "utf8")
   .replaceAll("\\", "\\\\")
@@ -69,7 +69,7 @@ source = source.replace(
   "请勿同时运行其他网课脚本，避免重复点击或提交。所有支持平台均可点击面板顶部的截图按钮手动搜题，建议先暂停自动任务。",
 );
 const desktopPanelResolver = `        panelName: (name, urls = [location.href]) => {
-          const allowedInternalPanels = new Set(["common.guide", "common.settings", "render.console"]);
+          const allowedInternalPanels = new Set(["common.guide", "render.console"]);
           const matched = utils_1.$.getMatchedScripts(this.projects, urls)
             .filter((script) => !script.hideInPanel)
             .sort((left, right) => Number(right.priority || 0) - Number(left.priority || 0));
@@ -170,7 +170,7 @@ if (!source.includes("installCpuUnifiedSurface(this.root, this.container") || !s
 if (!source.includes('display: "flex", alignItems: "center", width: "100%"')) {
   throw new Error("OCS 标题栏结构已变化，无法启用药大拾间精简模式");
 }
-if (!source.includes('allowedInternalPanels = new Set(["common.guide", "common.settings", "render.console"])')) {
+if (!source.includes('allowedInternalPanels = new Set(["common.guide", "render.console"])')) {
   throw new Error("OCS 默认面板过滤规则未写入，无法刷新");
 }
 if (!source.includes("CPU_DESKTOP_PROJECTS_CONFIGURED")) {

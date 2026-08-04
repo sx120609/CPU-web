@@ -207,8 +207,10 @@ function installCpuScreenshotSearch(root, container) {
     button.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3H5a2 2 0 0 0-2 2v2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"></path><circle cx="12" cy="12" r="3.2"></circle></svg>';
     button.addEventListener("click", (event) => { event.stopPropagation(); void startSearch(); });
     const toolbar = header.firstElementChild?.firstElementChild || header;
+    const runButton = toolbar.querySelector(".cpu-assistant-run");
     const minimizeButton = toolbar.lastElementChild;
-    if (minimizeButton && minimizeButton !== header) toolbar.insertBefore(button, minimizeButton);
+    if (runButton) toolbar.insertBefore(button, runButton);
+    else if (minimizeButton && minimizeButton !== header) toolbar.insertBefore(button, minimizeButton);
     else toolbar.append(button);
     return true;
   };

@@ -20,7 +20,7 @@ const pageActions = fs.readFileSync(path.join(root, "electron", "page-actions.ts
 
 const header = source.match(/\/\/\s*==UserScript==([\s\S]*?)\/\/\s*==\/UserScript==/)?.[1] || "";
 assert.match(header, /@name\s+药大拾间·全平台网课助手/);
-assert.match(header, /@version\s+4\.15\.6/);
+assert.match(header, /@version\s+4\.15\.7/);
 assert.match(header, /@connect\s+desktop\.localhost/);
 const connects = [...header.matchAll(/^\s*\/\/\s*@connect\s+(.+?)\s*$/gm)].map((match) => match[1]);
 assert.deepEqual(connects, ["desktop.localhost"], "不得保留外部题库联网权限");
@@ -54,6 +54,12 @@ assert.doesNotMatch(source, /docs\.ocsjs\.com\/docs\/script-helper/, "不得引�
 assert.match(source, /\.user-guide \{ display: none !important; \}/, "不得展示 OCS 官网、交流群或关闭教程等无关入口");
 assert.match(source, /严禁商业用途/, "多平台助手应明确禁止商业用途");
 assert.match(source, /多平台助手已暂停/, "开始、暂停和继续状态应回传客户端统一状态区");
+assert.match(source, /className = "cpu-assistant-run"/, "统一标题栏必须提供开始、暂停与继续按钮");
+assert.match(source, /开始答题\|暂停\|继续/, "标题栏运行按钮必须代理 OCS 的实际任务控制");
+assert.match(source, /let selectedTab = "task"/, "选项卡状态必须由统一工作台自己控制");
+assert.match(source, /cpu-assistant-settings-workbench/, "设置页必须使用精简的客户端统一设置说明");
+assert.match(source, /不再展示 OCS 的题库、线程、随机作答和通知回调等内部配置/, "不得把 OCS 原始全局设置暴露给普通用户");
+assert.doesNotMatch(source, /else if \(tab === "settings"\) await bridge\.openPanel\("common\.settings"\)/, "设置选项卡不得再打开 OCS 原始设置面板");
 for (const host of ["zhihuishu.com", "icve.com.cn", "icourse163.org", "yuketang.cn"]) {
   assert.match(header, new RegExp(host.replaceAll(".", "\\.")), `缺少 ${host} 的脚本匹配`);
   assert.match(config, new RegExp(`"${host.replaceAll(".", "\\.")}"`), `宿主未放行 ${host}`);

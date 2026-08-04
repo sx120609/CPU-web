@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         药大拾间·全平台网课助手
 // @namespace    cn.lizmt.cpuweb.ocs
-// @version      4.15.6
+// @version      4.15.7
 // @description  药大拾间桌面端多平台网课助手；平台适配能力基于 OCS，答题只使用药大拾间独立 AI。
 // @author       enncy；药大拾间整合维护
 // @license      MIT
@@ -2612,7 +2612,7 @@ var __publicField = (obj, key, value) => {
       this.defaults = {
         urls: (urls) => urls && urls.length ? urls : [location.href],
         panelName: (name, urls = [location.href]) => {
-          const allowedInternalPanels = new Set(["common.guide", "common.settings", "render.console"]);
+          const allowedInternalPanels = new Set(["common.guide", "render.console"]);
           const matched = utils_1.$.getMatchedScripts(this.projects, urls)
             .filter((script) => !script.hideInPanel)
             .sort((left, right) => Number(right.priority || 0) - Number(left.priority || 0));
@@ -21141,7 +21141,7 @@ container-element {
   border-radius: 18px;
   background: var(--cpu-ocs-bg);
   box-shadow: 0 18px 48px rgba(32, 71, 61, 0.18);
-  overflow: visible;
+  overflow: hidden;
   backdrop-filter: blur(16px);
 }
 header-element {
@@ -21178,7 +21178,9 @@ header-element .profile {
 .cpu-assistant-brand-copy { display: grid; min-width: 0; gap: 2px; }
 .cpu-assistant-brand-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 17px; }
 .cpu-assistant-brand-copy small { color: var(--cpu-ocs-muted); font-size: 12px; font-weight: 400; }
-.cpu-assistant-close {
+.cpu-assistant-run,
+.cpu-assistant-close,
+.cpu-ocs-shot-button {
   display: grid;
   place-items: center;
   flex: 0 0 42px;
@@ -21191,8 +21193,15 @@ header-element .profile {
   border-radius: 12px;
   cursor: pointer;
 }
-.cpu-assistant-close:hover { color: var(--cpu-ocs-primary); background: var(--cpu-ocs-primary-soft); }
-.cpu-assistant-close svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.cpu-assistant-run:hover,
+.cpu-assistant-close:hover,
+.cpu-ocs-shot-button:hover { color: var(--cpu-ocs-primary); background: var(--cpu-ocs-primary-soft); border-color: var(--cpu-ocs-primary); }
+.cpu-assistant-run:disabled { cursor: default; opacity: 0.42; }
+.cpu-assistant-run[data-state="running"] { color: #9a651b; background: #fff6e6; border-color: #efd7ad; }
+.cpu-assistant-run svg,
+.cpu-assistant-close svg,
+.cpu-ocs-shot-button svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.cpu-assistant-run svg path[d*="5.5"] { fill: currentColor; stroke: none; }
 .cpu-assistant-tabs {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -21231,7 +21240,29 @@ script-panel-element {
   background: var(--cpu-ocs-bg);
   border-radius: 0 0 18px 18px;
   padding: 4px 10px 14px;
+  overscroll-behavior: contain;
 }
+script-panel-element.cpu-assistant-custom-active > :not(.cpu-assistant-settings-workbench) { display: none !important; }
+.cpu-assistant-settings-workbench { display: grid; gap: 12px; padding: 10px 4px 2px; }
+.cpu-assistant-settings-workbench > header,
+.cpu-assistant-settings-workbench > main,
+.cpu-assistant-settings-workbench > footer { color: var(--cpu-ocs-text); background: var(--cpu-ocs-card); border: 1px solid var(--cpu-ocs-border); border-radius: 14px; }
+.cpu-assistant-settings-workbench > header { display: grid; gap: 5px; padding: 16px; }
+.cpu-assistant-settings-workbench > header span { color: var(--cpu-ocs-primary); font-size: 12px; font-weight: 750; letter-spacing: .08em; }
+.cpu-assistant-settings-workbench > header strong { font-size: 18px; }
+.cpu-assistant-settings-workbench p { margin: 0; color: var(--cpu-ocs-muted); line-height: 1.65; }
+.cpu-assistant-settings-workbench > main { display: grid; padding: 2px 16px; }
+.cpu-assistant-settings-workbench article { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--cpu-ocs-border); }
+.cpu-assistant-settings-workbench article:last-child { border-bottom: 0; }
+.cpu-assistant-settings-workbench article div { display: grid; gap: 3px; min-width: 0; }
+.cpu-assistant-settings-workbench article strong { font-size: 14px; }
+.cpu-assistant-settings-workbench article p { font-size: 12px; }
+.cpu-assistant-settings-workbench article em { padding: 5px 8px; color: var(--cpu-ocs-primary); background: var(--cpu-ocs-primary-soft); border-radius: 999px; font-size: 11px; font-style: normal; font-weight: 700; white-space: nowrap; }
+.cpu-assistant-settings-icon { display: grid; place-items: center; width: 40px; height: 40px; color: var(--cpu-ocs-primary); background: var(--cpu-ocs-primary-soft); border-radius: 12px; font-size: 13px; font-weight: 800; }
+.cpu-assistant-settings-workbench > footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 13px 16px; }
+.cpu-assistant-settings-workbench > footer p { font-size: 12px; }
+.cpu-assistant-settings-workbench > footer button { flex: 0 0 auto; min-height: 34px; padding: 5px 12px; color: var(--cpu-ocs-primary); background: var(--cpu-ocs-card); border: 1px solid var(--cpu-ocs-border); border-radius: 9px; cursor: pointer; font-weight: 700; }
+.cpu-assistant-settings-workbench > footer button:hover { background: var(--cpu-ocs-primary-soft); border-color: var(--cpu-ocs-primary); }
 .user-guide { display: none !important; }
 .tooltip-container { display: none !important; }
 .cpu-integrated-guide {
@@ -21305,19 +21336,7 @@ header-element .extra-menu-bar .script-panel-link:hover {
 .work-result-wrapper,
 .question-title,
 .question-answer { overflow-wrap: anywhere; }
-.cpu-ocs-shot-button {
-  display: inline-grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  margin-left: 5px;
-  padding: 0;
-  color: var(--cpu-ocs-primary);
-  background: var(--cpu-ocs-card);
-  border: 1px solid var(--cpu-ocs-border);
-  border-radius: 10px;
-  cursor: pointer;
-}
+.cpu-ocs-shot-button { margin-left: 0; padding: 0; }
 header-element .switch,
 header-element .close,
 header-element .dropdown,
@@ -21350,8 +21369,6 @@ modal-element .modal-profile { display: none !important; }
 modal-element header,
 modal-element footer { border-color: var(--cpu-ocs-border) !important; }
 modal-element button { border-radius: 9px !important; }
-.cpu-ocs-shot-button:hover { background: var(--cpu-ocs-primary-soft); border-color: var(--cpu-ocs-primary); }
-.cpu-ocs-shot-button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; }
 .cpu-ocs-capture-overlay {
   position: fixed;
   inset: 0;
@@ -21425,6 +21442,9 @@ modal-element button { border-radius: 9px !important; }
   container-element { width: calc(100vw - 16px); min-width: 0; max-width: calc(100vw - 16px); }
   .cpu-assistant-brand-copy strong { font-size: 15px; }
   .cpu-assistant-brand-copy small { display: none; }
+  .cpu-assistant-settings-workbench article { grid-template-columns: 36px minmax(0, 1fr); }
+  .cpu-assistant-settings-workbench article em { grid-column: 2; justify-self: start; }
+  .cpu-assistant-settings-workbench > footer { align-items: stretch; flex-direction: column; }
 }
 `;
 
@@ -21441,9 +21461,8 @@ function configureCpuDesktopProjects(projects) {
       }
 
       if (project.name === "通用") {
-        script.hideInPanel = !["guide", "settings"].includes(key);
+        script.hideInPanel = key !== "guide";
         if (key === "guide") script.name = "当前任务";
-        if (key === "settings") script.name = "设置";
       }
     }
   }
@@ -21451,22 +21470,136 @@ function configureCpuDesktopProjects(projects) {
 
 function installCpuUnifiedSurface(root, container, bridge) {
   let updating = false;
+  let initialized = false;
+  let selectedTab = "task";
+  let lastRunControl = null;
 
-  const currentTab = async () => {
-    const current = String(await bridge.getCurrentPanel() || "");
-    if (current === "render.console" || current.endsWith("-运行日志")) return "logs";
-    if (current === "common.settings" || current.endsWith("-设置")) return "settings";
-    return "task";
+  const readControlText = (control) => String(control?.value || control?.textContent || "").trim();
+  const findRunControl = () => Array.from(root.querySelectorAll('button, input[type="button"], input[type="submit"]')).find((control) => {
+    if (control.classList?.contains("cpu-assistant-run")) return false;
+    return /开始答题|暂停|继续/.test(readControlText(control));
+  }) || null;
+
+  const runIcons = {
+    ready: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 5.5v13l10-6.5-10-6.5z"></path></svg>',
+    running: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6v12M16 6v12"></path></svg>',
+    paused: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 5.5v13l10-6.5-10-6.5z"></path></svg>',
+    idle: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 5.5v13l10-6.5-10-6.5z"></path></svg>',
   };
 
-  const updateActiveTab = async (tabs) => {
-    const active = await currentTab();
+  const syncRunButton = (button) => {
+    const current = findRunControl();
+    if (current) lastRunControl = current;
+    const control = current || lastRunControl;
+    const text = readControlText(control);
+    let state = "idle";
+    let title = "进入任务后可开始助手";
+    if (control && !control.disabled) {
+      if (/继续/.test(text)) {
+        state = "paused";
+        title = "继续助手";
+      } else if (/暂停/.test(text)) {
+        state = "running";
+        title = "暂停助手";
+      } else if (/开始答题/.test(text)) {
+        state = "ready";
+        title = "开始助手";
+      }
+    }
+    const disabled = state === "idle";
+    if (button.disabled !== disabled) button.disabled = disabled;
+    button.title = title;
+    button.setAttribute("aria-label", title);
+    if (button.dataset.state !== state) {
+      button.dataset.state = state;
+      button.innerHTML = runIcons[state];
+    }
+  };
+
+  const updateActiveTab = (tabs) => {
     tabs.querySelectorAll("button[data-cpu-assistant-tab]").forEach((button) => {
-      const selected = button.dataset.cpuAssistantTab === active;
+      const selected = button.dataset.cpuAssistantTab === selectedTab;
       button.classList.toggle("active", selected);
       button.setAttribute("aria-selected", selected ? "true" : "false");
       button.tabIndex = selected ? 0 : -1;
     });
+  };
+
+  const hideSettingsWorkbench = () => {
+    container.body?.classList.remove("cpu-assistant-custom-active");
+    container.body?.querySelector(".cpu-assistant-settings-workbench")?.remove();
+  };
+
+  const showSettingsWorkbench = () => {
+    if (!container.body) return;
+    let panel = container.body.querySelector(".cpu-assistant-settings-workbench");
+    if (!panel) {
+      panel = document.createElement("section");
+      panel.className = "cpu-assistant-settings-workbench";
+      panel.innerHTML = `
+        <header>
+          <span>统一设置</span>
+          <strong>复杂参数已经替你收好</strong>
+          <p>多平台助手复用桌面客户端的 AI、节奏与提交策略，不再展示 OCS 的题库、线程、随机作答和通知回调等内部配置。</p>
+        </header>
+        <main>
+          <article>
+            <span class="cpu-assistant-settings-icon">自</span>
+            <div><strong>自动识别任务</strong><p>进入课程、章节、作业或考试后自动识别；没有任务时保持等待。</p></div>
+            <em>已开启</em>
+          </article>
+          <article>
+            <span class="cpu-assistant-settings-icon">静</span>
+            <div><strong>标签页默认静音</strong><p>后台学习时避免突然播放声音，需要时可在客户端标签栏恢复。</p></div>
+            <em>已开启</em>
+          </article>
+          <article>
+            <span class="cpu-assistant-settings-icon">交</span>
+            <div><strong>提交保护</strong><p>章节测验是否自动提交由客户端「工具」页统一控制；作业和考试始终由你手动交卷。</p></div>
+            <em>受保护</em>
+          </article>
+          <article>
+            <span class="cpu-assistant-settings-icon">AI</span>
+            <div><strong>AI 解答</strong><p>模型、题目档位和等待节奏均使用客户端「工具」页中的设置。</p></div>
+            <em>已托管</em>
+          </article>
+        </main>
+        <footer>
+          <p>要修改上述选项，请点击客户端顶部的「工具」。本工具仅供个人学习辅助，严禁商业用途。</p>
+          <button type="button" data-cpu-assistant-back>返回当前任务</button>
+        </footer>
+      `;
+      panel.querySelector("[data-cpu-assistant-back]")?.addEventListener("click", () => { void selectTab("task"); });
+      container.body.append(panel);
+    }
+    container.body.classList.add("cpu-assistant-custom-active");
+  };
+
+  const selectTab = async (tab) => {
+    selectedTab = tab;
+    const tabs = root.querySelector(".cpu-assistant-tabs");
+    if (tab === "settings") {
+      showSettingsWorkbench();
+    } else {
+      hideSettingsWorkbench();
+      if (tab === "logs") await bridge.openPanel("render.console");
+      else await bridge.openTask();
+    }
+    if (tabs) updateActiveTab(tabs);
+  };
+
+  const initializeTab = async () => {
+    if (initialized) return;
+    initialized = true;
+    const current = String(await bridge.getCurrentPanel() || "");
+    if (current === "render.console" || current.endsWith("-运行日志")) {
+      selectedTab = "logs";
+    } else {
+      selectedTab = "task";
+      if (current === "common.settings" || /(?:全局)?设置$/.test(current)) await bridge.openTask();
+    }
+    const tabs = root.querySelector(".cpu-assistant-tabs");
+    if (tabs) updateActiveTab(tabs);
   };
 
   const mount = () => {
@@ -21492,8 +21625,9 @@ function installCpuUnifiedSurface(root, container, bridge) {
         profile.append(icon, copy);
       }
 
-      if (!toolbar.querySelector(".cpu-assistant-close")) {
-        const close = document.createElement("button");
+      let close = toolbar.querySelector(".cpu-assistant-close");
+      if (!close) {
+        close = document.createElement("button");
         close.type = "button";
         close.className = "cpu-assistant-close";
         close.title = "隐藏助手";
@@ -21506,6 +21640,24 @@ function installCpuUnifiedSurface(root, container, bridge) {
         toolbar.append(close);
       }
 
+      let run = toolbar.querySelector(".cpu-assistant-run");
+      if (!run) {
+        run = document.createElement("button");
+        run.type = "button";
+        run.className = "cpu-assistant-run";
+        run.addEventListener("click", (event) => {
+          event.stopPropagation();
+          const current = findRunControl();
+          if (current) lastRunControl = current;
+          if (!lastRunControl || lastRunControl.disabled) return;
+          lastRunControl.click();
+          queueMicrotask(() => syncRunButton(run));
+          setTimeout(() => syncRunButton(run), 80);
+        });
+        toolbar.insertBefore(run, close);
+      }
+      syncRunButton(run);
+
       let tabs = headerShell.querySelector(".cpu-assistant-tabs");
       if (!tabs) {
         tabs = document.createElement("nav");
@@ -21517,20 +21669,17 @@ function installCpuUnifiedSurface(root, container, bridge) {
           <button type="button" role="tab" data-cpu-assistant-tab="logs">运行日志</button>
           <button type="button" role="tab" data-cpu-assistant-tab="settings">设置</button>
         `;
-        tabs.addEventListener("click", async (event) => {
+        tabs.addEventListener("click", (event) => {
           const button = event.target.closest("button[data-cpu-assistant-tab]");
           if (!button) return;
           event.stopPropagation();
-          const tab = button.dataset.cpuAssistantTab;
-          if (tab === "task") await bridge.openTask();
-          else if (tab === "logs") await bridge.openPanel("render.console");
-          else if (tab === "settings") await bridge.openPanel("common.settings");
-          await updateActiveTab(tabs);
+          void selectTab(button.dataset.cpuAssistantTab);
         });
         headerShell.append(tabs);
       }
 
-      void updateActiveTab(tabs);
+      updateActiveTab(tabs);
+      void initializeTab();
     } finally {
       updating = false;
     }
@@ -21538,7 +21687,7 @@ function installCpuUnifiedSurface(root, container, bridge) {
 
   mount();
   const observer = new MutationObserver(() => queueMicrotask(mount));
-  observer.observe(root, { childList: true, subtree: true });
+  observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["value", "disabled"] });
 }
 
 function installCpuScreenshotSearch(root, container) {
@@ -21750,8 +21899,10 @@ function installCpuScreenshotSearch(root, container) {
     button.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3H5a2 2 0 0 0-2 2v2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"></path><circle cx="12" cy="12" r="3.2"></circle></svg>';
     button.addEventListener("click", (event) => { event.stopPropagation(); void startSearch(); });
     const toolbar = header.firstElementChild?.firstElementChild || header;
+    const runButton = toolbar.querySelector(".cpu-assistant-run");
     const minimizeButton = toolbar.lastElementChild;
-    if (minimizeButton && minimizeButton !== header) toolbar.insertBefore(button, minimizeButton);
+    if (runButton) toolbar.insertBefore(button, runButton);
+    else if (minimizeButton && minimizeButton !== header) toolbar.insertBefore(button, minimizeButton);
     else toolbar.append(button);
     return true;
   };

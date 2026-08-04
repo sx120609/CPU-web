@@ -19,7 +19,7 @@ container-element {
   border-radius: 18px;
   background: var(--cpu-ocs-bg);
   box-shadow: 0 18px 48px rgba(32, 71, 61, 0.18);
-  overflow: visible;
+  overflow: hidden;
   backdrop-filter: blur(16px);
 }
 header-element {
@@ -56,7 +56,9 @@ header-element .profile {
 .cpu-assistant-brand-copy { display: grid; min-width: 0; gap: 2px; }
 .cpu-assistant-brand-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 17px; }
 .cpu-assistant-brand-copy small { color: var(--cpu-ocs-muted); font-size: 12px; font-weight: 400; }
-.cpu-assistant-close {
+.cpu-assistant-run,
+.cpu-assistant-close,
+.cpu-ocs-shot-button {
   display: grid;
   place-items: center;
   flex: 0 0 42px;
@@ -69,8 +71,15 @@ header-element .profile {
   border-radius: 12px;
   cursor: pointer;
 }
-.cpu-assistant-close:hover { color: var(--cpu-ocs-primary); background: var(--cpu-ocs-primary-soft); }
-.cpu-assistant-close svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.cpu-assistant-run:hover,
+.cpu-assistant-close:hover,
+.cpu-ocs-shot-button:hover { color: var(--cpu-ocs-primary); background: var(--cpu-ocs-primary-soft); border-color: var(--cpu-ocs-primary); }
+.cpu-assistant-run:disabled { cursor: default; opacity: 0.42; }
+.cpu-assistant-run[data-state="running"] { color: #9a651b; background: #fff6e6; border-color: #efd7ad; }
+.cpu-assistant-run svg,
+.cpu-assistant-close svg,
+.cpu-ocs-shot-button svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.cpu-assistant-run svg path[d*="5.5"] { fill: currentColor; stroke: none; }
 .cpu-assistant-tabs {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -109,7 +118,29 @@ script-panel-element {
   background: var(--cpu-ocs-bg);
   border-radius: 0 0 18px 18px;
   padding: 4px 10px 14px;
+  overscroll-behavior: contain;
 }
+script-panel-element.cpu-assistant-custom-active > :not(.cpu-assistant-settings-workbench) { display: none !important; }
+.cpu-assistant-settings-workbench { display: grid; gap: 12px; padding: 10px 4px 2px; }
+.cpu-assistant-settings-workbench > header,
+.cpu-assistant-settings-workbench > main,
+.cpu-assistant-settings-workbench > footer { color: var(--cpu-ocs-text); background: var(--cpu-ocs-card); border: 1px solid var(--cpu-ocs-border); border-radius: 14px; }
+.cpu-assistant-settings-workbench > header { display: grid; gap: 5px; padding: 16px; }
+.cpu-assistant-settings-workbench > header span { color: var(--cpu-ocs-primary); font-size: 12px; font-weight: 750; letter-spacing: .08em; }
+.cpu-assistant-settings-workbench > header strong { font-size: 18px; }
+.cpu-assistant-settings-workbench p { margin: 0; color: var(--cpu-ocs-muted); line-height: 1.65; }
+.cpu-assistant-settings-workbench > main { display: grid; padding: 2px 16px; }
+.cpu-assistant-settings-workbench article { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--cpu-ocs-border); }
+.cpu-assistant-settings-workbench article:last-child { border-bottom: 0; }
+.cpu-assistant-settings-workbench article div { display: grid; gap: 3px; min-width: 0; }
+.cpu-assistant-settings-workbench article strong { font-size: 14px; }
+.cpu-assistant-settings-workbench article p { font-size: 12px; }
+.cpu-assistant-settings-workbench article em { padding: 5px 8px; color: var(--cpu-ocs-primary); background: var(--cpu-ocs-primary-soft); border-radius: 999px; font-size: 11px; font-style: normal; font-weight: 700; white-space: nowrap; }
+.cpu-assistant-settings-icon { display: grid; place-items: center; width: 40px; height: 40px; color: var(--cpu-ocs-primary); background: var(--cpu-ocs-primary-soft); border-radius: 12px; font-size: 13px; font-weight: 800; }
+.cpu-assistant-settings-workbench > footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 13px 16px; }
+.cpu-assistant-settings-workbench > footer p { font-size: 12px; }
+.cpu-assistant-settings-workbench > footer button { flex: 0 0 auto; min-height: 34px; padding: 5px 12px; color: var(--cpu-ocs-primary); background: var(--cpu-ocs-card); border: 1px solid var(--cpu-ocs-border); border-radius: 9px; cursor: pointer; font-weight: 700; }
+.cpu-assistant-settings-workbench > footer button:hover { background: var(--cpu-ocs-primary-soft); border-color: var(--cpu-ocs-primary); }
 .user-guide { display: none !important; }
 .tooltip-container { display: none !important; }
 .cpu-integrated-guide {
@@ -183,19 +214,7 @@ header-element .extra-menu-bar .script-panel-link:hover {
 .work-result-wrapper,
 .question-title,
 .question-answer { overflow-wrap: anywhere; }
-.cpu-ocs-shot-button {
-  display: inline-grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  margin-left: 5px;
-  padding: 0;
-  color: var(--cpu-ocs-primary);
-  background: var(--cpu-ocs-card);
-  border: 1px solid var(--cpu-ocs-border);
-  border-radius: 10px;
-  cursor: pointer;
-}
+.cpu-ocs-shot-button { margin-left: 0; padding: 0; }
 header-element .switch,
 header-element .close,
 header-element .dropdown,
@@ -228,8 +247,6 @@ modal-element .modal-profile { display: none !important; }
 modal-element header,
 modal-element footer { border-color: var(--cpu-ocs-border) !important; }
 modal-element button { border-radius: 9px !important; }
-.cpu-ocs-shot-button:hover { background: var(--cpu-ocs-primary-soft); border-color: var(--cpu-ocs-primary); }
-.cpu-ocs-shot-button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; }
 .cpu-ocs-capture-overlay {
   position: fixed;
   inset: 0;
@@ -303,4 +320,7 @@ modal-element button { border-radius: 9px !important; }
   container-element { width: calc(100vw - 16px); min-width: 0; max-width: calc(100vw - 16px); }
   .cpu-assistant-brand-copy strong { font-size: 15px; }
   .cpu-assistant-brand-copy small { display: none; }
+  .cpu-assistant-settings-workbench article { grid-template-columns: 36px minmax(0, 1fr); }
+  .cpu-assistant-settings-workbench article em { grid-column: 2; justify-self: start; }
+  .cpu-assistant-settings-workbench > footer { align-items: stretch; flex-direction: column; }
 }

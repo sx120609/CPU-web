@@ -2,7 +2,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const EXPECTED_UPSTREAM_VERSION = "4.15.3";
-const INTEGRATION_VERSION = "4.15.6";
+const INTEGRATION_VERSION = "4.15.7";
 const EXPECTED_COMMIT = "890686a5e54f9a6d52d1169bae9ea5971e0863c7";
 const OUTPUT = path.join(__dirname, "..", "assets", "userscripts", "multiplatform.js");
 const THEME = path.join(__dirname, "..", "assets", "userscripts", "multiplatform-theme.css");
@@ -76,7 +76,7 @@ output = output
   .replace(
     "        panelName: (name) => name || this.config.render.defaultPanelName || \"\"",
   `        panelName: (name, urls = [location.href]) => {
-          const allowedInternalPanels = new Set(["common.guide", "common.settings", "render.console"]);
+          const allowedInternalPanels = new Set(["common.guide", "render.console"]);
           const matched = utils_1.$.getMatchedScripts(this.projects, urls)
             .filter((script) => !script.hideInPanel)
             .sort((left, right) => Number(right.priority || 0) - Number(left.priority || 0));
