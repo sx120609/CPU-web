@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         药大拾间·学习通助手
 // @namespace    askAuto
-// @version      2.2.14
+// @version      2.2.15
 // @author       shushoujiu
 // @description  药大拾间桌面端的学习通助手：自动完成任务点，章节测验与考试由独立答题 AI 作答。
 // @icon         https://vitejs.dev/logo.svg
@@ -227,73 +227,75 @@
         const questionTypeId = questionData.type;
         let prompt = "";
         const basePrompt = `你是一位专业的学习辅导老师，具备广泛的知识面，能够解答各类学科和学习问题。只返回 JSON：{"answer":"可直接提交的答案","explanation":"可公开、可验证的简短依据"}。explanation 绝不能混入 answer。`;
-        const allOptionsText = (questionData.options || []).map((opt, idx) => `${String.fromCharCode(65 + idx)}.${opt}`).join(" ");
+        const questionTextForAi = formatLearningDisplayText(questionData.question);
+        const optionsForAi = (questionData.options || []).map((option) => formatLearningDisplayText(option));
+        const allOptionsText = optionsForAi.map((opt, idx) => `${String.fromCharCode(65 + idx)}.${opt}`).join(" ");
         const optionsPrompt = allOptionsText ? `\n候选项：${allOptionsText}` : "";
         if (questionTypeId === "3") {
           prompt = `${basePrompt}
 
 这是一道判断题。答案字段只填写“正确”或“错误”，解题思路字段用一两句话说明判断依据。
 
-题目：${questionData.question}${optionsPrompt}`;
+题目：${questionTextForAi}${optionsPrompt}`;
         } else if (questionTypeId === "1") {
           prompt = `${basePrompt}
 
 这是一道多选题。答案字段只填写所有正确选项字母（如 AB、ACD、BC），解题思路字段简要说明选择依据。
 
-题目：${questionData.question}
+题目：${questionTextForAi}
 选项：${allOptionsText}`;
         } else if (questionTypeId === "2") {
           prompt = `${basePrompt}
 
 这是一道填空题。答案字段直接填写答案内容；如果有多个空，用“|”分隔。解题思路字段简要说明依据。
 
-题目：${questionData.question}${optionsPrompt}`;
+题目：${questionTextForAi}${optionsPrompt}`;
         } else if (questionTypeId === "4") {
           prompt = `${basePrompt}
 
 这是一道简答题。答案字段给出简洁准确的作答内容，解题思路字段概括答题要点。
 
-题目：${questionData.question}${optionsPrompt}`;
+题目：${questionTextForAi}${optionsPrompt}`;
         } else if (questionTypeId === "5") {
           prompt = `${basePrompt}
 
 这是一道名词解释题。答案字段给出准确解释，解题思路字段概括定义中的关键点。
 
-题目：${questionData.question}${optionsPrompt}`;
+题目：${questionTextForAi}${optionsPrompt}`;
         } else if (questionTypeId === "6") {
           prompt = `${basePrompt}
 
 这是一道论述题。答案字段给出完整、有条理的论述，解题思路字段概括组织答案的主线。
 
-题目：${questionData.question}${optionsPrompt}`;
+题目：${questionTextForAi}${optionsPrompt}`;
         } else if (questionTypeId === "7") {
           prompt = `${basePrompt}
 
 这是一道计算题。答案字段给出最终答案，解题思路字段给出必要公式和可核验的简要计算过程。
 
-题目：${questionData.question}${optionsPrompt}`;
+题目：${questionTextForAi}${optionsPrompt}`;
         } else {
           prompt = `${basePrompt}
 
 这是一道单选题。答案字段只填写正确选项字母，解题思路字段简要说明选择依据。
 
-题目：${questionData.question}
+题目：${questionTextForAi}
 选项：${allOptionsText}`;
         }
-        const imageUrls = [];
+        const imageUrls = [], pushImageUrl = (source) => {
+          const imageUrl = normalizeLearningImageSource(source, window.location.href);
+          if (imageUrl && !imageUrls.includes(imageUrl)) imageUrls.push(imageUrl);
+        };
+        (Array.isArray(questionData.images) ? questionData.images : []).forEach(pushImageUrl);
         const imageTagPattern = /<img\b[^>]*?\bsrc\s*=\s*["']([^"']+)["'][^>]*>/gi;
         const imageSource = `${questionData.question || ""} ${(questionData.options || []).join(" ")}`;
         imageSource.replace(imageTagPattern, (_, src) => {
-          try {
-            const imageUrl = new URL(src, window.location.href).href;
-            if (/^https?:$/i.test(new URL(imageUrl).protocol) && !imageUrls.includes(imageUrl)) imageUrls.push(imageUrl);
-          } catch (e) {
-            console.log("AI图片地址解析失败:", e);
-          }
+          pushImageUrl(src);
           return _;
         });
         const imageDataUrls = new Map();
-        await Promise.all(imageUrls.map((imageUrl) => new Promise((resolveImage) => {
+        imageUrls.filter((imageUrl) => /^data:image\//i.test(imageUrl)).forEach((imageUrl) => imageDataUrls.set(imageUrl, imageUrl));
+        await Promise.all(imageUrls.filter((imageUrl) => /^https?:\/\//i.test(imageUrl)).map((imageUrl) => new Promise((resolveImage) => {
           _GM_xmlhttpRequest({
             method: "GET",
             url: imageUrl,
@@ -302,7 +304,8 @@
             onload: (response) => {
               try {
                 if (response.status < 200 || response.status >= 300 || !response.response) throw new Error(`图片请求失败: ${response.status}`);
-                const rawContentType = (response.responseHeaders || "image/jpeg").split(";")[0].trim().toLowerCase();
+                const responseHeaders = String(response.responseHeaders || ""), contentTypeMatch = responseHeaders.match(/(?:^|\r?\n)content-type\s*:\s*([^;\r\n]+)/i);
+                const rawContentType = String(contentTypeMatch && contentTypeMatch[1] || (/\.png(?:\?|$)/i.test(imageUrl) ? "image/png" : /\.webp(?:\?|$)/i.test(imageUrl) ? "image/webp" : /\.gif(?:\?|$)/i.test(imageUrl) ? "image/gif" : "image/jpeg")).trim().toLowerCase();
                 const contentType = rawContentType === "image/jpg" ? "image/jpeg" : rawContentType;
                 if (!["image/jpeg", "image/png", "image/webp", "image/gif"].includes(contentType)) throw new Error(`不支持的图片类型: ${rawContentType}`);
                 imageDataUrls.set(imageUrl, `data:${contentType};base64,${response.response}`);
@@ -326,6 +329,7 @@
         let promptTextStart = 0;
         let promptImageMatch;
         let promptImageIndex = 0;
+        const embeddedImageUrls = new Set();
         while ((promptImageMatch = promptImagePattern.exec(prompt)) !== null) {
           const text = prompt.slice(promptTextStart, promptImageMatch.index).replace(/\s+/g, " ").trim();
           if (text) inputContent.push({ type: "input_text", text });
@@ -337,6 +341,7 @@
               promptImageIndex += 1;
               inputContent.push({ type: "input_text", text: `图片${promptImageIndex}` });
               inputContent.push({ type: "input_image", image_url: imageDataUrl });
+              embeddedImageUrls.add(imageUrl);
             }
           } catch (e) {
             console.log("AI图片地址解析失败:", e);
@@ -345,7 +350,52 @@
         }
         const remainingText = prompt.slice(promptTextStart).replace(/\s+/g, " ").trim();
         if (remainingText) inputContent.push({ type: "input_text", text: remainingText });
+        imageUrls.forEach((imageUrl) => {
+          const imageDataUrl = imageDataUrls.get(imageUrl);
+          if (!imageDataUrl || embeddedImageUrls.has(imageUrl)) return;
+          promptImageIndex += 1;
+          inputContent.push({ type: "input_text", text: `题目或选项图片${promptImageIndex}` });
+          inputContent.push({ type: "input_image", image_url: imageDataUrl });
+          embeddedImageUrls.add(imageUrl);
+        });
         if (inputContent.length === 0) inputContent.push({ type: "input_text", text: prompt.trim() });
+        let deliveredImageCount = inputContent.filter((item) => item.type === "input_image").length;
+        if (questionData.requiresVisualContext && questionData.captureRect && _GM_cpuCaptureArea) {
+          let hiddenElements = [];
+          try {
+            const topDocument = window.top && window.top.document || document;
+            hiddenElements = [topDocument.getElementById("cpu-learning-assistant-panel"), topDocument.getElementById("cpu-learning-assistant-launcher")].filter(Boolean).map((element) => {
+              const previousVisibility = element.style.visibility;
+              element.style.visibility = "hidden";
+              return { element, previousVisibility };
+            });
+          } catch (error) {
+            console.warn("[学习通助手][视觉兜底] 隐藏助手面板失败，将继续截取题目", error);
+          }
+          try {
+            await sleep(0.06);
+            const screenshot = await _GM_cpuCaptureArea(questionData.captureRect);
+            if (/^data:image\/png;base64,/i.test(String(screenshot || ""))) {
+              inputContent.push({ type: "input_text", text: "当前题目完整页面截图（用于补全题干、图片、公式和选项的相对关系）" });
+              inputContent.push({ type: "input_image", image_url: screenshot, detail: "high" });
+              deliveredImageCount += 1;
+              console.log("[学习通助手][视觉兜底] 已附加当前题目区域原始 PNG 截图", questionData.captureRect);
+            }
+          } catch (error) {
+            console.warn("[学习通助手][视觉兜底] 当前题目区域截图失败", error);
+          } finally {
+            hiddenElements.forEach(({ element, previousVisibility }) => {
+              element.style.visibility = previousVisibility;
+            });
+          }
+        }
+        if (questionData.requiresVisualContext && deliveredImageCount === 0) {
+          const explanation = "题目包含图片或图形，但原图与当前题目区域截图均未能取得；助手已停止本题并阻止提交，请重试或手动检查。";
+          console.warn("[学习通助手][图片保护]", explanation, { discoveredImages: imageUrls.length, captureRect: questionData.captureRect || null });
+          reportToHost("log", explanation);
+          resolve({ form: "AI", answer: "", explanation });
+          return;
+        }
         const requestData = {
           model: config.aiModel || "deepseek-reasoner",
           reasoningEffort: ["low", "high", "max"].includes(config.answerDepth) ? config.answerDepth : "low",
@@ -1690,7 +1740,102 @@
     } catch {
       finish(false);
     }
-  }), removeHtml = (html, baseUrl = document.baseURI) => null == html ? "" : html.replace(/<((?!img|sub|sup|br)[^>]+)>/g, "").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").replace(/<br\s*\/?>/g, "\n").replace(/<img\b([^>]*)>/gi, (_match, attributes) => {
+  }), normalizeLearningImageSource = (source, baseUrl = document.baseURI) => {
+    const value = String(source || "").trim().replace(/^url\((['"]?)(.*?)\1\)$/i, "$2");
+    if (!value) return "";
+    if (/^data:image\/(?:jpeg|png|webp|gif);base64,/i.test(value)) return value;
+    try {
+      const resolved = new URL(value, baseUrl);
+      return resolved.protocol === "https:" || resolved.protocol === "http:" ? resolved.href : "";
+    } catch {
+      return "";
+    }
+  }, collectLearningQuestionImages = (root) => {
+    if (!root || !root.querySelectorAll) return [];
+    const images = [], baseUrl = root.ownerDocument && root.ownerDocument.baseURI || document.baseURI;
+    const push = (source) => {
+      const normalized = normalizeLearningImageSource(source, baseUrl);
+      if (normalized && !images.includes(normalized)) images.push(normalized);
+    };
+    root.querySelectorAll("img, source, image, object, embed").forEach((element) => {
+      ["src", "href", "xlink:href", "data", "data-src", "data-lazy-src", "data-actualsrc", "data-original", "data-original-src", "data-url", "_src"].forEach((name) => push(element.getAttribute(name)));
+      push(element.currentSrc);
+      const srcset = String(element.getAttribute("srcset") || "").split(",")[0].trim().split(/\s+/)[0];
+      push(srcset);
+    });
+    root.querySelectorAll("canvas").forEach((canvas) => {
+      try {
+        if (canvas.width > 0 && canvas.height > 0) push(canvas.toDataURL("image/png"));
+      } catch {
+      }
+    });
+    root.querySelectorAll("[style*='background'], .fontLabel, .after, li").forEach((element) => {
+      const inlineBackground = String(element.style && element.style.backgroundImage || "");
+      const inlineMatch = inlineBackground.match(/url\((['"]?)(.*?)\1\)/i);
+      if (inlineMatch) push(inlineMatch[2]);
+      try {
+        const computedBackground = String(element.ownerDocument.defaultView.getComputedStyle(element).backgroundImage || "");
+        const computedMatch = computedBackground.match(/url\((['"]?)(.*?)\1\)/i);
+        if (computedMatch) push(computedMatch[2]);
+      } catch {
+      }
+    });
+    return images;
+  }, hasLearningVisualQuestion = (root, images = collectLearningQuestionImages(root)) => {
+    if (images.length > 0 || !root || !root.querySelector) return images.length > 0;
+    if (root.querySelector("img, canvas, svg, object, embed, picture, [style*='background-image']")) return true;
+    const optionLabels = Array.from(root.querySelectorAll("ul:first-of-type li .after"));
+    return optionLabels.length > 0 && optionLabels.some((label) => !formatLearningDisplayText(label.textContent || "").trim() && !!label.closest("li")?.querySelector("input[type='radio'], input[type='checkbox']"));
+  }, getLearningQuestionCaptureRect = (root) => {
+    if (!root || !root.getBoundingClientRect) return null;
+    try {
+      const rect = root.getBoundingClientRect();
+      let frameWindow = root.ownerDocument && root.ownerDocument.defaultView;
+      let offsetX = 0, offsetY = 0;
+      while (frameWindow && frameWindow !== frameWindow.top) {
+        const frameElement = frameWindow.frameElement;
+        if (!frameElement || !frameElement.getBoundingClientRect) break;
+        const frameRect = frameElement.getBoundingClientRect();
+        offsetX += frameRect.left;
+        offsetY += frameRect.top;
+        frameWindow = frameWindow.parent;
+      }
+      const topWindow = frameWindow && frameWindow.top || window.top || window;
+      const viewportWidth = Math.max(1, Number(topWindow.innerWidth) || document.documentElement.clientWidth || 1);
+      const viewportHeight = Math.max(1, Number(topWindow.innerHeight) || document.documentElement.clientHeight || 1);
+      const padding = 12;
+      const left = Math.max(0, Math.floor(rect.left + offsetX - padding));
+      const top = Math.max(0, Math.floor(rect.top + offsetY - padding));
+      const right = Math.min(viewportWidth, Math.ceil(rect.right + offsetX + padding));
+      const bottom = Math.min(viewportHeight, Math.ceil(rect.bottom + offsetY + padding));
+      const width = right - left, height = bottom - top;
+      if (width < 24 || height < 24) return null;
+      return { x: left, y: top, width, height, viewportWidth, viewportHeight };
+    } catch (error) {
+      console.warn("[学习通助手][视觉兜底] 计算题目截图区域失败", error);
+      return null;
+    }
+  }, prepareLearningVisualContext = async (questionData, root) => {
+    if (!questionData || !questionData.requiresVisualContext || !root) return questionData;
+    try {
+      root.scrollIntoView({ block: "center", inline: "nearest" });
+    } catch {
+      try {
+        root.scrollIntoView();
+      } catch {
+      }
+    }
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      const pendingImages = Array.from(root.querySelectorAll("img")).filter((image) => !image.complete || image.naturalWidth <= 0);
+      if (pendingImages.length === 0) break;
+      await sleep(0.15);
+    }
+    const refreshedImages = collectLearningQuestionImages(root);
+    questionData.images = Array.from(new Set([...(Array.isArray(questionData.images) ? questionData.images : []), ...refreshedImages]));
+    questionData.requiresVisualContext = hasLearningVisualQuestion(root, questionData.images);
+    questionData.captureRect = getLearningQuestionCaptureRect(root);
+    return questionData;
+  }, removeHtml = (html, baseUrl = document.baseURI) => null == html ? "" : html.replace(/<(?!\/?(?:img|sub|sup|br)\b)[^>]+>/gi, "").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").replace(/<br\s*\/?>/gi, "\n").replace(/<img\b([^>]*)>/gi, (_match, attributes) => {
     try {
       const sourceMatch = /\b(?:src|data-src|data-original|data-original-src)\s*=\s*["']([^"']+)["']/i.exec(attributes);
       const src = String(sourceMatch && sourceMatch[1] || "").trim();
@@ -1737,19 +1882,22 @@
     let questionHtml, questionText, questionTypeId, optionHtml, tokenHtml, workType, optionText, index;
     switch (type) {
       case "1":
+        const chapterImages = collectLearningQuestionImages(html), chapterRequiresVisualContext = hasLearningVisualQuestion(html, chapterImages);
         return workType = "zj", questionHtml = Array.from(html.querySelectorAll(".clearfix .fontLabel")), questionText = cl(removeHtml(questionHtml[0].innerHTML, questionHtml[0].ownerDocument.baseURI)), questionTypeId = html.querySelectorAll("input[name^=answertype]")[0].value, optionHtml = Array.from(html.querySelectorAll("ul")[0].querySelectorAll("li .after")), tokenHtml = html.innerHTML, optionText = [], optionHtml.forEach(function(item) {
           optionText.push(removeHtml(item.innerHTML, item.ownerDocument.baseURI));
-        }), { question: questionText, options: optionText, type: questionTypeId, questionData: tokenHtml, workType };
+        }), { question: questionText, options: optionText, type: questionTypeId, questionData: tokenHtml, workType, images: chapterImages, requiresVisualContext: chapterRequiresVisualContext };
       case "2":
+        const homeworkImages = collectLearningQuestionImages(html), homeworkRequiresVisualContext = hasLearningVisualQuestion(html, homeworkImages);
         workType = "zy", questionHtml = Array.from(html.querySelectorAll(".mark_name")), index = questionHtml[0].innerHTML.indexOf("</span>"), questionText = cl(removeHtml(questionHtml[0].innerHTML.substring(index + 7), questionHtml[0].ownerDocument.baseURI)), questionHtml[0].getElementsByTagName("span")[0].innerHTML.replace("(", "").replace(")", "").split(",")[0], questionTypeId = html.querySelectorAll("input[name^=answertype]")[0].value, optionHtml = Array.from(html.querySelectorAll(".answer_p")), tokenHtml = html.innerHTML, optionText = [];
         for (let i = 0; i < optionHtml.length; i++)
           optionText.push(removeHtml(optionHtml[i].innerHTML, optionHtml[i].ownerDocument.baseURI));
-        return { question: questionText, options: optionText, type: questionTypeId, questionData: tokenHtml, workType };
+        return { question: questionText, options: optionText, type: questionTypeId, questionData: tokenHtml, workType, images: homeworkImages, requiresVisualContext: homeworkRequiresVisualContext };
       case "3":
-        workType = "ks", questionHtml = Array.from(document.getElementsByClassName("mark_name colorDeep")), index = questionHtml[0].innerHTML.indexOf("</span>"), questionText = cl(removeHtml(questionHtml[0].innerHTML.substring(index + 7), questionHtml[0].ownerDocument.baseURI)), questionHtml[0].getElementsByTagName("span")[0].innerHTML.replace("(", "").replace(")", "").split(",")[0], questionTypeId = document.querySelectorAll("input[name^=type]")[1].value, optionHtml = Array.from(document.getElementsByClassName("answer_p")), tokenHtml = document.getElementsByClassName("mark_table")[0].innerHTML, optionText = [];
+        const examRoot = document.getElementsByClassName("mark_table")[0], examImages = collectLearningQuestionImages(examRoot), examRequiresVisualContext = hasLearningVisualQuestion(examRoot, examImages);
+        workType = "ks", questionHtml = Array.from(document.getElementsByClassName("mark_name colorDeep")), index = questionHtml[0].innerHTML.indexOf("</span>"), questionText = cl(removeHtml(questionHtml[0].innerHTML.substring(index + 7), questionHtml[0].ownerDocument.baseURI)), questionHtml[0].getElementsByTagName("span")[0].innerHTML.replace("(", "").replace(")", "").split(",")[0], questionTypeId = document.querySelectorAll("input[name^=type]")[1].value, optionHtml = Array.from(document.getElementsByClassName("answer_p")), tokenHtml = examRoot.innerHTML, optionText = [];
         for (let i = 0; i < optionHtml.length; i++)
           optionText.push(removeHtml(optionHtml[i].innerHTML, optionHtml[i].ownerDocument.baseURI));
-        return { question: questionText, options: optionText, type: questionTypeId, questionData: tokenHtml, workType };
+        return { question: questionText, options: optionText, type: questionTypeId, questionData: tokenHtml, workType, images: examImages, requiresVisualContext: examRequiresVisualContext };
     }
   }, decode = (iframeWindow) => {
     var _a;
@@ -1807,6 +1955,26 @@
     }
 
     return [{ form: "AI", answer: "" }];
+  }, getLearningOptionRows = (html, questionData) => {
+    if (!html || !html.querySelectorAll) return [];
+    const preferredSelector = questionData && questionData.workType === "zj" ? "ul:first-of-type li .after" : ".answer_p, ul:first-of-type li .after";
+    const rows = [];
+    Array.from(html.querySelectorAll(preferredSelector)).forEach((label) => {
+      const row = label.closest("li") || label;
+      if (!rows.includes(row)) rows.push(row);
+    });
+    return rows;
+  }, isLearningOptionRowSelected = (row) => {
+    if (!row) return false;
+    const input = row.querySelector("input[type='radio'], input[type='checkbox']");
+    if (input && input.checked) return true;
+    return !!(row.matches(".check_answer, .check_answer_dx, .selected, .active") || row.querySelector(".check_answer, .check_answer_dx, input:checked") || row.getAttribute("aria-selected") === "true" || row.getAttribute("aria-checked") === "true");
+  }, normalizeLearningComparableText = (value) => formatLearningDisplayText(value).normalize("NFKC").replace(/[₀₁₂₃₄₅₆₇₈₉]/g, (character) => String("₀₁₂₃₄₅₆₇₈₉".indexOf(character))).replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹]/g, (character) => String("⁰¹²³⁴⁵⁶⁷⁸⁹".indexOf(character))).replace(/[₊⁺]/g, "+").replace(/[₋⁻]/g, "-").replace(/[₌⁼]/g, "=").replace(/[₍⁽]/g, "(").replace(/[₎⁾]/g, ")").replace(/[\s\u00a0]+/g, "").replace(/[，、；;]/g, ",").toLowerCase(), getLearningAnswerOptionIndices = (answerSource, answer, options, questionType) => {
+    const optionCount = Array.isArray(options) ? options.length : 0;
+    const rawLetters = String(answerSource && answerSource.optionLetters || "").toUpperCase();
+    const letterIndices = Array.from(new Set((rawLetters.match(/[A-Z]/g) || []).map((letter) => letter.charCodeAt(0) - 65).filter((optionIndex) => optionIndex >= 0 && optionIndex < optionCount)));
+    if (letterIndices.length > 0 && (questionType !== "0" || letterIndices.length === 1)) return { indices: letterIndices, source: "optionLetters" };
+    return { indices: matchAnswer(answer, options), source: "optionText" };
   }, fillAnswer = (answer, questionData, html, iframeWindow) => {
     answer = answer.filter((item) => {
       const values = Array.isArray(item.answer) ? item.answer : [item.answer];
@@ -1821,20 +1989,35 @@
           continue;
         answer[i].answer = [answer[i].answer];
       }
-      let tmp = setAnswer(answer[i].answer, questionData, html, iframeWindow);
+      let tmp = setAnswer(answer[i].answer, questionData, html, iframeWindow, answer[i]);
       if (tmp)
         return tmp;
     }
     return false;
-  }, setAnswer = (answer, questionData, html, iframeWindow) => {
+  }, setAnswer = (answer, questionData, html, iframeWindow, answerSource = null) => {
     switch (questionData.type) {
       case "0":
       case "1":
-        const matchArr = matchAnswer(answer, questionData.options);
-        matchArr.length > 0 && clearCurrent(html, iframeWindow);
-        for (var i = 0; i < matchArr.length; i++)
-          console.log($$1(html).find("li").eq(matchArr[i]), matchArr[i]), $$1(html).find("ul:eq(0) li :radio,:checkbox,textarea").eq(matchArr[i]).click(), $$1(html).find(".answerBg").eq(matchArr[i]).click(), $$1(html).find("li").eq(matchArr[i]).click();
-        return matchArr.length > 0 && answer;
+        const optionSelection = getLearningAnswerOptionIndices(answerSource, answer, questionData.options, questionData.type), matchArr = optionSelection.indices, optionRows = getLearningOptionRows(html, questionData);
+        if (matchArr.length === 0 || matchArr.some((optionIndex) => !optionRows[optionIndex])) {
+          console.warn("[学习通助手][答案写入] 选项索引无法对应到原题，已停止本题", { matchArr, selectionSource: optionSelection.source, optionCount: optionRows.length, options: questionData.options });
+          reportToHost("log", "选项与页面结构不一致，已停止本题并阻止提交");
+          return false;
+        }
+        clearCurrent(html, iframeWindow);
+        matchArr.forEach((optionIndex) => {
+          const row = optionRows[optionIndex], control = row.querySelector("input[type='radio'], input[type='checkbox']"), answerBlock = row.querySelector(".answerBg");
+          if (control && !control.checked) control.click();
+          if (!isLearningOptionRowSelected(row)) (answerBlock || row).click();
+        });
+        const actualIndices = optionRows.map((row, optionIndex) => isLearningOptionRowSelected(row) ? optionIndex : -1).filter((optionIndex) => optionIndex >= 0), verified = matchArr.length === actualIndices.length && matchArr.every((optionIndex) => actualIndices.includes(optionIndex));
+        console.log("[学习通助手][答案写入核验]", { expectedLetters: answerSource && answerSource.optionLetters || matchArr.map((optionIndex) => String.fromCharCode(65 + optionIndex)).join(""), selectionSource: optionSelection.source, expectedIndices: matchArr, actualIndices, expectedOptions: matchArr.map((optionIndex) => formatLearningDisplayText(questionData.options[optionIndex])), actualOptions: actualIndices.map((optionIndex) => formatLearningDisplayText(questionData.options[optionIndex])), verified });
+        if (!verified) {
+          clearCurrent(html, iframeWindow);
+          reportToHost("log", "页面实际选项与 AI 答案不一致，已撤销本题填写并阻止提交");
+          return false;
+        }
+        return answer;
       case "3":
         return clearCurrent(html, iframeWindow), answer instanceof Array && (answer = answer[0]), $$1(html).find("ul:eq(0) li :radio,:checkbox,textarea").each(function() {
           "true" == $$1(this).val() ? answer.match(/(^|,)(True|true|正确|是|对|√|T|ri)(,|$)/) && $$1(this).click() : answer.match(/(^|,)(False|false|错误|否|错|×|F|wr)(,|$)/) && $$1(this).click();
@@ -1864,18 +2047,31 @@
           return null !== item;
         });
         for (let i2 = 0; i2 < answer2.length; i2++)
-          answer2[i2] = removeHtml(answer2[i2]);
+          answer2[i2] = normalizeLearningComparableText(answer2[i2]);
       } else
-        "string" == typeof answer2 && (answer2 = cl(answer2));
+        "string" == typeof answer2 && (answer2 = [normalizeLearningComparableText(cl(answer2))]);
       return answer2;
     })(answer);
-    for (var matchArr = [], i = 0; i < answer.length; i++)
-      for (var j = 0; j < options.length; j++)
-        answer[i] == options[j] && matchArr.push(j);
+    const normalizedOptions = options.map((option) => normalizeLearningComparableText(option)), usedIndices = new Set();
+    for (var matchArr = [], i = 0; i < answer.length; i++) {
+      const optionIndex = normalizedOptions.findIndex((option, index) => !usedIndices.has(index) && answer[i] === option);
+      if (optionIndex >= 0) {
+        usedIndices.add(optionIndex);
+        matchArr.push(optionIndex);
+      }
+    }
     return matchArr;
   }, clearCurrent = (item, iframeWindow) => {
-    $$1(item).find(".answerBg, .textDIV, .eidtDiv").each(function() {
-      ($$1(this).find(".check_answer").length || $$1(this).find(".check_answer_dx").length) && $$1(this).click();
+    const selectedRows = new Set();
+    $$1(item).find(".check_answer, .check_answer_dx").each(function() {
+      const row = this.closest("li") || this.closest(".answerBg, .textDIV, .eidtDiv") || this;
+      selectedRows.add(row);
+    }), selectedRows.forEach((row) => {
+      const rowElement = $$1(row), checkedControl = row.querySelector && row.querySelector("input[type='radio']:checked, input[type='checkbox']:checked");
+      if (checkedControl)
+        checkedControl.click();
+      else
+        (rowElement.hasClass("check_answer") || rowElement.hasClass("check_answer_dx") || rowElement.find(".check_answer").length || rowElement.find(".check_answer_dx").length) && rowElement.click();
     }), $$1(item).find("textarea").each(function() {
       iframeWindow.UE.getEditor($$1(this).attr("name")).ready(function() {
         this.setContent("");
@@ -2065,6 +2261,7 @@
           this.askStore.setActivity("章节测验", `正在处理第 ${i + 1}/${ques.length} 题`, Math.round(i / Math.max(1, ques.length) * 100));
           await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，点击“开始助手”后继续")), await randomSleep(this.defaultConfig.answerIntervalMin, this.defaultConfig.answerIntervalMax), await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，点击“开始助手”后继续")), this.askStore.insert(ques[i]), this.askStore.task.work.inx = i;
           if (!taskCurrent()) return void resolve();
+          await prepareLearningVisualContext(ques[i], Timu[i]);
           let data = await getAnswers(ques[i], iframeWindow);
           if (!taskCurrent()) return void resolve();
           this.askStore.get(i).allAnswer = data.map((item) => ({ ...item, answer: learningAnswerDisplay(item, "暂无答案"), explanation: String(item.explanation || "") }));
@@ -2122,6 +2319,7 @@
         for (let i = 0; i < ques.length; i++) {
           this.askStore.setActivity("作业", `正在处理第 ${i + 1}/${ques.length} 题`, Math.round(i / Math.max(1, ques.length) * 100));
           await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，点击“开始助手”后继续")), await randomSleep(this.defaultConfig.answerIntervalMin, this.defaultConfig.answerIntervalMax), await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，点击“开始助手”后继续")), this.askStore.insert(ques[i]), this.askStore.task.work.inx = i;
+          await prepareLearningVisualContext(ques[i], Timu[i]);
           let data = await getAnswers(ques[i]);
           this.askStore.get(i).allAnswer = data.map((item) => ({ ...item, answer: learningAnswerDisplay(item, "暂无答案"), explanation: String(item.explanation || "") }));
           await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，点击“开始助手”后继续"));
@@ -2138,6 +2336,7 @@
         this.askStore.reset(), this.askStore.setActivity("考试", "已识别当前题目，准备获取答案", 0);
         let data = getQuestion("3", _unsafeWindow.document.body);
         this.askStore.insert(data), this.askStore.task.work.inx = 0;
+        await prepareLearningVisualContext(data, _unsafeWindow.document.getElementsByClassName("mark_table")[0]);
         let data1 = await getAnswers(data);
         this.askStore.get(0).allAnswer = data1.map((item) => ({ ...item, answer: learningAnswerDisplay(item, "暂无答案"), explanation: String(item.explanation || "") }));
         await assistantRuntime.waitUntilRunning(() => this.askStore.msg("助手已暂停，点击“开始助手”后继续"));

@@ -30,7 +30,7 @@ async function main() {
     size: Buffer.byteLength(source, "utf8"),
     sourceUrl: USER_SCRIPT_SOURCE_PATH,
   };
-  assert.deepEqual(identity, { name: "药大拾间·学习通助手", version: "2.2.14" });
+  assert.deepEqual(identity, { name: "药大拾间·学习通助手", version: "2.2.15" });
   assert.match(source, /章节、作业或考试/, "个人中心与课程引导应覆盖章节、作业和考试入口");
   assert.match(source, /customClass:\s*"cpu-learning-guide"/, "学习通引导应使用独立高层级样式");
   assert.match(source, /offset:\s*96/, "学习通引导应避开超星顶部导航");
@@ -73,6 +73,23 @@ async function main() {
   assert.match(source, /taskCurrent/, "媒体与答题任务应在异步步骤后确认仍属于当前章节");
   assert.match(source, /isLearningNonAnswerFeedback/, "填空与简答题不得把模型内部状态说明写入答案框");
   assert.match(source, /题面缺失状态说明，已拦截且不会写入答案框/, "被拦截的非答案内容应留下可排查日志");
+  assert.match(source, /collectLearningQuestionImages/, "图片题应统一收集原图、懒加载图、画布和背景图");
+  assert.match(source, /data-original-src/, "图片题应兼容学习通懒加载图片属性");
+  assert.match(source, /canvas\.toDataURL\("image\/png"\)/, "画布题应直接提取无损 PNG 图像");
+  assert.match(source, /getComputedStyle\(element\)\.backgroundImage/, "背景图题应从计算样式提取图片");
+  assert.match(source, /prepareLearningVisualContext/, "视觉题应在答题前准备当前题目区域");
+  assert.match(source, /_GM_cpuCaptureArea\(questionData\.captureRect\)/, "原图不足时应截取当前题目区域补全视觉上下文");
+  assert.match(source, /原图与当前题目区域截图均未能取得/, "只有两条视觉取图路径都失败时才阻止本题提交");
+  assert.doesNotMatch(source, /visual(?:Model|Reasoning|ContextModel)/, "视觉兜底不得另设模型，应沿用当前答题档位");
+  assert.match(source, /答案写入核验/, "选择题写入后必须回读页面实际选择状态");
+  assert.match(source, /getLearningAnswerOptionIndices/, "选择题应使用独立的选项索引解析器");
+  assert.match(source, /source:\s*"optionLetters"/, "AI 返回的选项字母应优先作为页面写入索引");
+  assert.match(source, /selectionSource:\s*optionSelection\.source/, "选项写入日志应记录字母或文本映射来源");
+  assert.match(source, /normalizeLearningComparableText/, "上下标与普通数字应在选项兜底匹配时统一规范化");
+  assert.match(source, /questionTextForAi = formatLearningDisplayText/, "题干发给 AI 前应把上下标转换为可读字符");
+  assert.match(source, /hasClass\("check_answer"\)/, "清理旧答案时应识别选项容器自身的选中类");
+  assert.match(source, /\(\?!\\\/\?\(\?:img\|sub\|sup\|br\)\\b\)/, "题干清理应同时保留开始与结束上下标标签");
+  assert.doesNotMatch(source, /find\("li"\)\.eq\(matchArr\[i\]\)\.click\(\)/, "选择题不得再通过不稳定的全局 li 索引写入");
   assert.match(tabsSource, /backgroundThrottling:\s*kind !== "learning"/, "学习通标签页在窗口最小化或切换桌面后不应被 Chromium 暂停");
   assert.doesNotMatch(source, /切记填写完要刷新页面才会生效/, "不应继续显示旧版付费秘钥提示");
   assert.doesNotMatch(source, /题库秘钥配置请点击这个按钮|label:\s*"公告"|label:\s*"运行框"/, "旧配置提示、公告页和运行框不应残留");
@@ -106,7 +123,7 @@ async function main() {
       return new Response("", { status: 404 });
     };
 
-    const olderSource = source.replace("// @version      2.2.14", "// @version      2.1.9");
+    const olderSource = source.replace("// @version      2.2.15", "// @version      2.1.9");
     const updated = await checkUserScriptUpdate({
       origin: "https://cpu.lizmt.cn",
       cacheDirectory,
@@ -119,7 +136,7 @@ async function main() {
     assert.equal(new URL(requests[1]).searchParams.get("sha256"), manifest.sha256, "正文请求应使用发布哈希隔离缓存");
 
     const cached = await readCachedUserScript(cacheDirectory, () => undefined);
-    assert.equal(cached?.manifest.version, "2.2.14");
+    assert.equal(cached?.manifest.version, "2.2.15");
     assert.equal(cached?.source, source);
 
     requests.length = 0;
