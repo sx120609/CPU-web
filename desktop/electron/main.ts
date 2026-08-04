@@ -1671,7 +1671,25 @@ if (installMode || uninstallMode) {
       const height = Math.round(Number(candidate.height));
       if (![x, y, width, height].every(Number.isFinite) || width < 24 || height < 24) throw new Error("截图范围太小");
       if (width > 4096 || height > 4096 || width * height > 12_000_000) throw new Error("截图范围过大");
-      const image = await event.sender.capturePage({ x, y, width, height });
+      const viewportWidth = Number(candidate.viewportWidth);
+      const viewportHeight = Number(candidate.viewportHeight);
+      let image: Electron.NativeImage;
+      if (Number.isFinite(viewportWidth) && viewportWidth > 0 && Number.isFinite(viewportHeight) && viewportHeight > 0) {
+        // DOM 指针坐标是 CSS 视口像素，而 capturePage 返回的 NativeImage 会受
+        // Windows DPI 和页面缩放影响。先截完整视口，再按实际像素比裁剪，避免
+        // 125%/150% 缩放时框选区域向右下方漂移。
+        const fullImage = await event.sender.capturePage();
+        const fullSize = fullImage.getSize();
+        const scaleX = fullSize.width / viewportWidth;
+        const scaleY = fullSize.height / viewportHeight;
+        const cropX = Math.max(0, Math.min(fullSize.width - 1, Math.round(x * scaleX)));
+        const cropY = Math.max(0, Math.min(fullSize.height - 1, Math.round(y * scaleY)));
+        const cropWidth = Math.max(1, Math.min(fullSize.width - cropX, Math.round(width * scaleX)));
+        const cropHeight = Math.max(1, Math.min(fullSize.height - cropY, Math.round(height * scaleY)));
+        image = fullImage.crop({ x: cropX, y: cropY, width: cropWidth, height: cropHeight });
+      } else {
+        image = await event.sender.capturePage({ x, y, width, height });
+      }
       const png = image.toPNG();
       if (!png.length || png.length > 8 * 1024 * 1024) throw new Error("截图生成失败或文件过大");
       return `data:image/png;base64,${png.toString("base64")}`;

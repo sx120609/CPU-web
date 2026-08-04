@@ -12,12 +12,21 @@ function installCpuScreenshotSearch(root, container) {
     .replace(/`([^`]+)`/g, "<code>$1</code>")
     .replace(/\r?\n/g, "<br>");
   const parseReply = (content) => {
-    const text = String(content || "").trim();
+    const text = String(content || "").replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return {
+          answer: typeof parsed.answer === "string" ? parsed.answer.trim() : "",
+          explanation: typeof parsed.explanation === "string" ? parsed.explanation.trim() : "",
+        };
+      }
+    } catch { /* 兼容已经缓存的旧版纯文本响应 */ }
     const answerMatch = text.match(/(?:^|\n)\s*答案\s*[：:]\s*([\s\S]*?)(?=\n\s*解题思路\s*[：:]|$)/i);
     const explanationMatch = text.match(/(?:^|\n)\s*解题思路\s*[：:]\s*([\s\S]*)$/i);
     return {
-      answer: String(answerMatch ? answerMatch[1] : text).trim(),
-      explanation: String(explanationMatch ? explanationMatch[1] : "").trim(),
+      answer: String(answerMatch ? answerMatch[1] : "").trim(),
+      explanation: String(explanationMatch ? explanationMatch[1] : (answerMatch ? "" : text)).trim(),
     };
   };
   const extractOutputText = (payload) => String(
@@ -69,15 +78,34 @@ function installCpuScreenshotSearch(root, container) {
     resultPanel = panel;
   };
   const chooseArea = () => new Promise((resolve) => {
-    const overlay = document.createElement("div");
-    overlay.className = "cpu-ocs-capture-overlay";
-    overlay.innerHTML = '<div class="cpu-ocs-capture-hint">拖动框选题目区域 · Esc 取消</div><div class="cpu-ocs-capture-box"></div>';
-    root.append(overlay);
+    // OCS 工作台位于可拖动的 ShadowRoot 中。把 fixed 遮罩挂在其中会让
+    // clientX/clientY（视口坐标）与选择框（工作台局部坐标）发生偏移。
+    // 独立的顶层宿主既不受工作台 transform 影响，也不会污染网课页面样式。
+    const captureHost = document.createElement("div");
+    captureHost.id = "cpu-ocs-capture-host";
+    Object.assign(captureHost.style, {
+      position: "fixed",
+      inset: "0",
+      zIndex: "2147483647",
+      display: "block",
+    });
+    const captureRoot = captureHost.attachShadow({ mode: "closed" });
+    captureRoot.innerHTML = `
+      <style>
+        :host { all: initial; }
+        .cpu-ocs-capture-overlay { position: fixed; inset: 0; cursor: crosshair; background: rgba(8,18,16,.28); user-select: none; touch-action: none; }
+        .cpu-ocs-capture-hint { position: fixed; left: 50%; top: 22px; transform: translateX(-50%); padding: 9px 14px; color: #fff; background: rgba(14,31,27,.92); border-radius: 999px; box-shadow: 0 8px 24px rgba(0,0,0,.22); font: 650 13px system-ui,sans-serif; }
+        .cpu-ocs-capture-box { position: fixed; display: none; box-sizing: border-box; border: 2px solid #83dbc3; background: rgba(131,219,195,.12); box-shadow: 0 0 0 9999px rgba(8,18,16,.38); }
+      </style>
+      <div class="cpu-ocs-capture-overlay"><div class="cpu-ocs-capture-hint">拖动框选题目区域 · Esc 取消</div><div class="cpu-ocs-capture-box"></div></div>
+    `;
+    document.documentElement.append(captureHost);
+    const overlay = captureRoot.querySelector(".cpu-ocs-capture-overlay");
     const box = overlay.querySelector(".cpu-ocs-capture-box");
     let start = null;
     const finish = (result) => {
       document.removeEventListener("keydown", onKeyDown, true);
-      overlay.remove();
+      captureHost.remove();
       resolve(result);
     };
     const draw = (event) => {
@@ -105,6 +133,8 @@ function installCpuScreenshotSearch(root, container) {
         y: Math.min(start.y, event.clientY),
         width: Math.abs(event.clientX - start.x),
         height: Math.abs(event.clientY - start.y),
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
       };
       finish(rect.width >= 24 && rect.height >= 24 ? rect : null);
     });
@@ -132,7 +162,7 @@ function installCpuScreenshotSearch(root, container) {
         model: config.aiModel || "deepseek-reasoner",
         reasoningEffort: ["low", "high", "max"].includes(config.answerDepth) ? config.answerDepth : "low",
         input: [{ role: "user", content: [
-          { type: "input_text", text: "请识别截图中的完整题目并作答。若有选项，请结合选项判断。只返回可供用户阅读的答案与简明解题思路，不得把‘图片缺失’、‘无法完成’等内部判断当作填空答案。严格使用纯文本格式：答案：... 换行 解题思路：..." },
+          { type: "input_text", text: "请识别截图中的完整题目并作答。若有选项，请结合选项判断；若信息不足，将 answer 留空并在 explanation 说明。只返回 JSON：{\"answer\":\"可直接提交的答案\",\"explanation\":\"简短解题依据\"}，不要输出 JSON 之外的文字。" },
           { type: "input_image", image_url: imageUrl, detail: "high" },
         ] }],
       });
@@ -149,7 +179,12 @@ function installCpuScreenshotSearch(root, container) {
       const parsed = structured && typeof structured === "object"
         ? { answer: String(structured.answer || "").trim(), explanation: String(structured.explanation || "").trim() }
         : parseReply(extractOutputText(payload));
-      showResult({ status: "done", imageUrl, answer: parsed.answer || "未识别到可提交答案", explanation: parsed.explanation });
+      showResult({
+        status: "done",
+        imageUrl,
+        answer: parsed.answer,
+        explanation: parsed.explanation || (parsed.answer ? "" : "未识别到可提交答案，请重新框选完整题面与选项。"),
+      });
       report("截图搜题已完成");
     } catch (error) {
       container.style.visibility = "";

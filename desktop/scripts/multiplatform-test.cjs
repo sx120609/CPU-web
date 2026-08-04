@@ -20,7 +20,7 @@ const pageActions = fs.readFileSync(path.join(root, "electron", "page-actions.ts
 
 const header = source.match(/\/\/\s*==UserScript==([\s\S]*?)\/\/\s*==\/UserScript==/)?.[1] || "";
 assert.match(header, /@name\s+药大拾间·全平台网课助手/);
-assert.match(header, /@version\s+4\.15\.5/);
+assert.match(header, /@version\s+4\.15\.6/);
 assert.match(header, /@connect\s+desktop\.localhost/);
 const connects = [...header.matchAll(/^\s*\/\/\s*@connect\s+(.+?)\s*$/gm)].map((match) => match[1]);
 assert.deepEqual(connects, ["desktop.localhost"], "不得保留外部题库联网权限");
@@ -38,6 +38,10 @@ assert.match(source, /助手已识别智慧树/, "智慧树首页应提供平台
 assert.match(source, /所有支持平台均可点击面板顶部的截图按钮手动搜题/, "所有支持平台都应提供统一截图搜题入口");
 assert.match(source, /installCpuScreenshotSearch\(this\.root, this\.container\)/, "截图搜题应挂载到 OCS 封闭工作台");
 assert.match(source, /GM_cpuCaptureArea\(rect\)/, "多平台截图搜题必须调用宿主原图截取能力");
+assert.match(source, /cpu-ocs-capture-host/, "截图框选层必须脱离可拖动的 OCS 面板坐标系");
+assert.match(source, /document\.documentElement\.append\(captureHost\)/, "截图框选层必须挂载到页面视口根节点");
+assert.match(source, /viewportWidth: window\.innerWidth/, "截图请求必须携带 CSS 视口宽度用于 DPI 换算");
+assert.doesNotMatch(source, /root\.append\(overlay\)/, "截图框选层不得继续挂到发生位移的助手 ShadowRoot");
 assert.match(source, /type: "input_image", image_url: imageUrl, detail: "high"/, "截图应以高细节原图提交给 AI");
 assert.match(source, /cpu-ocs-shot-workbench/, "截图结果应在多平台统一工作台内部显示");
 assert.doesNotMatch(source, /cpu-ocs-shot-result/, "不得恢复独立截图结果弹窗");
@@ -59,6 +63,8 @@ assert.match(main, /builtin-multiplatform-helper/);
 assert.match(main, /matching\.some\(\(script\) => script\.id === "builtin-chaoxing-helper"\)/, "超星必须避免双引擎并跑");
 assert.match(main, /https:\/\/desktop\.localhost\/ocs-ai/);
 assert.match(main, /bridge\.requestAi/);
+assert.match(main, /fullImage\.getSize\(\)/, "宿主必须依据截图实际像素尺寸换算 CSS 指针坐标");
+assert.match(main, /const scaleX = fullSize\.width \/ viewportWidth/, "宿主必须处理 Windows DPI 和页面缩放");
 assert.match(main, /userscript:page-action/);
 assert.match(main, /learningPageActions\.perform/);
 assert.match(main, /common\.settings\.upload/);

@@ -8,7 +8,7 @@ const surfacePath = path.join(assetRoot, "multiplatform-surface.js");
 const addonPath = path.join(assetRoot, "multiplatform-screenshot.js");
 const startMarker = "// CPU_DESKTOP_SCREENSHOT_ADDON_START";
 const endMarker = "// CPU_DESKTOP_SCREENSHOT_ADDON_END";
-const integrationVersion = "4.15.5";
+const integrationVersion = "4.15.6";
 
 const theme = fs.readFileSync(themePath, "utf8")
   .replaceAll("\\", "\\\\")
