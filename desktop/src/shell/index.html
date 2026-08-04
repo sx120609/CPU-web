@@ -25,7 +25,7 @@
           <h2 class="ob-heading">它能替你做什么</h2>
           <ul class="ob-features">
             <li><span class="ob-dot"></span><div><strong>校园网自动连接</strong><small>掉线自动重认证；判断出你不在校园网时不会瞎试</small></div></li>
-            <li><span class="ob-dot"></span><div><strong>学习通标签页</strong><small>在客户端里打开，学习通助手自动接管，进度直接看得到</small></div></li>
+            <li><span class="ob-dot"></span><div><strong>多平台网课标签</strong><small>六个平台统一从客户端打开，助手自动识别视频、作业与考试</small></div></li>
             <li><span class="ob-dot"></span><div><strong>常驻后台</strong><small>关掉窗口收进托盘，可开机自启</small></div></li>
           </ul>
           <button class="ob-primary" data-next>下一步<span class="ob-arrow">→</span></button>
@@ -67,6 +67,20 @@
         <button class="chip icon-only" id="chip-reload" type="button" title="重新加载">⟳</button>
       </div>
     </header>
+
+    <dialog class="platform-dialog" id="platform-dialog" aria-labelledby="platform-dialog-title">
+      <div class="platform-dialog-card">
+        <header class="platform-dialog-head">
+          <div>
+            <h2 id="platform-dialog-title">打开网课平台</h2>
+            <p>选择平台后会在客户端新标签中打开，助手按平台自动接管。</p>
+          </div>
+          <button class="icon-button" id="platform-dialog-close" type="button" aria-label="关闭">×</button>
+        </header>
+        <div class="platform-list" id="platform-list"></div>
+        <p class="platform-security">账号密码按平台分别使用系统安全存储加密；仅在对应平台出现账号密码登录框时自动填充。二维码、短信验证码不会保存。</p>
+      </div>
+    </dialog>
 
     <!-- 工具页。它不是浮层：切到工具标签时主进程会把内容视图藏起来，露出这一页 -->
     <main class="workspace" id="workspace" hidden>
@@ -188,24 +202,11 @@
             <h2>刷题</h2>
             <span class="pill" id="script-pill" hidden>运行中</span>
           </div>
-          <p class="muted" id="script-status">在标签页中打开学习通，学习通助手会自动接管。</p>
+          <p class="muted" id="script-status">选择网课平台后，助手会在对应标签页自动接管。</p>
           <p class="muted" id="script-version">正在读取助手脚本版本…</p>
           <div class="actions">
-            <button class="primary" id="script-open" type="button">打开学习通</button>
+            <button class="primary" id="script-open" type="button">打开网课平台</button>
             <button class="ghost" id="script-check-update" type="button">检查助手更新</button>
-          </div>
-
-          <div class="subsection">
-            <h3>登录</h3>
-            <label class="switch">
-              <input type="checkbox" id="cx-remember" />
-              <span class="switch-track"><span class="switch-thumb"></span></span>
-              <span class="switch-text"><strong>记住学习通账号密码</strong><small>登录时自动保存，下次打开登录页自动填好；密码经系统安全存储加密，关掉即删除</small></span>
-            </label>
-            <p class="muted small" id="cx-hint" hidden></p>
-            <div class="actions" id="cx-actions" hidden>
-              <button class="ghost" id="cx-clear" type="button">清除已存的账号密码</button>
-            </div>
           </div>
 
           <div class="subsection">
@@ -220,7 +221,7 @@
               <label class="field"><span>每题间隔最小（秒）</span><input type="number" id="cfg-answerIntervalMin" min="1" max="300" /></label>
               <label class="field"><span>每题间隔最大（秒）</span><input type="number" id="cfg-answerIntervalMax" min="1" max="300" /></label>
             </div>
-            <p class="notice-inline" id="reload-hint" hidden>以上改动要重新打开学习通标签才生效。</p>
+            <p class="notice-inline" id="reload-hint" hidden>以上改动要重新打开对应的网课标签才生效。</p>
           </div>
 
           <div class="subsection">
@@ -274,7 +275,7 @@
             </div>
             <span class="pill about-version" id="about-version">v—</span>
           </div>
-          <p class="muted about-intro">把校园服务、校园网连接和学习通辅助收进一个窗口，由药大拾间持续维护。</p>
+          <p class="muted about-intro">把校园服务、校园网连接和多平台网课辅助收进一个窗口，由药大拾间持续维护。</p>
           <div class="actions about-update-actions">
             <button class="ghost" id="about-check-update" type="button">检查客户端更新</button>
             <span class="muted" id="about-update-status">也可以随时手动检查新版本</span>
@@ -291,6 +292,10 @@
             <div>
               <strong>学习通辅助脚本</strong>
               <span>基于 shushoujiu 的满分助手修改并获授权，第三方组件保留各自署名与许可</span>
+            </div>
+            <div>
+              <strong>多平台网课适配</strong>
+              <span>基于 OCS v4.15.3 的正式平台能力整合，使用 MIT 许可；答题统一接入药大拾间 AI</span>
             </div>
           </div>
           <p class="about-note">本客户端并非学校官方产品。代码以 AGPL-3.0-or-later 开源，账号密码仅按功能需要在本机系统安全存储中加密保存。</p>

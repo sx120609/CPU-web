@@ -285,6 +285,51 @@ button.ghost:hover:not(:disabled) { border-color: var(--cpu-primary); color: var
 button:disabled { opacity: .55; cursor: default; }
 button[hidden] { display: none; }
 
+/* -------------------------------------------------------- 网课平台选择 */
+
+.platform-dialog {
+  width: min(660px, calc(100vw - 32px));
+  max-height: min(760px, calc(100vh - 32px));
+  margin: auto;
+  border: 0;
+  border-radius: 18px;
+  color: var(--cpu-text);
+  background: transparent;
+  box-shadow: 0 28px 80px rgba(15, 23, 42, .28);
+}
+
+.platform-dialog::backdrop { background: rgba(15, 23, 42, .44); backdrop-filter: blur(3px); }
+.platform-dialog-card { background: var(--cpu-surface); border: 1px solid var(--cpu-border); border-radius: inherit; overflow: hidden; }
+.platform-dialog-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding: 20px 22px 16px; border-bottom: 1px solid var(--cpu-border-soft); }
+.platform-dialog-head h2 { font-size: 18px; }
+.platform-dialog-head p { margin-top: 5px; color: var(--cpu-text-secondary); line-height: 1.55; }
+.icon-button { width: 34px; height: 34px; flex: none; border: 1px solid var(--cpu-border); border-radius: 10px; background: var(--cpu-surface); color: var(--cpu-text-secondary); font: inherit; font-size: 20px; cursor: pointer; }
+.icon-button:hover { border-color: var(--cpu-primary); color: var(--cpu-primary); }
+.platform-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; max-height: min(570px, calc(100vh - 210px)); overflow-y: auto; padding: 16px 18px; }
+.platform-option { display: grid; gap: 12px; min-width: 0; padding: 14px; border: 1px solid var(--cpu-border); border-radius: 13px; background: var(--cpu-surface-soft); }
+.platform-open { display: grid; grid-template-columns: 40px minmax(0, 1fr) 18px; align-items: center; gap: 11px; width: 100%; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.platform-open:hover .platform-name { color: var(--cpu-primary); }
+.platform-mark { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 11px; background: var(--cpu-primary-soft); color: var(--cpu-primary-dark); font-weight: 700; }
+.platform-copy { display: grid; gap: 3px; min-width: 0; }
+.platform-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; font-weight: 650; }
+.platform-description { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--cpu-text-secondary); font-size: 11.5px; }
+.platform-arrow { color: var(--cpu-text-muted); font-size: 20px; }
+.platform-credential { display: grid; gap: 7px; padding-top: 10px; border-top: 1px solid var(--cpu-border-soft); }
+.platform-remember { display: flex; align-items: center; gap: 8px; color: var(--cpu-text-secondary); font-size: 11.5px; cursor: pointer; }
+.platform-remember input { accent-color: var(--cpu-primary); }
+.platform-saved { min-height: 18px; color: var(--cpu-text-muted); font-size: 11px; line-height: 1.5; }
+.platform-clear { justify-self: start; border: 0; background: transparent; color: var(--cpu-primary); font: inherit; font-size: 11.5px; cursor: pointer; }
+.platform-security { padding: 12px 22px 16px; border-top: 1px solid var(--cpu-border-soft); color: var(--cpu-text-muted); font-size: 11.5px; line-height: 1.65; }
+
+@media (prefers-color-scheme: dark) {
+  .platform-mark { color: var(--cpu-primary-light); }
+  .platform-dialog::backdrop { background: rgba(0, 10, 8, .68); }
+}
+
+@media (max-width: 640px) {
+  .platform-list { grid-template-columns: 1fr; }
+}
+
 /* --------------------------------------------------------------- 表单 */
 
 .grid {

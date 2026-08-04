@@ -13,14 +13,15 @@ contextBridge.exposeInMainWorld("cpuDesktopBridge", {
     ipcRenderer.invoke("userscript:capture-area", nonce, rect),
   // 脚本改了自己的配置时回传，让客户端界面与脚本保持同一份真相
   setValue: (nonce: string, key: string, json: string) => ipcRenderer.invoke("userscript:set-value", nonce, key, json),
+  deleteValue: (nonce: string, key: string) => ipcRenderer.invoke("userscript:delete-value", nonce, key),
+  notify: (nonce: string, title: string, body: string) => ipcRenderer.invoke("userscript:notify", nonce, title, body),
   // 脚本的运行状态与日志，转发到客户端显示
   report: (nonce: string, payload: string) => ipcRenderer.invoke("userscript:report", nonce, payload)
 });
 
-/* --------------------------------------------------- 学习通「记住密码」 */
-// 只在超星账号登录页生效。域名字面量与 electron/config.ts 的 chaoxingLoginHost
-// 保持一致（sandbox preload 不能 require 本地模块）。「记住密码」开关没开时
-// 主进程直接回 null，这里既不装钩子也不碰输入框。
+/* --------------------------------------------- 网课平台「记住密码」 */
+// 平台身份由主进程按标签创建来源确定，而不是信任页面自己报上来的域名。
+// 每个平台的凭据独立加密保存；只有页面真的出现账号+密码输入框时才填充/捕获。
 //
 // tsconfig 没开 DOM lib（主进程代码不该拿到 DOM 类型），下面只声明用到的最小
 // 形状，且都在模块作用域内，不影响其它文件。Event 用的是 @types/node 的全局声明。
@@ -28,16 +29,24 @@ contextBridge.exposeInMainWorld("cpuDesktopBridge", {
 type LoginInput = { value: string; dispatchEvent(event: Event): void };
 declare const document: {
   readonly readyState: string;
+  readonly documentElement: unknown;
   querySelector(selector: string): LoginInput | null;
   addEventListener(type: string, listener: (event: { key?: string; target: unknown }) => void, capture?: boolean): void;
 };
 declare const window: {
-  location: { hostname: string };
   addEventListener(type: string, listener: () => void): void;
 };
+declare const MutationObserver: new (callback: () => void) => {
+  observe(target: unknown, options: { childList: boolean; subtree: boolean }): void;
+  disconnect(): void;
+};
 
-const ACCOUNT_SELECTOR = "#phone, input[name='phone'], input[name='uname']";
-const PASSWORD_SELECTOR = "#pwd, input[type='password']";
+const ACCOUNT_SELECTOR = [
+  "#phone", "#username", "#account", "input[name='phone']", "input[name='uname']",
+  "input[name='username']", "input[name='account']", "input[name='userName']",
+  "input[type='email']", "input[type='tel']", "input[autocomplete='username']",
+].join(", ");
+const PASSWORD_SELECTOR = "#pwd, #password, input[name='password'], input[type='password']";
 
 const inputValue = (selector: string): string => document.querySelector(selector)?.value ?? "";
 
@@ -45,7 +54,9 @@ const fillInput = (selector: string, value: string): void => {
   const input = document.querySelector(selector);
   // 用户已经开始输入就不覆盖
   if (!input || input.value) return;
-  input.value = value;
+  const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(input), "value")?.set;
+  if (setter) setter.call(input, value);
+  else input.value = value;
   // 登录页脚本可能监听 input/change 同步内部状态
   input.dispatchEvent(new Event("input", { bubbles: true }));
   input.dispatchEvent(new Event("change", { bubbles: true }));
@@ -56,17 +67,21 @@ const offerCredential = (): void => {
   const password = inputValue(PASSWORD_SELECTOR);
   // 短信验证码 / 二维码登录没有密码可存
   if (!account || !password) return;
-  void ipcRenderer.invoke("chaoxing:offer-credential", account, password).catch(() => undefined);
+  void ipcRenderer.invoke("learning-credentials:offer", account, password).catch(() => undefined);
 };
 
-const setupChaoxingLogin = async (): Promise<void> => {
-  let grant: { credential: { account: string; password: string } | null } | null;
+let credentialCaptureInstalled = false;
+
+const setupLearningLogin = async (): Promise<void> => {
+  if (credentialCaptureInstalled || !document.querySelector(PASSWORD_SELECTOR)) return;
+  let grant: { platformId: string; credential: { account: string; password: string } | null } | null;
   try {
-    grant = await ipcRenderer.invoke("chaoxing:credential");
+    grant = await ipcRenderer.invoke("learning-credentials:context");
   } catch {
     return;
   }
   if (!grant) return;
+  credentialCaptureInstalled = true;
 
   if (grant.credential) {
     fillInput(ACCOUNT_SELECTOR, grant.credential.account);
@@ -78,15 +93,26 @@ const setupChaoxingLogin = async (): Promise<void> => {
   // 在两个输入框凑不齐时静默返回。
   document.addEventListener("click", (event) => {
     const target = event.target as { closest?: (selector: string) => unknown } | null;
-    if (target?.closest?.("#loginBtn, button[type='submit'], input[type='submit'], .btn-big-blue")) offerCredential();
+    if (target?.closest?.("#loginBtn, button, input[type='submit'], [role='button'], .btn-big-blue, [class*='login']")) offerCredential();
   }, true);
+  document.addEventListener("submit", () => offerCredential(), true);
   document.addEventListener("keydown", (event) => {
     if (event.key === "Enter") offerCredential();
   }, true);
 };
 
-if (window.location.hostname === "passport2.chaoxing.com") {
-  const run = (): void => void setupChaoxingLogin();
-  if (document.readyState === "loading") window.addEventListener("DOMContentLoaded", run);
-  else run();
-}
+const runCredentialSetup = (): void => {
+  void setupLearningLogin();
+  // React/Vue 登录弹窗经常在首页加载完成后才挂进 DOM；短时观察只负责发现密码框，
+  // 发现后立即断开，避免在课程页面长期保留无意义的监听器。
+  const observer = new MutationObserver(() => {
+    if (!document.querySelector(PASSWORD_SELECTOR)) return;
+    observer.disconnect();
+    void setupLearningLogin();
+  });
+  observer.observe(document.documentElement, { childList: true, subtree: true });
+  setTimeout(() => observer.disconnect(), 60_000);
+};
+
+if (document.readyState === "loading") window.addEventListener("DOMContentLoaded", runCredentialSetup);
+else runCredentialSetup();

@@ -31,7 +31,8 @@ contextBridge.exposeInMainWorld("CPUDesktop", {
     return true;
   },
 
-  // 站点可以请求打开学习通标签，但不能读写客户端设置
-  openLearning: () => ipcRenderer.invoke("learning:open"),
+  // 站点可以请求打开受支持的网课平台标签，但不能读写客户端设置或凭据。
+  // 平台 ID 仍由主进程白名单校验，网页不能借此导航到任意地址。
+  openLearning: (platformId?: string) => ipcRenderer.invoke("learning:open", platformId),
   getAuthStatus: () => ipcRenderer.invoke("oauth:status")
 });

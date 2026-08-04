@@ -80,7 +80,7 @@ export function isDesktopNativeApp(ua = navigator.userAgent) {
 export type DesktopBridge = {
   platform?: string;
   getVersionName?: () => string;
-  openLearning?: () => Promise<void>;
+  openLearning?: (platformId?: string) => Promise<void>;
 };
 
 export function getDesktopBridge(): DesktopBridge | null {

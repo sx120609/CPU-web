@@ -120,6 +120,19 @@ check("超星域名可注入", () => {
   assert.ok(asInjectableUrl("https://mooc1.chaoxing.com/mycourse"));
 });
 
+check("六个正式网课平台可导航并按需注入", () => {
+  for (const url of [
+    "https://www.zhihuishu.com/",
+    "https://www.icve.com.cn/",
+    "https://zjy2.icve.com.cn/",
+    "https://www.icourse163.org/",
+    "https://www.yuketang.cn/",
+  ]) {
+    assert.ok(asNavigableUrl(url), `应允许导航 ${url}`);
+    assert.ok(asInjectableUrl(url), `应允许助手注入 ${url}`);
+  }
+});
+
 /* ------------------------------------------------- OAuth 授权窗口放行规则 */
 
 check("授权窗口只放行主站与本次回环回调", () => {

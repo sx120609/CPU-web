@@ -6,16 +6,36 @@ import { FetchTextResult, isHostAllowed, parseHttpsUrl, parseWebUrl, UserScript 
 import { asInjectableUrl, asNavigableUrl, asSiteUrl, createAuthNavigationRule, scriptMatchesUrl } from "./policy";
 import { abortOAuthLogin, AuthorizeOpener, ensureOAuthSession, getOAuthStatus, logoutOAuth, OAuthStatus, startOAuthLogin } from "./oauth";
 import { readOAuthSession } from "./oauth-store";
-import { applyLaunchOnLogin, readPreferences, writePreferences } from "./preferences";
+import { applyLaunchOnLogin, deleteScriptPreference, readPreferences, writePreferences } from "./preferences";
 import { buildScriptConfig } from "./script-config";
 import { CampusNetService, CampusState } from "./campus-net/service";
-import { clearChaoxingCredential, maskChaoxingAccount, readChaoxingCredential, writeChaoxingCredential } from "./chaoxing-credentials";
+import {
+  clearChaoxingCredential,
+  clearLearningCredential,
+  maskChaoxingAccount,
+  maskLearningAccount,
+  readChaoxingCredential,
+  readLearningCredential,
+  writeChaoxingCredential,
+  writeLearningCredential,
+} from "./chaoxing-credentials";
 import { onCampusLog, pruneCampusLogs, readCampusLogs } from "./campus-net/log";
 import { checkForUpdate, openUpdateDownload } from "./updater";
 import { checkAndDownload, getUpdateState, onUpdateState, restorePendingUpdate, runPendingUpdate, UpdateState } from "./auto-update";
 import { CHROME_HEIGHT, TabKind, TabManager } from "./tabs";
 import { isInstallLaunch, openInstallerWindow, runUninstall, sweepReplacedFiles } from "./self-install";
-import { branding, chaoxingLoginHost, injectableHosts, learningUrl, limits, oauthConfig } from "./config";
+import {
+  branding,
+  chaoxingLoginHost,
+  injectableHosts,
+  learningCredentialHosts,
+  learningPlatforms,
+  learningPlatformUrl,
+  learningUrl,
+  limits,
+  oauthConfig,
+  type LearningPlatformId,
+} from "./config";
 import {
   checkUserScriptUpdate,
   readCachedUserScript,
@@ -57,6 +77,7 @@ const navigationOverrides = new Map<number, (url: string) => boolean>();
 // 每个内容视图属于哪种标签。导航策略要按这个区分：学习通标签里页面自身的跳转
 // 不能拦（超星登录会连跳好几个白名单外的域名），主站标签则必须锁在白名单内。
 const contentsKind = new Map<number, TabKind>();
+const contentsLearningPlatform = new Map<number, LearningPlatformId>();
 
 // 脚本回传的运行状态。脚本自己的面板只留 20 条日志且关掉面板就看不见，
 // 这里存一份好让客户端界面显示。
@@ -215,7 +236,14 @@ const loadBuiltInScripts = async (): Promise<UserScript[]> => {
       source: cached ? "cache" : "builtin",
       message: cached ? `正在使用云端缓存脚本 v${script.version}` : `正在使用内置脚本 v${script.version}`,
     });
-    return [script];
+    const multiplatformPath = resolveAsset("assets", "userscripts", "multiplatform.js");
+    const multiplatformSource = await readFile(multiplatformPath, "utf8");
+    const multiplatform = {
+      ...parseUserScript(multiplatformSource),
+      id: "builtin-multiplatform-helper",
+      values: {},
+    };
+    return [script, multiplatform];
   } catch (error) {
     // 静默失败会表现为"界面正常但脚本毫无动静"，必须留下痕迹
     console.error(`内置用户脚本加载失败：${filePath}`, error);
@@ -227,7 +255,8 @@ const getScripts = (): Promise<UserScript[]> => (scriptCache ??= loadBuiltInScri
 
 const applyUserScriptUpdate = (result: UserScriptUpdateResult): void => {
   const script = { ...parseUserScript(result.source), id: "builtin-chaoxing-helper", values: {} };
-  scriptCache = Promise.resolve([script]);
+  const previous = scriptCache ?? loadBuiltInScripts();
+  scriptCache = previous.then((current) => [script, ...current.filter((item) => item.id !== script.id)]);
   setScriptUpdateState({
     stage: result.status,
     activeVersion: script.version,
@@ -282,6 +311,39 @@ const vendoredDependency = async (url: string): Promise<string | undefined> => {
   }
 };
 
+const cpuOcsAnswerer = {
+  name: "药大拾间独立答题 AI",
+  homepage: "https://cpu.lizmt.cn/download",
+  url: "https://desktop.localhost/ocs-ai",
+  method: "post",
+  type: "GM_xmlhttpRequest",
+  contentType: "json",
+  headers: { "Content-Type": "application/json" },
+  data: {
+    title: "${title}",
+    options: "${options}",
+    type: "${type}",
+  },
+  handler: "return (res)=>res&&res.answer?[[res.question,res.answer,{explanation:res.explanation||''}]]:[]",
+};
+
+const buildMultiplatformSeed = (scriptConfig: Record<string, unknown>): Record<string, unknown> => {
+  const config = buildScriptConfig(scriptConfig);
+  return {
+    ...scriptConfig,
+    config,
+    "common.settings.answererWrappers": config.aiEnabled === false ? [] : [cpuOcsAnswerer],
+    "common.settings.disabledAnswererWrapperNames": [],
+    // 默认只暂存，不替用户正式交卷；用户显式打开自动提交后才要求全题有答案再交卷。
+    "common.settings.upload": config.autoSubmit === true ? "100" : "save",
+    "common.settings.thread": 1,
+    "common.settings.period": Math.max(1, Number(config.answerIntervalMin) || 8),
+    "common.settings.randomWork-choice": false,
+    "common.settings.randomWork-complete": false,
+    "common.settings.notification": "only-notify",
+  };
+};
+
 const createInjection = (script: UserScript, nonce: string, seededValues: Record<string, unknown>): string => `(() => {
   const definition = ${JSON.stringify(script)};
   const nonce = ${JSON.stringify(nonce)};
@@ -293,6 +355,9 @@ const createInjection = (script: UserScript, nonce: string, seededValues: Record
   const bridge = window.cpuDesktopBridge;
   if (!bridge) { console.error("脚本桥接未注入，用户脚本无法运行"); return; }
   const resourceTexts = new Map();
+  const valueListeners = new Map();
+  let nextValueListenerId = 1;
+  const tabValues = {};
   const decodeBase64 = (data) => new TextDecoder().decode(Uint8Array.from(atob(data), (character) => character.charCodeAt(0)));
   const loadText = async (url) => {
     if (url.startsWith("data:")) {
@@ -327,9 +392,44 @@ const createInjection = (script: UserScript, nonce: string, seededValues: Record
     // 脚本是同步调用它的，紧接着可能就 GM_getValue 读回来，所以必须先同步写内存副本，
     // 持久化再异步回传给主进程。
     GM_setValue: (key, value) => {
+      const previous = Object.prototype.hasOwnProperty.call(seeded, key) ? seeded[key] : undefined;
       seeded[key] = value;
       try { localStorage.setItem(storagePrefix + key, JSON.stringify(value)); } catch { /* 存不下不影响本次运行 */ }
       try { bridge.setValue(nonce, key, JSON.stringify(value)); } catch (error) { console.error("配置回传失败", error); }
+      for (const listener of valueListeners.values()) {
+        if (listener.key === key) listener.callback(key, previous, value, false);
+      }
+    },
+    GM_deleteValue: (key) => {
+      const previous = seeded[key];
+      delete seeded[key];
+      try { localStorage.removeItem(storagePrefix + key); } catch { /* ignore */ }
+      try { bridge.deleteValue(nonce, key); } catch { /* ignore */ }
+      for (const listener of valueListeners.values()) {
+        if (listener.key === key) listener.callback(key, previous, undefined, false);
+      }
+    },
+    GM_listValues: () => Array.from(new Set([
+      ...Object.keys(seeded),
+      ...Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index) || "")
+        .filter((key) => key.startsWith(storagePrefix))
+        .map((key) => key.slice(storagePrefix.length))
+    ])),
+    GM_addValueChangeListener: (key, callback) => {
+      const id = nextValueListenerId++;
+      valueListeners.set(id, { key, callback });
+      return id;
+    },
+    GM_removeValueChangeListener: (id) => valueListeners.delete(id),
+    GM_getTab: (callback) => callback(tabValues),
+    GM_saveTab: (value) => {
+      for (const key of Object.keys(tabValues)) delete tabValues[key];
+      if (value && typeof value === "object") Object.assign(tabValues, value);
+    },
+    GM_notification: (details, title) => {
+      const payload = typeof details === "string" ? { text: details, title } : details || {};
+      try { return bridge.notify(nonce, String(payload.title || definition.name), String(payload.text || payload.content || "")); }
+      catch { return undefined; }
     },
     GM_info: { script: { name: definition.name, version: definition.version, matches: definition.matches }, scriptHandler },
     GM_xmlhttpRequest: (details) => {
@@ -344,6 +444,55 @@ const createInjection = (script: UserScript, nonce: string, seededValues: Record
         return result;
       };
       if (!details || !details.url) return Promise.resolve(settle("缺少请求地址"));
+      if (details.url === "https://desktop.localhost/ocs-ai") {
+        let request;
+        try { request = typeof details.data === "string" ? JSON.parse(details.data) : (details.data || {}); }
+        catch { return Promise.resolve(settle("答题请求无法解析")); }
+        const question = String(request.title || "").trim();
+        const options = String(request.options || "").trim();
+        const questionType = String(request.type || "unknown").trim();
+        if (!question) return Promise.resolve(settle("题干为空"));
+        const typeHint = questionType === "single"
+          ? "单选题；答案填写正确选项的完整文本"
+          : questionType === "multiple"
+            ? "多选题；答案填写所有正确选项的完整文本，并用 # 分隔"
+            : questionType === "judgement"
+              ? "判断题；答案只填写 正确 或 错误"
+              : questionType === "completion"
+                ? "填空题；多空答案用 # 分隔"
+                : "题目；直接填写可提交的答案";
+        const prompt = "你是药大拾间网课助手的独立答题 AI。请按『答案：』和『解题思路：』两个字段作答；不要输出隐藏思维过程。\n" +
+          "题型：" + typeHint + "\n题目：" + question + (options ? "\n选项：\n" + options : "");
+        const config = seeded.config || {};
+        return bridge.requestAi(nonce, JSON.stringify({
+          model: config.aiModel || "deepseek-reasoner",
+          reasoningEffort: ["low", "high", "max"].includes(config.answerDepth) ? config.answerDepth : "low",
+          input: [{ role: "user", content: [{ type: "input_text", text: prompt }] }]
+        })).then((response) => {
+          let answer = "";
+          let explanation = "";
+          try {
+            const payload = JSON.parse(response.text || "{}");
+            const structured = payload.learning_answer || {};
+            answer = String(structured.answer || "").trim();
+            explanation = String(structured.explanation || "").trim();
+          } catch { /* 非 JSON 交给状态码错误处理 */ }
+          const responseText = JSON.stringify({ question, answer, explanation });
+          const result = {
+            readyState: 4,
+            status: response.status,
+            statusText: response.statusText,
+            responseText,
+            response: responseText,
+            responseHeaders: "content-type: application/json",
+            finalUrl: details.url
+          };
+          if (details.onload) details.onload(result);
+          if (details.onloadend) details.onloadend(result);
+          try { bridge.report(nonce, JSON.stringify({ kind: "log", text: answer ? "多平台 AI 已返回答案" : "多平台 AI 未取得可提交答案" })); } catch { /* ignore */ }
+          return result;
+        }).catch((error) => settle(error instanceof Error ? error.message : String(error)));
+      }
       return bridge.fetchText(nonce, details.url, { method: details.method, headers: details.headers, body: details.data, responseType: details.responseType, timeout: details.timeout })
         .then((response) => {
           const result = { readyState: 4, status: response.status, statusText: response.statusText, responseText: response.text, response: response.text, responseHeaders: response.responseHeaders || "", finalUrl: response.url };
@@ -375,9 +524,16 @@ const injectMatchingScripts = async (contents: Electron.WebContents): Promise<vo
   revokeGrants(contents.id);
   // 配置必须在注入前就绪：脚本在构造时对配置做快照，之后再改对一半的项无效
   const { scriptConfig } = await readPreferences();
-  const seeded = { config: buildScriptConfig(scriptConfig) };
-  for (const script of await getScripts()) {
-    if (!scriptMatchesUrl(script, currentUrl)) continue;
+  const matching = (await getScripts()).filter((script) => scriptMatchesUrl(script, currentUrl));
+  // 学习通保留药大拾间长期维护的专用引擎；其余正式平台使用 OCS 多平台引擎。
+  // 两套自动化不能同时操作同一页面，否则会重复点击并重复请求 AI。
+  const scripts = matching.some((script) => script.id === "builtin-chaoxing-helper")
+    ? matching.filter((script) => script.id !== "builtin-multiplatform-helper")
+    : matching;
+  for (const script of scripts) {
+    const seeded = script.id === "builtin-multiplatform-helper"
+      ? buildMultiplatformSeed(scriptConfig)
+      : { config: buildScriptConfig(scriptConfig) };
     const nonce = randomBytes(32).toString("base64url");
     grants.set(nonce, { scriptId: script.id, webContentsId: contents.id });
     try {
@@ -589,7 +745,10 @@ const noteSiteNavigation = (contents: Electron.WebContents): void => {
 const createTabManager = (window: BrowserWindow): TabManager => new TabManager(window, {
   appVersion: app.getVersion(),
   isNavigable: (url) => asNavigableUrl(url) !== undefined,
-  registerKind: (webContentsId, kind) => contentsKind.set(webContentsId, kind),
+  registerKind: (webContentsId, kind, platformId) => {
+    contentsKind.set(webContentsId, kind);
+    if (platformId) contentsLearningPlatform.set(webContentsId, platformId);
+  },
   openExternally,
   onNavigation: noteSiteNavigation,
   onDidFinishLoad: (contents) => {
@@ -650,7 +809,13 @@ const createTabs = async (window: BrowserWindow): Promise<void> => {
   await tabs.openSiteTab(loadSite);
 };
 
-const openLearningPage = async (): Promise<void> => {
+const openLearningPage = async (requestedPlatform: unknown = "chaoxing"): Promise<void> => {
+  const platformId = typeof requestedPlatform === "string"
+    && learningPlatforms.some((platform) => platform.id === requestedPlatform)
+    ? requestedPlatform as LearningPlatformId
+    : undefined;
+  const url = platformId ? learningPlatformUrl(platformId) : undefined;
+  if (!platformId || !url) throw new Error("不支持这个网课平台");
   const policy = await getLearningAssistantPolicy();
   if (policy.requiresLogin) {
     // 这里只判断 token，没必要为了开标签再拉一次资料
@@ -658,7 +823,7 @@ const openLearningPage = async (): Promise<void> => {
     if (!auth.loggedIn) throw new Error("限时免登录已结束，请先完成登录");
   }
   await openMainWindow();
-  await tabs?.openLearningTab(learningUrl);
+  await tabs?.openLearningTab(url, { platformId });
 };
 
 // 授权页开在应用内窗口，与主站共用会话：用户在主站已登录的话这里直接过。
@@ -741,7 +906,14 @@ const refreshTray = (state?: CampusState): void => {
     { label: summary, enabled: false },
     { type: "separator" },
     { label: "打开药大拾间", click: () => void openMainWindow() },
-    { label: "打开学习通", click: () => void openLearningPage().catch((error) => console.error("打开学习通失败", error)) },
+    {
+      label: "打开网课平台",
+      submenu: learningPlatforms.map((platform) => ({
+        label: platform.name,
+        click: () => void openLearningPage(platform.id)
+          .catch((error) => console.error(`打开${platform.name}失败`, error)),
+      })),
+    },
     {
       label: "立即连接校园网",
       enabled: Boolean(campus?.hasCredential),
@@ -827,7 +999,11 @@ const applyNavigationPolicy = (contents: Electron.WebContents): void => {
     return { action: "deny" };
   });
   contents.on("will-attach-webview", (event) => event.preventDefault());
-  contents.on("destroyed", () => { revokeGrants(contents.id); contentsKind.delete(contents.id); });
+  contents.on("destroyed", () => {
+    revokeGrants(contents.id);
+    contentsKind.delete(contents.id);
+    contentsLearningPlatform.delete(contents.id);
+  });
   // 页面加载失败本来是完全静默的，表现为"窗口开着但一片空白"
   contents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
     if (isMainFrame) console.error(`页面加载失败：${validatedURL} (${errorCode} ${errorDescription})`);
@@ -1000,7 +1176,7 @@ if (installMode || uninstallMode) {
     ipcMain.handle("tabs:close", (_event, id: unknown) => { if (typeof id === "string") tabs?.close(id); });
     ipcMain.handle("tabs:reload", (_event, id: unknown) => { if (typeof id === "string") tabs?.reload(id); });
     ipcMain.handle("tabs:go-back", (_event, id: unknown) => { if (typeof id === "string") tabs?.goBack(id); });
-    ipcMain.handle("tabs:open-learning", () => openLearningPage());
+    ipcMain.handle("tabs:open-learning", (_event, platformId: unknown) => openLearningPage(platformId));
     ipcMain.handle("tabs:open-sponsor", () => tabs?.navigateSite(new URL("/profile#sponsor", oauthConfig.origin).href) ?? false);
 
     /* -------------------------------------------------------------- 校园网 */
@@ -1036,16 +1212,100 @@ if (installMode || uninstallMode) {
     powerMonitor.on("resume", checkNow);
     powerMonitor.on("unlock-screen", checkNow);
 
-    /* ------------------------------------------------ 学习通「记住密码」 */
+    /* --------------------------------------------- 网课平台「记住密码」 */
+    const asLearningPlatformId = (value: unknown): LearningPlatformId | undefined =>
+      typeof value === "string" && learningPlatforms.some((platform) => platform.id === value)
+        ? value as LearningPlatformId
+        : undefined;
+
+    const platformRemembered = (
+      value: Awaited<ReturnType<typeof readPreferences>>,
+      platformId: LearningPlatformId,
+    ): boolean => platformId === "chaoxing"
+      ? (value.rememberLearning.chaoxing ?? value.rememberChaoxing)
+      : value.rememberLearning[platformId] === true;
+
+    const learningCredentialState = async () => {
+      const preferences = await readPreferences();
+      return Promise.all(learningPlatforms.map(async (platform) => {
+        const credential = await readLearningCredential(platform.id);
+        return {
+          ...platform,
+          remember: platformRemembered(preferences, platform.id),
+          hasCredential: Boolean(credential),
+          account: credential ? maskLearningAccount(credential.account) : "",
+        };
+      }));
+    };
+
+    const learningPlatformForSender = (event: Electron.IpcMainInvokeEvent): LearningPlatformId | undefined => {
+      if (contentsKind.get(event.sender.id) !== "learning") return undefined;
+      const platformId = contentsLearningPlatform.get(event.sender.id);
+      const frameUrl = senderFrameUrl(event);
+      if (!platformId || !frameUrl) return undefined;
+      try {
+        const url = new URL(frameUrl);
+        return url.protocol === "https:" && isHostAllowed(url.hostname, learningCredentialHosts[platformId])
+          ? platformId
+          : undefined;
+      } catch {
+        return undefined;
+      }
+    };
+
+    ipcMain.handle("learning-credentials:state", () => learningCredentialState());
+    ipcMain.handle("learning-credentials:set-remember", async (_event, value: unknown, enabled: unknown) => {
+      const platformId = asLearningPlatformId(value);
+      if (!platformId) throw new Error("不支持这个网课平台");
+      const remember = enabled === true;
+      await writePreferences({
+        rememberLearning: { [platformId]: remember },
+        ...(platformId === "chaoxing" ? { rememberChaoxing: remember } : {}),
+      });
+      if (!remember) await clearLearningCredential(platformId);
+      const state = await learningCredentialState();
+      broadcast("learning-credentials:state-changed", state);
+      return state;
+    });
+    ipcMain.handle("learning-credentials:clear", async (_event, value: unknown) => {
+      const platformId = asLearningPlatformId(value);
+      if (!platformId) throw new Error("不支持这个网课平台");
+      await clearLearningCredential(platformId);
+      const state = await learningCredentialState();
+      broadcast("learning-credentials:state-changed", state);
+      return state;
+    });
+    ipcMain.handle("learning-credentials:context", async (event) => {
+      const platformId = learningPlatformForSender(event);
+      if (!platformId) return null;
+      const preferences = await readPreferences();
+      if (!platformRemembered(preferences, platformId)) return null;
+      return { platformId, credential: await readLearningCredential(platformId) };
+    });
+    ipcMain.handle("learning-credentials:offer", async (event, account: unknown, password: unknown) => {
+      const platformId = learningPlatformForSender(event);
+      if (!platformId) return;
+      const preferences = await readPreferences();
+      if (!platformRemembered(preferences, platformId)) return;
+      if (typeof account !== "string" || typeof password !== "string") return;
+      const trimmed = account.trim();
+      if (!trimmed || !password || trimmed.length > 128 || password.length > 256) return;
+      await writeLearningCredential(platformId, { account: trimmed, password });
+      const state = await learningCredentialState();
+      broadcast("learning-credentials:state-changed", state);
+      if (platformId === "chaoxing") broadcast("chaoxing:state-changed", await chaoxingState());
+    });
+
+    /* ----------------------------------------- 旧版学习通接口兼容 */
     // 密码只有一个去处：学习通登录页的输入框。工具页拿到的账号是打码的、
     // 永远拿不到密码；下发明文凭据的 chaoxing:credential 只回应真的停在
     // 超星登录页上的学习通标签，其余来源一律回 null。
 
     const chaoxingState = async (): Promise<{ remember: boolean; hasCredential: boolean; account: string }> => {
-      const { rememberChaoxing } = await readPreferences();
+      const preferences = await readPreferences();
       const credential = await readChaoxingCredential();
       return {
-        remember: rememberChaoxing,
+        remember: platformRemembered(preferences, "chaoxing"),
         hasCredential: Boolean(credential),
         account: credential ? maskChaoxingAccount(credential.account) : ""
       };
@@ -1066,14 +1326,18 @@ if (installMode || uninstallMode) {
     ipcMain.handle("chaoxing:state", () => chaoxingState());
     ipcMain.handle("chaoxing:set-remember", async (_event, value: unknown) => {
       const remember = value === true;
-      await writePreferences({ rememberChaoxing: remember });
+      await writePreferences({ rememberChaoxing: remember, rememberLearning: { chaoxing: remember } });
       // 开关的语义是"要不要存"，不只是"要不要填"：关掉就删，不留死数据
       if (!remember) await clearChaoxingCredential();
-      return chaoxingState();
+      const state = await chaoxingState();
+      broadcast("learning-credentials:state-changed", await learningCredentialState());
+      return state;
     });
     ipcMain.handle("chaoxing:clear-credential", async () => {
       await clearChaoxingCredential();
-      return chaoxingState();
+      const state = await chaoxingState();
+      broadcast("learning-credentials:state-changed", await learningCredentialState());
+      return state;
     });
     // 登录页 preload 开页时调用：开关关着直接回 null，那边连输入框都不会碰
     ipcMain.handle("chaoxing:credential", async (event) => {
@@ -1120,8 +1384,8 @@ if (installMode || uninstallMode) {
         ? Math.min(settings.timeout, limits.fetchTimeoutMs)
         : limits.fetchTimeoutMs;
 
-      // 只有脚本注入范围内的站点（超星系）才带会话 Cookie；
-      // 第三方题库接口一律匿名请求，不携带任何身份。
+      // 只有脚本注入范围内的正式网课站点才带它自己的会话 Cookie；
+      // 平台外接口一律匿名请求。多平台引擎没有外部题库 @connect，正常情况下走不到后者。
       const withCookies = isHostAllowed(target.hostname, injectableHosts);
 
       const response = await requestWithPolicy(event.sender.session, target, isAllowed, {
@@ -1146,8 +1410,8 @@ if (installMode || uninstallMode) {
 
     ipcMain.handle("userscript:set-value", async (event, nonce: unknown, key: unknown, json: unknown) => {
       await authorize(event, nonce);
-      if (typeof key !== "string" || !key || key.length > 64) throw new Error("配置键无效");
-      if (typeof json !== "string" || json.length > 64 * 1024) throw new Error("配置内容无效");
+      if (typeof key !== "string" || !key || key.length > 192) throw new Error("配置键无效");
+      if (typeof json !== "string" || json.length > 256 * 1024) throw new Error("配置内容无效");
       let value: unknown;
       try {
         value = JSON.parse(json);
@@ -1156,6 +1420,22 @@ if (installMode || uninstallMode) {
       }
       const saved = await writePreferences({ scriptConfig: { [key]: value } });
       broadcast("script:config-changed", saved.scriptConfig);
+    });
+
+    ipcMain.handle("userscript:delete-value", async (event, nonce: unknown, key: unknown) => {
+      await authorize(event, nonce);
+      if (typeof key !== "string" || !key || key.length > 192) throw new Error("配置键无效");
+      const saved = await deleteScriptPreference(key);
+      broadcast("script:config-changed", saved.scriptConfig);
+    });
+
+    ipcMain.handle("userscript:notify", async (event, nonce: unknown, title: unknown, body: unknown) => {
+      await authorize(event, nonce);
+      if (!Notification.isSupported()) return false;
+      const safeTitle = typeof title === "string" ? title.slice(0, 80) : branding.learningTitle;
+      const safeBody = typeof body === "string" ? body.slice(0, 500) : "";
+      new Notification({ title: safeTitle || branding.learningTitle, body: safeBody }).show();
+      return true;
     });
 
     ipcMain.handle("userscript:report", async (event, nonce: unknown, payload: unknown) => {
@@ -1301,7 +1581,7 @@ if (installMode || uninstallMode) {
       tabs?.closeAllLearningTabs();
       grants.clear();
     });
-    ipcMain.handle("learning:open", () => openLearningPage());
+    ipcMain.handle("learning:open", (_event, platformId: unknown) => openLearningPage(platformId ?? "chaoxing"));
 
     createTray();
     // 开机自启且勾了静默启动时，只把托盘挂上，不弹窗

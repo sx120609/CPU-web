@@ -1,6 +1,6 @@
 import { BrowserWindow, Menu, WebContentsView } from "electron";
 import path from "node:path";
-import { branding } from "./config";
+import { branding, type LearningPlatformId } from "./config";
 
 // 单窗口标签页。整个应用只有一个窗口，学习通不再另开窗口。
 //
@@ -31,6 +31,7 @@ export type TabState = {
   loading: boolean;
   closable: boolean;
   canGoBack: boolean;
+  platformId?: LearningPlatformId;
 };
 
 type Tab = {
@@ -41,6 +42,7 @@ type Tab = {
   loading: boolean;
   closable: boolean;
   view?: WebContentsView;
+  platformId?: LearningPlatformId;
 };
 
 export type TabHooks = {
@@ -49,7 +51,7 @@ export type TabHooks = {
   /** 决定一个地址该不该留在应用里；返回 false 表示交给系统浏览器 */
   isNavigable: (url: string) => boolean;
   /** 记录 webContents 属于哪种标签，供导航策略区分对待 */
-  registerKind: (webContentsId: number, kind: TabKind) => void;
+  registerKind: (webContentsId: number, kind: TabKind, platformId?: LearningPlatformId) => void;
   /** 交给系统浏览器 */
   openExternally: (url: string) => void;
   /** 页面加载完成，用于注入用户脚本 */
@@ -85,7 +87,8 @@ export class TabManager {
         url: tab.url,
         loading: tab.loading,
         closable: tab.closable,
-        canGoBack: tab.view ? tab.view.webContents.navigationHistory.canGoBack() : false
+        canGoBack: tab.view ? tab.view.webContents.navigationHistory.canGoBack() : false,
+        ...(tab.platformId ? { platformId: tab.platformId } : {})
       })),
       activeId: this.activeId
     };
@@ -153,7 +156,7 @@ export class TabManager {
 
   private wire(tab: Tab): void {
     const contents = tab.view!.webContents;
-    this.hooks.registerKind(contents.id, tab.kind);
+    this.hooks.registerKind(contents.id, tab.kind, tab.platformId);
 
     contents.on("page-title-updated", (_event, title) => {
       // 学习通的标题很长，截短好放进标签
@@ -187,7 +190,7 @@ export class TabManager {
     // 一律开新标签而不是新窗口，也不丢给系统浏览器 —— 学习通的文档预览、
     // 主站里的外部链接都留在应用里。"不是通用浏览器"的边界靠没有地址栏来守。
     contents.setWindowOpenHandler(({ url }) => {
-      if (isWebUrl(url)) void this.openLearningTab(url, { trusted: true });
+      if (isWebUrl(url)) void this.openLearningTab(url, { trusted: true, platformId: tab.platformId });
       return { action: "deny" };
     });
   }
@@ -247,7 +250,7 @@ export class TabManager {
    * 把它们踢去外部浏览器会直接把会话断在半路。
    * 脚本注入与特权桥不受影响，那两件事始终只看 injectableHosts。
    */
-  async openLearningTab(url: string, options: { trusted?: boolean } = {}): Promise<void> {
+  async openLearningTab(url: string, options: { trusted?: boolean; platformId?: LearningPlatformId } = {}): Promise<void> {
     const allowed = options.trusted ? isWebUrl(url) : this.hooks.isNavigable(url);
     if (!allowed) {
       this.hooks.openExternally(url);
@@ -261,6 +264,7 @@ export class TabManager {
       url,
       loading: true,
       closable: true,
+      platformId: options.platformId,
       view: this.createView("learning")
     };
     this.tabs.push(tab);

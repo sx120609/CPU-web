@@ -25,8 +25,8 @@
         <li>
           <span class="promo-icon"><el-icon><Notebook /></el-icon></span>
           <div>
-            <strong>刷题小工具</strong>
-            <small>在客户端标签页中打开学习通，学习通助手自动接管，进度与日志在客户端里直接看</small>
+            <strong>网课小工具</strong>
+            <small>从客户端面板选择网课平台，助手会在对应标签页接管任务，进度与日志可直接查看</small>
           </div>
         </li>
       </ul>

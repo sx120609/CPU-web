@@ -49,6 +49,9 @@ const required = [
   "/src/installer/style.css",
   "/src/installer/logo.png",
   "/assets/userscripts/monkey.js",
+  "/assets/userscripts/multiplatform.js",
+  "/assets/vendor/ocsjs-LICENSE.txt",
+  "/assets/vendor/ocsjs-PROVENANCE.md",
   "/assets/tray-icon.png",
   "/assets/vendor/manifest.json"
 ];

@@ -19,7 +19,7 @@ contextBridge.exposeInMainWorld("cpuShell", {
     close: (id: string) => ipcRenderer.invoke("tabs:close", id),
     reload: (id: string) => ipcRenderer.invoke("tabs:reload", id),
     goBack: (id: string) => ipcRenderer.invoke("tabs:go-back", id),
-    openLearning: () => ipcRenderer.invoke("tabs:open-learning"),
+    openLearning: (platformId?: string) => ipcRenderer.invoke("tabs:open-learning", platformId),
     openSponsor: () => ipcRenderer.invoke("tabs:open-sponsor"),
     onChange: (callback: (state: any) => void) => on("tabs:changed", callback)
   },
@@ -64,6 +64,14 @@ contextBridge.exposeInMainWorld("cpuShell", {
     checkUpdate: () => ipcRenderer.invoke("script:check-update"),
     onActivity: (callback: (entry: any) => void) => on("script:activity", callback),
     onUpdateState: (callback: (state: any) => void) => on("script:update-state", callback)
+  },
+
+  learningCredentials: {
+    getState: () => ipcRenderer.invoke("learning-credentials:state"),
+    setRemember: (platformId: string, value: boolean) =>
+      ipcRenderer.invoke("learning-credentials:set-remember", platformId, value),
+    clear: (platformId: string) => ipcRenderer.invoke("learning-credentials:clear", platformId),
+    onState: (callback: (state: any) => void) => on("learning-credentials:state-changed", callback),
   },
 
   preferences: {

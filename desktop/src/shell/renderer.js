@@ -14,6 +14,7 @@ let tabState = { tabs: [], activeId: "" };
 let scriptConfig = {};
 let pendingReload = false;
 let runtimePlatform = "";
+let learningCredentialState = [];
 
 const AUTOMATION = [
   ["autoVideo", "自动播放视频与音频", "视频任务点自动播放并等待完成"],
@@ -337,38 +338,102 @@ const renderCampusLogs = (entries) => {
     : "还没有记录。开启后台自动连接后，这里会显示每次检测与认证的结果。";
 };
 
-/* --------------------------------------------------- 学习通记住密码 */
+/* --------------------------------------------- 网课平台与登录凭据 */
 
-const renderChaoxing = (state) => {
-  if (!state) return;
-  el("cx-remember").checked = Boolean(state.remember);
-  el("cx-hint").hidden = !state.remember;
-  el("cx-actions").hidden = !state.remember || !state.hasCredential;
-  if (!state.remember) return;
-  el("cx-hint").textContent = state.hasCredential
-    ? `已保存账号 ${state.account}。密码经系统安全存储加密，只在打开学习通登录页时自动填充，不会回传到界面。`
-    : "还没有保存过。下次在学习通登录页用账号密码登录时会自动记下来。";
+const platformMark = (name) => name.replace(/[\s/·]/g, "").slice(0, 2);
+
+const renderLearningPlatforms = (state) => {
+  if (!Array.isArray(state)) return;
+  learningCredentialState = state;
+  const list = el("platform-list");
+  list.textContent = "";
+  for (const platform of state) {
+    const card = document.createElement("article");
+    card.className = "platform-option";
+
+    const open = document.createElement("button");
+    open.type = "button";
+    open.className = "platform-open";
+    open.innerHTML = `<span class="platform-mark"></span><span class="platform-copy"><span class="platform-name"></span><span class="platform-description"></span></span><span class="platform-arrow">›</span>`;
+    open.querySelector(".platform-mark").textContent = platformMark(platform.short || platform.name);
+    open.querySelector(".platform-name").textContent = platform.name;
+    open.querySelector(".platform-description").textContent = platform.description;
+    open.addEventListener("click", async () => {
+      open.disabled = true;
+      try {
+        await shell.tabs.openLearning(platform.id);
+        el("platform-dialog").close();
+        pendingReload = false;
+        renderScriptConfig();
+        say(`已打开${platform.name}。`);
+      } catch (error) {
+        say(errorText(error, `无法打开${platform.name}。`), true);
+      } finally {
+        open.disabled = false;
+      }
+    });
+
+    const credential = document.createElement("div");
+    credential.className = "platform-credential";
+    const remember = document.createElement("label");
+    remember.className = "platform-remember";
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = Boolean(platform.remember);
+    const rememberText = document.createElement("span");
+    rememberText.textContent = "记住此平台账号密码";
+    remember.append(checkbox, rememberText);
+    checkbox.addEventListener("change", async () => {
+      const previous = !checkbox.checked;
+      checkbox.disabled = true;
+      try {
+        renderLearningPlatforms(await shell.learningCredentials.setRemember(platform.id, checkbox.checked));
+        say(checkbox.checked ? `已开启${platform.name}密码保存。` : `已关闭并删除${platform.name}已存凭据。`);
+      } catch (error) {
+        checkbox.checked = previous;
+        checkbox.disabled = false;
+        say(errorText(error, "设置保存失败。"), true);
+      }
+    });
+    const saved = document.createElement("p");
+    saved.className = "platform-saved";
+    saved.textContent = platform.remember
+      ? (platform.hasCredential ? `已保存账号 ${platform.account}` : "登录时会自动保存账号密码")
+      : "未启用密码保存";
+    credential.append(remember, saved);
+    if (platform.hasCredential) {
+      const clear = document.createElement("button");
+      clear.type = "button";
+      clear.className = "platform-clear";
+      clear.textContent = "清除已保存凭据";
+      clear.addEventListener("click", async () => {
+        try {
+          renderLearningPlatforms(await shell.learningCredentials.clear(platform.id));
+          say(`已清除${platform.name}凭据。`);
+        } catch (error) {
+          say(errorText(error, "删除失败。"), true);
+        }
+      });
+      credential.append(clear);
+    }
+    card.append(open, credential);
+    list.append(card);
+  }
 };
 
-const bindChaoxing = () => {
-  el("cx-remember").addEventListener("change", async () => {
-    const input = el("cx-remember");
-    const previous = !input.checked;
-    try {
-      renderChaoxing(await shell.chaoxing.setRemember(input.checked));
-      say(input.checked ? "已开启记住学习通账号密码。" : "已关闭，之前存的账号密码已删除。");
-    } catch (error) {
-      input.checked = previous;
-      say(errorText(error, "设置保存失败。"), true);
-    }
-  });
-  el("cx-clear").addEventListener("click", async () => {
-    try {
-      renderChaoxing(await shell.chaoxing.clearCredential());
-      say("已删除保存的学习通账号密码。");
-    } catch (error) {
-      say(errorText(error, "删除失败。"), true);
-    }
+const openPlatformDialog = async () => {
+  try {
+    renderLearningPlatforms(await shell.learningCredentials.getState());
+    el("platform-dialog").showModal();
+  } catch (error) {
+    say(errorText(error, "无法读取网课平台。"), true);
+  }
+};
+
+const bindLearningPlatforms = () => {
+  el("platform-dialog-close").addEventListener("click", () => el("platform-dialog").close());
+  el("platform-dialog").addEventListener("click", (event) => {
+    if (event.target === el("platform-dialog")) el("platform-dialog").close();
   });
 };
 
@@ -430,7 +495,7 @@ const renderScriptActivity = (activity) => {
   const entries = activity.entries || [];
   el("script-logs").textContent = entries.length
     ? entries.slice(-60).map((entry) => `${formatTime(entry.at)}  ${entry.text}`).join("\n")
-    : "还没有记录。在学习通标签里开始做任务后，这里会实时显示进度与答题结果。";
+    : "还没有记录。在网课标签里开始做任务后，这里会实时显示进度与答题结果。";
 };
 
 /* --------------------------------------------------------------- 绑定 */
@@ -457,8 +522,8 @@ const renderScriptUpdateState = (state) => {
       ? "云端缓存"
       : "安装包内置";
   el("script-version").textContent = state.stage === "checking"
-    ? `${version} · 正在检查云端更新…`
-    : `${version} · ${source} · ${state.message || "可用"}`;
+    ? `${version} · 正在检查学习通专用引擎更新… · 多平台引擎 OCS v4.15.3`
+    : `${version} · ${source} · ${state.message || "可用"} · 多平台引擎 OCS v4.15.3 随客户端更新`;
 };
 
 // 点状态芯片就切到工具标签
@@ -551,16 +616,7 @@ const bindCampus = () => {
 };
 
 const bindScript = () => {
-  el("script-open").addEventListener("click", async () => {
-    try {
-      await shell.tabs.openLearning();
-      pendingReload = false;
-      renderScriptConfig();
-    } catch (error) {
-      say(errorText(error, "无法打开学习通。"), true);
-      void refreshAuth();
-    }
-  });
+  el("script-open").addEventListener("click", () => void openPlatformDialog());
   for (const key of NUMBER_KEYS) {
     el(`cfg-${key}`)?.addEventListener("change", (event) => void pushScriptConfig(key, Number(event.target.value)));
   }
@@ -762,7 +818,7 @@ const afterOnboarding = async () => {
     renderScriptUpdateState(await shell.script.getUpdateState());
   } catch { /* 忽略 */ }
   try {
-    renderChaoxing(await shell.chaoxing.getState());
+    renderLearningPlatforms(await shell.learningCredentials.getState());
   } catch { /* 忽略 */ }
   try {
     // 先看自动更新走到哪了；它已经在下或已下好，就不必再显示"去下载"
@@ -777,7 +833,7 @@ const boot = async () => {
   bindChrome();
   bindAuth();
   bindCampus();
-  bindChaoxing();
+  bindLearningPlatforms();
   bindScript();
   bindManualUpdate();
   bindOffline();
@@ -794,7 +850,7 @@ const boot = async () => {
   shell.campusNet.onState(renderCampusState);
   // 主站登录后会静默换到新 token，这里不用轮询，等推送即可
   shell.auth.onChange?.(renderAuth);
-  shell.chaoxing.onState(renderChaoxing);
+  shell.learningCredentials.onState(renderLearningPlatforms);
   shell.campusNet.onLog(() => void shell.campusNet.getLogs(120).then(renderCampusLogs));
   shell.script.onActivity(() => void shell.script.getActivity(80).then(renderScriptActivity));
   shell.script.onUpdateState?.(renderScriptUpdateState);
@@ -828,7 +884,7 @@ function showUpdate(info) {
   if (updateStage === "downloading" || updateStage === "ready") return;
   el("update-card").hidden = false;
   el("update-title").textContent = `有新版本 v${info.latest}`;
-  el("update-note").textContent = "超星改版后旧版脚本可能失效，建议更新。";
+  el("update-note").textContent = "网课平台改版后旧版助手可能失效，建议更新。";
   el("update-go").hidden = false;
   el("update-go").onclick = () => void shell.update.open(info.url);
 }

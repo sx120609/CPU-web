@@ -24,6 +24,8 @@ export type Preferences = {
   closeToTray: boolean;
   /** 学习通「记住密码」开关。这里只存开关；凭据本体在 chaoxing-credentials.ts，关掉即删。 */
   rememberChaoxing: boolean;
+  /** 多平台网课账号的记忆开关。超星仍兼容上面的旧字段，升级不要求用户重新开启。 */
+  rememberLearning: Record<string, boolean>;
   campusNet: CampusNetSettings;
   // 学习辅助脚本的运行配置。客户端是唯一的真相来源：注入时喂给脚本，
   // 脚本改了再回传存这里。脚本自带的配置面板已被隐藏，用户改不到，
@@ -37,6 +39,7 @@ const DEFAULTS: Preferences = {
   startMinimized: false,
   closeToTray: true,
   rememberChaoxing: false,
+  rememberLearning: {},
   campusNet: {
     enabled: false,
     autoReconnect: true,
@@ -104,11 +107,14 @@ export const readPreferences = async (): Promise<Preferences> => {
       startMinimized: asBoolean(raw.startMinimized, DEFAULTS.startMinimized),
       closeToTray: asBoolean(raw.closeToTray, DEFAULTS.closeToTray),
       rememberChaoxing: asBoolean(raw.rememberChaoxing, DEFAULTS.rememberChaoxing),
+      rememberLearning: Object.fromEntries(
+        Object.entries(asRecord(raw.rememberLearning)).map(([key, value]) => [key, value === true]),
+      ),
       campusNet: mergeCampusNet(raw.campusNet, DEFAULTS.campusNet),
       scriptConfig: asRecord(raw.scriptConfig)
     };
   } catch {
-    cache = { ...DEFAULTS, campusNet: { ...DEFAULTS.campusNet }, scriptConfig: {} };
+    cache = { ...DEFAULTS, campusNet: { ...DEFAULTS.campusNet }, rememberLearning: {}, scriptConfig: {} };
   }
   return cache;
 };
@@ -123,12 +129,28 @@ export const writePreferences = async (patch: Partial<Preferences>): Promise<Pre
     startMinimized: asBoolean(patch.startMinimized, current.startMinimized),
     closeToTray: asBoolean(patch.closeToTray, current.closeToTray),
     rememberChaoxing: asBoolean(patch.rememberChaoxing, current.rememberChaoxing),
+    rememberLearning: patch.rememberLearning === undefined
+      ? current.rememberLearning
+      : { ...current.rememberLearning, ...Object.fromEntries(
+        Object.entries(asRecord(patch.rememberLearning)).map(([key, value]) => [key, value === true]),
+      ) },
     campusNet: patch.campusNet === undefined ? current.campusNet : mergeCampusNet(patch.campusNet, current.campusNet),
     // 逐键合并：客户端界面只提交它改动的那几项，不该把没提交的项抹成默认
     scriptConfig: patch.scriptConfig === undefined
       ? current.scriptConfig
       : { ...current.scriptConfig, ...asRecord(patch.scriptConfig) }
   };
+  cache = next;
+  await mkdir(app.getPath("userData"), { recursive: true });
+  await writeFile(filePath(), `${JSON.stringify(next, null, 2)}\n`, "utf8");
+  return next;
+};
+
+export const deleteScriptPreference = async (key: string): Promise<Preferences> => {
+  const current = await readPreferences();
+  const scriptConfig = { ...current.scriptConfig };
+  delete scriptConfig[key];
+  const next = { ...current, scriptConfig };
   cache = next;
   await mkdir(app.getPath("userData"), { recursive: true });
   await writeFile(filePath(), `${JSON.stringify(next, null, 2)}\n`, "utf8");
