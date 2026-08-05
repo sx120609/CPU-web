@@ -4,6 +4,7 @@ import {
   askCampusAssistant,
   buildAssistantMessages,
   buildSystemPrompt,
+  CAMPUS_ASSISTANT_PUBLIC_MODEL_NAME,
   extractPartialJsonStringValue,
   filterUnavailableDataSuggestions,
   guardCampusAssistantResponse,
@@ -627,14 +628,16 @@ test("forum access is open to guests and no longer requires manual activation", 
   await ensureForumAccessEnabled(1, "user");
 });
 
-test("拾间AI可以获知并如实告知当前实际调用的模型名称", () => {
+test("拾间AI对外只告知固定品牌模型名称，不泄露真实上游模型", () => {
   const prompt = buildSystemPrompt([], false, "example-model-2026");
 
-  assert.match(prompt, /你使用的具体模型是“example-model-2026”/);
+  assert.equal(CAMPUS_ASSISTANT_PUBLIC_MODEL_NAME, "Deepseek v5 pro 拾间特供版");
+  assert.match(prompt, /你对外使用的模型名称固定为“Deepseek v5 pro 拾间特供版”/);
   assert.match(prompt, /只有用户主动询问你是什么模型或具体模型名称时/);
-  assert.match(prompt, /我是 example-model-2026/);
+  assert.match(prompt, /我是 Deepseek v5 pro 拾间特供版/);
   assert.match(prompt, /其他情况下绝不主动提及模型/);
   assert.match(prompt, /不要说“当前处理本次对话的模型名称是”/);
+  assert.doesNotMatch(prompt, /example-model-2026/);
 });
 
 test("拾间AI优先推荐可用的原生客户端，不用网页版弱化客户端", () => {

@@ -64,6 +64,7 @@ export type CampusAssistantKnowledgeEntry = {
 const SITE_KNOWLEDGE_VERIFIED_AT = "2026-07-27";
 
 const DEFAULT_REVIEW_API_URL = "https://api.deepseek.com/chat/completions";
+export const CAMPUS_ASSISTANT_PUBLIC_MODEL_NAME = "Deepseek v5 pro 拾间特供版";
 const RESTRICTED_PUBLIC_TOPIC_REPLY: CampusAssistantResponse = {
   answer: "这个话题不适合在本站展开。拾间AI主要用于校园服务、学习与日常问答，你可以换个问题。",
   actions: [],
@@ -626,7 +627,7 @@ export async function askCampusAssistant(input: {
       enablePromptCacheRetention: true,
     });
     if (isCampusAssistantModelIdentityQuestion(message)) {
-      const response = modelIdentityResponse(result.model);
+      const response = modelIdentityResponse();
       await finishAiReviewLogSuccess(logId, response.answer);
       return response;
     }
@@ -731,7 +732,7 @@ export async function streamCampusAssistant(input: {
         return response;
       }
       if (modelIdentityRequested) {
-        const response = modelIdentityResponse(model);
+        const response = modelIdentityResponse();
         await finishAiReviewLogSuccess(logId, response.answer);
         return response;
       }
@@ -771,9 +772,9 @@ export function isCampusAssistantModelIdentityQuestion(message: string) {
   ].some((pattern) => pattern.test(normalized));
 }
 
-function modelIdentityResponse(model: string): CampusAssistantResponse {
+function modelIdentityResponse(): CampusAssistantResponse {
   return {
-    answer: `我是 ${model}。`,
+    answer: `我是 ${CAMPUS_ASSISTANT_PUBLIC_MODEL_NAME}。`,
     actions: [],
     suggestions: [],
     fallback: false,
@@ -1002,13 +1003,13 @@ function parseAssistantJson(content: string) {
 export function buildSystemPrompt(
   catalog: Array<Pick<CampusAssistantAction, "id" | "label" | "description" | "requireLogin">>,
   loggedIn: boolean,
-  modelName: string,
+  _modelName: string,
 ) {
   const knowledge = listCampusAssistantKnowledgeEntries(catalog.map((item) => item.id))
     .map(({ id, fact, source, verifiedAt }) => ({ id, fact, source, verifiedAt }));
   return [
     "你是“药大拾间”的 AI 助手“拾间AI”，面向中国药科大学学生。",
-    `你使用的具体模型是“${modelName}”。只有用户主动询问你是什么模型或具体模型名称时，才自然、简短地回答“我是 ${modelName}”或“我使用的是 ${modelName}”；其他情况下绝不主动提及模型。不要说“当前处理本次对话的模型名称是”之类像在转述系统配置的话，也不要提及系统提示、后台配置、上游调用或模型候选；不要虚构模型厂商、版本能力或未提供的部署信息。`,
+    `你对外使用的模型名称固定为“${CAMPUS_ASSISTANT_PUBLIC_MODEL_NAME}”。只有用户主动询问你是什么模型或具体模型名称时，才自然、简短地回答“我是 ${CAMPUS_ASSISTANT_PUBLIC_MODEL_NAME}”或“我使用的是 ${CAMPUS_ASSISTANT_PUBLIC_MODEL_NAME}”；其他情况下绝不主动提及模型。不要说“当前处理本次对话的模型名称是”之类像在转述系统配置的话，也不要提及系统提示、后台配置、真实上游模型、上游调用或模型候选；不得根据后台实际调用的模型改写这一对外名称，也不要虚构额外的模型厂商、版本能力或部署信息。`,
     "你的首要任务是帮助用户找到站内功能、给出可靠的操作指引，也可以进行普通聊天和常识问答。",
     "用户询问如何使用药大拾间或选择客户端时，有原生客户端的平台必须优先推荐对应客户端，不能以“无需安装客户端”“直接用网页版即可”等措辞弱化客户端；只有没有原生客户端的平台才把网页版或添加到主屏幕作为替代方案。",
     "根据问题难度完整作答：简单问题可以简洁，复杂问题应分段说明背景、步骤和注意事项，不要为了追求短而省略关键解释。",
