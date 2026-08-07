@@ -112,7 +112,7 @@ import { User, Lock, Refresh, ArrowLeft } from "@element-plus/icons-vue";
 import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
 import { loadCreds, hasCreds } from "@/utils/credCrypto";
-import { isOAuthAuthorizationRedirect, resolveLoginRedirect } from "@/utils/redirect";
+import { isOAuthAuthorizationRedirect, isServerHandledRedirect, resolveLoginRedirect } from "@/utils/redirect";
 import { shouldShowFreshmanNotice } from "@/utils/freshmanNotice";
 import FreshmanAccountNotice from "@/components/common/FreshmanAccountNotice.vue";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
@@ -196,6 +196,13 @@ function redirectTarget() {
 function finishLoginRedirect() {
   const target = redirectTarget();
   if (isOAuthAuthorizationRedirect(target)) {
+    window.location.replace(target);
+    return;
+  }
+  // QQ Bot administrator report links are server-rendered action pages. A
+  // client-side route change would fall through to the Vue 404 page after
+  // login instead of returning to the signed report link.
+  if (isServerHandledRedirect(target)) {
     window.location.replace(target);
     return;
   }

@@ -40,6 +40,15 @@ const QQ_GROUP_AD_KFC_MEME_HARD_DIVERSION_PATTERNS = [
 ];
 const QQ_GROUP_AD_QQ_NUMBER_PATTERN = /(?:QQ\s*(?:\u7fa4|\u7fa4\u53f7)|Q\s*\u7fa4|\u7fa4\u53f7).{0,16}\d{6,12}/iu;
 const QQ_GROUP_AD_INVITE_NUMBER_PATTERN = /(?:\u52a0|\u8fdb|\u52a0\u5165|\u62c9|\u626b\u7801|\u8054\u7cfb|\u79c1\u804a).{0,24}\d{6,12}/u;
+/**
+ * Codex Spark/Codex variants currently reject image parts. Keep this guard
+ * local to QQ ad review so a text-only moderation model can still be used for
+ * normal messages while attachments are routed to the image-review model.
+ */
+const QQ_GROUP_AD_IMAGE_UNSUPPORTED_MODEL_PATTERNS = [
+  /(?:^|[-_])spark(?:$|[-_])/iu,
+  /(?:^|[-_])codex(?:$|[-_])/iu,
+];
 const localResultCache = new Map<string, { expiresAt: number; value: QqGroupAdReviewResult }>();
 
 export function shouldRunQqGroupAdReview() {
@@ -134,8 +143,14 @@ export async function reviewQqGroupMessageForAd(input: {
     { role: "system" as const, content: config.qqGroupAdReviewSystemPrompt },
     { role: "user" as const, content: userContent },
   ];
-  const endpoint = normalizeAiJsonApiUrl(provider.apiUrl, "https://api.deepseek.com/chat/completions");
-  const candidates = resolveModelCandidates(config.qqGroupAdReviewModel, config.qqGroupAdReviewFallbackModels);
+  const reviewProvider = imageUrls.length
+    ? resolveQqGroupAdImageProvider(config, provider)
+    : provider;
+  const endpoint = normalizeAiJsonApiUrl(reviewProvider.apiUrl, provider.apiUrl || "https://api.deepseek.com/chat/completions");
+  const candidates = resolveQqGroupAdModelCandidates(config, imageUrls.length > 0);
+  if (!candidates.length) {
+    throw Errors.server("QQ群图片广告过滤未配置支持图片输入的模型，请在后台把‘图片审核’模型改为支持视觉输入的模型（例如 gpt-4o-mini）");
+  }
   const promptCacheKey = buildQqGroupAdPromptCacheKey({
     configHash,
     groupId: input.groupId,
@@ -162,7 +177,7 @@ export async function reviewQqGroupMessageForAd(input: {
     try {
       const result = await sendAiJsonRequest({
         endpoint,
-        apiKey: provider.apiKey,
+        apiKey: reviewProvider.apiKey,
         model,
         temperature: 0.1,
         messages,
@@ -289,6 +304,9 @@ function buildQqGroupAdReviewConfigHash(config: ReturnType<typeof getSiteConfig>
     resolveSharedAiProviderConfig(config).apiUrl,
     config.qqGroupAdReviewModel,
     config.qqGroupAdReviewFallbackModels,
+    config.imageReviewApiUrl,
+    config.imageReviewModel,
+    config.imageReviewFallbackModels,
     config.qqGroupAdReviewThreshold,
     config.qqGroupAdReviewSystemPrompt,
     config.qqGroupAdReviewUserPrompt,
@@ -303,6 +321,42 @@ function buildQqGroupAdReviewResultCacheKey(input: {
   blockQrCodes: boolean;
 }) {
   return `qqbot:group-ad-review:${hashString(`${input.configHash}\n${input.groupId}\n${input.content}\n${input.blockQrCodes ? "qr-block" : "qr-normal"}\n${input.imageUrls.join("\n")}`)}`;
+}
+
+/**
+ * Resolve the model order for QQ ad review. Text messages keep using the
+ * dedicated QQ model. Messages with images start with the separately
+ * configurable image-review model, then use its fallbacks and finally any
+ * compatible QQ models. This prevents a configured Spark model from receiving
+ * an image payload and turning a moderation event into a 400 error.
+ */
+export function resolveQqGroupAdModelCandidates(
+  config: Pick<ReturnType<typeof getSiteConfig>, "qqGroupAdReviewModel" | "qqGroupAdReviewFallbackModels" | "imageReviewModel" | "imageReviewFallbackModels">,
+  hasImages: boolean,
+) {
+  const textCandidates = resolveModelCandidates(config.qqGroupAdReviewModel, config.qqGroupAdReviewFallbackModels);
+  if (!hasImages) return textCandidates;
+  const imageCandidates = resolveModelCandidates(config.imageReviewModel, config.imageReviewFallbackModels);
+  const candidates = [...imageCandidates, ...textCandidates];
+  const seen = new Set<string>();
+  return candidates.filter((model) => {
+    const key = model.toLowerCase();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return !QQ_GROUP_AD_IMAGE_UNSUPPORTED_MODEL_PATTERNS.some((pattern) => pattern.test(model));
+  });
+}
+
+function resolveQqGroupAdImageProvider(
+  config: ReturnType<typeof getSiteConfig>,
+  fallback: { apiUrl: string; apiKey: string },
+) {
+  const imageApiKey = String(config.imageReviewApiKey || "").trim();
+  const imageApiUrl = String(config.imageReviewApiUrl || "").trim();
+  return {
+    apiUrl: imageApiKey && imageApiUrl ? imageApiUrl : fallback.apiUrl,
+    apiKey: imageApiKey || fallback.apiKey,
+  };
 }
 
 function buildQqGroupAdPromptCacheKey(input: {

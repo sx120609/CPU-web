@@ -208,6 +208,12 @@
           <span class="ai-label">拦截阈值</span>
           <el-input-number v-model="form.qqGroupAdReviewThreshold" :min="0" :max="100" />
         </div>
+        <el-alert
+          type="info"
+          :closable="false"
+          show-icon
+          title="群消息带图片时会优先使用“图片审核”模型；请配置支持视觉输入的模型。Spark/Codex 文本模型不会接收图片。"
+        />
       </div>
 
       <div class="prompt-card">

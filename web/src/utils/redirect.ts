@@ -19,6 +19,15 @@ export function isOAuthAuthorizationRedirect(value: string) {
   return value === "/api/oauth/authorize" || value.startsWith("/api/oauth/authorize?");
 }
 
+/**
+ * These paths are handled by the server rather than Vue Router. After login,
+ * they must be loaded as a real browser navigation; router.replace() would
+ * treat them as an unknown SPA route and show the site's 404 page.
+ */
+export function isServerHandledRedirect(value: string) {
+  return value === "/qqbot/ad-report" || value.startsWith("/qqbot/ad-report/");
+}
+
 export function resolveLoginRedirect(value: unknown, user: LoginRedirectUser) {
   const requestedRedirect = resolveSafeRedirect(value, "");
   if (isOAuthAuthorizationRedirect(requestedRedirect)) return requestedRedirect;
