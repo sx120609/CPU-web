@@ -84,6 +84,7 @@ import {
   syncTopicAiTags,
 } from "./topicAiReview";
 import { reviewQqGroupMessageForAd } from "./qqbotGroupAdReview";
+import { containsQqGroupCard } from "./qqbot/groupCard";
 
 export { buildQqBotDebugExport };
 export { connectQqBotWebSocket };
@@ -127,6 +128,7 @@ export type QqBotGroupView = {
   adFilterEnabled: boolean;
   adFilterGroupNoticeEnabled: boolean;
   adFilterBlockQrCodeEnabled: boolean;
+  adFilterBlockGroupCardEnabled: boolean;
   adFilterReportThreshold: number;
   joinReviewEnabled: boolean;
   allowMute: boolean;
@@ -320,6 +322,7 @@ export function formatQqBotGroup(group: {
   adFilterEnabled: boolean;
   adFilterGroupNoticeEnabled?: boolean;
   adFilterBlockQrCodeEnabled?: boolean;
+  adFilterBlockGroupCardEnabled?: boolean;
   adFilterReportThreshold?: number;
   joinReviewEnabled: boolean;
   allowMute: boolean;
@@ -346,6 +349,7 @@ export function formatQqBotGroup(group: {
     // Treat an absent value as enabled so existing moderation behavior is preserved.
     adFilterGroupNoticeEnabled: group.adFilterGroupNoticeEnabled ?? true,
     adFilterBlockQrCodeEnabled: group.adFilterBlockQrCodeEnabled ?? false,
+    adFilterBlockGroupCardEnabled: group.adFilterBlockGroupCardEnabled ?? false,
     adFilterReportThreshold: Math.max(0, Number(group.adFilterReportThreshold || 0)),
     joinReviewEnabled: group.joinReviewEnabled,
     allowMute: group.allowMute,
@@ -3119,8 +3123,9 @@ async function maybeHandleQqGroupAdFilter(input: {
   const rawMessage = input.event.message ?? input.event.raw_message ?? "";
   const hasImage = containsQqImage(rawMessage);
   const hasVideo = containsQqVideo(rawMessage);
+  const hasGroupCard = containsQqGroupCard(rawMessage);
   const botQqId = readConfigBotQqId(input.config);
-  if (!messageText && !hasImage && !hasVideo) return false;
+  if (!messageText && !hasImage && !hasVideo && !hasGroupCard) return false;
   if (isCommandMessage(messageText) || isExplicitBotMention(input.event, messageText)) return false;
   if (input.qqId && (input.qqId === botQqId || String(input.event.self_id || "") === input.qqId)) return false;
 
@@ -3131,10 +3136,11 @@ async function maybeHandleQqGroupAdFilter(input: {
   if (whitelisted) return false;
 
   try {
-    const imageUrls = hasImage
+    const cardBlocked = hasGroupCard && group.adFilterBlockGroupCardEnabled === true;
+    const imageUrls = hasImage && !cardBlocked
       ? await extractQqImageUrls(rawMessage)
       : [];
-    const videoSummary = hasVideo
+    const videoSummary = hasVideo && !cardBlocked
       ? await extractQqVideoModerationSummary(rawMessage)
       : { posterUrls: [], detectedCount: 0, reviewedCount: 0, skippedCount: 0 };
     const reviewImageUrls = Array.from(new Set([...imageUrls, ...videoSummary.posterUrls])).slice(0, 4);
@@ -3142,26 +3148,37 @@ async function maybeHandleQqGroupAdFilter(input: {
       hasImage ? (imageUrls.length ? "图片消息" : "图片消息，图片暂时无法加载") : "",
       hasVideo ? (videoSummary.reviewedCount ? "视频抽帧" : "视频消息，视频超过 10MB 或暂时无法加载") : "",
     ].filter(Boolean).join("；");
-    const reviewContent = messageText || `[${mediaFallback || "多媒体消息"}]`;
-    const review = await reviewQqGroupMessageForAd({
-      groupId: input.groupId,
-      groupName: group.name,
-      qqId: input.qqId,
-      nickname: senderNickname,
-      content: reviewContent,
-      imageUrls: reviewImageUrls,
-      blockQrCodes: group.adFilterBlockQrCodeEnabled === true,
-      metadata: {
-        messageId: input.event.message_id ? String(input.event.message_id) : "",
-        hasImage,
-        imageCount: imageUrls.length,
-        hasVideo,
-        videoCount: videoSummary.detectedCount,
-        videoReviewedCount: videoSummary.reviewedCount,
-        videoSkippedCount: videoSummary.skippedCount,
-        videoMaxBytes: 10 * 1024 * 1024,
-      },
-    });
+    const reviewContent = messageText || `[${hasGroupCard ? "QQ群卡片" : mediaFallback || "多媒体消息"}]`;
+    const review = cardBlocked
+      ? {
+          action: "block" as const,
+          riskScore: 100,
+          riskLevel: "high" as const,
+          reason: "QQ群卡片",
+          detail: "QQ 群卡片消息",
+          model: "local-signal",
+          modelDecision: "block",
+        }
+      : await reviewQqGroupMessageForAd({
+          groupId: input.groupId,
+          groupName: group.name,
+          qqId: input.qqId,
+          nickname: senderNickname,
+          content: reviewContent,
+          imageUrls: reviewImageUrls,
+          blockQrCodes: group.adFilterBlockQrCodeEnabled === true,
+          metadata: {
+            messageId: input.event.message_id ? String(input.event.message_id) : "",
+            hasImage,
+            imageCount: imageUrls.length,
+            hasVideo,
+            videoCount: videoSummary.detectedCount,
+            videoReviewedCount: videoSummary.reviewedCount,
+            videoSkippedCount: videoSummary.skippedCount,
+            hasGroupCard,
+            videoMaxBytes: 10 * 1024 * 1024,
+          },
+        });
     if (review.action !== "block") return false;
     if (!input.event.message_id) {
       await logQqBotMessage({
@@ -3248,7 +3265,7 @@ async function maybeHandleQqGroupAdFilter(input: {
       qqId: input.qqId,
       groupId: input.groupId,
       messageId: input.event.message_id ? String(input.event.message_id) : undefined,
-      content: messageText.slice(0, 500) || (hasImage ? "[图片消息]" : ""),
+      content: messageText.slice(0, 500) || (hasGroupCard ? "[QQ群卡片]" : hasImage ? "[图片消息]" : ""),
       result: String((error as any)?.message || error || "group ad filter failed").slice(0, 500),
       rawPayload: input.event,
     });
@@ -3627,6 +3644,7 @@ function buildQqBotGroupFallbackView(groupId: string, event?: OneBotEvent) {
     adFilterEnabled: false,
     adFilterGroupNoticeEnabled: true,
     adFilterBlockQrCodeEnabled: false,
+    adFilterBlockGroupCardEnabled: false,
     adFilterReportThreshold: 0,
     joinReviewEnabled: false,
     allowMute: false,

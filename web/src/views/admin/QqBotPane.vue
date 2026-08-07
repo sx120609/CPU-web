@@ -373,6 +373,7 @@
             <el-checkbox v-model="groupDialog.form.adFilterEnabled">广告过滤</el-checkbox>
             <el-checkbox v-model="groupDialog.form.adFilterGroupNoticeEnabled" :disabled="!groupDialog.form.adFilterEnabled">撤回后群聊提示</el-checkbox>
             <el-checkbox v-model="groupDialog.form.adFilterBlockQrCodeEnabled" :disabled="!groupDialog.form.adFilterEnabled">禁止二维码</el-checkbox>
+            <el-checkbox v-model="groupDialog.form.adFilterBlockGroupCardEnabled" :disabled="!groupDialog.form.adFilterEnabled">拦截群卡片</el-checkbox>
             <el-checkbox v-model="groupDialog.form.joinReviewEnabled">快速审核加群</el-checkbox>
             <el-checkbox v-model="groupDialog.form.allowMute">允许禁言</el-checkbox>
             <el-checkbox v-model="groupDialog.form.allowKick">允许踢出</el-checkbox>
@@ -511,6 +512,7 @@ const groupDialog = reactive({
     adFilterEnabled: false,
     adFilterGroupNoticeEnabled: true,
     adFilterBlockQrCodeEnabled: false,
+    adFilterBlockGroupCardEnabled: false,
     adFilterReportThreshold: 0,
     joinReviewEnabled: false,
     allowMute: false,
@@ -767,6 +769,7 @@ function openGroupDialog(row?: any) {
     adFilterEnabled: row?.adFilterEnabled ?? false,
     adFilterGroupNoticeEnabled: row?.adFilterGroupNoticeEnabled ?? true,
     adFilterBlockQrCodeEnabled: row?.adFilterBlockQrCodeEnabled ?? false,
+    adFilterBlockGroupCardEnabled: row?.adFilterBlockGroupCardEnabled ?? false,
     adFilterReportThreshold: row?.adFilterReportThreshold ?? 0,
     joinReviewEnabled: row?.joinReviewEnabled ?? false,
     allowMute: row?.allowMute ?? false,

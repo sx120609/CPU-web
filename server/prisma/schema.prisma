@@ -1415,6 +1415,7 @@ model QqBotGroup {
   adFilterEnabled      Boolean  @default(false)
   adFilterGroupNoticeEnabled Boolean @default(true)
   adFilterBlockQrCodeEnabled Boolean @default(false)
+  adFilterBlockGroupCardEnabled Boolean @default(false)
   adFilterReportThreshold Int  @default(0)
   joinReviewEnabled    Boolean  @default(false)
   allowMute            Boolean  @default(false)
