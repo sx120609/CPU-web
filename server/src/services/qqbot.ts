@@ -123,6 +123,7 @@ export type QqBotGroupView = {
   memberWelcomeEnabled: boolean;
   memberWelcomeMessage: string;
   adFilterEnabled: boolean;
+  adFilterGroupNoticeEnabled: boolean;
   joinReviewEnabled: boolean;
   allowMute: boolean;
   allowKick: boolean;
@@ -312,6 +313,7 @@ export function formatQqBotGroup(group: {
   memberWelcomeEnabled: boolean;
   memberWelcomeMessage: string | null;
   adFilterEnabled: boolean;
+  adFilterGroupNoticeEnabled?: boolean;
   joinReviewEnabled: boolean;
   allowMute: boolean;
   allowKick: boolean;
@@ -333,6 +335,9 @@ export function formatQqBotGroup(group: {
     memberWelcomeEnabled: group.memberWelcomeEnabled,
     memberWelcomeMessage: group.memberWelcomeMessage || DEFAULT_MEMBER_WELCOME_MESSAGE,
     adFilterEnabled: group.adFilterEnabled,
+    // Old rows/fixtures may not have the field until the schema is pushed.
+    // Treat an absent value as enabled so existing moderation behavior is preserved.
+    adFilterGroupNoticeEnabled: group.adFilterGroupNoticeEnabled ?? true,
     joinReviewEnabled: group.joinReviewEnabled,
     allowMute: group.allowMute,
     allowKick: group.allowKick,
@@ -3111,16 +3116,17 @@ async function maybeHandleQqGroupAdFilter(input: {
         penaltyUserNotice: penalty.userNotice,
       }),
     ).catch(() => undefined);
-    await sendQqMessage(
-      { groupId: input.groupId },
-      renderQqGroupAdFilterGroupNotice({
-        qqId: input.qqId,
-        nickname: senderNickname,
-        review,
-        hitCount: strike.hitCount,
-        verificationPrompt: verification.prompt,
-      }),
-    ).catch(() => undefined);
+    if (group.adFilterGroupNoticeEnabled !== false) {
+      await sendQqMessage(
+        { groupId: input.groupId },
+        renderQqGroupAdFilterGroupNotice({
+          qqId: input.qqId,
+          nickname: senderNickname,
+          review,
+          verificationPrompt: verification.prompt,
+        }),
+      ).catch(() => undefined);
+    }
     await logQqBotMessage({
       direction: "inbound",
       eventType: "group-ad-filter",
@@ -3175,17 +3181,14 @@ function renderQqGroupAdFilterGroupNotice(
     qqId: string;
     nickname?: string | null;
     review: Awaited<ReturnType<typeof reviewQqGroupMessageForAd>>;
-    hitCount: number;
     verificationPrompt: string;
   },
 ) {
   const who = [`[CQ:at,qq=${input.qqId}]`, `（QQ：${input.qqId}${input.nickname ? `，${input.nickname}` : ""}）`].join("");
   return [
-    `刚刚撤回了 ${who} 的一条消息。`,
-    `说明：${input.review.reason}`,
-    `累计命中：第 ${input.hitCount} 次。`,
-    "如果本意只是普通交流、玩梗或求助，建议改成更日常、更直接的说法后再发一次。",
-    `如需申请本群 30 天广告过滤白名单，请在 10 分钟内私聊我或 @我完成趣味验证：${input.verificationPrompt}`,
+    `${who} 的消息已被广告过滤撤回。`,
+    `原因：${input.review.reason}`,
+    `误判或需申请 30 天白名单？请在 10 分钟内私聊我或 @我完成验证：${input.verificationPrompt}`,
   ].join("\n");
 }
 
@@ -3436,6 +3439,7 @@ function buildQqBotGroupFallbackView(groupId: string, event?: OneBotEvent) {
     memberWelcomeEnabled: false,
     memberWelcomeMessage: DEFAULT_MEMBER_WELCOME_MESSAGE,
     adFilterEnabled: false,
+    adFilterGroupNoticeEnabled: true,
     joinReviewEnabled: false,
     allowMute: false,
     allowKick: false,

@@ -588,6 +588,7 @@ export type QqBotGroup = {
   memberWelcomeEnabled: boolean;
   memberWelcomeMessage: string;
   adFilterEnabled: boolean;
+  adFilterGroupNoticeEnabled: boolean;
   joinReviewEnabled: boolean;
   allowMute: boolean;
   allowKick: boolean;
@@ -966,6 +967,7 @@ export const adminApi = {
     memberWelcomeEnabled?: boolean;
     memberWelcomeMessage?: string;
     adFilterEnabled?: boolean;
+    adFilterGroupNoticeEnabled?: boolean;
     joinReviewEnabled?: boolean;
     allowMute?: boolean;
     allowKick?: boolean;
