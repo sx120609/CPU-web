@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
+import path from "node:path";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import test from "node:test";
 import {
   detectHarmlessQqGroupAdBypassReason,
   detectQqGroupAdHardBlockReason,
+  prepareQqGroupAdImagePayloads,
   resolveQqGroupAdModelCandidates,
   resolveQqGroupAdReviewAction,
 } from "../src/services/qqbotGroupAdReview";
@@ -63,4 +66,44 @@ test("does not bypass a KFC meme that contains a real diversion link", () => {
     detectHarmlessQqGroupAdBypassReason("疯狂星期四 V我50，详情见 https://example.com/order"),
     null,
   );
+});
+
+test("keeps original image bytes when preparing a visual review payload", async () => {
+  const original = Buffer.from([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+    0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+  ]);
+  const source = `data:image/png;base64,${original.toString("base64")}`;
+  const prepared = await prepareQqGroupAdImagePayloads([source]);
+
+  assert.equal(prepared.length, 1);
+  assert.equal(prepared[0]?.sourceUrl, source);
+  assert.equal(prepared[0]?.dataUrl, source);
+  assert.deepEqual(
+    Buffer.from(String(prepared[0]?.dataUrl).split(",")[1] || "", "base64"),
+    original,
+  );
+});
+
+test("reads a private uploads image locally instead of sending its relative URL upstream", async () => {
+  const relativePath = `qqbot-ad-review-test/${process.pid}.png`;
+  const absolutePath = path.resolve(process.cwd(), "uploads", relativePath);
+  const original = Buffer.from([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+    0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+  ]);
+  await mkdir(path.dirname(absolutePath), { recursive: true });
+  await writeFile(absolutePath, original);
+
+  try {
+    const prepared = await prepareQqGroupAdImagePayloads([`/uploads/${relativePath}`]);
+    assert.equal(prepared.length, 1);
+    assert.match(String(prepared[0]?.dataUrl), /^data:image\/png;base64,/);
+    assert.deepEqual(
+      Buffer.from(String(prepared[0]?.dataUrl).split(",")[1] || "", "base64"),
+      original,
+    );
+  } finally {
+    await rm(path.resolve(process.cwd(), "uploads", "qqbot-ad-review-test"), { recursive: true, force: true });
+  }
 });

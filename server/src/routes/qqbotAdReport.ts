@@ -131,8 +131,11 @@ async function loadReportContext(rawToken: unknown) {
   if (!report) {
     return { ok: false as const, status: 404, title: "链接无效", message: "没有找到对应的广告通报记录。" };
   }
-  if (report.expiresAt.getTime() <= Date.now() && report.status === "open") {
-    await prisma.qqBotGroupAdReport.update({ where: { id: report.id }, data: { status: "expired" } }).catch(() => undefined);
+  const availability = classifyQqBotAdReportAvailability(report.status, report.expiresAt);
+  if (availability === "expired") {
+    if (report.status === "open") {
+      await prisma.qqBotGroupAdReport.update({ where: { id: report.id }, data: { status: "expired" } }).catch(() => undefined);
+    }
     return { ok: false as const, status: 410, title: "链接已过期", message: "处理链接已过期，请在群内重新触发通报或人工处理。" };
   }
   const group = await prisma.qqBotGroup.findUnique({ where: { groupId: report.groupId } });
@@ -140,6 +143,16 @@ async function loadReportContext(rawToken: unknown) {
     return { ok: false as const, status: 404, title: "群配置不存在", message: "没有找到该群的机器人配置。" };
   }
   return { ok: true as const, report, group };
+}
+
+export function classifyQqBotAdReportAvailability(
+  status: string,
+  expiresAt: Date,
+  now = Date.now(),
+): "open" | "expired" | "handled" {
+  if (status === "expired" || expiresAt.getTime() <= now) return "expired";
+  if (status !== "open") return "handled";
+  return "open";
 }
 
 async function resolveBoundAdmin(userId: number, groupId: string) {

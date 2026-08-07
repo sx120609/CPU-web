@@ -1,8 +1,11 @@
 import { createHash } from "node:crypto";
+import path from "node:path";
+import { readFile, rm } from "node:fs/promises";
 import { Errors } from "../utils/response";
 import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } from "./aiReviewLog";
 import { extractAiJsonTextResponse, normalizeAiJsonApiUrl, sendAiJsonRequest } from "./aiJsonApi";
 import { resolveModelCandidates, shouldFallbackToNextModel } from "./modelFallback";
+import { prepareMediaLocalFileForProcessing } from "./mediaStorage";
 import { getSiteConfig, resolveSharedAiProviderConfig } from "./siteSettings";
 
 type QqGroupAdResponse = {
@@ -25,6 +28,7 @@ export type QqGroupAdReviewResult = {
 };
 
 const QQ_GROUP_AD_REVIEW_RESULT_CACHE_TTL_MS = 10 * 60_000;
+const QQ_GROUP_AD_IMAGE_MAX_INLINE_BYTES = 12 * 1024 * 1024;
 const QQ_GROUP_AD_KFC_MEME_PATTERNS = [
   /疯狂星期四/u,
   /[vV]\s*我\s*(?:50|五十)/u,
@@ -121,6 +125,12 @@ export async function reviewQqGroupMessageForAd(input: {
     return cached;
   }
 
+  const preparedImages = imageUrls.length
+    ? await prepareQqGroupAdImagePayloads(imageUrls)
+    : [];
+  if (imageUrls.length && !preparedImages.length) {
+    throw Errors.server("QQ群图片读取失败，未将不可访问的图片地址直接交给模型；请稍后重试");
+  }
   const qrPolicy = input.blockQrCodes === true
     ? "本群已开启“禁止二维码”：只要文字或任一附件（包括视频抽帧）中出现可识别二维码，即使没有其他广告文案，也必须 decision=block，并在 reason 中明确写“二维码”。\n\n"
     : "本群未开启强制二维码拦截；只有二维码同时构成导流、招募或商业推广时才拦截。\n\n";
@@ -134,20 +144,20 @@ export async function reviewQqGroupMessageForAd(input: {
   })}`;
   const userContent = [
     { type: "text" as const, text: promptText },
-    ...imageUrls.map((url) => ({
+    ...preparedImages.map((image) => ({
       type: "image_url" as const,
-      image_url: { url, detail: "auto" as const },
+      image_url: { url: image.dataUrl, detail: "auto" as const },
     })),
   ];
   const messages = [
     { role: "system" as const, content: config.qqGroupAdReviewSystemPrompt },
     { role: "user" as const, content: userContent },
   ];
-  const reviewProvider = imageUrls.length
+  const reviewProvider = preparedImages.length
     ? resolveQqGroupAdImageProvider(config, provider)
     : provider;
   const endpoint = normalizeAiJsonApiUrl(reviewProvider.apiUrl, provider.apiUrl || "https://api.deepseek.com/chat/completions");
-  const candidates = resolveQqGroupAdModelCandidates(config, imageUrls.length > 0);
+  const candidates = resolveQqGroupAdModelCandidates(config, preparedImages.length > 0);
   if (!candidates.length) {
     throw Errors.server("QQ群图片广告过滤未配置支持图片输入的模型，请在后台把‘图片审核’模型改为支持视觉输入的模型（例如 gpt-4o-mini）");
   }
@@ -357,6 +367,84 @@ function resolveQqGroupAdImageProvider(
     apiUrl: imageApiKey && imageApiUrl ? imageApiUrl : fallback.apiUrl,
     apiKey: imageApiKey || fallback.apiKey,
   };
+}
+
+type PreparedQqGroupAdImage = {
+  sourceUrl: string;
+  dataUrl: string;
+};
+
+/**
+ * The URLs produced by the QQ renderer are normally private `/uploads/...`
+ * paths. An external AI gateway cannot fetch those paths reliably, so image
+ * moderation must read the original bytes on this server and send them as an
+ * inline data URL. The bytes are not resized or recompressed.
+ */
+export async function prepareQqGroupAdImagePayloads(imageUrls: string[]): Promise<PreparedQqGroupAdImage[]> {
+  const uniqueUrls = Array.from(new Set(imageUrls.map((value) => String(value || "").trim()).filter(Boolean))).slice(0, 4);
+  const prepared = await Promise.allSettled(uniqueUrls.map((url) => prepareQqGroupAdImagePayload(url)));
+  return prepared.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
+}
+
+async function prepareQqGroupAdImagePayload(sourceUrl: string): Promise<PreparedQqGroupAdImage> {
+  if (/^data:image\/(?:jpeg|png|webp|gif);base64,/i.test(sourceUrl)) {
+    const base64 = sourceUrl.slice(sourceUrl.indexOf(",") + 1).replace(/\s+/g, "");
+    const byteLength = Buffer.byteLength(base64, "base64");
+    if (!byteLength || byteLength > QQ_GROUP_AD_IMAGE_MAX_INLINE_BYTES) {
+      throw new Error(byteLength ? "QQ群图片文件过大" : "QQ群图片文件为空");
+    }
+    return { sourceUrl, dataUrl: sourceUrl };
+  }
+
+  const preparedFile = await prepareMediaLocalFileForProcessing(sourceUrl);
+  try {
+    let buffer: Buffer;
+    let fileHint = preparedFile.localPath || sourceUrl;
+    let responseMime = "";
+    if (preparedFile.localPath) {
+      buffer = await readFile(preparedFile.localPath);
+    } else if (/^https?:\/\//i.test(sourceUrl)) {
+      const response = await fetch(sourceUrl, { signal: AbortSignal.timeout(20_000) });
+      if (!response.ok) throw new Error(`QQ群图片下载失败：HTTP ${response.status}`);
+      const contentLength = Number(response.headers.get("content-length") || 0);
+      if (contentLength > QQ_GROUP_AD_IMAGE_MAX_INLINE_BYTES) throw new Error("QQ群图片文件过大");
+      buffer = Buffer.from(await response.arrayBuffer());
+      responseMime = String(response.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
+    } else {
+      throw new Error("QQ群图片没有可读取的本地文件或网络地址");
+    }
+    if (!buffer.length || buffer.length > QQ_GROUP_AD_IMAGE_MAX_INLINE_BYTES) {
+      throw new Error(buffer.length ? "QQ群图片文件过大" : "QQ群图片文件为空");
+    }
+    const mimeType = detectQqGroupAdImageMimeType(buffer, fileHint, responseMime);
+    if (!mimeType) throw new Error("QQ群图片格式不受支持");
+    return {
+      sourceUrl,
+      dataUrl: `data:${mimeType};base64,${buffer.toString("base64")}`,
+    };
+  } finally {
+    if (preparedFile.temporary && preparedFile.localPath) {
+      await rm(preparedFile.localPath, { force: true }).catch(() => undefined);
+    }
+  }
+}
+
+function detectQqGroupAdImageMimeType(buffer: Buffer, fileHint: string, responseMime = "") {
+  const normalizedMime = responseMime.toLowerCase();
+  if (["image/jpeg", "image/png", "image/webp", "image/gif"].includes(normalizedMime)) return normalizedMime;
+  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return "image/jpeg";
+  if (buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return "image/png";
+  if (buffer.length >= 12 && buffer.subarray(0, 4).toString("ascii") === "RIFF" && buffer.subarray(8, 12).toString("ascii") === "WEBP") return "image/webp";
+  if (buffer.length >= 6) {
+    const header = buffer.subarray(0, 6).toString("ascii");
+    if (header === "GIF87a" || header === "GIF89a") return "image/gif";
+  }
+  const ext = path.extname(fileHint).replace(/^\./, "").toLowerCase();
+  if (ext === "jpg" || ext === "jpeg") return "image/jpeg";
+  if (ext === "png") return "image/png";
+  if (ext === "webp") return "image/webp";
+  if (ext === "gif") return "image/gif";
+  return "";
 }
 
 function buildQqGroupAdPromptCacheKey(input: {
