@@ -8,8 +8,10 @@ import { createVideoPosterAsset } from "../videoPoster";
 
 const QQBOT_IMAGE_MAX_BYTES = 12 * 1024 * 1024;
 const QQBOT_VIDEO_MAX_BYTES = 80 * 1024 * 1024;
+export const QQBOT_AD_VIDEO_MAX_BYTES = 10 * 1024 * 1024;
 const qqImageUploadCache = new Map<string, Promise<string>>();
 const qqVideoUploadCache = new Map<string, Promise<{ url: string; posterUrl: string } | null>>();
+const qqVideoModerationCache = new Map<string, Promise<{ url: string; posterUrl: string } | null>>();
 export function renderQqVideoBlock(url: string, posterUrl?: string) {
   const safeUrl = escapeShareCardHtml(String(url || "").trim());
   if (!safeUrl) return "[视频]";
@@ -42,6 +44,27 @@ export async function resolveQqVideoUrl(urlLike: unknown, fileLike: unknown): Pr
   const result = await task;
   if (!result) qqVideoUploadCache.delete(key);
   return result;
+}
+
+/**
+ * Resolve a small QQ video and extract a representative frame for moderation.
+ * Large videos are intentionally rejected before downloading when OneBot gives
+ * us a size, and are capped again while reading to prevent excessive memory use.
+ */
+export async function resolveQqVideoForModeration(
+  urlLike: unknown,
+  fileLike: unknown,
+  knownSizeLike?: unknown,
+): Promise<{ url: string; posterUrl: string } | null> {
+  const knownSize = Number(knownSizeLike || 0);
+  if (Number.isFinite(knownSize) && knownSize > QQBOT_AD_VIDEO_MAX_BYTES) return null;
+  const key = `${String(urlLike || "").trim()}|${String(fileLike || "").trim()}|${QQBOT_AD_VIDEO_MAX_BYTES}`;
+  if (qqVideoModerationCache.has(key)) return qqVideoModerationCache.get(key)!;
+  const task = downloadQqVideoToUpload(urlLike, fileLike, QQBOT_AD_VIDEO_MAX_BYTES).catch(() => null);
+  qqVideoModerationCache.set(key, task);
+  const result = await task;
+  if (!result?.posterUrl) qqVideoModerationCache.delete(key);
+  return result?.posterUrl ? result : null;
 }
 
 function normalizeRemoteMediaUrl(value: unknown) {
@@ -111,7 +134,11 @@ async function downloadQqImageToUpload(urlLike: unknown, fileLike: unknown): Pro
   return "";
 }
 
-async function downloadQqVideoToUpload(urlLike: unknown, fileLike: unknown): Promise<{ url: string; posterUrl: string } | null> {
+async function downloadQqVideoToUpload(
+  urlLike: unknown,
+  fileLike: unknown,
+  maxBytes = QQBOT_VIDEO_MAX_BYTES,
+): Promise<{ url: string; posterUrl: string } | null> {
   const file = String(fileLike || "").trim();
   const candidates: Array<{ kind: "remote" | "local"; value: string }> = [];
   const seen = new Set<string>();
@@ -143,15 +170,15 @@ async function downloadQqVideoToUpload(urlLike: unknown, fileLike: unknown): Pro
     pushFromUnknown(payload?.data?.path);
     pushFromUnknown(payload?.data?.local);
     const base64Loaded = decodeBase64MediaPayload(payload?.data?.base64, payload?.data?.mime_type, file);
-    if (base64Loaded) {
+    if (base64Loaded && base64Loaded.buffer.length <= maxBytes) {
       return saveQqVideoUpload(base64Loaded.buffer, base64Loaded.mime, base64Loaded.nameHint);
     }
   }
 
   for (const candidate of candidates) {
     const loaded = candidate.kind === "remote"
-      ? await fetchRemoteVideo(candidate.value)
-      : await readLocalVideo(candidate.value);
+      ? await fetchRemoteVideo(candidate.value, maxBytes)
+      : await readLocalVideo(candidate.value, maxBytes);
     if (!loaded) continue;
     return saveQqVideoUpload(loaded.buffer, loaded.mime, loaded.nameHint);
   }
@@ -171,15 +198,15 @@ async function fetchRemoteImage(url: string) {
   return { buffer, mime, nameHint: url };
 }
 
-async function fetchRemoteVideo(url: string) {
+async function fetchRemoteVideo(url: string, maxBytes = QQBOT_VIDEO_MAX_BYTES) {
   const response = await fetch(url, { signal: AbortSignal.timeout(30_000) }).catch(() => null);
   if (!response?.ok) return null;
   const contentLength = Number(response.headers.get("content-length") || 0);
-  if (contentLength > QQBOT_VIDEO_MAX_BYTES) return null;
+  if (contentLength > maxBytes) return null;
   const arrayBuffer = await response.arrayBuffer().catch(() => null);
   if (!arrayBuffer) return null;
   const buffer = Buffer.from(arrayBuffer);
-  if (!buffer.length || buffer.length > QQBOT_VIDEO_MAX_BYTES) return null;
+  if (!buffer.length || buffer.length > maxBytes) return null;
   const mime = String(response.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
   return { buffer, mime, nameHint: url };
 }
@@ -190,9 +217,9 @@ async function readLocalImage(filePath: string) {
   return { buffer, mime: "", nameHint: filePath };
 }
 
-async function readLocalVideo(filePath: string) {
+async function readLocalVideo(filePath: string, maxBytes = QQBOT_VIDEO_MAX_BYTES) {
   const buffer = await readFile(filePath).catch(() => null);
-  if (!buffer?.length || buffer.length > QQBOT_VIDEO_MAX_BYTES) return null;
+  if (!buffer?.length || buffer.length > maxBytes) return null;
   return { buffer, mime: "", nameHint: filePath };
 }
 

@@ -589,6 +589,7 @@ export type QqBotGroup = {
   memberWelcomeMessage: string;
   adFilterEnabled: boolean;
   adFilterGroupNoticeEnabled: boolean;
+  adFilterBlockQrCodeEnabled: boolean;
   adFilterReportThreshold: number;
   joinReviewEnabled: boolean;
   allowMute: boolean;
@@ -969,6 +970,7 @@ export const adminApi = {
     memberWelcomeMessage?: string;
     adFilterEnabled?: boolean;
     adFilterGroupNoticeEnabled?: boolean;
+    adFilterBlockQrCodeEnabled?: boolean;
     adFilterReportThreshold?: number;
     joinReviewEnabled?: boolean;
     allowMute?: boolean;

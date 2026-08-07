@@ -1,6 +1,12 @@
 import { callQqBotAction } from "./connection";
 import { queueQqBotForwardDebug } from "./forwardDebug";
-import { renderQqVideoBlock, resolveQqImageUrl, resolveQqVideoUrl } from "./messageMedia";
+import {
+  QQBOT_AD_VIDEO_MAX_BYTES,
+  renderQqVideoBlock,
+  resolveQqImageUrl,
+  resolveQqVideoForModeration,
+  resolveQqVideoUrl,
+} from "./messageMedia";
 import {
   escapeShareCardHtml,
   parseCqParams,
@@ -147,6 +153,90 @@ export async function extractQqImageUrls(message: unknown): Promise<string[]> {
 
   await visit(message);
   return urls;
+}
+
+export type QqVideoModerationSummary = {
+  posterUrls: string[];
+  detectedCount: number;
+  reviewedCount: number;
+  skippedCount: number;
+};
+
+/** Extract representative frames from videos small enough for ad moderation. */
+export async function extractQqVideoModerationSummary(message: unknown): Promise<QqVideoModerationSummary> {
+  const posterUrls: string[] = [];
+  const visited = new Set<object>();
+  const processed = new Set<string>();
+  let detectedCount = 0;
+  let skippedCount = 0;
+
+  const pushResolved = async (data: Record<string, unknown>) => {
+    const urlLike = data.url ?? data.src;
+    const fileLike = data.file ?? data.file_id ?? data.path;
+    const knownSize = readQqMediaSizeBytes(data);
+    const key = `${String(urlLike || "").trim()}|${String(fileLike || "").trim()}`;
+    if (processed.has(key)) return;
+    processed.add(key);
+    detectedCount += 1;
+    if (knownSize > QQBOT_AD_VIDEO_MAX_BYTES) {
+      skippedCount += 1;
+      return;
+    }
+    let resolved = await resolveQqVideoForModeration(urlLike, fileLike, knownSize).catch(() => null);
+    if (!resolved?.posterUrl) {
+      // NapCat may publish a file segment before get_file is ready.
+      resolved = await resolveQqVideoForModeration(urlLike, fileLike, knownSize).catch(() => null);
+    }
+    if (!resolved?.posterUrl) {
+      skippedCount += 1;
+      return;
+    }
+    if (!posterUrls.includes(resolved.posterUrl)) posterUrls.push(resolved.posterUrl);
+  };
+
+  const visit = async (value: unknown): Promise<void> => {
+    if (typeof value === "string") {
+      for (const match of value.matchAll(/\[CQ:video,([^\]]*)\]/gi)) {
+        await pushResolved(parseCqParams(match[1] || ""));
+      }
+      return;
+    }
+    if (!value || typeof value !== "object") return;
+    if (visited.has(value as object)) return;
+    visited.add(value as object);
+    if (Array.isArray(value)) {
+      for (const item of value) await visit(item);
+      return;
+    }
+    const item = value as any;
+    if (String(item.type || "").trim() === "video") await pushResolved(item.data || {});
+    if (item.data?.content !== undefined) await visit(item.data.content);
+    if (item.data?.message !== undefined) await visit(item.data.message);
+    if (item.message !== undefined) await visit(item.message);
+    if (item.content !== undefined) await visit(item.content);
+  };
+
+  await visit(message);
+  return {
+    posterUrls,
+    detectedCount,
+    reviewedCount: posterUrls.length,
+    skippedCount,
+  };
+}
+
+function readQqMediaSizeBytes(data: Record<string, unknown>) {
+  const raw = data.file_size ?? data.fileSize ?? data.filesize ?? data.size;
+  if (typeof raw === "number") return Number.isFinite(raw) && raw > 0 ? raw : 0;
+  const text = String(raw || "").trim();
+  if (!text) return 0;
+  const matched = text.match(/^([\d.]+)\s*(b|kb|mb|gb)?$/i);
+  if (!matched) return 0;
+  const value = Number(matched[1]);
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  const unit = String(matched[2] || "b").toLowerCase();
+  const multiplier = unit === "gb" ? 1024 ** 3 : unit === "mb" ? 1024 ** 2 : unit === "kb" ? 1024 : 1;
+  return value * multiplier;
 }
 
 function readForwardSegmentId(data: any) {

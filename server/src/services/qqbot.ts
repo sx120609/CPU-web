@@ -64,6 +64,7 @@ import {
   extractForwardPayload,
   extractMessageText,
   extractQqImageUrls,
+  extractQqVideoModerationSummary,
   extractReplyMessageId,
   normalizeRenderedMessage,
   QQBOT_POST_SUBMIT_PENDING_MESSAGE,
@@ -125,6 +126,7 @@ export type QqBotGroupView = {
   memberWelcomeMessage: string;
   adFilterEnabled: boolean;
   adFilterGroupNoticeEnabled: boolean;
+  adFilterBlockQrCodeEnabled: boolean;
   adFilterReportThreshold: number;
   joinReviewEnabled: boolean;
   allowMute: boolean;
@@ -316,6 +318,7 @@ export function formatQqBotGroup(group: {
   memberWelcomeMessage: string | null;
   adFilterEnabled: boolean;
   adFilterGroupNoticeEnabled?: boolean;
+  adFilterBlockQrCodeEnabled?: boolean;
   adFilterReportThreshold?: number;
   joinReviewEnabled: boolean;
   allowMute: boolean;
@@ -341,6 +344,7 @@ export function formatQqBotGroup(group: {
     // Old rows/fixtures may not have the field until the schema is pushed.
     // Treat an absent value as enabled so existing moderation behavior is preserved.
     adFilterGroupNoticeEnabled: group.adFilterGroupNoticeEnabled ?? true,
+    adFilterBlockQrCodeEnabled: group.adFilterBlockQrCodeEnabled ?? false,
     adFilterReportThreshold: Math.max(0, Number(group.adFilterReportThreshold || 0)),
     joinReviewEnabled: group.joinReviewEnabled,
     allowMute: group.allowMute,
@@ -694,7 +698,13 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     await replyToEvent(context, await renderConversationPrompt(conversation, "如果方便，建议前往客户端完成投稿，编辑体验会更好。"));
     return { ok: true };
   }
-  if (!isCommandMessage(messageText) && forwardPayload && shouldHandleForwardPostInContext(context)) {
+  if (
+    !isCommandMessage(messageText)
+    && forwardPayload
+    && shouldHandleForwardPostInContext(context)
+    && hasExplicitQqGroupPostIntent(messageText)
+    && await isReplyToQqBotMessage(event, config)
+  ) {
     let conversation: Awaited<ReturnType<typeof startForwardPostConversation>>;
     try {
       conversation = await startForwardPostConversation(context, forwardPayload);
@@ -2801,6 +2811,40 @@ function shouldHandleForwardPostInContext(context: {
   return isExplicitBotMention(context.event, context.messageText);
 }
 
+/**
+ * Automatic group forwarding is intentionally conservative. A reply alone is
+ * not a posting request: normal conversations often quote the bot while
+ * asking about settings, moderation, or other help. Require an explicit
+ * posting phrase before opening the private posting flow.
+ */
+export function hasExplicitQqGroupPostIntent(text: string) {
+  const normalized = String(text || "")
+    .replace(/\[CQ:[^\]]+\]/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized) return false;
+  return /(?:帮我|帮忙|请|麻烦|能否|可以).{0,16}(?:投稿|投递|发帖|发文|发布|提交)/iu.test(normalized)
+    || /(?:投稿到|发布到|提交到|发到|投到|发去|发在|放到)\s*(?:论坛|站内|板块|版块|分区|社区|树洞)?/iu.test(normalized)
+    || /(?:把|将|这条|这段|上面|该消息).{0,20}(?:投稿|投递|发帖|发文|发布|提交)/iu.test(normalized)
+    || /(?:论坛|站内|板块|版块|分区|社区|树洞).{0,16}(?:投稿|投递|发帖|发文|发布|提交)/iu.test(normalized);
+}
+
+async function isReplyToQqBotMessage(
+  event: OneBotEvent,
+  config: Awaited<ReturnType<typeof getQqBotConfigRaw>>,
+) {
+  const replyId = extractReplyMessageId(event.message ?? event.raw_message ?? "");
+  if (!replyId) return false;
+  const replied = await callQqBotAction("get_msg", {
+    message_id: Number(replyId) || replyId,
+  }).catch(() => null);
+  const data = replied?.data as any;
+  if (!data || typeof data !== "object") return false;
+  const botQqId = readConfigBotQqId(config);
+  const senderId = String(data.sender?.user_id ?? data.user_id ?? data.self_id ?? "").trim();
+  return Boolean(senderId && botQqId && senderId === botQqId);
+}
+
 async function handleQqBotGroupAdminCommand(input: {
   config: Awaited<ReturnType<typeof getQqBotConfigRaw>>;
   event: OneBotEvent;
@@ -3073,8 +3117,9 @@ async function maybeHandleQqGroupAdFilter(input: {
   const messageText = String(input.messageText || "").trim();
   const rawMessage = input.event.message ?? input.event.raw_message ?? "";
   const hasImage = containsQqImage(rawMessage);
+  const hasVideo = containsQqVideo(rawMessage);
   const botQqId = readConfigBotQqId(input.config);
-  if (!messageText && !hasImage) return false;
+  if (!messageText && !hasImage && !hasVideo) return false;
   if (isCommandMessage(messageText) || isExplicitBotMention(input.event, messageText)) return false;
   if (input.qqId && (input.qqId === botQqId || String(input.event.self_id || "") === input.qqId)) return false;
 
@@ -3088,18 +3133,32 @@ async function maybeHandleQqGroupAdFilter(input: {
     const imageUrls = hasImage
       ? await extractQqImageUrls(rawMessage)
       : [];
-    const reviewContent = messageText || (imageUrls.length ? "[图片消息]" : "[图片消息，图片暂时无法加载]");
+    const videoSummary = hasVideo
+      ? await extractQqVideoModerationSummary(rawMessage)
+      : { posterUrls: [], detectedCount: 0, reviewedCount: 0, skippedCount: 0 };
+    const reviewImageUrls = Array.from(new Set([...imageUrls, ...videoSummary.posterUrls])).slice(0, 4);
+    const mediaFallback = [
+      hasImage ? (imageUrls.length ? "图片消息" : "图片消息，图片暂时无法加载") : "",
+      hasVideo ? (videoSummary.reviewedCount ? "视频抽帧" : "视频消息，视频超过 10MB 或暂时无法加载") : "",
+    ].filter(Boolean).join("；");
+    const reviewContent = messageText || `[${mediaFallback || "多媒体消息"}]`;
     const review = await reviewQqGroupMessageForAd({
       groupId: input.groupId,
       groupName: group.name,
       qqId: input.qqId,
       nickname: senderNickname,
       content: reviewContent,
-      imageUrls,
+      imageUrls: reviewImageUrls,
+      blockQrCodes: group.adFilterBlockQrCodeEnabled === true,
       metadata: {
         messageId: input.event.message_id ? String(input.event.message_id) : "",
         hasImage,
         imageCount: imageUrls.length,
+        hasVideo,
+        videoCount: videoSummary.detectedCount,
+        videoReviewedCount: videoSummary.reviewedCount,
+        videoSkippedCount: videoSummary.skippedCount,
+        videoMaxBytes: 10 * 1024 * 1024,
       },
     });
     if (review.action !== "block") return false;
@@ -3157,14 +3216,14 @@ async function maybeHandleQqGroupAdFilter(input: {
           verificationPrompt: verification.prompt,
         }),
       ).catch(() => undefined);
-      await maybeSendQqGroupAdReport({
-        group,
-        qqId: input.qqId,
-        nickname: senderNickname,
-        hitCount: strike.hitCount,
-        reason: review.reason,
-      }).catch(() => undefined);
     }
+    await maybeSendQqGroupAdReport({
+      group,
+      qqId: input.qqId,
+      nickname: senderNickname,
+      hitCount: strike.hitCount,
+      reason: review.reason,
+    }).catch(() => undefined);
     await logQqBotMessage({
       direction: "inbound",
       eventType: "group-ad-filter",
@@ -3237,6 +3296,18 @@ function containsQqImage(message: unknown): boolean {
     || containsQqImage(item.data?.message)
     || containsQqImage(item.message)
     || containsQqImage(item.content);
+}
+
+function containsQqVideo(message: unknown): boolean {
+  if (typeof message === "string") return /\[CQ:video(?:,|\])/i.test(message);
+  if (Array.isArray(message)) return message.some((item) => containsQqVideo(item));
+  if (!message || typeof message !== "object") return false;
+  const item = message as any;
+  if (String(item.type || "").trim() === "video") return true;
+  return containsQqVideo(item.data?.content)
+    || containsQqVideo(item.data?.message)
+    || containsQqVideo(item.message)
+    || containsQqVideo(item.content);
 }
 
 async function maybeSendQqGroupAdReport(input: {
@@ -3554,6 +3625,7 @@ function buildQqBotGroupFallbackView(groupId: string, event?: OneBotEvent) {
     memberWelcomeMessage: DEFAULT_MEMBER_WELCOME_MESSAGE,
     adFilterEnabled: false,
     adFilterGroupNoticeEnabled: true,
+    adFilterBlockQrCodeEnabled: false,
     adFilterReportThreshold: 0,
     joinReviewEnabled: false,
     allowMute: false,

@@ -171,7 +171,7 @@
             <el-tag :type="row.notificationEnabled ? 'success' : 'info'" size="small">通知 {{ row.notificationEnabled ? "开" : "关" }}</el-tag>
             <el-tag :type="row.memberWelcomeEnabled ? 'success' : 'info'" size="small">欢迎 {{ row.memberWelcomeEnabled ? "开" : "关" }}</el-tag>
             <el-tag :type="row.adFilterEnabled ? 'danger' : 'info'" size="small">广告 {{ row.adFilterEnabled ? "开" : "关" }}</el-tag>
-            <el-tag v-if="row.adFilterEnabled" :type="row.adFilterGroupNoticeEnabled ? 'warning' : 'info'" size="small">群内提示 {{ row.adFilterGroupNoticeEnabled ? "开" : "关" }}</el-tag>
+            <el-tag v-if="row.adFilterEnabled" :type="row.adFilterGroupNoticeEnabled ? 'warning' : 'info'" size="small">撤回提示 {{ row.adFilterGroupNoticeEnabled ? "开" : "关" }}</el-tag>
             <el-tag :type="row.joinReviewEnabled ? 'warning' : 'info'" size="small">加群审 {{ row.joinReviewEnabled ? "开" : "关" }}</el-tag>
             <el-tag :type="row.allowMute ? 'warning' : 'info'" size="small">禁言 {{ row.allowMute ? "开" : "关" }}</el-tag>
             <el-tag :type="row.allowKick ? 'warning' : 'info'" size="small">踢出 {{ row.allowKick ? "开" : "关" }}</el-tag>
@@ -207,7 +207,7 @@
               <el-tag :type="row.notificationEnabled ? 'success' : 'info'" size="small">通知 {{ row.notificationEnabled ? "开" : "关" }}</el-tag>
               <el-tag :type="row.memberWelcomeEnabled ? 'success' : 'info'" size="small">欢迎 {{ row.memberWelcomeEnabled ? "开" : "关" }}</el-tag>
               <el-tag :type="row.adFilterEnabled ? 'danger' : 'info'" size="small">广告 {{ row.adFilterEnabled ? "开" : "关" }}</el-tag>
-              <el-tag v-if="row.adFilterEnabled" :type="row.adFilterGroupNoticeEnabled ? 'warning' : 'info'" size="small">群内提示 {{ row.adFilterGroupNoticeEnabled ? "开" : "关" }}</el-tag>
+              <el-tag v-if="row.adFilterEnabled" :type="row.adFilterGroupNoticeEnabled ? 'warning' : 'info'" size="small">撤回提示 {{ row.adFilterGroupNoticeEnabled ? "开" : "关" }}</el-tag>
               <el-tag :type="row.joinReviewEnabled ? 'warning' : 'info'" size="small">加群审 {{ row.joinReviewEnabled ? "开" : "关" }}</el-tag>
             </div>
           </div>
@@ -371,7 +371,8 @@
             <el-checkbox v-model="groupDialog.form.notificationEnabled">接收群通知</el-checkbox>
             <el-checkbox v-model="groupDialog.form.memberWelcomeEnabled">新成员欢迎</el-checkbox>
             <el-checkbox v-model="groupDialog.form.adFilterEnabled">广告过滤</el-checkbox>
-            <el-checkbox v-model="groupDialog.form.adFilterGroupNoticeEnabled" :disabled="!groupDialog.form.adFilterEnabled">群聊内提示</el-checkbox>
+            <el-checkbox v-model="groupDialog.form.adFilterGroupNoticeEnabled" :disabled="!groupDialog.form.adFilterEnabled">撤回后群聊提示</el-checkbox>
+            <el-checkbox v-model="groupDialog.form.adFilterBlockQrCodeEnabled" :disabled="!groupDialog.form.adFilterEnabled">禁止二维码</el-checkbox>
             <el-checkbox v-model="groupDialog.form.joinReviewEnabled">快速审核加群</el-checkbox>
             <el-checkbox v-model="groupDialog.form.allowMute">允许禁言</el-checkbox>
             <el-checkbox v-model="groupDialog.form.allowKick">允许踢出</el-checkbox>
@@ -383,9 +384,9 @@
             v-model="groupDialog.form.adFilterReportThreshold"
             :min="0"
             :max="100"
-            :disabled="!groupDialog.form.adFilterEnabled || !groupDialog.form.adFilterGroupNoticeEnabled"
+            :disabled="!groupDialog.form.adFilterEnabled"
           />
-          <div class="form-tip">累计命中多少次后在群内 @ 通报并附管理员处理链接；0 表示关闭。</div>
+          <div class="form-tip">累计命中多少次后在群内 @ 通报并附管理员处理链接；与“撤回后群聊提示”独立，0 表示关闭。</div>
         </el-form-item>
         <el-form-item label="欢迎私聊">
           <el-input
@@ -509,6 +510,7 @@ const groupDialog = reactive({
     memberWelcomeMessage: defaultMemberWelcomeMessage,
     adFilterEnabled: false,
     adFilterGroupNoticeEnabled: true,
+    adFilterBlockQrCodeEnabled: false,
     adFilterReportThreshold: 0,
     joinReviewEnabled: false,
     allowMute: false,
@@ -764,6 +766,7 @@ function openGroupDialog(row?: any) {
     memberWelcomeMessage: row?.memberWelcomeMessage || defaultMemberWelcomeMessage,
     adFilterEnabled: row?.adFilterEnabled ?? false,
     adFilterGroupNoticeEnabled: row?.adFilterGroupNoticeEnabled ?? true,
+    adFilterBlockQrCodeEnabled: row?.adFilterBlockQrCodeEnabled ?? false,
     adFilterReportThreshold: row?.adFilterReportThreshold ?? 0,
     joinReviewEnabled: row?.joinReviewEnabled ?? false,
     allowMute: row?.allowMute ?? false,

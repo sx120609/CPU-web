@@ -54,6 +54,8 @@ export async function reviewQqGroupMessageForAd(input: {
   nickname?: string | null;
   content: string;
   imageUrls?: string[];
+  /** When enabled, any recognizable QR code in text/media is a hard block. */
+  blockQrCodes?: boolean;
   metadata?: Record<string, unknown> | null;
 }): Promise<QqGroupAdReviewResult> {
   const config = getSiteConfig();
@@ -71,7 +73,7 @@ export async function reviewQqGroupMessageForAd(input: {
   }
 
   const imageUrls = Array.from(new Set((input.imageUrls || []).map((url) => String(url || "").trim()).filter(Boolean))).slice(0, 4);
-  const hardBlockReason = detectQqGroupAdHardBlockReason(input.content);
+  const hardBlockReason = detectQqGroupAdHardBlockReason(input.content, input.blockQrCodes === true);
   if (hardBlockReason) {
     return {
       action: "block",
@@ -103,19 +105,23 @@ export async function reviewQqGroupMessageForAd(input: {
     groupId: input.groupId,
     content: normalizedContent,
     imageUrls,
+    blockQrCodes: input.blockQrCodes === true,
   });
   const cached = readLocalResultCache(resultCacheKey);
   if (cached) {
     return cached;
   }
 
-  const promptText = `${imageUrls.length ? "这是一条包含附图的群消息。请直接查看附图判断是否存在广告、导流、招募或商业推广，不要因为文字为空而放行。\n\n" : ""}${fillPromptTemplate(config.qqGroupAdReviewUserPrompt, {
+  const qrPolicy = input.blockQrCodes === true
+    ? "本群已开启“禁止二维码”：只要文字或任一附件（包括视频抽帧）中出现可识别二维码，即使没有其他广告文案，也必须 decision=block，并在 reason 中明确写“二维码”。\n\n"
+    : "本群未开启强制二维码拦截；只有二维码同时构成导流、招募或商业推广时才拦截。\n\n";
+  const promptText = `${qrPolicy}${imageUrls.length ? "这是一条包含附图的群消息。请直接查看附图判断是否存在广告、导流、招募或商业推广，不要因为文字为空而放行。\n\n" : ""}${fillPromptTemplate(config.qqGroupAdReviewUserPrompt, {
     groupId: input.groupId,
     groupName: input.groupName || input.groupId,
     qqId: input.qqId,
     nickname: input.nickname || "",
     content: input.content,
-    metadataJson: JSON.stringify({ ...(input.metadata || {}), imageUrls }),
+    metadataJson: JSON.stringify({ ...(input.metadata || {}), imageUrls, blockQrCodes: input.blockQrCodes === true }),
   })}`;
   const userContent = [
     { type: "text" as const, text: promptText },
@@ -233,9 +239,10 @@ export function detectHarmlessQqGroupAdBypassReason(input: string) {
   return "命中疯狂星期四等玩梗文案豁免";
 }
 
-export function detectQqGroupAdHardBlockReason(input: string) {
+export function detectQqGroupAdHardBlockReason(input: string, blockQrCodes = false) {
   const content = normalizeMessageForCache(input);
   if (!content) return null;
+  if (blockQrCodes && /二维码|扫码|扫描二维码/u.test(content)) return "包含二维码或扫码引导（本群已开启禁止二维码）";
   if (QQ_GROUP_AD_QQ_NUMBER_PATTERN.test(content)) return "包含 QQ 群号并带有群号导流";
   if (QQ_GROUP_AD_INVITE_NUMBER_PATTERN.test(content)) return "包含明确的加群/联系导流号码";
   return null;
@@ -293,8 +300,9 @@ function buildQqGroupAdReviewResultCacheKey(input: {
   groupId: string;
   content: string;
   imageUrls: string[];
+  blockQrCodes: boolean;
 }) {
-  return `qqbot:group-ad-review:${hashString(`${input.configHash}\n${input.groupId}\n${input.content}\n${input.imageUrls.join("\n")}`)}`;
+  return `qqbot:group-ad-review:${hashString(`${input.configHash}\n${input.groupId}\n${input.content}\n${input.blockQrCodes ? "qr-block" : "qr-normal"}\n${input.imageUrls.join("\n")}`)}`;
 }
 
 function buildQqGroupAdPromptCacheKey(input: {
