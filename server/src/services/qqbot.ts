@@ -3111,7 +3111,6 @@ async function maybeHandleQqGroupAdFilter(input: {
       renderQqGroupAdFilterPrivateNotice({
         groupName: group.name || input.groupId,
         review,
-        hitCount: strike.hitCount,
         verificationPrompt: verification.prompt,
         penaltyUserNotice: penalty.userNotice,
       }),
@@ -3161,16 +3160,13 @@ async function maybeHandleQqGroupAdFilter(input: {
 function renderQqGroupAdFilterPrivateNotice(input: {
   groupName: string;
   review: Awaited<ReturnType<typeof reviewQqGroupMessageForAd>>;
-  hitCount: number;
   verificationPrompt: string;
   penaltyUserNotice?: string;
 }) {
   return [
-    `你在群 ${input.groupName} 的一条消息刚刚被广告过滤撤回了。`,
-    `系统说明：${input.review.reason}`,
-    "如果你本意只是普通交流、玩梗或求助，换个更直接、没那么像招募导流的说法再发一次就行。",
-    `累计命中：第 ${input.hitCount} 次。`,
-    `如需临时免过滤，请在 10 分钟内完成趣味验证：${input.verificationPrompt}`,
+    `你在群 ${input.groupName} 的消息已被广告过滤撤回。`,
+    `原因：${input.review.reason}`,
+    `误判或需申请 30 天白名单？请在 10 分钟内完成验证：${input.verificationPrompt}`,
     "验证成功后，你将在本群获得 30 天广告过滤白名单。",
     ...(input.penaltyUserNotice ? [input.penaltyUserNotice] : []),
   ].join("\n");
