@@ -211,6 +211,7 @@ const DEFAULT_GROUP_NOTIFY_AUDIENCES = ["public"];
 const DEFAULT_MEMBER_WELCOME_MESSAGE = "欢迎加入本群，请先查看群公告了解群内规则和使用说明。\n\n如果想把课表添加到手机桌面，可以先打开站内课表页，再按页面提示完成添加。\n\n也欢迎前往个人中心绑定本 QQBot，绑定后可在 QQ 同步接收站内通知。建议顺手把本 QQBot 添加为好友，消息接收和后续操作体验会更顺畅。后续还会陆续接入更多实用功能，敬请期待。";
 const QQ_GROUP_AD_VERIFICATION_TTL_MS = 10 * 60_000;
 const QQ_GROUP_AD_WHITELIST_TTL_MS = 30 * 24 * 60 * 60_000;
+const QQ_GROUP_AD_REPORT_TTL_MS = 12 * 60 * 60_000;
 let pollerStarted = false;
 
 const {
@@ -3347,7 +3348,7 @@ async function maybeSendQqGroupAdReport(input: {
       offenderNickname: input.nickname || null,
       reason: input.reason.slice(0, 500),
       hitCount: input.hitCount,
-      expiresAt: new Date(now.getTime() + 30 * 60_000),
+      expiresAt: new Date(now.getTime() + QQ_GROUP_AD_REPORT_TTL_MS),
     },
   });
   const origin = getSiteOrigin() || "https://cpu.lizmt.cn";
