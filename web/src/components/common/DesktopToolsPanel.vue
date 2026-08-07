@@ -461,21 +461,27 @@ onMounted(async () => {
 
   .guide-title {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 8px;
 
     span {
+      flex: none;
       padding: 3px 6px;
       border-radius: 6px;
       background: var(--cpu-primary);
       color: #fff;
       font-size: 10px;
       font-weight: 800;
+      line-height: 1.35;
+      white-space: nowrap;
     }
 
     strong {
+      min-width: 0;
       color: var(--cpu-text);
       font-size: 13px;
+      line-height: 1.45;
+      overflow-wrap: anywhere;
     }
   }
 
