@@ -95,6 +95,10 @@ async function downloadQqImageToUpload(urlLike: unknown, fileLike: unknown): Pro
     pushFromUnknown(payload?.data?.src);
     pushFromUnknown(payload?.data?.file);
     pushFromUnknown(payload?.data?.path);
+    const base64Loaded = decodeBase64MediaPayload(payload?.data?.base64, payload?.data?.mime_type, file);
+    if (base64Loaded) {
+      return saveQqImageUpload(base64Loaded.buffer, base64Loaded.mime, base64Loaded.nameHint);
+    }
   }
 
   for (const candidate of candidates) {

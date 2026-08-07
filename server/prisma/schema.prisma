@@ -1414,6 +1414,7 @@ model QqBotGroup {
   memberWelcomeMessage String   @default("欢迎加入本群，请先查看群公告了解群内规则和使用说明。\n\n如果想把课表添加到手机桌面，可以先打开站内课表页，再按页面提示完成添加。\n\n也欢迎前往个人中心绑定本 QQBot，绑定后可在 QQ 同步接收站内通知。建议顺手把本 QQBot 添加为好友，消息接收和后续操作体验会更顺畅。后续还会陆续接入更多实用功能，敬请期待。")
   adFilterEnabled      Boolean  @default(false)
   adFilterGroupNoticeEnabled Boolean @default(true)
+  adFilterReportThreshold Int  @default(0)
   joinReviewEnabled    Boolean  @default(false)
   allowMute            Boolean  @default(false)
   allowKick            Boolean  @default(false)
@@ -1491,6 +1492,28 @@ model QqBotGroupAdVerification {
   @@index([groupId, qqId, expiresAt])
   @@index([qqId, codeHash])
   @@index([qqId, expiresAt])
+}
+
+model QqBotGroupAdReport {
+  id                 Int       @id @default(autoincrement())
+  tokenHash          String    @unique
+  groupId            String
+  groupName          String?
+  offenderQqId       String
+  offenderNickname   String?
+  reason             String
+  hitCount           Int
+  status             String    @default("open") // open / handled / expired
+  reportMessageId    String?
+  expiresAt          DateTime
+  handledAt          DateTime?
+  handledByQqId      String?
+  handledAction      String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([groupId, status, createdAt])
+  @@index([groupId, offenderQqId, status])
 }
 
 model QqBotGroupAdWhitelist {

@@ -63,6 +63,7 @@ import {
   extractForwardNodeId,
   extractForwardPayload,
   extractMessageText,
+  extractQqImageUrls,
   extractReplyMessageId,
   normalizeRenderedMessage,
   QQBOT_POST_SUBMIT_PENDING_MESSAGE,
@@ -124,6 +125,7 @@ export type QqBotGroupView = {
   memberWelcomeMessage: string;
   adFilterEnabled: boolean;
   adFilterGroupNoticeEnabled: boolean;
+  adFilterReportThreshold: number;
   joinReviewEnabled: boolean;
   allowMute: boolean;
   allowKick: boolean;
@@ -314,6 +316,7 @@ export function formatQqBotGroup(group: {
   memberWelcomeMessage: string | null;
   adFilterEnabled: boolean;
   adFilterGroupNoticeEnabled?: boolean;
+  adFilterReportThreshold?: number;
   joinReviewEnabled: boolean;
   allowMute: boolean;
   allowKick: boolean;
@@ -338,6 +341,7 @@ export function formatQqBotGroup(group: {
     // Old rows/fixtures may not have the field until the schema is pushed.
     // Treat an absent value as enabled so existing moderation behavior is preserved.
     adFilterGroupNoticeEnabled: group.adFilterGroupNoticeEnabled ?? true,
+    adFilterReportThreshold: Math.max(0, Number(group.adFilterReportThreshold || 0)),
     joinReviewEnabled: group.joinReviewEnabled,
     allowMute: group.allowMute,
     allowKick: group.allowKick,
@@ -2285,11 +2289,13 @@ async function createTopicFromQq(input: {
 
 export async function sendQqMessage(target: QqMessageTarget, message: string) {
   const chunks = splitQqMessageForDelivery(message);
+  let messageId: string | undefined;
   for (let index = 0; index < chunks.length; index += 1) {
     const chunk = chunks[index];
     const decorated = chunks.length > 1 ? `（${index + 1}/${chunks.length}）\n${chunk}` : chunk;
-    await sendSingleQqMessage(target, decorated);
+    messageId = (await sendSingleQqMessage(target, decorated)) || messageId;
   }
+  return messageId;
 }
 
 async function sendSingleQqMessage(target: QqMessageTarget, message: string) {
@@ -2305,7 +2311,8 @@ async function sendSingleQqMessage(target: QqMessageTarget, message: string) {
     };
   if (isWebSocketUrl(config.napcatBaseUrl)) {
     try {
-      await sendQqMessageByWebSocket(endpoint, body, target, message);
+      const result = await sendQqMessageByWebSocket(endpoint, body, target, message);
+      return extractNapCatMessageId(result);
     } catch (error: any) {
       await logQqBotMessage({
         direction: "outbound",
@@ -2339,6 +2346,22 @@ async function sendSingleQqMessage(target: QqMessageTarget, message: string) {
     result: text.slice(0, 500),
   });
   if (!response.ok) throw Errors.server(`NapCat 发送失败：${response.status} ${text.slice(0, 120)}`);
+  const data = parseJsonObject(text);
+  return extractNapCatMessageId(data);
+}
+
+function extractNapCatMessageId(payload: any) {
+  const value = payload?.data?.message_id ?? payload?.message_id ?? payload?.data?.messageId ?? payload?.messageId;
+  const normalized = String(value ?? "").trim();
+  return normalized || undefined;
+}
+
+function parseJsonObject(value: string) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
 }
 
 async function replyToEvent(context: { event: OneBotEvent; qqId: string; groupId?: string }, message: string) {
@@ -3048,8 +3071,10 @@ async function maybeHandleQqGroupAdFilter(input: {
   messageText: string;
 }) {
   const messageText = String(input.messageText || "").trim();
+  const rawMessage = input.event.message ?? input.event.raw_message ?? "";
+  const hasImage = containsQqImage(rawMessage);
   const botQqId = readConfigBotQqId(input.config);
-  if (!messageText) return false;
+  if (!messageText && !hasImage) return false;
   if (isCommandMessage(messageText) || isExplicitBotMention(input.event, messageText)) return false;
   if (input.qqId && (input.qqId === botQqId || String(input.event.self_id || "") === input.qqId)) return false;
 
@@ -3060,14 +3085,21 @@ async function maybeHandleQqGroupAdFilter(input: {
   if (whitelisted) return false;
 
   try {
+    const imageUrls = hasImage
+      ? await extractQqImageUrls(rawMessage)
+      : [];
+    const reviewContent = messageText || (imageUrls.length ? "[图片消息]" : "[图片消息，图片暂时无法加载]");
     const review = await reviewQqGroupMessageForAd({
       groupId: input.groupId,
       groupName: group.name,
       qqId: input.qqId,
       nickname: senderNickname,
-      content: messageText,
+      content: reviewContent,
+      imageUrls,
       metadata: {
         messageId: input.event.message_id ? String(input.event.message_id) : "",
+        hasImage,
+        imageCount: imageUrls.length,
       },
     });
     if (review.action !== "block") return false;
@@ -3078,7 +3110,7 @@ async function maybeHandleQqGroupAdFilter(input: {
         status: "error",
         qqId: input.qqId,
         groupId: input.groupId,
-        content: messageText.slice(0, 500),
+        content: reviewContent.slice(0, 500),
         result: `命中广告过滤，但缺少 message_id，无法撤回。原因：${review.reason}`,
         rawPayload: input.event,
       });
@@ -3125,6 +3157,13 @@ async function maybeHandleQqGroupAdFilter(input: {
           verificationPrompt: verification.prompt,
         }),
       ).catch(() => undefined);
+      await maybeSendQqGroupAdReport({
+        group,
+        qqId: input.qqId,
+        nickname: senderNickname,
+        hitCount: strike.hitCount,
+        reason: review.reason,
+      }).catch(() => undefined);
     }
     await logQqBotMessage({
       direction: "inbound",
@@ -3133,7 +3172,7 @@ async function maybeHandleQqGroupAdFilter(input: {
       qqId: input.qqId,
       groupId: input.groupId,
       messageId: String(input.event.message_id),
-      content: messageText.slice(0, 500),
+      content: reviewContent.slice(0, 500),
       result: [
         `已撤回疑似广告消息（第${strike.hitCount}次，${review.riskScore}分，${review.reason}；已生成白名单验证码）`,
         penalty.logSummary,
@@ -3149,7 +3188,7 @@ async function maybeHandleQqGroupAdFilter(input: {
       qqId: input.qqId,
       groupId: input.groupId,
       messageId: input.event.message_id ? String(input.event.message_id) : undefined,
-      content: messageText.slice(0, 500),
+      content: messageText.slice(0, 500) || (hasImage ? "[图片消息]" : ""),
       result: String((error as any)?.message || error || "group ad filter failed").slice(0, 500),
       rawPayload: input.event,
     });
@@ -3186,6 +3225,80 @@ function renderQqGroupAdFilterGroupNotice(
     `原因：${input.review.reason}`,
     `误判或需申请 30 天白名单？请在 10 分钟内私聊我或 @我完成验证：${input.verificationPrompt}`,
   ].join("\n");
+}
+
+function containsQqImage(message: unknown): boolean {
+  if (typeof message === "string") return /\[CQ:image(?:,|\])/i.test(message);
+  if (Array.isArray(message)) return message.some((item) => containsQqImage(item));
+  if (!message || typeof message !== "object") return false;
+  const item = message as any;
+  if (String(item.type || "").trim() === "image") return true;
+  return containsQqImage(item.data?.content)
+    || containsQqImage(item.data?.message)
+    || containsQqImage(item.message)
+    || containsQqImage(item.content);
+}
+
+async function maybeSendQqGroupAdReport(input: {
+  group: {
+    groupId: string;
+    name: string | null;
+    adFilterReportThreshold: number;
+  };
+  qqId: string;
+  nickname?: string | null;
+  hitCount: number;
+  reason: string;
+}) {
+  const threshold = Math.max(0, Number(input.group.adFilterReportThreshold || 0));
+  if (!threshold || input.hitCount < threshold) return;
+
+  const now = new Date();
+  const existing = await prisma.qqBotGroupAdReport.findFirst({
+    where: {
+      groupId: input.group.groupId,
+      offenderQqId: input.qqId,
+      status: "open",
+      expiresAt: { gt: now },
+    },
+    select: { id: true },
+  });
+  if (existing) return;
+
+  const token = crypto.randomBytes(18).toString("base64url");
+  const tokenHash = crypto.createHash("sha256").update(`qqbot-ad-report:${token}`).digest("hex");
+  const report = await prisma.qqBotGroupAdReport.create({
+    data: {
+      tokenHash,
+      groupId: input.group.groupId,
+      groupName: input.group.name,
+      offenderQqId: input.qqId,
+      offenderNickname: input.nickname || null,
+      reason: input.reason.slice(0, 500),
+      hitCount: input.hitCount,
+      expiresAt: new Date(now.getTime() + 30 * 60_000),
+    },
+  });
+  const origin = getSiteOrigin() || "https://cpu.lizmt.cn";
+  const actionUrl = `${origin.replace(/\/+$/, "")}/qqbot/ad-report/${token}`;
+  try {
+    const messageId = await sendQqMessage(
+      { groupId: input.group.groupId },
+      [
+        `[CQ:at,qq=${input.qqId}] 广告过滤累计命中 ${input.hitCount} 次，相关消息已自动撤回。`,
+        `管理员处理：${actionUrl}`,
+      ].join("\n"),
+    );
+    if (messageId) {
+      await prisma.qqBotGroupAdReport.update({
+        where: { id: report.id },
+        data: { reportMessageId: messageId },
+      });
+    }
+  } catch (error) {
+    await prisma.qqBotGroupAdReport.delete({ where: { id: report.id } }).catch(() => undefined);
+    throw error;
+  }
 }
 
 function hashQqGroupAdVerificationCode(code: string) {
@@ -3415,6 +3528,11 @@ async function resolveQqGroupMemberRole(groupId: string, qqId: string, event: On
   );
 }
 
+export async function verifyQqBotGroupAdminIdentity(groupId: string, qqId: string) {
+  const role = await resolveQqGroupMemberRole(groupId, qqId, {});
+  return { verified: role === "owner" || role === "admin", role };
+}
+
 function normalizeQqGroupMemberRole(value: unknown) {
   const role = String(value || "").trim().toLowerCase();
   if (role === "owner" || role === "admin" || role === "member") return role;
@@ -3436,6 +3554,7 @@ function buildQqBotGroupFallbackView(groupId: string, event?: OneBotEvent) {
     memberWelcomeMessage: DEFAULT_MEMBER_WELCOME_MESSAGE,
     adFilterEnabled: false,
     adFilterGroupNoticeEnabled: true,
+    adFilterReportThreshold: 0,
     joinReviewEnabled: false,
     allowMute: false,
     allowKick: false,

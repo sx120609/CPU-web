@@ -378,6 +378,15 @@
             <el-checkbox v-model="groupDialog.form.allowKickAndBlock">允许踢出并拉黑</el-checkbox>
           </div>
         </el-form-item>
+        <el-form-item label="累计通报">
+          <el-input-number
+            v-model="groupDialog.form.adFilterReportThreshold"
+            :min="0"
+            :max="100"
+            :disabled="!groupDialog.form.adFilterEnabled || !groupDialog.form.adFilterGroupNoticeEnabled"
+          />
+          <div class="form-tip">累计命中多少次后在群内 @ 通报并附管理员处理链接；0 表示关闭。</div>
+        </el-form-item>
         <el-form-item label="欢迎私聊">
           <el-input
             v-model="groupDialog.form.memberWelcomeMessage"
@@ -500,6 +509,7 @@ const groupDialog = reactive({
     memberWelcomeMessage: defaultMemberWelcomeMessage,
     adFilterEnabled: false,
     adFilterGroupNoticeEnabled: true,
+    adFilterReportThreshold: 0,
     joinReviewEnabled: false,
     allowMute: false,
     allowKick: false,
@@ -754,6 +764,7 @@ function openGroupDialog(row?: any) {
     memberWelcomeMessage: row?.memberWelcomeMessage || defaultMemberWelcomeMessage,
     adFilterEnabled: row?.adFilterEnabled ?? false,
     adFilterGroupNoticeEnabled: row?.adFilterGroupNoticeEnabled ?? true,
+    adFilterReportThreshold: row?.adFilterReportThreshold ?? 0,
     joinReviewEnabled: row?.joinReviewEnabled ?? false,
     allowMute: row?.allowMute ?? false,
     allowKick: row?.allowKick ?? false,

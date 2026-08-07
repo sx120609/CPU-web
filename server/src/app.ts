@@ -6,6 +6,7 @@ import { existsSync } from "node:fs";
 import { errorHandler } from "./middleware/error";
 import { router } from "./routes";
 import { shareRouter } from "./routes/share";
+import { qqBotAdReportRouter } from "./routes/qqbotAdReport";
 import { isDev } from "./config";
 import { getDatabaseMaintenanceMessage, isDatabaseMaintenanceActive } from "./services/maintenance";
 import { filestoreHandler } from "./services/filestore";
@@ -17,6 +18,7 @@ import { startSponsorOrderExpiryPoller } from "./services/sponsor";
 import { startRuntimeSync } from "./services/runtimeSync";
 import { fail } from "./utils/response";
 import { browserSessionMiddleware, requestOriginAndCsrfProtection } from "./middleware/browserSession";
+import { authOptional } from "./middleware/auth";
 import { receiveCspReport, securityHeaders } from "./middleware/securityHeaders";
 import { voiceHubProxyMiddleware } from "./services/voiceHubProxy";
 
@@ -75,6 +77,7 @@ export function createApp() {
   });
 
   app.use("/share", shareRouter);
+  app.use("/qqbot/ad-report", browserSessionMiddleware, authOptional, qqBotAdReportRouter);
   app.use("/api", router);
   startRuntimeSync();
   startForumImageModerationPoller();

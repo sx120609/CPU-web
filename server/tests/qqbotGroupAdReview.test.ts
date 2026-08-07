@@ -1,6 +1,32 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { detectHarmlessQqGroupAdBypassReason } from "../src/services/qqbotGroupAdReview";
+import {
+  detectHarmlessQqGroupAdBypassReason,
+  detectQqGroupAdHardBlockReason,
+  resolveQqGroupAdReviewAction,
+} from "../src/services/qqbotGroupAdReview";
+
+test("hard-blocks explicit QQ group number diversion", () => {
+  assert.equal(
+    detectQqGroupAdHardBlockReason("新生资料免费领取，欢迎加QQ群：3498138727"),
+    "包含 QQ 群号并带有群号导流",
+  );
+});
+
+test("does not hard-block a normal message that only mentions QQ groups", () => {
+  assert.equal(detectQqGroupAdHardBlockReason("班级 QQ 群今晚通知上课地点"), null);
+});
+
+test("honors an explicit model block just below the configured threshold", () => {
+  assert.equal(
+    resolveQqGroupAdReviewAction({
+      riskScore: 84,
+      threshold: 85,
+      modelDecision: "block",
+    }),
+    "block",
+  );
+});
 
 test("allows long KFC Thursday meme copy that imitates an advertisement", () => {
   const content = [

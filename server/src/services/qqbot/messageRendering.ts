@@ -101,6 +101,54 @@ export async function extractMessageText(
   return normalizeRenderedMessage(parts.join(""));
 }
 
+/**
+ * Resolve image segments to public URLs for downstream moderation.  The normal
+ * renderer intentionally allows placeholders for forwards, but moderation
+ * must still fetch the actual image instead of treating an image-only message
+ * as an empty message.
+ */
+export async function extractQqImageUrls(message: unknown): Promise<string[]> {
+  const urls: string[] = [];
+  const visited = new Set<object>();
+
+  const visit = async (value: unknown): Promise<void> => {
+    if (typeof value === "string") {
+      for (const match of value.matchAll(/\[CQ:image,([^\]]*)\]/gi)) {
+        const params = parseCqParams(match[1] || "");
+        await pushResolved(params.url, params.file);
+      }
+      return;
+    }
+    if (!value || typeof value !== "object") return;
+    if (visited.has(value as object)) return;
+    visited.add(value as object);
+    if (Array.isArray(value)) {
+      for (const item of value) await visit(item);
+      return;
+    }
+    const item = value as any;
+    if (String(item.type || "").trim() === "image") {
+      await pushResolved(item.data?.url, item.data?.file ?? item.data?.file_id);
+    }
+    if (item.data?.content !== undefined) await visit(item.data.content);
+    if (item.data?.message !== undefined) await visit(item.data.message);
+    if (item.message !== undefined) await visit(item.message);
+    if (item.content !== undefined) await visit(item.content);
+  };
+
+  const pushResolved = async (urlLike: unknown, fileLike: unknown) => {
+    let resolved = await resolveQqImageUrl(urlLike, fileLike).catch(() => "");
+    // NapCat can briefly expose the file before the download endpoint is
+    // ready. resolveQqImageUrl drops failed cache entries, so a second pass
+    // is a real retry rather than returning the same failed promise.
+    if (!resolved) resolved = await resolveQqImageUrl(urlLike, fileLike).catch(() => "");
+    if (resolved && !urls.includes(resolved)) urls.push(resolved);
+  };
+
+  await visit(message);
+  return urls;
+}
+
 function readForwardSegmentId(data: any) {
   return String(data?.id || data?.resid || data?.forward_id || data?.message_id || "").trim();
 }

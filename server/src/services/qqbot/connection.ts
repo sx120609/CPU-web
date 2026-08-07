@@ -184,7 +184,14 @@ export async function sendQqMessageByWebSocket(
   await connectQqBotWebSocket();
   await waitWebSocketOpen();
   const echo = `cpu-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  wsClient.send(JSON.stringify({ action, params, echo }));
+  const result = await new Promise<any>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      wsPendingActions.delete(echo);
+      reject(Errors.badRequest(`NapCat 消息发送超时：${action}`));
+    }, 8000);
+    wsPendingActions.set(echo, { resolve, reject, timer });
+    wsClient.send(JSON.stringify({ action, params, echo }));
+  });
   await deps.logMessage({
     direction: "outbound",
     eventType: target.groupId ? "group-message" : "private-message",
@@ -192,8 +199,9 @@ export async function sendQqMessageByWebSocket(
     qqId: target.qqId,
     groupId: target.groupId || target.tempGroupId,
     content: message.slice(0, 1000),
-    result: `queued:${echo}`,
+    result: JSON.stringify(result).slice(0, 500),
   });
+  return result;
 }
 
 function requireConnectionDeps() {

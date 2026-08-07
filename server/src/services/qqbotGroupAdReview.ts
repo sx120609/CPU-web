@@ -38,6 +38,8 @@ const QQ_GROUP_AD_KFC_MEME_HARD_DIVERSION_PATTERNS = [
   /(?:微信|vx|v信|威信)\s*(?:号|id)?\s*[:：]?\s*[a-z][a-z0-9_-]{5,19}\b/iu,
   /(?<!\d)1[3-9]\d{9}(?!\d)/u,
 ];
+const QQ_GROUP_AD_QQ_NUMBER_PATTERN = /(?:QQ\s*(?:\u7fa4|\u7fa4\u53f7)|Q\s*\u7fa4|\u7fa4\u53f7).{0,16}\d{6,12}/iu;
+const QQ_GROUP_AD_INVITE_NUMBER_PATTERN = /(?:\u52a0|\u8fdb|\u52a0\u5165|\u62c9|\u626b\u7801|\u8054\u7cfb|\u79c1\u804a).{0,24}\d{6,12}/u;
 const localResultCache = new Map<string, { expiresAt: number; value: QqGroupAdReviewResult }>();
 
 export function shouldRunQqGroupAdReview() {
@@ -51,6 +53,7 @@ export async function reviewQqGroupMessageForAd(input: {
   qqId: string;
   nickname?: string | null;
   content: string;
+  imageUrls?: string[];
   metadata?: Record<string, unknown> | null;
 }): Promise<QqGroupAdReviewResult> {
   const config = getSiteConfig();
@@ -67,7 +70,20 @@ export async function reviewQqGroupMessageForAd(input: {
     };
   }
 
-  const localBypassReason = detectHarmlessQqGroupAdBypassReason(input.content);
+  const imageUrls = Array.from(new Set((input.imageUrls || []).map((url) => String(url || "").trim()).filter(Boolean))).slice(0, 4);
+  const hardBlockReason = detectQqGroupAdHardBlockReason(input.content);
+  if (hardBlockReason) {
+    return {
+      action: "block",
+      riskScore: 100,
+      riskLevel: "high",
+      reason: hardBlockReason,
+      detail: "命中明确的 QQ 群号或加群导流特征，无需等待模型阈值判断。",
+      model: "local-signal",
+      modelDecision: "block",
+    };
+  }
+  const localBypassReason = imageUrls.length ? null : detectHarmlessQqGroupAdBypassReason(input.content);
   if (localBypassReason) {
     return {
       action: "allow",
@@ -86,25 +102,31 @@ export async function reviewQqGroupMessageForAd(input: {
     configHash,
     groupId: input.groupId,
     content: normalizedContent,
+    imageUrls,
   });
   const cached = readLocalResultCache(resultCacheKey);
   if (cached) {
     return cached;
   }
 
+  const promptText = `${imageUrls.length ? "这是一条包含附图的群消息。请直接查看附图判断是否存在广告、导流、招募或商业推广，不要因为文字为空而放行。\n\n" : ""}${fillPromptTemplate(config.qqGroupAdReviewUserPrompt, {
+    groupId: input.groupId,
+    groupName: input.groupName || input.groupId,
+    qqId: input.qqId,
+    nickname: input.nickname || "",
+    content: input.content,
+    metadataJson: JSON.stringify({ ...(input.metadata || {}), imageUrls }),
+  })}`;
+  const userContent = [
+    { type: "text" as const, text: promptText },
+    ...imageUrls.map((url) => ({
+      type: "image_url" as const,
+      image_url: { url, detail: "auto" as const },
+    })),
+  ];
   const messages = [
     { role: "system" as const, content: config.qqGroupAdReviewSystemPrompt },
-    {
-      role: "user" as const,
-      content: fillPromptTemplate(config.qqGroupAdReviewUserPrompt, {
-        groupId: input.groupId,
-        groupName: input.groupName || input.groupId,
-        qqId: input.qqId,
-        nickname: input.nickname || "",
-        content: input.content,
-        metadataJson: JSON.stringify(input.metadata || {}),
-      }),
-    },
+    { role: "user" as const, content: userContent },
   ];
   const endpoint = normalizeAiJsonApiUrl(provider.apiUrl, "https://api.deepseek.com/chat/completions");
   const candidates = resolveModelCandidates(config.qqGroupAdReviewModel, config.qqGroupAdReviewFallbackModels);
@@ -124,7 +146,7 @@ export async function reviewQqGroupMessageForAd(input: {
       provider: config.qqGroupAdReviewProvider,
       model,
       endpoint,
-      requestSummary: messages[1].content,
+      requestSummary: promptText,
     });
     const logId = started?.id ?? null;
 
@@ -211,6 +233,14 @@ export function detectHarmlessQqGroupAdBypassReason(input: string) {
   return "命中疯狂星期四等玩梗文案豁免";
 }
 
+export function detectQqGroupAdHardBlockReason(input: string) {
+  const content = normalizeMessageForCache(input);
+  if (!content) return null;
+  if (QQ_GROUP_AD_QQ_NUMBER_PATTERN.test(content)) return "包含 QQ 群号并带有群号导流";
+  if (QQ_GROUP_AD_INVITE_NUMBER_PATTERN.test(content)) return "包含明确的加群/联系导流号码";
+  return null;
+}
+
 function fillPromptTemplate(template: string, values: Record<string, string>) {
   return String(template || "").replace(/\{\{(\w+)\}\}/g, (_, key) => values[key] ?? "");
 }
@@ -262,8 +292,9 @@ function buildQqGroupAdReviewResultCacheKey(input: {
   configHash: string;
   groupId: string;
   content: string;
+  imageUrls: string[];
 }) {
-  return `qqbot:group-ad-review:${hashString(`${input.configHash}\n${input.groupId}\n${input.content}`)}`;
+  return `qqbot:group-ad-review:${hashString(`${input.configHash}\n${input.groupId}\n${input.content}\n${input.imageUrls.join("\n")}`)}`;
 }
 
 function buildQqGroupAdPromptCacheKey(input: {
@@ -317,11 +348,12 @@ function normalizeRiskLevel(value: unknown): "low" | "medium" | "high" {
   return "low";
 }
 
-function resolveQqGroupAdReviewAction(input: {
+export function resolveQqGroupAdReviewAction(input: {
   riskScore: number;
   threshold: number;
   modelDecision: string;
 }): "allow" | "block" {
   if (input.modelDecision === "manual_review") return "allow";
+  if (input.modelDecision === "block" && input.riskScore >= Math.max(0, input.threshold - 10)) return "block";
   return input.riskScore >= input.threshold ? "block" : "allow";
 }
