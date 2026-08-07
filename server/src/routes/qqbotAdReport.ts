@@ -53,17 +53,31 @@ qqBotAdReportRouter.post("/:token", async (req, res, next) => {
     if (action === "kick-block" && !context.group.allowKickAndBlock) {
       return renderState(res, 403, "功能未开启", "该群尚未允许通过机器人移出并拉黑成员。");
     }
+    if (action === "mute" && !context.group.allowMute) {
+      return renderState(res, 403, "功能未开启", "该群尚未允许通过机器人禁言成员。");
+    }
 
+    const muteSeconds = action === "mute"
+      ? normalizeQqBotAdReportMuteSeconds(req.body?.muteMinutes)
+      : 0;
     if (action !== "acknowledge") {
       const offenderRole = await verifyQqBotGroupAdminIdentity(context.report.groupId, context.report.offenderQqId);
       if (offenderRole.verified) {
         return renderState(res, 403, "不能执行该操作", "被通报账号当前也是群主或管理员，请在 QQ 群内人工处理。");
       }
-      await callQqBotAction("set_group_kick", {
-        group_id: numericId(context.report.groupId),
-        user_id: numericId(context.report.offenderQqId),
-        reject_add_request: false,
-      });
+      if (action === "mute") {
+        await callQqBotAction("set_group_ban", {
+          group_id: numericId(context.report.groupId),
+          user_id: numericId(context.report.offenderQqId),
+          duration: muteSeconds,
+        });
+      } else {
+        await callQqBotAction("set_group_kick", {
+          group_id: numericId(context.report.groupId),
+          user_id: numericId(context.report.offenderQqId),
+          reject_add_request: false,
+        });
+      }
       if (action === "kick-block") {
         await prisma.qqBotGroupBlockedUser.upsert({
           where: {
@@ -96,7 +110,7 @@ qqBotAdReportRouter.post("/:token", async (req, res, next) => {
         status: "handled",
         handledAt: new Date(),
         handledByQqId: identity.qqId,
-        handledAction: action,
+        handledAction: action === "mute" ? `mute:${muteSeconds}` : action,
       },
     });
     if (context.report.reportMessageId) {
@@ -107,9 +121,11 @@ qqBotAdReportRouter.post("/:token", async (req, res, next) => {
 
     const successMessage = action === "acknowledge"
       ? "已确认处理，群内通报消息会自动撤回。"
-      : action === "kick"
-        ? "已将该账号移出群聊，并撤回群内通报消息。"
-        : "已将该账号移出群聊、加入本群黑名单，并撤回群内通报消息。";
+      : action === "mute"
+        ? `已将该账号禁言 ${formatMuteDuration(muteSeconds)}，并撤回群内通报消息。`
+        : action === "kick"
+          ? "已将该账号移出群聊，并撤回群内通报消息。"
+          : "已将该账号移出群聊、加入本群黑名单，并撤回群内通报消息。";
     return renderState(res, 200, "处理完成", successMessage, "success");
   } catch (error) {
     next(error);
@@ -187,8 +203,21 @@ function redirectToLogin(req: Request, res: Response) {
 
 function normalizeAction(value: unknown) {
   const action = String(value || "").trim();
-  if (action === "acknowledge" || action === "kick" || action === "kick-block") return action;
+  if (action === "acknowledge" || action === "mute" || action === "kick" || action === "kick-block") return action;
   return "";
+}
+
+export function normalizeQqBotAdReportMuteSeconds(value: unknown) {
+  const rawValue = String(value ?? "").trim();
+  const minutes = rawValue ? Number(rawValue) : 10;
+  const normalizedMinutes = Number.isFinite(minutes) ? Math.floor(minutes) : 10;
+  return Math.min(30 * 24 * 60 * 60, Math.max(60, normalizedMinutes * 60));
+}
+
+function formatMuteDuration(seconds: number) {
+  if (seconds % 86400 === 0) return `${seconds / 86400} 天`;
+  if (seconds % 3600 === 0) return `${seconds / 3600} 小时`;
+  return `${Math.ceil(seconds / 60)} 分钟`;
 }
 
 function numericId(value: string) {
@@ -214,6 +243,7 @@ function renderActionPage(report: any, group: any, adminQqId: string) {
   const name = report.offenderNickname ? `${report.offenderNickname}（${report.offenderQqId}）` : report.offenderQqId;
   const actions = [
     `<button class="primary" name="action" value="acknowledge">确认已处理</button>`,
+    group.allowMute ? `<span class="mute-action"><label for="muteMinutes">禁言</label><input id="muteMinutes" name="muteMinutes" type="number" min="1" max="43200" value="10" inputmode="numeric" required><span>分钟</span><button name="action" value="mute">执行禁言</button></span>` : "",
     group.allowKick ? `<button name="action" value="kick">移出群聊</button>` : "",
     group.allowKickAndBlock ? `<button class="danger" name="action" value="kick-block">移出并拉黑</button>` : "",
   ].filter(Boolean).join("");
@@ -246,6 +276,6 @@ function renderState(res: Response, status: number, title: string, message: stri
 
 function pageShell(title: string, body: string) {
   return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)} · 药大拾间</title><style>
-  :root{color-scheme:light dark;--bg:#f5f8f7;--card:#fff;--text:#172033;--muted:#6d7b91;--line:#dce6e3;--brand:#4d917d;--brand-soft:#e9f3f0;--danger:#c54c4c}*{box-sizing:border-box}body{margin:0;min-height:100vh;background:var(--bg);color:var(--text);font-family:Inter,"PingFang SC","Microsoft YaHei",sans-serif;display:grid;place-items:center;padding:24px}.shell{width:min(620px,100%);background:var(--card);border:1px solid var(--line);border-radius:24px;padding:32px;box-shadow:0 24px 70px rgba(33,70,61,.12)}.eyebrow{display:inline-block;color:var(--brand);font-size:14px;font-weight:700;letter-spacing:.08em}h1{font-size:28px;margin:10px 0 8px}.lead{color:var(--muted);line-height:1.75;margin:0 0 24px}.card{border:1px solid var(--line);border-radius:18px;background:var(--brand-soft);padding:4px 20px}dl{margin:0}dl div{display:grid;grid-template-columns:105px 1fr;gap:16px;padding:14px 0;border-bottom:1px solid var(--line)}dl div:last-child{border-bottom:0}dt{color:var(--muted)}dd{margin:0;word-break:break-word}.actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:22px}button,.button-link{appearance:none;border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:12px;padding:12px 18px;font:inherit;font-weight:700;cursor:pointer;text-decoration:none;display:inline-block}.primary,.button-link{background:var(--brand);border-color:var(--brand);color:white}.danger{border-color:#e8b8b8;color:var(--danger)}.hint{font-size:13px;color:var(--muted);line-height:1.7;margin:18px 0 0}.state{text-align:center}.state-icon{display:inline-grid;place-items:center;width:64px;height:64px;border-radius:50%;background:#fff2df;color:#b9781f;font-size:32px;font-weight:800}.state.success .state-icon{background:var(--brand-soft);color:var(--brand)}@media(max-width:560px){body{padding:14px}.shell{padding:24px 20px;border-radius:20px}h1{font-size:24px}dl div{grid-template-columns:1fr;gap:5px}.actions{display:grid}.actions button{width:100%}}@media(prefers-color-scheme:dark){:root{--bg:#091713;--card:#10231e;--text:#edf7f4;--muted:#a4b9b2;--line:#29433b;--brand:#69ad99;--brand-soft:#17352d;--danger:#ff9696}.shell{box-shadow:none}.state-icon{background:#3b2c17}}
+  :root{color-scheme:light dark;--bg:#f5f8f7;--card:#fff;--text:#172033;--muted:#6d7b91;--line:#dce6e3;--brand:#4d917d;--brand-soft:#e9f3f0;--danger:#c54c4c}*{box-sizing:border-box}body{margin:0;min-height:100vh;background:var(--bg);color:var(--text);font-family:Inter,"PingFang SC","Microsoft YaHei",sans-serif;display:grid;place-items:center;padding:24px}.shell{width:min(620px,100%);background:var(--card);border:1px solid var(--line);border-radius:24px;padding:32px;box-shadow:0 24px 70px rgba(33,70,61,.12)}.eyebrow{display:inline-block;color:var(--brand);font-size:14px;font-weight:700;letter-spacing:.08em}h1{font-size:28px;margin:10px 0 8px}.lead{color:var(--muted);line-height:1.75;margin:0 0 24px}.card{border:1px solid var(--line);border-radius:18px;background:var(--brand-soft);padding:4px 20px}dl{margin:0}dl div{display:grid;grid-template-columns:105px 1fr;gap:16px;padding:14px 0;border-bottom:1px solid var(--line)}dl div:last-child{border-bottom:0}dt{color:var(--muted)}dd{margin:0;word-break:break-word}.actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:22px}button,.button-link{appearance:none;border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:12px;padding:12px 18px;font:inherit;font-weight:700;cursor:pointer;text-decoration:none;display:inline-block}.primary,.button-link{background:var(--brand);border-color:var(--brand);color:white}.danger{border-color:#e8b8b8;color:var(--danger)}.mute-action{display:flex;align-items:center;gap:8px;padding:6px 8px 6px 12px;border:1px solid var(--line);border-radius:12px;color:var(--muted)}.mute-action input{width:78px;border:1px solid var(--line);border-radius:8px;padding:8px;background:var(--card);color:var(--text);font:inherit}.mute-action button{padding:8px 12px}.hint{font-size:13px;color:var(--muted);line-height:1.7;margin:18px 0 0}.state{text-align:center}.state-icon{display:inline-grid;place-items:center;width:64px;height:64px;border-radius:50%;background:#fff2df;color:#b9781f;font-size:32px;font-weight:800}.state.success .state-icon{background:var(--brand-soft);color:var(--brand)}@media(max-width:560px){body{padding:14px}.shell{padding:24px 20px;border-radius:20px}h1{font-size:24px}dl div{grid-template-columns:1fr;gap:5px}.actions{display:grid}.actions>button{width:100%}.mute-action{display:grid;grid-template-columns:auto 1fr auto}.mute-action input{width:100%}.mute-action button{grid-column:1/-1}}@media(prefers-color-scheme:dark){:root{--bg:#091713;--card:#10231e;--text:#edf7f4;--muted:#a4b9b2;--line:#29433b;--brand:#69ad99;--brand-soft:#17352d;--danger:#ff9696}.shell{box-shadow:none}.state-icon{background:#3b2c17}}
   </style></head><body><main class="shell">${body}</main></body></html>`;
 }

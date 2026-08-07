@@ -374,11 +374,14 @@
             <el-checkbox v-model="groupDialog.form.adFilterGroupNoticeEnabled" :disabled="!groupDialog.form.adFilterEnabled">撤回后群聊提示</el-checkbox>
             <el-checkbox v-model="groupDialog.form.adFilterBlockQrCodeEnabled" :disabled="!groupDialog.form.adFilterEnabled">禁止二维码</el-checkbox>
             <el-checkbox v-model="groupDialog.form.adFilterBlockGroupCardEnabled" :disabled="!groupDialog.form.adFilterEnabled">拦截群卡片</el-checkbox>
+            <el-checkbox v-model="groupDialog.form.adFilterWhitelistBlockQrCodeEnabled" :disabled="!groupDialog.form.adFilterEnabled">白名单仍禁二维码</el-checkbox>
+            <el-checkbox v-model="groupDialog.form.adFilterWhitelistBlockGroupCardEnabled" :disabled="!groupDialog.form.adFilterEnabled">白名单仍拦截群卡片</el-checkbox>
             <el-checkbox v-model="groupDialog.form.joinReviewEnabled">快速审核加群</el-checkbox>
             <el-checkbox v-model="groupDialog.form.allowMute">允许禁言</el-checkbox>
             <el-checkbox v-model="groupDialog.form.allowKick">允许踢出</el-checkbox>
             <el-checkbox v-model="groupDialog.form.allowKickAndBlock">允许踢出并拉黑</el-checkbox>
           </div>
+          <div class="form-tip">白名单默认豁免普通广告判断；可单独保留二维码、群卡片两类硬性限制。</div>
         </el-form-item>
         <el-form-item label="累计通报">
           <el-input-number
@@ -513,6 +516,8 @@ const groupDialog = reactive({
     adFilterGroupNoticeEnabled: true,
     adFilterBlockQrCodeEnabled: false,
     adFilterBlockGroupCardEnabled: false,
+    adFilterWhitelistBlockQrCodeEnabled: false,
+    adFilterWhitelistBlockGroupCardEnabled: false,
     adFilterReportThreshold: 0,
     joinReviewEnabled: false,
     allowMute: false,
@@ -770,6 +775,8 @@ function openGroupDialog(row?: any) {
     adFilterGroupNoticeEnabled: row?.adFilterGroupNoticeEnabled ?? true,
     adFilterBlockQrCodeEnabled: row?.adFilterBlockQrCodeEnabled ?? false,
     adFilterBlockGroupCardEnabled: row?.adFilterBlockGroupCardEnabled ?? false,
+    adFilterWhitelistBlockQrCodeEnabled: row?.adFilterWhitelistBlockQrCodeEnabled ?? false,
+    adFilterWhitelistBlockGroupCardEnabled: row?.adFilterWhitelistBlockGroupCardEnabled ?? false,
     adFilterReportThreshold: row?.adFilterReportThreshold ?? 0,
     joinReviewEnabled: row?.joinReviewEnabled ?? false,
     allowMute: row?.allowMute ?? false,
