@@ -60,7 +60,7 @@ qqBotAdReportRouter.post("/:token", async (req, res, next) => {
     const muteSeconds = action === "mute"
       ? normalizeQqBotAdReportMuteSeconds(req.body?.muteMinutes)
       : 0;
-    if (action !== "acknowledge") {
+    if (action === "mute" || action === "kick" || action === "kick-block") {
       const offenderRole = await verifyQqBotGroupAdminIdentity(context.report.groupId, context.report.offenderQqId);
       if (offenderRole.verified) {
         return renderState(res, 403, "不能执行该操作", "被通报账号当前也是群主或管理员，请在 QQ 群内人工处理。");
@@ -103,6 +103,15 @@ qqBotAdReportRouter.post("/:token", async (req, res, next) => {
         });
       }
     }
+    if (action === "clear-hit-count") {
+      await prisma.qqBotGroupAdStrike.updateMany({
+        where: {
+          groupId: context.report.groupId,
+          qqId: context.report.offenderQqId,
+        },
+        data: { hitCount: 0 },
+      });
+    }
 
     await prisma.qqBotGroupAdReport.update({
       where: { id: context.report.id },
@@ -121,6 +130,8 @@ qqBotAdReportRouter.post("/:token", async (req, res, next) => {
 
     const successMessage = action === "acknowledge"
       ? "已确认处理，群内通报消息会自动撤回。"
+      : action === "clear-hit-count"
+        ? "已将该账号在本群的广告命中次数清零，并撤回群内通报消息。"
       : action === "mute"
         ? `已将该账号禁言 ${formatMuteDuration(muteSeconds)}，并撤回群内通报消息。`
         : action === "kick"
@@ -229,10 +240,20 @@ export function buildQqBotBindingGuideUrl(returnTo: string) {
   return `/messages?${params.toString()}`;
 }
 
-function normalizeAction(value: unknown) {
+export function normalizeQqBotAdReportAction(value: unknown) {
   const action = String(value || "").trim();
-  if (action === "acknowledge" || action === "mute" || action === "kick" || action === "kick-block") return action;
+  if (
+    action === "acknowledge"
+    || action === "clear-hit-count"
+    || action === "mute"
+    || action === "kick"
+    || action === "kick-block"
+  ) return action;
   return "";
+}
+
+function normalizeAction(value: unknown) {
+  return normalizeQqBotAdReportAction(value);
 }
 
 export function normalizeQqBotAdReportMuteSeconds(value: unknown) {
@@ -271,6 +292,7 @@ function renderActionPage(report: any, group: any, adminQqId: string) {
   const name = report.offenderNickname ? `${report.offenderNickname}（${report.offenderQqId}）` : report.offenderQqId;
   const actions = [
     `<button class="primary" name="action" value="acknowledge">确认已处理</button>`,
+    `<button name="action" value="clear-hit-count">清空命中次数</button>`,
     group.allowMute ? `<span class="mute-action"><label for="muteMinutes">禁言</label><input id="muteMinutes" name="muteMinutes" type="number" min="1" max="43200" value="10" inputmode="numeric" required><span>分钟</span><button name="action" value="mute">执行禁言</button></span>` : "",
     group.allowKick ? `<button name="action" value="kick">移出群聊</button>` : "",
     group.allowKickAndBlock ? `<button class="danger" name="action" value="kick-block">移出并拉黑</button>` : "",
@@ -289,7 +311,7 @@ function renderActionPage(report: any, group: any, adminQqId: string) {
       </dl>
     </div>
     <form method="post" class="actions">${actions}</form>
-    <p class="hint">操作提交时会再次实时核验群身份；完成后机器人会自动撤回群内通报消息。</p>
+    <p class="hint">“清空命中次数”只重置该账号在当前群的累计次数，不会将其加入白名单。操作提交时会再次实时核验群身份；完成后机器人会自动撤回群内通报消息。</p>
   `);
 }
 

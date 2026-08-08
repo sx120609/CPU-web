@@ -64,6 +64,7 @@ import {
   extractForwardNodeId,
   extractForwardPayload,
   extractMessageText,
+  extractQqForwardModerationPayload,
   extractQqImageUrls,
   extractQqVideoModerationSummary,
   extractReplyMessageId,
@@ -715,7 +716,6 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     && forwardPayload
     && shouldHandleForwardPostInContext(context)
     && hasExplicitQqGroupPostIntent(messageText)
-    && await isReplyToQqBotMessage(event, config)
   ) {
     let conversation: Awaited<ReturnType<typeof startForwardPostConversation>>;
     try {
@@ -2755,6 +2755,7 @@ async function renderGroupStatus(
     `站内通知：${group.enabled && group.notificationEnabled ? "已开启" : "未开启"}`,
     `新成员欢迎：${group.enabled && group.memberWelcomeEnabled ? "已开启" : "未开启"}`,
     `广告过滤：${group.enabled && group.adFilterEnabled ? "已开启" : "未开启"}`,
+    `白名单规则：${describeQqGroupWhitelistPolicy(group)}`,
     `快速审核加群：${group.enabled && group.joinReviewEnabled ? "已开启" : "未开启"}`,
     `禁言：${group.enabled && group.allowMute ? "已开启" : "未开启"}`,
     `踢出：${group.enabled && group.allowKick ? "已开启" : "未开启"}`,
@@ -2808,8 +2809,15 @@ function isExplicitBotMention(event: OneBotEvent, text: string) {
 }
 
 function isMessageAtBot(message: unknown, selfId?: number | string) {
-  if (!Array.isArray(message) || !selfId) return false;
+  if (!selfId) return false;
   const target = String(selfId);
+  if (typeof message === "string") {
+    const at = message.match(/\[CQ:at,([^\]]+)\]/i);
+    if (!at) return false;
+    const params = new URLSearchParams(at[1].replace(/,/g, "&"));
+    return String(params.get("qq") || "") === target;
+  }
+  if (!Array.isArray(message)) return false;
   return message.some((seg: any) => seg?.type === "at" && String(seg?.data?.qq || "") === target);
 }
 
@@ -2824,6 +2832,27 @@ function shouldHandleForwardPostInContext(context: {
 }
 
 /**
+ * Whitelists are scoped to a single group. Keep the exact effective policy in
+ * user-facing status/verification messages so a user does not assume that a
+ * whitelist granted in one group automatically changes another group.
+ */
+export function describeQqGroupWhitelistPolicy(group: Pick<
+  QqBotGroupView,
+  | "enabled"
+  | "adFilterEnabled"
+  | "adFilterWhitelistBlockQrCodeEnabled"
+  | "adFilterWhitelistBlockGroupCardEnabled"
+>) {
+  if (!group.enabled || !group.adFilterEnabled) return "本群广告过滤未开启。";
+  const restrictions = [
+    group.adFilterWhitelistBlockQrCodeEnabled ? "二维码" : "",
+    group.adFilterWhitelistBlockGroupCardEnabled ? "群卡片" : "",
+  ].filter(Boolean);
+  if (!restrictions.length) return "本群独立生效；普通广告、二维码和群卡片均不再拦截。";
+  return `本群独立生效；普通广告免检，但仍拦截${restrictions.join("、")}。`;
+}
+
+/**
  * Automatic group forwarding is intentionally conservative. A reply alone is
  * not a posting request: normal conversations often quote the bot while
  * asking about settings, moderation, or other help. Require an explicit
@@ -2835,26 +2864,11 @@ export function hasExplicitQqGroupPostIntent(text: string) {
     .replace(/\s+/g, " ")
     .trim();
   if (!normalized) return false;
-  return /(?:帮我|帮忙|请|麻烦|能否|可以).{0,16}(?:投稿|投递|发帖|发文|发布|提交)/iu.test(normalized)
+  return /^(?:我要|我想|想|请|麻烦)?\s*(?:投稿|投递|发帖|发文|发布|提交)(?:一下|这条|这个)?[。！!？?\s]*$/iu.test(normalized)
+    || /(?:帮我|帮忙|请|麻烦|能否|可以).{0,16}(?:投稿|投递|发帖|发文|发布|提交)/iu.test(normalized)
     || /(?:投稿到|发布到|提交到|发到|投到|发去|发在|放到)\s*(?:论坛|站内|板块|版块|分区|社区|树洞)?/iu.test(normalized)
     || /(?:把|将|这条|这段|上面|该消息).{0,20}(?:投稿|投递|发帖|发文|发布|提交)/iu.test(normalized)
     || /(?:论坛|站内|板块|版块|分区|社区|树洞).{0,16}(?:投稿|投递|发帖|发文|发布|提交)/iu.test(normalized);
-}
-
-async function isReplyToQqBotMessage(
-  event: OneBotEvent,
-  config: Awaited<ReturnType<typeof getQqBotConfigRaw>>,
-) {
-  const replyId = extractReplyMessageId(event.message ?? event.raw_message ?? "");
-  if (!replyId) return false;
-  const replied = await callQqBotAction("get_msg", {
-    message_id: Number(replyId) || replyId,
-  }).catch(() => null);
-  const data = replied?.data as any;
-  if (!data || typeof data !== "object") return false;
-  const botQqId = readConfigBotQqId(config);
-  const senderId = String(data.sender?.user_id ?? data.user_id ?? data.self_id ?? "").trim();
-  return Boolean(senderId && botQqId && senderId === botQqId);
 }
 
 async function handleQqBotGroupAdminCommand(input: {
@@ -3149,11 +3163,12 @@ async function maybeHandleQqGroupAdFilter(input: {
 }) {
   const messageText = String(input.messageText || "").trim();
   const rawMessage = input.event.message ?? input.event.raw_message ?? "";
-  const hasImage = containsQqImage(rawMessage);
-  const hasVideo = containsQqVideo(rawMessage);
-  const hasGroupCard = containsQqGroupCard(rawMessage);
+  let hasImage = containsQqImage(rawMessage);
+  let hasVideo = containsQqVideo(rawMessage);
+  let hasGroupCard = containsQqGroupCard(rawMessage);
+  const hasForwardReference = Boolean(extractForwardNodeId(rawMessage) || extractReplyMessageId(rawMessage));
   const botQqId = readConfigBotQqId(input.config);
-  if (!messageText && !hasImage && !hasVideo && !hasGroupCard) return false;
+  if (!messageText && !hasImage && !hasVideo && !hasGroupCard && !hasForwardReference) return false;
   if (isCommandMessage(messageText) || isExplicitBotMention(input.event, messageText)) return false;
   if (input.qqId && (input.qqId === botQqId || String(input.event.self_id || "") === input.qqId)) return false;
 
@@ -3167,6 +3182,14 @@ async function maybeHandleQqGroupAdFilter(input: {
   if (whitelisted && !whitelistBlocksQrCode && !whitelistBlocksGroupCard) return false;
 
   try {
+    const expandedForward = await extractQqForwardModerationPayload(rawMessage).catch(() => null);
+    // 白名单用户的合并转发整体视为被信任内容。转发内部的二维码、
+    // 群卡片等不继承普通单条消息的硬拦截开关，避免群聊记录被拆开误杀。
+    if (whitelisted && expandedForward) return false;
+    const moderationMessage = expandedForward?.message ?? rawMessage;
+    hasImage = containsQqImage(moderationMessage);
+    hasVideo = containsQqVideo(moderationMessage);
+    hasGroupCard = containsQqGroupCard(moderationMessage);
     const cardBlocked = hasGroupCard && (
       whitelisted
         ? whitelistBlocksGroupCard
@@ -3176,17 +3199,19 @@ async function maybeHandleQqGroupAdFilter(input: {
       ? whitelistBlocksQrCode
       : group.adFilterBlockQrCodeEnabled === true;
     const imageUrls = hasImage && !cardBlocked
-      ? await extractQqImageUrls(rawMessage)
+      ? await extractQqImageUrls(moderationMessage)
       : [];
     const videoSummary = hasVideo && !cardBlocked
-      ? await extractQqVideoModerationSummary(rawMessage)
+      ? await extractQqVideoModerationSummary(moderationMessage)
       : { posterUrls: [], detectedCount: 0, reviewedCount: 0, skippedCount: 0 };
     const reviewImageUrls = Array.from(new Set([...imageUrls, ...videoSummary.posterUrls])).slice(0, 4);
     const mediaFallback = [
       hasImage ? (imageUrls.length ? "图片消息" : "图片消息，图片暂时无法加载") : "",
       hasVideo ? (videoSummary.reviewedCount ? "视频抽帧" : "视频消息，视频超过 10MB 或暂时无法加载") : "",
     ].filter(Boolean).join("；");
-    const reviewContent = messageText || `[${hasGroupCard ? "QQ群卡片" : mediaFallback || "多媒体消息"}]`;
+    const reviewContent = expandedForward?.content.trim()
+      || messageText
+      || `[${hasGroupCard ? "QQ群卡片" : mediaFallback || "多媒体消息"}]`;
     const review = cardBlocked
       ? {
           action: "block" as const,
@@ -3214,6 +3239,7 @@ async function maybeHandleQqGroupAdFilter(input: {
             videoReviewedCount: videoSummary.reviewedCount,
             videoSkippedCount: videoSummary.skippedCount,
             hasGroupCard,
+            forwardSource: expandedForward?.source || "",
             videoMaxBytes: 10 * 1024 * 1024,
           },
         });
@@ -3238,11 +3264,16 @@ async function maybeHandleQqGroupAdFilter(input: {
     await callQqBotAction("delete_msg", {
       message_id: Number(input.event.message_id) || input.event.message_id,
     });
-    const verification = await createQqGroupAdVerification({
-      groupId: input.groupId,
-      qqId: input.qqId,
-      nickname: senderNickname,
-    });
+    const verification = whitelisted
+      ? null
+      : await createQqGroupAdVerification({
+          groupId: input.groupId,
+          qqId: input.qqId,
+          nickname: senderNickname,
+        });
+    const whitelistRestriction = whitelisted
+      ? (cardBlocked ? "群卡片" : "二维码")
+      : undefined;
     const strike = await recordQqGroupAdStrikeHit({
       groupId: input.groupId,
       qqId: input.qqId,
@@ -3261,7 +3292,8 @@ async function maybeHandleQqGroupAdFilter(input: {
       renderQqGroupAdFilterPrivateNotice({
         groupName: group.name || input.groupId,
         review,
-        verificationPrompt: verification.prompt,
+        verificationPrompt: verification?.prompt,
+        whitelistRestriction,
         penaltyUserNotice: penalty.userNotice,
       }),
     ).catch(() => undefined);
@@ -3272,7 +3304,8 @@ async function maybeHandleQqGroupAdFilter(input: {
           qqId: input.qqId,
           nickname: senderNickname,
           review,
-          verificationPrompt: verification.prompt,
+          verificationPrompt: verification?.prompt,
+          whitelistRestriction,
         }),
       ).catch(() => undefined);
     }
@@ -3292,7 +3325,7 @@ async function maybeHandleQqGroupAdFilter(input: {
       messageId: String(input.event.message_id),
       content: reviewContent.slice(0, 500),
       result: [
-        `已撤回疑似广告消息（第${strike.hitCount}次，${review.riskScore}分，${review.reason}；已生成白名单验证码）`,
+        `已撤回疑似广告消息（第${strike.hitCount}次，${review.riskScore}分，${review.reason}；${verification ? "已生成白名单验证码" : `白名单仍限制${whitelistRestriction || "当前群组规则"}`})`,
         penalty.logSummary,
       ].filter(Boolean).join("；"),
       rawPayload: input.event,
@@ -3314,17 +3347,26 @@ async function maybeHandleQqGroupAdFilter(input: {
   }
 }
 
-function renderQqGroupAdFilterPrivateNotice(input: {
+export function renderQqGroupAdFilterPrivateNotice(input: {
   groupName: string;
   review: Awaited<ReturnType<typeof reviewQqGroupMessageForAd>>;
-  verificationPrompt: string;
+  verificationPrompt?: string;
+  whitelistRestriction?: string;
   penaltyUserNotice?: string;
 }) {
+  const guidance = input.whitelistRestriction
+    ? [
+        `你的广告过滤白名单仍然有效，但本群设置为白名单用户也不能发送${input.whitelistRestriction}。`,
+        "无需重复申请白名单；如需发送，请联系群管理员调整限制。",
+      ]
+    : [
+        `误判或需申请 30 天白名单？请在 10 分钟内完成验证：${input.verificationPrompt || ""}`,
+        "验证成功后，你将在本群获得 30 天广告过滤白名单。",
+      ];
   return [
     `你在群 ${input.groupName} 的消息已被广告过滤撤回。`,
     `原因：${input.review.reason}`,
-    `误判或需申请 30 天白名单？请在 10 分钟内完成验证：${input.verificationPrompt}`,
-    "验证成功后，你将在本群获得 30 天广告过滤白名单。",
+    ...guidance,
     ...(input.penaltyUserNotice ? [input.penaltyUserNotice] : []),
   ].join("\n");
 }
@@ -3334,14 +3376,17 @@ function renderQqGroupAdFilterGroupNotice(
     qqId: string;
     nickname?: string | null;
     review: Awaited<ReturnType<typeof reviewQqGroupMessageForAd>>;
-    verificationPrompt: string;
+    verificationPrompt?: string;
+    whitelistRestriction?: string;
   },
 ) {
   const who = [`[CQ:at,qq=${input.qqId}]`, `（QQ：${input.qqId}${input.nickname ? `，${input.nickname}` : ""}）`].join("");
   return [
     `${who} 的消息已被广告过滤撤回。`,
     `原因：${input.review.reason}`,
-    `误判或需申请 30 天白名单？请在 10 分钟内私聊我或 @我完成验证：${input.verificationPrompt}`,
+    input.whitelistRestriction
+      ? `该用户白名单有效，但本群设置为白名单用户也不能发送${input.whitelistRestriction}；无需重复申请。`
+      : `误判或需申请 30 天白名单？请在 10 分钟内私聊我或 @我完成验证：${input.verificationPrompt || ""}`,
   ].join("\n");
 }
 
@@ -3560,9 +3605,18 @@ async function maybeHandleQqGroupAdVerification(input: {
 
   const group = await prisma.qqBotGroup.findUnique({
     where: { groupId: verification.groupId },
-    select: { name: true },
+    select: {
+      name: true,
+      enabled: true,
+      adFilterEnabled: true,
+      adFilterWhitelistBlockQrCodeEnabled: true,
+      adFilterWhitelistBlockGroupCardEnabled: true,
+    },
   });
-  const message = `验证成功：你已加入群 ${group?.name || verification.groupId} 的广告过滤白名单，30 天内不会再被本群广告过滤自动撤回。`;
+  const message = [
+    `验证成功：你已加入群 ${group?.name || verification.groupId} 的广告过滤白名单，有效期 30 天。`,
+    `本白名单仅对当前群生效。${group ? describeQqGroupWhitelistPolicy(group) : "请以当前群的设置为准。"}`,
+  ].join("\n");
   await logQqBotMessage({
     direction: "inbound",
     eventType: "group-ad-verification",

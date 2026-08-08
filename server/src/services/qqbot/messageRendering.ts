@@ -267,9 +267,40 @@ function pickEmbeddedForwardMessages(value: unknown): unknown[] | null {
   if (!value || typeof value !== "object") return null;
   const maybeValue = value as any;
   if (looksLikeForwardMessageList(maybeValue.messages)) return maybeValue.messages;
+  if (looksLikeForwardMessageList(maybeValue.message)) return maybeValue.message;
   if (looksLikeForwardMessageList(maybeValue.data?.messages)) return maybeValue.data.messages;
+  if (looksLikeForwardMessageList(maybeValue.data?.message)) return maybeValue.data.message;
   if (looksLikeForwardMessageList(maybeValue.content)) return maybeValue.content;
   if (looksLikeForwardMessageList(maybeValue.data?.content)) return maybeValue.data.content;
+  return null;
+}
+
+/**
+ * OneBot implementations do not agree on the response field used by
+ * `get_forward_msg`.  NapCat versions in the wild have returned the node list
+ * as `data.messages`, `data.message`, `data.content`, or directly as `data`.
+ * Keep the compatibility logic in one place so posting, moderation, and the
+ * renderer all operate on the same payload.
+ */
+export function readQqForwardMessagesFromActionPayload(payload: unknown): unknown[] | null {
+  if (!payload || typeof payload !== "object") return pickEmbeddedForwardMessages(payload);
+  const root = payload as any;
+  return pickEmbeddedForwardMessages(root.data) || pickEmbeddedForwardMessages(root);
+}
+
+async function fetchQqForwardMessages(forwardId: unknown) {
+  const normalizedId = String(forwardId || "").trim();
+  if (!normalizedId) return null;
+  const attempts = [
+    { id: normalizedId },
+    { message_id: Number(normalizedId) || normalizedId },
+    { resid: normalizedId },
+  ];
+  for (const params of attempts) {
+    const payload = await callQqBotAction("get_forward_msg", params).catch(() => null);
+    const messages = readQqForwardMessagesFromActionPayload(payload);
+    if (messages?.length) return { messages, payload, params };
+  }
   return null;
 }
 
@@ -352,8 +383,8 @@ export async function extractForwardPayload(
 ): Promise<(ParsedForwardPayload & { source: ForwardSource }) | null> {
   const forwardId = extractForwardNodeId(message);
   if (forwardId) {
-    const payload = await callQqBotAction("get_forward_msg", { id: forwardId }).catch(() => null);
-    const parsed = await parseForwardMessages(payload?.data?.messages, forwardId, options);
+    const resolved = await fetchQqForwardMessages(forwardId);
+    const parsed = await parseForwardMessages(resolved?.messages, forwardId, options);
     if (parsed) {
       queueQqBotForwardDebug("forward.extract", {
         source: "direct-forward",
@@ -368,15 +399,18 @@ export async function extractForwardPayload(
   if (!replyId) return null;
   const replied = await callQqBotAction("get_msg", { message_id: Number(replyId) || replyId }).catch(() => null);
   const replyMessage = replied?.data?.message ?? replied?.data?.content;
-  const replyForwardId = extractForwardNodeId(replyMessage);
-  if (replyForwardId) {
-    const payload = await callQqBotAction("get_forward_msg", { id: replyForwardId }).catch(() => null);
-    const parsed = await parseForwardMessages(payload?.data?.messages, replyForwardId, options);
+  const replyForwardId = extractForwardNodeId(replied?.data ?? replied);
+  const replyForwardLookupId = replyForwardId || replyId;
+  if (replyForwardLookupId) {
+    // Some NapCat builds expose the forward id only in raw_message, while
+    // others accept the replied message id directly in get_forward_msg.
+    const resolved = await fetchQqForwardMessages(replyForwardLookupId);
+    const parsed = await parseForwardMessages(resolved?.messages, replyForwardLookupId, options);
     if (parsed) {
       queueQqBotForwardDebug("forward.extract", {
         source: "reply-forward",
         replyId,
-        forwardId: replyForwardId,
+        forwardId: replyForwardLookupId,
         summary: parsed.summary,
         preview: debugMessagePreview(parsed.content),
       });
@@ -404,6 +438,39 @@ export async function extractForwardPayload(
     participantCount: 1,
     imageCount,
   };
+}
+
+export type QqForwardModerationPayload = {
+  content: string;
+  message: unknown[];
+  source: "direct-forward" | "reply-forward";
+};
+
+/** Expand only merged-forward sources for moderation; ordinary quoted replies
+ * stay untouched so a harmless reply is not judged by the quoted message. */
+export async function extractQqForwardModerationPayload(
+  message: unknown,
+): Promise<QqForwardModerationPayload | null> {
+  let forwardId = extractForwardNodeId(message);
+  let source: QqForwardModerationPayload["source"] = "direct-forward";
+  if (!forwardId) {
+    const replyId = extractReplyMessageId(message);
+    if (!replyId) return null;
+    const replied = await callQqBotAction("get_msg", {
+      message_id: Number(replyId) || replyId,
+    }).catch(() => null);
+    forwardId = extractForwardNodeId(replied?.data ?? replied) || replyId;
+    source = "reply-forward";
+  }
+  if (!forwardId) return null;
+  const resolved = await fetchQqForwardMessages(forwardId);
+  if (!resolved?.messages?.length) return null;
+  const parsed = await parseForwardMessages(resolved.messages, forwardId, {
+    imageMode: "placeholder",
+    videoMode: "placeholder",
+  });
+  if (!parsed?.content) return null;
+  return { content: parsed.content, message: resolved.messages, source };
 }
 
 async function parseForwardMessages(
@@ -491,12 +558,18 @@ async function parseForwardMessages(
 }
 
 export function extractReplyMessageId(message: unknown) {
+  if (typeof message === "string") {
+    const match = message.match(/\[CQ:reply,([^\]]*)\]/i);
+    if (!match) return "";
+    return String(parseCqParams(match[1] || "").id || "").trim();
+  }
   if (!Array.isArray(message)) return "";
   const replySeg = message.find((seg: any) => seg?.type === "reply" && seg?.data?.id);
   return String(replySeg?.data?.id || "").trim();
 }
 
 export function shouldUseLightForwardExtraction(message: unknown) {
+  if (typeof message === "string") return /\[CQ:(?:forward|node|reply),/i.test(message);
   if (!Array.isArray(message)) return false;
   return message.some((seg: any) => {
     const type = String(seg?.type || "").trim();
@@ -527,8 +600,12 @@ export function extractForwardNodeId(message: unknown): string {
     }
     if (item?.content) return extractForwardNodeId(item.content);
     if (item?.message) return extractForwardNodeId(item.message);
+    if (item?.raw_message) return extractForwardNodeId(item.raw_message);
+    if (item?.rawMessage) return extractForwardNodeId(item.rawMessage);
     if (item?.data?.content) return extractForwardNodeId(item.data.content);
     if (item?.data?.message) return extractForwardNodeId(item.data.message);
+    if (item?.data?.raw_message) return extractForwardNodeId(item.data.raw_message);
+    if (item?.data?.rawMessage) return extractForwardNodeId(item.data.rawMessage);
   }
   return "";
 }
@@ -604,12 +681,12 @@ async function renderNestedForwardContent(forwardId: unknown, options: QqMessage
   const forwardDepth = options.forwardDepth ?? 0;
   if (!normalizedId) return "\n[合并转发]\n";
   if (forwardDepth > MAX_FORWARD_DEPTH) return "\n[合并转发层级过深]\n";
-  const payload = await callQqBotAction("get_forward_msg", { id: normalizedId }).catch(() => null);
-  const parsed = await parseForwardMessages(payload?.data?.messages, normalizedId, options);
+  const resolved = await fetchQqForwardMessages(normalizedId);
+  const parsed = await parseForwardMessages(resolved?.messages, normalizedId, options);
   queueQqBotForwardDebug("forward.api.get_forward_msg", {
     forwardId: normalizedId,
     forwardDepth,
-    payload: payload?.data?.messages ?? null,
+    payload: resolved?.messages ?? null,
     parsed: parsed
       ? { summary: parsed.summary, preview: debugMessagePreview(parsed.content) }
       : null,

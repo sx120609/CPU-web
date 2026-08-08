@@ -10,4 +10,6 @@ test("普通的群内设置咨询不会触发自动投稿", () => {
 test("明确要求把回复内容投稿时才允许自动投稿", () => {
   assert.equal(hasExplicitQqGroupPostIntent("回复这条，帮我投稿到论坛"), true);
   assert.equal(hasExplicitQqGroupPostIntent("请把上面的内容发到树洞"), true);
+  assert.equal(hasExplicitQqGroupPostIntent("我要投稿"), true);
+  assert.equal(hasExplicitQqGroupPostIntent("投稿一下"), true);
 });
