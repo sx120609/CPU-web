@@ -3190,34 +3190,38 @@ async function maybeHandleQqGroupAdFilter(input: {
   const whitelisted = Boolean(whitelist && whitelist.expiresAt.getTime() > Date.now());
   const whitelistBlocksQrCode = whitelisted && group.adFilterWhitelistBlockQrCodeEnabled === true;
   const whitelistBlocksGroupCard = whitelisted && group.adFilterWhitelistBlockGroupCardEnabled === true;
-  // 普通文本（包括群号、联系方式等）不属于白名单后的媒体限制范围。
-  // 在调用模型前直接短路，避免“多群新号导流”等文本判断再次误拦白名单用户。
-  if (whitelisted && !hasImage && !hasVideo && !hasGroupCard && !hasForwardReference) return false;
+  // When neither whitelist restriction is enabled, every message shape can
+  // bypass before any forward/media expansion or model request.
+  if (whitelisted && !whitelistBlocksQrCode && !whitelistBlocksGroupCard) return false;
 
   try {
     const expandedForward = await extractQqForwardModerationPayload(rawMessage).catch(() => null);
-    // 白名单用户的合并转发整体视为被信任内容。转发内部的二维码、
-    // 群卡片等不继承普通单条消息的硬拦截开关，避免群聊记录被拆开误杀。
-    if (whitelisted && expandedForward) return false;
     const moderationMessage = expandedForward?.message ?? rawMessage;
     hasImage = containsQqImage(moderationMessage);
     hasVideo = containsQqVideo(moderationMessage);
     hasGroupCard = containsQqGroupCard(moderationMessage);
-    const cardBlocked = hasGroupCard && (
-      whitelisted
-        ? whitelistBlocksGroupCard
-        : group.adFilterBlockGroupCardEnabled === true
+    const cardBlockedByPolicy = hasGroupCard && (
+      whitelisted ? whitelistBlocksGroupCard : group.adFilterBlockGroupCardEnabled === true
     );
     const blockQrCodes = whitelisted
       ? whitelistBlocksQrCode
       : group.adFilterBlockQrCodeEnabled === true;
-    const imageUrls = hasImage && !cardBlocked
+    const imageUrls = hasImage && !cardBlockedByPolicy
       ? await extractQqImageUrls(moderationMessage)
       : [];
-    const videoSummary = hasVideo && !cardBlocked
+    const videoSummary = hasVideo && !cardBlockedByPolicy
       ? await extractQqVideoModerationSummary(moderationMessage)
       : { posterUrls: [], detectedCount: 0, reviewedCount: 0, skippedCount: 0 };
     const reviewImageUrls = Array.from(new Set([...imageUrls, ...videoSummary.posterUrls])).slice(0, 4);
+    const whitelistReviewPlan = resolveQqGroupWhitelistReviewPlan({
+      whitelisted,
+      hasGroupCard,
+      hasReviewableMedia: reviewImageUrls.length > 0,
+      blockQrCode: whitelistBlocksQrCode,
+      blockGroupCard: whitelistBlocksGroupCard,
+    });
+    if (whitelistReviewPlan === "bypass") return false;
+    const cardBlocked = cardBlockedByPolicy;
     const mediaFallback = [
       hasImage ? (imageUrls.length ? "图片消息" : "图片消息，图片暂时无法加载") : "",
       hasVideo ? (videoSummary.reviewedCount ? "视频抽帧" : "视频消息，视频超过 10MB 或暂时无法加载") : "",
@@ -3243,6 +3247,7 @@ async function maybeHandleQqGroupAdFilter(input: {
           content: reviewContent,
           imageUrls: reviewImageUrls,
           blockQrCodes,
+          reviewMode: whitelistReviewPlan === "qr-only" ? "qr-only" : "full",
           metadata: {
             messageId: input.event.message_id ? String(input.event.message_id) : "",
             hasImage,
@@ -3257,15 +3262,6 @@ async function maybeHandleQqGroupAdFilter(input: {
           },
         });
     if (review.action !== "block") return false;
-    // A whitelist still exempts ordinary advertising judgements. Only the
-    // explicitly enabled QR-code/group-card restrictions may bypass it.
-    if (shouldBypassQqGroupAdFilterForWhitelist({
-      whitelisted,
-      hasGroupCard,
-      isQrCodeReview: isQqGroupAdQrCodeReview(review),
-      blockQrCode: whitelistBlocksQrCode,
-      blockGroupCard: whitelistBlocksGroupCard,
-    })) return false;
     if (!input.event.message_id) {
       await logQqBotMessage({
         direction: "inbound",
@@ -3433,25 +3429,22 @@ function containsQqVideo(message: unknown): boolean {
     || containsQqVideo(item.content);
 }
 
-function isQqGroupAdQrCodeReview(review: { reason?: unknown; detail?: unknown }) {
-  return /二维码|扫码|扫描/u.test(`${String(review.reason || "")} ${String(review.detail || "")}`);
-}
-
 /**
- * Decide whether a valid per-group whitelist should bypass a moderation result.
- * Plain text is always exempt; media restrictions can remain enabled by group.
+ * Choose the only permitted moderation path for a valid per-group whitelist.
+ * Group cards keep their explicit switch; every other reviewable attachment is
+ * either QR-only or bypassed without entering the advertising prompt.
  */
-export function shouldBypassQqGroupAdFilterForWhitelist(input: {
+export function resolveQqGroupWhitelistReviewPlan(input: {
   whitelisted: boolean;
   hasGroupCard: boolean;
-  isQrCodeReview: boolean;
+  hasReviewableMedia: boolean;
   blockQrCode: boolean;
   blockGroupCard: boolean;
-}) {
-  if (!input.whitelisted) return false;
-  if (input.hasGroupCard && input.blockGroupCard) return false;
-  if (input.isQrCodeReview && input.blockQrCode) return false;
-  return true;
+}): "full" | "qr-only" | "block-group-card" | "bypass" {
+  if (!input.whitelisted) return "full";
+  if (input.hasGroupCard && input.blockGroupCard) return "block-group-card";
+  if (input.hasReviewableMedia && input.blockQrCode) return "qr-only";
+  return "bypass";
 }
 
 async function maybeSendQqGroupAdReport(input: {
@@ -3535,11 +3528,18 @@ function hashQqGroupAdVerificationCode(code: string) {
   return crypto.createHash("sha256").update(`qqbot-group-ad-verification:${code}`).digest("hex");
 }
 
-function extractQqGroupAdVerificationCode(text: string) {
-  const normalized = String(text || "").trim().toUpperCase();
-  const match = normalized.match(/^(?:验证码|白名单验证)\s*[:：]?\s*([A-Z0-9\u4E00-\u9FFF]{2,12})$/i)
+export function extractQqGroupAdVerificationCode(text: string) {
+  const normalized = String(text || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[\s\u3000]+/gu, "");
+  const match = normalized.match(/^(?:验证码|白名单验证)[:：]?([A-Z0-9\u4E00-\u9FFF]{2,12})$/i)
     || normalized.match(/^([A-Z0-9\u4E00-\u9FFF]{2,12})$/i);
   return match?.[1] || "";
+}
+
+export function renderQqGroupAdVerificationPrompt(word: string, suffix: number) {
+  return `请直接发送文字答案：把“${word}”两个字调换顺序，再接数字 ${suffix}。空格可有可无，不要发手写图片。`;
 }
 
 function createFunQqGroupAdVerificationChallenge() {
@@ -3549,7 +3549,7 @@ function createFunQqGroupAdVerificationChallenge() {
   const reversed = Array.from(word).reverse().join("");
   return {
     code: `${reversed}${suffix}`.toUpperCase(),
-    prompt: `把“${word}”倒过来写，再接上数字 ${suffix}。`,
+    prompt: renderQqGroupAdVerificationPrompt(word, suffix),
   };
 }
 
@@ -3593,6 +3593,33 @@ async function getQqGroupAdWhitelist(groupId: string, qqId: string) {
   return prisma.qqBotGroupAdWhitelist.findUnique({
     where: { groupId_qqId: { groupId: normalizedGroupId, qqId: normalizedQqId } },
     select: { expiresAt: true },
+  });
+}
+
+/** Grant or extend the per-group ad-filter whitelist from an authenticated admin action. */
+export async function grantQqGroupAdWhitelist(input: {
+  groupId: string;
+  qqId: string;
+  nickname?: string | null;
+  now?: Date;
+}) {
+  const groupId = normalizeQqBotIdentity(input.groupId);
+  const qqId = normalizeQqBotIdentity(input.qqId);
+  if (!groupId || !qqId) throw Errors.badRequest("白名单目标 QQ 或群号无效");
+  const now = input.now || new Date();
+  const expiresAt = new Date(now.getTime() + QQ_GROUP_AD_WHITELIST_TTL_MS);
+  return prisma.qqBotGroupAdWhitelist.upsert({
+    where: { groupId_qqId: { groupId, qqId } },
+    create: {
+      groupId,
+      qqId,
+      nickname: input.nickname || null,
+      expiresAt,
+    },
+    update: {
+      nickname: input.nickname || undefined,
+      expiresAt,
+    },
   });
 }
 

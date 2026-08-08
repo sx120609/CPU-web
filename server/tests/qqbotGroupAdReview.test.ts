@@ -6,6 +6,7 @@ import {
   detectHarmlessQqGroupAdBypassReason,
   detectQqGroupAdHardBlockReason,
   prepareQqGroupAdImagePayloads,
+  resolveQqGroupQrOnlyReviewAction,
   resolveQqGroupAdModelCandidates,
   resolveQqGroupAdReviewAction,
 } from "../src/services/qqbotGroupAdReview";
@@ -46,6 +47,12 @@ test("honors an explicit model block just below the configured threshold", () =>
     }),
     "block",
   );
+});
+
+test("QR-only review ignores the advertising threshold and requires an explicit QR block", () => {
+  assert.equal(resolveQqGroupQrOnlyReviewAction({ riskScore: 100, modelDecision: "block" }), "block");
+  assert.equal(resolveQqGroupQrOnlyReviewAction({ riskScore: 79, modelDecision: "block" }), "allow");
+  assert.equal(resolveQqGroupQrOnlyReviewAction({ riskScore: 100, modelDecision: "auto_pass" }), "allow");
 });
 
 test("allows long KFC Thursday meme copy that imitates an advertisement", () => {
