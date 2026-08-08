@@ -24,7 +24,7 @@ qqBotAdReportRouter.get("/:token", async (req, res, next) => {
       return renderState(res, 200, "该通报已处理", "群内通报消息已经完成处理，无需重复操作。", "success");
     }
     const identity = await resolveBoundAdmin(req.user.userId, context.report.groupId);
-    if (!identity.ok) return renderState(res, identity.status, identity.title, identity.message);
+    if (!identity.ok) return renderIdentityState(req, res, identity);
     return res.type("html").send(renderActionPage(context.report, context.group, identity.qqId));
   } catch (error) {
     next(error);
@@ -43,7 +43,7 @@ qqBotAdReportRouter.post("/:token", async (req, res, next) => {
       return renderState(res, 200, "该通报已处理", "群内通报消息已经完成处理，无需重复操作。", "success");
     }
     const identity = await resolveBoundAdmin(req.user.userId, context.report.groupId);
-    if (!identity.ok) return renderState(res, identity.status, identity.title, identity.message);
+    if (!identity.ok) return renderIdentityState(req, res, identity);
 
     const action = normalizeAction(req.body?.action);
     if (!action) return renderState(res, 400, "操作无效", "请选择页面提供的处理操作后重试。");
@@ -179,15 +179,17 @@ async function resolveBoundAdmin(userId: number, groupId: string) {
   if (!binding) {
     return {
       ok: false as const,
+      code: "qq-binding-required" as const,
       status: 403,
       title: "请先绑定 QQ",
-      message: "当前站点账号尚未绑定 QQ。请前往个人中心完成绑定后，再重新打开本链接。",
+      message: "当前站点账号尚未绑定 QQ，暂时无法核验你是否为该群管理员。请先完成 QQ Bot 绑定，再返回本通报继续处理。",
     };
   }
   const permission = await verifyQqBotGroupAdminIdentity(groupId, binding.qqId);
   if (!permission.verified) {
     return {
       ok: false as const,
+      code: "group-admin-required" as const,
       status: 403,
       title: "没有管理权限",
       message: `当前账号绑定的 QQ（${maskQq(binding.qqId)}）不是该群的群主或管理员。`,
@@ -199,6 +201,32 @@ async function resolveBoundAdmin(userId: number, groupId: string) {
 function redirectToLogin(req: Request, res: Response) {
   const target = String(req.originalUrl || req.url || "/");
   return res.redirect(302, `/login?redirect=${encodeURIComponent(target)}`);
+}
+
+type BoundAdminFailure = Exclude<Awaited<ReturnType<typeof resolveBoundAdmin>>, { ok: true }>;
+
+function renderIdentityState(req: Request, res: Response, identity: BoundAdminFailure) {
+  if (identity.code !== "qq-binding-required") {
+    return renderState(res, identity.status, identity.title, identity.message);
+  }
+  const target = String(req.originalUrl || req.url || "/");
+  return renderState(res, identity.status, identity.title, identity.message, "normal", {
+    href: buildQqBotBindingGuideUrl(target),
+    label: "前往绑定 QQ",
+    hint: "绑定页会保留本次通报地址。完成绑定并刷新状态后，可直接返回这里继续处理。",
+  });
+}
+
+export function buildQqBotBindingGuideUrl(returnTo: string) {
+  const safeReturnTo = returnTo === "/qqbot/ad-report" || returnTo.startsWith("/qqbot/ad-report/")
+    ? returnTo
+    : "/home";
+  const params = new URLSearchParams({
+    tab: "settings",
+    qqbot: "bind",
+    returnTo: safeReturnTo,
+  });
+  return `/messages?${params.toString()}`;
 }
 
 function normalizeAction(value: unknown) {
@@ -265,12 +293,21 @@ function renderActionPage(report: any, group: any, adminQqId: string) {
   `);
 }
 
-function renderState(res: Response, status: number, title: string, message: string, tone: "normal" | "success" = "normal") {
+function renderState(
+  res: Response,
+  status: number,
+  title: string,
+  message: string,
+  tone: "normal" | "success" = "normal",
+  action?: { href: string; label: string; hint?: string },
+) {
   return res.status(status).type("html").send(pageShell(title, `
     <div class="state ${tone}"><span class="state-icon">${tone === "success" ? "✓" : "!"}</span></div>
     <h1>${escapeHtml(title)}</h1>
     <p class="lead">${escapeHtml(message)}</p>
-    ${title === "请先绑定 QQ" ? '<a class="button-link" href="/profile">前往个人中心</a>' : '<button onclick="window.close()">关闭页面</button>'}
+    ${action
+      ? `<a class="button-link" href="${escapeHtml(action.href)}">${escapeHtml(action.label)}</a>${action.hint ? `<p class="hint">${escapeHtml(action.hint)}</p>` : ""}`
+      : '<button onclick="window.close()">关闭页面</button>'}
   `));
 }
 

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  buildQqBotBindingGuideUrl,
   classifyQqBotAdReportAvailability,
   normalizeQqBotAdReportMuteSeconds,
 } from "../src/routes/qqbotAdReport";
@@ -45,4 +46,18 @@ test("accepts a custom mute duration and clamps unsafe values", () => {
   assert.equal(normalizeQqBotAdReportMuteSeconds(0), 60);
   assert.equal(normalizeQqBotAdReportMuteSeconds(-10), 60);
   assert.equal(normalizeQqBotAdReportMuteSeconds(99_999), 30 * 24 * 60 * 60);
+});
+
+test("sends unbound administrators to the QQ binding page and preserves the report link", () => {
+  const reportPath = "/qqbot/ad-report/abcdefghijklmnopqrstuvwx";
+  const target = new URL(buildQqBotBindingGuideUrl(reportPath), "https://cpu.lizmt.cn");
+  assert.equal(target.pathname, "/messages");
+  assert.equal(target.searchParams.get("tab"), "settings");
+  assert.equal(target.searchParams.get("qqbot"), "bind");
+  assert.equal(target.searchParams.get("returnTo"), reportPath);
+});
+
+test("does not preserve unrelated return paths in the QQ binding guide", () => {
+  const target = new URL(buildQqBotBindingGuideUrl("//example.com/steal"), "https://cpu.lizmt.cn");
+  assert.equal(target.searchParams.get("returnTo"), "/home");
 });

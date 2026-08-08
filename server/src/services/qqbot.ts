@@ -3075,6 +3075,27 @@ async function handleQqBotGroupAdminCommand(input: {
       return replyAndLog(`已将 QQ ${target.qqId} 从本群黑名单移出。`, "assistant:remove-blocked-user");
     }
 
+    if (input.command.type === "remove-ad-whitelist-user") {
+      const target = extractCommandTarget(input.command.argText, input.event);
+      if (!target?.qqId) {
+        return replyAndLog(
+          "请直接 @要移出广告过滤白名单的成员，例如：移出白名单@某某。",
+          "remove-ad-whitelist-user-target-missing",
+          "ignored",
+        );
+      }
+      const removed = await prisma.qqBotGroupAdWhitelist.deleteMany({
+        where: { groupId: input.groupId, qqId: target.qqId },
+      });
+      if (!removed.count) {
+        return replyAndLog(`QQ ${target.qqId} 当前不在本群广告过滤白名单里。`, "remove-ad-whitelist-user-not-found", "ignored");
+      }
+      return replyAndLog(
+        `已将 QQ ${target.qqId} 从本群广告过滤白名单移出。`,
+        "assistant:remove-ad-whitelist-user",
+      );
+    }
+
     if (input.command.type === "add-command-user" || input.command.type === "remove-command-user") {
       if (!permission.canManageCommandUsers) {
         return replyAndLog("只有群管理员或 QQBot 超级管理员可以维护群管授权用户。", "command-user-manage-denied", "ignored");
@@ -3732,6 +3753,7 @@ function buildQqGroupAdminCommandLines(group: QqBotGroupView) {
     lines.push("• 移出黑名单 QQ号/@某人");
   }
   else lines.push("• 踢黑：未开启");
+  lines.push("• 移出白名单 @某人：移出本群广告过滤白名单");
   lines.push("• 群管列表：查看本群授权用户");
   lines.push("• 添加群管 QQ号/@某人 / 移除群管 QQ号/@某人：维护授权用户");
   return lines;

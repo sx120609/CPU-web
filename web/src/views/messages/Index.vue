@@ -35,6 +35,19 @@
       </el-tab-pane>
       <el-tab-pane label="设置" name="settings">
         <div v-if="settings" class="settings">
+          <div v-if="qqBotBindingReturnUrl" class="qq-bind-guide">
+            <div class="qq-bind-guide-copy">
+              <b>先绑定群管理员 QQ，再继续处理通报</b>
+              <span>生成绑定码后，私聊 QQ Bot 发送绑定命令；完成后刷新下方状态，再返回原通报链接。</span>
+            </div>
+            <el-button
+              type="primary"
+              :disabled="!qqBotBindingReady"
+              @click="returnToQqBotReport"
+            >
+              返回处理链接
+            </el-button>
+          </div>
           <h4>通知渠道</h4>
           <div class="qq-channel-card" v-loading="qqBotLoading">
             <div class="qq-channel-head">
@@ -230,6 +243,7 @@ import { useAuthStore } from "@/stores/auth";
 import { adminApi } from "@/api/admin";
 import { fmtDate } from "@/utils/format";
 import { copyText } from "@/utils/userGroup";
+import { isServerHandledRedirect, resolveSafeRedirect } from "@/utils/redirect";
 
 const route = useRoute();
 const router = useRouter();
@@ -259,6 +273,12 @@ let reviewTargetSeq = 0;
 let disposed = false;
 
 const unreadCount = computed(() => list.value.filter((item) => !item.readAt).length);
+const qqBotBindingReturnUrl = computed(() => {
+  if (route.query.qqbot !== "bind") return "";
+  const target = resolveSafeRedirect(route.query.returnTo, "");
+  return isServerHandledRedirect(target) ? target : "";
+});
+const qqBotBindingReady = computed(() => Boolean(qqBotProfile.value?.binding?.enabled));
 const qqChannelStateText = computed(() => {
   if (qqBotProfileError.value) return "状态未知";
   if (!qqBotProfile.value?.enabled) return "未启用";
@@ -418,6 +438,14 @@ async function loadQqBotProfile(opts?: { silent?: boolean }) {
 
 function refreshQqBotProfile() {
   return loadQqBotProfile();
+}
+
+function returnToQqBotReport() {
+  if (!qqBotBindingReady.value || !qqBotBindingReturnUrl.value) {
+    ElMessage.warning("请先完成 QQ 绑定并刷新状态");
+    return;
+  }
+  window.location.assign(qqBotBindingReturnUrl.value);
 }
 
 async function refreshQqBotToken() {
@@ -750,6 +778,33 @@ function normalizeMessageSettings(value: any) {
 
 .settings h4 { margin: 8px 0 6px; color: var(--cpu-text); }
 .hint { font-size: 12px; color: var(--cpu-text-secondary); margin: 0 0 10px; }
+.qq-bind-guide {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--cpu-primary) 28%, var(--cpu-border-soft));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--cpu-primary) 8%, var(--cpu-card));
+}
+.qq-bind-guide-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+}
+.qq-bind-guide-copy b {
+  color: var(--cpu-text);
+  font-size: 14px;
+  line-height: 1.4;
+}
+.qq-bind-guide-copy span {
+  color: var(--cpu-text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
 .qq-channel-card {
   display: flex;
   flex-direction: column;
@@ -938,6 +993,16 @@ function normalizeMessageSettings(value: any) {
 }
 
 @media (max-width: 640px) {
+  .qq-bind-guide {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .qq-bind-guide .el-button {
+    width: 100%;
+    margin-left: 0;
+  }
+
   .msg-page {
     gap: 12px;
   }

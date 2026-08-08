@@ -126,6 +126,7 @@ export type QqGroupAdminCommand =
   | { type: "remove-command-user"; argText: string }
   | { type: "list-blocked-users" }
   | { type: "remove-blocked-user"; argText: string }
+  | { type: "remove-ad-whitelist-user"; argText: string }
   | { type: "list-command-users" };
 
 export function parseQqGroupAdminCommand(text: string): QqGroupAdminCommand | null {
@@ -152,6 +153,7 @@ export function parseQqGroupAdminCommand(text: string): QqGroupAdminCommand | nu
     ["add-command-user", /^(?:[/／])?(?:添加群管|添加管理|授权群管|授权管理)\s*([\s\S]+)$/i],
     ["remove-command-user", /^(?:[/／])?(?:移除群管|取消群管|取消管理|移除管理)\s*([\s\S]+)$/i],
     ["remove-blocked-user", /^(?:[/／])?(?:移出黑名单|移除黑名单|解除拉黑|取消拉黑)\s*([\s\S]+)$/i],
+    ["remove-ad-whitelist-user", /^(?:[/／])?(?:移出白名单|移除白名单|取消白名单)\s*([\s\S]+)$/i],
   ];
 
   for (const [type, regex] of patterns) {
