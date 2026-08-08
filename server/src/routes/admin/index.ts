@@ -1389,6 +1389,7 @@ adminRouter.patch("/weiwall-sync", adminOnly, validate(z.object({
   baseUrl: z.string().trim().max(240).optional(),
   schoolEn: z.string().trim().max(40).optional(),
   tenantId: z.number().int().min(1).max(999999).optional(),
+  agentId: z.string().trim().max(128).optional(),
   token: z.string().trim().max(4000).optional(),
   clearToken: z.boolean().optional(),
   intervalSeconds: z.number().int().min(30).max(3600).optional(),

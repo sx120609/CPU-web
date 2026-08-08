@@ -586,6 +586,7 @@ model WeiwallSyncConfig {
   baseUrl         String    @default("https://s.weiwall.com")
   schoolEn        String    @default("cpu")
   tenantId        Int       @default(7)
+  agentId         String    @default("")
   token           String    @default("")
   intervalSeconds Int       @default(120)
   topicPages      Int       @default(3)

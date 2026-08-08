@@ -422,6 +422,16 @@ export type WeiwallSyncConfig = {
   baseUrl: string;
   schoolEn: string;
   tenantId: number;
+  agentId: string;
+  executionAgents: Array<{
+    id: string;
+    name: string;
+    kind: "local" | "agent";
+    enabled: boolean;
+    online: boolean;
+    ready: boolean;
+    crawlEnabled: boolean;
+  }>;
   tokenPresent: boolean;
   tokenPreview: string;
   tokenExpiresAt: string | null;
@@ -1076,6 +1086,7 @@ export const adminApi = {
     baseUrl: string;
     schoolEn: string;
     tenantId: number;
+    agentId: string;
     token: string;
     clearToken: boolean;
     intervalSeconds: number;

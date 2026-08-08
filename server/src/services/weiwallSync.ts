@@ -10,6 +10,8 @@ import { refreshBoardTopicCount, refreshUserPostCount, refreshUserReplyCount } f
 import { config } from "../config";
 import { Errors } from "../utils/response";
 import { getSiteOrigin } from "./siteSettings";
+import { getJwxtAgentRuntimeConfig } from "./jwxtAgentConfig";
+import { getJwxtAgentState, isJwxtAgentAvailable, requestJwxtAgent } from "./jwxtAgentGateway";
 
 export const WEIWALL_BOARD_SLUG = "campus-wall";
 const WEIWALL_BOARD_NAME = "逛逛";
@@ -115,6 +117,16 @@ export type WeiwallSyncAdminConfig = {
   baseUrl: string;
   schoolEn: string;
   tenantId: number;
+  agentId: string;
+  executionAgents: Array<{
+    id: string;
+    name: string;
+    kind: "local" | "agent";
+    enabled: boolean;
+    online: boolean;
+    ready: boolean;
+    crawlEnabled: boolean;
+  }>;
   tokenPresent: boolean;
   tokenPreview: string;
   tokenExpiresAt: string | null;
@@ -143,6 +155,7 @@ export type WeiwallSyncPatch = Partial<{
   baseUrl: string;
   schoolEn: string;
   tenantId: number;
+  agentId: string;
   token: string;
   clearToken: boolean;
   intervalSeconds: number;
@@ -802,12 +815,38 @@ async function ensureWeiwallSyncConfigRow(client: SyncClient = prisma) {
 
 function toAdminConfig(row: Awaited<ReturnType<typeof ensureWeiwallSyncConfigRow>>): WeiwallSyncAdminConfig {
   const tokenMeta = inspectWeiwallToken(row.token);
+  const runtime = getJwxtAgentRuntimeConfig();
+  const executionAgents = [
+    {
+      id: "",
+      name: "服务器本机",
+      kind: "local" as const,
+      enabled: true,
+      online: true,
+      ready: true,
+      crawlEnabled: true,
+    },
+    ...runtime.agents.map((agent) => {
+      const state = getJwxtAgentState(agent.id);
+      return {
+        id: agent.id,
+        name: agent.name,
+        kind: "agent" as const,
+        enabled: agent.enabled,
+        online: state.online,
+        ready: state.ready,
+        crawlEnabled: agent.crawlEnabled,
+      };
+    }),
+  ];
   return {
     id: row.id,
     enabled: row.enabled,
     baseUrl: row.baseUrl,
     schoolEn: row.schoolEn,
     tenantId: row.tenantId,
+    agentId: row.agentId || "",
+    executionAgents,
     tokenPresent: Boolean(row.token),
     tokenPreview: maskToken(row.token),
     tokenExpiresAt: tokenMeta.expiresAt,
@@ -845,6 +884,7 @@ export async function updateWeiwallSyncConfig(patch: WeiwallSyncPatch) {
   if (patch.baseUrl !== undefined) data.baseUrl = trimTo(patch.baseUrl, 240, WEIWALL_DEFAULT_BASE_URL);
   if (patch.schoolEn !== undefined) data.schoolEn = trimTo(patch.schoolEn, 40, "cpu");
   if (patch.tenantId !== undefined) data.tenantId = patch.tenantId;
+  if (patch.agentId !== undefined) data.agentId = String(patch.agentId ?? "").trim().slice(0, 128);
   if (patch.token !== undefined) data.token = String(patch.token ?? "").trim();
   if (patch.clearToken) data.token = "";
   if (patch.intervalSeconds !== undefined) {
@@ -868,11 +908,49 @@ export async function updateWeiwallSyncConfig(patch: WeiwallSyncPatch) {
   return toAdminConfig(await ensureWeiwallSyncConfigRow());
 }
 
-async function fetchTenantName(baseUrl: string) {
-  const res = await fetch(new URL("/api/client/tenant", baseUrl).toString(), {
+type WeiwallRequest = {
+  method: "GET" | "POST";
+  url: string;
+  headers: Record<string, string>;
+  body?: string;
+};
+
+type WeiwallTransportResult = {
+  status: number;
+  data: unknown;
+};
+
+async function requestWeiwallTransport(
+  row: Awaited<ReturnType<typeof ensureWeiwallSyncConfigRow>>,
+  request: WeiwallRequest,
+): Promise<WeiwallTransportResult> {
+  if (row.agentId && isJwxtAgentAvailable(row.agentId, "crawl")) {
+    try {
+      return await requestJwxtAgent(row.agentId, "weiwall.request", request, 45_000);
+    } catch (error) {
+      console.warn(`[weiwall] Agent ${row.agentId} request failed; falling back to local server`, error);
+    }
+  }
+
+  const response = await fetch(request.url, {
+    method: request.method,
+    headers: request.headers,
+    ...(request.method === "POST" ? { body: request.body ?? "" } : {}),
+  });
+  const text = await response.text();
+  if (Buffer.byteLength(text, "utf8") > 1_800_000) {
+    throw new Error("WeiWall response is too large");
+  }
+  return { status: response.status, data: parseJsonSafe<unknown>(text, text) };
+}
+
+async function fetchTenantName(row: Awaited<ReturnType<typeof ensureWeiwallSyncConfigRow>>) {
+  const result = await requestWeiwallTransport(row, {
+    method: "GET",
+    url: new URL("/api/client/tenant", row.baseUrl || WEIWALL_DEFAULT_BASE_URL).toString(),
     headers: { Accept: "application/json" },
   });
-  const json = parseJsonSafe<any>(await res.text(), {});
+  const json = (result.data && typeof result.data === "object" ? result.data : {}) as any;
   return trimTo(json?.data?.tenantName, 80, "逛逛");
 }
 
@@ -883,7 +961,9 @@ async function weiwallFetchJson(row: Awaited<ReturnType<typeof ensureWeiwallSync
     url.searchParams.set(key, String(value));
   }
   for (let attempt = 0; attempt < 3; attempt++) {
-    const res = await fetch(url.toString(), {
+    const result = await requestWeiwallTransport(row, {
+      method: "GET",
+      url: url.toString(),
       headers: {
         Accept: "application/json",
         Authorization: `Bearer ${row.token}`,
@@ -891,8 +971,8 @@ async function weiwallFetchJson(row: Awaited<ReturnType<typeof ensureWeiwallSync
         "User-Agent": "Mozilla/5.0",
       },
     });
-    const text = await res.text();
-    const json = parseJsonSafe<any>(text, {});
+    const res = { status: result.status, ok: result.status >= 200 && result.status < 300 };
+    const json = (result.data && typeof result.data === "object" ? result.data : {}) as any;
     const message = json?.errmsg || json?.message || `WeiWall 请求失败 (${res.status})`;
     if (json?.status === "unauthorized" || json?.errcode === 4010001 || json?.errcode === 4010002) {
       throw new Error(message);
@@ -935,13 +1015,14 @@ async function weiwallPostJson(
     headers["Content-Type"] = contentType;
     payload = JSON.stringify(body);
   }
-  const res = await fetch(url.toString(), {
+  const result = await requestWeiwallTransport(row, {
     method: "POST",
+    url: url.toString(),
     headers,
     body: payload,
   });
-  const text = await res.text();
-  const json = parseJsonSafe<any>(text, {});
+  const res = { status: result.status, ok: result.status >= 200 && result.status < 300 };
+  const json = (result.data && typeof result.data === "object" ? result.data : {}) as any;
   const message = json?.errmsg || json?.message || `WeiWall 请求失败 (${res.status})`;
   if (!res.ok) throw new Error(message);
   return json;
@@ -958,15 +1039,17 @@ async function weiwallFetchPublicJson(
     url.searchParams.set(key, String(value));
   }
   for (let attempt = 0; attempt < 3; attempt++) {
-    const res = await fetch(url.toString(), {
+    const result = await requestWeiwallTransport(row, {
+      method: "GET",
+      url: url.toString(),
       headers: {
         Accept: "application/json",
         Tenant: String(row.tenantId),
         "User-Agent": "Mozilla/5.0",
       },
     });
-    const text = await res.text();
-    const json = parseJsonSafe<any>(text, {});
+    const res = { status: result.status, ok: result.status >= 200 && result.status < 300 };
+    const json = (result.data && typeof result.data === "object" ? result.data : {}) as any;
     const message = json?.errmsg || json?.message || `WeiWall 请求失败 (${res.status})`;
     if (isWeiwallRateLimitMessage(message)) {
       if (attempt < 2) {
@@ -1985,7 +2068,7 @@ export async function runWeiwallSyncNow() {
     await maybeNotifyWeiwallTokenExpired(configRow.token);
 
     try {
-      result.sourceName = await fetchTenantName(configRow.baseUrl || WEIWALL_DEFAULT_BASE_URL);
+      result.sourceName = await fetchTenantName(configRow);
       const authorCounters: AuthorSyncCounters = { created: 0, updated: 0 };
       await normalizeLegacyMirroredAuthorAssignments(botUser.id);
       const control = { commentFetchStopped: false, rateLimitMessage: null as string | null };

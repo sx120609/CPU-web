@@ -1,0 +1,2 @@
+ALTER TABLE "WeiwallSyncConfig"
+ADD COLUMN "agentId" TEXT NOT NULL DEFAULT '';

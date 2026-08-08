@@ -71,6 +71,20 @@
           <el-input-number v-model="form.tenantId" :min="1" :max="999999" />
         </el-form-item>
 
+        <el-form-item label="执行节点">
+          <el-select v-model="form.agentId" placeholder="服务器本机" style="width: 100%">
+            <el-option label="服务器本机（当前服务）" value="" />
+            <el-option
+              v-for="agent in (config.executionAgents || []).filter((item) => item.kind === 'agent')"
+              :key="agent.id"
+              :label="`${agent.name}${agent.online && agent.ready ? '（在线）' : '（离线）'}`"
+              :value="agent.id"
+              :disabled="!agent.enabled || !agent.crawlEnabled"
+            />
+          </el-select>
+          <div class="field-tip">选择远程节点后，逛逛请求会优先在该教务 Agent 服务器执行；节点暂时不可用时自动回退到本站。</div>
+        </el-form-item>
+
         <el-form-item label="同步间隔（秒）">
           <el-input-number v-model="form.intervalSeconds" :min="30" :max="3600" />
           <div class="field-tip">当前实现按 30 秒检查一次，默认 120 秒真正执行一轮。建议不要低于 60 秒。</div>
@@ -221,6 +235,7 @@ const form = reactive({
   baseUrl: "https://s.weiwall.com",
   schoolEn: "cpu",
   tenantId: 7,
+  agentId: "",
   intervalSeconds: 120,
   topicPages: 3,
   commentPageSize: 20,
@@ -288,6 +303,7 @@ function hydrate(next: WeiwallSyncConfig) {
   form.baseUrl = next.baseUrl;
   form.schoolEn = next.schoolEn;
   form.tenantId = next.tenantId;
+  form.agentId = next.agentId || "";
   form.intervalSeconds = next.intervalSeconds;
   form.topicPages = next.topicPages;
   form.commentPageSize = next.commentPageSize;
@@ -328,6 +344,7 @@ async function save() {
       baseUrl: form.baseUrl.trim(),
       schoolEn: form.schoolEn.trim(),
       tenantId: Number(form.tenantId),
+      agentId: form.agentId,
       intervalSeconds: Number(form.intervalSeconds),
       topicPages: Number(form.topicPages),
       commentPageSize: Number(form.commentPageSize),
