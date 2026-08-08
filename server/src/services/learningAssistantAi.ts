@@ -253,13 +253,22 @@ export async function requestLearningAssistantAi(
       body: buildLearningAssistantAiRequestBody(effectiveBody, model, endpoint),
       promptCacheKey: buildAiPromptCacheKey("course-bot-ai-answer", [cacheIdentity, model]),
       enablePromptCacheRetention: true,
+      // Provider overloads are transient in practice. Keep one user request and
+      // its quota reservation, but make two immediate re-attempts before the
+      // assistant is allowed to mark the question as unavailable.
+      maxTransientRetries: 2,
       signal,
     });
     const upstream = upstreamResult.response;
     const contentType = upstream.headers.get("content-type") || "application/json; charset=utf-8";
     if (!upstream.ok) {
       const errorBody = Buffer.from(await upstream.arrayBuffer());
-      await finishAiReviewLogError(logId, `HTTP ${upstream.status}`, errorBody.toString("utf8"));
+      const attempts = upstreamResult.retryCount + 1;
+      await finishAiReviewLogError(
+        logId,
+        `HTTP ${upstream.status}${attempts > 1 ? ` after ${attempts} attempts` : ""}`,
+        errorBody.toString("utf8"),
+      );
       return {
         ok: false,
         status: upstream.status,

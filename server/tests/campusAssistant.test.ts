@@ -472,6 +472,42 @@ test("AI upstream cache compatibility retries without unsupported retention", as
   }
 });
 
+test("AI upstream retries transient overloads before returning the final failure", async () => {
+  const originalFetch = globalThis.fetch;
+  let requests = 0;
+  globalThis.fetch = (async () => {
+    requests += 1;
+    if (requests < 3) {
+      return new Response('{"error":"temporarily overloaded"}', {
+        status: 503,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    return new Response('{"ok":true}', {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  try {
+    const result = await sendAiUpstreamRequest({
+      endpoint: "https://retry-test.example/v1/chat/completions",
+      apiKey: "test-key",
+      body: {
+        model: "example-model",
+        messages: [{ role: "user", content: "hello" }],
+      },
+      maxTransientRetries: 2,
+    });
+
+    assert.equal(result.response.ok, true);
+    assert.equal(result.retryCount, 2);
+    assert.equal(requests, 3);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("VoiceHub knowledge describes the real request form and rejects invented listener messages", () => {
   const knowledge = listCampusAssistantKnowledge(["voicehub"]);
   const combined = knowledge.join("\n");

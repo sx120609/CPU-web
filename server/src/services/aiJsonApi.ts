@@ -28,6 +28,8 @@ export type SendAiJsonRequestResult = {
   errorText: string;
   promptCacheKeyApplied: boolean;
   promptCacheRetentionApplied: boolean;
+  /** Number of transient upstream retries made before returning the final response. */
+  retryCount: number;
 };
 
 const promptCacheKeySupport = new Map<string, boolean>();
@@ -68,6 +70,7 @@ export async function sendAiJsonRequest(input: {
   messages: AiJsonMessage[];
   promptCacheKey?: string | null;
   enablePromptCacheRetention?: boolean;
+  maxTransientRetries?: number;
   stream?: boolean;
   signal?: AbortSignal;
 }): Promise<SendAiJsonRequestResult> {
@@ -85,6 +88,7 @@ export async function sendAiJsonRequest(input: {
     body,
     promptCacheKey: input.promptCacheKey,
     enablePromptCacheRetention: input.enablePromptCacheRetention,
+    maxTransientRetries: input.maxTransientRetries,
     signal: input.signal,
   });
 }
@@ -95,6 +99,8 @@ export async function sendAiUpstreamRequest(input: {
   body: Record<string, unknown>;
   promptCacheKey?: string | null;
   enablePromptCacheRetention?: boolean;
+  /** Retries for transient provider failures. A value of 2 means at most three total attempts. */
+  maxTransientRetries?: number;
   signal?: AbortSignal;
 }): Promise<SendAiJsonRequestResult> {
   const mode = detectAiJsonApiMode(input.endpoint);
@@ -104,6 +110,10 @@ export async function sendAiUpstreamRequest(input: {
   let promptCacheRetentionApplied = promptCacheKeyApplied
     && input.enablePromptCacheRetention !== false
     && (promptCacheRetentionSupport.get(supportKey) ?? true);
+  const configuredRetries = Number(input.maxTransientRetries);
+  const maxTransientRetries = Number.isFinite(configuredRetries)
+    ? Math.max(0, Math.min(3, Math.floor(configuredRetries)))
+    : 0;
 
   const execute = () => fetch(input.endpoint, {
     method: "POST",
@@ -119,31 +129,65 @@ export async function sendAiUpstreamRequest(input: {
     )),
   });
 
-  let response = await execute();
-  let errorText = response.ok ? "" : await response.clone().text().catch(() => "");
+  const executeWithPromptCacheFallback = async () => {
+    let response = await execute();
+    let errorText = response.ok ? "" : await response.clone().text().catch(() => "");
 
-  if (!response.ok && promptCacheRetentionApplied && shouldDisablePromptCacheRetention(response.status, errorText)) {
-    promptCacheRetentionSupport.set(supportKey, false);
-    promptCacheRetentionApplied = false;
-    response = await execute();
-    errorText = response.ok ? "" : await response.clone().text().catch(() => "");
-  }
+    if (!response.ok && promptCacheRetentionApplied && shouldDisablePromptCacheRetention(response.status, errorText)) {
+      promptCacheRetentionSupport.set(supportKey, false);
+      promptCacheRetentionApplied = false;
+      response = await execute();
+      errorText = response.ok ? "" : await response.clone().text().catch(() => "");
+    }
 
-  if (!response.ok && promptCacheKeyApplied && shouldDisablePromptCacheKey(response.status, errorText)) {
-    promptCacheKeySupport.set(supportKey, false);
-    promptCacheRetentionSupport.set(supportKey, false);
-    promptCacheKeyApplied = false;
-    promptCacheRetentionApplied = false;
-    response = await execute();
-    errorText = response.ok ? "" : await response.clone().text().catch(() => "");
+    if (!response.ok && promptCacheKeyApplied && shouldDisablePromptCacheKey(response.status, errorText)) {
+      promptCacheKeySupport.set(supportKey, false);
+      promptCacheRetentionSupport.set(supportKey, false);
+      promptCacheKeyApplied = false;
+      promptCacheRetentionApplied = false;
+      response = await execute();
+      errorText = response.ok ? "" : await response.clone().text().catch(() => "");
+    }
+
+    return { response, errorText };
+  };
+
+  let retryCount = 0;
+  let finalResult: { response: Response; errorText: string } | null = null;
+  while (!finalResult) {
+    try {
+      const attempt = await executeWithPromptCacheFallback();
+      if (
+        attempt.response.ok
+        || retryCount >= maxTransientRetries
+        || !shouldRetryTransientUpstreamStatus(attempt.response.status)
+      ) {
+        finalResult = attempt;
+        break;
+      }
+      retryCount += 1;
+      await attempt.response.body?.cancel().catch(() => undefined);
+    } catch (error) {
+      if (
+        retryCount >= maxTransientRetries
+        || !shouldRetryTransientUpstreamError(error, input.signal)
+      ) {
+        throw error;
+      }
+      retryCount += 1;
+    }
+
+    // Retry without an artificial delay, while yielding to pending abort work.
+    await Promise.resolve();
   }
 
   return {
-    response,
+    response: finalResult.response,
     mode,
-    errorText,
+    errorText: finalResult.errorText,
     promptCacheKeyApplied,
     promptCacheRetentionApplied,
+    retryCount,
   };
 }
 
@@ -323,6 +367,23 @@ function toChatCompletionsMessage(message: AiJsonMessage) {
       };
     }),
   };
+}
+
+function shouldRetryTransientUpstreamStatus(status: number) {
+  return status === 408
+    || status === 409
+    || status === 425
+    || status === 429
+    || status === 529
+    || status >= 500;
+}
+
+function shouldRetryTransientUpstreamError(error: unknown, signal?: AbortSignal) {
+  if (signal?.aborted) return false;
+  const name = error instanceof Error ? error.name : "";
+  if (name === "AbortError" || name === "TimeoutError") return false;
+  const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error || "");
+  return /fetch failed|network|socket|econn|etimedout|eai_again|enotfound|temporarily unavailable/i.test(message);
 }
 
 function shouldDisablePromptCacheKey(status: number, responseText: string) {
