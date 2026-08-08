@@ -56,6 +56,16 @@ test("does not exempt commercial recruitment that uses a club-like word", () => 
   );
 });
 
+test("hard-blocks part-time tutoring diversion even when mixed with hobby groups", () => {
+  const content = [
+    "明日方舟群：1055678308",
+    "GalGame群：1076856924",
+    "动漫社群：1074546866",
+    "兼职家教群：31027253611",
+  ].join("\n");
+  assert.equal(detectQqGroupAdHardBlockReason(content), "包含兼职/家教等商业招募并附群号导流");
+});
+
 test("keeps the group QR-code switch independent from campus recruitment", () => {
   assert.equal(detectQqGroupAdHardBlockReason("校园社团招新，扫码进群"), null);
   assert.match(
