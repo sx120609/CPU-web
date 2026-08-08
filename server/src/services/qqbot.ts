@@ -2802,23 +2802,31 @@ function markConversationCancelled(qqId: string, groupId?: string) {
   qqBotCooldowns.set(cooldownKey(qqId, groupId), { cancelledAt: Date.now() });
 }
 
-function isExplicitBotMention(event: OneBotEvent, text: string) {
+function isExplicitBotMention(event: OneBotEvent, text: string): boolean {
   const raw = text.trim();
   if (!raw) return false;
-  return isMessageAtBot(event.message, event.self_id);
+  return isMessageAtBot(event.message, event.self_id) || isMessageAtBot(event.raw_message, event.self_id);
 }
 
-function isMessageAtBot(message: unknown, selfId?: number | string) {
+function isMessageAtBot(message: unknown, selfId?: number | string): boolean {
   if (!selfId) return false;
   const target = String(selfId);
   if (typeof message === "string") {
-    const at = message.match(/\[CQ:at,([^\]]+)\]/i);
-    if (!at) return false;
-    const params = new URLSearchParams(at[1].replace(/,/g, "&"));
-    return String(params.get("qq") || "") === target;
+    return Array.from(message.matchAll(/\[CQ:at,([^\]]+)\]/gi)).some((at) => {
+      const params = new URLSearchParams(at[1].replace(/,/g, "&"));
+      return String(params.get("qq") || "") === target;
+    });
   }
-  if (!Array.isArray(message)) return false;
-  return message.some((seg: any) => seg?.type === "at" && String(seg?.data?.qq || "") === target);
+  if (Array.isArray(message)) {
+    return message.some((seg: any) => isMessageAtBot(seg, target));
+  }
+  if (!message || typeof message !== "object") return false;
+  const segment = message as any;
+  if (segment.type === "at" && String(segment.data?.qq || "") === target) return true;
+  return isMessageAtBot(segment.message, target)
+    || isMessageAtBot(segment.content, target)
+    || isMessageAtBot(segment.data?.message, target)
+    || isMessageAtBot(segment.data?.content, target);
 }
 
 function shouldHandleForwardPostInContext(context: {
@@ -3093,7 +3101,7 @@ async function handleQqBotGroupAdminCommand(input: {
       const target = extractCommandTarget(input.command.argText, input.event);
       if (!target?.qqId) {
         return replyAndLog(
-          "请直接 @要移出广告过滤白名单的成员，例如：移出白名单@某某。",
+          "请带上要移出的 QQ 号或直接 @对方，例如：移出白名单 123456789 或 移出白名单@某某。仅移出当前群白名单。",
           "remove-ad-whitelist-user-target-missing",
           "ignored",
         );
@@ -3841,14 +3849,17 @@ function buildQqGroupAdminCommandLines(group: QqBotGroupView) {
     lines.push("• 移出黑名单 QQ号/@某人");
   }
   else lines.push("• 踢黑：未开启");
-  lines.push("• 移出白名单 @某人：移出本群广告过滤白名单");
+  lines.push("• 移出白名单 QQ号/@某人：移出本群广告过滤白名单");
   lines.push("• 群管列表：查看本群授权用户");
   lines.push("• 添加群管 QQ号/@某人 / 移除群管 QQ号/@某人：维护授权用户");
   return lines;
 }
 
 function extractCommandTarget(argText: string, event: OneBotEvent) {
-  const mentionedQqIds = extractMentionedQqIds(event.message, event.self_id);
+  const mentionedQqIds = Array.from(new Set([
+    ...extractMentionedQqIds(event.message, event.self_id),
+    ...extractMentionedQqIds(event.raw_message, event.self_id),
+  ]));
   if (mentionedQqIds.length) {
     return { qqId: mentionedQqIds[0], restText: String(argText || "").trim() };
   }
@@ -3872,14 +3883,34 @@ function extractCommandTarget(argText: string, event: OneBotEvent) {
 }
 
 function extractMentionedQqIds(message: unknown, selfId?: number | string) {
-  if (!Array.isArray(message)) return [];
   const botId = String(selfId || "").trim();
-  return Array.from(new Set(
-    message
-      .filter((segment: any) => segment?.type === "at")
-      .map((segment: any) => String(segment?.data?.qq || "").trim())
-      .filter((qqId) => qqId && qqId !== "all" && qqId !== botId),
-  ));
+  const found: string[] = [];
+  const visit = (value: unknown) => {
+    if (typeof value === "string") {
+      for (const match of value.matchAll(/\[CQ:at,([^\]]+)\]/gi)) {
+        const params = new URLSearchParams(match[1].replace(/,/g, "&"));
+        const qqId = String(params.get("qq") || "").trim();
+        if (qqId && qqId !== "all" && qqId !== botId) found.push(qqId);
+      }
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+    if (!value || typeof value !== "object") return;
+    const segment = value as any;
+    if (segment.type === "at") {
+      const qqId = String(segment.data?.qq || "").trim();
+      if (qqId && qqId !== "all" && qqId !== botId) found.push(qqId);
+    }
+    visit(segment.message);
+    visit(segment.content);
+    visit(segment.data?.message);
+    visit(segment.data?.content);
+  };
+  visit(message);
+  return Array.from(new Set(found));
 }
 
 function parseMuteDurationSeconds(value: string) {

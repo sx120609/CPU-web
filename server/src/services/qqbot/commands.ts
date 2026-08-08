@@ -58,7 +58,14 @@ export function normalizeInboundCommandText(text: string) {
   let normalized = String(text || "").trim();
   if (!normalized) return "";
   for (let index = 0; index < 2; index += 1) {
-    const next = normalized.replace(/^(?:@?\s*)?(?:qqbot|药大拾间bot|助手|bot)\s*[，,:：-]?\s*/i, "").trim();
+    // QQ clients differ in how they serialize an @ mention.  Some keep the
+    // bot nickname in the text (for example “@拾间BOT”), while others remove
+    // the mention segment before this function is called.  Accept the known
+    // bot names here so both forms reach the same command parser.
+    const next = normalized.replace(
+      /^(?:@?\s*)?(?:qqbot|拾间bot|拾间助手|药大拾间bot|药大拾间·bot|助手|bot)\s*[，,:：-]?\s*/i,
+      "",
+    ).trim();
     if (!next || next === normalized) break;
     normalized = next;
   }
@@ -144,16 +151,20 @@ export function parseQqGroupAdminCommand(text: string): QqGroupAdminCommand | nu
   }
 
   const patterns: Array<[QqGroupAdminCommand["type"], RegExp]> = [
-    ["approve-join", /^(?:[/／])?(?:通过加群|同意加群|批准加群|通过入群|同意入群)\s*([\s\S]+)$/i],
-    ["reject-join", /^(?:[/／])?(?:拒绝加群|驳回加群|拒绝入群|驳回入群)\s*([\s\S]+)$/i],
-    ["unmute", /^(?:[/／])?(?:解除禁言|取消禁言|解禁)\s*([\s\S]+)$/i],
-    ["mute", /^(?:[/／])?禁言\s*([\s\S]+)$/i],
-    ["kick-block", /^(?:[/／])?(?:踢黑|拉黑踢|踢出并拉黑)\s*([\s\S]+)$/i],
-    ["kick", /^(?:[/／])?踢出\s*([\s\S]+)$/i],
-    ["add-command-user", /^(?:[/／])?(?:添加群管|添加管理|授权群管|授权管理)\s*([\s\S]+)$/i],
-    ["remove-command-user", /^(?:[/／])?(?:移除群管|取消群管|取消管理|移除管理)\s*([\s\S]+)$/i],
-    ["remove-blocked-user", /^(?:[/／])?(?:移出黑名单|移除黑名单|解除拉黑|取消拉黑)\s*([\s\S]+)$/i],
-    ["remove-ad-whitelist-user", /^(?:[/／])?(?:移出白名单|移除白名单|取消白名单)\s*([\s\S]+)$/i],
+    // Keep the target part optional.  In structured OneBot messages an @
+    // segment is intentionally omitted from messageText; the handler reads
+    // the actual target QQ from event.message.  Requiring one character here
+    // made commands such as “@拾间BOT 移出白名单 @某人” disappear silently.
+    ["approve-join", /^(?:[/／])?(?:通过加群|同意加群|批准加群|通过入群|同意入群)\s*([\s\S]*)$/i],
+    ["reject-join", /^(?:[/／])?(?:拒绝加群|驳回加群|拒绝入群|驳回入群)\s*([\s\S]*)$/i],
+    ["unmute", /^(?:[/／])?(?:解除禁言|取消禁言|解禁)\s*([\s\S]*)$/i],
+    ["mute", /^(?:[/／])?禁言\s*([\s\S]*)$/i],
+    ["kick-block", /^(?:[/／])?(?:踢黑|拉黑踢|踢出并拉黑)\s*([\s\S]*)$/i],
+    ["kick", /^(?:[/／])?踢出\s*([\s\S]*)$/i],
+    ["add-command-user", /^(?:[/／])?(?:添加群管|添加管理|授权群管|授权管理)\s*([\s\S]*)$/i],
+    ["remove-command-user", /^(?:[/／])?(?:移除群管|取消群管|取消管理|移除管理)\s*([\s\S]*)$/i],
+    ["remove-blocked-user", /^(?:[/／])?(?:移出黑名单|移除黑名单|解除拉黑|取消拉黑)\s*([\s\S]*)$/i],
+    ["remove-ad-whitelist-user", /^(?:[/／])?(?:移出白名单|移除白名单|取消白名单)\s*([\s\S]*)$/i],
   ];
 
   for (const [type, regex] of patterns) {
