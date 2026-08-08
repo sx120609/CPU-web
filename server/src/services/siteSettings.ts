@@ -318,7 +318,10 @@ const LEGACY_DEFAULT_QQ_GROUP_AD_REVIEW_PROMPTS = {
   ].join(" "),
 } as const;
 
-export const DEFAULT_QQ_GROUP_AD_REVIEW_PROMPTS = {
+// Built-in prompt shipped immediately before the student-group scope was
+// tightened. Keep it only for a one-time upgrade; custom administrator
+// prompts must never be overwritten.
+const PREVIOUS_DEFAULT_QQ_GROUP_AD_REVIEW_PROMPTS = {
   system: [
     "你是 QQ 群广告过滤助手。",
     "你的任务是判断这条群消息是否属于广告、推广、拉新、招代理、刷单、兼职引流、交易导流、二维码/链接拉群或重复营销。",
@@ -338,6 +341,31 @@ export const DEFAULT_QQ_GROUP_AD_REVIEW_PROMPTS = {
     "发送者昵称：{{nickname}}",
     "消息内容：{{content}}",
     "附加 metadata：{{metadataJson}}",
+  ].join("\n"),
+} as const;
+
+export const DEFAULT_QQ_GROUP_AD_REVIEW_PROMPTS = {
+  system: [
+    "你是学生群的商业广告过滤助手，不是泛化的内容审查助手。",
+    "只过滤明确的商业广告、收费交易、付费服务、兼职代理、刷单、商业返利、商务推广或以营利为目的的真实外部引流。",
+    "正常的校园交流、课程讨论、经验分享、求助、二手闲聊、校园活动和学生组织信息默认放行。",
+    "社团、协会、学生会、学生组织、兴趣小组、校队、志愿服务和校园活动的招新/纳新/报名/成员招募，只要看起来是校内或学生组织且没有收费、卖货、付费服务、代理返利等商业证据，默认 auto_pass；其中出现报名方式、联系人、QQ/微信群号或二维码，也不等于商业广告。",
+    "不要仅因“招募、招新、加入、报名、导流、加群”、群号、二维码、链接、价格数字或广告腔文案判广告。只有同时存在真实商品交易、收费/收款、付费课程或服务、兼职代理/刷单、商业推广返利、商务合作等明确商业证据时，才考虑 block。",
+    "如果证据不足、无法确认是否商业化，优先 auto_pass 或 manual_review，禁止仅凭猜测 block。群组单独配置的二维码禁发规则仍独立生效，但二维码禁发不应扩大为对校园招新的商业广告判断。",
+    "只返回 JSON。",
+  ].join(" "),
+  user: [
+    "请审核这条 QQ 群消息是否应按广告过滤，输出 JSON：",
+    "{\"risk_score\":0-100,\"risk_level\":\"low|medium|high\",\"decision\":\"auto_pass|manual_review|block\",\"reason\":\"一句短原因\",\"detail\":\"补充说明\",\"categories\":{\"spam\":0-100,\"traffic\":0-100,\"fraud\":0-100,\"marketing\":0-100,\"recruitment\":0-100}}",
+    "",
+    "群号：{{groupId}}",
+    "群名：{{groupName}}",
+    "发送者 QQ：{{qqId}}",
+    "发送者昵称：{{nickname}}",
+    "消息内容：{{content}}",
+    "附加 metadata：{{metadataJson}}",
+    "判定边界：这是学生群，只判断商业广告；校内社团/协会/学生组织招新、校园活动和志愿招募默认放行。不要把组织名称、招新措辞、报名方式或 QQ 群号本身当作商业证据。",
+    "只有明确收费交易、付费服务、兼职代理、刷单、商业返利或真实商务推广时才 block；信息不足时 auto_pass 或 manual_review。",
   ].join("\n"),
 } as const;
 
@@ -926,14 +954,28 @@ export async function loadFeatures(): Promise<void> {
   const storedQqGroupAdSystemPrompt = rows.find((row) => row.key === QQ_GROUP_AD_REVIEW_SYSTEM_PROMPT_KEY);
   if (
     storedQqGroupAdSystemPrompt
-    && normalizePromptTemplate(storedQqGroupAdSystemPrompt.value, "")
-      === normalizePromptTemplate(LEGACY_DEFAULT_QQ_GROUP_AD_REVIEW_PROMPTS.system, "")
+    && [
+      LEGACY_DEFAULT_QQ_GROUP_AD_REVIEW_PROMPTS.system,
+      PREVIOUS_DEFAULT_QQ_GROUP_AD_REVIEW_PROMPTS.system,
+    ].some((prompt) => normalizePromptTemplate(storedQqGroupAdSystemPrompt.value, "") === normalizePromptTemplate(prompt, ""))
   ) {
     await prisma.siteSetting.update({
       where: { key: QQ_GROUP_AD_REVIEW_SYSTEM_PROMPT_KEY },
       data: { value: DEFAULT_QQ_GROUP_AD_REVIEW_PROMPTS.system },
     });
     configCache.qqGroupAdReviewSystemPrompt = DEFAULT_QQ_GROUP_AD_REVIEW_PROMPTS.system;
+  }
+  const storedQqGroupAdUserPrompt = rows.find((row) => row.key === QQ_GROUP_AD_REVIEW_USER_PROMPT_KEY);
+  if (
+    storedQqGroupAdUserPrompt
+    && normalizePromptTemplate(storedQqGroupAdUserPrompt.value, "")
+      === normalizePromptTemplate(PREVIOUS_DEFAULT_QQ_GROUP_AD_REVIEW_PROMPTS.user, "")
+  ) {
+    await prisma.siteSetting.update({
+      where: { key: QQ_GROUP_AD_REVIEW_USER_PROMPT_KEY },
+      data: { value: DEFAULT_QQ_GROUP_AD_REVIEW_PROMPTS.user },
+    });
+    configCache.qqGroupAdReviewUserPrompt = DEFAULT_QQ_GROUP_AD_REVIEW_PROMPTS.user;
   }
   sanitizeAiReviewConfig();
   sanitizeCampusAssistantConfig();

@@ -3,6 +3,7 @@ import path from "node:path";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import test from "node:test";
 import {
+  detectQqCampusOrganizationRecruitmentBypassReason,
   detectHarmlessQqGroupAdBypassReason,
   detectQqGroupAdHardBlockReason,
   prepareQqGroupAdImagePayloads,
@@ -31,6 +32,35 @@ test("hard-blocks explicit QQ group number diversion", () => {
   assert.equal(
     detectQqGroupAdHardBlockReason("新生资料免费领取，欢迎加QQ群：3498138727"),
     "包含 QQ 群号并带有群号导流",
+  );
+});
+
+test("allows non-commercial campus club recruitment with a QQ group number", () => {
+  const content = "中国药科大学兵击协会招新，欢迎同学报名加入，QQ群：3498138727";
+  assert.equal(detectQqCampusOrganizationRecruitmentBypassReason(content), "命中校园社团/学生组织招新豁免");
+  assert.equal(detectQqGroupAdHardBlockReason(content), null);
+});
+
+test("allows a club recruitment poster phrase without treating the QQ number as an ad", () => {
+  const content = "欧洲古典剑术社团招新，报名加入 QQ 群 3498138727";
+  assert.equal(detectQqGroupAdHardBlockReason(content), null);
+});
+
+test("does not exempt commercial recruitment that uses a club-like word", () => {
+  const content = "商业培训社团招募代理，收费 399 元，QQ群：3498138727";
+  assert.equal(detectQqCampusOrganizationRecruitmentBypassReason(content), null);
+  assert.match(detectQqGroupAdHardBlockReason(content) || "", /QQ群号|加群|导流/);
+  assert.equal(
+    detectQqCampusOrganizationRecruitmentBypassReason("某公司社团招聘，加入QQ群：3498138727"),
+    null,
+  );
+});
+
+test("keeps the group QR-code switch independent from campus recruitment", () => {
+  assert.equal(detectQqGroupAdHardBlockReason("校园社团招新，扫码进群"), null);
+  assert.match(
+    detectQqGroupAdHardBlockReason("校园社团招新，扫码进群", true) || "",
+    /二维码|扫码/,
   );
 });
 

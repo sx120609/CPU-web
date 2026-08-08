@@ -52,6 +52,10 @@ const QQ_GROUP_AD_KFC_MEME_HARD_DIVERSION_PATTERNS = [
 ];
 const QQ_GROUP_AD_QQ_NUMBER_PATTERN = /(?:QQ\s*(?:\u7fa4|\u7fa4\u53f7)|Q\s*\u7fa4|\u7fa4\u53f7).{0,16}\d{6,12}/iu;
 const QQ_GROUP_AD_INVITE_NUMBER_PATTERN = /(?:\u52a0|\u8fdb|\u52a0\u5165|\u62c9|\u626b\u7801|\u8054\u7cfb|\u79c1\u804a).{0,24}\d{6,12}/u;
+const QQ_GROUP_CAMPUS_RECRUITMENT_PATTERN = /(?:招新|纳新|招募(?:成员|新成员|队员|志愿者)?|报名|加入(?:我们|社团|协会)?)/u;
+const QQ_GROUP_CAMPUS_ORGANIZATION_PATTERN = /(?:社团|协会|学生会|学生组织|兴趣小组|兴趣社|校队|志愿服务|校园活动|校园组织|院学生会|校学生会|部门招新)/u;
+const QQ_GROUP_CAMPUS_CONTEXT_PATTERN = /(?:学校|校园|学院|大学|本科|学生|同学|校内|校级|院级|新生|班级)/u;
+const QQ_GROUP_COMMERCIAL_AD_PATTERN = /(?:收费|付费|价格|售价|下单|购买|商品|服务费|佣金|兼职|刷单|代理(?:加盟|返利|商)?|加盟|培训班|培训收费|课程(?:销售|收费)|代购|推广返利|商业推广|商务合作|广告位|优惠券|折扣价|售卖|收款|付款|转账|返现|红包|招代理|招聘|公司|企业|品牌|商家|门店|招商|店铺)/u;
 /**
  * Codex Spark/Codex variants currently reject image parts. Keep this guard
  * local to QQ ad review so a text-only moderation model can still be used for
@@ -112,7 +116,8 @@ export async function reviewQqGroupMessageForAd(input: {
     };
   }
   const localBypassReason = reviewMode === "full" && !imageUrls.length
-    ? detectHarmlessQqGroupAdBypassReason(input.content)
+    ? detectQqCampusOrganizationRecruitmentBypassReason(input.content)
+      || detectHarmlessQqGroupAdBypassReason(input.content)
     : null;
   if (localBypassReason) {
     return {
@@ -120,7 +125,7 @@ export async function reviewQqGroupMessageForAd(input: {
       riskScore: 0,
       riskLevel: "low",
       reason: localBypassReason,
-      detail: "命中本地玩梗误判豁免，未见真实卖货、拉群、招募、二维码或链接导流信号。",
+      detail: "命中本地学生组织/玩梗误判豁免，未见明确商业交易或商业推广证据。",
       model: "local-bypass",
       modelDecision: "auto_pass",
     };
@@ -149,10 +154,17 @@ export async function reviewQqGroupMessageForAd(input: {
   }
   const qrPolicy = input.blockQrCodes === true
     ? "本群已开启“禁止二维码”：只要文字或任一附件（包括视频抽帧）中出现可识别二维码，即使没有其他广告文案，也必须 decision=block，并在 reason 中明确写“二维码”。\n\n"
-    : "本群未开启强制二维码拦截；只有二维码同时构成导流、招募或商业推广时才拦截。\n\n";
+    : "本群未开启强制二维码拦截；二维码本身不等于广告，只有同时构成真实商业导流、收费交易或商业推广时才拦截。校园社团/学生组织招新中的二维码是报名渠道，默认放行。\n\n";
+  const campusPolicy = [
+    "这是学生群，审核范围应保持窄：只过滤明确的商业广告，不要把普通校园信息当成广告。",
+    "社团、协会、学生会、学生组织、兴趣小组、校队、志愿服务和校园活动的招新/纳新/报名/成员招募，只要没有收费、卖货、付费服务、兼职代理、刷单或商业返利等证据，默认 auto_pass。",
+    "组织招新中的报名方式、联系人、QQ/微信群号、二维码或链接只是报名渠道，不是商业证据；不要仅因“招募、招新、加入、报名、加群、导流”等词 block。",
+    "图片若是校内社团或学生组织招新海报，也按上述边界处理；只有画面同时出现明确收费交易、付费服务或商业推广，才按商业广告处理。",
+    "证据不足时优先 auto_pass 或 manual_review，不能靠猜测 block。",
+  ].join("\n");
   const promptText = reviewMode === "qr-only"
     ? "只检查本消息所附图片和视频抽帧里有没有可识别二维码。即使画面是明显广告、招新、推广或引流，也不得因此拦截；没有二维码就必须放行。"
-    : `${qrPolicy}${imageUrls.length ? "这是一条包含附图的群消息。请直接查看附图判断是否存在广告、导流、招募或商业推广，不要因为文字为空而放行。\n\n" : ""}${fillPromptTemplate(config.qqGroupAdReviewUserPrompt, {
+    : `${qrPolicy}${campusPolicy}\n\n${imageUrls.length ? "这是一条包含附图的群消息。请直接查看附图，按学生群的窄范围商业广告边界判断；不要因为文字为空而放行。\n\n" : ""}${fillPromptTemplate(config.qqGroupAdReviewUserPrompt, {
         groupId: input.groupId,
         groupName: input.groupName || input.groupId,
         qqId: input.qqId,
@@ -287,10 +299,27 @@ export function detectHarmlessQqGroupAdBypassReason(input: string) {
   return "命中疯狂星期四等玩梗文案豁免";
 }
 
+/**
+ * Student clubs and campus organizations are legitimate group content even
+ * when they publish a QQ group number for sign-up. Require both a recruitment
+ * signal and a clear organization/campus signal, and reject the bypass when
+ * commercial wording is present so this remains a narrow exception.
+ */
+export function detectQqCampusOrganizationRecruitmentBypassReason(input: string) {
+  const content = normalizeMessageForCache(input);
+  if (!content || !QQ_GROUP_CAMPUS_RECRUITMENT_PATTERN.test(content)) return null;
+  const hasOrganizationSignal = QQ_GROUP_CAMPUS_ORGANIZATION_PATTERN.test(content);
+  const hasCampusContext = QQ_GROUP_CAMPUS_CONTEXT_PATTERN.test(content);
+  if (!hasOrganizationSignal || (!hasCampusContext && !/(?:社团|学生会|学生组织|校队|志愿服务)/u.test(content))) return null;
+  if (QQ_GROUP_COMMERCIAL_AD_PATTERN.test(content)) return null;
+  return "命中校园社团/学生组织招新豁免";
+}
+
 export function detectQqGroupAdHardBlockReason(input: string, blockQrCodes = false) {
   const content = normalizeMessageForCache(input);
   if (!content) return null;
   if (blockQrCodes && /二维码|扫码|扫描二维码/u.test(content)) return "包含二维码或扫码引导（本群已开启禁止二维码）";
+  if (detectQqCampusOrganizationRecruitmentBypassReason(content)) return null;
   if (QQ_GROUP_AD_QQ_NUMBER_PATTERN.test(content)) return "包含 QQ 群号并带有群号导流";
   if (QQ_GROUP_AD_INVITE_NUMBER_PATTERN.test(content)) return "包含明确的加群/联系导流号码";
   return null;
