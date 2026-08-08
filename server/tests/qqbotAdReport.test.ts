@@ -6,7 +6,11 @@ import {
   normalizeQqBotAdReportAction,
   normalizeQqBotAdReportMuteSeconds,
 } from "../src/routes/qqbotAdReport";
-import { describeQqGroupWhitelistPolicy, renderQqGroupAdFilterPrivateNotice } from "../src/services/qqbot";
+import {
+  describeQqGroupWhitelistPolicy,
+  renderQqGroupAdFilterPrivateNotice,
+  shouldBypassQqGroupAdFilterForWhitelist,
+} from "../src/services/qqbot";
 
 const now = Date.parse("2026-08-08T00:00:00.000Z");
 
@@ -97,5 +101,87 @@ test("describes whitelist rules per group instead of implying a global whitelist
       adFilterWhitelistBlockGroupCardEnabled: false,
     }),
     /仍拦截二维码/,
+  );
+});
+
+test("whitelisted plain text never reaches an advertising block", () => {
+  assert.equal(
+    shouldBypassQqGroupAdFilterForWhitelist({
+      whitelisted: true,
+      hasGroupCard: false,
+      isQrCodeReview: false,
+      blockQrCode: true,
+      blockGroupCard: true,
+    }),
+    true,
+  );
+  assert.equal(
+    shouldBypassQqGroupAdFilterForWhitelist({
+      whitelisted: false,
+      hasGroupCard: false,
+      isQrCodeReview: false,
+      blockQrCode: false,
+      blockGroupCard: false,
+    }),
+    false,
+  );
+});
+
+test("whitelist QR restrictions apply only when enabled for that group", () => {
+  assert.equal(
+    shouldBypassQqGroupAdFilterForWhitelist({
+      whitelisted: true,
+      hasGroupCard: false,
+      isQrCodeReview: true,
+      blockQrCode: true,
+      blockGroupCard: false,
+    }),
+    false,
+  );
+  assert.equal(
+    shouldBypassQqGroupAdFilterForWhitelist({
+      whitelisted: true,
+      hasGroupCard: false,
+      isQrCodeReview: true,
+      blockQrCode: false,
+      blockGroupCard: false,
+    }),
+    true,
+  );
+});
+
+test("whitelist group-card restrictions apply only when enabled for that group", () => {
+  assert.equal(
+    shouldBypassQqGroupAdFilterForWhitelist({
+      whitelisted: true,
+      hasGroupCard: true,
+      isQrCodeReview: false,
+      blockQrCode: false,
+      blockGroupCard: true,
+    }),
+    false,
+  );
+  assert.equal(
+    shouldBypassQqGroupAdFilterForWhitelist({
+      whitelisted: true,
+      hasGroupCard: true,
+      isQrCodeReview: false,
+      blockQrCode: false,
+      blockGroupCard: false,
+    }),
+    true,
+  );
+});
+
+test("a QR code inside a group card still follows the QR restriction", () => {
+  assert.equal(
+    shouldBypassQqGroupAdFilterForWhitelist({
+      whitelisted: true,
+      hasGroupCard: true,
+      isQrCodeReview: true,
+      blockQrCode: true,
+      blockGroupCard: false,
+    }),
+    false,
   );
 });

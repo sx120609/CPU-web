@@ -533,8 +533,8 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     return { ignored: true };
   }
 
-  const qqId = event.user_id ? String(event.user_id) : "";
-  const groupId = event.group_id ? String(event.group_id) : undefined;
+  const qqId = normalizeQqBotIdentity(event.user_id);
+  const groupId = normalizeQqBotIdentity(event.group_id) || undefined;
   const messageExtractOptions = shouldUseLightForwardExtraction(event.message)
     ? ({ forwardMode: "placeholder", imageMode: "placeholder", videoMode: "placeholder" } satisfies QqMessageExtractOptions)
     : {};
@@ -3161,6 +3161,9 @@ async function maybeHandleQqGroupAdFilter(input: {
   groupId: string;
   messageText: string;
 }) {
+  const qqId = normalizeQqBotIdentity(input.qqId);
+  const groupId = normalizeQqBotIdentity(input.groupId);
+  if (!qqId || !groupId) return false;
   const messageText = String(input.messageText || "").trim();
   const rawMessage = input.event.message ?? input.event.raw_message ?? "";
   let hasImage = containsQqImage(rawMessage);
@@ -3170,16 +3173,18 @@ async function maybeHandleQqGroupAdFilter(input: {
   const botQqId = readConfigBotQqId(input.config);
   if (!messageText && !hasImage && !hasVideo && !hasGroupCard && !hasForwardReference) return false;
   if (isCommandMessage(messageText) || isExplicitBotMention(input.event, messageText)) return false;
-  if (input.qqId && (input.qqId === botQqId || String(input.event.self_id || "") === input.qqId)) return false;
+  if (qqId === botQqId || normalizeQqBotIdentity(input.event.self_id) === qqId) return false;
 
-  const group = await prisma.qqBotGroup.findUnique({ where: { groupId: input.groupId } });
+  const group = await prisma.qqBotGroup.findUnique({ where: { groupId } });
   if (!group?.enabled || !group.adFilterEnabled) return false;
   const senderNickname = input.event.sender?.card || input.event.sender?.nickname || null;
-  const whitelist = await getQqGroupAdWhitelist(input.groupId, input.qqId);
+  const whitelist = await getQqGroupAdWhitelist(groupId, qqId);
   const whitelisted = Boolean(whitelist && whitelist.expiresAt.getTime() > Date.now());
   const whitelistBlocksQrCode = whitelisted && group.adFilterWhitelistBlockQrCodeEnabled === true;
   const whitelistBlocksGroupCard = whitelisted && group.adFilterWhitelistBlockGroupCardEnabled === true;
-  if (whitelisted && !whitelistBlocksQrCode && !whitelistBlocksGroupCard) return false;
+  // 普通文本（包括群号、联系方式等）不属于白名单后的媒体限制范围。
+  // 在调用模型前直接短路，避免“多群新号导流”等文本判断再次误拦白名单用户。
+  if (whitelisted && !hasImage && !hasVideo && !hasGroupCard && !hasForwardReference) return false;
 
   try {
     const expandedForward = await extractQqForwardModerationPayload(rawMessage).catch(() => null);
@@ -3223,9 +3228,9 @@ async function maybeHandleQqGroupAdFilter(input: {
           modelDecision: "block",
         }
       : await reviewQqGroupMessageForAd({
-          groupId: input.groupId,
+          groupId,
           groupName: group.name,
-          qqId: input.qqId,
+          qqId,
           nickname: senderNickname,
           content: reviewContent,
           imageUrls: reviewImageUrls,
@@ -3246,14 +3251,20 @@ async function maybeHandleQqGroupAdFilter(input: {
     if (review.action !== "block") return false;
     // A whitelist still exempts ordinary advertising judgements. Only the
     // explicitly enabled QR-code/group-card restrictions may bypass it.
-    if (whitelisted && !cardBlocked && !isQqGroupAdQrCodeReview(review)) return false;
+    if (shouldBypassQqGroupAdFilterForWhitelist({
+      whitelisted,
+      hasGroupCard,
+      isQrCodeReview: isQqGroupAdQrCodeReview(review),
+      blockQrCode: whitelistBlocksQrCode,
+      blockGroupCard: whitelistBlocksGroupCard,
+    })) return false;
     if (!input.event.message_id) {
       await logQqBotMessage({
         direction: "inbound",
         eventType: "group-ad-filter",
         status: "error",
-        qqId: input.qqId,
-        groupId: input.groupId,
+        qqId,
+        groupId,
         content: reviewContent.slice(0, 500),
         result: `命中广告过滤，但缺少 message_id，无法撤回。原因：${review.reason}`,
         rawPayload: input.event,
@@ -3267,16 +3278,16 @@ async function maybeHandleQqGroupAdFilter(input: {
     const verification = whitelisted
       ? null
       : await createQqGroupAdVerification({
-          groupId: input.groupId,
-          qqId: input.qqId,
+          groupId,
+          qqId,
           nickname: senderNickname,
         });
     const whitelistRestriction = whitelisted
       ? (cardBlocked ? "群卡片" : "二维码")
       : undefined;
     const strike = await recordQqGroupAdStrikeHit({
-      groupId: input.groupId,
-      qqId: input.qqId,
+      groupId,
+      qqId,
       nickname: senderNickname,
       review,
     });
@@ -3284,13 +3295,13 @@ async function maybeHandleQqGroupAdFilter(input: {
       config: input.config,
       event: input.event,
       group,
-      qqId: input.qqId,
+      qqId,
       hitCount: strike.hitCount,
     });
     await sendQqMessage(
-      { qqId: input.qqId, tempGroupId: input.groupId },
+      { qqId, tempGroupId: groupId },
       renderQqGroupAdFilterPrivateNotice({
-        groupName: group.name || input.groupId,
+        groupName: group.name || groupId,
         review,
         verificationPrompt: verification?.prompt,
         whitelistRestriction,
@@ -3299,9 +3310,9 @@ async function maybeHandleQqGroupAdFilter(input: {
     ).catch(() => undefined);
     if (group.adFilterGroupNoticeEnabled !== false) {
       await sendQqMessage(
-        { groupId: input.groupId },
+        { groupId },
         renderQqGroupAdFilterGroupNotice({
-          qqId: input.qqId,
+          qqId,
           nickname: senderNickname,
           review,
           verificationPrompt: verification?.prompt,
@@ -3311,7 +3322,7 @@ async function maybeHandleQqGroupAdFilter(input: {
     }
     await maybeSendQqGroupAdReport({
       group,
-      qqId: input.qqId,
+      qqId,
       nickname: senderNickname,
       hitCount: strike.hitCount,
       reason: review.reason,
@@ -3320,8 +3331,8 @@ async function maybeHandleQqGroupAdFilter(input: {
       direction: "inbound",
       eventType: "group-ad-filter",
       status: "ok",
-      qqId: input.qqId,
-      groupId: input.groupId,
+      qqId,
+      groupId,
       messageId: String(input.event.message_id),
       content: reviewContent.slice(0, 500),
       result: [
@@ -3416,6 +3427,23 @@ function containsQqVideo(message: unknown): boolean {
 
 function isQqGroupAdQrCodeReview(review: { reason?: unknown; detail?: unknown }) {
   return /二维码|扫码|扫描/u.test(`${String(review.reason || "")} ${String(review.detail || "")}`);
+}
+
+/**
+ * Decide whether a valid per-group whitelist should bypass a moderation result.
+ * Plain text is always exempt; media restrictions can remain enabled by group.
+ */
+export function shouldBypassQqGroupAdFilterForWhitelist(input: {
+  whitelisted: boolean;
+  hasGroupCard: boolean;
+  isQrCodeReview: boolean;
+  blockQrCode: boolean;
+  blockGroupCard: boolean;
+}) {
+  if (!input.whitelisted) return false;
+  if (input.hasGroupCard && input.blockGroupCard) return false;
+  if (input.isQrCodeReview && input.blockQrCode) return false;
+  return true;
 }
 
 async function maybeSendQqGroupAdReport(input: {
@@ -3522,12 +3550,15 @@ async function createQqGroupAdVerification(input: {
   qqId: string;
   nickname?: string | null;
 }) {
+  const groupId = normalizeQqBotIdentity(input.groupId);
+  const qqId = normalizeQqBotIdentity(input.qqId);
+  if (!groupId || !qqId) return null;
   const now = new Date();
   const expiresAt = new Date(now.getTime() + QQ_GROUP_AD_VERIFICATION_TTL_MS);
   await prisma.qqBotGroupAdVerification.updateMany({
     where: {
-      groupId: input.groupId,
-      qqId: input.qqId,
+      groupId,
+      qqId,
       usedAt: null,
       expiresAt: { gt: now },
     },
@@ -3537,8 +3568,8 @@ async function createQqGroupAdVerification(input: {
   const challenge = createFunQqGroupAdVerificationChallenge();
   await prisma.qqBotGroupAdVerification.create({
     data: {
-      groupId: input.groupId,
-      qqId: input.qqId,
+      groupId,
+      qqId,
       nickname: input.nickname || null,
       codeHash: hashQqGroupAdVerificationCode(challenge.code),
       expiresAt,
@@ -3548,8 +3579,11 @@ async function createQqGroupAdVerification(input: {
 }
 
 async function getQqGroupAdWhitelist(groupId: string, qqId: string) {
+  const normalizedGroupId = normalizeQqBotIdentity(groupId);
+  const normalizedQqId = normalizeQqBotIdentity(qqId);
+  if (!normalizedGroupId || !normalizedQqId) return null;
   return prisma.qqBotGroupAdWhitelist.findUnique({
-    where: { groupId_qqId: { groupId, qqId } },
+    where: { groupId_qqId: { groupId: normalizedGroupId, qqId: normalizedQqId } },
     select: { expiresAt: true },
   });
 }
@@ -4212,6 +4246,11 @@ export function normalizeQqBotQqIdList(input: readonly string[] | null | undefin
       .map((item) => String(item || "").trim())
       .filter((item) => /^\d{5,20}$/.test(item)),
   ));
+}
+
+/** Normalize OneBot identity fields before using them in composite database keys. */
+function normalizeQqBotIdentity(value: unknown) {
+  return String(value ?? "").trim();
 }
 
 function normalizeAllowedStringArray(
