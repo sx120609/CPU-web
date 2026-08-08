@@ -31,12 +31,6 @@ const handoffSchema = z.object({
     issuedAt: z.number().int(),
   }).strict(),
 }).strict();
-const weiwallRequestSchema = z.object({
-  method: z.enum(["GET", "POST"]),
-  url: z.string().url().max(4096),
-  headers: z.record(z.string().max(8192)).refine((headers) => Object.keys(headers).length <= 32, "too many headers").optional(),
-  body: z.union([z.string().max(1_500_000), z.record(z.unknown())]).optional(),
-}).strict();
 
 export async function dispatchJwxtAgentAction(action: JwxtAgentAction, payload: unknown): Promise<unknown> {
   switch (action) {
@@ -116,28 +110,6 @@ export async function dispatchJwxtAgentAction(action: JwxtAgentAction, payload: 
         skipExternalIds: input.skipExternalIds,
         dryRun: input.dryRun,
       });
-    }
-    case "weiwall.request": {
-      const input = weiwallRequestSchema.parse(payload);
-      const url = new URL(input.url);
-      if (url.protocol !== "https:" && !(url.protocol === "http:" && ["localhost", "127.0.0.1", "::1"].includes(url.hostname))) {
-        throw Errors.badRequest("WeiWall 远程请求仅允许 HTTPS 地址");
-      }
-      const body = input.body === undefined
-        ? undefined
-        : typeof input.body === "string" ? input.body : JSON.stringify(input.body);
-      const response = await fetch(input.url, {
-        method: input.method,
-        headers: input.headers,
-        body: input.method === "POST" ? body : undefined,
-      });
-      const text = await response.text();
-      if (Buffer.byteLength(text, "utf8") > 1_800_000) {
-        throw Errors.badRequest("WeiWall 响应内容过大");
-      }
-      let data: unknown = text;
-      try { data = text ? JSON.parse(text) : null; } catch { /* allow non-JSON upstream errors */ }
-      return { status: response.status, data };
     }
     case "dorm-electric.query": {
       const input = z.object({

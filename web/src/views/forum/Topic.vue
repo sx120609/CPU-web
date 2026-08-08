@@ -46,7 +46,7 @@
         </div>
       </header>
 
-      <h1 v-if="!titlelessWeiwall" class="post-title">
+      <h1 class="post-title">
         <span v-if="topic.globalPinned" class="badge global-pin">全局置顶</span>
         <span v-if="topic.pinned" class="badge pin">板块置顶</span>
         <span v-if="topic.locked" class="badge lock">🔒</span>
@@ -71,7 +71,6 @@
             <router-link v-if="topic.author?.id" :to="`/u/${topic.author.id}`">{{ topic.author?.nickname }}</router-link>
             <span v-else>{{ topic.author?.nickname }}</span>
             <el-tag v-if="topic.isAnonymous" size="small" type="warning" effect="plain">匿名发布</el-tag>
-            <el-tag v-if="topic.metadata?.externalPlatform === 'weiwall'" size="small" type="warning">逛逛同步</el-tag>
             <el-tag v-else-if="topic.author?.role === 'bot'" size="small" type="warning">公告同步</el-tag>
             <el-tag v-else-if="topic.author?.role === 'admin'" size="small" type="danger">管理员</el-tag>
             <UserModerationActions
@@ -96,33 +95,21 @@
       </div>
 
       <!-- 板块特化 metadata -->
-      <div v-if="topic.metadata?.sourceUrl" class="source-bar" :class="{ wechat: topic.metadata?.externalType === 'wechat', external: topic.metadata?.externalPlatform === 'weiwall' }">
-        <span class="src-icon">{{ topic.metadata?.externalPlatform === 'weiwall' ? '📮' : topic.metadata?.externalType === 'wechat' ? '💬' : '📢' }}</span>
+      <div v-if="topic.metadata?.sourceUrl" class="source-bar" :class="{ wechat: topic.metadata?.externalType === 'wechat', external: topic.metadata?.externalType !== 'wechat' }">
+        <span class="src-icon">{{ topic.metadata?.externalType === 'wechat' ? '💬' : '📢' }}</span>
         <span class="src-text-wrap">
           <span class="src-text">
-            <template v-if="topic.metadata?.externalPlatform === 'weiwall'">
-              来自 <b>{{ externalSourceName }}</b> · 发布于 {{ fmtDate(topic.metadata.publishedAt, 'YYYY-MM-DD') }}
-            </template>
             <template v-if="topic.metadata?.externalType === 'wechat'">
               原文发布于 <b>微信公众号</b> · {{ fmtDate(topic.metadata.publishedAt, 'YYYY-MM-DD') }}
             </template>
-            <template v-else-if="topic.metadata?.externalPlatform !== 'weiwall'">
+            <template v-else>
               来自 <b>{{ topic.metadata.sourceName || boardDisplayName }}</b>
               · 发布于 {{ fmtDate(topic.metadata.publishedAt, 'YYYY-MM-DD') }}
             </template>
           </span>
           <span v-if="sourceNotice" class="src-notice">{{ sourceNotice }}</span>
         </span>
-        <button
-          v-if="topic.metadata?.externalPlatform === 'weiwall'"
-          type="button"
-          class="src-link"
-          @click="openWeiwallSource"
-        >
-          <el-icon><Link /></el-icon>
-          前往逛逛原帖
-        </button>
-        <a v-else :href="topic.metadata.sourceUrl" target="_blank" rel="noopener noreferrer" class="src-link">
+        <a :href="topic.metadata.sourceUrl" target="_blank" rel="noopener noreferrer" class="src-link">
           <el-icon><Link /></el-icon>
           {{ topic.metadata?.externalType === 'wechat' ? '前往微信阅读全文' : '在学校原站查看' }}
         </a>
@@ -210,31 +197,6 @@
         <el-button @click="shareDialogOpen = true">分享</el-button>
       </footer>
 
-      <section v-if="showWeiwallContactSection" class="weiwall-contact-card">
-        <button type="button" class="weiwall-contact-toggle" @click="toggleWeiwallContactSection">
-          <span class="weiwall-contact-toggle-main">
-            <span class="weiwall-contact-toggle-icon">☎</span>
-            <span>点此{{ weiwallContactExpanded ? "折叠" : "查看" }}联系方式</span>
-          </span>
-          <span class="weiwall-contact-toggle-arrow" :class="{ expanded: weiwallContactExpanded }">›</span>
-        </button>
-        <div v-if="weiwallContact && weiwallContactExpanded" class="weiwall-contact-panel">
-          <div class="weiwall-contact-row">
-            <span class="weiwall-contact-row-label">联系姓名</span>
-            <span class="weiwall-contact-row-value">{{ weiwallContact.name || "联系人" }}</span>
-          </div>
-          <div class="weiwall-contact-row weiwall-contact-row-action">
-            <div class="weiwall-contact-row-copy">
-              <span class="weiwall-contact-row-label">{{ weiwallContact.typeLabel }}</span>
-              <span class="weiwall-contact-row-value">{{ weiwallContact.info }}</span>
-            </div>
-            <button type="button" class="weiwall-contact-action" @click="handleWeiwallContactAction">
-              {{ weiwallContact.actionLabel }}
-            </button>
-          </div>
-          <p class="weiwall-contact-hint">联系时请备注在 {{ externalSourceName }} 上看到的。</p>
-        </div>
-      </section>
     </article>
 
     <!-- 回复列表 -->
@@ -363,36 +325,6 @@
       <div class="copy-share-panel">
         <el-button class="share-action-btn" @click="copyShareLinkOnly">只复制链接</el-button>
         <el-button type="primary" plain class="share-action-btn" @click="copyShareTitleAndLink">复制标题和链接</el-button>
-      </div>
-    </el-dialog>
-
-    <el-dialog
-      v-model="weiwallSourceDialogOpen"
-      title="打开逛逛原帖"
-      width="min(420px, calc(100dvw - 24px))"
-      append-to-body
-      class="weiwall-source-dialog"
-    >
-      <div class="weiwall-source-panel">
-        <p class="weiwall-source-copy">
-          当前不是微信环境，直接打开逛逛原帖通常会被原站拦截。更稳的方式是先复制链接或用微信扫码打开。
-        </p>
-        <div class="weiwall-source-actions">
-          <el-button type="primary" class="share-action-btn" @click="copyWeiwallSourceLink">复制原帖链接</el-button>
-          <el-button plain class="share-action-btn" @click="forceOpenWeiwallSource">仍然尝试打开</el-button>
-        </div>
-        <div class="weiwall-source-qr-card">
-          <img
-            v-if="weiwallSourceQrDataUrl"
-            :src="weiwallSourceQrDataUrl"
-            alt="逛逛原帖二维码"
-            loading="lazy"
-            decoding="async"
-            fetchpriority="low"
-            class="weiwall-source-qr"
-          />
-          <p>{{ weiwallSourceHint }}</p>
-        </div>
       </div>
     </el-dialog>
 
@@ -659,7 +591,6 @@ import { fmtDate, fmtRelative } from "@/utils/format";
 import { copyText } from "@/utils/userGroup";
 import { isAndroidNativeApp, isHarmonyNativeApp } from "@/utils/clientInfo";
 import { getNativeBridge, hasNativeImageSaveBridge } from "@/utils/nativeBridge";
-import { detectInAppBrowser } from "@/utils/inAppBrowser";
 
 const route = useRoute();
 const router = useRouter();
@@ -678,15 +609,12 @@ const editingReplyId = ref<number | null>(null);
 const replyParentId = ref<number | null>(null);
 const shareDialogOpen = ref(false);
 const copyShareDialogOpen = ref(false);
-const weiwallSourceDialogOpen = ref(false);
-const weiwallSourceQrDataUrl = ref("");
 const shareCardDialogOpen = ref(false);
 const shareCardSaving = ref(false);
 const shareCardRendering = ref(false);
 const shareCardRenderedUrl = ref("");
 const shareCardQrDataUrl = ref("");
 const shareCardPreviewOpen = ref(false);
-const weiwallContactExpanded = ref(false);
 const topicImageReviewDialogOpen = ref(false);
 const topicImageReviewLoading = ref(false);
 const topicImageReviewSavingId = ref<number | null>(null);
@@ -721,46 +649,10 @@ const shareCardExportRef = ref<HTMLElement | null>(null);
 const REPLY_MAX = 10000;
 const isTopicActionBusy = computed(() => topicActionBusy.value !== "");
 
-type WeiwallContact = {
-  name: string;
-  type: 0 | 1 | 2;
-  info: string;
-  typeLabel: string;
-  actionLabel: string;
-};
-
-const WEIWALL_CONTACT_LABELS: Record<number, string> = {
-  0: "手机号码",
-  1: "微信账号",
-  2: "QQ账号",
-};
-
 const metaPrice = computed(() => topic.value?.metadata?.price);
-const weiwallContact = computed<WeiwallContact | null>(() => {
-  if (topic.value?.metadata?.externalPlatform !== "weiwall") return null;
-  const info = String(topic.value?.metadata?.linkInfo ?? "").trim();
-  const type = normalizeWeiwallContactType(topic.value?.metadata?.linkType);
-  if (!info || type === null) return null;
-  return {
-    name: String(topic.value?.metadata?.linkPeople ?? "").trim(),
-    type,
-    info,
-    typeLabel: WEIWALL_CONTACT_LABELS[type],
-    actionLabel: type === 0 ? "一键拨打" : "一键复制",
-  };
-});
-const showWeiwallContactSection = computed(() => {
-  if (!weiwallContact.value) return false;
-  const status = String(topic.value?.metadata?.externalStatus ?? "").trim().toLowerCase();
-  const isOver = normalizeWeiwallOverFlag(topic.value?.metadata?.externalIsOver);
-  return status === "normal" && isOver === 0;
-});
 const hotScore = computed(() => Math.round((topic.value?.likeCount ?? 0) * 5 + (topic.value?.replyCount ?? 0) * 3 + (topic.value?.viewCount ?? 0) * 0.03));
-const boardDisplayName = computed(() => topic.value?.board?.slug === "campus-wall" ? "逛逛" : (topic.value?.board?.name || "药大拾间"));
+const boardDisplayName = computed(() => topic.value?.board?.name || "药大拾间");
 const displayTopicTitle = computed(() => topic.value?.title || "");
-const externalSourceName = computed(() => {
-  return String(topic.value?.metadata?.sourceName || "").trim() || "逛逛";
-});
 const isReadOnly = computed(() => topic.value?.board?.readOnly);
 const topicModerationUser = computed(() => {
   if (topic.value?.realAuthor) return topic.value.realAuthor as any;
@@ -899,18 +791,6 @@ const shareCardSubtitle = computed(() => {
   return `${board} · ${author}`;
 });
 const shareCardStats = computed(() => `${topic.value?.replyCount ?? 0} 条回复 · ${topic.value?.viewCount ?? 0} 浏览`);
-const inAppBrowser = computed(() => detectInAppBrowser());
-const weiwallSourceUrl = computed(() => String(topic.value?.metadata?.sourceUrl ?? "").trim());
-const weiwallSourceHint = computed(() => {
-  if (inAppBrowser.value.label === "QQ") {
-    return "建议复制链接后切到微信打开，或直接用微信扫一扫这个二维码。";
-  }
-  const ua = typeof navigator !== "undefined" ? navigator.userAgent.toLowerCase() : "";
-  if (/android|iphone|ipad|ipod|mobile/.test(ua)) {
-    return "手机上建议复制后发给自己，再用微信点开；电脑上可以直接用微信扫一扫。";
-  }
-  return "电脑上最稳的是直接用微信扫一扫；手机上也可以先复制链接再切到微信打开。";
-});
 const displayContent = computed(() => {
   const content = topic.value?.content ?? "";
   if (!topic.value?.metadata?.sourceUrl) return content;
@@ -918,9 +798,6 @@ const displayContent = computed(() => {
 });
 const sourceNotice = computed(() => {
   if (!topic.value?.metadata?.sourceUrl) return "";
-  if (topic.value?.metadata?.externalPlatform === "weiwall") {
-    return "这是逛逛镜像内容，不参与本站热榜和最新流；仅补充近 3 天稿件的后续更新，超过三天的稿件不再更新；如遇评论未补齐或正文异常，可前往原帖查看。";
-  }
   if (topic.value?.metadata?.externalType === "wechat") {
     return "微信文章可能无法在站内完整展示，建议前往微信阅读全文。";
   }
@@ -931,69 +808,21 @@ const sourceNotice = computed(() => {
   return "如遇正文缺失、附件打不开或排版异常，可前往学校原站查看。";
 });
 
-const isCampusWallTopic = computed(() => topic.value?.board?.slug === "campus-wall" || topic.value?.metadata?.externalPlatform === "weiwall");
 const isAnnouncementTopic = computed(() => topic.value?.board?.type === "announce");
-const titlelessWeiwall = computed(() => {
-  if (!isCampusWallTopic.value) return false;
-  const originalTitle = String(topic.value?.metadata?.originalTitle ?? "").trim().toLowerCase();
-  return !originalTitle || originalTitle === "none";
-});
 const backTargetFromQuery = computed(() => {
   const text = String(route.query.from ?? "").trim();
   return text.startsWith("/") ? text : "";
 });
 const backLabel = computed(() => {
-  if (backTargetFromQuery.value.includes("/forum/b/campus-wall")) return "返回逛逛";
   if (backTargetFromQuery.value.includes("/forum/latest")) return "返回最新";
   if (backTargetFromQuery.value.includes("/forum/hot")) return "返回热榜";
-  if (isCampusWallTopic.value) return "返回逛逛";
   if (isAnnouncementTopic.value) return "返回上页";
   return "返回最新";
 });
 
-function normalizeWeiwallContactType(value: unknown): 0 | 1 | 2 | null {
-  const type = Number(value);
-  if (type === 0 || type === 1 || type === 2) return type;
-  return null;
-}
-
-function normalizeWeiwallOverFlag(value: unknown) {
-  if (value === null || value === undefined || value === "") return null;
-  if (typeof value === "boolean") return value ? 1 : 0;
-  const normalized = Number(value);
-  if (!Number.isFinite(normalized)) return null;
-  return normalized > 0 ? 1 : 0;
-}
-
-function toggleWeiwallContactSection() {
-  if (!showWeiwallContactSection.value) return;
-  weiwallContactExpanded.value = !weiwallContactExpanded.value;
-}
-
-async function handleWeiwallContactAction() {
-  const contact = weiwallContact.value;
-  if (!contact) return;
-  if (contact.type === 0) {
-    const tel = contact.info.replace(/[^\d+]/g, "");
-    if (!tel) {
-      await copyText(contact.info);
-      ElMessage.success("手机号已复制");
-      return;
-    }
-    window.location.href = `tel:${tel}`;
-    return;
-  }
-  await copyText(contact.info);
-  ElMessage.success(`${contact.typeLabel}已复制`);
-}
-
 function goBackFromTopic() {
   if (backTargetFromQuery.value) {
     router.push(backTargetFromQuery.value);
-    return;
-  }
-  if (isCampusWallTopic.value) {
-    router.push("/forum/b/campus-wall");
     return;
   }
   if (isAnnouncementTopic.value) {
@@ -1002,26 +831,6 @@ function goBackFromTopic() {
     return;
   }
   router.push({ name: "forum-latest" });
-}
-
-async function copyWeiwallSourceLink() {
-  if (!weiwallSourceUrl.value) return;
-  await copyText(weiwallSourceUrl.value);
-  ElMessage.success("已复制逛逛原帖链接");
-}
-
-function forceOpenWeiwallSource() {
-  if (!weiwallSourceUrl.value) return;
-  window.open(weiwallSourceUrl.value, "_blank", "noopener,noreferrer");
-}
-
-function openWeiwallSource() {
-  if (!weiwallSourceUrl.value) return;
-  if (inAppBrowser.value.label === "微信") {
-    window.location.href = weiwallSourceUrl.value;
-    return;
-  }
-  weiwallSourceDialogOpen.value = true;
 }
 
 function renderLocalQrDataUrl(value: string, width: number) {
@@ -1041,19 +850,6 @@ watch(() => route.params.id, () => {
 
 watch(replyAnonymousEnabled, (enabled) => {
   if (!enabled) replyAnonymous.value = false;
-}, { immediate: true });
-
-watch(weiwallSourceUrl, async (url) => {
-  if (!url) {
-    weiwallSourceQrDataUrl.value = "";
-    return;
-  }
-  try {
-    weiwallSourceQrDataUrl.value = await renderLocalQrDataUrl(url, 240);
-  } catch (error) {
-    console.warn("[topic] failed to render weiwall source QR code", error);
-    weiwallSourceQrDataUrl.value = "";
-  }
 }, { immediate: true });
 
 watch(shareLandingUrl, async (url) => {
@@ -1078,10 +874,6 @@ watch(replyDialogOpen, (open) => {
   }
 });
 
-watch(showWeiwallContactSection, (visible) => {
-  if (!visible) weiwallContactExpanded.value = false;
-}, { immediate: true });
-
 async function load() {
   const seq = ++loadSeq;
   const id = Number(route.params.id);
@@ -1091,7 +883,6 @@ async function load() {
   replies.value = [];
   loadError.value = "";
   liked.value = false;
-  weiwallContactExpanded.value = false;
   if (!Number.isFinite(id) || id <= 0) {
     loadError.value = "帖子不存在或已被删除";
     loading.value = false;
@@ -1814,10 +1605,6 @@ async function onDelete() {
     if (!confirmed) return;
     await topicApi.remove(topic.value.id);
     ElMessage.success("已删除");
-    if (isCampusWallTopic.value) {
-      router.replace("/forum/b/campus-wall");
-      return;
-    }
     if (isAnnouncementTopic.value) {
       if (window.history.length > 1) router.back();
       else router.replace("/announcements");

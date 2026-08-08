@@ -65,26 +65,6 @@
             </div>
           </div>
 
-          <div class="cluster" v-if="campusWall">
-            <h3 class="cluster-title">📮 外部镜像</h3>
-            <div class="grid">
-              <div
-                class="board-card readonly"
-                role="button"
-                tabindex="0"
-                @click="openBoard(campusWall.slug)"
-                @keydown.enter.prevent="openBoard(campusWall.slug)"
-                @keydown.space.prevent="openBoard(campusWall.slug)"
-              >
-                <div class="icon" :style="{ background: campusWall.color || '#0ea5e9' }">{{ campusWall.icon || "📮" }}</div>
-                <div class="body">
-                  <div class="name">{{ campusWall.name }}</div>
-                  <div class="desc">单独展示的逛逛镜像内容，不参与本站热榜和最新流；仅补充近 3 天稿件的后续更新，超过三天的稿件不再更新。</div>
-                  <div class="meta">{{ campusWall.topicCount }} 帖</div>
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
       </template>
 
@@ -102,8 +82,6 @@ import { InfoFilled } from "@element-plus/icons-vue";
 import { boardApi, type Board } from "@/api/board";
 
 const router = useRouter();
-const CAMPUS_WALL_SLUG = "campus-wall";
-
 const all = ref<Board[]>([]);
 const loading = ref(false);
 const error = ref("");
@@ -117,9 +95,8 @@ onBeforeUnmount(() => {
   boardLoadSeq += 1;
 });
 
-const general = computed(() => all.value.filter((b) => b.type === "normal" && b.slug !== CAMPUS_WALL_SLUG));
+const general = computed(() => all.value.filter((b) => b.type === "normal"));
 const ugc = computed(() => all.value.filter((b) => ["market", "question", "coursereview"].includes(b.type)));
-const campusWall = computed(() => all.value.find((b) => b.slug === CAMPUS_WALL_SLUG) ?? null);
 
 async function loadBoards() {
   if (disposed) return;

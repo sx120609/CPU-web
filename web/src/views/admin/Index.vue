@@ -80,7 +80,6 @@
       <el-tab-pane label="🧭 顶部导航" name="navigation" v-if="auth.isAdmin"><NavigationPane v-if="tab === 'navigation'" /></el-tab-pane>
       <el-tab-pane label="🔄 同步源" name="feeds" v-if="auth.isAdmin"><FeedsPane v-if="tab === 'feeds'" /></el-tab-pane>
       <el-tab-pane label="🌐 教务节点" name="jwxt-agents" v-if="auth.isAdmin"><JwxtAgentsPane v-if="tab === 'jwxt-agents'" /></el-tab-pane>
-      <el-tab-pane label="📮 逛逛" name="weiwall" v-if="auth.isAdmin"><WeiwallPane v-if="tab === 'weiwall'" /></el-tab-pane>
       <el-tab-pane label="📣 公告" name="announcements" v-if="auth.isAdmin"><AnnouncementsPane v-if="tab === 'announcements'" /></el-tab-pane>
       <el-tab-pane label="💳 支付对接" name="epay" v-if="auth.isAdmin"><EpayPane v-if="tab === 'epay'" /></el-tab-pane>
       <el-tab-pane label="🛍️ 商城" name="market" v-if="auth.isAdmin"><MarketPane v-if="tab === 'market'" /></el-tab-pane>
@@ -110,7 +109,6 @@ const LostFoundPane = defineAsyncComponent(() => import("./LostFoundPane.vue"));
 const NavigationPane = defineAsyncComponent(() => import("./NavigationPane.vue"));
 const FeedsPane = defineAsyncComponent(() => import("./FeedsPane.vue"));
 const JwxtAgentsPane = defineAsyncComponent(() => import("./JwxtAgentsPane.vue"));
-const WeiwallPane = defineAsyncComponent(() => import("./WeiwallPane.vue"));
 const AnnouncementsPane = defineAsyncComponent(() => import("./AnnouncementsPane.vue"));
 const EpayPane = defineAsyncComponent(() => import("./EpayPane.vue"));
 const MarketPane = defineAsyncComponent(() => import("./MarketPane.vue"));

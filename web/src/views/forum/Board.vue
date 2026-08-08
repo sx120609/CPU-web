@@ -9,7 +9,7 @@
           <div class="head-meta">
             <span>{{ board.topicCount }} 帖</span>
             <span v-if="board.anonymousEnabled" class="anon-tag">支持匿名</span>
-            <span v-if="board.readOnly" class="ro-tag">{{ board.slug === 'campus-wall' ? '逛逛镜像' : '公告板' }}</span>
+            <span v-if="board.readOnly" class="ro-tag">公告板</span>
             <a v-if="board.feedSource?.homepage" :href="board.feedSource.homepage" target="_blank" rel="noopener noreferrer" class="ro-link">查看来源 →</a>
           </div>
         </div>
@@ -95,12 +95,8 @@ let pendingRestoreState: BoardRestoreState | null = null;
 let loadSeq = 0;
 
 const canPost = computed(() => !!board.value && !board.value.readOnly && auth.canAccessForum);
-const boardDisplayName = computed(() => board.value?.slug === "campus-wall" ? "逛逛" : (board.value?.name || ""));
-const boardDisplayDescription = computed(() => (
-  board.value?.slug === "campus-wall"
-    ? "从外部逛逛同步的只读镜像，自动刷新帖子与评论。"
-    : (board.value?.description || "")
-));
+const boardDisplayName = computed(() => board.value?.name || "");
+const boardDisplayDescription = computed(() => board.value?.description || "");
 const fallbackBoardIcon = computed(() => {
   if (board.value?.type === "market") return "🛒";
   if (board.value?.type === "question") return "❓";
@@ -108,9 +104,7 @@ const fallbackBoardIcon = computed(() => {
   if (board.value?.type === "announce") return "📢";
   return "💬";
 });
-const orderedPinnedList = computed(() => {
-  return pinnedList.value.filter((item) => !item?.metadata?.weiwallHotEntry);
-});
+const orderedPinnedList = computed(() => pinnedList.value);
 
 watch(() => route.fullPath, async () => {
   const restored = readForumListRestoreState<BoardRestoreState>(route.fullPath);
@@ -133,8 +127,8 @@ async function reload(options: { scrollToTop?: boolean } = {}) {
     ]);
     if (seq !== loadSeq) return;
     board.value = nextBoard;
-    pinnedList.value = (pins?.list ?? []).filter((item) => !item?.metadata?.weiwallHotEntry);
-    list.value = normal.list.filter((item: any) => !item?.metadata?.weiwallHotEntry);
+    pinnedList.value = pins?.list ?? [];
+    list.value = normal.list;
     total.value = normal.total;
   } catch (e) {
     if (seq !== loadSeq) return;

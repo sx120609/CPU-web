@@ -5,7 +5,6 @@ import { ensureBuiltinBoards } from "./services/defaultBoards";
 import { startScheduler } from "./services/schoolCrawler";
 import { loadFeatures } from "./services/siteSettings";
 import { loadStorageConfig } from "./services/storageConfig";
-import { startWeiwallSyncScheduler } from "./services/weiwallSync";
 import { attachJwxtAgentGateway } from "./services/jwxtAgentGateway";
 import { loadJwxtAgentRuntimeConfig } from "./services/jwxtAgentConfig";
 import { bootstrapMarket } from "./services/marketBootstrap";
@@ -42,7 +41,6 @@ async function start() {
     await loadFeatures().catch((e) => console.warn("loadFeatures failed:", e?.message));
     await loadStorageConfig().catch((e) => console.warn("loadStorageConfig failed:", e?.message));
     startScheduler();
-    startWeiwallSyncScheduler();
   });
 }
 

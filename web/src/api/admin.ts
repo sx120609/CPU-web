@@ -416,92 +416,6 @@ export type AdminOverview = {
   }>;
 };
 
-export type WeiwallSyncConfig = {
-  id: number;
-  enabled: boolean;
-  baseUrl: string;
-  schoolEn: string;
-  tenantId: number;
-  agentId: string;
-  executionAgents: Array<{
-    id: string;
-    name: string;
-    kind: "local" | "agent";
-    enabled: boolean;
-    online: boolean;
-    ready: boolean;
-    crawlEnabled: boolean;
-  }>;
-  tokenPresent: boolean;
-  tokenPreview: string;
-  tokenExpiresAt: string | null;
-  tokenExpiresKnown: boolean;
-  tokenExpired: boolean;
-  intervalSeconds: number;
-  topicPages: number;
-  commentPageSize: number;
-  maxCommentPages: number;
-  maxReplyPages: number;
-  board: null | {
-    id: number;
-    slug: string;
-    name: string;
-    readOnly: boolean;
-    topicCount: number;
-  };
-  lastRunAt: string | null;
-  lastRunOk: boolean | null;
-  lastError: string | null;
-  lastSyncedAt: string | null;
-};
-
-export type WeiwallSyncRunResult = {
-  ok: boolean;
-  boardSlug: string;
-  sourceName: string;
-  pagesScanned: number;
-  topicsScanned: number;
-  topicsCreated: number;
-  topicsUpdated: number;
-  repliesCreated: number;
-  repliesUpdated: number;
-  authorsCreated: number;
-  authorsUpdated: number;
-  commentsFetched: number;
-  latestExternalTopicId: string | null;
-  topicTraces: Array<{
-    phase: "latest" | "backfill";
-    action: "fetched" | "probed" | "skipped";
-    externalTopicId: string;
-    localTopicId: number | null;
-    title: string;
-    remoteCommentCount: number | null;
-    localReplyCountBefore: number | null;
-    visibleReplyCountAfter: number | null;
-    commentsFetched: number;
-    repliesCreated: number;
-    repliesUpdated: number;
-    note: string | null;
-  }>;
-  error?: string | null;
-};
-
-export type WeiwallTokenAuthSession = {
-  flowId: string;
-  authorizeUrl: string;
-  qrDataUrl: string;
-  callbackUrl: string;
-  expiresAt: string;
-};
-
-export type WeiwallTokenAuthStatus = {
-  flowId: string;
-  status: "pending" | "success" | "error" | "expired";
-  expiresAt: string | null;
-  completedAt: string | null;
-  error: string | null;
-};
-
 export type DatabaseBackupStatus = {
   supported: boolean;
   provider: "postgresql" | "unsupported";
@@ -1079,25 +993,6 @@ export const adminApi = {
   runFeed: (id: number) => request.post<any>(`/admin/feeds/${id}/run`),
   resetRunFeed: (id: number) => request.post<any>(`/admin/feeds/${id}/reset-run`),
   runAllFeeds: () => request.post<any>("/admin/feeds/run-all"),
-  // 逛逛同步
-  weiwallSync: () => request.get<WeiwallSyncConfig>("/admin/weiwall-sync"),
-  updateWeiwallSync: (patch: Partial<{
-    enabled: boolean;
-    baseUrl: string;
-    schoolEn: string;
-    tenantId: number;
-    agentId: string;
-    token: string;
-    clearToken: boolean;
-    intervalSeconds: number;
-    topicPages: number;
-    commentPageSize: number;
-    maxCommentPages: number;
-    maxReplyPages: number;
-  }>) => request.patch<WeiwallSyncConfig>("/admin/weiwall-sync", patch),
-  runWeiwallSync: () => request.post<WeiwallSyncRunResult>("/admin/weiwall-sync/run", {}),
-  createWeiwallAuthLink: (origin?: string) => request.post<WeiwallTokenAuthSession>("/admin/weiwall-sync/auth-link", origin ? { origin } : {}),
-  getWeiwallAuthStatus: (flowId: string) => request.get<WeiwallTokenAuthStatus>(`/admin/weiwall-sync/auth-status/${flowId}`),
   // 公告
   announcements: (options?: RequestOptions) => request.get<any[]>("/admin/announcements", undefined, options),
   createAnnouncement: (p: { title: string; content: string; level?: string; link?: string; source?: string; targetClient?: "all" | "ios" | "android" | "harmony" | "web" | Array<"ios" | "android" | "harmony" | "web"> }) =>

@@ -78,50 +78,6 @@
       padding: 10px 12px;
     }
 
-    .weiwall-hot-hero {
-      padding: 16px;
-      border-radius: 18px;
-      flex-direction: column;
-      gap: 14px;
-    }
-
-    .weiwall-hot-hero h3 {
-      font-size: 20px;
-    }
-
-    .weiwall-hot-hero-meta {
-      min-width: 0;
-      align-items: flex-start;
-      flex-wrap: wrap;
-      flex-direction: row;
-    }
-
-    .weiwall-hot-item {
-      grid-template-columns: auto 1fr;
-      padding: 14px;
-    }
-
-    .weiwall-hot-rank {
-      min-width: 48px;
-      height: 48px;
-      border-radius: 14px;
-      font-size: 15px;
-    }
-
-    .weiwall-hot-title {
-      font-size: 15px;
-    }
-
-    .weiwall-hot-summary {
-      font-size: 13px;
-    }
-
-    .weiwall-hot-action {
-      grid-column: 1 / -1;
-      width: 100%;
-      justify-self: stretch;
-    }
-
     .post-foot {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -134,15 +90,6 @@
       padding-inline: 6px;
     }
 
-    .weiwall-contact-row,
-    .weiwall-contact-row-action {
-      align-items: flex-start;
-      flex-direction: column;
-    }
-
-    .weiwall-contact-action {
-      width: 100%;
-    }
   }
 
   .replies {

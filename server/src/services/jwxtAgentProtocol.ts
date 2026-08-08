@@ -86,15 +86,6 @@ export type JwxtAgentActionMap = {
     input: { source: SchoolFeedSourceInput; skipExternalIds?: string[]; dryRun?: boolean };
     output: CrawlSchoolFeedResult;
   };
-  "weiwall.request": {
-    input: {
-      method: "GET" | "POST";
-      url: string;
-      headers?: Record<string, string>;
-      body?: string | Record<string, unknown>;
-    };
-    output: { status: number; data: unknown };
-  };
   "dorm-electric.query": {
     input: { studentNo: string };
     output: DormElectricResult;

@@ -23,29 +23,7 @@
   line-height: 1.6;
 }
 
-.weiwall-source-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  max-width: 340px;
-  margin: 0 auto;
-}
-
-.weiwall-source-copy {
-  margin: 0;
-  color: #667085;
-  font-size: 13px;
-  line-height: 1.7;
-}
-
 .share-actions {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 10px;
-  width: 100%;
-}
-
-.weiwall-source-actions {
   display: grid;
   grid-template-columns: 1fr;
   gap: 10px;
@@ -95,15 +73,13 @@
 
 .copy-share-panel .share-action-btn,
 .share-panel .share-action-btn,
-.weiwall-source-actions .share-action-btn,
 .share-card-actions .share-card-save-link {
   box-sizing: border-box;
   box-shadow: none;
 }
 
 .share-actions :deep(.el-button),
-.copy-share-panel :deep(.el-button),
-.weiwall-source-actions :deep(.el-button) {
+.copy-share-panel :deep(.el-button) {
   margin-left: 0 !important;
 }
 
@@ -113,19 +89,7 @@
   color: #344054;
 }
 
-.weiwall-source-actions .share-action-btn {
-  background: #f8fafc;
-  border-color: #dbe5ee;
-  color: #344054;
-}
-
 .share-panel :deep(.el-button--primary.share-action-btn) {
-  background: var(--cpu-primary);
-  border-color: var(--cpu-primary);
-  color: #fff;
-}
-
-.weiwall-source-actions :deep(.el-button--primary.share-action-btn) {
   background: var(--cpu-primary);
   border-color: var(--cpu-primary);
   color: #fff;
@@ -142,36 +106,6 @@
   background: #fff;
   border-color: #dbe5ee;
   color: #344054;
-}
-
-.weiwall-source-qr-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  padding: 16px;
-  border-radius: 18px;
-  background: linear-gradient(180deg, #fffdf6 0%, #fff7df 100%);
-  border: 1px solid #f6d38b;
-}
-
-.weiwall-source-qr {
-  width: 176px;
-  height: 176px;
-  display: block;
-  border-radius: 16px;
-  background: #fff;
-  padding: 10px;
-  box-sizing: border-box;
-  border: 1px solid #f1f5f9;
-}
-
-.weiwall-source-qr-card p {
-  margin: 0;
-  text-align: center;
-  color: #7c5c18;
-  font-size: 13px;
-  line-height: 1.6;
 }
 
 .share-card-save-link:disabled {
@@ -372,8 +306,7 @@
 
 :deep(.share-dialog .el-dialog),
 :deep(.copy-share-dialog .el-dialog),
-:deep(.share-card-dialog .el-dialog),
-:deep(.weiwall-source-dialog .el-dialog) {
+:deep(.share-card-dialog .el-dialog) {
   border-radius: 22px;
 }
 

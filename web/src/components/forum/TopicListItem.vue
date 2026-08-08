@@ -15,7 +15,7 @@
         <el-tag v-if="topic.board" size="small" :style="{ background: topic.board.color || '#168776', color: '#fff', border: 'none' }" class="tag">
           {{ boardDisplayName }}
         </el-tag>
-        <span v-if="!titlelessWeiwall" class="title">{{ topic.title }}</span>
+        <span class="title">{{ topic.title }}</span>
         <el-tag
           v-for="tag in aiTags"
           :key="tag.name"
@@ -33,8 +33,7 @@
       <div class="line2">
         <span class="author">{{ topic.author?.nickname ?? "—" }}</span>
         <span v-if="topic.isAnonymous" class="anon">匿名</span>
-        <span v-if="topic.metadata?.externalPlatform === 'weiwall'" class="bot">📮 逛逛同步</span>
-        <span v-else-if="topic.author?.role === 'bot'" class="bot">🤖 公告同步</span>
+        <span v-if="topic.author?.role === 'bot'" class="bot">🤖 公告同步</span>
         <span class="dot">·</span>
         <span>{{ fmtRelative(topic.lastReplyAt || topic.createdAt) }}</span>
         <span v-if="topic.editCount && topic.editCount > 0" class="edited">已编辑 {{ topic.editCount }} 次</span>
@@ -44,9 +43,6 @@
         <span><el-icon><View /></el-icon> {{ topic.viewCount }}</span>
         <span><el-icon><ChatLineRound /></el-icon> {{ topic.replyCount }}</span>
         <span><el-icon><Star /></el-icon> {{ topic.likeCount }}</span>
-      </div>
-      <div v-if="titlelessWeiwall && weiwallPreview" class="line3">
-        {{ weiwallPreview }}
       </div>
     </div>
     <!-- 价格/评分等板块特化的右侧小标 -->
@@ -70,29 +66,13 @@ const router = useRouter();
 const metaPrice = computed(() => props.topic.metadata?.price);
 const metaSolved = computed(() => props.topic.metadata?.resolved === true);
 const metaBounty = computed(() => props.topic.metadata?.bounty ? props.topic.metadata.bounty : 0);
-const boardDisplayName = computed(() => props.topic.board?.slug === "campus-wall" ? "逛逛" : (props.topic.board?.name || ""));
+const boardDisplayName = computed(() => props.topic.board?.name || "");
 const metaRating = computed(() => {
   const r = props.topic.metadata?.ratings?.recommend;
   return typeof r === "number" ? r : 0;
 });
 const hotScore = computed(() => Math.round((props.topic.likeCount ?? 0) * 5 + (props.topic.replyCount ?? 0) * 3 + (props.topic.viewCount ?? 0) * 0.03));
 const aiTags = computed(() => Array.isArray(props.topic.tags) ? props.topic.tags.slice(0, 2) : []);
-const titlelessWeiwall = computed(() => {
-  if (props.topic.metadata?.externalPlatform !== "weiwall") return false;
-  const originalTitle = String(props.topic.metadata?.originalTitle ?? "").trim().toLowerCase();
-  return !originalTitle || originalTitle === "none";
-});
-const weiwallPreview = computed(() => {
-  if (!titlelessWeiwall.value) return "";
-  return String(props.topic.content || "")
-    .replace(/!\[[^\]]*\]\([^)]+\)/g, " ")
-    .replace(/\[[^\]]+\]\([^)]+\)/g, "$1")
-    .replace(/[#>*_`~\-]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 120);
-});
-
 const restorableRouteNames = new Set(["board", "forum-latest", "forum-hot"]);
 
 function openTopic() {

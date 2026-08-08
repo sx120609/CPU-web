@@ -12,9 +12,6 @@
           <el-button v-if="site.features.market && auth.canAccessForum" size="large" @click="$router.push('/market')">
             <span>🛍️</span> 校园商城
           </el-button>
-          <el-button v-if="showForumContent" size="large" @click="$router.push('/forum/b/campus-wall')">
-            <span>📮</span> 逛逛
-          </el-button>
           <el-button v-else type="primary" size="large" @click="$router.push('/announcements')">
             <el-icon><Bell /></el-icon> 看校园公告
           </el-button>
@@ -116,27 +113,6 @@
             </li>
           </ul>
           <el-empty v-else description="暂无公告，稍后再来看看" />
-        </section>
-
-        <section class="block" v-if="showForumContent">
-          <div class="block-head">
-            <h3>📮 逛逛</h3>
-            <span class="cpu-muted">外部镜像内容</span>
-          </div>
-          <div
-            class="wall-card"
-            role="button"
-            tabindex="0"
-            @click="openBoard('campus-wall')"
-            @keydown.enter.prevent="openBoard('campus-wall')"
-            @keydown.space.prevent="openBoard('campus-wall')"
-          >
-            <div class="wall-icon">📮</div>
-            <div class="wall-body">
-              <div class="wall-title">单独查看逛逛镜像</div>
-              <div class="wall-desc">外部帖子和评论会持续同步，但仅补充近 3 天稿件的后续更新，超过三天的稿件不再更新。</div>
-            </div>
-          </div>
         </section>
 
         <section class="block" v-if="site.features.market && auth.canAccessForum">
@@ -379,10 +355,6 @@ function openUrl(url: string) {
 
 function openTopic(id: number) {
   router.push(`/forum/topic/${id}`);
-}
-
-function openBoard(slug: string) {
-  router.push(`/forum/b/${slug}`);
 }
 
 function normalizeHomeError(error: unknown) {

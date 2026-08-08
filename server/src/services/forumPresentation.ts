@@ -30,16 +30,6 @@ function buildAnonymousAuthor(alias?: string | null) {
   };
 }
 
-function buildExternalAuthor(name?: string | null, avatar?: string | null) {
-  return {
-    id: null,
-    nickname: name || "逛逛同学",
-    avatar: avatar || null,
-    role: "external",
-    external: true,
-  };
-}
-
 function normalizeTags(tags: any) {
   return Array.isArray(tags)
     ? tags
@@ -53,22 +43,6 @@ export function decodeTopicForViewer(topic: any, viewer?: Viewer) {
   const rawMetadata = safeJson(privacySafeTopic.metadata);
   const baseMetadata = rawMetadata && typeof rawMetadata === "object" ? rawMetadata : {};
   const metadata = baseMetadata;
-  const isWeiwall = metadata?.externalPlatform === "weiwall";
-  if (isWeiwall) {
-    const externalName = privacySafeTopic?.weiwallMap?.externalAuthorName || metadata?.externalAuthorName || "逛逛同学";
-    const externalAvatar = privacySafeTopic?.weiwallMap?.externalAuthorAvatar || metadata?.externalAuthorAvatar || null;
-    return {
-      ...privacySafeTopic,
-      authorId: null,
-      globalPinned: isGlobalPinnedTopic(Number(privacySafeTopic.id)),
-      metadata,
-      tags: normalizeTags(topic.tags),
-      isAnonymous: false,
-      anonymousAlias: null,
-      author: buildExternalAuthor(externalName, externalAvatar),
-      realAuthor: undefined,
-    };
-  }
   const anonymous = Boolean(privacySafeTopic?.isAnonymous);
   const reveal = anonymous && canRevealAnonymousAuthor(viewer, privacySafeTopic?.authorId);
   return {
@@ -85,16 +59,6 @@ export function decodeTopicForViewer(topic: any, viewer?: Viewer) {
 }
 
 export function decodeReplyForViewer(reply: any, viewer?: Viewer) {
-  if (reply?.weiwallMap?.externalAuthorName) {
-    return {
-      ...reply,
-      authorId: null,
-      isAnonymous: false,
-      anonymousAlias: null,
-      author: buildExternalAuthor(reply.weiwallMap.externalAuthorName, reply.weiwallMap.externalAuthorAvatar),
-      realAuthor: undefined,
-    };
-  }
   const anonymous = Boolean(reply?.isAnonymous);
   const reveal = anonymous && canRevealAnonymousAuthor(viewer, reply?.authorId);
   return {

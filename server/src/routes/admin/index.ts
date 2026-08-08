@@ -100,13 +100,6 @@ import {
   migrateLocalMediaAssetsToRemote,
 } from "../../services/mediaStorage";
 import { qqBotAdminRouter } from "./qqbot";
-import {
-  createWeiwallTokenAuthSession,
-  getWeiwallSyncAdminConfig,
-  getWeiwallTokenAuthStatus,
-  runWeiwallSyncNow,
-  updateWeiwallSyncConfig,
-} from "../../services/weiwallSync";
 import { backfillAdminDailyLoginsFromLastLogin, getChinaDayRange, listAdminDailyLoginSeries } from "../../services/adminStats";
 import { config } from "../../config";
 import {
@@ -1373,53 +1366,6 @@ adminRouter.post("/feeds/:id/reset-run", adminOnly, async (req, res, next) => {
     const id = Number(req.params.id);
     const r = await resetSourceAndRun(id);
     ok(res, r);
-  } catch (e) { next(e); }
-});
-
-// ============ 逛逛同步 ============
-
-adminRouter.get("/weiwall-sync", adminOnly, async (_req, res, next) => {
-  try {
-    ok(res, await getWeiwallSyncAdminConfig());
-  } catch (e) { next(e); }
-});
-
-adminRouter.patch("/weiwall-sync", adminOnly, validate(z.object({
-  enabled: z.boolean().optional(),
-  baseUrl: z.string().trim().max(240).optional(),
-  schoolEn: z.string().trim().max(40).optional(),
-  tenantId: z.number().int().min(1).max(999999).optional(),
-  agentId: z.string().trim().max(128).optional(),
-  token: z.string().trim().max(4000).optional(),
-  clearToken: z.boolean().optional(),
-  intervalSeconds: z.number().int().min(30).max(3600).optional(),
-  topicPages: z.number().int().min(1).max(20).optional(),
-  commentPageSize: z.number().int().min(5).max(20).optional(),
-  maxCommentPages: z.number().int().min(1).max(50).optional(),
-  maxReplyPages: z.number().int().min(1).max(50).optional(),
-})), async (req, res, next) => {
-  try {
-    ok(res, await updateWeiwallSyncConfig(req.body));
-  } catch (e) { next(e); }
-});
-
-adminRouter.post("/weiwall-sync/run", adminOnly, async (_req, res, next) => {
-  try {
-    ok(res, await runWeiwallSyncNow());
-  } catch (e) { next(e); }
-});
-
-adminRouter.post("/weiwall-sync/auth-link", adminOnly, validate(z.object({
-  origin: z.string().trim().max(240).optional(),
-})), async (req, res, next) => {
-  try {
-    ok(res, await createWeiwallTokenAuthSession(String(req.body.origin || requestOrigin(req) || "").trim()));
-  } catch (e) { next(e); }
-});
-
-adminRouter.get("/weiwall-sync/auth-status/:flowId", adminOnly, async (req, res, next) => {
-  try {
-    ok(res, await getWeiwallTokenAuthStatus(String(req.params.flowId || "")));
   } catch (e) { next(e); }
 });
 
