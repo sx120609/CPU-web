@@ -6,6 +6,7 @@ import { withCache } from "../services/cache";
 import { normalizeServiceCard, visibleServiceWhere } from "../services/serviceCards";
 import { getFeatures } from "../services/siteSettings";
 import { resolveForumAccess } from "../services/forumAccess";
+import { visibleBoardSlugFilter } from "../services/retiredBoards";
 import { sanitizeLostFoundTopicFields } from "../services/lostFoundPrivacy";
 import {
   askCampusAssistant,
@@ -81,6 +82,7 @@ searchRouter.get("/", async (req, res, next) => {
     if (forumAccessEnabled && features.coursereview) searchableBoardTypes.push("coursereview");
 
     const cacheParts = [
+      "retired-boards-v1",
       q,
       forumAccessEnabled ? "forum-enabled" : "announce-only",
       features.forum ? "forum-on" : "forum-off",
@@ -93,7 +95,7 @@ searchRouter.get("/", async (req, res, next) => {
         prisma.topic.findMany({
           where: {
             hidden: false,
-            board: { type: { in: searchableBoardTypes } },
+            board: { type: { in: searchableBoardTypes }, ...visibleBoardSlugFilter() },
             OR: [{ title: { contains: q } }, { content: { contains: q } }],
           },
           orderBy: { lastReplyAt: "desc" },

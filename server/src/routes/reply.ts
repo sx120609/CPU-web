@@ -14,6 +14,7 @@ import { invalidateForumCaches } from "../services/cacheInvalidation";
 import { decodeReplyForViewer, decodeReplyForViewerWithImages } from "../services/forumPresentation";
 import { ensureForumImageAssetsForContent, summarizeForumImageModerationForContent } from "../services/imageModeration";
 import { ensureForumVideoAssetsForContent, summarizeForumVideoModerationForContent } from "../services/videoModeration";
+import { isRetiredBoardSlug } from "../services/retiredBoards";
 
 export const replyRouter = Router();
 
@@ -36,10 +37,11 @@ replyRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
     await ensureUserCanSpeak(userId);
     const topic = await prisma.topic.findUnique({
       where: { id: topicId },
-      include: { board: { select: { type: true, name: true, anonymousEnabled: true } } },
+      include: { board: { select: { slug: true, type: true, name: true, anonymousEnabled: true } } },
     });
     const canSeeHiddenTopic = Boolean(req.user?.userId && (req.user.userId === topic?.authorId || req.user.role === "admin" || req.user.role === "mod"));
     if (!topic || (topic.hidden && !canSeeHiddenTopic)) throw Errors.notFound("帖子不存在");
+    if (isRetiredBoardSlug(topic.board?.slug)) throw Errors.notFound("帖子不存在");
     if (!isBoardTypeEnabled(topic.board?.type)) throw Errors.forbidden(featureClosedMessage(topic.board?.type));
     await ensureCanReadBoardType(topic.board?.type, userId, req.user?.role);
     if (topic.locked) throw Errors.forbidden("帖子已锁定，无法回复");
@@ -252,13 +254,14 @@ replyRouter.patch("/:id", authRequired, validate(updateSchema), async (req, res,
             id: true,
             locked: true,
             hidden: true,
-            board: { select: { type: true } },
+            board: { select: { slug: true, type: true } },
           },
         },
         author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
       },
     });
     if (!reply || !reply.topic || reply.hidden || reply.topic.hidden) throw Errors.notFound("回复不存在");
+    if (isRetiredBoardSlug(reply.topic.board?.slug)) throw Errors.notFound("回复不存在");
     const isOwner = reply.authorId === req.user!.userId;
     const isMod = req.user!.role === "mod" || req.user!.role === "admin";
     if (!isOwner && !isMod) throw Errors.forbidden();
@@ -295,9 +298,10 @@ replyRouter.delete("/:id", authRequired, async (req, res, next) => {
     const id = Number(req.params.id);
     const r = await prisma.reply.findUnique({
       where: { id },
-      include: { topic: { select: { id: true, authorId: true, createdAt: true, board: { select: { type: true } } } } },
+      include: { topic: { select: { id: true, authorId: true, createdAt: true, board: { select: { slug: true, type: true } } } } },
     });
     if (!r) throw Errors.notFound();
+    if (isRetiredBoardSlug(r.topic?.board?.slug)) throw Errors.notFound();
     const isOwner = r.authorId === req.user!.userId;
     const isMod = req.user!.role === "mod" || req.user!.role === "admin";
     if (!isOwner && !isMod) throw Errors.forbidden();

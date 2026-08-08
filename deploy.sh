@@ -965,6 +965,7 @@ do_db_init() {
   ensure_local_postgres_url_ready "$db_url"
   log "同步 PostgreSQL schema"
   npm run db:migrate --prefix server
+  npm run db:cleanup-retired-boards --prefix server
   user_count="$(
     cd server && node -e 'const { PrismaClient } = require("@prisma/client"); const p = new PrismaClient(); p.user.count().then((c) => { console.log(c); }).catch(() => { console.log(""); process.exitCode = 1; }).finally(() => p.$disconnect());' 2>/dev/null | tr -d '[:space:]'
   )"
@@ -986,6 +987,7 @@ do_db_migrate() {
   ensure_local_postgres_url_ready "$db_url"
   log "Prisma files changed; applying PostgreSQL schema update"
   npm run db:migrate --prefix server
+  npm run db:cleanup-retired-boards --prefix server
 }
 
 do_db_reset() {

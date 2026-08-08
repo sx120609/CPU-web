@@ -19,6 +19,7 @@
     "market:check-db": "tsx scripts/check-market-db.ts",
     "market:smoke": "tsx scripts/smoke-market.ts",
     "db:migrate": "prisma db push --skip-generate",
+    "db:cleanup-retired-boards": "tsx prisma/cleanup-retired-boards.ts",
     "db:seed": "tsx prisma/seed.ts",
     "db:reset": "prisma db push --force-reset --skip-generate && npm run db:seed",
     "db:studio": "prisma studio",

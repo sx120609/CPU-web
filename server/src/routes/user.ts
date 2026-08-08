@@ -10,6 +10,7 @@ import { FORUM_CONFIRM_TEXT, resolveForumAccess } from "../services/forumAccess"
 import { releaseExpiredMutes } from "../services/userModeration";
 import { buildPublicUser, buildSelfUser } from "../utils/publicUser";
 import { decodeTopicForViewer } from "../services/forumPresentation";
+import { visibleBoardSlugFilter } from "../services/retiredBoards";
 
 export const userRouter = Router();
 
@@ -98,7 +99,7 @@ userRouter.get("/:id/topics", async (req, res, next) => {
       where: {
         authorId: id,
         hidden: false,
-        board: { type: { in: enabledBoardTypes() } },
+        board: { type: { in: enabledBoardTypes() }, ...visibleBoardSlugFilter() },
         ...(canSeeAnonymous ? {} : { isAnonymous: false }),
       },
       orderBy: { createdAt: "desc" },

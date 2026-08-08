@@ -4,6 +4,7 @@ import { Resvg } from "@resvg/resvg-js";
 import { prisma } from "../prisma";
 import { getSiteOrigin, isBoardTypeEnabled } from "../services/siteSettings";
 import { sanitizeLostFoundTopicFields } from "../services/lostFoundPrivacy";
+import { isRetiredBoardSlug } from "../services/retiredBoards";
 
 export const shareRouter = Router();
 
@@ -71,7 +72,7 @@ async function loadShareTopic(idParam: string) {
       tags: { include: { tag: true } },
     },
   });
-  if (!topic || topic.hidden || !topic.board || !isBoardTypeEnabled(topic.board.type)) return null;
+  if (!topic || topic.hidden || !topic.board || isRetiredBoardSlug(topic.board.slug) || !isBoardTypeEnabled(topic.board.type)) return null;
   return sanitizeLostFoundTopicFields(topic);
 }
 

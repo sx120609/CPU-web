@@ -8,6 +8,7 @@ import { getSiteOrigin, isBoardTypeEnabled, isFeatureOn, featureForBoardType, fe
 import { refreshBoardTopicCounts, refreshUserPostCount } from "./forumStats";
 import { ensureUserCanSpeak } from "./userModeration";
 import { ensureForumVideoAssetsForContent } from "./videoModeration";
+import { visibleBoardSlugFilter } from "./retiredBoards";
 import {
   callQqBotAction,
   configureQqBotConnection,
@@ -2064,6 +2065,7 @@ async function detectBoardSelectionInTitleStep(text: string, defaultBoardSlug: s
     where: {
       readOnly: false,
       type: { in: ["normal", "question", "coursereview"] },
+      ...visibleBoardSlugFilter(),
     },
     select: { slug: true, name: true },
     take: 50,
@@ -4157,7 +4159,7 @@ async function renderRecentQqTopics(qqId: string) {
     where: {
       authorId: binding.user.id,
       hidden: false,
-      board: { type: { in: ["announce", "normal", "question", "market", "coursereview"] } },
+      board: { type: { in: ["announce", "normal", "question", "market", "coursereview"] }, ...visibleBoardSlugFilter() },
     },
     orderBy: { createdAt: "desc" },
     take: 5,

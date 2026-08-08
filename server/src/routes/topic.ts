@@ -36,6 +36,7 @@ import { decodeReplyForViewer, decodeReplyForViewerWithImages, decodeTopicForVie
 import { ensureForumImageAssetsForContent, summarizeForumImageModerationForContent } from "../services/imageModeration";
 import { ensureForumVideoAssetsForContent, summarizeForumVideoModerationForContent } from "../services/videoModeration";
 import { invalidateCourseCaches, invalidateForumCaches } from "../services/cacheInvalidation";
+import { isRetiredBoardSlug, visibleBoardSlugFilter } from "../services/retiredBoards";
 
 export const topicRouter = Router();
 const MARKET_TOPIC_API_MESSAGE = "商城商品请使用商城发布、编辑和下架功能";
@@ -57,6 +58,7 @@ topicRouter.get("/", async (req, res, next) => {
     if (boardSlug && boardSlug !== "all") {
       const b = await prisma.board.findUnique({ where: { slug: boardSlug } });
       if (!b) throw Errors.notFound("板块不存在");
+      if (isRetiredBoardSlug(b.slug)) throw Errors.notFound("板块不存在");
       if (!isBoardTypeEnabled(b.type)) throw Errors.forbidden(featureClosedMessage(b.type));
       await ensureCanReadBoardType(b.type, requesterId, requesterRole);
       boardId = b.id;
@@ -69,7 +71,7 @@ topicRouter.get("/", async (req, res, next) => {
 
     const where: any = { hidden: false };
     if (boardId) where.boardId = boardId;
-    else where.board = { type: { in: enabledBoardTypes() } };
+    else where.board = { type: { in: enabledBoardTypes() }, ...visibleBoardSlugFilter() };
     if (pinnedMode === "only") where.pinned = true;
     else if (pinnedMode === "exclude") where.pinned = false;
 
@@ -81,7 +83,7 @@ topicRouter.get("/", async (req, res, next) => {
 
     const cached = await withCache(
       "forum-list",
-      ["topic-list", boardSlug || "all", page, size, sort, pinnedMode],
+      ["topic-list-v2", boardSlug || "all", page, size, sort, pinnedMode],
       60_000,
       async () => {
         const [list, total] = await Promise.all([
@@ -126,6 +128,7 @@ topicRouter.get("/:id", async (req, res, next) => {
       },
     });
     if (!topic) throw Errors.notFound();
+    if (isRetiredBoardSlug(topic.board?.slug)) throw Errors.notFound();
     const canSeeHidden = Boolean(requesterId && (requesterId === topic.authorId || requesterRole === "admin" || requesterRole === "mod"));
     if (topic.hidden && !canSeeHidden) throw Errors.notFound();
     if (!isBoardTypeEnabled(topic.board?.type)) throw Errors.forbidden(featureClosedMessage(topic.board?.type));
@@ -161,6 +164,7 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
     await ensureUserCanSubmitTopic(userId);
     const board = await prisma.board.findUnique({ where: { slug: boardSlug } });
     if (!board) throw Errors.notFound("板块不存在");
+    if (isRetiredBoardSlug(board.slug)) throw Errors.notFound("板块不存在");
     if (board.type === "market") throw Errors.badRequest(MARKET_TOPIC_API_MESSAGE);
     if (board.readOnly && req.user!.role !== "bot" && req.user!.role !== "admin") {
       throw Errors.forbidden("该板块为只读公告板，禁止发帖");
@@ -371,9 +375,10 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
     const id = Number(req.params.id);
     const t = await prisma.topic.findUnique({
       where: { id },
-      include: { board: { select: { type: true } } },
+      include: { board: { select: { slug: true, type: true } } },
     });
     if (!t) throw Errors.notFound();
+    if (isRetiredBoardSlug(t.board?.slug)) throw Errors.notFound();
     if (t.board?.type === "market") throw Errors.badRequest(MARKET_TOPIC_API_MESSAGE);
     const isOwner = t.authorId === req.user!.userId;
     const isMod = req.user!.role === "mod" || req.user!.role === "admin";
@@ -530,9 +535,10 @@ topicRouter.delete("/:id", authRequired, async (req, res, next) => {
     const id = Number(req.params.id);
     const t = await prisma.topic.findUnique({
       where: { id },
-      include: { board: { select: { type: true } } },
+      include: { board: { select: { slug: true, type: true } } },
     });
     if (!t) throw Errors.notFound();
+    if (isRetiredBoardSlug(t.board?.slug)) throw Errors.notFound();
     if (t.board?.type === "market") throw Errors.badRequest(MARKET_TOPIC_API_MESSAGE);
     const isOwner = t.authorId === req.user!.userId;
     const isMod = req.user!.role === "mod" || req.user!.role === "admin";
@@ -564,9 +570,10 @@ topicRouter.get("/:id/replies", async (req, res, next) => {
     await releaseExpiredMutes();
     const topic = await prisma.topic.findUnique({
       where: { id },
-      include: { board: { select: { type: true } } },
+      include: { board: { select: { slug: true, type: true } } },
     });
     if (!topic || topic.hidden) throw Errors.notFound("帖子不存在");
+    if (isRetiredBoardSlug(topic.board?.slug)) throw Errors.notFound("帖子不存在");
     if (!isBoardTypeEnabled(topic.board?.type)) throw Errors.forbidden(featureClosedMessage(topic.board?.type));
     await ensureCanReadBoardType(topic.board?.type, req.user?.userId ?? null, req.user?.role ?? null);
     const list = await prisma.reply.findMany({
