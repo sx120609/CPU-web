@@ -78,7 +78,31 @@ body {
   -webkit-app-region: drag;
 }
 
-.brand { width: 22px; height: 22px; border-radius: 6px; flex: none; }
+.brand-home {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+.brand-home:hover {
+  border-color: color-mix(in srgb, var(--cpu-primary) 24%, transparent);
+  background: var(--cpu-primary-soft);
+}
+
+.brand-home:focus-visible,
+.tab:focus-visible {
+  outline: 2px solid var(--cpu-primary);
+  outline-offset: 1px;
+}
+
+.brand { width: 22px; height: 22px; border-radius: 6px; }
 
 .tabs {
   display: flex;
@@ -92,6 +116,21 @@ body {
 }
 
 .tabs::-webkit-scrollbar { display: none; }
+
+.tab-group {
+  display: flex;
+  align-items: stretch;
+  flex: none;
+}
+
+/* 首页与工具是两个独立页面，但在导航上属于同一组常驻标签。
+   连结外框让关系一眼可见，切换时容器尺寸完全不变。 */
+.tab-group-primary {
+  overflow: hidden;
+  border: 1px solid var(--cpu-border);
+  border-radius: 9px;
+  background: var(--cpu-surface-subtle);
+}
 
 .tab {
   display: flex;
@@ -110,6 +149,21 @@ body {
 
 .tab:hover { background: var(--cpu-surface-subtle); }
 
+.tab-group-primary .tab {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.tab-group-primary .tab[data-kind="site"] { width: 132px; }
+.tab-group-primary .tab[data-kind="tools"] { width: 56px; justify-content: center; }
+
+.tab-group-primary .tab + .tab {
+  border-left: 1px solid var(--cpu-border);
+}
+
+.tab-group-primary .tab:hover { background: var(--cpu-surface); }
+
 .tab[data-active="true"] {
   background: var(--cpu-primary-soft);
   border-color: color-mix(in srgb, var(--cpu-primary) 26%, transparent);
@@ -117,13 +171,27 @@ body {
   font-weight: 600;
 }
 
+.tab-group-primary .tab[data-active="true"] {
+  background: var(--cpu-primary-soft);
+}
+
 @media (prefers-color-scheme: dark) {
   .tab[data-active="true"] { color: var(--cpu-primary-light); }
 }
 
 .tab-title {
+  display: grid;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tab-title::after {
+  content: attr(data-label);
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  font-weight: 600;
   white-space: nowrap;
 }
 

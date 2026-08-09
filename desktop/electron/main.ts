@@ -1488,6 +1488,7 @@ if (installMode || uninstallMode) {
     ipcMain.handle("tabs:close", (_event, id: unknown) => { if (typeof id === "string") tabs?.close(id); });
     ipcMain.handle("tabs:reload", (_event, id: unknown) => { if (typeof id === "string") tabs?.reload(id); });
     ipcMain.handle("tabs:go-back", (_event, id: unknown) => { if (typeof id === "string") tabs?.goBack(id); });
+    ipcMain.handle("tabs:open-home", () => tabs?.navigateSite(new URL("/", oauthConfig.origin).href) ?? false);
     ipcMain.handle("tabs:set-muted", (_event, id: unknown, muted: unknown) => {
       if (typeof id === "string" && typeof muted === "boolean") tabs?.setMuted(id, muted);
     });

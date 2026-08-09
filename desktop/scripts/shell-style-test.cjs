@@ -34,6 +34,15 @@ assert.match(renderer, /shell\.auth\.sync\(/, "账号卡片应先静默同步首
 assert.match(html, /id="auth-sponsor-go"[^>]*>前往赞助</, "账号卡片应提供赞助获取 AI 点数入口");
 assert.match(renderer, /assistantPointsPerYuan[\s\S]*auth-sponsor-rate/, "赞助入口应展示服务端下发的实时兑换比例");
 assert.match(renderer, /shell\.tabs\.openSponsor\(\)/, "赞助入口应在客户端主站标签中打开赞助页面");
+assert.match(html, /id="brand-home"[^>]*aria-label="返回药大拾间首页"/, "左侧品牌入口必须是可访问的首页按钮");
+assert.match(renderer, /brand-home[\s\S]*shell\.tabs\.openHome\(\)/, "点击品牌入口必须调用首页导航");
+assert.match(renderer, /tab-group tab-group-primary/, "首页与工具必须渲染为一组连结标签");
+assert.match(renderer, /title\.dataset\.label = tab\.title/, "标签标题必须提供粗体占位文本");
+assert.match(css, /\.tab-group-primary\s*\{[\s\S]*?overflow:\s*hidden;[\s\S]*?border:/, "首页与工具必须共享稳定的连结外框");
+assert.match(css, /\.tab-group-primary \.tab\[data-kind="site"\]\s*\{\s*width:\s*132px;/, "首页标签必须保持固定宽度");
+assert.match(css, /\.tab-group-primary \.tab\[data-kind="tools"\]\s*\{\s*width:\s*56px;/, "工具标签必须保持固定宽度");
+assert.match(css, /\.tab-title::after\s*\{[\s\S]*?content:\s*attr\(data-label\);[\s\S]*?font-weight:\s*600;/, "非激活标签必须为激活粗体预留宽度");
+assert.match(main, /tabs:open-home[\s\S]*navigateSite\(new URL\("\/", oauthConfig\.origin\)\.href\)/, "首页按钮必须导航到主站根地址，而非只切换标签");
 assert.match(html, /id="script-version"/, "学习通助手区域应展示独立脚本版本与更新状态");
 assert.match(renderer, /shell\.script\.getUpdateStates\(\)/, "助手区域应同时读取两套独立云端更新状态");
 assert.match(html, /id="script-check-update"/, "学习通助手区域应提供手动检查更新按钮");

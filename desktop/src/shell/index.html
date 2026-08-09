@@ -54,8 +54,10 @@
 
     <!-- 标签栏。高度必须与 electron/tabs.ts 的 CHROME_HEIGHT 一致 -->
     <header class="chrome">
-      <img class="brand" src="./logo.png" alt="" />
-      <nav class="tabs" id="tabs"></nav>
+      <button class="brand-home" id="brand-home" type="button" title="返回药大拾间首页" aria-label="返回药大拾间首页">
+        <img class="brand" src="./logo.png" alt="" />
+      </button>
+      <nav class="tabs" id="tabs" aria-label="应用标签页"></nav>
       <div class="chips">
         <button class="chip" id="chip-campus" type="button" title="校园网状态">
           <span class="dot" id="campus-dot"></span><span id="campus-text">校园网</span>

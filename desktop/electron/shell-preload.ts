@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld("cpuShell", {
     close: (id: string) => ipcRenderer.invoke("tabs:close", id),
     reload: (id: string) => ipcRenderer.invoke("tabs:reload", id),
     goBack: (id: string) => ipcRenderer.invoke("tabs:go-back", id),
+    openHome: () => ipcRenderer.invoke("tabs:open-home"),
     setMuted: (id: string, muted: boolean) => ipcRenderer.invoke("tabs:set-muted", id, muted),
     openLearning: (platformId?: string) => ipcRenderer.invoke("tabs:open-learning", platformId),
     openSponsor: () => ipcRenderer.invoke("tabs:open-sponsor"),

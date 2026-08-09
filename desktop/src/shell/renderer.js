@@ -48,11 +48,16 @@ const formatTime = (at) => new Date(at).toLocaleTimeString("zh-CN", { hour12: fa
 
 const renderTabs = () => {
   tabsBar.textContent = "";
+  tabsBar.setAttribute("role", "tablist");
+  let primaryGroup = null;
   for (const tab of tabState.tabs) {
     const button = document.createElement("button");
     button.className = "tab";
     button.type = "button";
+    button.setAttribute("role", "tab");
+    button.setAttribute("aria-selected", String(tab.id === tabState.activeId));
     button.dataset.active = String(tab.id === tabState.activeId);
+    button.dataset.kind = tab.kind;
     button.title = tab.title;
 
     if (tab.loading) {
@@ -62,6 +67,9 @@ const renderTabs = () => {
     }
     const title = document.createElement("span");
     title.className = "tab-title";
+    // 激活态使用粗体。用同一标题的不可见粗体副本提前占好宽度，避免点击后
+    // 标签自身变宽，把旁边的标签与主播弹性盒一起推来推去。
+    title.dataset.label = tab.title;
     title.textContent = tab.title;
     button.append(title);
 
@@ -92,7 +100,18 @@ const renderTabs = () => {
       });
       button.append(close);
     }
-    tabsBar.append(button);
+    if (tab.kind === "site" || tab.kind === "tools") {
+      if (!primaryGroup) {
+        primaryGroup = document.createElement("div");
+        primaryGroup.className = "tab-group tab-group-primary";
+        primaryGroup.setAttribute("role", "group");
+        primaryGroup.setAttribute("aria-label", "药大拾间页面");
+        tabsBar.append(primaryGroup);
+      }
+      primaryGroup.append(button);
+    } else {
+      tabsBar.append(button);
+    }
   }
 
   // 工具标签没有内容视图，激活它就等于显示本页
@@ -591,6 +610,7 @@ const renderScriptActivity = (activity) => {
 /* --------------------------------------------------------------- 绑定 */
 
 const bindChrome = () => {
+  el("brand-home").addEventListener("click", () => void shell.tabs.openHome());
   el("chip-campus").addEventListener("click", () => openTools());
   el("chip-quota").addEventListener("click", () => openTools());
   el("chip-reload").addEventListener("click", () => void shell.tabs.reload(tabState.activeId));
