@@ -9,6 +9,9 @@ export function visibleServiceWhere(extra: Record<string, any> = {}) {
 }
 
 export function normalizeServiceCard<T extends Record<string, any>>(card: T): T {
+  if (card.code === "MAIL") {
+    return { ...card, url: "https://mail.stu.cpu.edu.cn/" };
+  }
   if (card.code !== "ACAD_PORTAL") return card;
   return {
     ...card,

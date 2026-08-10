@@ -496,7 +496,7 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
   {
     id: "cpu-email-and-vpn",
     relatedActionIds: ["services"],
-    fact: "校园邮箱与校外访问：学生邮箱入口为 stu.mail.cpu.edu.cn，用户名为 10 位学工号；邮箱密码独立于统一身份认证。校外访问部分校内资源可使用学校 WebVPN（vpn.cpu.edu.cn）或客户端 VPN，具体可用系统和登录要求以图书与信息中心最新说明为准。",
+    fact: "校园邮箱与校外访问：学生邮箱入口为 mail.stu.cpu.edu.cn，用户名为 10 位学工号；邮箱密码独立于统一身份认证。校外访问部分校内资源可使用学校 WebVPN（vpn.cpu.edu.cn）或客户端 VPN，具体可用系统和登录要求以图书与信息中心最新说明为准。",
     source: "中国药科大学图书与信息中心校园卡服务指南",
     sourceRef: "https://xxh.cpu.edu.cn/9483/list.htm",
     verifiedAt: "2026-07-27",

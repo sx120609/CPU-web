@@ -169,9 +169,9 @@
               class="svc"
               role="button"
               tabindex="0"
-              @click="openUrl(s.url)"
-              @keydown.enter.prevent="openUrl(s.url)"
-              @keydown.space.prevent="openUrl(s.url)"
+              @click="openUrl(s.url, s.name)"
+              @keydown.enter.prevent="openUrl(s.url, s.name)"
+              @keydown.space.prevent="openUrl(s.url, s.name)"
             >
               <div class="svc-icon">{{ s.icon || "🔗" }}</div>
               <div class="svc-name">{{ s.name }}</div>
@@ -191,7 +191,7 @@
 import { ref, computed, onMounted, watch } from "vue";
 import { useRouter } from "vue-router";
 import { ChatLineRound, ChatDotRound, Edit, Bell } from "@element-plus/icons-vue";
-import { ElMessage } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 import TopicListItem from "@/components/forum/TopicListItem.vue";
 import DormElectricDialog from "@/components/services/DormElectricDialog.vue";
 import { homeApi, type HomeSummary } from "@/api/home";
@@ -332,7 +332,15 @@ async function loadSummary(options: { background?: boolean; scope?: string } = {
   }
 }
 
-function openUrl(url: string) {
+function isMobileTelephoneDevice() {
+  if (typeof navigator === "undefined") return false;
+  const userAgent = navigator.userAgent || "";
+  // iPadOS may expose a desktop-like Mac UA while still being a touch device.
+  const ipadDesktopMode = navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
+  return ipadDesktopMode || /Android|iPhone|iPad|iPod|Windows Phone|Mobile/i.test(userAgent);
+}
+
+function openUrl(url: string, label = "联系电话") {
   const target = typeof url === "string" ? url.trim() : "";
   if (!target) {
     ElMessage.warning("该服务暂未配置链接");
@@ -342,7 +350,19 @@ function openUrl(url: string) {
     router.push(target);
     return;
   }
-  if (target.startsWith("tel:") || target.startsWith("mailto:")) {
+  if (target.startsWith("tel:")) {
+    if (isMobileTelephoneDevice()) {
+      window.location.href = target;
+      return;
+    }
+    const phone = target.slice(4).split(/[?#;]/, 1)[0].trim();
+    void ElMessageBox.alert(phone || target, label, {
+      confirmButtonText: "知道了",
+      type: "info",
+    }).catch(() => undefined);
+    return;
+  }
+  if (target.startsWith("mailto:")) {
     window.location.href = target;
     return;
   }

@@ -241,7 +241,7 @@ async function main() {
       description: "走企业微信「后勤服务」提交工单",
       duration: "约 24 小时" },
     { code: "MAIL", name: "校园邮箱", category: "信息化", owner: "信息化建设管理处", icon: "📧",
-      url: "https://mail.cpu.edu.cn/", needSso: true,
+      url: "https://mail.stu.cpu.edu.cn/", needSso: true,
       description: "学校 Webmail" },
     { code: "VPN", name: "校园 VPN（校外访问）", category: "信息化", owner: "信息化建设管理处", icon: "🔐",
       url: "https://vpn.cpu.edu.cn/", needSso: true,
