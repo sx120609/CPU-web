@@ -3,6 +3,26 @@ import { prisma } from "../src/prisma";
 const RETIRED_BOARD_SLUG = "campus-wall";
 const RETIRED_NOTIFICATION_SOURCE = "逛逛同步";
 const GLOBAL_PINNED_TOPICS_KEY = "forum.globalPinnedTopics";
+// PostgreSQL prepared statements support at most 32767 bind parameters. Keep
+// every `IN (...)` operation well below that limit, including operations that
+// combine topic and reply IDs.
+const ID_BATCH_SIZE = 5000;
+
+async function collectBatched<T>(ids: number[], action: (batch: number[]) => Promise<T>) {
+  const results: T[] = [];
+  for (let start = 0; start < ids.length; start += ID_BATCH_SIZE) {
+    results.push(await action(ids.slice(start, start + ID_BATCH_SIZE)));
+  }
+  return results;
+}
+
+async function countBatched(
+  ids: number[],
+  action: (batch: number[]) => Promise<{ count: number }>,
+) {
+  const results = await collectBatched(ids, action);
+  return results.reduce((total, result) => total + result.count, 0);
+}
 
 async function main() {
   // Older deployments may still have these feature-only tables. They are no
@@ -24,9 +44,10 @@ async function main() {
     select: { id: true, authorId: true },
   }) : [];
   const topicIds = topics.map((topic) => topic.id);
-  const replies = topicIds.length
-    ? await prisma.reply.findMany({ where: { topicId: { in: topicIds } }, select: { id: true, authorId: true } })
-    : [];
+  const replies = (await collectBatched(topicIds, (batch) => prisma.reply.findMany({
+    where: { topicId: { in: batch } },
+    select: { id: true, authorId: true },
+  }))).flat();
   const affectedUserIds = [...new Set([
     ...topics.map((topic) => topic.authorId),
     ...replies.map((reply) => reply.authorId),
@@ -52,7 +73,8 @@ async function main() {
       } catch {
         pinnedIds = [];
       }
-      const nextPinnedIds = pinnedIds.filter((id) => !topicIds.includes(id));
+      const topicIdSet = new Set(topicIds);
+      const nextPinnedIds = pinnedIds.filter((id) => !topicIdSet.has(id));
       if (nextPinnedIds.length !== pinnedIds.length) {
         await tx.siteSetting.update({
           where: { key: GLOBAL_PINNED_TOPICS_KEY },
@@ -61,27 +83,30 @@ async function main() {
       }
     }
 
-    const likes = await tx.like.deleteMany({
-      where: { OR: [{ topicId: { in: topicIds } }, { replyId: { in: replyIds } }] },
-    });
-    const topicTags = await tx.topicTag.deleteMany({ where: { topicId: { in: topicIds } } });
-    const ratings = await tx.courseRating.deleteMany({ where: { topicId: { in: topicIds } } });
-    const schoolFeedItems = await tx.schoolFeedItem.updateMany({
-      where: { topicId: { in: topicIds } },
+    const topicLikes = await countBatched(topicIds, (batch) => tx.like.deleteMany({ where: { topicId: { in: batch } } }));
+    const replyLikes = await countBatched(replyIds, (batch) => tx.like.deleteMany({ where: { replyId: { in: batch } } }));
+    const likes = { count: topicLikes + replyLikes };
+    const topicTags = { count: await countBatched(topicIds, (batch) => tx.topicTag.deleteMany({ where: { topicId: { in: batch } } })) };
+    const ratings = { count: await countBatched(topicIds, (batch) => tx.courseRating.deleteMany({ where: { topicId: { in: batch } } })) };
+    const schoolFeedItems = { count: await countBatched(topicIds, (batch) => tx.schoolFeedItem.updateMany({
+      where: { topicId: { in: batch } },
       data: { topicId: null },
-    });
-    const marketItems = await tx.marketItem.updateMany({
-      where: { topicId: { in: topicIds } },
+    })) };
+    const marketItems = { count: await countBatched(topicIds, (batch) => tx.marketItem.updateMany({
+      where: { topicId: { in: batch } },
       data: { topicId: null },
-    });
-    const lostFoundItems = await tx.lostFoundItem.deleteMany({ where: { topicId: { in: topicIds } } });
-    const qqBotLogs = await tx.qqBotMessageLog.deleteMany({ where: { topicId: { in: topicIds } } });
+    })) };
+    const lostFoundItems = { count: await countBatched(topicIds, (batch) => tx.lostFoundItem.deleteMany({ where: { topicId: { in: batch } } })) };
+    const qqBotLogs = { count: await countBatched(topicIds, (batch) => tx.qqBotMessageLog.deleteMany({ where: { topicId: { in: batch } } })) };
 
     // Break the self-reference first so databases with restrictive parent
     // reply constraints can still remove the whole retired tree.
-    await tx.reply.updateMany({ where: { topicId: { in: topicIds } }, data: { parentReplyId: null } });
-    const repliesDeleted = await tx.reply.deleteMany({ where: { topicId: { in: topicIds } } });
-    const topicsDeleted = await tx.topic.deleteMany({ where: { id: { in: topicIds } } });
+    const repliesDetached = await countBatched(topicIds, (batch) => tx.reply.updateMany({
+      where: { topicId: { in: batch } },
+      data: { parentReplyId: null },
+    }));
+    const repliesDeleted = { count: await countBatched(topicIds, (batch) => tx.reply.deleteMany({ where: { topicId: { in: batch } } })) };
+    const topicsDeleted = { count: await countBatched(topicIds, (batch) => tx.topic.deleteMany({ where: { id: { in: batch } } })) };
     await tx.board.delete({ where: { id: board.id } });
 
     for (const userId of affectedUserIds) {
@@ -101,11 +126,12 @@ async function main() {
       marketItemsDetached: marketItems.count,
       lostFoundItemsDeleted: lostFoundItems.count,
       qqBotLogsDeleted: qqBotLogs.count,
+      repliesDetached,
       repliesDeleted: repliesDeleted.count,
       topicsDeleted: topicsDeleted.count,
       boardDeleted: true,
     };
-  });
+  }, { timeout: 300_000 });
 
   console.log(JSON.stringify({
     board: RETIRED_BOARD_SLUG,
