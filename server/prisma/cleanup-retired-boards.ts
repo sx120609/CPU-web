@@ -4,26 +4,6 @@ const RETIRED_BOARD_SLUG = "campus-wall";
 const RETIRED_NOTIFICATION_SOURCE = "逛逛同步";
 const GLOBAL_PINNED_TOPICS_KEY = "forum.globalPinnedTopics";
 const RETIRED_TABLES_SQL = 'DROP TABLE IF EXISTS "WeiwallReplyMap", "WeiwallTopicMap", "WeiwallSyncConfig" CASCADE';
-// PostgreSQL prepared statements support at most 32767 bind parameters. Keep
-// every `IN (...)` operation well below that limit, including operations that
-// combine topic and reply IDs.
-const ID_BATCH_SIZE = 5000;
-
-async function collectBatched<T>(ids: number[], action: (batch: number[]) => Promise<T>) {
-  const results: T[] = [];
-  for (let start = 0; start < ids.length; start += ID_BATCH_SIZE) {
-    results.push(await action(ids.slice(start, start + ID_BATCH_SIZE)));
-  }
-  return results;
-}
-
-async function countBatched(
-  ids: number[],
-  action: (batch: number[]) => Promise<{ count: number }>,
-) {
-  const results = await collectBatched(ids, action);
-  return results.reduce((total, result) => total + result.count, 0);
-}
 
 async function removeRetiredMirrorTables() {
   console.log("[cleanup] Removing retired Weiwall tables");
@@ -42,44 +22,47 @@ async function removeRetiredMirrorTables() {
   console.log("[cleanup] Retired Weiwall tables removed");
 }
 
-async function main() {
-  // Older deployments may still have these feature-only tables. They are no
-  // longer part of the Prisma schema, so remove them before deleting topics.
-  await removeRetiredMirrorTables();
+async function cleanupRetiredBoard(boardId: number, topicIds: number[]) {
+  return prisma.$transaction(async (tx) => {
+    // Keep the entire set-based cleanup on one connection. Temporary tables
+    // avoid large IN lists and let PostgreSQL plan each relation delete once.
+    await tx.$executeRawUnsafe("SET LOCAL statement_timeout = '840s'");
+    await tx.$executeRawUnsafe(`
+      CREATE TEMP TABLE "_CpuRetiredTopics" ON COMMIT DROP AS
+      SELECT "id", "authorId"
+      FROM "Topic"
+      WHERE "boardId" = $1
+    `, boardId);
+    await tx.$executeRawUnsafe(`
+      CREATE INDEX "_CpuRetiredTopics_id_idx" ON "_CpuRetiredTopics" ("id")
+    `);
+    await tx.$executeRawUnsafe(`
+      CREATE TEMP TABLE "_CpuRetiredReplies" ON COMMIT DROP AS
+      SELECT r."id", r."authorId"
+      FROM "Reply" r
+      INNER JOIN "_CpuRetiredTopics" t ON t."id" = r."topicId"
+    `);
+    await tx.$executeRawUnsafe(`
+      CREATE INDEX "_CpuRetiredReplies_id_idx" ON "_CpuRetiredReplies" ("id")
+    `);
+    await tx.$executeRawUnsafe(`
+      CREATE TEMP TABLE "_CpuRetiredUsers" ON COMMIT DROP AS
+      SELECT "authorId" AS "id" FROM "_CpuRetiredTopics"
+      UNION
+      SELECT "authorId" AS "id" FROM "_CpuRetiredReplies"
+    `);
+    await tx.$executeRawUnsafe(`
+      CREATE UNIQUE INDEX "_CpuRetiredUsers_id_idx" ON "_CpuRetiredUsers" ("id")
+    `);
 
-  console.log(`[cleanup] Checking retired board ${RETIRED_BOARD_SLUG}`);
-  const board = await prisma.board.findUnique({
-    where: { slug: RETIRED_BOARD_SLUG },
-    select: { id: true, feedSourceId: true },
-  });
-  if (board?.feedSourceId) {
-    throw new Error(`Refusing to delete ${RETIRED_BOARD_SLUG}: it is still linked to feed source ${board.feedSourceId}`);
-  }
+    const replyCountRows = await tx.$queryRawUnsafe<{ count: bigint }>(`
+      SELECT COUNT(*)::bigint AS count FROM "_CpuRetiredReplies"
+    `);
+    console.log(`[cleanup] Removing ${topicIds.length} topics and ${Number(replyCountRows[0]?.count ?? 0n)} replies`);
 
-  const topics = board ? await prisma.topic.findMany({
-    where: { boardId: board.id },
-    select: { id: true, authorId: true },
-  }) : [];
-  const topicIds = topics.map((topic) => topic.id);
-  const replies = (await collectBatched(topicIds, (batch) => prisma.reply.findMany({
-    where: { topicId: { in: batch } },
-    select: { id: true, authorId: true },
-  }))).flat();
-  const affectedUserIds = [...new Set([
-    ...topics.map((topic) => topic.authorId),
-    ...replies.map((reply) => reply.authorId),
-  ])];
-  const replyIds = replies.map((reply) => reply.id);
-
-  console.log(`[cleanup] Removing ${topicIds.length} topics and ${replyIds.length} replies`);
-  const result = await prisma.$transaction(async (tx) => {
     const notifications = await tx.notification.deleteMany({
       where: { source: RETIRED_NOTIFICATION_SOURCE },
     });
-    if (!board) {
-      return { notificationsDeleted: notifications.count, boardDeleted: false };
-    }
-
     const globalPinned = await tx.siteSetting.findUnique({ where: { key: GLOBAL_PINNED_TOPICS_KEY } });
     if (globalPinned) {
       let pinnedIds: number[] = [];
@@ -101,58 +84,147 @@ async function main() {
       }
     }
 
-    const topicLikes = await countBatched(topicIds, (batch) => tx.like.deleteMany({ where: { topicId: { in: batch } } }));
-    const replyLikes = await countBatched(replyIds, (batch) => tx.like.deleteMany({ where: { replyId: { in: batch } } }));
-    const likes = { count: topicLikes + replyLikes };
-    const topicTags = { count: await countBatched(topicIds, (batch) => tx.topicTag.deleteMany({ where: { topicId: { in: batch } } })) };
-    const ratings = { count: await countBatched(topicIds, (batch) => tx.courseRating.deleteMany({ where: { topicId: { in: batch } } })) };
-    const schoolFeedItems = { count: await countBatched(topicIds, (batch) => tx.schoolFeedItem.updateMany({
-      where: { topicId: { in: batch } },
-      data: { topicId: null },
-    })) };
-    const marketItems = { count: await countBatched(topicIds, (batch) => tx.marketItem.updateMany({
-      where: { topicId: { in: batch } },
-      data: { topicId: null },
-    })) };
-    const lostFoundItems = { count: await countBatched(topicIds, (batch) => tx.lostFoundItem.deleteMany({ where: { topicId: { in: batch } } })) };
-    const qqBotLogs = { count: await countBatched(topicIds, (batch) => tx.qqBotMessageLog.deleteMany({ where: { topicId: { in: batch } } })) };
+    console.log("[cleanup] Removing retired board relations");
+    const topicLikes = await tx.$executeRawUnsafe(`
+      DELETE FROM "Like" l
+      USING "_CpuRetiredTopics" t
+      WHERE l."topicId" = t."id"
+    `);
+    const replyLikes = await tx.$executeRawUnsafe(`
+      DELETE FROM "Like" l
+      USING "_CpuRetiredReplies" r
+      WHERE l."replyId" = r."id"
+    `);
+    const topicTags = await tx.$executeRawUnsafe(`
+      DELETE FROM "TopicTag" t
+      USING "_CpuRetiredTopics" rt
+      WHERE t."topicId" = rt."id"
+    `);
+    const ratings = await tx.$executeRawUnsafe(`
+      DELETE FROM "CourseRating" r
+      USING "_CpuRetiredTopics" t
+      WHERE r."topicId" = t."id"
+    `);
+    const schoolFeedItems = await tx.$executeRawUnsafe(`
+      UPDATE "SchoolFeedItem" item
+      SET "topicId" = NULL
+      FROM "_CpuRetiredTopics" t
+      WHERE item."topicId" = t."id"
+    `);
+    const marketItems = await tx.$executeRawUnsafe(`
+      UPDATE "MarketItem" item
+      SET "topicId" = NULL
+      FROM "_CpuRetiredTopics" t
+      WHERE item."topicId" = t."id"
+    `);
+    const lostFoundItems = await tx.$executeRawUnsafe(`
+      DELETE FROM "LostFoundItem" item
+      USING "_CpuRetiredTopics" t
+      WHERE item."topicId" = t."id"
+    `);
+    const qqBotLogs = await tx.$executeRawUnsafe(`
+      DELETE FROM "QqBotMessageLog" item
+      USING "_CpuRetiredTopics" t
+      WHERE item."topicId" = t."id"
+    `);
 
-    // Break the self-reference first so databases with restrictive parent
-    // reply constraints can still remove the whole retired tree.
-    const repliesDetached = await countBatched(topicIds, (batch) => tx.reply.updateMany({
-      where: { topicId: { in: batch } },
-      data: { parentReplyId: null },
-    }));
-    const repliesDeleted = { count: await countBatched(topicIds, (batch) => tx.reply.deleteMany({ where: { topicId: { in: batch } } })) };
-    const topicsDeleted = { count: await countBatched(topicIds, (batch) => tx.topic.deleteMany({ where: { id: { in: batch } } })) };
-    await tx.board.delete({ where: { id: board.id } });
+    console.log("[cleanup] Removing retired replies and topics");
+    const repliesDetached = await tx.$executeRawUnsafe(`
+      UPDATE "Reply" reply
+      SET "parentReplyId" = NULL
+      FROM "_CpuRetiredReplies" retired
+      WHERE reply."id" = retired."id"
+    `);
+    const repliesDeleted = await tx.$executeRawUnsafe(`
+      DELETE FROM "Reply" reply
+      USING "_CpuRetiredReplies" retired
+      WHERE reply."id" = retired."id"
+    `);
+    const topicsDeleted = await tx.$executeRawUnsafe(`
+      DELETE FROM "Topic" topic
+      USING "_CpuRetiredTopics" retired
+      WHERE topic."id" = retired."id"
+    `);
+    const boardDeleted = await tx.$executeRawUnsafe(
+      'DELETE FROM "Board" WHERE "id" = $1',
+      boardId,
+    );
 
-    for (const userId of affectedUserIds) {
-      const [postCount, replyCount] = await Promise.all([
-        tx.topic.count({ where: { authorId: userId, hidden: false } }),
-        tx.reply.count({ where: { authorId: userId, hidden: false } }),
-      ]);
-      await tx.user.update({ where: { id: userId }, data: { postCount, replyCount } });
-    }
+    console.log("[cleanup] Recalculating affected user counters");
+    await tx.$executeRawUnsafe(`
+      WITH topic_counts AS (
+        SELECT "authorId", COUNT(*)::int AS "postCount"
+        FROM "Topic"
+        WHERE "hidden" = false
+        GROUP BY "authorId"
+      ), reply_counts AS (
+        SELECT "authorId", COUNT(*)::int AS "replyCount"
+        FROM "Reply"
+        WHERE "hidden" = false
+        GROUP BY "authorId"
+      )
+      UPDATE "User" u
+      SET "postCount" = COALESCE(topic_counts."postCount", 0),
+          "replyCount" = COALESCE(reply_counts."replyCount", 0)
+      FROM "_CpuRetiredUsers" retired
+      LEFT JOIN topic_counts ON topic_counts."authorId" = retired."id"
+      LEFT JOIN reply_counts ON reply_counts."authorId" = retired."id"
+      WHERE u."id" = retired."id"
+    `);
 
     return {
       notificationsDeleted: notifications.count,
-      likesDeleted: likes.count,
-      topicTagsDeleted: topicTags.count,
-      ratingsDeleted: ratings.count,
-      schoolFeedItemsDetached: schoolFeedItems.count,
-      marketItemsDetached: marketItems.count,
-      lostFoundItemsDeleted: lostFoundItems.count,
-      qqBotLogsDeleted: qqBotLogs.count,
+      likesDeleted: topicLikes + replyLikes,
+      topicTagsDeleted: topicTags,
+      ratingsDeleted: ratings,
+      schoolFeedItemsDetached: schoolFeedItems,
+      marketItemsDetached: marketItems,
+      lostFoundItemsDeleted: lostFoundItems,
+      qqBotLogsDeleted: qqBotLogs,
       repliesDetached,
-      repliesDeleted: repliesDeleted.count,
-      topicsDeleted: topicsDeleted.count,
-      boardDeleted: true,
+      repliesDeleted,
+      topicsDeleted,
+      boardDeleted: boardDeleted > 0,
     };
-  }, { timeout: 300_000 });
+  }, { timeout: 900_000, maxWait: 30_000 });
+}
+
+async function main() {
+  // Older deployments may still have these feature-only tables. They are no
+  // longer part of the Prisma schema, so remove them before deleting topics.
+  await removeRetiredMirrorTables();
+
+  console.log(`[cleanup] Checking retired board ${RETIRED_BOARD_SLUG}`);
+  const board = await prisma.board.findUnique({
+    where: { slug: RETIRED_BOARD_SLUG },
+    select: { id: true, feedSourceId: true },
+  });
+  if (board?.feedSourceId) {
+    throw new Error(`Refusing to delete ${RETIRED_BOARD_SLUG}: it is still linked to feed source ${board.feedSourceId}`);
+  }
+
+  const topics = board ? await prisma.topic.findMany({
+    where: { boardId: board.id },
+    select: { id: true },
+  }) : [];
+  const topicIds = topics.map((topic) => topic.id);
+  if (!board) {
+    const notifications = await prisma.notification.deleteMany({
+      where: { source: RETIRED_NOTIFICATION_SOURCE },
+    });
+    console.log(JSON.stringify({
+      board: RETIRED_BOARD_SLUG,
+      notificationsDeleted: notifications.count,
+      boardDeleted: false,
+    }));
+    return;
+  }
+
+  const result = await cleanupRetiredBoard(board.id, topicIds);
 
   console.log(JSON.stringify({
     board: RETIRED_BOARD_SLUG,
+    notificationsDeleted: notifications.count,
     ...result,
   }));
 }
