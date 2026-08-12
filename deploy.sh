@@ -65,6 +65,19 @@ VOICEHUB_PORT="${VOICEHUB_PORT:-23335}"
 ENV_FILE="server/.env"
 CMD_ARG_1="${2:-}"
 CMD_ARG_2="${3:-}"
+DEPLOY_MAIN_SERVICE_PAUSED=0
+
+restore_paused_main_service() {
+  [ "$DEPLOY_MAIN_SERVICE_PAUSED" = "1" ] || return 0
+  DEPLOY_MAIN_SERVICE_PAUSED=0
+  if command -v pm2 >/dev/null 2>&1 && pm2 describe "$SERVICE_NAME" >/dev/null 2>&1; then
+    warn "数据库步骤失败，恢复主服务 $SERVICE_NAME"
+    pm2 restart "$SERVICE_NAME" --update-env >/dev/null 2>&1 || true
+    pm2 save >/dev/null 2>&1 || true
+  fi
+}
+
+trap restore_paused_main_service EXIT
 
 escape_env_value() {
   printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
@@ -305,6 +318,21 @@ maybe_restart_running_service() {
     pm2 restart "$SERVICE_NAME" --update-env
     pm2 save >/dev/null
   fi
+}
+
+pause_main_service_for_db_migration() {
+  [ "$DEPLOY_MAIN_SERVICE_PAUSED" = "0" ] || return 0
+  command -v pm2 >/dev/null 2>&1 || return 0
+  pm2 describe "$SERVICE_NAME" >/dev/null 2>&1 || return 0
+  pm2 describe "$SERVICE_NAME" 2>/dev/null | grep -Eq 'status.*online' || return 0
+
+  log "暂停 $SERVICE_NAME，准备执行数据库 schema 更新"
+  pm2 stop "$SERVICE_NAME" >/dev/null
+  DEPLOY_MAIN_SERVICE_PAUSED=1
+}
+
+mark_main_service_resumed() {
+  DEPLOY_MAIN_SERVICE_PAUSED=0
 }
 
 can_use_systemd() {
@@ -963,6 +991,7 @@ do_db_init() {
   db_url="$(configured_database_url)"
   is_postgres_url "$db_url" || err "当前 deploy.sh 仅支持 PostgreSQL。请先运行 ./deploy.sh postgres-init 或 ./deploy.sh postgres-config"
   ensure_local_postgres_url_ready "$db_url"
+  pause_main_service_for_db_migration
   log "同步 PostgreSQL schema"
   npm run db:migrate --prefix server
   npm run db:cleanup-retired-boards --prefix server
@@ -985,6 +1014,7 @@ do_db_migrate() {
   db_url="$(configured_database_url)"
   is_postgres_url "$db_url" || err "PostgreSQL must be configured before updating"
   ensure_local_postgres_url_ready "$db_url"
+  pause_main_service_for_db_migration
   log "Prisma files changed; applying PostgreSQL schema update"
   npm run db:migrate --prefix server
   npm run db:cleanup-retired-boards --prefix server
@@ -1148,6 +1178,7 @@ do_start() {
   cd ..
   do_voicehub_start
   pm2 save >/dev/null
+  mark_main_service_resumed
   echo ""
   log "✅ 部署完成"
   echo ""
@@ -1182,6 +1213,7 @@ do_main_start() {
   fi
   cd ..
   pm2 save >/dev/null
+  mark_main_service_resumed
 }
 
 do_main_restart() {
@@ -1193,6 +1225,7 @@ do_main_restart() {
   else
     do_main_start
   fi
+  mark_main_service_resumed
 }
 
 do_voicehub_start() {
@@ -1309,6 +1342,7 @@ do_restart() {
   fi
   do_voicehub_start
   pm2 save >/dev/null
+  mark_main_service_resumed
 }
 do_logs()    { ensure_pm2; pm2 logs "$SERVICE_NAME"; }
 do_voicehub_logs() { ensure_pm2; pm2 logs "$VOICEHUB_SERVICE_NAME"; }

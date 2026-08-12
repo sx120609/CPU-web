@@ -3,6 +3,7 @@ import { prisma } from "../src/prisma";
 const RETIRED_BOARD_SLUG = "campus-wall";
 const RETIRED_NOTIFICATION_SOURCE = "逛逛同步";
 const GLOBAL_PINNED_TOPICS_KEY = "forum.globalPinnedTopics";
+const RETIRED_TABLES_SQL = 'DROP TABLE IF EXISTS "WeiwallReplyMap", "WeiwallTopicMap", "WeiwallSyncConfig" CASCADE';
 // PostgreSQL prepared statements support at most 32767 bind parameters. Keep
 // every `IN (...)` operation well below that limit, including operations that
 // combine topic and reply IDs.
@@ -24,13 +25,29 @@ async function countBatched(
   return results.reduce((total, result) => total + result.count, 0);
 }
 
+async function removeRetiredMirrorTables() {
+  console.log("[cleanup] Removing retired Weiwall tables");
+  try {
+    await prisma.$transaction(async (tx) => {
+      // A running old server can keep a table lock while its sync query is in
+      // progress. Fail clearly instead of leaving deployment waiting forever.
+      await tx.$executeRawUnsafe("SET LOCAL lock_timeout = '10s'");
+      await tx.$executeRawUnsafe("SET LOCAL statement_timeout = '60s'");
+      await tx.$executeRawUnsafe(RETIRED_TABLES_SQL);
+    }, { timeout: 70_000 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to remove retired Weiwall tables: ${message}`);
+  }
+  console.log("[cleanup] Retired Weiwall tables removed");
+}
+
 async function main() {
   // Older deployments may still have these feature-only tables. They are no
   // longer part of the Prisma schema, so remove them before deleting topics.
-  await prisma.$executeRawUnsafe(
-    'DROP TABLE IF EXISTS "WeiwallReplyMap", "WeiwallTopicMap", "WeiwallSyncConfig" CASCADE',
-  );
+  await removeRetiredMirrorTables();
 
+  console.log(`[cleanup] Checking retired board ${RETIRED_BOARD_SLUG}`);
   const board = await prisma.board.findUnique({
     where: { slug: RETIRED_BOARD_SLUG },
     select: { id: true, feedSourceId: true },
@@ -54,6 +71,7 @@ async function main() {
   ])];
   const replyIds = replies.map((reply) => reply.id);
 
+  console.log(`[cleanup] Removing ${topicIds.length} topics and ${replyIds.length} replies`);
   const result = await prisma.$transaction(async (tx) => {
     const notifications = await tx.notification.deleteMany({
       where: { source: RETIRED_NOTIFICATION_SOURCE },
