@@ -241,6 +241,9 @@ function buildSafetyPlatformGuideBlockLines() {
     "3. 私聊发送链接",
     "（链接形如 http://wap.xiaoyuananquantong.com/guns-vip-main/wap/jshome?userid=19位数字）",
     "收到后自动完成课程考试，并返回结课证书",
+    "",
+    "QQ Bot 的刷课功能仅限易班 安全课，其他刷课功能请下载药大拾间 app 使用。",
+    "加入 QQ 用户群了解详情 704825850",
   );
   return lines;
 }
@@ -800,12 +803,12 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
         ? SAFETY_PLATFORM_TASK_COOLDOWN_MS - (Date.now() - lastTask.startedAt)
         : 0;
       if (remainingMs > 0) {
-        await replyToEvent(context, `安全平台任务处理中，请 ${Math.ceil(remainingMs / 1000)} 秒后再试。`);
+        await replyToEvent(context, `易班 安全课任务处理中，请 ${Math.ceil(remainingMs / 1000)} 秒后再试。`);
         return { ok: true };
       }
       safetyPlatformTasks.set(qqId, { startedAt: Date.now() });
       await logHandledInboundMessage(context, "message", "assistant:safety-platform");
-      await replyToEvent(context, "收到，正在为你完成江苏省安全平台课程与考试，请稍候…");
+      await replyToEvent(context, "收到，正在为你完成易班 安全课的学习与考试，请稍候…");
       try {
         const userId = extractSafetyUserIdFromUrl(safetyUrl);
         const progress = async (message: string) => {
@@ -813,19 +816,19 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
         };
         const result = await runSafetyPlatform(userId, progress);
         const lines = [
-          "江苏省安全平台已完成：",
+          "易班 安全课已完成：",
           `得分：${result.score}`,
           `已完成课程：${result.completedCourses.join("、") || "无（此前已全部完成）"}`,
           "",
           `结课证书：${result.certificateUrl}`,
-          "证书请用校园安全平台微信小程序或浏览器打开下载。",
+          "证书请用校园易班 安全课微信小程序或浏览器打开下载。",
         ];
         if (!result.fullScore) {
           lines.push("未满 100 分是题库录入的历史遗留问题，可直接把链接再发一次重试。");
         }
         await replyToEvent(context, lines.join("\n"));
       } catch (error) {
-        await replyToEvent(context, getQqBotUserFacingErrorMessage(error, "安全平台处理失败，请稍后重试。"));
+        await replyToEvent(context, getQqBotUserFacingErrorMessage(error, "易班 安全课处理失败，请稍后重试。"));
       } finally {
         safetyPlatformTasks.delete(qqId);
       }
@@ -2869,7 +2872,7 @@ async function renderGreetingReply(defaultBoardSlug: string) {
     "我在。",
     `默认投稿区：${defaultBoardName}`,
     "想投稿就直接发送“投稿”。",
-    "常用命令：帮助 / 状态 / 板块 / 我的投稿",
+    "常用命令：帮助 / 状态 / 板块 / 我的投稿 / 刷课",
   ].join("\n");
 }
 
@@ -2877,7 +2880,7 @@ function renderPrivateFallbackReply() {
   return [
     "我收到啦。",
     "你可以直接发：帮助 / 投稿 / 状态 / 板块 / 我的投稿 / 刷课。",
-    "如果是江苏省安全平台链接（jshome?userid=），直接发给我即可自动刷课。",
+    "如果是江苏省易班 安全课链接（jshome?userid=），直接发给我即可自动刷课。",
     "如果不确定怎么说，发“帮助”就行。",
   ].join("\n");
 }

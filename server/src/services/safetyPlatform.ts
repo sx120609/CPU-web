@@ -56,7 +56,7 @@ async function safetyPostForm(path: string, fields: Record<string, unknown>) {
     body,
     signal: AbortSignal.timeout(SAFETY_REQUEST_TIMEOUT_MS),
   });
-  if (!response.ok) throw new Error(`安全平台请求失败（${response.status}）：${path}`);
+  if (!response.ok) throw new Error(`易班 安全课请求失败（${response.status}）：${path}`);
   return response.json() as Promise<any>;
 }
 
@@ -69,7 +69,7 @@ async function safetyGet(path: string, params: Record<string, unknown>) {
     method: "GET",
     signal: AbortSignal.timeout(SAFETY_REQUEST_TIMEOUT_MS),
   });
-  if (!response.ok) throw new Error(`安全平台请求失败（${response.status}）：${path}`);
+  if (!response.ok) throw new Error(`易班 安全课请求失败（${response.status}）：${path}`);
   return response.json() as Promise<any>;
 }
 
@@ -208,7 +208,7 @@ export async function submitSafetyExam(input: {
     body: new URLSearchParams(fields),
     signal: AbortSignal.timeout(SAFETY_REQUEST_TIMEOUT_MS),
   });
-  if (!response.ok) throw new Error("安全平台考试提交失败");
+  if (!response.ok) throw new Error("易班 安全课考试提交失败");
   return response.json() as Promise<any>;
 }
 
