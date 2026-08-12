@@ -224,7 +224,6 @@ async function main() {
 
   console.log(JSON.stringify({
     board: RETIRED_BOARD_SLUG,
-    notificationsDeleted: notifications.count,
     ...result,
   }));
 }
