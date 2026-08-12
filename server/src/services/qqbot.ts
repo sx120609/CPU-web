@@ -1,4 +1,6 @@
 import crypto from "node:crypto";
+import path from "node:path";
+import { existsSync } from "node:fs";
 import { prisma } from "../prisma";
 import { Errors } from "../utils/response";
 import { runWithDistributedLock } from "./cache";
@@ -37,6 +39,7 @@ import {
   isMyPostsCommand,
   parseQqGroupAdminCommand,
   isPrivatePlainCommand,
+  isSafetyPlatformGuideCommand,
   isStatusCommand,
   isUnbindCommand,
   normalizeInboundCommandText,
@@ -88,6 +91,12 @@ import {
 } from "./topicAiReview";
 import { reviewQqGroupMessageForAd } from "./qqbotGroupAdReview";
 import { containsQqGroupCard } from "./qqbot/groupCard";
+import {
+  extractSafetyPlatformUrlFromText,
+  extractSafetyUserIdFromUrl,
+  isSafetyPlatformJshomeUrl,
+  runSafetyPlatform,
+} from "./safetyPlatform";
 
 export { buildQqBotDebugExport };
 export { connectQqBotWebSocket };
@@ -206,6 +215,42 @@ type QqMessageTarget = {
 };
 
 const qqBotCooldowns = new Map<string, { cancelledAt?: number }>();
+const safetyPlatformTasks = new Map<string, { startedAt: number }>();
+const SAFETY_PLATFORM_TASK_COOLDOWN_MS = 60_000;
+const SAFETY_PLATFORM_GUIDE_IMAGE_RELATIVE = "qqbot/safety-platform-guide.png";
+const SAFETY_PLATFORM_QRCODE_IMAGE_RELATIVE = "qqbot/safety-platform-qrcode.png";
+
+function buildSafetyPlatformCqImage(relative: string) {
+  const origin = getSiteOrigin().replace(/\/+$/, "");
+  const imagePath = path.join(process.cwd(), "uploads", relative);
+  if (!origin || !existsSync(imagePath)) return "";
+  return `[CQ:image,file=${origin}/uploads/${relative}]`;
+}
+
+function buildSafetyPlatformGuideBlockLines() {
+  const lines = [
+    "刷课",
+    "1. 微信扫描二维码",
+  ];
+  const qrCodeImage = buildSafetyPlatformCqImage(SAFETY_PLATFORM_QRCODE_IMAGE_RELATIVE);
+  if (qrCodeImage) lines.push(qrCodeImage);
+  lines.push("2. 按下图操作，获取链接");
+  const guideImage = buildSafetyPlatformCqImage(SAFETY_PLATFORM_GUIDE_IMAGE_RELATIVE);
+  if (guideImage) lines.push(guideImage);
+  lines.push(
+    "3. 私聊发送链接",
+    "（链接形如 http://wap.xiaoyuananquantong.com/guns-vip-main/wap/jshome?userid=19位数字）",
+    "收到后自动完成课程考试，并返回结课证书",
+  );
+  return lines;
+}
+
+function buildSafetyPlatformGuideMessage() {
+  const lines = ["按照下图获取链接，再发给我"];
+  const image = buildSafetyPlatformCqImage(SAFETY_PLATFORM_GUIDE_IMAGE_RELATIVE);
+  if (image) lines.push(image);
+  return lines.join("\n");
+}
 
 const CONFIG_ID = 1;
 const DEFAULT_NOTIFY_CATEGORIES = ["reply", "mention", "like", "system", "service-tool", "lost-found", "school-feed"];
@@ -589,6 +634,11 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     await replyToEvent(context, await renderHelp(config.defaultBoardSlug));
     return { ok: true };
   }
+  if (canHandlePlainCommand && isSafetyPlatformGuideCommand(commandText)) {
+    await logHandledInboundMessage(context, "message", "assistant:safety-platform-guide");
+    await replyToEvent(context, buildSafetyPlatformGuideBlockLines().join("\n"));
+    return { ok: true };
+  }
   if (canHandlePlainCommand && isBoardListCommand(commandText)) {
     await logHandledInboundMessage(context, "message", "assistant:boards");
     await replyToEvent(context, await renderBoardList(config.defaultBoardSlug, groupId));
@@ -738,6 +788,45 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
   }
 
   if (event.message_type !== "group") {
+    const safetyUrl = extractSafetyPlatformUrlFromText(messageText);
+    if (safetyUrl) {
+      if (!isSafetyPlatformJshomeUrl(safetyUrl)) {
+        await logHandledInboundMessage(context, "message", "assistant:safety-platform-guide");
+        await replyToEvent(context, buildSafetyPlatformGuideMessage());
+        return { ok: true };
+      }
+      const lastTask = safetyPlatformTasks.get(qqId);
+      const remainingMs = lastTask
+        ? SAFETY_PLATFORM_TASK_COOLDOWN_MS - (Date.now() - lastTask.startedAt)
+        : 0;
+      if (remainingMs > 0) {
+        await replyToEvent(context, `安全平台任务处理中，请 ${Math.ceil(remainingMs / 1000)} 秒后再试。`);
+        return { ok: true };
+      }
+      safetyPlatformTasks.set(qqId, { startedAt: Date.now() });
+      await logHandledInboundMessage(context, "message", "assistant:safety-platform");
+      await replyToEvent(context, "收到，正在为你完成江苏省安全平台课程与考试，请稍候…");
+      try {
+        const userId = extractSafetyUserIdFromUrl(safetyUrl);
+        const progress = async (message: string) => {
+          await sendQqMessage({ qqId, tempGroupId: context.groupId }, message).catch(() => undefined);
+        };
+        const result = await runSafetyPlatform(userId, progress);
+        await replyToEvent(context, [
+          "江苏省安全平台已完成：",
+          `得分：${result.score}`,
+          `已完成课程：${result.completedCourses.join("、") || "无（此前已全部完成）"}`,
+          "",
+          `结课证书：${result.certificateUrl}`,
+          "证书请用校园安全平台微信小程序或浏览器打开下载。",
+        ].join("\n"));
+      } catch (error) {
+        await replyToEvent(context, getQqBotUserFacingErrorMessage(error, "安全平台处理失败，请稍后重试。"));
+      } finally {
+        safetyPlatformTasks.delete(qqId);
+      }
+      return { ok: true };
+    }
     await logHandledInboundMessage(context, "message", "assistant:fallback");
     await replyToEvent(context, renderPrivateFallbackReply());
     return { ok: true };
@@ -2677,7 +2766,7 @@ function shouldAttemptForwardPayloadExtraction(message: unknown, messageText: st
 }
 async function renderHelp(defaultBoardSlug: string) {
   const defaultBoardName = await resolveBoardDisplayName(defaultBoardSlug);
-  return [
+  const lines = [
     "QQBot 帮助",
     "",
     "账号与状态",
@@ -2690,6 +2779,8 @@ async function renderHelp(defaultBoardSlug: string) {
     "• 板块 / 版块 / 分区：查看可投稿板块",
     "• 我的投稿 / 最近投稿：查看最近投稿记录",
     "",
+    ...buildSafetyPlatformGuideBlockLines(),
+    "",
     "投稿",
     "• 投稿：开始分步投稿",
     "• 先发标题，再逐条发正文",
@@ -2697,7 +2788,8 @@ async function renderHelp(defaultBoardSlug: string) {
     "• 取消：取消当前投稿",
     "",
     `默认投稿区：${defaultBoardName}`,
-  ].join("\n");
+  ];
+  return lines.join("\n");
 }
 
 async function renderGroupHelp(
@@ -2780,7 +2872,8 @@ async function renderGreetingReply(defaultBoardSlug: string) {
 function renderPrivateFallbackReply() {
   return [
     "我收到啦。",
-    "你可以直接发：帮助 / 投稿 / 状态 / 板块 / 我的投稿。",
+    "你可以直接发：帮助 / 投稿 / 状态 / 板块 / 我的投稿 / 刷课。",
+    "如果是江苏省安全平台链接（jshome?userid=），直接发给我即可自动刷课。",
     "如果不确定怎么说，发“帮助”就行。",
   ].join("\n");
 }

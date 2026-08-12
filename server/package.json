@@ -8,6 +8,7 @@
     "dev": "tsx watch src/index.ts",
     "build": "prisma generate && tsc -p tsconfig.json && node scripts/copy-desktop-userscripts.mjs",
     "build:compile": "tsc -p tsconfig.json && node scripts/copy-desktop-userscripts.mjs",
+    "tiku:dump": "node scripts/dump-safety-tiku.mjs",
     "start": "node dist/index.js",
     "proxy": "node dist/proxy.js",
     "proxy:dev": "tsx watch src/proxy.ts",
