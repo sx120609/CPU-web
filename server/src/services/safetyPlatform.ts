@@ -222,6 +222,7 @@ export type SafetyPlatformRunResult = {
   score: number;
   certificateUrl: string;
   completedCourses: string[];
+  fullScore: boolean;
 };
 
 export async function runSafetyPlatform(userId: string, onProgress?: SafetyPlatformProgress): Promise<SafetyPlatformRunResult> {
@@ -285,13 +286,10 @@ export async function runSafetyPlatform(userId: string, onProgress?: SafetyPlatf
     .filter((course) => course.isFinsh || !unfinished.includes(course.index))
     .map((course) => course.name);
 
-  if (score !== 100) {
-    throw new Error(`得分 ${score}，未满 100 分（历史遗留问题，题库中有一题出错），可稍后重试一次。`);
-  }
-
   return {
     score,
     certificateUrl: buildSafetyCertificateUrl(userId),
     completedCourses,
+    fullScore: score === 100,
   };
 }

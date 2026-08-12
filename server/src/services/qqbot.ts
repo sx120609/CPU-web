@@ -812,14 +812,18 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
           await sendQqMessage({ qqId, tempGroupId: context.groupId }, message).catch(() => undefined);
         };
         const result = await runSafetyPlatform(userId, progress);
-        await replyToEvent(context, [
+        const lines = [
           "江苏省安全平台已完成：",
           `得分：${result.score}`,
           `已完成课程：${result.completedCourses.join("、") || "无（此前已全部完成）"}`,
           "",
           `结课证书：${result.certificateUrl}`,
           "证书请用校园安全平台微信小程序或浏览器打开下载。",
-        ].join("\n"));
+        ];
+        if (!result.fullScore) {
+          lines.push("未满 100 分是题库录入的历史遗留问题，可直接把链接再发一次重试。");
+        }
+        await replyToEvent(context, lines.join("\n"));
       } catch (error) {
         await replyToEvent(context, getQqBotUserFacingErrorMessage(error, "安全平台处理失败，请稍后重试。"));
       } finally {
