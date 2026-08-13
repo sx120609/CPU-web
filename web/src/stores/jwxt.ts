@@ -271,7 +271,13 @@ export const useJwxtStore = defineStore("jwxt", {
       }
     },
     async refreshWidgetTokens() {
-      if (!this.token || !this.active || !useAuthStore().isLoggedIn) return;
+      const auth = useAuthStore();
+      if (
+        !this.token
+        || !this.active
+        || !auth.isLoggedIn
+        || (auth.academicIdentityUnavailable && auth.user?.studentSso)
+      ) return;
       try { await jwxtApi.refreshScheduleWidgetTokens({ silent: true }); }
       catch { /* 小组件续期是兜底能力，不影响主流程 */ }
     },

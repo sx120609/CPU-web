@@ -20,6 +20,17 @@ const DATA_AUTH_KEY_PREFIX = "cpu-data-auth-agreement-v1";
 
 let autoSsoLoginInFlight: Promise<boolean> | null = null;
 
+function isAcademicDataUnavailableError(error: unknown) {
+  const candidate = error as {
+    status?: unknown;
+    message?: unknown;
+    response?: { data?: { message?: unknown } };
+  } | null | undefined;
+  const status = Number(candidate?.status || 0);
+  const message = String(candidate?.message || candidate?.response?.data?.message || "");
+  return status === 400 && /没有返回可用|暂时没有返回可用|暂无可用教务|没有可用学期列表/.test(message);
+}
+
 function clearJustLoggedOutMarker() {
   try { sessionStorage.removeItem("cpu-just-logged-out"); } catch { /* ignore */ }
 }
@@ -156,13 +167,13 @@ export const useAuthStore = defineStore("auth", {
           this.academicIdentityUnavailable = !result.capabilities.undergraduate && !result.capabilities.graduate;
           writeAcademicIdentityUnavailable(this.user?.username, this.academicIdentityUnavailable);
           return result.identity;
-        } catch {
+        } catch (error) {
           if (this.sessionVersion !== requestSessionVersion || !this.token) return fallback;
-          // A real 401 means the JWXT session needs reauthorization. Empty
-          // academic data is returned as a successful identity probe and is
-          // persisted separately, so it must not be confused with expiry.
-          this.academicIdentityUnavailable = false;
-          writeAcademicIdentityUnavailable(this.user?.username, false);
+          // Older deployed servers report an authenticated but empty academic
+          // entry as a 4000 response. Treat only that explicit no-data message
+          // as unavailable; a real 401 still means the session needs recovery.
+          this.academicIdentityUnavailable = isAcademicDataUnavailableError(error);
+          writeAcademicIdentityUnavailable(this.user?.username, this.academicIdentityUnavailable);
           this.academicIdentity = fallback;
           return fallback;
         } finally {
