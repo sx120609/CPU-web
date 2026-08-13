@@ -376,10 +376,10 @@ async function initPage() {
     // academic entry yet. Do not start another background SSO request: it
     // can leave the form disabled while the school system has nothing to
     // return, and must never turn a successful station login into a logout.
-    if (academicDataUnavailable.value) return;
-    // 自动恢复不可用时再准备手动表单；旧数据仍留在缓存视图中。
-    try { await jwxt.beginLogin(); } catch { /* ignore */ }
-    if (disposed || seq !== pageInitSeq) return;
+    // The user can explicitly submit the form when they want to retry.
+    // This also keeps a station-only account usable when the school has not
+    // created its academic record yet.
+    return;
   } else {
     showLoginOverride.value = false;
     loadCurrentTab(false);
