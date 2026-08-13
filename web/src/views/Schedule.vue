@@ -285,7 +285,12 @@
       </button>
     </section>
 
-    <section v-if="academicDataUnavailable" class="state-card academic-empty-state">
+    <section v-if="sessionChecking" class="state-card session-checking-state">
+      <el-skeleton :rows="4" animated />
+      <p>正在检查教务状态，请稍候…</p>
+    </section>
+
+    <section v-else-if="academicDataUnavailable" class="state-card academic-empty-state">
       <el-icon class="big"><InfoFilled /></el-icon>
       <h2>暂无教务数据</h2>
       <p>当前账号已经完成站内登录，但学校暂未开放可读取的教务入口。</p>
@@ -824,6 +829,7 @@ import type {
 const auth = useAuthStore();
 const appearance = useAppearanceStore();
 const jwxt = useJwxtStore();
+const sessionChecking = ref(!auth.academicIdentityUnavailable);
 const parsed = ref<ScheduleResult | null>(null);
 const calendar = ref<CalendarResult | null>(null);
 const semester = ref("");
@@ -1352,11 +1358,16 @@ onMounted(() => {
   openBrowserPromptRef.value?.autoPromptIfEligible();
   installPromptRef.value?.autoPromptIfEligible();
 
-  if (offlineMode.value) return;
+  if (offlineMode.value) {
+    sessionChecking.value = false;
+    return;
+  }
 
   // 后台静默：只刷新现有会话并重新拉数据，不自动提交已保存凭据。
   void (async () => {
     try {
+      if (!auth.ready) await auth.fetchMe({ probe: true }).catch(() => undefined);
+      jwxt.hydrate();
       const ready = await jwxt.ensureSession({ refresh: true, silent: true, allowAutoLogin: false });
       if (disposed || !ready) return;
       if (jwxt.isLoggedIn) {
@@ -1373,6 +1384,7 @@ onMounted(() => {
     } catch {
       /* Keep visible cache when background sync fails. */
     } finally {
+      if (!disposed) sessionChecking.value = false;
     }
   })();
 });
