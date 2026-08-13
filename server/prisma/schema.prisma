@@ -112,6 +112,17 @@ model User {
   forumReactions               ForumReaction[]
 }
 
+// 加密运行时会话。Redis 可用时作为跨进程热存储，同时写入此表作为部署/重启后的持久兜底；
+// value 永远是服务端加密信封，不保存明文站内 token、教务 token 或 CookieJar。
+model RuntimeSession {
+  key       String   @id
+  value     String
+  expiresAt DateTime
+  updatedAt DateTime @updatedAt
+
+  @@index([expiresAt])
+}
+
 model CampusAssistantConversation {
   id              String
   userId          Int

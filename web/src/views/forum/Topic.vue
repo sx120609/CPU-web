@@ -636,6 +636,7 @@ import { topicApi, replyApi, likeApi, reactionApi, type Topic, type Reply, type 
 import { adminApi, type ForumImageReviewAsset, type ForumVideoReviewAsset } from "@/api/admin";
 import { useAuthStore } from "@/stores/auth";
 import { fmtDate, fmtRelative } from "@/utils/format";
+import { forumCacheScope, readForumTopic, writeForumTopic } from "@/utils/forumCache";
 import { copyText } from "@/utils/userGroup";
 import { isAndroidNativeApp, isHarmonyNativeApp } from "@/utils/clientInfo";
 import { getNativeBridge, hasNativeImageSaveBridge } from "@/utils/nativeBridge";
@@ -933,18 +934,22 @@ watch(replyDialogOpen, (open) => {
 async function load() {
   const seq = ++loadSeq;
   const id = Number(route.params.id);
-  loading.value = true;
-  repliesLoading.value = true;
-  topic.value = null;
-  replies.value = [];
   loadError.value = "";
   liked.value = false;
   if (!Number.isFinite(id) || id <= 0) {
+    topic.value = null;
+    replies.value = [];
     loadError.value = "帖子不存在或已被删除";
     loading.value = false;
     repliesLoading.value = false;
     return;
   }
+  const scope = forumCacheScope(auth.user);
+  const cached = readForumTopic(scope, id);
+  topic.value = cached?.topic ?? null;
+  replies.value = cached?.replies ?? [];
+  loading.value = !cached;
+  repliesLoading.value = !cached;
   try {
     const topicPromise = topicApi.detail(id, { suppressErrorMessage: true });
     const repliesPromise = topicApi.replies(id, { suppressErrorMessage: true })
@@ -978,15 +983,19 @@ async function load() {
         if (seq === loadSeq) liked.value = false;
       }
     }
+    if (topic.value) writeForumTopic(scope, id, { topic: topic.value, replies: nextReplies });
   } catch (error) {
     if (seq !== loadSeq) return;
     if ((error as { response?: { status?: number } })?.response?.status === 403) {
       router.replace({ name: "forum", query: { redirect: route.fullPath } });
       return;
     }
-    loadError.value = normalizeTopicLoadError(error);
-    topic.value = null;
-    replies.value = [];
+    const status = (error as { response?: { status?: number } })?.response?.status;
+    if (!cached || status === 404) {
+      loadError.value = normalizeTopicLoadError(error);
+      topic.value = null;
+      replies.value = [];
+    }
   } finally {
     if (seq === loadSeq) {
       loading.value = false;

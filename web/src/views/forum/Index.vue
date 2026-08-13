@@ -80,13 +80,17 @@ import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { InfoFilled } from "@element-plus/icons-vue";
 import { boardApi, type Board } from "@/api/board";
+import { useAuthStore } from "@/stores/auth";
+import { forumCacheScope, readForumBoards, writeForumBoards } from "@/utils/forumCache";
 
 const router = useRouter();
+const auth = useAuthStore();
 const all = ref<Board[]>([]);
 const loading = ref(false);
 const error = ref("");
 let disposed = false;
 let boardLoadSeq = 0;
+const cacheScope = computed(() => forumCacheScope(auth.user));
 
 onMounted(loadBoards);
 
@@ -101,16 +105,18 @@ const ugc = computed(() => all.value.filter((b) => ["market", "question", "cours
 async function loadBoards() {
   if (disposed) return;
   const seq = ++boardLoadSeq;
-  loading.value = true;
+  const cached = readForumBoards(cacheScope.value);
+  if (cached?.length && !all.value.length) all.value = cached;
+  loading.value = !all.value.length;
   error.value = "";
   try {
     const next = await boardApi.list({ suppressErrorMessage: true });
     if (disposed || seq !== boardLoadSeq) return;
     all.value = next;
+    writeForumBoards(cacheScope.value, next);
   } catch (e) {
     if (disposed || seq !== boardLoadSeq) return;
-    all.value = [];
-    error.value = normalizeBoardListError(e);
+    if (!all.value.length) error.value = normalizeBoardListError(e);
   } finally {
     if (!disposed && seq === boardLoadSeq) loading.value = false;
   }

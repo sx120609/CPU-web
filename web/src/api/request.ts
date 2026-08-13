@@ -21,7 +21,36 @@ export type RequestOptions = AxiosRequestConfig & {
   suppressAuthRedirect?: boolean;
   suppressAuthMessage?: boolean;
   suppressErrorMessage?: boolean;
+  /** 内存响应缓存；设为 0 可强制跳过。默认仅覆盖高频只读页面。 */
+  cacheTtlMs?: number;
 };
+
+const getResponseCache = new Map<string, { expiresAt: number; value: unknown }>();
+const getRequestsInFlight = new Map<string, Promise<unknown>>();
+let responseCacheGeneration = 0;
+
+function invalidateResponseCache() {
+  responseCacheGeneration += 1;
+  getResponseCache.clear();
+  getRequestsInFlight.clear();
+}
+
+function stableParams(params?: Record<string, unknown>) {
+  if (!params) return "";
+  return JSON.stringify(Object.fromEntries(
+    Object.entries(params).filter(([, value]) => value !== undefined).sort(([a], [b]) => a.localeCompare(b)),
+  ));
+}
+
+function defaultGetCacheTtl(url: string) {
+  if (/^\/(site|boards|services)(\/|$)/.test(url)) return 60_000;
+  if (/^\/(home|topics|courses|search|market|lost-found|user\/\d+)(\/|$)/.test(url)) return 15_000;
+  return 0;
+}
+
+function cacheKey(url: string, params?: Record<string, unknown>) {
+  return `${responseCacheGeneration}:${url}:${stableParams(params)}`;
+}
 
 export function getToken() {
   return memoryToken;
@@ -32,6 +61,9 @@ export function hasAuthPresence() {
 }
 
 export function setToken(token: string) {
+  // Cookie sessions use a stable marker instead of exposing the HttpOnly cookie.
+  // Re-applying that marker can still mean a different account after login/logout.
+  if (memoryToken !== token || token === COOKIE_SESSION_MARKER) invalidateResponseCache();
   memoryToken = token;
   try {
     localStorage.removeItem(TOKEN_KEY);
@@ -41,6 +73,7 @@ export function setToken(token: string) {
 }
 
 export function clearToken() {
+  if (memoryToken) invalidateResponseCache();
   memoryToken = "";
   try {
     localStorage.removeItem(TOKEN_KEY);
@@ -110,13 +143,37 @@ instance.interceptors.response.use(
 );
 
 export const request = {
-  get: <T = unknown>(url: string, params?: Record<string, unknown>, options?: RequestOptions) =>
-    instance.get<unknown, T>(url, { ...options, params }),
+  get: <T = unknown>(url: string, params?: Record<string, unknown>, options?: RequestOptions) => {
+    const ttlMs = options?.cacheTtlMs ?? defaultGetCacheTtl(url);
+    const key = cacheKey(url, params);
+    const cached = ttlMs > 0 ? getResponseCache.get(key) : null;
+    if (cached && cached.expiresAt > Date.now()) return Promise.resolve(cached.value as T);
+    const pending = getRequestsInFlight.get(key);
+    if (pending) return pending as Promise<T>;
+    const { cacheTtlMs: _cacheTtlMs, ...axiosOptions } = options ?? {};
+    const task = instance.get<unknown, T>(url, { ...axiosOptions, params })
+      .then((value) => {
+        if (ttlMs > 0) {
+          getResponseCache.set(key, { expiresAt: Date.now() + ttlMs, value });
+          if (getResponseCache.size > 200) {
+            const oldest = getResponseCache.keys().next().value;
+            if (oldest) getResponseCache.delete(oldest);
+          }
+        }
+        return value;
+      })
+      .finally(() => {
+        if (getRequestsInFlight.get(key) === task) getRequestsInFlight.delete(key);
+      });
+    getRequestsInFlight.set(key, task);
+    return task;
+  },
   post: <T = unknown>(url: string, data?: unknown, options?: RequestOptions) =>
-    instance.post<unknown, T>(url, data, options),
+    instance.post<unknown, T>(url, data, options).then((value) => { invalidateResponseCache(); return value; }),
   patch: <T = unknown>(url: string, data?: unknown, options?: RequestOptions) =>
-    instance.patch<unknown, T>(url, data, options),
-  delete: <T = unknown>(url: string, options?: RequestOptions) => instance.delete<unknown, T>(url, options),
+    instance.patch<unknown, T>(url, data, options).then((value) => { invalidateResponseCache(); return value; }),
+  delete: <T = unknown>(url: string, options?: RequestOptions) =>
+    instance.delete<unknown, T>(url, options).then((value) => { invalidateResponseCache(); return value; }),
 };
 
 export default instance;

@@ -26,6 +26,29 @@ async function start() {
   attachJwxtAgentGateway(server);
   attachVoiceHubGateway(server);
 
+  let shuttingDown = false;
+  const shutdown = (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`[lifecycle] 收到 ${signal}，等待现有请求完成后退出`);
+    const forceExit = setTimeout(() => {
+      console.error("[lifecycle] 优雅退出超时，强制结束进程");
+      process.exit(1);
+    }, 10_000);
+    forceExit.unref();
+    server.close((error) => {
+      clearTimeout(forceExit);
+      if (error) {
+        console.error("[lifecycle] 服务关闭失败", error);
+        process.exit(1);
+        return;
+      }
+      process.exit(0);
+    });
+  };
+  process.once("SIGTERM", () => shutdown("SIGTERM"));
+  process.once("SIGINT", () => shutdown("SIGINT"));
+
   server.listen(config.port, async () => {
     console.log(`🚀 CPU-web 后端已启动:  http://localhost:${config.port}`);
     console.log(`   健康检查:           http://localhost:${config.port}/api/health`);

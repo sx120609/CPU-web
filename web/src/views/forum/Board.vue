@@ -70,6 +70,7 @@ import { boardApi, type Board } from "@/api/board";
 import { topicApi } from "@/api/topic";
 import { useAuthStore } from "@/stores/auth";
 import { clearForumListRestoreState, readForumListRestoreState, writeForumListRestoreState } from "@/utils/forumListRestore";
+import { forumCacheScope, readForumBoardPage, writeForumBoardPage } from "@/utils/forumCache";
 
 type BoardRestoreState = {
   scrollY: number;
@@ -116,10 +117,18 @@ watch(() => route.fullPath, async () => {
 
 async function reload(options: { scrollToTop?: boolean } = {}) {
   const seq = ++loadSeq;
-  loading.value = true;
+  const slug = String(route.params.slug);
+  const scope = forumCacheScope(auth.user);
+  const cached = readForumBoardPage(scope, slug, page.value, sort.value);
+  if (cached) {
+    board.value = cached.board;
+    pinnedList.value = cached.pins;
+    list.value = cached.list;
+    total.value = cached.total;
+  }
+  loading.value = !cached;
   error.value = "";
   try {
-    const slug = String(route.params.slug);
     const nextBoard = await boardApi.detail(slug, { suppressErrorMessage: true });
     const [pins, normal] = await Promise.all([
       topicApi.list({ board: slug, size: 20, sort: "new", pinned: "only" }, { suppressErrorMessage: true }),
@@ -130,6 +139,12 @@ async function reload(options: { scrollToTop?: boolean } = {}) {
     pinnedList.value = pins?.list ?? [];
     list.value = normal.list;
     total.value = normal.total;
+    writeForumBoardPage(scope, slug, page.value, sort.value, {
+      board: nextBoard,
+      pins: pins?.list ?? [],
+      list: normal.list,
+      total: normal.total,
+    });
   } catch (e) {
     if (seq !== loadSeq) return;
     if ((e as { response?: { status?: number } })?.response?.status === 403) {
@@ -138,11 +153,16 @@ async function reload(options: { scrollToTop?: boolean } = {}) {
     }
     if ((e as { response?: { status?: number } })?.response?.status === 404) {
       board.value = null;
+      pinnedList.value = [];
+      list.value = [];
+      total.value = 0;
+      error.value = normalizeBoardError(e);
+    } else if (!cached) {
+      pinnedList.value = [];
+      list.value = [];
+      total.value = 0;
+      error.value = normalizeBoardError(e);
     }
-    pinnedList.value = [];
-    list.value = [];
-    total.value = 0;
-    error.value = normalizeBoardError(e);
   } finally {
     if (seq !== loadSeq) return;
     loading.value = false;

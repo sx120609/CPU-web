@@ -100,9 +100,24 @@ export function createApp() {
     const dist = candidates.find((p) => existsSync(p));
     if (dist) {
       console.log(`📦 静态资源目录: ${dist}`);
-      app.use(express.static(dist, { maxAge: "7d", index: false }));
+      app.use(express.static(dist, {
+        index: false,
+        maxAge: "1h",
+        setHeaders(res, filePath) {
+          const normalized = filePath.split(path.sep).join("/");
+          if (normalized.includes("/assets/")) {
+            res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+            return;
+          }
+          if (normalized.endsWith("/sw.js")) {
+            res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+          }
+        },
+      }));
       // SPA fallback：非 /api 路径全部返回 index.html
       app.get(/^\/(?!api).*/, (_req, res) => {
+        // Always revalidate the HTML shell; hashed JS/CSS above can stay immutable.
+        res.setHeader("Cache-Control", "no-cache, must-revalidate");
         res.sendFile(path.join(dist, "index.html"));
       });
     } else {

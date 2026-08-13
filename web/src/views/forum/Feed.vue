@@ -88,6 +88,14 @@ import TopicListItem from "@/components/forum/TopicListItem.vue";
 import { homeApi } from "@/api/home";
 import { fmtRelative } from "@/utils/format";
 import { clearForumListRestoreState, readForumListRestoreState, writeForumListRestoreState } from "@/utils/forumListRestore";
+import { useAuthStore } from "@/stores/auth";
+import {
+  forumCacheScope,
+  readForumHotFeed,
+  readForumLatestFeed,
+  writeForumHotFeed,
+  writeForumLatestFeed,
+} from "@/utils/forumCache";
 
 type LatestFeedRestoreState = {
   scrollY: number;
@@ -97,6 +105,7 @@ type LatestFeedRestoreState = {
 
 const route = useRoute();
 const router = useRouter();
+const auth = useAuthStore();
 const isHot = computed(() => route.name === "forum-hot");
 const loading = ref(false);
 const loadingMore = ref(false);
@@ -157,7 +166,18 @@ onBeforeUnmount(() => {
 
 async function load() {
   const seq = ++loadSeq;
-  loading.value = true;
+  const scope = forumCacheScope(auth.user);
+  const cachedHot = isHot.value ? readForumHotFeed(scope) : null;
+  const cachedLatest = !isHot.value ? readForumLatestFeed(scope) : null;
+  if (cachedHot?.length) hotList.value = cachedHot;
+  if (cachedLatest) {
+    pinnedList.value = cachedLatest.pins;
+    latestList.value = cachedLatest.list;
+    latestTotal.value = cachedLatest.total;
+    latestPage.value = Math.max(latestPage.value, cachedLatest.page);
+  }
+  const hasCached = Boolean(cachedHot?.length || cachedLatest);
+  loading.value = !hasCached;
   error.value = "";
   loadMoreError.value = "";
   try {
@@ -165,6 +185,7 @@ async function load() {
       const nextHotList = await homeApi.hotRanking({ suppressErrorMessage: true });
       if (seq !== loadSeq) return;
       hotList.value = nextHotList;
+      writeForumHotFeed(scope, nextHotList);
       pinnedList.value = [];
       latestList.value = [];
       latestTotal.value = 0;
@@ -185,13 +206,21 @@ async function load() {
       latestList.value = res.list ?? [];
       latestTotal.value = res.total;
     }
+    writeForumLatestFeed(scope, {
+      pins: pinnedList.value,
+      list: latestList.value,
+      total: latestTotal.value,
+      page: latestPage.value,
+    });
   } catch (e) {
     if (seq !== loadSeq) return;
-    hotList.value = [];
-    pinnedList.value = [];
-    latestList.value = [];
-    latestTotal.value = 0;
-    error.value = normalizeFeedError(e);
+    if (!hasCached) {
+      hotList.value = [];
+      pinnedList.value = [];
+      latestList.value = [];
+      latestTotal.value = 0;
+      error.value = normalizeFeedError(e);
+    }
   } finally {
     if (seq !== loadSeq) return;
     loading.value = false;
@@ -231,6 +260,12 @@ async function loadMore() {
     pinnedList.value = res.pins ?? pinnedList.value;
     latestTotal.value = res.total;
     latestList.value = dedupeTopicsById([...latestList.value, ...(res.list ?? [])]);
+    writeForumLatestFeed(forumCacheScope(auth.user), {
+      pins: pinnedList.value,
+      list: latestList.value,
+      total: latestTotal.value,
+      page: latestPage.value,
+    });
   } catch (e) {
     if (seq === loadSeq) {
       loadMoreError.value = normalizeFeedError(e);

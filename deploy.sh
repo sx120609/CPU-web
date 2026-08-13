@@ -915,8 +915,31 @@ do_build_server() {
 
 do_build_web() {
   ensure_project_build_dependencies web vue-tsc vite
-  log "Building web Vite -> web/dist"
-  npm run build --prefix web
+  local web_dir="$ROOT_DIR/web"
+  local live_dist="$web_dir/dist"
+  local staged_dist="$web_dir/dist.next"
+
+  # Vite clears outDir before building. Publishing through a staging directory keeps
+  # the current site and its hashed chunks available throughout the build.
+  [ "$staged_dist" = "$ROOT_DIR/web/dist.next" ] || err "Refusing unsafe web staging path: $staged_dist"
+  rm -rf "$staged_dist"
+  log "Building web Vite -> web/dist.next"
+  npm run build --prefix web -- --outDir "$staged_dist" --emptyOutDir
+  [ -f "$staged_dist/index.html" ] || err "Web build completed without index.html"
+
+  mkdir -p "$live_dist"
+  while IFS= read -r -d '' source_file; do
+    local relative_path="${source_file#"$staged_dist"/}"
+    [ "$relative_path" = "index.html" ] && continue
+    local target_file="$live_dist/$relative_path"
+    mkdir -p "$(dirname "$target_file")"
+    mv -f "$source_file" "$target_file"
+  done < <(find "$staged_dist" -type f -print0)
+
+  # Switch HTML last. Older hashed chunks stay in place for already-open clients.
+  mv -f "$staged_dist/index.html" "$live_dist/index.html"
+  rm -rf "$staged_dist"
+  log "Web assets published atomically; previous hashed chunks were retained"
 }
 
 do_build_voicehub() {
@@ -1014,8 +1037,14 @@ do_db_migrate() {
   db_url="$(configured_database_url)"
   is_postgres_url "$db_url" || err "PostgreSQL must be configured before updating"
   ensure_local_postgres_url_ready "$db_url"
-  pause_main_service_for_db_migration
-  log "Prisma files changed; applying PostgreSQL schema update"
+  if [ "${DEPLOY_PAUSE_FOR_DB_MIGRATION:-0}" = "1" ]; then
+    pause_main_service_for_db_migration
+    warn "显式启用停机迁移模式；迁移期间主服务会暂时不可用"
+  else
+    # 常规更新只允许向后兼容的 expand 迁移；prisma db push 本身会拒绝需要
+    # --accept-data-loss 的破坏性变更。旧进程保持在线，待新代码构建完成后再平滑 reload。
+    log "在线应用向后兼容的 PostgreSQL schema 更新（主服务保持运行）"
+  fi
   npm run db:migrate --prefix server
   npm run db:cleanup-retired-boards --prefix server
 }
@@ -1212,6 +1241,7 @@ do_main_start() {
       --merge-logs
   fi
   cd ..
+  wait_for_main_health
   pm2 save >/dev/null
   mark_main_service_resumed
 }
@@ -1220,12 +1250,29 @@ do_main_restart() {
   ensure_node
   ensure_pm2
   if pm2 describe "$SERVICE_NAME" >/dev/null 2>&1; then
-    VOICEHUB_ORIGIN="http://127.0.0.1:$VOICEHUB_PORT" pm2 restart "$SERVICE_NAME" --update-env
+    # 优先使用 PM2 的平滑 reload；旧版/单进程 PM2 不支持时再回退到 restart。
+    if ! VOICEHUB_ORIGIN="http://127.0.0.1:$VOICEHUB_PORT" pm2 reload "$SERVICE_NAME" --update-env; then
+      VOICEHUB_ORIGIN="http://127.0.0.1:$VOICEHUB_PORT" pm2 restart "$SERVICE_NAME" --update-env
+    fi
+    wait_for_main_health
     pm2 save >/dev/null
   else
     do_main_start
   fi
   mark_main_service_resumed
+}
+
+wait_for_main_health() {
+  local attempt=1
+  while [ "$attempt" -le 30 ]; do
+    if curl -fsS --max-time 2 "http://127.0.0.1:$PORT/api/health" >/dev/null 2>&1; then
+      log "主服务健康检查通过"
+      return 0
+    fi
+    sleep 1
+    attempt=$((attempt + 1))
+  done
+  err "主服务更新后健康检查失败，请运行 pm2 logs $SERVICE_NAME 排查"
 }
 
 do_voicehub_start() {
