@@ -6,13 +6,14 @@
       </el-empty>
     </div>
 
-    <div class="cpu-card profile-card">
-      <UserAvatar :size="80" class="avatar" :src="user?.avatar" :name="user?.nickname" alt="用户头像" />
+    <div class="cpu-card profile-card" :class="[profileThemeClass, profileFrameClass]">
+      <UserAvatar :size="80" class="avatar" :src="user?.avatar" :name="user?.nickname" :profile-frame="user?.profileFrame" alt="用户头像" />
       <div class="avatar-actions">
         <el-button size="small" plain :loading="avatarSaving" :disabled="avatarSaving" @click="pickAvatar">上传头像</el-button>
         <el-button v-if="user?.avatar" size="small" text :loading="avatarSaving" :disabled="avatarSaving" @click="removeAvatar">移除头像</el-button>
       </div>
       <h3 class="name">
+        <el-tag v-if="user?.vipActive" class="vip-tag" type="warning" effect="dark">VIP</el-tag>
         {{ user?.nickname }}
         <el-tag v-if="user?.role === 'admin'" size="small" type="danger">管理员</el-tag>
         <el-tag v-else-if="user?.role === 'mod'" size="small">论坛管理员</el-tag>
@@ -34,6 +35,41 @@
         <el-button type="primary" plain :disabled="saving || logoutBusy" @click="editing = true">编辑资料</el-button>
         <el-button v-if="!user?.studentSso" plain :disabled="savingPw || logoutBusy" @click="passwordDialog = true">修改密码</el-button>
         <el-button type="danger" plain :loading="logoutBusy" :disabled="logoutBusy" @click="onLogout">退出登录</el-button>
+      </div>
+    </div>
+
+    <div v-if="user?.vipActive" class="cpu-card vip-style-card">
+      <div>
+        <h3 class="cpu-section-title">VIP 个性化资料</h3>
+        <p class="vip-style-copy">选择个人主页主题和头像框，论坛里也会同步展示你的 VIP 身份。</p>
+      </div>
+      <div class="vip-style-group">
+        <span class="vip-style-label">主页主题</span>
+        <div class="vip-style-options">
+          <button
+            v-for="item in vipThemeOptions"
+            :key="item.value"
+            type="button"
+            class="vip-style-option"
+            :class="[`vip-theme-${item.value}`, { active: user?.profileTheme === item.value }]"
+            :disabled="vipStyleSaving"
+            @click="saveVipDecoration('profileTheme', item.value)"
+          >{{ item.label }}</button>
+        </div>
+      </div>
+      <div class="vip-style-group">
+        <span class="vip-style-label">头像框</span>
+        <div class="vip-style-options">
+          <button
+            v-for="item in vipFrameOptions"
+            :key="item.value"
+            type="button"
+            class="vip-style-option"
+            :class="[{ active: user?.profileFrame === item.value }, `vip-frame-${item.value}`]"
+            :disabled="vipStyleSaving"
+            @click="saveVipDecoration('profileFrame', item.value)"
+          >{{ item.label }}</button>
+        </div>
       </div>
     </div>
 
@@ -423,6 +459,7 @@ const editing = ref(false);
 const saving = ref(false);
 const logoutBusy = ref(false);
 const avatarSaving = ref(false);
+const vipStyleSaving = ref(false);
 const avatarInputRef = ref<HTMLInputElement | null>(null);
 const trustDetailsOpen = ref(false);
 const anonymousBoardsOpen = ref(false);
@@ -457,6 +494,17 @@ let handledSponsorReturnKey = "";
 let sponsorReturnInFlightKey = "";
 
 const editForm = reactive({ nickname: "", bio: "", college: "", enrollYear: undefined as any });
+const vipThemeOptions = [
+  { value: "mint", label: "薄荷青" },
+  { value: "sunset", label: "落日橙" },
+  { value: "ocean", label: "深海蓝" },
+  { value: "lavender", label: "薰衣草" },
+] as const;
+const vipFrameOptions = [
+  { value: "gold", label: "鎏金" },
+  { value: "neon", label: "霓虹" },
+  { value: "campus", label: "校园" },
+] as const;
 
 const passwordDialog = ref(false);
 const savingPw = ref(false);
@@ -492,6 +540,8 @@ const appearanceOptions: Array<{ value: AppearanceMode; label: string; icon: unk
   { value: "light", label: "浅色", icon: Sunny },
   { value: "dark", label: "深色", icon: Moon },
 ];
+const profileThemeClass = computed(() => user.value?.profileTheme ? `profile-theme-${user.value.profileTheme}` : "");
+const profileFrameClass = computed(() => user.value?.profileFrame ? `profile-frame-${user.value.profileFrame}` : "");
 
 watch(passwordDialog, (v) => {
   if (!v) { pwForm.oldPassword = ""; pwForm.newPassword = ""; pwForm.confirm = ""; }
@@ -591,6 +641,17 @@ async function saveEdit() {
     ElMessage.success("已保存");
     editing.value = false;
   } finally { saving.value = false; }
+}
+
+async function saveVipDecoration(field: "profileTheme" | "profileFrame", value: string) {
+  if (!user.value?.vipActive || vipStyleSaving.value) return;
+  vipStyleSaving.value = true;
+  try {
+    await auth.updateProfile({ [field]: value } as any);
+    ElMessage.success("VIP 个性化资料已更新");
+  } finally {
+    vipStyleSaving.value = false;
+  }
 }
 
 async function loadSponsorOptions() {
@@ -836,6 +897,13 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
 .cpu-card { background: var(--cpu-card); border: 1px solid var(--cpu-border-soft); border-radius: 12px; padding: 20px 24px; box-shadow: var(--cpu-shadow-sm); }
 
 .profile-card { text-align: center; }
+.profile-card.profile-theme-mint { background: linear-gradient(135deg, #ecfdf5, #ffffff); }
+.profile-card.profile-theme-sunset { background: linear-gradient(135deg, #fff7ed, #ffffff); }
+.profile-card.profile-theme-ocean { background: linear-gradient(135deg, #eff6ff, #ffffff); }
+.profile-card.profile-theme-lavender { background: linear-gradient(135deg, #f5f3ff, #ffffff); }
+.profile-card.profile-frame-gold { border: 2px solid #f5c451; }
+.profile-card.profile-frame-neon { border: 2px solid #8b5cf6; box-shadow: 0 0 18px rgba(139, 92, 246, .24); }
+.profile-card.profile-frame-campus { border: 2px solid #168776; }
 .profile-load-error {
   padding: 18px;
 }
@@ -856,6 +924,7 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
   align-items: center;
   gap: 8px;
 }
+.vip-tag { letter-spacing: .08em; font-weight: 800; }
 .account-note { font-size: 12px; color: var(--cpu-text-muted); margin: 0 0 8px; }
 .bio { font-size: 13px; color: var(--cpu-text-secondary); margin: 0 0 16px; }
 
@@ -884,6 +953,21 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
   flex-wrap: wrap;
 }
 .profile-actions .el-button { flex: 1 1 auto; min-width: 100px; margin-left: 0 !important; }
+
+.vip-style-card { display: flex; flex-direction: column; gap: 14px; }
+.vip-style-copy { margin: 0; color: var(--cpu-text-secondary); font-size: 13px; }
+.vip-style-group { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.vip-style-label { min-width: 70px; color: var(--cpu-text-secondary); font-size: 13px; }
+.vip-style-options { display: flex; gap: 8px; flex-wrap: wrap; }
+.vip-style-option { border: 1px solid var(--cpu-border-soft); border-radius: 999px; padding: 7px 13px; background: var(--cpu-surface-soft); color: var(--cpu-text); cursor: pointer; font: inherit; font-size: 12px; }
+.vip-style-option.active { border-color: #f59e0b; box-shadow: 0 0 0 2px rgba(245, 158, 11, .16); font-weight: 700; }
+.vip-theme-mint { background: #ecfdf5; }
+.vip-theme-sunset { background: #fff7ed; }
+.vip-theme-ocean { background: #eff6ff; }
+.vip-theme-lavender { background: #f5f3ff; }
+.vip-frame-gold { border-color: #f5c451; }
+.vip-frame-neon { border-color: #8b5cf6; }
+.vip-frame-campus { border-color: #168776; }
 
 .assistant-quota-card {
   display: grid;

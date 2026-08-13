@@ -53,6 +53,7 @@
     .avatar { background: var(--cpu-primary); color: #fff; font-weight: 600; }
     .meta-author { flex: 1; }
     .name { font-size: 14px; font-weight: 500; color: var(--cpu-text); display: flex; gap: 6px; align-items: center; }
+    .vip-badge { color: #a16207; background: linear-gradient(135deg, #fef3c7, #fcd34d); border: 1px solid #f59e0b; border-radius: 999px; padding: 1px 6px; font-size: 10px; font-weight: 800; letter-spacing: .04em; }
     .name a { color: var(--cpu-primary); text-decoration: none; }
     .real-author-line {
       font-size: 12px;
@@ -201,4 +202,27 @@
     margin-left: 0;
   }
 }
+
+.reaction-strip,
+.reaction-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.reaction-chip,
+.reaction-picker-btn {
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 999px;
+  background: var(--cpu-surface-soft);
+  color: var(--cpu-text-secondary);
+  padding: 3px 9px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.reaction-chip.active { border-color: #f59e0b; background: #fffbeb; color: #a16207; }
+.reaction-picker-btn { padding: 3px 6px; font-size: 16px; line-height: 1; }
+.reaction-chip:disabled,
+.reaction-picker-btn:disabled { opacity: .55; cursor: wait; }
 

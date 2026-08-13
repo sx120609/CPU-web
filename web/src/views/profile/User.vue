@@ -17,10 +17,11 @@
       返回上一页
     </button>
 
-    <div class="cpu-card profile-card">
-      <UserAvatar :size="64" class="avatar" :src="user.avatar" :name="user.nickname" alt="用户头像" />
+    <div class="cpu-card profile-card" :class="[profileThemeClass, profileFrameClass]">
+      <UserAvatar :size="64" class="avatar" :src="user.avatar" :name="user.nickname" :profile-frame="user.profileFrame" alt="用户头像" />
       <div>
         <h2 class="name">
+          <el-tag v-if="user.vipActive" class="vip-tag" type="warning" effect="dark">VIP</el-tag>
           {{ user.nickname }}
           <el-tag v-if="user.role === 'admin'" size="small" type="danger">管理员</el-tag>
           <el-tag v-else-if="user.role === 'mod'" size="small" type="warning">论坛管理员</el-tag>
@@ -70,7 +71,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ArrowLeft } from "@element-plus/icons-vue";
 import UserAvatar from "@/components/common/UserAvatar.vue";
@@ -87,6 +88,8 @@ const topics = ref<any[]>([]);
 const loading = ref(false);
 const error = ref("");
 let loadSeq = 0;
+const profileThemeClass = computed(() => user.value?.profileTheme ? `profile-theme-${user.value.profileTheme}` : "");
+const profileFrameClass = computed(() => user.value?.profileFrame ? `profile-frame-${user.value.profileFrame}` : "");
 
 watch(() => route.params.id, () => {
   void load();
@@ -178,8 +181,16 @@ function normalizeUserLoadError(loadError: unknown) {
 }
 .cpu-card { background: #fff; border-radius: 12px; padding: 20px 24px; box-shadow: 0 2px 12px rgba(0,0,0,0.04); }
 .profile-card { display: flex; align-items: flex-start; gap: 16px; }
+.profile-card.profile-theme-mint { background: linear-gradient(135deg, #ecfdf5, #ffffff); }
+.profile-card.profile-theme-sunset { background: linear-gradient(135deg, #fff7ed, #ffffff); }
+.profile-card.profile-theme-ocean { background: linear-gradient(135deg, #eff6ff, #ffffff); }
+.profile-card.profile-theme-lavender { background: linear-gradient(135deg, #f5f3ff, #ffffff); }
+.profile-card.profile-frame-gold { border: 2px solid #f5c451; }
+.profile-card.profile-frame-neon { border: 2px solid #8b5cf6; box-shadow: 0 0 18px rgba(139, 92, 246, .24); }
+.profile-card.profile-frame-campus { border: 2px solid #168776; }
 .avatar { font-size: 24px; font-weight: 600; flex-shrink: 0; }
 .name { margin: 0; font-size: 20px; display: flex; align-items: center; gap: 8px; }
+.vip-tag { letter-spacing: .08em; font-weight: 800; }
 .bio { font-size: 13px; color: #4b5563; margin: 0 0 8px; }
 .meta { display: flex; gap: 12px; font-size: 12px; color: #6b7280; flex-wrap: wrap; }
 .staff-panel { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; }

@@ -49,6 +49,10 @@ model User {
   anonymousWeekKey       String?
   anonymousCreditsFrozen Boolean   @default(false)
   sponsorTotalCents      Int       @default(0)
+  vipLevel               Int       @default(0)
+  vipExpiresAt           DateTime?
+  profileTheme           String?
+  profileFrame           String?
   assistantPoints        Float     @default(0)
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
@@ -105,6 +109,7 @@ model User {
   campusAssistantConversations CampusAssistantConversation[]
   oauthAuthorizationCodes      OAuthAuthorizationCode[]
   oauthAccessTokens            OAuthAccessToken[]
+  forumReactions               ForumReaction[]
 }
 
 model CampusAssistantConversation {
@@ -232,6 +237,7 @@ model Topic {
   author           User             @relation(fields: [authorId], references: [id])
   replies          Reply[]
   likes            Like[]
+  forumReactions   ForumReaction[]
   tags             TopicTag[]
   manualReviewedBy User?            @relation("ManualReviewedTopics", fields: [manualReviewedById], references: [id])
   marketItem       MarketItem?
@@ -272,6 +278,7 @@ model Reply {
   parentReply Reply?           @relation("ReplyToReply", fields: [parentReplyId], references: [id])
   children    Reply[]          @relation("ReplyToReply")
   likes       Like[]
+  forumReactions ForumReaction[]
 
   @@index([topicId, floor])
   @@index([topicId, hidden, floor])
@@ -289,6 +296,24 @@ model Like {
   reply Reply? @relation(fields: [replyId], references: [id], onDelete: Cascade)
 
   @@unique([userId, topicId, replyId])
+}
+
+model ForumReaction {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  topicId   Int?
+  replyId   Int?
+  kind      String
+  createdAt DateTime @default(now())
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topic Topic? @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  reply Reply? @relation(fields: [replyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, topicId, kind])
+  @@unique([userId, replyId, kind])
+  @@index([topicId, kind])
+  @@index([replyId, kind])
 }
 
 model ForumImageAsset {

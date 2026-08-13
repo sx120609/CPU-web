@@ -37,6 +37,7 @@ import { ensureForumImageAssetsForContent, summarizeForumImageModerationForConte
 import { ensureForumVideoAssetsForContent, summarizeForumVideoModerationForContent } from "../services/videoModeration";
 import { invalidateCourseCaches, invalidateForumCaches } from "../services/cacheInvalidation";
 import { isRetiredBoardSlug, visibleBoardSlugFilter } from "../services/retiredBoards";
+import { getReactionSummary } from "../services/vip";
 
 export const topicRouter = Router();
 const MARKET_TOPIC_API_MESSAGE = "商城商品请使用商城发布、编辑和下架功能";
@@ -93,7 +94,7 @@ topicRouter.get("/", async (req, res, next) => {
             skip: (page - 1) * size,
             take: size,
             include: {
-              author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
+              author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, vipLevel: true, vipExpiresAt: true, profileTheme: true, profileFrame: true } },
               board: { select: { id: true, slug: true, name: true, color: true, type: true } },
               tags: { include: { tag: true } },
             },
@@ -122,7 +123,7 @@ topicRouter.get("/:id", async (req, res, next) => {
     const topic = await prisma.topic.findUnique({
       where: { id },
       include: {
-        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, bio: true, status: true, mutedUntil: true } },
+        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, bio: true, status: true, mutedUntil: true, vipLevel: true, vipExpiresAt: true, profileTheme: true, profileFrame: true } },
         board: { select: { id: true, slug: true, name: true, type: true, readOnly: true, anonymousEnabled: true } },
         tags: { include: { tag: true } },
       },
@@ -135,7 +136,10 @@ topicRouter.get("/:id", async (req, res, next) => {
     await ensureCanReadBoardType(topic.board?.type, requesterId, requesterRole);
     // 浏览数 +1（异步，失败也无所谓）
     if (!topic.hidden) prisma.topic.update({ where: { id }, data: { viewCount: { increment: 1 } } }).catch(() => {});
-    ok(res, await decodeTopicForViewerWithImages(topic, req.user));
+    ok(res, {
+      ...(await decodeTopicForViewerWithImages(topic, req.user)),
+      reactions: await getReactionSummary({ topicId: id }, requesterId),
+    });
   } catch (e) { next(e); }
 });
 
@@ -252,7 +256,7 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
       where: { id: topic.id },
       include: {
         board: { select: { slug: true, name: true, type: true, color: true } },
-        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
+        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, vipLevel: true, vipExpiresAt: true, profileTheme: true, profileFrame: true } },
         tags: { include: { tag: true } },
       },
     });
@@ -514,7 +518,7 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
     const topicWithTags = await prisma.topic.findUnique({
       where: { id: u.id },
       include: {
-        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
+        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, vipLevel: true, vipExpiresAt: true, profileTheme: true, profileFrame: true } },
         board: { select: { id: true, slug: true, name: true, color: true, type: true } },
         tags: { include: { tag: true } },
       },
@@ -580,10 +584,15 @@ topicRouter.get("/:id/replies", async (req, res, next) => {
       where: { topicId: id, hidden: false },
       orderBy: { floor: "asc" },
       include: {
-        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
+        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, vipLevel: true, vipExpiresAt: true, profileTheme: true, profileFrame: true } },
       },
     });
-    ok(res, await Promise.all(list.map((item) => decodeReplyForViewerWithImages(item, req.user))));
+    const decoded = await Promise.all(list.map((item) => decodeReplyForViewerWithImages(item, req.user)));
+    const withReactions = await Promise.all(decoded.map(async (item) => ({
+      ...item,
+      reactions: await getReactionSummary({ replyId: item.id }, req.user?.userId ?? null),
+    })));
+    ok(res, withReactions);
   } catch (e) { next(e); }
 });
 function parseJsonSafe(s: string | null | undefined) {

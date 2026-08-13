@@ -671,6 +671,8 @@ export const adminApi = {
     mutedUntil?: string | null;
     anonymousCredits?: number;
     anonymousCreditsFrozen?: boolean;
+    vipLevel?: number;
+    vipExpiresAt?: string | null;
   }) =>
     request.patch<any>(`/admin/users/${id}`, patch),
   updateUserModuleRoles: (id: number, patch: {

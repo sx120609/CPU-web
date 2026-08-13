@@ -25,6 +25,11 @@ export interface UserInfo {
   reputation: number;
   sponsorTotalCents?: number;
   sponsorAmount?: number;
+  vipLevel?: number;
+  vipExpiresAt?: string | null;
+  vipActive?: boolean;
+  profileTheme?: string | null;
+  profileFrame?: string | null;
   reputationLevel?: {
     level: number;
     name: string;

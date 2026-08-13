@@ -27,8 +27,9 @@ export interface Topic {
   tags?: Array<{ id: number; name: string }>;
   createdAt: string;
   updatedAt: string;
-  author?: { id: number | null; nickname: string; username?: string; avatar?: string | null; role: string; bio?: string; status?: string; mutedUntil?: string | null; anonymous?: boolean };
-  realAuthor?: { id: number; nickname: string; username?: string; avatar?: string | null; role: string; bio?: string; status?: string; mutedUntil?: string | null; reputation?: number; reputationLevel?: { level: number; name: string; minReputation: number } };
+  reactions?: ForumReaction[];
+  author?: ForumAuthor;
+  realAuthor?: ForumAuthor & { reputation?: number; reputationLevel?: { level: number; name: string; minReputation: number } };
   board?: { id?: number; slug: string; name: string; color?: string; icon?: string; type?: string; readOnly?: boolean; anonymousEnabled?: boolean };
   imageReview?: {
     enabled: boolean;
@@ -58,8 +59,9 @@ export interface Reply {
   floor: number;
   likeCount: number;
   createdAt: string;
-  author?: { id: number | null; nickname: string; username?: string; avatar?: string | null; role: string; status?: string; mutedUntil?: string | null; anonymous?: boolean };
-  realAuthor?: { id: number; nickname: string; username?: string; avatar?: string | null; role: string; status?: string; mutedUntil?: string | null; reputation?: number; reputationLevel?: { level: number; name: string; minReputation: number } };
+  reactions?: ForumReaction[];
+  author?: ForumAuthor;
+  realAuthor?: ForumAuthor & { reputation?: number; reputationLevel?: { level: number; name: string; minReputation: number } };
   imageReview?: {
     enabled: boolean;
     totalCount: number;
@@ -75,6 +77,28 @@ export interface Reply {
     approvedCount: number;
     manualReviewCount: number;
   };
+}
+
+export interface ForumReaction {
+  key: string;
+  count: number;
+  active?: boolean;
+}
+
+export interface ForumAuthor {
+  id: number | null;
+  nickname: string;
+  username?: string;
+  avatar?: string | null;
+  role: string;
+  bio?: string;
+  status?: string;
+  mutedUntil?: string | null;
+  anonymous?: boolean;
+  vipLevel?: number;
+  vipActive?: boolean;
+  profileTheme?: string | null;
+  profileFrame?: string | null;
 }
 
 export type ImageReviewSummary = {
@@ -130,6 +154,16 @@ export const likeApi = {
   toggleReply: (id: number) => request.post<{ liked: boolean; likeCount: number }>(`/likes/reply/${id}`),
   mine: (topicIds: number[], replyIds: number[] = [], options?: RequestOptions) =>
     request.get<{ topics: number[]; replies: number[] }>("/likes/mine", {
+      topics: topicIds.join(","), replies: replyIds.join(","),
+    }, options),
+};
+
+export const reactionApi = {
+  catalog: () => request.get<Array<{ key: string; emoji: string; label: string }>>("/reactions/catalog"),
+  toggleTopic: (id: number, key: string) => request.post<{ active: boolean; reactions: ForumReaction[] }>(`/reactions/topic/${id}`, { key }),
+  toggleReply: (id: number, key: string) => request.post<{ active: boolean; reactions: ForumReaction[] }>(`/reactions/reply/${id}`, { key }),
+  mine: (topicIds: number[], replyIds: number[] = [], options?: RequestOptions) =>
+    request.get<{ topics: Record<string, string[]>; replies: Record<string, string[]> }>("/reactions/mine", {
       topics: topicIds.join(","), replies: replyIds.join(","),
     }, options),
 };

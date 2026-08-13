@@ -65,9 +65,10 @@
       </div>
 
       <div class="post-meta">
-        <UserAvatar :size="36" class="avatar" :src="topic.author?.avatar" :name="topic.author?.nickname" alt="作者头像" />
+        <UserAvatar :size="36" class="avatar" :src="topic.author?.avatar" :name="topic.author?.nickname" :profile-frame="topic.author?.profileFrame" alt="作者头像" />
         <div class="meta-author">
           <div class="name">
+            <span v-if="topic.author?.vipActive" class="vip-badge">VIP</span>
             <router-link v-if="topic.author?.id" :to="`/u/${topic.author.id}`">{{ topic.author?.nickname }}</router-link>
             <span v-else>{{ topic.author?.nickname }}</span>
             <el-tag v-if="topic.isAnonymous" size="small" type="warning" effect="plain">匿名发布</el-tag>
@@ -189,6 +190,31 @@
 
       <MarkdownView :content="displayContent" class="post-body topic-markdown" clickable-images media-loading="eager" />
 
+      <div v-if="topic.reactions?.length" class="reaction-strip">
+        <button
+          v-for="reaction in topic.reactions"
+          :key="reaction.key"
+          type="button"
+          class="reaction-chip"
+          :class="{ active: reaction.active }"
+          :disabled="reactionBusyKey !== ''"
+          @click="toggleTopicReaction(reaction.key)"
+        >
+          {{ reactionEmoji(reaction.key) }} {{ reaction.count }}
+        </button>
+      </div>
+      <div v-if="auth.user?.vipActive" class="reaction-picker">
+        <button
+          v-for="reaction in reactionCatalog"
+          :key="reaction.key"
+          type="button"
+          class="reaction-picker-btn"
+          :title="reaction.label"
+          :disabled="reactionBusyKey !== ''"
+          @click="toggleTopicReaction(reaction.key)"
+        >{{ reaction.emoji }}</button>
+      </div>
+
       <footer class="post-foot">
         <el-button :type="liked ? 'primary' : 'default'" :icon="Star" :loading="topicActionBusy === 'like'" :disabled="isTopicActionBusy" @click="onLike">
           {{ liked ? '已点赞' : '点赞' }} · {{ topic.likeCount }}
@@ -216,7 +242,7 @@
           :class="{ nested: entry.depth > 0 }"
           :style="{ marginLeft: `${Math.min(entry.depth, 4) * 24}px` }"
         >
-          <UserAvatar :size="32" class="avatar" :src="entry.item.author?.avatar" :name="entry.item.author?.nickname" alt="回复头像" />
+          <UserAvatar :size="32" class="avatar" :src="entry.item.author?.avatar" :name="entry.item.author?.nickname" :profile-frame="entry.item.author?.profileFrame" alt="回复头像" />
           <div class="reply-body">
             <div class="reply-meta">
               <span class="floor">#{{ entry.item.floor }}</span>
@@ -245,6 +271,28 @@
               compact-quotes
               media-loading="eager"
             />
+            <div v-if="entry.item.reactions?.length" class="reaction-strip reply-reactions">
+              <button
+                v-for="reaction in entry.item.reactions"
+                :key="reaction.key"
+                type="button"
+                class="reaction-chip"
+                :class="{ active: reaction.active }"
+                :disabled="reactionBusyKey !== ''"
+                @click="toggleReplyReaction(entry.item, reaction.key)"
+              >{{ reactionEmoji(reaction.key) }} {{ reaction.count }}</button>
+            </div>
+            <div v-if="auth.user?.vipActive" class="reaction-picker reply-reaction-picker">
+              <button
+                v-for="reaction in reactionCatalog"
+                :key="reaction.key"
+                type="button"
+                class="reaction-picker-btn"
+                :title="reaction.label"
+                :disabled="reactionBusyKey !== ''"
+                @click="toggleReplyReaction(entry.item, reaction.key)"
+              >{{ reaction.emoji }}</button>
+            </div>
             <div class="reply-actions">
               <el-button text size="small" @click="replyTo(entry.item)">回复</el-button>
               <el-button v-if="canEditReply(entry.item)" text size="small" @click="editReply(entry.item)">编辑</el-button>
@@ -584,7 +632,7 @@ import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
 import MarkdownView from "@/components/forum/MarkdownView.vue";
 import RichTextEditor from "@/components/forum/RichTextEditor.vue";
 import ManualReviewConfirmDialog from "@/components/forum/ManualReviewConfirmDialog.vue";
-import { topicApi, replyApi, likeApi, type Topic, type Reply } from "@/api/topic";
+import { topicApi, replyApi, likeApi, reactionApi, type Topic, type Reply, type ForumReaction } from "@/api/topic";
 import { adminApi, type ForumImageReviewAsset, type ForumVideoReviewAsset } from "@/api/admin";
 import { useAuthStore } from "@/stores/auth";
 import { fmtDate, fmtRelative } from "@/utils/format";
@@ -641,6 +689,14 @@ const blockedReplyInfo = reactive<{ reason: string; riskScore: number | null }>(
   riskScore: null,
 });
 const liked = ref(false);
+const reactionBusyKey = ref("");
+const reactionCatalog = [
+  { key: "vip-crown", emoji: "👑", label: "王者" },
+  { key: "sparkles", emoji: "✨", label: "闪耀" },
+  { key: "fire", emoji: "🔥", label: "太燃了" },
+  { key: "hug", emoji: "🫶", label: "抱抱" },
+  { key: "rocket", emoji: "🚀", label: "起飞" },
+];
 let loadSeq = 0;
 let shareCardQrSeq = 0;
 const repliesEl = ref<HTMLElement | null>(null);
@@ -911,6 +967,13 @@ async function load() {
         // 标记每条回复 liked
         const set = new Set(mine.replies);
         nextReplies.forEach((r: any) => (r._liked = set.has(r.id)));
+        const reactionMine = await reactionApi.mine([id], nextReplies.map((r) => r.id), { suppressErrorMessage: true });
+        const topicKeys = new Set(reactionMine.topics[String(id)] ?? []);
+        if (topic.value?.reactions) topic.value.reactions = topic.value.reactions.map((item) => ({ ...item, active: topicKeys.has(item.key) }));
+        nextReplies.forEach((r: any) => {
+          const keys = new Set(reactionMine.replies[String(r.id)] ?? []);
+          r.reactions = (r.reactions ?? []).map((item: ForumReaction) => ({ ...item, active: keys.has(item.key) }));
+        });
       } catch {
         if (seq === loadSeq) liked.value = false;
       }
@@ -983,6 +1046,38 @@ async function onLikeReply(reply: any) {
 function replyTo(r: Reply) {
   if (!openReplyDialog()) return;
   replyParentId.value = r.id;
+}
+
+function reactionEmoji(key: string) {
+  return reactionCatalog.find((item) => item.key === key)?.emoji || "✨";
+}
+
+async function toggleTopicReaction(key: string) {
+  if (!topic.value || reactionBusyKey.value) return;
+  if (!auth.user?.vipActive) {
+    ElMessage.info("VIP 用户才能使用专属表情");
+    return;
+  }
+  reactionBusyKey.value = `topic:${key}`;
+  try {
+    topic.value.reactions = await reactionApi.toggleTopic(topic.value.id, key).then((result) => result.reactions);
+  } finally {
+    reactionBusyKey.value = "";
+  }
+}
+
+async function toggleReplyReaction(reply: Reply, key: string) {
+  if (reactionBusyKey.value) return;
+  if (!auth.user?.vipActive) {
+    ElMessage.info("VIP 用户才能使用专属表情");
+    return;
+  }
+  reactionBusyKey.value = `reply:${reply.id}:${key}`;
+  try {
+    reply.reactions = await reactionApi.toggleReply(reply.id, key).then((result) => result.reactions);
+  } finally {
+    reactionBusyKey.value = "";
+  }
 }
 
 function clearReplyParent() {

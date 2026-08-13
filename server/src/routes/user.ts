@@ -11,6 +11,7 @@ import { releaseExpiredMutes } from "../services/userModeration";
 import { buildPublicUser, buildSelfUser } from "../utils/publicUser";
 import { decodeTopicForViewer } from "../services/forumPresentation";
 import { visibleBoardSlugFilter } from "../services/retiredBoards";
+import { isVipActive, VIP_PROFILE_FRAMES, VIP_PROFILE_THEMES } from "../services/vip";
 
 export const userRouter = Router();
 
@@ -29,6 +30,25 @@ userRouter.patch("/me", authRequired, async (req, res, next) => {
     const allowed: Record<string, unknown> = {};
     for (const k of ["nickname", "bio", "college", "enrollYear", "avatar"]) {
       if (body[k] !== undefined) allowed[k] = body[k];
+    }
+    if (body.profileTheme !== undefined || body.profileFrame !== undefined) {
+      const current = await prisma.user.findUnique({
+        where: { id: req.user!.userId },
+        select: { vipLevel: true, vipExpiresAt: true },
+      });
+      if (!isVipActive(current)) throw Errors.forbidden("VIP 用户才能使用个性化资料装扮");
+      if (body.profileTheme !== undefined) {
+        if (typeof body.profileTheme !== "string" || !VIP_PROFILE_THEMES.includes(body.profileTheme as any)) {
+          throw Errors.badRequest("不支持的资料主题");
+        }
+        allowed.profileTheme = body.profileTheme;
+      }
+      if (body.profileFrame !== undefined) {
+        if (typeof body.profileFrame !== "string" || !VIP_PROFILE_FRAMES.includes(body.profileFrame as any)) {
+          throw Errors.badRequest("不支持的头像框");
+        }
+        allowed.profileFrame = body.profileFrame;
+      }
     }
     if (body.dataAuthAgreed === true) {
       allowed.dataAuthAgreedAt = new Date();
@@ -106,7 +126,7 @@ userRouter.get("/:id/topics", async (req, res, next) => {
       take: 30,
       include: {
         board: { select: { slug: true, name: true, color: true, type: true } },
-        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
+        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, vipLevel: true, vipExpiresAt: true, profileTheme: true, profileFrame: true } },
         tags: { include: { tag: true } },
       },
     });

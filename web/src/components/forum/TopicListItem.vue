@@ -7,7 +7,7 @@
     @keydown.enter.prevent="openTopic"
     @keydown.space.prevent="openTopic"
   >
-    <UserAvatar :size="36" class="avatar" :src="topic.author?.avatar" :name="topic.author?.nickname" alt="作者头像" />
+    <UserAvatar :size="36" class="avatar" :src="topic.author?.avatar" :name="topic.author?.nickname" :profile-frame="topic.author?.profileFrame" alt="作者头像" />
     <div class="main">
       <div class="line1">
         <el-tag v-if="topic.globalPinned" size="small" type="warning" effect="dark" class="tag">全局置顶</el-tag>
@@ -31,6 +31,7 @@
         <el-tag v-if="metaBounty" size="small" type="warning" class="tag">悬赏 {{ metaBounty }}</el-tag>
       </div>
       <div class="line2">
+        <span v-if="topic.author?.vipActive" class="vip-badge" title="VIP 用户">VIP</span>
         <span class="author">{{ topic.author?.nickname ?? "—" }}</span>
         <span v-if="topic.isAnonymous" class="anon">匿名</span>
         <span v-if="topic.author?.role === 'bot'" class="bot">🤖 公告同步</span>
@@ -137,6 +138,7 @@ function openTopic() {
 }
 .line2 span { display: inline-flex; align-items: center; gap: 3px; min-width: 0; overflow-wrap: anywhere; }
 .line2 .author { color: var(--cpu-primary); }
+.vip-badge { color: #a16207; background: linear-gradient(135deg, #fef3c7, #fcd34d); border: 1px solid #f59e0b; border-radius: 999px; padding: 0 5px; font-size: 10px; font-weight: 800; letter-spacing: .04em; }
 .line2 .anon { color: #7c3aed; font-weight: 600; }
 .line2 .bot { color: #ef4444; }
 .line2 .edited { color: #b45309; }

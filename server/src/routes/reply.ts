@@ -158,7 +158,7 @@ replyRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
           anonymousAlias,
         },
         include: {
-          author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
+          author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, vipLevel: true, vipExpiresAt: true, profileTheme: true, profileFrame: true } },
         },
       });
       await tx.topic.update({
@@ -257,7 +257,7 @@ replyRouter.patch("/:id", authRequired, validate(updateSchema), async (req, res,
             board: { select: { slug: true, type: true } },
           },
         },
-        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
+        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, vipLevel: true, vipExpiresAt: true, profileTheme: true, profileFrame: true } },
       },
     });
     if (!reply || !reply.topic || reply.hidden || reply.topic.hidden) throw Errors.notFound("回复不存在");
@@ -275,7 +275,7 @@ replyRouter.patch("/:id", authRequired, validate(updateSchema), async (req, res,
       where: { id },
       data: { content: req.body.content },
       include: {
-        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true } },
+        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, vipLevel: true, vipExpiresAt: true, profileTheme: true, profileFrame: true } },
       },
     });
     await Promise.all([
