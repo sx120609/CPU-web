@@ -286,7 +286,7 @@ export const useAuthStore = defineStore("auth", {
         const r = await authApi.ssoLogin(loginPayload, loginOptions);
         // A manual or background SSO request must not resurrect a session
         // after the user has explicitly logged out while it was pending.
-        if (this.sessionVersion !== requestSessionVersion || (!this.token && this.ready)) return false;
+        if (this.sessionVersion !== requestSessionVersion) return false;
         if (!r.ok || (!r.sessionAuthenticated && !r.siteToken) || !r.user) {
           this.ssoError = r.error || "登录失败";
           if (r.needCaptcha && r.captcha) {
