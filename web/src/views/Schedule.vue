@@ -285,42 +285,7 @@
       </button>
     </section>
 
-    <section v-if="autoLoading && !parsed" class="state-card">
-      <el-icon class="big is-loading"><Loading /></el-icon>
-      <h2>正在恢复登录状态</h2>
-      <p>正在使用已保存的账号读取课表。</p>
-    </section>
-
-    <section v-else-if="!parsed && jwxt.needCaptcha && hasCreds" class="state-card">
-      <el-icon class="big"><Picture /></el-icon>
-      <h2>输入统一认证验证码</h2>
-      <p>{{ parsed ? "当前显示的是旧课表缓存，完成统一认证后会自动进入新版教务并读取最新学期。" : "统一认证要求补充验证码，完成后即可查看课表。" }}</p>
-      <div class="captcha-row">
-        <el-input
-          v-model="captchaInput"
-          size="large"
-          placeholder="验证码"
-          maxlength="8"
-          :disabled="captchaSubmitting || captchaRefreshing"
-          @keyup.enter="submitCaptcha"
-        />
-        <button
-          v-if="jwxt.captchaImage"
-          type="button"
-          class="captcha-image-button"
-          :disabled="captchaSubmitting || captchaRefreshing"
-          aria-label="刷新验证码"
-          title="刷新验证码"
-          @click="reloadCaptcha"
-        >
-          <img :src="jwxt.captchaImage" alt="验证码" loading="lazy" decoding="async" fetchpriority="low" />
-        </button>
-      </div>
-      <p v-if="captchaError" class="error-text">{{ captchaError }}</p>
-      <el-button type="primary" size="large" :loading="captchaSubmitting" :disabled="captchaRefreshing" @click="submitCaptcha">完成授权</el-button>
-    </section>
-
-    <section v-else-if="!parsed && !jwxt.isLoggedIn" class="state-card">
+    <section v-if="!parsed && !jwxt.isLoggedIn" class="state-card">
       <el-icon class="big"><Lock /></el-icon>
       <h2>{{ parsed ? "课表授权已失效" : "需要先登录教务" }}</h2>
       <p>{{ parsed ? "当前显示的是旧课表缓存，请重新授权新版教务后读取最新学期。" : "登录后可快速查看课表，也可以把这个页面加到桌面方便下次打开。勾选保持登录后会在当前浏览器加密保存账号密码，验证码不会保存。" }}</p>
@@ -757,12 +722,11 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { Aim, ArrowLeft, ArrowRight, Download, Iphone, Loading, Lock, Moon, MoreFilled, Picture, QuestionFilled, Refresh, Tools } from "@element-plus/icons-vue";
+import { Aim, ArrowLeft, ArrowRight, Download, Iphone, Lock, Moon, MoreFilled, Picture, QuestionFilled, Refresh, Tools } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
 import { useAuthStore } from "@/stores/auth";
 import { useAppearanceStore } from "@/stores/appearance";
 import { useJwxtStore } from "@/stores/jwxt";
-import { hasCreds as hasSavedCreds, loadCreds } from "@/utils/credCrypto";
 import { detectInAppBrowser } from "@/utils/inAppBrowser";
 import {
   detectClientPlatform,
@@ -858,13 +822,7 @@ const activeDay = ref(dayOfWeek());
 const viewMode = ref<ViewMode>("day");
 const scheduleTheme = ref<ScheduleThemeKey>("green");
 const loading = ref(false);
-const autoLoading = ref(false);
 const offlineMode = ref(typeof navigator !== "undefined" ? navigator.onLine === false : false);
-const hasCreds = ref(false);
-const captchaInput = ref("");
-const captchaSubmitting = ref(false);
-const captchaRefreshing = ref(false);
-const captchaError = ref("");
 const scheduleSavedAt = ref(0);
 const scheduleEdits = ref<ScheduleEditState>(emptyScheduleEdits());
 const viewportHeight = ref(0);
@@ -1360,7 +1318,6 @@ onMounted(() => {
   document.body.classList.add("schedule-scroll-lock");
   jwxt.hydrate();
   scheduleSource.value = prefersGraduateIdentity.value ? "graduate" : "jwxt";
-  hasCreds.value = hasSavedCreds();
   syncNetworkStatus();
   restoreScheduleTheme();
 
@@ -1384,12 +1341,10 @@ onMounted(() => {
 
   if (offlineMode.value) return;
 
-  // 后台静默：刷新会话状态 + 自动登录 + 重新拉数据。失败也不影响已显示的缓存。
+  // 后台静默：只刷新现有会话并重新拉数据，不自动提交已保存凭据。
   void (async () => {
     try {
-      autoLoading.value = hasCreds.value;
-      const ready = await jwxt.ensureSession({ refresh: true, silent: true });
-      if (!disposed) autoLoading.value = false;
+      const ready = await jwxt.ensureSession({ refresh: true, silent: true, allowAutoLogin: false });
       if (disposed || !ready) return;
       if (jwxt.isLoggedIn) {
         const background = Boolean(parsed.value);
@@ -1405,7 +1360,6 @@ onMounted(() => {
     } catch {
       /* Keep visible cache when background sync fails. */
     } finally {
-      if (!disposed) autoLoading.value = false;
     }
   })();
 });
@@ -1415,7 +1369,6 @@ onBeforeUnmount(() => {
   scheduleRequestSeq += 1;
   foregroundScheduleRequestSeq = scheduleRequestSeq;
   loading.value = false;
-  autoLoading.value = false;
   gradDebugLoading.value = false;
   document.documentElement.classList.remove("schedule-scroll-lock");
   document.body.classList.remove("schedule-scroll-lock");
@@ -2221,53 +2174,6 @@ function resetActiveScheduleBodyScroll() {
   const scrollBody = contentRef.value?.querySelector<HTMLElement>(".schedule-panel.active .schedule-body-scroll");
   if (!scrollBody) return;
   scrollBody.scrollTop = 0;
-}
-
-async function reloadCaptcha() {
-  if (captchaSubmitting.value || captchaRefreshing.value) return;
-  captchaRefreshing.value = true;
-  captchaInput.value = "";
-  captchaError.value = "";
-  try {
-    await jwxt.beginLogin().catch(() => undefined);
-  } finally {
-    captchaRefreshing.value = false;
-  }
-}
-
-async function submitCaptcha() {
-  if (captchaSubmitting.value || captchaRefreshing.value) return;
-  if (!captchaInput.value.trim()) {
-    captchaError.value = "请输入验证码";
-    return;
-  }
-  const creds = await loadCreds().catch(() => null);
-  if (!creds) {
-    ElMessage.warning("未找到保存的账号，请先完成教务授权");
-    return;
-  }
-  captchaSubmitting.value = true;
-  captchaError.value = "";
-  try {
-    const ok = await jwxt.submitLogin(creds.username, creds.password, captchaInput.value.trim(), true);
-    if (!ok) {
-      captchaError.value = jwxt.error || "验证码错误，请重试";
-      captchaInput.value = "";
-      return;
-    }
-    ElMessage.success("授权成功");
-    restoreLastState();
-    restoreCachedCalendar();
-    restoreLastScheduleCache();
-    if (prefersGraduateIdentity.value) {
-      await loadGraduateSchedule();
-    } else {
-      await loadCalendar();
-      await loadSchedule(true);
-    }
-  } finally {
-    captchaSubmitting.value = false;
-  }
 }
 
 function updateViewportHeight() {

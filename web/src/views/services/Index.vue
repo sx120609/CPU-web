@@ -80,49 +80,7 @@
       <IServicePane />
     </template>
 
-    <!-- 未登录但正在尝试自动登录：显示加载占位 -->
-    <div v-else-if="autoLoading" class="cpu-card login-hint">
-      <el-icon class="big-icon is-loading"><Loading /></el-icon>
-      <div class="hint-body">
-        <h3>正在恢复登录状态…</h3>
-        <p>正在使用已保存的账号快速登录。</p>
-      </div>
-    </div>
-
-    <!-- 自动登录撞到验证码：inline 展示验证码框 -->
-    <div v-else-if="jwxt.needCaptcha && hasCreds" class="cpu-card login-hint captcha-card">
-      <el-icon class="big-icon"><Picture /></el-icon>
-      <div class="hint-body">
-        <h3>输入验证码后继续</h3>
-        <p>账号已经准备好了，只需补一次验证码。</p>
-        <div class="captcha-row">
-          <el-input
-            v-model="captchaInput"
-            placeholder="看图输入验证码"
-            maxlength="8"
-            style="flex:1; min-width:160px"
-            :disabled="captchaSubmitting || captchaRefreshing"
-            @keyup.enter="submitCaptcha"
-          />
-          <button
-            v-if="jwxt.captchaImage"
-            type="button"
-            class="vcode-img-button"
-            :disabled="captchaSubmitting || captchaRefreshing"
-            aria-label="刷新验证码"
-            title="刷新验证码"
-            @click="reloadCaptcha"
-          >
-            <img :src="jwxt.captchaImage" alt="captcha" class="vcode-img" loading="lazy" decoding="async" fetchpriority="low" />
-          </button>
-          <el-button text :loading="captchaRefreshing" :disabled="captchaSubmitting" @click="reloadCaptcha"><el-icon><Refresh /></el-icon></el-button>
-        </div>
-        <div v-if="captchaError" class="captcha-err">{{ captchaError }}</div>
-        <el-button class="captcha-submit" type="primary" :loading="captchaSubmitting" :disabled="captchaRefreshing" size="large" @click="submitCaptcha">完成授权</el-button>
-      </div>
-    </div>
-
-    <!-- 没保存过学校账号 → 引导去 /jwxt 完整登录 -->
+    <!-- 未登录 → 引导去 /jwxt 完整登录 -->
     <div v-else class="cpu-card login-hint">
       <el-icon class="big-icon"><Lock /></el-icon>
       <div class="hint-body">
@@ -134,7 +92,7 @@
     </div>
 
     <!-- 未登录的兜底：少量基础外链 -->
-    <div v-if="!jwxt.isLoggedIn && !autoLoading" class="fallback">
+    <div v-if="!jwxt.isLoggedIn" class="fallback">
       <h4 class="fb-title">公开入口</h4>
       <div class="fb-grid">
         <a href="http://lib.cpu.edu.cn" target="_blank" rel="noopener noreferrer" class="fb-card"><span class="fb-icon">📚</span><span>图书馆</span></a>
@@ -152,13 +110,12 @@
 
 <script setup lang="ts">
 import { computed, ref, onBeforeUnmount, onMounted, watch } from "vue";
-import { Lock, Loading, Picture, Refresh, Right, Tools } from "@element-plus/icons-vue";
+import { Lock, Right, Tools } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { useJwxtStore } from "@/stores/jwxt";
 import { useSiteStore } from "@/stores/site";
-import { loadCreds, hasCreds as hasSavedCreds } from "@/utils/credCrypto";
 import { readViewCache, writeViewCache } from "@/utils/viewCache";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
 import IServicePane from "@/components/jwxt/IServicePane.vue";
@@ -171,12 +128,6 @@ const auth = useAuthStore();
 const router = useRouter();
 const route = useRoute();
 const site = useSiteStore();
-const autoLoading = ref(false);
-const hasCreds = ref(false);
-const captchaInput = ref("");
-const captchaSubmitting = ref(false);
-const captchaRefreshing = ref(false);
-const captchaError = ref("");
 const electricOpen = ref(false);
 const toolMetas = ref<ToolMeta[]>([]);
 const toolsLoading = ref(false);
@@ -201,23 +152,13 @@ onMounted(async () => {
   restoreToolMetasCache();
   void loadToolMetas();
   jwxt.hydrate();
-  hasCreds.value = hasSavedCreds();
   try {
     await jwxt.refreshStatus();
   } catch {
     if (!disposed) ElMessage.warning("教务登录状态暂时无法刷新，基础服务仍可继续使用");
   }
   if (disposed) return;
-  if (jwxt.isLoggedIn) return;
-
-  // 只要本地存了学校账号就尝试，不再要求"rememberSaved"
-  if (hasCreds.value) {
-    autoLoading.value = true;
-    try { await jwxt.tryAutoLogin(); }
-    catch { if (!disposed) ElMessage.warning("自动登录未完成，请前往教务数据授权页手动登录"); }
-    finally { if (!disposed) autoLoading.value = false; }
-    // 如果 tryAutoLogin 命中 captcha，模板会自动切到 captcha-card；用户输入完点按钮 submitCaptcha
-  }
+  // 服务页只探测现有教务会话，不自动提交已保存的学校凭据。
 });
 
 onBeforeUnmount(() => {
@@ -268,43 +209,6 @@ function openTool(tool: ServiceTool) {
   router.push(tool.routeName === "service-tool-detail"
     ? { name: tool.routeName, params: { slug: tool.slug } }
     : { name: tool.routeName });
-}
-
-async function reloadCaptcha() {
-  if (captchaSubmitting.value || captchaRefreshing.value) return;
-  captchaRefreshing.value = true;
-  captchaInput.value = "";
-  captchaError.value = "";
-  try {
-    await jwxt.beginLogin();
-  } catch { /* store 内部已 set error */ }
-  finally {
-    captchaRefreshing.value = false;
-  }
-}
-
-async function submitCaptcha() {
-  if (captchaSubmitting.value || captchaRefreshing.value) return;
-  if (!captchaInput.value.trim()) {
-    captchaError.value = "请输入验证码";
-    return;
-  }
-  const creds = await loadCreds().catch(() => null);
-  if (!creds) {
-    ElMessage.warning("未找到保存的账号，请前往教务数据授权");
-    return;
-  }
-  captchaSubmitting.value = true;
-  captchaError.value = "";
-  try {
-    const ok = await jwxt.submitLogin(creds.username, creds.password, captchaInput.value.trim(), true);
-    if (ok) {
-      ElMessage.success("授权成功");
-    } else {
-      captchaError.value = jwxt.error || "验证码错误，请重试";
-      captchaInput.value = "";
-    }
-  } finally { captchaSubmitting.value = false; }
 }
 
 function normalizeToolsError(error: unknown) {

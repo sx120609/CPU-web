@@ -110,7 +110,6 @@ import { ElMessage, type FormInstance, type FormRules } from "element-plus";
 import { User, Lock, Refresh, ArrowLeft } from "@element-plus/icons-vue";
 import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
-import { loadCreds, hasCreds } from "@/utils/credCrypto";
 import { isOAuthAuthorizationRedirect, isServerHandledRedirect, resolveLoginRedirect } from "@/utils/redirect";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
 
@@ -151,23 +150,7 @@ onMounted(async () => {
   } catch (e: any) {
     auth.ssoError = "统一认证暂时不可用，请稍后再试。若你无法使用统一认证，可展开下方“其他方式登录”。";
   }
-  // "刚主动退出"标记：本次浏览器会话内持续禁止自动登录；
-  // 关闭浏览器（sessionStorage 失效）后下次再访问才会照常自动登录。
-  let justLoggedOut = false;
-  try {
-    justLoggedOut = sessionStorage.getItem("cpu-just-logged-out") === "1";
-  } catch { /* ignore */ }
-  if (!justLoggedOut && hasCreds() && !auth.ssoError) {
-    const creds = await loadCreds().catch(() => null);
-    if (creds && !auth.ssoNeedCaptcha) {
-      ElMessage.info("正在尝试自动登录…");
-      const ok = await auth.tryAutoSsoLogin();
-      if (ok) {
-        ElMessage.success(`欢迎，${auth.user?.nickname || creds.username}`);
-        finishLoginRedirect();
-      }
-    }
-  }
+  // 登录页只准备统一认证表单，不自动提交已保存的学校凭据。
 });
 
 async function reloadCaptcha() {
