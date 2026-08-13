@@ -1,7 +1,7 @@
 import { defineStore } from "pinia";
 import { authApi, type UserInfo, type RegisterPayload } from "@/api/auth";
 import { clearToken, COOKIE_SESSION_MARKER, getToken, hasAuthPresence, setToken } from "@/api/request";
-import { jwxtApi, setJwxtToken, clearJwxtToken, JWXT_COOKIE_SESSION_MARKER } from "@/api/jwxt";
+import { jwxtApi, getJwxtToken, setJwxtToken, clearJwxtToken, JWXT_COOKIE_SESSION_MARKER } from "@/api/jwxt";
 import { clearCreds, saveCreds } from "@/utils/credCrypto";
 import { encryptAgentLoginCredentials } from "@/utils/agentCredentialCrypto";
 import { clearJwxtDataCaches, purgeLegacySensitiveJwxtCaches } from "@/utils/jwxtCache";
@@ -17,6 +17,10 @@ import {
 const DATA_AUTH_KEY_PREFIX = "cpu-data-auth-agreement-v1";
 
 let autoSsoLoginInFlight: Promise<boolean> | null = null;
+
+function clearJustLoggedOutMarker() {
+  try { sessionStorage.removeItem("cpu-just-logged-out"); } catch { /* ignore */ }
+}
 
 function dataAuthKey(username: string) {
   return `${DATA_AUTH_KEY_PREFIX}:${username}`;
@@ -48,6 +52,9 @@ export const useAuthStore = defineStore("auth", {
     token: "",
     academicIdentity: storedIdentity ?? DEFAULT_ACADEMIC_IDENTITY,
     academicIdentityResolved: Boolean(storedIdentity),
+    // 学校账号本身可以登录成功，但教务入口暂时还没有数据；单独记录该状态，
+    // 避免后台恢复把“无教务数据”误判成过期并无限重试。
+    academicIdentityUnavailable: false,
     academicIdentityDetecting: false,
     ready: false,
     dataAuthAgreed: false,
@@ -89,6 +96,7 @@ export const useAuthStore = defineStore("auth", {
     applyAuthenticatedSession(authToken: string, user: UserInfo) {
       const previousUserId = this.user?.id ?? null;
       const wasLoggedIn = this.isLoggedIn;
+      clearJustLoggedOutMarker();
       setToken(authToken);
       this.token = authToken;
       this.user = user;
@@ -111,12 +119,14 @@ export const useAuthStore = defineStore("auth", {
     setAcademicIdentity(identity: AcademicIdentity) {
       this.academicIdentity = identity;
       this.academicIdentityResolved = true;
+      this.academicIdentityUnavailable = false;
       writeAcademicIdentity(identity);
     },
 
     clearAcademicIdentity() {
       this.academicIdentity = DEFAULT_ACADEMIC_IDENTITY;
       this.academicIdentityResolved = false;
+      this.academicIdentityUnavailable = false;
       clearAcademicIdentity();
     },
 
@@ -130,18 +140,26 @@ export const useAuthStore = defineStore("auth", {
       if (this._pendingIdentityDetection) return this._pendingIdentityDetection;
 
       const fallback = options?.fallback ?? this.academicIdentity ?? DEFAULT_ACADEMIC_IDENTITY;
+      const requestSessionVersion = this.sessionVersion;
       const task = (async () => {
         this.academicIdentityDetecting = true;
         try {
           const result = await jwxtApi.identity({ silent: options?.silent ?? true });
+          if (this.sessionVersion !== requestSessionVersion || !this.token) return fallback;
           this.setAcademicIdentity(result.identity);
+          this.academicIdentityUnavailable = !result.capabilities.undergraduate && !result.capabilities.graduate;
           return result.identity;
-        } catch {
+        } catch (error) {
+          if (this.sessionVersion !== requestSessionVersion || !this.token) return fallback;
+          const status = Number((error as { status?: unknown } | null | undefined)?.status || 0);
+          this.academicIdentityUnavailable = status === 401;
           this.academicIdentity = fallback;
           return fallback;
         } finally {
-          this.academicIdentityDetecting = false;
-          this._pendingIdentityDetection = null;
+          if (this.sessionVersion === requestSessionVersion) {
+            this.academicIdentityDetecting = false;
+            this._pendingIdentityDetection = null;
+          }
         }
       })();
 
@@ -192,6 +210,7 @@ export const useAuthStore = defineStore("auth", {
 
     async ssoBegin(options?: { silent?: boolean }) {
       if (this._pendingSsoBegin) return this._pendingSsoBegin;
+      const requestSessionVersion = this.sessionVersion;
       const task = (async () => {
         this.ssoLoading = true;
         this.ssoError = "";
@@ -206,12 +225,15 @@ export const useAuthStore = defineStore("auth", {
             suppressAuthMessage: true,
             suppressErrorMessage: true,
           } : undefined);
+          if (this.sessionVersion !== requestSessionVersion) return;
           this.ssoPendingId = r.pendingId;
           this.ssoPendingIssuedAt = Date.now();
           this.ssoNeedCaptcha = r.needCaptcha;
           this.ssoCaptchaImage = r.captchaImage ?? "";
           this.ssoCredentialPublicKey = r.credentialPublicKey ?? "";
-        } finally { this.ssoLoading = false; }
+        } finally {
+          if (this.sessionVersion === requestSessionVersion) this.ssoLoading = false;
+        }
       })();
       this._pendingSsoBegin = task;
       try {
@@ -224,6 +246,7 @@ export const useAuthStore = defineStore("auth", {
     /** 学校 SSO 登录：同时获得站内 JWT + 教务 jwxt token */
     async ssoLogin(username: string, password: string, captcha: string | undefined, remember: boolean, options?: { silent?: boolean }): Promise<boolean> {
       if (this._pendingSsoLogin) return this._pendingSsoLogin;
+      const requestSessionVersion = this.sessionVersion;
       const task = (async () => {
         this.ssoLoading = true;
         this.ssoError = "";
@@ -261,6 +284,9 @@ export const useAuthStore = defineStore("auth", {
             }
           : { pendingId, username, password, captcha, remember };
         const r = await authApi.ssoLogin(loginPayload, loginOptions);
+        // A manual or background SSO request must not resurrect a session
+        // after the user has explicitly logged out while it was pending.
+        if (this.sessionVersion !== requestSessionVersion || (!this.token && this.ready)) return false;
         if (!r.ok || (!r.sessionAuthenticated && !r.siteToken) || !r.user) {
           this.ssoError = r.error || "登录失败";
           if (r.needCaptcha && r.captcha) {
@@ -296,11 +322,16 @@ export const useAuthStore = defineStore("auth", {
           silent: true,
           fallback: this.academicIdentity,
         });
-          return true;
+        // No academic entry for a new student is not a failed site login.
+        // Keep the station session, JWXT session marker, and saved credentials;
+        // the JWXT store only pauses background recovery until data is available.
+        return true;
         } catch (error) {
           this.ssoError = (error instanceof Error ? error.message : "") || "登录暂时失败，请稍后再试。";
           return false;
-        } finally { this.ssoLoading = false; }
+        } finally {
+          if (this.sessionVersion === requestSessionVersion) this.ssoLoading = false;
+        }
       })();
       this._pendingSsoLogin = task;
       try {
@@ -339,6 +370,7 @@ export const useAuthStore = defineStore("auth", {
     async fetchMe(options?: { probe?: boolean }) {
       if (!this.token && !options?.probe) return;
       if (this._pendingFetchMe) return this._pendingFetchMe;
+      const requestSessionVersion = this.sessionVersion;
       const task = (async () => {
         try {
           const user = await authApi.me(options?.probe ? {
@@ -346,8 +378,13 @@ export const useAuthStore = defineStore("auth", {
             suppressAuthMessage: true,
             suppressErrorMessage: true,
           } : undefined);
-          this.applyAuthenticatedSession(COOKIE_SESSION_MARKER, user);
+          // A logout may finish while the probe is in flight. Do not let the
+          // stale response restore the session that the user just revoked.
+          if (this.sessionVersion === requestSessionVersion && this.token) {
+            this.applyAuthenticatedSession(COOKIE_SESSION_MARKER, user);
+          }
         } catch {
+          if (this.sessionVersion !== requestSessionVersion) return;
           const wasLoggedIn = this.isLoggedIn;
           this.user = null;
           if (wasLoggedIn) this.sessionVersion += 1;
@@ -369,12 +406,22 @@ export const useAuthStore = defineStore("auth", {
     },
 
     async logout() {
-      try { await authApi.logout(); } catch { /* ignore */ }
-      const wasLoggedIn = this.isLoggedIn;
+      // Start server-side revocation while the browser cookie/JWXT marker is
+      // still available, but invalidate local state immediately. This makes
+      // logout responsive and prevents late probes or SSO requests restoring
+      // the session the user just ended.
+      const siteLogoutTask = authApi.logout().catch(() => undefined);
+      const jwxtLogoutTask = getJwxtToken()
+        ? jwxtApi.logout().catch(() => undefined)
+        : Promise.resolve();
+      this.sessionVersion += 1;
       clearToken(); this.token = ""; this.user = null; this.dataAuthAgreed = false; this.ready = false;
-      if (wasLoggedIn) this.sessionVersion += 1;
+      this._pendingFetchMe = null;
+      this._pendingSsoBegin = null;
+      this._pendingSsoLogin = null;
       this._pendingIdentityDetection = null;
       this.academicIdentityDetecting = false;
+      this.ssoLoading = false;
       clearJwxtToken();
       clearJwxtDataCaches();
       this.clearAcademicIdentity();
@@ -382,7 +429,9 @@ export const useAuthStore = defineStore("auth", {
       // 但**保留** credCrypto 里"记住的密码"——这样关闭浏览器再打开还能自动登录，
       // 符合"记住此账号"checkbox 的字面承诺。
       // 真正想擦凭据请去 /jwxt 点"忘记账号"。
+      // 主动退出后，本次浏览器会话不再自动使用“记住密码”重登；凭据本身仍保留。
       try { sessionStorage.setItem("cpu-just-logged-out", "1"); } catch { /* ignore */ }
+      await Promise.all([siteLogoutTask, jwxtLogoutTask]);
     },
 
     expireSession() {

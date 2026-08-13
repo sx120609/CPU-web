@@ -114,7 +114,7 @@
                   <el-dropdown-item command="profile">个人中心</el-dropdown-item>
                   <el-dropdown-item command="settings">消息设置</el-dropdown-item>
                   <el-dropdown-item v-if="auth.canAccessModuleAdmin" command="admin" divided>🛠 管理后台</el-dropdown-item>
-                  <el-dropdown-item command="logout" :divided="!auth.canAccessModuleAdmin">退出登录</el-dropdown-item>
+                  <el-dropdown-item command="logout" :divided="!auth.canAccessModuleAdmin" :disabled="logoutPending">退出登录</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
@@ -297,7 +297,7 @@
             <div>{{ auth.user?.nickname }}</div>
             <button type="button" @click="goDrawer({ id: 'system-profile', to: '/profile', label: '个人中心', icon: UserFilled })">个人中心</button>
           </div>
-          <el-button text type="danger" @click="onMobileLogout">退出</el-button>
+          <el-button text type="danger" :loading="logoutPending" :disabled="logoutPending" @click="onMobileLogout">退出</el-button>
         </template>
         <template v-else>
           <el-button type="primary" @click="goDrawerAuth('login')">登录</el-button>
@@ -385,6 +385,7 @@ const router = useRouter();
 const route = useRoute();
 const q = ref("");
 const mobileMenuOpen = ref(false);
+const logoutPending = ref(false);
 const assistantWidgetOpen = ref(false);
 const toolsWidgetOpen = ref(false);
 const downloadSafetyGuideVisible = ref(false);
@@ -866,18 +867,25 @@ function goDrawerAuth(name: "login" | "register") {
 }
 
 async function onMobileLogout() {
-  mobileMenuOpen.value = false;
-  await auth.logout();
-  router.push("/login");
+  await performLogout();
 }
 
 async function onUserCmd(cmd: string) {
   if (cmd === "profile") router.push("/profile");
   else if (cmd === "settings") router.push("/messages?tab=settings");
   else if (cmd === "admin") router.push("/admin");
-  else if (cmd === "logout") {
+  else if (cmd === "logout") await performLogout();
+}
+
+async function performLogout() {
+  if (logoutPending.value) return;
+  logoutPending.value = true;
+  mobileMenuOpen.value = false;
+  try {
     await auth.logout();
-    router.push("/login");
+    await router.replace("/login");
+  } finally {
+    logoutPending.value = false;
   }
 }
 

@@ -100,7 +100,6 @@
       </div>
     </div>
 
-    <FreshmanAccountNotice v-model="freshmanNoticeVisible" />
   </div>
 </template>
 
@@ -113,8 +112,6 @@ import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
 import { loadCreds, hasCreds } from "@/utils/credCrypto";
 import { isOAuthAuthorizationRedirect, isServerHandledRedirect, resolveLoginRedirect } from "@/utils/redirect";
-import { shouldShowFreshmanNotice } from "@/utils/freshmanNotice";
-import FreshmanAccountNotice from "@/components/common/FreshmanAccountNotice.vue";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
 
 const router = useRouter();
@@ -125,7 +122,6 @@ const formRef = ref<FormInstance>();
 const remember = ref(true);
 const isDev = computed(() => import.meta.env.DEV);
 const captchaRefreshing = ref(false);
-const freshmanNoticeVisible = ref(false);
 
 const form = reactive({ username: "", password: "", captcha: "" });
 const rules: FormRules = {
@@ -148,7 +144,6 @@ onMounted(async () => {
     finishLoginRedirect();
     return;
   }
-  freshmanNoticeVisible.value = shouldShowFreshmanNotice();
   // 准备 CAS 登录页（拿 lt/execution + 验证码）
   // 失败时显式回显，避免移动端用户看到一个能填但提交失败的表单
   try {
@@ -156,12 +151,11 @@ onMounted(async () => {
   } catch (e: any) {
     auth.ssoError = "统一认证暂时不可用，请稍后再试。若你无法使用统一认证，可展开下方“其他方式登录”。";
   }
-  // "刚主动退出"标记：本次进入 /login 不自动登录，标记一次性消耗掉；
-  // 关闭浏览器（sessionStorage 失效）后下次再访问就会照常自动登录。
+  // "刚主动退出"标记：本次浏览器会话内持续禁止自动登录；
+  // 关闭浏览器（sessionStorage 失效）后下次再访问才会照常自动登录。
   let justLoggedOut = false;
   try {
     justLoggedOut = sessionStorage.getItem("cpu-just-logged-out") === "1";
-    if (justLoggedOut) sessionStorage.removeItem("cpu-just-logged-out");
   } catch { /* ignore */ }
   if (!justLoggedOut && hasCreds() && !auth.ssoError) {
     const creds = await loadCreds().catch(() => null);

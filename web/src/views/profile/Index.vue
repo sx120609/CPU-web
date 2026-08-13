@@ -754,7 +754,7 @@ async function onLogout() {
   logoutBusy.value = true;
   try {
     await auth.logout();
-    router.push("/login");
+    await router.replace("/login");
   } finally {
     logoutBusy.value = false;
   }

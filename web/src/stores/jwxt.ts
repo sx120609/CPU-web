@@ -25,6 +25,10 @@ function justLoggedOutThisSession() {
   }
 }
 
+function markLoggedOutThisSession() {
+  try { sessionStorage.setItem("cpu-just-logged-out", "1"); } catch { /* ignore */ }
+}
+
 function isJwxtAuthExpired(error: unknown) {
   const candidate = error as {
     status?: number;
@@ -79,7 +83,10 @@ export const useJwxtStore = defineStore("jwxt", {
   actions: {
     hydrate() {
       this.token = getJwxtToken();
-      if (!this.token && useAuthStore().token) {
+      // 站内独立账号可能没有任何学校侧会话；不要为这类账号伪造 JWXT 标记，
+      // 否则教务启动会把缺失的教务记录当成过期会话并不断重试。
+      const auth = useAuthStore();
+      if (!this.token && auth.token && auth.user?.studentSso !== false) {
         setJwxtToken(JWXT_COOKIE_SESSION_MARKER);
         this.token = JWXT_COOKIE_SESSION_MARKER;
       }
@@ -198,6 +205,9 @@ export const useJwxtStore = defineStore("jwxt", {
       const task = (async () => {
         this.rememberSaved = hasCreds();
         const auth = useAuthStore();
+        if (auth.academicIdentityUnavailable && auth.user?.studentSso && !options?.forceLogin) {
+          return false;
+        }
         // 验活与 SSO 表单准备并行：真过期时可以少等一次 Agent/学校往返。
         const recoveryPreparation = this.rememberSaved
           && auth.ssoPendingId.trim().length < 8
@@ -258,11 +268,17 @@ export const useJwxtStore = defineStore("jwxt", {
       this.rememberSaved = false;
     },
     async logout() {
-      try { await jwxtApi.logout(); } catch { /* ignore */ }
+      const serverLogoutTask = this.token
+        ? jwxtApi.logout().catch(() => undefined)
+        : Promise.resolve();
+      // Clear local state before waiting on the remote education service so a
+      // pending recovery cannot immediately recreate the session.
       clearJwxtToken();
       this.token = "";
       this.active = false;
-      // 注意：默认不删 saved creds，下次还能自动登录
+      markLoggedOutThisSession();
+      await serverLogoutTask;
+      // 默认不删 saved creds；当前标签页不再自动恢复，手动登录仍可继续使用。
       // 站内会话由 useAuthStore().logout() 单独处理（这里不动）
     },
   },

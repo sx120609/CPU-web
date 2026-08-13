@@ -126,7 +126,12 @@ export const authApi = {
       | { pendingId: string; credentials: AgentEncryptedLoginCredentials; remember?: boolean },
     options?: RequestOptions,
   ) => request.post<SsoLoginResult>("/auth/sso-login", p, options),
-  logout: () => request.post<{ ok: true }>("/auth/logout"),
+  logout: (options?: RequestOptions) => request.post<{ ok: true }>("/auth/logout", undefined, {
+    suppressAuthRedirect: true,
+    suppressAuthMessage: true,
+    suppressErrorMessage: true,
+    ...options,
+  }),
   me: (options?: RequestOptions) => request.get<UserInfo>("/user/me", undefined, options),
   updateMe: (payload: Partial<UserInfo>) => request.patch<UserInfo>("/user/me", payload),
   changePassword: (oldPassword: string, newPassword: string) =>
