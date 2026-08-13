@@ -105,8 +105,8 @@
             </el-tooltip>
             <el-dropdown @command="onUserCmd">
               <span class="user-info">
-                <UserAvatar :size="30" class="user-avatar" :src="auth.user?.avatar" :name="auth.user?.nickname" alt="用户头像" />
-                <span class="user-name">{{ auth.user?.nickname }}</span>
+                <UserAvatar :size="30" class="user-avatar" :src="auth.user?.avatar" :name="displayName" alt="用户头像" />
+                <span class="user-name">{{ displayName }}</span>
                 <el-icon><ArrowDown /></el-icon>
               </span>
               <template #dropdown>
@@ -292,9 +292,9 @@
       </div>
       <div class="drawer-account">
         <template v-if="auth.isLoggedIn">
-          <UserAvatar :size="34" class="user-avatar" :src="auth.user?.avatar" :name="auth.user?.nickname" alt="用户头像" />
+          <UserAvatar :size="34" class="user-avatar" :src="auth.user?.avatar" :name="displayName" alt="用户头像" />
           <div class="drawer-user">
-            <div>{{ auth.user?.nickname }}</div>
+            <div>{{ displayName }}</div>
             <button type="button" @click="goDrawer({ id: 'system-profile', to: '/profile', label: '个人中心', icon: UserFilled })">个人中心</button>
           </div>
           <el-button text type="danger" :loading="logoutPending" :disabled="logoutPending" @click="onMobileLogout">退出</el-button>
@@ -562,6 +562,8 @@ function navigationItemVisible(item: TopNavigationItem) {
 function isExternalNav(to: string) {
   return /^(?:https?:\/\/|mailto:|#)/i.test(to);
 }
+
+const displayName = computed(() => auth.user?.nickname?.trim() || auth.user?.username?.trim() || "已登录");
 
 // 首次登录设昵称
 const showNicknameDialog = ref(false);

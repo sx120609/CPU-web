@@ -4,7 +4,7 @@ import { ok } from "../utils/response";
 import { withCache } from "../services/cache";
 import { normalizeServiceCard, visibleServiceWhere } from "../services/serviceCards";
 import { enabledBoardTypes, getGlobalPinnedTopicIds } from "../services/siteSettings";
-import { isForumStaffRole, resolveForumAccess } from "../services/forumAccess";
+import { resolveForumAccess } from "../services/forumAccess";
 import { decodeTopicForViewer } from "../services/forumPresentation";
 import { buildUserTrustSnapshot } from "../services/userTrust";
 import { visibleBoardSlugFilter } from "../services/retiredBoards";
@@ -30,7 +30,7 @@ homeRouter.get("/summary", async (req, res, next) => {
       userId ? prisma.notificationRead.findMany({ where: { userId }, select: { notificationId: true } }) : Promise.resolve([]),
       userId ? prisma.notification.count({ where: { userId: null } }) : Promise.resolve(0),
     ]);
-    const forumAccessEnabled = user ? (isForumStaffRole(user.role) || user.forumEnabled) : await resolveForumAccess(userId, role);
+    const forumAccessEnabled = await resolveForumAccess(userId, role);
     const trust = user ? buildUserTrustSnapshot(user) : null;
     const readableBoardTypes = enabledBoardTypes();
     const contentBoardTypes = readableBoardTypes.filter((type) => type !== "announce");

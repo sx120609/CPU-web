@@ -125,7 +125,15 @@
 
     <!-- 已登录：功能 Tab -->
     <div v-else class="jwxt-shell">
-      <div class="cpu-card session-info" :class="{ 'is-cache-only': !jwxt.isLoggedIn }">
+      <div v-if="academicDataUnavailable" class="cpu-card academic-empty-state">
+        <el-empty description="暂无教务数据" :image-size="88" />
+        <div class="academic-empty-desc">
+          <p>当前账号已登录站内服务，但学校暂未创建可读取的教务入口。</p>
+          <p>等教务数据开通后，这里会直接显示，无需重新登录。</p>
+        </div>
+      </div>
+
+      <div v-if="!academicDataUnavailable" class="cpu-card session-info" :class="{ 'is-cache-only': !jwxt.isLoggedIn }">
         <div class="session-main">
           <el-icon class="session-ok"><CircleCheckFilled /></el-icon>
           <div class="session-copy">
@@ -167,7 +175,7 @@
         </el-button>
       </div>
 
-      <el-tabs v-if="hasJwxtTabs" v-model="tab" class="cpu-card jwxt-tabs" @tab-change="onTabChange">
+      <el-tabs v-if="!academicDataUnavailable && hasJwxtTabs" v-model="tab" class="cpu-card jwxt-tabs" @tab-change="onTabChange">
         <el-tab-pane v-if="showScheduleTab" :label="isMobileViewport ? '课表' : '📅 课表'" name="schedule">
           <SchedulePane :data="schedule" :loading="tabLoading" :source="isGraduateIdentity ? 'graduate' : 'jwxt'" />
         </el-tab-pane>
@@ -201,7 +209,7 @@
           </div>
         </el-tab-pane>
       </el-tabs>
-      <div v-else class="cpu-card mobile-schedule-hint">
+      <div v-if="!academicDataUnavailable && !hasJwxtTabs" class="cpu-card mobile-schedule-hint">
         <div>
           <h3>移动端课表已放到单独入口</h3>
           <p>当前账号已连接教务系统。请从底部「课表」入口查看课表。</p>
@@ -283,7 +291,7 @@ const availableDataTabs = computed<DataTab[]>(() => {
 });
 const hasJwxtTabs = computed(() => availableDataTabs.value.length > 0 || isDev.value);
 const hasCachedData = computed(() => availableDataTabs.value.some((item) => Boolean(getTabData(item))));
-const showDataShell = computed(() => !showLoginOverride.value && (jwxt.isLoggedIn || hasCachedData.value));
+const showDataShell = computed(() => !showLoginOverride.value && (jwxt.isLoggedIn || hasCachedData.value || academicDataUnavailable.value));
 const academicDataUnavailable = computed(() => Boolean(
   auth.user?.studentSso && auth.academicIdentityUnavailable,
 ));
@@ -291,7 +299,9 @@ const usingSavedCaptchaRecovery = computed(() => (
   jwxt.needCaptcha && jwxt.rememberSaved && !form.password
 ));
 const pageHintText = computed(() => (
-  isGraduateIdentity.value
+  academicDataUnavailable.value
+    ? "当前账号已完成站内登录，但学校暂未开放可读取的教务数据。"
+    : isGraduateIdentity.value
     ? showScheduleTab.value
       ? "通过学校统一认证查看研究生课表，信息会整理成更方便阅读的样子。"
       : "通过学校统一认证连接研究生入口，移动端课表请使用单独课表页。"
@@ -877,6 +887,18 @@ async function onProbe() {
   gap: 8px;
   flex-wrap: wrap;
   flex-shrink: 0;
+}
+.academic-empty-state {
+  padding: 28px 20px;
+  text-align: center;
+}
+.academic-empty-desc {
+  color: var(--cpu-text-secondary);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.academic-empty-desc p {
+  margin: 0;
 }
 .remember-tag {
   margin-right: 0;
