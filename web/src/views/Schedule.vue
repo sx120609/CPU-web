@@ -285,7 +285,17 @@
       </button>
     </section>
 
-    <section v-if="!parsed && !jwxt.isLoggedIn" class="state-card">
+    <section v-if="academicDataUnavailable" class="state-card academic-empty-state">
+      <el-icon class="big"><InfoFilled /></el-icon>
+      <h2>暂无教务数据</h2>
+      <p>当前账号已经完成站内登录，但学校暂未开放可读取的教务入口。</p>
+      <p>教务数据开通后，这里会自动显示课表，不需要重新登录。</p>
+      <el-button type="primary" size="large" @click="$router.push({ name: 'jwxt', query: { redirect: '/schedule' } })">
+        查看教务状态
+      </el-button>
+    </section>
+
+    <section v-else-if="!parsed && !jwxt.isLoggedIn" class="state-card">
       <el-icon class="big"><Lock /></el-icon>
       <h2>{{ parsed ? "课表授权已失效" : "需要先登录教务" }}</h2>
       <p>{{ parsed ? "当前显示的是旧课表缓存，请重新授权新版教务后读取最新学期。" : "登录后可快速查看课表，也可以把这个页面加到桌面方便下次打开。勾选保持登录后会在当前浏览器加密保存账号密码，验证码不会保存。" }}</p>
@@ -722,7 +732,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { Aim, ArrowLeft, ArrowRight, Download, Iphone, Lock, Moon, MoreFilled, Picture, QuestionFilled, Refresh, Tools } from "@element-plus/icons-vue";
+import { Aim, ArrowLeft, ArrowRight, Download, InfoFilled, Iphone, Lock, Moon, MoreFilled, Picture, QuestionFilled, Refresh, Tools } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
 import { useAuthStore } from "@/stores/auth";
 import { useAppearanceStore } from "@/stores/appearance";
@@ -944,6 +954,9 @@ const widgetCopyMessage = ref("");
 const SCRIPTABLE_ADD_URL = "https://open.scriptable.app/add";
 let widgetInstructionTimer = 0;
 const prefersGraduateIdentity = computed(() => auth.academicIdentity === "graduate");
+const academicDataUnavailable = computed(() => Boolean(
+  auth.user?.studentSso && auth.academicIdentityUnavailable,
+));
 const scheduleLoginScopeText = computed(() => (
   "登录后会自动识别你当前可用的教务入口。本科生默认显示本科课表，研究生当前显示研究生课表。"
 ));
