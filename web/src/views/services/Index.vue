@@ -1,9 +1,12 @@
 <template>
   <div class="services-page">
-    <div class="page-head" :class="{ centered: !jwxt.isLoggedIn }">
+    <div class="page-head" :class="{ centered: !jwxt.isLoggedIn && !academicDataUnavailable }">
       <div>
         <h2>🎯 校园服务</h2>
-        <p class="hint">
+        <p v-if="academicDataUnavailable" class="hint">
+          当前账号已完成站内登录，但学校暂未开放可读取的教务数据；公共服务仍可正常使用，教务相关入口会在数据可用后自动显示。
+        </p>
+        <p v-else class="hint">
           整理常用校园入口。登录教务后，还可以查看更完整的应用列表。
         </p>
       </div>
@@ -80,6 +83,15 @@
       <IServicePane />
     </template>
 
+    <div v-else-if="academicDataUnavailable" class="cpu-card academic-empty">
+      <el-empty description="暂无教务数据" :image-size="88" />
+      <div class="academic-empty-copy">
+        <p>当前账号已经登录站内服务，但学校暂未开放可读取的教务入口。</p>
+        <p>等教务数据开通后，这里会自动补全，不需要重新登录。</p>
+      </div>
+      <el-button type="primary" plain @click="$router.push('/jwxt')">查看教务说明</el-button>
+    </div>
+
     <!-- 未登录 → 引导去 /jwxt 完整登录 -->
     <div v-else class="cpu-card login-hint">
       <el-icon class="big-icon"><Lock /></el-icon>
@@ -135,6 +147,7 @@ const toolsError = ref("");
 let toolsLoadSeq = 0;
 let disposed = false;
 const toolsCacheKey = computed(() => `cpu-services-tools-v1:${auth.user?.id ? `user-${auth.user.id}` : "guest"}`);
+const academicDataUnavailable = computed(() => Boolean(auth.user?.studentSso && auth.academicIdentityUnavailable));
 const toolAccessMap = computed(() => Object.fromEntries(toolMetas.value.map((item) => [item.code, item])));
 const visibleTools = computed(() => serviceTools.filter((tool) => toolAccessMap.value[tool.slug]?.isVisible !== false));
 
@@ -231,6 +244,24 @@ function normalizeToolsError(error: unknown) {
 .page-head h2 { margin: 0; font-size: 22px; }
 .page-head .hint { font-size: 13px; color: var(--cpu-text-secondary); margin: 4px 0 0; line-height: 1.7; }
 .page-head .hint a { color: var(--cpu-primary); }
+
+.academic-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+
+.academic-empty-copy {
+  color: var(--cpu-text-secondary);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.academic-empty-copy p {
+  margin: 0;
+}
 
 .cpu-card {
   background: var(--cpu-card);
