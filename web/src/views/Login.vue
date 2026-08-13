@@ -110,6 +110,7 @@ import { ElMessage, type FormInstance, type FormRules } from "element-plus";
 import { User, Lock, Refresh, ArrowLeft } from "@element-plus/icons-vue";
 import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
+import { loadCreds } from "@/utils/credCrypto";
 import { isOAuthAuthorizationRedirect, isServerHandledRedirect, resolveLoginRedirect } from "@/utils/redirect";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
 
@@ -142,6 +143,14 @@ onMounted(async () => {
   if (auth.isLoggedIn) {
     finishLoginRedirect();
     return;
+  }
+  // 读取浏览器中加密保存的学校凭据并回填表单，但不自动提交。
+  // 这样退出后仍能看到已保存的账号密码，同时避免后台重试把新生账号锁定。
+  const savedCreds = await loadCreds().catch(() => null);
+  if (savedCreds) {
+    form.username = savedCreds.username;
+    form.password = savedCreds.password;
+    remember.value = true;
   }
   // 准备 CAS 登录页（拿 lt/execution + 验证码）
   // 失败时显式回显，避免移动端用户看到一个能填但提交失败的表单
