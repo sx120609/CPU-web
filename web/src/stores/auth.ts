@@ -10,7 +10,9 @@ import {
   clearAcademicIdentity,
   DEFAULT_ACADEMIC_IDENTITY,
   readAcademicIdentity,
+  readAcademicIdentityUnavailable,
   writeAcademicIdentity,
+  writeAcademicIdentityUnavailable,
   type AcademicIdentity,
 } from "@/utils/academicIdentity";
 
@@ -101,6 +103,9 @@ export const useAuthStore = defineStore("auth", {
       this.token = authToken;
       this.user = user;
       this.syncDataAuthAgreement(user);
+      this.academicIdentityUnavailable = Boolean(
+        user.studentSso && readAcademicIdentityUnavailable(user.username),
+      );
       this.ready = true;
       if (!wasLoggedIn || previousUserId !== user.id) {
         this.sessionVersion += 1;
@@ -121,6 +126,7 @@ export const useAuthStore = defineStore("auth", {
       this.academicIdentityResolved = true;
       this.academicIdentityUnavailable = false;
       writeAcademicIdentity(identity);
+      writeAcademicIdentityUnavailable(this.user?.username, false);
     },
 
     clearAcademicIdentity() {
@@ -148,11 +154,15 @@ export const useAuthStore = defineStore("auth", {
           if (this.sessionVersion !== requestSessionVersion || !this.token) return fallback;
           this.setAcademicIdentity(result.identity);
           this.academicIdentityUnavailable = !result.capabilities.undergraduate && !result.capabilities.graduate;
+          writeAcademicIdentityUnavailable(this.user?.username, this.academicIdentityUnavailable);
           return result.identity;
-        } catch (error) {
+        } catch {
           if (this.sessionVersion !== requestSessionVersion || !this.token) return fallback;
-          const status = Number((error as { status?: unknown } | null | undefined)?.status || 0);
-          this.academicIdentityUnavailable = status === 401;
+          // A real 401 means the JWXT session needs reauthorization. Empty
+          // academic data is returned as a successful identity probe and is
+          // persisted separately, so it must not be confused with expiry.
+          this.academicIdentityUnavailable = false;
+          writeAcademicIdentityUnavailable(this.user?.username, false);
           this.academicIdentity = fallback;
           return fallback;
         } finally {
@@ -343,6 +353,7 @@ export const useAuthStore = defineStore("auth", {
 
     /** Background recovery shares one school SSO submission. */
     async tryAutoSsoLogin(options?: { silent?: boolean }): Promise<boolean> {
+      if (this.academicIdentityUnavailable && this.user?.studentSso) return false;
       if (autoSsoLoginInFlight) return autoSsoLoginInFlight;
       const task = (async () => {
         const { loadCreds } = await import("@/utils/credCrypto");

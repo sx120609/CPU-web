@@ -304,11 +304,6 @@ function assertUsablePyfa<T extends { list?: unknown[]; bySemester?: unknown[] }
   return parsed;
 }
 
-function assertUsableIdentity<T extends { capabilities?: { undergraduate?: boolean; graduate?: boolean } }>(payload: T): T {
-  if (!payload?.capabilities?.undergraduate && !payload?.capabilities?.graduate) throw staleJwxtSessionError();
-  return payload;
-}
-
 function graduateScheduleCourseCount(result: any) {
   return (result?.parsed?.cells ?? []).reduce(
     (sum: number, cell: any) => sum + (cell?.courses?.length ?? 0),
@@ -332,7 +327,11 @@ async function detectAcademicIdentity(token: string) {
     // 研究生账号可能没有本科教务权限，本科探测失败会清理共享会话；
     // 因此先确认研究生入口，成功后不再触碰本科入口。
     probeGraduate: () => getGraduateSchedule(token, {}),
-    probeUndergraduate: () => getSchedule(token, {}).then(assertUsableUndergraduateSchedule),
+    // Keep an empty but authenticated schedule as a valid probe result. The
+    // identity predicate below reports it as unavailable; wrapping this probe
+    // in the normal data assertion would turn a new student's empty record
+    // into a false session-expired 401.
+    probeUndergraduate: () => getSchedule(token, {}),
     isGraduateUsable: hasUsableGraduateSchedule,
     isUndergraduateUsable: hasUsableUndergraduateSchedule,
   });
@@ -741,12 +740,12 @@ jwxtRouter.get("/identity", async (req, res, next) => {
     const token = getToken(req);
     if (!token) throw Errors.unauthorized("请先登录教务系统");
     const cacheId = jwxtTokenCacheId(token);
-    const payload = assertUsableIdentity(await withCache(
+    const payload = await withCache(
       "jwxt-identity",
       [cacheId],
       JWXT_IDENTITY_CACHE_TTL_MS,
-      async () => assertUsableIdentity(await detectAcademicIdentity(token)),
-    ));
+      async () => detectAcademicIdentity(token),
+    );
     res.setHeader("Cache-Control", "private, max-age=300");
     ok(res, payload);
   } catch (e) { next(e); }

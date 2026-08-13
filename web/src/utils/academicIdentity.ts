@@ -1,6 +1,7 @@
 export type AcademicIdentity = "undergraduate" | "graduate";
 
 const ACADEMIC_IDENTITY_KEY = "cpu-academic-identity-v1";
+const ACADEMIC_IDENTITY_UNAVAILABLE_KEY_PREFIX = "cpu-academic-identity-unavailable-v1";
 
 export const DEFAULT_ACADEMIC_IDENTITY: AcademicIdentity = "undergraduate";
 
@@ -49,6 +50,35 @@ export function writeAcademicIdentity(value: AcademicIdentity) {
 export function clearAcademicIdentity() {
   try {
     localStorage.removeItem(ACADEMIC_IDENTITY_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+function academicIdentityUnavailableKey(username: string) {
+  const normalized = username.trim().toLowerCase();
+  return normalized
+    ? `${ACADEMIC_IDENTITY_UNAVAILABLE_KEY_PREFIX}:${encodeURIComponent(normalized)}`
+    : "";
+}
+
+export function readAcademicIdentityUnavailable(username?: string | null) {
+  if (!username) return false;
+  try {
+    const key = academicIdentityUnavailableKey(username);
+    return Boolean(key && localStorage.getItem(key) === "1");
+  } catch {
+    return false;
+  }
+}
+
+export function writeAcademicIdentityUnavailable(username?: string | null, unavailable = true) {
+  if (!username) return;
+  try {
+    const key = academicIdentityUnavailableKey(username);
+    if (!key) return;
+    if (unavailable) localStorage.setItem(key, "1");
+    else localStorage.removeItem(key);
   } catch {
     /* ignore */
   }

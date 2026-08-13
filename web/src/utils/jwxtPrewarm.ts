@@ -114,6 +114,8 @@ async function prewarmJwxtData(options?: { force?: boolean }) {
       fallback: auth.academicIdentity,
     }).catch(() => auth.academicIdentity);
 
+    if (auth.academicIdentityUnavailable) return false;
+
     if (shouldSkipByCooldown(identity, options?.force)) return false;
     writePrewarmMarker(identity);
 

@@ -47,7 +47,7 @@ export async function detectAcademicIdentityFromProbes<TGraduate, TUndergraduate
       capabilities: {
         undergraduate: false,
         // 能完成研究生入口请求就说明统一认证交接成功；没有课程也不应被踢出。
-        graduate: true,
+        graduate: usable,
       },
     };
   }

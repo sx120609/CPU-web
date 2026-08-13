@@ -183,12 +183,14 @@ export const useJwxtStore = defineStore("jwxt", {
     /** 用本地保存的账号悄悄走一遍统一登录 */
     async tryAutoLogin(options?: { silent?: boolean }): Promise<boolean> {
       if (justLoggedOutThisSession()) return false;
+      const auth = useAuthStore();
+      if (auth.academicIdentityUnavailable && auth.user?.studentSso) return false;
       // Agent 重启后旧会话会返回 401；拦截器会清除内存状态，避免误判为在线。
       if (!getJwxtToken()) {
         this.token = "";
         this.active = false;
       }
-      if (this.active && useAuthStore().isLoggedIn) return true;
+      if (this.active && auth.isLoggedIn) return true;
       try {
         const ok = await useAuthStore().tryAutoSsoLogin({ silent: options?.silent });
         if (!ok) return false;
@@ -210,24 +212,23 @@ export const useJwxtStore = defineStore("jwxt", {
       const task = (async () => {
         this.rememberSaved = hasCreds();
         const auth = useAuthStore();
-        if (auth.academicIdentityUnavailable && auth.user?.studentSso && !options?.forceLogin) {
-          return false;
-        }
         // 验活与 SSO 表单准备并行：真过期时可以少等一次 Agent/学校往返。
         const allowAutoLogin = options?.allowAutoLogin !== false;
         // Page initialization should only probe an existing session. A
         // background saved-credential login is opt-in so a freshman with no
         // academic record is never left with a permanently disabled form.
-        const recoveryPreparation = allowAutoLogin && this.rememberSaved
-          && auth.ssoPendingId.trim().length < 8
-          && !auth.ssoNeedCaptcha
-          ? auth.ssoBegin({ silent: true }).catch(() => undefined)
-          : null;
         if (options?.refresh && this.token) {
           await this.refreshStatus().catch(() => undefined);
         }
+        if (auth.academicIdentityUnavailable && auth.user?.studentSso && !options?.forceLogin) {
+          return false;
+        }
         if (this.active && this.token && !options?.forceLogin) return true;
         if (!allowAutoLogin || !this.rememberSaved) return false;
+        const recoveryPreparation = auth.ssoPendingId.trim().length < 8
+          && !auth.ssoNeedCaptcha
+          ? auth.ssoBegin({ silent: true }).catch(() => undefined)
+          : null;
         if (recoveryPreparation) await recoveryPreparation;
         return this.tryAutoLogin({ silent: options?.silent });
       })();
@@ -241,6 +242,8 @@ export const useJwxtStore = defineStore("jwxt", {
     async recoverSession(): Promise<boolean> {
       if (jwxtSessionRecoveryInFlight) return jwxtSessionRecoveryInFlight;
       const task = (async () => {
+        const auth = useAuthStore();
+        if (auth.academicIdentityUnavailable && auth.user?.studentSso) return false;
         clearJwxtToken();
         this.token = "";
         this.active = false;
