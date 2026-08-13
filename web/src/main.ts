@@ -326,7 +326,7 @@ async function bootstrapJwxtSession() {
     }
     if (shouldSkipJwxtSessionBootstrap()) return;
     jwxt.hydrate();
-    const ready = await jwxt.ensureSession({ refresh: true, silent: true }).catch(() => false);
+    const ready = await jwxt.ensureSession({ refresh: true, silent: true, allowAutoLogin: false }).catch(() => false);
     if (ready) scheduleJwxtDataPrewarm();
   } catch {
     // Keep background restore quiet; education pages still expose manual captcha/login flow.
