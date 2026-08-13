@@ -368,7 +368,7 @@ async function initPage() {
   restoreAllTabCaches();
   // 缓存和乐观会话先渲染，真实验活与自动登录共享后台恢复任务。
   if (jwxt.isLoggedIn || hasCachedData.value) void loadCurrentTab(false);
-  const ready = await jwxt.ensureSession({ refresh: true, silent: true });
+  const ready = await jwxt.ensureSession({ refresh: true, silent: true, allowAutoLogin: false });
   if (disposed || seq !== pageInitSeq) return;
   ensureVisibleTab();
   if (!ready) {

@@ -200,7 +200,12 @@ export const useJwxtStore = defineStore("jwxt", {
         return false;
       }
     },
-    async ensureSession(options?: { refresh?: boolean; forceLogin?: boolean; silent?: boolean }): Promise<boolean> {
+    async ensureSession(options?: {
+      refresh?: boolean;
+      forceLogin?: boolean;
+      silent?: boolean;
+      allowAutoLogin?: boolean;
+    }): Promise<boolean> {
       if (!options?.forceLogin && jwxtEnsureSessionInFlight) return jwxtEnsureSessionInFlight;
       const task = (async () => {
         this.rememberSaved = hasCreds();
@@ -209,7 +214,11 @@ export const useJwxtStore = defineStore("jwxt", {
           return false;
         }
         // 验活与 SSO 表单准备并行：真过期时可以少等一次 Agent/学校往返。
-        const recoveryPreparation = this.rememberSaved
+        const allowAutoLogin = options?.allowAutoLogin !== false;
+        // Page initialization should only probe an existing session. A
+        // background saved-credential login is opt-in so a freshman with no
+        // academic record is never left with a permanently disabled form.
+        const recoveryPreparation = allowAutoLogin && this.rememberSaved
           && auth.ssoPendingId.trim().length < 8
           && !auth.ssoNeedCaptcha
           ? auth.ssoBegin({ silent: true }).catch(() => undefined)
@@ -218,7 +227,7 @@ export const useJwxtStore = defineStore("jwxt", {
           await this.refreshStatus().catch(() => undefined);
         }
         if (this.active && this.token && !options?.forceLogin) return true;
-        if (!this.rememberSaved) return false;
+        if (!allowAutoLogin || !this.rememberSaved) return false;
         if (recoveryPreparation) await recoveryPreparation;
         return this.tryAutoLogin({ silent: options?.silent });
       })();
