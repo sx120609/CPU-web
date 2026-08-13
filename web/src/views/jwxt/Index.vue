@@ -21,6 +21,15 @@
       </template>
     </el-alert>
 
+    <el-alert
+      v-if="academicDataUnavailable"
+      type="info"
+      :closable="false"
+      show-icon
+      class="scope-tip"
+      title="当前账号的教务数据尚未开通，暂不需要教务登录。站内账号仍可正常使用；数据开通后可再次尝试。"
+    />
+
     <!-- 未登录：显示登录卡片 -->
     <div v-if="!showDataShell" class="cpu-card login-card">
       <div class="login-head">
@@ -275,6 +284,9 @@ const availableDataTabs = computed<DataTab[]>(() => {
 const hasJwxtTabs = computed(() => availableDataTabs.value.length > 0 || isDev.value);
 const hasCachedData = computed(() => availableDataTabs.value.some((item) => Boolean(getTabData(item))));
 const showDataShell = computed(() => !showLoginOverride.value && (jwxt.isLoggedIn || hasCachedData.value));
+const academicDataUnavailable = computed(() => Boolean(
+  auth.user?.studentSso && auth.academicIdentityUnavailable,
+));
 const usingSavedCaptchaRecovery = computed(() => (
   jwxt.needCaptcha && jwxt.rememberSaved && !form.password
 ));
@@ -360,6 +372,11 @@ async function initPage() {
   if (disposed || seq !== pageInitSeq) return;
   ensureVisibleTab();
   if (!ready) {
+    // A newly enrolled student may have a valid station account but no
+    // academic entry yet. Do not start another background SSO request: it
+    // can leave the form disabled while the school system has nothing to
+    // return, and must never turn a successful station login into a logout.
+    if (academicDataUnavailable.value) return;
     // 自动恢复不可用时再准备手动表单；旧数据仍留在缓存视图中。
     try { await jwxt.beginLogin(); } catch { /* ignore */ }
     if (disposed || seq !== pageInitSeq) return;
