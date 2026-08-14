@@ -2088,6 +2088,7 @@ const siteConfigPatchSchema = z.object({
     zjy: z.boolean(),
     icourse: z.boolean(),
     yuketang: z.boolean(),
+    weban: z.boolean(),
   }).optional(),
   learningAssistantAccessMode: z.enum(["guest-unlimited", "account-quota"]).optional(),
   aiReviewEnabled: z.boolean().optional(),

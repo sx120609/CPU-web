@@ -293,6 +293,7 @@ const learningPlatforms = reactive<LearningPlatformAvailability>({
   zjy: true,
   icourse: true,
   yuketang: true,
+  weban: true,
 });
 const enabledFeatureCount = computed(() => featureMeta.filter((item) => features[item.key]).length);
 const enabledLearningPlatformCount = computed(() => learningPlatformMeta.filter((item) => learningPlatforms[item.key]).length);
@@ -333,6 +334,7 @@ const learningPlatformMeta: Array<{ key: LearningPlatformKey; icon: string; titl
   { key: "zjy", icon: "职教", title: "职教云", desc: "职教云课程与作业。" },
   { key: "icourse", icon: "大学", title: "中国大学 MOOC", desc: "课程视频、测验与作业。" },
   { key: "yuketang", icon: "雨课", title: "雨课堂", desc: "课程、视频与课堂任务。" },
+  { key: "weban", icon: "微伴", title: "安全微伴", desc: "安全教育课程与考试。" },
 ];
 
 onMounted(reload);

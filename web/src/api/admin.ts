@@ -71,7 +71,7 @@ export type SiteConfig = {
 };
 
 export type LearningPlatformAvailability = Record<
-  "chaoxing" | "zhihuishu" | "icve" | "zjy" | "icourse" | "yuketang",
+  "chaoxing" | "zhihuishu" | "icve" | "zjy" | "icourse" | "yuketang" | "weban",
   boolean
 >;
 

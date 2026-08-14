@@ -51,7 +51,7 @@ export type LearningAssistantTierConfig = {
   freeInUnlimited: boolean;
 };
 export type LearningAssistantTiersConfig = Record<LearningAssistantTierKey, LearningAssistantTierConfig>;
-export type LearningPlatformKey = "chaoxing" | "zhihuishu" | "icve" | "zjy" | "icourse" | "yuketang";
+export type LearningPlatformKey = "chaoxing" | "zhihuishu" | "icve" | "zjy" | "icourse" | "yuketang" | "weban";
 export type LearningPlatformAvailability = Record<LearningPlatformKey, boolean>;
 export type SiteConfig = {
   siteOrigin: string;
@@ -171,7 +171,7 @@ export const DEFAULT_LEARNING_ASSISTANT_TIERS: LearningAssistantTiersConfig = {
   high: { model: DEFAULT_CAMPUS_ASSISTANT_MODEL, reasoningEffort: "high", pointMultiplier: 1.5, freeInUnlimited: true },
   max: { model: DEFAULT_CAMPUS_ASSISTANT_MODEL, reasoningEffort: "max", pointMultiplier: 2, freeInUnlimited: false },
 };
-export const ALL_LEARNING_PLATFORMS: LearningPlatformKey[] = ["chaoxing", "zhihuishu", "icve", "zjy", "icourse", "yuketang"];
+export const ALL_LEARNING_PLATFORMS: LearningPlatformKey[] = ["chaoxing", "zhihuishu", "icve", "zjy", "icourse", "yuketang", "weban"];
 export const DEFAULT_LEARNING_PLATFORM_AVAILABILITY: LearningPlatformAvailability = {
   chaoxing: true,
   zhihuishu: true,
@@ -179,6 +179,7 @@ export const DEFAULT_LEARNING_PLATFORM_AVAILABILITY: LearningPlatformAvailabilit
   zjy: true,
   icourse: true,
   yuketang: true,
+  weban: true,
 };
 
 const GLOBAL_PINNED_TOPICS_KEY = "forum.globalPinnedTopics";

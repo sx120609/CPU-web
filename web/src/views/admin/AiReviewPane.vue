@@ -568,6 +568,7 @@ const form = reactive<SiteConfig>({
     zjy: true,
     icourse: true,
     yuketang: true,
+    weban: true,
   },
   aiReviewEnabled: false,
   aiReviewProvider: "deepseek",

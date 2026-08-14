@@ -30,6 +30,7 @@ import {
   DEFAULT_ASSISTANT_DAILY_QUOTAS,
   DEFAULT_CAMPUS_ASSISTANT_MODEL,
   DEFAULT_LEARNING_ASSISTANT_TIERS,
+  DEFAULT_LEARNING_PLATFORM_AVAILABILITY,
   getSiteConfig,
   loadFeatures,
   normalizeLearningAssistantAccessMode,
@@ -594,6 +595,52 @@ test("assistant quota and model settings are restored from the database after a 
       {
         key: "assistant.dailyQuotas",
         value: JSON.stringify(DEFAULT_ASSISTANT_DAILY_QUOTAS),
+      },
+    ]) as typeof siteSetting.findMany;
+    await loadFeatures();
+    siteSetting.findMany = originalFindMany;
+  }
+});
+
+test("desktop learning platform config keeps 安全微伴 open by default", async () => {
+  const siteSetting = prisma.siteSetting;
+  const originalFindMany = siteSetting.findMany;
+
+  try {
+    siteSetting.findMany = (async () => [
+      {
+        key: "desktop.learningPlatforms",
+        value: JSON.stringify({
+          chaoxing: true,
+          zhihuishu: true,
+          icve: true,
+          zjy: true,
+          icourse: true,
+          yuketang: true,
+        }),
+      },
+    ]) as typeof siteSetting.findMany;
+
+    await loadFeatures();
+
+    assert.equal(getSiteConfig().learningPlatforms.weban, true);
+  } finally {
+    siteSetting.findMany = (async () => [
+      {
+        key: "assistant.model",
+        value: DEFAULT_CAMPUS_ASSISTANT_MODEL,
+      },
+      {
+        key: "assistant.learningModel",
+        value: DEFAULT_CAMPUS_ASSISTANT_MODEL,
+      },
+      {
+        key: "assistant.dailyQuotas",
+        value: JSON.stringify(DEFAULT_ASSISTANT_DAILY_QUOTAS),
+      },
+      {
+        key: "desktop.learningPlatforms",
+        value: JSON.stringify(DEFAULT_LEARNING_PLATFORM_AVAILABILITY),
       },
     ]) as typeof siteSetting.findMany;
     await loadFeatures();
