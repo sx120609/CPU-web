@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         药大拾间·安全微伴助手
 // @namespace    cpu-weban
-// @version      1.0.2
+// @version      1.0.3
 // @author       CPU-web
 // @description  自动完成安全微伴课程与考试，支持中国药科大学等高校
 // @match        https://weiban.mycourse.cn/*
@@ -45,7 +45,11 @@
     try { if (typeof GM_cpuReport !== 'undefined') GM_cpuReport(kind, text); } catch {}
   };
   const status = (msg) => { report('status', msg); ui.setStatus(msg); };
-  const log = (msg) => { report('log', msg); console.log('[WeBan]', msg); };
+  const log = (msg) => {
+    report('log', msg);
+    console.log('[WeBan]', msg);
+    try { ui.addLog(msg); } catch {}
+  };
 
   // ─────────────────────────────────────────────
   // 3. 工具函数
@@ -195,8 +199,21 @@
 
   const fetchCaptchaDataUrl = async (captchaTs) => {
     const ts = captchaTs || Date.now().toString();
-    // 直接交给 img 加载同源图片；data: / blob: 容易被微伴页 CSP 拦截成破图标。
-    return `${BASE}/pharos/login/randLetterImage.do?time=${encodeURIComponent(ts)}&refresh=1`;
+    const resp = await fetch(`${BASE}/pharos/login/randLetterImage.do?time=${encodeURIComponent(ts)}`, {
+      credentials: 'include',
+      cache: 'no-store',
+      headers: { Accept: 'image/*' },
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const buf = await resp.arrayBuffer();
+    const bytes = new Uint8Array(buf);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    }
+    const type = resp.headers.get('content-type') || 'image/png';
+    const mime = /^image\//i.test(type) ? type.split(';')[0] : 'image/png';
+    return `data:${mime};base64,${btoa(binary)}`;
   };
 
   const doLogin = async (tenantCode, username, password, verifyCode, verifyTime) => {
@@ -479,6 +496,10 @@
       #${panelId} .cpu-wb-title { margin: 4px 0 4px; font-size: 17px; line-height: 1.35; word-break: break-word; }
       #${panelId} .cpu-wb-muted { color: var(--cpu-wb-muted); }
       #${panelId} .cpu-wb-lead { margin: 10px 0 0; color: var(--cpu-wb-warning); font-size: 13px; line-height: 1.55; }
+      #${panelId} .cpu-wb-process-note {
+        margin: 10px 0 0; padding: 9px 10px; border: 1px solid color-mix(in srgb, var(--cpu-wb-primary) 18%, var(--cpu-wb-border));
+        border-radius: 10px; background: var(--cpu-wb-primary-soft); color: var(--cpu-wb-primary-strong); font-size: 12px; line-height: 1.55;
+      }
       #${panelId} .cpu-wb-form { display: grid; gap: 8px; margin-top: 12px; }
       #${panelId} .cpu-wb-field { display: grid; gap: 6px; }
       #${panelId} .cpu-wb-field span { color: var(--cpu-wb-muted-strong); font-size: 12px; }
@@ -499,6 +520,10 @@
         border-radius: 12px; background: #fff; overflow: hidden;
       }
       #${panelId} .cpu-wb-captcha-shot img { display: block; width: 100%; height: 100%; min-height: 54px; object-fit: contain; background: #fff; pointer-events: none; }
+      #${panelId} .cpu-wb-captcha-fallback {
+        display: grid; place-items: center; width: 100%; min-height: 54px; padding: 8px; color: var(--cpu-wb-muted);
+        font-size: 12px; line-height: 1.35; text-align: center; background: #fff;
+      }
       #${panelId} .cpu-wb-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
       #${panelId} .cpu-wb-actions button {
         min-width: 120px; min-height: 36px; flex: 1; border: 1px solid var(--cpu-wb-border); border-radius: 10px;
@@ -550,7 +575,6 @@
         <div class="cpu-wb-mark" aria-hidden="true">🛡</div>
         <div class="cpu-wb-heading"><strong>安全微伴助手</strong><span>登录、刷课与任务控制</span></div>
         <div class="cpu-wb-header-actions">
-          <button class="cpu-wb-icon" type="button" data-action="toggle-collapse" title="收起内容" aria-label="收起内容">▾</button>
           <button class="cpu-wb-icon" type="button" data-action="close" title="隐藏面板" aria-label="隐藏面板">×</button>
         </div>
       </header>
@@ -558,13 +582,14 @@
         <section class="cpu-wb-card">
           <span class="cpu-wb-kicker">当前状态</span>
           <h3 class="cpu-wb-title" id="cpu-wb-status">请先登录</h3>
-          <p class="cpu-wb-muted" id="cpu-wb-summary">首次使用请填写学校、账号、密码和验证码。</p>
+          <p class="cpu-wb-muted" id="cpu-wb-summary">请在本助手内登录；外侧官方页面登录不等于刷课进程登录。</p>
         </section>
 
         <section class="cpu-wb-card" id="cpu-wb-setup">
           <span class="cpu-wb-kicker">登录信息</span>
           <h3 class="cpu-wb-title">首次使用，请填写登录信息</h3>
           <p class="cpu-wb-lead">学校名和账号会保存在本机，密码只用于本次登录。</p>
+          <p class="cpu-wb-process-note">请在本助手内完成登录。外侧官方页面只负责显示课程页面，不会让助手刷课进程自动登录。</p>
           <div class="cpu-wb-form">
             <label class="cpu-wb-field">
               <span>学校名</span>
@@ -580,8 +605,9 @@
             </label>
           </div>
           <div class="cpu-wb-captcha" id="cpu-wb-captcha-row" hidden>
-            <button class="cpu-wb-captcha-shot" type="button" id="cpu-wb-captcha-img" title="点击刷新验证码" aria-label="刷新验证码">
+            <button class="cpu-wb-captcha-shot" type="button" id="cpu-wb-captcha-img" title="点击刷新验证码图片" aria-label="刷新验证码图片">
               <img id="cpu-wb-captcha-preview" alt="验证码">
+              <span class="cpu-wb-captcha-fallback" id="cpu-wb-captcha-fallback" hidden>验证码加载失败，点击重试</span>
             </button>
             <label class="cpu-wb-field">
               <span>验证码</span>
@@ -591,7 +617,7 @@
           <div class="cpu-wb-actions">
             <button class="cpu-wb-primary" id="cpu-wb-login-btn" type="button">登录并开始</button>
           </div>
-          <p class="cpu-wb-note">验证码每次都需要手动输入；刷新图片请直接点左侧验证码。</p>
+          <p class="cpu-wb-note">验证码由助手独立获取，点左侧图片可刷新；外面官网登录状态与这里无关。</p>
         </section>
 
         <section class="cpu-wb-card" id="cpu-wb-session-card" hidden>
@@ -612,18 +638,15 @@
     `;
     document.body.append(style, panel, launcher);
 
-    const body = panel.querySelector('.cpu-wb-body');
-    const collapseBtn = panel.querySelector('[data-action="toggle-collapse"]');
-    const closeBtn = panel.querySelector('[data-action="close"]');
     const logEl = panel.querySelector('#cpu-wb-log');
     const statusEl = panel.querySelector('#cpu-wb-status');
     const summaryEl = panel.querySelector('#cpu-wb-summary');
-    const sessionTextEl = panel.querySelector('#cpu-wb-session-text');
     const setupCard = panel.querySelector('#cpu-wb-setup');
     const sessionCard = panel.querySelector('#cpu-wb-session-card');
     const captchaRow = panel.querySelector('#cpu-wb-captcha-row');
     const captchaShot = panel.querySelector('#cpu-wb-captcha-img');
     const captchaPreview = panel.querySelector('#cpu-wb-captcha-preview');
+    const captchaFallback = panel.querySelector('#cpu-wb-captcha-fallback');
     const captchaInput = panel.querySelector('#cpu-wb-captcha-val');
     const schoolInput = panel.querySelector('#cpu-wb-school');
     const userInput = panel.querySelector('#cpu-wb-user');
@@ -631,9 +654,7 @@
     const loginBtn = panel.querySelector('#cpu-wb-login-btn');
     const runBtn = panel.querySelector('#cpu-wb-run-btn');
     const logoutBtn = panel.querySelector('#cpu-wb-logout-btn');
-    let collapsed = false;
     let drag = null;
-    let captchaUrl = '';
     const positionKey = 'cpu-weban-position-v1';
 
     const clampPanelPosition = (left, topValue) => {
@@ -674,14 +695,6 @@
       panel.style.removeProperty('top');
     };
 
-    const setCollapsed = (next) => {
-      collapsed = Boolean(next);
-      body.hidden = collapsed;
-      collapseBtn.textContent = collapsed ? '▸' : '▾';
-      collapseBtn.title = collapsed ? '展开内容' : '收起内容';
-      collapseBtn.setAttribute('aria-label', collapseBtn.title);
-    };
-
     const showPanel = () => {
       panel.hidden = false;
       launcher.hidden = true;
@@ -698,10 +711,6 @@
       if (!(target instanceof HTMLElement)) return;
       if (target.closest('[data-action="close"]')) {
         hidePanel();
-        return;
-      }
-      if (target.closest('[data-action="toggle-collapse"]')) {
-        setCollapsed(!collapsed);
       }
     });
 
@@ -725,7 +734,6 @@
     });
     host.addEventListener('resize', restorePanelPosition);
     restorePanelPosition();
-    setCollapsed(false);
 
     return {
       setStatus(msg) { statusEl.textContent = msg; },
@@ -741,7 +749,7 @@
       showSetup() {
         setupCard.hidden = false;
         sessionCard.hidden = true;
-        summaryEl.textContent = '学校名和账号会保存在本机，密码只用于本次登录。';
+        summaryEl.textContent = '请在本助手内登录；外侧官方页面登录不等于刷课进程登录。';
       },
       showActions() {
         setupCard.hidden = true;
@@ -749,9 +757,18 @@
         summaryEl.textContent = '登录成功后可以直接开始刷课，也可以退出后重新登录。';
       },
       showCaptcha(dataUrl, refresh) {
-        if (captchaUrl.startsWith('blob:')) URL.revokeObjectURL(captchaUrl);
-        captchaUrl = dataUrl;
         captchaRow.hidden = false;
+        captchaFallback.hidden = true;
+        captchaPreview.hidden = false;
+        captchaPreview.onerror = () => {
+          captchaPreview.hidden = true;
+          captchaFallback.textContent = '验证码加载失败，点击重试';
+          captchaFallback.hidden = false;
+        };
+        captchaPreview.onload = () => {
+          captchaPreview.hidden = false;
+          captchaFallback.hidden = true;
+        };
         captchaPreview.src = dataUrl;
         captchaShot.onclick = async () => {
           if (typeof refresh !== 'function') return;
@@ -763,6 +780,21 @@
         };
         captchaInput.value = '';
         captchaInput.focus();
+      },
+      showCaptchaError(message, refresh) {
+        captchaRow.hidden = false;
+        captchaPreview.removeAttribute('src');
+        captchaPreview.hidden = true;
+        captchaFallback.textContent = message || '验证码加载失败，点击重试';
+        captchaFallback.hidden = false;
+        captchaShot.onclick = async () => {
+          if (typeof refresh !== 'function') return;
+          try {
+            await refresh();
+          } catch (error) {
+            status(`验证码刷新失败：${error?.message || error}`);
+          }
+        };
       },
       getCaptchaVal() { return captchaInput?.value?.trim() || ''; },
       getCredentials() {
@@ -778,10 +810,7 @@
     };
   })();
 
-  // 覆盖 log 以同时输出到 UI
-  const _origLog = log;
-  const logFn = (msg) => { _origLog(msg); ui.addLog(msg); };
-  // re-bind
+  const logFn = log;
   Object.assign(globalThis, { __webanLog: logFn });
 
   // ─────────────────────────────────────────────
@@ -820,9 +849,13 @@
     let captchaTs = '';
     const loadCaptcha = async () => {
       const nextTs = Date.now().toString();
-      captchaTs = nextTs;
-      const captchaDataUrl = await fetchCaptchaDataUrl(nextTs);
-      ui.showCaptcha(captchaDataUrl, loadCaptcha);
+      try {
+        const captchaDataUrl = await fetchCaptchaDataUrl(nextTs);
+        captchaTs = nextTs;
+        ui.showCaptcha(captchaDataUrl, loadCaptcha);
+      } catch (error) {
+        ui.showCaptchaError(`验证码加载失败：${error?.message || error}`, loadCaptcha);
+      }
     };
     await loadCaptcha();
 
