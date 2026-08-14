@@ -128,6 +128,12 @@ let multiplatformScriptUpdateState: ScriptUpdateState = {
   source: "builtin",
   message: "正在载入多平台助手脚本",
 };
+let webanScriptUpdateState: ScriptUpdateState = {
+  stage: "loading",
+  activeVersion: "",
+  source: "builtin",
+  message: "正在载入安全微伴助手脚本",
+};
 type LearningAssistantAccessMode = "guest-unlimited" | "account-quota";
 type LearningAssistantPolicy = {
   accessMode: LearningAssistantAccessMode;
@@ -308,6 +314,7 @@ const setScriptUpdateState = (patch: Partial<ScriptUpdateState>): void => {
   broadcast("script:update-states", {
     chaoxing: scriptUpdateState,
     multiplatform: multiplatformScriptUpdateState,
+    weban: webanScriptUpdateState,
   });
 };
 
@@ -317,10 +324,20 @@ const setMultiplatformScriptUpdateState = (patch: Partial<ScriptUpdateState>): v
   broadcast("script:update-states", {
     chaoxing: scriptUpdateState,
     multiplatform: multiplatformScriptUpdateState,
+    weban: webanScriptUpdateState,
   });
 };
 
-type ScriptUpdateKind = "chaoxing" | "multiplatform";
+const setWebanScriptUpdateState = (patch: Partial<ScriptUpdateState>): void => {
+  webanScriptUpdateState = { ...webanScriptUpdateState, ...patch };
+  broadcast("script:update-states", {
+    chaoxing: scriptUpdateState,
+    multiplatform: multiplatformScriptUpdateState,
+    weban: webanScriptUpdateState,
+  });
+};
+
+type ScriptUpdateKind = "chaoxing" | "multiplatform" | "weban";
 type ScriptChannelDefinition = {
   assetName: string;
   scriptId: string;
@@ -330,23 +347,32 @@ type ScriptChannelDefinition = {
   setState: (patch: Partial<ScriptUpdateState>) => void;
 };
 
-const scriptChannel = (kind: ScriptUpdateKind): ScriptChannelDefinition => kind === "multiplatform"
-  ? {
-      assetName: "multiplatform.js",
-      scriptId: "builtin-multiplatform-helper",
-      label: "多平台助手",
-      channel: MULTIPLATFORM_USER_SCRIPT_CHANNEL,
-      getState: () => multiplatformScriptUpdateState,
-      setState: setMultiplatformScriptUpdateState,
-    }
-  : {
-      assetName: "monkey.js",
-      scriptId: "builtin-chaoxing-helper",
-      label: "学习通助手",
-      channel: CHAOXING_USER_SCRIPT_CHANNEL,
-      getState: () => scriptUpdateState,
-      setState: setScriptUpdateState,
-    };
+const scriptChannel = (kind: ScriptUpdateKind): ScriptChannelDefinition => {
+  if (kind === "multiplatform") return {
+    assetName: "multiplatform.js",
+    scriptId: "builtin-multiplatform-helper",
+    label: "多平台助手",
+    channel: MULTIPLATFORM_USER_SCRIPT_CHANNEL,
+    getState: () => multiplatformScriptUpdateState,
+    setState: setMultiplatformScriptUpdateState,
+  };
+  if (kind === "weban") return {
+    assetName: "weban.js",
+    scriptId: "builtin-weban-helper",
+    label: "安全微伴助手",
+    channel: CHAOXING_USER_SCRIPT_CHANNEL, // 复用同一更新通道，WeBan 暂不需要独立云更新
+    getState: () => webanScriptUpdateState,
+    setState: setWebanScriptUpdateState,
+  };
+  return {
+    assetName: "monkey.js",
+    scriptId: "builtin-chaoxing-helper",
+    label: "学习通助手",
+    channel: CHAOXING_USER_SCRIPT_CHANNEL,
+    getState: () => scriptUpdateState,
+    setState: setScriptUpdateState,
+  };
+};
 
 const loadScriptChannel = async (kind: ScriptUpdateKind): Promise<UserScript | undefined> => {
   const definition = scriptChannel(kind);
@@ -379,7 +405,11 @@ const loadScriptChannel = async (kind: ScriptUpdateKind): Promise<UserScript | u
 };
 
 const loadBuiltInScripts = async (): Promise<UserScript[]> => {
-  const loaded = await Promise.all([loadScriptChannel("chaoxing"), loadScriptChannel("multiplatform")]);
+  const loaded = await Promise.all([
+    loadScriptChannel("chaoxing"),
+    loadScriptChannel("multiplatform"),
+    loadScriptChannel("weban"),
+  ]);
   return loaded.filter((script): script is UserScript => Boolean(script));
 };
 
@@ -714,10 +744,14 @@ const injectMatchingScripts = async (contents: Electron.WebContents): Promise<vo
   const learningPolicy = await getLearningAssistantPolicy();
   const matching = (await getScripts()).filter((script) => scriptMatchesUrl(script, currentUrl));
   // 学习通保留药大拾间长期维护的专用引擎；其余正式平台使用 OCS 多平台引擎。
-  // 两套自动化不能同时操作同一页面，否则会重复点击并重复请求 AI。
-  const scripts = matching.some((script) => script.id === "builtin-chaoxing-helper")
-    ? matching.filter((script) => script.id !== "builtin-multiplatform-helper")
-    : matching;
+  // 安全微伴使用独立的 weban 引擎。三套自动化不能同时操作同一页面。
+  const hasWeban = matching.some((script) => script.id === "builtin-weban-helper");
+  const hasChaoxing = matching.some((script) => script.id === "builtin-chaoxing-helper");
+  const scripts = hasWeban
+    ? matching.filter((script) => script.id !== "builtin-multiplatform-helper" && script.id !== "builtin-chaoxing-helper")
+    : hasChaoxing
+      ? matching.filter((script) => script.id !== "builtin-multiplatform-helper")
+      : matching;
   if (scripts.length === 0) {
     recordScriptActivity({
       at: Date.now(),
@@ -1803,6 +1837,7 @@ if (installMode || uninstallMode) {
     ipcMain.handle("script:get-update-states", () => ({
       chaoxing: scriptUpdateState,
       multiplatform: multiplatformScriptUpdateState,
+      weban: webanScriptUpdateState,
     }));
     ipcMain.handle("script:check-update", (_event, kind: unknown) =>
       checkCloudUserScript(kind === "multiplatform" ? "multiplatform" : "chaoxing"));

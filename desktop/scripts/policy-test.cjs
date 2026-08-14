@@ -120,6 +120,11 @@ check("超星域名可注入", () => {
   assert.ok(asInjectableUrl("https://mooc1.chaoxing.com/mycourse"));
 });
 
+check("安全微伴可导航并按需注入", () => {
+  assert.ok(asNavigableUrl("https://weiban.mycourse.cn/"));
+  assert.ok(asInjectableUrl("https://weiban.mycourse.cn/"));
+});
+
 check("六个正式网课平台可导航并按需注入", () => {
   for (const url of [
     "https://www.zhihuishu.com/",
@@ -194,6 +199,18 @@ check("内置脚本不再声明 *.edu.cn 这类泛匹配", () => {
     assert.ok(!/\*\.edu\.cn/.test(pattern), `@match 仍包含教育网泛匹配：${pattern}`);
     assert.ok(pattern.startsWith("https://"), `@match 应当限定 https：${pattern}`);
   }
+});
+
+check("安全微伴脚本品牌和匹配范围已写入内置脚本", () => {
+  const fs = require("node:fs");
+  const source = fs.readFileSync(path.join(__dirname, "..", "assets", "userscripts", "weban.js"), "utf8");
+  assert.match(source, /^\/\/ @name\s+药大拾间·安全微伴助手$/m);
+  assert.match(source, /^\/\/ @version\s+1\.0\.0$/m);
+  assert.match(source, /weiban\.mycourse\.cn/);
+  assert.match(source, /\*\.mycourse\.cn/);
+  assert.match(source, /gh-proxy\.com\/https:\/\/github\.com\/hangone\/WeBan/);
+  assert.match(source, /cpu-weban:/);
+  assert.match(source, /安全微伴助手/);
 });
 
 check("学习通助手品牌、版本和进入课程引导已写入内置回退脚本", () => {

@@ -50,6 +50,7 @@ const required = [
   "/src/installer/logo.png",
   "/assets/userscripts/monkey.js",
   "/assets/userscripts/multiplatform.js",
+  "/assets/userscripts/weban.js",
   "/assets/vendor/ocsjs-LICENSE.txt",
   "/assets/vendor/ocsjs-PROVENANCE.md",
   "/assets/tray-icon.png",

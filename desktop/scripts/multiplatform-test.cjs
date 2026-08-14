@@ -76,6 +76,8 @@ for (const host of ["zhihuishu.com", "icve.com.cn", "icourse163.org", "yuketang.
 }
 
 assert.match(main, /builtin-multiplatform-helper/);
+assert.match(main, /builtin-weban-helper/, "安全微伴脚本应作为第三套内置助手加载");
+assert.match(config, /mycourse\.cn/, "安全微伴宿主应被放行");
 assert.match(main, /verifyWisdomTreeGuideContent/, "智慧树课程列表首屏空白时应只自动恢复一次");
 assert.match(main, /recoverLearningAssistantAfterSpaNavigation/, "智慧树 SPA 进入任务页时应重建助手实例");
 assert.match(main, /matching\.some\(\(script\) => script\.id === "builtin-chaoxing-helper"\)/, "超星必须避免双引擎并跑");

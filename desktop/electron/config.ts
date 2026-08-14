@@ -29,6 +29,7 @@ export const learningPlatforms = [
   { id: "zjy", name: "职教云", short: "职教云", description: "职教云课程与作业", url: "https://zjy2.icve.com.cn/" },
   { id: "icourse", name: "中国大学 MOOC", short: "大学 MOOC", description: "课程视频、测验与作业", url: "https://www.icourse163.org/" },
   { id: "yuketang", name: "雨课堂", short: "雨课堂", description: "课程、视频与课堂任务", url: "https://www.yuketang.cn/" },
+  { id: "weban", name: "安全微伴", short: "微伴", description: "安全教育课程与考试，自动刷课答题", url: "https://weiban.mycourse.cn/" },
 ] as const;
 
 export type LearningPlatformId = typeof learningPlatforms[number]["id"];
@@ -40,6 +41,7 @@ export const learningCredentialHosts: Record<LearningPlatformId, readonly string
   zjy: ["icve.com.cn"],
   icourse: ["icourse163.org"],
   yuketang: ["yuketang.cn"],
+  weban: ["mycourse.cn"],
 };
 
 export const learningPlatformUrl = (id: string): string | undefined =>
@@ -81,7 +83,9 @@ export const navigableHosts = [
   "icourse163.org",
   "yuketang.cn",
   // 超星机构账号登录会跳转到学校统一认证，不放行会导致登录中断
-  "cpu.edu.cn"
+  "cpu.edu.cn",
+  // 安全微伴及其所有子域（weiban / resource / mcwk / open / moon / lyra / jupiter）
+  "mycourse.cn"
 ] as const;
 
 // 用户脚本的注入范围由脚本自己的 @match 决定，这张表只做额外收口：
@@ -114,7 +118,9 @@ export const injectableHosts = [
   "courshare.cn",
   "webtrn.cn",
   "icourse163.org",
-  "yuketang.cn"
+  "yuketang.cn",
+  // 安全微伴及其所有子域（weiban / resource / mcwk / open / moon / lyra / jupiter）
+  "mycourse.cn"
 ] as const;
 
 export const limits = {
