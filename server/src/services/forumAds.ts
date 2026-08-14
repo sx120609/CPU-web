@@ -31,7 +31,7 @@ export async function listActiveForumAds(placement: ForumAdPlacement, vip: boole
   const where: Prisma.ForumAdWhereInput = {
     enabled: true,
     placement,
-    ...(vip ? {} : { vipExempt: false }),
+    ...(vip ? { vipExempt: false } : {}),
     AND: [
       { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
       { OR: [{ endsAt: null }, { endsAt: { gte: now } }] },
