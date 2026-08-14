@@ -10,17 +10,22 @@ export type DesktopUserScriptRelease = {
   source: string;
 };
 
-export type DesktopUserScriptKind = "chaoxing" | "multiplatform";
+export type DesktopUserScriptKind = "chaoxing" | "multiplatform" | "weban";
 
-const scriptDefinition = (kind: DesktopUserScriptKind) => kind === "multiplatform"
-  ? {
-      fileName: "multiplatform.js",
-      label: "多平台助手",
-    }
-  : {
-      fileName: "monkey.js",
-      label: "学习通助手",
-    };
+const scriptDefinition = (kind: DesktopUserScriptKind) => ({
+  chaoxing: {
+    fileName: "monkey.js",
+    label: "学习通助手",
+  },
+  multiplatform: {
+    fileName: "multiplatform.js",
+    label: "多平台助手",
+  },
+  weban: {
+    fileName: "weban.js",
+    label: "安全微伴助手",
+  },
+}[kind]);
 
 const readUserScriptSource = async (fileName: string): Promise<string> => {
   const bundledPath = path.resolve(__dirname, "../assets/userscripts", fileName);

@@ -205,7 +205,7 @@ check("安全微伴脚本品牌和匹配范围已写入内置脚本", () => {
   const fs = require("node:fs");
   const source = fs.readFileSync(path.join(__dirname, "..", "assets", "userscripts", "weban.js"), "utf8");
   assert.match(source, /^\/\/ @name\s+药大拾间·安全微伴助手$/m);
-  assert.match(source, /^\/\/ @version\s+1\.0\.0$/m);
+  assert.match(source, /^\/\/ @version\s+1\.0\.1$/m);
   assert.match(source, /weiban\.mycourse\.cn/);
   assert.match(source, /\*\.mycourse\.cn/);
   assert.match(source, /gh-proxy\.com\/https:\/\/github\.com\/hangone\/WeBan/);

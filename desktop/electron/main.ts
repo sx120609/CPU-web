@@ -43,6 +43,7 @@ import {
   readCachedUserScript,
   selectPreferredUserScriptSource,
   USER_SCRIPT_CHECK_INTERVAL_MS,
+  WEBAN_USER_SCRIPT_CHANNEL,
   UserScriptUpdateChannel,
   UserScriptUpdateResult,
 } from "./userscript-update";
@@ -360,7 +361,7 @@ const scriptChannel = (kind: ScriptUpdateKind): ScriptChannelDefinition => {
     assetName: "weban.js",
     scriptId: "builtin-weban-helper",
     label: "安全微伴助手",
-    channel: CHAOXING_USER_SCRIPT_CHANNEL, // 复用同一更新通道，WeBan 暂不需要独立云更新
+    channel: WEBAN_USER_SCRIPT_CHANNEL,
     getState: () => webanScriptUpdateState,
     setState: setWebanScriptUpdateState,
   };
@@ -432,6 +433,8 @@ const applyUserScriptUpdate = (kind: ScriptUpdateKind, result: UserScriptUpdateR
 };
 
 const cloudScriptUpdateChecks: Partial<Record<ScriptUpdateKind, Promise<ScriptUpdateState>>> = {};
+const normalizeScriptUpdateKind = (kind: unknown): ScriptUpdateKind =>
+  kind === "multiplatform" ? "multiplatform" : kind === "weban" ? "weban" : "chaoxing";
 const checkCloudUserScript = (kind: ScriptUpdateKind = "chaoxing"): Promise<ScriptUpdateState> => {
   const pending = cloudScriptUpdateChecks[kind];
   if (pending) return pending;
@@ -1840,7 +1843,7 @@ if (installMode || uninstallMode) {
       weban: webanScriptUpdateState,
     }));
     ipcMain.handle("script:check-update", (_event, kind: unknown) =>
-      checkCloudUserScript(kind === "multiplatform" ? "multiplatform" : "chaoxing"));
+      checkCloudUserScript(normalizeScriptUpdateKind(kind)));
 
     ipcMain.handle("userscript:get-learning-policy", async (event, nonce: unknown) => {
       await authorize(event, nonce);
@@ -2017,14 +2020,16 @@ if (installMode || uninstallMode) {
       // 长期开着的实例（这个应用常驻托盘）也要能拿到更新，每 6 小时再探一次
       setInterval(() => void checkAndDownload(), 6 * 60 * 60 * 1000).unref?.();
     }
-    // 两套助手脚本都独立热更新，Windows 与 macOS 共用。失败时保留已校验缓存或内置脚本。
+    // 三套助手脚本都独立热更新，Windows 与 macOS 共用。失败时保留已校验缓存或内置脚本。
     setTimeout(() => {
       void checkCloudUserScript("chaoxing");
       void checkCloudUserScript("multiplatform");
+      void checkCloudUserScript("weban");
     }, 4000).unref?.();
     setInterval(() => {
       void checkCloudUserScript("chaoxing");
       void checkCloudUserScript("multiplatform");
+      void checkCloudUserScript("weban");
     }, USER_SCRIPT_CHECK_INTERVAL_MS).unref?.();
   }).catch((error) => {
     // 没有这个 catch 的话，启动期任何异常都会变成被吞掉的 unhandled rejection，

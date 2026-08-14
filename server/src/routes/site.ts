@@ -48,67 +48,21 @@ siteRouter.get("/learning-platforms", (_req, res) => {
   ok(res, getLearningPlatformAvailability());
 });
 
-/**
- * 桌面端学习通助手脚本的公开版本清单。
- * 客户端只从固定同源接口拉取，并在落盘前核对版本、大小、SHA-256 与权限声明。
- */
-siteRouter.get("/userscripts/chaoxing-helper", async (_req, res, next) => {
-  try {
-    const release = await readDesktopUserScriptRelease();
-    res.setHeader("Cache-Control", "no-store");
-    ok(res, {
-      name: release.name,
-      version: release.version,
-      sha256: release.sha256,
-      size: release.size,
-      sourceUrl: "/api/site/userscripts/chaoxing-helper/source",
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-/** 脚本正文由服务器本地文件提供；ETag 允许客户端/CDN 在内容未变时不重复传输。 */
-siteRouter.get("/userscripts/chaoxing-helper/source", async (req, res, next) => {
-  try {
-    const release = await readDesktopUserScriptRelease();
-    const etag = `"sha256-${release.sha256}"`;
-    // 清单和正文必须作为同一个发布读取。这里禁止中间代理缓存或压缩变换，
-    // 避免部署切换瞬间出现“新清单 + 旧正文”，被客户端的大小/哈希校验拒绝。
-    res.setHeader("Cache-Control", "no-store, no-transform");
-    res.setHeader("Pragma", "no-cache");
-    res.setHeader("Content-Type", "application/javascript; charset=utf-8");
-    res.setHeader("Content-Length", String(release.size));
-    res.setHeader("X-Content-Type-Options", "nosniff");
-    res.setHeader("ETag", etag);
-    res.setHeader("X-Userscript-Version", release.version);
-    res.setHeader("X-Content-SHA256", release.sha256);
-    if (req.get("if-none-match") === etag) {
-      res.status(304).end();
-      return;
-    }
-    res.send(release.source);
-  } catch (error) {
-    next(error);
-  }
-});
-
-/** 多平台 OCS 引擎使用与学习通助手完全相同的版本清单、哈希校验和正文发布模型。 */
-siteRouter.get("/userscripts/multiplatform-helper", async (_req, res, next) => {
-  try {
-    const release = await readDesktopUserScriptRelease("multiplatform");
-    res.setHeader("Cache-Control", "no-store");
-    ok(res, {
-      name: release.name,
-      version: release.version,
-      sha256: release.sha256,
-      size: release.size,
-      sourceUrl: "/api/site/userscripts/multiplatform-helper/source",
-    });
-  } catch (error) {
-    next(error);
-  }
-});
+const sendDesktopUserScriptManifest = async (
+  kind: DesktopUserScriptKind,
+  sourceUrl: string,
+  res: Response,
+) => {
+  const release = await readDesktopUserScriptRelease(kind);
+  res.setHeader("Cache-Control", "no-store");
+  ok(res, {
+    name: release.name,
+    version: release.version,
+    sha256: release.sha256,
+    size: release.size,
+    sourceUrl,
+  });
+};
 
 const sendDesktopUserScriptSource = async (
   kind: DesktopUserScriptKind,
@@ -117,6 +71,8 @@ const sendDesktopUserScriptSource = async (
 ) => {
   const release = await readDesktopUserScriptRelease(kind);
   const etag = `"sha256-${release.sha256}"`;
+  // 清单和正文必须作为同一个发布读取。这里禁止中间代理缓存或压缩变换，
+  // 避免部署切换瞬间出现“新清单 + 旧正文”，被客户端的大小/哈希校验拒绝。
   res.setHeader("Cache-Control", "no-store, no-transform");
   res.setHeader("Pragma", "no-cache");
   res.setHeader("Content-Type", "application/javascript; charset=utf-8");
@@ -132,9 +88,55 @@ const sendDesktopUserScriptSource = async (
   res.send(release.source);
 };
 
+/**
+ * 桌面端学习通助手脚本的公开版本清单。
+ * 客户端只从固定同源接口拉取，并在落盘前核对版本、大小、SHA-256 与权限声明。
+ */
+siteRouter.get("/userscripts/chaoxing-helper", async (_req, res, next) => {
+  try {
+    await sendDesktopUserScriptManifest("chaoxing", "/api/site/userscripts/chaoxing-helper/source", res);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/** 脚本正文由服务器本地文件提供；ETag 允许客户端/CDN 在内容未变时不重复传输。 */
+siteRouter.get("/userscripts/chaoxing-helper/source", async (req, res, next) => {
+  try {
+    await sendDesktopUserScriptSource("chaoxing", req, res);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/** 多平台 OCS 引擎使用与学习通助手完全相同的版本清单、哈希校验和正文发布模型。 */
+siteRouter.get("/userscripts/multiplatform-helper", async (_req, res, next) => {
+  try {
+    await sendDesktopUserScriptManifest("multiplatform", "/api/site/userscripts/multiplatform-helper/source", res);
+  } catch (error) {
+    next(error);
+  }
+});
+
 siteRouter.get("/userscripts/multiplatform-helper/source", async (req, res, next) => {
   try {
     await sendDesktopUserScriptSource("multiplatform", req, res);
+  } catch (error) {
+    next(error);
+  }
+});
+
+siteRouter.get("/userscripts/weban-helper", async (_req, res, next) => {
+  try {
+    await sendDesktopUserScriptManifest("weban", "/api/site/userscripts/weban-helper/source", res);
+  } catch (error) {
+    next(error);
+  }
+});
+
+siteRouter.get("/userscripts/weban-helper/source", async (req, res, next) => {
+  try {
+    await sendDesktopUserScriptSource("weban", req, res);
   } catch (error) {
     next(error);
   }

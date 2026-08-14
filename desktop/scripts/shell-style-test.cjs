@@ -44,10 +44,11 @@ assert.match(css, /\.tab-group-primary \.tab\[data-kind="tools"\]\s*\{\s*width:\
 assert.match(css, /\.tab-title::after\s*\{[\s\S]*?content:\s*attr\(data-label\);[\s\S]*?font-weight:\s*600;/, "非激活标签必须为激活粗体预留宽度");
 assert.match(main, /tabs:open-home[\s\S]*navigateSite\(new URL\("\/", oauthConfig\.origin\)\.href\)/, "首页按钮必须导航到主站根地址，而非只切换标签");
 assert.match(html, /id="script-version"/, "学习通助手区域应展示独立脚本版本与更新状态");
-assert.match(renderer, /shell\.script\.getUpdateStates\(\)/, "助手区域应同时读取两套独立云端更新状态");
+assert.match(renderer, /shell\.script\.getUpdateStates\(\)/, "助手区域应同时读取三套独立云端更新状态");
 assert.match(html, /id="script-check-update"/, "学习通助手区域应提供手动检查更新按钮");
 assert.match(html, /id="multiplatform-script-check-update"/, "多平台助手区域应提供同款手动检查更新按钮");
-assert.match(renderer, /shell\.script\.checkUpdate\(kind\)/, "两套助手手动更新应调用各自的独立云端检查");
+assert.match(html, /id="weban-script-check-update"/, "安全微伴助手区域应提供同款手动检查更新按钮");
+assert.match(renderer, /shell\.script\.checkUpdate\(kind\)/, "三套助手手动更新应调用各自的独立云端检查");
 assert.doesNotMatch(renderer, /OCS v4\.15\.3 随客户端更新/, "多平台 OCS 不得继续显示为随客户端更新");
 assert.doesNotMatch(html, /cfg-(?:interval|minAccuracy|submitDelayMin|submitDelayMax)/, "工具页不应继续暴露无意义的正确率、切章和提交等待设置");
 assert.doesNotMatch(renderer, /"(?:interval|minAccuracy|submitDelayMin|submitDelayMax)"/, "已删除的节奏设置不应继续绑定到界面");

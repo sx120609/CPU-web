@@ -77,10 +77,12 @@ for (const host of ["zhihuishu.com", "icve.com.cn", "icourse163.org", "yuketang.
 
 assert.match(main, /builtin-multiplatform-helper/);
 assert.match(main, /builtin-weban-helper/, "安全微伴脚本应作为第三套内置助手加载");
+assert.match(main, /WEBAN_USER_SCRIPT_CHANNEL/);
 assert.match(config, /mycourse\.cn/, "安全微伴宿主应被放行");
 assert.match(main, /verifyWisdomTreeGuideContent/, "智慧树课程列表首屏空白时应只自动恢复一次");
 assert.match(main, /recoverLearningAssistantAfterSpaNavigation/, "智慧树 SPA 进入任务页时应重建助手实例");
 assert.match(main, /matching\.some\(\(script\) => script\.id === "builtin-chaoxing-helper"\)/, "超星必须避免双引擎并跑");
+assert.match(main, /checkCloudUserScript\("weban"\)/, "安全微伴脚本应在启动后自动检查云端更新");
 assert.match(main, /https:\/\/desktop\.localhost\/ocs-ai/);
 assert.match(main, /bridge\.requestAi/);
 assert.match(main, /fullImage\.getSize\(\)/, "宿主必须依据截图实际像素尺寸换算 CSS 指针坐标");
@@ -94,10 +96,15 @@ assert.match(main, /Object\.prototype\.hasOwnProperty\.call\(gm, property\)/, "G
 assert.match(main, /definition\.name \+ " v" \+ definition\.version \+ " 已加载/, "注入完成后应向客户端回报可见状态");
 assert.match(updater, /MULTIPLATFORM_USER_SCRIPT_CHANNEL/);
 assert.match(updater, /multiplatform-helper-cache\.json/);
+assert.match(updater, /WEBAN_USER_SCRIPT_CHANNEL/);
+assert.match(updater, /weban-helper-cache\.json/);
 assert.match(shellPreload, /script:get-update-states/);
 assert.match(shellHtml, /id="multiplatform-script-version"/);
 assert.match(shellHtml, /id="multiplatform-script-check-update"/);
+assert.match(shellHtml, /id="weban-script-version"/);
+assert.match(shellHtml, /id="weban-script-check-update"/);
 assert.match(shellRenderer, /checkUpdate\(kind\)/);
+assert.match(shellRenderer, /weban-script-version/);
 assert.doesNotMatch(shellRenderer, /OCS v4\.15\.3 随客户端更新/, "OCS 不得再跟随客户端版本更新");
 
 assert.match(tabs, /webContents\.setAudioMuted\(true\)/, "网课标签应默认静音作为宿主层兜底");

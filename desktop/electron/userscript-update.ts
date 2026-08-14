@@ -5,7 +5,7 @@ import path from "node:path";
 export const USER_SCRIPT_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 export type UserScriptUpdateChannel = {
-  id: "chaoxing" | "multiplatform";
+  id: "chaoxing" | "multiplatform" | "weban";
   expectedName: string;
   manifestPath: string;
   sourcePath: string;
@@ -30,6 +30,15 @@ export const MULTIPLATFORM_USER_SCRIPT_CHANNEL: UserScriptUpdateChannel = {
   cacheFileName: "multiplatform-helper-cache.json",
   // 当前经审计的 OCS 构建约 800 KiB。独立上限避免放宽学习通脚本的边界。
   maxBytes: 2 * 1024 * 1024,
+};
+
+export const WEBAN_USER_SCRIPT_CHANNEL: UserScriptUpdateChannel = {
+  id: "weban",
+  expectedName: "药大拾间·安全微伴助手",
+  manifestPath: "/api/site/userscripts/weban-helper",
+  sourcePath: "/api/site/userscripts/weban-helper/source",
+  cacheFileName: "weban-helper-cache.json",
+  maxBytes: 512 * 1024,
 };
 
 // 保留旧导出名，已有测试与第三方构建脚本无需同步迁移。

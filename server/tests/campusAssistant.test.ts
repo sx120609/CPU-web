@@ -173,6 +173,17 @@ test("云端多平台助手脚本与客户端安装包分离发布", async () =>
   assert.match(release.source, /@connect\s+desktop\.localhost/);
 });
 
+test("云端安全微伴脚本提供可校验的版本与正文", async () => {
+  const release = await readDesktopUserScriptRelease("weban");
+  assert.equal(release.name, "药大拾间·安全微伴助手");
+  assert.equal(release.version, "1.0.1");
+  assert.match(release.sha256, /^[a-f0-9]{64}$/);
+  assert.equal(release.size, Buffer.byteLength(release.source, "utf8"));
+  assert.match(release.source, /cpu-weban:/);
+  assert.match(release.source, /cpu-weban-panel/);
+  assert.match(release.source, /安全微伴助手/);
+});
+
 test("学习通答题 AI 返回独立的答案与公开解题思路字段", () => {
   assert.deepEqual(
     parseLearningAssistantAnswer('{"answer":"C","explanation":"由盖斯定律相减可得反应热。"}'),

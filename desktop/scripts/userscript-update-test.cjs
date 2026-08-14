@@ -15,6 +15,7 @@ const {
   sha256Text,
   USER_SCRIPT_MANIFEST_PATH,
   USER_SCRIPT_SOURCE_PATH,
+  WEBAN_USER_SCRIPT_CHANNEL,
   validateUserScriptRelease,
 } = require("../dist/electron/userscript-update.js");
 
@@ -253,6 +254,69 @@ async function main() {
     await rm(multiplatformCache, { recursive: true, force: true });
   }
   console.log("多平台 OCS 脚本热更新：独立清单、哈希、大文件上限与缓存检查通过。");
+
+  const webanSource = await readFile(
+    path.join(__dirname, "..", "assets", "userscripts", "weban.js"),
+    "utf8",
+  );
+  const webanIdentity = parseUserScriptIdentity(webanSource);
+  const webanManifest = {
+    ...webanIdentity,
+    sha256: sha256Text(webanSource),
+    size: Buffer.byteLength(webanSource, "utf8"),
+    sourceUrl: WEBAN_USER_SCRIPT_CHANNEL.sourcePath,
+  };
+  assert.deepEqual(webanIdentity, { name: "药大拾间·安全微伴助手", version: "1.0.1" });
+  assert.match(webanSource, /cpu-weban-panel/);
+  assert.match(webanSource, /安全微伴助手/);
+  assert.doesNotThrow(() => validateUserScriptRelease(
+    webanSource,
+    webanManifest,
+    WEBAN_USER_SCRIPT_CHANNEL,
+  ));
+
+  const webanCache = await mkdtemp(path.join(tmpdir(), "cpu-weban-userscript-test-"));
+  try {
+    const requests = [];
+    const fetchImpl = async (url) => {
+      requests.push(String(url));
+      if (new URL(url).pathname === WEBAN_USER_SCRIPT_CHANNEL.manifestPath) {
+        return new Response(JSON.stringify({ code: 0, data: webanManifest, message: "" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (new URL(url).pathname === WEBAN_USER_SCRIPT_CHANNEL.sourcePath) {
+        return new Response(webanSource, {
+          status: 200,
+          headers: { "content-length": String(webanManifest.size) },
+        });
+      }
+      return new Response("", { status: 404 });
+    };
+    const olderSource = webanSource.replace("// @version      1.0.1", "// @version      1.0.0");
+    const updated = await checkUserScriptUpdate({
+      origin: "https://cputime.cn",
+      cacheDirectory: webanCache,
+      currentSource: olderSource,
+      validateSource: () => undefined,
+      channel: WEBAN_USER_SCRIPT_CHANNEL,
+      fetchImpl,
+    });
+    assert.equal(updated.status, "updated");
+    assert.equal(requests.length, 2);
+    assert.equal(new URL(requests[1]).searchParams.get("sha256"), webanManifest.sha256);
+    const cached = await readCachedUserScript(
+      webanCache,
+      () => undefined,
+      WEBAN_USER_SCRIPT_CHANNEL,
+    );
+    assert.equal(cached?.manifest.version, "1.0.1");
+    assert.equal(cached?.source, webanSource);
+  } finally {
+    await rm(webanCache, { recursive: true, force: true });
+  }
+  console.log("安全微伴脚本热更新：独立清单、哈希与缓存检查通过。");
 }
 
 main().catch((error) => {

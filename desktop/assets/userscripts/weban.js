@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         药大拾间·安全微伴助手
 // @namespace    cpu-weban
-// @version      1.0.0
+// @version      1.0.1
 // @author       CPU-web
 // @description  自动完成安全微伴课程与考试，支持中国药科大学等高校
 // @match        https://weiban.mycourse.cn/*
@@ -424,99 +424,351 @@
   // 12. 浮动 UI 面板
   // ─────────────────────────────────────────────
   const ui = (() => {
-    const panel = document.createElement('div');
-    panel.id = 'cpu-weban-panel';
-    panel.style.cssText = `
-      position:fixed;bottom:20px;right:20px;z-index:99999;
-      width:320px;background:#1a1a2e;color:#e0e0e0;border-radius:12px;
-      box-shadow:0 8px 32px rgba(0,0,0,.5);font-family:system-ui,sans-serif;
-      font-size:13px;overflow:hidden;user-select:none;
+    const panel = document.createElement('aside');
+    const launcher = document.createElement('button');
+    const style = document.createElement('style');
+    const panelId = 'cpu-weban-panel';
+    const launcherId = 'cpu-weban-launcher';
+    panel.id = panelId;
+    panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-label', '安全微伴助手');
+    launcher.id = launcherId;
+    launcher.type = 'button';
+    launcher.textContent = '打开安全微伴';
+    launcher.hidden = true;
+    style.id = 'cpu-weban-workspace-style';
+    style.textContent = `
+      #${panelId}, #${panelId} *, #${launcherId}, #${launcherId} * { box-sizing: border-box; }
+      #${panelId}[hidden], #${launcherId}[hidden] { display: none !important; }
+      #${panelId} {
+        --cpu-wb-primary: #4b78d6; --cpu-wb-primary-strong: #2f5fb3; --cpu-wb-primary-soft: #dce8ff;
+        --cpu-wb-surface: rgba(22, 23, 40, .98); --cpu-wb-card: #1f2035; --cpu-wb-subtle: #262946;
+        --cpu-wb-answer: #2b467b; --cpu-wb-text: #eef4ff; --cpu-wb-muted: #97a4c4; --cpu-wb-muted-strong: #c7d6ff;
+        --cpu-wb-border: #3d4f7d; --cpu-wb-border-soft: #334262; --cpu-wb-danger: #ffb1ae; --cpu-wb-warning: #ffd28a;
+        --cpu-wb-on-primary: #fff; --cpu-wb-shadow: 0 24px 70px rgba(7, 10, 22, .38);
+        position: fixed; right: 22px; top: 78px; z-index: 2147482998;
+        width: min(470px, calc(100vw - 32px)); max-height: calc(100vh - 116px);
+        display: flex; flex-direction: column; overflow: hidden;
+        border: 1px solid color-mix(in srgb, var(--cpu-wb-primary) 32%, transparent); border-radius: 20px;
+        background: var(--cpu-wb-surface); color: var(--cpu-wb-text); color-scheme: dark;
+        box-shadow: var(--cpu-wb-shadow);
+        font: 14px/1.55 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      #${panelId} button, #${panelId} input { font: inherit; }
+      #${panelId} button { cursor: pointer; }
+      #${panelId} .cpu-wb-header {
+        display: flex; align-items: center; gap: 10px; padding: 14px 16px;
+        border-bottom: 1px solid var(--cpu-wb-border); cursor: move; touch-action: none; user-select: none;
+        background: linear-gradient(180deg, rgba(41, 54, 97, .92), rgba(28, 31, 52, .92));
+      }
+      #${panelId} .cpu-wb-mark {
+        display: grid; place-items: center; width: 38px; height: 38px; flex: 0 0 auto; border-radius: 13px;
+        background: linear-gradient(180deg, #5e86df, #345ec2); color: #fff; font-size: 18px; font-weight: 800;
+      }
+      #${panelId} .cpu-wb-heading { min-width: 0; flex: 1; }
+      #${panelId} .cpu-wb-heading strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 17px; }
+      #${panelId} .cpu-wb-heading span { display: block; color: var(--cpu-wb-muted); font-size: 12px; }
+      #${panelId} .cpu-wb-header-actions { display: flex; align-items: center; gap: 8px; }
+      #${panelId} .cpu-wb-icon {
+        display: grid; place-items: center; width: 38px; height: 38px; padding: 0;
+        border: 1px solid var(--cpu-wb-border); border-radius: 11px; background: var(--cpu-wb-card);
+        color: var(--cpu-wb-muted-strong); transition: background .16s ease, border-color .16s ease, color .16s ease;
+      }
+      #${panelId} .cpu-wb-icon:hover { border-color: color-mix(in srgb, var(--cpu-wb-primary) 55%, var(--cpu-wb-border)); background: var(--cpu-wb-subtle); }
+      #${panelId} .cpu-wb-body { min-height: 0; overflow: auto; padding: 14px 16px; display: grid; gap: 10px; }
+      #${panelId} .cpu-wb-card { padding: 14px; border: 1px solid var(--cpu-wb-border-soft); border-radius: 14px; background: var(--cpu-wb-card); }
+      #${panelId} .cpu-wb-kicker { color: var(--cpu-wb-primary); font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+      #${panelId} .cpu-wb-title { margin: 4px 0 4px; font-size: 18px; line-height: 1.35; word-break: break-word; }
+      #${panelId} .cpu-wb-muted { color: var(--cpu-wb-muted); }
+      #${panelId} .cpu-wb-lead { margin: 10px 0 0; color: var(--cpu-wb-warning); font-size: 13px; line-height: 1.55; }
+      #${panelId} .cpu-wb-form { display: grid; gap: 8px; margin-top: 12px; }
+      #${panelId} .cpu-wb-field { display: grid; gap: 6px; }
+      #${panelId} .cpu-wb-field span { color: var(--cpu-wb-muted-strong); font-size: 12px; }
+      #${panelId} .cpu-wb-field input {
+        width: 100%; min-width: 0; padding: 11px 12px; border: 1px solid var(--cpu-wb-border); border-radius: 12px;
+        background: var(--cpu-wb-subtle); color: var(--cpu-wb-text); outline: none;
+        transition: border-color .16s ease, background .16s ease, box-shadow .16s ease;
+      }
+      #${panelId} .cpu-wb-field input::placeholder { color: color-mix(in srgb, var(--cpu-wb-muted) 82%, white); }
+      #${panelId} .cpu-wb-field input:focus {
+        border-color: color-mix(in srgb, var(--cpu-wb-primary) 64%, var(--cpu-wb-border));
+        background: color-mix(in srgb, var(--cpu-wb-subtle) 88%, var(--cpu-wb-primary-soft));
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--cpu-wb-primary) 18%, transparent);
+      }
+      #${panelId} .cpu-wb-captcha { display: grid; grid-template-columns: 118px minmax(0, 1fr); gap: 10px; align-items: start; margin-top: 10px; }
+      #${panelId} .cpu-wb-captcha-shot {
+        display: block; width: 100%; min-width: 0; padding: 0; border: 1px solid var(--cpu-wb-border);
+        border-radius: 12px; background: var(--cpu-wb-subtle); overflow: hidden;
+      }
+      #${panelId} .cpu-wb-captcha-shot img { display: block; width: 100%; height: 46px; object-fit: cover; }
+      #${panelId} .cpu-wb-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+      #${panelId} .cpu-wb-actions button {
+        min-width: 120px; min-height: 36px; flex: 1; border: 1px solid var(--cpu-wb-border); border-radius: 10px;
+        background: var(--cpu-wb-card); color: var(--cpu-wb-primary-soft);
+      }
+      #${panelId} .cpu-wb-actions button:hover { border-color: color-mix(in srgb, var(--cpu-wb-primary) 50%, var(--cpu-wb-border)); background: var(--cpu-wb-subtle); }
+      #${panelId} .cpu-wb-primary {
+        background: linear-gradient(180deg, #547ce0, #3f65cc) !important; border-color: transparent !important;
+        color: #fff !important; font-weight: 700;
+      }
+      #${panelId} .cpu-wb-primary:hover { background: linear-gradient(180deg, #5b85e9, #476dd5) !important; }
+      #${panelId} .cpu-wb-secondary { color: var(--cpu-wb-muted-strong) !important; }
+      #${panelId} .cpu-wb-note { margin-top: 10px; color: var(--cpu-wb-muted); font-size: 12px; line-height: 1.55; }
+      #${panelId} .cpu-wb-log { display: grid; gap: 8px; margin-top: 12px; }
+      #${panelId} .cpu-wb-log-row {
+        display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 8px; padding: 9px 0; border-bottom: 1px solid var(--cpu-wb-border-soft);
+      }
+      #${panelId} .cpu-wb-log-row:last-child { border-bottom: 0; padding-bottom: 0; }
+      #${panelId} .cpu-wb-log-row time { color: var(--cpu-wb-muted); font-variant-numeric: tabular-nums; }
+      #${panelId} .cpu-wb-log-row span { word-break: break-word; }
+      #${panelId} .cpu-wb-log-row[data-type="error"] span { color: var(--cpu-wb-danger); }
+      #${launcherId} {
+        position: fixed; right: 22px; bottom: 28px; z-index: 2147482998; min-height: 44px; padding: 0 16px; border: 0;
+        border-radius: 999px; background: linear-gradient(180deg, #5a7fe2, #4265c8); color: #fff;
+        box-shadow: 0 12px 34px rgba(52, 87, 172, .34); font: 700 14px system-ui, sans-serif; cursor: pointer;
+      }
+      @media (prefers-color-scheme: dark) {
+        #${panelId} { box-shadow: 0 24px 70px rgba(0, 0, 0, .42); }
+        #${launcherId} { box-shadow: 0 12px 34px rgba(0, 0, 0, .42); }
+      }
+      @media (max-width: 700px) {
+        #${panelId} {
+          top: 64px; right: 10px; left: 10px; width: auto; max-height: calc(100vh - 78px); border-radius: 16px;
+        }
+        #${panelId} .cpu-wb-header { gap: 8px; padding: 12px; cursor: default; touch-action: auto; }
+        #${panelId} .cpu-wb-mark { width: 34px; height: 34px; border-radius: 11px; font-size: 16px; }
+        #${panelId} .cpu-wb-heading strong { font-size: 15px; }
+        #${panelId} .cpu-wb-heading span { display: none; }
+        #${panelId} .cpu-wb-icon { width: 34px; height: 34px; }
+        #${panelId} .cpu-wb-body { padding: 13px; }
+        #${panelId} .cpu-wb-captcha { grid-template-columns: 1fr; }
+        #${panelId} .cpu-wb-actions button { min-width: 0; }
+        #${launcherId} { right: 14px; bottom: 76px; }
+      }
     `;
     panel.innerHTML = `
-      <div id="cpu-wb-header" style="padding:10px 14px;background:#16213e;display:flex;align-items:center;justify-content:space-between;cursor:move;">
-        <span style="font-weight:600;color:#4fc3f7;">🛡️ 安全微伴助手</span>
-        <span id="cpu-wb-toggle" style="cursor:pointer;opacity:.7;font-size:16px;">▼</span>
-      </div>
-      <div id="cpu-wb-body" style="padding:12px 14px;">
-        <div id="cpu-wb-status" style="margin-bottom:8px;color:#a5d6a7;min-height:18px;"></div>
-        <div id="cpu-wb-log" style="max-height:120px;overflow-y:auto;font-size:11px;color:#90a4ae;line-height:1.6;"></div>
-        <div id="cpu-wb-setup" style="display:none;margin-top:8px;">
-          <div style="margin-bottom:6px;color:#ffcc80;font-size:12px;">首次使用，请填写登录信息：</div>
-          <input id="cpu-wb-school" placeholder="学校名（如：中国药科大学）" style="${inputStyle()}">
-          <input id="cpu-wb-user" placeholder="学号/用户名" style="${inputStyle()}">
-          <input id="cpu-wb-pass" type="password" placeholder="密码" style="${inputStyle()}">
-          <div id="cpu-wb-captcha-row" style="display:none;margin-bottom:6px;">
-            <img id="cpu-wb-captcha-img" style="height:40px;border-radius:4px;cursor:pointer;" title="点击刷新">
-            <input id="cpu-wb-captcha-val" placeholder="验证码" style="${inputStyle('calc(100% - 0px)')}">
+      <header class="cpu-wb-header" title="拖动调整窗口位置">
+        <div class="cpu-wb-mark" aria-hidden="true">🛡</div>
+        <div class="cpu-wb-heading"><strong>安全微伴助手</strong><span>登录、刷课与任务控制</span></div>
+        <div class="cpu-wb-header-actions">
+          <button class="cpu-wb-icon" type="button" data-action="toggle-collapse" title="收起内容" aria-label="收起内容">▾</button>
+          <button class="cpu-wb-icon" type="button" data-action="close" title="隐藏面板" aria-label="隐藏面板">×</button>
+        </div>
+      </header>
+      <main class="cpu-wb-body">
+        <section class="cpu-wb-card">
+          <span class="cpu-wb-kicker">当前状态</span>
+          <h3 class="cpu-wb-title" id="cpu-wb-status">请先登录</h3>
+          <p class="cpu-wb-muted" id="cpu-wb-summary">首次使用请填写学校、账号、密码和验证码。</p>
+        </section>
+
+        <section class="cpu-wb-card" id="cpu-wb-setup">
+          <span class="cpu-wb-kicker">登录信息</span>
+          <h3 class="cpu-wb-title">首次使用，请填写登录信息</h3>
+          <p class="cpu-wb-lead">学校名和账号会保存在本机，密码只用于本次登录。</p>
+          <div class="cpu-wb-form">
+            <label class="cpu-wb-field">
+              <span>学校名</span>
+              <input id="cpu-wb-school" placeholder="学校名（如：中国药科大学）" autocomplete="off" spellcheck="false">
+            </label>
+            <label class="cpu-wb-field">
+              <span>学号 / 用户名</span>
+              <input id="cpu-wb-user" placeholder="学号/用户名" autocomplete="off" spellcheck="false">
+            </label>
+            <label class="cpu-wb-field">
+              <span>密码</span>
+              <input id="cpu-wb-pass" type="password" placeholder="密码" autocomplete="off">
+            </label>
           </div>
-          <button id="cpu-wb-login-btn" style="${btnStyle()}">登录并开始</button>
-        </div>
-        <div id="cpu-wb-actions" style="display:none;margin-top:8px;display:flex;gap:8px;">
-          <button id="cpu-wb-run-btn" style="${btnStyle()}">▶ 开始刷课</button>
-          <button id="cpu-wb-logout-btn" style="${btnStyle('#555')}" title="清除登录信息">退出</button>
-        </div>
-      </div>
+          <div class="cpu-wb-captcha" id="cpu-wb-captcha-row" hidden>
+            <button class="cpu-wb-captcha-shot" type="button" id="cpu-wb-captcha-img" title="点击刷新验证码" aria-label="刷新验证码">
+              <img id="cpu-wb-captcha-preview" alt="验证码">
+            </button>
+            <label class="cpu-wb-field">
+              <span>验证码</span>
+              <input id="cpu-wb-captcha-val" placeholder="验证码" autocomplete="off" spellcheck="false">
+            </label>
+          </div>
+          <div class="cpu-wb-actions">
+            <button class="cpu-wb-primary" id="cpu-wb-login-btn" type="button">登录并开始</button>
+          </div>
+          <p class="cpu-wb-note">验证码每次都需要手动输入；刷新图片请直接点左侧验证码。</p>
+        </section>
+
+        <section class="cpu-wb-card" id="cpu-wb-session-card" hidden>
+          <span class="cpu-wb-kicker">运行控制</span>
+          <h3 class="cpu-wb-title">已登录，准备开始刷课</h3>
+          <p class="cpu-wb-muted" id="cpu-wb-session-text">点击开始刷课即可进入自动流程，也可以退出后重新登录。</p>
+          <div class="cpu-wb-actions">
+            <button class="cpu-wb-primary" id="cpu-wb-run-btn" type="button">开始刷课</button>
+            <button class="cpu-wb-secondary" id="cpu-wb-logout-btn" type="button" title="清除登录信息">退出登录</button>
+          </div>
+        </section>
+
+        <section class="cpu-wb-card">
+          <span class="cpu-wb-kicker">运行日志</span>
+          <div class="cpu-wb-log" id="cpu-wb-log"></div>
+        </section>
+      </main>
     `;
-    document.body.appendChild(panel);
+    document.body.append(style, panel, launcher);
 
-    function inputStyle(w = '100%') {
-      return `width:${w};box-sizing:border-box;margin-bottom:6px;padding:6px 8px;background:#0f3460;border:1px solid #1a4a7a;border-radius:6px;color:#e0e0e0;font-size:12px;outline:none;`;
-    }
-    function btnStyle(bg = '#1565c0') {
-      return `flex:1;padding:7px 0;background:${bg};border:none;border-radius:6px;color:#fff;font-size:12px;cursor:pointer;`;
-    }
-
+    const body = panel.querySelector('.cpu-wb-body');
+    const collapseBtn = panel.querySelector('[data-action="toggle-collapse"]');
+    const closeBtn = panel.querySelector('[data-action="close"]');
     const logEl = panel.querySelector('#cpu-wb-log');
     const statusEl = panel.querySelector('#cpu-wb-status');
+    const summaryEl = panel.querySelector('#cpu-wb-summary');
+    const sessionTextEl = panel.querySelector('#cpu-wb-session-text');
+    const setupCard = panel.querySelector('#cpu-wb-setup');
+    const sessionCard = panel.querySelector('#cpu-wb-session-card');
+    const captchaRow = panel.querySelector('#cpu-wb-captcha-row');
+    const captchaShot = panel.querySelector('#cpu-wb-captcha-img');
+    const captchaPreview = panel.querySelector('#cpu-wb-captcha-preview');
+    const captchaInput = panel.querySelector('#cpu-wb-captcha-val');
+    const schoolInput = panel.querySelector('#cpu-wb-school');
+    const userInput = panel.querySelector('#cpu-wb-user');
+    const passInput = panel.querySelector('#cpu-wb-pass');
+    const loginBtn = panel.querySelector('#cpu-wb-login-btn');
+    const runBtn = panel.querySelector('#cpu-wb-run-btn');
+    const logoutBtn = panel.querySelector('#cpu-wb-logout-btn');
     let collapsed = false;
+    let drag = null;
+    const positionKey = 'cpu-weban-position-v1';
 
-    panel.querySelector('#cpu-wb-toggle').onclick = () => {
-      collapsed = !collapsed;
-      panel.querySelector('#cpu-wb-body').style.display = collapsed ? 'none' : '';
-      panel.querySelector('#cpu-wb-toggle').textContent = collapsed ? '▲' : '▼';
+    const clampPanelPosition = (left, topValue) => {
+      const width = panel.offsetWidth || 470;
+      const height = panel.offsetHeight || 420;
+      return {
+        left: Math.max(8, Math.min(left, Math.max(8, host.innerWidth - width - 8))),
+        top: Math.max(8, Math.min(topValue, Math.max(8, host.innerHeight - height - 8))),
+      };
     };
 
-    // Drag
-    const header = panel.querySelector('#cpu-wb-header');
-    let drag = null;
-    header.addEventListener('mousedown', e => { drag = { x: e.clientX - panel.offsetLeft, y: e.clientY - panel.offsetTop }; });
-    document.addEventListener('mousemove', e => { if (drag) { panel.style.left = (e.clientX - drag.x) + 'px'; panel.style.bottom = 'auto'; panel.style.top = (e.clientY - drag.y) + 'px'; } });
-    document.addEventListener('mouseup', () => { drag = null; });
+    const setPanelPosition = (left, topValue, persist = false) => {
+      if (host.innerWidth <= 700) {
+        panel.style.removeProperty('left');
+        panel.style.removeProperty('right');
+        panel.style.removeProperty('top');
+        return;
+      }
+      const next = clampPanelPosition(Number(left) || 0, Number(topValue) || 0);
+      panel.style.left = `${next.left}px`;
+      panel.style.top = `${next.top}px`;
+      panel.style.right = 'auto';
+      if (persist) {
+        try { host.sessionStorage.setItem(positionKey, JSON.stringify(next)); } catch {}
+      }
+    };
+
+    const restorePanelPosition = () => {
+      if (host.innerWidth <= 700) return setPanelPosition(0, 0);
+      try {
+        const saved = JSON.parse(host.sessionStorage.getItem(positionKey) || 'null');
+        if (saved && Number.isFinite(Number(saved.left)) && Number.isFinite(Number(saved.top))) {
+          return setPanelPosition(saved.left, saved.top);
+        }
+      } catch {}
+      panel.style.removeProperty('left');
+      panel.style.removeProperty('right');
+      panel.style.removeProperty('top');
+    };
+
+    const setCollapsed = (next) => {
+      collapsed = Boolean(next);
+      body.hidden = collapsed;
+      collapseBtn.textContent = collapsed ? '▸' : '▾';
+      collapseBtn.title = collapsed ? '展开内容' : '收起内容';
+      collapseBtn.setAttribute('aria-label', collapseBtn.title);
+    };
+
+    const showPanel = () => {
+      panel.hidden = false;
+      launcher.hidden = true;
+      restorePanelPosition();
+    };
+
+    const hidePanel = () => {
+      panel.hidden = true;
+      launcher.hidden = false;
+    };
+
+    panel.addEventListener('click', (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      if (target.closest('[data-action="close"]')) {
+        hidePanel();
+        return;
+      }
+      if (target.closest('[data-action="toggle-collapse"]')) {
+        setCollapsed(!collapsed);
+      }
+    });
+
+    launcher.addEventListener('click', showPanel);
+
+    panel.querySelector('.cpu-wb-header').addEventListener('pointerdown', (event) => {
+      if (host.innerWidth <= 700 || event.button !== 0 || event.target.closest('button, input, a, textarea')) return;
+      const rect = panel.getBoundingClientRect();
+      drag = { pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY, left: rect.left, top: rect.top };
+      event.preventDefault();
+    });
+    doc.addEventListener('pointermove', (event) => {
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      setPanelPosition(drag.left + event.clientX - drag.clientX, drag.top + event.clientY - drag.clientY);
+    });
+    doc.addEventListener('pointerup', (event) => {
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      const rect = panel.getBoundingClientRect();
+      drag = null;
+      setPanelPosition(rect.left, rect.top, true);
+    });
+    host.addEventListener('resize', restorePanelPosition);
+    restorePanelPosition();
+    setCollapsed(false);
 
     return {
       setStatus(msg) { statusEl.textContent = msg; },
       addLog(msg) {
         const line = document.createElement('div');
-        line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+        line.className = 'cpu-wb-log-row';
+        line.innerHTML = `<time>${new Date().toLocaleTimeString('zh-CN', { hour12: false })}</time><span></span>`;
+        line.querySelector('span').textContent = msg;
         logEl.appendChild(line);
+        while (logEl.childElementCount > 80) logEl.removeChild(logEl.firstElementChild);
         logEl.scrollTop = logEl.scrollHeight;
       },
       showSetup() {
-        panel.querySelector('#cpu-wb-setup').style.display = '';
-        panel.querySelector('#cpu-wb-actions').style.display = 'none';
+        setupCard.hidden = false;
+        sessionCard.hidden = true;
+        summaryEl.textContent = '学校名和账号会保存在本机，密码只用于本次登录。';
       },
       showActions() {
-        panel.querySelector('#cpu-wb-setup').style.display = 'none';
-        panel.querySelector('#cpu-wb-actions').style.display = 'flex';
+        setupCard.hidden = true;
+        sessionCard.hidden = false;
+        summaryEl.textContent = '登录成功后可以直接开始刷课，也可以退出后重新登录。';
       },
       showCaptcha(dataUrl) {
-        const row = panel.querySelector('#cpu-wb-captcha-row');
-        row.style.display = '';
-        const img = panel.querySelector('#cpu-wb-captcha-img');
-        img.src = dataUrl;
-        img.onclick = async () => { img.src = await fetchCaptchaDataUrl(); };
+        captchaRow.hidden = false;
+        captchaPreview.src = dataUrl;
+        captchaPreview.onclick = async () => {
+          captchaPreview.src = await fetchCaptchaDataUrl();
+          captchaInput.value = '';
+        };
+        captchaInput.value = '';
+        captchaInput.focus();
       },
-      getCaptchaVal() { return panel.querySelector('#cpu-wb-captcha-val')?.value?.trim() || ''; },
+      getCaptchaVal() { return captchaInput?.value?.trim() || ''; },
       getCredentials() {
         return {
-          school: panel.querySelector('#cpu-wb-school')?.value?.trim() || '',
-          username: panel.querySelector('#cpu-wb-user')?.value?.trim() || '',
-          password: panel.querySelector('#cpu-wb-pass')?.value?.trim() || '',
+          school: schoolInput?.value?.trim() || '',
+          username: userInput?.value?.trim() || '',
+          password: passInput?.value?.trim() || '',
         };
       },
-      onLoginClick(fn) { panel.querySelector('#cpu-wb-login-btn').onclick = fn; },
-      onRunClick(fn) { panel.querySelector('#cpu-wb-run-btn').onclick = fn; },
-      onLogoutClick(fn) { panel.querySelector('#cpu-wb-logout-btn').onclick = fn; },
+      onLoginClick(fn) { loginBtn.onclick = fn; },
+      onRunClick(fn) { runBtn.onclick = fn; },
+      onLogoutClick(fn) { logoutBtn.onclick = fn; },
     };
   })();
 

@@ -64,7 +64,8 @@ contextBridge.exposeInMainWorld("cpuShell", {
     getActivity: (limit?: number) => ipcRenderer.invoke("script:get-activity", limit),
     getUpdateState: () => ipcRenderer.invoke("script:get-update-state"),
     getUpdateStates: () => ipcRenderer.invoke("script:get-update-states"),
-    checkUpdate: (kind: "chaoxing" | "multiplatform" = "chaoxing") => ipcRenderer.invoke("script:check-update", kind),
+    checkUpdate: (kind: "chaoxing" | "multiplatform" | "weban" = "chaoxing") =>
+      ipcRenderer.invoke("script:check-update", kind),
     onActivity: (callback: (entry: any) => void) => on("script:activity", callback),
     onUpdateState: (callback: (state: any) => void) => on("script:update-state", callback),
     onUpdateStates: (callback: (state: any) => void) => on("script:update-states", callback)

@@ -149,11 +149,15 @@ OCS 引擎所需的 GM 存储、标签状态、通知与跨域请求由 `main.ts
 
 ### 云端脚本更新
 
-从客户端 0.1.2 起，学习通助手不再必须跟随安装包升级。服务端从仓库内的
-`desktop/assets/userscripts/monkey.js` 提供版本清单与脚本正文：
+从客户端 0.1.2 起，学习通助手不再必须跟随安装包升级。现在学习通、多平台和安全微伴
+三套脚本都由服务端从仓库内的 `desktop/assets/userscripts/*.js` 提供版本清单与脚本正文：
 
 - `GET /api/site/userscripts/chaoxing-helper`：名称、版本、大小、SHA-256 与固定正文路径
 - `GET /api/site/userscripts/chaoxing-helper/source`：服务器本地脚本正文
+- `GET /api/site/userscripts/multiplatform-helper`：名称、版本、大小、SHA-256 与固定正文路径
+- `GET /api/site/userscripts/multiplatform-helper/source`：服务器本地脚本正文
+- `GET /api/site/userscripts/weban-helper`：名称、版本、大小、SHA-256 与固定正文路径
+- `GET /api/site/userscripts/weban-helper/source`：服务器本地脚本正文
 
 客户端启动 4 秒后检查一次，常驻期间每 6 小时检查一次。新正文会先校验名称、版本、大小与
 SHA-256，再与安装包内脚本比较 `@match`、`@require`、`@resource`、`@connect` 权限声明。

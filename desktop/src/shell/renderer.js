@@ -625,8 +625,16 @@ const bindChrome = () => {
 
 const renderScriptUpdateState = (state, kind = "chaoxing") => {
   if (!state) return;
-  const targetId = kind === "multiplatform" ? "multiplatform-script-version" : "script-version";
-  const label = kind === "multiplatform" ? "多平台助手" : "学习通助手";
+  const targetId = kind === "multiplatform"
+    ? "multiplatform-script-version"
+    : kind === "weban"
+      ? "weban-script-version"
+      : "script-version";
+  const label = kind === "multiplatform"
+    ? "多平台助手"
+    : kind === "weban"
+      ? "安全微伴助手"
+      : "学习通助手";
   const version = state.activeVersion ? `v${state.activeVersion}` : "内置版本";
   const source = state.source === "cloud"
     ? "刚从云端更新"
@@ -642,6 +650,7 @@ const renderScriptUpdateStates = (states) => {
   if (!states) return;
   renderScriptUpdateState(states.chaoxing, "chaoxing");
   renderScriptUpdateState(states.multiplatform, "multiplatform");
+  renderScriptUpdateState(states.weban, "weban");
 };
 
 // 点状态芯片就切到工具标签
@@ -763,6 +772,7 @@ const bindScript = () => {
     "multiplatform",
     "多平台助手",
   );
+  bindUpdateButton("weban-script-check-update", "weban-script-version", "weban", "安全微伴助手");
 };
 
 const setAboutUpdateStatus = (message, error = false) => {
