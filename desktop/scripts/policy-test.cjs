@@ -205,12 +205,15 @@ check("安全微伴脚本品牌和匹配范围已写入内置脚本", () => {
   const fs = require("node:fs");
   const source = fs.readFileSync(path.join(__dirname, "..", "assets", "userscripts", "weban.js"), "utf8");
   assert.match(source, /^\/\/ @name\s+药大拾间·安全微伴助手$/m);
-  assert.match(source, /^\/\/ @version\s+1\.0\.1$/m);
+  assert.match(source, /^\/\/ @version\s+1\.0\.2$/m);
   assert.match(source, /weiban\.mycourse\.cn/);
   assert.match(source, /\*\.mycourse\.cn/);
   assert.match(source, /gh-proxy\.com\/https:\/\/github\.com\/hangone\/WeBan/);
   assert.match(source, /cpu-weban:/);
   assert.match(source, /安全微伴助手/);
+  assert.match(source, /randLetterImage\.do\?time=\$\{encodeURIComponent\(ts\)\}&refresh=1/, "验证码图片应直接使用微伴同源图片地址");
+  assert.doesNotMatch(source, /data:image\/png;base64/, "验证码不得再用 data URL，避免被页面 CSP 拦截成破图标");
+  assert.match(source, /color-scheme:\s*light/, "安全微伴面板应使用学习通同款浅色风格");
 });
 
 check("学习通助手品牌、版本和进入课程引导已写入内置回退脚本", () => {

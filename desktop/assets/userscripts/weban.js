@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         药大拾间·安全微伴助手
 // @namespace    cpu-weban
-// @version      1.0.1
+// @version      1.0.2
 // @author       CPU-web
 // @description  自动完成安全微伴课程与考试，支持中国药科大学等高校
 // @match        https://weiban.mycourse.cn/*
@@ -193,12 +193,10 @@
     return null;
   };
 
-  const fetchCaptchaDataUrl = async () => {
-    const ts = Date.now().toString();
-    const resp = await fetch(`${BASE}/pharos/login/randLetterImage.do?time=${ts}`, { credentials: 'include' });
-    const buf = await resp.arrayBuffer();
-    const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
-    return `data:image/png;base64,${b64}`;
+  const fetchCaptchaDataUrl = async (captchaTs) => {
+    const ts = captchaTs || Date.now().toString();
+    // 直接交给 img 加载同源图片；data: / blob: 容易被微伴页 CSP 拦截成破图标。
+    return `${BASE}/pharos/login/randLetterImage.do?time=${encodeURIComponent(ts)}&refresh=1`;
   };
 
   const doLogin = async (tenantCode, username, password, verifyCode, verifyTime) => {
@@ -441,16 +439,16 @@
       #${panelId}, #${panelId} *, #${launcherId}, #${launcherId} * { box-sizing: border-box; }
       #${panelId}[hidden], #${launcherId}[hidden] { display: none !important; }
       #${panelId} {
-        --cpu-wb-primary: #4b78d6; --cpu-wb-primary-strong: #2f5fb3; --cpu-wb-primary-soft: #dce8ff;
-        --cpu-wb-surface: rgba(22, 23, 40, .98); --cpu-wb-card: #1f2035; --cpu-wb-subtle: #262946;
-        --cpu-wb-answer: #2b467b; --cpu-wb-text: #eef4ff; --cpu-wb-muted: #97a4c4; --cpu-wb-muted-strong: #c7d6ff;
-        --cpu-wb-border: #3d4f7d; --cpu-wb-border-soft: #334262; --cpu-wb-danger: #ffb1ae; --cpu-wb-warning: #ffd28a;
-        --cpu-wb-on-primary: #fff; --cpu-wb-shadow: 0 24px 70px rgba(7, 10, 22, .38);
+        --cpu-wb-primary: #4f74e6; --cpu-wb-primary-strong: #315fd0; --cpu-wb-primary-soft: #e6efff;
+        --cpu-wb-surface: rgba(255, 255, 255, .98); --cpu-wb-card: #ffffff; --cpu-wb-subtle: #f5f8ff;
+        --cpu-wb-answer: #eff5ff; --cpu-wb-text: #1e2940; --cpu-wb-muted: #6f7fa0; --cpu-wb-muted-strong: #42526e;
+        --cpu-wb-border: #d8e1f2; --cpu-wb-border-soft: #e6edf8; --cpu-wb-danger: #c85a5a; --cpu-wb-warning: #a66a00;
+        --cpu-wb-on-primary: #fff; --cpu-wb-shadow: 0 22px 60px rgba(77, 101, 157, .18);
         position: fixed; right: 22px; top: 78px; z-index: 2147482998;
         width: min(470px, calc(100vw - 32px)); max-height: calc(100vh - 116px);
         display: flex; flex-direction: column; overflow: hidden;
-        border: 1px solid color-mix(in srgb, var(--cpu-wb-primary) 32%, transparent); border-radius: 20px;
-        background: var(--cpu-wb-surface); color: var(--cpu-wb-text); color-scheme: dark;
+        border: 1px solid color-mix(in srgb, var(--cpu-wb-primary) 18%, var(--cpu-wb-border)); border-radius: 20px;
+        background: linear-gradient(180deg, rgba(255, 255, 255, .99), rgba(246, 249, 255, .99)); color: var(--cpu-wb-text); color-scheme: light;
         box-shadow: var(--cpu-wb-shadow);
         font: 14px/1.55 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       }
@@ -459,26 +457,26 @@
       #${panelId} .cpu-wb-header {
         display: flex; align-items: center; gap: 10px; padding: 14px 16px;
         border-bottom: 1px solid var(--cpu-wb-border); cursor: move; touch-action: none; user-select: none;
-        background: linear-gradient(180deg, rgba(41, 54, 97, .92), rgba(28, 31, 52, .92));
+        background: linear-gradient(180deg, #edf4ff, #e4edff);
       }
       #${panelId} .cpu-wb-mark {
         display: grid; place-items: center; width: 38px; height: 38px; flex: 0 0 auto; border-radius: 13px;
-        background: linear-gradient(180deg, #5e86df, #345ec2); color: #fff; font-size: 18px; font-weight: 800;
+        background: linear-gradient(180deg, #6c8af0, #466ad7); color: #fff; font-size: 18px; font-weight: 800;
       }
       #${panelId} .cpu-wb-heading { min-width: 0; flex: 1; }
       #${panelId} .cpu-wb-heading strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 17px; }
-      #${panelId} .cpu-wb-heading span { display: block; color: var(--cpu-wb-muted); font-size: 12px; }
+      #${panelId} .cpu-wb-heading span { display: block; color: #6b7fa8; font-size: 12px; }
       #${panelId} .cpu-wb-header-actions { display: flex; align-items: center; gap: 8px; }
       #${panelId} .cpu-wb-icon {
         display: grid; place-items: center; width: 38px; height: 38px; padding: 0;
-        border: 1px solid var(--cpu-wb-border); border-radius: 11px; background: var(--cpu-wb-card);
+        border: 1px solid var(--cpu-wb-border); border-radius: 11px; background: #fff;
         color: var(--cpu-wb-muted-strong); transition: background .16s ease, border-color .16s ease, color .16s ease;
       }
       #${panelId} .cpu-wb-icon:hover { border-color: color-mix(in srgb, var(--cpu-wb-primary) 55%, var(--cpu-wb-border)); background: var(--cpu-wb-subtle); }
       #${panelId} .cpu-wb-body { min-height: 0; overflow: auto; padding: 14px 16px; display: grid; gap: 10px; }
       #${panelId} .cpu-wb-card { padding: 14px; border: 1px solid var(--cpu-wb-border-soft); border-radius: 14px; background: var(--cpu-wb-card); }
-      #${panelId} .cpu-wb-kicker { color: var(--cpu-wb-primary); font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
-      #${panelId} .cpu-wb-title { margin: 4px 0 4px; font-size: 18px; line-height: 1.35; word-break: break-word; }
+      #${panelId} .cpu-wb-kicker { color: var(--cpu-wb-primary); font-size: 12px; font-weight: 800; letter-spacing: 0; }
+      #${panelId} .cpu-wb-title { margin: 4px 0 4px; font-size: 17px; line-height: 1.35; word-break: break-word; }
       #${panelId} .cpu-wb-muted { color: var(--cpu-wb-muted); }
       #${panelId} .cpu-wb-lead { margin: 10px 0 0; color: var(--cpu-wb-warning); font-size: 13px; line-height: 1.55; }
       #${panelId} .cpu-wb-form { display: grid; gap: 8px; margin-top: 12px; }
@@ -486,25 +484,25 @@
       #${panelId} .cpu-wb-field span { color: var(--cpu-wb-muted-strong); font-size: 12px; }
       #${panelId} .cpu-wb-field input {
         width: 100%; min-width: 0; padding: 11px 12px; border: 1px solid var(--cpu-wb-border); border-radius: 12px;
-        background: var(--cpu-wb-subtle); color: var(--cpu-wb-text); outline: none;
+        background: #fff; color: var(--cpu-wb-text); outline: none;
         transition: border-color .16s ease, background .16s ease, box-shadow .16s ease;
       }
       #${panelId} .cpu-wb-field input::placeholder { color: color-mix(in srgb, var(--cpu-wb-muted) 82%, white); }
       #${panelId} .cpu-wb-field input:focus {
         border-color: color-mix(in srgb, var(--cpu-wb-primary) 64%, var(--cpu-wb-border));
-        background: color-mix(in srgb, var(--cpu-wb-subtle) 88%, var(--cpu-wb-primary-soft));
+        background: color-mix(in srgb, #fff 88%, var(--cpu-wb-primary-soft));
         box-shadow: 0 0 0 3px color-mix(in srgb, var(--cpu-wb-primary) 18%, transparent);
       }
       #${panelId} .cpu-wb-captcha { display: grid; grid-template-columns: 118px minmax(0, 1fr); gap: 10px; align-items: start; margin-top: 10px; }
       #${panelId} .cpu-wb-captcha-shot {
-        display: block; width: 100%; min-width: 0; padding: 0; border: 1px solid var(--cpu-wb-border);
-        border-radius: 12px; background: var(--cpu-wb-subtle); overflow: hidden;
+        display: grid; place-items: center; width: 100%; min-width: 0; min-height: 56px; padding: 0; border: 1px solid var(--cpu-wb-border);
+        border-radius: 12px; background: #fff; overflow: hidden;
       }
-      #${panelId} .cpu-wb-captcha-shot img { display: block; width: 100%; height: 46px; object-fit: cover; }
+      #${panelId} .cpu-wb-captcha-shot img { display: block; width: 100%; height: 100%; min-height: 54px; object-fit: contain; background: #fff; pointer-events: none; }
       #${panelId} .cpu-wb-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
       #${panelId} .cpu-wb-actions button {
         min-width: 120px; min-height: 36px; flex: 1; border: 1px solid var(--cpu-wb-border); border-radius: 10px;
-        background: var(--cpu-wb-card); color: var(--cpu-wb-primary-soft);
+        background: #fff; color: var(--cpu-wb-primary);
       }
       #${panelId} .cpu-wb-actions button:hover { border-color: color-mix(in srgb, var(--cpu-wb-primary) 50%, var(--cpu-wb-border)); background: var(--cpu-wb-subtle); }
       #${panelId} .cpu-wb-primary {
@@ -524,12 +522,13 @@
       #${panelId} .cpu-wb-log-row[data-type="error"] span { color: var(--cpu-wb-danger); }
       #${launcherId} {
         position: fixed; right: 22px; bottom: 28px; z-index: 2147482998; min-height: 44px; padding: 0 16px; border: 0;
-        border-radius: 999px; background: linear-gradient(180deg, #5a7fe2, #4265c8); color: #fff;
-        box-shadow: 0 12px 34px rgba(52, 87, 172, .34); font: 700 14px system-ui, sans-serif; cursor: pointer;
+        border-radius: 999px; background: linear-gradient(180deg, #ffffff, #eef4ff); color: var(--cpu-wb-primary-strong);
+        border: 1px solid color-mix(in srgb, var(--cpu-wb-primary) 22%, var(--cpu-wb-border));
+        box-shadow: 0 12px 30px rgba(77, 101, 157, .16); font: 700 14px system-ui, sans-serif; cursor: pointer;
       }
       @media (prefers-color-scheme: dark) {
-        #${panelId} { box-shadow: 0 24px 70px rgba(0, 0, 0, .42); }
-        #${launcherId} { box-shadow: 0 12px 34px rgba(0, 0, 0, .42); }
+        #${panelId} { box-shadow: 0 24px 70px rgba(77, 101, 157, .18); }
+        #${launcherId} { box-shadow: 0 12px 30px rgba(77, 101, 157, .16); }
       }
       @media (max-width: 700px) {
         #${panelId} {
@@ -634,6 +633,7 @@
     const logoutBtn = panel.querySelector('#cpu-wb-logout-btn');
     let collapsed = false;
     let drag = null;
+    let captchaUrl = '';
     const positionKey = 'cpu-weban-position-v1';
 
     const clampPanelPosition = (left, topValue) => {
@@ -748,12 +748,18 @@
         sessionCard.hidden = false;
         summaryEl.textContent = '登录成功后可以直接开始刷课，也可以退出后重新登录。';
       },
-      showCaptcha(dataUrl) {
+      showCaptcha(dataUrl, refresh) {
+        if (captchaUrl.startsWith('blob:')) URL.revokeObjectURL(captchaUrl);
+        captchaUrl = dataUrl;
         captchaRow.hidden = false;
         captchaPreview.src = dataUrl;
-        captchaPreview.onclick = async () => {
-          captchaPreview.src = await fetchCaptchaDataUrl();
-          captchaInput.value = '';
+        captchaShot.onclick = async () => {
+          if (typeof refresh !== 'function') return;
+          try {
+            await refresh();
+          } catch (error) {
+            status(`验证码刷新失败：${error?.message || error}`);
+          }
         };
         captchaInput.value = '';
         captchaInput.focus();
@@ -811,9 +817,14 @@
     }
 
     // 显示验证码
-    const captchaTs = Date.now().toString();
-    const captchaDataUrl = await fetchCaptchaDataUrl();
-    ui.showCaptcha(captchaDataUrl);
+    let captchaTs = '';
+    const loadCaptcha = async () => {
+      const nextTs = Date.now().toString();
+      captchaTs = nextTs;
+      const captchaDataUrl = await fetchCaptchaDataUrl(nextTs);
+      ui.showCaptcha(captchaDataUrl, loadCaptcha);
+    };
+    await loadCaptcha();
 
     ui.onLoginClick(async () => {
       const { school, username, password } = ui.getCredentials();
@@ -828,8 +839,7 @@
       const res = await doLogin(tenantCode, username, password, verifyCode, captchaTs);
       if (!res?.data?.token) {
         ui.setStatus('登录失败：' + (res?.msg || '验证码或密码错误'));
-        const newUrl = await fetchCaptchaDataUrl();
-        ui.showCaptcha(newUrl);
+        await loadCaptcha();
         return;
       }
       session = { userId: res.data.userId, token: res.data.token, tenantCode };
