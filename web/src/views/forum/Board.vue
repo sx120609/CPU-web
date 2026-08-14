@@ -25,6 +25,8 @@
       </div>
     </div>
 
+    <ForumAdCard v-if="forumAd" :ad="forumAd" />
+
     <div v-if="error && !loading" class="topic-list cpu-card board-error">
       <el-empty :description="error">
         <el-button type="primary" @click="reload()">重试</el-button>
@@ -66,7 +68,9 @@ import { ref, computed, nextTick, watch } from "vue";
 import { onBeforeRouteLeave, useRoute, useRouter } from "vue-router";
 import { Edit } from "@element-plus/icons-vue";
 import TopicListItem from "@/components/forum/TopicListItem.vue";
+import ForumAdCard from "@/components/forum/ForumAdCard.vue";
 import { boardApi, type Board } from "@/api/board";
+import { forumAdsApi, type ForumAd } from "@/api/forumAds";
 import { topicApi } from "@/api/topic";
 import { useAuthStore } from "@/stores/auth";
 import { clearForumListRestoreState, readForumListRestoreState, writeForumListRestoreState } from "@/utils/forumListRestore";
@@ -87,6 +91,7 @@ const board = ref<Board | null>(null);
 const pinnedList = ref<any[]>([]);
 const list = ref<any[]>([]);
 const total = ref(0);
+const forumAd = ref<ForumAd | null>(null);
 const page = ref(1);
 const size = ref(20);
 const sort = ref<"new" | "hot">("new");
@@ -113,6 +118,7 @@ watch(() => route.fullPath, async () => {
   sort.value = restored?.sort === "hot" ? "hot" : "new";
   pendingRestoreState = restored;
   await reload();
+  void loadAd();
 }, { immediate: true });
 
 async function reload(options: { scrollToTop?: boolean } = {}) {
@@ -171,6 +177,14 @@ async function reload(options: { scrollToTop?: boolean } = {}) {
     } else if (!error.value && options.scrollToTop) {
       await scrollToTop();
     }
+  }
+}
+
+async function loadAd() {
+  try {
+    forumAd.value = (await forumAdsApi.list("forum-board-top"))[0] ?? null;
+  } catch {
+    forumAd.value = null;
   }
 }
 

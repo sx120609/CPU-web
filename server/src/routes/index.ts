@@ -25,6 +25,7 @@ import { marketRouter } from "./market";
 import { lostFoundRouter } from "./lostFound";
 import { integrationsRouter } from "./integrations";
 import { oauthRouter } from "./oauth";
+import { forumAdsRouter } from "./forumAds";
 
 export const router = Router();
 
@@ -38,6 +39,7 @@ router.use("/courses", authOptional, courseRouter);
 router.use("/search", authOptional, searchRouter);
 router.use("/home", authOptional, homeRouter);
 router.use("/site", siteRouter);
+router.use("/forum-ads", forumAdsRouter);
 router.use("/storage", storageRouter);
 router.use("/tools", toolsRouter);
 router.use("/payments", paymentsRouter);

@@ -26,6 +26,10 @@ export async function invalidateForumCaches(options?: {
   await bumpMany(domains);
 }
 
+export async function invalidateForumAdCaches() {
+  await bumpMany(["forum-ads"]);
+}
+
 export async function invalidateCourseCaches() {
   await bumpMany(["courses", "search"]);
 }

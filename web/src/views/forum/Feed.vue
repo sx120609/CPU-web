@@ -17,6 +17,7 @@
       </div>
 
       <template v-else-if="isHot">
+        <ForumAdCard v-if="forumAd" :ad="forumAd" compact />
         <div
           v-for="item in hotList"
           :key="item.id"
@@ -49,6 +50,7 @@
           </div>
           <TopicListItem v-for="t in pinnedList" :key="`pin-${t.id}`" :topic="t" />
         </div>
+        <ForumAdCard v-if="forumAd" :ad="forumAd" compact />
         <div class="section-head" v-if="latestList.length || latestTotal">
           <h3>最新内容</h3>
           <span>已显示 {{ latestList.length }} / {{ latestTotal }}</span>
@@ -85,7 +87,9 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { onBeforeRouteLeave, useRoute, useRouter } from "vue-router";
 import TopicListItem from "@/components/forum/TopicListItem.vue";
+import ForumAdCard from "@/components/forum/ForumAdCard.vue";
 import { homeApi } from "@/api/home";
+import { forumAdsApi, type ForumAd } from "@/api/forumAds";
 import { fmtRelative } from "@/utils/format";
 import { clearForumListRestoreState, readForumListRestoreState, writeForumListRestoreState } from "@/utils/forumListRestore";
 import { useAuthStore } from "@/stores/auth";
@@ -120,6 +124,7 @@ const latestSize = ref(15);
 const loadMoreSentinelRef = ref<HTMLElement | null>(null);
 const currentList = computed(() => isHot.value ? hotList.value : [...pinnedList.value, ...latestList.value]);
 const canLoadMore = computed(() => !isHot.value && latestList.value.length < latestTotal.value);
+const forumAd = ref<ForumAd | null>(null);
 let loadMoreObserver: IntersectionObserver | null = null;
 let pendingRestoreState: LatestFeedRestoreState | null = null;
 let loadSeq = 0;
@@ -131,6 +136,7 @@ watch(() => route.fullPath, () => {
     latestPage.value = pendingRestoreState.latestPage;
   }
   void load();
+  void loadAd();
 }, { immediate: true });
 
 watch(canLoadMore, async (value) => {
@@ -232,6 +238,15 @@ async function load() {
         loadMoreObserver.observe(loadMoreSentinelRef.value);
       }
     }
+  }
+}
+
+async function loadAd() {
+  forumAd.value = null;
+  try {
+    forumAd.value = (await forumAdsApi.list("forum-feed-inline"))[0] ?? null;
+  } catch {
+    forumAd.value = null;
   }
 }
 

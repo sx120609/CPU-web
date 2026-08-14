@@ -115,8 +115,10 @@ import { getQueryAgentPoolSnapshot } from "../../services/jwxtAgentRemote";
 import { getSsoLoginPoolSnapshot } from "../../services/ssoLoginPool";
 import { resetCampusAssistantDailyUsage } from "../../services/campusAssistantQuota";
 import { fetchAiModelCatalog } from "../../services/aiModelCatalog";
+import { forumAdsAdminRouter } from "./forumAds";
 
 export const adminRouter = Router();
+adminRouter.use("/forum-ads", forumAdsAdminRouter);
 const DATABASE_RESTORE_UPLOAD_DIR = path.join(tmpdir(), "cpu-web-db-restore-upload");
 mkdirSync(DATABASE_RESTORE_UPLOAD_DIR, { recursive: true });
 

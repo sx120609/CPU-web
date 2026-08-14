@@ -18,6 +18,8 @@
           <span class="latest-entry-arrow">查看全部 →</span>
         </button>
 
+        <ForumAdCard v-if="forumAd" :ad="forumAd" />
+
         <div v-loading="loading" class="boards-content">
           <div class="cluster" v-if="general.length">
             <h3 class="cluster-title">💬 综合讨论</h3>
@@ -80,6 +82,8 @@ import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { InfoFilled } from "@element-plus/icons-vue";
 import { boardApi, type Board } from "@/api/board";
+import { forumAdsApi, type ForumAd } from "@/api/forumAds";
+import ForumAdCard from "@/components/forum/ForumAdCard.vue";
 import { useAuthStore } from "@/stores/auth";
 import { forumCacheScope, readForumBoards, writeForumBoards } from "@/utils/forumCache";
 
@@ -88,11 +92,15 @@ const auth = useAuthStore();
 const all = ref<Board[]>([]);
 const loading = ref(false);
 const error = ref("");
+const forumAd = ref<ForumAd | null>(null);
 let disposed = false;
 let boardLoadSeq = 0;
 const cacheScope = computed(() => forumCacheScope(auth.user));
 
-onMounted(loadBoards);
+onMounted(() => {
+  void loadBoards();
+  void loadAd();
+});
 
 onBeforeUnmount(() => {
   disposed = true;
@@ -137,6 +145,14 @@ function openBoard(slug: string) {
     return;
   }
   router.push(`/forum/b/${slug}`);
+}
+
+async function loadAd() {
+  try {
+    forumAd.value = (await forumAdsApi.list("forum-index-top"))[0] ?? null;
+  } catch {
+    forumAd.value = null;
+  }
 }
 </script>
 

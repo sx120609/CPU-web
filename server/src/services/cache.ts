@@ -19,6 +19,7 @@ export type CacheDomain =
   | "services"
   | "home"
   | "forum-list"
+  | "forum-ads"
   | "search"
   | "courses"
   | "dorm-electric"

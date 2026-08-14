@@ -1557,6 +1557,29 @@ model SiteSetting {
   updatedAt DateTime @updatedAt
 }
 
+// 论坛商业/推广广告。与站点功能开关分离，支持多广告、排期和不同展示位置。
+// 广告只保存展示所需的公开内容；投放链接由服务端校验为站内路径或 http(s)。
+model ForumAd {
+  id          Int      @id @default(autoincrement())
+  title       String
+  description String?
+  imageUrl    String?
+  linkUrl     String
+  buttonText  String?
+  placement   String   @default("forum-index-top") // forum-index-top / forum-feed-inline / forum-board-top
+  sortOrder   Int      @default(0)
+  enabled     Boolean  @default(false)
+  vipExempt   Boolean  @default(true)
+  startsAt    DateTime?
+  endsAt      DateTime?
+  createdById Int?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([placement, enabled, sortOrder])
+  @@index([startsAt, endsAt])
+}
+
 // ============ 刷课工具：AI 答题额度与消耗 ============
 // 视频刷课免费（拉人气），仅 AI 答题计费。
 //   CourseBotQuota: 每用户一行，存 AI 答题余额与累计统计

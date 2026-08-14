@@ -595,6 +595,23 @@ export type JwxtAgentsAdminConfig = {
   agents: JwxtAgentAdminItem[];
 };
 
+export type ForumAdAdmin = {
+  id: number;
+  title: string;
+  description: string | null;
+  imageUrl: string | null;
+  linkUrl: string;
+  buttonText: string | null;
+  placement: "forum-index-top" | "forum-feed-inline" | "forum-board-top";
+  sortOrder: number;
+  enabled: boolean;
+  vipExempt: boolean;
+  startsAt: string | null;
+  endsAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type JwxtAgentsAdminPatch = {
   localJwxtEnabled: boolean;
   localJwxtWeight: number;
@@ -1002,4 +1019,11 @@ export const adminApi = {
   updateAnnouncement: (id: number, p: { title?: string; content?: string; level?: string; link?: string | null; source?: string | null; targetClient?: "all" | "ios" | "android" | "harmony" | "web" | Array<"ios" | "android" | "harmony" | "web"> }) =>
     request.patch<any>(`/admin/announcements/${id}`, p),
   deleteAnnouncement: (id: number) => request.delete<any>(`/admin/announcements/${id}`),
+  // 论坛广告
+  forumAds: (options?: RequestOptions) => request.get<ForumAdAdmin[]>("/admin/forum-ads", undefined, options),
+  createForumAd: (payload: Partial<Omit<ForumAdAdmin, "id" | "createdAt" | "updatedAt">> & Pick<ForumAdAdmin, "title" | "linkUrl" | "placement">) =>
+    request.post<ForumAdAdmin>("/admin/forum-ads", payload),
+  updateForumAd: (id: number, payload: Partial<Omit<ForumAdAdmin, "id" | "createdAt" | "updatedAt">>) =>
+    request.patch<ForumAdAdmin>(`/admin/forum-ads/${id}`, payload),
+  deleteForumAd: (id: number) => request.delete<{ ok: true }>(`/admin/forum-ads/${id}`),
 };
