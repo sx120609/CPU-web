@@ -366,6 +366,7 @@ import {
   Compass,
   Link,
   Download,
+  StarFilled,
 } from "@element-plus/icons-vue";
 import type { TopNavigationIcon, TopNavigationItem } from "@/api/site";
 import UserAvatar from "@/components/common/UserAvatar.vue";
@@ -541,6 +542,7 @@ const drawerItems = computed(() => {
   const items: DrawerNavItem[] = [];
   if (auth.canAccessForum && site.features.forum) items.push({ id: "system-post", to: "/post", label: "发帖", icon: Edit });
   items.push({ id: "system-messages", to: "/messages", label: "消息", icon: Message });
+  if (auth.isLoggedIn) items.push({ id: "system-vip", to: "/vip", label: "VIP 中心", icon: StarFilled });
   if (auth.canAccessModuleAdmin) items.push({ id: "system-admin", to: "/admin", label: "管理后台", icon: Tools });
   if (!items.some((item) => item.to === "/download")) items.push({ id: "system-download", to: "/download", label: "客户端下载", icon: Download });
   for (const item of site.topNavigation.filter((candidate) => candidate.to !== "/download" && candidate.showInDrawer && navigationItemVisible(candidate))) {
