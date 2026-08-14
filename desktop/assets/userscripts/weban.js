@@ -1,11 +1,13 @@
 // ==UserScript==
 // @name         药大拾间·安全微伴助手
 // @namespace    cpu-weban
-// @version      1.0.4
+// @version      1.0.5
 // @author       CPU-web
 // @description  自动完成安全微伴课程与考试，支持中国药科大学等高校
 // @match        https://weiban.mycourse.cn/*
 // @match        https://*.mycourse.cn/*
+// @connect      weiban.mycourse.cn
+// @connect      gh-proxy.com
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_xmlhttpRequest
@@ -876,6 +878,7 @@
         captchaTs = nextTs;
         ui.showCaptcha(captchaBitmap, loadCaptcha);
       } catch (error) {
+        status(`验证码加载失败：${error?.message || error}`);
         ui.showCaptchaError(`验证码加载失败：${error?.message || error}`, loadCaptcha);
       }
     };
