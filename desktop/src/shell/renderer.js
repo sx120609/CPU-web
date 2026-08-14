@@ -160,7 +160,7 @@ const renderAuth = (session) => {
     el("auth-howto").hidden = true;
     el("auth-sponsor").hidden = true;
     if (guestUnlimited) {
-      el("auth-hint").textContent = "新生限时开放中：安装客户端即可使用学习通助手，AI 刷题暂不限次数，无需药大拾间账号。";
+      el("auth-hint").textContent = "新生限时开放中：安装客户端即可使用学习中心，无需药大拾间账号。";
       el("quota-text").textContent = "限时无限";
       return;
     }
@@ -434,9 +434,143 @@ const renderCampusLogs = (entries) => {
 
 const platformMark = (name) => name.replace(/[\s/·]/g, "").slice(0, 2);
 
+const closeLearningPlatformDialog = () => {
+  const dialog = el("platform-dialog");
+  if (dialog?.open) dialog.close();
+};
+
+const openLearningPlatform = async (platform) => {
+  if (!platform || platform.enabled === false) {
+    if (platform) say(`${platform.name} 暂时停用`, true);
+    return false;
+  }
+  closeLearningPlatformDialog();
+  await shell.tabs.openLearning(platform.id);
+  pendingReload = false;
+  renderScriptConfig();
+  say(`已打开 ${platform.name}`);
+  return true;
+};
+
+const renderLearningHub = (state) => {
+  const grid = el("learning-launch-grid");
+  if (!grid) return;
+  const platforms = Array.isArray(state) ? state : [];
+  const enabledPlatforms = platforms.filter((platform) => platform.enabled !== false);
+  const defaultPlatform = enabledPlatforms.find((platform) => platform.id === "chaoxing")
+    ?? enabledPlatforms[0]
+    ?? platforms[0];
+  const openCount = enabledPlatforms.length;
+  const savedCount = platforms.filter((platform) => platform.hasCredential).length;
+  const disabledCount = platforms.filter((platform) => platform.enabled === false).length;
+
+  el("learning-platform-count").textContent = `${platforms.length} 个平台`;
+  el("learning-open-count").textContent = String(openCount);
+  el("learning-saved-count").textContent = String(savedCount);
+  el("learning-disabled-count").textContent = String(disabledCount);
+
+  const openDefault = el("learning-open-default");
+  if (openDefault) {
+    openDefault.dataset.platformId = defaultPlatform?.id || "";
+    openDefault.disabled = !defaultPlatform || defaultPlatform.enabled === false;
+    openDefault.textContent = defaultPlatform ? `打开 ${defaultPlatform.short || defaultPlatform.name}` : "打开默认平台";
+  }
+
+  el("learning-default-name").textContent = defaultPlatform?.name || "学习中心";
+  el("learning-default-note").textContent = defaultPlatform
+    ? `${defaultPlatform.description}${defaultPlatform.hasCredential ? " · 已保存账号" : ""}`
+    : "把常用课程平台放在同一个窗口里";
+
+  grid.textContent = "";
+  if (!platforms.length) {
+    const empty = document.createElement("div");
+    empty.className = "learning-launch-empty";
+    empty.textContent = "暂无可用平台";
+    grid.append(empty);
+    return;
+  }
+
+  for (const platform of platforms) {
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "learning-launch-card";
+    card.dataset.disabled = String(platform.enabled === false);
+
+    const mark = document.createElement("span");
+    mark.className = "learning-launch-mark";
+    mark.textContent = platformMark(platform.short || platform.name);
+
+    const main = document.createElement("span");
+    main.className = "learning-launch-main";
+
+    const titleRow = document.createElement("span");
+    titleRow.className = "learning-launch-title";
+
+    const title = document.createElement("strong");
+    title.textContent = platform.name;
+
+    const status = document.createElement("span");
+    status.className = "learning-launch-status";
+    status.dataset.state = platform.enabled === false
+      ? "disabled"
+      : platform.hasCredential
+        ? "saved"
+        : platform.remember
+          ? "pending"
+          : "fresh";
+    status.textContent = platform.enabled === false
+      ? "已停用"
+      : platform.hasCredential
+        ? "已记住"
+        : platform.remember
+          ? "待登录"
+          : "可直开";
+
+    titleRow.append(title, status);
+
+    const desc = document.createElement("span");
+    desc.className = "learning-launch-desc";
+    desc.textContent = platform.enabled === false
+      ? "后台暂时停用，恢复后即可继续打开。"
+      : platform.description;
+
+    const foot = document.createElement("span");
+    foot.className = "learning-launch-foot";
+
+    const account = document.createElement("span");
+    account.className = "learning-launch-account";
+    account.textContent = platform.hasCredential
+      ? `账号 ${platform.account}`
+      : platform.remember
+        ? "登录后会自动保存账号"
+        : "未启用记住密码";
+
+    const action = document.createElement("span");
+    action.className = "learning-launch-action";
+    action.textContent = platform.enabled === false ? "不可用" : "进入";
+
+    foot.append(account, action);
+    main.append(titleRow, desc, foot);
+    card.append(mark, main);
+    card.disabled = platform.enabled === false;
+    card.addEventListener("click", async () => {
+      card.disabled = true;
+      try {
+        await openLearningPlatform(platform);
+      } catch (error) {
+        say(errorText(error, `无法打开${platform.name}。`), true);
+      } finally {
+        card.disabled = platform.enabled === false;
+      }
+    });
+    grid.append(card);
+  }
+};
+
 const renderLearningPlatforms = (state) => {
   if (!Array.isArray(state)) return;
   learningCredentialState = state;
+  renderLearningHub(state);
   const list = el("platform-list");
   list.textContent = "";
   for (const platform of state) {
@@ -456,15 +590,10 @@ const renderLearningPlatforms = (state) => {
     open.disabled = platform.enabled === false;
     open.addEventListener("click", async () => {
       open.disabled = true;
-      const dialog = el("platform-dialog");
-      // 先撤掉原生 dialog 的 backdrop，再创建并激活内容标签。否则内容视图先切换时，
-      // Shell 里仍处于 modal 状态的遮罩会短暂覆盖整窗，看起来像页面一直没有获得焦点。
-      if (dialog.open) dialog.close();
       try {
+        const dialog = el("platform-dialog");
+        if (dialog) dialog.close();
         await shell.tabs.openLearning(platform.id);
-        pendingReload = false;
-        renderScriptConfig();
-        say(`已打开${platform.name}。`);
       } catch (error) {
         say(errorText(error, `无法打开${platform.name}。`), true);
       } finally {
@@ -528,7 +657,7 @@ const openPlatformDialog = async () => {
     renderLearningPlatforms(await shell.learningCredentials.getState());
     el("platform-dialog").showModal();
   } catch (error) {
-    say(errorText(error, "无法读取网课平台。"), true);
+    say(errorText(error, "无法读取学习平台。"), true);
   }
 };
 
@@ -536,6 +665,25 @@ const bindLearningPlatforms = () => {
   el("platform-dialog-close").addEventListener("click", () => el("platform-dialog").close());
   el("platform-dialog").addEventListener("click", (event) => {
     if (event.target === el("platform-dialog")) el("platform-dialog").close();
+  });
+  el("learning-manage").addEventListener("click", () => void openPlatformDialog());
+  el("learning-open-default").addEventListener("click", async () => {
+    const button = el("learning-open-default");
+    const platformId = button.dataset.platformId || "";
+    const platform = learningCredentialState.find((item) => item.id === platformId)
+      || learningCredentialState.find((item) => item.enabled !== false);
+    if (!platform) {
+      say("暂无可用平台", true);
+      return;
+    }
+    button.disabled = true;
+    try {
+      await openLearningPlatform(platform);
+    } catch (error) {
+      say(errorText(error, `无法打开${platform.name}。`), true);
+    } finally {
+      button.disabled = false;
+    }
   });
 };
 
@@ -626,7 +774,7 @@ const bindChrome = () => {
 const renderScriptUpdateState = (state, kind = "chaoxing") => {
   if (!state) return;
   const targetId = kind === "multiplatform" ? "multiplatform-script-version" : "script-version";
-  const label = kind === "multiplatform" ? "多平台助手" : "学习通助手";
+  const label = kind === "multiplatform" ? "多平台入口" : "学习中心";
   const version = state.activeVersion ? `v${state.activeVersion}` : "内置版本";
   const source = state.source === "cloud"
     ? "刚从云端更新"
@@ -756,12 +904,12 @@ const bindScript = () => {
       }
     });
   };
-  bindUpdateButton("script-check-update", "script-version", "chaoxing", "学习通助手");
+  bindUpdateButton("script-check-update", "script-version", "chaoxing", "学习中心");
   bindUpdateButton(
     "multiplatform-script-check-update",
     "multiplatform-script-version",
     "multiplatform",
-    "多平台助手",
+    "多平台入口",
   );
 };
 
@@ -1012,7 +1160,7 @@ function showUpdate(info) {
   if (updateStage === "downloading" || updateStage === "ready") return;
   el("update-card").hidden = false;
   el("update-title").textContent = `有新版本 v${info.latest}`;
-  el("update-note").textContent = "网课平台改版后旧版助手可能失效，建议更新。";
+  el("update-note").textContent = "学习平台改版后旧版入口可能失效，建议更新。";
   el("update-go").hidden = false;
   el("update-go").onclick = () => void shell.update.open(info.url);
 }
