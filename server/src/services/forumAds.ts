@@ -3,6 +3,8 @@ import { prisma } from "../prisma";
 
 export const FORUM_AD_PLACEMENTS = [
   "forum-index-top",
+  "forum-home-pinned",
+  "forum-home-hot",
   "forum-feed-inline",
   "forum-board-top",
 ] as const;

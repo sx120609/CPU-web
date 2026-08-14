@@ -26,6 +26,7 @@ import { lostFoundRouter } from "./lostFound";
 import { integrationsRouter } from "./integrations";
 import { oauthRouter } from "./oauth";
 import { forumAdsRouter } from "./forumAds";
+import { vipRouter } from "./vip";
 
 export const router = Router();
 
@@ -40,6 +41,7 @@ router.use("/search", authOptional, searchRouter);
 router.use("/home", authOptional, homeRouter);
 router.use("/site", siteRouter);
 router.use("/forum-ads", forumAdsRouter);
+router.use("/vip", vipRouter);
 router.use("/storage", storageRouter);
 router.use("/tools", toolsRouter);
 router.use("/payments", paymentsRouter);

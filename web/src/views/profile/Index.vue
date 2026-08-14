@@ -33,12 +33,13 @@
       </ul>
       <div class="profile-actions">
         <el-button type="primary" plain :disabled="saving || logoutBusy" @click="editing = true">编辑资料</el-button>
+        <el-button type="warning" plain :disabled="saving || logoutBusy" @click="router.push('/vip')">VIP 中心</el-button>
         <el-button v-if="!user?.studentSso" plain :disabled="savingPw || logoutBusy" @click="passwordDialog = true">修改密码</el-button>
         <el-button type="danger" plain :loading="logoutBusy" :disabled="logoutBusy" @click="onLogout">退出登录</el-button>
       </div>
     </div>
 
-    <div v-if="user?.vipActive" class="cpu-card vip-style-card">
+    <div v-if="user?.vipActive" id="vip-style" class="cpu-card vip-style-card">
       <div>
         <h3 class="cpu-section-title">VIP 个性化资料</h3>
         <p class="vip-style-copy">选择个人主页主题和头像框，论坛里也会同步展示你的 VIP 身份。</p>

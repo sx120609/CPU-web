@@ -1,6 +1,6 @@
 import { request, type RequestOptions } from "./request";
 
-export type ForumAdPlacement = "forum-index-top" | "forum-feed-inline" | "forum-board-top";
+export type ForumAdPlacement = "forum-index-top" | "forum-home-pinned" | "forum-home-hot" | "forum-feed-inline" | "forum-board-top";
 
 export type ForumAd = {
   id: number;

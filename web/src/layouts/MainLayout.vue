@@ -112,6 +112,7 @@
               <template #dropdown>
                 <el-dropdown-menu>
                   <el-dropdown-item command="profile">个人中心</el-dropdown-item>
+                  <el-dropdown-item command="vip">VIP 中心</el-dropdown-item>
                   <el-dropdown-item command="settings">消息设置</el-dropdown-item>
                   <el-dropdown-item v-if="auth.canAccessModuleAdmin" command="admin" divided>🛠 管理后台</el-dropdown-item>
                   <el-dropdown-item command="logout" :divided="!auth.canAccessModuleAdmin" :disabled="logoutPending">退出登录</el-dropdown-item>
@@ -532,7 +533,7 @@ const mobileNavItems = computed(() => {
     { to: "/jwxt", label: "教务", icon: Reading, match: ["/jwxt"] },
     { to: "/schedule", label: "课表", icon: Calendar, match: ["/schedule"] },
     { to: "/services", label: "服务", icon: Service, match: ["/services"] },
-    { to: "/profile", label: "我的", icon: UserFilled, match: ["/profile", "/sponsor-wall", "/messages", "/admin", "/u/"], auth: true },
+    { to: "/profile", label: "我的", icon: UserFilled, match: ["/profile", "/vip", "/sponsor-wall", "/messages", "/admin", "/u/"], auth: true },
   ] as { to: string; label: string; icon: any; match: string[]; auth?: boolean }[];
 });
 
@@ -874,6 +875,7 @@ async function onMobileLogout() {
 
 async function onUserCmd(cmd: string) {
   if (cmd === "profile") router.push("/profile");
+  else if (cmd === "vip") router.push("/vip");
   else if (cmd === "settings") router.push("/messages?tab=settings");
   else if (cmd === "admin") router.push("/admin");
   else if (cmd === "logout") await performLogout();

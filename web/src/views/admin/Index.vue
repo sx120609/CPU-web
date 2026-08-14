@@ -82,6 +82,7 @@
       <el-tab-pane label="🌐 教务节点" name="jwxt-agents" v-if="auth.isAdmin"><JwxtAgentsPane v-if="tab === 'jwxt-agents'" /></el-tab-pane>
       <el-tab-pane label="📣 公告" name="announcements" v-if="auth.isAdmin"><AnnouncementsPane v-if="tab === 'announcements'" /></el-tab-pane>
       <el-tab-pane label="📢 论坛广告" name="forum-ads" v-if="auth.isAdmin"><ForumAdsPane v-if="tab === 'forum-ads'" /></el-tab-pane>
+      <el-tab-pane label="🎁 VIP 礼品码" name="vip-gift-codes" v-if="auth.isAdmin"><VipGiftCodesPane v-if="tab === 'vip-gift-codes'" /></el-tab-pane>
       <el-tab-pane label="💳 支付对接" name="epay" v-if="auth.isAdmin"><EpayPane v-if="tab === 'epay'" /></el-tab-pane>
       <el-tab-pane label="🛍️ 商城" name="market" v-if="auth.isAdmin"><MarketPane v-if="tab === 'market'" /></el-tab-pane>
       <el-tab-pane label="💛 赞助" name="sponsor" v-if="auth.isAdmin"><SponsorPane v-if="tab === 'sponsor'" /></el-tab-pane>
@@ -112,6 +113,7 @@ const FeedsPane = defineAsyncComponent(() => import("./FeedsPane.vue"));
 const JwxtAgentsPane = defineAsyncComponent(() => import("./JwxtAgentsPane.vue"));
 const AnnouncementsPane = defineAsyncComponent(() => import("./AnnouncementsPane.vue"));
 const ForumAdsPane = defineAsyncComponent(() => import("./ForumAdsPane.vue"));
+const VipGiftCodesPane = defineAsyncComponent(() => import("./VipGiftCodesPane.vue"));
 const EpayPane = defineAsyncComponent(() => import("./EpayPane.vue"));
 const MarketPane = defineAsyncComponent(() => import("./MarketPane.vue"));
 const SponsorPane = defineAsyncComponent(() => import("./SponsorPane.vue"));
@@ -146,6 +148,7 @@ function allowedAdminTab(value: string) {
   if (value === "users") return canManageUsers.value;
   if (value === "lost-found") return canManageLostFound.value;
   if (value === "forum-ads") return auth.isAdmin;
+  if (value === "vip-gift-codes") return auth.isAdmin;
   return isCoreStaff.value;
 }
 

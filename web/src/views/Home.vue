@@ -40,6 +40,7 @@
             <h3>📌 全局置顶</h3>
             <span class="cpu-muted">重要内容</span>
           </div>
+          <ForumAdCard v-if="pinnedAd" :ad="pinnedAd" compact />
           <TopicListItem v-for="t in summary.pinnedTopics" :key="'pin-' + t.id" :topic="t" />
         </section>
 
@@ -48,6 +49,7 @@
             <h3>🔥 热议</h3>
             <router-link to="/forum/hot" class="more">查看前十 →</router-link>
           </div>
+          <ForumAdCard v-if="hotAd" :ad="hotAd" compact />
           <div
             v-for="t in hotPreview"
             :key="'hot-' + t.id"
@@ -193,8 +195,10 @@ import { useRouter } from "vue-router";
 import { ChatLineRound, ChatDotRound, Edit, Bell } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import TopicListItem from "@/components/forum/TopicListItem.vue";
+import ForumAdCard from "@/components/forum/ForumAdCard.vue";
 import DormElectricDialog from "@/components/services/DormElectricDialog.vue";
 import { homeApi, type HomeSummary } from "@/api/home";
+import { forumAdsApi, type ForumAd } from "@/api/forumAds";
 import { marketApi, type MarketItem } from "@/api/market";
 import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
@@ -214,6 +218,8 @@ const loading = ref(false);
 const homeError = ref("");
 const electricOpen = ref(false);
 const marketPreview = ref<MarketItem[]>([]);
+const pinnedAd = ref<ForumAd | null>(null);
+const hotAd = ref<ForumAd | null>(null);
 const hotPreview = computed(() => (summary.value?.hotTopics ?? []).slice(0, 3));
 const visibleServices = computed(() => summary.value?.services ?? []);
 const showElectricEntry = computed(() => auth.isLoggedIn && site.features.electric);
@@ -224,6 +230,7 @@ const homeCacheScope = computed(() => {
 });
 let loadSeq = 0;
 let marketLoadSeq = 0;
+let adsLoadSeq = 0;
 let mounted = false;
 
 const enabledFeatureLabels = computed(() => {
@@ -272,6 +279,7 @@ async function loadHomeScope() {
   summary.value = cachedSummary;
   homeError.value = "";
   void loadSummary({ background: Boolean(cachedSummary), scope });
+  void loadAds();
 
   marketLoadSeq += 1;
   marketPreview.value = [];
@@ -279,6 +287,23 @@ async function loadHomeScope() {
     const cachedMarket = readHomeMarketCache(scope);
     if (cachedMarket) marketPreview.value = cachedMarket;
     void loadMarketPreview(scope);
+  }
+}
+
+async function loadAds() {
+  const seq = ++adsLoadSeq;
+  try {
+    const [pinned, hot] = await Promise.all([
+      forumAdsApi.list("forum-home-pinned"),
+      forumAdsApi.list("forum-home-hot"),
+    ]);
+    if (seq !== adsLoadSeq) return;
+    pinnedAd.value = pinned[0] ?? null;
+    hotAd.value = hot[0] ?? null;
+  } catch {
+    if (seq !== adsLoadSeq) return;
+    pinnedAd.value = null;
+    hotAd.value = null;
   }
 }
 

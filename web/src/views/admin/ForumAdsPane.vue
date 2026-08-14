@@ -100,6 +100,8 @@ import { adminApi, type ForumAdAdmin } from "@/api/admin";
 
 const placementOptions = [
   { value: "forum-index-top" as const, label: "论坛首页 · 顶部" },
+  { value: "forum-home-pinned" as const, label: "首页 · 全局置顶下方" },
+  { value: "forum-home-hot" as const, label: "首页 · 热议下方" },
   { value: "forum-feed-inline" as const, label: "热榜 / 最新 · 内容区" },
   { value: "forum-board-top" as const, label: "板块页 · 标题下方" },
 ];

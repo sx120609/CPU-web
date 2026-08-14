@@ -78,6 +78,8 @@ model User {
   createdFileCollectTemplates  FileCollectTemplate[]         @relation("FileCollectTemplateCreatedBy")
   fileCollectSubmissions       FileCollectSubmission[]       @relation("FileCollectSubmittedBy")
   sponsorOrders                SponsorOrder[]
+  vipGiftCodesCreated          VipGiftCode[]             @relation("VipGiftCodeCreatedBy")
+  vipGiftCodeRedemptions       VipGiftCodeRedemption[]
   qqBotBindings                QqBotBinding[]
   qqBotBindTokens              QqBotBindToken[]
   qqBotMessageLogs             QqBotMessageLog[]
@@ -895,6 +897,45 @@ model SponsorPaymentLog {
 
   @@index([outTradeNo])
   @@index([createdAt])
+}
+
+model VipGiftCode {
+  id           Int       @id @default(autoincrement())
+  codeHash     String    @unique
+  codePreview  String
+  vipLevel     Int       @default(1)
+  durationDays Int
+  maxUses      Int       @default(1)
+  usedCount    Int       @default(0)
+  enabled      Boolean   @default(true)
+  startsAt     DateTime?
+  expiresAt    DateTime?
+  note         String?
+  createdById  Int?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  createdBy   User?                   @relation("VipGiftCodeCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  redemptions VipGiftCodeRedemption[]
+
+  @@index([enabled, startsAt, expiresAt])
+  @@index([createdAt])
+}
+
+model VipGiftCodeRedemption {
+  id           Int      @id @default(autoincrement())
+  giftCodeId   Int
+  userId       Int
+  vipLevel     Int
+  durationDays Int
+  expiresAt    DateTime?
+  redeemedAt   DateTime @default(now())
+
+  giftCode VipGiftCode @relation(fields: [giftCodeId], references: [id], onDelete: Cascade)
+  user     User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([giftCodeId, userId])
+  @@index([userId, redeemedAt])
 }
 
 // ============ 校园商城 ============

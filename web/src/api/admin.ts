@@ -602,12 +602,27 @@ export type ForumAdAdmin = {
   imageUrl: string | null;
   linkUrl: string;
   buttonText: string | null;
-  placement: "forum-index-top" | "forum-feed-inline" | "forum-board-top";
+  placement: "forum-index-top" | "forum-home-pinned" | "forum-home-hot" | "forum-feed-inline" | "forum-board-top";
   sortOrder: number;
   enabled: boolean;
   vipExempt: boolean;
   startsAt: string | null;
   endsAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type VipGiftCodeAdmin = {
+  id: number;
+  codePreview: string;
+  vipLevel: number;
+  durationDays: number;
+  maxUses: number;
+  usedCount: number;
+  enabled: boolean;
+  startsAt: string | null;
+  expiresAt: string | null;
+  note: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -1026,4 +1041,17 @@ export const adminApi = {
   updateForumAd: (id: number, payload: Partial<Omit<ForumAdAdmin, "id" | "createdAt" | "updatedAt">>) =>
     request.patch<ForumAdAdmin>(`/admin/forum-ads/${id}`, payload),
   deleteForumAd: (id: number) => request.delete<{ ok: true }>(`/admin/forum-ads/${id}`),
+  // VIP 礼品码
+  vipGiftCodes: (options?: RequestOptions) => request.get<VipGiftCodeAdmin[]>("/admin/vip-gift-codes", undefined, options),
+  createVipGiftCodes: (payload: {
+    quantity?: number;
+    vipLevel: number;
+    durationDays: number;
+    maxUses?: number;
+    startsAt?: string | null;
+    expiresAt?: string | null;
+    note?: string | null;
+  }) => request.post<{ items: VipGiftCodeAdmin[]; codes: string[] }>("/admin/vip-gift-codes", payload),
+  updateVipGiftCode: (id: number, payload: Partial<Pick<VipGiftCodeAdmin, "enabled" | "maxUses" | "note">> & { startsAt?: string | null; expiresAt?: string | null }) =>
+    request.patch<VipGiftCodeAdmin>(`/admin/vip-gift-codes/${id}`, payload),
 };
