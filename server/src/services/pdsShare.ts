@@ -269,41 +269,104 @@ export const pickMacInstaller = (files: PdsFile[]): PdsFile | null => {
   return candidates.sort(compareInstallerCandidates)[0];
 };
 
+type AndroidApkCandidate = {
+  rank: number;
+  version: number;
+};
+
+const parseAndroidApkCandidate = (fileName: string): AndroidApkCandidate | null => {
+  const patterns = [
+    { rank: 0, pattern: /^CPU-Web-Android-V(\d+)\.apk$/i },
+    { rank: 1, pattern: /^CPU-Web-V(\d+)\.apk$/i },
+  ];
+  for (const { rank, pattern } of patterns) {
+    const match = pattern.exec(fileName);
+    if (match) {
+      return {
+        rank,
+        version: Number(match[1]) || 0,
+      };
+    }
+  }
+  return null;
+};
+
+const compareAndroidInstallerCandidates = (left: PdsFile, right: PdsFile): number => {
+  const leftCandidate = parseAndroidApkCandidate(left.name);
+  const rightCandidate = parseAndroidApkCandidate(right.name);
+  if (leftCandidate && rightCandidate) {
+    if (leftCandidate.rank !== rightCandidate.rank) {
+      return leftCandidate.rank - rightCandidate.rank;
+    }
+    const versionDiff = rightCandidate.version - leftCandidate.version;
+    if (versionDiff !== 0) return versionDiff;
+  } else if (leftCandidate !== rightCandidate) {
+    return leftCandidate ? -1 : 1;
+  }
+
+  const updatedDiff = (right.updatedAt || "").localeCompare(left.updatedAt || "");
+  return updatedDiff || left.name.localeCompare(right.name);
+};
+
+/** 从分享里挑出 Android 安装包：优先 `CPU-Web-Android-V*.apk`，再回退旧包。 */
+export const pickAndroidInstaller = (files: PdsFile[]): PdsFile | null => {
+  const candidates = files.filter((file) => /\.apk$/i.test(file.name));
+  if (candidates.length === 0) return null;
+  return candidates.sort(compareAndroidInstallerCandidates)[0];
+};
+
 // 解析结果整体缓存一小段时间：下载页与下载跳转是连着点的，没必要为同一次
 // 用户操作把三个 PDS 接口各打一遍。缓存必须短于地址本身的有效期。
-type DesktopPlatform = "windows" | "mac";
-const downloadCache = new Map<DesktopPlatform, { value: PdsDownload; expiresAt: number }>();
-const inFlight = new Map<DesktopPlatform, Promise<PdsDownload>>();
+type DownloadPlatform = "windows" | "mac" | "android";
+const downloadCache = new Map<DownloadPlatform, { value: PdsDownload; expiresAt: number }>();
+const inFlight = new Map<DownloadPlatform, Promise<PdsDownload>>();
 
 // 安装包上传后应尽快被旧客户端发现。这里只做短暂的并发削峰；
 // 临时下载地址本身仍有一小时有效期，无需为了它把“最新版文件”缓存十分钟。
 const CACHE_MS = 30 * 1000;
+const getShareSettings = (platform: DownloadPlatform) => {
+  if (platform === "android") {
+    return {
+      shareUrl: config.androidAppPdsShareUrl,
+      password: config.androidAppPdsSharePassword,
+      pickInstaller: pickAndroidInstaller,
+    };
+  }
+
+  return {
+    shareUrl: config.desktopPdsShareUrl,
+    password: config.desktopPdsSharePassword,
+    pickInstaller: platform === "mac" ? pickMacInstaller : pickInstaller,
+  };
+};
 
 /**
  * 取对应平台安装包的当前下载地址。失败时抛错，调用方决定怎么降级。
  * 并发请求共用同一次解析（inFlight），避免下载高峰把 PDS 打满。
  */
-const resolvePlatformDownload = async (platform: DesktopPlatform): Promise<PdsDownload> => {
+const resolvePlatformDownload = async (platform: DownloadPlatform): Promise<PdsDownload> => {
   const cached = downloadCache.get(platform);
   if (cached && cached.expiresAt > Date.now()) return cached.value;
   const pending = inFlight.get(platform);
   if (pending) return pending;
 
-  const ref = parseShareUrl(config.desktopPdsShareUrl);
+  const { shareUrl, password, pickInstaller } = getShareSettings(platform);
+  const ref = parseShareUrl(shareUrl);
   if (!ref) throw new Error("未配置有效的 PDS 分享链接");
 
   const task = (async () => {
-    const files = await listShareFiles(ref, config.desktopPdsSharePassword);
-    const installer = platform === "mac" ? pickMacInstaller(files) : pickInstaller(files);
+    const files = await listShareFiles(ref, password);
+    const installer = pickInstaller(files);
     if (!installer) {
-      throw new Error(platform === "mac"
-        ? "PDS 分享里没有找到 Apple Silicon DMG"
-        : "PDS 分享里没有找到 .exe 安装包");
+      throw new Error(platform === "android"
+        ? "PDS share missing APK"
+        : platform === "mac"
+          ? "PDS share missing DMG"
+          : "PDS share missing EXE");
     }
-    const download = await getDownloadUrl(ref, config.desktopPdsSharePassword, installer);
+    const download = await getDownloadUrl(ref, password, installer);
     downloadCache.set(platform, {
       value: download,
-      // 地址快过期时不再复用缓存
       expiresAt: Math.min(Date.now() + CACHE_MS, download.expiresAt - 60_000),
     });
     return download;
@@ -319,6 +382,7 @@ const resolvePlatformDownload = async (platform: DesktopPlatform): Promise<PdsDo
 
 export const resolveDesktopDownload = (): Promise<PdsDownload> => resolvePlatformDownload("windows");
 export const resolveMacDesktopDownload = (): Promise<PdsDownload> => resolvePlatformDownload("mac");
+export const resolveAndroidDownload = (): Promise<PdsDownload> => resolvePlatformDownload("android");
 
-/** 配置了 PDS 分享就返回 true，站点据此决定是走直链还是老的网盘提取码 */
 export const hasPdsShare = (): boolean => parseShareUrl(config.desktopPdsShareUrl) !== null;
+export const hasAndroidPdsShare = (): boolean => parseShareUrl(config.androidAppPdsShareUrl) !== null;

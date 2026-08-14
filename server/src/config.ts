@@ -359,8 +359,10 @@ export const config = {
   redisPrefix: (process.env.REDIS_PREFIX ?? "cpu-web").trim() || "cpu-web",
   androidAppDownloadUrl: (
     process.env.ANDROID_APP_DOWNLOAD_URL
-    ?? "https://download.lizmt.cn/Android/CPU-Web-Android-V6.apk"
+    ?? ""
   ).trim(),
+  androidAppPdsShareUrl: (process.env.ANDROID_APP_PDS_SHARE_URL ?? "").trim(),
+  androidAppPdsSharePassword: (process.env.ANDROID_APP_PDS_SHARE_PASSWORD ?? "").trim(),
   // 桌面端安装包。留空表示尚未发布，前端会显示"正在打包中"而不是给一个死链接。
   // 仅作为 PDS 不可用时的可选回退；不再内置旧蓝奏云地址。
   desktopAppDownloadUrl: (process.env.DESKTOP_APP_DOWNLOAD_URL ?? "").trim(),

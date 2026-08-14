@@ -1,6 +1,6 @@
 # 药大拾间课表 Android WebView
 
-这是一个轻量 Android WebView 壳，默认打开 `https://cpu.lizmt.cn/schedule`，用于把移动端课表页打包成 APK。
+这是一个轻量 Android WebView 壳，默认打开 `https://cputime.cn`，用于把移动端课表页打包成 APK。
 
 ## 构建环境
 
@@ -29,7 +29,7 @@ gradle :app:assembleDebug -PappUrl=http://10.0.2.2:5173/schedule
 默认发布地址已经配置为：
 
 ```text
-https://cpu.lizmt.cn/schedule
+https://cputime.cn
 ```
 
 生成 release 包：
@@ -44,12 +44,12 @@ gradle :app:assembleRelease
 
 | 参数 | 默认值 | 说明 |
 |---|---|---|
-| `appUrl` | `https://cpu.lizmt.cn/schedule` | WebView 首屏地址 |
+| `appUrl` | `https://cputime.cn` | WebView 首屏地址 |
 | `applicationId` | `cn.lizmt.cpuweb` | Android 包名 |
 | `appName` | `药大拾间课表` | 桌面显示名称 |
 
 示例：
 
 ```bash
-gradle :app:assembleRelease -PappUrl=https://cpu.lizmt.cn/schedule -PapplicationId=cn.lizmt.cpuweb -PappName=药大拾间
+gradle :app:assembleRelease -PappUrl=https://cputime.cn -PapplicationId=cn.lizmt.cpuweb -PappName=药大拾间
 ```

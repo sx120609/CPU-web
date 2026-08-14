@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   parseDesktopVersionFromFileName,
   parseShareUrl,
+  pickAndroidInstaller,
   pickInstaller,
   pickMacInstaller,
   PdsEntry,
@@ -69,4 +70,12 @@ test("桌面端版本会从标准安装包文件名自动提取", () => {
     "0.1.1",
   );
   assert.equal(parseDesktopVersionFromFileName("药大拾间桌面端-latest.exe"), "");
+});
+test("PDS Android APK prefers Android", () => {
+  const files = [
+    { fileId: "android-old", name: "CPU-Web-Android-V6.apk", size: 80, updatedAt: "2026-07-26T00:00:00Z" },
+    { fileId: "android-new", name: "CPU-Web-Android-V7.apk", size: 82, updatedAt: "2026-07-28T00:00:00Z" },
+  ];
+
+  assert.equal(pickAndroidInstaller(files)?.fileId, "android-new");
 });

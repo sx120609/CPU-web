@@ -8,6 +8,8 @@ import { getFeatures, getLearningPlatformAvailability, getSiteConfig, getSiteFil
 import {
   hasPdsShare,
   parseDesktopVersionFromFileName,
+  hasAndroidPdsShare,
+  resolveAndroidDownload,
   resolveDesktopDownload,
   resolveMacDesktopDownload,
 } from "../services/pdsShare";
@@ -138,14 +140,25 @@ siteRouter.get("/userscripts/multiplatform-helper/source", async (req, res, next
   }
 });
 
-siteRouter.get("/downloads/android-app", (_req, res) => {
+siteRouter.get("/downloads/android-app", async (_req, res) => {
+  if (hasAndroidPdsShare()) {
+    try {
+      const file = await resolveAndroidDownload();
+      res.setHeader("Cache-Control", "no-store");
+      res.redirect(302, file.url);
+      return;
+    } catch (error) {
+      console.error("PDS Android 分享解析失败，回退到直链或本地文件", error);
+    }
+  }
+
   const configuredUrl = normalizeAndroidDownloadUrl(config.androidAppDownloadUrl);
   if (configuredUrl) {
     res.redirect(302, configuredUrl);
     return;
   }
 
-  const fileName = resolveLatestAndroidApkFileName() || "CPU-Web-Android-V6.apk";
+  const fileName = resolveLatestAndroidApkFileName() || "CPU-Web-Android-V7.apk";
   res.redirect(302, `/downloads/${encodeURIComponent(fileName)}`);
 });
 
