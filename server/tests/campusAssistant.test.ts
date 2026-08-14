@@ -176,7 +176,7 @@ test("云端多平台助手脚本与客户端安装包分离发布", async () =>
 test("云端安全微伴脚本提供可校验的版本与正文", async () => {
   const release = await readDesktopUserScriptRelease("weban");
   assert.equal(release.name, "药大拾间·安全微伴助手");
-  assert.equal(release.version, "1.0.5");
+  assert.equal(release.version, "1.0.6");
   assert.match(release.sha256, /^[a-f0-9]{64}$/);
   assert.equal(release.size, Buffer.byteLength(release.source, "utf8"));
   assert.match(release.source, /cpu-weban:/);
@@ -185,8 +185,11 @@ test("云端安全微伴脚本提供可校验的版本与正文", async () => {
   assert.match(release.source, /^\/\/ @connect\s+weiban\.mycourse\.cn$/m);
   assert.match(release.source, /^\/\/ @connect\s+gh-proxy\.com$/m);
   assert.match(release.source, /GM_xmlhttpRequest\(/);
-  assert.match(release.source, /responseType:\s*'arraybuffer'/);
-  assert.match(release.source, /createImageBitmap\(blob\)/);
+  assert.match(release.source, /fetchCaptchaImageUrl/);
+  assert.match(release.source, /<img id=\"cpu-wb-captcha-preview\"/);
+  assert.doesNotMatch(release.source, /createImageBitmap\(blob\)/);
+  assert.doesNotMatch(release.source, /\bdoc\.addEventListener\(/);
+  assert.match(release.source, /const host\s*=\s*typeof unsafeWindow/);
   assert.doesNotMatch(release.source, /data:\$\{mime\};base64,\$\{btoa\(binary\)\}/);
   assert.match(release.source, /外侧官方页面登录不等于刷课进程登录/);
   assert.doesNotMatch(release.source, /data-action="toggle-collapse"/);

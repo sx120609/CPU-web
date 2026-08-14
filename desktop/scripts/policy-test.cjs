@@ -205,7 +205,7 @@ check("安全微伴脚本品牌和匹配范围已写入内置脚本", () => {
   const fs = require("node:fs");
   const source = fs.readFileSync(path.join(__dirname, "..", "assets", "userscripts", "weban.js"), "utf8");
   assert.match(source, /^\/\/ @name\s+药大拾间·安全微伴助手$/m);
-  assert.match(source, /^\/\/ @version\s+1\.0\.5$/m);
+  assert.match(source, /^\/\/ @version\s+1\.0\.6$/m);
   assert.match(source, /weiban\.mycourse\.cn/);
   assert.match(source, /\*\.mycourse\.cn/);
   assert.match(source, /^\/\/ @connect\s+weiban\.mycourse\.cn$/m);
@@ -213,9 +213,13 @@ check("安全微伴脚本品牌和匹配范围已写入内置脚本", () => {
   assert.match(source, /gh-proxy\.com\/https:\/\/github\.com\/hangone\/WeBan/);
   assert.match(source, /cpu-weban:/);
   assert.match(source, /安全微伴助手/);
-  assert.match(source, /GM_xmlhttpRequest\(/, "验证码应通过桥接请求获取，避免页面跨域拦截");
-  assert.match(source, /responseType:\s*'arraybuffer'/, "验证码请求应拿到二进制内容");
-  assert.match(source, /createImageBitmap\(blob\)/, "验证码应绘制到 canvas，而不是继续塞进 img");
+  assert.match(source, /fetchCaptchaImageUrl/, "验证码应使用同源图片地址加载");
+  assert.match(source, /randLetterImage\.do\?time=/, "验证码地址应携带时间戳");
+  assert.match(source, /<img id=\"cpu-wb-captcha-preview\"/, "验证码应由页面图片元素直接渲染");
+  assert.doesNotMatch(source, /createImageBitmap\(blob\)/, "验证码不应经过 Blob 和 canvas 转换");
+  assert.doesNotMatch(source, /\bdoc\.addEventListener\(/, "面板事件必须绑定到已定义的 document，避免初始化中断");
+  assert.match(source, /const host\s*=\s*typeof unsafeWindow/, "面板布局使用的 host 必须在初始化前定义");
+  assert.match(source, /#\$\{panelId\} \[hidden\].*display:\s*none\s*!important/, "面板内部隐藏状态不应被组件 display 样式覆盖");
   assert.doesNotMatch(source, /data:\$\{mime\};base64,\$\{btoa\(binary\)\}/, "验证码不应再走 data URL");
   assert.match(source, /外侧官方页面登录不等于刷课进程登录/, "面板应提示用户必须在助手内登录");
   assert.doesNotMatch(source, /data-action="toggle-collapse"/, "面板不应再显示语义不清的折叠箭头按钮");

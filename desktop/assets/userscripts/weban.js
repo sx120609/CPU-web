@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         药大拾间·安全微伴助手
 // @namespace    cpu-weban
-// @version      1.0.5
+// @version      1.0.6
 // @author       CPU-web
 // @description  自动完成安全微伴课程与考试，支持中国药科大学等高校
 // @match        https://weiban.mycourse.cn/*
@@ -17,6 +17,8 @@
 
 (async function () {
   'use strict';
+
+  const host = typeof unsafeWindow !== 'undefined' && unsafeWindow ? unsafeWindow : window;
 
   // ─────────────────────────────────────────────
   // 0. 常量
@@ -199,36 +201,13 @@
     return null;
   };
 
-  const fetchCaptchaBitmap = async (captchaTs) => {
+  const fetchCaptchaImageUrl = (captchaTs) => {
     const ts = captchaTs || Date.now().toString();
-    const base64 = await new Promise((resolve, reject) => {
-      if (typeof GM_xmlhttpRequest !== 'function') {
-        reject(new Error('当前环境不支持验证码请求'));
-        return;
-      }
-      GM_xmlhttpRequest({
-        method: 'GET',
-        url: `${BASE}/pharos/login/randLetterImage.do?time=${encodeURIComponent(ts)}&refresh=1`,
-        responseType: 'arraybuffer',
-        timeout: 15000,
-        onload: (res) => {
-          const text = String(res?.responseText || res?.response || '').trim();
-          if (!text) {
-            reject(new Error('验证码响应为空'));
-            return;
-          }
-          resolve(text);
-        },
-        onerror: (res) => reject(new Error(res?.error || res?.statusText || '验证码加载失败')),
-        ontimeout: () => reject(new Error('验证码加载超时')),
-      });
-    });
-    const binary = atob(base64.replace(/\s+/g, ''));
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-    const blob = new Blob([bytes], { type: 'image/png' });
-    if (typeof createImageBitmap !== 'function') throw new Error('当前环境不支持验证码渲染');
-    return { bitmap: await createImageBitmap(blob), ts };
+    // 页面本身就在 weiban.mycourse.cn 下，直接交给同源 img 加载并保留微伴 Cookie。
+    return {
+      url: `${BASE}/pharos/login/randLetterImage.do?time=${encodeURIComponent(ts)}&refresh=1`,
+      ts,
+    };
   };
 
   const doLogin = async (tenantCode, username, password, verifyCode, verifyTime) => {
@@ -469,7 +448,7 @@
     style.id = 'cpu-weban-workspace-style';
     style.textContent = `
       #${panelId}, #${panelId} *, #${launcherId}, #${launcherId} * { box-sizing: border-box; }
-      #${panelId}[hidden], #${launcherId}[hidden] { display: none !important; }
+      #${panelId}[hidden], #${panelId} [hidden], #${launcherId}[hidden] { display: none !important; }
       #${panelId} {
         --cpu-wb-primary: #4f74e6; --cpu-wb-primary-strong: #315fd0; --cpu-wb-primary-soft: #e6efff;
         --cpu-wb-surface: rgba(255, 255, 255, .98); --cpu-wb-card: #ffffff; --cpu-wb-subtle: #f5f8ff;
@@ -534,7 +513,7 @@
         display: grid; place-items: center; width: 100%; min-width: 0; min-height: 56px; padding: 0; border: 1px solid var(--cpu-wb-border);
         border-radius: 12px; background: #fff; overflow: hidden;
       }
-      #${panelId} .cpu-wb-captcha-shot canvas { display: block; width: 100%; height: 100%; min-height: 54px; background: #fff; pointer-events: none; }
+      #${panelId} .cpu-wb-captcha-shot img { display: block; width: 100%; height: 100%; min-height: 54px; object-fit: contain; background: #fff; pointer-events: none; }
       #${panelId} .cpu-wb-captcha-fallback {
         display: grid; place-items: center; width: 100%; min-height: 54px; padding: 8px; color: var(--cpu-wb-muted);
         font-size: 12px; line-height: 1.35; text-align: center; background: #fff;
@@ -621,7 +600,7 @@
           </div>
           <div class="cpu-wb-captcha" id="cpu-wb-captcha-row" hidden>
             <button class="cpu-wb-captcha-shot" type="button" id="cpu-wb-captcha-img" title="点击刷新验证码图片" aria-label="刷新验证码图片">
-              <canvas id="cpu-wb-captcha-preview" width="118" height="54" aria-label="验证码"></canvas>
+              <img id="cpu-wb-captcha-preview" alt="验证码">
               <span class="cpu-wb-captcha-fallback" id="cpu-wb-captcha-fallback" hidden>验证码加载失败，点击重试</span>
             </button>
             <label class="cpu-wb-field">
@@ -737,11 +716,11 @@
       drag = { pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY, left: rect.left, top: rect.top };
       event.preventDefault();
     });
-    doc.addEventListener('pointermove', (event) => {
+    document.addEventListener('pointermove', (event) => {
       if (!drag || event.pointerId !== drag.pointerId) return;
       setPanelPosition(drag.left + event.clientX - drag.clientX, drag.top + event.clientY - drag.clientY);
     });
-    doc.addEventListener('pointerup', (event) => {
+    document.addEventListener('pointerup', (event) => {
       if (!drag || event.pointerId !== drag.pointerId) return;
       const rect = panel.getBoundingClientRect();
       drag = null;
@@ -771,30 +750,20 @@
         sessionCard.hidden = false;
         summaryEl.textContent = '登录成功后可以直接开始刷课，也可以退出后重新登录。';
       },
-      showCaptcha(bitmap, refresh) {
+      showCaptcha(imageUrl, refresh) {
         captchaRow.hidden = false;
         captchaFallback.hidden = true;
         captchaPreview.hidden = false;
-        const ctx = captchaPreview.getContext('2d', { alpha: false });
-        if (!ctx) {
+        captchaPreview.onload = () => {
+          captchaPreview.hidden = false;
+          captchaFallback.hidden = true;
+        };
+        captchaPreview.onerror = () => {
           captchaPreview.hidden = true;
-          captchaFallback.textContent = '验证码画布不可用，点击重试';
+          captchaFallback.textContent = '验证码加载失败，点击重试';
           captchaFallback.hidden = false;
-        } else {
-          const width = 118;
-          const height = 54;
-          const ratio = host.devicePixelRatio || 1;
-          captchaPreview.width = Math.max(1, Math.round(width * ratio));
-          captchaPreview.height = Math.max(1, Math.round(height * ratio));
-          captchaPreview.style.width = '100%';
-          captchaPreview.style.height = '100%';
-          ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-          ctx.clearRect(0, 0, width, height);
-          ctx.fillStyle = '#fff';
-          ctx.fillRect(0, 0, width, height);
-          ctx.drawImage(bitmap, 0, 0, width, height);
-          if (typeof bitmap.close === 'function') bitmap.close();
-        }
+        };
+        captchaPreview.src = imageUrl;
         captchaShot.onclick = async () => {
           if (typeof refresh !== 'function') return;
           try {
@@ -874,9 +843,9 @@
     const loadCaptcha = async () => {
       const nextTs = Date.now().toString();
       try {
-        const captchaBitmap = await fetchCaptchaBitmap(nextTs);
-        captchaTs = nextTs;
-        ui.showCaptcha(captchaBitmap, loadCaptcha);
+        const captcha = fetchCaptchaImageUrl(nextTs);
+        captchaTs = captcha.ts;
+        ui.showCaptcha(captcha.url, loadCaptcha);
       } catch (error) {
         status(`验证码加载失败：${error?.message || error}`);
         ui.showCaptchaError(`验证码加载失败：${error?.message || error}`, loadCaptcha);
