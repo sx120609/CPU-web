@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         药大拾间·安全微伴助手
 // @namespace    cpu-weban
-// @version      1.0.6
+// @version      1.0.7
 // @author       CPU-web
 // @description  自动完成安全微伴课程与考试，支持中国药科大学等高校
 // @match        https://weiban.mycourse.cn/*
@@ -24,6 +24,8 @@
   // 0. 常量
   // ─────────────────────────────────────────────
   const BASE = 'https://weiban.mycourse.cn';
+  const CPU_SCHOOL_NAME = '中国药科大学';
+  const CPU_TENANT_CODE = '21000004';
   const MERCURY = 'https://resource.mycourse.cn';
   const ANSWER_BANK_URL = 'https://gh-proxy.com/https://github.com/hangone/WeBan/raw/refs/heads/main/answer/answer.json';
   const MERCURY_SECRET = '75uet0kwvnc90xo';
@@ -189,17 +191,8 @@
   // ─────────────────────────────────────────────
   // 6. 登录
   // ─────────────────────────────────────────────
-  const getTenantCode = async (schoolName) => {
-    const resp = await fetch(`${BASE}/pharos/login/getTenantListWithLetter.do`, { method: 'POST', credentials: 'include' });
-    const data = await resp.json();
-    const list = Array.isArray(data?.data) ? data.data : [];
-    for (const group of list) {
-      for (const item of (group?.list || [])) {
-        if (item.name && item.name.includes(schoolName)) return item.tenantCode;
-      }
-    }
-    return null;
-  };
+  // 本客户端只服务中国药科大学，不再依赖微伴学校列表接口或用户输入名称。
+  const getTenantCode = () => CPU_TENANT_CODE;
 
   const fetchCaptchaImageUrl = (captchaTs) => {
     const ts = captchaTs || Date.now().toString();
@@ -508,6 +501,12 @@
         background: color-mix(in srgb, #fff 88%, var(--cpu-wb-primary-soft));
         box-shadow: 0 0 0 3px color-mix(in srgb, var(--cpu-wb-primary) 18%, transparent);
       }
+      #${panelId} .cpu-wb-school-lock {
+        display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%;
+        min-height: 44px; padding: 11px 12px; border: 1px solid var(--cpu-wb-border); border-radius: 12px;
+        background: var(--cpu-wb-subtle); color: var(--cpu-wb-text);
+      }
+      #${panelId} .cpu-wb-school-lock-note { color: var(--cpu-wb-primary); font-size: 12px; white-space: nowrap; }
       #${panelId} .cpu-wb-captcha { display: grid; grid-template-columns: 118px minmax(0, 1fr); gap: 10px; align-items: start; margin-top: 10px; }
       #${panelId} .cpu-wb-captcha-shot {
         display: grid; place-items: center; width: 100%; min-width: 0; min-height: 56px; padding: 0; border: 1px solid var(--cpu-wb-border);
@@ -582,12 +581,15 @@
         <section class="cpu-wb-card" id="cpu-wb-setup">
           <span class="cpu-wb-kicker">登录信息</span>
           <h3 class="cpu-wb-title">首次使用，请填写登录信息</h3>
-          <p class="cpu-wb-lead">学校名和账号会保存在本机，密码只用于本次登录。</p>
+          <p class="cpu-wb-lead">学校已固定为中国药科大学；账号会保存在本机，密码只用于本次登录。</p>
           <p class="cpu-wb-process-note">请在本助手内完成登录。外侧官方页面只负责显示课程页面，不会让助手刷课进程自动登录。</p>
           <div class="cpu-wb-form">
             <label class="cpu-wb-field">
               <span>学校名</span>
-              <input id="cpu-wb-school" placeholder="学校名（如：中国药科大学）" autocomplete="off" spellcheck="false">
+              <div class="cpu-wb-school-lock" aria-label="已固定学校：中国药科大学">
+                <strong>中国药科大学</strong>
+                <span class="cpu-wb-school-lock-note">已固定</span>
+              </div>
             </label>
             <label class="cpu-wb-field">
               <span>学号 / 用户名</span>
@@ -642,7 +644,6 @@
     const captchaPreview = panel.querySelector('#cpu-wb-captcha-preview');
     const captchaFallback = panel.querySelector('#cpu-wb-captcha-fallback');
     const captchaInput = panel.querySelector('#cpu-wb-captcha-val');
-    const schoolInput = panel.querySelector('#cpu-wb-school');
     const userInput = panel.querySelector('#cpu-wb-user');
     const passInput = panel.querySelector('#cpu-wb-pass');
     const loginBtn = panel.querySelector('#cpu-wb-login-btn');
@@ -792,7 +793,7 @@
       getCaptchaVal() { return captchaInput?.value?.trim() || ''; },
       getCredentials() {
         return {
-          school: schoolInput?.value?.trim() || '',
+          school: CPU_SCHOOL_NAME,
           username: userInput?.value?.trim() || '',
           password: passInput?.value?.trim() || '',
         };
@@ -832,9 +833,7 @@
     ui.showSetup();
     ui.setStatus('请先登录');
     if (savedCreds) {
-      const schoolEl = document.querySelector('#cpu-wb-school');
       const userEl = document.querySelector('#cpu-wb-user');
-      if (schoolEl) schoolEl.value = savedCreds.school || '';
       if (userEl) userEl.value = savedCreds.username || '';
     }
 
@@ -859,9 +858,7 @@
       if (!school || !username || !password || !verifyCode) {
         ui.setStatus('请填写所有字段'); return;
       }
-      ui.setStatus('正在查找学校…');
-      const tenantCode = await getTenantCode(school);
-      if (!tenantCode) { ui.setStatus('未找到该学校，请检查名称'); return; }
+      const tenantCode = getTenantCode();
       ui.setStatus('正在登录…');
       const res = await doLogin(tenantCode, username, password, verifyCode, captchaTs);
       if (!res?.data?.token) {
