@@ -8,7 +8,7 @@ export const branding = {
 } as const;
 
 export const oauthConfig = {
-  origin: process.env.CPU_DESKTOP_ORIGIN || "https://cpu.lizmt.cn",
+  origin: process.env.CPU_DESKTOP_ORIGIN || "https://cputime.cn",
   clientId: process.env.CPU_DESKTOP_CLIENT_ID || "cpu-electron",
   scope: "openid profile ai",
   callbackPath: "/oauth/callback",

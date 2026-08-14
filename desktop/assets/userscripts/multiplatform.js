@@ -5,7 +5,7 @@
 // @description  药大拾间桌面端多平台网课助手；平台适配能力基于 OCS，答题只使用药大拾间独立 AI。
 // @author       enncy；药大拾间整合维护
 // @license      MIT
-// @homepage     https://cpu.lizmt.cn/download
+// @homepage     https://cputime.cn/download
 // @source       https://github.com/ocsjs/ocsjs
 // @match        https://*.zhihuishu.com/*
 // @match        https://*.hike-teaching-center.polymas.com/*
@@ -22092,6 +22092,6 @@ const infos = GM_info;
 			defaultPanelName: CommonProject.scripts.guide.namespace,
 			title: '药大拾间·全平台网课助手'
 		},
-		updatePage: 'https://cpu.lizmt.cn/download'
+		updatePage: 'https://cputime.cn/download'
 	});
 })();

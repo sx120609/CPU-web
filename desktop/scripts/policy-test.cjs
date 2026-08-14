@@ -51,8 +51,8 @@ check("学校统一认证放行（机构账号登录要跳）", () => {
 });
 
 check("主站放行（主窗口就是它）", () => {
-  assert.ok(asSiteUrl("https://cpu.lizmt.cn/"));
-  assert.ok(asNavigableUrl("https://cpu.lizmt.cn/forum"));
+  assert.ok(asSiteUrl("https://cputime.cn/"));
+  assert.ok(asNavigableUrl("https://cputime.cn/forum"));
 });
 
 check("站外地址一律不放行", () => {
@@ -110,7 +110,7 @@ check("可注入范围比可导航范围窄", () => {
 });
 
 check("主站可导航但绝不可注入", () => {
-  const site = "https://cpu.lizmt.cn/forum";
+  const site = "https://cputime.cn/forum";
   assert.ok(asNavigableUrl(site));
   // 刷课脚本没有任何理由跑在自己的站点上，跑了就等于把脚本特权桥递给主站页面
   assert.equal(asInjectableUrl(site), undefined);
@@ -137,7 +137,7 @@ check("六个正式网课平台可导航并按需注入", () => {
 
 check("授权窗口只放行主站与本次回环回调", () => {
   const rule = createAuthNavigationRule("http://127.0.0.1:43127");
-  assert.equal(rule("https://cpu.lizmt.cn/api/oauth/authorize?x=1"), true);
+  assert.equal(rule("https://cputime.cn/api/oauth/authorize?x=1"), true);
   assert.equal(rule("http://127.0.0.1:43127/oauth/callback?code=x"), true);
   // 换个端口就不是本次登录的回调了
   assert.equal(rule("http://127.0.0.1:43128/oauth/callback"), false);

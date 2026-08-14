@@ -125,7 +125,7 @@ async function main() {
 
     const olderSource = source.replace("// @version      2.2.15", "// @version      2.1.9");
     const updated = await checkUserScriptUpdate({
-      origin: "https://cpu.lizmt.cn",
+      origin: "https://cputime.cn",
       cacheDirectory,
       currentSource: olderSource,
       validateSource: () => undefined,
@@ -141,7 +141,7 @@ async function main() {
 
     requests.length = 0;
     const current = await checkUserScriptUpdate({
-      origin: "https://cpu.lizmt.cn",
+      origin: "https://cputime.cn",
       cacheDirectory,
       currentSource: source,
       validateSource: () => undefined,
@@ -203,7 +203,7 @@ async function main() {
       "a newer built-in script must not be downgraded by an older cache",
     );
     const updated = await checkUserScriptUpdate({
-      origin: "https://cpu.lizmt.cn",
+      origin: "https://cputime.cn",
       cacheDirectory: multiplatformCache,
       currentSource: olderSource,
       validateSource: () => undefined,
@@ -238,7 +238,7 @@ async function main() {
       return new Response(olderSource, { status: 200 });
     };
     const protectedFromDowngrade = await checkUserScriptUpdate({
-      origin: "https://cpu.lizmt.cn",
+      origin: "https://cputime.cn",
       cacheDirectory: multiplatformCache,
       currentSource: multiplatformSource,
       validateSource: () => undefined,

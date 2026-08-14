@@ -328,11 +328,11 @@ PDS 模式会从标准文件名（如 `药大拾间桌面端-0.1.2-win-x64-安�
 
 ## 配置
 
-默认指向 `https://cpu.lizmt.cn`，OAuth 客户端 ID 为 `cpu-electron`（与服务端 `OAUTH_CLIENT_ID` 的默认值一致）。可用环境变量在构建/运行时覆盖：
+默认指向 `https://cputime.cn`，OAuth 客户端 ID 为 `cpu-electron`（与服务端 `OAUTH_CLIENT_ID` 的默认值一致）。可用环境变量在构建/运行时覆盖：
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
-| `CPU_DESKTOP_ORIGIN` | `https://cpu.lizmt.cn` | 主站地址，必须是 https |
+| `CPU_DESKTOP_ORIGIN` | `https://cputime.cn` | 主站地址，必须是 https |
 | `CPU_DESKTOP_CLIENT_ID` | `cpu-electron` | OAuth 客户端 ID，需与服务端一致 |
 
 其余品牌与白名单配置集中在 [electron/config.ts](electron/config.ts)。

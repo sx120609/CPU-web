@@ -42,7 +42,7 @@ const metadata = [
   "// @description  药大拾间桌面端多平台网课助手；平台适配能力基于 OCS，答题只使用药大拾间独立 AI。",
   "// @author       enncy；药大拾间整合维护",
   "// @license      MIT",
-  "// @homepage     https://cpu.lizmt.cn/download",
+  "// @homepage     https://cputime.cn/download",
   "// @source       https://github.com/ocsjs/ocsjs",
   ...matches.map((rule) => `// @match        ${rule}`),
   "// @connect      desktop.localhost",
@@ -105,7 +105,7 @@ output = output
         ])
       ]));`,
   )
-  .replace("updatePage: 'https://docs.ocsjs.com/docs/update'", "updatePage: 'https://cpu.lizmt.cn/download'")
+  .replace("updatePage: 'https://docs.ocsjs.com/docs/update'", "updatePage: 'https://cputime.cn/download'")
   .replace("⚠️ 禁止最小化浏览器、切屏，否则可能导致脚本无法运行！", "桌面客户端已启用后台运行，最小化或切换桌面不会主动暂停任务。")
   .replace(
     '"打开任意网课平台，进入视频、作业页面等待脚本运行，",\n              "⚠️ 禁止与其他脚本一起使用（不兼容），也不能开多个相同脚本",\n              "桌面客户端已启用后台运行，最小化或切换桌面不会主动暂停任务。",\n              "有疑问请访问下方交流群，进群后带截图进行反馈。"',

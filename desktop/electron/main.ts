@@ -450,7 +450,7 @@ const vendoredDependency = async (url: string): Promise<string | undefined> => {
 
 const cpuOcsAnswerer = {
   name: "药大拾间独立答题 AI",
-  homepage: "https://cpu.lizmt.cn/download",
+  homepage: "https://cputime.cn/download",
   url: "https://desktop.localhost/ocs-ai",
   method: "post",
   type: "GM_xmlhttpRequest",
