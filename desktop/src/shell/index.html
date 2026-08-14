@@ -25,7 +25,7 @@
           <h2 class="ob-heading">它能替你做什么</h2>
           <ul class="ob-features">
             <li><span class="ob-dot"></span><div><strong>校园网自动连接</strong><small>掉线自动重认证；判断出你不在校园网时不会瞎试</small></div></li>
-            <li><span class="ob-dot"></span><div><strong>多平台学习入口</strong><small>六个平台统一从客户端打开，登录态和常用入口都保留在同一个壳里</small></div></li>
+            <li><span class="ob-dot"></span><div><strong>多平台网课标签</strong><small>六个平台统一从客户端打开，助手自动识别视频、作业与考试</small></div></li>
             <li><span class="ob-dot"></span><div><strong>常驻后台</strong><small>关掉窗口收进托盘，可开机自启</small></div></li>
           </ul>
           <button class="ob-primary" data-next>下一步<span class="ob-arrow">→</span></button>
@@ -74,8 +74,8 @@
       <div class="platform-dialog-card">
         <header class="platform-dialog-head">
           <div>
-            <h2 id="platform-dialog-title">打开学习平台</h2>
-            <p>选择平台后会在客户端新标签中打开，登录态、窗口和常用入口都保留在同一个壳里。</p>
+            <h2 id="platform-dialog-title">打开网课平台</h2>
+            <p>选择平台后会在客户端新标签中打开，助手按平台自动接管。</p>
           </div>
           <button class="icon-button" id="platform-dialog-close" type="button" aria-label="关闭">×</button>
         </header>
@@ -91,50 +91,12 @@
           <div class="card-row">
             <div>
               <strong id="update-title">有新版本</strong>
-              <small id="update-note">学习平台改版后旧版入口可能失效，建议更新。</small>
+              <small id="update-note">超星改版后旧版脚本可能失效，建议更新。</small>
             </div>
             <button class="primary" id="update-go" type="button" hidden>去下载</button>
             <button class="primary" id="update-restart" type="button" hidden>立即重启更新</button>
           </div>
           <div class="update-track" id="update-track" hidden><i class="update-fill" id="update-fill"></i></div>
-        </section>
-
-        <section class="card learning-hub">
-          <div class="card-head learning-head">
-            <div>
-              <h2>学习中心</h2>
-              <p class="muted">把常用平台放在同一个窗口里，统一保留登录态、最近记录和常见入口。</p>
-            </div>
-            <span class="pill" id="learning-platform-count">0 个平台</span>
-          </div>
-
-          <div class="learning-hero">
-            <div class="learning-hero-copy">
-              <strong id="learning-default-name">超星学习通</strong>
-              <small id="learning-default-note">课程、作业、考试与消息的统一入口</small>
-            </div>
-            <div class="actions learning-hero-actions">
-              <button class="primary" id="learning-open-default" type="button" disabled>打开默认平台</button>
-              <button class="ghost" id="learning-manage" type="button">管理平台</button>
-            </div>
-          </div>
-
-          <div class="learning-launch-grid" id="learning-launch-grid"></div>
-
-          <div class="learning-stats">
-            <div class="learning-stat">
-              <strong id="learning-open-count">0</strong>
-              <span>可直接打开</span>
-            </div>
-            <div class="learning-stat">
-              <strong id="learning-saved-count">0</strong>
-              <span>已保存凭据</span>
-            </div>
-            <div class="learning-stat">
-              <strong id="learning-disabled-count">0</strong>
-              <span>已停用</span>
-            </div>
-          </div>
         </section>
 
         <section class="card">
@@ -172,7 +134,7 @@
             <button class="primary sponsor-button" id="auth-sponsor-go" type="button">前往赞助</button>
           </div>
 
-          <p class="muted" id="auth-hint">正在读取学习平台访问策略…</p>
+          <p class="muted" id="auth-hint">正在读取学习通助手访问策略…</p>
           <div class="actions">
             <button class="primary" id="auth-login" type="button" hidden>去首页登录</button>
             <button class="ghost" id="auth-logout" type="button" hidden>退出登录</button>
@@ -242,25 +204,25 @@
             <h2>刷题</h2>
             <span class="pill" id="script-pill" hidden>运行中</span>
           </div>
-          <p class="muted" id="script-status">选择平台后，对应标签页会在客户端里直接打开。</p>
+          <p class="muted" id="script-status">选择网课平台后，助手会在对应标签页自动接管。</p>
           <div class="script-release-list">
             <div class="script-release">
               <div>
-                <strong>学习平台接管</strong>
+                <strong>学习通专用助手</strong>
                 <p class="muted small" id="script-version">正在读取脚本版本…</p>
               </div>
               <button class="ghost" id="script-check-update" type="button">检查更新</button>
             </div>
             <div class="script-release">
               <div>
-                <strong>多平台学习入口</strong>
+                <strong>多平台助手（OCS）</strong>
                 <p class="muted small" id="multiplatform-script-version">正在读取脚本版本…</p>
               </div>
               <button class="ghost" id="multiplatform-script-check-update" type="button">检查更新</button>
             </div>
           </div>
           <div class="actions">
-            <button class="primary" id="script-open" type="button">打开学习平台</button>
+            <button class="primary" id="script-open" type="button">打开网课平台</button>
           </div>
 
           <div class="subsection">
@@ -336,7 +298,7 @@
           </div>
           <div class="about-credits">
             <div>
-              <strong>学习中心与客户端初版</strong>
+              <strong>学习通助手与客户端初版</strong>
               <span>由 <b>Mom0ka27</b> 贡献开发</span>
             </div>
             <div>
@@ -344,7 +306,7 @@
               <span>基于真红（SoraNoNeko）的 <a href="https://github.com/SoraNoNeko/cpu_net" data-external>cpu_net</a> 项目修改，并整合进桌面客户端</span>
             </div>
             <div>
-              <strong>学习中心辅助脚本</strong>
+              <strong>学习通辅助脚本</strong>
               <span>基于 shushoujiu 的满分助手修改并获授权，第三方组件保留各自署名与许可</span>
             </div>
             <div>

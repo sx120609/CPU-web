@@ -120,13 +120,13 @@ let scriptUpdateState: ScriptUpdateState = {
   stage: "loading",
   activeVersion: "",
   source: "builtin",
-  message: "正在载入学习中心脚本",
+  message: "正在载入学习通助手脚本",
 };
 let multiplatformScriptUpdateState: ScriptUpdateState = {
   stage: "loading",
   activeVersion: "",
   source: "builtin",
-  message: "正在载入多平台入口脚本",
+  message: "正在载入多平台助手脚本",
 };
 type LearningAssistantAccessMode = "guest-unlimited" | "account-quota";
 type LearningAssistantPolicy = {
@@ -334,7 +334,7 @@ const scriptChannel = (kind: ScriptUpdateKind): ScriptChannelDefinition => kind 
   ? {
       assetName: "multiplatform.js",
       scriptId: "builtin-multiplatform-helper",
-      label: "多平台入口",
+      label: "多平台助手",
       channel: MULTIPLATFORM_USER_SCRIPT_CHANNEL,
       getState: () => multiplatformScriptUpdateState,
       setState: setMultiplatformScriptUpdateState,
@@ -342,7 +342,7 @@ const scriptChannel = (kind: ScriptUpdateKind): ScriptChannelDefinition => kind 
   : {
       assetName: "monkey.js",
       scriptId: "builtin-chaoxing-helper",
-      label: "学习中心",
+      label: "学习通助手",
       channel: CHAOXING_USER_SCRIPT_CHANNEL,
       getState: () => scriptUpdateState,
       setState: setScriptUpdateState,
@@ -704,7 +704,7 @@ const injectMatchingScripts = async (contents: Electron.WebContents): Promise<vo
       recordScriptActivity({
         at: Date.now(),
         kind: "status",
-        text: `${platform?.name ?? "当前学习平台"}已由管理员暂时停用，客户端不会在此页面运行`,
+        text: `${platform?.name ?? "当前网课平台"}已由管理员暂时停用，助手不会在此页面运行`,
       });
       return;
     }
@@ -987,7 +987,7 @@ const verifyMultiplatformSurface = (contents: Electron.WebContents, expectedUrl:
       // 依赖加载或智慧树首屏初始化偶发错过时，用同一地址做一次干净恢复；绝不调用
       // 返回首页，也不反复刷新。第二次仍失败会保留当前页面并在客户端状态区报错。
       if (learningSurfaceRecovery.get(contents.id) === expectedUrl) {
-        recordScriptActivity({ at: Date.now(), kind: "status", text: "多平台入口未能显示，请点击标签页刷新后重试" });
+        recordScriptActivity({ at: Date.now(), kind: "status", text: "多平台助手未能显示，请点击标签页刷新后重试" });
         return;
       }
       learningSurfaceRecovery.set(contents.id, expectedUrl);
@@ -1112,11 +1112,11 @@ const openLearningPage = async (requestedPlatform: unknown = "chaoxing"): Promis
     ? requestedPlatform as LearningPlatformId
     : undefined;
   const url = platformId ? learningPlatformUrl(platformId) : undefined;
-  if (!platformId || !url) throw new Error("不支持这个学习平台");
+  if (!platformId || !url) throw new Error("不支持这个网课平台");
   const availability = await getLearningPlatformAvailability(true);
   if (!availability[platformId]) {
     const platform = learningPlatforms.find((item) => item.id === platformId);
-        throw new Error(`${platform?.name ?? "这个学习平台"}当前已由管理员暂时停用`);
+    throw new Error(`${platform?.name ?? "这个网课平台"}当前已由管理员暂时停用`);
   }
   const policy = await getLearningAssistantPolicy();
   if (policy.requiresLogin) {
@@ -1209,7 +1209,7 @@ const refreshTray = (state?: CampusState): void => {
     { type: "separator" },
     { label: "打开药大拾间", click: () => void openMainWindow() },
     {
-      label: "打开学习平台",
+      label: "打开网课平台",
       submenu: learningPlatforms.map((platform) => ({
         label: platform.name,
         click: () => void openLearningPage(platform.id)
@@ -1574,7 +1574,7 @@ if (installMode || uninstallMode) {
     ipcMain.handle("learning-credentials:state", () => learningCredentialState());
     ipcMain.handle("learning-credentials:set-remember", async (_event, value: unknown, enabled: unknown) => {
       const platformId = asLearningPlatformId(value);
-      if (!platformId) throw new Error("不支持这个学习平台");
+      if (!platformId) throw new Error("不支持这个网课平台");
       const remember = enabled === true;
       await writePreferences({
         rememberLearning: { [platformId]: remember },
@@ -1587,7 +1587,7 @@ if (installMode || uninstallMode) {
     });
     ipcMain.handle("learning-credentials:clear", async (_event, value: unknown) => {
       const platformId = asLearningPlatformId(value);
-      if (!platformId) throw new Error("不支持这个学习平台");
+      if (!platformId) throw new Error("不支持这个网课平台");
       await clearLearningCredential(platformId);
       const state = await learningCredentialState();
       broadcast("learning-credentials:state-changed", state);
@@ -1817,7 +1817,7 @@ if (installMode || uninstallMode) {
       const platformId = contentsLearningPlatform.get(event.sender.id);
       if (platformId && !(await getLearningPlatformAvailability(true))[platformId]) {
         const platform = learningPlatforms.find((item) => item.id === platformId);
-        throw new Error(`${platform?.name ?? "当前学习平台"}已由管理员暂时停用`);
+        throw new Error(`${platform?.name ?? "当前网课平台"}已由管理员暂时停用`);
       }
       if (typeof body !== "string") throw new Error("AI 请求格式无效");
       const payload = sanitizeAiBody(body);
@@ -1912,7 +1912,7 @@ if (installMode || uninstallMode) {
 
     ipcMain.handle("userscript:page-action", async (event, nonce: unknown, action: unknown) => {
       const script = await authorize(event, nonce);
-      if (script.id !== "builtin-multiplatform-helper") throw new Error("当前脚本无权控制学习页面");
+      if (script.id !== "builtin-multiplatform-helper") throw new Error("当前脚本无权控制网课页面");
       return learningPageActions.perform(event.sender, action);
     });
 
