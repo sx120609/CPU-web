@@ -120,6 +120,61 @@
       <!-- desktop-header-content -->
     </div>
 
+    <div class="song-list-filters" aria-label="歌曲筛选和排序">
+      <label class="filter-control">
+        <span>状态</span>
+        <select v-model="statusFilter" aria-label="按歌曲状态筛选">
+          <option value="all">全部状态</option>
+          <option value="pending">待排期</option>
+          <option value="scheduled">已排期</option>
+          <option value="played">已播放</option>
+        </select>
+      </label>
+
+      <label v-if="semesterOptions.length" class="filter-control">
+        <span>学期</span>
+        <select v-model="semesterFilter" aria-label="按学期筛选">
+          <option value="all">全部学期</option>
+          <option v-for="semester in semesterOptions" :key="semester" :value="semester">
+            {{ semester }}
+          </option>
+        </select>
+      </label>
+
+      <label v-if="platformOptions.length" class="filter-control">
+        <span>音源</span>
+        <select v-model="platformFilter" aria-label="按音源筛选">
+          <option value="all">全部音源</option>
+          <option v-for="platform in platformOptions" :key="platform.value" :value="platform.value">
+            {{ platform.label }}
+          </option>
+        </select>
+      </label>
+
+      <label class="filter-control filter-control-sort">
+        <span>排序</span>
+        <select v-model="sortBy" aria-label="歌曲排序方式">
+          <option value="popularity">热度</option>
+          <option value="date">投稿时间</option>
+          <option value="title">歌曲名</option>
+          <option value="artist">歌手名</option>
+        </select>
+      </label>
+
+      <label class="filter-control filter-control-order">
+        <span>顺序</span>
+        <select v-model="sortOrder" aria-label="歌曲排序顺序">
+          <option value="desc">从高到低 / 最新</option>
+          <option value="asc">从低到高 / 最早</option>
+        </select>
+      </label>
+
+      <button v-if="hasSongFilters" type="button" class="clear-filter-button" @click="clearSongFilters">
+        清除筛选
+      </button>
+      <span class="filter-result-count">显示 {{ displayedSongs.length }} 首</span>
+    </div>
+
     <!-- 使用Transition组件包裹所有内容 -->
     <Transition mode="out-in" name="tab-switch">
       <div v-if="loading" :key="'loading'" class="loading">加载中...</div>
@@ -404,9 +459,12 @@ const emit = defineEmits([
 const voteInProgress = ref(false)
 const actionInProgress = ref(false)
 const sortBy = ref('popularity')
-const sortOrder = ref('desc') // 'desc' for newest first, 'asc' for oldest first
+const sortOrder = ref('desc') // 'desc' for newest/highest first, 'asc' for oldest/lowest first
 const searchQuery = ref('') // 搜索查询
 const activeTab = ref('all') // 默认显示全部投稿
+const statusFilter = ref('all')
+const semesterFilter = ref('all')
+const platformFilter = ref('all')
 const auth = useAuth()
 const { enableReplayRequests } = useSiteConfig()
 const isAuthenticated = computed(() => auth && auth.isAuthenticated && auth.isAuthenticated.value)
@@ -484,8 +542,8 @@ onUnmounted(() => {
   stopCommentsDialogPolling()
 })
 
-// 监听搜索查询变化，重置分页
-watch(searchQuery, () => {
+// 监听搜索、筛选和排序变化，重置分页
+watch([searchQuery, statusFilter, semesterFilter, platformFilter, sortBy, sortOrder], () => {
   currentPage.value = 1
 })
 
@@ -546,6 +604,58 @@ const isMySong = (song) => {
   return auth && auth.user && auth.user.value && song.requesterId === auth.user.value.id
 }
 
+const normalizePlatform = (song) => {
+  const platform = String(song?.musicPlatform || '').trim().toLowerCase()
+  if (!platform) return 'other'
+  if (platform === 'tencent' || platform === 'qq' || platform === 'qqmusic') return 'tencent'
+  if (platform === 'bilibili') return 'bilibili'
+  if (platform.includes('netease')) return 'netease'
+  return platform
+}
+
+const platformLabels = {
+  netease: '网易云音乐',
+  tencent: 'QQ 音乐',
+  bilibili: '哔哩哔哩',
+  other: '其他音源'
+}
+
+const semesterOptions = computed(() => {
+  const values = new Set(
+    (props.songs || [])
+      .map((song) => String(song?.semester || '').trim())
+      .filter(Boolean)
+  )
+  return [...values].sort((a, b) => b.localeCompare(a, 'zh-CN', { numeric: true }))
+})
+
+const platformOptions = computed(() => {
+  const values = new Set((props.songs || []).map(normalizePlatform))
+  return [...values]
+    .sort((a, b) => (platformLabels[a] || a).localeCompare(platformLabels[b] || b, 'zh-CN'))
+    .map((value) => ({ value, label: platformLabels[value] || value }))
+})
+
+const hasSongFilters = computed(() => Boolean(
+  searchQuery.value.trim() ||
+  activeTab.value !== 'all' ||
+  statusFilter.value !== 'all' ||
+  semesterFilter.value !== 'all' ||
+  platformFilter.value !== 'all' ||
+  sortBy.value !== 'popularity' ||
+  sortOrder.value !== 'desc'
+))
+
+const clearSongFilters = () => {
+  searchQuery.value = ''
+  activeTab.value = 'all'
+  statusFilter.value = 'all'
+  semesterFilter.value = 'all'
+  platformFilter.value = 'all'
+  sortBy.value = 'popularity'
+  sortOrder.value = 'desc'
+}
+
 // 应用过滤器和搜索
 const displayedSongs = computed(() => {
   if (!props.songs) return []
@@ -559,45 +669,65 @@ const displayedSongs = computed(() => {
     result = result.filter((song) => song.replayRequested || song.replayRequestStatus === 'PENDING')
   }
 
+  if (statusFilter.value === 'pending') {
+    result = result.filter((song) => !song.played && !song.scheduled)
+  } else if (statusFilter.value === 'scheduled') {
+    result = result.filter((song) => !song.played && song.scheduled)
+  } else if (statusFilter.value === 'played') {
+    result = result.filter((song) => song.played)
+  }
+
+  if (semesterFilter.value !== 'all') {
+    result = result.filter((song) => String(song.semester || '').trim() === semesterFilter.value)
+  }
+
+  if (platformFilter.value !== 'all') {
+    result = result.filter((song) => normalizePlatform(song) === platformFilter.value)
+  }
+
   // 应用搜索过滤器
   if (searchQuery.value.trim()) {
     const query = searchQuery.value.toLowerCase().trim()
     result = result.filter(
       (song) =>
-        song.title.toLowerCase().includes(query) ||
-        song.artist.toLowerCase().includes(query) ||
-        (song.requester && song.requester.toLowerCase().includes(query))
+        String(song.title || '').toLowerCase().includes(query) ||
+        String(song.artist || '').toLowerCase().includes(query) ||
+        String(song.requester || '').toLowerCase().includes(query)
     )
   }
 
-  // 按状态分组：未排期、已排期、已播放
-  const unscheduledSongs = result.filter((song) => !song.played && !song.scheduled)
-  const scheduledSongs = result.filter((song) => !song.played && song.scheduled)
-  const playedSongs = result.filter((song) => song.played)
-
-  // 对每个分组内部进行排序
   const sortSongs = (songs) => {
+    const direction = sortOrder.value === 'asc' ? 1 : -1
     if (sortBy.value === 'popularity') {
       return songs.sort((a, b) => {
-        // 首先按投票数降序排列
         if (b.voteCount !== a.voteCount) {
-          return b.voteCount - a.voteCount
+          return direction * (Number(b.voteCount || 0) - Number(a.voteCount || 0))
         }
-        // 投票数相同时，按创建时间升序排列（投稿早的在前面）
-        return new Date(a.createdAt) - new Date(b.createdAt)
+        return direction * (new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
       })
     } else if (sortBy.value === 'date') {
       return songs.sort((a, b) => {
-        const dateA = new Date(a.createdAt)
-        const dateB = new Date(b.createdAt)
-        return sortOrder.value === 'desc' ? dateB - dateA : dateA - dateB
+        return direction * (new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+      })
+    } else if (sortBy.value === 'title' || sortBy.value === 'artist') {
+      return songs.sort((a, b) => {
+        const left = String(a[sortBy.value] || '')
+        const right = String(b[sortBy.value] || '')
+        return direction * left.localeCompare(right, 'zh-CN', { numeric: true, sensitivity: 'base' })
       })
     }
     return songs
   }
 
-  // 返回按顺序排列的歌曲：未排期 → 已排期 → 已播放
-  return [...sortSongs(unscheduledSongs), ...sortSongs(scheduledSongs), ...sortSongs(playedSongs)]
+  // 默认热度排序仍保留“待排期 → 已排期 → 已播放”的收听优先级；其他排序按用户选择全局排列。
+  if (sortBy.value === 'popularity' && statusFilter.value === 'all') {
+    const unscheduledSongs = result.filter((song) => !song.played && !song.scheduled)
+    const scheduledSongs = result.filter((song) => !song.played && song.scheduled)
+    const playedSongs = result.filter((song) => song.played)
+    return [...sortSongs(unscheduledSongs), ...sortSongs(scheduledSongs), ...sortSongs(playedSongs)]
+  }
+
+  return sortSongs(result)
 })
 
 // 计算总页数
@@ -1916,6 +2046,70 @@ const vRipple = {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+}
+
+.song-list-filters {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: -0.5rem 0 1.25rem;
+  padding: 10px 12px;
+  border: 1px solid var(--primary-border);
+  border-radius: 12px;
+  background: var(--primary-light);
+}
+
+.filter-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-tertiary);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.filter-control select {
+  min-width: 108px;
+  height: 32px;
+  padding: 0 26px 0 9px;
+  border: 1px solid var(--primary-border);
+  border-radius: 8px;
+  background: var(--surface-primary, #fff);
+  color: var(--text-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.filter-control-order select {
+  min-width: 142px;
+}
+
+.filter-control select:focus {
+  outline: 2px solid var(--primary-light);
+  border-color: var(--primary);
+}
+
+.clear-filter-button {
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--primary-border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--primary);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.clear-filter-button:hover {
+  background: var(--surface-primary, #fff);
+}
+
+.filter-result-count {
+  margin-left: auto;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 /* 紧凑型学期选择器样式 */
@@ -3564,6 +3758,40 @@ button:disabled {
 
   .song-list .active-indicator {
     display: none;
+  }
+
+  .song-list .song-list-filters {
+    align-items: stretch;
+    gap: 8px;
+    margin: 0 0 12px;
+    padding: 10px;
+  }
+
+  .song-list .filter-control {
+    flex: 1 1 calc(50% - 8px);
+    justify-content: space-between;
+    min-width: 0;
+  }
+
+  .song-list .filter-control select {
+    min-width: 0;
+    max-width: 150px;
+    flex: 1;
+  }
+
+  .song-list .filter-control-order,
+  .song-list .filter-control-sort {
+    flex-basis: 100%;
+  }
+
+  .song-list .filter-control-order select,
+  .song-list .filter-control-sort select {
+    max-width: none;
+  }
+
+  .song-list .filter-result-count {
+    margin-left: auto;
+    align-self: center;
   }
 
   .song-list .song-cards {

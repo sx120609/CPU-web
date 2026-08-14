@@ -204,5 +204,36 @@ function formatDate(value: string | null) {
 .history-row strong { color: var(--cpu-text); font-size: 13px; }
 .history-row span, .history-row small { margin-top: 4px; color: var(--cpu-text-muted); font-size: 11px; }
 .history-date { text-align: right; }
-@media (max-width: 760px) { .vip-main-grid, .benefits-grid { grid-template-columns: 1fr; } .vip-hero { align-items: flex-start; flex-wrap: wrap; padding: 18px; } .vip-hero-status { margin-left: 86px; } }
+@media (max-width: 760px) {
+  .vip-main-grid, .benefits-grid { grid-template-columns: 1fr; }
+  .vip-hero {
+    position: relative;
+    display: grid;
+    grid-template-columns: 68px minmax(0, 1fr);
+    align-items: start;
+    column-gap: 16px;
+    row-gap: 12px;
+    padding: 18px;
+  }
+  .vip-hero-copy { min-width: 0; padding-top: 38px; }
+  .vip-hero h1 {
+    font-size: clamp(24px, 7vw, 32px);
+    line-height: 1.24;
+    word-break: keep-all;
+    overflow-wrap: normal;
+  }
+  .vip-hero p {
+    word-break: keep-all;
+    overflow-wrap: break-word;
+  }
+  .vip-hero-status {
+    position: absolute;
+    top: 18px;
+    right: 18px;
+    margin-left: 0;
+  }
+  .vip-status-card, .redeem-card, .benefits-card, .history-card { padding: 18px; }
+  .status-actions { gap: 8px; }
+  .status-actions .el-button { flex: 1 1 auto; min-width: 0; }
+}
 </style>
