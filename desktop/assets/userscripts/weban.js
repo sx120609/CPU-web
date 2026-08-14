@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         药大拾间·安全微伴助手
 // @namespace    cpu-weban
-// @version      1.0.3
+// @version      1.0.4
 // @author       CPU-web
 // @description  自动完成安全微伴课程与考试，支持中国药科大学等高校
 // @match        https://weiban.mycourse.cn/*
@@ -197,23 +197,36 @@
     return null;
   };
 
-  const fetchCaptchaDataUrl = async (captchaTs) => {
+  const fetchCaptchaBitmap = async (captchaTs) => {
     const ts = captchaTs || Date.now().toString();
-    const resp = await fetch(`${BASE}/pharos/login/randLetterImage.do?time=${encodeURIComponent(ts)}`, {
-      credentials: 'include',
-      cache: 'no-store',
-      headers: { Accept: 'image/*' },
+    const base64 = await new Promise((resolve, reject) => {
+      if (typeof GM_xmlhttpRequest !== 'function') {
+        reject(new Error('当前环境不支持验证码请求'));
+        return;
+      }
+      GM_xmlhttpRequest({
+        method: 'GET',
+        url: `${BASE}/pharos/login/randLetterImage.do?time=${encodeURIComponent(ts)}&refresh=1`,
+        responseType: 'arraybuffer',
+        timeout: 15000,
+        onload: (res) => {
+          const text = String(res?.responseText || res?.response || '').trim();
+          if (!text) {
+            reject(new Error('验证码响应为空'));
+            return;
+          }
+          resolve(text);
+        },
+        onerror: (res) => reject(new Error(res?.error || res?.statusText || '验证码加载失败')),
+        ontimeout: () => reject(new Error('验证码加载超时')),
+      });
     });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const buf = await resp.arrayBuffer();
-    const bytes = new Uint8Array(buf);
-    let binary = '';
-    for (let i = 0; i < bytes.length; i += 0x8000) {
-      binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-    }
-    const type = resp.headers.get('content-type') || 'image/png';
-    const mime = /^image\//i.test(type) ? type.split(';')[0] : 'image/png';
-    return `data:${mime};base64,${btoa(binary)}`;
+    const binary = atob(base64.replace(/\s+/g, ''));
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    const blob = new Blob([bytes], { type: 'image/png' });
+    if (typeof createImageBitmap !== 'function') throw new Error('当前环境不支持验证码渲染');
+    return { bitmap: await createImageBitmap(blob), ts };
   };
 
   const doLogin = async (tenantCode, username, password, verifyCode, verifyTime) => {
@@ -519,7 +532,7 @@
         display: grid; place-items: center; width: 100%; min-width: 0; min-height: 56px; padding: 0; border: 1px solid var(--cpu-wb-border);
         border-radius: 12px; background: #fff; overflow: hidden;
       }
-      #${panelId} .cpu-wb-captcha-shot img { display: block; width: 100%; height: 100%; min-height: 54px; object-fit: contain; background: #fff; pointer-events: none; }
+      #${panelId} .cpu-wb-captcha-shot canvas { display: block; width: 100%; height: 100%; min-height: 54px; background: #fff; pointer-events: none; }
       #${panelId} .cpu-wb-captcha-fallback {
         display: grid; place-items: center; width: 100%; min-height: 54px; padding: 8px; color: var(--cpu-wb-muted);
         font-size: 12px; line-height: 1.35; text-align: center; background: #fff;
@@ -606,7 +619,7 @@
           </div>
           <div class="cpu-wb-captcha" id="cpu-wb-captcha-row" hidden>
             <button class="cpu-wb-captcha-shot" type="button" id="cpu-wb-captcha-img" title="点击刷新验证码图片" aria-label="刷新验证码图片">
-              <img id="cpu-wb-captcha-preview" alt="验证码">
+              <canvas id="cpu-wb-captcha-preview" width="118" height="54" aria-label="验证码"></canvas>
               <span class="cpu-wb-captcha-fallback" id="cpu-wb-captcha-fallback" hidden>验证码加载失败，点击重试</span>
             </button>
             <label class="cpu-wb-field">
@@ -756,20 +769,30 @@
         sessionCard.hidden = false;
         summaryEl.textContent = '登录成功后可以直接开始刷课，也可以退出后重新登录。';
       },
-      showCaptcha(dataUrl, refresh) {
+      showCaptcha(bitmap, refresh) {
         captchaRow.hidden = false;
         captchaFallback.hidden = true;
         captchaPreview.hidden = false;
-        captchaPreview.onerror = () => {
+        const ctx = captchaPreview.getContext('2d', { alpha: false });
+        if (!ctx) {
           captchaPreview.hidden = true;
-          captchaFallback.textContent = '验证码加载失败，点击重试';
+          captchaFallback.textContent = '验证码画布不可用，点击重试';
           captchaFallback.hidden = false;
-        };
-        captchaPreview.onload = () => {
-          captchaPreview.hidden = false;
-          captchaFallback.hidden = true;
-        };
-        captchaPreview.src = dataUrl;
+        } else {
+          const width = 118;
+          const height = 54;
+          const ratio = host.devicePixelRatio || 1;
+          captchaPreview.width = Math.max(1, Math.round(width * ratio));
+          captchaPreview.height = Math.max(1, Math.round(height * ratio));
+          captchaPreview.style.width = '100%';
+          captchaPreview.style.height = '100%';
+          ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+          ctx.clearRect(0, 0, width, height);
+          ctx.fillStyle = '#fff';
+          ctx.fillRect(0, 0, width, height);
+          ctx.drawImage(bitmap, 0, 0, width, height);
+          if (typeof bitmap.close === 'function') bitmap.close();
+        }
         captchaShot.onclick = async () => {
           if (typeof refresh !== 'function') return;
           try {
@@ -783,7 +806,6 @@
       },
       showCaptchaError(message, refresh) {
         captchaRow.hidden = false;
-        captchaPreview.removeAttribute('src');
         captchaPreview.hidden = true;
         captchaFallback.textContent = message || '验证码加载失败，点击重试';
         captchaFallback.hidden = false;
@@ -850,9 +872,9 @@
     const loadCaptcha = async () => {
       const nextTs = Date.now().toString();
       try {
-        const captchaDataUrl = await fetchCaptchaDataUrl(nextTs);
+        const captchaBitmap = await fetchCaptchaBitmap(nextTs);
         captchaTs = nextTs;
-        ui.showCaptcha(captchaDataUrl, loadCaptcha);
+        ui.showCaptcha(captchaBitmap, loadCaptcha);
       } catch (error) {
         ui.showCaptchaError(`验证码加载失败：${error?.message || error}`, loadCaptcha);
       }
