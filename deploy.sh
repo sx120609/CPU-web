@@ -1037,6 +1037,10 @@ do_db_migrate() {
   db_url="$(configured_database_url)"
   is_postgres_url "$db_url" || err "PostgreSQL must be configured before updating"
   ensure_local_postgres_url_ready "$db_url"
+  # Database migrations invoke the local Prisma CLI. Incremental updates may
+  # change Prisma files without changing package-lock.json, so dependencies
+  # must be restored when the CLI is missing before running the migration.
+  ensure_project_build_dependencies server prisma
   if [ "${DEPLOY_PAUSE_FOR_DB_MIGRATION:-0}" = "1" ]; then
     pause_main_service_for_db_migration
     warn "显式启用停机迁移模式；迁移期间主服务会暂时不可用"
