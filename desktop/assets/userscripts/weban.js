@@ -1,13 +1,21 @@
 // ==UserScript==
 // @name         药大拾间·安全微伴助手
 // @namespace    cpu-weban
-// @version      1.0.7
+// @version      1.0.8
 // @author       CPU-web
 // @description  自动完成安全微伴课程与考试，支持中国药科大学等高校
 // @match        https://weiban.mycourse.cn/*
 // @match        https://*.mycourse.cn/*
 // @connect      weiban.mycourse.cn
+// @connect      resource.mycourse.cn
+// @connect      mcwk.mycourse.cn
+// @connect      open.mycourse.cn
+// @connect      moon.mycourse.cn
+// @connect      lyra.mycourse.cn
 // @connect      gh-proxy.com
+// @connect      mirror.ghproxy.com
+// @connect      ghproxy.net
+// @connect      raw.githubusercontents.com
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_xmlhttpRequest
@@ -27,7 +35,15 @@
   const CPU_SCHOOL_NAME = '中国药科大学';
   const CPU_TENANT_CODE = '21000004';
   const MERCURY = 'https://resource.mycourse.cn';
-  const ANSWER_BANK_URL = 'https://gh-proxy.com/https://github.com/hangone/WeBan/raw/refs/heads/main/answer/answer.json';
+  const ANSWER_BANK_RAW = 'https://github.com/hangone/WeBan/raw/refs/heads/main/answer/answer.json';
+  // 按可用性依次尝试的镜像列表，第一个成功就用
+  const ANSWER_BANK_MIRRORS = [
+    'https://gh-proxy.com/' + ANSWER_BANK_RAW,
+    'https://mirror.ghproxy.com/' + ANSWER_BANK_RAW,
+    'https://ghproxy.net/' + ANSWER_BANK_RAW,
+    'https://raw.gitmirror.com/hangone/WeBan/refs/heads/main/answer/answer.json',
+    'https://raw.githubusercontent.com/hangone/WeBan/refs/heads/main/answer/answer.json',
+  ];
   const MERCURY_SECRET = '75uet0kwvnc90xo';
   const MERCURY_APP_KEY = '00000001';
   // AES-ECB login key: base64url decode of "d2JzNTEyAAAAAAAAAAAAAA=="
@@ -131,24 +147,41 @@
     const ts = Date.now().toString();
     const payload = { tenantCode: session.tenantCode, userId: session.userId, ...body };
     const url = `${BASE}${path}?timestamp=${ts}`;
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'X-Token': session.token,
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/148.0.0.0',
-      },
-      body: new URLSearchParams(payload),
-      credentials: 'include',
+    return new Promise((resolve) => {
+      GM_xmlhttpRequest({
+        method: 'POST',
+        url,
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'X-Token': session.token,
+        },
+        data: new URLSearchParams(payload).toString(),
+        onload: (resp) => {
+          if (resp.status !== 200) {
+            log(`HTTP ${resp.status} ${path}`);
+            resolve({});
+          } else {
+            try { resolve(JSON.parse(resp.responseText)); } catch { resolve({}); }
+          }
+        },
+        onerror: () => { log(`网络错误 ${path}`); resolve({}); },
+        timeout: 15000,
+      });
     });
-    if (!resp.ok) { log(`HTTP ${resp.status} ${path}`); return {}; }
-    try { return await resp.json(); } catch { return {}; }
   };
 
   // GET（用于 JSONP 完成请求等）
   const get = async (url, headers = {}) => {
-    const resp = await fetch(url, { headers: { 'X-Token': session.token, ...headers }, credentials: 'include' });
-    return resp.text();
+    return new Promise((resolve) => {
+      GM_xmlhttpRequest({
+        method: 'GET',
+        url,
+        headers: { 'X-Token': session.token, ...headers },
+        onload: (resp) => resolve(resp.responseText),
+        onerror: () => { log(`GET 失败 ${url}`); resolve(''); },
+        timeout: 15000,
+      });
+    });
   };
 
   // 跨域请求（GitHub answer bank）
@@ -166,13 +199,19 @@
     const ts = Date.now().toString();
     const base = { appKey: MERCURY_APP_KEY, format: 'json', v: '1.0', timestamp: ts, clientId: 'pharos', service, ...params };
     base.sign = await mercurySign(base);
-    const resp = await fetch(`${MERCURY}/mercuryprovider/router`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': session.token },
-      body: new URLSearchParams(base),
-      credentials: 'include',
+    return new Promise((resolve) => {
+      GM_xmlhttpRequest({
+        method: 'POST',
+        url: `${MERCURY}/mercuryprovider/router`,
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': session.token },
+        data: new URLSearchParams(base).toString(),
+        onload: (resp) => {
+          try { resolve(JSON.parse(resp.responseText)); } catch { resolve({}); }
+        },
+        onerror: () => { log('Mercury 请求失败'); resolve({}); },
+        timeout: 15000,
+      });
     });
-    try { return await resp.json(); } catch { return {}; }
   };
 
   // Jupiter 导航追踪
@@ -180,11 +219,16 @@
     const payload = { step: String(step), finished: String(finished), uniqueNo, apinextNo, userCourseId, courseId, userProjectId };
     const data = await aes256CbcDoubleB64(JUPITER_KEY, payload);
     const ts = Date.now().toString();
-    await fetch(`${BASE}/jupiterapi/api/statusercourse/v1/next?timestamp=${ts}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Token': session.token },
-      body: JSON.stringify({ data }),
-      credentials: 'include',
+    return new Promise((resolve) => {
+      GM_xmlhttpRequest({
+        method: 'POST',
+        url: `${BASE}/jupiterapi/api/statusercourse/v1/next?timestamp=${ts}`,
+        headers: { 'Content-Type': 'application/json', 'X-Token': session.token },
+        data: JSON.stringify({ data }),
+        onload: () => resolve(),
+        onerror: () => resolve(),
+        timeout: 10000,
+      });
     });
   };
 
@@ -209,13 +253,19 @@
     const encrypted = await aesEcbEncrypt(keyBytes, payload);
     const data = b64url(encrypted);
     const ts = Date.now().toString();
-    const resp = await fetch(`${BASE}/pharos/login/login.do?timestamp=${ts}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ data }),
-      credentials: 'include',
+    return new Promise((resolve, reject) => {
+      GM_xmlhttpRequest({
+        method: 'POST',
+        url: `${BASE}/pharos/login/login.do?timestamp=${ts}`,
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        data: new URLSearchParams({ data }).toString(),
+        onload: (resp) => {
+          try { resolve(JSON.parse(resp.responseText)); } catch { reject('登录响应解析失败'); }
+        },
+        onerror: () => reject('登录请求失败'),
+        timeout: 15000,
+      });
     });
-    return resp.json();
   };
 
   // ─────────────────────────────────────────────
@@ -224,13 +274,19 @@
   let answerBank = {};
 
   const syncAnswerBank = async () => {
-    try {
-      const raw = await xhrGet(ANSWER_BANK_URL);
-      answerBank = JSON.parse(raw);
-      log(`题库加载完成，共 ${Object.keys(answerBank).length} 题`);
-    } catch (e) {
-      log('题库加载失败: ' + e.message);
+    for (const url of ANSWER_BANK_MIRRORS) {
+      try {
+        log(`正在从镜像加载题库: ${url.split('/')[2]}…`);
+        const raw = await xhrGet(url);
+        const parsed = JSON.parse(raw);
+        if (Object.keys(parsed).length > 0) {
+          answerBank = parsed;
+          log(`题库加载完成，共 ${Object.keys(answerBank).length} 题`);
+          return;
+        }
+      } catch { /* 尝试下一个镜像 */ }
     }
+    log('⚠️ 所有题库镜像均不可用，考试部分将跳过（刷课照常进行）');
   };
 
   const cleanText = (t) => (t || '').replace(/[^\w一-龥]/g, '');
@@ -281,11 +337,16 @@
       await post('/pharos/usercourse/finish.do', { userCourseId, courseId, userProjectId });
     } else if (finishType === 'lyra') {
       const ts = Date.now().toString();
-      await fetch(`https://lyra.mycourse.cn/lyraapi/study/course/finish.api?timestamp=${ts}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Token': session.token },
-        body: JSON.stringify({ userActivityId: userCourseId }),
-        credentials: 'include',
+      await new Promise((resolve) => {
+        GM_xmlhttpRequest({
+          method: 'POST',
+          url: `https://lyra.mycourse.cn/lyraapi/study/course/finish.api?timestamp=${ts}`,
+          headers: { 'Content-Type': 'application/json', 'X-Token': session.token },
+          data: JSON.stringify({ userActivityId: userCourseId }),
+          onload: () => resolve(),
+          onerror: () => resolve(),
+          timeout: 10000,
+        });
       });
     } else {
       // weiban JSONP 方式
@@ -361,6 +422,10 @@
   // 10. 考试
   // ─────────────────────────────────────────────
   const runExam = async (userProjectId) => {
+    if (Object.keys(answerBank).length === 0) {
+      log('题库未加载，跳过考试');
+      return;
+    }
     const planRes = await post('/pharos/exam/listPlan.do', { userProjectId });
     const plans = planRes?.data || [];
     for (const plan of plans) {
