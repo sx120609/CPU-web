@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         药大拾间·安全微伴助手
 // @namespace    cpu-weban
-// @version      1.0.11
+// @version      1.1.0
 // @author       CPU-web
 // @description  自动完成安全微伴课程与考试，支持中国药科大学等高校
 // @match        https://weiban.mycourse.cn/*
@@ -46,8 +46,6 @@
   ];
   const MERCURY_SECRET = '75uet0kwvnc90xo';
   const MERCURY_APP_KEY = '00000001';
-  // AES-ECB login key: base64url decode of "d2JzNTEyAAAAAAAAAAAAAA=="
-  const LOGIN_KEY_B64 = 'd2JzNTEyAAAAAAAAAAAAAA==';
   // Jupiter AES-256-CBC key
   const JUPITER_KEY = 'KkGv9d8E5jYb2xHwL3ZqRpXoNt6MmSge';
   const STORE_PREFIX = 'cpu-weban:';
@@ -98,20 +96,6 @@
     out.set(data);
     out.fill(padLen, data.length);
     return out;
-  };
-
-  // AES-ECB encrypt: emulate per-block via AES-CBC with zero IV
-  const aesEcbEncrypt = async (keyBytes, plaintext) => {
-    const key = await crypto.subtle.importKey('raw', keyBytes, 'AES-CBC', false, ['encrypt']);
-    const padded = pkcs7Pad(new TextEncoder().encode(plaintext));
-    const zeroIV = new Uint8Array(16);
-    const result = new Uint8Array(padded.length);
-    for (let i = 0; i < padded.length; i += 16) {
-      const block = padded.slice(i, i + 16);
-      const enc = await crypto.subtle.encrypt({ name: 'AES-CBC', iv: zeroIV }, key, block);
-      result.set(new Uint8Array(enc).slice(0, 16), i);
-    }
-    return result;
   };
 
   // AES-256-CBC encrypt, returns double-base64 (CryptoJS quirk)
@@ -226,35 +210,22 @@
   };
 
   // ─────────────────────────────────────────────
-  // 6. 登录
+  // 6. 页面会话读取
   // ─────────────────────────────────────────────
-  // 本客户端只服务中国药科大学，不再依赖微伴学校列表接口或用户输入名称。
-  const getTenantCode = () => CPU_TENANT_CODE;
-
-  const fetchCaptchaImageUrl = (captchaTs) => {
-    const ts = captchaTs || Date.now().toString();
-    // 页面本身就在 weiban.mycourse.cn 下，直接交给同源 img 加载并保留微伴 Cookie。
-    return {
-      url: `${BASE}/pharos/login/randLetterImage.do?time=${encodeURIComponent(ts)}&refresh=1`,
-      ts,
-    };
-  };
-
-  const doLogin = async (tenantCode, username, password, verifyCode, verifyTime) => {
-    const keyBytes = Uint8Array.from(atob(LOGIN_KEY_B64), c => c.charCodeAt(0));
-    const payload = JSON.stringify({ keyNumber: username, password, tenantCode, time: verifyTime, verifyCode });
-    const encrypted = await aesEcbEncrypt(keyBytes, payload);
-    const data = b64url(encrypted);
-    const ts = Date.now().toString();
+  // 替代独立登录：直接从微伴页面 localStorage['user'] 读取已有 token。
+  // 用户在页面正常登录后，助手无需单独填写账号密码，和学习通脚本是同一套逻辑。
+  const readPageSession = () => {
     try {
-      const resp = await fetch(`${BASE}/pharos/login/login.do?timestamp=${ts}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ data }).toString(),
-      });
-      return resp.json().catch(() => null);
-    } catch (e) {
-      log(`登录请求失败: ${e.message}`);
+      const raw = host.localStorage.getItem('user');
+      if (!raw) return null;
+      const obj = JSON.parse(raw);
+      if (!obj?.token) return null;
+      return {
+        token: String(obj.token),
+        userId: String(obj.userId || obj.id || ''),
+        tenantCode: String(obj.tenantCode || CPU_TENANT_CODE),
+      };
+    } catch {
       return null;
     }
   };
@@ -458,12 +429,10 @@
     // 验证 session 是否仍然有效（token 可能已过期）
     const infoRes = await post('/pharos/user/myGetInfo.do');
     if (!infoRes?.data) {
-      log('⚠️ 会话已失效，请重新登录');
-      status('会话已失效，请重新登录');
-      store.set('session', null);
+      log('⚠️ 会话已失效，请在微伴页面重新登录后点击"检测登录并开始"');
       session = { userId: '', token: '', tenantCode: '' };
-      ui.showSetup();
-      ui.setStatus('登录已过期，请重新登录');
+      ui.showNotLoggedIn();
+      ui.setStatus('会话已失效，请重新登录微伴页面');
       return;
     }
 
@@ -551,36 +520,6 @@
         margin: 10px 0 0; padding: 9px 10px; border: 1px solid color-mix(in srgb, var(--cpu-wb-primary) 18%, var(--cpu-wb-border));
         border-radius: 10px; background: var(--cpu-wb-primary-soft); color: var(--cpu-wb-primary-strong); font-size: 12px; line-height: 1.55;
       }
-      #${panelId} .cpu-wb-form { display: grid; gap: 8px; margin-top: 12px; }
-      #${panelId} .cpu-wb-field { display: grid; gap: 6px; }
-      #${panelId} .cpu-wb-field span { color: var(--cpu-wb-muted-strong); font-size: 12px; }
-      #${panelId} .cpu-wb-field input {
-        width: 100%; min-width: 0; padding: 11px 12px; border: 1px solid var(--cpu-wb-border); border-radius: 12px;
-        background: #fff; color: var(--cpu-wb-text); outline: none;
-        transition: border-color .16s ease, background .16s ease, box-shadow .16s ease;
-      }
-      #${panelId} .cpu-wb-field input::placeholder { color: color-mix(in srgb, var(--cpu-wb-muted) 82%, white); }
-      #${panelId} .cpu-wb-field input:focus {
-        border-color: color-mix(in srgb, var(--cpu-wb-primary) 64%, var(--cpu-wb-border));
-        background: color-mix(in srgb, #fff 88%, var(--cpu-wb-primary-soft));
-        box-shadow: 0 0 0 3px color-mix(in srgb, var(--cpu-wb-primary) 18%, transparent);
-      }
-      #${panelId} .cpu-wb-school-lock {
-        display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%;
-        min-height: 44px; padding: 11px 12px; border: 1px solid var(--cpu-wb-border); border-radius: 12px;
-        background: var(--cpu-wb-subtle); color: var(--cpu-wb-text);
-      }
-      #${panelId} .cpu-wb-school-lock-note { color: var(--cpu-wb-primary); font-size: 12px; white-space: nowrap; }
-      #${panelId} .cpu-wb-captcha { display: grid; grid-template-columns: 118px minmax(0, 1fr); gap: 10px; align-items: start; margin-top: 10px; }
-      #${panelId} .cpu-wb-captcha-shot {
-        display: grid; place-items: center; width: 100%; min-width: 0; min-height: 56px; padding: 0; border: 1px solid var(--cpu-wb-border);
-        border-radius: 12px; background: #fff; overflow: hidden;
-      }
-      #${panelId} .cpu-wb-captcha-shot img { display: block; width: 100%; height: 100%; min-height: 54px; object-fit: contain; background: #fff; pointer-events: none; }
-      #${panelId} .cpu-wb-captcha-fallback {
-        display: grid; place-items: center; width: 100%; min-height: 54px; padding: 8px; color: var(--cpu-wb-muted);
-        font-size: 12px; line-height: 1.35; text-align: center; background: #fff;
-      }
       #${panelId} .cpu-wb-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
       #${panelId} .cpu-wb-actions button {
         min-width: 120px; min-height: 36px; flex: 1; border: 1px solid var(--cpu-wb-border); border-radius: 10px;
@@ -622,7 +561,6 @@
         #${panelId} .cpu-wb-heading span { display: none; }
         #${panelId} .cpu-wb-icon { width: 34px; height: 34px; }
         #${panelId} .cpu-wb-body { padding: 13px; }
-        #${panelId} .cpu-wb-captcha { grid-template-columns: 1fr; }
         #${panelId} .cpu-wb-actions button { min-width: 0; }
         #${launcherId} { right: 14px; bottom: 76px; }
       }
@@ -639,45 +577,17 @@
         <section class="cpu-wb-card">
           <span class="cpu-wb-kicker">当前状态</span>
           <h3 class="cpu-wb-title" id="cpu-wb-status">请先登录</h3>
-          <p class="cpu-wb-muted" id="cpu-wb-summary">请在本助手内登录；外侧官方页面登录不等于刷课进程登录。</p>
+          <p class="cpu-wb-muted" id="cpu-wb-summary">助手使用微伴页面的登录状态，无需单独登录。</p>
         </section>
 
         <section class="cpu-wb-card" id="cpu-wb-setup">
-          <span class="cpu-wb-kicker">登录信息</span>
-          <h3 class="cpu-wb-title">首次使用，请填写登录信息</h3>
-          <p class="cpu-wb-lead">学校已固定为中国药科大学；账号会保存在本机，密码只用于本次登录。</p>
-          <p class="cpu-wb-process-note">请在本助手内完成登录。外侧官方页面只负责显示课程页面，不会让助手刷课进程自动登录。</p>
-          <div class="cpu-wb-form">
-            <label class="cpu-wb-field">
-              <span>学校名</span>
-              <div class="cpu-wb-school-lock" aria-label="已固定学校：中国药科大学">
-                <strong>中国药科大学</strong>
-                <span class="cpu-wb-school-lock-note">已固定</span>
-              </div>
-            </label>
-            <label class="cpu-wb-field">
-              <span>学号 / 用户名</span>
-              <input id="cpu-wb-user" placeholder="学号/用户名" autocomplete="off" spellcheck="false">
-            </label>
-            <label class="cpu-wb-field">
-              <span>密码</span>
-              <input id="cpu-wb-pass" type="password" placeholder="密码" autocomplete="off">
-            </label>
-          </div>
-          <div class="cpu-wb-captcha" id="cpu-wb-captcha-row" hidden>
-            <button class="cpu-wb-captcha-shot" type="button" id="cpu-wb-captcha-img" title="点击刷新验证码图片" aria-label="刷新验证码图片">
-              <img id="cpu-wb-captcha-preview" alt="验证码">
-              <span class="cpu-wb-captcha-fallback" id="cpu-wb-captcha-fallback" hidden>验证码加载失败，点击重试</span>
-            </button>
-            <label class="cpu-wb-field">
-              <span>验证码</span>
-              <input id="cpu-wb-captcha-val" placeholder="验证码" autocomplete="off" spellcheck="false">
-            </label>
-          </div>
+          <span class="cpu-wb-kicker">未登录</span>
+          <h3 class="cpu-wb-title">请先在微伴页面登录</h3>
+          <p class="cpu-wb-lead">助手直接使用微伴官方页面的登录状态，无需单独填写账号密码。</p>
+          <p class="cpu-wb-process-note">在此页面正常登录后，点击下方按钮，助手会自动读取登录状态并开始刷课。</p>
           <div class="cpu-wb-actions">
-            <button class="cpu-wb-primary" id="cpu-wb-login-btn" type="button">登录并开始</button>
+            <button class="cpu-wb-primary" id="cpu-wb-retry-btn" type="button">检测登录并开始</button>
           </div>
-          <p class="cpu-wb-note">验证码由助手独立获取，点左侧图片可刷新；外面官网登录状态与这里无关。</p>
         </section>
 
         <section class="cpu-wb-card" id="cpu-wb-session-card" hidden>
@@ -703,14 +613,7 @@
     const summaryEl = panel.querySelector('#cpu-wb-summary');
     const setupCard = panel.querySelector('#cpu-wb-setup');
     const sessionCard = panel.querySelector('#cpu-wb-session-card');
-    const captchaRow = panel.querySelector('#cpu-wb-captcha-row');
-    const captchaShot = panel.querySelector('#cpu-wb-captcha-img');
-    const captchaPreview = panel.querySelector('#cpu-wb-captcha-preview');
-    const captchaFallback = panel.querySelector('#cpu-wb-captcha-fallback');
-    const captchaInput = panel.querySelector('#cpu-wb-captcha-val');
-    const userInput = panel.querySelector('#cpu-wb-user');
-    const passInput = panel.querySelector('#cpu-wb-pass');
-    const loginBtn = panel.querySelector('#cpu-wb-login-btn');
+    const retryBtn = panel.querySelector('#cpu-wb-retry-btn');
     const runBtn = panel.querySelector('#cpu-wb-run-btn');
     const logoutBtn = panel.querySelector('#cpu-wb-logout-btn');
     let drag = null;
@@ -805,64 +708,17 @@
         while (logEl.childElementCount > 80) logEl.removeChild(logEl.firstElementChild);
         logEl.scrollTop = logEl.scrollHeight;
       },
-      showSetup() {
+      showNotLoggedIn() {
         setupCard.hidden = false;
         sessionCard.hidden = true;
-        summaryEl.textContent = '请在本助手内登录；外侧官方页面登录不等于刷课进程登录。';
+        summaryEl.textContent = '请在微伴官方页面登录后，点击"检测登录并开始"。';
       },
       showActions() {
         setupCard.hidden = true;
         sessionCard.hidden = false;
-        summaryEl.textContent = '登录成功后可以直接开始刷课，也可以退出后重新登录。';
+        summaryEl.textContent = '已读取微伴登录状态，可直接开始刷课。';
       },
-      showCaptcha(imageUrl, refresh) {
-        captchaRow.hidden = false;
-        captchaFallback.hidden = true;
-        captchaPreview.hidden = false;
-        captchaPreview.onload = () => {
-          captchaPreview.hidden = false;
-          captchaFallback.hidden = true;
-        };
-        captchaPreview.onerror = () => {
-          captchaPreview.hidden = true;
-          captchaFallback.textContent = '验证码加载失败，点击重试';
-          captchaFallback.hidden = false;
-        };
-        captchaPreview.src = imageUrl;
-        captchaShot.onclick = async () => {
-          if (typeof refresh !== 'function') return;
-          try {
-            await refresh();
-          } catch (error) {
-            status(`验证码刷新失败：${error?.message || error}`);
-          }
-        };
-        captchaInput.value = '';
-        captchaInput.focus();
-      },
-      showCaptchaError(message, refresh) {
-        captchaRow.hidden = false;
-        captchaPreview.hidden = true;
-        captchaFallback.textContent = message || '验证码加载失败，点击重试';
-        captchaFallback.hidden = false;
-        captchaShot.onclick = async () => {
-          if (typeof refresh !== 'function') return;
-          try {
-            await refresh();
-          } catch (error) {
-            status(`验证码刷新失败：${error?.message || error}`);
-          }
-        };
-      },
-      getCaptchaVal() { return captchaInput?.value?.trim() || ''; },
-      getCredentials() {
-        return {
-          school: CPU_SCHOOL_NAME,
-          username: userInput?.value?.trim() || '',
-          password: passInput?.value?.trim() || '',
-        };
-      },
-      onLoginClick(fn) { loginBtn.onclick = fn; },
+      onRetryClick(fn) { retryBtn.onclick = fn; },
       onRunClick(fn) { runBtn.onclick = fn; },
       onLogoutClick(fn) { logoutBtn.onclick = fn; },
     };
@@ -874,78 +730,46 @@
   // ─────────────────────────────────────────────
   // 13. 启动入口
   // ─────────────────────────────────────────────
-  const savedCreds = store.get('creds');
-  const savedSession = store.get('session');
-
-  if (savedSession?.token) {
-    Object.assign(session, savedSession);
-    ui.showActions();
-    ui.setStatus('已登录，点击开始刷课');
-    ui.onRunClick(async () => {
-      try { await runAll(); } catch (e) { status('出错: ' + e.message); logFn(e.stack || e.message); }
-    });
-    ui.onLogoutClick(() => {
-      store.set('session', null);
-      store.set('creds', null);
-      session = { userId: '', token: '', tenantCode: '' };
-      ui.showSetup();
-      ui.setStatus('已退出登录');
-    });
-    // 自动启动
-    try { await runAll(); } catch (e) { status('出错: ' + e.message); logFn(e.stack || e.message); }
-  } else {
-    ui.showSetup();
-    ui.setStatus('请先登录');
-    if (savedCreds) {
-      const userEl = document.querySelector('#cpu-wb-user');
-      if (userEl) userEl.value = savedCreds.username || '';
+  // 从页面 localStorage 读取微伴登录状态，与学习通脚本同一逻辑：
+  // 用户在官方页面正常登录，助手直接复用已有的 token，无需独立登录。
+  const doStart = async () => {
+    const pageSession = readPageSession();
+    if (!pageSession) {
+      ui.showNotLoggedIn();
+      ui.setStatus('请先在微伴页面登录');
+      return;
     }
+    Object.assign(session, pageSession);
+    ui.showActions();
+    ui.setStatus('已检测到登录，开始刷课…');
+    try { await runAll(); } catch (e) { status('出错: ' + e.message); logFn(e.stack || e.message); }
+  };
 
-    // 显示验证码
-    let captchaTs = '';
-    const loadCaptcha = async () => {
-      const nextTs = Date.now().toString();
-      try {
-        const captcha = fetchCaptchaImageUrl(nextTs);
-        captchaTs = captcha.ts;
-        ui.showCaptcha(captcha.url, loadCaptcha);
-      } catch (error) {
-        status(`验证码加载失败：${error?.message || error}`);
-        ui.showCaptchaError(`验证码加载失败：${error?.message || error}`, loadCaptcha);
-      }
-    };
-    await loadCaptcha();
+  ui.onRetryClick(async () => {
+    const pageSession = readPageSession();
+    if (!pageSession) {
+      ui.setStatus('尚未检测到登录，请先在微伴页面登录');
+      return;
+    }
+    Object.assign(session, pageSession);
+    ui.showActions();
+    ui.setStatus('已检测到登录，开始刷课…');
+    try { await runAll(); } catch (e) { status('出错: ' + e.message); logFn(e.stack || e.message); }
+  });
 
-    ui.onLoginClick(async () => {
-      const { school, username, password } = ui.getCredentials();
-      const verifyCode = ui.getCaptchaVal();
-      if (!school || !username || !password || !verifyCode) {
-        ui.setStatus('请填写所有字段'); return;
-      }
-      const tenantCode = getTenantCode();
-      ui.setStatus('正在登录…');
-      const res = await doLogin(tenantCode, username, password, verifyCode, captchaTs);
-      if (!res?.data?.token) {
-        ui.setStatus('登录失败：' + (res?.msg || '验证码或密码错误'));
-        await loadCaptcha();
-        return;
-      }
-      session = { userId: res.data.userId, token: res.data.token, tenantCode };
-      store.set('session', session);
-      store.set('creds', { school, username });
-      ui.showActions();
-      ui.setStatus('登录成功，开始刷课…');
-      try { await runAll(); } catch (e) { status('出错: ' + e.message); logFn(e.stack || e.message); }
-    });
+  ui.onRunClick(async () => {
+    // 每次点击都重新读取页面 token，防止 token 已在页面侧刷新
+    const pageSession = readPageSession();
+    if (pageSession) Object.assign(session, pageSession);
+    try { await runAll(); } catch (e) { status('出错: ' + e.message); logFn(e.stack || e.message); }
+  });
 
-    ui.onRunClick(async () => {
-      try { await runAll(); } catch (e) { status('出错: ' + e.message); logFn(e.stack || e.message); }
-    });
-    ui.onLogoutClick(() => {
-      store.set('session', null);
-      session = { userId: '', token: '', tenantCode: '' };
-      ui.showSetup();
-    });
-  }
+  ui.onLogoutClick(() => {
+    session = { userId: '', token: '', tenantCode: '' };
+    ui.showNotLoggedIn();
+    ui.setStatus('已清除会话缓存');
+  });
+
+  await doStart();
 
 })();

@@ -1,6 +1,6 @@
 {
   "name": "cpu-web-desktop",
-  "version": "0.3.19",
+  "version": "0.3.20",
   "description": "药大拾间桌面客户端",
   "main": "dist/electron/main.js",
   "private": true,

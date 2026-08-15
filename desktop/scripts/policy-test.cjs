@@ -205,7 +205,7 @@ check("安全微伴脚本品牌和匹配范围已写入内置脚本", () => {
   const fs = require("node:fs");
   const source = fs.readFileSync(path.join(__dirname, "..", "assets", "userscripts", "weban.js"), "utf8");
   assert.match(source, /^\/\/ @name\s+药大拾间·安全微伴助手$/m);
-  assert.match(source, /^\/\/ @version\s+1\.0\.11$/m);
+  assert.match(source, /^\/\/ @version\s+1\.1\.0$/m);
   assert.match(source, /weiban\.mycourse\.cn/);
   assert.match(source, /\*\.mycourse\.cn/);
   assert.match(source, /^\/\/ @connect\s+weiban\.mycourse\.cn$/m);
@@ -219,21 +219,29 @@ check("安全微伴脚本品牌和匹配范围已写入内置脚本", () => {
   assert.match(source, /raw\.githubusercontent\.com\/hangone\/WeBan\/refs\/heads\/main\/answer\/answer\.json/);
   assert.match(source, /cpu-weban:/);
   assert.match(source, /安全微伴助手/);
-  assert.match(source, /fetchCaptchaImageUrl/, "验证码应使用同源图片地址加载");
-  assert.match(source, /randLetterImage\.do\?time=/, "验证码地址应携带时间戳");
-  assert.match(source, /<img id=\"cpu-wb-captcha-preview\"/, "验证码应由页面图片元素直接渲染");
-  assert.doesNotMatch(source, /createImageBitmap\(blob\)/, "验证码不应经过 Blob 和 canvas 转换");
+  assert.match(source, /readPageSession/, "安全微伴应直接从页面读取会话");
+  assert.match(source, /localStorage\.getItem\('user'\)/, "安全微伴应复用页面登录状态");
+  assert.match(source, /检测登录并开始/, "安全微伴应提供页面会话检测按钮");
+  assert.match(source, /请先在微伴页面登录/, "未登录时应提示先在页面登录");
+  assert.match(source, /会话已失效，请在微伴页面重新登录后点击"检测登录并开始"/, "会话过期时应提示在页面重新登录");
+  assert.doesNotMatch(source, /fetchCaptchaImageUrl/, "不应再从助手内拉取验证码图片");
+  assert.doesNotMatch(source, /randLetterImage\.do\?time=/, "不应再保留验证码图片地址");
+  assert.doesNotMatch(source, /<img id=\"cpu-wb-captcha-preview\"/, "不应再渲染验证码图片元素");
+  assert.doesNotMatch(source, /createImageBitmap\(blob\)/, "验证码逻辑已移除，不应再做 Blob 转换");
+  assert.doesNotMatch(source, /cpu-wb-captcha/, "不应再保留验证码面板");
+  assert.doesNotMatch(source, /cpu-wb-login-btn/, "不应再保留助手内登录按钮");
+  assert.doesNotMatch(source, /cpu-wb-user/, "不应再保留账号输入框");
+  assert.doesNotMatch(source, /cpu-wb-pass/, "不应再保留密码输入框");
   assert.doesNotMatch(source, /\bdoc\.addEventListener\(/, "面板事件必须绑定到已定义的 document，避免初始化中断");
   assert.match(source, /const host\s*=\s*typeof unsafeWindow/, "面板布局使用的 host 必须在初始化前定义");
   assert.match(source, /#\$\{panelId\} \[hidden\].*display:\s*none\s*!important/, "面板内部隐藏状态不应被组件 display 样式覆盖");
   assert.doesNotMatch(source, /data:\$\{mime\};base64,\$\{btoa\(binary\)\}/, "验证码不应再走 data URL");
-  assert.match(source, /外侧官方页面登录不等于刷课进程登录/, "面板应提示用户必须在助手内登录");
+  assert.match(source, /助手使用微伴页面的登录状态，无需单独登录/, "面板应提示用户直接复用页面登录状态");
   assert.doesNotMatch(source, /data-action="toggle-collapse"/, "面板不应再显示语义不清的折叠箭头按钮");
   assert.match(source, /color-scheme:\s*light/, "安全微伴面板应使用学习通同款浅色风格");
   assert.match(source, /CPU_TENANT_CODE\s*=\s*'21000004'/, "安全微伴应固定使用中国药科大学租户");
-  assert.match(source, /cpu-wb-school-lock/, "安全微伴不应再让用户输入学校名称");
   assert.match(source, /myGetInfo\.do/, "安全微伴应在任务前验证会话是否仍有效");
-  assert.match(source, /会话已失效，请重新登录/, "安全微伴应在会话过期时提示用户重新登录");
+  assert.match(source, /会话已失效，请在微伴页面重新登录后点击"检测登录并开始"/, "安全微伴应在会话过期时提示用户回到页面重新登录");
 });
 
 check("学习通助手品牌、版本和进入课程引导已写入内置回退脚本", () => {
