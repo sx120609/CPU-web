@@ -205,7 +205,7 @@ check("安全微伴脚本品牌和匹配范围已写入内置脚本", () => {
   const fs = require("node:fs");
   const source = fs.readFileSync(path.join(__dirname, "..", "assets", "userscripts", "weban.js"), "utf8");
   assert.match(source, /^\/\/ @name\s+药大拾间·安全微伴助手$/m);
-  assert.match(source, /^\/\/ @version\s+1\.0\.10$/m);
+  assert.match(source, /^\/\/ @version\s+1\.0\.11$/m);
   assert.match(source, /weiban\.mycourse\.cn/);
   assert.match(source, /\*\.mycourse\.cn/);
   assert.match(source, /^\/\/ @connect\s+weiban\.mycourse\.cn$/m);
@@ -232,6 +232,8 @@ check("安全微伴脚本品牌和匹配范围已写入内置脚本", () => {
   assert.match(source, /color-scheme:\s*light/, "安全微伴面板应使用学习通同款浅色风格");
   assert.match(source, /CPU_TENANT_CODE\s*=\s*'21000004'/, "安全微伴应固定使用中国药科大学租户");
   assert.match(source, /cpu-wb-school-lock/, "安全微伴不应再让用户输入学校名称");
+  assert.match(source, /myGetInfo\.do/, "安全微伴应在任务前验证会话是否仍有效");
+  assert.match(source, /会话已失效，请重新登录/, "安全微伴应在会话过期时提示用户重新登录");
 });
 
 check("学习通助手品牌、版本和进入课程引导已写入内置回退脚本", () => {

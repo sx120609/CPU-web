@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         药大拾间·安全微伴助手
 // @namespace    cpu-weban
-// @version      1.0.10
+// @version      1.0.11
 // @author       CPU-web
 // @description  自动完成安全微伴课程与考试，支持中国药科大学等高校
 // @match        https://weiban.mycourse.cn/*
@@ -246,12 +246,17 @@
     const encrypted = await aesEcbEncrypt(keyBytes, payload);
     const data = b64url(encrypted);
     const ts = Date.now().toString();
-    const resp = await fetch(`${BASE}/pharos/login/login.do?timestamp=${ts}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ data }).toString(),
-    });
-    return resp.json();
+    try {
+      const resp = await fetch(`${BASE}/pharos/login/login.do?timestamp=${ts}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ data }).toString(),
+      });
+      return resp.json().catch(() => null);
+    } catch (e) {
+      log(`登录请求失败: ${e.message}`);
+      return null;
+    }
   };
 
   // ─────────────────────────────────────────────
@@ -449,6 +454,18 @@
   const runAll = async () => {
     status('正在同步题库…');
     await syncAnswerBank();
+
+    // 验证 session 是否仍然有效（token 可能已过期）
+    const infoRes = await post('/pharos/user/myGetInfo.do');
+    if (!infoRes?.data) {
+      log('⚠️ 会话已失效，请重新登录');
+      status('会话已失效，请重新登录');
+      store.set('session', null);
+      session = { userId: '', token: '', tenantCode: '' };
+      ui.showSetup();
+      ui.setStatus('登录已过期，请重新登录');
+      return;
+    }
 
     status('正在模拟首页…');
     await simulateHome();
