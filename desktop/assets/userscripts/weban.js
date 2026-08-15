@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         药大拾间·安全微伴助手
 // @namespace    cpu-weban
-// @version      1.0.8
+// @version      1.0.9
 // @author       CPU-web
 // @description  自动完成安全微伴课程与考试，支持中国药科大学等高校
 // @match        https://weiban.mycourse.cn/*
@@ -158,7 +158,8 @@
         data: new URLSearchParams(payload).toString(),
         onload: (resp) => {
           if (resp.status !== 200) {
-            log(`HTTP ${resp.status} ${path}`);
+            const body = resp.responseText ? resp.responseText.slice(0, 200) : '(empty)';
+            log(`HTTP ${resp.status} ${path} → ${body}`);
             resolve({});
           } else {
             try { resolve(JSON.parse(resp.responseText)); } catch { resolve({}); }
