@@ -818,7 +818,7 @@ const authorize = async (event: Electron.IpcMainInvokeEvent, nonce: unknown): Pr
 
 const ALLOWED_METHODS = new Set(["GET", "POST"]);
 // 白名单而非黑名单：不允许脚本自造 Cookie / Authorization / Origin / Referer。
-const ALLOWED_REQUEST_HEADERS = new Set(["accept", "accept-language", "content-type", "user-agent", "x-requested-with"]);
+const ALLOWED_REQUEST_HEADERS = new Set(["accept", "accept-language", "content-type", "user-agent", "x-requested-with", "x-token"]);
 
 const sanitizeHeaders = (input: unknown): Record<string, string> => {
   const headers: Record<string, string> = {};
