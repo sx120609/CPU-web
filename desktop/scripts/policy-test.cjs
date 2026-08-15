@@ -205,7 +205,7 @@ check("安全微伴脚本品牌和匹配范围已写入内置脚本", () => {
   const fs = require("node:fs");
   const source = fs.readFileSync(path.join(__dirname, "..", "assets", "userscripts", "weban.js"), "utf8");
   assert.match(source, /^\/\/ @name\s+药大拾间·安全微伴助手$/m);
-  assert.match(source, /^\/\/ @version\s+1\.1\.2$/m);
+  assert.match(source, /^\/\/ @version\s+1\.1\.3$/m);
   assert.match(source, /weiban\.mycourse\.cn/);
   assert.match(source, /\*\.mycourse\.cn/);
   assert.match(source, /^\/\/ @connect\s+weiban\.mycourse\.cn$/m);
@@ -251,6 +251,9 @@ check("安全微伴脚本品牌和匹配范围已写入内置脚本", () => {
   assert.match(source, /resp\.status === 701/, "安全微伴遇到 701 风控响应后必须停止继续请求");
   assert.match(source, /if \(e\?\.code === 701\) throw e/, "安全微伴不得吞掉 701 风控异常");
   assert.match(source, /const completed = await studyCourse/, "安全微伴不得把失败课程记录为成功");
+  assert.match(source, /id="cpu-wb-emergency-logout"/, "安全微伴风控后必须提供始终可见的紧急退出按钮");
+  assert.match(source, /localStorage\.removeItem\('user'\)/, "安全微伴退出必须清除官方页面会话");
+  assert.match(source, /host\.location\.reload\(\)/, "安全微伴退出后必须刷新官方页面状态");
   assert.match(source, /会话已失效，请在微伴页面重新登录后点击"检测登录并开始"/, "安全微伴应在会话过期时提示用户回到页面重新登录");
 });
 

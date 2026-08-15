@@ -266,7 +266,7 @@ async function main() {
     size: Buffer.byteLength(webanSource, "utf8"),
     sourceUrl: WEBAN_USER_SCRIPT_CHANNEL.sourcePath,
   };
-  assert.deepEqual(webanIdentity, { name: "药大拾间·安全微伴助手", version: "1.1.2" });
+  assert.deepEqual(webanIdentity, { name: "药大拾间·安全微伴助手", version: "1.1.3" });
   assert.match(webanSource, /cpu-weban-panel/);
   assert.match(webanSource, /安全微伴助手/);
   assert.match(webanSource, /^\/\/ @connect\s+weiban\.mycourse\.cn$/m);
@@ -295,6 +295,9 @@ async function main() {
   assert.match(webanSource, /resp\.status === 701/);
   assert.match(webanSource, /if \(e\?\.code === 701\) throw e/);
   assert.match(webanSource, /const completed = await studyCourse/);
+  assert.match(webanSource, /id="cpu-wb-emergency-logout"/);
+  assert.match(webanSource, /localStorage\.removeItem\('user'\)/);
+  assert.match(webanSource, /host\.location\.reload\(\)/);
   assert.match(webanSource, /会话已失效，请在微伴页面重新登录后点击"检测登录并开始"/);
   assert.doesNotMatch(webanSource, /登录请求失败/);
   assert.doesNotMatch(webanSource, /外侧官方页面登录不等于刷课进程登录/);
@@ -325,7 +328,7 @@ async function main() {
       }
       return new Response("", { status: 404 });
     };
-    const olderSource = webanSource.replace("// @version      1.1.2", "// @version      1.0.11");
+    const olderSource = webanSource.replace("// @version      1.1.3", "// @version      1.0.11");
     const updated = await checkUserScriptUpdate({
       origin: "https://cputime.cn",
       cacheDirectory: webanCache,
@@ -342,7 +345,7 @@ async function main() {
       () => undefined,
       WEBAN_USER_SCRIPT_CHANNEL,
     );
-    assert.equal(cached?.manifest.version, "1.1.2");
+    assert.equal(cached?.manifest.version, "1.1.3");
     assert.equal(cached?.source, webanSource);
   } finally {
     await rm(webanCache, { recursive: true, force: true });

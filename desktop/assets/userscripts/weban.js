@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         药大拾间·安全微伴助手
 // @namespace    cpu-weban
-// @version      1.1.2
+// @version      1.1.3
 // @author       CPU-web
 // @description  自动完成安全微伴课程与考试，支持中国药科大学等高校
 // @match        https://weiban.mycourse.cn/*
@@ -125,6 +125,7 @@
   // 5. API 客户端
   // ─────────────────────────────────────────────
   let session = { userId: '', token: '', tenantCode: '' };
+  let stopRequested = false;
 
   const compactDetail = (text) => String(text || '')
     .replace(/<[^>]*>/g, ' ')
@@ -132,6 +133,7 @@
     .trim()
     .slice(0, 180);
   const createBlockedError = (path) => {
+    stopRequested = true;
     const error = new Error(`微伴返回 701（${path}），当前会话可能已被风控，请重新登录后再试`);
     error.code = 701;
     return error;
@@ -633,6 +635,8 @@
         color: var(--cpu-wb-muted-strong); transition: background .16s ease, border-color .16s ease, color .16s ease;
       }
       #${panelId} .cpu-wb-icon:hover { border-color: color-mix(in srgb, var(--cpu-wb-primary) 55%, var(--cpu-wb-border)); background: var(--cpu-wb-subtle); }
+      #${panelId} .cpu-wb-emergency { color: var(--cpu-wb-danger); border-color: color-mix(in srgb, var(--cpu-wb-danger) 35%, var(--cpu-wb-border)); }
+      #${panelId} .cpu-wb-emergency:hover { color: #a33f3f; background: #fff3f3; }
       #${panelId} .cpu-wb-body { min-height: 0; overflow: auto; padding: 14px 16px; display: grid; gap: 10px; }
       #${panelId} .cpu-wb-card { padding: 14px; border: 1px solid var(--cpu-wb-border-soft); border-radius: 14px; background: var(--cpu-wb-card); }
       #${panelId} .cpu-wb-kicker { color: var(--cpu-wb-primary); font-size: 12px; font-weight: 800; letter-spacing: 0; }
@@ -693,6 +697,7 @@
         <div class="cpu-wb-mark" aria-hidden="true">🛡</div>
         <div class="cpu-wb-heading"><strong>安全微伴助手</strong><span>登录、刷课与任务控制</span></div>
         <div class="cpu-wb-header-actions">
+          <button class="cpu-wb-icon cpu-wb-emergency" type="button" id="cpu-wb-emergency-logout" title="停止任务并清除微伴会话" aria-label="停止任务并清除微伴会话">⏹</button>
           <button class="cpu-wb-icon" type="button" data-action="close" title="隐藏面板" aria-label="隐藏面板">×</button>
         </div>
       </header>
@@ -739,6 +744,8 @@
     const retryBtn = panel.querySelector('#cpu-wb-retry-btn');
     const runBtn = panel.querySelector('#cpu-wb-run-btn');
     const logoutBtn = panel.querySelector('#cpu-wb-logout-btn');
+    const emergencyLogoutBtn = panel.querySelector('#cpu-wb-emergency-logout');
+    const bodyEl = panel.querySelector('.cpu-wb-body');
     let drag = null;
     const positionKey = 'cpu-weban-position-v1';
 
@@ -832,6 +839,7 @@
         logEl.scrollTop = logEl.scrollHeight;
       },
       showNotLoggedIn() {
+        bodyEl.scrollTop = 0;
         setupCard.hidden = false;
         sessionCard.hidden = true;
         summaryEl.textContent = '请在微伴官方页面登录后，点击"检测登录并开始"。';
@@ -843,7 +851,7 @@
       },
       onRetryClick(fn) { retryBtn.onclick = fn; },
       onRunClick(fn) { runBtn.onclick = fn; },
-      onLogoutClick(fn) { logoutBtn.onclick = fn; },
+      onLogoutClick(fn) { logoutBtn.onclick = fn; emergencyLogoutBtn.onclick = fn; },
     };
   })();
 
@@ -855,6 +863,21 @@
   // ─────────────────────────────────────────────
   // 从页面 localStorage 读取微伴登录状态，与学习通脚本同一逻辑：
   // 用户在官方页面正常登录，助手直接复用已有的 token，无需独立登录。
+  const clearPageSession = () => {
+    try { host.localStorage.removeItem('user'); } catch {}
+    try { host.sessionStorage.removeItem('user'); } catch {}
+  };
+
+  const stopAndLogout = () => {
+    stopRequested = true;
+    session = { userId: '', token: '', tenantCode: '' };
+    clearPageSession();
+    ui.showNotLoggedIn();
+    ui.setStatus('已停止并清除微伴会话，请重新登录');
+    log('已停止任务并清除当前页面的微伴登录状态');
+    try { host.location.reload(); } catch {}
+  };
+
   const doStart = async () => {
     const pageSession = readPageSession();
     if (!pageSession) {
@@ -881,17 +904,17 @@
   });
 
   ui.onRunClick(async () => {
+    if (stopRequested) {
+      ui.setStatus('任务已停止，请先退出并重新登录微伴');
+      return;
+    }
     // 每次点击都重新读取页面 token，防止 token 已在页面侧刷新
     const pageSession = readPageSession();
     if (pageSession) Object.assign(session, pageSession);
     try { await runAll(); } catch (e) { status('出错: ' + e.message); logFn(e.stack || e.message); }
   });
 
-  ui.onLogoutClick(() => {
-    session = { userId: '', token: '', tenantCode: '' };
-    ui.showNotLoggedIn();
-    ui.setStatus('已清除会话缓存');
-  });
+  ui.onLogoutClick(stopAndLogout);
 
   await doStart();
 
