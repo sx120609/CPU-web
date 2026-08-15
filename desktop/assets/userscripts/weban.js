@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         药大拾间·安全微伴助手
 // @namespace    cpu-weban
-// @version      1.1.1
+// @version      1.1.2
 // @author       CPU-web
 // @description  自动完成安全微伴课程与考试，支持中国药科大学等高校
 // @match        https://weiban.mycourse.cn/*
@@ -126,6 +126,18 @@
   // ─────────────────────────────────────────────
   let session = { userId: '', token: '', tenantCode: '' };
 
+  const compactDetail = (text) => String(text || '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 180);
+  const createBlockedError = (path) => {
+    const error = new Error(`微伴返回 701（${path}），当前会话可能已被风控，请重新登录后再试`);
+    error.code = 701;
+    return error;
+  };
+  const isApiSuccess = (response) => response?.code === 0 || response?.code === '0';
+
   // 标准 POST：自动注入 timestamp / tenantCode / userId / X-Token
   // 使用原生 fetch —— 脚本运行在 weiban.mycourse.cn 页面内，同源请求直接走浏览器网络栈，
   // 不需要也不应该绕道 Electron 主进程的 net.request（后者会因 TLS 指纹差异被 CDN 拦截）。
@@ -144,11 +156,23 @@
       });
       if (!resp.ok) {
         const txt = await resp.text().catch(() => '');
-        log(`HTTP ${resp.status} ${path} → ${txt.slice(0, 200) || '(empty)'}`);
+        if (resp.status === 701) {
+          const error = createBlockedError(path);
+          log(`⛔ ${error.message}`);
+          throw error;
+        }
+        log(`HTTP ${resp.status} ${path} → ${compactDetail(txt) || '(empty)'}`);
         return {};
       }
-      return resp.json().catch(() => ({}));
+      const result = await resp.json().catch(() => ({}));
+      if (String(result?.detailCode) === '701' || String(result?.code) === '701') {
+        const error = createBlockedError(path);
+        log(`⛔ ${error.message}`);
+        throw error;
+      }
+      return result;
     } catch (e) {
+      if (e?.code === 701) throw e;
       log(`网络错误 ${path}: ${e.message}`);
       return {};
     }
@@ -161,8 +185,14 @@
       const resp = await fetch(url, {
         headers: { ...headers },
       });
+      if (resp.status === 701) {
+        const error = createBlockedError(url);
+        log(`⛔ ${error.message}`);
+        throw error;
+      }
       return await resp.text();
     } catch (e) {
+      if (e?.code === 701) throw e;
       log(`GET 失败 ${url}: ${e.message}`);
       return '';
     }
@@ -212,12 +242,16 @@
     const data = await aes256CbcDoubleB64(JUPITER_KEY, payload);
     const ts = (Date.now() / 1000).toString();
     try {
-      await fetch(`${BASE}/jupiterapi/api/statusercourse/v1/next?timestamp=${ts}`, {
+      const resp = await fetch(`${BASE}/jupiterapi/api/statusercourse/v1/next?timestamp=${ts}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Token': session.token },
         body: JSON.stringify({ data }),
       });
-    } catch { /* 追踪失败不影响主流程 */ }
+      if (resp.status === 701) throw createBlockedError('/jupiterapi/api/statusercourse/v1/next');
+    } catch (e) {
+      if (e?.code === 701) throw e;
+      /* 追踪失败不影响主流程 */
+    }
   };
 
   // ─────────────────────────────────────────────
@@ -379,10 +413,17 @@
     // WeBan returns resourceId as the course id. The older courseId field is
     // still accepted as a fallback for cached responses from older clients.
     const courseId = resourceId;
-    await post('/pharos/usercourse/study.do', { courseId, userProjectId });
+    const studyRes = await post('/pharos/usercourse/study.do', { courseId, userProjectId });
+    if (!isApiSuccess(studyRes)) {
+      log(`课程 ${courseId} 开始学习失败，已跳过`);
+      return false;
+    }
     const urlRes = await post('/pharos/usercourse/getCourseUrl.do', { courseId, userProjectId });
     const courseUrl = urlRes?.data;
-    if (!courseUrl) { log(`课程 ${courseId} 无法获取URL`); return; }
+    if (!isApiSuccess(urlRes) || !courseUrl) {
+      log(`课程 ${courseId} 无法获取课程 URL，已跳过`);
+      return false;
+    }
 
     // 获取课程页面，检测是否需要 apicenext，并读取官方翻页轨迹参数。
     let needJupiter = false;
@@ -399,7 +440,10 @@
       if (tokenMatch) finishToken = tokenMatch[1];
       if (html.includes('open.mycourse.cn')) finishType = 'open';
       if (html.includes('lyra.mycourse.cn')) finishType = 'lyra';
-    } catch (e) { log(`课程页面解析失败: ${e.message}`); }
+    } catch (e) {
+      if (e?.code === 701) throw e;
+      log(`课程页面解析失败: ${e.message}`);
+    }
 
     if (needJupiter) {
       const apinextNo = uuid4();
@@ -416,6 +460,7 @@
 
     await finishCourse(userCourseId, courseId, userProjectId, finishType, finishToken, needJupiter ? finishUniqueNo : '');
     await sleep(rand(500, 1000));
+    return true;
   };
 
   const runStudy = async (userProjectId) => {
@@ -436,8 +481,8 @@
         for (const course of pending) {
           const resourceId = course.resourceId || course.courseId;
           status(`学习：${course.resourceName || resourceId}`);
-          await studyCourse(userProjectId, resourceId, course.userCourseId);
-          log(`✓ ${course.resourceName || resourceId}`);
+          const completed = await studyCourse(userProjectId, resourceId, course.userCourseId);
+          if (completed) log(`✓ ${course.resourceName || resourceId}`);
         }
       }
     }
