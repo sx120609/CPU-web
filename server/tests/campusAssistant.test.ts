@@ -176,7 +176,7 @@ test("云端多平台助手脚本与客户端安装包分离发布", async () =>
 test("云端安全微伴脚本提供可校验的版本与正文", async () => {
   const release = await readDesktopUserScriptRelease("weban");
   assert.equal(release.name, "药大拾间·安全微伴助手");
-  assert.equal(release.version, "1.0.7");
+  assert.equal(release.version, "1.0.8");
   assert.match(release.sha256, /^[a-f0-9]{64}$/);
   assert.equal(release.size, Buffer.byteLength(release.source, "utf8"));
   assert.match(release.source, /cpu-weban:/);

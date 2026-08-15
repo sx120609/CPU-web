@@ -266,7 +266,7 @@ async function main() {
     size: Buffer.byteLength(webanSource, "utf8"),
     sourceUrl: WEBAN_USER_SCRIPT_CHANNEL.sourcePath,
   };
-  assert.deepEqual(webanIdentity, { name: "药大拾间·安全微伴助手", version: "1.0.7" });
+  assert.deepEqual(webanIdentity, { name: "药大拾间·安全微伴助手", version: "1.0.8" });
   assert.match(webanSource, /cpu-weban-panel/);
   assert.match(webanSource, /安全微伴助手/);
   assert.match(webanSource, /^\/\/ @connect\s+weiban\.mycourse\.cn$/m);
@@ -310,7 +310,7 @@ async function main() {
       }
       return new Response("", { status: 404 });
     };
-    const olderSource = webanSource.replace("// @version      1.0.7", "// @version      1.0.6");
+    const olderSource = webanSource.replace("// @version      1.0.8", "// @version      1.0.7");
     const updated = await checkUserScriptUpdate({
       origin: "https://cputime.cn",
       cacheDirectory: webanCache,
@@ -327,7 +327,7 @@ async function main() {
       () => undefined,
       WEBAN_USER_SCRIPT_CHANNEL,
     );
-    assert.equal(cached?.manifest.version, "1.0.7");
+    assert.equal(cached?.manifest.version, "1.0.8");
     assert.equal(cached?.source, webanSource);
   } finally {
     await rm(webanCache, { recursive: true, force: true });
