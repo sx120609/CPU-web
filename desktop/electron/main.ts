@@ -1410,8 +1410,9 @@ if (installMode || uninstallMode) {
     if (process.platform === "win32") void sweepReplacedFiles();
 
     // 让主站能识别出这是桌面端，与 CPUWebScheduleApp / CPUWebHarmonyApp 同一套约定
+    // 同时摘掉 Electron/x.x.x 标记：部分平台（安全微伴等）的 WAF 检测到该字段会拦截所有 API 请求。
     session.defaultSession.setUserAgent(
-      `${session.defaultSession.getUserAgent()} ${branding.userAgentTag}/${app.getVersion()}`
+      `${session.defaultSession.getUserAgent().replace(/ Electron\/[\d.]+/, '')} ${branding.userAgentTag}/${app.getVersion()}`
     );
 
     // 默认拒绝所有权限请求，只放行视频全屏

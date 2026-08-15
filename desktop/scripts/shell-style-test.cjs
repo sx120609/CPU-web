@@ -29,6 +29,7 @@ assert.match(css, /\.about-card \.card-head > div\s*\{[\s\S]*?display:\s*grid;[\
 assert.match(css, /\.about-product\s*\{[\s\S]*?margin:\s*0;/, "关于副标题不得再用负边距挤进标题");
 assert.doesNotMatch(css, /\.about-product\s*\{[\s\S]*?margin-top:\s*-\d+px/, "关于副标题不得通过负边距与标题重叠");
 assert.match(main, /process\.platform !== "darwin"[\s\S]*?Menu\.setApplicationMenu\(null\);[\s\S]*?return;/, "Windows 必须彻底移除会被 Alt 唤出的传统菜单栏");
+assert.match(main, /replace\(\/ Electron\\\/\[\\d\.\]\+\/,\s*''\)/, "桌面 UA 必须摘掉 Electron 标记，避免部分平台 WAF 误判");
 assert.match(html, /id="auth-login"[^>]*>去首页登录</, "未登录入口应回到首页这一套登录状态");
 assert.match(renderer, /shell\.auth\.sync\(/, "账号卡片应先静默同步首页登录状态");
 assert.match(html, /id="auth-sponsor-go"[^>]*>前往赞助</, "账号卡片应提供赞助获取 AI 点数入口");
