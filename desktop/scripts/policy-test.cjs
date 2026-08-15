@@ -205,7 +205,7 @@ check("安全微伴脚本品牌和匹配范围已写入内置脚本", () => {
   const fs = require("node:fs");
   const source = fs.readFileSync(path.join(__dirname, "..", "assets", "userscripts", "weban.js"), "utf8");
   assert.match(source, /^\/\/ @name\s+药大拾间·安全微伴助手$/m);
-  assert.match(source, /^\/\/ @version\s+1\.1\.0$/m);
+  assert.match(source, /^\/\/ @version\s+1\.1\.1$/m);
   assert.match(source, /weiban\.mycourse\.cn/);
   assert.match(source, /\*\.mycourse\.cn/);
   assert.match(source, /^\/\/ @connect\s+weiban\.mycourse\.cn$/m);
@@ -240,7 +240,14 @@ check("安全微伴脚本品牌和匹配范围已写入内置脚本", () => {
   assert.doesNotMatch(source, /data-action="toggle-collapse"/, "面板不应再显示语义不清的折叠箭头按钮");
   assert.match(source, /color-scheme:\s*light/, "安全微伴面板应使用学习通同款浅色风格");
   assert.match(source, /CPU_TENANT_CODE\s*=\s*'21000004'/, "安全微伴应固定使用中国药科大学租户");
-  assert.match(source, /myGetInfo\.do/, "安全微伴应在任务前验证会话是否仍有效");
+  assert.match(source, /\/pharos\/my\/getInfo\.do/, "安全微伴应在任务前验证会话是否仍有效");
+  assert.match(source, /\/pharos\/index\/listMyProject\.do.*ended: 2/, "安全微伴应查询当前进行中的项目");
+  assert.match(source, /\/pharos\/usercourse\/listCategory\.do/, "安全微伴应使用现行课程分类接口");
+  assert.match(source, /\/pharos\/usercourse\/listCourse\.do/, "安全微伴应使用现行课程列表接口");
+  assert.match(source, /c\.finished !== 1/, "安全微伴应使用 finished 字段判断课程状态");
+  assert.match(source, /headers: \{ \.\.\.headers \}/, "课程资源请求不应附带跨域 X-Token");
+  assert.match(source, /const finishId = token \|\| userCourseId/, "安全微伴完课地址必须回退到 userCourseId");
+  assert.match(source, /const userExamPlanId = plan\.userExamPlanId \|\| plan\.id \|\| plan\.examPlanId/, "安全微伴考试应优先使用用户考试计划 ID");
   assert.match(source, /会话已失效，请在微伴页面重新登录后点击"检测登录并开始"/, "安全微伴应在会话过期时提示用户回到页面重新登录");
 });
 

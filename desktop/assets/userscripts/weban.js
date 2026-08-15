@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         药大拾间·安全微伴助手
 // @namespace    cpu-weban
-// @version      1.1.0
+// @version      1.1.1
 // @author       CPU-web
 // @description  自动完成安全微伴课程与考试，支持中国药科大学等高校
 // @match        https://weiban.mycourse.cn/*
@@ -130,7 +130,7 @@
   // 使用原生 fetch —— 脚本运行在 weiban.mycourse.cn 页面内，同源请求直接走浏览器网络栈，
   // 不需要也不应该绕道 Electron 主进程的 net.request（后者会因 TLS 指纹差异被 CDN 拦截）。
   const post = async (path, body = {}) => {
-    const ts = Date.now().toString();
+    const ts = (Date.now() / 1000).toString();
     const payload = { tenantCode: session.tenantCode, userId: session.userId, ...body };
     const url = `${BASE}${path}?timestamp=${ts}`;
     try {
@@ -154,11 +154,12 @@
     }
   };
 
-  // GET（用于课程页面 HTML / JSONP 完成请求）
+  // GET（用于 mcwk 课程页面、课程脚本和 JSONP 完成请求）。
+  // 这些资源允许匿名读取；附带 X-Token 会触发 mcwk 的跨域预检并失败。
   const get = async (url, headers = {}) => {
     try {
       const resp = await fetch(url, {
-        headers: { 'X-Token': session.token, ...headers },
+        headers: { ...headers },
       });
       return await resp.text();
     } catch (e) {
@@ -179,7 +180,7 @@
 
   // Mercury 路由（resource.mycourse.cn 与 weiban.mycourse.cn 同属 mycourse.cn，Electron webview 不拦截）
   const mercury = async (service, params) => {
-    const ts = Date.now().toString();
+    const ts = (Date.now() / 1000).toString();
     const base = { appKey: MERCURY_APP_KEY, format: 'json', v: '1.0', timestamp: ts, clientId: 'pharos', service, ...params };
     base.sign = await mercurySign(base);
     try {
@@ -196,10 +197,20 @@
   };
 
   // Jupiter 导航追踪
-  const jupiterNext = async (step, finished, uniqueNo, apinextNo, courseId, userCourseId, userProjectId) => {
-    const payload = { step: String(step), finished: String(finished), uniqueNo, apinextNo, userCourseId, courseId, userProjectId };
+  const jupiterNext = async (step, finished, uniqueNo, courseId, userCourseId, userProjectId, nonstr = '') => {
+    const payload = {
+      userCourseId,
+      uniqueNo: uniqueNo || uuid4(),
+      userId: session.userId,
+      courseId,
+      userProjectId,
+      finished: String(finished),
+      step: String(step),
+      nonstr,
+      tenantCode: session.tenantCode,
+    };
     const data = await aes256CbcDoubleB64(JUPITER_KEY, payload);
-    const ts = Date.now().toString();
+    const ts = (Date.now() / 1000).toString();
     try {
       await fetch(`${BASE}/jupiterapi/api/statusercourse/v1/next?timestamp=${ts}`, {
         method: 'POST',
@@ -286,7 +297,7 @@
       '/pharos/ebook/getEbook.do',
       '/pharos/ebook/ebookRecordList.do',
       '/pharos/index/carouselList.do',
-      '/pharos/user/myGetInfo.do',
+      '/pharos/my/getInfo.do',
       '/pharos/index/getProjectStat.do',
       '/pharos/notice/index.do',
       '/pharos/notice/list.do',
@@ -304,11 +315,37 @@
   // ─────────────────────────────────────────────
   // 9. 课程完成
   // ─────────────────────────────────────────────
-  const finishCourse = async (userCourseId, courseId, userProjectId, finishType, token) => {
+  const parseNonstrMap = (script) => {
+    const map = {};
+    for (const match of script.matchAll(/\[\s*(\d+)\s*,\s*['"]([^'"]*)['"]\s*\]/g)) {
+      map[Number(match[1])] = match[2];
+    }
+    return map;
+  };
+
+  const readCourseTrace = async (html, courseUrl) => {
+    const pageMatch = html.match(/pageCount\s*[=:]\s*(\d+)/);
+    let totalStep = pageMatch ? Number(pageMatch[1]) : 1;
+    const nonstr = {};
+    const scriptSources = [...html.matchAll(/<script[^>]+src=["']([^"']+)["']/gi)]
+      .map(match => match[1])
+      .filter(src => /(?:item\.js|\.js(?:[?#]|$))/i.test(src));
+    for (const src of scriptSources.slice(-4)) {
+      try {
+        const script = await get(new URL(src, courseUrl).href, { Referer: courseUrl });
+        Object.assign(nonstr, parseNonstrMap(script));
+      } catch { /* 课程脚本不是所有课程都公开 */ }
+    }
+    const steps = Object.keys(nonstr).map(Number).filter(Number.isFinite);
+    if (steps.length) totalStep = Math.max(totalStep, ...steps);
+    return { totalStep: Math.max(1, totalStep), nonstr };
+  };
+
+  const finishCourse = async (userCourseId, courseId, userProjectId, finishType, token, uniqueNo = '') => {
     if (finishType === 'open') {
-      await post('/pharos/usercourse/finish.do', { userCourseId, courseId, userProjectId });
+      await post('/pharos/usercourse/finish.do', { userCourseId, courseId, userProjectId, uniqueNo });
     } else if (finishType === 'lyra') {
-      const ts = Date.now().toString();
+      const ts = (Date.now() / 1000).toString();
       try {
         await fetch(`https://lyra.mycourse.cn/lyraapi/study/course/finish.api?timestamp=${ts}`, {
           method: 'POST',
@@ -319,8 +356,16 @@
     } else {
       // weiban JSONP 方式
       const cb = `jQuery341${Date.now()}`;
-      const ts = Date.now().toString();
-      const url = `${BASE}/pharos/usercourse/v2/${token}.do?userCourseId=${userCourseId}&tenantCode=${session.tenantCode}&callback=${cb}&_=${ts}`;
+      const ts = Date.now();
+      const finishId = token || userCourseId;
+      const params = new URLSearchParams({
+        userCourseId,
+        tenantCode: session.tenantCode,
+        callback: cb,
+        _: String(ts + 1),
+      });
+      if (uniqueNo) params.set('uniqueNo', uniqueNo);
+      const url = `${BASE}/pharos/usercourse/v2/${encodeURIComponent(finishId)}.do?${params}`;
       const text = await get(url, { Accept: '*/*', Referer: `https://mcwk.mycourse.cn/` });
       // JSONP 取括号内容
       try {
@@ -330,23 +375,26 @@
     }
   };
 
-  const studyCourse = async (userProjectId, courseId, userCourseId) => {
-    // mark started
+  const studyCourse = async (userProjectId, resourceId, userCourseId) => {
+    // WeBan returns resourceId as the course id. The older courseId field is
+    // still accepted as a fallback for cached responses from older clients.
+    const courseId = resourceId;
     await post('/pharos/usercourse/study.do', { courseId, userProjectId });
     const urlRes = await post('/pharos/usercourse/getCourseUrl.do', { courseId, userProjectId });
     const courseUrl = urlRes?.data;
     if (!courseUrl) { log(`课程 ${courseId} 无法获取URL`); return; }
 
-    // 获取课程页面，检测是否需要 apicenext
+    // 获取课程页面，检测是否需要 apicenext，并读取官方翻页轨迹参数。
     let needJupiter = false;
     let pageCount = 1;
+    let nonstr = {};
     let finishToken = '';
+    let finishUniqueNo = '';
     let finishType = 'weiban';
     try {
       const html = await get(courseUrl);
       needJupiter = html.includes('apicenext.js');
-      const pageMatch = html.match(/pageCount\s*[=:]\s*(\d+)/);
-      if (pageMatch) pageCount = parseInt(pageMatch[1], 10);
+      if (needJupiter) ({ totalStep: pageCount, nonstr } = await readCourseTrace(html, courseUrl));
       const tokenMatch = html.match(/v2\/([a-zA-Z0-9]+)\.do/);
       if (tokenMatch) finishToken = tokenMatch[1];
       if (html.includes('open.mycourse.cn')) finishType = 'open';
@@ -354,34 +402,43 @@
     } catch (e) { log(`课程页面解析失败: ${e.message}`); }
 
     if (needJupiter) {
-      const uniqueNo = uuid4();
+      const apinextNo = uuid4();
+      finishUniqueNo = uuid4();
       for (let step = 1; step <= pageCount; step++) {
-        const apinextNo = uuid4();
-        const finished = step === pageCount ? '1' : '2';
-        await jupiterNext(step, finished, uniqueNo, apinextNo, courseId, userCourseId, userProjectId);
+        await jupiterNext(step, '2', apinextNo, courseId, userCourseId, userProjectId, nonstr[step] || '');
         await sleep(rand(1500, 3000));
       }
+      await jupiterNext(pageCount + 1, '1', apinextNo, courseId, userCourseId, userProjectId);
     } else {
       // 无 Jupiter，直接等待模拟学习时间
       await sleep(rand(3000, 6000));
     }
 
-    await finishCourse(userCourseId, courseId, userProjectId, finishType, finishToken);
+    await finishCourse(userCourseId, courseId, userProjectId, finishType, finishToken, needJupiter ? finishUniqueNo : '');
     await sleep(rand(500, 1000));
   };
 
   const runStudy = async (userProjectId) => {
-    const catRes = await post('/pharos/project/listCategory.do', { userProjectId, chooseType: 1 });
-    const categories = catRes?.data || [];
-    for (const cat of categories) {
-      const courseRes = await post('/pharos/project/listCourse.do', { userProjectId, categoryCode: cat.categoryCode, chooseType: 1 });
-      const courses = courseRes?.data || [];
-      const pending = courses.filter(c => c.isFinished !== 1 && c.isFinished !== '1');
-      log(`分类「${cat.categoryName}」：${pending.length}/${courses.length} 待完成`);
-      for (const course of pending) {
-        status(`学习：${course.resourceName || course.courseId}`);
-        await studyCourse(userProjectId, course.courseId, course.userCourseId);
-        log(`✓ ${course.resourceName || course.courseId}`);
+    // The live API uses 3/1/2 for required/push/optional courses. The old
+    // client only queried type 1, which made the account appear empty.
+    for (const chooseType of [3, 1, 2]) {
+      const catRes = await post('/pharos/usercourse/listCategory.do', { userProjectId, chooseType });
+      const categories = catRes?.data || [];
+      for (const cat of categories) {
+        const courseRes = await post('/pharos/usercourse/listCourse.do', {
+          userProjectId,
+          categoryCode: cat.categoryCode,
+          chooseType,
+        });
+        const courses = courseRes?.data || [];
+        const pending = courses.filter(c => c.finished !== 1 && c.finished !== '1');
+        log(`分类「${cat.categoryName}」：${pending.length}/${courses.length} 待完成`);
+        for (const course of pending) {
+          const resourceId = course.resourceId || course.courseId;
+          status(`学习：${course.resourceName || resourceId}`);
+          await studyCourse(userProjectId, resourceId, course.userCourseId);
+          log(`✓ ${course.resourceName || resourceId}`);
+        }
       }
     }
   };
@@ -397,15 +454,18 @@
     const planRes = await post('/pharos/exam/listPlan.do', { userProjectId });
     const plans = planRes?.data || [];
     for (const plan of plans) {
-      if (plan.isFinished === 1 || plan.isFinished === '1') continue;
-      status(`准备考试：${plan.examName || plan.userExamPlanId}`);
-      await post('/pharos/exam/beforePaper.do', { userExamPlanId: plan.userExamPlanId });
-      await post('/pharos/exam/preparePaper.do', { userExamPlanId: plan.userExamPlanId });
+      // `id` is the user exam plan id; `examPlanId` is only the template id.
+      const userExamPlanId = plan.userExamPlanId || plan.id || plan.examPlanId;
+      const oddNum = Number(plan.examOddNum);
+      if (!userExamPlanId || plan.isFinished === 1 || plan.isFinished === '1' || (Number.isFinite(oddNum) && oddNum <= 0)) continue;
+      status(`准备考试：${plan.examPlanName || plan.examName || userExamPlanId}`);
+      await post('/pharos/exam/beforePaper.do', { userExamPlanId });
+      await post('/pharos/exam/preparePaper.do', { userExamPlanId });
 
       // Tencent 验证码：页面里已有 SDK，等待它自动触发；如未触发则跳过检查直接答题
       await sleep(2000);
 
-      const startRes = await post('/pharos/exam/startPaper.do', { userExamPlanId: plan.userExamPlanId });
+      const startRes = await post('/pharos/exam/startPaper.do', { userExamPlanId });
       const questions = startRes?.data?.questionList || [];
       log(`考题 ${questions.length} 道`);
 
@@ -417,12 +477,13 @@
           questionId: q.id,
           answerIds,
           useTime: rand(8, 25),
-          examPlanId: plan.userExamPlanId,
+          userExamPlanId,
+          examPlanId: plan.examPlanId || userExamPlanId,
         });
         await sleep(rand(500, 1500));
       }
 
-      const submitRes = await post('/pharos/exam/submitPaper.do', { userExamPlanId: plan.userExamPlanId });
+      const submitRes = await post('/pharos/exam/submitPaper.do', { userExamPlanId });
       const score = submitRes?.data?.score ?? '?';
       log(`考试得分：${score}`);
       status(`考试完成，得分 ${score}`);
@@ -444,8 +505,8 @@
     await syncAnswerBank();
 
     // 验证 session 是否仍然有效（token 可能已过期）
-    const infoRes = await post('/pharos/user/myGetInfo.do');
-    if (!infoRes?.data) {
+    const infoRes = await post('/pharos/my/getInfo.do');
+    if (!infoRes?.data || (infoRes.code !== undefined && infoRes.code !== 0 && infoRes.code !== '0')) {
       log('⚠️ 会话已失效，请在微伴页面重新登录后点击"检测登录并开始"');
       session = { userId: '', token: '', tenantCode: '' };
       ui.showNotLoggedIn();
@@ -456,7 +517,7 @@
     status('正在模拟首页…');
     await simulateHome();
 
-    const projRes = await post('/pharos/project/listMyProject.do', { ended: 0 });
+    const projRes = await post('/pharos/index/listMyProject.do', { ended: 2 });
     const projects = projRes?.data || [];
     log(`共 ${projects.length} 个学习项目`);
 

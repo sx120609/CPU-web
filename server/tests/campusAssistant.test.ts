@@ -176,7 +176,7 @@ test("云端多平台助手脚本与客户端安装包分离发布", async () =>
 test("云端安全微伴脚本提供可校验的版本与正文", async () => {
   const release = await readDesktopUserScriptRelease("weban");
   assert.equal(release.name, "药大拾间·安全微伴助手");
-  assert.equal(release.version, "1.1.0");
+  assert.equal(release.version, "1.1.1");
   assert.match(release.sha256, /^[a-f0-9]{64}$/);
   assert.equal(release.size, Buffer.byteLength(release.source, "utf8"));
   assert.match(release.source, /cpu-weban:/);
@@ -187,7 +187,7 @@ test("云端安全微伴脚本提供可校验的版本与正文", async () => {
   assert.match(release.source, /localStorage\.getItem\('user'\)/);
   assert.match(release.source, /检测登录并开始/);
   assert.match(release.source, /请先在微伴页面登录/);
-  assert.match(release.source, /myGetInfo\.do/);
+  assert.match(release.source, /\/pharos\/my\/getInfo\.do/);
   assert.match(release.source, /会话已失效，请在微伴页面重新登录后点击"检测登录并开始"/);
   assert.match(release.source, /^\/\/ @connect\s+weiban\.mycourse\.cn$/m);
   assert.match(release.source, /^\/\/ @connect\s+gh-proxy\.com$/m);
