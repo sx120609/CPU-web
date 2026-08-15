@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         药大拾间·安全微伴助手
 // @namespace    cpu-weban
-// @version      1.0.9
+// @version      1.0.10
 // @author       CPU-web
 // @description  自动完成安全微伴课程与考试，支持中国药科大学等高校
 // @match        https://weiban.mycourse.cn/*
@@ -143,46 +143,44 @@
   let session = { userId: '', token: '', tenantCode: '' };
 
   // 标准 POST：自动注入 timestamp / tenantCode / userId / X-Token
+  // 使用原生 fetch —— 脚本运行在 weiban.mycourse.cn 页面内，同源请求直接走浏览器网络栈，
+  // 不需要也不应该绕道 Electron 主进程的 net.request（后者会因 TLS 指纹差异被 CDN 拦截）。
   const post = async (path, body = {}) => {
     const ts = Date.now().toString();
     const payload = { tenantCode: session.tenantCode, userId: session.userId, ...body };
     const url = `${BASE}${path}?timestamp=${ts}`;
-    return new Promise((resolve) => {
-      GM_xmlhttpRequest({
+    try {
+      const resp = await fetch(url, {
         method: 'POST',
-        url,
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
           'X-Token': session.token,
         },
-        data: new URLSearchParams(payload).toString(),
-        onload: (resp) => {
-          if (resp.status !== 200) {
-            const body = resp.responseText ? resp.responseText.slice(0, 200) : '(empty)';
-            log(`HTTP ${resp.status} ${path} → ${body}`);
-            resolve({});
-          } else {
-            try { resolve(JSON.parse(resp.responseText)); } catch { resolve({}); }
-          }
-        },
-        onerror: () => { log(`网络错误 ${path}`); resolve({}); },
-        timeout: 15000,
+        body: new URLSearchParams(payload).toString(),
       });
-    });
+      if (!resp.ok) {
+        const txt = await resp.text().catch(() => '');
+        log(`HTTP ${resp.status} ${path} → ${txt.slice(0, 200) || '(empty)'}`);
+        return {};
+      }
+      return resp.json().catch(() => ({}));
+    } catch (e) {
+      log(`网络错误 ${path}: ${e.message}`);
+      return {};
+    }
   };
 
-  // GET（用于 JSONP 完成请求等）
+  // GET（用于课程页面 HTML / JSONP 完成请求）
   const get = async (url, headers = {}) => {
-    return new Promise((resolve) => {
-      GM_xmlhttpRequest({
-        method: 'GET',
-        url,
+    try {
+      const resp = await fetch(url, {
         headers: { 'X-Token': session.token, ...headers },
-        onload: (resp) => resolve(resp.responseText),
-        onerror: () => { log(`GET 失败 ${url}`); resolve(''); },
-        timeout: 15000,
       });
-    });
+      return await resp.text();
+    } catch (e) {
+      log(`GET 失败 ${url}: ${e.message}`);
+      return '';
+    }
   };
 
   // 跨域请求（GitHub answer bank）
@@ -195,24 +193,22 @@
     });
   });
 
-  // Mercury 路由
+  // Mercury 路由（resource.mycourse.cn 与 weiban.mycourse.cn 同属 mycourse.cn，Electron webview 不拦截）
   const mercury = async (service, params) => {
     const ts = Date.now().toString();
     const base = { appKey: MERCURY_APP_KEY, format: 'json', v: '1.0', timestamp: ts, clientId: 'pharos', service, ...params };
     base.sign = await mercurySign(base);
-    return new Promise((resolve) => {
-      GM_xmlhttpRequest({
+    try {
+      const resp = await fetch(`${MERCURY}/mercuryprovider/router`, {
         method: 'POST',
-        url: `${MERCURY}/mercuryprovider/router`,
         headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': session.token },
-        data: new URLSearchParams(base).toString(),
-        onload: (resp) => {
-          try { resolve(JSON.parse(resp.responseText)); } catch { resolve({}); }
-        },
-        onerror: () => { log('Mercury 请求失败'); resolve({}); },
-        timeout: 15000,
+        body: new URLSearchParams(base).toString(),
       });
-    });
+      return resp.json().catch(() => ({}));
+    } catch (e) {
+      log(`Mercury 请求失败: ${e.message}`);
+      return {};
+    }
   };
 
   // Jupiter 导航追踪
@@ -220,17 +216,13 @@
     const payload = { step: String(step), finished: String(finished), uniqueNo, apinextNo, userCourseId, courseId, userProjectId };
     const data = await aes256CbcDoubleB64(JUPITER_KEY, payload);
     const ts = Date.now().toString();
-    return new Promise((resolve) => {
-      GM_xmlhttpRequest({
+    try {
+      await fetch(`${BASE}/jupiterapi/api/statusercourse/v1/next?timestamp=${ts}`, {
         method: 'POST',
-        url: `${BASE}/jupiterapi/api/statusercourse/v1/next?timestamp=${ts}`,
         headers: { 'Content-Type': 'application/json', 'X-Token': session.token },
-        data: JSON.stringify({ data }),
-        onload: () => resolve(),
-        onerror: () => resolve(),
-        timeout: 10000,
+        body: JSON.stringify({ data }),
       });
-    });
+    } catch { /* 追踪失败不影响主流程 */ }
   };
 
   // ─────────────────────────────────────────────
@@ -254,19 +246,12 @@
     const encrypted = await aesEcbEncrypt(keyBytes, payload);
     const data = b64url(encrypted);
     const ts = Date.now().toString();
-    return new Promise((resolve, reject) => {
-      GM_xmlhttpRequest({
-        method: 'POST',
-        url: `${BASE}/pharos/login/login.do?timestamp=${ts}`,
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        data: new URLSearchParams({ data }).toString(),
-        onload: (resp) => {
-          try { resolve(JSON.parse(resp.responseText)); } catch { reject('登录响应解析失败'); }
-        },
-        onerror: () => reject('登录请求失败'),
-        timeout: 15000,
-      });
+    const resp = await fetch(`${BASE}/pharos/login/login.do?timestamp=${ts}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ data }).toString(),
     });
+    return resp.json();
   };
 
   // ─────────────────────────────────────────────
@@ -338,17 +323,13 @@
       await post('/pharos/usercourse/finish.do', { userCourseId, courseId, userProjectId });
     } else if (finishType === 'lyra') {
       const ts = Date.now().toString();
-      await new Promise((resolve) => {
-        GM_xmlhttpRequest({
+      try {
+        await fetch(`https://lyra.mycourse.cn/lyraapi/study/course/finish.api?timestamp=${ts}`, {
           method: 'POST',
-          url: `https://lyra.mycourse.cn/lyraapi/study/course/finish.api?timestamp=${ts}`,
           headers: { 'Content-Type': 'application/json', 'X-Token': session.token },
-          data: JSON.stringify({ userActivityId: userCourseId }),
-          onload: () => resolve(),
-          onerror: () => resolve(),
-          timeout: 10000,
+          body: JSON.stringify({ userActivityId: userCourseId }),
         });
-      });
+      } catch { /* lyra 完成失败不阻断主流程 */ }
     } else {
       // weiban JSONP 方式
       const cb = `jQuery341${Date.now()}`;
