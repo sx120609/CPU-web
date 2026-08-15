@@ -217,15 +217,25 @@
   const readPageSession = () => {
     try {
       const raw = host.localStorage.getItem('user');
-      if (!raw) return null;
+      if (!raw) {
+        log(`[diag] localStorage['user'] 不存在，当前域: ${host.location.hostname}`);
+        return null;
+      }
       const obj = JSON.parse(raw);
-      if (!obj?.token) return null;
+      log(`[diag] user 字段: ${Object.keys(obj).join(', ')}`);
+      if (!obj?.token) {
+        log('[diag] user 对象里没有 token 字段');
+        return null;
+      }
+      const tok = String(obj.token);
+      log(`[diag] token 前20位: ${tok.slice(0, 20)}… (长${tok.length})`);
       return {
-        token: String(obj.token),
+        token: tok,
         userId: String(obj.userId || obj.id || ''),
         tenantCode: String(obj.tenantCode || CPU_TENANT_CODE),
       };
-    } catch {
+    } catch (e) {
+      log(`[diag] readPageSession 异常: ${e.message}`);
       return null;
     }
   };
@@ -423,6 +433,13 @@
   // 11. 主流程
   // ─────────────────────────────────────────────
   const runAll = async () => {
+    // 诊断：检查 UA 是否仍含 Electron 标记（若含，WAF 会拦截所有 /pharos/ 请求）
+    const ua = navigator.userAgent;
+    if (ua.includes('Electron/')) {
+      log(`⚠️ [diag] UA 含 Electron 标记，客户端需重新编译以应用 UA 修复`);
+    }
+    log(`[diag] UA: ${ua.slice(0, 80)}…`);
+
     status('正在同步题库…');
     await syncAnswerBank();
 
