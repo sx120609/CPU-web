@@ -4,10 +4,10 @@ import { readFile, rm } from "node:fs/promises";
 import { prisma } from "../prisma";
 import { runWithDistributedLock } from "./cache";
 import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } from "./aiReviewLog";
-import { extractAiJsonTextResponse, normalizeAiJsonApiUrl, sendAiJsonRequest } from "./aiJsonApi";
+import { extractAiJsonTextResponse, normalizeAiJsonApiUrl, sendAiJsonRequestWithProviderFallback } from "./aiJsonApi";
 import { prepareMediaLocalFileForProcessing, resolveMediaLocalPathFromUploadUrl, resolveMediaPublicUrl } from "./mediaStorage";
 import { resolveModelCandidates, shouldFallbackToNextModel } from "./modelFallback";
-import { getSiteConfig, isAiProviderReady, resolveAiServiceForScene } from "./siteSettings";
+import { getSiteConfig, isAiProviderReady, resolveAiServiceCandidatesForScene } from "./siteSettings";
 
 const IMAGE_MARKDOWN_RE = /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
 const IMAGE_HTML_RE = /<img\b[^>]*\bsrc\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s"'=<>`]+))[^>]*>/gi;
@@ -116,15 +116,15 @@ export function startForumImageModerationPoller() {
 
 export function shouldRunImageReview() {
   const config = getSiteConfig();
-  const provider = resolveAiServiceForScene(config, "image-review");
+  const providers = resolveAiServiceCandidatesForScene(config, "image-review");
   return Boolean(
     config.imageReviewEnabled
-    && isAiProviderReady({
+    && providers.some((provider) => isAiProviderReady({
       provider: provider.provider,
       apiUrl: provider.apiUrl,
       apiKey: provider.apiKey,
       model: config.imageReviewModel,
-    }),
+    })),
   );
 }
 
@@ -977,7 +977,8 @@ async function requestImageReview(input: {
   dataUrl: string;
 }): Promise<ImageReviewDecision> {
   const config = getSiteConfig();
-  const provider = resolveAiServiceForScene(config, "image-review");
+  const providers = resolveAiServiceCandidatesForScene(config, "image-review");
+  const provider = providers[0];
   const endpoint = normalizeAiJsonApiUrl(provider.apiUrl, "https://api.openai.com/v1/chat/completions");
   const candidates = resolveModelCandidates(config.imageReviewModel, config.imageReviewFallbackModels);
   const promptCacheKey = buildImageReviewPromptCacheKey({
@@ -997,9 +998,9 @@ async function requestImageReview(input: {
       requestSummary: `${input.mimeType}\n${input.url}`,
     });
     const logId = started?.id ?? null;
-    const requestResult = await sendAiJsonRequest({
-      endpoint,
-      apiKey: provider.apiKey,
+    const requestResult = await sendAiJsonRequestWithProviderFallback({
+      providers,
+      fallbackEndpoint: "https://api.openai.com/v1/chat/completions",
       model,
       temperature: 0.1,
       promptCacheKey,
@@ -1047,7 +1048,7 @@ async function requestImageReview(input: {
           riskScore: 100,
           decision: "block" as const,
           model,
-          endpoint,
+          endpoint: requestResult.endpoint,
         };
         await finishAiReviewLogSuccess(logId, JSON.stringify({
           risk_score: decision.riskScore,
@@ -1069,14 +1070,15 @@ async function requestImageReview(input: {
     const json: any = await response.json();
     const content = extractAiJsonTextResponse(json, requestResult.mode);
     await finishAiReviewLogSuccess(logId, content);
-    return buildImageReviewDecision(parseImageReviewJson(content), config.imageReviewThreshold, model, endpoint);
+    return buildImageReviewDecision(parseImageReviewJson(content), config.imageReviewThreshold, model, requestResult.endpoint);
   }
   throw lastError || new Error("图片审核请求失败");
 }
 
 async function requestImageReviewBatch(inputs: PreparedImageReviewInput[]): Promise<ImageReviewDecision[]> {
   const config = getSiteConfig();
-  const provider = resolveAiServiceForScene(config, "image-review");
+  const providers = resolveAiServiceCandidatesForScene(config, "image-review");
+  const provider = providers[0];
   const endpoint = normalizeAiJsonApiUrl(provider.apiUrl, "https://api.openai.com/v1/chat/completions");
   const requestSummary = inputs
     .map((item, index) => `${index + 1}. ${item.mimeType} ${item.asset.url}`)
@@ -1113,9 +1115,9 @@ async function requestImageReviewBatch(inputs: PreparedImageReviewInput[]): Prom
       requestSummary,
     });
     const logId = started?.id ?? null;
-    const requestResult = await sendAiJsonRequest({
-      endpoint,
-      apiKey: provider.apiKey,
+    const requestResult = await sendAiJsonRequestWithProviderFallback({
+      providers,
+      fallbackEndpoint: "https://api.openai.com/v1/chat/completions",
       model,
       temperature: 0.1,
       promptCacheKey,
@@ -1139,7 +1141,7 @@ async function requestImageReviewBatch(inputs: PreparedImageReviewInput[]): Prom
     const content = extractAiJsonTextResponse(json, requestResult.mode);
     await finishAiReviewLogSuccess(logId, content);
     return parseImageReviewBatchJson(content, inputs.length)
-      .map((item) => buildImageReviewDecision(item, config.imageReviewThreshold, model, endpoint));
+      .map((item) => buildImageReviewDecision(item, config.imageReviewThreshold, model, requestResult.endpoint));
   }
   throw lastError || new Error("批量图片审核请求失败");
 }
@@ -1336,7 +1338,9 @@ function buildBatchImageReviewPrompt(inputs: PreparedImageReviewInput[], promptT
 
 function buildImageReviewConfigHash(config: ReturnType<typeof getSiteConfig>) {
   return hashString([
-    resolveAiServiceForScene(config, "image-review").apiUrl,
+    resolveAiServiceCandidatesForScene(config, "image-review")
+      .map((provider) => `${provider.serviceId || ""}\n${provider.provider}\n${provider.apiUrl}`)
+      .join("\n"),
     config.imageReviewModel,
     config.imageReviewFallbackModels,
     config.imageReviewThreshold,

@@ -2,9 +2,14 @@ import { createHash } from "node:crypto";
 import { prisma } from "../prisma";
 import { Errors } from "../utils/response";
 import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } from "./aiReviewLog";
-import { type AiJsonMessage, extractAiJsonTextResponse, normalizeAiJsonApiUrl, sendAiJsonRequest } from "./aiJsonApi";
+import {
+  type AiJsonMessage,
+  extractAiJsonTextResponse,
+  sendAiJsonRequestWithProviderFallback,
+  type AiProviderCandidate,
+} from "./aiJsonApi";
 import { resolveModelCandidates, shouldFallbackToNextModel } from "./modelFallback";
-import { getSiteConfig, isAiProviderReady } from "./siteSettings";
+import { getSiteConfig, isAiProviderReady, resolveAiServiceCandidatesForScene } from "./siteSettings";
 
 export type TopicAiReviewStatus =
   | "none"
@@ -97,12 +102,13 @@ export async function ensureUserCanSubmitTopic(userId: number) {
 
 export function shouldRunAiReview() {
   const config = getSiteConfig();
-  return Boolean(config.aiReviewEnabled && isAiProviderReady({
-    provider: config.aiReviewProvider,
-    apiUrl: config.aiReviewApiUrl,
-    apiKey: config.aiReviewApiKey,
+  const providers = resolveAiServiceCandidatesForScene(config, "text-review");
+  return Boolean(config.aiReviewEnabled && providers.some((provider) => isAiProviderReady({
+    provider: provider.provider,
+    apiUrl: provider.apiUrl,
+    apiKey: provider.apiKey,
     model: config.aiReviewModel,
-  }));
+  })));
 }
 
 type AiReviewLogContext = {
@@ -122,6 +128,7 @@ type AiJsonRequestOptions = {
     apiUrl: string;
     apiKey: string;
   };
+  providerConfigs?: AiProviderCandidate[];
   enablePromptCache?: boolean;
   enablePromptCacheRetention?: boolean;
 };
@@ -131,12 +138,17 @@ export async function requestAiJson(
   options?: AiJsonRequestOptions,
 ) {
   const config = getSiteConfig();
-  const providerConfig = options?.providerConfig || {
+  const providerConfigs = options?.providerConfigs?.length
+    ? options.providerConfigs
+    : options?.providerConfig
+      ? [options.providerConfig]
+      : resolveAiServiceCandidatesForScene(config, "text-review");
+  const providerConfig = providerConfigs[0] || {
     provider: config.aiReviewProvider,
     apiUrl: config.aiReviewApiUrl,
     apiKey: config.aiReviewApiKey,
   };
-  const endpoint = normalizeAiJsonApiUrl(providerConfig.apiUrl, DEFAULT_REVIEW_API_URL);
+  const endpoint = String(providerConfig.apiUrl || DEFAULT_REVIEW_API_URL);
   const primaryModel = options?.model ?? config.aiReviewModel;
   const fallbackModels = options?.fallbackModels ?? config.aiReviewFallbackModels;
   const candidates = resolveModelCandidates(primaryModel, fallbackModels);
@@ -145,6 +157,7 @@ export async function requestAiJson(
     ? buildAiReviewPromptCacheKey({
         configHash: [
           buildAiReviewConfigHash(config, providerConfig),
+          ...providerConfigs.map((candidate) => buildAiReviewConfigHash(config, candidate)),
           primaryModel,
           fallbackModels,
         ].join("\n"),
@@ -177,9 +190,9 @@ export async function requestAiJson(
     let responseMode = detectTextReviewApiMode(endpoint);
     let responseErrorText = "";
     try {
-      const result = await sendAiJsonRequest({
-        endpoint,
-        apiKey: providerConfig.apiKey,
+      const result = await sendAiJsonRequestWithProviderFallback({
+        providers: providerConfigs,
+        fallbackEndpoint: DEFAULT_REVIEW_API_URL,
         model,
         temperature: 0.1,
         messages: requestMessages,

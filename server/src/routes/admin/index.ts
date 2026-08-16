@@ -2100,6 +2100,7 @@ const siteConfigPatchSchema = z.object({
     apiUrl: z.string().trim().max(240),
     apiKey: z.string().trim().max(240),
   })).max(20).optional(),
+  aiServiceFallbacks: z.record(z.array(z.string().trim().max(48)).max(8)).optional(),
   assistantServiceId: z.string().trim().max(48).optional(),
   learningAssistantServiceId: z.string().trim().max(48).optional(),
   aiReviewServiceId: z.string().trim().max(48).optional(),
@@ -2184,6 +2185,7 @@ adminRouter.patch("/site-config", adminOnly, validate(siteConfigPatchSchema), as
   try {
     if (
       req.body.aiServices !== undefined ||
+      req.body.aiServiceFallbacks !== undefined ||
       req.body.assistantServiceId !== undefined ||
       req.body.learningAssistantServiceId !== undefined ||
       req.body.aiReviewServiceId !== undefined ||

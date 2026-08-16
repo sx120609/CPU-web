@@ -45,3 +45,13 @@ export function shouldFallbackToNextModel(status: number, responseText: string) 
     /temporarily unavailable/i,
   ].some((pattern) => pattern.test(text));
 }
+
+/**
+ * Provider fallback is broader than same-provider model fallback: an invalid
+ * credential, endpoint, unsupported request shape, or an upstream outage can
+ * all be recovered by trying the next configured service.
+ */
+export function shouldFallbackToNextProvider(status: number, responseText: string) {
+  if (status === 400 || status === 401 || status === 403 || status === 404 || status === 408 || status === 409 || status === 425 || status === 429 || status >= 500) return true;
+  return shouldFallbackToNextModel(status, responseText);
+}

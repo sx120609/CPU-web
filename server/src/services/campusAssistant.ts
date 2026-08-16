@@ -1,12 +1,12 @@
 import type { FeatureKey } from "./siteSettings";
-import { getSiteConfig, isAiProviderReady, resolveAiServiceForScene } from "./siteSettings";
+import { getSiteConfig, isAiProviderReady, resolveAiServiceCandidatesForScene } from "./siteSettings";
 import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } from "./aiReviewLog";
 import { requestAiJson } from "./topicAiReview";
 import {
   buildAiPromptCacheKey,
   normalizeAiJsonApiUrl,
   readAiJsonTextStream,
-  sendAiJsonRequest,
+  sendAiJsonRequestWithProviderFallback,
 } from "./aiJsonApi";
 import { resolveModelCandidates, shouldFallbackToNextModel } from "./modelFallback";
 
@@ -595,13 +595,14 @@ export async function askCampusAssistant(input: {
   const availableActions = listCampusAssistantActions(input.context);
   const deterministicActions = searchCampusAssistantActions(message, input.context, 3);
   const config = getSiteConfig();
-  const provider = resolveAiServiceForScene(config, "assistant");
-  if (!config.aiReviewEnabled || !isAiProviderReady({
-    provider: provider.provider,
-    apiUrl: provider.apiUrl,
-    apiKey: provider.apiKey,
+  const providers = resolveAiServiceCandidatesForScene(config, "assistant");
+  const provider = providers[0];
+  if (!config.aiReviewEnabled || !providers.some((candidate) => isAiProviderReady({
+    provider: candidate.provider,
+    apiUrl: candidate.apiUrl,
+    apiKey: candidate.apiKey,
     model: config.assistantModel,
-  })) {
+  }))) {
     return fallbackAssistantResponse(deterministicActions, false);
   }
 
@@ -630,6 +631,7 @@ export async function askCampusAssistant(input: {
       model: config.assistantModel,
       fallbackModels: "",
       providerConfig: provider,
+      providerConfigs: providers,
       enablePromptCache: true,
       enablePromptCacheRetention: true,
     });
@@ -665,13 +667,14 @@ export async function streamCampusAssistant(input: {
   const availableActions = listCampusAssistantActions(input.context);
   const deterministicActions = searchCampusAssistantActions(message, input.context, 3);
   const config = getSiteConfig();
-  const provider = resolveAiServiceForScene(config, "assistant");
-  if (!config.aiReviewEnabled || !isAiProviderReady({
-    provider: provider.provider,
-    apiUrl: provider.apiUrl,
-    apiKey: provider.apiKey,
+  const providers = resolveAiServiceCandidatesForScene(config, "assistant");
+  const provider = providers[0];
+  if (!config.aiReviewEnabled || !providers.some((candidate) => isAiProviderReady({
+    provider: candidate.provider,
+    apiUrl: candidate.apiUrl,
+    apiKey: candidate.apiKey,
     model: config.assistantModel,
-  })) {
+  }))) {
     return fallbackAssistantResponse(deterministicActions, false);
   }
 
@@ -702,9 +705,9 @@ export async function streamCampusAssistant(input: {
     );
     const systemPrompt = typeof messages[0]?.content === "string" ? messages[0].content : "";
     try {
-      const result = await sendAiJsonRequest({
-        endpoint,
-        apiKey: provider.apiKey,
+      const result = await sendAiJsonRequestWithProviderFallback({
+        providers,
+        fallbackEndpoint: DEFAULT_REVIEW_API_URL,
         model,
         temperature: 0.1,
         messages,

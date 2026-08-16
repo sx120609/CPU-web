@@ -6,6 +6,7 @@ import {
   buildAiServicesFromLegacy,
   isAiProviderReady,
   normalizeAiServiceList,
+  resolveAiServiceCandidatesForScene,
   resolveAiServiceForScene,
 } from "../src/services/siteSettings";
 
@@ -92,6 +93,35 @@ test("scene routing resolves each selected service without repeating endpoint fi
   assert.equal(resolveAiServiceForScene(config, "qq-group-ad").provider, "ollama");
   assert.equal(resolveAiServiceForScene(config, "image-review").apiKey, "deep-key");
   assert.equal(resolveAiServiceForScene(config, "video-review").apiUrl, "http://127.0.0.1:11434");
+});
+
+test("scene routing keeps the primary service first and appends ordered fallback services", () => {
+  const services = normalizeAiServiceList([
+    { id: "primary", name: "主服务", provider: "deepseek", apiUrl: "https://primary.example/v1", apiKey: "primary-key" },
+    { id: "backup", name: "备用服务", provider: "openai", apiUrl: "https://backup.example/v1", apiKey: "backup-key" },
+    { id: "backup-two", name: "第二备用", provider: "ollama", apiUrl: "http://127.0.0.1:11434", apiKey: "" },
+  ]);
+  const config = {
+    aiServices: services,
+    aiServiceFallbacks: {
+      assistant: ["backup", "primary", "missing", "backup-two"],
+      "learning-assistant": [],
+      "text-review": [],
+      "qq-group-ad": [],
+      "image-review": [],
+      "video-review": [],
+    },
+    assistantServiceId: "primary",
+    learningAssistantServiceId: "primary",
+    aiReviewServiceId: "primary",
+    qqGroupAdReviewServiceId: "primary",
+    imageReviewServiceId: "primary",
+    videoReviewServiceId: "primary",
+  };
+  assert.deepEqual(
+    resolveAiServiceCandidatesForScene(config, "assistant").map((service) => service.serviceId),
+    ["primary", "backup", "backup-two"],
+  );
 });
 
 test("model catalog normalizes common upstream response shapes", () => {

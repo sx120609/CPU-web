@@ -3,10 +3,10 @@ import path from "node:path";
 import { readFile, rm } from "node:fs/promises";
 import { Errors } from "../utils/response";
 import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } from "./aiReviewLog";
-import { extractAiJsonTextResponse, normalizeAiJsonApiUrl, sendAiJsonRequest } from "./aiJsonApi";
+import { extractAiJsonTextResponse, normalizeAiJsonApiUrl, sendAiJsonRequestWithProviderFallback } from "./aiJsonApi";
 import { resolveModelCandidates, shouldFallbackToNextModel } from "./modelFallback";
 import { prepareMediaLocalFileForProcessing } from "./mediaStorage";
-import { getSiteConfig, hasAiProviderAccess, isAiProviderReady, resolveAiServiceForScene } from "./siteSettings";
+import { getSiteConfig, hasAiProviderAccess, isAiProviderReady, resolveAiServiceCandidatesForScene, resolveAiServiceForScene } from "./siteSettings";
 
 type QqGroupAdResponse = {
   risk_score?: number;
@@ -71,13 +71,13 @@ const localResultCache = new Map<string, { expiresAt: number; value: QqGroupAdRe
 
 export function shouldRunQqGroupAdReview() {
   const config = getSiteConfig();
-  const provider = resolveAiServiceForScene(config, "qq-group-ad");
-  return Boolean(config.qqGroupAdReviewEnabled && isAiProviderReady({
+  const providers = resolveAiServiceCandidatesForScene(config, "qq-group-ad");
+  return Boolean(config.qqGroupAdReviewEnabled && providers.some((provider) => isAiProviderReady({
     provider: provider.provider,
     apiUrl: provider.apiUrl,
     apiKey: provider.apiKey,
     model: config.qqGroupAdReviewModel,
-  }));
+  })));
 }
 
 export async function reviewQqGroupMessageForAd(input: {
@@ -94,13 +94,14 @@ export async function reviewQqGroupMessageForAd(input: {
   metadata?: Record<string, unknown> | null;
 }): Promise<QqGroupAdReviewResult> {
   const config = getSiteConfig();
-  const provider = resolveAiServiceForScene(config, "qq-group-ad");
-  if (!config.qqGroupAdReviewEnabled || !isAiProviderReady({
-    provider: provider.provider,
-    apiUrl: provider.apiUrl,
-    apiKey: provider.apiKey,
+  const providers = resolveAiServiceCandidatesForScene(config, "qq-group-ad");
+  const provider = providers[0];
+  if (!config.qqGroupAdReviewEnabled || !providers.some((candidate) => isAiProviderReady({
+    provider: candidate.provider,
+    apiUrl: candidate.apiUrl,
+    apiKey: candidate.apiKey,
     model: config.qqGroupAdReviewModel,
-  })) {
+  }))) {
     return {
       action: "allow",
       riskScore: 0,
@@ -200,6 +201,12 @@ export async function reviewQqGroupMessageForAd(input: {
   const reviewProvider = preparedImages.length
     ? resolveQqGroupAdImageProvider(config, provider)
     : provider;
+  const imageProviders = preparedImages.length
+    ? resolveAiServiceCandidatesForScene(config, "image-review")
+    : [];
+  const providerCandidates = preparedImages.length
+    ? (imageProviders.some((candidate) => hasAiProviderAccess(candidate)) ? imageProviders : [reviewProvider])
+    : providers;
   const endpoint = normalizeAiJsonApiUrl(reviewProvider.apiUrl, provider.apiUrl || "https://api.deepseek.com/chat/completions");
   const candidates = resolveQqGroupAdModelCandidates(config, preparedImages.length > 0);
   if (!candidates.length) {
@@ -230,9 +237,9 @@ export async function reviewQqGroupMessageForAd(input: {
     let responseMode = detectReviewApiMode(endpoint);
     let responseErrorText = "";
     try {
-      const result = await sendAiJsonRequest({
-        endpoint,
-        apiKey: reviewProvider.apiKey,
+      const result = await sendAiJsonRequestWithProviderFallback({
+        providers: providerCandidates,
+        fallbackEndpoint: endpoint,
         model,
         temperature: 0.1,
         messages,
@@ -378,17 +385,13 @@ function normalizeMessageForCache(input: string) {
 }
 
 function buildQqGroupAdReviewConfigHash(config: ReturnType<typeof getSiteConfig>) {
-  const provider = resolveAiServiceForScene(config, "qq-group-ad");
-  const imageProvider = resolveAiServiceForScene(config, "image-review");
+  const providers = resolveAiServiceCandidatesForScene(config, "qq-group-ad");
+  const imageProviders = resolveAiServiceCandidatesForScene(config, "image-review");
   return hashString([
-    provider.provider,
-    provider.apiUrl,
-    provider.apiKey,
+    providers.map((provider) => `${provider.serviceId || ""}\n${provider.provider}\n${provider.apiUrl}`).join("\n"),
     config.qqGroupAdReviewModel,
     config.qqGroupAdReviewFallbackModels,
-    imageProvider.provider,
-    imageProvider.apiUrl,
-    imageProvider.apiKey,
+    imageProviders.map((provider) => `${provider.serviceId || ""}\n${provider.provider}\n${provider.apiUrl}`).join("\n"),
     config.imageReviewModel,
     config.imageReviewFallbackModels,
     config.qqGroupAdReviewThreshold,

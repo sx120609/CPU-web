@@ -6,10 +6,10 @@ import { promisify } from "node:util";
 import { prisma } from "../prisma";
 import { runWithDistributedLock } from "./cache";
 import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } from "./aiReviewLog";
-import { extractAiJsonTextResponse, normalizeAiJsonApiUrl, sendAiJsonRequest } from "./aiJsonApi";
+import { extractAiJsonTextResponse, normalizeAiJsonApiUrl, sendAiJsonRequestWithProviderFallback } from "./aiJsonApi";
 import { prepareMediaLocalFileForProcessing, resolveMediaLocalPathFromUploadUrl, resolveMediaPublicUrl } from "./mediaStorage";
 import { resolveModelCandidates, shouldFallbackToNextModel } from "./modelFallback";
-import { DEFAULT_VIDEO_REVIEW_PROMPTS, getSiteConfig, isAiProviderReady, isOllamaAiProvider, resolveAiServiceForScene } from "./siteSettings";
+import { DEFAULT_VIDEO_REVIEW_PROMPTS, getSiteConfig, isAiProviderReady, isOllamaAiProvider, resolveAiServiceCandidatesForScene } from "./siteSettings";
 
 const execFile = promisify(execFileCallback);
 
@@ -166,15 +166,15 @@ export function startForumVideoModerationPoller() {
 
 export function shouldRunVideoReview() {
   const config = getSiteConfig();
-  const provider = resolveAiServiceForScene(config, "video-review");
+  const providers = resolveAiServiceCandidatesForScene(config, "video-review");
   return Boolean(
     config.videoReviewEnabled
-    && isAiProviderReady({
+    && providers.some((provider) => isAiProviderReady({
       provider: provider.provider,
       apiUrl: provider.apiUrl,
       apiKey: provider.apiKey,
       model: config.videoReviewModel,
-    }),
+    })),
   );
 }
 
@@ -700,7 +700,8 @@ async function applyVideoReviewDecision(input: PreparedVideoReviewInput, decisio
 
 async function requestVideoReview(input: PreparedVideoReviewInput): Promise<VideoReviewDecision> {
   const config = getSiteConfig();
-  const provider = resolveAiServiceForScene(config, "video-review");
+  const providers = resolveAiServiceCandidatesForScene(config, "video-review");
+  const provider = providers[0];
   const endpoint = normalizeAiJsonApiUrl(provider.apiUrl, "https://api.openai.com/v1/chat/completions");
   const requestSummary = buildVideoReviewTextPrompt(input).slice(0, 4000);
   const candidates = resolveModelCandidates(config.videoReviewModel, config.videoReviewFallbackModels);
@@ -721,9 +722,9 @@ async function requestVideoReview(input: PreparedVideoReviewInput): Promise<Vide
       requestSummary,
     });
     const logId = started?.id ?? null;
-    const requestResult = await sendAiJsonRequest({
-      endpoint,
-      apiKey: provider.apiKey,
+    const requestResult = await sendAiJsonRequestWithProviderFallback({
+      providers,
+      fallbackEndpoint: "https://api.openai.com/v1/chat/completions",
       model,
       temperature: 0.1,
       promptCacheKey,
@@ -768,7 +769,7 @@ async function requestVideoReview(input: PreparedVideoReviewInput): Promise<Vide
           riskScore: 100,
           decision: "block" as const,
           model,
-          endpoint,
+          endpoint: requestResult.endpoint,
         };
         await finishAiReviewLogSuccess(logId, JSON.stringify({
           risk_score: decision.riskScore,
@@ -790,18 +791,18 @@ async function requestVideoReview(input: PreparedVideoReviewInput): Promise<Vide
     const json: any = await response.json();
     const content = extractAiJsonTextResponse(json, requestResult.mode);
     await finishAiReviewLogSuccess(logId, content);
-    return buildVideoReviewDecision(parseVideoReviewJson(content), config.videoReviewThreshold, model, endpoint);
+    return buildVideoReviewDecision(parseVideoReviewJson(content), config.videoReviewThreshold, model, requestResult.endpoint);
   }
   throw lastError || new Error("视频审核请求失败");
 }
 
 async function transcribeVideoAudio(filePath: string) {
   const config = getSiteConfig();
-  const provider = resolveAiServiceForScene(config, "video-review");
-  if (isOllamaAiProvider(provider.provider)) {
+  const providers = resolveAiServiceCandidatesForScene(config, "video-review")
+    .filter((provider) => !isOllamaAiProvider(provider.provider) && String(provider.apiUrl || "").trim());
+  if (!providers.length) {
     return { text: "", status: "unsupported" };
   }
-  const endpoint = normalizeTranscriptionsUrl(provider.apiUrl);
   const tempDir = path.resolve(process.cwd(), "runtime", "video-review-audio");
   await mkdir(tempDir, { recursive: true });
   const audioPath = path.join(tempDir, `${path.basename(filePath)}-${Date.now()}.wav`);
@@ -821,27 +822,40 @@ async function transcribeVideoAudio(filePath: string) {
     ]);
     const audioBuffer = await readFile(audioPath);
     if (!audioBuffer.length) return { text: "", status: "empty" };
-    const form = new FormData();
-    form.append("model", VIDEO_TRANSCRIBE_MODEL);
-    form.append("response_format", "json");
-    form.append("file", new Blob([audioBuffer], { type: "audio/wav" }), "video-audio.wav");
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${provider.apiKey}`,
-      },
-      body: form,
-    });
-    if (!response.ok) {
-      const text = await response.text().catch(() => "");
-      throw new Error(`音频转写失败：${response.status}${text ? ` ${text.slice(0, 160)}` : ""}`);
+    let lastError: unknown = null;
+    for (let index = 0; index < providers.length; index += 1) {
+      const provider = providers[index];
+      const endpoint = normalizeTranscriptionsUrl(provider.apiUrl);
+      const form = new FormData();
+      form.append("model", VIDEO_TRANSCRIBE_MODEL);
+      form.append("response_format", "json");
+      form.append("file", new Blob([audioBuffer], { type: "audio/wav" }), "video-audio.wav");
+      try {
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${provider.apiKey}`,
+          },
+          body: form,
+        });
+        if (!response.ok) {
+          const text = await response.text().catch(() => "");
+          lastError = new Error(`音频转写失败：${response.status}${text ? ` ${text.slice(0, 160)}` : ""}`);
+          if (index < providers.length - 1) continue;
+          throw lastError;
+        }
+        const json: any = await response.json();
+        const text = String(json?.text || "").trim();
+        return {
+          text,
+          status: text ? "ok" : "empty",
+        };
+      } catch (error) {
+        lastError = error;
+        if (index >= providers.length - 1) throw error;
+      }
     }
-    const json: any = await response.json();
-    const text = String(json?.text || "").trim();
-    return {
-      text,
-      status: text ? "ok" : "empty",
-    };
+    throw lastError instanceof Error ? lastError : new Error("音频转写失败");
   } finally {
     await rm(audioPath, { force: true }).catch(() => null);
   }
@@ -990,7 +1004,9 @@ function buildVideoReviewTextPrompt(input: PreparedVideoReviewInput) {
 
 function buildVideoReviewConfigHash(config: ReturnType<typeof getSiteConfig>) {
   return hashString([
-    resolveAiServiceForScene(config, "video-review").apiUrl,
+    resolveAiServiceCandidatesForScene(config, "video-review")
+      .map((provider) => `${provider.serviceId || ""}\n${provider.provider}\n${provider.apiUrl}`)
+      .join("\n"),
     config.videoReviewModel,
     config.videoReviewFallbackModels,
     config.videoReviewThreshold,

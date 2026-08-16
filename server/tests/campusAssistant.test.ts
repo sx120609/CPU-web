@@ -45,6 +45,7 @@ import {
   buildAiPromptCacheKey,
   readAiJsonTextStream,
   sendAiUpstreamRequest,
+  sendAiJsonRequestWithProviderFallback,
 } from "../src/services/aiJsonApi";
 import { calculateSponsorAssistantPoints } from "../src/services/campusAssistantPoints";
 import { buildOAuthAiRequestBody, OAUTH_AI_INSTRUCTIONS } from "../src/routes/oauth";
@@ -561,6 +562,49 @@ test("AI upstream retries transient overloads before returning the final failure
     assert.equal(result.response.ok, true);
     assert.equal(result.retryCount, 2);
     assert.equal(requests, 3);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("AI JSON requests fail over to the next configured provider", async () => {
+  const originalFetch = globalThis.fetch;
+  const requests: Array<{ url: string; authorization: string | null }> = [];
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    requests.push({
+      url: String(input),
+      authorization: new Headers(init?.headers).get("authorization"),
+    });
+    if (requests.length === 1) {
+      return new Response('{"error":"provider unavailable"}', {
+        status: 503,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    return new Response('{"ok":true}', {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  try {
+    const result = await sendAiJsonRequestWithProviderFallback({
+      providers: [
+        { serviceId: "primary", name: "主服务", provider: "deepseek", apiUrl: "https://primary.example/v1", apiKey: "primary-key" },
+        { serviceId: "backup", name: "备用服务", provider: "openai", apiUrl: "https://backup.example/v1", apiKey: "backup-key" },
+      ],
+      fallbackEndpoint: "https://fallback.example/v1/chat/completions",
+      model: "example-model",
+      messages: [{ role: "user", content: "hello" }],
+    });
+
+    assert.equal(result.response.ok, true);
+    assert.equal(result.provider.serviceId, "backup");
+    assert.equal(result.endpoint, "https://backup.example/v1/chat/completions");
+    assert.deepEqual(requests, [
+      { url: "https://primary.example/v1/chat/completions", authorization: "Bearer primary-key" },
+      { url: "https://backup.example/v1/chat/completions", authorization: "Bearer backup-key" },
+    ]);
   } finally {
     globalThis.fetch = originalFetch;
   }

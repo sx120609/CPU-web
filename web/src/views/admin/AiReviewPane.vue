@@ -103,15 +103,36 @@
       <div class="service-routing">
         <div>
           <h4 class="card-title">识别场景路由</h4>
-          <p class="desc">每个场景单独选择服务；切换服务后，下面的模型下拉只显示该服务读取到的模型。</p>
+          <p class="desc">每个场景单独选择主服务和回退服务；主服务失败时按回退顺序尝试，下面的模型下拉只显示主服务读取到的模型。</p>
         </div>
         <div class="routing-grid">
-          <label v-for="item in serviceAssignments" :key="item.key" class="ai-row">
-            <span class="ai-label">{{ item.label }}</span>
-            <el-select v-model="form[item.key]">
-              <el-option v-for="service in form.aiServices" :key="`${item.key}-${service.id}`" :label="service.name" :value="service.id" />
-            </el-select>
-          </label>
+          <article v-for="item in serviceAssignments" :key="item.key" class="route-card">
+            <label class="ai-row">
+              <span class="ai-label">{{ item.label }}主服务</span>
+              <el-select v-model="form[item.key]" @change="normalizeFallbackServices">
+                <el-option v-for="service in form.aiServices" :key="`${item.key}-${service.id}`" :label="service.name" :value="service.id" />
+              </el-select>
+            </label>
+            <label class="ai-row">
+              <span class="ai-label">失败回退服务</span>
+              <el-select
+                v-model="form.aiServiceFallbacks[item.scene]"
+                multiple
+                collapse-tags
+                collapse-tags-tooltip
+                :max-collapse-tags="2"
+                placeholder="不设置回退"
+              >
+                <el-option
+                  v-for="service in fallbackServiceOptions(item)"
+                  :key="`${item.key}-fallback-${service.id}`"
+                  :label="service.name"
+                  :value="service.id"
+                />
+              </el-select>
+            </label>
+            <small class="field-note route-fallback-note">失败后按顺序尝试；回退服务沿用该场景的模型 ID。</small>
+          </article>
         </div>
       </div>
 
@@ -609,12 +630,12 @@ const modelAssignments = [
   { key: "videoReviewModel", serviceKey: "videoReviewServiceId", label: "视频审核", description: "关键帧、音轨与上下文审核" },
 ] as const;
 const serviceAssignments = [
-  { key: "assistantServiceId", label: "拾间 AI" },
-  { key: "learningAssistantServiceId", label: "网课解题" },
-  { key: "aiReviewServiceId", label: "文字审核" },
-  { key: "qqGroupAdReviewServiceId", label: "QQ群广告过滤" },
-  { key: "imageReviewServiceId", label: "图片审核" },
-  { key: "videoReviewServiceId", label: "视频审核" },
+  { key: "assistantServiceId", scene: "assistant", label: "拾间 AI" },
+  { key: "learningAssistantServiceId", scene: "learning-assistant", label: "网课解题" },
+  { key: "aiReviewServiceId", scene: "text-review", label: "文字审核" },
+  { key: "qqGroupAdReviewServiceId", scene: "qq-group-ad", label: "QQ群广告过滤" },
+  { key: "imageReviewServiceId", scene: "image-review", label: "图片审核" },
+  { key: "videoReviewServiceId", scene: "video-review", label: "视频审核" },
 ] as const;
 const serviceProviderOptions = [
   { value: "deepseek", label: "DeepSeek 兼容接口" },
@@ -662,6 +683,14 @@ const form = reactive<SiteConfig>({
     apiUrl: "https://api.deepseek.com/chat/completions",
     apiKey: "",
   }],
+  aiServiceFallbacks: {
+    assistant: [],
+    "learning-assistant": [],
+    "text-review": [],
+    "qq-group-ad": [],
+    "image-review": [],
+    "video-review": [],
+  },
   assistantServiceId: "default-main",
   learningAssistantServiceId: "default-main",
   aiReviewServiceId: "default-main",
@@ -796,11 +825,46 @@ function ensureAiServices() {
     }
     seen.add(id);
   });
+  if (!form.aiServiceFallbacks || typeof form.aiServiceFallbacks !== "object") {
+    form.aiServiceFallbacks = {
+      assistant: [],
+      "learning-assistant": [],
+      "text-review": [],
+      "qq-group-ad": [],
+      "image-review": [],
+      "video-review": [],
+    };
+  }
   for (const item of serviceAssignments) {
     if (!form.aiServices.some((service) => service.id === form[item.key])) {
       form[item.key] = form.aiServices[0].id;
     }
   }
+  normalizeFallbackServices();
+}
+
+function normalizeFallbackServices() {
+  const available = new Set(form.aiServices.map((service) => service.id));
+  for (const item of serviceAssignments) {
+    const primaryId = String(form[item.key] || "");
+    const selected = Array.isArray(form.aiServiceFallbacks[item.scene])
+      ? form.aiServiceFallbacks[item.scene]
+      : [];
+    const seen = new Set<string>();
+    form.aiServiceFallbacks[item.scene] = selected
+      .map((serviceId) => String(serviceId || "").trim())
+      .filter((serviceId) => serviceId && serviceId !== primaryId && available.has(serviceId) && !seen.has(serviceId))
+      .filter((serviceId) => {
+        seen.add(serviceId);
+        return true;
+      })
+      .slice(0, 8);
+  }
+}
+
+function fallbackServiceOptions(item: typeof serviceAssignments[number]) {
+  const primaryId = String(form[item.key] || "");
+  return form.aiServices.filter((service) => service.id !== primaryId);
 }
 
 function handleServiceProviderChange(service: AiServiceConfig) {
@@ -836,6 +900,7 @@ function removeAiService(serviceId: string) {
   for (const item of serviceAssignments) {
     if (form[item.key] === serviceId) form[item.key] = fallbackId;
   }
+  normalizeFallbackServices();
 }
 
 function serviceForScene(serviceId: string) {
@@ -923,9 +988,10 @@ async function loadModelsForService(serviceId: string, options: { silent?: boole
 }
 
 async function loadAssignedServiceCatalogs() {
-  const serviceIds = Array.from(new Set(serviceAssignments
-    .map((item) => String(form[item.key] || "").trim())
-    .filter(Boolean)));
+  const serviceIds = Array.from(new Set(serviceAssignments.flatMap((item) => [
+    String(form[item.key] || "").trim(),
+    ...(form.aiServiceFallbacks[item.scene] || []).map((serviceId) => String(serviceId || "").trim()),
+  ]).filter(Boolean)));
   await Promise.all(serviceIds.map((serviceId) => loadModelsForService(serviceId, { silent: true })));
 }
 
@@ -972,6 +1038,7 @@ async function saveConfig() {
   saving.value = true;
   try {
     ensureAiServices();
+    normalizeFallbackServices();
     const assistantService = serviceForScene(form.assistantServiceId) as AiServiceConfig;
     const learningAssistantService = serviceForScene(form.learningAssistantServiceId) as AiServiceConfig;
     const textReviewService = serviceForScene(form.aiReviewServiceId) as AiServiceConfig;
@@ -982,6 +1049,9 @@ async function saveConfig() {
       assistantModel: form.assistantModel,
       learningAssistantTiers: form.learningAssistantTiers,
       aiServices: form.aiServices.map((service) => ({ ...service })),
+      aiServiceFallbacks: Object.fromEntries(
+        serviceAssignments.map((item) => [item.scene, [...form.aiServiceFallbacks[item.scene]]]),
+      ) as SiteConfig["aiServiceFallbacks"],
       assistantServiceId: assistantService.id,
       learningAssistantServiceId: learningAssistantService.id,
       aiReviewServiceId: textReviewService.id,
@@ -1333,6 +1403,19 @@ function requestMessage(error: unknown) {
 
 .routing-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.route-card {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 12px;
+  background: var(--el-fill-color-extra-light);
+}
+
+.route-fallback-note {
+  min-height: 32px;
 }
 
 .model-grid {

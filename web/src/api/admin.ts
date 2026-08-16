@@ -9,6 +9,9 @@ export type AiServiceConfig = {
   apiKey: string;
 };
 
+export type AiServiceScene = "assistant" | "learning-assistant" | "text-review" | "qq-group-ad" | "image-review" | "video-review";
+export type AiServiceFallbackMap = Record<AiServiceScene, string[]>;
+
 export type SiteConfig = {
   siteOrigin: string;
   siteFilingNumber: string;
@@ -23,6 +26,7 @@ export type SiteConfig = {
   learningAssistantAccessMode: "guest-unlimited" | "account-quota";
   learningPlatforms: LearningPlatformAvailability;
   aiServices: AiServiceConfig[];
+  aiServiceFallbacks: AiServiceFallbackMap;
   assistantServiceId: string;
   learningAssistantServiceId: string;
   aiReviewServiceId: string;
@@ -796,6 +800,7 @@ export const adminApi = {
     learningAssistantAccessMode?: "guest-unlimited" | "account-quota";
     learningPlatforms?: LearningPlatformAvailability;
     aiServices?: AiServiceConfig[];
+    aiServiceFallbacks?: AiServiceFallbackMap;
     assistantServiceId?: string;
     learningAssistantServiceId?: string;
     aiReviewServiceId?: string;

@@ -60,7 +60,16 @@ export type AiServiceConfig = {
   apiUrl: string;
   apiKey: string;
 };
-export type AiServiceScene = "assistant" | "learning-assistant" | "text-review" | "qq-group-ad" | "image-review" | "video-review";
+export const AI_SERVICE_SCENES = [
+  "assistant",
+  "learning-assistant",
+  "text-review",
+  "qq-group-ad",
+  "image-review",
+  "video-review",
+] as const;
+export type AiServiceScene = typeof AI_SERVICE_SCENES[number];
+export type AiServiceFallbackMap = Record<AiServiceScene, string[]>;
 export type SiteConfig = {
   siteOrigin: string;
   siteFilingNumber: string;
@@ -70,6 +79,7 @@ export type SiteConfig = {
   learningAssistantAccessMode: LearningAssistantAccessMode;
   learningPlatforms: LearningPlatformAvailability;
   aiServices: AiServiceConfig[];
+  aiServiceFallbacks: AiServiceFallbackMap;
   assistantServiceId: string;
   learningAssistantServiceId: string;
   aiReviewServiceId: string;
@@ -238,6 +248,37 @@ export function normalizeAiServiceList(input: unknown, fallback: AiServiceConfig
   return normalizeAiServiceEntries(fallback);
 }
 
+export function emptyAiServiceFallbacks(): AiServiceFallbackMap {
+  return Object.fromEntries(AI_SERVICE_SCENES.map((scene) => [scene, []])) as unknown as AiServiceFallbackMap;
+}
+
+function normalizeAiServiceFallbacks(
+  input: unknown,
+  services: AiServiceConfig[],
+  primaryIds: Partial<Pick<SiteConfig,
+    "assistantServiceId" | "learningAssistantServiceId" | "aiReviewServiceId" | "qqGroupAdReviewServiceId" | "imageReviewServiceId" | "videoReviewServiceId"
+  >>,
+): AiServiceFallbackMap {
+  const parsed = typeof input === "string" ? parseJsonValue<unknown>(input, {}) : input;
+  const source = parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : {};
+  const available = new Set(services.map((service) => service.id));
+  const result = emptyAiServiceFallbacks();
+  for (const scene of AI_SERVICE_SCENES) {
+    const primary = sceneServiceId(primaryIds, scene);
+    const raw = Array.isArray(source[scene]) ? source[scene] : [];
+    const seen = new Set<string>();
+    result[scene] = raw
+      .map((value) => String(value || "").trim())
+      .filter((id) => id && id !== primary && available.has(id) && !seen.has(id))
+      .filter((id) => {
+        seen.add(id);
+        return true;
+      })
+      .slice(0, 8);
+  }
+  return result;
+}
+
 function inferAiServiceProvider(apiUrl: string, fallback: string) {
   if (/ollama|:11434(?:\/|$)/i.test(apiUrl)) return "ollama";
   if (/openai\.com/i.test(apiUrl)) return "openai";
@@ -364,11 +405,33 @@ function findSceneService(
 
 export function resolveAiServiceForScene(
   input: AiServiceLegacySource & Partial<Pick<SiteConfig,
-    "aiServices" | "assistantServiceId" | "learningAssistantServiceId" | "aiReviewServiceId" | "qqGroupAdReviewServiceId" | "imageReviewServiceId" | "videoReviewServiceId"
+    "aiServices" | "aiServiceFallbacks" | "assistantServiceId" | "learningAssistantServiceId" | "aiReviewServiceId" | "qqGroupAdReviewServiceId" | "imageReviewServiceId" | "videoReviewServiceId"
   >>,
   scene: AiServiceScene,
 ) {
   return findSceneService(input, scene);
+}
+
+export function resolveAiServiceCandidatesForScene(
+  input: AiServiceLegacySource & Partial<Pick<SiteConfig,
+    "aiServices" | "aiServiceFallbacks" | "assistantServiceId" | "learningAssistantServiceId" | "aiReviewServiceId" | "qqGroupAdReviewServiceId" | "imageReviewServiceId" | "videoReviewServiceId"
+  >>,
+  scene: AiServiceScene,
+) {
+  const primary = resolveAiServiceForScene(input, scene);
+  const services = normalizeAiServiceEntries(input.aiServices);
+  const fallbackIds = Array.isArray(input.aiServiceFallbacks?.[scene])
+    ? input.aiServiceFallbacks[scene]
+    : [];
+  const candidates = [primary];
+  const seen = new Set([primary.serviceId]);
+  for (const fallbackId of fallbackIds) {
+    const service = services.find((item) => item.id === String(fallbackId || "").trim());
+    if (!service || seen.has(service.id)) continue;
+    seen.add(service.id);
+    candidates.push({ serviceId: service.id, ...service });
+  }
+  return candidates;
 }
 
 function resolveAiServiceId(
@@ -488,6 +551,7 @@ const SITE_ORIGIN_KEY = "site.origin";
 const SITE_FILING_NUMBER_KEY = "site.filingNumber";
 const TOP_NAVIGATION_KEY = "site.topNavigation";
 const AI_SERVICES_KEY = "ai.services";
+const AI_SERVICE_FALLBACKS_KEY = "ai.serviceFallbacks";
 const ASSISTANT_SERVICE_ID_KEY = "assistant.serviceId";
 const LEARNING_ASSISTANT_SERVICE_ID_KEY = "assistant.learningServiceId";
 const AI_REVIEW_SERVICE_ID_KEY = "ai.review.serviceId";
@@ -766,6 +830,7 @@ const configCache: SiteConfig = {
   learningAssistantAccessMode: DEFAULT_LEARNING_ASSISTANT_ACCESS_MODE,
   learningPlatforms: { ...DEFAULT_LEARNING_PLATFORM_AVAILABILITY },
   aiServices: [],
+  aiServiceFallbacks: emptyAiServiceFallbacks(),
   assistantServiceId: "",
   learningAssistantServiceId: "",
   aiReviewServiceId: "",
@@ -925,6 +990,7 @@ export async function loadFeatures(): Promise<void> {
           SITE_FILING_NUMBER_KEY,
           TOP_NAVIGATION_KEY,
           AI_SERVICES_KEY,
+          AI_SERVICE_FALLBACKS_KEY,
           ASSISTANT_SERVICE_ID_KEY,
           LEARNING_ASSISTANT_SERVICE_ID_KEY,
           AI_REVIEW_SERVICE_ID_KEY,
@@ -1025,6 +1091,10 @@ export async function loadFeatures(): Promise<void> {
     }
     if (r.key === AI_SERVICES_KEY) {
       configCache.aiServices = normalizeAiServiceEntries(parseJsonValue<unknown>(r.value, []));
+      continue;
+    }
+    if (r.key === AI_SERVICE_FALLBACKS_KEY) {
+      configCache.aiServiceFallbacks = parseJsonValue<AiServiceFallbackMap>(r.value, emptyAiServiceFallbacks());
       continue;
     }
     if (r.key === ASSISTANT_SERVICE_ID_KEY) {
@@ -1409,6 +1479,9 @@ export function getSiteConfig(): SiteConfig {
   const result: SiteConfig = {
     ...configCache,
     aiServices: aiServices.map((service) => ({ ...service })),
+    aiServiceFallbacks: Object.fromEntries(
+      AI_SERVICE_SCENES.map((scene) => [scene, [...(configCache.aiServiceFallbacks[scene] || [])]]),
+    ) as AiServiceFallbackMap,
     learningAssistantTiers: structuredClone(configCache.learningAssistantTiers),
     learningPlatforms: { ...configCache.learningPlatforms },
     anonymousTiers: configCache.anonymousTiers.map((item) => ({ ...item })),
@@ -1746,6 +1819,11 @@ function sanitizeAiReviewConfig() {
     const service = configCache.aiServices.find((item) => item.id === serviceId) || configCache.aiServices[0];
     if (service) applyAiServiceToLegacyFields(configCache, scene, service);
   }
+  configCache.aiServiceFallbacks = normalizeAiServiceFallbacks(
+    configCache.aiServiceFallbacks,
+    configCache.aiServices,
+    configCache,
+  );
 }
 
 export function resolveSharedAiProviderConfig(input: SiteConfig = getSiteConfig()) {
@@ -1931,9 +2009,28 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
   const qqService = selectedServices.get("qq-group-ad") || assistantService;
   const imageService = selectedServices.get("image-review") || assistantService;
   const videoService = selectedServices.get("video-review") || assistantService;
+  const requestedAiServiceFallbacks = input.aiServiceFallbacks === undefined
+    ? configCache.aiServiceFallbacks
+    : {
+        ...configCache.aiServiceFallbacks,
+        ...input.aiServiceFallbacks,
+      };
+  const aiServiceFallbacks = normalizeAiServiceFallbacks(
+    requestedAiServiceFallbacks,
+    aiServices,
+    {
+      assistantServiceId: assistantService.id,
+      learningAssistantServiceId: learningAssistantService.id,
+      aiReviewServiceId: textReviewService.id,
+      qqGroupAdReviewServiceId: qqService.id,
+      imageReviewServiceId: imageService.id,
+      videoReviewServiceId: videoService.id,
+    },
+  );
   const next: SiteConfig = {
     ...configCache,
     aiServices,
+    aiServiceFallbacks,
     assistantServiceId: assistantService.id,
     learningAssistantServiceId: learningAssistantService.id,
     aiReviewServiceId: textReviewService.id,
@@ -2005,6 +2102,11 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
       where: { key: AI_SERVICES_KEY },
       update: { value: JSON.stringify(next.aiServices) },
       create: { key: AI_SERVICES_KEY, value: JSON.stringify(next.aiServices) },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: AI_SERVICE_FALLBACKS_KEY },
+      update: { value: JSON.stringify(next.aiServiceFallbacks) },
+      create: { key: AI_SERVICE_FALLBACKS_KEY, value: JSON.stringify(next.aiServiceFallbacks) },
     }),
     prisma.siteSetting.upsert({
       where: { key: ASSISTANT_SERVICE_ID_KEY },

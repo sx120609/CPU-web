@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { shouldFallbackToNextProvider } from "./modelFallback";
 
 export type AiJsonApiMode = "chat_completions" | "responses";
 
@@ -30,6 +31,14 @@ export type SendAiJsonRequestResult = {
   promptCacheRetentionApplied: boolean;
   /** Number of transient upstream retries made before returning the final response. */
   retryCount: number;
+};
+
+export type AiProviderCandidate = {
+  serviceId?: string;
+  name?: string;
+  provider: string;
+  apiUrl: string;
+  apiKey: string;
 };
 
 const promptCacheKeySupport = new Map<string, boolean>();
@@ -91,6 +100,62 @@ export async function sendAiJsonRequest(input: {
     maxTransientRetries: input.maxTransientRetries,
     signal: input.signal,
   });
+}
+
+export type SendAiJsonRequestWithFallbackResult = SendAiJsonRequestResult & {
+  provider: AiProviderCandidate;
+  endpoint: string;
+};
+
+/** Try the configured providers in order while preserving the final response shape. */
+export async function sendAiJsonRequestWithProviderFallback(input: {
+  providers: AiProviderCandidate[];
+  fallbackEndpoint: string;
+  model: string;
+  temperature?: number;
+  messages: AiJsonMessage[];
+  promptCacheKey?: string | null;
+  enablePromptCacheRetention?: boolean;
+  maxTransientRetries?: number;
+  stream?: boolean;
+  signal?: AbortSignal;
+}): Promise<SendAiJsonRequestWithFallbackResult> {
+  let lastError: unknown = null;
+  const providers = input.providers.filter((provider) => String(provider.apiUrl || "").trim());
+  for (let index = 0; index < providers.length; index += 1) {
+    const provider = providers[index];
+    const endpoint = normalizeAiJsonApiUrl(provider.apiUrl, input.fallbackEndpoint);
+    try {
+      const result = await sendAiJsonRequest({
+        endpoint,
+        apiKey: provider.apiKey,
+        model: input.model,
+        temperature: input.temperature,
+        messages: input.messages,
+        promptCacheKey: input.promptCacheKey,
+        enablePromptCacheRetention: input.enablePromptCacheRetention,
+        maxTransientRetries: input.maxTransientRetries,
+        stream: input.stream,
+        signal: input.signal,
+      });
+      if (result.response.ok || index >= providers.length - 1) {
+        return { ...result, provider, endpoint };
+      }
+      const text = result.errorText || await result.response.clone().text().catch(() => "");
+      if (!shouldFallbackToNextProvider(result.response.status, text)) {
+        return { ...result, provider, endpoint };
+      }
+      if (result.response.body) {
+        await result.response.body.cancel().catch(() => undefined);
+      }
+      lastError = new Error(`AI 服务 ${provider.name || provider.provider} 返回 HTTP ${result.response.status}`);
+    } catch (error) {
+      if (input.signal?.aborted) throw error;
+      lastError = error;
+      if (index >= providers.length - 1) throw error;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("没有可用的 AI 服务");
 }
 
 export async function sendAiUpstreamRequest(input: {
@@ -168,7 +233,9 @@ export async function sendAiUpstreamRequest(input: {
         break;
       }
       retryCount += 1;
-      await attempt.response.body?.cancel().catch(() => undefined);
+      if (attempt.response.body) {
+        await attempt.response.body.cancel().catch(() => undefined);
+      }
     } catch (error) {
       if (
         retryCount >= maxTransientRetries
