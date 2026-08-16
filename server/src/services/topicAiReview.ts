@@ -4,7 +4,7 @@ import { Errors } from "../utils/response";
 import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } from "./aiReviewLog";
 import { type AiJsonMessage, extractAiJsonTextResponse, normalizeAiJsonApiUrl, sendAiJsonRequest } from "./aiJsonApi";
 import { resolveModelCandidates, shouldFallbackToNextModel } from "./modelFallback";
-import { getSiteConfig } from "./siteSettings";
+import { getSiteConfig, isAiProviderReady } from "./siteSettings";
 
 export type TopicAiReviewStatus =
   | "none"
@@ -97,7 +97,12 @@ export async function ensureUserCanSubmitTopic(userId: number) {
 
 export function shouldRunAiReview() {
   const config = getSiteConfig();
-  return Boolean(config.aiReviewEnabled && config.aiReviewApiKey.trim());
+  return Boolean(config.aiReviewEnabled && isAiProviderReady({
+    provider: config.aiReviewProvider,
+    apiUrl: config.aiReviewApiUrl,
+    apiKey: config.aiReviewApiKey,
+    model: config.aiReviewModel,
+  }));
 }
 
 type AiReviewLogContext = {
@@ -248,7 +253,12 @@ export async function reviewTopicContent(input: {
   metadata?: Record<string, any> | null;
 }): Promise<TopicAiReviewResult> {
   const config = getSiteConfig();
-  if (!config.aiReviewEnabled || !config.aiReviewApiKey.trim()) {
+  if (!config.aiReviewEnabled || !isAiProviderReady({
+    provider: config.aiReviewProvider,
+    apiUrl: config.aiReviewApiUrl,
+    apiKey: config.aiReviewApiKey,
+    model: config.aiReviewModel,
+  })) {
     return {
       status: "auto_passed",
       riskLevel: "low",
@@ -321,7 +331,12 @@ export async function reviewReplyContent(input: {
   parentContent?: string | null;
 }): Promise<TopicAiReviewResult> {
   const config = getSiteConfig();
-  if (!config.aiReviewEnabled || !config.aiReviewApiKey.trim()) {
+  if (!config.aiReviewEnabled || !isAiProviderReady({
+    provider: config.aiReviewProvider,
+    apiUrl: config.aiReviewApiUrl,
+    apiKey: config.aiReviewApiKey,
+    model: config.aiReviewModel,
+  })) {
     return {
       status: "auto_passed",
       riskLevel: "low",
@@ -393,7 +408,12 @@ export async function evaluateTopicEditSimilarity(input: {
   updatedContent: string;
 }) {
   const config = getSiteConfig();
-  if (!config.aiReviewApiKey.trim()) {
+  if (!isAiProviderReady({
+    provider: config.aiReviewProvider,
+    apiUrl: config.aiReviewApiUrl,
+    apiKey: config.aiReviewApiKey,
+    model: config.aiReviewModel,
+  })) {
     return {
       similarity: fallbackEditSimilarity(
         `${input.originalTitle}\n${input.originalContent}`,
@@ -527,7 +547,12 @@ export async function generateTopicAiTags(input: {
   metadata?: Record<string, any> | null;
 }) {
   const config = getSiteConfig();
-  if (!config.aiReviewApiKey.trim()) return [] as TopicAiLabel[];
+  if (!isAiProviderReady({
+    provider: config.aiReviewProvider,
+    apiUrl: config.aiReviewApiUrl,
+    apiKey: config.aiReviewApiKey,
+    model: config.aiReviewModel,
+  })) return [] as TopicAiLabel[];
   const { content } = await requestAiJson([
     {
       role: "system",

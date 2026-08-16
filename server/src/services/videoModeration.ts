@@ -9,7 +9,7 @@ import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } fr
 import { extractAiJsonTextResponse, normalizeAiJsonApiUrl, sendAiJsonRequest } from "./aiJsonApi";
 import { prepareMediaLocalFileForProcessing, resolveMediaLocalPathFromUploadUrl, resolveMediaPublicUrl } from "./mediaStorage";
 import { resolveModelCandidates, shouldFallbackToNextModel } from "./modelFallback";
-import { DEFAULT_VIDEO_REVIEW_PROMPTS, getSiteConfig, resolveSharedAiProviderConfig } from "./siteSettings";
+import { DEFAULT_VIDEO_REVIEW_PROMPTS, getSiteConfig, isAiProviderReady, isOllamaAiProvider, resolveAiServiceForScene } from "./siteSettings";
 
 const execFile = promisify(execFileCallback);
 
@@ -166,12 +166,15 @@ export function startForumVideoModerationPoller() {
 
 export function shouldRunVideoReview() {
   const config = getSiteConfig();
-  const provider = resolveSharedAiProviderConfig(config);
+  const provider = resolveAiServiceForScene(config, "video-review");
   return Boolean(
     config.videoReviewEnabled
-    && provider.apiKey
-    && config.videoReviewModel.trim()
-    && provider.apiUrl,
+    && isAiProviderReady({
+      provider: provider.provider,
+      apiUrl: provider.apiUrl,
+      apiKey: provider.apiKey,
+      model: config.videoReviewModel,
+    }),
   );
 }
 
@@ -697,7 +700,7 @@ async function applyVideoReviewDecision(input: PreparedVideoReviewInput, decisio
 
 async function requestVideoReview(input: PreparedVideoReviewInput): Promise<VideoReviewDecision> {
   const config = getSiteConfig();
-  const provider = resolveSharedAiProviderConfig(config);
+  const provider = resolveAiServiceForScene(config, "video-review");
   const endpoint = normalizeAiJsonApiUrl(provider.apiUrl, "https://api.openai.com/v1/chat/completions");
   const requestSummary = buildVideoReviewTextPrompt(input).slice(0, 4000);
   const candidates = resolveModelCandidates(config.videoReviewModel, config.videoReviewFallbackModels);
@@ -794,7 +797,10 @@ async function requestVideoReview(input: PreparedVideoReviewInput): Promise<Vide
 
 async function transcribeVideoAudio(filePath: string) {
   const config = getSiteConfig();
-  const provider = resolveSharedAiProviderConfig(config);
+  const provider = resolveAiServiceForScene(config, "video-review");
+  if (isOllamaAiProvider(provider.provider)) {
+    return { text: "", status: "unsupported" };
+  }
   const endpoint = normalizeTranscriptionsUrl(provider.apiUrl);
   const tempDir = path.resolve(process.cwd(), "runtime", "video-review-audio");
   await mkdir(tempDir, { recursive: true });
@@ -984,7 +990,7 @@ function buildVideoReviewTextPrompt(input: PreparedVideoReviewInput) {
 
 function buildVideoReviewConfigHash(config: ReturnType<typeof getSiteConfig>) {
   return hashString([
-    resolveSharedAiProviderConfig(config).apiUrl,
+    resolveAiServiceForScene(config, "video-review").apiUrl,
     config.videoReviewModel,
     config.videoReviewFallbackModels,
     config.videoReviewThreshold,

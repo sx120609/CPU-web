@@ -28,11 +28,11 @@
     <section class="settings-card provider-card" :class="{ 'is-config-disabled': Boolean(configLoadError) }" v-loading="loadingConfig">
       <div class="section-head">
         <div>
-          <h3 class="section-title">共享 AI 服务</h3>
-          <p class="section-desc">API 地址和密钥只配置一次；拾间 AI、学习通解题与各类内容审核分别选择模型。</p>
+          <h3 class="section-title">AI 服务池</h3>
+          <p class="section-desc">每个服务只填写一次地址和密钥，再把拾间 AI、QQ群广告、图片审核、视频审核分别路由到需要的厂家。</p>
         </div>
         <div class="provider-actions">
-          <el-button :loading="loadingModels" :disabled="!form.aiReviewApiUrl.trim()" @click="loadModels">
+          <el-button :loading="loadingModels" :disabled="!selectedAiService?.apiUrl.trim()" @click="loadModels">
             刷新模型列表
           </el-button>
           <el-button type="primary" :loading="saving" :disabled="saving || Boolean(configLoadError)" @click="saveConfig">
@@ -41,17 +41,85 @@
         </div>
       </div>
 
-      <div class="ai-form provider-form">
-        <div class="ai-row ai-row--stretch">
-          <span class="ai-label">共享 API 请求地址</span>
-          <el-input v-model="form.aiReviewApiUrl" maxlength="240" placeholder="支持 /v1/responses 或 /v1/chat/completions" />
-          <small class="field-note">服务端会根据地址自动识别 Responses 或 Chat Completions 协议。</small>
+      <div class="service-pool">
+        <div class="service-pool-head">
+          <div>
+            <h4 class="card-title">服务厂家配置</h4>
+            <p class="desc">地址和 API Key 只在这里维护。Ollama 的 API Key 可以留空，地址填写运行服务端机器能够访问的地址。</p>
+          </div>
+          <el-button type="primary" plain @click="addAiService">添加服务</el-button>
         </div>
-        <div class="ai-row ai-row--stretch">
-          <span class="ai-label">共享 API Key</span>
-          <el-input v-model="form.aiReviewApiKey" maxlength="240" show-password placeholder="sk-..." />
+        <article v-for="(service, index) in form.aiServices" :key="service.id" class="service-card">
+          <div class="service-card-head">
+            <span class="service-index">服务 {{ index + 1 }}</span>
+            <el-button
+              text
+              type="danger"
+              :disabled="form.aiServices.length <= 1"
+              @click="removeAiService(service.id)"
+            >
+              删除
+            </el-button>
+          </div>
+          <div class="service-grid">
+            <label class="ai-row">
+              <span class="ai-label">服务名称</span>
+              <el-input v-model="service.name" maxlength="80" placeholder="例如：本地 Ollama" />
+            </label>
+            <label class="ai-row">
+              <span class="ai-label">服务厂家 / 协议</span>
+              <el-select v-model="service.provider" filterable allow-create default-first-option @change="handleServiceProviderChange(service)">
+                <el-option v-for="option in serviceProviderOptions" :key="option.value" :label="option.label" :value="option.value" />
+              </el-select>
+            </label>
+            <label class="ai-row ai-row--stretch">
+              <span class="ai-label">API 地址</span>
+              <el-input
+                v-model="service.apiUrl"
+                maxlength="240"
+                :placeholder="service.provider.toLowerCase() === 'ollama' ? 'http://127.0.0.1:11434' : '支持 /v1/responses 或 /v1/chat/completions'"
+              />
+            </label>
+            <label class="ai-row ai-row--stretch">
+              <span class="ai-label">API Key</span>
+              <el-input
+                v-model="service.apiKey"
+                maxlength="240"
+                show-password
+                :placeholder="service.provider.toLowerCase() === 'ollama' ? 'Ollama 可留空' : 'sk-...'"
+              />
+            </label>
+          </div>
+          <small class="field-note">
+            {{ service.provider.toLowerCase() === "ollama"
+              ? "Ollama 会使用 /v1/chat/completions；模型名称填写本机已安装的 tag，例如 qwen3:8b。"
+              : "服务端会根据地址自动识别 Responses 或 Chat Completions 协议。" }}
+          </small>
+        </article>
+      </div>
+
+      <div class="service-routing">
+        <div>
+          <h4 class="card-title">识别场景路由</h4>
+          <p class="desc">同一个服务可以被多个场景复用；每个场景的模型仍然单独配置。</p>
+        </div>
+        <div class="routing-grid">
+          <label v-for="item in serviceAssignments" :key="item.key" class="ai-row">
+            <span class="ai-label">{{ item.label }}</span>
+            <el-select v-model="form[item.key]">
+              <el-option v-for="service in form.aiServices" :key="`${item.key}-${service.id}`" :label="service.name" :value="service.id" />
+            </el-select>
+          </label>
         </div>
       </div>
+
+      <el-alert
+        v-if="isOllamaProvider"
+        type="success"
+        :closable="false"
+        show-icon
+        title="当前拾间 AI / 文字审核使用 Ollama：地址填写 http://127.0.0.1:11434，模型填写已通过 ollama pull 安装的名称，例如 qwen3:8b。"
+      />
 
       <el-alert
         type="info"
@@ -492,6 +560,7 @@ import {
   type ForumImageSweepResult,
   type ForumVideoQueueRow,
   type ForumVideoSweepResult,
+  type AiServiceConfig,
   type SiteConfig,
   type SitePromptDefaults,
 } from "@/api/admin";
@@ -538,6 +607,17 @@ const modelAssignments = [
   { key: "imageReviewModel", label: "图片审核", description: "论坛图片安全审核" },
   { key: "videoReviewModel", label: "视频审核", description: "关键帧、音轨与上下文审核" },
 ] as const;
+const serviceAssignments = [
+  { key: "aiReviewServiceId", label: "拾间 AI / 文字审核" },
+  { key: "qqGroupAdReviewServiceId", label: "QQ群广告过滤" },
+  { key: "imageReviewServiceId", label: "图片审核" },
+  { key: "videoReviewServiceId", label: "视频审核" },
+] as const;
+const serviceProviderOptions = [
+  { value: "deepseek", label: "DeepSeek 兼容接口" },
+  { value: "openai", label: "OpenAI 兼容接口" },
+  { value: "ollama", label: "Ollama" },
+] as const;
 const learningTierAssignments = [
   { key: "low", label: "快速判断", description: "常规题目与快速作答" },
   { key: "high", label: "深入分析", description: "计算题与复杂推导" },
@@ -550,6 +630,8 @@ const reasoningEffortOptions = [
   { value: "xhigh", label: "xhigh（超高）" },
   { value: "max", label: "max（最高）" },
 ] as const;
+const DEFAULT_REMOTE_AI_URL = "https://api.deepseek.com/chat/completions";
+const DEFAULT_OLLAMA_ADDRESS = "http://127.0.0.1:11434";
 const form = reactive<SiteConfig>({
   siteOrigin: "",
   siteFilingNumber: "",
@@ -570,12 +652,21 @@ const form = reactive<SiteConfig>({
     yuketang: true,
     weban: true,
   },
+  aiServices: [{
+    id: "default-main",
+    name: "默认 AI 服务",
+    provider: "deepseek",
+    apiUrl: "https://api.deepseek.com/chat/completions",
+    apiKey: "",
+  }],
+  aiReviewServiceId: "default-main",
   aiReviewEnabled: false,
   aiReviewProvider: "deepseek",
   aiReviewApiUrl: "https://api.deepseek.com/chat/completions",
   aiReviewModel: "deepseek-v4-flash",
   aiReviewFallbackModels: "",
   aiReviewApiKey: "",
+  qqGroupAdReviewServiceId: "default-main",
   qqGroupAdReviewEnabled: false,
   qqGroupAdReviewProvider: "deepseek",
   qqGroupAdReviewApiUrl: "https://api.deepseek.com/chat/completions",
@@ -584,6 +675,8 @@ const form = reactive<SiteConfig>({
   qqGroupAdReviewApiKey: "",
   qqGroupAdReviewSystemPrompt: "",
   qqGroupAdReviewUserPrompt: "",
+  imageReviewServiceId: "default-main",
+  imageReviewProvider: "deepseek",
   imageReviewEnabled: false,
   imageReviewApiUrl: "https://api.openai.com/v1/chat/completions",
   imageReviewModel: "gpt-4o-mini",
@@ -593,6 +686,8 @@ const form = reactive<SiteConfig>({
   imageReviewUserPrompt: "",
   imageReviewConcurrency: 2,
   imageReviewRequestGroupSize: 3,
+  videoReviewServiceId: "default-main",
+  videoReviewProvider: "deepseek",
   videoReviewEnabled: false,
   videoReviewApiUrl: "https://api.openai.com/v1/chat/completions",
   videoReviewModel: "gpt-4o-mini",
@@ -626,6 +721,12 @@ const form = reactive<SiteConfig>({
   assistantDailyQuotas: [],
 });
 
+const selectedAiService = computed<AiServiceConfig | null>(() => (
+  form.aiServices.find((service) => service.id === form.aiReviewServiceId)
+  || form.aiServices[0]
+  || null
+));
+const isOllamaProvider = computed(() => selectedAiService.value?.provider.trim().toLowerCase() === "ollama");
 const aiEditSimilarityPercent = computed({
   get: () => Math.round((form.aiEditSimilarityThreshold ?? 0) * 100),
   set: (value: number) => {
@@ -633,12 +734,16 @@ const aiEditSimilarityPercent = computed({
   },
 });
 const modelCatalogSummary = computed(() => {
-  if (loadingModels.value) return "正在从上游 /model 接口读取模型列表…";
+  if (loadingModels.value) return isOllamaProvider.value
+    ? "正在从 Ollama 读取模型列表…"
+    : "正在从上游 /model 接口读取模型列表…";
   if (modelOptions.value.length) {
     const source = modelCatalogEndpoint.value ? ` · ${modelCatalogEndpoint.value}` : "";
     return `已读取 ${modelOptions.value.length} 个模型${source}；下拉列表之外仍可手动填写模型 ID。`;
   }
-  return "点击“刷新模型列表”会由服务端代为请求上游 /model 接口，浏览器不会直接连接上游。";
+  return isOllamaProvider.value
+    ? "点击“刷新模型列表”会由服务端读取 Ollama 的 /v1/models（必要时回退到 /api/tags）；也可以直接填写模型 ID。"
+    : "点击“刷新模型列表”会由服务端代为请求上游 /model 接口，浏览器不会直接连接上游。";
 });
 
 onMounted(async () => {
@@ -653,6 +758,7 @@ async function loadConfig() {
     const config = await adminApi.siteConfig({ suppressErrorMessage: true });
     if (seq === configLoadSeq) {
       Object.assign(form, config);
+      ensureAiServices();
       mergeModelOptions();
     }
   } catch (error) {
@@ -681,13 +787,80 @@ function mergeModelOptions(models: string[] = []) {
   ].map((model) => model.trim()).filter(Boolean)));
 }
 
+function ensureAiServices() {
+  if (!Array.isArray(form.aiServices) || !form.aiServices.length) {
+    form.aiServices.splice(0, form.aiServices.length, {
+      id: "default-main",
+      name: "默认 AI 服务",
+      provider: "deepseek",
+      apiUrl: DEFAULT_REMOTE_AI_URL,
+      apiKey: "",
+    });
+  }
+  const seen = new Set<string>();
+  form.aiServices.forEach((service, index) => {
+    const fallbackId = `service-${index + 1}`;
+    let id = String(service.id || fallbackId).trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").slice(0, 48) || fallbackId;
+    while (seen.has(id)) id = `${id.slice(0, 42)}-${index + 1}`;
+    service.id = id;
+    service.name = String(service.name || `AI 服务 ${index + 1}`).trim();
+    service.provider = String(service.provider || "deepseek").trim() || "deepseek";
+    service.apiUrl = String(service.apiUrl || "").trim();
+    service.apiKey = String(service.apiKey || "").trim();
+    seen.add(id);
+  });
+  for (const item of serviceAssignments) {
+    if (!form.aiServices.some((service) => service.id === form[item.key])) {
+      form[item.key] = form.aiServices[0].id;
+    }
+  }
+}
+
+function handleServiceProviderChange(service: AiServiceConfig) {
+  const normalizedProvider = service.provider.trim().toLowerCase();
+  const currentUrl = service.apiUrl.trim();
+  if (normalizedProvider === "ollama" && (!currentUrl || currentUrl === DEFAULT_REMOTE_AI_URL)) {
+    service.apiUrl = DEFAULT_OLLAMA_ADDRESS;
+  } else if (normalizedProvider !== "ollama" && currentUrl === DEFAULT_OLLAMA_ADDRESS) {
+    service.apiUrl = DEFAULT_REMOTE_AI_URL;
+  }
+}
+
+function addAiService() {
+  const service: AiServiceConfig = {
+    id: `service-${Date.now()}`,
+    name: `AI 服务 ${form.aiServices.length + 1}`,
+    provider: "deepseek",
+    apiUrl: DEFAULT_REMOTE_AI_URL,
+    apiKey: "",
+  };
+  form.aiServices.push(service);
+}
+
+function removeAiService(serviceId: string) {
+  if (form.aiServices.length <= 1) return;
+  const index = form.aiServices.findIndex((service) => service.id === serviceId);
+  if (index < 0) return;
+  const fallbackId = form.aiServices[index === 0 ? 1 : 0].id;
+  form.aiServices.splice(index, 1);
+  for (const item of serviceAssignments) {
+    if (form[item.key] === serviceId) form[item.key] = fallbackId;
+  }
+}
+
+function serviceForScene(serviceId: string) {
+  return form.aiServices.find((service) => service.id === serviceId) || form.aiServices[0] || null;
+}
+
 async function loadModels() {
-  if (loadingModels.value || !form.aiReviewApiUrl.trim()) return;
+  const service = selectedAiService.value;
+  if (loadingModels.value || !service?.apiUrl.trim()) return;
   loadingModels.value = true;
   try {
     const catalog = await adminApi.aiModels({
-      apiUrl: form.aiReviewApiUrl.trim(),
-      apiKey: form.aiReviewApiKey.trim(),
+      provider: service.provider,
+      apiUrl: service.apiUrl.trim(),
+      apiKey: service.apiKey.trim(),
     });
     modelCatalogEndpoint.value = catalog.endpoint;
     mergeModelOptions(catalog.models);
@@ -720,35 +893,49 @@ async function saveConfig() {
   if (saving.value || configLoadError.value) return;
   saving.value = true;
   try {
+    ensureAiServices();
+    const mainService = serviceForScene(form.aiReviewServiceId) as AiServiceConfig;
+    const qqService = serviceForScene(form.qqGroupAdReviewServiceId) as AiServiceConfig;
+    const imageService = serviceForScene(form.imageReviewServiceId) as AiServiceConfig;
+    const videoService = serviceForScene(form.videoReviewServiceId) as AiServiceConfig;
     Object.assign(form, await adminApi.updateSiteConfig({
       assistantModel: form.assistantModel,
       learningAssistantTiers: form.learningAssistantTiers,
+      aiServices: form.aiServices.map((service) => ({ ...service })),
+      aiReviewServiceId: mainService.id,
       aiReviewEnabled: form.aiReviewEnabled,
-      aiReviewApiUrl: form.aiReviewApiUrl,
+      aiReviewProvider: mainService.provider,
+      aiReviewApiUrl: mainService.apiUrl,
       aiReviewModel: form.aiReviewModel,
       aiReviewFallbackModels: form.aiReviewFallbackModels,
-      aiReviewApiKey: form.aiReviewApiKey,
+      aiReviewApiKey: mainService.apiKey,
+      qqGroupAdReviewServiceId: qqService.id,
       qqGroupAdReviewEnabled: form.qqGroupAdReviewEnabled,
-      qqGroupAdReviewApiUrl: form.aiReviewApiUrl,
+      qqGroupAdReviewProvider: qqService.provider,
+      qqGroupAdReviewApiUrl: qqService.apiUrl,
       qqGroupAdReviewModel: form.qqGroupAdReviewModel,
       qqGroupAdReviewFallbackModels: form.qqGroupAdReviewFallbackModels,
-      qqGroupAdReviewApiKey: form.aiReviewApiKey,
+      qqGroupAdReviewApiKey: qqService.apiKey,
       qqGroupAdReviewSystemPrompt: form.qqGroupAdReviewSystemPrompt,
       qqGroupAdReviewUserPrompt: form.qqGroupAdReviewUserPrompt,
+      imageReviewServiceId: imageService.id,
+      imageReviewProvider: imageService.provider,
       imageReviewEnabled: form.imageReviewEnabled,
-      imageReviewApiUrl: form.aiReviewApiUrl,
+      imageReviewApiUrl: imageService.apiUrl,
       imageReviewModel: form.imageReviewModel,
       imageReviewFallbackModels: form.imageReviewFallbackModels,
-      imageReviewApiKey: form.aiReviewApiKey,
+      imageReviewApiKey: imageService.apiKey,
       imageReviewSystemPrompt: form.imageReviewSystemPrompt,
       imageReviewUserPrompt: form.imageReviewUserPrompt,
       imageReviewConcurrency: form.imageReviewConcurrency,
       imageReviewRequestGroupSize: form.imageReviewRequestGroupSize,
+      videoReviewServiceId: videoService.id,
+      videoReviewProvider: videoService.provider,
       videoReviewEnabled: form.videoReviewEnabled,
-      videoReviewApiUrl: form.aiReviewApiUrl,
+      videoReviewApiUrl: videoService.apiUrl,
       videoReviewModel: form.videoReviewModel,
       videoReviewFallbackModels: form.videoReviewFallbackModels,
-      videoReviewApiKey: form.aiReviewApiKey,
+      videoReviewApiKey: videoService.apiKey,
       videoReviewSystemPrompt: form.videoReviewSystemPrompt,
       videoReviewUserPrompt: form.videoReviewUserPrompt,
       videoReviewConcurrency: form.videoReviewConcurrency,
@@ -764,6 +951,7 @@ async function saveConfig() {
       aiEditSimilaritySystemPrompt: form.aiEditSimilaritySystemPrompt,
       aiEditSimilarityUserPrompt: form.aiEditSimilarityUserPrompt,
     }));
+    ensureAiServices();
     mergeModelOptions();
     ElMessage.success("AI 服务、模型与审核配置已保存");
   } finally {
@@ -1013,6 +1201,50 @@ function requestMessage(error: unknown) {
 .provider-form {
   background: var(--el-fill-color-extra-light);
   border-color: var(--el-border-color-lighter);
+}
+
+.service-pool,
+.service-routing {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 14px;
+  background: var(--cpu-surface);
+  border: 1px solid var(--cpu-border-soft);
+}
+
+.service-pool-head,
+.service-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.service-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 12px;
+  background: var(--cpu-card);
+}
+
+.service-index {
+  color: var(--cpu-text);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.service-grid,
+.routing-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.routing-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .model-grid {
@@ -1314,6 +1546,11 @@ function requestMessage(error: unknown) {
   .ai-form {
     grid-template-columns: 1fr;
     padding: 14px;
+  }
+
+  .service-grid,
+  .routing-grid {
+    grid-template-columns: 1fr;
   }
 
   .model-grid {

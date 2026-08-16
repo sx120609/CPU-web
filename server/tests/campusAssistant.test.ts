@@ -462,6 +462,33 @@ test("AI upstream requests apply explicit prompt cache key and 24-hour retention
   }
 });
 
+test("AI upstream requests omit an empty Authorization header for local Ollama", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestHeaders: Headers | null = null;
+  globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+    requestHeaders = new Headers(init?.headers);
+    return new Response('{"ok":true}', {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  try {
+    await sendAiUpstreamRequest({
+      endpoint: "http://127.0.0.1:11434/v1/chat/completions",
+      apiKey: "",
+      body: {
+        model: "qwen3:8b",
+        messages: [{ role: "user", content: "hello" }],
+      },
+    });
+
+    assert.equal(requestHeaders?.has("authorization"), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("AI upstream cache compatibility retries without unsupported retention", async () => {
   const originalFetch = globalThis.fetch;
   const requestBodies: Array<Record<string, unknown>> = [];

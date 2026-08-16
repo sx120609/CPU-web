@@ -1824,6 +1824,7 @@ adminRouter.get("/site-config/prompt-defaults", adminOnly, (_req, res) => {
 });
 
 const aiModelCatalogSchema = z.object({
+  provider: z.string().trim().max(40).optional(),
   apiUrl: z.string().trim().url().max(240).optional(),
   apiKey: z.string().trim().max(240).optional(),
 });
@@ -1831,9 +1832,10 @@ const aiModelCatalogSchema = z.object({
 adminRouter.post("/ai-models", adminOnly, validate(aiModelCatalogSchema), async (req, res, next) => {
   try {
     const siteConfig = getSiteConfig();
+    const provider = req.body.provider || siteConfig.aiReviewProvider;
     const apiUrl = req.body.apiUrl || siteConfig.aiReviewApiUrl;
     const apiKey = req.body.apiKey ?? siteConfig.aiReviewApiKey;
-    ok(res, await fetchAiModelCatalog({ apiUrl, apiKey }));
+    ok(res, await fetchAiModelCatalog({ provider, apiUrl, apiKey }));
   } catch (error) {
     const message = error instanceof Error ? error.message : "上游模型列表读取失败";
     next(Errors.badRequest(`上游模型列表读取失败：${message}`));
@@ -2091,12 +2093,21 @@ const siteConfigPatchSchema = z.object({
     weban: z.boolean(),
   }).optional(),
   learningAssistantAccessMode: z.enum(["guest-unlimited", "account-quota"]).optional(),
+  aiServices: z.array(z.object({
+    id: z.string().trim().regex(/^[a-z0-9][a-z0-9_-]{0,47}$/i),
+    name: z.string().trim().min(1).max(80),
+    provider: z.string().trim().min(1).max(40),
+    apiUrl: z.string().trim().max(240),
+    apiKey: z.string().trim().max(240),
+  })).max(20).optional(),
+  aiReviewServiceId: z.string().trim().max(48).optional(),
   aiReviewEnabled: z.boolean().optional(),
   aiReviewProvider: z.string().trim().max(40).optional(),
   aiReviewApiUrl: z.string().trim().max(240).optional(),
   aiReviewModel: z.string().trim().max(80).optional(),
   aiReviewFallbackModels: z.string().trim().max(400).optional(),
   aiReviewApiKey: z.string().trim().max(240).optional(),
+  qqGroupAdReviewServiceId: z.string().trim().max(48).optional(),
   qqGroupAdReviewEnabled: z.boolean().optional(),
   qqGroupAdReviewProvider: z.string().trim().max(40).optional(),
   qqGroupAdReviewApiUrl: z.string().trim().max(240).optional(),
@@ -2105,6 +2116,8 @@ const siteConfigPatchSchema = z.object({
   qqGroupAdReviewApiKey: z.string().trim().max(240).optional(),
   qqGroupAdReviewSystemPrompt: z.string().max(8000).optional(),
   qqGroupAdReviewUserPrompt: z.string().max(12000).optional(),
+  imageReviewServiceId: z.string().trim().max(48).optional(),
+  imageReviewProvider: z.string().trim().max(40).optional(),
   imageReviewEnabled: z.boolean().optional(),
   imageReviewApiUrl: z.string().trim().max(240).optional(),
   imageReviewModel: z.string().trim().max(80).optional(),
@@ -2114,6 +2127,8 @@ const siteConfigPatchSchema = z.object({
   imageReviewUserPrompt: z.string().max(12000).optional(),
   imageReviewConcurrency: z.number().int().min(1).max(8).optional(),
   imageReviewRequestGroupSize: z.number().int().min(1).max(6).optional(),
+  videoReviewServiceId: z.string().trim().max(48).optional(),
+  videoReviewProvider: z.string().trim().max(40).optional(),
   videoReviewEnabled: z.boolean().optional(),
   videoReviewApiUrl: z.string().trim().max(240).optional(),
   videoReviewModel: z.string().trim().max(80).optional(),
@@ -2166,12 +2181,15 @@ const siteConfigPatchSchema = z.object({
 adminRouter.patch("/site-config", adminOnly, validate(siteConfigPatchSchema), async (req, res, next) => {
   try {
     if (
+      req.body.aiServices !== undefined ||
+      req.body.aiReviewServiceId !== undefined ||
       req.body.aiReviewEnabled !== undefined ||
       req.body.aiReviewProvider !== undefined ||
       req.body.aiReviewApiUrl !== undefined ||
       req.body.aiReviewModel !== undefined ||
       req.body.aiReviewFallbackModels !== undefined ||
       req.body.aiReviewApiKey !== undefined ||
+      req.body.qqGroupAdReviewServiceId !== undefined ||
       req.body.qqGroupAdReviewEnabled !== undefined ||
       req.body.qqGroupAdReviewProvider !== undefined ||
       req.body.qqGroupAdReviewApiUrl !== undefined ||
@@ -2180,6 +2198,8 @@ adminRouter.patch("/site-config", adminOnly, validate(siteConfigPatchSchema), as
       req.body.qqGroupAdReviewApiKey !== undefined ||
       req.body.qqGroupAdReviewSystemPrompt !== undefined ||
       req.body.qqGroupAdReviewUserPrompt !== undefined ||
+      req.body.imageReviewServiceId !== undefined ||
+      req.body.imageReviewProvider !== undefined ||
       req.body.imageReviewEnabled !== undefined ||
       req.body.imageReviewApiUrl !== undefined ||
       req.body.imageReviewModel !== undefined ||
@@ -2189,6 +2209,8 @@ adminRouter.patch("/site-config", adminOnly, validate(siteConfigPatchSchema), as
       req.body.imageReviewUserPrompt !== undefined ||
       req.body.imageReviewConcurrency !== undefined ||
       req.body.imageReviewRequestGroupSize !== undefined ||
+      req.body.videoReviewServiceId !== undefined ||
+      req.body.videoReviewProvider !== undefined ||
       req.body.videoReviewEnabled !== undefined ||
       req.body.videoReviewApiUrl !== undefined ||
       req.body.videoReviewModel !== undefined ||

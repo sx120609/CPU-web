@@ -1,4 +1,4 @@
-import { getSiteConfig } from "./siteSettings";
+import { getSiteConfig, isAiProviderReady } from "./siteSettings";
 import { requestAiJson } from "./topicAiReview";
 
 export type TopicFormatEditorMode = "visual" | "markup";
@@ -55,7 +55,12 @@ export async function autoFormatTopicContent(input: {
   const fallback = fallbackFormatContent(original);
   const config = getSiteConfig();
 
-  if (!config.aiReviewApiKey.trim()) {
+  if (!isAiProviderReady({
+    provider: config.aiReviewProvider,
+    apiUrl: config.aiReviewApiUrl,
+    apiKey: config.aiReviewApiKey,
+    model: config.aiReviewModel,
+  })) {
     return {
       content: fallback,
       provider: "fallback",

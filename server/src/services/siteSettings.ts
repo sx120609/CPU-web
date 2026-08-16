@@ -53,6 +53,14 @@ export type LearningAssistantTierConfig = {
 export type LearningAssistantTiersConfig = Record<LearningAssistantTierKey, LearningAssistantTierConfig>;
 export type LearningPlatformKey = "chaoxing" | "zhihuishu" | "icve" | "zjy" | "icourse" | "yuketang" | "weban";
 export type LearningPlatformAvailability = Record<LearningPlatformKey, boolean>;
+export type AiServiceConfig = {
+  id: string;
+  name: string;
+  provider: string;
+  apiUrl: string;
+  apiKey: string;
+};
+export type AiServiceScene = "assistant" | "text-review" | "qq-group-ad" | "image-review" | "video-review";
 export type SiteConfig = {
   siteOrigin: string;
   siteFilingNumber: string;
@@ -61,12 +69,15 @@ export type SiteConfig = {
   learningAssistantTiers: LearningAssistantTiersConfig;
   learningAssistantAccessMode: LearningAssistantAccessMode;
   learningPlatforms: LearningPlatformAvailability;
+  aiServices: AiServiceConfig[];
+  aiReviewServiceId: string;
   aiReviewEnabled: boolean;
   aiReviewProvider: string;
   aiReviewApiUrl: string;
   aiReviewModel: string;
   aiReviewFallbackModels: string;
   aiReviewApiKey: string;
+  qqGroupAdReviewServiceId: string;
   qqGroupAdReviewEnabled: boolean;
   qqGroupAdReviewProvider: string;
   qqGroupAdReviewApiUrl: string;
@@ -75,6 +86,8 @@ export type SiteConfig = {
   qqGroupAdReviewApiKey: string;
   qqGroupAdReviewSystemPrompt: string;
   qqGroupAdReviewUserPrompt: string;
+  imageReviewServiceId: string;
+  imageReviewProvider: string;
   imageReviewEnabled: boolean;
   imageReviewApiUrl: string;
   imageReviewModel: string;
@@ -84,6 +97,8 @@ export type SiteConfig = {
   imageReviewUserPrompt: string;
   imageReviewConcurrency: number;
   imageReviewRequestGroupSize: number;
+  videoReviewServiceId: string;
+  videoReviewProvider: string;
   videoReviewEnabled: boolean;
   videoReviewApiUrl: string;
   videoReviewModel: string;
@@ -116,6 +131,274 @@ export type SiteConfig = {
   reputationLevels: ReputationLevelConfig[];
   assistantDailyQuotas: AssistantDailyQuotaConfig[];
 };
+
+export function isOllamaAiProvider(provider: string | null | undefined) {
+  return String(provider || "").trim().toLowerCase() === "ollama";
+}
+
+/**
+ * Ollama's local OpenAI-compatible endpoint does not need a secret key.
+ * Other providers still require a configured API key so an enabled feature
+ * cannot silently send unauthenticated requests to a remote endpoint.
+ */
+export function hasAiProviderAccess(input: {
+  provider?: string | null;
+  apiUrl?: string | null;
+  apiKey?: string | null;
+}) {
+  const apiUrl = String(input.apiUrl || "").trim();
+  const apiKey = String(input.apiKey || "").trim();
+  return Boolean(apiUrl && (apiKey || isOllamaAiProvider(input.provider)));
+}
+
+export function isAiProviderReady(input: {
+  provider?: string | null;
+  apiUrl?: string | null;
+  apiKey?: string | null;
+  model?: string | null;
+}) {
+  return Boolean(
+    String(input.model || "").trim()
+    && hasAiProviderAccess(input),
+  );
+}
+
+export const DEFAULT_AI_SERVICES: AiServiceConfig[] = [
+  {
+    id: "default-main",
+    name: "默认 AI 服务",
+    provider: "deepseek",
+    apiUrl: "https://api.deepseek.com/chat/completions",
+    apiKey: "",
+  },
+];
+
+type AiServiceLegacySource = {
+  aiReviewProvider?: string | null;
+  aiReviewApiUrl?: string | null;
+  aiReviewApiKey?: string | null;
+  qqGroupAdReviewProvider?: string | null;
+  qqGroupAdReviewApiUrl?: string | null;
+  qqGroupAdReviewApiKey?: string | null;
+  imageReviewProvider?: string | null;
+  imageReviewApiUrl?: string | null;
+  imageReviewApiKey?: string | null;
+  videoReviewProvider?: string | null;
+  videoReviewApiUrl?: string | null;
+  videoReviewApiKey?: string | null;
+};
+
+function normalizeAiServiceId(value: unknown, index: number, used: Set<string>) {
+  const base = String(value ?? `service-${index + 1}`)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^[-_]+|[-_]+$/g, "")
+    .slice(0, 48) || `service-${index + 1}`;
+  let id = base;
+  let suffix = 2;
+  while (used.has(id)) {
+    id = `${base.slice(0, Math.max(1, 48 - String(suffix).length - 1))}-${suffix++}`;
+  }
+  used.add(id);
+  return id;
+}
+
+function normalizeAiServiceEntries(input: unknown): AiServiceConfig[] {
+  if (!Array.isArray(input)) return [];
+  const used = new Set<string>();
+  const result: AiServiceConfig[] = [];
+  const signatures = new Set<string>();
+  for (const [index, raw] of input.slice(0, 20).entries()) {
+    if (!raw || typeof raw !== "object") continue;
+    const item = raw as Record<string, unknown>;
+    const provider = String(item.provider ?? "deepseek").trim().slice(0, 40) || "deepseek";
+    const apiUrl = String(item.apiUrl ?? "").trim().slice(0, 240);
+    const apiKey = String(item.apiKey ?? "").trim().slice(0, 240);
+    const signature = `${provider}\n${apiUrl}\n${apiKey}`;
+    if (signatures.has(signature)) continue;
+    signatures.add(signature);
+    result.push({
+      id: normalizeAiServiceId(item.id, index, used),
+      name: String(item.name ?? `AI 服务 ${index + 1}`).trim().slice(0, 80) || `AI 服务 ${index + 1}`,
+      provider,
+      apiUrl,
+      apiKey,
+    });
+  }
+  return result;
+}
+
+export function normalizeAiServiceList(input: unknown, fallback: AiServiceConfig[] = DEFAULT_AI_SERVICES): AiServiceConfig[] {
+  const parsed = typeof input === "string" ? parseJsonValue<unknown>(input, []) : input;
+  const result = normalizeAiServiceEntries(parsed);
+  if (result.length) return result;
+  return normalizeAiServiceEntries(fallback);
+}
+
+function inferAiServiceProvider(apiUrl: string, fallback: string) {
+  if (/ollama|:11434(?:\/|$)/i.test(apiUrl)) return "ollama";
+  if (/openai\.com/i.test(apiUrl)) return "openai";
+  return fallback || "deepseek";
+}
+
+function legacyAiService(source: AiServiceLegacySource, scene: AiServiceScene): Omit<AiServiceConfig, "id" | "name"> {
+  const mainProvider = String(source.aiReviewProvider || "deepseek").trim() || "deepseek";
+  const mainUrl = String(source.aiReviewApiUrl || DEFAULT_AI_SERVICES[0].apiUrl).trim() || DEFAULT_AI_SERVICES[0].apiUrl;
+  if (scene === "qq-group-ad") {
+    return {
+      provider: String(source.qqGroupAdReviewProvider || mainProvider).trim() || mainProvider,
+      apiUrl: String(source.qqGroupAdReviewApiUrl || mainUrl).trim() || mainUrl,
+      apiKey: String(source.qqGroupAdReviewApiKey || "").trim(),
+    };
+  }
+  if (scene === "image-review") {
+    const apiUrl = String(source.imageReviewApiUrl || "https://api.openai.com/v1/chat/completions").trim()
+      || "https://api.openai.com/v1/chat/completions";
+    return {
+      provider: String(source.imageReviewProvider || inferAiServiceProvider(apiUrl, mainProvider)).trim()
+        || inferAiServiceProvider(apiUrl, mainProvider),
+      apiUrl,
+      apiKey: String(source.imageReviewApiKey || "").trim(),
+    };
+  }
+  if (scene === "video-review") {
+    const apiUrl = String(source.videoReviewApiUrl || "https://api.openai.com/v1/chat/completions").trim()
+      || "https://api.openai.com/v1/chat/completions";
+    return {
+      provider: String(source.videoReviewProvider || inferAiServiceProvider(apiUrl, mainProvider)).trim()
+        || inferAiServiceProvider(apiUrl, mainProvider),
+      apiUrl,
+      apiKey: String(source.videoReviewApiKey || "").trim(),
+    };
+  }
+  return {
+    provider: mainProvider,
+    apiUrl: mainUrl,
+    apiKey: String(source.aiReviewApiKey || "").trim(),
+  };
+}
+
+function aiServiceSignature(service: Pick<AiServiceConfig, "provider" | "apiUrl" | "apiKey">) {
+  return `${String(service.provider || "").trim()}\n${String(service.apiUrl || "").trim()}\n${String(service.apiKey || "").trim()}`;
+}
+
+export function buildAiServicesFromLegacy(source: AiServiceLegacySource): AiServiceConfig[] {
+  const main = legacyAiService(source, "assistant");
+  const candidates: Array<AiServiceConfig & { scene: AiServiceScene }> = [
+    { id: "default-main", name: "默认 AI 服务", scene: "assistant", ...main },
+    { id: "qq-group-ad", name: "QQ群广告服务", scene: "qq-group-ad", ...legacyAiService(source, "qq-group-ad") },
+  ];
+  for (const scene of ["image-review", "video-review"] as const) {
+    const service = legacyAiService(source, scene);
+    const hasMeaningfulLegacyOverride = Boolean(service.apiKey)
+      || service.provider !== "openai"
+      || service.apiUrl !== "https://api.openai.com/v1/chat/completions";
+    if (hasMeaningfulLegacyOverride) {
+      candidates.push({
+        id: scene,
+        name: scene === "image-review" ? "图片审核服务" : "视频审核服务",
+        scene,
+        ...service,
+      });
+    }
+  }
+  const seen = new Set<string>();
+  return candidates.filter((candidate) => {
+    const signature = aiServiceSignature(candidate);
+    if (seen.has(signature)) return false;
+    seen.add(signature);
+    return true;
+  }).map(({ scene: _scene, ...service }) => service);
+}
+
+function legacyFieldForScene(source: AiServiceLegacySource, scene: AiServiceScene) {
+  return legacyAiService(source, scene);
+}
+
+function sceneServiceId(input: AiServiceLegacySource & Partial<Pick<SiteConfig,
+  "aiReviewServiceId" | "qqGroupAdReviewServiceId" | "imageReviewServiceId" | "videoReviewServiceId"
+>>, scene: AiServiceScene) {
+  if (scene === "qq-group-ad") return String(input.qqGroupAdReviewServiceId || "").trim();
+  if (scene === "image-review") return String(input.imageReviewServiceId || "").trim();
+  if (scene === "video-review") return String(input.videoReviewServiceId || "").trim();
+  return String(input.aiReviewServiceId || "").trim();
+}
+
+function sceneLabel(scene: AiServiceScene) {
+  if (scene === "qq-group-ad") return "QQ群广告服务";
+  if (scene === "image-review") return "图片审核服务";
+  if (scene === "video-review") return "视频审核服务";
+  return "默认 AI 服务";
+}
+
+function findSceneService(
+  input: AiServiceLegacySource & Partial<Pick<SiteConfig,
+    "aiServices" | "aiReviewServiceId" | "qqGroupAdReviewServiceId" | "imageReviewServiceId" | "videoReviewServiceId"
+  >>,
+  scene: AiServiceScene,
+) {
+  const services = normalizeAiServiceEntries(input.aiServices);
+  const requestedId = sceneServiceId(input, scene);
+  const legacy = legacyFieldForScene(input, scene);
+  const selected = services.find((service) => service.id === requestedId)
+    || services.find((service) => aiServiceSignature(service) === aiServiceSignature(legacy))
+    || services[0];
+  if (selected) return { serviceId: selected.id, ...selected };
+  return {
+    serviceId: requestedId,
+    name: sceneLabel(scene),
+    ...legacy,
+  };
+}
+
+export function resolveAiServiceForScene(
+  input: AiServiceLegacySource & Partial<Pick<SiteConfig,
+    "aiServices" | "aiReviewServiceId" | "qqGroupAdReviewServiceId" | "imageReviewServiceId" | "videoReviewServiceId"
+  >>,
+  scene: AiServiceScene,
+) {
+  return findSceneService(input, scene);
+}
+
+function resolveAiServiceId(
+  services: AiServiceConfig[],
+  requestedId: string,
+  legacy: Pick<AiServiceConfig, "provider" | "apiUrl" | "apiKey">,
+) {
+  const requested = services.find((service) => service.id === requestedId);
+  if (requested) return requested.id;
+  const matching = services.find((service) => aiServiceSignature(service) === aiServiceSignature(legacy));
+  return matching?.id || services[0]?.id || "";
+}
+
+function applyAiServiceToLegacyFields(target: SiteConfig, scene: AiServiceScene, service: AiServiceConfig) {
+  if (scene === "qq-group-ad") {
+    target.qqGroupAdReviewServiceId = service.id;
+    target.qqGroupAdReviewProvider = service.provider;
+    target.qqGroupAdReviewApiUrl = service.apiUrl;
+    target.qqGroupAdReviewApiKey = service.apiKey;
+    return;
+  }
+  if (scene === "image-review") {
+    target.imageReviewServiceId = service.id;
+    target.imageReviewProvider = service.provider;
+    target.imageReviewApiUrl = service.apiUrl;
+    target.imageReviewApiKey = service.apiKey;
+    return;
+  }
+  if (scene === "video-review") {
+    target.videoReviewServiceId = service.id;
+    target.videoReviewProvider = service.provider;
+    target.videoReviewApiUrl = service.apiUrl;
+    target.videoReviewApiKey = service.apiKey;
+    return;
+  }
+  target.aiReviewServiceId = service.id;
+  target.aiReviewProvider = service.provider;
+  target.aiReviewApiUrl = service.apiUrl;
+  target.aiReviewApiKey = service.apiKey;
+}
 export type SitePromptDefaults = Pick<
   SiteConfig,
   | "qqGroupAdReviewSystemPrompt"
@@ -186,12 +469,15 @@ const GLOBAL_PINNED_TOPICS_KEY = "forum.globalPinnedTopics";
 const SITE_ORIGIN_KEY = "site.origin";
 const SITE_FILING_NUMBER_KEY = "site.filingNumber";
 const TOP_NAVIGATION_KEY = "site.topNavigation";
+const AI_SERVICES_KEY = "ai.services";
+const AI_REVIEW_SERVICE_ID_KEY = "ai.review.serviceId";
 const AI_REVIEW_ENABLED_KEY = "ai.review.enabled";
 const AI_REVIEW_PROVIDER_KEY = "ai.review.provider";
 const AI_REVIEW_API_URL_KEY = "ai.review.apiUrl";
 const AI_REVIEW_MODEL_KEY = "ai.review.model";
 const AI_REVIEW_FALLBACK_MODELS_KEY = "ai.review.fallbackModels";
 const AI_REVIEW_API_KEY = "ai.review.apiKey";
+const QQ_GROUP_AD_REVIEW_SERVICE_ID_KEY = "ai.qqGroupAdReview.serviceId";
 const QQ_GROUP_AD_REVIEW_ENABLED_KEY = "ai.qqGroupAdReview.enabled";
 const QQ_GROUP_AD_REVIEW_PROVIDER_KEY = "ai.qqGroupAdReview.provider";
 const QQ_GROUP_AD_REVIEW_API_URL_KEY = "ai.qqGroupAdReview.apiUrl";
@@ -201,6 +487,8 @@ const QQ_GROUP_AD_REVIEW_API_KEY = "ai.qqGroupAdReview.apiKey";
 const QQ_GROUP_AD_REVIEW_SYSTEM_PROMPT_KEY = "ai.qqGroupAdReview.systemPrompt";
 const QQ_GROUP_AD_REVIEW_USER_PROMPT_KEY = "ai.qqGroupAdReview.userPrompt";
 const IMAGE_REVIEW_ENABLED_KEY = "ai.imageReview.enabled";
+const IMAGE_REVIEW_SERVICE_ID_KEY = "ai.imageReview.serviceId";
+const IMAGE_REVIEW_PROVIDER_KEY = "ai.imageReview.provider";
 const IMAGE_REVIEW_API_URL_KEY = "ai.imageReview.apiUrl";
 const IMAGE_REVIEW_MODEL_KEY = "ai.imageReview.model";
 const IMAGE_REVIEW_FALLBACK_MODELS_KEY = "ai.imageReview.fallbackModels";
@@ -210,6 +498,8 @@ const IMAGE_REVIEW_USER_PROMPT_KEY = "ai.imageReview.userPrompt";
 const IMAGE_REVIEW_CONCURRENCY_KEY = "ai.imageReview.concurrency";
 const IMAGE_REVIEW_REQUEST_GROUP_SIZE_KEY = "ai.imageReview.requestGroupSize";
 const VIDEO_REVIEW_ENABLED_KEY = "ai.videoReview.enabled";
+const VIDEO_REVIEW_SERVICE_ID_KEY = "ai.videoReview.serviceId";
+const VIDEO_REVIEW_PROVIDER_KEY = "ai.videoReview.provider";
 const VIDEO_REVIEW_API_URL_KEY = "ai.videoReview.apiUrl";
 const VIDEO_REVIEW_MODEL_KEY = "ai.videoReview.model";
 const VIDEO_REVIEW_FALLBACK_MODELS_KEY = "ai.videoReview.fallbackModels";
@@ -455,12 +745,15 @@ const configCache: SiteConfig = {
   learningAssistantTiers: structuredClone(DEFAULT_LEARNING_ASSISTANT_TIERS),
   learningAssistantAccessMode: DEFAULT_LEARNING_ASSISTANT_ACCESS_MODE,
   learningPlatforms: { ...DEFAULT_LEARNING_PLATFORM_AVAILABILITY },
+  aiServices: [],
+  aiReviewServiceId: "",
   aiReviewEnabled: false,
   aiReviewProvider: "deepseek",
   aiReviewApiUrl: "https://api.deepseek.com/chat/completions",
   aiReviewModel: "deepseek-v4-flash",
   aiReviewFallbackModels: "",
   aiReviewApiKey: "",
+  qqGroupAdReviewServiceId: "",
   qqGroupAdReviewEnabled: false,
   qqGroupAdReviewProvider: "deepseek",
   qqGroupAdReviewApiUrl: "https://api.deepseek.com/chat/completions",
@@ -469,6 +762,8 @@ const configCache: SiteConfig = {
   qqGroupAdReviewApiKey: "",
   qqGroupAdReviewSystemPrompt: DEFAULT_QQ_GROUP_AD_REVIEW_PROMPTS.system,
   qqGroupAdReviewUserPrompt: DEFAULT_QQ_GROUP_AD_REVIEW_PROMPTS.user,
+  imageReviewServiceId: "",
+  imageReviewProvider: "",
   imageReviewEnabled: false,
   imageReviewApiUrl: "https://api.openai.com/v1/chat/completions",
   imageReviewModel: "gpt-4o-mini",
@@ -478,6 +773,8 @@ const configCache: SiteConfig = {
   imageReviewUserPrompt: DEFAULT_IMAGE_REVIEW_PROMPTS.user,
   imageReviewConcurrency: 2,
   imageReviewRequestGroupSize: 3,
+  videoReviewServiceId: "",
+  videoReviewProvider: "",
   videoReviewEnabled: false,
   videoReviewApiUrl: "https://api.openai.com/v1/chat/completions",
   videoReviewModel: "gpt-4o-mini",
@@ -605,12 +902,15 @@ export async function loadFeatures(): Promise<void> {
           SITE_ORIGIN_KEY,
           SITE_FILING_NUMBER_KEY,
           TOP_NAVIGATION_KEY,
+          AI_SERVICES_KEY,
+          AI_REVIEW_SERVICE_ID_KEY,
           AI_REVIEW_ENABLED_KEY,
           AI_REVIEW_PROVIDER_KEY,
           AI_REVIEW_API_URL_KEY,
           AI_REVIEW_MODEL_KEY,
           AI_REVIEW_FALLBACK_MODELS_KEY,
           AI_REVIEW_API_KEY,
+          QQ_GROUP_AD_REVIEW_SERVICE_ID_KEY,
           QQ_GROUP_AD_REVIEW_ENABLED_KEY,
           QQ_GROUP_AD_REVIEW_PROVIDER_KEY,
           QQ_GROUP_AD_REVIEW_API_URL_KEY,
@@ -619,6 +919,8 @@ export async function loadFeatures(): Promise<void> {
           QQ_GROUP_AD_REVIEW_API_KEY,
           QQ_GROUP_AD_REVIEW_SYSTEM_PROMPT_KEY,
           QQ_GROUP_AD_REVIEW_USER_PROMPT_KEY,
+          IMAGE_REVIEW_SERVICE_ID_KEY,
+          IMAGE_REVIEW_PROVIDER_KEY,
           IMAGE_REVIEW_ENABLED_KEY,
           IMAGE_REVIEW_API_URL_KEY,
           IMAGE_REVIEW_MODEL_KEY,
@@ -628,6 +930,8 @@ export async function loadFeatures(): Promise<void> {
           IMAGE_REVIEW_USER_PROMPT_KEY,
           IMAGE_REVIEW_CONCURRENCY_KEY,
           IMAGE_REVIEW_REQUEST_GROUP_SIZE_KEY,
+          VIDEO_REVIEW_SERVICE_ID_KEY,
+          VIDEO_REVIEW_PROVIDER_KEY,
           VIDEO_REVIEW_ENABLED_KEY,
           VIDEO_REVIEW_API_URL_KEY,
           VIDEO_REVIEW_MODEL_KEY,
@@ -695,6 +999,14 @@ export async function loadFeatures(): Promise<void> {
       }
       continue;
     }
+    if (r.key === AI_SERVICES_KEY) {
+      configCache.aiServices = normalizeAiServiceEntries(parseJsonValue<unknown>(r.value, []));
+      continue;
+    }
+    if (r.key === AI_REVIEW_SERVICE_ID_KEY) {
+      configCache.aiReviewServiceId = String(r.value || "").trim();
+      continue;
+    }
     if (r.key === AI_REVIEW_ENABLED_KEY) {
       configCache.aiReviewEnabled = r.value === "on";
       continue;
@@ -717,6 +1029,10 @@ export async function loadFeatures(): Promise<void> {
     }
     if (r.key === AI_REVIEW_API_KEY) {
       configCache.aiReviewApiKey = String(r.value || "");
+      continue;
+    }
+    if (r.key === QQ_GROUP_AD_REVIEW_SERVICE_ID_KEY) {
+      configCache.qqGroupAdReviewServiceId = String(r.value || "").trim();
       continue;
     }
     if (r.key === QQ_GROUP_AD_REVIEW_ENABLED_KEY) {
@@ -749,6 +1065,14 @@ export async function loadFeatures(): Promise<void> {
     }
     if (r.key === QQ_GROUP_AD_REVIEW_USER_PROMPT_KEY) {
       configCache.qqGroupAdReviewUserPrompt = normalizePromptTemplate(r.value, DEFAULT_QQ_GROUP_AD_REVIEW_PROMPTS.user);
+      continue;
+    }
+    if (r.key === IMAGE_REVIEW_SERVICE_ID_KEY) {
+      configCache.imageReviewServiceId = String(r.value || "").trim();
+      continue;
+    }
+    if (r.key === IMAGE_REVIEW_PROVIDER_KEY) {
+      configCache.imageReviewProvider = String(r.value || "openai").trim() || "openai";
       continue;
     }
     if (r.key === IMAGE_REVIEW_ENABLED_KEY) {
@@ -785,6 +1109,14 @@ export async function loadFeatures(): Promise<void> {
     }
     if (r.key === IMAGE_REVIEW_REQUEST_GROUP_SIZE_KEY) {
       configCache.imageReviewRequestGroupSize = normalizeSmallInt(r.value, 3, 1, 6);
+      continue;
+    }
+    if (r.key === VIDEO_REVIEW_SERVICE_ID_KEY) {
+      configCache.videoReviewServiceId = String(r.value || "").trim();
+      continue;
+    }
+    if (r.key === VIDEO_REVIEW_PROVIDER_KEY) {
+      configCache.videoReviewProvider = String(r.value || "openai").trim() || "openai";
       continue;
     }
     if (r.key === VIDEO_REVIEW_ENABLED_KEY) {
@@ -1038,14 +1370,49 @@ export function isFeatureOn(f: FeatureKey): boolean {
 }
 
 export function getSiteConfig(): SiteConfig {
-  return {
+  const aiServices = normalizeAiServiceList(
+    configCache.aiServices,
+    buildAiServicesFromLegacy(configCache),
+  );
+  const result: SiteConfig = {
     ...configCache,
+    aiServices: aiServices.map((service) => ({ ...service })),
     learningAssistantTiers: structuredClone(configCache.learningAssistantTiers),
     learningPlatforms: { ...configCache.learningPlatforms },
     anonymousTiers: configCache.anonymousTiers.map((item) => ({ ...item })),
     reputationLevels: configCache.reputationLevels.map((item) => ({ ...item })),
     assistantDailyQuotas: configCache.assistantDailyQuotas.map((item) => ({ ...item })),
   };
+  const sceneMap: Array<[AiServiceScene, (service: ReturnType<typeof resolveAiServiceForScene>) => void]> = [
+    ["assistant", (service) => {
+      result.aiReviewServiceId = service.serviceId;
+      result.aiReviewProvider = service.provider;
+      result.aiReviewApiUrl = service.apiUrl;
+      result.aiReviewApiKey = service.apiKey;
+    }],
+    ["qq-group-ad", (service) => {
+      result.qqGroupAdReviewServiceId = service.serviceId;
+      result.qqGroupAdReviewProvider = service.provider;
+      result.qqGroupAdReviewApiUrl = service.apiUrl;
+      result.qqGroupAdReviewApiKey = service.apiKey;
+    }],
+    ["image-review", (service) => {
+      result.imageReviewServiceId = service.serviceId;
+      result.imageReviewProvider = service.provider;
+      result.imageReviewApiUrl = service.apiUrl;
+      result.imageReviewApiKey = service.apiKey;
+    }],
+    ["video-review", (service) => {
+      result.videoReviewServiceId = service.serviceId;
+      result.videoReviewProvider = service.provider;
+      result.videoReviewApiUrl = service.apiUrl;
+      result.videoReviewApiKey = service.apiKey;
+    }],
+  ];
+  for (const [scene, apply] of sceneMap) {
+    apply(resolveAiServiceForScene(result, scene));
+  }
+  return result;
 }
 
 export function getSitePromptDefaults(): SitePromptDefaults {
@@ -1312,6 +1679,8 @@ function sanitizeAiReviewConfig() {
   configCache.qqGroupAdReviewFallbackModels = normalizeFallbackModelList(configCache.qqGroupAdReviewFallbackModels, configCache.qqGroupAdReviewModel);
   configCache.qqGroupAdReviewSystemPrompt = normalizePromptTemplate(configCache.qqGroupAdReviewSystemPrompt, DEFAULT_QQ_GROUP_AD_REVIEW_PROMPTS.system);
   configCache.qqGroupAdReviewUserPrompt = normalizePromptTemplate(configCache.qqGroupAdReviewUserPrompt, DEFAULT_QQ_GROUP_AD_REVIEW_PROMPTS.user);
+  configCache.imageReviewProvider = String(configCache.imageReviewProvider || inferAiServiceProvider(configCache.imageReviewApiUrl, configCache.aiReviewProvider)).trim()
+    || inferAiServiceProvider(configCache.imageReviewApiUrl, configCache.aiReviewProvider);
   configCache.imageReviewApiUrl = normalizePromptTemplate(configCache.imageReviewApiUrl, "https://api.openai.com/v1/chat/completions");
   configCache.imageReviewModel = String(configCache.imageReviewModel || "gpt-4o-mini").trim() || "gpt-4o-mini";
   configCache.imageReviewFallbackModels = normalizeFallbackModelList(configCache.imageReviewFallbackModels, configCache.imageReviewModel);
@@ -1321,19 +1690,33 @@ function sanitizeAiReviewConfig() {
   configCache.imageReviewSystemPrompt = normalizePromptTemplate(configCache.imageReviewSystemPrompt, DEFAULT_IMAGE_REVIEW_PROMPTS.system);
   configCache.imageReviewUserPrompt = normalizePromptTemplate(configCache.imageReviewUserPrompt, DEFAULT_IMAGE_REVIEW_PROMPTS.user);
   configCache.videoReviewApiUrl = normalizePromptTemplate(configCache.videoReviewApiUrl, "https://api.openai.com/v1/chat/completions");
+  configCache.videoReviewProvider = String(configCache.videoReviewProvider || inferAiServiceProvider(configCache.videoReviewApiUrl, configCache.aiReviewProvider)).trim()
+    || inferAiServiceProvider(configCache.videoReviewApiUrl, configCache.aiReviewProvider);
   configCache.videoReviewModel = String(configCache.videoReviewModel || "gpt-4o-mini").trim() || "gpt-4o-mini";
   configCache.videoReviewFallbackModels = normalizeFallbackModelList(configCache.videoReviewFallbackModels, configCache.videoReviewModel);
   configCache.videoReviewConcurrency = normalizeSmallInt(configCache.videoReviewConcurrency, 1, 1, 2);
   configCache.videoReviewSystemPrompt = normalizePromptTemplate(configCache.videoReviewSystemPrompt, DEFAULT_VIDEO_REVIEW_PROMPTS.system);
   configCache.videoReviewUserPrompt = normalizePromptTemplate(configCache.videoReviewUserPrompt, DEFAULT_VIDEO_REVIEW_PROMPTS.user);
+
+  const legacyServices = buildAiServicesFromLegacy(configCache);
+  configCache.aiServices = normalizeAiServiceList(configCache.aiServices, legacyServices);
+  const scenes: AiServiceScene[] = ["assistant", "qq-group-ad", "image-review", "video-review"];
+  for (const scene of scenes) {
+    const legacy = legacyFieldForScene(configCache, scene);
+    const requestedId = sceneServiceId(configCache, scene);
+    const serviceId = resolveAiServiceId(configCache.aiServices, requestedId, legacy);
+    const service = configCache.aiServices.find((item) => item.id === serviceId) || configCache.aiServices[0];
+    if (service) applyAiServiceToLegacyFields(configCache, scene, service);
+  }
 }
 
 export function resolveSharedAiProviderConfig(input: SiteConfig = getSiteConfig()) {
   const canonical = {
+    provider: String(input.aiReviewProvider || "").trim(),
     apiUrl: String(input.aiReviewApiUrl || "").trim(),
     apiKey: String(input.aiReviewApiKey || "").trim(),
   };
-  if (canonical.apiKey) return canonical;
+  if (hasAiProviderAccess(canonical)) return canonical;
 
   const legacy = [
     { apiUrl: input.imageReviewApiUrl, apiKey: input.imageReviewApiKey },
@@ -1341,8 +1724,50 @@ export function resolveSharedAiProviderConfig(input: SiteConfig = getSiteConfig(
     { apiUrl: input.qqGroupAdReviewApiUrl, apiKey: input.qqGroupAdReviewApiKey },
   ].find((item) => String(item.apiKey || "").trim());
   return legacy
-    ? { apiUrl: String(legacy.apiUrl || "").trim(), apiKey: String(legacy.apiKey || "").trim() }
+    ? { provider: "legacy", apiUrl: String(legacy.apiUrl || "").trim(), apiKey: String(legacy.apiKey || "").trim() }
     : canonical;
+}
+
+function hasOwnProperty(input: object, key: PropertyKey) {
+  return Object.prototype.hasOwnProperty.call(input, key);
+}
+
+function updateLegacySelectedServices(
+  services: AiServiceConfig[],
+  input: Partial<SiteConfig>,
+) {
+  const scenes: Array<{ scene: AiServiceScene; fields: string[] }> = [
+    {
+      scene: "assistant",
+      fields: ["aiReviewProvider", "aiReviewApiUrl", "aiReviewApiKey"],
+    },
+    {
+      scene: "qq-group-ad",
+      fields: ["qqGroupAdReviewProvider", "qqGroupAdReviewApiUrl", "qqGroupAdReviewApiKey"],
+    },
+    {
+      scene: "image-review",
+      fields: ["imageReviewProvider", "imageReviewApiUrl", "imageReviewApiKey"],
+    },
+    {
+      scene: "video-review",
+      fields: ["videoReviewProvider", "videoReviewApiUrl", "videoReviewApiKey"],
+    },
+  ];
+  for (const { scene, fields } of scenes) {
+    if (!fields.some((field) => hasOwnProperty(input, field))) continue;
+    const requestedId = sceneServiceId(input, scene) || sceneServiceId(configCache, scene);
+    const currentLegacy = legacyFieldForScene(configCache, scene);
+    const target = services.find((service) => service.id === requestedId)
+      || services.find((service) => aiServiceSignature(service) === aiServiceSignature(currentLegacy))
+      || services[0];
+    if (!target) continue;
+    const nextLegacy = legacyFieldForScene({ ...configCache, ...input }, scene);
+    target.provider = nextLegacy.provider;
+    target.apiUrl = nextLegacy.apiUrl;
+    target.apiKey = nextLegacy.apiKey;
+  }
+  return services;
 }
 
 function sanitizeCampusAssistantConfig() {
@@ -1438,36 +1863,64 @@ function sanitizeCommunityTrustConfig() {
 }
 
 export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<SiteConfig> {
+  const legacySource = { ...configCache, ...input };
+  let aiServices = normalizeAiServiceList(
+    input.aiServices !== undefined ? input.aiServices : configCache.aiServices,
+    buildAiServicesFromLegacy(legacySource),
+  );
+  if (input.aiServices === undefined) {
+    aiServices = updateLegacySelectedServices(aiServices, input);
+  }
+  aiServices = normalizeAiServiceList(aiServices, buildAiServicesFromLegacy(legacySource));
+  const selectedServices = new Map<AiServiceScene, AiServiceConfig>();
+  for (const scene of ["assistant", "qq-group-ad", "image-review", "video-review"] as AiServiceScene[]) {
+    const legacy = legacyFieldForScene(legacySource, scene);
+    const requestedId = sceneServiceId(legacySource, scene);
+    const serviceId = resolveAiServiceId(aiServices, requestedId, legacy);
+    const service = aiServices.find((item) => item.id === serviceId) || aiServices[0];
+    if (service) selectedServices.set(scene, service);
+  }
+  const mainService = selectedServices.get("assistant") || aiServices[0] || DEFAULT_AI_SERVICES[0];
+  const qqService = selectedServices.get("qq-group-ad") || mainService;
+  const imageService = selectedServices.get("image-review") || mainService;
+  const videoService = selectedServices.get("video-review") || mainService;
   const next: SiteConfig = {
     ...configCache,
+    aiServices,
+    aiReviewServiceId: mainService.id,
     aiReviewEnabled: input.aiReviewEnabled ?? configCache.aiReviewEnabled,
-    aiReviewProvider: String(input.aiReviewProvider ?? configCache.aiReviewProvider ?? "deepseek").trim() || "deepseek",
-    aiReviewApiUrl: normalizePromptTemplate(input.aiReviewApiUrl, configCache.aiReviewApiUrl),
+    aiReviewProvider: mainService.provider,
+    aiReviewApiUrl: mainService.apiUrl,
     aiReviewModel: String(input.aiReviewModel ?? configCache.aiReviewModel ?? "deepseek-v4-flash").trim() || "deepseek-v4-flash",
     aiReviewFallbackModels: normalizeFallbackModelList(input.aiReviewFallbackModels, input.aiReviewModel ?? configCache.aiReviewModel),
-    aiReviewApiKey: String(input.aiReviewApiKey ?? configCache.aiReviewApiKey ?? "").trim(),
+    aiReviewApiKey: mainService.apiKey,
+    qqGroupAdReviewServiceId: qqService.id,
     qqGroupAdReviewEnabled: input.qqGroupAdReviewEnabled ?? configCache.qqGroupAdReviewEnabled,
-    qqGroupAdReviewProvider: String(input.qqGroupAdReviewProvider ?? configCache.qqGroupAdReviewProvider ?? "deepseek").trim() || "deepseek",
-    qqGroupAdReviewApiUrl: normalizePromptTemplate(input.qqGroupAdReviewApiUrl, configCache.qqGroupAdReviewApiUrl),
+    qqGroupAdReviewProvider: qqService.provider,
+    qqGroupAdReviewApiUrl: qqService.apiUrl,
     qqGroupAdReviewModel: String(input.qqGroupAdReviewModel ?? configCache.qqGroupAdReviewModel ?? "deepseek-v4-flash").trim() || "deepseek-v4-flash",
     qqGroupAdReviewFallbackModels: normalizeFallbackModelList(input.qqGroupAdReviewFallbackModels, input.qqGroupAdReviewModel ?? configCache.qqGroupAdReviewModel),
-    qqGroupAdReviewApiKey: String(input.qqGroupAdReviewApiKey ?? configCache.qqGroupAdReviewApiKey ?? "").trim(),
+    qqGroupAdReviewApiKey: qqService.apiKey,
     qqGroupAdReviewSystemPrompt: resolvePromptTemplate(input.qqGroupAdReviewSystemPrompt, configCache.qqGroupAdReviewSystemPrompt, DEFAULT_QQ_GROUP_AD_REVIEW_PROMPTS.system),
     qqGroupAdReviewUserPrompt: resolvePromptTemplate(input.qqGroupAdReviewUserPrompt, configCache.qqGroupAdReviewUserPrompt, DEFAULT_QQ_GROUP_AD_REVIEW_PROMPTS.user),
+    imageReviewServiceId: imageService.id,
+    imageReviewProvider: imageService.provider,
     imageReviewEnabled: input.imageReviewEnabled ?? configCache.imageReviewEnabled,
-    imageReviewApiUrl: normalizePromptTemplate(input.imageReviewApiUrl, configCache.imageReviewApiUrl),
+    imageReviewApiUrl: imageService.apiUrl,
     imageReviewModel: String(input.imageReviewModel ?? configCache.imageReviewModel ?? "gpt-4o-mini").trim() || "gpt-4o-mini",
     imageReviewFallbackModels: normalizeFallbackModelList(input.imageReviewFallbackModels, input.imageReviewModel ?? configCache.imageReviewModel),
-    imageReviewApiKey: String(input.imageReviewApiKey ?? configCache.imageReviewApiKey ?? "").trim(),
+    imageReviewApiKey: imageService.apiKey,
     imageReviewSystemPrompt: resolvePromptTemplate(input.imageReviewSystemPrompt, configCache.imageReviewSystemPrompt, DEFAULT_IMAGE_REVIEW_PROMPTS.system),
     imageReviewUserPrompt: resolvePromptTemplate(input.imageReviewUserPrompt, configCache.imageReviewUserPrompt, DEFAULT_IMAGE_REVIEW_PROMPTS.user),
     imageReviewConcurrency: normalizeSmallInt(input.imageReviewConcurrency, configCache.imageReviewConcurrency, 1, 8),
     imageReviewRequestGroupSize: normalizeSmallInt(input.imageReviewRequestGroupSize, configCache.imageReviewRequestGroupSize, 1, 6),
+    videoReviewServiceId: videoService.id,
+    videoReviewProvider: videoService.provider,
     videoReviewEnabled: input.videoReviewEnabled ?? configCache.videoReviewEnabled,
-    videoReviewApiUrl: normalizePromptTemplate(input.videoReviewApiUrl, configCache.videoReviewApiUrl),
+    videoReviewApiUrl: videoService.apiUrl,
     videoReviewModel: String(input.videoReviewModel ?? configCache.videoReviewModel ?? "gpt-4o-mini").trim() || "gpt-4o-mini",
     videoReviewFallbackModels: normalizeFallbackModelList(input.videoReviewFallbackModels, input.videoReviewModel ?? configCache.videoReviewModel),
-    videoReviewApiKey: String(input.videoReviewApiKey ?? configCache.videoReviewApiKey ?? "").trim(),
+    videoReviewApiKey: videoService.apiKey,
     videoReviewSystemPrompt: resolvePromptTemplate(input.videoReviewSystemPrompt, configCache.videoReviewSystemPrompt, DEFAULT_VIDEO_REVIEW_PROMPTS.system),
     videoReviewUserPrompt: resolvePromptTemplate(input.videoReviewUserPrompt, configCache.videoReviewUserPrompt, DEFAULT_VIDEO_REVIEW_PROMPTS.user),
     videoReviewConcurrency: normalizeSmallInt(input.videoReviewConcurrency, configCache.videoReviewConcurrency, 1, 2),
@@ -1500,6 +1953,16 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
   };
   await prisma.$transaction([
     prisma.siteSetting.upsert({
+      where: { key: AI_SERVICES_KEY },
+      update: { value: JSON.stringify(next.aiServices) },
+      create: { key: AI_SERVICES_KEY, value: JSON.stringify(next.aiServices) },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: AI_REVIEW_SERVICE_ID_KEY },
+      update: { value: next.aiReviewServiceId },
+      create: { key: AI_REVIEW_SERVICE_ID_KEY, value: next.aiReviewServiceId },
+    }),
+    prisma.siteSetting.upsert({
       where: { key: AI_REVIEW_ENABLED_KEY },
       update: { value: next.aiReviewEnabled ? "on" : "off" },
       create: { key: AI_REVIEW_ENABLED_KEY, value: next.aiReviewEnabled ? "on" : "off" },
@@ -1528,6 +1991,11 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
       where: { key: AI_REVIEW_API_KEY },
       update: { value: next.aiReviewApiKey },
       create: { key: AI_REVIEW_API_KEY, value: next.aiReviewApiKey },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: QQ_GROUP_AD_REVIEW_SERVICE_ID_KEY },
+      update: { value: next.qqGroupAdReviewServiceId },
+      create: { key: QQ_GROUP_AD_REVIEW_SERVICE_ID_KEY, value: next.qqGroupAdReviewServiceId },
     }),
     prisma.siteSetting.upsert({
       where: { key: QQ_GROUP_AD_REVIEW_ENABLED_KEY },
@@ -1568,6 +2036,16 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
       where: { key: QQ_GROUP_AD_REVIEW_USER_PROMPT_KEY },
       update: { value: next.qqGroupAdReviewUserPrompt },
       create: { key: QQ_GROUP_AD_REVIEW_USER_PROMPT_KEY, value: next.qqGroupAdReviewUserPrompt },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: IMAGE_REVIEW_SERVICE_ID_KEY },
+      update: { value: next.imageReviewServiceId },
+      create: { key: IMAGE_REVIEW_SERVICE_ID_KEY, value: next.imageReviewServiceId },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: IMAGE_REVIEW_PROVIDER_KEY },
+      update: { value: next.imageReviewProvider },
+      create: { key: IMAGE_REVIEW_PROVIDER_KEY, value: next.imageReviewProvider },
     }),
     prisma.siteSetting.upsert({
       where: { key: IMAGE_REVIEW_ENABLED_KEY },
@@ -1613,6 +2091,16 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
       where: { key: IMAGE_REVIEW_REQUEST_GROUP_SIZE_KEY },
       update: { value: String(next.imageReviewRequestGroupSize) },
       create: { key: IMAGE_REVIEW_REQUEST_GROUP_SIZE_KEY, value: String(next.imageReviewRequestGroupSize) },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: VIDEO_REVIEW_SERVICE_ID_KEY },
+      update: { value: next.videoReviewServiceId },
+      create: { key: VIDEO_REVIEW_SERVICE_ID_KEY, value: next.videoReviewServiceId },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: VIDEO_REVIEW_PROVIDER_KEY },
+      update: { value: next.videoReviewProvider },
+      create: { key: VIDEO_REVIEW_PROVIDER_KEY, value: next.videoReviewProvider },
     }),
     prisma.siteSetting.upsert({
       where: { key: VIDEO_REVIEW_ENABLED_KEY },

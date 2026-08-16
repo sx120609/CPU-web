@@ -233,7 +233,9 @@ OAUTH_ALLOWED_REDIRECT_URIS=http://127.0.0.1,http://localhost
 
 `OAUTH_ALLOWED_REDIRECT_URIS` 使用逗号分隔。对于 `http://127.0.0.1` 和 `http://localhost`，服务端允许 Electron 使用随机本机端口，例如 `http://127.0.0.1:43127/callback`。其他地址应配置完整且固定的 origin，生产环境应只配置实际需要的回调 origin。
 
-AI 接口复用站点设置中的 `ai.review.apiUrl`、`ai.review.apiKey` 和 `ai.review.model`，不新增单独的 OAuth AI 密钥配置。AI API 密钥始终只保存在服务端，不能下发给 Electron。
+AI 接口复用站点设置中的 AI 服务池和场景路由，不新增单独的 OAuth AI 密钥配置。AI API 密钥始终只保存在服务端，不能下发给 Electron。
+
+管理后台的“AI 服务池”中可以一次配置多个厂家/兼容接口（包括 Ollama），再分别把拾间 AI、文字审核、QQ群广告、图片审核和视频审核路由到不同服务；模型仍按场景单独填写。Ollama 地址可填写 `http://127.0.0.1:11434`，服务端会使用 Ollama 的 OpenAI 兼容 Chat Completions 接口，API Key 可以留空，模型填写本机已安装的模型名，例如 `qwen3:8b`。Ollama 地址必须能从运行 CPU-web 服务端的机器访问。
 
 ### 授权流程
 

@@ -9,7 +9,7 @@ import {
 } from "./aiJsonApi";
 import { isCampusAssistantConversationRestricted } from "./campusAssistant";
 import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } from "./aiReviewLog";
-import { getSiteConfig, type LearningAssistantReasoningEffort } from "./siteSettings";
+import { getSiteConfig, isAiProviderReady, type LearningAssistantReasoningEffort } from "./siteSettings";
 
 export const LEARNING_ASSISTANT_AI_INSTRUCTIONS = [
   "你是“药大拾间·学习通助手”使用的独立答题 AI。",
@@ -230,7 +230,12 @@ export async function requestLearningAssistantAi(
   const apiKey = siteConfig.aiReviewApiKey;
   const model = tier.model;
   const effectiveBody: LearningAssistantAiUpstreamBody = { ...body, reasoningEffort: tier.reasoningEffort };
-  if (!siteConfig.aiReviewEnabled || !endpoint || !apiKey || !model) {
+  if (!siteConfig.aiReviewEnabled || !isAiProviderReady({
+    provider: siteConfig.aiReviewProvider,
+    apiUrl: siteConfig.aiReviewApiUrl,
+    apiKey,
+    model,
+  })) {
     throw Errors.server("AI 服务尚未配置或已关闭");
   }
 

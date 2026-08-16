@@ -119,7 +119,9 @@ export async function sendAiUpstreamRequest(input: {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${input.apiKey}`,
+      ...(String(input.apiKey || "").trim()
+        ? { Authorization: `Bearer ${String(input.apiKey).trim()}` }
+        : {}),
     },
     signal: input.signal,
     body: JSON.stringify(withPromptCacheOptions(
@@ -396,6 +398,7 @@ function shouldDisablePromptCacheKey(status: number, responseText: string) {
       || text.includes("not allowed")
       || text.includes("extra inputs")
       || text.includes("unrecognized")
+      || text.includes("unexpected")
       || text.includes("invalid")
     );
 }
@@ -410,6 +413,7 @@ function shouldDisablePromptCacheRetention(status: number, responseText: string)
       || text.includes("not allowed")
       || text.includes("extra inputs")
       || text.includes("unrecognized")
+      || text.includes("unexpected")
       || text.includes("invalid")
     );
 }

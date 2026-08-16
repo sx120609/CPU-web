@@ -1,6 +1,14 @@
 import { request, type RequestOptions } from "./request";
 import type { TopNavigationItem } from "./site";
 
+export type AiServiceConfig = {
+  id: string;
+  name: string;
+  provider: string;
+  apiUrl: string;
+  apiKey: string;
+};
+
 export type SiteConfig = {
   siteOrigin: string;
   siteFilingNumber: string;
@@ -14,12 +22,15 @@ export type SiteConfig = {
   }>;
   learningAssistantAccessMode: "guest-unlimited" | "account-quota";
   learningPlatforms: LearningPlatformAvailability;
+  aiServices: AiServiceConfig[];
+  aiReviewServiceId: string;
   aiReviewEnabled: boolean;
   aiReviewProvider: string;
   aiReviewApiUrl: string;
   aiReviewModel: string;
   aiReviewFallbackModels: string;
   aiReviewApiKey: string;
+  qqGroupAdReviewServiceId: string;
   qqGroupAdReviewEnabled: boolean;
   qqGroupAdReviewProvider: string;
   qqGroupAdReviewApiUrl: string;
@@ -28,6 +39,8 @@ export type SiteConfig = {
   qqGroupAdReviewApiKey: string;
   qqGroupAdReviewSystemPrompt: string;
   qqGroupAdReviewUserPrompt: string;
+  imageReviewServiceId: string;
+  imageReviewProvider: string;
   imageReviewEnabled: boolean;
   imageReviewApiUrl: string;
   imageReviewModel: string;
@@ -37,6 +50,8 @@ export type SiteConfig = {
   imageReviewUserPrompt: string;
   imageReviewConcurrency: number;
   imageReviewRequestGroupSize: number;
+  videoReviewServiceId: string;
+  videoReviewProvider: string;
   videoReviewEnabled: boolean;
   videoReviewApiUrl: string;
   videoReviewModel: string;
@@ -724,7 +739,7 @@ export const adminApi = {
     request.delete<{ deletedUserId: number; deletedTopics: number; deletedReplies: number }>(`/admin/users/${id}`),
   // 站点功能开关
   siteConfig: (options?: RequestOptions) => request.get<SiteConfig>("/admin/site-config", undefined, options),
-  aiModels: (payload?: { apiUrl?: string; apiKey?: string }) =>
+  aiModels: (payload?: { provider?: string; apiUrl?: string; apiKey?: string }) =>
     request.post<AiModelCatalog>("/admin/ai-models", payload ?? {}),
   topNavigation: (options?: RequestOptions) => request.get<TopNavigationAdminPayload>("/admin/top-navigation", undefined, options),
   updateTopNavigation: (items: TopNavigationItem[]) => request.patch<TopNavigationAdminPayload>("/admin/top-navigation", { items }),
@@ -778,12 +793,15 @@ export const adminApi = {
     learningAssistantTiers?: SiteConfig["learningAssistantTiers"];
     learningAssistantAccessMode?: "guest-unlimited" | "account-quota";
     learningPlatforms?: LearningPlatformAvailability;
+    aiServices?: AiServiceConfig[];
+    aiReviewServiceId?: string;
     aiReviewEnabled?: boolean;
     aiReviewProvider?: string;
     aiReviewApiUrl?: string;
     aiReviewModel?: string;
     aiReviewFallbackModels?: string;
     aiReviewApiKey?: string;
+    qqGroupAdReviewServiceId?: string;
     qqGroupAdReviewEnabled?: boolean;
     qqGroupAdReviewProvider?: string;
     qqGroupAdReviewApiUrl?: string;
@@ -792,6 +810,8 @@ export const adminApi = {
     qqGroupAdReviewApiKey?: string;
     qqGroupAdReviewSystemPrompt?: string;
     qqGroupAdReviewUserPrompt?: string;
+    imageReviewServiceId?: string;
+    imageReviewProvider?: string;
     imageReviewEnabled?: boolean;
     imageReviewApiUrl?: string;
     imageReviewModel?: string;
@@ -801,6 +821,8 @@ export const adminApi = {
     imageReviewUserPrompt?: string;
     imageReviewConcurrency?: number;
     imageReviewRequestGroupSize?: number;
+    videoReviewServiceId?: string;
+    videoReviewProvider?: string;
     videoReviewEnabled?: boolean;
     videoReviewApiUrl?: string;
     videoReviewModel?: string;

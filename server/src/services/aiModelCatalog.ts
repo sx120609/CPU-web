@@ -3,10 +3,25 @@ export type AiModelCatalog = {
   models: string[];
 };
 
-export function buildAiModelEndpointCandidates(apiUrl: string) {
+export function buildAiModelEndpointCandidates(apiUrl: string, provider?: string) {
   const parsed = new URL(String(apiUrl || "").trim());
   const path = parsed.pathname.replace(/\/+$/, "");
-  const basePath = path.replace(/\/(?:chat\/completions|responses|completions|models?|model)$/i, "");
+  const basePath = path.replace(/\/(?:chat\/completions|responses|completions|models?|model|api\/(?:chat|generate|tags))$/i, "");
+  if (String(provider || "").trim().toLowerCase() === "ollama") {
+    const serverBasePath = basePath.replace(/\/(?:v1|api)$/i, "");
+    const openAiModelsPath = `${serverBasePath}/v1/models`.replace(/\/{2,}/g, "/");
+    const nativeTagsPath = `${serverBasePath}/api/tags`.replace(/\/{2,}/g, "/");
+    const nativeApiConfigured = /\/api(?:\/(?:chat|generate|tags))?$/i.test(path);
+    return [nativeApiConfigured ? nativeTagsPath : openAiModelsPath, nativeApiConfigured ? openAiModelsPath : nativeTagsPath]
+      .map((nextPath) => {
+        const next = new URL(parsed.toString());
+        next.pathname = nextPath;
+        next.search = "";
+        next.hash = "";
+        return next.toString();
+      })
+      .filter((endpoint, index, list) => list.indexOf(endpoint) === index);
+  }
   const candidates = ["model", "models"].map((suffix) => {
     const next = new URL(parsed.toString());
     next.pathname = `${basePath}/${suffix}`.replace(/\/{2,}/g, "/");
@@ -43,10 +58,11 @@ export function extractAiModelIds(payload: unknown) {
 
 export async function fetchAiModelCatalog(input: {
   apiUrl: string;
+  provider?: string;
   apiKey?: string;
   timeoutMs?: number;
 }): Promise<AiModelCatalog> {
-  const candidates = buildAiModelEndpointCandidates(input.apiUrl);
+  const candidates = buildAiModelEndpointCandidates(input.apiUrl, input.provider);
   const errors: string[] = [];
 
   for (const endpoint of candidates) {

@@ -1,5 +1,5 @@
 import type { FeatureKey } from "./siteSettings";
-import { getSiteConfig } from "./siteSettings";
+import { getSiteConfig, isAiProviderReady } from "./siteSettings";
 import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } from "./aiReviewLog";
 import { requestAiJson } from "./topicAiReview";
 import {
@@ -595,7 +595,12 @@ export async function askCampusAssistant(input: {
   const availableActions = listCampusAssistantActions(input.context);
   const deterministicActions = searchCampusAssistantActions(message, input.context, 3);
   const config = getSiteConfig();
-  if (!config.aiReviewEnabled || !config.aiReviewApiKey.trim()) {
+  if (!config.aiReviewEnabled || !isAiProviderReady({
+    provider: config.aiReviewProvider,
+    apiUrl: config.aiReviewApiUrl,
+    apiKey: config.aiReviewApiKey,
+    model: config.assistantModel,
+  })) {
     return fallbackAssistantResponse(deterministicActions, false);
   }
 
@@ -658,7 +663,12 @@ export async function streamCampusAssistant(input: {
   const availableActions = listCampusAssistantActions(input.context);
   const deterministicActions = searchCampusAssistantActions(message, input.context, 3);
   const config = getSiteConfig();
-  if (!config.aiReviewEnabled || !config.aiReviewApiKey.trim()) {
+  if (!config.aiReviewEnabled || !isAiProviderReady({
+    provider: config.aiReviewProvider,
+    apiUrl: config.aiReviewApiUrl,
+    apiKey: config.aiReviewApiKey,
+    model: config.assistantModel,
+  })) {
     return fallbackAssistantResponse(deterministicActions, false);
   }
 

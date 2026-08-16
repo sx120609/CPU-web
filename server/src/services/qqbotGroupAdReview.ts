@@ -6,7 +6,7 @@ import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } fr
 import { extractAiJsonTextResponse, normalizeAiJsonApiUrl, sendAiJsonRequest } from "./aiJsonApi";
 import { resolveModelCandidates, shouldFallbackToNextModel } from "./modelFallback";
 import { prepareMediaLocalFileForProcessing } from "./mediaStorage";
-import { getSiteConfig, resolveSharedAiProviderConfig } from "./siteSettings";
+import { getSiteConfig, hasAiProviderAccess, isAiProviderReady, resolveAiServiceForScene } from "./siteSettings";
 
 type QqGroupAdResponse = {
   risk_score?: number;
@@ -71,7 +71,13 @@ const localResultCache = new Map<string, { expiresAt: number; value: QqGroupAdRe
 
 export function shouldRunQqGroupAdReview() {
   const config = getSiteConfig();
-  return Boolean(config.qqGroupAdReviewEnabled && resolveSharedAiProviderConfig(config).apiKey);
+  const provider = resolveAiServiceForScene(config, "qq-group-ad");
+  return Boolean(config.qqGroupAdReviewEnabled && isAiProviderReady({
+    provider: provider.provider,
+    apiUrl: provider.apiUrl,
+    apiKey: provider.apiKey,
+    model: config.qqGroupAdReviewModel,
+  }));
 }
 
 export async function reviewQqGroupMessageForAd(input: {
@@ -88,8 +94,13 @@ export async function reviewQqGroupMessageForAd(input: {
   metadata?: Record<string, unknown> | null;
 }): Promise<QqGroupAdReviewResult> {
   const config = getSiteConfig();
-  const provider = resolveSharedAiProviderConfig(config);
-  if (!config.qqGroupAdReviewEnabled || !provider.apiKey) {
+  const provider = resolveAiServiceForScene(config, "qq-group-ad");
+  if (!config.qqGroupAdReviewEnabled || !isAiProviderReady({
+    provider: provider.provider,
+    apiUrl: provider.apiUrl,
+    apiKey: provider.apiKey,
+    model: config.qqGroupAdReviewModel,
+  })) {
     return {
       action: "allow",
       riskScore: 0,
@@ -367,12 +378,17 @@ function normalizeMessageForCache(input: string) {
 }
 
 function buildQqGroupAdReviewConfigHash(config: ReturnType<typeof getSiteConfig>) {
+  const provider = resolveAiServiceForScene(config, "qq-group-ad");
+  const imageProvider = resolveAiServiceForScene(config, "image-review");
   return hashString([
-    config.qqGroupAdReviewProvider,
-    resolveSharedAiProviderConfig(config).apiUrl,
+    provider.provider,
+    provider.apiUrl,
+    provider.apiKey,
     config.qqGroupAdReviewModel,
     config.qqGroupAdReviewFallbackModels,
-    config.imageReviewApiUrl,
+    imageProvider.provider,
+    imageProvider.apiUrl,
+    imageProvider.apiKey,
     config.imageReviewModel,
     config.imageReviewFallbackModels,
     config.qqGroupAdReviewThreshold,
@@ -418,13 +434,22 @@ export function resolveQqGroupAdModelCandidates(
 
 function resolveQqGroupAdImageProvider(
   config: ReturnType<typeof getSiteConfig>,
-  fallback: { apiUrl: string; apiKey: string },
+  fallback: { provider: string; apiUrl: string; apiKey: string },
 ) {
-  const imageApiKey = String(config.imageReviewApiKey || "").trim();
-  const imageApiUrl = String(config.imageReviewApiUrl || "").trim();
+  const imageProvider = resolveAiServiceForScene(config, "image-review");
+  const imageApiKey = String(imageProvider.apiKey || "").trim();
+  const imageApiUrl = String(imageProvider.apiUrl || "").trim();
+  if (hasAiProviderAccess(imageProvider)) {
+    return {
+      provider: imageProvider.provider,
+      apiUrl: imageApiUrl,
+      apiKey: imageApiKey,
+    };
+  }
   return {
-    apiUrl: imageApiKey && imageApiUrl ? imageApiUrl : fallback.apiUrl,
-    apiKey: imageApiKey || fallback.apiKey,
+    provider: fallback.provider,
+    apiUrl: fallback.apiUrl,
+    apiKey: fallback.apiKey,
   };
 }
 
