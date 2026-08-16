@@ -29,11 +29,11 @@
       <div class="section-head">
         <div>
           <h3 class="section-title">AI 服务池</h3>
-          <p class="section-desc">每个服务只填写一次地址和密钥，再把拾间 AI、QQ群广告、图片审核、视频审核分别路由到需要的厂家。</p>
+          <p class="section-desc">每个服务只填写一次地址和密钥，再把拾间 AI、网课解题、文字审核及其他识别场景分别路由到需要的厂家。</p>
         </div>
         <div class="provider-actions">
-          <el-button :loading="loadingModels" :disabled="!selectedAiService?.apiUrl.trim()" @click="loadModels">
-            刷新模型列表
+          <el-button :loading="loadingAllModels" :disabled="!form.aiServices.length" @click="loadAllModels">
+            刷新全部模型列表
           </el-button>
           <el-button type="primary" :loading="saving" :disabled="saving || Boolean(configLoadError)" @click="saveConfig">
             保存 AI 配置
@@ -52,14 +52,14 @@
         <article v-for="(service, index) in form.aiServices" :key="service.id" class="service-card">
           <div class="service-card-head">
             <span class="service-index">服务 {{ index + 1 }}</span>
-            <el-button
-              text
-              type="danger"
-              :disabled="form.aiServices.length <= 1"
-              @click="removeAiService(service.id)"
-            >
-              删除
-            </el-button>
+            <div class="service-card-actions">
+              <el-button size="small" plain :loading="serviceCatalogState(service.id).loading" :disabled="!service.apiUrl.trim()" @click="loadModelsForService(service.id)">
+                刷新此服务模型
+              </el-button>
+              <el-button text type="danger" :disabled="form.aiServices.length <= 1" @click="removeAiService(service.id)">
+                删除
+              </el-button>
+            </div>
           </div>
           <div class="service-grid">
             <label class="ai-row">
@@ -77,6 +77,7 @@
               <el-input
                 v-model="service.apiUrl"
                 maxlength="240"
+                @change="invalidateServiceCatalog(service.id)"
                 :placeholder="service.provider.toLowerCase() === 'ollama' ? 'http://127.0.0.1:11434' : '支持 /v1/responses 或 /v1/chat/completions'"
               />
             </label>
@@ -95,13 +96,14 @@
               ? "Ollama 会使用 /v1/chat/completions；模型名称填写本机已安装的 tag，例如 qwen3:8b。"
               : "服务端会根据地址自动识别 Responses 或 Chat Completions 协议。" }}
           </small>
+          <small class="field-note service-catalog-status">{{ serviceCatalogStatus(service.id) }}</small>
         </article>
       </div>
 
       <div class="service-routing">
         <div>
           <h4 class="card-title">识别场景路由</h4>
-          <p class="desc">同一个服务可以被多个场景复用；每个场景的模型仍然单独配置。</p>
+          <p class="desc">每个场景单独选择服务；切换服务后，下面的模型下拉只显示该服务读取到的模型。</p>
         </div>
         <div class="routing-grid">
           <label v-for="item in serviceAssignments" :key="item.key" class="ai-row">
@@ -114,14 +116,6 @@
       </div>
 
       <el-alert
-        v-if="isOllamaProvider"
-        type="success"
-        :closable="false"
-        show-icon
-        title="当前拾间 AI / 文字审核使用 Ollama：地址填写 http://127.0.0.1:11434，模型填写已通过 ollama pull 安装的名称，例如 qwen3:8b。"
-      />
-
-      <el-alert
         type="info"
         :closable="false"
         show-icon
@@ -132,6 +126,7 @@
         <label v-for="item in modelAssignments" :key="item.key" class="model-field">
           <span>{{ item.label }}</span>
           <small>{{ item.description }}</small>
+          <small class="model-source">模型来源：{{ modelSourceLabel(item.key) }}</small>
           <el-select
             v-model="form[item.key]"
             filterable
@@ -139,7 +134,7 @@
             default-first-option
             placeholder="选择或输入模型 ID"
           >
-            <el-option v-for="model in modelOptions" :key="`${item.key}-${model}`" :label="model" :value="model" />
+            <el-option v-for="model in modelOptionsForField(item.key)" :key="`${item.key}-${model}`" :label="model" :value="model" />
           </el-select>
         </label>
       </div>
@@ -159,8 +154,9 @@
             </div>
             <label>
               <span>模型</span>
+              <small class="model-source">模型来源：{{ learningServiceName }}</small>
               <el-select v-model="form.learningAssistantTiers[tier.key].model" filterable allow-create default-first-option>
-                <el-option v-for="model in modelOptions" :key="`${tier.key}-${model}`" :label="model" :value="model" />
+                <el-option v-for="model in learningModelOptions" :key="`${tier.key}-${model}`" :label="model" :value="model" />
               </el-select>
             </label>
             <label>
@@ -552,7 +548,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import {
   adminApi,
@@ -567,7 +563,7 @@ import {
 import { fmtDate } from "@/utils/format";
 
 const loadingConfig = ref(false);
-const loadingModels = ref(false);
+const loadingAllModels = ref(false);
 const loadingLogs = ref(false);
 const saving = ref(false);
 const sweepingImages = ref(false);
@@ -588,8 +584,13 @@ const lastImageSweepSummary = ref("");
 const lastVideoSweepSummary = ref("");
 const videoRows = ref<ForumVideoQueueRow[]>([]);
 const promptDefaults = ref<SitePromptDefaults | null>(null);
-const modelOptions = ref<string[]>([]);
-const modelCatalogEndpoint = ref("");
+type ServiceModelCatalogState = {
+  endpoint: string;
+  models: string[];
+  loading: boolean;
+  error: string;
+};
+const serviceCatalogs = reactive<Record<string, ServiceModelCatalogState>>({});
 let configLoadSeq = 0;
 let promptDefaultsLoadSeq = 0;
 let logsLoadSeq = 0;
@@ -601,14 +602,16 @@ const videoFilters = reactive<{ status: "" | "pending" | "manual_review" | "reje
   size: 20,
 });
 const modelAssignments = [
-  { key: "assistantModel", label: "拾间 AI", description: "站内问答与校园服务咨询" },
-  { key: "aiReviewModel", label: "文字审核", description: "帖子、回复与编辑相似度" },
-  { key: "qqGroupAdReviewModel", label: "QQ群广告过滤", description: "群消息广告与引流识别" },
-  { key: "imageReviewModel", label: "图片审核", description: "论坛图片安全审核" },
-  { key: "videoReviewModel", label: "视频审核", description: "关键帧、音轨与上下文审核" },
+  { key: "assistantModel", serviceKey: "assistantServiceId", label: "拾间 AI", description: "站内问答与校园服务咨询" },
+  { key: "aiReviewModel", serviceKey: "aiReviewServiceId", label: "文字审核", description: "帖子、回复与编辑相似度" },
+  { key: "qqGroupAdReviewModel", serviceKey: "qqGroupAdReviewServiceId", label: "QQ群广告过滤", description: "群消息广告与引流识别" },
+  { key: "imageReviewModel", serviceKey: "imageReviewServiceId", label: "图片审核", description: "论坛图片安全审核" },
+  { key: "videoReviewModel", serviceKey: "videoReviewServiceId", label: "视频审核", description: "关键帧、音轨与上下文审核" },
 ] as const;
 const serviceAssignments = [
-  { key: "aiReviewServiceId", label: "拾间 AI / 文字审核" },
+  { key: "assistantServiceId", label: "拾间 AI" },
+  { key: "learningAssistantServiceId", label: "网课解题" },
+  { key: "aiReviewServiceId", label: "文字审核" },
   { key: "qqGroupAdReviewServiceId", label: "QQ群广告过滤" },
   { key: "imageReviewServiceId", label: "图片审核" },
   { key: "videoReviewServiceId", label: "视频审核" },
@@ -659,6 +662,8 @@ const form = reactive<SiteConfig>({
     apiUrl: "https://api.deepseek.com/chat/completions",
     apiKey: "",
   }],
+  assistantServiceId: "default-main",
+  learningAssistantServiceId: "default-main",
   aiReviewServiceId: "default-main",
   aiReviewEnabled: false,
   aiReviewProvider: "deepseek",
@@ -721,12 +726,6 @@ const form = reactive<SiteConfig>({
   assistantDailyQuotas: [],
 });
 
-const selectedAiService = computed<AiServiceConfig | null>(() => (
-  form.aiServices.find((service) => service.id === form.aiReviewServiceId)
-  || form.aiServices[0]
-  || null
-));
-const isOllamaProvider = computed(() => selectedAiService.value?.provider.trim().toLowerCase() === "ollama");
 const aiEditSimilarityPercent = computed({
   get: () => Math.round((form.aiEditSimilarityThreshold ?? 0) * 100),
   set: (value: number) => {
@@ -734,17 +733,19 @@ const aiEditSimilarityPercent = computed({
   },
 });
 const modelCatalogSummary = computed(() => {
-  if (loadingModels.value) return isOllamaProvider.value
-    ? "正在从 Ollama 读取模型列表…"
-    : "正在从上游 /model 接口读取模型列表…";
-  if (modelOptions.value.length) {
-    const source = modelCatalogEndpoint.value ? ` · ${modelCatalogEndpoint.value}` : "";
-    return `已读取 ${modelOptions.value.length} 个模型${source}；下拉列表之外仍可手动填写模型 ID。`;
-  }
-  return isOllamaProvider.value
-    ? "点击“刷新模型列表”会由服务端读取 Ollama 的 /v1/models（必要时回退到 /api/tags）；也可以直接填写模型 ID。"
-    : "点击“刷新模型列表”会由服务端代为请求上游 /model 接口，浏览器不会直接连接上游。";
+  const loaded = form.aiServices.filter((service) => serviceCatalogState(service.id).models.length).length;
+  const loading = form.aiServices.filter((service) => serviceCatalogState(service.id).loading).length;
+  if (loading) return `正在读取 ${loading} 个服务的模型列表…`;
+  if (loaded) return `已为 ${loaded}/${form.aiServices.length} 个服务读取模型列表；每个场景只显示所选服务的模型。`;
+  return "请在对应服务卡点击“刷新此服务模型”，或刷新全部模型列表；每个场景的模型下拉不会混用其他服务。";
 });
+
+const learningModelOptions = computed(() => modelOptionsForService(form.learningAssistantServiceId, [
+  form.learningAssistantTiers.low.model,
+  form.learningAssistantTiers.high.model,
+  form.learningAssistantTiers.max.model,
+]));
+const learningServiceName = computed(() => serviceForScene(form.learningAssistantServiceId)?.name || "未选择服务");
 
 onMounted(async () => {
   await Promise.all([loadConfig(), loadLogs(), loadPromptDefaults(), loadVideos()]);
@@ -759,7 +760,7 @@ async function loadConfig() {
     if (seq === configLoadSeq) {
       Object.assign(form, config);
       ensureAiServices();
-      mergeModelOptions();
+      void loadAssignedServiceCatalogs();
     }
   } catch (error) {
     if (seq === configLoadSeq) {
@@ -768,23 +769,6 @@ async function loadConfig() {
   } finally {
     if (seq === configLoadSeq) loadingConfig.value = false;
   }
-}
-
-function mergeModelOptions(models: string[] = []) {
-  const configured = modelAssignments.map((item) => String(form[item.key] || ""));
-  const learningModels = learningTierAssignments.map((item) => form.learningAssistantTiers[item.key].model);
-  const fallbackModels = [
-    form.aiReviewFallbackModels,
-    form.qqGroupAdReviewFallbackModels,
-    form.imageReviewFallbackModels,
-    form.videoReviewFallbackModels,
-  ].flatMap((value) => String(value || "").split(/[\s,]+/));
-  modelOptions.value = Array.from(new Set([
-    ...models,
-    ...configured,
-    ...learningModels,
-    ...fallbackModels,
-  ].map((model) => model.trim()).filter(Boolean)));
 }
 
 function ensureAiServices() {
@@ -807,6 +791,9 @@ function ensureAiServices() {
     service.provider = String(service.provider || "deepseek").trim() || "deepseek";
     service.apiUrl = String(service.apiUrl || "").trim();
     service.apiKey = String(service.apiKey || "").trim();
+    if (!serviceCatalogs[service.id]) {
+      serviceCatalogs[service.id] = { endpoint: "", models: [], loading: false, error: "" };
+    }
     seen.add(id);
   });
   for (const item of serviceAssignments) {
@@ -824,6 +811,8 @@ function handleServiceProviderChange(service: AiServiceConfig) {
   } else if (normalizedProvider !== "ollama" && currentUrl === DEFAULT_OLLAMA_ADDRESS) {
     service.apiUrl = DEFAULT_REMOTE_AI_URL;
   }
+  invalidateServiceCatalog(service.id);
+  void loadModelsForService(service.id, { silent: true });
 }
 
 function addAiService() {
@@ -843,6 +832,7 @@ function removeAiService(serviceId: string) {
   if (index < 0) return;
   const fallbackId = form.aiServices[index === 0 ? 1 : 0].id;
   form.aiServices.splice(index, 1);
+  delete serviceCatalogs[serviceId];
   for (const item of serviceAssignments) {
     if (form[item.key] === serviceId) form[item.key] = fallbackId;
   }
@@ -852,25 +842,113 @@ function serviceForScene(serviceId: string) {
   return form.aiServices.find((service) => service.id === serviceId) || form.aiServices[0] || null;
 }
 
-async function loadModels() {
-  const service = selectedAiService.value;
-  if (loadingModels.value || !service?.apiUrl.trim()) return;
-  loadingModels.value = true;
+function serviceCatalogState(serviceId: string): ServiceModelCatalogState {
+  return serviceCatalogs[serviceId] || { endpoint: "", models: [], loading: false, error: "" };
+}
+
+function uniqueModels(models: unknown[]) {
+  return Array.from(new Set(models.map((model) => String(model || "").trim()).filter(Boolean)));
+}
+
+function modelOptionsForService(serviceId: string, configured: unknown[] = []) {
+  return uniqueModels([
+    ...(serviceCatalogState(serviceId).models || []),
+    ...configured,
+  ]);
+}
+
+function modelOptionsForField(fieldKey: string) {
+  const assignment = modelAssignments.find((item) => item.key === fieldKey);
+  if (!assignment) return [];
+  const serviceId = String(form[assignment.serviceKey] || "");
+  return modelOptionsForService(serviceId, [form[fieldKey as keyof SiteConfig]]);
+}
+
+function modelSourceLabel(fieldKey: string) {
+  const assignment = modelAssignments.find((item) => item.key === fieldKey);
+  if (!assignment) return "未选择服务";
+  return serviceForScene(String(form[assignment.serviceKey] || ""))?.name || "未选择服务";
+}
+
+function serviceCatalogStatus(serviceId: string) {
+  const state = serviceCatalogState(serviceId);
+  const service = serviceForScene(serviceId);
+  if (!service?.apiUrl.trim()) return "请先填写 API 地址";
+  if (state.loading) return "正在读取模型列表…";
+  if (state.error) return `读取失败：${state.error}`;
+  if (state.models.length) {
+    const endpoint = state.endpoint ? ` · ${state.endpoint}` : "";
+    return `已读取 ${state.models.length} 个模型${endpoint}`;
+  }
+  return "尚未读取模型列表";
+}
+
+function invalidateServiceCatalog(serviceId: string) {
+  const state = serviceCatalogs[serviceId];
+  if (!state || state.loading) return;
+  state.endpoint = "";
+  state.models = [];
+  state.error = "";
+}
+
+async function loadModelsForService(serviceId: string, options: { silent?: boolean } = {}) {
+  const service = serviceForScene(serviceId);
+  if (!service?.apiUrl.trim()) return false;
+  const state = serviceCatalogs[service.id] || (serviceCatalogs[service.id] = {
+    endpoint: "",
+    models: [],
+    loading: false,
+    error: "",
+  });
+  if (state.loading) return false;
+  state.loading = true;
+  state.error = "";
   try {
     const catalog = await adminApi.aiModels({
       provider: service.provider,
       apiUrl: service.apiUrl.trim(),
       apiKey: service.apiKey.trim(),
     });
-    modelCatalogEndpoint.value = catalog.endpoint;
-    mergeModelOptions(catalog.models);
-    ElMessage.success(`已从上游读取 ${catalog.models.length} 个模型`);
+    state.endpoint = catalog.endpoint;
+    state.models = catalog.models;
+    if (!options.silent) ElMessage.success(`${service.name}：已读取 ${catalog.models.length} 个模型`);
+    return true;
   } catch (error) {
-    ElMessage.error(requestMessage(error) || "上游模型列表读取失败");
+    state.error = requestMessage(error) || "上游模型列表读取失败";
+    if (!options.silent) ElMessage.error(`${service.name}：${state.error}`);
+    return false;
   } finally {
-    loadingModels.value = false;
+    state.loading = false;
   }
 }
+
+async function loadAssignedServiceCatalogs() {
+  const serviceIds = Array.from(new Set(serviceAssignments
+    .map((item) => String(form[item.key] || "").trim())
+    .filter(Boolean)));
+  await Promise.all(serviceIds.map((serviceId) => loadModelsForService(serviceId, { silent: true })));
+}
+
+async function loadAllModels() {
+  if (loadingAllModels.value) return;
+  loadingAllModels.value = true;
+  try {
+    const results = await Promise.all(form.aiServices.map((service) => loadModelsForService(service.id, { silent: true })));
+    const successCount = results.filter(Boolean).length;
+    ElMessage.success(`已为 ${successCount} 个服务读取模型列表`);
+  } finally {
+    loadingAllModels.value = false;
+  }
+}
+
+watch(
+  () => serviceAssignments.map((item) => String(form[item.key] || "")),
+  (next, previous) => {
+    if (!previous) return;
+    const changed = next.filter((serviceId, index) => serviceId && serviceId !== previous[index]);
+    void Promise.all(changed.map((serviceId) => loadModelsForService(serviceId, { silent: true })));
+  },
+);
 
 async function loadPromptDefaults() {
   const seq = ++promptDefaultsLoadSeq;
@@ -894,7 +972,9 @@ async function saveConfig() {
   saving.value = true;
   try {
     ensureAiServices();
-    const mainService = serviceForScene(form.aiReviewServiceId) as AiServiceConfig;
+    const assistantService = serviceForScene(form.assistantServiceId) as AiServiceConfig;
+    const learningAssistantService = serviceForScene(form.learningAssistantServiceId) as AiServiceConfig;
+    const textReviewService = serviceForScene(form.aiReviewServiceId) as AiServiceConfig;
     const qqService = serviceForScene(form.qqGroupAdReviewServiceId) as AiServiceConfig;
     const imageService = serviceForScene(form.imageReviewServiceId) as AiServiceConfig;
     const videoService = serviceForScene(form.videoReviewServiceId) as AiServiceConfig;
@@ -902,13 +982,15 @@ async function saveConfig() {
       assistantModel: form.assistantModel,
       learningAssistantTiers: form.learningAssistantTiers,
       aiServices: form.aiServices.map((service) => ({ ...service })),
-      aiReviewServiceId: mainService.id,
+      assistantServiceId: assistantService.id,
+      learningAssistantServiceId: learningAssistantService.id,
+      aiReviewServiceId: textReviewService.id,
       aiReviewEnabled: form.aiReviewEnabled,
-      aiReviewProvider: mainService.provider,
-      aiReviewApiUrl: mainService.apiUrl,
+      aiReviewProvider: textReviewService.provider,
+      aiReviewApiUrl: textReviewService.apiUrl,
       aiReviewModel: form.aiReviewModel,
       aiReviewFallbackModels: form.aiReviewFallbackModels,
-      aiReviewApiKey: mainService.apiKey,
+      aiReviewApiKey: textReviewService.apiKey,
       qqGroupAdReviewServiceId: qqService.id,
       qqGroupAdReviewEnabled: form.qqGroupAdReviewEnabled,
       qqGroupAdReviewProvider: qqService.provider,
@@ -952,7 +1034,6 @@ async function saveConfig() {
       aiEditSimilarityUserPrompt: form.aiEditSimilarityUserPrompt,
     }));
     ensureAiServices();
-    mergeModelOptions();
     ElMessage.success("AI 服务、模型与审核配置已保存");
   } finally {
     saving.value = false;
@@ -1221,6 +1302,13 @@ function requestMessage(error: unknown) {
   gap: 12px;
 }
 
+.service-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .service-card {
   display: grid;
   gap: 12px;
@@ -1244,7 +1332,7 @@ function requestMessage(error: unknown) {
 }
 
 .routing-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .model-grid {
@@ -1274,6 +1362,12 @@ function requestMessage(error: unknown) {
   min-height: 34px;
   color: var(--el-text-color-secondary);
   line-height: 1.5;
+}
+
+.model-field > small.model-source,
+.learning-tier-card .model-source {
+  min-height: 0;
+  color: var(--el-color-primary);
 }
 
 .learning-tier-panel {
@@ -1400,6 +1494,11 @@ function requestMessage(error: unknown) {
   color: var(--cpu-text-muted);
   font-size: 12px;
   line-height: 1.6;
+}
+
+.service-catalog-status {
+  display: block;
+  color: var(--el-color-primary);
 }
 
 .prompt-card {

@@ -23,6 +23,8 @@ export type SiteConfig = {
   learningAssistantAccessMode: "guest-unlimited" | "account-quota";
   learningPlatforms: LearningPlatformAvailability;
   aiServices: AiServiceConfig[];
+  assistantServiceId: string;
+  learningAssistantServiceId: string;
   aiReviewServiceId: string;
   aiReviewEnabled: boolean;
   aiReviewProvider: string;
@@ -794,6 +796,8 @@ export const adminApi = {
     learningAssistantAccessMode?: "guest-unlimited" | "account-quota";
     learningPlatforms?: LearningPlatformAvailability;
     aiServices?: AiServiceConfig[];
+    assistantServiceId?: string;
+    learningAssistantServiceId?: string;
     aiReviewServiceId?: string;
     aiReviewEnabled?: boolean;
     aiReviewProvider?: string;

@@ -117,6 +117,11 @@ type AiJsonRequestOptions = {
   promptCacheScope?: string;
   model?: string;
   fallbackModels?: string;
+  providerConfig?: {
+    provider: string;
+    apiUrl: string;
+    apiKey: string;
+  };
   enablePromptCache?: boolean;
   enablePromptCacheRetention?: boolean;
 };
@@ -126,7 +131,12 @@ export async function requestAiJson(
   options?: AiJsonRequestOptions,
 ) {
   const config = getSiteConfig();
-  const endpoint = normalizeAiJsonApiUrl(config.aiReviewApiUrl, DEFAULT_REVIEW_API_URL);
+  const providerConfig = options?.providerConfig || {
+    provider: config.aiReviewProvider,
+    apiUrl: config.aiReviewApiUrl,
+    apiKey: config.aiReviewApiKey,
+  };
+  const endpoint = normalizeAiJsonApiUrl(providerConfig.apiUrl, DEFAULT_REVIEW_API_URL);
   const primaryModel = options?.model ?? config.aiReviewModel;
   const fallbackModels = options?.fallbackModels ?? config.aiReviewFallbackModels;
   const candidates = resolveModelCandidates(primaryModel, fallbackModels);
@@ -134,7 +144,7 @@ export async function requestAiJson(
   const promptCacheKey = promptCacheEnabled
     ? buildAiReviewPromptCacheKey({
         configHash: [
-          buildAiReviewConfigHash(config),
+          buildAiReviewConfigHash(config, providerConfig),
           primaryModel,
           fallbackModels,
         ].join("\n"),
@@ -156,7 +166,7 @@ export async function requestAiJson(
         targetId: options.logContext.targetId ?? null,
         targetLabel: options.logContext.targetLabel ?? null,
         createdById: options.logContext.createdById ?? null,
-        provider: config.aiReviewProvider,
+        provider: providerConfig.provider,
         model,
         endpoint,
         requestSummary: userPrompt,
@@ -169,7 +179,7 @@ export async function requestAiJson(
     try {
       const result = await sendAiJsonRequest({
         endpoint,
-        apiKey: config.aiReviewApiKey,
+        apiKey: providerConfig.apiKey,
         model,
         temperature: 0.1,
         messages: requestMessages,
@@ -673,10 +683,13 @@ function fallbackReason(level: TopicAiRiskLevel) {
   return "风险较低";
 }
 
-function buildAiReviewConfigHash(config: ReturnType<typeof getSiteConfig>) {
+function buildAiReviewConfigHash(
+  config: ReturnType<typeof getSiteConfig>,
+  providerConfig?: { provider?: string; apiUrl?: string; apiKey?: string },
+) {
   return hashString([
-    config.aiReviewProvider,
-    config.aiReviewApiUrl,
+    providerConfig?.provider ?? config.aiReviewProvider,
+    providerConfig?.apiUrl ?? config.aiReviewApiUrl,
     config.aiReviewModel,
     config.aiReviewFallbackModels,
     config.aiTopicReviewSystemPrompt,

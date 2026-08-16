@@ -67,6 +67,8 @@ test("scene routing resolves each selected service without repeating endpoint fi
   ]);
   const config = {
     aiServices: services,
+    assistantServiceId: "main",
+    learningAssistantServiceId: "local",
     aiReviewServiceId: "main",
     qqGroupAdReviewServiceId: "local",
     imageReviewServiceId: "main",
@@ -85,6 +87,8 @@ test("scene routing resolves each selected service without repeating endpoint fi
     videoReviewApiKey: "",
   };
   assert.equal(resolveAiServiceForScene(config, "assistant").apiUrl, "https://deep.example/v1/chat/completions");
+  assert.equal(resolveAiServiceForScene(config, "learning-assistant").provider, "ollama");
+  assert.equal(resolveAiServiceForScene(config, "text-review").provider, "deepseek");
   assert.equal(resolveAiServiceForScene(config, "qq-group-ad").provider, "ollama");
   assert.equal(resolveAiServiceForScene(config, "image-review").apiKey, "deep-key");
   assert.equal(resolveAiServiceForScene(config, "video-review").apiUrl, "http://127.0.0.1:11434");

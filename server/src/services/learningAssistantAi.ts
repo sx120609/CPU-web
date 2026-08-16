@@ -9,7 +9,7 @@ import {
 } from "./aiJsonApi";
 import { isCampusAssistantConversationRestricted } from "./campusAssistant";
 import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } from "./aiReviewLog";
-import { getSiteConfig, isAiProviderReady, type LearningAssistantReasoningEffort } from "./siteSettings";
+import { getSiteConfig, isAiProviderReady, resolveAiServiceForScene, type LearningAssistantReasoningEffort } from "./siteSettings";
 
 export const LEARNING_ASSISTANT_AI_INSTRUCTIONS = [
   "你是“药大拾间·学习通助手”使用的独立答题 AI。",
@@ -222,17 +222,18 @@ export async function requestLearningAssistantAi(
   }
 
   const siteConfig = getSiteConfig();
+  const provider = resolveAiServiceForScene(siteConfig, "learning-assistant");
   const tier = resolveLearningAssistantTier(body.reasoningEffort);
   const endpoint = normalizeAiJsonApiUrl(
-    siteConfig.aiReviewApiUrl,
+    provider.apiUrl,
     "https://api.openai.com/v1/chat/completions"
   );
-  const apiKey = siteConfig.aiReviewApiKey;
+  const apiKey = provider.apiKey;
   const model = tier.model;
   const effectiveBody: LearningAssistantAiUpstreamBody = { ...body, reasoningEffort: tier.reasoningEffort };
   if (!siteConfig.aiReviewEnabled || !isAiProviderReady({
-    provider: siteConfig.aiReviewProvider,
-    apiUrl: siteConfig.aiReviewApiUrl,
+    provider: provider.provider,
+    apiUrl: provider.apiUrl,
     apiKey,
     model,
   })) {
@@ -243,7 +244,7 @@ export async function requestLearningAssistantAi(
   const started = await startAiReviewLog({
     kind: "learning-answer",
     targetLabel: usageContext.targetLabel || "学习通答题",
-    provider: siteConfig.aiReviewProvider || "ai-json-api",
+    provider: provider.provider || "ai-json-api",
     model,
     endpoint,
     requestSummary,

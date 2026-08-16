@@ -1,5 +1,5 @@
 import type { FeatureKey } from "./siteSettings";
-import { getSiteConfig, isAiProviderReady } from "./siteSettings";
+import { getSiteConfig, isAiProviderReady, resolveAiServiceForScene } from "./siteSettings";
 import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } from "./aiReviewLog";
 import { requestAiJson } from "./topicAiReview";
 import {
@@ -595,20 +595,21 @@ export async function askCampusAssistant(input: {
   const availableActions = listCampusAssistantActions(input.context);
   const deterministicActions = searchCampusAssistantActions(message, input.context, 3);
   const config = getSiteConfig();
+  const provider = resolveAiServiceForScene(config, "assistant");
   if (!config.aiReviewEnabled || !isAiProviderReady({
-    provider: config.aiReviewProvider,
-    apiUrl: config.aiReviewApiUrl,
-    apiKey: config.aiReviewApiKey,
+    provider: provider.provider,
+    apiUrl: provider.apiUrl,
+    apiKey: provider.apiKey,
     model: config.assistantModel,
   })) {
     return fallbackAssistantResponse(deterministicActions, false);
   }
 
-  const endpoint = normalizeAiJsonApiUrl(config.aiReviewApiUrl, DEFAULT_REVIEW_API_URL);
+  const endpoint = normalizeAiJsonApiUrl(provider.apiUrl, DEFAULT_REVIEW_API_URL);
   const started = await startAiReviewLog({
     kind: "campus-assistant",
     targetLabel: "拾间AI 对话",
-    provider: config.aiReviewProvider || "ai-json-api",
+    provider: provider.provider || "ai-json-api",
     model: config.assistantModel,
     endpoint,
     requestSummary: message,
@@ -628,6 +629,7 @@ export async function askCampusAssistant(input: {
       promptCacheScope: "campus-assistant",
       model: config.assistantModel,
       fallbackModels: "",
+      providerConfig: provider,
       enablePromptCache: true,
       enablePromptCacheRetention: true,
     });
@@ -663,23 +665,24 @@ export async function streamCampusAssistant(input: {
   const availableActions = listCampusAssistantActions(input.context);
   const deterministicActions = searchCampusAssistantActions(message, input.context, 3);
   const config = getSiteConfig();
+  const provider = resolveAiServiceForScene(config, "assistant");
   if (!config.aiReviewEnabled || !isAiProviderReady({
-    provider: config.aiReviewProvider,
-    apiUrl: config.aiReviewApiUrl,
-    apiKey: config.aiReviewApiKey,
+    provider: provider.provider,
+    apiUrl: provider.apiUrl,
+    apiKey: provider.apiKey,
     model: config.assistantModel,
   })) {
     return fallbackAssistantResponse(deterministicActions, false);
   }
 
-  const endpoint = normalizeAiJsonApiUrl(config.aiReviewApiUrl, DEFAULT_REVIEW_API_URL);
+  const endpoint = normalizeAiJsonApiUrl(provider.apiUrl, DEFAULT_REVIEW_API_URL);
   const candidates = resolveModelCandidates(config.assistantModel, "");
   const modelIdentityRequested = isCampusAssistantModelIdentityQuestion(message);
   let lastError: unknown = null;
   const started = await startAiReviewLog({
     kind: "campus-assistant",
     targetLabel: "拾间AI 流式对话",
-    provider: config.aiReviewProvider || "ai-json-api",
+    provider: provider.provider || "ai-json-api",
     model: candidates[0] || config.assistantModel,
     endpoint,
     requestSummary: message,
@@ -701,7 +704,7 @@ export async function streamCampusAssistant(input: {
     try {
       const result = await sendAiJsonRequest({
         endpoint,
-        apiKey: config.aiReviewApiKey,
+        apiKey: provider.apiKey,
         model,
         temperature: 0.1,
         messages,

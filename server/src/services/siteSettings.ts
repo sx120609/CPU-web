@@ -60,7 +60,7 @@ export type AiServiceConfig = {
   apiUrl: string;
   apiKey: string;
 };
-export type AiServiceScene = "assistant" | "text-review" | "qq-group-ad" | "image-review" | "video-review";
+export type AiServiceScene = "assistant" | "learning-assistant" | "text-review" | "qq-group-ad" | "image-review" | "video-review";
 export type SiteConfig = {
   siteOrigin: string;
   siteFilingNumber: string;
@@ -70,6 +70,8 @@ export type SiteConfig = {
   learningAssistantAccessMode: LearningAssistantAccessMode;
   learningPlatforms: LearningPlatformAvailability;
   aiServices: AiServiceConfig[];
+  assistantServiceId: string;
+  learningAssistantServiceId: string;
   aiReviewServiceId: string;
   aiReviewEnabled: boolean;
   aiReviewProvider: string;
@@ -317,8 +319,13 @@ function legacyFieldForScene(source: AiServiceLegacySource, scene: AiServiceScen
 }
 
 function sceneServiceId(input: AiServiceLegacySource & Partial<Pick<SiteConfig,
-  "aiReviewServiceId" | "qqGroupAdReviewServiceId" | "imageReviewServiceId" | "videoReviewServiceId"
+  "assistantServiceId" | "learningAssistantServiceId" | "aiReviewServiceId" | "qqGroupAdReviewServiceId" | "imageReviewServiceId" | "videoReviewServiceId"
 >>, scene: AiServiceScene) {
+  if (scene === "assistant") return String(input.assistantServiceId || input.aiReviewServiceId || "").trim();
+  if (scene === "learning-assistant") {
+    return String(input.learningAssistantServiceId || input.assistantServiceId || input.aiReviewServiceId || "").trim();
+  }
+  if (scene === "text-review") return String(input.aiReviewServiceId || "").trim();
   if (scene === "qq-group-ad") return String(input.qqGroupAdReviewServiceId || "").trim();
   if (scene === "image-review") return String(input.imageReviewServiceId || "").trim();
   if (scene === "video-review") return String(input.videoReviewServiceId || "").trim();
@@ -326,6 +333,9 @@ function sceneServiceId(input: AiServiceLegacySource & Partial<Pick<SiteConfig,
 }
 
 function sceneLabel(scene: AiServiceScene) {
+  if (scene === "assistant") return "拾间 AI 服务";
+  if (scene === "learning-assistant") return "网课解题服务";
+  if (scene === "text-review") return "文字审核服务";
   if (scene === "qq-group-ad") return "QQ群广告服务";
   if (scene === "image-review") return "图片审核服务";
   if (scene === "video-review") return "视频审核服务";
@@ -334,7 +344,7 @@ function sceneLabel(scene: AiServiceScene) {
 
 function findSceneService(
   input: AiServiceLegacySource & Partial<Pick<SiteConfig,
-    "aiServices" | "aiReviewServiceId" | "qqGroupAdReviewServiceId" | "imageReviewServiceId" | "videoReviewServiceId"
+    "aiServices" | "assistantServiceId" | "learningAssistantServiceId" | "aiReviewServiceId" | "qqGroupAdReviewServiceId" | "imageReviewServiceId" | "videoReviewServiceId"
   >>,
   scene: AiServiceScene,
 ) {
@@ -354,7 +364,7 @@ function findSceneService(
 
 export function resolveAiServiceForScene(
   input: AiServiceLegacySource & Partial<Pick<SiteConfig,
-    "aiServices" | "aiReviewServiceId" | "qqGroupAdReviewServiceId" | "imageReviewServiceId" | "videoReviewServiceId"
+    "aiServices" | "assistantServiceId" | "learningAssistantServiceId" | "aiReviewServiceId" | "qqGroupAdReviewServiceId" | "imageReviewServiceId" | "videoReviewServiceId"
   >>,
   scene: AiServiceScene,
 ) {
@@ -373,6 +383,14 @@ function resolveAiServiceId(
 }
 
 function applyAiServiceToLegacyFields(target: SiteConfig, scene: AiServiceScene, service: AiServiceConfig) {
+  if (scene === "assistant") {
+    target.assistantServiceId = service.id;
+    return;
+  }
+  if (scene === "learning-assistant") {
+    target.learningAssistantServiceId = service.id;
+    return;
+  }
   if (scene === "qq-group-ad") {
     target.qqGroupAdReviewServiceId = service.id;
     target.qqGroupAdReviewProvider = service.provider;
@@ -470,6 +488,8 @@ const SITE_ORIGIN_KEY = "site.origin";
 const SITE_FILING_NUMBER_KEY = "site.filingNumber";
 const TOP_NAVIGATION_KEY = "site.topNavigation";
 const AI_SERVICES_KEY = "ai.services";
+const ASSISTANT_SERVICE_ID_KEY = "assistant.serviceId";
+const LEARNING_ASSISTANT_SERVICE_ID_KEY = "assistant.learningServiceId";
 const AI_REVIEW_SERVICE_ID_KEY = "ai.review.serviceId";
 const AI_REVIEW_ENABLED_KEY = "ai.review.enabled";
 const AI_REVIEW_PROVIDER_KEY = "ai.review.provider";
@@ -746,6 +766,8 @@ const configCache: SiteConfig = {
   learningAssistantAccessMode: DEFAULT_LEARNING_ASSISTANT_ACCESS_MODE,
   learningPlatforms: { ...DEFAULT_LEARNING_PLATFORM_AVAILABILITY },
   aiServices: [],
+  assistantServiceId: "",
+  learningAssistantServiceId: "",
   aiReviewServiceId: "",
   aiReviewEnabled: false,
   aiReviewProvider: "deepseek",
@@ -903,6 +925,8 @@ export async function loadFeatures(): Promise<void> {
           SITE_FILING_NUMBER_KEY,
           TOP_NAVIGATION_KEY,
           AI_SERVICES_KEY,
+          ASSISTANT_SERVICE_ID_KEY,
+          LEARNING_ASSISTANT_SERVICE_ID_KEY,
           AI_REVIEW_SERVICE_ID_KEY,
           AI_REVIEW_ENABLED_KEY,
           AI_REVIEW_PROVIDER_KEY,
@@ -1001,6 +1025,14 @@ export async function loadFeatures(): Promise<void> {
     }
     if (r.key === AI_SERVICES_KEY) {
       configCache.aiServices = normalizeAiServiceEntries(parseJsonValue<unknown>(r.value, []));
+      continue;
+    }
+    if (r.key === ASSISTANT_SERVICE_ID_KEY) {
+      configCache.assistantServiceId = String(r.value || "").trim();
+      continue;
+    }
+    if (r.key === LEARNING_ASSISTANT_SERVICE_ID_KEY) {
+      configCache.learningAssistantServiceId = String(r.value || "").trim();
       continue;
     }
     if (r.key === AI_REVIEW_SERVICE_ID_KEY) {
@@ -1385,6 +1417,12 @@ export function getSiteConfig(): SiteConfig {
   };
   const sceneMap: Array<[AiServiceScene, (service: ReturnType<typeof resolveAiServiceForScene>) => void]> = [
     ["assistant", (service) => {
+      result.assistantServiceId = service.serviceId;
+    }],
+    ["learning-assistant", (service) => {
+      result.learningAssistantServiceId = service.serviceId;
+    }],
+    ["text-review", (service) => {
       result.aiReviewServiceId = service.serviceId;
       result.aiReviewProvider = service.provider;
       result.aiReviewApiUrl = service.apiUrl;
@@ -1700,7 +1738,7 @@ function sanitizeAiReviewConfig() {
 
   const legacyServices = buildAiServicesFromLegacy(configCache);
   configCache.aiServices = normalizeAiServiceList(configCache.aiServices, legacyServices);
-  const scenes: AiServiceScene[] = ["assistant", "qq-group-ad", "image-review", "video-review"];
+  const scenes: AiServiceScene[] = ["assistant", "learning-assistant", "text-review", "qq-group-ad", "image-review", "video-review"];
   for (const scene of scenes) {
     const legacy = legacyFieldForScene(configCache, scene);
     const requestedId = sceneServiceId(configCache, scene);
@@ -1738,7 +1776,7 @@ function updateLegacySelectedServices(
 ) {
   const scenes: Array<{ scene: AiServiceScene; fields: string[] }> = [
     {
-      scene: "assistant",
+      scene: "text-review",
       fields: ["aiReviewProvider", "aiReviewApiUrl", "aiReviewApiKey"],
     },
     {
@@ -1863,7 +1901,14 @@ function sanitizeCommunityTrustConfig() {
 }
 
 export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<SiteConfig> {
-  const legacySource = { ...configCache, ...input };
+  const legacySource = {
+    ...configCache,
+    ...input,
+    // Older admin clients only sent aiReviewServiceId. Keep their main-service
+    // selection meaningful after the assistant/course routes become separate.
+    assistantServiceId: input.assistantServiceId ?? input.aiReviewServiceId ?? configCache.assistantServiceId,
+    learningAssistantServiceId: input.learningAssistantServiceId ?? input.aiReviewServiceId ?? configCache.learningAssistantServiceId,
+  };
   let aiServices = normalizeAiServiceList(
     input.aiServices !== undefined ? input.aiServices : configCache.aiServices,
     buildAiServicesFromLegacy(legacySource),
@@ -1873,27 +1918,31 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
   }
   aiServices = normalizeAiServiceList(aiServices, buildAiServicesFromLegacy(legacySource));
   const selectedServices = new Map<AiServiceScene, AiServiceConfig>();
-  for (const scene of ["assistant", "qq-group-ad", "image-review", "video-review"] as AiServiceScene[]) {
+  for (const scene of ["assistant", "learning-assistant", "text-review", "qq-group-ad", "image-review", "video-review"] as AiServiceScene[]) {
     const legacy = legacyFieldForScene(legacySource, scene);
     const requestedId = sceneServiceId(legacySource, scene);
     const serviceId = resolveAiServiceId(aiServices, requestedId, legacy);
     const service = aiServices.find((item) => item.id === serviceId) || aiServices[0];
     if (service) selectedServices.set(scene, service);
   }
-  const mainService = selectedServices.get("assistant") || aiServices[0] || DEFAULT_AI_SERVICES[0];
-  const qqService = selectedServices.get("qq-group-ad") || mainService;
-  const imageService = selectedServices.get("image-review") || mainService;
-  const videoService = selectedServices.get("video-review") || mainService;
+  const assistantService = selectedServices.get("assistant") || aiServices[0] || DEFAULT_AI_SERVICES[0];
+  const learningAssistantService = selectedServices.get("learning-assistant") || assistantService;
+  const textReviewService = selectedServices.get("text-review") || assistantService;
+  const qqService = selectedServices.get("qq-group-ad") || assistantService;
+  const imageService = selectedServices.get("image-review") || assistantService;
+  const videoService = selectedServices.get("video-review") || assistantService;
   const next: SiteConfig = {
     ...configCache,
     aiServices,
-    aiReviewServiceId: mainService.id,
+    assistantServiceId: assistantService.id,
+    learningAssistantServiceId: learningAssistantService.id,
+    aiReviewServiceId: textReviewService.id,
     aiReviewEnabled: input.aiReviewEnabled ?? configCache.aiReviewEnabled,
-    aiReviewProvider: mainService.provider,
-    aiReviewApiUrl: mainService.apiUrl,
+    aiReviewProvider: textReviewService.provider,
+    aiReviewApiUrl: textReviewService.apiUrl,
     aiReviewModel: String(input.aiReviewModel ?? configCache.aiReviewModel ?? "deepseek-v4-flash").trim() || "deepseek-v4-flash",
     aiReviewFallbackModels: normalizeFallbackModelList(input.aiReviewFallbackModels, input.aiReviewModel ?? configCache.aiReviewModel),
-    aiReviewApiKey: mainService.apiKey,
+    aiReviewApiKey: textReviewService.apiKey,
     qqGroupAdReviewServiceId: qqService.id,
     qqGroupAdReviewEnabled: input.qqGroupAdReviewEnabled ?? configCache.qqGroupAdReviewEnabled,
     qqGroupAdReviewProvider: qqService.provider,
@@ -1956,6 +2005,16 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
       where: { key: AI_SERVICES_KEY },
       update: { value: JSON.stringify(next.aiServices) },
       create: { key: AI_SERVICES_KEY, value: JSON.stringify(next.aiServices) },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: ASSISTANT_SERVICE_ID_KEY },
+      update: { value: next.assistantServiceId },
+      create: { key: ASSISTANT_SERVICE_ID_KEY, value: next.assistantServiceId },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: LEARNING_ASSISTANT_SERVICE_ID_KEY },
+      update: { value: next.learningAssistantServiceId },
+      create: { key: LEARNING_ASSISTANT_SERVICE_ID_KEY, value: next.learningAssistantServiceId },
     }),
     prisma.siteSetting.upsert({
       where: { key: AI_REVIEW_SERVICE_ID_KEY },
