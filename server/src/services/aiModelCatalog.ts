@@ -1,7 +1,21 @@
+import { createHash } from "node:crypto";
+
 export type AiModelCatalog = {
   endpoint: string;
   models: string[];
 };
+
+export type AiModelAvailability = {
+  status: "available" | "unavailable" | "unknown";
+  model: string;
+  reason?: string;
+};
+
+type AiModelAvailabilityCacheEntry = AiModelAvailability & { expiresAt: number };
+
+const aiModelAvailabilityCache = new Map<string, AiModelAvailabilityCacheEntry>();
+const AI_MODEL_AVAILABILITY_SUCCESS_TTL_MS = 5 * 60 * 1000;
+const AI_MODEL_AVAILABILITY_FAILURE_TTL_MS = 15 * 1000;
 
 export function buildAiModelEndpointCandidates(apiUrl: string, provider?: string) {
   const parsed = new URL(String(apiUrl || "").trim());
@@ -104,6 +118,58 @@ export async function fetchAiModelCatalog(input: {
   }
 
   throw new Error(errors.join("；") || "上游模型接口不可用");
+}
+
+/**
+ * Check a fallback service before sending a request to it. A missing or
+ * unreachable catalog is deliberately treated as unknown instead of sending
+ * a probably-invalid model to another provider.
+ */
+export async function checkAiModelAvailability(input: {
+  provider?: string;
+  apiUrl: string;
+  apiKey?: string;
+  model: string;
+  timeoutMs?: number;
+}): Promise<AiModelAvailability> {
+  const model = String(input.model || "").trim();
+  if (!model) return { status: "unknown", model, reason: "模型为空" };
+  const cacheKey = [
+    String(input.provider || "").trim().toLowerCase(),
+    String(input.apiUrl || "").trim(),
+    createHash("sha256").update(String(input.apiKey || "")).digest("hex").slice(0, 12),
+    model.toLowerCase(),
+  ].join("\n");
+  const cached = aiModelAvailabilityCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return { status: cached.status, model: cached.model, ...(cached.reason ? { reason: cached.reason } : {}) };
+  }
+
+  try {
+    const catalog = await fetchAiModelCatalog({
+      provider: input.provider,
+      apiUrl: input.apiUrl,
+      apiKey: input.apiKey,
+      timeoutMs: input.timeoutMs ?? 3_000,
+    });
+    const available = catalog.models.some((candidate) => candidate.trim().toLowerCase() === model.toLowerCase());
+    const result: AiModelAvailability = available
+      ? { status: "available", model }
+      : { status: "unavailable", model, reason: `模型目录中没有 ${model}` };
+    aiModelAvailabilityCache.set(cacheKey, {
+      ...result,
+      expiresAt: Date.now() + AI_MODEL_AVAILABILITY_SUCCESS_TTL_MS,
+    });
+    return result;
+  } catch (error) {
+    const reason = error instanceof Error ? error.message.slice(0, 240) : "模型目录读取失败";
+    const result: AiModelAvailability = { status: "unknown", model, reason };
+    aiModelAvailabilityCache.set(cacheKey, {
+      ...result,
+      expiresAt: Date.now() + AI_MODEL_AVAILABILITY_FAILURE_TTL_MS,
+    });
+    return result;
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, any> {

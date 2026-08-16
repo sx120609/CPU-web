@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { checkAiModelAvailability } from "./aiModelCatalog";
 import { shouldFallbackToNextProvider } from "./modelFallback";
 
 export type AiJsonApiMode = "chat_completions" | "responses";
@@ -39,7 +40,30 @@ export type AiProviderCandidate = {
   provider: string;
   apiUrl: string;
   apiKey: string;
+  /** Optional model override for this provider fallback route. */
+  model?: string;
 };
+
+/** Keep the primary candidate untouched, but require every fallback to expose the model it will receive. */
+export async function filterAiProviderCandidatesByModel(
+  providers: AiProviderCandidate[],
+  defaultModel: string,
+) {
+  const normalizedProviders = providers.filter((provider) => String(provider.apiUrl || "").trim());
+  if (normalizedProviders.length <= 1) return normalizedProviders;
+  const eligible = [normalizedProviders[0]];
+  for (const provider of normalizedProviders.slice(1)) {
+    const model = String(provider.model || defaultModel || "").trim();
+    const availability = await checkAiModelAvailability({
+      provider: provider.provider,
+      apiUrl: provider.apiUrl,
+      apiKey: provider.apiKey,
+      model,
+    });
+    if (availability.status === "available") eligible.push(provider);
+  }
+  return eligible;
+}
 
 const promptCacheKeySupport = new Map<string, boolean>();
 const promptCacheRetentionSupport = new Map<string, boolean>();
@@ -121,15 +145,24 @@ export async function sendAiJsonRequestWithProviderFallback(input: {
   signal?: AbortSignal;
 }): Promise<SendAiJsonRequestWithFallbackResult> {
   let lastError: unknown = null;
+  let lastResponseResult: SendAiJsonRequestWithFallbackResult | null = null;
   const providers = input.providers.filter((provider) => String(provider.apiUrl || "").trim());
   for (let index = 0; index < providers.length; index += 1) {
     const provider = providers[index];
+    const model = String(provider.model || input.model || "").trim();
+    if (index > 0) {
+      const eligible = await filterAiProviderCandidatesByModel([providers[0], provider], input.model);
+      if (eligible.length < 2) {
+        lastError = new Error(`跳过回退服务 ${provider.name || provider.provider}：未确认支持模型 ${model}`);
+        continue;
+      }
+    }
     const endpoint = normalizeAiJsonApiUrl(provider.apiUrl, input.fallbackEndpoint);
     try {
       const result = await sendAiJsonRequest({
         endpoint,
         apiKey: provider.apiKey,
-        model: input.model,
+        model,
         temperature: input.temperature,
         messages: input.messages,
         promptCacheKey: input.promptCacheKey,
@@ -145,16 +178,19 @@ export async function sendAiJsonRequestWithProviderFallback(input: {
       if (!shouldFallbackToNextProvider(result.response.status, text)) {
         return { ...result, provider, endpoint };
       }
+      lastResponseResult = { ...result, provider, endpoint };
       if (result.response.body) {
         await result.response.body.cancel().catch(() => undefined);
       }
       lastError = new Error(`AI 服务 ${provider.name || provider.provider} 返回 HTTP ${result.response.status}`);
     } catch (error) {
       if (input.signal?.aborted) throw error;
+      if (!isTransientAiUpstreamError(error, input.signal)) throw error;
       lastError = error;
       if (index >= providers.length - 1) throw error;
     }
   }
+  if (lastResponseResult) return lastResponseResult;
   throw lastError instanceof Error ? lastError : new Error("没有可用的 AI 服务");
 }
 
@@ -164,11 +200,12 @@ export async function sendAiUpstreamRequest(input: {
   body: Record<string, unknown>;
   promptCacheKey?: string | null;
   enablePromptCacheRetention?: boolean;
-  /** Retries for transient provider failures. A value of 2 means at most three total attempts. */
+  /** Retries for transient provider failures. A value of 3 means at most four total attempts. */
   maxTransientRetries?: number;
   signal?: AbortSignal;
 }): Promise<SendAiJsonRequestResult> {
   const mode = detectAiJsonApiMode(input.endpoint);
+  validateAiRequestBody(input.body, mode);
   const supportKey = `${mode}:${input.endpoint}`;
   const promptCacheKey = String(input.promptCacheKey || "").trim();
   let promptCacheKeyApplied = Boolean(promptCacheKey) && (promptCacheKeySupport.get(supportKey) ?? true);
@@ -178,7 +215,7 @@ export async function sendAiUpstreamRequest(input: {
   const configuredRetries = Number(input.maxTransientRetries);
   const maxTransientRetries = Number.isFinite(configuredRetries)
     ? Math.max(0, Math.min(3, Math.floor(configuredRetries)))
-    : 0;
+    : 3;
 
   const execute = () => fetch(input.endpoint, {
     method: "POST",
@@ -246,8 +283,7 @@ export async function sendAiUpstreamRequest(input: {
       retryCount += 1;
     }
 
-    // Retry without an artificial delay, while yielding to pending abort work.
-    await Promise.resolve();
+    await waitForTransientRetry(retryCount, input.signal);
   }
 
   return {
@@ -438,6 +474,94 @@ function toChatCompletionsMessage(message: AiJsonMessage) {
   };
 }
 
+function validateAiRequestBody(body: Record<string, unknown>, mode: AiJsonApiMode) {
+  const model = String(body.model || "").trim();
+  if (!model) throw new Error("AI 请求体无效：model 不能为空");
+  if (mode === "chat_completions") {
+    validateChatMessages(body.messages);
+    return;
+  }
+  validateResponsesInput(body.input);
+}
+
+function validateChatMessages(value: unknown) {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error("AI 请求体无效：messages 不能为空");
+  }
+  value.forEach((message, index) => {
+    if (!message || typeof message !== "object") {
+      throw new Error(`AI 请求体无效：messages[${index}] 不是对象`);
+    }
+    const item = message as Record<string, unknown>;
+    if (!String(item.role || "").trim()) {
+      throw new Error(`AI 请求体无效：messages[${index}].role 不能为空`);
+    }
+    validateMessageContent(item.content, `messages[${index}].content`);
+  });
+}
+
+function validateResponsesInput(value: unknown) {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error("AI 请求体无效：input 不能为空");
+  }
+  value.forEach((message, index) => {
+    if (!message || typeof message !== "object") {
+      throw new Error(`AI 请求体无效：input[${index}] 不是对象`);
+    }
+    const item = message as Record<string, unknown>;
+    if (!String(item.role || "").trim()) {
+      throw new Error(`AI 请求体无效：input[${index}].role 不能为空`);
+    }
+    validateMessageContent(item.content, `input[${index}].content`, true);
+  });
+}
+
+function validateMessageContent(value: unknown, path: string, responses = false) {
+  if (typeof value === "string") {
+    if (!value.trim()) throw new Error(`AI 请求体无效：${path} 不能为空`);
+    return;
+  }
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error(`AI 请求体无效：${path} 不能为空`);
+  }
+  value.forEach((part, index) => {
+    if (!part || typeof part !== "object") {
+      throw new Error(`AI 请求体无效：${path}[${index}] 不是对象`);
+    }
+    const item = part as Record<string, unknown>;
+    const type = String(item.type || "").trim();
+    if (responses) {
+      if (type === "input_text") {
+        if (!String(item.text || "").trim()) throw new Error(`AI 请求体无效：${path}[${index}].text 不能为空`);
+        return;
+      }
+      if (type === "input_image") {
+        validateAiImageUrl(item.image_url, `${path}[${index}].image_url`);
+        return;
+      }
+    } else {
+      if (type === "text") {
+        if (!String(item.text || "").trim()) throw new Error(`AI 请求体无效：${path}[${index}].text 不能为空`);
+        return;
+      }
+      if (type === "image_url") {
+        const image = item.image_url;
+        if (!image || typeof image !== "object") throw new Error(`AI 请求体无效：${path}[${index}].image_url 不能为空`);
+        validateAiImageUrl((image as Record<string, unknown>).url, `${path}[${index}].image_url.url`);
+        return;
+      }
+    }
+    throw new Error(`AI 请求体无效：${path}[${index}].type 不受支持`);
+  });
+}
+
+function validateAiImageUrl(value: unknown, path: string) {
+  const url = String(value || "").trim();
+  if (/^https?:\/\//i.test(url)) return;
+  if (/^data:image\/(?:jpeg|png|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/i.test(url)) return;
+  throw new Error(`AI 请求体无效：${path} 不是有效的图片 Data URL 或 http(s) URL`);
+}
+
 function shouldRetryTransientUpstreamStatus(status: number) {
   return status === 408
     || status === 409
@@ -447,12 +571,41 @@ function shouldRetryTransientUpstreamStatus(status: number) {
     || status >= 500;
 }
 
-function shouldRetryTransientUpstreamError(error: unknown, signal?: AbortSignal) {
+export function isTransientAiUpstreamError(error: unknown, signal?: AbortSignal) {
   if (signal?.aborted) return false;
   const name = error instanceof Error ? error.name : "";
   if (name === "AbortError" || name === "TimeoutError") return false;
   const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error || "");
   return /fetch failed|network|socket|econn|etimedout|eai_again|enotfound|temporarily unavailable/i.test(message);
+}
+
+function shouldRetryTransientUpstreamError(error: unknown, signal?: AbortSignal) {
+  return isTransientAiUpstreamError(error, signal);
+}
+
+async function waitForTransientRetry(retryCount: number, signal?: AbortSignal) {
+  if (signal?.aborted) {
+    const error = new Error("AI 请求已取消");
+    error.name = "AbortError";
+    throw error;
+  }
+  const delayMs = Math.min(1_200, 180 * (2 ** Math.max(0, retryCount - 1)));
+  await new Promise<void>((resolve, reject) => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const onAbort = () => {
+      if (timer) clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+      const error = new Error("AI 请求已取消");
+      error.name = "AbortError";
+      reject(error);
+    };
+    timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, delayMs);
+    signal?.addEventListener("abort", onAbort, { once: true });
+    if (signal?.aborted) onAbort();
+  });
 }
 
 function shouldDisablePromptCacheKey(status: number, responseText: string) {

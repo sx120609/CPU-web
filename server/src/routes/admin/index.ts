@@ -2100,7 +2100,13 @@ const siteConfigPatchSchema = z.object({
     apiUrl: z.string().trim().max(240),
     apiKey: z.string().trim().max(240),
   })).max(20).optional(),
-  aiServiceFallbacks: z.record(z.array(z.string().trim().max(48)).max(8)).optional(),
+  aiServiceFallbacks: z.record(z.array(z.union([
+    z.string().trim().max(48),
+    z.object({
+      serviceId: z.string().trim().max(48),
+      model: z.string().trim().max(200).optional(),
+    }).strict(),
+  ])).max(8)).optional(),
   assistantServiceId: z.string().trim().max(48).optional(),
   learningAssistantServiceId: z.string().trim().max(48).optional(),
   aiReviewServiceId: z.string().trim().max(48).optional(),

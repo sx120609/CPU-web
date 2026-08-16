@@ -10,7 +10,11 @@ export type AiServiceConfig = {
 };
 
 export type AiServiceScene = "assistant" | "learning-assistant" | "text-review" | "qq-group-ad" | "image-review" | "video-review";
-export type AiServiceFallbackMap = Record<AiServiceScene, string[]>;
+export type AiServiceFallbackRoute = {
+  serviceId: string;
+  model: string;
+};
+export type AiServiceFallbackMap = Record<AiServiceScene, AiServiceFallbackRoute[]>;
 
 export type SiteConfig = {
   siteOrigin: string;

@@ -567,15 +567,58 @@ test("AI upstream retries transient overloads before returning the final failure
   }
 });
 
+test("AI upstream rejects an invalid image payload before contacting the provider", async () => {
+  const originalFetch = globalThis.fetch;
+  let requests = 0;
+  globalThis.fetch = (async () => {
+    requests += 1;
+    return new Response('{"ok":true}', { status: 200 });
+  }) as typeof fetch;
+
+  try {
+    await assert.rejects(
+      () => sendAiUpstreamRequest({
+        endpoint: "http://127.0.0.1:11434/v1/chat/completions",
+        apiKey: "",
+        body: {
+          model: "qwen3.8:27b",
+          messages: [{
+            role: "user",
+            content: [
+              { type: "text", text: "请识别这张图片" },
+              { type: "image_url", image_url: { url: "data:image/png;base64,[object ArrayBuffer]" } },
+            ],
+          }],
+        },
+      }),
+      /不是有效的图片 Data URL/u,
+    );
+    assert.equal(requests, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("AI JSON requests fail over to the next configured provider", async () => {
   const originalFetch = globalThis.fetch;
-  const requests: Array<{ url: string; authorization: string | null }> = [];
+  const requests: Array<{ url: string; method: string; authorization: string | null; model?: string }> = [];
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
-    requests.push({
-      url: String(input),
+    const url = String(input);
+    const method = String(init?.method || "GET").toUpperCase();
+    const request = {
+      url,
+      method,
       authorization: new Headers(init?.headers).get("authorization"),
-    });
-    if (requests.length === 1) {
+    } as { url: string; method: string; authorization: string | null; model?: string };
+    if (method === "POST") request.model = JSON.parse(String(init?.body || "{}")).model;
+    requests.push(request);
+    if (method === "GET") {
+      return new Response('{"data":[{"id":"backup-model"}]}', {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (url.includes("primary.example")) {
       return new Response('{"error":"provider unavailable"}', {
         status: 503,
         headers: { "Content-Type": "application/json" },
@@ -591,7 +634,7 @@ test("AI JSON requests fail over to the next configured provider", async () => {
     const result = await sendAiJsonRequestWithProviderFallback({
       providers: [
         { serviceId: "primary", name: "主服务", provider: "deepseek", apiUrl: "https://primary.example/v1", apiKey: "primary-key" },
-        { serviceId: "backup", name: "备用服务", provider: "openai", apiUrl: "https://backup.example/v1", apiKey: "backup-key" },
+        { serviceId: "backup", name: "备用服务", provider: "openai", apiUrl: "https://backup.example/v1", apiKey: "backup-key", model: "backup-model" },
       ],
       fallbackEndpoint: "https://fallback.example/v1/chat/completions",
       model: "example-model",
@@ -602,8 +645,79 @@ test("AI JSON requests fail over to the next configured provider", async () => {
     assert.equal(result.provider.serviceId, "backup");
     assert.equal(result.endpoint, "https://backup.example/v1/chat/completions");
     assert.deepEqual(requests, [
-      { url: "https://primary.example/v1/chat/completions", authorization: "Bearer primary-key" },
-      { url: "https://backup.example/v1/chat/completions", authorization: "Bearer backup-key" },
+      { url: "https://primary.example/v1/chat/completions", method: "POST", authorization: "Bearer primary-key", model: "example-model" },
+      { url: "https://primary.example/v1/chat/completions", method: "POST", authorization: "Bearer primary-key", model: "example-model" },
+      { url: "https://primary.example/v1/chat/completions", method: "POST", authorization: "Bearer primary-key", model: "example-model" },
+      { url: "https://primary.example/v1/chat/completions", method: "POST", authorization: "Bearer primary-key", model: "example-model" },
+      { url: "https://backup.example/v1/model", method: "GET", authorization: "Bearer backup-key" },
+      { url: "https://backup.example/v1/chat/completions", method: "POST", authorization: "Bearer backup-key", model: "backup-model" },
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("AI JSON requests do not cross providers for a deterministic 400", async () => {
+  const originalFetch = globalThis.fetch;
+  const requests: string[] = [];
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    requests.push(`${String(init?.method || "GET").toUpperCase()} ${String(input)}`);
+    return new Response('{"error":"invalid image input"}', {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  try {
+    const result = await sendAiJsonRequestWithProviderFallback({
+      providers: [
+        { serviceId: "primary", name: "主服务", provider: "ollama", apiUrl: "http://primary-400.example:11434", apiKey: "" },
+        { serviceId: "backup", name: "备用服务", provider: "openai", apiUrl: "https://backup-400.example/v1", apiKey: "backup-key", model: "backup-model" },
+      ],
+      fallbackEndpoint: "https://fallback.example/v1/chat/completions",
+      model: "qwen3.8:27b",
+      messages: [{ role: "user", content: "hello" }],
+      maxTransientRetries: 0,
+    });
+
+    assert.equal(result.response.status, 400);
+    assert.equal(result.provider.serviceId, "primary");
+    assert.deepEqual(requests, ["POST http://primary-400.example:11434/v1/chat/completions"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("AI JSON requests preserve a transient primary failure when no fallback model is confirmed", async () => {
+  const originalFetch = globalThis.fetch;
+  const requests: string[] = [];
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    const url = String(input);
+    requests.push(`${method} ${url}`);
+    if (method === "GET") return new Response('{"error":"catalog unavailable"}', { status: 404 });
+    return new Response('{"error":"temporarily unavailable"}', { status: 503 });
+  }) as typeof fetch;
+
+  try {
+    const result = await sendAiJsonRequestWithProviderFallback({
+      providers: [
+        { serviceId: "primary", name: "主服务", provider: "deepseek", apiUrl: "https://primary-preserve.example/v1", apiKey: "primary-key" },
+        { serviceId: "backup", name: "备用服务", provider: "openai", apiUrl: "https://backup-preserve.example/v1", apiKey: "backup-key", model: "backup-model" },
+      ],
+      fallbackEndpoint: "https://fallback.example/v1/chat/completions",
+      model: "primary-model",
+      messages: [{ role: "user", content: "hello" }],
+      maxTransientRetries: 0,
+    });
+
+    assert.equal(result.response.status, 503);
+    assert.equal(result.provider.serviceId, "primary");
+    assert.match(result.errorText, /temporarily unavailable/u);
+    assert.deepEqual(requests, [
+      "POST https://primary-preserve.example/v1/chat/completions",
+      "GET https://backup-preserve.example/v1/model",
+      "GET https://backup-preserve.example/v1/models",
     ]);
   } finally {
     globalThis.fetch = originalFetch;

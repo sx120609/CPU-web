@@ -308,7 +308,8 @@
                 const rawContentType = String(contentTypeMatch && contentTypeMatch[1] || (/\.png(?:\?|$)/i.test(imageUrl) ? "image/png" : /\.webp(?:\?|$)/i.test(imageUrl) ? "image/webp" : /\.gif(?:\?|$)/i.test(imageUrl) ? "image/gif" : "image/jpeg")).trim().toLowerCase();
                 const contentType = rawContentType === "image/jpg" ? "image/jpeg" : rawContentType;
                 if (!["image/jpeg", "image/png", "image/webp", "image/gif"].includes(contentType)) throw new Error(`不支持的图片类型: ${rawContentType}`);
-                imageDataUrls.set(imageUrl, `data:${contentType};base64,${response.response}`);
+                const base64 = imageResponseToBase64(response);
+                imageDataUrls.set(imageUrl, `data:${contentType};base64,${base64}`);
               } catch (e) {
                 console.log("AI图片转换Base64失败:", imageUrl, e);
               }
@@ -1835,6 +1836,35 @@
     questionData.requiresVisualContext = hasLearningVisualQuestion(root, questionData.images);
     questionData.captureRect = getLearningQuestionCaptureRect(root);
     return questionData;
+  }, imageResponseToBase64 = (response) => {
+    const raw = response && response.response;
+    const isBase64 = (value) => {
+      const normalized = String(value || "").trim();
+      return normalized.length > 0
+        && normalized.length % 4 === 0
+        && /^[A-Za-z0-9+/]+={0,2}$/.test(normalized)
+        ? normalized
+        : "";
+    };
+    if (typeof raw === "string") {
+      const encoded = isBase64(raw);
+      if (encoded) return encoded;
+    }
+    const responseTextEncoded = isBase64(response && response.responseText);
+    if (responseTextEncoded) return responseTextEncoded;
+    let bytes;
+    if (raw instanceof ArrayBuffer) {
+      bytes = new Uint8Array(raw);
+    } else if (ArrayBuffer.isView(raw)) {
+      bytes = new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength);
+    }
+    if (!bytes || !bytes.length) throw new Error("图片二进制响应不是有效的 ArrayBuffer/Base64");
+    let binary = "";
+    const chunkSize = 0x8000;
+    for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+      binary += String.fromCharCode(...bytes.subarray(offset, Math.min(offset + chunkSize, bytes.length)));
+    }
+    return btoa(binary);
   }, removeHtml = (html, baseUrl = document.baseURI) => null == html ? "" : html.replace(/<(?!\/?(?:img|sub|sup|br)\b)[^>]+>/gi, "").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").replace(/<br\s*\/?>/gi, "\n").replace(/<img\b([^>]*)>/gi, (_match, attributes) => {
     try {
       const sourceMatch = /\b(?:src|data-src|data-original|data-original-src)\s*=\s*["']([^"']+)["']/i.exec(attributes);

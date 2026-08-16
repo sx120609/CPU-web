@@ -326,9 +326,9 @@ siteRouter.post(
         throw Errors.forbidden("该答题档位不参与限时免费，请选择当前开放的档位");
       }
       const controller = new AbortController();
-      timeout = setTimeout(() => controller.abort(), 120_000);
+      timeout = setTimeout(() => controller.abort(new Error("AI 请求超过 120 秒，已取消")), 120_000);
       res.on("close", () => {
-        if (!responseCompleted) controller.abort();
+        if (!responseCompleted) controller.abort(new Error("客户端已断开连接，AI 请求已取消"));
       });
       const clientVersion = String(req.header("x-cpu-desktop-version") || "unknown")
         .replace(/[^\w.-]/g, "")

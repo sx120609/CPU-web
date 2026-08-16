@@ -47,11 +47,13 @@ export function shouldFallbackToNextModel(status: number, responseText: string) 
 }
 
 /**
- * Provider fallback is broader than same-provider model fallback: an invalid
- * credential, endpoint, unsupported request shape, or an upstream outage can
- * all be recovered by trying the next configured service.
+ * Cross-provider fallback is reserved for transient upstream failures. A 400
+ * such as Ollama's `invalid image input` describes this request, not a dead
+ * provider; sending the same malformed payload to another service only hides
+ * the real cause and produces another failure.
  */
 export function shouldFallbackToNextProvider(status: number, responseText: string) {
-  if (status === 400 || status === 401 || status === 403 || status === 404 || status === 408 || status === 409 || status === 425 || status === 429 || status >= 500) return true;
-  return shouldFallbackToNextModel(status, responseText);
+  if (status === 408 || status === 409 || status === 425 || status === 429 || status === 529 || status >= 500) return true;
+  const text = String(responseText || "").toLowerCase();
+  return /(?:temporarily unavailable|server is overloaded|capacity|rate limit|quota exceeded|try again later)/i.test(text);
 }

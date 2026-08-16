@@ -4,11 +4,14 @@ import {
   buildAiPromptCacheKey,
   detectAiJsonApiMode,
   extractAiJsonTextResponse,
+  filterAiProviderCandidatesByModel,
+  isTransientAiUpstreamError,
   normalizeAiJsonApiUrl,
   sendAiUpstreamRequest,
 } from "./aiJsonApi";
 import { isCampusAssistantConversationRestricted } from "./campusAssistant";
 import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } from "./aiReviewLog";
+import { shouldFallbackToNextProvider } from "./modelFallback";
 import { getSiteConfig, isAiProviderReady, resolveAiServiceCandidatesForScene, type LearningAssistantReasoningEffort } from "./siteSettings";
 
 export const LEARNING_ASSISTANT_AI_INSTRUCTIONS = [
@@ -222,25 +225,28 @@ export async function requestLearningAssistantAi(
   }
 
   const siteConfig = getSiteConfig();
-  const providers = resolveAiServiceCandidatesForScene(siteConfig, "learning-assistant")
+  const tier = resolveLearningAssistantTier(body.reasoningEffort);
+  const model = tier.model;
+  const configuredProviders = resolveAiServiceCandidatesForScene(siteConfig, "learning-assistant")
     .filter((candidate) => isAiProviderReady({
       provider: candidate.provider,
       apiUrl: candidate.apiUrl,
       apiKey: candidate.apiKey,
-      model: resolveLearningAssistantTier(body.reasoningEffort).model,
+      model: candidate.model || model,
     }));
-  const tier = resolveLearningAssistantTier(body.reasoningEffort);
-  const model = tier.model;
   const effectiveBody: LearningAssistantAiUpstreamBody = { ...body, reasoningEffort: tier.reasoningEffort };
-  if (!siteConfig.aiReviewEnabled || !providers.length) {
+  if (!siteConfig.aiReviewEnabled || !configuredProviders.length) {
     throw Errors.server("AI 服务尚未配置或已关闭");
   }
+  const providers = await filterAiProviderCandidatesByModel(configuredProviders, model);
+  if (!providers.length) throw Errors.server("AI 服务尚未配置或已关闭");
 
   const requestSummary = messages.map((message) => message.content).join("\n").slice(0, 4000);
   let lastResult: LearningAssistantAiResult | null = null;
   let lastError: unknown = null;
   for (let index = 0; index < providers.length; index += 1) {
     const provider = providers[index];
+    const providerModel = String(provider.model || model).trim();
     const endpoint = normalizeAiJsonApiUrl(
       provider.apiUrl,
       "https://api.openai.com/v1/chat/completions",
@@ -249,7 +255,7 @@ export async function requestLearningAssistantAi(
       kind: "learning-answer",
       targetLabel: usageContext.targetLabel || "学习通答题",
       provider: provider.provider || "ai-json-api",
-      model,
+      model: providerModel,
       endpoint,
       requestSummary,
       createdById: usageContext.createdById ?? null,
@@ -260,13 +266,13 @@ export async function requestLearningAssistantAi(
       const upstreamResult = await sendAiUpstreamRequest({
         endpoint,
         apiKey: provider.apiKey,
-        body: buildLearningAssistantAiRequestBody(effectiveBody, model, endpoint),
-        promptCacheKey: buildAiPromptCacheKey("course-bot-ai-answer", [cacheIdentity, provider.serviceId, model]),
+        body: buildLearningAssistantAiRequestBody(effectiveBody, providerModel, endpoint),
+        promptCacheKey: buildAiPromptCacheKey("course-bot-ai-answer", [cacheIdentity, provider.serviceId, providerModel]),
         enablePromptCacheRetention: true,
         // Provider overloads are transient in practice. Keep one user request and
-        // its quota reservation, but make two immediate re-attempts before the
+        // its quota reservation, but make several bounded re-attempts before the
         // assistant is allowed to mark the question as unavailable.
-        maxTransientRetries: 2,
+        maxTransientRetries: 3,
         signal,
       });
       const upstream = upstreamResult.response;
@@ -280,7 +286,7 @@ export async function requestLearningAssistantAi(
           `HTTP ${upstream.status}${attempts > 1 ? ` after ${attempts} attempts` : ""}`,
           errorBody.toString("utf8"),
         );
-        if (index < providers.length - 1) continue;
+        if (index < providers.length - 1 && shouldFallbackToNextProvider(upstream.status, errorBody.toString("utf8"))) continue;
         return lastResult;
       }
       const payload = await upstream.json();
@@ -293,10 +299,14 @@ export async function requestLearningAssistantAi(
         outputText,
       };
     } catch (error) {
+      if (signal.aborted) {
+        const reason = signal.reason instanceof Error ? signal.reason.message : "请求已取消";
+        await finishAiReviewLogError(logId, `REQUEST_ABORTED: ${reason}`);
+        throw error;
+      }
       await finishAiReviewLogError(logId, error instanceof Error ? error.message : String(error));
-      if (signal.aborted) throw error;
+      if (!isTransientAiUpstreamError(error, signal) || index >= providers.length - 1) throw error;
       lastError = error;
-      if (index >= providers.length - 1) throw error;
     }
   }
   if (lastResult) return lastResult;

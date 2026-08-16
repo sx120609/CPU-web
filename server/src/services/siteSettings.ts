@@ -69,7 +69,12 @@ export const AI_SERVICE_SCENES = [
   "video-review",
 ] as const;
 export type AiServiceScene = typeof AI_SERVICE_SCENES[number];
-export type AiServiceFallbackMap = Record<AiServiceScene, string[]>;
+export type AiServiceFallbackRoute = {
+  serviceId: string;
+  /** Model tag/id used on this specific fallback service. Empty keeps legacy same-model behavior. */
+  model: string;
+};
+export type AiServiceFallbackMap = Record<AiServiceScene, AiServiceFallbackRoute[]>;
 export type SiteConfig = {
   siteOrigin: string;
   siteFilingNumber: string;
@@ -268,15 +273,27 @@ function normalizeAiServiceFallbacks(
     const raw = Array.isArray(source[scene]) ? source[scene] : [];
     const seen = new Set<string>();
     result[scene] = raw
-      .map((value) => String(value || "").trim())
-      .filter((id) => id && id !== primary && available.has(id) && !seen.has(id))
-      .filter((id) => {
-        seen.add(id);
+      .map((value) => normalizeAiServiceFallbackRoute(value))
+      .filter((route) => route.serviceId && route.serviceId !== primary && available.has(route.serviceId) && !seen.has(route.serviceId))
+      .filter((route) => {
+        seen.add(route.serviceId);
         return true;
       })
       .slice(0, 8);
   }
   return result;
+}
+
+function normalizeAiServiceFallbackRoute(value: unknown): AiServiceFallbackRoute {
+  if (typeof value === "string") {
+    return { serviceId: value.trim(), model: "" };
+  }
+  if (!value || typeof value !== "object") return { serviceId: "", model: "" };
+  const item = value as Record<string, unknown>;
+  return {
+    serviceId: String(item.serviceId ?? item.id ?? "").trim(),
+    model: String(item.model ?? "").trim().slice(0, 200),
+  };
 }
 
 function inferAiServiceProvider(apiUrl: string, fallback: string) {
@@ -420,16 +437,29 @@ export function resolveAiServiceCandidatesForScene(
 ) {
   const primary = resolveAiServiceForScene(input, scene);
   const services = normalizeAiServiceEntries(input.aiServices);
-  const fallbackIds = Array.isArray(input.aiServiceFallbacks?.[scene])
+  const fallbackRoutes = Array.isArray(input.aiServiceFallbacks?.[scene])
     ? input.aiServiceFallbacks[scene]
     : [];
-  const candidates = [primary];
+  const candidates: Array<{
+    id?: string;
+    name: string;
+    provider: string;
+    apiUrl: string;
+    apiKey: string;
+    serviceId: string;
+    model?: string;
+  }> = [primary];
   const seen = new Set([primary.serviceId]);
-  for (const fallbackId of fallbackIds) {
-    const service = services.find((item) => item.id === String(fallbackId || "").trim());
+  for (const fallbackValue of fallbackRoutes) {
+    const fallbackRoute = normalizeAiServiceFallbackRoute(fallbackValue);
+    const service = services.find((item) => item.id === fallbackRoute.serviceId);
     if (!service || seen.has(service.id)) continue;
     seen.add(service.id);
-    candidates.push({ serviceId: service.id, ...service });
+    candidates.push({
+      serviceId: service.id,
+      ...service,
+      ...(fallbackRoute.model ? { model: fallbackRoute.model } : {}),
+    });
   }
   return candidates;
 }

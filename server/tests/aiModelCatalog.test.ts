@@ -104,7 +104,12 @@ test("scene routing keeps the primary service first and appends ordered fallback
   const config = {
     aiServices: services,
     aiServiceFallbacks: {
-      assistant: ["backup", "primary", "missing", "backup-two"],
+      assistant: [
+        { serviceId: "backup", model: "backup-model" },
+        { serviceId: "primary", model: "ignored-model" },
+        { serviceId: "missing", model: "missing-model" },
+        { serviceId: "backup-two", model: "qwen3:8b" },
+      ],
       "learning-assistant": [],
       "text-review": [],
       "qq-group-ad": [],
@@ -122,6 +127,27 @@ test("scene routing keeps the primary service first and appends ordered fallback
     resolveAiServiceCandidatesForScene(config, "assistant").map((service) => service.serviceId),
     ["primary", "backup", "backup-two"],
   );
+  assert.equal(resolveAiServiceCandidatesForScene(config, "assistant")[1]?.model, "backup-model");
+});
+
+test("legacy provider fallback ids remain same-model routes until a service model is selected", () => {
+  const services = normalizeAiServiceList([
+    { id: "primary", name: "主服务", provider: "ollama", apiUrl: "http://127.0.0.1:11434", apiKey: "" },
+    { id: "backup", name: "备用服务", provider: "openai", apiUrl: "https://backup.example/v1", apiKey: "backup-key" },
+  ]);
+  const candidates = resolveAiServiceCandidatesForScene({
+    aiServices: services,
+    aiServiceFallbacks: {
+      assistant: ["backup"],
+      "learning-assistant": [],
+      "text-review": [],
+      "qq-group-ad": [],
+      "image-review": [],
+      "video-review": [],
+    },
+    assistantServiceId: "primary",
+  }, "assistant");
+  assert.equal(candidates[1]?.model, undefined);
 });
 
 test("model catalog normalizes common upstream response shapes", () => {

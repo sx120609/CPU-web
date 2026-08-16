@@ -103,7 +103,7 @@
       <div class="service-routing">
         <div>
           <h4 class="card-title">识别场景路由</h4>
-          <p class="desc">每个场景单独选择主服务和回退服务；主服务失败时按回退顺序尝试，下面的模型下拉只显示主服务读取到的模型。</p>
+          <p class="desc">每个场景单独选择主服务和回退服务；主服务出现可重试的临时故障并完成重试后，才按顺序尝试已确认支持所选模型的回退服务。</p>
         </div>
         <div class="routing-grid">
           <article v-for="item in serviceAssignments" :key="item.key" class="route-card">
@@ -116,12 +116,13 @@
             <label class="ai-row">
               <span class="ai-label">失败回退服务</span>
               <el-select
-                v-model="form.aiServiceFallbacks[item.scene]"
+                :model-value="fallbackServiceIds(item)"
                 multiple
                 collapse-tags
                 collapse-tags-tooltip
                 :max-collapse-tags="2"
                 placeholder="不设置回退"
+                @update:model-value="setFallbackServices(item, $event)"
               >
                 <el-option
                   v-for="service in fallbackServiceOptions(item)"
@@ -131,7 +132,28 @@
                 />
               </el-select>
             </label>
-            <small class="field-note route-fallback-note">失败后按顺序尝试；回退服务沿用该场景的模型 ID。</small>
+            <div v-if="fallbackRoutes(item).length" class="fallback-model-list">
+              <div v-for="route in fallbackRoutes(item)" :key="`${item.key}-fallback-model-${route.serviceId}`" class="fallback-model-row">
+                <span class="fallback-model-service">{{ serviceForScene(route.serviceId)?.name || route.serviceId }}</span>
+                <el-select
+                  v-model="route.model"
+                  class="fallback-model-select"
+                  filterable
+                  allow-create
+                  default-first-option
+                  placeholder="选择该服务的模型"
+                  @focus="loadModelsForService(route.serviceId, { silent: true })"
+                >
+                  <el-option
+                    v-for="model in modelOptionsForService(route.serviceId, [route.model])"
+                    :key="`${item.key}-${route.serviceId}-${model}`"
+                    :label="model"
+                    :value="model"
+                  />
+                </el-select>
+              </div>
+            </div>
+            <small class="field-note route-fallback-note">仅在主服务出现可重试的临时故障并完成重试后才回退；每个回退服务使用这里指定的模型，留空时只有确认存在主模型才会尝试。</small>
           </article>
         </div>
       </div>
@@ -578,6 +600,7 @@ import {
   type ForumVideoQueueRow,
   type ForumVideoSweepResult,
   type AiServiceConfig,
+  type AiServiceFallbackRoute,
   type SiteConfig,
   type SitePromptDefaults,
 } from "@/api/admin";
@@ -852,14 +875,52 @@ function normalizeFallbackServices() {
       : [];
     const seen = new Set<string>();
     form.aiServiceFallbacks[item.scene] = selected
-      .map((serviceId) => String(serviceId || "").trim())
-      .filter((serviceId) => serviceId && serviceId !== primaryId && available.has(serviceId) && !seen.has(serviceId))
-      .filter((serviceId) => {
-        seen.add(serviceId);
+      .map((value) => normalizeFallbackRoute(value))
+      .filter((route) => route.serviceId && route.serviceId !== primaryId && available.has(route.serviceId) && !seen.has(route.serviceId))
+      .filter((route) => {
+        seen.add(route.serviceId);
         return true;
       })
       .slice(0, 8);
   }
+}
+
+function normalizeFallbackRoute(value: unknown): AiServiceFallbackRoute {
+  if (typeof value === "string") return { serviceId: value.trim(), model: "" };
+  if (!value || typeof value !== "object") return { serviceId: "", model: "" };
+  const route = value as Partial<AiServiceFallbackRoute>;
+  return {
+    serviceId: String(route.serviceId || "").trim(),
+    model: String(route.model || "").trim(),
+  };
+}
+
+function fallbackRoutes(item: typeof serviceAssignments[number]) {
+  return Array.isArray(form.aiServiceFallbacks[item.scene])
+    ? form.aiServiceFallbacks[item.scene]
+    : [];
+}
+
+function fallbackServiceIds(item: typeof serviceAssignments[number]) {
+  return fallbackRoutes(item).map((route) => normalizeFallbackRoute(route).serviceId).filter(Boolean);
+}
+
+function setFallbackServices(item: typeof serviceAssignments[number], serviceIds: unknown) {
+  const nextIds = Array.isArray(serviceIds) ? serviceIds.map((value) => String(value || "").trim()) : [];
+  const existing = new Map(fallbackRoutes(item).map((route) => {
+    const normalized = normalizeFallbackRoute(route);
+    return [normalized.serviceId, normalized] as const;
+  }));
+  const primaryId = String(form[item.key] || "");
+  const next: AiServiceFallbackRoute[] = [];
+  const seen = new Set<string>();
+  for (const serviceId of nextIds) {
+    if (!serviceId || serviceId === primaryId || seen.has(serviceId) || !form.aiServices.some((service) => service.id === serviceId)) continue;
+    seen.add(serviceId);
+    next.push(existing.get(serviceId) || { serviceId, model: "" });
+  }
+  form.aiServiceFallbacks[item.scene] = next.slice(0, 8);
+  void Promise.all(next.map((route) => loadModelsForService(route.serviceId, { silent: true })));
 }
 
 function fallbackServiceOptions(item: typeof serviceAssignments[number]) {
@@ -990,7 +1051,7 @@ async function loadModelsForService(serviceId: string, options: { silent?: boole
 async function loadAssignedServiceCatalogs() {
   const serviceIds = Array.from(new Set(serviceAssignments.flatMap((item) => [
     String(form[item.key] || "").trim(),
-    ...(form.aiServiceFallbacks[item.scene] || []).map((serviceId) => String(serviceId || "").trim()),
+    ...(form.aiServiceFallbacks[item.scene] || []).map((route) => normalizeFallbackRoute(route).serviceId),
   ]).filter(Boolean)));
   await Promise.all(serviceIds.map((serviceId) => loadModelsForService(serviceId, { silent: true })));
 }
@@ -1416,6 +1477,32 @@ function requestMessage(error: unknown) {
 
 .route-fallback-note {
   min-height: 32px;
+}
+
+.fallback-model-list {
+  display: grid;
+  gap: 8px;
+  padding: 8px 0 0;
+  border-top: 1px dashed var(--el-border-color-lighter);
+}
+
+.fallback-model-row {
+  display: grid;
+  grid-template-columns: minmax(90px, 0.7fr) minmax(0, 1.3fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.fallback-model-service {
+  overflow: hidden;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fallback-model-select {
+  min-width: 0;
 }
 
 .model-grid {
