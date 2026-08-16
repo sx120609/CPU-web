@@ -285,12 +285,12 @@
       </button>
     </section>
 
-    <section v-if="sessionChecking" class="state-card session-checking-state">
+    <section v-if="sessionChecking && !parsed" class="state-card session-checking-state">
       <el-skeleton :rows="4" animated />
       <p>正在检查教务状态，请稍候…</p>
     </section>
 
-    <section v-else-if="academicDataUnavailable" class="state-card academic-empty-state">
+    <section v-else-if="academicDataUnavailable && !parsed" class="state-card academic-empty-state">
       <el-icon class="big"><InfoFilled /></el-icon>
       <h2>暂无教务数据</h2>
       <p>当前账号已经完成站内登录，但学校暂未开放可读取的教务入口。</p>
