@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
-import path from "node:path";
 import { readFile, rm } from "node:fs/promises";
 import { Errors } from "../utils/response";
 import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } from "./aiReviewLog";
 import { extractAiJsonTextResponse, normalizeAiJsonApiUrl, sendAiJsonRequestWithProviderFallback } from "./aiJsonApi";
 import { resolveModelCandidates, shouldFallbackToNextModel } from "./modelFallback";
 import { prepareMediaLocalFileForProcessing } from "./mediaStorage";
+import { decodeQqImageDataUrl, normalizeQqImageForAi } from "./qqbot/imageValidation";
 import { getSiteConfig, hasAiProviderAccess, isAiProviderReady, resolveAiServiceCandidatesForScene, resolveAiServiceForScene } from "./siteSettings";
 
 type QqGroupAdResponse = {
@@ -198,6 +198,9 @@ export async function reviewQqGroupMessageForAd(input: {
     { role: "system" as const, content: reviewMode === "qr-only" ? QQ_GROUP_QR_ONLY_SYSTEM_PROMPT : config.qqGroupAdReviewSystemPrompt },
     { role: "user" as const, content: userContent },
   ];
+  const attachmentSummary = preparedImages.length
+    ? `\n\n[附件诊断] ${preparedImages.map((image, index) => `图片${index + 1}：${image.sourceMimeType} -> ${image.mimeType}，${image.byteLength} bytes，${image.transcoded ? "已转码" : "原格式"}，sha256=${image.sha256}`).join("；")}`
+    : "";
   const reviewProvider = preparedImages.length
     ? resolveQqGroupAdImageProvider(config, provider)
     : provider;
@@ -229,7 +232,7 @@ export async function reviewQqGroupMessageForAd(input: {
       provider: config.qqGroupAdReviewProvider,
       model,
       endpoint,
-      requestSummary: promptText,
+      requestSummary: `${promptText}${attachmentSummary}`,
     });
     const logId = started?.id ?? null;
 
@@ -459,6 +462,11 @@ function resolveQqGroupAdImageProvider(
 type PreparedQqGroupAdImage = {
   sourceUrl: string;
   dataUrl: string;
+  mimeType: string;
+  sourceMimeType: string;
+  transcoded: boolean;
+  byteLength: number;
+  sha256: string;
 };
 
 /**
@@ -474,20 +482,26 @@ export async function prepareQqGroupAdImagePayloads(imageUrls: string[]): Promis
 }
 
 async function prepareQqGroupAdImagePayload(sourceUrl: string): Promise<PreparedQqGroupAdImage> {
-  if (/^data:image\/(?:jpeg|png|webp|gif);base64,/i.test(sourceUrl)) {
-    const base64 = sourceUrl.slice(sourceUrl.indexOf(",") + 1).replace(/\s+/g, "");
-    const byteLength = Buffer.byteLength(base64, "base64");
-    if (!byteLength || byteLength > QQ_GROUP_AD_IMAGE_MAX_INLINE_BYTES) {
-      throw new Error(byteLength ? "QQ群图片文件过大" : "QQ群图片文件为空");
-    }
-    return { sourceUrl, dataUrl: sourceUrl };
+  if (/^data:image\//i.test(sourceUrl)) {
+    const decoded = decodeQqImageDataUrl(sourceUrl);
+    if (!decoded) throw new Error("QQ群图片内容不是有效的 JPEG/PNG/WebP/GIF");
+    const normalized = await normalizeQqImageForAi(decoded.buffer);
+    if (!normalized) throw new Error("QQ群图片内容不是有效的视觉图片");
+    if (normalized.buffer.length > QQ_GROUP_AD_IMAGE_MAX_INLINE_BYTES) throw new Error("QQ群图片文件过大");
+    return {
+      sourceUrl,
+      dataUrl: `data:${normalized.mimeType};base64,${normalized.buffer.toString("base64")}`,
+      mimeType: normalized.mimeType,
+      sourceMimeType: normalized.sourceMimeType,
+      transcoded: normalized.transcoded,
+      byteLength: normalized.buffer.length,
+      sha256: createHash("sha256").update(normalized.buffer).digest("hex").slice(0, 16),
+    };
   }
 
   const preparedFile = await prepareMediaLocalFileForProcessing(sourceUrl);
   try {
     let buffer: Buffer;
-    let fileHint = preparedFile.localPath || sourceUrl;
-    let responseMime = "";
     if (preparedFile.localPath) {
       buffer = await readFile(preparedFile.localPath);
     } else if (/^https?:\/\//i.test(sourceUrl)) {
@@ -496,42 +510,29 @@ async function prepareQqGroupAdImagePayload(sourceUrl: string): Promise<Prepared
       const contentLength = Number(response.headers.get("content-length") || 0);
       if (contentLength > QQ_GROUP_AD_IMAGE_MAX_INLINE_BYTES) throw new Error("QQ群图片文件过大");
       buffer = Buffer.from(await response.arrayBuffer());
-      responseMime = String(response.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
     } else {
       throw new Error("QQ群图片没有可读取的本地文件或网络地址");
     }
     if (!buffer.length || buffer.length > QQ_GROUP_AD_IMAGE_MAX_INLINE_BYTES) {
       throw new Error(buffer.length ? "QQ群图片文件过大" : "QQ群图片文件为空");
     }
-    const mimeType = detectQqGroupAdImageMimeType(buffer, fileHint, responseMime);
-    if (!mimeType) throw new Error("QQ群图片格式不受支持");
+    const normalized = await normalizeQqImageForAi(buffer);
+    if (!normalized) throw new Error("QQ群图片内容不是有效的视觉图片");
+    if (normalized.buffer.length > QQ_GROUP_AD_IMAGE_MAX_INLINE_BYTES) throw new Error("QQ群图片文件过大");
     return {
       sourceUrl,
-      dataUrl: `data:${mimeType};base64,${buffer.toString("base64")}`,
+      dataUrl: `data:${normalized.mimeType};base64,${normalized.buffer.toString("base64")}`,
+      mimeType: normalized.mimeType,
+      sourceMimeType: normalized.sourceMimeType,
+      transcoded: normalized.transcoded,
+      byteLength: normalized.buffer.length,
+      sha256: createHash("sha256").update(normalized.buffer).digest("hex").slice(0, 16),
     };
   } finally {
     if (preparedFile.temporary && preparedFile.localPath) {
       await rm(preparedFile.localPath, { force: true }).catch(() => undefined);
     }
   }
-}
-
-function detectQqGroupAdImageMimeType(buffer: Buffer, fileHint: string, responseMime = "") {
-  const normalizedMime = responseMime.toLowerCase();
-  if (["image/jpeg", "image/png", "image/webp", "image/gif"].includes(normalizedMime)) return normalizedMime;
-  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return "image/jpeg";
-  if (buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return "image/png";
-  if (buffer.length >= 12 && buffer.subarray(0, 4).toString("ascii") === "RIFF" && buffer.subarray(8, 12).toString("ascii") === "WEBP") return "image/webp";
-  if (buffer.length >= 6) {
-    const header = buffer.subarray(0, 6).toString("ascii");
-    if (header === "GIF87a" || header === "GIF89a") return "image/gif";
-  }
-  const ext = path.extname(fileHint).replace(/^\./, "").toLowerCase();
-  if (ext === "jpg" || ext === "jpeg") return "image/jpeg";
-  if (ext === "png") return "image/png";
-  if (ext === "webp") return "image/webp";
-  if (ext === "gif") return "image/gif";
-  return "";
 }
 
 function buildQqGroupAdPromptCacheKey(input: {

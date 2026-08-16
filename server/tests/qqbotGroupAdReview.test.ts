@@ -12,6 +12,12 @@ import {
   resolveQqGroupAdReviewAction,
 } from "../src/services/qqbotGroupAdReview";
 
+const VALID_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+  "base64",
+);
+const VALID_GIF = Buffer.from("R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==", "base64");
+
 test("routes image reviews to visual models and filters Spark/Codex candidates", () => {
   const config = {
     qqGroupAdReviewModel: "gpt-5.3-codex-spark",
@@ -116,10 +122,7 @@ test("does not bypass a KFC meme that contains a real diversion link", () => {
 });
 
 test("keeps original image bytes when preparing a visual review payload", async () => {
-  const original = Buffer.from([
-    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
-    0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
-  ]);
+  const original = VALID_PNG;
   const source = `data:image/png;base64,${original.toString("base64")}`;
   const prepared = await prepareQqGroupAdImagePayloads([source]);
 
@@ -135,10 +138,7 @@ test("keeps original image bytes when preparing a visual review payload", async 
 test("reads a private uploads image locally instead of sending its relative URL upstream", async () => {
   const relativePath = `qqbot-ad-review-test/${process.pid}.png`;
   const absolutePath = path.resolve(process.cwd(), "uploads", relativePath);
-  const original = Buffer.from([
-    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
-    0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
-  ]);
+  const original = VALID_PNG;
   await mkdir(path.dirname(absolutePath), { recursive: true });
   await writeFile(absolutePath, original);
 
@@ -153,4 +153,34 @@ test("reads a private uploads image locally instead of sending its relative URL 
   } finally {
     await rm(path.resolve(process.cwd(), "uploads", "qqbot-ad-review-test"), { recursive: true, force: true });
   }
+});
+
+test("drops an HTML/error payload even when it is labeled image/png", async () => {
+  const source = `data:image/png;base64,${Buffer.from("<html>gateway error</html>").toString("base64")}`;
+  const prepared = await prepareQqGroupAdImagePayloads([source]);
+  assert.deepEqual(prepared, []);
+});
+
+test("does not trust a .png filename when the local bytes are not an image", async () => {
+  const relativePath = `qqbot-ad-review-test/${process.pid}-invalid.png`;
+  const absolutePath = path.resolve(process.cwd(), "uploads", relativePath);
+  await mkdir(path.dirname(absolutePath), { recursive: true });
+  await writeFile(absolutePath, Buffer.from("<!doctype html><title>expired image url</title>"));
+
+  try {
+    const prepared = await prepareQqGroupAdImagePayloads([`/uploads/${relativePath}`]);
+    assert.deepEqual(prepared, []);
+  } finally {
+    await rm(path.resolve(process.cwd(), "uploads", "qqbot-ad-review-test"), { recursive: true, force: true });
+  }
+});
+
+test("transcodes GIF stickers to PNG before sending them to Ollama", async () => {
+  const source = `data:image/gif;base64,${VALID_GIF.toString("base64")}`;
+  const prepared = await prepareQqGroupAdImagePayloads([source]);
+  assert.equal(prepared.length, 1);
+  assert.equal(prepared[0]?.sourceMimeType, "image/gif");
+  assert.equal(prepared[0]?.mimeType, "image/png");
+  assert.equal(prepared[0]?.transcoded, true);
+  assert.match(String(prepared[0]?.dataUrl), /^data:image\/png;base64,/);
 });

@@ -5,6 +5,7 @@ import { callQqBotAction } from "./connection";
 import { escapeShareCardHtml } from "./shareCards";
 import { saveMediaAsset } from "../mediaStorage";
 import { createVideoPosterAsset } from "../videoPoster";
+import { detectQqImageMimeType } from "./imageValidation";
 
 const QQBOT_IMAGE_MAX_BYTES = 12 * 1024 * 1024;
 const QQBOT_VIDEO_MAX_BYTES = 80 * 1024 * 1024;
@@ -224,7 +225,8 @@ async function readLocalVideo(filePath: string, maxBytes = QQBOT_VIDEO_MAX_BYTES
 }
 
 async function saveQqImageUpload(buffer: Buffer, mime: string, nameHint?: string) {
-  const ext = detectImageExtension(buffer, mime, nameHint);
+  const detectedMime = detectQqImageMimeType(buffer);
+  const ext = detectImageExtension(buffer);
   if (!ext) return "";
   const now = new Date();
   const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -233,7 +235,7 @@ async function saveQqImageUpload(buffer: Buffer, mime: string, nameHint?: string
   const saved = await saveMediaAsset({
     relativePath: path.posix.join(relativeDir.replace(/\\/g, "/"), filename),
     buffer,
-    contentType: mime || undefined,
+    contentType: detectedMime,
     mediaKind: "image",
   });
   return saved.url;
@@ -262,21 +264,12 @@ async function saveQqVideoUpload(buffer: Buffer, mime: string, nameHint?: string
   };
 }
 
-function detectImageExtension(buffer: Buffer, mime: string, nameHint?: string) {
-  const normalizedMime = String(mime || "").toLowerCase();
-  if (normalizedMime.includes("jpeg") || normalizedMime.includes("jpg")) return "jpg";
-  if (normalizedMime.includes("png")) return "png";
-  if (normalizedMime.includes("webp")) return "webp";
-  if (normalizedMime.includes("gif")) return "gif";
-  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return "jpg";
-  if (buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return "png";
-  if (buffer.length >= 12 && buffer.subarray(0, 4).toString("ascii") === "RIFF" && buffer.subarray(8, 12).toString("ascii") === "WEBP") return "webp";
-  if (buffer.length >= 6) {
-    const head = buffer.subarray(0, 6).toString("ascii");
-    if (head === "GIF87a" || head === "GIF89a") return "gif";
-  }
-  const ext = path.extname(String(nameHint || "")).replace(/^\./, "").toLowerCase();
-  if (["jpg", "jpeg", "png", "webp", "gif"].includes(ext)) return ext === "jpeg" ? "jpg" : ext;
+function detectImageExtension(buffer: Buffer) {
+  const mime = detectQqImageMimeType(buffer);
+  if (mime === "image/jpeg") return "jpg";
+  if (mime === "image/png") return "png";
+  if (mime === "image/webp") return "webp";
+  if (mime === "image/gif") return "gif";
   return "";
 }
 
@@ -321,14 +314,15 @@ function resolveVideoMimeTypeByExt(ext: string) {
 function decodeBase64MediaPayload(base64Like: unknown, mimeLike: unknown, nameHint?: string) {
   const raw = String(base64Like || "").trim();
   if (!raw) return null;
-  const normalized = raw.replace(/^base64:\/\//i, "").replace(/\s+/g, "");
+  const dataUrlMatch = raw.match(/^data:([^;,]+);base64,(.*)$/is);
+  const normalized = (dataUrlMatch ? dataUrlMatch[2] : raw.replace(/^base64:\/\//i, "")).replace(/\s+/g, "");
   if (!normalized) return null;
   try {
     const buffer = Buffer.from(normalized, "base64");
     if (!buffer.length) return null;
     return {
       buffer,
-      mime: String(mimeLike || "").trim().toLowerCase(),
+      mime: String(dataUrlMatch?.[1] || mimeLike || "").trim().toLowerCase(),
       nameHint: nameHint || "",
     };
   } catch {
