@@ -38,10 +38,11 @@
         <span class="stat mobile-stat">{{ compactStatsText }}</span>
         <el-tooltip placement="top">
           <template #content>
-            GPA 基于筛选条件和统计口径计算，并按课程学分加权平均<br/>
-            <code>GPA = max(0, (成绩 − 50) ÷ 10)</code>，封顶 5.0<br/>
+            GPA 按学校电子证明成绩单的汇总口径统计：只统计通过成绩，并按课程取一条有效记录后按学分加权<br/>
+            <code>GPA = max(0, (成绩 − 50) ÷ 10)</code>，封顶 5.0；0–59 分不计入学分分母<br/>
             60→1.0 · 70→2.0 · 80→3.0 · 90→4.0 · 100→5.0<br/>
-            等级成绩：优秀/优 4.5 · 良好/良 3.5 · 中等/中 2.5 · 及格/合格 1.5 · 不及格/不合格 0
+            补考/重复成绩只保留一条有效记录；原始补考、不及格记录仍保留在明细中<br/>
+            明细行绩点保留教务原始换算，汇总采用电子证明导出兼容口径
           </template>
           <el-icon class="hint-icon"><InfoFilled /></el-icon>
         </el-tooltip>
@@ -135,7 +136,7 @@
         <div v-for="(rows, semKey) in groupedBySem" :key="semKey" class="sem-block">
           <div class="sem-head">
             <h3>{{ semKey }}</h3>
-            <span class="sem-sum">{{ rows.length }} 门 · {{ semCredits(rows).toFixed(1) }} 学分 · 加权 GPA {{ semGpa(rows).toFixed(2) }}</span>
+            <span class="sem-sum">{{ semCount(rows) }} 门 · {{ semCredits(rows).toFixed(1) }} 学分 · 加权 GPA {{ semGpa(rows).toFixed(2) }}</span>
           </div>
           <div class="mobile-grade-list">
             <article v-for="row in rows" :key="`${row.semester}-${row.courseCode || row.courseName}`" class="grade-card">
@@ -222,6 +223,7 @@ import { ref, computed, watch, onMounted, onBeforeUnmount } from "vue";
 import { Check, Close, Filter, InfoFilled, Switch } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
 import { useJwxtStore } from "@/stores/jwxt";
+import { transcriptGradeStats } from "@/utils/jwxtGradeStats";
 
 interface GradeRow {
   semester: string;
@@ -409,13 +411,16 @@ const selectionSummaryText = computed(() => {
   return `当前筛选内 ${selectedFilteredCount.value} 门，另有 ${hiddenSelectedCount.value} 门隐藏`;
 });
 
-const statList = computed<GradeRow[]>(() => {
+const statSourceList = computed<GradeRow[]>(() => {
   const list = filteredList.value;
   if (statMode.value === "all") return list;
   const selected = new Set(selectedCourseKeys.value);
   if (statMode.value === "only") return list.filter((row) => selected.has(courseKey(row)));
   return list.filter((row) => !selected.has(courseKey(row)));
 });
+
+const statSummary = computed(() => transcriptGradeStats(statSourceList.value));
+const statList = computed<GradeRow[]>(() => statSummary.value.rows);
 
 const courseOptions = computed(() => {
   const selectable = filteredKeySet.value;
@@ -452,24 +457,21 @@ const groupedBySem = computed(() => {
 });
 
 function semCredits(rows: GradeRow[]) {
-  return rows.reduce((s, g) => s + (Number.isFinite(g.credits) ? (g.credits as number) : 0), 0);
+  return transcriptGradeStats(rows).credits;
 }
 function semGpa(rows: GradeRow[]) {
-  let sum = 0, cred = 0;
-  for (const g of rows) {
-    if (typeof g.gpa === "number" && typeof g.credits === "number") {
-      sum += g.gpa * g.credits; cred += g.credits;
-    }
-  }
-  return cred ? sum / cred : 0;
+  return transcriptGradeStats(rows).gpa;
+}
+function semCount(rows: GradeRow[]) {
+  return transcriptGradeStats(rows).rows.length;
 }
 
 const statGpa = computed(() => {
-  return semGpa(statList.value);
+  return statSummary.value.gpa;
 });
 
 const statCredits = computed(() => {
-  return semCredits(statList.value);
+  return statSummary.value.credits;
 });
 
 const compactStatsText = computed(() => {
