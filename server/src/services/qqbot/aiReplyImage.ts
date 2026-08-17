@@ -9,8 +9,8 @@ const QQBOT_AI_IMAGE_WIDTH = 900;
 const QQBOT_AI_IMAGE_SIDE_PADDING = 58;
 const QQBOT_AI_IMAGE_BODY_WIDTH = QQBOT_AI_IMAGE_WIDTH - QQBOT_AI_IMAGE_SIDE_PADDING * 2 - 28;
 const QQBOT_AI_IMAGE_TOP_BAR_HEIGHT = 88;
-const QQBOT_AI_IMAGE_FOOTER_HEIGHT = 56;
-const QQBOT_AI_IMAGE_BODY_TOP_PADDING = 28;
+const QQBOT_AI_IMAGE_FOOTER_HEIGHT = 48;
+const QQBOT_AI_IMAGE_BODY_TOP_PADDING = 36;
 const QQBOT_AI_IMAGE_BODY_BOTTOM_PADDING = 52;
 const QQBOT_AI_IMAGE_MAX_SOURCE_LENGTH = 10_000;
 const QQBOT_AI_IMAGE_MAX_HEIGHT = 16_000;
@@ -570,7 +570,7 @@ function buildReplySvg(
   }
   const footerY = height - footerHeight;
   const footerText = options.footerRows
-    .map((row) => `<text x="${QQBOT_AI_IMAGE_SIDE_PADDING}" y="${footerY + 34}" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="16" fill="#55716b">${escapeXml(row)}</text>`)
+    .map((row) => `<text x="${QQBOT_AI_IMAGE_SIDE_PADDING}" y="${footerY + 32}" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="16" fill="#55716b">${escapeXml(row)}</text>`)
     .join("\n  ");
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg width="${QQBOT_AI_IMAGE_WIDTH}" height="${height}" viewBox="0 0 ${QQBOT_AI_IMAGE_WIDTH} ${height}" xmlns="http://www.w3.org/2000/svg">

@@ -595,7 +595,7 @@ test("拾间AI 的 Ollama 非流式 JSON 请求走原生 /api/chat 并按请求�
     assert.equal(result.response.ok, true);
     assert.equal(requestUrl, "http://ollama-test.example:11434/api/chat");
     assert.equal(requestBody?.stream, false);
-    assert.equal(requestBody?.format, "json");
+    assert.equal(requestBody?.format, undefined);
     assert.equal(requestBody?.think, true);
     assert.equal(requestBody?.options?.num_predict, 4096);
     const wrapped = await result.response.json();
@@ -1220,6 +1220,7 @@ test("Qwen 拾间AI会识别明显的半句输出", () => {
   assert.equal(isLikelyTruncatedCampusAssistantAnswer("谢谢你的喜欢，这句话让我（如果我能"), true);
   assert.equal(isLikelyTruncatedCampusAssistantAnswer("你好呀，我是拾间AI，药大拾间的校园助手。你发来的这段"), true);
   assert.equal(isLikelyTruncatedCampusAssistantAnswer("请先查看下面"), true);
+  assert.equal(isLikelyTruncatedCampusAssistantAnswer("如果你还没试过，可以找一家口碑不错的火锅店，基本就能判断自己是不是"), true);
   assert.equal(isLikelyTruncatedCampusAssistantAnswer("所以我建议使用“找回密码”入口。"), false);
   assert.equal(isLikelyTruncatedCampusAssistantAnswer("哈哈，这个我真不知道呀。"), false);
 });

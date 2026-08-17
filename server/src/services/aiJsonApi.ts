@@ -311,10 +311,11 @@ async function sendNativeOllamaJsonRequest(input: {
       model: input.model,
       messages: input.messages.map(toNativeOllamaMessage),
       stream: false,
-      format: "json",
-      // Keep thinking out of the user-visible content. Callers can enable the
-      // private channel when they also provide enough output budget; malformed
-      // or truncated results are repaired by the campus-assistant layer.
+      // Ollama 0.32.x with Qwen's thinking channel can close a JSON object
+      // early when its JSON grammar is enabled. The prompt still requires a
+      // JSON object, and the caller validates/repairs it after parsing. Keep
+      // the grammar for ordinary requests, but do not combine it with think.
+      ...(input.ollamaThink === true ? {} : { format: "json" }),
       think: input.ollamaThink === true,
       ...(Object.keys(options).length ? { options } : {}),
     },

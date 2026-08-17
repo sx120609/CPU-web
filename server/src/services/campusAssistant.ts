@@ -898,6 +898,8 @@ export function isLikelyTruncatedCampusAssistantAnswer(answer: string) {
     || /(?:下面|上面|以下|以上|相关内容|具体内容|内容包括|具体如下)\s*$/u.test(normalized)
     || /[，、：:；;（(【\[]\s*$/u.test(normalized)
     || /(?:在|为|对|向|与|及|到|从|由|将|能|可|以|被|把)\s*$/u.test(normalized)
+    || /(?:是不是|是否|能否|可否|有没有|有无|会不会|能不能|可以不可以|应该不应该)\s*$/u.test(normalized)
+    || (normalized.length >= 24 && /[\u3400-\u9fff]$/u.test(normalized))
     || hasUnclosedAssistantDelimiter(normalized);
 }
 
