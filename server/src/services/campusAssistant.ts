@@ -488,6 +488,14 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
     fact: "通知与 QQ：消息中心查看站内通知、回复提醒和系统消息；个人中心可绑定 QQBot，以便在 QQ 同步接收部分站内通知。绑定入口不在消息列表首页。",
   },
   {
+    id: "qqbot-daily-assistant-2026-08",
+    relatedActionIds: ["campus-assistant", "messages", "profile"],
+    fact: "QQBot 日常问答：私聊可以直接发送普通文字咨询；群聊只有在消息中 @拾间AI 后才会回答。命令、图片、语音、转发以及已有的审核、识别等专用功能继续走对应流程，不会交给拾间AI。QQBot 的 AI 日常问答统一以图片发送，回复由 AI 生成，可能存在偏差，应自行鉴别并以官方信息为准；当前 Qwen 路由仅支持单次对话，不提供上下文。",
+    source: "药大拾间 QQBot 使用规则与用户补充",
+    sourceRef: "https://cputime.cn",
+    verifiedAt: "2026-08-17",
+  },
+  {
     id: "site-login-recovery",
     relatedActionIds: ["home", "profile", "jwxt"],
     fact: "登录恢复：用户选择保存学校账号后，账号密码只在当前浏览器加密保存；首页、教务数据和校园服务会尝试静默恢复学校登录。若学校登录要求验证码，页面会转为验证码步骤而不是反复自动重试；验证码不会保存。",
