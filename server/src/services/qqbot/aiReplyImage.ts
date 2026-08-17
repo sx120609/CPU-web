@@ -10,8 +10,8 @@ const QQBOT_AI_IMAGE_SIDE_PADDING = 58;
 const QQBOT_AI_IMAGE_BODY_WIDTH = QQBOT_AI_IMAGE_WIDTH - QQBOT_AI_IMAGE_SIDE_PADDING * 2 - 28;
 const QQBOT_AI_IMAGE_TOP_BAR_HEIGHT = 88;
 const QQBOT_AI_IMAGE_FOOTER_HEIGHT = 48;
-const QQBOT_AI_IMAGE_BODY_TOP_PADDING = 36;
-const QQBOT_AI_IMAGE_BODY_BOTTOM_PADDING = 52;
+const QQBOT_AI_IMAGE_BODY_TOP_PADDING = 52;
+const QQBOT_AI_IMAGE_BODY_BOTTOM_PADDING = 24;
 const QQBOT_AI_IMAGE_MAX_SOURCE_LENGTH = 10_000;
 const QQBOT_AI_IMAGE_MAX_HEIGHT = 16_000;
 const QQBOT_AI_QR_CARD_WIDTH = 320;
@@ -24,7 +24,7 @@ const QQBOT_AI_QR_SINGLE_BOX_SIZE = 174;
 const QQBOT_AI_QR_SECTION_GAP = 26;
 const QQBOT_AI_SOURCE_QR_SIZE = 124;
 const QQBOT_AI_SOURCE_QR_PADDING = 6;
-const QQBOT_AI_SOURCE_QR_BLOCK_HEIGHT = 176;
+const QQBOT_AI_SOURCE_QR_BLOCK_HEIGHT = 164;
 const QQBOT_AI_DISCLOSURE_PATTERN = /以上回复由拾间AI生成，内容可能存在偏差，请自行鉴别并以官方信息为准。?/u;
 const QQBOT_MARKDOWN_PATTERN = /(?:^|\n)\s*(?:#{1,6}\s|[-*+]\s+|\d+[.)]\s+|>\s)|(?:\*\*|__|~~|`{1,3})|!?\[[^\]]*\]\([^)]*\)/m;
 // Chinese line-breaking rules: closing punctuation must not start a line,
@@ -576,9 +576,9 @@ function buildReplySvg(
 <svg width="${QQBOT_AI_IMAGE_WIDTH}" height="${height}" viewBox="0 0 ${QQBOT_AI_IMAGE_WIDTH} ${height}" xmlns="http://www.w3.org/2000/svg">
   <rect width="${QQBOT_AI_IMAGE_WIDTH}" height="${height}" fill="#ffffff" />
   <rect x="0" y="0" width="${QQBOT_AI_IMAGE_WIDTH}" height="${QQBOT_AI_IMAGE_TOP_BAR_HEIGHT}" fill="#438f80" />
-  <circle cx="58" cy="54" r="14" fill="#eaf7f4" />
-  <text x="84" y="63" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="26" font-weight="800" fill="#ffffff">拾间AI</text>
-  <text x="842" y="62" text-anchor="end" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="22" font-weight="500" fill="#ffffff">药大拾间 · AI 助手</text>
+  <circle cx="58" cy="57" r="18" fill="#eaf7f4" />
+  <text x="84" y="70" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="32" font-weight="800" fill="#ffffff">拾间AI</text>
+  <text x="842" y="69" text-anchor="end" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="26" font-weight="500" fill="#ffffff">药大拾间 · AI 助手</text>
   <line x1="58" y1="88" x2="842" y2="88" stroke="#dcebe7" stroke-width="2" />
   <rect x="0" y="${footerY}" width="${QQBOT_AI_IMAGE_WIDTH}" height="${footerHeight}" fill="#eef7f5" />
   <line x1="${QQBOT_AI_IMAGE_SIDE_PADDING}" y1="${footerY}" x2="${QQBOT_AI_IMAGE_WIDTH - QQBOT_AI_IMAGE_SIDE_PADDING}" y2="${footerY}" stroke="#dcebe7" stroke-width="2" />
