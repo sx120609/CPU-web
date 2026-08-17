@@ -101,6 +101,7 @@ import {
   appendQqBotAiDisclosure,
   shouldHandleQqBotDailyAssistant,
 } from "./qqbot/dailyAssistant";
+import { renderQqBotAiReplyAsQqMessage } from "./qqbot/aiReplyImage";
 import {
   askCampusAssistant,
   type CampusAssistantMessage,
@@ -2423,7 +2424,10 @@ async function createTopicFromQq(input: {
 }
 
 export async function sendQqMessage(target: QqMessageTarget, message: string) {
-  const chunks = splitQqMessageForDelivery(message);
+  const normalizedMessage = String(message || "").trim();
+  const chunks = isSingleQqImageMessage(normalizedMessage)
+    ? [normalizedMessage]
+    : splitQqMessageForDelivery(normalizedMessage);
   let messageId: string | undefined;
   for (let index = 0; index < chunks.length; index += 1) {
     const chunk = chunks[index];
@@ -2431,6 +2435,10 @@ export async function sendQqMessage(target: QqMessageTarget, message: string) {
     messageId = (await sendSingleQqMessage(target, decorated)) || messageId;
   }
   return messageId;
+}
+
+function isSingleQqImageMessage(value: string) {
+  return /^\[CQ:image,[^\]]+\]$/i.test(String(value || "").trim());
 }
 
 async function sendSingleQqMessage(target: QqMessageTarget, message: string) {
@@ -2540,7 +2548,7 @@ async function maybeHandleQqBotDailyAssistant(context: {
     { role: "assistant", content: response.answer },
   ]);
   await logHandledInboundMessage(context, "message", "assistant:daily-chat");
-  await replyToEvent(context, renderQqBotDailyAssistantReply(response));
+  await replyToEvent(context, renderQqBotDailyAssistantReply(response), { renderMarkdownImage: true });
   return true;
 }
 
@@ -2585,11 +2593,26 @@ function resolveQqBotAssistantActionUrl(actionId: string, url: string) {
   return `${origin}/${String(url || "").replace(/^\/+/, "")}`;
 }
 
-async function replyToEvent(context: { event: OneBotEvent; qqId: string; groupId?: string }, message: string) {
+async function replyToEvent(
+  context: { event: OneBotEvent; qqId: string; groupId?: string },
+  message: string,
+  options: { renderMarkdownImage?: boolean } = {},
+) {
+  let outboundMessage = message;
+  if (options.renderMarkdownImage) {
+    try {
+      outboundMessage = renderQqBotAiReplyAsQqMessage(message) || message;
+    } catch (error) {
+      console.warn(
+        "[qqbot] failed to render daily assistant reply as image",
+        error instanceof Error ? error.message : error,
+      );
+    }
+  }
   if (context.event.message_type === "group" && context.groupId) {
-    await sendQqMessage({ groupId: context.groupId }, message);
+    await sendQqMessage({ groupId: context.groupId }, outboundMessage);
   } else {
-    await sendQqMessage({ qqId: context.qqId, tempGroupId: context.groupId }, message);
+    await sendQqMessage({ qqId: context.qqId, tempGroupId: context.groupId }, outboundMessage);
   }
 }
 
