@@ -882,6 +882,12 @@ test("campus assistant knowledge covers every active action and carries freshnes
   assert.match(combined, /旧的“CPU 网络连接助手”已停止作为独立产品宣传/);
   assert.match(combined, /有原生客户端的平台应优先推荐客户端/);
   assert.match(combined, /桌面设备不推荐 PWA/);
+  assert.match(combined, /https:\/\/cputime\.cn 就可以直接使用/);
+  assert.match(combined, /课表页顶部点击下载按钮/);
+  assert.match(combined, /账户锁定10分钟/);
+  assert.match(combined, /尚未创建账号/);
+  assert.match(combined, /刷课只支持学习通/);
+  assert.match(combined, /解题功能.*不保证/);
   assert.doesNotMatch(combined, /先在中国建设银行 APP/);
 });
 

@@ -6,7 +6,7 @@ import { Errors } from "../utils/response";
 import { runWithDistributedLock } from "./cache";
 import { ensureForumAccessEnabled } from "./forumAccess";
 import { ensureForumImageAssetsForContent } from "./imageModeration";
-import { getSiteOrigin, isBoardTypeEnabled, isFeatureOn, featureForBoardType, featureClosedMessage } from "./siteSettings";
+import { getFeatures, getSiteOrigin, isBoardTypeEnabled, isFeatureOn, featureForBoardType, featureClosedMessage } from "./siteSettings";
 import { refreshBoardTopicCounts, refreshUserPostCount } from "./forumStats";
 import { ensureUserCanSpeak } from "./userModeration";
 import { ensureForumVideoAssetsForContent } from "./videoModeration";
@@ -97,6 +97,15 @@ import {
   isSafetyPlatformJshomeUrl,
   runSafetyPlatform,
 } from "./safetyPlatform";
+import {
+  appendQqBotAiDisclosure,
+  shouldHandleQqBotDailyAssistant,
+} from "./qqbot/dailyAssistant";
+import {
+  askCampusAssistant,
+  type CampusAssistantMessage,
+  type CampusAssistantResponse,
+} from "./campusAssistant";
 
 export { buildQqBotDebugExport };
 export { connectQqBotWebSocket };
@@ -215,8 +224,11 @@ type QqMessageTarget = {
 };
 
 const qqBotCooldowns = new Map<string, { cancelledAt?: number }>();
+const qqBotAssistantHistories = new Map<string, { messages: CampusAssistantMessage[]; updatedAt: number }>();
 const safetyPlatformTasks = new Map<string, { startedAt: number }>();
 const SAFETY_PLATFORM_TASK_COOLDOWN_MS = 60_000;
+const QQBOT_ASSISTANT_HISTORY_TTL_MS = 30 * 60_000;
+const QQBOT_ASSISTANT_HISTORY_MAX_MESSAGES = 8;
 const SAFETY_PLATFORM_GUIDE_IMAGE_RELATIVE = "qqbot/safety-platform-guide.png";
 const SAFETY_PLATFORM_QRCODE_IMAGE_RELATIVE = "qqbot/safety-platform-qrcode.png";
 
@@ -242,7 +254,7 @@ function buildSafetyPlatformGuideBlockLines() {
     "（链接形如 http://wap.xiaoyuananquantong.com/guns-vip-main/wap/jshome?userid=19位数字）",
     "收到后自动完成课程考试，并返回结课证书",
     "",
-    "QQ Bot 的刷课功能仅限易班 安全课，其他刷课功能请下载药大拾间 app 使用。",
+    "QQ Bot 的刷课功能仅限江苏省大学生安全教育考试，其他刷课功能请下载药大拾间 app 使用。",
     "加入 QQ 用户群了解详情 704825850",
   );
   return lines;
@@ -803,12 +815,12 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
         ? SAFETY_PLATFORM_TASK_COOLDOWN_MS - (Date.now() - lastTask.startedAt)
         : 0;
       if (remainingMs > 0) {
-        await replyToEvent(context, `易班 安全课任务处理中，请 ${Math.ceil(remainingMs / 1000)} 秒后再试。`);
+        await replyToEvent(context, `江苏省大学生安全教育考试任务处理中，请 ${Math.ceil(remainingMs / 1000)} 秒后再试。`);
         return { ok: true };
       }
       safetyPlatformTasks.set(qqId, { startedAt: Date.now() });
       await logHandledInboundMessage(context, "message", "assistant:safety-platform");
-      await replyToEvent(context, "收到，正在为你完成易班 安全课的学习与考试，请稍候…");
+      await replyToEvent(context, "收到，正在为你完成江苏省大学生安全教育考试的学习与考试，请稍候…");
       try {
         const userId = extractSafetyUserIdFromUrl(safetyUrl);
         const progress = async (message: string) => {
@@ -816,24 +828,25 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
         };
         const result = await runSafetyPlatform(userId, progress);
         const lines = [
-          "易班 安全课已完成：",
+          "江苏省大学生安全教育考试已完成：",
           `得分：${result.score}`,
           `已完成课程：${result.completedCourses.join("、") || "无（此前已全部完成）"}`,
           "",
           `结课证书：${result.certificateUrl}`,
-          "证书请用校园易班 安全课微信小程序或浏览器打开下载。",
+          "证书请用江苏省大学生安全教育考试微信小程序或浏览器打开下载。",
         ];
         if (!result.fullScore) {
           lines.push("未满 100 分是题库录入的历史遗留问题，可直接把链接再发一次重试。");
         }
         await replyToEvent(context, lines.join("\n"));
       } catch (error) {
-        await replyToEvent(context, getQqBotUserFacingErrorMessage(error, "易班 安全课处理失败，请稍后重试。"));
+        await replyToEvent(context, getQqBotUserFacingErrorMessage(error, "江苏省大学生安全教育考试处理失败，请稍后重试。"));
       } finally {
         safetyPlatformTasks.delete(qqId);
       }
       return { ok: true };
     }
+    if (await maybeHandleQqBotDailyAssistant(context)) return { ok: true };
     await logHandledInboundMessage(context, "message", "assistant:fallback");
     await replyToEvent(context, renderPrivateFallbackReply());
     return { ok: true };
@@ -858,6 +871,8 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     messageText,
   });
   if (adFiltered) return { ok: true };
+
+  if (await maybeHandleQqBotDailyAssistant(context)) return { ok: true };
 
   await logQqBotMessage({
     direction: "inbound",
@@ -2484,6 +2499,92 @@ function parseJsonObject(value: string) {
   }
 }
 
+async function maybeHandleQqBotDailyAssistant(context: {
+  event: OneBotEvent;
+  qqId: string;
+  groupId?: string;
+  messageText: string;
+}) {
+  const shouldHandle = shouldHandleQqBotDailyAssistant({
+    messageType: context.event.message_type,
+    messageText: context.messageText,
+    botMentioned: isExplicitBotMention(context.event, context.messageText),
+    message: context.event.message ?? context.event.raw_message ?? "",
+  });
+  if (!shouldHandle) return false;
+
+  const message = context.messageText.trim().slice(0, 2_000);
+  const historyKey = `qqbot-assistant:${context.qqId}::${context.groupId || "private"}`;
+  const history = getQqBotAssistantHistory(historyKey);
+  let response: CampusAssistantResponse;
+  try {
+    response = await askCampusAssistant({
+      message,
+      history,
+      context: {
+        features: getFeatures(),
+        forumAccessEnabled: true,
+        loggedIn: false,
+      },
+    });
+  } catch (error) {
+    await logHandledInboundMessage(context, "message", "assistant:daily-chat-error");
+    console.warn("[qqbot] daily assistant request failed", error instanceof Error ? error.message : error);
+    await replyToEvent(context, appendQqBotAiDisclosure("拾间AI暂时不可用，请稍后再试。"));
+    return true;
+  }
+
+  rememberQqBotAssistantHistory(historyKey, [
+    ...history,
+    { role: "user", content: message },
+    { role: "assistant", content: response.answer },
+  ]);
+  await logHandledInboundMessage(context, "message", "assistant:daily-chat");
+  await replyToEvent(context, renderQqBotDailyAssistantReply(response));
+  return true;
+}
+
+function getQqBotAssistantHistory(key: string): CampusAssistantMessage[] {
+  const record = qqBotAssistantHistories.get(key);
+  if (!record || Date.now() - record.updatedAt > QQBOT_ASSISTANT_HISTORY_TTL_MS) {
+    qqBotAssistantHistories.delete(key);
+    return [];
+  }
+  return record.messages.slice(-QQBOT_ASSISTANT_HISTORY_MAX_MESSAGES);
+}
+
+function rememberQqBotAssistantHistory(key: string, messages: CampusAssistantMessage[]) {
+  qqBotAssistantHistories.set(key, {
+    messages: messages.slice(-QQBOT_ASSISTANT_HISTORY_MAX_MESSAGES),
+    updatedAt: Date.now(),
+  });
+  if (qqBotAssistantHistories.size <= 1_000) return;
+  const oldest = [...qqBotAssistantHistories.entries()]
+    .sort((left, right) => left[1].updatedAt - right[1].updatedAt)[0];
+  if (oldest) qqBotAssistantHistories.delete(oldest[0]);
+}
+
+function renderQqBotDailyAssistantReply(response: CampusAssistantResponse) {
+  const lines = [String(response.answer || "").trim() || "我暂时没有找到合适的答案。"];
+  const actions = response.actions.slice(0, 3);
+  if (actions.length) {
+    lines.push(
+      "",
+      "相关入口：",
+      ...actions.map((action) => `· ${action.label}：${resolveQqBotAssistantActionUrl(action.id, action.url)}`),
+    );
+  }
+  return appendQqBotAiDisclosure(lines.join("\n"));
+}
+
+function resolveQqBotAssistantActionUrl(actionId: string, url: string) {
+  const origin = getSiteOrigin().replace(/\/+$/, "");
+  if (/^https?:\/\//i.test(url)) return url;
+  if (!origin) return url;
+  if (actionId === "home") return origin;
+  return `${origin}/${String(url || "").replace(/^\/+/, "")}`;
+}
+
 async function replyToEvent(context: { event: OneBotEvent; qqId: string; groupId?: string }, message: string) {
   if (context.event.message_type === "group" && context.groupId) {
     await sendQqMessage({ groupId: context.groupId }, message);
@@ -2880,7 +2981,7 @@ function renderPrivateFallbackReply() {
   return [
     "我收到啦。",
     "你可以直接发：帮助 / 投稿 / 状态 / 板块 / 我的投稿 / 刷课。",
-    "如果是江苏省易班 安全课链接（jshome?userid=），直接发给我即可自动刷课。",
+    "如果是江苏省大学生安全教育考试链接（jshome?userid=），直接发给我即可自动刷课。",
     "如果不确定怎么说，发“帮助”就行。",
   ].join("\n");
 }
