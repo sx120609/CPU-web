@@ -1121,6 +1121,10 @@ test("campus assistant knowledge covers every active action and carries freshnes
   assert.match(combined, /应优先给出对应的移动端客户端或桌面客户端/);
   assert.match(combined, /桌面设备不推荐 PWA/);
   assert.match(combined, /https:\/\/cputime\.cn 就可以直接使用/);
+  assert.match(combined, /学生自主开发维护的独立、非官方校园服务站点/);
+  assert.match(combined, /不是中国药科大学官方平台/);
+  assert.match(combined, /不代表学校/);
+  assert.doesNotMatch(combined, /中国药科大学的校园服务平台/);
   assert.match(combined, /课表页顶部点击下载按钮/);
   assert.match(combined, /账户锁定10分钟/);
   assert.match(combined, /025-86185448/);
@@ -1199,6 +1203,15 @@ test("拾间AI对外只告知固定品牌模型名称，不泄露真实上游模
   assert.match(prompt, /其他情况下绝不主动提及模型/);
   assert.match(prompt, /不要说“当前处理本次对话的模型名称是”/);
   assert.doesNotMatch(prompt, /example-model-2026/);
+});
+
+test("拾间AI明确说明药大拾间不是学校官方平台", () => {
+  const prompt = buildSystemPrompt([], false, "example-model-2026");
+
+  assert.match(prompt, /学生自主开发维护的独立、非官方校园服务站点/);
+  assert.match(prompt, /不是中国药科大学官方平台/);
+  assert.match(prompt, /不要把药大拾间、拾间AI或站内功能表述为学校官方平台/);
+  assert.doesNotMatch(prompt, /中国药科大学的校园服务平台/);
 });
 
 test("Qwen 拾间AI提示词强化知识库事实边界并识别模型标签", () => {
