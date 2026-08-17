@@ -132,6 +132,7 @@ type AiJsonRequestOptions = {
   providerConfigs?: AiProviderCandidate[];
   enablePromptCache?: boolean;
   enablePromptCacheRetention?: boolean;
+  signal?: AbortSignal;
 };
 
 export async function requestAiJson(
@@ -200,6 +201,7 @@ export async function requestAiJson(
         messages: requestMessages,
         promptCacheKey,
         enablePromptCacheRetention: promptCacheEnabled && options?.enablePromptCacheRetention !== false,
+        signal: options?.signal,
       });
       response = result.response;
       responseMode = result.mode;

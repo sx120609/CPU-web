@@ -35,3 +35,14 @@ test("QQbot 普通短 AI 回复也渲染为图片", () => {
     /^\[CQ:image,file=base64:\/\//,
   );
 });
+
+test("QQbot AI 图片把单次对话提示放在页脚并为入口生成二维码卡片", () => {
+  const options = {
+    footerNotice: "提示：当前仅支持单次对话，无上下文功能。",
+    qrEntries: [{ label: "校园服务", url: "https://cputime.cn/services" }],
+  };
+  const png = renderQqBotAiReplyImage("可以打开校园服务入口。", options);
+  assert.deepEqual([...png.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+  const message = renderQqBotAiReplyAsQqMessage("可以打开校园服务入口。", options);
+  assert.match(message || "", /^\[CQ:image,file=base64:\/\//);
+});

@@ -18,6 +18,8 @@ import {
   getQqBotConnectionError,
   getQqBotConnectionStatus,
   isWebSocketUrl,
+  normalizeQqBotConnectionMode,
+  QQBOT_INBOUND_WS_PATH,
   resetQqBotWebSocket,
   sendQqMessageByWebSocket,
 } from "./qqbot/connection";
@@ -89,7 +91,7 @@ import {
   shouldRunAiReview,
   syncTopicAiTags,
 } from "./topicAiReview";
-import { reviewQqGroupMessageForAd } from "./qqbotGroupAdReview";
+import { reviewQqGroupMessageForAd, resolveQqGroupWhitelistReviewPlan } from "./qqbotGroupAdReview";
 import { containsQqGroupCard } from "./qqbot/groupCard";
 import {
   extractSafetyPlatformUrlFromText,
@@ -101,7 +103,11 @@ import {
   appendQqBotAiDisclosure,
   shouldHandleQqBotDailyAssistant,
 } from "./qqbot/dailyAssistant";
-import { renderQqBotAiReplyAsQqMessage } from "./qqbot/aiReplyImage";
+import {
+  renderQqBotAiReplyAsQqMessage,
+  type QqBotAiReplyImageOptions,
+  type QqBotAiReplyQrEntry,
+} from "./qqbot/aiReplyImage";
 import {
   askCampusAssistant,
   isQwenAssistantModel,
@@ -116,10 +122,11 @@ export type QqBotConfigView = {
   id: number;
   enabled: boolean;
   botQqId: string;
+  connectionMode: "outbound" | "inbound";
   napcatBaseUrl: string;
   hasAccessToken: boolean;
   accessTokenMasked: string;
-  connectionStatus: "disabled" | "http" | "idle" | "connecting" | "connected" | "error";
+  connectionStatus: "disabled" | "http" | "inbound" | "idle" | "connecting" | "connected" | "error";
   connectionError: string;
   webhookSecret: string;
   defaultBoardSlug: string;
@@ -129,6 +136,7 @@ export type QqBotConfigView = {
   notifyCategories: string[];
   superAdminQqIds: string[];
   webhookPath: string;
+  inboundWebSocketPath: string;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -149,6 +157,7 @@ export type QqBotGroupView = {
   memberWelcomeEnabled: boolean;
   memberWelcomeMessage: string;
   adFilterEnabled: boolean;
+  assistantProactiveReplyEnabled: boolean;
   adFilterGroupNoticeEnabled: boolean;
   adFilterBlockQrCodeEnabled: boolean;
   adFilterBlockGroupCardEnabled: boolean;
@@ -208,6 +217,9 @@ type OneBotEvent = {
   message?: unknown;
   raw_message?: string;
   sender?: { nickname?: string; card?: string; user_id?: number | string; role?: string };
+  messageId?: number | string;
+  message_seq?: number | string;
+  data?: Record<string, any>;
 };
 
 type QqBotDoubtFriendRequest = {
@@ -322,6 +334,7 @@ export function formatQqBotConfig(config: Awaited<ReturnType<typeof getQqBotConf
     id: config.id,
     enabled: config.enabled,
     botQqId: readConfigBotQqId(config),
+    connectionMode: normalizeQqBotConnectionMode(config.connectionMode),
     napcatBaseUrl: config.napcatBaseUrl,
     hasAccessToken: Boolean(config.accessToken),
     accessTokenMasked: maskSecret(config.accessToken),
@@ -335,6 +348,7 @@ export function formatQqBotConfig(config: Awaited<ReturnType<typeof getQqBotConf
     notifyCategories: parseQqBotNotifyCategories(config.notifyCategories),
     superAdminQqIds: normalizeQqBotQqIdList(parseStringArray(config.superAdminQqIds || "", [])),
     webhookPath: "/api/qqbot/webhook",
+    inboundWebSocketPath: QQBOT_INBOUND_WS_PATH,
     createdAt: config.createdAt,
     updatedAt: config.updatedAt,
   };
@@ -389,6 +403,7 @@ export function formatQqBotGroup(group: {
   memberWelcomeEnabled: boolean;
   memberWelcomeMessage: string | null;
   adFilterEnabled: boolean;
+  assistantProactiveReplyEnabled?: boolean;
   adFilterGroupNoticeEnabled?: boolean;
   adFilterBlockQrCodeEnabled?: boolean;
   adFilterBlockGroupCardEnabled?: boolean;
@@ -416,6 +431,7 @@ export function formatQqBotGroup(group: {
     memberWelcomeEnabled: group.memberWelcomeEnabled,
     memberWelcomeMessage: group.memberWelcomeMessage || DEFAULT_MEMBER_WELCOME_MESSAGE,
     adFilterEnabled: group.adFilterEnabled,
+    assistantProactiveReplyEnabled: group.assistantProactiveReplyEnabled ?? false,
     // Old rows/fixtures may not have the field until the schema is pushed.
     // Treat an absent value as enabled so existing moderation behavior is preserved.
     adFilterGroupNoticeEnabled: group.adFilterGroupNoticeEnabled ?? true,
@@ -437,6 +453,7 @@ export function formatQqBotGroup(group: {
 export async function updateQqBotConfig(input: {
   enabled?: boolean;
   botQqId?: string;
+  connectionMode?: "outbound" | "inbound";
   napcatBaseUrl?: string;
   accessToken?: string;
   clearAccessToken?: boolean;
@@ -448,9 +465,18 @@ export async function updateQqBotConfig(input: {
   notifyCategories?: string[];
   superAdminQqIds?: string[];
 }) {
+  const current = await getQqBotConfigRaw();
+  const nextConnectionMode = normalizeQqBotConnectionMode(input.connectionMode ?? current.connectionMode);
+  const nextAccessToken = input.clearAccessToken
+    ? ""
+    : String(input.accessToken || current.accessToken || "").trim();
+  if (nextConnectionMode === "inbound" && !nextAccessToken) {
+    throw Errors.badRequest("NapCat 主动连接本站模式必须配置 Access Token");
+  }
   const data: any = {};
   if (input.enabled !== undefined) data.enabled = input.enabled;
   if (input.botQqId !== undefined) data.botQqId = String(input.botQqId || "").trim().slice(0, 40);
+  if (input.connectionMode !== undefined) data.connectionMode = normalizeQqBotConnectionMode(input.connectionMode);
   if (input.napcatBaseUrl !== undefined) data.napcatBaseUrl = normalizeBaseUrl(input.napcatBaseUrl);
   if (input.clearAccessToken) data.accessToken = "";
   else if (input.accessToken !== undefined && input.accessToken.trim()) data.accessToken = input.accessToken.trim();
@@ -874,9 +900,9 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     groupId,
     messageText,
   });
-  if (adFiltered) return { ok: true };
+  if (adFiltered === "blocked") return { ok: true };
 
-  if (await maybeHandleQqBotDailyAssistant(context)) return { ok: true };
+  if (await maybeHandleQqBotDailyAssistant(context, { proactiveGroupReply: adFiltered === "assistant" })) return { ok: true };
 
   await logQqBotMessage({
     direction: "inbound",
@@ -2446,7 +2472,10 @@ function isSingleQqImageMessage(value: string) {
 
 async function sendSingleQqMessage(target: QqMessageTarget, message: string) {
   const config = await getQqBotConfigRaw();
-  if (!config.enabled || !config.napcatBaseUrl) throw Errors.badRequest("QQBot 未启用或 NapCat 地址未配置");
+  const connectionMode = normalizeQqBotConnectionMode(config.connectionMode);
+  if (!config.enabled || (connectionMode === "outbound" && !config.napcatBaseUrl)) {
+    throw Errors.badRequest("QQBot 未启用或 NapCat 连接未配置");
+  }
   const endpoint = target.groupId ? "send_group_msg" : "send_private_msg";
   const body = target.groupId
     ? { group_id: Number(target.groupId) || target.groupId, message }
@@ -2455,7 +2484,7 @@ async function sendSingleQqMessage(target: QqMessageTarget, message: string) {
       message,
       ...(target.tempGroupId ? { group_id: Number(target.tempGroupId) || target.tempGroupId } : {}),
     };
-  if (isWebSocketUrl(config.napcatBaseUrl)) {
+  if (connectionMode === "inbound" || isWebSocketUrl(config.napcatBaseUrl)) {
     try {
       const result = await sendQqMessageByWebSocket(endpoint, body, target, message);
       return extractNapCatMessageId(result);
@@ -2515,11 +2544,12 @@ async function maybeHandleQqBotDailyAssistant(context: {
   qqId: string;
   groupId?: string;
   messageText: string;
-}) {
+}, options: { proactiveGroupReply?: boolean } = {}) {
   const shouldHandle = shouldHandleQqBotDailyAssistant({
     messageType: context.event.message_type,
     messageText: context.messageText,
     botMentioned: isExplicitBotMention(context.event, context.messageText),
+    proactiveGroupReply: options.proactiveGroupReply === true,
     message: context.event.message ?? context.event.raw_message ?? "",
   });
   if (!shouldHandle) return false;
@@ -2543,10 +2573,14 @@ async function maybeHandleQqBotDailyAssistant(context: {
   } catch (error) {
     await logHandledInboundMessage(context, "message", "assistant:daily-chat-error");
     console.warn("[qqbot] daily assistant request failed", error instanceof Error ? error.message : error);
-    await replyToEvent(context, appendQqBotAiDisclosure([
-      "拾间AI暂时不可用，请稍后再试。",
-      ...(singleTurn ? ["", "提示：当前仅支持单次对话，无上下文功能。"] : []),
-    ].join("\n")), { renderMarkdownImage: true });
+    await replyToEvent(
+      context,
+      appendQqBotAiDisclosure("拾间AI暂时不可用，请稍后再试。"),
+      {
+        renderMarkdownImage: true,
+        footerNotice: singleTurn ? "提示：当前仅支持单次对话，无上下文功能。" : undefined,
+      },
+    );
     return true;
   }
 
@@ -2558,7 +2592,12 @@ async function maybeHandleQqBotDailyAssistant(context: {
     ]);
   }
   await logHandledInboundMessage(context, "message", "assistant:daily-chat");
-  await replyToEvent(context, renderQqBotDailyAssistantReply(response, { singleTurn }), { renderMarkdownImage: true });
+  const renderedReply = renderQqBotDailyAssistantReply(response, { singleTurn });
+  await replyToEvent(context, renderedReply.message, {
+    renderMarkdownImage: true,
+    footerNotice: renderedReply.footerNotice,
+    qrEntries: renderedReply.qrEntries,
+  });
   return true;
 }
 
@@ -2584,16 +2623,25 @@ function rememberQqBotAssistantHistory(key: string, messages: CampusAssistantMes
 
 function renderQqBotDailyAssistantReply(response: CampusAssistantResponse, options: { singleTurn?: boolean } = {}) {
   const lines = [String(response.answer || "").trim() || "我暂时没有找到合适的答案。"];
-  const actions = response.actions.slice(0, 3);
+  const actions = (response.actions || []).slice(0, 3);
+  const actionEntries = actions.map((action) => ({
+    label: String(action.label || "相关入口").trim() || "相关入口",
+    url: resolveQqBotAssistantActionUrl(action.id, action.url),
+  }));
+  const qrEntries: QqBotAiReplyQrEntry[] = actionEntries.filter((entry) => /^https?:\/\//i.test(entry.url));
+  const textEntries = actionEntries.filter((entry) => !/^https?:\/\//i.test(entry.url));
   if (actions.length) {
     lines.push(
       "",
       "相关入口：",
-      ...actions.map((action) => `· ${action.label}：${resolveQqBotAssistantActionUrl(action.id, action.url)}`),
+      ...textEntries.map((entry) => `· ${entry.label}：${entry.url}`),
     );
   }
-  if (options.singleTurn) lines.push("", "提示：当前仅支持单次对话，无上下文功能。");
-  return appendQqBotAiDisclosure(lines.join("\n"));
+  return {
+    message: appendQqBotAiDisclosure(lines.join("\n")),
+    footerNotice: options.singleTurn ? "提示：当前仅支持单次对话，无上下文功能。" : undefined,
+    qrEntries,
+  };
 }
 
 function resolveQqBotAssistantActionUrl(actionId: string, url: string) {
@@ -2607,12 +2655,12 @@ function resolveQqBotAssistantActionUrl(actionId: string, url: string) {
 async function replyToEvent(
   context: { event: OneBotEvent; qqId: string; groupId?: string },
   message: string,
-  options: { renderMarkdownImage?: boolean } = {},
+  options: QqBotAiReplyImageOptions & { renderMarkdownImage?: boolean } = {},
 ) {
   let outboundMessage = message;
   if (options.renderMarkdownImage) {
     try {
-      outboundMessage = renderQqBotAiReplyAsQqMessage(message) || message;
+      outboundMessage = renderQqBotAiReplyAsQqMessage(message, options) || message;
     } catch (error) {
       console.warn(
         "[qqbot] failed to render daily assistant reply as image",
@@ -2670,7 +2718,8 @@ export function startQqNotificationPoller() {
 
 export async function dispatchRecentQqNotifications() {
   const config = await getQqBotConfigRaw();
-  if (!config.enabled || !config.notificationEnabled || !config.napcatBaseUrl) return { sent: 0 };
+  if (!config.enabled || !config.notificationEnabled
+    || (normalizeQqBotConnectionMode(config.connectionMode) === "outbound" && !config.napcatBaseUrl)) return { sent: 0 };
   const personalCategories = parseQqBotNotifyCategories(config.notifyCategories);
   const since = new Date(Date.now() - 10 * 60 * 1000);
   const rawGroups = await prisma.qqBotGroup.findMany({ where: { enabled: true, notificationEnabled: true } });
@@ -3422,15 +3471,23 @@ async function maybeHandleQqGroupAdFilter(input: {
   if (qqId === botQqId || normalizeQqBotIdentity(input.event.self_id) === qqId) return false;
 
   const group = await prisma.qqBotGroup.findUnique({ where: { groupId } });
-  if (!group?.enabled || !group.adFilterEnabled) return false;
+  if (!group?.enabled || (!group.adFilterEnabled && !group.assistantProactiveReplyEnabled)) return false;
+  const proactiveCandidate = group.assistantProactiveReplyEnabled === true
+    && Boolean(messageText)
+    && !hasImage
+    && !hasVideo
+    && !hasGroupCard
+    && !hasForwardReference;
+  const moderationConfigured = group.adFilterEnabled === true;
   const senderNickname = input.event.sender?.card || input.event.sender?.nickname || null;
-  const whitelist = await getQqGroupAdWhitelist(groupId, qqId);
+  const whitelist = moderationConfigured ? await getQqGroupAdWhitelist(groupId, qqId) : null;
   const whitelisted = Boolean(whitelist && whitelist.expiresAt.getTime() > Date.now());
   const whitelistBlocksQrCode = whitelisted && group.adFilterWhitelistBlockQrCodeEnabled === true;
   const whitelistBlocksGroupCard = whitelisted && group.adFilterWhitelistBlockGroupCardEnabled === true;
+  let reviewRoute = whitelisted ? "whitelist-bypass" : "full";
   // When neither whitelist restriction is enabled, every message shape can
   // bypass before any forward/media expansion or model request.
-  if (whitelisted && !whitelistBlocksQrCode && !whitelistBlocksGroupCard) return false;
+  if (whitelisted && !whitelistBlocksQrCode && !whitelistBlocksGroupCard && !proactiveCandidate) return false;
 
   try {
     const expandedForward = await extractQqForwardModerationPayload(rawMessage).catch(() => null);
@@ -3438,10 +3495,12 @@ async function maybeHandleQqGroupAdFilter(input: {
     hasImage = containsQqImage(moderationMessage);
     hasVideo = containsQqVideo(moderationMessage);
     hasGroupCard = containsQqGroupCard(moderationMessage);
-    const cardBlockedByPolicy = hasGroupCard && (
+    const cardBlockedByPolicy = moderationConfigured && hasGroupCard && (
       whitelisted ? whitelistBlocksGroupCard : group.adFilterBlockGroupCardEnabled === true
     );
-    const blockQrCodes = whitelisted
+    const blockQrCodes = !moderationConfigured
+      ? false
+      : whitelisted
       ? whitelistBlocksQrCode
       : group.adFilterBlockQrCodeEnabled === true;
     const imageUrls = hasImage && !cardBlockedByPolicy
@@ -3451,15 +3510,6 @@ async function maybeHandleQqGroupAdFilter(input: {
       ? await extractQqVideoModerationSummary(moderationMessage)
       : { posterUrls: [], detectedCount: 0, reviewedCount: 0, skippedCount: 0 };
     const reviewImageUrls = Array.from(new Set([...imageUrls, ...videoSummary.posterUrls])).slice(0, 4);
-    const whitelistReviewPlan = resolveQqGroupWhitelistReviewPlan({
-      whitelisted,
-      hasGroupCard,
-      hasReviewableMedia: reviewImageUrls.length > 0,
-      blockQrCode: whitelistBlocksQrCode,
-      blockGroupCard: whitelistBlocksGroupCard,
-    });
-    if (whitelistReviewPlan === "bypass") return false;
-    const cardBlocked = cardBlockedByPolicy;
     const mediaFallback = [
       hasImage ? (imageUrls.length ? "图片消息" : "图片消息，图片暂时无法加载") : "",
       hasVideo ? (videoSummary.reviewedCount ? "视频抽帧" : "视频消息，视频超过 10MB 或暂时无法加载") : "",
@@ -3467,6 +3517,20 @@ async function maybeHandleQqGroupAdFilter(input: {
     const reviewContent = expandedForward?.content.trim()
       || messageText
       || `[${hasGroupCard ? "QQ群卡片" : mediaFallback || "多媒体消息"}]`;
+    const hasQrTextSignal = blockQrCodes && /二维码|扫码|扫描二维码/u.test(reviewContent);
+    const whitelistReviewPlan = resolveQqGroupWhitelistReviewPlan({
+      whitelisted,
+      hasGroupCard,
+      hasReviewableMedia: reviewImageUrls.length > 0,
+      hasQrTextSignal,
+      blockQrCode: whitelistBlocksQrCode,
+      blockGroupCard: whitelistBlocksGroupCard,
+    });
+    reviewRoute = whitelisted ? `whitelist-${whitelistReviewPlan}` : "full";
+    if (whitelistReviewPlan === "bypass" && !proactiveCandidate) return false;
+    const moderationEnabled = moderationConfigured && !whitelisted;
+    const cardBlocked = cardBlockedByPolicy;
+    const qrTextBlocked = whitelisted && whitelistReviewPlan === "qr-only" && hasQrTextSignal;
     const review = cardBlocked
       ? {
           action: "block" as const,
@@ -3476,7 +3540,19 @@ async function maybeHandleQqGroupAdFilter(input: {
           detail: "QQ 群卡片消息",
           model: "local-signal",
           modelDecision: "block",
+          assistantIntent: false,
         }
+      : qrTextBlocked
+        ? {
+            action: "block" as const,
+            riskScore: 100,
+            riskLevel: "high" as const,
+            reason: "二维码",
+            detail: "文字中出现二维码或扫码引导，白名单用户仍受本群二维码限制。",
+            model: "local-signal",
+            modelDecision: "block",
+            assistantIntent: false,
+          }
       : await reviewQqGroupMessageForAd({
           groupId,
           groupName: group.name,
@@ -3486,8 +3562,14 @@ async function maybeHandleQqGroupAdFilter(input: {
           imageUrls: reviewImageUrls,
           blockQrCodes,
           reviewMode: whitelistReviewPlan === "qr-only" ? "qr-only" : "full",
+          moderationEnabled,
+          detectAssistantIntent: proactiveCandidate,
           metadata: {
-            messageId: input.event.message_id ? String(input.event.message_id) : "",
+            messageId: getQqBotMessageId(input.event),
+            reviewRoute,
+            whitelisted,
+            whitelistBlocksQrCode,
+            whitelistBlocksGroupCard,
             hasImage,
             imageCount: imageUrls.length,
             hasVideo,
@@ -3499,8 +3581,9 @@ async function maybeHandleQqGroupAdFilter(input: {
             videoMaxBytes: 10 * 1024 * 1024,
           },
         });
-    if (review.action !== "block") return false;
-    if (!input.event.message_id) {
+    if (review.action !== "block") return review.assistantIntent ? "assistant" : false;
+    const messageId = getQqBotMessageId(input.event);
+    if (!messageId) {
       await logQqBotMessage({
         direction: "inbound",
         eventType: "group-ad-filter",
@@ -3508,15 +3591,13 @@ async function maybeHandleQqGroupAdFilter(input: {
         qqId,
         groupId,
         content: reviewContent.slice(0, 500),
-        result: `命中广告过滤，但缺少 message_id，无法撤回。原因：${review.reason}`,
+        result: `命中广告过滤，但缺少 message_id，无法撤回。审核路径：${reviewRoute}；白名单：${whitelisted ? "是" : "否"}；原因：${review.reason}`,
         rawPayload: input.event,
       });
       return false;
     }
 
-    await callQqBotAction("delete_msg", {
-      message_id: Number(input.event.message_id) || input.event.message_id,
-    });
+    await deleteQqBotMessageWithRetry(messageId);
     const verification = whitelisted
       ? null
       : await createQqGroupAdVerification({
@@ -3575,15 +3656,16 @@ async function maybeHandleQqGroupAdFilter(input: {
       status: "ok",
       qqId,
       groupId,
-      messageId: String(input.event.message_id),
+      messageId,
       content: reviewContent.slice(0, 500),
       result: [
         `已撤回疑似广告消息（第${strike.hitCount}次，${review.riskScore}分，${review.reason}；${verification ? "已生成白名单验证码" : `白名单仍限制${whitelistRestriction || "当前群组规则"}`})`,
+        `审核路径：${reviewRoute}；白名单：${whitelisted ? "是" : "否"}；消息 ID：${messageId}`,
         penalty.logSummary,
       ].filter(Boolean).join("；"),
       rawPayload: input.event,
     });
-    return true;
+    return "blocked";
   } catch (error) {
     await logQqBotMessage({
       direction: "inbound",
@@ -3591,13 +3673,45 @@ async function maybeHandleQqGroupAdFilter(input: {
       status: "error",
       qqId: input.qqId,
       groupId: input.groupId,
-      messageId: input.event.message_id ? String(input.event.message_id) : undefined,
+      messageId: getQqBotMessageId(input.event) || undefined,
       content: messageText.slice(0, 500) || (hasGroupCard ? "[QQ群卡片]" : hasImage ? "[图片消息]" : ""),
-      result: String((error as any)?.message || error || "group ad filter failed").slice(0, 500),
+      result: `审核路径：${reviewRoute}；${String((error as any)?.message || error || "group ad filter failed")}`.slice(0, 500),
       rawPayload: input.event,
     });
     return false;
   }
+}
+
+function getQqBotMessageId(event: OneBotEvent) {
+  const payload = event as OneBotEvent & { data?: Record<string, any> };
+  const candidates = [
+    event.message_id,
+    event.messageId,
+    event.message_seq,
+    payload.data?.message_id,
+    payload.data?.messageId,
+    payload.data?.message_seq,
+  ];
+  for (const candidate of candidates) {
+    const value = String(candidate ?? "").trim();
+    if (value) return value;
+  }
+  return "";
+}
+
+async function deleteQqBotMessageWithRetry(messageId: string) {
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      return await callQqBotAction("delete_msg", {
+        message_id: Number(messageId) || messageId,
+      });
+    } catch (error) {
+      lastError = error;
+      if (attempt === 0) await new Promise<void>((resolve) => setTimeout(resolve, 250));
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("NapCat 撤回消息失败");
 }
 
 export function renderQqGroupAdFilterPrivateNotice(input: {
@@ -3665,24 +3779,6 @@ function containsQqVideo(message: unknown): boolean {
     || containsQqVideo(item.data?.message)
     || containsQqVideo(item.message)
     || containsQqVideo(item.content);
-}
-
-/**
- * Choose the only permitted moderation path for a valid per-group whitelist.
- * Group cards keep their explicit switch; every other reviewable attachment is
- * either QR-only or bypassed without entering the advertising prompt.
- */
-export function resolveQqGroupWhitelistReviewPlan(input: {
-  whitelisted: boolean;
-  hasGroupCard: boolean;
-  hasReviewableMedia: boolean;
-  blockQrCode: boolean;
-  blockGroupCard: boolean;
-}): "full" | "qr-only" | "block-group-card" | "bypass" {
-  if (!input.whitelisted) return "full";
-  if (input.hasGroupCard && input.blockGroupCard) return "block-group-card";
-  if (input.hasReviewableMedia && input.blockQrCode) return "qr-only";
-  return "bypass";
 }
 
 async function maybeSendQqGroupAdReport(input: {
@@ -4062,6 +4158,7 @@ function buildQqBotGroupFallbackView(groupId: string, event?: OneBotEvent) {
     memberWelcomeEnabled: false,
     memberWelcomeMessage: DEFAULT_MEMBER_WELCOME_MESSAGE,
     adFilterEnabled: false,
+    assistantProactiveReplyEnabled: false,
     adFilterGroupNoticeEnabled: true,
     adFilterBlockQrCodeEnabled: false,
     adFilterBlockGroupCardEnabled: false,
@@ -4218,6 +4315,7 @@ function renderQqGroupAdminHelp(group: QqBotGroupView) {
     `踢出：${group.allowKick ? "开" : "关"}`,
     `踢黑：${group.allowKickAndBlock ? "开" : "关"}`,
     `广告过滤：${group.adFilterEnabled ? "开" : "关"}`,
+    `群聊主动回答：${group.assistantProactiveReplyEnabled ? "开" : "关"}`,
   ];
   return parts.join("\n");
 }
@@ -4483,7 +4581,10 @@ async function syncPendingDoubtFriendRequests(input?: {
   rawPayload?: unknown;
 }) {
   const config = await getQqBotConfigRaw();
-  if (!config.enabled || !config.napcatBaseUrl) return { acceptedCount: 0, scannedCount: 0 };
+  if (!config.enabled
+    || (normalizeQqBotConnectionMode(config.connectionMode) === "outbound" && !config.napcatBaseUrl)) {
+    return { acceptedCount: 0, scannedCount: 0 };
+  }
   const reason = input?.reason || "manual";
   let result: any;
   try {

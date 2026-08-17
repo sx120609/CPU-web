@@ -91,7 +91,7 @@ export function attachJwxtAgentGateway(server: HttpServer) {
     const pathname = safePathname(request.url);
     if (pathname !== config.jwxtAgentPath) {
       // 药苑之声由同一 HTTP Server 上的 VoiceHub 网关接管，不能在这里提前关闭连接。
-      if (pathname === "/voicehub" || pathname.startsWith("/voicehub/")) return;
+      if (pathname === "/voicehub" || pathname.startsWith("/voicehub/") || pathname === "/api/qqbot/napcat") return;
       rejectUpgrade(socket, 404, "Not Found");
       return;
     }

@@ -30,7 +30,7 @@
         <div class="card-head">
           <div>
             <h3>NapCat 对接</h3>
-            <p>在 NapCat 创建一个 WebSocket 服务端，把地址填到这里即可。</p>
+            <p>可以让 CPU-web 主动连接 NapCat，也可以让 NapCat 主动连接本站。</p>
           </div>
           <el-switch v-model="form.enabled" inline-prompt active-text="开" inactive-text="关" :disabled="configDisabled" />
         </div>
@@ -38,7 +38,8 @@
         <div class="setup-guide">
           <div>
             <b>推荐配置</b>
-            <span>NapCat 里新建 WebSocket 服务端；CPU-web 会作为客户端连过去。收 QQ 消息、回复消息、推送通知都走这一条连接。</span>
+            <span v-if="form.connectionMode === 'inbound'">推荐使用 NapCat 主动连接本站：只需在 NapCat 填写下面的主站 WebSocket 地址和 Access Token，主站不会暴露 NapCat 的发送接口。</span>
+            <span v-else>兼容旧配置：NapCat 里新建 WebSocket 服务端，CPU-web 作为客户端连接过去。收 QQ 消息、回复消息、推送通知都走这一条连接。</span>
           </div>
           <div v-if="config" class="status-box">
             <b>当前连接状态</b>
@@ -52,15 +53,26 @@
             <el-input v-model="form.botQqId" placeholder="例如 123456789" :disabled="configDisabled" />
             <div class="form-tip">展示在通知设置里，告诉用户应该在 QQ 里联系哪个机器人账号。</div>
           </el-form-item>
-          <el-form-item label="WebSocket 地址">
+          <el-form-item label="连接方向">
+            <el-select v-model="form.connectionMode" :disabled="configDisabled">
+              <el-option label="NapCat 主动连接本站（推荐）" value="inbound" />
+              <el-option label="CPU-web 主动连接 NapCat（兼容旧方式）" value="outbound" />
+            </el-select>
+            <div class="form-tip">主动连接本站模式要求设置 Access Token；旧模式仍可继续使用 HTTP 或 WebSocket 地址。</div>
+          </el-form-item>
+          <el-form-item v-if="form.connectionMode === 'outbound'" label="NapCat 地址">
             <el-input v-model="form.napcatBaseUrl" placeholder="例如 ws://127.0.0.1:3001" :disabled="configDisabled" />
             <div class="form-tip">这是 CPU-web 后端连接 NapCat 的地址。NapCat 和后端不在同一台机器时，请填后端能访问到的内网或公网地址。</div>
+          </el-form-item>
+          <el-form-item v-else label="本站 WebSocket 地址">
+            <el-input :model-value="inboundWebSocketUrl" readonly />
+            <div class="form-tip">把这个地址填入 NapCat 的 WebSocket 客户端配置。当前路径：{{ config?.inboundWebSocketPath || "/api/qqbot/napcat" }}</div>
           </el-form-item>
           <el-form-item label="Access Token">
             <el-input v-model="form.accessToken" show-password placeholder="留空则不修改" :disabled="configDisabled">
               <template #append>{{ config?.hasAccessToken ? config.accessTokenMasked : "未设置" }}</template>
             </el-input>
-            <div class="form-tip">如果 NapCat WebSocket 服务端设置了 token，这里填同一个；没设置就留空。</div>
+            <div class="form-tip">两种模式都建议设置强随机 Token；主动连接本站模式必须设置，并在 NapCat 端使用同一个 Token。</div>
           </el-form-item>
           <el-form-item label="默认投稿板块">
             <el-select v-model="form.defaultBoardSlug" filterable :disabled="configDisabled || Boolean(boardsLoadError)">
@@ -171,6 +183,7 @@
             <el-tag :type="row.notificationEnabled ? 'success' : 'info'" size="small">通知 {{ row.notificationEnabled ? "开" : "关" }}</el-tag>
             <el-tag :type="row.memberWelcomeEnabled ? 'success' : 'info'" size="small">欢迎 {{ row.memberWelcomeEnabled ? "开" : "关" }}</el-tag>
             <el-tag :type="row.adFilterEnabled ? 'danger' : 'info'" size="small">广告 {{ row.adFilterEnabled ? "开" : "关" }}</el-tag>
+            <el-tag :type="row.assistantProactiveReplyEnabled ? 'success' : 'info'" size="small">主动回答 {{ row.assistantProactiveReplyEnabled ? "开" : "关" }}</el-tag>
             <el-tag v-if="row.adFilterEnabled" :type="row.adFilterGroupNoticeEnabled ? 'warning' : 'info'" size="small">撤回提示 {{ row.adFilterGroupNoticeEnabled ? "开" : "关" }}</el-tag>
             <el-tag :type="row.joinReviewEnabled ? 'warning' : 'info'" size="small">加群审 {{ row.joinReviewEnabled ? "开" : "关" }}</el-tag>
             <el-tag :type="row.allowMute ? 'warning' : 'info'" size="small">禁言 {{ row.allowMute ? "开" : "关" }}</el-tag>
@@ -371,6 +384,7 @@
             <el-checkbox v-model="groupDialog.form.notificationEnabled">接收群通知</el-checkbox>
             <el-checkbox v-model="groupDialog.form.memberWelcomeEnabled">新成员欢迎</el-checkbox>
             <el-checkbox v-model="groupDialog.form.adFilterEnabled">广告过滤</el-checkbox>
+            <el-checkbox v-model="groupDialog.form.assistantProactiveReplyEnabled">群聊主动回答</el-checkbox>
             <el-checkbox v-model="groupDialog.form.adFilterGroupNoticeEnabled" :disabled="!groupDialog.form.adFilterEnabled">撤回后群聊提示</el-checkbox>
             <el-checkbox v-model="groupDialog.form.adFilterBlockQrCodeEnabled" :disabled="!groupDialog.form.adFilterEnabled">禁止二维码</el-checkbox>
             <el-checkbox v-model="groupDialog.form.adFilterBlockGroupCardEnabled" :disabled="!groupDialog.form.adFilterEnabled">拦截群卡片</el-checkbox>
@@ -381,7 +395,7 @@
             <el-checkbox v-model="groupDialog.form.allowKick">允许踢出</el-checkbox>
             <el-checkbox v-model="groupDialog.form.allowKickAndBlock">允许踢出并拉黑</el-checkbox>
           </div>
-          <div class="form-tip">白名单默认豁免普通广告判断；可单独保留二维码、群卡片两类硬性限制。</div>
+          <div class="form-tip">“群聊主动回答”仅在消息明确提出问题/求助时触发，由广告过滤模型顺带做语义判断，不使用关键词匹配；默认关闭。白名单默认豁免普通广告判断；可单独保留二维码、群卡片两类硬性限制。</div>
         </el-form-item>
         <el-form-item label="累计通报">
           <el-input-number
@@ -484,6 +498,7 @@ let disposed = false;
 const form = reactive({
   enabled: false,
   botQqId: "",
+  connectionMode: "outbound" as "outbound" | "inbound",
   napcatBaseUrl: "",
   accessToken: "",
   webhookSecret: "",
@@ -513,6 +528,7 @@ const groupDialog = reactive({
     memberWelcomeEnabled: false,
     memberWelcomeMessage: defaultMemberWelcomeMessage,
     adFilterEnabled: false,
+    assistantProactiveReplyEnabled: false,
     adFilterGroupNoticeEnabled: true,
     adFilterBlockQrCodeEnabled: false,
     adFilterBlockGroupCardEnabled: false,
@@ -533,10 +549,17 @@ const connectionStatusText = computed(() => {
   const status = config.value?.connectionStatus;
   if (status === "disabled") return "已关闭";
   if (status === "http") return "HTTP 模式";
+  if (status === "inbound") return "等待 NapCat 主动连接";
   if (status === "connecting") return "连接中";
   if (status === "connected") return "已连接";
   if (status === "error") return "连接失败";
   return "待连接";
+});
+const inboundWebSocketUrl = computed(() => {
+  const path = config.value?.inboundWebSocketPath || "/api/qqbot/napcat";
+  if (typeof window === "undefined") return path;
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  return `${protocol}//${window.location.host}${path}`;
 });
 const lastLogAtText = computed(() => {
   const first = logs.value[0];
@@ -586,6 +609,7 @@ async function loadConfig() {
   Object.assign(form, {
     enabled: config.value.enabled,
     botQqId: config.value.botQqId,
+    connectionMode: config.value.connectionMode,
     napcatBaseUrl: config.value.napcatBaseUrl,
     accessToken: "",
     webhookSecret: config.value.webhookSecret,
@@ -772,6 +796,7 @@ function openGroupDialog(row?: any) {
     memberWelcomeEnabled: row?.memberWelcomeEnabled ?? false,
     memberWelcomeMessage: row?.memberWelcomeMessage || defaultMemberWelcomeMessage,
     adFilterEnabled: row?.adFilterEnabled ?? false,
+    assistantProactiveReplyEnabled: row?.assistantProactiveReplyEnabled ?? false,
     adFilterGroupNoticeEnabled: row?.adFilterGroupNoticeEnabled ?? true,
     adFilterBlockQrCodeEnabled: row?.adFilterBlockQrCodeEnabled ?? false,
     adFilterBlockGroupCardEnabled: row?.adFilterBlockGroupCardEnabled ?? false,

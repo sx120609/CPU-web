@@ -507,10 +507,11 @@ export type QqBotConfig = {
   id: number;
   enabled: boolean;
   botQqId: string;
+  connectionMode: "outbound" | "inbound";
   napcatBaseUrl: string;
   hasAccessToken: boolean;
   accessTokenMasked: string;
-  connectionStatus: "disabled" | "http" | "idle" | "connecting" | "connected" | "error";
+  connectionStatus: "disabled" | "http" | "inbound" | "idle" | "connecting" | "connected" | "error";
   connectionError: string;
   webhookSecret: string;
   defaultBoardSlug: string;
@@ -520,6 +521,7 @@ export type QqBotConfig = {
   notifyCategories: string[];
   superAdminQqIds: string[];
   webhookPath: string;
+  inboundWebSocketPath: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -537,6 +539,7 @@ export type QqBotGroup = {
   memberWelcomeEnabled: boolean;
   memberWelcomeMessage: string;
   adFilterEnabled: boolean;
+  assistantProactiveReplyEnabled: boolean;
   adFilterGroupNoticeEnabled: boolean;
   adFilterBlockQrCodeEnabled: boolean;
   adFilterBlockGroupCardEnabled: boolean;
@@ -938,6 +941,7 @@ export const adminApi = {
   updateQqBotConfig: (payload: Partial<{
     enabled: boolean;
     botQqId: string;
+    connectionMode: "outbound" | "inbound";
     napcatBaseUrl: string;
     accessToken: string;
     clearAccessToken: boolean;
@@ -965,6 +969,7 @@ export const adminApi = {
     memberWelcomeEnabled?: boolean;
     memberWelcomeMessage?: string;
     adFilterEnabled?: boolean;
+    assistantProactiveReplyEnabled?: boolean;
     adFilterGroupNoticeEnabled?: boolean;
     adFilterBlockQrCodeEnabled?: boolean;
     adFilterBlockGroupCardEnabled?: boolean;

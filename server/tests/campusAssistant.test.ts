@@ -17,6 +17,7 @@ import {
   listCampusAssistantKnowledge,
   listCampusAssistantKnowledgeEntries,
   normalizeAssistantResponse,
+  parseAssistantJson,
   sanitizeCampusAssistantStoredMessages,
   searchCampusAssistantActions,
   streamCampusAssistant,
@@ -1101,6 +1102,22 @@ test("Qwen 拾间AI会识别明显的半句输出", () => {
   assert.equal(isLikelyTruncatedCampusAssistantAnswer("这个问题对我来说就像问"), true);
   assert.equal(isLikelyTruncatedCampusAssistantAnswer("所以我建议使用“找回密码”入口。"), false);
   assert.equal(isLikelyTruncatedCampusAssistantAnswer("哈哈，这个我真不知道呀。"), false);
+});
+
+test("Qwen 非严格 JSON 输出不会再直接变成 AI_RESPONSE_FORMAT", () => {
+  assert.deepEqual(
+    parseAssistantJson('好的，当然可以。', { allowPlainText: true }),
+    { answer: "好的，当然可以。", actionIds: [], suggestions: [] },
+  );
+  assert.deepEqual(
+    parseAssistantJson('模型说明：{"answer":"请打开课表页。","actionIds":[]}。', { allowPlainText: true }),
+    { answer: "请打开课表页。", actionIds: [] },
+  );
+  assert.deepEqual(
+    parseAssistantJson('{"answer":"请先检查登录', { allowPlainText: true }),
+    { answer: "请先检查登录", actionIds: [], suggestions: [] },
+  );
+  assert.throws(() => parseAssistantJson("好的，当然可以。"), /AI_RESPONSE_FORMAT|返回格式异常/);
 });
 
 test("拾间AI提示词只保留少量历史和相关入口，避免本地模型被上下文拖住", () => {

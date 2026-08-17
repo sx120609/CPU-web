@@ -6,7 +6,10 @@ import {
   detectQqCampusOrganizationRecruitmentBypassReason,
   detectHarmlessQqGroupAdBypassReason,
   detectQqGroupAdHardBlockReason,
+  isQqGroupQrDecision,
+  isQqBotAssistantIntent,
   prepareQqGroupAdImagePayloads,
+  resolveQqGroupWhitelistReviewPlan,
   resolveQqGroupQrOnlyReviewAction,
   resolveQqGroupAdModelCandidates,
   resolveQqGroupAdReviewAction,
@@ -97,8 +100,69 @@ test("honors an explicit model block just below the configured threshold", () =>
 
 test("QR-only review ignores the advertising threshold and requires an explicit QR block", () => {
   assert.equal(resolveQqGroupQrOnlyReviewAction({ riskScore: 100, modelDecision: "block" }), "block");
-  assert.equal(resolveQqGroupQrOnlyReviewAction({ riskScore: 79, modelDecision: "block" }), "allow");
+  assert.equal(resolveQqGroupQrOnlyReviewAction({ riskScore: 70, modelDecision: "block" }), "block");
   assert.equal(resolveQqGroupQrOnlyReviewAction({ riskScore: 100, modelDecision: "auto_pass" }), "allow");
+});
+
+test("明确二维码硬规则不受普通广告阈值影响", () => {
+  assert.equal(isQqGroupQrDecision("二维码", "官方通知图片"), true);
+  assert.equal(isQqGroupQrDecision("商业推广", "没有二维码"), false);
+  assert.equal(
+    resolveQqGroupAdReviewAction({
+      riskScore: 70,
+      threshold: 85,
+      modelDecision: "block",
+      policyHardBlock: true,
+    }),
+    "block",
+  );
+  assert.equal(
+    resolveQqGroupAdReviewAction({
+      riskScore: 70,
+      threshold: 85,
+      modelDecision: "block",
+    }),
+    "allow",
+  );
+});
+
+test("白名单只在开启对应硬限制时进入二维码或群卡片检测", () => {
+  assert.equal(resolveQqGroupWhitelistReviewPlan({
+    whitelisted: true,
+    hasGroupCard: false,
+    hasReviewableMedia: true,
+    blockQrCode: false,
+    blockGroupCard: false,
+  }), "bypass");
+  assert.equal(resolveQqGroupWhitelistReviewPlan({
+    whitelisted: true,
+    hasGroupCard: false,
+    hasReviewableMedia: true,
+    blockQrCode: true,
+    blockGroupCard: false,
+  }), "qr-only");
+  assert.equal(resolveQqGroupWhitelistReviewPlan({
+    whitelisted: true,
+    hasGroupCard: false,
+    hasReviewableMedia: false,
+    hasQrTextSignal: true,
+    blockQrCode: true,
+    blockGroupCard: false,
+  }), "qr-only");
+  assert.equal(resolveQqGroupWhitelistReviewPlan({
+    whitelisted: true,
+    hasGroupCard: true,
+    hasReviewableMedia: false,
+    blockQrCode: false,
+    blockGroupCard: true,
+  }), "block-group-card");
+});
+
+test("主动回答意图只接受明确的语义分类结果", () => {
+  assert.equal(isQqBotAssistantIntent("reply"), true);
+  assert.equal(isQqBotAssistantIntent(true), true);
+  assert.equal(isQqBotAssistantIntent("none"), false);
+  assert.equal(isQqBotAssistantIntent("问号"), false);
 });
 
 test("allows long KFC Thursday meme copy that imitates an advertisement", () => {

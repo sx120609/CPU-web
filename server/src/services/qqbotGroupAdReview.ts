@@ -12,6 +12,7 @@ type QqGroupAdResponse = {
   risk_score?: number;
   risk_level?: string;
   decision?: string;
+  assistant_intent?: string | boolean;
   reason?: string;
   detail?: string;
   categories?: Record<string, number>;
@@ -25,6 +26,7 @@ export type QqGroupAdReviewResult = {
   detail: string;
   model: string;
   modelDecision: string;
+  assistantIntent: boolean;
 };
 
 const QQ_GROUP_AD_REVIEW_RESULT_CACHE_TTL_MS = 10 * 60_000;
@@ -91,6 +93,10 @@ export async function reviewQqGroupMessageForAd(input: {
   blockQrCodes?: boolean;
   /** Whitelisted media uses this mode so advertising intent can never affect the result. */
   reviewMode?: "full" | "qr-only";
+  /** Keep the ad model in intent-only mode when the group ad switch is off. */
+  moderationEnabled?: boolean;
+  /** Ask the same review call whether this plain-text group message clearly asks the bot for an answer. */
+  detectAssistantIntent?: boolean;
   metadata?: Record<string, unknown> | null;
 }): Promise<QqGroupAdReviewResult> {
   const config = getSiteConfig();
@@ -110,12 +116,15 @@ export async function reviewQqGroupMessageForAd(input: {
       detail: "",
       model: config.qqGroupAdReviewModel,
       modelDecision: "auto_pass",
+      assistantIntent: false,
     };
   }
 
   const imageUrls = Array.from(new Set((input.imageUrls || []).map((url) => String(url || "").trim()).filter(Boolean))).slice(0, 4);
   const reviewMode = input.reviewMode === "qr-only" ? "qr-only" : "full";
-  const hardBlockReason = reviewMode === "full"
+  const moderationEnabled = input.moderationEnabled !== false;
+  const detectAssistantIntent = input.detectAssistantIntent === true && reviewMode === "full";
+  const hardBlockReason = moderationEnabled && reviewMode === "full"
     ? detectQqGroupAdHardBlockReason(input.content, input.blockQrCodes === true)
     : null;
   if (hardBlockReason) {
@@ -127,9 +136,10 @@ export async function reviewQqGroupMessageForAd(input: {
       detail: "命中明确的 QQ 群号或加群导流特征，无需等待模型阈值判断。",
       model: "local-signal",
       modelDecision: "block",
+      assistantIntent: false,
     };
   }
-  const localBypassReason = reviewMode === "full" && !imageUrls.length
+  const localBypassReason = moderationEnabled && reviewMode === "full" && !imageUrls.length
     ? detectQqCampusOrganizationRecruitmentBypassReason(input.content)
       || detectHarmlessQqGroupAdBypassReason(input.content)
     : null;
@@ -142,6 +152,7 @@ export async function reviewQqGroupMessageForAd(input: {
       detail: "命中本地学生组织/玩梗误判豁免，未见明确商业交易或商业推广证据。",
       model: "local-bypass",
       modelDecision: "auto_pass",
+      assistantIntent: false,
     };
   }
 
@@ -154,6 +165,8 @@ export async function reviewQqGroupMessageForAd(input: {
     imageUrls,
     blockQrCodes: input.blockQrCodes === true,
     reviewMode,
+    moderationEnabled,
+    detectAssistantIntent,
   });
   const cached = readLocalResultCache(resultCacheKey);
   if (cached) {
@@ -169,6 +182,12 @@ export async function reviewQqGroupMessageForAd(input: {
   const qrPolicy = input.blockQrCodes === true
     ? "本群已开启“禁止二维码”：只要文字或任一附件（包括视频抽帧）中出现可识别二维码，即使没有其他广告文案，也必须 decision=block，并在 reason 中明确写“二维码”。\n\n"
     : "本群未开启强制二维码拦截；二维码本身不等于广告，只有同时构成真实商业导流、收费交易或商业推广时才拦截。校园社团/学生组织招新中的二维码是报名渠道，默认放行。\n\n";
+  const assistantIntentInstruction = detectAssistantIntent
+    ? [
+        "另外，请单独判断这条纯文字群消息是否明确希望 QQBot 回答问题。只有消息本身清楚地提出问题、求助、询问做法或要求解释时才算 reply；普通陈述、打招呼、吐槽、闲聊、转述他人问题或仅仅出现疑问词/问号都算 none。不要使用关键词命中代替语义判断。",
+        "请在 JSON 中增加 assistant_intent 字段，只能填写 reply 或 none。该字段只表示是否应转给 QQBot，不改变广告 decision。",
+      ].join("\n")
+    : "";
   const campusPolicy = [
     "这是学生群，审核范围应保持窄：只过滤明确的商业广告，不要把普通校园信息当成广告。",
     "社团、协会、学生会、学生组织、兴趣小组、校队、志愿服务和校园活动的招新/纳新/报名/成员招募，只要没有收费、卖货、付费服务、兼职代理、刷单或商业返利等证据，默认 auto_pass。",
@@ -179,14 +198,14 @@ export async function reviewQqGroupMessageForAd(input: {
   ].join("\n");
   const promptText = reviewMode === "qr-only"
     ? "只检查本消息所附图片和视频抽帧里有没有可识别二维码。即使画面是明显广告、招新、推广或引流，也不得因此拦截；没有二维码就必须放行。"
-    : `${qrPolicy}${campusPolicy}\n\n${imageUrls.length ? "这是一条包含附图的群消息。请直接查看附图，按学生群的窄范围商业广告边界判断；不要因为文字为空而放行。\n\n" : ""}${fillPromptTemplate(config.qqGroupAdReviewUserPrompt, {
+    : `${moderationEnabled ? qrPolicy : "本次不执行广告拦截，只判断是否明确希望 QQBot 回答。\n\n"}${moderationEnabled ? campusPolicy : ""}${imageUrls.length ? "\n\n这是一条包含附图的群消息。请直接查看附图；附图消息不会转给日常问答。" : ""}\n\n${fillPromptTemplate(config.qqGroupAdReviewUserPrompt, {
         groupId: input.groupId,
         groupName: input.groupName || input.groupId,
         qqId: input.qqId,
         nickname: input.nickname || "",
         content: input.content,
         metadataJson: JSON.stringify({ ...(input.metadata || {}), imageUrls, blockQrCodes: input.blockQrCodes === true }),
-      })}`;
+      })}${assistantIntentInstruction}`;
   const userContent = [
     { type: "text" as const, text: promptText },
     ...preparedImages.map((image) => ({
@@ -200,6 +219,9 @@ export async function reviewQqGroupMessageForAd(input: {
   ];
   const attachmentSummary = preparedImages.length
     ? `\n\n[附件诊断] ${preparedImages.map((image, index) => `图片${index + 1}：${image.sourceMimeType} -> ${image.mimeType}，${image.byteLength} bytes，${image.transcoded ? "已转码" : "原格式"}，sha256=${image.sha256}`).join("；")}`
+    : "";
+  const reviewMetadataSummary = input.metadata && Object.keys(input.metadata).length
+    ? `\n\n[审核路径诊断] ${JSON.stringify(input.metadata).slice(0, 1800)}`
     : "";
   const reviewProvider = preparedImages.length
     ? resolveQqGroupAdImageProvider(config, provider)
@@ -219,6 +241,8 @@ export async function reviewQqGroupMessageForAd(input: {
     configHash,
     groupId: input.groupId,
     reviewMode,
+    moderationEnabled,
+    detectAssistantIntent,
   });
   let lastError: Error | null = null;
 
@@ -232,7 +256,7 @@ export async function reviewQqGroupMessageForAd(input: {
       provider: config.qqGroupAdReviewProvider,
       model,
       endpoint,
-      requestSummary: `${promptText}${attachmentSummary}`,
+      requestSummary: `${promptText}${attachmentSummary}${reviewMetadataSummary}`,
     });
     const logId = started?.id ?? null;
 
@@ -286,12 +310,18 @@ export async function reviewQqGroupMessageForAd(input: {
     const parsed = parseAdReviewResponse(content);
     const riskScore = clampScore(parsed.risk_score);
     const modelDecision = String(parsed.decision || "").trim().toLowerCase();
+    const policyHardBlock = input.blockQrCodes === true
+      && modelDecision === "block"
+      && isQqGroupQrDecision(parsed.reason, parsed.detail);
     const action = reviewMode === "qr-only"
       ? resolveQqGroupQrOnlyReviewAction({ riskScore, modelDecision })
-      : resolveQqGroupAdReviewAction({
+      : !moderationEnabled
+        ? "allow" as const
+        : resolveQqGroupAdReviewAction({
           riskScore,
           threshold: config.qqGroupAdReviewThreshold,
           modelDecision,
+          policyHardBlock,
         });
     const result: QqGroupAdReviewResult = {
       action,
@@ -303,6 +333,7 @@ export async function reviewQqGroupMessageForAd(input: {
       detail: String(parsed.detail || "").trim(),
       model,
       modelDecision,
+      assistantIntent: detectAssistantIntent && isQqBotAssistantIntent(parsed.assistant_intent),
     };
     writeLocalResultCache(resultCacheKey, result, QQ_GROUP_AD_REVIEW_RESULT_CACHE_TTL_MS);
     return result;
@@ -350,6 +381,25 @@ export function detectQqGroupAdHardBlockReason(input: string, blockQrCodes = fal
   if (QQ_GROUP_AD_QQ_NUMBER_PATTERN.test(content)) return "包含 QQ 群号并带有群号导流";
   if (QQ_GROUP_AD_INVITE_NUMBER_PATTERN.test(content)) return "包含明确的加群/联系导流号码";
   return null;
+}
+
+/**
+ * Choose the only permitted moderation path for a valid per-group whitelist.
+ * Group cards keep their explicit switch; every other reviewable attachment is
+ * either QR-only or bypassed without entering the advertising prompt.
+ */
+export function resolveQqGroupWhitelistReviewPlan(input: {
+  whitelisted: boolean;
+  hasGroupCard: boolean;
+  hasReviewableMedia: boolean;
+  hasQrTextSignal?: boolean;
+  blockQrCode: boolean;
+  blockGroupCard: boolean;
+}): "full" | "qr-only" | "block-group-card" | "bypass" {
+  if (!input.whitelisted) return "full";
+  if (input.hasGroupCard && input.blockGroupCard) return "block-group-card";
+  if ((input.hasReviewableMedia || input.hasQrTextSignal) && input.blockQrCode) return "qr-only";
+  return "bypass";
 }
 
 function fillPromptTemplate(template: string, values: Record<string, string>) {
@@ -410,8 +460,10 @@ function buildQqGroupAdReviewResultCacheKey(input: {
   imageUrls: string[];
   blockQrCodes: boolean;
   reviewMode: "full" | "qr-only";
+  moderationEnabled: boolean;
+  detectAssistantIntent: boolean;
 }) {
-  return `qqbot:group-ad-review:${hashString(`${input.configHash}\n${input.groupId}\n${input.reviewMode}\n${input.content}\n${input.blockQrCodes ? "qr-block" : "qr-normal"}\n${input.imageUrls.join("\n")}`)}`;
+  return `qqbot:group-ad-review:${hashString(`${input.configHash}\n${input.groupId}\n${input.reviewMode}\n${input.moderationEnabled ? "moderate" : "intent-only"}\n${input.detectAssistantIntent ? "assistant-intent" : "ad-only"}\n${input.content}\n${input.blockQrCodes ? "qr-block" : "qr-normal"}\n${input.imageUrls.join("\n")}`)}`;
 }
 
 /**
@@ -539,8 +591,10 @@ function buildQqGroupAdPromptCacheKey(input: {
   configHash: string;
   groupId: string;
   reviewMode: "full" | "qr-only";
+  moderationEnabled: boolean;
+  detectAssistantIntent: boolean;
 }) {
-  return `qqbot-group-ad:${hashString(`${input.configHash}\n${input.groupId}\n${input.reviewMode}`)}`;
+  return `qqbot-group-ad:${hashString(`${input.configHash}\n${input.groupId}\n${input.reviewMode}\n${input.moderationEnabled ? "moderate" : "intent-only"}\n${input.detectAssistantIntent ? "assistant-intent" : "ad-only"}`)}`;
 }
 
 function hashString(input: string) {
@@ -591,16 +645,34 @@ export function resolveQqGroupAdReviewAction(input: {
   riskScore: number;
   threshold: number;
   modelDecision: string;
+  policyHardBlock?: boolean;
 }): "allow" | "block" {
   if (input.modelDecision === "manual_review") return "allow";
+  if (input.policyHardBlock && input.modelDecision === "block") return "block";
   if (input.modelDecision === "block" && input.riskScore >= Math.max(0, input.threshold - 10)) return "block";
   return input.riskScore >= input.threshold ? "block" : "allow";
 }
 
-/** QR-only checks must have an explicit, high-confidence QR decision. */
+export function isQqBotAssistantIntent(value: unknown) {
+  if (value === true) return true;
+  const normalized = String(value || "").trim().toLowerCase();
+  return normalized === "reply" || normalized === "answer" || normalized === "ask" || normalized === "question";
+}
+
+/** QR-only checks must have an explicit QR decision from the dedicated detector. */
 export function resolveQqGroupQrOnlyReviewAction(input: {
   riskScore: number;
   modelDecision: string;
 }): "allow" | "block" {
-  return input.modelDecision === "block" && input.riskScore >= 80 ? "block" : "allow";
+  // The qr-only route exists because the group policy explicitly says that a
+  // recognizable QR code is forbidden. Do not apply the general ad-risk
+  // threshold here: an explicit block from this dedicated detector is the
+  // policy signal we need to enforce.
+  return input.modelDecision === "block" ? "block" : "allow";
+}
+
+export function isQqGroupQrDecision(reason: unknown, detail: unknown) {
+  const text = `${String(reason || "")} ${String(detail || "")}`;
+  if (/(?:没有|未发现|未检测到|无|不含|未见)\s*(?:可识别的?)?二维码/iu.test(text)) return false;
+  return /二维码|扫码|扫描|qr\s*code|\bqr\b/iu.test(text);
 }

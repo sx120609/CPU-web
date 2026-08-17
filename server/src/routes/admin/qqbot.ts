@@ -21,6 +21,7 @@ export const qqBotAdminRouter = Router();
 const configPatchSchema = z.object({
   enabled: z.boolean().optional(),
   botQqId: z.string().trim().max(40).optional(),
+  connectionMode: z.enum(["outbound", "inbound"]).optional(),
   napcatBaseUrl: z.string().trim().max(240).optional(),
   accessToken: z.string().trim().max(240).optional(),
   clearAccessToken: z.boolean().optional(),
@@ -103,6 +104,7 @@ const groupUpsertSchema = z.object({
   memberWelcomeEnabled: z.boolean().optional(),
   memberWelcomeMessage: z.string().trim().max(1500).optional(),
   adFilterEnabled: z.boolean().optional(),
+  assistantProactiveReplyEnabled: z.boolean().optional(),
   adFilterGroupNoticeEnabled: z.boolean().optional(),
   adFilterBlockQrCodeEnabled: z.boolean().optional(),
   adFilterBlockGroupCardEnabled: z.boolean().optional(),
@@ -134,6 +136,7 @@ qqBotAdminRouter.post("/groups", validate(groupUpsertSchema), async (req, res, n
       memberWelcomeEnabled: req.body.memberWelcomeEnabled,
       memberWelcomeMessage: req.body.memberWelcomeMessage,
       adFilterEnabled: req.body.adFilterEnabled,
+      assistantProactiveReplyEnabled: req.body.assistantProactiveReplyEnabled,
       adFilterGroupNoticeEnabled: req.body.adFilterGroupNoticeEnabled,
       adFilterBlockQrCodeEnabled: req.body.adFilterBlockQrCodeEnabled,
       adFilterBlockGroupCardEnabled: req.body.adFilterBlockGroupCardEnabled,

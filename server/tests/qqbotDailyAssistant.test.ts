@@ -21,6 +21,23 @@ test("QQ 群日常聊天只有明确 @ 机器人时才进入拾间AI", () => {
   }), true);
 });
 
+test("开启群聊主动回答后只接受广告审核语义识别通过的纯文字消息", () => {
+  assert.equal(shouldHandleQqBotDailyAssistant({
+    messageType: "group",
+    messageText: "教务处页面没有反应怎么办？",
+    botMentioned: false,
+    proactiveGroupReply: true,
+    message: [{ type: "text", data: { text: "教务处页面没有反应怎么办？" } }],
+  }), true);
+  assert.equal(shouldHandleQqBotDailyAssistant({
+    messageType: "group",
+    messageText: "看看这个",
+    botMentioned: false,
+    proactiveGroupReply: true,
+    message: [{ type: "text", data: { text: "看看这个" } }, { type: "image", data: {} }],
+  }), false);
+});
+
 test("QQ 私聊普通文字可以进入拾间AI，但斜杠命令不会进入", () => {
   const message = [{ type: "text", data: { text: "教务处没有反应怎么办" } }];
   assert.equal(shouldHandleQqBotDailyAssistant({

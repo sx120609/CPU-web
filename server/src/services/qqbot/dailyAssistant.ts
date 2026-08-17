@@ -6,6 +6,7 @@ type QqBotDailyAssistantInput = {
   messageType?: "private" | "group";
   messageText: string;
   botMentioned: boolean;
+  proactiveGroupReply?: boolean;
   message: unknown;
 };
 
@@ -17,7 +18,7 @@ type QqBotDailyAssistantInput = {
 export function shouldHandleQqBotDailyAssistant(input: QqBotDailyAssistantInput) {
   const text = String(input.messageText || "").trim();
   if (!text || isCommandMessage(text)) return false;
-  if (input.messageType === "group" && !input.botMentioned) return false;
+  if (input.messageType === "group" && !input.botMentioned && !input.proactiveGroupReply) return false;
   return isPlainTextQqMessage(input.message);
 }
 

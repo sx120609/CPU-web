@@ -9,6 +9,7 @@ import { attachJwxtAgentGateway } from "./services/jwxtAgentGateway";
 import { loadJwxtAgentRuntimeConfig } from "./services/jwxtAgentConfig";
 import { bootstrapMarket } from "./services/marketBootstrap";
 import { attachVoiceHubGateway, voiceHubProxyConfig } from "./services/voiceHubProxy";
+import { attachQqBotWebSocketGateway } from "./services/qqbot/connection";
 
 async function start() {
   await loadJwxtAgentRuntimeConfig().catch((error) => {
@@ -24,6 +25,7 @@ async function start() {
   const app = createApp();
   const server = createServer(app);
   attachJwxtAgentGateway(server);
+  attachQqBotWebSocketGateway(server);
   attachVoiceHubGateway(server);
 
   let shuttingDown = false;

@@ -645,6 +645,7 @@ export async function askCampusAssistant(input: {
   message: string;
   history: CampusAssistantMessage[];
   context: CampusAssistantContext;
+  signal?: AbortSignal;
   usage?: { createdById?: number | null; pointCost?: number };
 }): Promise<CampusAssistantResponse> {
   const message = input.message.trim();
@@ -695,6 +696,7 @@ export async function askCampusAssistant(input: {
       providerConfigs: providers,
       enablePromptCache: true,
       enablePromptCacheRetention: true,
+      signal: input.signal,
     });
     if (isCampusAssistantModelIdentityQuestion(message)) {
       const response = modelIdentityResponse();
@@ -703,7 +705,7 @@ export async function askCampusAssistant(input: {
     }
     let parsed: unknown;
     try {
-      parsed = parseAssistantJson(result.content);
+      parsed = parseAssistantJson(result.content, { allowPlainText: isQwenAssistantModel(config.assistantModel) });
     } catch (error) {
       if (!isQwenAssistantModel(config.assistantModel)) throw error;
       const repaired = await repairCampusAssistantResponse({
@@ -716,6 +718,7 @@ export async function askCampusAssistant(input: {
         availableActions,
         deterministicActions,
         reason: "format",
+        signal: input.signal,
       });
       if (!repaired) {
         await finishAiReviewLogError(logId, "AI_RESPONSE_FORMAT", error instanceof Error ? error.message : String(error));
@@ -738,6 +741,7 @@ export async function askCampusAssistant(input: {
         availableActions,
         deterministicActions,
         reason: "truncated",
+        signal: input.signal,
       });
       if (!repaired) {
         await finishAiReviewLogError(logId, "AI_RESPONSE_TRUNCATED", response.answer);
@@ -764,6 +768,7 @@ async function repairCampusAssistantResponse(input: {
   availableActions: CampusAssistantAction[];
   deterministicActions: CampusAssistantAction[];
   reason: "format" | "truncated";
+  signal?: AbortSignal;
 }): Promise<CampusAssistantResponse | null> {
   const repairInstruction = input.reason === "format"
     ? "请重新完整回答上一条用户问题。上一版输出没有形成合法 JSON。只输出一个合法 JSON 对象，不要输出 Markdown、解释、思维过程或 JSON 之外的文字。"
@@ -789,8 +794,9 @@ async function repairCampusAssistantResponse(input: {
       providerConfigs: input.providers,
       enablePromptCache: true,
       enablePromptCacheRetention: true,
+      signal: input.signal,
     });
-    const parsed = parseAssistantJson(result.content);
+    const parsed = parseAssistantJson(result.content, { allowPlainText: isQwenAssistantModel(input.model) });
     const response = guardCampusAssistantResponse(filterUnavailableDataSuggestions(
       normalizeAssistantResponse(parsed, input.availableActions, input.deterministicActions),
     ));
@@ -821,6 +827,21 @@ export async function streamCampusAssistant(input: {
   const message = input.message.trim();
   if (isCampusAssistantPublicTopicRestricted(message, input.history)) {
     return cloneRestrictedPublicTopicReply();
+  }
+  const configuredModel = getSiteConfig().assistantModel;
+  if (isQwenAssistantModel(configuredModel)) {
+    // Qwen is intentionally single-turn and non-streaming here. Its local
+    // OpenAI-compatible streaming responses can stop before closing the JSON
+    // object, leaving the browser with a half-answer and a cancelled request.
+    const response = await askCampusAssistant({
+      message,
+      history: [],
+      context: input.context,
+      signal: input.signal,
+      usage: input.usage,
+    });
+    if (response.answer) await onAnswerDelta(response.answer);
+    return response;
   }
   const availableActions = listCampusAssistantActions(input.context);
   const deterministicActions = searchCampusAssistantActions(message, input.context, 3);
@@ -912,7 +933,7 @@ export async function streamCampusAssistant(input: {
         await finishAiReviewLogSuccess(logId, response.answer);
         return response;
       }
-      const parsed = parseAssistantJson(content);
+      const parsed = parseAssistantJson(content, { allowPlainText: isQwenAssistantModel(model) });
       const response = guardCampusAssistantResponse(filterUnavailableDataSuggestions(
         normalizeAssistantResponse(parsed, availableActions, deterministicActions),
       ));
@@ -1161,19 +1182,59 @@ function cloneRestrictedPublicTopicReply(): CampusAssistantResponse {
   };
 }
 
-function parseAssistantJson(content: string) {
+export function parseAssistantJson(content: string, options: { allowPlainText?: boolean } = {}) {
   const normalized = String(content || "")
     .trim()
     .replace(/^```(?:json)?\s*/i, "")
     .replace(/\s*```$/i, "");
-  try {
-    return JSON.parse(normalized);
-  } catch {
-    const start = normalized.indexOf("{");
-    const end = normalized.lastIndexOf("}");
-    if (start >= 0 && end > start) return JSON.parse(normalized.slice(start, end + 1));
-    throw new Error("拾间AI返回格式异常");
+  if (!normalized) throw new Error("拾间AI返回格式异常：空响应");
+  const candidates = [normalized];
+  const objectCandidate = extractBalancedJsonObject(normalized);
+  if (objectCandidate && objectCandidate !== normalized) candidates.push(objectCandidate);
+  for (const candidate of candidates) {
+    try {
+      return JSON.parse(candidate);
+    } catch {
+      // Local models may prepend a short sentence or wrap valid JSON in prose.
+    }
   }
+  const partialAnswer = extractPartialJsonStringValue(normalized, "answer")?.trim();
+  if (options.allowPlainText && partialAnswer) return { answer: partialAnswer, actionIds: [], suggestions: [] };
+  if (options.allowPlainText) return { answer: normalized, actionIds: [], suggestions: [] };
+  throw new Error("拾间AI返回格式异常");
+}
+
+function extractBalancedJsonObject(source: string) {
+  let start = -1;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    if (start < 0) {
+      if (char === "{") {
+        start = index;
+        depth = 1;
+      }
+      continue;
+    }
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === '"') inString = false;
+      continue;
+    }
+    if (char === '"') {
+      inString = true;
+      continue;
+    }
+    if (char === "{") depth += 1;
+    else if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  return null;
 }
 
 export function isQwenAssistantModel(modelName: string) {
