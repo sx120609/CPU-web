@@ -46,6 +46,7 @@ import {
 } from "../src/services/forumAccess";
 import {
   buildAiPromptCacheKey,
+  extractAiJsonCompletionMetadata,
   readAiJsonTextStream,
   sendAiUpstreamRequest,
   sendAiJsonRequestWithProviderFallback,
@@ -528,7 +529,7 @@ test("AI upstream requests omit an empty Authorization header for local Ollama",
   }) as typeof fetch;
 
   try {
-    await sendAiUpstreamRequest({
+    const result = await sendAiUpstreamRequest({
       endpoint: "http://127.0.0.1:11434/v1/chat/completions",
       apiKey: "",
       body: {
@@ -537,6 +538,7 @@ test("AI upstream requests omit an empty Authorization header for local Ollama",
       },
     });
 
+    await result.response.body?.cancel();
     assert.equal(requestHeaders?.has("authorization"), false);
   } finally {
     globalThis.fetch = originalFetch;
@@ -554,6 +556,12 @@ test("拾间AI 的 Ollama 非流式 JSON 请求走原生 /api/chat 并按请求�
       model: "qwen3.8:27b",
       done: true,
       done_reason: "stop",
+      prompt_eval_count: 83,
+      eval_count: 67,
+      total_duration: 4_926_000_000,
+      load_duration: 201_000_000,
+      prompt_eval_duration: 3_100_000_000,
+      eval_duration: 549_000_000,
       message: {
         role: "assistant",
         content: '{"answer":"这是完整回答。","actionIds":[],"suggestions":[]}',
@@ -590,25 +598,53 @@ test("拾间AI 的 Ollama 非流式 JSON 请求走原生 /api/chat 并按请求�
     assert.equal(requestBody?.format, "json");
     assert.equal(requestBody?.think, true);
     assert.equal(requestBody?.options?.num_predict, 4096);
-    assert.deepEqual(JSON.parse(String((await result.response.json()).choices[0].message.content)), {
+    const wrapped = await result.response.json();
+    assert.deepEqual(JSON.parse(String(wrapped.choices[0].message.content)), {
       answer: "这是完整回答。",
       actionIds: [],
       suggestions: [],
+    });
+    assert.deepEqual(extractAiJsonCompletionMetadata(wrapped, "chat_completions"), {
+      finishReason: "stop",
+      doneReason: "stop",
+      done: true,
+      promptEvalCount: 83,
+      evalCount: 67,
+      totalDurationMs: 4926,
+      loadDurationMs: 201,
+      promptEvalDurationMs: 3100,
+      evalDurationMs: 549,
     });
   } finally {
     globalThis.fetch = originalFetch;
   }
 });
 
-test("普通 JSON 响应体不会被流式服务槽位逻辑提前取消", async () => {
+test("Ollama 非流式响应体消费完成前不会启动同端点的第二个请求", async () => {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async () => new Response('{"answer":"ok"}', {
-    status: 200,
-    headers: { "Content-Type": "application/json" },
-  })) as typeof fetch;
+  let requests = 0;
+  let closeFirstBody!: () => void;
+  globalThis.fetch = (async () => {
+    requests += 1;
+    if (requests === 1) {
+      return new Response(new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('{"answer":"ok"}'));
+          closeFirstBody = () => controller.close();
+        },
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    return new Response('{"answer":"second"}', {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
 
   try {
-    const result = await sendAiUpstreamRequest({
+    const first = await sendAiUpstreamRequest({
       endpoint: "http://json-body-test.local:11434/v1/chat/completions",
       apiKey: "",
       body: {
@@ -616,8 +652,22 @@ test("普通 JSON 响应体不会被流式服务槽位逻辑提前取消", async
         messages: [{ role: "user", content: "hello" }],
       },
     });
+    const secondPromise = sendAiUpstreamRequest({
+      endpoint: "http://json-body-test.local:11434/v1/chat/completions",
+      apiKey: "",
+      body: {
+        model: "qwen3.8:27b",
+        messages: [{ role: "user", content: "again" }],
+      },
+    });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(requests, 1);
 
-    assert.deepEqual(await result.response.json(), { answer: "ok" });
+    closeFirstBody();
+    assert.deepEqual(await first.response.json(), { answer: "ok" });
+    const second = await secondPromise;
+    assert.equal(requests, 2);
+    await second.response.body?.cancel();
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -1165,6 +1215,8 @@ test("Qwen 拾间AI会识别明显的半句输出", () => {
   assert.equal(isLikelyTruncatedCampusAssistantAnswer("请打开学校官网（cpu.edu.cn），在"), true);
   assert.equal(isLikelyTruncatedCampusAssistantAnswer("这个问题对我来说就像问"), true);
   assert.equal(isLikelyTruncatedCampusAssistantAnswer("谢谢你的喜欢，这句话让我（如果我能"), true);
+  assert.equal(isLikelyTruncatedCampusAssistantAnswer("你好呀，我是拾间AI，药大拾间的校园助手。你发来的这段"), true);
+  assert.equal(isLikelyTruncatedCampusAssistantAnswer("请先查看下面"), true);
   assert.equal(isLikelyTruncatedCampusAssistantAnswer("所以我建议使用“找回密码”入口。"), false);
   assert.equal(isLikelyTruncatedCampusAssistantAnswer("哈哈，这个我真不知道呀。"), false);
 });

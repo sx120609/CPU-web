@@ -4,6 +4,7 @@ import { Errors } from "../utils/response";
 import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } from "./aiReviewLog";
 import {
   type AiJsonMessage,
+  extractAiJsonCompletionMetadata,
   extractAiJsonTextResponse,
   sendAiJsonRequestWithProviderFallback,
   type AiProviderCandidate,
@@ -193,8 +194,9 @@ export async function requestAiJson(
     let response: Response;
     let responseMode = detectTextReviewApiMode(endpoint);
     let responseErrorText = "";
+    let upstreamResult: Awaited<ReturnType<typeof sendAiJsonRequestWithProviderFallback>>;
     try {
-      const result = await sendAiJsonRequestWithProviderFallback({
+      upstreamResult = await sendAiJsonRequestWithProviderFallback({
         providers: providerConfigs,
         fallbackEndpoint: DEFAULT_REVIEW_API_URL,
         model,
@@ -207,9 +209,9 @@ export async function requestAiJson(
         ollamaThink: options?.ollamaThink,
         signal: options?.signal,
       });
-      response = result.response;
-      responseMode = result.mode;
-      responseErrorText = result.errorText;
+      response = upstreamResult.response;
+      responseMode = upstreamResult.mode;
+      responseErrorText = upstreamResult.errorText;
     } catch (error) {
       const detail = describeAiRequestError(error);
       await finishAiReviewLogError(logId, "FETCH_ERROR", detail);
@@ -236,8 +238,29 @@ export async function requestAiJson(
       throw Errors.server(`AI 审核返回解析失败：${detail}`);
     }
     const content = extractAiJsonTextResponse(json, responseMode);
+    const completion = extractAiJsonCompletionMetadata(json, responseMode);
+    if (
+      /(?:qwen|ollama)/iu.test(model)
+      || (completion.finishReason && completion.finishReason !== "stop")
+      || (completion.doneReason && completion.doneReason !== "stop")
+    ) {
+      console.info("[ai-json] completion", JSON.stringify({
+        provider: upstreamResult.provider.provider,
+        model,
+        finishReason: completion.finishReason,
+        doneReason: completion.doneReason,
+        done: completion.done,
+        promptEvalCount: completion.promptEvalCount,
+        evalCount: completion.evalCount,
+        totalDurationMs: completion.totalDurationMs,
+        loadDurationMs: completion.loadDurationMs,
+        promptEvalDurationMs: completion.promptEvalDurationMs,
+        evalDurationMs: completion.evalDurationMs,
+        retryCount: upstreamResult.retryCount,
+      }));
+    }
     await finishAiReviewLogSuccess(logId, typeof content === "string" ? content : JSON.stringify(content ?? {}).slice(0, 4000));
-    return { content, model };
+    return { content, model, completion };
   }
   throw lastError || Errors.server("AI 审核请求失败");
 }

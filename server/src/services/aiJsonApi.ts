@@ -40,6 +40,18 @@ export type SendAiJsonRequestResult = {
   retryCount: number;
 };
 
+export type AiJsonCompletionMetadata = {
+  finishReason: string | null;
+  doneReason: string | null;
+  done: boolean | null;
+  promptEvalCount: number | null;
+  evalCount: number | null;
+  totalDurationMs: number | null;
+  loadDurationMs: number | null;
+  promptEvalDurationMs: number | null;
+  evalDurationMs: number | null;
+};
+
 export type AiProviderCandidate = {
   serviceId?: string;
   name?: string;
@@ -74,7 +86,7 @@ export async function filterAiProviderCandidatesByModel(
 const promptCacheKeySupport = new Map<string, boolean>();
 const promptCacheRetentionSupport = new Map<string, boolean>();
 export const AI_UPSTREAM_TIMEOUT_MS = 90_000;
-const AI_STREAM_BODY_TIMEOUT_MS = 120_000;
+const AI_RESPONSE_BODY_TIMEOUT_MS = 120_000;
 const AI_RESPONSE_BODY_CLOSED = Symbol("ai-response-body-closed");
 
 type TrackedAiResponse = Response & {
@@ -127,7 +139,7 @@ export async function sendAiJsonRequest(input: {
   signal?: AbortSignal;
 }): Promise<SendAiJsonRequestResult> {
   if (input.preferNativeOllama && !input.stream && isOllamaProvider(input.provider)) {
-    return sendNativeOllamaJsonRequest(input);
+    return retryBusyOllamaRequest(input, () => sendNativeOllamaJsonRequest(input));
   }
   const mode = detectAiJsonApiMode(input.endpoint);
   const body = buildAiJsonRequestBody({
@@ -138,7 +150,7 @@ export async function sendAiJsonRequest(input: {
     messages: input.messages,
     stream: input.stream,
   });
-  return sendAiUpstreamRequest({
+  return retryBusyOllamaRequest(input, () => sendAiUpstreamRequest({
     endpoint: input.endpoint,
     apiKey: input.apiKey,
     provider: input.provider,
@@ -147,7 +159,33 @@ export async function sendAiJsonRequest(input: {
     enablePromptCacheRetention: input.enablePromptCacheRetention,
     maxTransientRetries: input.maxTransientRetries,
     signal: input.signal,
-  });
+  }));
+}
+
+async function retryBusyOllamaRequest<T>(
+  input: { maxTransientRetries?: number; signal?: AbortSignal },
+  run: () => Promise<T>,
+) {
+  const configuredRetries = Number(input.maxTransientRetries);
+  const maxRetries = Number.isFinite(configuredRetries)
+    ? Math.max(0, Math.min(3, Math.floor(configuredRetries)))
+    : 3;
+  let retryCount = 0;
+  while (true) {
+    try {
+      return await run();
+    } catch (error) {
+      if (
+        !isAiProviderBusyError(error)
+        || retryCount >= maxRetries
+        || input.signal?.aborted
+      ) {
+        throw error;
+      }
+      retryCount += 1;
+      await waitForTransientRetry(retryCount, input.signal);
+    }
+  }
 }
 
 export type SendAiJsonRequestWithFallbackResult = SendAiJsonRequestResult & {
@@ -231,6 +269,15 @@ function isOllamaProvider(provider: string | undefined) {
   return String(provider || "").trim().toLowerCase() === "ollama";
 }
 
+function isOllamaEndpoint(provider: string | undefined, endpoint: string) {
+  if (isOllamaProvider(provider)) return true;
+  try {
+    return new URL(endpoint).port === "11434";
+  } catch {
+    return false;
+  }
+}
+
 async function sendNativeOllamaJsonRequest(input: {
   endpoint: string;
   apiKey: string;
@@ -306,6 +353,26 @@ async function sendNativeOllamaJsonRequest(input: {
       message: { role: "assistant", content },
       finish_reason: native?.done_reason || (native?.done === false ? null : "stop"),
     }],
+    ...(Number.isFinite(Number(native?.prompt_eval_count)) || Number.isFinite(Number(native?.eval_count))
+      ? {
+          usage: {
+            prompt_tokens: toNullableInteger(native?.prompt_eval_count) ?? 0,
+            completion_tokens: toNullableInteger(native?.eval_count) ?? 0,
+            total_tokens: (toNullableInteger(native?.prompt_eval_count) ?? 0)
+              + (toNullableInteger(native?.eval_count) ?? 0),
+          },
+        }
+      : {}),
+    x_cpu_ollama: {
+      done: typeof native?.done === "boolean" ? native.done : null,
+      done_reason: typeof native?.done_reason === "string" ? native.done_reason : null,
+      prompt_eval_count: toNullableInteger(native?.prompt_eval_count),
+      eval_count: toNullableInteger(native?.eval_count),
+      total_duration: toNullableInteger(native?.total_duration),
+      load_duration: toNullableInteger(native?.load_duration),
+      prompt_eval_duration: toNullableInteger(native?.prompt_eval_duration),
+      eval_duration: toNullableInteger(native?.eval_duration),
+    },
   };
   return {
     ...upstream,
@@ -353,12 +420,20 @@ export async function sendAiUpstreamRequest(input: {
   maxTransientRetries?: number;
   signal?: AbortSignal;
 }): Promise<SendAiJsonRequestResult> {
+  // Reject malformed payloads before entering the Ollama queue. Otherwise an
+  // invalid image/message request can wait behind a long model task and be
+  // reported as AI_PROVIDER_BUSY instead of the actionable validation error.
+  validateAiRequestBody(input.body, detectAiJsonApiMode(input.endpoint));
+  const shouldSerializeResponse = isOllamaEndpoint(input.provider, input.endpoint);
   return runWithAiProviderIsolation({
     provider: input.provider,
     endpoint: input.endpoint,
     signal: input.signal,
     run: () => sendAiUpstreamRequestUnisolated(input),
-    holdActiveUntil: input.body.stream === true
+    // Ollama starts a model task before the HTTP body is consumed. Holding only
+    // streams left native/non-streaming callers free to start a second task
+    // while the first response.json() was still running.
+    holdActiveUntil: shouldSerializeResponse
       ? (result) => waitForAiResponseBodyClosed(result.response)
       : undefined,
   });
@@ -396,7 +471,6 @@ async function sendAiUpstreamRequestWithSignal(input: {
   signal?: AbortSignal;
 }): Promise<SendAiJsonRequestResult> {
   const mode = detectAiJsonApiMode(input.endpoint);
-  validateAiRequestBody(input.body, mode);
   const supportKey = `${mode}:${input.endpoint}`;
   const promptCacheKey = String(input.promptCacheKey || "").trim();
   let promptCacheKeyApplied = Boolean(promptCacheKey) && (promptCacheKeySupport.get(supportKey) ?? true);
@@ -478,7 +552,10 @@ async function sendAiUpstreamRequestWithSignal(input: {
   }
 
   return {
-    response: trackAiResponseBody(finalResult.response, Boolean(input.body.stream)),
+    response: trackAiResponseBody(
+      finalResult.response,
+      isOllamaEndpoint(input.provider, input.endpoint),
+    ),
     mode,
     errorText: finalResult.errorText,
     promptCacheKeyApplied,
@@ -503,13 +580,13 @@ function trackAiResponseBody(response: Response, shouldTrack: boolean) {
     resolveClosed();
   };
   const timeout = setTimeout(() => {
-    const error = new Error(`AI 流式响应超过 ${Math.round(AI_STREAM_BODY_TIMEOUT_MS / 1000)} 秒，已取消`);
+    const error = new Error(`AI 上游响应体超过 ${Math.round(AI_RESPONSE_BODY_TIMEOUT_MS / 1000)} 秒，已取消`);
     error.name = "TimeoutError";
-    (error as Error & { code?: string }).code = "AI_STREAM_BODY_TIMEOUT";
+    (error as Error & { code?: string }).code = "AI_RESPONSE_BODY_TIMEOUT";
     void reader?.cancel(error).catch(() => undefined);
     streamController?.error(error);
     settle();
-  }, AI_STREAM_BODY_TIMEOUT_MS);
+  }, AI_RESPONSE_BODY_TIMEOUT_MS);
   timeout.unref?.();
   const body = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -606,6 +683,35 @@ function buildAiJsonRequestBody(input: {
   return body;
 }
 
+export function extractAiJsonCompletionMetadata(json: any, mode: AiJsonApiMode): AiJsonCompletionMetadata {
+  const choice = mode === "chat_completions" ? json?.choices?.[0] : null;
+  const usage = json?.usage;
+  const ollama = json?.x_cpu_ollama;
+  const finishReason = typeof choice?.finish_reason === "string" ? choice.finish_reason : null;
+  const doneReason = typeof ollama?.done_reason === "string" ? ollama.done_reason : null;
+  return {
+    finishReason,
+    doneReason,
+    done: typeof ollama?.done === "boolean" ? ollama.done : null,
+    promptEvalCount: toNullableInteger(ollama?.prompt_eval_count ?? usage?.prompt_tokens),
+    evalCount: toNullableInteger(ollama?.eval_count ?? usage?.completion_tokens),
+    totalDurationMs: nanosecondsToMilliseconds(ollama?.total_duration),
+    loadDurationMs: nanosecondsToMilliseconds(ollama?.load_duration),
+    promptEvalDurationMs: nanosecondsToMilliseconds(ollama?.prompt_eval_duration),
+    evalDurationMs: nanosecondsToMilliseconds(ollama?.eval_duration),
+  };
+}
+
+function toNullableInteger(value: unknown) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.max(0, Math.floor(number)) : null;
+}
+
+function nanosecondsToMilliseconds(value: unknown) {
+  const number = toNullableInteger(value);
+  return number === null ? null : Math.round((number / 1_000_000) * 100) / 100;
+}
+
 function withPromptCacheOptions(
   input: Record<string, unknown>,
   promptCacheKey: string,
@@ -625,11 +731,13 @@ export async function readAiJsonTextStream(
   response: Response,
   mode: AiJsonApiMode,
   onDelta: (delta: string) => void | Promise<void>,
+  onMetadata?: (metadata: AiJsonCompletionMetadata) => void | Promise<void>,
 ) {
   const contentType = String(response.headers.get("content-type") || "").toLowerCase();
   if (!response.body || contentType.includes("application/json")) {
     const json = await response.json();
     const content = extractAiJsonTextResponse(json, mode);
+    if (onMetadata) await onMetadata(extractAiJsonCompletionMetadata(json, mode));
     if (content) await onDelta(content);
     return content;
   }
@@ -652,6 +760,10 @@ export async function readAiJsonTextStream(
       payload = JSON.parse(data);
     } catch {
       return;
+    }
+    const metadata = extractAiJsonCompletionMetadata(payload, mode);
+    if (onMetadata && (metadata.finishReason || metadata.doneReason || metadata.done !== null)) {
+      await onMetadata(metadata);
     }
     const delta = extractAiJsonStreamDelta(payload, mode);
     if (!delta) return;

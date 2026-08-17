@@ -7,6 +7,7 @@ import {
   normalizeAiJsonApiUrl,
   readAiJsonTextStream,
   sendAiJsonRequestWithProviderFallback,
+  type AiJsonCompletionMetadata,
   type AiProviderCandidate,
 } from "./aiJsonApi";
 import { resolveModelCandidates, shouldFallbackToNextModel } from "./modelFallback";
@@ -755,7 +756,20 @@ export async function askCampusAssistant(input: {
     let response = guardCampusAssistantResponse(filterUnavailableDataSuggestions(
       normalizeAssistantResponse(parsed, availableActions, deterministicActions),
     ));
-    if (isQwenAssistantModel(config.assistantModel) && isLikelyTruncatedCampusAssistantAnswer(response.answer)) {
+    const completionTruncated = result.completion?.finishReason === "length"
+      || result.completion?.doneReason === "length";
+    if (
+      isQwenAssistantModel(config.assistantModel)
+      && (completionTruncated || isLikelyTruncatedCampusAssistantAnswer(response.answer))
+    ) {
+      console.warn("[campus-assistant] Qwen answer requires repair", JSON.stringify({
+        finishReason: result.completion?.finishReason ?? null,
+        doneReason: result.completion?.doneReason ?? null,
+        done: result.completion?.done ?? null,
+        promptEvalCount: result.completion?.promptEvalCount ?? null,
+        evalCount: result.completion?.evalCount ?? null,
+        answerTail: response.answer.slice(-80),
+      }));
       const repaired = await repairCampusAssistantResponse({
         message,
         history: input.history,
@@ -852,6 +866,8 @@ export function isLikelyTruncatedCampusAssistantAnswer(answer: string) {
   const normalized = String(answer || "").trim();
   if (!normalized) return true;
   return /(?:所以|因为|由于|如果|若|当|但是|但|不过|并且|而且|以及|或者|或是|其中|包括|例如|需要注意的是|具体来说|同时|此外|(?:就像|好比|相当于|类似于)问)\s*$/u.test(normalized)
+    || /(?:这|该|此|你发来的)(?:段|条|个|项|部分|内容|问题|消息|信息)\s*$/u.test(normalized)
+    || /(?:下面|上面|以下|以上|相关内容|具体内容|内容包括|具体如下)\s*$/u.test(normalized)
     || /[，、：:；;（(【\[]\s*$/u.test(normalized)
     || /(?:在|为|对|向|与|及|到|从|由|将|能|可|以|被|把)\s*$/u.test(normalized)
     || hasUnclosedAssistantDelimiter(normalized);
@@ -972,6 +988,7 @@ export async function streamCampusAssistant(input: {
       let rawContent = "";
       let emittedAnswer = "";
       let restrictedOutput = false;
+      let completionMetadata: AiJsonCompletionMetadata | null = null;
       const content = await readAiJsonTextStream(result.response, result.mode, async (delta) => {
         rawContent += delta;
         if (modelIdentityRequested) return;
@@ -985,7 +1002,26 @@ export async function streamCampusAssistant(input: {
           await onAnswerDelta(visible.slice(emittedAnswer.length));
           emittedAnswer = visible;
         }
+      }, (metadata) => {
+        completionMetadata = metadata;
       });
+      const streamCompletionMetadata = completionMetadata as AiJsonCompletionMetadata | null;
+      if (streamCompletionMetadata) {
+        console.info("[ai-json] stream completion", JSON.stringify({
+          provider: result.provider.provider,
+          model,
+          finishReason: streamCompletionMetadata.finishReason,
+          doneReason: streamCompletionMetadata.doneReason,
+          done: streamCompletionMetadata.done,
+          promptEvalCount: streamCompletionMetadata.promptEvalCount,
+          evalCount: streamCompletionMetadata.evalCount,
+          totalDurationMs: streamCompletionMetadata.totalDurationMs,
+          loadDurationMs: streamCompletionMetadata.loadDurationMs,
+          promptEvalDurationMs: streamCompletionMetadata.promptEvalDurationMs,
+          evalDurationMs: streamCompletionMetadata.evalDurationMs,
+          retryCount: result.retryCount,
+        }));
+      }
       if (restrictedOutput) {
         const response = cloneRestrictedPublicTopicReply();
         await finishAiReviewLogSuccess(logId, response.answer);
