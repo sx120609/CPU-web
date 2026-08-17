@@ -45,4 +45,9 @@ test("QQbot AI 图片把单次对话提示放在页脚并为入口生成二维�
   assert.deepEqual([...png.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
   const message = renderQqBotAiReplyAsQqMessage("可以打开校园服务入口。", options);
   assert.match(message || "", /^\[CQ:image,file=base64:\/\//);
+  // A short answer should not leave a tall empty body or a two-row footer.
+  const compactPng = renderQqBotAiReplyImage("可以打开校园服务入口。", {
+    footerNotice: options.footerNotice,
+  });
+  assert.ok(compactPng.readUInt32BE(20) < 300);
 });

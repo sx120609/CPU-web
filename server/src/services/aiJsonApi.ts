@@ -122,6 +122,8 @@ export async function sendAiJsonRequest(input: {
   stream?: boolean;
   /** Use Ollama's native JSON endpoint for text-only, non-streaming requests. */
   preferNativeOllama?: boolean;
+  /** Enable Ollama's private thinking channel when the caller can afford it. */
+  ollamaThink?: boolean;
   signal?: AbortSignal;
 }): Promise<SendAiJsonRequestResult> {
   if (input.preferNativeOllama && !input.stream && isOllamaProvider(input.provider)) {
@@ -167,6 +169,8 @@ export async function sendAiJsonRequestWithProviderFallback(input: {
   stream?: boolean;
   /** Use Ollama's native JSON endpoint for text-only, non-streaming requests. */
   preferNativeOllama?: boolean;
+  /** Enable Ollama's private thinking channel when the caller can afford it. */
+  ollamaThink?: boolean;
   signal?: AbortSignal;
 }): Promise<SendAiJsonRequestWithFallbackResult> {
   let lastError: unknown = null;
@@ -197,6 +201,7 @@ export async function sendAiJsonRequestWithProviderFallback(input: {
         maxTransientRetries: input.maxTransientRetries,
         stream: input.stream,
         preferNativeOllama: input.preferNativeOllama,
+        ollamaThink: input.ollamaThink,
         signal: input.signal,
       });
       if (result.response.ok || index >= providers.length - 1) {
@@ -235,6 +240,7 @@ async function sendNativeOllamaJsonRequest(input: {
   maxTokens?: number;
   messages: AiJsonMessage[];
   maxTransientRetries?: number;
+  ollamaThink?: boolean;
   signal?: AbortSignal;
 }): Promise<SendAiJsonRequestResult> {
   // The campus assistant is text-only. Keep image requests on the compatible
@@ -259,10 +265,10 @@ async function sendNativeOllamaJsonRequest(input: {
       messages: input.messages.map(toNativeOllamaMessage),
       stream: false,
       format: "json",
-      // Qwen's thinking channel is the main source of unnecessary output and
-      // incomplete JSON in this local deployment. The answer contract only
-      // needs the final JSON object.
-      think: false,
+      // Keep thinking out of the user-visible content. Callers can enable the
+      // private channel when they also provide enough output budget; malformed
+      // or truncated results are repaired by the campus-assistant layer.
+      think: input.ollamaThink === true,
       ...(Object.keys(options).length ? { options } : {}),
     },
   });

@@ -133,6 +133,7 @@ type AiJsonRequestOptions = {
   enablePromptCache?: boolean;
   enablePromptCacheRetention?: boolean;
   preferNativeOllama?: boolean;
+  ollamaThink?: boolean;
   signal?: AbortSignal;
 };
 
@@ -203,6 +204,7 @@ export async function requestAiJson(
         promptCacheKey,
         enablePromptCacheRetention: promptCacheEnabled && options?.enablePromptCacheRetention !== false,
         preferNativeOllama: options?.preferNativeOllama,
+        ollamaThink: options?.ollamaThink,
         signal: options?.signal,
       });
       response = result.response;

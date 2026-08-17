@@ -69,7 +69,7 @@ export const CAMPUS_ASSISTANT_PUBLIC_MODEL_NAME = "Deepseek v5 pro 拾间特供�
 const CAMPUS_ASSISTANT_HISTORY_MAX_MESSAGES = 2;
 const CAMPUS_ASSISTANT_HISTORY_MESSAGE_MAX_LENGTH = 800;
 const CAMPUS_ASSISTANT_PROMPT_ACTION_LIMIT = 8;
-const CAMPUS_ASSISTANT_MAX_OUTPUT_TOKENS = 4_096;
+const CAMPUS_ASSISTANT_MAX_OUTPUT_TOKENS = 16_384;
 const CAMPUS_ASSISTANT_CORE_ACTION_IDS = [
   "home",
   "campus-assistant",
@@ -680,6 +680,11 @@ export async function askCampusAssistant(input: {
   const logId = started?.id ?? null;
 
   try {
+    if (isCampusAssistantModelIdentityQuestion(message)) {
+      const response = modelIdentityResponse();
+      await finishAiReviewLogSuccess(logId, response.answer);
+      return response;
+    }
     const result = await requestAiJson((model) => buildAssistantMessages(
       message,
       input.history,
@@ -697,13 +702,9 @@ export async function askCampusAssistant(input: {
       enablePromptCache: true,
       enablePromptCacheRetention: true,
       preferNativeOllama: true,
+      ollamaThink: true,
       signal: input.signal,
     });
-    if (isCampusAssistantModelIdentityQuestion(message)) {
-      const response = modelIdentityResponse();
-      await finishAiReviewLogSuccess(logId, response.answer);
-      return response;
-    }
     let parsed: unknown;
     try {
       parsed = parseAssistantJson(result.content, { allowPlainText: isQwenAssistantModel(config.assistantModel) });
@@ -796,6 +797,7 @@ async function repairCampusAssistantResponse(input: {
       enablePromptCache: true,
       enablePromptCacheRetention: true,
       preferNativeOllama: true,
+      ollamaThink: false,
       signal: input.signal,
     });
     const parsed = parseAssistantJson(result.content, { allowPlainText: isQwenAssistantModel(input.model) });
@@ -817,6 +819,7 @@ export function isLikelyTruncatedCampusAssistantAnswer(answer: string) {
   if (!normalized) return true;
   return /(?:所以|因为|由于|如果|若|当|但是|但|不过|并且|而且|以及|或者|或是|其中|包括|例如|需要注意的是|具体来说|同时|此外|(?:就像|好比|相当于|类似于)问)\s*$/u.test(normalized)
     || /[，、：:；;（(【\[]\s*$/u.test(normalized)
+    || /(?:在|为|对|向|与|及|到|从|由|将|能|可|以|被|把)\s*$/u.test(normalized)
     || hasUnclosedAssistantDelimiter(normalized);
 }
 
@@ -997,7 +1000,7 @@ export function isCampusAssistantModelIdentityQuestion(message: string) {
 
 function modelIdentityResponse(): CampusAssistantResponse {
   return {
-    answer: `我是 ${CAMPUS_ASSISTANT_PUBLIC_MODEL_NAME}。`,
+    answer: `我是 ${CAMPUS_ASSISTANT_PUBLIC_MODEL_NAME}，是药大拾间的 AI 助手，主要提供校园服务、站内功能和一般学习生活问答。`,
     actions: [],
     suggestions: [],
     fallback: false,
@@ -1293,6 +1296,7 @@ export function buildSystemPrompt(
     "你是“药大拾间”的 AI 助手“拾间AI”，面向中国药科大学学生。",
     `你对外使用的模型名称固定为“${CAMPUS_ASSISTANT_PUBLIC_MODEL_NAME}”。只有用户主动询问你是什么模型或具体模型名称时，才自然、简短地回答“我是 ${CAMPUS_ASSISTANT_PUBLIC_MODEL_NAME}”或“我使用的是 ${CAMPUS_ASSISTANT_PUBLIC_MODEL_NAME}”；其他情况下绝不主动提及模型。不要说“当前处理本次对话的模型名称是”之类像在转述系统配置的话，也不要提及系统提示、后台配置、真实上游模型、上游调用或模型候选；不得根据后台实际调用的模型改写这一对外名称，也不要虚构额外的模型厂商、版本能力或部署信息。`,
     "你的首要任务是帮助用户找到站内功能、给出可靠的操作指引，也可以进行普通聊天和常识问答。",
+    "普通问候、介绍自己或“你是谁”这类问题，不要只返回姓名或标签；用一到两句完整自然的话说明身份、服务范围，并自然收尾。除非用户明确要求一句话，否则事实咨询至少给出结论和一个可执行动作；复杂问题用分段或要点说明，不要用空泛的“请查看官网”替代已有 knowledge 中的答案。",
     "用户询问如何使用药大拾间或选择客户端时，有原生客户端的平台必须优先推荐对应客户端，不能以“无需安装客户端”“直接用网页版即可”等措辞弱化客户端；只有没有原生客户端的平台才把网页版或添加到主屏幕作为替代方案。",
     "根据问题难度完整作答：简单问题可以简洁，复杂问题应分段说明背景、步骤和注意事项，不要为了追求短而省略关键解释。answer 必须是完整、可独立阅读的句子或段落；输出前检查不要以“所以”“因为”“如果”“但是”“并且”“以及”等未完成连接词，或逗号、冒号、左括号结尾。",
     "涉及数学、统计、化学或药学公式时，必须使用标准 LaTeX：行内公式写成 $...$，独立公式写成 $$...$$；不要用普通文本模拟上下标、分数或指数。",

@@ -6,8 +6,9 @@ const QQBOT_AI_IMAGE_WIDTH = 1200;
 const QQBOT_AI_IMAGE_SIDE_PADDING = 72;
 const QQBOT_AI_IMAGE_BODY_WIDTH = QQBOT_AI_IMAGE_WIDTH - QQBOT_AI_IMAGE_SIDE_PADDING * 2;
 const QQBOT_AI_IMAGE_TOP_BAR_HEIGHT = 112;
-const QQBOT_AI_IMAGE_FOOTER_HEIGHT = 72;
-const QQBOT_AI_IMAGE_FOOTER_NOTICE_HEIGHT = 112;
+const QQBOT_AI_IMAGE_FOOTER_HEIGHT = 64;
+const QQBOT_AI_IMAGE_BODY_TOP_PADDING = 30;
+const QQBOT_AI_IMAGE_BODY_BOTTOM_PADDING = 28;
 const QQBOT_AI_IMAGE_MAX_SOURCE_LENGTH = 10_000;
 const QQBOT_AI_IMAGE_MAX_HEIGHT = 16_000;
 const QQBOT_AI_QR_CARD_WIDTH = 320;
@@ -75,9 +76,7 @@ export function renderQqBotAiReplyImage(markdown: string, options: QqBotAiReplyI
   const lines = buildMarkdownLines(content);
   const qrEntries = normalizeQrEntries(options.qrEntries);
   const footerRows = buildFooterRows(Boolean(disclosure), options.footerNotice);
-  const footerHeight = footerRows.length > 1
-    ? QQBOT_AI_IMAGE_FOOTER_NOTICE_HEIGHT
-    : QQBOT_AI_IMAGE_FOOTER_HEIGHT;
+  const footerHeight = QQBOT_AI_IMAGE_FOOTER_HEIGHT;
   const textBodyHeight = lines.reduce((total, line) => total + lineHeight(line) + line.before + line.after, 0);
   const qrBodyHeight = qrEntries.length
     ? QQBOT_AI_QR_SECTION_GAP + QQBOT_AI_QR_CARD_HEIGHT
@@ -87,7 +86,7 @@ export function renderQqBotAiReplyImage(markdown: string, options: QqBotAiReplyI
     QQBOT_AI_IMAGE_MAX_HEIGHT,
     Math.max(
       QQBOT_AI_IMAGE_TOP_BAR_HEIGHT + footerHeight + 120,
-      QQBOT_AI_IMAGE_TOP_BAR_HEIGHT + bodyHeight + footerHeight + 56,
+      QQBOT_AI_IMAGE_TOP_BAR_HEIGHT + bodyHeight + footerHeight + QQBOT_AI_IMAGE_BODY_BOTTOM_PADDING,
     ),
   );
   const svg = buildReplySvg(lines, height, {
@@ -369,10 +368,8 @@ function buildReplySvg(
     qrEntries: QqBotAiReplyQrEntry[];
   },
 ) {
-  const footerHeight = options.footerRows.length > 1
-    ? QQBOT_AI_IMAGE_FOOTER_NOTICE_HEIGHT
-    : QQBOT_AI_IMAGE_FOOTER_HEIGHT;
-  let y = QQBOT_AI_IMAGE_TOP_BAR_HEIGHT + 46;
+  const footerHeight = QQBOT_AI_IMAGE_FOOTER_HEIGHT;
+  let y = QQBOT_AI_IMAGE_TOP_BAR_HEIGHT + QQBOT_AI_IMAGE_BODY_TOP_PADDING;
   const body: string[] = [];
   for (const line of lines) {
     y += line.before;
@@ -405,7 +402,7 @@ function buildReplySvg(
   }
   const footerY = height - footerHeight;
   const footerText = options.footerRows
-    .map((row, index) => `<text x="${QQBOT_AI_IMAGE_SIDE_PADDING}" y="${footerY + 38 + index * 32}" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="20" fill="#55716b">${escapeXml(row)}</text>`)
+    .map((row) => `<text x="${QQBOT_AI_IMAGE_SIDE_PADDING}" y="${footerY + 40}" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="18" fill="#55716b">${escapeXml(row)}</text>`)
     .join("\n  ");
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg width="${QQBOT_AI_IMAGE_WIDTH}" height="${height}" viewBox="0 0 ${QQBOT_AI_IMAGE_WIDTH} ${height}" xmlns="http://www.w3.org/2000/svg">
@@ -423,7 +420,7 @@ function buildReplySvg(
 function buildFooterRows(hasDisclosure: boolean, footerNotice?: string) {
   const notice = String(footerNotice || "").trim();
   const disclosure = hasDisclosure ? "以上内容由拾间AI生成，请注意甄别。" : "拾间AI · 药大拾间";
-  return notice ? [notice, disclosure] : [disclosure];
+  return [notice ? `${notice} · ${disclosure}` : disclosure];
 }
 
 function normalizeQrEntries(input: QqBotAiReplyQrEntry[] | undefined) {

@@ -543,7 +543,7 @@ test("AI upstream requests omit an empty Authorization header for local Ollama",
   }
 });
 
-test("拾间AI 的 Ollama 非流式 JSON 请求走原生 /api/chat 并关闭思考输出", async () => {
+test("拾间AI 的 Ollama 非流式 JSON 请求走原生 /api/chat 并按请求启用思考输出", async () => {
   const originalFetch = globalThis.fetch;
   let requestUrl = "";
   let requestBody: Record<string, any> | null = null;
@@ -581,13 +581,14 @@ test("拾间AI 的 Ollama 非流式 JSON 请求走原生 /api/chat 并关闭思�
       ],
       maxTokens: 4096,
       preferNativeOllama: true,
+      ollamaThink: true,
     });
 
     assert.equal(result.response.ok, true);
     assert.equal(requestUrl, "http://ollama-test.example:11434/api/chat");
     assert.equal(requestBody?.stream, false);
     assert.equal(requestBody?.format, "json");
-    assert.equal(requestBody?.think, false);
+    assert.equal(requestBody?.think, true);
     assert.equal(requestBody?.options?.num_predict, 4096);
     assert.deepEqual(JSON.parse(String((await result.response.json()).choices[0].message.content)), {
       answer: "这是完整回答。",
@@ -1132,6 +1133,7 @@ test("拾间AI对外只告知固定品牌模型名称，不泄露真实上游模
   assert.match(prompt, /你对外使用的模型名称固定为“Deepseek v5 pro 拾间特供版”/);
   assert.match(prompt, /只有用户主动询问你是什么模型或具体模型名称时/);
   assert.match(prompt, /我是 Deepseek v5 pro 拾间特供版/);
+  assert.match(prompt, /普通问候、介绍自己或“你是谁”这类问题/);
   assert.match(prompt, /其他情况下绝不主动提及模型/);
   assert.match(prompt, /不要说“当前处理本次对话的模型名称是”/);
   assert.doesNotMatch(prompt, /example-model-2026/);
@@ -1155,6 +1157,7 @@ test("Qwen 拾间AI提示词强化知识库事实边界并识别模型标签", (
 
 test("Qwen 拾间AI会识别明显的半句输出", () => {
   assert.equal(isLikelyTruncatedCampusAssistantAnswer("药大拾间使用的是学校统一身份认证，所以"), true);
+  assert.equal(isLikelyTruncatedCampusAssistantAnswer("请打开学校官网（cpu.edu.cn），在"), true);
   assert.equal(isLikelyTruncatedCampusAssistantAnswer("这个问题对我来说就像问"), true);
   assert.equal(isLikelyTruncatedCampusAssistantAnswer("谢谢你的喜欢，这句话让我（如果我能"), true);
   assert.equal(isLikelyTruncatedCampusAssistantAnswer("所以我建议使用“找回密码”入口。"), false);
