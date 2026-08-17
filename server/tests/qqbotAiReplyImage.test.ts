@@ -5,6 +5,7 @@ import {
   normalizeQqBotQrLinkMentions,
   renderQqBotAiReplyAsQqMessage,
   renderQqBotAiReplyImage,
+  wrapQqBotAiTextForLayout,
 } from "../src/services/qqbot/aiReplyImage";
 
 test("QQbot Markdown AI 回复会渲染为带拾间AI顶栏的 PNG", () => {
@@ -63,4 +64,21 @@ test("QQbot 图片会把带二维码入口的链接收敛为入口名称", () =>
     normalizeQqBotQrLinkMentions("[认证入口](https://i.cpu.edu.cn)", entries),
     "认证入口",
   );
+});
+
+test("QQbot 图片排版遵守中文标点禁首禁尾规则", () => {
+  const lines = wrapQqBotAiTextForLayout("说明文字。注意事项（请先登录）", 70, 28);
+
+  assert.equal(lines.join(""), "说明文字。注意事项（请先登录）");
+  const noLineStart = "，。！？；：、）》」』】〕〉》”’)]}>,.!?;:%…％‰";
+  const noLineEnd = "（〔［｛《「『【〖〈“‘([{<";
+  assert.equal(lines.some((line) => Array.from(noLineStart).some((char) => line.startsWith(char))), false);
+  assert.equal(lines.some((line) => Array.from(noLineEnd).some((char) => line.endsWith(char))), false);
+});
+
+test("QQbot 图片排版不会把链接分隔符单独放到下一行", () => {
+  const lines = wrapQqBotAiTextForLayout("登录入口 i.cpu.edu.cn 现在可用", 110, 28);
+
+  assert.equal(lines.join(""), "登录入口 i.cpu.edu.cn 现在可用");
+  assert.equal(lines.some((line) => /^(?:[./_-])/u.test(line)), false);
 });

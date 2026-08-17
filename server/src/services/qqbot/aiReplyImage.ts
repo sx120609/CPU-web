@@ -21,6 +21,11 @@ const QQBOT_AI_QR_SINGLE_BOX_SIZE = 174;
 const QQBOT_AI_QR_SECTION_GAP = 30;
 const QQBOT_AI_DISCLOSURE_PATTERN = /以上回复由拾间AI生成，内容可能存在偏差，请自行鉴别并以官方信息为准。?/u;
 const QQBOT_MARKDOWN_PATTERN = /(?:^|\n)\s*(?:#{1,6}\s|[-*+]\s+|\d+[.)]\s+|>\s)|(?:\*\*|__|~~|`{1,3})|!?\[[^\]]*\]\([^)]*\)/m;
+// Chinese line-breaking rules: closing punctuation must not start a line,
+// while opening brackets/quotes must not be stranded at the end of one.
+const QQBOT_NO_LINE_START_CHARS = new Set(Array.from("，。！？；：、）》」』】〕〉》”’)]}>,.!?;:%…％‰"));
+const QQBOT_NO_LINE_END_CHARS = new Set(Array.from("（〔［｛《「『【〖〈“‘([{<"));
+const QQBOT_URL_SEPARATOR_CHARS = new Set(Array.from("./-_:"));
 const QQBOT_AI_FONT_FILES = [
   "C:/Windows/Fonts/msyh.ttc",
   "C:/Windows/Fonts/msyhbd.ttc",
@@ -311,29 +316,147 @@ function wrapRuns(runs: InlineRun[], maxWidth: number, fontSize: number) {
   const output: InlineRun[][] = [];
   let line: InlineRun[] = [];
   let width = 0;
+  let pendingBreaks = 0;
   const pushLine = () => {
-    while (line.length && !line[line.length - 1].text.trim()) line.pop();
+    while (line.length) {
+      const last = line[line.length - 1];
+      const trimmed = last.text.replace(/\s+$/u, "");
+      if (trimmed) {
+        last.text = trimmed;
+        break;
+      }
+      line.pop();
+    }
     output.push(line);
     line = [];
     width = 0;
   };
   for (const run of runs) {
-    for (const char of Array.from(run.text)) {
+    const chars = Array.from(run.text);
+    for (let charIndex = 0; charIndex < chars.length; charIndex += 1) {
+      const char = chars[charIndex];
       if (char === "\n") {
-        pushLine();
+        pendingBreaks += 1;
         continue;
       }
+      if (pendingBreaks) {
+        // Do not let an explicit Markdown break put a closing mark at the
+        // beginning of a line. This also fixes a break introduced between
+        // adjacent Markdown tokens.
+        if (!(line.length && isQqBotNoLineStartChar(char))) {
+          pushLine();
+          for (let breakIndex = 1; breakIndex < pendingBreaks; breakIndex += 1) output.push([]);
+        }
+        pendingBreaks = 0;
+      }
       const charWidth = estimateTextWidth(char, fontSize, run);
-      if (line.length && width + charWidth > maxWidth) pushLine();
       if (!line.length && /\s/u.test(char)) continue;
+      if (line.length && width + charWidth > maxWidth) {
+        const previousChar = getLastRunCharacter(line);
+        if (isQqBotNoLineStartChar(char)) {
+          // Keep URL separators (and punctuation clusters) attached to the
+          // preceding text. The one-character overflow stays inside the
+          // generous image side margin and avoids ugly leading punctuation.
+          if (isQqBotUrlSeparator(char) && isQqBotAsciiWordChar(previousChar)) {
+            appendRunCharacter(line, run, char);
+            width += charWidth;
+            continue;
+          }
+          const carried: InlineRun[] = [];
+          prependLastRunCharacter(line, carried);
+          while (line.length && isQqBotNoLineEndChar(getLastRunCharacter(line))) {
+            prependLastRunCharacter(line, carried);
+          }
+          while (carried.length && isQqBotNoLineStartChar(carried[0].text[0] || "")) {
+            prependLastRunCharacter(line, carried);
+          }
+          if (line.length) {
+            pushLine();
+            line = carried;
+            width = estimateRunsWidth(line, fontSize);
+          } else {
+            // A single oversized character should not create an empty line.
+            line = carried;
+            width = estimateRunsWidth(line, fontSize);
+          }
+        } else if (isQqBotNoLineEndChar(previousChar)) {
+          const carried: InlineRun[] = [];
+          while (line.length && isQqBotNoLineEndChar(getLastRunCharacter(line))) {
+            prependLastRunCharacter(line, carried);
+          }
+          if (line.length) {
+            pushLine();
+            line = carried;
+            width = estimateRunsWidth(line, fontSize);
+          } else {
+            line = carried;
+            width = estimateRunsWidth(line, fontSize);
+          }
+        } else {
+          pushLine();
+        }
+      }
       const previous = line[line.length - 1];
       if (previous && sameRunStyle(previous, run)) previous.text += char;
       else line.push({ ...run, text: char });
       width += charWidth;
     }
   }
+  if (pendingBreaks) {
+    pushLine();
+    for (let breakIndex = 1; breakIndex < pendingBreaks; breakIndex += 1) output.push([]);
+  }
   if (line.length || !output.length) pushLine();
   return output;
+}
+
+/** Exposed for typography regression tests and non-visual callers. */
+export function wrapQqBotAiTextForLayout(value: string, maxWidth: number, fontSize = 28) {
+  return wrapRuns([{ text: String(value || "") }], maxWidth, fontSize).map(flattenRunText);
+}
+
+function appendRunCharacter(runs: InlineRun[], source: InlineRun, char: string) {
+  const previous = runs[runs.length - 1];
+  if (previous && sameRunStyle(previous, source)) previous.text += char;
+  else runs.push({ ...source, text: char });
+}
+
+function prependLastRunCharacter(runs: InlineRun[], target: InlineRun[]) {
+  const last = runs[runs.length - 1];
+  if (!last) return;
+  const chars = Array.from(last.text);
+  const char = chars.pop();
+  if (!char) return;
+  if (chars.length) last.text = chars.join("");
+  else runs.pop();
+  const first = target[0];
+  if (first && sameRunStyle(first, last)) first.text = char + first.text;
+  else target.unshift({ ...last, text: char });
+}
+
+function getLastRunCharacter(runs: InlineRun[]) {
+  const last = runs[runs.length - 1]?.text;
+  return last ? Array.from(last).at(-1) || "" : "";
+}
+
+function estimateRunsWidth(runs: InlineRun[], fontSize: number) {
+  return runs.reduce((total, run) => total + estimateTextWidth(run.text, fontSize, run), 0);
+}
+
+function isQqBotNoLineStartChar(value: string) {
+  return QQBOT_NO_LINE_START_CHARS.has(value);
+}
+
+function isQqBotNoLineEndChar(value: string) {
+  return QQBOT_NO_LINE_END_CHARS.has(value);
+}
+
+function isQqBotUrlSeparator(value: string) {
+  return QQBOT_URL_SEPARATOR_CHARS.has(value);
+}
+
+function isQqBotAsciiWordChar(value: string) {
+  return /^[A-Za-z0-9]$/u.test(value);
 }
 
 function inlineRuns(tokens: Token[] | undefined): InlineRun[] {
@@ -436,7 +559,7 @@ function buildReplySvg(
   <rect width="${QQBOT_AI_IMAGE_WIDTH}" height="${QQBOT_AI_IMAGE_TOP_BAR_HEIGHT}" fill="#438f80" />
   <circle cx="${QQBOT_AI_IMAGE_SIDE_PADDING - 22}" cy="56" r="19" fill="#dff3ee" />
   <text x="${QQBOT_AI_IMAGE_SIDE_PADDING + 12}" y="70" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="34" font-weight="800" fill="#ffffff">拾间AI</text>
-  <text x="${QQBOT_AI_IMAGE_WIDTH - QQBOT_AI_IMAGE_SIDE_PADDING}" y="67" text-anchor="end" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="21" fill="#e8f6f2">药大拾间 · AI 助手</text>
+  <text x="${QQBOT_AI_IMAGE_WIDTH - QQBOT_AI_IMAGE_SIDE_PADDING}" y="68" text-anchor="end" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="28" fill="#e8f6f2">药大拾间 · AI 助手</text>
   <rect x="0" y="${footerY}" width="${QQBOT_AI_IMAGE_WIDTH}" height="${footerHeight}" fill="#f0f7f5" />
   ${footerText}
   ${body.join("\n  ")}
