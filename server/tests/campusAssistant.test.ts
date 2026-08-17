@@ -1136,6 +1136,9 @@ test("campus assistant knowledge covers every active action and carries freshnes
   assert.match(combined, /官网统一认证登录页使用“忘记密码”功能/);
   assert.match(combined, /不建议优先使用“修改密码”入口/);
   assert.match(combined, /025-86185448/);
+  assert.match(combined, /拾间登录排查/);
+  assert.match(combined, /若 i\.cpu\.edu\.cn 也无法正常登录/);
+  assert.match(combined, /若 i\.cpu\.edu\.cn 可以正常登录但拾间仍无法正常登录/);
   assert.doesNotMatch(combined, /先在中国建设银行 APP/);
 });
 
@@ -1305,6 +1308,24 @@ test("密码错误和账户锁定会识别到统一身份认证入口及条件�
   assert.match(prompt, /统一身份认证/);
   assert.match(prompt, /025-86185448/);
   assert.match(prompt, /普通的单次“密码错误”先按统一认证入口的找回密码流程处理/);
+});
+
+test("拾间无法登录会优先给出统一认证分流排查", () => {
+  const actions = searchCampusAssistantActions("拾间无法登录", context, 3);
+  assert.equal(actions[0]?.id, "unified-auth");
+  const messages = buildAssistantMessages(
+    "拾间无法登录",
+    [],
+    listCampusAssistantActions(context),
+    false,
+    "qwen3.8:27b",
+    actions,
+  );
+  const prompt = String(messages[0]?.content);
+  assert.match(prompt, /先打开学校统一身份认证入口 https:\/\/i\.cpu\.edu\.cn/);
+  assert.match(prompt, /若 i\.cpu\.edu\.cn 也无法正常登录，并提示“账户被锁定”/);
+  assert.match(prompt, /若 i\.cpu\.edu\.cn 可以正常登录但拾间仍无法正常登录/);
+  assert.match(prompt, /请把完整报错截图发到 QQ 用户群/);
 });
 
 test("拾间AI优先推荐可用的原生客户端，不用网页版弱化客户端", () => {

@@ -363,6 +363,12 @@ const CAMPUS_ASSISTANT_ROUTES: CampusAssistantRoute[] = [
       "账户锁定",
       "账号锁定",
       "默认密码",
+      "拾间登录",
+      "拾间无法登录",
+      "拾间登录失败",
+      "无法登录拾间",
+      "登录失败",
+      "登录不进去",
     ],
   },
   {
@@ -485,6 +491,14 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
     fact: "账号安全提示：如果遇到“账户锁定10分钟”，请使用统一身份认证入口的“找回密码”功能并修改为强密码；不要继续使用默认密码。普通的单次“密码错误”先按统一认证入口的找回密码流程处理，不要直接拨电话；只有账号持续处于锁定状态时，才在工作时间拨打 025-86185448，告知工作人员账号因使用默认密码被锁定，请求核实和处理；电话中不要透露密码本身。",
     source: "药大拾间账号使用提示（含用户补充）",
     sourceRef: "https://cputime.cn",
+    verifiedAt: "2026-08-17",
+  },
+  {
+    id: "site-login-troubleshooting-2026-08",
+    relatedActionIds: ["home", "profile", "campus-assistant", "unified-auth"],
+    fact: "拾间登录排查：如果拾间无法正常登录，先打开学校统一身份认证入口 https://i.cpu.edu.cn，确认该页面是否可以正常登录。若 i.cpu.edu.cn 也无法正常登录，并提示“账户被锁定”，请在工作时间拨打 025-86185448，并向工作人员说明：“我是新生，使用默认密码登录 i.cpu.edu.cn，但是登录不进去，系统提示账户被锁定。麻烦帮我解锁账户并修改/重置密码。”若 i.cpu.edu.cn 可以正常登录但拾间仍无法正常登录，请把完整报错截图发到 QQ 用户群，以便进一步排查。不要在群里或向 AI 发送密码。",
+    source: "药大拾间登录排查说明（用户补充）",
+    sourceRef: "https://i.cpu.edu.cn",
     verifiedAt: "2026-08-17",
   },
   {
