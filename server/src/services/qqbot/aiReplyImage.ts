@@ -97,7 +97,9 @@ export function renderQqBotAiReplyImage(markdown: string, options: QqBotAiReplyI
   const textBodyHeight = lines.reduce((total, line) => total + lineHeight(line) + line.before + line.after, 0);
   const qrBodyHeight = sourcePageUrl
     ? QQBOT_AI_QR_SECTION_GAP + QQBOT_AI_SOURCE_QR_BLOCK_HEIGHT
-    : qrEntries.length ? QQBOT_AI_QR_SECTION_GAP + getQrCardLayout(qrEntries.length).height : 0;
+    : qrEntries.length === 1
+      ? QQBOT_AI_QR_SECTION_GAP + QQBOT_AI_SOURCE_QR_BLOCK_HEIGHT
+      : qrEntries.length ? QQBOT_AI_QR_SECTION_GAP + getQrCardLayout(qrEntries.length).height : 0;
   const bodyHeight = QQBOT_AI_IMAGE_BODY_TOP_PADDING
     + textBodyHeight
     + qrBodyHeight
@@ -561,6 +563,8 @@ function buildReplySvg(
   }
   if (options.sourcePageUrl) {
     body.push(renderSourcePageQr(options.sourcePageUrl, y + QQBOT_AI_QR_SECTION_GAP));
+  } else if (options.qrEntries.length === 1) {
+    body.push(renderReferenceQrEntry(options.qrEntries[0], y + QQBOT_AI_QR_SECTION_GAP));
   } else if (options.qrEntries.length) {
     body.push(renderQrCards(options.qrEntries, y + QQBOT_AI_QR_SECTION_GAP));
   }
@@ -570,14 +574,15 @@ function buildReplySvg(
     .join("\n  ");
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg width="${QQBOT_AI_IMAGE_WIDTH}" height="${height}" viewBox="0 0 ${QQBOT_AI_IMAGE_WIDTH} ${height}" xmlns="http://www.w3.org/2000/svg">
-  <rect width="${QQBOT_AI_IMAGE_WIDTH}" height="${height}" fill="#eef7f5" />
-  <rect x="22" y="22" width="856" height="${height - 44}" rx="26" fill="#ffffff" stroke="#d5e9e4" stroke-width="2" />
-  <circle cx="58" cy="54" r="14" fill="#438f80" />
-  <text x="84" y="63" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="26" font-weight="800" fill="#182235">拾间AI</text>
-  <text x="842" y="61" text-anchor="end" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="20" font-weight="500" fill="#438f80">药大拾间 · AI 助手</text>
+  <rect width="${QQBOT_AI_IMAGE_WIDTH}" height="${height}" fill="#ffffff" />
+  <rect x="0" y="0" width="${QQBOT_AI_IMAGE_WIDTH}" height="${QQBOT_AI_IMAGE_TOP_BAR_HEIGHT}" fill="#438f80" />
+  <circle cx="58" cy="54" r="14" fill="#eaf7f4" />
+  <text x="84" y="63" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="26" font-weight="800" fill="#ffffff">拾间AI</text>
+  <text x="842" y="62" text-anchor="end" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="22" font-weight="500" fill="#ffffff">药大拾间 · AI 助手</text>
   <line x1="58" y1="88" x2="842" y2="88" stroke="#dcebe7" stroke-width="2" />
-  ${footerText}
+  <rect x="0" y="${footerY}" width="${QQBOT_AI_IMAGE_WIDTH}" height="${footerHeight}" fill="#eef7f5" />
   <line x1="${QQBOT_AI_IMAGE_SIDE_PADDING}" y1="${footerY}" x2="${QQBOT_AI_IMAGE_WIDTH - QQBOT_AI_IMAGE_SIDE_PADDING}" y2="${footerY}" stroke="#dcebe7" stroke-width="2" />
+  ${footerText}
   ${body.join("\n  ")}
 </svg>`;
 }
@@ -649,6 +654,40 @@ function renderSourcePageQr(url: string, top: number) {
     return `<g>
   <line x1="${QQBOT_AI_IMAGE_SIDE_PADDING}" y1="${formatSvgNumber(top)}" x2="${QQBOT_AI_IMAGE_WIDTH - QQBOT_AI_IMAGE_SIDE_PADDING}" y2="${formatSvgNumber(top)}" stroke="#dcebe7" stroke-width="2" />
   <text x="${QQBOT_AI_IMAGE_SIDE_PADDING}" y="${formatSvgNumber(top + 54)}" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="20" fill="#b42318">在线回答二维码暂时无法生成</text>
+</g>`;
+  }
+}
+
+function renderReferenceQrEntry(entry: QqBotAiReplyQrEntry, top: number) {
+  const qrX = QQBOT_AI_IMAGE_SIDE_PADDING;
+  const qrY = top + 34;
+  try {
+    const qr = QRCode.create(entry.url, { errorCorrectionLevel: "M" });
+    const moduleCount = Number(qr.modules.size || 0);
+    const data = qr.modules.data as ArrayLike<number>;
+    if (!moduleCount || data.length < moduleCount * moduleCount) throw new Error("二维码矩阵为空");
+    const moduleSize = QQBOT_AI_SOURCE_QR_SIZE / moduleCount;
+    const modules: string[] = [];
+    for (let row = 0; row < moduleCount; row += 1) {
+      for (let column = 0; column < moduleCount; column += 1) {
+        if (!data[row * moduleCount + column]) continue;
+        modules.push(`<rect x="${formatSvgNumber(qrX + column * moduleSize)}" y="${formatSvgNumber(qrY + row * moduleSize)}" width="${formatSvgNumber(moduleSize + 0.05)}" height="${formatSvgNumber(moduleSize + 0.05)}" fill="#172a27" />`);
+      }
+    }
+    const textX = qrX + QQBOT_AI_SOURCE_QR_SIZE + 28;
+    return `<g>
+  <line x1="${QQBOT_AI_IMAGE_SIDE_PADDING}" y1="${formatSvgNumber(top)}" x2="${QQBOT_AI_IMAGE_WIDTH - QQBOT_AI_IMAGE_SIDE_PADDING}" y2="${formatSvgNumber(top)}" stroke="#dcebe7" stroke-width="2" />
+  <rect x="${qrX - QQBOT_AI_SOURCE_QR_PADDING}" y="${qrY - QQBOT_AI_SOURCE_QR_PADDING}" width="${QQBOT_AI_SOURCE_QR_SIZE + QQBOT_AI_SOURCE_QR_PADDING * 2}" height="${QQBOT_AI_SOURCE_QR_SIZE + QQBOT_AI_SOURCE_QR_PADDING * 2}" rx="8" fill="#ffffff" stroke="#d5e9e4" stroke-width="2" />
+  <rect x="${qrX}" y="${qrY}" width="${QQBOT_AI_SOURCE_QR_SIZE}" height="${QQBOT_AI_SOURCE_QR_SIZE}" fill="#ffffff" />
+  ${modules.join("\n  ")}
+  <text x="${textX}" y="${qrY + 26}" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="26" font-weight="800" fill="#2f7568">${escapeXml(entry.label)}</text>
+  <text x="${textX}" y="${qrY + 62}" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="21" font-weight="500" fill="#55716b">扫码打开入口</text>
+  <text x="${textX}" y="${qrY + 94}" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="17" font-weight="500" fill="#7b918c">${escapeXml(getQrTargetHint(entry.url))}</text>
+</g>`;
+  } catch {
+    return `<g>
+  <line x1="${QQBOT_AI_IMAGE_SIDE_PADDING}" y1="${formatSvgNumber(top)}" x2="${QQBOT_AI_IMAGE_WIDTH - QQBOT_AI_IMAGE_SIDE_PADDING}" y2="${formatSvgNumber(top)}" stroke="#dcebe7" stroke-width="2" />
+  <text x="${QQBOT_AI_IMAGE_SIDE_PADDING}" y="${formatSvgNumber(top + 54)}" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="20" fill="#b42318">${escapeXml(entry.label)}二维码暂时无法生成</text>
 </g>`;
   }
 }
