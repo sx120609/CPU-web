@@ -543,6 +543,62 @@ test("AI upstream requests omit an empty Authorization header for local Ollama",
   }
 });
 
+test("拾间AI 的 Ollama 非流式 JSON 请求走原生 /api/chat 并关闭思考输出", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestUrl = "";
+  let requestBody: Record<string, any> | null = null;
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    requestUrl = String(input);
+    requestBody = JSON.parse(String(init?.body || "{}"));
+    return new Response(JSON.stringify({
+      model: "qwen3.8:27b",
+      done: true,
+      done_reason: "stop",
+      message: {
+        role: "assistant",
+        content: '{"answer":"这是完整回答。","actionIds":[],"suggestions":[]}',
+      },
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  try {
+    const result = await sendAiJsonRequestWithProviderFallback({
+      providers: [{
+        serviceId: "ollama",
+        name: "本地 Ollama",
+        provider: "ollama",
+        apiUrl: "http://ollama-test.example:11434",
+        apiKey: "",
+      }],
+      fallbackEndpoint: "https://fallback.example/v1/chat/completions",
+      model: "qwen3.8:27b",
+      messages: [
+        { role: "system", content: "只输出 JSON" },
+        { role: "user", content: "请完整回答这个问题" },
+      ],
+      maxTokens: 4096,
+      preferNativeOllama: true,
+    });
+
+    assert.equal(result.response.ok, true);
+    assert.equal(requestUrl, "http://ollama-test.example:11434/api/chat");
+    assert.equal(requestBody?.stream, false);
+    assert.equal(requestBody?.format, "json");
+    assert.equal(requestBody?.think, false);
+    assert.equal(requestBody?.options?.num_predict, 4096);
+    assert.deepEqual(JSON.parse(String((await result.response.json()).choices[0].message.content)), {
+      answer: "这是完整回答。",
+      actionIds: [],
+      suggestions: [],
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("普通 JSON 响应体不会被流式服务槽位逻辑提前取消", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async () => new Response('{"answer":"ok"}', {
@@ -1114,9 +1170,9 @@ test("Qwen 非严格 JSON 输出不会再直接变成 AI_RESPONSE_FORMAT", () =>
     parseAssistantJson('模型说明：{"answer":"请打开课表页。","actionIds":[]}。', { allowPlainText: true }),
     { answer: "请打开课表页。", actionIds: [] },
   );
-  assert.deepEqual(
-    parseAssistantJson('{"answer":"请先检查登录', { allowPlainText: true }),
-    { answer: "请先检查登录", actionIds: [], suggestions: [] },
+  assert.throws(
+    () => parseAssistantJson('{"answer":"请先检查登录', { allowPlainText: true }),
+    /AI_RESPONSE_FORMAT|返回格式异常/,
   );
   assert.throws(() => parseAssistantJson("好的，当然可以。"), /AI_RESPONSE_FORMAT|返回格式异常/);
 });

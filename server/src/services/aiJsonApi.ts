@@ -120,8 +120,13 @@ export async function sendAiJsonRequest(input: {
   enablePromptCacheRetention?: boolean;
   maxTransientRetries?: number;
   stream?: boolean;
+  /** Use Ollama's native JSON endpoint for text-only, non-streaming requests. */
+  preferNativeOllama?: boolean;
   signal?: AbortSignal;
 }): Promise<SendAiJsonRequestResult> {
+  if (input.preferNativeOllama && !input.stream && isOllamaProvider(input.provider)) {
+    return sendNativeOllamaJsonRequest(input);
+  }
   const mode = detectAiJsonApiMode(input.endpoint);
   const body = buildAiJsonRequestBody({
     mode,
@@ -160,6 +165,8 @@ export async function sendAiJsonRequestWithProviderFallback(input: {
   maxTransientRetries?: number;
   maxTokens?: number;
   stream?: boolean;
+  /** Use Ollama's native JSON endpoint for text-only, non-streaming requests. */
+  preferNativeOllama?: boolean;
   signal?: AbortSignal;
 }): Promise<SendAiJsonRequestWithFallbackResult> {
   let lastError: unknown = null;
@@ -189,6 +196,7 @@ export async function sendAiJsonRequestWithProviderFallback(input: {
         enablePromptCacheRetention: input.enablePromptCacheRetention,
         maxTransientRetries: input.maxTransientRetries,
         stream: input.stream,
+        preferNativeOllama: input.preferNativeOllama,
         signal: input.signal,
       });
       if (result.response.ok || index >= providers.length - 1) {
@@ -212,6 +220,120 @@ export async function sendAiJsonRequestWithProviderFallback(input: {
   }
   if (lastResponseResult) return lastResponseResult;
   throw lastError instanceof Error ? lastError : new Error("没有可用的 AI 服务");
+}
+
+function isOllamaProvider(provider: string | undefined) {
+  return String(provider || "").trim().toLowerCase() === "ollama";
+}
+
+async function sendNativeOllamaJsonRequest(input: {
+  endpoint: string;
+  apiKey: string;
+  provider?: string;
+  model: string;
+  temperature?: number;
+  maxTokens?: number;
+  messages: AiJsonMessage[];
+  maxTransientRetries?: number;
+  signal?: AbortSignal;
+}): Promise<SendAiJsonRequestResult> {
+  // The campus assistant is text-only. Keep image requests on the compatible
+  // endpoint because native Ollama expects image bytes in a different shape.
+  if (input.messages.some((message) => typeof message.content !== "string")) {
+    return sendAiJsonRequest({ ...input, preferNativeOllama: false });
+  }
+
+  const options: Record<string, unknown> = {};
+  if (input.temperature !== undefined) options.temperature = input.temperature;
+  if (Number.isFinite(input.maxTokens) && Number(input.maxTokens) > 0) {
+    options.num_predict = Math.floor(Number(input.maxTokens));
+  }
+  const upstream = await sendAiUpstreamRequest({
+    endpoint: normalizeOllamaChatEndpoint(input.endpoint),
+    apiKey: input.apiKey,
+    provider: input.provider,
+    maxTransientRetries: input.maxTransientRetries,
+    signal: input.signal,
+    body: {
+      model: input.model,
+      messages: input.messages.map(toNativeOllamaMessage),
+      stream: false,
+      format: "json",
+      // Qwen's thinking channel is the main source of unnecessary output and
+      // incomplete JSON in this local deployment. The answer contract only
+      // needs the final JSON object.
+      think: false,
+      ...(Object.keys(options).length ? { options } : {}),
+    },
+  });
+  if (!upstream.response.ok) return upstream;
+
+  let native: any;
+  try {
+    native = await upstream.response.json();
+  } catch (error) {
+    return {
+      ...upstream,
+      response: createAiJsonErrorResponse("Ollama 原生接口返回了无效 JSON", 502),
+      errorText: error instanceof Error ? error.message : String(error),
+    };
+  }
+
+  const content = typeof native?.message?.content === "string"
+    ? native.message.content
+    : "";
+  if (!content.trim()) {
+    return {
+      ...upstream,
+      response: createAiJsonErrorResponse("Ollama 原生接口没有返回 assistant 内容", 502),
+      errorText: "Ollama 原生接口没有返回 assistant 内容",
+    };
+  }
+
+  const wrapped = {
+    id: native?.created_at ? `ollama-${native.created_at}` : "ollama-native-chat",
+    object: "chat.completion",
+    created: Math.floor(Date.now() / 1000),
+    model: native?.model || input.model,
+    choices: [{
+      index: 0,
+      message: { role: "assistant", content },
+      finish_reason: native?.done_reason || (native?.done === false ? null : "stop"),
+    }],
+  };
+  return {
+    ...upstream,
+    response: new Response(JSON.stringify(wrapped), {
+      status: upstream.response.status,
+      statusText: upstream.response.statusText,
+      headers: { "Content-Type": "application/json" },
+    }),
+  };
+}
+
+function normalizeOllamaChatEndpoint(endpoint: string) {
+  const normalized = String(endpoint || "").trim().replace(/\/+$/, "");
+  if (/\/api\/chat$/i.test(normalized)) return normalized;
+  return normalized.replace(/\/v1\/(?:chat\/completions|responses)$/i, "/api/chat");
+}
+
+function toNativeOllamaMessage(message: AiJsonMessage) {
+  return {
+    role: message.role === "developer" ? "system" : message.role,
+    content: String(message.content),
+  };
+}
+
+function createAiJsonErrorResponse(message: string, status: number) {
+  return new Response(JSON.stringify({
+    error: {
+      message,
+      type: "upstream_error",
+    },
+  }), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
 }
 
 export async function sendAiUpstreamRequest(input: {

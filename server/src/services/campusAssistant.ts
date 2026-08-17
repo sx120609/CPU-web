@@ -69,7 +69,7 @@ export const CAMPUS_ASSISTANT_PUBLIC_MODEL_NAME = "Deepseek v5 pro 拾间特供�
 const CAMPUS_ASSISTANT_HISTORY_MAX_MESSAGES = 2;
 const CAMPUS_ASSISTANT_HISTORY_MESSAGE_MAX_LENGTH = 800;
 const CAMPUS_ASSISTANT_PROMPT_ACTION_LIMIT = 8;
-const CAMPUS_ASSISTANT_MAX_OUTPUT_TOKENS = 1_536;
+const CAMPUS_ASSISTANT_MAX_OUTPUT_TOKENS = 4_096;
 const CAMPUS_ASSISTANT_CORE_ACTION_IDS = [
   "home",
   "campus-assistant",
@@ -696,6 +696,7 @@ export async function askCampusAssistant(input: {
       providerConfigs: providers,
       enablePromptCache: true,
       enablePromptCacheRetention: true,
+      preferNativeOllama: true,
       signal: input.signal,
     });
     if (isCampusAssistantModelIdentityQuestion(message)) {
@@ -794,6 +795,7 @@ async function repairCampusAssistantResponse(input: {
       providerConfigs: input.providers,
       enablePromptCache: true,
       enablePromptCacheRetention: true,
+      preferNativeOllama: true,
       signal: input.signal,
     });
     const parsed = parseAssistantJson(result.content, { allowPlainText: isQwenAssistantModel(input.model) });
@@ -1223,8 +1225,15 @@ export function parseAssistantJson(content: string, options: { allowPlainText?: 
     }
   }
   const partialAnswer = extractPartialJsonStringValue(normalized, "answer")?.trim();
-  if (options.allowPlainText && partialAnswer) return { answer: partialAnswer, actionIds: [], suggestions: [] };
-  if (options.allowPlainText) return { answer: normalized, actionIds: [], suggestions: [] };
+  const looksLikeIncompleteJson = /^\s*\{/u.test(normalized)
+    || /["']answer["']\s*:/u.test(normalized);
+  // A local model may return ordinary prose when it ignores response_format,
+  // but an unclosed JSON object is a transport/format failure. Never turn its
+  // partial answer field into a user-visible half sentence.
+  if (options.allowPlainText && partialAnswer && !looksLikeIncompleteJson) {
+    return { answer: partialAnswer, actionIds: [], suggestions: [] };
+  }
+  if (options.allowPlainText && !looksLikeIncompleteJson) return { answer: normalized, actionIds: [], suggestions: [] };
   throw new Error("拾间AI返回格式异常");
 }
 
