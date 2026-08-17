@@ -61,7 +61,7 @@ test("QQbot AI 图片把在线回答页作为唯一二维码目标，即使没�
 
   assert.deepEqual([...png.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
   assert.equal(png.readUInt32BE(16), 900);
-  assert.ok(png.readUInt32BE(20) > 400);
+  assert.ok(png.readUInt32BE(20) > 350);
 });
 
 test("QQbot 图片会把带二维码入口的链接收敛为入口名称", () => {

@@ -93,12 +93,14 @@ export function renderQqBotAiReplyImage(markdown: string, options: QqBotAiReplyI
   const qrEntries = sourcePageUrl ? [] : normalizeQrEntries(options.qrEntries);
   const lines = buildMarkdownLines(normalizeQqBotQrLinkMentions(content, qrEntries));
   const footerRows = buildFooterRows(Boolean(disclosure), options.footerNotice);
-  const footerHeight = QQBOT_AI_IMAGE_FOOTER_HEIGHT;
+  const hasSingleQrFooter = Boolean(sourcePageUrl || qrEntries.length === 1);
+  const footerHeight = hasSingleQrFooter ? 0 : QQBOT_AI_IMAGE_FOOTER_HEIGHT;
+  const qrSectionGap = hasSingleQrFooter ? getQqBotSingleQrSectionGap(lines) : QQBOT_AI_QR_SECTION_GAP;
   const textBodyHeight = lines.reduce((total, line) => total + lineHeight(line) + line.before + line.after, 0);
   const qrBodyHeight = sourcePageUrl
-    ? QQBOT_AI_QR_SECTION_GAP + QQBOT_AI_SOURCE_QR_BLOCK_HEIGHT
+    ? qrSectionGap + QQBOT_AI_SOURCE_QR_BLOCK_HEIGHT
     : qrEntries.length === 1
-      ? QQBOT_AI_QR_SECTION_GAP + QQBOT_AI_SOURCE_QR_BLOCK_HEIGHT
+      ? qrSectionGap + QQBOT_AI_SOURCE_QR_BLOCK_HEIGHT
       : qrEntries.length ? QQBOT_AI_QR_SECTION_GAP + getQrCardLayout(qrEntries.length).height : 0;
   const bodyHeight = QQBOT_AI_IMAGE_BODY_TOP_PADDING
     + textBodyHeight
@@ -116,6 +118,8 @@ export function renderQqBotAiReplyImage(markdown: string, options: QqBotAiReplyI
     footerRows,
     qrEntries,
     sourcePageUrl,
+    footerHeight,
+    qrSectionGap,
   });
   return new Resvg(svg, {
     fitTo: { mode: "original" },
@@ -530,9 +534,11 @@ function buildReplySvg(
     footerRows: string[];
     qrEntries: QqBotAiReplyQrEntry[];
     sourcePageUrl: string | null;
+    footerHeight: number;
+    qrSectionGap: number;
   },
 ) {
-  const footerHeight = QQBOT_AI_IMAGE_FOOTER_HEIGHT;
+  const footerHeight = options.footerHeight;
   let y = QQBOT_AI_IMAGE_TOP_BAR_HEIGHT + QQBOT_AI_IMAGE_BODY_TOP_PADDING;
   const body: string[] = [];
   for (const line of lines) {
@@ -562,16 +568,23 @@ function buildReplySvg(
     void prefixWidth;
   }
   if (options.sourcePageUrl) {
-    body.push(renderSourcePageQr(options.sourcePageUrl, y + QQBOT_AI_QR_SECTION_GAP));
+    body.push(renderSourcePageQr(options.sourcePageUrl, y + options.qrSectionGap, options.footerRows, height));
   } else if (options.qrEntries.length === 1) {
-    body.push(renderReferenceQrEntry(options.qrEntries[0], y + QQBOT_AI_QR_SECTION_GAP));
+    body.push(renderReferenceQrEntry(options.qrEntries[0], y + options.qrSectionGap, options.footerRows, height));
   } else if (options.qrEntries.length) {
     body.push(renderQrCards(options.qrEntries, y + QQBOT_AI_QR_SECTION_GAP));
   }
   const footerY = height - footerHeight;
-  const footerText = options.footerRows
-    .map((row) => `<text x="${QQBOT_AI_IMAGE_SIDE_PADDING}" y="${footerY + 32}" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="16" fill="#55716b">${escapeXml(row)}</text>`)
-    .join("\n  ");
+  const footerText = footerHeight > 0
+    ? options.footerRows
+      .map((row) => `<text x="${QQBOT_AI_IMAGE_SIDE_PADDING}" y="${footerY + 32}" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="16" fill="#55716b">${escapeXml(row)}</text>`)
+      .join("\n  ")
+    : "";
+  const footerMarkup = footerHeight > 0
+    ? `<rect x="0" y="${footerY}" width="${QQBOT_AI_IMAGE_WIDTH}" height="${footerHeight}" fill="#eef7f5" />
+  <line x1="${QQBOT_AI_IMAGE_SIDE_PADDING}" y1="${footerY}" x2="${QQBOT_AI_IMAGE_WIDTH - QQBOT_AI_IMAGE_SIDE_PADDING}" y2="${footerY}" stroke="#dcebe7" stroke-width="2" />
+  ${footerText}`
+    : "";
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg width="${QQBOT_AI_IMAGE_WIDTH}" height="${height}" viewBox="0 0 ${QQBOT_AI_IMAGE_WIDTH} ${height}" xmlns="http://www.w3.org/2000/svg">
   <rect width="${QQBOT_AI_IMAGE_WIDTH}" height="${height}" fill="#ffffff" />
@@ -579,10 +592,7 @@ function buildReplySvg(
   <circle cx="58" cy="54" r="14" fill="#eaf7f4" />
   <text x="84" y="63" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="26" font-weight="800" fill="#ffffff">拾间AI</text>
   <text x="842" y="62" text-anchor="end" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="22" font-weight="500" fill="#ffffff">药大拾间 · AI 助手</text>
-  <line x1="58" y1="88" x2="842" y2="88" stroke="#dcebe7" stroke-width="2" />
-  <rect x="0" y="${footerY}" width="${QQBOT_AI_IMAGE_WIDTH}" height="${footerHeight}" fill="#eef7f5" />
-  <line x1="${QQBOT_AI_IMAGE_SIDE_PADDING}" y1="${footerY}" x2="${QQBOT_AI_IMAGE_WIDTH - QQBOT_AI_IMAGE_SIDE_PADDING}" y2="${footerY}" stroke="#dcebe7" stroke-width="2" />
-  ${footerText}
+  ${footerMarkup}
   ${body.join("\n  ")}
 </svg>`;
 }
@@ -591,6 +601,18 @@ function buildFooterRows(hasDisclosure: boolean, footerNotice?: string) {
   const notice = String(footerNotice || "").trim();
   const disclosure = hasDisclosure ? "以上内容由拾间AI生成，请注意甄别。" : "拾间AI · 药大拾间";
   return [notice ? `${notice} · ${disclosure}` : disclosure];
+}
+
+function getQqBotSingleQrSectionGap(lines: RenderLine[]) {
+  const first = lines.find((line) => !line.rule && line.runs.length);
+  const last = [...lines].reverse().find((line) => !line.rule && line.runs.length);
+  if (!first || !last) return 0;
+  // Align the visible glyph gap before the QR footer with the visible gap
+  // below the header, instead of aligning the SVG line boxes themselves.
+  const topVisibleGap = QQBOT_AI_IMAGE_BODY_TOP_PADDING + first.before - first.fontSize;
+  const lastGlyphDescent = Math.ceil(last.fontSize * 0.18);
+  const lastLineBox = lineHeight(last) + last.after;
+  return Math.max(-16, Math.min(16, Math.round(topVisibleGap + lastGlyphDescent - lastLineBox)));
 }
 
 function normalizeQqBotSourcePageUrl(value: string | undefined): string | null {
@@ -624,7 +646,7 @@ function normalizeQrEntries(input: QqBotAiReplyQrEntry[] | undefined) {
     .slice(0, 3);
 }
 
-function renderSourcePageQr(url: string, top: number) {
+function renderSourcePageQr(url: string, top: number, footerRows: string[], footerEndY: number) {
   const qrX = QQBOT_AI_IMAGE_SIDE_PADDING;
   const qrY = top + 34;
   try {
@@ -642,6 +664,7 @@ function renderSourcePageQr(url: string, top: number) {
     }
     const textX = qrX + QQBOT_AI_SOURCE_QR_SIZE + 28;
     return `<g>
+  <rect x="0" y="${formatSvgNumber(top)}" width="${QQBOT_AI_IMAGE_WIDTH}" height="${formatSvgNumber(Math.max(0, footerEndY - top))}" fill="#eef7f5" />
   <line x1="${QQBOT_AI_IMAGE_SIDE_PADDING}" y1="${formatSvgNumber(top)}" x2="${QQBOT_AI_IMAGE_WIDTH - QQBOT_AI_IMAGE_SIDE_PADDING}" y2="${formatSvgNumber(top)}" stroke="#dcebe7" stroke-width="2" />
   <rect x="${qrX - QQBOT_AI_SOURCE_QR_PADDING}" y="${qrY - QQBOT_AI_SOURCE_QR_PADDING}" width="${QQBOT_AI_SOURCE_QR_SIZE + QQBOT_AI_SOURCE_QR_PADDING * 2}" height="${QQBOT_AI_SOURCE_QR_SIZE + QQBOT_AI_SOURCE_QR_PADDING * 2}" rx="8" fill="#ffffff" stroke="#d5e9e4" stroke-width="2" />
   <rect x="${qrX}" y="${qrY}" width="${QQBOT_AI_SOURCE_QR_SIZE}" height="${QQBOT_AI_SOURCE_QR_SIZE}" fill="#ffffff" />
@@ -649,16 +672,19 @@ function renderSourcePageQr(url: string, top: number) {
   <text x="${textX}" y="${qrY + 26}" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="26" font-weight="800" fill="#2f7568">在线查看完整回答</text>
   <text x="${textX}" y="${qrY + 62}" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="21" font-weight="500" fill="#55716b">扫码打开在线页面</text>
   <text x="${textX}" y="${qrY + 94}" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="17" font-weight="500" fill="#7b918c">完整回答和相关入口</text>
+  ${renderQrFooterNotice(footerRows, qrY)}
 </g>`;
   } catch {
     return `<g>
+  <rect x="0" y="${formatSvgNumber(top)}" width="${QQBOT_AI_IMAGE_WIDTH}" height="${formatSvgNumber(Math.max(0, footerEndY - top))}" fill="#eef7f5" />
   <line x1="${QQBOT_AI_IMAGE_SIDE_PADDING}" y1="${formatSvgNumber(top)}" x2="${QQBOT_AI_IMAGE_WIDTH - QQBOT_AI_IMAGE_SIDE_PADDING}" y2="${formatSvgNumber(top)}" stroke="#dcebe7" stroke-width="2" />
   <text x="${QQBOT_AI_IMAGE_SIDE_PADDING}" y="${formatSvgNumber(top + 54)}" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="20" fill="#b42318">在线回答二维码暂时无法生成</text>
+  ${renderQrFooterNotice(footerRows, top + 34)}
 </g>`;
   }
 }
 
-function renderReferenceQrEntry(entry: QqBotAiReplyQrEntry, top: number) {
+function renderReferenceQrEntry(entry: QqBotAiReplyQrEntry, top: number, footerRows: string[], footerEndY: number) {
   const qrX = QQBOT_AI_IMAGE_SIDE_PADDING;
   const qrY = top + 34;
   try {
@@ -676,6 +702,7 @@ function renderReferenceQrEntry(entry: QqBotAiReplyQrEntry, top: number) {
     }
     const textX = qrX + QQBOT_AI_SOURCE_QR_SIZE + 28;
     return `<g>
+  <rect x="0" y="${formatSvgNumber(top)}" width="${QQBOT_AI_IMAGE_WIDTH}" height="${formatSvgNumber(Math.max(0, footerEndY - top))}" fill="#eef7f5" />
   <line x1="${QQBOT_AI_IMAGE_SIDE_PADDING}" y1="${formatSvgNumber(top)}" x2="${QQBOT_AI_IMAGE_WIDTH - QQBOT_AI_IMAGE_SIDE_PADDING}" y2="${formatSvgNumber(top)}" stroke="#dcebe7" stroke-width="2" />
   <rect x="${qrX - QQBOT_AI_SOURCE_QR_PADDING}" y="${qrY - QQBOT_AI_SOURCE_QR_PADDING}" width="${QQBOT_AI_SOURCE_QR_SIZE + QQBOT_AI_SOURCE_QR_PADDING * 2}" height="${QQBOT_AI_SOURCE_QR_SIZE + QQBOT_AI_SOURCE_QR_PADDING * 2}" rx="8" fill="#ffffff" stroke="#d5e9e4" stroke-width="2" />
   <rect x="${qrX}" y="${qrY}" width="${QQBOT_AI_SOURCE_QR_SIZE}" height="${QQBOT_AI_SOURCE_QR_SIZE}" fill="#ffffff" />
@@ -683,13 +710,22 @@ function renderReferenceQrEntry(entry: QqBotAiReplyQrEntry, top: number) {
   <text x="${textX}" y="${qrY + 26}" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="26" font-weight="800" fill="#2f7568">${escapeXml(entry.label)}</text>
   <text x="${textX}" y="${qrY + 62}" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="21" font-weight="500" fill="#55716b">扫码打开入口</text>
   <text x="${textX}" y="${qrY + 94}" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="17" font-weight="500" fill="#7b918c">${escapeXml(getQrTargetHint(entry.url))}</text>
+  ${renderQrFooterNotice(footerRows, qrY)}
 </g>`;
   } catch {
     return `<g>
+  <rect x="0" y="${formatSvgNumber(top)}" width="${QQBOT_AI_IMAGE_WIDTH}" height="${formatSvgNumber(Math.max(0, footerEndY - top))}" fill="#eef7f5" />
   <line x1="${QQBOT_AI_IMAGE_SIDE_PADDING}" y1="${formatSvgNumber(top)}" x2="${QQBOT_AI_IMAGE_WIDTH - QQBOT_AI_IMAGE_SIDE_PADDING}" y2="${formatSvgNumber(top)}" stroke="#dcebe7" stroke-width="2" />
   <text x="${QQBOT_AI_IMAGE_SIDE_PADDING}" y="${formatSvgNumber(top + 54)}" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="20" fill="#b42318">${escapeXml(entry.label)}二维码暂时无法生成</text>
+  ${renderQrFooterNotice(footerRows, top + 34)}
 </g>`;
   }
+}
+
+function renderQrFooterNotice(footerRows: string[], qrY: number) {
+  const text = String(footerRows[0] || "").trim();
+  if (!text) return "";
+  return `<text x="${QQBOT_AI_IMAGE_WIDTH - QQBOT_AI_IMAGE_SIDE_PADDING}" y="${formatSvgNumber(qrY + 110)}" text-anchor="end" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="16" fill="#55716b">${escapeXml(text)}</text>`;
 }
 
 function renderQrCards(entries: QqBotAiReplyQrEntry[], startY: number) {

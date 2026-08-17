@@ -1121,11 +1121,12 @@ test("campus assistant knowledge covers every active action and carries freshnes
   assert.match(combined, /账户锁定10分钟/);
   assert.match(combined, /025-86185448/);
   assert.match(combined, /尚未创建账号/);
-  assert.match(combined, /学习通助手目前只支持学习通/);
-  assert.match(combined, /解题功能.*不保证/);
+  assert.match(combined, /超星学习通、知到智慧树、智慧职教 \/ MOOC、职教云、中国大学 MOOC 和雨课堂/);
+  assert.match(combined, /解题(?:功能|效果).*不保证/);
   assert.match(combined, /江苏省大学生安全教育考试可以直接在 QQBot 内完成/);
-  assert.match(combined, /安全微伴可使用 QQ 用户群群文件中的程序/);
+  assert.match(combined, /安全微伴可使用 QQ 用户群群文件中的安全微伴助手程序/);
   assert.match(combined, /安全微伴账号和密码均为学号/);
+  assert.match(combined, /不要笼统回复“不能协助自动刷课、代答或绕过学习要求”/);
   assert.match(combined, /704825850/);
   assert.match(combined, /群聊默认只有在消息中 @拾间AI 后才会回答/);
   assert.match(combined, /QQBot 的 AI 日常问答统一以图片发送/);
@@ -1207,6 +1208,8 @@ test("Qwen 拾间AI提示词强化知识库事实边界并识别模型标签", (
   assert.match(qwenPrompt, /不要编造父母、家庭、童年/);
   assert.match(qwenPrompt, /允许提供最近两条对话消息/);
   assert.match(qwenPrompt, /普通密码错误直接升级为电话/);
+  assert.match(qwenPrompt, /不要先说“我不能协助自动刷课、代答或绕过学习要求”/);
+  assert.match(qwenPrompt, /江苏省大学生安全教育考试/);
   assert.match(qwenPrompt, /只输出一个合法 JSON 对象/);
   assert.match(qwenPrompt, /不要以“所以”“因为”“如果”/);
   assert.doesNotMatch(qwenPrompt, /qwen3\.8:27b/);
