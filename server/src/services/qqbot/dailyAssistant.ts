@@ -1,7 +1,8 @@
 import { isCommandMessage } from "./commands";
 
 export const QQBOT_AI_DISCLOSURE = "以上回复由拾间AI生成，内容可能存在偏差，请自行鉴别并以官方信息为准。";
-export const QQBOT_DAILY_ASSISTANT_DEBOUNCE_MS = 2_000;
+export const QQBOT_DAILY_ASSISTANT_DEBOUNCE_MS = 5_000;
+export const QQBOT_DAILY_ASSISTANT_PROACTIVE_GROUP_DEBOUNCE_MS = 20_000;
 const QQBOT_DAILY_ASSISTANT_MAX_BATCH_CHARS = 6_000;
 
 type QqBotDailyAssistantInput = {
@@ -12,6 +13,21 @@ type QqBotDailyAssistantInput = {
   allowUnmentionedContinuation?: boolean;
   message: unknown;
 };
+
+export function getQqBotDailyAssistantDebounceMs(input: {
+  messageType?: "private" | "group";
+  botMentioned: boolean;
+  proactiveGroupReply?: boolean;
+}) {
+  if (
+    input.messageType === "group"
+    && !input.botMentioned
+    && input.proactiveGroupReply === true
+  ) {
+    return QQBOT_DAILY_ASSISTANT_PROACTIVE_GROUP_DEBOUNCE_MS;
+  }
+  return QQBOT_DAILY_ASSISTANT_DEBOUNCE_MS;
+}
 
 /**
  * Keep the daily-chat route text-only.  QQ commands, media and other
@@ -46,14 +62,14 @@ export function appendQqBotAiDisclosure(message: string) {
 function isPlainTextQqMessage(message: unknown): boolean {
   if (typeof message === "string") {
     return Array.from(message.matchAll(/\[CQ:([^,\]]+)/gi))
-      .every((match) => String(match[1] || "").trim().toLowerCase() === "at");
+      .every((match) => ["at", "reply"].includes(String(match[1] || "").trim().toLowerCase()));
   }
   if (Array.isArray(message)) {
     return message.length > 0 && message.every((segment) => isPlainTextQqMessageSegment(segment));
   }
   if (!message || typeof message !== "object") return false;
   const value = message as Record<string, unknown>;
-  if (value.type === "text" || value.type === "at") return true;
+  if (value.type === "text" || value.type === "at" || value.type === "reply") return true;
   if (Array.isArray(value.message)) return isPlainTextQqMessage(value.message);
   if (Array.isArray(value.content)) return isPlainTextQqMessage(value.content);
   if (typeof value.message === "string") return isPlainTextQqMessage(value.message);
@@ -64,5 +80,5 @@ function isPlainTextQqMessage(message: unknown): boolean {
 function isPlainTextQqMessageSegment(segment: unknown) {
   if (!segment || typeof segment !== "object") return false;
   const value = segment as Record<string, unknown>;
-  return value.type === "text" || value.type === "at";
+  return value.type === "text" || value.type === "at" || value.type === "reply";
 }

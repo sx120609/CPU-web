@@ -385,6 +385,7 @@
             <el-checkbox v-model="groupDialog.form.memberWelcomeEnabled">新成员欢迎</el-checkbox>
             <el-checkbox v-model="groupDialog.form.adFilterEnabled">广告过滤</el-checkbox>
             <el-checkbox v-model="groupDialog.form.assistantProactiveReplyEnabled">群聊主动回答</el-checkbox>
+            <el-checkbox v-model="groupDialog.form.assistantReplyQrCodeEnabled">AI回复二维码</el-checkbox>
             <el-checkbox v-model="groupDialog.form.adFilterGroupNoticeEnabled" :disabled="!groupDialog.form.adFilterEnabled">撤回后群聊提示</el-checkbox>
             <el-checkbox v-model="groupDialog.form.adFilterBlockQrCodeEnabled" :disabled="!groupDialog.form.adFilterEnabled">禁止二维码</el-checkbox>
             <el-checkbox v-model="groupDialog.form.adFilterBlockGroupCardEnabled" :disabled="!groupDialog.form.adFilterEnabled">拦截群卡片</el-checkbox>
@@ -395,7 +396,7 @@
             <el-checkbox v-model="groupDialog.form.allowKick">允许踢出</el-checkbox>
             <el-checkbox v-model="groupDialog.form.allowKickAndBlock">允许踢出并拉黑</el-checkbox>
           </div>
-          <div class="form-tip">“群聊主动回答”仅在消息明确提出问题/求助时触发，由广告过滤模型顺带做语义判断，不使用关键词匹配；默认关闭。白名单默认豁免普通广告判断；可单独保留二维码、群卡片两类硬性限制。</div>
+          <div class="form-tip">“群聊主动回答”仅在消息明确提出问题/求助时触发，由广告过滤模型顺带做语义判断，不使用关键词匹配；默认关闭。“AI回复二维码”默认开启，若本群不适合发送二维码可关闭。白名单默认豁免普通广告判断；可单独保留二维码、群卡片两类硬性限制。</div>
         </el-form-item>
         <el-form-item label="累计通报">
           <el-input-number
@@ -529,6 +530,7 @@ const groupDialog = reactive({
     memberWelcomeMessage: defaultMemberWelcomeMessage,
     adFilterEnabled: false,
     assistantProactiveReplyEnabled: false,
+    assistantReplyQrCodeEnabled: true,
     adFilterGroupNoticeEnabled: true,
     adFilterBlockQrCodeEnabled: false,
     adFilterBlockGroupCardEnabled: false,
@@ -797,6 +799,7 @@ function openGroupDialog(row?: any) {
     memberWelcomeMessage: row?.memberWelcomeMessage || defaultMemberWelcomeMessage,
     adFilterEnabled: row?.adFilterEnabled ?? false,
     assistantProactiveReplyEnabled: row?.assistantProactiveReplyEnabled ?? false,
+    assistantReplyQrCodeEnabled: row?.assistantReplyQrCodeEnabled ?? true,
     adFilterGroupNoticeEnabled: row?.adFilterGroupNoticeEnabled ?? true,
     adFilterBlockQrCodeEnabled: row?.adFilterBlockQrCodeEnabled ?? false,
     adFilterBlockGroupCardEnabled: row?.adFilterBlockGroupCardEnabled ?? false,

@@ -2,9 +2,30 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   appendQqBotAiDisclosure,
+  getQqBotDailyAssistantDebounceMs,
   mergeQqBotDailyAssistantMessages,
+  QQBOT_DAILY_ASSISTANT_DEBOUNCE_MS,
+  QQBOT_DAILY_ASSISTANT_PROACTIVE_GROUP_DEBOUNCE_MS,
   shouldHandleQqBotDailyAssistant,
 } from "../src/services/qqbot/dailyAssistant";
+
+test("QQBot 日常问答按消息入口选择等待时间", () => {
+  assert.equal(QQBOT_DAILY_ASSISTANT_DEBOUNCE_MS, 5_000);
+  assert.equal(QQBOT_DAILY_ASSISTANT_PROACTIVE_GROUP_DEBOUNCE_MS, 20_000);
+  assert.equal(getQqBotDailyAssistantDebounceMs({
+    messageType: "private",
+    botMentioned: false,
+  }), 5_000);
+  assert.equal(getQqBotDailyAssistantDebounceMs({
+    messageType: "group",
+    botMentioned: true,
+  }), 5_000);
+  assert.equal(getQqBotDailyAssistantDebounceMs({
+    messageType: "group",
+    botMentioned: false,
+    proactiveGroupReply: true,
+  }), 20_000);
+});
 
 test("QQ 群日常聊天只有明确 @ 机器人时才进入拾间AI", () => {
   const message = [{ type: "text", data: { text: "帮我看看课表怎么用" } }];
@@ -19,6 +40,19 @@ test("QQ 群日常聊天只有明确 @ 机器人时才进入拾间AI", () => {
     messageText: "帮我看看课表怎么用",
     botMentioned: true,
     message: [{ type: "at", data: { qq: "10001" } }, ...message],
+  }), true);
+});
+
+test("QQ 群回复消息并同时 @ 机器人时仍进入拾间AI", () => {
+  assert.equal(shouldHandleQqBotDailyAssistant({
+    messageType: "group",
+    messageText: "这个问题怎么处理？",
+    botMentioned: true,
+    message: [
+      { type: "reply", data: { id: "123" } },
+      { type: "at", data: { qq: "10001" } },
+      { type: "text", data: { text: "这个问题怎么处理？" } },
+    ],
   }), true);
 });
 

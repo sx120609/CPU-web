@@ -101,6 +101,7 @@ import {
 } from "./safetyPlatform";
 import {
   appendQqBotAiDisclosure,
+  getQqBotDailyAssistantDebounceMs,
   mergeQqBotDailyAssistantMessages,
   QQBOT_DAILY_ASSISTANT_DEBOUNCE_MS,
   shouldHandleQqBotDailyAssistant,
@@ -162,6 +163,7 @@ export type QqBotGroupView = {
   memberWelcomeMessage: string;
   adFilterEnabled: boolean;
   assistantProactiveReplyEnabled: boolean;
+  assistantReplyQrCodeEnabled: boolean;
   adFilterGroupNoticeEnabled: boolean;
   adFilterBlockQrCodeEnabled: boolean;
   adFilterBlockGroupCardEnabled: boolean;
@@ -253,6 +255,7 @@ type QqBotDailyAssistantBatch = {
   context: QqBotDailyAssistantContext;
   messages: string[];
   processing: boolean;
+  debounceMs: number;
   timer?: ReturnType<typeof setTimeout>;
 };
 const qqBotDailyAssistantBatches = new Map<string, QqBotDailyAssistantBatch>();
@@ -421,6 +424,7 @@ export function formatQqBotGroup(group: {
   memberWelcomeMessage: string | null;
   adFilterEnabled: boolean;
   assistantProactiveReplyEnabled?: boolean;
+  assistantReplyQrCodeEnabled?: boolean;
   adFilterGroupNoticeEnabled?: boolean;
   adFilterBlockQrCodeEnabled?: boolean;
   adFilterBlockGroupCardEnabled?: boolean;
@@ -449,6 +453,7 @@ export function formatQqBotGroup(group: {
     memberWelcomeMessage: group.memberWelcomeMessage || DEFAULT_MEMBER_WELCOME_MESSAGE,
     adFilterEnabled: group.adFilterEnabled,
     assistantProactiveReplyEnabled: group.assistantProactiveReplyEnabled ?? false,
+    assistantReplyQrCodeEnabled: group.assistantReplyQrCodeEnabled ?? true,
     // Old rows/fixtures may not have the field until the schema is pushed.
     // Treat an absent value as enabled so existing moderation behavior is preserved.
     adFilterGroupNoticeEnabled: group.adFilterGroupNoticeEnabled ?? true,
@@ -2561,23 +2566,36 @@ async function maybeHandleQqBotDailyAssistant(
   options: { proactiveGroupReply?: boolean } = {},
 ) {
   const batchKey = qqBotDailyAssistantBatchKey(context.qqId, context.groupId);
+  const botMentioned = isExplicitBotMention(context.event, context.messageText);
+  const proactiveGroupReply = options.proactiveGroupReply === true;
   const shouldHandle = shouldHandleQqBotDailyAssistant({
     messageType: context.event.message_type,
     messageText: context.messageText,
-    botMentioned: isExplicitBotMention(context.event, context.messageText),
-    proactiveGroupReply: options.proactiveGroupReply === true,
+    botMentioned,
+    proactiveGroupReply,
     allowUnmentionedContinuation: qqBotDailyAssistantBatches.has(batchKey),
     message: context.event.message ?? context.event.raw_message ?? "",
   });
   if (!shouldHandle) return false;
 
-  enqueueQqBotDailyAssistant(batchKey, context);
+  enqueueQqBotDailyAssistant(
+    batchKey,
+    context,
+    getQqBotDailyAssistantDebounceMs({
+      messageType: context.event.message_type,
+      botMentioned,
+      proactiveGroupReply,
+    }),
+    botMentioned,
+  );
   return true;
 }
 
 function enqueueQqBotDailyAssistant(
   batchKey: string,
   context: QqBotDailyAssistantContext,
+  debounceMs: number,
+  botMentioned: boolean,
 ) {
   const message = context.messageText.trim().slice(0, 2_000);
   if (!message) return;
@@ -2587,9 +2605,14 @@ function enqueueQqBotDailyAssistant(
       context,
       messages: [],
       processing: false,
+      debounceMs,
     };
     qqBotDailyAssistantBatches.set(batchKey, batch);
   }
+  // An explicit @ should make an already queued proactive batch respond on
+  // the shorter direct-message delay. Unmentioned continuation messages keep
+  // the delay chosen when the batch started.
+  if (botMentioned) batch.debounceMs = QQBOT_DAILY_ASSISTANT_DEBOUNCE_MS;
   batch.messages.push(message);
   if (!batch.processing) scheduleQqBotDailyAssistantFlush(batchKey, batch);
 }
@@ -2599,7 +2622,7 @@ function scheduleQqBotDailyAssistantFlush(batchKey: string, batch: QqBotDailyAss
   batch.timer = setTimeout(() => {
     batch.timer = undefined;
     void flushQqBotDailyAssistantBatch(batchKey, batch);
-  }, QQBOT_DAILY_ASSISTANT_DEBOUNCE_MS);
+  }, batch.debounceMs);
 }
 
 async function flushQqBotDailyAssistantBatch(batchKey: string, batch: QqBotDailyAssistantBatch) {
@@ -2657,16 +2680,37 @@ async function processQqBotDailyAssistantBatch(
     { role: "assistant", content: response.answer },
   ]);
   await logHandledInboundMessage(context, "message", "assistant:daily-chat");
-  const renderedReply = await renderQqBotDailyAssistantReply(message, response);
+  const qrCodeEnabled = await isQqBotAssistantReplyQrCodeEnabled(context);
+  const renderedReply = await renderQqBotDailyAssistantReply(message, response, { includeQrCode: qrCodeEnabled });
   await replyToEvent(context, renderedReply.message, {
     renderMarkdownImage: true,
-    sourcePageUrl: renderedReply.sourcePageUrl ?? undefined,
+    sourcePageUrl: qrCodeEnabled ? renderedReply.sourcePageUrl ?? undefined : undefined,
+    qrCodeEnabled,
   });
   return true;
 }
 
 function qqBotDailyAssistantBatchKey(qqId: string, groupId?: string) {
   return `${qqId}::${groupId || "private"}`;
+}
+
+async function isQqBotAssistantReplyQrCodeEnabled(context: QqBotDailyAssistantContext) {
+  if (context.event.message_type !== "group" || !context.groupId) return true;
+  try {
+    const group = await prisma.qqBotGroup.findUnique({
+      where: { groupId: context.groupId },
+      select: { assistantReplyQrCodeEnabled: true },
+    });
+    return group?.assistantReplyQrCodeEnabled !== false;
+  } catch (error) {
+    // QR availability is an optional presentation setting. If an older
+    // database has not applied the migration yet, keep the answer available.
+    console.warn(
+      "[qqbot] failed to read assistant QR setting; keeping it enabled",
+      error instanceof Error ? error.message : error,
+    );
+    return true;
+  }
 }
 
 function getQqBotAssistantHistory(key: string): CampusAssistantMessage[] {
@@ -2689,7 +2733,12 @@ function rememberQqBotAssistantHistory(key: string, messages: CampusAssistantMes
   if (oldest) qqBotAssistantHistories.delete(oldest[0]);
 }
 
-async function renderQqBotDailyAssistantReply(question: string, response: CampusAssistantResponse) {
+async function renderQqBotDailyAssistantReply(
+  question: string,
+  response: CampusAssistantResponse,
+  options: { includeQrCode?: boolean } = {},
+) {
+  const includeQrCode = options.includeQrCode !== false;
   const lines = [String(response.answer || "").trim() || "我暂时没有找到合适的答案。"];
   const actions = (response.actions || []).slice(0, 3);
   const actionEntries: QqBotAiReplyShareAction[] = actions.map((action) => ({
@@ -2700,12 +2749,14 @@ async function renderQqBotDailyAssistantReply(question: string, response: Campus
   // Keep the action links together with the full answer on a public page.
   // The image only carries one QR code, so it remains readable and never
   // points at an arbitrary action such as the site home page.
-  const sourcePageUrl = await createQqBotAiReplyShare({
-    question,
-    answer: lines[0],
-    actions: actionEntries,
-  });
-  if (!sourcePageUrl && actionEntries.length) {
+  const sourcePageUrl = includeQrCode
+    ? await createQqBotAiReplyShare({
+      question,
+      answer: lines[0],
+      actions: actionEntries,
+    })
+    : undefined;
+  if (includeQrCode && !sourcePageUrl && actionEntries.length) {
     lines.push(
       "",
       "相关入口：",
@@ -4233,6 +4284,7 @@ function buildQqBotGroupFallbackView(groupId: string, event?: OneBotEvent) {
     memberWelcomeMessage: DEFAULT_MEMBER_WELCOME_MESSAGE,
     adFilterEnabled: false,
     assistantProactiveReplyEnabled: false,
+    assistantReplyQrCodeEnabled: true,
     adFilterGroupNoticeEnabled: true,
     adFilterBlockQrCodeEnabled: false,
     adFilterBlockGroupCardEnabled: false,
@@ -4390,6 +4442,7 @@ function renderQqGroupAdminHelp(group: QqBotGroupView) {
     `踢黑：${group.allowKickAndBlock ? "开" : "关"}`,
     `广告过滤：${group.adFilterEnabled ? "开" : "关"}`,
     `群聊主动回答：${group.assistantProactiveReplyEnabled ? "开" : "关"}`,
+    `AI回复二维码：${group.assistantReplyQrCodeEnabled ? "开" : "关"}`,
   ];
   return parts.join("\n");
 }

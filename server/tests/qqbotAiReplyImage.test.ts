@@ -65,6 +65,16 @@ test("QQbot AI 图片把在线回答页作为唯一二维码目标，即使没�
   assert.ok(png.readUInt32BE(20) > 350);
 });
 
+test("QQbot AI 图片可以按群配置关闭二维码", () => {
+  const png = renderQqBotAiReplyImage("这是一条不需要在线入口的群聊回答。", {
+    sourcePageUrl: "https://cputime.cn/qqbot/ai-reply/abcdefghijklmnop",
+    qrCodeEnabled: false,
+  });
+
+  assert.deepEqual([...png.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+  assert.ok(png.readUInt32BE(20) < 360);
+});
+
 test("QQbot 图片会把带二维码入口的链接收敛为入口名称", () => {
   const entries = [{ label: "统一身份认证", url: "https://i.cpu.edu.cn" }];
   assert.equal(

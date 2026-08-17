@@ -70,6 +70,8 @@ export type QqBotAiReplyImageOptions = {
   footerNotice?: string;
   /** Public answer page used by the reference bot's QR footer. */
   sourcePageUrl?: string;
+  /** Whether to include the online-answer QR code in the rendered image. */
+  qrCodeEnabled?: boolean;
   qrEntries?: QqBotAiReplyQrEntry[];
 };
 
@@ -89,8 +91,9 @@ export function renderQqBotAiReplyImage(markdown: string, options: QqBotAiReplyI
   const normalized = String(markdown || "").replace(/\r\n?/g, "\n").slice(0, QQBOT_AI_IMAGE_MAX_SOURCE_LENGTH);
   const disclosure = normalized.match(QQBOT_AI_DISCLOSURE_PATTERN)?.[0] || "";
   const content = disclosure ? normalized.replace(disclosure, "").trim() : normalized;
-  const sourcePageUrl = normalizeQqBotSourcePageUrl(options.sourcePageUrl);
-  const qrEntries = sourcePageUrl ? [] : normalizeQrEntries(options.qrEntries);
+  const qrCodeEnabled = options.qrCodeEnabled !== false;
+  const sourcePageUrl = qrCodeEnabled ? normalizeQqBotSourcePageUrl(options.sourcePageUrl) : null;
+  const qrEntries = qrCodeEnabled && !sourcePageUrl ? normalizeQrEntries(options.qrEntries) : [];
   const lines = buildMarkdownLines(normalizeQqBotQrLinkMentions(content, qrEntries));
   const footerRows = buildFooterRows(Boolean(disclosure), options.footerNotice);
   const hasSingleQrFooter = Boolean(sourcePageUrl || qrEntries.length === 1);
