@@ -392,11 +392,14 @@ export async function readAiJsonTextStream(
 
   while (true) {
     const { done, value } = await reader.read();
-    buffer += decoder.decode(value, { stream: !done });
+    if (value) buffer += decoder.decode(value, { stream: true });
     const blocks = buffer.split(/\r?\n\r?\n/);
     buffer = blocks.pop() || "";
     for (const block of blocks) await consumeEvent(block);
-    if (done) break;
+    if (done) {
+      buffer += decoder.decode();
+      break;
+    }
   }
   if (buffer.trim()) await consumeEvent(buffer);
   return content;
@@ -414,7 +417,8 @@ function extractAiJsonStreamDelta(payload: any, mode: AiJsonApiMode) {
     return "";
   }
 
-  const content = payload?.choices?.[0]?.delta?.content;
+  const choice = payload?.choices?.[0];
+  const content = choice?.delta?.content ?? choice?.message?.content;
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
   return content

@@ -261,11 +261,16 @@ searchRouter.post(
   async (req, res, next) => {
     let streamStarted = false;
     let streamCompleted = false;
+    let clientDisconnected = false;
     let quotaReservation: CampusAssistantQuotaReservation | null = null;
     const controller = new AbortController();
-    res.on("close", () => {
-      if (!streamCompleted) controller.abort();
-    });
+    const abortForClientDisconnect = () => {
+      if (streamCompleted || clientDisconnected) return;
+      clientDisconnected = true;
+      controller.abort(new Error("客户端已断开连接，AI 请求已取消"));
+    };
+    req.on("aborted", abortForClientDisconnect);
+    res.on("close", abortForClientDisconnect);
 
     try {
       const userId = req.user!.userId;
@@ -279,13 +284,18 @@ searchRouter.post(
       res.setHeader("X-Accel-Buffering", "no");
       res.flushHeaders();
       streamStarted = true;
+      writeAssistantEvent(res, "status", { status: "connected", elapsedMs: 0 });
 
+      const startedAt = Date.now();
       const heartbeat = setInterval(() => {
         if (!res.writableEnded) {
-          res.write(": ping\n\n");
-          (res as any).flush?.();
+          writeAssistantEvent(res, "heartbeat", {
+            status: "generating",
+            elapsedMs: Date.now() - startedAt,
+          });
         }
-      }, 15_000);
+      }, 5_000);
+      heartbeat.unref?.();
       try {
         const response = await streamCampusAssistant({
           message: req.body.message,
@@ -318,11 +328,11 @@ searchRouter.post(
       if (quotaReservation) {
         await refundCampusAssistantQuota(req.user!.userId, quotaReservation).catch(() => {});
       }
-      if (controller.signal.aborted) return;
+      if (clientDisconnected) return;
       if (!streamStarted) return next(error);
-      writeAssistantEvent(res, "error", { message: "拾间AI暂时不可用，请稍后再试" });
+      if (!res.writableEnded) writeAssistantEvent(res, "error", { message: "拾间AI暂时不可用，请稍后再试" });
       streamCompleted = true;
-      res.end();
+      if (!res.writableEnded) res.end();
     }
   },
 );

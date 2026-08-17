@@ -64,6 +64,7 @@ export interface CampusAssistantConversation {
 export interface CampusAssistantStreamOptions {
   signal?: AbortSignal;
   onDelta: (delta: string) => void;
+  onHeartbeat?: (elapsedMs: number) => void;
   onDone?: (response: CampusAssistantResponse) => void;
 }
 
@@ -142,6 +143,11 @@ async function streamAssistant(
       options.onDelta(payload.delta);
       return;
     }
+    if (event === "status" || event === "heartbeat") {
+      const elapsedMs = Number(payload?.elapsedMs);
+      options.onHeartbeat?.(Number.isFinite(elapsedMs) && elapsedMs >= 0 ? elapsedMs : 0);
+      return;
+    }
     if (event === "done") {
       completed.value = payload as CampusAssistantResponse;
       options.onDone?.(completed.value);
@@ -158,11 +164,14 @@ async function streamAssistant(
     let buffer = "";
     while (true) {
       const { done, value } = await reader.read();
-      buffer += decoder.decode(value, { stream: !done });
+      if (value) buffer += decoder.decode(value, { stream: true });
       const blocks = buffer.split(/\r?\n\r?\n/);
       buffer = blocks.pop() || "";
       for (const block of blocks) consumeEvent(block);
-      if (done) break;
+      if (done) {
+        buffer += decoder.decode();
+        break;
+      }
     }
     if (buffer.trim()) consumeEvent(buffer);
   }

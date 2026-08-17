@@ -78,6 +78,10 @@
             </template>
             <div v-else-if="message.streaming" class="assistant-thinking" aria-label="拾间AI正在回答">
               <i></i><i></i><i></i>
+              <span>{{ message.streamStatus || "正在生成回答…" }}</span>
+            </div>
+            <div v-if="message.streaming && message.content" class="assistant-stream-status">
+              <i></i>{{ message.streamStatus || "正在生成回答…" }}
             </div>
             <div v-if="message.actions?.length" class="action-list">
               <button
@@ -264,6 +268,7 @@ type ConversationMessage = CampusAssistantMessage & {
   actions?: CampusAssistantAction[];
   suggestions?: string[];
   streaming?: boolean;
+  streamStatus?: string;
 };
 
 type ConversationSession = {
@@ -424,6 +429,7 @@ async function askAssistant(keyword: string, history: CampusAssistantMessage[]) 
     role: "assistant",
     content: "",
     streaming: true,
+    streamStatus: "正在连接 AI 服务…",
   });
   const assistantMessage = messages.value.find((item) => item.id === assistantMessageId)!;
   scrollConversation();
@@ -435,6 +441,15 @@ async function askAssistant(keyword: string, history: CampusAssistantMessage[]) 
       onDelta: (delta) => {
         if (seq !== assistantSeq) return;
         assistantMessage.content += delta;
+        assistantMessage.streamStatus = "正在生成回答…";
+        scrollConversation();
+      },
+      onHeartbeat: (elapsedMs) => {
+        if (seq !== assistantSeq) return;
+        const seconds = Math.floor(elapsedMs / 1000);
+        assistantMessage.streamStatus = seconds >= 5
+          ? `仍在生成，已等待 ${seconds} 秒…`
+          : "正在生成回答…";
         scrollConversation();
       },
     });
@@ -1402,6 +1417,7 @@ onBeforeUnmount(() => {
 }
 .assistant-thinking {
   display: flex;
+  align-items: center;
   gap: 5px;
   padding: 14px 16px;
 }
@@ -1414,6 +1430,26 @@ onBeforeUnmount(() => {
 }
 .assistant-thinking i:nth-child(2) { animation-delay: 0.15s; }
 .assistant-thinking i:nth-child(3) { animation-delay: 0.3s; }
+.assistant-thinking span {
+  margin-left: 5px;
+  color: var(--cpu-text-muted);
+  font-size: 12px;
+}
+.assistant-stream-status {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 8px;
+  color: var(--cpu-text-muted);
+  font-size: 11px;
+}
+.assistant-stream-status i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--cpu-primary);
+  animation: thinking 1s infinite ease-in-out;
+}
 .message-markdown.is-streaming :deep(> p:last-child)::after,
 .message-markdown.is-streaming :deep(> h1:last-child)::after,
 .message-markdown.is-streaming :deep(> h2:last-child)::after,

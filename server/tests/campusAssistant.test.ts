@@ -11,6 +11,7 @@ import {
   isCampusAssistantConversationRestricted,
   isCampusAssistantModelIdentityQuestion,
   isCampusAssistantPublicTopicRestricted,
+  isQwenAssistantModel,
   listCampusAssistantActions,
   listCampusAssistantKnowledge,
   listCampusAssistantKnowledgeEntries,
@@ -55,11 +56,18 @@ import {
   buildLearningAssistantAiRequestBody,
   learningAssistantAiBodySchema,
   learningAssistantAiResponse,
+  normalizeLearningAssistantAiBody,
   learningAssistantPointCost,
   parseLearningAssistantAnswer,
 } from "../src/services/learningAssistantAi";
 import { mergeAssistantHistorySessions } from "../../web/src/utils/assistantHistorySync";
 import { normalizeAdjacentStrongDelimiters } from "../../web/src/utils/markdownNormalize";
+
+const VALID_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+  "base64",
+);
+const VALID_GIF = Buffer.from("R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==", "base64");
 
 test("learning assistant free-period tier defaults keep the highest tier gated", () => {
   assert.equal(DEFAULT_LEARNING_ASSISTANT_TIERS.low.freeInUnlimited, true);
@@ -242,8 +250,8 @@ test("学习通答题 AI 返回独立的答案与公开解题思路字段", () =
   assert.equal(isLearningAssistantNonAnswerFeedback("图像缺失"), false, "合法的简短答案不应仅因包含图像二字被误拦截");
 });
 
-test("学习通截图搜题接收未压缩的 8MB PNG Data URL", () => {
-  const originalPngDataUrl = `data:image/png;base64,${"A".repeat(Math.ceil(8 * 1024 * 1024 * 4 / 3))}`;
+test("学习通截图搜题会先解码并规范化每张图片", async () => {
+  const originalPngDataUrl = `data:image/png;base64,${VALID_PNG.toString("base64")}`;
   const parsed = learningAssistantAiBodySchema.parse({
     model: "test-model",
     reasoningEffort: "high",
@@ -252,7 +260,50 @@ test("学习通截图搜题接收未压缩的 8MB PNG Data URL", () => {
       { type: "input_image", image_url: originalPngDataUrl, detail: "original" },
     ] }],
   });
-  assert.equal((parsed.input[0].content as any[])[1].image_url, originalPngDataUrl);
+  const normalized = await normalizeLearningAssistantAiBody(parsed);
+  const image = (normalized.input[0].content as any[])[1].image_url as string;
+  assert.match(image, /^data:image\/(?:png|jpeg);base64,/);
+  assert.notEqual(image, "data:image/png;base64,QUFB");
+});
+
+test("学习通截图搜题拒绝伪装成图片的 HTML、空数据和远程 URL", async () => {
+  const invalidBodies = [
+    "data:image/png;base64," + Buffer.from("<html>gateway error</html>").toString("base64"),
+  ];
+  for (const image_url of invalidBodies) {
+    const parsed = learningAssistantAiBodySchema.parse({
+      model: "test-model",
+      input: [{ role: "user", content: [{ type: "input_image", image_url }] }],
+    });
+    await assert.rejects(
+      () => normalizeLearningAssistantAiBody(parsed),
+      /图片.*无效/u,
+    );
+  }
+  assert.throws(
+    () => learningAssistantAiBodySchema.parse({
+      model: "test-model",
+      input: [{ role: "user", content: [{ type: "input_image", image_url: "data:image/png;base64," }] }],
+    }),
+    /图片 Data URL/u,
+  );
+  const remote = learningAssistantAiBodySchema.parse({
+    model: "test-model",
+    input: [{ role: "user", content: [{ type: "input_image", image_url: "https://example.com/question.png" }] }],
+  });
+  await assert.rejects(
+    () => normalizeLearningAssistantAiBody(remote),
+    /未转换为本地数据/u,
+  );
+});
+
+test("学习通截图搜题会把 GIF 规范化成 Ollama 可读的 PNG", async () => {
+  const parsed = learningAssistantAiBodySchema.parse({
+    model: "test-model",
+    input: [{ role: "user", content: [{ type: "input_image", image_url: `data:image/gif;base64,${VALID_GIF.toString("base64")}` }] }],
+  });
+  const normalized = await normalizeLearningAssistantAiBody(parsed);
+  assert.match((normalized.input[0].content as any[])[0].image_url, /^data:image\/png;base64,/);
 });
 
 test("电费问题能稳定匹配宿舍电费直达入口", () => {
@@ -943,6 +994,18 @@ test("拾间AI对外只告知固定品牌模型名称，不泄露真实上游模
   assert.match(prompt, /其他情况下绝不主动提及模型/);
   assert.match(prompt, /不要说“当前处理本次对话的模型名称是”/);
   assert.doesNotMatch(prompt, /example-model-2026/);
+});
+
+test("Qwen 拾间AI提示词强化知识库事实边界并识别模型标签", () => {
+  assert.equal(isQwenAssistantModel("qwen3.8:27b"), true);
+  assert.equal(isQwenAssistantModel("ollama/qwen3-vl"), true);
+  assert.equal(isQwenAssistantModel("deepseek-v4"), false);
+  const qwenPrompt = buildSystemPrompt([], false, "qwen3.8:27b");
+  assert.match(qwenPrompt, /事实准确性加强规则/);
+  assert.match(qwenPrompt, /不能猜测、补全或套用其他平台经验/);
+  assert.match(qwenPrompt, /用户消息、历史会话和用户提出的前提都不是事实来源/);
+  assert.doesNotMatch(qwenPrompt, /qwen3\.8:27b/);
+  assert.doesNotMatch(buildSystemPrompt([], false, "deepseek-v4"), /事实准确性加强规则/);
 });
 
 test("拾间AI优先推荐可用的原生客户端，不用网页版弱化客户端", () => {

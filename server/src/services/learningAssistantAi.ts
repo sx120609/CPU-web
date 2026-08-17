@@ -11,6 +11,7 @@ import {
 } from "./aiJsonApi";
 import { isCampusAssistantConversationRestricted } from "./campusAssistant";
 import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } from "./aiReviewLog";
+import { normalizeAiImageDataUrl } from "./aiImageValidation";
 import { shouldFallbackToNextProvider } from "./modelFallback";
 import { getSiteConfig, isAiProviderReady, resolveAiServiceCandidatesForScene, type LearningAssistantReasoningEffort } from "./siteSettings";
 
@@ -100,8 +101,9 @@ export function sanitizeLearningAssistantAnswer(answer: LearningAssistantAnswer)
 }
 
 function normalizeLearningAssistantImageUrl(value: string) {
-  if (/^data:image\/(?:jpeg|png|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/.test(value)) return value;
-  const url = new URL(value.trim());
+  const normalized = value.trim();
+  if (/^data:image\/(?:jpeg|jpg|png|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/i.test(normalized)) return normalized;
+  const url = new URL(normalized);
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new Error("必须是图片 Data URL 或 http(s) URL");
   }
@@ -205,13 +207,46 @@ export function buildLearningAssistantAiRequestBody(
   };
 }
 
+/**
+ * Learning clients normally send Data URLs. Validate and normalize every image
+ * once before provider selection so a bad gateway response, GIF, WebP, or
+ * truncated base64 payload can never be forwarded to Ollama as if it were a
+ * PNG/JPEG. Remote URLs are intentionally rejected here: fetching arbitrary
+ * user-supplied URLs on the server would create an SSRF path, and the desktop
+ * client already converts remote question images to Data URLs first.
+ */
+export async function normalizeLearningAssistantAiBody(body: LearningAssistantAiBody): Promise<LearningAssistantAiBody> {
+  let imageIndex = 0;
+  const input = await Promise.all(body.input.map(async (message) => ({
+    ...message,
+    content: typeof message.content === "string"
+      ? message.content
+      : await Promise.all(message.content.map(async (part) => {
+        if (part.type !== "input_image") return part;
+        imageIndex += 1;
+        if (/^https?:\/\//i.test(part.image_url)) {
+          throw Errors.badRequest(`第 ${imageIndex} 张图片未转换为本地数据，已拒绝发送`);
+        }
+        try {
+          const normalized = await normalizeAiImageDataUrl(part.image_url);
+          return { ...part, image_url: normalized.dataUrl };
+        } catch (error) {
+          const detail = error instanceof Error ? error.message : "图片内容无法解码";
+          throw Errors.badRequest(`第 ${imageIndex} 张图片无效：${detail}`);
+        }
+      })),
+  })));
+  return { ...body, input };
+}
+
 export async function requestLearningAssistantAi(
   body: LearningAssistantAiBody,
   cacheIdentity: string,
   signal: AbortSignal,
   usageContext: LearningAssistantAiUsageContext = {},
 ): Promise<LearningAssistantAiResult> {
-  const messages = body.input.map((message) => ({
+  const normalizedBody = await normalizeLearningAssistantAiBody(body);
+  const messages = normalizedBody.input.map((message) => ({
     role: message.role,
     content: typeof message.content === "string"
       ? message.content
@@ -225,7 +260,7 @@ export async function requestLearningAssistantAi(
   }
 
   const siteConfig = getSiteConfig();
-  const tier = resolveLearningAssistantTier(body.reasoningEffort);
+  const tier = resolveLearningAssistantTier(normalizedBody.reasoningEffort);
   const model = tier.model;
   const configuredProviders = resolveAiServiceCandidatesForScene(siteConfig, "learning-assistant")
     .filter((candidate) => isAiProviderReady({
@@ -234,7 +269,7 @@ export async function requestLearningAssistantAi(
       apiKey: candidate.apiKey,
       model: candidate.model || model,
     }));
-  const effectiveBody: LearningAssistantAiUpstreamBody = { ...body, reasoningEffort: tier.reasoningEffort };
+  const effectiveBody: LearningAssistantAiUpstreamBody = { ...normalizedBody, reasoningEffort: tier.reasoningEffort };
   if (!siteConfig.aiReviewEnabled || !configuredProviders.length) {
     throw Errors.server("AI 服务尚未配置或已关闭");
   }
