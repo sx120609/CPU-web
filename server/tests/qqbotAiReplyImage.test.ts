@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   containsQqBotMarkdown,
+  normalizeQqBotQrLinkMentions,
   renderQqBotAiReplyAsQqMessage,
   renderQqBotAiReplyImage,
 } from "../src/services/qqbot/aiReplyImage";
@@ -49,5 +50,17 @@ test("QQbot AI 图片把上下文提示放在页脚并为入口生成二维码�
   const compactPng = renderQqBotAiReplyImage("可以打开校园服务入口。", {
     footerNotice: options.footerNotice,
   });
-  assert.ok(compactPng.readUInt32BE(20) < 300);
+  assert.ok(compactPng.readUInt32BE(20) < 360);
+});
+
+test("QQbot 图片会把带二维码入口的链接收敛为入口名称", () => {
+  const entries = [{ label: "统一身份认证", url: "https://i.cpu.edu.cn" }];
+  assert.equal(
+    normalizeQqBotQrLinkMentions("请打开（https://i.cpu.edu.cn）", entries),
+    "请打开统一身份认证",
+  );
+  assert.equal(
+    normalizeQqBotQrLinkMentions("[认证入口](https://i.cpu.edu.cn)", entries),
+    "认证入口",
+  );
 });

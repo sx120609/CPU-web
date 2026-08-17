@@ -795,46 +795,57 @@ async function repairCampusAssistantResponse(input: {
   reason: "format" | "truncated";
   signal?: AbortSignal;
 }): Promise<CampusAssistantResponse | null> {
-  const repairInstruction = input.reason === "format"
-    ? "请重新完整回答上一条用户问题。上一版输出没有形成合法 JSON。只输出一个合法 JSON 对象，不要输出 Markdown、解释、思维过程或 JSON 之外的文字。"
-    : "请重新完整回答上一条用户问题。上一版 answer 在句子中途被截断了。请用完整句子结束回答，不要以所以、因为、如果、但是、并且、以及、就像问等连接词或逗号、冒号、左括号结尾。只输出一个合法 JSON 对象。";
-  const messages = [
-    ...buildAssistantMessages(
-      input.message,
-      input.history,
-      input.availableActions,
-      input.loggedIn,
-      input.model,
-      input.deterministicActions,
-    ),
-    { role: "user" as const, content: repairInstruction },
-  ];
-  try {
-    const result = await requestAiJson(messages, {
-      promptCacheScope: `campus-assistant-repair-${input.reason}`,
-      model: input.model,
-      fallbackModels: "",
-      maxTokens: CAMPUS_ASSISTANT_MAX_OUTPUT_TOKENS,
-      providerConfig: input.provider,
-      providerConfigs: input.providers,
-      enablePromptCache: true,
-      enablePromptCacheRetention: true,
-      preferNativeOllama: true,
-      ollamaThink: false,
-      signal: input.signal,
-    });
-    const parsed = parseAssistantJson(result.content, { allowPlainText: isQwenAssistantModel(input.model) });
-    const response = guardCampusAssistantResponse(filterUnavailableDataSuggestions(
-      normalizeAssistantResponse(parsed, input.availableActions, input.deterministicActions),
-    ));
-    return isLikelyTruncatedCampusAssistantAnswer(response.answer) ? null : response;
-  } catch (error) {
-    console.warn(
-      "[campus-assistant] Qwen response repair failed",
-      error instanceof Error ? error.message : error,
-    );
-    return null;
+  const repairInstructions = input.reason === "format"
+    ? [
+        "请重新完整回答上一条用户问题。上一版输出没有形成合法 JSON。只输出一个合法 JSON 对象，不要输出 Markdown、解释、思维过程或 JSON 之外的文字。",
+        "请用最简单的格式重试：只返回一个完整合法 JSON 对象，answer 写完整中文答复，actionIds 和 suggestions 没有内容就写空数组；不要输出代码围栏、前后说明或思维过程。",
+      ]
+    : [
+        "请重新完整回答上一条用户问题。上一版 answer 在句子中途被截断了。请用完整句子结束回答，不要以所以、因为、如果、但是、并且、以及、就像问等连接词或逗号、冒号、左括号结尾。只输出一个合法 JSON 对象。",
+        "请缩短回答后完整重试。answer 必须是已经结束的完整句子，actionIds 和 suggestions 没有内容就写空数组；只输出合法 JSON，不要输出思维过程。",
+      ];
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < repairInstructions.length; attempt += 1) {
+    const messages = [
+      ...buildAssistantMessages(
+        input.message,
+        input.history,
+        input.availableActions,
+        input.loggedIn,
+        input.model,
+        input.deterministicActions,
+      ),
+      { role: "user" as const, content: repairInstructions[attempt] },
+    ];
+    try {
+      const result = await requestAiJson(messages, {
+        promptCacheScope: `campus-assistant-repair-${input.reason}-${attempt}`,
+        model: input.model,
+        fallbackModels: "",
+        maxTokens: CAMPUS_ASSISTANT_MAX_OUTPUT_TOKENS,
+        providerConfig: input.provider,
+        providerConfigs: input.providers,
+        enablePromptCache: true,
+        enablePromptCacheRetention: true,
+        preferNativeOllama: true,
+        ollamaThink: false,
+        signal: input.signal,
+      });
+      const parsed = parseAssistantJson(result.content, { allowPlainText: isQwenAssistantModel(input.model) });
+      const response = guardCampusAssistantResponse(filterUnavailableDataSuggestions(
+        normalizeAssistantResponse(parsed, input.availableActions, input.deterministicActions),
+      ));
+      if (!isLikelyTruncatedCampusAssistantAnswer(response.answer)) return response;
+      lastError = new Error("修复后的 answer 仍然疑似被截断");
+    } catch (error) {
+      lastError = error;
+    }
   }
+  console.warn(
+    "[campus-assistant] Qwen response repair failed",
+    lastError instanceof Error ? lastError.message : lastError,
+  );
+  return null;
 }
 
 export function isLikelyTruncatedCampusAssistantAnswer(answer: string) {
@@ -1064,6 +1075,10 @@ export function normalizeAssistantResponse(
 }
 
 export function extractPartialJsonStringValue(source: string, key: string) {
+  return readJsonStringField(source, key)?.value ?? null;
+}
+
+function readJsonStringField(source: string, key: string) {
   const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = new RegExp(`"${escapedKey}"\\s*:\\s*"`).exec(source);
   if (!match) return null;
@@ -1071,7 +1086,7 @@ export function extractPartialJsonStringValue(source: string, key: string) {
   let index = match.index + match[0].length;
   while (index < source.length) {
     const char = source[index];
-    if (char === '"') return output;
+    if (char === '"') return { value: output, closed: true };
     if (char !== "\\") {
       output += char;
       index += 1;
@@ -1111,7 +1126,7 @@ export function extractPartialJsonStringValue(source: string, key: string) {
     output += String.fromCharCode(code);
     index += 6;
   }
-  return output;
+  return { value: output, closed: false };
 }
 
 function fallbackAssistantResponse(
@@ -1237,6 +1252,7 @@ function cloneRestrictedPublicTopicReply(): CampusAssistantResponse {
 export function parseAssistantJson(content: string, options: { allowPlainText?: boolean } = {}) {
   const normalized = String(content || "")
     .trim()
+    .replace(/^\uFEFF/u, "")
     .replace(/^```(?:json)?\s*/i, "")
     .replace(/\s*```$/i, "");
   if (!normalized) throw new Error("拾间AI返回格式异常：空响应");
@@ -1244,15 +1260,24 @@ export function parseAssistantJson(content: string, options: { allowPlainText?: 
   const objectCandidate = extractBalancedJsonObject(normalized);
   if (objectCandidate && objectCandidate !== normalized) candidates.push(objectCandidate);
   for (const candidate of candidates) {
-    try {
-      return JSON.parse(candidate);
-    } catch {
-      // Local models may prepend a short sentence or wrap valid JSON in prose.
-    }
+    const parsed = parseJsonCandidate(candidate);
+    if (parsed.ok) return parsed.value;
   }
-  const partialAnswer = extractPartialJsonStringValue(normalized, "answer")?.trim();
+  const answerField = readJsonStringField(normalized, "answer");
+  const partialAnswer = answerField?.value.trim();
   const looksLikeIncompleteJson = /^\s*\{/u.test(normalized)
     || /["']answer["']\s*:/u.test(normalized);
+  if (
+    options.allowPlainText
+    && answerField?.closed
+    && partialAnswer
+    && !isLikelyTruncatedCampusAssistantAnswer(partialAnswer)
+  ) {
+    // Preserve a complete answer when only the trailing action/suggestion
+    // wrapper was cut off by the local model. Deterministic actions are
+    // restored by normalizeAssistantResponse after this point.
+    return { answer: partialAnswer, actionIds: [], suggestions: [] };
+  }
   // A local model may return ordinary prose when it ignores response_format,
   // but an unclosed JSON object is a transport/format failure. Never turn its
   // partial answer field into a user-visible half sentence.
@@ -1261,6 +1286,26 @@ export function parseAssistantJson(content: string, options: { allowPlainText?: 
   }
   if (options.allowPlainText && !looksLikeIncompleteJson) return { answer: normalized, actionIds: [], suggestions: [] };
   throw new Error("拾间AI返回格式异常");
+}
+
+function parseJsonCandidate(candidate: string): { ok: true; value: unknown } | { ok: false } {
+  const variants = [candidate, candidate.replace(/,\s*([}\]])/g, "$1")];
+  for (const variant of variants) {
+    try {
+      const value = JSON.parse(variant);
+      if (typeof value === "string" && /^\s*\{[\s\S]*\}\s*$/u.test(value)) {
+        try {
+          return { ok: true, value: JSON.parse(value) };
+        } catch {
+          // Keep the original parsed value if the nested string is not JSON.
+        }
+      }
+      return { ok: true, value };
+    } catch {
+      // Local models may prepend prose, add a trailing comma, or wrap JSON in a code fence.
+    }
+  }
+  return { ok: false };
 }
 
 function extractBalancedJsonObject(source: string) {

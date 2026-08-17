@@ -7,15 +7,18 @@ const QQBOT_AI_IMAGE_SIDE_PADDING = 72;
 const QQBOT_AI_IMAGE_BODY_WIDTH = QQBOT_AI_IMAGE_WIDTH - QQBOT_AI_IMAGE_SIDE_PADDING * 2;
 const QQBOT_AI_IMAGE_TOP_BAR_HEIGHT = 112;
 const QQBOT_AI_IMAGE_FOOTER_HEIGHT = 64;
-const QQBOT_AI_IMAGE_BODY_TOP_PADDING = 30;
-const QQBOT_AI_IMAGE_BODY_BOTTOM_PADDING = 28;
+const QQBOT_AI_IMAGE_BODY_TOP_PADDING = 44;
+const QQBOT_AI_IMAGE_BODY_BOTTOM_PADDING = 44;
 const QQBOT_AI_IMAGE_MAX_SOURCE_LENGTH = 10_000;
 const QQBOT_AI_IMAGE_MAX_HEIGHT = 16_000;
 const QQBOT_AI_QR_CARD_WIDTH = 320;
-const QQBOT_AI_QR_CARD_HEIGHT = 270;
+const QQBOT_AI_QR_CARD_HEIGHT = 242;
 const QQBOT_AI_QR_CARD_GAP = 24;
-const QQBOT_AI_QR_BOX_SIZE = 220;
-const QQBOT_AI_QR_SECTION_GAP = 24;
+const QQBOT_AI_QR_BOX_SIZE = 174;
+const QQBOT_AI_QR_SINGLE_CARD_WIDTH = 720;
+const QQBOT_AI_QR_SINGLE_CARD_HEIGHT = 218;
+const QQBOT_AI_QR_SINGLE_BOX_SIZE = 174;
+const QQBOT_AI_QR_SECTION_GAP = 30;
 const QQBOT_AI_DISCLOSURE_PATTERN = /以上回复由拾间AI生成，内容可能存在偏差，请自行鉴别并以官方信息为准。?/u;
 const QQBOT_MARKDOWN_PATTERN = /(?:^|\n)\s*(?:#{1,6}\s|[-*+]\s+|\d+[.)]\s+|>\s)|(?:\*\*|__|~~|`{1,3})|!?\[[^\]]*\]\([^)]*\)/m;
 const QQBOT_AI_FONT_FILES = [
@@ -73,20 +76,21 @@ export function renderQqBotAiReplyImage(markdown: string, options: QqBotAiReplyI
   const normalized = String(markdown || "").replace(/\r\n?/g, "\n").slice(0, QQBOT_AI_IMAGE_MAX_SOURCE_LENGTH);
   const disclosure = normalized.match(QQBOT_AI_DISCLOSURE_PATTERN)?.[0] || "";
   const content = disclosure ? normalized.replace(disclosure, "").trim() : normalized;
-  const lines = buildMarkdownLines(content);
   const qrEntries = normalizeQrEntries(options.qrEntries);
+  const lines = buildMarkdownLines(normalizeQqBotQrLinkMentions(content, qrEntries));
   const footerRows = buildFooterRows(Boolean(disclosure), options.footerNotice);
   const footerHeight = QQBOT_AI_IMAGE_FOOTER_HEIGHT;
   const textBodyHeight = lines.reduce((total, line) => total + lineHeight(line) + line.before + line.after, 0);
-  const qrBodyHeight = qrEntries.length
-    ? QQBOT_AI_QR_SECTION_GAP + QQBOT_AI_QR_CARD_HEIGHT
-    : 0;
-  const bodyHeight = textBodyHeight + qrBodyHeight;
+  const qrBodyHeight = qrEntries.length ? QQBOT_AI_QR_SECTION_GAP + getQrCardLayout(qrEntries.length).height : 0;
+  const bodyHeight = QQBOT_AI_IMAGE_BODY_TOP_PADDING
+    + textBodyHeight
+    + qrBodyHeight
+    + QQBOT_AI_IMAGE_BODY_BOTTOM_PADDING;
   const height = Math.min(
     QQBOT_AI_IMAGE_MAX_HEIGHT,
     Math.max(
       QQBOT_AI_IMAGE_TOP_BAR_HEIGHT + footerHeight + 120,
-      QQBOT_AI_IMAGE_TOP_BAR_HEIGHT + bodyHeight + footerHeight + QQBOT_AI_IMAGE_BODY_BOTTOM_PADDING,
+      QQBOT_AI_IMAGE_TOP_BAR_HEIGHT + bodyHeight + footerHeight,
     ),
   );
   const svg = buildReplySvg(lines, height, {
@@ -102,6 +106,27 @@ export function renderQqBotAiReplyImage(markdown: string, options: QqBotAiReplyI
       defaultFontFamily: "Microsoft YaHei",
     },
   }).render().asPng();
+}
+
+export function normalizeQqBotQrLinkMentions(
+  markdown: string,
+  entries: QqBotAiReplyQrEntry[] = [],
+) {
+  let normalized = String(markdown || "");
+  for (const entry of normalizeQrEntries(entries)) {
+    const urlPattern = escapeRegExp(entry.url);
+    const label = entry.label;
+    // An action already has a QR card, so keep the message body readable:
+    // render Markdown links as their label and replace bare URLs with it too.
+    normalized = normalized.replace(
+      new RegExp(`\\[([^\\]]*)\\]\\(\\s*${urlPattern}\\s*\\)`, "giu"),
+      (_value, linkLabel: string) => linkLabel.trim() || label,
+    );
+    normalized = normalized.replace(new RegExp(urlPattern, "giu"), label);
+    const labelPattern = escapeRegExp(label);
+    normalized = normalized.replace(new RegExp(`[（(]\\s*${labelPattern}\\s*[）)]`, "giu"), label);
+  }
+  return normalized;
 }
 
 function buildMarkdownLines(markdown: string) {
@@ -330,9 +355,10 @@ function inlineRuns(tokens: Token[] | undefined): InlineRun[] {
       case "codespan": append([{ text: token.text, code: true, color: "#b42318" }]); break;
       case "link": {
         const linkText = inlineRuns(token.tokens);
-        append(linkText, { color: "#2f8f80" });
         const href = safeDisplayUrl(token.href);
-        if (href && href !== flattenRunText(linkText)) append([{ text: ` (${href})`, color: "#2f8f80" }]);
+        const plainText = flattenRunText(linkText).trim() || ("text" in token ? String(token.text || "").trim() : "");
+        const displayText = href && plainText === href ? getQrTargetHint(href) : plainText;
+        append(displayText ? [{ text: displayText }] : linkText, { color: "#2f8f80" });
         break;
       }
       case "image": append([{ text: `[${token.text || "图片"}]`, color: "#667085" }]); break;
@@ -443,42 +469,116 @@ function normalizeQrEntries(input: QqBotAiReplyQrEntry[] | undefined) {
 }
 
 function renderQrCards(entries: QqBotAiReplyQrEntry[], startY: number) {
+  const layout = getQrCardLayout(entries.length);
+  const totalWidth = layout.single
+    ? layout.width
+    : entries.length * layout.width + Math.max(0, entries.length - 1) * QQBOT_AI_QR_CARD_GAP;
+  const startX = Math.max(
+    QQBOT_AI_IMAGE_SIDE_PADDING,
+    Math.round((QQBOT_AI_IMAGE_WIDTH - totalWidth) / 2),
+  );
   return entries.map((entry, index) => {
-    const x = QQBOT_AI_IMAGE_SIDE_PADDING + index * (QQBOT_AI_QR_CARD_WIDTH + QQBOT_AI_QR_CARD_GAP);
+    const x = layout.single
+      ? startX
+      : startX + index * (layout.width + QQBOT_AI_QR_CARD_GAP);
     try {
       const qr = QRCode.create(entry.url, { errorCorrectionLevel: "M" });
       const size = Number(qr.modules.size || 0);
       const data = qr.modules.data as ArrayLike<number>;
       if (!size || data.length < size * size) throw new Error("二维码矩阵为空");
       const quiet = 12;
-      const moduleSize = (QQBOT_AI_QR_BOX_SIZE - quiet * 2) / size;
+      const moduleSize = (layout.boxSize - quiet * 2) / size;
       let path = "";
       for (let row = 0; row < size; row += 1) {
         for (let column = 0; column < size; column += 1) {
           if (!data[row * size + column]) continue;
           const moduleX = quiet + column * moduleSize;
           const moduleY = quiet + row * moduleSize;
-          path += `M${formatSvgNumber(moduleX)} ${formatSvgNumber(moduleY)}h${formatSvgNumber(moduleSize + 0.2)}v${formatSvgNumber(moduleSize + 0.2)}h-${formatSvgNumber(moduleSize + 0.2)}z`;
+          const squareSize = moduleSize + 0.2;
+          path += "M" + formatSvgNumber(moduleX) + " " + formatSvgNumber(moduleY)
+            + "h" + formatSvgNumber(squareSize) + "v" + formatSvgNumber(squareSize)
+            + "h-" + formatSvgNumber(squareSize) + "z";
         }
       }
-      const labelLines = wrapQrLabel(entry.label);
-      return `<g transform="translate(${x} ${startY})">
-  <rect width="${QQBOT_AI_QR_CARD_WIDTH}" height="${QQBOT_AI_QR_CARD_HEIGHT}" rx="18" fill="#f7fbfa" stroke="#d5e9e4" stroke-width="2" />
-  <rect x="${(QQBOT_AI_QR_CARD_WIDTH - QQBOT_AI_QR_BOX_SIZE) / 2}" y="18" width="${QQBOT_AI_QR_BOX_SIZE}" height="${QQBOT_AI_QR_BOX_SIZE}" rx="8" fill="#ffffff" />
-  <g transform="translate(${(QQBOT_AI_QR_CARD_WIDTH - QQBOT_AI_QR_BOX_SIZE) / 2} 18)"><path d="${path}" fill="#172a27" /></g>
-  <text x="${QQBOT_AI_QR_CARD_WIDTH / 2}" y="250" text-anchor="middle" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="22" font-weight="700" fill="#2f7568">${escapeXml(labelLines[0] || entry.label)}</text>
-  ${labelLines[1] ? `<text x="${QQBOT_AI_QR_CARD_WIDTH / 2}" y="${QQBOT_AI_QR_CARD_HEIGHT - 4}" text-anchor="middle" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="18" fill="#55716b">${escapeXml(labelLines[1])}</text>` : ""}
-</g>`;
+      if (layout.single) {
+        const qrX = 24;
+        const qrY = 22;
+        const labelLines = wrapQrLabel(entry.label, 10);
+        const hint = getQrTargetHint(entry.url);
+        const markup = [
+          '<g transform="translate(' + x + ' ' + startY + ')">',
+          '<rect width="' + layout.width + '" height="' + layout.height + '" rx="20" fill="#f7fbfa" stroke="#d5e9e4" stroke-width="2" />',
+          '<rect x="' + qrX + '" y="' + qrY + '" width="' + layout.boxSize + '" height="' + layout.boxSize + '" rx="10" fill="#ffffff" />',
+          '<g transform="translate(' + qrX + ' ' + qrY + ')"><path d="' + path + '" fill="#172a27" /></g>',
+          '<text x="232" y="74" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="30" font-weight="700" fill="#2f7568">' + escapeXml(labelLines[0] || entry.label) + '</text>',
+        ];
+        if (labelLines[1]) {
+          markup.push('<text x="232" y="108" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="24" font-weight="700" fill="#2f7568">' + escapeXml(labelLines[1]) + '</text>');
+        }
+        markup.push(
+          '<text x="232" y="146" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="21" fill="#55716b">扫码打开</text>',
+          '<text x="232" y="180" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="17" fill="#7b918c">' + escapeXml(hint) + '</text>',
+          '</g>',
+        );
+        return markup.join("\n");
+      }
+      const labelLines = wrapQrLabel(entry.label, 12);
+      const qrX = (layout.width - layout.boxSize) / 2;
+      const markup = [
+        '<g transform="translate(' + x + ' ' + startY + ')">',
+        '<rect width="' + layout.width + '" height="' + layout.height + '" rx="18" fill="#f7fbfa" stroke="#d5e9e4" stroke-width="2" />',
+        '<rect x="' + qrX + '" y="18" width="' + layout.boxSize + '" height="' + layout.boxSize + '" rx="8" fill="#ffffff" />',
+        '<g transform="translate(' + qrX + ' 18)"><path d="' + path + '" fill="#172a27" /></g>',
+        '<text x="' + layout.width / 2 + '" y="216" text-anchor="middle" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="22" font-weight="700" fill="#2f7568">' + escapeXml(labelLines[0] || entry.label) + '</text>',
+      ];
+      if (labelLines[1]) {
+        markup.push('<text x="' + layout.width / 2 + '" y="238" text-anchor="middle" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="18" fill="#55716b">' + escapeXml(labelLines[1]) + '</text>');
+      }
+      markup.push('</g>');
+      return markup.join("\n");
     } catch {
-      return `<text x="${x + QQBOT_AI_QR_CARD_WIDTH / 2}" y="${startY + 140}" text-anchor="middle" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="20" fill="#b42318">二维码暂时无法生成</text>`;
+      return [
+        '<g transform="translate(' + x + ' ' + startY + ')">',
+        '<rect width="' + layout.width + '" height="' + layout.height + '" rx="18" fill="#fff8f7" stroke="#f2c8c3" stroke-width="2" />',
+        '<text x="' + layout.width / 2 + '" y="' + layout.height / 2 + '" text-anchor="middle" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="20" fill="#b42318">二维码暂时无法生成</text>',
+        '</g>',
+      ].join("\n");
     }
   }).join("\n  ");
 }
 
-function wrapQrLabel(value: string) {
+function getQrCardLayout(count: number) {
+  if (count === 1) {
+    return {
+      width: QQBOT_AI_QR_SINGLE_CARD_WIDTH,
+      height: QQBOT_AI_QR_SINGLE_CARD_HEIGHT,
+      boxSize: QQBOT_AI_QR_SINGLE_BOX_SIZE,
+      single: true,
+    };
+  }
+  return {
+    width: QQBOT_AI_QR_CARD_WIDTH,
+    height: QQBOT_AI_QR_CARD_HEIGHT,
+    boxSize: QQBOT_AI_QR_BOX_SIZE,
+    single: false,
+  };
+}
+
+function wrapQrLabel(value: string, maxChars = 12) {
   const chars = Array.from(value);
-  if (chars.length <= 12) return [value];
-  return [chars.slice(0, 12).join(""), chars.slice(12, 24).join("")];
+  if (chars.length <= maxChars) return [value];
+  return [chars.slice(0, maxChars).join(""), chars.slice(maxChars, maxChars * 2).join("")];
+}
+
+function getQrTargetHint(value: string) {
+  try {
+    const parsed = new URL(value);
+    const path = parsed.pathname === "/" ? "" : parsed.pathname;
+    const hint = parsed.host + path;
+    return hint.length <= 36 ? hint : parsed.host;
+  } catch {
+    return "使用手机相机识别";
+  }
 }
 
 function formatSvgNumber(value: number) {
@@ -549,4 +649,8 @@ function escapeXml(value: string) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&apos;");
+}
+
+function escapeRegExp(value: string) {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

@@ -1182,6 +1182,21 @@ test("Qwen 非严格 JSON 输出不会再直接变成 AI_RESPONSE_FORMAT", () =>
   assert.throws(() => parseAssistantJson("好的，当然可以。"), /AI_RESPONSE_FORMAT|返回格式异常/);
 });
 
+test("Qwen 返回带 BOM、代码围栏或截断外壳时优先恢复完整 answer", () => {
+  assert.deepEqual(
+    parseAssistantJson('\uFEFF```json\n{"answer":"请打开统一身份认证入口。","actionIds":[],}\n```', { allowPlainText: true }),
+    { answer: "请打开统一身份认证入口。", actionIds: [], },
+  );
+  assert.deepEqual(
+    parseAssistantJson('{"answer":"请先使用找回密码。","actionIds":["unified-auth"', { allowPlainText: true }),
+    { answer: "请先使用找回密码。", actionIds: [], suggestions: [] },
+  );
+  assert.throws(
+    () => parseAssistantJson('{"answer":"请先使用找回密码，所以', { allowPlainText: true }),
+    /AI_RESPONSE_FORMAT|返回格式异常/,
+  );
+});
+
 test("拾间AI提示词只保留少量历史和相关入口，避免本地模型被上下文拖住", () => {
   const actions = listCampusAssistantActions(context);
   const messages = buildAssistantMessages(
