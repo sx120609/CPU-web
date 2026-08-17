@@ -106,8 +106,11 @@ import {
 import {
   renderQqBotAiReplyAsQqMessage,
   type QqBotAiReplyImageOptions,
-  type QqBotAiReplyQrEntry,
 } from "./qqbot/aiReplyImage";
+import {
+  createQqBotAiReplyShare,
+  type QqBotAiReplyShareAction,
+} from "./qqbot/aiReplyShare";
 import {
   askCampusAssistant,
   type CampusAssistantMessage,
@@ -2586,10 +2589,10 @@ async function maybeHandleQqBotDailyAssistant(context: {
     { role: "assistant", content: response.answer },
   ]);
   await logHandledInboundMessage(context, "message", "assistant:daily-chat");
-  const renderedReply = renderQqBotDailyAssistantReply(response);
+  const renderedReply = await renderQqBotDailyAssistantReply(message, response);
   await replyToEvent(context, renderedReply.message, {
     renderMarkdownImage: true,
-    qrEntries: renderedReply.qrEntries,
+    sourcePageUrl: renderedReply.sourcePageUrl ?? undefined,
   });
   return true;
 }
@@ -2614,25 +2617,32 @@ function rememberQqBotAssistantHistory(key: string, messages: CampusAssistantMes
   if (oldest) qqBotAssistantHistories.delete(oldest[0]);
 }
 
-function renderQqBotDailyAssistantReply(response: CampusAssistantResponse) {
+async function renderQqBotDailyAssistantReply(question: string, response: CampusAssistantResponse) {
   const lines = [String(response.answer || "").trim() || "我暂时没有找到合适的答案。"];
   const actions = (response.actions || []).slice(0, 3);
-  const actionEntries = actions.map((action) => ({
+  const actionEntries: QqBotAiReplyShareAction[] = actions.map((action) => ({
     label: String(action.label || "相关入口").trim() || "相关入口",
     url: resolveQqBotAssistantActionUrl(action.id, action.url),
   }));
-  const qrEntries: QqBotAiReplyQrEntry[] = actionEntries.filter((entry) => /^https?:\/\//i.test(entry.url));
-  const textEntries = actionEntries.filter((entry) => !/^https?:\/\//i.test(entry.url));
-  if (actions.length) {
+
+  // Keep the action links together with the full answer on a public page.
+  // The image only carries one QR code, so it remains readable and never
+  // points at an arbitrary action such as the site home page.
+  const sourcePageUrl = await createQqBotAiReplyShare({
+    question,
+    answer: lines[0],
+    actions: actionEntries,
+  });
+  if (!sourcePageUrl && actionEntries.length) {
     lines.push(
       "",
       "相关入口：",
-      ...textEntries.map((entry) => `· ${entry.label}：${entry.url}`),
+      ...actionEntries.map((entry) => `· ${entry.label}：${entry.url}`),
     );
   }
   return {
     message: appendQqBotAiDisclosure(lines.join("\n")),
-    qrEntries,
+    sourcePageUrl,
   };
 }
 

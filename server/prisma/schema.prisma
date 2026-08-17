@@ -1567,6 +1567,18 @@ model QqBotMessageLog {
   @@index([notificationId, userId])
 }
 
+model QqBotAiReplyShare {
+  id        Int      @id @default(autoincrement())
+  token     String   @unique
+  question  String
+  answer    String
+  actions   String   @default("[]")
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  @@index([expiresAt])
+}
+
 model QqBotConversation {
   id              Int      @id @default(autoincrement())
   qqId            String

@@ -62,6 +62,8 @@ export type QqBotAiReplyQrEntry = {
 
 export type QqBotAiReplyImageOptions = {
   footerNotice?: string;
+  /** Public answer page used by the reference bot's QR footer. */
+  sourcePageUrl?: string;
   qrEntries?: QqBotAiReplyQrEntry[];
 };
 
@@ -81,12 +83,15 @@ export function renderQqBotAiReplyImage(markdown: string, options: QqBotAiReplyI
   const normalized = String(markdown || "").replace(/\r\n?/g, "\n").slice(0, QQBOT_AI_IMAGE_MAX_SOURCE_LENGTH);
   const disclosure = normalized.match(QQBOT_AI_DISCLOSURE_PATTERN)?.[0] || "";
   const content = disclosure ? normalized.replace(disclosure, "").trim() : normalized;
-  const qrEntries = normalizeQrEntries(options.qrEntries);
+  const sourcePageUrl = normalizeQqBotSourcePageUrl(options.sourcePageUrl);
+  const qrEntries = sourcePageUrl ? [] : normalizeQrEntries(options.qrEntries);
   const lines = buildMarkdownLines(normalizeQqBotQrLinkMentions(content, qrEntries));
   const footerRows = buildFooterRows(Boolean(disclosure), options.footerNotice);
   const footerHeight = QQBOT_AI_IMAGE_FOOTER_HEIGHT;
   const textBodyHeight = lines.reduce((total, line) => total + lineHeight(line) + line.before + line.after, 0);
-  const qrBodyHeight = qrEntries.length ? QQBOT_AI_QR_SECTION_GAP + getQrCardLayout(qrEntries.length).height : 0;
+  const qrBodyHeight = sourcePageUrl
+    ? QQBOT_AI_QR_SECTION_GAP + getQrCardLayout(1).height
+    : qrEntries.length ? QQBOT_AI_QR_SECTION_GAP + getQrCardLayout(qrEntries.length).height : 0;
   const bodyHeight = QQBOT_AI_IMAGE_BODY_TOP_PADDING
     + textBodyHeight
     + qrBodyHeight
@@ -102,6 +107,7 @@ export function renderQqBotAiReplyImage(markdown: string, options: QqBotAiReplyI
     hasDisclosure: Boolean(disclosure),
     footerRows,
     qrEntries,
+    sourcePageUrl,
   });
   return new Resvg(svg, {
     fitTo: { mode: "width", value: QQBOT_AI_IMAGE_WIDTH },
@@ -515,6 +521,7 @@ function buildReplySvg(
     hasDisclosure: boolean;
     footerRows: string[];
     qrEntries: QqBotAiReplyQrEntry[];
+    sourcePageUrl: string | null;
   },
 ) {
   const footerHeight = QQBOT_AI_IMAGE_FOOTER_HEIGHT;
@@ -546,8 +553,13 @@ function buildReplySvg(
     y += lineHeightValue + line.after;
     void prefixWidth;
   }
-  if (options.qrEntries.length) {
+  if (options.qrEntries.length && !options.sourcePageUrl) {
     body.push(renderQrCards(options.qrEntries, y + QQBOT_AI_QR_SECTION_GAP));
+  }
+  if (options.sourcePageUrl) {
+    body.push(renderQrCards([
+      { label: "在线查看完整回答", url: options.sourcePageUrl },
+    ], y + QQBOT_AI_QR_SECTION_GAP));
   }
   const footerY = height - footerHeight;
   const footerText = options.footerRows
@@ -570,6 +582,18 @@ function buildFooterRows(hasDisclosure: boolean, footerNotice?: string) {
   const notice = String(footerNotice || "").trim();
   const disclosure = hasDisclosure ? "以上内容由拾间AI生成，请注意甄别。" : "拾间AI · 药大拾间";
   return [notice ? `${notice} · ${disclosure}` : disclosure];
+}
+
+function normalizeQqBotSourcePageUrl(value: string | undefined): string | null {
+  const input = String(value || "").trim();
+  if (!input) return null;
+  try {
+    const url = new URL(input);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
 }
 
 function normalizeQrEntries(input: QqBotAiReplyQrEntry[] | undefined) {

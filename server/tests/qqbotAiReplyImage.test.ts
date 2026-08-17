@@ -54,6 +54,16 @@ test("QQbot AI 图片把上下文提示放在页脚并为入口生成二维码�
   assert.ok(compactPng.readUInt32BE(20) < 360);
 });
 
+test("QQbot AI 图片把在线回答页作为唯一二维码目标，即使没有功能入口也生成二维码", () => {
+  const png = renderQqBotAiReplyImage("这是一条没有功能入口的普通回答。", {
+    sourcePageUrl: "https://cputime.cn/qqbot/ai-reply/abcdefghijklmnop",
+  });
+
+  assert.deepEqual([...png.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+  assert.equal(png.readUInt32BE(16), 1200);
+  assert.ok(png.readUInt32BE(20) > 500);
+});
+
 test("QQbot 图片会把带二维码入口的链接收敛为入口名称", () => {
   const entries = [{ label: "统一身份认证", url: "https://i.cpu.edu.cn" }];
   assert.equal(

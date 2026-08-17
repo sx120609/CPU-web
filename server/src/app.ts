@@ -7,6 +7,7 @@ import { errorHandler } from "./middleware/error";
 import { router } from "./routes";
 import { shareRouter } from "./routes/share";
 import { qqBotAdReportRouter } from "./routes/qqbotAdReport";
+import { qqBotAiReplyRouter } from "./routes/qqbotAiReply";
 import { isDev } from "./config";
 import { getDatabaseMaintenanceMessage, isDatabaseMaintenanceActive } from "./services/maintenance";
 import { filestoreHandler } from "./services/filestore";
@@ -78,6 +79,7 @@ export function createApp() {
 
   app.use("/share", shareRouter);
   app.use("/qqbot/ad-report", browserSessionMiddleware, authOptional, qqBotAdReportRouter);
+  app.use("/qqbot/ai-reply", qqBotAiReplyRouter);
   app.use("/api", router);
   startRuntimeSync();
   startForumImageModerationPoller();
