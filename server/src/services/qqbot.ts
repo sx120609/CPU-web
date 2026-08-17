@@ -256,8 +256,10 @@ function buildSafetyPlatformGuideBlockLines() {
     "（链接形如 http://wap.xiaoyuananquantong.com/guns-vip-main/wap/jshome?userid=19位数字）",
     "收到后自动完成课程考试，并返回结课证书",
     "",
-    "QQ Bot 的刷课功能仅限江苏省大学生安全教育考试，其他刷课功能请下载药大拾间 app 使用。",
-    "加入 QQ 用户群了解详情 704825850",
+    "江苏省大学生安全教育考试可以直接在 QQ Bot 内完成。",
+    "安全微伴可使用 QQ 用户群群文件中的程序。",
+    "其他刷课功能请下载药大拾间 App 使用。",
+    "详情建议加入 QQ 用户群了解：704825850",
   );
   return lines;
 }
@@ -3014,6 +3016,7 @@ function renderPrivateFallbackReply() {
     "我收到啦。",
     "你可以直接发：帮助 / 投稿 / 状态 / 板块 / 我的投稿 / 刷课。",
     "如果是江苏省大学生安全教育考试链接（jshome?userid=），直接发给我即可自动刷课。",
+    "安全微伴可使用 QQ 用户群群文件中的程序，详情建议加群了解。",
     "如果不确定怎么说，发“帮助”就行。",
   ].join("\n");
 }

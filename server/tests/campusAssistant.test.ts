@@ -1013,8 +1013,11 @@ test("campus assistant knowledge covers every active action and carries freshnes
   assert.match(combined, /账户锁定10分钟/);
   assert.match(combined, /025-86185448/);
   assert.match(combined, /尚未创建账号/);
-  assert.match(combined, /刷课只支持学习通/);
+  assert.match(combined, /学习通助手目前只支持学习通/);
   assert.match(combined, /解题功能.*不保证/);
+  assert.match(combined, /江苏省大学生安全教育考试可以直接在 QQBot 内完成/);
+  assert.match(combined, /安全微伴可使用 QQ 用户群群文件中的程序/);
+  assert.match(combined, /704825850/);
   assert.match(combined, /https:\/\/i\.cpu\.edu\.cn/);
   assert.match(combined, /优先.*找回密码/);
   assert.match(combined, /不建议优先使用“修改密码”入口/);

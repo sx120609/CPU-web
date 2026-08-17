@@ -473,9 +473,9 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
   },
   {
     id: "learning-platform-scope-2026-08",
-    relatedActionIds: ["desktop-client", "campus-assistant"],
-    fact: "学习通助手说明：目前刷课只支持学习通；其中的解题功能受题型、页面和上游服务影响，不保证每次都能正常使用。",
-    source: "药大拾间客户端下载页与学习通助手使用提示",
+    relatedActionIds: ["desktop-client", "campus-assistant", "services"],
+    fact: "刷课与安全教育说明：药大拾间客户端的学习通助手目前只支持学习通，其中的解题功能受题型、页面和上游服务影响，不保证每次都能正常使用。江苏省大学生安全教育考试可以直接在 QQBot 内完成；安全微伴可使用 QQ 用户群群文件中的程序。具体使用方式和最新说明建议加入 QQ 用户群（704825850）了解详情。",
+    source: "药大拾间客户端下载页、QQBot 使用说明与用户补充",
     sourceRef: "https://cputime.cn/download",
     verifiedAt: "2026-08-17",
   },
