@@ -2,13 +2,16 @@ import { Resvg } from "@resvg/resvg-js";
 import { lexer, type Token, type Tokens } from "marked";
 import QRCode from "qrcode";
 
-const QQBOT_AI_IMAGE_WIDTH = 1200;
-const QQBOT_AI_IMAGE_SIDE_PADDING = 72;
-const QQBOT_AI_IMAGE_BODY_WIDTH = QQBOT_AI_IMAGE_WIDTH - QQBOT_AI_IMAGE_SIDE_PADDING * 2;
-const QQBOT_AI_IMAGE_TOP_BAR_HEIGHT = 112;
-const QQBOT_AI_IMAGE_FOOTER_HEIGHT = 64;
-const QQBOT_AI_IMAGE_BODY_TOP_PADDING = 44;
-const QQBOT_AI_IMAGE_BODY_BOTTOM_PADDING = 44;
+// Keep the geometry of the reference QQBot renderer: a compact 900px card,
+// a thin divider below the header, and the source QR block at the bottom.
+// The current 拾间AI palette is applied separately in buildReplySvg().
+const QQBOT_AI_IMAGE_WIDTH = 900;
+const QQBOT_AI_IMAGE_SIDE_PADDING = 58;
+const QQBOT_AI_IMAGE_BODY_WIDTH = QQBOT_AI_IMAGE_WIDTH - QQBOT_AI_IMAGE_SIDE_PADDING * 2 - 28;
+const QQBOT_AI_IMAGE_TOP_BAR_HEIGHT = 88;
+const QQBOT_AI_IMAGE_FOOTER_HEIGHT = 56;
+const QQBOT_AI_IMAGE_BODY_TOP_PADDING = 28;
+const QQBOT_AI_IMAGE_BODY_BOTTOM_PADDING = 52;
 const QQBOT_AI_IMAGE_MAX_SOURCE_LENGTH = 10_000;
 const QQBOT_AI_IMAGE_MAX_HEIGHT = 16_000;
 const QQBOT_AI_QR_CARD_WIDTH = 320;
@@ -18,7 +21,10 @@ const QQBOT_AI_QR_BOX_SIZE = 174;
 const QQBOT_AI_QR_SINGLE_CARD_WIDTH = 720;
 const QQBOT_AI_QR_SINGLE_CARD_HEIGHT = 218;
 const QQBOT_AI_QR_SINGLE_BOX_SIZE = 174;
-const QQBOT_AI_QR_SECTION_GAP = 30;
+const QQBOT_AI_QR_SECTION_GAP = 26;
+const QQBOT_AI_SOURCE_QR_SIZE = 124;
+const QQBOT_AI_SOURCE_QR_PADDING = 6;
+const QQBOT_AI_SOURCE_QR_BLOCK_HEIGHT = 176;
 const QQBOT_AI_DISCLOSURE_PATTERN = /以上回复由拾间AI生成，内容可能存在偏差，请自行鉴别并以官方信息为准。?/u;
 const QQBOT_MARKDOWN_PATTERN = /(?:^|\n)\s*(?:#{1,6}\s|[-*+]\s+|\d+[.)]\s+|>\s)|(?:\*\*|__|~~|`{1,3})|!?\[[^\]]*\]\([^)]*\)/m;
 // Chinese line-breaking rules: closing punctuation must not start a line,
@@ -90,7 +96,7 @@ export function renderQqBotAiReplyImage(markdown: string, options: QqBotAiReplyI
   const footerHeight = QQBOT_AI_IMAGE_FOOTER_HEIGHT;
   const textBodyHeight = lines.reduce((total, line) => total + lineHeight(line) + line.before + line.after, 0);
   const qrBodyHeight = sourcePageUrl
-    ? QQBOT_AI_QR_SECTION_GAP + getQrCardLayout(1).height
+    ? QQBOT_AI_QR_SECTION_GAP + QQBOT_AI_SOURCE_QR_BLOCK_HEIGHT
     : qrEntries.length ? QQBOT_AI_QR_SECTION_GAP + getQrCardLayout(qrEntries.length).height : 0;
   const bodyHeight = QQBOT_AI_IMAGE_BODY_TOP_PADDING
     + textBodyHeight
@@ -110,7 +116,7 @@ export function renderQqBotAiReplyImage(markdown: string, options: QqBotAiReplyI
     sourcePageUrl,
   });
   return new Resvg(svg, {
-    fitTo: { mode: "width", value: QQBOT_AI_IMAGE_WIDTH },
+    fitTo: { mode: "original" },
     font: {
       loadSystemFonts: true,
       fontFiles: QQBOT_AI_FONT_FILES,
@@ -553,27 +559,25 @@ function buildReplySvg(
     y += lineHeightValue + line.after;
     void prefixWidth;
   }
-  if (options.qrEntries.length && !options.sourcePageUrl) {
-    body.push(renderQrCards(options.qrEntries, y + QQBOT_AI_QR_SECTION_GAP));
-  }
   if (options.sourcePageUrl) {
-    body.push(renderQrCards([
-      { label: "在线查看完整回答", url: options.sourcePageUrl },
-    ], y + QQBOT_AI_QR_SECTION_GAP));
+    body.push(renderSourcePageQr(options.sourcePageUrl, y + QQBOT_AI_QR_SECTION_GAP));
+  } else if (options.qrEntries.length) {
+    body.push(renderQrCards(options.qrEntries, y + QQBOT_AI_QR_SECTION_GAP));
   }
   const footerY = height - footerHeight;
   const footerText = options.footerRows
-    .map((row) => `<text x="${QQBOT_AI_IMAGE_SIDE_PADDING}" y="${footerY + 40}" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="18" fill="#55716b">${escapeXml(row)}</text>`)
+    .map((row) => `<text x="${QQBOT_AI_IMAGE_SIDE_PADDING}" y="${footerY + 34}" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="16" fill="#55716b">${escapeXml(row)}</text>`)
     .join("\n  ");
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg width="${QQBOT_AI_IMAGE_WIDTH}" height="${height}" viewBox="0 0 ${QQBOT_AI_IMAGE_WIDTH} ${height}" xmlns="http://www.w3.org/2000/svg">
-  <rect width="${QQBOT_AI_IMAGE_WIDTH}" height="${height}" fill="#ffffff" />
-  <rect width="${QQBOT_AI_IMAGE_WIDTH}" height="${QQBOT_AI_IMAGE_TOP_BAR_HEIGHT}" fill="#438f80" />
-  <circle cx="${QQBOT_AI_IMAGE_SIDE_PADDING - 22}" cy="56" r="19" fill="#dff3ee" />
-  <text x="${QQBOT_AI_IMAGE_SIDE_PADDING + 12}" y="70" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="34" font-weight="800" fill="#ffffff">拾间AI</text>
-  <text x="${QQBOT_AI_IMAGE_WIDTH - QQBOT_AI_IMAGE_SIDE_PADDING}" y="68" text-anchor="end" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="28" fill="#e8f6f2">药大拾间 · AI 助手</text>
-  <rect x="0" y="${footerY}" width="${QQBOT_AI_IMAGE_WIDTH}" height="${footerHeight}" fill="#f0f7f5" />
+  <rect width="${QQBOT_AI_IMAGE_WIDTH}" height="${height}" fill="#eef7f5" />
+  <rect x="22" y="22" width="856" height="${height - 44}" rx="26" fill="#ffffff" stroke="#d5e9e4" stroke-width="2" />
+  <circle cx="58" cy="54" r="14" fill="#438f80" />
+  <text x="84" y="63" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="26" font-weight="800" fill="#182235">拾间AI</text>
+  <text x="842" y="61" text-anchor="end" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="20" font-weight="500" fill="#438f80">药大拾间 · AI 助手</text>
+  <line x1="58" y1="88" x2="842" y2="88" stroke="#dcebe7" stroke-width="2" />
   ${footerText}
+  <line x1="${QQBOT_AI_IMAGE_SIDE_PADDING}" y1="${footerY}" x2="${QQBOT_AI_IMAGE_WIDTH - QQBOT_AI_IMAGE_SIDE_PADDING}" y2="${footerY}" stroke="#dcebe7" stroke-width="2" />
   ${body.join("\n  ")}
 </svg>`;
 }
@@ -613,6 +617,40 @@ function normalizeQrEntries(input: QqBotAiReplyQrEntry[] | undefined) {
       }
     })
     .slice(0, 3);
+}
+
+function renderSourcePageQr(url: string, top: number) {
+  const qrX = QQBOT_AI_IMAGE_SIDE_PADDING;
+  const qrY = top + 34;
+  try {
+    const qr = QRCode.create(url, { errorCorrectionLevel: "M" });
+    const moduleCount = Number(qr.modules.size || 0);
+    const data = qr.modules.data as ArrayLike<number>;
+    if (!moduleCount || data.length < moduleCount * moduleCount) throw new Error("二维码矩阵为空");
+    const moduleSize = QQBOT_AI_SOURCE_QR_SIZE / moduleCount;
+    const modules = [] as string[];
+    for (let row = 0; row < moduleCount; row += 1) {
+      for (let column = 0; column < moduleCount; column += 1) {
+        if (!data[row * moduleCount + column]) continue;
+        modules.push(`<rect x="${formatSvgNumber(qrX + column * moduleSize)}" y="${formatSvgNumber(qrY + row * moduleSize)}" width="${formatSvgNumber(moduleSize + 0.05)}" height="${formatSvgNumber(moduleSize + 0.05)}" fill="#172a27" />`);
+      }
+    }
+    const textX = qrX + QQBOT_AI_SOURCE_QR_SIZE + 28;
+    return `<g>
+  <line x1="${QQBOT_AI_IMAGE_SIDE_PADDING}" y1="${formatSvgNumber(top)}" x2="${QQBOT_AI_IMAGE_WIDTH - QQBOT_AI_IMAGE_SIDE_PADDING}" y2="${formatSvgNumber(top)}" stroke="#dcebe7" stroke-width="2" />
+  <rect x="${qrX - QQBOT_AI_SOURCE_QR_PADDING}" y="${qrY - QQBOT_AI_SOURCE_QR_PADDING}" width="${QQBOT_AI_SOURCE_QR_SIZE + QQBOT_AI_SOURCE_QR_PADDING * 2}" height="${QQBOT_AI_SOURCE_QR_SIZE + QQBOT_AI_SOURCE_QR_PADDING * 2}" rx="8" fill="#ffffff" stroke="#d5e9e4" stroke-width="2" />
+  <rect x="${qrX}" y="${qrY}" width="${QQBOT_AI_SOURCE_QR_SIZE}" height="${QQBOT_AI_SOURCE_QR_SIZE}" fill="#ffffff" />
+  ${modules.join("\n  ")}
+  <text x="${textX}" y="${qrY + 26}" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="26" font-weight="800" fill="#2f7568">在线查看完整回答</text>
+  <text x="${textX}" y="${qrY + 62}" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="21" font-weight="500" fill="#55716b">扫码打开在线页面</text>
+  <text x="${textX}" y="${qrY + 94}" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="17" font-weight="500" fill="#7b918c">完整回答和相关入口</text>
+</g>`;
+  } catch {
+    return `<g>
+  <line x1="${QQBOT_AI_IMAGE_SIDE_PADDING}" y1="${formatSvgNumber(top)}" x2="${QQBOT_AI_IMAGE_WIDTH - QQBOT_AI_IMAGE_SIDE_PADDING}" y2="${formatSvgNumber(top)}" stroke="#dcebe7" stroke-width="2" />
+  <text x="${QQBOT_AI_IMAGE_SIDE_PADDING}" y="${formatSvgNumber(top + 54)}" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="20" fill="#b42318">在线回答二维码暂时无法生成</text>
+</g>`;
+  }
 }
 
 function renderQrCards(entries: QqBotAiReplyQrEntry[], startY: number) {
