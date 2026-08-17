@@ -1114,7 +1114,11 @@ test("campus assistant knowledge covers every active action and carries freshnes
   assert.match(combined, /2026-2027 学年校历/);
   assert.match(combined, /玄武门校区位于南京市鼓楼区童家巷 24 号/);
   assert.match(combined, /旧的“CPU 网络连接助手”已停止作为独立产品宣传/);
-  assert.match(combined, /有原生客户端的平台应优先推荐客户端/);
+  assert.match(combined, /桌面客户端内置校园网自动联网工具/);
+  assert.match(combined, /点击分享按钮，选择“添加到主屏幕”/);
+  assert.match(combined, /不要对 iOS 用户说“没有客户端”/);
+  assert.doesNotMatch(combined, /只有尚无原生客户端的 iPhone\/iPad/);
+  assert.match(combined, /应优先给出对应的移动端客户端或桌面客户端/);
   assert.match(combined, /桌面设备不推荐 PWA/);
   assert.match(combined, /https:\/\/cputime\.cn 就可以直接使用/);
   assert.match(combined, /课表页顶部点击下载按钮/);
@@ -1340,9 +1344,11 @@ test("拾间无法登录会优先给出统一认证分流排查", () => {
 test("拾间AI优先推荐可用的原生客户端，不用网页版弱化客户端", () => {
   const prompt = buildSystemPrompt([], false, "example-model-2026");
 
-  assert.match(prompt, /有原生客户端的平台必须优先推荐对应客户端/);
-  assert.match(prompt, /不能以“无需安装客户端”/);
-  assert.match(prompt, /只有没有原生客户端的平台才把网页版或添加到主屏幕作为替代方案/);
+  assert.match(prompt, /Windows\/macOS 推荐药大拾间桌面客户端/);
+  assert.match(prompt, /Android 推荐 Android 客户端/);
+  assert.match(prompt, /Safari 打开 https:\/\/cputime\.cn 后通过“分享→添加到主屏幕”/);
+  assert.match(prompt, /不要对 iOS 用户说“没有客户端”或“没有 iOS 客户端”/);
+  assert.match(prompt, /内置校园网自动联网工具/);
 });
 
 test("只有用户主动询问身份时才识别为模型名称问题", () => {
