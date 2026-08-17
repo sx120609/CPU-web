@@ -8,11 +8,13 @@ import {
   detectQqGroupAdHardBlockReason,
   isQqGroupQrDecision,
   isQqBotAssistantIntent,
+  isQqBotAssistantMetaMessage,
   prepareQqGroupAdImagePayloads,
   resolveQqGroupWhitelistReviewPlan,
   resolveQqGroupQrOnlyReviewAction,
   resolveQqGroupAdModelCandidates,
   resolveQqGroupAdReviewAction,
+  shouldForwardQqBotAssistantIntent,
 } from "../src/services/qqbotGroupAdReview";
 
 const VALID_PNG = Buffer.from(
@@ -163,6 +165,16 @@ test("主动回答意图只接受明确的语义分类结果", () => {
   assert.equal(isQqBotAssistantIntent(true), true);
   assert.equal(isQqBotAssistantIntent("none"), false);
   assert.equal(isQqBotAssistantIntent("问号"), false);
+});
+
+test("群聊主动回答会屏蔽催促机器人回应的社交闲聊", () => {
+  assert.equal(isQqBotAssistantMetaMessage("为什么不理我？"), true);
+  assert.equal(isQqBotAssistantMetaMessage("怎么还不回复？"), true);
+  assert.equal(isQqBotAssistantMetaMessage("在吗？"), true);
+  assert.equal(isQqBotAssistantMetaMessage("教务处没反应怎么办？"), false);
+  assert.equal(isQqBotAssistantMetaMessage("怎么刷课？"), false);
+  assert.equal(shouldForwardQqBotAssistantIntent("为什么不理我？", "reply"), false);
+  assert.equal(shouldForwardQqBotAssistantIntent("怎么刷课？", "reply"), true);
 });
 
 test("allows long KFC Thursday meme copy that imitates an advertisement", () => {

@@ -184,7 +184,8 @@ export async function reviewQqGroupMessageForAd(input: {
     : "本群未开启强制二维码拦截；二维码本身不等于广告，只有同时构成真实商业导流、收费交易或商业推广时才拦截。校园社团/学生组织招新中的二维码是报名渠道，默认放行。\n\n";
   const assistantIntentInstruction = detectAssistantIntent
     ? [
-        "另外，请单独判断这条纯文字群消息是否明确希望 QQBot 回答问题。只有消息本身清楚地提出问题、求助、询问做法或要求解释时才算 reply；普通陈述、打招呼、吐槽、闲聊、转述他人问题或仅仅出现疑问词/问号都算 none。不要使用关键词命中代替语义判断。",
+        "另外，请单独判断这条纯文字群消息是否明确希望 QQBot 回答一个有具体内容的问题。只有消息本身清楚地提出知识咨询、功能咨询、求助、询问做法或要求解释时才算 reply；普通陈述、打招呼、吐槽、闲聊、转述他人问题、催促机器人回应、询问机器人为什么没回复，或仅仅出现疑问词/问号都算 none。不要使用关键词命中代替语义判断。",
+        "严格示例：‘怎么刷课？’、‘教务处没反应怎么办？’ -> reply；‘为什么不理我？’、‘怎么还不回复？’、‘在吗？’、‘谢谢’ -> none。前两类是可实际回答的内容问题，后一类只是对机器人状态或社交回应的追问。",
         "请在 JSON 中增加 assistant_intent 字段，只能填写 reply 或 none。该字段只表示是否应转给 QQBot，不改变广告 decision。",
       ].join("\n")
     : "";
@@ -333,7 +334,10 @@ export async function reviewQqGroupMessageForAd(input: {
       detail: String(parsed.detail || "").trim(),
       model,
       modelDecision,
-      assistantIntent: detectAssistantIntent && isQqBotAssistantIntent(parsed.assistant_intent),
+      assistantIntent: detectAssistantIntent && shouldForwardQqBotAssistantIntent(
+        input.content,
+        parsed.assistant_intent,
+      ),
     };
     writeLocalResultCache(resultCacheKey, result, QQ_GROUP_AD_REVIEW_RESULT_CACHE_TTL_MS);
     return result;
@@ -656,7 +660,39 @@ export function resolveQqGroupAdReviewAction(input: {
 export function isQqBotAssistantIntent(value: unknown) {
   if (value === true) return true;
   const normalized = String(value || "").trim().toLowerCase();
-  return normalized === "reply" || normalized === "answer" || normalized === "ask" || normalized === "question";
+  // Fail closed: the prompt only permits `reply` or `none`; accepting loose
+  // synonyms such as `question` made weak local models turn social chatter
+  // into unsolicited bot replies.
+  return normalized === "reply";
+}
+
+/**
+ * A model may still label a social-status complaint as `reply`.  This is a
+ * hard negative for proactive group replies only: it does not affect explicit
+ * @mentions or private conversations, and it does not replace the model's
+ * semantic classification for real questions.
+ */
+export function shouldForwardQqBotAssistantIntent(content: string, modelIntent: unknown) {
+  return isQqBotAssistantIntent(modelIntent) && !isQqBotAssistantMetaMessage(content);
+}
+
+export function isQqBotAssistantMetaMessage(content: string) {
+  const normalized = normalizeMessageForCache(content).replace(/[\s\u200b]+/gu, "");
+  if (!normalized) return false;
+  if (/^(?:在吗|在不在|有人吗|有人在吗|bot在吗|qqbot在吗|拾间ai在吗)[？?！!。．…]*$/iu.test(normalized)) {
+    return true;
+  }
+  if (/^(?:你|拾间ai|qqbot|bot)?(?:怎么|为什么|为何|咋|咋么)?(?:还|一直|怎么还)?(?:不理我|没理我|没有理我|不回复(?:我)?|没回复(?:我)?|没有回复(?:我)?|不回答(?:我)?|没回答(?:我)?|没有回答(?:我)?|不回应(?:我)?|没回应(?:我)?|没有回应(?:我)?|不搭理我|没搭理我)[？?！!。．…]*$/iu.test(normalized)) {
+    return true;
+  }
+  if (/^(?:刚才|刚刚|前面).*(?:没|没有|不).*(?:回复|回答|回应|理我|搭理我)/u.test(normalized)
+    && !/(?:怎么办|如何|怎么处理|怎么解决|怎么查|怎么用|怎么做)/u.test(normalized)) {
+    return true;
+  }
+  if (/^(?:回复我|回我一下|回一下|回答我一下|看到了吗|听到了吗|有人在听吗)[？?！!。．…]*$/u.test(normalized)) {
+    return true;
+  }
+  return false;
 }
 
 /** QR-only checks must have an explicit QR decision from the dedicated detector. */

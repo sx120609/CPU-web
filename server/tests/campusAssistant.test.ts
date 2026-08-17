@@ -1019,7 +1019,7 @@ test("campus assistant knowledge covers every active action and carries freshnes
   assert.match(combined, /江苏省大学生安全教育考试可以直接在 QQBot 内完成/);
   assert.match(combined, /安全微伴可使用 QQ 用户群群文件中的程序/);
   assert.match(combined, /704825850/);
-  assert.match(combined, /群聊只有在消息中 @拾间AI 后才会回答/);
+  assert.match(combined, /群聊默认只有在消息中 @拾间AI 后才会回答/);
   assert.match(combined, /QQBot 的 AI 日常问答统一以图片发送/);
   assert.match(combined, /当前 Qwen 路由仅支持单次对话/);
   assert.match(combined, /https:\/\/i\.cpu\.edu\.cn/);
@@ -1100,6 +1100,7 @@ test("Qwen 拾间AI提示词强化知识库事实边界并识别模型标签", (
 test("Qwen 拾间AI会识别明显的半句输出", () => {
   assert.equal(isLikelyTruncatedCampusAssistantAnswer("药大拾间使用的是学校统一身份认证，所以"), true);
   assert.equal(isLikelyTruncatedCampusAssistantAnswer("这个问题对我来说就像问"), true);
+  assert.equal(isLikelyTruncatedCampusAssistantAnswer("谢谢你的喜欢，这句话让我（如果我能"), true);
   assert.equal(isLikelyTruncatedCampusAssistantAnswer("所以我建议使用“找回密码”入口。"), false);
   assert.equal(isLikelyTruncatedCampusAssistantAnswer("哈哈，这个我真不知道呀。"), false);
 });

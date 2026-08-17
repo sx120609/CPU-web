@@ -490,7 +490,7 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
   {
     id: "qqbot-daily-assistant-2026-08",
     relatedActionIds: ["campus-assistant", "messages", "profile"],
-    fact: "QQBot 日常问答：私聊可以直接发送普通文字咨询；群聊只有在消息中 @拾间AI 后才会回答。命令、图片、语音、转发以及已有的审核、识别等专用功能继续走对应流程，不会交给拾间AI。QQBot 的 AI 日常问答统一以图片发送，回复由 AI 生成，可能存在偏差，应自行鉴别并以官方信息为准；当前 Qwen 路由仅支持单次对话，不提供上下文。",
+    fact: "QQBot 日常问答：私聊可以直接发送普通文字咨询；群聊默认只有在消息中 @拾间AI 后才会回答。管理员也可以在后台按群开启主动回答，此时仍只会把模型识别为明确内容问题的纯文字消息转给拾间AI，不回答“在吗”“为什么不理我”等催促机器人回应的社交闲聊。命令、图片、语音、转发以及已有的审核、识别等专用功能继续走对应流程，不会交给拾间AI。QQBot 的 AI 日常问答统一以图片发送，回复由 AI 生成，可能存在偏差，应自行鉴别并以官方信息为准；当前 Qwen 路由仅支持单次对话，不提供上下文。",
     source: "药大拾间 QQBot 使用规则与用户补充",
     sourceRef: "https://cputime.cn",
     verifiedAt: "2026-08-17",
@@ -814,7 +814,31 @@ export function isLikelyTruncatedCampusAssistantAnswer(answer: string) {
   const normalized = String(answer || "").trim();
   if (!normalized) return true;
   return /(?:所以|因为|由于|如果|若|当|但是|但|不过|并且|而且|以及|或者|或是|其中|包括|例如|需要注意的是|具体来说|同时|此外|(?:就像|好比|相当于|类似于)问)\s*$/u.test(normalized)
-    || /[，、：:；;（(【\[]\s*$/u.test(normalized);
+    || /[，、：:；;（(【\[]\s*$/u.test(normalized)
+    || hasUnclosedAssistantDelimiter(normalized);
+}
+
+function hasUnclosedAssistantDelimiter(value: string) {
+  const pairs: Array<[string, string]> = [
+    ["（", "）"],
+    ["(", ")"],
+    ["【", "】"],
+    ["[", "]"],
+    ["{", "}"],
+    ["《", "》"],
+  ];
+  return pairs.some(([open, close]) => {
+    let depth = 0;
+    for (const char of value) {
+      if (char === open) depth += 1;
+      else if (char === close) depth = Math.max(0, depth - 1);
+    }
+    return depth > 0;
+  }) || (countUnescaped(value, "“") !== countUnescaped(value, "”"));
+}
+
+function countUnescaped(value: string, target: string) {
+  return Array.from(value).filter((char) => char === target).length;
 }
 
 export async function streamCampusAssistant(input: {
