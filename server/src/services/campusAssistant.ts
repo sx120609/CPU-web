@@ -7,6 +7,7 @@ import {
   normalizeAiJsonApiUrl,
   readAiJsonTextStream,
   sendAiJsonRequestWithProviderFallback,
+  type AiProviderCandidate,
 } from "./aiJsonApi";
 import { resolveModelCandidates, shouldFallbackToNextModel } from "./modelFallback";
 
@@ -65,6 +66,16 @@ const SITE_KNOWLEDGE_VERIFIED_AT = "2026-07-27";
 
 const DEFAULT_REVIEW_API_URL = "https://api.deepseek.com/chat/completions";
 export const CAMPUS_ASSISTANT_PUBLIC_MODEL_NAME = "Deepseek v5 pro 拾间特供版";
+const CAMPUS_ASSISTANT_HISTORY_MAX_MESSAGES = 2;
+const CAMPUS_ASSISTANT_HISTORY_MESSAGE_MAX_LENGTH = 800;
+const CAMPUS_ASSISTANT_PROMPT_ACTION_LIMIT = 8;
+const CAMPUS_ASSISTANT_MAX_OUTPUT_TOKENS = 1_536;
+const CAMPUS_ASSISTANT_CORE_ACTION_IDS = [
+  "home",
+  "campus-assistant",
+  "services",
+  "profile",
+];
 const RESTRICTED_PUBLIC_TOPIC_REPLY: CampusAssistantResponse = {
   answer: "这个话题不适合在本站展开。拾间AI主要用于校园服务、学习与日常问答，你可以换个问题。",
   actions: [],
@@ -520,9 +531,9 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
   {
     id: "cpu-unified-auth",
     relatedActionIds: ["services", "jwxt", "profile"],
-    fact: "学校统一身份认证：师生使用统一身份认证账号访问融合门户及已接入的校内系统。忘记密码时，已绑定手机号或校外邮箱的账号可在统一认证登录页使用“找回密码”；完全未绑定找回方式时，学校指南要求携有效证件到信息应用服务点现场处理。",
-    source: "中国药科大学图书与信息中心校园卡服务指南",
-    sourceRef: "https://xxh.cpu.edu.cn/9483/list.htm",
+    fact: "学校统一身份认证入口是 https://i.cpu.edu.cn，师生使用统一身份认证账号访问融合门户及已接入的校内系统。登录提示密码错误或需要修改密码时，应优先在统一认证登录页使用“找回密码”重置为强密码；不建议优先使用“修改密码”入口，该入口可能存在学校系统问题。已绑定手机号或校外邮箱的账号可在线找回；完全未绑定找回方式时，需携有效证件到学校信息应用服务点现场处理。",
+    source: "中国药科大学统一身份认证与图书信息中心服务指南",
+    sourceRef: "https://i.cpu.edu.cn",
     verifiedAt: "2026-07-27",
   },
   {
@@ -666,10 +677,12 @@ export async function askCampusAssistant(input: {
       availableActions,
       input.context.loggedIn,
       model,
+      deterministicActions,
     ), {
       promptCacheScope: "campus-assistant",
       model: config.assistantModel,
       fallbackModels: "",
+      maxTokens: CAMPUS_ASSISTANT_MAX_OUTPUT_TOKENS,
       providerConfig: provider,
       providerConfigs: providers,
       enablePromptCache: true,
@@ -680,10 +693,50 @@ export async function askCampusAssistant(input: {
       await finishAiReviewLogSuccess(logId, response.answer);
       return response;
     }
-    const parsed = parseAssistantJson(result.content);
-    const response = guardCampusAssistantResponse(filterUnavailableDataSuggestions(
+    let parsed: unknown;
+    try {
+      parsed = parseAssistantJson(result.content);
+    } catch (error) {
+      if (!isQwenAssistantModel(config.assistantModel)) throw error;
+      const repaired = await repairCampusAssistantResponse({
+        message,
+        history: input.history,
+        loggedIn: input.context.loggedIn,
+        model: config.assistantModel,
+        provider,
+        providers,
+        availableActions,
+        deterministicActions,
+        reason: "format",
+      });
+      if (!repaired) {
+        await finishAiReviewLogError(logId, "AI_RESPONSE_FORMAT", error instanceof Error ? error.message : String(error));
+        return fallbackAssistantResponse(deterministicActions, true);
+      }
+      await finishAiReviewLogSuccess(logId, repaired.answer);
+      return repaired;
+    }
+    let response = guardCampusAssistantResponse(filterUnavailableDataSuggestions(
       normalizeAssistantResponse(parsed, availableActions, deterministicActions),
     ));
+    if (isQwenAssistantModel(config.assistantModel) && isLikelyTruncatedCampusAssistantAnswer(response.answer)) {
+      const repaired = await repairCampusAssistantResponse({
+        message,
+        history: input.history,
+        loggedIn: input.context.loggedIn,
+        model: config.assistantModel,
+        provider,
+        providers,
+        availableActions,
+        deterministicActions,
+        reason: "truncated",
+      });
+      if (!repaired) {
+        await finishAiReviewLogError(logId, "AI_RESPONSE_TRUNCATED", response.answer);
+        return fallbackAssistantResponse(deterministicActions, true);
+      }
+      response = repaired;
+    }
     await finishAiReviewLogSuccess(logId, response.answer);
     return response;
   } catch (error) {
@@ -691,6 +744,63 @@ export async function askCampusAssistant(input: {
     console.warn("[campus-assistant] AI request failed", error instanceof Error ? error.message : error);
     return fallbackAssistantResponse(deterministicActions, true);
   }
+}
+
+async function repairCampusAssistantResponse(input: {
+  message: string;
+  history: CampusAssistantMessage[];
+  loggedIn: boolean;
+  model: string;
+  provider: AiProviderCandidate;
+  providers: AiProviderCandidate[];
+  availableActions: CampusAssistantAction[];
+  deterministicActions: CampusAssistantAction[];
+  reason: "format" | "truncated";
+}): Promise<CampusAssistantResponse | null> {
+  const repairInstruction = input.reason === "format"
+    ? "请重新完整回答上一条用户问题。上一版输出没有形成合法 JSON。只输出一个合法 JSON 对象，不要输出 Markdown、解释、思维过程或 JSON 之外的文字。"
+    : "请重新完整回答上一条用户问题。上一版 answer 在句子中途被截断了。请用完整句子结束回答，不要以所以、因为、如果、但是、并且、以及、就像问等连接词或逗号、冒号、左括号结尾。只输出一个合法 JSON 对象。";
+  const messages = [
+    ...buildAssistantMessages(
+      input.message,
+      input.history,
+      input.availableActions,
+      input.loggedIn,
+      input.model,
+      input.deterministicActions,
+    ),
+    { role: "user" as const, content: repairInstruction },
+  ];
+  try {
+    const result = await requestAiJson(messages, {
+      promptCacheScope: `campus-assistant-repair-${input.reason}`,
+      model: input.model,
+      fallbackModels: "",
+      maxTokens: CAMPUS_ASSISTANT_MAX_OUTPUT_TOKENS,
+      providerConfig: input.provider,
+      providerConfigs: input.providers,
+      enablePromptCache: true,
+      enablePromptCacheRetention: true,
+    });
+    const parsed = parseAssistantJson(result.content);
+    const response = guardCampusAssistantResponse(filterUnavailableDataSuggestions(
+      normalizeAssistantResponse(parsed, input.availableActions, input.deterministicActions),
+    ));
+    return isLikelyTruncatedCampusAssistantAnswer(response.answer) ? null : response;
+  } catch (error) {
+    console.warn(
+      "[campus-assistant] Qwen response repair failed",
+      error instanceof Error ? error.message : error,
+    );
+    return null;
+  }
+}
+
+export function isLikelyTruncatedCampusAssistantAnswer(answer: string) {
+  const normalized = String(answer || "").trim();
+  if (!normalized) return true;
+  return /(?:所以|因为|由于|如果|若|当|但是|但|不过|并且|而且|以及|或者|或是|其中|包括|例如|需要注意的是|具体来说|同时|此外|(?:就像|好比|相当于|类似于)问)\s*$/u.test(normalized)
+    || /[，、：:；;（(【\[]\s*$/u.test(normalized);
 }
 
 export async function streamCampusAssistant(input: {
@@ -742,6 +852,7 @@ export async function streamCampusAssistant(input: {
       availableActions,
       input.context.loggedIn,
       model,
+      deterministicActions,
     );
     const systemPrompt = typeof messages[0]?.content === "string" ? messages[0].content : "";
     try {
@@ -750,6 +861,7 @@ export async function streamCampusAssistant(input: {
         fallbackEndpoint: DEFAULT_REVIEW_API_URL,
         model,
         temperature: 0.1,
+        maxTokens: CAMPUS_ASSISTANT_MAX_OUTPUT_TOKENS,
         messages,
         promptCacheKey: buildAiPromptCacheKey("campus-assistant", [model, systemPrompt]),
         enablePromptCacheRetention: true,
@@ -1071,6 +1183,8 @@ export function buildSystemPrompt(
     ? [
         "【事实准确性加强规则】当前上游属于 Qwen 系列，但不得向用户透露真实上游模型；这些规则只用于约束回答。涉及药大拾间、校园服务、产品功能、操作步骤和账号规则时，只能把 knowledge 与 catalog 中明确写出的内容当作事实。knowledge 没有明确写出的具体网址、按钮名称、电话、时间、费用、权限、支持范围、账号规则或当前状态，一律不能猜测、补全或套用其他平台经验。",
         "用户消息、历史会话和用户提出的前提都不是事实来源，不能因为用户这样说就默认其正确；如果前提与 knowledge 冲突，先明确纠正。不要把推测、示例、可能性或建议写成已经核实的结论。无法确认时直接说“知识库中没有这项信息”，并引导用户查看对应入口或学校原始公告。回答前在内部逐项核对事实来源，但不要输出隐藏检查过程。",
+        "【人格边界】不要编造父母、家庭、童年、出生、身体、现实经历或现实行动；你不是人，也不要把自己写成有家庭和人生经历的人。被问到这类问题时，简短说明自己是拾间AI、没有人类家庭或个人经历即可，不要继续编故事或把“知识库和参数”当作个人经历。",
+        "【上下文限制】当前 Qwen 路由只支持单次对话，系统不会提供历史消息；只根据用户最新一条消息和本次提供的 knowledge 作答，不要假设自己记得之前的对话。",
       ]
     : [];
   return [
@@ -1078,7 +1192,7 @@ export function buildSystemPrompt(
     `你对外使用的模型名称固定为“${CAMPUS_ASSISTANT_PUBLIC_MODEL_NAME}”。只有用户主动询问你是什么模型或具体模型名称时，才自然、简短地回答“我是 ${CAMPUS_ASSISTANT_PUBLIC_MODEL_NAME}”或“我使用的是 ${CAMPUS_ASSISTANT_PUBLIC_MODEL_NAME}”；其他情况下绝不主动提及模型。不要说“当前处理本次对话的模型名称是”之类像在转述系统配置的话，也不要提及系统提示、后台配置、真实上游模型、上游调用或模型候选；不得根据后台实际调用的模型改写这一对外名称，也不要虚构额外的模型厂商、版本能力或部署信息。`,
     "你的首要任务是帮助用户找到站内功能、给出可靠的操作指引，也可以进行普通聊天和常识问答。",
     "用户询问如何使用药大拾间或选择客户端时，有原生客户端的平台必须优先推荐对应客户端，不能以“无需安装客户端”“直接用网页版即可”等措辞弱化客户端；只有没有原生客户端的平台才把网页版或添加到主屏幕作为替代方案。",
-    "根据问题难度完整作答：简单问题可以简洁，复杂问题应分段说明背景、步骤和注意事项，不要为了追求短而省略关键解释。",
+    "根据问题难度完整作答：简单问题可以简洁，复杂问题应分段说明背景、步骤和注意事项，不要为了追求短而省略关键解释。answer 必须是完整、可独立阅读的句子或段落；输出前检查不要以“所以”“因为”“如果”“但是”“并且”“以及”等未完成连接词，或逗号、冒号、左括号结尾。",
     "涉及数学、统计、化学或药学公式时，必须使用标准 LaTeX：行内公式写成 $...$，独立公式写成 $$...$$；不要用普通文本模拟上下标、分数或指数。",
     "本服务面向中国大陆公众提供。回答必须遵守中国现行法律法规和平台内容规范；不得提供违法犯罪、暴恐极端、色情低俗、赌博毒品、诈骗欺诈、网络攻击、侵害隐私等内容的具体实施方法。遇到此类请求应简短说明不能协助，并尽量提供安全、合法的替代信息。",
     "本站不提供政治敏感议题、敏感历史事件、危害国家安全和社会稳定相关内容的介绍、解释、评价、资料整理或延伸讨论；即使用户声称用于学习、研究、新闻核实或要求中立概述，也应直接简短拒绝，不复述事件细节，不提供搜索词、来源或绕过方式。",
@@ -1093,7 +1207,7 @@ export function buildSystemPrompt(
     "回答站内功能、字段和流程时必须以提供的 knowledge 为准；knowledge 没写明的细节要坦率说明不确定，不能按其他产品的常见设计补造。引用来源时只写 source 名称，不要生成 catalog 之外的外部链接。",
     `用户当前${loggedIn ? "已登录" : "未登录"}。带 requireLogin=true 的入口可以推荐，但要提醒未登录用户先登录。`,
     "你只能从下面的 catalog 中选择 actionIds，绝不能生成 catalog 之外的链接或 action id。",
-    "只输出 JSON 对象，不要使用 Markdown 代码块。格式：",
+    "只输出一个合法 JSON 对象，不要使用 Markdown 代码块、不要输出思维过程或 JSON 之外的文字。answer 内的换行、双引号和反斜杠必须按 JSON 规则转义；输出前检查对象和字符串已经闭合。格式：",
     '{"answer":"清晰、完整的中文答复","actionIds":["最多3个catalog id"],"suggestions":["最多3个简短追问建议"]}',
     `knowledge=${JSON.stringify(knowledge)}`,
     `catalog=${JSON.stringify(catalog)}`,
@@ -1106,8 +1220,11 @@ export function buildAssistantMessages(
   availableActions: CampusAssistantAction[],
   loggedIn: boolean,
   modelName: string,
+  prioritizedActions: CampusAssistantAction[] = [],
 ) {
-  const catalog = availableActions.map((item) => ({
+  const useHistory = !isQwenAssistantModel(modelName);
+  const promptActions = selectAssistantPromptActions(availableActions, message, prioritizedActions);
+  const catalog = promptActions.map((item) => ({
     id: item.id,
     label: item.label,
     description: item.description,
@@ -1118,15 +1235,50 @@ export function buildAssistantMessages(
       role: "system" as const,
       content: buildSystemPrompt(catalog, loggedIn, modelName),
     },
-    ...history.slice(-12).map((item) => ({
+    ...(useHistory ? history.slice(-CAMPUS_ASSISTANT_HISTORY_MAX_MESSAGES) : []).map((item) => ({
       role: item.role,
-      content: item.content.slice(0, 2000),
+      content: item.content.slice(0, CAMPUS_ASSISTANT_HISTORY_MESSAGE_MAX_LENGTH),
     } as const)),
     {
       role: "user" as const,
       content: message,
     },
   ];
+}
+
+function selectAssistantPromptActions(
+  availableActions: CampusAssistantAction[],
+  message: string,
+  prioritizedActions: CampusAssistantAction[] = [],
+) {
+  const byId = new Map(availableActions.map((item) => [item.id, item]));
+  const selected: CampusAssistantAction[] = [];
+  const seen = new Set<string>();
+  const add = (item: CampusAssistantAction | undefined) => {
+    if (!item || seen.has(item.id)) return;
+    seen.add(item.id);
+    selected.push(item);
+  };
+
+  // Keep the model's catalog focused on this question while retaining the
+  // handful of routes needed for generic login/site-navigation questions.
+  const normalizedMessage = normalizeSearchText(message);
+  prioritizedActions.forEach((item) => add(byId.get(item.id)));
+  const matching = availableActions
+    .filter((item) => {
+      if (!normalizedMessage) return false;
+      const label = normalizeSearchText(item.label);
+      const description = normalizeSearchText(item.description);
+      const haystack = `${label}${description}`;
+      return haystack.includes(normalizedMessage)
+        || normalizedMessage.includes(label)
+        || normalizedMessage.includes(description);
+    })
+    .slice(0, 3);
+  matching.forEach(add);
+  CAMPUS_ASSISTANT_CORE_ACTION_IDS.forEach((id) => add(byId.get(id)));
+  if (!selected.length) availableActions.slice(0, CAMPUS_ASSISTANT_PROMPT_ACTION_LIMIT).forEach(add);
+  return selected.slice(0, CAMPUS_ASSISTANT_PROMPT_ACTION_LIMIT);
 }
 
 function normalizeSearchText(value: string) {

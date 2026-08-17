@@ -11,6 +11,7 @@ import {
   isCampusAssistantConversationRestricted,
   isCampusAssistantModelIdentityQuestion,
   isCampusAssistantPublicTopicRestricted,
+  isLikelyTruncatedCampusAssistantAnswer,
   isQwenAssistantModel,
   listCampusAssistantActions,
   listCampusAssistantKnowledge,
@@ -541,6 +542,80 @@ test("AI upstream requests omit an empty Authorization header for local Ollama",
   }
 });
 
+test("普通 JSON 响应体不会被流式服务槽位逻辑提前取消", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response('{"answer":"ok"}', {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  })) as typeof fetch;
+
+  try {
+    const result = await sendAiUpstreamRequest({
+      endpoint: "http://json-body-test.local:11434/v1/chat/completions",
+      apiKey: "",
+      body: {
+        model: "qwen3.8:27b",
+        messages: [{ role: "user", content: "hello" }],
+      },
+    });
+
+    assert.deepEqual(await result.response.json(), { answer: "ok" });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Ollama 流式响应体消费完成前不会启动同端点的第二个请求", async () => {
+  const originalFetch = globalThis.fetch;
+  let requests = 0;
+  globalThis.fetch = (async () => {
+    requests += 1;
+    if (requests === 1) {
+      return new Response(new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode("data: {}\n\n"));
+        },
+      }), {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      });
+    }
+    return new Response('{"ok":true}', {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  try {
+    const first = await sendAiUpstreamRequest({
+      endpoint: "http://stream-body-test.local:11434/v1/chat/completions",
+      apiKey: "",
+      body: {
+        model: "qwen3.8:27b",
+        stream: true,
+        messages: [{ role: "user", content: "hello" }],
+      },
+    });
+    const secondPromise = sendAiUpstreamRequest({
+      endpoint: "http://stream-body-test.local:11434/v1/chat/completions",
+      apiKey: "",
+      body: {
+        model: "qwen3.8:27b",
+        stream: true,
+        messages: [{ role: "user", content: "again" }],
+      },
+    });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(requests, 1);
+
+    await first.response.body?.cancel();
+    await secondPromise;
+    assert.equal(requests, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("AI upstream cache compatibility retries without unsupported retention", async () => {
   const originalFetch = globalThis.fetch;
   const requestBodies: Array<Record<string, unknown>> = [];
@@ -940,6 +1015,9 @@ test("campus assistant knowledge covers every active action and carries freshnes
   assert.match(combined, /尚未创建账号/);
   assert.match(combined, /刷课只支持学习通/);
   assert.match(combined, /解题功能.*不保证/);
+  assert.match(combined, /https:\/\/i\.cpu\.edu\.cn/);
+  assert.match(combined, /优先.*找回密码/);
+  assert.match(combined, /不建议优先使用“修改密码”入口/);
   assert.doesNotMatch(combined, /先在中国建设银行 APP/);
 });
 
@@ -1004,8 +1082,56 @@ test("Qwen 拾间AI提示词强化知识库事实边界并识别模型标签", (
   assert.match(qwenPrompt, /事实准确性加强规则/);
   assert.match(qwenPrompt, /不能猜测、补全或套用其他平台经验/);
   assert.match(qwenPrompt, /用户消息、历史会话和用户提出的前提都不是事实来源/);
+  assert.match(qwenPrompt, /不要编造父母、家庭、童年/);
+  assert.match(qwenPrompt, /只支持单次对话/);
+  assert.match(qwenPrompt, /只输出一个合法 JSON 对象/);
+  assert.match(qwenPrompt, /不要以“所以”“因为”“如果”/);
   assert.doesNotMatch(qwenPrompt, /qwen3\.8:27b/);
   assert.doesNotMatch(buildSystemPrompt([], false, "deepseek-v4"), /事实准确性加强规则/);
+});
+
+test("Qwen 拾间AI会识别明显的半句输出", () => {
+  assert.equal(isLikelyTruncatedCampusAssistantAnswer("药大拾间使用的是学校统一身份认证，所以"), true);
+  assert.equal(isLikelyTruncatedCampusAssistantAnswer("这个问题对我来说就像问"), true);
+  assert.equal(isLikelyTruncatedCampusAssistantAnswer("所以我建议使用“找回密码”入口。"), false);
+  assert.equal(isLikelyTruncatedCampusAssistantAnswer("哈哈，这个我真不知道呀。"), false);
+});
+
+test("拾间AI提示词只保留少量历史和相关入口，避免本地模型被上下文拖住", () => {
+  const actions = listCampusAssistantActions(context);
+  const messages = buildAssistantMessages(
+    "怎么查看课表？",
+    Array.from({ length: 12 }, (_, index) => ({
+      role: index % 2 === 0 ? "user" as const : "assistant" as const,
+      content: "这是一段很长的历史消息。".repeat(400),
+    })),
+    actions,
+    false,
+    "example-model-2026",
+  );
+
+  assert.equal(messages.length, 4);
+  assert.equal(messages[1]?.content.length, 800);
+  assert.equal(messages[2]?.content.length, 800);
+  assert.ok(JSON.stringify(messages).length < 16_000);
+  assert.match(String(messages[0]?.content), /课表|教务/u);
+});
+
+test("Qwen 路由不向上游发送历史消息", () => {
+  const messages = buildAssistantMessages(
+    "继续刚才的问题",
+    [
+      { role: "user", content: "上一条问题中的隐私内容" },
+      { role: "assistant", content: "上一轮回答" },
+    ],
+    listCampusAssistantActions(context),
+    false,
+    "qwen3.8:27b",
+  );
+
+  assert.equal(messages.length, 2);
+  assert.doesNotMatch(JSON.stringify(messages), /上一条问题中的隐私内容|上一轮回答/u);
+  assert.match(String(messages[0]?.content), /只支持单次对话/u);
 });
 
 test("拾间AI优先推荐可用的原生客户端，不用网页版弱化客户端", () => {

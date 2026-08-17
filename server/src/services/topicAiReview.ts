@@ -123,6 +123,7 @@ type AiJsonRequestOptions = {
   promptCacheScope?: string;
   model?: string;
   fallbackModels?: string;
+  maxTokens?: number;
   providerConfig?: {
     provider: string;
     apiUrl: string;
@@ -195,6 +196,7 @@ export async function requestAiJson(
         fallbackEndpoint: DEFAULT_REVIEW_API_URL,
         model,
         temperature: 0.1,
+        maxTokens: options?.maxTokens,
         messages: requestMessages,
         promptCacheKey,
         enablePromptCacheRetention: promptCacheEnabled && options?.enablePromptCacheRetention !== false,

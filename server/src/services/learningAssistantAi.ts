@@ -5,6 +5,8 @@ import {
   detectAiJsonApiMode,
   extractAiJsonTextResponse,
   filterAiProviderCandidatesByModel,
+  isAiProviderBusyError,
+  isAiUpstreamTimeoutError,
   isTransientAiUpstreamError,
   normalizeAiJsonApiUrl,
   sendAiUpstreamRequest,
@@ -301,6 +303,7 @@ export async function requestLearningAssistantAi(
       const upstreamResult = await sendAiUpstreamRequest({
         endpoint,
         apiKey: provider.apiKey,
+        provider: provider.provider,
         body: buildLearningAssistantAiRequestBody(effectiveBody, providerModel, endpoint),
         promptCacheKey: buildAiPromptCacheKey("course-bot-ai-answer", [cacheIdentity, provider.serviceId, providerModel]),
         enablePromptCacheRetention: true,
@@ -339,6 +342,16 @@ export async function requestLearningAssistantAi(
         await finishAiReviewLogError(logId, `REQUEST_ABORTED: ${reason}`);
         throw error;
       }
+      if (isAiProviderBusyError(error) || isAiUpstreamTimeoutError(error)) {
+        const busy = isAiProviderBusyError(error);
+        const message = busy
+          ? "当前 AI 服务正忙，已避免长时间排队，请稍后重试或使用已配置的回退服务。"
+          : "当前 AI 请求处理超时，已主动释放服务资源，请稍后重试。";
+        await finishAiReviewLogError(logId, busy ? "AI_PROVIDER_BUSY" : "AI_UPSTREAM_TIMEOUT", message);
+        lastError = error;
+        if (index < providers.length - 1) continue;
+        return learningAssistantAiErrorResult(busy ? 503 : 504, message);
+      }
       await finishAiReviewLogError(logId, error instanceof Error ? error.message : String(error));
       if (!isTransientAiUpstreamError(error, signal) || index >= providers.length - 1) throw error;
       lastError = error;
@@ -346,6 +359,20 @@ export async function requestLearningAssistantAi(
   }
   if (lastResult) return lastResult;
   throw lastError instanceof Error ? lastError : Errors.server("AI 服务请求失败");
+}
+
+function learningAssistantAiErrorResult(status: number, message: string): LearningAssistantAiResult {
+  return {
+    ok: false,
+    status,
+    contentType: "application/json; charset=utf-8",
+    errorBody: Buffer.from(JSON.stringify({
+      error: {
+        message,
+        type: status === 503 ? "ai_provider_busy" : "ai_upstream_timeout",
+      },
+    }), "utf8"),
+  };
 }
 
 export function learningAssistantAiResponse(outputText: string) {

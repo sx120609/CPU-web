@@ -46,7 +46,7 @@ export function containsQqBotMarkdown(value: string) {
 /** Render a daily AI answer into a QQ-safe PNG message. */
 export function renderQqBotAiReplyAsQqMessage(markdown: string) {
   const source = String(markdown || "").trim();
-  if (!containsQqBotMarkdown(source)) return null;
+  if (!source) return null;
   const image = renderQqBotAiReplyImage(source);
   return `[CQ:image,file=base64://${image.toString("base64")}]`;
 }

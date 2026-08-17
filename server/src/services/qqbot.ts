@@ -6,7 +6,7 @@ import { Errors } from "../utils/response";
 import { runWithDistributedLock } from "./cache";
 import { ensureForumAccessEnabled } from "./forumAccess";
 import { ensureForumImageAssetsForContent } from "./imageModeration";
-import { getFeatures, getSiteOrigin, isBoardTypeEnabled, isFeatureOn, featureForBoardType, featureClosedMessage } from "./siteSettings";
+import { getFeatures, getSiteConfig, getSiteOrigin, isBoardTypeEnabled, isFeatureOn, featureForBoardType, featureClosedMessage } from "./siteSettings";
 import { refreshBoardTopicCounts, refreshUserPostCount } from "./forumStats";
 import { ensureUserCanSpeak } from "./userModeration";
 import { ensureForumVideoAssetsForContent } from "./videoModeration";
@@ -104,6 +104,7 @@ import {
 import { renderQqBotAiReplyAsQqMessage } from "./qqbot/aiReplyImage";
 import {
   askCampusAssistant,
+  isQwenAssistantModel,
   type CampusAssistantMessage,
   type CampusAssistantResponse,
 } from "./campusAssistant";
@@ -2523,7 +2524,9 @@ async function maybeHandleQqBotDailyAssistant(context: {
 
   const message = context.messageText.trim().slice(0, 2_000);
   const historyKey = `qqbot-assistant:${context.qqId}::${context.groupId || "private"}`;
-  const history = getQqBotAssistantHistory(historyKey);
+  const singleTurn = isQwenAssistantModel(getSiteConfig().assistantModel);
+  if (singleTurn) qqBotAssistantHistories.delete(historyKey);
+  const history = singleTurn ? [] : getQqBotAssistantHistory(historyKey);
   let response: CampusAssistantResponse;
   try {
     response = await askCampusAssistant({
@@ -2538,17 +2541,22 @@ async function maybeHandleQqBotDailyAssistant(context: {
   } catch (error) {
     await logHandledInboundMessage(context, "message", "assistant:daily-chat-error");
     console.warn("[qqbot] daily assistant request failed", error instanceof Error ? error.message : error);
-    await replyToEvent(context, appendQqBotAiDisclosure("拾间AI暂时不可用，请稍后再试。"));
+    await replyToEvent(context, appendQqBotAiDisclosure([
+      "拾间AI暂时不可用，请稍后再试。",
+      ...(singleTurn ? ["", "提示：当前仅支持单次对话，无上下文功能。"] : []),
+    ].join("\n")), { renderMarkdownImage: true });
     return true;
   }
 
-  rememberQqBotAssistantHistory(historyKey, [
-    ...history,
-    { role: "user", content: message },
-    { role: "assistant", content: response.answer },
-  ]);
+  if (!singleTurn) {
+    rememberQqBotAssistantHistory(historyKey, [
+      ...history,
+      { role: "user", content: message },
+      { role: "assistant", content: response.answer },
+    ]);
+  }
   await logHandledInboundMessage(context, "message", "assistant:daily-chat");
-  await replyToEvent(context, renderQqBotDailyAssistantReply(response), { renderMarkdownImage: true });
+  await replyToEvent(context, renderQqBotDailyAssistantReply(response, { singleTurn }), { renderMarkdownImage: true });
   return true;
 }
 
@@ -2572,7 +2580,7 @@ function rememberQqBotAssistantHistory(key: string, messages: CampusAssistantMes
   if (oldest) qqBotAssistantHistories.delete(oldest[0]);
 }
 
-function renderQqBotDailyAssistantReply(response: CampusAssistantResponse) {
+function renderQqBotDailyAssistantReply(response: CampusAssistantResponse, options: { singleTurn?: boolean } = {}) {
   const lines = [String(response.answer || "").trim() || "我暂时没有找到合适的答案。"];
   const actions = response.actions.slice(0, 3);
   if (actions.length) {
@@ -2582,6 +2590,7 @@ function renderQqBotDailyAssistantReply(response: CampusAssistantResponse) {
       ...actions.map((action) => `· ${action.label}：${resolveQqBotAssistantActionUrl(action.id, action.url)}`),
     );
   }
+  if (options.singleTurn) lines.push("", "提示：当前仅支持单次对话，无上下文功能。");
   return appendQqBotAiDisclosure(lines.join("\n"));
 }
 

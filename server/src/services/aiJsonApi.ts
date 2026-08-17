@@ -1,6 +1,12 @@
 import { createHash } from "node:crypto";
 import { checkAiModelAvailability } from "./aiModelCatalog";
 import { shouldFallbackToNextProvider } from "./modelFallback";
+import {
+  isAiProviderBusyError,
+  runWithAiProviderIsolation,
+} from "./aiUpstreamScheduler";
+
+export { isAiProviderBusyError } from "./aiUpstreamScheduler";
 
 export type AiJsonApiMode = "chat_completions" | "responses";
 
@@ -67,6 +73,13 @@ export async function filterAiProviderCandidatesByModel(
 
 const promptCacheKeySupport = new Map<string, boolean>();
 const promptCacheRetentionSupport = new Map<string, boolean>();
+export const AI_UPSTREAM_TIMEOUT_MS = 90_000;
+const AI_STREAM_BODY_TIMEOUT_MS = 120_000;
+const AI_RESPONSE_BODY_CLOSED = Symbol("ai-response-body-closed");
+
+type TrackedAiResponse = Response & {
+  [AI_RESPONSE_BODY_CLOSED]?: Promise<void>;
+};
 
 export function buildAiPromptCacheKey(scope: string, parts: Array<string | number | boolean | null | undefined> = []) {
   const normalizedScope = String(scope || "generic")
@@ -98,8 +111,10 @@ export function normalizeAiJsonApiUrl(input: string, fallbackEndpoint: string) {
 export async function sendAiJsonRequest(input: {
   endpoint: string;
   apiKey: string;
+  provider?: string;
   model: string;
   temperature?: number;
+  maxTokens?: number;
   messages: AiJsonMessage[];
   promptCacheKey?: string | null;
   enablePromptCacheRetention?: boolean;
@@ -112,12 +127,14 @@ export async function sendAiJsonRequest(input: {
     mode,
     model: input.model,
     temperature: input.temperature,
+    maxTokens: input.maxTokens,
     messages: input.messages,
     stream: input.stream,
   });
   return sendAiUpstreamRequest({
     endpoint: input.endpoint,
     apiKey: input.apiKey,
+    provider: input.provider,
     body,
     promptCacheKey: input.promptCacheKey,
     enablePromptCacheRetention: input.enablePromptCacheRetention,
@@ -141,6 +158,7 @@ export async function sendAiJsonRequestWithProviderFallback(input: {
   promptCacheKey?: string | null;
   enablePromptCacheRetention?: boolean;
   maxTransientRetries?: number;
+  maxTokens?: number;
   stream?: boolean;
   signal?: AbortSignal;
 }): Promise<SendAiJsonRequestWithFallbackResult> {
@@ -162,8 +180,10 @@ export async function sendAiJsonRequestWithProviderFallback(input: {
       const result = await sendAiJsonRequest({
         endpoint,
         apiKey: provider.apiKey,
+        provider: provider.provider,
         model,
         temperature: input.temperature,
+        maxTokens: input.maxTokens,
         messages: input.messages,
         promptCacheKey: input.promptCacheKey,
         enablePromptCacheRetention: input.enablePromptCacheRetention,
@@ -197,10 +217,53 @@ export async function sendAiJsonRequestWithProviderFallback(input: {
 export async function sendAiUpstreamRequest(input: {
   endpoint: string;
   apiKey: string;
+  provider?: string;
   body: Record<string, unknown>;
   promptCacheKey?: string | null;
   enablePromptCacheRetention?: boolean;
   /** Retries for transient provider failures. A value of 3 means at most four total attempts. */
+  maxTransientRetries?: number;
+  signal?: AbortSignal;
+}): Promise<SendAiJsonRequestResult> {
+  return runWithAiProviderIsolation({
+    provider: input.provider,
+    endpoint: input.endpoint,
+    signal: input.signal,
+    run: () => sendAiUpstreamRequestUnisolated(input),
+    holdActiveUntil: input.body.stream === true
+      ? (result) => waitForAiResponseBodyClosed(result.response)
+      : undefined,
+  });
+}
+
+async function sendAiUpstreamRequestUnisolated(input: {
+  endpoint: string;
+  apiKey: string;
+  provider?: string;
+  body: Record<string, unknown>;
+  promptCacheKey?: string | null;
+  enablePromptCacheRetention?: boolean;
+  maxTransientRetries?: number;
+  signal?: AbortSignal;
+}): Promise<SendAiJsonRequestResult> {
+  const deadline = createAiUpstreamDeadline(input.signal);
+  try {
+    return await sendAiUpstreamRequestWithSignal({ ...input, signal: deadline.signal });
+  } catch (error) {
+    if (!input.signal?.aborted && deadline.signal.aborted) throw createAiUpstreamTimeoutError();
+    throw error;
+  } finally {
+    deadline.dispose();
+  }
+}
+
+async function sendAiUpstreamRequestWithSignal(input: {
+  endpoint: string;
+  apiKey: string;
+  provider?: string;
+  body: Record<string, unknown>;
+  promptCacheKey?: string | null;
+  enablePromptCacheRetention?: boolean;
   maxTransientRetries?: number;
   signal?: AbortSignal;
 }): Promise<SendAiJsonRequestResult> {
@@ -287,13 +350,87 @@ export async function sendAiUpstreamRequest(input: {
   }
 
   return {
-    response: finalResult.response,
+    response: trackAiResponseBody(finalResult.response, Boolean(input.body.stream)),
     mode,
     errorText: finalResult.errorText,
     promptCacheKeyApplied,
     promptCacheRetentionApplied,
     retryCount,
   };
+}
+
+function trackAiResponseBody(response: Response, shouldTrack: boolean) {
+  if (!shouldTrack || !response.body) return response;
+  const source = response.body;
+  let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+  let streamController: ReadableStreamDefaultController<Uint8Array> | null = null;
+  let settled = false;
+  let resolveClosed!: () => void;
+  const closed = new Promise<void>((resolve) => {
+    resolveClosed = resolve;
+  });
+  const settle = () => {
+    if (settled) return;
+    settled = true;
+    resolveClosed();
+  };
+  const timeout = setTimeout(() => {
+    const error = new Error(`AI 流式响应超过 ${Math.round(AI_STREAM_BODY_TIMEOUT_MS / 1000)} 秒，已取消`);
+    error.name = "TimeoutError";
+    (error as Error & { code?: string }).code = "AI_STREAM_BODY_TIMEOUT";
+    void reader?.cancel(error).catch(() => undefined);
+    streamController?.error(error);
+    settle();
+  }, AI_STREAM_BODY_TIMEOUT_MS);
+  timeout.unref?.();
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      streamController = controller;
+      reader = source.getReader();
+    },
+    async pull(controller) {
+      try {
+        const result = await reader!.read();
+        if (result.done) {
+          clearTimeout(timeout);
+          settle();
+          controller.close();
+          return;
+        }
+        controller.enqueue(result.value);
+      } catch (error) {
+        clearTimeout(timeout);
+        settle();
+        controller.error(error);
+      }
+    },
+    cancel(reason) {
+      clearTimeout(timeout);
+      settle();
+      void reader?.cancel(reason).catch(() => undefined);
+    },
+  });
+  const tracked = new Response(body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  }) as TrackedAiResponse;
+  Object.defineProperty(tracked, AI_RESPONSE_BODY_CLOSED, {
+    configurable: false,
+    enumerable: false,
+    value: closed,
+  });
+  return tracked;
+}
+
+async function waitForAiResponseBodyClosed(response: Response) {
+  if (!response.body) return;
+  const closed = (response as TrackedAiResponse)[AI_RESPONSE_BODY_CLOSED];
+  if (closed) {
+    await closed;
+    return;
+  }
+  await response.body.cancel().catch(() => undefined);
 }
 
 export function extractAiJsonTextResponse(json: any, mode: AiJsonApiMode) {
@@ -319,6 +456,7 @@ function buildAiJsonRequestBody(input: {
   mode: AiJsonApiMode;
   model: string;
   temperature?: number;
+  maxTokens?: number;
   messages: AiJsonMessage[];
   stream?: boolean;
 }) {
@@ -326,6 +464,9 @@ function buildAiJsonRequestBody(input: {
     model: input.model,
   };
   if (input.temperature !== undefined) body.temperature = input.temperature;
+  if (Number.isFinite(input.maxTokens) && Number(input.maxTokens) > 0) {
+    body[input.mode === "responses" ? "max_output_tokens" : "max_tokens"] = Math.floor(Number(input.maxTokens));
+  }
   if (input.stream) body.stream = true;
   if (input.mode === "responses") {
     body.input = input.messages.map(toResponsesInputMessage);
@@ -576,15 +717,52 @@ function shouldRetryTransientUpstreamStatus(status: number) {
 }
 
 export function isTransientAiUpstreamError(error: unknown, signal?: AbortSignal) {
+  if (isAiProviderBusyError(error)) return !signal?.aborted;
   if (signal?.aborted) return false;
   const name = error instanceof Error ? error.name : "";
-  if (name === "AbortError" || name === "TimeoutError") return false;
+  if (name === "AbortError") return false;
+  if (name === "TimeoutError") return isAiUpstreamTimeoutError(error);
   const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error || "");
   return /fetch failed|network|socket|econn|etimedout|eai_again|enotfound|temporarily unavailable/i.test(message);
 }
 
+export function isAiUpstreamTimeoutError(error: unknown) {
+  return error instanceof Error
+    && error.name === "TimeoutError"
+    && (error as Error & { code?: unknown }).code === "AI_UPSTREAM_TIMEOUT";
+}
+
 function shouldRetryTransientUpstreamError(error: unknown, signal?: AbortSignal) {
   return isTransientAiUpstreamError(error, signal);
+}
+
+function createAiUpstreamDeadline(parentSignal?: AbortSignal) {
+  const controller = new AbortController();
+  const onParentAbort = () => controller.abort(parentSignal?.reason || createAiAbortError());
+  if (parentSignal?.aborted) controller.abort(parentSignal.reason || createAiAbortError());
+  else parentSignal?.addEventListener("abort", onParentAbort, { once: true });
+  const timer = setTimeout(() => controller.abort(createAiUpstreamTimeoutError()), AI_UPSTREAM_TIMEOUT_MS);
+  timer.unref?.();
+  return {
+    signal: controller.signal,
+    dispose() {
+      clearTimeout(timer);
+      parentSignal?.removeEventListener("abort", onParentAbort);
+    },
+  };
+}
+
+function createAiUpstreamTimeoutError() {
+  const error = new Error(`AI 上游请求超过 ${Math.round(AI_UPSTREAM_TIMEOUT_MS / 1000)} 秒，已取消`);
+  error.name = "TimeoutError";
+  (error as Error & { code?: string }).code = "AI_UPSTREAM_TIMEOUT";
+  return error;
+}
+
+function createAiAbortError() {
+  const error = new Error("AI 请求已取消");
+  error.name = "AbortError";
+  return error;
 }
 
 async function waitForTransientRetry(retryCount: number, signal?: AbortSignal) {

@@ -28,7 +28,10 @@ test("QQbot Markdown AI 回复会渲染为带拾间AI顶栏的 PNG", () => {
   assert.equal(message?.includes("**1. 登录入口**"), false);
 });
 
-test("QQbot 普通短回复继续使用文字发送", () => {
+test("QQbot 普通短 AI 回复也渲染为图片", () => {
   assert.equal(containsQqBotMarkdown("请打开药大拾间首页。"), false);
-  assert.equal(renderQqBotAiReplyAsQqMessage("请打开药大拾间首页。"), null);
+  assert.match(
+    renderQqBotAiReplyAsQqMessage("请打开药大拾间首页。") || "",
+    /^\[CQ:image,file=base64:\/\//,
+  );
 });
