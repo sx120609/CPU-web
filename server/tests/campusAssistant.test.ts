@@ -885,6 +885,7 @@ test("campus assistant knowledge covers every active action and carries freshnes
   assert.match(combined, /https:\/\/cputime\.cn 就可以直接使用/);
   assert.match(combined, /课表页顶部点击下载按钮/);
   assert.match(combined, /账户锁定10分钟/);
+  assert.match(combined, /025-86185448/);
   assert.match(combined, /尚未创建账号/);
   assert.match(combined, /刷课只支持学习通/);
   assert.match(combined, /解题功能.*不保证/);

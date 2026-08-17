@@ -447,8 +447,8 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
   {
     id: "account-lock-recovery-2026-08",
     relatedActionIds: ["home", "profile", "jwxt"],
-    fact: "账号安全提示：如果遇到“账户锁定10分钟”，请使用找回密码功能并修改为强密码；不要继续使用默认密码。",
-    source: "药大拾间账号使用提示",
+    fact: "账号安全提示：如果遇到“账户锁定10分钟”，请使用找回密码功能并修改为强密码；不要继续使用默认密码。如果账号持续处于锁定状态，请在工作时间拨打 025-86185448，告知工作人员账号因使用默认密码被锁定，请求核实和处理；电话中不要透露密码本身。",
+    source: "药大拾间账号使用提示（含用户补充）",
     sourceRef: "https://cputime.cn",
     verifiedAt: "2026-08-17",
   },
