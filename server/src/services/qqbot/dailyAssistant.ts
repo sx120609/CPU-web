@@ -1,12 +1,15 @@
 import { isCommandMessage } from "./commands";
 
 export const QQBOT_AI_DISCLOSURE = "以上回复由拾间AI生成，内容可能存在偏差，请自行鉴别并以官方信息为准。";
+export const QQBOT_DAILY_ASSISTANT_DEBOUNCE_MS = 2_000;
+const QQBOT_DAILY_ASSISTANT_MAX_BATCH_CHARS = 6_000;
 
 type QqBotDailyAssistantInput = {
   messageType?: "private" | "group";
   messageText: string;
   botMentioned: boolean;
   proactiveGroupReply?: boolean;
+  allowUnmentionedContinuation?: boolean;
   message: unknown;
 };
 
@@ -18,8 +21,21 @@ type QqBotDailyAssistantInput = {
 export function shouldHandleQqBotDailyAssistant(input: QqBotDailyAssistantInput) {
   const text = String(input.messageText || "").trim();
   if (!text || isCommandMessage(text)) return false;
-  if (input.messageType === "group" && !input.botMentioned && !input.proactiveGroupReply) return false;
+  if (
+    input.messageType === "group"
+    && !input.botMentioned
+    && !input.proactiveGroupReply
+    && !input.allowUnmentionedContinuation
+  ) return false;
   return isPlainTextQqMessage(input.message);
+}
+
+export function mergeQqBotDailyAssistantMessages(messages: string[]) {
+  return messages
+    .map((message) => String(message || "").trim())
+    .filter(Boolean)
+    .join("\n")
+    .slice(0, QQBOT_DAILY_ASSISTANT_MAX_BATCH_CHARS);
 }
 
 export function appendQqBotAiDisclosure(message: string) {

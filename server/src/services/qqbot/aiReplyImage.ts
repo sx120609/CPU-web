@@ -496,10 +496,14 @@ function inlineRuns(tokens: Token[] | undefined): InlineRun[] {
       case "codespan": append([{ text: token.text, code: true, color: "#b42318" }]); break;
       case "link": {
         const linkText = inlineRuns(token.tokens);
-        const href = safeDisplayUrl(token.href);
+        const rawHref = String(token.href || "").trim();
+        const href = safeDisplayUrl(rawHref);
         const plainText = flattenRunText(linkText).trim() || ("text" in token ? String(token.text || "").trim() : "");
-        const displayText = href && plainText === href ? getQrTargetHint(href) : plainText;
+        const plainTextUrl = splitQqBotLinkUrl(plainText);
+        const isUrlLabel = Boolean(plainTextUrl.url);
+        const displayText = href && isUrlLabel ? getQrTargetHint(href) : plainText;
         append(displayText ? [{ text: displayText }] : linkText, { color: "#2f8f80" });
+        if (isUrlLabel && plainTextUrl.trailing) append([{ text: plainTextUrl.trailing }]);
         break;
       }
       case "image": append([{ text: `[${token.text || "图片"}]`, color: "#667085" }]); break;
@@ -669,9 +673,9 @@ function renderSourcePageQr(url: string, top: number, footerRows: string[], foot
   <rect x="${qrX - QQBOT_AI_SOURCE_QR_PADDING}" y="${qrY - QQBOT_AI_SOURCE_QR_PADDING}" width="${QQBOT_AI_SOURCE_QR_SIZE + QQBOT_AI_SOURCE_QR_PADDING * 2}" height="${QQBOT_AI_SOURCE_QR_SIZE + QQBOT_AI_SOURCE_QR_PADDING * 2}" rx="8" fill="#ffffff" stroke="#d5e9e4" stroke-width="2" />
   <rect x="${qrX}" y="${qrY}" width="${QQBOT_AI_SOURCE_QR_SIZE}" height="${QQBOT_AI_SOURCE_QR_SIZE}" fill="#ffffff" />
   ${modules.join("\n  ")}
-  <text x="${textX}" y="${qrY + 26}" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="26" font-weight="800" fill="#2f7568">在线查看完整回答</text>
-  <text x="${textX}" y="${qrY + 62}" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="21" font-weight="500" fill="#55716b">扫码打开在线页面</text>
-  <text x="${textX}" y="${qrY + 94}" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="17" font-weight="500" fill="#7b918c">完整回答和相关入口</text>
+  <text x="${textX}" y="${qrY + 38}" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="26" font-weight="800" fill="#2f7568">在线查看完整回答</text>
+  <text x="${textX}" y="${qrY + 74}" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="21" font-weight="500" fill="#55716b">扫码打开在线页面</text>
+  <text x="${textX}" y="${qrY + 106}" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="17" font-weight="500" fill="#7b918c">完整回答和相关入口</text>
   ${renderQrFooterNotice(footerRows, qrY)}
 </g>`;
   } catch {
@@ -707,9 +711,9 @@ function renderReferenceQrEntry(entry: QqBotAiReplyQrEntry, top: number, footerR
   <rect x="${qrX - QQBOT_AI_SOURCE_QR_PADDING}" y="${qrY - QQBOT_AI_SOURCE_QR_PADDING}" width="${QQBOT_AI_SOURCE_QR_SIZE + QQBOT_AI_SOURCE_QR_PADDING * 2}" height="${QQBOT_AI_SOURCE_QR_SIZE + QQBOT_AI_SOURCE_QR_PADDING * 2}" rx="8" fill="#ffffff" stroke="#d5e9e4" stroke-width="2" />
   <rect x="${qrX}" y="${qrY}" width="${QQBOT_AI_SOURCE_QR_SIZE}" height="${QQBOT_AI_SOURCE_QR_SIZE}" fill="#ffffff" />
   ${modules.join("\n  ")}
-  <text x="${textX}" y="${qrY + 26}" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="26" font-weight="800" fill="#2f7568">${escapeXml(entry.label)}</text>
-  <text x="${textX}" y="${qrY + 62}" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="21" font-weight="500" fill="#55716b">扫码打开入口</text>
-  <text x="${textX}" y="${qrY + 94}" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="17" font-weight="500" fill="#7b918c">${escapeXml(getQrTargetHint(entry.url))}</text>
+  <text x="${textX}" y="${qrY + 38}" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="26" font-weight="800" fill="#2f7568">${escapeXml(entry.label)}</text>
+  <text x="${textX}" y="${qrY + 74}" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="21" font-weight="500" fill="#55716b">扫码打开入口</text>
+  <text x="${textX}" y="${qrY + 106}" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="17" font-weight="500" fill="#7b918c">${escapeXml(getQrTargetHint(entry.url))}</text>
   ${renderQrFooterNotice(footerRows, qrY)}
 </g>`;
   } catch {
@@ -884,8 +888,25 @@ function flattenRunText(runs: InlineRun[]) {
 
 function safeDisplayUrl(value: string) {
   const href = String(value || "").trim();
-  if (/^(?:https?:\/\/|mailto:|tel:)/i.test(href)) return href;
+  if (/^https?:\/\//i.test(href)) return splitQqBotLinkUrl(href).url;
+  if (/^(?:mailto:|tel:)/i.test(href)) return href;
   return "";
+}
+
+/**
+ * Marked's GFM URL tokenizer accepts Chinese text after an URL as part of the
+ * link. Keep the ASCII URL boundary and return the swallowed prose so it can
+ * be rendered as ordinary text instead of a giant punycode hostname.
+ */
+export function splitQqBotLinkUrl(value: string) {
+  const input = String(value || "").trim();
+  if (!/^https?:\/\//i.test(input)) return { url: "", trailing: "" };
+  const match = input.match(/^(https?:\/\/[A-Za-z0-9.-]+(?::\d+)?(?:\/[A-Za-z0-9._~:/?#[\]@!$&'()*+,;=%-]*)?)/i);
+  if (!match) return { url: "", trailing: input };
+  return {
+    url: match[1],
+    trailing: input.slice(match[1].length),
+  };
 }
 
 function stripHtml(value: string) {

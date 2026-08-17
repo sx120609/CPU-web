@@ -101,6 +101,8 @@ import {
 } from "./safetyPlatform";
 import {
   appendQqBotAiDisclosure,
+  mergeQqBotDailyAssistantMessages,
+  QQBOT_DAILY_ASSISTANT_DEBOUNCE_MS,
   shouldHandleQqBotDailyAssistant,
 } from "./qqbot/dailyAssistant";
 import {
@@ -241,6 +243,19 @@ type QqMessageTarget = {
 
 const qqBotCooldowns = new Map<string, { cancelledAt?: number }>();
 const qqBotAssistantHistories = new Map<string, { messages: CampusAssistantMessage[]; updatedAt: number }>();
+type QqBotDailyAssistantContext = {
+  event: OneBotEvent;
+  qqId: string;
+  groupId?: string;
+  messageText: string;
+};
+type QqBotDailyAssistantBatch = {
+  context: QqBotDailyAssistantContext;
+  messages: string[];
+  processing: boolean;
+  timer?: ReturnType<typeof setTimeout>;
+};
+const qqBotDailyAssistantBatches = new Map<string, QqBotDailyAssistantBatch>();
 const safetyPlatformTasks = new Map<string, { startedAt: number }>();
 const SAFETY_PLATFORM_TASK_COOLDOWN_MS = 60_000;
 const QQBOT_ASSISTANT_HISTORY_TTL_MS = 30 * 60_000;
@@ -2541,22 +2556,75 @@ function parseJsonObject(value: string) {
   }
 }
 
-async function maybeHandleQqBotDailyAssistant(context: {
-  event: OneBotEvent;
-  qqId: string;
-  groupId?: string;
-  messageText: string;
-}, options: { proactiveGroupReply?: boolean } = {}) {
+async function maybeHandleQqBotDailyAssistant(
+  context: QqBotDailyAssistantContext,
+  options: { proactiveGroupReply?: boolean } = {},
+) {
+  const batchKey = qqBotDailyAssistantBatchKey(context.qqId, context.groupId);
   const shouldHandle = shouldHandleQqBotDailyAssistant({
     messageType: context.event.message_type,
     messageText: context.messageText,
     botMentioned: isExplicitBotMention(context.event, context.messageText),
     proactiveGroupReply: options.proactiveGroupReply === true,
+    allowUnmentionedContinuation: qqBotDailyAssistantBatches.has(batchKey),
     message: context.event.message ?? context.event.raw_message ?? "",
   });
   if (!shouldHandle) return false;
 
+  enqueueQqBotDailyAssistant(batchKey, context);
+  return true;
+}
+
+function enqueueQqBotDailyAssistant(
+  batchKey: string,
+  context: QqBotDailyAssistantContext,
+) {
   const message = context.messageText.trim().slice(0, 2_000);
+  if (!message) return;
+  let batch = qqBotDailyAssistantBatches.get(batchKey);
+  if (!batch) {
+    batch = {
+      context,
+      messages: [],
+      processing: false,
+    };
+    qqBotDailyAssistantBatches.set(batchKey, batch);
+  }
+  batch.messages.push(message);
+  if (!batch.processing) scheduleQqBotDailyAssistantFlush(batchKey, batch);
+}
+
+function scheduleQqBotDailyAssistantFlush(batchKey: string, batch: QqBotDailyAssistantBatch) {
+  if (batch.timer) clearTimeout(batch.timer);
+  batch.timer = setTimeout(() => {
+    batch.timer = undefined;
+    void flushQqBotDailyAssistantBatch(batchKey, batch);
+  }, QQBOT_DAILY_ASSISTANT_DEBOUNCE_MS);
+}
+
+async function flushQqBotDailyAssistantBatch(batchKey: string, batch: QqBotDailyAssistantBatch) {
+  if (batch.processing || !batch.messages.length) return;
+  batch.processing = true;
+  const messages = batch.messages.splice(0);
+  const message = mergeQqBotDailyAssistantMessages(messages);
+  try {
+    await processQqBotDailyAssistantBatch(batch.context, message);
+  } catch (error) {
+    console.warn("[qqbot] daily assistant batch failed", error instanceof Error ? error.message : error);
+  } finally {
+    batch.processing = false;
+    if (batch.messages.length) {
+      scheduleQqBotDailyAssistantFlush(batchKey, batch);
+    } else {
+      qqBotDailyAssistantBatches.delete(batchKey);
+    }
+  }
+}
+
+async function processQqBotDailyAssistantBatch(
+  context: QqBotDailyAssistantContext,
+  message: string,
+) {
   const historyKey = `qqbot-assistant:${context.qqId}::${context.groupId || "private"}`;
   const history = getQqBotAssistantHistory(historyKey);
   let response: CampusAssistantResponse;
@@ -2595,6 +2663,10 @@ async function maybeHandleQqBotDailyAssistant(context: {
     sourcePageUrl: renderedReply.sourcePageUrl ?? undefined,
   });
   return true;
+}
+
+function qqBotDailyAssistantBatchKey(qqId: string, groupId?: string) {
+  return `${qqId}::${groupId || "private"}`;
 }
 
 function getQqBotAssistantHistory(key: string): CampusAssistantMessage[] {

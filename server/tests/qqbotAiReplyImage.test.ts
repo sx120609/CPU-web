@@ -5,6 +5,7 @@ import {
   normalizeQqBotQrLinkMentions,
   renderQqBotAiReplyAsQqMessage,
   renderQqBotAiReplyImage,
+  splitQqBotLinkUrl,
   wrapQqBotAiTextForLayout,
 } from "../src/services/qqbot/aiReplyImage";
 
@@ -73,6 +74,16 @@ test("QQbot 图片会把带二维码入口的链接收敛为入口名称", () =>
   assert.equal(
     normalizeQqBotQrLinkMentions("[认证入口](https://i.cpu.edu.cn)", entries),
     "认证入口",
+  );
+});
+
+test("QQbot 图片不会把链接后面的中文正文吞进网站地址", () => {
+  assert.deepEqual(
+    splitQqBotLinkUrl("https://i.cpu.edu.cn，电话中不要透露密码。若统一身份认证可以正常登录。"),
+    {
+      url: "https://i.cpu.edu.cn",
+      trailing: "，电话中不要透露密码。若统一身份认证可以正常登录。",
+    },
   );
 });
 

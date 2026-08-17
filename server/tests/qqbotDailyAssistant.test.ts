@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   appendQqBotAiDisclosure,
+  mergeQqBotDailyAssistantMessages,
   shouldHandleQqBotDailyAssistant,
 } from "../src/services/qqbot/dailyAssistant";
 
@@ -36,6 +37,20 @@ test("开启群聊主动回答后只接受广告审核语义识别通过的纯�
     proactiveGroupReply: true,
     message: [{ type: "text", data: { text: "看看这个" } }, { type: "image", data: {} }],
   }), false);
+});
+
+test("群聊首条消息已 @ 机器人后，短暂等待期间的后续纯文字会并入同一轮", () => {
+  assert.equal(shouldHandleQqBotDailyAssistant({
+    messageType: "group",
+    messageText: "密码一直错误怎么办",
+    botMentioned: false,
+    allowUnmentionedContinuation: true,
+    message: [{ type: "text", data: { text: "密码一直错误怎么办" } }],
+  }), true);
+  assert.equal(
+    mergeQqBotDailyAssistantMessages(["密码一直错误怎么办", "为什么提示账号登不上去"]),
+    "密码一直错误怎么办\n为什么提示账号登不上去",
+  );
 });
 
 test("QQ 私聊普通文字可以进入拾间AI，但斜杠命令不会进入", () => {
