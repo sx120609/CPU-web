@@ -92,6 +92,7 @@ const RESTRICTED_PUBLIC_TOPIC_TERMS = [
   "天安门事件",
   "天安门抗议",
 ];
+const UNIFIED_AUTH_TROUBLESHOOTING_PATTERN = /(?:统一身份认证|统一认证|icpueducn|密码(?:错误|不正确|忘记|重置|修改)|(?:账号|账户).{0,4}锁定|无法登录|登录失败|登录不进|登录不了|登录不上)/u;
 
 const CAMPUS_ASSISTANT_ROUTES: CampusAssistantRoute[] = [
   {
@@ -651,12 +652,25 @@ export function listCampusAssistantKnowledge(actionIds: Iterable<string>) {
 export function searchCampusAssistantActions(query: string, context: CampusAssistantContext, limit = 6) {
   const normalizedQuery = normalizeSearchText(query);
   if (!normalizedQuery) return [] as CampusAssistantAction[];
+  const unifiedAuthIntent = UNIFIED_AUTH_TROUBLESHOOTING_PATTERN.test(normalizedQuery);
   return CAMPUS_ASSISTANT_ROUTES
     .filter((item) => !item.feature || context.features[item.feature])
     .filter((item) => !item.requireForumAccess || context.forumAccessEnabled)
-    .map((item) => ({ item, score: scoreRoute(item, normalizedQuery) }))
+    .map((item) => ({
+      item,
+      score: unifiedAuthIntent && item.id === "unified-auth"
+        ? 200
+        : scoreRoute(item, normalizedQuery),
+    }))
     .filter((entry) => entry.score > 0)
-    .sort((a, b) => b.score - a.score)
+    .sort((a, b) => {
+      if (unifiedAuthIntent) {
+        const aIsUnifiedAuth = a.item.id === "unified-auth";
+        const bIsUnifiedAuth = b.item.id === "unified-auth";
+        if (aIsUnifiedAuth !== bIsUnifiedAuth) return aIsUnifiedAuth ? -1 : 1;
+      }
+      return b.score - a.score;
+    })
     .slice(0, Math.max(1, limit))
     .map(({ item }) => {
       const { keywords: _keywords, feature: _feature, requireForumAccess: _requireForumAccess, ...action } = item;

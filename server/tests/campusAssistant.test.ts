@@ -1310,6 +1310,11 @@ test("密码错误和账户锁定会识别到统一身份认证入口及条件�
   assert.match(prompt, /普通的单次“密码错误”先按统一认证入口的找回密码流程处理/);
 });
 
+test("统一身份认证排查意图不会被首页入口抢走", () => {
+  assert.equal(searchCampusAssistantActions("遇到密码不正确时怎么办", context, 3)[0]?.id, "unified-auth");
+  assert.equal(searchCampusAssistantActions("统一身份认证首页在哪里", context, 3)[0]?.id, "unified-auth");
+});
+
 test("拾间无法登录会优先给出统一认证分流排查", () => {
   const actions = searchCampusAssistantActions("拾间无法登录", context, 3);
   assert.equal(actions[0]?.id, "unified-auth");
