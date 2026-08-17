@@ -36,9 +36,9 @@ test("QQbot 普通短 AI 回复也渲染为图片", () => {
   );
 });
 
-test("QQbot AI 图片把单次对话提示放在页脚并为入口生成二维码卡片", () => {
+test("QQbot AI 图片把上下文提示放在页脚并为入口生成二维码卡片", () => {
   const options = {
-    footerNotice: "提示：当前仅支持单次对话，无上下文功能。",
+    footerNotice: "提示：当前保留最近两条对话上下文。",
     qrEntries: [{ label: "校园服务", url: "https://cputime.cn/services" }],
   };
   const png = renderQqBotAiReplyImage("可以打开校园服务入口。", options);

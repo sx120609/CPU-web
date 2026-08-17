@@ -110,7 +110,6 @@ import {
 } from "./qqbot/aiReplyImage";
 import {
   askCampusAssistant,
-  isQwenAssistantModel,
   type CampusAssistantMessage,
   type CampusAssistantResponse,
 } from "./campusAssistant";
@@ -2556,9 +2555,7 @@ async function maybeHandleQqBotDailyAssistant(context: {
 
   const message = context.messageText.trim().slice(0, 2_000);
   const historyKey = `qqbot-assistant:${context.qqId}::${context.groupId || "private"}`;
-  const singleTurn = isQwenAssistantModel(getSiteConfig().assistantModel);
-  if (singleTurn) qqBotAssistantHistories.delete(historyKey);
-  const history = singleTurn ? [] : getQqBotAssistantHistory(historyKey);
+  const history = getQqBotAssistantHistory(historyKey);
   let response: CampusAssistantResponse;
   try {
     response = await askCampusAssistant({
@@ -2578,24 +2575,20 @@ async function maybeHandleQqBotDailyAssistant(context: {
       appendQqBotAiDisclosure("拾间AI暂时不可用，请稍后再试。"),
       {
         renderMarkdownImage: true,
-        footerNotice: singleTurn ? "提示：当前仅支持单次对话，无上下文功能。" : undefined,
       },
     );
     return true;
   }
 
-  if (!singleTurn) {
-    rememberQqBotAssistantHistory(historyKey, [
-      ...history,
-      { role: "user", content: message },
-      { role: "assistant", content: response.answer },
-    ]);
-  }
+  rememberQqBotAssistantHistory(historyKey, [
+    ...history,
+    { role: "user", content: message },
+    { role: "assistant", content: response.answer },
+  ]);
   await logHandledInboundMessage(context, "message", "assistant:daily-chat");
-  const renderedReply = renderQqBotDailyAssistantReply(response, { singleTurn });
+  const renderedReply = renderQqBotDailyAssistantReply(response);
   await replyToEvent(context, renderedReply.message, {
     renderMarkdownImage: true,
-    footerNotice: renderedReply.footerNotice,
     qrEntries: renderedReply.qrEntries,
   });
   return true;
@@ -2621,7 +2614,7 @@ function rememberQqBotAssistantHistory(key: string, messages: CampusAssistantMes
   if (oldest) qqBotAssistantHistories.delete(oldest[0]);
 }
 
-function renderQqBotDailyAssistantReply(response: CampusAssistantResponse, options: { singleTurn?: boolean } = {}) {
+function renderQqBotDailyAssistantReply(response: CampusAssistantResponse) {
   const lines = [String(response.answer || "").trim() || "我暂时没有找到合适的答案。"];
   const actions = (response.actions || []).slice(0, 3);
   const actionEntries = actions.map((action) => ({
@@ -2639,7 +2632,6 @@ function renderQqBotDailyAssistantReply(response: CampusAssistantResponse, optio
   }
   return {
     message: appendQqBotAiDisclosure(lines.join("\n")),
-    footerNotice: options.singleTurn ? "提示：当前仅支持单次对话，无上下文功能。" : undefined,
     qrEntries,
   };
 }

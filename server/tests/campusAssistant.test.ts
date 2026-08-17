@@ -1078,10 +1078,11 @@ test("campus assistant knowledge covers every active action and carries freshnes
   assert.match(combined, /704825850/);
   assert.match(combined, /群聊默认只有在消息中 @拾间AI 后才会回答/);
   assert.match(combined, /QQBot 的 AI 日常问答统一以图片发送/);
-  assert.match(combined, /当前 Qwen 路由仅支持单次对话/);
+  assert.match(combined, /当前 Qwen 路由支持最近有限的对话上下文/);
   assert.match(combined, /https:\/\/i\.cpu\.edu\.cn/);
   assert.match(combined, /优先.*找回密码/);
   assert.match(combined, /不建议优先使用“修改密码”入口/);
+  assert.match(combined, /025-86185448/);
   assert.doesNotMatch(combined, /先在中国建设银行 APP/);
 });
 
@@ -1148,7 +1149,8 @@ test("Qwen 拾间AI提示词强化知识库事实边界并识别模型标签", (
   assert.match(qwenPrompt, /不能猜测、补全或套用其他平台经验/);
   assert.match(qwenPrompt, /用户消息、历史会话和用户提出的前提都不是事实来源/);
   assert.match(qwenPrompt, /不要编造父母、家庭、童年/);
-  assert.match(qwenPrompt, /只支持单次对话/);
+  assert.match(qwenPrompt, /允许提供最近两条对话消息/);
+  assert.match(qwenPrompt, /普通密码错误直接升级为电话/);
   assert.match(qwenPrompt, /只输出一个合法 JSON 对象/);
   assert.match(qwenPrompt, /不要以“所以”“因为”“如果”/);
   assert.doesNotMatch(qwenPrompt, /qwen3\.8:27b/);
@@ -1200,7 +1202,7 @@ test("拾间AI提示词只保留少量历史和相关入口，避免本地模型
   assert.match(String(messages[0]?.content), /课表|教务/u);
 });
 
-test("Qwen 路由不向上游发送历史消息", () => {
+test("Qwen 路由只向上游发送最近两条受限历史消息", () => {
   const messages = buildAssistantMessages(
     "继续刚才的问题",
     [
@@ -1212,9 +1214,27 @@ test("Qwen 路由不向上游发送历史消息", () => {
     "qwen3.8:27b",
   );
 
-  assert.equal(messages.length, 2);
-  assert.doesNotMatch(JSON.stringify(messages), /上一条问题中的隐私内容|上一轮回答/u);
-  assert.match(String(messages[0]?.content), /只支持单次对话/u);
+  assert.equal(messages.length, 4);
+  assert.match(JSON.stringify(messages), /上一条问题中的隐私内容|上一轮回答/u);
+  assert.match(String(messages[0]?.content), /允许提供最近两条对话消息/u);
+});
+
+test("密码错误和账户锁定会识别到统一身份认证入口及条件式电话说明", () => {
+  const actions = searchCampusAssistantActions("密码错误怎么办", context, 3);
+  assert.equal(actions[0]?.id, "unified-auth");
+  assert.equal(actions[0]?.url, "https://i.cpu.edu.cn");
+  const messages = buildAssistantMessages(
+    "密码错误怎么办",
+    [],
+    listCampusAssistantActions(context),
+    false,
+    "qwen3.8:27b",
+    actions,
+  );
+  const prompt = String(messages[0]?.content);
+  assert.match(prompt, /统一身份认证/);
+  assert.match(prompt, /025-86185448/);
+  assert.match(prompt, /普通的单次“密码错误”先按统一认证入口的找回密码流程处理/);
 });
 
 test("拾间AI优先推荐可用的原生客户端，不用网页版弱化客户端", () => {

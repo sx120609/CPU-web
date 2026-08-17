@@ -342,6 +342,29 @@ const CAMPUS_ASSISTANT_ROUTES: CampusAssistantRoute[] = [
     keywords: ["个人中心", "账号设置", "qq绑定", "外观设置"],
   },
   {
+    id: "unified-auth",
+    label: "统一身份认证",
+    description: "打开学校统一身份认证入口，找回或重置学校账号密码",
+    url: "https://i.cpu.edu.cn",
+    icon: "🔐",
+    owner: "中国药科大学",
+    requireLogin: false,
+    keywords: [
+      "统一身份认证",
+      "统一认证",
+      "i.cpu.edu.cn",
+      "密码错误",
+      "密码忘记",
+      "忘记密码",
+      "找回密码",
+      "重置密码",
+      "修改密码",
+      "账户锁定",
+      "账号锁定",
+      "默认密码",
+    ],
+  },
+  {
     id: "sponsor-wall",
     label: "鸣谢墙",
     description: "查看支持站点建设的用户与赞助说明",
@@ -457,8 +480,8 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
   },
   {
     id: "account-lock-recovery-2026-08",
-    relatedActionIds: ["home", "profile", "jwxt"],
-    fact: "账号安全提示：如果遇到“账户锁定10分钟”，请使用找回密码功能并修改为强密码；不要继续使用默认密码。如果账号持续处于锁定状态，请在工作时间拨打 025-86185448，告知工作人员账号因使用默认密码被锁定，请求核实和处理；电话中不要透露密码本身。",
+    relatedActionIds: ["home", "profile", "jwxt", "unified-auth"],
+    fact: "账号安全提示：如果遇到“账户锁定10分钟”，请使用统一身份认证入口的“找回密码”功能并修改为强密码；不要继续使用默认密码。普通的单次“密码错误”先按统一认证入口的找回密码流程处理，不要直接拨电话；只有账号持续处于锁定状态时，才在工作时间拨打 025-86185448，告知工作人员账号因使用默认密码被锁定，请求核实和处理；电话中不要透露密码本身。",
     source: "药大拾间账号使用提示（含用户补充）",
     sourceRef: "https://cputime.cn",
     verifiedAt: "2026-08-17",
@@ -490,7 +513,7 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
   {
     id: "qqbot-daily-assistant-2026-08",
     relatedActionIds: ["campus-assistant", "messages", "profile"],
-    fact: "QQBot 日常问答：私聊可以直接发送普通文字咨询；群聊默认只有在消息中 @拾间AI 后才会回答。管理员也可以在后台按群开启主动回答，此时仍只会把模型识别为明确内容问题的纯文字消息转给拾间AI，不回答“在吗”“为什么不理我”等催促机器人回应的社交闲聊。命令、图片、语音、转发以及已有的审核、识别等专用功能继续走对应流程，不会交给拾间AI。QQBot 的 AI 日常问答统一以图片发送，回复由 AI 生成，可能存在偏差，应自行鉴别并以官方信息为准；当前 Qwen 路由仅支持单次对话，不提供上下文。",
+    fact: "QQBot 日常问答：私聊可以直接发送普通文字咨询；群聊默认只有在消息中 @拾间AI 后才会回答。管理员也可以在后台按群开启主动回答，此时仍只会把模型识别为明确内容问题的纯文字消息转给拾间AI，不回答“在吗”“为什么不理我”等催促机器人回应的社交闲聊。命令、图片、语音、转发以及已有的审核、识别等专用功能继续走对应流程，不会交给拾间AI。QQBot 的 AI 日常问答统一以图片发送，回复由 AI 生成，可能存在偏差，应自行鉴别并以官方信息为准；当前 Qwen 路由支持最近有限的对话上下文，服务端只保留最近几条消息，知识库事实优先。",
     source: "药大拾间 QQBot 使用规则与用户补充",
     sourceRef: "https://cputime.cn",
     verifiedAt: "2026-08-17",
@@ -538,8 +561,8 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
   },
   {
     id: "cpu-unified-auth",
-    relatedActionIds: ["services", "jwxt", "profile"],
-    fact: "学校统一身份认证入口是 https://i.cpu.edu.cn，师生使用统一身份认证账号访问融合门户及已接入的校内系统。登录提示密码错误或需要修改密码时，应优先在统一认证登录页使用“找回密码”重置为强密码；不建议优先使用“修改密码”入口，该入口可能存在学校系统问题。已绑定手机号或校外邮箱的账号可在线找回；完全未绑定找回方式时，需携有效证件到学校信息应用服务点现场处理。",
+    relatedActionIds: ["services", "jwxt", "profile", "unified-auth"],
+    fact: "学校统一身份认证入口是 https://i.cpu.edu.cn，师生使用统一身份认证账号访问融合门户及已接入的校内系统。登录提示密码错误或需要修改密码时，应优先在统一认证登录页使用“找回密码”重置为强密码；不建议优先使用“修改密码”入口，该入口可能存在学校系统问题。已绑定手机号或校外邮箱的账号可在线找回；完全未绑定找回方式时，需携有效证件到学校信息应用服务点现场处理。若后续出现“账户锁定10分钟”并且账号持续处于锁定状态，再在工作时间拨打 025-86185448 联系工作人员核实；普通密码错误不要直接拨打该电话。",
     source: "中国药科大学统一身份认证与图书信息中心服务指南",
     sourceRef: "https://i.cpu.edu.cn",
     verifiedAt: "2026-07-27",
@@ -859,12 +882,12 @@ export async function streamCampusAssistant(input: {
   }
   const configuredModel = getSiteConfig().assistantModel;
   if (isQwenAssistantModel(configuredModel)) {
-    // Qwen is intentionally single-turn and non-streaming here. Its local
-    // OpenAI-compatible streaming responses can stop before closing the JSON
-    // object, leaving the browser with a half-answer and a cancelled request.
+    // Keep Qwen non-streaming here because its local OpenAI-compatible stream
+    // can stop before closing the JSON object. The 64K model context now lets
+    // us retain the server-bounded recent history without streaming half JSON.
     const response = await askCampusAssistant({
       message,
-      history: [],
+      history: input.history,
       context: input.context,
       signal: input.signal,
       usage: input.usage,
@@ -1289,7 +1312,7 @@ export function buildSystemPrompt(
         "【事实准确性加强规则】当前上游属于 Qwen 系列，但不得向用户透露真实上游模型；这些规则只用于约束回答。涉及药大拾间、校园服务、产品功能、操作步骤和账号规则时，只能把 knowledge 与 catalog 中明确写出的内容当作事实。knowledge 没有明确写出的具体网址、按钮名称、电话、时间、费用、权限、支持范围、账号规则或当前状态，一律不能猜测、补全或套用其他平台经验。",
         "用户消息、历史会话和用户提出的前提都不是事实来源，不能因为用户这样说就默认其正确；如果前提与 knowledge 冲突，先明确纠正。不要把推测、示例、可能性或建议写成已经核实的结论。无法确认时直接说“知识库中没有这项信息”，并引导用户查看对应入口或学校原始公告。回答前在内部逐项核对事实来源，但不要输出隐藏检查过程。",
         "【人格边界】不要编造父母、家庭、童年、出生、身体、现实经历或现实行动；你不是人，也不要把自己写成有家庭和人生经历的人。被问到这类问题时，简短说明自己是拾间AI、没有人类家庭或个人经历即可，不要继续编故事或把“知识库和参数”当作个人经历。",
-        "【上下文限制】当前 Qwen 路由只支持单次对话，系统不会提供历史消息；只根据用户最新一条消息和本次提供的 knowledge 作答，不要假设自己记得之前的对话。",
+        "【上下文限制】当前 Qwen 路由允许提供最近两条对话消息，每条消息已由服务端限制长度；这些历史只用于理解省略指代和连续追问，不能作为事实来源，knowledge 始终优先。不要假设自己记得更早的对话。",
       ]
     : [];
   return [
@@ -1310,7 +1333,7 @@ export function buildSystemPrompt(
     "knowledge 中的 verifiedAt 是该条知识最后核验日期，source 是来源名称。回答易变化的信息时应说明对应学年、发布日期或核验时间；如果用户问的是核验日期之后的新变化，应引导其查看校园公告或学校原始页面，不能把旧条目说成当前实时结果。",
     ...modelFactualityGuard,
     "仅当用户最新一条消息明确要求查找、打开或使用某项站内功能时才返回 actionIds；对于“好的”“谢谢”等确认语和普通聊天，不要重复推荐上一轮入口。",
-    "回答站内功能、字段和流程时必须以提供的 knowledge 为准；knowledge 没写明的细节要坦率说明不确定，不能按其他产品的常见设计补造。引用来源时只写 source 名称，不要生成 catalog 之外的外部链接。",
+    "回答站内功能、字段和流程时必须以提供的 knowledge 为准；knowledge 没写明的细节要坦率说明不确定，不能按其他产品的常见设计补造。涉及账号登录、密码错误、找回密码或账户锁定时，优先使用统一身份认证入口；只有 knowledge 明确写出的持续锁定条件满足时才提供电话，不要把普通密码错误直接升级为电话。引用来源时只写 source 名称，不要生成 catalog 之外的外部链接。",
     `用户当前${loggedIn ? "已登录" : "未登录"}。带 requireLogin=true 的入口可以推荐，但要提醒未登录用户先登录。`,
     "你只能从下面的 catalog 中选择 actionIds，绝不能生成 catalog 之外的链接或 action id。",
     "只输出一个合法 JSON 对象，不要使用 Markdown 代码块、不要输出思维过程或 JSON 之外的文字。answer 内的换行、双引号和反斜杠必须按 JSON 规则转义；输出前检查对象和字符串已经闭合。格式：",
@@ -1328,7 +1351,6 @@ export function buildAssistantMessages(
   modelName: string,
   prioritizedActions: CampusAssistantAction[] = [],
 ) {
-  const useHistory = !isQwenAssistantModel(modelName);
   const promptActions = selectAssistantPromptActions(availableActions, message, prioritizedActions);
   const catalog = promptActions.map((item) => ({
     id: item.id,
@@ -1341,7 +1363,7 @@ export function buildAssistantMessages(
       role: "system" as const,
       content: buildSystemPrompt(catalog, loggedIn, modelName),
     },
-    ...(useHistory ? history.slice(-CAMPUS_ASSISTANT_HISTORY_MAX_MESSAGES) : []).map((item) => ({
+    ...history.slice(-CAMPUS_ASSISTANT_HISTORY_MAX_MESSAGES).map((item) => ({
       role: item.role,
       content: item.content.slice(0, CAMPUS_ASSISTANT_HISTORY_MESSAGE_MAX_LENGTH),
     } as const)),
