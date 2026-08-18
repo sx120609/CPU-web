@@ -638,7 +638,7 @@ test("拾间AI 的 Ollama 非流式 JSON 请求走原生 /api/chat 并按请求�
   }
 });
 
-test("Ollama 非流式响应体消费完成前不会启动同端点的第二个请求", async () => {
+test("Ollama 非流式响应体消费完成前仍限制同端点的第三个请求", async () => {
   const originalFetch = globalThis.fetch;
   let requests = 0;
   let closeFirstBody!: () => void;
@@ -678,20 +678,31 @@ test("Ollama 非流式响应体消费完成前不会启动同端点的第二个�
         messages: [{ role: "user", content: "again" }],
       },
     });
+    const thirdPromise = sendAiUpstreamRequest({
+      endpoint: "http://json-body-test.local:11434/v1/chat/completions",
+      apiKey: "",
+      body: {
+        model: "qwen3.8:27b",
+        messages: [{ role: "user", content: "third" }],
+      },
+    });
     await new Promise<void>((resolve) => setImmediate(resolve));
-    assert.equal(requests, 1);
+    assert.equal(requests, 2);
 
     closeFirstBody();
     assert.deepEqual(await first.response.json(), { answer: "ok" });
     const second = await secondPromise;
     assert.equal(requests, 2);
     await second.response.body?.cancel();
+    const third = await thirdPromise;
+    assert.equal(requests, 3);
+    await third.response.body?.cancel();
   } finally {
     globalThis.fetch = originalFetch;
   }
 });
 
-test("Ollama 流式响应体消费完成前不会启动同端点的第二个请求", async () => {
+test("Ollama 流式响应体消费完成前仍限制同端点的第三个请求", async () => {
   const originalFetch = globalThis.fetch;
   let requests = 0;
   globalThis.fetch = (async () => {
@@ -731,12 +742,23 @@ test("Ollama 流式响应体消费完成前不会启动同端点的第二个请�
         messages: [{ role: "user", content: "again" }],
       },
     });
+    const thirdPromise = sendAiUpstreamRequest({
+      endpoint: "http://stream-body-test.local:11434/v1/chat/completions",
+      apiKey: "",
+      body: {
+        model: "qwen3.8:27b",
+        stream: true,
+        messages: [{ role: "user", content: "third" }],
+      },
+    });
     await new Promise<void>((resolve) => setImmediate(resolve));
-    assert.equal(requests, 1);
+    assert.equal(requests, 2);
 
     await first.response.body?.cancel();
-    await secondPromise;
-    assert.equal(requests, 2);
+    const second = await secondPromise;
+    await second.response.body?.cancel();
+    await thirdPromise;
+    assert.equal(requests, 3);
   } finally {
     globalThis.fetch = originalFetch;
   }

@@ -1,5 +1,6 @@
-const OLLAMA_MAX_ACTIVE_REQUESTS = 1;
-export const OLLAMA_QUEUE_TIMEOUT_MS = 3_000;
+/** Keep a small amount of parallelism without allowing one Ollama instance to be flooded. */
+const OLLAMA_MAX_ACTIVE_REQUESTS = 2;
+export const OLLAMA_QUEUE_TIMEOUT_MS = 30_000;
 
 type QueueEntry = {
   run: () => Promise<unknown>;
