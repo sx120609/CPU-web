@@ -66,7 +66,7 @@ export type CampusAssistantKnowledgeEntry = {
 const SITE_KNOWLEDGE_VERIFIED_AT = "2026-07-27";
 
 const DEFAULT_REVIEW_API_URL = "https://api.deepseek.com/chat/completions";
-export const CAMPUS_ASSISTANT_PUBLIC_MODEL_NAME = "Deepseek v5 pro 拾间特供版";
+export const CAMPUS_ASSISTANT_PUBLIC_MODEL_NAME = "基于Qwen3.8和GPT5.6混合训练的拾间大模型";
 const CAMPUS_ASSISTANT_HISTORY_MAX_MESSAGES = 2;
 const CAMPUS_ASSISTANT_HISTORY_MESSAGE_MAX_LENGTH = 800;
 const CAMPUS_ASSISTANT_PROMPT_ACTION_LIMIT = 8;
