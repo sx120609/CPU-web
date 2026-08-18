@@ -338,14 +338,24 @@ const CAMPUS_ASSISTANT_ROUTES: CampusAssistantRoute[] = [
     keywords: ["消息", "通知消息", "回复提醒", "站内信"],
   },
   {
+    id: "qqbot-bind",
+    label: "QQ绑定",
+    description: "直接打开消息中心设置页绑定 QQBot",
+    url: "/messages?tab=settings",
+    icon: "🔗",
+    owner: "药大拾间",
+    requireLogin: true,
+    keywords: ["qq绑定", "绑定qq", "qqbot绑定", "绑定qqbot", "机器人绑定", "绑定机器人"],
+  },
+  {
     id: "profile",
     label: "个人中心",
-    description: "管理账号、QQ 绑定、外观和个人设置",
+    description: "管理账号、外观和个人设置",
     url: "/profile",
     icon: "👤",
     owner: "药大拾间",
     requireLogin: true,
-    keywords: ["个人中心", "账号设置", "qq绑定", "外观设置"],
+    keywords: ["个人中心", "账号设置", "外观设置"],
   },
   {
     id: "unified-auth",
@@ -392,7 +402,7 @@ const CAMPUS_ASSISTANT_ROUTES: CampusAssistantRoute[] = [
 const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
   {
     relatedActionIds: ["home", "profile", "jwxt"],
-    fact: "账号与登录：站内使用学校统一认证登录，登录成功后会创建或关联站内账号。个人中心用于管理账号、QQ 绑定、外观等设置。拾间AI不会读取或代查用户的课表、成绩、考试、学业进度、账号额度或站内消息；涉及本人数据时应引导用户进入对应页面自行查看。",
+    fact: "账号与登录：站内使用学校统一认证登录，登录成功后会创建或关联站内账号。个人中心用于管理账号、外观等设置；QQ 绑定请使用消息中心的设置页。拾间AI不会读取或代查用户的课表、成绩、考试、学业进度、账号额度或站内消息；涉及本人数据时应引导用户进入对应页面自行查看。",
   },
   {
     relatedActionIds: ["jwxt"],
@@ -533,12 +543,12 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
     fact: "需求反馈：用于提交功能建议、使用问题和校园工具需求，提交后由站点维护者在后台处理。",
   },
   {
-    relatedActionIds: ["messages", "profile"],
-    fact: "通知与 QQ：消息中心查看站内通知、回复提醒和系统消息；个人中心可绑定 QQBot，以便在 QQ 同步接收部分站内通知。绑定入口不在消息列表首页。",
+    relatedActionIds: ["messages", "qqbot-bind"],
+    fact: "通知与 QQ：消息中心查看站内通知、回复提醒和系统消息。QQBot 绑定有直接入口：登录后打开 https://cputime.cn/messages?tab=settings，进入消息中心的“设置”页即可生成绑定码；不要引导用户进入个人中心，也不要把绑定入口说成消息列表首页。绑定后可在 QQ 同步接收部分站内通知。",
   },
   {
     id: "qqbot-daily-assistant-2026-08",
-    relatedActionIds: ["campus-assistant", "messages", "profile"],
+    relatedActionIds: ["campus-assistant", "messages", "qqbot-bind"],
     fact: "QQBot 日常问答：私聊可以直接发送普通文字咨询；群聊默认只有在消息中 @拾间AI 后才会回答。管理员也可以在后台按群开启主动回答，此时仍只会把模型识别为明确内容问题的纯文字消息转给拾间AI，不回答“在吗”“为什么不理我”等催促机器人回应的社交闲聊。用户连续发送多条普通文字时，QQBot 会等待短暂停顿后合并为一轮回答，避免用户还没说完就连续回复。命令、图片、语音、转发以及已有的审核、识别等专用功能继续走对应流程，不会交给拾间AI。QQBot 的 AI 日常问答统一以图片发送，回复由 AI 生成，可能存在偏差，应自行鉴别并以官方信息为准；当前 Qwen 路由支持最近有限的对话上下文，服务端只保留最近几条消息，知识库事实优先。",
     source: "药大拾间 QQBot 使用规则与用户补充",
     sourceRef: "https://cputime.cn",

@@ -322,6 +322,24 @@ test("药苑之声能匹配到广播系统入口", () => {
   assert.equal(results[0]?.url, "/services/tools/voicehub");
 });
 
+test("QQ绑定搜索优先给出消息中心直达入口而不是个人中心", () => {
+  const results = searchCampusAssistantActions("QQ绑定入口在哪里", context, 3);
+  assert.equal(results[0]?.id, "qqbot-bind");
+  assert.equal(results[0]?.url, "/messages?tab=settings");
+  assert.equal(results.some((item) => item.id === "profile"), false);
+
+  const messages = buildAssistantMessages(
+    "QQ绑定入口在哪里",
+    [],
+    listCampusAssistantActions(context),
+    true,
+    "example-model-2026",
+    results,
+  );
+  assert.match(JSON.stringify(messages), /直接打开消息中心设置页绑定 QQBot/);
+  assert.doesNotMatch(JSON.stringify(messages), /管理账号、QQ 绑定/);
+});
+
 test("关闭电费功能后不再向用户暴露电费入口", () => {
   const results = searchCampusAssistantActions("查电费", {
     ...context,
@@ -1121,6 +1139,9 @@ test("campus assistant knowledge covers every active action and carries freshnes
   assert.match(combined, /应优先给出对应的移动端客户端或桌面客户端/);
   assert.match(combined, /桌面设备不推荐 PWA/);
   assert.match(combined, /https:\/\/cputime\.cn 就可以直接使用/);
+  assert.match(combined, /https:\/\/cputime\.cn\/messages\?tab=settings/);
+  assert.match(combined, /QQBot 绑定有直接入口/);
+  assert.doesNotMatch(combined, /个人中心可绑定 QQBot/);
   assert.match(combined, /学生自主开发维护的独立、非官方校园服务站点/);
   assert.match(combined, /不是中国药科大学官方平台/);
   assert.match(combined, /不代表学校/);
