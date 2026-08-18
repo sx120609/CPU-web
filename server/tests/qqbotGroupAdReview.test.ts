@@ -82,6 +82,18 @@ test("does not treat an ordinary school club recruitment as a fake official noti
   assert.equal(detectQqGroupAdHardBlockReason(content), null);
 });
 
+test("hard-blocks an unnumbered freshman notice group diversion", () => {
+  const content = "还未进群新生通知群注意！！请大家务必重视尽快进群，尤其26届新生，大一新生，开学通知入学须知之后都会发布，领取开学资料";
+  assert.equal(
+    detectQqUnofficialNoticeDiversionReason(content),
+    "疑似冒充学校/官方通知并引导加入未核验 QQ 群",
+  );
+  assert.equal(
+    detectQqGroupAdHardBlockReason(content),
+    "疑似冒充学校/官方通知并引导加入未核验 QQ 群",
+  );
+});
+
 test("does not exempt commercial recruitment that uses a club-like word", () => {
   const content = "商业培训社团招募代理，收费 399 元，QQ群：3498138727";
   assert.equal(detectQqCampusOrganizationRecruitmentBypassReason(content), null);

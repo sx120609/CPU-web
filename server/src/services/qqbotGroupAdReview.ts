@@ -62,6 +62,7 @@ const QQ_GROUP_COMMERCIAL_GROUP_DIVERSION_PATTERN = /(?:兼职|家教|家教兼�
 const QQ_GROUP_NUMBER_ANY_LABEL_PATTERN = /(?:群|群号).{0,16}\d{6,12}/u;
 const QQ_GROUP_UNOFFICIAL_NOTICE_PATTERN = /(?:学校(?:重要)?(?:消息|通知)|校园官方|官方(?:群|通知)|重要通知|军训通知|新生(?:活动通知|宿舍(?:安排|通知))|开学(?:时间|安排|通知)|入党(?:事宜|通知)|入团(?:事宜|通知)|转换专业(?:事宜|通知))/u;
 const QQ_GROUP_MASS_INVITE_PATTERN = /(?:@全体成员|最后(?:一次|一条)通知|别错过|务必|抓紧|今晚|截至|互相转达|(?:请|大家).{0,16}(?:加|进|加入|扫码))/u;
+const QQ_GROUP_UNVERIFIED_TARGET_PATTERN = /(?:新生(?:通知)?群|通知群|官方群|官方(?:群|通知)|入学群|资料群)/u;
 /**
  * Codex Spark/Codex variants currently reject image parts. Keep this guard
  * local to QQ ad review so a text-only moderation model can still be used for
@@ -379,16 +380,19 @@ export function detectQqCampusOrganizationRecruitmentBypassReason(input: string)
 
 /**
  * A message must not use the student-organization exception to disguise an
- * unverified QQ group as a school or official notification. Requiring both a
- * QQ group number and official-notice language keeps ordinary club recruitment
- * outside this hard block.
+ * unverified QQ group as a school or official notification. A QQ group number
+ * is not required when the message names a suspicious group target such as a
+ * "新生通知群" or "官方群" and uses mass-invite language.
  */
 export function detectQqUnofficialNoticeDiversionReason(input: string) {
   const content = normalizeMessageForCache(input);
-  if (!content || !QQ_GROUP_AD_QQ_NUMBER_PATTERN.test(content)) return null;
+  if (!content) return null;
   if (!QQ_GROUP_UNOFFICIAL_NOTICE_PATTERN.test(content)) return null;
+  const hasQqGroupNumber = QQ_GROUP_AD_QQ_NUMBER_PATTERN.test(content);
   const groupNumbers = content.match(/(?<!\d)\d{6,12}(?!\d)/gu) || [];
   const hasRepeatedGroupNumber = new Set(groupNumbers).size < groupNumbers.length;
+  const hasUnverifiedGroupTarget = QQ_GROUP_UNVERIFIED_TARGET_PATTERN.test(content);
+  if (!hasQqGroupNumber && !hasUnverifiedGroupTarget) return null;
   if (!QQ_GROUP_MASS_INVITE_PATTERN.test(content) && !hasRepeatedGroupNumber) return null;
   return "疑似冒充学校/官方通知并引导加入未核验 QQ 群";
 }
