@@ -60,6 +60,8 @@ const QQ_GROUP_CAMPUS_CONTEXT_PATTERN = /(?:学校|校园|学院|大学|本科|�
 const QQ_GROUP_COMMERCIAL_AD_PATTERN = /(?:收费|付费|价格|售价|下单|购买|商品|服务费|佣金|兼职|刷单|代理(?:加盟|返利|商)?|加盟|培训班|培训收费|课程(?:销售|收费)|代购|推广返利|商业推广|商务合作|广告位|优惠券|折扣价|售卖|收款|付款|转账|返现|红包|招代理|招聘|公司|企业|品牌|商家|门店|招商|店铺)/u;
 const QQ_GROUP_COMMERCIAL_GROUP_DIVERSION_PATTERN = /(?:兼职|家教|家教兼职|代课|辅导|招工|招聘|招代理|刷单|付费培训|课程销售)/u;
 const QQ_GROUP_NUMBER_ANY_LABEL_PATTERN = /(?:群|群号).{0,16}\d{6,12}/u;
+const QQ_GROUP_UNOFFICIAL_NOTICE_PATTERN = /(?:学校(?:重要)?(?:消息|通知)|校园官方|官方(?:群|通知)|重要通知|军训通知|新生(?:活动通知|宿舍(?:安排|通知))|开学(?:时间|安排|通知)|入党(?:事宜|通知)|入团(?:事宜|通知)|转换专业(?:事宜|通知))/u;
+const QQ_GROUP_MASS_INVITE_PATTERN = /(?:@全体成员|最后(?:一次|一条)通知|别错过|务必|抓紧|今晚|截至|互相转达|(?:请|大家).{0,16}(?:加|进|加入|扫码))/u;
 /**
  * Codex Spark/Codex variants currently reject image parts. Keep this guard
  * local to QQ ad review so a text-only moderation model can still be used for
@@ -195,6 +197,7 @@ export async function reviewQqGroupMessageForAd(input: {
     "组织招新中的报名方式、联系人、QQ/微信群号、二维码或链接只是报名渠道，不是商业证据；不要仅因“招募、招新、加入、报名、加群、导流”等词 block。",
     "家教、兼职、代课、辅导、招工、付费培训、课程销售等以报酬或商业服务为核心的信息属于商业广告；即使和游戏群、兴趣群或其他校园信息列在一起，只要附有群号、联系方式或报名引导，也应 block。",
     "图片若是校内社团或学生组织招新海报，也按上述边界处理；只有画面同时出现明确收费交易、付费服务或商业推广，才按商业广告处理。",
+    "特别注意：如果文本或图片把内容包装成“学校重要消息”“官方通知”“校园官方官方群”等，并以军训、宿舍、开学、入党入团或新生安排为名，要求加入未核验 QQ 群、扫码、转发或在截止时间前完成操作，视为疑似冒充官方的引流消息，必须 decision=block；不得因其中出现“社团招新”“学生会”等字样而套用校园组织招新豁免。",
     "证据不足时优先 auto_pass 或 manual_review，不能靠猜测 block。",
   ].join("\n");
   const promptText = reviewMode === "qr-only"
@@ -374,6 +377,22 @@ export function detectQqCampusOrganizationRecruitmentBypassReason(input: string)
   return "命中校园社团/学生组织招新豁免";
 }
 
+/**
+ * A message must not use the student-organization exception to disguise an
+ * unverified QQ group as a school or official notification. Requiring both a
+ * QQ group number and official-notice language keeps ordinary club recruitment
+ * outside this hard block.
+ */
+export function detectQqUnofficialNoticeDiversionReason(input: string) {
+  const content = normalizeMessageForCache(input);
+  if (!content || !QQ_GROUP_AD_QQ_NUMBER_PATTERN.test(content)) return null;
+  if (!QQ_GROUP_UNOFFICIAL_NOTICE_PATTERN.test(content)) return null;
+  const groupNumbers = content.match(/(?<!\d)\d{6,12}(?!\d)/gu) || [];
+  const hasRepeatedGroupNumber = new Set(groupNumbers).size < groupNumbers.length;
+  if (!QQ_GROUP_MASS_INVITE_PATTERN.test(content) && !hasRepeatedGroupNumber) return null;
+  return "疑似冒充学校/官方通知并引导加入未核验 QQ 群";
+}
+
 export function detectQqGroupAdHardBlockReason(input: string, blockQrCodes = false) {
   const content = normalizeMessageForCache(input);
   if (!content) return null;
@@ -381,6 +400,8 @@ export function detectQqGroupAdHardBlockReason(input: string, blockQrCodes = fal
   if (QQ_GROUP_COMMERCIAL_GROUP_DIVERSION_PATTERN.test(content) && QQ_GROUP_NUMBER_ANY_LABEL_PATTERN.test(content)) {
     return "包含兼职/家教等商业招募并附群号导流";
   }
+  const unofficialNoticeReason = detectQqUnofficialNoticeDiversionReason(content);
+  if (unofficialNoticeReason) return unofficialNoticeReason;
   if (detectQqCampusOrganizationRecruitmentBypassReason(content)) return null;
   if (QQ_GROUP_AD_QQ_NUMBER_PATTERN.test(content)) return "包含 QQ 群号并带有群号导流";
   if (QQ_GROUP_AD_INVITE_NUMBER_PATTERN.test(content)) return "包含明确的加群/联系导流号码";

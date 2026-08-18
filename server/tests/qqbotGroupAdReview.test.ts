@@ -6,6 +6,7 @@ import {
   detectQqCampusOrganizationRecruitmentBypassReason,
   detectHarmlessQqGroupAdBypassReason,
   detectQqGroupAdHardBlockReason,
+  detectQqUnofficialNoticeDiversionReason,
   isQqGroupQrDecision,
   isQqBotAssistantIntent,
   isQqBotAssistantMetaMessage,
@@ -54,6 +55,30 @@ test("allows non-commercial campus club recruitment with a QQ group number", () 
 
 test("allows a club recruitment poster phrase without treating the QQ number as an ad", () => {
   const content = "欧洲古典剑术社团招新，报名加入 QQ 群 3498138727";
+  assert.equal(detectQqGroupAdHardBlockReason(content), null);
+});
+
+test("hard-blocks a fake official notice that repeatedly diverts to an unverified QQ group", () => {
+  const content = [
+    "@全体成员 都看下，最后一次通知，别错过了学校重要消息！",
+    "大家今天晚上12点之前务必加上，更好的了解大学、入党入团、社团招新等",
+    "QQ群：786468953",
+    "QQ群：786468953",
+    "QQ群：786468953",
+  ].join("\n");
+  assert.equal(
+    detectQqUnofficialNoticeDiversionReason(content),
+    "疑似冒充学校/官方通知并引导加入未核验 QQ 群",
+  );
+  assert.equal(
+    detectQqGroupAdHardBlockReason(content),
+    "疑似冒充学校/官方通知并引导加入未核验 QQ 群",
+  );
+});
+
+test("does not treat an ordinary school club recruitment as a fake official notice", () => {
+  const content = "中国药科大学兵击协会招新，欢迎同学报名加入，QQ群：3498138727";
+  assert.equal(detectQqUnofficialNoticeDiversionReason(content), null);
   assert.equal(detectQqGroupAdHardBlockReason(content), null);
 });
 
