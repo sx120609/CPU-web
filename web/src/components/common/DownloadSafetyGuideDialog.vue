@@ -78,7 +78,7 @@
       </ol>
 
       <p class="download-guide-note">
-        操作前请核对下载页面来自 <code>cpu.lizmt.cn</code>，文件名应以“药大拾间桌面端”或
+        操作前请核对下载页面来自 <code>cputime.cn</code>，文件名应以“药大拾间桌面端”或
         “CPU-Web-Desktop”开头。Edge 不同版本的按钮位置可能略有变化，但顺序都是
         <strong>“通常不会下载”→“保留”→二次确认</strong>。
       </p>
@@ -94,7 +94,7 @@
         <li>鸿蒙设备按系统提示完成安全检查即可；安装完成后可关闭刚才授予的“允许此来源”权限。</li>
       </ol>
       <p class="download-guide-note">
-        只从 <code>cpu.lizmt.cn</code> 下载并核对应用名称。无需关闭系统安全功能，也不要为陌生应用授予安装权限。
+        只从 <code>cputime.cn</code> 下载并核对应用名称。无需关闭系统安全功能，也不要为陌生应用授予安装权限。
       </p>
     </div>
 

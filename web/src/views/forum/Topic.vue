@@ -560,7 +560,7 @@
           <div class="share-card-brand">
             <div class="share-card-brand-title">药大拾间</div>
             <div class="share-card-brand-copy">扫描二维码，直接打开原帖</div>
-            <div class="share-card-brand-host">cpu.lizmt.cn</div>
+            <div class="share-card-brand-host">cputime.cn</div>
           </div>
           <div class="share-card-qr-box">
             <img v-if="shareCardQrDataUrl" :src="shareCardQrDataUrl" alt="分享二维码" loading="lazy" decoding="async" fetchpriority="low" class="share-card-qr" />

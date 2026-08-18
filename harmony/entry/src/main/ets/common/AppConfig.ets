@@ -1,6 +1,6 @@
 export const APP_NAME = '药大拾间';
-export const APP_URL = 'https://cpu.lizmt.cn/schedule?client=harmony-app&appVersionCode=17&appVersionName=2.0.8';
-export const APP_HOST = 'cpu.lizmt.cn';
+export const APP_URL = 'https://cputime.cn/schedule?client=harmony-app&appVersionCode=17&appVersionName=2.0.8';
+export const APP_HOST = 'cputime.cn';
 export const VERSION_CODE = 17;
 export const VERSION_NAME = '2.0.8';
 export const USER_AGENT_TOKEN = `Mozilla/5.0 (Linux; HarmonyOS; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Mobile Safari/537.36 CPUWebHarmonyApp/${VERSION_CODE} CPUWebHarmonyAppVersion/${VERSION_NAME}`;

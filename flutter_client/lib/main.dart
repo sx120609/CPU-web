@@ -17,7 +17,7 @@ final class CpuAppConfig {
 
   static const baseUrl = String.fromEnvironment(
     'CPU_WEB_BASE_URL',
-    defaultValue: 'https://cpu.lizmt.cn',
+    defaultValue: 'https://cputime.cn',
   );
 
   static const appVersionCode = 22;

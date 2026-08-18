@@ -3946,7 +3946,7 @@ async function maybeSendQqGroupAdReport(input: {
       expiresAt: new Date(now.getTime() + QQ_GROUP_AD_REPORT_TTL_MS),
     },
   });
-  const origin = getSiteOrigin() || "https://cpu.lizmt.cn";
+  const origin = getSiteOrigin() || "https://cputime.cn";
   const actionUrl = `${origin.replace(/\/+$/, "")}/qqbot/ad-report/${token}`;
   try {
     const messageId = await sendQqMessage(

@@ -65,7 +65,7 @@ test("accepts clearing the strike counter as a report action", () => {
 
 test("sends unbound administrators to the QQ binding page and preserves the report link", () => {
   const reportPath = "/qqbot/ad-report/abcdefghijklmnopqrstuvwx";
-  const target = new URL(buildQqBotBindingGuideUrl(reportPath), "https://cpu.lizmt.cn");
+  const target = new URL(buildQqBotBindingGuideUrl(reportPath), "https://cputime.cn");
   assert.equal(target.pathname, "/messages");
   assert.equal(target.searchParams.get("tab"), "settings");
   assert.equal(target.searchParams.get("qqbot"), "bind");
@@ -73,7 +73,7 @@ test("sends unbound administrators to the QQ binding page and preserves the repo
 });
 
 test("does not preserve unrelated return paths in the QQ binding guide", () => {
-  const target = new URL(buildQqBotBindingGuideUrl("//example.com/steal"), "https://cpu.lizmt.cn");
+  const target = new URL(buildQqBotBindingGuideUrl("//example.com/steal"), "https://cputime.cn");
   assert.equal(target.searchParams.get("returnTo"), "/home");
 });
 

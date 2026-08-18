@@ -81,7 +81,7 @@ function resolvePublicOrigin(req: Request) {
   if (configured) return configured;
   const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "https").split(",")[0].trim() || "https";
   const host = String(req.headers["x-forwarded-host"] || req.headers.host || "").split(",")[0].trim();
-  return host ? `${proto}://${host}` : "https://cpu.lizmt.cn";
+  return host ? `${proto}://${host}` : "https://cputime.cn";
 }
 
 function buildTopicDescription(topic: any) {
@@ -262,7 +262,7 @@ async function renderTopicCardSvg(topic: any, origin: string) {
   <text x="92" y="724" font-size="40" font-weight="820" fill="#172033">药大拾间</text>
   <text x="92" y="764" font-size="19" fill="#667085">扫描二维码，直接打开原帖</text>
   <text x="92" y="816" font-size="16" font-weight="700" fill="${escapeXml(boardColor)}">${escapeXml(boardName)}</text>
-  <text x="92" y="842" font-size="16" fill="#98a2b3">cpu.lizmt.cn</text>
+  <text x="92" y="842" font-size="16" fill="#98a2b3">cputime.cn</text>
 
   <rect x="458" y="704" width="132" height="132" rx="20" fill="#ffffff" stroke="#dfe5ee" />
   <image x="470" y="716" width="108" height="108" href="${escapeXml(qrDataUrl)}" />

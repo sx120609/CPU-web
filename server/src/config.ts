@@ -343,7 +343,7 @@ export const config = {
   jwxtSessionIdleMs,
   corsAllowedOrigins: parseCsvEnv(
     process.env.CORS_ALLOWED_ORIGINS,
-    nodeEnv === "production" ? ["https://cpu.lizmt.cn"] : [],
+    nodeEnv === "production" ? ["https://cputime.cn"] : [],
   ),
   mediaStorageProvider: (process.env.MEDIA_STORAGE_PROVIDER ?? "local").trim().toLowerCase(),
   mediaStorageImageProvider: (process.env.MEDIA_STORAGE_IMAGE_PROVIDER ?? "").trim().toLowerCase(),

@@ -30,7 +30,7 @@ flutter run --dart-define=CPU_WEB_BASE_URL=http://10.0.2.2:5173
 正式环境默认打开：
 
 ```text
-https://cpu.lizmt.cn
+https://cputime.cn
 ```
 
 ## Android 发布

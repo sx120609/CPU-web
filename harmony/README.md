@@ -15,7 +15,7 @@
 - 应用名：药大拾间
 - 包名：`com.cpu.yaodashijian`
 - 版本：`2.0.8 (17)`
-- 默认入口：`https://cpu.lizmt.cn/schedule`
+- 默认入口：`https://cputime.cn/schedule`
 
 ## 构建
 
