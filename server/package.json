@@ -50,6 +50,7 @@
     "http-proxy": "1.18.1",
     "iconv-lite": "^0.6.3",
     "ioredis": "^5.11.0",
+    "katex": "^0.16.47",
     "jsonwebtoken": "^9.0.2",
     "marked": "^14.1.4",
     "morgan": "^1.10.0",

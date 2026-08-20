@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   containsQqBotMarkdown,
   normalizeQqBotQrLinkMentions,
+  renderQqBotMathExpression,
   renderQqBotAiReplyAsQqMessage,
   renderQqBotAiReplyImage,
   splitQqBotLinkUrl,
@@ -23,12 +24,30 @@ test("QQbot Markdown AI 回复会渲染为带拾间AI顶栏的 PNG", () => {
   ].join("\n");
 
   assert.equal(containsQqBotMarkdown(reply), true);
+  assert.equal(containsQqBotMarkdown("AUCpo = Dosepo / AUCpo"), true);
   const png = renderQqBotAiReplyImage(reply);
   assert.deepEqual([...png.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
 
   const message = renderQqBotAiReplyAsQqMessage(reply);
   assert.match(message || "", /^\[CQ:image,file=base64:\/\//);
   assert.equal(message?.includes("**1. 登录入口**"), false);
+});
+
+test("QQbot 图片复用主站的行内/块级公式识别并渲染公式语义", () => {
+  const reply = [
+    "药代动力学：$C_{ss} = \\frac{Dose}{AUC}$。",
+    "",
+    "$$",
+    "AUCpo = (Dosepo / AUCpo)",
+    "$$",
+  ].join("\n");
+
+  assert.equal(containsQqBotMarkdown(reply), true);
+  assert.equal(renderQqBotMathExpression("x^2"), "x²");
+  assert.match(renderQqBotMathExpression("\\frac{a}{b}"), /a.*b/u);
+  assert.match(renderQqBotMathExpression("\\sqrt{x}"), /^√/u);
+  const png = renderQqBotAiReplyImage(reply, { qrCodeEnabled: false });
+  assert.deepEqual([...png.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
 });
 
 test("QQbot 普通短 AI 回复也渲染为图片", () => {

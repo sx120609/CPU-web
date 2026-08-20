@@ -1,6 +1,41 @@
 import { Resvg } from "@resvg/resvg-js";
-import { lexer, type Token, type Tokens } from "marked";
+import * as cheerio from "cheerio";
+import katex from "katex";
+import { Marked, type Token, type Tokens } from "marked";
 import QRCode from "qrcode";
+
+// Keep the QQBot image renderer in step with web/src/utils/markdown.ts. The
+// web renderer uses the same two delimiters and also promotes common bare
+// formula lines (for example `AUC = Dose / C`) to display math.
+const qqBotMarkdown = new Marked({ breaks: true, gfm: true });
+qqBotMarkdown.use({
+  extensions: [
+    {
+      name: "mathBlock",
+      level: "block",
+      start(source: string) {
+        return source.indexOf("$$");
+      },
+      tokenizer(source: string) {
+        const match = /^\$\$\s*\n?([\s\S]+?)\n?\s*\$\$(?:\n|$)/.exec(source);
+        if (!match) return undefined;
+        return { type: "mathBlock", raw: match[0], text: match[1].trim() };
+      },
+    },
+    {
+      name: "mathInline",
+      level: "inline",
+      start(source: string) {
+        return source.indexOf("$");
+      },
+      tokenizer(source: string) {
+        const match = /^\$(?!\$)((?:\\.|[^$\\\n])+?)\$/.exec(source);
+        if (!match) return undefined;
+        return { type: "mathInline", raw: match[0], text: match[1].trim() };
+      },
+    },
+  ],
+});
 
 // Keep the geometry of the reference QQBot renderer: a compact 900px card,
 // a thin divider below the header, and the source QR block at the bottom.
@@ -26,7 +61,7 @@ const QQBOT_AI_SOURCE_QR_SIZE = 124;
 const QQBOT_AI_SOURCE_QR_PADDING = 6;
 const QQBOT_AI_SOURCE_QR_BLOCK_HEIGHT = 164;
 const QQBOT_AI_DISCLOSURE_PATTERN = /以上回复由拾间AI生成，内容可能存在偏差，请自行鉴别并以官方信息为准。?/u;
-const QQBOT_MARKDOWN_PATTERN = /(?:^|\n)\s*(?:#{1,6}\s|[-*+]\s+|\d+[.)]\s+|>\s)|(?:\*\*|__|~~|`{1,3})|!?\[[^\]]*\]\([^)]*\)/m;
+const QQBOT_MARKDOWN_PATTERN = /(?:^|\n)\s*(?:#{1,6}\s|[-*+]\s+|\d+[.)]\s+|>\s|[A-Za-z][A-Za-z0-9_]*(?:\/\d+)?\s*=\s*\S.+$)|(?:\*\*|__|~~|`{1,3})|!?\[[^\]]*\]\([^)]*\)|\$\$(?:[\s\S]+?)\$\$|\$(?!\$)(?:\\.|[^$\\\n])+\$/m;
 // Chinese line-breaking rules: closing punctuation must not start a line,
 // while opening brackets/quotes must not be stranded at the end of one.
 const QQBOT_NO_LINE_START_CHARS = new Set(Array.from("，。！？；：、）》」』】〕〉》”’)]}>,.!?;:%…％‰"));
@@ -44,6 +79,7 @@ type InlineRun = {
   bold?: boolean;
   italic?: boolean;
   code?: boolean;
+  math?: boolean;
   strike?: boolean;
   color?: string;
 };
@@ -156,7 +192,7 @@ export function normalizeQqBotQrLinkMentions(
 }
 
 function buildMarkdownLines(markdown: string) {
-  const tokens = lexer(markdown, { gfm: true, breaks: true });
+  const tokens = qqBotMarkdown.lexer(normalizeQqBotBareFormulaLines(markdown));
   const lines: RenderLine[] = [];
   for (const token of tokens) appendBlockToken(lines, token);
   if (!lines.length) {
@@ -183,6 +219,15 @@ function appendBlockToken(lines: RenderLine[], token: Token, options: { indent?:
         indent,
         before: 20,
         after: 8,
+        borderLeft,
+      });
+      return;
+    case "mathBlock":
+      appendRuns(lines, [{ text: renderQqBotMathExpression(String((token as { text?: unknown }).text || ""), true), math: true }], {
+        fontSize: 30,
+        indent,
+        before: 16,
+        after: 10,
         borderLeft,
       });
       return;
@@ -497,6 +542,9 @@ function inlineRuns(tokens: Token[] | undefined): InlineRun[] {
       case "em": append(inlineRuns(token.tokens), { italic: true }); break;
       case "del": append(inlineRuns(token.tokens), { strike: true }); break;
       case "codespan": append([{ text: token.text, code: true, color: "#b42318" }]); break;
+      case "mathInline":
+        append([{ text: renderQqBotMathExpression(String((token as { text?: unknown }).text || ""), false), math: true }]);
+        break;
       case "link": {
         const linkText = inlineRuns(token.tokens);
         const rawHref = String(token.href || "").trim();
@@ -531,6 +579,204 @@ function inlineRuns(tokens: Token[] | undefined): InlineRun[] {
 function getTokenChildren(token: Token) {
   if ("tokens" in token && Array.isArray(token.tokens)) return token.tokens as Token[];
   return [];
+}
+
+/**
+ * Convert a TeX expression into a compact, SVG-safe representation.
+ *
+ * Resvg (the renderer used for QQ images) does not implement HTML
+ * `foreignObject`, so the browser's KaTeX HTML cannot be pasted into the
+ * image SVG directly. KaTeX's MathML output is semantic, however, and can
+ * be reduced to readable Unicode with the same parser and error handling as
+ * the main site. Fractions, roots, limits and scripts therefore remain
+ * recognizable instead of leaking `$...$` or `\\frac` source into QQ.
+ */
+export function renderQqBotMathExpression(expression: string, displayMode = false) {
+  const source = String(expression || "").trim();
+  if (!source) return "";
+  try {
+    const markup = katex.renderToString(source, {
+      displayMode,
+      output: "mathml",
+      throwOnError: false,
+      strict: "ignore",
+      trust: false,
+    });
+    const $ = cheerio.load(markup, { xmlMode: true });
+    const math = $("math").first().get(0);
+    const expressionText = math ? renderMathMlNode($, math) : "";
+    return expressionText.trim() || source.replace(/[{}]/g, "");
+  } catch {
+    return source.replace(/[{}]/g, "");
+  }
+}
+
+function renderMathMlNode($: cheerio.CheerioAPI, node: any, options: { compact?: boolean } = {}): string {
+  if (node.type === "text") return String(node.data || "");
+  if (node.type !== "tag") return "";
+  const tag = String(node.name || "").toLowerCase();
+  const children = (childOptions = options) => $(node).contents().toArray().map((child) => renderMathMlNode($, child, childOptions)).join("");
+  switch (tag) {
+    case "math":
+    case "semantics":
+    case "mrow":
+    case "mstyle":
+    case "mpadded":
+    case "mphantom":
+      return children();
+    case "annotation":
+      return "";
+    case "mi":
+    case "mn":
+    case "mtext":
+      return children();
+    case "mo": {
+      const value = children();
+      if (!options.compact && /^[=+\-×÷<>≤≥≈∝]$/u.test(value.trim())) return ` ${value.trim()} `;
+      if (!options.compact && value.trim() === ",") return ", ";
+      return value;
+    }
+    case "mspace":
+      return " ";
+    case "msup": {
+      const parts = $(node).children().toArray();
+      return `${renderMathMlNode($, parts[0], options)}${toMathSuperscript(renderMathMlNode($, parts[1], { compact: true }))}`;
+    }
+    case "msub": {
+      const parts = $(node).children().toArray();
+      return `${renderMathMlNode($, parts[0], options)}${toMathSubscript(renderMathMlNode($, parts[1], { compact: true }))}`;
+    }
+    case "msubsup": {
+      const parts = $(node).children().toArray();
+      return `${renderMathMlNode($, parts[0], options)}${toMathSubscript(renderMathMlNode($, parts[1], { compact: true }))}${toMathSuperscript(renderMathMlNode($, parts[2], { compact: true }))}`;
+    }
+    case "mfrac": {
+      const parts = $(node).children().toArray();
+      const numerator = renderMathMlNode($, parts[0]);
+      const denominator = renderMathMlNode($, parts[1]);
+      return `${wrapMathPart(numerator)} / ${wrapMathPart(denominator)}`;
+    }
+    case "msqrt":
+      return `√${wrapMathPart(children())}`;
+    case "mroot": {
+      const parts = $(node).children().toArray();
+      return `${toMathSuperscript(renderMathMlNode($, parts[1]))}√${wrapMathPart(renderMathMlNode($, parts[0]))}`;
+    }
+    case "mover":
+    case "munder":
+    case "munderover": {
+      const parts = $(node).children().toArray();
+      return parts.map((part, index) => {
+        const text = renderMathMlNode($, part);
+        if (tag === "mover" && index === 1) return toMathAccent(text);
+        if (tag === "munder" && index === 1) return toMathSubscript(text);
+        if (tag === "munderover" && index === 1) return toMathSubscript(text);
+        if (tag === "munderover" && index === 2) return toMathSuperscript(text);
+        return text;
+      }).join("");
+    }
+    case "mtable":
+      return $(node).children("mtr").toArray().map((row) => renderMathMlNode($, row)).join("; ");
+    case "mtr":
+      return $(node).children("mtd").toArray().map((cell) => renderMathMlNode($, cell)).join("  ");
+    case "mtd":
+      return children();
+    default:
+      return children();
+  }
+}
+
+function wrapMathPart(value: string) {
+  const normalized = value.trim();
+  if (!normalized) return "";
+  return normalized.length === 1 || /^[\p{L}\p{N}]+$/u.test(normalized) ? normalized : `(${normalized})`;
+}
+
+const MATH_SUPERSCRIPT_MAP: Record<string, string> = {
+  "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴", "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹",
+  "+": "⁺", "-": "⁻", "−": "⁻", "=": "⁼", "(": "⁽", ")": "⁾", "n": "ⁿ", "i": "ⁱ",
+};
+const MATH_SUBSCRIPT_MAP: Record<string, string> = {
+  "0": "₀", "1": "₁", "2": "₂", "3": "₃", "4": "₄", "5": "₅", "6": "₆", "7": "₇", "8": "₈", "9": "₉",
+  "+": "₊", "-": "₋", "−": "₋", "=": "₌", "(": "₍", ")": "₎", a: "ₐ", e: "ₑ", h: "ₕ", i: "ᵢ", j: "ⱼ", k: "ₖ", l: "ₗ", m: "ₘ", n: "ₙ", o: "ₒ", p: "ₚ", r: "ᵣ", s: "ₛ", t: "ₜ", u: "ᵤ", v: "ᵥ", x: "ₓ",
+};
+
+function mapMathScript(value: string, map: Record<string, string>, marker: string) {
+  const chars = Array.from(value.trim());
+  if (!chars.length) return "";
+  const mapped = chars.map((char) => map[char] || char).join("");
+  return mapped === value.trim() && chars.some((char) => !map[char]) ? `${marker}${value.trim()}` : mapped;
+}
+
+function toMathSuperscript(value: string) {
+  return mapMathScript(value, MATH_SUPERSCRIPT_MAP, "^");
+}
+
+function toMathSubscript(value: string) {
+  return mapMathScript(value, MATH_SUBSCRIPT_MAP, "_");
+}
+
+function toMathAccent(value: string) {
+  const accents: Record<string, string> = { "¯": "̄", "→": "⃗", "˙": "̇", "^": "̂" };
+  return accents[value.trim()] || value;
+}
+
+function normalizeQqBotBareFormulaLines(markdown: string) {
+  let insideFence = false;
+  let insideMathBlock = false;
+  return String(markdown || "").split("\n").map((line) => {
+    const trimmed = line.trim();
+    if (/^(```|~~~)/.test(trimmed)) {
+      insideFence = !insideFence;
+      return line;
+    }
+    if (/^\$\$\s*$/.test(trimmed)) {
+      insideMathBlock = !insideMathBlock;
+      return line;
+    }
+    if (
+      insideFence
+      || insideMathBlock
+      || !trimmed
+      || trimmed.includes("$")
+      || !/^[A-Za-z][A-Za-z0-9_]*(?:\/\d+)?\s*=\s*\S.+$/.test(trimmed)
+    ) {
+      return line;
+    }
+    return `$$${normalizeQqBotBareFormula(trimmed)}$$`;
+  }).join("\n");
+}
+
+function normalizeQqBotBareFormula(formula: string) {
+  const [rawLeft, ...rawRightParts] = formula.split("=");
+  if (!rawRightParts.length) return formula;
+  const left = normalizeQqBotFormulaTokens(rawLeft.trim());
+  let right = normalizeQqBotFormulaTokens(rawRightParts.join("=").trim());
+  const parenthesizedFraction = /^\((.+)\)\/\((.+)\)$/.exec(right);
+  const simpleFraction = /^([A-Za-z0-9_{}.\-\\]+)\/([A-Za-z0-9_{}.\-\\]+)$/.exec(right);
+  if (parenthesizedFraction) right = `\\frac{${parenthesizedFraction[1]}}{${parenthesizedFraction[2]}}`;
+  else if (simpleFraction) right = `\\frac{${simpleFraction[1]}}{${simpleFraction[2]}}`;
+  return `${left} = ${right}`;
+}
+
+function normalizeQqBotFormulaTokens(value: string) {
+  const replacements: Array<[RegExp, string]> = [
+    [/\bAUCpo\b/g, "AUC_{po}"],
+    [/\bAUCiv\b/g, "AUC_{iv}"],
+    [/\bDosepo\b/g, "Dose_{po}"],
+    [/\bDoseiv\b/g, "Dose_{iv}"],
+    [/\bCss\b/g, "C_{ss}"],
+    [/\bt1\/2\b/g, "t_{1/2}"],
+    [/\bke\b/g, "k_e"],
+    [/\bVd\b/g, "V_d"],
+    [/\bC([012])\b/g, "C_$1"],
+    [/\bt([12])\b/g, "t_$1"],
+    [/\bR0\b/g, "R_0"],
+    [/\bln\b/g, "\\ln"],
+  ];
+  let normalized = value.replace(/[−–—]/g, "-").replace(/·/g, "\\cdot ");
+  for (const [pattern, replacement] of replacements) normalized = normalized.replace(pattern, replacement);
+  return normalized.replace(/e\^\(([^)]+)\)/g, "e^{$1}");
 }
 
 function buildReplySvg(
@@ -857,6 +1103,7 @@ function renderRun(run: InlineRun) {
     run.bold ? `font-weight="700"` : "",
     run.italic ? `font-style="italic"` : "",
     run.code ? `font-family="Consolas, Microsoft YaHei, monospace"` : "",
+    run.math ? `font-family="Cambria Math, STIX Two Math, Times New Roman, Microsoft YaHei, sans-serif"` : "",
     run.color ? `fill="${run.color}"` : "",
     run.strike ? `text-decoration="line-through"` : "",
   ].filter(Boolean).join(" ");
@@ -881,6 +1128,7 @@ function sameRunStyle(left: InlineRun, right: InlineRun) {
   return Boolean(left.bold) === Boolean(right.bold)
     && Boolean(left.italic) === Boolean(right.italic)
     && Boolean(left.code) === Boolean(right.code)
+    && Boolean(left.math) === Boolean(right.math)
     && Boolean(left.strike) === Boolean(right.strike)
     && left.color === right.color;
 }
