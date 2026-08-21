@@ -2123,6 +2123,10 @@ const siteConfigPatchSchema = z.object({
   qqGroupAdReviewModel: z.string().trim().max(80).optional(),
   qqGroupAdReviewFallbackModels: z.string().trim().max(400).optional(),
   qqGroupAdReviewApiKey: z.string().trim().max(240).optional(),
+  qqGroupAdReviewPeakEnabled: z.boolean().optional(),
+  qqGroupAdReviewPeakStart: z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/u).optional(),
+  qqGroupAdReviewPeakEnd: z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/u).optional(),
+  qqGroupAdReviewPeakModel: z.string().trim().max(80).optional(),
   qqGroupAdReviewSystemPrompt: z.string().max(8000).optional(),
   qqGroupAdReviewUserPrompt: z.string().max(12000).optional(),
   imageReviewServiceId: z.string().trim().max(48).optional(),
@@ -2208,6 +2212,10 @@ adminRouter.patch("/site-config", adminOnly, validate(siteConfigPatchSchema), as
       req.body.qqGroupAdReviewModel !== undefined ||
       req.body.qqGroupAdReviewFallbackModels !== undefined ||
       req.body.qqGroupAdReviewApiKey !== undefined ||
+      req.body.qqGroupAdReviewPeakEnabled !== undefined ||
+      req.body.qqGroupAdReviewPeakStart !== undefined ||
+      req.body.qqGroupAdReviewPeakEnd !== undefined ||
+      req.body.qqGroupAdReviewPeakModel !== undefined ||
       req.body.qqGroupAdReviewSystemPrompt !== undefined ||
       req.body.qqGroupAdReviewUserPrompt !== undefined ||
       req.body.imageReviewServiceId !== undefined ||

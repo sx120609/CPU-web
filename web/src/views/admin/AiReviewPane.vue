@@ -315,6 +315,54 @@
           <span class="ai-label">拦截阈值</span>
           <el-input-number v-model="form.qqGroupAdReviewThreshold" :min="0" :max="100" />
         </div>
+        <div class="ai-row ai-row--switch">
+          <span class="ai-label">高峰增强模式</span>
+          <el-switch v-model="form.qqGroupAdReviewPeakEnabled" inline-prompt active-text="开" inactive-text="关" />
+        </div>
+        <div class="ai-row">
+          <span class="ai-label">高峰开始</span>
+          <el-time-picker
+            v-model="form.qqGroupAdReviewPeakStart"
+            format="HH:mm"
+            value-format="HH:mm"
+            placeholder="00:30"
+            :clearable="false"
+          />
+        </div>
+        <div class="ai-row">
+          <span class="ai-label">高峰结束</span>
+          <el-time-picker
+            v-model="form.qqGroupAdReviewPeakEnd"
+            format="HH:mm"
+            value-format="HH:mm"
+            placeholder="08:30"
+            :clearable="false"
+          />
+        </div>
+        <div class="ai-row ai-row--stretch">
+          <span class="ai-label">高峰强模型</span>
+          <el-select
+            v-model="form.qqGroupAdReviewPeakModel"
+            filterable
+            allow-create
+            clearable
+            default-first-option
+            placeholder="留空则沿用普通广告模型"
+          >
+            <el-option
+              v-for="model in modelOptionsForService(form.qqGroupAdReviewServiceId, [form.qqGroupAdReviewPeakModel, form.qqGroupAdReviewModel])"
+              :key="`qq-group-ad-peak-${model}`"
+              :label="model"
+              :value="model"
+            />
+          </el-select>
+        </div>
+        <el-alert
+          type="warning"
+          :closable="false"
+          show-icon
+          title="按北京时间生效，支持跨午夜时段。增强模式会跳过本地快速放行、启用昵称冒充与导流组合风控，并优先使用高峰模型；白名单仍不进入普通广告审核。"
+        />
         <el-alert
           type="info"
           :closable="false"
@@ -730,6 +778,10 @@ const form = reactive<SiteConfig>({
   qqGroupAdReviewModel: "deepseek-v4-flash",
   qqGroupAdReviewFallbackModels: "",
   qqGroupAdReviewApiKey: "",
+  qqGroupAdReviewPeakEnabled: true,
+  qqGroupAdReviewPeakStart: "00:30",
+  qqGroupAdReviewPeakEnd: "08:30",
+  qqGroupAdReviewPeakModel: "",
   qqGroupAdReviewSystemPrompt: "",
   qqGroupAdReviewUserPrompt: "",
   imageReviewServiceId: "default-main",
@@ -1129,6 +1181,10 @@ async function saveConfig() {
       qqGroupAdReviewModel: form.qqGroupAdReviewModel,
       qqGroupAdReviewFallbackModels: form.qqGroupAdReviewFallbackModels,
       qqGroupAdReviewApiKey: qqService.apiKey,
+      qqGroupAdReviewPeakEnabled: form.qqGroupAdReviewPeakEnabled,
+      qqGroupAdReviewPeakStart: form.qqGroupAdReviewPeakStart,
+      qqGroupAdReviewPeakEnd: form.qqGroupAdReviewPeakEnd,
+      qqGroupAdReviewPeakModel: form.qqGroupAdReviewPeakModel,
       qqGroupAdReviewSystemPrompt: form.qqGroupAdReviewSystemPrompt,
       qqGroupAdReviewUserPrompt: form.qqGroupAdReviewUserPrompt,
       imageReviewServiceId: imageService.id,

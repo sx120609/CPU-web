@@ -92,6 +92,7 @@ import {
   syncTopicAiTags,
 } from "./topicAiReview";
 import { reviewQqGroupMessageForAd, resolveQqGroupWhitelistReviewPlan } from "./qqbotGroupAdReview";
+export { resolveQqGroupWhitelistReviewPlan };
 import { containsQqGroupCard } from "./qqbot/groupCard";
 import {
   extractSafetyPlatformUrlFromText,

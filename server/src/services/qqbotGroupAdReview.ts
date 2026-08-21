@@ -29,6 +29,14 @@ export type QqGroupAdReviewResult = {
   assistantIntent: boolean;
 };
 
+export type QqGroupAdPeakMode = {
+  active: boolean;
+  start: string;
+  end: string;
+  model: string;
+  timeZone: "Asia/Shanghai";
+};
+
 const QQ_GROUP_AD_REVIEW_RESULT_CACHE_TTL_MS = 10 * 60_000;
 const QQ_GROUP_AD_IMAGE_MAX_INLINE_BYTES = 12 * 1024 * 1024;
 const QQ_GROUP_QR_ONLY_SYSTEM_PROMPT = [
@@ -65,6 +73,14 @@ const QQ_GROUP_MASS_INVITE_PATTERN = /(?:@全体成员|最后(?:一次|一条)�
 const QQ_GROUP_UNVERIFIED_TARGET_PATTERN = /(?:新生(?:通知)?群|通知群|官方群|官方(?:群|通知)|入学群|资料群)/u;
 const QQ_GROUP_DISSOLUTION_PATTERN = /(?:本群|此群|该群)(?:作废|即将解散|将要解散|即将关闭|停止使用)/u;
 const QQ_GROUP_REPLACEMENT_DIVERSION_PATTERN = /(?:所有人|大家|请各位|请大家|成员).{0,20}(?:转移|转到|迁移|前往).{0,24}(?:新群|群号|QQ群|Q群)/u;
+const QQ_GROUP_SUSPICIOUS_NICKNAME_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
+  { pattern: /学(?:姐|长)/u, reason: "疑似以学长学姐身份接近新生" },
+  { pattern: /(?:学生工作处|学工处|教务处|招生办|辅导员|班主任|校方|学校官方|官方通知)/u, reason: "疑似冒充学校部门或教职人员" },
+  { pattern: /(?:菜鸟驿站|驿站(?:通知|客服|取件))/u, reason: "疑似冒充快递驿站通知" },
+  { pattern: /(?:q|qq)\s*群\s*管家|群\s*管家/iu, reason: "疑似冒充 QQ 群管理身份" },
+];
+const QQ_GROUP_IDENTITY_DIVERSION_PATTERN = /(?:https?:\/\/|www\.|二维码|扫码|加群|进群|入群|加入(?:新)?群|群号|私聊|联系(?:我|本人|客服)?|加(?:我|好友|微信|QQ)|(?:微信|vx|v信|威信)\s*(?:号|id)?\s*[:：]?\s*[a-z][a-z0-9_-]{5,19}\b|(?<!\d)1[3-9]\d{9}(?!\d)|(?:QQ\s*(?:群|群号)|Q\s*群|群号).{0,16}\d{6,12})/iu;
+const QQ_GROUP_SENIOR_TARGET_PATTERN = /(?:新生|大一|准大学生|入学|开学|宿舍|军训|录取|通知书|资料|官方群|通知群)/u;
 /**
  * Codex Spark/Codex variants currently reject image parts. Keep this guard
  * local to QQ ad review so a text-only moderation model can still be used for
@@ -105,13 +121,20 @@ export async function reviewQqGroupMessageForAd(input: {
   metadata?: Record<string, unknown> | null;
 }): Promise<QqGroupAdReviewResult> {
   const config = getSiteConfig();
+  const reviewMode = input.reviewMode === "qr-only" ? "qr-only" : "full";
+  const moderationEnabled = input.moderationEnabled !== false;
+  const peakMode = resolveQqGroupAdPeakMode(config);
+  const enhancedMode = moderationEnabled && reviewMode === "full" && peakMode.active;
+  const effectiveTextModel = enhancedMode && peakMode.model
+    ? peakMode.model
+    : config.qqGroupAdReviewModel;
   const providers = resolveAiServiceCandidatesForScene(config, "qq-group-ad");
   const provider = providers[0];
   if (!config.qqGroupAdReviewEnabled || !providers.some((candidate) => isAiProviderReady({
     provider: candidate.provider,
     apiUrl: candidate.apiUrl,
     apiKey: candidate.apiKey,
-    model: config.qqGroupAdReviewModel,
+    model: effectiveTextModel,
   }))) {
     return {
       action: "allow",
@@ -119,18 +142,22 @@ export async function reviewQqGroupMessageForAd(input: {
       riskLevel: "low",
       reason: "QQ群广告过滤未开启",
       detail: "",
-      model: config.qqGroupAdReviewModel,
+      model: effectiveTextModel,
       modelDecision: "auto_pass",
       assistantIntent: false,
     };
   }
 
   const imageUrls = Array.from(new Set((input.imageUrls || []).map((url) => String(url || "").trim()).filter(Boolean))).slice(0, 4);
-  const reviewMode = input.reviewMode === "qr-only" ? "qr-only" : "full";
-  const moderationEnabled = input.moderationEnabled !== false;
   const detectAssistantIntent = input.detectAssistantIntent === true && reviewMode === "full";
+  const nicknameRiskReason = enhancedMode
+    ? detectSuspiciousQqNicknameReason(input.nickname)
+    : null;
+  const identityDiversionReason = enhancedMode
+    ? detectQqNicknameImpersonationDiversionReason(input.nickname, input.content)
+    : null;
   const hardBlockReason = moderationEnabled && reviewMode === "full"
-    ? detectQqGroupAdHardBlockReason(input.content, input.blockQrCodes === true)
+    ? identityDiversionReason || detectQqGroupAdHardBlockReason(input.content, input.blockQrCodes === true)
     : null;
   if (hardBlockReason) {
     return {
@@ -138,13 +165,15 @@ export async function reviewQqGroupMessageForAd(input: {
       riskScore: 100,
       riskLevel: "high",
       reason: hardBlockReason,
-      detail: "命中明确的 QQ 群号或加群导流特征，无需等待模型阈值判断。",
+      detail: identityDiversionReason
+        ? "高峰增强模式命中疑似冒充身份昵称，且消息同时存在面向新生或外部联系导流证据。"
+        : "命中明确的 QQ 群号或加群导流特征，无需等待模型阈值判断。",
       model: "local-signal",
       modelDecision: "block",
       assistantIntent: false,
     };
   }
-  const localBypassReason = moderationEnabled && reviewMode === "full" && !imageUrls.length
+  const localBypassReason = moderationEnabled && reviewMode === "full" && !enhancedMode && !imageUrls.length
     ? detectQqCampusOrganizationRecruitmentBypassReason(input.content)
       || detectHarmlessQqGroupAdBypassReason(input.content)
     : null;
@@ -172,6 +201,8 @@ export async function reviewQqGroupMessageForAd(input: {
     reviewMode,
     moderationEnabled,
     detectAssistantIntent,
+    nickname: normalizeNicknameForRisk(input.nickname),
+    enhancedMode,
   });
   const cached = readLocalResultCache(resultCacheKey);
   if (cached) {
@@ -203,15 +234,34 @@ export async function reviewQqGroupMessageForAd(input: {
     "特别注意：如果文本或图片把内容包装成“学校重要消息”“官方通知”“校园官方官方群”等，并以军训、宿舍、开学、入党入团或新生安排为名，要求加入未核验 QQ 群、扫码、转发或在截止时间前完成操作，视为疑似冒充官方的引流消息，必须 decision=block；不得因其中出现“社团招新”“学生会”等字样而套用校园组织招新豁免。",
     "证据不足时优先 auto_pass 或 manual_review，不能靠猜测 block。",
   ].join("\n");
+  const enhancedPolicy = enhancedMode
+    ? [
+        "当前处于广告高峰增强审核时段，请更仔细核对冒充身份、面向新生建立信任、伪造官方/物流/群管理通知后再导流等组合风险，不得因文案写得像校园通知就降低警惕。",
+        `发送者昵称风险信号：${nicknameRiskReason || "未命中已知冒充身份样式"}。`,
+        "昵称风险信号只能提高核查强度，不能单独作为拦截依据；需要结合消息中的加群、扫码、联系方式、外链、收费交易、虚假通知或面向新生的诱导证据作出判断。",
+        "高峰增强模式仅适用于非白名单用户。合法校园讨论和没有导流/商业证据的普通消息仍应放行。",
+      ].join("\n")
+    : "";
+  const effectiveMetadata = {
+    ...(input.metadata || {}),
+    imageUrls,
+    blockQrCodes: input.blockQrCodes === true,
+    enhancedMode,
+    ...(enhancedMode ? {
+      peakWindow: `${peakMode.start}-${peakMode.end}`,
+      peakTimeZone: peakMode.timeZone,
+      nicknameRiskReason: nicknameRiskReason || "",
+    } : {}),
+  };
   const promptText = reviewMode === "qr-only"
     ? "只检查本消息所附图片和视频抽帧里有没有可识别二维码。即使画面是明显广告、招新、推广或引流，也不得因此拦截；没有二维码就必须放行。"
-    : `${moderationEnabled ? qrPolicy : "本次不执行广告拦截，只判断是否明确希望 QQBot 回答。\n\n"}${moderationEnabled ? campusPolicy : ""}${imageUrls.length ? "\n\n这是一条包含附图的群消息。请直接查看附图；附图消息不会转给日常问答。" : ""}\n\n${fillPromptTemplate(config.qqGroupAdReviewUserPrompt, {
+    : `${moderationEnabled ? qrPolicy : "本次不执行广告拦截，只判断是否明确希望 QQBot 回答。\n\n"}${moderationEnabled ? campusPolicy : ""}${enhancedPolicy ? `\n\n${enhancedPolicy}` : ""}${imageUrls.length ? "\n\n这是一条包含附图的群消息。请直接查看附图；附图消息不会转给日常问答。" : ""}\n\n${fillPromptTemplate(config.qqGroupAdReviewUserPrompt, {
         groupId: input.groupId,
         groupName: input.groupName || input.groupId,
         qqId: input.qqId,
         nickname: input.nickname || "",
         content: input.content,
-        metadataJson: JSON.stringify({ ...(input.metadata || {}), imageUrls, blockQrCodes: input.blockQrCodes === true }),
+        metadataJson: JSON.stringify(effectiveMetadata),
       })}${assistantIntentInstruction}`;
   const userContent = [
     { type: "text" as const, text: promptText },
@@ -227,8 +277,8 @@ export async function reviewQqGroupMessageForAd(input: {
   const attachmentSummary = preparedImages.length
     ? `\n\n[附件诊断] ${preparedImages.map((image, index) => `图片${index + 1}：${image.sourceMimeType} -> ${image.mimeType}，${image.byteLength} bytes，${image.transcoded ? "已转码" : "原格式"}，sha256=${image.sha256}`).join("；")}`
     : "";
-  const reviewMetadataSummary = input.metadata && Object.keys(input.metadata).length
-    ? `\n\n[审核路径诊断] ${JSON.stringify(input.metadata).slice(0, 1800)}`
+  const reviewMetadataSummary = Object.keys(effectiveMetadata).length
+    ? `\n\n[审核路径诊断] ${JSON.stringify(effectiveMetadata).slice(0, 1800)}`
     : "";
   const reviewProvider = preparedImages.length
     ? resolveQqGroupAdImageProvider(config, provider)
@@ -240,7 +290,7 @@ export async function reviewQqGroupMessageForAd(input: {
     ? (imageProviders.some((candidate) => hasAiProviderAccess(candidate)) ? imageProviders : [reviewProvider])
     : providers;
   const endpoint = normalizeAiJsonApiUrl(reviewProvider.apiUrl, provider.apiUrl || "https://api.deepseek.com/chat/completions");
-  const candidates = resolveQqGroupAdModelCandidates(config, preparedImages.length > 0);
+  const candidates = resolveQqGroupAdModelCandidates(config, preparedImages.length > 0, enhancedMode);
   if (!candidates.length) {
     throw Errors.server("QQ群图片广告过滤未配置支持图片输入的模型，请在后台把‘图片审核’模型改为支持视觉输入的模型（例如 gpt-4o-mini）");
   }
@@ -250,6 +300,7 @@ export async function reviewQqGroupMessageForAd(input: {
     reviewMode,
     moderationEnabled,
     detectAssistantIntent,
+    enhancedMode,
   });
   let lastError: Error | null = null;
 
@@ -380,6 +431,42 @@ export function detectQqCampusOrganizationRecruitmentBypassReason(input: string)
   return "命中校园社团/学生组织招新豁免";
 }
 
+function normalizeNicknameForRisk(input: string | null | undefined) {
+  return String(input || "")
+    .normalize("NFKC")
+    .replace(/[\u200b-\u200f\u2060\ufeff]/gu, "")
+    .replace(/\s+/gu, " ")
+    .trim();
+}
+
+/**
+ * Nicknames that present the sender as a senior student, school office,
+ * parcel station or QQ group administrator are useful risk signals during
+ * peak-hour review. A nickname alone never blocks a message.
+ */
+export function detectSuspiciousQqNicknameReason(input: string | null | undefined) {
+  const nickname = normalizeNicknameForRisk(input);
+  if (!nickname) return null;
+  return QQ_GROUP_SUSPICIOUS_NICKNAME_PATTERNS.find(({ pattern }) => pattern.test(nickname))?.reason || null;
+}
+
+/**
+ * Enhanced mode may hard-block only when a suspicious identity nickname is
+ * paired with actual diversion evidence. Senior-student nicknames additionally
+ * require a freshman/arrival context so ordinary conversations are not caught.
+ */
+export function detectQqNicknameImpersonationDiversionReason(
+  nicknameInput: string | null | undefined,
+  contentInput: string,
+) {
+  const nickname = normalizeNicknameForRisk(nicknameInput);
+  const nicknameReason = detectSuspiciousQqNicknameReason(nickname);
+  const content = normalizeMessageForCache(contentInput);
+  if (!nicknameReason || !content || !QQ_GROUP_IDENTITY_DIVERSION_PATTERN.test(content)) return null;
+  if (/学(?:姐|长)/u.test(nickname) && !QQ_GROUP_SENIOR_TARGET_PATTERN.test(content)) return null;
+  return `疑似使用冒充身份昵称进行导流（${nicknameReason}）`;
+}
+
 /**
  * A message must not use the student-organization exception to disguise an
  * unverified QQ group as a school or official notification. A QQ group number
@@ -437,6 +524,40 @@ export function resolveQqGroupWhitelistReviewPlan(input: {
   return "bypass";
 }
 
+function parseTimeOfDayMinutes(value: unknown) {
+  const match = String(value || "").trim().match(/^(\d{2}):([0-5]\d)$/u);
+  if (!match) return null;
+  const hour = Number(match[1]);
+  if (!Number.isInteger(hour) || hour < 0 || hour > 23) return null;
+  return hour * 60 + Number(match[2]);
+}
+
+/** Resolve the configured daily window against China Standard Time (UTC+8). */
+export function resolveQqGroupAdPeakMode(
+  config: Pick<ReturnType<typeof getSiteConfig>,
+    "qqGroupAdReviewPeakEnabled" | "qqGroupAdReviewPeakStart" | "qqGroupAdReviewPeakEnd" | "qqGroupAdReviewPeakModel"
+  >,
+  now = new Date(),
+): QqGroupAdPeakMode {
+  const start = String(config.qqGroupAdReviewPeakStart || "00:30").trim();
+  const end = String(config.qqGroupAdReviewPeakEnd || "08:30").trim();
+  const startMinutes = parseTimeOfDayMinutes(start);
+  const endMinutes = parseTimeOfDayMinutes(end);
+  const chinaMinutes = ((now.getUTCHours() + 8) % 24) * 60 + now.getUTCMinutes();
+  const insideWindow = startMinutes === null || endMinutes === null || startMinutes === endMinutes
+    ? false
+    : startMinutes < endMinutes
+      ? chinaMinutes >= startMinutes && chinaMinutes < endMinutes
+      : chinaMinutes >= startMinutes || chinaMinutes < endMinutes;
+  return {
+    active: config.qqGroupAdReviewPeakEnabled === true && insideWindow,
+    start,
+    end,
+    model: String(config.qqGroupAdReviewPeakModel || "").trim(),
+    timeZone: "Asia/Shanghai",
+  };
+}
+
 function fillPromptTemplate(template: string, values: Record<string, string>) {
   return String(template || "").replace(/\{\{(\w+)\}\}/g, (_, key) => values[key] ?? "");
 }
@@ -479,6 +600,10 @@ function buildQqGroupAdReviewConfigHash(config: ReturnType<typeof getSiteConfig>
     providers.map((provider) => `${provider.serviceId || ""}\n${provider.provider}\n${provider.apiUrl}`).join("\n"),
     config.qqGroupAdReviewModel,
     config.qqGroupAdReviewFallbackModels,
+    config.qqGroupAdReviewPeakEnabled,
+    config.qqGroupAdReviewPeakStart,
+    config.qqGroupAdReviewPeakEnd,
+    config.qqGroupAdReviewPeakModel,
     imageProviders.map((provider) => `${provider.serviceId || ""}\n${provider.provider}\n${provider.apiUrl}`).join("\n"),
     config.imageReviewModel,
     config.imageReviewFallbackModels,
@@ -497,8 +622,10 @@ function buildQqGroupAdReviewResultCacheKey(input: {
   reviewMode: "full" | "qr-only";
   moderationEnabled: boolean;
   detectAssistantIntent: boolean;
+  nickname: string;
+  enhancedMode: boolean;
 }) {
-  return `qqbot:group-ad-review:${hashString(`${input.configHash}\n${input.groupId}\n${input.reviewMode}\n${input.moderationEnabled ? "moderate" : "intent-only"}\n${input.detectAssistantIntent ? "assistant-intent" : "ad-only"}\n${input.content}\n${input.blockQrCodes ? "qr-block" : "qr-normal"}\n${input.imageUrls.join("\n")}`)}`;
+  return `qqbot:group-ad-review:${hashString(`${input.configHash}\n${input.groupId}\n${input.reviewMode}\n${input.moderationEnabled ? "moderate" : "intent-only"}\n${input.detectAssistantIntent ? "assistant-intent" : "ad-only"}\n${input.enhancedMode ? "enhanced" : "standard"}\n${input.nickname}\n${input.content}\n${input.blockQrCodes ? "qr-block" : "qr-normal"}\n${input.imageUrls.join("\n")}`)}`;
 }
 
 /**
@@ -509,13 +636,19 @@ function buildQqGroupAdReviewResultCacheKey(input: {
  * an image payload and turning a moderation event into a 400 error.
  */
 export function resolveQqGroupAdModelCandidates(
-  config: Pick<ReturnType<typeof getSiteConfig>, "qqGroupAdReviewModel" | "qqGroupAdReviewFallbackModels" | "imageReviewModel" | "imageReviewFallbackModels">,
+  config: Pick<ReturnType<typeof getSiteConfig>, "qqGroupAdReviewModel" | "qqGroupAdReviewFallbackModels" | "qqGroupAdReviewPeakModel" | "imageReviewModel" | "imageReviewFallbackModels">,
   hasImages: boolean,
+  enhancedMode = false,
 ) {
-  const textCandidates = resolveModelCandidates(config.qqGroupAdReviewModel, config.qqGroupAdReviewFallbackModels);
+  const normalTextCandidates = resolveModelCandidates(config.qqGroupAdReviewModel, config.qqGroupAdReviewFallbackModels);
+  const peakModel = enhancedMode ? String(config.qqGroupAdReviewPeakModel || "").trim() : "";
+  const textCandidates = Array.from(new Set([
+    ...(peakModel ? [peakModel] : []),
+    ...normalTextCandidates,
+  ]));
   if (!hasImages) return textCandidates;
   const imageCandidates = resolveModelCandidates(config.imageReviewModel, config.imageReviewFallbackModels);
-  const candidates = [...imageCandidates, ...textCandidates];
+  const candidates = [...imageCandidates, ...normalTextCandidates];
   const seen = new Set<string>();
   return candidates.filter((model) => {
     const key = model.toLowerCase();
@@ -628,8 +761,9 @@ function buildQqGroupAdPromptCacheKey(input: {
   reviewMode: "full" | "qr-only";
   moderationEnabled: boolean;
   detectAssistantIntent: boolean;
+  enhancedMode: boolean;
 }) {
-  return `qqbot-group-ad:${hashString(`${input.configHash}\n${input.groupId}\n${input.reviewMode}\n${input.moderationEnabled ? "moderate" : "intent-only"}\n${input.detectAssistantIntent ? "assistant-intent" : "ad-only"}`)}`;
+  return `qqbot-group-ad:${hashString(`${input.configHash}\n${input.groupId}\n${input.reviewMode}\n${input.moderationEnabled ? "moderate" : "intent-only"}\n${input.detectAssistantIntent ? "assistant-intent" : "ad-only"}\n${input.enhancedMode ? "enhanced" : "standard"}`)}`;
 }
 
 function hashString(input: string) {

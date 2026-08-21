@@ -47,6 +47,10 @@ export type SiteConfig = {
   qqGroupAdReviewModel: string;
   qqGroupAdReviewFallbackModels: string;
   qqGroupAdReviewApiKey: string;
+  qqGroupAdReviewPeakEnabled: boolean;
+  qqGroupAdReviewPeakStart: string;
+  qqGroupAdReviewPeakEnd: string;
+  qqGroupAdReviewPeakModel: string;
   qqGroupAdReviewSystemPrompt: string;
   qqGroupAdReviewUserPrompt: string;
   imageReviewServiceId: string;
@@ -825,6 +829,10 @@ export const adminApi = {
     qqGroupAdReviewModel?: string;
     qqGroupAdReviewFallbackModels?: string;
     qqGroupAdReviewApiKey?: string;
+    qqGroupAdReviewPeakEnabled?: boolean;
+    qqGroupAdReviewPeakStart?: string;
+    qqGroupAdReviewPeakEnd?: string;
+    qqGroupAdReviewPeakModel?: string;
     qqGroupAdReviewSystemPrompt?: string;
     qqGroupAdReviewUserPrompt?: string;
     imageReviewServiceId?: string;

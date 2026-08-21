@@ -6,6 +6,8 @@ import {
   detectQqCampusOrganizationRecruitmentBypassReason,
   detectHarmlessQqGroupAdBypassReason,
   detectQqGroupAdHardBlockReason,
+  detectQqNicknameImpersonationDiversionReason,
+  detectSuspiciousQqNicknameReason,
   detectQqUnofficialNoticeDiversionReason,
   isQqGroupQrDecision,
   isQqBotAssistantIntent,
@@ -14,6 +16,7 @@ import {
   resolveQqGroupWhitelistReviewPlan,
   resolveQqGroupQrOnlyReviewAction,
   resolveQqGroupAdModelCandidates,
+  resolveQqGroupAdPeakMode,
   resolveQqGroupAdReviewAction,
   shouldForwardQqBotAssistantIntent,
 } from "../src/services/qqbotGroupAdReview";
@@ -28,6 +31,7 @@ test("routes image reviews to visual models and filters Spark/Codex candidates",
   const config = {
     qqGroupAdReviewModel: "gpt-5.3-codex-spark",
     qqGroupAdReviewFallbackModels: "gpt-5.3-codex, gpt-4.1-mini",
+    qqGroupAdReviewPeakModel: "gpt-5.6-terra",
     imageReviewModel: "gpt-4o-mini",
     imageReviewFallbackModels: "gpt-4.1",
   };
@@ -38,6 +42,66 @@ test("routes image reviews to visual models and filters Spark/Codex candidates",
     "gpt-5.3-codex",
     "gpt-4.1-mini",
   ]);
+  assert.deepEqual(resolveQqGroupAdModelCandidates(config, false, true), [
+    "gpt-5.6-terra",
+    "gpt-5.3-codex-spark",
+    "gpt-5.3-codex",
+    "gpt-4.1-mini",
+  ]);
+  assert.deepEqual(resolveQqGroupAdModelCandidates(config, true, true), ["gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini"]);
+});
+
+test("activates peak enhanced mode in the configured Beijing-time window", () => {
+  const config = {
+    qqGroupAdReviewPeakEnabled: true,
+    qqGroupAdReviewPeakStart: "00:30",
+    qqGroupAdReviewPeakEnd: "08:30",
+    qqGroupAdReviewPeakModel: "gpt-5.6-terra",
+  };
+
+  assert.equal(resolveQqGroupAdPeakMode(config, new Date("2026-08-21T16:29:00.000Z")).active, false);
+  assert.equal(resolveQqGroupAdPeakMode(config, new Date("2026-08-21T16:30:00.000Z")).active, true);
+  assert.equal(resolveQqGroupAdPeakMode(config, new Date("2026-08-22T00:29:00.000Z")).active, true);
+  assert.equal(resolveQqGroupAdPeakMode(config, new Date("2026-08-22T00:30:00.000Z")).active, false);
+});
+
+test("supports peak windows that cross midnight and respects the enable switch", () => {
+  const config = {
+    qqGroupAdReviewPeakEnabled: true,
+    qqGroupAdReviewPeakStart: "22:00",
+    qqGroupAdReviewPeakEnd: "02:00",
+    qqGroupAdReviewPeakModel: "",
+  };
+  assert.equal(resolveQqGroupAdPeakMode(config, new Date("2026-08-22T15:00:00.000Z")).active, true);
+  assert.equal(resolveQqGroupAdPeakMode(config, new Date("2026-08-21T17:00:00.000Z")).active, true);
+  assert.equal(resolveQqGroupAdPeakMode(config, new Date("2026-08-22T04:00:00.000Z")).active, false);
+  assert.equal(resolveQqGroupAdPeakMode({ ...config, qqGroupAdReviewPeakEnabled: false }, new Date("2026-08-22T15:00:00.000Z")).active, false);
+});
+
+test("detects suspicious QQ nicknames without blocking on a nickname alone", () => {
+  assert.match(detectSuspiciousQqNicknameReason("学姐 小林") || "", /学长学姐/);
+  assert.match(detectSuspiciousQqNicknameReason("25计算机 学姐") || "", /学长学姐/);
+  assert.match(detectSuspiciousQqNicknameReason("菜鸟驿站通知") || "", /快递驿站/);
+  assert.match(detectSuspiciousQqNicknameReason("学工处 王老师") || "", /学校部门/);
+  assert.match(detectSuspiciousQqNicknameReason("q群管家") || "", /群管理/);
+  assert.equal(detectSuspiciousQqNicknameReason("计算机25级小王"), null);
+  assert.equal(detectQqNicknameImpersonationDiversionReason("学姐 小林", "今晚食堂见"), null);
+});
+
+test("hardens enhanced review when an impersonation nickname is paired with diversion", () => {
+  assert.match(
+    detectQqNicknameImpersonationDiversionReason("25计算机 学姐", "26级新生资料群，扫码进群领取开学资料") || "",
+    /冒充身份昵称进行导流/,
+  );
+  assert.match(
+    detectQqNicknameImpersonationDiversionReason("菜鸟驿站通知", "包裹异常，请联系我并扫码处理") || "",
+    /冒充身份昵称进行导流/,
+  );
+  assert.match(
+    detectQqNicknameImpersonationDiversionReason("q群管家", "本群即将停用，请加入新群 123456789") || "",
+    /冒充身份昵称进行导流/,
+  );
+  assert.equal(detectQqNicknameImpersonationDiversionReason("学姐 小林", "社团报名请联系我"), null);
 });
 
 test("hard-blocks explicit QQ group number diversion", () => {
