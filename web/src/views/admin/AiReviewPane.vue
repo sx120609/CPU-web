@@ -340,6 +340,21 @@
           />
         </div>
         <div class="ai-row ai-row--stretch">
+          <span class="ai-label">高峰模型服务</span>
+          <el-select
+            v-model="form.qqGroupAdReviewPeakServiceId"
+            placeholder="选择模型提供商"
+            @change="loadModelsForService(form.qqGroupAdReviewPeakServiceId, { silent: true })"
+          >
+            <el-option
+              v-for="service in form.aiServices"
+              :key="`qq-group-ad-peak-service-${service.id}`"
+              :label="service.name"
+              :value="service.id"
+            />
+          </el-select>
+        </div>
+        <div class="ai-row ai-row--stretch">
           <span class="ai-label">高峰强模型</span>
           <el-select
             v-model="form.qqGroupAdReviewPeakModel"
@@ -348,9 +363,10 @@
             clearable
             default-first-option
             placeholder="留空则沿用普通广告模型"
+            @focus="loadModelsForService(form.qqGroupAdReviewPeakServiceId, { silent: true })"
           >
             <el-option
-              v-for="model in modelOptionsForService(form.qqGroupAdReviewServiceId, [form.qqGroupAdReviewPeakModel, form.qqGroupAdReviewModel])"
+              v-for="model in modelOptionsForService(form.qqGroupAdReviewPeakServiceId, [form.qqGroupAdReviewPeakModel])"
               :key="`qq-group-ad-peak-${model}`"
               :label="model"
               :value="model"
@@ -361,7 +377,7 @@
           type="warning"
           :closable="false"
           show-icon
-          title="按北京时间生效，支持跨午夜时段。增强模式会跳过本地快速放行、启用昵称冒充与导流组合风控，并优先使用高峰模型；白名单仍不进入普通广告审核。"
+          title="按北京时间生效，支持跨午夜时段。增强模式会跳过本地快速放行、启用昵称冒充与导流组合风控，并切换到所选服务和高峰模型；白名单仍不进入普通广告审核。"
         />
         <el-alert
           type="info"
@@ -781,6 +797,7 @@ const form = reactive<SiteConfig>({
   qqGroupAdReviewPeakEnabled: true,
   qqGroupAdReviewPeakStart: "00:30",
   qqGroupAdReviewPeakEnd: "08:30",
+  qqGroupAdReviewPeakServiceId: "default-main",
   qqGroupAdReviewPeakModel: "",
   qqGroupAdReviewSystemPrompt: "",
   qqGroupAdReviewUserPrompt: "",
@@ -915,6 +932,9 @@ function ensureAiServices() {
       form[item.key] = form.aiServices[0].id;
     }
   }
+  if (!form.aiServices.some((service) => service.id === form.qqGroupAdReviewPeakServiceId)) {
+    form.qqGroupAdReviewPeakServiceId = form.qqGroupAdReviewServiceId || form.aiServices[0].id;
+  }
   normalizeFallbackServices();
 }
 
@@ -1013,6 +1033,9 @@ function removeAiService(serviceId: string) {
   for (const item of serviceAssignments) {
     if (form[item.key] === serviceId) form[item.key] = fallbackId;
   }
+  if (form.qqGroupAdReviewPeakServiceId === serviceId) {
+    form.qqGroupAdReviewPeakServiceId = form.qqGroupAdReviewServiceId || fallbackId;
+  }
   normalizeFallbackServices();
 }
 
@@ -1101,10 +1124,13 @@ async function loadModelsForService(serviceId: string, options: { silent?: boole
 }
 
 async function loadAssignedServiceCatalogs() {
-  const serviceIds = Array.from(new Set(serviceAssignments.flatMap((item) => [
-    String(form[item.key] || "").trim(),
-    ...(form.aiServiceFallbacks[item.scene] || []).map((route) => normalizeFallbackRoute(route).serviceId),
-  ]).filter(Boolean)));
+  const serviceIds = Array.from(new Set([
+    ...serviceAssignments.flatMap((item) => [
+      String(form[item.key] || "").trim(),
+      ...(form.aiServiceFallbacks[item.scene] || []).map((route) => normalizeFallbackRoute(route).serviceId),
+    ]),
+    String(form.qqGroupAdReviewPeakServiceId || "").trim(),
+  ].filter(Boolean)));
   await Promise.all(serviceIds.map((serviceId) => loadModelsForService(serviceId, { silent: true })));
 }
 
@@ -1121,7 +1147,10 @@ async function loadAllModels() {
 }
 
 watch(
-  () => serviceAssignments.map((item) => String(form[item.key] || "")),
+  () => [
+    ...serviceAssignments.map((item) => String(form[item.key] || "")),
+    String(form.qqGroupAdReviewPeakServiceId || ""),
+  ],
   (next, previous) => {
     if (!previous) return;
     const changed = next.filter((serviceId, index) => serviceId && serviceId !== previous[index]);
@@ -1184,6 +1213,7 @@ async function saveConfig() {
       qqGroupAdReviewPeakEnabled: form.qqGroupAdReviewPeakEnabled,
       qqGroupAdReviewPeakStart: form.qqGroupAdReviewPeakStart,
       qqGroupAdReviewPeakEnd: form.qqGroupAdReviewPeakEnd,
+      qqGroupAdReviewPeakServiceId: form.qqGroupAdReviewPeakServiceId,
       qqGroupAdReviewPeakModel: form.qqGroupAdReviewPeakModel,
       qqGroupAdReviewSystemPrompt: form.qqGroupAdReviewSystemPrompt,
       qqGroupAdReviewUserPrompt: form.qqGroupAdReviewUserPrompt,

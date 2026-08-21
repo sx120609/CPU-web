@@ -104,6 +104,7 @@ export type SiteConfig = {
   qqGroupAdReviewPeakEnabled: boolean;
   qqGroupAdReviewPeakStart: string;
   qqGroupAdReviewPeakEnd: string;
+  qqGroupAdReviewPeakServiceId: string;
   qqGroupAdReviewPeakModel: string;
   qqGroupAdReviewSystemPrompt: string;
   qqGroupAdReviewUserPrompt: string;
@@ -605,6 +606,7 @@ const QQ_GROUP_AD_REVIEW_API_KEY = "ai.qqGroupAdReview.apiKey";
 const QQ_GROUP_AD_REVIEW_PEAK_ENABLED_KEY = "ai.qqGroupAdReview.peak.enabled";
 const QQ_GROUP_AD_REVIEW_PEAK_START_KEY = "ai.qqGroupAdReview.peak.start";
 const QQ_GROUP_AD_REVIEW_PEAK_END_KEY = "ai.qqGroupAdReview.peak.end";
+const QQ_GROUP_AD_REVIEW_PEAK_SERVICE_ID_KEY = "ai.qqGroupAdReview.peak.serviceId";
 const QQ_GROUP_AD_REVIEW_PEAK_MODEL_KEY = "ai.qqGroupAdReview.peak.model";
 const QQ_GROUP_AD_REVIEW_SYSTEM_PROMPT_KEY = "ai.qqGroupAdReview.systemPrompt";
 const QQ_GROUP_AD_REVIEW_USER_PROMPT_KEY = "ai.qqGroupAdReview.userPrompt";
@@ -888,6 +890,7 @@ const configCache: SiteConfig = {
   qqGroupAdReviewPeakEnabled: true,
   qqGroupAdReviewPeakStart: "00:30",
   qqGroupAdReviewPeakEnd: "08:30",
+  qqGroupAdReviewPeakServiceId: "",
   qqGroupAdReviewPeakModel: "",
   qqGroupAdReviewSystemPrompt: DEFAULT_QQ_GROUP_AD_REVIEW_PROMPTS.system,
   qqGroupAdReviewUserPrompt: DEFAULT_QQ_GROUP_AD_REVIEW_PROMPTS.user,
@@ -1052,6 +1055,7 @@ export async function loadFeatures(): Promise<void> {
           QQ_GROUP_AD_REVIEW_PEAK_ENABLED_KEY,
           QQ_GROUP_AD_REVIEW_PEAK_START_KEY,
           QQ_GROUP_AD_REVIEW_PEAK_END_KEY,
+          QQ_GROUP_AD_REVIEW_PEAK_SERVICE_ID_KEY,
           QQ_GROUP_AD_REVIEW_PEAK_MODEL_KEY,
           QQ_GROUP_AD_REVIEW_SYSTEM_PROMPT_KEY,
           QQ_GROUP_AD_REVIEW_USER_PROMPT_KEY,
@@ -1217,6 +1221,10 @@ export async function loadFeatures(): Promise<void> {
     }
     if (r.key === QQ_GROUP_AD_REVIEW_PEAK_END_KEY) {
       configCache.qqGroupAdReviewPeakEnd = normalizeTimeOfDay(r.value, "08:30");
+      continue;
+    }
+    if (r.key === QQ_GROUP_AD_REVIEW_PEAK_SERVICE_ID_KEY) {
+      configCache.qqGroupAdReviewPeakServiceId = String(r.value || "").trim();
       continue;
     }
     if (r.key === QQ_GROUP_AD_REVIEW_PEAK_MODEL_KEY) {
@@ -1585,6 +1593,9 @@ export function getSiteConfig(): SiteConfig {
   for (const [scene, apply] of sceneMap) {
     apply(resolveAiServiceForScene(result, scene));
   }
+  result.qqGroupAdReviewPeakServiceId = aiServices.some((service) => service.id === result.qqGroupAdReviewPeakServiceId)
+    ? result.qqGroupAdReviewPeakServiceId
+    : result.qqGroupAdReviewServiceId;
   return result;
 }
 
@@ -1860,6 +1871,7 @@ function sanitizeAiReviewConfig() {
   configCache.qqGroupAdReviewFallbackModels = normalizeFallbackModelList(configCache.qqGroupAdReviewFallbackModels, configCache.qqGroupAdReviewModel);
   configCache.qqGroupAdReviewPeakStart = normalizeTimeOfDay(configCache.qqGroupAdReviewPeakStart, "00:30");
   configCache.qqGroupAdReviewPeakEnd = normalizeTimeOfDay(configCache.qqGroupAdReviewPeakEnd, "08:30");
+  configCache.qqGroupAdReviewPeakServiceId = String(configCache.qqGroupAdReviewPeakServiceId || "").trim().slice(0, 48);
   configCache.qqGroupAdReviewPeakModel = String(configCache.qqGroupAdReviewPeakModel || "").trim().slice(0, 80);
   configCache.qqGroupAdReviewSystemPrompt = normalizePromptTemplate(configCache.qqGroupAdReviewSystemPrompt, DEFAULT_QQ_GROUP_AD_REVIEW_PROMPTS.system);
   configCache.qqGroupAdReviewUserPrompt = normalizePromptTemplate(configCache.qqGroupAdReviewUserPrompt, DEFAULT_QQ_GROUP_AD_REVIEW_PROMPTS.user);
@@ -2080,6 +2092,10 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
   const learningAssistantService = selectedServices.get("learning-assistant") || assistantService;
   const textReviewService = selectedServices.get("text-review") || assistantService;
   const qqService = selectedServices.get("qq-group-ad") || assistantService;
+  const requestedPeakServiceId = String(
+    input.qqGroupAdReviewPeakServiceId ?? configCache.qqGroupAdReviewPeakServiceId ?? "",
+  ).trim();
+  const qqPeakService = aiServices.find((service) => service.id === requestedPeakServiceId) || qqService;
   const imageService = selectedServices.get("image-review") || assistantService;
   const videoService = selectedServices.get("video-review") || assistantService;
   const requestedAiServiceFallbacks = input.aiServiceFallbacks === undefined
@@ -2123,6 +2139,7 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
     qqGroupAdReviewPeakEnabled: input.qqGroupAdReviewPeakEnabled ?? configCache.qqGroupAdReviewPeakEnabled,
     qqGroupAdReviewPeakStart: normalizeTimeOfDay(input.qqGroupAdReviewPeakStart, configCache.qqGroupAdReviewPeakStart),
     qqGroupAdReviewPeakEnd: normalizeTimeOfDay(input.qqGroupAdReviewPeakEnd, configCache.qqGroupAdReviewPeakEnd),
+    qqGroupAdReviewPeakServiceId: qqPeakService.id,
     qqGroupAdReviewPeakModel: String(input.qqGroupAdReviewPeakModel ?? configCache.qqGroupAdReviewPeakModel ?? "").trim().slice(0, 80),
     qqGroupAdReviewSystemPrompt: resolvePromptTemplate(input.qqGroupAdReviewSystemPrompt, configCache.qqGroupAdReviewSystemPrompt, DEFAULT_QQ_GROUP_AD_REVIEW_PROMPTS.system),
     qqGroupAdReviewUserPrompt: resolvePromptTemplate(input.qqGroupAdReviewUserPrompt, configCache.qqGroupAdReviewUserPrompt, DEFAULT_QQ_GROUP_AD_REVIEW_PROMPTS.user),
@@ -2279,6 +2296,11 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
       where: { key: QQ_GROUP_AD_REVIEW_PEAK_END_KEY },
       update: { value: next.qqGroupAdReviewPeakEnd },
       create: { key: QQ_GROUP_AD_REVIEW_PEAK_END_KEY, value: next.qqGroupAdReviewPeakEnd },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: QQ_GROUP_AD_REVIEW_PEAK_SERVICE_ID_KEY },
+      update: { value: next.qqGroupAdReviewPeakServiceId },
+      create: { key: QQ_GROUP_AD_REVIEW_PEAK_SERVICE_ID_KEY, value: next.qqGroupAdReviewPeakServiceId },
     }),
     prisma.siteSetting.upsert({
       where: { key: QQ_GROUP_AD_REVIEW_PEAK_MODEL_KEY },

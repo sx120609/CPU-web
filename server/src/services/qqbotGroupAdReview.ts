@@ -33,6 +33,7 @@ export type QqGroupAdPeakMode = {
   active: boolean;
   start: string;
   end: string;
+  serviceId: string;
   model: string;
   timeZone: "Asia/Shanghai";
 };
@@ -130,11 +131,19 @@ export async function reviewQqGroupMessageForAd(input: {
     : config.qqGroupAdReviewModel;
   const providers = resolveAiServiceCandidatesForScene(config, "qq-group-ad");
   const provider = providers[0];
-  if (!config.qqGroupAdReviewEnabled || !providers.some((candidate) => isAiProviderReady({
+  const peakProvider = resolveQqGroupAdPeakProvider(config, provider);
+  const peakRouteReady = enhancedMode && Boolean(peakMode.model) && isAiProviderReady({
+    provider: peakProvider.provider,
+    apiUrl: peakProvider.apiUrl,
+    apiKey: peakProvider.apiKey,
+    model: peakMode.model,
+  });
+  const readyProviders = peakRouteReady ? [peakProvider, ...providers] : providers;
+  if (!config.qqGroupAdReviewEnabled || !readyProviders.some((candidate) => isAiProviderReady({
     provider: candidate.provider,
     apiUrl: candidate.apiUrl,
     apiKey: candidate.apiKey,
-    model: effectiveTextModel,
+    model: peakRouteReady && candidate === peakProvider ? peakMode.model : config.qqGroupAdReviewModel,
   }))) {
     return {
       action: "allow",
@@ -142,7 +151,7 @@ export async function reviewQqGroupMessageForAd(input: {
       riskLevel: "low",
       reason: "QQ群广告过滤未开启",
       detail: "",
-      model: effectiveTextModel,
+      model: peakRouteReady ? effectiveTextModel : config.qqGroupAdReviewModel,
       modelDecision: "auto_pass",
       assistantIntent: false,
     };
@@ -250,6 +259,7 @@ export async function reviewQqGroupMessageForAd(input: {
     ...(enhancedMode ? {
       peakWindow: `${peakMode.start}-${peakMode.end}`,
       peakTimeZone: peakMode.timeZone,
+      peakServiceId: peakMode.serviceId,
       nicknameRiskReason: nicknameRiskReason || "",
     } : {}),
   };
@@ -286,11 +296,10 @@ export async function reviewQqGroupMessageForAd(input: {
   const imageProviders = preparedImages.length
     ? resolveAiServiceCandidatesForScene(config, "image-review")
     : [];
-  const providerCandidates = preparedImages.length
+  const standardProviderCandidates = preparedImages.length
     ? (imageProviders.some((candidate) => hasAiProviderAccess(candidate)) ? imageProviders : [reviewProvider])
     : providers;
-  const endpoint = normalizeAiJsonApiUrl(reviewProvider.apiUrl, provider.apiUrl || "https://api.deepseek.com/chat/completions");
-  const candidates = resolveQqGroupAdModelCandidates(config, preparedImages.length > 0, enhancedMode);
+  const candidates = resolveQqGroupAdModelCandidates(config, preparedImages.length > 0, peakRouteReady);
   if (!candidates.length) {
     throw Errors.server("QQ群图片广告过滤未配置支持图片输入的模型，请在后台把‘图片审核’模型改为支持视觉输入的模型（例如 gpt-4o-mini）");
   }
@@ -306,12 +315,26 @@ export async function reviewQqGroupMessageForAd(input: {
 
   for (let index = 0; index < candidates.length; index += 1) {
     const model = candidates[index];
+    const providerCandidates = resolveQqGroupAdProviderCandidatesForModel({
+      standardProviders: standardProviderCandidates,
+      peakProvider,
+      model,
+      normalModel: config.qqGroupAdReviewModel,
+      peakModel: peakMode.model,
+      peakRouteReady,
+      hasImages: preparedImages.length > 0,
+    });
+    const attemptProvider = providerCandidates[0] || reviewProvider;
+    const endpoint = normalizeAiJsonApiUrl(
+      attemptProvider.apiUrl,
+      provider.apiUrl || "https://api.deepseek.com/chat/completions",
+    );
     const started = await startAiReviewLog({
       kind: "qqbot-group-ad",
       targetId: null,
       targetLabel: `${input.groupName || input.groupId} / ${input.qqId}`,
       createdById: null,
-      provider: config.qqGroupAdReviewProvider,
+      provider: attemptProvider.provider,
       model,
       endpoint,
       requestSummary: `${promptText}${attachmentSummary}${reviewMetadataSummary}`,
@@ -535,7 +558,7 @@ function parseTimeOfDayMinutes(value: unknown) {
 /** Resolve the configured daily window against China Standard Time (UTC+8). */
 export function resolveQqGroupAdPeakMode(
   config: Pick<ReturnType<typeof getSiteConfig>,
-    "qqGroupAdReviewPeakEnabled" | "qqGroupAdReviewPeakStart" | "qqGroupAdReviewPeakEnd" | "qqGroupAdReviewPeakModel"
+    "qqGroupAdReviewPeakEnabled" | "qqGroupAdReviewPeakStart" | "qqGroupAdReviewPeakEnd" | "qqGroupAdReviewPeakServiceId" | "qqGroupAdReviewPeakModel"
   >,
   now = new Date(),
 ): QqGroupAdPeakMode {
@@ -553,9 +576,28 @@ export function resolveQqGroupAdPeakMode(
     active: config.qqGroupAdReviewPeakEnabled === true && insideWindow,
     start,
     end,
+    serviceId: String(config.qqGroupAdReviewPeakServiceId || "").trim(),
     model: String(config.qqGroupAdReviewPeakModel || "").trim(),
     timeZone: "Asia/Shanghai",
   };
+}
+
+export function resolveQqGroupAdPeakProvider(
+  config: Pick<ReturnType<typeof getSiteConfig>, "aiServices" | "qqGroupAdReviewPeakServiceId">,
+  fallback: {
+    serviceId: string;
+    name: string;
+    provider: string;
+    apiUrl: string;
+    apiKey: string;
+    model?: string;
+  },
+) {
+  const requestedId = String(config.qqGroupAdReviewPeakServiceId || "").trim();
+  const selected = config.aiServices.find((service) => service.id === requestedId);
+  return selected
+    ? { serviceId: selected.id, ...selected }
+    : fallback;
 }
 
 function fillPromptTemplate(template: string, values: Record<string, string>) {
@@ -596,6 +638,7 @@ function normalizeMessageForCache(input: string) {
 function buildQqGroupAdReviewConfigHash(config: ReturnType<typeof getSiteConfig>) {
   const providers = resolveAiServiceCandidatesForScene(config, "qq-group-ad");
   const imageProviders = resolveAiServiceCandidatesForScene(config, "image-review");
+  const peakProvider = resolveQqGroupAdPeakProvider(config, providers[0]);
   return hashString([
     providers.map((provider) => `${provider.serviceId || ""}\n${provider.provider}\n${provider.apiUrl}`).join("\n"),
     config.qqGroupAdReviewModel,
@@ -603,7 +646,9 @@ function buildQqGroupAdReviewConfigHash(config: ReturnType<typeof getSiteConfig>
     config.qqGroupAdReviewPeakEnabled,
     config.qqGroupAdReviewPeakStart,
     config.qqGroupAdReviewPeakEnd,
+    config.qqGroupAdReviewPeakServiceId,
     config.qqGroupAdReviewPeakModel,
+    `${peakProvider.serviceId || ""}\n${peakProvider.provider}\n${peakProvider.apiUrl}`,
     imageProviders.map((provider) => `${provider.serviceId || ""}\n${provider.provider}\n${provider.apiUrl}`).join("\n"),
     config.imageReviewModel,
     config.imageReviewFallbackModels,
@@ -656,6 +701,36 @@ export function resolveQqGroupAdModelCandidates(
     seen.add(key);
     return !QQ_GROUP_AD_IMAGE_UNSUPPORTED_MODEL_PATTERNS.some((pattern) => pattern.test(model));
   });
+}
+
+export function resolveQqGroupAdProviderCandidatesForModel<T extends {
+  serviceId?: string;
+  name?: string;
+  provider: string;
+  apiUrl: string;
+  apiKey: string;
+  model?: string;
+}>(input: {
+  standardProviders: T[];
+  peakProvider: T;
+  model: string;
+  normalModel: string;
+  peakModel: string;
+  peakRouteReady: boolean;
+  hasImages: boolean;
+}) {
+  const model = String(input.model || "").trim().toLowerCase();
+  const peakModel = String(input.peakModel || "").trim().toLowerCase();
+  if (input.hasImages || !input.peakRouteReady || !peakModel || model !== peakModel) {
+    return input.standardProviders;
+  }
+  if (model !== String(input.normalModel || "").trim().toLowerCase()) {
+    return [input.peakProvider];
+  }
+  return [
+    input.peakProvider,
+    ...input.standardProviders.filter((candidate) => candidate.serviceId !== input.peakProvider.serviceId),
+  ];
 }
 
 function resolveQqGroupAdImageProvider(

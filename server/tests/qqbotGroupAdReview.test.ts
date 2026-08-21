@@ -16,6 +16,8 @@ import {
   resolveQqGroupWhitelistReviewPlan,
   resolveQqGroupQrOnlyReviewAction,
   resolveQqGroupAdModelCandidates,
+  resolveQqGroupAdPeakProvider,
+  resolveQqGroupAdProviderCandidatesForModel,
   resolveQqGroupAdPeakMode,
   resolveQqGroupAdReviewAction,
   shouldForwardQqBotAssistantIntent,
@@ -56,6 +58,7 @@ test("activates peak enhanced mode in the configured Beijing-time window", () =>
     qqGroupAdReviewPeakEnabled: true,
     qqGroupAdReviewPeakStart: "00:30",
     qqGroupAdReviewPeakEnd: "08:30",
+    qqGroupAdReviewPeakServiceId: "strong-provider",
     qqGroupAdReviewPeakModel: "gpt-5.6-terra",
   };
 
@@ -70,12 +73,51 @@ test("supports peak windows that cross midnight and respects the enable switch",
     qqGroupAdReviewPeakEnabled: true,
     qqGroupAdReviewPeakStart: "22:00",
     qqGroupAdReviewPeakEnd: "02:00",
+    qqGroupAdReviewPeakServiceId: "default-main",
     qqGroupAdReviewPeakModel: "",
   };
   assert.equal(resolveQqGroupAdPeakMode(config, new Date("2026-08-22T15:00:00.000Z")).active, true);
   assert.equal(resolveQqGroupAdPeakMode(config, new Date("2026-08-21T17:00:00.000Z")).active, true);
   assert.equal(resolveQqGroupAdPeakMode(config, new Date("2026-08-22T04:00:00.000Z")).active, false);
   assert.equal(resolveQqGroupAdPeakMode({ ...config, qqGroupAdReviewPeakEnabled: false }, new Date("2026-08-22T15:00:00.000Z")).active, false);
+});
+
+test("routes the peak model to its independently selected provider", () => {
+  const normalProvider = {
+    serviceId: "normal-provider",
+    name: "普通服务",
+    provider: "deepseek",
+    apiUrl: "https://normal.example/v1/chat/completions",
+    apiKey: "normal-key",
+  };
+  const peakProvider = resolveQqGroupAdPeakProvider({
+    qqGroupAdReviewPeakServiceId: "strong-provider",
+    aiServices: [
+      { id: "normal-provider", name: "普通服务", provider: "deepseek", apiUrl: normalProvider.apiUrl, apiKey: normalProvider.apiKey },
+      { id: "strong-provider", name: "强模型服务", provider: "openai", apiUrl: "https://strong.example/v1/responses", apiKey: "strong-key" },
+    ],
+  }, normalProvider);
+
+  assert.equal(peakProvider.serviceId, "strong-provider");
+  assert.equal(peakProvider.provider, "openai");
+  assert.deepEqual(resolveQqGroupAdProviderCandidatesForModel({
+    standardProviders: [normalProvider],
+    peakProvider,
+    model: "gpt-5.6-terra",
+    normalModel: "gpt-5.6-luna",
+    peakModel: "gpt-5.6-terra",
+    peakRouteReady: true,
+    hasImages: false,
+  }).map((provider) => provider.serviceId), ["strong-provider"]);
+  assert.deepEqual(resolveQqGroupAdProviderCandidatesForModel({
+    standardProviders: [normalProvider],
+    peakProvider,
+    model: "gpt-5.6-luna",
+    normalModel: "gpt-5.6-luna",
+    peakModel: "gpt-5.6-terra",
+    peakRouteReady: true,
+    hasImages: false,
+  }).map((provider) => provider.serviceId), ["normal-provider"]);
 });
 
 test("detects suspicious QQ nicknames without blocking on a nickname alone", () => {

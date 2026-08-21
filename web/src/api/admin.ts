@@ -50,6 +50,7 @@ export type SiteConfig = {
   qqGroupAdReviewPeakEnabled: boolean;
   qqGroupAdReviewPeakStart: string;
   qqGroupAdReviewPeakEnd: string;
+  qqGroupAdReviewPeakServiceId: string;
   qqGroupAdReviewPeakModel: string;
   qqGroupAdReviewSystemPrompt: string;
   qqGroupAdReviewUserPrompt: string;
@@ -832,6 +833,7 @@ export const adminApi = {
     qqGroupAdReviewPeakEnabled?: boolean;
     qqGroupAdReviewPeakStart?: string;
     qqGroupAdReviewPeakEnd?: string;
+    qqGroupAdReviewPeakServiceId?: string;
     qqGroupAdReviewPeakModel?: string;
     qqGroupAdReviewSystemPrompt?: string;
     qqGroupAdReviewUserPrompt?: string;
