@@ -164,7 +164,7 @@ const CAMPUS_ASSISTANT_ROUTES: CampusAssistantRoute[] = [
     owner: "校园服务",
     requireLogin: true,
     feature: "electric",
-    keywords: ["电费", "宿舍电费", "查电费", "剩余电量", "电量", "电余额", "购电", "交电费"],
+    keywords: ["电费", "宿舍电费", "查电费", "剩余电量", "电量", "电余额", "购电", "交电费", "宿舍号", "宿舍地址", "宿舍", "寝室", "房间号"],
   },
   {
     id: "desktop-client",
@@ -415,6 +415,14 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
   {
     relatedActionIds: ["dorm-electric"],
     fact: "宿舍电费：登录后可查询当前账号关联宿舍的剩余金额、估算电量和抄表时间。站内只负责查询，不直接缴费；查不到可能是学号未关联宿舍或校园电费系统暂时不可用。",
+  },
+  {
+    id: "dorm-room-number-via-electric-2026-08",
+    relatedActionIds: ["dorm-electric"],
+    fact: "新生查询宿舍号：登录后打开首页或校园服务里的“宿舍电费查询”，查询结果中的“地址”会显示当前账号关联的校区/区域、楼栋、楼层和宿舍号；所以不知道宿舍号时，也可以先查宿舍电费。若地址为空或查询失败，先确认站内账号已关联学号，或稍后点击“重试”；该入口负责查询，不直接完成缴费。",
+    source: "药大拾间宿舍电费查询页面",
+    sourceRef: "CPU-web",
+    verifiedAt: "2026-08-21",
   },
   {
     relatedActionIds: ["dorm-electric"],

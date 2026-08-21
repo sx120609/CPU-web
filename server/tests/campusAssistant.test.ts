@@ -316,6 +316,11 @@ test("电费问题能稳定匹配宿舍电费直达入口", () => {
   assert.equal(results[0]?.requireLogin, true);
 });
 
+test("新生查询宿舍号会匹配宿舍电费入口", () => {
+  const results = searchCampusAssistantActions("新生怎么看宿舍号？", context);
+  assert.equal(results[0]?.id, "dorm-electric");
+});
+
 test("药苑之声能匹配到广播系统入口", () => {
   const results = searchCampusAssistantActions("药苑之声在哪里", context);
   assert.equal(results[0]?.id, "voicehub");
@@ -1208,6 +1213,7 @@ test("campus assistant knowledge covers every active action and carries freshnes
   assert.match(combined, /选择哪些问卷、文件收集和成绩表通过 QQ 私聊提醒/);
   assert.match(combined, /不要写入密码、完整证件号/);
   assert.match(combined, /临时调课、放假调整或补充通知仍应以学校最新公告为准/);
+  assert.match(combined, /查询结果中的“地址”会显示当前账号关联的校区\/区域、楼栋、楼层和宿舍号/);
 });
 
 test("sponsor points use the configured per-yuan ratio and round down", () => {
