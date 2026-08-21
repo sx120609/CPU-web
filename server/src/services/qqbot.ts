@@ -107,6 +107,7 @@ import {
   shouldHandleQqBotDailyAssistant,
 } from "./qqbot/dailyAssistant";
 import {
+  normalizeQqBotAiReplyText,
   renderQqBotAiReplyAsQqMessage,
   type QqBotAiReplyImageOptions,
 } from "./qqbot/aiReplyImage";
@@ -2739,7 +2740,8 @@ async function renderQqBotDailyAssistantReply(
   options: { includeQrCode?: boolean } = {},
 ) {
   const includeQrCode = options.includeQrCode !== false;
-  const lines = [String(response.answer || "").trim() || "我暂时没有找到合适的答案。"];
+  const normalizedAnswer = normalizeQqBotAiReplyText(response.answer || "").trim();
+  const lines = [normalizedAnswer || "我暂时没有找到合适的答案。"];
   const actions = (response.actions || []).slice(0, 3);
   const actionEntries: QqBotAiReplyShareAction[] = actions.map((action) => ({
     label: String(action.label || "相关入口").trim() || "相关入口",

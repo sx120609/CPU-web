@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   containsQqBotMarkdown,
+  normalizeQqBotAiReplyText,
   normalizeQqBotQrLinkMentions,
   renderQqBotMathExpression,
   renderQqBotAiReplyAsQqMessage,
@@ -48,6 +49,17 @@ test("QQbot 图片复用主站的行内/块级公式识别并渲染公式语义"
   assert.match(renderQqBotMathExpression("\\sqrt{x}"), /^√/u);
   const png = renderQqBotAiReplyImage(reply, { qrCodeEnabled: false });
   assert.deepEqual([...png.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+});
+
+test("QQbot 图片回复会清理二次转义的控制字符，但保留 LaTeX 命令", () => {
+  assert.equal(
+    normalizeQqBotAiReplyText("第一段\\n\\n第二段"),
+    "第一段\n\n第二段",
+  );
+  assert.equal(normalizeQqBotAiReplyText("第一段\\r\\n第二段"), "第一段\n第二段");
+  assert.equal(normalizeQqBotAiReplyText("first\\nsecond"), "first\nsecond");
+  assert.equal(normalizeQqBotAiReplyText("公式：\\nabla \\neq \\theta"), "公式：\\nabla \\neq \\theta");
+  assert.equal(normalizeQqBotAiReplyText("编码：\\u4e2d\\u6587"), "编码：中文");
 });
 
 test("QQbot 普通短 AI 回复也渲染为图片", () => {

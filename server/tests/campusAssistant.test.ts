@@ -1192,6 +1192,22 @@ test("campus assistant knowledge covers every active action and carries freshnes
   assert.match(combined, /若 i\.cpu\.edu\.cn 也无法正常登录/);
   assert.match(combined, /若 i\.cpu\.edu\.cn 可以正常登录但拾间仍无法正常登录/);
   assert.doesNotMatch(combined, /先在中国建设银行 APP/);
+  assert.match(combined, /清除已保存账号/);
+  assert.match(combined, /课表需要先完成教务授权/);
+  assert.match(combined, /同步我的课程/);
+  assert.match(combined, /发布捡到的信息时必须填写物品实际存放位置/);
+  assert.match(combined, /发布者还必须完成校园统一认证/);
+  assert.match(combined, /论坛中的同学经验不能替代官方通知/);
+  assert.match(combined, /单选题的分支规则/);
+  assert.match(combined, /用新信息和文件覆盖旧提交/);
+  assert.match(combined, /导出 CSV 或下载 ZIP/);
+  assert.match(combined, /页面只显示与本人学号匹配的一行/);
+  assert.match(combined, /需在页面提示的 15 分钟内通过站点配置的易支付完成付款/);
+  assert.match(combined, /学号或登录账号仅用于登录和身份校验、不会公开展示/);
+  assert.match(combined, /当前入口是否需要登录以页面上的“需登录\/免登录”状态为准/);
+  assert.match(combined, /选择哪些问卷、文件收集和成绩表通过 QQ 私聊提醒/);
+  assert.match(combined, /不要写入密码、完整证件号/);
+  assert.match(combined, /临时调课、放假调整或补充通知仍应以学校最新公告为准/);
 });
 
 test("sponsor points use the configured per-yuan ratio and round down", () => {

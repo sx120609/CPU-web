@@ -124,7 +124,7 @@ export function renderQqBotAiReplyAsQqMessage(markdown: string, options: QqBotAi
 }
 
 export function renderQqBotAiReplyImage(markdown: string, options: QqBotAiReplyImageOptions = {}) {
-  const normalized = String(markdown || "").replace(/\r\n?/g, "\n").slice(0, QQBOT_AI_IMAGE_MAX_SOURCE_LENGTH);
+  const normalized = normalizeQqBotAiReplyText(markdown).slice(0, QQBOT_AI_IMAGE_MAX_SOURCE_LENGTH);
   const disclosure = normalized.match(QQBOT_AI_DISCLOSURE_PATTERN)?.[0] || "";
   const content = disclosure ? normalized.replace(disclosure, "").trim() : normalized;
   const qrCodeEnabled = options.qrCodeEnabled !== false;
@@ -168,6 +168,72 @@ export function renderQqBotAiReplyImage(markdown: string, options: QqBotAiReplyI
       defaultFontFamily: "Microsoft YaHei",
     },
   }).render().asPng();
+}
+
+/**
+ * Normalize model text before either the online answer page or the QQ image
+ * renderer consumes it. Some providers return a JSON string that has already
+ * been decoded once, leaving a second layer of `\\n`/`\\r\\n` escapes visible
+ * to users. Decode text control escapes while preserving recognized LaTeX
+ * commands such as `\\nabla`, `\\neq`, and `\\theta`.
+ */
+export function normalizeQqBotAiReplyText(value: string) {
+  const source = String(value || "").replace(/\r\n?/g, "\n");
+  let normalized = "";
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    if (char !== "\\" || index + 1 >= source.length) {
+      normalized += char;
+      continue;
+    }
+    const escape = source[index + 1];
+    if (
+      (escape === "r" || escape === "n")
+      && source[index + 2] === "\\"
+      && source[index + 3] === (escape === "r" ? "n" : "r")
+    ) {
+      normalized += "\n";
+      index += 3;
+      continue;
+    }
+    if (escape === "u") {
+      const hex = source.slice(index + 2, index + 6);
+      if (/^[0-9a-fA-F]{4}$/.test(hex)) {
+        normalized += String.fromCharCode(Number.parseInt(hex, 16));
+        index += 5;
+        continue;
+      }
+    }
+    if (escape === "n" || escape === "r" || escape === "t") {
+      const afterEscape = source[index + 2] || "";
+      // A backslash followed by an ASCII letter may be a LaTeX command
+      // (`\\nu`, `\\rho`, `\\text`, ...), but ordinary prose such as
+      // `first\\nsecond` is still a serialized newline. Preserve only a
+      // recognized command; decode every other control escape.
+      if (!/[A-Za-z]/u.test(afterEscape) || !isQqBotLatexCommand(source, index)) {
+        normalized += escape === "t" ? "\t" : "\n";
+        index += 1;
+        continue;
+      }
+    }
+    normalized += char;
+  }
+  return normalized.replace(/\n{3,}/g, "\n\n");
+}
+
+const QQBOT_LATEX_COMMANDS = new Set([
+  "alpha", "approx", "beta", "cdot", "chi", "cos", "delta", "displaystyle", "ell", "epsilon", "eta",
+  "exists", "frac", "gamma", "ge", "geq", "gg", "in", "infty", "int", "iota", "kappa", "lambda",
+  "le", "leq", "left", "ln", "log", "mapsto", "mid", "mu", "nabla", "ne", "neq", "newcommand", "nu",
+  "not", "omega", "overline", "partial", "phi", "pi", "pm", "psi", "rho", "right", "rightarrow",
+  "rm", "roman", "root", "rule", "sigma", "sin", "sqrt", "sum", "tau", "text", "theta", "times",
+  "to", "top", "triangle", "underline", "upsilon", "varepsilon", "varphi", "varpi", "varrho", "varsigma",
+  "vartheta", "vec", "xi", "zeta",
+]);
+
+function isQqBotLatexCommand(source: string, slashIndex: number) {
+  const command = source.slice(slashIndex + 1).match(/^[A-Za-z]+/u)?.[0] || "";
+  return QQBOT_LATEX_COMMANDS.has(command);
 }
 
 export function normalizeQqBotQrLinkMentions(
