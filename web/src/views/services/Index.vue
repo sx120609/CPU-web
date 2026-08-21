@@ -53,9 +53,9 @@
       </div>
     </section>
 
-    <!-- 客户端下载对访客也可见；电费查询仍需要教务登录 -->
+    <!-- 客户端下载对访客也可见；电费查询只需要站内登录 -->
     <div class="quick-row">
-      <button v-if="jwxt.isLoggedIn && site.features.electric" type="button" class="quick-card electric-card" @click="electricOpen = true">
+      <button v-if="auth.isLoggedIn && site.features.electric" type="button" class="quick-card electric-card" @click="electricOpen = true">
         <span class="quick-icon">💡</span>
         <div class="quick-body">
           <div class="quick-title">宿舍电费查询</div>
