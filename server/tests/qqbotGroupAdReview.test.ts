@@ -94,6 +94,24 @@ test("hard-blocks an unnumbered freshman notice group diversion", () => {
   );
 });
 
+test("hard-blocks a group dissolution notice that diverts members to a replacement group", () => {
+  const content = [
+    "此群作废，即将解散！！",
+    "此群作废，即将解散！！",
+    "接校方通知！老师建的26新生官方群，新生开学通知，录取通知，通知书邮寄，转换专业，社团报到，及各项通知安排等将在新群公布。",
+    "所有人转移到老师刚建的新群:315719148",
+    "所有人转移到老师刚建的新群:315719148",
+  ].join("\n");
+  assert.equal(
+    detectQqUnofficialNoticeDiversionReason(content),
+    "疑似冒充学校/官方通知并引导加入未核验 QQ 群",
+  );
+  assert.equal(
+    detectQqGroupAdHardBlockReason(content),
+    "疑似冒充学校/官方通知并引导加入未核验 QQ 群",
+  );
+});
+
 test("does not exempt commercial recruitment that uses a club-like word", () => {
   const content = "商业培训社团招募代理，收费 399 元，QQ群：3498138727";
   assert.equal(detectQqCampusOrganizationRecruitmentBypassReason(content), null);

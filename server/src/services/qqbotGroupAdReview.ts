@@ -60,9 +60,11 @@ const QQ_GROUP_CAMPUS_CONTEXT_PATTERN = /(?:学校|校园|学院|大学|本科|�
 const QQ_GROUP_COMMERCIAL_AD_PATTERN = /(?:收费|付费|价格|售价|下单|购买|商品|服务费|佣金|兼职|刷单|代理(?:加盟|返利|商)?|加盟|培训班|培训收费|课程(?:销售|收费)|代购|推广返利|商业推广|商务合作|广告位|优惠券|折扣价|售卖|收款|付款|转账|返现|红包|招代理|招聘|公司|企业|品牌|商家|门店|招商|店铺)/u;
 const QQ_GROUP_COMMERCIAL_GROUP_DIVERSION_PATTERN = /(?:兼职|家教|家教兼职|代课|辅导|招工|招聘|招代理|刷单|付费培训|课程销售)/u;
 const QQ_GROUP_NUMBER_ANY_LABEL_PATTERN = /(?:群|群号).{0,16}\d{6,12}/u;
-const QQ_GROUP_UNOFFICIAL_NOTICE_PATTERN = /(?:学校(?:重要)?(?:消息|通知)|校园官方|官方(?:群|通知)|重要通知|军训通知|新生(?:活动通知|宿舍(?:安排|通知))|开学(?:时间|安排|通知)|入党(?:事宜|通知)|入团(?:事宜|通知)|转换专业(?:事宜|通知))/u;
+const QQ_GROUP_UNOFFICIAL_NOTICE_PATTERN = /(?:学校(?:重要)?(?:消息|通知)|校方(?:重要)?(?:消息|通知)|校园官方|官方(?:群|通知)|重要通知|军训通知|新生(?:活动|开学|入学)?通知|录取通知|通知书(?:邮寄|发放)|开学(?:时间|安排|通知)|入党(?:事宜|通知)|入团(?:事宜|通知)|转换专业(?:事宜|通知)?)/u;
 const QQ_GROUP_MASS_INVITE_PATTERN = /(?:@全体成员|最后(?:一次|一条)通知|别错过|务必|抓紧|今晚|截至|互相转达|(?:请|大家).{0,16}(?:加|进|加入|扫码))/u;
 const QQ_GROUP_UNVERIFIED_TARGET_PATTERN = /(?:新生(?:通知)?群|通知群|官方群|官方(?:群|通知)|入学群|资料群)/u;
+const QQ_GROUP_DISSOLUTION_PATTERN = /(?:本群|此群|该群)(?:作废|即将解散|将要解散|即将关闭|停止使用)/u;
+const QQ_GROUP_REPLACEMENT_DIVERSION_PATTERN = /(?:所有人|大家|请各位|请大家|成员).{0,20}(?:转移|转到|迁移|前往).{0,24}(?:新群|群号|QQ群|Q群)/u;
 /**
  * Codex Spark/Codex variants currently reject image parts. Keep this guard
  * local to QQ ad review so a text-only moderation model can still be used for
@@ -387,6 +389,10 @@ export function detectQqCampusOrganizationRecruitmentBypassReason(input: string)
 export function detectQqUnofficialNoticeDiversionReason(input: string) {
   const content = normalizeMessageForCache(input);
   if (!content) return null;
+  const hasDissolutionDiversion = QQ_GROUP_DISSOLUTION_PATTERN.test(content)
+    && QQ_GROUP_REPLACEMENT_DIVERSION_PATTERN.test(content)
+    && /(?<!\d)\d{6,12}(?!\d)/u.test(content);
+  if (hasDissolutionDiversion) return "疑似冒充学校/官方通知并引导加入未核验 QQ 群";
   if (!QQ_GROUP_UNOFFICIAL_NOTICE_PATTERN.test(content)) return null;
   const hasQqGroupNumber = QQ_GROUP_AD_QQ_NUMBER_PATTERN.test(content);
   const groupNumbers = content.match(/(?<!\d)\d{6,12}(?!\d)/gu) || [];
