@@ -62,6 +62,18 @@ export function buildCampusAssistantImageRequestAttempts(apiUrl: string, prompt:
         model: CAMPUS_ASSISTANT_IMAGE_MODEL,
         prompt,
         n: 1,
+        size: "1024x1024",
+        response_format: "b64_json",
+      },
+    },
+    {
+      protocol: "images_without_response_format" as const,
+      endpoint: normalizeCampusAssistantImageEndpoint(apiUrl),
+      body: {
+        model: CAMPUS_ASSISTANT_IMAGE_MODEL,
+        prompt,
+        n: 1,
+        size: "1024x1024",
       },
     },
     {
