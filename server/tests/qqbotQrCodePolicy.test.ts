@@ -56,3 +56,25 @@ test("总开关关闭时拾间 AI 不创建二维码入口，并把功能入口�
   assert.equal(rendered.sourcePageUrl, undefined);
   assert.match(rendered.message, /宿舍电费查询：https:\/\/cputime\.cn\/electric/u);
 });
+
+test("QQBot 会把拾间 AI 联网来源显示为可复制的文字链接", async () => {
+  const rendered = await renderQqBotDailyAssistantReply(
+    "今天南京天气怎么样？",
+    {
+      answer: "今天南京多云。",
+      actions: [],
+      suggestions: [],
+      fallback: false,
+      sources: [
+        { title: "南京市气象台", url: "https://weather.example/nanjing" },
+        { title: "重复来源", url: "https://weather.example/nanjing" },
+      ],
+    },
+    { includeQrCode: false },
+  );
+
+  assert.equal(rendered.sourcePageUrl, undefined);
+  assert.match(rendered.message, /参考来源/u);
+  assert.match(rendered.message, /南京市气象台：https:\/\/weather\.example\/nanjing/u);
+  assert.equal(rendered.message.match(/https:\/\/weather\.example\/nanjing/gu)?.length, 1);
+});

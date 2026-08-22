@@ -87,6 +87,16 @@
                 <img :src="image.url" :alt="image.alt" loading="lazy" />
               </a>
             </div>
+            <div v-if="message.role === 'assistant' && message.sources?.length" class="assistant-sources">
+              <span>参考来源</span>
+              <a
+                v-for="source in message.sources"
+                :key="source.url"
+                :href="source.url"
+                target="_blank"
+                rel="noopener noreferrer nofollow"
+              >{{ source.title }}</a>
+            </div>
             <div v-if="!message.content && message.streaming" class="assistant-thinking" aria-label="拾间AI正在回答">
               <i></i><i></i><i></i>
               <span>{{ message.streamStatus || "正在生成回答…" }}</span>
@@ -263,6 +273,7 @@ import {
   type CampusAssistantGeneratedImage,
   type CampusAssistantMessage,
   type CampusAssistantQuota,
+  type CampusAssistantSource,
 } from "@/api/search";
 import { useAuthStore } from "@/stores/auth";
 import { mergeAssistantHistorySessions } from "@/utils/assistantHistorySync";
@@ -280,6 +291,7 @@ type ConversationMessage = CampusAssistantMessage & {
   actions?: CampusAssistantAction[];
   suggestions?: string[];
   images?: CampusAssistantGeneratedImage[];
+  sources?: CampusAssistantSource[];
   streaming?: boolean;
   streamStatus?: string;
 };
@@ -471,6 +483,7 @@ async function askAssistant(keyword: string, history: CampusAssistantMessage[]) 
     assistantMessage.actions = next.actions;
     assistantMessage.suggestions = next.suggestions;
     assistantMessage.images = normalizeGeneratedImages(next.images);
+    assistantMessage.sources = normalizeAssistantSources(next.sources);
     assistantMessage.streaming = false;
     persistActiveConversation();
     scrollConversation();
@@ -797,6 +810,7 @@ function cloneMessages(items: unknown[]): ConversationMessage[] {
       actions: Array.isArray(item.actions) ? item.actions.slice(0, 3).map((action) => ({ ...action })) : undefined,
       suggestions: Array.isArray(item.suggestions) ? item.suggestions.slice(0, 3).map(String) : undefined,
       images: normalizeGeneratedImages(item.images),
+      sources: normalizeAssistantSources(item.sources),
     }));
 }
 
@@ -815,6 +829,29 @@ function normalizeGeneratedImages(value: unknown): CampusAssistantGeneratedImage
       alt: item.alt.trim().slice(0, 200) || "拾间AI生成的图片",
     }));
   return images.length ? images : undefined;
+}
+
+function normalizeAssistantSources(value: unknown): CampusAssistantSource[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const seen = new Set<string>();
+  const sources = value
+    .filter((item): item is CampusAssistantSource => Boolean(
+      item
+      && typeof item.url === "string"
+      && /^https?:\/\/[^\s<>"']+$/iu.test(item.url)
+      && typeof item.title === "string",
+    ))
+    .map((item) => ({
+      url: item.url.trim().slice(0, 500),
+      title: item.title.trim().slice(0, 120) || "网页来源",
+    }))
+    .filter((item) => {
+      if (seen.has(item.url)) return false;
+      seen.add(item.url);
+      return true;
+    })
+    .slice(0, 5);
+  return sources.length ? sources : undefined;
 }
 
 function writeSessions() {
@@ -1343,6 +1380,33 @@ onBeforeUnmount(() => {
   height: auto;
   max-height: 720px;
   object-fit: contain;
+}
+.assistant-sources {
+  display: flex;
+  max-width: 720px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  font-size: 12px;
+}
+.assistant-sources > span {
+  color: var(--cpu-text-muted);
+}
+.assistant-sources a {
+  max-width: min(100%, 280px);
+  overflow: hidden;
+  padding: 4px 8px;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 999px;
+  color: var(--cpu-primary);
+  background: var(--cpu-surface-subtle);
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.assistant-sources a:hover {
+  border-color: var(--cpu-primary);
 }
 .message-markdown :deep(p) {
   margin: 0.65em 0;

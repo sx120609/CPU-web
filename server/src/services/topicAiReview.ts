@@ -6,6 +6,7 @@ import {
   type AiJsonMessage,
   extractAiJsonCompletionMetadata,
   extractAiJsonTextResponse,
+  extractAiJsonWebSearchSources,
   sendAiJsonRequestWithProviderFallback,
   type AiProviderCandidate,
 } from "./aiJsonApi";
@@ -135,6 +136,7 @@ type AiJsonRequestOptions = {
   enablePromptCacheRetention?: boolean;
   preferNativeOllama?: boolean;
   ollamaThink?: boolean;
+  webSearch?: boolean;
   signal?: AbortSignal;
 };
 
@@ -209,6 +211,7 @@ export async function requestAiJson(
         enablePromptCacheRetention: promptCacheEnabled && options?.enablePromptCacheRetention !== false,
         preferNativeOllama: options?.preferNativeOllama,
         ollamaThink: options?.ollamaThink,
+        webSearch: options?.webSearch,
         signal: options?.signal,
       });
       response = upstreamResult.response;
@@ -262,7 +265,13 @@ export async function requestAiJson(
       }));
     }
     await finishAiReviewLogSuccess(logId, typeof content === "string" ? content : JSON.stringify(content ?? {}).slice(0, 4000));
-    return { content, model, completion };
+    return {
+      content,
+      model,
+      completion,
+      webSearchApplied: upstreamResult.webSearchApplied === true,
+      webSearchSources: extractAiJsonWebSearchSources(json),
+    };
   }
   throw lastError || Errors.server("AI 审核请求失败");
 }

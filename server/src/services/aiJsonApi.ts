@@ -36,8 +36,17 @@ export type SendAiJsonRequestResult = {
   errorText: string;
   promptCacheKeyApplied: boolean;
   promptCacheRetentionApplied: boolean;
+  /** True only when the upstream accepted a web-search request. */
+  webSearchApplied?: boolean;
+  /** Actual endpoint used when web search temporarily switches Chat Completions to Responses. */
+  effectiveEndpoint?: string;
   /** Number of transient upstream retries made before returning the final response. */
   retryCount: number;
+};
+
+export type AiWebSearchSource = {
+  title: string;
+  url: string;
 };
 
 export type AiJsonCompletionMetadata = {
@@ -143,30 +152,51 @@ export async function sendAiJsonRequest(input: {
   preferNativeOllama?: boolean;
   /** Enable Ollama's private thinking channel when the caller can afford it. */
   ollamaThink?: boolean;
+  /** Ask a compatible remote upstream to use its hosted web-search capability. */
+  webSearch?: boolean;
   signal?: AbortSignal;
 }): Promise<SendAiJsonRequestResult> {
   if (input.preferNativeOllama && !input.stream && isOllamaProvider(input.provider)) {
     return retryBusyOllamaRequest(input, () => sendNativeOllamaJsonRequest(input));
   }
-  const mode = detectAiJsonApiMode(input.endpoint);
-  const body = buildAiJsonRequestBody({
-    mode,
-    model: input.model,
-    temperature: input.temperature,
-    maxTokens: input.maxTokens,
-    messages: input.messages,
-    stream: input.stream,
-  });
-  return retryBusyOllamaRequest(input, () => sendAiUpstreamRequest({
-    endpoint: input.endpoint,
-    apiKey: input.apiKey,
-    provider: input.provider,
-    body,
-    promptCacheKey: input.promptCacheKey,
-    enablePromptCacheRetention: input.enablePromptCacheRetention,
-    maxTransientRetries: input.maxTransientRetries,
-    signal: input.signal,
-  }));
+  const execute = async (endpoint: string, webSearch: boolean) => {
+    const mode = detectAiJsonApiMode(endpoint);
+    const body = buildAiJsonRequestBody({
+      mode,
+      model: input.model,
+      temperature: input.temperature,
+      maxTokens: input.maxTokens,
+      messages: input.messages,
+      stream: input.stream,
+      webSearch,
+    });
+    const result = await retryBusyOllamaRequest(input, () => sendAiUpstreamRequest({
+      endpoint,
+      apiKey: input.apiKey,
+      provider: input.provider,
+      body,
+      promptCacheKey: input.promptCacheKey,
+      enablePromptCacheRetention: input.enablePromptCacheRetention,
+      maxTransientRetries: input.maxTransientRetries,
+      signal: input.signal,
+    }));
+    return {
+      ...result,
+      webSearchApplied: webSearch,
+      effectiveEndpoint: endpoint,
+    };
+  };
+
+  if (input.webSearch && !isOllamaEndpoint(input.provider, input.endpoint)) {
+    for (const endpoint of buildAiWebSearchEndpointAttempts(input.endpoint)) {
+      const result = await execute(endpoint, true);
+      if (result.response.ok || !shouldRetryWithoutAiWebSearch(result.response.status, result.errorText)) {
+        return result;
+      }
+      if (result.response.body) await result.response.body.cancel().catch(() => undefined);
+    }
+  }
+  return execute(input.endpoint, false);
 }
 
 async function retryBusyOllamaRequest<T>(
@@ -216,11 +246,15 @@ export async function sendAiJsonRequestWithProviderFallback(input: {
   preferNativeOllama?: boolean;
   /** Enable Ollama's private thinking channel when the caller can afford it. */
   ollamaThink?: boolean;
+  webSearch?: boolean;
   signal?: AbortSignal;
 }): Promise<SendAiJsonRequestWithFallbackResult> {
   let lastError: unknown = null;
   let lastResponseResult: SendAiJsonRequestWithFallbackResult | null = null;
-  const providers = input.providers.filter((provider) => String(provider.apiUrl || "").trim());
+  const configuredProviders = input.providers.filter((provider) => String(provider.apiUrl || "").trim());
+  const providers = input.webSearch
+    ? [...configuredProviders].sort((left, right) => Number(isOllamaEndpoint(left.provider, left.apiUrl)) - Number(isOllamaEndpoint(right.provider, right.apiUrl)))
+    : configuredProviders;
   for (let index = 0; index < providers.length; index += 1) {
     const provider = providers[index];
     const model = String(provider.model || input.model || "").trim();
@@ -250,6 +284,7 @@ export async function sendAiJsonRequestWithProviderFallback(input: {
         stream: input.stream,
         preferNativeOllama: input.preferNativeOllama,
         ollamaThink: input.ollamaThink,
+        webSearch: input.webSearch,
         signal: input.signal,
       });
       if (result.response.ok || index >= providers.length - 1) {
@@ -668,6 +703,27 @@ function normalizeNonEmptyAiJsonApiUrl(raw: string, defaultMode: AiJsonApiMode) 
   return normalized;
 }
 
+export function buildAiWebSearchEndpointAttempts(endpoint: string) {
+  const normalized = String(endpoint || "").trim().replace(/\/+$/, "");
+  if (!normalized) return [];
+  if (/\/responses$/iu.test(normalized)) return [normalized];
+  if (/\/chat\/completions$/iu.test(normalized)) {
+    return [
+      normalized.replace(/\/chat\/completions$/iu, "/responses"),
+      normalized,
+    ];
+  }
+  return [normalized];
+}
+
+function shouldRetryWithoutAiWebSearch(status: number, responseText: string) {
+  if (![400, 404, 405, 415, 422].includes(status)) return false;
+  if ([404, 405].includes(status)) return true;
+  const text = String(responseText || "").toLowerCase();
+  if (!text) return true;
+  return /(?:web[_ -]?search|web_search_options|tool_choice|tools?|unsupported|not supported|unknown (?:field|parameter)|unrecognized|extra inputs?|responses? endpoint|response_format)/iu.test(text);
+}
+
 function buildAiJsonRequestBody(input: {
   mode: AiJsonApiMode;
   model: string;
@@ -675,6 +731,7 @@ function buildAiJsonRequestBody(input: {
   maxTokens?: number;
   messages: AiJsonMessage[];
   stream?: boolean;
+  webSearch?: boolean;
 }) {
   const body: Record<string, unknown> = {
     model: input.model,
@@ -687,11 +744,76 @@ function buildAiJsonRequestBody(input: {
   if (input.mode === "responses") {
     body.input = input.messages.map(toResponsesInputMessage);
     body.text = { format: { type: "json_object" } };
+    if (input.webSearch) {
+      body.tools = [{
+        type: "web_search",
+        search_context_size: "medium",
+        user_location: {
+          type: "approximate",
+          country: "CN",
+          region: "Jiangsu",
+          city: "Nanjing",
+          timezone: "Asia/Shanghai",
+        },
+      }];
+      body.tool_choice = "required";
+      body.include = ["web_search_call.action.sources"];
+    }
   } else {
     body.messages = input.messages.map(toChatCompletionsMessage);
     body.response_format = { type: "json_object" };
+    if (input.webSearch) {
+      body.web_search_options = {
+        search_context_size: "medium",
+        user_location: {
+          type: "approximate",
+          country: "CN",
+          region: "Jiangsu",
+          city: "Nanjing",
+          timezone: "Asia/Shanghai",
+        },
+      };
+    }
   }
   return body;
+}
+
+export function extractAiJsonWebSearchSources(payload: unknown): AiWebSearchSource[] {
+  const sources: AiWebSearchSource[] = [];
+  const seen = new Set<string>();
+  const add = (urlValue: unknown, titleValue?: unknown) => {
+    const url = String(urlValue || "").trim();
+    if (!/^https?:\/\/[^\s<>"']+$/iu.test(url) || seen.has(url)) return;
+    seen.add(url);
+    let title = String(titleValue || "").trim().replace(/\s+/gu, " ").slice(0, 120);
+    if (!title) {
+      try {
+        title = new URL(url).hostname.replace(/^www\./iu, "");
+      } catch {
+        title = "网页来源";
+      }
+    }
+    sources.push({ title, url });
+  };
+  const root = payload && typeof payload === "object" ? payload as Record<string, any> : {};
+  for (const output of Array.isArray(root.output) ? root.output : []) {
+    for (const source of Array.isArray(output?.action?.sources) ? output.action.sources : []) {
+      add(source?.url, source?.title || source?.name);
+    }
+    for (const content of Array.isArray(output?.content) ? output.content : []) {
+      for (const annotation of Array.isArray(content?.annotations) ? content.annotations : []) {
+        add(annotation?.url || annotation?.url_citation?.url, annotation?.title || annotation?.url_citation?.title);
+      }
+    }
+  }
+  const message = root.choices?.[0]?.message;
+  for (const annotation of Array.isArray(message?.annotations) ? message.annotations : []) {
+    add(annotation?.url || annotation?.url_citation?.url, annotation?.title || annotation?.url_citation?.title);
+  }
+  for (const citation of Array.isArray(root.citations) ? root.citations : []) {
+    add(citation?.url, citation?.title || citation?.name);
+  }
+  return sources.slice(0, 8);
 }
 
 export function extractAiJsonCompletionMetadata(json: any, mode: AiJsonApiMode): AiJsonCompletionMetadata {

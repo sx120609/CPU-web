@@ -32,10 +32,10 @@ export function isCampusAssistantImageGenerationRequest(value: string) {
   if (/(?:图片|图像|生图).{0,10}(?:功能|接口|代码|程序|算法|逻辑|流程|组件|页面|系统|上传|识别|分析|处理)/iu.test(text)) {
     return false;
   }
-  const chineseVisual = /(?:图|图片|插画|海报|头像|壁纸|封面|图标|logo|标志|表情包|漫画|照片|画面)/iu.test(text);
+  const chineseVisual = /(?:图|图片|插画|海报|头像|画像|肖像|人物像|自画像|壁纸|封面|图标|logo|标志|表情包|漫画|照片|画面)/iu.test(text);
   const chineseCreate = /(?:生成|生一张|画(?:一|个|张|幅|出|一下|一幅)?|绘制|制作|设计|创作|做一张|出一张)/u.test(text);
   if (chineseCreate && (chineseVisual || /(?:画|绘制)(?:出来|一下|一幅|一张|一个)/u.test(text))) return true;
-  if (/(?:来|给我|帮我|为我)(?:做|整|出)?(?:一张|一幅|几张).{0,80}(?:图|图片|插画|海报|头像|壁纸|封面|漫画|照片)/u.test(text)) return true;
+  if (/(?:来|给我|帮我|为我)(?:做|整|出)?(?:一张|一幅|几张).{0,80}(?:图|图片|插画|海报|头像|画像|肖像|人物像|自画像|壁纸|封面|漫画|照片)/u.test(text)) return true;
   return /\b(?:generate|draw|create|make|design)\b[\s\S]{0,80}\b(?:image|picture|illustration|poster|avatar|wallpaper|logo|icon|cover|meme|comic|photo)\b/iu.test(text);
 }
 

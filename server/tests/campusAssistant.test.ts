@@ -21,6 +21,7 @@ import {
   resolveCampusAssistantImagePrompt,
   sanitizeCampusAssistantStoredMessages,
   searchCampusAssistantActions,
+  shouldUseCampusAssistantWebSearch,
   streamCampusAssistant,
 } from "../src/services/campusAssistant";
 import {
@@ -53,8 +54,11 @@ import {
 } from "../src/services/forumAccess";
 import {
   buildAiPromptCacheKey,
+  buildAiWebSearchEndpointAttempts,
   extractAiJsonCompletionMetadata,
+  extractAiJsonWebSearchSources,
   readAiJsonTextStream,
+  sendAiJsonRequest,
   sendAiUpstreamRequest,
   sendAiJsonRequestWithProviderFallback,
 } from "../src/services/aiJsonApi";
@@ -1018,6 +1022,154 @@ test("AI JSON requests preserve a transient primary failure when no fallback mod
   }
 });
 
+test("拾间AI只对明确联网或时效性问题启用上游网页搜索", () => {
+  assert.equal(shouldUseCampusAssistantWebSearch("请联网搜索中国药科大学最新通知"), true);
+  assert.equal(shouldUseCampusAssistantWebSearch("今天南京天气怎么样？"), true);
+  assert.equal(shouldUseCampusAssistantWebSearch("总结 https://example.com/notice 的内容"), true);
+  assert.equal(shouldUseCampusAssistantWebSearch("你会联网吗？"), false);
+  assert.equal(shouldUseCampusAssistantWebSearch("我的成绩是多少？"), false);
+  assert.equal(shouldUseCampusAssistantWebSearch("宿舍电费在哪里查？"), false);
+});
+
+test("联网请求优先把 Chat Completions 服务切到同源 Responses 接口", async () => {
+  const originalFetch = globalThis.fetch;
+  const requests: Array<{ url: string; body: Record<string, any> }> = [];
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    requests.push({
+      url: String(input),
+      body: JSON.parse(String(init?.body || "{}")),
+    });
+    return new Response(JSON.stringify({
+      output: [
+        { type: "web_search_call", action: { sources: [{ title: "官方通知", url: "https://example.com/notice" }] } },
+        { type: "message", content: [{ type: "output_text", text: '{"answer":"已查询"}' }] },
+      ],
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+
+  try {
+    const result = await sendAiJsonRequest({
+      endpoint: "https://search.example/v1/chat/completions",
+      apiKey: "test-key",
+      provider: "openai",
+      model: "example-model",
+      messages: [{ role: "user", content: "搜索最新通知" }],
+      webSearch: true,
+      maxTransientRetries: 0,
+    });
+
+    assert.equal(result.response.ok, true);
+    assert.equal(result.mode, "responses");
+    assert.equal(result.webSearchApplied, true);
+    assert.equal(result.effectiveEndpoint, "https://search.example/v1/responses");
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0]?.url, "https://search.example/v1/responses");
+    assert.equal(requests[0]?.body.tools?.[0]?.type, "web_search");
+    assert.equal(requests[0]?.body.tool_choice, "required");
+    await result.response.body?.cancel();
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("联网请求在多服务商配置中优先选择远程上游而不是本地 Ollama", async () => {
+  const originalFetch = globalThis.fetch;
+  const requests: string[] = [];
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    requests.push(String(input));
+    return new Response(JSON.stringify({
+      output: [{ type: "message", content: [{ type: "output_text", text: '{"answer":"已联网"}' }] }],
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+
+  try {
+    const result = await sendAiJsonRequestWithProviderFallback({
+      providers: [
+        { serviceId: "local", provider: "ollama", apiUrl: "http://127.0.0.1:11434", apiKey: "", model: "qwen3.8:27b" },
+        { serviceId: "remote", provider: "openai", apiUrl: "https://remote.example/v1", apiKey: "remote-key", model: "gpt-example" },
+      ],
+      fallbackEndpoint: "https://fallback.example/v1/chat/completions",
+      model: "qwen3.8:27b",
+      messages: [{ role: "user", content: "今天的新闻" }],
+      webSearch: true,
+      maxTransientRetries: 0,
+    });
+
+    assert.equal(result.response.ok, true);
+    assert.equal(result.provider.serviceId, "remote");
+    assert.equal(result.webSearchApplied, true);
+    assert.deepEqual(requests, ["https://remote.example/v1/responses"]);
+    await result.response.body?.cancel();
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("上游不支持网页搜索时自动退回普通问答", async () => {
+  const originalFetch = globalThis.fetch;
+  const requests: Array<{ url: string; body: Record<string, any> }> = [];
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const request = {
+      url: String(input),
+      body: JSON.parse(String(init?.body || "{}")),
+    };
+    requests.push(request);
+    if (request.url.endsWith("/responses")) {
+      return new Response('{"error":"responses endpoint not supported"}', { status: 404 });
+    }
+    if (request.body.web_search_options) {
+      return new Response('{"error":"unknown parameter web_search_options"}', { status: 400 });
+    }
+    return new Response('{"choices":[{"message":{"content":"{\\"answer\\":\\"普通回答\\"}"}}]}', {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  try {
+    const result = await sendAiJsonRequest({
+      endpoint: "https://plain.example/v1/chat/completions",
+      apiKey: "test-key",
+      provider: "custom",
+      model: "example-model",
+      messages: [{ role: "user", content: "搜索最新通知" }],
+      webSearch: true,
+      maxTransientRetries: 0,
+    });
+
+    assert.equal(result.response.ok, true);
+    assert.equal(result.mode, "chat_completions");
+    assert.equal(result.webSearchApplied, false);
+    assert.deepEqual(requests.map((item) => item.url), [
+      "https://plain.example/v1/responses",
+      "https://plain.example/v1/chat/completions",
+      "https://plain.example/v1/chat/completions",
+    ]);
+    assert.ok(requests[1]?.body.web_search_options);
+    assert.equal(requests[2]?.body.web_search_options, undefined);
+    await result.response.body?.cancel();
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("联网来源兼容 Responses 与 Chat Completions 并去重", () => {
+  assert.deepEqual(
+    buildAiWebSearchEndpointAttempts("https://api.example/v1/chat/completions/"),
+    ["https://api.example/v1/responses", "https://api.example/v1/chat/completions"],
+  );
+  assert.deepEqual(extractAiJsonWebSearchSources({
+    output: [{
+      action: { sources: [{ title: "学校官网", url: "https://cpu.example/notice" }] },
+      content: [{ annotations: [{ url_citation: { title: "重复", url: "https://cpu.example/notice" } }] }],
+    }],
+    choices: [{ message: { annotations: [{ url_citation: { title: "气象台", url: "https://weather.example/today" } }] } }],
+  }), [
+    { title: "学校官网", url: "https://cpu.example/notice" },
+    { title: "气象台", url: "https://weather.example/today" },
+  ]);
+});
+
 test("VoiceHub knowledge describes the real request form and rejects invented listener messages", () => {
   const knowledge = listCampusAssistantKnowledge(["voicehub"]);
   const combined = knowledge.join("\n");
@@ -1397,6 +1549,7 @@ test("Qwen 路由只向上游发送最近两条受限历史消息", () => {
 test("拾间AI只对明确的产图请求启用 image2", () => {
   assert.equal(isCampusAssistantImageGenerationRequest("帮我生成一张赛博朋克风格的校园夜景海报"), true);
   assert.equal(isCampusAssistantImageGenerationRequest("画一幅水彩风格的银杏大道"), true);
+  assert.equal(isCampusAssistantImageGenerationRequest("生成一张你的自画像"), true);
   assert.equal(isCampusAssistantImageGenerationRequest("你支持生成图片吗？"), false);
   assert.equal(isCampusAssistantImageGenerationRequest("分析一下我发的这张图片"), false);
   assert.equal(isCampusAssistantImageGenerationRequest("帮我设计一下图片上传功能的接口"), false);
@@ -1410,6 +1563,20 @@ test("拾间AI只对明确的产图请求启用 image2", () => {
   );
   assert.equal(
     resolveCampusAssistantImagePrompt({ imagePrompt: "不应调用" }, "你支持生成图片吗？"),
+    "",
+  );
+  assert.equal(
+    resolveCampusAssistantImagePrompt(
+      { answer: "可以，我来生成一张拾间AI的拟人化自画像。", imagePrompt: "" },
+      "生成一张你的自画像",
+    ),
+    "生成一张你的自画像",
+  );
+  assert.equal(
+    resolveCampusAssistantImagePrompt(
+      { answer: "抱歉，我不能为你生成这类图片。", imagePrompt: "不安全内容" },
+      "生成一张不安全内容的图片",
+    ),
     "",
   );
   const prompt = buildSystemPrompt([], false, "example-model-2026");

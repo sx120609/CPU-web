@@ -55,6 +55,10 @@ const assistantHistoryImageSchema = z.object({
   ),
   alt: z.string().trim().min(1).max(200),
 }).strict();
+const assistantHistorySourceSchema = z.object({
+  title: z.string().trim().min(1).max(120),
+  url: z.string().trim().url().max(500).refine((value) => /^https?:\/\//iu.test(value), "仅支持 http(s) 来源"),
+}).strict();
 const assistantHistoryMessageSchema = z.object({
   id: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
   role: z.enum(["user", "assistant"]),
@@ -62,6 +66,7 @@ const assistantHistoryMessageSchema = z.object({
   actions: z.array(assistantHistoryActionSchema).max(3).optional(),
   suggestions: z.array(z.string().trim().min(1).max(60)).max(3).optional(),
   images: z.array(assistantHistoryImageSchema).max(1).optional(),
+  sources: z.array(assistantHistorySourceSchema).max(5).optional(),
 }).strict();
 const assistantHistorySaveSchema = z.object({
   title: z.string().trim().min(1).max(80),

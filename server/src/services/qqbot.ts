@@ -2750,6 +2750,26 @@ export async function renderQqBotDailyAssistantReply(
   const includeQrCode = options.includeQrCode !== false;
   const normalizedAnswer = normalizeQqBotAiReplyText(response.answer || "").trim();
   const lines = [normalizedAnswer || "我暂时没有找到合适的答案。"];
+  const seenSourceUrls = new Set<string>();
+  const sources = (response.sources || [])
+    .filter((source) => /^https?:\/\/[^\s<>"']+$/iu.test(String(source?.url || "")))
+    .map((source) => ({
+      title: String(source.title || "网页来源").trim().replace(/[\[\]()`]/gu, " ").replace(/\s+/gu, " ").slice(0, 80) || "网页来源",
+      url: String(source.url || "").trim(),
+    }))
+    .filter((source) => {
+      if (seenSourceUrls.has(source.url)) return false;
+      seenSourceUrls.add(source.url);
+      return true;
+    })
+    .slice(0, 3);
+  if (sources.length) {
+    lines.push(
+      "",
+      "参考来源：",
+      ...sources.map((source) => `· ${source.title}：${source.url}`),
+    );
+  }
   const actions = (response.actions || []).slice(0, 3);
   const actionEntries: QqBotAiReplyShareAction[] = actions.map((action) => ({
     label: String(action.label || "相关入口").trim() || "相关入口",
@@ -2762,7 +2782,7 @@ export async function renderQqBotDailyAssistantReply(
   const sourcePageUrl = includeQrCode
     ? await createQqBotAiReplyShare({
       question,
-      answer: lines[0],
+      answer: lines.join("\n"),
       actions: actionEntries,
     })
     : undefined;
