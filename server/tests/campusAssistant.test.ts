@@ -32,6 +32,7 @@ import {
   normalizeCampusAssistantImageChatEndpoint,
   normalizeCampusAssistantImageEndpoint,
   normalizeCampusAssistantImageResponsesEndpoint,
+  shouldStopCampusAssistantImageRequestAttempts,
 } from "../src/services/campusAssistantImage";
 import {
   campusAssistantDateKey,
@@ -1630,6 +1631,9 @@ test("拾间AI image2 兼容标准图片端点与常见上游返回格式", () =
     input: [{ role: "user", content: [{ type: "input_text", text: "清雅的国风水墨荷花" }] }],
     stream: false,
   });
+  assert.equal(shouldStopCampusAssistantImageRequestAttempts(502), false);
+  assert.equal(shouldStopCampusAssistantImageRequestAttempts(401), true);
+  assert.equal(shouldStopCampusAssistantImageRequestAttempts(429), true);
   assert.deepEqual(
     extractCampusAssistantGeneratedImageSource({ data: [{ b64_json: "aGVsbG8=" }] }),
     { dataUrl: "data:image/png;base64,aGVsbG8=", revisedPrompt: undefined },

@@ -88,6 +88,10 @@ export function buildCampusAssistantImageRequestAttempts(apiUrl: string, prompt:
   ];
 }
 
+export function shouldStopCampusAssistantImageRequestAttempts(status: number) {
+  return [401, 403, 429].includes(status);
+}
+
 export function extractCampusAssistantGeneratedImageSource(payload: unknown): GeneratedImageSource | null {
   if (!payload || typeof payload !== "object") return null;
   const root = payload as Record<string, any>;
@@ -185,7 +189,11 @@ async function requestGeneratedImage(
       continue;
     }
     errors.push(`${attempt.protocol} ${response.status}${text ? ` ${text.slice(0, 160)}` : ""}`);
-    if (![400, 404, 405, 415, 422].includes(response.status)) break;
+    // A relay may expose image2 through only one compatible protocol. A 5xx
+    // from Chat Completions must not prevent trying the same upstream's
+    // Responses endpoint; stop only when credentials or rate limits make all
+    // protocol variants inapplicable.
+    if (shouldStopCampusAssistantImageRequestAttempts(response.status)) break;
   }
   throw new Error(`image2 生图请求失败：${errors.join("；")}`);
 }
