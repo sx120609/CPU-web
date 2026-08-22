@@ -256,6 +256,7 @@ type QqBotSplitMessageLogRow = {
   content: string;
   result: string;
   createdAt: Date;
+  status?: string;
 };
 
 const qqBotCooldowns = new Map<string, { cancelledAt?: number }>();
@@ -2977,14 +2978,16 @@ async function recallRecentQqBotSplitMessageIncidents() {
     where: {
       direction: "outbound",
       eventType: "group-message",
-      status: "ok",
+      status: { in: ["ok", "recalled"] },
       createdAt: { gte: new Date(Date.now() - 2 * 60 * 60 * 1000) },
     },
     orderBy: { createdAt: "desc" },
     take: 500,
-    select: { id: true, groupId: true, content: true, result: true, createdAt: true },
+    select: { id: true, groupId: true, content: true, result: true, createdAt: true, status: true },
   });
-  const candidates = findQqBotSplitMessageIncidentRows(rows);
+  // Recalled rows still prove that a large split-message incident happened.
+  // Keep them in incident detection, then retry only the messages still marked ok.
+  const candidates = findQqBotSplitMessageIncidentRows(rows).filter((row) => row.status === "ok");
   let recalled = 0;
   let firstFailure = "";
   for (let offset = 0; offset < candidates.length; offset += 8) {

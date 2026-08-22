@@ -60,6 +60,10 @@ test("QQBot 只把同群短时间内的大批量分片识别为可恢复事故",
     ...row,
     createdAt: new Date(startedAt.getTime() + index * 20_000),
   }))).length, 0);
+  assert.equal(findQqBotSplitMessageIncidentRows(rows.map((row, index) => ({
+    ...row,
+    status: index < 42 ? "recalled" : "ok",
+  }))).filter((row) => row.status === "ok").length, 8);
 });
 
 test("QQBot 二维码发送总开关默认关闭，并统一覆盖群聊和私聊", () => {
