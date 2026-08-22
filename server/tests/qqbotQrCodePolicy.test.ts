@@ -4,6 +4,7 @@ import {
   buildQqBotGeneratedImageMessage,
   buildQqBotReplyMessage,
   buildSafetyPlatformGuideBlockLines,
+  findQqBotSplitMessageIncidentRows,
   renderQqBotDailyAssistantReply,
   shouldSendQqBotQrCode,
   splitQqMessageForSend,
@@ -32,6 +33,24 @@ test("QQBot 不会把引用回复中的 base64 图片拆成大量文本消息", 
 
   assert.equal(chunks.length, 1);
   assert.equal(chunks[0], replyMessage);
+});
+
+test("QQBot 只把同群短时间内的大批量分片识别为可恢复事故", () => {
+  const startedAt = new Date("2026-08-22T16:20:00.000Z");
+  const rows = Array.from({ length: 50 }, (_, offset) => ({
+    id: offset + 1,
+    groupId: "704825850",
+    content: `（${offset + 1}/312）\n${"A".repeat(100)}`,
+    result: JSON.stringify({ status: "ok", data: { message_id: offset + 1000 } }),
+    createdAt: new Date(startedAt.getTime() + offset * 500),
+  }));
+
+  assert.equal(findQqBotSplitMessageIncidentRows(rows).length, 50);
+  assert.equal(findQqBotSplitMessageIncidentRows(rows.slice(0, 49)).length, 0);
+  assert.equal(findQqBotSplitMessageIncidentRows(rows.map((row, index) => ({
+    ...row,
+    createdAt: new Date(startedAt.getTime() + index * 20_000),
+  }))).length, 0);
 });
 
 test("QQBot 二维码发送总开关默认关闭，并统一覆盖群聊和私聊", () => {

@@ -246,6 +246,14 @@ type QqMessageTarget = {
   tempGroupId?: string;
 };
 
+type QqBotSplitMessageLogRow = {
+  id: number;
+  groupId: string | null;
+  content: string;
+  result: string;
+  createdAt: Date;
+};
+
 const qqBotCooldowns = new Map<string, { cancelledAt?: number }>();
 const qqBotAssistantHistories = new Map<string, { messages: CampusAssistantMessage[]; updatedAt: number }>();
 type QqBotDailyAssistantContext = {
@@ -2503,6 +2511,27 @@ export function splitQqMessageForSend(message: string) {
     : splitQqMessageForDelivery(normalizedMessage);
 }
 
+export function findQqBotSplitMessageIncidentRows(rows: QqBotSplitMessageLogRow[]) {
+  const groups = new Map<string, Array<QqBotSplitMessageLogRow & { index: number; total: number }>>();
+  for (const row of rows) {
+    const match = String(row.content || "").match(/^（(\d+)\/(\d+)）(?:\r?\n|$)/u);
+    if (!match) continue;
+    const index = Number(match[1]);
+    const total = Number(match[2]);
+    if (!row.groupId || !Number.isSafeInteger(index) || !Number.isSafeInteger(total) || total < 50 || index < 1 || index > total) continue;
+    const key = `${row.groupId}:${total}`;
+    const group = groups.get(key) || [];
+    group.push({ ...row, index, total });
+    groups.set(key, group);
+  }
+  return [...groups.values()].flatMap((group) => {
+    const indexes = new Set(group.map((row) => row.index));
+    const times = group.map((row) => row.createdAt.getTime()).filter(Number.isFinite);
+    const duration = times.length ? Math.max(...times) - Math.min(...times) : Number.POSITIVE_INFINITY;
+    return indexes.size >= 50 && duration <= 10 * 60 * 1000 ? group : [];
+  });
+}
+
 function isSingleQqImageMessage(value: string) {
   return /^(?:\[CQ:reply,[^\]]+\])?\[CQ:image,[^\]]+\]$/i.test(String(value || "").trim());
 }
@@ -2872,6 +2901,7 @@ async function replyToPrivateForPosting(
 export function startQqNotificationPoller() {
   if (pollerStarted) return;
   pollerStarted = true;
+  scheduleQqBotSplitMessageRecovery();
   const tick = () => runWithDistributedLock("qqbot-notification-dispatch:tick", 25_000, async () => {
     await Promise.all([
       dispatchRecentQqNotifications(),
@@ -2886,6 +2916,61 @@ export function startQqNotificationPoller() {
   setTimeout(tick, 5000);
   setInterval(tick, 30_000);
   setInterval(() => connectQqBotWebSocket().catch(() => undefined), 30_000);
+}
+
+let qqBotSplitMessageRecoveryStarted = false;
+
+function scheduleQqBotSplitMessageRecovery() {
+  if (qqBotSplitMessageRecoveryStarted) return;
+  qqBotSplitMessageRecoveryStarted = true;
+  let attempts = 0;
+  const run = async () => {
+    attempts += 1;
+    const summary = await recallRecentQqBotSplitMessageIncidents().catch((error) => {
+      console.warn("[qqbot] split-message recovery failed", error instanceof Error ? error.message : error);
+      return { candidates: 1, recalled: 0 };
+    });
+    if (summary.candidates > summary.recalled && attempts < 6) setTimeout(run, 15_000);
+  };
+  setTimeout(run, 5_000);
+}
+
+async function recallRecentQqBotSplitMessageIncidents() {
+  const rows = await prisma.qqBotMessageLog.findMany({
+    where: {
+      direction: "outbound",
+      eventType: "group-message",
+      status: "ok",
+      createdAt: { gte: new Date(Date.now() - 2 * 60 * 60 * 1000) },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 500,
+    select: { id: true, groupId: true, content: true, result: true, createdAt: true },
+  });
+  const candidates = findQqBotSplitMessageIncidentRows(rows);
+  let recalled = 0;
+  for (let offset = 0; offset < candidates.length; offset += 8) {
+    const batch = candidates.slice(offset, offset + 8);
+    const results = await Promise.all(batch.map(async (row) => {
+      const messageId = extractNapCatMessageId(parseJsonObject(row.result));
+      if (!messageId) return false;
+      try {
+        await deleteQqBotMessageWithRetry(messageId);
+        await prisma.qqBotMessageLog.update({
+          where: { id: row.id },
+          data: { status: "recalled", messageId },
+        });
+        return true;
+      } catch {
+        return false;
+      }
+    }));
+    recalled += results.filter(Boolean).length;
+  }
+  if (candidates.length) {
+    console.warn(`[qqbot] split-message recovery recalled ${recalled}/${candidates.length} messages`);
+  }
+  return { candidates: candidates.length, recalled };
 }
 
 export async function dispatchRecentQqNotifications() {
