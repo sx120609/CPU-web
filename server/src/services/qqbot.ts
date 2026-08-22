@@ -2930,7 +2930,7 @@ function scheduleQqBotSplitMessageRecovery() {
       console.warn("[qqbot] split-message recovery failed", error instanceof Error ? error.message : error);
       return { candidates: 1, recalled: 0 };
     });
-    if (summary.candidates > summary.recalled && attempts < 6) setTimeout(run, 15_000);
+    if (summary.candidates > summary.recalled && attempts < 20) setTimeout(run, 15_000);
   };
   setTimeout(run, 5_000);
 }
@@ -2949,6 +2949,7 @@ async function recallRecentQqBotSplitMessageIncidents() {
   });
   const candidates = findQqBotSplitMessageIncidentRows(rows);
   let recalled = 0;
+  let firstFailure = "";
   for (let offset = 0; offset < candidates.length; offset += 8) {
     const batch = candidates.slice(offset, offset + 8);
     const results = await Promise.all(batch.map(async (row) => {
@@ -2961,14 +2962,17 @@ async function recallRecentQqBotSplitMessageIncidents() {
           data: { status: "recalled", messageId },
         });
         return true;
-      } catch {
+      } catch (error) {
+        if (!firstFailure) firstFailure = String((error as any)?.message || error || "撤回失败").slice(0, 200);
         return false;
       }
     }));
     recalled += results.filter(Boolean).length;
   }
   if (candidates.length) {
-    console.warn(`[qqbot] split-message recovery recalled ${recalled}/${candidates.length} messages`);
+    console.warn(
+      `[qqbot] split-message recovery recalled ${recalled}/${candidates.length} messages${firstFailure ? `; first failure: ${firstFailure}` : ""}`,
+    );
   }
   return { candidates: candidates.length, recalled };
 }
