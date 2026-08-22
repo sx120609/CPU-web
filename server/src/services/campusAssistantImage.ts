@@ -20,25 +20,6 @@ type GeneratedImageSource = {
   revisedPrompt?: string;
 };
 
-export function isCampusAssistantImageGenerationRequest(value: string) {
-  const text = String(value || "").trim();
-  if (!text || text.length > 2_000) return false;
-  if (
-    /(?:你|拾间ai).{0,8}(?:能不能|可不可以|会|能|支持|可以).{0,6}(?:生图|生成图片|画图)[吗么不]?[？?]?$/iu.test(text)
-    || /(?:是否|能否).{0,4}(?:生图|生成图片)(?:功能|能力)?[吗么]?[？?]?$/u.test(text)
-  ) {
-    return false;
-  }
-  if (/(?:图片|图像|生图).{0,10}(?:功能|接口|代码|程序|算法|逻辑|流程|组件|页面|系统|上传|识别|分析|处理)/iu.test(text)) {
-    return false;
-  }
-  const chineseVisual = /(?:图|图片|插画|海报|头像|画像|肖像|人物像|自画像|壁纸|封面|图标|logo|标志|表情包|漫画|照片|画面)/iu.test(text);
-  const chineseCreate = /(?:生成|生一张|画(?:一|个|张|幅|出|一下|一幅)?|绘制|制作|设计|创作|做一张|出一张)/u.test(text);
-  if (chineseCreate && (chineseVisual || /(?:画|绘制)(?:出来|一下|一幅|一张|一个)/u.test(text))) return true;
-  if (/(?:来|给我|帮我|为我)(?:做|整|出)?(?:一张|一幅|几张).{0,80}(?:图|图片|插画|海报|头像|画像|肖像|人物像|自画像|壁纸|封面|漫画|照片)/u.test(text)) return true;
-  return /\b(?:generate|draw|create|make|design)\b[\s\S]{0,80}\b(?:image|picture|illustration|poster|avatar|wallpaper|logo|icon|cover|meme|comic|photo)\b/iu.test(text);
-}
-
 export function normalizeCampusAssistantImageEndpoint(apiUrl: string) {
   const chatEndpoint = normalizeAiJsonApiUrl(apiUrl, DEFAULT_AI_CHAT_ENDPOINT);
   const url = new URL(chatEndpoint);
@@ -48,6 +29,63 @@ export function normalizeCampusAssistantImageEndpoint(apiUrl: string) {
   url.search = "";
   url.hash = "";
   return url.toString();
+}
+
+export function normalizeCampusAssistantImageChatEndpoint(apiUrl: string) {
+  const endpoint = normalizeAiJsonApiUrl(apiUrl, DEFAULT_AI_CHAT_ENDPOINT);
+  const url = new URL(endpoint);
+  url.pathname = url.pathname
+    .replace(/\/(?:responses|images\/generations)\/?$/iu, "/chat/completions")
+    .replace(/\/{2,}/g, "/");
+  url.search = "";
+  url.hash = "";
+  return url.toString();
+}
+
+export function normalizeCampusAssistantImageResponsesEndpoint(apiUrl: string) {
+  const endpoint = normalizeAiJsonApiUrl(apiUrl, DEFAULT_AI_CHAT_ENDPOINT);
+  const url = new URL(endpoint);
+  url.pathname = url.pathname
+    .replace(/\/(?:chat\/completions|images\/generations)\/?$/iu, "/responses")
+    .replace(/\/{2,}/g, "/");
+  url.search = "";
+  url.hash = "";
+  return url.toString();
+}
+
+export function buildCampusAssistantImageRequestAttempts(apiUrl: string, prompt: string) {
+  return [
+    {
+      protocol: "images" as const,
+      endpoint: normalizeCampusAssistantImageEndpoint(apiUrl),
+      body: {
+        model: CAMPUS_ASSISTANT_IMAGE_MODEL,
+        prompt,
+        n: 1,
+      },
+    },
+    {
+      protocol: "chat_completions" as const,
+      endpoint: normalizeCampusAssistantImageChatEndpoint(apiUrl),
+      body: {
+        model: CAMPUS_ASSISTANT_IMAGE_MODEL,
+        messages: [{ role: "user", content: prompt }],
+        stream: false,
+      },
+    },
+    {
+      protocol: "responses" as const,
+      endpoint: normalizeCampusAssistantImageResponsesEndpoint(apiUrl),
+      body: {
+        model: CAMPUS_ASSISTANT_IMAGE_MODEL,
+        input: [{
+          role: "user",
+          content: [{ type: "input_text", text: prompt }],
+        }],
+        stream: false,
+      },
+    },
+  ];
 }
 
 export function extractCampusAssistantGeneratedImageSource(payload: unknown): GeneratedImageSource | null {
@@ -79,6 +117,7 @@ export function extractCampusAssistantGeneratedImageSource(payload: unknown): Ge
     }
   }
   if (typeof messageContent === "string") return extractImageSourceFromText(messageContent);
+  if (typeof root.output_text === "string") return extractImageSourceFromText(root.output_text);
   return null;
 }
 
@@ -90,10 +129,13 @@ export async function generateCampusAssistantImage(input: {
 }): Promise<CampusAssistantGeneratedImage> {
   const prompt = String(input.prompt || "").trim().slice(0, 2_000);
   if (!prompt) throw new Error("生图描述为空");
-  const providers = input.providers.filter((provider) => String(provider.apiUrl || "").trim());
+  const providers = input.providers.filter((provider) => (
+    String(provider.apiUrl || "").trim()
+    && String(provider.provider || "").trim().toLowerCase() !== "ollama"
+  ));
   if (!providers.length) throw new Error("没有可用的生图上游");
 
-  let lastError: unknown = null;
+  const providerErrors: string[] = [];
   for (const provider of providers) {
     const endpoint = normalizeCampusAssistantImageEndpoint(provider.apiUrl);
     const started = await startAiReviewLog({
@@ -113,12 +155,13 @@ export async function generateCampusAssistantImage(input: {
       await finishAiReviewLogSuccess(logId, image.url);
       return image;
     } catch (error) {
-      lastError = error;
-      await finishAiReviewLogError(logId, error instanceof Error ? error.message : String(error));
+      const detail = error instanceof Error ? error.message : String(error);
+      providerErrors.push(`${String(provider.name || provider.provider || "上游").trim() || "上游"}: ${detail}`);
+      await finishAiReviewLogError(logId, detail);
       if (input.signal?.aborted) throw error;
     }
   }
-  throw lastError instanceof Error ? lastError : new Error("生图上游暂时不可用");
+  throw new Error(providerErrors.join("；") || "生图上游暂时不可用");
 }
 
 async function requestGeneratedImage(
@@ -126,46 +169,25 @@ async function requestGeneratedImage(
   prompt: string,
   signal?: AbortSignal,
 ) {
-  const imageEndpoint = normalizeCampusAssistantImageEndpoint(provider.apiUrl);
-  const imageResponse = await fetchWithTimeout(imageEndpoint, {
-    method: "POST",
-    headers: buildProviderHeaders(provider.apiKey),
-    body: JSON.stringify({
-      model: CAMPUS_ASSISTANT_IMAGE_MODEL,
-      prompt,
-      n: 1,
-    }),
-  }, signal);
-  const imageText = await imageResponse.text();
-  if (imageResponse.ok) {
-    const source = extractCampusAssistantGeneratedImageSource(parseJson(imageText));
-    if (source) return source;
-    throw new Error("生图上游没有返回图片");
+  const attempts = buildCampusAssistantImageRequestAttempts(provider.apiUrl, prompt);
+  const errors: string[] = [];
+  for (const attempt of attempts) {
+    const response = await fetchWithTimeout(attempt.endpoint, {
+      method: "POST",
+      headers: buildProviderHeaders(provider.apiKey),
+      body: JSON.stringify(attempt.body),
+    }, signal);
+    const text = await response.text();
+    if (response.ok) {
+      const source = extractCampusAssistantGeneratedImageSource(parseJson(text));
+      if (source) return source;
+      errors.push(`${attempt.protocol} 未返回可识别的图片`);
+      continue;
+    }
+    errors.push(`${attempt.protocol} ${response.status}${text ? ` ${text.slice(0, 160)}` : ""}`);
+    if (![400, 404, 405, 415, 422].includes(response.status)) break;
   }
-
-  if (![404, 405].includes(imageResponse.status)) {
-    throw new Error(`生图请求失败：${imageResponse.status}${imageText ? ` ${imageText.slice(0, 160)}` : ""}`);
-  }
-
-  // Some OpenAI-compatible relays expose image-capable models only through
-  // chat completions. Keep this compatibility fallback scoped to image2.
-  const chatEndpoint = normalizeAiJsonApiUrl(provider.apiUrl, DEFAULT_AI_CHAT_ENDPOINT);
-  const chatResponse = await fetchWithTimeout(chatEndpoint, {
-    method: "POST",
-    headers: buildProviderHeaders(provider.apiKey),
-    body: JSON.stringify({
-      model: CAMPUS_ASSISTANT_IMAGE_MODEL,
-      messages: [{ role: "user", content: prompt }],
-      stream: false,
-    }),
-  }, signal);
-  const chatText = await chatResponse.text();
-  if (!chatResponse.ok) {
-    throw new Error(`生图请求失败：${chatResponse.status}${chatText ? ` ${chatText.slice(0, 160)}` : ""}`);
-  }
-  const source = extractCampusAssistantGeneratedImageSource(parseJson(chatText));
-  if (!source) throw new Error("image2 没有返回可识别的图片");
-  return source;
+  throw new Error(`image2 生图请求失败：${errors.join("；")}`);
 }
 
 async function persistGeneratedImage(
@@ -230,6 +252,7 @@ function extractImageSourceRecord(value: unknown): GeneratedImageSource | null {
     if (/^https?:\/\//iu.test(nested)) return { url: nested, revisedPrompt };
   }
   if (typeof record.content === "string") return extractImageSourceFromText(record.content);
+  if (typeof record.text === "string") return extractImageSourceFromText(record.text);
   return null;
 }
 

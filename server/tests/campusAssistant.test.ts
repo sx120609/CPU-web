@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   askCampusAssistant,
   buildAssistantMessages,
+  buildCampusAssistantImageIntentMessages,
   buildSystemPrompt,
   CAMPUS_ASSISTANT_PUBLIC_MODEL_NAME,
   extractPartialJsonStringValue,
@@ -25,10 +26,12 @@ import {
   streamCampusAssistant,
 } from "../src/services/campusAssistant";
 import {
+  buildCampusAssistantImageRequestAttempts,
   CAMPUS_ASSISTANT_IMAGE_MODEL,
   extractCampusAssistantGeneratedImageSource,
-  isCampusAssistantImageGenerationRequest,
+  normalizeCampusAssistantImageChatEndpoint,
   normalizeCampusAssistantImageEndpoint,
+  normalizeCampusAssistantImageResponsesEndpoint,
 } from "../src/services/campusAssistantImage";
 import {
   campusAssistantDateKey,
@@ -1546,41 +1549,52 @@ test("Qwen 路由只向上游发送最近两条受限历史消息", () => {
   assert.match(String(messages[0]?.content), /最多提供最近 2 条对话消息/u);
 });
 
-test("拾间AI只对明确的产图请求启用 image2", () => {
-  assert.equal(isCampusAssistantImageGenerationRequest("帮我生成一张赛博朋克风格的校园夜景海报"), true);
-  assert.equal(isCampusAssistantImageGenerationRequest("画一幅水彩风格的银杏大道"), true);
-  assert.equal(isCampusAssistantImageGenerationRequest("生成一张你的自画像"), true);
-  assert.equal(isCampusAssistantImageGenerationRequest("你支持生成图片吗？"), false);
-  assert.equal(isCampusAssistantImageGenerationRequest("分析一下我发的这张图片"), false);
-  assert.equal(isCampusAssistantImageGenerationRequest("帮我设计一下图片上传功能的接口"), false);
+test("拾间AI由模型语义决定是否启用 image2", () => {
   assert.equal(CAMPUS_ASSISTANT_IMAGE_MODEL, "image2");
   assert.equal(
     resolveCampusAssistantImagePrompt(
-      { imagePrompt: "赛博朋克风格的校园夜景，竖版海报" },
+      { generateImage: true, imagePrompt: "赛博朋克风格的校园夜景，竖版海报" },
       "帮我生成一张赛博朋克风格的校园夜景海报",
     ),
     "赛博朋克风格的校园夜景，竖版海报",
   );
   assert.equal(
-    resolveCampusAssistantImagePrompt({ imagePrompt: "不应调用" }, "你支持生成图片吗？"),
+    resolveCampusAssistantImagePrompt(
+      { generateImage: false, imagePrompt: "不应调用" },
+      "你支持生成图片吗？",
+    ),
     "",
   );
   assert.equal(
     resolveCampusAssistantImagePrompt(
-      { answer: "可以，我来生成一张拾间AI的拟人化自画像。", imagePrompt: "" },
+      { answer: "可以，我来生成一张拾间AI的拟人化自画像。", generateImage: true, imagePrompt: "" },
       "生成一张你的自画像",
     ),
     "生成一张你的自画像",
   );
   assert.equal(
     resolveCampusAssistantImagePrompt(
-      { answer: "抱歉，我不能为你生成这类图片。", imagePrompt: "不安全内容" },
+      { answer: "已为你构思一幅清雅的国风荷花图。", imagePrompt: "" },
+      "画一朵国风荷花",
+    ),
+    "",
+  );
+  assert.equal(
+    resolveCampusAssistantImagePrompt(
+      { answer: "抱歉，我不能为你生成这类图片。", generateImage: true, imagePrompt: "不安全内容" },
       "生成一张不安全内容的图片",
     ),
     "",
   );
+  const intentMessages = buildCampusAssistantImageIntentMessages("画一朵国风荷花", [
+    { role: "user", content: "我喜欢清雅的国风" },
+    { role: "assistant", content: "明白了" },
+  ]);
+  assert.match(String(intentMessages[0]?.content), /理解自然表达、省略、上下文指代和常见笔误/u);
+  assert.equal(intentMessages.at(-1)?.content, "画一朵国风荷花");
   const prompt = buildSystemPrompt([], false, "example-model-2026");
   assert.match(prompt, /不要主动宣传、推荐或询问用户是否要使用生图/u);
+  assert.match(prompt, /"generateImage":false/u);
   assert.match(prompt, /"imagePrompt"/u);
 });
 
@@ -1589,6 +1603,33 @@ test("拾间AI image2 兼容标准图片端点与常见上游返回格式", () =
     normalizeCampusAssistantImageEndpoint("https://ai.example.com/v1/chat/completions"),
     "https://ai.example.com/v1/images/generations",
   );
+  assert.equal(
+    normalizeCampusAssistantImageChatEndpoint("https://ai.example.com/v1/responses"),
+    "https://ai.example.com/v1/chat/completions",
+  );
+  assert.equal(
+    normalizeCampusAssistantImageResponsesEndpoint("https://ai.example.com/v1/chat/completions"),
+    "https://ai.example.com/v1/responses",
+  );
+  const attempts = buildCampusAssistantImageRequestAttempts(
+    "https://ai.example.com/v1/responses",
+    "清雅的国风水墨荷花",
+  );
+  assert.deepEqual(attempts.map((item) => item.endpoint), [
+    "https://ai.example.com/v1/images/generations",
+    "https://ai.example.com/v1/chat/completions",
+    "https://ai.example.com/v1/responses",
+  ]);
+  assert.deepEqual(attempts[1]?.body, {
+    model: "image2",
+    messages: [{ role: "user", content: "清雅的国风水墨荷花" }],
+    stream: false,
+  });
+  assert.deepEqual(attempts[2]?.body, {
+    model: "image2",
+    input: [{ role: "user", content: [{ type: "input_text", text: "清雅的国风水墨荷花" }] }],
+    stream: false,
+  });
   assert.deepEqual(
     extractCampusAssistantGeneratedImageSource({ data: [{ b64_json: "aGVsbG8=" }] }),
     { dataUrl: "data:image/png;base64,aGVsbG8=", revisedPrompt: undefined },
