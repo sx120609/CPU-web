@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  buildQqBotGeneratedImageMessage,
   buildSafetyPlatformGuideBlockLines,
   renderQqBotDailyAssistantReply,
   shouldSendQqBotQrCode,
@@ -10,6 +11,18 @@ test("QQBot 二维码发送总开关默认关闭，并统一覆盖群聊和私�
   assert.equal(shouldSendQqBotQrCode({}), false);
   assert.equal(shouldSendQqBotQrCode({ qrCodeSendingEnabled: false }), false);
   assert.equal(shouldSendQqBotQrCode({ qrCodeSendingEnabled: true }), true);
+});
+
+test("QQBot 只把本站持久化的 image2 结果转换为图片消息", () => {
+  assert.equal(
+    buildQqBotGeneratedImageMessage(
+      "/uploads/assistant-generated/2026/08/123e4567-e89b-12d3-a456-426614174000.png",
+      "https://cputime.cn/",
+    ),
+    "[CQ:image,file=https://cputime.cn/uploads/assistant-generated/2026/08/123e4567-e89b-12d3-a456-426614174000.png]",
+  );
+  assert.equal(buildQqBotGeneratedImageMessage("https://evil.example/image.png", "https://cputime.cn"), "");
+  assert.equal(buildQqBotGeneratedImageMessage("/uploads/../secret.png", "https://cputime.cn"), "");
 });
 
 test("总开关关闭时安全教育帮助不再附带二维码图片", () => {

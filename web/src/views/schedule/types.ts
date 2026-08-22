@@ -67,6 +67,12 @@ export interface CacheEnvelope<T> {
 
 export type ViewMode = "day" | "week";
 
+export const DEFAULT_SCHEDULE_VIEW_MODE: ViewMode = "week";
+
+export function resolveScheduleViewMode(value: unknown): ViewMode {
+  return value === "day" || value === "week" ? value : DEFAULT_SCHEDULE_VIEW_MODE;
+}
+
 export interface LastState {
   semester: string;
   week: string;

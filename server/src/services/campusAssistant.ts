@@ -17,6 +17,11 @@ import {
   type AiProviderCandidate,
 } from "./aiJsonApi";
 import { resolveModelCandidates, shouldFallbackToNextModel } from "./modelFallback";
+import {
+  generateCampusAssistantImage,
+  isCampusAssistantImageGenerationRequest,
+  type CampusAssistantGeneratedImage,
+} from "./campusAssistantImage";
 
 export type CampusAssistantAction = {
   id: string;
@@ -38,6 +43,7 @@ export type CampusAssistantResponse = {
   actions: CampusAssistantAction[];
   suggestions: string[];
   fallback: boolean;
+  images?: CampusAssistantGeneratedImage[];
 };
 
 type CampusAssistantRoute = CampusAssistantAction & {
@@ -970,6 +976,7 @@ export async function askCampusAssistant(input: {
       await finishAiReviewLogSuccess(logId, repaired.answer);
       return repaired;
     }
+    const imagePrompt = resolveCampusAssistantImagePrompt(parsed, message);
     let response = guardCampusAssistantResponse(filterUnavailableDataSuggestions(
       normalizeAssistantResponse(parsed, availableActions, deterministicActions),
     ));
@@ -1005,6 +1012,11 @@ export async function askCampusAssistant(input: {
       }
       response = repaired;
     }
+    response = await attachCampusAssistantGeneratedImage(response, imagePrompt, {
+      providers,
+      signal: input.signal,
+      createdById: input.usage?.createdById ?? null,
+    });
     await finishAiReviewLogSuccess(logId, response.answer);
     return response;
   } catch (error) {
@@ -1261,9 +1273,15 @@ export async function streamCampusAssistant(input: {
         return response;
       }
       const parsed = parseAssistantJson(content, { allowPlainText: isQwenAssistantModel(model) });
-      const response = guardCampusAssistantResponse(filterUnavailableDataSuggestions(
+      const imagePrompt = resolveCampusAssistantImagePrompt(parsed, message);
+      let response = guardCampusAssistantResponse(filterUnavailableDataSuggestions(
         normalizeAssistantResponse(parsed, availableActions, deterministicActions),
       ));
+      response = await attachCampusAssistantGeneratedImage(response, imagePrompt, {
+        providers,
+        signal: input.signal,
+        createdById: input.usage?.createdById ?? null,
+      });
       await finishAiReviewLogSuccess(logId, response.answer);
       return response;
     } catch (error) {
@@ -1336,6 +1354,46 @@ export function normalizeAssistantResponse(
       .slice(0, 3)
     : [];
   return { answer, actions, suggestions, fallback: false };
+}
+
+export function resolveCampusAssistantImagePrompt(payload: unknown, message: string) {
+  if (!isCampusAssistantImageGenerationRequest(message)) return "";
+  const value = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
+  return typeof value.imagePrompt === "string"
+    ? value.imagePrompt.trim().slice(0, 2_000)
+    : "";
+}
+
+async function attachCampusAssistantGeneratedImage(
+  response: CampusAssistantResponse,
+  imagePrompt: string,
+  input: {
+    providers: AiProviderCandidate[];
+    signal?: AbortSignal;
+    createdById?: number | null;
+  },
+) {
+  if (!imagePrompt || response.fallback) return response;
+  try {
+    const image = await generateCampusAssistantImage({
+      prompt: imagePrompt,
+      providers: input.providers,
+      signal: input.signal,
+      createdById: input.createdById ?? null,
+    });
+    return {
+      ...response,
+      images: [image],
+    };
+  } catch (error) {
+    if (input.signal?.aborted) throw error;
+    console.warn("[campus-assistant] image2 generation failed", error instanceof Error ? error.message : error);
+    return {
+      ...response,
+      answer: "图片暂时没有生成成功，请稍后再试或换一种描述。",
+      images: [],
+    };
+  }
 }
 
 export function extractPartialJsonStringValue(source: string, key: string) {
@@ -1500,6 +1558,7 @@ export function sanitizeCampusAssistantStoredMessages(messages: unknown[]) {
           content: RESTRICTED_PUBLIC_TOPIC_REPLY.answer,
           actions: [],
           suggestions: [...RESTRICTED_PUBLIC_TOPIC_REPLY.suggestions],
+          images: [],
         }
       : message;
   });
@@ -1647,10 +1706,11 @@ export function buildSystemPrompt(
     ...modelFactualityGuard,
     "仅当用户最新一条消息明确要求查找、打开或使用某项站内功能时才返回 actionIds；对于“好的”“谢谢”等确认语和普通聊天，不要重复推荐上一轮入口。",
     "回答站内功能、字段和流程时必须以提供的 knowledge 为准；knowledge 没写明的细节要坦率说明不确定，不能按其他产品的常见设计补造。涉及账号登录、密码错误、找回密码或账户锁定时，优先使用统一身份认证入口；只有 knowledge 明确写出的持续锁定条件满足时才提供电话，不要把普通密码错误直接升级为电话。引用来源时只写 source 名称，不要生成 catalog 之外的外部链接。",
+    "【按需生成图片】不要主动宣传、推荐或询问用户是否要使用生图。仅当用户最新消息明确要求生成、绘制、设计或制作一张图片时，才在 imagePrompt 中写入可直接交给图像模型的完整中文描述；普通问答、图片分析、找图、询问是否支持生图时必须写空字符串。请求不符合前述内容安全规则时应正常拒绝，并将 imagePrompt 写为空字符串。",
     `用户当前${loggedIn ? "已登录" : "未登录"}。带 requireLogin=true 的入口可以推荐，但要提醒未登录用户先登录。`,
     "你只能从下面的 catalog 中选择 actionIds，绝不能生成 catalog 之外的链接或 action id。",
     "只输出一个合法 JSON 对象，不要使用 Markdown 代码块、不要输出思维过程或 JSON 之外的文字。answer 内的换行、双引号和反斜杠必须按 JSON 规则转义；输出前检查对象和字符串已经闭合。格式：",
-    '{"answer":"清晰、完整的中文答复","actionIds":["最多3个catalog id"],"suggestions":["最多3个简短追问建议"]}',
+    '{"answer":"清晰、完整的中文答复","imagePrompt":"仅明确且安全的生图请求填写，否则为空字符串","actionIds":["最多3个catalog id"],"suggestions":["最多3个简短追问建议"]}',
     `knowledge=${JSON.stringify(knowledge)}`,
     `catalog=${JSON.stringify(catalog)}`,
   ].join("\n");

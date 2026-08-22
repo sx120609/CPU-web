@@ -18,10 +18,17 @@ import {
   listCampusAssistantKnowledgeEntries,
   normalizeAssistantResponse,
   parseAssistantJson,
+  resolveCampusAssistantImagePrompt,
   sanitizeCampusAssistantStoredMessages,
   searchCampusAssistantActions,
   streamCampusAssistant,
 } from "../src/services/campusAssistant";
+import {
+  CAMPUS_ASSISTANT_IMAGE_MODEL,
+  extractCampusAssistantGeneratedImageSource,
+  isCampusAssistantImageGenerationRequest,
+  normalizeCampusAssistantImageEndpoint,
+} from "../src/services/campusAssistantImage";
 import {
   campusAssistantDateKey,
   nextCampusAssistantResetAt,
@@ -1385,6 +1392,46 @@ test("Qwen 路由只向上游发送最近两条受限历史消息", () => {
   assert.equal(messages.length, 4);
   assert.match(JSON.stringify(messages), /上一条问题中的隐私内容|上一轮回答/u);
   assert.match(String(messages[0]?.content), /最多提供最近 2 条对话消息/u);
+});
+
+test("拾间AI只对明确的产图请求启用 image2", () => {
+  assert.equal(isCampusAssistantImageGenerationRequest("帮我生成一张赛博朋克风格的校园夜景海报"), true);
+  assert.equal(isCampusAssistantImageGenerationRequest("画一幅水彩风格的银杏大道"), true);
+  assert.equal(isCampusAssistantImageGenerationRequest("你支持生成图片吗？"), false);
+  assert.equal(isCampusAssistantImageGenerationRequest("分析一下我发的这张图片"), false);
+  assert.equal(isCampusAssistantImageGenerationRequest("帮我设计一下图片上传功能的接口"), false);
+  assert.equal(CAMPUS_ASSISTANT_IMAGE_MODEL, "image2");
+  assert.equal(
+    resolveCampusAssistantImagePrompt(
+      { imagePrompt: "赛博朋克风格的校园夜景，竖版海报" },
+      "帮我生成一张赛博朋克风格的校园夜景海报",
+    ),
+    "赛博朋克风格的校园夜景，竖版海报",
+  );
+  assert.equal(
+    resolveCampusAssistantImagePrompt({ imagePrompt: "不应调用" }, "你支持生成图片吗？"),
+    "",
+  );
+  const prompt = buildSystemPrompt([], false, "example-model-2026");
+  assert.match(prompt, /不要主动宣传、推荐或询问用户是否要使用生图/u);
+  assert.match(prompt, /"imagePrompt"/u);
+});
+
+test("拾间AI image2 兼容标准图片端点与常见上游返回格式", () => {
+  assert.equal(
+    normalizeCampusAssistantImageEndpoint("https://ai.example.com/v1/chat/completions"),
+    "https://ai.example.com/v1/images/generations",
+  );
+  assert.deepEqual(
+    extractCampusAssistantGeneratedImageSource({ data: [{ b64_json: "aGVsbG8=" }] }),
+    { dataUrl: "data:image/png;base64,aGVsbG8=", revisedPrompt: undefined },
+  );
+  assert.deepEqual(
+    extractCampusAssistantGeneratedImageSource({
+      choices: [{ message: { content: "![result](https://cdn.example.com/image.png)" } }],
+    }),
+    { url: "https://cdn.example.com/image.png" },
+  );
 });
 
 test("GPT 云端服务可使用会话中的全部历史且不截断单条消息", () => {

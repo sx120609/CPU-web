@@ -76,7 +76,18 @@
                 v-html="renderMarkdown(message.content)"
               ></div>
             </template>
-            <div v-else-if="message.streaming" class="assistant-thinking" aria-label="拾间AI正在回答">
+            <div v-if="message.role === 'assistant' && message.images?.length" class="generated-images">
+              <a
+                v-for="image in message.images"
+                :key="image.url"
+                :href="image.url"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <img :src="image.url" :alt="image.alt" loading="lazy" />
+              </a>
+            </div>
+            <div v-if="!message.content && message.streaming" class="assistant-thinking" aria-label="拾间AI正在回答">
               <i></i><i></i><i></i>
               <span>{{ message.streamStatus || "正在生成回答…" }}</span>
             </div>
@@ -249,6 +260,7 @@ import {
   searchApi,
   type CampusAssistantAction,
   type CampusAssistantConversation,
+  type CampusAssistantGeneratedImage,
   type CampusAssistantMessage,
   type CampusAssistantQuota,
 } from "@/api/search";
@@ -267,6 +279,7 @@ type ConversationMessage = CampusAssistantMessage & {
   id: number;
   actions?: CampusAssistantAction[];
   suggestions?: string[];
+  images?: CampusAssistantGeneratedImage[];
   streaming?: boolean;
   streamStatus?: string;
 };
@@ -457,6 +470,7 @@ async function askAssistant(keyword: string, history: CampusAssistantMessage[]) 
     assistantMessage.content = next.answer;
     assistantMessage.actions = next.actions;
     assistantMessage.suggestions = next.suggestions;
+    assistantMessage.images = normalizeGeneratedImages(next.images);
     assistantMessage.streaming = false;
     persistActiveConversation();
     scrollConversation();
@@ -782,7 +796,25 @@ function cloneMessages(items: unknown[]): ConversationMessage[] {
       content: item.content.slice(0, 4000),
       actions: Array.isArray(item.actions) ? item.actions.slice(0, 3).map((action) => ({ ...action })) : undefined,
       suggestions: Array.isArray(item.suggestions) ? item.suggestions.slice(0, 3).map(String) : undefined,
+      images: normalizeGeneratedImages(item.images),
     }));
+}
+
+function normalizeGeneratedImages(value: unknown): CampusAssistantGeneratedImage[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const images = value
+    .filter((item): item is CampusAssistantGeneratedImage => (
+      Boolean(item)
+      && typeof item.url === "string"
+      && /^\/uploads\/assistant-generated\/\d{4}\/\d{2}\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(?:png|jpg)$/u.test(item.url)
+      && typeof item.alt === "string"
+    ))
+    .slice(0, 1)
+    .map((item) => ({
+      url: item.url,
+      alt: item.alt.trim().slice(0, 200) || "拾间AI生成的图片",
+    }));
+  return images.length ? images : undefined;
 }
 
 function writeSessions() {
@@ -1292,6 +1324,25 @@ onBeforeUnmount(() => {
 }
 .message-markdown :deep(> :last-child) {
   margin-bottom: 0;
+}
+.generated-images {
+  display: grid;
+  width: min(100%, 640px);
+  margin-top: 12px;
+}
+.generated-images a {
+  display: block;
+  overflow: hidden;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 14px;
+  background: var(--cpu-surface-subtle);
+}
+.generated-images img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 720px;
+  object-fit: contain;
 }
 .message-markdown :deep(p) {
   margin: 0.65em 0;

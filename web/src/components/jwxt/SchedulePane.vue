@@ -393,6 +393,7 @@ import {
   todayKey,
 } from "@/views/schedule/calendar";
 import { resolveSwipeIntent, type SwipeIntent } from "@/views/schedule/swipeGesture";
+import { DEFAULT_SCHEDULE_VIEW_MODE, resolveScheduleViewMode } from "@/views/schedule/types";
 import type {
   CalendarResult,
   CacheEnvelope,
@@ -429,7 +430,7 @@ const calendar = ref<CalendarResult | null>(initialScheduleBundle.calendar);
 const semester = ref("");
 const week = ref("");
 const activeDay = ref(dayOfWeek());
-const viewMode = ref<ViewMode>("day");
+const viewMode = ref<ViewMode>(DEFAULT_SCHEDULE_VIEW_MODE);
 const loading = ref(Boolean(props.loading));
 const scheduleSavedAt = ref(0);
 const scheduleEdits = ref<ScheduleEditState>(emptyScheduleEdits());
@@ -2041,7 +2042,7 @@ function restoreLastState() {
     if (state.week) week.value = state.week;
   }
   if (state.activeDay >= 1 && state.activeDay <= 7) activeDay.value = state.activeDay;
-  if (state.viewMode === "day" || state.viewMode === "week") viewMode.value = state.viewMode;
+  viewMode.value = resolveScheduleViewMode(state.viewMode);
 }
 
 function saveLastState() {

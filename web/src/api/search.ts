@@ -28,11 +28,17 @@ export interface CampusAssistantMessage {
   content: string;
 }
 
+export interface CampusAssistantGeneratedImage {
+  url: string;
+  alt: string;
+}
+
 export interface CampusAssistantResponse {
   answer: string;
   actions: CampusAssistantAction[];
   suggestions: string[];
   fallback: boolean;
+  images?: CampusAssistantGeneratedImage[];
 }
 
 export interface CampusAssistantQuota {
@@ -51,6 +57,7 @@ export interface CampusAssistantStoredMessage extends CampusAssistantMessage {
   id: number;
   actions?: CampusAssistantAction[];
   suggestions?: string[];
+  images?: CampusAssistantGeneratedImage[];
 }
 
 export interface CampusAssistantConversation {

@@ -2691,6 +2691,11 @@ async function processQqBotDailyAssistantBatch(
     { role: "assistant", content: response.answer },
   ]);
   await logHandledInboundMessage(context, "message", "assistant:daily-chat");
+  const generatedImageMessage = buildQqBotGeneratedImageMessage(response.images?.[0]?.url);
+  if (generatedImageMessage) {
+    await replyToEvent(context, generatedImageMessage);
+    return true;
+  }
   const qrCodeEnabled = shouldSendQqBotQrCode(context.config);
   const renderedReply = await renderQqBotDailyAssistantReply(message, response, { includeQrCode: qrCodeEnabled });
   await replyToEvent(context, renderedReply.message, {
@@ -2707,6 +2712,14 @@ function qqBotDailyAssistantBatchKey(qqId: string, groupId?: string) {
 
 export function shouldSendQqBotQrCode(config: { qrCodeSendingEnabled?: boolean | null }) {
   return config.qrCodeSendingEnabled === true;
+}
+
+export function buildQqBotGeneratedImageMessage(value: unknown, siteOrigin = getSiteOrigin()) {
+  const imageUrl = String(value || "").trim();
+  if (!/^\/uploads\/assistant-generated\/\d{4}\/\d{2}\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(?:png|jpg)$/u.test(imageUrl)) return "";
+  const origin = String(siteOrigin || "").trim().replace(/\/+$/, "");
+  if (!/^https?:\/\/[^\s,[\]]+$/iu.test(origin)) return "";
+  return `[CQ:image,file=${origin}${imageUrl}]`;
 }
 
 function getQqBotAssistantHistory(key: string): CampusAssistantMessage[] {

@@ -49,12 +49,19 @@ const assistantHistoryActionSchema = z.object({
   owner: z.string().trim().max(80),
   requireLogin: z.boolean(),
 }).strict();
+const assistantHistoryImageSchema = z.object({
+  url: z.string().trim().min(1).max(500).regex(
+    /^\/uploads\/assistant-generated\/\d{4}\/\d{2}\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(?:png|jpg)$/u,
+  ),
+  alt: z.string().trim().min(1).max(200),
+}).strict();
 const assistantHistoryMessageSchema = z.object({
   id: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
   role: z.enum(["user", "assistant"]),
   content: z.string().trim().min(1).max(4000),
   actions: z.array(assistantHistoryActionSchema).max(3).optional(),
   suggestions: z.array(z.string().trim().min(1).max(60)).max(3).optional(),
+  images: z.array(assistantHistoryImageSchema).max(1).optional(),
 }).strict();
 const assistantHistorySaveSchema = z.object({
   title: z.string().trim().min(1).max(80),

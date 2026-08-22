@@ -1,6 +1,10 @@
 import { Resvg } from "@resvg/resvg-js";
+import twemoji from "@discordapp/twemoji";
 import * as cheerio from "cheerio";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import katex from "katex";
+import "katex/contrib/mhchem";
 import { Marked, type Token, type Tokens } from "marked";
 import QRCode from "qrcode";
 
@@ -32,6 +36,18 @@ qqBotMarkdown.use({
         const match = /^\$(?!\$)((?:\\.|[^$\\\n])+?)\$/.exec(source);
         if (!match) return undefined;
         return { type: "mathInline", raw: match[0], text: match[1].trim() };
+      },
+    },
+    {
+      name: "chemInline",
+      level: "inline",
+      start(source: string) {
+        return source.indexOf("\\ce");
+      },
+      tokenizer(source: string) {
+        const match = /^\\ce\s*\{([^\n{}]+)\}/u.exec(source);
+        if (!match) return undefined;
+        return { type: "chemInline", raw: match[0], text: `\\ce{${match[1].trim()}}` };
       },
     },
   ],
@@ -67,12 +83,28 @@ const QQBOT_MARKDOWN_PATTERN = /(?:^|\n)\s*(?:#{1,6}\s|[-*+]\s+|\d+[.)]\s+|>\s|[
 const QQBOT_NO_LINE_START_CHARS = new Set(Array.from("，。！？；：、）》」』】〕〉》”’)]}>,.!?;:%…％‰"));
 const QQBOT_NO_LINE_END_CHARS = new Set(Array.from("（〔［｛《「『【〖〈“‘([{<"));
 const QQBOT_URL_SEPARATOR_CHARS = new Set(Array.from("./-_:"));
+const QQBOT_AI_TEXT_FONT_FAMILY = "Microsoft YaHei, Noto Sans CJK SC, Segoe UI Emoji, Noto Color Emoji, Apple Color Emoji, sans-serif";
+const QQBOT_AI_EMOJI_ADVANCE_RATIO = 1.08;
 const QQBOT_AI_FONT_FILES = [
   "C:/Windows/Fonts/msyh.ttc",
   "C:/Windows/Fonts/msyhbd.ttc",
   "C:/Windows/Fonts/simhei.ttf",
   "C:/Windows/Fonts/simsun.ttc",
-];
+  "C:/Windows/Fonts/seguiemj.ttf",
+  "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf",
+  "/usr/share/fonts/noto/NotoColorEmoji.ttf",
+  "/System/Library/Fonts/Apple Color Emoji.ttc",
+].filter(existsSync);
+const QQBOT_TWEMOJI_SVG_DIRECTORY = join(dirname(require.resolve("@discordapp/twemoji")), "svg");
+const qqBotTwemojiSvgCache = new Map<string, { viewBox: string; body: string } | null>();
+const qqBotGraphemeSegmenter = typeof Intl.Segmenter === "function"
+  ? new Intl.Segmenter("zh-CN", { granularity: "grapheme" })
+  : null;
+
+type QqBotEmojiTextSegment = {
+  text: string;
+  icon?: string;
+};
 
 type InlineRun = {
   text: string;
@@ -110,6 +142,61 @@ export type QqBotAiReplyImageOptions = {
   qrCodeEnabled?: boolean;
   qrEntries?: QqBotAiReplyQrEntry[];
 };
+
+function splitQqBotGraphemes(value: string) {
+  const source = String(value || "");
+  if (!source) return [];
+  if (!qqBotGraphemeSegmenter) return Array.from(source);
+  return Array.from(qqBotGraphemeSegmenter.segment(source), (entry) => entry.segment);
+}
+
+function resolveQqBotTwemojiIcon(rawText: string) {
+  const normalized = rawText.includes("\u200d") ? rawText : rawText.replace(/\ufe0f/giu, "");
+  return twemoji.convert.toCodePoint(normalized);
+}
+
+function splitQqBotEmojiText(value: string): QqBotEmojiTextSegment[] {
+  const source = String(value || "");
+  if (!source) return [];
+  const output: QqBotEmojiTextSegment[] = [];
+  let cursor = 0;
+  twemoji.replace(source, (rawText: string) => {
+    const index = source.indexOf(rawText, cursor);
+    if (index < 0) return rawText;
+    if (index > cursor) output.push({ text: source.slice(cursor, index) });
+    output.push({ text: rawText, icon: resolveQqBotTwemojiIcon(rawText) });
+    cursor = index + rawText.length;
+    return rawText;
+  });
+  if (cursor < source.length) output.push({ text: source.slice(cursor) });
+  return output.length ? output : [{ text: source }];
+}
+
+function loadQqBotTwemojiSvg(icon: string) {
+  const normalized = String(icon || "").toLowerCase();
+  if (!/^[0-9a-f]+(?:-[0-9a-f]+)*$/u.test(normalized)) return null;
+  if (qqBotTwemojiSvgCache.has(normalized)) return qqBotTwemojiSvgCache.get(normalized) || null;
+  try {
+    const source = readFileSync(join(QQBOT_TWEMOJI_SVG_DIRECTORY, `${normalized}.svg`), "utf8").trim();
+    const match = source.match(/^<svg\b[^>]*\bviewBox="([^"]+)"[^>]*>([\s\S]*?)<\/svg>$/iu);
+    const asset = match ? { viewBox: match[1], body: match[2] } : null;
+    qqBotTwemojiSvgCache.set(normalized, asset);
+    return asset;
+  } catch {
+    qqBotTwemojiSvgCache.set(normalized, null);
+    return null;
+  }
+}
+
+function renderQqBotTwemoji(icon: string, x: number, baselineY: number, fontSize: number) {
+  const asset = loadQqBotTwemojiSvg(icon);
+  if (!asset) return null;
+  const advance = fontSize * QQBOT_AI_EMOJI_ADVANCE_RATIO;
+  const size = fontSize * 1.04;
+  const left = x + (advance - size) / 2;
+  const top = baselineY - fontSize * 0.9;
+  return `<svg x="${formatSvgNumber(left)}" y="${formatSvgNumber(top)}" width="${formatSvgNumber(size)}" height="${formatSvgNumber(size)}" viewBox="${asset.viewBox}" overflow="visible" aria-hidden="true">${asset.body}</svg>`;
+}
 
 export function containsQqBotMarkdown(value: string) {
   return QQBOT_MARKDOWN_PATTERN.test(String(value || ""));
@@ -464,7 +551,7 @@ function wrapRuns(runs: InlineRun[], maxWidth: number, fontSize: number) {
     width = 0;
   };
   for (const run of runs) {
-    const chars = Array.from(run.text);
+    const chars = splitQqBotGraphemes(run.text);
     for (let charIndex = 0; charIndex < chars.length; charIndex += 1) {
       const char = chars[charIndex];
       if (char === "\n") {
@@ -556,7 +643,7 @@ function appendRunCharacter(runs: InlineRun[], source: InlineRun, char: string) 
 function prependLastRunCharacter(runs: InlineRun[], target: InlineRun[]) {
   const last = runs[runs.length - 1];
   if (!last) return;
-  const chars = Array.from(last.text);
+  const chars = splitQqBotGraphemes(last.text);
   const char = chars.pop();
   if (!char) return;
   if (chars.length) last.text = chars.join("");
@@ -568,7 +655,7 @@ function prependLastRunCharacter(runs: InlineRun[], target: InlineRun[]) {
 
 function getLastRunCharacter(runs: InlineRun[]) {
   const last = runs[runs.length - 1]?.text;
-  return last ? Array.from(last).at(-1) || "" : "";
+  return last ? splitQqBotGraphemes(last).at(-1) || "" : "";
 }
 
 function estimateRunsWidth(runs: InlineRun[], fontSize: number) {
@@ -609,6 +696,7 @@ function inlineRuns(tokens: Token[] | undefined): InlineRun[] {
       case "del": append(inlineRuns(token.tokens), { strike: true }); break;
       case "codespan": append([{ text: token.text, code: true, color: "#b42318" }]); break;
       case "mathInline":
+      case "chemInline":
         append([{ text: renderQqBotMathExpression(String((token as { text?: unknown }).text || ""), false), math: true }]);
         break;
       case "link": {
@@ -658,7 +746,7 @@ function getTokenChildren(token: Token) {
  * recognizable instead of leaking `$...$` or `\\frac` source into QQ.
  */
 export function renderQqBotMathExpression(expression: string, displayMode = false) {
-  const source = String(expression || "").trim();
+  const source = normalizeQqBotChemistryExpression(String(expression || "").trim());
   if (!source) return "";
   try {
     const markup = katex.renderToString(source, {
@@ -688,8 +776,9 @@ function renderMathMlNode($: cheerio.CheerioAPI, node: any, options: { compact?:
     case "mrow":
     case "mstyle":
     case "mpadded":
-    case "mphantom":
       return children();
+    case "mphantom":
+      return "";
     case "annotation":
       return "";
     case "mi":
@@ -698,7 +787,7 @@ function renderMathMlNode($: cheerio.CheerioAPI, node: any, options: { compact?:
       return children();
     case "mo": {
       const value = children();
-      if (!options.compact && /^[=+\-×÷<>≤≥≈∝]$/u.test(value.trim())) return ` ${value.trim()} `;
+      if (!options.compact && /^[=+\-×÷<>≤≥≈∝←→⇄⇌]$/u.test(value.trim())) return ` ${value.trim()} `;
       if (!options.compact && value.trim() === ",") return ", ";
       return value;
     }
@@ -800,6 +889,9 @@ function normalizeQqBotBareFormulaLines(markdown: string) {
       insideMathBlock = !insideMathBlock;
       return line;
     }
+    if (!insideFence && !insideMathBlock && /^\\ce\s*/u.test(trimmed)) {
+      return `$$${normalizeQqBotChemistryExpression(trimmed)}$$`;
+    }
     if (
       insideFence
       || insideMathBlock
@@ -878,11 +970,19 @@ function buildReplySvg(
     }
     const prefix = line.prefix || "";
     const prefixWidth = estimateTextWidth(prefix, line.fontSize, { bold: true });
-    const prefixSvg = prefix
-      ? `<tspan fill="${line.prefixColor || "#667085"}" font-weight="700">${escapeXml(prefix)}</tspan>`
-      : "";
-    const runSvg = line.runs.map((run) => renderRun(run)).join("");
-    body.push(`<text x="${x}" y="${y}" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="${line.fontSize}" fill="#263238">${prefixSvg}${runSvg}</text>`);
+    if (!twemoji.test(prefix + flattenRunText(line.runs))) {
+      const prefixSvg = prefix
+        ? `<tspan fill="${line.prefixColor || "#667085"}" font-weight="700">${escapeXml(prefix)}</tspan>`
+        : "";
+      const runSvg = line.runs.map((run) => renderRun(run)).join("");
+      body.push(`<text x="${x}" y="${y}" font-family="${QQBOT_AI_TEXT_FONT_FAMILY}" font-size="${line.fontSize}" fill="#263238">${prefixSvg}${runSvg}</text>`);
+    } else {
+      const prefixSvg = prefix
+        ? renderStyledRunsWithEmoji([{ text: prefix, bold: true, color: line.prefixColor || "#667085" }], x, y, line.fontSize)
+        : "";
+      const runSvg = renderStyledRunsWithEmoji(line.runs, x + prefixWidth, y, line.fontSize);
+      body.push(`${prefixSvg}${runSvg}`);
+    }
     y += lineHeightValue + line.after;
     void prefixWidth;
   }
@@ -896,7 +996,7 @@ function buildReplySvg(
   const footerY = height - footerHeight;
   const footerText = footerHeight > 0
     ? options.footerRows
-      .map((row) => `<text x="${QQBOT_AI_IMAGE_SIDE_PADDING}" y="${footerY + 32}" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="16" fill="#55716b">${escapeXml(row)}</text>`)
+      .map((row) => renderPlainTextWithEmoji(row, QQBOT_AI_IMAGE_SIDE_PADDING, footerY + 32, 16, 'fill="#55716b"'))
       .join("\n  ")
     : "";
   const footerMarkup = footerHeight > 0
@@ -1026,7 +1126,7 @@ function renderReferenceQrEntry(entry: QqBotAiReplyQrEntry, top: number, footerR
   <rect x="${qrX - QQBOT_AI_SOURCE_QR_PADDING}" y="${qrY - QQBOT_AI_SOURCE_QR_PADDING}" width="${QQBOT_AI_SOURCE_QR_SIZE + QQBOT_AI_SOURCE_QR_PADDING * 2}" height="${QQBOT_AI_SOURCE_QR_SIZE + QQBOT_AI_SOURCE_QR_PADDING * 2}" rx="8" fill="#ffffff" stroke="#d5e9e4" stroke-width="2" />
   <rect x="${qrX}" y="${qrY}" width="${QQBOT_AI_SOURCE_QR_SIZE}" height="${QQBOT_AI_SOURCE_QR_SIZE}" fill="#ffffff" />
   ${modules.join("\n  ")}
-  <text x="${textX}" y="${qrY + 38}" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="26" font-weight="800" fill="#2f7568">${escapeXml(entry.label)}</text>
+  ${renderPlainTextWithEmoji(entry.label, textX, qrY + 38, 26, 'font-weight="800" fill="#2f7568"')}
   <text x="${textX}" y="${qrY + 74}" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="21" font-weight="500" fill="#55716b">扫码打开入口</text>
   <text x="${textX}" y="${qrY + 106}" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="17" font-weight="500" fill="#7b918c">${escapeXml(getQrTargetHint(entry.url))}</text>
   ${renderQrFooterNotice(footerRows, qrY)}
@@ -1035,7 +1135,7 @@ function renderReferenceQrEntry(entry: QqBotAiReplyQrEntry, top: number, footerR
     return `<g>
   <rect x="0" y="${formatSvgNumber(top)}" width="${QQBOT_AI_IMAGE_WIDTH}" height="${formatSvgNumber(Math.max(0, footerEndY - top))}" fill="#eef7f5" />
   <line x1="${QQBOT_AI_IMAGE_SIDE_PADDING}" y1="${formatSvgNumber(top)}" x2="${QQBOT_AI_IMAGE_WIDTH - QQBOT_AI_IMAGE_SIDE_PADDING}" y2="${formatSvgNumber(top)}" stroke="#dcebe7" stroke-width="2" />
-  <text x="${QQBOT_AI_IMAGE_SIDE_PADDING}" y="${formatSvgNumber(top + 54)}" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="20" fill="#b42318">${escapeXml(entry.label)}二维码暂时无法生成</text>
+  ${renderPlainTextWithEmoji(`${entry.label}二维码暂时无法生成`, QQBOT_AI_IMAGE_SIDE_PADDING, top + 54, 20, 'fill="#b42318"')}
   ${renderQrFooterNotice(footerRows, top + 34)}
 </g>`;
   }
@@ -1044,7 +1144,17 @@ function renderReferenceQrEntry(entry: QqBotAiReplyQrEntry, top: number, footerR
 function renderQrFooterNotice(footerRows: string[], qrY: number) {
   const text = String(footerRows[0] || "").trim();
   if (!text) return "";
-  return `<text x="${QQBOT_AI_IMAGE_WIDTH - QQBOT_AI_IMAGE_SIDE_PADDING}" y="${formatSvgNumber(qrY + 110)}" text-anchor="end" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="16" fill="#55716b">${escapeXml(text)}</text>`;
+  return renderPlainTextWithEmoji(text, QQBOT_AI_IMAGE_WIDTH - QQBOT_AI_IMAGE_SIDE_PADDING, qrY + 110, 16, 'fill="#55716b"', "end");
+}
+
+function normalizeQqBotChemistryExpression(value: string) {
+  const source = String(value || "")
+    .trim()
+    .replace(/[−–—]\s*>/gu, "->");
+  if (!/^\\ce(?:\s|\{|[A-Za-z0-9]|\(|\[)/u.test(source)) return source;
+  if (/^\\ce\s*\{/u.test(source)) return source;
+  const loose = /^\\ce\s*([\s\S]+)$/u.exec(source);
+  return loose?.[1]?.trim() ? `\\ce{${loose[1].trim()}}` : source;
 }
 
 function renderQrCards(entries: QqBotAiReplyQrEntry[], startY: number) {
@@ -1089,10 +1199,10 @@ function renderQrCards(entries: QqBotAiReplyQrEntry[], startY: number) {
           '<rect width="' + layout.width + '" height="' + layout.height + '" rx="20" fill="#f7fbfa" stroke="#d5e9e4" stroke-width="2" />',
           '<rect x="' + qrX + '" y="' + qrY + '" width="' + layout.boxSize + '" height="' + layout.boxSize + '" rx="10" fill="#ffffff" />',
           '<g transform="translate(' + qrX + ' ' + qrY + ')"><path d="' + path + '" fill="#172a27" /></g>',
-          '<text x="232" y="74" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="30" font-weight="700" fill="#2f7568">' + escapeXml(labelLines[0] || entry.label) + '</text>',
+          renderPlainTextWithEmoji(labelLines[0] || entry.label, 232, 74, 30, 'font-weight="700" fill="#2f7568"'),
         ];
         if (labelLines[1]) {
-          markup.push('<text x="232" y="108" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="24" font-weight="700" fill="#2f7568">' + escapeXml(labelLines[1]) + '</text>');
+          markup.push(renderPlainTextWithEmoji(labelLines[1], 232, 108, 24, 'font-weight="700" fill="#2f7568"'));
         }
         markup.push(
           '<text x="232" y="146" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="21" fill="#55716b">扫码打开</text>',
@@ -1108,10 +1218,10 @@ function renderQrCards(entries: QqBotAiReplyQrEntry[], startY: number) {
         '<rect width="' + layout.width + '" height="' + layout.height + '" rx="18" fill="#f7fbfa" stroke="#d5e9e4" stroke-width="2" />',
         '<rect x="' + qrX + '" y="18" width="' + layout.boxSize + '" height="' + layout.boxSize + '" rx="8" fill="#ffffff" />',
         '<g transform="translate(' + qrX + ' 18)"><path d="' + path + '" fill="#172a27" /></g>',
-        '<text x="' + layout.width / 2 + '" y="216" text-anchor="middle" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="22" font-weight="700" fill="#2f7568">' + escapeXml(labelLines[0] || entry.label) + '</text>',
+        renderPlainTextWithEmoji(labelLines[0] || entry.label, layout.width / 2, 216, 22, 'font-weight="700" fill="#2f7568"', "middle"),
       ];
       if (labelLines[1]) {
-        markup.push('<text x="' + layout.width / 2 + '" y="238" text-anchor="middle" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="18" fill="#55716b">' + escapeXml(labelLines[1]) + '</text>');
+        markup.push(renderPlainTextWithEmoji(labelLines[1], layout.width / 2, 238, 18, 'fill="#55716b"', "middle"));
       }
       markup.push('</g>');
       return markup.join("\n");
@@ -1144,7 +1254,7 @@ function getQrCardLayout(count: number) {
 }
 
 function wrapQrLabel(value: string, maxChars = 12) {
-  const chars = Array.from(value);
+  const chars = splitQqBotGraphemes(value);
   if (chars.length <= maxChars) return [value];
   return [chars.slice(0, maxChars).join(""), chars.slice(maxChars, maxChars * 2).join("")];
 }
@@ -1164,12 +1274,59 @@ function formatSvgNumber(value: number) {
   return Number(value.toFixed(2)).toString();
 }
 
+function renderStyledRunsWithEmoji(runs: InlineRun[], startX: number, baselineY: number, fontSize: number) {
+  const markup: string[] = [];
+  let cursor = startX;
+  for (const run of runs) {
+    for (const segment of splitQqBotEmojiText(run.text)) {
+      const width = estimateTextWidth(segment.text, fontSize, run);
+      const emoji = segment.icon ? renderQqBotTwemoji(segment.icon, cursor, baselineY, fontSize) : null;
+      if (emoji) {
+        markup.push(emoji);
+        if (run.strike) {
+          markup.push(`<line x1="${formatSvgNumber(cursor)}" y1="${formatSvgNumber(baselineY - fontSize * 0.32)}" x2="${formatSvgNumber(cursor + width)}" y2="${formatSvgNumber(baselineY - fontSize * 0.32)}" stroke="${run.color || "#263238"}" stroke-width="2" />`);
+        }
+      } else {
+        markup.push(`<text x="${formatSvgNumber(cursor)}" y="${formatSvgNumber(baselineY)}" font-family="${QQBOT_AI_TEXT_FONT_FAMILY}" font-size="${fontSize}" fill="#263238">${renderRun({ ...run, text: segment.text })}</text>`);
+      }
+      cursor += width;
+    }
+  }
+  return markup.join("");
+}
+
+function renderPlainTextWithEmoji(
+  value: string,
+  anchorX: number,
+  baselineY: number,
+  fontSize: number,
+  attributes: string,
+  anchor: "start" | "middle" | "end" = "start",
+) {
+  const text = String(value || "");
+  if (!twemoji.test(text)) {
+    const anchorAttribute = anchor === "start" ? "" : ` text-anchor="${anchor}"`;
+    return `<text x="${formatSvgNumber(anchorX)}" y="${formatSvgNumber(baselineY)}"${anchorAttribute} font-family="${QQBOT_AI_TEXT_FONT_FAMILY}" font-size="${fontSize}" ${attributes}>${escapeXml(text)}</text>`;
+  }
+  const totalWidth = estimateTextWidth(text, fontSize, { bold: /font-weight="[6-9]/u.test(attributes) });
+  let cursor = anchor === "middle" ? anchorX - totalWidth / 2 : anchor === "end" ? anchorX - totalWidth : anchorX;
+  const markup: string[] = [];
+  for (const segment of splitQqBotEmojiText(text)) {
+    const width = estimateTextWidth(segment.text, fontSize);
+    const emoji = segment.icon ? renderQqBotTwemoji(segment.icon, cursor, baselineY, fontSize) : null;
+    if (emoji) markup.push(emoji);
+    else markup.push(`<text x="${formatSvgNumber(cursor)}" y="${formatSvgNumber(baselineY)}" font-family="${QQBOT_AI_TEXT_FONT_FAMILY}" font-size="${fontSize}" ${attributes}>${escapeXml(segment.text)}</text>`);
+    cursor += width;
+  }
+  return markup.join("");
+}
+
 function renderRun(run: InlineRun) {
   const attrs = [
     run.bold ? `font-weight="700"` : "",
     run.italic ? `font-style="italic"` : "",
-    run.code ? `font-family="Consolas, Microsoft YaHei, monospace"` : "",
-    run.math ? `font-family="Cambria Math, STIX Two Math, Times New Roman, Microsoft YaHei, sans-serif"` : "",
+    run.code ? `font-family="Consolas, Microsoft YaHei, Segoe UI Emoji, Noto Color Emoji, Apple Color Emoji, monospace"` : "",
+    run.math ? `font-family="Cambria Math, STIX Two Math, Times New Roman, Microsoft YaHei, Segoe UI Emoji, Noto Color Emoji, Apple Color Emoji, sans-serif"` : "",
     run.color ? `fill="${run.color}"` : "",
     run.strike ? `text-decoration="line-through"` : "",
   ].filter(Boolean).join(" ");
@@ -1180,12 +1337,13 @@ function lineHeight(line: RenderLine) {
   return line.rule ? 2 : Math.ceil(line.fontSize * 1.58);
 }
 
-function estimateTextWidth(text: string, fontSize: number, style: Pick<InlineRun, "bold" | "code"> = {}) {
+function estimateTextWidth(text: string, fontSize: number, style: Pick<InlineRun, "bold" | "code" | "math"> = {}) {
   let width = 0;
-  for (const char of Array.from(String(text || ""))) {
+  for (const char of splitQqBotGraphemes(String(text || ""))) {
     if (/\s/u.test(char)) width += fontSize * 0.34;
+    else if (twemoji.test(char)) width += fontSize * QQBOT_AI_EMOJI_ADVANCE_RATIO;
     else if (/[\u2e80-\u9fff\uff00-\uffef\u{1f300}-\u{1faff}]/u.test(char)) width += fontSize;
-    else width += fontSize * (style.code ? 0.62 : style.bold ? 0.62 : 0.56);
+    else width += fontSize * (style.math ? 0.66 : style.code || style.bold ? 0.64 : 0.62);
   }
   return width;
 }

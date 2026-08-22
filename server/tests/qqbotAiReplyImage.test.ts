@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import sharp from "sharp";
 import {
   containsQqBotMarkdown,
   normalizeQqBotAiReplyText,
@@ -47,6 +48,14 @@ test("QQbot 图片复用主站的行内/块级公式识别并渲染公式语义"
   assert.equal(renderQqBotMathExpression("x^2"), "x²");
   assert.match(renderQqBotMathExpression("\\frac{a}{b}"), /a.*b/u);
   assert.match(renderQqBotMathExpression("\\sqrt{x}"), /^√/u);
+  assert.equal(
+    renderQqBotMathExpression("\\ceR2C = O + H2NNHC6H3(NO2)2− > R2C = NNHC6H3(NO2)2 + H2O").includes("\\ce"),
+    false,
+  );
+  assert.match(
+    renderQqBotMathExpression("\\ce{R2C=O + H2NNHC6H3(NO2)2 -> R2C=NNHC6H3(NO2)2 + H2O}"),
+    /R₂C.*H₂O/u,
+  );
   const png = renderQqBotAiReplyImage(reply, { qrCodeEnabled: false });
   assert.deepEqual([...png.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
 });
@@ -143,4 +152,44 @@ test("QQbot 图片排版不会把链接分隔符单独放到下一行", () => {
 
   assert.equal(lines.join(""), "登录入口 i.cpu.edu.cn 现在可用");
   assert.equal(lines.some((line) => /^(?:[./_-])/u.test(line)), false);
+});
+
+test("QQbot 化学式与长英文不会越过图片右侧安全边距", async () => {
+  const reply = [
+    "在药学或有机化学语境里，‘布拉迪’通常指布拉迪试剂（Brady’s reagent），也就是 2,4-二硝基苯肼试剂。",
+    "",
+    "\\ceR2C = O + H2NNHC6H3(NO2)2− > R2C = NNHC6H3(NO2)2 + H2O",
+  ].join("\n");
+  const png = renderQqBotAiReplyImage(reply, { qrCodeEnabled: false });
+  const height = png.readUInt32BE(20);
+  const { data, info } = await sharp(png)
+    .extract({ left: 860, top: 90, width: 40, height: Math.max(1, height - 138) })
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  let darkPixels = 0;
+  for (let offset = 0; offset < data.length; offset += info.channels) {
+    if (Math.min(data[offset], data[offset + 1], data[offset + 2]) < 210) darkPixels += 1;
+  }
+  assert.equal(darkPixels, 0, `expected an empty right safety margin, received ${darkPixels} dark pixels`);
+});
+
+test("QQbot 图片完整保留组合 Emoji 并渲染为彩色图形", async () => {
+  const emoji = ["😀", "🧑🏽‍💻", "👨‍👩‍👧‍👦", "🇨🇳", "❤️", "1️⃣", "🏳️‍🌈", "🫩"];
+  const source = emoji.join("");
+
+  assert.deepEqual(wrapQqBotAiTextForLayout(source, 31, 28), emoji);
+
+  const png = renderQqBotAiReplyImage(source, { qrCodeEnabled: false });
+  const { data, info } = await sharp(png)
+    .extract({ left: 40, top: 112, width: 820, height: 64 })
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  let chromaticPixels = 0;
+  for (let offset = 0; offset < data.length; offset += info.channels) {
+    const red = data[offset];
+    const green = data[offset + 1];
+    const blue = data[offset + 2];
+    if (Math.max(red, green, blue) - Math.min(red, green, blue) >= 45) chromaticPixels += 1;
+  }
+  assert.ok(chromaticPixels > 250, `expected colored Emoji pixels, received ${chromaticPixels}`);
 });
