@@ -38,6 +38,11 @@ export type CampusAssistantMessage = {
   content: string;
 };
 
+export type CampusAssistantImageInput = {
+  dataUrl: string;
+  detail?: "low" | "high" | "auto" | "original";
+};
+
 export type CampusAssistantResponse = {
   answer: string;
   actions: CampusAssistantAction[];
@@ -891,6 +896,7 @@ export function campusActionToSearchService(action: CampusAssistantAction) {
 export async function askCampusAssistant(input: {
   message: string;
   history: CampusAssistantMessage[];
+  images?: CampusAssistantImageInput[];
   context: CampusAssistantContext;
   signal?: AbortSignal;
   usage?: { createdById?: number | null; pointCost?: number };
@@ -903,13 +909,25 @@ export async function askCampusAssistant(input: {
   const deterministicActions = searchCampusAssistantActions(message, input.context, 3);
   const webSearchRequested = shouldUseCampusAssistantWebSearch(message);
   const config = getSiteConfig();
-  const providers = resolveAiServiceCandidatesForScene(config, "assistant");
+  const assistantProviders = resolveAiServiceCandidatesForScene(config, "assistant");
+  const visionProviders = input.images?.length
+    ? resolveAiServiceCandidatesForScene(config, "image-review")
+    : [];
+  const visionModel = String(config.imageReviewModel || "").trim();
+  const visionReady = Boolean(input.images?.length && visionModel && visionProviders.some((candidate) => isAiProviderReady({
+    provider: candidate.provider,
+    apiUrl: candidate.apiUrl,
+    apiKey: candidate.apiKey,
+    model: visionModel,
+  })));
+  const providers = visionReady ? visionProviders : assistantProviders;
+  const assistantModel = visionReady ? visionModel : config.assistantModel;
   const provider = providers[0];
   if (!config.aiReviewEnabled || !providers.some((candidate) => isAiProviderReady({
     provider: candidate.provider,
     apiUrl: candidate.apiUrl,
     apiKey: candidate.apiKey,
-    model: config.assistantModel,
+    model: assistantModel,
   }))) {
     return fallbackAssistantResponse(deterministicActions, false);
   }
@@ -919,7 +937,7 @@ export async function askCampusAssistant(input: {
     kind: "campus-assistant",
     targetLabel: "拾间AI 对话",
     provider: provider.provider || "ai-json-api",
-    model: config.assistantModel,
+    model: assistantModel,
     endpoint,
     requestSummary: message,
     createdById: input.usage?.createdById ?? null,
@@ -941,10 +959,11 @@ export async function askCampusAssistant(input: {
       model,
       deterministicActions,
       resolveAiServiceAssistantContext(activeProvider),
+      input.images,
     ), {
       promptCacheScope: webSearchRequested ? "campus-assistant-web" : "campus-assistant",
-      model: config.assistantModel,
-      fallbackModels: "",
+      model: assistantModel,
+      fallbackModels: visionReady ? config.imageReviewFallbackModels : "",
       maxTokens: CAMPUS_ASSISTANT_MAX_OUTPUT_TOKENS,
       providerConfig: provider,
       providerConfigs: providers,
@@ -957,20 +976,21 @@ export async function askCampusAssistant(input: {
     });
     let parsed: unknown;
     try {
-      parsed = parseAssistantJson(result.content, { allowPlainText: isQwenAssistantModel(config.assistantModel) });
+      parsed = parseAssistantJson(result.content, { allowPlainText: isQwenAssistantModel(assistantModel) });
     } catch (error) {
-      if (!isQwenAssistantModel(config.assistantModel)) throw error;
+      if (!isQwenAssistantModel(assistantModel)) throw error;
       const repaired = await repairCampusAssistantResponse({
         message,
         history: input.history,
         loggedIn: input.context.loggedIn,
-        model: config.assistantModel,
+        model: assistantModel,
         provider,
         providers,
         availableActions,
         deterministicActions,
         reason: "format",
         webSearch: webSearchRequested,
+        images: input.images,
         signal: input.signal,
       });
       if (!repaired) {
@@ -983,7 +1003,7 @@ export async function askCampusAssistant(input: {
         input.history,
         {
           providers,
-          model: config.assistantModel,
+          model: assistantModel,
           signal: input.signal,
         },
       );
@@ -1003,7 +1023,7 @@ export async function askCampusAssistant(input: {
     const completionTruncated = result.completion?.finishReason === "length"
       || result.completion?.doneReason === "length";
     if (
-      isQwenAssistantModel(config.assistantModel)
+      isQwenAssistantModel(assistantModel)
       && (completionTruncated || isLikelyTruncatedCampusAssistantAnswer(response.answer))
     ) {
       console.warn("[campus-assistant] Qwen answer requires repair", JSON.stringify({
@@ -1018,13 +1038,14 @@ export async function askCampusAssistant(input: {
         message,
         history: input.history,
         loggedIn: input.context.loggedIn,
-        model: config.assistantModel,
+        model: assistantModel,
         provider,
         providers,
         availableActions,
         deterministicActions,
         reason: "truncated",
         webSearch: webSearchRequested,
+        images: input.images,
         signal: input.signal,
       });
       if (!repaired) {
@@ -1040,7 +1061,7 @@ export async function askCampusAssistant(input: {
       input.history,
       {
         providers,
-        model: config.assistantModel,
+        model: assistantModel,
         signal: input.signal,
       },
     );
@@ -1069,6 +1090,7 @@ async function repairCampusAssistantResponse(input: {
   deterministicActions: CampusAssistantAction[];
   reason: "format" | "truncated";
   webSearch: boolean;
+  images?: CampusAssistantImageInput[];
   signal?: AbortSignal;
 }): Promise<CampusAssistantResponse | null> {
   const repairInstructions = input.reason === "format"
@@ -1092,6 +1114,7 @@ async function repairCampusAssistantResponse(input: {
           model,
           input.deterministicActions,
           resolveAiServiceAssistantContext(activeProvider),
+          input.images,
         ),
         { role: "user" as const, content: repairInstructions[attempt] },
       ], {
@@ -1899,6 +1922,7 @@ export function buildAssistantMessages(
   modelName: string,
   prioritizedActions: CampusAssistantAction[] = [],
   contextConfig: AiServiceAssistantContextConfig = DEFAULT_CAMPUS_ASSISTANT_CONTEXT,
+  images: CampusAssistantImageInput[] = [],
 ) {
   const promptActions = selectAssistantPromptActions(availableActions, message, prioritizedActions);
   const catalog = promptActions.map((item) => ({
@@ -1910,6 +1934,18 @@ export function buildAssistantMessages(
   const selectedHistory = contextConfig.maxMessages > 0
     ? history.slice(-contextConfig.maxMessages)
     : history;
+  const validImages = images
+    .filter((image) => /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/iu.test(String(image?.dataUrl || "")))
+    .slice(0, 4);
+  const currentContent = validImages.length
+    ? [
+        { type: "text" as const, text: message || "请描述并分析这些图片。" },
+        ...validImages.map((image) => ({
+          type: "image_url" as const,
+          image_url: { url: image.dataUrl, detail: image.detail || "auto" as const },
+        })),
+      ]
+    : message;
   return [
     {
       role: "system" as const,
@@ -1923,7 +1959,7 @@ export function buildAssistantMessages(
     } as const)),
     {
       role: "user" as const,
-      content: message,
+      content: currentContent,
     },
   ];
 }

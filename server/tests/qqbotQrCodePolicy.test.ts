@@ -5,6 +5,7 @@ import {
   buildQqBotReplyMessage,
   buildSafetyPlatformGuideBlockLines,
   findQqBotSplitMessageIncidentRows,
+  normalizeQqBotAssistantVisionMessage,
   renderQqBotDailyAssistantReply,
   shouldSendQqBotQrCode,
   splitQqMessageForSend,
@@ -33,6 +34,14 @@ test("QQBot 不会把引用回复中的 base64 图片拆成大量文本消息", 
 
   assert.equal(chunks.length, 1);
   assert.equal(chunks[0], replyMessage);
+});
+
+test("QQBot 视觉问答不会把临时图片地址写进对话文字", () => {
+  assert.equal(
+    normalizeQqBotAssistantVisionMessage("这是什么？\n![图片](/uploads/forum/question.png)", 1),
+    "这是什么？",
+  );
+  assert.equal(normalizeQqBotAssistantVisionMessage("[图片]", 1), "请描述并分析这张图片中的内容。");
 });
 
 test("QQBot 只把同群短时间内的大批量分片识别为可恢复事故", () => {

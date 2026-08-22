@@ -29,21 +29,20 @@ export function getQqBotDailyAssistantDebounceMs(input: {
   return QQBOT_DAILY_ASSISTANT_DEBOUNCE_MS;
 }
 
-/**
- * Keep the daily-chat route text-only.  QQ commands, media and other
- * structured messages belong to their existing handlers (moderation,
- * posting, course automation, etc.) and must not be sent to the assistant.
- */
+/** Keep non-visual structured messages in their existing handlers. */
 export function shouldHandleQqBotDailyAssistant(input: QqBotDailyAssistantInput) {
   const text = String(input.messageText || "").trim();
-  if (!text || isCommandMessage(text)) return false;
+  if (text && isCommandMessage(text)) return false;
   if (
     input.messageType === "group"
     && !input.botMentioned
     && !input.proactiveGroupReply
     && !input.allowUnmentionedContinuation
   ) return false;
-  return isPlainTextQqMessage(input.message);
+  const allowImages = input.messageType !== "group"
+    || input.botMentioned
+    || input.allowUnmentionedContinuation === true;
+  return isSupportedQqAssistantMessage(input.message, allowImages) && (Boolean(text) || containsQqImageSegment(input.message));
 }
 
 export function mergeQqBotDailyAssistantMessages(messages: string[]) {
@@ -59,26 +58,35 @@ export function appendQqBotAiDisclosure(message: string) {
   return normalized ? `${normalized}\n\n${QQBOT_AI_DISCLOSURE}` : QQBOT_AI_DISCLOSURE;
 }
 
-function isPlainTextQqMessage(message: unknown): boolean {
+function isSupportedQqAssistantMessage(message: unknown, allowImages: boolean): boolean {
   if (typeof message === "string") {
     return Array.from(message.matchAll(/\[CQ:([^,\]]+)/gi))
-      .every((match) => ["at", "reply"].includes(String(match[1] || "").trim().toLowerCase()));
+      .every((match) => ["at", "reply", ...(allowImages ? ["image"] : [])].includes(String(match[1] || "").trim().toLowerCase()));
   }
   if (Array.isArray(message)) {
-    return message.length > 0 && message.every((segment) => isPlainTextQqMessageSegment(segment));
+    return message.length > 0 && message.every((segment) => isSupportedQqAssistantMessageSegment(segment, allowImages));
   }
   if (!message || typeof message !== "object") return false;
   const value = message as Record<string, unknown>;
-  if (value.type === "text" || value.type === "at" || value.type === "reply") return true;
-  if (Array.isArray(value.message)) return isPlainTextQqMessage(value.message);
-  if (Array.isArray(value.content)) return isPlainTextQqMessage(value.content);
-  if (typeof value.message === "string") return isPlainTextQqMessage(value.message);
-  if (typeof value.content === "string") return isPlainTextQqMessage(value.content);
+  if (value.type === "text" || value.type === "at" || value.type === "reply" || (allowImages && value.type === "image")) return true;
+  if (Array.isArray(value.message)) return isSupportedQqAssistantMessage(value.message, allowImages);
+  if (Array.isArray(value.content)) return isSupportedQqAssistantMessage(value.content, allowImages);
+  if (typeof value.message === "string") return isSupportedQqAssistantMessage(value.message, allowImages);
+  if (typeof value.content === "string") return isSupportedQqAssistantMessage(value.content, allowImages);
   return false;
 }
 
-function isPlainTextQqMessageSegment(segment: unknown) {
+function isSupportedQqAssistantMessageSegment(segment: unknown, allowImages: boolean) {
   if (!segment || typeof segment !== "object") return false;
   const value = segment as Record<string, unknown>;
-  return value.type === "text" || value.type === "at" || value.type === "reply";
+  return value.type === "text" || value.type === "at" || value.type === "reply" || (allowImages && value.type === "image");
+}
+
+function containsQqImageSegment(message: unknown): boolean {
+  if (typeof message === "string") return /\[CQ:image(?:,|\])/iu.test(message);
+  if (Array.isArray(message)) return message.some((segment) => containsQqImageSegment(segment));
+  if (!message || typeof message !== "object") return false;
+  const value = message as Record<string, unknown>;
+  if (value.type === "image") return true;
+  return containsQqImageSegment(value.message) || containsQqImageSegment(value.content);
 }

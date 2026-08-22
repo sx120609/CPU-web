@@ -91,7 +91,11 @@ import {
   shouldRunAiReview,
   syncTopicAiTags,
 } from "./topicAiReview";
-import { reviewQqGroupMessageForAd, resolveQqGroupWhitelistReviewPlan } from "./qqbotGroupAdReview";
+import {
+  prepareQqGroupAdImagePayloads,
+  reviewQqGroupMessageForAd,
+  resolveQqGroupWhitelistReviewPlan,
+} from "./qqbotGroupAdReview";
 export { resolveQqGroupWhitelistReviewPlan };
 import { containsQqGroupCard } from "./qqbot/groupCard";
 import {
@@ -266,6 +270,7 @@ type QqBotDailyAssistantContext = {
 type QqBotDailyAssistantBatch = {
   context: QqBotDailyAssistantContext;
   messages: string[];
+  imageMessages: unknown[];
   processing: boolean;
   debounceMs: number;
   timer?: ReturnType<typeof setTimeout>;
@@ -2648,6 +2653,7 @@ function enqueueQqBotDailyAssistant(
     batch = {
       context,
       messages: [],
+      imageMessages: [],
       processing: false,
       debounceMs,
     };
@@ -2658,6 +2664,8 @@ function enqueueQqBotDailyAssistant(
   // the delay chosen when the batch started.
   if (botMentioned) batch.debounceMs = QQBOT_DAILY_ASSISTANT_DEBOUNCE_MS;
   batch.messages.push(message);
+  const rawMessage = context.event.message ?? context.event.raw_message ?? "";
+  if (containsQqImage(rawMessage)) batch.imageMessages.push(rawMessage);
   if (!batch.processing) scheduleQqBotDailyAssistantFlush(batchKey, batch);
 }
 
@@ -2673,9 +2681,10 @@ async function flushQqBotDailyAssistantBatch(batchKey: string, batch: QqBotDaily
   if (batch.processing || !batch.messages.length) return;
   batch.processing = true;
   const messages = batch.messages.splice(0);
+  const imageMessages = batch.imageMessages.splice(0);
   const message = mergeQqBotDailyAssistantMessages(messages);
   try {
-    await processQqBotDailyAssistantBatch(batch.context, message);
+    await processQqBotDailyAssistantBatch(batch.context, message, imageMessages);
   } catch (error) {
     console.warn("[qqbot] daily assistant batch failed", error instanceof Error ? error.message : error);
   } finally {
@@ -2691,14 +2700,30 @@ async function flushQqBotDailyAssistantBatch(batchKey: string, batch: QqBotDaily
 async function processQqBotDailyAssistantBatch(
   context: QqBotDailyAssistantContext,
   message: string,
+  imageMessages: unknown[] = [],
 ) {
   const historyKey = `qqbot-assistant:${context.qqId}::${context.groupId || "private"}`;
   const history = getQqBotAssistantHistory(historyKey);
+  const imageUrls = imageMessages.length
+    ? await extractQqImageUrls(imageMessages)
+    : [];
+  const preparedImages = imageUrls.length
+    ? await prepareQqGroupAdImagePayloads(imageUrls.slice(0, 4))
+    : [];
+  if (imageMessages.length && !preparedImages.length) {
+    await logHandledInboundMessage(context, "message", "assistant:vision-image-unavailable");
+    await replyToEvent(context, appendQqBotAiDisclosure("图片暂时无法读取，请重新发送原图后再试。"), {
+      renderMarkdownImage: true,
+    });
+    return true;
+  }
+  const assistantMessage = normalizeQqBotAssistantVisionMessage(message, preparedImages.length);
   let response: CampusAssistantResponse;
   try {
     response = await askCampusAssistant({
-      message,
+      message: assistantMessage,
       history,
+      images: preparedImages.map((image) => ({ dataUrl: image.dataUrl, detail: "auto" })),
       context: {
         features: getFeatures(),
         forumAccessEnabled: true,
@@ -2720,7 +2745,7 @@ async function processQqBotDailyAssistantBatch(
 
   rememberQqBotAssistantHistory(historyKey, [
     ...history,
-    { role: "user", content: message },
+    { role: "user", content: assistantMessage },
     { role: "assistant", content: response.answer },
   ]);
   await logHandledInboundMessage(context, "message", "assistant:daily-chat");
@@ -2730,7 +2755,7 @@ async function processQqBotDailyAssistantBatch(
     return true;
   }
   const qrCodeEnabled = shouldSendQqBotQrCode(context.config);
-  const renderedReply = await renderQqBotDailyAssistantReply(message, response, { includeQrCode: qrCodeEnabled });
+  const renderedReply = await renderQqBotDailyAssistantReply(assistantMessage, response, { includeQrCode: qrCodeEnabled });
   await replyToEvent(context, renderedReply.message, {
     renderMarkdownImage: true,
     sourcePageUrl: qrCodeEnabled ? renderedReply.sourcePageUrl ?? undefined : undefined,
@@ -2753,6 +2778,18 @@ export function buildQqBotGeneratedImageMessage(value: unknown, siteOrigin = get
   const origin = String(siteOrigin || "").trim().replace(/\/+$/, "");
   if (!/^https?:\/\/[^\s,[\]]+$/iu.test(origin)) return "";
   return `[CQ:image,file=${origin}${imageUrl}]`;
+}
+
+export function normalizeQqBotAssistantVisionMessage(message: string, imageCount: number) {
+  const normalized = String(message || "")
+    .replace(/!\[[^\]]*\]\([^\r\n)]*\)/gu, " ")
+    .replace(/\[图片\]/gu, " ")
+    .replace(/\s+/gu, " ")
+    .trim();
+  if (normalized) return normalized;
+  if (imageCount > 1) return "请描述并分析这些图片中的内容。";
+  if (imageCount === 1) return "请描述并分析这张图片中的内容。";
+  return "请回答用户的问题。";
 }
 
 export function buildQqBotReplyMessage(message: string, messageId: unknown) {

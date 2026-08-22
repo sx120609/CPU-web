@@ -1551,6 +1551,27 @@ test("Qwen 路由只向上游发送最近两条受限历史消息", () => {
   assert.match(String(messages[0]?.content), /最多提供最近 2 条对话消息/u);
 });
 
+test("拾间AI视觉请求只在当前用户消息中携带经过校验的图片", () => {
+  const dataUrl = `data:image/png;base64,${VALID_PNG.toString("base64")}`;
+  const messages = buildAssistantMessages(
+    "这张图里有什么？",
+    [{ role: "assistant", content: "上一轮回答" }],
+    listCampusAssistantActions(context),
+    false,
+    "vision-model",
+    [],
+    { maxMessages: 2, maxCharsPerMessage: 800 },
+    [{ dataUrl, detail: "auto" }],
+  );
+  const current = messages.at(-1)?.content as any[];
+
+  assert.equal(Array.isArray(current), true);
+  assert.deepEqual(current[0], { type: "text", text: "这张图里有什么？" });
+  assert.equal(current[1]?.type, "image_url");
+  assert.equal(current[1]?.image_url?.url, dataUrl);
+  assert.doesNotMatch(JSON.stringify(messages.slice(0, -1)), /data:image/u);
+});
+
 test("拾间AI由模型语义决定是否启用 image2", () => {
   assert.equal(CAMPUS_ASSISTANT_IMAGE_MODEL, "gpt-image-2");
   assert.equal(

@@ -103,8 +103,17 @@ test("QQ 私聊普通文字可以进入拾间AI，但斜杠命令不会进入", 
   }), false);
 });
 
-test("QQ 图片、语音和转发不会进入日常聊天 AI", () => {
-  for (const segment of ["image", "record", "forward", "json"]) {
+test("QQ 私聊图片可以进入视觉问答，语音和转发仍不会进入", () => {
+  assert.equal(shouldHandleQqBotDailyAssistant({
+    messageType: "private",
+    messageText: "看看这个",
+    botMentioned: false,
+    message: [
+      { type: "text", data: { text: "看看这个" } },
+      { type: "image", data: { file: "question.png" } },
+    ],
+  }), true);
+  for (const segment of ["record", "forward", "json"]) {
     assert.equal(shouldHandleQqBotDailyAssistant({
       messageType: "private",
       messageText: "看看这个",
@@ -115,6 +124,26 @@ test("QQ 图片、语音和转发不会进入日常聊天 AI", () => {
       ],
     }), false, segment);
   }
+});
+
+test("QQ 群图片只有明确 @ 机器人时才进入视觉问答", () => {
+  const message = [
+    { type: "at", data: { qq: "10001" } },
+    { type: "image", data: { file: "question.png" } },
+  ];
+  assert.equal(shouldHandleQqBotDailyAssistant({
+    messageType: "group",
+    messageText: "[图片]",
+    botMentioned: true,
+    message,
+  }), true);
+  assert.equal(shouldHandleQqBotDailyAssistant({
+    messageType: "group",
+    messageText: "[图片]",
+    botMentioned: false,
+    proactiveGroupReply: true,
+    message: message.slice(1),
+  }), false);
 });
 
 test("QQ AI 回复会明确提示内容由 AI 生成", () => {
