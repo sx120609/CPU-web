@@ -2486,10 +2486,7 @@ async function createTopicFromQq(input: {
 }
 
 export async function sendQqMessage(target: QqMessageTarget, message: string) {
-  const normalizedMessage = String(message || "").trim();
-  const chunks = isSingleQqImageMessage(normalizedMessage)
-    ? [normalizedMessage]
-    : splitQqMessageForDelivery(normalizedMessage);
+  const chunks = splitQqMessageForSend(message);
   let messageId: string | undefined;
   for (let index = 0; index < chunks.length; index += 1) {
     const chunk = chunks[index];
@@ -2499,8 +2496,15 @@ export async function sendQqMessage(target: QqMessageTarget, message: string) {
   return messageId;
 }
 
+export function splitQqMessageForSend(message: string) {
+  const normalizedMessage = String(message || "").trim();
+  return isSingleQqImageMessage(normalizedMessage)
+    ? [normalizedMessage]
+    : splitQqMessageForDelivery(normalizedMessage);
+}
+
 function isSingleQqImageMessage(value: string) {
-  return /^\[CQ:image,[^\]]+\]$/i.test(String(value || "").trim());
+  return /^(?:\[CQ:reply,[^\]]+\])?\[CQ:image,[^\]]+\]$/i.test(String(value || "").trim());
 }
 
 async function sendSingleQqMessage(target: QqMessageTarget, message: string) {

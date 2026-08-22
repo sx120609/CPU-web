@@ -6,6 +6,7 @@ import {
   buildSafetyPlatformGuideBlockLines,
   renderQqBotDailyAssistantReply,
   shouldSendQqBotQrCode,
+  splitQqMessageForSend,
 } from "../src/services/qqbot";
 
 test("QQBot 即时响应会引用触发消息，文本和图片使用同一规则", () => {
@@ -22,6 +23,15 @@ test("QQBot 即时响应会引用触发消息，文本和图片使用同一规�
     buildQqBotReplyMessage("拾间AI回复", "12,3]"),
     "[CQ:reply,id=12&#44;3&#93;]拾间AI回复",
   );
+});
+
+test("QQBot 不会把引用回复中的 base64 图片拆成大量文本消息", () => {
+  const imageMessage = `[CQ:image,file=base64://${"A".repeat(300_000)}]`;
+  const replyMessage = buildQqBotReplyMessage(imageMessage, "123456");
+  const chunks = splitQqMessageForSend(replyMessage);
+
+  assert.equal(chunks.length, 1);
+  assert.equal(chunks[0], replyMessage);
 });
 
 test("QQBot 二维码发送总开关默认关闭，并统一覆盖群聊和私聊", () => {
