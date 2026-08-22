@@ -30,6 +30,7 @@ const configPatchSchema = z.object({
   allowPrivatePost: z.boolean().optional(),
   allowGroupPost: z.boolean().optional(),
   notificationEnabled: z.boolean().optional(),
+  qrCodeSendingEnabled: z.boolean().optional(),
   notifyCategories: z.array(z.string().trim().min(1).max(40)).max(20).optional(),
   superAdminQqIds: z.array(z.string().trim().min(5).max(20)).max(50).optional(),
 });

@@ -1,0 +1,45 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import {
+  buildSafetyPlatformGuideBlockLines,
+  renderQqBotDailyAssistantReply,
+  shouldSendQqBotQrCode,
+} from "../src/services/qqbot";
+
+test("QQBot 二维码发送总开关默认关闭，并统一覆盖群聊和私聊", () => {
+  assert.equal(shouldSendQqBotQrCode({}), false);
+  assert.equal(shouldSendQqBotQrCode({ qrCodeSendingEnabled: false }), false);
+  assert.equal(shouldSendQqBotQrCode({ qrCodeSendingEnabled: true }), true);
+});
+
+test("总开关关闭时安全教育帮助不再附带二维码图片", () => {
+  const message = buildSafetyPlatformGuideBlockLines().join("\n");
+
+  assert.doesNotMatch(message, /safety-platform-qrcode|\[CQ:image/iu);
+  assert.match(message, /已关闭二维码发送/iu);
+  assert.match(message, /704825850/u);
+});
+
+test("总开关关闭时拾间 AI 不创建二维码入口，并把功能入口改为文字链接", async () => {
+  const rendered = await renderQqBotDailyAssistantReply(
+    "电费在哪里查？",
+    {
+      answer: "可以使用宿舍电费查询。",
+      actions: [{
+        id: "electric",
+        label: "宿舍电费查询",
+        description: "查询宿舍电费",
+        url: "https://cputime.cn/electric",
+        icon: "⚡",
+        owner: "药大拾间",
+        requireLogin: true,
+      }],
+      suggestions: [],
+      fallback: false,
+    },
+    { includeQrCode: false },
+  );
+
+  assert.equal(rendered.sourcePageUrl, undefined);
+  assert.match(rendered.message, /宿舍电费查询：https:\/\/cputime\.cn\/electric/u);
+});

@@ -96,7 +96,7 @@ test("QQbot AI 图片把在线回答页作为唯一二维码目标，即使没�
   assert.ok(png.readUInt32BE(20) > 350);
 });
 
-test("QQbot AI 图片可以按群配置关闭二维码", () => {
+test("QQbot AI 图片可以按统一开关关闭二维码", () => {
   const png = renderQqBotAiReplyImage("这是一条不需要在线入口的群聊回答。", {
     sourcePageUrl: "https://cputime.cn/qqbot/ai-reply/abcdefghijklmnop",
     qrCodeEnabled: false,

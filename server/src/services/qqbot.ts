@@ -140,6 +140,7 @@ export type QqBotConfigView = {
   allowPrivatePost: boolean;
   allowGroupPost: boolean;
   notificationEnabled: boolean;
+  qrCodeSendingEnabled: boolean;
   notifyCategories: string[];
   superAdminQqIds: string[];
   webhookPath: string;
@@ -248,6 +249,7 @@ type QqMessageTarget = {
 const qqBotCooldowns = new Map<string, { cancelledAt?: number }>();
 const qqBotAssistantHistories = new Map<string, { messages: CampusAssistantMessage[]; updatedAt: number }>();
 type QqBotDailyAssistantContext = {
+  config: { qrCodeSendingEnabled?: boolean };
   event: OneBotEvent;
   qqId: string;
   groupId?: string;
@@ -275,13 +277,17 @@ function buildSafetyPlatformCqImage(relative: string) {
   return `[CQ:image,file=${origin}/uploads/${relative}]`;
 }
 
-function buildSafetyPlatformGuideBlockLines() {
+export function buildSafetyPlatformGuideBlockLines(qrCodeSendingEnabled = false) {
   const lines = [
     "刷课",
-    "1. 微信扫描二维码",
   ];
-  const qrCodeImage = buildSafetyPlatformCqImage(SAFETY_PLATFORM_QRCODE_IMAGE_RELATIVE);
-  if (qrCodeImage) lines.push(qrCodeImage);
+  if (qrCodeSendingEnabled) {
+    lines.push("1. 微信扫描二维码");
+    const qrCodeImage = buildSafetyPlatformCqImage(SAFETY_PLATFORM_QRCODE_IMAGE_RELATIVE);
+    if (qrCodeImage) lines.push(qrCodeImage);
+  } else {
+    lines.push("1. QQBot 已关闭二维码发送，请从 QQ 用户群 704825850 的群文件或公告获取入口");
+  }
   lines.push("2. 按下图操作，获取链接");
   const guideImage = buildSafetyPlatformCqImage(SAFETY_PLATFORM_GUIDE_IMAGE_RELATIVE);
   if (guideImage) lines.push(guideImage);
@@ -367,6 +373,7 @@ export function formatQqBotConfig(config: Awaited<ReturnType<typeof getQqBotConf
     allowPrivatePost: config.allowPrivatePost,
     allowGroupPost: config.allowGroupPost,
     notificationEnabled: config.notificationEnabled,
+    qrCodeSendingEnabled: config.qrCodeSendingEnabled ?? false,
     notifyCategories: parseQqBotNotifyCategories(config.notifyCategories),
     superAdminQqIds: normalizeQqBotQqIdList(parseStringArray(config.superAdminQqIds || "", [])),
     webhookPath: "/api/qqbot/webhook",
@@ -486,6 +493,7 @@ export async function updateQqBotConfig(input: {
   allowPrivatePost?: boolean;
   allowGroupPost?: boolean;
   notificationEnabled?: boolean;
+  qrCodeSendingEnabled?: boolean;
   notifyCategories?: string[];
   superAdminQqIds?: string[];
 }) {
@@ -514,6 +522,7 @@ export async function updateQqBotConfig(input: {
   if (input.allowPrivatePost !== undefined) data.allowPrivatePost = input.allowPrivatePost;
   if (input.allowGroupPost !== undefined) data.allowGroupPost = input.allowGroupPost;
   if (input.notificationEnabled !== undefined) data.notificationEnabled = input.notificationEnabled;
+  if (input.qrCodeSendingEnabled !== undefined) data.qrCodeSendingEnabled = input.qrCodeSendingEnabled;
   if (input.notifyCategories !== undefined) {
     data.notifyCategories = JSON.stringify(normalizePersonalNotifyCategories(input.notifyCategories));
   }
@@ -700,12 +709,12 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
       return { ok: true };
     }
     await logHandledInboundMessage(context, "message", "assistant:help");
-    await replyToEvent(context, await renderHelp(config.defaultBoardSlug));
+    await replyToEvent(context, await renderHelp(config.defaultBoardSlug, config.qrCodeSendingEnabled));
     return { ok: true };
   }
   if (canHandlePlainCommand && isSafetyPlatformGuideCommand(commandText)) {
     await logHandledInboundMessage(context, "message", "assistant:safety-platform-guide");
-    await replyToEvent(context, buildSafetyPlatformGuideBlockLines().join("\n"));
+    await replyToEvent(context, buildSafetyPlatformGuideBlockLines(config.qrCodeSendingEnabled).join("\n"));
     return { ok: true };
   }
   if (canHandlePlainCommand && isBoardListCommand(commandText)) {
@@ -2682,7 +2691,7 @@ async function processQqBotDailyAssistantBatch(
     { role: "assistant", content: response.answer },
   ]);
   await logHandledInboundMessage(context, "message", "assistant:daily-chat");
-  const qrCodeEnabled = await isQqBotAssistantReplyQrCodeEnabled(context);
+  const qrCodeEnabled = shouldSendQqBotQrCode(context.config);
   const renderedReply = await renderQqBotDailyAssistantReply(message, response, { includeQrCode: qrCodeEnabled });
   await replyToEvent(context, renderedReply.message, {
     renderMarkdownImage: true,
@@ -2696,23 +2705,8 @@ function qqBotDailyAssistantBatchKey(qqId: string, groupId?: string) {
   return `${qqId}::${groupId || "private"}`;
 }
 
-async function isQqBotAssistantReplyQrCodeEnabled(context: QqBotDailyAssistantContext) {
-  if (context.event.message_type !== "group" || !context.groupId) return true;
-  try {
-    const group = await prisma.qqBotGroup.findUnique({
-      where: { groupId: context.groupId },
-      select: { assistantReplyQrCodeEnabled: true },
-    });
-    return group?.assistantReplyQrCodeEnabled !== false;
-  } catch (error) {
-    // QR availability is an optional presentation setting. If an older
-    // database has not applied the migration yet, keep the answer available.
-    console.warn(
-      "[qqbot] failed to read assistant QR setting; keeping it enabled",
-      error instanceof Error ? error.message : error,
-    );
-    return true;
-  }
+export function shouldSendQqBotQrCode(config: { qrCodeSendingEnabled?: boolean | null }) {
+  return config.qrCodeSendingEnabled === true;
 }
 
 function getQqBotAssistantHistory(key: string): CampusAssistantMessage[] {
@@ -2735,7 +2729,7 @@ function rememberQqBotAssistantHistory(key: string, messages: CampusAssistantMes
   if (oldest) qqBotAssistantHistories.delete(oldest[0]);
 }
 
-async function renderQqBotDailyAssistantReply(
+export async function renderQqBotDailyAssistantReply(
   question: string,
   response: CampusAssistantResponse,
   options: { includeQrCode?: boolean } = {},
@@ -2759,7 +2753,7 @@ async function renderQqBotDailyAssistantReply(
       actions: actionEntries,
     })
     : undefined;
-  if (includeQrCode && !sourcePageUrl && actionEntries.length) {
+  if (!sourcePageUrl && actionEntries.length) {
     lines.push(
       "",
       "相关入口：",
@@ -3083,7 +3077,7 @@ function shouldAttemptForwardPayloadExtraction(message: unknown, messageText: st
     || /^[/／]投稿(?:\s|$)/.test(messageText.trim())
     || /^投稿(?:\s|$)/.test(messageText.trim());
 }
-async function renderHelp(defaultBoardSlug: string) {
+async function renderHelp(defaultBoardSlug: string, qrCodeSendingEnabled = false) {
   const defaultBoardName = await resolveBoardDisplayName(defaultBoardSlug);
   const lines = [
     "QQBot 帮助",
@@ -3098,7 +3092,7 @@ async function renderHelp(defaultBoardSlug: string) {
     "• 板块 / 版块 / 分区：查看可投稿板块",
     "• 我的投稿 / 最近投稿：查看最近投稿记录",
     "",
-    ...buildSafetyPlatformGuideBlockLines(),
+    ...buildSafetyPlatformGuideBlockLines(qrCodeSendingEnabled),
     "",
     "投稿",
     "• 投稿：开始分步投稿",
@@ -3323,7 +3317,10 @@ async function handleQqBotGroupAdminCommand(input: {
 
   if (input.command.type === "help") {
     return replyAndLog(
-      renderQqGroupAdminHelp(group ? formatQqBotGroup(group) : buildQqBotGroupFallbackView(input.groupId, input.event)),
+      renderQqGroupAdminHelp(
+        group ? formatQqBotGroup(group) : buildQqBotGroupFallbackView(input.groupId, input.event),
+        input.config.qrCodeSendingEnabled,
+      ),
       "assistant:group-admin-help",
     );
   }
@@ -4432,7 +4429,7 @@ function ensureModerationTargetAllowed(targetQqId: string, config: Awaited<Retur
   }
 }
 
-function renderQqGroupAdminHelp(group: QqBotGroupView) {
+function renderQqGroupAdminHelp(group: QqBotGroupView, qrCodeSendingEnabled = false) {
   const parts = [
     "群管命令",
     ...buildQqGroupAdminCommandLines(group),
@@ -4445,7 +4442,7 @@ function renderQqGroupAdminHelp(group: QqBotGroupView) {
     `踢黑：${group.allowKickAndBlock ? "开" : "关"}`,
     `广告过滤：${group.adFilterEnabled ? "开" : "关"}`,
     `群聊主动回答：${group.assistantProactiveReplyEnabled ? "开" : "关"}`,
-    `AI回复二维码：${group.assistantReplyQrCodeEnabled ? "开" : "关"}`,
+    `二维码发送（群聊与私聊统一）：${qrCodeSendingEnabled ? "开" : "关"}`,
   ];
   return parts.join("\n");
 }

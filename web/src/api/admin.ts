@@ -525,6 +525,7 @@ export type QqBotConfig = {
   allowPrivatePost: boolean;
   allowGroupPost: boolean;
   notificationEnabled: boolean;
+  qrCodeSendingEnabled: boolean;
   notifyCategories: string[];
   superAdminQqIds: string[];
   webhookPath: string;
@@ -963,6 +964,7 @@ export const adminApi = {
     allowPrivatePost: boolean;
     allowGroupPost: boolean;
     notificationEnabled: boolean;
+    qrCodeSendingEnabled: boolean;
     notifyCategories: string[];
     superAdminQqIds: string[];
   }>) => request.patch<QqBotConfig>("/admin/qqbot/config", payload),

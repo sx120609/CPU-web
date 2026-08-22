@@ -84,7 +84,9 @@
               <el-checkbox v-model="form.allowPrivatePost" :disabled="configDisabled">允许私聊投稿</el-checkbox>
               <el-checkbox v-model="form.allowGroupPost" :disabled="configDisabled">允许群内投稿</el-checkbox>
               <el-checkbox v-model="form.notificationEnabled" :disabled="configDisabled">推送站内通知</el-checkbox>
+              <el-checkbox v-model="form.qrCodeSendingEnabled" :disabled="configDisabled">允许发送二维码（统一）</el-checkbox>
             </div>
+            <div class="form-tip">默认关闭，同时控制群聊和私聊中的 AI 回复二维码及帮助二维码。关闭后相关入口改为文字链接。</div>
           </el-form-item>
           <el-form-item label="私聊通知类型">
             <el-checkbox-group v-model="form.notifyCategories" :disabled="configDisabled">
@@ -385,7 +387,6 @@
             <el-checkbox v-model="groupDialog.form.memberWelcomeEnabled">新成员欢迎</el-checkbox>
             <el-checkbox v-model="groupDialog.form.adFilterEnabled">广告过滤</el-checkbox>
             <el-checkbox v-model="groupDialog.form.assistantProactiveReplyEnabled">群聊主动回答</el-checkbox>
-            <el-checkbox v-model="groupDialog.form.assistantReplyQrCodeEnabled">AI回复二维码</el-checkbox>
             <el-checkbox v-model="groupDialog.form.adFilterGroupNoticeEnabled" :disabled="!groupDialog.form.adFilterEnabled">撤回后群聊提示</el-checkbox>
             <el-checkbox v-model="groupDialog.form.adFilterBlockQrCodeEnabled" :disabled="!groupDialog.form.adFilterEnabled">禁止二维码</el-checkbox>
             <el-checkbox v-model="groupDialog.form.adFilterBlockGroupCardEnabled" :disabled="!groupDialog.form.adFilterEnabled">拦截群卡片</el-checkbox>
@@ -396,7 +397,7 @@
             <el-checkbox v-model="groupDialog.form.allowKick">允许踢出</el-checkbox>
             <el-checkbox v-model="groupDialog.form.allowKickAndBlock">允许踢出并拉黑</el-checkbox>
           </div>
-          <div class="form-tip">“群聊主动回答”仅在消息明确提出问题/求助时触发，由广告过滤模型顺带做语义判断，不使用关键词匹配；默认关闭。“AI回复二维码”默认开启，若本群不适合发送二维码可关闭。白名单默认豁免普通广告判断；可单独保留二维码、群卡片两类硬性限制。</div>
+          <div class="form-tip">“群聊主动回答”仅在消息明确提出问题/求助时触发，由广告过滤模型顺带做语义判断，不使用关键词匹配；默认关闭。机器人是否发送二维码由页面上方的统一总开关控制。白名单默认豁免普通广告判断；可单独保留二维码、群卡片两类硬性限制。</div>
         </el-form-item>
         <el-form-item label="累计通报">
           <el-input-number
@@ -507,6 +508,7 @@ const form = reactive({
   allowPrivatePost: true,
   allowGroupPost: false,
   notificationEnabled: true,
+  qrCodeSendingEnabled: false,
   notifyCategories: ["reply", "mention", "like", "system", "service-tool", "lost-found", "school-feed"] as string[],
   superAdminQqIds: [] as string[],
 });
@@ -530,7 +532,6 @@ const groupDialog = reactive({
     memberWelcomeMessage: defaultMemberWelcomeMessage,
     adFilterEnabled: false,
     assistantProactiveReplyEnabled: false,
-    assistantReplyQrCodeEnabled: true,
     adFilterGroupNoticeEnabled: true,
     adFilterBlockQrCodeEnabled: false,
     adFilterBlockGroupCardEnabled: false,
@@ -619,6 +620,7 @@ async function loadConfig() {
     allowPrivatePost: config.value.allowPrivatePost,
     allowGroupPost: config.value.allowGroupPost,
     notificationEnabled: config.value.notificationEnabled,
+    qrCodeSendingEnabled: config.value.qrCodeSendingEnabled,
     notifyCategories: [...config.value.notifyCategories],
     superAdminQqIds: [...config.value.superAdminQqIds],
   });
@@ -799,7 +801,6 @@ function openGroupDialog(row?: any) {
     memberWelcomeMessage: row?.memberWelcomeMessage || defaultMemberWelcomeMessage,
     adFilterEnabled: row?.adFilterEnabled ?? false,
     assistantProactiveReplyEnabled: row?.assistantProactiveReplyEnabled ?? false,
-    assistantReplyQrCodeEnabled: row?.assistantReplyQrCodeEnabled ?? true,
     adFilterGroupNoticeEnabled: row?.adFilterGroupNoticeEnabled ?? true,
     adFilterBlockQrCodeEnabled: row?.adFilterBlockQrCodeEnabled ?? false,
     adFilterBlockGroupCardEnabled: row?.adFilterBlockGroupCardEnabled ?? false,
