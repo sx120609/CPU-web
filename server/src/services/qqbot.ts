@@ -2722,6 +2722,18 @@ export function buildQqBotGeneratedImageMessage(value: unknown, siteOrigin = get
   return `[CQ:image,file=${origin}${imageUrl}]`;
 }
 
+export function buildQqBotReplyMessage(message: string, messageId: unknown) {
+  const normalizedMessage = String(message || "").trim();
+  const normalizedMessageId = String(messageId ?? "").trim().slice(0, 128);
+  if (!normalizedMessageId || /^\[CQ:reply,/iu.test(normalizedMessage)) return normalizedMessage;
+  const escapedMessageId = normalizedMessageId
+    .replace(/&/gu, "&amp;")
+    .replace(/\[/gu, "&#91;")
+    .replace(/\]/gu, "&#93;")
+    .replace(/,/gu, "&#44;");
+  return `[CQ:reply,id=${escapedMessageId}]${normalizedMessage}`;
+}
+
 function getQqBotAssistantHistory(key: string): CampusAssistantMessage[] {
   const record = qqBotAssistantHistories.get(key);
   if (!record || Date.now() - record.updatedAt > QQBOT_ASSISTANT_HISTORY_TTL_MS) {
@@ -2823,6 +2835,7 @@ async function replyToEvent(
       );
     }
   }
+  outboundMessage = buildQqBotReplyMessage(outboundMessage, getQqBotMessageId(context.event));
   if (context.event.message_type === "group" && context.groupId) {
     await sendQqMessage({ groupId: context.groupId }, outboundMessage);
   } else {

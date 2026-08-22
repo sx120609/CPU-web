@@ -2,10 +2,27 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildQqBotGeneratedImageMessage,
+  buildQqBotReplyMessage,
   buildSafetyPlatformGuideBlockLines,
   renderQqBotDailyAssistantReply,
   shouldSendQqBotQrCode,
 } from "../src/services/qqbot";
+
+test("QQBot 即时响应会引用触发消息，文本和图片使用同一规则", () => {
+  assert.equal(
+    buildQqBotReplyMessage("拾间AI回复", "123456"),
+    "[CQ:reply,id=123456]拾间AI回复",
+  );
+  assert.equal(
+    buildQqBotReplyMessage("[CQ:image,file=https://cputime.cn/result.png]", "123456"),
+    "[CQ:reply,id=123456][CQ:image,file=https://cputime.cn/result.png]",
+  );
+  assert.equal(buildQqBotReplyMessage("拾间AI回复", ""), "拾间AI回复");
+  assert.equal(
+    buildQqBotReplyMessage("拾间AI回复", "12,3]"),
+    "[CQ:reply,id=12&#44;3&#93;]拾间AI回复",
+  );
+});
 
 test("QQBot 二维码发送总开关默认关闭，并统一覆盖群聊和私聊", () => {
   assert.equal(shouldSendQqBotQrCode({}), false);

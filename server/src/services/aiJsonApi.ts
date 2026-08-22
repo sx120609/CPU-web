@@ -743,8 +743,12 @@ function buildAiJsonRequestBody(input: {
   if (input.stream) body.stream = true;
   if (input.mode === "responses") {
     body.input = input.messages.map(toResponsesInputMessage);
-    body.text = { format: { type: "json_object" } };
     if (input.webSearch) {
+      // sub2api and some Responses-compatible relays reject Web Search when
+      // JSON mode is enabled. The caller's system prompt still requires a
+      // JSON object, and the campus-assistant parser already tolerates fenced
+      // or wrapped JSON, so keep tool use available instead of silently
+      // downgrading to an offline answer.
       body.tools = [{
         type: "web_search",
         search_context_size: "medium",
@@ -758,6 +762,8 @@ function buildAiJsonRequestBody(input: {
       }];
       body.tool_choice = "required";
       body.include = ["web_search_call.action.sources"];
+    } else {
+      body.text = { format: { type: "json_object" } };
     }
   } else {
     body.messages = input.messages.map(toChatCompletionsMessage);

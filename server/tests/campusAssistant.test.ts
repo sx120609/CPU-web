@@ -1070,6 +1070,7 @@ test("联网请求优先把 Chat Completions 服务切到同源 Responses 接口
     assert.equal(requests[0]?.url, "https://search.example/v1/responses");
     assert.equal(requests[0]?.body.tools?.[0]?.type, "web_search");
     assert.equal(requests[0]?.body.tool_choice, "required");
+    assert.equal(requests[0]?.body.text, undefined);
     await result.response.body?.cancel();
   } finally {
     globalThis.fetch = originalFetch;
