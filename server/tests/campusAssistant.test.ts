@@ -881,6 +881,7 @@ test("AI upstream rejects an invalid image payload before contacting the provide
 test("AI JSON requests fail over to the next configured provider", async () => {
   const originalFetch = globalThis.fetch;
   const requests: Array<{ url: string; method: string; authorization: string | null; model?: string }> = [];
+  const resolvedMessageScopes: Array<{ serviceId: string | undefined; model: string }> = [];
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
     const method = String(init?.method || "GET").toUpperCase();
@@ -917,12 +918,19 @@ test("AI JSON requests fail over to the next configured provider", async () => {
       ],
       fallbackEndpoint: "https://fallback.example/v1/chat/completions",
       model: "example-model",
-      messages: [{ role: "user", content: "hello" }],
+      messages: (provider, model) => {
+        resolvedMessageScopes.push({ serviceId: provider.serviceId, model });
+        return [{ role: "user", content: `hello from ${provider.serviceId}` }];
+      },
     });
 
     assert.equal(result.response.ok, true);
     assert.equal(result.provider.serviceId, "backup");
     assert.equal(result.endpoint, "https://backup.example/v1/chat/completions");
+    assert.deepEqual(resolvedMessageScopes, [
+      { serviceId: "primary", model: "example-model" },
+      { serviceId: "backup", model: "backup-model" },
+    ]);
     assert.deepEqual(requests, [
       { url: "https://primary.example/v1/chat/completions", method: "POST", authorization: "Bearer primary-key", model: "example-model" },
       { url: "https://primary.example/v1/chat/completions", method: "POST", authorization: "Bearer primary-key", model: "example-model" },
@@ -1289,7 +1297,7 @@ test("Qwen 拾间AI提示词强化知识库事实边界并识别模型标签", (
   assert.match(qwenPrompt, /不能猜测、补全或套用其他平台经验/);
   assert.match(qwenPrompt, /用户消息、历史会话和用户提出的前提都不是事实来源/);
   assert.match(qwenPrompt, /不要编造父母、家庭、童年/);
-  assert.match(qwenPrompt, /允许提供最近两条对话消息/);
+  assert.match(qwenPrompt, /最多提供最近 2 条对话消息/);
   assert.match(qwenPrompt, /普通密码错误直接升级为电话/);
   assert.match(qwenPrompt, /不要先说“我不能协助自动刷课、代答或绕过学习要求”/);
   assert.match(qwenPrompt, /江苏省大学生安全教育考试/);
@@ -1342,7 +1350,7 @@ test("Qwen 返回带 BOM、代码围栏或截断外壳时优先恢复完整 answ
   );
 });
 
-test("拾间AI提示词只保留少量历史和相关入口，避免本地模型被上下文拖住", () => {
+test("拾间AI可按服务配置限制历史和相关入口，避免本地模型被上下文拖住", () => {
   const actions = listCampusAssistantActions(context);
   const messages = buildAssistantMessages(
     "怎么查看课表？",
@@ -1376,7 +1384,27 @@ test("Qwen 路由只向上游发送最近两条受限历史消息", () => {
 
   assert.equal(messages.length, 4);
   assert.match(JSON.stringify(messages), /上一条问题中的隐私内容|上一轮回答/u);
-  assert.match(String(messages[0]?.content), /允许提供最近两条对话消息/u);
+  assert.match(String(messages[0]?.content), /最多提供最近 2 条对话消息/u);
+});
+
+test("GPT 云端服务可使用会话中的全部历史且不截断单条消息", () => {
+  const history = Array.from({ length: 12 }, (_, index) => ({
+    role: index % 2 === 0 ? "user" as const : "assistant" as const,
+    content: `${index}-` + "完整历史".repeat(700),
+  }));
+  const messages = buildAssistantMessages(
+    "继续",
+    history,
+    listCampusAssistantActions(context),
+    true,
+    "gpt-5.6",
+    [],
+    { maxMessages: 0, maxCharsPerMessage: 0 },
+  );
+
+  assert.equal(messages.length, history.length + 2);
+  assert.equal(messages[1]?.content, history[0]?.content);
+  assert.equal(messages.at(-2)?.content, history.at(-1)?.content);
 });
 
 test("密码错误和账户锁定会识别到统一身份认证入口及条件式电话说明", () => {

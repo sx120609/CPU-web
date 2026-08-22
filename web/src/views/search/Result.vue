@@ -409,7 +409,7 @@ async function openFullPage() {
 async function runQuery(keyword: string) {
   if (!auth.isLoggedIn) return;
   const history = messages.value
-    .slice(-12)
+    .slice(-MAX_MESSAGES_PER_SESSION)
     .map(({ role, content }) => ({ role, content }));
   ensureActiveConversation(keyword);
   messages.value.push({ id: ++messageSeq, role: "user", content: keyword });

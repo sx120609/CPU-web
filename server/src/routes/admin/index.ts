@@ -2099,6 +2099,8 @@ const siteConfigPatchSchema = z.object({
     provider: z.string().trim().min(1).max(40),
     apiUrl: z.string().trim().max(240),
     apiKey: z.string().trim().max(240),
+    assistantContextMaxMessages: z.number().int().min(0).max(60).optional(),
+    assistantContextMaxCharsPerMessage: z.number().int().min(0).max(4000).optional(),
   })).max(20).optional(),
   aiServiceFallbacks: z.record(z.array(z.union([
     z.string().trim().max(48),

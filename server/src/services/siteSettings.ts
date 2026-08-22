@@ -59,6 +59,10 @@ export type AiServiceConfig = {
   provider: string;
   apiUrl: string;
   apiKey: string;
+  /** 拾间 AI 使用的历史消息条数；0 表示使用本次会话提供的全部历史。 */
+  assistantContextMaxMessages?: number;
+  /** 拾间 AI 单条历史消息的字符上限；0 表示不额外截断。 */
+  assistantContextMaxCharsPerMessage?: number;
 };
 export const AI_SERVICE_SCENES = [
   "assistant",
@@ -158,6 +162,56 @@ export function isOllamaAiProvider(provider: string | null | undefined) {
   return String(provider || "").trim().toLowerCase() === "ollama";
 }
 
+export const AI_SERVICE_ASSISTANT_CONTEXT_MAX_MESSAGES = 60;
+export const AI_SERVICE_ASSISTANT_CONTEXT_MAX_CHARS_PER_MESSAGE = 4_000;
+
+export type AiServiceAssistantContextConfig = {
+  maxMessages: number;
+  maxCharsPerMessage: number;
+};
+
+function isLocalAiService(input: { provider?: string | null; apiUrl?: string | null }) {
+  if (isOllamaAiProvider(input.provider)) return true;
+  const apiUrl = String(input.apiUrl || "").trim();
+  return /(?:localhost|127\.0\.0\.1|\[::1\]|:11434)(?::\d+)?(?:\/|$)/iu.test(apiUrl);
+}
+
+export function defaultAiServiceAssistantContext(input: {
+  provider?: string | null;
+  apiUrl?: string | null;
+}): AiServiceAssistantContextConfig {
+  return isLocalAiService(input)
+    ? { maxMessages: 2, maxCharsPerMessage: 800 }
+    : { maxMessages: 0, maxCharsPerMessage: 0 };
+}
+
+function normalizeAiServiceAssistantContextLimit(value: unknown, fallback: number, maximum: number) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(0, Math.min(maximum, Math.floor(parsed)));
+}
+
+export function resolveAiServiceAssistantContext(input: {
+  provider?: string | null;
+  apiUrl?: string | null;
+  assistantContextMaxMessages?: unknown;
+  assistantContextMaxCharsPerMessage?: unknown;
+}): AiServiceAssistantContextConfig {
+  const defaults = defaultAiServiceAssistantContext(input);
+  return {
+    maxMessages: normalizeAiServiceAssistantContextLimit(
+      input.assistantContextMaxMessages,
+      defaults.maxMessages,
+      AI_SERVICE_ASSISTANT_CONTEXT_MAX_MESSAGES,
+    ),
+    maxCharsPerMessage: normalizeAiServiceAssistantContextLimit(
+      input.assistantContextMaxCharsPerMessage,
+      defaults.maxCharsPerMessage,
+      AI_SERVICE_ASSISTANT_CONTEXT_MAX_CHARS_PER_MESSAGE,
+    ),
+  };
+}
+
 /**
  * Ollama's local OpenAI-compatible endpoint does not need a secret key.
  * Other providers still require a configured API key so an enabled feature
@@ -192,6 +246,8 @@ export const DEFAULT_AI_SERVICES: AiServiceConfig[] = [
     provider: "deepseek",
     apiUrl: "https://api.deepseek.com/chat/completions",
     apiKey: "",
+    assistantContextMaxMessages: 0,
+    assistantContextMaxCharsPerMessage: 0,
   },
 ];
 
@@ -237,6 +293,12 @@ function normalizeAiServiceEntries(input: unknown): AiServiceConfig[] {
     const provider = String(item.provider ?? "deepseek").trim().slice(0, 40) || "deepseek";
     const apiUrl = String(item.apiUrl ?? "").trim().slice(0, 240);
     const apiKey = String(item.apiKey ?? "").trim().slice(0, 240);
+    const assistantContext = resolveAiServiceAssistantContext({
+      provider,
+      apiUrl,
+      assistantContextMaxMessages: item.assistantContextMaxMessages,
+      assistantContextMaxCharsPerMessage: item.assistantContextMaxCharsPerMessage,
+    });
     const signature = `${provider}\n${apiUrl}\n${apiKey}`;
     if (signatures.has(signature)) continue;
     signatures.add(signature);
@@ -246,6 +308,8 @@ function normalizeAiServiceEntries(input: unknown): AiServiceConfig[] {
       provider,
       apiUrl,
       apiKey,
+      assistantContextMaxMessages: assistantContext.maxMessages,
+      assistantContextMaxCharsPerMessage: assistantContext.maxCharsPerMessage,
     });
   }
   return result;

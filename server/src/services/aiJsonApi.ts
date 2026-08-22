@@ -58,9 +58,16 @@ export type AiProviderCandidate = {
   provider: string;
   apiUrl: string;
   apiKey: string;
+  assistantContextMaxMessages?: number;
+  assistantContextMaxCharsPerMessage?: number;
   /** Optional model override for this provider fallback route. */
   model?: string;
 };
+
+export type AiJsonMessagesResolver = (
+  provider: AiProviderCandidate,
+  model: string,
+) => AiJsonMessage[];
 
 /** Keep the primary candidate untouched, but require every fallback to expose the model it will receive. */
 export async function filterAiProviderCandidatesByModel(
@@ -199,7 +206,7 @@ export async function sendAiJsonRequestWithProviderFallback(input: {
   fallbackEndpoint: string;
   model: string;
   temperature?: number;
-  messages: AiJsonMessage[];
+  messages: AiJsonMessage[] | AiJsonMessagesResolver;
   promptCacheKey?: string | null;
   enablePromptCacheRetention?: boolean;
   maxTransientRetries?: number;
@@ -225,6 +232,9 @@ export async function sendAiJsonRequestWithProviderFallback(input: {
       }
     }
     const endpoint = normalizeAiJsonApiUrl(provider.apiUrl, input.fallbackEndpoint);
+    const messages = typeof input.messages === "function"
+      ? input.messages(provider, model)
+      : input.messages;
     try {
       const result = await sendAiJsonRequest({
         endpoint,
@@ -233,7 +243,7 @@ export async function sendAiJsonRequestWithProviderFallback(input: {
         model,
         temperature: input.temperature,
         maxTokens: input.maxTokens,
-        messages: input.messages,
+        messages,
         promptCacheKey: input.promptCacheKey,
         enablePromptCacheRetention: input.enablePromptCacheRetention,
         maxTransientRetries: input.maxTransientRetries,

@@ -90,7 +90,27 @@
                 :placeholder="service.provider.toLowerCase() === 'ollama' ? 'Ollama 可留空' : 'sk-...'"
               />
             </label>
+            <label class="ai-row">
+              <span class="ai-label">拾间AI历史消息数</span>
+              <el-input-number
+                v-model="service.assistantContextMaxMessages"
+                :min="0"
+                :max="60"
+                controls-position="right"
+              />
+            </label>
+            <label class="ai-row">
+              <span class="ai-label">单条历史字符上限</span>
+              <el-input-number
+                v-model="service.assistantContextMaxCharsPerMessage"
+                :min="0"
+                :max="4000"
+                :step="100"
+                controls-position="right"
+              />
+            </label>
           </div>
+          <small class="field-note">上下文配置仅用于拾间 AI；0 表示不额外限制。GPT / 云端服务建议 0 / 0，本地 Ollama 建议 2 / 800。</small>
           <small class="field-note">
             {{ service.provider.toLowerCase() === "ollama"
               ? "Ollama 会使用 /v1/chat/completions；模型名称填写本机已安装的 tag，例如 qwen3:8b。"
@@ -743,6 +763,8 @@ const reasoningEffortOptions = [
 ] as const;
 const DEFAULT_REMOTE_AI_URL = "https://api.deepseek.com/chat/completions";
 const DEFAULT_OLLAMA_ADDRESS = "http://127.0.0.1:11434";
+const DEFAULT_REMOTE_ASSISTANT_CONTEXT = { maxMessages: 0, maxCharsPerMessage: 0 } as const;
+const DEFAULT_LOCAL_ASSISTANT_CONTEXT = { maxMessages: 2, maxCharsPerMessage: 800 } as const;
 const form = reactive<SiteConfig>({
   siteOrigin: "",
   siteFilingNumber: "",
@@ -769,6 +791,8 @@ const form = reactive<SiteConfig>({
     provider: "deepseek",
     apiUrl: "https://api.deepseek.com/chat/completions",
     apiKey: "",
+    assistantContextMaxMessages: 0,
+    assistantContextMaxCharsPerMessage: 0,
   }],
   aiServiceFallbacks: {
     assistant: [],
@@ -900,6 +924,8 @@ function ensureAiServices() {
       provider: "deepseek",
       apiUrl: DEFAULT_REMOTE_AI_URL,
       apiKey: "",
+      assistantContextMaxMessages: 0,
+      assistantContextMaxCharsPerMessage: 0,
     });
   }
   const seen = new Set<string>();
@@ -912,6 +938,17 @@ function ensureAiServices() {
     service.provider = String(service.provider || "deepseek").trim() || "deepseek";
     service.apiUrl = String(service.apiUrl || "").trim();
     service.apiKey = String(service.apiKey || "").trim();
+    const contextDefaults = defaultAssistantContextForService(service);
+    service.assistantContextMaxMessages = normalizeAssistantContextLimit(
+      service.assistantContextMaxMessages,
+      contextDefaults.maxMessages,
+      60,
+    );
+    service.assistantContextMaxCharsPerMessage = normalizeAssistantContextLimit(
+      service.assistantContextMaxCharsPerMessage,
+      contextDefaults.maxCharsPerMessage,
+      4000,
+    );
     if (!serviceCatalogs[service.id]) {
       serviceCatalogs[service.id] = { endpoint: "", models: [], loading: false, error: "" };
     }
@@ -1005,8 +1042,19 @@ function handleServiceProviderChange(service: AiServiceConfig) {
   const currentUrl = service.apiUrl.trim();
   if (normalizedProvider === "ollama" && (!currentUrl || currentUrl === DEFAULT_REMOTE_AI_URL)) {
     service.apiUrl = DEFAULT_OLLAMA_ADDRESS;
+    if (service.assistantContextMaxMessages === 0 && service.assistantContextMaxCharsPerMessage === 0) {
+      service.assistantContextMaxMessages = DEFAULT_LOCAL_ASSISTANT_CONTEXT.maxMessages;
+      service.assistantContextMaxCharsPerMessage = DEFAULT_LOCAL_ASSISTANT_CONTEXT.maxCharsPerMessage;
+    }
   } else if (normalizedProvider !== "ollama" && currentUrl === DEFAULT_OLLAMA_ADDRESS) {
     service.apiUrl = DEFAULT_REMOTE_AI_URL;
+    if (
+      service.assistantContextMaxMessages === DEFAULT_LOCAL_ASSISTANT_CONTEXT.maxMessages
+      && service.assistantContextMaxCharsPerMessage === DEFAULT_LOCAL_ASSISTANT_CONTEXT.maxCharsPerMessage
+    ) {
+      service.assistantContextMaxMessages = DEFAULT_REMOTE_ASSISTANT_CONTEXT.maxMessages;
+      service.assistantContextMaxCharsPerMessage = DEFAULT_REMOTE_ASSISTANT_CONTEXT.maxCharsPerMessage;
+    }
   }
   invalidateServiceCatalog(service.id);
   void loadModelsForService(service.id, { silent: true });
@@ -1019,8 +1067,22 @@ function addAiService() {
     provider: "deepseek",
     apiUrl: DEFAULT_REMOTE_AI_URL,
     apiKey: "",
+    assistantContextMaxMessages: 0,
+    assistantContextMaxCharsPerMessage: 0,
   };
   form.aiServices.push(service);
+}
+
+function defaultAssistantContextForService(service: Pick<AiServiceConfig, "provider" | "apiUrl">) {
+  return service.provider.trim().toLowerCase() === "ollama" || /(?:localhost|127\.0\.0\.1|\[::1\]|:11434)(?::\d+)?(?:\/|$)/iu.test(service.apiUrl.trim())
+    ? DEFAULT_LOCAL_ASSISTANT_CONTEXT
+    : DEFAULT_REMOTE_ASSISTANT_CONTEXT;
+}
+
+function normalizeAssistantContextLimit(value: unknown, fallback: number, maximum: number) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(0, Math.min(maximum, Math.floor(parsed)));
 }
 
 function removeAiService(serviceId: string) {

@@ -35,8 +35,8 @@ const assistantSchema = z.object({
   message: z.string().trim().min(1).max(500),
   history: z.array(z.object({
     role: z.enum(["user", "assistant"]),
-    content: z.string().trim().min(1).max(2000),
-  })).max(12).default([]),
+    content: z.string().trim().min(1).max(4000),
+  })).max(60).default([]),
 });
 
 const assistantHistoryIdSchema = z.string().trim().regex(/^[A-Za-z0-9_-]{8,80}$/);

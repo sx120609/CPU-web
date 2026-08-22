@@ -6,6 +6,7 @@ import {
   buildAiServicesFromLegacy,
   isAiProviderReady,
   normalizeAiServiceList,
+  resolveAiServiceAssistantContext,
   resolveAiServiceCandidatesForScene,
   resolveAiServiceForScene,
 } from "../src/services/siteSettings";
@@ -41,6 +42,26 @@ test("Ollama is ready without an API key when its address and model are present"
     apiKey: "",
     model: "deepseek-chat",
   }), false);
+});
+
+test("拾间 AI 上下文默认只限制本地服务，并允许每个服务单独覆盖", () => {
+  const [remote, local, custom] = normalizeAiServiceList([
+    { id: "remote", name: "GPT", provider: "openai", apiUrl: "https://api.openai.com/v1/responses", apiKey: "key" },
+    { id: "local", name: "本地", provider: "ollama", apiUrl: "http://127.0.0.1:11434", apiKey: "" },
+    {
+      id: "custom",
+      name: "自定义",
+      provider: "openai",
+      apiUrl: "https://example.com/v1/responses",
+      apiKey: "key",
+      assistantContextMaxMessages: 24,
+      assistantContextMaxCharsPerMessage: 3000,
+    },
+  ]);
+
+  assert.deepEqual(resolveAiServiceAssistantContext(remote), { maxMessages: 0, maxCharsPerMessage: 0 });
+  assert.deepEqual(resolveAiServiceAssistantContext(local), { maxMessages: 2, maxCharsPerMessage: 800 });
+  assert.deepEqual(resolveAiServiceAssistantContext(custom), { maxMessages: 24, maxCharsPerMessage: 3000 });
 });
 
 test("legacy AI fields migrate into a reusable service pool", () => {

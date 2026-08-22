@@ -7,6 +7,8 @@ export type AiServiceConfig = {
   provider: string;
   apiUrl: string;
   apiKey: string;
+  assistantContextMaxMessages: number;
+  assistantContextMaxCharsPerMessage: number;
 };
 
 export type AiServiceScene = "assistant" | "learning-assistant" | "text-review" | "qq-group-ad" | "image-review" | "video-review";

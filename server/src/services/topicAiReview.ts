@@ -139,7 +139,7 @@ type AiJsonRequestOptions = {
 };
 
 export async function requestAiJson(
-  messages: AiJsonMessage[] | ((model: string) => AiJsonMessage[]),
+  messages: AiJsonMessage[] | ((model: string, provider: AiProviderCandidate) => AiJsonMessage[]),
   options?: AiJsonRequestOptions,
 ) {
   const config = getSiteConfig();
@@ -172,7 +172,7 @@ export async function requestAiJson(
   let lastError: Error | null = null;
   for (let index = 0; index < candidates.length; index += 1) {
     const model = candidates[index];
-    const requestMessages = typeof messages === "function" ? messages(model) : messages;
+    const requestMessages = typeof messages === "function" ? messages(model, providerConfig) : messages;
     const userPrompt = requestMessages
       .filter((item) => item.role === "user")
       .map((item) => summarizeAiJsonMessageContent(item.content))
@@ -202,7 +202,9 @@ export async function requestAiJson(
         model,
         temperature: 0.1,
         maxTokens: options?.maxTokens,
-        messages: requestMessages,
+        messages: typeof messages === "function"
+          ? (activeProvider, activeModel) => messages(activeModel, activeProvider)
+          : requestMessages,
         promptCacheKey,
         enablePromptCacheRetention: promptCacheEnabled && options?.enablePromptCacheRetention !== false,
         preferNativeOllama: options?.preferNativeOllama,

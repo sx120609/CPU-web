@@ -1,5 +1,11 @@
 import type { FeatureKey } from "./siteSettings";
-import { getSiteConfig, isAiProviderReady, resolveAiServiceCandidatesForScene } from "./siteSettings";
+import {
+  getSiteConfig,
+  isAiProviderReady,
+  resolveAiServiceAssistantContext,
+  resolveAiServiceCandidatesForScene,
+  type AiServiceAssistantContextConfig,
+} from "./siteSettings";
 import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } from "./aiReviewLog";
 import { requestAiJson } from "./topicAiReview";
 import {
@@ -67,10 +73,12 @@ const SITE_KNOWLEDGE_VERIFIED_AT = "2026-07-27";
 
 const DEFAULT_REVIEW_API_URL = "https://api.deepseek.com/chat/completions";
 export const CAMPUS_ASSISTANT_PUBLIC_MODEL_NAME = "基于Qwen3.8和GPT5.6混合训练的拾间大模型";
-const CAMPUS_ASSISTANT_HISTORY_MAX_MESSAGES = 2;
-const CAMPUS_ASSISTANT_HISTORY_MESSAGE_MAX_LENGTH = 800;
 const CAMPUS_ASSISTANT_PROMPT_ACTION_LIMIT = 8;
 const CAMPUS_ASSISTANT_MAX_OUTPUT_TOKENS = 16_384;
+const DEFAULT_CAMPUS_ASSISTANT_CONTEXT: AiServiceAssistantContextConfig = {
+  maxMessages: 2,
+  maxCharsPerMessage: 800,
+};
 const CAMPUS_ASSISTANT_CORE_ACTION_IDS = [
   "home",
   "campus-assistant",
@@ -917,13 +925,14 @@ export async function askCampusAssistant(input: {
       await finishAiReviewLogSuccess(logId, response.answer);
       return response;
     }
-    const result = await requestAiJson((model) => buildAssistantMessages(
+    const result = await requestAiJson((model, activeProvider) => buildAssistantMessages(
       message,
       input.history,
       availableActions,
       input.context.loggedIn,
       model,
       deterministicActions,
+      resolveAiServiceAssistantContext(activeProvider),
     ), {
       promptCacheScope: "campus-assistant",
       model: config.assistantModel,
@@ -1028,19 +1037,19 @@ async function repairCampusAssistantResponse(input: {
       ];
   let lastError: unknown = null;
   for (let attempt = 0; attempt < repairInstructions.length; attempt += 1) {
-    const messages = [
-      ...buildAssistantMessages(
-        input.message,
-        input.history,
-        input.availableActions,
-        input.loggedIn,
-        input.model,
-        input.deterministicActions,
-      ),
-      { role: "user" as const, content: repairInstructions[attempt] },
-    ];
     try {
-      const result = await requestAiJson(messages, {
+      const result = await requestAiJson((model, activeProvider) => [
+        ...buildAssistantMessages(
+          input.message,
+          input.history,
+          input.availableActions,
+          input.loggedIn,
+          model,
+          input.deterministicActions,
+          resolveAiServiceAssistantContext(activeProvider),
+        ),
+        { role: "user" as const, content: repairInstructions[attempt] },
+      ], {
         promptCacheScope: `campus-assistant-repair-${input.reason}-${attempt}`,
         model: input.model,
         fallbackModels: "",
@@ -1171,6 +1180,7 @@ export async function streamCampusAssistant(input: {
       input.context.loggedIn,
       model,
       deterministicActions,
+      resolveAiServiceAssistantContext(provider),
     );
     const systemPrompt = typeof messages[0]?.content === "string" ? messages[0].content : "";
     try {
@@ -1180,7 +1190,15 @@ export async function streamCampusAssistant(input: {
         model,
         temperature: 0.1,
         maxTokens: CAMPUS_ASSISTANT_MAX_OUTPUT_TOKENS,
-        messages,
+        messages: (activeProvider, activeModel) => buildAssistantMessages(
+          message,
+          input.history,
+          availableActions,
+          input.context.loggedIn,
+          activeModel,
+          deterministicActions,
+          resolveAiServiceAssistantContext(activeProvider),
+        ),
         promptCacheKey: buildAiPromptCacheKey("campus-assistant", [model, systemPrompt]),
         enablePromptCacheRetention: true,
         stream: true,
@@ -1595,6 +1613,7 @@ export function buildSystemPrompt(
   catalog: Array<Pick<CampusAssistantAction, "id" | "label" | "description" | "requireLogin">>,
   loggedIn: boolean,
   modelName: string,
+  contextConfig: AiServiceAssistantContextConfig = DEFAULT_CAMPUS_ASSISTANT_CONTEXT,
 ) {
   const knowledge = listCampusAssistantKnowledgeEntries(catalog.map((item) => item.id))
     .map(({ id, fact, source, verifiedAt }) => ({ id, fact, source, verifiedAt }));
@@ -1603,7 +1622,7 @@ export function buildSystemPrompt(
         "【事实准确性加强规则】当前上游属于 Qwen 系列，但不得向用户透露真实上游模型；这些规则只用于约束回答。涉及药大拾间、校园服务、产品功能、操作步骤和账号规则时，只能把 knowledge 与 catalog 中明确写出的内容当作事实。knowledge 没有明确写出的具体网址、按钮名称、电话、时间、费用、权限、支持范围、账号规则或当前状态，一律不能猜测、补全或套用其他平台经验。",
         "用户消息、历史会话和用户提出的前提都不是事实来源，不能因为用户这样说就默认其正确；如果前提与 knowledge 冲突，先明确纠正。不要把推测、示例、可能性或建议写成已经核实的结论。无法确认时直接说“知识库中没有这项信息”，并引导用户查看对应入口或学校原始公告。回答前在内部逐项核对事实来源，但不要输出隐藏检查过程。",
         "【人格边界】不要编造父母、家庭、童年、出生、身体、现实经历或现实行动；你不是人，也不要把自己写成有家庭和人生经历的人。被问到这类问题时，简短说明自己是拾间AI、没有人类家庭或个人经历即可，不要继续编故事或把“知识库和参数”当作个人经历。",
-        "【上下文限制】当前 Qwen 路由允许提供最近两条对话消息，每条消息已由服务端限制长度；这些历史只用于理解省略指代和连续追问，不能作为事实来源，knowledge 始终优先。不要假设自己记得更早的对话。",
+        `【上下文范围】当前服务${contextConfig.maxMessages > 0 ? `最多提供最近 ${contextConfig.maxMessages} 条对话消息` : "提供本次会话可用的全部历史消息"}${contextConfig.maxCharsPerMessage > 0 ? `，每条最多 ${contextConfig.maxCharsPerMessage} 个字符` : "，不额外截断单条历史"}；这些历史只用于理解省略指代和连续追问，不能作为事实来源，knowledge 始终优先。不要假设自己记得未提供的对话。`,
       ]
     : [];
   return [
@@ -1644,6 +1663,7 @@ export function buildAssistantMessages(
   loggedIn: boolean,
   modelName: string,
   prioritizedActions: CampusAssistantAction[] = [],
+  contextConfig: AiServiceAssistantContextConfig = DEFAULT_CAMPUS_ASSISTANT_CONTEXT,
 ) {
   const promptActions = selectAssistantPromptActions(availableActions, message, prioritizedActions);
   const catalog = promptActions.map((item) => ({
@@ -1652,14 +1672,19 @@ export function buildAssistantMessages(
     description: item.description,
     requireLogin: item.requireLogin,
   }));
+  const selectedHistory = contextConfig.maxMessages > 0
+    ? history.slice(-contextConfig.maxMessages)
+    : history;
   return [
     {
       role: "system" as const,
-      content: buildSystemPrompt(catalog, loggedIn, modelName),
+      content: buildSystemPrompt(catalog, loggedIn, modelName, contextConfig),
     },
-    ...history.slice(-CAMPUS_ASSISTANT_HISTORY_MAX_MESSAGES).map((item) => ({
+    ...selectedHistory.map((item) => ({
       role: item.role,
-      content: item.content.slice(0, CAMPUS_ASSISTANT_HISTORY_MESSAGE_MAX_LENGTH),
+      content: contextConfig.maxCharsPerMessage > 0
+        ? item.content.slice(0, contextConfig.maxCharsPerMessage)
+        : item.content,
     } as const)),
     {
       role: "user" as const,
