@@ -5,7 +5,9 @@ import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } fr
 import { saveMediaAsset } from "./mediaStorage";
 import { isLocalOrPrivateHost } from "../utils/officePreview";
 
-export const CAMPUS_ASSISTANT_IMAGE_MODEL = "image2";
+// The product-facing feature is called image2, while the upstream catalog
+// exposes its actual OpenAI-compatible model id as gpt-image-2.
+export const CAMPUS_ASSISTANT_IMAGE_MODEL = "gpt-image-2";
 const DEFAULT_AI_CHAT_ENDPOINT = "https://api.openai.com/v1/chat/completions";
 const CAMPUS_ASSISTANT_IMAGE_TIMEOUT_MS = 180_000;
 

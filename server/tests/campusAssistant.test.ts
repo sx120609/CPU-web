@@ -1551,7 +1551,7 @@ test("Qwen 路由只向上游发送最近两条受限历史消息", () => {
 });
 
 test("拾间AI由模型语义决定是否启用 image2", () => {
-  assert.equal(CAMPUS_ASSISTANT_IMAGE_MODEL, "image2");
+  assert.equal(CAMPUS_ASSISTANT_IMAGE_MODEL, "gpt-image-2");
   assert.equal(
     resolveCampusAssistantImagePrompt(
       { generateImage: true, imagePrompt: "赛博朋克风格的校园夜景，竖版海报" },
@@ -1623,25 +1623,25 @@ test("拾间AI image2 兼容标准图片端点与常见上游返回格式", () =
     "https://ai.example.com/v1/responses",
   ]);
   assert.deepEqual(attempts[0]?.body, {
-    model: "image2",
+    model: "gpt-image-2",
     prompt: "清雅的国风水墨荷花",
     n: 1,
     size: "1024x1024",
     response_format: "b64_json",
   });
   assert.deepEqual(attempts[1]?.body, {
-    model: "image2",
+    model: "gpt-image-2",
     prompt: "清雅的国风水墨荷花",
     n: 1,
     size: "1024x1024",
   });
   assert.deepEqual(attempts[2]?.body, {
-    model: "image2",
+    model: "gpt-image-2",
     messages: [{ role: "user", content: "清雅的国风水墨荷花" }],
     stream: false,
   });
   assert.deepEqual(attempts[3]?.body, {
-    model: "image2",
+    model: "gpt-image-2",
     input: [{ role: "user", content: [{ type: "input_text", text: "清雅的国风水墨荷花" }] }],
     stream: false,
   });
