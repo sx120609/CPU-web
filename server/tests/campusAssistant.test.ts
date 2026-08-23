@@ -1026,6 +1026,64 @@ test("AI JSON requests preserve a transient primary failure when no fallback mod
   }
 });
 
+test("文字审核可以在主 Ollama 拥堵时快速切换到已配置回退服务", async () => {
+  const originalFetch = globalThis.fetch;
+  const requests: string[] = [];
+  let primaryAborted = false;
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const method = String(init?.method || "GET").toUpperCase();
+    const url = String(input);
+    requests.push(`${method} ${url}`);
+    if (method === "GET") {
+      return new Response('{"data":[{"id":"backup-model"}]}', {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (url.includes("primary-timeout.example")) {
+      return await new Promise<Response>((_resolve, reject) => {
+        const signal = init?.signal;
+        const onAbort = () => {
+          primaryAborted = true;
+          reject(signal?.reason || Object.assign(new Error("aborted"), { name: "AbortError" }));
+        };
+        signal?.addEventListener("abort", onAbort, { once: true });
+        if (signal?.aborted) onAbort();
+      });
+    }
+    return new Response('{"choices":[{"message":{"content":"{\\"risk_score\\":0}"}}]}', {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  try {
+    const startedAt = Date.now();
+    const result = await sendAiJsonRequestWithProviderFallback({
+      providers: [
+        { serviceId: "primary", name: "本地服务", provider: "ollama", apiUrl: "http://primary-timeout.example:11434", apiKey: "" },
+        { serviceId: "backup", name: "云端回退", provider: "openai", apiUrl: "https://backup-timeout.example/v1", apiKey: "backup-key", model: "backup-model" },
+      ],
+      fallbackEndpoint: "https://fallback.example/v1/chat/completions",
+      model: "local-model",
+      messages: [{ role: "user", content: "review this" }],
+      maxTransientRetries: 0,
+      primaryOllamaTimeoutMs: 25,
+    });
+
+    assert.equal(result.provider.serviceId, "backup");
+    assert.equal(primaryAborted, true);
+    assert.ok(Date.now() - startedAt < 1_000);
+    assert.deepEqual(requests, [
+      "POST http://primary-timeout.example:11434/v1/chat/completions",
+      "GET https://backup-timeout.example/v1/model",
+      "POST https://backup-timeout.example/v1/chat/completions",
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("拾间AI只对明确联网或时效性问题启用上游网页搜索", () => {
   assert.equal(shouldUseCampusAssistantWebSearch("请联网搜索中国药科大学最新通知"), true);
   assert.equal(shouldUseCampusAssistantWebSearch("今天南京天气怎么样？"), true);

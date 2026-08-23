@@ -33,7 +33,11 @@ export async function startAiReviewLog(input: AiReviewLogInput) {
   }).catch(() => null);
 }
 
-export async function finishAiReviewLogSuccess(logId: number | null | undefined, responseSummary?: string | null) {
+export async function finishAiReviewLogSuccess(
+  logId: number | null | undefined,
+  responseSummary?: string | null,
+  route?: { provider?: string | null; model?: string | null; endpoint?: string | null },
+) {
   if (!logId) return;
   const now = new Date();
   const existing = await prisma.aiReviewLog.findUnique({
@@ -46,6 +50,9 @@ export async function finishAiReviewLogSuccess(logId: number | null | undefined,
     data: {
       status: "success",
       responseSummary: responseSummary?.slice(0, 4000) || "",
+      ...(route?.provider ? { provider: route.provider.slice(0, 60) } : {}),
+      ...(route?.model ? { model: route.model.slice(0, 120) } : {}),
+      ...(route?.endpoint ? { endpoint: route.endpoint.slice(0, 240) } : {}),
       finishedAt: now,
       durationMs,
     },

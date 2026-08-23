@@ -138,7 +138,17 @@ type AiJsonRequestOptions = {
   ollamaThink?: boolean;
   webSearch?: boolean;
   signal?: AbortSignal;
+  maxTransientRetries?: number;
+  primaryOllamaTimeoutMs?: number;
 };
+
+const INTERACTIVE_TEXT_REVIEW_OPTIONS = {
+  maxTokens: 384,
+  maxTransientRetries: 0,
+  primaryOllamaTimeoutMs: 8_000,
+  preferNativeOllama: true,
+  ollamaThink: false,
+} as const;
 
 export async function requestAiJson(
   messages: AiJsonMessage[] | ((model: string, provider: AiProviderCandidate) => AiJsonMessage[]),
@@ -213,6 +223,8 @@ export async function requestAiJson(
         ollamaThink: options?.ollamaThink,
         webSearch: options?.webSearch,
         signal: options?.signal,
+        maxTransientRetries: options?.maxTransientRetries,
+        primaryOllamaTimeoutMs: options?.primaryOllamaTimeoutMs,
       });
       response = upstreamResult.response;
       responseMode = upstreamResult.mode;
@@ -264,10 +276,19 @@ export async function requestAiJson(
         retryCount: upstreamResult.retryCount,
       }));
     }
-    await finishAiReviewLogSuccess(logId, typeof content === "string" ? content : JSON.stringify(content ?? {}).slice(0, 4000));
+    const effectiveModel = String(upstreamResult.provider.model || model).trim() || model;
+    await finishAiReviewLogSuccess(
+      logId,
+      typeof content === "string" ? content : JSON.stringify(content ?? {}).slice(0, 4000),
+      {
+        provider: upstreamResult.provider.provider,
+        model: effectiveModel,
+        endpoint: upstreamResult.endpoint,
+      },
+    );
     return {
       content,
-      model,
+      model: effectiveModel,
       completion,
       webSearchApplied: upstreamResult.webSearchApplied === true,
       webSearchSources: extractAiJsonWebSearchSources(json),
@@ -353,6 +374,7 @@ export async function reviewTopicContent(input: {
         }),
       },
     ], {
+      ...INTERACTIVE_TEXT_REVIEW_OPTIONS,
       logContext: {
         kind: "topic",
         targetLabel: input.title,
@@ -431,6 +453,7 @@ export async function reviewReplyContent(input: {
         }),
       },
     ], {
+      ...INTERACTIVE_TEXT_REVIEW_OPTIONS,
       logContext: {
         kind: "reply",
         targetLabel: input.topicTitle || input.content.slice(0, 60),
@@ -505,6 +528,7 @@ export async function evaluateTopicEditSimilarity(input: {
       }),
     },
   ], {
+    ...INTERACTIVE_TEXT_REVIEW_OPTIONS,
     logContext: {
       kind: "topic-edit",
       targetLabel: input.updatedTitle || input.originalTitle,
@@ -640,6 +664,11 @@ export async function generateTopicAiTags(input: {
       ].join("\n"),
     },
   ], {
+    maxTokens: 128,
+    maxTransientRetries: 0,
+    primaryOllamaTimeoutMs: 8_000,
+    preferNativeOllama: true,
+    ollamaThink: false,
     promptCacheScope: "topic-tags",
   });
   const parsed = parseTagJson(content);

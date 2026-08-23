@@ -248,6 +248,8 @@ export async function sendAiJsonRequestWithProviderFallback(input: {
   ollamaThink?: boolean;
   webSearch?: boolean;
   signal?: AbortSignal;
+  /** Give a congested primary Ollama route a short budget before trying a configured remote fallback. */
+  primaryOllamaTimeoutMs?: number;
 }): Promise<SendAiJsonRequestWithFallbackResult> {
   let lastError: unknown = null;
   let lastResponseResult: SendAiJsonRequestWithFallbackResult | null = null;
@@ -269,6 +271,12 @@ export async function sendAiJsonRequestWithProviderFallback(input: {
     const messages = typeof input.messages === "function"
       ? input.messages(provider, model)
       : input.messages;
+    const primaryOllamaTimeoutMs = index === 0 && isOllamaEndpoint(provider.provider, provider.apiUrl)
+      ? normalizeAiUpstreamTimeoutMs(input.primaryOllamaTimeoutMs)
+      : null;
+    const providerDeadline = primaryOllamaTimeoutMs
+      ? createAiUpstreamDeadline(input.signal, primaryOllamaTimeoutMs)
+      : null;
     try {
       const result = await sendAiJsonRequest({
         endpoint,
@@ -285,7 +293,7 @@ export async function sendAiJsonRequestWithProviderFallback(input: {
         preferNativeOllama: input.preferNativeOllama,
         ollamaThink: input.ollamaThink,
         webSearch: input.webSearch,
-        signal: input.signal,
+        signal: providerDeadline?.signal ?? input.signal,
       });
       if (result.response.ok || index >= providers.length - 1) {
         return { ...result, provider, endpoint };
@@ -301,9 +309,14 @@ export async function sendAiJsonRequestWithProviderFallback(input: {
       lastError = new Error(`AI 服务 ${provider.name || provider.provider} 返回 HTTP ${result.response.status}`);
     } catch (error) {
       if (input.signal?.aborted) throw error;
-      if (!isTransientAiUpstreamError(error, input.signal)) throw error;
-      lastError = error;
-      if (index >= providers.length - 1) throw error;
+      const effectiveError = providerDeadline?.didTimeout()
+        ? createAiUpstreamTimeoutError(primaryOllamaTimeoutMs ?? undefined)
+        : error;
+      if (!isTransientAiUpstreamError(effectiveError, input.signal)) throw effectiveError;
+      lastError = effectiveError;
+      if (index >= providers.length - 1) throw effectiveError;
+    } finally {
+      providerDeadline?.dispose();
     }
   }
   if (lastResponseResult) return lastResponseResult;
@@ -1115,15 +1128,20 @@ function shouldRetryTransientUpstreamError(error: unknown, signal?: AbortSignal)
   return isTransientAiUpstreamError(error, signal);
 }
 
-function createAiUpstreamDeadline(parentSignal?: AbortSignal) {
+function createAiUpstreamDeadline(parentSignal?: AbortSignal, timeoutMs = AI_UPSTREAM_TIMEOUT_MS) {
   const controller = new AbortController();
+  let timedOut = false;
   const onParentAbort = () => controller.abort(parentSignal?.reason || createAiAbortError());
   if (parentSignal?.aborted) controller.abort(parentSignal.reason || createAiAbortError());
   else parentSignal?.addEventListener("abort", onParentAbort, { once: true });
-  const timer = setTimeout(() => controller.abort(createAiUpstreamTimeoutError()), AI_UPSTREAM_TIMEOUT_MS);
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort(createAiUpstreamTimeoutError(timeoutMs));
+  }, timeoutMs);
   timer.unref?.();
   return {
     signal: controller.signal,
+    didTimeout: () => timedOut,
     dispose() {
       clearTimeout(timer);
       parentSignal?.removeEventListener("abort", onParentAbort);
@@ -1131,11 +1149,17 @@ function createAiUpstreamDeadline(parentSignal?: AbortSignal) {
   };
 }
 
-function createAiUpstreamTimeoutError() {
-  const error = new Error(`AI 上游请求超过 ${Math.round(AI_UPSTREAM_TIMEOUT_MS / 1000)} 秒，已取消`);
+function createAiUpstreamTimeoutError(timeoutMs = AI_UPSTREAM_TIMEOUT_MS) {
+  const error = new Error(`AI 上游请求超过 ${Math.round(timeoutMs / 1000)} 秒，已取消`);
   error.name = "TimeoutError";
   (error as Error & { code?: string }).code = "AI_UPSTREAM_TIMEOUT";
   return error;
+}
+
+function normalizeAiUpstreamTimeoutMs(value: unknown) {
+  const timeoutMs = Number(value);
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return null;
+  return Math.max(250, Math.min(AI_UPSTREAM_TIMEOUT_MS, Math.floor(timeoutMs)));
 }
 
 function createAiAbortError() {
