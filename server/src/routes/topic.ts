@@ -22,7 +22,6 @@ import {
   generateTopicAiTags,
   refreshTopicSubmissionLock,
   requestManualTopicReview,
-  reviewTopicContent,
   shouldBypassAiReviewForUser,
   shouldRunAiReview,
   syncTopicAiTags,
@@ -457,6 +456,7 @@ topicRouter.post("/:id/request-manual-review", authRequired, async (req, res, ne
 
 topicRouter.patch("/:id", authRequired, async (req, res, next) => {
   try {
+    res.setHeader("Cache-Control", "no-store");
     const id = Number(req.params.id);
     const t = await prisma.topic.findUnique({
       where: { id },
@@ -475,6 +475,7 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
     const body = req.body as any;
     const data: any = {};
     let aiTagInput: Parameters<typeof generateTopicAiTags>[0] | null = null;
+    let queuedForReview = false;
     const nextTitle = typeof body.title === "string" && canEditContent ? body.title : t.title;
     const nextContent = typeof body.content === "string" && canEditContent ? body.content : t.content;
     const nextMetadataRaw = typeof body.metadata === "object" && body.metadata ? JSON.stringify(body.metadata) : t.metadata;
@@ -490,8 +491,20 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
       if (t.board?.type === "announce") throw Errors.badRequest("公告板帖子不能设为全局置顶");
     }
 
-    if (isOwner && (typeof body.title === "string" || typeof body.content === "string")) {
+    const hasEditedContent = Boolean(
+      canEditContent && (
+        (typeof body.title === "string" && body.title !== t.title) ||
+        (typeof body.content === "string" && body.content !== t.content) ||
+        (typeof body.metadata === "object" && body.metadata && nextMetadataRaw !== t.metadata)
+      )
+    );
+
+    if (isOwner && hasEditedContent) {
       await ensureUserCanSpeak(req.user!.userId);
+      await ensureUserCanSubmitTopic(req.user!.userId);
+      if (t.aiReviewStatus === "checking") {
+        throw Errors.badRequest("这篇帖子正在审核，请等待本次审核完成后再修改");
+      }
       const similarityThreshold = getSiteConfig().aiEditSimilarityThreshold ?? 0;
       if (similarityThreshold > 0) {
         const similarity = await evaluateTopicEditSimilarity({
@@ -510,56 +523,48 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
         where: { id: t.boardId },
         select: { name: true, type: true },
       });
-      if (shouldRunAiReview() && !bypassAiReview) {
-        const aiResult = await reviewTopicContent({
+      const metadata = typeof body.metadata === "object" && body.metadata ? body.metadata : parseJsonSafe(t.metadata);
+      queuedForReview = shouldRunAiReview() && !bypassAiReview;
+      Object.assign(data, queuedForReview
+        ? {
+            aiReviewStatus: "checking",
+            aiRiskLevel: null,
+            aiRiskScore: null,
+            aiReviewReason: "修改已进入后台审核队列",
+            aiReviewDetail: "",
+            aiModel: null,
+            aiReviewedAt: null,
+            manualReviewedById: null,
+            manualReviewedAt: null,
+            manualReviewNote: null,
+            hidden: true,
+          }
+        : {
+            aiReviewStatus: "auto_passed",
+            aiRiskLevel: "low",
+            aiRiskScore: 0,
+            aiReviewReason: bypassAiReview ? "用户免审，修改已直接发布" : "AI 审核未开启",
+            aiReviewDetail: "",
+            aiModel: null,
+            aiReviewedAt: new Date(),
+            manualReviewedById: null,
+            manualReviewedAt: null,
+            manualReviewNote: null,
+            hidden: false,
+          });
+
+      if (!queuedForReview) {
+        aiTagInput = {
           title: nextTitle,
           content: nextContent,
           boardName: boardInfo?.name,
           boardType: boardInfo?.type,
-          metadata: typeof body.metadata === "object" && body.metadata ? body.metadata : parseJsonSafe(t.metadata),
-        });
-        if (aiResult.status === "blocked_ai") {
-          const imageReview = await summarizeForumImageModerationForContent(nextContent).catch(() => null);
-          const videoReview = await summarizeForumVideoModerationForContent(nextContent).catch(() => null);
-          return ok(res, {
-            ...(await decodeTopicForViewerWithImages(t, req.user)),
-            submissionResult: {
-              status: "blocked_ai",
-              riskLevel: aiResult.riskLevel,
-              riskScore: aiResult.riskScore,
-              reason: aiResult.reason,
-              imageReview,
-              videoReview,
-            },
-          });
-        }
-        data.aiReviewStatus = "auto_passed";
-        data.aiRiskLevel = aiResult.riskLevel;
-        data.aiRiskScore = aiResult.riskScore;
-        data.aiReviewReason = aiResult.reason;
-        data.aiReviewDetail = aiResult.detail;
-        data.aiModel = aiResult.model;
-        data.aiReviewedAt = new Date();
+          metadata,
+        };
       }
-
-      aiTagInput = {
-        title: nextTitle,
-        content: nextContent,
-        boardName: boardInfo?.name,
-        boardType: boardInfo?.type,
-        metadata: typeof body.metadata === "object" && body.metadata ? body.metadata : parseJsonSafe(t.metadata),
-      };
     }
 
-    if (
-      canEditContent &&
-      Object.keys(data).length &&
-      (
-        (typeof body.title === "string" && body.title !== t.title) ||
-        (typeof body.content === "string" && body.content !== t.content) ||
-        (typeof body.metadata === "object" && body.metadata && nextMetadataRaw !== t.metadata)
-      )
-    ) {
+    if (hasEditedContent) {
       data.editCount = { increment: 1 };
     }
 
@@ -579,6 +584,12 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
     } else if (u.hidden) {
       await removeTopicFromGlobalPins(id);
     }
+    if (queuedForReview) {
+      await invalidateForumCaches({ includeCourses: t.board?.type === "coursereview" });
+      scheduleTopicSubmissionReview(u.id);
+      const pendingTopic = await prisma.topic.findUnique({ where: { id: u.id }, include: topicSubmissionInclude });
+      return ok(res.status(202), await presentTopicSubmission(pendingTopic ?? u, req.user));
+    }
     if (aiTagInput) scheduleTopicAiTags(aiTagInput, id);
     if (typeof body.content === "string" && canEditContent) {
       await Promise.all([
@@ -586,12 +597,6 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
         ensureForumVideoAssetsForContent(nextContent, req.user!.userId).catch(() => null),
       ]);
     }
-    const imageReview = typeof body.content === "string" && canEditContent
-      ? await summarizeForumImageModerationForContent(nextContent).catch(() => null)
-      : null;
-    const videoReview = typeof body.content === "string" && canEditContent
-      ? await summarizeForumVideoModerationForContent(nextContent).catch(() => null)
-      : null;
     const topicWithTags = await prisma.topic.findUnique({
       where: { id: u.id },
       include: {
@@ -604,10 +609,7 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
       await invalidateCourseCaches();
     }
     await invalidateForumCaches();
-    ok(res, {
-      ...(await decodeTopicForViewerWithImages(topicWithTags ?? u, req.user)),
-      submissionResult: { status: "published", imageReview, videoReview },
-    });
+    ok(res, await presentTopicSubmission(topicWithTags ?? u, req.user));
   } catch (e) { next(e); }
 });
 

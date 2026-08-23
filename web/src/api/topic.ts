@@ -162,7 +162,7 @@ export const topicApi = {
       suppressErrorMessage: true,
     }),
   update: (id: number, payload: Partial<Topic>) =>
-    request.patch<TopicSubmissionResponse>(`/topics/${id}`, payload, { timeout: 75_000, suppressErrorMessage: true }),
+    request.patch<TopicSubmissionResponse>(`/topics/${id}`, payload, { timeout: 12_000, suppressErrorMessage: true }),
   autoFormat: (payload: { title?: string; content: string; boardSlug?: string; editorMode?: "visual" | "markup" }) =>
     request.post<TopicAutoFormatResult>("/topics/format", payload, { timeout: 60000 }),
   remove: (id: number) => request.delete<any>(`/topics/${id}`),

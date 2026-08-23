@@ -1,6 +1,6 @@
 <template>
   <div class="post-page">
-    <h2 class="page-title">{{ editingId ? '编辑帖子' : '发表新帖' }}</h2>
+    <h2 class="page-title">{{ editingId ? '修改帖子' : '发表新帖' }}</h2>
 
     <div v-if="loadError && !loading" class="cpu-card post-load-state">
       <el-empty :description="loadError">
@@ -245,7 +245,7 @@
         />
 
         <el-form-item class="form-actions">
-          <el-button type="primary" :loading="submitting" :disabled="submitDisabled" @click="submit">{{ editingId ? '预览并保存' : '预览并发布' }}</el-button>
+          <el-button type="primary" :loading="submitting" :disabled="submitDisabled" @click="submit">{{ editingId ? '预览并重新提交' : '预览并发布' }}</el-button>
           <el-button :disabled="submitting" @click="$router.back()">取消</el-button>
         </el-form-item>
       </el-form>
@@ -253,7 +253,7 @@
 
     <el-dialog
       v-model="previewOpen"
-      :title="editingId ? '确认保存修改' : '确认发布帖子'"
+      :title="editingId ? '确认重新提交审核' : '确认发布帖子'"
       width="720px"
       class="publish-preview-dialog"
       append-to-body
@@ -271,7 +271,7 @@
         <span v-if="submitting" class="cpu-muted publish-progress">{{ submissionProgress }}</span>
         <el-button :disabled="submitting" @click="previewOpen = false">返回修改</el-button>
         <el-button type="primary" :loading="submitting" :disabled="submitting" @click="confirmSubmit">
-          {{ submitting ? submissionProgress : (editingId ? '确认保存' : '确认发布') }}
+          {{ submitting ? submissionProgress : (editingId ? '重新提交审核' : '确认发布') }}
         </el-button>
       </template>
     </el-dialog>
@@ -318,6 +318,7 @@ import {
   getForumRequestMessage,
   isAmbiguousForumSubmissionError,
   reconcileForumSubmission,
+  resolveForumReviewState,
   waitForForumSubmissionResult,
 } from "@/utils/forumSubmission";
 
@@ -909,7 +910,7 @@ async function handleTopicSubmissionResult(r: TopicSubmissionResponse, editing =
     const shouldClearCurrentDraft = pendingTopicStillMatchesCurrentDraft();
     clearPendingTopicSubmission();
     if (shouldClearCurrentDraft) clearDrafts();
-    ElMessage.success("帖子已提交审核，正在前往帖子页");
+    ElMessage.success(editing ? "修改已提交审核，正在前往帖子页" : "帖子已提交审核，正在前往帖子页");
     await router.replace(`/forum/topic/${editing ? editingId.value : r.id}`);
     return;
   }
@@ -936,7 +937,7 @@ async function handleTopicSubmissionResult(r: TopicSubmissionResponse, editing =
   notifyImageReviewState(r.submissionResult?.imageReview);
   notifyVideoReviewState(r.submissionResult?.videoReview);
   if (shouldClearCurrentDraft) clearDrafts();
-  ElMessage.success(r.submissionResult?.replayed ? "已确认发布成功" : (editing ? "已保存" : "已发布"));
+  ElMessage.success(r.submissionResult?.replayed ? "已确认发布成功" : (editing ? "修改已发布" : "已发布"));
   if (editing || shouldClearCurrentDraft) {
     await router.replace(`/forum/topic/${editing ? editingId.value : r.id}`);
   } else {
@@ -949,7 +950,7 @@ async function confirmSubmit() {
   const metadata = pendingMetadata.value;
   if (!metadata) return;
   submitting.value = true;
-  submissionProgress.value = "正在进行内容审核…";
+  submissionProgress.value = "正在提交审核…";
   try {
     if (editingId.value) {
       try {
@@ -964,17 +965,27 @@ async function confirmSubmit() {
           ElMessage.error(getForumRequestMessage(error) || "保存失败，请稍后重试");
           return;
         }
-        submissionProgress.value = "连接中断，正在确认保存结果…";
+        submissionProgress.value = "连接中断，正在确认审核状态…";
         const current = await topicApi.detail(editingId.value, { cacheTtlMs: 0, suppressErrorMessage: true }).catch(() => null);
         const saved = current
           && current.title === form.title
           && current.content === form.content
           && JSON.stringify(current.metadata ?? {}) === JSON.stringify(metadata ?? {});
-        if (saved) {
-          await handleTopicSubmissionResult({ ...current, submissionResult: { status: "published", replayed: true } }, true);
+        const reviewState = current ? resolveForumReviewState(current) : "unknown";
+        if (saved && reviewState !== "unknown") {
+          await handleTopicSubmissionResult({
+            ...current,
+            submissionResult: {
+              status: reviewState,
+              reason: current.aiReviewReason || undefined,
+              riskLevel: current.aiRiskLevel || undefined,
+              riskScore: current.aiRiskScore ?? undefined,
+              replayed: true,
+            },
+          }, true);
           return;
         }
-        ElMessage.warning("暂未确认保存结果，内容仍保留在编辑器中，请稍后重试");
+        ElMessage.warning("暂未确认审核状态，内容仍保留在编辑器中，请稍后重试");
       }
       return;
     }

@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   FORUM_SELF_VISIBLE_REVIEW_STATUSES,
   forumContentVisibilityWhere,
+  forumReviewSnapshotWhere,
   forumSubmissionResultForReview,
   isForumSubmissionUniqueConflict,
   normalizeForumSubmissionId,
@@ -37,6 +38,16 @@ test("论坛幂等写入只把 Prisma 唯一约束冲突识别为可恢复重放
   assert.equal(isForumSubmissionUniqueConflict({ code: "P2002" }), true);
   assert.equal(isForumSubmissionUniqueConflict({ code: "P2025" }), false);
   assert.equal(isForumSubmissionUniqueConflict(new Error("network")), false);
+});
+
+test("后台审核只允许写回自己读取到的内容版本", () => {
+  const updatedAt = new Date("2026-08-24T12:34:56.000Z");
+  assert.deepEqual(forumReviewSnapshotWhere(42, updatedAt), {
+    id: 42,
+    aiReviewStatus: "checking",
+    hidden: true,
+    updatedAt,
+  });
 });
 
 test("异步论坛审核状态会稳定映射为前端可恢复的提交结果", () => {

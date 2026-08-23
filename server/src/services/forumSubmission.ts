@@ -34,6 +34,15 @@ export function isForumSubmissionUniqueConflict(error: unknown) {
   return Boolean(error && typeof error === "object" && (error as { code?: unknown }).code === "P2002");
 }
 
+export function forumReviewSnapshotWhere(id: number, updatedAt: Date) {
+  return {
+    id,
+    aiReviewStatus: "checking",
+    hidden: true,
+    updatedAt,
+  } as const;
+}
+
 export function forumSubmissionResultForReview(input: {
   aiReviewStatus?: string | null;
   hidden?: boolean | null;

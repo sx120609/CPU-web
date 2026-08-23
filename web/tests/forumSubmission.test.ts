@@ -4,6 +4,7 @@ import {
   createForumSubmissionId,
   isAmbiguousForumSubmissionError,
   reconcileForumSubmission,
+  resolveForumReviewState,
 } from "../src/utils/forumSubmission";
 
 test("客户端为帖子和回复生成可复用且互不混淆的提交 ID", () => {
@@ -18,6 +19,15 @@ test("只有无响应或服务端错误才需要查询发布结果", () => {
   assert.equal(isAmbiguousForumSubmissionError(new Error("timeout")), true);
   assert.equal(isAmbiguousForumSubmissionError({ response: { status: 502 } }), true);
   assert.equal(isAmbiguousForumSubmissionError({ response: { status: 400 } }), false);
+});
+
+test("编辑结果只在服务端明确公开后才判定为通过", () => {
+  assert.equal(resolveForumReviewState({ aiReviewStatus: "checking", hidden: true }), "pending");
+  assert.equal(resolveForumReviewState({ aiReviewStatus: "blocked_ai", hidden: true }), "blocked_ai");
+  assert.equal(resolveForumReviewState({ aiReviewStatus: "review_failed", hidden: true }), "failed");
+  assert.equal(resolveForumReviewState({ aiReviewStatus: "auto_passed", hidden: false }), "published");
+  assert.equal(resolveForumReviewState({ aiReviewStatus: "checking", hidden: false }), "pending");
+  assert.equal(resolveForumReviewState({ aiReviewStatus: "blocked_ai", hidden: false }), "unknown");
 });
 
 test("结果确认会容忍暂时 404 并在记录出现后返回", async () => {

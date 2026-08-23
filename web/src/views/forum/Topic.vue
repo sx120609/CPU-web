@@ -38,7 +38,7 @@
           <el-icon><ArrowLeft /></el-icon> {{ backLabel }}
         </button>
         <div class="actions">
-          <el-button v-if="canEdit" text :disabled="isTopicActionBusy" @click="onEdit">编辑</el-button>
+          <el-button v-if="canEdit" text :disabled="isTopicActionBusy || topicEditDisabled" @click="onEdit">{{ topicEditLabel }}</el-button>
           <el-button v-if="canPin && !isReadOnly" text :loading="topicActionBusy === 'pin'" :disabled="isTopicActionBusy" @click="onPin">{{ topic.pinned ? '取消板块置顶' : '板块置顶' }}</el-button>
           <el-button v-if="canPin && !isReadOnly" text :loading="topicActionBusy === 'globalPin'" :disabled="isTopicActionBusy" @click="onGlobalPin">{{ topic.globalPinned ? '取消全局置顶' : '全局置顶' }}</el-button>
           <el-button v-if="canPin" text :loading="topicActionBusy === 'lock'" :disabled="isTopicActionBusy" @click="onLock">{{ topic.locked ? '解锁' : '锁帖' }}</el-button>
@@ -159,6 +159,9 @@
           <p v-if="topic.aiReviewReason" class="cpu-muted">{{ topic.aiReviewReason }}</p>
           <p class="cpu-muted">内容已经保留，你可以直接编辑后重新提交。</p>
         </div>
+        <div class="topic-review-actions">
+          <el-button type="primary" @click="onEdit">修改后重新提交</el-button>
+        </div>
       </div>
 
       <div v-if="canAdminReviewTopicManual" class="topic-admin-review-tip cpu-card">
@@ -195,6 +198,7 @@
           <p class="cpu-muted">你可以修改后再试，或申请人工复核。复核期间暂时不能继续提交新内容。</p>
         </div>
         <div class="topic-review-actions">
+          <el-button type="primary" :disabled="requestingTopicManualReview" @click="onEdit">修改后重新提交</el-button>
           <el-button type="warning" :loading="requestingTopicManualReview" :disabled="requestingTopicManualReview" @click="topicManualReviewConfirmOpen = true">申请人工复核</el-button>
         </div>
       </div>
@@ -663,6 +667,7 @@ import {
   getForumRequestMessage,
   isAmbiguousForumSubmissionError,
   reconcileForumSubmission,
+  resolveForumReviewState,
   waitForForumSubmissionResult,
 } from "@/utils/forumSubmission";
 
@@ -850,6 +855,12 @@ const isOwnTopicManualReviewPending = computed(() => Boolean(
   topic.value?.hidden &&
   ["manual_requested", "manual_reviewing"].includes(String(topic.value?.aiReviewStatus || ""))
 ));
+const topicEditDisabled = computed(() => isOwnTopicChecking.value || isOwnTopicManualReviewPending.value);
+const topicEditLabel = computed(() => (
+  canRequestTopicManualReview.value || isOwnTopicReviewFailed.value
+    ? "修改并重新提交"
+    : "编辑"
+));
 const canPin = computed(() => auth.isMod);
 const canReviewTopicImages = computed(() => (
   auth.isMod &&
@@ -1003,15 +1014,16 @@ function scheduleTopicReviewPoll() {
       const previousStatus = topic.value?.aiReviewStatus;
       topic.value = latest;
       writeForumTopic(forumCacheScope(auth.user), id, { topic: latest, replies: replies.value });
-      if (latest.hidden && latest.aiReviewStatus === "checking") {
+      const latestReviewState = resolveForumReviewState(latest);
+      if (latestReviewState === "pending") {
         scheduleTopicReviewPoll();
         return;
       }
-      if (previousStatus === "checking" && !latest.hidden) {
+      if (previousStatus === "checking" && latestReviewState === "published") {
         ElMessage.success("审核已通过，帖子现在已经公开");
-      } else if (latest.aiReviewStatus === "blocked_ai") {
+      } else if (latestReviewState === "blocked_ai") {
         ElMessage.warning("帖子暂未通过审核，你可以修改内容或申请人工复核");
-      } else if (latest.aiReviewStatus === "review_failed") {
+      } else if (latestReviewState === "failed") {
         ElMessage.error("审核服务暂时未能完成处理，帖子内容已经保留");
       }
     } catch {
@@ -1921,7 +1933,7 @@ function hexToRgba(hex: string, alpha: number) {
 }
 
 function onEdit() {
-  if (isTopicActionBusy.value) return;
+  if (isTopicActionBusy.value || topicEditDisabled.value) return;
   router.push({ name: "edit-post", params: { id: topic.value!.id } });
 }
 

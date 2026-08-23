@@ -2,6 +2,8 @@ import { prisma } from "../prisma";
 import { invalidateForumCaches } from "./cacheInvalidation";
 import { ensureForumImageAssetsForContent } from "./imageModeration";
 import { ensureForumVideoAssetsForContent } from "./videoModeration";
+import { refreshBoardTopicCounts, refreshUserPostCount } from "./forumStats";
+import { forumReviewSnapshotWhere } from "./forumSubmission";
 import {
   generateTopicAiTags,
   notifyTopicAiBlocked,
@@ -29,8 +31,7 @@ export function scheduleTopicSubmissionReview(topicId: number) {
   activeTopicReviews.add(topicId);
   setTimeout(() => {
     void processTopicSubmissionReview(topicId)
-      .catch((error) => failTopicSubmissionReview(topicId, error))
-      .catch((error) => console.warn(`[forum-review] topic ${topicId} failure handler failed`, error instanceof Error ? error.message : error))
+      .catch((error) => console.warn(`[forum-review] topic ${topicId} processing failed`, error instanceof Error ? error.message : error))
       .finally(() => activeTopicReviews.delete(topicId));
   }, 0).unref?.();
 }
@@ -99,63 +100,67 @@ async function processTopicSubmissionReview(topicId: number) {
     },
   });
   if (!topic) return;
-  const metadata = parseJsonObject(topic.metadata);
-  const result = await reviewTopicContent({
-    title: topic.title,
-    content: topic.content,
-    boardName: topic.board.name,
-    boardType: topic.board.type,
-    metadata,
-  });
-  const blocked = result.status === "blocked_ai";
-  const finalized = await prisma.$transaction(async (tx) => {
-    const updated = await tx.topic.updateMany({
-      where: { id: topic.id, aiReviewStatus: "checking", hidden: true },
-      data: {
-        aiReviewStatus: result.status,
-        aiRiskLevel: result.riskLevel,
-        aiRiskScore: result.riskScore,
-        aiReviewReason: result.reason,
-        aiReviewDetail: result.detail,
-        aiModel: result.model,
-        aiReviewedAt: new Date(),
-        hidden: blocked,
-      },
-    });
-    if (updated.count !== 1) return false;
-    if (!blocked) {
-      await tx.user.update({ where: { id: topic.authorId }, data: { postCount: { increment: 1 } } });
-      await tx.board.update({ where: { id: topic.boardId }, data: { topicCount: { increment: 1 } } });
-    }
-    return true;
-  });
-  if (!finalized) return;
-
-  if (blocked) {
-    await notifyTopicAiBlocked({
-      topicId: topic.id,
-      userId: topic.authorId,
+  try {
+    const metadata = parseJsonObject(topic.metadata);
+    const result = await reviewTopicContent({
       title: topic.title,
-      reason: result.reason,
-      riskScore: result.riskScore,
-    }).catch(() => undefined);
-    await invalidateForumCaches({ includeCourses: topic.board.type === "coursereview" });
-    return;
-  }
+      content: topic.content,
+      boardName: topic.board.name,
+      boardType: topic.board.type,
+      metadata,
+    });
+    const blocked = result.status === "blocked_ai";
+    const finalized = await prisma.$transaction(async (tx) => {
+      const updated = await tx.topic.updateMany({
+        where: forumReviewSnapshotWhere(topic.id, topic.updatedAt),
+        data: {
+          aiReviewStatus: result.status,
+          aiRiskLevel: result.riskLevel,
+          aiRiskScore: result.riskScore,
+          aiReviewReason: result.reason,
+          aiReviewDetail: result.detail,
+          aiModel: result.model,
+          aiReviewedAt: new Date(),
+          hidden: blocked,
+        },
+      });
+      if (updated.count !== 1) return false;
+      await Promise.all([
+        refreshUserPostCount(topic.authorId, tx),
+        refreshBoardTopicCounts([topic.boardId], tx),
+      ]);
+      return true;
+    });
+    if (!finalized) return;
 
-  await Promise.all([
-    runNonCriticalSideEffect(`topic ${topic.id} media registration`, () => registerTopicMedia(topic.content, topic.authorId)),
-    runNonCriticalSideEffect(`topic ${topic.id} AI tags`, () => generateAndSyncTopicTags(topic)),
-    runNonCriticalSideEffect(`topic ${topic.id} course rating`, () => createCourseRatingIfNeeded(topic, metadata)),
-    notifySubmissionResult({
-      userId: topic.authorId,
-      title: "你的帖子已通过审核并发布",
-      content: topic.title,
-      link: `/forum/topic/${topic.id}`,
-      payload: { type: "topic-submission-published", topicId: topic.id, submissionId: topic.submissionId },
-    }),
-  ]);
-  await invalidateForumCaches({ includeCourses: topic.board.type === "coursereview" }).catch(() => undefined);
+    if (blocked) {
+      await notifyTopicAiBlocked({
+        topicId: topic.id,
+        userId: topic.authorId,
+        title: topic.title,
+        reason: result.reason,
+        riskScore: result.riskScore,
+      }).catch(() => undefined);
+      await invalidateForumCaches({ includeCourses: topic.board.type === "coursereview" });
+      return;
+    }
+
+    await Promise.all([
+      runNonCriticalSideEffect(`topic ${topic.id} media registration`, () => registerTopicMedia(topic.content, topic.authorId)),
+      runNonCriticalSideEffect(`topic ${topic.id} AI tags`, () => generateAndSyncTopicTags(topic)),
+      runNonCriticalSideEffect(`topic ${topic.id} course rating`, () => createCourseRatingIfNeeded(topic, metadata)),
+      notifySubmissionResult({
+        userId: topic.authorId,
+        title: "你的帖子已通过审核并发布",
+        content: topic.title,
+        link: `/forum/topic/${topic.id}`,
+        payload: { type: "topic-submission-published", topicId: topic.id, submissionId: topic.submissionId },
+      }),
+    ]);
+    await invalidateForumCaches({ includeCourses: topic.board.type === "coursereview" }).catch(() => undefined);
+  } catch (error) {
+    await failTopicSubmissionReview(topicId, error, topic.updatedAt);
+  }
 }
 
 async function processReplySubmissionReview(replyId: number) {
@@ -251,17 +256,20 @@ async function processReplySubmissionReview(replyId: number) {
   await invalidateForumCaches().catch(() => undefined);
 }
 
-async function failTopicSubmissionReview(topicId: number, error: unknown) {
+async function failTopicSubmissionReview(topicId: number, error: unknown, expectedUpdatedAt?: Date) {
   const reason = reviewFailureReason(error);
+  const snapshotWhere = expectedUpdatedAt
+    ? forumReviewSnapshotWhere(topicId, expectedUpdatedAt)
+    : { id: topicId, aiReviewStatus: "checking", hidden: true } as const;
   const current = await prisma.topic.findFirst({
-    where: { id: topicId, aiReviewStatus: "checking", hidden: true },
+    where: snapshotWhere,
     select: { authorId: true, title: true, submissionId: true, aiReviewDetail: true },
   });
   if (!current) return;
   const attempt = reviewAttempt(current.aiReviewDetail) + 1;
   if (attempt < MAX_REVIEW_ATTEMPTS) {
     await prisma.topic.updateMany({
-      where: { id: topicId, aiReviewStatus: "checking", hidden: true },
+      where: snapshotWhere,
       data: {
         aiReviewReason: `${reason}，系统将自动重试（${attempt}/${MAX_REVIEW_ATTEMPTS}）`,
         aiReviewDetail: attemptDetail(attempt, error),
@@ -271,7 +279,7 @@ async function failTopicSubmissionReview(topicId: number, error: unknown) {
     return;
   }
   const updated = await prisma.topic.updateMany({
-    where: { id: topicId, aiReviewStatus: "checking", hidden: true },
+    where: snapshotWhere,
     data: { aiReviewStatus: "review_failed", aiReviewReason: reason, aiReviewDetail: attemptDetail(attempt, error), aiReviewedAt: new Date() },
   }).catch(() => ({ count: 0 }));
   if (updated.count !== 1) return;
