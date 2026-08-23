@@ -1,4 +1,10 @@
 .replies {
+  .reply-review-count {
+    color: #b45309;
+    font-size: 12px;
+    font-weight: 500;
+  }
+
   .replies-loading {
     display: grid;
     gap: 16px;

@@ -917,6 +917,11 @@ async function handleTopicSubmissionResult(r: TopicSubmissionResponse, editing =
     ElMessage.error(r.submissionResult.reason || "审核服务暂时不可用，草稿已保留，请稍后重试");
     return;
   }
+  if (r.submissionResult?.status === "deleted") {
+    clearPendingTopicSubmission();
+    ElMessage.info("这篇帖子已经删除");
+    return;
+  }
   if (r.submissionResult?.status === "blocked_ai") {
     clearPendingTopicSubmission();
     blockedTopicId.value = editing ? editingId.value : r.id;

@@ -241,7 +241,10 @@
 
     <!-- 回复列表 -->
     <section class="replies cpu-card" ref="repliesEl">
-      <h3 class="cpu-section-title">{{ topic.replyCount }} 条回复</h3>
+      <h3 class="cpu-section-title">
+        {{ topic.replyCount }} 条公开回复
+        <span v-if="ownHiddenReplyCount" class="reply-review-count">· {{ ownHiddenReplyCount }} 条仅自己可见</span>
+      </h3>
       <div v-if="repliesLoading" class="replies-loading" aria-busy="true">
         <el-skeleton animated :rows="3" />
         <el-skeleton animated :rows="3" />
@@ -747,6 +750,7 @@ const canReply = computed(() =>
   auth.isLoggedIn && !topic.value?.hidden && !topic.value?.locked && auth.user?.status !== "muted"
 );
 const replyParentPreview = computed(() => replies.value.find((item) => item.id === replyParentId.value) ?? null);
+const ownHiddenReplyCount = computed(() => replies.value.filter((item) => item.hidden).length);
 const displayReplies = computed(() => {
   const byId = new Map(replies.value.map((item) => [item.id, item] as const));
   const children = new Map<number, Reply[]>();
@@ -1316,21 +1320,36 @@ async function monitorPendingReplySubmission(submissionId: string) {
 async function handleReplySubmissionResult(r: ReplySubmissionResponse) {
   if (replyAnonymous.value) await auth.fetchMe();
   if (r.submissionResult?.status === "pending") {
+    const acceptedCurrentDraft = pendingReplyStillMatchesCurrentDraft();
     replyDialogOpen.value = false;
-    const existingIndex = replies.value.findIndex((item) => item.id === r.id);
-    if (existingIndex >= 0) replies.value[existingIndex] = { ...replies.value[existingIndex], ...r } as Reply;
-    else replies.value.push({ ...r, _liked: false } as Reply);
-    ElMessage.success("回复已提交后台审核，可以继续浏览；完成后会通知你");
+    upsertReplySubmission(r);
+    if (acceptedCurrentDraft) {
+      replyText.value = "";
+      replyAnonymous.value = false;
+      replyParentId.value = null;
+      replyEditorRef.value?.clearDraft();
+    }
+    ElMessage.success("评论已提交审核，已在评论区标记为仅自己可见");
     const submissionId = r.submissionId || pendingReplySubmission.value?.submissionId;
     if (submissionId) void monitorPendingReplySubmission(submissionId);
+    nextTick(() => document.getElementById(`reply-${r.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" }));
     return;
   }
   if (r.submissionResult?.status === "failed") {
+    upsertReplySubmission(r);
+    clearPendingReplySubmission();
     replyDialogOpen.value = false;
-    ElMessage.error(r.submissionResult.reason || "审核服务暂时不可用，回复草稿已保留，请稍后重试");
+    ElMessage.error(r.submissionResult.reason || "评论审核暂未完成，内容已保留在评论区，可编辑后重新提交");
+    return;
+  }
+  if (r.submissionResult?.status === "deleted") {
+    clearPendingReplySubmission();
+    replies.value = replies.value.filter((item) => item.id !== r.id);
+    ElMessage.info("这条评论已经删除");
     return;
   }
   if (r.submissionResult?.status === "blocked_ai") {
+    upsertReplySubmission(r);
     clearPendingReplySubmission();
     blockedReplyId.value = r.id ?? null;
     blockedReplyInfo.reason = r.submissionResult.reason || "检测到较高风险内容";
@@ -1341,10 +1360,7 @@ async function handleReplySubmissionResult(r: ReplySubmissionResponse) {
   }
   const shouldClearCurrentDraft = pendingReplyStillMatchesCurrentDraft();
   clearPendingReplySubmission();
-  const existingIndex = replies.value.findIndex((item) => item.id === r.id);
-  const wasHidden = existingIndex >= 0 && Boolean(replies.value[existingIndex]?.hidden);
-  if (existingIndex >= 0) replies.value[existingIndex] = { ...replies.value[existingIndex], ...r } as any;
-  else replies.value.push({ ...r, _liked: false } as any);
+  const { existingIndex, wasHidden } = upsertReplySubmission(r);
   if (shouldClearCurrentDraft) {
     replyText.value = "";
     replyAnonymous.value = false;
@@ -1353,9 +1369,17 @@ async function handleReplySubmissionResult(r: ReplySubmissionResponse) {
     replyEditorRef.value?.clearDraft();
   }
   if (topic.value && (existingIndex < 0 || wasHidden)) topic.value.replyCount += 1;
-  ElMessage.success(r.submissionResult?.replayed ? "已确认回复发布成功" : "回复已发布");
-  if (!shouldClearCurrentDraft) ElMessage.info("此前提交的回复已发布；当前新草稿已保留");
+  ElMessage.success(wasHidden ? "评论审核已通过，现已公开" : (r.submissionResult?.replayed ? "已确认评论发布成功" : "评论已发布"));
+  if (!shouldClearCurrentDraft && !wasHidden) ElMessage.info("此前提交的评论已发布；当前新草稿已保留");
   nextTick(() => repliesEl.value?.scrollIntoView({ behavior: "smooth", block: "end" }));
+}
+
+function upsertReplySubmission(r: ReplySubmissionResponse) {
+  const existingIndex = replies.value.findIndex((item) => item.id === r.id);
+  const wasHidden = existingIndex >= 0 && Boolean(replies.value[existingIndex]?.hidden);
+  if (existingIndex >= 0) replies.value[existingIndex] = { ...replies.value[existingIndex], ...r } as Reply;
+  else replies.value.push({ ...r, _liked: false } as Reply);
+  return { existingIndex, wasHidden };
 }
 
 async function submitReply() {

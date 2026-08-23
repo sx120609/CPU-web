@@ -57,6 +57,13 @@ export function forumSubmissionResultForReview(input: {
       replayed: input.replayed === true,
     };
   }
+  if (status === "deleted") {
+    return {
+      status: "deleted",
+      reason: input.reason || "内容已删除",
+      replayed: input.replayed === true,
+    };
+  }
   if (input.hidden && status === "blocked_ai") {
     return {
       status: "blocked_ai",

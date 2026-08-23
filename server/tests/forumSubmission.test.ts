@@ -72,4 +72,9 @@ test("异步论坛审核状态会稳定映射为前端可恢复的提交结果",
     status: "published",
     replayed: false,
   });
+  assert.deepEqual(forumSubmissionResultForReview({ aiReviewStatus: "deleted", hidden: true }), {
+    status: "deleted",
+    reason: "内容已删除",
+    replayed: false,
+  });
 });
