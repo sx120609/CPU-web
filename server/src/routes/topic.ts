@@ -17,7 +17,6 @@ import {
 } from "../services/siteSettings";
 import { refreshBoardTopicCounts, refreshUserPostCount } from "../services/forumStats";
 import {
-  evaluateTopicEditSimilarity,
   ensureUserCanSubmitTopic,
   generateTopicAiTags,
   refreshTopicSubmissionLock,
@@ -37,6 +36,7 @@ import { invalidateCourseCaches, invalidateForumCaches } from "../services/cache
 import { isRetiredBoardSlug, visibleBoardSlugFilter } from "../services/retiredBoards";
 import { getReactionSummary } from "../services/vip";
 import {
+  encodeTopicEditReviewContext,
   forumContentVisibilityWhere,
   forumSubmissionResultForReview,
   isForumSubmissionUniqueConflict,
@@ -505,19 +505,6 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
       if (t.aiReviewStatus === "checking") {
         throw Errors.badRequest("这篇帖子正在审核，请等待本次审核完成后再修改");
       }
-      const similarityThreshold = getSiteConfig().aiEditSimilarityThreshold ?? 0;
-      if (similarityThreshold > 0) {
-        const similarity = await evaluateTopicEditSimilarity({
-          originalTitle: t.title,
-          originalContent: t.content,
-          updatedTitle: nextTitle,
-          updatedContent: nextContent,
-        });
-        if (similarity.similarity < similarityThreshold) {
-          const reasonSuffix = similarity.reason ? `：${similarity.reason}` : "";
-          throw Errors.badRequest(`修改后的内容与原内容相似度过低（${Math.round(similarity.similarity * 100)}%），未达到站点要求${reasonSuffix}`);
-        }
-      }
       const bypassAiReview = await shouldBypassAiReviewForUser(req.user!.userId, req.user!.role);
       const boardInfo = await prisma.board.findUnique({
         where: { id: t.boardId },
@@ -525,13 +512,20 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
       });
       const metadata = typeof body.metadata === "object" && body.metadata ? body.metadata : parseJsonSafe(t.metadata);
       queuedForReview = shouldRunAiReview() && !bypassAiReview;
+      const similarityThreshold = getSiteConfig().aiEditSimilarityThreshold ?? 0;
       Object.assign(data, queuedForReview
         ? {
             aiReviewStatus: "checking",
             aiRiskLevel: null,
             aiRiskScore: null,
             aiReviewReason: "修改已进入后台审核队列",
-            aiReviewDetail: "",
+            aiReviewDetail: similarityThreshold > 0
+              ? encodeTopicEditReviewContext({
+                  originalTitle: t.title,
+                  originalContent: t.content,
+                  similarityThreshold,
+                })
+              : "",
             aiModel: null,
             aiReviewedAt: null,
             manualReviewedById: null,

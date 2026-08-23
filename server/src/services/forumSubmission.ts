@@ -1,5 +1,15 @@
 const FORUM_SUBMISSION_ID_PATTERN = /^(?:topic|reply)-[a-z0-9][a-z0-9-]{7,79}$/u;
 
+export type TopicEditReviewContext = {
+  kind: "topic-edit";
+  version: 1;
+  originalTitle: string;
+  originalContent: string;
+  similarityThreshold: number;
+  attempt: number;
+  lastError?: string;
+};
+
 export const FORUM_SELF_VISIBLE_REVIEW_STATUSES = [
   "checking",
   "review_failed",
@@ -41,6 +51,44 @@ export function forumReviewSnapshotWhere(id: number, updatedAt: Date) {
     hidden: true,
     updatedAt,
   } as const;
+}
+
+export function encodeTopicEditReviewContext(input: {
+  originalTitle: string;
+  originalContent: string;
+  similarityThreshold: number;
+}) {
+  return JSON.stringify({
+    kind: "topic-edit",
+    version: 1,
+    originalTitle: input.originalTitle,
+    originalContent: input.originalContent,
+    similarityThreshold: Math.max(0, Math.min(1, Number(input.similarityThreshold) || 0)),
+    attempt: 0,
+  } satisfies TopicEditReviewContext);
+}
+
+export function parseTopicEditReviewContext(value: string | null | undefined): TopicEditReviewContext | null {
+  try {
+    const parsed = JSON.parse(value || "{}");
+    if (
+      parsed?.kind !== "topic-edit"
+      || parsed?.version !== 1
+      || typeof parsed.originalTitle !== "string"
+      || typeof parsed.originalContent !== "string"
+    ) return null;
+    return {
+      kind: "topic-edit",
+      version: 1,
+      originalTitle: parsed.originalTitle,
+      originalContent: parsed.originalContent,
+      similarityThreshold: Math.max(0, Math.min(1, Number(parsed.similarityThreshold) || 0)),
+      attempt: Math.max(0, Math.floor(Number(parsed.attempt) || 0)),
+      ...(typeof parsed.lastError === "string" && parsed.lastError ? { lastError: parsed.lastError.slice(0, 500) } : {}),
+    };
+  } catch {
+    return null;
+  }
 }
 
 export function forumSubmissionResultForReview(input: {

@@ -2,11 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   FORUM_SELF_VISIBLE_REVIEW_STATUSES,
+  encodeTopicEditReviewContext,
   forumContentVisibilityWhere,
   forumReviewSnapshotWhere,
   forumSubmissionResultForReview,
   isForumSubmissionUniqueConflict,
   normalizeForumSubmissionId,
+  parseTopicEditReviewContext,
 } from "../src/services/forumSubmission";
 
 test("论坛列表只向作者本人补充审核生命周期中的隐藏内容", () => {
@@ -48,6 +50,23 @@ test("后台审核只允许写回自己读取到的内容版本", () => {
     hidden: true,
     updatedAt,
   });
+});
+
+test("编辑相似度上下文可以随异步队列持久化并恢复", () => {
+  const encoded = encodeTopicEditReviewContext({
+    originalTitle: "原标题",
+    originalContent: "原正文",
+    similarityThreshold: 0.7,
+  });
+  assert.deepEqual(parseTopicEditReviewContext(encoded), {
+    kind: "topic-edit",
+    version: 1,
+    originalTitle: "原标题",
+    originalContent: "原正文",
+    similarityThreshold: 0.7,
+    attempt: 0,
+  });
+  assert.equal(parseTopicEditReviewContext("[attempt:1] timeout"), null);
 });
 
 test("异步论坛审核状态会稳定映射为前端可恢复的提交结果", () => {

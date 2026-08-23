@@ -3,8 +3,9 @@ import { invalidateForumCaches } from "./cacheInvalidation";
 import { ensureForumImageAssetsForContent } from "./imageModeration";
 import { ensureForumVideoAssetsForContent } from "./videoModeration";
 import { refreshBoardTopicCounts, refreshUserPostCount } from "./forumStats";
-import { forumReviewSnapshotWhere } from "./forumSubmission";
+import { forumReviewSnapshotWhere, parseTopicEditReviewContext, type TopicEditReviewContext } from "./forumSubmission";
 import {
+  evaluateTopicEditSimilarity,
   generateTopicAiTags,
   notifyTopicAiBlocked,
   reviewReplyContent,
@@ -102,13 +103,50 @@ async function processTopicSubmissionReview(topicId: number) {
   if (!topic) return;
   try {
     const metadata = parseJsonObject(topic.metadata);
-    const result = await reviewTopicContent({
-      title: topic.title,
-      content: topic.content,
-      boardName: topic.board.name,
-      boardType: topic.board.type,
-      metadata,
-    });
+    const editContext = parseTopicEditReviewContext(topic.aiReviewDetail);
+    let result: Awaited<ReturnType<typeof reviewTopicContent>>;
+    if (editContext && editContext.similarityThreshold > 0) {
+      const similarity = await evaluateTopicEditSimilarity({
+        originalTitle: editContext.originalTitle,
+        originalContent: editContext.originalContent,
+        updatedTitle: topic.title,
+        updatedContent: topic.content,
+      });
+      if (similarity.similarity < editContext.similarityThreshold) {
+        const riskScore = Math.round((1 - similarity.similarity) * 100);
+        const reasonSuffix = similarity.reason ? `：${similarity.reason}` : "";
+        result = {
+          status: "blocked_ai",
+          riskLevel: riskScore >= 80 ? "high" : "medium",
+          riskScore,
+          reason: `修改后的内容与原内容相似度过低（${Math.round(similarity.similarity * 100)}%），未达到站点要求${reasonSuffix}`.slice(0, 120),
+          detail: JSON.stringify({
+            kind: "topic-edit-similarity",
+            similarity: similarity.similarity,
+            threshold: editContext.similarityThreshold,
+            reason: similarity.reason,
+            detail: similarity.detail,
+          }),
+          model: similarity.model,
+        };
+      } else {
+        result = await reviewTopicContent({
+          title: topic.title,
+          content: topic.content,
+          boardName: topic.board.name,
+          boardType: topic.board.type,
+          metadata,
+        });
+      }
+    } else {
+      result = await reviewTopicContent({
+        title: topic.title,
+        content: topic.content,
+        boardName: topic.board.name,
+        boardType: topic.board.type,
+        metadata,
+      });
+    }
     const blocked = result.status === "blocked_ai";
     const finalized = await prisma.$transaction(async (tx) => {
       const updated = await tx.topic.updateMany({
@@ -272,7 +310,7 @@ async function failTopicSubmissionReview(topicId: number, error: unknown, expect
       where: snapshotWhere,
       data: {
         aiReviewReason: `${reason}，系统将自动重试（${attempt}/${MAX_REVIEW_ATTEMPTS}）`,
-        aiReviewDetail: attemptDetail(attempt, error),
+        aiReviewDetail: attemptDetail(attempt, error, current.aiReviewDetail),
         aiReviewedAt: new Date(),
       },
     }).catch(() => undefined);
@@ -280,7 +318,7 @@ async function failTopicSubmissionReview(topicId: number, error: unknown, expect
   }
   const updated = await prisma.topic.updateMany({
     where: snapshotWhere,
-    data: { aiReviewStatus: "review_failed", aiReviewReason: reason, aiReviewDetail: attemptDetail(attempt, error), aiReviewedAt: new Date() },
+    data: { aiReviewStatus: "review_failed", aiReviewReason: reason, aiReviewDetail: attemptDetail(attempt, error, current.aiReviewDetail), aiReviewedAt: new Date() },
   }).catch(() => ({ count: 0 }));
   if (updated.count !== 1) return;
   await notifySubmissionResult({
@@ -509,11 +547,21 @@ function reviewFailureReason(error: unknown) {
 }
 
 function reviewAttempt(detail: string | null | undefined) {
+  const editContext = parseTopicEditReviewContext(detail);
+  if (editContext) return editContext.attempt;
   const match = String(detail || "").match(/^\[attempt:(\d+)\]/);
   return match ? Math.max(0, Number(match[1]) || 0) : 0;
 }
 
-function attemptDetail(attempt: number, error: unknown) {
+function attemptDetail(attempt: number, error: unknown, previousDetail?: string | null) {
   const detail = error instanceof Error ? `${error.name}: ${error.message}` : String(error || "unknown error");
+  const editContext = parseTopicEditReviewContext(previousDetail);
+  if (editContext) {
+    return JSON.stringify({
+      ...editContext,
+      attempt,
+      lastError: detail.slice(0, 500),
+    } satisfies TopicEditReviewContext);
+  }
   return `[attempt:${attempt}] ${detail}`.slice(0, 4000);
 }
