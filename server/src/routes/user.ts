@@ -11,6 +11,7 @@ import { releaseExpiredMutes } from "../services/userModeration";
 import { buildPublicUser, buildSelfUser } from "../utils/publicUser";
 import { decodeTopicForViewer } from "../services/forumPresentation";
 import { visibleBoardSlugFilter } from "../services/retiredBoards";
+import { forumContentVisibilityWhere } from "../services/forumSubmission";
 import { isVipActive, VIP_PROFILE_FRAMES, VIP_PROFILE_THEMES } from "../services/vip";
 
 export const userRouter = Router();
@@ -118,7 +119,7 @@ userRouter.get("/:id/topics", async (req, res, next) => {
     const list = await prisma.topic.findMany({
       where: {
         authorId: id,
-        hidden: false,
+        ...forumContentVisibilityWhere(req.user?.userId === id ? id : null),
         board: { type: { in: enabledBoardTypes() }, ...visibleBoardSlugFilter() },
         ...(canSeeAnonymous ? {} : { isAnonymous: false }),
       },

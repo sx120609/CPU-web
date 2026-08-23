@@ -906,9 +906,11 @@ async function handleTopicSubmissionResult(r: TopicSubmissionResponse, editing =
   if (form.anonymous) await auth.fetchMe();
   previewOpen.value = false;
   if (r.submissionResult?.status === "pending") {
-    ElMessage.success("已提交后台审核，可以离开此页；完成后会通知你");
-    const submissionId = r.submissionId || pendingSubmissionAttempt.value?.submissionId;
-    if (submissionId) void monitorPendingTopicSubmission(submissionId);
+    const shouldClearCurrentDraft = pendingTopicStillMatchesCurrentDraft();
+    clearPendingTopicSubmission();
+    if (shouldClearCurrentDraft) clearDrafts();
+    ElMessage.success("帖子已提交审核，正在前往帖子页");
+    await router.replace(`/forum/topic/${editing ? editingId.value : r.id}`);
     return;
   }
   if (r.submissionResult?.status === "failed") {

@@ -8,6 +8,7 @@ import { resolveForumAccess } from "../services/forumAccess";
 import { decodeTopicForViewer } from "../services/forumPresentation";
 import { buildUserTrustSnapshot } from "../services/userTrust";
 import { visibleBoardSlugFilter } from "../services/retiredBoards";
+import { FORUM_SELF_VISIBLE_REVIEW_STATUSES, forumContentVisibilityWhere } from "../services/forumSubmission";
 
 export const homeRouter = Router();
 const HOME_HIDDEN_SERVICE_CODES = ["DORM_REPAIR"];
@@ -68,6 +69,25 @@ homeRouter.get("/summary", async (req, res, next) => {
         return { pinnedTopics, hotTopics, latestTopics, announce, services };
       },
     );
+    const ownReviewTopics = forumAccessEnabled && userId ? await prisma.topic.findMany({
+      where: {
+        hidden: true,
+        authorId: userId,
+        aiReviewStatus: { in: [...FORUM_SELF_VISIBLE_REVIEW_STATUSES] },
+        id: { notIn: globalPinnedIds },
+        board: { type: { in: contentBoardTypes }, ...visibleBoardSlugFilter() },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+      include: {
+        board: { select: { slug: true, name: true, color: true, type: true } },
+        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, vipLevel: true, vipExpiresAt: true, profileTheme: true, profileFrame: true } },
+        tags: { include: { tag: true } },
+      },
+    }) : [];
+    const latestTopics = [...ownReviewTopics, ...publicSummary.latestTopics]
+      .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 10);
 
     const unreadCount = personalUnread + (globalCount - (globalReads as any[]).length);
 
@@ -90,7 +110,7 @@ homeRouter.get("/summary", async (req, res, next) => {
         hotScore: computeHotScore(item, isRecentTopic(item)),
         ...decodeTopicForViewer(item, req.user),
       })) : [],
-      latestTopics: forumAccessEnabled ? publicSummary.latestTopics.map((item: any) => decodeTopicForViewer(item, req.user)) : [],
+      latestTopics: forumAccessEnabled ? latestTopics.map((item: any) => decodeTopicForViewer(item, req.user)) : [],
       announce: publicSummary.announce.map((item: any) => decodeTopicForViewer(item, req.user)),
       services: publicSummary.services
         .filter((s) => !HOME_HIDDEN_SERVICE_CODES.includes(s.code))
@@ -125,8 +145,12 @@ homeRouter.get("/latest-feed", async (req, res, next) => {
     const size = Math.min(50, Math.max(10, Number(req.query.size ?? LATEST_FEED_DEFAULT_SIZE)));
     const contentBoardTypes = enabledBoardTypes().filter((type) => type !== "announce");
     const globalPinnedIds = getGlobalPinnedTopicIds();
-    const where = { hidden: false, id: { notIn: globalPinnedIds }, board: { type: { in: contentBoardTypes }, ...visibleBoardSlugFilter() } } as const;
-    const cached = await withCache("home", ["latest-feed-v2", page, size], 60_000, async () => {
+    const where = {
+      ...forumContentVisibilityWhere(userId),
+      id: { notIn: globalPinnedIds },
+      board: { type: { in: contentBoardTypes }, ...visibleBoardSlugFilter() },
+    };
+    const cached = await withCache("home", ["latest-feed-v3", userId ? `viewer-${userId}` : "public", page, size], 60_000, async () => {
       const [pins, list, total] = await Promise.all([
         listGlobalPinnedTopics(globalPinnedIds, contentBoardTypes, 20),
         prisma.topic.findMany({

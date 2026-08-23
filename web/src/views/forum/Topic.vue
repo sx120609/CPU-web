@@ -147,6 +147,20 @@
         <el-button v-if="canReviewTopicVideos" link type="warning" @click="openTopicVideoReviewDialog">手动复核视频</el-button>
       </div>
 
+      <div v-if="isOwnTopicChecking" class="topic-review-tip cpu-card topic-review-tip-pending">
+        <div class="review-blocked">
+          <p>帖子已经提交，正在后台审核。</p>
+          <p class="cpu-muted">现在只有你自己和管理员能看到；审核通过后会自动公开，并同步出现在首页和板块列表。</p>
+        </div>
+      </div>
+      <div v-else-if="isOwnTopicReviewFailed" class="topic-review-tip cpu-card topic-review-tip-failed">
+        <div class="review-blocked">
+          <p>本次审核暂时没有完成，帖子仍然只有你自己和管理员可见。</p>
+          <p v-if="topic.aiReviewReason" class="cpu-muted">{{ topic.aiReviewReason }}</p>
+          <p class="cpu-muted">内容已经保留，你可以直接编辑后重新提交。</p>
+        </div>
+      </div>
+
       <div v-if="canAdminReviewTopicManual" class="topic-admin-review-tip cpu-card">
         <div class="review-blocked">
           <p>这篇稿件当前处于人工复核队列，可直接在这里处理。</p>
@@ -190,7 +204,7 @@
 
       <MarkdownView :content="displayContent" class="post-body topic-markdown" clickable-images media-loading="eager" />
 
-      <div v-if="topic.reactions?.length" class="reaction-strip">
+      <div v-if="!topic.hidden && topic.reactions?.length" class="reaction-strip">
         <button
           v-for="reaction in topic.reactions"
           :key="reaction.key"
@@ -203,7 +217,7 @@
           {{ reactionEmoji(reaction.key) }} {{ reaction.count }}
         </button>
       </div>
-      <div v-if="auth.user?.vipActive" class="reaction-picker">
+      <div v-if="!topic.hidden && auth.user?.vipActive" class="reaction-picker">
         <button
           v-for="reaction in reactionCatalog"
           :key="reaction.key"
@@ -216,11 +230,11 @@
       </div>
 
       <footer class="post-foot">
-        <el-button :type="liked ? 'primary' : 'default'" :icon="Star" :loading="topicActionBusy === 'like'" :disabled="isTopicActionBusy" @click="onLike">
+        <el-button :type="liked ? 'primary' : 'default'" :icon="Star" :loading="topicActionBusy === 'like'" :disabled="isTopicActionBusy || topic.hidden" @click="onLike">
           {{ liked ? '已点赞' : '点赞' }} · {{ topic.likeCount }}
         </el-button>
-        <el-button :icon="ChatLineRound" @click="openReplyDialog">回复 · {{ topic.replyCount }}</el-button>
-        <el-button @click="shareDialogOpen = true">分享</el-button>
+        <el-button :icon="ChatLineRound" :disabled="!canReply" @click="openReplyDialog">回复 · {{ topic.replyCount }}</el-button>
+        <el-button :disabled="topic.hidden" @click="shareDialogOpen = true">分享</el-button>
       </footer>
 
     </article>
@@ -245,7 +259,8 @@
           <UserAvatar :size="32" class="avatar" :src="entry.item.author?.avatar" :name="entry.item.author?.nickname" :profile-frame="entry.item.author?.profileFrame" alt="回复头像" />
           <div class="reply-body">
             <div class="reply-meta">
-              <span class="floor">#{{ entry.item.floor }}</span>
+              <span class="floor">{{ entry.item.hidden ? "待审核" : `#${entry.item.floor}` }}</span>
+              <el-tag v-if="replyReviewLabel(entry.item)" size="small" type="warning" effect="plain">{{ replyReviewLabel(entry.item) }}</el-tag>
               <router-link v-if="entry.item.author?.id" :to="`/u/${entry.item.author.id}`" class="author">{{ entry.item.author?.nickname }}</router-link>
               <span v-else class="author">{{ entry.item.author?.nickname }}</span>
               <el-tag v-if="entry.item.isAnonymous" size="small" type="warning" effect="plain">匿名</el-tag>
@@ -271,7 +286,7 @@
               compact-quotes
               media-loading="eager"
             />
-            <div v-if="entry.item.reactions?.length" class="reaction-strip reply-reactions">
+            <div v-if="!entry.item.hidden && entry.item.reactions?.length" class="reaction-strip reply-reactions">
               <button
                 v-for="reaction in entry.item.reactions"
                 :key="reaction.key"
@@ -282,7 +297,7 @@
                 @click="toggleReplyReaction(entry.item, reaction.key)"
               >{{ reactionEmoji(reaction.key) }} {{ reaction.count }}</button>
             </div>
-            <div v-if="auth.user?.vipActive" class="reaction-picker reply-reaction-picker">
+            <div v-if="!entry.item.hidden && auth.user?.vipActive" class="reaction-picker reply-reaction-picker">
               <button
                 v-for="reaction in reactionCatalog"
                 :key="reaction.key"
@@ -294,10 +309,10 @@
               >{{ reaction.emoji }}</button>
             </div>
             <div class="reply-actions">
-              <el-button text size="small" @click="replyTo(entry.item)">回复</el-button>
+              <el-button v-if="!entry.item.hidden" text size="small" @click="replyTo(entry.item)">回复</el-button>
               <el-button v-if="canEditReply(entry.item)" text size="small" @click="editReply(entry.item)">编辑</el-button>
               <el-button v-if="canEditReply(entry.item)" text size="small" type="danger" :loading="replyActionBusyId === entry.item.id" :disabled="replyActionBusyId !== null" @click="removeReply(entry.item)">删除</el-button>
-              <el-button text size="small" :loading="replyLikeBusyId === entry.item.id" :disabled="replyLikeBusyId !== null" @click="onLikeReply(entry.item)">👍 {{ entry.item.likeCount }}</el-button>
+              <el-button v-if="!entry.item.hidden" text size="small" :loading="replyLikeBusyId === entry.item.id" :disabled="replyLikeBusyId !== null" @click="onLikeReply(entry.item)">👍 {{ entry.item.likeCount }}</el-button>
             </div>
           </div>
         </div>
@@ -710,6 +725,8 @@ const reactionCatalog = [
 ];
 let loadSeq = 0;
 let shareCardQrSeq = 0;
+let topicReviewPollSeq = 0;
+let topicReviewPollTimer: ReturnType<typeof setTimeout> | null = null;
 const repliesEl = ref<HTMLElement | null>(null);
 const replyEditorRef = ref<InstanceType<typeof RichTextEditor> | null>(null);
 const shareCardExportRef = ref<HTMLElement | null>(null);
@@ -727,7 +744,7 @@ const topicModerationUser = computed(() => {
   return null;
 });
 const canReply = computed(() =>
-  auth.isLoggedIn && !topic.value?.locked && auth.user?.status !== "muted"
+  auth.isLoggedIn && !topic.value?.hidden && !topic.value?.locked && auth.user?.status !== "muted"
 );
 const replyParentPreview = computed(() => replies.value.find((item) => item.id === replyParentId.value) ?? null);
 const displayReplies = computed(() => {
@@ -805,6 +822,18 @@ const canRequestTopicManualReview = computed(() => Boolean(
   auth.user?.id === topic.value?.authorId &&
   topic.value?.hidden &&
   topic.value?.aiReviewStatus === "blocked_ai"
+));
+const isOwnTopicChecking = computed(() => Boolean(
+  auth.isLoggedIn &&
+  auth.user?.id === topic.value?.authorId &&
+  topic.value?.hidden &&
+  topic.value?.aiReviewStatus === "checking"
+));
+const isOwnTopicReviewFailed = computed(() => Boolean(
+  auth.isLoggedIn &&
+  auth.user?.id === topic.value?.authorId &&
+  topic.value?.hidden &&
+  topic.value?.aiReviewStatus === "review_failed"
 ));
 const canAdminReviewTopicManual = computed(() => Boolean(
   auth.isMod &&
@@ -913,11 +942,15 @@ function renderLocalQrDataUrl(value: string, width: number) {
 
 watch(() => route.params.id, () => {
   pendingReplyMonitorSeq += 1;
+  topicReviewPollSeq += 1;
+  clearTopicReviewPollTimer();
   void load();
 }, { immediate: true });
 
 onBeforeUnmount(() => {
   pendingReplyMonitorSeq += 1;
+  topicReviewPollSeq += 1;
+  clearTopicReviewPollTimer();
 });
 
 watch(replyAnonymousEnabled, (enabled) => {
@@ -945,6 +978,45 @@ watch(replyDialogOpen, (open) => {
     replyParentId.value = null;
   }
 });
+
+function clearTopicReviewPollTimer() {
+  if (topicReviewPollTimer !== null) {
+    clearTimeout(topicReviewPollTimer);
+    topicReviewPollTimer = null;
+  }
+}
+
+function scheduleTopicReviewPoll() {
+  clearTopicReviewPollTimer();
+  if (!topic.value?.hidden || topic.value.aiReviewStatus !== "checking") return;
+  const id = topic.value.id;
+  const seq = topicReviewPollSeq;
+  topicReviewPollTimer = setTimeout(async () => {
+    topicReviewPollTimer = null;
+    try {
+      const latest = await topicApi.detail(id, { cacheTtlMs: 0, suppressErrorMessage: true });
+      if (seq !== topicReviewPollSeq || Number(route.params.id) !== id) return;
+      const previousStatus = topic.value?.aiReviewStatus;
+      topic.value = latest;
+      writeForumTopic(forumCacheScope(auth.user), id, { topic: latest, replies: replies.value });
+      if (latest.hidden && latest.aiReviewStatus === "checking") {
+        scheduleTopicReviewPoll();
+        return;
+      }
+      if (previousStatus === "checking" && !latest.hidden) {
+        ElMessage.success("审核已通过，帖子现在已经公开");
+      } else if (latest.aiReviewStatus === "blocked_ai") {
+        ElMessage.warning("帖子暂未通过审核，你可以修改内容或申请人工复核");
+      } else if (latest.aiReviewStatus === "review_failed") {
+        ElMessage.error("审核服务暂时未能完成处理，帖子内容已经保留");
+      }
+    } catch {
+      if (seq === topicReviewPollSeq && topic.value?.hidden && topic.value.aiReviewStatus === "checking") {
+        scheduleTopicReviewPoll();
+      }
+    }
+  }, 1_200);
+}
 
 async function load() {
   const seq = ++loadSeq;
@@ -978,6 +1050,7 @@ async function load() {
     if (seq !== loadSeq) return;
     topic.value = nextTopic;
     replies.value = nextReplies;
+    scheduleTopicReviewPoll();
     restorePendingReplySubmission();
     if (pendingReplySubmission.value) void monitorPendingReplySubmission(pendingReplySubmission.value.submissionId);
     // 我是否赞过
@@ -1045,6 +1118,7 @@ function normalizeTopicLoadError(error: unknown) {
 
 async function onLike() {
   if (topicActionBusy.value) return;
+  if (topic.value?.hidden) return;
   if (!auth.isLoggedIn) { router.push({ name: "login", query: { redirect: route.fullPath } }); return; }
   topicActionBusy.value = "like";
   try {
@@ -1076,6 +1150,17 @@ function replyTo(r: Reply) {
 
 function reactionEmoji(key: string) {
   return reactionCatalog.find((item) => item.key === key)?.emoji || "✨";
+}
+
+function replyReviewLabel(reply: Reply) {
+  if (!reply.hidden) return "";
+  const status = String(reply.aiReviewStatus || "");
+  if (status === "checking") return "审核中 · 仅自己可见";
+  if (status === "review_failed") return "审核暂未完成";
+  if (["manual_requested", "manual_reviewing"].includes(status)) return "人工复核中";
+  if (status === "blocked_ai") return "暂未通过审核";
+  if (status === "rejected_manual") return "人工复核未通过";
+  return "仅自己可见";
 }
 
 async function toggleTopicReaction(key: string) {
@@ -1143,6 +1228,10 @@ function openReplyDialog() {
   }
   if (topic.value?.locked) {
     ElMessage.warning("该帖已锁定，无法回复");
+    return false;
+  }
+  if (topic.value?.hidden) {
+    ElMessage.info("帖子通过审核后才能回复");
     return false;
   }
   if (auth.user?.status === "muted") {
@@ -1228,6 +1317,9 @@ async function handleReplySubmissionResult(r: ReplySubmissionResponse) {
   if (replyAnonymous.value) await auth.fetchMe();
   if (r.submissionResult?.status === "pending") {
     replyDialogOpen.value = false;
+    const existingIndex = replies.value.findIndex((item) => item.id === r.id);
+    if (existingIndex >= 0) replies.value[existingIndex] = { ...replies.value[existingIndex], ...r } as Reply;
+    else replies.value.push({ ...r, _liked: false } as Reply);
     ElMessage.success("回复已提交后台审核，可以继续浏览；完成后会通知你");
     const submissionId = r.submissionId || pendingReplySubmission.value?.submissionId;
     if (submissionId) void monitorPendingReplySubmission(submissionId);
@@ -1250,6 +1342,7 @@ async function handleReplySubmissionResult(r: ReplySubmissionResponse) {
   const shouldClearCurrentDraft = pendingReplyStillMatchesCurrentDraft();
   clearPendingReplySubmission();
   const existingIndex = replies.value.findIndex((item) => item.id === r.id);
+  const wasHidden = existingIndex >= 0 && Boolean(replies.value[existingIndex]?.hidden);
   if (existingIndex >= 0) replies.value[existingIndex] = { ...replies.value[existingIndex], ...r } as any;
   else replies.value.push({ ...r, _liked: false } as any);
   if (shouldClearCurrentDraft) {
@@ -1259,7 +1352,7 @@ async function handleReplySubmissionResult(r: ReplySubmissionResponse) {
     replyDialogOpen.value = false;
     replyEditorRef.value?.clearDraft();
   }
-  if (topic.value && existingIndex < 0) topic.value.replyCount += 1;
+  if (topic.value && (existingIndex < 0 || wasHidden)) topic.value.replyCount += 1;
   ElMessage.success(r.submissionResult?.replayed ? "已确认回复发布成功" : "回复已发布");
   if (!shouldClearCurrentDraft) ElMessage.info("此前提交的回复已发布；当前新草稿已保留");
   nextTick(() => repliesEl.value?.scrollIntoView({ behavior: "smooth", block: "end" }));

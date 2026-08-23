@@ -1,10 +1,30 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  FORUM_SELF_VISIBLE_REVIEW_STATUSES,
+  forumContentVisibilityWhere,
   forumSubmissionResultForReview,
   isForumSubmissionUniqueConflict,
   normalizeForumSubmissionId,
 } from "../src/services/forumSubmission";
+
+test("论坛列表只向作者本人补充审核生命周期中的隐藏内容", () => {
+  assert.deepEqual(forumContentVisibilityWhere(null), { hidden: false });
+  assert.deepEqual(forumContentVisibilityWhere(42), {
+    OR: [
+      { hidden: false },
+      {
+        hidden: true,
+        authorId: 42,
+        aiReviewStatus: { in: [...FORUM_SELF_VISIBLE_REVIEW_STATUSES] },
+      },
+    ],
+  });
+  assert.equal(FORUM_SELF_VISIBLE_REVIEW_STATUSES.includes("checking"), true);
+  assert.equal(FORUM_SELF_VISIBLE_REVIEW_STATUSES.includes("rejected_manual"), true);
+  assert.equal((FORUM_SELF_VISIBLE_REVIEW_STATUSES as readonly string[]).includes("auto_passed"), false);
+  assert.equal((FORUM_SELF_VISIBLE_REVIEW_STATUSES as readonly string[]).includes("deleted"), false);
+});
 
 test("论坛提交 ID 只接受匹配类型的稳定客户端标识", () => {
   assert.equal(normalizeForumSubmissionId("topic-12345678-abcd", "topic"), "topic-12345678-abcd");

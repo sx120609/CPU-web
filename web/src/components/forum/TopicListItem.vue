@@ -15,6 +15,9 @@
         <el-tag v-if="topic.board" size="small" :style="{ background: topic.board.color || '#168776', color: '#fff', border: 'none' }" class="tag">
           {{ boardDisplayName }}
         </el-tag>
+        <el-tag v-if="reviewState" size="small" :type="reviewState.type" effect="plain" class="tag review-tag">
+          {{ reviewState.label }}
+        </el-tag>
         <span class="title">{{ topic.title }}</span>
         <el-tag
           v-for="tag in aiTags"
@@ -74,6 +77,16 @@ const metaRating = computed(() => {
 });
 const hotScore = computed(() => Math.round((props.topic.likeCount ?? 0) * 5 + (props.topic.replyCount ?? 0) * 3 + (props.topic.viewCount ?? 0) * 0.03));
 const aiTags = computed(() => Array.isArray(props.topic.tags) ? props.topic.tags.slice(0, 2) : []);
+const reviewState = computed(() => {
+  if (!props.topic.hidden) return null;
+  const status = String(props.topic.aiReviewStatus || "");
+  if (status === "checking") return { label: "审核中 · 仅自己可见", type: "warning" as const };
+  if (status === "review_failed") return { label: "审核暂未完成", type: "danger" as const };
+  if (status === "blocked_ai") return { label: "暂未通过审核", type: "danger" as const };
+  if (["manual_requested", "manual_reviewing"].includes(status)) return { label: "人工复核中", type: "warning" as const };
+  if (status === "rejected_manual") return { label: "人工复核未通过", type: "danger" as const };
+  return { label: "仅自己可见", type: "info" as const };
+});
 const restorableRouteNames = new Set(["board", "forum-latest", "forum-hot"]);
 
 function openTopic() {
@@ -113,6 +126,7 @@ function openTopic() {
 .line1 { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
 .tag { flex-shrink: 0; }
 .ai-tag { --el-tag-border-color: #fdba74; --el-tag-hover-color: #9a3412; }
+.review-tag { font-weight: 600; }
 .title { flex: 1 1 240px; font-size: 15px; color: var(--cpu-text); font-weight: 500; min-width: 0; overflow-wrap: anywhere; }
 
 .line2 {

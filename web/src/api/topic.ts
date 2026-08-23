@@ -59,6 +59,9 @@ export interface Reply {
   anonymousAlias?: string | null;
   parentReplyId?: number | null;
   floor: number;
+  hidden?: boolean;
+  aiReviewStatus?: string;
+  aiReviewReason?: string | null;
   likeCount: number;
   createdAt: string;
   reactions?: ForumReaction[];

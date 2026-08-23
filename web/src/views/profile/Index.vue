@@ -367,6 +367,7 @@
         >
           <span class="tag" :style="{ background: t.board?.color || '#168776' }">{{ t.board?.name }}</span>
           <span v-if="t.isAnonymous" class="anon-tag">匿名</span>
+          <span v-if="topicReviewLabel(t)" class="review-tag">{{ topicReviewLabel(t) }}</span>
           <span class="title">{{ t.title }}</span>
           <span class="meta">{{ fmtRelative(t.createdAt) }}</span>
         </div>
@@ -881,6 +882,17 @@ async function removeAvatar() {
 
 function openMyTopic(id: number) {
   router.push(`/forum/topic/${id}`);
+}
+
+function topicReviewLabel(topic: any) {
+  if (!topic?.hidden) return "";
+  const status = String(topic.aiReviewStatus || "");
+  if (status === "checking") return "审核中 · 仅自己可见";
+  if (status === "review_failed") return "审核暂未完成";
+  if (["manual_requested", "manual_reviewing"].includes(status)) return "人工复核中";
+  if (status === "blocked_ai") return "暂未通过审核";
+  if (status === "rejected_manual") return "人工复核未通过";
+  return "仅自己可见";
 }
 
 function normalizeProfileLoadError(error: unknown, fallback = "个人中心加载失败，请稍后重试") {
@@ -1521,6 +1533,7 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
 }
 .tag { color: #fff; font-size: 11px; padding: 2px 6px; border-radius: 4px; flex-shrink: 0; }
 .anon-tag { color: #7c3aed; font-size: 12px; font-weight: 600; }
+.review-tag { color: #b45309; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 999px; padding: 2px 7px; font-size: 11px; font-weight: 600; flex-shrink: 0; }
 .title { font-size: 14px; flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .meta { font-size: 12px; color: var(--cpu-text-muted); flex-shrink: 0; }
 

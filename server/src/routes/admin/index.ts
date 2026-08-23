@@ -1080,7 +1080,7 @@ adminRouter.delete("/topics/:id", modOrAbove, async (req, res, next) => {
       });
     } else {
       await prisma.$transaction(async (tx) => {
-        await tx.topic.update({ where: { id }, data: { hidden: true } });
+        await tx.topic.update({ where: { id }, data: { hidden: true, aiReviewStatus: "deleted" } });
         if (!topic.hidden) {
           await Promise.all([
             refreshBoardTopicCounts([topic.boardId], tx),

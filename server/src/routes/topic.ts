@@ -38,6 +38,7 @@ import { invalidateCourseCaches, invalidateForumCaches } from "../services/cache
 import { isRetiredBoardSlug, visibleBoardSlugFilter } from "../services/retiredBoards";
 import { getReactionSummary } from "../services/vip";
 import {
+  forumContentVisibilityWhere,
   forumSubmissionResultForReview,
   isForumSubmissionUniqueConflict,
   normalizeForumSubmissionId,
@@ -128,7 +129,7 @@ topicRouter.get("/", async (req, res, next) => {
       if (!forumAccessEnabled) throw Errors.forbidden(requesterId ? "请先开启论坛功能并确认使用须知" : "请先登录并开启论坛功能");
     }
 
-    const where: any = { hidden: false };
+    const where: any = { ...forumContentVisibilityWhere(requesterId) };
     if (boardId) where.boardId = boardId;
     else where.board = { type: { in: enabledBoardTypes() }, ...visibleBoardSlugFilter() };
     if (pinnedMode === "only") where.pinned = true;
@@ -142,7 +143,7 @@ topicRouter.get("/", async (req, res, next) => {
 
     const cached = await withCache(
       "forum-list",
-      ["topic-list-v2", boardSlug || "all", page, size, sort, pinnedMode],
+      ["topic-list-v3", requesterId ? `viewer-${requesterId}` : "public", boardSlug || "all", page, size, sort, pinnedMode],
       60_000,
       async () => {
         const [list, total] = await Promise.all([
@@ -247,6 +248,7 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
             where: { id: existing.id },
             data: { aiReviewStatus: "checking", aiReviewReason: "内容已重新进入后台审核队列", aiReviewDetail: "", aiReviewedAt: null },
           });
+          await invalidateForumCaches();
           scheduleTopicSubmissionReview(existing.id);
           const retried = await findTopicSubmission(userId, submissionId);
           return ok(res.status(202), await presentTopicSubmission(retried ?? existing, req.user, true));
@@ -332,6 +334,7 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
     }
 
     if (shouldReview) {
+      await invalidateForumCaches({ includeCourses: board.type === "coursereview" });
       scheduleTopicSubmissionReview(topic.id);
       const pendingTopic = await prisma.topic.findUnique({ where: { id: topic.id }, include: topicSubmissionInclude });
       return ok(res.status(202), await presentTopicSubmission(
@@ -624,7 +627,7 @@ topicRouter.delete("/:id", authRequired, async (req, res, next) => {
     if (!isMod && !isBoardTypeEnabled(t.board?.type)) throw Errors.forbidden(featureClosedMessage(t.board?.type));
     if (isOwner) await ensureForumAccessEnabled(req.user!.userId, req.user!.role);
     await prisma.$transaction(async (tx) => {
-      await tx.topic.update({ where: { id }, data: { hidden: true } });
+      await tx.topic.update({ where: { id }, data: { hidden: true, aiReviewStatus: "deleted" } });
       if (!t.hidden) {
         await Promise.all([
           refreshBoardTopicCounts([t.boardId], tx),
@@ -650,12 +653,16 @@ topicRouter.get("/:id/replies", async (req, res, next) => {
       where: { id },
       include: { board: { select: { slug: true, type: true } } },
     });
-    if (!topic || topic.hidden) throw Errors.notFound("帖子不存在");
+    if (!topic) throw Errors.notFound("帖子不存在");
+    const requesterId = req.user?.userId ?? null;
+    const requesterRole = req.user?.role ?? "";
+    const canSeeHidden = Boolean(requesterId && (requesterId === topic.authorId || requesterRole === "admin" || requesterRole === "mod"));
+    if (topic.hidden && !canSeeHidden) throw Errors.notFound("帖子不存在");
     if (isRetiredBoardSlug(topic.board?.slug)) throw Errors.notFound("帖子不存在");
     if (!isBoardTypeEnabled(topic.board?.type)) throw Errors.forbidden(featureClosedMessage(topic.board?.type));
     await ensureCanReadBoardType(topic.board?.type, req.user?.userId ?? null, req.user?.role ?? null);
     const list = await prisma.reply.findMany({
-      where: { topicId: id, hidden: false },
+      where: { topicId: id, ...forumContentVisibilityWhere(requesterId) },
       orderBy: { floor: "asc" },
       include: {
         author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, vipLevel: true, vipExpiresAt: true, profileTheme: true, profileFrame: true } },

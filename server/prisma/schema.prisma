@@ -224,7 +224,7 @@ model Topic {
   //   coursereview: {"courseId":12,"ratings":{"difficulty":3,"reward":5,"recommend":4,"score":2}}
   //   announce:     {"sourceUrl":"...", "publishedAt":"2026-05-14"}
   metadata           String    @default("{}")
-  aiReviewStatus     String    @default("none") // none / checking / auto_passed / blocked_ai / manual_requested / manual_reviewing / approved_manual / rejected_manual
+  aiReviewStatus     String    @default("none") // none / checking / auto_passed / blocked_ai / manual_requested / manual_reviewing / approved_manual / rejected_manual / review_failed / deleted
   aiRiskLevel        String? // low / medium / high
   aiRiskScore        Int? // 0-100
   aiReviewReason     String?
@@ -274,7 +274,7 @@ model Reply {
   // 客户端发布操作 ID：用于网络超时后的结果确认与幂等重试。
   submissionId   String?
   content        String // Markdown
-  aiReviewStatus String    @default("none") // none / auto_passed / blocked_ai / manual_requested / manual_reviewing / approved_manual / rejected_manual
+  aiReviewStatus String    @default("none") // none / checking / auto_passed / blocked_ai / manual_requested / manual_reviewing / approved_manual / rejected_manual / review_failed / deleted
   aiRiskLevel    String?
   aiRiskScore    Int?
   aiReviewReason String?

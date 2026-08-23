@@ -1,5 +1,28 @@
 const FORUM_SUBMISSION_ID_PATTERN = /^(?:topic|reply)-[a-z0-9][a-z0-9-]{7,79}$/u;
 
+export const FORUM_SELF_VISIBLE_REVIEW_STATUSES = [
+  "checking",
+  "review_failed",
+  "blocked_ai",
+  "manual_requested",
+  "manual_reviewing",
+  "rejected_manual",
+] as const;
+
+export function forumContentVisibilityWhere(viewerId?: number | null) {
+  if (!viewerId) return { hidden: false };
+  return {
+    OR: [
+      { hidden: false },
+      {
+        hidden: true,
+        authorId: viewerId,
+        aiReviewStatus: { in: [...FORUM_SELF_VISIBLE_REVIEW_STATUSES] },
+      },
+    ],
+  };
+}
+
 export function normalizeForumSubmissionId(value: unknown, kind: "topic" | "reply") {
   const normalized = String(value || "").trim().toLowerCase();
   if (!normalized) return null;
