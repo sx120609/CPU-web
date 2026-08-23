@@ -620,7 +620,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, nextTick, watch } from "vue";
+import { ref, reactive, computed, nextTick, onBeforeUnmount, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { toPng } from "html-to-image";
@@ -645,6 +645,7 @@ import {
   getForumRequestMessage,
   isAmbiguousForumSubmissionError,
   reconcileForumSubmission,
+  waitForForumSubmissionResult,
 } from "@/utils/forumSubmission";
 
 const route = useRoute();
@@ -659,6 +660,7 @@ const loadError = ref("");
 const replying = ref(false);
 const replySubmissionProgress = ref("");
 const pendingReplySubmission = ref<{ fingerprint: string; submissionId: string } | null>(null);
+let pendingReplyMonitorSeq = 0;
 const replyText = ref("");
 const replyAnonymous = ref(false);
 const replyDialogOpen = ref(false);
@@ -910,8 +912,13 @@ function renderLocalQrDataUrl(value: string, width: number) {
 }
 
 watch(() => route.params.id, () => {
+  pendingReplyMonitorSeq += 1;
   void load();
 }, { immediate: true });
+
+onBeforeUnmount(() => {
+  pendingReplyMonitorSeq += 1;
+});
 
 watch(replyAnonymousEnabled, (enabled) => {
   if (!enabled) replyAnonymous.value = false;
@@ -971,6 +978,8 @@ async function load() {
     if (seq !== loadSeq) return;
     topic.value = nextTopic;
     replies.value = nextReplies;
+    restorePendingReplySubmission();
+    if (pendingReplySubmission.value) void monitorPendingReplySubmission(pendingReplySubmission.value.submissionId);
     // 我是否赞过
     if (auth.isLoggedIn) {
       try {
@@ -1159,12 +1168,78 @@ function getReplySubmissionId(fingerprint: string) {
   }
   const submissionId = createForumSubmissionId("reply");
   pendingReplySubmission.value = { fingerprint, submissionId };
+  persistPendingReplySubmission();
   return submissionId;
+}
+
+function pendingReplyStorageKey() {
+  return `cpu-forum-pending-reply-${Number(route.params.id) || 0}`;
+}
+
+function persistPendingReplySubmission() {
+  try {
+    if (pendingReplySubmission.value) {
+      localStorage.setItem(pendingReplyStorageKey(), JSON.stringify(pendingReplySubmission.value));
+    } else {
+      localStorage.removeItem(pendingReplyStorageKey());
+    }
+  } catch {
+    // Storage may be unavailable; the server still reports completion through notifications.
+  }
+}
+
+function restorePendingReplySubmission() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(pendingReplyStorageKey()) || "null");
+    pendingReplySubmission.value = parsed
+      && typeof parsed.fingerprint === "string"
+      && typeof parsed.submissionId === "string"
+      ? parsed
+      : null;
+  } catch {
+    pendingReplySubmission.value = null;
+  }
+}
+
+function clearPendingReplySubmission() {
+  pendingReplySubmission.value = null;
+  persistPendingReplySubmission();
+}
+
+function pendingReplyStillMatchesCurrentDraft() {
+  return pendingReplySubmission.value?.fingerprint === replySubmissionFingerprint();
+}
+
+async function monitorPendingReplySubmission(submissionId: string) {
+  const seq = ++pendingReplyMonitorSeq;
+  const result = await waitForForumSubmissionResult(
+    () => replyApi.submissionStatus(submissionId),
+    { attempts: 180, intervalMs: 1_000 },
+  ).catch(() => null);
+  if (seq !== pendingReplyMonitorSeq) return;
+  if (!result) {
+    ElMessage.info("回复仍在后台审核，完成后会通过站内通知告知结果");
+    return;
+  }
+  await handleReplySubmissionResult(result);
 }
 
 async function handleReplySubmissionResult(r: ReplySubmissionResponse) {
   if (replyAnonymous.value) await auth.fetchMe();
+  if (r.submissionResult?.status === "pending") {
+    replyDialogOpen.value = false;
+    ElMessage.success("回复已提交后台审核，可以继续浏览；完成后会通知你");
+    const submissionId = r.submissionId || pendingReplySubmission.value?.submissionId;
+    if (submissionId) void monitorPendingReplySubmission(submissionId);
+    return;
+  }
+  if (r.submissionResult?.status === "failed") {
+    replyDialogOpen.value = false;
+    ElMessage.error(r.submissionResult.reason || "审核服务暂时不可用，回复草稿已保留，请稍后重试");
+    return;
+  }
   if (r.submissionResult?.status === "blocked_ai") {
+    clearPendingReplySubmission();
     blockedReplyId.value = r.id ?? null;
     blockedReplyInfo.reason = r.submissionResult.reason || "检测到较高风险内容";
     blockedReplyInfo.riskScore = r.submissionResult.riskScore ?? null;
@@ -1172,17 +1247,21 @@ async function handleReplySubmissionResult(r: ReplySubmissionResponse) {
     ElMessage.warning("回复暂未通过审核");
     return;
   }
-  pendingReplySubmission.value = null;
+  const shouldClearCurrentDraft = pendingReplyStillMatchesCurrentDraft();
+  clearPendingReplySubmission();
   const existingIndex = replies.value.findIndex((item) => item.id === r.id);
   if (existingIndex >= 0) replies.value[existingIndex] = { ...replies.value[existingIndex], ...r } as any;
   else replies.value.push({ ...r, _liked: false } as any);
-  replyText.value = "";
-  replyAnonymous.value = false;
-  replyParentId.value = null;
-  replyDialogOpen.value = false;
-  replyEditorRef.value?.clearDraft();
+  if (shouldClearCurrentDraft) {
+    replyText.value = "";
+    replyAnonymous.value = false;
+    replyParentId.value = null;
+    replyDialogOpen.value = false;
+    replyEditorRef.value?.clearDraft();
+  }
   if (topic.value && existingIndex < 0) topic.value.replyCount += 1;
   ElMessage.success(r.submissionResult?.replayed ? "已确认回复发布成功" : "回复已发布");
+  if (!shouldClearCurrentDraft) ElMessage.info("此前提交的回复已发布；当前新草稿已保留");
   nextTick(() => repliesEl.value?.scrollIntoView({ behavior: "smooth", block: "end" }));
 }
 
@@ -1244,6 +1323,7 @@ async function submitReply() {
       });
     } catch (error) {
       if (!isAmbiguousForumSubmissionError(error)) {
+        clearPendingReplySubmission();
         ElMessage.error(getForumRequestMessage(error) || "回复发布失败，请检查内容后重试");
         return;
       }

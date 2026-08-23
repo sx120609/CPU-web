@@ -318,6 +318,7 @@ import {
   getForumRequestMessage,
   isAmbiguousForumSubmissionError,
   reconcileForumSubmission,
+  waitForForumSubmissionResult,
 } from "@/utils/forumSubmission";
 
 const route = useRoute();
@@ -334,6 +335,8 @@ const courseLoadError = ref("");
 const submitting = ref(false);
 const submissionProgress = ref("");
 const pendingSubmissionAttempt = ref<{ fingerprint: string; submissionId: string } | null>(null);
+const PENDING_TOPIC_SUBMISSION_KEY = "cpu-forum-pending-topic-submission";
+let pendingSubmissionMonitorSeq = 0;
 const editingId = computed(() => {
   if (!route.params.id) return null;
   const id = Number(route.params.id);
@@ -439,6 +442,7 @@ watch(() => route.params.id, () => {
 }, { immediate: true });
 
 onBeforeUnmount(() => {
+  pendingSubmissionMonitorSeq += 1;
   window.clearTimeout(formDraftTimer);
   window.clearTimeout(markupDraftTimer);
 });
@@ -502,6 +506,8 @@ async function loadInitial() {
     } else {
       restoreFormDraft();
       restoreContentDraft();
+      restorePendingTopicSubmission();
+      if (pendingSubmissionAttempt.value) void monitorPendingTopicSubmission(pendingSubmissionAttempt.value.submissionId);
     }
     normalizeSelectedBoard();
     if (boardType.value === "coursereview") await loadCoursesForReview();
@@ -835,13 +841,82 @@ function getTopicSubmissionId(fingerprint: string) {
   }
   const submissionId = createForumSubmissionId("topic");
   pendingSubmissionAttempt.value = { fingerprint, submissionId };
+  persistPendingTopicSubmission();
   return submissionId;
+}
+
+function persistPendingTopicSubmission() {
+  try {
+    if (pendingSubmissionAttempt.value) {
+      localStorage.setItem(PENDING_TOPIC_SUBMISSION_KEY, JSON.stringify(pendingSubmissionAttempt.value));
+    } else {
+      localStorage.removeItem(PENDING_TOPIC_SUBMISSION_KEY);
+    }
+  } catch {
+    // Storage may be unavailable; the server-side submission remains recoverable by notification.
+  }
+}
+
+function restorePendingTopicSubmission() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(PENDING_TOPIC_SUBMISSION_KEY) || "null");
+    if (parsed && typeof parsed.fingerprint === "string" && typeof parsed.submissionId === "string") {
+      pendingSubmissionAttempt.value = parsed;
+    }
+  } catch {
+    pendingSubmissionAttempt.value = null;
+  }
+}
+
+function clearPendingTopicSubmission() {
+  pendingSubmissionAttempt.value = null;
+  persistPendingTopicSubmission();
+}
+
+function pendingTopicStillMatchesCurrentDraft() {
+  try {
+    const parsed = JSON.parse(pendingSubmissionAttempt.value?.fingerprint || "null");
+    return Boolean(
+      parsed
+      && parsed.boardSlug === form.boardSlug
+      && parsed.title === form.title
+      && parsed.content === form.content
+      && Boolean(parsed.anonymous) === Boolean(form.anonymous)
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function monitorPendingTopicSubmission(submissionId: string) {
+  const seq = ++pendingSubmissionMonitorSeq;
+  const result = await waitForForumSubmissionResult(
+    () => topicApi.submissionStatus(submissionId),
+    { attempts: 180, intervalMs: 1_000 },
+  ).catch(() => null);
+  if (seq !== pendingSubmissionMonitorSeq) return;
+  if (!result) {
+    ElMessage.info("审核仍在后台继续，完成后会通过站内通知告知结果");
+    return;
+  }
+  await handleTopicSubmissionResult(result);
 }
 
 async function handleTopicSubmissionResult(r: TopicSubmissionResponse, editing = false) {
   if (form.anonymous) await auth.fetchMe();
   previewOpen.value = false;
+  if (r.submissionResult?.status === "pending") {
+    ElMessage.success("已提交后台审核，可以离开此页；完成后会通知你");
+    const submissionId = r.submissionId || pendingSubmissionAttempt.value?.submissionId;
+    if (submissionId) void monitorPendingTopicSubmission(submissionId);
+    return;
+  }
+  if (r.submissionResult?.status === "failed") {
+    ElMessage.error(r.submissionResult.reason || "审核服务暂时不可用，草稿已保留，请稍后重试");
+    return;
+  }
   if (r.submissionResult?.status === "blocked_ai") {
+    clearPendingTopicSubmission();
     blockedTopicId.value = editing ? editingId.value : r.id;
     blockedReviewInfo.reason = r.submissionResult.reason || "检测到较高风险内容";
     blockedReviewInfo.riskScore = r.submissionResult.riskScore ?? null;
@@ -849,12 +924,17 @@ async function handleTopicSubmissionResult(r: TopicSubmissionResponse, editing =
     ElMessage.warning(editing ? "修改后的内容暂未通过审核" : "内容暂未通过审核");
     return;
   }
-  pendingSubmissionAttempt.value = null;
+  const shouldClearCurrentDraft = pendingTopicStillMatchesCurrentDraft();
+  clearPendingTopicSubmission();
   notifyImageReviewState(r.submissionResult?.imageReview);
   notifyVideoReviewState(r.submissionResult?.videoReview);
-  clearDrafts();
+  if (shouldClearCurrentDraft) clearDrafts();
   ElMessage.success(r.submissionResult?.replayed ? "已确认发布成功" : (editing ? "已保存" : "已发布"));
-  await router.replace(`/forum/topic/${editing ? editingId.value : r.id}`);
+  if (editing || shouldClearCurrentDraft) {
+    await router.replace(`/forum/topic/${editing ? editingId.value : r.id}`);
+  } else {
+    ElMessage.info("此前提交的帖子已发布；当前新草稿已保留在编辑器中");
+  }
 }
 
 async function confirmSubmit() {
@@ -906,6 +986,7 @@ async function confirmSubmit() {
       });
     } catch (error) {
       if (!isAmbiguousForumSubmissionError(error)) {
+        clearPendingTopicSubmission();
         ElMessage.error(getForumRequestMessage(error) || "发布失败，请检查内容后重试");
         return;
       }

@@ -16,6 +16,7 @@ import { startForumVideoModerationPoller } from "./services/videoModeration";
 import { uploadAssetHandler } from "./services/mediaStorage";
 import { startQqNotificationPoller } from "./services/qqbot";
 import { startSponsorOrderExpiryPoller } from "./services/sponsor";
+import { startForumSubmissionReviewPoller } from "./services/forumSubmissionReview";
 import { startRuntimeSync } from "./services/runtimeSync";
 import { fail } from "./utils/response";
 import { browserSessionMiddleware, requestOriginAndCsrfProtection } from "./middleware/browserSession";
@@ -84,6 +85,7 @@ export function createApp() {
   startRuntimeSync();
   startForumImageModerationPoller();
   startForumVideoModerationPoller();
+  startForumSubmissionReviewPoller();
   startQqNotificationPoller();
   startSponsorOrderExpiryPoller();
 

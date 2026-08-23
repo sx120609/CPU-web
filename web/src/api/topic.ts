@@ -121,7 +121,7 @@ export type VideoReviewSummary = {
 };
 
 export type ForumSubmissionResult = {
-  status: "published" | "blocked_ai" | string;
+  status: "pending" | "published" | "blocked_ai" | "failed" | string;
   riskLevel?: string;
   riskScore?: number;
   reason?: string;
@@ -151,7 +151,7 @@ export const topicApi = {
   detail: (id: number, options?: RequestOptions) => request.get<Topic>(`/topics/${id}`, undefined, options),
   replies: (id: number, options?: RequestOptions) => request.get<Reply[]>(`/topics/${id}/replies`, undefined, options),
   create: (payload: { boardSlug: string; title: string; content: string; metadata?: any; tags?: string[]; anonymous?: boolean; submissionId?: string }) =>
-    request.post<TopicSubmissionResponse>("/topics", payload, { timeout: 75_000, suppressErrorMessage: true }),
+    request.post<TopicSubmissionResponse>("/topics", payload, { timeout: 12_000, suppressErrorMessage: true }),
   submissionStatus: (submissionId: string) =>
     request.get<TopicSubmissionResponse>(`/topics/submissions/${encodeURIComponent(submissionId)}`, undefined, {
       cacheTtlMs: 0,
@@ -168,7 +168,7 @@ export const topicApi = {
 
 export const replyApi = {
   create: (payload: { topicId: number; content: string; parentReplyId?: number; anonymous?: boolean; submissionId?: string }) =>
-    request.post<ReplySubmissionResponse>("/replies", payload, { timeout: 75_000, suppressErrorMessage: true }),
+    request.post<ReplySubmissionResponse>("/replies", payload, { timeout: 12_000, suppressErrorMessage: true }),
   submissionStatus: (submissionId: string) =>
     request.get<ReplySubmissionResponse>(`/replies/submissions/${encodeURIComponent(submissionId)}`, undefined, {
       cacheTtlMs: 0,

@@ -46,3 +46,22 @@ export async function reconcileForumSubmission<T>(
   }
   return null;
 }
+
+export async function waitForForumSubmissionResult<T extends { submissionResult?: { status?: string } }>(
+  lookup: () => Promise<T>,
+  options: { attempts?: number; intervalMs?: number } = {},
+) {
+  const attempts = Math.max(1, options.attempts ?? 150);
+  const intervalMs = Math.max(250, options.intervalMs ?? 1_000);
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (attempt > 0) await wait(intervalMs);
+    try {
+      const result = await lookup();
+      if (result.submissionResult?.status !== "pending") return result;
+    } catch (error) {
+      const status = getForumRequestStatus(error);
+      if (status !== 404 && status !== undefined && status < 500) throw error;
+    }
+  }
+  return null;
+}

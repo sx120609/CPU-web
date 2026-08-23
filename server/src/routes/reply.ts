@@ -6,7 +6,7 @@ import { authRequired } from "../middleware/auth";
 import { validate } from "../middleware/validate";
 import { featureClosedMessage, isBoardTypeEnabled } from "../services/siteSettings";
 import { ensureCanReadBoardType, ensureForumAccessEnabled } from "../services/forumAccess";
-import { requestManualReplyReview, reviewReplyContent, shouldBypassAiReviewForUser, shouldRunAiReview } from "../services/topicAiReview";
+import { requestManualReplyReview, shouldBypassAiReviewForUser, shouldRunAiReview } from "../services/topicAiReview";
 import { ensureUserCanSpeak } from "../services/userModeration";
 import { refreshUserReplyCount } from "../services/forumStats";
 import { consumeAnonymousCredit, createAnonymousAlias, refreshAnonymousCreditsIfNeeded } from "../services/userTrust";
@@ -16,9 +16,11 @@ import { ensureForumImageAssetsForContent, summarizeForumImageModerationForConte
 import { ensureForumVideoAssetsForContent, summarizeForumVideoModerationForContent } from "../services/videoModeration";
 import { isRetiredBoardSlug } from "../services/retiredBoards";
 import {
+  forumSubmissionResultForReview,
   isForumSubmissionUniqueConflict,
   normalizeForumSubmissionId,
 } from "../services/forumSubmission";
+import { scheduleReplySubmissionReview } from "../services/forumSubmissionReview";
 
 export const replyRouter = Router();
 
@@ -34,24 +36,32 @@ async function findReplySubmission(userId: number, submissionId: string) {
 }
 
 async function presentReplySubmission(reply: any, requestUser: any, replayed = false) {
+  const submissionResult = forumSubmissionResultForReview({
+    aiReviewStatus: reply.aiReviewStatus,
+    hidden: reply.hidden,
+    riskLevel: reply.aiRiskLevel,
+    riskScore: reply.aiRiskScore,
+    reason: reply.aiReviewReason,
+    replayed,
+  });
+  if (submissionResult.status === "pending" || submissionResult.status === "failed") {
+    return {
+      ...decodeReplyForViewer(reply, requestUser),
+      blocked: false,
+      submissionResult,
+    };
+  }
   const [imageReview, videoReview] = await Promise.all([
     summarizeForumImageModerationForContent(reply.content).catch(() => null),
     summarizeForumVideoModerationForContent(reply.content).catch(() => null),
   ]);
-  const blocked = reply.hidden && reply.aiReviewStatus === "blocked_ai";
   return {
     ...(await decodeReplyForViewerWithImages(reply, requestUser)),
-    blocked,
+    blocked: submissionResult.status === "blocked_ai",
     imageReview,
     videoReview,
-    submissionResult: blocked
-      ? {
-          status: "blocked_ai",
-          riskLevel: reply.aiRiskLevel,
-          riskScore: reply.aiRiskScore,
-          reason: reply.aiReviewReason,
-          replayed,
-        }
+    submissionResult: submissionResult.status === "blocked_ai"
+      ? submissionResult
       : { status: "published", replayed },
   };
 }
@@ -70,6 +80,7 @@ const updateSchema = z.object({
 
 replyRouter.get("/submissions/:submissionId", authRequired, async (req, res, next) => {
   try {
+    res.setHeader("Cache-Control", "no-store");
     const submissionId = normalizeForumSubmissionId(req.params.submissionId, "reply");
     if (!submissionId) throw Errors.badRequest("发布操作 ID 不合法");
     const reply = await findReplySubmission(req.user!.userId, submissionId);
@@ -80,6 +91,7 @@ replyRouter.get("/submissions/:submissionId", authRequired, async (req, res, nex
 
 replyRouter.post("/", authRequired, validate(createSchema), async (req, res, next) => {
   try {
+    res.setHeader("Cache-Control", "no-store");
     const userId = req.user!.userId;
     const { topicId, content, parentReplyId, anonymous = false, submissionId: rawSubmissionId } = req.body;
     const submissionId = normalizeForumSubmissionId(rawSubmissionId, "reply");
@@ -88,7 +100,19 @@ replyRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
     await ensureUserCanSpeak(userId);
     if (submissionId) {
       const existing = await findReplySubmission(userId, submissionId);
-      if (existing) return ok(res, await presentReplySubmission(existing, req.user, true));
+      if (existing) {
+        if (existing.aiReviewStatus === "checking" && existing.hidden) scheduleReplySubmissionReview(existing.id);
+        if (existing.aiReviewStatus === "review_failed" && existing.hidden) {
+          await prisma.reply.update({
+            where: { id: existing.id },
+            data: { aiReviewStatus: "checking", aiReviewReason: "内容已重新进入后台审核队列", aiReviewDetail: "", aiReviewedAt: null },
+          });
+          scheduleReplySubmissionReview(existing.id);
+          const retried = await findReplySubmission(userId, submissionId);
+          return ok(res.status(202), await presentReplySubmission(retried ?? existing, req.user, true));
+        }
+        return ok(res, await presentReplySubmission(existing, req.user, true));
+      }
     }
     const topic = await prisma.topic.findUnique({
       where: { id: topicId },
@@ -142,63 +166,38 @@ replyRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
             : (existingAnonymousReply?.anonymousAlias || createAnonymousAlias())
         )
       : null;
-    if (shouldRunAiReview() && !bypassAiReview) {
-      const aiResult = await reviewReplyContent({
-        topicTitle: topic.title,
-        boardName: (topic as any).board?.name ?? "",
-        boardType: topic.board?.type ?? "",
-        content,
-        parentContent: parentReply?.content ?? "",
-      });
-      if (aiResult.status === "blocked_ai") {
-        let blockedReply;
-        try {
-          blockedReply = await prisma.$transaction(async (tx) => {
-            if (shouldConsumeAnonymousCredit) {
-              await consumeAnonymousCredit(userId, tx);
-            }
-            return tx.reply.create({
-              data: {
-                topicId,
-                authorId: userId,
-                submissionId,
-                content,
-                parentReplyId,
-                floor: 0,
-                hidden: true,
-                aiReviewStatus: "blocked_ai",
-                aiRiskLevel: aiResult.riskLevel,
-                aiRiskScore: aiResult.riskScore,
-                aiReviewReason: aiResult.reason,
-                aiReviewDetail: aiResult.detail,
-                aiModel: aiResult.model,
-                aiReviewedAt: new Date(),
-                isAnonymous: anonymous,
-                anonymousAlias,
-              },
-            });
+    const shouldReview = shouldRunAiReview() && !bypassAiReview;
+    if (shouldReview) {
+      let pendingReply;
+      try {
+        pendingReply = await prisma.$transaction(async (tx) => {
+          if (shouldConsumeAnonymousCredit) await consumeAnonymousCredit(userId, tx);
+          return tx.reply.create({
+            data: {
+              topicId,
+              authorId: userId,
+              submissionId,
+              content,
+              parentReplyId,
+              floor: 0,
+              hidden: true,
+              aiReviewStatus: "checking",
+              aiReviewReason: "内容已进入后台审核队列",
+              isAnonymous: anonymous,
+              anonymousAlias,
+            },
+            include: replySubmissionInclude,
           });
-        } catch (error) {
-          if (submissionId && isForumSubmissionUniqueConflict(error)) {
-            const existing = await findReplySubmission(userId, submissionId);
-            if (existing) return ok(res, await presentReplySubmission(existing, req.user, true));
-          }
-          throw error;
+        });
+      } catch (error) {
+        if (submissionId && isForumSubmissionUniqueConflict(error)) {
+          const existing = await findReplySubmission(userId, submissionId);
+          if (existing) return ok(res, await presentReplySubmission(existing, req.user, true));
         }
-        return ok(res, {
-          id: blockedReply.id,
-          isAnonymous: blockedReply.isAnonymous,
-          anonymousAlias: blockedReply.anonymousAlias,
-          blocked: true,
-          submissionResult: {
-            status: "blocked_ai",
-            riskLevel: aiResult.riskLevel,
-            riskScore: aiResult.riskScore,
-            reason: aiResult.reason,
-            replayed: false,
-          },
-        } as any);
+        throw error;
       }
+      scheduleReplySubmissionReview(pendingReply.id);
+      return ok(res.status(202), await presentReplySubmission(pendingReply, req.user));
     }
 
     // 当前楼层
