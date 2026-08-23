@@ -15,26 +15,81 @@ import { decodeReplyForViewer, decodeReplyForViewerWithImages } from "../service
 import { ensureForumImageAssetsForContent, summarizeForumImageModerationForContent } from "../services/imageModeration";
 import { ensureForumVideoAssetsForContent, summarizeForumVideoModerationForContent } from "../services/videoModeration";
 import { isRetiredBoardSlug } from "../services/retiredBoards";
+import {
+  isForumSubmissionUniqueConflict,
+  normalizeForumSubmissionId,
+} from "../services/forumSubmission";
 
 export const replyRouter = Router();
+
+const replySubmissionInclude = {
+  author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, vipLevel: true, vipExpiresAt: true, profileTheme: true, profileFrame: true } },
+} as const;
+
+async function findReplySubmission(userId: number, submissionId: string) {
+  return prisma.reply.findUnique({
+    where: { authorId_submissionId: { authorId: userId, submissionId } },
+    include: replySubmissionInclude,
+  });
+}
+
+async function presentReplySubmission(reply: any, requestUser: any, replayed = false) {
+  const [imageReview, videoReview] = await Promise.all([
+    summarizeForumImageModerationForContent(reply.content).catch(() => null),
+    summarizeForumVideoModerationForContent(reply.content).catch(() => null),
+  ]);
+  const blocked = reply.hidden && reply.aiReviewStatus === "blocked_ai";
+  return {
+    ...(await decodeReplyForViewerWithImages(reply, requestUser)),
+    blocked,
+    imageReview,
+    videoReview,
+    submissionResult: blocked
+      ? {
+          status: "blocked_ai",
+          riskLevel: reply.aiRiskLevel,
+          riskScore: reply.aiRiskScore,
+          reason: reply.aiReviewReason,
+          replayed,
+        }
+      : { status: "published", replayed },
+  };
+}
 
 const createSchema = z.object({
   topicId: z.number().int().positive(),
   content: z.string().min(1).max(10000),
   parentReplyId: z.number().int().positive().optional(),
   anonymous: z.boolean().optional(),
+  submissionId: z.string().min(8).max(80).optional(),
 });
 
 const updateSchema = z.object({
   content: z.string().min(1).max(10000),
 });
 
+replyRouter.get("/submissions/:submissionId", authRequired, async (req, res, next) => {
+  try {
+    const submissionId = normalizeForumSubmissionId(req.params.submissionId, "reply");
+    if (!submissionId) throw Errors.badRequest("发布操作 ID 不合法");
+    const reply = await findReplySubmission(req.user!.userId, submissionId);
+    if (!reply) throw Errors.notFound("尚未找到这次回复结果");
+    ok(res, await presentReplySubmission(reply, req.user, true));
+  } catch (e) { next(e); }
+});
+
 replyRouter.post("/", authRequired, validate(createSchema), async (req, res, next) => {
   try {
     const userId = req.user!.userId;
-    const { topicId, content, parentReplyId, anonymous = false } = req.body;
+    const { topicId, content, parentReplyId, anonymous = false, submissionId: rawSubmissionId } = req.body;
+    const submissionId = normalizeForumSubmissionId(rawSubmissionId, "reply");
+    if (rawSubmissionId && !submissionId) throw Errors.badRequest("发布操作 ID 不合法");
     await ensureForumAccessEnabled(userId, req.user!.role);
     await ensureUserCanSpeak(userId);
+    if (submissionId) {
+      const existing = await findReplySubmission(userId, submissionId);
+      if (existing) return ok(res, await presentReplySubmission(existing, req.user, true));
+    }
     const topic = await prisma.topic.findUnique({
       where: { id: topicId },
       include: { board: { select: { slug: true, type: true, name: true, anonymousEnabled: true } } },
@@ -96,30 +151,40 @@ replyRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
         parentContent: parentReply?.content ?? "",
       });
       if (aiResult.status === "blocked_ai") {
-        const blockedReply = await prisma.$transaction(async (tx) => {
-          if (shouldConsumeAnonymousCredit) {
-            await consumeAnonymousCredit(userId, tx);
-          }
-          return tx.reply.create({
-            data: {
-              topicId,
-              authorId: userId,
-              content,
-              parentReplyId,
-              floor: 0,
-              hidden: true,
-              aiReviewStatus: "blocked_ai",
-              aiRiskLevel: aiResult.riskLevel,
-              aiRiskScore: aiResult.riskScore,
-              aiReviewReason: aiResult.reason,
-              aiReviewDetail: aiResult.detail,
-              aiModel: aiResult.model,
-              aiReviewedAt: new Date(),
-              isAnonymous: anonymous,
-              anonymousAlias,
-            },
+        let blockedReply;
+        try {
+          blockedReply = await prisma.$transaction(async (tx) => {
+            if (shouldConsumeAnonymousCredit) {
+              await consumeAnonymousCredit(userId, tx);
+            }
+            return tx.reply.create({
+              data: {
+                topicId,
+                authorId: userId,
+                submissionId,
+                content,
+                parentReplyId,
+                floor: 0,
+                hidden: true,
+                aiReviewStatus: "blocked_ai",
+                aiRiskLevel: aiResult.riskLevel,
+                aiRiskScore: aiResult.riskScore,
+                aiReviewReason: aiResult.reason,
+                aiReviewDetail: aiResult.detail,
+                aiModel: aiResult.model,
+                aiReviewedAt: new Date(),
+                isAnonymous: anonymous,
+                anonymousAlias,
+              },
+            });
           });
-        });
+        } catch (error) {
+          if (submissionId && isForumSubmissionUniqueConflict(error)) {
+            const existing = await findReplySubmission(userId, submissionId);
+            if (existing) return ok(res, await presentReplySubmission(existing, req.user, true));
+          }
+          throw error;
+        }
         return ok(res, {
           id: blockedReply.id,
           isAnonymous: blockedReply.isAnonymous,
@@ -130,6 +195,7 @@ replyRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
             riskLevel: aiResult.riskLevel,
             riskScore: aiResult.riskScore,
             reason: aiResult.reason,
+            replayed: false,
           },
         } as any);
       }
@@ -142,36 +208,44 @@ replyRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
       select: { floor: true },
     });
     const floor = (last?.floor ?? 0) + 1;
-    const reply = await prisma.$transaction(async (tx) => {
-      if (shouldConsumeAnonymousCredit) {
-        await consumeAnonymousCredit(userId, tx);
+    let reply;
+    try {
+      reply = await prisma.$transaction(async (tx) => {
+        if (shouldConsumeAnonymousCredit) {
+          await consumeAnonymousCredit(userId, tx);
+        }
+        const created = await tx.reply.create({
+          data: {
+            topicId,
+            authorId: userId,
+            submissionId,
+            content,
+            parentReplyId,
+            floor,
+            aiReviewStatus: "auto_passed",
+            isAnonymous: anonymous,
+            anonymousAlias,
+          },
+          include: replySubmissionInclude,
+        });
+        await tx.topic.update({
+          where: { id: topicId },
+          data: {
+            replyCount: { increment: 1 },
+            lastReplyAt: created.createdAt,
+            lastReplyById: userId,
+          },
+        });
+        await tx.user.update({ where: { id: userId }, data: { replyCount: { increment: 1 } } });
+        return created;
+      });
+    } catch (error) {
+      if (submissionId && isForumSubmissionUniqueConflict(error)) {
+        const existing = await findReplySubmission(userId, submissionId);
+        if (existing) return ok(res, await presentReplySubmission(existing, req.user, true));
       }
-      const created = await tx.reply.create({
-        data: {
-          topicId,
-          authorId: userId,
-          content,
-          parentReplyId,
-          floor,
-          aiReviewStatus: "auto_passed",
-          isAnonymous: anonymous,
-          anonymousAlias,
-        },
-        include: {
-          author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, vipLevel: true, vipExpiresAt: true, profileTheme: true, profileFrame: true } },
-        },
-      });
-      await tx.topic.update({
-        where: { id: topicId },
-        data: {
-          replyCount: { increment: 1 },
-          lastReplyAt: created.createdAt,
-          lastReplyById: userId,
-        },
-      });
-      await tx.user.update({ where: { id: userId }, data: { replyCount: { increment: 1 } } });
-      return created;
-    });
+      throw error;
+    }
 
     const replyLink = `/forum/topic/${topicId}#reply-${reply.id}`;
     const notifications: Array<{
@@ -211,23 +285,32 @@ replyRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
       });
     }
 
-    if (notifications.length === 1) {
-      await prisma.notification.create({ data: notifications[0] });
-    } else if (notifications.length > 1) {
-      await prisma.notification.createMany({ data: notifications });
-    }
-
-    await Promise.all([
+    const notificationWrite = notifications.length === 1
+      ? prisma.notification.create({ data: notifications[0] })
+      : notifications.length > 1
+        ? prisma.notification.createMany({ data: notifications })
+        : Promise.resolve();
+    const mediaRegistration = Promise.all([
       ensureForumImageAssetsForContent(content, userId).catch(() => null),
       ensureForumVideoAssetsForContent(content, userId).catch(() => null),
+    ]).then(async () => {
+      const [imageReview, videoReview] = await Promise.all([
+        summarizeForumImageModerationForContent(content).catch(() => null),
+        summarizeForumVideoModerationForContent(content).catch(() => null),
+      ]);
+      return { imageReview, videoReview };
+    });
+    const [, mediaReview] = await Promise.all([
+      notificationWrite,
+      mediaRegistration,
+      invalidateForumCaches(),
     ]);
-    const imageReview = await summarizeForumImageModerationForContent(content).catch(() => null);
-    const videoReview = await summarizeForumVideoModerationForContent(content).catch(() => null);
-    await invalidateForumCaches();
+    const { imageReview, videoReview } = mediaReview;
     ok(res, {
       ...(await decodeReplyForViewerWithImages(reply, req.user)),
       imageReview,
       videoReview,
+      submissionResult: { status: "published", replayed: false },
     });
   } catch (e) { next(e); }
 });

@@ -336,11 +336,11 @@
         @draft-restored="replyText = $event"
       />
       <div class="reply-form-actions reply-dialog-actions">
-        <span class="cpu-muted">离开页面后会保留未发送的内容。</span>
+        <span class="cpu-muted">{{ replying ? replySubmissionProgress : "离开页面后会保留未发送的内容。" }}</span>
         <div class="reply-submit-actions">
           <el-button v-if="editingReplyId" :disabled="replying" @click="cancelReplyEdit">取消编辑</el-button>
           <el-button type="primary" :loading="replying" :disabled="replying" @click="submitReply">
-            {{ editingReplyId ? "保存修改" : "发布回复" }}
+            {{ replying ? replySubmissionProgress : (editingReplyId ? "保存修改" : "发布回复") }}
           </el-button>
         </div>
       </div>
@@ -632,7 +632,7 @@ import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
 import MarkdownView from "@/components/forum/MarkdownView.vue";
 import RichTextEditor from "@/components/forum/RichTextEditor.vue";
 import ManualReviewConfirmDialog from "@/components/forum/ManualReviewConfirmDialog.vue";
-import { topicApi, replyApi, likeApi, reactionApi, type Topic, type Reply, type ForumReaction } from "@/api/topic";
+import { topicApi, replyApi, likeApi, reactionApi, type Topic, type Reply, type ForumReaction, type ReplySubmissionResponse } from "@/api/topic";
 import { adminApi, type ForumImageReviewAsset, type ForumVideoReviewAsset } from "@/api/admin";
 import { useAuthStore } from "@/stores/auth";
 import { fmtDate, fmtRelative } from "@/utils/format";
@@ -640,6 +640,12 @@ import { forumCacheScope, readForumTopic, writeForumTopic } from "@/utils/forumC
 import { copyText } from "@/utils/userGroup";
 import { isAndroidNativeApp, isHarmonyNativeApp } from "@/utils/clientInfo";
 import { getNativeBridge, hasNativeImageSaveBridge } from "@/utils/nativeBridge";
+import {
+  createForumSubmissionId,
+  getForumRequestMessage,
+  isAmbiguousForumSubmissionError,
+  reconcileForumSubmission,
+} from "@/utils/forumSubmission";
 
 const route = useRoute();
 const router = useRouter();
@@ -651,6 +657,8 @@ const loading = ref(false);
 const repliesLoading = ref(false);
 const loadError = ref("");
 const replying = ref(false);
+const replySubmissionProgress = ref("");
+const pendingReplySubmission = ref<{ fingerprint: string; submissionId: string } | null>(null);
 const replyText = ref("");
 const replyAnonymous = ref(false);
 const replyDialogOpen = ref(false);
@@ -1136,6 +1144,48 @@ function openReplyDialog() {
   return true;
 }
 
+function replySubmissionFingerprint() {
+  return JSON.stringify({
+    topicId: topic.value?.id,
+    content: replyText.value,
+    parentReplyId: replyParentId.value || null,
+    anonymous: replyAnonymous.value,
+  });
+}
+
+function getReplySubmissionId(fingerprint: string) {
+  if (pendingReplySubmission.value?.fingerprint === fingerprint) {
+    return pendingReplySubmission.value.submissionId;
+  }
+  const submissionId = createForumSubmissionId("reply");
+  pendingReplySubmission.value = { fingerprint, submissionId };
+  return submissionId;
+}
+
+async function handleReplySubmissionResult(r: ReplySubmissionResponse) {
+  if (replyAnonymous.value) await auth.fetchMe();
+  if (r.submissionResult?.status === "blocked_ai") {
+    blockedReplyId.value = r.id ?? null;
+    blockedReplyInfo.reason = r.submissionResult.reason || "检测到较高风险内容";
+    blockedReplyInfo.riskScore = r.submissionResult.riskScore ?? null;
+    replyReviewBlockedOpen.value = true;
+    ElMessage.warning("回复暂未通过审核");
+    return;
+  }
+  pendingReplySubmission.value = null;
+  const existingIndex = replies.value.findIndex((item) => item.id === r.id);
+  if (existingIndex >= 0) replies.value[existingIndex] = { ...replies.value[existingIndex], ...r } as any;
+  else replies.value.push({ ...r, _liked: false } as any);
+  replyText.value = "";
+  replyAnonymous.value = false;
+  replyParentId.value = null;
+  replyDialogOpen.value = false;
+  replyEditorRef.value?.clearDraft();
+  if (topic.value && existingIndex < 0) topic.value.replyCount += 1;
+  ElMessage.success(r.submissionResult?.replayed ? "已确认回复发布成功" : "回复已发布");
+  nextTick(() => repliesEl.value?.scrollIntoView({ behavior: "smooth", block: "end" }));
+}
+
 async function submitReply() {
   if (replying.value) return;
   if (!auth.isLoggedIn) { router.push({ name: "login", query: { redirect: route.fullPath } }); return; }
@@ -1143,44 +1193,72 @@ async function submitReply() {
   if (replyEditorRef.value?.isContentEmpty()) { ElMessage.warning("请填写回复内容"); return; }
   if (replyText.value.length > REPLY_MAX) { ElMessage.warning("回复内容过长，请精简后再发布"); return; }
   replying.value = true;
+  replySubmissionProgress.value = "正在进行内容审核…";
   try {
     if (editingReplyId.value) {
-      const updated = await replyApi.update(editingReplyId.value, { content: replyText.value });
-      const idx = replies.value.findIndex((item) => item.id === editingReplyId.value);
-      if (idx >= 0) replies.value[idx] = { ...replies.value[idx], ...updated } as any;
-      replyText.value = "";
-      replyAnonymous.value = false;
-      replyDialogOpen.value = false;
-      editingReplyId.value = null;
-      replyEditorRef.value?.clearDraft();
-      ElMessage.success("回复已修改");
+      const editingId = editingReplyId.value;
+      try {
+        const updated = await replyApi.update(editingId, { content: replyText.value });
+        const idx = replies.value.findIndex((item) => item.id === editingId);
+        if (idx >= 0) replies.value[idx] = { ...replies.value[idx], ...updated } as any;
+        replyText.value = "";
+        replyAnonymous.value = false;
+        replyDialogOpen.value = false;
+        editingReplyId.value = null;
+        replyEditorRef.value?.clearDraft();
+        ElMessage.success("回复已修改");
+      } catch (error) {
+        if (!isAmbiguousForumSubmissionError(error)) {
+          ElMessage.error(getForumRequestMessage(error) || "保存回复失败，请稍后重试");
+          return;
+        }
+        replySubmissionProgress.value = "连接中断，正在确认保存结果…";
+        const currentReplies = topic.value
+          ? await topicApi.replies(topic.value.id, { cacheTtlMs: 0, suppressErrorMessage: true }).catch(() => [])
+          : [];
+        const saved = currentReplies.find((item) => item.id === editingId && item.content === replyText.value);
+        if (saved) {
+          const idx = replies.value.findIndex((item) => item.id === editingId);
+          if (idx >= 0) replies.value[idx] = { ...replies.value[idx], ...saved } as any;
+          replyText.value = "";
+          replyDialogOpen.value = false;
+          editingReplyId.value = null;
+          replyEditorRef.value?.clearDraft();
+          ElMessage.success("已确认回复修改成功");
+          return;
+        }
+        ElMessage.warning("暂未确认保存结果，回复内容仍保留，可稍后重试");
+      }
       return;
     }
-    const r = await replyApi.create({
-      topicId: topic.value!.id,
-      content: replyText.value,
-      parentReplyId: replyParentId.value || undefined,
-      anonymous: replyAnonymous.value,
-    });
-    if (replyAnonymous.value) await auth.fetchMe();
-    if ((r as any).submissionResult?.status === "blocked_ai") {
-      blockedReplyId.value = (r as any).id ?? null;
-      blockedReplyInfo.reason = (r as any).submissionResult.reason || "检测到较高风险内容";
-      blockedReplyInfo.riskScore = (r as any).submissionResult.riskScore ?? null;
-      replyReviewBlockedOpen.value = true;
-      ElMessage.warning("回复暂未通过审核");
-      return;
+
+    const submissionId = getReplySubmissionId(replySubmissionFingerprint());
+    let result: ReplySubmissionResponse | null = null;
+    try {
+      result = await replyApi.create({
+        topicId: topic.value!.id,
+        content: replyText.value,
+        parentReplyId: replyParentId.value || undefined,
+        anonymous: replyAnonymous.value,
+        submissionId,
+      });
+    } catch (error) {
+      if (!isAmbiguousForumSubmissionError(error)) {
+        ElMessage.error(getForumRequestMessage(error) || "回复发布失败，请检查内容后重试");
+        return;
+      }
+      replySubmissionProgress.value = "连接中断，正在确认是否已发布…";
+      result = await reconcileForumSubmission(() => replyApi.submissionStatus(submissionId));
+      if (!result) {
+        ElMessage.warning("暂未确认回复结果，内容已保留；再次发布也不会产生重复回复");
+        return;
+      }
     }
-    replies.value.push({ ...r, _liked: false } as any);
-    replyText.value = "";
-    replyAnonymous.value = false;
-    replyParentId.value = null;
-    replyDialogOpen.value = false;
-    replyEditorRef.value?.clearDraft();
-    if (topic.value) topic.value.replyCount += 1;
-    ElMessage.success("已发布");
-    nextTick(() => repliesEl.value?.scrollIntoView({ behavior: "smooth", block: "end" }));
-  } finally { replying.value = false; }
+    await handleReplySubmissionResult(result);
+  } finally {
+    replying.value = false;
+    replySubmissionProgress.value = "";
+  }
 }
 
 async function removeReply(reply: Reply) {

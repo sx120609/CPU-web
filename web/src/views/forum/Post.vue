@@ -268,9 +268,10 @@
         <MarkdownView :content="form.content" />
       </div>
       <template #footer>
+        <span v-if="submitting" class="cpu-muted publish-progress">{{ submissionProgress }}</span>
         <el-button :disabled="submitting" @click="previewOpen = false">返回修改</el-button>
         <el-button type="primary" :loading="submitting" :disabled="submitting" @click="confirmSubmit">
-          {{ editingId ? '确认保存' : '确认发布' }}
+          {{ submitting ? submissionProgress : (editingId ? '确认保存' : '确认发布') }}
         </el-button>
       </template>
     </el-dialog>
@@ -308,10 +309,16 @@ import MarkdownView from "@/components/forum/MarkdownView.vue";
 import RichTextEditor from "@/components/forum/RichTextEditor.vue";
 import ManualReviewConfirmDialog from "@/components/forum/ManualReviewConfirmDialog.vue";
 import { boardApi, type Board } from "@/api/board";
-import { topicApi } from "@/api/topic";
+import { topicApi, type TopicSubmissionResponse } from "@/api/topic";
 import { courseApi, type Course } from "@/api/course";
 import { useAuthStore } from "@/stores/auth";
 import { fmtDate } from "@/utils/format";
+import {
+  createForumSubmissionId,
+  getForumRequestMessage,
+  isAmbiguousForumSubmissionError,
+  reconcileForumSubmission,
+} from "@/utils/forumSubmission";
 
 const route = useRoute();
 const router = useRouter();
@@ -325,6 +332,8 @@ const coursesLoading = ref(false);
 const coursesLoaded = ref(false);
 const courseLoadError = ref("");
 const submitting = ref(false);
+const submissionProgress = ref("");
+const pendingSubmissionAttempt = ref<{ fingerprint: string; submissionId: string } | null>(null);
 const editingId = computed(() => {
   if (!route.params.id) return null;
   const id = Number(route.params.id);
@@ -810,57 +819,107 @@ function buildMetadata() {
   return metadata;
 }
 
+function topicSubmissionFingerprint(metadata: unknown) {
+  return JSON.stringify({
+    boardSlug: form.boardSlug,
+    title: form.title,
+    content: form.content,
+    metadata,
+    anonymous: form.anonymous,
+  });
+}
+
+function getTopicSubmissionId(fingerprint: string) {
+  if (pendingSubmissionAttempt.value?.fingerprint === fingerprint) {
+    return pendingSubmissionAttempt.value.submissionId;
+  }
+  const submissionId = createForumSubmissionId("topic");
+  pendingSubmissionAttempt.value = { fingerprint, submissionId };
+  return submissionId;
+}
+
+async function handleTopicSubmissionResult(r: TopicSubmissionResponse, editing = false) {
+  if (form.anonymous) await auth.fetchMe();
+  previewOpen.value = false;
+  if (r.submissionResult?.status === "blocked_ai") {
+    blockedTopicId.value = editing ? editingId.value : r.id;
+    blockedReviewInfo.reason = r.submissionResult.reason || "检测到较高风险内容";
+    blockedReviewInfo.riskScore = r.submissionResult.riskScore ?? null;
+    reviewBlockedOpen.value = true;
+    ElMessage.warning(editing ? "修改后的内容暂未通过审核" : "内容暂未通过审核");
+    return;
+  }
+  pendingSubmissionAttempt.value = null;
+  notifyImageReviewState(r.submissionResult?.imageReview);
+  notifyVideoReviewState(r.submissionResult?.videoReview);
+  clearDrafts();
+  ElMessage.success(r.submissionResult?.replayed ? "已确认发布成功" : (editing ? "已保存" : "已发布"));
+  await router.replace(`/forum/topic/${editing ? editingId.value : r.id}`);
+}
+
 async function confirmSubmit() {
   if (submitting.value) return;
   const metadata = pendingMetadata.value;
   if (!metadata) return;
   submitting.value = true;
+  submissionProgress.value = "正在进行内容审核…";
   try {
     if (editingId.value) {
-      const r = await topicApi.update(editingId.value, {
-        title: form.title,
-        content: form.content,
-        metadata,
-      });
-      if (r.submissionResult?.status === "blocked_ai") {
-        blockedTopicId.value = editingId.value;
-        blockedReviewInfo.reason = r.submissionResult.reason || "检测到较高风险内容";
-        blockedReviewInfo.riskScore = r.submissionResult.riskScore ?? null;
-        reviewBlockedOpen.value = true;
-        ElMessage.warning("修改后的内容暂未通过审核");
-        return;
+      try {
+        const r = await topicApi.update(editingId.value, {
+          title: form.title,
+          content: form.content,
+          metadata,
+        });
+        await handleTopicSubmissionResult(r, true);
+      } catch (error) {
+        if (!isAmbiguousForumSubmissionError(error)) {
+          ElMessage.error(getForumRequestMessage(error) || "保存失败，请稍后重试");
+          return;
+        }
+        submissionProgress.value = "连接中断，正在确认保存结果…";
+        const current = await topicApi.detail(editingId.value, { cacheTtlMs: 0, suppressErrorMessage: true }).catch(() => null);
+        const saved = current
+          && current.title === form.title
+          && current.content === form.content
+          && JSON.stringify(current.metadata ?? {}) === JSON.stringify(metadata ?? {});
+        if (saved) {
+          await handleTopicSubmissionResult({ ...current, submissionResult: { status: "published", replayed: true } }, true);
+          return;
+        }
+        ElMessage.warning("暂未确认保存结果，内容仍保留在编辑器中，请稍后重试");
       }
-      notifyImageReviewState(r.submissionResult?.imageReview);
-      notifyVideoReviewState(r.submissionResult?.videoReview);
-      clearDrafts();
-      ElMessage.success("已保存");
-      router.replace(`/forum/topic/${editingId.value}`);
-    } else {
-      const r = await topicApi.create({
+      return;
+    }
+
+    const fingerprint = topicSubmissionFingerprint(metadata);
+    const submissionId = getTopicSubmissionId(fingerprint);
+    let result: TopicSubmissionResponse | null = null;
+    try {
+      result = await topicApi.create({
         boardSlug: form.boardSlug,
         title: form.title,
         content: form.content,
         metadata,
         anonymous: form.anonymous,
+        submissionId,
       });
-      if (form.anonymous) await auth.fetchMe();
-      if (r.submissionResult?.status === "blocked_ai") {
-        blockedTopicId.value = r.id;
-        blockedReviewInfo.reason = r.submissionResult.reason || "检测到较高风险内容";
-        blockedReviewInfo.riskScore = r.submissionResult.riskScore ?? null;
-        reviewBlockedOpen.value = true;
-        ElMessage.warning("内容暂未通过审核");
+    } catch (error) {
+      if (!isAmbiguousForumSubmissionError(error)) {
+        ElMessage.error(getForumRequestMessage(error) || "发布失败，请检查内容后重试");
         return;
       }
-      notifyImageReviewState(r.submissionResult?.imageReview);
-      notifyVideoReviewState(r.submissionResult?.videoReview);
-      clearDrafts();
-      ElMessage.success("已发布");
-      router.replace(`/forum/topic/${r.id}`);
+      submissionProgress.value = "连接中断，正在确认是否已发布…";
+      result = await reconcileForumSubmission(() => topicApi.submissionStatus(submissionId));
+      if (!result) {
+        ElMessage.warning("暂未确认发布结果，草稿已保留；再次点击发布也不会重复发帖");
+        return;
+      }
     }
+    await handleTopicSubmissionResult(result);
   } finally {
     submitting.value = false;
-    previewOpen.value = false;
+    submissionProgress.value = "";
   }
 }
 

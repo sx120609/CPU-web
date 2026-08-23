@@ -213,6 +213,8 @@ model Topic {
   id                 Int       @id @default(autoincrement())
   boardId            Int
   authorId           Int
+  // 客户端发布操作 ID：用于网络超时后的结果确认与幂等重试。
+  submissionId       String?
   title              String
   // 正文内容（Markdown 源码）
   content            String
@@ -262,12 +264,15 @@ model Topic {
   @@index([hidden, lastReplyAt])
   @@index([authorId])
   @@index([authorId, aiReviewStatus])
+  @@unique([authorId, submissionId])
 }
 
 model Reply {
   id             Int       @id @default(autoincrement())
   topicId        Int
   authorId       Int
+  // 客户端发布操作 ID：用于网络超时后的结果确认与幂等重试。
+  submissionId   String?
   content        String // Markdown
   aiReviewStatus String    @default("none") // none / auto_passed / blocked_ai / manual_requested / manual_reviewing / approved_manual / rejected_manual
   aiRiskLevel    String?
@@ -295,6 +300,7 @@ model Reply {
 
   @@index([topicId, floor])
   @@index([topicId, hidden, floor])
+  @@unique([authorId, submissionId])
 }
 
 model Like {

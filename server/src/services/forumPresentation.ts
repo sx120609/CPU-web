@@ -40,13 +40,14 @@ function normalizeTags(tags: any) {
 
 export function decodeTopicForViewer(topic: any, viewer?: Viewer) {
   const privacySafeTopic = sanitizeLostFoundTopicFields(topic, viewer);
+  const { submissionId: _submissionId, ...publicTopic } = privacySafeTopic;
   const rawMetadata = safeJson(privacySafeTopic.metadata);
   const baseMetadata = rawMetadata && typeof rawMetadata === "object" ? rawMetadata : {};
   const metadata = baseMetadata;
   const anonymous = Boolean(privacySafeTopic?.isAnonymous);
   const reveal = anonymous && canRevealAnonymousAuthor(viewer, privacySafeTopic?.authorId);
   return {
-    ...privacySafeTopic,
+    ...publicTopic,
     authorId: anonymous && !reveal ? null : privacySafeTopic.authorId,
     globalPinned: isGlobalPinnedTopic(Number(privacySafeTopic.id)),
     metadata,
@@ -59,10 +60,11 @@ export function decodeTopicForViewer(topic: any, viewer?: Viewer) {
 }
 
 export function decodeReplyForViewer(reply: any, viewer?: Viewer) {
+  const { submissionId: _submissionId, ...publicReply } = reply;
   const anonymous = Boolean(reply?.isAnonymous);
   const reveal = anonymous && canRevealAnonymousAuthor(viewer, reply?.authorId);
   return {
-    ...reply,
+    ...publicReply,
     authorId: anonymous && !reveal ? null : reply.authorId,
     isAnonymous: anonymous,
     anonymousAlias: anonymous ? (reply.anonymousAlias || "匿名同学") : null,

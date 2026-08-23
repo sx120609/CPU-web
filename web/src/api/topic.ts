@@ -5,6 +5,7 @@ export interface Topic {
   id: number;
   boardId: number;
   authorId: number;
+  submissionId?: string | null;
   title: string;
   content: string;
   metadata: Record<string, any>;
@@ -52,6 +53,7 @@ export interface Reply {
   id: number;
   topicId: number;
   authorId: number | null;
+  submissionId?: string | null;
   content: string;
   isAnonymous?: boolean;
   anonymousAlias?: string | null;
@@ -118,6 +120,24 @@ export type VideoReviewSummary = {
   manualReviewCount: number;
 };
 
+export type ForumSubmissionResult = {
+  status: "published" | "blocked_ai" | string;
+  riskLevel?: string;
+  riskScore?: number;
+  reason?: string;
+  replayed?: boolean;
+  imageReview?: ImageReviewSummary | null;
+  videoReview?: VideoReviewSummary | null;
+};
+
+export type TopicSubmissionResponse = Topic & { submissionResult?: ForumSubmissionResult };
+export type ReplySubmissionResponse = Reply & {
+  blocked?: boolean;
+  submissionResult?: ForumSubmissionResult;
+  imageReview?: ImageReviewSummary | null;
+  videoReview?: VideoReviewSummary | null;
+};
+
 export type TopicAutoFormatResult = {
   content: string;
   provider: "ai" | "fallback";
@@ -130,10 +150,16 @@ export const topicApi = {
     request.get<{ page: number; size: number; total: number; list: Topic[] }>("/topics", params, options),
   detail: (id: number, options?: RequestOptions) => request.get<Topic>(`/topics/${id}`, undefined, options),
   replies: (id: number, options?: RequestOptions) => request.get<Reply[]>(`/topics/${id}/replies`, undefined, options),
-  create: (payload: { boardSlug: string; title: string; content: string; metadata?: any; tags?: string[]; anonymous?: boolean }) =>
-    request.post<Topic & { submissionResult?: { status: string; riskLevel?: string; riskScore?: number; reason?: string; imageReview?: ImageReviewSummary | null; videoReview?: VideoReviewSummary | null } }>("/topics", payload),
+  create: (payload: { boardSlug: string; title: string; content: string; metadata?: any; tags?: string[]; anonymous?: boolean; submissionId?: string }) =>
+    request.post<TopicSubmissionResponse>("/topics", payload, { timeout: 75_000, suppressErrorMessage: true }),
+  submissionStatus: (submissionId: string) =>
+    request.get<TopicSubmissionResponse>(`/topics/submissions/${encodeURIComponent(submissionId)}`, undefined, {
+      cacheTtlMs: 0,
+      timeout: 8_000,
+      suppressErrorMessage: true,
+    }),
   update: (id: number, payload: Partial<Topic>) =>
-    request.patch<Topic & { submissionResult?: { status: string; riskLevel?: string; riskScore?: number; reason?: string; imageReview?: ImageReviewSummary | null; videoReview?: VideoReviewSummary | null } }>(`/topics/${id}`, payload),
+    request.patch<TopicSubmissionResponse>(`/topics/${id}`, payload, { timeout: 75_000, suppressErrorMessage: true }),
   autoFormat: (payload: { title?: string; content: string; boardSlug?: string; editorMode?: "visual" | "markup" }) =>
     request.post<TopicAutoFormatResult>("/topics/format", payload, { timeout: 60000 }),
   remove: (id: number) => request.delete<any>(`/topics/${id}`),
@@ -141,10 +167,16 @@ export const topicApi = {
 };
 
 export const replyApi = {
-  create: (payload: { topicId: number; content: string; parentReplyId?: number; anonymous?: boolean }) =>
-    request.post<Reply & { blocked?: boolean; submissionResult?: { status: string; riskLevel?: string; riskScore?: number; reason?: string }; imageReview?: ImageReviewSummary | null; videoReview?: VideoReviewSummary | null }>("/replies", payload),
+  create: (payload: { topicId: number; content: string; parentReplyId?: number; anonymous?: boolean; submissionId?: string }) =>
+    request.post<ReplySubmissionResponse>("/replies", payload, { timeout: 75_000, suppressErrorMessage: true }),
+  submissionStatus: (submissionId: string) =>
+    request.get<ReplySubmissionResponse>(`/replies/submissions/${encodeURIComponent(submissionId)}`, undefined, {
+      cacheTtlMs: 0,
+      timeout: 8_000,
+      suppressErrorMessage: true,
+    }),
   update: (id: number, payload: { content: string }) =>
-    request.patch<Reply & { imageReview?: ImageReviewSummary | null; videoReview?: VideoReviewSummary | null }>(`/replies/${id}`, payload),
+    request.patch<Reply & { imageReview?: ImageReviewSummary | null; videoReview?: VideoReviewSummary | null }>(`/replies/${id}`, payload, { timeout: 75_000, suppressErrorMessage: true }),
   remove: (id: number) => request.delete<any>(`/replies/${id}`),
   requestManualReview: (id: number) => request.post<{ ok: true }>(`/replies/${id}/request-manual-review`),
 };

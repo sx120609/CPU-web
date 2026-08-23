@@ -38,9 +38,57 @@ import { ensureForumVideoAssetsForContent, summarizeForumVideoModerationForConte
 import { invalidateCourseCaches, invalidateForumCaches } from "../services/cacheInvalidation";
 import { isRetiredBoardSlug, visibleBoardSlugFilter } from "../services/retiredBoards";
 import { getReactionSummary } from "../services/vip";
+import {
+  isForumSubmissionUniqueConflict,
+  normalizeForumSubmissionId,
+  scheduleForumBackgroundTask,
+} from "../services/forumSubmission";
 
 export const topicRouter = Router();
 const MARKET_TOPIC_API_MESSAGE = "商城商品请使用商城发布、编辑和下架功能";
+
+const topicSubmissionInclude = {
+  board: { select: { id: true, slug: true, name: true, type: true, color: true } },
+  author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, vipLevel: true, vipExpiresAt: true, profileTheme: true, profileFrame: true } },
+  tags: { include: { tag: true } },
+} as const;
+
+async function findTopicSubmission(userId: number, submissionId: string) {
+  return prisma.topic.findUnique({
+    where: { authorId_submissionId: { authorId: userId, submissionId } },
+    include: topicSubmissionInclude,
+  });
+}
+
+async function presentTopicSubmission(topic: any, requestUser: any, replayed = false) {
+  const [imageReview, videoReview] = await Promise.all([
+    summarizeForumImageModerationForContent(topic.content).catch(() => null),
+    summarizeForumVideoModerationForContent(topic.content).catch(() => null),
+  ]);
+  const blocked = topic.hidden && topic.aiReviewStatus === "blocked_ai";
+  return {
+    ...(await decodeTopicForViewerWithImages(topic, requestUser)),
+    submissionResult: blocked
+      ? {
+          status: "blocked_ai",
+          riskLevel: topic.aiRiskLevel,
+          riskScore: topic.aiRiskScore,
+          reason: topic.aiReviewReason,
+          imageReview,
+          videoReview,
+          replayed,
+        }
+      : { status: "published", imageReview, videoReview, replayed },
+  };
+}
+
+function scheduleTopicAiTags(input: Parameters<typeof generateTopicAiTags>[0], topicId: number) {
+  scheduleForumBackgroundTask(`topic ${topicId} AI tags`, async () => {
+    const aiTags = await generateTopicAiTags(input);
+    await syncTopicAiTags(topicId, aiTags);
+    await invalidateForumCaches();
+  });
+}
 
 /**
  * 列表：?board=slug&page=1&size=20&sort=hot|new
@@ -114,6 +162,16 @@ topicRouter.get("/", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+topicRouter.get("/submissions/:submissionId", authRequired, async (req, res, next) => {
+  try {
+    const submissionId = normalizeForumSubmissionId(req.params.submissionId, "topic");
+    if (!submissionId) throw Errors.badRequest("发布操作 ID 不合法");
+    const topic = await findTopicSubmission(req.user!.userId, submissionId);
+    if (!topic) throw Errors.notFound("尚未找到这次发布结果");
+    ok(res, await presentTopicSubmission(topic, req.user, true));
+  } catch (e) { next(e); }
+});
+
 topicRouter.get("/:id", async (req, res, next) => {
   try {
     const id = Number(req.params.id);
@@ -150,6 +208,7 @@ const createSchema = z.object({
   metadata: z.record(z.any()).optional(),
   tags: z.array(z.string().max(20)).optional(),
   anonymous: z.boolean().optional(),
+  submissionId: z.string().min(8).max(80).optional(),
 });
 
 const formatSchema = z.object({
@@ -162,9 +221,15 @@ const formatSchema = z.object({
 topicRouter.post("/", authRequired, validate(createSchema), async (req, res, next) => {
   try {
     const userId = req.user!.userId;
-    const { boardSlug, title, content, metadata, tags, anonymous = false } = req.body;
+    const { boardSlug, title, content, metadata, tags, anonymous = false, submissionId: rawSubmissionId } = req.body;
+    const submissionId = normalizeForumSubmissionId(rawSubmissionId, "topic");
+    if (rawSubmissionId && !submissionId) throw Errors.badRequest("发布操作 ID 不合法");
     await ensureForumAccessEnabled(userId, req.user!.role);
     await ensureUserCanSpeak(userId);
+    if (submissionId) {
+      const existing = await findTopicSubmission(userId, submissionId);
+      if (existing) return ok(res, await presentTopicSubmission(existing, req.user, true));
+    }
     await ensureUserCanSubmitTopic(userId);
     const board = await prisma.board.findUnique({ where: { slug: boardSlug } });
     if (!board) throw Errors.notFound("板块不存在");
@@ -200,37 +265,47 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
     const hiddenByAi = aiResult?.status === "blocked_ai";
     const manualLocked = aiResult?.riskLevel === "medium" || aiResult?.riskScore === undefined ? false : false;
     const anonymousAlias = anonymous ? createAnonymousAlias() : null;
-    const topic = await prisma.$transaction(async (tx) => {
-      if (anonymous) {
-        await consumeAnonymousCredit(userId, tx);
-      }
-      const created = await tx.topic.create({
-        data: {
-          boardId: board.id,
-          authorId: userId,
-          title,
-          content,
-          metadata: JSON.stringify(metadata ?? {}),
-          aiReviewStatus: aiResult?.status ?? "auto_passed",
-          aiRiskLevel: aiResult?.riskLevel ?? "low",
-          aiRiskScore: aiResult?.riskScore ?? 0,
-          aiReviewReason: aiResult?.reason ?? "",
-          aiReviewDetail: aiResult?.detail ?? "",
-          aiModel: aiResult?.model ?? null,
-          aiReviewedAt: aiResult ? now : null,
-          hidden: hiddenByAi,
-          lastReplyAt: now,
-          lastReplyById: userId,
-          isAnonymous: anonymous,
-          anonymousAlias,
-        },
+    let topic;
+    try {
+      topic = await prisma.$transaction(async (tx) => {
+        if (anonymous) {
+          await consumeAnonymousCredit(userId, tx);
+        }
+        const created = await tx.topic.create({
+          data: {
+            boardId: board.id,
+            authorId: userId,
+            submissionId,
+            title,
+            content,
+            metadata: JSON.stringify(metadata ?? {}),
+            aiReviewStatus: aiResult?.status ?? "auto_passed",
+            aiRiskLevel: aiResult?.riskLevel ?? "low",
+            aiRiskScore: aiResult?.riskScore ?? 0,
+            aiReviewReason: aiResult?.reason ?? "",
+            aiReviewDetail: aiResult?.detail ?? "",
+            aiModel: aiResult?.model ?? null,
+            aiReviewedAt: aiResult ? now : null,
+            hidden: hiddenByAi,
+            lastReplyAt: now,
+            lastReplyById: userId,
+            isAnonymous: anonymous,
+            anonymousAlias,
+          },
+        });
+        if (!hiddenByAi) {
+          await tx.user.update({ where: { id: userId }, data: { postCount: { increment: 1 } } });
+          await tx.board.update({ where: { id: board.id }, data: { topicCount: { increment: 1 } } });
+        }
+        return created;
       });
-      if (!hiddenByAi) {
-        await tx.user.update({ where: { id: userId }, data: { postCount: { increment: 1 } } });
-        await tx.board.update({ where: { id: board.id }, data: { topicCount: { increment: 1 } } });
+    } catch (error) {
+      if (submissionId && isForumSubmissionUniqueConflict(error)) {
+        const existing = await findTopicSubmission(userId, submissionId);
+        if (existing) return ok(res, await presentTopicSubmission(existing, req.user, true));
       }
-      return created;
-    });
+      throw error;
+    }
 
     if (tags?.length) {
       for (const name of tags) {
@@ -243,23 +318,13 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
       }
     }
 
-    const aiTags = await generateTopicAiTags({
+    scheduleTopicAiTags({
       title,
       content,
       boardName: board.name,
       boardType: board.type,
       metadata: metadata ?? {},
-    }).catch(() => [] as string[]);
-    await syncTopicAiTags(topic.id, aiTags);
-
-    const topicWithTags = await prisma.topic.findUnique({
-      where: { id: topic.id },
-      include: {
-        board: { select: { slug: true, name: true, type: true, color: true } },
-        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, vipLevel: true, vipExpiresAt: true, profileTheme: true, profileFrame: true } },
-        tags: { include: { tag: true } },
-      },
-    });
+    }, topic.id);
 
     // 课评：写入 CourseRating 派生表
     if (board.type === "coursereview" && metadata?.courseId && metadata?.ratings) {
@@ -307,23 +372,32 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
       await refreshCourseStats(courseId);
     }
 
-    if (hiddenByAi && aiResult) {
-      await notifyTopicAiBlocked({
+    const blockedNotification = hiddenByAi && aiResult
+      ? notifyTopicAiBlocked({
         topicId: topic.id,
         userId,
         title,
         reason: aiResult.reason,
         riskScore: aiResult.riskScore,
-      });
-    }
-
-    await Promise.all([
+      }).catch(() => undefined)
+      : Promise.resolve();
+    const mediaRegistration = Promise.all([
       ensureForumImageAssetsForContent(content, userId).catch(() => null),
       ensureForumVideoAssetsForContent(content, userId).catch(() => null),
+    ]).then(async () => {
+      const [imageReview, videoReview] = await Promise.all([
+        summarizeForumImageModerationForContent(content).catch(() => null),
+        summarizeForumVideoModerationForContent(content).catch(() => null),
+      ]);
+      return { imageReview, videoReview };
+    });
+    const [topicWithTags, , mediaReview] = await Promise.all([
+      prisma.topic.findUnique({ where: { id: topic.id }, include: topicSubmissionInclude }),
+      blockedNotification,
+      mediaRegistration,
+      invalidateForumCaches({ includeCourses: board.type === "coursereview" }),
     ]);
-    const imageReview = await summarizeForumImageModerationForContent(content).catch(() => null);
-    const videoReview = await summarizeForumVideoModerationForContent(content).catch(() => null);
-    await invalidateForumCaches({ includeCourses: board.type === "coursereview" });
+    const { imageReview, videoReview } = mediaReview;
     ok(res, {
       ...(await decodeTopicForViewerWithImages(topicWithTags ?? { ...topic, board: { slug: board.slug, name: board.name, type: board.type }, tags: [] }, req.user)),
       submissionResult: hiddenByAi
@@ -334,11 +408,13 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
             reason: aiResult?.reason,
             imageReview,
             videoReview,
+            replayed: false,
           }
         : {
             status: "published",
             imageReview,
             videoReview,
+            replayed: false,
           },
     });
   } catch (e) { next(e); }
@@ -393,6 +469,7 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
 
     const body = req.body as any;
     const data: any = {};
+    let aiTagInput: Parameters<typeof generateTopicAiTags>[0] | null = null;
     const nextTitle = typeof body.title === "string" && canEditContent ? body.title : t.title;
     const nextContent = typeof body.content === "string" && canEditContent ? body.content : t.content;
     const nextMetadataRaw = typeof body.metadata === "object" && body.metadata ? JSON.stringify(body.metadata) : t.metadata;
@@ -460,14 +537,13 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
         data.aiReviewedAt = new Date();
       }
 
-      const aiTags = await generateTopicAiTags({
+      aiTagInput = {
         title: nextTitle,
         content: nextContent,
         boardName: boardInfo?.name,
         boardType: boardInfo?.type,
         metadata: typeof body.metadata === "object" && body.metadata ? body.metadata : parseJsonSafe(t.metadata),
-      }).catch(() => [] as string[]);
-      data.__aiTags = aiTags;
+      };
     }
 
     if (
@@ -482,8 +558,6 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
       data.editCount = { increment: 1 };
     }
 
-    const aiTags = Array.isArray(data.__aiTags) ? data.__aiTags : null;
-    delete data.__aiTags;
     const hiddenChanged = typeof data.hidden === "boolean" && data.hidden !== t.hidden;
     const u = await prisma.$transaction(async (tx) => {
       const updated = await tx.topic.update({ where: { id }, data });
@@ -500,9 +574,7 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
     } else if (u.hidden) {
       await removeTopicFromGlobalPins(id);
     }
-    if (aiTags) {
-      await syncTopicAiTags(id, aiTags);
-    }
+    if (aiTagInput) scheduleTopicAiTags(aiTagInput, id);
     if (typeof body.content === "string" && canEditContent) {
       await Promise.all([
         ensureForumImageAssetsForContent(nextContent, req.user!.userId).catch(() => null),
