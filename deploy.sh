@@ -1310,6 +1310,21 @@ do_voicehub_start() {
         --merge-logs
   fi
   cd ..
+  wait_for_voicehub_health
+}
+
+wait_for_voicehub_health() {
+  local attempt=1
+  while [ "$attempt" -le 30 ]; do
+    if curl -fsS --max-time 2 "http://127.0.0.1:$VOICEHUB_PORT/voicehub/" >/dev/null 2>&1; then
+      log "VoiceHub health check passed"
+      return
+    fi
+    sleep 1
+    attempt=$((attempt + 1))
+  done
+  pm2 logs "$VOICEHUB_SERVICE_NAME" --lines 80 --nostream >&2 || true
+  err "VoiceHub failed its startup health check; inspect pm2 logs $VOICEHUB_SERVICE_NAME"
 }
 
 do_proxy_start() {
@@ -1512,6 +1527,22 @@ changed_files_match() {
   [ "$DEPLOY_FORCE_ALL" = "1" ] || printf '%s\n' "$DEPLOY_CHANGED_FILES" | grep -Eq "$pattern"
 }
 
+ensure_update_runtime_services() {
+  ensure_pm2
+
+  if ! pm2 describe "$SERVICE_NAME" >/dev/null 2>&1; then
+    warn "$SERVICE_NAME is missing from PM2; restoring it before finishing the update"
+    do_main_start
+  fi
+
+  if ! pm2 describe "$VOICEHUB_SERVICE_NAME" >/dev/null 2>&1; then
+    warn "$VOICEHUB_SERVICE_NAME is missing from PM2; restoring it before finishing the update"
+    do_voicehub_db_init
+    do_voicehub_start
+    pm2 save >/dev/null
+  fi
+}
+
 do_update() {
   collect_update_changes
 
@@ -1529,12 +1560,14 @@ do_update() {
   changed_files_match '^server/prisma/' && prisma_changed=1
 
   if [ -z "$DEPLOY_CHANGED_FILES" ] && [ "$DEPLOY_FORCE_ALL" != "1" ]; then
-    log "No application changes detected; skipping install, build, migration, and restart"
+    log "No application changes detected; checking runtime services"
+    ensure_update_runtime_services
     return
   fi
 
   if [ "$server_changed" = "0" ] && [ "$web_changed" = "0" ] && [ "$voicehub_changed" = "0" ]; then
-    log "No deployable application changes detected; recording the new deployment baseline"
+    log "No deployable application changes detected; checking runtime services before recording the new deployment baseline"
+    ensure_update_runtime_services
     record_successful_deployment
     return
   fi
@@ -1566,6 +1599,7 @@ do_update() {
     pm2 save >/dev/null
   fi
 
+  ensure_update_runtime_services
   record_successful_deployment
 }
 
