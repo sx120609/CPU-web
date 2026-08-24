@@ -114,6 +114,16 @@ const RESTRICTED_PUBLIC_TOPIC_TERMS = [
 ];
 const UNIFIED_AUTH_TROUBLESHOOTING_PATTERN = /(?:统一身份认证|统一认证|icpueducn|密码(?:错误|不正确|忘记|重置|修改)|(?:账号|账户).{0,4}锁定|无法登录|登录失败|登录不进|登录不了|登录不上)/u;
 
+const CAMPUS_ASSISTANT_LATEX_COMMANDS = new Set([
+  "alpha", "approx", "beta", "cdot", "chi", "cos", "delta", "displaystyle", "ell", "epsilon", "eta",
+  "exists", "frac", "gamma", "ge", "geq", "gg", "in", "infty", "int", "iota", "kappa", "lambda",
+  "le", "leq", "left", "ln", "log", "mapsto", "mid", "mu", "nabla", "ne", "neq", "newcommand", "nu",
+  "not", "omega", "overline", "partial", "phi", "pi", "pm", "psi", "rho", "right", "rightarrow",
+  "rm", "roman", "root", "rule", "sigma", "sin", "sqrt", "sum", "tau", "text", "theta", "times",
+  "to", "top", "triangle", "underline", "upsilon", "varepsilon", "varphi", "varpi", "varrho", "varsigma",
+  "vartheta", "vec", "xi", "zeta",
+]);
+
 const CAMPUS_ASSISTANT_ROUTES: CampusAssistantRoute[] = [
   {
     id: "home",
@@ -1424,7 +1434,7 @@ export function normalizeAssistantResponse(
     actions.push(action);
     if (actions.length >= 3) break;
   }
-  const answer = String(value.answer || "").trim().slice(0, 4000)
+  const answer = normalizeCampusAssistantAnswerText(String(value.answer || "")).trim().slice(0, 4000)
     || (actions.length ? "我找到了这些相关入口，可以直接打开。" : "我暂时没有找到合适的答案，可以换一种说法再问我。");
   const suggestions = Array.isArray(value.suggestions)
     ? value.suggestions
@@ -1718,11 +1728,53 @@ function containsRestrictedPublicTopic(value: string) {
 }
 
 export function guardCampusAssistantResponse(response: CampusAssistantResponse) {
-  if (containsRestrictedPublicTopic(response.answer)) return cloneRestrictedPublicTopicReply();
+  const answer = normalizeCampusAssistantAnswerText(response.answer);
+  if (containsRestrictedPublicTopic(answer)) return cloneRestrictedPublicTopicReply();
   return {
     ...response,
+    answer,
     suggestions: response.suggestions.filter((item) => !containsRestrictedPublicTopic(item)),
   };
+}
+
+export function normalizeCampusAssistantAnswerText(value: string) {
+  const source = String(value || "").replace(/\r\n?/g, "\n");
+  let normalized = "";
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    if (char !== "\\" || index + 1 >= source.length) {
+      normalized += char;
+      continue;
+    }
+    const escape = source[index + 1];
+    if (
+      (escape === "r" || escape === "n")
+      && source[index + 2] === "\\"
+      && source[index + 3] === (escape === "r" ? "n" : "r")
+    ) {
+      normalized += "\n";
+      index += 3;
+      continue;
+    }
+    if (escape === "u") {
+      const hex = source.slice(index + 2, index + 6);
+      if (/^[0-9a-fA-F]{4}$/.test(hex)) {
+        normalized += String.fromCharCode(Number.parseInt(hex, 16));
+        index += 5;
+        continue;
+      }
+    }
+    if (escape === "n" || escape === "r" || escape === "t") {
+      const command = source.slice(index + 1).match(/^[A-Za-z]+/u)?.[0] || "";
+      if (!CAMPUS_ASSISTANT_LATEX_COMMANDS.has(command)) {
+        normalized += escape === "t" ? "\t" : "\n";
+        index += 1;
+        continue;
+      }
+    }
+    normalized += char;
+  }
+  return normalized.replace(/\n{3,}/g, "\n\n");
 }
 
 export function sanitizeCampusAssistantStoredMessages(messages: unknown[]) {
@@ -1748,16 +1800,23 @@ export function sanitizeCampusAssistantStoredMessages(messages: unknown[]) {
 
     const shouldSanitize = restricted || sanitizeNextAssistant;
     sanitizeNextAssistant = false;
-    return shouldSanitize
-      ? {
+    if (shouldSanitize) {
+      return {
+        ...record,
+        content: RESTRICTED_PUBLIC_TOPIC_REPLY.answer,
+        actions: [],
+        suggestions: [...RESTRICTED_PUBLIC_TOPIC_REPLY.suggestions],
+        images: [],
+        sources: [],
+      };
+    }
+    const normalizedContent = normalizeCampusAssistantAnswerText(content);
+    return normalizedContent === content
+      ? message
+      : {
           ...record,
-          content: RESTRICTED_PUBLIC_TOPIC_REPLY.answer,
-          actions: [],
-          suggestions: [...RESTRICTED_PUBLIC_TOPIC_REPLY.suggestions],
-          images: [],
-          sources: [],
-        }
-      : message;
+          content: normalizedContent,
+        };
   });
 }
 

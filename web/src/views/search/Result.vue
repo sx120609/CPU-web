@@ -73,7 +73,7 @@
                 v-else
                 class="message-markdown"
                 :class="{ 'is-streaming': message.streaming }"
-                v-html="renderMarkdown(message.content)"
+                v-html="renderAssistantMarkdown(message.content)"
               ></div>
             </template>
             <div v-if="message.role === 'assistant' && message.images?.length" class="generated-images">
@@ -278,6 +278,7 @@ import {
 import { useAuthStore } from "@/stores/auth";
 import { mergeAssistantHistorySessions } from "@/utils/assistantHistorySync";
 import { renderMarkdown } from "@/utils/markdown";
+import { normalizeAiTextControlEscapes } from "@/utils/markdownNormalize";
 
 const { embedded = false } = defineProps<{
   embedded?: boolean;
@@ -479,7 +480,7 @@ async function askAssistant(keyword: string, history: CampusAssistantMessage[]) 
       },
     });
     if (seq !== assistantSeq) return;
-    assistantMessage.content = next.answer;
+    assistantMessage.content = normalizeAiTextControlEscapes(next.answer);
     assistantMessage.actions = next.actions;
     assistantMessage.suggestions = next.suggestions;
     assistantMessage.images = normalizeGeneratedImages(next.images);
@@ -806,12 +807,16 @@ function cloneMessages(items: unknown[]): ConversationMessage[] {
     .map((item) => ({
       id: item.id,
       role: item.role,
-      content: item.content.slice(0, 4000),
+      content: (item.role === "assistant" ? normalizeAiTextControlEscapes(item.content) : item.content).slice(0, 4000),
       actions: Array.isArray(item.actions) ? item.actions.slice(0, 3).map((action) => ({ ...action })) : undefined,
       suggestions: Array.isArray(item.suggestions) ? item.suggestions.slice(0, 3).map(String) : undefined,
       images: normalizeGeneratedImages(item.images),
       sources: normalizeAssistantSources(item.sources),
     }));
+}
+
+function renderAssistantMarkdown(content: string) {
+  return renderMarkdown(normalizeAiTextControlEscapes(content));
 }
 
 function normalizeGeneratedImages(value: unknown): CampusAssistantGeneratedImage[] | undefined {

@@ -18,6 +18,7 @@ import {
   listCampusAssistantKnowledge,
   listCampusAssistantKnowledgeEntries,
   normalizeAssistantResponse,
+  normalizeCampusAssistantAnswerText,
   parseAssistantJson,
   resolveCampusAssistantImagePrompt,
   sanitizeCampusAssistantStoredMessages,
@@ -79,7 +80,7 @@ import {
   parseLearningAssistantAnswer,
 } from "../src/services/learningAssistantAi";
 import { mergeAssistantHistorySessions } from "../../web/src/utils/assistantHistorySync";
-import { normalizeAdjacentStrongDelimiters } from "../../web/src/utils/markdownNormalize";
+import { normalizeAdjacentStrongDelimiters, normalizeAiTextControlEscapes } from "../../web/src/utils/markdownNormalize";
 
 const VALID_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
@@ -1250,6 +1251,19 @@ test("assistant answers allow complete responses up to the new four-thousand-cha
   );
 
   assert.equal(response.answer.length, 4000);
+});
+
+test("拾间AI恢复上游二次转义的换行并保留 LaTeX 命令", () => {
+  const escaped = "湖州未来天气如下：\\n\\n8月24日：多云。\\n8月25日：小雨。\\n公式：$\\nabla f \\neq 0$";
+  const expected = "湖州未来天气如下：\n\n8月24日：多云。\n8月25日：小雨。\n公式：$\\nabla f \\neq 0$";
+
+  assert.equal(normalizeCampusAssistantAnswerText(escaped), expected);
+  assert.equal(normalizeAiTextControlEscapes(escaped), expected);
+  assert.equal(normalizeAssistantResponse({ answer: escaped }, []).answer, expected);
+  assert.deepEqual(
+    sanitizeCampusAssistantStoredMessages([{ role: "assistant", content: escaped }]),
+    [{ role: "assistant", content: expected }],
+  );
 });
 
 test("assistant quota includes Lv.0 and resets at China midnight", () => {
