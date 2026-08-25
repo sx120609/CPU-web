@@ -23,6 +23,7 @@ import { browserSessionMiddleware, requestOriginAndCsrfProtection } from "./midd
 import { authOptional } from "./middleware/auth";
 import { receiveCspReport, securityHeaders } from "./middleware/securityHeaders";
 import { voiceHubProxyMiddleware } from "./services/voiceHubProxy";
+import { startWechatNotificationPoller } from "./services/wechatService";
 
 export function createApp() {
   const app = express();
@@ -87,6 +88,7 @@ export function createApp() {
   startForumVideoModerationPoller();
   startForumSubmissionReviewPoller();
   startQqNotificationPoller();
+  startWechatNotificationPoller();
   startSponsorOrderExpiryPoller();
 
   app.use("/api/*", (_req, res) => {

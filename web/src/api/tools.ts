@@ -280,6 +280,12 @@ export interface ToolQqReminderPage {
     enabled: boolean;
     updatedAt: string;
   } | null;
+  wechatBinding: {
+    id: number;
+    enabled: boolean;
+    subscribed: boolean;
+    updatedAt: string;
+  } | null;
   items: ToolQqReminderItem[];
 }
 

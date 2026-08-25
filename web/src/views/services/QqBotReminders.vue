@@ -13,7 +13,7 @@
         </el-button>
         <el-button plain type="primary" @click="router.push('/messages?tab=settings')">
           <el-icon><Bell /></el-icon>
-          QQ 私聊绑定
+          消息渠道
         </el-button>
       </div>
     </section>
@@ -33,12 +33,12 @@
       </el-alert>
 
       <template v-else>
-        <div class="binding-strip" :class="{ muted: !page?.binding?.enabled }">
+        <div class="binding-strip" :class="{ muted: !hasActiveChannel }">
           <div>
             <b>{{ bindingTitle }}</b>
             <span>{{ bindingHint }}</span>
           </div>
-          <el-button v-if="!page?.binding?.enabled" type="primary" plain @click="router.push('/messages?tab=settings')">去绑定</el-button>
+          <el-button v-if="!hasActiveChannel" type="primary" plain @click="router.push('/messages?tab=settings')">去绑定</el-button>
         </div>
 
         <el-empty v-if="!loading && !items.length" description="暂无可设置提醒的小工具">
@@ -176,13 +176,20 @@ const page = ref<ToolQqReminderPage | null>(null);
 const drafts = reactive<Record<string, ReminderDraft>>({});
 
 const items = computed(() => page.value?.items ?? []);
+const hasActiveQq = computed(() => Boolean(page.value?.binding?.enabled));
+const hasActiveWechat = computed(() => Boolean(page.value?.wechatBinding?.enabled && page.value?.wechatBinding?.subscribed));
+const hasActiveChannel = computed(() => hasActiveQq.value || hasActiveWechat.value);
 const bindingTitle = computed(() => {
-  if (!page.value?.binding) return "尚未绑定 QQ 私聊";
-  return page.value.binding.enabled ? `已绑定 QQ ${page.value.binding.qqId}` : `QQ ${page.value.binding.qqId} 已停用`;
+  const channels = [
+    hasActiveWechat.value ? "微信服务号" : "",
+    hasActiveQq.value ? `QQ ${page.value?.binding?.qqId}` : "",
+  ].filter(Boolean);
+  return channels.length ? `提醒渠道：${channels.join("、")}` : "尚未启用外部提醒渠道";
 });
 const bindingHint = computed(() => {
-  if (!page.value?.binding) return "提醒设置会保存，但需要绑定并启用 QQ 私聊后才能收到提醒。";
-  return page.value.binding.enabled ? "符合策略的新消息会通过 QQ 私聊提醒你。" : "当前绑定已停用，请在通知设置中重新绑定或联系管理员。";
+  return hasActiveChannel.value
+    ? "符合策略的新消息会通过已启用的渠道提醒你。"
+    : "提醒设置会保存；绑定微信服务号或启用 QQ 私聊后即可接收。";
 });
 
 onMounted(loadPage);

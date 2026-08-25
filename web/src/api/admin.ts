@@ -576,6 +576,31 @@ export type JwxtAgentConnection = {
   crawlEnabled: boolean;
 };
 
+export type WechatServiceConfig = {
+  id: number;
+  enabled: boolean;
+  accountName: string;
+  appId: string;
+  hasAppSecret: boolean;
+  appSecretMasked: string;
+  token: string;
+  encodingAesKey: string;
+  messageMode: "plaintext" | "compatible" | "safe";
+  notificationEnabled: boolean;
+  assistantEnabled: boolean;
+  notifyCategories: string[];
+  notificationTemplateId: string;
+  templateTitleField: string;
+  templateContentField: string;
+  templateTimeField: string;
+  templateRemarkField: string;
+  callbackUrl: string;
+  oauthCallbackUrl: string;
+  oauthDomain: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type TopNavigationAdminPayload = {
   items: TopNavigationItem[];
   defaults: TopNavigationItem[];
@@ -1005,6 +1030,34 @@ export const adminApi = {
     request.post<{ ok: true }>("/admin/qqbot/test-message", payload),
   dispatchQqBotNotifications: () => request.post<{ sent: number }>("/admin/qqbot/dispatch-notifications"),
   createQqBotBindToken: () => request.post<{ token: string; expiresAt: string }>("/qqbot/bind-token"),
+  wechatConfig: (options?: RequestOptions) => request.get<WechatServiceConfig>("/admin/wechat/config", undefined, options),
+  updateWechatConfig: (payload: Partial<{
+    enabled: boolean;
+    accountName: string;
+    appId: string;
+    appSecret: string;
+    clearAppSecret: boolean;
+    token: string;
+    encodingAesKey: string;
+    messageMode: "plaintext" | "compatible" | "safe";
+    notificationEnabled: boolean;
+    assistantEnabled: boolean;
+    notifyCategories: string[];
+    notificationTemplateId: string;
+    templateTitleField: string;
+    templateContentField: string;
+    templateTimeField: string;
+    templateRemarkField: string;
+  }>) => request.patch<WechatServiceConfig>("/admin/wechat/config", payload),
+  generateWechatCredentials: (target: "token" | "encodingAesKey" | "both") =>
+    request.post<WechatServiceConfig>("/admin/wechat/credentials", { target }),
+  wechatBindings: (params?: { q?: string }, options?: RequestOptions) => request.get<any[]>("/admin/wechat/bindings", params, options),
+  updateWechatBinding: (id: number, payload: { enabled: boolean }) => request.patch<any>(`/admin/wechat/bindings/${id}`, payload),
+  deleteWechatBinding: (id: number) => request.delete<{ ok: true }>(`/admin/wechat/bindings/${id}`),
+  sendWechatTestMessage: (id: number, message: string) => request.post<{ ok: true }>(`/admin/wechat/bindings/${id}/test-message`, { message }),
+  dispatchWechatNotifications: () => request.post<{ sent: number; skipped: number }>("/admin/wechat/dispatch-notifications"),
+  wechatLogs: (params: { status?: string; eventType?: string; page?: number; size?: number }, options?: RequestOptions) =>
+    request.get<{ page: number; size: number; total: number; list: any[] }>("/admin/wechat/logs", params, options),
   // 帖子
   topics: (
     params: { q?: string; board?: string; hidden?: "0" | "1"; reviewStatus?: string; page?: number; size?: number },

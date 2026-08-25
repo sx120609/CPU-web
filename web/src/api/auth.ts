@@ -101,6 +101,25 @@ export interface QqBotProfile {
   }>;
 }
 
+export interface WechatProfile {
+  enabled: boolean;
+  accountName: string;
+  notificationEnabled: boolean;
+  assistantEnabled: boolean;
+  oauthAvailable: boolean;
+  qrBindingAvailable: boolean;
+  binding: null | {
+    id: number;
+    enabled: boolean;
+    subscribed: boolean;
+    subscribedAt?: string | null;
+    unsubscribedAt?: string | null;
+    lastInteractionAt?: string | null;
+    createdAt: string;
+    updatedAt: string;
+  };
+}
+
 export interface SsoBeginResult {
   pendingId: string;
   needCaptcha: boolean;
@@ -144,4 +163,8 @@ export const authApi = {
   qqBotProfile: (options?: RequestOptions) => request.get<QqBotProfile>("/qqbot/me", undefined, options),
   createQqBotBindToken: (options?: RequestOptions) => request.post<{ token: string; expiresAt: string }>("/qqbot/bind-token", undefined, options),
   deleteQqBotBinding: (options?: RequestOptions) => request.delete<{ ok: true }>("/qqbot/binding", options),
+  wechatProfile: (options?: RequestOptions) => request.get<WechatProfile>("/wechat/me", undefined, options),
+  createWechatOauthUrl: (options?: RequestOptions) => request.post<{ url: string; expiresAt: string }>("/wechat/oauth-url", undefined, options),
+  createWechatBindQr: (options?: RequestOptions) => request.post<{ imageUrl: string; expiresAt: string }>("/wechat/bind-qr", undefined, options),
+  deleteWechatBinding: (options?: RequestOptions) => request.delete<{ ok: true }>("/wechat/binding", options),
 };

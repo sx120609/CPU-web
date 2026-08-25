@@ -255,15 +255,19 @@ toolsRouter.get("/permissions/me", authRequired, async (req, res, next) => {
 
 toolsRouter.get("/qqbot-reminders", authRequired, async (req, res, next) => {
   try {
-    const [items, binding] = await Promise.all([
+    const [items, binding, wechatBinding] = await Promise.all([
       listToolQqReminderItems(req.user),
       prisma.qqBotBinding.findFirst({
         where: { userId: req.user!.userId },
         orderBy: [{ enabled: "desc" }, { updatedAt: "desc" }],
         select: { id: true, qqId: true, nickname: true, enabled: true, updatedAt: true },
       }),
+      prisma.wechatBinding.findUnique({
+        where: { userId: req.user!.userId },
+        select: { id: true, enabled: true, subscribed: true, updatedAt: true },
+      }),
     ]);
-    ok(res, { binding, items });
+    ok(res, { binding, wechatBinding, items });
   } catch (e) { next(e); }
 });
 

@@ -83,6 +83,10 @@ model User {
   qqBotBindings                QqBotBinding[]
   qqBotBindTokens              QqBotBindToken[]
   qqBotMessageLogs             QqBotMessageLog[]
+  wechatBinding                WechatBinding?
+  wechatBindTokens             WechatBindToken[]
+  wechatOauthStates            WechatOauthState[]
+  wechatMessageLogs            WechatMessageLog[]
   forumImageAssets             ForumImageAsset[]
   forumVideoAssets             ForumVideoAsset[]
   aiReviewLogs                 AiReviewLog[]
@@ -1357,12 +1361,101 @@ model MessageSetting {
   quietStart         String  @default("23:00")
   quietEnd           String  @default("07:00")
   qqBotNotifyEnabled Boolean @default(true)
+  wechatNotifyEnabled Boolean @default(true)
   subscribeReply     Boolean @default(true)
   subscribeLike      Boolean @default(true)
   subscribeSchool    Boolean @default(true)
   subscribeSystem    Boolean @default(true)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model WechatServiceConfig {
+  id                    Int      @id @default(autoincrement())
+  enabled               Boolean  @default(false)
+  accountName           String   @default("")
+  appId                 String   @default("")
+  appSecret             String   @default("")
+  token                 String   @default("")
+  encodingAesKey        String   @default("")
+  messageMode           String   @default("safe")
+  notificationEnabled   Boolean  @default(true)
+  assistantEnabled      Boolean  @default(true)
+  notifyCategories      String   @default("[\"reply\",\"mention\",\"like\",\"system\",\"service-tool\",\"lost-found\",\"school-feed\"]")
+  notificationTemplateId String  @default("")
+  templateTitleField    String   @default("")
+  templateContentField  String   @default("")
+  templateTimeField     String   @default("")
+  templateRemarkField   String   @default("")
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+model WechatBinding {
+  id                Int       @id @default(autoincrement())
+  userId            Int       @unique
+  openId            String    @unique
+  unionId           String?
+  enabled           Boolean   @default(true)
+  subscribed        Boolean   @default(true)
+  subscribedAt      DateTime?
+  unsubscribedAt    DateTime?
+  lastInteractionAt DateTime?
+  lastInteractionType String   @default("")
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([enabled, subscribed])
+  @@index([unionId])
+}
+
+model WechatBindToken {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  tokenHash String    @unique
+  usedAt    DateTime?
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model WechatOauthState {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  stateHash String    @unique
+  usedAt    DateTime?
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model WechatMessageLog {
+  id             Int       @id @default(autoincrement())
+  direction      String
+  eventType      String
+  status         String
+  openId         String?
+  userId         Int?
+  messageId      String?   @unique
+  notificationId Int?
+  content        String?
+  result         String?
+  rawPayload     String?
+  createdAt      DateTime  @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([notificationId, userId, status])
+  @@index([openId, createdAt])
+  @@index([eventType, status, createdAt])
 }
 
 // ============ QQBot / NapCat 对接 ============

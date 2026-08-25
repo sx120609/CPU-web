@@ -117,6 +117,7 @@ import { resetCampusAssistantDailyUsage } from "../../services/campusAssistantQu
 import { fetchAiModelCatalog } from "../../services/aiModelCatalog";
 import { forumAdsAdminRouter } from "./forumAds";
 import { vipGiftCodesAdminRouter } from "./vipGiftCodes";
+import { wechatAdminRouter } from "./wechat";
 
 export const adminRouter = Router();
 adminRouter.use("/forum-ads", forumAdsAdminRouter);
@@ -142,6 +143,7 @@ function requestOrigin(req: any) {
 }
 
 adminRouter.use("/qqbot", adminOnly, qqBotAdminRouter);
+adminRouter.use("/wechat", adminOnly, wechatAdminRouter);
 
 const jwxtAgentConfigSchema = z.object({
   localJwxtEnabled: z.boolean(),

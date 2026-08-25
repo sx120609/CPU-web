@@ -7,6 +7,7 @@ import {
   type ServiceToolCode,
 } from "./serviceTools";
 import { dispatchRecentQqNotifications } from "./qqbot";
+import { dispatchRecentWechatNotifications } from "./wechatService";
 
 export const TOOL_QQ_NOTIFICATION_CATEGORY = "service-tool";
 export const TOOL_QQ_NOTIFICATION_SOURCE = "小工具提醒";
@@ -460,8 +461,13 @@ function queueToolQqDispatch() {
   toolQqDispatchQueued = true;
   setTimeout(() => {
     toolQqDispatchQueued = false;
-    dispatchRecentQqNotifications().catch((error) => {
-      console.warn("[tools] qqbot reminder dispatch failed", error);
+    Promise.allSettled([
+      dispatchRecentQqNotifications(),
+      dispatchRecentWechatNotifications(),
+    ]).then((results) => {
+      results.forEach((result) => {
+        if (result.status === "rejected") console.warn("[tools] reminder dispatch failed", result.reason);
+      });
     });
   }, 0);
 }

@@ -26,6 +26,7 @@ import { integrationsRouter } from "./integrations";
 import { oauthRouter } from "./oauth";
 import { forumAdsRouter } from "./forumAds";
 import { vipRouter } from "./vip";
+import { wechatRouter } from "./wechat";
 
 export const router = Router();
 
@@ -45,6 +46,7 @@ router.use("/storage", storageRouter);
 router.use("/tools", toolsRouter);
 router.use("/payments", paymentsRouter);
 router.use("/qqbot", qqBotRouter);
+router.use("/wechat", wechatRouter);
 router.use("/course-bot", authRequired, courseBotRouter);
 router.use("/lost-found", lostFoundRouter);
 router.use("/integrations", integrationsRouter);

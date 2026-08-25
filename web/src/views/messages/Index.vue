@@ -49,6 +49,76 @@
             </el-button>
           </div>
           <h4>通知渠道</h4>
+          <div class="qq-channel-card wechat-channel-card" v-loading="wechatLoading">
+            <div class="qq-channel-head">
+              <div>
+                <b>微信服务号</b>
+                <span>绑定后可接收站内提醒，并在服务号内使用拾间AI。</span>
+              </div>
+              <el-tag :type="wechatChannelTagType" effect="plain">{{ wechatChannelStateText }}</el-tag>
+            </div>
+            <el-alert
+              v-if="wechatProfileError"
+              type="warning"
+              :closable="false"
+              show-icon
+              class="qq-channel-alert"
+              :title="wechatProfileError"
+            >
+              <template #default><el-button size="small" :loading="wechatLoading" @click="refreshWechatProfile">重试</el-button></template>
+            </el-alert>
+            <template v-else>
+              <div class="qq-channel-grid wechat-channel-grid">
+                <div><span>服务号</span><b>{{ wechatProfile?.accountName || "未配置" }}</b></div>
+                <div><span>账号状态</span><b>{{ wechatProfile?.binding ? (wechatProfile.binding.subscribed ? "已关注并绑定" : "已绑定，当前未关注") : "未绑定" }}</b></div>
+              </div>
+              <div v-if="wechatQr" class="wechat-qr-box">
+                <img :src="wechatQr.imageUrl" alt="微信服务号绑定二维码" />
+                <div><b>使用微信扫码完成绑定</b><span>二维码有效期至 {{ formatNoticeTime(wechatQr.expiresAt) }}</span></div>
+              </div>
+              <p v-else class="qq-channel-hint">
+                {{ wechatProfile?.binding ? "当前账号已绑定微信服务号。" : "在微信内可直接授权绑定；电脑端也可以生成二维码后扫码绑定。" }}
+              </p>
+              <label class="qq-channel-toggle">
+                <span>
+                  <b>微信提醒</b>
+                  <small>开启后，服务号会按照下方订阅偏好发送可用的提醒。</small>
+                </span>
+                <el-switch v-model="settings.wechatNotifyEnabled" />
+              </label>
+              <div class="qq-channel-actions">
+                <el-button
+                  v-if="!wechatProfile?.binding && isWechatBrowser"
+                  type="primary"
+                  plain
+                  :loading="wechatLoading"
+                  :disabled="!wechatProfile?.oauthAvailable"
+                  @click="startWechatOauthBinding"
+                >
+                  微信内绑定
+                </el-button>
+                <el-button
+                  v-if="!wechatProfile?.binding"
+                  plain
+                  :loading="wechatLoading"
+                  :disabled="!wechatProfile?.qrBindingAvailable"
+                  @click="createWechatQr"
+                >
+                  {{ wechatQr ? "重新生成二维码" : "扫码绑定" }}
+                </el-button>
+                <el-button
+                  v-if="wechatProfile?.binding"
+                  type="danger"
+                  plain
+                  :loading="wechatLoading"
+                  @click="unbindWechat"
+                >
+                  解绑微信
+                </el-button>
+                <el-button plain :loading="wechatLoading" @click="refreshWechatProfile">刷新状态</el-button>
+              </div>
+            </template>
+          </div>
           <div class="qq-channel-card" v-loading="qqBotLoading">
             <div class="qq-channel-head">
               <div>
@@ -161,7 +231,7 @@
             </span>
             <span class="settings-action-copy">
               <b>小工具提醒规则</b>
-              <span>选择哪些问卷、文件收集和成绩表通过 QQ 私聊提醒。</span>
+              <span>选择哪些问卷、文件收集和成绩表通过已启用的消息渠道提醒。</span>
             </span>
             <el-icon class="settings-action-arrow"><ArrowRight /></el-icon>
           </button>
@@ -237,7 +307,7 @@ import { ArrowRight, Bell } from "@element-plus/icons-vue";
 import MessageList from "@/components/messages/MessageList.vue";
 import { messageApi } from "@/api/message";
 import { topicApi } from "@/api/topic";
-import { authApi, type QqBotProfile } from "@/api/auth";
+import { authApi, type QqBotProfile, type WechatProfile } from "@/api/auth";
 import { useMessageStore } from "@/stores/message";
 import { useAuthStore } from "@/stores/auth";
 import { adminApi } from "@/api/admin";
@@ -257,6 +327,10 @@ const settings = ref<any>(null);
 const qqBotProfile = ref<QqBotProfile | null>(null);
 const qqBotLoading = ref(false);
 const qqBotProfileError = ref("");
+const wechatProfile = ref<WechatProfile | null>(null);
+const wechatLoading = ref(false);
+const wechatProfileError = ref("");
+const wechatQr = ref<{ imageUrl: string; expiresAt: string } | null>(null);
 const loading = ref(false);
 const pageError = ref("");
 const saving = ref(false);
@@ -269,10 +343,25 @@ const reviewTarget = ref<{ kind: "topic" | "reply"; id: number; title: string; a
 const reviewTargetLoading = ref(false);
 let loadSeq = 0;
 let qqBotProfileSeq = 0;
+let wechatProfileSeq = 0;
 let reviewTargetSeq = 0;
 let disposed = false;
+let wechatQrPollTimer: ReturnType<typeof setInterval> | null = null;
 
 const unreadCount = computed(() => list.value.filter((item) => !item.readAt).length);
+const isWechatBrowser = /MicroMessenger/i.test(navigator.userAgent);
+const wechatChannelStateText = computed(() => {
+  if (wechatProfileError.value) return "状态未知";
+  if (!wechatProfile.value?.enabled) return "未启用";
+  if (!wechatProfile.value.binding) return "未绑定";
+  if (!wechatProfile.value.binding.enabled) return "已停用";
+  return wechatProfile.value.binding.subscribed ? "已绑定" : "已取消关注";
+});
+const wechatChannelTagType = computed(() => {
+  if (wechatProfileError.value) return "warning";
+  if (!wechatProfile.value?.enabled || !wechatProfile.value.binding) return "info";
+  return wechatProfile.value.binding.enabled && wechatProfile.value.binding.subscribed ? "success" : "warning";
+});
 const qqBotBindingReturnUrl = computed(() => {
   if (route.query.qqbot !== "bind") return "";
   const target = resolveSafeRedirect(route.query.returnTo, "");
@@ -306,20 +395,31 @@ onMounted(() => {
   disposed = false;
   void loadPage();
   void loadQqBotProfile({ silent: true });
+  void loadWechatProfile({ silent: true });
+  if (route.query.wechat === "bound") {
+    ElMessage.success("微信服务号绑定成功");
+    router.replace({ query: { ...route.query, wechat: undefined } }).catch(() => null);
+  } else if (route.query.wechat === "error") {
+    ElMessage.error("微信绑定失败，请重新发起");
+    router.replace({ query: { ...route.query, wechat: undefined } }).catch(() => null);
+  }
 });
 
 onBeforeUnmount(() => {
   disposed = true;
   loadSeq += 1;
   qqBotProfileSeq += 1;
+  wechatProfileSeq += 1;
   reviewTargetSeq += 1;
   loading.value = false;
   qqBotLoading.value = false;
+  wechatLoading.value = false;
   saving.value = false;
   markingAll.value = false;
   reviewing.value = false;
   requestingManualReview.value = false;
   reviewTargetLoading.value = false;
+  stopWechatQrPolling();
 });
 
 watch(() => route.query.tab, (value) => {
@@ -438,6 +538,94 @@ async function loadQqBotProfile(opts?: { silent?: boolean }) {
 
 function refreshQqBotProfile() {
   return loadQqBotProfile();
+}
+
+async function loadWechatProfile(opts?: { silent?: boolean }) {
+  if (disposed) return;
+  const seq = ++wechatProfileSeq;
+  wechatLoading.value = true;
+  wechatProfileError.value = "";
+  try {
+    const profile = await authApi.wechatProfile({ suppressErrorMessage: true });
+    if (disposed || seq !== wechatProfileSeq) return;
+    wechatProfile.value = profile;
+    if (profile.binding) {
+      wechatQr.value = null;
+      stopWechatQrPolling();
+    }
+  } catch (error) {
+    if (disposed || seq !== wechatProfileSeq) return;
+    wechatProfile.value = null;
+    wechatProfileError.value = normalizeMessageActionError(error, "微信服务号状态加载失败");
+    if (!opts?.silent) ElMessage.error(wechatProfileError.value);
+  } finally {
+    if (!disposed && seq === wechatProfileSeq) wechatLoading.value = false;
+  }
+}
+
+function refreshWechatProfile() {
+  return loadWechatProfile();
+}
+
+async function startWechatOauthBinding() {
+  if (disposed || wechatLoading.value) return;
+  wechatLoading.value = true;
+  try {
+    const result = await authApi.createWechatOauthUrl({ suppressErrorMessage: true });
+    window.location.assign(result.url);
+  } catch (error) {
+    if (!disposed) ElMessage.error(normalizeMessageActionError(error, "微信授权发起失败"));
+    wechatLoading.value = false;
+  }
+}
+
+async function createWechatQr() {
+  if (disposed || wechatLoading.value) return;
+  wechatLoading.value = true;
+  try {
+    wechatQr.value = await authApi.createWechatBindQr({ suppressErrorMessage: true });
+    startWechatQrPolling();
+  } catch (error) {
+    if (!disposed) ElMessage.error(normalizeMessageActionError(error, "绑定二维码生成失败"));
+  } finally {
+    if (!disposed) wechatLoading.value = false;
+  }
+}
+
+function startWechatQrPolling() {
+  stopWechatQrPolling();
+  wechatQrPollTimer = setInterval(() => {
+    if (!wechatQr.value || new Date(wechatQr.value.expiresAt).getTime() <= Date.now()) {
+      wechatQr.value = null;
+      stopWechatQrPolling();
+      return;
+    }
+    void loadWechatProfile({ silent: true });
+  }, 2500);
+}
+
+function stopWechatQrPolling() {
+  if (!wechatQrPollTimer) return;
+  clearInterval(wechatQrPollTimer);
+  wechatQrPollTimer = null;
+}
+
+async function unbindWechat() {
+  if (disposed || wechatLoading.value) return;
+  const confirmed = await ElMessageBox.confirm("确认解绑微信服务号？解绑后将不能通过微信接收提醒。", "解绑微信", { type: "warning" })
+    .then(() => true)
+    .catch(() => false);
+  if (!confirmed) return;
+  wechatLoading.value = true;
+  try {
+    await authApi.deleteWechatBinding({ suppressErrorMessage: true });
+    await loadWechatProfile({ silent: true });
+    if (!disposed) ElMessage.success("微信服务号绑定已解绑");
+  } catch (error) {
+    if (!disposed) ElMessage.error(normalizeMessageActionError(error, "解绑失败"));
+  } finally {
+    if (!disposed) wechatLoading.value = false;
+  }
 }
 
 function returnToQqBotReport() {
@@ -704,6 +892,7 @@ function normalizeMessageSettings(value: any) {
   return {
     ...value,
     qqBotNotifyEnabled: value?.qqBotNotifyEnabled !== false,
+    wechatNotifyEnabled: value?.wechatNotifyEnabled !== false,
   };
 }
 </script>
@@ -814,6 +1003,21 @@ function normalizeMessageSettings(value: any) {
   border-radius: 8px;
   background: var(--cpu-card);
 }
+.wechat-channel-card { margin-bottom: 12px; }
+.wechat-channel-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.wechat-qr-box {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px;
+  border: 1px dashed color-mix(in srgb, var(--cpu-primary) 38%, var(--cpu-border));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--cpu-primary) 7%, var(--cpu-card));
+}
+.wechat-qr-box img { width: 116px; height: 116px; border-radius: 8px; background: #fff; object-fit: contain; }
+.wechat-qr-box div { display: grid; gap: 5px; min-width: 0; }
+.wechat-qr-box b { color: var(--cpu-text); font-size: 14px; }
+.wechat-qr-box span { color: var(--cpu-text-secondary); font-size: 12px; line-height: 1.5; }
 .qq-channel-head {
   display: flex;
   align-items: flex-start;
@@ -1117,6 +1321,8 @@ function normalizeMessageSettings(value: any) {
     grid-template-columns: 1fr;
   }
 
+  .wechat-qr-box { align-items: flex-start; }
+
   .settings-action-row {
     align-items: flex-start;
     min-height: 0;
@@ -1190,6 +1396,8 @@ function normalizeMessageSettings(value: any) {
   .qq-channel-actions .el-button {
     width: 100%;
   }
+
+  .wechat-qr-box { flex-direction: column; }
 
   .settings-action-arrow {
     display: none;
