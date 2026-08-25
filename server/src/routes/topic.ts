@@ -1,4 +1,5 @@
-import { Router } from "express";
+import { Router, type NextFunction, type Request, type Response } from "express";
+import multer from "multer";
 import { z } from "zod";
 import { prisma } from "../prisma";
 import { Errors, ok } from "../utils/response";
@@ -27,6 +28,7 @@ import {
   syncTopicAiTags,
 } from "../services/topicAiReview";
 import { autoFormatTopicContent } from "../services/topicAiFormat";
+import { createSmartPostDraft } from "../services/topicSmartPost";
 import { ensureCanReadBoardType, ensureForumAccessEnabled, resolveForumAccess } from "../services/forumAccess";
 import { ensureUserCanSpeak, releaseExpiredMutes } from "../services/userModeration";
 import { consumeAnonymousCredit, createAnonymousAlias } from "../services/userTrust";
@@ -47,6 +49,33 @@ import {
 import { scheduleTopicSubmissionReview } from "../services/forumSubmissionReview";
 
 export const topicRouter = Router();
+
+const smartPostUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024, files: 1, fields: 8 },
+  fileFilter: (_req, file, callback) => {
+    if (/\.(?:pdf|docx)$/iu.test(String(file.originalname || ""))) return callback(null, true);
+    callback(new Error("仅支持 .pdf 或 .docx 文件"));
+  },
+});
+
+function smartPostUploadMiddleware(req: Request, res: Response, next: NextFunction) {
+  smartPostUpload.single("file")(req, res, (error: unknown) => {
+    if (!error) return next();
+    if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
+      return next(Errors.badRequest("文件不能超过 15MB"));
+    }
+    return next(Errors.badRequest(error instanceof Error ? error.message : "文件上传失败"));
+  });
+}
+
+const smartPostSchema = z.object({
+  title: z.string().max(120).optional().default(""),
+  content: z.string().max(20000).optional().default(""),
+  instruction: z.string().max(1000).optional().default(""),
+  operation: z.enum(["compose", "polish", "format"]).optional().default("compose"),
+  boardSlug: z.string().min(1).max(80).optional(),
+});
 
 const topicSubmissionInclude = {
   board: { select: { id: true, slug: true, name: true, type: true, color: true } },
@@ -225,6 +254,48 @@ topicRouter.post(
       });
       ok(res, { views: updated });
     } catch (e) { next(e); }
+  },
+);
+
+topicRouter.post(
+  "/smart-compose",
+  authRequired,
+  securityRateLimit("forum-smart-post", 20, 60 * 60_000),
+  smartPostUploadMiddleware,
+  async (req, res, next) => {
+    try {
+      res.setHeader("Cache-Control", "no-store");
+      const parsed = smartPostSchema.safeParse(req.body || {});
+      if (!parsed.success) throw Errors.badRequest(parsed.error.issues[0]?.message || "智慧发帖参数不合法");
+      if (!parsed.data.content.trim() && !req.file) throw Errors.badRequest("请填写文字，或上传 Word / PDF 文件");
+      await ensureForumAccessEnabled(req.user!.userId, req.user!.role);
+      await ensureUserCanSpeak(req.user!.userId);
+      const board = parsed.data.boardSlug
+        ? await prisma.board.findUnique({
+            where: { slug: parsed.data.boardSlug },
+            select: { name: true, type: true },
+          })
+        : null;
+      if (parsed.data.boardSlug && !board) throw Errors.notFound("板块不存在");
+      ok(res, await createSmartPostDraft({
+        userId: req.user!.userId,
+        title: parsed.data.title,
+        content: parsed.data.content,
+        instruction: parsed.data.instruction,
+        operation: parsed.data.operation,
+        boardName: board?.name,
+        boardType: board?.type,
+        file: req.file
+          ? {
+              buffer: req.file.buffer,
+              originalname: req.file.originalname,
+              mimetype: req.file.mimetype,
+            }
+          : null,
+      }));
+    } catch (error) {
+      next(error);
+    }
   },
 );
 

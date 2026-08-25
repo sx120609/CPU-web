@@ -253,6 +253,33 @@ export async function spendAssistantPoint(userId: number, amount = 1) {
   });
 }
 
+/**
+ * Settle metered usage after the upstream has reported its real token count.
+ * The balance may become negative only for this post-paid remainder, which
+ * prevents a completed AI request from escaping the usage ledger.
+ */
+export async function spendAssistantPointPostpaid(userId: number, amount = 1, reason = "拾间 AI 实际用量补扣") {
+  const points = Math.max(0.5, Math.round((Number(amount) || 1) * 2) / 2);
+  return prisma.$transaction(async (tx) => {
+    const user = await tx.user.update({
+      where: { id: userId },
+      data: { assistantPoints: { decrement: points } },
+      select: { assistantPoints: true },
+    });
+    const ledger = await tx.campusAssistantPointLedger.create({
+      data: {
+        userId,
+        delta: -points,
+        balanceAfter: user.assistantPoints,
+        source: "ai_usage",
+        reason: reason.slice(0, 160),
+      },
+      select: { id: true },
+    });
+    return { transactionId: ledger.id, balance: user.assistantPoints, points };
+  });
+}
+
 export async function refundAssistantPoint(userId: number, transactionId: number) {
   try {
     await prisma.$transaction(async (tx) => {

@@ -91,6 +91,7 @@ test("scene routing resolves each selected service without repeating endpoint fi
     aiServices: services,
     assistantServiceId: "main",
     learningAssistantServiceId: "local",
+    smartPostServiceId: "local",
     aiReviewServiceId: "main",
     qqGroupAdReviewServiceId: "local",
     imageReviewServiceId: "main",
@@ -110,6 +111,7 @@ test("scene routing resolves each selected service without repeating endpoint fi
   };
   assert.equal(resolveAiServiceForScene(config, "assistant").apiUrl, "https://deep.example/v1/chat/completions");
   assert.equal(resolveAiServiceForScene(config, "learning-assistant").provider, "ollama");
+  assert.equal(resolveAiServiceForScene(config, "smart-post").provider, "ollama");
   assert.equal(resolveAiServiceForScene(config, "text-review").provider, "deepseek");
   assert.equal(resolveAiServiceForScene(config, "qq-group-ad").provider, "ollama");
   assert.equal(resolveAiServiceForScene(config, "image-review").apiKey, "deep-key");
@@ -132,6 +134,9 @@ test("scene routing keeps the primary service first and appends ordered fallback
         { serviceId: "backup-two", model: "qwen3:8b" },
       ],
       "learning-assistant": [],
+      "smart-post": [
+        { serviceId: "backup-two", model: "smart-post-backup" },
+      ],
       "text-review": [],
       "qq-group-ad": [],
       "image-review": [],
@@ -139,6 +144,7 @@ test("scene routing keeps the primary service first and appends ordered fallback
     },
     assistantServiceId: "primary",
     learningAssistantServiceId: "primary",
+    smartPostServiceId: "primary",
     aiReviewServiceId: "primary",
     qqGroupAdReviewServiceId: "primary",
     imageReviewServiceId: "primary",
@@ -149,6 +155,9 @@ test("scene routing keeps the primary service first and appends ordered fallback
     ["primary", "backup", "backup-two"],
   );
   assert.equal(resolveAiServiceCandidatesForScene(config, "assistant")[1]?.model, "backup-model");
+  const smartPostCandidates = resolveAiServiceCandidatesForScene(config, "smart-post");
+  assert.equal(smartPostCandidates[0]?.model, undefined);
+  assert.equal(smartPostCandidates[1]?.model, "smart-post-backup");
 });
 
 test("legacy provider fallback ids remain same-model routes until a service model is selected", () => {
@@ -161,6 +170,7 @@ test("legacy provider fallback ids remain same-model routes until a service mode
     aiServiceFallbacks: {
       assistant: ["backup"],
       "learning-assistant": [],
+      "smart-post": [],
       "text-review": [],
       "qq-group-ad": [],
       "image-review": [],

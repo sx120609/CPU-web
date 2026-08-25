@@ -1,6 +1,6 @@
 import { prisma } from "../prisma";
 import { Errors } from "../utils/response";
-import { refundAssistantPoint, spendAssistantPoint } from "./campusAssistantPoints";
+import { refundAssistantPoint, spendAssistantPoint, spendAssistantPointPostpaid } from "./campusAssistantPoints";
 import { getSiteConfig } from "./siteSettings";
 import { buildUserTrustSnapshot } from "./userTrust";
 
@@ -95,7 +95,12 @@ export async function getCampusAssistantQuotaStatus(userId: number, date = new D
   return buildQuotaStatus(quota, usage?.used ?? 0, date);
 }
 
-export async function consumeCampusAssistantQuota(userId: number, date = new Date(), pointCost = 1) {
+export async function consumeCampusAssistantQuota(
+  userId: number,
+  date = new Date(),
+  pointCost = 1,
+  options?: { allowPointDebt?: boolean; reason?: string },
+) {
   const quota = await resolveUserQuota(userId);
   const dateKey = campusAssistantDateKey(date);
   if (quota.dailyQuota > 0) {
@@ -125,7 +130,9 @@ export async function consumeCampusAssistantQuota(userId: number, date = new Dat
   }
 
   const normalizedPointCost = Math.max(1, Math.round((Number(pointCost) || 1) * 2) / 2);
-  const pointSpend = await spendAssistantPoint(userId, normalizedPointCost);
+  const pointSpend = options?.allowPointDebt
+    ? await spendAssistantPointPostpaid(userId, normalizedPointCost, options.reason)
+    : await spendAssistantPoint(userId, normalizedPointCost);
   if (!pointSpend) {
     throw Errors.forbidden("今天的拾间 AI 额度和点数都已用完，日额度会在明天 00:00 自动恢复");
   }

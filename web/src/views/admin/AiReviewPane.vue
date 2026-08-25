@@ -250,6 +250,37 @@
     <section class="settings-card" :class="{ 'is-config-disabled': Boolean(configLoadError) }" v-loading="loadingConfig">
       <div class="section-head">
         <div>
+          <h3 class="section-title">智慧发帖 Agent</h3>
+          <p class="section-desc">将文字、Word 或 PDF 整理成可编辑帖子草稿。此场景单独指定模型，不继承文字审核模型；Agent 不会自动发布。</p>
+        </div>
+      </div>
+
+      <div class="ai-form">
+        <div class="ai-row ai-row--switch">
+          <span class="ai-label">启用智慧发帖</span>
+          <el-switch v-model="form.smartPostEnabled" inline-prompt active-text="开" inactive-text="关" />
+        </div>
+        <div class="ai-row">
+          <span class="ai-label">每额度 Token 数</span>
+          <el-input-number v-model="form.smartPostTokensPerQuota" :min="256" :max="100000" :step="256" />
+        </div>
+        <div class="ai-row ai-row--stretch">
+          <span class="ai-label">模型备选</span>
+          <el-input v-model="form.smartPostFallbackModels" maxlength="400" placeholder="逗号分隔；主模型失败时按顺序尝试" />
+        </div>
+      </div>
+
+      <el-alert
+        type="info"
+        :closable="false"
+        show-icon
+        title="按上游实际返回的 Token 用量结算：达到这里配置的 Token 数扣 1 个 AI 额度，不足一档按 1 个计。Responses 优先接收原始文件；失败或输出无效会退款。"
+      />
+    </section>
+
+    <section class="settings-card" :class="{ 'is-config-disabled': Boolean(configLoadError) }" v-loading="loadingConfig">
+      <div class="section-head">
+        <div>
           <h3 class="section-title">文字审核</h3>
           <p class="section-desc">帖子、回复和编辑相似度判定共用这一组配置。</p>
         </div>
@@ -632,6 +663,7 @@
           <el-option label="帖子" value="topic" />
           <el-option label="回复" value="reply" />
           <el-option label="编辑相似度" value="topic-edit" />
+          <el-option label="智慧发帖" value="smart-post" />
           <el-option label="QQ群广告" value="qqbot-group-ad" />
           <el-option label="图片" value="image" />
           <el-option label="视频" value="video" />
@@ -731,6 +763,7 @@ const videoFilters = reactive<{ status: "" | "pending" | "manual_review" | "reje
 });
 const modelAssignments = [
   { key: "assistantModel", serviceKey: "assistantServiceId", label: "拾间 AI", description: "站内问答与校园服务咨询" },
+  { key: "smartPostModel", serviceKey: "smartPostServiceId", label: "智慧发帖", description: "文字与文档生成可编辑帖子草稿" },
   { key: "aiReviewModel", serviceKey: "aiReviewServiceId", label: "文字审核", description: "帖子、回复与编辑相似度" },
   { key: "qqGroupAdReviewModel", serviceKey: "qqGroupAdReviewServiceId", label: "QQ群广告过滤", description: "群消息广告与引流识别" },
   { key: "imageReviewModel", serviceKey: "imageReviewServiceId", label: "图片审核", description: "论坛图片安全审核" },
@@ -739,6 +772,7 @@ const modelAssignments = [
 const serviceAssignments = [
   { key: "assistantServiceId", scene: "assistant", label: "拾间 AI" },
   { key: "learningAssistantServiceId", scene: "learning-assistant", label: "网课解题" },
+  { key: "smartPostServiceId", scene: "smart-post", label: "智慧发帖" },
   { key: "aiReviewServiceId", scene: "text-review", label: "文字审核" },
   { key: "qqGroupAdReviewServiceId", scene: "qq-group-ad", label: "QQ群广告过滤" },
   { key: "imageReviewServiceId", scene: "image-review", label: "图片审核" },
@@ -797,6 +831,7 @@ const form = reactive<SiteConfig>({
   aiServiceFallbacks: {
     assistant: [],
     "learning-assistant": [],
+    "smart-post": [],
     "text-review": [],
     "qq-group-ad": [],
     "image-review": [],
@@ -804,6 +839,11 @@ const form = reactive<SiteConfig>({
   },
   assistantServiceId: "default-main",
   learningAssistantServiceId: "default-main",
+  smartPostServiceId: "default-main",
+  smartPostEnabled: true,
+  smartPostModel: "gpt-5.6-sol",
+  smartPostFallbackModels: "",
+  smartPostTokensPerQuota: 4000,
   aiReviewServiceId: "default-main",
   aiReviewEnabled: false,
   aiReviewProvider: "deepseek",
@@ -958,6 +998,7 @@ function ensureAiServices() {
     form.aiServiceFallbacks = {
       assistant: [],
       "learning-assistant": [],
+      "smart-post": [],
       "text-review": [],
       "qq-group-ad": [],
       "image-review": [],
@@ -1245,6 +1286,7 @@ async function saveConfig() {
     normalizeFallbackServices();
     const assistantService = serviceForScene(form.assistantServiceId) as AiServiceConfig;
     const learningAssistantService = serviceForScene(form.learningAssistantServiceId) as AiServiceConfig;
+    const smartPostService = serviceForScene(form.smartPostServiceId) as AiServiceConfig;
     const textReviewService = serviceForScene(form.aiReviewServiceId) as AiServiceConfig;
     const qqService = serviceForScene(form.qqGroupAdReviewServiceId) as AiServiceConfig;
     const imageService = serviceForScene(form.imageReviewServiceId) as AiServiceConfig;
@@ -1258,6 +1300,11 @@ async function saveConfig() {
       ) as SiteConfig["aiServiceFallbacks"],
       assistantServiceId: assistantService.id,
       learningAssistantServiceId: learningAssistantService.id,
+      smartPostServiceId: smartPostService.id,
+      smartPostEnabled: form.smartPostEnabled,
+      smartPostModel: form.smartPostModel,
+      smartPostFallbackModels: form.smartPostFallbackModels,
+      smartPostTokensPerQuota: form.smartPostTokensPerQuota,
       aiReviewServiceId: textReviewService.id,
       aiReviewEnabled: form.aiReviewEnabled,
       aiReviewProvider: textReviewService.provider,

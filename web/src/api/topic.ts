@@ -148,6 +148,30 @@ export type TopicAutoFormatResult = {
   summary: string;
 };
 
+export type SmartPostOperation = "compose" | "polish" | "format";
+
+export type SmartPostDraftResult = {
+  title: string;
+  content: string;
+  summary: string;
+  provider: string;
+  model: string;
+  source: "text" | "file" | "text-and-file";
+  usage: {
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+    tokensPerQuota: number;
+    chargedQuota: number;
+  };
+  quota: {
+    remaining: number;
+    points: number;
+    totalRemaining: number;
+    nextResetAt: string;
+  };
+};
+
 export const topicApi = {
   list: (params: { board?: string; page?: number; size?: number; sort?: "new" | "hot"; pinned?: "only" | "exclude"; q?: string }, options?: RequestOptions) =>
     request.get<{ page: number; size: number; total: number; list: Topic[] }>("/topics", params, options),
@@ -172,6 +196,23 @@ export const topicApi = {
     request.patch<TopicSubmissionResponse>(`/topics/${id}`, payload, { timeout: 12_000, suppressErrorMessage: true }),
   autoFormat: (payload: { title?: string; content: string; boardSlug?: string; editorMode?: "visual" | "markup" }) =>
     request.post<TopicAutoFormatResult>("/topics/format", payload, { timeout: 60000 }),
+  smartCompose: (payload: {
+    title?: string;
+    content?: string;
+    instruction?: string;
+    operation: SmartPostOperation;
+    boardSlug?: string;
+    file?: File | null;
+  }) => {
+    const body = new FormData();
+    if (payload.title) body.append("title", payload.title);
+    if (payload.content) body.append("content", payload.content);
+    if (payload.instruction) body.append("instruction", payload.instruction);
+    if (payload.boardSlug) body.append("boardSlug", payload.boardSlug);
+    body.append("operation", payload.operation);
+    if (payload.file) body.append("file", payload.file, payload.file.name);
+    return request.post<SmartPostDraftResult>("/topics/smart-compose", body, { timeout: 120000 });
+  },
   remove: (id: number) => request.delete<any>(`/topics/${id}`),
   requestManualReview: (id: number) => request.post<{ ok: true }>(`/topics/${id}/request-manual-review`),
 };

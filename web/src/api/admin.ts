@@ -11,7 +11,7 @@ export type AiServiceConfig = {
   assistantContextMaxCharsPerMessage: number;
 };
 
-export type AiServiceScene = "assistant" | "learning-assistant" | "text-review" | "qq-group-ad" | "image-review" | "video-review";
+export type AiServiceScene = "assistant" | "learning-assistant" | "smart-post" | "text-review" | "qq-group-ad" | "image-review" | "video-review";
 export type AiServiceFallbackRoute = {
   serviceId: string;
   model: string;
@@ -35,6 +35,11 @@ export type SiteConfig = {
   aiServiceFallbacks: AiServiceFallbackMap;
   assistantServiceId: string;
   learningAssistantServiceId: string;
+  smartPostServiceId: string;
+  smartPostEnabled: boolean;
+  smartPostModel: string;
+  smartPostFallbackModels: string;
+  smartPostTokensPerQuota: number;
   aiReviewServiceId: string;
   aiReviewEnabled: boolean;
   aiReviewProvider: string;
@@ -844,6 +849,11 @@ export const adminApi = {
     aiServiceFallbacks?: AiServiceFallbackMap;
     assistantServiceId?: string;
     learningAssistantServiceId?: string;
+    smartPostServiceId?: string;
+    smartPostEnabled?: boolean;
+    smartPostModel?: string;
+    smartPostFallbackModels?: string;
+    smartPostTokensPerQuota?: number;
     aiReviewServiceId?: string;
     aiReviewEnabled?: boolean;
     aiReviewProvider?: string;

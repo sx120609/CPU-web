@@ -114,10 +114,11 @@ export function shouldRunAiReview() {
 }
 
 type AiReviewLogContext = {
-  kind: "topic" | "reply" | "topic-edit";
+  kind: "topic" | "reply" | "topic-edit" | "smart-post";
   targetId?: number | null;
   targetLabel?: string | null;
   createdById?: number | null;
+  pointCost?: number | null;
 };
 
 type AiJsonRequestOptions = {
@@ -200,6 +201,7 @@ export async function requestAiJson(
         model,
         endpoint,
         requestSummary: userPrompt,
+        pointCost: options.logContext.pointCost ?? 0,
       });
       logId = started?.id ?? null;
     }
@@ -289,6 +291,8 @@ export async function requestAiJson(
     return {
       content,
       model: effectiveModel,
+      provider: upstreamResult.provider.provider,
+      endpoint: upstreamResult.endpoint,
       completion,
       webSearchApplied: upstreamResult.webSearchApplied === true,
       webSearchSources: extractAiJsonWebSearchSources(json),
@@ -799,7 +803,7 @@ function hashString(input: string) {
 function summarizeAiJsonMessageContent(content: AiJsonMessage["content"]) {
   if (typeof content === "string") return content;
   return content
-    .map((item) => item.type === "text" ? item.text : "[image]")
+    .map((item) => item.type === "text" ? item.text : item.type === "file" ? `[file:${item.file.filename}]` : "[image]")
     .join("\n");
 }
 

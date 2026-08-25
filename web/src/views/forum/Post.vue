@@ -346,8 +346,8 @@
                   Markdown / HTML
                 </button>
               </div>
-              <el-button size="small" :loading="autoFormatting" :disabled="autoFormatting" @click="autoFormatContent">
-                {{ autoFormatting ? "排版中" : "AI 自动排版" }}
+              <el-button size="small" type="primary" plain :disabled="smartPostRunning" @click="openSmartPost">
+                智慧发帖
               </el-button>
             </div>
 
@@ -425,6 +425,58 @@
       </el-form>
     </div>
 
+    <el-dialog v-model="smartPostOpen" title="智慧发帖 Agent" width="min(620px, 94vw)" :close-on-click-modal="!smartPostRunning">
+      <div class="smart-post-dialog">
+        <el-alert
+          type="info"
+          :closable="false"
+          show-icon
+          title="Agent 只会生成可编辑草稿，不会自动发布。当前编辑器中的标题和正文会一并作为材料。"
+        />
+        <label class="smart-post-field">
+          <span>处理方式</span>
+          <el-radio-group v-model="smartPostOperation">
+            <el-radio-button value="compose">生成帖子</el-radio-button>
+            <el-radio-button value="polish">内容润色</el-radio-button>
+            <el-radio-button value="format">整理排版</el-radio-button>
+          </el-radio-group>
+        </label>
+        <label class="smart-post-field">
+          <span>Word / PDF 材料（可选）</span>
+          <input
+            ref="smartPostFileInputRef"
+            class="smart-post-file-input"
+            type="file"
+            accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            @change="handleSmartPostFileChange"
+          />
+          <div class="smart-post-file-row">
+            <el-button :disabled="smartPostRunning" @click="smartPostFileInputRef?.click()">选择文件</el-button>
+            <span>{{ smartPostFile ? `${smartPostFile.name} · ${formatFileSize(smartPostFile.size)}` : "支持 .pdf / .docx，最大 15MB" }}</span>
+            <el-button v-if="smartPostFile" text type="danger" :disabled="smartPostRunning" @click="clearSmartPostFile">移除</el-button>
+          </div>
+        </label>
+        <label class="smart-post-field">
+          <span>附加要求（可选）</span>
+          <el-input
+            v-model="smartPostInstruction"
+            type="textarea"
+            :rows="3"
+            maxlength="1000"
+            show-word-limit
+            placeholder="例如：面向本科生、保留报名方式、语气真诚简洁"
+          />
+        </label>
+        <p class="smart-post-privacy">文件只在服务端内存中处理：Responses 接口优先读取原文件，其他接口由服务端临时解析文字，不保存上传文件。</p>
+      </div>
+      <template #footer>
+        <el-button :disabled="smartPostRunning" @click="smartPostOpen = false">取消</el-button>
+        <el-button type="primary" :loading="smartPostRunning" @click="runSmartPost">
+          {{ smartPostRunning ? "正在生成草稿" : "生成可编辑草稿" }}
+        </el-button>
+      </template>
+    </el-dialog>
+
     <el-dialog
       v-model="previewOpen"
       :title="editingId ? '确认重新提交审核' : '确认发布帖子'"
@@ -490,7 +542,7 @@ import MarkdownView from "@/components/forum/MarkdownView.vue";
 import RichTextEditor from "@/components/forum/RichTextEditor.vue";
 import ManualReviewConfirmDialog from "@/components/forum/ManualReviewConfirmDialog.vue";
 import { boardApi, type Board } from "@/api/board";
-import { topicApi, type TopicSubmissionResponse } from "@/api/topic";
+import { topicApi, type SmartPostOperation, type TopicSubmissionResponse } from "@/api/topic";
 import { courseApi, type Course } from "@/api/course";
 import { useAuthStore } from "@/stores/auth";
 import { fmtDate } from "@/utils/format";
@@ -533,7 +585,12 @@ const markupTextareaRef = ref<HTMLTextAreaElement | null>(null);
 const editorMode = ref<PostEditorMode>("visual");
 const publishMode = ref<PublishMode>(route.query.mode === "say" ? "say" : "post");
 const publishModeTouched = ref(false);
-const autoFormatting = ref(false);
+const smartPostOpen = ref(false);
+const smartPostRunning = ref(false);
+const smartPostOperation = ref<SmartPostOperation>("compose");
+const smartPostInstruction = ref("");
+const smartPostFile = ref<File | null>(null);
+const smartPostFileInputRef = ref<HTMLInputElement | null>(null);
 const previewOpen = ref(false);
 const pendingMetadata = ref<any>(null);
 const reviewBlockedOpen = ref(false);
@@ -1133,29 +1190,63 @@ async function insertMarkupSnippet(snippet: string) {
   textarea.setSelectionRange(cursor, cursor);
 }
 
-async function autoFormatContent() {
-  if (autoFormatting.value) return;
-  if (isMarkupContentEmpty(form.content)) {
-    ElMessage.warning("先写一点正文，再试试自动排版");
+function openSmartPost() {
+  smartPostOperation.value = isMarkupContentEmpty(form.content) ? "compose" : "polish";
+  smartPostOpen.value = true;
+}
+
+function handleSmartPostFileChange(event: Event) {
+  const file = (event.target as HTMLInputElement).files?.[0] || null;
+  if (!file) return;
+  if (!/\.(?:pdf|docx)$/iu.test(file.name)) {
+    ElMessage.warning("仅支持 PDF 或 Word（.docx）文件");
+    clearSmartPostFile();
     return;
   }
-  autoFormatting.value = true;
+  if (file.size > 15 * 1024 * 1024) {
+    ElMessage.warning("文件不能超过 15MB");
+    clearSmartPostFile();
+    return;
+  }
+  smartPostFile.value = file;
+}
+
+function clearSmartPostFile() {
+  smartPostFile.value = null;
+  if (smartPostFileInputRef.value) smartPostFileInputRef.value.value = "";
+}
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))}KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
+}
+
+async function runSmartPost() {
+  if (smartPostRunning.value) return;
+  if (isMarkupContentEmpty(form.content) && !smartPostFile.value) {
+    ElMessage.warning("请先填写文字，或选择一个 Word / PDF 文件");
+    return;
+  }
+  smartPostRunning.value = true;
   try {
-    const result = await topicApi.autoFormat({
+    const result = await topicApi.smartCompose({
       title: form.title.trim() || undefined,
-      content: form.content,
+      content: isMarkupContentEmpty(form.content) ? undefined : form.content,
+      instruction: smartPostInstruction.value.trim() || undefined,
+      operation: smartPostOperation.value,
       boardSlug: form.boardSlug || undefined,
-      editorMode: editorMode.value,
+      file: smartPostFile.value,
     });
+    form.title = result.title;
     form.content = result.content;
-    if (editorMode.value === "markup") scheduleMarkupDraftSave(result.content);
-    if (result.provider === "ai") {
-      ElMessage.success(result.summary || "AI 已完成自动排版");
-    } else {
-      ElMessage.info(result.summary || "AI 当前不可用，已按本地规则整理排版");
-    }
+    editorMode.value = "markup";
+    scheduleMarkupDraftSave(result.content);
+    scheduleFormDraftSave();
+    smartPostOpen.value = false;
+    clearSmartPostFile();
+    ElMessage.success(`${result.summary}；实际使用 ${result.usage.totalTokens} Tokens，扣除 ${result.usage.chargedQuota} 个 AI 额度`);
   } finally {
-    autoFormatting.value = false;
+    smartPostRunning.value = false;
   }
 }
 
@@ -1581,6 +1672,54 @@ function notifyVideoReviewState(summary?: {
   margin: 0;
   color: var(--cpu-text-secondary);
   font-size: 13px;
+  line-height: 1.7;
+}
+
+.smart-post-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.smart-post-field {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  color: var(--cpu-text);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.smart-post-file-input {
+  display: none;
+}
+
+.smart-post-file-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px dashed var(--cpu-border-soft);
+  border-radius: 12px;
+  background: var(--cpu-surface-subtle);
+}
+
+.smart-post-file-row > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--cpu-text-secondary);
+  font-size: 13px;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.smart-post-privacy {
+  margin: 0;
+  color: var(--cpu-text-muted);
+  font-size: 12px;
   line-height: 1.7;
 }
 

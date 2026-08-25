@@ -23,6 +23,14 @@ export type AiJsonMessagePart =
         url: string;
         detail?: AiJsonImageDetail;
       };
+    }
+  | {
+      type: "file";
+      file: {
+        filename: string;
+        mimeType: string;
+        data: string;
+      };
     };
 
 export type AiJsonMessage = {
@@ -55,6 +63,9 @@ export type AiJsonCompletionMetadata = {
   done: boolean | null;
   promptEvalCount: number | null;
   evalCount: number | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  totalTokens: number | null;
   totalDurationMs: number | null;
   loadDurationMs: number | null;
   promptEvalDurationMs: number | null;
@@ -842,12 +853,23 @@ export function extractAiJsonCompletionMetadata(json: any, mode: AiJsonApiMode):
   const ollama = json?.x_cpu_ollama;
   const finishReason = typeof choice?.finish_reason === "string" ? choice.finish_reason : null;
   const doneReason = typeof ollama?.done_reason === "string" ? ollama.done_reason : null;
+  const inputTokens = toNullableInteger(ollama?.prompt_eval_count ?? usage?.input_tokens ?? usage?.prompt_tokens);
+  const outputTokens = toNullableInteger(ollama?.eval_count ?? usage?.output_tokens ?? usage?.completion_tokens);
+  const reportedTotalTokens = toNullableInteger(usage?.total_tokens);
+  const totalTokens = reportedTotalTokens ?? (
+    inputTokens !== null || outputTokens !== null
+      ? (inputTokens ?? 0) + (outputTokens ?? 0)
+      : null
+  );
   return {
     finishReason,
     doneReason,
     done: typeof ollama?.done === "boolean" ? ollama.done : null,
-    promptEvalCount: toNullableInteger(ollama?.prompt_eval_count ?? usage?.prompt_tokens),
-    evalCount: toNullableInteger(ollama?.eval_count ?? usage?.completion_tokens),
+    promptEvalCount: inputTokens,
+    evalCount: outputTokens,
+    inputTokens,
+    outputTokens,
+    totalTokens,
     totalDurationMs: nanosecondsToMilliseconds(ollama?.total_duration),
     loadDurationMs: nanosecondsToMilliseconds(ollama?.load_duration),
     promptEvalDurationMs: nanosecondsToMilliseconds(ollama?.prompt_eval_duration),
@@ -976,6 +998,13 @@ function toResponsesInputMessage(message: AiJsonMessage) {
           text: part.text,
         };
       }
+      if (part.type === "file") {
+        return {
+          type: "input_file",
+          filename: part.file.filename,
+          file_data: `data:${part.file.mimeType};base64,${part.file.data}`,
+        };
+      }
       return {
         type: "input_image",
         image_url: part.image_url.url,
@@ -1000,6 +1029,9 @@ function toChatCompletionsMessage(message: AiJsonMessage) {
           type: "text",
           text: part.text,
         };
+      }
+      if (part.type === "file") {
+        throw new Error("AI 请求体无效：文件输入仅支持 Responses 接口");
       }
       return {
         type: "image_url",
@@ -1075,6 +1107,15 @@ function validateMessageContent(value: unknown, path: string, responses = false)
       }
       if (type === "input_image") {
         validateAiImageUrl(item.image_url, `${path}[${index}].image_url`);
+        return;
+      }
+      if (type === "input_file") {
+        const filename = String(item.filename || "").trim();
+        const fileData = String(item.file_data || "").trim();
+        if (!filename) throw new Error(`AI 请求体无效：${path}[${index}].filename 不能为空`);
+        if (!/^data:(?:application\/pdf|application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document);base64,[A-Za-z0-9+/]+={0,2}$/iu.test(fileData)) {
+          throw new Error(`AI 请求体无效：${path}[${index}].file_data 不是受支持的 PDF/DOCX Data URL`);
+        }
         return;
       }
     } else {

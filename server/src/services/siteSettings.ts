@@ -67,6 +67,7 @@ export type AiServiceConfig = {
 export const AI_SERVICE_SCENES = [
   "assistant",
   "learning-assistant",
+  "smart-post",
   "text-review",
   "qq-group-ad",
   "image-review",
@@ -91,6 +92,11 @@ export type SiteConfig = {
   aiServiceFallbacks: AiServiceFallbackMap;
   assistantServiceId: string;
   learningAssistantServiceId: string;
+  smartPostServiceId: string;
+  smartPostEnabled: boolean;
+  smartPostModel: string;
+  smartPostFallbackModels: string;
+  smartPostTokensPerQuota: number;
   aiReviewServiceId: string;
   aiReviewEnabled: boolean;
   aiReviewProvider: string;
@@ -330,7 +336,7 @@ function normalizeAiServiceFallbacks(
   input: unknown,
   services: AiServiceConfig[],
   primaryIds: Partial<Pick<SiteConfig,
-    "assistantServiceId" | "learningAssistantServiceId" | "aiReviewServiceId" | "qqGroupAdReviewServiceId" | "imageReviewServiceId" | "videoReviewServiceId"
+    "assistantServiceId" | "learningAssistantServiceId" | "smartPostServiceId" | "aiReviewServiceId" | "qqGroupAdReviewServiceId" | "imageReviewServiceId" | "videoReviewServiceId"
   >>,
 ): AiServiceFallbackMap {
   const parsed = typeof input === "string" ? parseJsonValue<unknown>(input, {}) : input;
@@ -446,12 +452,13 @@ function legacyFieldForScene(source: AiServiceLegacySource, scene: AiServiceScen
 }
 
 function sceneServiceId(input: AiServiceLegacySource & Partial<Pick<SiteConfig,
-  "assistantServiceId" | "learningAssistantServiceId" | "aiReviewServiceId" | "qqGroupAdReviewServiceId" | "imageReviewServiceId" | "videoReviewServiceId"
+  "assistantServiceId" | "learningAssistantServiceId" | "smartPostServiceId" | "aiReviewServiceId" | "qqGroupAdReviewServiceId" | "imageReviewServiceId" | "videoReviewServiceId"
 >>, scene: AiServiceScene) {
   if (scene === "assistant") return String(input.assistantServiceId || input.aiReviewServiceId || "").trim();
   if (scene === "learning-assistant") {
     return String(input.learningAssistantServiceId || input.assistantServiceId || input.aiReviewServiceId || "").trim();
   }
+  if (scene === "smart-post") return String(input.smartPostServiceId || input.assistantServiceId || "").trim();
   if (scene === "text-review") return String(input.aiReviewServiceId || "").trim();
   if (scene === "qq-group-ad") return String(input.qqGroupAdReviewServiceId || "").trim();
   if (scene === "image-review") return String(input.imageReviewServiceId || "").trim();
@@ -462,6 +469,7 @@ function sceneServiceId(input: AiServiceLegacySource & Partial<Pick<SiteConfig,
 function sceneLabel(scene: AiServiceScene) {
   if (scene === "assistant") return "拾间 AI 服务";
   if (scene === "learning-assistant") return "网课解题服务";
+  if (scene === "smart-post") return "智慧发帖服务";
   if (scene === "text-review") return "文字审核服务";
   if (scene === "qq-group-ad") return "QQ群广告服务";
   if (scene === "image-review") return "图片审核服务";
@@ -471,7 +479,7 @@ function sceneLabel(scene: AiServiceScene) {
 
 function findSceneService(
   input: AiServiceLegacySource & Partial<Pick<SiteConfig,
-    "aiServices" | "assistantServiceId" | "learningAssistantServiceId" | "aiReviewServiceId" | "qqGroupAdReviewServiceId" | "imageReviewServiceId" | "videoReviewServiceId"
+    "aiServices" | "assistantServiceId" | "learningAssistantServiceId" | "smartPostServiceId" | "aiReviewServiceId" | "qqGroupAdReviewServiceId" | "imageReviewServiceId" | "videoReviewServiceId"
   >>,
   scene: AiServiceScene,
 ) {
@@ -491,7 +499,7 @@ function findSceneService(
 
 export function resolveAiServiceForScene(
   input: AiServiceLegacySource & Partial<Pick<SiteConfig,
-    "aiServices" | "aiServiceFallbacks" | "assistantServiceId" | "learningAssistantServiceId" | "aiReviewServiceId" | "qqGroupAdReviewServiceId" | "imageReviewServiceId" | "videoReviewServiceId"
+    "aiServices" | "aiServiceFallbacks" | "assistantServiceId" | "learningAssistantServiceId" | "smartPostServiceId" | "aiReviewServiceId" | "qqGroupAdReviewServiceId" | "imageReviewServiceId" | "videoReviewServiceId"
   >>,
   scene: AiServiceScene,
 ) {
@@ -500,7 +508,7 @@ export function resolveAiServiceForScene(
 
 export function resolveAiServiceCandidatesForScene(
   input: AiServiceLegacySource & Partial<Pick<SiteConfig,
-    "aiServices" | "aiServiceFallbacks" | "assistantServiceId" | "learningAssistantServiceId" | "aiReviewServiceId" | "qqGroupAdReviewServiceId" | "imageReviewServiceId" | "videoReviewServiceId"
+    "aiServices" | "aiServiceFallbacks" | "assistantServiceId" | "learningAssistantServiceId" | "smartPostServiceId" | "aiReviewServiceId" | "qqGroupAdReviewServiceId" | "imageReviewServiceId" | "videoReviewServiceId"
   >>,
   scene: AiServiceScene,
 ) {
@@ -551,6 +559,10 @@ function applyAiServiceToLegacyFields(target: SiteConfig, scene: AiServiceScene,
   }
   if (scene === "learning-assistant") {
     target.learningAssistantServiceId = service.id;
+    return;
+  }
+  if (scene === "smart-post") {
+    target.smartPostServiceId = service.id;
     return;
   }
   if (scene === "qq-group-ad") {
@@ -653,6 +665,11 @@ const AI_SERVICES_KEY = "ai.services";
 const AI_SERVICE_FALLBACKS_KEY = "ai.serviceFallbacks";
 const ASSISTANT_SERVICE_ID_KEY = "assistant.serviceId";
 const LEARNING_ASSISTANT_SERVICE_ID_KEY = "assistant.learningServiceId";
+const SMART_POST_SERVICE_ID_KEY = "ai.smartPost.serviceId";
+const SMART_POST_ENABLED_KEY = "ai.smartPost.enabled";
+const SMART_POST_MODEL_KEY = "ai.smartPost.model";
+const SMART_POST_FALLBACK_MODELS_KEY = "ai.smartPost.fallbackModels";
+const SMART_POST_TOKENS_PER_QUOTA_KEY = "ai.smartPost.tokensPerQuota";
 const AI_REVIEW_SERVICE_ID_KEY = "ai.review.serviceId";
 const AI_REVIEW_ENABLED_KEY = "ai.review.enabled";
 const AI_REVIEW_PROVIDER_KEY = "ai.review.provider";
@@ -937,6 +954,11 @@ const configCache: SiteConfig = {
   aiServiceFallbacks: emptyAiServiceFallbacks(),
   assistantServiceId: "",
   learningAssistantServiceId: "",
+  smartPostServiceId: "",
+  smartPostEnabled: true,
+  smartPostModel: "gpt-5.6-sol",
+  smartPostFallbackModels: "",
+  smartPostTokensPerQuota: 4000,
   aiReviewServiceId: "",
   aiReviewEnabled: false,
   aiReviewProvider: "deepseek",
@@ -1108,6 +1130,11 @@ export async function loadFeatures(): Promise<void> {
           AI_SERVICE_FALLBACKS_KEY,
           ASSISTANT_SERVICE_ID_KEY,
           LEARNING_ASSISTANT_SERVICE_ID_KEY,
+          SMART_POST_SERVICE_ID_KEY,
+          SMART_POST_ENABLED_KEY,
+          SMART_POST_MODEL_KEY,
+          SMART_POST_FALLBACK_MODELS_KEY,
+          SMART_POST_TOKENS_PER_QUOTA_KEY,
           AI_REVIEW_SERVICE_ID_KEY,
           AI_REVIEW_ENABLED_KEY,
           AI_REVIEW_PROVIDER_KEY,
@@ -1223,6 +1250,26 @@ export async function loadFeatures(): Promise<void> {
     }
     if (r.key === LEARNING_ASSISTANT_SERVICE_ID_KEY) {
       configCache.learningAssistantServiceId = String(r.value || "").trim();
+      continue;
+    }
+    if (r.key === SMART_POST_SERVICE_ID_KEY) {
+      configCache.smartPostServiceId = String(r.value || "").trim();
+      continue;
+    }
+    if (r.key === SMART_POST_ENABLED_KEY) {
+      configCache.smartPostEnabled = r.value === "on";
+      continue;
+    }
+    if (r.key === SMART_POST_MODEL_KEY) {
+      configCache.smartPostModel = String(r.value || "gpt-5.6-sol").trim() || "gpt-5.6-sol";
+      continue;
+    }
+    if (r.key === SMART_POST_FALLBACK_MODELS_KEY) {
+      configCache.smartPostFallbackModels = normalizeFallbackModelList(r.value, configCache.smartPostModel);
+      continue;
+    }
+    if (r.key === SMART_POST_TOKENS_PER_QUOTA_KEY) {
+      configCache.smartPostTokensPerQuota = normalizeSmallInt(r.value, 4000, 256, 100_000);
       continue;
     }
     if (r.key === AI_REVIEW_SERVICE_ID_KEY) {
@@ -1635,6 +1682,9 @@ export function getSiteConfig(): SiteConfig {
     ["learning-assistant", (service) => {
       result.learningAssistantServiceId = service.serviceId;
     }],
+    ["smart-post", (service) => {
+      result.smartPostServiceId = service.serviceId;
+    }],
     ["text-review", (service) => {
       result.aiReviewServiceId = service.serviceId;
       result.aiReviewProvider = service.provider;
@@ -1935,6 +1985,9 @@ function sanitizeAiReviewConfig() {
   configCache.aiReviewApiUrl = normalizePromptTemplate(configCache.aiReviewApiUrl, "https://api.deepseek.com/chat/completions");
   if (!configCache.aiReviewModel) configCache.aiReviewModel = "deepseek-v4-flash";
   configCache.aiReviewFallbackModels = normalizeFallbackModelList(configCache.aiReviewFallbackModels, configCache.aiReviewModel);
+  configCache.smartPostModel = String(configCache.smartPostModel || "gpt-5.6-sol").trim() || "gpt-5.6-sol";
+  configCache.smartPostFallbackModels = normalizeFallbackModelList(configCache.smartPostFallbackModels, configCache.smartPostModel);
+  configCache.smartPostTokensPerQuota = normalizeSmallInt(configCache.smartPostTokensPerQuota, 4000, 256, 100_000);
   if (!configCache.qqGroupAdReviewProvider) configCache.qqGroupAdReviewProvider = "deepseek";
   configCache.qqGroupAdReviewApiUrl = normalizePromptTemplate(configCache.qqGroupAdReviewApiUrl, "https://api.deepseek.com/chat/completions");
   configCache.qqGroupAdReviewModel = String(configCache.qqGroupAdReviewModel || "deepseek-v4-flash").trim() || "deepseek-v4-flash";
@@ -1966,8 +2019,7 @@ function sanitizeAiReviewConfig() {
 
   const legacyServices = buildAiServicesFromLegacy(configCache);
   configCache.aiServices = normalizeAiServiceList(configCache.aiServices, legacyServices);
-  const scenes: AiServiceScene[] = ["assistant", "learning-assistant", "text-review", "qq-group-ad", "image-review", "video-review"];
-  for (const scene of scenes) {
+  for (const scene of AI_SERVICE_SCENES) {
     const legacy = legacyFieldForScene(configCache, scene);
     const requestedId = sceneServiceId(configCache, scene);
     const serviceId = resolveAiServiceId(configCache.aiServices, requestedId, legacy);
@@ -2141,6 +2193,7 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
     // selection meaningful after the assistant/course routes become separate.
     assistantServiceId: input.assistantServiceId ?? input.aiReviewServiceId ?? configCache.assistantServiceId,
     learningAssistantServiceId: input.learningAssistantServiceId ?? input.aiReviewServiceId ?? configCache.learningAssistantServiceId,
+    smartPostServiceId: input.smartPostServiceId ?? configCache.smartPostServiceId,
   };
   let aiServices = normalizeAiServiceList(
     input.aiServices !== undefined ? input.aiServices : configCache.aiServices,
@@ -2151,7 +2204,7 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
   }
   aiServices = normalizeAiServiceList(aiServices, buildAiServicesFromLegacy(legacySource));
   const selectedServices = new Map<AiServiceScene, AiServiceConfig>();
-  for (const scene of ["assistant", "learning-assistant", "text-review", "qq-group-ad", "image-review", "video-review"] as AiServiceScene[]) {
+  for (const scene of AI_SERVICE_SCENES) {
     const legacy = legacyFieldForScene(legacySource, scene);
     const requestedId = sceneServiceId(legacySource, scene);
     const serviceId = resolveAiServiceId(aiServices, requestedId, legacy);
@@ -2160,6 +2213,7 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
   }
   const assistantService = selectedServices.get("assistant") || aiServices[0] || DEFAULT_AI_SERVICES[0];
   const learningAssistantService = selectedServices.get("learning-assistant") || assistantService;
+  const smartPostService = selectedServices.get("smart-post") || assistantService;
   const textReviewService = selectedServices.get("text-review") || assistantService;
   const qqService = selectedServices.get("qq-group-ad") || assistantService;
   const requestedPeakServiceId = String(
@@ -2180,6 +2234,7 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
     {
       assistantServiceId: assistantService.id,
       learningAssistantServiceId: learningAssistantService.id,
+      smartPostServiceId: smartPostService.id,
       aiReviewServiceId: textReviewService.id,
       qqGroupAdReviewServiceId: qqService.id,
       imageReviewServiceId: imageService.id,
@@ -2192,6 +2247,14 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
     aiServiceFallbacks,
     assistantServiceId: assistantService.id,
     learningAssistantServiceId: learningAssistantService.id,
+    smartPostServiceId: smartPostService.id,
+    smartPostEnabled: input.smartPostEnabled ?? configCache.smartPostEnabled,
+    smartPostModel: String(input.smartPostModel ?? configCache.smartPostModel ?? "gpt-5.6-sol").trim() || "gpt-5.6-sol",
+    smartPostFallbackModels: normalizeFallbackModelList(
+      input.smartPostFallbackModels ?? configCache.smartPostFallbackModels,
+      input.smartPostModel ?? configCache.smartPostModel,
+    ),
+    smartPostTokensPerQuota: normalizeSmallInt(input.smartPostTokensPerQuota, configCache.smartPostTokensPerQuota, 256, 100_000),
     aiReviewServiceId: textReviewService.id,
     aiReviewEnabled: input.aiReviewEnabled ?? configCache.aiReviewEnabled,
     aiReviewProvider: textReviewService.provider,
@@ -2281,6 +2344,31 @@ export async function setAiReviewConfig(input: Partial<SiteConfig>): Promise<Sit
       where: { key: LEARNING_ASSISTANT_SERVICE_ID_KEY },
       update: { value: next.learningAssistantServiceId },
       create: { key: LEARNING_ASSISTANT_SERVICE_ID_KEY, value: next.learningAssistantServiceId },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: SMART_POST_SERVICE_ID_KEY },
+      update: { value: next.smartPostServiceId },
+      create: { key: SMART_POST_SERVICE_ID_KEY, value: next.smartPostServiceId },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: SMART_POST_ENABLED_KEY },
+      update: { value: next.smartPostEnabled ? "on" : "off" },
+      create: { key: SMART_POST_ENABLED_KEY, value: next.smartPostEnabled ? "on" : "off" },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: SMART_POST_MODEL_KEY },
+      update: { value: next.smartPostModel },
+      create: { key: SMART_POST_MODEL_KEY, value: next.smartPostModel },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: SMART_POST_FALLBACK_MODELS_KEY },
+      update: { value: next.smartPostFallbackModels },
+      create: { key: SMART_POST_FALLBACK_MODELS_KEY, value: next.smartPostFallbackModels },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: SMART_POST_TOKENS_PER_QUOTA_KEY },
+      update: { value: String(next.smartPostTokensPerQuota) },
+      create: { key: SMART_POST_TOKENS_PER_QUOTA_KEY, value: String(next.smartPostTokensPerQuota) },
     }),
     prisma.siteSetting.upsert({
       where: { key: AI_REVIEW_SERVICE_ID_KEY },
