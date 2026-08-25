@@ -2,14 +2,30 @@
   <div
     ref="rowRef"
     class="topic-row"
-    :class="{ 'topic-row--card': isCard }"
+    :class="{ 'topic-row--card': isCard, 'topic-row--simple': isSimple }"
     role="button"
     tabindex="0"
     @click="openTopic"
     @keydown.enter.prevent="openTopic"
     @keydown.space.prevent="openTopic"
   >
-    <template v-if="isCard">
+    <template v-if="isSimple">
+      <UserAvatar :size="36" class="avatar" :src="topic.author?.avatar" :name="topic.author?.nickname" :profile-frame="topic.author?.profileFrame" alt="作者头像" />
+      <div class="simple-main">
+        <div class="simple-heading">
+          <span class="simple-title"><b v-if="topic.globalPinned || topic.pinned">置顶</b>{{ displayTitle }}</span>
+          <strong v-if="metaPriceLabel" class="simple-price">{{ metaPriceLabel }}</strong>
+        </div>
+        <div class="simple-meta">
+          <span class="simple-board">{{ marketKindLabel || boardDisplayName }}</span>
+          <span>{{ topic.author?.nickname ?? '—' }}</span>
+          <span>{{ fmtRelative(topic.lastReplyAt || topic.createdAt) }}</span>
+          <span>{{ displayedViewCount }} 浏览</span>
+          <span>{{ topic.replyCount }} 回复</span>
+        </div>
+      </div>
+    </template>
+    <template v-else-if="isCard">
       <img v-if="cardImage" class="market-card-image" :src="cardImage" alt="帖子图片" loading="lazy" decoding="async" />
       <div class="market-card-body">
         <div class="market-card-tags">
@@ -100,7 +116,7 @@ import {
   queueTopicImpression,
 } from "@/utils/topicImpressions";
 
-const props = withDefaults(defineProps<{ topic: any; variant?: "row" | "card" }>(), {
+const props = withDefaults(defineProps<{ topic: any; variant?: "row" | "card" | "simple" }>(), {
   variant: "row",
 });
 const route = useRoute();
@@ -111,6 +127,7 @@ let impressionObserver: IntersectionObserver | null = null;
 let impressionTimer: ReturnType<typeof setTimeout> | null = null;
 const isSayTopic = computed(() => props.topic.metadata?._postMode === "say");
 const isCard = computed(() => props.variant === "card");
+const isSimple = computed(() => props.variant === "simple");
 const displayTitle = computed(() => isSayTopic.value
   ? forumContentExcerpt(props.topic.content, 110) || props.topic.title
   : props.topic.title);
@@ -319,6 +336,39 @@ function openTopic() {
 }
 .rating { flex: 0 0 auto; white-space: nowrap; }
 
+.topic-row--simple { align-items: flex-start; padding: 12px 8px; }
+.simple-main { flex: 1; min-width: 0; }
+.simple-heading { display: flex; align-items: flex-start; gap: 12px; min-width: 0; }
+.simple-title {
+  display: -webkit-box;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--cpu-text);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.simple-title b { margin-right: 6px; color: #b45309; font-size: 12px; }
+.simple-price { flex: 0 0 auto; color: color-mix(in srgb, #ef4444 82%, var(--cpu-text)); font-size: 15px; line-height: 1.5; }
+.simple-meta {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  min-width: 0;
+  margin-top: 4px;
+  overflow: hidden;
+  color: var(--cpu-text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+.simple-meta span + span::before { content: "·"; margin: 0 6px; color: var(--cpu-border); }
+.simple-board { color: var(--cpu-primary); font-weight: 600; }
+
 .topic-row--card {
   display: block;
   width: 100%;
@@ -390,6 +440,21 @@ function openTopic() {
   .market-card-meta { gap: 5px; }
 
   .main { grid-column: 2; }
+
+  .topic-row--simple {
+    grid-template-columns: 32px minmax(0, 1fr);
+    align-items: flex-start;
+    padding: 12px 6px;
+  }
+
+  .topic-row--simple .simple-main { grid-column: 2; }
+  .topic-row--simple .simple-title { font-size: 14px; line-height: 1.45; }
+  .topic-row--simple .simple-price { font-size: 14px; }
+  .topic-row--simple .simple-meta {
+    flex-wrap: wrap;
+    overflow: visible;
+    white-space: normal;
+  }
 
   .line1 {
     gap: 5px;

@@ -1318,15 +1318,16 @@ function setAppearanceMode(command: string | number | object) {
 .forum-post-fab {
   position: fixed;
   z-index: 1092;
-  right: 96px;
-  bottom: 26px;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  min-height: 48px;
-  padding: 0 18px;
+  right: 26px;
+  bottom: 166px;
+  display: grid;
+  width: 58px;
+  height: 58px;
+  min-height: 58px;
+  place-items: center;
+  padding: 0;
   border: 0;
-  border-radius: 999px;
+  border-radius: 50%;
   background: var(--cpu-primary);
   color: #fff;
   box-shadow: 0 14px 30px color-mix(in srgb, var(--cpu-primary-dark) 28%, transparent);
@@ -1334,6 +1335,8 @@ function setAppearanceMode(command: string | number | object) {
   font-weight: 700;
   cursor: pointer;
 }
+.forum-post-fab .el-icon { font-size: 23px; }
+.forum-post-fab span { display: none; }
 .forum-post-fab:hover { background: var(--cpu-primary-dark); transform: translateY(-1px); }
 .forum-post-fab:focus-visible { outline: 3px solid color-mix(in srgb, var(--cpu-primary) 28%, transparent); outline-offset: 3px; }
 
@@ -1753,6 +1756,8 @@ function setAppearanceMode(command: string | number | object) {
     justify-content: center;
     padding: 0 15px;
   }
+
+  .forum-post-fab span { display: inline; }
 }
 
 @media (max-width: 768px) {

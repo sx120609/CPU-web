@@ -10,7 +10,7 @@
 
     <!-- 适用范围提示（未授权时显示，避免对已登录的本科生造成视觉噪音） -->
     <el-alert
-      v-if="!sessionChecking && !showDataShell"
+      v-if="!showDataShell"
       type="info"
       :closable="false"
       show-icon
@@ -22,7 +22,7 @@
     </el-alert>
 
     <el-alert
-      v-if="!sessionChecking && academicDataUnavailable"
+      v-if="academicDataUnavailable"
       type="info"
       :closable="false"
       show-icon
@@ -31,12 +31,7 @@
     />
 
     <!-- 未登录：显示登录卡片 -->
-    <div v-if="sessionChecking" class="cpu-card session-checking">
-      <el-skeleton :rows="3" animated />
-      <p>正在检查教务状态，请稍候…</p>
-    </div>
-
-    <div v-else-if="!showDataShell" class="cpu-card login-card">
+    <div v-if="!showDataShell" class="cpu-card login-card">
       <div class="login-head">
         <el-icon class="lock-icon"><Lock /></el-icon>
         <div>
@@ -130,12 +125,7 @@
 
     <!-- 已登录：功能 Tab -->
     <div v-else class="jwxt-shell">
-      <div v-if="sessionChecking" class="cpu-card session-checking">
-        <el-skeleton :rows="3" animated />
-        <p>正在检查教务状态，请稍候…</p>
-      </div>
-
-      <div v-if="!sessionChecking && academicDataUnavailable" class="cpu-card academic-empty-state">
+      <div v-if="academicDataUnavailable" class="cpu-card academic-empty-state">
         <el-empty description="暂无教务数据" :image-size="88" />
         <div class="academic-empty-desc">
           <p>当前账号已登录站内服务，但学校暂未创建可读取的教务入口。</p>
@@ -143,7 +133,7 @@
         </div>
       </div>
 
-      <div v-if="!sessionChecking && !academicDataUnavailable" class="cpu-card session-info" :class="{ 'is-cache-only': !jwxt.isLoggedIn }">
+      <div v-if="!academicDataUnavailable" class="cpu-card session-info" :class="{ 'is-cache-only': !jwxt.isLoggedIn }">
         <div class="session-main">
           <el-icon class="session-ok"><CircleCheckFilled /></el-icon>
           <div class="session-copy">
@@ -185,7 +175,7 @@
         </el-button>
       </div>
 
-      <el-tabs v-if="!sessionChecking && !academicDataUnavailable && hasJwxtTabs" v-model="tab" class="cpu-card jwxt-tabs" @tab-change="onTabChange">
+      <el-tabs v-if="!academicDataUnavailable && hasJwxtTabs" v-model="tab" class="cpu-card jwxt-tabs" @tab-change="onTabChange">
         <el-tab-pane v-if="showScheduleTab" :label="isMobileViewport ? '课表' : '📅 课表'" name="schedule">
           <SchedulePane :data="schedule" :loading="tabLoading" :source="isGraduateIdentity ? 'graduate' : 'jwxt'" />
         </el-tab-pane>
@@ -219,7 +209,7 @@
           </div>
         </el-tab-pane>
       </el-tabs>
-      <div v-if="!sessionChecking && !academicDataUnavailable && !hasJwxtTabs" class="cpu-card mobile-schedule-hint">
+      <div v-if="!academicDataUnavailable && !hasJwxtTabs" class="cpu-card mobile-schedule-hint">
         <div>
           <h3>移动端课表已放到单独入口</h3>
           <p>当前账号已连接教务系统。请从底部「课表」入口查看课表。</p>
@@ -256,7 +246,6 @@ const jwxt = useJwxtStore();
 const auth = useAuthStore();
 const formRef = ref<FormInstance>();
 const form = reactive({ username: "", password: "", captcha: "" });
-const sessionChecking = ref(!auth.academicIdentityUnavailable);
 const remember = ref(true); // 默认勾选"记住"
 const rules: FormRules = {
   username: [{ required: true, message: "请输入学号或工号" }],
@@ -368,6 +357,9 @@ const identityBadgeText = computed(() => (
 onMounted(() => {
   disposed = false;
   jwxt.hydrate();
+  ensureVisibleTab();
+  restoreAllTabCaches();
+  if (jwxt.isLoggedIn || hasCachedData.value) void loadCurrentTab(false);
   setupMobileViewportWatcher();
   void initPage();
 });
@@ -384,32 +376,17 @@ onBeforeUnmount(() => {
 
 async function initPage() {
   const seq = ++pageInitSeq;
-  try {
-    if (!auth.ready) await auth.fetchMe({ probe: true }).catch(() => undefined);
+  if (!auth.ready) await auth.fetchMe({ probe: true }).catch(() => undefined);
+  if (disposed || seq !== pageInitSeq) return;
   jwxt.hydrate();
   ensureVisibleTab();
   restoreAllTabCaches();
-  // 缓存和乐观会话先渲染，真实验活与自动登录共享后台恢复任务。
   if (jwxt.isLoggedIn || hasCachedData.value) void loadCurrentTab(false);
   const ready = await jwxt.ensureSession({ refresh: true, silent: true, allowAutoLogin: false });
-  if (disposed || seq !== pageInitSeq) return;
+  if (disposed || seq !== pageInitSeq || !ready) return;
   ensureVisibleTab();
-  if (!ready) {
-    // A newly enrolled student may have a valid station account but no
-    // academic entry yet. Do not start another background SSO request: it
-    // can leave the form disabled while the school system has nothing to
-    // return, and must never turn a successful station login into a logout.
-    // The user can explicitly submit the form when they want to retry.
-    // This also keeps a station-only account usable when the school has not
-    // created its academic record yet.
-    return;
-  } else {
-    showLoginOverride.value = false;
-    loadCurrentTab(false);
-    }
-  } finally {
-    if (!disposed && seq === pageInitSeq) sessionChecking.value = false;
-  }
+  showLoginOverride.value = false;
+  loadCurrentTab(false);
 }
 
 watch(() => auth.academicIdentity, async (next, prev) => {

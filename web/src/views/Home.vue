@@ -85,7 +85,7 @@
             <h3>🆕 最新</h3>
             <router-link to="/forum/latest" class="more">更多 →</router-link>
           </div>
-          <TopicListItem v-for="t in summary?.latestTopics ?? []" :key="'new-' + t.id" :topic="t" />
+          <TopicListItem v-for="t in summary?.latestTopics ?? []" :key="'new-' + t.id" :topic="t" variant="simple" />
           <el-empty v-if="!summary?.latestTopics?.length" description="暂无内容" />
         </section>
       </div>
@@ -122,13 +122,12 @@
             <h3>♻️ 二手交流</h3>
             <router-link to="/market" class="more">进入板块 →</router-link>
           </div>
-          <div v-if="secondHandPreview.length" class="second-hand-preview">
-            <TopicListItem v-for="topic in secondHandPreview" :key="`second-hand-${topic.id}`" :topic="topic" />
-          </div>
-          <div v-else class="second-hand-empty">
-            <span>发布闲置、求购或二手经验，像普通论坛帖一样交流</span>
-            <el-button size="small" type="primary" @click="$router.push('/post?board=market&kind=sell')">发布闲置</el-button>
-          </div>
+          <p class="second-hand-note">校内闲置与求购，按论坛帖子发布和交流。</p>
+          <nav class="second-hand-actions" aria-label="发布二手内容">
+            <router-link to="/post?board=market&kind=sell">＋ 发布闲置</router-link>
+            <span aria-hidden="true"></span>
+            <router-link to="/post?board=market&kind=wanted">＋ 发布求购</router-link>
+          </nav>
         </section>
 
         <section class="block">
@@ -170,6 +169,16 @@
       </div>
     </div>
 
+    <router-link
+      v-if="auth.isLoggedIn && site.features.forum && auth.canAccessForum"
+      to="/post"
+      class="home-publish-fab"
+      aria-label="发布内容"
+    >
+      <el-icon><Edit /></el-icon>
+      <span>发布</span>
+    </router-link>
+
     <DormElectricDialog v-model="electricOpen" />
   </div>
 </template>
@@ -184,14 +193,11 @@ import ForumAdCard from "@/components/forum/ForumAdCard.vue";
 import DormElectricDialog from "@/components/services/DormElectricDialog.vue";
 import { homeApi, type HomeSummary } from "@/api/home";
 import { forumAdsApi, type ForumAd } from "@/api/forumAds";
-import { topicApi, type Topic } from "@/api/topic";
 import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
 import { fmtRelative } from "@/utils/format";
 import {
-  readHomeSecondHandCache,
   readHomeSummaryCache,
-  writeHomeSecondHandCache,
   writeHomeSummaryCache,
 } from "@/utils/homeCache";
 
@@ -202,7 +208,6 @@ const summary = ref<HomeSummary | null>(null);
 const loading = ref(false);
 const homeError = ref("");
 const electricOpen = ref(false);
-const secondHandPreview = ref<Topic[]>([]);
 const pinnedAd = ref<ForumAd | null>(null);
 const hotAd = ref<ForumAd | null>(null);
 const hotPreview = computed(() => (summary.value?.hotTopics ?? []).slice(0, 3));
@@ -214,7 +219,6 @@ const homeCacheScope = computed(() => {
   return `${identity}:forum-${auth.canAccessForum ? "on" : "off"}`;
 });
 let loadSeq = 0;
-let secondHandLoadSeq = 0;
 let adsLoadSeq = 0;
 let mounted = false;
 
@@ -246,14 +250,6 @@ onMounted(() => {
   void loadHomeScope();
 });
 
-watch(() => site.features.market && auth.canAccessForum, (enabled) => {
-  if (enabled && mounted && !secondHandPreview.value.length) {
-    const cached = readHomeSecondHandCache(homeCacheScope.value);
-    if (cached) secondHandPreview.value = cached;
-    void loadSecondHandPreview();
-  }
-});
-
 watch(homeCacheScope, () => {
   if (mounted) void loadHomeScope();
 });
@@ -266,13 +262,6 @@ async function loadHomeScope() {
   void loadSummary({ background: Boolean(cachedSummary), scope });
   void loadAds();
 
-  secondHandLoadSeq += 1;
-  secondHandPreview.value = [];
-  if (site.features.market && auth.canAccessForum) {
-    const cachedSecondHand = readHomeSecondHandCache(scope);
-    if (cachedSecondHand) secondHandPreview.value = cachedSecondHand;
-    void loadSecondHandPreview(scope);
-  }
 }
 
 async function loadAds() {
@@ -289,22 +278,6 @@ async function loadAds() {
     if (seq !== adsLoadSeq) return;
     pinnedAd.value = null;
     hotAd.value = null;
-  }
-}
-
-async function loadSecondHandPreview(scope = homeCacheScope.value) {
-  const seq = ++secondHandLoadSeq;
-  try {
-    const result = await topicApi.list({ board: "market", page: 1, size: 5, sort: "new", pinned: "exclude" }, {
-      suppressErrorMessage: true,
-      suppressAuthMessage: true,
-      suppressAuthRedirect: true,
-    });
-    if (seq !== secondHandLoadSeq || scope !== homeCacheScope.value) return;
-    secondHandPreview.value = result.list.slice(0, 3);
-    writeHomeSecondHandCache(scope, secondHandPreview.value);
-  } catch {
-    if (seq === secondHandLoadSeq && !secondHandPreview.value.length) secondHandPreview.value = [];
   }
 }
 
@@ -625,18 +598,23 @@ function normalizeHomeError(error: unknown) {
   line-height: 1.6;
   color: var(--cpu-text-secondary);
 }
-.second-hand-preview { margin: 0 -6px; }
-.second-hand-empty {
+.second-hand-note {
+  margin: -2px 0 8px;
+  color: var(--cpu-text-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.second-hand-actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 14px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, rgba(22, 135, 118, 0.08), rgba(232, 163, 23, 0.08));
-  color: var(--cpu-text-secondary);
-  font-size: 13px;
+  gap: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--cpu-border-soft);
+  font-size: 12px;
 }
+.second-hand-actions a { color: var(--cpu-primary); font-weight: 600; text-decoration: none; }
+.second-hand-actions a:hover { text-decoration: underline; }
+.second-hand-actions span { width: 1px; height: 12px; background: var(--cpu-border); }
 .svc {
   padding: 10px;
   border: 1px solid var(--cpu-border-soft);
@@ -673,6 +651,7 @@ function normalizeHomeError(error: unknown) {
 }
 .svc-tag-fresh { background: rgba(251, 191, 36, 0.85); color: #78350f; font-weight: 500; }
 .cpu-muted { font-size: 12px; color: var(--cpu-text-muted); }
+.home-publish-fab { display: none; }
 
 @media (max-width: 768px) {
   .home {
@@ -758,6 +737,30 @@ function normalizeHomeError(error: unknown) {
     text-align: left;
     min-width: 0;
     font-size: 13px;
+  }
+
+  .home-publish-fab {
+    position: fixed;
+    right: 16px;
+    bottom: calc(78px + env(safe-area-inset-bottom));
+    z-index: 20;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 42px;
+    padding: 0 16px;
+    border-radius: 999px;
+    background: var(--cpu-primary);
+    box-shadow: 0 8px 22px color-mix(in srgb, var(--cpu-primary) 28%, transparent);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  .home-publish-fab:focus-visible {
+    outline: 2px solid var(--cpu-card);
+    outline-offset: 2px;
   }
 }
 

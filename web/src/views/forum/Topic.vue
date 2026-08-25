@@ -154,24 +154,45 @@
       </section>
 
       <div v-if="topic.imageReview?.pendingCount" class="image-review-tip image-review-tip-pending">
-        <span>正文中有 {{ topic.imageReview.pendingCount }} 张图片正在审核，审核通过后会自动显示。</span>
-        <el-button v-if="canReviewTopicImages" link type="warning" @click="openTopicImageReviewDialog">手动复核图片</el-button>
+        <div class="review-tip-message">
+          <el-icon class="review-tip-icon"><Picture /></el-icon>
+          <div class="review-tip-copy">
+            <b>图片正在审核</b>
+            <span>{{ topic.imageReview.pendingCount }} 张图片暂未显示，通过后会自动出现在正文中。</span>
+          </div>
+        </div>
+        <el-button v-if="canReviewTopicImages" link type="warning" class="review-tip-action" @click="openTopicImageReviewDialog">手动复核</el-button>
       </div>
       <div v-else-if="topic.imageReview?.rejectedCount" class="image-review-tip image-review-tip-rejected">
-        <span>正文中有 {{ topic.imageReview.rejectedCount }} 张图片未通过审核，当前已隐藏。</span>
-        <el-button v-if="canReviewTopicImages" link type="danger" @click="openTopicImageReviewDialog">手动复核图片</el-button>
+        <div class="review-tip-message">
+          <el-icon class="review-tip-icon"><Picture /></el-icon>
+          <div class="review-tip-copy">
+            <b>部分图片未显示</b>
+            <span>{{ topic.imageReview.rejectedCount }} 张图片未通过审核，当前已隐藏。</span>
+          </div>
+        </div>
+        <el-button v-if="canReviewTopicImages" link type="danger" class="review-tip-action" @click="openTopicImageReviewDialog">手动复核</el-button>
       </div>
       <div v-if="topic.videoReview?.manualReviewCount" class="image-review-tip image-review-tip-rejected">
-        <span>正文中有 {{ topic.videoReview.manualReviewCount }} 个视频待人工复核，当前已隐藏。</span>
-        <el-button v-if="canReviewTopicVideos" link type="danger" @click="openTopicVideoReviewDialog">手动复核视频</el-button>
+        <div class="review-tip-message">
+          <el-icon class="review-tip-icon"><VideoCamera /></el-icon>
+          <div class="review-tip-copy"><b>视频等待人工复核</b><span>{{ topic.videoReview.manualReviewCount }} 个视频暂未显示。</span></div>
+        </div>
+        <el-button v-if="canReviewTopicVideos" link type="danger" class="review-tip-action" @click="openTopicVideoReviewDialog">手动复核</el-button>
       </div>
       <div v-else-if="topic.videoReview?.rejectedCount" class="image-review-tip image-review-tip-rejected">
-        <span>正文中有 {{ topic.videoReview.rejectedCount }} 个视频未通过审核，当前已隐藏。</span>
-        <el-button v-if="canReviewTopicVideos" link type="danger" @click="openTopicVideoReviewDialog">手动复核视频</el-button>
+        <div class="review-tip-message">
+          <el-icon class="review-tip-icon"><VideoCamera /></el-icon>
+          <div class="review-tip-copy"><b>部分视频未显示</b><span>{{ topic.videoReview.rejectedCount }} 个视频未通过审核，当前已隐藏。</span></div>
+        </div>
+        <el-button v-if="canReviewTopicVideos" link type="danger" class="review-tip-action" @click="openTopicVideoReviewDialog">手动复核</el-button>
       </div>
       <div v-else-if="topic.videoReview?.pendingCount" class="image-review-tip image-review-tip-pending">
-        <span>正文中有 {{ topic.videoReview.pendingCount }} 个视频正在审核，审核通过后会自动显示。</span>
-        <el-button v-if="canReviewTopicVideos" link type="warning" @click="openTopicVideoReviewDialog">手动复核视频</el-button>
+        <div class="review-tip-message">
+          <el-icon class="review-tip-icon"><VideoCamera /></el-icon>
+          <div class="review-tip-copy"><b>视频正在审核</b><span>{{ topic.videoReview.pendingCount }} 个视频暂未显示，通过后会自动出现在正文中。</span></div>
+        </div>
+        <el-button v-if="canReviewTopicVideos" link type="warning" class="review-tip-action" @click="openTopicVideoReviewDialog">手动复核</el-button>
       </div>
 
       <div v-if="isOwnTopicChecking" class="topic-review-tip cpu-card topic-review-tip-pending">
@@ -299,6 +320,7 @@
             </div>
             <UserModerationActions
               v-if="replyModerationUser(entry.item)"
+              class="reply-moderation-actions"
               :user="replyModerationUser(entry.item)"
               display="dropdown"
               text
@@ -676,7 +698,7 @@ import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { toPng } from "html-to-image";
 import QRCode from "qrcode";
-import { ArrowLeft, Star, ChatLineRound, Link } from "@element-plus/icons-vue";
+import { ArrowLeft, Star, ChatLineRound, Link, Picture, VideoCamera } from "@element-plus/icons-vue";
 import UserAvatar from "@/components/common/UserAvatar.vue";
 import UserModerationActions from "@/components/common/UserModerationActions.vue";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";

@@ -61,6 +61,7 @@
       display: grid;
       grid-template-columns: auto minmax(0, 1fr) auto;
       align-items: center;
+      justify-content: stretch;
       gap: 10px;
       width: auto;
       padding: 12px 14px;
@@ -104,6 +105,14 @@
     .second-hand-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); padding-inline: 8px; }
     .second-hand-facts > div:nth-child(odd) { border-left: 0; }
     .post-body { min-height: 120px; padding-bottom: 18px; }
+
+    .image-review-tip {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .review-tip-action { margin-left: 40px; }
 
     .source-bar {
       align-items: flex-start;
@@ -149,12 +158,13 @@
     }
 
     .reply-author-panel {
+      position: relative;
       display: grid;
-      grid-template-columns: auto minmax(0, 1fr) auto;
+      grid-template-columns: auto minmax(0, 1fr);
       align-items: center;
       justify-items: start;
       gap: 8px 10px;
-      padding: 10px 12px;
+      padding: 10px 64px 10px 12px;
       border-right: 0;
       border-bottom: 1px solid var(--cpu-border-soft);
       text-align: left;
@@ -163,7 +173,18 @@
     .reply-author-panel .avatar { width: 34px !important; height: 34px !important; grid-row: 1 / span 2; }
     .reply-author-panel .author { grid-column: 2; }
     .reply-author-badges { grid-column: 2; justify-content: flex-start; }
-    .reply-author-panel > :deep(.el-dropdown) { grid-column: 3; grid-row: 1; }
+    .reply-moderation-actions {
+      position: absolute;
+      top: 10px;
+      right: 12px;
+      flex-wrap: nowrap;
+    }
+    .reply-moderation-actions :deep(.el-button) {
+      min-width: 44px;
+      height: 32px;
+      margin: 0;
+      padding: 0 8px;
+    }
     .reply-author-panel .real-author-inline { grid-column: 2 / -1; }
     .reply-body { padding: 12px 14px 14px; }
 
