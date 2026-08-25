@@ -5,6 +5,7 @@ import { Errors, ok } from "../utils/response";
 import { withCache } from "../services/cache";
 import { authRequired } from "../middleware/auth";
 import { validate } from "../middleware/validate";
+import { securityRateLimit } from "../middleware/securityRateLimit";
 import {
   enabledBoardTypes,
   featureClosedMessage,
@@ -191,6 +192,42 @@ topicRouter.get("/submissions/:submissionId", authRequired, async (req, res, nex
   } catch (e) { next(e); }
 });
 
+const topicImpressionsSchema = z.object({
+  ids: z.array(z.number().int().positive()).min(1).max(40),
+});
+
+topicRouter.post(
+  "/impressions",
+  securityRateLimit("forum-impressions", 300, 60_000),
+  validate(topicImpressionsSchema),
+  async (req, res, next) => {
+    try {
+      res.setHeader("Cache-Control", "no-store");
+      const ids = Array.from(new Set<number>(req.body.ids));
+      const visible = await prisma.topic.findMany({
+        where: {
+          id: { in: ids },
+          hidden: false,
+          board: { type: { in: enabledBoardTypes() }, ...visibleBoardSlugFilter() },
+        },
+        select: { id: true },
+      });
+      const visibleIds = visible.map((item) => item.id);
+      if (!visibleIds.length) return ok(res, { views: [] });
+
+      await prisma.topic.updateMany({
+        where: { id: { in: visibleIds }, hidden: false },
+        data: { viewCount: { increment: 1 } },
+      });
+      const updated = await prisma.topic.findMany({
+        where: { id: { in: visibleIds } },
+        select: { id: true, viewCount: true },
+      });
+      ok(res, { views: updated });
+    } catch (e) { next(e); }
+  },
+);
+
 topicRouter.get("/:id", async (req, res, next) => {
   try {
     const id = Number(req.params.id);
@@ -211,11 +248,21 @@ topicRouter.get("/:id", async (req, res, next) => {
     if (topic.hidden && !canSeeHidden) throw Errors.notFound();
     if (!isBoardTypeEnabled(topic.board?.type)) throw Errors.forbidden(featureClosedMessage(topic.board?.type));
     await ensureCanReadBoardType(topic.board?.type, requesterId, requesterRole);
-    // 浏览数 +1（异步，失败也无所谓）
-    if (!topic.hidden) prisma.topic.update({ where: { id }, data: { viewCount: { increment: 1 } } }).catch(() => {});
+    const [presented, reactions, updatedViews] = await Promise.all([
+      decodeTopicForViewerWithImages(topic, req.user),
+      getReactionSummary({ topicId: id }, requesterId),
+      topic.hidden
+        ? Promise.resolve(null)
+        : prisma.topic.update({
+            where: { id },
+            data: { viewCount: { increment: 1 } },
+            select: { viewCount: true },
+          }).catch(() => null),
+    ]);
     ok(res, {
-      ...(await decodeTopicForViewerWithImages(topic, req.user)),
-      reactions: await getReactionSummary({ topicId: id }, requesterId),
+      ...presented,
+      viewCount: updatedViews?.viewCount ?? topic.viewCount,
+      reactions,
     });
   } catch (e) { next(e); }
 });

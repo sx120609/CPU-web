@@ -663,6 +663,7 @@ import { adminApi, type ForumImageReviewAsset, type ForumVideoReviewAsset } from
 import { useAuthStore } from "@/stores/auth";
 import { fmtDate, fmtRelative } from "@/utils/format";
 import { forumCacheScope, readForumTopic, writeForumTopic } from "@/utils/forumCache";
+import { rememberTopicViewCount } from "@/utils/topicImpressions";
 import { copyText } from "@/utils/userGroup";
 import { isAndroidNativeApp, isHarmonyNativeApp } from "@/utils/clientInfo";
 import { getNativeBridge, hasNativeImageSaveBridge } from "@/utils/nativeBridge";
@@ -1034,6 +1035,7 @@ function scheduleTopicReviewPoll() {
       if (seq !== topicReviewPollSeq || Number(route.params.id) !== id) return;
       const previousStatus = topic.value?.aiReviewStatus;
       topic.value = latest;
+      rememberTopicViewCount(latest.id, latest.viewCount);
       writeForumTopic(forumCacheScope(auth.user), id, { topic: latest, replies: replies.value });
       const latestReviewState = resolveForumReviewState(latest);
       if (latestReviewState === "pending") {
@@ -1086,6 +1088,7 @@ async function load() {
     const [nextTopic, nextReplies] = await Promise.all([topicPromise, repliesPromise]);
     if (seq !== loadSeq) return;
     topic.value = nextTopic;
+    rememberTopicViewCount(nextTopic.id, nextTopic.viewCount);
     replies.value = nextReplies;
     scheduleTopicReviewPoll();
     restorePendingReplySubmission();
@@ -1133,7 +1136,9 @@ async function load() {
 
 async function loadTopicDetail(id: number) {
   try {
-    return await topicApi.detail(id, { suppressErrorMessage: true });
+    const latest = await topicApi.detail(id, { suppressErrorMessage: true });
+    rememberTopicViewCount(latest.id, latest.viewCount);
+    return latest;
   } catch (error) {
     if ((error as { response?: { status?: number } })?.response?.status === 403) {
       router.replace({ name: "forum", query: { redirect: route.fullPath } });

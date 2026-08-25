@@ -21,6 +21,8 @@ export type RequestOptions = AxiosRequestConfig & {
   suppressAuthRedirect?: boolean;
   suppressAuthMessage?: boolean;
   suppressErrorMessage?: boolean;
+  /** 仅记录曝光等被动事件时，不清空页面的 GET 响应缓存。 */
+  preserveResponseCache?: boolean;
   /** 内存响应缓存；设为 0 可强制跳过。默认仅覆盖高频只读页面。 */
   cacheTtlMs?: number;
 };
@@ -168,8 +170,13 @@ export const request = {
     getRequestsInFlight.set(key, task);
     return task;
   },
-  post: <T = unknown>(url: string, data?: unknown, options?: RequestOptions) =>
-    instance.post<unknown, T>(url, data, options).then((value) => { invalidateResponseCache(); return value; }),
+  post: <T = unknown>(url: string, data?: unknown, options?: RequestOptions) => {
+    const { cacheTtlMs: _cacheTtlMs, preserveResponseCache, ...axiosOptions } = options ?? {};
+    return instance.post<unknown, T>(url, data, axiosOptions).then((value) => {
+      if (!preserveResponseCache) invalidateResponseCache();
+      return value;
+    });
+  },
   patch: <T = unknown>(url: string, data?: unknown, options?: RequestOptions) =>
     instance.patch<unknown, T>(url, data, options).then((value) => { invalidateResponseCache(); return value; }),
   delete: <T = unknown>(url: string, options?: RequestOptions) =>

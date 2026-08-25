@@ -1,5 +1,6 @@
 <template>
   <div
+    ref="rowRef"
     class="topic-row"
     role="button"
     tabindex="0"
@@ -47,7 +48,7 @@
         <span class="dot">·</span>
         <span class="heat">热度 {{ hotScore }}</span>
         <span class="dot">·</span>
-        <span><el-icon><View /></el-icon> {{ topic.viewCount }}</span>
+        <span><el-icon><View /></el-icon> {{ displayedViewCount }}</span>
         <span><el-icon><ChatLineRound /></el-icon> {{ topic.replyCount }}</span>
         <span><el-icon><Star /></el-icon> {{ topic.likeCount }}</span>
       </div>
@@ -61,15 +62,24 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { View, ChatLineRound, Star } from "@element-plus/icons-vue";
 import UserAvatar from "@/components/common/UserAvatar.vue";
 import { fmtRelative } from "@/utils/format";
+import {
+  hasTrackedTopicImpression,
+  knownTopicViewCount,
+  queueTopicImpression,
+} from "@/utils/topicImpressions";
 
 const props = defineProps<{ topic: any }>();
 const route = useRoute();
 const router = useRouter();
+const rowRef = ref<HTMLElement | null>(null);
+const displayedViewCount = ref(knownTopicViewCount(Number(props.topic.id), Number(props.topic.viewCount) || 0));
+let impressionObserver: IntersectionObserver | null = null;
+let impressionTimer: ReturnType<typeof setTimeout> | null = null;
 const marketKind = computed(() => {
   if (props.topic.board?.type !== "market") return "";
   const raw = props.topic.metadata?.marketKind || props.topic.metadata?.listingType;
@@ -98,7 +108,7 @@ const metaRating = computed(() => {
   const r = props.topic.metadata?.ratings?.recommend;
   return typeof r === "number" ? r : 0;
 });
-const hotScore = computed(() => Math.round((props.topic.likeCount ?? 0) * 5 + (props.topic.replyCount ?? 0) * 3 + (props.topic.viewCount ?? 0) * 0.03));
+const hotScore = computed(() => Math.round((props.topic.likeCount ?? 0) * 5 + (props.topic.replyCount ?? 0) * 3 + displayedViewCount.value * 0.03));
 const aiTags = computed(() => Array.isArray(props.topic.tags) ? props.topic.tags.slice(0, 2) : []);
 const reviewState = computed(() => {
   if (!props.topic.hidden) return null;
@@ -111,6 +121,62 @@ const reviewState = computed(() => {
   return { label: "仅自己可见", type: "info" as const };
 });
 const restorableRouteNames = new Set(["board", "market", "forum-latest", "forum-hot"]);
+
+watch(() => [props.topic.id, props.topic.viewCount], ([id, viewCount]) => {
+  displayedViewCount.value = knownTopicViewCount(Number(id), Number(viewCount) || 0);
+  observeImpression();
+});
+
+onMounted(observeImpression);
+
+onBeforeUnmount(() => {
+  clearImpressionTracking();
+});
+
+function clearImpressionTracking() {
+  impressionObserver?.disconnect();
+  impressionObserver = null;
+  if (impressionTimer !== null) {
+    clearTimeout(impressionTimer);
+    impressionTimer = null;
+  }
+}
+
+function recordVisibleImpression() {
+  impressionTimer = null;
+  if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+  clearImpressionTracking();
+  const topicId = Number(props.topic.id);
+  void queueTopicImpression(topicId).then((viewCount) => {
+    if (typeof viewCount === "number") {
+      displayedViewCount.value = Math.max(displayedViewCount.value, viewCount);
+    }
+  });
+}
+
+function observeImpression() {
+  clearImpressionTracking();
+  const topicId = Number(props.topic.id);
+  if (!Number.isInteger(topicId) || topicId <= 0 || props.topic.hidden || hasTrackedTopicImpression(topicId)) return;
+  if (typeof IntersectionObserver === "undefined" || !rowRef.value) {
+    recordVisibleImpression();
+    return;
+  }
+  impressionObserver = new IntersectionObserver((entries) => {
+    const entry = entries[0];
+    if (entry?.isIntersecting && entry.intersectionRatio >= 0.5) {
+      if (impressionTimer === null) {
+        impressionTimer = setTimeout(recordVisibleImpression, 450);
+      }
+      return;
+    }
+    if (impressionTimer !== null) {
+      clearTimeout(impressionTimer);
+      impressionTimer = null;
+    }
+  }, { threshold: [0, 0.5] });
+  impressionObserver.observe(rowRef.value);
+}
 
 function openTopic() {
   const routeName = String(route.name || "");

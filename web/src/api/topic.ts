@@ -151,6 +151,13 @@ export type TopicAutoFormatResult = {
 export const topicApi = {
   list: (params: { board?: string; page?: number; size?: number; sort?: "new" | "hot"; pinned?: "only" | "exclude"; q?: string }, options?: RequestOptions) =>
     request.get<{ page: number; size: number; total: number; list: Topic[] }>("/topics", params, options),
+  recordImpressions: (ids: number[]) =>
+    request.post<{ views: Array<{ id: number; viewCount: number }> }>("/topics/impressions", { ids }, {
+      preserveResponseCache: true,
+      suppressAuthMessage: true,
+      suppressAuthRedirect: true,
+      suppressErrorMessage: true,
+    }),
   detail: (id: number, options?: RequestOptions) => request.get<Topic>(`/topics/${id}`, undefined, options),
   replies: (id: number, options?: RequestOptions) => request.get<Reply[]>(`/topics/${id}/replies`, undefined, options),
   create: (payload: { boardSlug: string; title: string; content: string; metadata?: any; tags?: string[]; anonymous?: boolean; submissionId?: string }) =>
