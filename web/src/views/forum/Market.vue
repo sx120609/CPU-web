@@ -1,19 +1,5 @@
 <template>
   <div class="second-hand-page">
-    <section class="second-hand-hero">
-      <div class="hero-copy">
-        <span class="hero-eyebrow">SECOND-HAND FORUM · 二手交流</span>
-        <h1>让闲置被看见，也让真实需求更快有回应</h1>
-        <p>这里是论坛里的二手交流板块。发帖、回帖、补充信息都沿用论坛方式，不提供站内下单或资金交易。</p>
-      </div>
-      <form class="hero-search" role="search" @submit.prevent="applySearch">
-        <el-input v-model="searchInput" clearable size="large" maxlength="80" placeholder="搜索闲置、求购或交流帖">
-          <template #prefix><el-icon><Search /></el-icon></template>
-        </el-input>
-        <el-button native-type="submit" type="primary" size="large">搜索</el-button>
-      </form>
-    </section>
-
     <section class="entry-grid" aria-label="二手交流快捷入口">
       <button type="button" class="entry-card entry-card--sell" @click="openPost('sell')">
         <span class="entry-icon"><el-icon><Goods /></el-icon></span>
@@ -48,6 +34,12 @@
           <p v-if="board">{{ board.description }} · {{ total }} 条公开内容</p>
         </div>
         <div class="topic-actions">
+          <form class="topic-search" role="search" @submit.prevent="applySearch">
+            <el-input v-model="searchInput" clearable maxlength="80" placeholder="搜索闲置、求购或交流帖">
+              <template #prefix><el-icon><Search /></el-icon></template>
+            </el-input>
+            <el-button native-type="submit" type="primary">搜索</el-button>
+          </form>
           <el-radio-group v-model="sort" size="default" @change="changeSort">
             <el-radio-button value="new">最新</el-radio-button>
             <el-radio-button value="hot">最热</el-radio-button>
@@ -203,43 +195,7 @@ function openPost(kind: SecondHandPostKind) {
   gap: 18px;
 }
 
-.second-hand-hero {
-  position: relative;
-  overflow: hidden;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.8fr);
-  align-items: center;
-  gap: 28px;
-  padding: 30px;
-  border-radius: 22px;
-  color: #fff;
-  background:
-    radial-gradient(circle at 86% 0%, rgba(255, 255, 255, 0.24), transparent 31%),
-    linear-gradient(120deg, #0f766e 0%, #168776 48%, #3aa28e 100%);
-  box-shadow: 0 18px 42px rgba(15, 118, 110, 0.2);
-}
-
-.second-hand-hero::after {
-  content: "";
-  position: absolute;
-  right: -70px;
-  bottom: -110px;
-  width: 260px;
-  height: 260px;
-  border: 46px solid rgba(255, 255, 255, 0.08);
-  border-radius: 50%;
-  pointer-events: none;
-}
-
-.hero-copy,
-.hero-search { position: relative; z-index: 1; }
-.hero-eyebrow,
 .section-eyebrow { font-size: 11px; font-weight: 800; letter-spacing: 0.12em; }
-.hero-eyebrow { color: rgba(255, 255, 255, 0.78); }
-.hero-copy h1 { max-width: 720px; margin: 8px 0; font-size: clamp(25px, 3vw, 36px); line-height: 1.3; }
-.hero-copy p { max-width: 690px; margin: 0; color: rgba(255, 255, 255, 0.86); font-size: 14px; line-height: 1.75; }
-.hero-search { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; padding: 8px; border-radius: 14px; background: rgba(255, 255, 255, 0.18); }
-.hero-search :deep(.el-input__wrapper) { box-shadow: none; }
 
 .entry-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
 .entry-card {
@@ -277,7 +233,8 @@ function openPost(kind: SecondHandPostKind) {
 .section-eyebrow { color: var(--cpu-primary); }
 .topic-panel-head h2 { margin: 4px 0 0; color: var(--cpu-text); font-size: 21px; }
 .topic-panel-head p { margin: 5px 0 0; color: var(--cpu-text-secondary); font-size: 12px; }
-.topic-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.topic-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-shrink: 0; flex-wrap: wrap; }
+.topic-search { display: grid; grid-template-columns: minmax(220px, 320px) auto; gap: 8px; }
 .topic-list { min-height: 120px; padding-top: 6px; }
 .pinned-block { margin: 12px 0 4px; padding: 8px 4px 4px; border: 1px solid rgba(239, 68, 68, 0.18); border-radius: 12px; background: rgba(239, 68, 68, 0.04); }
 .list-label { display: flex; justify-content: space-between; align-items: center; padding: 0 10px 5px; }
@@ -286,20 +243,21 @@ function openPost(kind: SecondHandPostKind) {
 .load-state { padding: 28px 12px; }
 .pager { display: flex; justify-content: center; padding: 14px 0 2px; }
 
-@media (max-width: 900px) {
-  .second-hand-hero { grid-template-columns: 1fr; gap: 18px; }
+@media (max-width: 1000px) {
+  .topic-panel-head { align-items: flex-start; flex-direction: column; }
+  .topic-actions { width: 100%; justify-content: flex-start; }
+  .topic-search { flex: 1; }
 }
 
 @media (max-width: 720px) {
   .second-hand-page { gap: 14px; }
-  .second-hand-hero { padding: 22px 18px; border-radius: 16px; }
-  .hero-copy h1 { font-size: 25px; }
-  .hero-search { grid-template-columns: 1fr; }
   .entry-grid { grid-template-columns: 1fr; gap: 10px; }
   .entry-card { padding: 15px; border-radius: 14px; }
   .entry-icon { flex-basis: 44px; height: 44px; border-radius: 12px; }
   .topic-panel { padding: 16px 8px 10px; border-radius: 14px; }
   .topic-panel-head { align-items: flex-start; flex-direction: column; padding: 0 6px 12px; }
-  .topic-actions { width: 100%; justify-content: space-between; }
+  .topic-actions { width: 100%; align-items: stretch; flex-direction: column; }
+  .topic-search { grid-template-columns: minmax(0, 1fr) auto; }
+  .topic-actions :deep(.el-radio-group) { align-self: flex-start; }
 }
 </style>
