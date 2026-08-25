@@ -28,7 +28,7 @@ import {
   syncTopicAiTags,
 } from "../services/topicAiReview";
 import { autoFormatTopicContent } from "../services/topicAiFormat";
-import { createSmartPostDraft } from "../services/topicSmartPost";
+import { enqueueSmartPostJob, getSmartPostJob } from "../services/topicSmartPostJob";
 import { ensureCanReadBoardType, ensureForumAccessEnabled, resolveForumAccess } from "../services/forumAccess";
 import { ensureUserCanSpeak, releaseExpiredMutes } from "../services/userModeration";
 import { consumeAnonymousCredit, createAnonymousAlias } from "../services/userTrust";
@@ -277,7 +277,7 @@ topicRouter.post(
           })
         : null;
       if (parsed.data.boardSlug && !board) throw Errors.notFound("板块不存在");
-      ok(res, await createSmartPostDraft({
+      ok(res.status(202), enqueueSmartPostJob({
         userId: req.user!.userId,
         title: parsed.data.title,
         content: parsed.data.content,
@@ -293,6 +293,20 @@ topicRouter.post(
             }
           : null,
       }));
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+topicRouter.get(
+  "/smart-compose/:jobId",
+  authRequired,
+  securityRateLimit("forum-smart-post-status", 900, 60 * 60_000),
+  (req, res, next) => {
+    try {
+      res.setHeader("Cache-Control", "no-store");
+      ok(res, getSmartPostJob(String(req.params.jobId || ""), req.user!.userId));
     } catch (error) {
       next(error);
     }

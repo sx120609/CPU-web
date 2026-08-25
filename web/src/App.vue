@@ -1,6 +1,7 @@
 <template>
   <el-config-provider :locale="zhCn" :z-index="5000">
     <router-view :key="routeViewKey" />
+    <SmartPostTaskIndicator />
     <AndroidUpdateDialog />
     <el-dialog
       v-model="dataAuthOpen"
@@ -115,6 +116,7 @@ import { router } from "@/router";
 import { messageApi } from "@/api/message";
 import { AUTH_EXPIRED_EVENT } from "@/api/request";
 import AndroidUpdateDialog from "@/components/install/AndroidUpdateDialog.vue";
+import SmartPostTaskIndicator from "@/components/forum/SmartPostTaskIndicator.vue";
 import { detectInAppBrowser } from "@/utils/inAppBrowser";
 
 const auth = useAuthStore();

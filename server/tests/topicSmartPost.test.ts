@@ -6,6 +6,7 @@ import {
 } from "../src/services/aiJsonApi";
 import {
   normalizeSmartPostFile,
+  parseSmartPostAnalysis,
   parseSmartPostDraft,
   resolveSmartPostUsage,
 } from "../src/services/topicSmartPost";
@@ -71,11 +72,49 @@ test("Responses、Chat Completions 与 Ollama usage 统一为实际 token", () =
   });
 
   assert.equal(resolveSmartPostUsage({ inputTokens: 4001, outputTokens: 3999, totalTokens: 8000 }, 4000).chargedQuota, 2);
+  assert.deepEqual(resolveSmartPostUsage([
+    { inputTokens: 1200, outputTokens: 300, totalTokens: 1500 },
+    { inputTokens: 1800, outputTokens: 900, totalTokens: 2700 },
+    { inputTokens: 2200, outputTokens: 700, totalTokens: 2900 },
+  ], 4000), {
+    inputTokens: 5200,
+    outputTokens: 1900,
+    totalTokens: 7100,
+    tokensPerQuota: 4000,
+    chargedQuota: 2,
+  });
   assert.equal(resolveSmartPostUsage({ inputTokens: 1, outputTokens: 1, totalTokens: 2 }, 4000).chargedQuota, 1);
   assert.throws(
     () => resolveSmartPostUsage({ inputTokens: null, outputTokens: null, totalTokens: null }, 4000),
     /未返回实际 Token 用量/u,
   );
+});
+
+test("智慧发帖第一轮材料分析只接受严格结构", () => {
+  assert.deepEqual(parseSmartPostAnalysis(JSON.stringify({
+    intent: "发布成员招募说明",
+    audience: "在校学生",
+    facts: ["面向全校招募"],
+    structure: ["团队介绍", "报名方式"],
+    constraints: ["不冒充校方官方通知"],
+    riskNotes: [],
+  })), {
+    intent: "发布成员招募说明",
+    audience: "在校学生",
+    facts: ["面向全校招募"],
+    structure: ["团队介绍", "报名方式"],
+    constraints: ["不冒充校方官方通知"],
+    riskNotes: [],
+  });
+  assert.throws(() => parseSmartPostAnalysis(JSON.stringify({
+    intent: "生成帖子",
+    audience: "学生",
+    facts: ["事实"],
+    structure: ["结构"],
+    constraints: [],
+    riskNotes: [],
+    publish: true,
+  })), /字段无效/u);
 });
 
 test("智慧发帖草稿只接受完整 JSON 且限制帖子长度", () => {

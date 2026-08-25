@@ -141,6 +141,7 @@ type AiJsonRequestOptions = {
   signal?: AbortSignal;
   maxTransientRetries?: number;
   primaryOllamaTimeoutMs?: number;
+  upstreamTimeoutMs?: number;
 };
 
 const INTERACTIVE_TEXT_REVIEW_OPTIONS = {
@@ -227,6 +228,7 @@ export async function requestAiJson(
         signal: options?.signal,
         maxTransientRetries: options?.maxTransientRetries,
         primaryOllamaTimeoutMs: options?.primaryOllamaTimeoutMs,
+        timeoutMs: options?.upstreamTimeoutMs,
       });
       response = upstreamResult.response;
       responseMode = upstreamResult.mode;

@@ -166,6 +166,8 @@ export async function sendAiJsonRequest(input: {
   /** Ask a compatible remote upstream to use its hosted web-search capability. */
   webSearch?: boolean;
   signal?: AbortSignal;
+  /** Per-request upstream deadline. Omitted callers keep the shared default. */
+  timeoutMs?: number;
 }): Promise<SendAiJsonRequestResult> {
   if (input.preferNativeOllama && !input.stream && isOllamaProvider(input.provider)) {
     return retryBusyOllamaRequest(input, () => sendNativeOllamaJsonRequest(input));
@@ -190,6 +192,7 @@ export async function sendAiJsonRequest(input: {
       enablePromptCacheRetention: input.enablePromptCacheRetention,
       maxTransientRetries: input.maxTransientRetries,
       signal: input.signal,
+      timeoutMs: input.timeoutMs,
     }));
     return {
       ...result,
@@ -259,6 +262,7 @@ export async function sendAiJsonRequestWithProviderFallback(input: {
   ollamaThink?: boolean;
   webSearch?: boolean;
   signal?: AbortSignal;
+  timeoutMs?: number;
   /** Give a congested primary Ollama route a short budget before trying a configured remote fallback. */
   primaryOllamaTimeoutMs?: number;
 }): Promise<SendAiJsonRequestWithFallbackResult> {
@@ -305,6 +309,7 @@ export async function sendAiJsonRequestWithProviderFallback(input: {
         ollamaThink: input.ollamaThink,
         webSearch: input.webSearch,
         signal: providerDeadline?.signal ?? input.signal,
+        timeoutMs: input.timeoutMs,
       });
       if (result.response.ok || index >= providers.length - 1) {
         return { ...result, provider, endpoint };
@@ -358,6 +363,7 @@ async function sendNativeOllamaJsonRequest(input: {
   maxTransientRetries?: number;
   ollamaThink?: boolean;
   signal?: AbortSignal;
+  timeoutMs?: number;
 }): Promise<SendAiJsonRequestResult> {
   // Native Ollama's image payload shape is different. Keep multimodal
   // requests on the OpenAI-compatible endpoint instead of silently dropping
@@ -377,6 +383,7 @@ async function sendNativeOllamaJsonRequest(input: {
     provider: input.provider,
     maxTransientRetries: input.maxTransientRetries,
     signal: input.signal,
+    timeoutMs: input.timeoutMs,
     body: {
       model: input.model,
       messages: input.messages.map(toNativeOllamaMessage),
@@ -490,6 +497,7 @@ export async function sendAiUpstreamRequest(input: {
   /** Retries for transient provider failures. A value of 3 means at most four total attempts. */
   maxTransientRetries?: number;
   signal?: AbortSignal;
+  timeoutMs?: number;
 }): Promise<SendAiJsonRequestResult> {
   // Reject malformed payloads before entering the Ollama queue. Otherwise an
   // invalid image/message request can wait behind a long model task and be
@@ -519,12 +527,14 @@ async function sendAiUpstreamRequestUnisolated(input: {
   enablePromptCacheRetention?: boolean;
   maxTransientRetries?: number;
   signal?: AbortSignal;
+  timeoutMs?: number;
 }): Promise<SendAiJsonRequestResult> {
-  const deadline = createAiUpstreamDeadline(input.signal);
+  const timeoutMs = normalizeCustomAiUpstreamTimeoutMs(input.timeoutMs);
+  const deadline = createAiUpstreamDeadline(input.signal, timeoutMs);
   try {
     return await sendAiUpstreamRequestWithSignal({ ...input, signal: deadline.signal });
   } catch (error) {
-    if (!input.signal?.aborted && deadline.signal.aborted) throw createAiUpstreamTimeoutError();
+    if (!input.signal?.aborted && deadline.didTimeout()) throw createAiUpstreamTimeoutError(timeoutMs);
     throw error;
   } finally {
     deadline.dispose();
@@ -540,6 +550,7 @@ async function sendAiUpstreamRequestWithSignal(input: {
   enablePromptCacheRetention?: boolean;
   maxTransientRetries?: number;
   signal?: AbortSignal;
+  timeoutMs?: number;
 }): Promise<SendAiJsonRequestResult> {
   const mode = detectAiJsonApiMode(input.endpoint);
   const supportKey = `${mode}:${input.endpoint}`;
@@ -625,7 +636,8 @@ async function sendAiUpstreamRequestWithSignal(input: {
   return {
     response: trackAiResponseBody(
       finalResult.response,
-      isOllamaEndpoint(input.provider, input.endpoint),
+      isOllamaEndpoint(input.provider, input.endpoint) || input.timeoutMs !== undefined,
+      input.timeoutMs,
     ),
     mode,
     errorText: finalResult.errorText,
@@ -635,7 +647,7 @@ async function sendAiUpstreamRequestWithSignal(input: {
   };
 }
 
-function trackAiResponseBody(response: Response, shouldTrack: boolean) {
+function trackAiResponseBody(response: Response, shouldTrack: boolean, timeoutMs?: number) {
   if (!shouldTrack || !response.body) return response;
   const source = response.body;
   let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
@@ -650,14 +662,17 @@ function trackAiResponseBody(response: Response, shouldTrack: boolean) {
     settled = true;
     resolveClosed();
   };
+  const responseBodyTimeoutMs = timeoutMs === undefined
+    ? AI_RESPONSE_BODY_TIMEOUT_MS
+    : normalizeCustomAiUpstreamTimeoutMs(timeoutMs);
   const timeout = setTimeout(() => {
-    const error = new Error(`AI 上游响应体超过 ${Math.round(AI_RESPONSE_BODY_TIMEOUT_MS / 1000)} 秒，已取消`);
+    const error = new Error(`AI 上游响应体超过 ${Math.round(responseBodyTimeoutMs / 1000)} 秒，已取消`);
     error.name = "TimeoutError";
     (error as Error & { code?: string }).code = "AI_RESPONSE_BODY_TIMEOUT";
     void reader?.cancel(error).catch(() => undefined);
     streamController?.error(error);
     settle();
-  }, AI_RESPONSE_BODY_TIMEOUT_MS);
+  }, responseBodyTimeoutMs);
   timeout.unref?.();
   const body = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -1202,6 +1217,12 @@ function normalizeAiUpstreamTimeoutMs(value: unknown) {
   const timeoutMs = Number(value);
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return null;
   return Math.max(250, Math.min(AI_UPSTREAM_TIMEOUT_MS, Math.floor(timeoutMs)));
+}
+
+function normalizeCustomAiUpstreamTimeoutMs(value: unknown) {
+  const timeoutMs = Number(value);
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return AI_UPSTREAM_TIMEOUT_MS;
+  return Math.max(1_000, Math.min(10 * 60_000, Math.floor(timeoutMs)));
 }
 
 function createAiAbortError() {

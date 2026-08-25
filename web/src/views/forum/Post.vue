@@ -346,8 +346,8 @@
                   Markdown / HTML
                 </button>
               </div>
-              <el-button size="small" type="primary" plain :disabled="smartPostRunning" @click="openSmartPost">
-                智慧发帖
+              <el-button size="small" type="primary" plain :disabled="smartPostBusy" @click="openSmartPost">
+                {{ smartPostBusy ? "Agent 后台处理中" : "智慧发帖" }}
               </el-button>
             </div>
 
@@ -425,13 +425,20 @@
       </el-form>
     </div>
 
-    <el-dialog v-model="smartPostOpen" title="智慧发帖 Agent" width="min(620px, 94vw)" :close-on-click-modal="!smartPostRunning">
+    <el-dialog
+      v-model="smartPostOpen"
+      title="智慧发帖 Agent"
+      width="min(620px, 94vw)"
+      :close-on-click-modal="!smartPostRunning"
+      :close-on-press-escape="!smartPostRunning"
+      :show-close="!smartPostRunning"
+    >
       <div class="smart-post-dialog">
         <el-alert
           type="info"
           :closable="false"
           show-icon
-          title="Agent 只会生成可编辑草稿，不会自动发布。当前编辑器中的标题和正文会一并作为材料。"
+          title="Agent 会在后台分三轮分析材料、生成草稿并核验定稿。提交后可离开此页；它只生成可编辑草稿，不会自动发布。"
         />
         <label class="smart-post-field">
           <span>处理方式</span>
@@ -467,12 +474,12 @@
             placeholder="例如：面向本科生、保留报名方式、语气真诚简洁"
           />
         </label>
-        <p class="smart-post-privacy">文件只在服务端内存中处理：Responses 接口优先读取原文件，其他接口由服务端临时解析文字，不保存上传文件。</p>
+        <p class="smart-post-privacy">文件只在服务端内存中处理：Responses 接口优先读取原文件，其他接口由服务端临时解析文字，不保存上传文件。任务进度和失败原因会显示在全站任务卡中。</p>
       </div>
       <template #footer>
         <el-button :disabled="smartPostRunning" @click="smartPostOpen = false">取消</el-button>
         <el-button type="primary" :loading="smartPostRunning" @click="runSmartPost">
-          {{ smartPostRunning ? "正在生成草稿" : "生成可编辑草稿" }}
+          {{ smartPostRunning ? "正在上传材料" : "提交后台 Agent 任务" }}
         </el-button>
       </template>
     </el-dialog>
@@ -545,6 +552,7 @@ import { boardApi, type Board } from "@/api/board";
 import { topicApi, type SmartPostOperation, type TopicSubmissionResponse } from "@/api/topic";
 import { courseApi, type Course } from "@/api/course";
 import { useAuthStore } from "@/stores/auth";
+import { useSmartPostJobStore } from "@/stores/smartPostJob";
 import { fmtDate } from "@/utils/format";
 import { forumInternalTitle } from "@/utils/forumContent";
 import {
@@ -559,6 +567,7 @@ import {
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
+const smartPost = useSmartPostJobStore();
 
 const boards = ref<Board[]>([]);
 const courses = ref<Course[]>([]);
@@ -591,6 +600,8 @@ const smartPostOperation = ref<SmartPostOperation>("compose");
 const smartPostInstruction = ref("");
 const smartPostFile = ref<File | null>(null);
 const smartPostFileInputRef = ref<HTMLInputElement | null>(null);
+const smartPostBusy = computed(() => smartPost.starting || smartPost.active || Boolean(smartPost.task && !smartPost.terminal));
+let appliedSmartPostJobId = "";
 const previewOpen = ref(false);
 const pendingMetadata = ref<any>(null);
 const reviewBlockedOpen = ref(false);
@@ -820,6 +831,28 @@ const mutedNotice = computed(() => auth.user?.mutedUntil ? `你已被禁言至 $
 watch(() => route.params.id, () => {
   void loadInitial();
 }, { immediate: true });
+
+watch(
+  () => [smartPost.status, smartPost.task?.returnPath, route.fullPath, loading.value] as const,
+  ([status, returnPath, currentPath, pageLoading]) => {
+    if (
+      !status?.result
+      || status.state !== "completed"
+      || pageLoading
+      || returnPath !== currentPath
+      || appliedSmartPostJobId === status.jobId
+    ) return;
+    appliedSmartPostJobId = status.jobId;
+    form.title = status.result.title;
+    form.content = status.result.content;
+    editorMode.value = "markup";
+    scheduleMarkupDraftSave(status.result.content);
+    scheduleFormDraftSave();
+    smartPost.dismiss();
+    ElMessage.success(`${status.result.summary}；三轮实际使用 ${status.result.usage.totalTokens} Tokens，扣除 ${status.result.usage.chargedQuota} 个 AI 额度`);
+  },
+  { deep: true, immediate: true },
+);
 
 onBeforeUnmount(() => {
   pendingSubmissionMonitorSeq += 1;
@@ -1191,6 +1224,10 @@ async function insertMarkupSnippet(snippet: string) {
 }
 
 function openSmartPost() {
+  if (smartPostBusy.value) {
+    ElMessage.info("智慧发帖 Agent 正在后台处理，请查看页面右下角的任务进度");
+    return;
+  }
   smartPostOperation.value = isMarkupContentEmpty(form.content) ? "compose" : "polish";
   smartPostOpen.value = true;
 }
@@ -1229,22 +1266,19 @@ async function runSmartPost() {
   }
   smartPostRunning.value = true;
   try {
-    const result = await topicApi.smartCompose({
+    await smartPost.begin({
       title: form.title.trim() || undefined,
       content: isMarkupContentEmpty(form.content) ? undefined : form.content,
       instruction: smartPostInstruction.value.trim() || undefined,
       operation: smartPostOperation.value,
       boardSlug: form.boardSlug || undefined,
       file: smartPostFile.value,
-    });
-    form.title = result.title;
-    form.content = result.content;
-    editorMode.value = "markup";
-    scheduleMarkupDraftSave(result.content);
-    scheduleFormDraftSave();
+    }, route.fullPath, auth.user!.id);
     smartPostOpen.value = false;
     clearSmartPostFile();
-    ElMessage.success(`${result.summary}；实际使用 ${result.usage.totalTokens} Tokens，扣除 ${result.usage.chargedQuota} 个 AI 额度`);
+    ElMessage.success("任务已转入后台，可以继续浏览其他页面；完成或失败后会持续显示结果");
+  } catch (error) {
+    ElMessage.error(getForumRequestMessage(error) || "智慧发帖任务提交失败，请稍后重试");
   } finally {
     smartPostRunning.value = false;
   }

@@ -172,6 +172,29 @@ export type SmartPostDraftResult = {
   };
 };
 
+export type SmartPostJobState = "queued" | "running" | "completed" | "failed";
+
+export type SmartPostJobSnapshot = {
+  jobId: string;
+  state: SmartPostJobState;
+  progress: number;
+  message: string;
+  createdAt: string;
+  updatedAt: string;
+  completedAt: string | null;
+  result: SmartPostDraftResult | null;
+  error: string | null;
+};
+
+export type SmartPostComposePayload = {
+  title?: string;
+  content?: string;
+  instruction?: string;
+  operation: SmartPostOperation;
+  boardSlug?: string;
+  file?: File | null;
+};
+
 export const topicApi = {
   list: (params: { board?: string; page?: number; size?: number; sort?: "new" | "hot"; pinned?: "only" | "exclude"; q?: string }, options?: RequestOptions) =>
     request.get<{ page: number; size: number; total: number; list: Topic[] }>("/topics", params, options),
@@ -196,14 +219,7 @@ export const topicApi = {
     request.patch<TopicSubmissionResponse>(`/topics/${id}`, payload, { timeout: 12_000, suppressErrorMessage: true }),
   autoFormat: (payload: { title?: string; content: string; boardSlug?: string; editorMode?: "visual" | "markup" }) =>
     request.post<TopicAutoFormatResult>("/topics/format", payload, { timeout: 60000 }),
-  smartCompose: (payload: {
-    title?: string;
-    content?: string;
-    instruction?: string;
-    operation: SmartPostOperation;
-    boardSlug?: string;
-    file?: File | null;
-  }) => {
+  startSmartCompose: (payload: SmartPostComposePayload) => {
     const body = new FormData();
     if (payload.title) body.append("title", payload.title);
     if (payload.content) body.append("content", payload.content);
@@ -211,8 +227,17 @@ export const topicApi = {
     if (payload.boardSlug) body.append("boardSlug", payload.boardSlug);
     body.append("operation", payload.operation);
     if (payload.file) body.append("file", payload.file, payload.file.name);
-    return request.post<SmartPostDraftResult>("/topics/smart-compose", body, { timeout: 120000 });
+    return request.post<SmartPostJobSnapshot>("/topics/smart-compose", body, {
+      timeout: 60_000,
+      suppressErrorMessage: true,
+    });
   },
+  smartComposeStatus: (jobId: string) =>
+    request.get<SmartPostJobSnapshot>(`/topics/smart-compose/${encodeURIComponent(jobId)}`, undefined, {
+      cacheTtlMs: 0,
+      timeout: 10_000,
+      suppressErrorMessage: true,
+    }),
   remove: (id: number) => request.delete<any>(`/topics/${id}`),
   requestManualReview: (id: number) => request.post<{ ok: true }>(`/topics/${id}/request-manual-review`),
 };
