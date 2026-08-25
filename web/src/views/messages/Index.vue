@@ -49,7 +49,7 @@
             </el-button>
           </div>
           <h4>通知渠道</h4>
-          <div class="qq-channel-card wechat-channel-card" v-loading="wechatLoading">
+          <div v-if="wechatChannelVisible" class="qq-channel-card wechat-channel-card" v-loading="wechatLoading">
             <div class="qq-channel-head">
               <div>
                 <b>微信服务号</b>
@@ -337,6 +337,7 @@ const route = useRoute();
 const router = useRouter();
 const msg = useMessageStore();
 const auth = useAuthStore();
+const wechatChannelVisible = false;
 
 const messageTabs = new Set(["all", "reply", "like", "system", "service-tool", "lost-found", "settings"]);
 const tab = ref(normalizeMessageTab(route.query.tab));
@@ -420,7 +421,7 @@ onMounted(() => {
   disposed = false;
   void loadPage();
   void loadQqBotProfile({ silent: true });
-  void loadWechatProfile({ silent: true });
+  if (wechatChannelVisible) void loadWechatProfile({ silent: true });
   if (route.query.wechat === "bound") {
     ElMessage.success("微信服务号绑定成功");
     router.replace({ query: { ...route.query, wechat: undefined } }).catch(() => null);
