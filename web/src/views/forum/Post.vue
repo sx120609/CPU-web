@@ -674,7 +674,12 @@ const submitButtonLabel = computed(() => {
   if (meta.marketKind === "discuss") return "预览讨论帖";
   return "预览闲置帖";
 });
-const formDraftKey = computed(() => editingId.value ? "" : "cpu-post-new-draft");
+const LEGACY_FORM_DRAFT_KEY = "cpu-post-new-draft";
+const LEGACY_CONTENT_DRAFT_KEY = `${LEGACY_FORM_DRAFT_KEY}-content`;
+const formDraftKey = computed(() => {
+  if (editingId.value) return "";
+  return isSecondHandPost.value ? "cpu-post-new-draft-market" : "cpu-post-new-draft-general";
+});
 const contentDraftKey = computed(() => formDraftKey.value ? `${formDraftKey.value}-content` : "");
 const anonymousEnabledForForm = computed(() => {
   const anonymousState = auth.user?.anonymousState;
@@ -785,6 +790,7 @@ async function loadInitial() {
       editorMode.value = resolveInitialEditorMode(t.content, t.metadata);
       normalizeSelectedBoard();
     } else {
+      migrateLegacyDraftForCurrentScope();
       restoreFormDraft();
       restoreContentDraft();
       if (typeof route.query.kind === "string") meta.marketKind = routeMarketKind();
@@ -927,6 +933,25 @@ function isEditorContentEmpty() {
 
 function onContentDraftRestored(value: string) {
   form.content = value;
+}
+
+function migrateLegacyDraftForCurrentScope() {
+  if (!formDraftKey.value) return;
+  try {
+    if (localStorage.getItem(formDraftKey.value)) return;
+    const raw = localStorage.getItem(LEGACY_FORM_DRAFT_KEY);
+    if (!raw) return;
+    const draft = JSON.parse(raw);
+    const draftIsMarket = draft?.boardSlug === "market";
+    if (draftIsMarket !== isSecondHandPost.value) return;
+    localStorage.setItem(formDraftKey.value, raw);
+    const legacyContent = localStorage.getItem(LEGACY_CONTENT_DRAFT_KEY);
+    if (legacyContent && contentDraftKey.value) localStorage.setItem(contentDraftKey.value, legacyContent);
+    localStorage.removeItem(LEGACY_FORM_DRAFT_KEY);
+    localStorage.removeItem(LEGACY_CONTENT_DRAFT_KEY);
+  } catch {
+    /* ignore malformed legacy drafts */
+  }
 }
 
 function restoreFormDraft() {
