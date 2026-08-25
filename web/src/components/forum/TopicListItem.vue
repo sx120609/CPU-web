@@ -12,16 +12,29 @@
     <template v-if="isSimple">
       <UserAvatar :size="36" class="avatar" :src="topic.author?.avatar" :name="topic.author?.nickname" :profile-frame="topic.author?.profileFrame" alt="作者头像" />
       <div class="simple-main">
-        <div class="simple-heading">
+        <div class="simple-heading" :class="{ 'has-price': metaPriceLabel }">
           <span class="simple-title"><b v-if="topic.globalPinned || topic.pinned">置顶</b>{{ displayTitle }}</span>
           <strong v-if="metaPriceLabel" class="simple-price">{{ metaPriceLabel }}</strong>
         </div>
-        <div class="simple-meta">
-          <span class="simple-board">{{ marketKindLabel || boardDisplayName }}</span>
-          <span>{{ topic.author?.nickname ?? '—' }}</span>
-          <span>{{ fmtRelative(topic.lastReplyAt || topic.createdAt) }}</span>
-          <span>{{ displayedViewCount }} 浏览</span>
-          <span>{{ topic.replyCount }} 回复</span>
+        <div class="simple-context">
+          <span class="simple-board">{{ boardDisplayName }}</span>
+          <span v-if="marketKindLabel">{{ marketKindLabel }}</span>
+          <span v-if="marketCategoryLabel">{{ marketCategoryLabel }}</span>
+          <span v-if="reviewState" class="simple-review">{{ reviewState.label }}</span>
+        </div>
+        <div class="simple-footer">
+          <div class="simple-byline">
+            <span v-if="topic.author?.vipActive" class="vip-badge" title="VIP 用户">VIP</span>
+            <span class="simple-author">{{ topic.author?.nickname ?? '—' }}</span>
+            <span class="simple-time">{{ fmtRelative(topic.lastReplyAt || topic.createdAt) }}</span>
+            <span v-if="topic.editCount && topic.editCount > 0" class="simple-edited">已编辑 {{ topic.editCount }} 次</span>
+          </div>
+          <div class="simple-stats">
+            <span class="heat">热度 {{ hotScore }}</span>
+            <span><el-icon><View /></el-icon>{{ displayedViewCount }}</span>
+            <span><el-icon><ChatLineRound /></el-icon>{{ topic.replyCount }}</span>
+            <span><el-icon><Star /></el-icon>{{ topic.likeCount }}</span>
+          </div>
         </div>
       </div>
     </template>
@@ -48,10 +61,10 @@
     <template v-else>
     <UserAvatar :size="36" class="avatar" :src="topic.author?.avatar" :name="topic.author?.nickname" :profile-frame="topic.author?.profileFrame" alt="作者头像" />
     <div class="main">
-      <div class="line1">
+      <div class="line1" :class="{ 'has-inline-price': metaPriceLabel, 'has-ai-tags': aiTags.length }">
         <el-tag v-if="topic.globalPinned" size="small" type="warning" effect="dark" class="tag">全局置顶</el-tag>
         <el-tag v-if="topic.pinned" size="small" type="danger" effect="plain" class="tag">板块置顶</el-tag>
-        <el-tag v-if="topic.board" size="small" :style="{ background: topic.board.color || '#168776', color: '#fff', border: 'none' }" class="tag">
+        <el-tag v-if="topic.board && showBoardTag" size="small" :style="{ background: topic.board.color || '#168776', color: '#fff', border: 'none' }" class="tag">
           {{ boardDisplayName }}
         </el-tag>
         <el-tag v-if="marketKindLabel" size="small" effect="plain" :type="marketKindType" class="tag market-kind-tag">
@@ -64,6 +77,7 @@
           {{ reviewState.label }}
         </el-tag>
         <span class="title" :class="{ 'say-content': isSayTopic }">{{ displayTitle }}</span>
+        <strong v-if="metaPriceLabel" class="inline-price">{{ metaPriceLabel }}</strong>
         <el-tag
           v-for="tag in aiTags"
           :key="tag.name"
@@ -79,24 +93,24 @@
         <el-tag v-if="metaBounty" size="small" type="warning" class="tag">悬赏 {{ metaBounty }}</el-tag>
       </div>
       <div class="line2">
-        <span v-if="topic.author?.vipActive" class="vip-badge" title="VIP 用户">VIP</span>
-        <span class="author">{{ topic.author?.nickname ?? "—" }}</span>
-        <span v-if="topic.isAnonymous" class="anon">匿名</span>
-        <span v-if="topic.author?.role === 'bot'" class="bot">🤖 公告同步</span>
-        <span class="dot">·</span>
-        <span>{{ fmtRelative(topic.lastReplyAt || topic.createdAt) }}</span>
-        <span v-if="topic.editCount && topic.editCount > 0" class="edited">已编辑 {{ topic.editCount }} 次</span>
-        <span class="dot">·</span>
-        <span class="heat">热度 {{ hotScore }}</span>
-        <span class="dot">·</span>
-        <span><el-icon><View /></el-icon> {{ displayedViewCount }}</span>
-        <span><el-icon><ChatLineRound /></el-icon> {{ topic.replyCount }}</span>
-        <span><el-icon><Star /></el-icon> {{ topic.likeCount }}</span>
+        <div class="row-byline">
+          <span v-if="topic.author?.vipActive" class="vip-badge" title="VIP 用户">VIP</span>
+          <span class="author">{{ topic.author?.nickname ?? "—" }}</span>
+          <span v-if="topic.isAnonymous" class="anon">匿名</span>
+          <span v-if="topic.author?.role === 'bot'" class="bot">🤖 公告同步</span>
+          <span class="meta-separator">·</span>
+          <span class="row-time">{{ fmtRelative(topic.lastReplyAt || topic.createdAt) }}</span>
+          <span v-if="topic.editCount && topic.editCount > 0" class="edited">已编辑 {{ topic.editCount }} 次</span>
+        </div>
+        <div class="row-stats">
+          <span class="heat">热度 {{ hotScore }}</span>
+          <span><el-icon><View /></el-icon>{{ displayedViewCount }}</span>
+          <span><el-icon><ChatLineRound /></el-icon>{{ topic.replyCount }}</span>
+          <span><el-icon><Star /></el-icon>{{ topic.likeCount }}</span>
+        </div>
       </div>
     </div>
-    <!-- 价格/评分等板块特化的右侧小标 -->
-    <div v-if="metaPriceLabel" class="price">{{ metaPriceLabel }}</div>
-    <div v-else-if="metaRating" class="rating">
+    <div v-if="metaRating" class="rating">
       <el-rate :model-value="metaRating" disabled size="small" />
     </div>
     </template>
@@ -128,6 +142,7 @@ let impressionTimer: ReturnType<typeof setTimeout> | null = null;
 const isSayTopic = computed(() => props.topic.metadata?._postMode === "say");
 const isCard = computed(() => props.variant === "card");
 const isSimple = computed(() => props.variant === "simple");
+const showBoardTag = computed(() => route.name !== "board");
 const displayTitle = computed(() => isSayTopic.value
   ? forumContentExcerpt(props.topic.content, 110) || props.topic.title
   : props.topic.title);
@@ -299,46 +314,60 @@ function openTopic() {
 .line2 {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 10px;
+  justify-content: space-between;
+  gap: 16px;
   font-size: 12px;
   color: var(--cpu-text-secondary);
-  margin-top: 4px;
+  margin-top: 6px;
   min-width: 0;
 }
-.line3 {
-  margin-top: 6px;
-  font-size: 14px;
-  line-height: 1.6;
-  color: var(--cpu-text);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  overflow-wrap: anywhere;
+.row-byline,
+.row-stats {
+  display: flex;
+  align-items: center;
+  min-width: 0;
 }
-.line2 span { display: inline-flex; align-items: center; gap: 3px; min-width: 0; overflow-wrap: anywhere; }
-.line2 .author { color: var(--cpu-primary); }
+.row-byline { flex: 1; gap: 7px; overflow: hidden; white-space: nowrap; }
+.row-stats { flex: 0 0 auto; gap: 12px; white-space: nowrap; }
+.row-byline > span,
+.row-stats > span { display: inline-flex; align-items: center; gap: 3px; }
+.line2 .author {
+  min-width: 24px;
+  max-width: clamp(96px, 20vw, 220px);
+  overflow: hidden;
+  color: var(--cpu-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.row-time { flex: 0 0 auto; }
 .vip-badge { color: #a16207; background: linear-gradient(135deg, #fef3c7, #fcd34d); border: 1px solid #f59e0b; border-radius: 999px; padding: 0 5px; font-size: 10px; font-weight: 800; letter-spacing: .04em; }
 .line2 .anon { color: #7c3aed; font-weight: 600; }
 .line2 .bot { color: #ef4444; }
-.line2 .edited { color: #b45309; }
+.line2 .edited { flex: 0 0 auto; color: #b45309; }
 .line2 .heat { color: #0f766e; font-weight: 600; }
-.line2 .dot { color: var(--cpu-border); }
+.meta-separator { color: var(--cpu-border); }
 
-.price {
+.line1.has-inline-price .title,
+.line1.has-ai-tags .title { flex: 0 1 auto; }
+.inline-price {
   flex: 0 0 auto;
-  font-size: 16px;
-  font-weight: 700;
-  color: #ef4444;
+  color: color-mix(in srgb, #ef4444 82%, var(--cpu-text));
+  font-size: 15px;
+  line-height: 1.5;
   white-space: nowrap;
-  margin-left: 8px;
 }
 .rating { flex: 0 0 auto; white-space: nowrap; }
 
-.topic-row--simple { align-items: flex-start; padding: 12px 8px; }
+.topic-row--simple {
+  align-items: flex-start;
+  padding: 13px 8px;
+  border-bottom: 1px solid var(--cpu-border-soft);
+  border-radius: 0;
+}
+.topic-row--simple:last-child { border-bottom: 0; }
 .simple-main { flex: 1; min-width: 0; }
 .simple-heading { display: flex; align-items: flex-start; gap: 12px; min-width: 0; }
+.simple-heading.has-price .simple-title { flex: 0 1 auto; }
 .simple-title {
   display: -webkit-box;
   flex: 1;
@@ -354,20 +383,60 @@ function openTopic() {
 }
 .simple-title b { margin-right: 6px; color: #b45309; font-size: 12px; }
 .simple-price { flex: 0 0 auto; color: color-mix(in srgb, #ef4444 82%, var(--cpu-text)); font-size: 15px; line-height: 1.5; }
-.simple-meta {
+.simple-context {
   display: flex;
   align-items: center;
-  gap: 0;
+  gap: 8px;
   min-width: 0;
-  margin-top: 4px;
+  margin-top: 5px;
   overflow: hidden;
   color: var(--cpu-text-muted);
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.5;
   white-space: nowrap;
 }
-.simple-meta span + span::before { content: "·"; margin: 0 6px; color: var(--cpu-border); }
-.simple-board { color: var(--cpu-primary); font-weight: 600; }
+.simple-context span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.simple-context span + span::before { content: "·"; margin-right: 8px; color: var(--cpu-border); }
+.simple-board { color: var(--cpu-primary); font-weight: 650; }
+.simple-review { color: var(--cpu-warn); }
+.simple-footer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  margin-top: 5px;
+  color: var(--cpu-text-muted);
+  font-size: 12px;
+}
+.simple-byline,
+.simple-stats {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  white-space: nowrap;
+}
+.simple-byline { gap: 7px; overflow: hidden; }
+.simple-byline > span + span:not(.simple-edited)::before { content: "·"; margin-right: 7px; color: var(--cpu-border); }
+.simple-byline > .vip-badge + .simple-author::before { content: none; }
+.simple-author {
+  min-width: 24px;
+  max-width: clamp(90px, 18vw, 190px);
+  overflow: hidden;
+  color: var(--cpu-primary);
+  font-weight: 600;
+  text-overflow: ellipsis;
+}
+.simple-time,
+.simple-edited { flex: 0 0 auto; }
+.simple-edited { color: #b45309; }
+.simple-edited::before { content: "·"; margin-right: 7px; color: var(--cpu-border); }
+.simple-stats { gap: 11px; }
+.simple-stats span { display: inline-flex; align-items: center; gap: 3px; }
+.simple-stats .heat { color: #0f766e; font-weight: 600; }
 
 .topic-row--card {
   display: block;
@@ -450,11 +519,17 @@ function openTopic() {
   .topic-row--simple .simple-main { grid-column: 2; }
   .topic-row--simple .simple-title { font-size: 14px; line-height: 1.45; }
   .topic-row--simple .simple-price { font-size: 14px; }
-  .topic-row--simple .simple-meta {
+  .topic-row--simple .simple-context {
     flex-wrap: wrap;
     overflow: visible;
     white-space: normal;
   }
+  .topic-row--simple .simple-footer {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 5px;
+  }
+  .topic-row--simple .simple-author { max-width: min(42vw, 150px); }
+  .topic-row--simple .simple-stats { gap: 13px; }
 
   .line1 {
     gap: 5px;
@@ -466,13 +541,24 @@ function openTopic() {
     line-height: 1.45;
   }
 
-  .line2 {
-    gap: 7px;
-    flex-wrap: wrap;
-    line-height: 1.5;
+  .line1.has-inline-price .title {
+    width: auto;
+    max-width: calc(100% - 66px);
   }
 
-  .price,
+  .inline-price { font-size: 14px; }
+
+  .line2 {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 5px;
+    line-height: 1.45;
+  }
+  .row-byline { gap: 6px; }
+  .line2 .author { max-width: min(42vw, 160px); }
+  .row-stats { gap: 13px; }
+  .line2 .edited { font-size: 11px; }
+
   .rating {
     grid-column: 2;
     margin-left: 0;

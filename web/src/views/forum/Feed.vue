@@ -51,9 +51,15 @@
           <TopicListItem v-for="t in pinnedList" :key="`pin-${t.id}`" :topic="t" />
         </div>
         <ForumAdCard v-if="forumAd" :ad="forumAd" compact />
-        <div class="section-head" v-if="latestList.length || latestTotal">
-          <h3>最新内容</h3>
-          <span>已显示 {{ latestList.length }} / {{ latestTotal }}</span>
+        <div v-if="latestList.length || latestTotal" class="section-head latest-summary">
+          <div class="section-head-copy">
+            <h3>最新内容</h3>
+            <span>按最近发布与回复时间排列</span>
+          </div>
+          <div class="section-count" aria-label="当前已加载数量">
+            <strong>{{ latestList.length }}</strong>
+            <span>/ {{ latestTotal }}</span>
+          </div>
         </div>
         <TopicListItem v-for="t in latestList" :key="t.id" :topic="t" />
         <div v-if="latestTotal > latestSize" class="latest-actions">
@@ -386,6 +392,17 @@ onBeforeRouteLeave((to) => {
   font-size: 12px;
   color: var(--cpu-text-muted);
 }
+.section-head-copy { min-width: 0; }
+.section-head-copy span { display: block; margin-top: 3px; font-size: 11px; }
+.section-count {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  flex: 0 0 auto;
+  color: var(--cpu-text-muted);
+}
+.section-count strong { color: var(--cpu-primary); font-size: 16px; }
+.section-count span { font-size: 11px; }
 
 .rank-row {
   display: grid;

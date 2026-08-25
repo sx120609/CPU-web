@@ -43,9 +43,15 @@
       </div>
 
       <div class="topic-list cpu-card" v-loading="loading">
-        <div class="section-head">
-          <h3>{{ sort === "hot" ? "按热度查看" : "按时间查看" }}</h3>
-          <span>{{ total }} 条</span>
+        <div class="section-head board-summary">
+          <div class="section-head-copy">
+            <h3>{{ sort === "hot" ? "热门讨论" : "最新内容" }}</h3>
+            <span>{{ sort === "hot" ? "综合互动与浏览热度排列" : "按最近发布与回复时间排列" }}</span>
+          </div>
+          <div class="section-count" aria-label="当前页帖子数量">
+            <strong>{{ list.length }}</strong>
+            <span>/ {{ total }}</span>
+          </div>
         </div>
         <TopicListItem v-for="t in list" :key="t.id" :topic="t" />
         <el-empty v-if="!loading && !list.length" description="还没有帖子" />
@@ -311,6 +317,17 @@ onBeforeRouteLeave((to) => {
   font-size: 12px;
   color: var(--cpu-text-muted);
 }
+.section-head-copy { min-width: 0; }
+.section-head-copy span { display: block; margin-top: 3px; font-size: 11px; }
+.section-count {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  flex: 0 0 auto;
+  color: var(--cpu-text-muted);
+}
+.section-count strong { color: var(--cpu-primary); font-size: 16px; }
+.section-count span { font-size: 11px; }
 .pinned-list {
   border: 1px solid rgba(239, 68, 68, 0.24);
   background: linear-gradient(180deg, rgba(239, 68, 68, 0.08) 0%, var(--cpu-card) 100%);

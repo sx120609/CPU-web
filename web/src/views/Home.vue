@@ -81,9 +81,12 @@
         </section>
 
         <section class="block">
-          <div class="block-head">
-            <h3>🆕 最新</h3>
-            <router-link to="/forum/latest" class="more">更多 →</router-link>
+          <div class="block-head latest-head">
+            <div>
+              <h3>🆕 最新</h3>
+              <span class="block-summary">全站最近发布与回复</span>
+            </div>
+            <router-link to="/forum/latest" class="more">查看全部 →</router-link>
           </div>
           <TopicListItem v-for="t in summary?.latestTopics ?? []" :key="'new-' + t.id" :topic="t" variant="simple" />
           <el-empty v-if="!summary?.latestTopics?.length" description="暂无内容" />
@@ -420,7 +423,6 @@ function normalizeHomeError(error: unknown) {
   grid-template-columns: 2fr 1fr;
   gap: 16px;
 }
-/* 论坛被关掉时，左栏隐藏 → 右栏单独占满整行，避免出现 1/3 宽的"孤儿" */
 .grid.single-col {
   grid-template-columns: 1fr;
 }
@@ -448,6 +450,8 @@ function normalizeHomeError(error: unknown) {
   margin-bottom: 10px;
 }
 .block-head h3 { margin: 0; font-size: 16px; color: var(--cpu-text); font-weight: 600; }
+.latest-head > div { min-width: 0; }
+.block-summary { display: block; margin-top: 3px; color: var(--cpu-text-muted); font-size: 11px; }
 .more { font-size: 12px; color: var(--cpu-primary); text-decoration: none; }
 
 .announce-list { list-style: none; padding: 0; margin: 0; }
