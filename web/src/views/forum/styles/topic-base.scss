@@ -1,6 +1,12 @@
 .topic-page { display: flex; flex-direction: column; gap: 16px; }
 
-.cpu-card { background: #fff; border-radius: 12px; padding: 20px 24px; box-shadow: 0 2px 12px rgba(0,0,0,0.04); }
+.cpu-card {
+  background: var(--cpu-card);
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 12px;
+  padding: 20px 24px;
+  box-shadow: var(--cpu-shadow-sm);
+}
 
 .topic-page-loading,
 .topic-page-empty {

@@ -17,7 +17,7 @@
 
     <div v-else v-loading="loading" class="cpu-card form">
       <el-form label-position="top" :model="form">
-        <el-form-item v-if="!isSecondHandPost" label="选择板块" required>
+        <el-form-item label="选择板块" required>
           <el-select v-model="form.boardSlug" placeholder="选择要发帖的板块" :disabled="!!editingId" @change="onBoardChange">
             <el-option-group v-for="(group, label) in groupedBoards" :key="label" :label="label">
               <el-option
@@ -36,6 +36,31 @@
             {{ currentBoard.description }}
           </div>
         </el-form-item>
+
+        <div class="publish-mode-picker" role="radiogroup" aria-label="发布形式">
+          <button
+            type="button"
+            class="publish-mode-option"
+            :class="{ active: publishMode === 'say' }"
+            role="radio"
+            :aria-checked="publishMode === 'say'"
+            @click="selectPublishMode('say')"
+          >
+            <b>发说说</b>
+            <span>只写正文，内容流直接展示正文摘要</span>
+          </button>
+          <button
+            type="button"
+            class="publish-mode-option"
+            :class="{ active: publishMode === 'post' }"
+            role="radio"
+            :aria-checked="publishMode === 'post'"
+            @click="selectPublishMode('post')"
+          >
+            <b>发帖子</b>
+            <span>标题加正文，适合信息较完整的内容</span>
+          </button>
+        </div>
 
         <el-form-item v-if="currentBoard?.anonymousEnabled" label="匿名发布">
           <div class="anonymous-box" :class="{ disabled: !anonymousEnabledForForm }">
@@ -134,6 +159,20 @@
                     可小议
                   </el-checkbox>
                 </el-form-item>
+              </div>
+
+              <div class="market-image-option">
+                <div class="market-image-copy">
+                  <span class="market-image-icon">图片</span>
+                  <div>
+                    <b>物品图片 <small>选填</small></b>
+                    <p>可以不上传；选择后会自动加入正文并参与统一图片审核。</p>
+                  </div>
+                </div>
+                <div class="market-image-actions">
+                  <span v-if="marketImageCount">已添加 {{ marketImageCount }} 张</span>
+                  <el-button plain @click="openSecondHandImagePicker">{{ marketImageCount ? '继续添加' : '选择图片' }}</el-button>
+                </div>
               </div>
             </div>
 
@@ -275,8 +314,8 @@
           </el-form-item>
         </template>
 
-        <el-form-item :label="postTitleLabel" required>
-          <el-input v-model="form.title" :placeholder="postTitlePlaceholder" maxlength="120" show-word-limit />
+        <el-form-item v-if="publishMode === 'post'" label="标题" required>
+          <el-input v-model="form.title" placeholder="一句话概括主要内容" maxlength="120" show-word-limit />
         </el-form-item>
 
         <el-form-item :label="postContentLabel" required>
@@ -406,7 +445,7 @@
             <b>{{ fact.value }}</b>
           </div>
         </div>
-        <h3>{{ form.title || "未填写标题" }}</h3>
+        <h3 v-if="publishMode === 'post'">{{ form.title || "未填写标题" }}</h3>
         <MarkdownView :content="form.content" />
       </div>
       <template #footer>
@@ -455,6 +494,7 @@ import { topicApi, type TopicSubmissionResponse } from "@/api/topic";
 import { courseApi, type Course } from "@/api/course";
 import { useAuthStore } from "@/stores/auth";
 import { fmtDate } from "@/utils/format";
+import { forumInternalTitle } from "@/utils/forumContent";
 import {
   createForumSubmissionId,
   getForumRequestMessage,
@@ -487,9 +527,12 @@ const editingId = computed(() => {
 });
 const CONTENT_MAX = 20000;
 type PostEditorMode = "visual" | "markup";
+type PublishMode = "say" | "post";
 const editorRef = ref<InstanceType<typeof RichTextEditor> | null>(null);
 const markupTextareaRef = ref<HTMLTextAreaElement | null>(null);
 const editorMode = ref<PostEditorMode>("visual");
+const publishMode = ref<PublishMode>(route.query.mode === "say" ? "say" : "post");
+const publishModeTouched = ref(false);
 const autoFormatting = ref(false);
 const previewOpen = ref(false);
 const pendingMetadata = ref<any>(null);
@@ -609,25 +652,13 @@ const currentBoard = computed(() => boards.value.find((b) => b.slug === form.boa
 const boardType = computed(() => currentBoard.value?.type ?? "normal");
 const isSecondHandPost = computed(() => boardType.value === "market" || form.boardSlug === "market");
 const pageTitle = computed(() => {
-  if (!isSecondHandPost.value) return editingId.value ? "修改帖子" : "发表新帖";
+  if (!isSecondHandPost.value) return editingId.value ? "修改内容" : publishMode.value === "say" ? "发说说" : "发表帖子";
   if (editingId.value) return "修改二手信息";
   if (meta.marketKind === "wanted") return "发布求购";
   if (meta.marketKind === "discuss") return "发起二手讨论";
   return "发布闲置";
 });
 const selectedMarketCategory = computed(() => SECOND_HAND_CATEGORIES.find((item) => item.value === meta.category));
-const postTitleLabel = computed(() => {
-  if (!isSecondHandPost.value) return "标题";
-  if (meta.marketKind === "wanted") return "求购标题";
-  if (meta.marketKind === "discuss") return "讨论标题";
-  return "物品标题";
-});
-const postTitlePlaceholder = computed(() => {
-  if (!isSecondHandPost.value) return "一句话描述要点（2-120 字）";
-  if (meta.marketKind === "wanted") return "例如：求购药剂学第 9 版教材，江宁校区自取";
-  if (meta.marketKind === "discuss") return "一句话说明想交流的问题（2-120 字）";
-  return "例如：九成新小米台灯，功能正常，江宁校区面交";
-});
 const postContentLabel = computed(() => {
   if (!isSecondHandPost.value) return "正文";
   if (meta.marketKind === "wanted") return "求购要求";
@@ -643,6 +674,11 @@ const secondHandDescriptionHint = computed(() => {
   if (meta.marketKind === "wanted") return "建议说明版本、型号、可接受成色、预算范围和希望收到的时间，也可以插入参考图片。";
   if (meta.marketKind === "discuss") return "说明具体场景、疑问和希望大家重点讨论的部分，方便获得有效回复。";
   return "建议写清品牌型号、购入时间、使用情况、已知瑕疵和配件，并插入实物图片。";
+});
+const marketImageCount = computed(() => {
+  const htmlImages = form.content.match(/<img\b/gi)?.length ?? 0;
+  const markdownImages = form.content.match(/!\[[^\]]*\]\([^\n)]+\)/g)?.length ?? 0;
+  return htmlImages + markdownImages;
 });
 const marketPriceDisplay = computed(() => {
   if (meta.marketKind === "discuss") return "";
@@ -755,9 +791,13 @@ watch(anonymousEnabledForForm, (enabled) => {
   if (!enabled && !editingId.value) form.anonymous = false;
 }, { immediate: true });
 
-watch(() => [form.boardSlug, form.title, form.anonymous, meta.marketKind, meta.category, meta.priceType, meta.price, meta.negotiable, meta.condition, meta.tradeMode, meta.campus, meta.location, meta.bounty, meta.courseId, meta.courseTeacherId, meta.teacherName, meta.semester, editorMode.value], () => {
+watch(() => [form.boardSlug, form.title, form.anonymous, publishMode.value, meta.marketKind, meta.category, meta.priceType, meta.price, meta.negotiable, meta.condition, meta.tradeMode, meta.campus, meta.location, meta.bounty, meta.courseId, meta.courseTeacherId, meta.teacherName, meta.semester, editorMode.value], () => {
   scheduleFormDraftSave();
 }, { deep: true });
+
+watch(() => meta.marketKind, () => {
+  if (boardType.value === "market" && !publishModeTouched.value) publishMode.value = defaultPublishMode();
+});
 
 watch(() => form.content, (value) => {
   if (editorMode.value === "markup") scheduleMarkupDraftSave(value);
@@ -786,6 +826,8 @@ async function loadInitial() {
       form.content = t.content;
       form.anonymous = Boolean(t.isAnonymous);
       if (t.metadata) Object.assign(meta, t.metadata);
+      publishMode.value = t.metadata?._postMode === "say" ? "say" : "post";
+      publishModeTouched.value = true;
       if (t.board?.type === "market") normalizeExistingMarketMeta(t.metadata || {});
       editorMode.value = resolveInitialEditorMode(t.content, t.metadata);
       normalizeSelectedBoard();
@@ -795,6 +837,7 @@ async function loadInitial() {
       restoreContentDraft();
       if (typeof route.query.kind === "string") meta.marketKind = routeMarketKind();
       if (boardType.value === "market") normalizeExistingMarketMeta(meta);
+      if (!publishModeTouched.value) publishMode.value = defaultPublishMode();
       restorePendingTopicSubmission();
       if (pendingSubmissionAttempt.value) void monitorPendingTopicSubmission(pendingSubmissionAttempt.value.submissionId);
     }
@@ -820,6 +863,8 @@ function resetEditorStateForLoad() {
   blockedReviewInfo.reason = "";
   blockedReviewInfo.riskScore = null;
   editorMode.value = "visual";
+  publishMode.value = route.query.mode === "say" ? "say" : "post";
+  publishModeTouched.value = typeof route.query.mode === "string";
   form.boardSlug = typeof route.query.board === "string" && !editingId.value ? route.query.board : "";
   form.title = "";
   form.content = "";
@@ -844,7 +889,20 @@ async function loadCoursesForReview(force = false) {
 }
 
 function onBoardChange() {
+  publishModeTouched.value = false;
+  publishMode.value = defaultPublishMode();
   if (boardType.value === "coursereview") void loadCoursesForReview();
+}
+
+function defaultPublishMode(): PublishMode {
+  if (form.boardSlug === "general") return "say";
+  if (boardType.value === "market" && meta.marketKind === "discuss") return "say";
+  return "post";
+}
+
+function selectPublishMode(mode: PublishMode) {
+  publishMode.value = mode;
+  publishModeTouched.value = true;
 }
 
 function getRequestStatus(error: unknown) {
@@ -963,6 +1021,10 @@ function restoreFormDraft() {
     if (typeof draft.title === "string" && !form.title) form.title = draft.title;
     if (typeof draft.boardSlug === "string" && !form.boardSlug) form.boardSlug = draft.boardSlug;
     if (typeof draft.anonymous === "boolean") form.anonymous = draft.anonymous;
+    if (draft.publishMode === "say" || draft.publishMode === "post") {
+      publishMode.value = draft.publishMode;
+      publishModeTouched.value = true;
+    }
     if (draft.meta && typeof draft.meta === "object") Object.assign(meta, draft.meta);
     const savedMode = normalizeEditorMode(draft.editorMode ?? draft.meta?._editorMode);
     if (savedMode) editorMode.value = savedMode;
@@ -1003,6 +1065,7 @@ function scheduleFormDraftSave() {
         boardSlug: form.boardSlug,
         title: form.title,
         anonymous: form.anonymous,
+        publishMode: publishMode.value,
         editorMode: editorMode.value,
         meta,
         savedAt: Date.now(),
@@ -1044,6 +1107,14 @@ function setEditorMode(nextMode: PostEditorMode) {
   editorMode.value = nextMode;
   scheduleFormDraftSave();
   if (nextMode === "markup") scheduleMarkupDraftSave(form.content);
+}
+
+async function openSecondHandImagePicker() {
+  if (editorMode.value !== "visual") {
+    setEditorMode("visual");
+    await nextTick();
+  }
+  editorRef.value?.pickImages();
 }
 
 async function insertMarkupSnippet(snippet: string) {
@@ -1096,9 +1167,12 @@ async function submit() {
   if (auth.user?.topicSubmissionLocked) { ElMessage.warning("你有内容正在人工复核，暂时不能继续提交新内容"); return; }
   if (!form.boardSlug) { ElMessage.warning("请选择板块"); return; }
   if (form.anonymous && !anonymousEnabledForForm.value) { ElMessage.warning(anonymousHint.value); return; }
-  if (form.title.trim().length < 2) { ElMessage.warning("标题至少 2 字"); return; }
+  if (publishMode.value === "post" && form.title.trim().length < 2) { ElMessage.warning("标题至少 2 字"); return; }
   if (isEditorContentEmpty()) { ElMessage.warning("请填写正文"); return; }
   if (form.content.length > CONTENT_MAX) { ElMessage.warning("正文内容过长，请精简后再发布"); return; }
+  if (publishMode.value === "say") {
+    form.title = forumInternalTitle(form.content, currentBoard.value?.name ? `${currentBoard.value.name}动态` : "新动态");
+  }
   const metadata = buildMetadata();
   if (!metadata) return;
   pendingMetadata.value = metadata;
@@ -1109,6 +1183,7 @@ function buildMetadata() {
   // 组织 metadata
   const metadata: any = {
     _editorMode: editorMode.value,
+    _postMode: publishMode.value,
   };
   if (boardType.value === "market") {
     metadata.marketKind = meta.marketKind;
@@ -1603,6 +1678,32 @@ function notifyVideoReviewState(summary?: {
 }
 
 .board-hint { font-size: 12px; color: var(--cpu-text-secondary); margin-top: 6px; }
+.publish-mode-picker {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: -2px 0 22px;
+}
+.publish-mode-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+  padding: 13px 14px;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 12px;
+  background: var(--cpu-card);
+  color: var(--cpu-text);
+  text-align: left;
+  cursor: pointer;
+}
+.publish-mode-option span { color: var(--cpu-text-secondary); font-size: 12px; line-height: 1.5; }
+.publish-mode-option.active {
+  border-color: color-mix(in srgb, var(--cpu-primary) 58%, var(--cpu-border));
+  background: color-mix(in srgb, var(--cpu-primary) 8%, var(--cpu-card));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--cpu-primary) 10%, transparent);
+}
 .field-error {
   display: flex;
   align-items: center;
@@ -1668,6 +1769,34 @@ function notifyVideoReviewState(summary?: {
   border-radius: 18px;
   background: color-mix(in srgb, var(--cpu-surface-subtle) 56%, var(--cpu-card));
 }
+
+.market-image-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 14px;
+  padding: 13px 14px;
+  border: 1px dashed color-mix(in srgb, var(--cpu-primary) 34%, var(--cpu-border));
+  border-radius: 12px;
+  background: var(--cpu-card);
+}
+.market-image-copy { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.market-image-icon {
+  display: grid;
+  flex: 0 0 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--cpu-primary) 11%, var(--cpu-card));
+  color: var(--cpu-primary);
+  font-size: 12px;
+  font-weight: 700;
+}
+.market-image-copy b { color: var(--cpu-text); font-size: 13px; }
+.market-image-copy small { color: var(--cpu-text-muted); font-weight: 500; }
+.market-image-actions { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
+.market-image-actions > span { color: var(--cpu-primary); font-size: 12px; white-space: nowrap; }
 
 .second-hand-form-head,
 .second-hand-section-title {
@@ -1903,7 +2032,7 @@ function notifyVideoReviewState(summary?: {
 
 .second-hand-safety b {
   flex: 0 0 auto;
-  color: #b45309;
+  color: color-mix(in srgb, #b45309 72%, var(--cpu-text));
 }
 
 .second-hand-description-guide {
@@ -2047,6 +2176,10 @@ function notifyVideoReviewState(summary?: {
     padding: 16px 14px 11px;
   }
 
+  .publish-mode-picker { gap: 7px; margin-bottom: 18px; }
+  .publish-mode-option { padding: 11px; }
+  .publish-mode-option span { font-size: 11px; }
+
   .second-hand-kind-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 7px;
@@ -2088,6 +2221,9 @@ function notifyVideoReviewState(summary?: {
   .market-location-field {
     grid-column: auto;
   }
+
+  .market-image-option { align-items: stretch; flex-direction: column; }
+  .market-image-actions { justify-content: space-between; }
 
   .second-hand-discuss-prompt {
     margin: 0 14px 16px;

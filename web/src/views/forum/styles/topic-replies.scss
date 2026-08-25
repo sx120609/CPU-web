@@ -1,93 +1,100 @@
 .replies {
+  overflow: hidden;
+  padding: 0;
+
+  .cpu-section-title {
+    margin: 0;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--cpu-border-soft);
+  }
+
   .reply-review-count {
-    color: #b45309;
+    color: color-mix(in srgb, #b45309 72%, var(--cpu-text));
     font-size: 12px;
     font-weight: 500;
   }
 
-  .replies-loading {
-    display: grid;
-    gap: 16px;
-  }
+  .replies-loading { display: grid; gap: 16px; padding: 20px; }
 
   .reply {
-    display: flex;
-    gap: 12px;
-    padding: 14px 0;
-    border-bottom: 1px dashed var(--cpu-border-soft);
+    display: grid;
+    grid-template-columns: 168px minmax(0, 1fr);
+    min-height: 150px;
+    padding: 0;
+    border-bottom: 1px solid var(--cpu-border-soft);
     scroll-margin-top: 96px;
   }
-  .reply.nested {
-    position: relative;
-    padding-left: 12px;
-  }
-  .reply.nested::before {
-    content: "";
-    position: absolute;
-    left: 0;
-    top: 16px;
-    bottom: 16px;
-    width: 3px;
-    border-radius: 999px;
-    background: linear-gradient(180deg, var(--cpu-border) 0%, var(--cpu-border-soft) 100%);
-  }
+
+  .reply.nested { border-left: 3px solid color-mix(in srgb, var(--cpu-primary) 48%, var(--cpu-border)); }
   .reply:target {
-    border-radius: 14px;
-    padding-inline: 12px;
-    margin-inline: -12px;
-    background: linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--cpu-gold) 13%, var(--cpu-card)) 0%,
-      var(--cpu-card) 100%
-    );
+    background: linear-gradient(180deg, color-mix(in srgb, var(--cpu-gold) 13%, var(--cpu-card)) 0%, var(--cpu-card) 100%);
     box-shadow: 0 0 0 1px color-mix(in srgb, var(--cpu-gold) 45%, var(--cpu-border)) inset;
   }
   .reply:last-child { border-bottom: none; }
-  .avatar { background: var(--cpu-primary); color: #fff; font-weight: 600; flex-shrink: 0; }
-  .reply-body { flex: 1; min-width: 0; }
+
+  .reply-author-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    padding: 20px 14px;
+    border-right: 1px solid var(--cpu-border-soft);
+    background: var(--cpu-surface-subtle);
+    text-align: center;
+  }
+
+  .avatar { flex-shrink: 0; background: var(--cpu-primary); color: #fff; font-weight: 600; }
+  .reply-author-panel .author {
+    max-width: 100%;
+    color: var(--cpu-primary);
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
+    overflow-wrap: anywhere;
+  }
+  .reply-author-badges { display: flex; justify-content: center; flex-wrap: wrap; gap: 5px; }
+  .real-author-inline {
+    color: color-mix(in srgb, var(--cpu-gold) 78%, var(--cpu-text));
+    font-size: 11px;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+
+  .reply-body { display: flex; flex-direction: column; min-width: 0; padding: 16px 20px; }
   .reply-meta {
     display: flex;
     align-items: center;
+    justify-content: flex-end;
     flex-wrap: wrap;
-    gap: 6px;
+    gap: 8px 12px;
+    margin-bottom: 12px;
+    color: var(--cpu-text-muted);
     font-size: 12px;
-    color: var(--cpu-text-secondary);
-    margin-bottom: 4px;
   }
-  .floor { color: var(--cpu-text-muted); }
-  .author { color: var(--cpu-primary); text-decoration: none; font-weight: 500; }
-  .real-author-inline {
-    color: color-mix(in srgb, var(--cpu-gold) 78%, var(--cpu-text));
-    font-weight: 600;
-  }
+  .floor { margin-right: auto; color: var(--cpu-primary); font-weight: 700; }
   .reply-parent-chip {
     display: inline-flex;
     align-items: center;
     gap: 4px;
     padding: 2px 8px;
+    border: 1px solid var(--cpu-border);
     border-radius: 999px;
     background: var(--cpu-surface-soft);
-    border: 1px solid var(--cpu-border);
     color: var(--cpu-text-secondary);
   }
-  .dot { color: var(--cpu-border); }
-  .reply-content {
-    max-width: 100%;
-    overflow-wrap: anywhere;
-    font-size: 14px;
-  }
+  .reply-content { flex: 1; max-width: 100%; overflow-wrap: anywhere; font-size: 14px; line-height: 1.75; }
   .reply-actions {
-    margin-top: 6px;
     display: flex;
+    justify-content: flex-end;
     flex-wrap: wrap;
     gap: 4px;
     max-width: 100%;
+    margin-top: 14px;
+    padding-top: 8px;
+    border-top: 1px solid var(--cpu-border-soft);
   }
-  .reply-actions :deep(.el-button) {
-    min-width: 0;
-    margin-left: 0;
-  }
+  .reply-actions :deep(.el-button) { min-width: 0; margin-left: 0; }
   .reply-reactions { margin-top: 8px; }
   .reply-reaction-picker { margin-top: 6px; }
 }
-

@@ -192,6 +192,17 @@
     />
 
     <button
+      v-if="showForumPostFab"
+      type="button"
+      class="forum-post-fab"
+      aria-label="发布内容"
+      @click="openForumPost"
+    >
+      <el-icon><Edit /></el-icon>
+      <span>发布</span>
+    </button>
+
+    <button
       v-if="showToolsFab"
       type="button"
       class="tools-fab"
@@ -435,6 +446,21 @@ const useNativeShell = computed(() => isFlutterNativeShell());
 const showFloatingActions = computed(() => !hideChrome.value && !useNativeShell.value && route.path !== "/search");
 // 桌面客户端把这些工具做成了应用自己的标签页，站内再挂一个悬浮球就是重复入口
 const showToolsFab = computed(() => showFloatingActions.value && !isDesktopNativeApp());
+const forumRouteNames = new Set(["forum", "forum-hot", "forum-latest", "board", "topic", "market"]);
+const showForumPostFab = computed(() => (
+  !hideChrome.value
+  && !useNativeShell.value
+  && site.features.forum
+  && forumRouteNames.has(String(route.name || ""))
+));
+
+function openForumPost() {
+  if (!auth.isLoggedIn) {
+    router.push({ name: "login", query: { redirect: "/post" } });
+    return;
+  }
+  router.push({ name: "post" });
+}
 
 // 两个面板占同一块位置，只能开一个
 const toggleAssistantWidget = () => {
@@ -1289,6 +1315,28 @@ function setAppearanceMode(command: string | number | object) {
   outline-offset: 3px;
 }
 
+.forum-post-fab {
+  position: fixed;
+  z-index: 1092;
+  right: 96px;
+  bottom: 26px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 48px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--cpu-primary);
+  color: #fff;
+  box-shadow: 0 14px 30px color-mix(in srgb, var(--cpu-primary-dark) 28%, transparent);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.forum-post-fab:hover { background: var(--cpu-primary-dark); transform: translateY(-1px); }
+.forum-post-fab:focus-visible { outline: 3px solid color-mix(in srgb, var(--cpu-primary) 28%, transparent); outline-offset: 3px; }
+
 :global(html[data-theme="dark"]) .assistant-widget {
   border-color: color-mix(in srgb, var(--cpu-primary) 34%, var(--cpu-border-soft));
   background:
@@ -1695,6 +1743,16 @@ function setAppearanceMode(command: string | number | object) {
   .tools-widget {
     display: none;
   }
+
+  .forum-post-fab {
+    right: 14px;
+    bottom: calc(var(--layout-mobile-tabbar-reserve) + 12px);
+    width: auto;
+    height: 52px;
+    min-height: 52px;
+    justify-content: center;
+    padding: 0 15px;
+  }
 }
 
 @media (max-width: 768px) {
@@ -1705,6 +1763,8 @@ function setAppearanceMode(command: string | number | object) {
   .layout-root.keyboard-open .main {
     padding-bottom: 12px;
   }
+
+  .layout-root.keyboard-open .forum-post-fab { display: none; }
 
   .layout-root.keyboard-open .main--bare {
     padding-bottom: 0 !important;

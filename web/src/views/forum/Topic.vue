@@ -39,22 +39,36 @@
         </button>
         <div class="actions">
           <el-button v-if="canEdit" text :disabled="isTopicActionBusy || topicEditDisabled" @click="onEdit">{{ topicEditLabel }}</el-button>
-          <el-button v-if="canPin && !isReadOnly" text :loading="topicActionBusy === 'pin'" :disabled="isTopicActionBusy" @click="onPin">{{ topic.pinned ? '取消板块置顶' : '板块置顶' }}</el-button>
-          <el-button v-if="canPin && !isReadOnly" text :loading="topicActionBusy === 'globalPin'" :disabled="isTopicActionBusy" @click="onGlobalPin">{{ topic.globalPinned ? '取消全局置顶' : '全局置顶' }}</el-button>
-          <el-button v-if="canPin" text :loading="topicActionBusy === 'lock'" :disabled="isTopicActionBusy" @click="onLock">{{ topic.locked ? '解锁' : '锁帖' }}</el-button>
-          <el-button v-if="canEdit" text type="danger" :loading="topicActionBusy === 'delete'" :disabled="isTopicActionBusy" @click="onDelete">删除</el-button>
+          <el-dropdown v-if="canPin || canEdit" trigger="click" @command="onTopicManageCommand">
+            <el-button text :loading="isTopicActionBusy" :disabled="isTopicActionBusy">帖子管理⌄</el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item v-if="canPin && !isReadOnly" command="pin">{{ topic.pinned ? '取消板块置顶' : '板块置顶' }}</el-dropdown-item>
+                <el-dropdown-item v-if="canPin && !isReadOnly" command="globalPin">{{ topic.globalPinned ? '取消全局置顶' : '全局置顶' }}</el-dropdown-item>
+                <el-dropdown-item v-if="canPin" command="lock">{{ topic.locked ? '解锁帖子' : '锁定帖子' }}</el-dropdown-item>
+                <el-dropdown-item v-if="canEdit" command="delete" divided class="danger-menu-item">删除帖子</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
         </div>
       </header>
 
-      <h1 class="post-title">
-        <span v-if="topic.globalPinned" class="badge global-pin">全局置顶</span>
-        <span v-if="topic.pinned" class="badge pin">板块置顶</span>
-        <span v-if="topic.locked" class="badge lock">🔒</span>
-        {{ displayTopicTitle }}
-      </h1>
-      <div v-if="topic.tags?.length" class="topic-tags">
+      <div class="main-floor">
+      <div v-if="!isSayTopic || metaPriceLabel" class="topic-title-row">
+        <h1 v-if="!isSayTopic" class="post-title">
+          <span v-if="topic.globalPinned" class="badge global-pin">全局置顶</span>
+          <span v-if="topic.pinned" class="badge pin">板块置顶</span>
+          <span v-if="topic.locked" class="badge lock">已锁定</span>
+          {{ displayTopicTitle }}
+        </h1>
+        <strong v-if="metaPriceLabel" class="topic-price">{{ metaPriceLabel }}</strong>
+      </div>
+      <div class="topic-tags">
+        <el-tag size="small" effect="plain">{{ boardDisplayName }}</el-tag>
+        <el-tag v-if="marketKind" size="small" effect="plain" type="success">{{ marketKindLabel }}</el-tag>
+        <el-tag v-if="marketCategoryLabel" size="small" effect="plain" type="info">{{ marketCategoryLabel }}</el-tag>
         <el-tag
-          v-for="tag in topic.tags.slice(0, 2)"
+          v-for="tag in topic.tags?.slice(0, 2) || []"
           :key="tag.name"
           size="small"
           effect="plain"
@@ -64,8 +78,9 @@
         </el-tag>
       </div>
 
-      <div class="post-meta">
-        <UserAvatar :size="36" class="avatar" :src="topic.author?.avatar" :name="topic.author?.nickname" :profile-frame="topic.author?.profileFrame" alt="作者头像" />
+      <aside class="post-meta post-author-panel">
+        <span class="floor-owner-label">楼主</span>
+        <UserAvatar :size="58" class="avatar" :src="topic.author?.avatar" :name="topic.author?.nickname" :profile-frame="topic.author?.profileFrame" alt="作者头像" />
         <div class="meta-author">
           <div class="name">
             <span v-if="topic.author?.vipActive" class="vip-badge">VIP</span>
@@ -83,16 +98,19 @@
               @updated="applyTopicAuthorModeration"
             />
           </div>
+          <p v-if="topic.author?.bio" class="author-bio">{{ topic.author.bio }}</p>
           <div v-if="topic.isAnonymous && topic.realAuthor" class="real-author-line">
             真实作者：{{ topic.realAuthor.nickname }}<template v-if="topic.realAuthor.username"> @{{ topic.realAuthor.username }}</template>
           </div>
-          <div class="meta">
-            发表于 {{ fmtDate(topic.createdAt) }}
-            <template v-if="topic.editCount && topic.editCount > 0"> · 已编辑 {{ topic.editCount }} 次</template>
-            · 热度 {{ hotScore }} · 浏览 {{ topic.viewCount }} · 回复 {{ topic.replyCount }}
-          </div>
         </div>
-        <div v-if="metaPriceLabel" class="meta-price">{{ metaPriceLabel }}</div>
+      </aside>
+
+      <div class="topic-statline">
+        <span>{{ fmtDate(topic.createdAt) }}</span>
+        <span v-if="topic.editCount && topic.editCount > 0">已编辑 {{ topic.editCount }} 次</span>
+        <span>热度 {{ hotScore }}</span>
+        <span>浏览 {{ topic.viewCount }}</span>
+        <span>回复 {{ topic.replyCount }}</span>
       </div>
 
       <!-- 板块特化 metadata -->
@@ -121,17 +139,19 @@
         <span>推荐 <el-rate :model-value="topic.metadata.ratings.recommend" disabled size="small" /></span>
         <span>给分 <el-rate :model-value="topic.metadata.ratings.givingScore" disabled size="small" /></span>
       </div>
-      <div v-if="topic.board?.type === 'market'" class="extra-bar second-hand-topic-note">
-        <b>{{ marketKindLabel }}</b>
-        <span>仅作信息发布与公开交流，本站不提供站内下单、支付、担保、退款或结算。</span>
-      </div>
-      <div v-if="marketKind && marketKind !== 'discuss'" class="extra-bar second-hand-facts">
-        <span v-if="marketCategoryLabel">🏷️ {{ marketCategoryLabel }}</span>
-        <span v-if="topic.metadata?.condition">📦 {{ topic.metadata.condition }}</span>
-        <span v-if="topic.metadata?.tradeMode">🤝 {{ topic.metadata.tradeMode }}</span>
-        <span v-if="topic.metadata?.campus">🏫 {{ topic.metadata.campus }}</span>
-        <span v-if="topic.metadata?.location">📍 {{ topic.metadata.location }}</span>
-      </div>
+      <section v-if="topic.board?.type === 'market'" class="second-hand-summary">
+        <div class="second-hand-summary-head">
+          <b>{{ marketKindLabel }}</b>
+          <span>论坛信息帖 · 本站不提供下单、支付、担保或结算</span>
+        </div>
+        <dl v-if="marketKind && marketKind !== 'discuss'" class="second-hand-facts">
+          <div v-if="marketCategoryLabel"><dt>分类</dt><dd>{{ marketCategoryLabel }}</dd></div>
+          <div v-if="topic.metadata?.condition"><dt>成色</dt><dd>{{ topic.metadata.condition }}</dd></div>
+          <div v-if="topic.metadata?.tradeMode"><dt>交接</dt><dd>{{ topic.metadata.tradeMode }}</dd></div>
+          <div v-if="topic.metadata?.campus"><dt>校区</dt><dd>{{ topic.metadata.campus }}</dd></div>
+          <div v-if="topic.metadata?.location" class="wide"><dt>地点</dt><dd>{{ topic.metadata.location }}</dd></div>
+        </dl>
+      </section>
 
       <div v-if="topic.imageReview?.pendingCount" class="image-review-tip image-review-tip-pending">
         <span>正文中有 {{ topic.imageReview.pendingCount }} 张图片正在审核，审核通过后会自动显示。</span>
@@ -247,7 +267,7 @@
         <el-button :icon="ChatLineRound" :disabled="!canReply" @click="openReplyDialog">回复 · {{ topic.replyCount }}</el-button>
         <el-button :disabled="topic.hidden" @click="shareDialogOpen = true">分享</el-button>
       </footer>
-
+      </div>
     </article>
 
     <!-- 回复列表 -->
@@ -268,29 +288,31 @@
           :key="entry.item.id"
           class="reply"
           :class="{ nested: entry.depth > 0 }"
-          :style="{ marginLeft: `${Math.min(entry.depth, 4) * 24}px` }"
         >
-          <UserAvatar :size="32" class="avatar" :src="entry.item.author?.avatar" :name="entry.item.author?.nickname" :profile-frame="entry.item.author?.profileFrame" alt="回复头像" />
+          <aside class="reply-author-panel">
+            <UserAvatar :size="48" class="avatar" :src="entry.item.author?.avatar" :name="entry.item.author?.nickname" :profile-frame="entry.item.author?.profileFrame" alt="回复头像" />
+            <router-link v-if="entry.item.author?.id" :to="`/u/${entry.item.author.id}`" class="author">{{ entry.item.author?.nickname }}</router-link>
+            <span v-else class="author">{{ entry.item.author?.nickname }}</span>
+            <div class="reply-author-badges">
+              <el-tag v-if="entry.item.isAnonymous" size="small" type="warning" effect="plain">匿名</el-tag>
+              <el-tag v-if="replyReviewLabel(entry.item)" size="small" type="warning" effect="plain">{{ replyReviewLabel(entry.item) }}</el-tag>
+            </div>
+            <UserModerationActions
+              v-if="replyModerationUser(entry.item)"
+              :user="replyModerationUser(entry.item)"
+              display="dropdown"
+              text
+              label="管理"
+              @updated="applyReplyAuthorModeration(entry.item, $event)"
+            />
+            <span v-if="entry.item.isAnonymous && entry.item.realAuthor" class="real-author-inline">
+              真实作者：{{ entry.item.realAuthor.nickname }}<template v-if="entry.item.realAuthor.username"> @{{ entry.item.realAuthor.username }}</template>
+            </span>
+          </aside>
           <div class="reply-body">
             <div class="reply-meta">
               <span class="floor">{{ entry.item.hidden ? "待审核" : `#${entry.item.floor}` }}</span>
-              <el-tag v-if="replyReviewLabel(entry.item)" size="small" type="warning" effect="plain">{{ replyReviewLabel(entry.item) }}</el-tag>
-              <router-link v-if="entry.item.author?.id" :to="`/u/${entry.item.author.id}`" class="author">{{ entry.item.author?.nickname }}</router-link>
-              <span v-else class="author">{{ entry.item.author?.nickname }}</span>
-              <el-tag v-if="entry.item.isAnonymous" size="small" type="warning" effect="plain">匿名</el-tag>
-              <UserModerationActions
-                v-if="replyModerationUser(entry.item)"
-                :user="replyModerationUser(entry.item)"
-                display="dropdown"
-                text
-                label="管理"
-                @updated="applyReplyAuthorModeration(entry.item, $event)"
-              />
-              <span v-if="entry.item.isAnonymous && entry.item.realAuthor" class="real-author-inline">
-                真实作者：{{ entry.item.realAuthor.nickname }}<template v-if="entry.item.realAuthor.username"> @{{ entry.item.realAuthor.username }}</template>
-              </span>
               <span v-if="entry.parent" class="reply-parent-chip">回复 {{ entry.parent.author?.nickname || "同学" }} · #{{ entry.parent.floor }}</span>
-              <span class="dot">·</span>
               <span>{{ fmtRelative(entry.item.createdAt) }}</span>
             </div>
             <MarkdownView
@@ -787,6 +809,7 @@ const metaPriceLabel = computed(() => {
 const hotScore = computed(() => Math.round((topic.value?.likeCount ?? 0) * 5 + (topic.value?.replyCount ?? 0) * 3 + (topic.value?.viewCount ?? 0) * 0.03));
 const boardDisplayName = computed(() => topic.value?.board?.name || "药大拾间");
 const displayTopicTitle = computed(() => topic.value?.title || "");
+const isSayTopic = computed(() => topic.value?.metadata?._postMode === "say");
 const isReadOnly = computed(() => topic.value?.board?.readOnly);
 const topicModerationUser = computed(() => {
   if (topic.value?.realAuthor) return topic.value.realAuthor as any;
@@ -2005,6 +2028,13 @@ function replyModerationUser(reply: any) {
 function applyReplyAuthorModeration(reply: any, patch: Record<string, unknown>) {
   if (reply?.realAuthor) Object.assign(reply.realAuthor, patch);
   else if (reply?.author) Object.assign(reply.author, patch);
+}
+
+function onTopicManageCommand(command: "pin" | "globalPin" | "lock" | "delete") {
+  if (command === "pin") void onPin();
+  else if (command === "globalPin") void onGlobalPin();
+  else if (command === "lock") void onLock();
+  else if (command === "delete") void onDelete();
 }
 
 async function onPin() {

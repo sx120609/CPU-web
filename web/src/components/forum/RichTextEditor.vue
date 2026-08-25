@@ -130,6 +130,14 @@
       class="hidden-file"
       @change="onContentImagePicked"
     />
+    <input
+      ref="imageOnlyInputRef"
+      type="file"
+      accept="image/*"
+      multiple
+      class="hidden-file"
+      @change="onContentImagePicked"
+    />
   </div>
 </template>
 
@@ -178,6 +186,7 @@ const emit = defineEmits<{
 
 const editorRef = ref<HTMLElement | null>(null);
 const contentImageInputRef = ref<HTMLInputElement | null>(null);
+const imageOnlyInputRef = ref<HTMLInputElement | null>(null);
 const imageUploading = ref(false);
 const mediaUploadTasks = ref<MediaUploadTask[]>([]);
 const draftHint = ref("");
@@ -560,6 +569,11 @@ async function insertLink() {
 function pickContentMedia() {
   rememberSelection();
   contentImageInputRef.value?.click();
+}
+
+function pickImages() {
+  rememberSelection();
+  imageOnlyInputRef.value?.click();
 }
 
 async function onContentImagePicked(event: Event) {
@@ -1136,7 +1150,7 @@ function escapeHtml(value: string) {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-defineExpose({ clearDraft, isContentEmpty });
+defineExpose({ clearDraft, isContentEmpty, pickImages });
 </script>
 
 <style scoped src="./styles/rich-editor-toolbar.css"></style>
