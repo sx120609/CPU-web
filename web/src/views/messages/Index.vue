@@ -72,6 +72,13 @@
                 <div><span>服务号</span><b>{{ wechatProfile?.accountName || "未配置" }}</b></div>
                 <div><span>账号状态</span><b>{{ wechatProfile?.binding ? (wechatProfile.binding.subscribed ? "已关注并绑定" : "已绑定，当前未关注") : "未绑定" }}</b></div>
               </div>
+              <div v-if="!wechatProfile?.binding" class="channel-qr-box">
+                <img src="/wechat-service-qrcode.png" :alt="`${wechatProfile?.accountName || '药里拾间'}服务号二维码`" />
+                <div>
+                  <b>扫码关注 {{ wechatProfile?.accountName || "药里拾间" }}</b>
+                  <span>关注后发送下方绑定指令。</span>
+                </div>
+              </div>
               <div v-if="wechatProfile?.activeBindToken" class="qq-token-box">
                 <strong>{{ wechatProfile.activeBindToken.token }}</strong>
                 <span>请在微信服务号发送：{{ wechatBindCommandText }}</span>
@@ -153,6 +160,15 @@
                 <div>
                   <span>QQ 投稿</span>
                   <b>{{ qqPostingText }}</b>
+                </div>
+              </div>
+              <div v-if="!qqBotProfile?.binding && qqBotAddFriendQr" class="channel-qr-box">
+                <a :href="qqBotAddFriendUrl"><img :src="qqBotAddFriendQr" alt="QQBot 添加好友二维码" /></a>
+                <div>
+                  <b>扫码添加机器人好友</b>
+                  <span>QQ：{{ qqBotProfile?.botQqId }}</span>
+                  <span>添加后私聊发送下方绑定指令。</span>
+                  <a :href="qqBotAddFriendUrl" class="channel-qr-link">在 QQ 中打开</a>
                 </div>
               </div>
               <div v-if="qqBotProfile?.activeBindToken" class="qq-token-box">
@@ -314,6 +330,7 @@ import { useAuthStore } from "@/stores/auth";
 import { adminApi } from "@/api/admin";
 import { fmtDate } from "@/utils/format";
 import { copyText } from "@/utils/userGroup";
+import QRCode from "qrcode";
 import { isServerHandledRedirect, resolveSafeRedirect } from "@/utils/redirect";
 
 const route = useRoute();
@@ -328,6 +345,7 @@ const settings = ref<any>(null);
 const qqBotProfile = ref<QqBotProfile | null>(null);
 const qqBotLoading = ref(false);
 const qqBotProfileError = ref("");
+const qqBotAddFriendQr = ref("");
 const wechatProfile = ref<WechatProfile | null>(null);
 const wechatLoading = ref(false);
 const wechatProfileError = ref("");
@@ -343,6 +361,7 @@ const reviewTarget = ref<{ kind: "topic" | "reply"; id: number; title: string; a
 const reviewTargetLoading = ref(false);
 let loadSeq = 0;
 let qqBotProfileSeq = 0;
+let qqBotAddFriendQrSeq = 0;
 let wechatProfileSeq = 0;
 let reviewTargetSeq = 0;
 let disposed = false;
@@ -388,6 +407,10 @@ const qqBotBindCommandText = computed(() => {
   if (qqBotProfile.value?.activeBindToken) return `绑定 ${qqBotProfile.value.activeBindToken.token}`;
   return "绑定 绑定码";
 });
+const qqBotAddFriendUrl = computed(() => {
+  const qq = String(qqBotProfile.value?.botQqId || "").replace(/\D/g, "");
+  return qq ? `mqqapi://card/show_pslcard?src_type=internal&version=1&uin=${qq}&card_type=person&source=sharecard` : "";
+});
 const wechatBindCommandText = computed(() => {
   if (wechatProfile.value?.activeBindToken) return `绑定 ${wechatProfile.value.activeBindToken.token}`;
   return "绑定 绑定码";
@@ -411,6 +434,7 @@ onBeforeUnmount(() => {
   disposed = true;
   loadSeq += 1;
   qqBotProfileSeq += 1;
+  qqBotAddFriendQrSeq += 1;
   wechatProfileSeq += 1;
   reviewTargetSeq += 1;
   loading.value = false;
@@ -437,6 +461,22 @@ watch(tab, (value) => {
   if ((route.query.tab || "all") === (nextQuery.tab || "all")) return;
   router.replace({ query: nextQuery }).catch(() => null);
 });
+
+watch(qqBotAddFriendUrl, async (value) => {
+  const seq = ++qqBotAddFriendQrSeq;
+  qqBotAddFriendQr.value = "";
+  if (!value) return;
+  try {
+    const image = await QRCode.toDataURL(value, {
+      width: 320,
+      margin: 2,
+      color: { dark: "#172033", light: "#ffffffff" },
+    });
+    if (!disposed && seq === qqBotAddFriendQrSeq) qqBotAddFriendQr.value = image;
+  } catch {
+    if (!disposed && seq === qqBotAddFriendQrSeq) qqBotAddFriendQr.value = "";
+  }
+}, { immediate: true });
 
 async function reloadNoticeState() {
   if (disposed) return;
@@ -983,6 +1023,28 @@ function normalizeMessageSettings(value: any) {
 }
 .wechat-channel-card { margin-bottom: 12px; }
 .wechat-channel-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.channel-qr-box {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 8px;
+  background: var(--cpu-bg-soft);
+}
+.channel-qr-box > img,
+.channel-qr-box > a > img {
+  display: block;
+  width: 116px;
+  height: 116px;
+  border-radius: 6px;
+  background: #fff;
+  object-fit: contain;
+}
+.channel-qr-box > div { display: grid; gap: 5px; min-width: 0; }
+.channel-qr-box b { color: var(--cpu-text); font-size: 14px; }
+.channel-qr-box span { color: var(--cpu-text-secondary); font-size: 12px; line-height: 1.5; }
+.channel-qr-link { color: var(--cpu-primary); font-size: 12px; text-decoration: none; }
 .qq-channel-head {
   display: flex;
   align-items: flex-start;
@@ -1286,6 +1348,8 @@ function normalizeMessageSettings(value: any) {
     grid-template-columns: 1fr;
   }
 
+  .channel-qr-box { align-items: flex-start; }
+
   .settings-action-row {
     align-items: flex-start;
     min-height: 0;
@@ -1359,6 +1423,8 @@ function normalizeMessageSettings(value: any) {
   .qq-channel-actions .el-button {
     width: 100%;
   }
+
+  .channel-qr-box { flex-direction: column; }
 
   .settings-action-arrow {
     display: none;

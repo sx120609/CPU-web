@@ -17,7 +17,7 @@
         <el-form label-position="top" class="config-form">
           <div class="form-grid">
             <el-form-item label="服务号名称">
-              <el-input v-model="form.accountName" maxlength="80" placeholder="例如：药大拾间" />
+              <el-input v-model="form.accountName" maxlength="80" placeholder="例如：药里拾间" />
             </el-form-item>
             <el-form-item label="AppID">
               <el-input v-model="form.appId" maxlength="80" autocomplete="off" />

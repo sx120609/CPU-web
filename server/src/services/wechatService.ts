@@ -900,7 +900,7 @@ async function logWechatMessage(input: {
 
 function renderWechatWelcome() {
   return [
-    "欢迎关注药大拾间。",
+    "欢迎关注药里拾间。",
     "你可以发送问题使用拾间AI，也可以发送“帮助”查看服务入口。",
     `绑定账号：${normalizedSiteOrigin()}/messages?tab=settings`,
     "生成绑定码后发送：绑定 绑定码",
@@ -909,7 +909,7 @@ function renderWechatWelcome() {
 
 function renderWechatHelp(bound: boolean) {
   return [
-    "药大拾间服务号",
+    "药里拾间服务号",
     "帮助：查看这份菜单",
     "状态：查看绑定状态",
     "投稿：打开发布页面",
