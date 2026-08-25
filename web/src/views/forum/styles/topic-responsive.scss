@@ -58,37 +58,44 @@
 
     .post-meta {
       order: 3;
-      display: grid;
-      grid-template-columns: auto minmax(0, 1fr) auto;
+      display: flex;
       align-items: center;
-      justify-content: stretch;
-      gap: 10px;
+      justify-content: center;
       width: auto;
       padding: 12px 14px;
       border-top: 1px solid var(--cpu-border-soft);
       border-right: 0;
       border-bottom: 1px solid var(--cpu-border-soft);
       margin-top: 12px;
-      text-align: left;
+      text-align: center;
+
+      .post-author-card {
+        position: static;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        width: 100%;
+      }
 
       .avatar { width: 38px !important; height: 38px !important; }
 
       .meta-author {
         min-width: 0;
+        width: 100%;
       }
 
       .name {
-        justify-content: flex-start;
+        justify-content: center;
         flex-wrap: wrap;
         line-height: 1.5;
       }
 
+      .real-author-line { text-align: center; }
+
       .author-bio { display: none; }
     }
-
-    .post-author-card { display: contents; }
-
-    .floor-owner-label { grid-column: 3; grid-row: 1; }
     .topic-statline { order: 4; margin-top: 10px; margin-bottom: 14px; gap: 6px 10px; }
     .topic-statline span + span::before { margin-right: 10px; }
 
