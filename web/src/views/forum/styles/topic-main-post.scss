@@ -76,6 +76,13 @@
     a { color: var(--cpu-primary); text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
   }
   .extra-bar.ratings { background: #ecfdf5; }
+  .extra-bar.second-hand-topic-note {
+    align-items: center;
+    border: 1px solid color-mix(in srgb, var(--cpu-primary) 24%, transparent);
+    background: color-mix(in srgb, var(--cpu-primary) 8%, var(--cpu-card));
+    color: var(--cpu-text-secondary);
+    b { color: var(--cpu-primary); }
+  }
 
   .source-bar {
     background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);

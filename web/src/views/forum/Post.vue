@@ -1,6 +1,6 @@
 <template>
   <div class="post-page">
-    <h2 class="page-title">{{ editingId ? '修改帖子' : '发表新帖' }}</h2>
+    <h2 class="page-title">{{ pageTitle }}</h2>
 
     <div v-if="loadError && !loading" class="cpu-card post-load-state">
       <el-empty :description="loadError">
@@ -40,26 +40,40 @@
           </div>
         </el-form-item>
 
-        <!-- 商城板块兼容入口 -->
+        <!-- 二手交流板块：只补充帖子信息，不产生站内交易 -->
         <template v-if="boardType === 'market'">
-          <div class="meta-row">
-            <el-form-item label="价格（元）" required>
-              <el-input-number v-model="meta.price" :min="0" :max="999999" :step="10" />
+          <el-alert
+            type="warning"
+            :closable="false"
+            show-icon
+            title="二手交流仅用于发布信息和公开讨论，不提供站内下单、支付、担保、退款或结算。"
+            class="second-hand-alert"
+          />
+          <el-form-item label="发布类型" required>
+            <el-radio-group v-model="meta.marketKind">
+              <el-radio-button value="sell">发布闲置</el-radio-button>
+              <el-radio-button value="wanted">发布求购</el-radio-button>
+              <el-radio-button value="discuss">交流讨论</el-radio-button>
+            </el-radio-group>
+          </el-form-item>
+          <div v-if="meta.marketKind !== 'discuss'" class="meta-row">
+            <el-form-item :label="meta.marketKind === 'wanted' ? '预算（元，可选）' : '期望价格（元，可选）'">
+              <el-input-number v-model="meta.price" :min="0" :max="999999" :step="10" placeholder="可留空或面议" />
             </el-form-item>
-            <el-form-item label="新旧程度">
+            <el-form-item v-if="meta.marketKind === 'sell'" label="物品状态">
               <el-select v-model="meta.condition" placeholder="选择">
                 <el-option label="全新" value="全新" />
                 <el-option label="九成新" value="九成新" />
                 <el-option label="八成新" value="八成新" />
                 <el-option label="七成新及以下" value="七成新及以下" />
-                <el-option label="求购" value="求购" />
               </el-select>
             </el-form-item>
-            <el-form-item label="交易方式">
+            <el-form-item label="交接偏好">
               <el-select v-model="meta.tradeMode" placeholder="选择">
-                <el-option label="当面" value="当面" />
-                <el-option label="包邮" value="包邮" />
-                <el-option label="当面 / 包邮+5" value="当面 / 包邮+5" />
+                <el-option label="校内面交" value="校内面交" />
+                <el-option label="邮寄" value="邮寄" />
+                <el-option label="均可" value="均可" />
+                <el-option label="线上沟通" value="线上沟通" />
               </el-select>
             </el-form-item>
           </div>
@@ -375,11 +389,41 @@ const form = reactive({
   anonymous: false,
 });
 
+function routeMarketKind(): "sell" | "wanted" | "discuss" {
+  const kind = typeof route.query.kind === "string" ? route.query.kind : "";
+  return kind === "wanted" || kind === "discuss" ? kind : "sell";
+}
+
+function normalizeExistingMarketMeta(metadata: Record<string, any>) {
+  const rawKind = metadata.marketKind || metadata.listingType;
+  meta.marketKind = rawKind === "wanted" || metadata.condition === "求购" || metadata.condition === "wanted"
+    ? "wanted"
+    : rawKind === "discuss" ? "discuss" : "sell";
+  const conditionMap: Record<string, string> = {
+    new: "全新",
+    like_new: "九成新",
+    good: "八成新",
+    fair: "七成新及以下",
+  };
+  const tradeModeMap: Record<string, string> = {
+    meetup: "校内面交",
+    shipping: "邮寄",
+    both: "均可",
+    online: "线上沟通",
+    "当面": "校内面交",
+    "包邮": "邮寄",
+    "当面 / 包邮+5": "均可",
+  };
+  meta.condition = conditionMap[String(metadata.condition || "")] || meta.condition || "九成新";
+  meta.tradeMode = tradeModeMap[String(metadata.tradeMode || "")] || meta.tradeMode || "校内面交";
+}
+
 function defaultPostMeta() {
   return {
-  price: 0,
+  marketKind: routeMarketKind(),
+  price: undefined,
   condition: "九成新",
-  tradeMode: "当面",
+  tradeMode: "校内面交",
   bounty: 0,
   courseId: undefined,
   courseTeacherId: undefined,
@@ -393,6 +437,13 @@ const meta = reactive<any>(defaultPostMeta());
 
 const currentBoard = computed(() => boards.value.find((b) => b.slug === form.boardSlug));
 const boardType = computed(() => currentBoard.value?.type ?? "normal");
+const pageTitle = computed(() => {
+  if (editingId.value) return "修改帖子";
+  if (boardType.value !== "market") return "发表新帖";
+  if (meta.marketKind === "wanted") return "发布求购";
+  if (meta.marketKind === "discuss") return "发起二手讨论";
+  return "发布闲置";
+});
 const formDraftKey = computed(() => editingId.value ? "" : "cpu-post-new-draft");
 const contentDraftKey = computed(() => formDraftKey.value ? `${formDraftKey.value}-content` : "");
 const anonymousEnabledForForm = computed(() => {
@@ -469,7 +520,7 @@ watch(anonymousEnabledForForm, (enabled) => {
   if (!enabled && !editingId.value) form.anonymous = false;
 }, { immediate: true });
 
-watch(() => [form.boardSlug, form.title, form.anonymous, meta.price, meta.condition, meta.tradeMode, meta.bounty, meta.courseId, meta.courseTeacherId, meta.teacherName, meta.semester, editorMode.value], () => {
+watch(() => [form.boardSlug, form.title, form.anonymous, meta.marketKind, meta.price, meta.condition, meta.tradeMode, meta.bounty, meta.courseId, meta.courseTeacherId, meta.teacherName, meta.semester, editorMode.value], () => {
   scheduleFormDraftSave();
 }, { deep: true });
 
@@ -490,9 +541,7 @@ async function loadInitial() {
   try {
     const boardList = await boardApi.list({ suppressErrorMessage: true });
     if (seq !== loadSeq) return;
-    boards.value = editingId.value
-      ? boardList
-      : boardList.filter((board) => board.type !== "market");
+    boards.value = boardList;
     normalizeSelectedBoard();
     if (editingId.value) {
       const t = await topicApi.detail(editingId.value, { suppressErrorMessage: true });
@@ -502,11 +551,13 @@ async function loadInitial() {
       form.content = t.content;
       form.anonymous = Boolean(t.isAnonymous);
       if (t.metadata) Object.assign(meta, t.metadata);
+      if (t.board?.type === "market") normalizeExistingMarketMeta(t.metadata || {});
       editorMode.value = resolveInitialEditorMode(t.content, t.metadata);
       normalizeSelectedBoard();
     } else {
       restoreFormDraft();
       restoreContentDraft();
+      if (typeof route.query.kind === "string") meta.marketKind = routeMarketKind();
       restorePendingTopicSubmission();
       if (pendingSubmissionAttempt.value) void monitorPendingTopicSubmission(pendingSubmissionAttempt.value.submissionId);
     }
@@ -804,10 +855,13 @@ function buildMetadata() {
     _editorMode: editorMode.value,
   };
   if (boardType.value === "market") {
-    if (!meta.price && meta.price !== 0) { ElMessage.warning("请填写价格"); return null; }
-    metadata.price = meta.price;
-    metadata.condition = meta.condition;
-    metadata.tradeMode = meta.tradeMode;
+    metadata.marketKind = meta.marketKind;
+    if (meta.marketKind !== "discuss") {
+      metadata.listingType = meta.marketKind === "wanted" ? "wanted" : "sell";
+      if (typeof meta.price === "number" && Number.isFinite(meta.price)) metadata.price = meta.price;
+      if (meta.marketKind === "sell") metadata.condition = meta.condition;
+      metadata.tradeMode = meta.tradeMode;
+    }
   } else if (boardType.value === "question") {
     metadata.bounty = meta.bounty;
     metadata.resolved = false;
@@ -1296,6 +1350,7 @@ function notifyVideoReviewState(summary?: {
 }
 .meta-row { display: flex; gap: 14px; flex-wrap: wrap; }
 .meta-row .el-form-item { min-width: 200px; flex: 1; }
+.second-hand-alert { margin-bottom: 18px; }
 
 .rate-row {
   display: grid;

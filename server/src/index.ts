@@ -7,7 +7,6 @@ import { loadFeatures } from "./services/siteSettings";
 import { loadStorageConfig } from "./services/storageConfig";
 import { attachJwxtAgentGateway } from "./services/jwxtAgentGateway";
 import { loadJwxtAgentRuntimeConfig } from "./services/jwxtAgentConfig";
-import { bootstrapMarket } from "./services/marketBootstrap";
 import { attachVoiceHubGateway, voiceHubProxyConfig } from "./services/voiceHubProxy";
 import { attachQqBotWebSocketGateway } from "./services/qqbot/connection";
 
@@ -15,13 +14,6 @@ async function start() {
   await loadJwxtAgentRuntimeConfig().catch((error) => {
     console.warn("[jwxt-agent] 加载后台配置失败，暂时使用环境变量配置", error);
   });
-  const marketBootstrap = await bootstrapMarket().catch((error) => {
-    console.warn("[market] 启动初始化失败，服务将继续启动", error);
-    return null;
-  });
-  if (marketBootstrap?.migrated) {
-    console.log(`🛒 已迁移 ${marketBootstrap.migrated} 条旧二手帖子到商城`);
-  }
   const app = createApp();
   const server = createServer(app);
   attachJwxtAgentGateway(server);
@@ -61,7 +53,7 @@ async function start() {
       return [];
     });
     if (createdBoards.length) {
-      console.log(`🏛️  已补齐默认板块: ${createdBoards.map((board) => board.name).join("、")}`);
+      console.log(`🏛️  已同步默认板块: ${createdBoards.map((board) => board.name).join("、")}`);
     }
     await loadFeatures().catch((e) => console.warn("loadFeatures failed:", e?.message));
     await loadStorageConfig().catch((e) => console.warn("loadStorageConfig failed:", e?.message));

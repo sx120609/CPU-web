@@ -306,8 +306,8 @@ const featureMeta: { key: FKey; icon: string; title: string; desc: string; paths
     paths: ["/forum", "/post", "/forum/topic/:id"],
   },
   {
-    key: "market", icon: "🛒", title: "校园商城",
-    desc: "校园商品交易平台，支持实体商品、电子资料、平台订单与交易治理。",
+    key: "market", icon: "♻️", title: "二手交流（论坛板块）",
+    desc: "闲置、求购和经验交流帖；只提供论坛发帖与回复，不提供站内交易。",
     paths: ["/market", "boards type=market"],
   },
   {

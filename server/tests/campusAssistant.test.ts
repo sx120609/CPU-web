@@ -1445,13 +1445,14 @@ test("campus assistant knowledge covers every active action and carries freshnes
   assert.match(combined, /课表需要先完成教务授权/);
   assert.match(combined, /同步我的课程/);
   assert.match(combined, /发布捡到的信息时必须填写物品实际存放位置/);
-  assert.match(combined, /发布者还必须完成校园统一认证/);
+  assert.match(combined, /二手交流.*论坛/);
+  assert.match(combined, /不生成订单、不处理付款，也不提供交易担保/);
   assert.match(combined, /论坛中的同学经验不能替代官方通知/);
   assert.match(combined, /单选题的分支规则/);
   assert.match(combined, /用新信息和文件覆盖旧提交/);
   assert.match(combined, /导出 CSV 或下载 ZIP/);
   assert.match(combined, /页面只显示与本人学号匹配的一行/);
-  assert.match(combined, /需在页面提示的 15 分钟内通过站点配置的易支付完成付款/);
+  assert.doesNotMatch(combined, /15 分钟内通过站点配置的易支付完成付款/);
   assert.match(combined, /学号或登录账号仅用于登录和身份校验、不会公开展示/);
   assert.match(combined, /当前入口是否需要登录以页面上的“需登录\/免登录”状态为准/);
   assert.match(combined, /选择哪些问卷、文件收集和成绩表通过 QQ 私聊提醒/);

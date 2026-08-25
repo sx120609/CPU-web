@@ -92,7 +92,7 @@
             · 热度 {{ hotScore }} · 浏览 {{ topic.viewCount }} · 回复 {{ topic.replyCount }}
           </div>
         </div>
-        <div v-if="metaPrice !== undefined" class="meta-price">¥ {{ metaPrice }}</div>
+        <div v-if="metaPriceLabel" class="meta-price">{{ metaPriceLabel }}</div>
       </div>
 
       <!-- 板块特化 metadata -->
@@ -120,6 +120,10 @@
         <span>收获 <el-rate :model-value="topic.metadata.ratings.reward" disabled size="small" /></span>
         <span>推荐 <el-rate :model-value="topic.metadata.ratings.recommend" disabled size="small" /></span>
         <span>给分 <el-rate :model-value="topic.metadata.ratings.givingScore" disabled size="small" /></span>
+      </div>
+      <div v-if="topic.board?.type === 'market'" class="extra-bar second-hand-topic-note">
+        <b>{{ marketKindLabel }}</b>
+        <span>仅作信息发布与公开交流，本站不提供站内下单、支付、担保、退款或结算。</span>
       </div>
       <div v-if="topic.metadata?.condition || topic.metadata?.tradeMode" class="extra-bar">
         <span v-if="topic.metadata.condition">📦 {{ topic.metadata.condition }}</span>
@@ -741,7 +745,26 @@ const shareCardExportRef = ref<HTMLElement | null>(null);
 const REPLY_MAX = 10000;
 const isTopicActionBusy = computed(() => topicActionBusy.value !== "");
 
-const metaPrice = computed(() => topic.value?.metadata?.price);
+const marketKind = computed(() => {
+  if (topic.value?.board?.type !== "market") return "";
+  const raw = topic.value?.metadata?.marketKind || topic.value?.metadata?.listingType;
+  if (raw === "wanted" || topic.value?.metadata?.condition === "求购") return "wanted";
+  if (raw === "discuss") return "discuss";
+  return "sell";
+});
+const marketKindLabel = computed(() => {
+  if (marketKind.value === "wanted") return "发布求购";
+  if (marketKind.value === "discuss") return "交流讨论";
+  return marketKind.value === "sell" ? "发布闲置" : "二手交流";
+});
+const metaPriceLabel = computed(() => {
+  if (!marketKind.value || marketKind.value === "discuss") return "";
+  const raw = topic.value?.metadata?.price;
+  if (raw === undefined || raw === null || raw === "") return "";
+  const price = Number(raw);
+  if (!Number.isFinite(price)) return "";
+  return price > 0 ? `¥ ${price}` : "面议";
+});
 const hotScore = computed(() => Math.round((topic.value?.likeCount ?? 0) * 5 + (topic.value?.replyCount ?? 0) * 3 + (topic.value?.viewCount ?? 0) * 0.03));
 const boardDisplayName = computed(() => topic.value?.board?.name || "药大拾间");
 const displayTopicTitle = computed(() => topic.value?.title || "");
@@ -820,11 +843,9 @@ const replyAnonymousHint = computed(() => {
   return `本周还剩 ${anonymousState?.availableCredits ?? 0} / ${anonymousState?.weeklyQuota ?? 0} 点匿名积分。`;
 });
 const canEdit = computed(() =>
-  topic.value?.board?.type !== "market" && (
-    auth.user?.id === topic.value?.authorId ||
-    auth.isAdmin ||
-    (auth.isMod && !isReadOnly.value)
-  )
+  auth.user?.id === topic.value?.authorId ||
+  auth.isAdmin ||
+  (auth.isMod && !isReadOnly.value)
 );
 const canRequestTopicManualReview = computed(() => Boolean(
   auth.isLoggedIn &&

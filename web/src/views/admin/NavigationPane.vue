@@ -50,7 +50,7 @@
           <label><span>图标</span><el-select v-model="item.icon"><el-option v-for="option in iconOptions" :key="option.value" :label="option.label" :value="option.value"><span class="option-icon"><el-icon><component :is="iconComponents[option.value]" /></el-icon>{{ option.label }}</span></el-option></el-select></label>
           <label><span>桌面位置</span><el-segmented v-model="item.primary" :options="[{ label: '主导航', value: true }, { label: '更多菜单', value: false }]" block /></label>
           <label><span>访问受众</span><el-select v-model="item.audience"><el-option label="所有人" value="all" /><el-option label="仅游客" value="guest" /><el-option label="仅登录用户" value="logged-in" /><el-option label="仅管理人员" value="staff" /></el-select></label>
-          <label><span>关联功能开关</span><el-select v-model="item.feature"><el-option label="不关联" value="" /><el-option label="论坛" value="forum" /><el-option label="校园商城" value="market" /><el-option label="课程点评" value="coursereview" /><el-option label="宿舍电费" value="electric" /><el-option label="赞助" value="sponsor" /></el-select></label>
+          <label><span>关联功能开关</span><el-select v-model="item.feature"><el-option label="不关联" value="" /><el-option label="论坛" value="forum" /><el-option label="二手交流" value="market" /><el-option label="课程点评" value="coursereview" /><el-option label="宿舍电费" value="electric" /><el-option label="赞助" value="sponsor" /></el-select></label>
         </div>
         <div class="switch-row"><el-checkbox v-model="item.showInDrawer">显示在移动端抽屉</el-checkbox><el-checkbox v-model="item.requireForumAccess">仅已开启论坛的用户可见</el-checkbox><el-checkbox v-model="item.openInNewTab">新窗口打开</el-checkbox></div>
       </article>
@@ -84,7 +84,7 @@ const importOpen = ref(false);
 const importJson = ref("");
 const iconComponents: Record<TopNavigationIcon, unknown> = { home: House, forum: ChatLineRound, "lost-found": Compass, announcement: Bell, academic: Reading, schedule: Calendar, service: Service, course: Reading, market: Goods, search: Search, link: Link };
 const iconOptions: Array<{ value: TopNavigationIcon; label: string }> = [
-  { value: "home", label: "首页" }, { value: "forum", label: "论坛" }, { value: "lost-found", label: "失物招领" }, { value: "announcement", label: "公告" }, { value: "academic", label: "教务" }, { value: "schedule", label: "日历/课表" }, { value: "service", label: "服务" }, { value: "course", label: "课程" }, { value: "market", label: "商城" }, { value: "search", label: "搜索" }, { value: "link", label: "链接" },
+  { value: "home", label: "首页" }, { value: "forum", label: "论坛" }, { value: "lost-found", label: "失物招领" }, { value: "announcement", label: "公告" }, { value: "academic", label: "教务" }, { value: "schedule", label: "日历/课表" }, { value: "service", label: "服务" }, { value: "course", label: "课程" }, { value: "market", label: "二手" }, { value: "search", label: "搜索" }, { value: "link", label: "链接" },
 ];
 
 onMounted(load);

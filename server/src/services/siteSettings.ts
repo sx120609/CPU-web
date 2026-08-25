@@ -3,7 +3,7 @@
  *
  * KV 持久化 + 内存缓存。修改后立即更新缓存，公开 API 直接读缓存（高频）。
  *
- * 用途："言论敏感时一键关闭论坛 / 商城 / 课评"。
+ * 用途："需要时一键关闭论坛 / 二手交流 / 课评"。
  * 默认值：全部为 on（即不破坏现有上线体验）。
  */
 import { prisma } from "../prisma";
@@ -605,7 +605,7 @@ export const DEFAULT_TOP_NAVIGATION: TopNavigationItem[] = [
   { id: "schedule", label: "课表", fullLabel: "课表", to: "/schedule", icon: "schedule", enabled: true, primary: true, showInDrawer: true, audience: "all", feature: "", requireForumAccess: false, openInNewTab: false },
   { id: "services", label: "服务", fullLabel: "校园服务", to: "/services", icon: "service", enabled: true, primary: true, showInDrawer: true, audience: "all", feature: "", requireForumAccess: false, openInNewTab: false },
   { id: "coursereview", label: "课评", fullLabel: "课程点评", to: "/coursereview", icon: "course", enabled: true, primary: false, showInDrawer: true, audience: "all", feature: "coursereview", requireForumAccess: true, openInNewTab: false },
-  { id: "market", label: "商城", fullLabel: "校园商城", to: "/market", icon: "market", enabled: true, primary: false, showInDrawer: true, audience: "all", feature: "market", requireForumAccess: true, openInNewTab: false },
+  { id: "market", label: "二手", fullLabel: "二手交流", to: "/market", icon: "market", enabled: true, primary: false, showInDrawer: true, audience: "all", feature: "market", requireForumAccess: true, openInNewTab: false },
 ];
 export const DEFAULT_ANONYMOUS_TIERS: AnonymousTierConfig[] = [
   { reputation: 30, quota: 1 },
@@ -1059,18 +1059,24 @@ function normalizeTopNavigation(value: unknown, fallback = DEFAULT_TOP_NAVIGATIO
     let suffix = 2;
     while (seen.has(id)) id = `${baseId.slice(0, 42)}-${suffix++}`;
     seen.add(id);
-    const label = String(item.label ?? "").trim().slice(0, 12);
+    let label = String(item.label ?? "").trim().slice(0, 12);
     if (!label) continue;
     const audience = ["all", "guest", "logged-in", "staff"].includes(String(item.audience)) ? item.audience as TopNavigationAudience : "all";
     const feature = ALL_FEATURES.includes(item.feature as FeatureKey) ? item.feature as FeatureKey : "";
     const icon = ["home", "forum", "lost-found", "announcement", "academic", "schedule", "service", "course", "market", "search", "link"].includes(String(item.icon))
       ? item.icon as TopNavigationIcon
       : "link";
+    const to = normalizeNavigationTarget(item.to);
+    let fullLabel = String(item.fullLabel ?? label).trim().slice(0, 30) || label;
+    if (id === "market" && to === "/market") {
+      if (label === "商城" || label === "校园商城") label = "二手";
+      if (fullLabel === "商城" || fullLabel === "校园商城") fullLabel = "二手交流";
+    }
     result.push({
       id,
       label,
-      fullLabel: String(item.fullLabel ?? label).trim().slice(0, 30) || label,
-      to: normalizeNavigationTarget(item.to),
+      fullLabel,
+      to,
       icon,
       enabled: item.enabled !== false,
       primary: item.primary === true,
@@ -1710,7 +1716,7 @@ export function enabledBoardTypes(): string[] {
 
 export function featureClosedMessage(type: string | null | undefined): string {
   const feature = featureForBoardType(type);
-  if (feature === "market") return "商城当前已关闭";
+  if (feature === "market") return "二手交流板块当前已关闭";
   if (feature === "coursereview") return "课程点评当前已关闭";
   if (feature === "forum") return "论坛当前已关闭";
   return "该功能当前不可用";

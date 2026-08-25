@@ -15,6 +15,9 @@
         <el-tag v-if="topic.board" size="small" :style="{ background: topic.board.color || '#168776', color: '#fff', border: 'none' }" class="tag">
           {{ boardDisplayName }}
         </el-tag>
+        <el-tag v-if="marketKindLabel" size="small" effect="plain" :type="marketKindType" class="tag market-kind-tag">
+          {{ marketKindLabel }}
+        </el-tag>
         <el-tag v-if="reviewState" size="small" :type="reviewState.type" effect="plain" class="tag review-tag">
           {{ reviewState.label }}
         </el-tag>
@@ -50,7 +53,7 @@
       </div>
     </div>
     <!-- 价格/评分等板块特化的右侧小标 -->
-    <div v-if="metaPrice !== undefined" class="price">¥{{ metaPrice }}</div>
+    <div v-if="metaPriceLabel" class="price">{{ metaPriceLabel }}</div>
     <div v-else-if="metaRating" class="rating">
       <el-rate :model-value="metaRating" disabled size="small" />
     </div>
@@ -67,7 +70,27 @@ import { fmtRelative } from "@/utils/format";
 const props = defineProps<{ topic: any }>();
 const route = useRoute();
 const router = useRouter();
-const metaPrice = computed(() => props.topic.metadata?.price);
+const marketKind = computed(() => {
+  if (props.topic.board?.type !== "market") return "";
+  const raw = props.topic.metadata?.marketKind || props.topic.metadata?.listingType;
+  if (raw === "wanted" || props.topic.metadata?.condition === "求购") return "wanted";
+  if (raw === "discuss") return "discuss";
+  return "sell";
+});
+const marketKindLabel = computed(() => {
+  if (marketKind.value === "wanted") return "求购";
+  if (marketKind.value === "discuss") return "交流";
+  return marketKind.value === "sell" ? "出闲置" : "";
+});
+const marketKindType = computed(() => marketKind.value === "wanted" ? "warning" as const : marketKind.value === "discuss" ? "info" as const : "success" as const);
+const metaPriceLabel = computed(() => {
+  if (!marketKind.value || marketKind.value === "discuss") return "";
+  const raw = props.topic.metadata?.price;
+  if (raw === undefined || raw === null || raw === "") return "";
+  const price = Number(raw);
+  if (!Number.isFinite(price)) return "";
+  return price > 0 ? `¥${price}` : "面议";
+});
 const metaSolved = computed(() => props.topic.metadata?.resolved === true);
 const metaBounty = computed(() => props.topic.metadata?.bounty ? props.topic.metadata.bounty : 0);
 const boardDisplayName = computed(() => props.topic.board?.name || "");
@@ -87,7 +110,7 @@ const reviewState = computed(() => {
   if (status === "rejected_manual") return { label: "人工复核未通过", type: "danger" as const };
   return { label: "仅自己可见", type: "info" as const };
 });
-const restorableRouteNames = new Set(["board", "forum-latest", "forum-hot"]);
+const restorableRouteNames = new Set(["board", "market", "forum-latest", "forum-hot"]);
 
 function openTopic() {
   const routeName = String(route.name || "");
@@ -126,6 +149,7 @@ function openTopic() {
 .line1 { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
 .tag { flex-shrink: 0; }
 .ai-tag { --el-tag-border-color: #fdba74; --el-tag-hover-color: #9a3412; }
+.market-kind-tag { font-weight: 600; }
 .review-tag { font-weight: 600; }
 .title { flex: 1 1 240px; font-size: 15px; color: var(--cpu-text); font-weight: 500; min-width: 0; overflow-wrap: anywhere; }
 

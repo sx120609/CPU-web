@@ -104,7 +104,7 @@ const canPost = computed(() => !!board.value && !board.value.readOnly && auth.ca
 const boardDisplayName = computed(() => board.value?.name || "");
 const boardDisplayDescription = computed(() => board.value?.description || "");
 const fallbackBoardIcon = computed(() => {
-  if (board.value?.type === "market") return "🛒";
+  if (board.value?.type === "market") return "♻️";
   if (board.value?.type === "question") return "❓";
   if (board.value?.type === "coursereview") return "📚";
   if (board.value?.type === "announce") return "📢";

@@ -1,10 +1,10 @@
 import type { HomeSummary } from "@/api/home";
-import type { MarketItem } from "@/api/market";
+import type { Topic } from "@/api/topic";
 
 const HOME_CACHE_VERSION = 1;
 const HOME_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const HOME_SUMMARY_CACHE_PREFIX = "cpu-home-summary-v1:";
-const HOME_MARKET_CACHE_PREFIX = "cpu-home-market-v1:";
+const HOME_SECOND_HAND_CACHE_PREFIX = "cpu-home-second-hand-v1:";
 
 interface CacheEnvelope<T> {
   version: number;
@@ -56,7 +56,7 @@ function isHomeSummary(value: unknown): value is HomeSummary {
     && Array.isArray(candidate.services);
 }
 
-function isMarketItems(value: unknown): value is MarketItem[] {
+function isTopics(value: unknown): value is Topic[] {
   return Array.isArray(value);
 }
 
@@ -68,10 +68,10 @@ export function writeHomeSummaryCache(scope: string, summary: HomeSummary) {
   writeEnvelope(`${HOME_SUMMARY_CACHE_PREFIX}${scope}`, summary);
 }
 
-export function readHomeMarketCache(scope: string) {
-  return readEnvelope(`${HOME_MARKET_CACHE_PREFIX}${scope}`, isMarketItems);
+export function readHomeSecondHandCache(scope: string) {
+  return readEnvelope(`${HOME_SECOND_HAND_CACHE_PREFIX}${scope}`, isTopics);
 }
 
-export function writeHomeMarketCache(scope: string, items: MarketItem[]) {
-  writeEnvelope(`${HOME_MARKET_CACHE_PREFIX}${scope}`, items);
+export function writeHomeSecondHandCache(scope: string, topics: Topic[]) {
+  writeEnvelope(`${HOME_SECOND_HAND_CACHE_PREFIX}${scope}`, topics);
 }

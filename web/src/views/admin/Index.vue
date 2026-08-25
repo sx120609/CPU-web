@@ -84,7 +84,6 @@
       <el-tab-pane label="📢 论坛广告" name="forum-ads" v-if="auth.isAdmin"><ForumAdsPane v-if="tab === 'forum-ads'" /></el-tab-pane>
       <el-tab-pane label="🎁 VIP 礼品码" name="vip-gift-codes" v-if="auth.isAdmin"><VipGiftCodesPane v-if="tab === 'vip-gift-codes'" /></el-tab-pane>
       <el-tab-pane label="💳 支付对接" name="epay" v-if="auth.isAdmin"><EpayPane v-if="tab === 'epay'" /></el-tab-pane>
-      <el-tab-pane label="🛍️ 商城" name="market" v-if="auth.isAdmin"><MarketPane v-if="tab === 'market'" /></el-tab-pane>
       <el-tab-pane label="💛 赞助" name="sponsor" v-if="auth.isAdmin"><SponsorPane v-if="tab === 'sponsor'" /></el-tab-pane>
       <el-tab-pane label="🤖 QQBot" name="qqbot" v-if="auth.isAdmin"><QqBotPane v-if="tab === 'qqbot'" /></el-tab-pane>
       <el-tab-pane label="✨ AI 管理" name="ai" v-if="auth.isAdmin"><AiManagementPane v-if="tab === 'ai'" /></el-tab-pane>
@@ -115,7 +114,6 @@ const AnnouncementsPane = defineAsyncComponent(() => import("./AnnouncementsPane
 const ForumAdsPane = defineAsyncComponent(() => import("./ForumAdsPane.vue"));
 const VipGiftCodesPane = defineAsyncComponent(() => import("./VipGiftCodesPane.vue"));
 const EpayPane = defineAsyncComponent(() => import("./EpayPane.vue"));
-const MarketPane = defineAsyncComponent(() => import("./MarketPane.vue"));
 const SponsorPane = defineAsyncComponent(() => import("./SponsorPane.vue"));
 const QqBotPane = defineAsyncComponent(() => import("./QqBotPane.vue"));
 const AiManagementPane = defineAsyncComponent(() => import("./AiManagementPane.vue"));

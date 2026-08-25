@@ -46,7 +46,6 @@ import {
 import { scheduleTopicSubmissionReview } from "../services/forumSubmissionReview";
 
 export const topicRouter = Router();
-const MARKET_TOPIC_API_MESSAGE = "商城商品请使用商城发布、编辑和下架功能";
 
 const topicSubmissionInclude = {
   board: { select: { id: true, slug: true, name: true, type: true, color: true } },
@@ -110,6 +109,7 @@ topicRouter.get("/", async (req, res, next) => {
     const size = Math.min(50, Math.max(5, Number(req.query.size ?? 20)));
     const sort = String(req.query.sort ?? "new");
     const pinnedMode = req.query.pinned ? String(req.query.pinned) : "include";
+    const q = String(req.query.q ?? "").trim().slice(0, 80);
     const requesterId = req.user?.userId ?? null;
     const requesterRole = req.user?.role ?? null;
 
@@ -133,6 +133,14 @@ topicRouter.get("/", async (req, res, next) => {
     else where.board = { type: { in: enabledBoardTypes() }, ...visibleBoardSlugFilter() };
     if (pinnedMode === "only") where.pinned = true;
     else if (pinnedMode === "exclude") where.pinned = false;
+    if (q) {
+      where.AND = [{
+        OR: [
+          { title: { contains: q, mode: "insensitive" } },
+          { content: { contains: q, mode: "insensitive" } },
+        ],
+      }];
+    }
 
     const orderBy: any = pinnedMode === "only"
       ? [{ createdAt: "desc" }]
@@ -142,7 +150,7 @@ topicRouter.get("/", async (req, res, next) => {
 
     const cached = await withCache(
       "forum-list",
-      ["topic-list-v3", requesterId ? `viewer-${requesterId}` : "public", boardSlug || "all", page, size, sort, pinnedMode],
+      ["topic-list-v4", requesterId ? `viewer-${requesterId}` : "public", boardSlug || "all", page, size, sort, pinnedMode, q || "all"],
       60_000,
       async () => {
         const [list, total] = await Promise.all([
@@ -259,11 +267,10 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
     const board = await prisma.board.findUnique({ where: { slug: boardSlug } });
     if (!board) throw Errors.notFound("板块不存在");
     if (isRetiredBoardSlug(board.slug)) throw Errors.notFound("板块不存在");
-    if (board.type === "market") throw Errors.badRequest(MARKET_TOPIC_API_MESSAGE);
     if (board.readOnly && req.user!.role !== "bot" && req.user!.role !== "admin") {
       throw Errors.forbidden("该板块为只读公告板，禁止发帖");
     }
-    // 功能开关：admin 可一键关闭论坛 / 商城 / 课评整块功能
+    // 功能开关：admin 可一键关闭论坛 / 二手交流 / 课评整块功能
     // type=announce 由系统/爬虫机器人发，不受用户开关约束
     if (board.type !== "announce" && req.user!.role !== "admin") {
       const featureKey = featureForBoardType(board.type) ?? "forum";
@@ -464,7 +471,6 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
     });
     if (!t) throw Errors.notFound();
     if (isRetiredBoardSlug(t.board?.slug)) throw Errors.notFound();
-    if (t.board?.type === "market") throw Errors.badRequest(MARKET_TOPIC_API_MESSAGE);
     const isOwner = t.authorId === req.user!.userId;
     const isMod = req.user!.role === "mod" || req.user!.role === "admin";
     const canEditContent = isOwner || req.user!.role === "admin" || (req.user!.role === "mod" && t.board?.type !== "announce");
@@ -616,7 +622,6 @@ topicRouter.delete("/:id", authRequired, async (req, res, next) => {
     });
     if (!t) throw Errors.notFound();
     if (isRetiredBoardSlug(t.board?.slug)) throw Errors.notFound();
-    if (t.board?.type === "market") throw Errors.badRequest(MARKET_TOPIC_API_MESSAGE);
     const isOwner = t.authorId === req.user!.userId;
     const isMod = req.user!.role === "mod" || req.user!.role === "admin";
     if (!isOwner && !isMod) throw Errors.forbidden();

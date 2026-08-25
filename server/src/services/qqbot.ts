@@ -2419,7 +2419,6 @@ async function createTopicFromQq(input: {
   await ensureUserCanSubmitTopic(userId);
   const board = await prisma.board.findUnique({ where: { slug: input.boardSlug } });
   if (!board) throw Errors.notFound("板块不存在");
-  if (board.type === "market") throw Errors.badRequest("商城商品请使用商城发布功能，QQ 投稿不支持商城");
   if (board.readOnly && input.user.role !== "bot" && input.user.role !== "admin") throw Errors.forbidden("该板块为只读公告板，禁止发帖");
   if (board.type !== "announce" && input.user.role !== "admin") {
     const featureKey = featureForBoardType(board.type) ?? "forum";

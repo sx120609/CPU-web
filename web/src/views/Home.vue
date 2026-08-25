@@ -10,7 +10,7 @@
             <el-icon><ChatLineRound /></el-icon> {{ forumActionLabel }}
           </el-button>
           <el-button v-if="site.features.market && auth.canAccessForum" size="large" @click="$router.push('/market')">
-            <span>🛍️</span> 校园商城
+            <span>♻️</span> 二手交流
           </el-button>
           <el-button v-else type="primary" size="large" @click="$router.push('/announcements')">
             <el-icon><Bell /></el-icon> 看校园公告
@@ -119,30 +119,15 @@
 
         <section class="block" v-if="site.features.market && auth.canAccessForum">
           <div class="block-head">
-            <h3>🛍️ 校园商城</h3>
-            <router-link to="/market" class="more">全部商品 →</router-link>
+            <h3>♻️ 二手交流</h3>
+            <router-link to="/market" class="more">进入板块 →</router-link>
           </div>
-          <div v-if="marketPreview.length" class="market-preview-grid">
-            <router-link
-              v-for="item in marketPreview"
-              :key="item.id"
-              :to="{ name: 'market-item', params: { id: item.id } }"
-              class="market-preview-card"
-            >
-              <div class="market-preview-cover">
-                <img v-if="item.cover" :src="item.cover" :alt="item.title" />
-                <span v-else class="market-placeholder-icon">{{ marketCategoryIcon(item.category) }}</span>
-              </div>
-              <div class="market-preview-copy">
-                <strong>{{ item.title }}</strong>
-                <span>{{ item.listingType === 'wanted' ? '预算 ' : '' }}¥{{ item.price }}</span>
-                <small>{{ item.tradeMode === 'online' ? '线上发货' : (item.campus || '校内交易') }}</small>
-              </div>
-            </router-link>
+          <div v-if="secondHandPreview.length" class="second-hand-preview">
+            <TopicListItem v-for="topic in secondHandPreview" :key="`second-hand-${topic.id}`" :topic="topic" />
           </div>
-          <div v-else class="market-empty">
-            <span>校园好物与电子资料，都可以在这里发布</span>
-            <el-button size="small" type="primary" @click="$router.push('/market/publish')">发布第一件商品</el-button>
+          <div v-else class="second-hand-empty">
+            <span>发布闲置、求购或二手经验，像普通论坛帖一样交流</span>
+            <el-button size="small" type="primary" @click="$router.push('/post?board=market&kind=sell')">发布闲置</el-button>
           </div>
         </section>
 
@@ -199,14 +184,14 @@ import ForumAdCard from "@/components/forum/ForumAdCard.vue";
 import DormElectricDialog from "@/components/services/DormElectricDialog.vue";
 import { homeApi, type HomeSummary } from "@/api/home";
 import { forumAdsApi, type ForumAd } from "@/api/forumAds";
-import { marketApi, type MarketItem } from "@/api/market";
+import { topicApi, type Topic } from "@/api/topic";
 import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
 import { fmtRelative } from "@/utils/format";
 import {
-  readHomeMarketCache,
+  readHomeSecondHandCache,
   readHomeSummaryCache,
-  writeHomeMarketCache,
+  writeHomeSecondHandCache,
   writeHomeSummaryCache,
 } from "@/utils/homeCache";
 
@@ -217,7 +202,7 @@ const summary = ref<HomeSummary | null>(null);
 const loading = ref(false);
 const homeError = ref("");
 const electricOpen = ref(false);
-const marketPreview = ref<MarketItem[]>([]);
+const secondHandPreview = ref<Topic[]>([]);
 const pinnedAd = ref<ForumAd | null>(null);
 const hotAd = ref<ForumAd | null>(null);
 const hotPreview = computed(() => (summary.value?.hotTopics ?? []).slice(0, 3));
@@ -229,14 +214,14 @@ const homeCacheScope = computed(() => {
   return `${identity}:forum-${auth.canAccessForum ? "on" : "off"}`;
 });
 let loadSeq = 0;
-let marketLoadSeq = 0;
+let secondHandLoadSeq = 0;
 let adsLoadSeq = 0;
 let mounted = false;
 
 const enabledFeatureLabels = computed(() => {
   const labels = ["公告聚合", "教务数据", "常用校园服务"];
   if (site.features.coursereview && auth.canAccessForum) labels.splice(2, 0, "课程点评");
-  if (site.features.market && auth.canAccessForum) labels.splice(labels.length - 1, 0, "校园商城");
+  if (site.features.market && auth.canAccessForum) labels.splice(labels.length - 1, 0, "二手交流");
   if (site.features.electric) labels.push("宿舍电费查询");
   if (site.features.forum && auth.canAccessForum) labels.unshift("校园讨论");
   return labels;
@@ -262,10 +247,10 @@ onMounted(() => {
 });
 
 watch(() => site.features.market && auth.canAccessForum, (enabled) => {
-  if (enabled && mounted && !marketPreview.value.length) {
-    const cached = readHomeMarketCache(homeCacheScope.value);
-    if (cached) marketPreview.value = cached;
-    void loadMarketPreview();
+  if (enabled && mounted && !secondHandPreview.value.length) {
+    const cached = readHomeSecondHandCache(homeCacheScope.value);
+    if (cached) secondHandPreview.value = cached;
+    void loadSecondHandPreview();
   }
 });
 
@@ -281,12 +266,12 @@ async function loadHomeScope() {
   void loadSummary({ background: Boolean(cachedSummary), scope });
   void loadAds();
 
-  marketLoadSeq += 1;
-  marketPreview.value = [];
+  secondHandLoadSeq += 1;
+  secondHandPreview.value = [];
   if (site.features.market && auth.canAccessForum) {
-    const cachedMarket = readHomeMarketCache(scope);
-    if (cachedMarket) marketPreview.value = cachedMarket;
-    void loadMarketPreview(scope);
+    const cachedSecondHand = readHomeSecondHandCache(scope);
+    if (cachedSecondHand) secondHandPreview.value = cachedSecondHand;
+    void loadSecondHandPreview(scope);
   }
 }
 
@@ -307,34 +292,20 @@ async function loadAds() {
   }
 }
 
-async function loadMarketPreview(scope = homeCacheScope.value) {
-  const seq = ++marketLoadSeq;
+async function loadSecondHandPreview(scope = homeCacheScope.value) {
+  const seq = ++secondHandLoadSeq;
   try {
-    const result = await marketApi.items({ page: 1, size: 4, sort: "new" }, {
+    const result = await topicApi.list({ board: "market", page: 1, size: 5, sort: "new", pinned: "exclude" }, {
       suppressErrorMessage: true,
       suppressAuthMessage: true,
       suppressAuthRedirect: true,
     });
-    if (seq !== marketLoadSeq || scope !== homeCacheScope.value) return;
-    marketPreview.value = result.list;
-    writeHomeMarketCache(scope, result.list);
+    if (seq !== secondHandLoadSeq || scope !== homeCacheScope.value) return;
+    secondHandPreview.value = result.list.slice(0, 3);
+    writeHomeSecondHandCache(scope, secondHandPreview.value);
   } catch {
-    if (seq === marketLoadSeq && !marketPreview.value.length) marketPreview.value = [];
+    if (seq === secondHandLoadSeq && !secondHandPreview.value.length) secondHandPreview.value = [];
   }
-}
-
-function marketCategoryIcon(category: string) {
-  return ({
-    digital: "💻",
-    books: "📚",
-    digital_goods: "📁",
-    dorm: "🛏️",
-    appliance: "🔌",
-    fashion: "👕",
-    sports: "🏸",
-    tickets: "🎫",
-    other: "📦",
-  } as Record<string, string>)[category] || "🛍️";
 }
 
 async function loadSummary(options: { background?: boolean; scope?: string } = {}) {
@@ -654,49 +625,8 @@ function normalizeHomeError(error: unknown) {
   line-height: 1.6;
   color: var(--cpu-text-secondary);
 }
-.market-preview-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-.market-preview-card {
-  display: grid;
-  grid-template-columns: 64px minmax(0, 1fr);
-  gap: 10px;
-  min-width: 0;
-  padding: 8px;
-  border: 1px solid var(--cpu-border-soft);
-  border-radius: 12px;
-  color: inherit;
-  text-decoration: none;
-  background: var(--cpu-surface);
-  transition: border-color 0.15s, transform 0.15s;
-}
-.market-preview-card:hover { border-color: var(--cpu-primary); transform: translateY(-1px); }
-.market-preview-cover {
-  width: 64px;
-  height: 64px;
-  display: grid;
-  place-items: center;
-  overflow: hidden;
-  border-radius: 9px;
-  background: linear-gradient(135deg, rgba(22, 135, 118, 0.12), rgba(45, 163, 145, 0.22));
-}
-.market-preview-cover img { width: 100%; height: 100%; object-fit: cover; }
-.market-placeholder-icon { font-size: 27px; filter: drop-shadow(0 3px 5px rgba(15, 118, 110, 0.12)); }
-.market-preview-copy {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 2px;
-}
-.market-preview-copy strong,
-.market-preview-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.market-preview-copy strong { font-size: 13px; }
-.market-preview-copy span { color: #e24a3b; font-size: 16px; font-weight: 800; }
-.market-preview-copy small { color: var(--cpu-text-muted); }
-.market-empty {
+.second-hand-preview { margin: 0 -6px; }
+.second-hand-empty {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -810,10 +740,6 @@ function normalizeHomeError(error: unknown) {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  .market-preview-grid {
-    grid-template-columns: 1fr;
-  }
-
   .svc {
     min-height: 82px;
     padding: 9px 7px;
@@ -833,10 +759,6 @@ function normalizeHomeError(error: unknown) {
     min-width: 0;
     font-size: 13px;
   }
-}
-
-:global(html[data-theme="dark"]) .market-preview-cover {
-  background: linear-gradient(135deg, rgba(45, 212, 191, 0.10), rgba(45, 163, 145, 0.18));
 }
 
 @media (max-width: 420px) {

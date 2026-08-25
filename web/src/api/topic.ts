@@ -149,7 +149,7 @@ export type TopicAutoFormatResult = {
 };
 
 export const topicApi = {
-  list: (params: { board?: string; page?: number; size?: number; sort?: "new" | "hot"; pinned?: "only" | "exclude" }, options?: RequestOptions) =>
+  list: (params: { board?: string; page?: number; size?: number; sort?: "new" | "hot"; pinned?: "only" | "exclude"; q?: string }, options?: RequestOptions) =>
     request.get<{ page: number; size: number; total: number; list: Topic[] }>("/topics", params, options),
   detail: (id: number, options?: RequestOptions) => request.get<Topic>(`/topics/${id}`, undefined, options),
   replies: (id: number, options?: RequestOptions) => request.get<Reply[]>(`/topics/${id}/replies`, undefined, options),
