@@ -6,6 +6,7 @@ import {
   encryptWechatPayload,
   generateWechatEncodingAesKey,
   generateWechatToken,
+  parseWechatBindCommand,
   parseWechatXml,
   shouldDeliverWechatNotification,
   verifyWechatSignature,
@@ -65,6 +66,17 @@ test("respects channel and category preferences", () => {
 test("generates credentials accepted by the public-platform form", () => {
   assert.match(generateWechatToken(), /^[a-f0-9]{32}$/);
   assert.match(generateWechatEncodingAesKey(), /^[A-Za-z0-9]{43}$/);
+});
+
+test("parses WeChat message binding commands", () => {
+  assert.equal(parseWechatBindCommand("绑定 A1b2C3d4"), "A1B2C3D4");
+  assert.equal(parseWechatBindCommand("绑定A1b2C3d4"), "A1B2C3D4");
+  assert.equal(parseWechatBindCommand("绑定码：A1b2C3d4"), "A1B2C3D4");
+  assert.equal(parseWechatBindCommand("A1b2C3d4"), "A1B2C3D4");
+  assert.equal(parseWechatBindCommand("  绑定   123456  "), "123456");
+  assert.equal(parseWechatBindCommand("绑定"), "");
+  assert.equal(parseWechatBindCommand("绑定 12345"), "");
+  assert.equal(parseWechatBindCommand("请绑定 A1B2C3D4"), "");
 });
 
 function sha1(parts: string[]) {

@@ -135,6 +135,7 @@
           <div v-if="bindToken" class="bind-token">
             <b>{{ bindToken.token }}</b>
             <span>10 分钟内私聊发送：绑定 {{ bindToken.token }}</span>
+            <el-button plain size="small" @click="copyBindCommand">复制完整绑定指令</el-button>
           </div>
         </div>
         <el-divider />
@@ -460,6 +461,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { Download } from "@element-plus/icons-vue";
 import { adminApi, type QqBotConfig, type QqBotGroup } from "@/api/admin";
+import { copyText } from "@/utils/userGroup";
 
 const config = ref<QqBotConfig | null>(null);
 const boards = ref<any[]>([]);
@@ -686,6 +688,12 @@ async function createBindToken() {
   } finally {
     creatingBindToken.value = false;
   }
+}
+
+async function copyBindCommand() {
+  if (!bindToken.value) return;
+  await copyText(`绑定 ${bindToken.value.token}`);
+  ElMessage.success("已复制完整绑定指令");
 }
 
 async function sendTest() {

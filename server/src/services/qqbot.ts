@@ -3,6 +3,7 @@ import path from "node:path";
 import { existsSync } from "node:fs";
 import { prisma } from "../prisma";
 import { Errors } from "../utils/response";
+import { parseMessageBindToken } from "./bindToken";
 import { runWithDistributedLock } from "./cache";
 import { ensureForumAccessEnabled } from "./forumAccess";
 import { ensureForumImageAssetsForContent } from "./imageModeration";
@@ -764,10 +765,8 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     await replyToEvent(context, await unbindQqAccount(qqId));
     return { ok: true };
   }
-  const bindMatch = canHandlePlainCommand
-    ? commandText.trim().match(/^(?:[/／])?绑定\s+([A-Z0-9]{6,16})$/i)
-    : null;
-  if (bindMatch) {
+  const bindToken = canHandlePlainCommand ? parseMessageBindToken(commandText) : "";
+  if (bindToken) {
     if (event.message_type === "group") {
       await replyToEvent(context, "绑定码只支持私聊发送。请私聊我后再发送“绑定 绑定码”。");
       return { ok: true };
@@ -775,13 +774,13 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     const result = await bindQqAccount({
       qqId,
       nickname: event.sender?.card || event.sender?.nickname || "",
-      token: bindMatch[1].toUpperCase(),
+      token: bindToken,
     });
     await logHandledInboundMessage(context, "message", "assistant:bind");
     await replyToEvent(context, result);
     return { ok: true };
   }
-  if (canHandlePlainCommand && commandText.trim().match(/^(?:[/／])?绑定(?:\s|$)/i)) {
+  if (canHandlePlainCommand && commandText.trim().match(/^(?:[/／])?绑定(?:码)?(?:\s|[：:,，-]|$)/i)) {
     if (event.message_type === "group") {
       await replyToEvent(context, "绑定码只支持私聊发送。请先私聊我，再发送“绑定 绑定码”。");
       return { ok: true };

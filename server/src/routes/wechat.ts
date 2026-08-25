@@ -5,6 +5,7 @@ import { getSiteOrigin } from "../services/siteSettings";
 import {
   completeWechatOauthBinding,
   createWechatBindQrCode,
+  createWechatBindToken,
   createWechatOauthBindUrl,
   decodeWechatCallback,
   deleteUserWechatBinding,
@@ -89,6 +90,14 @@ wechatRouter.post("/oauth-url", authRequired, async (req, res, next) => {
 wechatRouter.post("/bind-qr", authRequired, async (req, res, next) => {
   try {
     ok(res, await createWechatBindQrCode(req.user!.userId));
+  } catch (error) {
+    next(error);
+  }
+});
+
+wechatRouter.post("/bind-token", authRequired, async (req, res, next) => {
+  try {
+    ok(res, await createWechatBindToken(req.user!.userId));
   } catch (error) {
     next(error);
   }

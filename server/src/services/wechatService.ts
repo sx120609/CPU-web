@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { prisma } from "../prisma";
 import { Errors } from "../utils/response";
 import { askCampusAssistant } from "./campusAssistant";
+import { parseMessageBindToken } from "./bindToken";
 import { runWithDistributedLock } from "./cache";
 import { getFeatures, getSiteOrigin } from "./siteSettings";
 
@@ -136,17 +137,25 @@ export function generateWechatEncodingAesKey() {
 }
 
 export async function getUserWechatProfile(userId: number) {
-  const [config, binding] = await Promise.all([
+  const [config, binding, activeToken] = await Promise.all([
     getWechatServiceConfigRaw(),
     prisma.wechatBinding.findUnique({ where: { userId } }),
+    prisma.wechatBindToken.findFirst({
+      where: {
+        userId,
+        token: { not: null },
+        usedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      orderBy: { createdAt: "desc" },
+    }),
   ]);
   return {
     enabled: config.enabled,
     accountName: config.accountName,
     notificationEnabled: config.notificationEnabled,
     assistantEnabled: config.assistantEnabled,
-    oauthAvailable: Boolean(config.enabled && config.appId && config.appSecret && normalizedSiteOrigin()),
-    qrBindingAvailable: Boolean(config.enabled && config.appId && config.appSecret),
+    messageBindingAvailable: Boolean(config.enabled && config.token),
     binding: binding ? {
       id: binding.id,
       enabled: binding.enabled,
@@ -157,7 +166,34 @@ export async function getUserWechatProfile(userId: number) {
       createdAt: binding.createdAt,
       updatedAt: binding.updatedAt,
     } : null,
+    activeBindToken: !binding && activeToken?.token ? {
+      token: activeToken.token,
+      expiresAt: activeToken.expiresAt,
+    } : null,
   };
+}
+
+export async function createWechatBindToken(userId: number) {
+  const config = await getWechatServiceConfigRaw();
+  if (!config.enabled || !config.token) throw Errors.badRequest("微信服务号尚未启用");
+  const existingBinding = await prisma.wechatBinding.findUnique({ where: { userId }, select: { id: true } });
+  if (existingBinding) throw Errors.badRequest("当前账号已经绑定微信服务号，如需更换请先解绑");
+  const activeToken = await prisma.wechatBindToken.findFirst({
+    where: {
+      userId,
+      token: { not: null },
+      usedAt: null,
+      expiresAt: { gt: new Date() },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+  if (activeToken?.token) return { token: activeToken.token, expiresAt: activeToken.expiresAt };
+  const token = crypto.randomBytes(4).toString("hex").toUpperCase();
+  const expiresAt = new Date(Date.now() + BIND_TOKEN_TTL_MS);
+  await prisma.wechatBindToken.create({
+    data: { userId, token, tokenHash: hashToken(token), expiresAt },
+  });
+  return { token, expiresAt };
 }
 
 export async function deleteUserWechatBinding(userId: number) {
@@ -349,6 +385,19 @@ export async function processWechatInbound(message: WechatInboundMessage, option
     return { ok: true, replyText: options?.passiveReply ? replyText || undefined : undefined };
   }
 
+  let replyText = "";
+  if (message.msgType === "text") {
+    const bindCode = parseWechatBindCommand(message.content);
+    if (bindCode) {
+      if (binding) {
+        replyText = "当前微信已经绑定药大拾间账号，如需更换请先在站内解绑。";
+      } else {
+        const result = await consumeWechatMessageBindToken(bindCode, openId);
+        binding = result.binding;
+        replyText = result.message;
+      }
+    }
+  }
   if (binding) {
     const interactionType = message.msgType === "event" ? "event" : "message";
     binding = await prisma.wechatBinding.update({
@@ -366,9 +415,8 @@ export async function processWechatInbound(message: WechatInboundMessage, option
     content: message.content,
     rawPayload: message,
   });
-  let replyText = "";
   if (message.msgType === "text") {
-    replyText = await resolveWechatTextReply(message.content, binding?.userId ?? null);
+    if (!replyText) replyText = await resolveWechatTextReply(message.content, binding?.userId ?? null);
     if (replyText) {
       if (options?.passiveReply) {
         await logWechatMessage({ direction: "outbound", eventType: "passive", status: "ok", openId, userId: binding?.userId, content: replyText });
@@ -602,7 +650,12 @@ async function resolveWechatTextReply(rawContent: string, userId: number | null)
   if (/^(帮助|help|菜单)$/iu.test(content)) {
     return renderWechatHelp(Boolean(userId));
   }
-  if (/^(状态|绑定|我的)$/u.test(content)) {
+  if (/^绑定(?:\s|$)/iu.test(content)) {
+    return userId
+      ? "当前微信已经绑定药大拾间账号，如需更换请先在站内解绑。"
+      : `绑定需要使用站内生成的绑定码。\n请打开：${normalizedSiteOrigin()}/messages?tab=settings\n然后发送：绑定 绑定码`;
+  }
+  if (/^(状态|我的)$/u.test(content)) {
     return userId
       ? `当前微信已绑定药大拾间账号。\n消息设置：${normalizedSiteOrigin()}/messages?tab=settings`
       : `当前微信尚未绑定。\n请打开：${normalizedSiteOrigin()}/messages?tab=settings`;
@@ -656,6 +709,42 @@ async function consumeWechatBindToken(rawToken: string, openId: string) {
   if (!token || token.usedAt || token.expiresAt <= new Date()) return null;
   await bindWechatIdentity(token.userId, openId, null, { bindTokenId: token.id, subscribed: true, interactionType: "scan" });
   return prisma.wechatBinding.findUnique({ where: { openId } });
+}
+
+async function consumeWechatMessageBindToken(rawToken: string, openId: string) {
+  const tokenHash = hashToken(rawToken.toUpperCase());
+  const token = await prisma.wechatBindToken.findUnique({
+    where: { tokenHash },
+    include: { user: { select: { nickname: true, status: true } } },
+  });
+  if (!token || !token.token || token.usedAt || token.expiresAt <= new Date()) {
+    return { binding: null, message: "绑定码不存在或已过期，请在站内重新生成。" };
+  }
+  if (token.user.status === "banned") {
+    return { binding: null, message: "这个站内账号已被封禁，不能绑定微信。" };
+  }
+  const existingBinding = await prisma.wechatBinding.findUnique({ where: { userId: token.userId } });
+  if (existingBinding && existingBinding.openId !== openId) {
+    return { binding: null, message: "该站内账号已经绑定其他微信，如需更换请先在站内解绑。" };
+  }
+  const conflictingBinding = await prisma.wechatBinding.findUnique({ where: { openId } });
+  if (conflictingBinding && conflictingBinding.userId !== token.userId) {
+    return { binding: conflictingBinding, message: "当前微信已经绑定其他药大拾间账号，如需更换请先在站内解绑。" };
+  }
+  await bindWechatIdentity(token.userId, openId, null, {
+    bindTokenId: token.id,
+    subscribed: true,
+    interactionType: "message",
+  });
+  const binding = await prisma.wechatBinding.findUnique({ where: { openId } });
+  return {
+    binding,
+    message: [
+      `绑定成功：${token.user.nickname}`,
+      "发送“帮助”可查看服务号内的可用功能。",
+      `消息设置：${normalizedSiteOrigin()}/messages?tab=settings`,
+    ].join("\n"),
+  };
 }
 
 async function bindWechatIdentity(
@@ -814,6 +903,7 @@ function renderWechatWelcome() {
     "欢迎关注药大拾间。",
     "你可以发送问题使用拾间AI，也可以发送“帮助”查看服务入口。",
     `绑定账号：${normalizedSiteOrigin()}/messages?tab=settings`,
+    "生成绑定码后发送：绑定 绑定码",
   ].join("\n");
 }
 
@@ -826,8 +916,12 @@ function renderWechatHelp(bound: boolean) {
     "我的投稿：查看最近内容",
     "直接发送其他文字：咨询拾间AI",
     "",
-    bound ? `消息设置：${normalizedSiteOrigin()}/messages?tab=settings` : `绑定账号：${normalizedSiteOrigin()}/messages?tab=settings`,
+    bound ? `消息设置：${normalizedSiteOrigin()}/messages?tab=settings` : `绑定账号：${normalizedSiteOrigin()}/messages?tab=settings\n生成绑定码后发送：绑定 绑定码`,
   ].join("\n");
+}
+
+export function parseWechatBindCommand(content: string) {
+  return parseMessageBindToken(content);
 }
 
 function renderNotificationText(notification: any, link: string) {

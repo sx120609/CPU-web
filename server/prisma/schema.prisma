@@ -1414,6 +1414,7 @@ model WechatBinding {
 model WechatBindToken {
   id        Int       @id @default(autoincrement())
   userId    Int
+  token     String?   @unique
   tokenHash String    @unique
   usedAt    DateTime?
   expiresAt DateTime
