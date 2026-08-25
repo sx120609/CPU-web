@@ -15,7 +15,13 @@
     <header v-if="!hideChrome && !useNativeShell" class="topbar">
       <div class="topbar-inner">
         <router-link to="/home" class="brand">
-          <span class="brand-logo">药</span>
+          <img
+            class="brand-logo"
+            src="/brand/original-logo-1024.png"
+            alt=""
+            aria-hidden="true"
+            decoding="async"
+          />
           <span class="brand-text">
             <span class="brand-name">药大拾间</span>
             <span class="brand-sub">CPU 校园互助服务</span>
@@ -977,7 +983,7 @@ function setAppearanceMode(command: string | number | object) {
 .brand {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 9px;
   text-decoration: none;
   color: inherit;
   flex-shrink: 0;
@@ -985,16 +991,12 @@ function setAppearanceMode(command: string | number | object) {
 }
 
 .brand-logo {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, var(--cpu-primary), var(--cpu-primary-dark));
-  color: var(--cpu-gold);
-  display: grid;
-  place-items: center;
-  font-family: serif;
-  font-weight: 700;
-  font-size: 20px;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  display: block;
+  border-radius: 11px;
+  object-fit: contain;
 }
 
 .brand-text {
@@ -1005,7 +1007,7 @@ function setAppearanceMode(command: string | number | object) {
 }
 
 .brand-name {
-  font-size: 17px;
+  font-size: 18px;
   font-weight: 700;
   color: var(--cpu-primary);
   overflow: hidden;
@@ -1014,9 +1016,9 @@ function setAppearanceMode(command: string | number | object) {
 }
 
 .brand-sub {
-  font-size: 11px;
+  font-size: 10.5px;
   color: var(--cpu-text-muted);
-  letter-spacing: 1px;
+  letter-spacing: 0.8px;
 }
 
 .top-search {
@@ -1799,7 +1801,6 @@ function setAppearanceMode(command: string | number | object) {
     width: 34px;
     height: 34px;
     border-radius: 9px;
-    font-size: 19px;
   }
 
   .brand-name {
@@ -2060,7 +2061,6 @@ function setAppearanceMode(command: string | number | object) {
   .brand-logo {
     width: 32px;
     height: 32px;
-    font-size: 18px;
   }
 
   .brand-name {
