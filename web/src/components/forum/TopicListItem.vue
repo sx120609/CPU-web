@@ -17,10 +17,15 @@
           <strong v-if="metaPriceLabel" class="simple-price">{{ metaPriceLabel }}</strong>
         </div>
         <div class="simple-context">
-          <span class="simple-board">{{ boardDisplayName }}</span>
-          <span v-if="marketKindLabel">{{ marketKindLabel }}</span>
-          <span v-if="marketCategoryLabel">{{ marketCategoryLabel }}</span>
-          <span v-if="reviewState" class="simple-review">{{ reviewState.label }}</span>
+          <div class="simple-context-text">
+            <span class="simple-board">{{ boardDisplayName }}</span>
+            <span v-if="marketKindLabel">{{ marketKindLabel }}</span>
+            <span v-if="marketCategoryLabel">{{ marketCategoryLabel }}</span>
+          </div>
+          <div v-if="aiTags.length" class="simple-ai-tags">
+            <span v-for="tag in aiTags" :key="tag.name" class="simple-ai-tag">{{ tag.name }}</span>
+          </div>
+          <span v-if="reviewState" class="simple-tag simple-review">{{ reviewState.label }}</span>
         </div>
         <div class="simple-footer">
           <div class="simple-byline">
@@ -83,7 +88,7 @@
           :key="tag.name"
           size="small"
           effect="plain"
-          type="warning"
+          type="info"
           class="tag ai-tag"
         >
           {{ tag.name }}
@@ -305,7 +310,16 @@ function openTopic() {
 
 .line1 { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
 .tag { flex-shrink: 0; }
-.ai-tag { --el-tag-border-color: #fdba74; --el-tag-hover-color: #9a3412; }
+.ai-tag {
+  --el-tag-bg-color: var(--cpu-surface-soft);
+  --el-tag-border-color: var(--cpu-border-soft);
+  --el-tag-text-color: var(--cpu-text-muted);
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 500;
+}
 .market-kind-tag { font-weight: 600; }
 .review-tag { font-weight: 600; }
 .title { flex: 1 1 240px; font-size: 15px; color: var(--cpu-text); font-weight: 500; min-width: 0; overflow-wrap: anywhere; }
@@ -386,22 +400,56 @@ function openTopic() {
 .simple-context {
   display: flex;
   align-items: center;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 6px;
   min-width: 0;
   margin-top: 5px;
+  overflow: visible;
+}
+.simple-context-text,
+.simple-ai-tags {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.simple-context-text {
   overflow: hidden;
   color: var(--cpu-text-muted);
   font-size: 11px;
   line-height: 1.5;
   white-space: nowrap;
 }
-.simple-context span {
+.simple-context-text span {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.simple-context span + span::before { content: "·"; margin-right: 8px; color: var(--cpu-border); }
+.simple-context-text span + span::before { content: "·"; margin: 0 7px; color: var(--cpu-border); }
 .simple-board { color: var(--cpu-primary); font-weight: 650; }
-.simple-review { color: var(--cpu-warn); }
+.simple-ai-tags { flex: 0 0 auto; flex-wrap: wrap; gap: 4px; }
+.simple-ai-tag,
+.simple-tag {
+  display: inline-flex;
+  align-items: center;
+  max-width: 132px;
+  height: 20px;
+  padding: 0 6px;
+  overflow: hidden;
+  border: 1px solid var(--cpu-border);
+  border-radius: 4px;
+  color: var(--cpu-text-secondary);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.simple-ai-tag {
+  border-color: var(--cpu-border-soft);
+  background: var(--cpu-surface-soft);
+  color: var(--cpu-text-muted);
+  font-weight: 500;
+}
+.simple-review { border-color: rgba(245, 158, 11, .48); background: rgba(245, 158, 11, .09); color: var(--cpu-warn); }
 .simple-footer {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -519,11 +567,7 @@ function openTopic() {
   .topic-row--simple .simple-main { grid-column: 2; }
   .topic-row--simple .simple-title { font-size: 14px; line-height: 1.45; }
   .topic-row--simple .simple-price { font-size: 14px; }
-  .topic-row--simple .simple-context {
-    flex-wrap: wrap;
-    overflow: visible;
-    white-space: normal;
-  }
+  .topic-row--simple .simple-context { gap: 4px; }
   .topic-row--simple .simple-footer {
     grid-template-columns: minmax(0, 1fr);
     gap: 5px;
