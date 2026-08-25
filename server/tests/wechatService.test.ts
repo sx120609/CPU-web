@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import test from "node:test";
 import {
   decryptWechatPayload,
+  encryptWechatPayload,
   generateWechatEncodingAesKey,
   generateWechatToken,
   parseWechatXml,
@@ -28,10 +29,18 @@ test("decrypts WeChat safe-mode payload and checks AppID", () => {
   const key = crypto.createHash("sha256").update("wechat-test-key").digest();
   const encodingAesKey = key.toString("base64").replace(/=+$/g, "");
   const xml = "<xml><MsgType><![CDATA[text]]></MsgType><Content><![CDATA[你好]]></Content></xml>";
-  const encrypted = encryptWechatPayload(xml, appId, key);
+  const encrypted = encryptWechatPayloadForTest(xml, appId, key);
 
   assert.equal(decryptWechatPayload(encrypted, encodingAesKey, appId), xml);
   assert.throws(() => decryptWechatPayload(encrypted, encodingAesKey, "another-app"));
+});
+
+test("round-trips encrypted passive replies", () => {
+  const encodingAesKey = generateWechatEncodingAesKey();
+  const appId = "wx-test-passive-reply";
+  const xml = "<xml><Content><![CDATA[帮助]]></Content></xml>";
+  const encrypted = encryptWechatPayload(xml, encodingAesKey, appId);
+  assert.equal(decryptWechatPayload(encrypted, encodingAesKey, appId), xml);
 });
 
 test("parses text and scan event XML", () => {
@@ -62,7 +71,7 @@ function sha1(parts: string[]) {
   return crypto.createHash("sha1").update([...parts].sort().join("")).digest("hex");
 }
 
-function encryptWechatPayload(xml: string, appId: string, key: Buffer) {
+function encryptWechatPayloadForTest(xml: string, appId: string, key: Buffer) {
   const message = Buffer.from(xml);
   const length = Buffer.alloc(4);
   length.writeUInt32BE(message.length);

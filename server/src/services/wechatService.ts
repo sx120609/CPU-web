@@ -10,6 +10,7 @@ const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 const BIND_TOKEN_TTL_MS = 10 * 60 * 1000;
 const CUSTOMER_MESSAGE_WINDOW_MS = 48 * 60 * 60 * 1000;
 const WECHAT_API_TIMEOUT_MS = 12_000;
+const WECHAT_PASSIVE_ASSISTANT_TIMEOUT_MS = 3_500;
 const DEFAULT_NOTIFY_CATEGORIES = ["reply", "mention", "like", "system", "service-tool", "lost-found", "school-feed"];
 const NOTIFY_CATEGORY_OPTIONS = new Set(DEFAULT_NOTIFY_CATEGORIES);
 const MAX_WECHAT_TEXT_LENGTH = 1800;
@@ -296,7 +297,7 @@ export async function decodeWechatCallback(input: {
   return parseWechatXml(xml);
 }
 
-export async function processWechatInbound(message: WechatInboundMessage) {
+export async function processWechatInbound(message: WechatInboundMessage, options?: { passiveReply?: boolean }) {
   const openId = message.fromUserName.trim();
   if (!openId) return { ignored: true };
   const eventType = message.msgType === "event" ? `event:${message.event.toLowerCase()}` : message.msgType;
@@ -335,9 +336,17 @@ export async function processWechatInbound(message: WechatInboundMessage) {
       });
     }
     await logWechatMessage({ direction: "inbound", eventType, status: "ok", openId, userId: binding?.userId, messageId, rawPayload: message });
-    if (binding) await sendWechatCustomerText(openId, "微信服务号绑定成功。你可以发送“帮助”查看可用功能。");
-    else if (message.event.toLowerCase() === "subscribe") await sendWechatCustomerText(openId, renderWechatWelcome());
-    return { ok: true };
+    const replyText = binding
+      ? "微信服务号绑定成功。你可以发送“帮助”查看可用功能。"
+      : message.event.toLowerCase() === "subscribe" ? renderWechatWelcome() : "";
+    if (replyText) {
+      if (options?.passiveReply) {
+        await logWechatMessage({ direction: "outbound", eventType: "passive", status: "ok", openId, userId: binding?.userId, content: replyText });
+      } else {
+        await sendWechatCustomerText(openId, replyText);
+      }
+    }
+    return { ok: true, replyText: options?.passiveReply ? replyText || undefined : undefined };
   }
 
   if (binding) {
@@ -357,10 +366,29 @@ export async function processWechatInbound(message: WechatInboundMessage) {
     content: message.content,
     rawPayload: message,
   });
+  let replyText = "";
   if (message.msgType === "text") {
-    await handleWechatTextMessage(openId, message.content, binding?.userId ?? null);
+    replyText = await resolveWechatTextReply(message.content, binding?.userId ?? null);
+    if (replyText) {
+      if (options?.passiveReply) {
+        await logWechatMessage({ direction: "outbound", eventType: "passive", status: "ok", openId, userId: binding?.userId, content: replyText });
+      } else {
+        await sendWechatCustomerText(openId, replyText);
+      }
+    }
   }
-  return { ok: true };
+  return { ok: true, replyText: options?.passiveReply ? replyText || undefined : undefined };
+}
+
+export async function encodeWechatPassiveTextReply(message: WechatInboundMessage, content: string, encrypted: boolean) {
+  const config = await getWechatServiceConfigRaw();
+  const xml = buildWechatTextReplyXml(message.fromUserName, message.toUserName, content);
+  if (!encrypted) return xml;
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  const nonce = crypto.randomBytes(8).toString("hex");
+  const encrypt = encryptWechatPayload(xml, config.encodingAesKey, config.appId);
+  const msgSignature = createWechatSignature(config.token, timestamp, nonce, encrypt);
+  return `<xml><Encrypt><![CDATA[${encrypt}]]></Encrypt><MsgSignature><![CDATA[${msgSignature}]]></MsgSignature><TimeStamp>${timestamp}</TimeStamp><Nonce><![CDATA[${nonce}]]></Nonce></xml>`;
 }
 
 export async function sendWechatCustomerText(openId: string, content: string) {
@@ -519,6 +547,20 @@ export function decryptWechatPayload(encryptedPayload: string, encodingAesKey: s
   return message;
 }
 
+export function encryptWechatPayload(payload: string, encodingAesKey: string, appId: string) {
+  if (!isValidEncodingAesKey(encodingAesKey)) throw Errors.badRequest("EncodingAESKey 配置无效");
+  const key = Buffer.from(`${encodingAesKey}=`, "base64");
+  const message = Buffer.from(payload, "utf8");
+  const messageLength = Buffer.alloc(4);
+  messageLength.writeUInt32BE(message.length, 0);
+  const plain = Buffer.concat([crypto.randomBytes(16), messageLength, message, Buffer.from(appId, "utf8")]);
+  const padding = 32 - (plain.length % 32);
+  const padded = Buffer.concat([plain, Buffer.alloc(padding, padding)]);
+  const cipher = crypto.createCipheriv("aes-256-cbc", key, key.subarray(0, 16));
+  cipher.setAutoPadding(false);
+  return Buffer.concat([cipher.update(padded), cipher.final()]).toString("base64");
+}
+
 export function parseWechatXml(xml: string): WechatInboundMessage & { encrypt: string } {
   return {
     toUserName: readXmlTag(xml, "ToUserName"),
@@ -553,47 +595,44 @@ export function shouldDeliverWechatNotification(
   return true;
 }
 
-async function handleWechatTextMessage(openId: string, rawContent: string, userId: number | null) {
+async function resolveWechatTextReply(rawContent: string, userId: number | null) {
   const config = await getWechatServiceConfigRaw();
   const content = rawContent.trim();
-  if (!content) return;
+  if (!content) return "";
   if (/^(帮助|help|菜单)$/iu.test(content)) {
-    await sendWechatCustomerText(openId, renderWechatHelp(Boolean(userId)));
-    return;
+    return renderWechatHelp(Boolean(userId));
   }
   if (/^(状态|绑定|我的)$/u.test(content)) {
-    await sendWechatCustomerText(openId, userId
+    return userId
       ? `当前微信已绑定药大拾间账号。\n消息设置：${normalizedSiteOrigin()}/messages?tab=settings`
-      : `当前微信尚未绑定。\n请打开：${normalizedSiteOrigin()}/messages?tab=settings`);
-    return;
+      : `当前微信尚未绑定。\n请打开：${normalizedSiteOrigin()}/messages?tab=settings`;
   }
   if (/^(投稿|发帖|发布|发说说)$/u.test(content)) {
-    await sendWechatCustomerText(openId, userId
+    return userId
       ? `打开发布页：${normalizedSiteOrigin()}/post`
-      : `请先绑定账号：${normalizedSiteOrigin()}/messages?tab=settings`);
-    return;
+      : `请先绑定账号：${normalizedSiteOrigin()}/messages?tab=settings`;
   }
   if (/^(我的投稿|我的帖子)$/u.test(content)) {
-    await sendWechatCustomerText(openId, userId ? await renderRecentWechatTopics(userId) : "请先绑定账号后再查看投稿记录。");
-    return;
+    return userId ? renderRecentWechatTopics(userId) : "请先绑定账号后再查看投稿记录。";
   }
   if (!config.assistantEnabled) {
-    await sendWechatCustomerText(openId, renderWechatHelp(Boolean(userId)));
-    return;
+    return renderWechatHelp(Boolean(userId));
   }
   try {
-    const response = await askCampusAssistant({
-      message: content,
-      history: [],
-      context: { features: getFeatures(), forumAccessEnabled: true, loggedIn: Boolean(userId) },
-      usage: userId ? { createdById: userId } : undefined,
-    });
+    const response = await Promise.race([
+      askCampusAssistant({
+        message: content,
+        history: [],
+        context: { features: getFeatures(), forumAccessEnabled: true, loggedIn: Boolean(userId) },
+        usage: userId ? { createdById: userId } : undefined,
+      }),
+      new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error("PASSIVE_REPLY_TIMEOUT")), WECHAT_PASSIVE_ASSISTANT_TIMEOUT_MS)),
+    ]);
     const actions = response.actions.slice(0, 3).map((action) => `${action.label}：${absoluteSiteUrl(action.url)}`);
-    const reply = [response.answer, actions.length ? "" : null, ...actions, "", "以上内容由 AI 生成，请注意核实。"].filter(Boolean).join("\n");
-    await sendWechatCustomerText(openId, reply);
+    return [response.answer, actions.length ? "" : null, ...actions, "", "以上内容由 AI 生成，请注意核实。"].filter(Boolean).join("\n");
   } catch (error) {
     console.warn("[wechat] assistant reply failed", error instanceof Error ? error.message : error);
-    await sendWechatCustomerText(openId, "拾间AI暂时不可用，请稍后再试。");
+    return `拾间AI本次未能在微信时限内完成回答，请打开：${normalizedSiteOrigin()}/assistant`;
   }
 }
 
@@ -797,6 +836,21 @@ function renderNotificationText(notification: any, link: string) {
     notification.content,
     link ? `查看：${link}` : null,
   ].filter(Boolean).join("\n\n");
+}
+
+function buildWechatTextReplyXml(toUserName: string, fromUserName: string, content: string) {
+  const timestamp = Math.floor(Date.now() / 1000);
+  return `<xml><ToUserName><![CDATA[${safeWechatCdata(toUserName)}]]></ToUserName><FromUserName><![CDATA[${safeWechatCdata(fromUserName)}]]></FromUserName><CreateTime>${timestamp}</CreateTime><MsgType><![CDATA[text]]></MsgType><Content><![CDATA[${safeWechatCdata(content)}]]></Content></xml>`;
+}
+
+function safeWechatCdata(value: string) {
+  return String(value).replace(/]]>/g, "]]]]><![CDATA[>");
+}
+
+function createWechatSignature(token: string, timestamp: string, nonce: string, encryptedPayload?: string) {
+  const parts = [token, timestamp, nonce];
+  if (encryptedPayload !== undefined) parts.push(encryptedPayload);
+  return crypto.createHash("sha1").update(parts.sort().join("")).digest("hex");
 }
 
 function resolveNotificationLink(rawLink: string | null | undefined, payloadValue: unknown) {

@@ -8,6 +8,7 @@ import {
   createWechatOauthBindUrl,
   decodeWechatCallback,
   deleteUserWechatBinding,
+  encodeWechatPassiveTextReply,
   getUserWechatProfile,
   processWechatInbound,
   verifyWechatCallback,
@@ -41,10 +42,14 @@ wechatRouter.post("/callback", express.text({ type: ["text/xml", "application/xm
       nonce: queryString(req.query.nonce),
       encryptType: queryString(req.query.encrypt_type),
     });
+    const result = await processWechatInbound(message, { passiveReply: true });
+    if (result.replyText) {
+      const encrypted = queryString(req.query.encrypt_type) === "aes" || Boolean(queryString(req.query.msg_signature));
+      const body = await encodeWechatPassiveTextReply(message, result.replyText, encrypted);
+      res.type("application/xml; charset=utf-8").send(body);
+      return;
+    }
     res.type("text/plain; charset=utf-8").send("success");
-    void processWechatInbound(message).catch((error) => {
-      console.warn("[wechat] inbound processing failed", error instanceof Error ? error.message : error);
-    });
   } catch (error) {
     next(error);
   }
