@@ -19,6 +19,9 @@
         <el-tag v-if="marketKindLabel" size="small" effect="plain" :type="marketKindType" class="tag market-kind-tag">
           {{ marketKindLabel }}
         </el-tag>
+        <el-tag v-if="marketCategoryLabel" size="small" effect="plain" type="info" class="tag market-category-tag">
+          {{ marketCategoryLabel }}
+        </el-tag>
         <el-tag v-if="reviewState" size="small" :type="reviewState.type" effect="plain" class="tag review-tag">
           {{ reviewState.label }}
         </el-tag>
@@ -93,8 +96,26 @@ const marketKindLabel = computed(() => {
   return marketKind.value === "sell" ? "出闲置" : "";
 });
 const marketKindType = computed(() => marketKind.value === "wanted" ? "warning" as const : marketKind.value === "discuss" ? "info" as const : "success" as const);
+const MARKET_CATEGORY_LABELS: Record<string, string> = {
+  books: "教材书籍",
+  digital: "数码电器",
+  appliance: "数码电器",
+  dorm: "宿舍生活",
+  fashion: "衣物日用",
+  sports: "运动户外",
+  tickets: "票券周边",
+  digital_goods: "电子资料",
+  other: "其他",
+};
+const marketCategoryLabel = computed(() => {
+  if (!marketKind.value || marketKind.value === "discuss") return "";
+  return MARKET_CATEGORY_LABELS[String(props.topic.metadata?.category || "")] || "";
+});
 const metaPriceLabel = computed(() => {
   if (!marketKind.value || marketKind.value === "discuss") return "";
+  if (props.topic.metadata?.priceType === "negotiable") {
+    return marketKind.value === "wanted" ? "预算面议" : "面议";
+  }
   const raw = props.topic.metadata?.price;
   if (raw === undefined || raw === null || raw === "") return "";
   const price = Number(raw);

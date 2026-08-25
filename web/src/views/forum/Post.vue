@@ -1,6 +1,13 @@
 <template>
   <div class="post-page">
-    <h2 class="page-title">{{ pageTitle }}</h2>
+    <header class="post-page-header" :class="{ 'second-hand-page-header': isSecondHandPost }">
+      <div>
+        <span v-if="isSecondHandPost" class="page-eyebrow">SECOND-HAND FORUM</span>
+        <h2 class="page-title">{{ pageTitle }}</h2>
+        <p v-if="isSecondHandPost">把关键信息写清楚，再通过帖子和评论完成后续沟通。</p>
+      </div>
+      <el-button v-if="isSecondHandPost" plain @click="router.push('/market')">返回二手交流</el-button>
+    </header>
 
     <div v-if="loadError && !loading" class="cpu-card post-load-state">
       <el-empty :description="loadError">
@@ -10,7 +17,7 @@
 
     <div v-else v-loading="loading" class="cpu-card form">
       <el-form label-position="top" :model="form">
-        <el-form-item label="选择板块" required>
+        <el-form-item v-if="!isSecondHandPost" label="选择板块" required>
           <el-select v-model="form.boardSlug" placeholder="选择要发帖的板块" :disabled="!!editingId" @change="onBoardChange">
             <el-option-group v-for="(group, label) in groupedBoards" :key="label" :label="label">
               <el-option
@@ -40,44 +47,151 @@
           </div>
         </el-form-item>
 
-        <!-- 二手交流板块：只补充帖子信息，不产生站内交易 -->
-        <template v-if="boardType === 'market'">
-          <el-alert
-            type="warning"
-            :closable="false"
-            show-icon
-            title="二手交流仅用于发布信息和公开讨论，不提供站内下单、支付、担保、退款或结算。"
-            class="second-hand-alert"
-          />
-          <el-form-item label="发布类型" required>
-            <el-radio-group v-model="meta.marketKind">
-              <el-radio-button value="sell">发布闲置</el-radio-button>
-              <el-radio-button value="wanted">发布求购</el-radio-button>
-              <el-radio-button value="discuss">交流讨论</el-radio-button>
-            </el-radio-group>
-          </el-form-item>
-          <div v-if="meta.marketKind !== 'discuss'" class="meta-row">
-            <el-form-item :label="meta.marketKind === 'wanted' ? '预算（元，可选）' : '期望价格（元，可选）'">
-              <el-input-number v-model="meta.price" :min="0" :max="999999" :step="10" placeholder="可留空或面议" />
-            </el-form-item>
-            <el-form-item v-if="meta.marketKind === 'sell'" label="物品状态">
-              <el-select v-model="meta.condition" placeholder="选择">
-                <el-option label="全新" value="全新" />
-                <el-option label="九成新" value="九成新" />
-                <el-option label="八成新" value="八成新" />
-                <el-option label="七成新及以下" value="七成新及以下" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="交接偏好">
-              <el-select v-model="meta.tradeMode" placeholder="选择">
-                <el-option label="校内面交" value="校内面交" />
-                <el-option label="邮寄" value="邮寄" />
-                <el-option label="均可" value="均可" />
-                <el-option label="线上沟通" value="线上沟通" />
-              </el-select>
-            </el-form-item>
+        <!-- 二手交流板块：保留必要的信息结构，不产生站内交易 -->
+        <section v-if="isSecondHandPost" class="second-hand-form" aria-labelledby="second-hand-form-title">
+          <div class="second-hand-form-head">
+            <div>
+              <span class="section-step">01</span>
+              <div>
+                <h3 id="second-hand-form-title">选择发布方式</h3>
+                <p>先说明你是想出闲置、收求购，还是聊聊二手相关话题。</p>
+              </div>
+            </div>
+            <span class="forum-only-badge">论坛信息帖</span>
           </div>
-        </template>
+
+          <div class="second-hand-kind-grid" role="radiogroup" aria-label="发布方式">
+            <button
+              v-for="option in SECOND_HAND_KINDS"
+              :key="option.value"
+              type="button"
+              class="second-hand-kind"
+              :class="{ active: meta.marketKind === option.value }"
+              role="radio"
+              :aria-checked="meta.marketKind === option.value"
+              @click="meta.marketKind = option.value"
+            >
+              <span class="second-hand-kind__icon">{{ option.icon }}</span>
+              <span>
+                <b>{{ option.label }}</b>
+                <small>{{ option.description }}</small>
+              </span>
+              <span class="second-hand-kind__check">✓</span>
+            </button>
+          </div>
+
+          <template v-if="meta.marketKind !== 'discuss'">
+            <div class="second-hand-section">
+              <div class="second-hand-section-title">
+                <span class="section-step">02</span>
+                <div>
+                  <h3>填写物品信息</h3>
+                  <p>{{ meta.marketKind === 'wanted' ? '让大家快速判断是否有合适的物品。' : '清楚说明分类、成色与价格，减少重复询问。' }}</p>
+                </div>
+              </div>
+
+              <div class="market-form-grid">
+                <el-form-item label="物品分类" required>
+                  <el-select v-model="meta.category" placeholder="请选择分类" class="market-field-control">
+                    <el-option
+                      v-for="category in SECOND_HAND_CATEGORIES"
+                      :key="category.value"
+                      :value="category.value"
+                      :label="`${category.icon} ${category.label}`"
+                    />
+                  </el-select>
+                </el-form-item>
+
+                <el-form-item v-if="meta.marketKind === 'sell'" label="物品成色" required>
+                  <el-select v-model="meta.condition" placeholder="请选择成色" class="market-field-control">
+                    <el-option v-for="condition in SECOND_HAND_CONDITIONS" :key="condition" :label="condition" :value="condition" />
+                  </el-select>
+                </el-form-item>
+
+                <el-form-item label="价格方式" required>
+                  <el-radio-group v-model="meta.priceType" class="market-price-type">
+                    <el-radio-button value="fixed">{{ meta.marketKind === 'wanted' ? '明确预算' : '明确标价' }}</el-radio-button>
+                    <el-radio-button value="negotiable">面议</el-radio-button>
+                  </el-radio-group>
+                </el-form-item>
+
+                <el-form-item
+                  v-if="meta.priceType === 'fixed'"
+                  :label="meta.marketKind === 'wanted' ? '预算（元）' : '价格（元）'"
+                  required
+                >
+                  <el-input-number
+                    v-model="meta.price"
+                    :min="0.01"
+                    :max="999999"
+                    :precision="2"
+                    :step="10"
+                    controls-position="right"
+                    placeholder="请输入金额"
+                    class="market-field-control"
+                  />
+                  <el-checkbox v-if="meta.marketKind === 'sell'" v-model="meta.negotiable" class="market-negotiable">
+                    可小议
+                  </el-checkbox>
+                </el-form-item>
+              </div>
+            </div>
+
+            <div class="second-hand-section">
+              <div class="second-hand-section-title">
+                <span class="section-step">03</span>
+                <div>
+                  <h3>约定沟通与交接</h3>
+                  <p>这里只展示意向，具体安排请在评论或双方自行选择的方式中确认。</p>
+                </div>
+              </div>
+
+              <div class="market-form-grid">
+                <el-form-item label="交接偏好" required>
+                  <el-select v-model="meta.tradeMode" placeholder="请选择" class="market-field-control">
+                    <el-option v-for="mode in SECOND_HAND_TRADE_MODES" :key="mode" :label="mode" :value="mode" />
+                  </el-select>
+                </el-form-item>
+
+                <el-form-item label="所在校区">
+                  <el-select
+                    v-model="meta.campus"
+                    filterable
+                    allow-create
+                    default-first-option
+                    clearable
+                    placeholder="选择或填写校区"
+                    class="market-field-control"
+                  >
+                    <el-option v-for="campus in SECOND_HAND_CAMPUSES" :key="campus" :label="campus" :value="campus" />
+                  </el-select>
+                </el-form-item>
+
+                <el-form-item label="参考地点（可选）" class="market-location-field">
+                  <el-input
+                    v-model="meta.location"
+                    maxlength="80"
+                    show-word-limit
+                    placeholder="例如：江宁校区图书馆门口；建议选择公开场所"
+                  />
+                </el-form-item>
+              </div>
+            </div>
+          </template>
+
+          <div v-else class="second-hand-discuss-prompt">
+            <span>💬</span>
+            <div>
+              <b>按普通讨论帖发布</b>
+              <p>适合交流避坑经验、询价、鉴别和物品循环建议，不需要填写商品表单。</p>
+            </div>
+          </div>
+
+          <div class="second-hand-safety">
+            <b>发布提醒</b>
+            <span>本站不提供下单、支付、担保、退款或结算；请勿发布违法违规物品、处方药及考试作弊资料。</span>
+          </div>
+        </section>
 
         <!-- 提问板块特化 -->
         <template v-if="boardType === 'question'">
@@ -161,12 +275,19 @@
           </el-form-item>
         </template>
 
-        <el-form-item label="标题" required>
-          <el-input v-model="form.title" placeholder="一句话描述要点（2-120 字）" maxlength="120" show-word-limit />
+        <el-form-item :label="postTitleLabel" required>
+          <el-input v-model="form.title" :placeholder="postTitlePlaceholder" maxlength="120" show-word-limit />
         </el-form-item>
 
-        <el-form-item label="正文" required>
+        <el-form-item :label="postContentLabel" required>
           <div class="post-editor-shell">
+            <div v-if="isSecondHandPost" class="second-hand-description-guide">
+              <span>✦</span>
+              <div>
+                <b>{{ secondHandDescriptionTitle }}</b>
+                <p>{{ secondHandDescriptionHint }}</p>
+              </div>
+            </div>
             <div class="post-editor-toolbar">
               <div class="editor-mode-switch" role="tablist" aria-label="正文编辑模式">
                 <button
@@ -259,7 +380,7 @@
         />
 
         <el-form-item class="form-actions">
-          <el-button type="primary" :loading="submitting" :disabled="submitDisabled" @click="submit">{{ editingId ? '预览并重新提交' : '预览并发布' }}</el-button>
+          <el-button type="primary" :loading="submitting" :disabled="submitDisabled" @click="submit">{{ submitButtonLabel }}</el-button>
           <el-button :disabled="submitting" @click="$router.back()">取消</el-button>
         </el-form-item>
       </el-form>
@@ -278,6 +399,13 @@
           <span>{{ form.content.length }} / {{ CONTENT_MAX }}</span>
         </div>
         <el-tag v-if="form.anonymous" type="warning" effect="plain" class="preview-anon-tag">匿名发布</el-tag>
+        <div v-if="isSecondHandPost" class="second-hand-preview-summary">
+          <div v-for="fact in marketPreviewFacts" :key="fact.label" class="second-hand-preview-fact">
+            <span>{{ fact.icon }}</span>
+            <small>{{ fact.label }}</small>
+            <b>{{ fact.value }}</b>
+          </div>
+        </div>
         <h3>{{ form.title || "未填写标题" }}</h3>
         <MarkdownView :content="form.content" />
       </div>
@@ -394,16 +522,40 @@ function routeMarketKind(): "sell" | "wanted" | "discuss" {
   return kind === "wanted" || kind === "discuss" ? kind : "sell";
 }
 
+type SecondHandKind = "sell" | "wanted" | "discuss";
+const SECOND_HAND_KINDS: Array<{ value: SecondHandKind; icon: string; label: string; description: string }> = [
+  { value: "sell", icon: "📦", label: "出闲置", description: "发布自己想转让的物品" },
+  { value: "wanted", icon: "🔎", label: "收求购", description: "说明正在寻找的物品" },
+  { value: "discuss", icon: "💬", label: "聊二手", description: "询价、避坑或经验交流" },
+];
+const SECOND_HAND_CATEGORIES = [
+  { value: "books", icon: "📚", label: "教材书籍" },
+  { value: "digital", icon: "💻", label: "数码电器" },
+  { value: "dorm", icon: "🛏️", label: "宿舍生活" },
+  { value: "fashion", icon: "👕", label: "衣物日用" },
+  { value: "sports", icon: "🏸", label: "运动户外" },
+  { value: "tickets", icon: "🎫", label: "票券周边" },
+  { value: "digital_goods", icon: "📁", label: "电子资料" },
+  { value: "other", icon: "📦", label: "其他" },
+];
+const SECOND_HAND_CONDITIONS = ["全新未拆", "几乎全新", "使用良好", "明显使用痕迹"];
+const SECOND_HAND_TRADE_MODES = ["校内面交", "邮寄", "均可", "线上沟通"];
+const SECOND_HAND_CAMPUSES = ["江宁校区", "玄武门校区", "不限校区"];
+
 function normalizeExistingMarketMeta(metadata: Record<string, any>) {
   const rawKind = metadata.marketKind || metadata.listingType;
   meta.marketKind = rawKind === "wanted" || metadata.condition === "求购" || metadata.condition === "wanted"
     ? "wanted"
     : rawKind === "discuss" ? "discuss" : "sell";
   const conditionMap: Record<string, string> = {
-    new: "全新",
-    like_new: "九成新",
-    good: "八成新",
-    fair: "七成新及以下",
+    new: "全新未拆",
+    like_new: "几乎全新",
+    good: "使用良好",
+    fair: "明显使用痕迹",
+    "全新": "全新未拆",
+    "九成新": "几乎全新",
+    "八成新": "使用良好",
+    "七成新及以下": "明显使用痕迹",
   };
   const tradeModeMap: Record<string, string> = {
     meetup: "校内面交",
@@ -414,22 +566,40 @@ function normalizeExistingMarketMeta(metadata: Record<string, any>) {
     "包邮": "邮寄",
     "当面 / 包邮+5": "均可",
   };
-  meta.condition = conditionMap[String(metadata.condition || "")] || meta.condition || "九成新";
+  const categoryMap: Record<string, string> = {
+    appliance: "digital",
+  };
+  const rawCategory = String(metadata.category || "");
+  meta.category = categoryMap[rawCategory] || rawCategory || meta.category;
+  meta.condition = conditionMap[String(metadata.condition || "")] || meta.condition || "几乎全新";
   meta.tradeMode = tradeModeMap[String(metadata.tradeMode || "")] || meta.tradeMode || "校内面交";
+  const rawPrice = Number(metadata.price);
+  meta.priceType = metadata.priceType === "fixed" || metadata.priceType === "negotiable"
+    ? metadata.priceType
+    : Number.isFinite(rawPrice) && rawPrice > 0 ? "fixed" : "negotiable";
+  meta.price = Number.isFinite(rawPrice) && rawPrice > 0 ? rawPrice : undefined;
+  meta.negotiable = Boolean(metadata.negotiable);
+  meta.campus = typeof metadata.campus === "string" ? metadata.campus : (meta.campus || "");
+  meta.location = typeof metadata.location === "string" ? metadata.location : (meta.location || "");
 }
 
 function defaultPostMeta() {
   return {
-  marketKind: routeMarketKind(),
-  price: undefined,
-  condition: "九成新",
-  tradeMode: "校内面交",
-  bounty: 0,
-  courseId: undefined,
-  courseTeacherId: undefined,
-  teacherName: "",
-  ratings: { difficulty: 3, reward: 3, recommend: 3, givingScore: 3 },
-  semester: "",
+    marketKind: routeMarketKind(),
+    category: undefined,
+    priceType: "fixed",
+    price: undefined,
+    negotiable: false,
+    condition: "几乎全新",
+    tradeMode: "校内面交",
+    campus: "",
+    location: "",
+    bounty: 0,
+    courseId: undefined,
+    courseTeacherId: undefined,
+    teacherName: "",
+    ratings: { difficulty: 3, reward: 3, recommend: 3, givingScore: 3 },
+    semester: "",
   };
 }
 
@@ -437,12 +607,72 @@ const meta = reactive<any>(defaultPostMeta());
 
 const currentBoard = computed(() => boards.value.find((b) => b.slug === form.boardSlug));
 const boardType = computed(() => currentBoard.value?.type ?? "normal");
+const isSecondHandPost = computed(() => boardType.value === "market" || form.boardSlug === "market");
 const pageTitle = computed(() => {
-  if (editingId.value) return "修改帖子";
-  if (boardType.value !== "market") return "发表新帖";
+  if (!isSecondHandPost.value) return editingId.value ? "修改帖子" : "发表新帖";
+  if (editingId.value) return "修改二手信息";
   if (meta.marketKind === "wanted") return "发布求购";
   if (meta.marketKind === "discuss") return "发起二手讨论";
   return "发布闲置";
+});
+const selectedMarketCategory = computed(() => SECOND_HAND_CATEGORIES.find((item) => item.value === meta.category));
+const postTitleLabel = computed(() => {
+  if (!isSecondHandPost.value) return "标题";
+  if (meta.marketKind === "wanted") return "求购标题";
+  if (meta.marketKind === "discuss") return "讨论标题";
+  return "物品标题";
+});
+const postTitlePlaceholder = computed(() => {
+  if (!isSecondHandPost.value) return "一句话描述要点（2-120 字）";
+  if (meta.marketKind === "wanted") return "例如：求购药剂学第 9 版教材，江宁校区自取";
+  if (meta.marketKind === "discuss") return "一句话说明想交流的问题（2-120 字）";
+  return "例如：九成新小米台灯，功能正常，江宁校区面交";
+});
+const postContentLabel = computed(() => {
+  if (!isSecondHandPost.value) return "正文";
+  if (meta.marketKind === "wanted") return "求购要求";
+  if (meta.marketKind === "discuss") return "讨论内容";
+  return "物品说明";
+});
+const secondHandDescriptionTitle = computed(() => {
+  if (meta.marketKind === "wanted") return "把需求范围写具体";
+  if (meta.marketKind === "discuss") return "补充背景和你已经了解的情况";
+  return "真实描述比堆参数更重要";
+});
+const secondHandDescriptionHint = computed(() => {
+  if (meta.marketKind === "wanted") return "建议说明版本、型号、可接受成色、预算范围和希望收到的时间，也可以插入参考图片。";
+  if (meta.marketKind === "discuss") return "说明具体场景、疑问和希望大家重点讨论的部分，方便获得有效回复。";
+  return "建议写清品牌型号、购入时间、使用情况、已知瑕疵和配件，并插入实物图片。";
+});
+const marketPriceDisplay = computed(() => {
+  if (meta.marketKind === "discuss") return "";
+  if (meta.priceType === "negotiable") return meta.marketKind === "wanted" ? "预算面议" : "面议";
+  const price = Number(meta.price);
+  if (!Number.isFinite(price) || price <= 0) return "待填写";
+  const priceText = Number.isInteger(price) ? String(price) : price.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
+  const suffix = meta.marketKind === "sell" && meta.negotiable ? "（可小议）" : "";
+  return `¥${priceText}${suffix}`;
+});
+const marketPreviewFacts = computed(() => {
+  const kind = SECOND_HAND_KINDS.find((item) => item.value === meta.marketKind);
+  const facts = [{ icon: kind?.icon || "💬", label: "发布方式", value: kind?.label || "二手交流" }];
+  if (meta.marketKind === "discuss") return facts;
+  if (selectedMarketCategory.value) {
+    facts.push({ icon: selectedMarketCategory.value.icon, label: "物品分类", value: selectedMarketCategory.value.label });
+  }
+  facts.push({ icon: "¥", label: meta.marketKind === "wanted" ? "预算" : "价格", value: marketPriceDisplay.value });
+  if (meta.marketKind === "sell") facts.push({ icon: "◫", label: "物品成色", value: meta.condition });
+  facts.push({ icon: "🤝", label: "交接偏好", value: meta.tradeMode });
+  if (meta.campus) facts.push({ icon: "🏫", label: "所在校区", value: meta.campus });
+  if (meta.location?.trim()) facts.push({ icon: "📍", label: "参考地点", value: meta.location.trim() });
+  return facts;
+});
+const submitButtonLabel = computed(() => {
+  if (editingId.value) return "预览并重新提交";
+  if (!isSecondHandPost.value) return "预览并发布";
+  if (meta.marketKind === "wanted") return "预览求购帖";
+  if (meta.marketKind === "discuss") return "预览讨论帖";
+  return "预览闲置帖";
 });
 const formDraftKey = computed(() => editingId.value ? "" : "cpu-post-new-draft");
 const contentDraftKey = computed(() => formDraftKey.value ? `${formDraftKey.value}-content` : "");
@@ -520,7 +750,7 @@ watch(anonymousEnabledForForm, (enabled) => {
   if (!enabled && !editingId.value) form.anonymous = false;
 }, { immediate: true });
 
-watch(() => [form.boardSlug, form.title, form.anonymous, meta.marketKind, meta.price, meta.condition, meta.tradeMode, meta.bounty, meta.courseId, meta.courseTeacherId, meta.teacherName, meta.semester, editorMode.value], () => {
+watch(() => [form.boardSlug, form.title, form.anonymous, meta.marketKind, meta.category, meta.priceType, meta.price, meta.negotiable, meta.condition, meta.tradeMode, meta.campus, meta.location, meta.bounty, meta.courseId, meta.courseTeacherId, meta.teacherName, meta.semester, editorMode.value], () => {
   scheduleFormDraftSave();
 }, { deep: true });
 
@@ -558,6 +788,7 @@ async function loadInitial() {
       restoreFormDraft();
       restoreContentDraft();
       if (typeof route.query.kind === "string") meta.marketKind = routeMarketKind();
+      if (boardType.value === "market") normalizeExistingMarketMeta(meta);
       restorePendingTopicSubmission();
       if (pendingSubmissionAttempt.value) void monitorPendingTopicSubmission(pendingSubmissionAttempt.value.submissionId);
     }
@@ -857,10 +1088,38 @@ function buildMetadata() {
   if (boardType.value === "market") {
     metadata.marketKind = meta.marketKind;
     if (meta.marketKind !== "discuss") {
+      if (!SECOND_HAND_CATEGORIES.some((item) => item.value === meta.category)) {
+        ElMessage.warning("请选择物品分类");
+        return null;
+      }
+      if (meta.priceType !== "fixed" && meta.priceType !== "negotiable") {
+        ElMessage.warning("请选择价格方式");
+        return null;
+      }
+      if (meta.priceType === "fixed") {
+        const price = Number(meta.price);
+        if (!Number.isFinite(price) || price <= 0) {
+          ElMessage.warning(meta.marketKind === "wanted" ? "请填写预算，或选择面议" : "请填写价格，或选择面议");
+          return null;
+        }
+        metadata.price = price;
+      }
+      if (!SECOND_HAND_TRADE_MODES.includes(meta.tradeMode)) {
+        ElMessage.warning("请选择交接偏好");
+        return null;
+      }
+      if (meta.marketKind === "sell" && !SECOND_HAND_CONDITIONS.includes(meta.condition)) {
+        ElMessage.warning("请选择物品成色");
+        return null;
+      }
       metadata.listingType = meta.marketKind === "wanted" ? "wanted" : "sell";
-      if (typeof meta.price === "number" && Number.isFinite(meta.price)) metadata.price = meta.price;
+      metadata.category = meta.category;
+      metadata.priceType = meta.priceType;
+      metadata.negotiable = meta.priceType === "negotiable" || Boolean(meta.negotiable);
       if (meta.marketKind === "sell") metadata.condition = meta.condition;
       metadata.tradeMode = meta.tradeMode;
+      if (meta.campus?.trim()) metadata.campus = meta.campus.trim();
+      if (meta.location?.trim()) metadata.location = meta.location.trim();
     }
   } else if (boardType.value === "question") {
     metadata.bounty = meta.bounty;
@@ -1126,6 +1385,35 @@ function notifyVideoReviewState(summary?: {
 
 <style scoped>
 .post-page { display: flex; flex-direction: column; gap: 16px; }
+.post-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+.post-page-header p {
+  margin: 7px 0 0;
+  color: var(--cpu-text-secondary);
+  font-size: 13px;
+}
+.post-page-header.second-hand-page-header {
+  position: relative;
+  overflow: hidden;
+  padding: 22px 24px;
+  border: 1px solid color-mix(in srgb, var(--cpu-primary) 22%, var(--cpu-border-soft));
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 92% -20%, color-mix(in srgb, var(--cpu-primary) 19%, transparent) 0, transparent 45%),
+    linear-gradient(135deg, color-mix(in srgb, var(--cpu-card) 90%, #7c3aed) 0%, var(--cpu-card) 72%);
+}
+.page-eyebrow {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--cpu-primary);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+}
 .page-title { margin: 0; font-size: 22px; }
 .cpu-card {
   background: var(--cpu-card);
@@ -1348,9 +1636,278 @@ function notifyVideoReviewState(summary?: {
   font-size: 12px;
   line-height: 1.6;
 }
-.meta-row { display: flex; gap: 14px; flex-wrap: wrap; }
-.meta-row .el-form-item { min-width: 200px; flex: 1; }
-.second-hand-alert { margin-bottom: 18px; }
+.second-hand-form {
+  margin: 0 0 24px;
+  overflow: hidden;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--cpu-surface-subtle) 56%, var(--cpu-card));
+}
+
+.second-hand-form-head,
+.second-hand-section-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.second-hand-form-head {
+  padding: 20px 20px 12px;
+}
+
+.second-hand-form-head > div,
+.second-hand-section-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+
+.second-hand-form h3 {
+  margin: 0;
+  color: var(--cpu-text);
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.second-hand-form p {
+  margin: 3px 0 0;
+  color: var(--cpu-text-secondary);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.section-step {
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-right: 10px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--cpu-primary) 12%, var(--cpu-card));
+  color: var(--cpu-primary);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.forum-only-badge {
+  flex: 0 0 auto;
+  padding: 5px 9px;
+  border: 1px solid color-mix(in srgb, var(--cpu-primary) 24%, var(--cpu-border-soft));
+  border-radius: 999px;
+  background: var(--cpu-card);
+  color: var(--cpu-primary);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.second-hand-kind-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 0 20px 20px;
+}
+
+.second-hand-kind {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 13px;
+  background: var(--cpu-card);
+  color: var(--cpu-text);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.18s ease, background-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.second-hand-kind:hover {
+  border-color: color-mix(in srgb, var(--cpu-primary) 42%, var(--cpu-border-soft));
+  transform: translateY(-1px);
+}
+
+.second-hand-kind.active {
+  border-color: color-mix(in srgb, var(--cpu-primary) 72%, var(--cpu-border-soft));
+  background: color-mix(in srgb, var(--cpu-primary) 7%, var(--cpu-card));
+  box-shadow: 0 7px 18px color-mix(in srgb, var(--cpu-primary) 12%, transparent);
+}
+
+.second-hand-kind:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--cpu-primary) 25%, transparent);
+  outline-offset: 2px;
+}
+
+.second-hand-kind__icon {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  background: var(--cpu-surface-subtle);
+  font-size: 19px;
+}
+
+.second-hand-kind b,
+.second-hand-kind small {
+  display: block;
+}
+
+.second-hand-kind b {
+  margin-bottom: 3px;
+  font-size: 14px;
+}
+
+.second-hand-kind small {
+  overflow: hidden;
+  color: var(--cpu-text-secondary);
+  font-size: 11px;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.second-hand-kind__check {
+  position: absolute;
+  top: 8px;
+  right: 9px;
+  display: grid;
+  place-items: center;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: var(--cpu-primary);
+  color: #fff;
+  font-size: 10px;
+  opacity: 0;
+  transform: scale(0.72);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.second-hand-kind.active .second-hand-kind__check {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.second-hand-section {
+  padding: 20px;
+  border-top: 1px solid var(--cpu-border-soft);
+  background: var(--cpu-card);
+}
+
+.second-hand-section-title {
+  margin-bottom: 17px;
+}
+
+.market-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 18px;
+  padding-left: 38px;
+}
+
+.market-form-grid :deep(.el-form-item) {
+  min-width: 0;
+  margin-bottom: 17px;
+}
+
+.market-form-grid :deep(.el-form-item__content) {
+  min-width: 0;
+}
+
+.market-field-control,
+.market-field-control:deep(.el-input-number) {
+  width: 100%;
+}
+
+.market-price-type {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  width: 100%;
+}
+
+.market-price-type :deep(.el-radio-button),
+.market-price-type :deep(.el-radio-button__inner) {
+  width: 100%;
+}
+
+.market-negotiable {
+  flex: 0 0 auto;
+  margin-left: 12px;
+}
+
+.market-location-field {
+  grid-column: 1 / -1;
+}
+
+.second-hand-discuss-prompt {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 0 20px 20px;
+  padding: 15px 16px;
+  border: 1px dashed color-mix(in srgb, var(--cpu-primary) 30%, var(--cpu-border-soft));
+  border-radius: 13px;
+  background: var(--cpu-card);
+}
+
+.second-hand-discuss-prompt > span {
+  font-size: 22px;
+}
+
+.second-hand-discuss-prompt b {
+  color: var(--cpu-text);
+  font-size: 13px;
+}
+
+.second-hand-safety {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 20px;
+  border-top: 1px solid color-mix(in srgb, #d97706 22%, var(--cpu-border-soft));
+  background: color-mix(in srgb, #f59e0b 7%, var(--cpu-card));
+  color: var(--cpu-text-secondary);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.second-hand-safety b {
+  flex: 0 0 auto;
+  color: #b45309;
+}
+
+.second-hand-description-guide {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--cpu-primary) 18%, var(--cpu-border-soft));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--cpu-primary) 5%, var(--cpu-card));
+}
+
+.second-hand-description-guide > span {
+  color: var(--cpu-primary);
+  font-size: 17px;
+}
+
+.second-hand-description-guide b {
+  display: block;
+  color: var(--cpu-text);
+  font-size: 13px;
+}
+
+.second-hand-description-guide p {
+  margin: 3px 0 0;
+  color: var(--cpu-text-secondary);
+  font-size: 12px;
+  line-height: 1.65;
+}
 
 .rate-row {
   display: grid;
@@ -1392,6 +1949,42 @@ function notifyVideoReviewState(summary?: {
   margin-bottom: 10px;
 }
 
+.second-hand-preview-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 2px 0 16px;
+  padding: 12px;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 12px;
+  background: var(--cpu-surface-subtle);
+}
+
+.second-hand-preview-fact {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 1px 7px;
+  min-width: 0;
+}
+
+.second-hand-preview-fact > span {
+  grid-row: 1 / span 2;
+  align-self: center;
+}
+
+.second-hand-preview-fact small {
+  color: var(--cpu-text-muted);
+  font-size: 10px;
+}
+
+.second-hand-preview-fact b {
+  overflow: hidden;
+  color: var(--cpu-text);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .publish-preview :deep(.md) {
   max-height: min(58dvh, 520px);
   overflow: auto;
@@ -1410,13 +2003,79 @@ function notifyVideoReviewState(summary?: {
     font-size: 20px;
   }
 
+  .post-page-header,
+  .post-page-header.second-hand-page-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .post-page-header.second-hand-page-header {
+    padding: 17px;
+  }
+
   .cpu-card {
     border-radius: 10px;
     padding: 14px;
   }
 
-  .meta-row {
-    gap: 0;
+  .second-hand-form-head {
+    padding: 16px 14px 11px;
+  }
+
+  .second-hand-kind-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 7px;
+    padding: 0 14px 16px;
+  }
+
+  .second-hand-kind {
+    align-items: center;
+    flex-direction: column;
+    gap: 6px;
+    padding: 11px 6px;
+    text-align: center;
+  }
+
+  .second-hand-kind__icon {
+    width: 34px;
+    height: 34px;
+    font-size: 17px;
+  }
+
+  .second-hand-kind b {
+    margin-bottom: 0;
+    font-size: 13px;
+  }
+
+  .second-hand-kind small {
+    display: none;
+  }
+
+  .second-hand-section {
+    padding: 17px 14px;
+  }
+
+  .market-form-grid {
+    grid-template-columns: 1fr;
+    padding-left: 0;
+  }
+
+  .market-location-field {
+    grid-column: auto;
+  }
+
+  .second-hand-discuss-prompt {
+    margin: 0 14px 16px;
+  }
+
+  .second-hand-safety {
+    flex-direction: column;
+    gap: 2px;
+    padding: 11px 14px;
+  }
+
+  .second-hand-preview-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .post-editor-toolbar,
@@ -1457,10 +2116,6 @@ function notifyVideoReviewState(summary?: {
 
   .anonymous-box {
     padding: 12px;
-  }
-
-  .meta-row .el-form-item {
-    min-width: 100%;
   }
 
   .rate-row {

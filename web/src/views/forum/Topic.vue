@@ -125,9 +125,12 @@
         <b>{{ marketKindLabel }}</b>
         <span>仅作信息发布与公开交流，本站不提供站内下单、支付、担保、退款或结算。</span>
       </div>
-      <div v-if="topic.metadata?.condition || topic.metadata?.tradeMode" class="extra-bar">
-        <span v-if="topic.metadata.condition">📦 {{ topic.metadata.condition }}</span>
-        <span v-if="topic.metadata.tradeMode">🤝 {{ topic.metadata.tradeMode }}</span>
+      <div v-if="marketKind && marketKind !== 'discuss'" class="extra-bar second-hand-facts">
+        <span v-if="marketCategoryLabel">🏷️ {{ marketCategoryLabel }}</span>
+        <span v-if="topic.metadata?.condition">📦 {{ topic.metadata.condition }}</span>
+        <span v-if="topic.metadata?.tradeMode">🤝 {{ topic.metadata.tradeMode }}</span>
+        <span v-if="topic.metadata?.campus">🏫 {{ topic.metadata.campus }}</span>
+        <span v-if="topic.metadata?.location">📍 {{ topic.metadata.location }}</span>
       </div>
 
       <div v-if="topic.imageReview?.pendingCount" class="image-review-tip image-review-tip-pending">
@@ -758,8 +761,23 @@ const marketKindLabel = computed(() => {
   if (marketKind.value === "discuss") return "交流讨论";
   return marketKind.value === "sell" ? "发布闲置" : "二手交流";
 });
+const MARKET_CATEGORY_LABELS: Record<string, string> = {
+  books: "教材书籍",
+  digital: "数码电器",
+  appliance: "数码电器",
+  dorm: "宿舍生活",
+  fashion: "衣物日用",
+  sports: "运动户外",
+  tickets: "票券周边",
+  digital_goods: "电子资料",
+  other: "其他",
+};
+const marketCategoryLabel = computed(() => MARKET_CATEGORY_LABELS[String(topic.value?.metadata?.category || "")] || "");
 const metaPriceLabel = computed(() => {
   if (!marketKind.value || marketKind.value === "discuss") return "";
+  if (topic.value?.metadata?.priceType === "negotiable") {
+    return marketKind.value === "wanted" ? "预算面议" : "面议";
+  }
   const raw = topic.value?.metadata?.price;
   if (raw === undefined || raw === null || raw === "") return "";
   const price = Number(raw);
