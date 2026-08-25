@@ -4,7 +4,7 @@
       <div class="smart-post-task-head">
         <div>
           <strong>智慧发帖 Agent</strong>
-          <span>三轮后台任务</span>
+          <span>三轮后台任务 · 同账号设备同步</span>
         </div>
         <el-tag v-if="isRunning" size="small" type="primary" effect="light">处理中</el-tag>
         <el-tag v-else-if="smartPost.status.state === 'completed'" size="small" type="success" effect="light">草稿已生成</el-tag>

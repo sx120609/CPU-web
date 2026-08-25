@@ -251,7 +251,7 @@
       <div class="section-head">
         <div>
           <h3 class="section-title">智慧发帖 Agent</h3>
-          <p class="section-desc">将文字、Word 或 PDF 整理成可编辑帖子草稿。此场景单独指定模型，不继承文字审核模型；Agent 不会自动发布。</p>
+          <p class="section-desc">分三轮分析文字、图片、PPT、Word、PDF 等多附件并生成可编辑草稿。此场景单独指定模型，不继承文字审核模型；Agent 不会自动发布。</p>
         </div>
       </div>
 
@@ -763,7 +763,7 @@ const videoFilters = reactive<{ status: "" | "pending" | "manual_review" | "reje
 });
 const modelAssignments = [
   { key: "assistantModel", serviceKey: "assistantServiceId", label: "拾间 AI", description: "站内问答与校园服务咨询" },
-  { key: "smartPostModel", serviceKey: "smartPostServiceId", label: "智慧发帖", description: "文字与文档生成可编辑帖子草稿" },
+  { key: "smartPostModel", serviceKey: "smartPostServiceId", label: "智慧发帖", description: "文字与多附件生成可编辑帖子草稿" },
   { key: "aiReviewModel", serviceKey: "aiReviewServiceId", label: "文字审核", description: "帖子、回复与编辑相似度" },
   { key: "qqGroupAdReviewModel", serviceKey: "qqGroupAdReviewServiceId", label: "QQ群广告过滤", description: "群消息广告与引流识别" },
   { key: "imageReviewModel", serviceKey: "imageReviewServiceId", label: "图片审核", description: "论坛图片安全审核" },

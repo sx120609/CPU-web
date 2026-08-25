@@ -1128,8 +1128,8 @@ function validateMessageContent(value: unknown, path: string, responses = false)
         const filename = String(item.filename || "").trim();
         const fileData = String(item.file_data || "").trim();
         if (!filename) throw new Error(`AI 请求体无效：${path}[${index}].filename 不能为空`);
-        if (!/^data:(?:application\/pdf|application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document);base64,[A-Za-z0-9+/]+={0,2}$/iu.test(fileData)) {
-          throw new Error(`AI 请求体无效：${path}[${index}].file_data 不是受支持的 PDF/DOCX Data URL`);
+        if (!/^data:(?:application\/pdf|application\/vnd\.openxmlformats-officedocument\.(?:wordprocessingml\.document|presentationml\.presentation)|text\/(?:plain|markdown));base64,[A-Za-z0-9+/]+={0,2}$/iu.test(fileData)) {
+          throw new Error(`AI 请求体无效：${path}[${index}].file_data 不是受支持的 PDF/DOCX/PPTX/TXT/Markdown Data URL`);
         }
         return;
       }

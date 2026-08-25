@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { Errors } from "../utils/response";
 import {
   createSmartPostDraft,
-  normalizeSmartPostFile,
+  normalizeSmartPostFiles,
   type SmartPostDraftInput,
   type SmartPostDraftResult,
 } from "./topicSmartPost";
@@ -19,11 +19,15 @@ export type SmartPostJobSnapshot = {
   completedAt: string | null;
   result: SmartPostDraftResult | null;
   error: string | null;
+  returnPath: string;
 };
 
 type SmartPostJobRecord = SmartPostJobSnapshot & {
   userId: number;
+  acknowledgedAt: string | null;
 };
+
+export type SmartPostJobInput = SmartPostDraftInput & { returnPath?: string | null };
 
 type SmartPostJobRunner = (input: SmartPostDraftInput) => Promise<SmartPostDraftResult>;
 
@@ -35,7 +39,7 @@ const cleanupTimer = setInterval(cleanupSmartPostJobs, 30 * 60_000);
 cleanupTimer.unref?.();
 
 export function enqueueSmartPostJob(
-  rawInput: SmartPostDraftInput,
+  rawInput: SmartPostJobInput,
   runner: SmartPostJobRunner = createSmartPostDraft,
 ): SmartPostJobSnapshot {
   cleanupSmartPostJobs();
@@ -49,7 +53,11 @@ export function enqueueSmartPostJob(
 
   const input: SmartPostDraftInput = {
     ...rawInput,
-    file: rawInput.file ? normalizeSmartPostFile(rawInput.file) : null,
+    files: normalizeSmartPostFiles([
+      ...(rawInput.files || []),
+      ...(rawInput.file ? [rawInput.file] : []),
+    ]),
+    file: null,
   };
   const now = new Date().toISOString();
   const record: SmartPostJobRecord = {
@@ -63,6 +71,8 @@ export function enqueueSmartPostJob(
     completedAt: null,
     result: null,
     error: null,
+    returnPath: normalizeReturnPath(rawInput.returnPath),
+    acknowledgedAt: null,
   };
   jobs.set(record.jobId, record);
 
@@ -77,6 +87,28 @@ export function getSmartPostJob(jobId: string, userId: number): SmartPostJobSnap
   const job = jobs.get(String(jobId || "").trim());
   if (!job || job.userId !== userId) throw Errors.notFound("智慧发帖任务不存在或已过期");
   return toSnapshot(job);
+}
+
+export function getLatestSmartPostJob(userId: number): SmartPostJobSnapshot | null {
+  cleanupSmartPostJobs();
+  const candidates = Array.from(jobs.values())
+    .filter((job) => job.userId === userId && !job.acknowledgedAt)
+    .sort((left, right) => {
+      const leftActive = left.state === "queued" || left.state === "running" ? 1 : 0;
+      const rightActive = right.state === "queued" || right.state === "running" ? 1 : 0;
+      return rightActive - leftActive || new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime();
+    });
+  return candidates[0] ? toSnapshot(candidates[0]) : null;
+}
+
+export function acknowledgeSmartPostJob(jobId: string, userId: number) {
+  cleanupSmartPostJobs();
+  const job = jobs.get(String(jobId || "").trim());
+  if (!job || job.userId !== userId) throw Errors.notFound("智慧发帖任务不存在或已过期");
+  if (job.state === "queued" || job.state === "running") throw Errors.conflict("智慧发帖任务仍在处理中，暂时不能移除");
+  job.acknowledgedAt = new Date().toISOString();
+  job.updatedAt = job.acknowledgedAt;
+  return { acknowledged: true };
 }
 
 async function runSmartPostJob(jobId: string, input: SmartPostDraftInput, runner: SmartPostJobRunner) {
@@ -138,7 +170,13 @@ function toSnapshot(job: SmartPostJobRecord): SmartPostJobSnapshot {
     completedAt: job.completedAt,
     result: job.result,
     error: job.error,
+    returnPath: job.returnPath,
   };
+}
+
+function normalizeReturnPath(value: unknown) {
+  const path = String(value || "").trim();
+  return /^\/post(?:\/\d+\/edit)?(?:[?#].*)?$/u.test(path) ? path : "/post";
 }
 
 function cleanupSmartPostJobs() {

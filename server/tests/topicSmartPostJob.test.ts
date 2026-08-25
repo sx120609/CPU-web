@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  acknowledgeSmartPostJob,
   clearSmartPostJobsForTests,
   enqueueSmartPostJob,
+  getLatestSmartPostJob,
   getSmartPostJob,
 } from "../src/services/topicSmartPostJob";
 import type { SmartPostDraftInput, SmartPostDraftResult } from "../src/services/topicSmartPost";
@@ -58,14 +60,20 @@ test("智慧发帖后台任务持续记录进度并返回结果", async () => {
     userId: 42,
     operation: "compose",
     content: "测试材料",
+    returnPath: "/post/25920/edit?from=agent",
   }, runner);
   assert.equal(queued.state, "queued");
+  assert.equal(queued.returnPath, "/post/25920/edit?from=agent");
+  assert.equal(getLatestSmartPostJob(42)?.jobId, queued.jobId);
   assert.throws(() => getSmartPostJob(queued.jobId, 43), /不存在或已过期/u);
 
   const completed = await waitForTerminal(queued.jobId, 42);
   assert.equal(completed.state, "completed");
   assert.equal(completed.progress, 100);
   assert.deepEqual(completed.result, completedResult);
+  assert.equal(getLatestSmartPostJob(42)?.jobId, queued.jobId);
+  assert.deepEqual(acknowledgeSmartPostJob(queued.jobId, 42), { acknowledged: true });
+  assert.equal(getLatestSmartPostJob(42), null);
 });
 
 test("智慧发帖后台任务保留可见失败原因", async () => {

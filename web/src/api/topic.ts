@@ -184,6 +184,15 @@ export type SmartPostJobSnapshot = {
   completedAt: string | null;
   result: SmartPostDraftResult | null;
   error: string | null;
+  returnPath: string;
+};
+
+export type SmartPostQuotaEstimate = {
+  minTokens: number;
+  maxTokens: number;
+  minQuota: number;
+  maxQuota: number;
+  tokensPerQuota: number;
 };
 
 export type SmartPostComposePayload = {
@@ -192,6 +201,9 @@ export type SmartPostComposePayload = {
   instruction?: string;
   operation: SmartPostOperation;
   boardSlug?: string;
+  returnPath?: string;
+  files?: File[];
+  /** Backward-compatible single attachment. */
   file?: File | null;
 };
 
@@ -225,16 +237,34 @@ export const topicApi = {
     if (payload.content) body.append("content", payload.content);
     if (payload.instruction) body.append("instruction", payload.instruction);
     if (payload.boardSlug) body.append("boardSlug", payload.boardSlug);
+    if (payload.returnPath) body.append("returnPath", payload.returnPath);
     body.append("operation", payload.operation);
+    for (const file of payload.files || []) body.append("files", file, file.name);
     if (payload.file) body.append("file", payload.file, payload.file.name);
     return request.post<SmartPostJobSnapshot>("/topics/smart-compose", body, {
-      timeout: 60_000,
+      timeout: 180_000,
       suppressErrorMessage: true,
     });
   },
   smartComposeStatus: (jobId: string) =>
     request.get<SmartPostJobSnapshot>(`/topics/smart-compose/${encodeURIComponent(jobId)}`, undefined, {
       cacheTtlMs: 0,
+      timeout: 10_000,
+      suppressErrorMessage: true,
+    }),
+  currentSmartCompose: () =>
+    request.get<SmartPostJobSnapshot | null>("/topics/smart-compose/current", undefined, {
+      cacheTtlMs: 0,
+      timeout: 10_000,
+      suppressErrorMessage: true,
+    }),
+  acknowledgeSmartCompose: (jobId: string) =>
+    request.post<{ acknowledged: boolean }>(`/topics/smart-compose/${encodeURIComponent(jobId)}/acknowledge`, undefined, {
+      timeout: 10_000,
+      suppressErrorMessage: true,
+    }),
+  estimateSmartCompose: (payload: { textLength: number; files: Array<{ name: string; size: number }> }) =>
+    request.post<SmartPostQuotaEstimate>("/topics/smart-compose/estimate", payload, {
       timeout: 10_000,
       suppressErrorMessage: true,
     }),

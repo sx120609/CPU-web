@@ -16,6 +16,7 @@ type StoredSmartPostTask = {
 const STORAGE_KEY = "cpu-smart-post-job-v1";
 const POLL_INTERVAL_MS = 1_800;
 const POLL_RETRY_MS = 4_000;
+const DISCOVERY_INTERVAL_MS = 10_000;
 
 export const useSmartPostJobStore = defineStore("smart-post-job", () => {
   const task = ref<StoredSmartPostTask | null>(null);
@@ -24,6 +25,9 @@ export const useSmartPostJobStore = defineStore("smart-post-job", () => {
   const pollWarning = ref("");
   let pollTimer = 0;
   let pollGeneration = 0;
+  let discoveryTimer = 0;
+  let discoveryGeneration = 0;
+  let currentUserId = 0;
 
   const active = computed(() => status.value?.state === "queued" || status.value?.state === "running");
   const terminal = computed(() => status.value?.state === "completed" || status.value?.state === "failed");
@@ -32,14 +36,17 @@ export const useSmartPostJobStore = defineStore("smart-post-job", () => {
     if (starting.value || active.value || (task.value && !terminal.value)) {
       throw new Error("已有智慧发帖任务正在后台处理");
     }
+    currentUserId = userId;
     if (terminal.value || task.value) dismiss();
     starting.value = true;
     pollWarning.value = "";
     try {
-      const snapshot = await topicApi.startSmartCompose(payload);
+      const normalizedReturnPath = normalizeReturnPath(returnPath);
+      stopDiscovery();
+      const snapshot = await topicApi.startSmartCompose({ ...payload, returnPath: normalizedReturnPath });
       task.value = {
         jobId: snapshot.jobId,
-        returnPath: normalizeReturnPath(returnPath),
+        returnPath: normalizeReturnPath(snapshot.returnPath || normalizedReturnPath),
         userId,
         createdAt: snapshot.createdAt,
       };
@@ -53,26 +60,29 @@ export const useSmartPostJobStore = defineStore("smart-post-job", () => {
   }
 
   function resume(userId: number) {
+    currentUserId = userId;
     if (!task.value) task.value = readStoredTask();
-    if (!task.value) return;
-    if (task.value.userId !== userId) {
-      clearForLogout();
-      return;
+    if (task.value?.userId !== userId) {
+      clearLocalTask();
     }
-    if (!terminal.value) schedulePoll(0);
+    if (task.value && !terminal.value) schedulePoll(0);
+    else scheduleDiscovery(0);
   }
 
   function dismiss() {
+    const acknowledgedJobId = terminal.value ? task.value?.jobId : "";
     stopPolling();
-    task.value = null;
-    status.value = null;
-    pollWarning.value = "";
-    try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
+    clearLocalTask();
+    if (acknowledgedJobId) void topicApi.acknowledgeSmartCompose(acknowledgedJobId).catch(() => undefined);
+    if (currentUserId) scheduleDiscovery(DISCOVERY_INTERVAL_MS);
   }
 
   function clearForLogout() {
     starting.value = false;
-    dismiss();
+    currentUserId = 0;
+    stopPolling();
+    stopDiscovery();
+    clearLocalTask();
   }
 
   function schedulePoll(delayMs: number) {
@@ -93,6 +103,8 @@ export const useSmartPostJobStore = defineStore("smart-post-job", () => {
       pollWarning.value = "";
       if (snapshot.state === "queued" || snapshot.state === "running") {
         schedulePoll(POLL_INTERVAL_MS);
+      } else {
+        scheduleDiscovery(DISCOVERY_INTERVAL_MS);
       }
     } catch (error) {
       if (generation !== pollGeneration || task.value?.jobId !== currentTask.jobId) return;
@@ -109,6 +121,7 @@ export const useSmartPostJobStore = defineStore("smart-post-job", () => {
           completedAt: now,
           result: null,
           error: "任务不存在或已过期，可能是服务重启导致。上传文件未被保存，请返回发帖页重新提交。",
+          returnPath: currentTask.returnPath,
         };
         pollWarning.value = "";
         return;
@@ -123,6 +136,56 @@ export const useSmartPostJobStore = defineStore("smart-post-job", () => {
     pollGeneration += 1;
     window.clearTimeout(pollTimer);
     pollTimer = 0;
+  }
+
+  function scheduleDiscovery(delayMs: number) {
+    window.clearTimeout(discoveryTimer);
+    const generation = ++discoveryGeneration;
+    discoveryTimer = window.setTimeout(() => {
+      void discover(generation);
+    }, delayMs);
+  }
+
+  async function discover(generation: number) {
+    const userId = currentUserId;
+    if (!userId || generation !== discoveryGeneration || (task.value && !terminal.value)) return;
+    try {
+      const snapshot = await topicApi.currentSmartCompose();
+      if (generation !== discoveryGeneration || currentUserId !== userId || (task.value && !terminal.value)) return;
+      if (snapshot && snapshot.jobId !== task.value?.jobId) {
+        task.value = {
+          jobId: snapshot.jobId,
+          returnPath: normalizeReturnPath(snapshot.returnPath),
+          userId,
+          createdAt: snapshot.createdAt,
+        };
+        status.value = snapshot;
+        pollWarning.value = "";
+        writeStoredTask(task.value);
+        if (snapshot.state === "queued" || snapshot.state === "running") schedulePoll(POLL_INTERVAL_MS);
+        else scheduleDiscovery(DISCOVERY_INTERVAL_MS);
+        return;
+      }
+    } catch (error) {
+      const httpStatus = Number((error as { response?: { status?: unknown } })?.response?.status || 0);
+      if (httpStatus === 401) return;
+    }
+    if (generation === discoveryGeneration && currentUserId === userId && (!task.value || terminal.value)) {
+      scheduleDiscovery(DISCOVERY_INTERVAL_MS);
+    }
+  }
+
+  function stopDiscovery() {
+    discoveryGeneration += 1;
+    window.clearTimeout(discoveryTimer);
+    discoveryTimer = 0;
+  }
+
+  function clearLocalTask() {
+    task.value = null;
+    status.value = null;
+    pollWarning.value = "";
+    try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
   }
 
   return {

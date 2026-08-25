@@ -86,10 +86,7 @@
   .post-meta {
     grid-column: 1;
     grid-row: 1 / span 50;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
+    display: block;
     align-self: stretch;
     gap: 10px;
     min-width: 0;
@@ -98,6 +95,15 @@
     border-right: 1px solid var(--cpu-border-soft);
     background: var(--cpu-surface-subtle);
     text-align: center;
+    .post-author-card {
+      position: sticky;
+      top: clamp(92px, calc(50vh - 110px), 420px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+    }
     .avatar { background: var(--cpu-primary); color: #fff; font-weight: 600; }
     .meta-author { min-width: 0; width: 100%; }
     .name { font-size: 14px; font-weight: 600; color: var(--cpu-text); display: flex; gap: 6px; align-items: center; justify-content: center; flex-wrap: wrap; overflow-wrap: anywhere; }

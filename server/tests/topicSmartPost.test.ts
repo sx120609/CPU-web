@@ -1,17 +1,21 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import JSZip from "jszip";
 import {
   extractAiJsonCompletionMetadata,
   sendAiJsonRequest,
 } from "../src/services/aiJsonApi";
 import {
+  estimateSmartPostQuota,
+  extractSmartPostFileText,
   normalizeSmartPostFile,
+  normalizeSmartPostFiles,
   parseSmartPostAnalysis,
   parseSmartPostDraft,
   resolveSmartPostUsage,
 } from "../src/services/topicSmartPost";
 
-test("Responses 请求把原始 PDF 映射为 input_file", async () => {
+test("Responses 请求把原始 PDF/PPTX 映射为 input_file，并把图片映射为 input_image", async () => {
   const originalFetch = globalThis.fetch;
   let requestBody: any = null;
   globalThis.fetch = async (_input, init) => {
@@ -40,6 +44,18 @@ test("Responses 请求把原始 PDF 映射为 input_file", async () => {
               data: Buffer.from("%PDF-test").toString("base64"),
             },
           },
+          {
+            type: "file",
+            file: {
+              filename: "宣讲材料.pptx",
+              mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+              data: Buffer.from("PK\u0003\u0004-test").toString("base64"),
+            },
+          },
+          {
+            type: "image_url",
+            image_url: { url: `data:image/png;base64,${Buffer.from("image").toString("base64")}`, detail: "high" },
+          },
         ],
       }],
     });
@@ -48,6 +64,10 @@ test("Responses 请求把原始 PDF 映射为 input_file", async () => {
     assert.equal(requestBody.input[0].content[1].type, "input_file");
     assert.equal(requestBody.input[0].content[1].filename, "材料.pdf");
     assert.match(requestBody.input[0].content[1].file_data, /^data:application\/pdf;base64,/u);
+    assert.equal(requestBody.input[0].content[2].type, "input_file");
+    assert.equal(requestBody.input[0].content[2].filename, "宣讲材料.pptx");
+    assert.equal(requestBody.input[0].content[3].type, "input_image");
+    assert.equal(requestBody.input[0].content[3].detail, "high");
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -134,13 +154,19 @@ test("智慧发帖草稿只接受完整 JSON 且限制帖子长度", () => {
   );
 });
 
-test("智慧发帖文件只接受内存中的 PDF 或 DOCX", () => {
+test("智慧发帖文件接受宣传常用类型，并限制多附件数量", () => {
   const file = normalizeSmartPostFile({
     buffer: Buffer.from("%PDF-test"),
     originalname: "招募说明.pdf",
     mimetype: "application/octet-stream",
   });
   assert.equal(file.mimetype, "application/pdf");
+  const image = normalizeSmartPostFile({
+    buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]),
+    originalname: "海报.png",
+    mimetype: "image/png",
+  });
+  assert.equal(image.mimetype, "image/png");
   assert.throws(() => normalizeSmartPostFile({
     buffer: Buffer.from("legacy"),
     originalname: "旧文档.doc",
@@ -151,4 +177,40 @@ test("智慧发帖文件只接受内存中的 PDF 或 DOCX", () => {
     originalname: "伪装材料.pdf",
     mimetype: "application/pdf",
   }), /文件内容/u);
+  assert.throws(() => normalizeSmartPostFiles(Array.from({ length: 9 }, (_value, index) => ({
+    buffer: Buffer.from("%PDF-test"),
+    originalname: `材料-${index}.pdf`,
+    mimetype: "application/pdf",
+  }))), /最多上传 8 个附件/u);
+});
+
+test("智慧发帖可从 PPTX 幻灯片与备注提取文字", async () => {
+  const zip = new JSZip();
+  zip.file("ppt/presentation.xml", "<p:presentation/>");
+  zip.file("ppt/slides/slide1.xml", "<p:sld><a:t>成员招募</a:t><a:t>报名截止 9 月 1 日</a:t></p:sld>");
+  zip.file("ppt/notesSlides/notesSlide1.xml", "<p:notes><a:t>面向在校学生</a:t></p:notes>");
+  const buffer = await zip.generateAsync({ type: "nodebuffer" });
+  const text = await extractSmartPostFileText(normalizeSmartPostFile({
+    buffer,
+    originalname: "招募宣讲.pptx",
+    mimetype: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  }));
+  assert.match(text, /成员招募/u);
+  assert.match(text, /报名截止 9 月 1 日/u);
+  assert.match(text, /面向在校学生/u);
+});
+
+test("提交前额度估算返回宽区间，并使用当前每额度 Token 配置", () => {
+  const estimate = estimateSmartPostQuota({
+    textLength: 2_000,
+    files: [
+      { name: "招募说明.pdf", size: 2 * 1024 * 1024 },
+      { name: "海报.png", size: 800 * 1024 },
+    ],
+    tokensPerQuota: 4_000,
+  });
+  assert.equal(estimate.tokensPerQuota, 4_000);
+  assert.ok(estimate.minTokens < estimate.maxTokens);
+  assert.equal(estimate.minQuota, Math.ceil(estimate.minTokens / 4_000));
+  assert.equal(estimate.maxQuota, Math.ceil(estimate.maxTokens / 4_000));
 });

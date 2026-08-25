@@ -28,7 +28,17 @@ import {
   syncTopicAiTags,
 } from "../services/topicAiReview";
 import { autoFormatTopicContent } from "../services/topicAiFormat";
-import { enqueueSmartPostJob, getSmartPostJob } from "../services/topicSmartPostJob";
+import {
+  SMART_POST_MAX_FILES,
+  SMART_POST_MAX_FILE_BYTES,
+  estimateSmartPostQuota,
+} from "../services/topicSmartPost";
+import {
+  acknowledgeSmartPostJob,
+  enqueueSmartPostJob,
+  getLatestSmartPostJob,
+  getSmartPostJob,
+} from "../services/topicSmartPostJob";
 import { ensureCanReadBoardType, ensureForumAccessEnabled, resolveForumAccess } from "../services/forumAccess";
 import { ensureUserCanSpeak, releaseExpiredMutes } from "../services/userModeration";
 import { consumeAnonymousCredit, createAnonymousAlias } from "../services/userTrust";
@@ -52,21 +62,32 @@ export const topicRouter = Router();
 
 const smartPostUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 15 * 1024 * 1024, files: 1, fields: 8 },
+  limits: { fileSize: SMART_POST_MAX_FILE_BYTES, files: SMART_POST_MAX_FILES, fields: 10 },
   fileFilter: (_req, file, callback) => {
-    if (/\.(?:pdf|docx)$/iu.test(String(file.originalname || ""))) return callback(null, true);
-    callback(new Error("仅支持 .pdf 或 .docx 文件"));
+    if (/\.(?:pdf|docx|pptx|txt|md|png|jpe?g|webp|gif)$/iu.test(String(file.originalname || ""))) return callback(null, true);
+    callback(new Error("仅支持 PDF、DOCX、PPTX、TXT、Markdown、PNG、JPEG、WebP 或 GIF 文件"));
   },
 });
 
 function smartPostUploadMiddleware(req: Request, res: Response, next: NextFunction) {
-  smartPostUpload.single("file")(req, res, (error: unknown) => {
+  smartPostUpload.fields([
+    { name: "files", maxCount: SMART_POST_MAX_FILES },
+    { name: "file", maxCount: 1 },
+  ])(req, res, (error: unknown) => {
     if (!error) return next();
     if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
-      return next(Errors.badRequest("文件不能超过 15MB"));
+      return next(Errors.badRequest("单个附件不能超过 15MB，图片不能超过 8MB"));
+    }
+    if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_COUNT") {
+      return next(Errors.badRequest(`最多上传 ${SMART_POST_MAX_FILES} 个附件`));
     }
     return next(Errors.badRequest(error instanceof Error ? error.message : "文件上传失败"));
   });
+}
+
+function smartPostRequestFiles(req: Request) {
+  const grouped = req.files as Record<string, Express.Multer.File[]> | undefined;
+  return [...(grouped?.files || []), ...(grouped?.file || [])];
 }
 
 const smartPostSchema = z.object({
@@ -75,6 +96,15 @@ const smartPostSchema = z.object({
   instruction: z.string().max(1000).optional().default(""),
   operation: z.enum(["compose", "polish", "format"]).optional().default("compose"),
   boardSlug: z.string().min(1).max(80).optional(),
+  returnPath: z.string().max(300).optional(),
+});
+
+const smartPostEstimateSchema = z.object({
+  textLength: z.number().int().min(0).max(25_000).optional().default(0),
+  files: z.array(z.object({
+    name: z.string().min(1).max(180),
+    size: z.number().int().min(0).max(SMART_POST_MAX_FILE_BYTES),
+  })).max(SMART_POST_MAX_FILES).optional().default([]),
 });
 
 const topicSubmissionInclude = {
@@ -258,6 +288,41 @@ topicRouter.post(
 );
 
 topicRouter.post(
+  "/smart-compose/estimate",
+  authRequired,
+  securityRateLimit("forum-smart-post-estimate", 120, 60 * 60_000),
+  (req, res, next) => {
+    try {
+      res.setHeader("Cache-Control", "no-store");
+      const parsed = smartPostEstimateSchema.safeParse(req.body || {});
+      if (!parsed.success) throw Errors.badRequest(parsed.error.issues[0]?.message || "额度估算参数不合法");
+      const config = getSiteConfig();
+      if (!config.smartPostEnabled) throw Errors.forbidden("智慧发帖功能当前未开放");
+      ok(res, estimateSmartPostQuota({
+        ...parsed.data,
+        tokensPerQuota: config.smartPostTokensPerQuota,
+      }));
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+topicRouter.get(
+  "/smart-compose/current",
+  authRequired,
+  securityRateLimit("forum-smart-post-current", 360, 60 * 60_000),
+  (req, res, next) => {
+    try {
+      res.setHeader("Cache-Control", "no-store");
+      ok(res, getLatestSmartPostJob(req.user!.userId));
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+topicRouter.post(
   "/smart-compose",
   authRequired,
   securityRateLimit("forum-smart-post", 20, 60 * 60_000),
@@ -267,7 +332,8 @@ topicRouter.post(
       res.setHeader("Cache-Control", "no-store");
       const parsed = smartPostSchema.safeParse(req.body || {});
       if (!parsed.success) throw Errors.badRequest(parsed.error.issues[0]?.message || "智慧发帖参数不合法");
-      if (!parsed.data.content.trim() && !req.file) throw Errors.badRequest("请填写文字，或上传 Word / PDF 文件");
+      const uploadFiles = smartPostRequestFiles(req);
+      if (!parsed.data.content.trim() && !uploadFiles.length) throw Errors.badRequest("请填写文字，或上传图片、PPT、Word、PDF 等材料");
       await ensureForumAccessEnabled(req.user!.userId, req.user!.role);
       await ensureUserCanSpeak(req.user!.userId);
       const board = parsed.data.boardSlug
@@ -285,14 +351,27 @@ topicRouter.post(
         operation: parsed.data.operation,
         boardName: board?.name,
         boardType: board?.type,
-        file: req.file
-          ? {
-              buffer: req.file.buffer,
-              originalname: req.file.originalname,
-              mimetype: req.file.mimetype,
-            }
-          : null,
+        returnPath: parsed.data.returnPath,
+        files: uploadFiles.map((file) => ({
+          buffer: file.buffer,
+          originalname: file.originalname,
+          mimetype: file.mimetype,
+        })),
       }));
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+topicRouter.post(
+  "/smart-compose/:jobId/acknowledge",
+  authRequired,
+  securityRateLimit("forum-smart-post-acknowledge", 120, 60 * 60_000),
+  (req, res, next) => {
+    try {
+      res.setHeader("Cache-Control", "no-store");
+      ok(res, acknowledgeSmartPostJob(String(req.params.jobId || ""), req.user!.userId));
     } catch (error) {
       next(error);
     }

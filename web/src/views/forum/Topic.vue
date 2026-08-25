@@ -79,28 +79,30 @@
       </div>
 
       <aside class="post-meta post-author-panel">
-        <span class="floor-owner-label">楼主</span>
-        <UserAvatar :size="58" class="avatar" :src="topic.author?.avatar" :name="topic.author?.nickname" :profile-frame="topic.author?.profileFrame" alt="作者头像" />
-        <div class="meta-author">
-          <div class="name">
-            <span v-if="topic.author?.vipActive" class="vip-badge">VIP</span>
-            <router-link v-if="topic.author?.id" :to="`/u/${topic.author.id}`">{{ topic.author?.nickname }}</router-link>
-            <span v-else>{{ topic.author?.nickname }}</span>
-            <el-tag v-if="topic.isAnonymous" size="small" type="warning" effect="plain">匿名发布</el-tag>
-            <el-tag v-else-if="topic.author?.role === 'bot'" size="small" type="warning">公告同步</el-tag>
-            <el-tag v-else-if="topic.author?.role === 'admin'" size="small" type="danger">管理员</el-tag>
-            <UserModerationActions
-              v-if="topicModerationUser"
-              :user="topicModerationUser"
-              display="dropdown"
-              text
-              label="管理"
-              @updated="applyTopicAuthorModeration"
-            />
-          </div>
-          <p v-if="topic.author?.bio" class="author-bio">{{ topic.author.bio }}</p>
-          <div v-if="topic.isAnonymous && topic.realAuthor" class="real-author-line">
-            真实作者：{{ topic.realAuthor.nickname }}<template v-if="topic.realAuthor.username"> @{{ topic.realAuthor.username }}</template>
+        <div class="post-author-card">
+          <span class="floor-owner-label">楼主</span>
+          <UserAvatar :size="58" class="avatar" :src="topic.author?.avatar" :name="topic.author?.nickname" :profile-frame="topic.author?.profileFrame" alt="作者头像" />
+          <div class="meta-author">
+            <div class="name">
+              <span v-if="topic.author?.vipActive" class="vip-badge">VIP</span>
+              <router-link v-if="topic.author?.id" :to="`/u/${topic.author.id}`">{{ topic.author?.nickname }}</router-link>
+              <span v-else>{{ topic.author?.nickname }}</span>
+              <el-tag v-if="topic.isAnonymous" size="small" type="warning" effect="plain">匿名发布</el-tag>
+              <el-tag v-else-if="topic.author?.role === 'bot'" size="small" type="warning">公告同步</el-tag>
+              <el-tag v-else-if="topic.author?.role === 'admin'" size="small" type="danger">管理员</el-tag>
+              <UserModerationActions
+                v-if="topicModerationUser"
+                :user="topicModerationUser"
+                display="dropdown"
+                text
+                label="管理"
+                @updated="applyTopicAuthorModeration"
+              />
+            </div>
+            <p v-if="topic.author?.bio" class="author-bio">{{ topic.author.bio }}</p>
+            <div v-if="topic.isAnonymous && topic.realAuthor" class="real-author-line">
+              真实作者：{{ topic.realAuthor.nickname }}<template v-if="topic.realAuthor.username"> @{{ topic.realAuthor.username }}</template>
+            </div>
           </div>
         </div>
       </aside>

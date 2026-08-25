@@ -86,6 +86,8 @@
       .author-bio { display: none; }
     }
 
+    .post-author-card { display: contents; }
+
     .floor-owner-label { grid-column: 3; grid-row: 1; }
     .topic-statline { order: 4; margin-top: 10px; margin-bottom: 14px; gap: 6px 10px; }
     .topic-statline span + span::before { margin-right: 10px; }

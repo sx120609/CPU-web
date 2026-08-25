@@ -449,19 +449,29 @@
           </el-radio-group>
         </label>
         <label class="smart-post-field">
-          <span>Word / PDF 材料（可选）</span>
+          <span>宣传材料（可选，最多 8 个）</span>
           <input
             ref="smartPostFileInputRef"
             class="smart-post-file-input"
             type="file"
-            accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            multiple
+            accept=".pdf,.docx,.pptx,.txt,.md,.png,.jpg,.jpeg,.webp,.gif"
             @change="handleSmartPostFileChange"
           />
           <div class="smart-post-file-row">
-            <el-button :disabled="smartPostRunning" @click="smartPostFileInputRef?.click()">选择文件</el-button>
-            <span>{{ smartPostFile ? `${smartPostFile.name} · ${formatFileSize(smartPostFile.size)}` : "支持 .pdf / .docx，最大 15MB" }}</span>
-            <el-button v-if="smartPostFile" text type="danger" :disabled="smartPostRunning" @click="clearSmartPostFile">移除</el-button>
+            <el-button :disabled="smartPostRunning || smartPostFiles.length >= 8" @click="smartPostFileInputRef?.click()">
+              {{ smartPostFiles.length ? "继续添加" : "选择文件" }}
+            </el-button>
+            <span>{{ smartPostFiles.length ? `已选 ${smartPostFiles.length} 个 · 共 ${formatFileSize(smartPostFilesTotalSize)}` : "图片 / PPTX / Word / PDF / 文本；总计最大 40MB" }}</span>
+            <el-button v-if="smartPostFiles.length" text type="danger" :disabled="smartPostRunning" @click="clearSmartPostFiles">全部移除</el-button>
           </div>
+          <ul v-if="smartPostFiles.length" class="smart-post-file-list">
+            <li v-for="(file, index) in smartPostFiles" :key="`${file.name}-${file.size}-${file.lastModified}`">
+              <span :title="file.name">{{ file.name }}</span>
+              <small>{{ formatFileSize(file.size) }}</small>
+              <el-button text type="danger" :disabled="smartPostRunning" @click.prevent="removeSmartPostFile(index)">移除</el-button>
+            </li>
+          </ul>
         </label>
         <label class="smart-post-field">
           <span>附加要求（可选）</span>
@@ -474,7 +484,16 @@
             placeholder="例如：面向本科生、保留报名方式、语气真诚简洁"
           />
         </label>
-        <p class="smart-post-privacy">文件只在服务端内存中处理：Responses 接口优先读取原文件，其他接口由服务端临时解析文字，不保存上传文件。任务进度和失败原因会显示在全站任务卡中。</p>
+        <div class="smart-post-estimate" aria-live="polite">
+          <template v-if="smartPostEstimateLoading">正在根据文字与附件估算三轮 Agent 用量…</template>
+          <template v-else-if="smartPostEstimate">
+            预计约 <strong>{{ smartPostEstimate.minQuota }}–{{ smartPostEstimate.maxQuota }} 个 AI 额度</strong>
+            （约 {{ formatTokenCount(smartPostEstimate.minTokens) }}–{{ formatTokenCount(smartPostEstimate.maxTokens) }} Tokens）。
+            实际按三轮上游返回的 Token 结算，复杂 PDF、图片或长 PPT 可能超出区间；失败会退款。
+          </template>
+          <template v-else>暂时无法估算额度；提交后仍只会按实际 Token 结算，失败会退款。</template>
+        </div>
+        <p class="smart-post-privacy">附件只在服务端内存中处理：Responses 接口优先读取原文件；图片及 PPT/Word 内嵌图片会作为视觉材料分析，其他接口由服务端临时解析，不保存上传文件。任务会在同一账号的不同设备显示进度和失败原因。</p>
       </div>
       <template #footer>
         <el-button :disabled="smartPostRunning" @click="smartPostOpen = false">取消</el-button>
@@ -549,7 +568,7 @@ import MarkdownView from "@/components/forum/MarkdownView.vue";
 import RichTextEditor from "@/components/forum/RichTextEditor.vue";
 import ManualReviewConfirmDialog from "@/components/forum/ManualReviewConfirmDialog.vue";
 import { boardApi, type Board } from "@/api/board";
-import { topicApi, type SmartPostOperation, type TopicSubmissionResponse } from "@/api/topic";
+import { topicApi, type SmartPostOperation, type SmartPostQuotaEstimate, type TopicSubmissionResponse } from "@/api/topic";
 import { courseApi, type Course } from "@/api/course";
 import { useAuthStore } from "@/stores/auth";
 import { useSmartPostJobStore } from "@/stores/smartPostJob";
@@ -598,10 +617,15 @@ const smartPostOpen = ref(false);
 const smartPostRunning = ref(false);
 const smartPostOperation = ref<SmartPostOperation>("compose");
 const smartPostInstruction = ref("");
-const smartPostFile = ref<File | null>(null);
+const smartPostFiles = ref<File[]>([]);
 const smartPostFileInputRef = ref<HTMLInputElement | null>(null);
+const smartPostEstimate = ref<SmartPostQuotaEstimate | null>(null);
+const smartPostEstimateLoading = ref(false);
+const smartPostFilesTotalSize = computed(() => smartPostFiles.value.reduce((sum, file) => sum + file.size, 0));
 const smartPostBusy = computed(() => smartPost.starting || smartPost.active || Boolean(smartPost.task && !smartPost.terminal));
 let appliedSmartPostJobId = "";
+let smartPostEstimateTimer = 0;
+let smartPostEstimateSeq = 0;
 const previewOpen = ref(false);
 const pendingMetadata = ref<any>(null);
 const reviewBlockedOpen = ref(false);
@@ -854,10 +878,33 @@ watch(
   { deep: true, immediate: true },
 );
 
+watch(
+  () => [
+    smartPostOpen.value,
+    form.title.length,
+    form.content.length,
+    smartPostInstruction.value.length,
+    smartPostFiles.value.map((file) => `${file.name}:${file.size}:${file.lastModified}`).join("|"),
+  ] as const,
+  ([open]) => {
+    window.clearTimeout(smartPostEstimateTimer);
+    if (!open) {
+      smartPostEstimateSeq += 1;
+      smartPostEstimateLoading.value = false;
+      return;
+    }
+    smartPostEstimateLoading.value = true;
+    smartPostEstimateTimer = window.setTimeout(() => void refreshSmartPostEstimate(), 450);
+  },
+  { immediate: true },
+);
+
 onBeforeUnmount(() => {
   pendingSubmissionMonitorSeq += 1;
+  smartPostEstimateSeq += 1;
   window.clearTimeout(formDraftTimer);
   window.clearTimeout(markupDraftTimer);
+  window.clearTimeout(smartPostEstimateTimer);
 });
 
 watch(boardType, async () => {
@@ -1233,23 +1280,48 @@ function openSmartPost() {
 }
 
 function handleSmartPostFileChange(event: Event) {
-  const file = (event.target as HTMLInputElement).files?.[0] || null;
-  if (!file) return;
-  if (!/\.(?:pdf|docx)$/iu.test(file.name)) {
-    ElMessage.warning("仅支持 PDF 或 Word（.docx）文件");
-    clearSmartPostFile();
-    return;
+  const input = event.target as HTMLInputElement;
+  const selected = Array.from(input.files || []);
+  input.value = "";
+  if (!selected.length) return;
+  const next = [...smartPostFiles.value];
+  let totalSize = next.reduce((sum, file) => sum + file.size, 0);
+  for (const file of selected) {
+    if (next.length >= 8) {
+      ElMessage.warning("智慧发帖最多上传 8 个附件");
+      break;
+    }
+    if (!/\.(?:pdf|docx|pptx|txt|md|png|jpe?g|webp|gif)$/iu.test(file.name)) {
+      ElMessage.warning(`${file.name}：不支持此文件类型`);
+      continue;
+    }
+    if (file.size <= 0) {
+      ElMessage.warning(`${file.name}：文件为空`);
+      continue;
+    }
+    const image = /\.(?:png|jpe?g|webp|gif)$/iu.test(file.name);
+    const maxBytes = (image ? 8 : 15) * 1024 * 1024;
+    if (file.size > maxBytes) {
+      ElMessage.warning(`${file.name}：${image ? "图片" : "文档"}不能超过 ${image ? 8 : 15}MB`);
+      continue;
+    }
+    if (totalSize + file.size > 40 * 1024 * 1024) {
+      ElMessage.warning("附件总大小不能超过 40MB");
+      continue;
+    }
+    if (next.some((item) => item.name === file.name && item.size === file.size && item.lastModified === file.lastModified)) continue;
+    next.push(file);
+    totalSize += file.size;
   }
-  if (file.size > 15 * 1024 * 1024) {
-    ElMessage.warning("文件不能超过 15MB");
-    clearSmartPostFile();
-    return;
-  }
-  smartPostFile.value = file;
+  smartPostFiles.value = next;
 }
 
-function clearSmartPostFile() {
-  smartPostFile.value = null;
+function removeSmartPostFile(index: number) {
+  smartPostFiles.value = smartPostFiles.value.filter((_file, fileIndex) => fileIndex !== index);
+}
+
+function clearSmartPostFiles() {
+  smartPostFiles.value = [];
   if (smartPostFileInputRef.value) smartPostFileInputRef.value.value = "";
 }
 
@@ -1258,10 +1330,32 @@ function formatFileSize(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
 }
 
+function formatTokenCount(value: number) {
+  return Math.max(0, Math.round(value)).toLocaleString("zh-CN");
+}
+
+async function refreshSmartPostEstimate() {
+  const seq = ++smartPostEstimateSeq;
+  smartPostEstimateLoading.value = true;
+  try {
+    const estimate = await topicApi.estimateSmartCompose({
+      textLength: Math.min(25_000, form.title.length + form.content.length + smartPostInstruction.value.length),
+      files: smartPostFiles.value.map((file) => ({ name: file.name, size: file.size })),
+    });
+    if (seq !== smartPostEstimateSeq || !smartPostOpen.value) return;
+    smartPostEstimate.value = estimate;
+  } catch {
+    if (seq !== smartPostEstimateSeq || !smartPostOpen.value) return;
+    smartPostEstimate.value = null;
+  } finally {
+    if (seq === smartPostEstimateSeq) smartPostEstimateLoading.value = false;
+  }
+}
+
 async function runSmartPost() {
   if (smartPostRunning.value) return;
-  if (isMarkupContentEmpty(form.content) && !smartPostFile.value) {
-    ElMessage.warning("请先填写文字，或选择一个 Word / PDF 文件");
+  if (isMarkupContentEmpty(form.content) && !smartPostFiles.value.length) {
+    ElMessage.warning("请先填写文字，或选择图片、PPT、Word、PDF 等材料");
     return;
   }
   smartPostRunning.value = true;
@@ -1272,10 +1366,10 @@ async function runSmartPost() {
       instruction: smartPostInstruction.value.trim() || undefined,
       operation: smartPostOperation.value,
       boardSlug: form.boardSlug || undefined,
-      file: smartPostFile.value,
+      files: smartPostFiles.value,
     }, route.fullPath, auth.user!.id);
     smartPostOpen.value = false;
-    clearSmartPostFile();
+    clearSmartPostFiles();
     ElMessage.success("任务已转入后台，可以继续浏览其他页面；完成或失败后会持续显示结果");
   } catch (error) {
     ElMessage.error(getForumRequestMessage(error) || "智慧发帖任务提交失败，请稍后重试");
@@ -1748,6 +1842,53 @@ function notifyVideoReviewState(summary?: {
   font-weight: 400;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.smart-post-file-list {
+  display: grid;
+  gap: 7px;
+  max-height: 180px;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.smart-post-file-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 10px;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 9px;
+  background: var(--cpu-card);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.smart-post-file-list li > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.smart-post-file-list small {
+  color: var(--cpu-text-muted);
+}
+
+.smart-post-estimate {
+  padding: 11px 13px;
+  border: 1px solid color-mix(in srgb, var(--cpu-primary) 24%, var(--cpu-border-soft));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--cpu-primary) 7%, var(--cpu-card));
+  color: var(--cpu-text-secondary);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.smart-post-estimate strong {
+  color: var(--cpu-primary);
 }
 
 .smart-post-privacy {
