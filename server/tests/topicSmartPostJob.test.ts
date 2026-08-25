@@ -63,6 +63,7 @@ test("智慧发帖后台任务持续记录进度并返回结果", async () => {
     returnPath: "/post/25920/edit?from=agent",
   }, runner);
   assert.equal(queued.state, "queued");
+  assert.equal(queued.operation, "compose");
   assert.equal(queued.returnPath, "/post/25920/edit?from=agent");
   assert.equal(getLatestSmartPostJob(42)?.jobId, queued.jobId);
   assert.throws(() => getSmartPostJob(queued.jobId, 43), /不存在或已过期/u);
@@ -88,4 +89,26 @@ test("智慧发帖后台任务保留可见失败原因", async () => {
   assert.equal(failed.state, "failed");
   assert.match(failed.error || "", /智慧发帖 AI 请求失败/u);
   assert.match(failed.error || "", /额度已退还/u);
+});
+
+test("整理排版任务忽略附件并保留单轮操作类型", async () => {
+  let receivedFiles = -1;
+  const queued = enqueueSmartPostJob({
+    userId: 42,
+    operation: "format",
+    content: "需要整理的正文",
+    files: [{
+      buffer: Buffer.from("not-a-real-pdf"),
+      originalname: "不应处理.pdf",
+      mimetype: "application/pdf",
+    }],
+  }, async (input) => {
+    receivedFiles = input.files?.length ?? 0;
+    return completedResult;
+  });
+  assert.equal(queued.operation, "format");
+  const completed = await waitForTerminal(queued.jobId, 42);
+  assert.equal(completed.state, "completed");
+  assert.equal(receivedFiles, 0);
+  assert.match(completed.message, /排版已完成/u);
 });

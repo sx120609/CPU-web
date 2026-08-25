@@ -5,6 +5,7 @@ import {
   normalizeSmartPostFiles,
   type SmartPostDraftInput,
   type SmartPostDraftResult,
+  type SmartPostOperation,
 } from "./topicSmartPost";
 
 export type SmartPostJobState = "queued" | "running" | "completed" | "failed";
@@ -20,6 +21,7 @@ export type SmartPostJobSnapshot = {
   result: SmartPostDraftResult | null;
   error: string | null;
   returnPath: string;
+  operation: SmartPostOperation;
 };
 
 type SmartPostJobRecord = SmartPostJobSnapshot & {
@@ -53,10 +55,12 @@ export function enqueueSmartPostJob(
 
   const input: SmartPostDraftInput = {
     ...rawInput,
-    files: normalizeSmartPostFiles([
-      ...(rawInput.files || []),
-      ...(rawInput.file ? [rawInput.file] : []),
-    ]),
+    files: rawInput.operation === "format"
+      ? []
+      : normalizeSmartPostFiles([
+          ...(rawInput.files || []),
+          ...(rawInput.file ? [rawInput.file] : []),
+        ]),
     file: null,
   };
   const now = new Date().toISOString();
@@ -72,6 +76,7 @@ export function enqueueSmartPostJob(
     result: null,
     error: null,
     returnPath: normalizeReturnPath(rawInput.returnPath),
+    operation: input.operation,
     acknowledgedAt: null,
   };
   jobs.set(record.jobId, record);
@@ -136,7 +141,9 @@ async function runSmartPostJob(jobId: string, input: SmartPostDraftInput, runner
     updateJob(current, {
       state: "completed",
       progress: 100,
-      message: "草稿已生成，可以返回发帖页继续编辑",
+      message: input.operation === "format"
+        ? "排版已完成，可以返回可视化编辑器继续修改"
+        : "草稿已生成，可以返回发帖页继续编辑",
       result,
       error: null,
       completedAt: new Date().toISOString(),
@@ -171,6 +178,7 @@ function toSnapshot(job: SmartPostJobRecord): SmartPostJobSnapshot {
     result: job.result,
     error: job.error,
     returnPath: job.returnPath,
+    operation: job.operation,
   };
 }
 

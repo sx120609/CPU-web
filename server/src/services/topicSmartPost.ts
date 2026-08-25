@@ -81,6 +81,12 @@ const SMART_POST_FINAL_SYSTEM_PROMPT = [
   "正文使用适合校园社区的 Markdown；只返回一个 JSON 对象，字段必须且只能是 title、content、summary。不要返回代码围栏或额外说明。",
 ].join(" ");
 
+const SMART_POST_FORMAT_SYSTEM_PROMPT = [
+  SMART_POST_BOUNDARY_PROMPT,
+  "你正在执行单轮整理排版。只调整段落、标题层级、列表、表格、引用、空行和 Markdown 可读性，不做材料分析，不扩写、不删减事实、不改变语气和含义。",
+  "标题已有内容时原样保留；标题为空时根据正文生成一个简洁标题。只返回一个 JSON 对象，字段必须且只能是 title、content、summary。不要返回代码围栏或额外说明。",
+].join(" ");
+
 const OPERATION_GUIDANCE: Record<SmartPostOperation, string> = {
   compose: "从材料中识别主题并生成完整帖子草稿；必要时生成简洁标题和清晰结构。",
   polish: "润色现有标题与正文，保留原意、语气和全部事实，不进行无依据扩写。",
@@ -145,10 +151,13 @@ export async function createSmartPostDraft(input: SmartPostDraftInput): Promise<
   const title = normalizeText(input.title, 120);
   const content = normalizeText(input.content, 20_000);
   const instruction = normalizeText(input.instruction, 1_000);
-  const files = normalizeSmartPostFiles([
-    ...(input.files || []),
-    ...(input.file ? [input.file] : []),
-  ]);
+  const files = input.operation === "format"
+    ? []
+    : normalizeSmartPostFiles([
+        ...(input.files || []),
+        ...(input.file ? [input.file] : []),
+      ]);
+  if (!content && input.operation === "format") throw Errors.badRequest("请先填写需要整理排版的正文");
   if (!content && !files.length) throw Errors.badRequest("请填写文字，或上传图片、PPT、Word、PDF 等材料");
 
   reportProgress(input, 12, files.length ? `正在安全读取 ${files.length} 个附件` : "正在整理文字材料");
@@ -187,6 +196,54 @@ export async function createSmartPostDraft(input: SmartPostDraftInput): Promise<
     pointCost: 0,
   });
   try {
+    const finalizeDraft = async (
+      draft: { title: string; content: string; summary: string },
+      finalResult: Awaited<ReturnType<typeof requestAiJson>>,
+      completions: Array<{ inputTokens?: number | null; outputTokens?: number | null; totalTokens?: number | null }>,
+    ) => {
+      reportProgress(input, 91, input.operation === "format" ? "正在按本次实际 Token 用量结算额度" : "正在按三轮实际 Token 用量结算额度");
+      const usage = resolveSmartPostUsage(completions, config.smartPostTokensPerQuota);
+      for (let unit = 1; unit < usage.chargedQuota; unit += 1) {
+        latestQuota = await consumeCampusAssistantQuota(input.userId, new Date(), 1, {
+          allowPointDebt: true,
+          reason: "智慧发帖实际 Token 用量补扣",
+        });
+        reservations.push(latestQuota.reservation);
+      }
+      await finishAiReviewLogSuccess(startedLog?.id, draft.summary, {
+        provider: finalResult.provider,
+        model: finalResult.model,
+        endpoint: finalResult.endpoint,
+        pointCost: usage.chargedQuota,
+      });
+      reportProgress(input, 100, input.operation === "format" ? "排版已完成，可以返回可视化编辑器继续修改" : "草稿已生成，可以返回发帖页继续编辑");
+      return {
+        ...draft,
+        provider: finalResult.provider,
+        model: finalResult.model,
+        source: files.length ? (content ? "text-and-file" as const : "file" as const) : "text" as const,
+        usage,
+        quota: {
+          remaining: latestQuota.remaining,
+          points: latestQuota.points,
+          totalRemaining: latestQuota.totalRemaining,
+          nextResetAt: latestQuota.nextResetAt,
+        },
+      };
+    };
+
+    if (input.operation === "format") {
+      reportProgress(input, 32, "单轮排版：正在整理标题、段落与列表结构");
+      const formatResult = await requestAiJson(
+        buildSmartPostFormatMessages(prompt),
+        buildSmartPostRequestOptions(config, providers, 8_000),
+      );
+      const draft = parseSmartPostDraft(formatResult.content);
+      ensureNoInventedContacts(sourceText, draft);
+      reportProgress(input, 84, "单轮排版已完成，正在检查返回格式");
+      return await finalizeDraft(draft, formatResult, [formatResult.completion]);
+    }
+
     reportProgress(input, 24, "第 1/3 轮：Agent 正在分析材料与事实");
     const analysisResult = await requestAiJson(
       (_model, provider) => buildSmartPostAnalysisMessages({
@@ -213,38 +270,11 @@ export async function createSmartPostDraft(input: SmartPostDraftInput): Promise<
     const draft = parseSmartPostDraft(finalResult.content);
     const canValidateContacts = preparedFiles.every((item) => item.extractedText && item.images.length === 0);
     if (!files.length || canValidateContacts) ensureNoInventedContacts(sourceText, draft);
-    reportProgress(input, 91, "正在按三轮实际 Token 用量结算额度");
-    const usage = resolveSmartPostUsage(
+    return await finalizeDraft(
+      draft,
+      finalResult,
       [analysisResult.completion, draftResult.completion, finalResult.completion],
-      config.smartPostTokensPerQuota,
     );
-    for (let unit = 1; unit < usage.chargedQuota; unit += 1) {
-      latestQuota = await consumeCampusAssistantQuota(input.userId, new Date(), 1, {
-        allowPointDebt: true,
-        reason: "智慧发帖实际 Token 用量补扣",
-      });
-      reservations.push(latestQuota.reservation);
-    }
-    await finishAiReviewLogSuccess(startedLog?.id, draft.summary, {
-      provider: finalResult.provider,
-      model: finalResult.model,
-      endpoint: finalResult.endpoint,
-      pointCost: usage.chargedQuota,
-    });
-    reportProgress(input, 100, "草稿已生成，可以返回发帖页继续编辑");
-    return {
-      ...draft,
-      provider: finalResult.provider,
-      model: finalResult.model,
-      source: files.length ? (content ? "text-and-file" : "file") : "text",
-      usage,
-      quota: {
-        remaining: latestQuota.remaining,
-        points: latestQuota.points,
-        totalRemaining: latestQuota.totalRemaining,
-        nextResetAt: latestQuota.nextResetAt,
-      },
-    };
   } catch (error) {
     await Promise.allSettled(
       reservations.slice().reverse().map((reservation) => refundCampusAssistantQuota(input.userId, reservation)),
@@ -284,11 +314,13 @@ export function estimateSmartPostQuota(input: {
   textLength?: number | null;
   files?: Array<{ name?: string | null; size?: number | null }> | null;
   tokensPerQuota?: number | null;
+  operation?: SmartPostOperation | null;
 }): SmartPostQuotaEstimate {
-  const files = (input.files || []).slice(0, SMART_POST_MAX_FILES);
   const textLength = Math.max(0, Math.min(25_000, Math.round(Number(input.textLength) || 0)));
-  let minTokens = 9_000 + Math.ceil(textLength * 1.8);
-  let maxTokens = 18_000 + Math.ceil(textLength * 4.2);
+  const formatOnly = input.operation === "format";
+  const files = formatOnly ? [] : (input.files || []).slice(0, SMART_POST_MAX_FILES);
+  let minTokens = formatOnly ? 2_000 + Math.ceil(textLength * 0.55) : 9_000 + Math.ceil(textLength * 1.8);
+  let maxTokens = formatOnly ? 6_000 + Math.ceil(textLength * 1.6) : 18_000 + Math.ceil(textLength * 4.2);
 
   for (const file of files) {
     const extension = smartPostFileExtension(String(file.name || ""));
@@ -369,7 +401,7 @@ function hasSmartPostFileSignature(buffer: Buffer, extension: string) {
 }
 
 export function normalizeSmartPostFile(file: SmartPostSourceFile): SmartPostSourceFile {
-  const originalname = String(file.originalname || "")
+  const originalname = decodeMultipartFilename(String(file.originalname || ""))
     .replace(/[\u0000-\u001f\u007f]/gu, " ")
     .trim()
     .slice(0, 180);
@@ -392,6 +424,19 @@ export function normalizeSmartPostFile(file: SmartPostSourceFile): SmartPostSour
     || (extension === "md" && declaredMime === "text/plain");
   if (!compatibleMime) throw Errors.badRequest("文件类型与扩展名不匹配");
   return { buffer: file.buffer, originalname, mimetype: expectedMime };
+}
+
+function decodeMultipartFilename(value: string) {
+  const raw = String(value || "");
+  if (!/[\u0080-\u009f]|[ÃÂâäåæçÐÑã]/u.test(raw)) return raw;
+  if (Array.from(raw).some((character) => character.codePointAt(0)! > 0xff)) return raw;
+  try {
+    const decoded = new TextDecoder("utf-8", { fatal: true }).decode(Buffer.from(raw, "latin1"));
+    if (!decoded.trim() || /[\u0000-\u001f\u007f]/u.test(decoded)) return raw;
+    return decoded;
+  } catch {
+    return raw;
+  }
 }
 
 export function normalizeSmartPostFiles(files: SmartPostSourceFile[]) {
@@ -638,6 +683,21 @@ function buildSmartPostAnalysisMessages(input: {
   return [
     { role: "system", content: SMART_POST_ANALYSIS_SYSTEM_PROMPT },
     { role: "user", content: parts.length === 1 ? promptText : parts },
+  ];
+}
+
+function buildSmartPostFormatMessages(prompt: string): AiJsonMessage[] {
+  return [
+    { role: "system", content: SMART_POST_FORMAT_SYSTEM_PROMPT },
+    {
+      role: "user",
+      content: [
+        prompt,
+        "",
+        "请只做一次排版整理，并严格返回：",
+        '{"title":"2-120字标题","content":"1-20000字 Markdown 正文","summary":"一句话说明调整了哪些排版"}',
+      ].join("\n"),
+    },
   ];
 }
 

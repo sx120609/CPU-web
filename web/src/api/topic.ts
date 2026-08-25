@@ -185,6 +185,7 @@ export type SmartPostJobSnapshot = {
   result: SmartPostDraftResult | null;
   error: string | null;
   returnPath: string;
+  operation?: SmartPostOperation;
 };
 
 export type SmartPostQuotaEstimate = {
@@ -263,7 +264,7 @@ export const topicApi = {
       timeout: 10_000,
       suppressErrorMessage: true,
     }),
-  estimateSmartCompose: (payload: { textLength: number; files: Array<{ name: string; size: number }> }) =>
+  estimateSmartCompose: (payload: { textLength: number; operation: SmartPostOperation; files: Array<{ name: string; size: number }> }) =>
     request.post<SmartPostQuotaEstimate>("/topics/smart-compose/estimate", payload, {
       timeout: 10_000,
       suppressErrorMessage: true,

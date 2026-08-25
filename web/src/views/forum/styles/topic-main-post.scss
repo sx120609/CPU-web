@@ -1,6 +1,13 @@
 .main-post {
   padding: 0;
-  overflow: hidden;
+  // `hidden` creates a non-scrolling scroll container and prevents the nested
+  // author card from sticking to the page viewport.
+  overflow: visible;
+  overflow: clip;
+
+  &.cpu-card:hover {
+    transform: none;
+  }
 
   .post-head {
     display: flex;

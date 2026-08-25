@@ -184,6 +184,17 @@ test("智慧发帖文件接受宣传常用类型，并限制多附件数量", ()
   }))), /最多上传 8 个附件/u);
 });
 
+test("multipart 中文附件名按 UTF-8 恢复，不把乱码写入任务与日志", () => {
+  const chineseName = "中国药科大学本科毕业论文.pdf";
+  const mojibakeName = Buffer.from(chineseName, "utf8").toString("latin1");
+  const normalized = normalizeSmartPostFile({
+    buffer: Buffer.from("%PDF-test"),
+    originalname: mojibakeName,
+    mimetype: "application/pdf",
+  });
+  assert.equal(normalized.originalname, chineseName);
+});
+
 test("智慧发帖可从 PPTX 幻灯片与备注提取文字", async () => {
   const zip = new JSZip();
   zip.file("ppt/presentation.xml", "<p:presentation/>");
@@ -213,4 +224,14 @@ test("提交前额度估算返回宽区间，并使用当前每额度 Token 配�
   assert.ok(estimate.minTokens < estimate.maxTokens);
   assert.equal(estimate.minQuota, Math.ceil(estimate.minTokens / 4_000));
   assert.equal(estimate.maxQuota, Math.ceil(estimate.maxTokens / 4_000));
+
+  const formatEstimate = estimateSmartPostQuota({
+    operation: "format",
+    textLength: 2_000,
+    files: [{ name: "不会提交的附件.pdf", size: 12 * 1024 * 1024 }],
+    tokensPerQuota: 4_000,
+  });
+  assert.ok(formatEstimate.maxTokens < estimate.minTokens);
+  assert.equal(formatEstimate.minQuota, Math.ceil(formatEstimate.minTokens / 4_000));
+  assert.equal(formatEstimate.maxQuota, Math.ceil(formatEstimate.maxTokens / 4_000));
 });

@@ -438,7 +438,9 @@
           type="info"
           :closable="false"
           show-icon
-          title="Agent 会在后台分三轮分析材料、生成草稿并核验定稿。提交后可离开此页；它只生成可编辑草稿，不会自动发布。"
+          :title="smartPostOperation === 'format'
+            ? '整理排版只执行一次专用模型请求。提交后可离开此页；它只生成可编辑草稿，不会自动发布。'
+            : 'Agent 会在后台分三轮分析材料、生成草稿并核验定稿。提交后可离开此页；它只生成可编辑草稿，不会自动发布。'"
         />
         <label class="smart-post-field">
           <span>处理方式</span>
@@ -448,8 +450,8 @@
             <el-radio-button value="format">整理排版</el-radio-button>
           </el-radio-group>
         </label>
-        <label class="smart-post-field">
-          <span>宣传材料（可选，最多 8 个）</span>
+        <label v-if="smartPostOperation !== 'format'" class="smart-post-field">
+          <span>{{ smartPostOperation === "polish" ? "补充材料" : "宣传材料" }}（可选，最多 8 个）</span>
           <input
             ref="smartPostFileInputRef"
             class="smart-post-file-input"
@@ -473,6 +475,9 @@
             </li>
           </ul>
         </label>
+        <div v-else class="smart-post-mode-note">
+          整理排版只处理编辑器中的现有标题和正文，不会上传附件。
+        </div>
         <label class="smart-post-field">
           <span>附加要求（可选）</span>
           <el-input
@@ -485,15 +490,19 @@
           />
         </label>
         <div class="smart-post-estimate" aria-live="polite">
-          <template v-if="smartPostEstimateLoading">正在根据文字与附件估算三轮 Agent 用量…</template>
+          <template v-if="smartPostEstimateLoading">正在估算{{ smartPostOperation === "format" ? "单轮排版" : "三轮 Agent" }}用量…</template>
           <template v-else-if="smartPostEstimate">
             预计约 <strong>{{ smartPostEstimate.minQuota }}–{{ smartPostEstimate.maxQuota }} 个 AI 额度</strong>
             （约 {{ formatTokenCount(smartPostEstimate.minTokens) }}–{{ formatTokenCount(smartPostEstimate.maxTokens) }} Tokens）。
-            实际按三轮上游返回的 Token 结算，复杂 PDF、图片或长 PPT 可能超出区间；失败会退款。
+            实际按本次工作流上游返回的 Token 结算；{{ smartPostOperation === "format" ? "正文越长，用量越高" : "复杂 PDF、图片或长 PPT 可能超出区间" }}；失败会退款。
           </template>
           <template v-else>暂时无法估算额度；提交后仍只会按实际 Token 结算，失败会退款。</template>
         </div>
-        <p class="smart-post-privacy">附件只在服务端内存中处理：Responses 接口优先读取原文件；图片及 PPT/Word 内嵌图片会作为视觉材料分析，其他接口由服务端临时解析，不保存上传文件。任务会在同一账号的不同设备显示进度和失败原因。</p>
+        <p class="smart-post-privacy">
+          <template v-if="smartPostOperation !== 'format'">附件只在服务端内存中处理：Responses 接口优先读取原文件；图片及 PPT/Word 内嵌图片会作为视觉材料分析，其他接口由服务端临时解析，不保存上传文件。</template>
+          <template v-else>本模式只发送编辑器中的现有标题、正文和附加要求，不会发送已选择的附件。</template>
+          任务会在同一账号的不同设备显示进度和失败原因。
+        </p>
       </div>
       <template #footer>
         <el-button :disabled="smartPostRunning" @click="smartPostOpen = false">取消</el-button>
@@ -869,11 +878,11 @@ watch(
     appliedSmartPostJobId = status.jobId;
     form.title = status.result.title;
     form.content = status.result.content;
-    editorMode.value = "markup";
-    scheduleMarkupDraftSave(status.result.content);
+    setEditorMode("visual");
     scheduleFormDraftSave();
     smartPost.dismiss();
-    ElMessage.success(`${status.result.summary}；三轮实际使用 ${status.result.usage.totalTokens} Tokens，扣除 ${status.result.usage.chargedQuota} 个 AI 额度`);
+    const workflowName = status.operation === "format" ? "单轮排版" : "三轮 Agent";
+    ElMessage.success(`${status.result.summary}；${workflowName}实际使用 ${status.result.usage.totalTokens} Tokens，扣除 ${status.result.usage.chargedQuota} 个 AI 额度`);
   },
   { deep: true, immediate: true },
 );
@@ -881,6 +890,7 @@ watch(
 watch(
   () => [
     smartPostOpen.value,
+    smartPostOperation.value,
     form.title.length,
     form.content.length,
     smartPostInstruction.value.length,
@@ -1340,7 +1350,10 @@ async function refreshSmartPostEstimate() {
   try {
     const estimate = await topicApi.estimateSmartCompose({
       textLength: Math.min(25_000, form.title.length + form.content.length + smartPostInstruction.value.length),
-      files: smartPostFiles.value.map((file) => ({ name: file.name, size: file.size })),
+      operation: smartPostOperation.value,
+      files: smartPostOperation.value !== "format"
+        ? smartPostFiles.value.map((file) => ({ name: file.name, size: file.size }))
+        : [],
     });
     if (seq !== smartPostEstimateSeq || !smartPostOpen.value) return;
     smartPostEstimate.value = estimate;
@@ -1354,7 +1367,12 @@ async function refreshSmartPostEstimate() {
 
 async function runSmartPost() {
   if (smartPostRunning.value) return;
-  if (isMarkupContentEmpty(form.content) && !smartPostFiles.value.length) {
+  const requestFiles = smartPostOperation.value === "format" ? [] : smartPostFiles.value;
+  if (smartPostOperation.value !== "compose" && isMarkupContentEmpty(form.content)) {
+    ElMessage.warning("请先在编辑器中填写需要处理的正文");
+    return;
+  }
+  if (smartPostOperation.value === "compose" && isMarkupContentEmpty(form.content) && !requestFiles.length) {
     ElMessage.warning("请先填写文字，或选择图片、PPT、Word、PDF 等材料");
     return;
   }
@@ -1366,7 +1384,7 @@ async function runSmartPost() {
       instruction: smartPostInstruction.value.trim() || undefined,
       operation: smartPostOperation.value,
       boardSlug: form.boardSlug || undefined,
-      files: smartPostFiles.value,
+      files: requestFiles,
     }, route.fullPath, auth.user!.id);
     smartPostOpen.value = false;
     clearSmartPostFiles();
@@ -1820,6 +1838,15 @@ function notifyVideoReviewState(summary?: {
 
 .smart-post-file-input {
   display: none;
+}
+
+.smart-post-mode-note {
+  padding: 11px 13px;
+  border-radius: 10px;
+  background: var(--cpu-surface-subtle);
+  color: var(--cpu-text-secondary);
+  font-size: 13px;
+  line-height: 1.7;
 }
 
 .smart-post-file-row {

@@ -251,7 +251,7 @@
       <div class="section-head">
         <div>
           <h3 class="section-title">智慧发帖 Agent</h3>
-          <p class="section-desc">分三轮分析文字、图片、PPT、Word、PDF 等多附件并生成可编辑草稿。此场景单独指定模型，不继承文字审核模型；Agent 不会自动发布。</p>
+          <p class="section-desc">生成与润色分三轮分析文字及多附件，整理排版只执行单轮请求。此场景单独指定模型，不继承文字审核模型；Agent 不会自动发布。</p>
         </div>
       </div>
 

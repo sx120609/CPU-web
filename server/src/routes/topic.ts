@@ -101,6 +101,7 @@ const smartPostSchema = z.object({
 
 const smartPostEstimateSchema = z.object({
   textLength: z.number().int().min(0).max(25_000).optional().default(0),
+  operation: z.enum(["compose", "polish", "format"]).optional().default("compose"),
   files: z.array(z.object({
     name: z.string().min(1).max(180),
     size: z.number().int().min(0).max(SMART_POST_MAX_FILE_BYTES),
@@ -333,7 +334,12 @@ topicRouter.post(
       const parsed = smartPostSchema.safeParse(req.body || {});
       if (!parsed.success) throw Errors.badRequest(parsed.error.issues[0]?.message || "智慧发帖参数不合法");
       const uploadFiles = smartPostRequestFiles(req);
-      if (!parsed.data.content.trim() && !uploadFiles.length) throw Errors.badRequest("请填写文字，或上传图片、PPT、Word、PDF 等材料");
+      if (parsed.data.operation !== "compose" && !parsed.data.content.trim()) {
+        throw Errors.badRequest("请先填写需要处理的正文");
+      }
+      if (parsed.data.operation === "compose" && !parsed.data.content.trim() && !uploadFiles.length) {
+        throw Errors.badRequest("请填写文字，或上传图片、PPT、Word、PDF 等材料");
+      }
       await ensureForumAccessEnabled(req.user!.userId, req.user!.role);
       await ensureUserCanSpeak(req.user!.userId);
       const board = parsed.data.boardSlug
@@ -352,7 +358,7 @@ topicRouter.post(
         boardName: board?.name,
         boardType: board?.type,
         returnPath: parsed.data.returnPath,
-        files: uploadFiles.map((file) => ({
+        files: (parsed.data.operation === "format" ? [] : uploadFiles).map((file) => ({
           buffer: file.buffer,
           originalname: file.originalname,
           mimetype: file.mimetype,
