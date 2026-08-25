@@ -38,7 +38,7 @@ test("routes image reviews to visual models and filters Spark/Codex candidates",
     imageReviewFallbackModels: "gpt-4.1",
   };
 
-  assert.deepEqual(resolveQqGroupAdModelCandidates(config, true), ["gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini"]);
+  assert.deepEqual(resolveQqGroupAdModelCandidates(config, true), ["gpt-4o-mini", "gpt-4.1"]);
   assert.deepEqual(resolveQqGroupAdModelCandidates(config, false), [
     "gpt-5.3-codex-spark",
     "gpt-5.3-codex",
@@ -50,7 +50,7 @@ test("routes image reviews to visual models and filters Spark/Codex candidates",
     "gpt-5.3-codex",
     "gpt-4.1-mini",
   ]);
-  assert.deepEqual(resolveQqGroupAdModelCandidates(config, true, true), ["gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini"]);
+  assert.deepEqual(resolveQqGroupAdModelCandidates(config, true, true), ["gpt-4o-mini", "gpt-4.1"]);
 });
 
 test("activates peak enhanced mode in the configured Beijing-time window", () => {
@@ -240,10 +240,8 @@ test("hard-blocks part-time tutoring diversion even when mixed with hobby groups
 
 test("keeps the group QR-code switch independent from campus recruitment", () => {
   assert.equal(detectQqGroupAdHardBlockReason("校园社团招新，扫码进群"), null);
-  assert.match(
-    detectQqGroupAdHardBlockReason("校园社团招新，扫码进群", true) || "",
-    /二维码|扫码/,
-  );
+  assert.equal(detectQqGroupAdHardBlockReason("校园社团招新，扫码进群", true), null);
+  assert.equal(detectQqGroupAdHardBlockReason("请扫描二维码查看通知", true), null);
 });
 
 test("does not hard-block a normal message that only mentions QQ groups", () => {
@@ -308,10 +306,9 @@ test("白名单只在开启对应硬限制时进入二维码或群卡片检测",
     whitelisted: true,
     hasGroupCard: false,
     hasReviewableMedia: false,
-    hasQrTextSignal: true,
     blockQrCode: true,
     blockGroupCard: false,
-  }), "qr-only");
+  }), "bypass");
   assert.equal(resolveQqGroupWhitelistReviewPlan({
     whitelisted: true,
     hasGroupCard: true,

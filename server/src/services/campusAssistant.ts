@@ -911,19 +911,12 @@ export async function askCampusAssistant(input: {
   const deterministicActions = searchCampusAssistantActions(message, input.context, 3);
   const webSearchRequested = shouldUseCampusAssistantWebSearch(message);
   const config = getSiteConfig();
-  const assistantProviders = resolveAiServiceCandidatesForScene(config, "assistant");
-  const visionProviders = input.images?.length
-    ? resolveAiServiceCandidatesForScene(config, "image-review")
-    : [];
-  const visionModel = String(config.imageReviewModel || "").trim();
-  const visionReady = Boolean(input.images?.length && visionModel && visionProviders.some((candidate) => isAiProviderReady({
-    provider: candidate.provider,
-    apiUrl: candidate.apiUrl,
-    apiKey: candidate.apiKey,
-    model: visionModel,
-  })));
-  const providers = visionReady ? visionProviders : assistantProviders;
-  const assistantModel = visionReady ? visionModel : config.assistantModel;
+  // A multimodal 拾间AI request is still one assistant request: the selected
+  // assistant service/model must receive both the text and image together.
+  // image-review is reserved for moderation and must not silently replace the
+  // user's configured 拾间AI route.
+  const providers = resolveAiServiceCandidatesForScene(config, "assistant");
+  const assistantModel = config.assistantModel;
   const provider = providers[0];
   if (!config.aiReviewEnabled || !providers.some((candidate) => isAiProviderReady({
     provider: candidate.provider,
@@ -965,7 +958,7 @@ export async function askCampusAssistant(input: {
     ), {
       promptCacheScope: webSearchRequested ? "campus-assistant-web" : "campus-assistant",
       model: assistantModel,
-      fallbackModels: visionReady ? config.imageReviewFallbackModels : "",
+      fallbackModels: "",
       maxTokens: CAMPUS_ASSISTANT_MAX_OUTPUT_TOKENS,
       providerConfig: provider,
       providerConfigs: providers,

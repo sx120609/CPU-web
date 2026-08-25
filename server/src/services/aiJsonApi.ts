@@ -348,8 +348,9 @@ async function sendNativeOllamaJsonRequest(input: {
   ollamaThink?: boolean;
   signal?: AbortSignal;
 }): Promise<SendAiJsonRequestResult> {
-  // The campus assistant is text-only. Keep image requests on the compatible
-  // endpoint because native Ollama expects image bytes in a different shape.
+  // Native Ollama's image payload shape is different. Keep multimodal
+  // requests on the OpenAI-compatible endpoint instead of silently dropping
+  // or reshaping their image parts.
   if (input.messages.some((message) => typeof message.content !== "string")) {
     return sendAiJsonRequest({ ...input, preferNativeOllama: false });
   }

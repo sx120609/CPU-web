@@ -3819,12 +3819,10 @@ async function maybeHandleQqGroupAdFilter(input: {
     const reviewContent = expandedForward?.content.trim()
       || messageText
       || `[${hasGroupCard ? "QQ群卡片" : mediaFallback || "多媒体消息"}]`;
-    const hasQrTextSignal = blockQrCodes && /二维码|扫码|扫描二维码/u.test(reviewContent);
     const whitelistReviewPlan = resolveQqGroupWhitelistReviewPlan({
       whitelisted,
       hasGroupCard,
       hasReviewableMedia: reviewImageUrls.length > 0,
-      hasQrTextSignal,
       blockQrCode: whitelistBlocksQrCode,
       blockGroupCard: whitelistBlocksGroupCard,
     });
@@ -3832,7 +3830,6 @@ async function maybeHandleQqGroupAdFilter(input: {
     if (whitelistReviewPlan === "bypass" && !proactiveCandidate) return false;
     const moderationEnabled = moderationConfigured && !whitelisted;
     const cardBlocked = cardBlockedByPolicy;
-    const qrTextBlocked = whitelisted && whitelistReviewPlan === "qr-only" && hasQrTextSignal;
     const review = cardBlocked
       ? {
           action: "block" as const,
@@ -3844,17 +3841,6 @@ async function maybeHandleQqGroupAdFilter(input: {
           modelDecision: "block",
           assistantIntent: false,
         }
-      : qrTextBlocked
-        ? {
-            action: "block" as const,
-            riskScore: 100,
-            riskLevel: "high" as const,
-            reason: "二维码",
-            detail: "文字中出现二维码或扫码引导，白名单用户仍受本群二维码限制。",
-            model: "local-signal",
-            modelDecision: "block",
-            assistantIntent: false,
-          }
       : await reviewQqGroupMessageForAd({
           groupId,
           groupName: group.name,

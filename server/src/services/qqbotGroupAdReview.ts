@@ -6,7 +6,7 @@ import { extractAiJsonTextResponse, normalizeAiJsonApiUrl, sendAiJsonRequestWith
 import { resolveModelCandidates, shouldFallbackToNextModel } from "./modelFallback";
 import { prepareMediaLocalFileForProcessing } from "./mediaStorage";
 import { decodeQqImageDataUrl, normalizeQqImageForAi } from "./qqbot/imageValidation";
-import { getSiteConfig, hasAiProviderAccess, isAiProviderReady, resolveAiServiceCandidatesForScene, resolveAiServiceForScene } from "./siteSettings";
+import { getSiteConfig, hasAiProviderAccess, isAiProviderReady, resolveAiServiceCandidatesForScene } from "./siteSettings";
 
 type QqGroupAdResponse = {
   risk_score?: number;
@@ -111,7 +111,7 @@ export async function reviewQqGroupMessageForAd(input: {
   nickname?: string | null;
   content: string;
   imageUrls?: string[];
-  /** When enabled, any recognizable QR code in text/media is a hard block. */
+  /** When enabled, any recognizable QR code in an attached image/video frame is a hard block. */
   blockQrCodes?: boolean;
   /** Whitelisted media uses this mode so advertising intent can never affect the result. */
   reviewMode?: "full" | "qr-only";
@@ -131,6 +131,11 @@ export async function reviewQqGroupMessageForAd(input: {
     : config.qqGroupAdReviewModel;
   const providers = resolveAiServiceCandidatesForScene(config, "qq-group-ad");
   const provider = providers[0];
+  const imageUrls = Array.from(new Set((input.imageUrls || []).map((url) => String(url || "").trim()).filter(Boolean))).slice(0, 4);
+  const hasImageInput = imageUrls.length > 0;
+  const imageProviders = hasImageInput
+    ? resolveAiServiceCandidatesForScene(config, "image-review")
+    : [];
   const peakProvider = resolveQqGroupAdPeakProvider(config, provider);
   const peakRouteReady = enhancedMode && Boolean(peakMode.model) && isAiProviderReady({
     provider: peakProvider.provider,
@@ -139,12 +144,19 @@ export async function reviewQqGroupMessageForAd(input: {
     model: peakMode.model,
   });
   const readyProviders = peakRouteReady ? [peakProvider, ...providers] : providers;
-  if (!config.qqGroupAdReviewEnabled || !readyProviders.some((candidate) => isAiProviderReady({
+  const textRouteReady = readyProviders.some((candidate) => isAiProviderReady({
     provider: candidate.provider,
     apiUrl: candidate.apiUrl,
     apiKey: candidate.apiKey,
     model: peakRouteReady && candidate === peakProvider ? peakMode.model : config.qqGroupAdReviewModel,
-  }))) {
+  }));
+  const imageRouteReady = imageProviders.some((candidate) => isAiProviderReady({
+    provider: candidate.provider,
+    apiUrl: candidate.apiUrl,
+    apiKey: candidate.apiKey,
+    model: candidate.model || config.imageReviewModel,
+  }));
+  if (!config.qqGroupAdReviewEnabled) {
     return {
       action: "allow",
       riskScore: 0,
@@ -156,8 +168,21 @@ export async function reviewQqGroupMessageForAd(input: {
       assistantIntent: false,
     };
   }
-
-  const imageUrls = Array.from(new Set((input.imageUrls || []).map((url) => String(url || "").trim()).filter(Boolean))).slice(0, 4);
+  if (hasImageInput && !imageRouteReady) {
+    throw Errors.server("QQ群图片广告过滤未配置可用的“图片审核”服务，请在后台选择图片审核服务并配置模型");
+  }
+  if (!hasImageInput && !textRouteReady) {
+    return {
+      action: "allow",
+      riskScore: 0,
+      riskLevel: "low",
+      reason: "QQ群广告过滤未配置可用服务",
+      detail: "",
+      model: peakRouteReady ? effectiveTextModel : config.qqGroupAdReviewModel,
+      modelDecision: "auto_pass",
+      assistantIntent: false,
+    };
+  }
   const detectAssistantIntent = input.detectAssistantIntent === true && reviewMode === "full";
   const nicknameRiskReason = enhancedMode
     ? detectSuspiciousQqNicknameReason(input.nickname)
@@ -225,7 +250,9 @@ export async function reviewQqGroupMessageForAd(input: {
     throw Errors.server("QQ群图片读取失败，未将不可访问的图片地址直接交给模型；请稍后重试");
   }
   const qrPolicy = input.blockQrCodes === true
-    ? "本群已开启“禁止二维码”：只要文字或任一附件（包括视频抽帧）中出现可识别二维码，即使没有其他广告文案，也必须 decision=block，并在 reason 中明确写“二维码”。\n\n"
+    ? imageUrls.length
+      ? "本群已开启“禁止二维码”：仅当随消息提供的图片或视频抽帧中确实出现清晰、可识别的二维码时，才必须 decision=block，并在 reason 中明确写“二维码”。不要因为文字里出现“二维码”“扫码”或“扫描”等词就拦截；没有看见实际二维码时，必须按其他商业广告证据判断。\n\n"
+      : "本群已开启“禁止二维码”，但本次消息没有图片或视频附件。文字里出现“二维码”“扫码”或“扫描”等词不算实际二维码证据，不得仅凭这些文字 block；请按其他商业广告证据判断。\n\n"
     : "本群未开启强制二维码拦截；二维码本身不等于广告，只有同时构成真实商业导流、收费交易或商业推广时才拦截。校园社团/学生组织招新中的二维码是报名渠道，默认放行。\n\n";
   const assistantIntentInstruction = detectAssistantIntent
     ? [
@@ -290,15 +317,16 @@ export async function reviewQqGroupMessageForAd(input: {
   const reviewMetadataSummary = Object.keys(effectiveMetadata).length
     ? `\n\n[审核路径诊断] ${JSON.stringify(effectiveMetadata).slice(0, 1800)}`
     : "";
-  const reviewProvider = preparedImages.length
-    ? resolveQqGroupAdImageProvider(config, provider)
-    : provider;
-  const imageProviders = preparedImages.length
-    ? resolveAiServiceCandidatesForScene(config, "image-review")
-    : [];
   const standardProviderCandidates = preparedImages.length
-    ? (imageProviders.some((candidate) => hasAiProviderAccess(candidate)) ? imageProviders : [reviewProvider])
+    ? imageProviders.filter((candidate) => hasAiProviderAccess(candidate))
     : providers;
+  const reviewProvider = standardProviderCandidates[0] || provider;
+  if (!reviewProvider) {
+    throw Errors.server("QQ群广告过滤未配置可用的 AI 服务");
+  }
+  if (preparedImages.length && !standardProviderCandidates.length) {
+    throw Errors.server("QQ群图片广告过滤未配置可用的“图片审核”服务，请在后台选择图片审核服务并配置模型");
+  }
   const candidates = resolveQqGroupAdModelCandidates(config, preparedImages.length > 0, peakRouteReady);
   if (!candidates.length) {
     throw Errors.server("QQ群图片广告过滤未配置支持图片输入的模型，请在后台把‘图片审核’模型改为支持视觉输入的模型（例如 gpt-4o-mini）");
@@ -391,7 +419,8 @@ export async function reviewQqGroupMessageForAd(input: {
     const parsed = parseAdReviewResponse(content);
     const riskScore = clampScore(parsed.risk_score);
     const modelDecision = String(parsed.decision || "").trim().toLowerCase();
-    const policyHardBlock = input.blockQrCodes === true
+    const policyHardBlock = preparedImages.length > 0
+      && input.blockQrCodes === true
       && modelDecision === "block"
       && isQqGroupQrDecision(parsed.reason, parsed.detail);
     const action = reviewMode === "qr-only"
@@ -513,10 +542,14 @@ export function detectQqUnofficialNoticeDiversionReason(input: string) {
   return "疑似冒充学校/官方通知并引导加入未核验 QQ 群";
 }
 
-export function detectQqGroupAdHardBlockReason(input: string, blockQrCodes = false) {
+/**
+ * Resolve text-only hard signals. QR enforcement is intentionally not handled
+ * here: the QR switch must inspect an actual attached image/video frame, not
+ * words such as “扫码” in plain text.
+ */
+export function detectQqGroupAdHardBlockReason(input: string, _blockQrCodes = false) {
   const content = normalizeMessageForCache(input);
   if (!content) return null;
-  if (blockQrCodes && /二维码|扫码|扫描二维码/u.test(content)) return "包含二维码或扫码引导（本群已开启禁止二维码）";
   if (QQ_GROUP_COMMERCIAL_GROUP_DIVERSION_PATTERN.test(content) && QQ_GROUP_NUMBER_ANY_LABEL_PATTERN.test(content)) {
     return "包含兼职/家教等商业招募并附群号导流";
   }
@@ -537,13 +570,12 @@ export function resolveQqGroupWhitelistReviewPlan(input: {
   whitelisted: boolean;
   hasGroupCard: boolean;
   hasReviewableMedia: boolean;
-  hasQrTextSignal?: boolean;
   blockQrCode: boolean;
   blockGroupCard: boolean;
 }): "full" | "qr-only" | "block-group-card" | "bypass" {
   if (!input.whitelisted) return "full";
   if (input.hasGroupCard && input.blockGroupCard) return "block-group-card";
-  if ((input.hasReviewableMedia || input.hasQrTextSignal) && input.blockQrCode) return "qr-only";
+  if (input.hasReviewableMedia && input.blockQrCode) return "qr-only";
   return "bypass";
 }
 
@@ -675,10 +707,10 @@ function buildQqGroupAdReviewResultCacheKey(input: {
 
 /**
  * Resolve the model order for QQ ad review. Text messages keep using the
- * dedicated QQ model. Messages with images start with the separately
- * configurable image-review model, then use its fallbacks and finally any
- * compatible QQ models. This prevents a configured Spark model from receiving
- * an image payload and turning a moderation event into a 400 error.
+ * dedicated QQ model. Messages with images use only the separately configured
+ * image-review model and its configured fallback models. They must never fall
+ * back to the text-only QQ model, because that can send image payloads to a
+ * model/provider that does not support vision input.
  */
 export function resolveQqGroupAdModelCandidates(
   config: Pick<ReturnType<typeof getSiteConfig>, "qqGroupAdReviewModel" | "qqGroupAdReviewFallbackModels" | "qqGroupAdReviewPeakModel" | "imageReviewModel" | "imageReviewFallbackModels">,
@@ -693,9 +725,8 @@ export function resolveQqGroupAdModelCandidates(
   ]));
   if (!hasImages) return textCandidates;
   const imageCandidates = resolveModelCandidates(config.imageReviewModel, config.imageReviewFallbackModels);
-  const candidates = [...imageCandidates, ...normalTextCandidates];
   const seen = new Set<string>();
-  return candidates.filter((model) => {
+  return imageCandidates.filter((model) => {
     const key = model.toLowerCase();
     if (!key || seen.has(key)) return false;
     seen.add(key);
@@ -731,27 +762,6 @@ export function resolveQqGroupAdProviderCandidatesForModel<T extends {
     input.peakProvider,
     ...input.standardProviders.filter((candidate) => candidate.serviceId !== input.peakProvider.serviceId),
   ];
-}
-
-function resolveQqGroupAdImageProvider(
-  config: ReturnType<typeof getSiteConfig>,
-  fallback: { provider: string; apiUrl: string; apiKey: string },
-) {
-  const imageProvider = resolveAiServiceForScene(config, "image-review");
-  const imageApiKey = String(imageProvider.apiKey || "").trim();
-  const imageApiUrl = String(imageProvider.apiUrl || "").trim();
-  if (hasAiProviderAccess(imageProvider)) {
-    return {
-      provider: imageProvider.provider,
-      apiUrl: imageApiUrl,
-      apiKey: imageApiKey,
-    };
-  }
-  return {
-    provider: fallback.provider,
-    apiUrl: fallback.apiUrl,
-    apiKey: fallback.apiKey,
-  };
 }
 
 type PreparedQqGroupAdImage = {
