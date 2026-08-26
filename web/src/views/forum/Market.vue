@@ -22,7 +22,8 @@
       <span class="safety-icon">🛡️</span>
       <div>
         <b>本站只提供信息发布与公开交流</b>
-        <p>不提供站内下单、支付、担保、退款或结算。请自行核验物品与对方身份，谨慎分享联系方式，优先选择安全的校内公共场所沟通。</p>
+        <p class="safety-copy-full">不提供站内下单、支付、担保、退款或结算。请自行核验物品与对方身份，谨慎分享联系方式，优先选择安全的校内公共场所沟通。</p>
+        <p class="safety-copy-compact">不提供交易担保，请当面核验，勿站内支付。</p>
       </div>
     </section>
 
@@ -40,7 +41,7 @@
             </el-input>
             <el-button native-type="submit" type="primary">搜索</el-button>
           </form>
-          <el-radio-group v-model="sort" size="default" @change="changeSort">
+          <el-radio-group v-model="sort" size="default" class="sort-switch" @change="changeSort">
             <el-radio-button value="new">最新</el-radio-button>
             <el-radio-button value="hot">最热</el-radio-button>
           </el-radio-group>
@@ -50,7 +51,18 @@
 
       <div class="market-filters" aria-label="二手帖子筛选">
         <div class="filter-group filter-group--kind">
-          <span>发布类型</span>
+          <div class="filter-label-row">
+            <span>发布类型</span>
+            <button
+              type="button"
+              class="mobile-filter-trigger"
+              :aria-expanded="mobileFiltersOpen"
+              @click="mobileFiltersOpen = !mobileFiltersOpen"
+            >
+              更多筛选<span v-if="advancedFilterCount"> · {{ advancedFilterCount }}</span>
+              <el-icon :class="{ 'is-open': mobileFiltersOpen }"><ArrowDown /></el-icon>
+            </button>
+          </div>
           <el-radio-group v-model="kind" size="default" @change="changeFilter">
             <el-radio-button value="">全部</el-radio-button>
             <el-radio-button value="sell">出闲置</el-radio-button>
@@ -58,21 +70,23 @@
             <el-radio-button value="discuss">讨论</el-radio-button>
           </el-radio-group>
         </div>
-        <div class="filter-group">
-          <span>物品分类</span>
-          <el-select v-model="category" placeholder="全部分类" clearable @change="changeFilter">
-            <el-option v-for="item in categoryOptions" :key="item.value" :label="item.label" :value="item.value" />
-          </el-select>
+        <div class="filter-advanced" :class="{ 'is-open': mobileFiltersOpen }">
+          <div class="filter-group">
+            <span>物品分类</span>
+            <el-select v-model="category" placeholder="全部分类" clearable @change="changeFilter">
+              <el-option v-for="item in categoryOptions" :key="item.value" :label="item.label" :value="item.value" />
+            </el-select>
+          </div>
+          <div class="filter-group">
+            <span>所在校区</span>
+            <el-select v-model="campus" placeholder="全部校区" clearable @change="changeFilter">
+              <el-option label="江宁校区" value="江宁校区" />
+              <el-option label="玄武门校区" value="玄武门校区" />
+              <el-option label="不限校区" value="不限校区" />
+            </el-select>
+          </div>
+          <el-button v-if="hasStructuredFilter" text type="primary" class="filter-reset" @click="clearFilters">重置筛选</el-button>
         </div>
-        <div class="filter-group">
-          <span>所在校区</span>
-          <el-select v-model="campus" placeholder="全部校区" clearable @change="changeFilter">
-            <el-option label="江宁校区" value="江宁校区" />
-            <el-option label="玄武门校区" value="玄武门校区" />
-            <el-option label="不限校区" value="不限校区" />
-          </el-select>
-        </div>
-        <el-button v-if="hasStructuredFilter" text type="primary" class="filter-reset" @click="clearFilters">重置筛选</el-button>
       </div>
 
       <div v-if="error && !loading" class="load-state">
@@ -110,7 +124,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ArrowRight, ChatDotRound, Goods, Search } from "@element-plus/icons-vue";
+import { ArrowDown, ArrowRight, ChatDotRound, Goods, Search } from "@element-plus/icons-vue";
 import TopicListItem from "@/components/forum/TopicListItem.vue";
 import { boardApi, type Board } from "@/api/board";
 import { topicApi, type Topic } from "@/api/topic";
@@ -149,12 +163,14 @@ const appliedSearch = ref(searchInput.value.trim());
 const kind = ref<SecondHandPostKind | "">(routeEnum(route.query.kind, ["sell", "wanted", "discuss"]));
 const category = ref<SecondHandCategory | "">(routeEnum(route.query.category, categoryOptions.map((item) => item.value)));
 const campus = ref(routeEnum(route.query.campus, ["江宁校区", "玄武门校区", "不限校区"]));
+const mobileFiltersOpen = ref(Boolean(category.value || campus.value));
 const loading = ref(false);
 const error = ref("");
 let loadSequence = 0;
 
 const hasStructuredFilter = computed(() => Boolean(kind.value || category.value || campus.value));
 const hasActiveFilter = computed(() => Boolean(appliedSearch.value || hasStructuredFilter.value));
+const advancedFilterCount = computed(() => Number(Boolean(category.value)) + Number(Boolean(campus.value)));
 
 const routeQuery = computed(() => ({
   ...(appliedSearch.value ? { q: appliedSearch.value } : {}),
@@ -237,6 +253,7 @@ function clearFilters() {
   kind.value = "";
   category.value = "";
   campus.value = "";
+  mobileFiltersOpen.value = false;
   page.value = 1;
   void syncRouteAndReload();
 }
@@ -295,6 +312,7 @@ function openPost(kind: SecondHandPostKind) {
 .safety-icon { font-size: 20px; line-height: 1.4; }
 .safety-note b { color: var(--cpu-text); font-size: 13px; }
 .safety-note p { margin: 3px 0 0; color: var(--cpu-text-secondary); font-size: 12px; line-height: 1.65; }
+.safety-copy-compact { display: none; }
 
 .cpu-card { border: 1px solid var(--cpu-border-soft); border-radius: 18px; background: var(--cpu-card); box-shadow: var(--cpu-shadow-sm); }
 .topic-panel { overflow: hidden; padding: 20px 18px 14px; }
@@ -306,9 +324,13 @@ function openPost(kind: SecondHandPostKind) {
 .topic-search { display: grid; grid-template-columns: minmax(220px, 320px) auto; gap: 8px; }
 .market-filters { display: flex; align-items: flex-end; gap: 12px; padding: 13px 8px 7px; border-bottom: 1px solid var(--cpu-border-soft); flex-wrap: wrap; }
 .filter-group { display: flex; flex-direction: column; gap: 6px; min-width: 142px; }
-.filter-group > span { color: var(--cpu-text-secondary); font-size: 11px; font-weight: 700; }
+.filter-group > span,
+.filter-label-row > span { color: var(--cpu-text-secondary); font-size: 11px; font-weight: 700; }
 .filter-group :deep(.el-select) { width: 150px; }
 .filter-group--kind { min-width: 0; }
+.filter-label-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.mobile-filter-trigger { display: none; }
+.filter-advanced { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
 .filter-reset { align-self: flex-end; }
 .topic-list { min-height: 120px; padding-top: 6px; }
 .market-card-flow { columns: 4 220px; column-gap: 12px; padding: 10px 2px 0; }
@@ -326,27 +348,150 @@ function openPost(kind: SecondHandPostKind) {
 }
 
 @media (max-width: 720px) {
-  .second-hand-page { gap: 14px; }
-  .entry-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
-  .entry-card { align-items: center; flex-direction: column; gap: 7px; padding: 11px 6px; border-radius: 12px; text-align: center; }
-  .entry-icon { flex-basis: auto; width: 38px; height: 38px; border-radius: 11px; font-size: 19px; }
-  .entry-copy b { font-size: 13px; }
+  .second-hand-page { gap: 10px; }
+  .entry-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    padding: 6px;
+    border: 1px solid var(--cpu-border-soft);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--cpu-card) 92%, transparent);
+    box-shadow: var(--cpu-shadow-sm);
+    backdrop-filter: blur(18px) saturate(140%);
+  }
+  .entry-card {
+    min-height: 40px;
+    align-items: center;
+    justify-content: center;
+    flex-direction: row;
+    gap: 5px;
+    padding: 0 7px;
+    border: 1px solid var(--cpu-border-soft);
+    border-radius: 999px;
+    background: var(--cpu-surface-soft);
+    box-shadow: none;
+    color: var(--cpu-text-secondary);
+    text-align: center;
+  }
+  .entry-card:hover,
+  .entry-card:focus-visible { transform: none; box-shadow: none; }
+  .entry-card--sell {
+    border-color: var(--cpu-primary);
+    background: var(--cpu-primary);
+    color: #fff;
+  }
+  .entry-card--wanted,
+  .entry-card--talk { border-color: var(--cpu-border-soft); background: var(--cpu-surface-soft); }
+  .entry-icon {
+    flex: 0 0 auto;
+    width: auto;
+    height: auto;
+    border-radius: 0;
+    background: transparent;
+    color: currentColor;
+    font-size: 16px;
+  }
+  .entry-copy { flex: 0 1 auto; gap: 0; }
+  .entry-copy b { font-size: 12px; font-weight: 650; white-space: nowrap; }
   .entry-copy small, .entry-arrow { display: none; }
-  .topic-panel { padding: 16px 8px 10px; border-radius: 14px; }
-  .topic-panel-head { align-items: flex-start; flex-direction: column; padding: 0 6px 12px; }
-  .topic-actions { width: 100%; align-items: stretch; flex-direction: column; }
+  .safety-note {
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-color: var(--cpu-border-soft);
+    border-radius: 10px;
+    background: var(--cpu-card);
+  }
+  .safety-icon { font-size: 15px; line-height: 1; }
+  .safety-note b { font-size: 11px; font-weight: 650; }
+  .safety-note p { margin-top: 1px; font-size: 10px; line-height: 1.4; }
+  .safety-copy-full { display: none; }
+  .safety-copy-compact { display: block; }
+  .topic-panel { padding: 13px 10px 8px; border-radius: 10px; box-shadow: none; }
+  .topic-panel-head { align-items: flex-start; flex-direction: column; gap: 9px; padding: 0 0 9px; border-bottom: 0; }
+  .section-eyebrow,
+  .topic-panel-head p { display: none; }
+  .topic-panel-head h2 { margin: 0; font-size: 18px; line-height: 1.35; }
+  .topic-actions { width: 100%; align-items: center; flex-direction: row; justify-content: flex-start; gap: 7px; }
   .topic-search { grid-template-columns: minmax(0, 1fr) auto; }
-  .topic-actions :deep(.el-radio-group) { align-self: flex-start; }
-  .market-filters { align-items: stretch; gap: 9px; padding: 12px 6px 7px; }
+  .topic-search { flex: 1 1 100%; width: 100%; gap: 6px; }
+  .topic-search :deep(.el-input__wrapper) { min-height: 40px; border-radius: 9px; box-shadow: 0 0 0 1px var(--cpu-border) inset; }
+  .topic-search :deep(.el-button) { width: 56px; min-width: 56px; min-height: 40px; padding: 0 8px; border-radius: 9px; font-weight: 600; }
+  .topic-actions .sort-switch { align-self: flex-start; }
+  .topic-actions .sort-switch :deep(.el-radio-button__inner) { min-height: 34px; padding: 8px 14px; font-size: 12px; box-shadow: none; }
+  .market-filters { align-items: stretch; gap: 8px; padding: 0 0 9px; }
   .filter-group { width: 100%; }
   .filter-group :deep(.el-select) { width: 100%; }
-  .filter-group--kind { overflow-x: auto; padding-bottom: 2px; }
-  .filter-group--kind :deep(.el-radio-group) { flex-wrap: nowrap; }
-  .filter-reset { align-self: flex-start; }
-  .market-card-flow { columns: 2 145px; column-gap: 8px; padding-top: 8px; }
+  .filter-group--kind { overflow: visible; padding-bottom: 0; }
+  .filter-group--kind :deep(.el-radio-group) { display: flex; width: 100%; flex-wrap: nowrap; }
+  .filter-group--kind :deep(.el-radio-button) { flex: 1 1 0; }
+  .filter-group--kind :deep(.el-radio-button__inner) { width: 100%; min-height: 34px; padding: 8px 6px; font-size: 12px; box-shadow: none; }
+  .mobile-filter-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--cpu-primary);
+    font: inherit;
+    font-size: 11px;
+    font-weight: 650;
+    cursor: pointer;
+  }
+  .mobile-filter-trigger .el-icon { transition: transform 0.18s ease; }
+  .mobile-filter-trigger .el-icon.is-open { transform: rotate(180deg); }
+  .mobile-filter-trigger:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--cpu-primary) 42%, transparent);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  .filter-advanced { display: none; }
+  .filter-advanced.is-open {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+    padding: 9px;
+    border-radius: 10px;
+    background: var(--cpu-surface-subtle);
+  }
+  .filter-advanced .filter-group { min-width: 0; }
+  .filter-advanced :deep(.el-select__wrapper) { min-height: 36px; border-radius: 8px; }
+  .filter-reset { grid-column: 1 / -1; justify-self: start; min-height: 28px; padding: 0 4px; }
+  .market-card-flow { columns: 1; padding: 4px 0 0; }
+  .market-card-flow :deep(.topic-row--card) {
+    display: flex;
+    align-items: stretch;
+    gap: 10px;
+    margin: 0;
+    border: 0;
+    border-bottom: 1px solid var(--cpu-border-soft);
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+  .market-card-flow :deep(.market-card-image) {
+    flex: 0 0 82px;
+    width: 82px;
+    height: 82px;
+    margin: 10px 0;
+    border-radius: 9px;
+  }
+  .market-card-flow :deep(.market-card-body) { flex: 1; min-width: 0; padding: 10px 0; }
+  .market-card-flow :deep(.market-card-tags) { flex-wrap: nowrap; margin-bottom: 5px; overflow: hidden; }
+  .market-card-flow :deep(.market-card-body h3) { font-size: 14px; line-height: 1.45; }
+  .market-card-flow :deep(.market-card-excerpt) { margin-top: 4px; line-height: 1.45; -webkit-line-clamp: 2; }
+  .market-card-flow :deep(.market-card-price) { display: inline-block; margin-top: 6px; font-size: 15px; }
+  .market-card-flow :deep(.market-card-facts) { margin-top: 6px; }
+  .market-card-flow :deep(.market-card-meta) { margin-top: 7px; padding-top: 0; border-top: 0; }
+  .market-card-flow :deep(.market-card-stat) { display: none; }
+  .pinned-block { margin: 8px 0 2px; padding: 7px 4px 0; border-color: var(--cpu-border-soft); background: transparent; }
+  .topic-list { min-height: 80px; padding-top: 0; }
 }
 
 @media (max-width: 380px) {
-  .market-card-flow { columns: 1; }
+  .entry-card { padding-inline: 4px; }
+  .entry-copy b { font-size: 11px; }
 }
 </style>
