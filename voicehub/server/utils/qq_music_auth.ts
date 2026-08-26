@@ -147,7 +147,12 @@ export const normalizeQqMusicVipInfo = (
   // svip can remain present after the corresponding membership has expired.
   // Treat each product independently so an expired super membership cannot
   // hide a still-active HugeVip (豪华绿钻) entitlement.
-  const hasSuperVip = isActive(superVip, superExpireTime)
+  // QQ Music can retain svip=1 after the entitlement has expired while also
+  // omitting userinfo.expire. Missing expiry is therefore not proof of an
+  // active super membership; accepting it would incorrectly shadow HugeVip.
+  const hasSuperVip = superVip > 0
+    && superExpireTime > 0
+    && superExpireTime >= nowSeconds
   const hasHugeVip = isActive(hugeVip, hugeExpireTime)
   const hasGreenVip = isActive(greenVip, greenExpireTime)
   const vipType = hasSuperVip ? 8 : hasHugeVip ? 6 : hasGreenVip ? 4 : 0
