@@ -1,8 +1,10 @@
 import {
   getTxSongPlayableInfo,
   normalizeTxMusicId,
-  upgradeTxAudioUrl
+  upgradeTxAudioUrl,
+  txSignedRequest
 } from '~~/server/utils/native_tx'
+import { resolveQqMusicOwnedSource } from '~~/server/utils/qq_music_owned_source'
 
 const DEFAULT_QUALITY = 8
 const INVALID_TX_AUDIO_URL_SUFFIX = '/2149972737147268278.mp3'
@@ -21,6 +23,13 @@ const txQualityMap: Record<string, string> = {
   sq: 'flac',
   hires: 'flac24bit',
   flac24bit: 'flac24bit'
+}
+
+const txQualityToFileType: Record<string, number> = {
+  '128k': 4,
+  '320k': 8,
+  flac: 10,
+  flac24bit: 14
 }
 
 const normalizeTxQuality = (quality: unknown) => {
@@ -99,9 +108,31 @@ export default defineEventHandler(async (event) => {
   }
 
   const normalized = normalizeTxMusicId(musicId)
-  const playableInfo = await getTxSongPlayableInfo(musicId)
   const quality = normalizeTxQuality(body?.quality)
   const attempts: Array<{ source: string; status: 'success' | 'error'; error?: string }> = []
+
+  // Try owned source first (uses official API with cookies if available)
+  const ownedResult = await resolveQqMusicOwnedSource(event, musicId, quality)
+
+  if (ownedResult.success && ownedResult.url) {
+    return {
+      success: true,
+      url: ownedResult.url,
+      source: ownedResult.source,
+      quality: ownedResult.quality,
+      normalizedMusicId: normalized.normalizedMusicId,
+      idType: normalized.idType,
+      attempts: ownedResult.attempts
+    }
+  }
+
+  // Record owned source attempt
+  if (ownedResult.attempts) {
+    attempts.push(...ownedResult.attempts)
+  }
+
+  // Fallback to third-party sources
+  const playableInfo = await getTxSongPlayableInfo(musicId)
 
   const resolvers = [
     {
