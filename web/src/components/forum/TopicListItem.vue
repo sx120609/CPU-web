@@ -54,6 +54,9 @@
         <h3>{{ displayTitle }}</h3>
         <p v-if="cardExcerpt && !isSayTopic" class="market-card-excerpt">{{ cardExcerpt }}</p>
         <strong v-if="metaPriceLabel" class="market-card-price">{{ metaPriceLabel }}</strong>
+        <div v-if="marketCardFacts.length" class="market-card-facts">
+          <span v-for="fact in marketCardFacts" :key="fact">{{ fact }}</span>
+        </div>
         <div class="market-card-meta">
           <UserAvatar :size="28" class="avatar" :src="topic.author?.avatar" :name="topic.author?.nickname" :profile-frame="topic.author?.profileFrame" alt="作者头像" />
           <span class="market-card-author">{{ topic.author?.nickname ?? "—" }}</span>
@@ -163,7 +166,7 @@ const marketKind = computed(() => {
   const raw = props.topic.metadata?.marketKind || props.topic.metadata?.listingType;
   if (raw === "wanted" || props.topic.metadata?.condition === "求购") return "wanted";
   if (raw === "discuss") return "discuss";
-  return "sell";
+  return raw === "sell" ? "sell" : "";
 });
 const marketKindLabel = computed(() => {
   if (marketKind.value === "wanted") return "求购";
@@ -196,6 +199,17 @@ const metaPriceLabel = computed(() => {
   const price = Number(raw);
   if (!Number.isFinite(price)) return "";
   return price > 0 ? `¥${price}` : "面议";
+});
+const marketCardFacts = computed(() => {
+  if (!marketKind.value || marketKind.value === "discuss") return [];
+  const facts: string[] = [];
+  const campus = String(props.topic.metadata?.campus || "").trim();
+  const tradeMode = String(props.topic.metadata?.tradeMode || "").trim();
+  const condition = String(props.topic.metadata?.condition || "").trim();
+  if (campus) facts.push(`🏫 ${campus}`);
+  if (tradeMode) facts.push(`🤝 ${tradeMode}`);
+  if (marketKind.value === "sell" && condition) facts.push(`◫ ${condition}`);
+  return facts;
 });
 const metaSolved = computed(() => props.topic.metadata?.resolved === true);
 const metaBounty = computed(() => props.topic.metadata?.bounty ? props.topic.metadata.bounty : 0);
@@ -520,6 +534,8 @@ function openTopic() {
   -webkit-line-clamp: 3;
 }
 .market-card-price { display: block; margin-top: 10px; color: color-mix(in srgb, #ef4444 82%, var(--cpu-text)); font-size: 17px; }
+.market-card-facts { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
+.market-card-facts span { padding: 3px 7px; border-radius: 999px; background: var(--cpu-surface-subtle); color: var(--cpu-text-secondary); font-size: 10px; line-height: 1.4; }
 .market-card-meta {
   display: flex;
   align-items: center;

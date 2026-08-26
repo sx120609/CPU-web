@@ -820,8 +820,9 @@ const formDraftKey = computed(() => {
 const contentDraftKey = computed(() => formDraftKey.value ? `${formDraftKey.value}-content` : "");
 const anonymousEnabledForForm = computed(() => {
   const anonymousState = auth.user?.anonymousState;
-  if (!currentBoard.value?.anonymousEnabled) return false;
+  // 已有匿名帖转版后仍应允许编辑；匿名能力开关只约束新发布。
   if (editingId.value) return true;
+  if (!currentBoard.value?.anonymousEnabled) return false;
   return Boolean(
     anonymousState?.eligible &&
     !anonymousState?.frozen &&

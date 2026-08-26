@@ -209,7 +209,17 @@ export type SmartPostComposePayload = {
 };
 
 export const topicApi = {
-  list: (params: { board?: string; page?: number; size?: number; sort?: "new" | "hot"; pinned?: "only" | "exclude"; q?: string }, options?: RequestOptions) =>
+  list: (params: {
+    board?: string;
+    page?: number;
+    size?: number;
+    sort?: "new" | "hot";
+    pinned?: "only" | "exclude";
+    q?: string;
+    marketKind?: "sell" | "wanted" | "discuss";
+    category?: string;
+    campus?: string;
+  }, options?: RequestOptions) =>
     request.get<{ page: number; size: number; total: number; list: Topic[] }>("/topics", params, options),
   recordImpressions: (ids: number[]) =>
     request.post<{ views: Array<{ id: number; viewCount: number }> }>("/topics/impressions", { ids }, {

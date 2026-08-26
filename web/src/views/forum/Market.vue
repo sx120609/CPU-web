@@ -48,6 +48,33 @@
         </div>
       </header>
 
+      <div class="market-filters" aria-label="二手帖子筛选">
+        <div class="filter-group filter-group--kind">
+          <span>发布类型</span>
+          <el-radio-group v-model="kind" size="default" @change="changeFilter">
+            <el-radio-button value="">全部</el-radio-button>
+            <el-radio-button value="sell">出闲置</el-radio-button>
+            <el-radio-button value="wanted">求购</el-radio-button>
+            <el-radio-button value="discuss">讨论</el-radio-button>
+          </el-radio-group>
+        </div>
+        <div class="filter-group">
+          <span>物品分类</span>
+          <el-select v-model="category" placeholder="全部分类" clearable @change="changeFilter">
+            <el-option v-for="item in categoryOptions" :key="item.value" :label="item.label" :value="item.value" />
+          </el-select>
+        </div>
+        <div class="filter-group">
+          <span>所在校区</span>
+          <el-select v-model="campus" placeholder="全部校区" clearable @change="changeFilter">
+            <el-option label="江宁校区" value="江宁校区" />
+            <el-option label="玄武门校区" value="玄武门校区" />
+            <el-option label="不限校区" value="不限校区" />
+          </el-select>
+        </div>
+        <el-button v-if="hasStructuredFilter" text type="primary" class="filter-reset" @click="clearFilters">重置筛选</el-button>
+      </div>
+
       <div v-if="error && !loading" class="load-state">
         <el-empty :description="error"><el-button type="primary" @click="reload">重试</el-button></el-empty>
       </div>
@@ -62,7 +89,7 @@
           <div v-if="list.length" class="market-card-flow">
             <TopicListItem v-for="topic in list" :key="topic.id" :topic="topic" variant="card" />
           </div>
-          <el-empty v-else-if="!loading" :description="appliedSearch ? '没有找到相关帖子，换个关键词试试' : '还没有二手交流帖，来发布第一条吧'">
+          <el-empty v-else-if="!loading" :description="hasActiveFilter ? '当前筛选条件下没有帖子，换个条件试试' : '还没有二手交流帖，来发布第一条吧'">
             <el-button type="primary" @click="openPost('sell')">发布闲置</el-button>
           </el-empty>
         </div>
@@ -90,6 +117,22 @@ import { topicApi, type Topic } from "@/api/topic";
 import { useAuthStore } from "@/stores/auth";
 
 type SecondHandPostKind = "sell" | "wanted" | "discuss";
+type SecondHandCategory = "books" | "digital" | "dorm" | "fashion" | "sports" | "tickets" | "digital_goods" | "other";
+
+const categoryOptions: Array<{ value: SecondHandCategory; label: string }> = [
+  { value: "books", label: "教材书籍" },
+  { value: "digital", label: "数码电器" },
+  { value: "dorm", label: "宿舍生活" },
+  { value: "fashion", label: "衣物日用" },
+  { value: "sports", label: "运动户外" },
+  { value: "tickets", label: "票券周边" },
+  { value: "digital_goods", label: "电子资料" },
+  { value: "other", label: "其他" },
+];
+
+function routeEnum<T extends string>(value: unknown, allowed: readonly T[]): T | "" {
+  return typeof value === "string" && allowed.includes(value as T) ? value as T : "";
+}
 
 const route = useRoute();
 const router = useRouter();
@@ -103,12 +146,21 @@ const pageSize = 20;
 const sort = ref<"new" | "hot">(route.query.sort === "hot" ? "hot" : "new");
 const searchInput = ref(typeof route.query.q === "string" ? route.query.q : "");
 const appliedSearch = ref(searchInput.value.trim());
+const kind = ref<SecondHandPostKind | "">(routeEnum(route.query.kind, ["sell", "wanted", "discuss"]));
+const category = ref<SecondHandCategory | "">(routeEnum(route.query.category, categoryOptions.map((item) => item.value)));
+const campus = ref(routeEnum(route.query.campus, ["江宁校区", "玄武门校区", "不限校区"]));
 const loading = ref(false);
 const error = ref("");
 let loadSequence = 0;
 
+const hasStructuredFilter = computed(() => Boolean(kind.value || category.value || campus.value));
+const hasActiveFilter = computed(() => Boolean(appliedSearch.value || hasStructuredFilter.value));
+
 const routeQuery = computed(() => ({
   ...(appliedSearch.value ? { q: appliedSearch.value } : {}),
+  ...(kind.value ? { kind: kind.value } : {}),
+  ...(category.value ? { category: category.value } : {}),
+  ...(campus.value ? { campus: campus.value } : {}),
   ...(sort.value === "hot" ? { sort: "hot" } : {}),
   ...(page.value > 1 ? { page: String(page.value) } : {}),
 }));
@@ -124,6 +176,9 @@ async function reload() {
       board: "market",
       q: appliedSearch.value || undefined,
       sort: sort.value,
+      marketKind: kind.value || undefined,
+      category: category.value || undefined,
+      campus: campus.value || undefined,
     } as const;
     const [nextBoard, pins, topics] = await Promise.all([
       boardApi.detail("market", { suppressErrorMessage: true }),
@@ -169,6 +224,19 @@ function clearSearch() {
 }
 
 function changeSort() {
+  page.value = 1;
+  void syncRouteAndReload();
+}
+
+function changeFilter() {
+  page.value = 1;
+  void syncRouteAndReload();
+}
+
+function clearFilters() {
+  kind.value = "";
+  category.value = "";
+  campus.value = "";
   page.value = 1;
   void syncRouteAndReload();
 }
@@ -236,6 +304,12 @@ function openPost(kind: SecondHandPostKind) {
 .topic-panel-head p { margin: 5px 0 0; color: var(--cpu-text-secondary); font-size: 12px; }
 .topic-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-shrink: 0; flex-wrap: wrap; }
 .topic-search { display: grid; grid-template-columns: minmax(220px, 320px) auto; gap: 8px; }
+.market-filters { display: flex; align-items: flex-end; gap: 12px; padding: 13px 8px 7px; border-bottom: 1px solid var(--cpu-border-soft); flex-wrap: wrap; }
+.filter-group { display: flex; flex-direction: column; gap: 6px; min-width: 142px; }
+.filter-group > span { color: var(--cpu-text-secondary); font-size: 11px; font-weight: 700; }
+.filter-group :deep(.el-select) { width: 150px; }
+.filter-group--kind { min-width: 0; }
+.filter-reset { align-self: flex-end; }
 .topic-list { min-height: 120px; padding-top: 6px; }
 .market-card-flow { columns: 4 220px; column-gap: 12px; padding: 10px 2px 0; }
 .pinned-block { margin: 12px 0 4px; padding: 8px 8px 2px; border: 1px solid color-mix(in srgb, #ef4444 18%, var(--cpu-border)); border-radius: 12px; background: color-mix(in srgb, #ef4444 4%, var(--cpu-card)); }
@@ -263,6 +337,12 @@ function openPost(kind: SecondHandPostKind) {
   .topic-actions { width: 100%; align-items: stretch; flex-direction: column; }
   .topic-search { grid-template-columns: minmax(0, 1fr) auto; }
   .topic-actions :deep(.el-radio-group) { align-self: flex-start; }
+  .market-filters { align-items: stretch; gap: 9px; padding: 12px 6px 7px; }
+  .filter-group { width: 100%; }
+  .filter-group :deep(.el-select) { width: 100%; }
+  .filter-group--kind { overflow-x: auto; padding-bottom: 2px; }
+  .filter-group--kind :deep(.el-radio-group) { flex-wrap: nowrap; }
+  .filter-reset { align-self: flex-start; }
   .market-card-flow { columns: 2 145px; column-gap: 8px; padding-top: 8px; }
 }
 

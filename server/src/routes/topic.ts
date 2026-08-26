@@ -162,6 +162,7 @@ function scheduleTopicAiTags(input: Parameters<typeof generateTopicAiTags>[0], t
 
 /**
  * 列表：?board=slug&page=1&size=20&sort=hot|new
+ * 二手板块还支持 marketKind/category/campus 结构化筛选。
  */
 topicRouter.get("/", async (req, res, next) => {
   try {
@@ -171,8 +172,19 @@ topicRouter.get("/", async (req, res, next) => {
     const sort = String(req.query.sort ?? "new");
     const pinnedMode = req.query.pinned ? String(req.query.pinned) : "include";
     const q = String(req.query.q ?? "").trim().slice(0, 80);
+    const marketKind = req.query.marketKind ? String(req.query.marketKind) : "";
+    const marketCategory = req.query.category ? String(req.query.category) : "";
+    const marketCampus = req.query.campus ? String(req.query.campus).trim().slice(0, 40) : "";
     const requesterId = req.user?.userId ?? null;
     const requesterRole = req.user?.role ?? null;
+
+    const marketKinds = new Set(["sell", "wanted", "discuss"]);
+    const marketCategories = new Set(["books", "digital", "dorm", "fashion", "sports", "tickets", "digital_goods", "other"]);
+    if (marketKind && !marketKinds.has(marketKind)) throw Errors.badRequest("二手发布类型不合法");
+    if (marketCategory && !marketCategories.has(marketCategory)) throw Errors.badRequest("二手物品分类不合法");
+    if ((marketKind || marketCategory || marketCampus) && boardSlug !== "market") {
+      throw Errors.badRequest("二手筛选仅适用于二手交流板块");
+    }
 
     let boardId: number | undefined;
     if (boardSlug && boardSlug !== "all") {
@@ -194,13 +206,31 @@ topicRouter.get("/", async (req, res, next) => {
     else where.board = { type: { in: enabledBoardTypes() }, ...visibleBoardSlugFilter() };
     if (pinnedMode === "only") where.pinned = true;
     else if (pinnedMode === "exclude") where.pinned = false;
+    const structuredFilters: any[] = [];
     if (q) {
-      where.AND = [{
+      structuredFilters.push({
         OR: [
           { title: { contains: q, mode: "insensitive" } },
           { content: { contains: q, mode: "insensitive" } },
         ],
-      }];
+      });
+    }
+    if (marketKind) {
+      structuredFilters.push({
+        OR: [
+          { metadata: { contains: `\"marketKind\":\"${marketKind}\"` } },
+          { metadata: { contains: `\"listingType\":\"${marketKind}\"` } },
+        ],
+      });
+    }
+    if (marketCategory) {
+      structuredFilters.push({ metadata: { contains: `\"category\":\"${marketCategory}\"` } });
+    }
+    if (marketCampus) {
+      structuredFilters.push({ metadata: { contains: `\"campus\":\"${marketCampus}\"` } });
+    }
+    if (structuredFilters.length) {
+      where.AND = structuredFilters;
     }
 
     const orderBy: any = pinnedMode === "only"
@@ -211,7 +241,19 @@ topicRouter.get("/", async (req, res, next) => {
 
     const cached = await withCache(
       "forum-list",
-      ["topic-list-v4", requesterId ? `viewer-${requesterId}` : "public", boardSlug || "all", page, size, sort, pinnedMode, q || "all"],
+      [
+        "topic-list-v5",
+        requesterId ? `viewer-${requesterId}` : "public",
+        boardSlug || "all",
+        page,
+        size,
+        sort,
+        pinnedMode,
+        q || "all",
+        marketKind || "all-kinds",
+        marketCategory || "all-categories",
+        marketCampus || "all-campuses",
+      ],
       60_000,
       async () => {
         const [list, total] = await Promise.all([
