@@ -234,7 +234,7 @@ const reviewState = computed(() => {
   if (status === "rejected_manual") return { label: "人工复核未通过", type: "danger" as const };
   return { label: "仅自己可见", type: "info" as const };
 });
-const restorableRouteNames = new Set(["board", "market", "forum-latest", "forum-hot"]);
+const restorableRouteNames = new Set(["board", "market", "forum-latest", "forum-hot", "site-search"]);
 
 watch(() => [props.topic.id, props.topic.viewCount], ([id, viewCount]) => {
   displayedViewCount.value = knownTopicViewCount(Number(id), Number(viewCount) || 0);

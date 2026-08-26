@@ -1015,6 +1015,7 @@ const backTargetFromQuery = computed(() => {
   return text.startsWith("/") ? text : "";
 });
 const backLabel = computed(() => {
+  if (backTargetFromQuery.value.includes("/search/results")) return "返回搜索";
   if (backTargetFromQuery.value.includes("/forum/latest")) return "返回最新";
   if (backTargetFromQuery.value.includes("/forum/hot")) return "返回热榜";
   if (isAnnouncementTopic.value) return "返回上页";
