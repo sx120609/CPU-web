@@ -223,7 +223,7 @@ import { ref, computed, watch, onMounted, onBeforeUnmount } from "vue";
 import { Check, Close, Filter, InfoFilled, Switch } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
 import { useJwxtStore } from "@/stores/jwxt";
-import { transcriptGradeStats } from "@/utils/jwxtGradeStats";
+import { collapseTranscriptGrades, transcriptGradeStats } from "@/utils/jwxtGradeStats";
 
 interface GradeRow {
   semester: string;
@@ -326,9 +326,13 @@ function normalizeGradeRow(row: GradeRow): GradeRow {
 
 function normalizeParsedGrades(data: any) {
   if (!data || !Array.isArray(data.list)) return data;
+  // 学校成绩页偶尔会返回同一学期、同一课程代码的重复行。列表展示与
+  // 电子成绩单统计使用同一去重口径，避免重复行仍出现在页面中；不同
+  // 学期或不同课程代码的同名课程仍分别保留。
+  const displayRows = collapseTranscriptGrades(data.list as GradeRow[]);
   return {
     ...data,
-    list: (data.list as GradeRow[]).map((row, index) => {
+    list: displayRows.map((row, index) => {
       const normalized = normalizeGradeRow(row);
       return { ...normalized, statKey: makeCourseKey(normalized, index) };
     }),
