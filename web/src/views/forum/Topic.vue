@@ -53,7 +53,7 @@
         </div>
       </header>
 
-      <div class="main-floor">
+      <div ref="mainFloorRef" class="main-floor">
       <div v-if="!isSayTopic || metaPriceLabel" class="topic-title-row">
         <h1 v-if="!isSayTopic" class="post-title">
           <span v-if="topic.globalPinned" class="badge global-pin">全局置顶</span>
@@ -78,7 +78,7 @@
         </el-tag>
       </div>
 
-      <aside class="post-meta post-author-panel">
+      <aside class="post-meta post-author-panel" :class="{ 'is-sticky-author': mainPostUsesStickyAuthor }">
         <div class="post-author-card">
           <span class="floor-owner-label">楼主</span>
           <UserAvatar :size="58" class="avatar" :src="topic.author?.avatar" :name="topic.author?.nickname" :profile-frame="topic.author?.profileFrame" alt="作者头像" />
@@ -790,8 +790,11 @@ let shareCardQrSeq = 0;
 let topicReviewPollSeq = 0;
 let topicReviewPollTimer: ReturnType<typeof setTimeout> | null = null;
 const repliesEl = ref<HTMLElement | null>(null);
+const mainFloorRef = ref<HTMLElement | null>(null);
+const mainPostUsesStickyAuthor = ref(false);
 const replyEditorRef = ref<InstanceType<typeof RichTextEditor> | null>(null);
 const shareCardExportRef = ref<HTMLElement | null>(null);
+let mainFloorResizeObserver: ResizeObserver | null = null;
 const REPLY_MAX = 10000;
 const isTopicActionBusy = computed(() => topicActionBusy.value !== "");
 
@@ -1042,6 +1045,30 @@ function renderLocalQrDataUrl(value: string, width: number) {
   });
 }
 
+function updateMainPostAuthorMode() {
+  const floor = mainFloorRef.value;
+  if (!floor || typeof window === "undefined" || window.innerWidth <= 700) {
+    mainPostUsesStickyAuthor.value = false;
+    return;
+  }
+  const availableViewportHeight = Math.max(420, window.innerHeight - 140);
+  mainPostUsesStickyAuthor.value = floor.getBoundingClientRect().height > availableViewportHeight;
+}
+
+watch(mainFloorRef, (element) => {
+  mainFloorResizeObserver?.disconnect();
+  mainFloorResizeObserver = null;
+  if (!element || typeof ResizeObserver === "undefined") {
+    updateMainPostAuthorMode();
+    return;
+  }
+  mainFloorResizeObserver = new ResizeObserver(updateMainPostAuthorMode);
+  mainFloorResizeObserver.observe(element);
+  updateMainPostAuthorMode();
+}, { flush: "post" });
+
+if (typeof window !== "undefined") window.addEventListener("resize", updateMainPostAuthorMode);
+
 watch(() => route.params.id, () => {
   pendingReplyMonitorSeq += 1;
   topicReviewPollSeq += 1;
@@ -1053,6 +1080,8 @@ onBeforeUnmount(() => {
   pendingReplyMonitorSeq += 1;
   topicReviewPollSeq += 1;
   clearTopicReviewPollTimer();
+  mainFloorResizeObserver?.disconnect();
+  if (typeof window !== "undefined") window.removeEventListener("resize", updateMainPostAuthorMode);
 });
 
 watch(replyAnonymousEnabled, (enabled) => {
