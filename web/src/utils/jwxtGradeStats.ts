@@ -55,6 +55,11 @@ export function isTranscriptPassing(row: TranscriptGradeRow) {
 
 export function transcriptGradePoint(row: TranscriptGradeRow): number | undefined {
   const { level, scoreNum } = normalizedScore(row);
+  // 学校规定补考及格后的成绩如实记载，但绩点统一按 1.0 计算。
+  if (String(row.examType ?? "").replace(/\s+/g, "").includes("补考")
+    && isTranscriptPassing(row)) {
+    return 1;
+  }
   if (Object.prototype.hasOwnProperty.call(TRANSCRIPT_LEVEL_GPA, level)) {
     return TRANSCRIPT_LEVEL_GPA[level];
   }

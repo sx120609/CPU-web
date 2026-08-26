@@ -41,8 +41,8 @@
             GPA 按学校电子证明成绩单的汇总口径统计：只统计通过成绩，并按课程取一条有效记录后按学分加权<br/>
             <code>GPA = max(0, (成绩 − 50) ÷ 10)</code>，封顶 5.0；0–59 分不计入学分分母<br/>
             60→1.0 · 70→2.0 · 80→3.0 · 90→4.0 · 100→5.0<br/>
-            补考/重复成绩只保留一条有效记录；原始补考、不及格记录仍保留在明细中<br/>
-            明细行绩点保留教务原始换算，汇总采用电子证明导出兼容口径
+            补考及格成绩如实显示，绩点按 1.0 计算；同一学期同一课程代码的重复记录只保留一条<br/>
+            明细行绩点与汇总均采用学校电子成绩单口径
           </template>
           <el-icon class="hint-icon"><InfoFilled /></el-icon>
         </el-tooltip>
@@ -223,7 +223,7 @@ import { ref, computed, watch, onMounted, onBeforeUnmount } from "vue";
 import { Check, Close, Filter, InfoFilled, Switch } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
 import { useJwxtStore } from "@/stores/jwxt";
-import { collapseTranscriptGrades, transcriptGradeStats } from "@/utils/jwxtGradeStats";
+import { collapseTranscriptGrades, transcriptGradePoint, transcriptGradeStats } from "@/utils/jwxtGradeStats";
 
 interface GradeRow {
   semester: string;
@@ -319,9 +319,7 @@ function scoreToGpa(score?: string): number | undefined {
 }
 
 function normalizeGradeRow(row: GradeRow): GradeRow {
-  const gpa = typeof row.gpa === "number" ? row.gpa : Number(row.gpa);
-  if (Number.isFinite(gpa)) return { ...row, gpa };
-  return { ...row, gpa: scoreToGpa(row.score) };
+  return { ...row, gpa: transcriptGradePoint(row) ?? scoreToGpa(row.score) };
 }
 
 function normalizeParsedGrades(data: any) {

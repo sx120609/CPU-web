@@ -49,6 +49,22 @@ test("等级成绩优按 4.5 绩点计入汇总", () => {
   assert.equal(stats.gpa, 4.5);
 });
 
+test("补考及格成绩如实显示但绩点按 1.0 计入汇总", () => {
+  const stats = transcriptGradeStats([
+    {
+      semester: "2025-2026-1",
+      courseCode: "1112010039",
+      courseName: "人体解剖生理学",
+      score: "73",
+      credits: 3,
+      examType: "补考",
+    },
+  ]);
+
+  assert.equal(stats.credits, 3);
+  assert.equal(stats.gpa, 1);
+});
+
 test("当前官方成绩单必修课样本汇总为 47.8 学分和 3.78 GPA", () => {
   const scores: Array<[string, number]> = [
     ["97", 1], ["92", 2], ["81", 3], ["95", 1], ["86", 4], ["87", 1],
@@ -67,4 +83,30 @@ test("当前官方成绩单必修课样本汇总为 47.8 学分和 3.78 GPA", ()
 
   assert.equal(stats.credits, 47.8);
   assert.equal(stats.gpa.toFixed(2), "3.78");
+});
+
+test("含补考的官方成绩单样本汇总为 94.8 学分和 3.06 GPA", () => {
+  const scores: Array<[string, number, string?]> = [
+    ["70", 3], ["83", 1.5], ["68", 2], ["92", 1.5], ["71", 4], ["89", 1.5],
+    ["66", 2], ["85", 1], ["84", 0.8], ["68", 2], ["85", 3], ["75", 3],
+    ["95", 0.25], ["73", 1], ["77", 0.5], ["73", 3, "补考"], ["69", 2], ["86", 0.7],
+    ["68", 3], ["85", 1], ["60", 2], ["86", 0.5], ["81", 3], ["96", 0.25],
+    ["85", 1], ["88", 1], ["85", 1], ["82", 1], ["78", 3], ["88", 1.5],
+    ["81", 2], ["69", 2], ["88", 1], ["84", 3], ["90", 0.5], ["90", 3],
+    ["91", 2], ["88", 0.25], ["78", 1], ["83", 4], ["100", 1], ["84", 3],
+    ["88", 1], ["91", 1], ["88", 0.5], ["89", 2], ["87", 0.5], ["91", 2],
+    ["87", 3], ["83", 1], ["88", 0.25], ["79", 0.8], ["86", 4], ["95", 1],
+    ["87", 2], ["优", 2],
+  ];
+  const stats = transcriptGradeStats(scores.map(([score, credits, examType], index) => ({
+    semester: `semester-${Math.floor(index / 16)}`,
+    courseCode: `course-${index}`,
+    courseName: `课程 ${index}`,
+    score,
+    credits,
+    examType,
+  })));
+
+  assert.equal(stats.credits, 94.8);
+  assert.equal(stats.gpa.toFixed(2), "3.06");
 });
