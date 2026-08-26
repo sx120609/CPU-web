@@ -35,6 +35,21 @@ const firstPositiveNumber = (...values: unknown[]) => {
 
 const parseExpireTime = (...values: unknown[]) => {
   for (const value of values) {
+    if (typeof value === 'string') {
+      const trimmed = value.trim()
+      const dateOnly = trimmed.match(/^(\d{4})-?(\d{2})-?(\d{2})$/)
+      if (dateOnly) {
+        return Math.floor(Date.UTC(
+          Number(dateOnly[1]),
+          Number(dateOnly[2]) - 1,
+          Number(dateOnly[3]),
+          23,
+          59,
+          59
+        ) / 1000)
+      }
+    }
+
     const numeric = asNumber(value)
     if (numeric > 0) {
       return numeric > 10_000_000_000 ? Math.floor(numeric / 1000) : Math.floor(numeric)
@@ -108,7 +123,10 @@ export const buildQqMusicAuthComm = (credential: QqMusicCredential) => {
   }
 }
 
-export const normalizeQqMusicVipInfo = (value: unknown): QqMusicVipInfo => {
+export const normalizeQqMusicVipInfo = (
+  value: unknown,
+  nowSeconds = Math.floor(Date.now() / 1000)
+): QqMusicVipInfo => {
   const data = asRecord(value)
   const identity = asRecord(data.identity)
   const userinfo = asRecord(data.userinfo)
@@ -116,20 +134,32 @@ export const normalizeQqMusicVipInfo = (value: unknown): QqMusicVipInfo => {
   // Keep the former response shape as a compatibility fallback while the
   // current QQ Music client API uses identity/userinfo.
   const legacyPackage = asRecord(data.musipackage_vip)
-  const vip = firstPositiveNumber(identity.vip, legacyPackage.vip_level)
-  const hugeVip = firstPositiveNumber(identity.HugeVip, data.svip)
-  const hasVip = vip > 0 || hugeVip > 0
+  const superVip = asNumber(data.svip)
+  const hugeVip = asNumber(identity.HugeVip)
+  const greenVip = firstPositiveNumber(identity.vip, legacyPackage.vip_level)
+  const superExpireTime = parseExpireTime(userinfo.expire)
+  const hugeExpireTime = parseExpireTime(identity.HugeVipEnd)
+  const greenExpireTime = parseExpireTime(userinfo.expire, legacyPackage.vip_end_time)
+  const isActive = (flag: number, expireTime: number) => {
+    return flag > 0 && (expireTime === 0 || expireTime >= nowSeconds)
+  }
+
+  // svip can remain present after the corresponding membership has expired.
+  // Treat each product independently so an expired super membership cannot
+  // hide a still-active HugeVip (豪华绿钻) entitlement.
+  const hasSuperVip = isActive(superVip, superExpireTime)
+  const hasHugeVip = isActive(hugeVip, hugeExpireTime)
+  const hasGreenVip = isActive(greenVip, greenExpireTime)
+  const vipType = hasSuperVip ? 8 : hasHugeVip ? 6 : hasGreenVip ? 4 : 0
+  const expireTime = hasSuperVip
+    ? superExpireTime
+    : hasHugeVip ? hugeExpireTime : hasGreenVip ? greenExpireTime : 0
 
   return {
-    hasVip,
-    vipType: hugeVip > 0 ? 8 : hasVip ? 4 : 0,
+    hasVip: vipType > 0,
+    vipType,
     level: firstPositiveNumber(identity.level, legacyPackage.vip_level),
-    expireTime: parseExpireTime(
-      userinfo.expire,
-      identity.HugeVipEnd,
-      identity.vip_end,
-      legacyPackage.vip_end_time
-    )
+    expireTime
   }
 }
 

@@ -334,6 +334,7 @@ function getVipTypeName(vipType) {
   const vipTypeMap = {
     0: '非会员',
     4: '绿钻会员',
+    6: '豪华绿钻',
     8: '超级会员'
   }
   return vipTypeMap[vipType] || `会员 (${vipType})`
@@ -346,8 +347,8 @@ function formatExpireTime(timestamp) {
 }
 
 function getAvailableQualities(vipType) {
-  if (vipType >= 4) return 'FLAC 24bit / FLAC / 320k / 128k'
-  if (vipType > 0) return 'FLAC / 320k / 128k'
+  if (vipType >= 8) return 'FLAC 24bit / FLAC / 320k / 128k'
+  if (vipType >= 4) return 'FLAC / 320k / 128k'
   return '320k / 128k'
 }
 

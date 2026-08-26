@@ -57,9 +57,9 @@ const INVALID_URL_SUFFIX = '/2149972737147268278.mp3'
 
 // Quality chains by VIP level
 const QUALITY_CHAINS = {
-  super: ['flac24bit', 'flac', '320k', '128k'], // vipType >= 4
-  green: ['flac', '320k', '128k'],              // vipType > 0
-  normal: ['320k', '128k']                      // vipType === 0
+  super: ['flac24bit', 'flac', '320k', '128k'], // vipType >= 8
+  green: ['flac', '320k', '128k'],              // vipType >= 4
+  normal: ['320k', '128k']                      // vipType < 4
 }
 
 // ============================================================================
@@ -192,9 +192,9 @@ function normalizeQualityParam(quality: unknown): string {
 function selectQualityChain(vipType: number, requestedQuality: string): string[] {
   let baseChain: string[]
 
-  if (vipType >= 4) {
+  if (vipType >= 8) {
     baseChain = QUALITY_CHAINS.super
-  } else if (vipType > 0) {
+  } else if (vipType >= 4) {
     baseChain = QUALITY_CHAINS.green
   } else {
     baseChain = QUALITY_CHAINS.normal
@@ -346,7 +346,7 @@ export async function resolveQqMusicOwnedSource(
     const normalizedQuality = normalizeQualityParam(quality)
 
     // Step 4: Check cache
-    const cacheKey = `tx_play_url:${songmid}:${normalizedQuality}:${vipInfo.hasVip}`
+    const cacheKey = `tx_play_url:${songmid}:${normalizedQuality}:${vipInfo.vipType}`
     const cached = getCachedPlayUrl(cacheKey)
 
     if (cached) {
