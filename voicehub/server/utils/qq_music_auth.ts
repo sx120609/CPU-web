@@ -35,17 +35,20 @@ const firstPositiveNumber = (...values: unknown[]) => {
 
 const parseExpireTime = (...values: unknown[]) => {
   for (const value of values) {
-    if (typeof value === 'string') {
-      const trimmed = value.trim()
-      const dateOnly = trimmed.match(/^(\d{4})-?(\d{2})-?(\d{2})$/)
-      if (dateOnly) {
+    if (typeof value === 'string' || typeof value === 'number') {
+      const trimmed = String(value).trim()
+      const qqLocalDateTime = trimmed.match(
+        /^(\d{4})[-/]?(\d{2})[-/]?(\d{2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/
+      )
+      if (qqLocalDateTime) {
+        const hasTime = qqLocalDateTime[4] !== undefined
         return Math.floor(Date.UTC(
-          Number(dateOnly[1]),
-          Number(dateOnly[2]) - 1,
-          Number(dateOnly[3]),
-          23,
-          59,
-          59
+          Number(qqLocalDateTime[1]),
+          Number(qqLocalDateTime[2]) - 1,
+          Number(qqLocalDateTime[3]),
+          (hasTime ? Number(qqLocalDateTime[4]) : 23) - 8,
+          hasTime ? Number(qqLocalDateTime[5]) : 59,
+          hasTime ? Number(qqLocalDateTime[6] || 0) : 59
         ) / 1000)
       }
     }
@@ -135,11 +138,36 @@ export const normalizeQqMusicVipInfo = (
   // current QQ Music client API uses identity/userinfo.
   const legacyPackage = asRecord(data.musipackage_vip)
   const superVip = asNumber(data.svip)
-  const hugeVip = asNumber(identity.HugeVip)
-  const greenVip = firstPositiveNumber(identity.vip, legacyPackage.vip_level)
+  const hugeVip = firstPositiveNumber(
+    identity.HugeVip,
+    identity.huge_vip,
+    identity.HugeVipFlag,
+    identity.superGreenVipFlag
+  )
+  const greenVip = firstPositiveNumber(
+    identity.LMFlag,
+    identity.vip,
+    identity.greenVipFlag,
+    legacyPackage.vip_level
+  )
   const superExpireTime = parseExpireTime(userinfo.expire)
-  const hugeExpireTime = parseExpireTime(identity.HugeVipEnd)
-  const greenExpireTime = parseExpireTime(userinfo.expire, legacyPackage.vip_end_time)
+  const hugeExpireTime = parseExpireTime(
+    identity.HugeVipEnd,
+    identity.huge_vip_end,
+    identity.HugeVipEndTime,
+    identity.superGreenVipEndTime,
+    identity.overdate,
+    data.send
+  )
+  const greenExpireTime = parseExpireTime(
+    identity.LMEnd,
+    identity.greenVipEndTime,
+    identity.vip_end,
+    identity.overdate,
+    data.send,
+    userinfo.expire,
+    legacyPackage.vip_end_time
+  )
   const isActive = (flag: number, expireTime: number) => {
     return flag > 0 && (expireTime === 0 || expireTime >= nowSeconds)
   }
