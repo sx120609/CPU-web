@@ -1,10 +1,23 @@
-import type { VipInfo } from '~~/server/utils/qq_music_owned_source'
+import { requireQqMusicAdmin } from '~~/server/utils/qq_music_qr_login'
 
 interface VipInfoInternal {
   hasVip: boolean
   vipType: number
   level: number
   expireTime: number
+}
+
+interface VipQueryResponse {
+  code?: number
+  GetVipInfo?: {
+    data?: {
+      musipackage_vip?: {
+        vip_level?: number
+        vip_type?: number
+        vip_end_time?: number
+      }
+    }
+  }
 }
 
 async function getVipInfoInternal(cookie: string): Promise<VipInfoInternal> {
@@ -37,7 +50,7 @@ async function getVipInfoInternal(cookie: string): Promise<VipInfoInternal> {
     throw new Error(`HTTP ${response.status}`)
   }
 
-  const data: any = await response.json()
+  const data = await response.json() as VipQueryResponse
 
   if (data?.code !== 0 || !data?.GetVipInfo) {
     throw new Error(`GetVipInfo failed: code=${data?.code}`)
@@ -55,6 +68,7 @@ async function getVipInfoInternal(cookie: string): Promise<VipInfoInternal> {
 }
 
 export default defineEventHandler(async (event) => {
+  requireQqMusicAdmin(event)
   const cookie = getCookie(event, 'qq_music_session')
 
   if (!cookie) {
@@ -71,8 +85,11 @@ export default defineEventHandler(async (event) => {
       isLoggedIn: true,
       vipInfo
     }
-  } catch (error: any) {
-    console.error('[LoginStatus] Failed to get VIP info:', error.message)
+  } catch (error: unknown) {
+    console.error(
+      '[LoginStatus] Failed to get VIP info:',
+      error instanceof Error ? error.message : String(error)
+    )
     return {
       isLoggedIn: false,
       vipInfo: null

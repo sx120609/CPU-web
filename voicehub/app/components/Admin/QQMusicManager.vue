@@ -11,7 +11,7 @@
     <!-- 登录状态卡片 -->
     <div class="bg-white rounded-xl border border-[#d5dfcd] p-6 mb-6">
       <div v-if="loading" class="flex items-center justify-center py-12">
-        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-[#2f7d4f]"></div>
+        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-[#2f7d4f]" />
       </div>
 
       <!-- 未登录状态 -->
@@ -114,20 +114,24 @@
           <div class="text-center mb-6">
             <h3 class="text-xl font-bold text-[#1f2a1f] mb-2">扫码登录 QQ 音乐</h3>
             <p class="text-sm text-[#6c7c6c]">
-              使用 QQ 音乐 APP 扫描下方二维码
+              使用 QQ、微信或 QQ 音乐 APP 扫描下方二维码
             </p>
           </div>
 
           <!-- QR Code 区域 -->
           <div class="flex justify-center mb-6">
             <div v-if="qrLoading" class="w-64 h-64 bg-[#f8fbf5] rounded-xl flex items-center justify-center">
-              <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-[#2f7d4f]"></div>
+              <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-[#2f7d4f]" />
             </div>
             <div v-else-if="qrError" class="w-64 h-64 bg-[#fee2e2] rounded-xl flex items-center justify-center p-6">
               <p class="text-sm text-[#991b1b] text-center font-bold">{{ qrError }}</p>
             </div>
             <div v-else-if="qrCodeUrl" class="relative">
-              <img :src="qrCodeUrl" class="w-64 h-64 rounded-xl border-2 border-[#d5dfcd]" alt="QR Code">
+              <img
+                :src="qrCodeUrl"
+                class="qr-code-image w-64 h-64 rounded-xl border-2 border-[#d5dfcd]"
+                alt="QQ 音乐登录二维码"
+              >
               <!-- 过期遮罩 -->
               <div
                 v-if="qrStatus === 'expired'"
@@ -187,7 +191,7 @@ const qrLoading = ref(false)
 const qrError = ref('')
 const qrCodeUrl = ref('')
 const qrKey = ref('')
-const qrStatus = ref('waiting') // waiting, scanned, success, expired
+const qrStatus = ref('waiting') // waiting, scanned, success, expired, error
 
 let pollInterval = null
 
@@ -231,18 +235,17 @@ async function startQRLogin() {
       method: 'POST'
     })
 
-    if (!response.ok) {
-      throw new Error('Failed to generate QR code')
-    }
-
     const data = await response.json()
+    if (!response.ok) {
+      throw new Error(data?.message || '二维码生成失败')
+    }
     qrCodeUrl.value = data.qrCodeUrl
     qrKey.value = data.qrKey
 
     // Start polling for status
     startPolling()
   } catch (error) {
-    qrError.value = '二维码生成失败，请稍后重试'
+    qrError.value = error instanceof Error ? error.message : '二维码生成失败，请稍后重试'
     console.error('QR generation failed:', error)
   } finally {
     qrLoading.value = false
@@ -271,9 +274,10 @@ async function checkQRStatus() {
       body: JSON.stringify({ qrKey: qrKey.value })
     })
 
-    if (!response.ok) return
-
     const data = await response.json()
+    if (!response.ok) {
+      throw new Error(data?.message || '二维码状态查询失败')
+    }
     qrStatus.value = data.status
 
     if (data.status === 'success') {
@@ -284,8 +288,13 @@ async function checkQRStatus() {
       }, 1500)
     } else if (data.status === 'expired') {
       stopPolling()
+    } else if (data.status === 'error') {
+      stopPolling()
+      qrError.value = data.error || 'QQ 音乐登录失败，请刷新二维码重试'
     }
   } catch (error) {
+    stopPolling()
+    qrError.value = error instanceof Error ? error.message : '二维码状态查询失败'
     console.error('Failed to check QR status:', error)
   }
 }
@@ -343,10 +352,11 @@ function getAvailableQualities(vipType) {
 
 function getStatusText(status) {
   const statusMap = {
-    waiting: '请使用 QQ 音乐 APP 扫描二维码',
+    waiting: '请使用 QQ、微信或 QQ 音乐 APP 扫描二维码',
     scanned: '已扫描，请在手机上确认登录',
     success: '✓ 登录成功',
-    expired: '二维码已过期'
+    expired: '二维码已过期',
+    error: 'QQ 音乐登录失败'
   }
   return statusMap[status] || '等待扫码...'
 }
@@ -356,7 +366,8 @@ function getStatusColor(status) {
     waiting: 'text-[#6c7c6c]',
     scanned: 'text-[#2f7d4f]',
     success: 'text-[#2f7d4f]',
-    expired: 'text-[#d1495b]'
+    expired: 'text-[#d1495b]',
+    error: 'text-[#d1495b]'
   }
   return colorMap[status] || 'text-[#6c7c6c]'
 }
@@ -365,5 +376,12 @@ function getStatusColor(status) {
 <style scoped>
 .qq-music-manager {
   max-width: 800px;
+}
+
+.qr-code-image {
+  background: #fff;
+  image-rendering: pixelated;
+  object-fit: contain;
+  padding: 8px;
 }
 </style>
