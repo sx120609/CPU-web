@@ -2,7 +2,8 @@ import { computed, reactive, ref } from "vue";
 import { ElMessage } from "element-plus";
 import {
   clearScheduleBackgroundBlob,
-  readScheduleBackgroundBlob,
+  peekPreloadedScheduleBackgroundAsset,
+  preloadScheduleBackgroundAsset,
   saveScheduleBackgroundBlob,
 } from "@/utils/scheduleBackgroundStorage";
 import type { ScheduleBackgroundSettings } from "./types";
@@ -12,8 +13,14 @@ const BACKGROUND_KEY = "cpu-schedule-background-v1";
 export function useScheduleBackground() {
   const backgroundImageInputRef = ref<HTMLInputElement | null>(null);
   const backgroundSaving = ref(false);
-  const scheduleBackground = reactive<ScheduleBackgroundSettings>(createDefaultScheduleBackground());
+  const persistedBackground = readPersistedScheduleBackground();
+  const preloadedBackground = peekPreloadedScheduleBackgroundAsset();
+  const scheduleBackground = reactive<ScheduleBackgroundSettings>({
+    ...persistedBackground.settings,
+    imageDataUrl: preloadedBackground?.url || persistedBackground.legacyImageDataUrl,
+  });
   let scheduleBackgroundPreviewUrl = "";
+  let legacyImageDataUrl = persistedBackground.legacyImageDataUrl;
 
   const hasScheduleBackground = computed(() => Boolean(scheduleBackground.imageDataUrl));
   const backgroundVisibility = computed(() => Math.round((1 - scheduleBackground.overlayOpacity) * 100));
@@ -43,6 +50,20 @@ export function useScheduleBackground() {
     };
   }
 
+  function readPersistedScheduleBackground() {
+    try {
+      const raw = localStorage.getItem(BACKGROUND_KEY);
+      if (!raw) return { settings: createDefaultScheduleBackground(), legacyImageDataUrl: "" };
+      const settings = normalizeScheduleBackground(JSON.parse(raw));
+      return {
+        settings,
+        legacyImageDataUrl: settings.imageDataUrl,
+      };
+    } catch {
+      return { settings: createDefaultScheduleBackground(), legacyImageDataUrl: "" };
+    }
+  }
+
   function applyScheduleBackground(next: ScheduleBackgroundSettings) {
     scheduleBackground.imageDataUrl = next.imageDataUrl;
     scheduleBackground.overlayOpacity = next.overlayOpacity;
@@ -56,9 +77,9 @@ export function useScheduleBackground() {
     };
   }
 
-  function setScheduleBackgroundPreview(url: string) {
+  function setScheduleBackgroundPreview(url: string, owned = url.startsWith("blob:")) {
     clearScheduleBackgroundPreview();
-    scheduleBackgroundPreviewUrl = url.startsWith("blob:") ? url : "";
+    scheduleBackgroundPreviewUrl = owned ? url : "";
     scheduleBackground.imageDataUrl = url;
   }
 
@@ -71,27 +92,10 @@ export function useScheduleBackground() {
   }
 
   async function restoreScheduleBackground() {
-    let legacyImageDataUrl = "";
     try {
-      const raw = localStorage.getItem(BACKGROUND_KEY);
-      if (raw) {
-        const normalized = normalizeScheduleBackground(JSON.parse(raw));
-        legacyImageDataUrl = normalized.imageDataUrl;
-        applyScheduleBackground({
-          imageDataUrl: "",
-          overlayOpacity: normalized.overlayOpacity,
-          blur: normalized.blur,
-        });
-      } else {
-        applyScheduleBackground(createDefaultScheduleBackground());
-      }
-    } catch {
-      applyScheduleBackground(createDefaultScheduleBackground());
-    }
-    try {
-      const storedBlob = await readScheduleBackgroundBlob();
-      if (storedBlob) {
-        setScheduleBackgroundPreview(URL.createObjectURL(storedBlob));
+      const storedAsset = await preloadScheduleBackgroundAsset();
+      if (storedAsset) {
+        setScheduleBackgroundPreview(storedAsset.url, false);
         return;
       }
     } catch {
@@ -102,7 +106,13 @@ export function useScheduleBackground() {
     try {
       const migratedBlob = await dataUrlToBlob(legacyImageDataUrl);
       await saveScheduleBackgroundBlob(migratedBlob);
-      setScheduleBackgroundPreview(URL.createObjectURL(migratedBlob));
+      const migratedAsset = peekPreloadedScheduleBackgroundAsset();
+      if (migratedAsset) {
+        setScheduleBackgroundPreview(migratedAsset.url, false);
+      } else {
+        setScheduleBackgroundPreview(URL.createObjectURL(migratedBlob));
+      }
+      legacyImageDataUrl = "";
       persistScheduleBackground();
     } catch {
       /* keep legacy preview */
@@ -144,7 +154,13 @@ export function useScheduleBackground() {
     backgroundSaving.value = true;
     try {
       await saveScheduleBackgroundBlob(file);
-      setScheduleBackgroundPreview(URL.createObjectURL(file));
+      const storedAsset = peekPreloadedScheduleBackgroundAsset();
+      if (storedAsset) {
+        setScheduleBackgroundPreview(storedAsset.url, false);
+      } else {
+        setScheduleBackgroundPreview(URL.createObjectURL(file));
+      }
+      legacyImageDataUrl = "";
       persistScheduleBackgroundSafe();
       ElMessage.success(file.size > 6 * 1024 * 1024 ? "已设置课表背景，大图首次显示可能会稍慢" : "已设置课表背景");
     } catch (error: any) {
@@ -161,6 +177,7 @@ export function useScheduleBackground() {
       await clearScheduleBackgroundBlob();
       applyScheduleBackground(createDefaultScheduleBackground());
       clearScheduleBackgroundPreview();
+      legacyImageDataUrl = "";
       persistScheduleBackgroundSafe("清除背景失败，请稍后重试");
       ElMessage.success("已清除课表背景");
     } catch {

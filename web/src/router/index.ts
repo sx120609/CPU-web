@@ -3,13 +3,20 @@ import { ElMessage } from "element-plus";
 import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
 import type { FeatureKey } from "@/api/site";
+import { preloadScheduleBackgroundAsset } from "@/utils/scheduleBackgroundStorage";
 
 const MainLayout = () => import("@/layouts/MainLayout.vue");
 export const loadHomeView = () => import("@/views/Home.vue");
 export const loadServicesView = () => import("@/views/services/Index.vue");
 export const loadProfileView = () => import("@/views/profile/Index.vue");
 export const loadJwxtView = () => import("@/views/jwxt/Index.vue");
-export const loadScheduleView = () => import("@/views/Schedule.vue");
+export const loadScheduleView = async () => {
+  const [view] = await Promise.all([
+    import("@/views/Schedule.vue"),
+    preloadScheduleBackgroundAsset().catch(() => null),
+  ]);
+  return view;
+};
 
 let primaryViewsPreload: Promise<unknown> | null = null;
 export function preloadPrimaryViews() {
