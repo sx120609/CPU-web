@@ -14,6 +14,18 @@ async function start() {
   await loadJwxtAgentRuntimeConfig().catch((error) => {
     console.warn("[jwxt-agent] 加载后台配置失败，暂时使用环境变量配置", error);
   });
+  const createdBoards = await ensureBuiltinBoards().catch((e) => {
+    console.warn("ensureBuiltinBoards failed:", e?.message);
+    return [];
+  });
+  if (createdBoards.length) {
+    console.log(`🏛️  已同步默认板块: ${createdBoards.map((board) => board.name).join("、")}`);
+  }
+  // 首页摘要依赖功能开关和全局置顶的内存快照。必须在开始接收请求前完成加载，
+  // 否则重启后的首个请求会把空置顶列表写进共享首页缓存。
+  await loadFeatures().catch((e) => console.warn("loadFeatures failed:", e?.message));
+  await loadStorageConfig().catch((e) => console.warn("loadStorageConfig failed:", e?.message));
+
   const app = createApp();
   const server = createServer(app);
   attachJwxtAgentGateway(server);
@@ -43,20 +55,11 @@ async function start() {
   process.once("SIGTERM", () => shutdown("SIGTERM"));
   process.once("SIGINT", () => shutdown("SIGINT"));
 
-  server.listen(config.port, async () => {
+  server.listen(config.port, () => {
     console.log(`🚀 CPU-web 后端已启动:  http://localhost:${config.port}`);
     console.log(`   健康检查:           http://localhost:${config.port}/api/health`);
     console.log(`   药苑之声:           http://localhost:${config.port}${voiceHubProxyConfig.path}`);
     console.log("   宿舍电费查询:       远程校园 Agent");
-    const createdBoards = await ensureBuiltinBoards().catch((e) => {
-      console.warn("ensureBuiltinBoards failed:", e?.message);
-      return [];
-    });
-    if (createdBoards.length) {
-      console.log(`🏛️  已同步默认板块: ${createdBoards.map((board) => board.name).join("、")}`);
-    }
-    await loadFeatures().catch((e) => console.warn("loadFeatures failed:", e?.message));
-    await loadStorageConfig().catch((e) => console.warn("loadStorageConfig failed:", e?.message));
     startScheduler();
   });
 }
