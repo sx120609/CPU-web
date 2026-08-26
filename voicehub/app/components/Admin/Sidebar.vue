@@ -168,7 +168,8 @@ const menuGroups = [
     section: '系统管理',
     items: [
       { icon: Bell, label: '主站通知', id: 'notifications' },
-      { icon: Globe, label: '站点配置', id: 'site-config' }
+      { icon: Globe, label: '站点配置', id: 'site-config' },
+      { icon: Music2, label: 'QQ 音乐', id: 'qq-music' }
     ]
   }
 ]

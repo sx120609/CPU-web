@@ -350,8 +350,16 @@ export async function resolveQqMusicOwnedSource(
   const attempts: ResolveResult['attempts'] = []
 
   try {
-    // Step 1: Detect cookie
-    const cookie = detectCookieFromRequest(event)
+    // Step 1: Detect cookie - check both request headers and server-side session
+    let cookie = detectCookieFromRequest(event)
+
+    // If no cookie from request, check server-side session cookie
+    if (!cookie) {
+      const sessionCookie = getCookie(event, 'qq_music_session')
+      if (sessionCookie) {
+        cookie = sessionCookie
+      }
+    }
 
     if (!cookie) {
       return {

@@ -105,6 +105,14 @@
               <LazyAdminSiteConfigManager />
             </div>
 
+            <!-- QQ 音乐配置 -->
+            <div
+              v-if="activeTab === 'qq-music' && permissions.canAccessPage('qq-music')"
+              class="animate-in fade-in slide-in-from-bottom-4 duration-500"
+            >
+              <LazyAdminQQMusicManager />
+            </div>
+
           </div>
         </main>
       </div>
@@ -166,7 +174,8 @@ const getPageTitle = () => {
     songs: '歌曲管理',
     schedule: '排期管理',
     notifications: '主站通知',
-    'site-config': '站点配置'
+    'site-config': '站点配置',
+    'qq-music': 'QQ 音乐配置'
   }
   return titles[activeTab.value] || '管理后台'
 }
