@@ -757,6 +757,7 @@ import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
 import InstallPromptDialog from "@/components/install/InstallPromptDialog.vue";
 import OpenBrowserPromptDialog from "@/components/install/OpenBrowserPromptDialog.vue";
 import {
+  DEFAULT_SCHEDULE_THEME,
   getColorGlassCourseTone,
   getScheduleThemePalette,
   normalizeScheduleTheme,
@@ -837,7 +838,7 @@ const semester = ref("");
 const week = ref("");
 const activeDay = ref(dayOfWeek());
 const viewMode = ref<ViewMode>(DEFAULT_SCHEDULE_VIEW_MODE);
-const scheduleTheme = ref<ScheduleThemeKey>("green");
+const scheduleTheme = ref<ScheduleThemeKey>(DEFAULT_SCHEDULE_THEME);
 const loading = ref(false);
 const offlineMode = ref(typeof navigator !== "undefined" ? navigator.onLine === false : false);
 const scheduleSavedAt = ref(0);

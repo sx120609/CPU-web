@@ -9,6 +9,8 @@ export type ScheduleThemeKey =
   | "slate"
   | "color-glass";
 
+export const DEFAULT_SCHEDULE_THEME: ScheduleThemeKey = "color-glass";
+
 export interface ScheduleThemePalette {
   key: ScheduleThemeKey;
   label: string;
@@ -255,7 +257,7 @@ export function getColorGlassCourseTone(name: string, dark = false): CourseTone 
 
 export function normalizeScheduleTheme(value?: string | null): ScheduleThemeKey {
   const next = (value ?? "").trim();
-  if (!next) return "green";
+  if (!next) return DEFAULT_SCHEDULE_THEME;
   if (next === "simple") return "green";
   if (next === "colorful") return "color-glass";
   if (next === "cyan") return "teal";
@@ -265,7 +267,7 @@ export function normalizeScheduleTheme(value?: string | null): ScheduleThemeKey 
   if (next === "lime") return "green";
   if (next === "pink" || next === "red") return "rose";
   if (next in scheduleThemePalettes) return next as ScheduleThemeKey;
-  return "green";
+  return DEFAULT_SCHEDULE_THEME;
 }
 
 export function getScheduleThemePalette(value?: string | null): ScheduleThemePalette {
