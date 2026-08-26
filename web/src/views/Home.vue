@@ -1,7 +1,7 @@
 <template>
   <div class="home">
     <!-- Hero / 介绍 -->
-    <section class="hero">
+    <section class="hero" aria-label="首页功能入口">
       <div class="hero-text">
         <h1>药大拾间</h1>
         <p>{{ heroIntro }}</p>
@@ -27,7 +27,7 @@
     </section>
 
     <section v-if="showForumContent" class="home-search-top" aria-label="站内搜索">
-      <SiteSearchBar />
+      <SiteSearchBar placeholder="搜索帖子、课程或校园服务" />
     </section>
 
     <section v-if="homeError && !loading" class="block home-error">
@@ -605,65 +605,81 @@ function normalizeHomeError(error: unknown) {
   }
 
   .hero {
-    border-radius: 14px;
-    padding: 18px 16px 16px;
-    align-items: stretch;
-    flex-direction: column;
-    gap: 0;
-    background: linear-gradient(135deg, #147e70 0%, #249987 68%, #10675c 100%);
-    box-shadow: 0 8px 20px rgba(11, 96, 84, 0.13);
+    display: block;
+    padding: 7px;
+    border: 1px solid var(--cpu-border-soft);
+    border-radius: 16px;
+    background: color-mix(in srgb, var(--cpu-card) 92%, transparent);
+    box-shadow: var(--cpu-shadow-sm);
+    backdrop-filter: blur(18px) saturate(140%);
   }
 
-  .hero::before {
+  .hero::before,
+  .hero::after {
     content: none;
   }
 
-  .hero::after {
-    right: -64px;
-    top: -72px;
-    width: 210px;
-    height: 210px;
-  }
-
-  .hero h1 {
-    margin-bottom: 5px;
-    font-size: 26px;
-    line-height: 1.2;
-  }
-
+  .hero h1,
   .hero p {
-    display: -webkit-box;
-    overflow: hidden;
-    margin-bottom: 13px;
-    font-size: 12px;
-    line-height: 1.55;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
+    display: none;
   }
 
   .hero-actions {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    display: flex;
+    width: 100%;
+    max-width: 100%;
+    flex-wrap: nowrap;
     gap: 8px;
+    overflow-x: auto;
+    padding: 0;
+    scroll-padding-inline: 1px;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+    overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .hero-actions::-webkit-scrollbar {
+    display: none;
   }
 
   .hero-actions .el-button {
-    width: 100%;
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 100px;
     height: 40px;
     min-height: 40px;
     margin-left: 0;
     justify-content: center;
-    padding: 0 10px;
-    border: none;
-    border-radius: 10px;
-    background: rgba(255, 255, 255, 0.92);
-    color: #147e70;
+    padding: 0 14px;
+    border: 1px solid var(--cpu-border-soft);
+    border-radius: 999px;
+    background: var(--cpu-surface-soft);
+    color: var(--cpu-text-secondary);
+    box-shadow: none;
     font-size: 13px;
     font-weight: 600;
+    scroll-snap-align: start;
   }
 
-  .hero-actions .el-button:last-child:nth-child(odd) {
-    grid-column: 1 / -1;
+  .hero-actions .el-button--primary {
+    border-color: color-mix(in srgb, var(--cpu-primary) 72%, transparent);
+    background: var(--cpu-primary);
+    color: #fff;
+  }
+
+  .hero-actions .el-button:hover,
+  .hero-actions .el-button:focus-visible {
+    border-color: color-mix(in srgb, var(--cpu-primary) 35%, var(--cpu-border-soft));
+    background: var(--cpu-surface-subtle);
+    color: var(--cpu-primary);
+  }
+
+  .hero-actions .el-button--primary:hover,
+  .hero-actions .el-button--primary:focus-visible {
+    border-color: var(--cpu-primary);
+    background: var(--cpu-primary);
+    color: #fff;
   }
 
   .grid {
@@ -677,14 +693,25 @@ function normalizeHomeError(error: unknown) {
     box-shadow: var(--cpu-shadow-sm);
   }
 
+  .home-search-top :deep(.site-search-bar) {
+    grid-template-columns: minmax(0, 1fr) 56px;
+    gap: 6px;
+  }
+
+  .home-search-top :deep(.el-input) {
+    min-width: 0;
+  }
+
   .home-search-top :deep(.el-input__wrapper) {
     min-height: 40px;
     border-radius: 9px;
   }
 
   .home-search-top :deep(.el-button) {
-    min-width: 58px;
+    width: 56px;
+    min-width: 56px;
     min-height: 40px;
+    padding: 0 8px;
     border-radius: 9px;
     font-weight: 600;
   }
