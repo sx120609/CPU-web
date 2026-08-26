@@ -80,6 +80,9 @@
     radial-gradient(circle at 88% 14%, rgba(183, 232, 219, 0.32), transparent 30%),
     var(--schedule-page-bg);
 }
+.schedule-page.has-custom-background::after {
+  background: linear-gradient(180deg, var(--schedule-bg-overlay) 0%, var(--schedule-bg-overlay) 100%);
+}
 .top {
   flex: 0 0 auto;
   width: 100%;

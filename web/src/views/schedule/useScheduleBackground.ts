@@ -29,7 +29,7 @@ export function useScheduleBackground() {
   function createDefaultScheduleBackground(): ScheduleBackgroundSettings {
     return {
       imageDataUrl: "",
-      overlayOpacity: 0.34,
+      overlayOpacity: 0.24,
       blur: 0,
     };
   }
@@ -38,7 +38,7 @@ export function useScheduleBackground() {
     const data = (input && typeof input === "object") ? input as Partial<ScheduleBackgroundSettings> : {};
     return {
       imageDataUrl: typeof data.imageDataUrl === "string" ? data.imageDataUrl : "",
-      overlayOpacity: clampNumber(data.overlayOpacity, 0.34, 0.12, 0.78),
+      overlayOpacity: clampNumber(data.overlayOpacity, 0.24, 0.12, 0.78),
       blur: Math.round(clampNumber(data.blur, 0, 0, 18)),
     };
   }

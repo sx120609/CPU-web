@@ -3,6 +3,7 @@
   class="schedule-page"
   :class="{
     'theme-color-glass': scheduleTheme === 'color-glass',
+    'has-custom-background': hasScheduleBackground,
     'is-dark': appearance.isDark,
     'is-native-app': isNativeScheduleApp,
     'is-android-native-app': isAndroidScheduleApp,
@@ -847,7 +848,8 @@ const viewportHeight = ref(0);
 const viewportWidth = ref(0);
 const touchLikeViewport = ref(false);
 const compactViewport = ref(false);
-const THEME_KEY = "cpu-schedule-theme-v1";
+// v2 intentionally resets earlier saved choices once so everyone sees the new colorful default.
+const THEME_KEY = "cpu-schedule-theme-v2";
 const GRAD_DEBUG_URL = "http://ygl.cpu.edu.cn/gmis5/oauthLogin/zgyk";
 const GRAD_DEBUG_FIXTURE_PATH = "server/.debug/grad-schedule.html";
 const scheduleCacheStore = new Map<string, CacheEnvelope<ScheduleResult>>();
@@ -1441,10 +1443,10 @@ const pageStyle = computed(() => ({
     ...scheduleThemeDarkCssVars(scheduleTheme.value),
     "--schedule-page-bg": "linear-gradient(180deg, #12231f 0%, #162d27 48%, #101c19 100%)",
     "--schedule-bg-overlay": hasScheduleBackground.value
-      ? `rgba(11, 27, 24, ${Math.max(0.36, scheduleBackground.overlayOpacity * 0.66)})`
+      ? `rgba(11, 27, 24, ${Math.max(0.22, scheduleBackground.overlayOpacity * 0.58)})`
       : "rgba(11, 27, 24, 0.78)",
-    "--schedule-surface-bg": hasScheduleBackground.value ? "rgba(26, 41, 37, 0.76)" : "rgba(26, 41, 37, 0.94)",
-    "--schedule-surface-bg-soft": hasScheduleBackground.value ? "rgba(32, 49, 44, 0.78)" : "rgba(32, 49, 44, 0.88)",
+    "--schedule-surface-bg": hasScheduleBackground.value ? "rgba(26, 41, 37, 0.62)" : "rgba(26, 41, 37, 0.94)",
+    "--schedule-surface-bg-soft": hasScheduleBackground.value ? "rgba(32, 49, 44, 0.68)" : "rgba(32, 49, 44, 0.88)",
     "--schedule-text": "#eef8f5",
     "--schedule-text-secondary": "#abc5be",
     "--schedule-text-muted": "#819d95",
@@ -1455,8 +1457,8 @@ const pageStyle = computed(() => ({
     "--schedule-panel-shadow": "0 14px 34px rgba(0, 0, 0, 0.22)",
   } : {
     "--schedule-bg-overlay": `rgba(248, 251, 255, ${hasScheduleBackground.value ? scheduleBackground.overlayOpacity : 0.84})`,
-    "--schedule-surface-bg": hasScheduleBackground.value ? "rgba(255, 255, 255, 0.72)" : "#ffffff",
-    "--schedule-surface-bg-soft": hasScheduleBackground.value ? "rgba(255, 255, 255, 0.84)" : "#f9fafb",
+    "--schedule-surface-bg": hasScheduleBackground.value ? "rgba(255, 255, 255, 0.60)" : "#ffffff",
+    "--schedule-surface-bg-soft": hasScheduleBackground.value ? "rgba(255, 255, 255, 0.72)" : "#f9fafb",
     "--schedule-text": "#172033",
     "--schedule-text-secondary": "#667085",
     "--schedule-text-muted": "#8a94a6",
