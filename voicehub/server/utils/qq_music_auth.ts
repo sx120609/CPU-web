@@ -33,14 +33,6 @@ const firstPositiveNumber = (...values: unknown[]) => {
   return 0
 }
 
-const vipDiagnosticFields = (value: unknown) => {
-  return Object.fromEntries(
-    Object.entries(asRecord(value)).filter(([key]) => {
-      return /(vip|flag|end|expire|overdate|send|level)/i.test(key)
-    })
-  )
-}
-
 const parseExpireTime = (...values: unknown[]) => {
   for (const value of values) {
     if (typeof value === 'string' || typeof value === 'number') {
@@ -223,12 +215,5 @@ export const getQqMusicVipInfo = async (cookie: string): Promise<QqMusicVipInfo>
   ) {
     throw new Error(`QQ 音乐会员接口返回异常（code=${request.code ?? response.code ?? 'unknown'}）`)
   }
-  const vipData = asRecord(request.data)
-  console.info('[QQMusicVipDiagnostic]', JSON.stringify({
-    data: vipDiagnosticFields(vipData),
-    identity: vipDiagnosticFields(vipData.identity),
-    userinfo: vipDiagnosticFields(vipData.userinfo),
-    musipackageVip: vipDiagnosticFields(vipData.musipackage_vip)
-  }))
   return normalizeQqMusicVipInfo(request.data)
 }
