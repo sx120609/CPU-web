@@ -3,6 +3,10 @@
     <!-- Hero / 介绍 -->
     <section class="hero">
       <div class="hero-text">
+        <div class="hero-kicker" aria-hidden="true">
+          <span class="hero-kicker-mark">✦</span>
+          <span>药大人的校园生活入口</span>
+        </div>
         <h1>药大拾间</h1>
         <p>{{ heroIntro }}</p>
         <div class="hero-actions">
@@ -388,6 +392,7 @@ function normalizeHomeError(error: unknown) {
 }
 
 .hero-text { flex: 1; z-index: 1; }
+.hero-kicker { display: none; }
 .hero h1 { margin: 0 0 6px; font-size: 32px; }
 .hero p { margin: 0 0 16px; opacity: 0.9; font-size: 15px; }
 .hero-actions { display: flex; flex-wrap: wrap; gap: 10px; }
@@ -605,42 +610,147 @@ function normalizeHomeError(error: unknown) {
   }
 
   .hero {
-    border-radius: 12px;
-    padding: 16px;
+    isolation: isolate;
+    min-height: 248px;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 20px;
+    padding: 22px 18px 24px;
     align-items: stretch;
     flex-direction: column;
     gap: 0;
+    background:
+      radial-gradient(circle at 92% 6%, rgba(250, 190, 70, 0.38), transparent 35%),
+      radial-gradient(circle at 8% 108%, rgba(67, 217, 187, 0.34), transparent 42%),
+      linear-gradient(145deg, #0c7568 0%, #169481 56%, #095f55 100%);
+    box-shadow: 0 18px 38px rgba(10, 98, 86, 0.22);
+  }
+
+  .hero::before {
+    content: "";
+    position: absolute;
+    right: 18px;
+    bottom: 74px;
+    width: 54px;
+    height: 54px;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 18px;
+    transform: rotate(18deg);
+    background: rgba(255, 255, 255, 0.05);
+    pointer-events: none;
+  }
+
+  .hero::after {
+    right: -74px;
+    top: -92px;
+    width: 230px;
+    height: 230px;
+    background: radial-gradient(circle at 42% 45%, rgba(255, 207, 104, 0.34), transparent 64%);
+  }
+
+  .hero-text {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+  }
+
+  .hero-kicker {
+    display: inline-flex;
+    align-items: center;
+    align-self: flex-start;
+    gap: 7px;
+    margin-bottom: 10px;
+    padding: 5px 10px 5px 7px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 999px;
+    background: rgba(5, 72, 64, 0.2);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    backdrop-filter: blur(10px);
+  }
+
+  .hero-kicker-mark {
+    display: grid;
+    width: 20px;
+    height: 20px;
+    place-items: center;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.16);
+    color: #ffe4a3;
+    font-size: 11px;
   }
 
   .hero h1 {
-    margin-bottom: 4px;
-    font-size: 24px;
+    margin-bottom: 7px;
+    font-size: 29px;
+    line-height: 1.18;
+    letter-spacing: -0.04em;
+    text-shadow: 0 4px 16px rgba(4, 65, 58, 0.18);
   }
 
   .hero p {
     display: -webkit-box;
     overflow: hidden;
-    margin-bottom: 12px;
-    font-size: 12px;
-    line-height: 1.5;
+    max-width: 32em;
+    margin-bottom: 16px;
+    color: rgba(255, 255, 255, 0.82);
+    font-size: 13px;
+    line-height: 1.65;
     -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
+    -webkit-line-clamp: 3;
   }
 
   .hero-actions {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
+    gap: 9px;
   }
 
   .hero-actions .el-button {
     width: 100%;
-    height: 38px;
-    min-height: 38px;
+    height: 42px;
+    min-height: 42px;
     margin-left: 0;
-    padding: 0 10px;
-    border-radius: 9px;
+    justify-content: flex-start;
+    padding: 0 12px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.11);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    color: #fff;
     font-size: 13px;
+    font-weight: 600;
+    backdrop-filter: blur(10px);
+  }
+
+  .hero-actions .el-button:first-child {
+    grid-column: 1 / -1;
+    justify-content: center;
+    border-color: #fff;
+    background: #fff;
+    box-shadow: 0 9px 20px rgba(3, 62, 55, 0.2);
+    color: #0b7467;
+  }
+
+  .hero-actions .el-button:last-child:nth-child(even) {
+    grid-column: 1 / -1;
+    justify-content: center;
+  }
+
+  .hero-actions .el-button:hover,
+  .hero-actions .el-button:focus-visible {
+    border-color: rgba(255, 255, 255, 0.34);
+    background: rgba(255, 255, 255, 0.18);
+    color: #fff;
+  }
+
+  .hero-actions .el-button:first-child:hover,
+  .hero-actions .el-button:first-child:focus-visible {
+    border-color: #fff;
+    background: #fff;
+    color: #0b7467;
   }
 
   .grid {
@@ -648,8 +758,25 @@ function normalizeHomeError(error: unknown) {
   }
 
   .home-search-top {
-    padding: 10px;
+    z-index: 2;
+    margin: -28px 9px 0;
+    padding: 9px;
+    border-color: color-mix(in srgb, var(--cpu-primary) 12%, var(--cpu-border-soft));
+    border-radius: 15px;
+    box-shadow: 0 12px 30px rgba(25, 75, 68, 0.14);
+  }
+
+  .home-search-top :deep(.el-input__wrapper) {
+    min-height: 42px;
     border-radius: 10px;
+    box-shadow: 0 0 0 1px var(--cpu-border-soft) inset;
+  }
+
+  .home-search-top :deep(.el-button) {
+    min-width: 58px;
+    min-height: 42px;
+    border-radius: 10px;
+    font-weight: 600;
   }
 
   .col-left,
