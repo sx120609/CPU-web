@@ -145,47 +145,42 @@ export const normalizeQqMusicVipInfo = (
   // Keep the former response shape as a compatibility fallback while the
   // current QQ Music client API uses identity/userinfo.
   const legacyPackage = asRecord(data.musipackage_vip)
-  const superVip = asNumber(data.svip)
-  const hugeVip = firstPositiveNumber(
+  const superVip = firstPositiveNumber(
     identity.HugeVip,
     identity.huge_vip,
-    identity.HugeVipFlag,
-    identity.superGreenVipFlag
+    identity.HugeVipFlag
   )
+  const hugeVip = firstPositiveNumber(data.svip, identity.superGreenVipFlag)
+  const lmVip = firstPositiveNumber(identity.LMFlag, identity.greenVipFlag)
+  const basicGreenVip = firstPositiveNumber(identity.vip, legacyPackage.vip_level)
   const greenVip = firstPositiveNumber(
-    identity.LMFlag,
-    identity.vip,
-    identity.greenVipFlag,
-    legacyPackage.vip_level
+    lmVip,
+    basicGreenVip
   )
-  const superExpireTime = parseExpireTime(userinfo.expire)
-  const hugeExpireTime = parseExpireTime(
+  const superExpireTime = parseExpireTime(
     identity.HugeVipEnd,
     identity.huge_vip_end,
     identity.HugeVipEndTime,
-    identity.superGreenVipEndTime,
-    identity.overdate,
-    data.send
+    userinfo.expire
   )
-  const greenExpireTime = parseExpireTime(
-    identity.LMEnd,
-    identity.greenVipEndTime,
-    identity.vip_end,
-    identity.overdate,
+  const hugeExpireTime = parseExpireTime(
     data.send,
-    userinfo.expire,
-    legacyPackage.vip_end_time
+    identity.greenVipEndTime,
+    identity.superGreenVipEndTime
   )
+  const greenExpireTime = lmVip > 0
+    ? parseExpireTime(identity.LMEnd, identity.greenVipEndTime)
+    : basicGreenVip > 0
+      ? parseExpireTime(identity.overdate, identity.vip_end, legacyPackage.vip_end_time)
+      : 0
   const isActive = (flag: number, expireTime: number) => {
     return flag > 0 && (expireTime === 0 || expireTime >= nowSeconds)
   }
 
-  // svip can remain present after the corresponding membership has expired.
-  // Treat each product independently so an expired super membership cannot
-  // hide a still-active HugeVip (豪华绿钻) entitlement.
-  // QQ Music can retain svip=1 after the entitlement has expired while also
-  // omitting userinfo.expire. Missing expiry is therefore not proof of an
-  // active super membership; accepting it would incorrectly shadow HugeVip.
+  // QQ Music exposes the three products independently: HugeVip is the super
+  // membership, svip/send is 豪华绿钻, and LMFlag/vip is the base green
+  // membership. Old product end dates can remain in the response after that
+  // product expires, so never borrow an expiry from a different product.
   const hasSuperVip = superVip > 0
     && superExpireTime > 0
     && superExpireTime >= nowSeconds
