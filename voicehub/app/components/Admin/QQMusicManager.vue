@@ -46,7 +46,8 @@
                   <span v-if="loginStatus.vipInfo?.hasVip" class="text-[#2f7d4f] font-bold">
                     {{ getVipTypeName(loginStatus.vipInfo.vipType) }}
                   </span>
-                  <span v-else class="text-[#d1495b]">非会员</span>
+                  <span v-else-if="loginStatus.vipInfo" class="text-[#d1495b]">非会员</span>
+                  <span v-else class="text-[#9a3412]">暂时无法读取</span>
                 </p>
                 <p v-if="loginStatus.vipInfo?.hasVip" class="text-sm text-[#6c7c6c]">
                   <span class="font-bold">到期时间：</span>
@@ -54,7 +55,7 @@
                 </p>
                 <p class="text-sm text-[#6c7c6c]">
                   <span class="font-bold">可用音质：</span>
-                  {{ getAvailableQualities(loginStatus.vipInfo?.vipType) }}
+                  {{ loginStatus.vipInfo ? getAvailableQualities(loginStatus.vipInfo.vipType) : '待会员状态恢复后确认' }}
                 </p>
               </div>
             </div>
@@ -69,7 +70,7 @@
 
         <!-- VIP 提示 -->
         <div
-          v-if="!loginStatus.vipInfo?.hasVip"
+          v-if="loginStatus.vipInfo && !loginStatus.vipInfo.hasVip"
           class="bg-[#fff7ed] border border-[#fed7aa] rounded-lg p-4"
         >
           <p class="text-sm text-[#9a3412] font-bold">

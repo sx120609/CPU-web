@@ -55,9 +55,16 @@ export async function zzcSign(text: string) {
   return `zzc${part1}${encoded}${part2}`.toLowerCase()
 }
 
-export const txSignedRequest = async (body: Record<string, unknown>) => {
+export interface TxRequestOptions {
+  headers?: Record<string, string>
+}
+
+export const txSignedRequest = async (
+  body: Record<string, unknown>,
+  options: TxRequestOptions = {}
+) => {
   const sign = await zzcSign(JSON.stringify(body))
-  return txRequest(`https://u.y.qq.com/cgi-bin/musics.fcg?sign=${sign}`, body)
+  return txRequest(`https://u.y.qq.com/cgi-bin/musics.fcg?sign=${sign}`, body, options)
 }
 
 type TxIdType = 'legacy-id' | 'mid'
@@ -278,7 +285,11 @@ export const getTxSongPlayableInfo = async (
   return value
 }
 
-export const txRequest = async (url: string, body: Record<string, unknown>) => {
+export const txRequest = async (
+  url: string,
+  body: Record<string, unknown>,
+  options: TxRequestOptions = {}
+) => {
   const candidateUrls = buildTxCandidateUrls(url)
   let lastError: unknown
 
@@ -287,7 +298,10 @@ export const txRequest = async (url: string, body: Record<string, unknown>) => {
       try {
         const response = await $fetch(candidateUrl, {
           method: 'POST',
-          headers: txHeaders,
+          headers: {
+            ...txHeaders,
+            ...options.headers
+          },
           body,
           responseType: 'json',
           timeout: TX_REQUEST_TIMEOUT_MS

@@ -4,12 +4,21 @@
  */
 
 import type { H3Event } from 'h3'
+import { randomUUID } from 'node:crypto'
 import {
   getTxSongPlayableInfo,
-  txSignedRequest,
+  txRequest,
   upgradeTxAudioUrl,
   type TxSongPlayableInfo
 } from './native_tx'
+import {
+  buildQqMusicAuthComm,
+  buildQqMusicCookieHeader,
+  buildQqMusicRequestHeaders,
+  getQqMusicVipInfo,
+  parseQqMusicCredentialCookie,
+  type QqMusicVipInfo
+} from './qq_music_auth'
 
 // ============================================================================
 // Types
@@ -26,13 +35,6 @@ export interface ResolveResult {
     status: 'success' | 'error'
     error?: string
   }>
-}
-
-interface VipInfo {
-  hasVip: boolean
-  vipType: number
-  level: number
-  expireTime: number
 }
 
 interface CachedPlayUrl {
@@ -65,7 +67,7 @@ const QUALITY_CHAINS = {
 // ============================================================================
 
 const playUrlCache = new Map<string, CachedPlayUrl>()
-const vipInfoCache = new Map<string, { info: VipInfo; expiresAt: number }>()
+const vipInfoCache = new Map<string, { info: QqMusicVipInfo; expiresAt: number }>()
 
 function getCachedPlayUrl(key: string): CachedPlayUrl | null {
   const cached = playUrlCache.get(key)
@@ -87,7 +89,7 @@ function setCachedPlayUrl(key: string, value: CachedPlayUrl): void {
   playUrlCache.set(key, value)
 }
 
-function getCachedVipInfo(musicid: string): VipInfo | null {
+function getCachedVipInfo(musicid: string): QqMusicVipInfo | null {
   const cached = vipInfoCache.get(musicid)
   if (!cached) return null
 
@@ -99,7 +101,7 @@ function getCachedVipInfo(musicid: string): VipInfo | null {
   return cached.info
 }
 
-function setCachedVipInfo(musicid: string, info: VipInfo): void {
+function setCachedVipInfo(musicid: string, info: QqMusicVipInfo): void {
   if (vipInfoCache.size >= VIP_CACHE_MAX_SIZE) {
     const firstKey = vipInfoCache.keys().next().value
     if (firstKey) vipInfoCache.delete(firstKey)
@@ -117,29 +119,16 @@ function setCachedVipInfo(musicid: string, info: VipInfo): void {
 function detectCookieFromRequest(event: H3Event): string | null {
   const cookieHeader = getHeader(event, 'cookie')
   if (!cookieHeader) return null
-
-  // Check for QQ Music specific cookies
-  const hasQqMusicKey = /qqmusic_key=/.test(cookieHeader)
-  const hasQmKeyst = /qm_keyst=/.test(cookieHeader)
-
-  if (hasQqMusicKey || hasQmKeyst) {
-    return cookieHeader
-  }
-
-  return null
-}
-
-function extractMusicIdFromCookie(cookie: string): string | null {
-  const match = cookie.match(/musicid=([^;]+)/)
-  return match ? match[1] : null
+  const credential = parseQqMusicCredentialCookie(cookieHeader)
+  return credential ? buildQqMusicCookieHeader(credential) : null
 }
 
 // ============================================================================
 // VIP Info Query
 // ============================================================================
 
-async function getVipInfo(cookie: string): Promise<VipInfo> {
-  const musicid = extractMusicIdFromCookie(cookie)
+async function getVipInfo(cookie: string): Promise<QqMusicVipInfo> {
+  const musicid = parseQqMusicCredentialCookie(cookie)?.musicid
 
   // Check cache
   if (musicid) {
@@ -150,37 +139,8 @@ async function getVipInfo(cookie: string): Promise<VipInfo> {
     }
   }
 
-  // Query VIP status from QQ Music API
-  const payload = {
-    comm: {
-      g_tk: 5,
-      format: 'json',
-      ct: 24,
-      cv: 0
-    },
-    GetVipInfo: {
-      module: 'VipQuery.VipQueryServer',
-      method: 'GetVipInfo',
-      param: {}
-    }
-  }
-
   try {
-    const response: any = await txSignedRequest(payload)
-
-    if (response?.code !== 0 || !response?.GetVipInfo) {
-      throw new Error(`GetVipInfo failed: code=${response?.code}`)
-    }
-
-    const vipData = response.GetVipInfo.data || {}
-    const musicPackage = vipData.musipackage_vip || {}
-
-    const vipInfo: VipInfo = {
-      hasVip: (musicPackage.vip_level || 0) > 0,
-      vipType: musicPackage.vip_type || 0,
-      level: musicPackage.vip_level || 0,
-      expireTime: musicPackage.vip_end_time || 0
-    }
+    const vipInfo = await getQqMusicVipInfo(cookie)
 
     // Cache result
     if (musicid) {
@@ -262,51 +222,55 @@ function selectQualityChain(vipType: number, requestedQuality: string): string[]
 async function resolveWithOfficialApi(
   playableInfo: TxSongPlayableInfo,
   qualityChain: string[],
-  cookie?: string
-): Promise<string | null> {
+  cookie: string
+): Promise<{ url: string; quality: string } | null> {
   const { songmid, strMediaMid } = playableInfo
+  const credential = parseQqMusicCredentialCookie(cookie)
 
-  if (!strMediaMid) {
-    console.warn('[OwnedSource] Missing strMediaMid, cannot resolve')
+  if (!strMediaMid || !credential) {
+    console.warn('[OwnedSource] Missing media MID or QQ Music credential, cannot resolve')
     return null
+  }
+
+  const qualityFormats: Record<string, { prefix: string; extension: string }> = {
+    flac24bit: { prefix: 'AI00', extension: '.flac' },
+    flac: { prefix: 'F000', extension: '.flac' },
+    '320k': { prefix: 'M800', extension: '.mp3' },
+    '128k': { prefix: 'M500', extension: '.mp3' }
   }
 
   // Try each quality in the chain
   for (const quality of qualityChain) {
     try {
-      const fileExt = quality.includes('flac') ? 'flac' : 'm4a'
-      const filename = `${strMediaMid}.${fileExt}`
+      const format = qualityFormats[quality]
+      if (!format) continue
+      const filename = `${format.prefix}${strMediaMid}${format.extension}`
 
       const payload = {
-        comm: {
-          g_tk: 5,
-          uin: 0,
-          format: 'json',
-          ct: 24,
-          cv: 0
-        },
-        GetPlayUrl: {
-          module: 'vkey.GetVkeyServer',
-          method: 'CgiGetVkey',
+        comm: buildQqMusicAuthComm(credential),
+        req_0: {
+          module: 'music.vkey.GetVkey',
+          method: 'UrlGetVkey',
           param: {
-            guid: '0',
+            guid: randomUUID().replaceAll('-', ''),
             songmid: [songmid],
             songtype: [0],
-            uin: '0',
-            loginflag: cookie ? 1 : 0,
-            platform: '20',
-            filename: [filename]
+            uin: credential.musicid,
+            filename: [filename],
+            ctx: 0
           }
         }
       }
 
-      const response: any = await txSignedRequest(payload)
+      const response: any = await txRequest('https://u.y.qq.com/cgi-bin/musicu.fcg', payload, {
+        headers: buildQqMusicRequestHeaders(credential)
+      })
 
-      if (response?.code !== 0 || !response?.GetPlayUrl?.data) {
+      if (response?.code !== 0 || response?.req_0?.code !== 0 || !response?.req_0?.data) {
         continue
       }
 
-      const data = response.GetPlayUrl.data
+      const data = response.req_0.data
       const midurlInfo = data.midurlinfo?.[0]
 
       if (!midurlInfo || !midurlInfo.purl) {
@@ -315,8 +279,10 @@ async function resolveWithOfficialApi(
 
       // Construct full URL
       const purl = midurlInfo.purl
-      const sip = data.sip?.[0] || 'https://ws.stream.qqmusic.qq.com/'
-      const fullUrl = sip.endsWith('/') ? `${sip}${purl}` : `${sip}/${purl}`
+      const sip = data.sip?.[0] || 'https://isure.stream.qqmusic.qq.com/'
+      const fullUrl = /^https?:\/\//i.test(purl)
+        ? purl
+        : sip.endsWith('/') ? `${sip}${purl}` : `${sip}/${purl}`
 
       // Validate URL
       const validatedUrl = upgradeTxAudioUrl(fullUrl)
@@ -326,7 +292,7 @@ async function resolveWithOfficialApi(
       }
 
       console.log(`[OwnedSource] Successfully resolved with quality=${quality}`)
-      return validatedUrl
+      return { url: validatedUrl, quality }
     } catch (error: any) {
       console.warn(`[OwnedSource] Failed to resolve quality=${quality}:`, error.message)
     }
@@ -347,8 +313,6 @@ export async function resolveQqMusicOwnedSource(
   musicId: string | number,
   quality?: unknown
 ): Promise<ResolveResult> {
-  const attempts: ResolveResult['attempts'] = []
-
   try {
     // Step 1: Detect cookie - check both request headers and server-side session
     let cookie = detectCookieFromRequest(event)
@@ -404,9 +368,9 @@ export async function resolveQqMusicOwnedSource(
     console.log(`[OwnedSource] Quality chain:`, qualityChain)
 
     // Step 6: Resolve with official API
-    const url = await resolveWithOfficialApi(playableInfo, qualityChain, cookie)
+    const resolved = await resolveWithOfficialApi(playableInfo, qualityChain, cookie)
 
-    if (!url) {
+    if (!resolved) {
       return {
         success: false,
         error: '官方接口未返回有效播放链接',
@@ -419,18 +383,17 @@ export async function resolveQqMusicOwnedSource(
     }
 
     // Step 7: Cache result
-    const actualQuality = qualityChain[0] // First in chain is what we got
     setCachedPlayUrl(cacheKey, {
-      url,
-      quality: actualQuality,
+      url: resolved.url,
+      quality: resolved.quality,
       expiresAt: Date.now() + PLAY_URL_CACHE_TTL,
       source: 'owned-source'
     })
 
     return {
       success: true,
-      url,
-      quality: actualQuality,
+      url: resolved.url,
+      quality: resolved.quality,
       source: 'owned-source',
       attempts: [{
         source: 'owned-source',
