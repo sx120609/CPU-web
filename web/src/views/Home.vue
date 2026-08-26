@@ -26,6 +26,10 @@
       </div>
     </section>
 
+    <section v-if="showForumContent" class="home-search-top" aria-label="站内搜索">
+      <SiteSearchBar />
+    </section>
+
     <section v-if="homeError && !loading" class="block home-error">
       <el-empty :description="homeError">
         <el-button type="primary" @click="loadSummary()">重试</el-button>
@@ -76,7 +80,6 @@
             </div>
             <router-link to="/forum/latest" class="more">查看全部 →</router-link>
           </div>
-          <SiteSearchBar class="home-site-search" />
           <TopicListItem v-for="t in summary?.latestTopics ?? []" :key="'new-' + t.id" :topic="t" variant="simple" />
           <el-empty v-if="!summary?.latestTopics?.length" description="暂无内容" />
         </section>
@@ -448,8 +451,12 @@ function normalizeHomeError(error: unknown) {
 .latest-head > div { min-width: 0; }
 .block-summary { display: block; margin-top: 3px; color: var(--cpu-text-muted); font-size: 11px; }
 .more { font-size: 12px; color: var(--cpu-primary); text-decoration: none; }
-.home-site-search {
-  margin: 2px 0 8px;
+.home-search-top {
+  padding: 12px 14px;
+  background: var(--cpu-card);
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 12px;
+  box-shadow: var(--cpu-shadow-sm);
 }
 
 .announce-list { list-style: none; padding: 0; margin: 0; }
@@ -638,6 +645,11 @@ function normalizeHomeError(error: unknown) {
 
   .grid {
     gap: 14px;
+  }
+
+  .home-search-top {
+    padding: 10px;
+    border-radius: 10px;
   }
 
   .col-left,
