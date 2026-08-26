@@ -13,6 +13,7 @@
       <UserAvatar :size="36" class="avatar" :src="topic.author?.avatar" :name="topic.author?.nickname" :profile-frame="topic.author?.profileFrame" alt="作者头像" />
       <div class="simple-main">
         <div class="simple-heading" :class="{ 'has-price': metaPriceLabel }">
+          <span v-if="rank" class="simple-rank" :class="{ 'simple-rank--top3': rank <= 3 }">#{{ rank }}</span>
           <span class="simple-title"><b v-if="topic.globalPinned || topic.pinned">置顶</b>{{ displayTitle }}</span>
           <strong v-if="metaPriceLabel" class="simple-price">{{ metaPriceLabel }}</strong>
         </div>
@@ -35,7 +36,7 @@
             <span v-if="topic.editCount && topic.editCount > 0" class="simple-edited">已编辑 {{ topic.editCount }} 次</span>
           </div>
           <div class="simple-stats">
-            <span class="heat">热度 {{ hotScore }}</span>
+            <span class="heat">热度 {{ displayedHotScore }}</span>
             <span><el-icon><View /></el-icon>{{ displayedViewCount }}</span>
             <span><el-icon><ChatLineRound /></el-icon>{{ topic.replyCount }}</span>
             <span><el-icon><Star /></el-icon>{{ topic.likeCount }}</span>
@@ -138,8 +139,10 @@ import {
   queueTopicImpression,
 } from "@/utils/topicImpressions";
 
-const props = withDefaults(defineProps<{ topic: any; variant?: "row" | "card" | "simple" }>(), {
+const props = withDefaults(defineProps<{ topic: any; variant?: "row" | "card" | "simple"; rank?: number; score?: number }>(), {
   variant: "row",
+  rank: 0,
+  score: undefined,
 });
 const route = useRoute();
 const router = useRouter();
@@ -219,6 +222,7 @@ const metaRating = computed(() => {
   return typeof r === "number" ? r : 0;
 });
 const hotScore = computed(() => Math.round((props.topic.likeCount ?? 0) * 5 + (props.topic.replyCount ?? 0) * 3 + displayedViewCount.value * 0.03));
+const displayedHotScore = computed(() => Number.isFinite(props.score) ? Math.round(Number(props.score)) : hotScore.value);
 const aiTags = computed(() => Array.isArray(props.topic.tags) ? props.topic.tags.slice(0, 2) : []);
 const reviewState = computed(() => {
   if (!props.topic.hidden) return null;
@@ -410,6 +414,8 @@ function openTopic() {
   -webkit-line-clamp: 2;
 }
 .simple-title b { margin-right: 6px; color: #b45309; font-size: 12px; }
+.simple-rank { flex: 0 0 auto; min-width: 27px; padding: 2px 6px; border-radius: 999px; background: var(--cpu-surface-soft); color: var(--cpu-text-muted); font-size: 11px; font-weight: 800; line-height: 1.5; text-align: center; }
+.simple-rank--top3 { background: color-mix(in srgb, #ef4444 10%, var(--cpu-card)); color: #dc2626; }
 .simple-price { flex: 0 0 auto; color: color-mix(in srgb, #ef4444 82%, var(--cpu-text)); font-size: 15px; line-height: 1.5; }
 .simple-context {
   display: flex;

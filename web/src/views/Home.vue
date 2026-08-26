@@ -45,36 +45,24 @@
         </section>
 
         <section class="block">
-          <div class="block-head">
-            <h3>🔥 热议</h3>
+          <div class="block-head latest-head">
+            <div>
+              <h3>🔥 热议</h3>
+              <span class="block-summary">全站互动热度 Top 3</span>
+            </div>
             <router-link to="/forum/hot" class="more">查看前十 →</router-link>
           </div>
           <ForumAdCard v-if="hotAd" :ad="hotAd" compact />
-          <div
+          <TopicListItem
             v-for="t in hotPreview"
             :key="'hot-' + t.id"
-            class="hot-row"
-            role="button"
-            tabindex="0"
-            @click="openTopic(t.id)"
-            @keydown.enter.prevent="openTopic(t.id)"
-            @keydown.space.prevent="openTopic(t.id)"
-          >
-            <div class="hot-rank" :class="{ top3: t.rank <= 3 }">#{{ t.rank }}</div>
-            <div class="hot-main">
-              <div class="hot-title">{{ t.title }}</div>
-              <div v-if="t.tags?.length" class="hot-tags">
-                <span v-for="tag in t.tags.slice(0, 2)" :key="tag.name" class="hot-tag">{{ tag.name }}</span>
-              </div>
-              <div class="hot-meta">
-                <span>{{ t.board?.name }}</span>
-                <span>{{ t.replyCount }} 回 / {{ t.likeCount }} 赞</span>
-              </div>
-            </div>
-            <div class="hot-score">{{ Math.round(t.hotScore || 0) }}</div>
-          </div>
+            :topic="t"
+            :rank="t.rank"
+            :score="t.hotScore"
+            variant="simple"
+          />
           <div v-if="hotPreview.length" class="hot-foot">
-            <span class="cpu-muted">首页仅展示前三</span>
+            <span class="cpu-muted">按回复、点赞与浏览综合排序</span>
             <router-link to="/forum/hot" class="more more-strong">进入热榜 Top 10 →</router-link>
           </div>
           <el-empty v-if="!hotPreview.length" description="暂无内容" />
@@ -485,69 +473,6 @@ function normalizeHomeError(error: unknown) {
 }
 .ann-source { color: var(--cpu-primary); }
 
-.hot-row {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 12px;
-  align-items: center;
-  padding: 10px 4px;
-  border-bottom: 1px dashed var(--cpu-border-soft);
-  cursor: pointer;
-}
-.hot-row:last-of-type { border-bottom: none; }
-.hot-row:focus-visible {
-  outline: 2px solid var(--cpu-primary);
-  outline-offset: 2px;
-}
-.hot-rank {
-  min-width: 46px;
-  font-size: 13px;
-  font-weight: 800;
-  color: var(--cpu-text-muted);
-}
-.hot-rank.top3 { color: #dc2626; }
-.hot-title {
-  font-size: 14px;
-  color: var(--cpu-text);
-  line-height: 1.5;
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 1;
-  -webkit-box-orient: vertical;
-}
-.hot-meta {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: 2px;
-  font-size: 12px;
-  color: var(--cpu-text-muted);
-}
-.hot-tags {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  margin-top: 4px;
-}
-.hot-tag {
-  display: inline-flex;
-  align-items: center;
-  height: 22px;
-  padding: 0 8px;
-  border-radius: 999px;
-  background: rgba(245, 158, 11, 0.12);
-  border: 1px solid rgba(245, 158, 11, 0.34);
-  color: #9a3412;
-  font-size: 11px;
-  font-weight: 600;
-}
-.hot-score {
-  min-width: 44px;
-  text-align: right;
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--cpu-primary);
-}
 .hot-foot {
   display: flex;
   justify-content: space-between;
@@ -730,17 +655,6 @@ function normalizeHomeError(error: unknown) {
 
   .svc-icon {
     font-size: 20px;
-  }
-
-  .hot-row {
-    grid-template-columns: auto minmax(0, 1fr);
-  }
-
-  .hot-score {
-    grid-column: 2;
-    text-align: left;
-    min-width: 0;
-    font-size: 13px;
   }
 
   .home-publish-fab {
