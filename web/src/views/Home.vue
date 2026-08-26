@@ -7,17 +7,28 @@
         <p>{{ heroIntro }}</p>
         <div class="hero-actions">
           <el-button v-if="site.features.forum" type="primary" size="large" @click="$router.push('/forum')">
-            <el-icon><ChatLineRound /></el-icon> {{ forumActionLabel }}
+            <el-icon><ChatLineRound /></el-icon>
+            <span class="action-label-full">{{ forumActionLabel }}</span>
+            <span class="action-label-short">论坛</span>
           </el-button>
           <el-button v-if="site.features.market && auth.canAccessForum" size="large" @click="$router.push('/market')">
-            <span>♻️</span> 二手交流
+            <span>♻️</span>
+            <span class="action-label-full">二手交流</span>
+            <span class="action-label-short">二手</span>
           </el-button>
           <el-button v-else type="primary" size="large" @click="$router.push('/announcements')">
-            <el-icon><Bell /></el-icon> 看校园公告
+            <el-icon><Bell /></el-icon>
+            <span class="action-label-full">看校园公告</span>
+            <span class="action-label-short">公告</span>
           </el-button>
-          <el-button v-if="!auth.isLoggedIn" size="large" @click="$router.push('/login')">{{ loginActionText }}</el-button>
+          <el-button v-if="!auth.isLoggedIn" size="large" @click="$router.push('/login')">
+            <span class="action-label-full">{{ loginActionText }}</span>
+            <span class="action-label-short">登录</span>
+          </el-button>
           <el-button v-else-if="site.features.forum && auth.canAccessForum" size="large" @click="$router.push('/post')">
-            <el-icon><Edit /></el-icon> 发布内容
+            <el-icon><Edit /></el-icon>
+            <span class="action-label-full">发布内容</span>
+            <span class="action-label-short">发布</span>
           </el-button>
           <el-button size="large" @click="$router.push('/search')">
             <el-icon><ChatDotRound /></el-icon> 拾间AI
@@ -27,7 +38,7 @@
     </section>
 
     <section v-if="showForumContent" class="home-search-top" aria-label="站内搜索">
-      <SiteSearchBar placeholder="搜索帖子、课程或校园服务" />
+      <SiteSearchBar placeholder="搜索帖子或校园服务" />
     </section>
 
     <section v-if="homeError && !loading" class="block home-error">
@@ -391,6 +402,7 @@ function normalizeHomeError(error: unknown) {
 .hero h1 { margin: 0 0 6px; font-size: 32px; }
 .hero p { margin: 0 0 16px; opacity: 0.9; font-size: 15px; }
 .hero-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.action-label-short { display: none; }
 .hero-actions .el-button { background: rgba(255,255,255,0.9); border: none; color: #168776; }
 .hero-actions .el-button:hover { background: #fff; }
 .hero-actions .el-button--primary { background: #fff; color: #168776; }
@@ -629,37 +641,43 @@ function normalizeHomeError(error: unknown) {
     width: 100%;
     max-width: 100%;
     flex-wrap: nowrap;
-    gap: 8px;
-    overflow-x: auto;
+    gap: 6px;
+    overflow-x: hidden;
     padding: 0;
-    scroll-padding-inline: 1px;
-    scroll-snap-type: x proximity;
-    scrollbar-width: none;
-    overscroll-behavior-inline: contain;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  .hero-actions::-webkit-scrollbar {
-    display: none;
   }
 
   .hero-actions .el-button {
-    flex: 0 0 auto;
-    width: auto;
-    min-width: 100px;
+    flex: 1 1 0;
+    width: 0;
+    min-width: 0;
     height: 40px;
     min-height: 40px;
     margin-left: 0;
     justify-content: center;
-    padding: 0 14px;
+    overflow: hidden;
+    padding: 0 5px;
     border: 1px solid var(--cpu-border-soft);
     border-radius: 999px;
     background: var(--cpu-surface-soft);
     color: var(--cpu-text-secondary);
     box-shadow: none;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
-    scroll-snap-align: start;
+    white-space: nowrap;
+  }
+
+  .hero-actions :deep(.el-button > span) {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .action-label-full {
+    display: none;
+  }
+
+  .action-label-short {
+    display: inline;
   }
 
   .hero-actions .el-button--primary {
