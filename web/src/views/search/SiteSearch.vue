@@ -3,7 +3,7 @@
     <header class="search-head">
       <div>
         <h1>站内搜索</h1>
-        <p>按关键词查找帖子、课程与校园服务，不消耗 AI 额度。</p>
+        <p>按关键词查找帖子、课程与校园服务。</p>
       </div>
       <form class="search-form" role="search" @submit.prevent="submitSearch">
         <el-input

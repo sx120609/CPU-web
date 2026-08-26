@@ -1,6 +1,7 @@
 <template>
   <div class="forum-index">
       <h2 class="page-title">讨论板块</h2>
+      <SiteSearchBar />
 
       <div v-if="error && !loading" class="cpu-card forum-error">
         <el-empty :description="error">
@@ -84,6 +85,7 @@ import { InfoFilled } from "@element-plus/icons-vue";
 import { boardApi, type Board } from "@/api/board";
 import { forumAdsApi, type ForumAd } from "@/api/forumAds";
 import ForumAdCard from "@/components/forum/ForumAdCard.vue";
+import SiteSearchBar from "@/components/search/SiteSearchBar.vue";
 import { useAuthStore } from "@/stores/auth";
 import { forumCacheScope, readForumBoards, writeForumBoards } from "@/utils/forumCache";
 

@@ -8,6 +8,7 @@
         </p>
       </div>
     </div>
+    <SiteSearchBar />
 
     <section class="cpu-card" v-loading="loading">
       <div v-if="error && !loading" class="feed-error">
@@ -94,6 +95,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { onBeforeRouteLeave, useRoute, useRouter } from "vue-router";
 import TopicListItem from "@/components/forum/TopicListItem.vue";
 import ForumAdCard from "@/components/forum/ForumAdCard.vue";
+import SiteSearchBar from "@/components/search/SiteSearchBar.vue";
 import { homeApi } from "@/api/home";
 import { forumAdsApi, type ForumAd } from "@/api/forumAds";
 import { fmtRelative } from "@/utils/format";

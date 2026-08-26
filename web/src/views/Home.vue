@@ -76,19 +76,7 @@
             </div>
             <router-link to="/forum/latest" class="more">查看全部 →</router-link>
           </div>
-          <form class="home-site-search" role="search" @submit.prevent="submitSiteSearch">
-            <el-input
-              v-model="siteSearchKeyword"
-              clearable
-              maxlength="100"
-              aria-label="搜索站内内容"
-              placeholder="搜索帖子标题、正文、课程或校园服务"
-            >
-              <template #prefix><el-icon><Search /></el-icon></template>
-            </el-input>
-            <el-button native-type="submit" type="primary" :disabled="!siteSearchKeyword.trim()">搜索</el-button>
-          </form>
-          <p class="home-site-search-hint">普通关键词搜索，不消耗 AI 额度</p>
+          <SiteSearchBar class="home-site-search" />
           <TopicListItem v-for="t in summary?.latestTopics ?? []" :key="'new-' + t.id" :topic="t" variant="simple" />
           <el-empty v-if="!summary?.latestTopics?.length" description="暂无内容" />
         </section>
@@ -190,10 +178,11 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from "vue";
 import { useRouter } from "vue-router";
-import { ChatLineRound, ChatDotRound, Edit, Bell, Search } from "@element-plus/icons-vue";
+import { ChatLineRound, ChatDotRound, Edit, Bell } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import TopicListItem from "@/components/forum/TopicListItem.vue";
 import ForumAdCard from "@/components/forum/ForumAdCard.vue";
+import SiteSearchBar from "@/components/search/SiteSearchBar.vue";
 import DormElectricDialog from "@/components/services/DormElectricDialog.vue";
 import { homeApi, type HomeSummary } from "@/api/home";
 import { forumAdsApi, type ForumAd } from "@/api/forumAds";
@@ -211,7 +200,6 @@ const router = useRouter();
 const summary = ref<HomeSummary | null>(null);
 const loading = ref(false);
 const homeError = ref("");
-const siteSearchKeyword = ref("");
 const electricOpen = ref(false);
 const pinnedAd = ref<ForumAd | null>(null);
 const hotAd = ref<ForumAd | null>(null);
@@ -351,12 +339,6 @@ function openTopic(id: number) {
   router.push(`/forum/topic/${id}`);
 }
 
-function submitSiteSearch() {
-  const keyword = siteSearchKeyword.value.trim().slice(0, 100);
-  if (!keyword) return;
-  router.push({ name: "site-search", query: { q: keyword } });
-}
-
 function normalizeHomeError(error: unknown) {
   const status = (error as { response?: { status?: number; data?: { message?: string } } })?.response?.status;
   if (status && status < 500) {
@@ -462,16 +444,7 @@ function normalizeHomeError(error: unknown) {
 .block-summary { display: block; margin-top: 3px; color: var(--cpu-text-muted); font-size: 11px; }
 .more { font-size: 12px; color: var(--cpu-primary); text-decoration: none; }
 .home-site-search {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-  margin: 2px 0 0;
-}
-.home-site-search-hint {
-  margin: 5px 2px 8px;
-  color: var(--cpu-text-muted);
-  font-size: 11px;
-  line-height: 1.5;
+  margin: 2px 0 8px;
 }
 
 .announce-list { list-style: none; padding: 0; margin: 0; }
@@ -674,10 +647,6 @@ function normalizeHomeError(error: unknown) {
 
   .block-head {
     align-items: center;
-  }
-
-  .home-site-search {
-    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .service-grid {
