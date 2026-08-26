@@ -163,10 +163,11 @@
                 </div>
               </div>
               <div v-if="!qqBotProfile?.binding && qqBotAddFriendQr" class="channel-qr-box">
-                <a :href="qqBotAddFriendUrl"><img :src="qqBotAddFriendQr" alt="QQBot 添加好友二维码" /></a>
+                <a :href="qqBotAddFriendQrUrl" target="_blank" rel="noopener noreferrer"><img :src="qqBotAddFriendQr" alt="QQBot 添加好友二维码" /></a>
                 <div>
-                  <b>扫码添加机器人好友</b>
+                  <b>扫码打开机器人添加页</b>
                   <span>QQ：{{ qqBotProfile?.botQqId }}</span>
+                  <span>打开后可唤起 QQ；若被拦截，可复制 QQ 号搜索。</span>
                   <span>添加后私聊发送下方绑定指令。</span>
                   <a :href="qqBotAddFriendUrl" class="channel-qr-link">在 QQ 中打开</a>
                 </div>
@@ -331,6 +332,7 @@ import { adminApi } from "@/api/admin";
 import { fmtDate } from "@/utils/format";
 import { copyText } from "@/utils/userGroup";
 import QRCode from "qrcode";
+import { buildQqAddFriendLandingUrl, buildQqAddFriendUrl } from "@/utils/qqContact";
 import { isServerHandledRedirect, resolveSafeRedirect } from "@/utils/redirect";
 
 const route = useRoute();
@@ -409,8 +411,11 @@ const qqBotBindCommandText = computed(() => {
   return "绑定 绑定码";
 });
 const qqBotAddFriendUrl = computed(() => {
-  const qq = String(qqBotProfile.value?.botQqId || "").replace(/\D/g, "");
-  return qq ? `mqqapi://card/show_pslcard?src_type=internal&version=1&uin=${qq}&card_type=person&source=sharecard` : "";
+  return buildQqAddFriendUrl(qqBotProfile.value?.botQqId);
+});
+const qqBotAddFriendQrUrl = computed(() => {
+  if (typeof window === "undefined") return "";
+  return buildQqAddFriendLandingUrl(qqBotProfile.value?.botQqId, window.location.origin);
 });
 const wechatBindCommandText = computed(() => {
   if (wechatProfile.value?.activeBindToken) return `绑定 ${wechatProfile.value.activeBindToken.token}`;
@@ -463,7 +468,7 @@ watch(tab, (value) => {
   router.replace({ query: nextQuery }).catch(() => null);
 });
 
-watch(qqBotAddFriendUrl, async (value) => {
+watch(qqBotAddFriendQrUrl, async (value) => {
   const seq = ++qqBotAddFriendQrSeq;
   qqBotAddFriendQr.value = "";
   if (!value) return;

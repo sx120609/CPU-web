@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#275efe" />
+  <title>添加药大拾间 QQBot</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Inter, "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+      color: #172033;
+      background: #f4f7ff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      margin: 0;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background:
+        radial-gradient(circle at 15% 10%, rgba(87, 144, 255, .2), transparent 34%),
+        radial-gradient(circle at 90% 90%, rgba(117, 94, 255, .14), transparent 36%),
+        #f4f7ff;
+    }
+    main {
+      width: min(100%, 430px);
+      padding: 32px;
+      border: 1px solid rgba(39, 94, 254, .12);
+      border-radius: 24px;
+      background: rgba(255, 255, 255, .96);
+      box-shadow: 0 22px 60px rgba(29, 55, 112, .14);
+      text-align: center;
+    }
+    .logo {
+      width: 64px;
+      height: 64px;
+      margin: 0 auto 18px;
+      display: grid;
+      place-items: center;
+      border-radius: 20px;
+      color: #fff;
+      background: linear-gradient(145deg, #275efe, #775cff);
+      box-shadow: 0 12px 26px rgba(39, 94, 254, .26);
+      font-size: 31px;
+    }
+    h1 { margin: 0; font-size: 24px; }
+    .lead { margin: 10px 0 24px; color: #667085; line-height: 1.7; }
+    .qq-box {
+      padding: 16px;
+      border-radius: 16px;
+      background: #f5f7ff;
+      color: #475467;
+    }
+    .qq-box strong {
+      display: block;
+      margin-top: 5px;
+      color: #172033;
+      font-size: 25px;
+      letter-spacing: .04em;
+    }
+    .actions { display: grid; gap: 12px; margin-top: 22px; }
+    a, button {
+      min-height: 48px;
+      display: grid;
+      place-items: center;
+      border: 0;
+      border-radius: 13px;
+      font: inherit;
+      font-weight: 700;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .primary { color: #fff; background: #275efe; }
+    .secondary { color: #275efe; background: #edf2ff; }
+    .hint { margin: 20px 0 0; color: #7a8498; font-size: 13px; line-height: 1.65; }
+    .error { color: #b42318; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="logo" aria-hidden="true">🤖</div>
+    <h1>添加药大拾间 QQBot</h1>
+    <p class="lead">二维码已识别。点击下方按钮打开 QQ 好友名片，添加后即可发送绑定指令。</p>
+    <div class="qq-box">机器人 QQ<strong id="qq-number">读取中…</strong></div>
+    <div class="actions" id="actions" hidden>
+      <a class="primary" id="open-qq" href="#">打开 QQ 添加好友</a>
+      <button class="secondary" id="copy-qq" type="button">复制 QQ 号</button>
+    </div>
+    <p class="hint" id="hint">若未能自动唤起 QQ，请复制 QQ 号并在 QQ 中搜索添加。</p>
+  </main>
+  <script src="/qqbot-add-friend.js" defer></script>
+</body>
+</html>
