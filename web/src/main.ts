@@ -16,7 +16,9 @@ import { scheduleJwxtDataPrewarm } from "./utils/jwxtPrewarm";
 
 import "element-plus/dist/index.css";
 import "element-plus/theme-chalk/dark/css-vars.css";
+import "photoswipe/style.css";
 import "./styles/index.scss";
+import "./styles/image-viewer.scss";
 
 const SCHEDULE_OFFLINE_WARMUP_MESSAGE = "cpu-schedule-offline-warmup";
 const SCHEDULE_OFFLINE_STATIC_URLS = [

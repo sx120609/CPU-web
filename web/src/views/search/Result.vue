@@ -77,15 +77,15 @@
               ></div>
             </template>
             <div v-if="message.role === 'assistant' && message.images?.length" class="generated-images">
-              <a
-                v-for="image in message.images"
+              <button
+                v-for="(image, index) in message.images"
                 :key="image.url"
-                :href="image.url"
-                target="_blank"
-                rel="noopener noreferrer"
+                type="button"
+                :aria-label="`查看图片 ${index + 1}`"
+                @click="openGeneratedImages(message.images || [], index)"
               >
                 <img :src="image.url" :alt="image.alt" loading="lazy" />
-              </a>
+              </button>
             </div>
             <div v-if="message.role === 'assistant' && message.sources?.length" class="assistant-sources">
               <span>参考来源</span>
@@ -277,6 +277,7 @@ import {
 } from "@/api/search";
 import { useAuthStore } from "@/stores/auth";
 import { mergeAssistantHistorySessions } from "@/utils/assistantHistorySync";
+import { openImageGallery } from "@/utils/imageViewer";
 import { renderMarkdown } from "@/utils/markdown";
 import { normalizeAiTextControlEscapes } from "@/utils/markdownNormalize";
 
@@ -836,6 +837,14 @@ function normalizeGeneratedImages(value: unknown): CampusAssistantGeneratedImage
   return images.length ? images : undefined;
 }
 
+function openGeneratedImages(images: CampusAssistantGeneratedImage[], index: number) {
+  openImageGallery(images.map((image, imageIndex) => ({
+    src: image.url,
+    title: image.alt || `拾间AI生成图片 ${imageIndex + 1}`,
+    alt: image.alt,
+  })), index, { className: "cpu-ai-image-viewer" });
+}
+
 function normalizeAssistantSources(value: unknown): CampusAssistantSource[] | undefined {
   if (!Array.isArray(value)) return undefined;
   const seen = new Set<string>();
@@ -1372,12 +1381,14 @@ onBeforeUnmount(() => {
   width: min(100%, 640px);
   margin-top: 12px;
 }
-.generated-images a {
+.generated-images button {
   display: block;
+  padding: 0;
   overflow: hidden;
   border: 1px solid var(--cpu-border-soft);
   border-radius: 14px;
   background: var(--cpu-surface-subtle);
+  cursor: zoom-in;
 }
 .generated-images img {
   display: block;

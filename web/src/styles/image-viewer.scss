@@ -1,0 +1,175 @@
+.cpu-image-viewer {
+  --pswp-bg: #07111f;
+  --pswp-placeholder-bg: #162235;
+  --pswp-root-z-index: 4000;
+  --pswp-icon-color: #f8fafc;
+  --pswp-icon-color-secondary: rgba(7, 17, 31, 0.48);
+  --pswp-error-text-color: #f8fafc;
+
+  .pswp__bg {
+    background:
+      radial-gradient(circle at 18% 10%, rgba(20, 184, 166, 0.12), transparent 34%),
+      radial-gradient(circle at 82% 90%, rgba(59, 130, 246, 0.1), transparent 32%),
+      #07111f;
+    backdrop-filter: blur(18px) saturate(1.08);
+  }
+
+  .pswp__top-bar {
+    top: max(12px, env(safe-area-inset-top));
+    right: 14px;
+    left: auto;
+    width: auto;
+    height: 52px;
+    padding: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 16px;
+    background: rgba(15, 23, 42, 0.72);
+    box-shadow: 0 16px 42px rgba(0, 0, 0, 0.25);
+    backdrop-filter: blur(20px) saturate(1.35);
+  }
+
+  .pswp__button {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    opacity: 0.82;
+    transition: background-color 160ms ease, opacity 160ms ease, transform 160ms ease;
+  }
+
+  .pswp__button:hover,
+  .pswp__button:focus-visible {
+    background: rgba(255, 255, 255, 0.12);
+    opacity: 1;
+  }
+
+  .pswp__button:active {
+    transform: scale(0.94);
+  }
+
+  .pswp__button--arrow {
+    width: 54px;
+    height: 64px;
+    margin-top: -32px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(15, 23, 42, 0.54);
+    backdrop-filter: blur(14px);
+  }
+
+  .pswp__button--arrow--prev {
+    left: 18px;
+    border-radius: 16px;
+  }
+
+  .pswp__button--arrow--next {
+    right: 18px;
+    border-radius: 16px;
+  }
+
+  .pswp__counter {
+    position: fixed;
+    top: max(20px, calc(env(safe-area-inset-top) + 8px));
+    left: 18px;
+    height: 36px;
+    min-width: 52px;
+    padding: 0 12px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 999px;
+    color: rgba(248, 250, 252, 0.88);
+    background: rgba(15, 23, 42, 0.68);
+    font: 600 13px/36px system-ui, sans-serif;
+    letter-spacing: 0.04em;
+    text-align: center;
+    opacity: 1;
+    backdrop-filter: blur(16px);
+  }
+
+  .pswp__zoom-level {
+    min-width: 48px;
+    padding: 0 8px;
+    color: rgba(248, 250, 252, 0.7);
+    font: 600 12px/44px system-ui, sans-serif;
+    text-align: center;
+  }
+
+  .pswp__caption {
+    position: absolute;
+    right: 16px;
+    bottom: max(16px, env(safe-area-inset-bottom));
+    left: 16px;
+    width: fit-content;
+    max-width: min(720px, calc(100% - 32px));
+    margin: auto;
+    padding: 9px 15px;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.11);
+    border-radius: 999px;
+    color: rgba(248, 250, 252, 0.9);
+    background: rgba(15, 23, 42, 0.68);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.22);
+    font: 500 13px/1.45 system-ui, sans-serif;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    pointer-events: none;
+    backdrop-filter: blur(16px);
+  }
+
+  .pswp__img {
+    border-radius: 4px;
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.3);
+  }
+
+  .pswp__icn-shadow {
+    stroke: rgba(2, 6, 23, 0.4);
+  }
+}
+
+@media (max-width: 640px) {
+  .cpu-image-viewer {
+    .pswp__top-bar {
+      top: max(8px, env(safe-area-inset-top));
+      right: 8px;
+      height: 46px;
+      padding: 3px;
+      border-radius: 14px;
+    }
+
+    .pswp__button {
+      width: 40px;
+      height: 40px;
+      border-radius: 11px;
+    }
+
+    .pswp__zoom-level {
+      display: none;
+    }
+
+    .pswp__counter {
+      top: max(13px, calc(env(safe-area-inset-top) + 5px));
+      left: 8px;
+      height: 34px;
+      min-width: 44px;
+      padding: 0 9px;
+      line-height: 34px;
+    }
+
+    .pswp__button--arrow {
+      display: none;
+    }
+
+    .pswp__caption {
+      right: 10px;
+      bottom: max(10px, env(safe-area-inset-bottom));
+      left: 10px;
+      max-width: calc(100% - 20px);
+      padding: 8px 12px;
+      font-size: 12px;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cpu-image-viewer .pswp__button {
+    transition: none;
+  }
+}

@@ -481,17 +481,6 @@
     </el-dialog>
 
     <el-dialog
-      v-model="shareCardPreviewOpen"
-      title="分享卡片预览"
-      width="min(520px, calc(100dvw - 24px))"
-      append-to-body
-      class="share-card-preview-dialog"
-    >
-      <img v-if="shareCardRenderedUrl" :src="shareCardRenderedUrl" alt="分享卡片大图" loading="lazy" decoding="async" fetchpriority="low" class="share-card-preview-image" />
-      <p v-if="isNativeAppClient" class="share-card-tip">客户端请放大后截图保存。</p>
-    </el-dialog>
-
-    <el-dialog
       v-model="topicImageReviewDialogOpen"
       title="图片人工复核"
       width="min(920px, calc(100dvw - 24px))"
@@ -502,10 +491,10 @@
         <p class="topic-image-review-copy">这里只展示当前主帖正文里的本地上传图片。你可以直接查看原图，并手动决定放行或继续隐藏。</p>
         <el-empty v-if="!topicImageReviewLoading && !topicImageReviewAssets.length" description="这条帖子里没有可复核的图片" />
         <div v-else class="topic-image-review-list">
-          <article v-for="asset in topicImageReviewAssets" :key="asset.id" class="topic-image-review-card">
-            <a :href="asset.url" target="_blank" rel="noopener noreferrer" class="topic-image-review-preview">
+          <article v-for="(asset, index) in topicImageReviewAssets" :key="asset.id" class="topic-image-review-card">
+            <button type="button" class="topic-image-review-preview" aria-label="查看待复核原图" @click="openTopicReviewImages(index)">
               <img :src="asset.url" alt="待复核图片" loading="lazy" decoding="async" fetchpriority="low" />
-            </a>
+            </button>
             <div class="topic-image-review-meta">
               <div class="topic-image-review-head">
                 <el-tag :type="imageReviewTagType(asset.status)" effect="plain">{{ imageReviewStatusLabel(asset.status) }}</el-tag>
@@ -716,6 +705,7 @@ import { rememberTopicViewCount } from "@/utils/topicImpressions";
 import { copyText } from "@/utils/userGroup";
 import { isAndroidNativeApp, isHarmonyNativeApp } from "@/utils/clientInfo";
 import { getNativeBridge, hasNativeImageSaveBridge } from "@/utils/nativeBridge";
+import { openImageGallery } from "@/utils/imageViewer";
 import {
   createForumSubmissionId,
   getForumRequestMessage,
@@ -750,7 +740,6 @@ const shareCardSaving = ref(false);
 const shareCardRendering = ref(false);
 const shareCardRenderedUrl = ref("");
 const shareCardQrDataUrl = ref("");
-const shareCardPreviewOpen = ref(false);
 const topicImageReviewDialogOpen = ref(false);
 const topicImageReviewLoading = ref(false);
 const topicImageReviewSavingId = ref<number | null>(null);
@@ -1948,7 +1937,20 @@ function openShareCard() {
 
 function openShareCardImagePreview() {
   if (!shareCardRenderedUrl.value) return;
-  shareCardPreviewOpen.value = true;
+  openImageGallery([{
+    src: shareCardRenderedUrl.value,
+    title: topic.value ? `${topic.value.title} · 分享卡片` : "论坛分享卡片",
+    alt: "论坛分享卡片",
+    fileName: "论坛分享卡片.png",
+  }], 0, { className: "cpu-forum-share-image-viewer" });
+}
+
+function openTopicReviewImages(index: number) {
+  openImageGallery(topicImageReviewAssets.value.map((asset, imageIndex) => ({
+    src: asset.url,
+    title: `待复核图片 ${imageIndex + 1}`,
+    alt: "待复核图片",
+  })), index, { className: "cpu-forum-review-image-viewer" });
 }
 
 async function ensureShareCardQrCode() {

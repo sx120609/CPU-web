@@ -106,7 +106,7 @@
         </el-form-item>
         <el-form-item label="图片（最多 6 张）">
           <div class="image-grid">
-            <div v-for="(url, index) in publishForm.images" :key="url" class="image-cell"><img :src="url" alt="物品图片" /><button type="button" @click="publishForm.images.splice(index, 1)">×</button></div>
+            <div v-for="(url, index) in publishForm.images" :key="url" class="image-cell"><img :src="url" alt="物品图片" @click="openPublishImages(index)" /><button type="button" @click="publishForm.images.splice(index, 1)">×</button></div>
             <label v-if="publishForm.images.length < 6" class="upload-cell" :class="{ disabled: uploading }">
               <input type="file" accept="image/*" multiple :disabled="uploading" @change="uploadImages" />
               <el-icon :class="{ 'is-loading': uploading }"><Loading v-if="uploading" /><Plus v-else /></el-icon>
@@ -121,7 +121,7 @@
     <el-drawer v-model="detailOpen" size="min(680px, 100vw)" direction="rtl" destroy-on-close>
       <template #header><div class="drawer-title"><span>{{ detail?.kind === 'found' ? '我捡到了' : '我丢了' }}</span><strong>{{ detail?.itemName || '信息详情' }}</strong></div></template>
       <div v-if="detail" class="detail" v-loading="detailLoading">
-        <el-carousel v-if="detail.images.length" :autoplay="false" height="320px" indicator-position="outside"><el-carousel-item v-for="image in detail.images" :key="image.id"><img :src="image.url" :alt="detail.itemName" /></el-carousel-item></el-carousel>
+        <el-carousel v-if="detail.images.length" :autoplay="false" height="320px" indicator-position="outside"><el-carousel-item v-for="(image, index) in detail.images" :key="image.id"><img :src="image.url" :alt="detail.itemName" @click="openLostFoundImages(index)" /></el-carousel-item></el-carousel>
         <div class="detail-tags"><el-tag :type="detail.kind === 'found' ? 'success' : 'warning'">{{ detail.kind === 'found' ? '我捡到了' : '我丢了' }}</el-tag><el-tag v-if="detail.status === 'claimed'" type="info">已认领</el-tag><el-tag v-if="detail.status === 'reviewing'" type="warning">审核中</el-tag><el-tag v-if="detail.pinned" type="danger">置顶</el-tag></div>
         <h2>{{ detail.itemName }}</h2>
         <dl><div><dt>校区地点</dt><dd>{{ detail.campus || '校区待补充' }} · {{ detail.location || '地点待补充' }}</dd></div><div><dt>发生时间</dt><dd>{{ formatDate(detail.happenedAt, true) }}</dd></div><div><dt>发布同学</dt><dd>{{ detail.publisherDepartment || detail.publisher.nickname }}</dd></div></dl>
@@ -172,6 +172,7 @@ import { lostFoundApi, type LostFoundClaim, type LostFoundClaimStatus, type Lost
 import { uploadApi } from "@/api/topic";
 import { useAuthStore } from "@/stores/auth";
 import { isAndroidNativeApp } from "@/utils/clientInfo";
+import { openImageGallery } from "@/utils/imageViewer";
 
 const auth = useAuthStore();
 const route = useRoute();
@@ -215,6 +216,8 @@ async function loadItems() { loading.value = true; try { const result = await lo
 function applyFilters() { page.value = 1; void loadItems(); }
 function ensureLogin() { if (auth.isLoggedIn) return true; router.push({ name: "login", query: { redirect: route.fullPath } }); return false; }
 function openPublish(kind: LostFoundKind) { if (!ensureLogin()) return; const campus = campusOptions.includes(filters.campus as CampusOption) ? filters.campus as CampusOption : "江宁校区"; Object.assign(publishForm, { kind, itemName: "", description: "", campus, location: "", storageLocation: "", happenedAt: dayjs().format("YYYY-MM-DDTHH:mm:ss"), contact: "", images: [] }); publishOpen.value = true; }
+function openPublishImages(index: number) { openImageGallery(publishForm.images.map((src, imageIndex) => ({ src, title: `物品图片 ${imageIndex + 1}` })), index, { className: "cpu-lost-found-image-viewer" }); }
+function openLostFoundImages(index: number) { if (!detail.value) return; openImageGallery(detail.value.images.map((image) => ({ src: image.url, title: detail.value?.itemName || "失物招领图片" })), index, { className: "cpu-lost-found-image-viewer" }); }
 
 async function uploadImages(event: Event) { const input = event.target as HTMLInputElement; const files = Array.from(input.files || []).slice(0, 6 - publishForm.images.length); if (!files.length) return; uploading.value = true; try { for (let i = 0; i < files.length; i++) { const result = await uploadApi.media(files[i], files[i].name, { forceProxy: isAndroidNativeApp(), onProgress: (state) => { uploadProgress.value = Math.round(((i + state.percent / 100) / files.length) * 100); } }); publishForm.images.push(result.url); } } finally { uploading.value = false; uploadProgress.value = 0; input.value = ""; } }
 function validPublish() { if (publishForm.itemName.trim().length < 2) return ElMessage.warning("请填写物品名称"), false; if (!publishForm.campus.trim()) return ElMessage.warning("请填写校区"), false; if (publishForm.location.trim().length < 2) return ElMessage.warning("请填写具体地点"), false; if (publishForm.kind === "found" && publishForm.storageLocation.trim().length < 2) return ElMessage.warning("请填写物品放到哪里了"), false; if (!publishForm.happenedAt) return ElMessage.warning("请选择时间"), false; if (publishForm.contact.trim().length < 2) return ElMessage.warning("请填写联系方式"), false; return true; }
@@ -268,4 +271,5 @@ function claimTagType(status: LostFoundClaimStatus) { return status === "accepte
 @media(max-width:650px){.lost-found-page{gap:12px}.hero{min-height:auto;padding:20px;border-radius:14px}.hero h1{font-size:28px}.hero-actions{display:grid;grid-template-columns:1fr 1fr}.hero-actions .el-button{margin:0}.hero-actions .el-button:last-child{grid-column:1/-1}.filter-card{padding:12px}.filters{grid-template-columns:1fr 1fr}.filters>*:first-child,.filters :deep(.el-date-editor){grid-column:1/-1;width:100%}.list-head small{display:block;margin:2px 0 0}.items-grid{grid-template-columns:1fr}.cover{height:210px}.two-cols,.three-cols{grid-template-columns:1fr}.image-grid{grid-template-columns:repeat(3,1fr)}.detail dl{grid-template-columns:1fr}.detail h2{font-size:24px}.detail-actions .el-button{margin:0;flex:1 1 calc(50% - 8px)}.mine-list button{grid-template-columns:48px 1fr}.mine-list button small{grid-column:2}}
 .import-details{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:14px}.import-details div{display:flex;flex-direction:column;gap:4px;padding:10px 12px;border-radius:8px;background:var(--cpu-surface-subtle)}.import-details small{color:var(--cpu-text-muted);font-size:10px}.import-details strong{font-size:12px;line-height:1.5;white-space:pre-wrap}
 @media(max-width:600px){.import-details{grid-template-columns:1fr}}
+.image-cell img,.detail :deep(.el-carousel__item img){cursor:zoom-in}
 </style>

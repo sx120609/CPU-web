@@ -58,9 +58,8 @@
 
 <script setup lang="ts">
 import { computed, ref, onMounted, nextTick, watch, onBeforeUnmount, useAttrs } from "vue";
-import Viewer from "viewerjs";
-import "viewerjs/dist/viewer.css";
 import { renderMarkdown } from "@/utils/markdown";
+import { createSharedImageViewer, type SharedImageViewer } from "@/utils/imageViewer";
 import { fileNameFromUrl, getNativeBridge, hasNativeImagePreviewBridge, previewNativeImages } from "@/utils/nativeBridge";
 
 const props = withDefaults(defineProps<{
@@ -88,7 +87,7 @@ const videoGalleryItems = ref<Array<{ src: string; poster: string }>>([]);
 const activeVideoGalleryItem = computed(() => videoGalleryItems.value[videoGalleryIndex.value] || null);
 const warmedImageUrls = new Set<string>();
 const warmedImagePreloads = new Map<string, HTMLImageElement>();
-let imageViewer: Viewer | null = null;
+let imageViewer: SharedImageViewer | null = null;
 
 function wrapTables() {
   if (!el.value) return;
@@ -508,51 +507,20 @@ function ensureImageViewer() {
   if (!el.value || imageViewer || !props.clickableImages || hasNativeImagePreviewBridge()) return;
   const images = Array.from(el.value.querySelectorAll<HTMLImageElement>("img"));
   if (!images.length) return;
-  const hasManyImages = images.length > 1;
-  imageViewer = new Viewer(el.value, {
+  imageViewer = createSharedImageViewer(el.value, {
     className: "cpu-markdown-viewer",
     url: (image: HTMLImageElement) => getViewerImageUrl(image),
     filter: (image: HTMLImageElement) => Boolean(getViewerImageUrl(image)),
-    title: [1, (image: HTMLImageElement) => image.alt || previewFileName(getViewerImageUrl(image))],
-    navbar: hasManyImages ? true : 0,
-    button: true,
-    keyboard: true,
-    loop: hasManyImages,
-    movable: true,
-    rotatable: true,
-    scalable: true,
-    slideOnTouch: true,
-    toggleOnDblclick: true,
-    toolbar: {
-      zoomIn: true,
-      zoomOut: true,
-      oneToOne: true,
-      reset: true,
-      prev: hasManyImages,
-      next: hasManyImages,
-      rotateLeft: true,
-      rotateRight: true,
-      flipHorizontal: true,
-      flipVertical: true,
-      download: {
-        show: true,
-        size: "large",
-        click: () => { void saveViewerImage(); },
-      },
+    title: (image: HTMLImageElement) => image.alt || previewFileName(getViewerImageUrl(image)),
+    loop: images.length > 1,
+    onDownload: (context) => {
+      viewerImageUrl.value = context.src;
+      return saveViewerImage();
     },
-    tooltip: true,
-    transition: true,
-    zoomOnTouch: true,
-    zoomOnWheel: true,
-    ready: () => {
-      annotateViewerToolbar();
+    onViewed: (context) => {
+      viewerImageUrl.value = context.src;
     },
-    viewed: (event: CustomEvent) => {
-      const originalImage = (event.detail as { originalImage?: HTMLImageElement }).originalImage;
-      viewerImageUrl.value = originalImage ? getViewerImageUrl(originalImage) : "";
-      annotateViewerToolbar();
-    },
-    hidden: () => {
+    onHidden: () => {
       viewerImageUrl.value = "";
     },
   });
@@ -571,14 +539,6 @@ function tryOpenNativePreview(index: number) {
     })
     .filter((image) => image.url);
   return previewNativeImages({ images, index });
-}
-
-function annotateViewerToolbar() {
-  window.setTimeout(() => {
-    const downloadButton = document.querySelector<HTMLElement>(".cpu-markdown-viewer .viewer-download");
-    downloadButton?.setAttribute("title", "保存图片");
-    downloadButton?.setAttribute("aria-label", "保存图片");
-  }, 0);
 }
 
 function destroyImageViewer() {
@@ -1465,51 +1425,4 @@ onMounted(() => {
   background: var(--cpu-surface-soft);
 }
 
-:global(.cpu-markdown-viewer.viewer-container) {
-  z-index: 3000;
-}
-
-:global(.cpu-markdown-viewer .viewer-canvas) {
-  background: rgba(15, 23, 42, 0.84);
-}
-
-:global(.cpu-markdown-viewer .viewer-toolbar > ul) {
-  display: inline-flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  max-width: calc(100dvw - 20px);
-  gap: 4px;
-  padding: 6px;
-}
-
-:global(.cpu-markdown-viewer .viewer-toolbar > ul > li) {
-  float: none;
-  margin: 0;
-}
-
-:global(.cpu-markdown-viewer .viewer-download::before) {
-  content: "";
-  display: block;
-  width: 20px;
-  height: 20px;
-  margin: 5px;
-  background-color: #fff;
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3v12'/%3E%3Cpath d='m7 10 5 5 5-5'/%3E%3Cpath d='M5 21h14'/%3E%3C/svg%3E") center / 20px 20px no-repeat;
-}
-
-:global(.cpu-markdown-viewer .viewer-title) {
-  max-width: min(760px, 90dvw);
-  color: #f9fafb;
-  font-size: 13px;
-}
-
-@media (max-width: 640px) {
-  :global(.cpu-markdown-viewer .viewer-toolbar) {
-    bottom: 10px;
-  }
-
-  :global(.cpu-markdown-viewer .viewer-navbar) {
-    display: none;
-  }
-}
 </style>

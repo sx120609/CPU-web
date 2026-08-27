@@ -148,7 +148,7 @@
                 @drop.prevent="moveDraggedFile(entry.id)"
               >
                 <div class="submit-file-preview">
-                  <img v-if="entry.previewUrl" :src="entry.previewUrl" alt="">
+                  <img v-if="entry.previewUrl" :src="entry.previewUrl" :alt="entry.file.name" title="点击放大查看" @click.stop="openPendingImage(entry.id)">
                   <span v-else class="submit-file-icon">{{ fileIcon(entry.file.name) }}</span>
                 </div>
                 <div class="submit-file-title">
@@ -239,6 +239,7 @@ import {
   useScopedFilestoreCss,
 } from "@/views/services/filestoreShared";
 import { formatBytes } from "@/views/services/fileCollectExport";
+import { openImageGallery } from "@/utils/imageViewer";
 
 type MessageType = "" | "ok" | "error" | "warn";
 type FileEntry = {
@@ -267,6 +268,18 @@ const overwriteSummary = ref("");
 const overwriteFiles = ref<string[]>([]);
 let overwriteResolve: ((value: boolean | null) => void) | null = null;
 let loadSeq = 0;
+
+function openPendingImage(entryId: string) {
+  const images = fileEntries.value.filter((entry) => entry.previewUrl);
+  const index = images.findIndex((entry) => entry.id === entryId);
+  if (index < 0) return;
+  openImageGallery(images.map((entry) => ({
+    src: entry.previewUrl,
+    title: entry.file.name,
+    alt: entry.file.name,
+    fileName: entry.file.name,
+  })), index, { className: "cpu-file-submit-image-viewer" });
+}
 
 useScopedFilestoreCss();
 

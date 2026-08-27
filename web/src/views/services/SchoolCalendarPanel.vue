@@ -103,7 +103,6 @@
           </div>
           <div class="media-actions">
             <button type="button" @click="openImageViewer('map')">放大查看</button>
-            <a :href="campusMapImage" target="_blank" rel="noopener noreferrer">查看大图</a>
             <a :href="campusMapImage" download="中国药科大学校园地图.png">下载地图</a>
           </div>
         </div>
@@ -114,49 +113,20 @@
       </section>
     </div>
 
-    <Teleport to="body">
-      <div
-        v-if="imageViewerOpen"
-        class="image-viewer"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="viewer-title"
-        @click.self="closeImageViewer"
-      >
-        <div class="viewer-toolbar">
-          <div>
-            <b id="viewer-title">{{ viewer.title }}</b>
-            <span>{{ Math.round(viewerZoom * 100) }}%</span>
-          </div>
-          <div class="viewer-actions">
-            <button type="button" @click="setViewerZoom(1)">适屏</button>
-            <button type="button" @click="setViewerZoom(2)">清晰</button>
-            <button type="button" aria-label="缩小" @click="zoomViewer(-0.25)">−</button>
-            <button type="button" aria-label="放大" @click="zoomViewer(0.25)">＋</button>
-            <button type="button" @click="closeImageViewer">关闭</button>
-          </div>
-        </div>
-        <div class="viewer-scroll">
-          <img :src="viewer.src" :alt="viewer.alt" :style="{ width: `${viewerZoom * 100}%` }" />
-        </div>
-      </div>
-    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, ref } from "vue";
 import { Calendar, MapLocation } from "@element-plus/icons-vue";
 import calendarImage from "@/assets/school-calendar/cpu-school-calendar-2026-2027.png";
 import campusMapImage from "@/assets/school-calendar/cpu-campus-map.png";
 import { cpuSchoolCalendar as calendar } from "@/data/schoolCalendar";
+import { openImageGallery } from "@/utils/imageViewer";
 
 type ViewName = "calendar" | "map";
 
 const activeView = ref<ViewName>("calendar");
-const imageViewerOpen = ref(false);
-const viewerZoom = ref(1);
-const viewerKind = ref<ViewName>("calendar");
 
 const currentTerm = computed(() => {
   const today = startOfDay(new Date());
@@ -190,42 +160,21 @@ const status = computed(() => {
   };
 });
 
-const viewer = computed(() => viewerKind.value === "map"
-  ? {
-      title: "校园地图",
-      src: campusMapImage,
-      alt: "中国药科大学校园地图，含教学楼、宿舍区、出入口和校园设施",
-    }
-  : {
-      title: "校历原图",
-      src: calendarImage,
-      alt: `${calendar.title}${calendar.academicYear}`,
-    });
-
 function openImageViewer(kind: ViewName) {
-  viewerKind.value = kind;
-  viewerZoom.value = window.innerWidth <= 620 ? 1.75 : 1;
-  imageViewerOpen.value = true;
-}
-
-function closeImageViewer() {
-  imageViewerOpen.value = false;
-}
-
-function setViewerZoom(value: number) {
-  viewerZoom.value = clampZoom(value);
-}
-
-function zoomViewer(delta: number) {
-  viewerZoom.value = clampZoom(viewerZoom.value + delta);
-}
-
-function clampZoom(value: number) {
-  return Math.min(3.5, Math.max(0.75, Number(value.toFixed(2))));
-}
-
-function handleKeydown(event: KeyboardEvent) {
-  if (event.key === "Escape" && imageViewerOpen.value) closeImageViewer();
+  openImageGallery([
+    {
+      src: calendarImage,
+      title: `${calendar.title}${calendar.academicYear}`,
+      alt: `${calendar.title}${calendar.academicYear}`,
+      fileName: `${calendar.academicYear}中国药科大学校历.png`,
+    },
+    {
+      src: campusMapImage,
+      title: "中国药科大学校园地图",
+      alt: "中国药科大学校园地图，含教学楼、宿舍区、出入口和校园设施",
+      fileName: "中国药科大学校园地图.png",
+    },
+  ], kind === "map" ? 1 : 0, { className: "cpu-calendar-image-viewer" });
 }
 
 function parseYmd(value: string) {
@@ -257,8 +206,6 @@ function shortRange(start: string, end: string) {
   return `${from.getMonth() + 1}/${from.getDate()} — ${to.getMonth() + 1}/${to.getDate()}`;
 }
 
-onMounted(() => window.addEventListener("keydown", handleKeydown));
-onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
 </script>
 
 <style scoped>
@@ -498,83 +445,6 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
   line-height: 1.5;
 }
 
-.image-viewer {
-  position: fixed;
-  inset: 0;
-  z-index: 3000;
-  display: flex;
-  flex-direction: column;
-  background: rgba(15, 23, 42, 0.88);
-}
-
-.viewer-toolbar {
-  min-height: 58px;
-  padding: 10px 14px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  color: #fff;
-  background: rgba(15, 23, 42, 0.94);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.12);
-}
-
-.viewer-toolbar > div:first-child {
-  min-width: 0;
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-}
-
-.viewer-toolbar b { font-size: 15px; }
-.viewer-toolbar span {
-  color: rgba(255, 255, 255, 0.72);
-  font-size: 12px;
-}
-
-.viewer-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.viewer-actions button {
-  min-width: 42px;
-  height: 36px;
-  padding: 0 11px;
-  border: 1px solid rgba(255, 255, 255, 0.24);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.1);
-  color: #fff;
-  cursor: pointer;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 650;
-}
-
-.viewer-actions button:hover { background: rgba(255, 255, 255, 0.18); }
-
-.viewer-scroll {
-  flex: 1;
-  padding: 14px;
-  overflow: auto;
-  overscroll-behavior: contain;
-  text-align: center;
-  -webkit-overflow-scrolling: touch;
-}
-
-.viewer-scroll img {
-  min-width: 0;
-  max-width: none;
-  height: auto;
-  margin: 0 auto;
-  display: block;
-  background: #eef7f0;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
-}
-
 @media (max-width: 900px) {
   .term-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
@@ -611,26 +481,5 @@ onUnmounted(() => window.removeEventListener("keydown", handleKeydown));
 
   .calendar-image img { min-width: 0; }
 
-  .viewer-toolbar {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .viewer-actions {
-    width: 100%;
-    justify-content: flex-start;
-  }
-
-  .viewer-actions button {
-    min-width: 48px;
-    height: 38px;
-  }
-
-  .viewer-scroll {
-    padding: 10px;
-    text-align: left;
-  }
-
-  .viewer-scroll img { margin: 0; }
 }
 </style>
