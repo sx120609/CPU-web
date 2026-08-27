@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { marked } from "marked";
 import {
   askCampusAssistant,
   buildAssistantMessages,
@@ -80,7 +81,11 @@ import {
   parseLearningAssistantAnswer,
 } from "../src/services/learningAssistantAi";
 import { mergeAssistantHistorySessions } from "../../web/src/utils/assistantHistorySync";
-import { normalizeAdjacentStrongDelimiters, normalizeAiTextControlEscapes } from "../../web/src/utils/markdownNormalize";
+import {
+  normalizeAdjacentStrongDelimiters,
+  normalizeAiTextControlEscapes,
+  normalizeBareUrlBoundaries,
+} from "../../web/src/utils/markdownNormalize";
 
 const VALID_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
@@ -121,6 +126,29 @@ test("拾间AI相邻中文粗体标记不会原样泄露到界面", () => {
     normalizeAdjacentStrongDelimiters("这里是 **正常粗体** 文本"),
     "这里是 **正常粗体** 文本",
   );
+});
+
+test("拾间AI裸链接在中文标点处结束且不会吞掉后续正文", () => {
+  const source = "用手机或电脑的系统浏览器打开 https://cputime.cn。药大拾间是学生自主开发维护的独立、非官方校园服务站点，学校官网、统一身份认证和官方公告才是正式信息来源。";
+  const normalized = normalizeBareUrlBoundaries(source);
+  assert.equal(
+    normalized,
+    "用手机或电脑的系统浏览器打开 <https://cputime.cn>。药大拾间是学生自主开发维护的独立、非官方校园服务站点，学校官网、统一身份认证和官方公告才是正式信息来源。",
+  );
+
+  const rendered = marked.parse(normalized, { async: false }) as string;
+  assert.match(rendered, /href="https:\/\/cputime\.cn"/u);
+  assert.doesNotMatch(rendered, /href="[^"]*药大拾间/u);
+});
+
+test("裸链接边界修复保留代码、显式链接和合法中文路径", () => {
+  const source = [
+    "`https://cputime.cn。代码说明`",
+    "[站点](https://cputime.cn/中文路径)",
+    "<https://cputime.cn/中文路径>",
+    "https://cputime.cn/中文路径",
+  ].join("\n");
+  assert.equal(normalizeBareUrlBoundaries(source), source);
 });
 
 test("没有真实考试数据时移除考试、考场和座位类追问建议", () => {

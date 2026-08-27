@@ -9,6 +9,90 @@ export function normalizeAdjacentStrongDelimiters(markdown: string) {
   );
 }
 
+const CJK_BARE_URL_BOUNDARIES = new Set([
+  "，", "。", "！", "？", "；", "：", "、",
+  "（", "）", "【", "】", "《", "》", "“", "”", "‘", "’",
+]);
+
+/**
+ * marked 会把裸链接后的中文标点和正文继续识别为 URL，例如
+ * `https://cputime.cn。后续说明` 会整体进入 href。仅为存在中文标点边界的裸链接
+ * 补上 CommonMark 自动链接尖括号；代码、HTML 标签和显式 Markdown 链接保持原样。
+ */
+export function normalizeBareUrlBoundaries(markdown: string) {
+  const source = String(markdown || "");
+  let fenceMarker = "";
+  let fenceLength = 0;
+
+  return source.split("\n").map((line) => {
+    const fence = /^\s*(`{3,}|~{3,})/u.exec(line)?.[1] || "";
+    if (fence) {
+      if (!fenceMarker) {
+        fenceMarker = fence[0];
+        fenceLength = fence.length;
+      } else if (fence[0] === fenceMarker && fence.length >= fenceLength) {
+        fenceMarker = "";
+        fenceLength = 0;
+      }
+      return line;
+    }
+    if (fenceMarker) return line;
+    return normalizeBareUrlBoundariesInLine(line);
+  }).join("\n");
+}
+
+function normalizeBareUrlBoundariesInLine(line: string) {
+  let normalized = "";
+  let index = 0;
+  let inlineCodeFenceLength = 0;
+
+  while (index < line.length) {
+    if (line[index] === "`") {
+      let runLength = 1;
+      while (line[index + runLength] === "`") runLength += 1;
+      if (!inlineCodeFenceLength) inlineCodeFenceLength = runLength;
+      else if (runLength === inlineCodeFenceLength) inlineCodeFenceLength = 0;
+      normalized += line.slice(index, index + runLength);
+      index += runLength;
+      continue;
+    }
+
+    const isUrlStart = line.startsWith("https://", index) || line.startsWith("http://", index);
+    if (!inlineCodeFenceLength && isUrlStart && !isProtectedMarkdownUrl(line, index)) {
+      let end = index;
+      while (end < line.length && !/[\s<>`]/u.test(line[end])) end += 1;
+      const candidate = line.slice(index, end);
+      const boundaryIndex = Array.from(candidate).findIndex((char) => CJK_BARE_URL_BOUNDARIES.has(char));
+      if (boundaryIndex > 0) {
+        const boundaryOffset = Array.from(candidate).slice(0, boundaryIndex).join("").length;
+        let url = candidate.slice(0, boundaryOffset);
+        let trailingAsciiPunctuation = "";
+        const trailingMatch = /[.,!?;:]+$/u.exec(url)?.[0] || "";
+        if (trailingMatch) {
+          url = url.slice(0, -trailingMatch.length);
+          trailingAsciiPunctuation = trailingMatch;
+        }
+        if (url.length > "https://".length) {
+          normalized += `<${url}>${trailingAsciiPunctuation}`;
+          index += boundaryOffset;
+          continue;
+        }
+      }
+    }
+
+    normalized += line[index];
+    index += 1;
+  }
+  return normalized;
+}
+
+function isProtectedMarkdownUrl(line: string, index: number) {
+  const prefix = line.slice(0, index);
+  if (prefix.lastIndexOf("<") > prefix.lastIndexOf(">")) return true;
+  if (prefix.lastIndexOf("[") > prefix.lastIndexOf("]")) return true;
+  return prefix.lastIndexOf("](") > prefix.lastIndexOf(")");
+}
+
 const AI_TEXT_LATEX_COMMANDS = new Set([
   "alpha", "approx", "beta", "cdot", "chi", "cos", "delta", "displaystyle", "ell", "epsilon", "eta",
   "exists", "frac", "gamma", "ge", "geq", "gg", "in", "infty", "int", "iota", "kappa", "lambda",

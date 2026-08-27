@@ -2,7 +2,7 @@ import { marked } from "marked";
 import DOMPurify from "dompurify";
 import katex from "katex";
 import "katex/dist/katex.min.css";
-import { normalizeAdjacentStrongDelimiters } from "./markdownNormalize";
+import { normalizeAdjacentStrongDelimiters, normalizeBareUrlBoundaries } from "./markdownNormalize";
 
 marked.setOptions({ breaks: true, gfm: true });
 marked.use({
@@ -41,7 +41,7 @@ marked.use({
 } as any);
 
 export function renderMarkdown(md: string): string {
-  const normalizedMarkdown = normalizeAdjacentStrongDelimiters(md);
+  const normalizedMarkdown = normalizeAdjacentStrongDelimiters(normalizeBareUrlBoundaries(md));
   const raw = marked.parse(autoFormatBareFormulaLines(normalizedMarkdown), { async: false }) as string;
   const sanitized = DOMPurify.sanitize(raw, {
     ADD_ATTR: [
