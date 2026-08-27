@@ -118,10 +118,51 @@ import { fetchAiModelCatalog } from "../../services/aiModelCatalog";
 import { forumAdsAdminRouter } from "./forumAds";
 import { vipGiftCodesAdminRouter } from "./vipGiftCodes";
 import { wechatAdminRouter } from "./wechat";
+import {
+  DeploymentAlreadyRunningError,
+  DeploymentUnavailableError,
+  getAdminDeploymentStatus,
+  startAdminDeploymentUpdate,
+} from "../../services/deployment";
 
 export const adminRouter = Router();
 adminRouter.use("/forum-ads", forumAdsAdminRouter);
 adminRouter.use("/vip-gift-codes", vipGiftCodesAdminRouter);
+const deploymentUpdateSchema = z.object({
+  confirmation: z.literal("UPDATE_AND_DEPLOY"),
+});
+
+adminRouter.get("/deployment", adminOnly, async (_req, res, next) => {
+  try {
+    ok(res, await getAdminDeploymentStatus());
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRouter.post(
+  "/deployment/update",
+  adminOnly,
+  validate(deploymentUpdateSchema),
+  async (req, res, next) => {
+    try {
+      ok(res, await startAdminDeploymentUpdate({
+        operatorId: req.user!.userId,
+        confirmation: req.body.confirmation,
+      }));
+    } catch (error) {
+      if (error instanceof DeploymentAlreadyRunningError) {
+        next(Errors.conflict(error.message));
+        return;
+      }
+      if (error instanceof DeploymentUnavailableError) {
+        next(Errors.badRequest(error.message));
+        return;
+      }
+      next(error);
+    }
+  },
+);
 const DATABASE_RESTORE_UPLOAD_DIR = path.join(tmpdir(), "cpu-web-db-restore-upload");
 mkdirSync(DATABASE_RESTORE_UPLOAD_DIR, { recursive: true });
 

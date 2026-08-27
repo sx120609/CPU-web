@@ -648,6 +648,8 @@ chmod +x deploy.sh
 
 `./deploy.sh update` 会根据上次成功部署以来的变更路径，只安装、构建和重启受影响的子项目：只改主站不会重装、迁移、构建或重启药苑之声；只改药苑之声也不会重建主站。部署基线记录在 Git 元数据中，因此即使先手动执行 `git pull`，随后运行 `update` 也不会漏掉尚未部署的改动；首次启用基线记录时会安全地完整更新一次。依赖目录变更才会执行对应项目的 `npm ci`，Prisma 目录变更才会同步主站数据库。需要完整重建时，使用 `./deploy.sh update-all`。主站把 `/voicehub/`（含 WebSocket）反向代理到仅监听 `127.0.0.1:23335` 的 Nuxt/Nitro 进程；可用 `./deploy.sh voicehub-logs` 单独查看日志。
 
+生产环境的站点超级管理员也可以在“管理后台 → 更新部署”中触发同一套增量更新。后台入口只执行固定的 `bash deploy.sh update`，使用独立 runner 和 Git 元数据目录中的文件锁、状态及脱敏日志，因此主服务被 PM2 重载后仍能继续查询结果。首次加入该功能时仍需按原方式部署一次；如需紧急关闭后台部署，可在 `server/.env` 设置 `ADMIN_DEPLOY_ENABLED=false` 并重启主服务。
+
 ### 教务代理部署
 
 ```bash

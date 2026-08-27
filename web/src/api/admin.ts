@@ -716,9 +716,36 @@ export type JwxtAgentUpdateResult = {
   requestedAt: string;
 };
 
+export type AdminDeploymentStatus = {
+  available: boolean;
+  unavailableReason: string;
+  phase: "idle" | "running" | "success" | "failed";
+  id: string;
+  requestedAt: string;
+  startedAt: string;
+  finishedAt: string | null;
+  operatorId: number | null;
+  pid: number | null;
+  exitCode: number | null;
+  currentCommit: string;
+  successfulDeployCommit: string;
+  branch: string;
+  deployedCommit: string;
+  message: string;
+  logs: string[];
+};
+
 export const adminApi = {
   // 概览
   overview: (options?: RequestOptions) => request.get<AdminOverview>("/admin/overview", undefined, options),
+  deploymentStatus: (options?: RequestOptions) =>
+    request.get<AdminDeploymentStatus>("/admin/deployment", undefined, { cacheTtlMs: 0, ...options }),
+  startDeploymentUpdate: () =>
+    request.post<AdminDeploymentStatus>(
+      "/admin/deployment/update",
+      { confirmation: "UPDATE_AND_DEPLOY" },
+      { preserveResponseCache: true },
+    ),
   jwxtAgents: (options?: RequestOptions) =>
     request.get<JwxtAgentsAdminConfig>("/admin/jwxt-agents", undefined, options),
   updateJwxtAgents: (payload: JwxtAgentsAdminPatch) =>

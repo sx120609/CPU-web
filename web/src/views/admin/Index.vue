@@ -88,6 +88,7 @@
       <el-tab-pane label="🤖 QQBot" name="qqbot" v-if="auth.isAdmin"><QqBotPane v-if="tab === 'qqbot'" /></el-tab-pane>
       <el-tab-pane label="💬 微信服务号" name="wechat" v-if="auth.isAdmin"><WechatServicePane v-if="tab === 'wechat'" /></el-tab-pane>
       <el-tab-pane label="✨ AI 管理" name="ai" v-if="auth.isAdmin"><AiManagementPane v-if="tab === 'ai'" /></el-tab-pane>
+      <el-tab-pane label="🚀 更新部署" name="deployment" v-if="auth.isAdmin"><DeploymentPane v-if="tab === 'deployment'" /></el-tab-pane>
       <el-tab-pane label="🗄 数据备份" name="database" v-if="auth.isAdmin"><DatabasePane v-if="tab === 'database'" /></el-tab-pane>
       <el-tab-pane label="🗂 媒体存储" name="media-storage" v-if="auth.isAdmin"><MediaStoragePane v-if="tab === 'media-storage'" /></el-tab-pane>
       <el-tab-pane label="📦 文件收集" name="filestore-settings" v-if="auth.isAdmin"><FilestoreSettingsPane v-if="tab === 'filestore-settings'" /></el-tab-pane>
@@ -119,6 +120,7 @@ const SponsorPane = defineAsyncComponent(() => import("./SponsorPane.vue"));
 const QqBotPane = defineAsyncComponent(() => import("./QqBotPane.vue"));
 const WechatServicePane = defineAsyncComponent(() => import("./WechatServicePane.vue"));
 const AiManagementPane = defineAsyncComponent(() => import("./AiManagementPane.vue"));
+const DeploymentPane = defineAsyncComponent(() => import("./DeploymentPane.vue"));
 const DatabasePane = defineAsyncComponent(() => import("./DatabasePane.vue"));
 const MediaStoragePane = defineAsyncComponent(() => import("./MediaStoragePane.vue"));
 const FilestoreSettingsPane = defineAsyncComponent(() => import("./FilestoreSettingsPane.vue"));
@@ -147,6 +149,7 @@ const adminIdentityLabel = computed(() => {
 function allowedAdminTab(value: string) {
   if (value === "users") return canManageUsers.value;
   if (value === "lost-found") return canManageLostFound.value;
+  if (value === "deployment") return auth.isAdmin;
   if (value === "forum-ads") return auth.isAdmin;
   if (value === "vip-gift-codes") return auth.isAdmin;
   return isCoreStaff.value;

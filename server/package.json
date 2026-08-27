@@ -31,7 +31,8 @@
     "test:assistant": "node --import tsx --test tests/campusAssistant.test.ts tests/userTrust.test.ts",
     "test:pds": "node --import tsx --test tests/pdsShare.test.ts",
     "test:market": "node --import tsx --test tests/marketPayment.test.ts",
-    "test:cache": "node --import tsx --test tests/cache.test.ts tests/publicAvatar.test.ts"
+    "test:cache": "node --import tsx --test tests/cache.test.ts tests/publicAvatar.test.ts",
+    "test:deployment": "node --import tsx --test tests/deployment.test.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
