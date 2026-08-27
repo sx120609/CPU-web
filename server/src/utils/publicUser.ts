@@ -1,4 +1,5 @@
 import { buildUserTrustSnapshot } from "../services/userTrust";
+import { publicAvatarValue } from "./publicAvatar";
 
 type Viewer = {
   userId?: number | null;
@@ -31,7 +32,7 @@ export function buildSelfUser(u: any) {
     id: u.id,
     username: u.username,
     nickname: u.nickname,
-    avatar: u.avatar,
+    avatar: publicAvatarValue(u),
     bio: u.bio,
     college: u.college,
     enrollYear: u.enrollYear,
@@ -75,7 +76,7 @@ export function buildPublicUser(u: any, viewer?: Viewer) {
   const result: Record<string, unknown> = {
     id: u.id,
     nickname: u.nickname,
-    avatar: u.avatar,
+    avatar: publicAvatarValue(u),
     bio: u.bio,
     college: u.college,
     enrollYear: u.enrollYear,
@@ -108,7 +109,7 @@ export function buildUserPreview(u: any, viewer?: Viewer) {
   const result: Record<string, unknown> = {
     id: u.id,
     nickname: u.nickname,
-    avatar: u.avatar,
+    avatar: publicAvatarValue(u),
     role: u.role,
     vipLevel: u.vipLevel ?? 0,
     vipActive: vipActive(u),

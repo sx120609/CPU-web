@@ -27,11 +27,13 @@ import { oauthRouter } from "./oauth";
 import { forumAdsRouter } from "./forumAds";
 import { vipRouter } from "./vip";
 import { wechatRouter } from "./wechat";
+import { userAvatarRouter } from "./userAvatar";
 
 export const router = Router();
 
 // 公开路径
 router.use("/auth", authRouter);
+router.use("/user-avatars", userAvatarRouter);
 router.use("/boards", authOptional, boardRouter);
 router.use("/topics", authOptional, topicRouter);
 router.use("/replies", authOptional, replyRouter);

@@ -43,6 +43,32 @@
   color-scheme: light;
 }
 
+/*
+ * Element Plus 默认 loading mask 会用不透明底色擦掉已经渲染的内容，网络稍有
+ * 抖动就形成明显白屏。全站统一延迟显示，并只覆盖一层轻量雾面；已有内容始终可见。
+ */
+@keyframes cpu-loading-mask-reveal {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.el-loading-mask {
+  background-color: color-mix(in srgb, var(--cpu-card) 24%, transparent) !important;
+  opacity: 0;
+  backdrop-filter: blur(0.6px);
+  animation: cpu-loading-mask-reveal 120ms ease 180ms forwards;
+}
+
+.el-loading-spinner .circular {
+  filter: drop-shadow(0 2px 5px color-mix(in srgb, var(--cpu-primary) 20%, transparent));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .el-loading-mask {
+    animation-duration: 0s;
+  }
+}
+
 body[data-cpu-top-safe-area="1"] {
   --cpu-safe-area-inset-top: env(safe-area-inset-top, 0px);
 }

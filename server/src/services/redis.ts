@@ -19,8 +19,13 @@ const REDIS_EVENT_CHANNEL = buildRedisKey("events");
 const redisEvents = new EventEmitter();
 let commandClient: IORedis | null = null;
 let subscriberClient: IORedis | null = null;
+let commandClientConnecting: Promise<IORedis | null> | null = null;
 let commandUnavailableLogged = false;
 let subscriberUnavailableLogged = false;
+let commandRetryAfter = 0;
+const REDIS_CONNECT_TIMEOUT_MS = 800;
+const REDIS_COMMAND_TIMEOUT_MS = 600;
+const REDIS_RETRY_COOLDOWN_MS = 5_000;
 
 export function isRedisConfigured() {
   return Boolean(config.redisEnabled && config.redisUrl.trim());
@@ -41,6 +46,12 @@ async function connectClient(kind: "command" | "subscriber") {
     enableReadyCheck: true,
     enableOfflineQueue: false,
     maxRetriesPerRequest: 1,
+    connectTimeout: REDIS_CONNECT_TIMEOUT_MS,
+    ...(kind === "command" ? {
+      commandTimeout: REDIS_COMMAND_TIMEOUT_MS,
+      // 请求链上的命令连接失败后交给显式冷却/重连，不能在后台无限排队。
+      retryStrategy: () => null,
+    } : {}),
   });
   client.on("error", (error) => {
     logRedisIssue(kind, error);
@@ -49,12 +60,14 @@ async function connectClient(kind: "command" | "subscriber") {
     await client.connect();
     if (kind === "command") {
       commandUnavailableLogged = false;
+      commandRetryAfter = 0;
     } else {
       subscriberUnavailableLogged = false;
     }
     return client;
   } catch (error) {
     logRedisIssue(kind, error);
+    if (kind === "command") commandRetryAfter = Date.now() + REDIS_RETRY_COOLDOWN_MS;
     try { client.disconnect(); } catch { /* ignore */ }
     return null;
   }
@@ -62,14 +75,26 @@ async function connectClient(kind: "command" | "subscriber") {
 
 async function getCommandClient() {
   if (commandClient) return commandClient;
-  commandClient = await connectClient("command");
-  return commandClient;
+  if (Date.now() < commandRetryAfter) return null;
+  if (!commandClientConnecting) {
+    commandClientConnecting = connectClient("command")
+      .then((client) => {
+        commandClient = client;
+        return client;
+      })
+      .finally(() => {
+        commandClientConnecting = null;
+      });
+  }
+  return commandClientConnecting;
 }
 
 function resetCommandClient() {
-  if (!commandClient) return;
-  try { commandClient.disconnect(); } catch { /* ignore */ }
+  if (commandClient) {
+    try { commandClient.disconnect(); } catch { /* ignore */ }
+  }
   commandClient = null;
+  commandRetryAfter = Date.now() + REDIS_RETRY_COOLDOWN_MS;
 }
 
 function resetSubscriberClient() {

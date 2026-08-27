@@ -110,7 +110,7 @@ export const useAuthStore = defineStore("auth", {
       const previousUserId = this.user?.id ?? null;
       const wasLoggedIn = this.isLoggedIn;
       clearJustLoggedOutMarker();
-      setToken(authToken);
+      setToken(authToken, user.id);
       this.token = authToken;
       this.user = user;
       this.syncDataAuthAgreement(user);

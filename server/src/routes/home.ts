@@ -9,6 +9,7 @@ import { decodeTopicForViewer } from "../services/forumPresentation";
 import { buildUserTrustSnapshot } from "../services/userTrust";
 import { visibleBoardSlugFilter } from "../services/retiredBoards";
 import { FORUM_SELF_VISIBLE_REVIEW_STATUSES, forumContentVisibilityWhere } from "../services/forumSubmission";
+import { compactTopicAuthors, publicAvatarValue } from "../utils/publicAvatar";
 
 export const homeRouter = Router();
 const HOME_HIDDEN_SERVICE_CODES = ["DORM_REPAIR"];
@@ -53,7 +54,7 @@ homeRouter.get("/summary", async (req, res, next) => {
               author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, vipLevel: true, vipExpiresAt: true, profileTheme: true, profileFrame: true } },
               tags: { include: { tag: true } },
             },
-          }) : Promise.resolve([]),
+          }).then(compactTopicAuthors) : Promise.resolve([]),
           prisma.topic.findMany({
             where: { hidden: false, board: { readOnly: true, ...visibleBoardSlugFilter() } },
             orderBy: { createdAt: "desc" },
@@ -95,7 +96,7 @@ homeRouter.get("/summary", async (req, res, next) => {
       identity: user ? {
         id: user.id,
         nickname: user.nickname,
-        avatar: user.avatar,
+        avatar: publicAvatarValue(user),
         college: user.college,
         role: user.role,
         postCount: user.postCount,
@@ -163,7 +164,7 @@ homeRouter.get("/latest-feed", async (req, res, next) => {
             author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, vipLevel: true, vipExpiresAt: true, profileTheme: true, profileFrame: true } },
             tags: { include: { tag: true } },
           },
-        }),
+        }).then(compactTopicAuthors),
         prisma.topic.count({ where }),
       ]);
       return { pins, list, total };
@@ -186,14 +187,14 @@ async function listGlobalPinnedTopics(ids: number[], boardTypes: string[], limit
     author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, vipLevel: true, vipExpiresAt: true, profileTheme: true, profileFrame: true } },
     tags: { include: { tag: true } },
   } as const;
-  const rows = await prisma.topic.findMany({
+  const rows = compactTopicAuthors(await prisma.topic.findMany({
       where: {
         id: { in: orderedIds },
         hidden: false,
         board: { type: { in: boardTypes }, ...visibleBoardSlugFilter() },
       },
     include,
-  });
+  }));
   const byId = new Map(rows.map((item) => [item.id, item]));
   return orderedIds.map((id) => byId.get(id)).filter(Boolean) as typeof rows;
 }
@@ -234,7 +235,7 @@ async function listHotTopics(size: number, boardTypes: string[]) {
   if (merged.length < size) {
     merged.push(...olderSorted.slice(0, size - merged.length));
   }
-  return merged;
+  return compactTopicAuthors(merged);
 }
 
 function computeHotScore(topic: any, recent: boolean) {

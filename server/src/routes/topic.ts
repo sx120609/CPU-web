@@ -46,6 +46,7 @@ import { decodeReplyForViewer, decodeReplyForViewerWithImages, decodeTopicForVie
 import { ensureForumImageAssetsForContent, summarizeForumImageModerationForContent } from "../services/imageModeration";
 import { ensureForumVideoAssetsForContent, summarizeForumVideoModerationForContent } from "../services/videoModeration";
 import { invalidateCourseCaches, invalidateForumCaches } from "../services/cacheInvalidation";
+import { compactTopicAuthors } from "../utils/publicAvatar";
 import { isRetiredBoardSlug, visibleBoardSlugFilter } from "../services/retiredBoards";
 import { getReactionSummary } from "../services/vip";
 import {
@@ -270,7 +271,7 @@ topicRouter.get("/", async (req, res, next) => {
           }),
           prisma.topic.count({ where }),
         ]);
-        return { list, total };
+        return { list: compactTopicAuthors(list), total };
       },
     );
 

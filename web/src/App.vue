@@ -121,7 +121,9 @@ import { detectInAppBrowser } from "@/utils/inAppBrowser";
 
 const auth = useAuthStore();
 const msg = useMessageStore();
-const routeViewKey = computed(() => `${router.currentRoute.value.fullPath}:${auth.sessionVersion}`);
+// 页面路径变化由嵌套路由负责切换；顶层布局只应在登录身份真正变化时重建。
+// 把 fullPath 放进 key 会让每次站内导航都销毁导航栏、站点状态和页面热缓存。
+const routeViewKey = computed(() => String(auth.sessionVersion));
 const dataAuthOpen = ref(false);
 const dataAuthReadSeconds = ref(0);
 const inAppTipOpen = ref(false);

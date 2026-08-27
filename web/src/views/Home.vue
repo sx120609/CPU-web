@@ -264,10 +264,9 @@ watch(homeCacheScope, () => {
 async function loadHomeScope() {
   const scope = homeCacheScope.value;
   const cachedSummary = readHomeSummaryCache(scope);
-  // 全局置顶属于需要首屏一致展示的重要内容。先等待最新摘要，避免把最长 24 小时的
-  // 本地旧快照直接绘制出来、随后再把新置顶插到列表顶部造成明显的异步跳动。
-  // 网络失败时仍回退到缓存，保留弱网可用性。
-  summary.value = null;
+  // 先渲染本地快照，再静默刷新；全局置顶的服务端启动竞态已经在服务端消除，
+  // 不应再用清空整页内容的方式换取新鲜度。
+  summary.value = cachedSummary;
   homeError.value = "";
   void loadSummary({ scope, fallback: cachedSummary });
   void loadAds();
@@ -294,11 +293,13 @@ async function loadAds() {
 async function loadSummary(options: { scope?: string; fallback?: HomeSummary | null } = {}) {
   const scope = options.scope ?? homeCacheScope.value;
   const seq = ++loadSeq;
-  loading.value = true;
+  loading.value = !summary.value;
   homeError.value = "";
   try {
     // 不区分游客 / 登录态，统一调 home/summary —— 后端按 token 自动决定 identity 是否返回
-    const next = await homeApi.summary({ suppressErrorMessage: true });
+    // 首页已有独立的、按用户隔离的持久化快照；这里强制取得网络新值并写回该快照，
+    // 同时保留旧内容，避免请求过程出现白色遮罩。
+    const next = await homeApi.summary({ suppressErrorMessage: true, cacheTtlMs: 0 });
     if (seq !== loadSeq || scope !== homeCacheScope.value) return;
     summary.value = next;
     writeHomeSummaryCache(scope, next);

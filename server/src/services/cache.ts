@@ -33,6 +33,7 @@ export type CacheDomain =
   | "jwxt-progress"
   | "jwxt-pyfa"
   | "jwxt-iapps"
+  | "user-avatar"
   | "jwxt-iapp-icon";
 
 const VERSION_PREFIX = "cache-version";
@@ -42,9 +43,11 @@ const JWXT_PENDING_PREFIX = buildRedisKey("jwxt", "pending");
 const JWXT_SESSION_PREFIX = buildRedisKey("jwxt", "session");
 const localCacheValues = new Map<string, { value: string; expiresAt: number }>();
 const localCacheVersions = new Map<string, number>();
+const localCacheVersionCheckedAt = new Map<string, number>();
 const localLocks = new Map<string, { token: string; expiresAt: number }>();
 const inflightLoads = new Map<string, Promise<string>>();
 const CACHE_ENVELOPE_VERSION = 1;
+const LOCAL_VERSION_TTL_MS = 1_000;
 const DURABLE_EPHEMERAL_PREFIXES = [
   buildRedisKey("auth", "browser-session") + ":",
   buildRedisKey("jwxt", "session") + ":",
@@ -165,10 +168,15 @@ function getLocalVersion(domain: string) {
   return localCacheVersions.get(domain) ?? 0;
 }
 
+function rememberLocalVersion(domain: string, version: number) {
+  localCacheVersions.set(domain, version);
+  localCacheVersionCheckedAt.set(domain, Date.now());
+  return version;
+}
+
 function bumpLocalVersion(domain: string) {
   const next = getLocalVersion(domain) + 1;
-  localCacheVersions.set(domain, next);
-  return next;
+  return rememberLocalVersion(domain, next);
 }
 
 type CacheEnvelope<T> = {
@@ -207,6 +215,9 @@ function startCacheLoad<T>(key: string, ttlMs: number, loader: () => Promise<T>)
       cachedAt: Date.now(),
       data: value,
     } satisfies CacheEnvelope<T>);
+    // L1 进程内热缓存必须始终写入。Redis 是跨进程共享层，不应让每个命中请求
+    // 都承担 Redis 往返和大 JSON 解析开销。
+    writeLocalValue(key, payload, retentionMs);
     const stored = await writeRedisString(key, payload, retentionMs);
     if (!stored) writeLocalValue(key, payload, retentionMs);
     return payload;
@@ -220,18 +231,26 @@ function startCacheLoad<T>(key: string, ttlMs: number, loader: () => Promise<T>)
 }
 
 export async function getCacheVersion(domain: CacheDomain | string) {
+  const checkedAt = localCacheVersionCheckedAt.get(domain) ?? 0;
+  if (checkedAt > 0 && Date.now() - checkedAt <= LOCAL_VERSION_TTL_MS) {
+    return getLocalVersion(domain);
+  }
   const result = await readRedisString(cacheVersionKey(domain));
-  if (!result.available) return getLocalVersion(domain);
+  if (!result.available) {
+    localCacheVersionCheckedAt.set(domain, Date.now());
+    return getLocalVersion(domain);
+  }
   const parsed = Number(result.value);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+  return rememberLocalVersion(domain, Number.isFinite(parsed) && parsed >= 0 ? parsed : 0);
 }
 
 export async function bumpCacheVersion(...domains: Array<CacheDomain | string>) {
   const uniqueDomains = Array.from(new Set(domains.filter(Boolean)));
-  for (const domain of uniqueDomains) {
+  await Promise.all(uniqueDomains.map(async (domain) => {
     const next = await incrementRedisKey(cacheVersionKey(domain));
     if (next === null) bumpLocalVersion(domain);
-  }
+    else rememberLocalVersion(domain, next);
+  }));
 }
 
 export async function withCache<T>(
@@ -242,6 +261,16 @@ export async function withCache<T>(
 ) {
   const version = await getCacheVersion(domain);
   const key = cacheEntryKey(domain, version, parts);
+  const local = readLocalValue(key);
+  if (local !== null) {
+    const cached = decodeCachePayload<T>(local);
+    const age = Math.max(0, Date.now() - cached.cachedAt);
+    if (age <= ttlMs) return cached.data;
+    if (age <= ttlMs + staleWindowMs(ttlMs)) {
+      void startCacheLoad(key, ttlMs, loader).catch(() => undefined);
+      return cached.data;
+    }
+  }
   const shared = await readRedisString(key);
   let cachedRaw: string | null = null;
   if (shared.available) {
@@ -252,6 +281,8 @@ export async function withCache<T>(
   if (cachedRaw !== null) {
     const cached = decodeCachePayload<T>(cachedRaw);
     const age = Math.max(0, Date.now() - cached.cachedAt);
+    const remainingMs = ttlMs + staleWindowMs(ttlMs) - age;
+    if (remainingMs > 0) writeLocalValue(key, cachedRaw, remainingMs);
     if (age <= ttlMs) return cached.data;
     if (age <= ttlMs + staleWindowMs(ttlMs)) {
       // 先返回旧值让页面秒开，再在后台更新。主动失效会切换版本 key，不会命中旧数据。
