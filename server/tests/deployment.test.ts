@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { sanitizeDeploymentLog } from "../src/services/deployment";
+import {
+  deploymentBaselineConfirmsCompletion,
+  sanitizeDeploymentLog,
+} from "../src/services/deployment";
 
 test("deployment logs remove terminal controls and redact credentials", () => {
   const lines = sanitizeDeploymentLog([
@@ -23,4 +26,28 @@ test("deployment log response is bounded to recent output", () => {
   assert.equal(lines.length, 240);
   assert.equal(lines[0], "line-60");
   assert.equal(lines.at(-1), "line-299");
+});
+
+test("successful deployment baseline recovers a runner interrupted by PM2 reload", () => {
+  assert.equal(deploymentBaselineConfirmsCompletion({
+    currentCommit: "abc123",
+    successfulDeployCommit: "abc123",
+    startedAt: "2026-08-28T05:12:36.000Z",
+    successfulDeployRecordedAt: "2026-08-28T05:13:20.000Z",
+  }), true);
+});
+
+test("stale or mismatched deployment baseline does not hide a runner failure", () => {
+  assert.equal(deploymentBaselineConfirmsCompletion({
+    currentCommit: "abc123",
+    successfulDeployCommit: "abc123",
+    startedAt: "2026-08-28T05:12:36.000Z",
+    successfulDeployRecordedAt: "2026-08-28T05:12:35.000Z",
+  }), false);
+  assert.equal(deploymentBaselineConfirmsCompletion({
+    currentCommit: "abc123",
+    successfulDeployCommit: "def456",
+    startedAt: "2026-08-28T05:12:36.000Z",
+    successfulDeployRecordedAt: "2026-08-28T05:13:20.000Z",
+  }), false);
 });

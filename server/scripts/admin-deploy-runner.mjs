@@ -3,7 +3,24 @@ import { execFileSync, spawn } from "node:child_process";
 import { closeSync, existsSync, mkdirSync, openSync, renameSync, rmSync, writeFileSync, writeSync } from "node:fs";
 import path from "node:path";
 
-const [root, statusDir, id, requestedAt, rawOperatorId] = process.argv.slice(2);
+const WORKER_FLAG = "--detached-worker";
+const rawArgs = process.argv.slice(2);
+
+// PM2 reloads the main application by terminating its process tree. A single
+// detached child is still a descendant of that tree, so launch a second-stage
+// worker and let this short-lived launcher exit before deployment begins.
+if (rawArgs[0] !== WORKER_FLAG) {
+  const worker = spawn(process.execPath, [process.argv[1], WORKER_FLAG, ...rawArgs], {
+    cwd: process.cwd(),
+    detached: true,
+    stdio: "ignore",
+    env: process.env,
+  });
+  worker.unref();
+  process.exit(0);
+}
+
+const [root, statusDir, id, requestedAt, rawOperatorId] = rawArgs.slice(1);
 const operatorId = Number(rawOperatorId);
 const startedAt = new Date().toISOString();
 const statusPath = path.join(statusDir || "", "status.json");

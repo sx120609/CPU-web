@@ -60,6 +60,7 @@ type DeploymentContext = {
   unavailableReason: string;
   currentCommit: string;
   successfulDeployCommit: string;
+  successfulDeployRecordedAt: string;
   branch: string;
 };
 
@@ -112,14 +113,18 @@ async function gitValue(root: string, args: string[]) {
   }
 }
 
-async function readSuccessfulDeployCommit(root: string) {
+async function readSuccessfulDeployRecord(root: string) {
   const stateFile = await gitValue(root, ["rev-parse", "--git-path", "cpu-web-last-successful-deploy"]);
-  if (!stateFile) return "";
+  if (!stateFile) return { commit: "", recordedAt: "" };
   const absolute = path.isAbsolute(stateFile) ? stateFile : path.resolve(root, stateFile);
   try {
-    return (await readFile(absolute, "utf8")).trim();
+    const [commit, info] = await Promise.all([
+      readFile(absolute, "utf8"),
+      stat(absolute),
+    ]);
+    return { commit: commit.trim(), recordedAt: info.mtime.toISOString() };
   } catch {
-    return "";
+    return { commit: "", recordedAt: "" };
   }
 }
 
@@ -135,14 +140,15 @@ async function buildDeploymentContext(): Promise<DeploymentContext> {
       unavailableReason: "未找到 CPU-web 部署目录或 deploy.sh",
       currentCommit: "",
       successfulDeployCommit: "",
+      successfulDeployRecordedAt: "",
       branch: "",
     };
   }
 
-  const [gitDirRaw, currentCommit, successfulDeployCommit, branch] = await Promise.all([
+  const [gitDirRaw, currentCommit, successfulDeployRecord, branch] = await Promise.all([
     gitValue(root, ["rev-parse", "--absolute-git-dir"]),
     gitValue(root, ["rev-parse", "HEAD"]),
-    readSuccessfulDeployCommit(root),
+    readSuccessfulDeployRecord(root),
     gitValue(root, ["rev-parse", "--abbrev-ref", "HEAD"]),
   ]);
   const gitDir = gitDirRaw ? path.resolve(gitDirRaw) : null;
@@ -165,7 +171,8 @@ async function buildDeploymentContext(): Promise<DeploymentContext> {
     available: !unavailableReason,
     unavailableReason,
     currentCommit,
-    successfulDeployCommit,
+    successfulDeployCommit: successfulDeployRecord.commit,
+    successfulDeployRecordedAt: successfulDeployRecord.recordedAt,
     branch,
   };
 }
@@ -233,6 +240,23 @@ function processIsRunning(pid: number | null) {
   }
 }
 
+export function deploymentBaselineConfirmsCompletion(input: {
+  currentCommit: string;
+  successfulDeployCommit: string;
+  successfulDeployRecordedAt: string;
+  startedAt: string;
+}) {
+  const startedAt = Date.parse(input.startedAt);
+  const recordedAt = Date.parse(input.successfulDeployRecordedAt);
+  return Boolean(
+    input.currentCommit
+    && input.currentCommit === input.successfulDeployCommit
+    && Number.isFinite(startedAt)
+    && Number.isFinite(recordedAt)
+    && recordedAt >= startedAt,
+  );
+}
+
 export function sanitizeDeploymentLog(raw: string) {
   const cleaned = raw
     .replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "")
@@ -272,6 +296,7 @@ function statusFrom(
 ): AdminDeploymentStatus {
   let phase: DeploymentPhase = stored?.phase ?? "idle";
   let message = stored?.message ?? "尚未通过后台执行部署";
+  let recoveredFromDeployBaseline = false;
   const startedAt = stored ? Date.parse(stored.startedAt) : Number.NaN;
   const runnerIsStarting = Boolean(
     stored?.pid === null
@@ -279,8 +304,19 @@ function statusFrom(
     && Date.now() - startedAt < FRESH_LOCK_MS,
   );
   if (phase === "running" && stored && !runnerIsStarting && !processIsRunning(stored.pid)) {
-    phase = "failed";
-    message = "部署 runner 已中断，请查看日志后重试";
+    recoveredFromDeployBaseline = deploymentBaselineConfirmsCompletion({
+      currentCommit: context.currentCommit,
+      successfulDeployCommit: context.successfulDeployCommit,
+      successfulDeployRecordedAt: context.successfulDeployRecordedAt,
+      startedAt: stored.startedAt,
+    });
+    if (recoveredFromDeployBaseline) {
+      phase = "success";
+      message = "更新部署完成（已根据部署基线确认）";
+    } else {
+      phase = "failed";
+      message = "部署 runner 已中断，请查看日志后重试";
+    }
   }
   return {
     available: context.available,
@@ -289,14 +325,14 @@ function statusFrom(
     id: stored?.id ?? "",
     requestedAt: stored?.requestedAt ?? "",
     startedAt: stored?.startedAt ?? "",
-    finishedAt: stored?.finishedAt ?? null,
+    finishedAt: stored?.finishedAt ?? (recoveredFromDeployBaseline ? context.successfulDeployRecordedAt : null),
     operatorId: stored?.operatorId ?? null,
     pid: stored?.pid ?? null,
-    exitCode: stored?.exitCode ?? null,
+    exitCode: stored?.exitCode ?? (recoveredFromDeployBaseline ? 0 : null),
     currentCommit: context.currentCommit,
     successfulDeployCommit: context.successfulDeployCommit,
     branch: context.branch,
-    deployedCommit: stored?.deployedCommit ?? "",
+    deployedCommit: stored?.deployedCommit || (recoveredFromDeployBaseline ? context.successfulDeployCommit : ""),
     message,
     logs,
   };
