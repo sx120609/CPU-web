@@ -106,6 +106,10 @@ export function openImageGallery(
       zoomTitle: "切换缩放",
       arrowPrevTitle: "上一张",
       arrowNextTitle: "下一张",
+      zoom: false,
+      close: false,
+      arrowPrevSVG: "",
+      arrowNextSVG: "",
       paddingFn: () => ({
         top: window.innerWidth <= 640 ? 68 : 82,
         right: window.innerWidth <= 640 ? 8 : 24,
@@ -145,13 +149,42 @@ function registerViewerUi(viewer: PhotoSwipe, options: Omit<SharedImageViewerOpt
     isButton: true,
     title: "下载图片",
     ariaLabel: "下载图片",
-    html: '<svg aria-hidden="true" class="pswp__icn" viewBox="0 0 32 32"><path d="M15 5h2v13.2l4.6-4.6 1.4 1.4-7 7-7-7 1.4-1.4 4.6 4.6V5Zm-7 19h16v2H8v-2Z"/></svg>',
+    html: "",
+    onInit: (element) => {
+      element.textContent = "下载";
+    },
     onClick: () => {
       const context = currentContext(viewer);
       if (!context) return;
       if (options.onDownload) void options.onDownload(context);
       else void downloadViewerImage(context);
     },
+  });
+
+  viewer.ui?.registerElement({
+    name: "viewer-zoom",
+    order: 10,
+    isButton: true,
+    title: "切换缩放",
+    ariaLabel: "切换缩放",
+    html: "",
+    onInit: (element) => {
+      element.textContent = "缩放";
+    },
+    onClick: () => viewer.toggleZoom(),
+  });
+
+  viewer.ui?.registerElement({
+    name: "viewer-close",
+    order: 20,
+    isButton: true,
+    title: "关闭",
+    ariaLabel: "关闭",
+    html: "",
+    onInit: (element) => {
+      element.textContent = "关闭";
+    },
+    onClick: () => viewer.close(),
   });
 
   viewer.ui?.registerElement({

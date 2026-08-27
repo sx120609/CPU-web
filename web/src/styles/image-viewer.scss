@@ -29,9 +29,12 @@
   }
 
   .pswp__button {
-    width: 44px;
+    width: 52px;
     height: 44px;
     border-radius: 12px;
+    color: #f8fafc;
+    font: 700 13px/44px system-ui, sans-serif;
+    text-align: center;
     opacity: 0.82;
     transition: background-color 160ms ease, opacity 160ms ease, transform 160ms ease;
   }
@@ -55,14 +58,29 @@
     backdrop-filter: blur(14px);
   }
 
+  .pswp__button--arrow::before {
+    display: block;
+    color: #fff;
+    font: 400 42px/60px system-ui, sans-serif;
+    text-align: center;
+  }
+
   .pswp__button--arrow--prev {
     left: 18px;
     border-radius: 16px;
   }
 
+  .pswp__button--arrow--prev::before {
+    content: "‹";
+  }
+
   .pswp__button--arrow--next {
     right: 18px;
     border-radius: 16px;
+  }
+
+  .pswp__button--arrow--next::before {
+    content: "›";
   }
 
   .pswp__counter {
@@ -135,9 +153,11 @@
     }
 
     .pswp__button {
-      width: 40px;
+      width: 46px;
       height: 40px;
       border-radius: 11px;
+      font-size: 12px;
+      line-height: 40px;
     }
 
     .pswp__zoom-level {
