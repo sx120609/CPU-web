@@ -299,13 +299,13 @@ const CAMPUS_ASSISTANT_ROUTES: CampusAssistantRoute[] = [
   },
   {
     id: "school-calendar",
-    label: "药大校历",
-    description: "查看官方校历、学期安排、假期和关键节点",
+    label: "校历与地图",
+    description: "查看官方校历、学期安排和校园地图",
     url: "/services/tools/school_calendar",
     icon: "🗓️",
     owner: "校园小工具",
     requireLogin: false,
-    keywords: ["校历", "放假", "开学", "学期安排", "假期"],
+    keywords: ["校历", "地图", "校园地图", "教学楼", "宿舍位置", "放假", "开学", "学期安排", "假期"],
   },
   {
     id: "pdf-tools",
@@ -495,7 +495,7 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
   },
   {
     relatedActionIds: ["school-calendar"],
-    fact: "药大校历：保留学校官方校历原图，并将学期、假期和关键日期整理为便于查看的卡片。具体临时调整仍以学校最新通知为准。",
+    fact: "校历与地图：可查看学校官方校历原图、学期与假期概览，以及包含教学楼、宿舍分区、主要出入口和常用设施的校园地图；支持放大查看与下载地图。临时调课、放假调整或补充通知仍应以学校最新公告为准，地点与通行安排以校内实际指引为准。",
   },
   {
     relatedActionIds: ["pdf-tools"],
@@ -605,7 +605,7 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
   {
     id: "service-tools-overview",
     relatedActionIds: ["services", "service-tools"],
-    fact: "校园小工具：当前包括需求反馈、在线问卷、成绩表核对、文件收集、PDF 工具、药大校历、失物招领和药苑之声；工具是否需要登录以入口上显示的状态为准。",
+    fact: "校园小工具：当前包括需求反馈、在线问卷、成绩表核对、文件收集、PDF 工具、校历与地图、失物招领和药苑之声；工具是否需要登录以入口上显示的状态为准。",
   },
   {
     id: "desktop-client-install-safety",
@@ -796,10 +796,10 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
   {
     id: "service-tool-login-status-2026-08",
     relatedActionIds: ["services", "service-tools"],
-    fact: "校园小工具入口：打开“校园服务”可进入服务总览，打开“校园小工具”可查看反馈、问卷、成绩表核对、文件收集、PDF 工具、校历、失物招领和药苑之声。每个工具卡片会显示“需登录”或“免登录”，这是当前配置的准确信号；如果入口加载失败，先按页面提供的“重试”操作，不要把暂时的网络错误判断成工具下线。",
+    fact: "校园小工具入口：打开“校园服务”可进入服务总览，打开“校园小工具”可查看反馈、问卷、成绩表核对、文件收集、PDF 工具、校历与地图、失物招领和药苑之声。每个工具卡片会显示“需登录”或“免登录”，这是当前配置的准确信号；如果入口加载失败，先按页面提供的“重试”操作，不要把暂时的网络错误判断成工具下线。",
     source: "药大拾间校园服务与小工具页面",
     sourceRef: "CPU-web",
-    verifiedAt: "2026-08-21",
+    verifiedAt: "2026-08-28",
   },
   {
     id: "profile-settings-and-privacy-2026-08",
@@ -812,10 +812,10 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
   {
     id: "school-calendar-reading-2026-08",
     relatedActionIds: ["school-calendar", "schedule"],
-    fact: "药大校历查看：在“校园小工具 → 药大校历”可以同时查看学期、假期和关键节点卡片，并打开中国药科大学教务处发布的校历原图。卡片适合快速查日期，临时调课、放假调整或补充通知仍应以学校最新公告为准；校历日期不能替代个人课表中的具体上课安排。",
-    source: "药大拾间药大校历页面",
+    fact: "校历与地图查看：在“校园小工具 → 校历与地图”可切换查看中国药科大学教务处发布的校历原图、精简的学期与假期概览，以及校园地图。两张图片均支持放大查看，地图还可下载；临时调课、放假调整或补充通知仍以学校最新公告为准，地点与通行安排以校内实际指引为准。",
+    source: "药大拾间校历与地图页面",
     sourceRef: "CPU-web",
-    verifiedAt: "2026-08-21",
+    verifiedAt: "2026-08-28",
   },
   {
     id: "sponsor-wall-usage-2026-08",
