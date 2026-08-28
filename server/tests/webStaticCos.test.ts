@@ -45,6 +45,14 @@ test("index asset tags are rewritten directly to COS without touching unrelated 
   const html = '<script src="/assets/main.js"></script><link href="/assets/main.css"><script>const example = "/assets/local-only"</script>';
   assert.equal(
     rewriteWebStaticAssetUrls(html, "https://static.example/root/assets/"),
-    '<script src="https://static.example/root/assets/main.js"></script><link href="https://static.example/root/assets/main.css"><script>const example = "/assets/local-only"</script>',
+    '<script src="https://static.example/root/assets/main.js?v=dual-origin-cors-v2"></script><link href="https://static.example/root/assets/main.css?v=dual-origin-cors-v2"><script>const example = "/assets/local-only"</script>',
+  );
+});
+
+test("already rewritten index assets receive the current cache revision idempotently", () => {
+  const html = '<script src="https://static.example/root/assets/main.js?v=old"></script>';
+  assert.equal(
+    rewriteWebStaticAssetUrls(html, "https://static.example/root/assets"),
+    '<script src="https://static.example/root/assets/main.js?v=dual-origin-cors-v2"></script>',
   );
 });

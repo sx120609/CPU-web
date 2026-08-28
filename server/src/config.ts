@@ -7,6 +7,17 @@ function parseCsvEnv(value: string | undefined, fallback: string[] = []) {
   return raw.split(",").map((item) => item.trim()).filter(Boolean);
 }
 
+export const PRODUCTION_CORS_ALLOWED_ORIGINS = [
+  "https://cputime.cn",
+  "https://cpu.lizmt.cn",
+];
+
+export function resolveCorsAllowedOrigins(value: string | undefined, environment: string) {
+  const configured = parseCsvEnv(value);
+  const official = environment === "production" ? PRODUCTION_CORS_ALLOWED_ORIGINS : [];
+  return Array.from(new Set([...official, ...configured]));
+}
+
 function parseBooleanEnv(value: string | undefined, fallback: boolean) {
   const raw = String(value ?? "").trim().toLowerCase();
   if (!raw) return fallback;
@@ -341,10 +352,7 @@ export const config = {
   browserSessionIdleMs,
   browserSessionAbsoluteMs,
   jwxtSessionIdleMs,
-  corsAllowedOrigins: parseCsvEnv(
-    process.env.CORS_ALLOWED_ORIGINS,
-    nodeEnv === "production" ? ["https://cputime.cn"] : [],
-  ),
+  corsAllowedOrigins: resolveCorsAllowedOrigins(process.env.CORS_ALLOWED_ORIGINS, nodeEnv),
   mediaStorageProvider: (process.env.MEDIA_STORAGE_PROVIDER ?? "local").trim().toLowerCase(),
   mediaStorageImageProvider: (process.env.MEDIA_STORAGE_IMAGE_PROVIDER ?? "").trim().toLowerCase(),
   mediaStorageVideoProvider: (process.env.MEDIA_STORAGE_VIDEO_PROVIDER ?? "").trim().toLowerCase(),
