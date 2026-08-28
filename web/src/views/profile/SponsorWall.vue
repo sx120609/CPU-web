@@ -58,6 +58,7 @@
               :size="42"
               :src="item.anonymous ? null : item.user?.avatar"
               :name="item.anonymous ? '匿名同学' : item.user?.nickname"
+              :seed="item.anonymous ? `sponsor-${item.id}` : item.user?.id ?? item.id"
               alt="赞助者头像"
             />
             <div class="item-user">

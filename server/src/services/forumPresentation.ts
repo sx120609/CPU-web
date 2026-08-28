@@ -3,6 +3,7 @@ import { renderModeratedContent, summarizeForumImageModerationForContent } from 
 import { sanitizeLostFoundTopicFields } from "./lostFoundPrivacy";
 import { isGlobalPinnedTopic } from "./siteSettings";
 import { renderModeratedVideoContent, summarizeForumVideoModerationForContent } from "./videoModeration";
+import { presentAnonymousAlias } from "./userTrust";
 
 type Viewer = {
   userId?: number | null;
@@ -23,7 +24,7 @@ function canRevealAnonymousAuthor(viewer: Viewer, authorId?: number | null) {
 function buildAnonymousAuthor(alias?: string | null) {
   return {
     id: null,
-    nickname: alias || "匿名同学",
+    nickname: presentAnonymousAlias(alias),
     avatar: null,
     role: "anonymous",
     anonymous: true,
@@ -53,7 +54,7 @@ export function decodeTopicForViewer(topic: any, viewer?: Viewer) {
     metadata,
     tags: normalizeTags(topic.tags),
     isAnonymous: anonymous,
-    anonymousAlias: anonymous ? (privacySafeTopic.anonymousAlias || "匿名同学") : null,
+    anonymousAlias: anonymous ? presentAnonymousAlias(privacySafeTopic.anonymousAlias) : null,
     author: anonymous ? buildAnonymousAuthor(privacySafeTopic.anonymousAlias) : buildUserPreview(privacySafeTopic.author, viewer),
     realAuthor: anonymous && reveal ? buildUserPreview(privacySafeTopic.author, viewer) : undefined,
   };
@@ -67,7 +68,7 @@ export function decodeReplyForViewer(reply: any, viewer?: Viewer) {
     ...publicReply,
     authorId: anonymous && !reveal ? null : reply.authorId,
     isAnonymous: anonymous,
-    anonymousAlias: anonymous ? (reply.anonymousAlias || "匿名同学") : null,
+    anonymousAlias: anonymous ? presentAnonymousAlias(reply.anonymousAlias) : null,
     author: anonymous ? buildAnonymousAuthor(reply.anonymousAlias) : buildUserPreview(reply.author, viewer),
     realAuthor: anonymous && reveal ? buildUserPreview(reply.author, viewer) : undefined,
   };

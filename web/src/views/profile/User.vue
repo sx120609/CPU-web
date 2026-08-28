@@ -18,7 +18,7 @@
     </button>
 
     <div class="cpu-card profile-card" :class="[profileThemeClass, profileFrameClass]">
-      <UserAvatar :size="64" class="avatar" :src="user.avatar" :name="user.nickname" :profile-frame="user.profileFrame" alt="用户头像" />
+      <UserAvatar :size="64" class="avatar" :src="user.avatar" :name="user.nickname" :seed="user.id" :profile-frame="user.profileFrame" alt="用户头像" />
       <div>
         <h2 class="name">
           <el-tag v-if="user.vipActive" class="vip-tag" type="warning" effect="dark">VIP</el-tag>

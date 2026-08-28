@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { computeUserReputationBreakdown } from "../src/services/userTrust.js";
+import { computeUserReputationBreakdown, createAnonymousAlias, presentAnonymousAlias } from "../src/services/userTrust.js";
 
 const config = {
   anonymousMinReputation: 30,
@@ -37,4 +37,15 @@ test("论坛默认开放后不再产生信誉加成", () => {
   assert.equal(enabled.forumPoints, 0);
   assert.equal(enabled.total, 14);
   assert.deepEqual(enabled, legacyDisabled);
+});
+
+test("匿名身份使用校园趣味昵称并兼容旧昵称", () => {
+  const created = createAnonymousAlias();
+  assert.doesNotMatch(created, /^匿名同学\s+[A-Z0-9]{4}$/);
+  assert.match(created, /\s(?:🌿|✨|🌙|☁️|🍬|🧪|📚|🐈|🫧|🌸|☕|🪐)$/u);
+
+  const upgraded = presentAnonymousAlias("匿名同学 ABCD");
+  assert.equal(upgraded, presentAnonymousAlias("匿名同学 ABCD"));
+  assert.doesNotMatch(upgraded, /^匿名同学/);
+  assert.equal(presentAnonymousAlias("自定义匿名名"), "自定义匿名名");
 });

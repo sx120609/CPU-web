@@ -111,7 +111,7 @@
             </el-tooltip>
             <el-dropdown @command="onUserCmd">
               <span class="user-info">
-                <UserAvatar :size="30" class="user-avatar" :src="auth.user?.avatar" :name="displayName" alt="用户头像" />
+                <UserAvatar :size="30" class="user-avatar" :src="auth.user?.avatar" :name="displayName" :seed="auth.user?.id" alt="用户头像" />
                 <span class="user-name">{{ displayName }}</span>
                 <el-icon><ArrowDown /></el-icon>
               </span>
@@ -310,7 +310,7 @@
       </div>
       <div class="drawer-account">
         <template v-if="auth.isLoggedIn">
-          <UserAvatar :size="34" class="user-avatar" :src="auth.user?.avatar" :name="displayName" alt="用户头像" />
+          <UserAvatar :size="34" class="user-avatar" :src="auth.user?.avatar" :name="displayName" :seed="auth.user?.id" alt="用户头像" />
           <div class="drawer-user">
             <div>{{ displayName }}</div>
             <button type="button" @click="goDrawer({ id: 'system-profile', to: '/profile', label: '个人中心', icon: UserFilled })">个人中心</button>

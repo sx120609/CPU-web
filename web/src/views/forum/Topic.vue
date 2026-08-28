@@ -81,7 +81,7 @@
       <aside class="post-meta post-author-panel" :class="{ 'is-sticky-author': mainPostUsesStickyAuthor }">
         <div class="post-author-card">
           <span class="floor-owner-label">楼主</span>
-          <UserAvatar :size="58" class="avatar" :src="topic.author?.avatar" :name="topic.author?.nickname" :profile-frame="topic.author?.profileFrame" alt="作者头像" />
+          <UserAvatar :size="58" class="avatar" :src="topic.author?.avatar" :name="topic.author?.nickname" :seed="topic.author?.id ?? topic.anonymousAlias ?? topic.id" :profile-frame="topic.author?.profileFrame" alt="作者头像" />
           <div class="meta-author">
             <div class="name">
               <span v-if="topic.author?.vipActive" class="vip-badge">VIP</span>
@@ -313,7 +313,7 @@
           :class="{ nested: entry.depth > 0 }"
         >
           <aside class="reply-author-panel">
-            <UserAvatar :size="48" class="avatar" :src="entry.item.author?.avatar" :name="entry.item.author?.nickname" :profile-frame="entry.item.author?.profileFrame" alt="回复头像" />
+            <UserAvatar :size="48" class="avatar" :src="entry.item.author?.avatar" :name="entry.item.author?.nickname" :seed="entry.item.author?.id ?? entry.item.anonymousAlias ?? entry.item.id" :profile-frame="entry.item.author?.profileFrame" alt="回复头像" />
             <router-link v-if="entry.item.author?.id" :to="`/u/${entry.item.author.id}`" class="author">{{ entry.item.author?.nickname }}</router-link>
             <span v-else class="author">{{ entry.item.author?.nickname }}</span>
             <div class="reply-author-badges">

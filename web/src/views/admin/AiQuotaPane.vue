@@ -299,9 +299,13 @@
         <el-table-column label="用户" min-width="210">
           <template #default="{ row }">
             <div class="ledger-user">
-              <el-avatar :size="34" :src="row.user?.avatar || undefined">
-                {{ userInitial(row) }}
-              </el-avatar>
+              <UserAvatar
+                :size="34"
+                :src="row.user?.avatar"
+                :name="row.user?.nickname || row.user?.username"
+                :seed="row.user?.id ?? row.userId"
+                alt="用户头像"
+              />
               <div class="user-cell">
                 <b>{{ row.user?.nickname || row.user?.username || `用户 ${row.userId}` }}</b>
                 <span v-if="row.user?.username">@{{ row.user.username }}</span>
@@ -365,6 +369,7 @@ import {
   type AssistantPointUser,
 } from "@/api/admin";
 import { fmtDate } from "@/utils/format";
+import UserAvatar from "@/components/common/UserAvatar.vue";
 
 const loading = ref(false);
 const overviewLoading = ref(false);
@@ -681,11 +686,6 @@ function resetLedgerFilters() {
 function changeLedgerSize() {
   ledgerPage.value = 1;
   loadLedger();
-}
-
-function userInitial(row: AssistantPointLedgerRow) {
-  const name = row.user?.nickname || row.user?.username || String(row.userId);
-  return name.slice(0, 1).toUpperCase();
 }
 
 function sourceLabel(source: string) {

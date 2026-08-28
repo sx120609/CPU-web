@@ -10,7 +10,7 @@
     @keydown.space.prevent="openTopic"
   >
     <template v-if="isSimple">
-      <UserAvatar :size="36" class="avatar" :src="topic.author?.avatar" :name="topic.author?.nickname" :profile-frame="topic.author?.profileFrame" alt="作者头像" />
+      <UserAvatar :size="36" class="avatar" :src="topic.author?.avatar" :name="topic.author?.nickname" :seed="topic.author?.id ?? topic.anonymousAlias ?? topic.id" :profile-frame="topic.author?.profileFrame" alt="作者头像" />
       <div class="simple-main">
         <div class="simple-heading" :class="{ 'has-price': metaPriceLabel }">
           <span v-if="rank" class="simple-rank" :class="{ 'simple-rank--top3': rank <= 3 }">#{{ rank }}</span>
@@ -59,7 +59,7 @@
           <span v-for="fact in marketCardFacts" :key="fact">{{ fact }}</span>
         </div>
         <div class="market-card-meta">
-          <UserAvatar :size="28" class="avatar" :src="topic.author?.avatar" :name="topic.author?.nickname" :profile-frame="topic.author?.profileFrame" alt="作者头像" />
+          <UserAvatar :size="28" class="avatar" :src="topic.author?.avatar" :name="topic.author?.nickname" :seed="topic.author?.id ?? topic.anonymousAlias ?? topic.id" :profile-frame="topic.author?.profileFrame" alt="作者头像" />
           <span class="market-card-author">{{ topic.author?.nickname ?? "—" }}</span>
           <span>{{ fmtRelative(topic.lastReplyAt || topic.createdAt) }}</span>
           <span class="market-card-stat"><el-icon><ChatLineRound /></el-icon>{{ topic.replyCount }}</span>
@@ -68,7 +68,7 @@
       </div>
     </template>
     <template v-else>
-    <UserAvatar :size="36" class="avatar" :src="topic.author?.avatar" :name="topic.author?.nickname" :profile-frame="topic.author?.profileFrame" alt="作者头像" />
+    <UserAvatar :size="36" class="avatar" :src="topic.author?.avatar" :name="topic.author?.nickname" :seed="topic.author?.id ?? topic.anonymousAlias ?? topic.id" :profile-frame="topic.author?.profileFrame" alt="作者头像" />
     <div class="main">
       <div class="line1" :class="{ 'has-inline-price': metaPriceLabel, 'has-ai-tags': aiTags.length }">
         <el-tag v-if="topic.globalPinned" size="small" type="warning" effect="dark" class="tag">全局置顶</el-tag>

@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { prisma } from "../prisma";
 import { getSiteConfig, type AnonymousTierConfig, type ReputationLevelConfig } from "./siteSettings";
 import { Errors } from "../utils/response";
@@ -279,7 +280,50 @@ export async function freezeAnonymousCredits(userId: number, client: TrustClient
   };
 }
 
+const ANONYMOUS_ALIAS_MOODS = [
+  "等晚风的", "偷闲的", "刚下课的", "认真摸鱼的", "趁月色赶路的", "在图书馆漂流的",
+  "把咖啡续满的", "偷偷晒太阳的", "正在发呆的", "今天早睡的", "收藏云朵的", "追着月亮跑的",
+  "在食堂纠结的", "等校车的", "忘带校园卡的", "抱着书赶路的", "和实验报告和解的", "路过樱花大道的",
+  "听见下课铃的", "把烦恼放假的", "正在充电的", "带着好运上课的", "在操场看星星的", "不赶 DDL 的",
+] as const;
+
+const ANONYMOUS_ALIAS_CHARACTERS = [
+  "银杏叶", "小胶囊", "烧杯", "白大褂", "移液枪", "校园橘猫",
+  "图书馆灯", "蒲公英", "晚风", "小行星", "云朵", "月亮",
+  "路灯", "风铃", "小药箱", "实验记录本", "一颗糖", "星星",
+  "水杉", "咖啡杯", "末班校车", "樱花", "试管", "玻璃棒",
+] as const;
+
+const ANONYMOUS_ALIAS_EMOJIS = ["🌿", "✨", "🌙", "☁️", "🍬", "🧪", "📚", "🐈", "🫧", "🌸", "☕", "🪐"] as const;
+const LEGACY_ANONYMOUS_ALIAS_RE = /^匿名同学\s+[A-Z0-9]{4}$/i;
+
+function anonymousAliasFromSeed(seed: number) {
+  let cursor = seed >>> 0;
+  const mood = ANONYMOUS_ALIAS_MOODS[cursor % ANONYMOUS_ALIAS_MOODS.length];
+  cursor = Math.floor(cursor / ANONYMOUS_ALIAS_MOODS.length);
+  const character = ANONYMOUS_ALIAS_CHARACTERS[cursor % ANONYMOUS_ALIAS_CHARACTERS.length];
+  cursor = Math.floor(cursor / ANONYMOUS_ALIAS_CHARACTERS.length);
+  const emoji = ANONYMOUS_ALIAS_EMOJIS[cursor % ANONYMOUS_ALIAS_EMOJIS.length];
+  return `${mood}${character} ${emoji}`;
+}
+
+function stableAnonymousSeed(value: string) {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return hash >>> 0;
+}
+
 export function createAnonymousAlias() {
-  const seed = Math.random().toString(36).slice(2, 6).toUpperCase();
-  return `匿名同学 ${seed}`;
+  return anonymousAliasFromSeed(randomBytes(4).readUInt32BE(0));
+}
+
+/** Keeps already-published anonymous identities stable while upgrading legacy code-style aliases. */
+export function presentAnonymousAlias(alias?: string | null) {
+  const normalized = String(alias || "").trim();
+  if (!normalized) return "路过校园的银杏叶 🌿";
+  if (!LEGACY_ANONYMOUS_ALIAS_RE.test(normalized)) return normalized;
+  return anonymousAliasFromSeed(stableAnonymousSeed(normalized.toUpperCase()));
 }

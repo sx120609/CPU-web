@@ -7,7 +7,7 @@
     </div>
 
     <div class="cpu-card profile-card" :class="[profileThemeClass, profileFrameClass]">
-      <UserAvatar :size="80" class="avatar" :src="user?.avatar" :name="user?.nickname" :profile-frame="user?.profileFrame" alt="用户头像" />
+      <UserAvatar :size="80" class="avatar" :src="user?.avatar" :name="user?.nickname" :seed="user?.id" :profile-frame="user?.profileFrame" alt="用户头像" />
       <div class="avatar-actions">
         <el-button size="small" plain :loading="avatarSaving" :disabled="avatarSaving" @click="pickAvatar">上传头像</el-button>
         <el-button v-if="user?.avatar" size="small" text :loading="avatarSaving" :disabled="avatarSaving" @click="removeAvatar">移除头像</el-button>
