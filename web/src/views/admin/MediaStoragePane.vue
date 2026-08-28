@@ -445,28 +445,28 @@ const migrationBatchLimit = 100;
 const oneDriveCallbackUrl = computed(() => `${(siteOrigin.value || window.location.origin).replace(/\/+$/, "")}/api/storage/onedrive-cn/callback`);
 const migrationCandidates = computed(() => (inventory.value?.list ?? []).filter((row) => needsMigration(row)));
 const migrationEligibleCount = computed(() => inventory.value?.summary.eligibleMigrationCount ?? 0);
-const migrationNeedsOneDrive = computed(() => (
-  migrationCandidates.value.some((row) => (
-    row.configuredBackend === "onedrive-cn"
-    || (!row.localExists && !row.cacheExists && row.oneDriveExists)
-  ))
-  || Boolean(inventory.value?.summary.legacyAvatarCount && mediaStorageImageProvider.value === "onedrive-cn")
+const oneDriveMigrationReady = computed(() => (
+  (oneDriveChinaRefreshTokenConfigured.value && Boolean(oneDriveChinaDriveId.value))
+  || Boolean(inventory.value?.oneDriveConfigured && inventory.value?.oneDriveReachable)
 ));
-const migrationNeedsCos = computed(() => (
+const cosMigrationReady = computed(() => tencentCosSecretKeyConfigured.value);
+const migrationHasReadyCandidate = computed(() => (
   migrationCandidates.value.some((row) => (
-    row.configuredBackend === "cos"
-    || (!row.localExists && !row.cacheExists && row.cosExists)
+    row.configuredBackend === "local"
+    || (row.configuredBackend === "cos" && cosMigrationReady.value)
+    || (row.configuredBackend === "onedrive-cn" && oneDriveMigrationReady.value)
   ))
-  || Boolean(inventory.value?.summary.legacyAvatarCount && mediaStorageImageProvider.value === "cos")
+  || Boolean(
+    inventory.value?.summary.legacyAvatarCount
+    && (mediaStorageImageProvider.value === "local"
+      || (mediaStorageImageProvider.value === "cos" && cosMigrationReady.value)
+      || (mediaStorageImageProvider.value === "onedrive-cn" && oneDriveMigrationReady.value)),
+  )
 ));
 const migrationDisabled = computed(() =>
   migratingFiles.value
   || !migrationEligibleCount.value
-  || (migrationNeedsOneDrive.value && (
-    (!oneDriveChinaRefreshTokenConfigured.value || !oneDriveChinaDriveId.value)
-    && (!inventory.value?.oneDriveConfigured || !inventory.value?.oneDriveReachable)
-  ))
-  || (migrationNeedsCos.value && !tencentCosSecretKeyConfigured.value)
+  || !migrationHasReadyCandidate.value
 );
 const cleanupCandidates = computed(() => (inventory.value?.list ?? []).filter((row) => hasRedundantCopies(row)));
 const cleanupNeedsOneDrive = computed(() => cleanupCandidates.value.some((row) => row.oneDriveExists));
