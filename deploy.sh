@@ -1578,13 +1578,15 @@ do_update() {
   changed_files_match '^server/prisma/' && prisma_changed=1
 
   if [ -z "$DEPLOY_CHANGED_FILES" ] && [ "$DEPLOY_FORCE_ALL" != "1" ]; then
-    log "No application changes detected; checking runtime services"
+    log "No application changes detected; retrying COS static sync and checking runtime services"
+    do_sync_web_static_assets
     ensure_update_runtime_services
     return
   fi
 
   if [ "$server_changed" = "0" ] && [ "$web_changed" = "0" ] && [ "$voicehub_changed" = "0" ]; then
-    log "No deployable application changes detected; checking runtime services before recording the new deployment baseline"
+    log "No deployable application changes detected; retrying COS static sync before recording the new deployment baseline"
+    do_sync_web_static_assets
     ensure_update_runtime_services
     record_successful_deployment
     return

@@ -16,6 +16,7 @@ type WebStaticCosManifest = {
 export function createWebStaticCosHandler(distRoot: string): RequestHandler {
   const assets = loadWebStaticCosManifest(distRoot);
   if (!assets.size) return (_req, _res, next) => next();
+  console.log(`[static-cos] redirect manifest active: ${assets.size} assets`);
 
   return async (req, res, next) => {
     if (req.method !== "GET" && req.method !== "HEAD") return next();
