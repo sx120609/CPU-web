@@ -408,7 +408,7 @@ adminRouter.get("/users", userDirectoryAccess, async (req, res, next) => {
           forumEnabled: true, forumEnabledAt: true,
           anonymousCredits: true, anonymousWeekKey: true, anonymousCreditsFrozen: true,
           assistantPoints: true,
-          vipLevel: true, vipExpiresAt: true,
+          isVip: true,
           profileTheme: true, profileFrame: true,
           aiReviewWhitelisted: true,
           lastSeenAt: true, lastLoginAt: true, lastLoginClient: true,
@@ -446,8 +446,7 @@ const userPatchSchema = z.object({
   mutedUntil: z.string().trim().max(64).nullable().optional(),
   anonymousCredits: z.number().int().min(0).max(999).optional(),
   anonymousCreditsFrozen: z.boolean().optional(),
-  vipLevel: z.number().int().min(0).max(3).optional(),
-  vipExpiresAt: z.string().trim().max(64).nullable().optional(),
+  isVip: z.boolean().optional(),
 });
 
 adminRouter.patch("/users/:id", modOrAbove, validate(userPatchSchema), async (req, res, next) => {
@@ -473,7 +472,7 @@ adminRouter.patch("/users/:id", modOrAbove, validate(userPatchSchema), async (re
     if ((req.body.anonymousCredits !== undefined || req.body.anonymousCreditsFrozen !== undefined) && req.user!.role !== "admin") {
       throw Errors.forbidden("仅管理员可调整匿名积分");
     }
-    if ((req.body.vipLevel !== undefined || req.body.vipExpiresAt !== undefined) && req.user!.role !== "admin") {
+    if (req.body.isVip !== undefined && req.user!.role !== "admin") {
       throw Errors.forbidden("仅管理员可管理 VIP 身份");
     }
     const current = await prisma.user.findUnique({
@@ -490,8 +489,6 @@ adminRouter.patch("/users/:id", modOrAbove, validate(userPatchSchema), async (re
         anonymousCredits: true,
         anonymousWeekKey: true,
         anonymousCreditsFrozen: true,
-        vipLevel: true,
-        vipExpiresAt: true,
       },
     });
     if (!current) throw Errors.notFound("用户不存在");
@@ -515,15 +512,11 @@ adminRouter.patch("/users/:id", modOrAbove, validate(userPatchSchema), async (re
       data.anonymousCreditsFrozen = req.body.anonymousCreditsFrozen;
       if (req.body.anonymousCreditsFrozen) data.anonymousCredits = 0;
     }
-    if (req.body.vipLevel !== undefined || req.body.vipExpiresAt !== undefined) {
-      const nextLevel = req.body.vipLevel ?? current.vipLevel;
-      const rawExpires = req.body.vipExpiresAt !== undefined
-        ? req.body.vipExpiresAt
-        : current.vipExpiresAt?.toISOString() ?? null;
-      const parsedExpires = rawExpires ? new Date(rawExpires) : null;
-      if (parsedExpires && Number.isNaN(parsedExpires.getTime())) throw Errors.badRequest("VIP 到期时间格式不正确");
-      data.vipLevel = nextLevel;
-      data.vipExpiresAt = nextLevel > 0 ? parsedExpires : null;
+    if (req.body.isVip !== undefined) {
+      data.isVip = req.body.isVip;
+      // Dual-write only for rolling compatibility with the previous server.
+      data.vipLevel = req.body.isVip ? 1 : 0;
+      data.vipExpiresAt = null;
     }
 
     const parsedMutedUntil = parseMutedUntil(req.body.mutedUntil);
@@ -559,8 +552,7 @@ adminRouter.patch("/users/:id", modOrAbove, validate(userPatchSchema), async (re
       aiReviewWhitelisted: u.aiReviewWhitelisted,
       anonymousCredits: u.anonymousCredits,
       anonymousCreditsFrozen: u.anonymousCreditsFrozen,
-      vipLevel: u.vipLevel,
-      vipExpiresAt: u.vipExpiresAt,
+      isVip: u.isVip,
       anonymousState: trust.anonymousState,
       reputation: trust.reputation,
       reputationLevel: trust.reputationLevel,

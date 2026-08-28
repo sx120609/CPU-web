@@ -25,7 +25,7 @@ import { scheduleReplySubmissionReview } from "../services/forumSubmissionReview
 export const replyRouter = Router();
 
 const replySubmissionInclude = {
-  author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, vipLevel: true, vipExpiresAt: true, profileTheme: true, profileFrame: true } },
+  author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true } },
 } as const;
 
 async function findReplySubmission(userId: number, submissionId: string) {
@@ -339,7 +339,7 @@ replyRouter.patch("/:id", authRequired, validate(updateSchema), async (req, res,
             board: { select: { slug: true, type: true } },
           },
         },
-        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, vipLevel: true, vipExpiresAt: true, profileTheme: true, profileFrame: true } },
+        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true } },
       },
     });
     if (!reply || !reply.topic || reply.hidden || reply.topic.hidden) throw Errors.notFound("回复不存在");
@@ -357,7 +357,7 @@ replyRouter.patch("/:id", authRequired, validate(updateSchema), async (req, res,
       where: { id },
       data: { content: req.body.content },
       include: {
-        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, vipLevel: true, vipExpiresAt: true, profileTheme: true, profileFrame: true } },
+        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true } },
       },
     });
     await Promise.all([

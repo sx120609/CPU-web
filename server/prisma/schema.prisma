@@ -49,6 +49,9 @@ model User {
   anonymousWeekKey       String?
   anonymousCreditsFrozen Boolean   @default(false)
   sponsorTotalCents      Int       @default(0)
+  isVip                  Boolean   @default(false)
+  // Legacy rollout columns retained temporarily so production db push stays expand-only.
+  // Product code no longer reads or writes levels or membership expiry.
   vipLevel               Int       @default(0)
   vipExpiresAt           DateTime?
   profileTheme           String?
@@ -913,8 +916,9 @@ model VipGiftCode {
   id           Int       @id @default(autoincrement())
   codeHash     String    @unique
   codePreview  String
+  // Legacy reward columns are no longer exposed or used.
   vipLevel     Int       @default(1)
-  durationDays Int
+  durationDays Int       @default(0)
   maxUses      Int       @default(1)
   usedCount    Int       @default(0)
   enabled      Boolean   @default(true)
@@ -936,8 +940,9 @@ model VipGiftCodeRedemption {
   id           Int      @id @default(autoincrement())
   giftCodeId   Int
   userId       Int
-  vipLevel     Int
-  durationDays Int
+  // Legacy reward snapshot columns are retained for expand-only deployment.
+  vipLevel     Int      @default(1)
+  durationDays Int      @default(0)
   expiresAt    DateTime?
   redeemedAt   DateTime @default(now())
 

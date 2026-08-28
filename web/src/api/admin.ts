@@ -682,13 +682,9 @@ export type ForumAdAdmin = {
 export type VipGiftCodeAdmin = {
   id: number;
   codePreview: string;
-  vipLevel: number;
-  durationDays: number;
   maxUses: number;
   usedCount: number;
   enabled: boolean;
-  startsAt: string | null;
-  expiresAt: string | null;
   note: string | null;
   createdAt: string;
   updatedAt: string;
@@ -797,8 +793,7 @@ export const adminApi = {
     mutedUntil?: string | null;
     anonymousCredits?: number;
     anonymousCreditsFrozen?: boolean;
-    vipLevel?: number;
-    vipExpiresAt?: string | null;
+    isVip?: boolean;
   }) =>
     request.patch<any>(`/admin/users/${id}`, patch),
   updateUserModuleRoles: (id: number, patch: {
@@ -1191,13 +1186,9 @@ export const adminApi = {
   vipGiftCodes: (options?: RequestOptions) => request.get<VipGiftCodeAdmin[]>("/admin/vip-gift-codes", undefined, options),
   createVipGiftCodes: (payload: {
     quantity?: number;
-    vipLevel: number;
-    durationDays: number;
     maxUses?: number;
-    startsAt?: string | null;
-    expiresAt?: string | null;
     note?: string | null;
-  }) => request.post<{ items: VipGiftCodeAdmin[]; codes: string[] }>("/admin/vip-gift-codes", payload),
-  updateVipGiftCode: (id: number, payload: Partial<Pick<VipGiftCodeAdmin, "enabled" | "maxUses" | "note">> & { startsAt?: string | null; expiresAt?: string | null }) =>
+  }) => request.post<{ items: VipGiftCodeAdmin[]; codes: string[]; redemptionPaths: string[] }>("/admin/vip-gift-codes", payload),
+  updateVipGiftCode: (id: number, payload: Partial<Pick<VipGiftCodeAdmin, "enabled" | "maxUses" | "note">>) =>
     request.patch<VipGiftCodeAdmin>(`/admin/vip-gift-codes/${id}`, payload),
 };

@@ -100,7 +100,6 @@ export interface ForumAuthor {
   status?: string;
   mutedUntil?: string | null;
   anonymous?: boolean;
-  vipLevel?: number;
   vipActive?: boolean;
   profileTheme?: string | null;
   profileFrame?: string | null;

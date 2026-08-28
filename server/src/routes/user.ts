@@ -35,7 +35,7 @@ userRouter.patch("/me", authRequired, async (req, res, next) => {
     if (body.profileTheme !== undefined || body.profileFrame !== undefined) {
       const current = await prisma.user.findUnique({
         where: { id: req.user!.userId },
-        select: { vipLevel: true, vipExpiresAt: true },
+        select: { isVip: true },
       });
       if (!isVipActive(current)) throw Errors.forbidden("VIP 用户才能使用个性化资料装扮");
       if (body.profileTheme !== undefined) {
@@ -127,7 +127,7 @@ userRouter.get("/:id/topics", async (req, res, next) => {
       take: 30,
       include: {
         board: { select: { slug: true, name: true, color: true, type: true } },
-        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, vipLevel: true, vipExpiresAt: true, profileTheme: true, profileFrame: true } },
+        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true } },
         tags: { include: { tag: true } },
       },
     });

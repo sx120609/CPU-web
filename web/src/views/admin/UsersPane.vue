@@ -74,7 +74,7 @@
       <el-table-column label="身份" width="230">
         <template #default="{ row }">
           <div class="tag-stack">
-            <el-tag v-if="row.vipLevel > 0" type="warning" size="small" effect="dark">VIP</el-tag>
+            <el-tag v-if="row.isVip" type="warning" size="small" effect="dark">VIP</el-tag>
             <el-tag :type="roleTag(row.role)" size="small">{{ roleLabel(row.role) }}</el-tag>
             <el-tag v-if="row.voiceHubRole" :type="moduleRoleTag(row.voiceHubRole)" size="small" effect="plain">
               {{ moduleRoleLabel("药苑之声", row.voiceHubRole) }}
@@ -137,7 +137,7 @@
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item v-if="auth.isAdmin" command="vip" :disabled="isUserBusy(row)">
-                  {{ row.vipLevel > 0 ? "取消 VIP" : "设置 VIP" }}
+                  {{ row.isVip ? "取消 VIP" : "设置 VIP" }}
                 </el-dropdown-item>
                 <el-dropdown-item v-if="canModerateUsers" command="rename" :disabled="isUserBusy(row)">改名</el-dropdown-item>
                 <el-dropdown-item v-if="canModerateUsers && row.status !== 'banned'" command="ban" :disabled="isUserBusy(row)">封禁</el-dropdown-item>
@@ -174,7 +174,7 @@
           </el-tag>
         </div>
         <div class="tag-stack">
-          <el-tag v-if="row.vipLevel > 0" type="warning" size="small" effect="dark">VIP</el-tag>
+          <el-tag v-if="row.isVip" type="warning" size="small" effect="dark">VIP</el-tag>
           <el-tag :type="roleTag(row.role)" size="small">{{ roleLabel(row.role) }}</el-tag>
           <el-tag v-if="row.voiceHubRole" :type="moduleRoleTag(row.voiceHubRole)" size="small" effect="plain">
             {{ moduleRoleLabel("药苑之声", row.voiceHubRole) }}
@@ -210,7 +210,7 @@
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item v-if="auth.isAdmin" command="vip" :disabled="isUserBusy(row)">
-                  {{ row.vipLevel > 0 ? "取消 VIP" : "设置 VIP" }}
+                  {{ row.isVip ? "取消 VIP" : "设置 VIP" }}
                 </el-dropdown-item>
                 <el-dropdown-item v-if="canModerateUsers" command="rename" :disabled="isUserBusy(row)">改名</el-dropdown-item>
                 <el-dropdown-item v-if="canModerateUsers && row.status !== 'banned'" command="ban" :disabled="isUserBusy(row)">封禁</el-dropdown-item>
@@ -617,17 +617,16 @@ function handleUserCommand(command: string, row: any) {
 
 async function toggleVip(row: any) {
   await runUserAction(row, async () => {
-    const active = Number(row.vipLevel ?? 0) > 0 && (!row.vipExpiresAt || new Date(row.vipExpiresAt).getTime() > Date.now());
+    const active = Boolean(row.isVip);
     const confirmed = await ElMessageBox.confirm(
-      active ? `确认取消 ${row.nickname || row.username} 的 VIP 权益？` : `为 ${row.nickname || row.username} 设置一年 VIP？`,
+      active ? `确认取消 ${row.nickname || row.username} 的 VIP 权益？` : `为 ${row.nickname || row.username} 永久开通 VIP？`,
       "VIP 身份",
       { type: active ? "warning" : "info" },
     ).then(() => true).catch(() => false);
     if (!confirmed) return;
-    const expiresAt = active ? null : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
-    const patch = await adminApi.updateUser(row.id, { vipLevel: active ? 0 : 1, vipExpiresAt: expiresAt });
+    const patch = await adminApi.updateUser(row.id, { isVip: !active });
     applyUserUpdate(row, patch);
-    ElMessage.success(active ? "VIP 已取消" : "VIP 已设置一年");
+    ElMessage.success(active ? "VIP 已取消" : "VIP 已永久开通");
     await reload();
   });
 }

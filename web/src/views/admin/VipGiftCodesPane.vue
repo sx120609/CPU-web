@@ -4,7 +4,7 @@
       type="info"
       :closable="false"
       show-icon
-      title="礼品码只在生成成功时显示完整内容，请及时复制保存；后台列表仅保留脱敏预览。"
+      title="礼品码和兑换链接只在生成成功时显示完整内容，请及时复制保存；后台列表仅保留脱敏预览。"
     />
 
     <el-card shadow="never" class="editor-card">
@@ -22,24 +22,8 @@
           <el-form-item label="生成数量">
             <el-input-number v-model="form.quantity" :min="1" :max="100" style="width:100%" />
           </el-form-item>
-          <el-form-item label="VIP 等级">
-            <el-select v-model="form.vipLevel" style="width:100%">
-              <el-option :value="1" label="VIP Lv.1" />
-              <el-option :value="2" label="VIP Lv.2" />
-              <el-option :value="3" label="VIP Lv.3" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="有效天数" required>
-            <el-input-number v-model="form.durationDays" :min="1" :max="3650" style="width:100%" />
-          </el-form-item>
           <el-form-item label="每码可用次数">
             <el-input-number v-model="form.maxUses" :min="1" :max="100000" style="width:100%" />
-          </el-form-item>
-          <el-form-item label="开始时间">
-            <el-date-picker v-model="form.startsAt" type="datetime" value-format="YYYY-MM-DDTHH:mm:ss" placeholder="立即生效" style="width:100%" />
-          </el-form-item>
-          <el-form-item label="结束时间">
-            <el-date-picker v-model="form.expiresAt" type="datetime" value-format="YYYY-MM-DDTHH:mm:ss" placeholder="长期有效" style="width:100%" />
           </el-form-item>
         </div>
         <el-form-item label="备注">
@@ -66,9 +50,8 @@
               <strong>{{ item.codePreview }}</strong>
               <el-tag size="small" :type="item.enabled ? 'success' : 'info'">{{ item.enabled ? "可兑换" : "已停用" }}</el-tag>
             </div>
-            <p>Lv.{{ item.vipLevel }} · {{ item.durationDays }} 天 · {{ item.usedCount }} / {{ item.maxUses }} 次</p>
+            <p>永久 VIP · {{ item.usedCount }} / {{ item.maxUses }} 次</p>
             <small>{{ item.note || "无备注" }} · {{ formatDate(item.createdAt) }}</small>
-            <small v-if="item.startsAt || item.expiresAt">有效期：{{ formatDate(item.startsAt) }} 至 {{ formatDate(item.expiresAt) }}</small>
           </div>
           <el-button size="small" :type="item.enabled ? 'warning' : 'success'" plain @click="toggle(item)">
             {{ item.enabled ? "停用" : "启用" }}
@@ -78,13 +61,17 @@
     </el-card>
 
     <el-dialog v-model="codesDialogOpen" title="礼品码生成成功" width="520px" append-to-body>
-      <el-alert type="warning" :closable="false" show-icon title="完整礼品码只显示这一次，请复制后再关闭窗口。" />
+      <el-alert type="warning" :closable="false" show-icon title="完整礼品码和兑换链接只显示这一次，请复制后再关闭窗口。" />
       <div class="generated-codes">
-        <code v-for="code in generatedCodes" :key="code">{{ code }}</code>
+        <div v-for="item in generatedItems" :key="item.code" class="generated-item">
+          <code>{{ item.code }}</code>
+          <a :href="item.link" target="_blank" rel="noopener noreferrer">{{ item.link }}</a>
+        </div>
       </div>
       <template #footer>
         <el-button @click="codesDialogOpen = false">关闭</el-button>
-        <el-button type="primary" @click="copyGeneratedCodes">复制全部</el-button>
+        <el-button @click="copyGeneratedCodes">复制礼品码</el-button>
+        <el-button type="primary" @click="copyGeneratedLinks">复制兑换链接</el-button>
       </template>
     </el-dialog>
   </div>
@@ -99,14 +86,10 @@ const list = ref<VipGiftCodeAdmin[]>([]);
 const loading = ref(false);
 const saving = ref(false);
 const codesDialogOpen = ref(false);
-const generatedCodes = ref<string[]>([]);
+const generatedItems = ref<Array<{ code: string; link: string }>>([]);
 const form = reactive({
   quantity: 1,
-  vipLevel: 1,
-  durationDays: 30,
   maxUses: 1,
-  startsAt: "",
-  expiresAt: "",
   note: "",
 });
 
@@ -128,14 +111,13 @@ async function create() {
   try {
     const result = await adminApi.createVipGiftCodes({
       quantity: form.quantity,
-      vipLevel: form.vipLevel,
-      durationDays: form.durationDays,
       maxUses: form.maxUses,
-      startsAt: form.startsAt || null,
-      expiresAt: form.expiresAt || null,
       note: form.note.trim() || null,
     });
-    generatedCodes.value = result.codes;
+    generatedItems.value = result.codes.map((code, index) => ({
+      code,
+      link: new URL(result.redemptionPaths[index], window.location.origin).toString(),
+    }));
     codesDialogOpen.value = true;
     ElMessage.success(`已生成 ${result.codes.length} 个礼品码`);
     await load();
@@ -158,7 +140,7 @@ async function toggle(item: VipGiftCodeAdmin) {
 }
 
 async function copyGeneratedCodes() {
-  const value = generatedCodes.value.join("\n");
+  const value = generatedItems.value.map((item) => item.code).join("\n");
   try {
     await navigator.clipboard.writeText(value);
     ElMessage.success("已复制全部礼品码");
@@ -167,8 +149,18 @@ async function copyGeneratedCodes() {
   }
 }
 
-function formatDate(value: string | null) {
-  return value ? new Date(value).toLocaleString("zh-CN", { hour12: false }) : "不限";
+async function copyGeneratedLinks() {
+  const value = generatedItems.value.map((item) => item.link).join("\n");
+  try {
+    await navigator.clipboard.writeText(value);
+    ElMessage.success("已复制全部兑换链接");
+  } catch {
+    ElMessage.warning("浏览器未授权剪贴板，请手动复制");
+  }
+}
+
+function formatDate(value: string) {
+  return new Date(value).toLocaleString("zh-CN", { hour12: false });
 }
 </script>
 
@@ -188,6 +180,9 @@ function formatDate(value: string | null) {
 .code-row p, .code-row small { display: block; margin: 7px 0 0; color: var(--cpu-text-secondary); font-size: 12px; }
 .code-row small { color: var(--cpu-text-muted); font-size: 11px; }
 .generated-codes { display: flex; flex-direction: column; gap: 8px; max-height: 320px; margin-top: 16px; overflow: auto; padding: 12px; border-radius: 10px; background: var(--cpu-surface-soft); }
-.generated-codes code { color: var(--cpu-text); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 14px; letter-spacing: .06em; user-select: all; }
+.generated-item { display: flex; flex-direction: column; gap: 5px; padding-bottom: 8px; border-bottom: 1px solid var(--cpu-border-soft); }
+.generated-item:last-child { padding-bottom: 0; border-bottom: 0; }
+.generated-item code { color: var(--cpu-text); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 14px; letter-spacing: .06em; user-select: all; }
+.generated-item a { color: var(--cpu-primary); font-size: 12px; overflow-wrap: anywhere; user-select: all; }
 @media (max-width: 650px) { .form-grid { grid-template-columns: 1fr; } .code-row { flex-direction: column; } }
 </style>

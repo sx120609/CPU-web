@@ -21,9 +21,7 @@ function sponsorAmount(u: any) {
 }
 
 function vipActive(u: any) {
-  if (Number(u?.vipLevel ?? 0) <= 0) return false;
-  if (!u?.vipExpiresAt) return true;
-  return new Date(u.vipExpiresAt).getTime() > Date.now();
+  return Boolean(u?.isVip);
 }
 
 export function buildSelfUser(u: any) {
@@ -60,8 +58,6 @@ export function buildSelfUser(u: any) {
     anonymousState: trust.anonymousState,
     sponsorTotalCents: u.sponsorTotalCents ?? 0,
     sponsorAmount: sponsorAmount(u),
-    vipLevel: u.vipLevel ?? 0,
-    vipExpiresAt: u.vipExpiresAt ?? null,
     vipActive: vipActive(u),
     profileTheme: u.profileTheme ?? null,
     profileFrame: u.profileFrame ?? null,
@@ -87,7 +83,6 @@ export function buildPublicUser(u: any, viewer?: Viewer) {
     reputationLevel: trust.reputationLevel,
     sponsorTotalCents: u.sponsorTotalCents ?? 0,
     sponsorAmount: sponsorAmount(u),
-    vipLevel: u.vipLevel ?? 0,
     vipActive: vipActive(u),
     profileTheme: u.profileTheme ?? null,
     profileFrame: u.profileFrame ?? null,
@@ -111,7 +106,6 @@ export function buildUserPreview(u: any, viewer?: Viewer) {
     nickname: u.nickname,
     avatar: publicAvatarValue(u),
     role: u.role,
-    vipLevel: u.vipLevel ?? 0,
     vipActive: vipActive(u),
     profileTheme: u.profileTheme ?? null,
     profileFrame: u.profileFrame ?? null,

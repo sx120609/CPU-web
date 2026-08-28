@@ -19,12 +19,10 @@ vipRouter.get("/", authRequired, async (req, res, next) => {
   try {
     const user = await prisma.user.findUnique({
       where: { id: req.user!.userId },
-      select: { vipLevel: true, vipExpiresAt: true, sponsorTotalCents: true },
+      select: { isVip: true, sponsorTotalCents: true },
     });
     if (!user) throw Errors.notFound("用户不存在");
     ok(res, {
-      vipLevel: user.vipLevel,
-      vipExpiresAt: user.vipExpiresAt,
       vipActive: isVipActive(user),
       sponsorTotalCents: user.sponsorTotalCents,
       benefits: VIP_BENEFITS,
@@ -46,9 +44,6 @@ vipRouter.get("/history", authRequired, async (req, res, next) => {
       take: 20,
       select: {
         id: true,
-        vipLevel: true,
-        durationDays: true,
-        expiresAt: true,
         redeemedAt: true,
         giftCode: { select: { codePreview: true } },
       },

@@ -13,16 +13,14 @@ export const VIP_REACTION_CATALOG = [
 
 export type VipReactionKey = (typeof VIP_REACTION_CATALOG)[number]["key"];
 
-export function isVipActive(user: { vipLevel?: number | null; vipExpiresAt?: Date | string | null } | null | undefined) {
-  if (!user || Number(user.vipLevel ?? 0) <= 0) return false;
-  if (!user.vipExpiresAt) return true;
-  return new Date(user.vipExpiresAt).getTime() > Date.now();
+export function isVipActive(user: { isVip?: boolean | null } | null | undefined) {
+  return Boolean(user?.isVip);
 }
 
 export async function isUserVip(userId: number) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { vipLevel: true, vipExpiresAt: true },
+    select: { isVip: true },
   });
   return isVipActive(user);
 }

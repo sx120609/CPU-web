@@ -5,10 +5,10 @@
       <div class="vip-hero-copy">
         <div class="eyebrow">拾间会员中心</div>
         <h1>{{ status?.vipActive ? "你的 VIP 正在生效" : "开启你的 VIP 特权" }}</h1>
-        <p>{{ status?.vipActive ? "感谢你对校园社区的支持，专属权益已经为你打开。" : "输入礼品码即可兑换 VIP 时长，兑换后会立即同步到账号。" }}</p>
+        <p>{{ status?.vipActive ? "感谢你对校园社区的支持，永久专属权益已经为你打开。" : "输入礼品码或打开兑换链接，即可永久开通 VIP。" }}</p>
       </div>
       <el-tag class="vip-hero-status" :type="status?.vipActive ? 'warning' : 'info'" effect="dark">
-        {{ status?.vipActive ? `VIP Lv.${status.vipLevel}` : "暂未开通" }}
+        {{ status?.vipActive ? "永久 VIP" : "暂未开通" }}
       </el-tag>
     </section>
 
@@ -17,14 +17,11 @@
         <div class="section-heading">
           <div>
             <div class="section-kicker">当前状态</div>
-            <h2>{{ status?.vipActive ? `VIP Lv.${status.vipLevel}` : "普通用户" }}</h2>
+            <h2>{{ status?.vipActive ? "VIP" : "普通用户" }}</h2>
           </div>
           <div class="status-orb" :class="{ active: status?.vipActive }">✦</div>
         </div>
-        <p v-if="status?.vipActive && status.vipExpiresAt" class="expiry-copy">
-          有效期至 {{ formatDate(status.vipExpiresAt) }}
-        </p>
-        <p v-else-if="status?.vipActive" class="expiry-copy">当前 VIP 长期有效</p>
+        <p v-if="status?.vipActive" class="expiry-copy">VIP 一次开通，永久有效。</p>
         <p v-else class="expiry-copy">还没有 VIP？使用右侧礼品码即可兑换。</p>
         <div class="status-actions">
           <el-button plain @click="router.push('/profile')">返回个人中心</el-button>
@@ -47,14 +44,14 @@
           maxlength="80"
           placeholder="例如 CPUV-IPAB-CD23-EF45"
           :disabled="redeeming"
-          @keyup.enter="redeem"
+          @keyup.enter="redeem()"
         >
           <template #prefix>🎟️</template>
         </el-input>
-        <el-button class="redeem-button" type="primary" size="large" :loading="redeeming" :disabled="!giftCode.trim()" @click="redeem">
+        <el-button class="redeem-button" type="primary" size="large" :loading="redeeming" :disabled="!giftCode.trim()" @click="redeem()">
           立即兑换
         </el-button>
-        <p class="redeem-hint">礼品码由管理员发放，每个账号只能兑换同一礼品码一次。</p>
+        <p class="redeem-hint">礼品码由管理员发放，也可以直接打开管理员提供的兑换链接自动激活。</p>
       </section>
     </div>
 
@@ -88,11 +85,11 @@
         <div v-for="item in history" :key="item.id" class="history-row">
           <div>
             <strong>{{ item.giftCode.codePreview }}</strong>
-            <span>Lv.{{ item.vipLevel }} · {{ item.durationDays }} 天</span>
+            <span>永久 VIP</span>
           </div>
           <div class="history-date">
             <span>{{ formatDate(item.redeemedAt) }}</span>
-            <small>累计至 {{ formatDate(item.expiresAt) }}</small>
+            <small>已永久生效</small>
           </div>
         </div>
       </div>
@@ -103,11 +100,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { ElMessage } from "element-plus";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { vipApi, type VipRedemption, type VipStatus } from "@/api/vip";
 import { useAuthStore } from "@/stores/auth";
 
 const router = useRouter();
+const route = useRoute();
 const auth = useAuthStore();
 const loading = ref(false);
 const redeeming = ref(false);
@@ -121,7 +119,10 @@ const benefits = computed(() => status.value?.benefits ?? [
   { key: "vip-reactions", title: "专属互动标识", description: "使用 VIP 专属表情和互动标识。" },
 ]);
 
-onMounted(load);
+onMounted(async () => {
+  await load();
+  await redeemFromLink();
+});
 
 async function load() {
   loading.value = true;
@@ -134,8 +135,6 @@ async function load() {
     history.value = nextHistory;
   } catch (error) {
     status.value = {
-      vipLevel: auth.user?.vipLevel ?? 0,
-      vipExpiresAt: auth.user?.vipExpiresAt ?? null,
       vipActive: auth.user?.vipActive ?? false,
       sponsorTotalCents: auth.user?.sponsorTotalCents ?? 0,
       benefits: [],
@@ -146,15 +145,15 @@ async function load() {
   }
 }
 
-async function redeem() {
+async function redeem(source: "manual" | "link" = "manual") {
   const code = giftCode.value.trim();
   if (!code || redeeming.value) return;
   redeeming.value = true;
   try {
-    const result = await vipApi.redeem(code);
+    await vipApi.redeem(code);
     giftCode.value = "";
     await auth.fetchMe({ probe: true });
-    ElMessage.success(`兑换成功，VIP 已延长 ${result.durationDays} 天`);
+    ElMessage.success(source === "link" ? "链接激活成功，VIP 已永久开通" : "兑换成功，VIP 已永久开通");
     await load();
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : "礼品码兑换失败");
@@ -163,8 +162,15 @@ async function redeem() {
   }
 }
 
-function formatDate(value: string | null) {
-  if (!value) return "长期有效";
+async function redeemFromLink() {
+  const code = new URLSearchParams(route.hash.replace(/^#/, "")).get("redeem")?.trim();
+  if (!code) return;
+  await router.replace({ path: route.path, query: route.query, hash: "" });
+  giftCode.value = code;
+  await redeem("link");
+}
+
+function formatDate(value: string) {
   return new Date(value).toLocaleString("zh-CN", { hour12: false });
 }
 </script>
