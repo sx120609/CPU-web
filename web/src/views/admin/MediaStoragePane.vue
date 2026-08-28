@@ -462,8 +462,11 @@ const migrationNeedsCos = computed(() => (
 const migrationDisabled = computed(() =>
   migratingFiles.value
   || !migrationEligibleCount.value
-  || (migrationNeedsOneDrive.value && (!inventory.value?.oneDriveConfigured || !inventory.value?.oneDriveReachable))
-  || (migrationNeedsCos.value && (!inventory.value?.cosConfigured || !inventory.value?.cosReachable))
+  || (migrationNeedsOneDrive.value && (
+    (!oneDriveChinaRefreshTokenConfigured.value || !oneDriveChinaDriveId.value)
+    && (!inventory.value?.oneDriveConfigured || !inventory.value?.oneDriveReachable)
+  ))
+  || (migrationNeedsCos.value && !tencentCosSecretKeyConfigured.value)
 );
 const cleanupCandidates = computed(() => (inventory.value?.list ?? []).filter((row) => hasRedundantCopies(row)));
 const cleanupNeedsOneDrive = computed(() => cleanupCandidates.value.some((row) => row.oneDriveExists));
