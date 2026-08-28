@@ -298,7 +298,7 @@
 
       <div v-if="filteredFiles.length" class="inventory-table-scroll">
         <el-table
-          :data="filteredFiles"
+          :data="paginatedFiles"
           stripe
           size="default"
           class="inventory-table"
@@ -346,6 +346,14 @@
             </template>
           </el-table-column>
         </el-table>
+        <el-pagination
+          v-model:current-page="filePage"
+          v-model:page-size="filePageSize"
+          class="inventory-pagination"
+          layout="total, sizes, prev, pager, next, jumper"
+          :page-sizes="[25, 50, 100, 200]"
+          :total="filteredFiles.length"
+        />
       </div>
       <el-empty v-else description="当前筛选条件下没有文件" />
     </section>
@@ -353,7 +361,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import {
@@ -429,6 +437,8 @@ const lastMigrationResult = ref<MediaStorageMigrationResult | null>(null);
 const lastCleanupResult = ref<MediaStorageCleanupResult | null>(null);
 const fileQuery = ref("");
 const fileFilter = ref<FileFilterKey>("all");
+const filePage = ref(1);
+const filePageSize = ref(50);
 const migrationProgressText = ref("");
 const migrationBatchLimit = 3;
 
@@ -468,6 +478,16 @@ const filteredFiles = computed(() => {
     if (query && !`${row.relativePath} ${row.url}`.toLowerCase().includes(query)) return false;
     return matchesFilter(row, fileFilter.value);
   });
+});
+const paginatedFiles = computed(() => {
+  const totalPages = Math.max(1, Math.ceil(filteredFiles.value.length / filePageSize.value));
+  const page = Math.min(filePage.value, totalPages);
+  const start = (page - 1) * filePageSize.value;
+  return filteredFiles.value.slice(start, start + filePageSize.value);
+});
+
+watch([fileQuery, fileFilter, filePageSize], () => {
+  filePage.value = 1;
 });
 
 onMounted(reload);
@@ -1176,6 +1196,12 @@ function backendLabel(value: MediaStorageBackend) {
 
 .inventory-table-scroll :deep(.el-table__cell) {
   vertical-align: top;
+}
+
+.inventory-pagination {
+  justify-content: flex-end;
+  min-width: 720px;
+  padding: 18px 8px 4px;
 }
 
 .file-main {
