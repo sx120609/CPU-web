@@ -56,6 +56,15 @@ export function normalizeWebStaticAssetPath(value: string) {
   return parts.join("/");
 }
 
+export function rewriteWebStaticAssetUrls(html: string, assetBaseUrl: string) {
+  const baseUrl = String(assetBaseUrl || "").trim().replace(/\/+$/gu, "");
+  if (!baseUrl) return html;
+  return String(html || "").replace(
+    /\b(src|href)="\/assets\//gu,
+    (_match, attribute: string) => `${attribute}="${baseUrl}/`,
+  );
+}
+
 function decodeRequestPathname(value: string) {
   try {
     return decodeURIComponent(String(value || ""));

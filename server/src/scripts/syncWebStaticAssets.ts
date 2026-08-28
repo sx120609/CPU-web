@@ -76,6 +76,8 @@ async function main() {
       return;
     }
 
+    const remoteAssetBaseUrl = await cos.resolveTencentCosOriginUrl(manifest.WEB_STATIC_COS_PREFIX);
+    await rewriteIndexHtml(distRoot, remoteAssetBaseUrl, manifest.rewriteWebStaticAssetUrls);
     await writeManifest(distRoot, manifest.WEB_STATIC_COS_MANIFEST, {
       version: 1,
       generatedAt: new Date().toISOString(),
@@ -86,6 +88,14 @@ async function main() {
   } finally {
     await prisma.$disconnect();
   }
+}
+
+async function rewriteIndexHtml(root: string, remoteAssetBaseUrl: string, rewrite: (html: string, baseUrl: string) => string) {
+  const target = path.join(root, "index.html");
+  const current = await readFile(target, "utf8");
+  const rewritten = rewrite(current, remoteAssetBaseUrl);
+  if (rewritten === current) return;
+  await writeTextAtomically(target, rewritten);
 }
 
 type CollectedFile = { absolutePath: string; relativePath: string; size: number };
@@ -158,8 +168,12 @@ async function runInBatches<T>(items: T[], limit: number, worker: (item: T) => P
 async function writeManifest(root: string, fileName: string, value: unknown) {
   await mkdir(root, { recursive: true });
   const target = path.join(root, fileName);
+  await writeTextAtomically(target, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+async function writeTextAtomically(target: string, content: string) {
   const temporary = `${target}.tmp-${process.pid}`;
-  await writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  await writeFile(temporary, content, "utf8");
   await rename(temporary, target);
 }
 

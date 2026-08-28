@@ -6,6 +6,7 @@ import test from "node:test";
 import {
   loadWebStaticCosManifest,
   normalizeWebStaticAssetPath,
+  rewriteWebStaticAssetUrls,
   WEB_STATIC_COS_MANIFEST,
   WEB_STATIC_COS_PREFIX,
 } from "../src/services/webStaticCos";
@@ -38,4 +39,12 @@ test("static COS manifest is accepted only for the expected version and prefix",
     assets: ["main.abc123.js"],
   }));
   assert.equal(loadWebStaticCosManifest(directory).size, 0);
+});
+
+test("index asset tags are rewritten directly to COS without touching unrelated text", () => {
+  const html = '<script src="/assets/main.js"></script><link href="/assets/main.css"><script>const example = "/assets/local-only"</script>';
+  assert.equal(
+    rewriteWebStaticAssetUrls(html, "https://static.example/root/assets/"),
+    '<script src="https://static.example/root/assets/main.js"></script><link href="https://static.example/root/assets/main.css"><script>const example = "/assets/local-only"</script>',
+  );
 });
