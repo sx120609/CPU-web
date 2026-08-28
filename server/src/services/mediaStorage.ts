@@ -682,7 +682,7 @@ export const uploadAssetHandler: RequestHandler = async (req, res) => {
     return;
   }
 
-  const relativePath = normalizeRequestRelativePath(req.path);
+  const relativePath = normalizeRequestRelativePath(decodeRequestPathname(req.path));
   if (!relativePath) {
     res.status(404).send("文件不存在");
     return;
@@ -747,6 +747,14 @@ function normalizeMigrationBatchLimit(input: unknown) {
 function normalizeRequestRelativePath(value: string) {
   try {
     return normalizeUploadRelativePath(value);
+  } catch {
+    return "";
+  }
+}
+
+function decodeRequestPathname(value: string) {
+  try {
+    return decodeURIComponent(String(value || ""));
   } catch {
     return "";
   }
