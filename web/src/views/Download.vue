@@ -89,6 +89,14 @@
             </li>
           </ul>
 
+          <div v-if="card.key === 'ios'" class="ios-install-callout">
+            <span class="ios-install-icon" aria-hidden="true">↓</span>
+            <span>
+              <strong>下载按钮在课表页面顶部</strong>
+              <small>进入课表后点击顶部的下载图标，即可查看完整安装教程。</small>
+            </span>
+          </div>
+
           <div class="platform-action-row">
             <a
               v-if="card.downloadUrl"
@@ -116,7 +124,7 @@
           </div>
 
           <details class="install-steps">
-            <summary>查看安装步骤</summary>
+            <summary>{{ card.key === "ios" ? "点击查看教程" : "查看安装步骤" }}</summary>
             <ol>
               <li v-for="step in card.steps" :key="step">{{ step }}</li>
             </ol>
@@ -248,15 +256,16 @@ const platformCards = computed<PlatformCard[]>(() => [
     symbol: "iOS",
     name: "iPhone / iPad",
     support: "iOS 与 iPadOS · Safari",
-    summary: "目前使用 Web App 方式，无需安装描述文件，也没有来源不明的 IPA 安装包。",
-    features: ["Safari 添加到主屏幕", "独立窗口打开课表", "支持 iOS 课表小组件"],
+    summary: "使用 Web App 方式，无需描述文件或 IPA；进入课表后，页面顶部的下载按钮会打开完整安装教程。",
+    features: ["顶部下载按钮内置完整教程", "Safari 添加到主屏幕", "支持 iOS 课表小组件"],
     steps: [
-      "使用 Safari 打开课表页面。",
-      "点击 Safari 的分享按钮，选择“添加到主屏幕”。",
-      "确认名称后添加，即可从桌面图标进入。",
+      "必须使用 Safari 打开本页，再点击“打开课表并安装”；微信、QQ 等内置浏览器不支持添加到主屏幕。",
+      "进入课表后，在页面顶部操作栏找到向下箭头形状的下载按钮，点击即可打开安装教程。",
+      "根据 Safari 版本，点击底部的“…”后再点共享按钮，或直接点击分享按钮，然后选择“查看更多”→“添加到主屏幕”。",
+      "确认名称并点击“添加”，之后即可从桌面图标进入药大拾间课表。",
     ],
     actionLabel: "打开课表并安装",
-    actionHint: "无需安装包",
+    actionHint: "进入后点击页面顶部的下载按钮",
     versionLabel: "Web App",
     loading: false,
     route: "/schedule",
@@ -676,6 +685,47 @@ onMounted(async () => {
   color: var(--cpu-primary);
   font-size: 11px;
   font-weight: 900;
+}
+
+.ios-install-callout {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: -2px 0 16px;
+  padding: 11px 12px;
+  border: 1px solid color-mix(in srgb, var(--cpu-primary) 24%, var(--cpu-border-soft));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--cpu-primary) 7%, var(--cpu-surface));
+}
+
+.ios-install-icon {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--cpu-primary);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.ios-install-callout > span:last-child {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.ios-install-callout strong {
+  color: var(--cpu-text);
+  font-size: 12px;
+}
+
+.ios-install-callout small {
+  color: var(--cpu-text-secondary);
+  font-size: 11px;
+  line-height: 1.55;
 }
 
 .platform-action-row {
