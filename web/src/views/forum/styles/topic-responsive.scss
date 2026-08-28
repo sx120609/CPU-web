@@ -33,8 +33,11 @@
     }
 
     .main-floor {
-      display: block;
+      display: flex;
+      flex-direction: column;
     }
+
+    .main-floor > * { order: 0 !important; }
 
     .main-floor > :not(.post-meta) {
       margin-left: 14px;
@@ -42,6 +45,7 @@
     }
 
     .topic-title-row {
+      order: 1;
       flex-direction: column;
       gap: 10px;
       padding-top: 16px;
@@ -50,19 +54,28 @@
     .post-title { font-size: 20px; line-height: 1.45; word-break: break-word; }
     .topic-price { padding: 0; font-size: 20px; }
 
-    .topic-tags { margin-top: 8px; }
+    .topic-tags { order: 2; margin-top: 8px; }
 
     .post-meta {
-      margin: 12px 14px 14px;
-      padding: 10px 0 12px;
+      order: 3;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: auto;
+      padding: 12px 14px;
+      border-top: 1px solid var(--cpu-border-soft);
+      border-right: 0;
       border-bottom: 1px solid var(--cpu-border-soft);
-      text-align: left;
+      margin-top: 12px;
+      text-align: center;
 
       .post-author-card {
-        display: grid;
-        grid-template-columns: auto minmax(0, 1fr);
+        position: static;
+        display: flex;
+        flex-direction: column;
         align-items: center;
-        gap: 8px 10px;
+        justify-content: center;
+        gap: 8px;
         width: 100%;
       }
 
@@ -70,31 +83,42 @@
 
       .meta-author {
         min-width: 0;
+        width: 100%;
       }
 
       .name {
-        justify-content: flex-start;
+        justify-content: center;
         flex-wrap: wrap;
         line-height: 1.5;
       }
 
-      .real-author-line { text-align: left; }
+      .real-author-line { text-align: center; }
 
       .author-bio { display: none; }
     }
 
-    .topic-statline {
-      grid-column: 1 / -1;
-      justify-content: flex-start;
-      max-width: none;
-      margin: 2px 0 0;
-      gap: 6px 10px;
-      text-align: left;
+    .post-meta.is-sticky-author {
+      display: flex;
+
+      .post-author-card { position: static; }
     }
+    .topic-statline { order: 4; margin-top: 10px; margin-bottom: 14px; gap: 6px 10px; }
     .topic-statline span + span::before { margin-right: 10px; }
+
+    .source-bar,
+    .extra-bar,
+    .second-hand-summary,
+    .image-review-tip,
+    .topic-review-tip,
+    .topic-admin-review-tip,
+    .post-body,
+    .reaction-strip,
+    .reaction-picker,
+    .post-foot { order: 5; }
 
     .second-hand-summary-head { align-items: flex-start; flex-direction: column; }
     .second-hand-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); padding-inline: 8px; }
+    .second-hand-facts > div:nth-child(n + 3) { border-top: 1px solid var(--cpu-border-soft); }
     .second-hand-facts > div:nth-child(odd) { border-left: 0; }
     .post-body { min-height: 120px; padding-bottom: 18px; }
 
@@ -151,17 +175,18 @@
 
     .reply-author-panel {
       display: flex;
+      flex-direction: column;
       align-items: center;
-      justify-content: flex-start;
-      gap: 10px;
-      padding: 12px 14px 0;
-      text-align: left;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 14px;
+      border-right: 0;
+      border-bottom: 1px solid var(--cpu-border-soft);
+      text-align: center;
     }
 
     .reply-author-panel .avatar { width: 34px !important; height: 34px !important; }
-    .reply-author-copy { flex: 1 1 auto; min-width: 0; }
-    .reply-author-name-line { justify-content: flex-start; }
-    .reply-author-badges { justify-content: flex-start; }
+    .reply-author-badges { justify-content: center; }
     .reply-moderation-actions {
       flex-wrap: nowrap;
     }
@@ -171,13 +196,12 @@
       margin: 0;
       padding: 0 8px;
     }
-    .reply-author-panel .real-author-inline { text-align: left; }
+    .reply-author-panel .real-author-inline { text-align: center; }
     .reply-body { padding: 12px 14px 14px; }
 
     .reply-meta {
-      justify-content: flex-end;
+      justify-content: flex-start;
       flex-wrap: wrap;
-      margin-left: auto;
       line-height: 1.5;
     }
 

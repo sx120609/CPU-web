@@ -17,8 +17,9 @@
   .replies-loading { display: grid; gap: 16px; padding: 20px; }
 
   .reply {
-    display: block;
-    min-height: 0;
+    display: grid;
+    grid-template-columns: 168px minmax(0, 1fr);
+    min-height: 150px;
     padding: 0;
     border-bottom: 1px solid var(--cpu-border-soft);
     scroll-margin-top: 96px;
@@ -33,17 +34,18 @@
 
   .reply-author-panel {
     display: flex;
+    flex-direction: column;
     align-items: center;
-    gap: 10px;
+    justify-content: center;
+    gap: 8px;
     min-width: 0;
-    padding: 14px 20px 0;
-    background: transparent;
-    text-align: left;
+    padding: 20px 14px;
+    border-right: 1px solid var(--cpu-border-soft);
+    background: var(--cpu-surface-subtle);
+    text-align: center;
   }
 
   .avatar { flex-shrink: 0; background: var(--cpu-primary); color: #fff; font-weight: 600; }
-  .reply-author-copy { flex: 1 1 auto; min-width: 0; }
-  .reply-author-name-line { display: flex; align-items: center; flex-wrap: wrap; gap: 5px 8px; min-width: 0; }
   .reply-author-panel .author {
     max-width: 100%;
     color: var(--cpu-primary);
@@ -52,29 +54,26 @@
     text-decoration: none;
     overflow-wrap: anywhere;
   }
-  .reply-author-badges { display: flex; justify-content: flex-start; flex-wrap: wrap; gap: 5px; }
+  .reply-author-badges { display: flex; justify-content: center; flex-wrap: wrap; gap: 5px; }
   .real-author-inline {
-    display: block;
-    margin-top: 3px;
     color: color-mix(in srgb, var(--cpu-gold) 78%, var(--cpu-text));
     font-size: 11px;
     font-weight: 600;
     overflow-wrap: anywhere;
   }
 
-  .reply-body { display: flex; flex-direction: column; min-width: 0; padding: 10px 20px 16px 78px; }
+  .reply-body { display: flex; flex-direction: column; min-width: 0; padding: 16px 20px; }
   .reply-meta {
     display: flex;
-    flex: 0 1 auto;
     align-items: center;
     justify-content: flex-end;
     flex-wrap: wrap;
     gap: 8px 12px;
-    margin-left: auto;
+    margin-bottom: 12px;
     color: var(--cpu-text-muted);
     font-size: 12px;
   }
-  .floor { color: var(--cpu-primary); font-weight: 700; }
+  .floor { margin-right: auto; color: var(--cpu-primary); font-weight: 700; }
   .reply-parent-chip {
     display: inline-flex;
     align-items: center;

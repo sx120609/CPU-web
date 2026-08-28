@@ -53,7 +53,7 @@
         </div>
       </header>
 
-      <div class="main-floor">
+      <div ref="mainFloorRef" class="main-floor">
       <div v-if="!isSayTopic || metaPriceLabel" class="topic-title-row">
         <h1 v-if="!isSayTopic" class="post-title">
           <span v-if="topic.globalPinned" class="badge global-pin">全局置顶</span>
@@ -78,12 +78,12 @@
         </el-tag>
       </div>
 
-      <header class="post-meta post-author-panel">
+      <aside class="post-meta post-author-panel" :class="{ 'is-sticky-author': mainPostUsesStickyAuthor }">
         <div class="post-author-card">
-          <UserAvatar :size="44" class="avatar" :src="topic.author?.avatar" :name="topic.author?.nickname" :profile-frame="topic.author?.profileFrame" alt="作者头像" />
+          <span class="floor-owner-label">楼主</span>
+          <UserAvatar :size="58" class="avatar" :src="topic.author?.avatar" :name="topic.author?.nickname" :profile-frame="topic.author?.profileFrame" alt="作者头像" />
           <div class="meta-author">
             <div class="name">
-              <span class="floor-owner-label">楼主</span>
               <span v-if="topic.author?.vipActive" class="vip-badge">VIP</span>
               <router-link v-if="topic.author?.id" :to="`/u/${topic.author.id}`">{{ topic.author?.nickname }}</router-link>
               <span v-else>{{ topic.author?.nickname }}</span>
@@ -104,15 +104,16 @@
               真实作者：{{ topic.realAuthor.nickname }}<template v-if="topic.realAuthor.username"> @{{ topic.realAuthor.username }}</template>
             </div>
           </div>
-          <div class="topic-statline">
-            <span>{{ fmtDate(topic.createdAt) }}</span>
-            <span v-if="topic.editCount && topic.editCount > 0">已编辑 {{ topic.editCount }} 次</span>
-            <span>热度 {{ hotScore }}</span>
-            <span>浏览 {{ topic.viewCount }}</span>
-            <span>回复 {{ topic.replyCount }}</span>
-          </div>
         </div>
-      </header>
+      </aside>
+
+      <div class="topic-statline">
+        <span>{{ fmtDate(topic.createdAt) }}</span>
+        <span v-if="topic.editCount && topic.editCount > 0">已编辑 {{ topic.editCount }} 次</span>
+        <span>热度 {{ hotScore }}</span>
+        <span>浏览 {{ topic.viewCount }}</span>
+        <span>回复 {{ topic.replyCount }}</span>
+      </div>
 
       <!-- 板块特化 metadata -->
       <div v-if="topic.metadata?.sourceUrl" class="source-bar" :class="{ wechat: topic.metadata?.externalType === 'wechat', external: topic.metadata?.externalType !== 'wechat' }">
@@ -150,7 +151,7 @@
           <div v-if="topic.metadata?.condition"><dt>成色</dt><dd>{{ topic.metadata.condition }}</dd></div>
           <div v-if="topic.metadata?.tradeMode"><dt>交接</dt><dd>{{ topic.metadata.tradeMode }}</dd></div>
           <div v-if="topic.metadata?.campus"><dt>校区</dt><dd>{{ topic.metadata.campus }}</dd></div>
-          <div v-if="topic.metadata?.location" class="wide"><dt>地点</dt><dd>{{ topic.metadata.location }}</dd></div>
+          <div v-if="topic.metadata?.location"><dt>地点</dt><dd>{{ topic.metadata.location }}</dd></div>
         </dl>
       </section>
 
@@ -311,37 +312,33 @@
           class="reply"
           :class="{ nested: entry.depth > 0 }"
         >
-          <header class="reply-author-panel">
+          <aside class="reply-author-panel">
             <UserAvatar :size="48" class="avatar" :src="entry.item.author?.avatar" :name="entry.item.author?.nickname" :profile-frame="entry.item.author?.profileFrame" alt="回复头像" />
-            <div class="reply-author-copy">
-              <div class="reply-author-name-line">
-                <router-link v-if="entry.item.author?.id" :to="`/u/${entry.item.author.id}`" class="author">{{ entry.item.author?.nickname }}</router-link>
-                <span v-else class="author">{{ entry.item.author?.nickname }}</span>
-                <div class="reply-author-badges">
-                  <el-tag v-if="entry.item.isAnonymous" size="small" type="warning" effect="plain">匿名</el-tag>
-                  <el-tag v-if="replyReviewLabel(entry.item)" size="small" type="warning" effect="plain">{{ replyReviewLabel(entry.item) }}</el-tag>
-                </div>
-                <UserModerationActions
-                  v-if="replyModerationUser(entry.item)"
-                  class="reply-moderation-actions"
-                  :user="replyModerationUser(entry.item)"
-                  display="dropdown"
-                  text
-                  label="管理"
-                  @updated="applyReplyAuthorModeration(entry.item, $event)"
-                />
-              </div>
-              <span v-if="entry.item.isAnonymous && entry.item.realAuthor" class="real-author-inline">
-                真实作者：{{ entry.item.realAuthor.nickname }}<template v-if="entry.item.realAuthor.username"> @{{ entry.item.realAuthor.username }}</template>
-              </span>
+            <router-link v-if="entry.item.author?.id" :to="`/u/${entry.item.author.id}`" class="author">{{ entry.item.author?.nickname }}</router-link>
+            <span v-else class="author">{{ entry.item.author?.nickname }}</span>
+            <div class="reply-author-badges">
+              <el-tag v-if="entry.item.isAnonymous" size="small" type="warning" effect="plain">匿名</el-tag>
+              <el-tag v-if="replyReviewLabel(entry.item)" size="small" type="warning" effect="plain">{{ replyReviewLabel(entry.item) }}</el-tag>
             </div>
+            <UserModerationActions
+              v-if="replyModerationUser(entry.item)"
+              class="reply-moderation-actions"
+              :user="replyModerationUser(entry.item)"
+              display="dropdown"
+              text
+              label="管理"
+              @updated="applyReplyAuthorModeration(entry.item, $event)"
+            />
+            <span v-if="entry.item.isAnonymous && entry.item.realAuthor" class="real-author-inline">
+              真实作者：{{ entry.item.realAuthor.nickname }}<template v-if="entry.item.realAuthor.username"> @{{ entry.item.realAuthor.username }}</template>
+            </span>
+          </aside>
+          <div class="reply-body">
             <div class="reply-meta">
               <span class="floor">{{ entry.item.hidden ? "待审核" : `#${entry.item.floor}` }}</span>
               <span v-if="entry.parent" class="reply-parent-chip">回复 {{ entry.parent.author?.nickname || "同学" }} · #{{ entry.parent.floor }}</span>
               <span>{{ fmtRelative(entry.item.createdAt) }}</span>
             </div>
-          </header>
-          <div class="reply-body">
             <MarkdownView
               :content="entry.item.content"
               class="reply-content topic-markdown reply-markdown"
@@ -782,8 +779,11 @@ let shareCardQrSeq = 0;
 let topicReviewPollSeq = 0;
 let topicReviewPollTimer: ReturnType<typeof setTimeout> | null = null;
 const repliesEl = ref<HTMLElement | null>(null);
+const mainFloorRef = ref<HTMLElement | null>(null);
+const mainPostUsesStickyAuthor = ref(false);
 const replyEditorRef = ref<InstanceType<typeof RichTextEditor> | null>(null);
 const shareCardExportRef = ref<HTMLElement | null>(null);
+let mainFloorResizeObserver: ResizeObserver | null = null;
 const REPLY_MAX = 10000;
 const isTopicActionBusy = computed(() => topicActionBusy.value !== "");
 
@@ -1035,6 +1035,30 @@ function renderLocalQrDataUrl(value: string, width: number) {
   });
 }
 
+function updateMainPostAuthorMode() {
+  const floor = mainFloorRef.value;
+  if (!floor || typeof window === "undefined" || window.innerWidth <= 700) {
+    mainPostUsesStickyAuthor.value = false;
+    return;
+  }
+  const availableViewportHeight = Math.max(420, window.innerHeight - 140);
+  mainPostUsesStickyAuthor.value = floor.getBoundingClientRect().height > availableViewportHeight;
+}
+
+watch(mainFloorRef, (element) => {
+  mainFloorResizeObserver?.disconnect();
+  mainFloorResizeObserver = null;
+  if (!element || typeof ResizeObserver === "undefined") {
+    updateMainPostAuthorMode();
+    return;
+  }
+  mainFloorResizeObserver = new ResizeObserver(updateMainPostAuthorMode);
+  mainFloorResizeObserver.observe(element);
+  updateMainPostAuthorMode();
+}, { flush: "post" });
+
+if (typeof window !== "undefined") window.addEventListener("resize", updateMainPostAuthorMode);
+
 watch(() => route.params.id, () => {
   pendingReplyMonitorSeq += 1;
   topicReviewPollSeq += 1;
@@ -1046,6 +1070,8 @@ onBeforeUnmount(() => {
   pendingReplyMonitorSeq += 1;
   topicReviewPollSeq += 1;
   clearTopicReviewPollTimer();
+  mainFloorResizeObserver?.disconnect();
+  if (typeof window !== "undefined") window.removeEventListener("resize", updateMainPostAuthorMode);
 });
 
 watch(replyAnonymousEnabled, (enabled) => {
