@@ -22,6 +22,8 @@ export type PdsFile = {
   name: string;
   size: number;
   updatedAt: string;
+  /** 不带 Content-Disposition: attachment，可直接作为图片等浏览器资源加载。 */
+  viewUrl?: string;
 };
 
 export type PdsDownload = {
@@ -122,6 +124,7 @@ export type PdsEntry = {
   type: string;
   size?: number;
   updated_at?: string;
+  url?: string;
 };
 
 /** 从标准桌面安装包文件名中提取版本号，供更新接口自动下发。 */
@@ -194,6 +197,7 @@ export const walkShareTree = async (
         name: item.name,
         size: Number(item.size) || 0,
         updatedAt: item.updated_at ?? "",
+        viewUrl: item.url ?? "",
       });
     }
   }
@@ -331,7 +335,7 @@ export const pickCampusMapOriginal = (files: PdsFile[]): PdsFile | null => {
 
 // 解析结果整体缓存一小段时间：下载页与下载跳转是连着点的，没必要为同一次
 // 用户操作把三个 PDS 接口各打一遍。缓存必须短于地址本身的有效期。
-type DownloadTarget = "windows" | "mac" | "android" | "campus-map";
+type DownloadTarget = "windows" | "mac" | "android" | "campus-map" | "campus-map-view";
 const downloadCache = new Map<DownloadTarget, { value: PdsDownload; expiresAt: number }>();
 const inFlight = new Map<DownloadTarget, Promise<PdsDownload>>();
 
@@ -346,7 +350,7 @@ const getShareSettings = (target: DownloadTarget) => {
       pickInstaller: pickAndroidInstaller,
     };
   }
-  if (target === "campus-map") {
+  if (target === "campus-map" || target === "campus-map-view") {
     return {
       shareUrl: config.campusMapPdsShareUrl,
       password: config.campusMapPdsSharePassword,
@@ -383,11 +387,23 @@ const resolveTargetDownload = async (target: DownloadTarget): Promise<PdsDownloa
         ? "PDS share missing APK"
         : target === "mac"
           ? "PDS share missing DMG"
-          : target === "campus-map"
+          : target === "campus-map" || target === "campus-map-view"
             ? "PDS share missing campus map image"
             : "PDS share missing EXE");
     }
-    const download = await getDownloadUrl(ref, password, installer);
+    if (target === "campus-map-view" && !installer.viewUrl) {
+      throw new Error("PDS share missing inline file URL");
+    }
+    const download = target === "campus-map-view"
+      ? {
+        url: installer.viewUrl!,
+        name: installer.name,
+        size: installer.size,
+        expiresAt: Date.now() + 3600_000,
+        contentHash: "",
+        contentHashName: "",
+      }
+      : await getDownloadUrl(ref, password, installer);
     downloadCache.set(target, {
       value: download,
       expiresAt: Math.min(Date.now() + CACHE_MS, download.expiresAt - 60_000),
@@ -407,6 +423,7 @@ export const resolveDesktopDownload = (): Promise<PdsDownload> => resolveTargetD
 export const resolveMacDesktopDownload = (): Promise<PdsDownload> => resolveTargetDownload("mac");
 export const resolveAndroidDownload = (): Promise<PdsDownload> => resolveTargetDownload("android");
 export const resolveCampusMapDownload = (): Promise<PdsDownload> => resolveTargetDownload("campus-map");
+export const resolveCampusMapView = (): Promise<PdsDownload> => resolveTargetDownload("campus-map-view");
 
 export const hasPdsShare = (): boolean => parseShareUrl(config.desktopPdsShareUrl) !== null;
 export const hasAndroidPdsShare = (): boolean => parseShareUrl(config.androidAppPdsShareUrl) !== null;

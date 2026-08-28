@@ -381,8 +381,8 @@ export const config = {
   ).trim(),
   desktopPdsSharePassword: (process.env.DESKTOP_PDS_SHARE_PASSWORD ?? "").trim(),
   desktopAppVersion: (process.env.DESKTOP_APP_VERSION ?? "").trim(),
-  // 校园地图原图与前端预览图分开：页面继续加载压缩预览，下载时由服务端
-  // 解析 PDS 分享并跳转到短期直链，避免 20 MB 原图占用本站带宽和前端包体积。
+  // 校园地图的查看与下载都由服务端解析 PDS 分享并跳转到短期直链，
+  // 避免在仓库和前端包内保存图片，也不占用本站传输带宽。
   campusMapPdsShareUrl: (
     process.env.CAMPUS_MAP_PDS_SHARE_URL?.trim()
     || "https://bj37249.apps.aliyunfile.com/disk/s/RnrWbjgJ9U4?domainId=bj37249"

@@ -19,13 +19,14 @@ test("PDS 文件夹分享会递归找到内部安装包", async () => {
     ]],
     ["windows", [
       { file_id: "old", name: "药大拾间桌面端-0.1.0-win-x64-安装版.exe", type: "file", size: 80, updated_at: "2026-07-26T00:00:00Z" },
-      { file_id: "new", name: "药大拾间桌面端-0.1.1-win-x64-安装版.exe", type: "file", size: 81, updated_at: "2026-07-27T00:00:00Z" },
+      { file_id: "new", name: "药大拾间桌面端-0.1.1-win-x64-安装版.exe", type: "file", size: 81, updated_at: "2026-07-27T00:00:00Z", url: "https://pds.example/view-new" },
     ]],
   ]);
 
   const files = await walkShareTree(async (parent) => tree.get(parent) ?? []);
   assert.equal(files.length, 3);
   assert.equal(pickInstaller(files)?.fileId, "new");
+  assert.equal(pickInstaller(files)?.viewUrl, "https://pds.example/view-new");
 });
 
 test("PDS 文件夹同时包含 Windows 与 macOS 时会分别选择正确安装包", () => {

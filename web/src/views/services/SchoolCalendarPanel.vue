@@ -112,7 +112,7 @@
           </div>
         </div>
         <button class="image-frame map-image" type="button" aria-label="放大查看校园地图" @click="openImageViewer('map')">
-          <img :src="campusMapImage" alt="中国药科大学校园地图，含教学楼、宿舍区、出入口和校园设施" loading="lazy" />
+          <img :src="campusMapOriginalViewUrl" alt="中国药科大学校园地图，含教学楼、宿舍区、出入口和校园设施" loading="lazy" />
         </button>
         <p class="image-credit">图片来自用户提供素材，图中署名：药学卷王。</p>
       </section>
@@ -125,13 +125,13 @@
 import { computed, ref } from "vue";
 import { Calendar, MapLocation } from "@element-plus/icons-vue";
 import calendarImage from "@/assets/school-calendar/cpu-school-calendar-2026-2027.png";
-import campusMapImage from "@/assets/school-calendar/cpu-campus-map.png";
 import { cpuSchoolCalendar as calendar } from "@/data/schoolCalendar";
 import { openImageGallery } from "@/utils/imageViewer";
 
 type ViewName = "calendar" | "map";
 
 const campusMapOriginalDownloadUrl = "/api/site/downloads/campus-map-original";
+const campusMapOriginalViewUrl = "/api/site/media/campus-map-original";
 const activeView = ref<ViewName>("calendar");
 
 const currentTerm = computed(() => {
@@ -175,7 +175,7 @@ function openImageViewer(kind: ViewName) {
       fileName: `${calendar.academicYear}中国药科大学校历.png`,
     },
     {
-      src: campusMapImage,
+      src: campusMapOriginalViewUrl,
       title: "中国药科大学校园地图",
       alt: "中国药科大学校园地图，含教学楼、宿舍区、出入口和校园设施",
       fileName: "中国药科大学校园地图.png",
