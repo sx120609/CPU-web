@@ -89,14 +89,6 @@
             </li>
           </ul>
 
-          <div v-if="card.key === 'ios'" class="ios-install-callout">
-            <span class="ios-install-icon" aria-hidden="true">↓</span>
-            <span>
-              <strong>下载按钮在课表页面顶部</strong>
-              <small>进入课表后点击顶部的下载图标，即可查看完整安装教程。</small>
-            </span>
-          </div>
-
           <div class="platform-action-row">
             <a
               v-if="card.downloadUrl"
@@ -685,47 +677,6 @@ onMounted(async () => {
   color: var(--cpu-primary);
   font-size: 11px;
   font-weight: 900;
-}
-
-.ios-install-callout {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  margin: -2px 0 16px;
-  padding: 11px 12px;
-  border: 1px solid color-mix(in srgb, var(--cpu-primary) 24%, var(--cpu-border-soft));
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--cpu-primary) 7%, var(--cpu-surface));
-}
-
-.ios-install-icon {
-  display: grid;
-  width: 26px;
-  height: 26px;
-  flex: 0 0 auto;
-  place-items: center;
-  border-radius: 8px;
-  background: var(--cpu-primary);
-  color: #fff;
-  font-size: 15px;
-  font-weight: 900;
-}
-
-.ios-install-callout > span:last-child {
-  display: grid;
-  min-width: 0;
-  gap: 3px;
-}
-
-.ios-install-callout strong {
-  color: var(--cpu-text);
-  font-size: 12px;
-}
-
-.ios-install-callout small {
-  color: var(--cpu-text-secondary);
-  font-size: 11px;
-  line-height: 1.55;
 }
 
 .platform-action-row {
