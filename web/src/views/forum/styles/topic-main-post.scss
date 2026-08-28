@@ -34,19 +34,15 @@
   .actions { display: flex; align-items: center; gap: 4px; }
 
   .main-floor {
-    display: grid;
-    grid-template-columns: 168px minmax(0, 1fr);
-    align-items: stretch;
+    display: block;
   }
 
   .main-floor > :not(.post-meta) {
-    grid-column: 2;
     margin-left: 24px;
     margin-right: 24px;
   }
 
   .topic-title-row {
-    grid-row: 1;
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
@@ -91,38 +87,23 @@
   .lock { background: var(--cpu-surface-soft); color: var(--cpu-text-secondary); }
 
   .post-meta {
-    grid-column: 1;
-    grid-row: 1 / span 50;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    align-self: stretch;
-    gap: 10px;
     min-width: 0;
-    margin: 0;
-    padding: 24px 16px;
-    border-right: 1px solid var(--cpu-border-soft);
-    background: var(--cpu-surface-subtle);
-    text-align: center;
+    margin: 14px 24px 18px;
+    padding: 12px 0 14px;
+    border-bottom: 1px solid var(--cpu-border-soft);
+    background: transparent;
+    text-align: left;
+
     .post-author-card {
-      position: static;
       display: flex;
-      flex-direction: column;
       align-items: center;
-      gap: 10px;
+      gap: 12px;
       width: 100%;
     }
-    &.is-sticky-author {
-      display: block;
 
-      .post-author-card {
-        position: sticky;
-        top: clamp(92px, calc(50vh - 110px), 420px);
-      }
-    }
-    .avatar { background: var(--cpu-primary); color: #fff; font-weight: 600; }
-    .meta-author { min-width: 0; width: 100%; }
-    .name { font-size: 14px; font-weight: 600; color: var(--cpu-text); display: flex; gap: 6px; align-items: center; justify-content: center; flex-wrap: wrap; overflow-wrap: anywhere; }
+    .avatar { flex: 0 0 auto; background: var(--cpu-primary); color: #fff; font-weight: 600; }
+    .meta-author { flex: 1 1 auto; min-width: 0; }
+    .name { font-size: 14px; font-weight: 600; color: var(--cpu-text); display: flex; gap: 6px; align-items: center; justify-content: flex-start; flex-wrap: wrap; overflow-wrap: anywhere; }
     .vip-badge { color: #a16207; background: linear-gradient(135deg, #fef3c7, #fcd34d); border: 1px solid #f59e0b; border-radius: 999px; padding: 1px 6px; font-size: 10px; font-weight: 800; letter-spacing: .04em; }
     .name a { color: var(--cpu-primary); text-decoration: none; }
     .real-author-line {
@@ -149,17 +130,20 @@
 
   .topic-statline {
     display: flex;
+    flex: 0 1 auto;
+    justify-content: flex-end;
     flex-wrap: wrap;
-    gap: 7px 16px;
-    margin-top: 12px;
-    margin-bottom: 16px;
+    gap: 6px 12px;
+    max-width: 48%;
+    margin: 0;
     color: var(--cpu-text-muted);
     font-size: 12px;
+    text-align: right;
   }
 
   .topic-statline span + span::before {
     content: "·";
-    margin-right: 16px;
+    margin-right: 12px;
     color: var(--cpu-border);
   }
 

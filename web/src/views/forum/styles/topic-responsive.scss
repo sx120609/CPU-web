@@ -33,11 +33,8 @@
     }
 
     .main-floor {
-      display: flex;
-      flex-direction: column;
+      display: block;
     }
-
-    .main-floor > * { order: 0 !important; }
 
     .main-floor > :not(.post-meta) {
       margin-left: 14px;
@@ -45,7 +42,6 @@
     }
 
     .topic-title-row {
-      order: 1;
       flex-direction: column;
       gap: 10px;
       padding-top: 16px;
@@ -54,28 +50,19 @@
     .post-title { font-size: 20px; line-height: 1.45; word-break: break-word; }
     .topic-price { padding: 0; font-size: 20px; }
 
-    .topic-tags { order: 2; margin-top: 8px; }
+    .topic-tags { margin-top: 8px; }
 
     .post-meta {
-      order: 3;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: auto;
-      padding: 12px 14px;
-      border-top: 1px solid var(--cpu-border-soft);
-      border-right: 0;
+      margin: 12px 14px 14px;
+      padding: 10px 0 12px;
       border-bottom: 1px solid var(--cpu-border-soft);
-      margin-top: 12px;
-      text-align: center;
+      text-align: left;
 
       .post-author-card {
-        position: static;
-        display: flex;
-        flex-direction: column;
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
         align-items: center;
-        justify-content: center;
-        gap: 8px;
+        gap: 8px 10px;
         width: 100%;
       }
 
@@ -83,38 +70,28 @@
 
       .meta-author {
         min-width: 0;
-        width: 100%;
       }
 
       .name {
-        justify-content: center;
+        justify-content: flex-start;
         flex-wrap: wrap;
         line-height: 1.5;
       }
 
-      .real-author-line { text-align: center; }
+      .real-author-line { text-align: left; }
 
       .author-bio { display: none; }
     }
 
-    .post-meta.is-sticky-author {
-      display: flex;
-
-      .post-author-card { position: static; }
+    .topic-statline {
+      grid-column: 1 / -1;
+      justify-content: flex-start;
+      max-width: none;
+      margin: 2px 0 0;
+      gap: 6px 10px;
+      text-align: left;
     }
-    .topic-statline { order: 4; margin-top: 10px; margin-bottom: 14px; gap: 6px 10px; }
     .topic-statline span + span::before { margin-right: 10px; }
-
-    .source-bar,
-    .extra-bar,
-    .second-hand-summary,
-    .image-review-tip,
-    .topic-review-tip,
-    .topic-admin-review-tip,
-    .post-body,
-    .reaction-strip,
-    .reaction-picker,
-    .post-foot { order: 5; }
 
     .second-hand-summary-head { align-items: flex-start; flex-direction: column; }
     .second-hand-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); padding-inline: 8px; }
@@ -174,18 +151,17 @@
 
     .reply-author-panel {
       display: flex;
-      flex-direction: column;
       align-items: center;
-      justify-content: center;
-      gap: 8px;
-      padding: 12px 14px;
-      border-right: 0;
-      border-bottom: 1px solid var(--cpu-border-soft);
-      text-align: center;
+      justify-content: flex-start;
+      gap: 10px;
+      padding: 12px 14px 0;
+      text-align: left;
     }
 
     .reply-author-panel .avatar { width: 34px !important; height: 34px !important; }
-    .reply-author-badges { justify-content: center; }
+    .reply-author-copy { flex: 1 1 auto; min-width: 0; }
+    .reply-author-name-line { justify-content: flex-start; }
+    .reply-author-badges { justify-content: flex-start; }
     .reply-moderation-actions {
       flex-wrap: nowrap;
     }
@@ -195,12 +171,13 @@
       margin: 0;
       padding: 0 8px;
     }
-    .reply-author-panel .real-author-inline { text-align: center; }
+    .reply-author-panel .real-author-inline { text-align: left; }
     .reply-body { padding: 12px 14px 14px; }
 
     .reply-meta {
-      justify-content: flex-start;
+      justify-content: flex-end;
       flex-wrap: wrap;
+      margin-left: auto;
       line-height: 1.5;
     }
 
