@@ -30,6 +30,7 @@ import {
 
 const CACHE_CONTROL_VALUE = "public, max-age=2592000, immutable";
 const REMOTE_PUBLIC_URL_CACHE_TTL_MS = 10 * 60 * 1000;
+const WEB_STATIC_COS_PREFIX = "web-static/";
 
 export type MediaStorageBackend = "local" | "onedrive-cn" | "cos";
 
@@ -429,10 +430,12 @@ export async function listMediaStorageAdminInventory(): Promise<MediaStorageAdmi
   if (cosConfigured) {
     try {
       cosFiles = new Map(
-        (await listTencentCosFiles()).map((item) => [
-          normalizeUploadRelativePath(item.relativePath),
-          { sizeBytes: item.size, updatedAt: String(item.lastModifiedAt || "").trim() },
-        ]),
+        (await listTencentCosFiles())
+          .filter((item) => !normalizeUploadRelativePath(item.relativePath).startsWith(WEB_STATIC_COS_PREFIX))
+          .map((item) => [
+            normalizeUploadRelativePath(item.relativePath),
+            { sizeBytes: item.size, updatedAt: String(item.lastModifiedAt || "").trim() },
+          ]),
       );
       cosReachable = true;
     } catch (error) {

@@ -942,6 +942,23 @@ do_build_web() {
   log "Web assets published atomically; previous hashed chunks were retained"
 }
 
+do_sync_web_static_assets() {
+  local sync_script="$ROOT_DIR/server/dist/scripts/syncWebStaticAssets.js"
+  local live_dist="$ROOT_DIR/web/dist"
+  if [ ! -f "$sync_script" ]; then
+    warn "COS static sync script is unavailable; keeping local static delivery"
+    return 0
+  fi
+  if [ ! -d "$live_dist/assets" ]; then
+    warn "web/dist/assets is unavailable; keeping local static delivery"
+    return 0
+  fi
+  log "Syncing hashed web assets to Tencent COS"
+  if ! NODE_ENV=production node "$sync_script" "$live_dist"; then
+    warn "Tencent COS static sync failed; deployment will continue with local static delivery"
+  fi
+}
+
 do_build_voicehub() {
   ensure_project_build_dependencies voicehub nuxt
   log "Building VoiceHub Nuxt/Nitro -> voicehub/.output"
@@ -951,6 +968,7 @@ do_build_voicehub() {
 do_build_all() {
   do_build_server
   do_build_web
+  do_sync_web_static_assets
   do_build_voicehub
 }
 
@@ -1584,6 +1602,10 @@ do_update() {
   if [ "$web_changed" = "1" ]; then
     [ "$web_dependencies_changed" = "1" ] && do_install_web
     do_build_web
+  fi
+
+  if [ "$server_changed" = "1" ] || [ "$web_changed" = "1" ]; then
+    do_sync_web_static_assets
   fi
 
   if [ "$server_changed" = "1" ] || [ "$web_changed" = "1" ]; then

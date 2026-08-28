@@ -200,6 +200,13 @@ export async function resolveTencentCosPublicUrl(relativePath: string) {
   });
 }
 
+export async function resolveTencentCosOriginUrl(relativePath: string) {
+  const config = await resolveTencentCosConfig();
+  if (!config.bucket || !config.region) throw new Error("腾讯云 COS 存储桶或地域尚未配置");
+  const key = buildTencentCosObjectKey(relativePath, config.rootPath);
+  return `${defaultTencentCosOrigin(config)}/${encodeObjectKey(key)}`;
+}
+
 async function requireTencentCosClient() {
   const config = await resolveTencentCosConfig();
   if (!config.secretId || !config.secretKey) throw new Error("腾讯云 COS SecretId / SecretKey 尚未配置");
