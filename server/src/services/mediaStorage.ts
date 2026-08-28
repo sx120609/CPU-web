@@ -688,13 +688,6 @@ export const uploadAssetHandler: RequestHandler = async (req, res) => {
     return;
   }
 
-  const publicLocalPath = await findExistingLocalAsset(relativePath, false);
-  if (publicLocalPath) {
-    res.setHeader("Cache-Control", CACHE_CONTROL_VALUE);
-    res.sendFile(publicLocalPath);
-    return;
-  }
-
   if (await canUseRemoteMediaStorageFallback(relativePath)) {
     try {
       const runtime = await getMediaStorageRuntimeConfig();
@@ -713,20 +706,16 @@ export const uploadAssetHandler: RequestHandler = async (req, res) => {
         Readable.from(remote.body).pipe(res);
         return;
       }
-      if (remote && remote.status !== 404) {
-        res.status(502).send(`远端媒体回源失败：HTTP ${remote.status}`);
-        return;
-      }
-    } catch (error) {
-      const cachedPath = await findExistingLocalAsset(relativePath, true);
-      if (cachedPath) {
-        res.setHeader("Cache-Control", CACHE_CONTROL_VALUE);
-        res.sendFile(cachedPath);
-        return;
-      }
-      res.status(502).send(error instanceof Error ? error.message : "远端媒体回源失败");
-      return;
+    } catch {
+      // 远端异常时继续使用保留在本机的副本，避免 COS / OneDrive 短暂故障影响站内图片。
     }
+  }
+
+  const publicLocalPath = await findExistingLocalAsset(relativePath, false);
+  if (publicLocalPath) {
+    res.setHeader("Cache-Control", CACHE_CONTROL_VALUE);
+    res.sendFile(publicLocalPath);
+    return;
   }
 
   const cachedPath = await findExistingLocalAsset(relativePath, true);
