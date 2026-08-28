@@ -13,6 +13,8 @@ import { decodeTopicForViewer } from "../services/forumPresentation";
 import { visibleBoardSlugFilter } from "../services/retiredBoards";
 import { forumContentVisibilityWhere } from "../services/forumSubmission";
 import { isVipActive, VIP_PROFILE_FRAMES, VIP_PROFILE_THEMES } from "../services/vip";
+import { deleteManagedUserAvatar, storeUserAvatarDataUrl } from "../services/userAvatarStorage";
+import { invalidateForumCaches } from "../services/cacheInvalidation";
 
 export const userRouter = Router();
 
@@ -29,8 +31,26 @@ userRouter.patch("/me", authRequired, async (req, res, next) => {
   try {
     const body = req.body as Record<string, unknown>;
     const allowed: Record<string, unknown> = {};
-    for (const k of ["nickname", "bio", "college", "enrollYear", "avatar"]) {
+    for (const k of ["nickname", "bio", "college", "enrollYear"]) {
       if (body[k] !== undefined) allowed[k] = body[k];
+    }
+    const previous = body.avatar !== undefined
+      ? await prisma.user.findUnique({ where: { id: req.user!.userId }, select: { avatar: true } })
+      : null;
+    if (body.avatar !== undefined) {
+      if (body.avatar === null || body.avatar === "") {
+        allowed.avatar = null;
+      } else if (typeof body.avatar === "string" && body.avatar.trim().startsWith("data:image/")) {
+        try {
+          allowed.avatar = await storeUserAvatarDataUrl(req.user!.userId, body.avatar);
+        } catch (error: any) {
+          throw Errors.badRequest(String(error?.message || "头像保存失败"));
+        }
+      } else if (typeof body.avatar === "string") {
+        allowed.avatar = body.avatar.trim();
+      } else {
+        throw Errors.badRequest("头像数据格式不正确");
+      }
     }
     if (body.profileTheme !== undefined || body.profileFrame !== undefined) {
       const current = await prisma.user.findUnique({
@@ -55,6 +75,10 @@ userRouter.patch("/me", authRequired, async (req, res, next) => {
       allowed.dataAuthAgreedAt = new Date();
     }
     const u = await prisma.user.update({ where: { id: req.user!.userId }, data: allowed });
+    if (body.avatar !== undefined && previous?.avatar !== u.avatar) {
+      if (previous?.avatar) await deleteManagedUserAvatar(previous.avatar).catch(() => false);
+      await invalidateForumCaches();
+    }
     ok(res, buildSelfUser(u));
   } catch (e) { next(e); }
 });

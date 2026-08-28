@@ -2,7 +2,7 @@ import { prisma } from "../prisma";
 import { config } from "../config";
 import { broadcastStorageConfigReload } from "./runtimeBroadcast";
 
-export type MediaStorageProvider = "local" | "onedrive-cn";
+export type MediaStorageProvider = "local" | "onedrive-cn" | "cos";
 export type MediaStorageKind = "image" | "video";
 
 export type MediaStorageStoredConfig = {
@@ -25,11 +25,18 @@ export type MediaStorageStoredConfig = {
   oneDriveChinaRefreshToken: string;
   oneDriveChinaAuthorizedAt: string;
   oneDriveChinaLastError: string;
+  tencentCosSecretId: string;
+  tencentCosSecretKey: string;
+  tencentCosBucket: string;
+  tencentCosRegion: string;
+  tencentCosRootPath: string;
+  tencentCosPublicBaseUrl: string;
 };
 
-export type MediaStorageAdminConfig = Omit<MediaStorageStoredConfig, "oneDriveChinaClientSecret" | "oneDriveChinaRefreshToken"> & {
+export type MediaStorageAdminConfig = Omit<MediaStorageStoredConfig, "oneDriveChinaClientSecret" | "oneDriveChinaRefreshToken" | "tencentCosSecretKey"> & {
   oneDriveChinaClientSecretConfigured: boolean;
   oneDriveChinaRefreshTokenConfigured: boolean;
+  tencentCosSecretKeyConfigured: boolean;
 };
 
 export type MediaStorageRuntimeConfig = MediaStorageStoredConfig & {
@@ -42,6 +49,12 @@ export type MediaStorageRuntimeConfig = MediaStorageStoredConfig & {
   legacyClientSecret: string;
   legacyDriveId: string;
   legacyRootPath: string;
+  legacyTencentCosSecretId: string;
+  legacyTencentCosSecretKey: string;
+  legacyTencentCosBucket: string;
+  legacyTencentCosRegion: string;
+  legacyTencentCosRootPath: string;
+  legacyTencentCosPublicBaseUrl: string;
 };
 
 const MEDIA_STORAGE_PROVIDER_KEY = "storage.media.provider";
@@ -63,6 +76,12 @@ const ONEDRIVE_CN_ROOT_PATH_KEY = "storage.onedriveCn.rootPath";
 const ONEDRIVE_CN_REFRESH_TOKEN_KEY = "storage.onedriveCn.refreshToken";
 const ONEDRIVE_CN_AUTHORIZED_AT_KEY = "storage.onedriveCn.authorizedAt";
 const ONEDRIVE_CN_LAST_ERROR_KEY = "storage.onedriveCn.lastError";
+const TENCENT_COS_SECRET_ID_KEY = "storage.tencentCos.secretId";
+const TENCENT_COS_SECRET_KEY_KEY = "storage.tencentCos.secretKey";
+const TENCENT_COS_BUCKET_KEY = "storage.tencentCos.bucket";
+const TENCENT_COS_REGION_KEY = "storage.tencentCos.region";
+const TENCENT_COS_ROOT_PATH_KEY = "storage.tencentCos.rootPath";
+const TENCENT_COS_PUBLIC_BASE_URL_KEY = "storage.tencentCos.publicBaseUrl";
 
 const STORAGE_KEYS = [
   MEDIA_STORAGE_PROVIDER_KEY,
@@ -84,6 +103,12 @@ const STORAGE_KEYS = [
   ONEDRIVE_CN_REFRESH_TOKEN_KEY,
   ONEDRIVE_CN_AUTHORIZED_AT_KEY,
   ONEDRIVE_CN_LAST_ERROR_KEY,
+  TENCENT_COS_SECRET_ID_KEY,
+  TENCENT_COS_SECRET_KEY_KEY,
+  TENCENT_COS_BUCKET_KEY,
+  TENCENT_COS_REGION_KEY,
+  TENCENT_COS_ROOT_PATH_KEY,
+  TENCENT_COS_PUBLIC_BASE_URL_KEY,
 ] as const;
 
 let loaded = false;
@@ -114,6 +139,12 @@ const storageConfigCache: MediaStorageStoredConfig = {
   oneDriveChinaRefreshToken: "",
   oneDriveChinaAuthorizedAt: "",
   oneDriveChinaLastError: "",
+  tencentCosSecretId: "",
+  tencentCosSecretKey: "",
+  tencentCosBucket: "",
+  tencentCosRegion: "",
+  tencentCosRootPath: "",
+  tencentCosPublicBaseUrl: "",
 };
 
 export async function loadStorageConfig(): Promise<void> {
@@ -143,6 +174,12 @@ export async function loadStorageConfig(): Promise<void> {
     oneDriveChinaRefreshToken: "",
     oneDriveChinaAuthorizedAt: "",
     oneDriveChinaLastError: "",
+    tencentCosSecretId: "",
+    tencentCosSecretKey: "",
+    tencentCosBucket: "",
+    tencentCosRegion: "",
+    tencentCosRootPath: "",
+    tencentCosPublicBaseUrl: "",
   });
   const rows = await prisma.siteSetting.findMany({
     where: {
@@ -224,6 +261,30 @@ export async function loadStorageConfig(): Promise<void> {
     }
     if (row.key === ONEDRIVE_CN_LAST_ERROR_KEY) {
       next.oneDriveChinaLastError = String(row.value || "").trim();
+      continue;
+    }
+    if (row.key === TENCENT_COS_SECRET_ID_KEY) {
+      next.tencentCosSecretId = String(row.value || "").trim();
+      continue;
+    }
+    if (row.key === TENCENT_COS_SECRET_KEY_KEY) {
+      next.tencentCosSecretKey = String(row.value || "").trim();
+      continue;
+    }
+    if (row.key === TENCENT_COS_BUCKET_KEY) {
+      next.tencentCosBucket = normalizeCosBucket(row.value);
+      continue;
+    }
+    if (row.key === TENCENT_COS_REGION_KEY) {
+      next.tencentCosRegion = normalizeCosRegion(row.value);
+      continue;
+    }
+    if (row.key === TENCENT_COS_ROOT_PATH_KEY) {
+      next.tencentCosRootPath = normalizeRootPath(row.value);
+      continue;
+    }
+    if (row.key === TENCENT_COS_PUBLIC_BASE_URL_KEY) {
+      next.tencentCosPublicBaseUrl = normalizePublicBaseUrl(row.value);
     }
   }
   sanitizeStorageConfig(next);
@@ -241,8 +302,14 @@ export async function getMediaStorageAdminConfig(): Promise<MediaStorageAdminCon
       ...storageConfigCache,
       mediaStorageProvider: normalizedProvider,
     }),
+    tencentCosSecretId: storageConfigCache.tencentCosSecretId || String(config.tencentCosSecretId || "").trim(),
+    tencentCosBucket: storageConfigCache.tencentCosBucket || normalizeCosBucket(config.tencentCosBucket),
+    tencentCosRegion: storageConfigCache.tencentCosRegion || normalizeCosRegion(config.tencentCosRegion),
+    tencentCosRootPath: storageConfigCache.tencentCosRootPath || normalizeRootPath(config.tencentCosRootPath),
+    tencentCosPublicBaseUrl: storageConfigCache.tencentCosPublicBaseUrl || normalizePublicBaseUrl(config.tencentCosPublicBaseUrl),
     oneDriveChinaClientSecretConfigured: Boolean(storageConfigCache.oneDriveChinaClientSecret),
     oneDriveChinaRefreshTokenConfigured: Boolean(storageConfigCache.oneDriveChinaRefreshToken),
+    tencentCosSecretKeyConfigured: Boolean(storageConfigCache.tencentCosSecretKey || String(config.tencentCosSecretKey || "").trim()),
   };
 }
 
@@ -271,6 +338,12 @@ export function getMediaStorageRuntimeConfigSync(): MediaStorageRuntimeConfig {
     legacyClientSecret: String(config.oneDriveChinaClientSecret || "").trim(),
     legacyDriveId: String(config.oneDriveChinaDriveId || "").trim(),
     legacyRootPath: normalizeRootPath(config.oneDriveChinaRootPath),
+    legacyTencentCosSecretId: String(config.tencentCosSecretId || "").trim(),
+    legacyTencentCosSecretKey: String(config.tencentCosSecretKey || "").trim(),
+    legacyTencentCosBucket: normalizeCosBucket(config.tencentCosBucket),
+    legacyTencentCosRegion: normalizeCosRegion(config.tencentCosRegion),
+    legacyTencentCosRootPath: normalizeRootPath(config.tencentCosRootPath),
+    legacyTencentCosPublicBaseUrl: normalizePublicBaseUrl(config.tencentCosPublicBaseUrl),
   };
 }
 
@@ -284,6 +357,13 @@ export async function updateMediaStorageAdminConfig(input: {
   clearOneDriveChinaClientSecret?: boolean;
   oneDriveChinaSharepointUrl?: string;
   oneDriveChinaRootPath?: string;
+  tencentCosSecretId?: string;
+  tencentCosSecretKey?: string;
+  clearTencentCosSecretKey?: boolean;
+  tencentCosBucket?: string;
+  tencentCosRegion?: string;
+  tencentCosRootPath?: string;
+  tencentCosPublicBaseUrl?: string;
 }): Promise<MediaStorageAdminConfig> {
   await ensureLoaded();
   const next = cloneStorageConfig(storageConfigCache);
@@ -321,6 +401,19 @@ export async function updateMediaStorageAdminConfig(input: {
   if (input.oneDriveChinaRootPath !== undefined) {
     next.oneDriveChinaRootPath = normalizeRootPath(input.oneDriveChinaRootPath);
   }
+  if (input.tencentCosSecretId !== undefined) {
+    next.tencentCosSecretId = String(input.tencentCosSecretId || "").trim();
+  }
+  if (input.clearTencentCosSecretKey) {
+    next.tencentCosSecretKey = "";
+  } else if (input.tencentCosSecretKey !== undefined) {
+    const raw = String(input.tencentCosSecretKey || "").trim();
+    if (raw) next.tencentCosSecretKey = raw;
+  }
+  if (input.tencentCosBucket !== undefined) next.tencentCosBucket = normalizeCosBucket(input.tencentCosBucket);
+  if (input.tencentCosRegion !== undefined) next.tencentCosRegion = normalizeCosRegion(input.tencentCosRegion);
+  if (input.tencentCosRootPath !== undefined) next.tencentCosRootPath = normalizeRootPath(input.tencentCosRootPath);
+  if (input.tencentCosPublicBaseUrl !== undefined) next.tencentCosPublicBaseUrl = normalizePublicBaseUrl(input.tencentCosPublicBaseUrl);
 
   const credentialsChanged = previousClientId !== next.oneDriveChinaClientId || previousClientSecret !== next.oneDriveChinaClientSecret;
   const siteChanged = previousSharepointUrl !== next.oneDriveChinaSharepointUrl;
@@ -485,6 +578,12 @@ function sanitizeStorageConfig(target: MediaStorageStoredConfig) {
   target.oneDriveChinaRootPath = normalizeRootPath(target.oneDriveChinaRootPath);
   target.oneDriveChinaAuthorizedAt = normalizeIsoDate(target.oneDriveChinaAuthorizedAt);
   target.oneDriveChinaLastError = String(target.oneDriveChinaLastError || "").trim().slice(0, 500);
+  target.tencentCosSecretId = String(target.tencentCosSecretId || "").trim();
+  target.tencentCosSecretKey = String(target.tencentCosSecretKey || "").trim();
+  target.tencentCosBucket = normalizeCosBucket(target.tencentCosBucket);
+  target.tencentCosRegion = normalizeCosRegion(target.tencentCosRegion);
+  target.tencentCosRootPath = normalizeRootPath(target.tencentCosRootPath);
+  target.tencentCosPublicBaseUrl = normalizePublicBaseUrl(target.tencentCosPublicBaseUrl);
 }
 
 function clearResolvedSharePointState(target: MediaStorageStoredConfig) {
@@ -517,6 +616,12 @@ async function persistStorageConfig(next: MediaStorageStoredConfig) {
     [ONEDRIVE_CN_REFRESH_TOKEN_KEY, next.oneDriveChinaRefreshToken],
     [ONEDRIVE_CN_AUTHORIZED_AT_KEY, next.oneDriveChinaAuthorizedAt],
     [ONEDRIVE_CN_LAST_ERROR_KEY, next.oneDriveChinaLastError],
+    [TENCENT_COS_SECRET_ID_KEY, next.tencentCosSecretId],
+    [TENCENT_COS_SECRET_KEY_KEY, next.tencentCosSecretKey],
+    [TENCENT_COS_BUCKET_KEY, next.tencentCosBucket],
+    [TENCENT_COS_REGION_KEY, next.tencentCosRegion],
+    [TENCENT_COS_ROOT_PATH_KEY, next.tencentCosRootPath],
+    [TENCENT_COS_PUBLIC_BASE_URL_KEY, next.tencentCosPublicBaseUrl],
   ];
   await prisma.$transaction(entries.map(([key, value]) => prisma.siteSetting.upsert({
     where: { key },
@@ -535,14 +640,51 @@ async function resetStorageRuntimeCachesLocally() {
     import("./oneDriveChina")
       .then((module) => module.resetOneDriveChinaTransientCaches())
       .catch(() => undefined),
+    import("./tencentCos")
+      .then((module) => module.resetTencentCosClientCache())
+      .catch(() => undefined),
   ]);
 }
 
 function normalizeMediaStorageProvider(input: unknown, fallback: MediaStorageProvider): MediaStorageProvider {
   const raw = String(input || "").trim().toLowerCase();
+  if (raw === "cos") return "cos";
   if (raw === "onedrive-cn") return "onedrive-cn";
   if (raw === "local") return "local";
   return fallback;
+}
+
+function normalizeCosBucket(input: unknown) {
+  const raw = String(input || "").trim().toLowerCase();
+  if (!raw) return "";
+  if (!/^[a-z0-9][a-z0-9-]{1,58}-\d{5,20}$/u.test(raw)) {
+    throw new Error("COS 存储桶名称格式不正确，应包含 APPID 后缀");
+  }
+  return raw;
+}
+
+function normalizeCosRegion(input: unknown) {
+  const raw = String(input || "").trim().toLowerCase();
+  if (!raw) return "";
+  if (!/^[a-z][a-z0-9-]{1,40}$/u.test(raw)) throw new Error("COS 地域格式不正确");
+  return raw;
+}
+
+function normalizePublicBaseUrl(input: unknown) {
+  const raw = String(input || "").trim();
+  if (!raw) return "";
+  let parsed: URL;
+  try {
+    parsed = new URL(/^https?:\/\//iu.test(raw) ? raw : `https://${raw}`);
+  } catch {
+    throw new Error("COS 公网/CDN 域名格式不正确");
+  }
+  if (parsed.protocol !== "https:" || !parsed.hostname || parsed.username || parsed.password) {
+    throw new Error("COS 公网/CDN 域名必须是 HTTPS 地址");
+  }
+  parsed.search = "";
+  parsed.hash = "";
+  return parsed.toString().replace(/\/+$/u, "");
 }
 
 function parseBooleanSetting(input: unknown, fallback: boolean) {

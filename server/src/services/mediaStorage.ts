@@ -16,11 +16,22 @@ import {
 import { getCachedJson, setCachedJson } from "./cache";
 import { buildRedisKey } from "./redis";
 import { getMediaStorageRuntimeConfig, getMediaStorageRuntimeConfigSync, type MediaStorageKind } from "./storageConfig";
+import {
+  createTencentCosUploadSession,
+  deleteTencentCosFile,
+  downloadTencentCosFileBuffer,
+  fetchTencentCosFile,
+  headTencentCosFile,
+  isTencentCosConfigured,
+  listTencentCosFiles,
+  resolveTencentCosPublicUrl,
+  uploadTencentCosFile,
+} from "./tencentCos";
 
 const CACHE_CONTROL_VALUE = "public, max-age=2592000, immutable";
 const REMOTE_PUBLIC_URL_CACHE_TTL_MS = 10 * 60 * 1000;
 
-export type MediaStorageBackend = "local" | "onedrive-cn";
+export type MediaStorageBackend = "local" | "onedrive-cn" | "cos";
 
 export type SaveMediaAssetInput = {
   relativePath: string;
@@ -56,6 +67,12 @@ export type MediaStorageAdminFileEntry = {
   localUpdatedAt: string;
   cacheUpdatedAt: string;
   remoteUpdatedAt: string;
+  oneDriveExists: boolean;
+  oneDriveSizeBytes: number | null;
+  oneDriveUpdatedAt: string;
+  cosExists: boolean;
+  cosSizeBytes: number | null;
+  cosUpdatedAt: string;
 };
 
 export type MediaStorageAdminInventory = {
@@ -67,11 +84,20 @@ export type MediaStorageAdminInventory = {
   remoteConfigured: boolean;
   remoteReachable: boolean;
   remoteError: string;
+  oneDriveConfigured: boolean;
+  oneDriveReachable: boolean;
+  oneDriveError: string;
+  cosConfigured: boolean;
+  cosReachable: boolean;
+  cosError: string;
   summary: {
     total: number;
     localCount: number;
     cacheCount: number;
     remoteCount: number;
+    oneDriveCount: number;
+    cosCount: number;
+    legacyAvatarCount: number;
     eligibleMigrationCount: number;
     syncedCount: number;
     migratedCount: number;
@@ -173,7 +199,20 @@ function resolveConfiguredBackendForInventoryRow(
 }
 
 function remoteStorageConfigured(runtime: Awaited<ReturnType<typeof getMediaStorageRuntimeConfigSync>>) {
+  return oneDriveStorageConfigured(runtime) || cosStorageConfigured(runtime);
+}
+
+function oneDriveStorageConfigured(runtime: Awaited<ReturnType<typeof getMediaStorageRuntimeConfigSync>>) {
   return Boolean(runtime.oneDriveChinaDriveId.trim() || runtime.legacyDriveId.trim());
+}
+
+function cosStorageConfigured(runtime: Awaited<ReturnType<typeof getMediaStorageRuntimeConfigSync>>) {
+  return Boolean(
+    (runtime.tencentCosSecretId.trim() || runtime.legacyTencentCosSecretId.trim())
+    && (runtime.tencentCosSecretKey.trim() || runtime.legacyTencentCosSecretKey.trim())
+    && (runtime.tencentCosBucket.trim() || runtime.legacyTencentCosBucket.trim())
+    && (runtime.tencentCosRegion.trim() || runtime.legacyTencentCosRegion.trim()),
+  );
 }
 
 export function resolveMediaLocalPathFromUploadUrl(url: string) {
@@ -200,8 +239,7 @@ export async function resolveMediaPublicUrl(url: string) {
   if (!relativePath) return String(url || "").trim();
   const runtime = await getMediaStorageRuntimeConfig();
   const configuredBackend = resolveConfiguredBackendForRelativePath(relativePath, runtime);
-  const usesRemote = configuredBackend === "onedrive-cn"
-    && pathMatchesPrefixes(relativePath, runtime.effectiveRemotePrefixes);
+  const usesRemote = configuredBackend !== "local" && pathMatchesPrefixes(relativePath, runtime.effectiveRemotePrefixes);
   if (!usesRemote) {
     return buildUploadUrl(relativePath);
   }
@@ -211,10 +249,10 @@ export async function resolveMediaPublicUrl(url: string) {
     return cached.url;
   }
 
-  const remoteDriveKey = runtime.oneDriveChinaDriveId.trim()
-    || runtime.legacyDriveId.trim()
-    || "default";
-  const sharedCacheKey = buildRedisKey("media-public-url", remoteDriveKey, relativePath);
+  const remoteDriveKey = configuredBackend === "cos"
+    ? runtime.tencentCosBucket.trim() || runtime.legacyTencentCosBucket.trim() || "default"
+    : runtime.oneDriveChinaDriveId.trim() || runtime.legacyDriveId.trim() || "default";
+  const sharedCacheKey = buildRedisKey("media-public-url", configuredBackend, remoteDriveKey, relativePath);
   const sharedCachedUrl = await getCachedJson<string>(sharedCacheKey);
   if (sharedCachedUrl) {
     remotePublicUrlCache.set(relativePath, {
@@ -229,7 +267,9 @@ export async function resolveMediaPublicUrl(url: string) {
 
   const promise = (async () => {
     try {
-      const directUrl = await resolveOneDriveChinaDirectDownloadUrl(relativePath);
+      const directUrl = configuredBackend === "cos"
+        ? await resolveTencentCosPublicUrl(relativePath)
+        : await resolveOneDriveChinaDirectDownloadUrl(relativePath);
       const resolved = directUrl || buildUploadUrl(relativePath);
       if (directUrl) {
         remotePublicUrlCache.set(relativePath, {
@@ -261,9 +301,13 @@ export async function createRemoteMediaUploadSession(input: {
   sizeBytes?: number | null;
 }) {
   const relativePath = normalizeUploadRelativePath(input.relativePath);
-  const remote = await shouldPreferRemoteMediaStorage(relativePath, input.mediaKind ?? undefined, input.sizeBytes ?? undefined);
-  if (!remote) return null;
-  return createOneDriveChinaUploadSession(relativePath, input.contentType);
+  const backend = await preferredRemoteMediaStorageBackend(relativePath, input.mediaKind ?? undefined, input.sizeBytes ?? undefined);
+  if (backend === "cos") return createTencentCosUploadSession(relativePath, input.contentType);
+  if (backend === "onedrive-cn") {
+    const session = await createOneDriveChinaUploadSession(relativePath, input.contentType);
+    return { ...session, strategy: "chunked" as const };
+  }
+  return null;
 }
 
 export async function prepareMediaLocalFileForProcessing(url: string): Promise<MediaProcessingLocalFile> {
@@ -278,9 +322,7 @@ export async function prepareMediaLocalFileForProcessing(url: string): Promise<M
     };
   }
   try {
-    const response = await fetchOneDriveChinaFile(relativePath);
-    if (!response.ok) return { localPath: "", temporary: false };
-    const buffer = Buffer.from(await response.arrayBuffer());
+    const buffer = await downloadConfiguredRemoteFileBuffer(relativePath);
     if (!buffer.length) return { localPath: "", temporary: false };
     const ext = path.extname(relativePath).replace(/^\./, "").toLowerCase();
     const tempDir = path.resolve(process.cwd(), "runtime", "media-processing");
@@ -295,7 +337,8 @@ export async function prepareMediaLocalFileForProcessing(url: string): Promise<M
 
 export async function saveMediaAsset(input: SaveMediaAssetInput): Promise<SaveMediaAssetResult> {
   const relativePath = normalizeUploadRelativePath(input.relativePath);
-  if (!(await shouldPreferRemoteMediaStorage(relativePath, input.mediaKind ?? undefined, input.buffer.byteLength))) {
+  const backend = await preferredRemoteMediaStorageBackend(relativePath, input.mediaKind ?? undefined, input.buffer.byteLength);
+  if (!backend) {
     const localPath = localAssetAbsolutePath(relativePath);
     await mkdir(path.dirname(localPath), { recursive: true });
     await writeFile(localPath, input.buffer);
@@ -310,9 +353,13 @@ export async function saveMediaAsset(input: SaveMediaAssetInput): Promise<SaveMe
   const cachePath = cachedAssetAbsolutePath(relativePath);
   await mkdir(path.dirname(cachePath), { recursive: true });
   await writeFile(cachePath, input.buffer);
-  await uploadOneDriveChinaFile(relativePath, input.buffer, input.contentType || "application/octet-stream");
+  if (backend === "cos") {
+    await uploadTencentCosFile(relativePath, input.buffer, input.contentType || "application/octet-stream");
+  } else {
+    await uploadOneDriveChinaFile(relativePath, input.buffer, input.contentType || "application/octet-stream");
+  }
   return {
-    backend: "onedrive-cn",
+    backend,
     relativePath,
     url: buildUploadUrl(relativePath),
     localPath: cachePath,
@@ -335,25 +382,37 @@ export async function deleteMediaAsset(relativePathInput: string) {
   const shouldDeleteRemote = remoteStorageConfigured(runtime)
     && (pathMatchesPrefixes(relativePath, runtime.effectiveRemotePrefixes) || isFileCollectRelativePath(relativePath));
   if (shouldDeleteRemote) {
-    await deleteOneDriveChinaFile(relativePath).catch((error: any) => {
-      if (String(error?.message || "").includes("404")) return false;
-      throw error;
-    });
+    await Promise.all([
+      oneDriveStorageConfigured(runtime)
+        ? deleteOneDriveChinaFile(relativePath).catch((error: any) => {
+          if (String(error?.message || "").includes("404")) return false;
+          throw error;
+        })
+        : Promise.resolve(false),
+      cosStorageConfigured(runtime) ? deleteTencentCosFile(relativePath) : Promise.resolve(false),
+    ]);
   }
 }
 
 export async function listMediaStorageAdminInventory(): Promise<MediaStorageAdminInventory> {
   const runtime = await getMediaStorageRuntimeConfig();
-  const localFiles = await collectLocalFiles(localUploadRoot);
-  const cacheFiles = await collectLocalFiles(mediaCacheRoot);
-  const remoteConfigured = remoteStorageConfigured(runtime);
-  let remoteReachable = false;
-  let remoteError = "";
-  let remoteFiles = new Map<string, { sizeBytes: number | null; updatedAt: string }>();
+  const [localFiles, cacheFiles, legacyAvatarCount] = await Promise.all([
+    collectLocalFiles(localUploadRoot),
+    collectLocalFiles(mediaCacheRoot),
+    prisma.user.count({ where: { avatar: { startsWith: "data:image/" } } }),
+  ]);
+  const oneDriveConfigured = oneDriveStorageConfigured(runtime);
+  const cosConfigured = cosStorageConfigured(runtime) && await isTencentCosConfigured();
+  let oneDriveReachable = false;
+  let oneDriveError = "";
+  let cosReachable = false;
+  let cosError = "";
+  let oneDriveFiles = new Map<string, { sizeBytes: number | null; updatedAt: string }>();
+  let cosFiles = new Map<string, { sizeBytes: number | null; updatedAt: string }>();
 
-  if (remoteConfigured) {
+  if (oneDriveConfigured) {
     try {
-      remoteFiles = new Map(
+      oneDriveFiles = new Map(
         (await listOneDriveChinaFiles()).map((item) => [
           normalizeUploadRelativePath(item.relativePath),
           {
@@ -362,27 +421,48 @@ export async function listMediaStorageAdminInventory(): Promise<MediaStorageAdmi
           },
         ]),
       );
-      remoteReachable = true;
+      oneDriveReachable = true;
     } catch (error) {
-      remoteError = String((error as any)?.message || error || "读取远端文件列表失败").slice(0, 500);
+      oneDriveError = String((error as any)?.message || error || "读取世纪互联文件列表失败").slice(0, 500);
     }
   }
+  if (cosConfigured) {
+    try {
+      cosFiles = new Map(
+        (await listTencentCosFiles()).map((item) => [
+          normalizeUploadRelativePath(item.relativePath),
+          { sizeBytes: item.size, updatedAt: String(item.lastModifiedAt || "").trim() },
+        ]),
+      );
+      cosReachable = true;
+    } catch (error) {
+      cosError = String((error as any)?.message || error || "读取腾讯云 COS 文件列表失败").slice(0, 500);
+    }
+  }
+
+  const remoteConfigured = oneDriveConfigured || cosConfigured;
+  const remoteReachable = (!oneDriveConfigured || oneDriveReachable) && (!cosConfigured || cosReachable) && remoteConfigured;
+  const remoteError = [oneDriveError, cosError].filter(Boolean).join("；");
 
   const allPaths = new Set<string>([
     ...localFiles.keys(),
     ...cacheFiles.keys(),
-    ...remoteFiles.keys(),
+    ...oneDriveFiles.keys(),
+    ...cosFiles.keys(),
   ]);
   const list = Array.from(allPaths)
     .sort((a, b) => a.localeCompare(b, "zh-Hans-CN"))
     .map((relativePath) => {
       const local = localFiles.get(relativePath);
       const cache = cacheFiles.get(relativePath);
-      const remote = remoteFiles.get(relativePath);
+      const oneDrive = oneDriveFiles.get(relativePath);
+      const cos = cosFiles.get(relativePath);
       const mediaKind = resolveMediaKindForRelativePath(relativePath);
-      const sizeBytes = local?.sizeBytes ?? cache?.sizeBytes ?? remote?.sizeBytes ?? null;
+      const sizeBytes = local?.sizeBytes ?? cache?.sizeBytes ?? cos?.sizeBytes ?? oneDrive?.sizeBytes ?? null;
       const configuredBackend = resolveConfiguredBackendForInventoryRow(relativePath, runtime, sizeBytes);
-      const eligibleForRemote = configuredBackend === "onedrive-cn" && pathMatchesPrefixes(relativePath, runtime.effectiveRemotePrefixes);
+      const eligibleForRemote = configuredBackend !== "local" && pathMatchesPrefixes(relativePath, runtime.effectiveRemotePrefixes);
+      const configuredRemote = configuredBackend === "cos" ? cos : configuredBackend === "onedrive-cn" ? oneDrive : undefined;
+      const anyRemote = configuredRemote || cos || oneDrive;
       return {
         relativePath,
         url: buildUploadUrl(relativePath),
@@ -391,13 +471,19 @@ export async function listMediaStorageAdminInventory(): Promise<MediaStorageAdmi
         inRemotePrefix: eligibleForRemote,
         localExists: Boolean(local),
         cacheExists: Boolean(cache),
-        remoteExists: Boolean(remote),
+        remoteExists: Boolean(anyRemote),
         localSizeBytes: local?.sizeBytes ?? null,
         cacheSizeBytes: cache?.sizeBytes ?? null,
-        remoteSizeBytes: remote?.sizeBytes ?? null,
+        remoteSizeBytes: anyRemote?.sizeBytes ?? null,
         localUpdatedAt: local?.updatedAt ?? "",
         cacheUpdatedAt: cache?.updatedAt ?? "",
-        remoteUpdatedAt: remote?.updatedAt ?? "",
+        remoteUpdatedAt: anyRemote?.updatedAt ?? "",
+        oneDriveExists: Boolean(oneDrive),
+        oneDriveSizeBytes: oneDrive?.sizeBytes ?? null,
+        oneDriveUpdatedAt: oneDrive?.updatedAt ?? "",
+        cosExists: Boolean(cos),
+        cosSizeBytes: cos?.sizeBytes ?? null,
+        cosUpdatedAt: cos?.updatedAt ?? "",
       } satisfies MediaStorageAdminFileEntry;
     });
 
@@ -410,15 +496,24 @@ export async function listMediaStorageAdminInventory(): Promise<MediaStorageAdmi
     remoteConfigured,
     remoteReachable,
     remoteError,
+    oneDriveConfigured,
+    oneDriveReachable,
+    oneDriveError,
+    cosConfigured,
+    cosReachable,
+    cosError,
     summary: {
       total: list.length,
       localCount: list.filter((item) => item.localExists).length,
       cacheCount: list.filter((item) => item.cacheExists).length,
       remoteCount: list.filter((item) => item.remoteExists).length,
-      eligibleMigrationCount: list.filter((item) => needsMigrationToConfiguredBackend(item)).length,
+      oneDriveCount: list.filter((item) => item.oneDriveExists).length,
+      cosCount: list.filter((item) => item.cosExists).length,
+      legacyAvatarCount,
+      eligibleMigrationCount: list.filter((item) => needsMigrationToConfiguredBackend(item)).length + legacyAvatarCount,
       syncedCount: list.filter((item) => hasRedundantCopiesForConfiguredBackend(item)).length,
       migratedCount: list.filter((item) => isStoredOnConfiguredBackend(item)).length,
-      outOfScopeLocalCount: list.filter((item) => item.configuredBackend === "onedrive-cn" && item.localExists && !item.inRemotePrefix).length,
+      outOfScopeLocalCount: list.filter((item) => item.configuredBackend !== "local" && item.localExists && !item.inRemotePrefix).length,
     },
     list,
   };
@@ -448,28 +543,30 @@ export async function migrateLocalMediaAssetsToRemote(input: {
       const inventoryRow = inventory.list.find((item) => item.relativePath === relativePath);
       if (!inventoryRow) continue;
       const targetBackend = inventoryRow.configuredBackend;
-      if (targetBackend === "onedrive-cn") {
-        const sourcePath = inventoryRow.localExists ? localPath : inventoryRow.cacheExists ? cachePath : "";
-        if (!sourcePath) throw new Error("缺少可上传的本地源文件");
-        const buffer = await readFile(sourcePath);
-        await uploadOneDriveChinaFile(relativePath, buffer, guessContentType(relativePath));
+      const sourceBuffer = await readMigrationSourceBuffer(inventoryRow, localPath, cachePath);
+      if (!sourceBuffer.length) throw new Error("缺少可迁移的源文件");
+
+      if (targetBackend !== "local") {
+        if (targetBackend === "cos") {
+          await uploadTencentCosFile(relativePath, sourceBuffer, guessContentType(relativePath));
+          const verified = await headTencentCosFile(relativePath);
+          if (!verified.exists || (verified.size !== null && verified.size !== sourceBuffer.length)) {
+            throw new Error("COS 上传后的文件大小校验失败");
+          }
+        } else {
+          await uploadOneDriveChinaFile(relativePath, sourceBuffer, guessContentType(relativePath));
+        }
         await mkdir(path.dirname(cachePath), { recursive: true });
-        await writeFile(cachePath, buffer);
+        await writeFile(cachePath, sourceBuffer);
         await syncMediaAssetLocalPath(relativePath, cachePath);
         results.push({
           relativePath,
           status: "migrated",
-          message: inventoryRow.remoteExists ? "已补齐远端缓存并同步当前后端" : "已迁移到世纪互联并同步当前后端",
+          message: targetBackend === "cos" ? "已迁移到腾讯云 COS 并完成大小校验" : "已迁移到世纪互联并同步当前后端",
         });
         continue;
       }
 
-      const sourceBuffer = inventoryRow.localExists
-        ? await readFile(localPath)
-        : inventoryRow.cacheExists
-          ? await readFile(cachePath)
-          : await downloadRemoteFileBuffer(relativePath);
-      if (!sourceBuffer?.length) throw new Error("缺少可回迁的远端或缓存文件");
       await mkdir(path.dirname(localPath), { recursive: true });
       await writeFile(localPath, sourceBuffer);
       await syncMediaAssetLocalPath(relativePath, localPath);
@@ -521,7 +618,7 @@ export async function cleanupMigratedLocalMediaAssets(): Promise<MediaStorageCle
     const cachePath = cachedAssetAbsolutePath(relativePath);
     try {
       let removedAny = false;
-      if (row.configuredBackend === "onedrive-cn") {
+      if (row.configuredBackend !== "local") {
         for (const targetPath of [localPath, cachePath]) {
           const removed = await unlink(targetPath)
             .then(() => true)
@@ -531,6 +628,13 @@ export async function cleanupMigratedLocalMediaAssets(): Promise<MediaStorageCle
             });
           removedAny = removedAny || removed;
         }
+        if (row.configuredBackend === "cos" && row.oneDriveExists) {
+          removedAny = await deleteOneDriveChinaFile(relativePath) || removedAny;
+        }
+        if (row.configuredBackend === "onedrive-cn" && row.cosExists) {
+          removedAny = await deleteTencentCosFile(relativePath) || removedAny;
+        }
+        await syncMediaAssetLocalPath(relativePath, "");
       } else {
         const cacheRemoved = await unlink(cachePath)
           .then(() => true)
@@ -539,18 +643,14 @@ export async function cleanupMigratedLocalMediaAssets(): Promise<MediaStorageCle
             throw error;
           });
         removedAny = removedAny || cacheRemoved;
-        if (row.remoteExists) {
-          const deletedRemote = await deleteOneDriveChinaFile(relativePath).catch((error: any) => {
-            throw error;
-          });
-          removedAny = removedAny || deletedRemote;
-        }
+        if (row.oneDriveExists) removedAny = await deleteOneDriveChinaFile(relativePath) || removedAny;
+        if (row.cosExists) removedAny = await deleteTencentCosFile(relativePath) || removedAny;
       }
       results.push({
         relativePath,
         status: "removed",
         message: removedAny
-          ? (row.configuredBackend === "onedrive-cn" ? "已删除非当前后端的本地/缓存副本" : "已删除非当前后端的远端/缓存副本")
+          ? (row.configuredBackend !== "local" ? "已删除非当前后端的本地、缓存或旧远端副本" : "已删除非当前后端的远端/缓存副本")
           : "没有需要删除的旧副本",
       });
     } catch (error) {
@@ -597,19 +697,24 @@ export const uploadAssetHandler: RequestHandler = async (req, res) => {
 
   if (await canUseRemoteMediaStorageFallback(relativePath)) {
     try {
-      const remote = await fetchOneDriveChinaFile(relativePath, req.headers.range, req.headers["if-none-match"]);
-      if (remote.ok || remote.status === 304) {
-        writeRemoteResponseHeaders(res, remote);
-        if (req.method === "HEAD" || !remote.body) {
+      const runtime = await getMediaStorageRuntimeConfig();
+      const configuredBackend = resolveConfiguredBackendForRelativePath(relativePath, runtime);
+      if (configuredBackend === "cos" && pathMatchesPrefixes(relativePath, runtime.effectiveRemotePrefixes)) {
+        res.redirect(302, await resolveTencentCosPublicUrl(relativePath));
+        return;
+      }
+      const remote = await fetchConfiguredRemoteMedia(relativePath, req.headers.range, req.headers["if-none-match"]);
+      if (remote && (remote.status >= 200 && remote.status < 300 || remote.status === 304)) {
+        writeRemoteResponseHeaders(res, remote.headers, remote.status);
+        if (req.method === "HEAD" || !remote.body.length) {
           res.end();
           return;
         }
-        Readable.fromWeb(remote.body as any).pipe(res);
+        Readable.from(remote.body).pipe(res);
         return;
       }
-      if (remote.status !== 404) {
-        const detail = await safeReadResponseText(remote);
-        res.status(502).send(detail ? `远端媒体回源失败：${detail}` : `远端媒体回源失败：HTTP ${remote.status}`);
+      if (remote && remote.status !== 404) {
+        res.status(502).send(`远端媒体回源失败：HTTP ${remote.status}`);
         return;
       }
     } catch (error) {
@@ -678,11 +783,15 @@ async function shouldUseRemoteMediaStorage(relativePath: string) {
 }
 
 async function shouldPreferRemoteMediaStorage(relativePath: string, mediaKind?: MediaStorageKind, sizeBytes?: number | null) {
+  return Boolean(await preferredRemoteMediaStorageBackend(relativePath, mediaKind, sizeBytes));
+}
+
+async function preferredRemoteMediaStorageBackend(relativePath: string, mediaKind?: MediaStorageKind, sizeBytes?: number | null) {
   const runtime = await getMediaStorageRuntimeConfig();
   if (isFileCollectRelativePath(relativePath) && runtime.filestoreRemoteStorageEnabled) {
     const thresholdBytes = Math.round(Math.max(0, Number(runtime.filestoreRemoteMinSizeMb || 0)) * 1024 * 1024);
-    if (thresholdBytes > 0 && typeof sizeBytes === "number" && sizeBytes < thresholdBytes) return false;
-    return true;
+    if (thresholdBytes > 0 && typeof sizeBytes === "number" && sizeBytes < thresholdBytes) return null;
+    return "onedrive-cn" as const;
   }
   const kind = mediaKind || resolveMediaKindForRelativePath(relativePath);
   const configuredBackend = kind === "video"
@@ -690,22 +799,20 @@ async function shouldPreferRemoteMediaStorage(relativePath: string, mediaKind?: 
     : kind === "image"
       ? runtime.effectiveImageProvider
       : runtime.effectiveProvider;
-  if (configuredBackend !== "onedrive-cn") return false;
-  return pathMatchesPrefixes(relativePath, runtime.effectiveRemotePrefixes);
+  if (configuredBackend === "local") return null;
+  return pathMatchesPrefixes(relativePath, runtime.effectiveRemotePrefixes) ? configuredBackend : null;
 }
 
 async function canUseRemoteMediaStorageFallback(relativePath: string) {
   const runtime = await getMediaStorageRuntimeConfig();
   if (!remoteStorageConfigured(runtime)) return false;
-  if (isFileCollectRelativePath(relativePath)) return true;
+  if (isFileCollectRelativePath(relativePath)) return oneDriveStorageConfigured(runtime);
   return pathMatchesPrefixes(relativePath, runtime.effectiveRemotePrefixes);
 }
 
 async function hydrateRemoteMediaToCache(relativePath: string) {
   try {
-    const response = await fetchOneDriveChinaFile(relativePath);
-    if (!response.ok) return "";
-    const buffer = Buffer.from(await response.arrayBuffer());
+    const buffer = await downloadConfiguredRemoteFileBuffer(relativePath);
     if (!buffer.length) return "";
     const cachePath = cachedAssetAbsolutePath(relativePath);
     await mkdir(path.dirname(cachePath), { recursive: true });
@@ -717,9 +824,69 @@ async function hydrateRemoteMediaToCache(relativePath: string) {
 }
 
 async function downloadRemoteFileBuffer(relativePath: string) {
-  const response = await fetchOneDriveChinaFile(relativePath);
-  if (!response.ok) return Buffer.alloc(0);
-  return Buffer.from(await response.arrayBuffer());
+  return downloadConfiguredRemoteFileBuffer(relativePath);
+}
+
+async function downloadConfiguredRemoteFileBuffer(relativePath: string) {
+  const runtime = await getMediaStorageRuntimeConfig();
+  const configuredBackend = resolveConfiguredBackendForRelativePath(relativePath, runtime);
+  const providers: Array<Exclude<MediaStorageBackend, "local">> = configuredBackend === "cos"
+    ? ["cos", "onedrive-cn"]
+    : ["onedrive-cn", "cos"];
+  for (const provider of providers) {
+    try {
+      if (provider === "cos" && cosStorageConfigured(runtime)) {
+        const buffer = await downloadTencentCosFileBuffer(relativePath);
+        if (buffer.length) return buffer;
+      }
+      if (provider === "onedrive-cn" && oneDriveStorageConfigured(runtime)) {
+        const response = await fetchOneDriveChinaFile(relativePath);
+        if (response.ok) return Buffer.from(await response.arrayBuffer());
+      }
+    } catch {
+      continue;
+    }
+  }
+  return Buffer.alloc(0);
+}
+
+async function fetchConfiguredRemoteMedia(relativePath: string, range?: string | string[], ifNoneMatch?: string | string[]) {
+  const runtime = await getMediaStorageRuntimeConfig();
+  const configuredBackend = resolveConfiguredBackendForRelativePath(relativePath, runtime);
+  const providers: Array<Exclude<MediaStorageBackend, "local">> = configuredBackend === "cos"
+    ? ["cos", "onedrive-cn"]
+    : ["onedrive-cn", "cos"];
+  for (const provider of providers) {
+    if (provider === "cos" && cosStorageConfigured(runtime)) {
+      const response = await fetchTencentCosFile(relativePath, range, ifNoneMatch);
+      if (response.status !== 404) return response;
+    }
+    if (provider === "onedrive-cn" && oneDriveStorageConfigured(runtime)) {
+      const response = await fetchOneDriveChinaFile(relativePath, range, ifNoneMatch);
+      if (response.status !== 404) {
+        return {
+          status: response.status,
+          headers: response.headers,
+          body: response.body ? Buffer.from(await response.arrayBuffer()) : Buffer.alloc(0),
+        };
+      }
+    }
+  }
+  return null;
+}
+
+async function readMigrationSourceBuffer(row: MediaStorageAdminFileEntry, localPath: string, cachePath: string) {
+  if (row.localExists) return readFile(localPath);
+  if (row.cacheExists) return readFile(cachePath);
+  if (row.cosExists) {
+    const buffer = await downloadTencentCosFileBuffer(row.relativePath);
+    if (buffer.length) return buffer;
+  }
+  if (row.oneDriveExists) {
+    const response = await fetchOneDriveChinaFile(row.relativePath);
+    if (response.ok) return Buffer.from(await response.arrayBuffer());
+  }
+  return Buffer.alloc(0);
 }
 
 async function syncMediaAssetLocalPath(relativePath: string, nextLocalPath: string) {
@@ -735,21 +902,29 @@ async function syncMediaAssetLocalPath(relativePath: string, nextLocalPath: stri
 }
 
 function needsMigrationToConfiguredBackend(row: MediaStorageAdminFileEntry) {
-  if (row.configuredBackend === "onedrive-cn") {
-    return row.inRemotePrefix && !row.remoteExists && (row.localExists || row.cacheExists);
+  if (row.configuredBackend === "cos") {
+    return row.inRemotePrefix && !row.cosExists && (row.localExists || row.cacheExists || row.oneDriveExists);
   }
-  return !row.localExists && (row.cacheExists || row.remoteExists);
+  if (row.configuredBackend === "onedrive-cn") {
+    return row.inRemotePrefix && !row.oneDriveExists && (row.localExists || row.cacheExists || row.cosExists);
+  }
+  return !row.localExists && (row.cacheExists || row.oneDriveExists || row.cosExists);
 }
 
 function hasRedundantCopiesForConfiguredBackend(row: MediaStorageAdminFileEntry) {
-  if (row.configuredBackend === "onedrive-cn") {
-    return row.remoteExists && (row.localExists || row.cacheExists);
+  if (row.configuredBackend === "cos") {
+    return row.cosExists && (row.localExists || row.cacheExists || row.oneDriveExists);
   }
-  return row.localExists && (row.cacheExists || row.remoteExists);
+  if (row.configuredBackend === "onedrive-cn") {
+    return row.oneDriveExists && (row.localExists || row.cacheExists || row.cosExists);
+  }
+  return row.localExists && (row.cacheExists || row.oneDriveExists || row.cosExists);
 }
 
 function isStoredOnConfiguredBackend(row: MediaStorageAdminFileEntry) {
-  return row.configuredBackend === "onedrive-cn" ? row.remoteExists : row.localExists;
+  if (row.configuredBackend === "cos") return row.cosExists;
+  if (row.configuredBackend === "onedrive-cn") return row.oneDriveExists;
+  return row.localExists;
 }
 
 function isFileCollectRelativePath(relativePath: string) {
@@ -768,7 +943,7 @@ function cachedAssetAbsolutePath(relativePath: string) {
 function resolvePreferredLocalMediaPath(relativePath: string) {
   const runtime = getMediaStorageRuntimeConfigSync();
   const configuredBackend = resolveConfiguredBackendForRelativePath(relativePath, runtime);
-  const isRemote = configuredBackend === "onedrive-cn"
+  const isRemote = configuredBackend !== "local"
     && pathMatchesPrefixes(relativePath, runtime.effectiveRemotePrefixes);
   return isRemote ? cachedAssetAbsolutePath(relativePath) : localAssetAbsolutePath(relativePath);
 }
@@ -835,7 +1010,7 @@ async function collectLocalFiles(root: string) {
 
 function pathMatchesPrefixes(relativePath: string, prefixes: string[]) {
   const normalized = normalizeUploadRelativePath(relativePath);
-  return prefixes.some((prefix) => normalized === prefix || normalized.startsWith(`${prefix}/`));
+  return prefixes.some((prefix) => prefix === "*" || normalized === prefix || normalized.startsWith(`${prefix}/`));
 }
 
 function guessContentType(relativePath: string) {
@@ -862,15 +1037,11 @@ function guessContentType(relativePath: string) {
   return contentTypeMap[ext] || "application/octet-stream";
 }
 
-async function safeReadResponseText(response: Response) {
-  return response.text().then((text) => text.trim().slice(0, 400)).catch(() => "");
-}
-
-function writeRemoteResponseHeaders(res: Parameters<RequestHandler>[1], response: Response) {
-  res.status(response.status);
+function writeRemoteResponseHeaders(res: Parameters<RequestHandler>[1], headers: Headers, status: number) {
+  res.status(status);
   for (const name of ["content-type", "content-length", "content-disposition", "last-modified", "etag", "content-range", "accept-ranges"]) {
-    const value = response.headers.get(name);
+    const value = headers.get(name);
     if (value) res.setHeader(name, value);
   }
-  res.setHeader("Cache-Control", response.headers.get("cache-control") || CACHE_CONTROL_VALUE);
+  res.setHeader("Cache-Control", headers.get("cache-control") || CACHE_CONTROL_VALUE);
 }

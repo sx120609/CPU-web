@@ -101,6 +101,8 @@ import {
   listMediaStorageAdminInventory,
   migrateLocalMediaAssetsToRemote,
 } from "../../services/mediaStorage";
+import { validateTencentCosConfiguration } from "../../services/tencentCos";
+import { migrateLegacyDataAvatars } from "../../services/userAvatarStorage";
 import { qqBotAdminRouter } from "./qqbot";
 import { backfillAdminDailyLoginsFromLastLogin, getChinaDayRange, listAdminDailyLoginSeries } from "../../services/adminStats";
 import { config } from "../../config";
@@ -2046,15 +2048,22 @@ adminRouter.patch("/filestore-settings", adminOnly, validate(filestoreSettingsPa
 });
 
 const mediaStoragePatchSchema = z.object({
-  mediaStorageProvider: z.enum(["local", "onedrive-cn"]).optional(),
-  mediaStorageImageProvider: z.enum(["local", "onedrive-cn"]).optional(),
-  mediaStorageVideoProvider: z.enum(["local", "onedrive-cn"]).optional(),
+  mediaStorageProvider: z.enum(["local", "onedrive-cn", "cos"]).optional(),
+  mediaStorageImageProvider: z.enum(["local", "onedrive-cn", "cos"]).optional(),
+  mediaStorageVideoProvider: z.enum(["local", "onedrive-cn", "cos"]).optional(),
   mediaStorageRemotePrefixes: z.union([z.string().trim().max(200), z.array(z.string().trim().min(1).max(80)).max(10)]).optional(),
   oneDriveChinaClientId: z.string().trim().max(120).optional(),
   oneDriveChinaClientSecret: z.string().trim().max(240).optional(),
   clearOneDriveChinaClientSecret: z.boolean().optional(),
   oneDriveChinaSharepointUrl: z.string().trim().max(500).optional(),
   oneDriveChinaRootPath: z.string().trim().max(240).optional(),
+  tencentCosSecretId: z.string().trim().max(160).optional(),
+  tencentCosSecretKey: z.string().trim().max(240).optional(),
+  clearTencentCosSecretKey: z.boolean().optional(),
+  tencentCosBucket: z.string().trim().max(100).optional(),
+  tencentCosRegion: z.string().trim().max(80).optional(),
+  tencentCosRootPath: z.string().trim().max(240).optional(),
+  tencentCosPublicBaseUrl: z.string().trim().max(500).optional(),
 });
 
 adminRouter.patch("/media-storage", adminOnly, validate(mediaStoragePatchSchema), async (req, res, next) => {
@@ -2086,6 +2095,30 @@ adminRouter.post("/media-storage/onedrive-cn/authorize", adminOnly, async (req, 
       e?.message === "当前请求缺少可用站点域名，无法生成回调地址"
     ) {
       next(Errors.badRequest(e.message));
+      return;
+    }
+    next(e);
+  }
+});
+
+adminRouter.post("/media-storage/cos/validate", adminOnly, async (_req, res, next) => {
+  try {
+    const result = await validateTencentCosConfiguration();
+    ok(res, {
+      ...result,
+      message: `已连接腾讯云 COS：${result.bucket}（${result.region}）`,
+    });
+  } catch (e: any) {
+    const message = String(e?.message || "腾讯云 COS 校验失败").slice(0, 500);
+    if (
+      message.includes("尚未配置")
+      || message.includes("Access Denied")
+      || message.includes("AccessDenied")
+      || message.includes("InvalidAccessKeyId")
+      || message.includes("SignatureDoesNotMatch")
+      || message.includes("NoSuchBucket")
+    ) {
+      next(Errors.badRequest(message));
       return;
     }
     next(e);
@@ -2160,7 +2193,29 @@ const mediaStorageMigrationSchema = z.object({
 
 adminRouter.post("/media-storage/migrate", adminOnly, validate(mediaStorageMigrationSchema), async (req, res, next) => {
   try {
-    ok(res, await migrateLocalMediaAssetsToRemote(req.body));
+    const excludedAvatarUserIds = (req.body.excludePaths || [])
+      .map((value: string) => /^avatars\/user-(\d+)$/u.exec(value)?.[1])
+      .filter(Boolean)
+      .map(Number);
+    const avatarResult = await migrateLegacyDataAvatars({ limit: req.body.limit, excludeUserIds: excludedAvatarUserIds });
+    const mediaResult = await migrateLocalMediaAssetsToRemote(req.body);
+    ok(res, {
+      ...mediaResult,
+      eligible: mediaResult.eligible + avatarResult.eligible,
+      processed: mediaResult.processed + avatarResult.processed,
+      remaining: mediaResult.remaining + avatarResult.remaining,
+      migrated: mediaResult.migrated + avatarResult.migrated,
+      failed: mediaResult.failed + avatarResult.failed,
+      list: [
+        ...mediaResult.list,
+        ...avatarResult.list.map((item) => ({
+          relativePath: `avatars/user-${item.userId}`,
+          status: item.status,
+          message: item.message,
+        })),
+      ],
+      avatarMigration: avatarResult,
+    });
   } catch (e: any) {
     if (
       e?.message === "请先将媒体存储后端切换为世纪互联 OneDrive / SharePoint"

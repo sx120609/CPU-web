@@ -1,7 +1,7 @@
 import { Router } from "express";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { rm } from "node:fs/promises";
+import { rm, stat } from "node:fs/promises";
 import jwt from "jsonwebtoken";
 import multer from "multer";
 import { z } from "zod";
@@ -13,6 +13,7 @@ import { registerForumImageAsset } from "../services/imageModeration";
 import {
   buildUploadUrl,
   createRemoteMediaUploadSession,
+  deleteMediaAsset,
   prepareMediaLocalFileForProcessing,
   resolveMediaLocalPathFromUploadUrl,
   saveMediaAsset,
@@ -113,6 +114,7 @@ uploadRouter.post("/media/init", authRequired, validate(mediaInitSchema), async 
       relativePath,
       contentType: mimeType || undefined,
       mediaKind: kind,
+      sizeBytes: req.body.fileSize,
     });
     if (!session) {
       ok(res, { mode: "proxy" as const, kind });
@@ -136,6 +138,7 @@ uploadRouter.post("/media/init", authRequired, validate(mediaInitSchema), async 
       uploadUrl: session.uploadUrl,
       uploadToken,
       expiresAt: session.expiresAt,
+      uploadStrategy: session.strategy,
       mimeType,
     });
   } catch (e) {
@@ -156,6 +159,11 @@ uploadRouter.post("/media/complete", authRequired, validate(mediaCompleteSchema)
     }
 
     try {
+      const uploadedFile = await stat(preparedFile.localPath);
+      if (!uploadedFile.isFile() || uploadedFile.size !== payload.fileSize) {
+        await deleteMediaAsset(payload.relativePath).catch(() => undefined);
+        throw Errors.badRequest("上传文件大小校验失败，请重新上传");
+      }
       if (payload.mediaKind === "image") {
         await registerForumImageAsset({
           url,

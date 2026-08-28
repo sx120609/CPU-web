@@ -356,6 +356,7 @@ export const uploadApi = {
         uploadUrl?: string;
         uploadToken?: string;
         expiresAt?: string;
+        uploadStrategy?: "chunked" | "single-put";
         mimeType?: string;
       }>("/uploads/media/init", {
         fileName,
@@ -364,7 +365,11 @@ export const uploadApi = {
       }, { timeout: 30000 });
 
       if (init.mode === "direct" && init.uploadUrl && init.uploadToken) {
-        await uploadFileToOneDriveSession(init.uploadUrl, file, file.type || init.mimeType || "application/octet-stream", reportProgress);
+        if (init.uploadStrategy === "single-put") {
+          await uploadFileToSinglePutSession(init.uploadUrl, file, file.type || init.mimeType || "application/octet-stream", reportProgress);
+        } else {
+          await uploadFileToOneDriveSession(init.uploadUrl, file, file.type || init.mimeType || "application/octet-stream", reportProgress);
+        }
         reportProgress("processing", file.size, file.size);
         return request.post<{
           kind: "image" | "video";
@@ -396,6 +401,23 @@ export const uploadApi = {
 };
 
 const ONEDRIVE_UPLOAD_CHUNK_BYTES = 32 * 320 * 1024;
+
+async function uploadFileToSinglePutSession(
+  uploadUrl: string,
+  file: Blob,
+  contentType: string,
+  reportProgress: (stage: "preparing" | "uploading" | "processing", loaded: number, total: number) => void,
+) {
+  reportProgress("uploading", 0, file.size);
+  await axios.put(uploadUrl, file, {
+    headers: { "Content-Type": contentType || "application/octet-stream" },
+    timeout: 180000,
+    onUploadProgress: (event) => {
+      reportProgress("uploading", Math.min(Number(event.loaded || 0), file.size), file.size);
+    },
+  });
+  reportProgress("uploading", file.size, file.size);
+}
 
 async function uploadFileToOneDriveSession(
   uploadUrl: string,
