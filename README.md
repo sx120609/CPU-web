@@ -488,6 +488,8 @@ Content-Type: application/json
 | `DESKTOP_PDS_SHARE_URL` | 桌面端固定文件夹分享 | 阿里云盘企业版（PDS）文件夹分享链接。建议内含 `Windows` / `macOS` 子目录；服务端递归选择最后更新的 `.exe` 与 Apple Silicon `.dmg`，每次请求临时换取直链并由本站稳定地址 302 跳转 |
 | `DESKTOP_PDS_SHARE_PASSWORD` | 空 | PDS 分享提取码；无提取码时留空 |
 | `DESKTOP_APP_VERSION` | 空 | 桌面端安装包版本号的可选显式覆盖；Windows 与 macOS 的 PDS 标准文件名会自动提取版本 |
+| `CAMPUS_MAP_PDS_SHARE_URL` | 校园地图原图固定分享 | 校园地图原图的阿里云盘企业版分享链接；服务端选择其中体积最大的图片，每次点击“下载原图”时换取临时直链并 302 跳转，原图不经过本站带宽 |
+| `CAMPUS_MAP_PDS_SHARE_PASSWORD` | 空 | 校园地图原图 PDS 分享提取码；无提取码时留空 |
 | `PG_DUMP_BIN` | `pg_dump` | 后台数据库备份使用的命令路径 |
 
 补充说明：

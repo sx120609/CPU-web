@@ -381,6 +381,13 @@ export const config = {
   ).trim(),
   desktopPdsSharePassword: (process.env.DESKTOP_PDS_SHARE_PASSWORD ?? "").trim(),
   desktopAppVersion: (process.env.DESKTOP_APP_VERSION ?? "").trim(),
+  // 校园地图原图与前端预览图分开：页面继续加载压缩预览，下载时由服务端
+  // 解析 PDS 分享并跳转到短期直链，避免 20 MB 原图占用本站带宽和前端包体积。
+  campusMapPdsShareUrl: (
+    process.env.CAMPUS_MAP_PDS_SHARE_URL?.trim()
+    || "https://bj37249.apps.aliyunfile.com/disk/s/RnrWbjgJ9U4?domainId=bj37249"
+  ).trim(),
+  campusMapPdsSharePassword: (process.env.CAMPUS_MAP_PDS_SHARE_PASSWORD ?? "").trim(),
   oauthClientId: String(process.env.OAUTH_CLIENT_ID ?? "cpu-electron").trim(),
   oauthAllowedRedirectUris: parseCsvEnv(process.env.OAUTH_ALLOWED_REDIRECT_URIS, ["http://127.0.0.1", "http://localhost"]),
 };

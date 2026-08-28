@@ -6,10 +6,12 @@ import { Errors, ok } from "../utils/response";
 import { withCache } from "../services/cache";
 import { getFeatures, getLearningPlatformAvailability, getSiteConfig, getSiteFilingNumber, getSiteOrigin, getTopNavigation } from "../services/siteSettings";
 import {
+  hasCampusMapPdsShare,
   hasPdsShare,
   parseDesktopVersionFromFileName,
   hasAndroidPdsShare,
   resolveAndroidDownload,
+  resolveCampusMapDownload,
   resolveDesktopDownload,
   resolveMacDesktopDownload,
 } from "../services/pdsShare";
@@ -162,6 +164,23 @@ siteRouter.get("/downloads/android-app", async (_req, res) => {
 
   const fileName = resolveLatestAndroidApkFileName() || "CPU-Web-Android-V7.apk";
   res.redirect(302, `/downloads/${encodeURIComponent(fileName)}`);
+});
+
+/** 校园地图原图的稳定下载入口；实际文件由 PDS 临时直链提供，不经过本站传输。 */
+siteRouter.get("/downloads/campus-map-original", async (_req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  if (!hasCampusMapPdsShare()) {
+    res.status(503).json({ code: 503, message: "校园地图原图下载暂未配置" });
+    return;
+  }
+
+  try {
+    const file = await resolveCampusMapDownload();
+    res.redirect(302, file.url);
+  } catch (error) {
+    console.error("PDS 校园地图原图解析失败", error);
+    res.status(502).json({ code: 502, message: "校园地图原图下载暂时不可用，请稍后重试" });
+  }
 });
 
 /**

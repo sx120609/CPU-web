@@ -315,42 +315,63 @@ export const pickAndroidInstaller = (files: PdsFile[]): PdsFile | null => {
   return candidates.sort(compareAndroidInstallerCandidates)[0];
 };
 
+/**
+ * 校园地图分享可能同时包含压缩预览与原图；按体积选择最大的常见图片文件，
+ * 避免把缩略图误当作“下载原图”。
+ */
+export const pickCampusMapOriginal = (files: PdsFile[]): PdsFile | null => {
+  const candidates = files.filter((file) => /\.(?:png|jpe?g|webp|tiff?)$/i.test(file.name));
+  if (candidates.length === 0) return null;
+  return candidates.sort((left, right) =>
+    right.size - left.size
+    || (right.updatedAt || "").localeCompare(left.updatedAt || "")
+    || left.name.localeCompare(right.name)
+  )[0];
+};
+
 // 解析结果整体缓存一小段时间：下载页与下载跳转是连着点的，没必要为同一次
 // 用户操作把三个 PDS 接口各打一遍。缓存必须短于地址本身的有效期。
-type DownloadPlatform = "windows" | "mac" | "android";
-const downloadCache = new Map<DownloadPlatform, { value: PdsDownload; expiresAt: number }>();
-const inFlight = new Map<DownloadPlatform, Promise<PdsDownload>>();
+type DownloadTarget = "windows" | "mac" | "android" | "campus-map";
+const downloadCache = new Map<DownloadTarget, { value: PdsDownload; expiresAt: number }>();
+const inFlight = new Map<DownloadTarget, Promise<PdsDownload>>();
 
 // 安装包上传后应尽快被旧客户端发现。这里只做短暂的并发削峰；
 // 临时下载地址本身仍有一小时有效期，无需为了它把“最新版文件”缓存十分钟。
 const CACHE_MS = 30 * 1000;
-const getShareSettings = (platform: DownloadPlatform) => {
-  if (platform === "android") {
+const getShareSettings = (target: DownloadTarget) => {
+  if (target === "android") {
     return {
       shareUrl: config.androidAppPdsShareUrl,
       password: config.androidAppPdsSharePassword,
       pickInstaller: pickAndroidInstaller,
     };
   }
+  if (target === "campus-map") {
+    return {
+      shareUrl: config.campusMapPdsShareUrl,
+      password: config.campusMapPdsSharePassword,
+      pickInstaller: pickCampusMapOriginal,
+    };
+  }
 
   return {
     shareUrl: config.desktopPdsShareUrl,
     password: config.desktopPdsSharePassword,
-    pickInstaller: platform === "mac" ? pickMacInstaller : pickInstaller,
+    pickInstaller: target === "mac" ? pickMacInstaller : pickInstaller,
   };
 };
 
 /**
- * 取对应平台安装包的当前下载地址。失败时抛错，调用方决定怎么降级。
+ * 取对应下载目标的当前地址。失败时抛错，调用方决定怎么降级。
  * 并发请求共用同一次解析（inFlight），避免下载高峰把 PDS 打满。
  */
-const resolvePlatformDownload = async (platform: DownloadPlatform): Promise<PdsDownload> => {
-  const cached = downloadCache.get(platform);
+const resolveTargetDownload = async (target: DownloadTarget): Promise<PdsDownload> => {
+  const cached = downloadCache.get(target);
   if (cached && cached.expiresAt > Date.now()) return cached.value;
-  const pending = inFlight.get(platform);
+  const pending = inFlight.get(target);
   if (pending) return pending;
 
-  const { shareUrl, password, pickInstaller } = getShareSettings(platform);
+  const { shareUrl, password, pickInstaller } = getShareSettings(target);
   const ref = parseShareUrl(shareUrl);
   if (!ref) throw new Error("未配置有效的 PDS 分享链接");
 
@@ -358,31 +379,35 @@ const resolvePlatformDownload = async (platform: DownloadPlatform): Promise<PdsD
     const files = await listShareFiles(ref, password);
     const installer = pickInstaller(files);
     if (!installer) {
-      throw new Error(platform === "android"
+      throw new Error(target === "android"
         ? "PDS share missing APK"
-        : platform === "mac"
+        : target === "mac"
           ? "PDS share missing DMG"
-          : "PDS share missing EXE");
+          : target === "campus-map"
+            ? "PDS share missing campus map image"
+            : "PDS share missing EXE");
     }
     const download = await getDownloadUrl(ref, password, installer);
-    downloadCache.set(platform, {
+    downloadCache.set(target, {
       value: download,
       expiresAt: Math.min(Date.now() + CACHE_MS, download.expiresAt - 60_000),
     });
     return download;
   })();
-  inFlight.set(platform, task);
+  inFlight.set(target, task);
 
   try {
     return await task;
   } finally {
-    if (inFlight.get(platform) === task) inFlight.delete(platform);
+    if (inFlight.get(target) === task) inFlight.delete(target);
   }
 };
 
-export const resolveDesktopDownload = (): Promise<PdsDownload> => resolvePlatformDownload("windows");
-export const resolveMacDesktopDownload = (): Promise<PdsDownload> => resolvePlatformDownload("mac");
-export const resolveAndroidDownload = (): Promise<PdsDownload> => resolvePlatformDownload("android");
+export const resolveDesktopDownload = (): Promise<PdsDownload> => resolveTargetDownload("windows");
+export const resolveMacDesktopDownload = (): Promise<PdsDownload> => resolveTargetDownload("mac");
+export const resolveAndroidDownload = (): Promise<PdsDownload> => resolveTargetDownload("android");
+export const resolveCampusMapDownload = (): Promise<PdsDownload> => resolveTargetDownload("campus-map");
 
 export const hasPdsShare = (): boolean => parseShareUrl(config.desktopPdsShareUrl) !== null;
 export const hasAndroidPdsShare = (): boolean => parseShareUrl(config.androidAppPdsShareUrl) !== null;
+export const hasCampusMapPdsShare = (): boolean => parseShareUrl(config.campusMapPdsShareUrl) !== null;

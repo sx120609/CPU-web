@@ -4,6 +4,7 @@ import {
   parseDesktopVersionFromFileName,
   parseShareUrl,
   pickAndroidInstaller,
+  pickCampusMapOriginal,
   pickInstaller,
   pickMacInstaller,
   PdsEntry,
@@ -78,4 +79,14 @@ test("PDS Android APK prefers Android", () => {
   ];
 
   assert.equal(pickAndroidInstaller(files)?.fileId, "android-new");
+});
+
+test("校园地图原图选择最大图片而不是压缩预览", () => {
+  const files = [
+    { fileId: "preview", name: "校园地图-预览.png", size: 2_146_518, updatedAt: "2026-08-29T00:00:00Z" },
+    { fileId: "original", name: "校园地图-原图.png", size: 21_330_392, updatedAt: "2026-08-28T00:00:00Z" },
+    { fileId: "readme", name: "说明.txt", size: 50, updatedAt: "2026-08-29T00:00:00Z" },
+  ];
+
+  assert.equal(pickCampusMapOriginal(files)?.fileId, "original");
 });
