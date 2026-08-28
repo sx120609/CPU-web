@@ -1,15 +1,17 @@
 import type { NextFunction, Request, Response } from "express";
 import { isDev } from "../config";
 
+export const WEB_STATIC_COS_ORIGIN = "https://cputime-1462084442.cos.ap-shanghai.myqcloud.com";
+
 const CSP_DIRECTIVES = [
   "default-src 'self'",
-  "script-src 'self'",
-  "style-src 'self' 'unsafe-inline'",
+  `script-src 'self' ${WEB_STATIC_COS_ORIGIN}`,
+  `style-src 'self' 'unsafe-inline' ${WEB_STATIC_COS_ORIGIN}`,
   "img-src 'self' data: blob: https:",
-  "font-src 'self' data:",
+  `font-src 'self' data: ${WEB_STATIC_COS_ORIGIN}`,
   "connect-src 'self' https: wss:",
   "media-src 'self' blob: https:",
-  "worker-src 'self' blob:",
+  `worker-src 'self' blob: ${WEB_STATIC_COS_ORIGIN}`,
   "frame-src 'self' https:",
   "manifest-src 'self'",
   "object-src 'none'",

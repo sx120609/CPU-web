@@ -12,10 +12,12 @@ const assetsRoot = path.join(distRoot, "assets");
 const concurrency = 8;
 
 async function main() {
-  const files = await collectFiles(assetsRoot);
+  const collectedFiles = await collectFiles(assetsRoot);
+  const selection = await selectCurrentBuildFiles(distRoot, collectedFiles);
+  const files = selection.files;
   const totalBytes = files.reduce((sum, item) => sum + item.size, 0);
   if (dryRun) {
-    console.log(`[static-cos] dry-run: ${files.length} files, ${formatBytes(totalBytes)}, source=${assetsRoot}`);
+    console.log(`[static-cos] dry-run: ${files.length} files, ${formatBytes(totalBytes)}, selection=${selection.source}, source=${assetsRoot}`);
     return;
   }
   if (!files.length) {
@@ -86,8 +88,42 @@ async function main() {
   }
 }
 
+type CollectedFile = { absolutePath: string; relativePath: string; size: number };
+
+async function selectCurrentBuildFiles(root: string, files: CollectedFile[]) {
+  const viteManifestPath = path.join(root, ".vite", "manifest.json");
+  try {
+    const parsed = JSON.parse(await readFile(viteManifestPath, "utf8")) as Record<string, {
+      file?: unknown;
+      css?: unknown;
+      assets?: unknown;
+    }>;
+    const selectedPaths = new Set<string>();
+    for (const entry of Object.values(parsed || {})) {
+      const candidates = [
+        entry?.file,
+        ...(Array.isArray(entry?.css) ? entry.css : []),
+        ...(Array.isArray(entry?.assets) ? entry.assets : []),
+      ];
+      for (const candidate of candidates) {
+        const normalized = String(candidate || "").replace(/\\/gu, "/").replace(/^\/+|\/+$/gu, "");
+        if (normalized.startsWith("assets/")) selectedPaths.add(normalized.slice("assets/".length));
+      }
+    }
+    if (!selectedPaths.size) throw new Error("Vite manifest does not contain assets");
+    const selectedFiles = files.filter((file) => selectedPaths.has(file.relativePath));
+    if (selectedFiles.length !== selectedPaths.size) {
+      throw new Error(`Vite manifest references ${selectedPaths.size - selectedFiles.length} missing assets`);
+    }
+    return { files: selectedFiles, source: "vite-manifest" as const };
+  } catch (error) {
+    console.warn(`[static-cos] current Vite manifest unavailable (${String(error instanceof Error ? error.message : error)}); scanning all hashed assets`);
+    return { files, source: "asset-directory" as const };
+  }
+}
+
 async function collectFiles(root: string) {
-  const results: Array<{ absolutePath: string; relativePath: string; size: number }> = [];
+  const results: CollectedFile[] = [];
   const pending = [root];
   while (pending.length) {
     const current = pending.pop()!;
