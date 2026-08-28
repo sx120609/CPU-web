@@ -8,7 +8,10 @@ export type TopicEditReviewContext = {
   similarityThreshold: number;
   attempt: number;
   lastError?: string;
+  retryMode?: typeof AUTO_MANUAL_RETRY_MARKER;
 };
+
+export const AUTO_MANUAL_RETRY_MARKER = "auto-manual-retry:v1";
 
 export const FORUM_SELF_VISIBLE_REVIEW_STATUSES = [
   "checking",
@@ -85,10 +88,31 @@ export function parseTopicEditReviewContext(value: string | null | undefined): T
       similarityThreshold: Math.max(0, Math.min(1, Number(parsed.similarityThreshold) || 0)),
       attempt: Math.max(0, Math.floor(Number(parsed.attempt) || 0)),
       ...(typeof parsed.lastError === "string" && parsed.lastError ? { lastError: parsed.lastError.slice(0, 500) } : {}),
+      ...(parsed.retryMode === AUTO_MANUAL_RETRY_MARKER ? { retryMode: AUTO_MANUAL_RETRY_MARKER } : {}),
     };
   } catch {
     return null;
   }
+}
+
+export function forumReviewAttempt(detail: string | null | undefined) {
+  const editContext = parseTopicEditReviewContext(detail);
+  if (editContext) return editContext.attempt;
+  const match = String(detail || "").match(/^\[attempt:(\d+)\]/);
+  return match ? Math.max(0, Number(match[1]) || 0) : 0;
+}
+
+export function isAutomaticManualReviewRetry(detail: string | null | undefined) {
+  const editContext = parseTopicEditReviewContext(detail);
+  return editContext?.retryMode === AUTO_MANUAL_RETRY_MARKER
+    || String(detail || "").includes(`[${AUTO_MANUAL_RETRY_MARKER}]`);
+}
+
+export function resetForumReviewRetryDetail(detail: string | null | undefined) {
+  const editContext = parseTopicEditReviewContext(detail);
+  if (!editContext) return "";
+  const { lastError: _lastError, retryMode: _retryMode, ...rest } = editContext;
+  return JSON.stringify({ ...rest, attempt: 0 } satisfies TopicEditReviewContext);
 }
 
 export function forumSubmissionResultForReview(input: {
@@ -104,6 +128,13 @@ export function forumSubmissionResultForReview(input: {
     return {
       status: "pending",
       reason: "内容已提交审核，完成后会通过站内通知告知结果",
+      replayed: input.replayed === true,
+    };
+  }
+  if (["manual_requested", "manual_reviewing"].includes(status)) {
+    return {
+      status: "manual_review",
+      reason: input.reason || "内容已进入人工审核队列，审核完成后会通过站内通知告知结果",
       replayed: input.replayed === true,
     };
   }

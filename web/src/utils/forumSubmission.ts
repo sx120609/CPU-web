@@ -1,9 +1,10 @@
 export type ForumSubmissionKind = "topic" | "reply";
-export type ForumReviewState = "pending" | "published" | "blocked_ai" | "failed" | "deleted" | "unknown";
+export type ForumReviewState = "pending" | "manual_review" | "published" | "blocked_ai" | "failed" | "deleted" | "unknown";
 
 export function resolveForumReviewState(input: { aiReviewStatus?: string | null; hidden?: boolean | null }): ForumReviewState {
   const status = String(input.aiReviewStatus || "").trim();
   if (status === "checking") return "pending";
+  if (["manual_requested", "manual_reviewing"].includes(status)) return "manual_review";
   if (status === "review_failed") return "failed";
   if (status === "deleted") return "deleted";
   if (input.hidden && ["blocked_ai", "rejected_manual"].includes(status)) return "blocked_ai";

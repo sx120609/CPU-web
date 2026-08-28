@@ -230,7 +230,10 @@ const reviewState = computed(() => {
   if (status === "checking") return { label: "审核中 · 仅自己可见", type: "warning" as const };
   if (status === "review_failed") return { label: "审核暂未完成", type: "danger" as const };
   if (status === "blocked_ai") return { label: "暂未通过审核", type: "danger" as const };
-  if (["manual_requested", "manual_reviewing"].includes(status)) return { label: "人工复核中", type: "warning" as const };
+  if (["manual_requested", "manual_reviewing"].includes(status)) {
+    const automaticRetry = /自动重试|每 30 分钟|自动转入人工/u.test(String(props.topic.aiReviewReason || ""));
+    return { label: automaticRetry ? "AI 异常 · 已转人工" : "人工复核中", type: "warning" as const };
+  }
   if (status === "rejected_manual") return { label: "人工复核未通过", type: "danger" as const };
   return { label: "仅自己可见", type: "info" as const };
 });

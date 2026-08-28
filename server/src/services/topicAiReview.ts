@@ -12,6 +12,7 @@ import {
 } from "./aiJsonApi";
 import { resolveModelCandidates, shouldFallbackToNextModel } from "./modelFallback";
 import { getSiteConfig, isAiProviderReady, resolveAiServiceCandidatesForScene } from "./siteSettings";
+import { isAutomaticManualReviewRetry } from "./forumSubmission";
 
 export type TopicAiReviewStatus =
   | "none"
@@ -902,15 +903,20 @@ export async function requestManualReplyReview(replyId: number, userId: number) 
 }
 
 export async function refreshTopicSubmissionLock(userId: number) {
-  const pending = await prisma.topic.count({
+  const pending = await prisma.topic.findMany({
     where: {
       authorId: userId,
       aiReviewStatus: { in: ["manual_requested", "manual_reviewing"] },
     },
+    select: { aiReviewStatus: true, aiReviewDetail: true },
   });
+  const hasBlockingManualReview = pending.some((item) => (
+    item.aiReviewStatus === "manual_reviewing"
+    || !isAutomaticManualReviewRetry(item.aiReviewDetail)
+  ));
   await prisma.user.update({
     where: { id: userId },
-    data: { topicSubmissionLocked: pending > 0 },
+    data: { topicSubmissionLocked: hasBlockingManualReview },
   }).catch(() => {});
 }
 

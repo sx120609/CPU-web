@@ -1569,6 +1569,12 @@ async function handleTopicSubmissionResult(r: TopicSubmissionResponse, editing =
     ElMessage.error(r.submissionResult.reason || "审核服务暂时不可用，草稿已保留，请稍后重试");
     return;
   }
+  if (r.submissionResult?.status === "manual_review") {
+    clearPendingTopicSubmission();
+    ElMessage.warning(r.submissionResult.reason || "审核服务异常，帖子已自动转入人工审核，后台仍会继续尝试 AI 审核");
+    await router.replace(`/forum/topic/${editing ? editingId.value : r.id}`);
+    return;
+  }
   if (r.submissionResult?.status === "deleted") {
     clearPendingTopicSubmission();
     ElMessage.info("这篇帖子已经删除");

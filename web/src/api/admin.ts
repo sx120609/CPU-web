@@ -1113,6 +1113,8 @@ export const adminApi = {
     request.patch<any>(`/admin/replies/${id}`, patch),
   reviewTarget: (kind: ReviewTargetKind, id: number) =>
     request.get<{ kind: ReviewTargetKind; id: number; title: string; aiReviewStatus: string; hidden: boolean; topicId?: number; reviewable: boolean }>(`/admin/review-targets/${kind}/${id}`),
+  retryAiReview: (kind: ReviewTargetKind, id: number) =>
+    request.post<{ kind: ReviewTargetKind; id: number; topicId?: number; aiReviewStatus: "checking" }>(`/admin/review-targets/${kind}/${id}/retry-ai`, {}),
   reviewTargetImages: (kind: ReviewTargetKind, id: number) =>
     request.get<{ kind: ReviewTargetKind; id: number; topicId?: number; list: ForumImageReviewAsset[] }>(`/admin/review-targets/${kind}/${id}/images`),
   reviewTargetVideos: (kind: ReviewTargetKind, id: number) =>

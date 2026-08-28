@@ -889,7 +889,9 @@ function topicReviewLabel(topic: any) {
   const status = String(topic.aiReviewStatus || "");
   if (status === "checking") return "审核中 · 仅自己可见";
   if (status === "review_failed") return "审核暂未完成";
-  if (["manual_requested", "manual_reviewing"].includes(status)) return "人工复核中";
+  if (["manual_requested", "manual_reviewing"].includes(status)) {
+    return /自动重试|每 30 分钟|自动转入人工/u.test(String(topic.aiReviewReason || "")) ? "AI 异常 · 已转人工" : "人工复核中";
+  }
   if (status === "blocked_ai") return "暂未通过审核";
   if (status === "rejected_manual") return "人工复核未通过";
   return "仅自己可见";

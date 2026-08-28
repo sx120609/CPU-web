@@ -38,6 +38,8 @@ import {
   type FeatureKey,
 } from "../../services/siteSettings";
 import { refreshTopicSubmissionLock } from "../../services/topicAiReview";
+import { resetForumReviewRetryDetail } from "../../services/forumSubmission";
+import { scheduleReplySubmissionReview, scheduleTopicSubmissionReview } from "../../services/forumSubmissionReview";
 import { refreshBoardTopicCounts, refreshUserPostCount } from "../../services/forumStats";
 import {
   notifyManualReplyReviewDecision,
@@ -877,6 +879,90 @@ adminRouter.get("/review-targets/:kind/:id", modOrAbove, async (req, res, next) 
         reviewable: reply.aiReviewStatus === "manual_requested" || reply.aiReviewStatus === "manual_reviewing",
       });
     }
+    throw Errors.badRequest("不支持的审核对象类型");
+  } catch (e) { next(e); }
+});
+
+adminRouter.post("/review-targets/:kind/:id/retry-ai", modOrAbove, async (req, res, next) => {
+  try {
+    const kind = String(req.params.kind);
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) throw Errors.badRequest("审核对象 ID 不合法");
+
+    if (kind === "topic") {
+      const topic = await prisma.topic.findUnique({
+        where: { id },
+        select: { id: true, authorId: true, title: true, hidden: true, aiReviewStatus: true, aiReviewDetail: true, submissionId: true },
+      });
+      if (!topic) throw Errors.notFound("帖子不存在");
+      if (!topic.hidden || !["review_failed", "blocked_ai"].includes(topic.aiReviewStatus)) {
+        throw Errors.badRequest("该帖子当前不能重新发起 AI 审核");
+      }
+      const updated = await prisma.topic.updateMany({
+        where: { id, hidden: true, aiReviewStatus: topic.aiReviewStatus },
+        data: {
+          aiReviewStatus: "checking",
+          aiReviewReason: "管理员已重新发起 AI 审核；若服务仍不可用，系统会继续自动重试并转入人工审核。",
+          aiReviewDetail: resetForumReviewRetryDetail(topic.aiReviewDetail),
+          aiReviewedAt: null,
+          manualReviewedById: null,
+          manualReviewedAt: null,
+          manualReviewNote: null,
+        },
+      });
+      if (updated.count !== 1) throw Errors.conflict("审核状态已变化，请刷新后重试");
+      await prisma.notification.create({
+        data: {
+          userId: topic.authorId,
+          category: "system",
+          level: "normal",
+          title: "管理员已为你的帖子重新发起 AI 审核",
+          content: `${topic.title}：系统会自动重试；若审核服务持续异常，将自动转入人工审核。`,
+          source: "站务审核",
+          link: `/forum/topic/${topic.id}`,
+          payload: JSON.stringify({ type: "topic-admin-ai-review-retry", topicId: topic.id, submissionId: topic.submissionId }),
+        },
+      }).catch(() => undefined);
+      await refreshTopicSubmissionLock(topic.authorId);
+      scheduleTopicSubmissionReview(topic.id);
+      return ok(res, { kind, id: topic.id, aiReviewStatus: "checking" });
+    }
+
+    if (kind === "reply") {
+      const reply = await prisma.reply.findUnique({
+        where: { id },
+        select: { id: true, authorId: true, topicId: true, hidden: true, aiReviewStatus: true, aiReviewDetail: true, submissionId: true },
+      });
+      if (!reply) throw Errors.notFound("回复不存在");
+      if (!reply.hidden || !["review_failed", "blocked_ai"].includes(reply.aiReviewStatus)) {
+        throw Errors.badRequest("该回复当前不能重新发起 AI 审核");
+      }
+      const updated = await prisma.reply.updateMany({
+        where: { id, hidden: true, aiReviewStatus: reply.aiReviewStatus },
+        data: {
+          aiReviewStatus: "checking",
+          aiReviewReason: "管理员已重新发起 AI 审核；若服务仍不可用，系统会继续自动重试并转入人工审核。",
+          aiReviewDetail: resetForumReviewRetryDetail(reply.aiReviewDetail),
+          aiReviewedAt: null,
+        },
+      });
+      if (updated.count !== 1) throw Errors.conflict("审核状态已变化，请刷新后重试");
+      await prisma.notification.create({
+        data: {
+          userId: reply.authorId,
+          category: "system",
+          level: "normal",
+          title: "管理员已为你的回复重新发起 AI 审核",
+          content: "系统会自动重试；若审核服务持续异常，将自动转入人工审核。",
+          source: "站务审核",
+          link: `/forum/topic/${reply.topicId}#reply-${reply.id}`,
+          payload: JSON.stringify({ type: "reply-admin-ai-review-retry", replyId: reply.id, topicId: reply.topicId, submissionId: reply.submissionId }),
+        },
+      }).catch(() => undefined);
+      scheduleReplySubmissionReview(reply.id);
+      return ok(res, { kind, id: reply.id, topicId: reply.topicId, aiReviewStatus: "checking" });
+    }
+
     throw Errors.badRequest("不支持的审核对象类型");
   } catch (e) { next(e); }
 });

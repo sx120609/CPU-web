@@ -9,6 +9,9 @@ import {
   isForumSubmissionUniqueConflict,
   normalizeForumSubmissionId,
   parseTopicEditReviewContext,
+  forumReviewAttempt,
+  isAutomaticManualReviewRetry,
+  resetForumReviewRetryDetail,
 } from "../src/services/forumSubmission";
 
 test("论坛列表只向作者本人补充审核生命周期中的隐藏内容", () => {
@@ -67,12 +70,24 @@ test("编辑相似度上下文可以随异步队列持久化并恢复", () => {
     attempt: 0,
   });
   assert.equal(parseTopicEditReviewContext("[attempt:1] timeout"), null);
+  assert.equal(forumReviewAttempt("[attempt:4] timeout"), 4);
+  assert.equal(isAutomaticManualReviewRetry("[attempt:7] [auto-manual-retry:v1] timeout"), true);
+  assert.equal(resetForumReviewRetryDetail("[attempt:7] timeout"), "");
 });
 
 test("异步论坛审核状态会稳定映射为前端可恢复的提交结果", () => {
   assert.deepEqual(forumSubmissionResultForReview({ aiReviewStatus: "checking", hidden: true }), {
     status: "pending",
     reason: "内容已提交审核，完成后会通过站内通知告知结果",
+    replayed: false,
+  });
+  assert.deepEqual(forumSubmissionResultForReview({
+    aiReviewStatus: "manual_requested",
+    hidden: true,
+    reason: "AI 服务异常，已自动转人工并继续重试",
+  }), {
+    status: "manual_review",
+    reason: "AI 服务异常，已自动转人工并继续重试",
     replayed: false,
   });
   assert.deepEqual(forumSubmissionResultForReview({

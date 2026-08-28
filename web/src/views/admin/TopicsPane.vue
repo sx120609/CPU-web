@@ -10,6 +10,7 @@
       <el-select v-model="reviewStatus" clearable placeholder="审核状态" style="width:180px" @change="reload">
         <el-option label="全部状态" value="" />
         <el-option label="自动通过" value="auto_passed" />
+        <el-option label="审核服务异常" value="review_failed" />
         <el-option label="AI 拦截" value="blocked_ai" />
         <el-option label="申请人工审核" value="manual_requested" />
         <el-option label="人工审核中" value="manual_reviewing" />
@@ -75,6 +76,7 @@
           <div v-if="row.aiRiskScore !== null && row.aiRiskScore !== undefined" class="risk-note">
             {{ row.aiRiskScore }} 分
           </div>
+          <div v-if="row.aiReviewReason" class="review-reason" :title="row.aiReviewReason">{{ row.aiReviewReason }}</div>
         </template>
       </el-table-column>
       <el-table-column prop="replyCount" label="回" width="60" align="right" />
@@ -94,6 +96,13 @@
                 <el-dropdown-item command="pin" :disabled="isTopicBusy(row)">{{ row.pinned ? "取消板块置顶" : "板块置顶" }}</el-dropdown-item>
                 <el-dropdown-item command="globalPin" :disabled="isTopicBusy(row)">{{ row.globalPinned ? "取消全局置顶" : "全局置顶" }}</el-dropdown-item>
                 <el-dropdown-item command="lock" :disabled="isTopicBusy(row)">{{ row.locked ? "解锁" : "锁定" }}</el-dropdown-item>
+                <el-dropdown-item
+                  v-if="row.aiReviewStatus === 'review_failed' || row.aiReviewStatus === 'blocked_ai'"
+                  command="retry-ai"
+                  :disabled="isTopicBusy(row)"
+                >
+                  重新 AI 审核
+                </el-dropdown-item>
                 <el-dropdown-item
                   v-if="row.aiReviewStatus === 'manual_requested' || row.aiReviewStatus === 'manual_reviewing'"
                   command="approve"
@@ -138,6 +147,7 @@
             </template>
           </span>
           <span>{{ reviewLabel(row.aiReviewStatus) }}<template v-if="row.aiRiskScore !== null && row.aiRiskScore !== undefined"> · {{ row.aiRiskScore }} 分</template></span>
+          <span v-if="row.aiReviewReason" class="review-reason">{{ row.aiReviewReason }}</span>
           <span>{{ row.replyCount }} 回 / {{ row.likeCount }} 赞</span>
           <span>{{ fmtDate(row.createdAt) }}</span>
         </div>
@@ -152,6 +162,13 @@
                 <el-dropdown-item command="pin" :disabled="isTopicBusy(row)">{{ row.pinned ? "取消板块置顶" : "板块置顶" }}</el-dropdown-item>
                 <el-dropdown-item command="globalPin" :disabled="isTopicBusy(row)">{{ row.globalPinned ? "取消全局置顶" : "全局置顶" }}</el-dropdown-item>
                 <el-dropdown-item command="lock" :disabled="isTopicBusy(row)">{{ row.locked ? "解锁" : "锁定" }}</el-dropdown-item>
+                <el-dropdown-item
+                  v-if="row.aiReviewStatus === 'review_failed' || row.aiReviewStatus === 'blocked_ai'"
+                  command="retry-ai"
+                  :disabled="isTopicBusy(row)"
+                >
+                  重新 AI 审核
+                </el-dropdown-item>
                 <el-dropdown-item
                   v-if="row.aiReviewStatus === 'manual_requested' || row.aiReviewStatus === 'manual_reviewing'"
                   command="approve"
@@ -276,6 +293,7 @@ function handleTopicCommand(command: string, row: any) {
   if (command === "pin") return togglePin(row);
   if (command === "globalPin") return toggleGlobalPin(row);
   if (command === "lock") return toggleLock(row);
+  if (command === "retry-ai") return retryAiReview(row);
   if (command === "approve") return approveReview(row);
   if (command === "reject") return rejectReview(row);
   if (command === "hide") return hideRow(row);
@@ -363,11 +381,26 @@ async function moveBoard(row: any) {
 function reviewLabel(status?: string) {
   if (status === "auto_passed") return "自动通过";
   if (status === "blocked_ai") return "AI 拦截";
+  if (status === "review_failed") return "审核服务异常";
   if (status === "manual_requested") return "申请人工审核";
   if (status === "manual_reviewing") return "人工审核中";
   if (status === "approved_manual") return "人工已通过";
   if (status === "rejected_manual") return "人工已驳回";
   return "未审核";
+}
+
+async function retryAiReview(row: any) {
+  await runTopicAction(row, async () => {
+    const confirmed = await ElMessageBox.confirm(
+      `重新对《${row.title.slice(0, 30)}》发起 AI 审核？系统会自动重试，并在持续异常时转入人工审核。`,
+      "重新 AI 审核",
+      { type: "warning", confirmButtonText: "重新审核", cancelButtonText: "取消" },
+    ).then(() => true).catch(() => false);
+    if (!confirmed) return;
+    await adminApi.retryAiReview("topic", row.id);
+    ElMessage.success("已重新加入 AI 审核队列");
+    await reload();
+  });
 }
 
 async function approveReview(row: any) {
@@ -406,6 +439,16 @@ async function rejectReview(row: any) {
   width: 100%;
 }
 .pager { display: flex; justify-content: center; padding-top: 12px; }
+.review-reason {
+  display: -webkit-box;
+  margin-top: 3px;
+  overflow: hidden;
+  color: #7c8797;
+  font-size: 11px;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
 a { color: var(--cpu-primary); text-decoration: none; }
 a:hover { text-decoration: underline; }
 .admin-table { display: block; }

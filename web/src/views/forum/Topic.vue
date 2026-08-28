@@ -199,8 +199,9 @@
 
       <div v-if="isOwnTopicChecking" class="topic-review-tip cpu-card topic-review-tip-pending">
         <div class="review-blocked">
-          <p>帖子已经提交，正在后台审核。</p>
-          <p class="cpu-muted">现在只有你自己和管理员能看到；审核通过后会自动公开，并同步出现在首页和板块列表。</p>
+          <p>{{ isOwnTopicReviewRetrying ? "AI 审核服务暂时异常，系统正在后台自动重试。" : "帖子已经提交，正在后台审核。" }}</p>
+          <p v-if="isOwnTopicReviewRetrying && topic.aiReviewReason" class="cpu-muted">{{ topic.aiReviewReason }}</p>
+          <p class="cpu-muted">内容已经安全保存，无需重复提交。现在只有你自己和管理员能看到；审核通过后会自动公开。</p>
         </div>
       </div>
       <div v-else-if="isOwnTopicReviewFailed" class="topic-review-tip cpu-card topic-review-tip-failed">
@@ -253,7 +254,10 @@
         </div>
       </div>
       <div v-else-if="isOwnTopicManualReviewPending" class="topic-review-tip cpu-card topic-review-tip-pending">
-        <p>这篇稿件已提交人工复核，当前仅你自己和管理员可见。请耐心等待审核结果。</p>
+        <p>{{ isOwnTopicAutomaticManualRetry ? "AI 审核服务持续异常，帖子已自动转入人工审核。" : "这篇稿件已提交人工复核。" }}</p>
+        <p v-if="isOwnTopicAutomaticManualRetry" class="cpu-muted">这不代表内容违规；当前仅你自己和管理员可见。管理员处理前，后台仍会每 30 分钟继续尝试 AI 审核。</p>
+        <p v-else class="cpu-muted">当前仅你自己和管理员可见，请耐心等待审核结果。</p>
+        <p v-if="topic.aiReviewReason" class="cpu-muted">{{ topic.aiReviewReason }}</p>
       </div>
 
       <MarkdownView :content="displayContent" class="post-body topic-markdown" clickable-images media-loading="eager" />
@@ -917,6 +921,10 @@ const isOwnTopicChecking = computed(() => Boolean(
   topic.value?.hidden &&
   topic.value?.aiReviewStatus === "checking"
 ));
+const isOwnTopicReviewRetrying = computed(() => Boolean(
+  isOwnTopicChecking.value
+  && /审核服务|自动重试/u.test(String(topic.value?.aiReviewReason || ""))
+));
 const isOwnTopicReviewFailed = computed(() => Boolean(
   auth.isLoggedIn &&
   auth.user?.id === topic.value?.authorId &&
@@ -933,6 +941,10 @@ const isOwnTopicManualReviewPending = computed(() => Boolean(
   auth.user?.id === topic.value?.authorId &&
   topic.value?.hidden &&
   ["manual_requested", "manual_reviewing"].includes(String(topic.value?.aiReviewStatus || ""))
+));
+const isOwnTopicAutomaticManualRetry = computed(() => Boolean(
+  isOwnTopicManualReviewPending.value
+  && /自动重试|每 30 分钟|自动转入人工/u.test(String(topic.value?.aiReviewReason || ""))
 ));
 const topicEditDisabled = computed(() => isOwnTopicChecking.value || isOwnTopicManualReviewPending.value);
 const topicEditLabel = computed(() => (
@@ -1132,6 +1144,8 @@ function scheduleTopicReviewPoll() {
         ElMessage.warning("帖子暂未通过审核，你可以修改内容或申请人工复核");
       } else if (latestReviewState === "failed") {
         ElMessage.error("审核服务暂时未能完成处理，帖子内容已经保留");
+      } else if (latestReviewState === "manual_review") {
+        ElMessage.warning("AI 审核服务持续异常，帖子已自动转入人工审核；后台仍会继续尝试 AI 审核");
       }
     } catch {
       if (seq === topicReviewPollSeq && topic.value?.hidden && topic.value.aiReviewStatus === "checking") {
@@ -1283,7 +1297,9 @@ function replyReviewLabel(reply: Reply) {
   const status = String(reply.aiReviewStatus || "");
   if (status === "checking") return "审核中 · 仅自己可见";
   if (status === "review_failed") return "审核暂未完成";
-  if (["manual_requested", "manual_reviewing"].includes(status)) return "人工复核中";
+  if (["manual_requested", "manual_reviewing"].includes(status)) {
+    return /自动重试|每 30 分钟/u.test(String(reply.aiReviewReason || "")) ? "AI 异常 · 人工复核中" : "人工复核中";
+  }
   if (status === "blocked_ai") return "暂未通过审核";
   if (status === "rejected_manual") return "人工复核未通过";
   return "仅自己可见";
@@ -1462,6 +1478,13 @@ async function handleReplySubmissionResult(r: ReplySubmissionResponse) {
     clearPendingReplySubmission();
     replyDialogOpen.value = false;
     ElMessage.error(r.submissionResult.reason || "评论审核暂未完成，内容已保留在评论区，可编辑后重新提交");
+    return;
+  }
+  if (r.submissionResult?.status === "manual_review") {
+    upsertReplySubmission(r);
+    clearPendingReplySubmission();
+    replyDialogOpen.value = false;
+    ElMessage.warning(r.submissionResult.reason || "审核服务异常，回复已自动转入人工审核，后台仍会继续尝试 AI 审核");
     return;
   }
   if (r.submissionResult?.status === "deleted") {
