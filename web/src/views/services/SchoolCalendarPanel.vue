@@ -103,7 +103,12 @@
           </div>
           <div class="media-actions">
             <button type="button" @click="openImageViewer('map')">放大查看</button>
-            <a :href="campusMapImage" download="中国药科大学校园地图.png">下载地图</a>
+            <a
+              :href="campusMapOriginal"
+              download="中国药科大学校园地图-原图.png"
+              aria-label="下载校园地图原图（5000 × 4551，20.34 MB）"
+              title="5000 × 4551 · 20.34 MB"
+            >下载原图</a>
           </div>
         </div>
         <button class="image-frame map-image" type="button" aria-label="放大查看校园地图" @click="openImageViewer('map')">
@@ -121,6 +126,7 @@ import { computed, ref } from "vue";
 import { Calendar, MapLocation } from "@element-plus/icons-vue";
 import calendarImage from "@/assets/school-calendar/cpu-school-calendar-2026-2027.png";
 import campusMapImage from "@/assets/school-calendar/cpu-campus-map.png";
+import campusMapOriginal from "@/assets/school-calendar/cpu-campus-map-original.png";
 import { cpuSchoolCalendar as calendar } from "@/data/schoolCalendar";
 import { openImageGallery } from "@/utils/imageViewer";
 
