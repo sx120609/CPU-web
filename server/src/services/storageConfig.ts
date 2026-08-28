@@ -297,17 +297,25 @@ export async function getMediaStorageAdminConfig(): Promise<MediaStorageAdminCon
   const normalizedProvider = storageConfigCache.mediaStorageImageProvider === storageConfigCache.mediaStorageVideoProvider
     ? storageConfigCache.mediaStorageImageProvider
     : storageConfigCache.mediaStorageProvider;
+  const legacyClientId = String(config.oneDriveChinaClientId || "").trim();
+  const legacyClientSecret = String(config.oneDriveChinaClientSecret || "").trim();
+  const legacyDriveId = String(config.oneDriveChinaDriveId || "").trim();
+  const legacyRootPath = normalizeRootPath(config.oneDriveChinaRootPath);
   return {
     ...cloneStorageConfig({
       ...storageConfigCache,
       mediaStorageProvider: normalizedProvider,
     }),
+    oneDriveChinaClientId: storageConfigCache.oneDriveChinaClientId || legacyClientId,
+    oneDriveChinaDriveId: storageConfigCache.oneDriveChinaDriveId || legacyDriveId,
+    oneDriveChinaDriveName: storageConfigCache.oneDriveChinaDriveName || legacyDriveId,
+    oneDriveChinaRootPath: storageConfigCache.oneDriveChinaRootPath || legacyRootPath,
     tencentCosSecretId: storageConfigCache.tencentCosSecretId || String(config.tencentCosSecretId || "").trim(),
     tencentCosBucket: storageConfigCache.tencentCosBucket || normalizeCosBucket(config.tencentCosBucket),
     tencentCosRegion: storageConfigCache.tencentCosRegion || normalizeCosRegion(config.tencentCosRegion),
     tencentCosRootPath: storageConfigCache.tencentCosRootPath || normalizeRootPath(config.tencentCosRootPath),
     tencentCosPublicBaseUrl: storageConfigCache.tencentCosPublicBaseUrl || normalizePublicBaseUrl(config.tencentCosPublicBaseUrl),
-    oneDriveChinaClientSecretConfigured: Boolean(storageConfigCache.oneDriveChinaClientSecret),
+    oneDriveChinaClientSecretConfigured: Boolean(storageConfigCache.oneDriveChinaClientSecret || legacyClientSecret),
     oneDriveChinaRefreshTokenConfigured: Boolean(storageConfigCache.oneDriveChinaRefreshToken),
     tencentCosSecretKeyConfigured: Boolean(storageConfigCache.tencentCosSecretKey || String(config.tencentCosSecretKey || "").trim()),
   };
@@ -367,8 +375,10 @@ export async function updateMediaStorageAdminConfig(input: {
 }): Promise<MediaStorageAdminConfig> {
   await ensureLoaded();
   const next = cloneStorageConfig(storageConfigCache);
-  const previousClientId = next.oneDriveChinaClientId;
-  const previousClientSecret = next.oneDriveChinaClientSecret;
+  const legacyClientId = String(config.oneDriveChinaClientId || "").trim();
+  const legacyClientSecret = String(config.oneDriveChinaClientSecret || "").trim();
+  const previousClientId = next.oneDriveChinaClientId || legacyClientId;
+  const previousClientSecret = next.oneDriveChinaClientSecret || legacyClientSecret;
   const previousSharepointUrl = next.oneDriveChinaSharepointUrl;
 
   if (input.mediaStorageProvider !== undefined) {
@@ -415,7 +425,9 @@ export async function updateMediaStorageAdminConfig(input: {
   if (input.tencentCosRootPath !== undefined) next.tencentCosRootPath = normalizeRootPath(input.tencentCosRootPath);
   if (input.tencentCosPublicBaseUrl !== undefined) next.tencentCosPublicBaseUrl = normalizePublicBaseUrl(input.tencentCosPublicBaseUrl);
 
-  const credentialsChanged = previousClientId !== next.oneDriveChinaClientId || previousClientSecret !== next.oneDriveChinaClientSecret;
+  const nextClientId = next.oneDriveChinaClientId || legacyClientId;
+  const nextClientSecret = next.oneDriveChinaClientSecret || legacyClientSecret;
+  const credentialsChanged = previousClientId !== nextClientId || previousClientSecret !== nextClientSecret;
   const siteChanged = previousSharepointUrl !== next.oneDriveChinaSharepointUrl;
   if (credentialsChanged) {
     next.oneDriveChinaRefreshToken = "";

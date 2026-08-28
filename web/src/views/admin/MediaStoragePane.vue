@@ -440,24 +440,30 @@ const fileFilter = ref<FileFilterKey>("all");
 const filePage = ref(1);
 const filePageSize = ref(50);
 const migrationProgressText = ref("");
-const migrationBatchLimit = 3;
+const migrationBatchLimit = 100;
 
 const oneDriveCallbackUrl = computed(() => `${(siteOrigin.value || window.location.origin).replace(/\/+$/, "")}/api/storage/onedrive-cn/callback`);
 const migrationCandidates = computed(() => (inventory.value?.list ?? []).filter((row) => needsMigration(row)));
 const migrationEligibleCount = computed(() => inventory.value?.summary.eligibleMigrationCount ?? 0);
 const migrationNeedsOneDrive = computed(() => (
-  migrationCandidates.value.some((row) => row.configuredBackend === "onedrive-cn" || row.oneDriveExists)
+  migrationCandidates.value.some((row) => (
+    row.configuredBackend === "onedrive-cn"
+    || (!row.localExists && !row.cacheExists && row.oneDriveExists)
+  ))
   || Boolean(inventory.value?.summary.legacyAvatarCount && mediaStorageImageProvider.value === "onedrive-cn")
 ));
 const migrationNeedsCos = computed(() => (
-  migrationCandidates.value.some((row) => row.configuredBackend === "cos" || row.cosExists)
+  migrationCandidates.value.some((row) => (
+    row.configuredBackend === "cos"
+    || (!row.localExists && !row.cacheExists && row.cosExists)
+  ))
   || Boolean(inventory.value?.summary.legacyAvatarCount && mediaStorageImageProvider.value === "cos")
 ));
 const migrationDisabled = computed(() =>
   migratingFiles.value
   || !migrationEligibleCount.value
-  || (migrationNeedsOneDrive.value && (!oneDriveChinaRefreshTokenConfigured.value || !oneDriveChinaDriveId.value))
-  || (migrationNeedsCos.value && !tencentCosSecretKeyConfigured.value)
+  || (migrationNeedsOneDrive.value && (!inventory.value?.oneDriveConfigured || !inventory.value?.oneDriveReachable))
+  || (migrationNeedsCos.value && (!inventory.value?.cosConfigured || !inventory.value?.cosReachable))
 );
 const cleanupCandidates = computed(() => (inventory.value?.list ?? []).filter((row) => hasRedundantCopies(row)));
 const cleanupNeedsOneDrive = computed(() => cleanupCandidates.value.some((row) => row.oneDriveExists));
