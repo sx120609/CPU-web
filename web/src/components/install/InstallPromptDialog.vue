@@ -5,7 +5,7 @@
     :width="dialogWidth"
     align-center
     append-to-body
-    :close-on-click-modal="true"
+    :close-on-click-modal="false"
     class="install-dialog"
   >
     <!-- 已安装 / App 内打开：理论上根本看不到这个组件，但保险起见 -->
@@ -125,7 +125,6 @@ const deferredPrompt = ref<BeforeInstallPromptEvent | null>(null);
 const isStandalone = ref(false);
 const isNativeApp = ref(false);
 const inAppBrowser = computed(() => detectInAppBrowser());
-let autoPromptTimer: number | null = null;
 let disposed = false;
 
 const platform = computed<"ios" | "android" | "desktop">(() => {
@@ -207,17 +206,9 @@ onMounted(() => {
 });
 onBeforeUnmount(() => {
   disposed = true;
-  clearAutoPromptTimer();
   window.removeEventListener("beforeinstallprompt", onBeforeInstall);
   window.removeEventListener("appinstalled", onAppInstalled);
 });
-
-function clearAutoPromptTimer() {
-  if (autoPromptTimer) {
-    window.clearTimeout(autoPromptTimer);
-    autoPromptTimer = null;
-  }
-}
 
 async function installNow() {
   if (!deferredPrompt.value) return;
@@ -275,23 +266,16 @@ async function requestInstall() {
  *  - 已 standalone 不弹
  *  - desktop 不弹（桌面用户不太关心"加到桌面"，太骚扰）
  *  - 每次进入页面都可重新提示
- *  - 延迟 1.5s 后弹（让页面先有内容）
+ *  - 页面就绪后立即提示，避免用户先开始操作却错过引导
  */
 function autoPromptIfEligible() {
   if (disposed) return;
+  detectStandalone();
   detectNativeApp();
   if (isStandalone.value || isNativeApp.value) return;
   if (inAppBrowser.value.isInApp) return;
   if (platform.value === "desktop") return;
-  clearAutoPromptTimer();
-  autoPromptTimer = window.setTimeout(() => {
-    autoPromptTimer = null;
-    if (disposed) return;
-    // 重新核对 standalone（用户可能在等待期间已经手动加了）
-    detectStandalone();
-    detectNativeApp();
-    if (!isStandalone.value && !isNativeApp.value) open.value = true;
-  }, 1500);
+  open.value = true;
 }
 
 const canShow = computed(() => !isStandalone.value && !isNativeApp.value);
