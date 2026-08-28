@@ -1,6 +1,6 @@
-// v2 clears the pre-COS same-origin asset cache so one page cannot mix old local
-// modules with redirected COS modules after the static-delivery migration.
-const SW_VERSION = "cpu-schedule-offline-20260829-v2";
+// v3 clears module aliases cached before both production domains shared one
+// versioned COS module graph.
+const SW_VERSION = "cpu-schedule-offline-20260829-v3";
 const APP_SHELL_CACHE = `${SW_VERSION}:shell`;
 const ASSET_CACHE = `${SW_VERSION}:assets`;
 const SCHEDULE_PATH = "/schedule";

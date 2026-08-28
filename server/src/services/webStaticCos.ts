@@ -3,10 +3,11 @@ import path from "node:path";
 import { readFileSync } from "node:fs";
 import { resolveTencentCosOriginUrl } from "./tencentCos";
 
-export const WEB_STATIC_COS_PREFIX = "web-static/assets";
+// Keep the whole ES module graph under one versioned URL prefix. Query-string
+// cache busting would give the entry module a different identity from chunks
+// that import it, causing the application to execute twice.
+export const WEB_STATIC_COS_PREFIX = "web-static/assets/dual-origin-v2";
 export const WEB_STATIC_COS_MANIFEST = "cos-static-assets.json";
-// Bypass responses cached before the secondary production origin was added to COS CORS.
-export const WEB_STATIC_COS_CACHE_REVISION = "dual-origin-cors-v2";
 
 type WebStaticCosManifest = {
   version: 1;
@@ -61,17 +62,9 @@ export function normalizeWebStaticAssetPath(value: string) {
 export function rewriteWebStaticAssetUrls(html: string, assetBaseUrl: string) {
   const baseUrl = String(assetBaseUrl || "").trim().replace(/\/+$/gu, "");
   if (!baseUrl) return html;
-  const normalized = String(html || "").replace(
+  return String(html || "").replace(
     /\b(src|href)="\/assets\//gu,
     (_match, attribute: string) => `${attribute}="${baseUrl}/`,
-  );
-  return normalized.replace(
-    /\b(src|href)="([^"]+)"/gu,
-    (match, attribute: string, assetUrl: string) => {
-      if (!assetUrl.startsWith(`${baseUrl}/`)) return match;
-      const assetPath = assetUrl.slice(baseUrl.length + 1).split(/[?#]/u, 1)[0];
-      return `${attribute}="${baseUrl}/${assetPath}?v=${WEB_STATIC_COS_CACHE_REVISION}"`;
-    },
   );
 }
 
