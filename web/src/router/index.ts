@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from "vue-router";
+import type { NavigationGuard } from "vue-router";
 import { ElMessage } from "element-plus";
 import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
@@ -62,6 +63,16 @@ function firstRouteValue(value: unknown) {
   return Array.isArray(value) ? value[0] : value;
 }
 
+function mobileForumFeedRedirect(channel?: "hot"): NavigationGuard {
+  return (to) => {
+    const mobile = typeof window !== "undefined" && (window.matchMedia?.("(max-width: 768px)").matches ?? window.innerWidth <= 768);
+    if (!mobile) return true;
+    const query = { ...to.query };
+    if (channel) query.channel = channel;
+    return { name: "forum", query };
+  };
+}
+
 export const router = createRouter({
   history: createWebHistory(),
   scrollBehavior(to, from, savedPosition) {
@@ -82,8 +93,8 @@ export const router = createRouter({
       children: [
         { path: "home", name: "home", component: loadHomeView, meta: { title: "首页", public: true } },
         { path: "forum", name: "forum", component: () => import("@/views/forum/Index.vue"), meta: { title: "论坛", public: true } },
-        { path: "forum/hot", name: "forum-hot", redirect: (to) => ({ name: "forum", query: { ...to.query, channel: "hot" } }), meta: { title: "热榜", public: true } },
-        { path: "forum/latest", name: "forum-latest", redirect: (to) => ({ name: "forum", query: { ...to.query } }), meta: { title: "最新内容", public: true } },
+        { path: "forum/hot", name: "forum-hot", component: () => import("@/views/forum/Feed.vue"), beforeEnter: mobileForumFeedRedirect("hot"), meta: { title: "热榜", public: true } },
+        { path: "forum/latest", name: "forum-latest", component: () => import("@/views/forum/Feed.vue"), beforeEnter: mobileForumFeedRedirect(), meta: { title: "最新内容", public: true } },
         { path: "forum/b/market", redirect: "/market" },
         { path: "forum/b/:slug", name: "board", component: () => import("@/views/forum/Board.vue"), meta: { title: "板块", public: true } },
         { path: "forum/topic/:id", name: "topic", component: () => import("@/views/forum/Topic.vue"), meta: { title: "帖子", public: true } },

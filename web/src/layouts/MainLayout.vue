@@ -211,7 +211,7 @@
       platform="windows"
     />
 
-    <ComposeActionSheet v-model="composeMenuOpen" />
+    <ComposeActionSheet v-if="useMobileForumLayout" v-model="composeMenuOpen" />
 
     <button
       v-if="showForumPostFab"
@@ -479,16 +479,27 @@ const showFloatingActions = computed(() => (
 ));
 // 桌面客户端把这些工具做成了应用自己的标签页，站内再挂一个悬浮球就是重复入口
 const showToolsFab = computed(() => showFloatingActions.value && !isDesktopNativeApp());
-const forumRouteNames = new Set(["home", "forum", "forum-hot", "forum-latest", "board", "topic", "market"]);
+const desktopForumRouteNames = new Set(["forum", "forum-hot", "forum-latest", "board", "topic", "market"]);
+const mobileForumRouteNames = new Set(["home", ...desktopForumRouteNames]);
+const useMobileForumLayout = computed(() => mobileViewportWidth.value > 0 && mobileViewportWidth.value <= 768);
 const showForumPostFab = computed(() => (
   !hideChrome.value
   && !useNativeShell.value
   && site.features.forum
-  && auth.canAccessForum
-  && forumRouteNames.has(String(route.name || ""))
+  && (useMobileForumLayout.value
+    ? auth.canAccessForum && mobileForumRouteNames.has(String(route.name || ""))
+    : desktopForumRouteNames.has(String(route.name || "")))
 ));
 
 function openForumPost() {
+  if (!useMobileForumLayout.value) {
+    if (!auth.isLoggedIn) {
+      void router.push({ name: "login", query: { redirect: "/post" } });
+      return;
+    }
+    void router.push({ name: "post" });
+    return;
+  }
   composeMenuOpen.value = true;
 }
 

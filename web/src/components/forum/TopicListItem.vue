@@ -2,7 +2,7 @@
   <div
     ref="rowRef"
     class="topic-row"
-    :class="{ 'topic-row--simple': isSimple }"
+    :class="{ 'topic-row--card': isCard, 'topic-row--simple': isSimple }"
     role="button"
     tabindex="0"
     @click="openTopic"
@@ -41,6 +41,29 @@
             <span><el-icon><ChatLineRound /></el-icon>{{ topic.replyCount }}</span>
             <span><el-icon><Star /></el-icon>{{ topic.likeCount }}</span>
           </div>
+        </div>
+      </div>
+    </template>
+    <template v-else-if="isCard">
+      <img v-if="cardImage" class="market-card-image" :src="cardImage" alt="帖子图片" loading="lazy" decoding="async" />
+      <div class="market-card-body">
+        <div class="market-card-tags">
+          <el-tag v-if="topic.globalPinned || topic.pinned" size="small" type="danger" effect="plain">置顶</el-tag>
+          <el-tag v-if="marketKindLabel" size="small" effect="plain" :type="marketKindType">{{ marketKindLabel }}</el-tag>
+          <el-tag v-if="marketCategoryLabel" size="small" effect="plain" type="info">{{ marketCategoryLabel }}</el-tag>
+        </div>
+        <h3>{{ displayTitle }}</h3>
+        <p v-if="cardExcerpt && !isSayTopic" class="market-card-excerpt">{{ cardExcerpt }}</p>
+        <strong v-if="metaPriceLabel" class="market-card-price">{{ metaPriceLabel }}</strong>
+        <div v-if="marketCardFacts.length" class="market-card-facts">
+          <span v-for="fact in marketCardFacts" :key="fact">{{ fact }}</span>
+        </div>
+        <div class="market-card-meta">
+          <UserAvatar :size="28" class="avatar" :src="topic.author?.avatar" :name="topic.author?.nickname" :seed="topic.author?.id ?? topic.anonymousAlias ?? topic.id" :profile-frame="topic.author?.profileFrame" alt="作者头像" />
+          <span class="market-card-author">{{ topic.author?.nickname ?? "—" }}</span>
+          <span>{{ fmtRelative(topic.lastReplyAt || topic.createdAt) }}</span>
+          <span class="market-card-stat"><el-icon><ChatLineRound /></el-icon>{{ topic.replyCount }}</span>
+          <span class="market-card-stat"><el-icon><View /></el-icon>{{ displayedViewCount }}</span>
         </div>
       </div>
     </template>
@@ -116,7 +139,7 @@ import {
   queueTopicImpression,
 } from "@/utils/topicImpressions";
 
-const props = withDefaults(defineProps<{ topic: any; variant?: "row" | "simple"; rank?: number; score?: number }>(), {
+const props = withDefaults(defineProps<{ topic: any; variant?: "row" | "card" | "simple"; rank?: number; score?: number }>(), {
   variant: "row",
   rank: 0,
   score: undefined,
@@ -128,11 +151,19 @@ const displayedViewCount = ref(knownTopicViewCount(Number(props.topic.id), Numbe
 let impressionObserver: IntersectionObserver | null = null;
 let impressionTimer: ReturnType<typeof setTimeout> | null = null;
 const isSayTopic = computed(() => props.topic.metadata?._postMode === "say");
+const isCard = computed(() => props.variant === "card");
 const isSimple = computed(() => props.variant === "simple");
 const showBoardTag = computed(() => route.name !== "board");
 const displayTitle = computed(() => isSayTopic.value
   ? forumContentExcerpt(props.topic.content, 110) || props.topic.title
   : props.topic.title);
+const cardExcerpt = computed(() => forumContentExcerpt(props.topic.content, 90));
+const cardImage = computed(() => {
+  const content = String(props.topic.content || "");
+  const htmlMatch = content.match(/<img\b[^>]*\bsrc=["']([^"']+)["']/i);
+  if (htmlMatch?.[1]) return htmlMatch[1];
+  return content.match(/!\[[^\]]*\]\(([^\n)]+)\)/)?.[1] || "";
+});
 const marketKind = computed(() => {
   if (props.topic.board?.type !== "market") return "";
   const raw = props.topic.metadata?.marketKind || props.topic.metadata?.listingType;
@@ -171,6 +202,17 @@ const metaPriceLabel = computed(() => {
   const price = Number(raw);
   if (!Number.isFinite(price)) return "";
   return price > 0 ? `¥${price}` : "面议";
+});
+const marketCardFacts = computed(() => {
+  if (!marketKind.value || marketKind.value === "discuss") return [];
+  const facts: string[] = [];
+  const campus = String(props.topic.metadata?.campus || "").trim();
+  const tradeMode = String(props.topic.metadata?.tradeMode || "").trim();
+  const condition = String(props.topic.metadata?.condition || "").trim();
+  if (campus) facts.push(`🏫 ${campus}`);
+  if (tradeMode) facts.push(`🤝 ${tradeMode}`);
+  if (marketKind.value === "sell" && condition) facts.push(`◫ ${condition}`);
+  return facts;
 });
 const metaSolved = computed(() => props.topic.metadata?.resolved === true);
 const metaBounty = computed(() => props.topic.metadata?.bounty ? props.topic.metadata.bounty : 0);
@@ -467,6 +509,56 @@ function openTopic() {
 .simple-stats span { display: inline-flex; align-items: center; gap: 3px; }
 .simple-stats .heat { color: #0f766e; font-weight: 600; }
 
+.topic-row--card {
+  display: block;
+  width: 100%;
+  margin: 0 0 12px;
+  padding: 0;
+  break-inside: avoid;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 13px;
+  background: var(--cpu-card);
+  box-shadow: var(--cpu-shadow-sm);
+}
+.topic-row--card:hover { background: var(--cpu-card); border-color: color-mix(in srgb, var(--cpu-primary) 36%, var(--cpu-border)); }
+.market-card-image { display: block; width: 100%; max-height: 220px; object-fit: cover; background: var(--cpu-surface-subtle); }
+.market-card-body { padding: 12px; }
+.market-card-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; }
+.market-card-body h3 {
+  margin: 0;
+  color: var(--cpu-text);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+.market-card-excerpt {
+  display: -webkit-box;
+  margin: 6px 0 0;
+  overflow: hidden;
+  color: var(--cpu-text-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+.market-card-price { display: block; margin-top: 10px; color: color-mix(in srgb, #ef4444 82%, var(--cpu-text)); font-size: 17px; }
+.market-card-facts { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
+.market-card-facts span { padding: 3px 7px; border-radius: 999px; background: var(--cpu-surface-subtle); color: var(--cpu-text-secondary); font-size: 10px; line-height: 1.4; }
+.market-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  margin-top: 11px;
+  padding-top: 9px;
+  border-top: 1px solid var(--cpu-border-soft);
+  color: var(--cpu-text-muted);
+  font-size: 11px;
+}
+.market-card-author { flex: 1; min-width: 0; overflow: hidden; color: var(--cpu-primary); text-overflow: ellipsis; white-space: nowrap; }
+.market-card-stat { display: inline-flex; align-items: center; gap: 2px; white-space: nowrap; }
+
 @media (max-width: 640px) {
   .topic-row {
     display: grid;
@@ -482,6 +574,12 @@ function openTopic() {
     height: 32px !important;
     font-size: 13px;
   }
+
+  .topic-row--card { display: block; padding: 0; }
+  .topic-row--card .avatar { width: 26px !important; height: 26px !important; }
+  .market-card-image { max-height: 180px; }
+  .market-card-body { padding: 10px; }
+  .market-card-meta { gap: 5px; }
 
   .main { grid-column: 2; }
 

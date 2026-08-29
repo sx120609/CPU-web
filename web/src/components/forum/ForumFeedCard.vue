@@ -41,15 +41,15 @@
       </div>
       <p v-if="excerpt" class="feed-excerpt">{{ excerpt }}</p>
       <div v-if="images.length" class="feed-media" :class="`feed-media--${Math.min(images.length, 3)}`">
-        <img
-          v-for="(src, index) in images.slice(0, 3)"
-          :key="src"
-          :src="src"
-          :alt="`帖子图片 ${index + 1}`"
-          loading="lazy"
-          decoding="async"
-          @error="hideBrokenImage"
-        />
+        <span v-for="(src, index) in images.slice(0, 3)" :key="src" class="feed-media-cell">
+          <img
+            :src="src"
+            :alt="`帖子图片 ${index + 1}`"
+            loading="lazy"
+            decoding="async"
+            @error="hideBrokenImage"
+          />
+        </span>
         <span v-if="images.length > 3" class="media-count">共 {{ images.length }} 张</span>
       </div>
       <div v-if="marketFacts.length" class="market-facts">
@@ -168,7 +168,10 @@ function observeImpression() {
 
 function hideBrokenImage(event: Event) {
   const target = event.currentTarget;
-  if (target instanceof HTMLImageElement) target.hidden = true;
+  if (!(target instanceof HTMLImageElement)) return;
+  target.hidden = true;
+  const cell = target.parentElement;
+  if (cell?.classList.contains("feed-media-cell")) cell.hidden = true;
 }
 
 function openTopic() {
@@ -204,6 +207,7 @@ function openTopic() {
 .feed-media--1 { grid-template-columns: minmax(0, 320px); }
 .feed-media--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .feed-media--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.feed-media-cell { display: contents; }
 .feed-media img { width: 100%; height: 150px; object-fit: cover; background: var(--cpu-surface-subtle); }
 .feed-media--1 img { height: auto; max-height: 330px; object-fit: contain; }
 .media-count { position: absolute; right: 7px; bottom: 7px; padding: 3px 7px; border-radius: 999px; background: rgba(15, 23, 42, .7); color: #fff; font-size: 10px; }
@@ -218,8 +222,10 @@ function openTopic() {
   .feed-card-body, .feed-card-foot { margin-left: 0; }
   .feed-card-body { margin-top: 10px; }
   .feed-card-foot { margin-top: 10px; }
-  .feed-media img { height: 104px; }
-  .feed-media--1 img { max-height: 260px; }
+  .feed-media-cell { display: block; min-width: 0; aspect-ratio: 1; overflow: hidden; border-radius: 8px; background: var(--cpu-surface-subtle); }
+  .feed-media--1 { grid-template-columns: minmax(0, 220px); }
+  .feed-media--1 .feed-media-cell { aspect-ratio: 4 / 3; }
+  .feed-media img, .feed-media--1 img { width: 100%; height: 100%; max-height: none; object-fit: cover; }
   .feed-title-line h3 { font-size: 14px; }
 }
 </style>
