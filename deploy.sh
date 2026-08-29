@@ -75,7 +75,9 @@ DEPLOY_BUILD_NICE="${DEPLOY_BUILD_NICE:-10}"
 DEPLOY_NODE_HEAP_MB="${DEPLOY_NODE_HEAP_MB:-2304}"
 DEPLOY_CI_WAIT_SECONDS="${DEPLOY_CI_WAIT_SECONDS:-600}"
 DEPLOY_CI_POLL_SECONDS="${DEPLOY_CI_POLL_SECONDS:-15}"
-DEPLOY_ARTIFACT_URL="${DEPLOY_ARTIFACT_URL:-https://github.com/sx120609/CPU-web/releases/download/deploy-artifacts/cpu-web-linux-deploy.tar.gz}"
+# 默认只复用当前仓库 origin（生产机配置为 GitHub 镜像）。Release 下载仅在显式传入时启用，
+# 避免镜像把大文件 302 回 GitHub 资产域后再次卡住。
+DEPLOY_ARTIFACT_URL="${DEPLOY_ARTIFACT_URL:-}"
 DEPLOY_ARTIFACT_GIT_SOURCE="${DEPLOY_ARTIFACT_GIT_SOURCE:-refs/heads/deploy-artifacts}"
 DEPLOY_ARTIFACT_GIT_REF="${DEPLOY_ARTIFACT_GIT_REF:-refs/remotes/origin/deploy-artifacts}"
 DEPLOY_ARTIFACT_READY=0
@@ -1410,7 +1412,7 @@ download_ci_artifact() {
   while [ "$SECONDS" -le "$deadline" ]; do
     rm -rf "$incoming_dir"
     mkdir -p "$extract_dir"
-    bundle_url="${DEPLOY_ARTIFACT_URL}?commit=$commit&attempt=$attempt"
+    bundle_url="${DEPLOY_ARTIFACT_URL:+${DEPLOY_ARTIFACT_URL}?commit=$commit&attempt=$attempt}"
     if { \
         git fetch --force --no-tags origin \
           "$DEPLOY_ARTIFACT_GIT_SOURCE:$DEPLOY_ARTIFACT_GIT_REF" >/dev/null 2>&1 \
@@ -1418,7 +1420,8 @@ download_ci_artifact() {
           > "$incoming_dir/bundle.tar.gz"; \
       } \
       || { \
-        command -v curl >/dev/null 2>&1 \
+        [ -n "$bundle_url" ] \
+        && command -v curl >/dev/null 2>&1 \
         && curl -fsSL \
           --connect-timeout 15 \
           --max-time 60 \
