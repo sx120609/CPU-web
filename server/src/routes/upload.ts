@@ -12,19 +12,15 @@ import { validate } from "../middleware/validate";
 import { registerForumImageAsset } from "../services/imageModeration";
 import {
   FORUM_IMAGE_MAX_SOURCE_BYTES,
-  FORUM_IMAGE_UPLOAD_MAX_BYTES,
   normalizeForumImageUpload,
 } from "../services/forumImageCompression";
 import {
   buildUploadUrl,
-  createRemoteMediaUploadSession,
   deleteMediaAsset,
   prepareMediaLocalFileForProcessing,
   resolveMediaLocalPathFromUploadUrl,
   saveMediaAsset,
 } from "../services/mediaStorage";
-import { registerForumVideoAsset } from "../services/videoModeration";
-import { createVideoPosterAsset } from "../services/videoPoster";
 
 export const uploadRouter = Router();
 
@@ -40,7 +36,7 @@ const MIME_EXT: Record<string, string> = {
 };
 
 const MAX_IMAGE_BYTES = 600 * 1024;
-const MAX_MEDIA_BYTES = 120 * 1024 * 1024;
+const MAX_MEDIA_BYTES = FORUM_IMAGE_MAX_SOURCE_BYTES;
 const uploadMedia = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_MEDIA_BYTES },
@@ -110,50 +106,9 @@ uploadRouter.post("/media/init", authRequired, validate(mediaInitSchema), async 
   try {
     const mimeType = normalizeMimeType(req.body.mimeType);
     const kind = resolveMediaKind(mimeType, req.body.fileName);
-    if (!kind) throw Errors.badRequest("仅支持 JPG、PNG、WebP、GIF 图片或 MP4、WebM、MOV、M4V、MKV、OGV 视频");
-    const ext = resolveUploadExtension(kind, mimeType, req.body.fileName);
-    if (!ext) throw Errors.badRequest("当前文件格式暂不支持上传");
-
-    if (kind === "image") {
-      if (req.body.fileSize > FORUM_IMAGE_MAX_SOURCE_BYTES) throw Errors.badRequest("图片不能超过 32MB");
-      if (ext !== "gif" && req.body.fileSize > FORUM_IMAGE_UPLOAD_MAX_BYTES) {
-        ok(res, { mode: "proxy" as const, kind });
-        return;
-      }
-    }
-
-    const relativePath = buildForumMediaRelativePath(ext);
-    const session = await createRemoteMediaUploadSession({
-      relativePath,
-      contentType: mimeType || undefined,
-      mediaKind: kind,
-      sizeBytes: req.body.fileSize,
-    });
-    if (!session) {
-      ok(res, { mode: "proxy" as const, kind });
-      return;
-    }
-
-    const uploadToken = jwt.sign({
-      kind: "forum-media-upload",
-      userId: req.user!.userId,
-      mediaKind: kind,
-      relativePath,
-      mimeType,
-      fileSize: req.body.fileSize,
-      fileName: req.body.fileName,
-    } satisfies MediaUploadTokenPayload, config.jwtSecret, { expiresIn: "3h" });
-
-    ok(res, {
-      mode: "direct" as const,
-      kind,
-      url: buildUploadUrl(relativePath),
-      uploadUrl: session.uploadUrl,
-      uploadToken,
-      expiresAt: session.expiresAt,
-      uploadStrategy: session.strategy,
-      mimeType,
-    });
+    if (kind !== "image") throw Errors.badRequest("论坛仅支持上传 JPG、PNG、WebP、GIF 图片");
+    if (req.body.fileSize > FORUM_IMAGE_MAX_SOURCE_BYTES) throw Errors.badRequest("图片不能超过 32MB");
+    ok(res, { mode: "proxy" as const, kind });
   } catch (e) {
     next(e);
   }
@@ -163,6 +118,7 @@ uploadRouter.post("/media/complete", authRequired, validate(mediaCompleteSchema)
   try {
     const payload = verifyMediaUploadToken(req.body.uploadToken);
     if (payload.userId !== req.user!.userId) throw Errors.forbidden("上传会话与当前账号不匹配");
+    if (payload.mediaKind !== "image") throw Errors.forbidden("论坛仅支持上传图片");
     const mimeType = normalizeMimeType(payload.mimeType);
     const url = buildUploadUrl(payload.relativePath);
     const localPath = resolveMediaLocalPathFromUploadUrl(url);
@@ -177,43 +133,17 @@ uploadRouter.post("/media/complete", authRequired, validate(mediaCompleteSchema)
         await deleteMediaAsset(payload.relativePath).catch(() => undefined);
         throw Errors.badRequest("上传文件大小校验失败，请重新上传");
       }
-      if (payload.mediaKind === "image") {
-        await registerForumImageAsset({
-          url,
-          localPath,
-          mimeType: mimeType || undefined,
-          fileSize: payload.fileSize,
-          createdById: req.user!.userId,
-        }).catch(() => null);
-        ok(res, {
-          kind: payload.mediaKind,
-          url,
-          posterUrl: "",
-          mimeType,
-        });
-        return;
-      }
-
-      await registerForumVideoAsset({
+      await registerForumImageAsset({
         url,
         localPath,
         mimeType: mimeType || undefined,
         fileSize: payload.fileSize,
         createdById: req.user!.userId,
       }).catch(() => null);
-
-      let posterUrl = "";
-      if (preparedFile.localPath) {
-        posterUrl = await createVideoPosterAsset({
-          videoLocalPath: preparedFile.localPath,
-          videoRelativePath: payload.relativePath,
-        }).catch(() => "");
-      }
-
       ok(res, {
         kind: payload.mediaKind,
         url,
-        posterUrl,
+        posterUrl: "",
         mimeType,
       });
     } finally {
@@ -237,27 +167,23 @@ uploadRouter.post("/media", authRequired, (req, res, next) => {
 }, async (req, res, next) => {
   try {
     const file = req.file;
-    if (!file?.buffer?.length) throw Errors.badRequest("请先选择要上传的媒体文件");
+    if (!file?.buffer?.length) throw Errors.badRequest("请先选择要上传的图片");
     const mimeType = normalizeMimeType(file.mimetype);
     const kind = resolveMediaKind(mimeType, file.originalname);
-    if (!kind) throw Errors.badRequest("仅支持 JPG、PNG、WebP、GIF 图片或 MP4、WebM、MOV、M4V、MKV、OGV 视频");
+    if (kind !== "image") throw Errors.badRequest("论坛仅支持上传 JPG、PNG、WebP、GIF 图片");
 
     let ext = resolveUploadExtension(kind, mimeType, file.originalname);
     if (!ext) throw Errors.badRequest("当前文件格式暂不支持上传");
-    let uploadBuffer = file.buffer;
-    let uploadMimeType = mimeType;
-    if (kind === "image") {
-      const normalized = await normalizeForumImageUpload({
-        buffer: file.buffer,
-        mimeType,
-        fileName: file.originalname,
-      }).catch((error: unknown) => {
-        throw Errors.badRequest(String((error as Error)?.message || "图片压缩失败"));
-      });
-      uploadBuffer = normalized.buffer;
-      uploadMimeType = normalized.mimeType;
-      ext = normalized.extension;
-    }
+    const normalized = await normalizeForumImageUpload({
+      buffer: file.buffer,
+      mimeType,
+      fileName: file.originalname,
+    }).catch((error: unknown) => {
+      throw Errors.badRequest(String((error as Error)?.message || "图片压缩失败"));
+    });
+    const uploadBuffer = normalized.buffer;
+    const uploadMimeType = normalized.mimeType;
+    ext = normalized.extension;
     const relativePath = buildForumMediaRelativePath(ext);
     const saved = await saveMediaAsset({
       relativePath,
@@ -266,39 +192,18 @@ uploadRouter.post("/media", authRequired, (req, res, next) => {
       mediaKind: kind,
     });
 
-    if (kind === "image") {
-      await registerForumImageAsset({
-        url: saved.url,
-        localPath: saved.localPath,
-        mimeType: uploadMimeType || undefined,
-        fileSize: uploadBuffer.length,
-        createdById: req.user!.userId,
-      }).catch(() => null);
-      ok(res, {
-        kind,
-        url: saved.url,
-        posterUrl: "",
-        mimeType: uploadMimeType,
-      });
-      return;
-    }
-
-    await registerForumVideoAsset({
+    await registerForumImageAsset({
       url: saved.url,
       localPath: saved.localPath,
-      mimeType: mimeType || undefined,
-      fileSize: file.size,
+      mimeType: uploadMimeType || undefined,
+      fileSize: uploadBuffer.length,
       createdById: req.user!.userId,
     }).catch(() => null);
-    const posterUrl = await createVideoPosterAsset({
-      videoLocalPath: saved.localPath,
-      videoRelativePath: saved.relativePath,
-    }).catch(() => "");
     ok(res, {
       kind,
       url: saved.url,
-      posterUrl,
-      mimeType,
+      posterUrl: "",
+      mimeType: uploadMimeType,
     });
   } catch (e) {
     next(e);

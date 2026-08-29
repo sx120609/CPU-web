@@ -55,7 +55,7 @@
 
             <template v-else-if="activeMobileToolbar === 'image'">
               <button type="button" :disabled="imageUploading" @click="runMobileAction(() => pickContentMedia(), true)">
-                {{ imageUploading ? "上传中" : "插入媒体" }}
+                {{ imageUploading ? "上传中" : "插入图片" }}
               </button>
             </template>
           </div>
@@ -108,7 +108,7 @@
             :status="task.status === 'error' ? 'exception' : task.status === 'done' ? 'success' : undefined"
           />
           <div class="upload-progress-item__meta">
-            <span>{{ task.kind === "image" ? "图片" : "视频" }}</span>
+            <span>图片</span>
             <span>{{ formatBytes(task.loadedBytes) }} / {{ formatBytes(task.totalBytes) }}</span>
           </div>
           <p v-if="task.errorMessage" class="upload-progress-item__error">{{ task.errorMessage }}</p>
@@ -125,7 +125,7 @@
     <input
       ref="contentImageInputRef"
       type="file"
-      accept="image/*,video/*"
+      accept="image/*"
       multiple
       class="hidden-file"
       @change="onContentImagePicked"
@@ -154,10 +154,10 @@ type MobileToolbarKey = "heading" | "format" | "tools" | "align" | "image";
 
 const EDITABLE_BLOCK_SELECTOR = "p,div,h1,h2,h3,h4,h5,h6,blockquote,li";
 const MOBILE_BREAKPOINT = "(max-width: 700px)";
-const DEFAULT_PLACEHOLDER = "写点什么，也可以直接插入图片或视频；一次选多张图片会自动排成相册。";
-const MOBILE_PLACEHOLDER = "写点什么，也可以用工具栏插入图片或视频；多图会自动排成相册。";
-const DEFAULT_FOOTER = "支持排版、图片、视频、相册和草稿保存。";
-const MOBILE_FOOTER = "支持排版、图片、视频、相册和草稿保存。";
+const DEFAULT_PLACEHOLDER = "写点什么，也可以直接插入图片；一次选多张图片会自动排成相册。";
+const MOBILE_PLACEHOLDER = "写点什么，也可以用工具栏插入图片；多图会自动排成相册。";
+const DEFAULT_FOOTER = "支持排版、图片、相册和草稿保存。";
+const MOBILE_FOOTER = "支持排版、图片、相册和草稿保存。";
 const UPLOAD_TASK_CLEANUP_DELAY = 4500;
 
 const props = withDefaults(defineProps<{
@@ -228,7 +228,7 @@ const mobileToolbarSections: Array<{ key: MobileToolbarKey; label: string }> = [
   { key: "format", label: "格式" },
   { key: "tools", label: "工具" },
   { key: "align", label: "对齐" },
-  { key: "image", label: "媒体" },
+  { key: "image", label: "图片" },
 ];
 
 const resolvedPlaceholder = computed(() => (
@@ -265,10 +265,10 @@ const toolbarStatusText = computed(() => {
     return `正在上传 ${completed}/${mediaUploadTasks.value.length}`;
   }
   if (mediaUploadTasks.value.length && mediaUploadTasks.value.every((task) => task.status === "done")) {
-    return `已上传 ${mediaUploadTasks.value.length} 个媒体`;
+    return `已上传 ${mediaUploadTasks.value.length} 张图片`;
   }
   if (hasSelectedImage.value) return isMobileViewport.value ? "已选图片" : "已选图片，可调对齐";
-  return isMobileViewport.value ? "" : "支持排版、图片、视频和相册";
+  return isMobileViewport.value ? "" : "支持排版、图片和相册";
 });
 const toolbarModeClass = computed(() => ({
   "toolbar-static": props.toolbarMode === "static",
@@ -590,35 +590,46 @@ async function onContentImagePicked(event: Event) {
     }
     return;
   }
-  await uploadAndInsertMedia(files);
+  const images = files.filter(isSupportedMediaFile);
+  if (images.length !== files.length) ElMessage.warning("论坛仅支持上传图片");
+  await uploadAndInsertMedia(images);
 }
 
 async function handleEditorPaste(event: ClipboardEvent) {
-  const files = Array.from(event.clipboardData?.files ?? []).filter(isSupportedMediaFile);
+  const pickedFiles = Array.from(event.clipboardData?.files ?? []);
+  const files = pickedFiles.filter(isSupportedMediaFile);
   if (!files.length) {
+    if (pickedFiles.length) {
+      event.preventDefault();
+      ElMessage.warning("论坛仅支持上传图片");
+      return;
+    }
     setTimeout(syncEditorContent, 0);
     return;
   }
+  if (files.length !== pickedFiles.length) ElMessage.warning("已忽略非图片文件");
   event.preventDefault();
   rememberSelection();
   await uploadAndInsertMedia(files);
 }
 
 async function handleEditorDrop(event: DragEvent) {
-  const files = Array.from(event.dataTransfer?.files ?? []).filter(isSupportedMediaFile);
-  if (!files.length) return;
+  const pickedFiles = Array.from(event.dataTransfer?.files ?? []);
+  const files = pickedFiles.filter(isSupportedMediaFile);
+  if (!files.length) {
+    if (pickedFiles.length) ElMessage.warning("论坛仅支持上传图片");
+    return;
+  }
+  if (files.length !== pickedFiles.length) ElMessage.warning("已忽略非图片文件");
   rememberSelection();
   await uploadAndInsertMedia(files);
 }
 
-type UploadedMediaItem =
-  | { kind: "image"; url: string; alt: string }
-  | { kind: "video"; url: string; alt: string; posterUrl?: string };
+type UploadedMediaItem = { kind: "image"; url: string; alt: string };
 
 type MediaUploadTask = {
   id: string;
   name: string;
-  kind: "image" | "video";
   status: "waiting" | "preparing" | "uploading" | "processing" | "done" | "error";
   progress: number;
   loadedBytes: number;
@@ -679,45 +690,10 @@ async function uploadAndInsertMedia(files: File[]) {
         }
         continue;
       }
-      if (mediaKind === "video") {
-        try {
-          updateUploadTask(task.id, {
-            status: "preparing",
-            progress: 0,
-            loadedBytes: 0,
-            totalBytes: file.size,
-            errorMessage: "",
-          });
-          const { url, posterUrl } = await uploadApi.media(file, safeMediaFileName(file, "video.mp4"), {
-            onProgress: (state) => syncUploadTaskProgress(task.id, state),
-          });
-          if (editorDisposed) return;
-          updateUploadTask(task.id, {
-            status: "done",
-            progress: 100,
-            loadedBytes: file.size,
-            totalBytes: file.size,
-          });
-          uploaded.push({
-            kind: "video",
-            url,
-            alt: file.name || "视频",
-            posterUrl: posterUrl || "",
-          });
-          successCount += 1;
-        } catch (error) {
-          failedCount += 1;
-          updateUploadTask(task.id, {
-            status: "error",
-            errorMessage: normalizeImageUploadError(error),
-          });
-        }
-        continue;
-      }
       failedCount += 1;
       updateUploadTask(task.id, {
         status: "error",
-        errorMessage: "当前仅支持上传图片或视频文件",
+        errorMessage: "论坛仅支持上传图片",
       });
     }
     if (uploaded.length) {
@@ -726,11 +702,11 @@ async function uploadAndInsertMedia(files: File[]) {
     }
     if (editorDisposed) return;
     if (successCount && failedCount) {
-      ElMessage.warning(`已插入 ${successCount} 个媒体，另有 ${failedCount} 个上传失败`);
+      ElMessage.warning(`已插入 ${successCount} 张图片，另有 ${failedCount} 张上传失败`);
     } else if (successCount) {
-      ElMessage.success(successCount > 1 ? `已插入 ${successCount} 个媒体文件` : "媒体已插入");
+      ElMessage.success(successCount > 1 ? `已插入 ${successCount} 张图片` : "图片已插入");
     } else if (failedCount) {
-      ElMessage.error("媒体上传失败");
+      ElMessage.error("图片上传失败");
     }
   } finally {
     if (!editorDisposed) {
@@ -744,7 +720,7 @@ function insertUploadedMedia(items: UploadedMediaItem[]) {
   if (!items.length) return;
   const markerId = `image-caret-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   const blocks: string[] = [];
-  let imageRun: Array<Extract<UploadedMediaItem, { kind: "image" }>> = [];
+  let imageRun: UploadedMediaItem[] = [];
   const flushImages = () => {
     if (!imageRun.length) return;
     if (imageRun.length === 1) {
@@ -763,26 +739,10 @@ function insertUploadedMedia(items: UploadedMediaItem[]) {
     imageRun = [];
   };
 
-  for (const item of items) {
-    if (item.kind === "image") {
-      imageRun.push(item);
-      continue;
-    }
-    flushImages();
-    blocks.push(renderEditorVideoBlock(item));
-  }
+  for (const item of items) imageRun.push(item);
   flushImages();
   blocks.push(`<p data-caret="${markerId}"><br></p>`);
   insertHtmlAtCursor(blocks.join(""), markerId);
-}
-
-function renderEditorVideoBlock(item: Extract<UploadedMediaItem, { kind: "video" }>) {
-  const posterAttr = item.posterUrl ? ` poster="${escapeAttr(item.posterUrl)}"` : "";
-  return [
-    `<p class="qq-video-card editor-video-card" data-media-kind="video" data-align="${toolbarState.align}">`,
-    `<video class="qq-inline-video" controls preload="metadata" playsinline src="${escapeAttr(item.url)}"${posterAttr}></video>`,
-    `</p>`,
-  ].join("");
 }
 
 function insertHtmlAtCursor(html: string, caretMarkerId = "") {
@@ -797,13 +757,11 @@ function insertHtmlAtCursor(html: string, caretMarkerId = "") {
   rememberSelection();
 }
 
-function inferMediaKind(file: File): "image" | "video" | "" {
+function inferMediaKind(file: File): "image" | "" {
   const mime = String(file.type || "").toLowerCase();
   if (mime.startsWith("image/")) return "image";
-  if (mime.startsWith("video/")) return "video";
   const ext = String(file.name || "").split(".").pop()?.toLowerCase() ?? "";
   if (["jpg", "jpeg", "png", "webp", "gif"].includes(ext)) return "image";
-  if (["mp4", "webm", "ogv", "mov", "m4v", "mkv"].includes(ext)) return "video";
   return "";
 }
 
@@ -811,16 +769,10 @@ function isSupportedMediaFile(file: File) {
   return Boolean(inferMediaKind(file));
 }
 
-function safeMediaFileName(file: File, fallback: string) {
-  return String(file.name || "").trim() || fallback;
-}
-
 function createUploadTask(file: File, index: number): MediaUploadTask {
-  const mediaKind = inferMediaKind(file);
   return {
     id: `media-upload-${Date.now().toString(36)}-${index}-${Math.random().toString(36).slice(2, 8)}`,
-    name: file.name || (mediaKind === "video" ? "视频" : "图片"),
-    kind: mediaKind === "video" ? "video" : "image",
+    name: file.name || "图片",
     status: "waiting",
     progress: 0,
     loadedBytes: 0,
@@ -870,9 +822,9 @@ function scheduleUploadTaskCleanup() {
 
 function formatUploadTaskStatus(task: MediaUploadTask) {
   if (task.status === "waiting") return "等待上传";
-  if (task.status === "preparing") return task.kind === "image" ? "压缩准备中" : "准备上传";
+  if (task.status === "preparing") return "压缩准备中";
   if (task.status === "uploading") return `上传中 ${task.progress}%`;
-  if (task.status === "processing") return task.kind === "video" ? "云端处理中" : "服务器处理中";
+  if (task.status === "processing") return "服务器处理中";
   if (task.status === "done") return "上传完成";
   return "上传失败";
 }

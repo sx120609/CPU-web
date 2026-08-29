@@ -330,7 +330,7 @@ export const uploadApi = {
 
     const init = await request.post<{
       mode: "direct" | "proxy";
-      kind: "image" | "video";
+      kind: "image";
       url?: string;
       uploadUrl?: string;
       uploadToken?: string;
@@ -351,7 +351,7 @@ export const uploadApi = {
       }
       reportProgress("processing", file.size, file.size);
       return request.post<{
-        kind: "image" | "video";
+        kind: "image";
         url: string;
         posterUrl?: string;
         mimeType?: string;
@@ -363,7 +363,7 @@ export const uploadApi = {
     const formData = new FormData();
     formData.append("file", file, fileName);
     return request.post<{
-      kind: "image" | "video";
+      kind: "image";
       url: string;
       posterUrl?: string;
       mimeType?: string;
