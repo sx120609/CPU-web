@@ -1,5 +1,5 @@
 <template>
-  <div class="msg-page" v-loading="loading">
+  <div class="msg-page" :class="{ 'is-private': tab === 'private' }" v-loading="loading && tab !== 'private'">
     <div class="page-head">
       <div class="page-head-main">
         <h2 class="page-title">消息中心</h2>
@@ -14,7 +14,7 @@
         <el-button type="primary" @click="loadPage">重试</el-button>
       </el-empty>
     </div>
-    <el-tabs v-else v-model="tab" class="cpu-card messages-tabs">
+    <el-tabs v-else v-model="tab" class="cpu-card messages-tabs" :class="{ 'is-private': tab === 'private' }">
       <el-tab-pane label="私聊" name="private" lazy>
         <DirectMessages @notices-read="onDirectNoticesRead" />
       </el-tab-pane>
@@ -1428,6 +1428,52 @@ function normalizeMessageSettings(value: any) {
 
   .notice-actions :deep(.el-button > span) {
     white-space: nowrap;
+  }
+}
+
+@media (max-width: 720px) {
+  .msg-page.is-private {
+    height: calc(100dvh - 160px - env(safe-area-inset-bottom));
+    min-height: 360px;
+    gap: 0;
+    overflow: hidden;
+  }
+
+  .msg-page.is-private .page-head {
+    display: none;
+  }
+
+  .messages-tabs.is-private {
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    flex-direction: column;
+    padding-bottom: 0;
+    overflow: hidden;
+  }
+
+  .messages-tabs.is-private :deep(.el-tabs__header) {
+    flex: 0 0 auto;
+  }
+
+  .messages-tabs.is-private :deep(.el-tabs__content),
+  .messages-tabs.is-private :deep(.el-tab-pane) {
+    min-height: 0;
+    height: 100%;
+  }
+
+  .messages-tabs.is-private :deep(.el-tabs__content) {
+    flex: 1;
+    overflow: hidden;
+  }
+
+  :global(.layout-root.keyboard-open) .msg-page.is-private {
+    height: calc(100dvh - 84px);
+    min-height: 300px;
+  }
+
+  :global(.layout-root--native-shell) .msg-page.is-private {
+    height: 100dvh;
   }
 }
 

@@ -22,6 +22,8 @@
           type="button"
           class="conversation-row"
           :class="{ active: activeConversation?.id === conversation.id }"
+          :aria-current="activeConversation?.id === conversation.id ? 'true' : undefined"
+          :aria-label="`打开与 ${conversation.counterpart.nickname} 的私聊${conversation.unreadCount ? `，${conversation.unreadCount} 条未读` : ''}`"
           @click="openConversation(conversation.id)"
         >
           <UserAvatar
@@ -58,7 +60,9 @@
       </div>
       <template v-else>
         <header class="chat-head">
-          <button type="button" class="mobile-back" aria-label="返回会话列表" @click="backToList">‹</button>
+          <button type="button" class="mobile-back" aria-label="返回会话列表" title="返回会话列表" @click="backToList">
+            <el-icon><ArrowLeft /></el-icon>
+          </button>
           <UserAvatar
             :size="40"
             :src="activeCounterpart.avatar"
@@ -75,10 +79,10 @@
             <span v-else-if="!activeConversation">新私聊 · 对方回复前最多发送两条</span>
             <span v-else>站内私聊</span>
           </div>
-          <el-button text type="primary" @click="openProfile">查看资料</el-button>
+          <el-button class="profile-link" text type="primary" @click="openProfile">查看资料</el-button>
         </header>
 
-        <div ref="messageScroller" class="message-scroller">
+        <div ref="messageScroller" class="message-scroller" aria-live="polite" aria-label="私聊消息记录">
           <div v-if="nextCursor" class="load-more">
             <el-button text type="primary" :loading="olderLoading" @click="loadOlderMessages">加载更早消息</el-button>
           </div>
@@ -118,12 +122,12 @@
           <el-input
             v-model="draft"
             type="textarea"
-            :rows="3"
+            :autosize="{ minRows: 1, maxRows: 4 }"
             resize="none"
             maxlength="2000"
             show-word-limit
             :disabled="sendBlocked || sending"
-            :placeholder="sendBlocked ? '等待对方回复' : '输入消息，Enter 发送，Shift + Enter 换行'"
+            :placeholder="sendBlocked ? '等待对方回复' : '输入消息'"
             @keydown="onComposerKeydown"
           />
           <div class="composer-actions">
@@ -139,6 +143,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
+import { ArrowLeft } from "@element-plus/icons-vue";
 import { useRoute, useRouter } from "vue-router";
 import UserAvatar from "@/components/common/UserAvatar.vue";
 import {
@@ -448,20 +453,22 @@ function errorMessage(error: unknown, fallback: string) {
 .direct-messages {
   display: grid;
   grid-template-columns: minmax(230px, 300px) minmax(0, 1fr);
-  min-height: 620px;
+  height: clamp(620px, 68vh, 760px);
+  min-height: 0;
   overflow: hidden;
   border: 1px solid var(--cpu-border-soft);
   border-radius: 14px;
   background: var(--cpu-card);
 }
-.conversation-sidebar { min-width: 0; border-right: 1px solid var(--cpu-border-soft); background: var(--cpu-surface-soft); }
+.conversation-sidebar { min-width: 0; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); border-right: 1px solid var(--cpu-border-soft); background: var(--cpu-surface-soft); }
 .sidebar-head { min-height: 68px; padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--cpu-border-soft); }
 .sidebar-head > div { display: flex; flex-direction: column; gap: 3px; }
 .sidebar-head b { color: var(--cpu-text); }
 .sidebar-head span { color: var(--cpu-text-secondary); font-size: 12px; }
-.conversation-list { display: flex; flex-direction: column; max-height: 550px; overflow-y: auto; }
-.conversation-row { position: relative; width: 100%; min-width: 0; padding: 13px 14px; display: flex; gap: 10px; align-items: center; border: 0; border-bottom: 1px solid var(--cpu-border-soft); background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.conversation-list { min-height: 0; display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.conversation-row { position: relative; width: 100%; min-width: 0; min-height: 68px; padding: 13px 14px; display: flex; gap: 10px; align-items: center; border: 0; border-bottom: 1px solid var(--cpu-border-soft); background: transparent; color: inherit; text-align: left; cursor: pointer; transition: background-color .16s ease, box-shadow .16s ease; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
 .conversation-row:hover, .conversation-row.active { background: var(--cpu-card); }
+.conversation-row:focus-visible { outline: 2px solid color-mix(in srgb, var(--cpu-primary) 60%, transparent); outline-offset: -3px; }
 .conversation-row.active { box-shadow: inset 3px 0 var(--cpu-primary); }
 .conversation-copy { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 5px; }
 .conversation-line { min-width: 0; display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
@@ -471,39 +478,52 @@ function errorMessage(error: unknown, fallback: string) {
 .unread-dot { min-width: 20px; height: 20px; padding: 0 5px; display: grid; place-items: center; border-radius: 999px; background: #ef4444; color: white; font-size: 10px; }
 .sidebar-state, .message-loading { min-height: 150px; padding: 24px; display: grid; place-items: center; color: var(--cpu-text-secondary); font-size: 13px; text-align: center; }
 .sidebar-error { display: flex; flex-direction: column; justify-content: center; gap: 6px; }
-.chat-pane { min-width: 0; min-height: 620px; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
+.chat-pane { min-width: 0; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
 .chat-state { grid-row: 1 / -1; min-height: 520px; display: grid; place-items: center; color: var(--cpu-text-secondary); }
 .chat-head { min-height: 68px; padding: 10px 16px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--cpu-border-soft); }
 .chat-title { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 3px; }
 .chat-title b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-title span { color: var(--cpu-text-secondary); font-size: 12px; }
-.mobile-back { display: none; border: 0; background: transparent; color: var(--cpu-primary); font-size: 28px; cursor: pointer; }
-.message-scroller { min-height: 0; max-height: 410px; padding: 18px; overflow-y: auto; background: linear-gradient(180deg, var(--cpu-surface-soft), var(--cpu-card)); }
+.mobile-back { display: none; width: 38px; height: 38px; flex: 0 0 38px; place-items: center; padding: 0; border: 0; border-radius: 12px; background: var(--cpu-surface-soft); color: var(--cpu-primary); font-size: 20px; cursor: pointer; touch-action: manipulation; }
+.mobile-back:focus-visible { outline: 2px solid var(--cpu-primary); outline-offset: 2px; }
+.message-scroller { min-height: 0; padding: 18px; overflow-y: auto; overscroll-behavior: contain; scroll-behavior: smooth; background: linear-gradient(180deg, var(--cpu-surface-soft), var(--cpu-card)); }
 .message-row { display: flex; margin: 8px 0; justify-content: flex-start; }
 .message-row.mine { justify-content: flex-end; }
-.message-bubble { max-width: min(76%, 620px); padding: 10px 12px 8px; border-radius: 6px 16px 16px 16px; background: var(--cpu-card); border: 1px solid var(--cpu-border-soft); box-shadow: 0 2px 7px rgba(15, 23, 42, .05); }
+.message-bubble { max-width: min(76%, 620px); padding: 10px 12px 8px; border-radius: 6px 16px 16px 16px; background: var(--cpu-card); border: 1px solid var(--cpu-border-soft); box-shadow: 0 3px 12px rgba(15, 23, 42, .06); }
 .mine .message-bubble { border-radius: 16px 6px 16px 16px; background: color-mix(in srgb, var(--cpu-primary) 14%, var(--cpu-card)); border-color: color-mix(in srgb, var(--cpu-primary) 30%, var(--cpu-border-soft)); }
 .message-bubble p { margin: 0; color: var(--cpu-text); line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
 .message-bubble span { display: block; margin-top: 5px; color: var(--cpu-text-muted); font-size: 10px; text-align: right; }
 .new-chat-tip { min-height: 260px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 8px; color: var(--cpu-text-secondary); text-align: center; }
 .new-chat-tip b { color: var(--cpu-text); }
 .load-more { display: flex; justify-content: center; }
-.composer { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 9px; border-top: 1px solid var(--cpu-border-soft); background: var(--cpu-card); }
+.composer { position: relative; z-index: 1; padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 9px; border-top: 1px solid var(--cpu-border-soft); background: color-mix(in srgb, var(--cpu-card) 94%, transparent); box-shadow: 0 -8px 24px rgba(15, 23, 42, .04); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+.composer :deep(.el-textarea__inner) { min-height: 42px !important; padding: 10px 12px; line-height: 1.5; border-radius: 12px; }
 .composer-actions { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
 .composer-actions span { color: var(--cpu-text-secondary); font-size: 11px; }
 
 @media (max-width: 720px) {
-  .direct-messages { display: block; min-height: 560px; }
-  .conversation-sidebar { border-right: 0; }
-  .chat-pane { display: none; min-height: 560px; }
+  .direct-messages { display: block; width: 100%; height: 100%; min-height: 0; border-radius: 12px; }
+  .conversation-sidebar { height: 100%; border-right: 0; }
+  .chat-pane { display: none; height: 100%; min-height: 0; }
   .direct-messages.has-active .conversation-sidebar { display: none; }
   .direct-messages.has-active .chat-pane { display: grid; }
-  .conversation-list { max-height: 490px; }
-  .mobile-back { display: block; padding: 0 4px 0 0; }
-  .message-scroller { max-height: 360px; padding: 13px; }
-  .message-bubble { max-width: 88%; }
-  .chat-head { padding: 10px 12px; }
-  .chat-head :deep(.el-button) { padding-left: 6px; padding-right: 6px; }
-  .composer { padding: 10px 11px 12px; }
+  .mobile-back { display: grid; }
+  .message-scroller { padding: 14px 12px 18px; }
+  .message-row { margin: 7px 0; }
+  .message-bubble { max-width: 88%; padding: 9px 11px 7px; }
+  .chat-head { min-height: 60px; padding: 8px 10px; gap: 8px; }
+  .chat-title span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .profile-link { margin-left: 0 !important; padding-left: 6px !important; padding-right: 6px !important; }
+  .composer { padding: 10px 10px max(10px, env(safe-area-inset-bottom)); gap: 8px; }
+  .composer-actions :deep(.el-button) { min-width: 72px; min-height: 38px; margin-left: 0; }
+  .composer-actions span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .new-chat-tip { min-height: 100%; padding: 24px 18px; }
+}
+
+@media (max-width: 380px) {
+  .chat-head :deep(.user-avatar) { width: 34px !important; height: 34px !important; }
+  .profile-link { font-size: 12px; }
+  .message-bubble { max-width: 92%; }
+  .composer-actions span { font-size: 10px; }
 }
 </style>

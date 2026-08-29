@@ -449,7 +449,12 @@ const fullWidthContent = computed(() => Boolean(route.meta?.fullWidthContent));
 const fullHeightContent = computed(() => Boolean(route.meta?.fullHeightContent));
 const useNativeShell = computed(() => isFlutterNativeShell());
 // 两个悬浮球共用同一套显示条件
-const showFloatingActions = computed(() => !hideChrome.value && !useNativeShell.value && route.path !== "/search");
+const showFloatingActions = computed(() => (
+  !hideChrome.value
+  && !useNativeShell.value
+  && route.path !== "/search"
+  && route.path !== "/messages"
+));
 // 桌面客户端把这些工具做成了应用自己的标签页，站内再挂一个悬浮球就是重复入口
 const showToolsFab = computed(() => showFloatingActions.value && !isDesktopNativeApp());
 const forumRouteNames = new Set(["forum", "forum-hot", "forum-latest", "board", "topic", "market"]);
