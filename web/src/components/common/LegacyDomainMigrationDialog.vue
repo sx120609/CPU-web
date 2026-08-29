@@ -21,7 +21,7 @@
 
     <p class="migration-intro">
       你当前仍在通过 <code>cpu.lizmt.cn</code> 访问。请改用
-      <strong>cputime.cn</strong>，并按设备完成一次更新；账号和站内数据不受影响。
+      <strong>cputime.cn</strong>；下方步骤与站内现有的客户端获取、更新入口一致。
     </p>
 
     <div v-if="activeInstruction" class="migration-steps" aria-label="当前设备更新方法">
@@ -43,12 +43,12 @@
     <div v-else class="migration-generic">
       <h3>请先切换到新域名</h3>
       <p>
-        暂时无法准确识别当前客户端。请先前往 <strong>cputime.cn</strong>；若你通过客户端或主屏幕图标使用本站，请在对应客户端的更新入口升级，或用系统浏览器重新创建入口。
+        暂时无法准确识别当前客户端。请打开 <strong>https://cputime.cn/download</strong>；站内“客户端下载”页会优先推荐当前设备适用的版本，并提供对应获取入口。
       </p>
     </div>
 
     <p v-if="audience === 'ios'" class="migration-note">
-      iPhone / iPad 上分享按钮的位置会随系统版本变化，请认准“方框上箭头”图标。确认新图标能正常打开后，再删除旧图标。
+      Safari 版本不同，可能是底部“…”→共享按钮，或直接点分享按钮。确认新图标能正常进入课表后，再删除旧图标。
     </p>
 
     <template #footer>
@@ -66,7 +66,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import {
-  detectClientPlatform,
   isAndroidNativeApp,
   isDesktopNativeApp,
   isLikelyAndroidDevice,
@@ -90,22 +89,28 @@ type MigrationInstruction = {
 
 const instructions: MigrationInstruction[] = [
   {
-    id: "android",
+    id: "android-app",
     badge: "A",
     title: "安卓客户端",
-    description: "进入“课表” → 点右上角“更多” → 选择“客户端更新”或“检查客户端更新”，按提示升级到最新版。",
+    description: "进入“课表” → 点右上角“更多” → 点“更新安卓客户端”或“检查客户端更新”，按提示升级到最新版。",
+  },
+  {
+    id: "android-web",
+    badge: "A",
+    title: "安卓设备（浏览器）",
+    description: "进入“课表” → 点右上角“更多” → 点“下载 Android 客户端”，下载 APK 后按系统提示安装。",
   },
   {
     id: "ios",
     badge: "iOS",
     title: "iPhone / iPad",
-    description: "用 Safari 打开 https://cputime.cn → 点底部或顶部的“分享”按钮 → 选择“添加到主屏幕”并确认添加，再从新图标进入。",
+    description: "用 Safari 打开 https://cputime.cn/download → 点“打开课表并安装” → 在课表顶部点向下箭头的“添加到桌面” → 按教程选择“查看更多”→“添加到主屏幕”。",
   },
   {
-    id: "desktop",
+    id: "desktop-app",
     badge: "PC",
     title: "桌面客户端",
-    description: "进入“小工具” → 滑到页面底部 → 点击“检查客户端更新”或“更新”，按提示完成更新。",
+    description: "进入“小工具” → 滑到页面底部“关于” → 点击“检查客户端更新”，按客户端提示完成更新。",
   },
 ];
 
@@ -113,20 +118,20 @@ const visible = ref(false);
 const audience = ref<MigrationAudience>("other");
 
 const audienceLabel = computed(() => {
-  if (audience.value === "android") return "检测到安卓设备";
+  if (audience.value === "android-app") return "检测到安卓客户端";
+  if (audience.value === "android-web") return "检测到安卓浏览器";
   if (audience.value === "ios") return "检测到 iPhone / iPad";
-  if (audience.value === "desktop") return "检测到桌面客户端";
+  if (audience.value === "desktop-app") return "检测到桌面客户端";
   return "暂未识别设备";
 });
 
 const activeInstruction = computed(() => instructions.find((item) => item.id === audience.value) ?? null);
 
 function detectAudience(): MigrationAudience {
-  const detectedClient = detectClientPlatform();
   return resolveMigrationAudience({
-    androidNative: detectedClient === "android" || isAndroidNativeApp(),
-    desktopNative: detectedClient === "desktop" || isDesktopNativeApp(),
-    iosDevice: detectedClient === "ios" || isLikelyIosDevice(),
+    androidNative: isAndroidNativeApp(),
+    desktopNative: isDesktopNativeApp(),
+    iosDevice: isLikelyIosDevice(),
     androidDevice: isLikelyAndroidDevice(),
   });
 }
@@ -282,7 +287,7 @@ onMounted(() => {
   background: #e9edf2;
 }
 
-.platform-badge.is-desktop {
+.platform-badge.is-desktop-app {
   color: #1769aa;
   background: #dceefd;
 }

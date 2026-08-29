@@ -5,7 +5,7 @@ export const LEGACY_DOMAIN_NOTICE_SNOOZE_MS = 24 * 60 * 60 * 1000;
 
 type SiteLocation = Pick<Location, "pathname" | "search" | "hash">;
 
-export type MigrationAudience = "android" | "ios" | "desktop" | "other";
+export type MigrationAudience = "android-app" | "android-web" | "ios" | "desktop-app" | "other";
 
 type MigrationAudienceSignals = {
   androidNative: boolean;
@@ -36,10 +36,10 @@ export function resolveMigrationAudience({
   iosDevice,
   androidDevice,
 }: MigrationAudienceSignals): MigrationAudience {
-  if (androidNative) return "android";
-  if (desktopNative) return "desktop";
+  if (androidNative) return "android-app";
+  if (desktopNative) return "desktop-app";
   if (iosDevice) return "ios";
-  if (androidDevice) return "android";
+  if (androidDevice) return "android-web";
   return "other";
 }
 
