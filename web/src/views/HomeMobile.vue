@@ -4,7 +4,7 @@
       <SiteSearchBar placeholder="搜索帖子或校园服务" />
       <nav class="quick-grid">
         <button v-for="entry in quickEntries" :key="entry.label" type="button" @click="openQuickEntry(entry.to)">
-          <span class="quick-icon">{{ entry.icon }}</span>
+          <span class="quick-icon" aria-hidden="true"><el-icon><component :is="entry.icon" /></el-icon></span>
           <span>{{ entry.label }}</span>
         </button>
       </nav>
@@ -58,7 +58,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { ChatDotRound, MagicStick, Notification, Sell, Service } from "@element-plus/icons-vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type Component } from "vue";
 import { onBeforeRouteLeave, useRoute, useRouter } from "vue-router";
 import type { Topic } from "@/api/topic";
 import { homeApi, type HomeSummary } from "@/api/home";
@@ -103,12 +104,12 @@ const latestTopics = computed(() => feedTopics.value);
 const announcements = computed(() => (summary.value?.announce || []).slice(0, 8) as Topic[]);
 const canLoadMore = computed(() => showForumContent.value && feedTopics.value.length < feedTotal.value);
 const quickEntries = computed(() => [
-  showForumContent.value ? { icon: "💬", label: "论坛", to: "/forum" } : null,
-  { icon: "📢", label: "公告", to: "/announcements" },
-  site.features.market && auth.canAccessForum ? { icon: "♻️", label: "二手", to: "/forum?channel=market" } : null,
-  { icon: "🧭", label: "服务", to: "/services" },
-  { icon: "✨", label: "拾间AI", to: "/search" },
-].filter(Boolean) as Array<{ icon: string; label: string; to: string }>);
+  showForumContent.value ? { icon: ChatDotRound, label: "论坛", to: "/forum" } : null,
+  { icon: Notification, label: "公告", to: "/announcements" },
+  site.features.market && auth.canAccessForum ? { icon: Sell, label: "二手", to: "/forum?channel=market" } : null,
+  { icon: Service, label: "服务", to: "/services" },
+  { icon: MagicStick, label: "拾间AI", to: "/search" },
+].filter(Boolean) as Array<{ icon: Component; label: string; to: string }>);
 const homeCacheScope = computed(() => {
   const identity = auth.user?.id ? `user-${auth.user.id}` : "guest";
   return `${identity}:forum-${auth.canAccessForum ? "on" : "off"}`;
@@ -316,7 +317,8 @@ function requestMessage(requestError: unknown) {
 .quick-grid button { display: flex; min-width: 0; min-height: 66px; flex-direction: column; align-items: center; justify-content: center; gap: 5px; padding: 7px 4px; border: 1px solid var(--cpu-border-soft); border-radius: 11px; background: var(--cpu-surface-soft); color: var(--cpu-text-secondary); font-size: 11px; font-weight: 650; cursor: pointer; }
 .quick-grid button:hover { border-color: var(--cpu-primary); color: var(--cpu-primary); }
 .quick-grid button:focus-visible { outline: 2px solid var(--cpu-primary); outline-offset: 2px; }
-.quick-icon { font-size: 21px; line-height: 1; }
+.quick-icon { display: grid; width: 24px; height: 24px; place-items: center; color: var(--cpu-primary); line-height: 1; }
+.quick-icon :deep(.el-icon) { width: 22px; height: 22px; font-size: 22px; }
 .hot-strip { padding: 10px 12px; border: 1px solid var(--cpu-border-soft); border-radius: 12px; background: var(--cpu-card); }
 .hot-strip header, .section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .hot-strip header { margin-bottom: 4px; }
@@ -343,7 +345,8 @@ function requestMessage(requestError: unknown) {
   .home-entry { padding: 9px; border-radius: 13px; }
   .quick-grid { gap: 5px; }
   .quick-grid button { min-height: 58px; border-radius: 9px; }
-  .quick-icon { font-size: 18px; }
+  .quick-icon { width: 22px; height: 22px; }
+  .quick-icon :deep(.el-icon) { width: 20px; height: 20px; font-size: 20px; }
   .hot-strip { padding: 9px 10px; }
   .home-feed, .official-feed { margin-inline: -4px; padding: 10px 8px; border-radius: 12px; }
   .home-feed-list { gap: 7px; }
