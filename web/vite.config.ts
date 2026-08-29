@@ -24,6 +24,14 @@ export default defineConfig(({ command }) => ({
       "@": path.resolve(__dirname, "src"),
     },
   },
+  experimental: {
+    renderBuiltUrl(filename, { hostType }) {
+      if (hostType === "css" && filename.startsWith("assets/fonts/harmonyos-sans-sc/")) {
+        return { relative: true };
+      }
+      return undefined;
+    },
+  },
   build: {
     manifest: true,
     rollupOptions: {
