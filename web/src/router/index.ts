@@ -73,6 +73,12 @@ function mobileForumFeedRedirect(channel?: "hot"): NavigationGuard {
   };
 }
 
+function mobileMarketBoardRedirect(to: Parameters<NavigationGuard>[0]) {
+  const mobile = typeof window !== "undefined" && (window.matchMedia?.("(max-width: 768px)").matches ?? window.innerWidth <= 768);
+  if (!mobile) return true;
+  return { name: "forum", query: { ...to.query, channel: "market" } };
+}
+
 export const router = createRouter({
   history: createWebHistory(),
   scrollBehavior(to, from, savedPosition) {
@@ -95,18 +101,18 @@ export const router = createRouter({
         { path: "forum", name: "forum", component: () => import("@/views/forum/Index.vue"), meta: { title: "论坛", public: true } },
         { path: "forum/hot", name: "forum-hot", component: () => import("@/views/forum/Feed.vue"), beforeEnter: mobileForumFeedRedirect("hot"), meta: { title: "热榜", public: true } },
         { path: "forum/latest", name: "forum-latest", component: () => import("@/views/forum/Feed.vue"), beforeEnter: mobileForumFeedRedirect(), meta: { title: "最新内容", public: true } },
-        { path: "forum/b/market", redirect: "/market" },
+        { path: "forum/b/market", name: "market", component: () => import("@/views/forum/Board.vue"), beforeEnter: mobileMarketBoardRedirect, meta: { title: "二手交流", public: true } },
         { path: "forum/b/:slug", name: "board", component: () => import("@/views/forum/Board.vue"), meta: { title: "板块", public: true } },
         { path: "forum/topic/:id", name: "topic", component: () => import("@/views/forum/Topic.vue"), meta: { title: "帖子", public: true } },
         { path: "post", name: "post", component: () => import("@/views/forum/Post.vue"), meta: { title: "发帖" } },
         { path: "post/:id/edit", name: "edit-post", component: () => import("@/views/forum/Post.vue"), meta: { title: "编辑帖子" } },
-        { path: "market", name: "market", component: () => import("@/views/forum/Market.vue"), meta: { title: "二手交流", public: true } },
+        { path: "market", redirect: { name: "market" } },
         { path: "market/publish", redirect: { path: "/post", query: { board: "market", kind: "sell" } } },
-        { path: "market/item/:id/edit", redirect: "/market" },
-        { path: "market/item/:id", redirect: "/market" },
-        { path: "market/mine", redirect: "/market" },
-        { path: "market/seller", redirect: "/market" },
-        { path: "market/messages", redirect: "/market" },
+        { path: "market/item/:id/edit", redirect: { name: "market" } },
+        { path: "market/item/:id", redirect: { name: "market" } },
+        { path: "market/mine", redirect: { name: "market" } },
+        { path: "market/seller", redirect: { name: "market" } },
+        { path: "market/messages", redirect: { name: "market" } },
         { path: "lost-found", name: "lost-found", component: () => import("@/views/lostFound/Index.vue"), meta: { title: "失物招领", public: true } },
         { path: "coursereview", name: "coursereview", component: () => import("@/views/coursereview/Index.vue"), meta: { title: "课程点评", public: true } },
         { path: "coursereview/:id", name: "course", component: () => import("@/views/coursereview/Course.vue"), meta: { title: "课程", public: true } },

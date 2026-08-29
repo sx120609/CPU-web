@@ -341,7 +341,7 @@ async function loadAd() {
 
 function openBoard(board: Board) {
   boardsOpen.value = false;
-  void router.push(board.type === "market" ? "/market" : `/forum/b/${board.slug}`);
+  void router.push(board.type === "market" ? { name: "forum", query: { channel: "market" } } : `/forum/b/${board.slug}`);
 }
 
 function requestMessage(requestError: unknown) {

@@ -56,7 +56,7 @@ import {
   invalidateForumCaches,
   invalidateSiteSettingCaches,
 } from "../../services/cacheInvalidation";
-import { decodeTopicForViewer } from "../../services/forumPresentation";
+import { decodeReplyForViewer, decodeTopicForViewer } from "../../services/forumPresentation";
 import {
   calcSponsorOrderExpiresAt,
   closeExpiredSponsorOrders,
@@ -841,6 +841,47 @@ adminRouter.get("/topics", modOrAbove, async (req, res, next) => {
         ...item,
         globalPinned: isGlobalPinnedTopic(item.id),
       }, req.user)),
+    });
+  } catch (e) { next(e); }
+});
+
+adminRouter.get("/manual-reviews", modOrAbove, async (req, res, next) => {
+  try {
+    const statuses = ["manual_requested", "manual_reviewing"];
+    const [topics, replies, topicCount, replyCount] = await Promise.all([
+      prisma.topic.findMany({
+        where: { hidden: true, aiReviewStatus: { in: statuses } },
+        orderBy: { createdAt: "asc" },
+        take: 100,
+        include: {
+          author: { select: { id: true, username: true, nickname: true, role: true } },
+          board: { select: { id: true, slug: true, name: true } },
+        },
+      }),
+      prisma.reply.findMany({
+        where: { hidden: true, aiReviewStatus: { in: statuses } },
+        orderBy: { createdAt: "asc" },
+        take: 100,
+        include: {
+          author: { select: { id: true, username: true, nickname: true, role: true } },
+          topic: {
+            select: {
+              id: true,
+              title: true,
+              board: { select: { id: true, slug: true, name: true } },
+            },
+          },
+        },
+      }),
+      prisma.topic.count({ where: { hidden: true, aiReviewStatus: { in: statuses } } }),
+      prisma.reply.count({ where: { hidden: true, aiReviewStatus: { in: statuses } } }),
+    ]);
+    ok(res, {
+      total: topicCount + replyCount,
+      topicCount,
+      replyCount,
+      topics: topics.map((item) => decodeTopicForViewer(item, req.user)),
+      replies: replies.map((item) => decodeReplyForViewer(item, req.user)),
     });
   } catch (e) { next(e); }
 });

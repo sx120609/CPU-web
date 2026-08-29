@@ -12,7 +12,7 @@
     :style="layoutStyle"
   >
     <!-- 顶栏 -->
-    <header v-if="!hideChrome && !useNativeShell" class="topbar">
+    <header v-if="!hideChrome && !useNativeShell && !mobileTopicChrome" class="topbar">
       <div class="topbar-inner">
         <router-link to="/home" class="brand">
           <img
@@ -172,6 +172,7 @@
         'main--bare': hideChrome,
         'main--full-width': fullWidthContent && !hideChrome,
         'main--full-height': fullHeightContent && !hideChrome,
+        'main--mobile-topic': mobileTopicChrome,
       }"
     >
       <router-view v-slot="{ Component }">
@@ -254,7 +255,7 @@
       </el-icon>
     </button>
 
-    <footer v-if="!hideChrome && !useNativeShell && !fullHeightContent" class="footer">
+    <footer v-if="!hideChrome && !useNativeShell && !fullHeightContent && !mobileTopicChrome" class="footer">
       <span class="footer-item">© 2026 药大拾间 · 校园互助与服务平台</span>
       <router-link class="footer-item" to="/download">客户端下载</router-link>
       <a class="footer-item" href="https://github.com/sx120609/CPU-web" target="_blank" rel="noopener noreferrer">GitHub</a>
@@ -271,7 +272,7 @@
       </a>
     </footer>
 
-    <nav v-if="!useNativeShell" class="mobile-tabbar" :class="{ 'is-hidden': keyboardOpen }" aria-label="移动端主导航" :style="{ gridTemplateColumns: `repeat(${mobileNavItems.length}, 1fr)` }">
+    <nav v-if="!useNativeShell && !mobileTopicChrome" class="mobile-tabbar" :class="{ 'is-hidden': keyboardOpen }" aria-label="移动端主导航" :style="{ gridTemplateColumns: `repeat(${mobileNavItems.length}, 1fr)` }">
       <router-link
         v-for="item in mobileNavItems"
         :key="item.to"
@@ -481,10 +482,15 @@ const showFloatingActions = computed(() => (
 const showToolsFab = computed(() => showFloatingActions.value && !isDesktopNativeApp());
 const desktopForumRouteNames = new Set(["forum", "forum-hot", "forum-latest", "board", "topic", "market"]);
 const mobileForumRouteNames = new Set(["home", ...desktopForumRouteNames]);
-const useMobileForumLayout = computed(() => mobileViewportWidth.value > 0 && mobileViewportWidth.value <= 768);
+const effectiveViewportWidth = computed(() => (
+  mobileViewportWidth.value || (typeof window !== "undefined" ? window.innerWidth : 0)
+));
+const useMobileForumLayout = computed(() => effectiveViewportWidth.value > 0 && effectiveViewportWidth.value <= 768);
+const mobileTopicChrome = computed(() => useMobileForumLayout.value && route.name === "topic");
 const showForumPostFab = computed(() => (
   !hideChrome.value
   && !useNativeShell.value
+  && !mobileTopicChrome.value
   && site.features.forum
   && (useMobileForumLayout.value
     ? auth.canAccessForum && mobileForumRouteNames.has(String(route.name || ""))
@@ -1911,6 +1917,12 @@ function setAppearanceMode(command: string | number | object) {
   .main {
     padding: 14px 12px calc(88px + env(safe-area-inset-bottom));
     max-width: none;
+  }
+
+  .main.main--mobile-topic {
+    width: 100%;
+    margin: 0;
+    padding: 0 0 calc(76px + env(safe-area-inset-bottom));
   }
 
   .layout-root--full-height .main--full-height {

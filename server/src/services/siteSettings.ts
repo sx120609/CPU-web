@@ -617,7 +617,7 @@ export const DEFAULT_TOP_NAVIGATION: TopNavigationItem[] = [
   { id: "schedule", label: "课表", fullLabel: "课表", to: "/schedule", icon: "schedule", enabled: true, primary: true, showInDrawer: true, audience: "all", feature: "", requireForumAccess: false, openInNewTab: false },
   { id: "services", label: "服务", fullLabel: "校园服务", to: "/services", icon: "service", enabled: true, primary: true, showInDrawer: true, audience: "all", feature: "", requireForumAccess: false, openInNewTab: false },
   { id: "coursereview", label: "课评", fullLabel: "课程点评", to: "/coursereview", icon: "course", enabled: true, primary: false, showInDrawer: true, audience: "all", feature: "coursereview", requireForumAccess: true, openInNewTab: false },
-  { id: "market", label: "二手", fullLabel: "二手交流", to: "/market", icon: "market", enabled: true, primary: false, showInDrawer: true, audience: "all", feature: "market", requireForumAccess: true, openInNewTab: false },
+  { id: "market", label: "二手", fullLabel: "二手交流", to: "/forum/b/market", icon: "market", enabled: true, primary: false, showInDrawer: true, audience: "all", feature: "market", requireForumAccess: true, openInNewTab: false },
 ];
 export const DEFAULT_ANONYMOUS_TIERS: AnonymousTierConfig[] = [
   { reputation: 30, quota: 1 },
@@ -748,8 +748,13 @@ const ASSISTANT_DAILY_QUOTAS_KEY = "assistant.dailyQuotas";
 const LEARNING_ASSISTANT_ACCESS_MODE_KEY = "assistant.learningAccessMode";
 export const DEFAULT_LEARNING_ASSISTANT_ACCESS_MODE: LearningAssistantAccessMode = "guest-unlimited";
 
-export const DEFAULT_AI_PROMPTS = {
+const PREVIOUS_DEFAULT_AI_PROMPTS = {
   topicReviewSystem: "你是校园社区文字内容安全审核助手。你只根据标题、正文中的文字内容做判断，不要根据图片、图片占位符、图片链接、附件、分享卡片或外链落地页的想象内容加重风险。本站用户均为成年人，因此不需要对普通成人表达、恋爱讨论、两性话题、情绪吐槽采取过严标准；仅在出现违法、露骨色情、骚扰引导、仇恨攻击、性别对立煽动、隐私泄露、联系方式引流、诈骗、诽谤、极端政治动员等明确风险时提高分数。只返回 JSON。",
+  replyReviewSystem: "你是校园社区文字内容安全审核助手。你只根据回复中的文字内容做判断，不要根据图片、图片占位符、图片链接、附件、分享卡片或外链落地页的想象内容加重风险。本站用户均为成年人，因此不需要对普通成人表达、恋爱讨论、两性话题、情绪吐槽采取过严标准；仅在出现违法、露骨色情、骚扰引导、仇恨攻击、性别对立煽动、隐私泄露、联系方式引流、诈骗、诽谤、极端政治动员等明确风险时提高分数。只返回 JSON。",
+} as const;
+
+export const DEFAULT_AI_PROMPTS = {
+  topicReviewSystem: "你是校园社区文字内容安全审核助手。你只根据标题、正文中的文字内容做判断，不要根据图片、图片占位符、图片链接、附件、分享卡片或外链落地页的想象内容加重风险。本站用户均为成年人，因此不需要对普通成人表达、恋爱讨论、两性话题、情绪吐槽采取过严标准。用户主动发布自己的手机号、微信、QQ 等联系方式，用于正常校园二手交易、互助或线下交流，通常不算隐私泄露或恶意引流；板块类型为 market 时，正常自留联系方式应默认放行。仅在出现违法、露骨色情、骚扰引导、仇恨攻击、性别对立煽动、曝光他人隐私、诈骗、批量广告营销、诽谤、极端政治动员等明确风险时提高分数。只返回 JSON。",
   topicReviewUser: [
     "请审核以下校园社区稿件，输出 JSON：",
     "{\"risk_score\":0-100,\"risk_level\":\"low|medium|high\",\"decision\":\"auto_pass|manual_review|block\",\"reason\":\"一句短原因\",\"detail\":\"补充说明\",\"categories\":{\"violence\":0-100,\"porn_explicit\":0-100,\"abuse\":0-100,\"privacy\":0-100,\"fraud\":0-100,\"political_extremism\":0-100,\"defamation\":0-100,\"spam\":0-100,\"gender_conflict\":0-100}}",
@@ -761,7 +766,7 @@ export const DEFAULT_AI_PROMPTS = {
     "正文：{{content}}",
     "补充 metadata：{{metadataJson}}",
   ].join("\n"),
-  replyReviewSystem: "你是校园社区文字内容安全审核助手。你只根据回复中的文字内容做判断，不要根据图片、图片占位符、图片链接、附件、分享卡片或外链落地页的想象内容加重风险。本站用户均为成年人，因此不需要对普通成人表达、恋爱讨论、两性话题、情绪吐槽采取过严标准；仅在出现违法、露骨色情、骚扰引导、仇恨攻击、性别对立煽动、隐私泄露、联系方式引流、诈骗、诽谤、极端政治动员等明确风险时提高分数。只返回 JSON。",
+  replyReviewSystem: "你是校园社区文字内容安全审核助手。你只根据回复中的文字内容做判断，不要根据图片、图片占位符、图片链接、附件、分享卡片或外链落地页的想象内容加重风险。本站用户均为成年人，因此不需要对普通成人表达、恋爱讨论、两性话题、情绪吐槽采取过严标准。用户主动留下自己的手机号、微信、QQ 等联系方式，用于正常校园二手交易、互助或线下交流，通常不算隐私泄露或恶意引流；板块类型为 market 时，简短的自留联系方式应默认放行。仅在出现违法、露骨色情、骚扰引导、仇恨攻击、性别对立煽动、曝光他人隐私、诈骗、批量广告营销、诽谤、极端政治动员等明确风险时提高分数。只返回 JSON。",
   replyReviewUser: [
     "请审核以下校园社区回复，输出 JSON：",
     "{\"risk_score\":0-100,\"risk_level\":\"low|medium|high\",\"decision\":\"auto_pass|manual_review|block\",\"reason\":\"一句短原因\",\"detail\":\"补充说明\",\"categories\":{\"violence\":0-100,\"porn_explicit\":0-100,\"abuse\":0-100,\"privacy\":0-100,\"fraud\":0-100,\"political_extremism\":0-100,\"defamation\":0-100,\"spam\":0-100,\"gender_conflict\":0-100}}",
@@ -1088,9 +1093,10 @@ function normalizeTopNavigation(value: unknown, fallback = DEFAULT_TOP_NAVIGATIO
     const icon = ["home", "forum", "lost-found", "announcement", "academic", "schedule", "service", "course", "market", "search", "link"].includes(String(item.icon))
       ? item.icon as TopNavigationIcon
       : "link";
-    const to = normalizeNavigationTarget(item.to);
+    const rawTo = normalizeNavigationTarget(item.to);
+    const to = id === "market" && rawTo === "/market" ? "/forum/b/market" : rawTo;
     let fullLabel = String(item.fullLabel ?? label).trim().slice(0, 30) || label;
-    if (id === "market" && to === "/market") {
+    if (id === "market") {
       if (label === "商城" || label === "校园商城") label = "二手";
       if (fullLabel === "商城" || fullLabel === "校园商城") fullLabel = "二手交流";
     }
@@ -1592,6 +1598,7 @@ export async function loadFeatures(): Promise<void> {
     const f = r.key.replace(/^feature\./, "") as FeatureKey;
     if (ALL_FEATURES.includes(f)) cache[f] = r.value === "on";
   }
+  await upgradeStoredDefaultTextReviewPrompts(rows);
   const storedQqGroupAdThreshold = rows.find((row) => row.key === QQ_GROUP_AD_REVIEW_THRESHOLD_KEY);
   if (storedQqGroupAdThreshold?.value.trim() === "70") {
     await prisma.siteSetting.update({
@@ -2164,6 +2171,29 @@ function upgradeLegacyImageReviewPrompts() {
   }
   if (currentUser === legacyUser) {
     configCache.imageReviewUserPrompt = DEFAULT_IMAGE_REVIEW_PROMPTS.user;
+  }
+}
+
+async function upgradeStoredDefaultTextReviewPrompts(rows: Array<{ key: string; value: string }>) {
+  const prompts = [
+    {
+      key: AI_TOPIC_REVIEW_SYSTEM_PROMPT_KEY,
+      previous: PREVIOUS_DEFAULT_AI_PROMPTS.topicReviewSystem,
+      current: DEFAULT_AI_PROMPTS.topicReviewSystem,
+      apply: () => { configCache.aiTopicReviewSystemPrompt = DEFAULT_AI_PROMPTS.topicReviewSystem; },
+    },
+    {
+      key: AI_REPLY_REVIEW_SYSTEM_PROMPT_KEY,
+      previous: PREVIOUS_DEFAULT_AI_PROMPTS.replyReviewSystem,
+      current: DEFAULT_AI_PROMPTS.replyReviewSystem,
+      apply: () => { configCache.aiReplyReviewSystemPrompt = DEFAULT_AI_PROMPTS.replyReviewSystem; },
+    },
+  ];
+  for (const prompt of prompts) {
+    const stored = rows.find((row) => row.key === prompt.key);
+    if (!stored || normalizePromptTemplate(stored.value, "") !== normalizePromptTemplate(prompt.previous, "")) continue;
+    await prisma.siteSetting.update({ where: { key: prompt.key }, data: { value: prompt.current } });
+    prompt.apply();
   }
 }
 

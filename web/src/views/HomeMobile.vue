@@ -105,7 +105,7 @@ const canLoadMore = computed(() => showForumContent.value && feedTopics.value.le
 const quickEntries = computed(() => [
   showForumContent.value ? { icon: "💬", label: "论坛", to: "/forum" } : null,
   { icon: "📢", label: "公告", to: "/announcements" },
-  site.features.market && auth.canAccessForum ? { icon: "♻️", label: "二手", to: "/market" } : null,
+  site.features.market && auth.canAccessForum ? { icon: "♻️", label: "二手", to: "/forum?channel=market" } : null,
   { icon: "🧭", label: "服务", to: "/services" },
   { icon: "✨", label: "拾间AI", to: "/search" },
 ].filter(Boolean) as Array<{ icon: string; label: string; to: string }>);

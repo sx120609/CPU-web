@@ -289,7 +289,7 @@ const CAMPUS_ASSISTANT_ROUTES: CampusAssistantRoute[] = [
     id: "market",
     label: "二手交流",
     description: "在论坛发布和浏览闲置、求购与经验帖",
-    url: "/market",
+    url: "/forum/b/market",
     icon: "♻️",
     owner: "校园社区",
     requireLogin: false,

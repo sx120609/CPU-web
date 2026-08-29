@@ -76,6 +76,7 @@
       <el-tab-pane v-if="canManageUsers" label="👥 用户与模块权限" name="users"><UsersPane v-if="tab === 'users'" /></el-tab-pane>
       <el-tab-pane label="🧩 板块" name="boards" v-if="auth.isAdmin"><BoardsPane v-if="tab === 'boards'" /></el-tab-pane>
       <el-tab-pane v-if="isCoreStaff" label="📝 帖子" name="topics"><TopicsPane v-if="tab === 'topics'" /></el-tab-pane>
+      <el-tab-pane v-if="isCoreStaff" label="🛡 人工审核" name="manual-reviews"><ManualReviewsPane v-if="tab === 'manual-reviews'" /></el-tab-pane>
       <el-tab-pane v-if="canManageLostFound" label="🧭 失物招领" name="lost-found"><LostFoundPane v-if="tab === 'lost-found'" /></el-tab-pane>
       <el-tab-pane label="🧭 顶部导航" name="navigation" v-if="auth.isAdmin"><NavigationPane v-if="tab === 'navigation'" /></el-tab-pane>
       <el-tab-pane label="🔄 同步源" name="feeds" v-if="auth.isAdmin"><FeedsPane v-if="tab === 'feeds'" /></el-tab-pane>
@@ -108,6 +109,7 @@ const DailyActiveChart = defineAsyncComponent(() => import("./DailyActiveChart.v
 const UsersPane = defineAsyncComponent(() => import("./UsersPane.vue"));
 const BoardsPane = defineAsyncComponent(() => import("./BoardsPane.vue"));
 const TopicsPane = defineAsyncComponent(() => import("./TopicsPane.vue"));
+const ManualReviewsPane = defineAsyncComponent(() => import("./ManualReviewsPane.vue"));
 const LostFoundPane = defineAsyncComponent(() => import("./LostFoundPane.vue"));
 const NavigationPane = defineAsyncComponent(() => import("./NavigationPane.vue"));
 const FeedsPane = defineAsyncComponent(() => import("./FeedsPane.vue"));

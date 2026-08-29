@@ -60,6 +60,7 @@
     <footer class="feed-card-foot">
       <span v-if="reviewLabel" class="review-state">{{ reviewLabel }}</span>
       <span v-else class="feed-hint">{{ topic.board?.type === "market" ? "校内交流" : "校园分享" }}</span>
+      <span class="feed-stat"><el-icon><View /></el-icon>{{ topic.viewCount || 0 }}</span>
       <span class="feed-stat"><el-icon><ChatLineRound /></el-icon>{{ topic.replyCount || "回复" }}</span>
       <span class="feed-stat"><el-icon><Star /></el-icon>{{ topic.likeCount || "点赞" }}</span>
     </footer>
@@ -69,7 +70,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ChatLineRound, Star } from "@element-plus/icons-vue";
+import { ChatLineRound, Star, View } from "@element-plus/icons-vue";
 import type { Topic } from "@/api/topic";
 import UserAvatar from "@/components/common/UserAvatar.vue";
 import { fmtRelative } from "@/utils/format";

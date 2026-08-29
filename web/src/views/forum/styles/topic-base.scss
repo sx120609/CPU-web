@@ -1,5 +1,12 @@
 .topic-page { display: flex; flex-direction: column; gap: 16px; }
 
+.mobile-topic-header,
+.mobile-reply-composer,
+.mobile-author-time,
+.reply-title-mobile {
+  display: none;
+}
+
 .cpu-card {
   background: var(--cpu-card);
   border: 1px solid var(--cpu-border-soft);

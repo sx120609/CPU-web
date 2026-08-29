@@ -6,7 +6,7 @@
         <h2 class="page-title">{{ pageTitle }}</h2>
         <p v-if="isSecondHandPost">把关键信息写清楚，再通过帖子和评论完成后续沟通。</p>
       </div>
-      <el-button v-if="isSecondHandPost" plain @click="router.push('/market')">返回二手交流</el-button>
+      <el-button v-if="isSecondHandPost" plain @click="router.push('/forum/b/market')">返回二手交流</el-button>
     </header>
 
     <div v-if="loadError && !loading" class="cpu-card post-load-state">

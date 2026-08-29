@@ -1142,6 +1142,8 @@ export const adminApi = {
     options?: RequestOptions,
   ) =>
     request.get<{ page: number; size: number; total: number; list: any[] }>("/admin/topics", params, options),
+  manualReviews: (options?: RequestOptions) =>
+    request.get<{ total: number; topicCount: number; replyCount: number; topics: any[]; replies: any[] }>("/admin/manual-reviews", undefined, options),
   updateTopic: (id: number, patch: {
     hidden?: boolean;
     pinned?: boolean;

@@ -31,6 +31,26 @@
   </div>
 
   <div v-else-if="topic" class="topic-page">
+    <header class="mobile-topic-header">
+      <button type="button" class="mobile-topic-back" :aria-label="backLabel" @click="goBackFromTopic">
+        <el-icon><ArrowLeft /></el-icon>
+      </button>
+      <strong>{{ boardDisplayName || "帖子详情" }}</strong>
+      <el-dropdown trigger="click" placement="bottom-end" @command="onMobileTopicCommand">
+        <button type="button" class="mobile-topic-more" aria-label="帖子操作">•••</button>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item command="share" :disabled="topic.hidden">分享帖子</el-dropdown-item>
+            <el-dropdown-item v-if="canEdit" command="edit" :disabled="isTopicActionBusy || topicEditDisabled">{{ topicEditLabel }}</el-dropdown-item>
+            <el-dropdown-item v-if="canPin && !isReadOnly" command="pin">{{ topic.pinned ? '取消板块置顶' : '板块置顶' }}</el-dropdown-item>
+            <el-dropdown-item v-if="canPin && !isReadOnly" command="globalPin">{{ topic.globalPinned ? '取消全局置顶' : '全局置顶' }}</el-dropdown-item>
+            <el-dropdown-item v-if="canPin" command="lock">{{ topic.locked ? '解锁帖子' : '锁定帖子' }}</el-dropdown-item>
+            <el-dropdown-item v-if="canEdit" command="delete" divided class="danger-menu-item">删除帖子</el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
+    </header>
+
     <!-- 主帖 -->
     <article class="cpu-card main-post">
       <header class="post-head">
@@ -99,6 +119,7 @@
                 @updated="applyTopicAuthorModeration"
               />
             </div>
+            <span class="mobile-author-time">{{ fmtRelative(topic.createdAt) }}</span>
             <p v-if="topic.author?.bio" class="author-bio">{{ topic.author.bio }}</p>
             <div v-if="topic.isAnonymous && topic.realAuthor" class="real-author-line">
               真实作者：{{ topic.realAuthor.nickname }}<template v-if="topic.realAuthor.username"> @{{ topic.realAuthor.username }}</template>
@@ -300,7 +321,8 @@
     <!-- 回复列表 -->
     <section class="replies cpu-card" ref="repliesEl">
       <h3 class="cpu-section-title">
-        {{ topic.replyCount }} 条公开回复
+        <span class="reply-title-desktop">{{ topic.replyCount }} 条公开回复</span>
+        <span class="reply-title-mobile">评论 {{ topic.replyCount }}</span>
         <span v-if="ownHiddenReplyCount" class="reply-review-count">· {{ ownHiddenReplyCount }} 条仅自己可见</span>
       </h3>
       <div v-if="repliesLoading" class="replies-loading" aria-busy="true">
@@ -382,6 +404,12 @@
         </div>
       </template>
     </section>
+
+    <button v-if="canReply && auth.isLoggedIn" type="button" class="mobile-reply-composer" @click="openReplyDialog">
+      <UserAvatar :size="34" :src="auth.user?.avatar" :name="auth.user?.nickname" :seed="auth.user?.id" alt="我的头像" />
+      <span>说点什么…</span>
+      <b>发布</b>
+    </button>
 
     <el-dialog
       v-if="canReply"
@@ -2114,6 +2142,12 @@ function onTopicManageCommand(command: "pin" | "globalPin" | "lock" | "delete") 
   else if (command === "globalPin") void onGlobalPin();
   else if (command === "lock") void onLock();
   else if (command === "delete") void onDelete();
+}
+
+function onMobileTopicCommand(command: "share" | "edit" | "pin" | "globalPin" | "lock" | "delete") {
+  if (command === "share") shareDialogOpen.value = true;
+  else if (command === "edit") onEdit();
+  else onTopicManageCommand(command);
 }
 
 async function onPin() {

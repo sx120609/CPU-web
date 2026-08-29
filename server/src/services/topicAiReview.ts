@@ -417,6 +417,17 @@ export async function reviewTopicContent(input: {
   };
 }
 
+export function isMarketSelfContactReply(input: { boardType?: string | null; content: string }) {
+  if (String(input.boardType || "").trim().toLowerCase() !== "market") return false;
+  const content = normalizeTextContentForAiReview(input.content).trim();
+  if (!content || content.length > 64 || /[\r\n]/u.test(content)) return false;
+  const normalized = content.replace(/\s+/gu, "");
+  const handle = "[a-z0-9][a-z0-9_.-]{4,31}";
+  const social = new RegExp(`^(?:加|联系)?(?:我|本人)?(?:的)?(?:微信号?|微|vx|v|wx|wechat|qq|q)[：:=\\-]?${handle}$`, "iu");
+  const phone = /^(?:联系|加)?(?:我|本人)?(?:的)?(?:手机号?|手机|电话|tel|phone)[：:=\-]?1[3-9]\d{9}$/iu;
+  return social.test(normalized) || phone.test(normalized);
+}
+
 export async function reviewReplyContent(input: {
   topicTitle?: string | null;
   boardName?: string | null;
@@ -425,6 +436,16 @@ export async function reviewReplyContent(input: {
   parentContent?: string | null;
 }): Promise<TopicAiReviewResult> {
   const config = getSiteConfig();
+  if (isMarketSelfContactReply(input)) {
+    return {
+      status: "auto_passed",
+      riskLevel: "low",
+      riskScore: 0,
+      reason: "二手交流中的本人联系方式",
+      detail: JSON.stringify({ decision: "auto_pass", rule: "market-self-contact" }),
+      model: "local-market-contact",
+    };
+  }
   if (!config.aiReviewEnabled || !isAiProviderReady({
     provider: config.aiReviewProvider,
     apiUrl: config.aiReviewApiUrl,
