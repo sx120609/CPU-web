@@ -487,6 +487,8 @@ Content-Type: application/json
 | `DESKTOP_APP_DOWNLOAD_PASSWORD` | 空 | 备用网盘分享页的提取码；PDS 直链模式下不显示 |
 | `DESKTOP_PDS_SHARE_URL` | 桌面端固定文件夹分享 | 阿里云盘企业版（PDS）文件夹分享链接。建议内含 `Windows` / `macOS` 子目录；服务端递归选择最后更新的 `.exe` 与 Apple Silicon `.dmg`，每次请求临时换取直链并由本站稳定地址 302 跳转 |
 | `DESKTOP_PDS_SHARE_PASSWORD` | 空 | PDS 分享提取码；无提取码时留空 |
+| `ANDROID_APP_PDS_SHARE_URL` | 复用桌面端 PDS 分享 | 可选的安卓专用 PDS 文件夹分享链接；未配置时复用 `DESKTOP_PDS_SHARE_URL`，并自动选择版本号最高的 `CPU-Web-Android-V*.apk` |
+| `ANDROID_APP_PDS_SHARE_PASSWORD` | 复用桌面端 PDS 提取码 | 安卓专用 PDS 分享提取码；仅在配置安卓专用分享链接时使用 |
 | `DESKTOP_APP_VERSION` | 空 | 桌面端安装包版本号的可选显式覆盖；Windows 与 macOS 的 PDS 标准文件名会自动提取版本 |
 | `CAMPUS_MAP_PDS_SHARE_URL` | 校园地图原图固定分享 | 校园地图原图的阿里云盘企业版分享链接；服务端选择其中体积最大的图片，为页面查看与“下载原图”分别换取内联/附件直链并 302 跳转，原图不进入前端包，也不经过本站带宽 |
 | `CAMPUS_MAP_PDS_SHARE_PASSWORD` | 空 | 校园地图原图 PDS 分享提取码；无提取码时留空 |

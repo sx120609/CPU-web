@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { resolveAndroidPdsShareSettings } from "../src/config";
 import {
   parseDesktopVersionFromFileName,
   parseShareUrl,
@@ -10,6 +11,31 @@ import {
   PdsEntry,
   walkShareTree,
 } from "../src/services/pdsShare";
+
+test("安卓 PDS 未单独配置时复用桌面端分享与提取码", () => {
+  assert.deepEqual(
+    resolveAndroidPdsShareSettings("", "ignored", "https://pds.example/shared", "desktop-password"),
+    {
+      url: "https://pds.example/shared",
+      password: "desktop-password",
+    },
+  );
+});
+
+test("安卓专用 PDS 配置优先于桌面端分享", () => {
+  assert.deepEqual(
+    resolveAndroidPdsShareSettings(
+      " https://pds.example/android ",
+      " android-password ",
+      "https://pds.example/shared",
+      "desktop-password",
+    ),
+    {
+      url: "https://pds.example/android",
+      password: "android-password",
+    },
+  );
+});
 
 test("PDS 文件夹分享会递归找到内部安装包", async () => {
   const tree = new Map<string, PdsEntry[]>([
@@ -76,10 +102,17 @@ test("桌面端版本会从标准安装包文件名自动提取", () => {
 test("PDS Android APK prefers Android", () => {
   const files = [
     { fileId: "android-old", name: "CPU-Web-Android-V6.apk", size: 80, updatedAt: "2026-07-26T00:00:00Z" },
-    { fileId: "android-new", name: "CPU-Web-Android-V7.apk", size: 82, updatedAt: "2026-07-28T00:00:00Z" },
+    {
+      fileId: "android-new",
+      name: "CPU-Web-Android-V7.apk",
+      size: 82,
+      updatedAt: "2026-07-28T00:00:00Z",
+      viewUrl: "https://pds.example/android-v7",
+    },
   ];
 
   assert.equal(pickAndroidInstaller(files)?.fileId, "android-new");
+  assert.equal(pickAndroidInstaller(files)?.viewUrl, "https://pds.example/android-v7");
 });
 
 test("校园地图原图选择最大图片而不是压缩预览", () => {

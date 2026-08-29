@@ -319,6 +319,39 @@ const jwxtSessionIdleMs = parseIntegerEnv(
   2 * 365 * 24 * 60 * 60 * 1000,
 );
 
+const defaultReleasePdsShareUrl = "https://bj37249.apps.aliyunfile.com/disk/s/TunDZWtpXk5?domainId=bj37249";
+const desktopPdsShareUrl = (
+  process.env.DESKTOP_PDS_SHARE_URL?.trim()
+  || defaultReleasePdsShareUrl
+).trim();
+const desktopPdsSharePassword = (process.env.DESKTOP_PDS_SHARE_PASSWORD ?? "").trim();
+
+export function resolveAndroidPdsShareSettings(
+  androidShareUrl: string | undefined,
+  androidSharePassword: string | undefined,
+  fallbackShareUrl: string,
+  fallbackSharePassword: string,
+) {
+  const dedicatedUrl = String(androidShareUrl ?? "").trim();
+  if (dedicatedUrl) {
+    return {
+      url: dedicatedUrl,
+      password: String(androidSharePassword ?? "").trim(),
+    };
+  }
+  return {
+    url: fallbackShareUrl.trim(),
+    password: fallbackSharePassword.trim(),
+  };
+}
+
+const androidPdsShareSettings = resolveAndroidPdsShareSettings(
+  process.env.ANDROID_APP_PDS_SHARE_URL,
+  process.env.ANDROID_APP_PDS_SHARE_PASSWORD,
+  desktopPdsShareUrl,
+  desktopPdsSharePassword,
+);
+
 export const config = {
   port: Number(process.env.PORT ?? 3000),
   jwtSecret,
@@ -378,8 +411,8 @@ export const config = {
     process.env.ANDROID_APP_DOWNLOAD_URL
     ?? ""
   ).trim(),
-  androidAppPdsShareUrl: (process.env.ANDROID_APP_PDS_SHARE_URL ?? "").trim(),
-  androidAppPdsSharePassword: (process.env.ANDROID_APP_PDS_SHARE_PASSWORD ?? "").trim(),
+  androidAppPdsShareUrl: androidPdsShareSettings.url,
+  androidAppPdsSharePassword: androidPdsShareSettings.password,
   // 桌面端安装包。留空表示尚未发布，前端会显示"正在打包中"而不是给一个死链接。
   // 仅作为 PDS 不可用时的可选回退；不再内置旧蓝奏云地址。
   desktopAppDownloadUrl: (process.env.DESKTOP_APP_DOWNLOAD_URL ?? "").trim(),
@@ -389,11 +422,8 @@ export const config = {
   // 302 过去，用户看到的是我们自己域名下的稳定链接，不用输提取码。
   // 默认使用长期不变的 Windows 文件夹分享；以后只需替换文件夹内的安装包。
   // 显式配置环境变量仍可覆盖，留空则回落到上面那套可选网盘地址。
-  desktopPdsShareUrl: (
-    process.env.DESKTOP_PDS_SHARE_URL?.trim()
-    || "https://bj37249.apps.aliyunfile.com/disk/s/TunDZWtpXk5?domainId=bj37249"
-  ).trim(),
-  desktopPdsSharePassword: (process.env.DESKTOP_PDS_SHARE_PASSWORD ?? "").trim(),
+  desktopPdsShareUrl,
+  desktopPdsSharePassword,
   desktopAppVersion: (process.env.DESKTOP_APP_VERSION ?? "").trim(),
   // 校园地图的查看与下载都由服务端解析 PDS 分享并跳转到短期直链，
   // 避免在仓库和前端包内保存图片，也不占用本站传输带宽。

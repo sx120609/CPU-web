@@ -22,7 +22,10 @@ export type PdsFile = {
   name: string;
   size: number;
   updatedAt: string;
-  /** 不带 Content-Disposition: attachment，可直接作为图片等浏览器资源加载。 */
+  /**
+   * 不带 Content-Disposition: attachment 的临时文件地址。除图片预览外，PDS
+   * 禁止 APK 调用 get_download_url 时也可直接使用；文件字节仍由阿里云返回。
+   */
   viewUrl?: string;
 };
 
@@ -394,10 +397,12 @@ const resolveTargetDownload = async (target: DownloadTarget): Promise<PdsDownloa
     if (target === "campus-map-view" && !installer.viewUrl) {
       throw new Error("PDS share missing inline file URL");
     }
-    const download = target === "campus-map-view"
+    const directViewTarget = target === "campus-map-view"
+      || (target === "android" && Boolean(installer.viewUrl));
+    const download = directViewTarget
       ? {
-        url: installer.viewUrl!,
-        name: installer.name,
+          url: installer.viewUrl!,
+          name: installer.name,
         size: installer.size,
         expiresAt: Date.now() + 3600_000,
         contentHash: "",
