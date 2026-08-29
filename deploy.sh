@@ -996,7 +996,7 @@ do_artifact_check() {
 
 do_nginx_http_fix() {
   local patcher="$ROOT_DIR/ops/nginx/patch-nginx-http-redirect.mjs"
-  local temporary backup nginx_bin mode headers location
+  local temporary backup nginx_bin mode headers location attempt verified=0
   [ -f "$patcher" ] || err "缺少 Nginx 修复脚本：$patcher"
   case "$NGINX_SITE_CONFIG" in
     /www/server/panel/vhost/nginx/*.conf) ;;
@@ -1042,19 +1042,24 @@ do_nginx_http_fix() {
   fi
 
   if command -v curl >/dev/null 2>&1; then
-    headers="$(curl -sSI --max-time 10 -H 'Host: cputime.cn' http://127.0.0.1/voicehub/ | tr -d '\r')"
-    location="$(printf '%s\n' "$headers" | awk 'BEGIN { IGNORECASE=1 } /^Location:/ { sub(/^[^:]+:[[:space:]]*/, ""); print; exit }')"
-    if [ "$location" != "https://cputime.cn/voicehub/" ]; then
+    # nginx -s reload is graceful and can briefly leave an old worker accepting
+    # requests. Poll until the new listener is observable instead of rolling back
+    # a valid config on the first stale response.
+    for attempt in {1..10}; do
+      headers="$(curl -sSI --max-time 10 -H 'Host: cputime.cn' http://127.0.0.1/voicehub/ | tr -d '\r')"
+      location="$(printf '%s\n' "$headers" | awk 'BEGIN { IGNORECASE=1 } /^Location:/ { sub(/^[^:]+:[[:space:]]*/, ""); print; exit }')"
+      if [ "$location" = "https://cputime.cn/voicehub/" ] \
+        && ! printf '%s\n' "$headers" | grep -Eqi '^(Strict-Transport-Security|Alt-Svc):'; then
+        verified=1
+        break
+      fi
+      sleep 1
+    done
+    if [ "$verified" != "1" ]; then
       run_privileged cp -a "$backup" "$NGINX_SITE_CONFIG"
       run_privileged "$nginx_bin" -t || true
       run_privileged "$nginx_bin" -s reload || true
-      err "本机 HTTP 跳转验证失败，已恢复旧配置（Location: ${location:-missing}）"
-    fi
-    if printf '%s\n' "$headers" | grep -Eqi '^(Strict-Transport-Security|Alt-Svc):'; then
-      run_privileged cp -a "$backup" "$NGINX_SITE_CONFIG"
-      run_privileged "$nginx_bin" -t || true
-      run_privileged "$nginx_bin" -s reload || true
-      err "HTTP 入口仍泄漏 TLS/QUIC 响应头，已恢复旧配置"
+      err "HTTP 跳转或响应头在 reload 后未稳定生效，已恢复旧配置（Location: ${location:-missing}）"
     fi
   fi
   log "Nginx HTTP 入口已独立：所有生产域名 301 到 https://cputime.cn，备份：$backup"
