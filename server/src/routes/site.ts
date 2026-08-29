@@ -163,7 +163,7 @@ siteRouter.get("/downloads/android-app", async (_req, res) => {
     return;
   }
 
-  const fileName = resolveLatestAndroidApkFileName() || "CPU-Web-Android-V29.apk";
+  const fileName = resolveLatestAndroidApkFileName() || "CPU-Web-Android-V30.apk";
   res.redirect(302, `/downloads/${encodeURIComponent(fileName)}`);
 });
 
