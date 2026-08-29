@@ -7,6 +7,7 @@
     <button
       v-for="(topic, index) in topics"
       :key="topic.id"
+      :ref="(element) => setTopicElement(topic.id, element)"
       type="button"
       class="pinned-topic"
       @click="openTopic(topic.id)"
@@ -19,12 +20,92 @@
 </template>
 
 <script setup lang="ts">
+import { nextTick, onBeforeUnmount, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import type { Topic } from "@/api/topic";
+import { hasTrackedTopicImpression, queueTopicImpression } from "@/utils/topicImpressions";
 
-defineProps<{ topics: Topic[] }>();
+const props = defineProps<{ topics: Topic[] }>();
 const route = useRoute();
 const router = useRouter();
+const topicElements = new Map<number, HTMLElement>();
+const impressionTimers = new Map<number, ReturnType<typeof setTimeout>>();
+let impressionObserver: IntersectionObserver | null = null;
+
+watch(
+  () => props.topics.map((topic) => topic.id).join(","),
+  async () => {
+    await nextTick();
+    observeTopics();
+  },
+  { flush: "post" },
+);
+
+onMounted(observeTopics);
+onBeforeUnmount(clearImpressionTracking);
+
+function setTopicElement(topicId: number, value: unknown) {
+  const previous = topicElements.get(topicId);
+  if (previous) impressionObserver?.unobserve(previous);
+  if (!(value instanceof HTMLElement)) {
+    topicElements.delete(topicId);
+    clearImpressionTimer(topicId);
+    return;
+  }
+  value.dataset.topicId = String(topicId);
+  topicElements.set(topicId, value);
+  impressionObserver?.observe(value);
+}
+
+function clearImpressionTimer(topicId: number) {
+  const timer = impressionTimers.get(topicId);
+  if (timer !== undefined) clearTimeout(timer);
+  impressionTimers.delete(topicId);
+}
+
+function clearImpressionTracking() {
+  impressionObserver?.disconnect();
+  impressionObserver = null;
+  for (const topicId of impressionTimers.keys()) clearImpressionTimer(topicId);
+}
+
+function recordVisibleImpression(topicId: number) {
+  clearImpressionTimer(topicId);
+  if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+  const element = topicElements.get(topicId);
+  if (element) impressionObserver?.unobserve(element);
+  void queueTopicImpression(topicId);
+}
+
+function observeTopics() {
+  clearImpressionTracking();
+  const visibleEntries = props.topics.filter((topic) => {
+    const topicId = Number(topic.id);
+    return Number.isInteger(topicId) && topicId > 0 && !topic.hidden && !hasTrackedTopicImpression(topicId);
+  });
+  if (!visibleEntries.length) return;
+  if (typeof IntersectionObserver === "undefined") {
+    for (const topic of visibleEntries) recordVisibleImpression(Number(topic.id));
+    return;
+  }
+  impressionObserver = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      const topicId = Number((entry.target as HTMLElement).dataset.topicId);
+      if (!Number.isInteger(topicId) || topicId <= 0) continue;
+      if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
+        if (!hasTrackedTopicImpression(topicId) && !impressionTimers.has(topicId)) {
+          impressionTimers.set(topicId, setTimeout(() => recordVisibleImpression(topicId), 450));
+        }
+      } else {
+        clearImpressionTimer(topicId);
+      }
+    }
+  }, { threshold: [0, 0.5] });
+  for (const topic of visibleEntries) {
+    const element = topicElements.get(Number(topic.id));
+    if (element) impressionObserver.observe(element);
+  }
+}
 
 function openTopic(id: number) {
   router.push({ path: `/forum/topic/${id}`, query: { from: route.fullPath } });
