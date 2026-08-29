@@ -1,0 +1,5 @@
+config.json
+credentials*.json
+*.state.json
+*.state.json.lock
+*.tmp

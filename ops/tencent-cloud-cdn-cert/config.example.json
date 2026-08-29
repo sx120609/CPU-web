@@ -1,0 +1,21 @@
+{
+  "defaults": {
+    "renewBeforeDays": 30,
+    "minimumValidityGainDays": 30,
+    "pollIntervalSeconds": 30,
+    "issuanceTimeoutMinutes": 60,
+    "deploymentTimeoutMinutes": 15,
+    "tlsVerifyAttempts": 8,
+    "tlsVerifyIntervalSeconds": 15,
+    "apiMaxAttempts": 4,
+    "apiRetryBaseMs": 1000
+  },
+  "domains": [
+    {
+      "domain": "img.cputime.cn",
+      "enabled": true,
+      "expectedCdnResourceId": "cdn-2o4qgm9j",
+      "expectedHttpsBillingSwitch": "on"
+    }
+  ]
+}

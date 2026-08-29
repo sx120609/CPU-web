@@ -1,0 +1,26 @@
+{
+  "version": "2.0",
+  "statement": [
+    {
+      "effect": "allow",
+      "action": [
+        "name/cdn:DescribeDomainsConfig"
+      ],
+      "resource": [
+        "qcs::cdn::uin/${TENCENT_CLOUD_UIN}:domain/img.cputime.cn"
+      ]
+    },
+    {
+      "effect": "allow",
+      "action": [
+        "name/ssl:ApplyCertificate",
+        "name/ssl:DescribeCertificate",
+        "name/ssl:DescribeCertificates",
+        "name/ssl:DeployCertificateInstance",
+        "name/ssl:DescribeHostDeployRecordDetail",
+        "name/ssl:DeployCertificateRecordRollback"
+      ],
+      "resource": "*"
+    }
+  ]
+}

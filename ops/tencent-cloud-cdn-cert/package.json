@@ -1,0 +1,17 @@
+{
+  "name": "cpu-web-tencent-cloud-cdn-cert",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Dry-run-first Tencent Cloud managed certificate renewal for CPU-web CDN custom domains",
+  "scripts": {
+    "dry-run": "node bin/cdn-cert-renew.mjs --config config.example.json",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "tencentcloud-sdk-nodejs": "4.1.303"
+  }
+}
