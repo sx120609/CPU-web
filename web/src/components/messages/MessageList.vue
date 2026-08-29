@@ -21,7 +21,7 @@
           <span class="time">{{ fmtRelative(n.createdAt) }}</span>
         </div>
         <div class="title">{{ n.title }}</div>
-        <div class="content">{{ n.content }}</div>
+        <div v-if="noticeContent(n)" class="content">{{ noticeContent(n) }}</div>
         <div class="meta">{{ n.source || "校内" }}<span v-if="n.link"> · 点按查看</span></div>
       </div>
       <el-icon class="arrow"><ArrowRight /></el-icon>
@@ -32,6 +32,7 @@
 <script setup lang="ts">
 import { ArrowRight } from "@element-plus/icons-vue";
 import { fmtRelative } from "@/utils/format";
+import { forumContentExcerpt } from "@/utils/forumContent";
 
 const emit = defineEmits<{ (e: "read", id: number): void; (e: "open", item: any): void }>();
 defineProps<{ list: any[] }>();
@@ -42,6 +43,10 @@ const platformLabels: Record<string, string> = {
   harmony: "鸿蒙",
   web: "网页版",
 };
+
+function noticeContent(notice: any) {
+  return forumContentExcerpt(notice?.content, 120);
+}
 
 function onClick(n: any) {
   if (!n.readAt) emit("read", n.id);
@@ -211,7 +216,7 @@ function categoryLabel(category?: string | null) {
   font-size: 16px;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   .row {
     align-items: flex-start;
     gap: 10px;

@@ -139,12 +139,6 @@
         </div>
 
         <div class="mobile-actions">
-          <el-button text class="touch-icon-btn" aria-label="刷新页面" @click="reloadPage">
-            <el-icon><Refresh /></el-icon>
-          </el-button>
-          <el-button text class="touch-icon-btn assistant-shortcut-touch" aria-label="拾间AI" @click="$router.push('/search')">
-            <el-icon><ChatDotRound /></el-icon>
-          </el-button>
           <el-button
             v-if="auth.isLoggedIn"
             text
@@ -1161,12 +1155,16 @@ function setAppearanceMode(command: string | number | object) {
 }
 
 .mobile-actions {
-  --mobile-header-control-size: 42px;
+  --mobile-header-control-size: 38px;
   display: none;
-  height: var(--mobile-header-control-size);
+  height: 42px;
   align-items: center;
-  gap: 8px;
+  gap: 2px;
   margin-left: auto;
+  padding: 2px;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 999px;
+  background: var(--cpu-surface-subtle);
   flex-wrap: nowrap;
 }
 
@@ -1178,7 +1176,7 @@ function setAppearanceMode(command: string | number | object) {
   min-height: var(--mobile-header-control-size);
   margin: 0 !important;
   padding: 0 !important;
-  border-radius: 10px;
+  border-radius: 999px;
   color: var(--cpu-text-secondary);
   box-sizing: border-box;
   display: inline-flex;
@@ -1202,7 +1200,7 @@ function setAppearanceMode(command: string | number | object) {
 }
 
 .touch-icon-btn:active {
-  background: var(--cpu-surface-subtle);
+  background: var(--cpu-card);
 }
 
 .touch-icon-btn :deep(.el-icon) {
@@ -2144,8 +2142,7 @@ function setAppearanceMode(command: string | number | object) {
   }
 
   .mobile-actions {
-    --mobile-header-control-size: 38px;
-    gap: 6px;
+    --mobile-header-control-size: 36px;
   }
 }
 
@@ -2164,8 +2161,7 @@ function setAppearanceMode(command: string | number | object) {
   }
 
   .mobile-actions {
-    --mobile-header-control-size: 36px;
-    gap: 4px;
+    --mobile-header-control-size: 34px;
   }
 
   .drawer-grid {

@@ -5,8 +5,8 @@
         <h2 class="page-title">消息中心</h2>
         <span v-if="tab !== 'settings' && tab !== 'private'" class="page-sub">{{ unreadCount ? `${unreadCount} 条未读` : "当前全部已读" }}</span>
       </div>
-      <div v-if="tab !== 'settings' && tab !== 'private'" class="page-head-actions">
-        <el-button text :loading="markingAll" :disabled="!unreadCount || markingAll" @click="readAll">全部标为已读</el-button>
+      <div v-if="tab !== 'settings' && tab !== 'private' && unreadCount" class="page-head-actions">
+        <el-button text :loading="markingAll" :disabled="markingAll" @click="readAll">全部标为已读</el-button>
       </div>
     </div>
     <div v-if="pageError && tab !== 'private'" class="cpu-card page-error">
@@ -274,7 +274,7 @@
           <h3 class="notice-title">{{ activeNotice.title }}</h3>
           <div class="notice-meta">{{ activeNotice.source || "校内" }} · {{ formatNoticeTime(activeNotice.createdAt) }}</div>
         </div>
-        <p class="notice-content">{{ activeNotice.content }}</p>
+        <p v-if="activeNoticeContent" class="notice-content">{{ activeNoticeContent }}</p>
         <div v-if="reviewStateText" class="review-state" :class="{ done: !canReviewActiveNotice }">
           {{ reviewStateText }}
         </div>
@@ -344,6 +344,7 @@ import { copyText } from "@/utils/userGroup";
 import QRCode from "qrcode";
 import { buildQqAddFriendUrl } from "@/utils/qqContact";
 import { isServerHandledRedirect, resolveSafeRedirect } from "@/utils/redirect";
+import { forumContentExcerpt } from "@/utils/forumContent";
 
 const route = useRoute();
 const router = useRouter();
@@ -380,6 +381,7 @@ let reviewTargetSeq = 0;
 let disposed = false;
 
 const unreadCount = computed(() => list.value.filter((item) => !item.readAt).length);
+const activeNoticeContent = computed(() => forumContentExcerpt(activeNotice.value?.content, 500));
 const wechatChannelStateText = computed(() => {
   if (wechatProfileError.value) return "状态未知";
   if (!wechatProfile.value?.enabled) return "未启用";
@@ -1268,7 +1270,7 @@ function normalizeMessageSettings(value: any) {
   margin-top: 14px;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   .qq-bind-guide {
     align-items: stretch;
     flex-direction: column;
@@ -1284,9 +1286,9 @@ function normalizeMessageSettings(value: any) {
   }
 
   .page-head {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 8px;
+    align-items: center;
+    flex-direction: row;
+    gap: 12px;
   }
 
   .page-title {
@@ -1294,16 +1296,19 @@ function normalizeMessageSettings(value: any) {
   }
 
   .page-head-main {
-    width: 100%;
+    min-width: 0;
+    width: auto;
+    flex: 1;
   }
 
   .page-head-actions {
-    width: 100%;
+    flex: 0 0 auto;
   }
 
   .page-head-actions .el-button {
-    width: 100%;
+    width: auto;
     margin-left: 0;
+    padding-inline: 6px;
   }
 
   .cpu-card {
@@ -1313,19 +1318,19 @@ function normalizeMessageSettings(value: any) {
 
   .messages-tabs {
     margin: 0 -4px;
-    padding: 10px 8px 12px;
+    padding: 8px 0 12px;
     min-width: 0;
     overflow: hidden;
   }
 
   .messages-tabs :deep(.el-tabs__header) {
     min-width: 0;
-    margin-bottom: 12px;
-    overflow: visible;
+    margin-bottom: 10px;
+    overflow: hidden;
   }
 
   .messages-tabs :deep(.el-tabs__nav-wrap) {
-    padding: 0 0 2px;
+    padding: 0;
     overflow: hidden;
   }
 
@@ -1333,9 +1338,11 @@ function normalizeMessageSettings(value: any) {
     width: 100%;
     max-width: 100%;
     min-width: 0;
-    padding: 0 4px 2px;
-    overflow: visible;
+    padding: 0 10px 4px;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
     scrollbar-width: none;
+    scroll-snap-type: inline proximity;
   }
 
   .messages-tabs :deep(.el-tabs__nav-wrap::after),
@@ -1349,27 +1356,30 @@ function normalizeMessageSettings(value: any) {
 
   .messages-tabs :deep(.el-tabs__nav) {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     float: none;
     width: 100%;
     min-width: 0;
-    gap: 7px 6px;
-    padding-inline: 4px;
+    gap: 6px;
+    padding: 0;
   }
 
   .messages-tabs :deep(.el-tabs__item) {
     flex: 0 0 auto;
-    height: 34px;
-    padding: 0 12px;
-    font-size: 13px;
+    height: 32px;
+    padding: 0 11px;
+    border: 1px solid transparent;
+    font-size: 12px;
     border-radius: 999px;
-    background: var(--cpu-surface-subtle);
+    background: transparent;
     color: var(--cpu-text-secondary);
+    scroll-snap-align: start;
   }
 
   .messages-tabs :deep(.el-tabs__item.is-active) {
-    background: linear-gradient(135deg, var(--cpu-primary), var(--cpu-primary-dark));
-    color: #fff;
+    border-color: color-mix(in srgb, var(--cpu-primary) 25%, transparent);
+    background: color-mix(in srgb, var(--cpu-primary) 10%, var(--cpu-card));
+    color: var(--cpu-primary);
   }
 
   .messages-tabs :deep(.el-tabs__content) {

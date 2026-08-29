@@ -12,7 +12,6 @@ export const vipRouter = Router();
 const VIP_BENEFITS = [
   { key: "forum-ad-free", title: "论坛免广告", description: "VIP 用户可隐藏标记为 VIP 免广告的推广内容。" },
   { key: "profile-decoration", title: "个性化资料装扮", description: "使用个人主页主题和头像框，在论坛里展示专属身份。" },
-  { key: "vip-reactions", title: "专属互动标识", description: "使用 VIP 专属表情和互动标识，后续还会持续增加。" },
 ] as const;
 
 vipRouter.get("/", authRequired, async (req, res, next) => {

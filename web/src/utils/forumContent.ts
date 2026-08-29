@@ -14,7 +14,6 @@ function decodeCodePoint(value: string, radix: number) {
 
 export function forumContentExcerpt(content: unknown, maxLength = 90) {
   const source = String(content || "");
-  const hasImage = /<img\b|!\[[^\]]*\]\([^\n)]+\)/i.test(source);
   const text = source
     .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, " ")
     .replace(/<\/?(?:p|div|h[1-6]|blockquote|li|br)\b[^>]*>/gi, " ")
@@ -30,7 +29,7 @@ export function forumContentExcerpt(content: unknown, maxLength = 90) {
     })
     .replace(/\s+/g, " ")
     .trim();
-  if (!text) return hasImage ? "图片分享" : "";
+  if (!text) return "";
   const chars = Array.from(text);
   return chars.length > maxLength ? `${chars.slice(0, maxLength).join("")}…` : text;
 }

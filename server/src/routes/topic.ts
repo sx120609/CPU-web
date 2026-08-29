@@ -48,7 +48,6 @@ import { ensureForumVideoAssetsForContent, summarizeForumVideoModerationForConte
 import { invalidateCourseCaches, invalidateForumCaches } from "../services/cacheInvalidation";
 import { compactTopicAuthors } from "../utils/publicAvatar";
 import { isRetiredBoardSlug, visibleBoardSlugFilter } from "../services/retiredBoards";
-import { getReactionSummary } from "../services/vip";
 import {
   encodeTopicEditReviewContext,
   forumContentVisibilityWhere,
@@ -461,9 +460,8 @@ topicRouter.get("/:id", async (req, res, next) => {
     if (topic.hidden && !canSeeHidden) throw Errors.notFound();
     if (!isBoardTypeEnabled(topic.board?.type)) throw Errors.forbidden(featureClosedMessage(topic.board?.type));
     await ensureCanReadBoardType(topic.board?.type, requesterId, requesterRole);
-    const [presented, reactions, updatedViews] = await Promise.all([
+    const [presented, updatedViews] = await Promise.all([
       decodeTopicForViewerWithImages(topic, req.user),
-      getReactionSummary({ topicId: id }, requesterId),
       topic.hidden
         ? Promise.resolve(null)
         : prisma.topic.update({
@@ -475,7 +473,6 @@ topicRouter.get("/:id", async (req, res, next) => {
     ok(res, {
       ...presented,
       viewCount: updatedViews?.viewCount ?? topic.viewCount,
-      reactions,
     });
   } catch (e) { next(e); }
 });
@@ -929,12 +926,7 @@ topicRouter.get("/:id/replies", async (req, res, next) => {
         author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true } },
       },
     });
-    const decoded = await Promise.all(list.map((item) => decodeReplyForViewerWithImages(item, req.user)));
-    const withReactions = await Promise.all(decoded.map(async (item) => ({
-      ...item,
-      reactions: await getReactionSummary({ replyId: item.id }, req.user?.userId ?? null),
-    })));
-    ok(res, withReactions);
+    ok(res, await Promise.all(list.map((item) => decodeReplyForViewerWithImages(item, req.user))));
   } catch (e) { next(e); }
 });
 function parseJsonSafe(s: string | null | undefined) {

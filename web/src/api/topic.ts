@@ -28,7 +28,6 @@ export interface Topic {
   tags?: Array<{ id: number; name: string }>;
   createdAt: string;
   updatedAt: string;
-  reactions?: ForumReaction[];
   author?: ForumAuthor;
   realAuthor?: ForumAuthor & { reputation?: number; reputationLevel?: { level: number; name: string; minReputation: number } };
   board?: { id?: number; slug: string; name: string; color?: string; icon?: string; type?: string; readOnly?: boolean; anonymousEnabled?: boolean };
@@ -64,7 +63,6 @@ export interface Reply {
   aiReviewReason?: string | null;
   likeCount: number;
   createdAt: string;
-  reactions?: ForumReaction[];
   author?: ForumAuthor;
   realAuthor?: ForumAuthor & { reputation?: number; reputationLevel?: { level: number; name: string; minReputation: number } };
   imageReview?: {
@@ -82,12 +80,6 @@ export interface Reply {
     approvedCount: number;
     manualReviewCount: number;
   };
-}
-
-export interface ForumReaction {
-  key: string;
-  count: number;
-  active?: boolean;
 }
 
 export interface ForumAuthor {
@@ -302,16 +294,6 @@ export const likeApi = {
   toggleReply: (id: number) => request.post<{ liked: boolean; likeCount: number }>(`/likes/reply/${id}`),
   mine: (topicIds: number[], replyIds: number[] = [], options?: RequestOptions) =>
     request.get<{ topics: number[]; replies: number[] }>("/likes/mine", {
-      topics: topicIds.join(","), replies: replyIds.join(","),
-    }, options),
-};
-
-export const reactionApi = {
-  catalog: () => request.get<Array<{ key: string; emoji: string; label: string }>>("/reactions/catalog"),
-  toggleTopic: (id: number, key: string) => request.post<{ active: boolean; reactions: ForumReaction[] }>(`/reactions/topic/${id}`, { key }),
-  toggleReply: (id: number, key: string) => request.post<{ active: boolean; reactions: ForumReaction[] }>(`/reactions/reply/${id}`, { key }),
-  mine: (topicIds: number[], replyIds: number[] = [], options?: RequestOptions) =>
-    request.get<{ topics: Record<string, string[]>; replies: Record<string, string[]> }>("/reactions/mine", {
       topics: topicIds.join(","), replies: replyIds.join(","),
     }, options),
 };

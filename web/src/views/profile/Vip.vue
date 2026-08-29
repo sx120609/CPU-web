@@ -116,7 +116,6 @@ const giftCode = ref("");
 const benefits = computed(() => status.value?.benefits ?? [
   { key: "forum-ad-free", title: "论坛免广告", description: "隐藏标记为 VIP 免广告的推广内容。" },
   { key: "profile-decoration", title: "个性化资料装扮", description: "使用主页主题和头像框，展示专属身份。" },
-  { key: "vip-reactions", title: "专属互动标识", description: "使用 VIP 专属表情和互动标识。" },
 ]);
 
 onMounted(async () => {

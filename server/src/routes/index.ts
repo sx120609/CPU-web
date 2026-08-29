@@ -7,7 +7,6 @@ import { boardRouter } from "./board";
 import { topicRouter } from "./topic";
 import { replyRouter } from "./reply";
 import { likeRouter } from "./like";
-import { reactionRouter } from "./reaction";
 import { courseRouter } from "./course";
 import { servicesRouter } from "./services";
 import { messageRouter } from "./message";
@@ -61,7 +60,6 @@ router.use("/jwxt", jwxtRouter);
 // 站内登录后
 router.use("/user", authRequired, userRouter);
 router.use("/likes", authRequired, likeRouter);
-router.use("/reactions", reactionRouter);
 router.use("/messages", authRequired, messageRouter);
 router.use("/direct-messages", authRequired, directMessageRouter);
 router.use("/uploads", uploadRouter);

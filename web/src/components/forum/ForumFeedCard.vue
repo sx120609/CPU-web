@@ -218,7 +218,7 @@ function openTopic() {
 .feed-hint, .review-state { margin-right: auto; }
 .review-state { color: #b45309; font-weight: 600; }
 .feed-stat { gap: 4px; }
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   .feed-card { padding: 13px 12px 10px; border-radius: 11px; box-shadow: none; }
   .feed-card-body, .feed-card-foot { margin-left: 0; }
   .feed-card-body { margin-top: 10px; }

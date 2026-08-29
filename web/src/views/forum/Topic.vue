@@ -74,30 +74,6 @@
       </header>
 
       <div ref="mainFloorRef" class="main-floor">
-      <div v-if="!isSayTopic || metaPriceLabel" class="topic-title-row">
-        <h1 v-if="!isSayTopic" class="post-title">
-          <span v-if="topic.globalPinned" class="badge global-pin">全局置顶</span>
-          <span v-if="topic.pinned" class="badge pin">板块置顶</span>
-          <span v-if="topic.locked" class="badge lock">已锁定</span>
-          {{ displayTopicTitle }}
-        </h1>
-        <strong v-if="metaPriceLabel" class="topic-price">{{ metaPriceLabel }}</strong>
-      </div>
-      <div class="topic-tags">
-        <el-tag size="small" effect="plain">{{ boardDisplayName }}</el-tag>
-        <el-tag v-if="marketKind" size="small" effect="plain" type="success">{{ marketKindLabel }}</el-tag>
-        <el-tag v-if="marketCategoryLabel" size="small" effect="plain" type="info">{{ marketCategoryLabel }}</el-tag>
-        <el-tag
-          v-for="tag in topic.tags?.slice(0, 2) || []"
-          :key="tag.name"
-          size="small"
-          effect="plain"
-          type="warning"
-        >
-          {{ tag.name }}
-        </el-tag>
-      </div>
-
       <aside class="post-meta post-author-panel" :class="{ 'is-sticky-author': mainPostUsesStickyAuthor }">
         <div class="post-author-card">
           <span class="floor-owner-label">楼主</span>
@@ -127,6 +103,32 @@
           </div>
         </div>
       </aside>
+
+      <div v-if="!isSayTopic || metaPriceLabel" class="topic-title-row">
+        <h1 v-if="!isSayTopic" class="post-title">
+          <span v-if="topic.globalPinned" class="badge global-pin">全局置顶</span>
+          <span v-if="topic.pinned" class="badge pin">板块置顶</span>
+          <span v-if="topic.locked" class="badge lock">已锁定</span>
+          {{ displayTopicTitle }}
+        </h1>
+        <strong v-if="metaPriceLabel" class="topic-price">{{ metaPriceLabel }}</strong>
+      </div>
+      <div class="topic-tags">
+        <el-tag class="topic-tag-board" size="small" effect="plain">{{ boardDisplayName }}</el-tag>
+        <el-tag v-if="marketKind" class="topic-tag-context" size="small" effect="plain" type="success">{{ marketKindLabel }}</el-tag>
+        <el-tag v-if="marketCategoryLabel" class="topic-tag-context" size="small" effect="plain" type="info">{{ marketCategoryLabel }}</el-tag>
+        <el-tag
+          v-for="(tag, index) in topic.tags?.slice(0, 2) || []"
+          :key="tag.name"
+          class="topic-tag-extra"
+          :class="{ 'topic-tag-extra-secondary': index > 0 }"
+          size="small"
+          effect="plain"
+          type="warning"
+        >
+          {{ tag.name }}
+        </el-tag>
+      </div>
 
       <div class="topic-statline">
         <span>{{ fmtDate(topic.createdAt) }}</span>
@@ -283,31 +285,6 @@
 
       <MarkdownView :content="displayContent" class="post-body topic-markdown" clickable-images media-loading="eager" />
 
-      <div v-if="!topic.hidden && topic.reactions?.length" class="reaction-strip">
-        <button
-          v-for="reaction in topic.reactions"
-          :key="reaction.key"
-          type="button"
-          class="reaction-chip"
-          :class="{ active: reaction.active }"
-          :disabled="reactionBusyKey !== ''"
-          @click="toggleTopicReaction(reaction.key)"
-        >
-          {{ reactionEmoji(reaction.key) }} {{ reaction.count }}
-        </button>
-      </div>
-      <div v-if="!topic.hidden && auth.user?.vipActive" class="reaction-picker">
-        <button
-          v-for="reaction in reactionCatalog"
-          :key="reaction.key"
-          type="button"
-          class="reaction-picker-btn"
-          :title="reaction.label"
-          :disabled="reactionBusyKey !== ''"
-          @click="toggleTopicReaction(reaction.key)"
-        >{{ reaction.emoji }}</button>
-      </div>
-
       <footer class="post-foot">
         <el-button :type="liked ? 'primary' : 'default'" :icon="Star" :loading="topicActionBusy === 'like'" :disabled="isTopicActionBusy || topic.hidden" @click="onLike">
           {{ liked ? '已点赞' : '点赞' }} · {{ topic.likeCount }}
@@ -348,7 +325,7 @@
             </div>
             <UserModerationActions
               v-if="replyModerationUser(entry.item)"
-              class="reply-moderation-actions"
+              class="reply-moderation-actions reply-moderation-actions-desktop"
               :user="replyModerationUser(entry.item)"
               display="dropdown"
               text
@@ -372,29 +349,16 @@
               compact-quotes
               media-loading="eager"
             />
-            <div v-if="!entry.item.hidden && entry.item.reactions?.length" class="reaction-strip reply-reactions">
-              <button
-                v-for="reaction in entry.item.reactions"
-                :key="reaction.key"
-                type="button"
-                class="reaction-chip"
-                :class="{ active: reaction.active }"
-                :disabled="reactionBusyKey !== ''"
-                @click="toggleReplyReaction(entry.item, reaction.key)"
-              >{{ reactionEmoji(reaction.key) }} {{ reaction.count }}</button>
-            </div>
-            <div v-if="!entry.item.hidden && auth.user?.vipActive" class="reaction-picker reply-reaction-picker">
-              <button
-                v-for="reaction in reactionCatalog"
-                :key="reaction.key"
-                type="button"
-                class="reaction-picker-btn"
-                :title="reaction.label"
-                :disabled="reactionBusyKey !== ''"
-                @click="toggleReplyReaction(entry.item, reaction.key)"
-              >{{ reaction.emoji }}</button>
-            </div>
             <div class="reply-actions">
+              <UserModerationActions
+                v-if="replyModerationUser(entry.item)"
+                class="reply-moderation-actions reply-moderation-actions-mobile"
+                :user="replyModerationUser(entry.item)"
+                display="dropdown"
+                text
+                label="管理"
+                @updated="applyReplyAuthorModeration(entry.item, $event)"
+              />
               <el-button v-if="!entry.item.hidden" text size="small" @click="replyTo(entry.item)">回复</el-button>
               <el-button v-if="canEditReply(entry.item)" text size="small" @click="editReply(entry.item)">编辑</el-button>
               <el-button v-if="canEditReply(entry.item)" text size="small" type="danger" :loading="replyActionBusyId === entry.item.id" :disabled="replyActionBusyId !== null" @click="removeReply(entry.item)">删除</el-button>
@@ -728,7 +692,7 @@ import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
 import MarkdownView from "@/components/forum/MarkdownView.vue";
 import RichTextEditor from "@/components/forum/RichTextEditor.vue";
 import ManualReviewConfirmDialog from "@/components/forum/ManualReviewConfirmDialog.vue";
-import { topicApi, replyApi, likeApi, reactionApi, type Topic, type Reply, type ForumReaction, type ReplySubmissionResponse } from "@/api/topic";
+import { topicApi, replyApi, likeApi, type Topic, type Reply, type ReplySubmissionResponse } from "@/api/topic";
 import { adminApi, type ForumImageReviewAsset, type ForumVideoReviewAsset } from "@/api/admin";
 import { useAuthStore } from "@/stores/auth";
 import { fmtDate, fmtRelative } from "@/utils/format";
@@ -798,14 +762,6 @@ const blockedReplyInfo = reactive<{ reason: string; riskScore: number | null }>(
   riskScore: null,
 });
 const liked = ref(false);
-const reactionBusyKey = ref("");
-const reactionCatalog = [
-  { key: "vip-crown", emoji: "👑", label: "王者" },
-  { key: "sparkles", emoji: "✨", label: "闪耀" },
-  { key: "fire", emoji: "🔥", label: "太燃了" },
-  { key: "hug", emoji: "🫶", label: "抱抱" },
-  { key: "rocket", emoji: "🚀", label: "起飞" },
-];
 let loadSeq = 0;
 let shareCardQrSeq = 0;
 let topicReviewPollSeq = 0;
@@ -1228,13 +1184,6 @@ async function load() {
         // 标记每条回复 liked
         const set = new Set(mine.replies);
         nextReplies.forEach((r: any) => (r._liked = set.has(r.id)));
-        const reactionMine = await reactionApi.mine([id], nextReplies.map((r) => r.id), { suppressErrorMessage: true });
-        const topicKeys = new Set(reactionMine.topics[String(id)] ?? []);
-        if (topic.value?.reactions) topic.value.reactions = topic.value.reactions.map((item) => ({ ...item, active: topicKeys.has(item.key) }));
-        nextReplies.forEach((r: any) => {
-          const keys = new Set(reactionMine.replies[String(r.id)] ?? []);
-          r.reactions = (r.reactions ?? []).map((item: ForumReaction) => ({ ...item, active: keys.has(item.key) }));
-        });
       } catch {
         if (seq === loadSeq) liked.value = false;
       }
@@ -1316,10 +1265,6 @@ function replyTo(r: Reply) {
   replyParentId.value = r.id;
 }
 
-function reactionEmoji(key: string) {
-  return reactionCatalog.find((item) => item.key === key)?.emoji || "✨";
-}
-
 function replyReviewLabel(reply: Reply) {
   if (!reply.hidden) return "";
   const status = String(reply.aiReviewStatus || "");
@@ -1331,34 +1276,6 @@ function replyReviewLabel(reply: Reply) {
   if (status === "blocked_ai") return "暂未通过审核";
   if (status === "rejected_manual") return "人工复核未通过";
   return "仅自己可见";
-}
-
-async function toggleTopicReaction(key: string) {
-  if (!topic.value || reactionBusyKey.value) return;
-  if (!auth.user?.vipActive) {
-    ElMessage.info("VIP 用户才能使用专属表情");
-    return;
-  }
-  reactionBusyKey.value = `topic:${key}`;
-  try {
-    topic.value.reactions = await reactionApi.toggleTopic(topic.value.id, key).then((result) => result.reactions);
-  } finally {
-    reactionBusyKey.value = "";
-  }
-}
-
-async function toggleReplyReaction(reply: Reply, key: string) {
-  if (reactionBusyKey.value) return;
-  if (!auth.user?.vipActive) {
-    ElMessage.info("VIP 用户才能使用专属表情");
-    return;
-  }
-  reactionBusyKey.value = `reply:${reply.id}:${key}`;
-  try {
-    reply.reactions = await reactionApi.toggleReply(reply.id, key).then((result) => result.reactions);
-  } finally {
-    reactionBusyKey.value = "";
-  }
 }
 
 function clearReplyParent() {

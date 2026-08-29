@@ -1,4 +1,4 @@
-@media (max-width: 700px) {
+@media (max-width: 768px) {
   .topic-page {
     gap: 0;
     min-height: 100dvh;
@@ -102,7 +102,23 @@
     .post-title { font-size: 19px; line-height: 1.5; word-break: break-word; }
     .topic-price { padding: 0; font-size: 20px; }
 
-    .topic-tags { order: 3; margin-top: 8px; }
+    .topic-tags {
+      order: 3;
+      gap: 5px;
+      margin-top: 6px;
+    }
+
+    .topic-tags :deep(.el-tag) {
+      height: 22px;
+      padding-inline: 7px;
+      border-color: transparent;
+      background: var(--cpu-surface-subtle);
+      color: var(--cpu-text-muted);
+      font-size: 10px;
+    }
+
+    .topic-tag-context,
+    .topic-tag-extra-secondary { display: none; }
 
     .post-meta {
       order: 1;
@@ -166,14 +182,47 @@
     .topic-review-tip,
     .topic-admin-review-tip,
     .post-body,
-    .reaction-strip,
-    .reaction-picker,
     .post-foot { order: 5; }
 
-    .second-hand-summary-head { align-items: flex-start; flex-direction: column; }
-    .second-hand-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); padding-inline: 8px; }
-    .second-hand-facts > div:nth-child(n + 3) { border-top: 1px solid var(--cpu-border-soft); }
-    .second-hand-facts > div:nth-child(odd) { border-left: 0; }
+    .second-hand-summary {
+      margin-bottom: 10px;
+      border: 0;
+      border-radius: 9px;
+      background: var(--cpu-surface-subtle);
+    }
+
+    .second-hand-summary-head {
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px 5px;
+    }
+
+    .second-hand-summary-head b { flex: 0 0 auto; font-size: 11px; }
+    .second-hand-summary-head span {
+      min-width: 0;
+      overflow: hidden;
+      font-size: 9px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .second-hand-facts {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px 12px;
+      padding: 0 10px 8px;
+    }
+
+    .second-hand-facts > div {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 4px;
+      padding: 0;
+      border: 0;
+    }
+
+    .second-hand-facts dt { font-size: 9px; }
+    .second-hand-facts dd { margin: 0; font-size: 11px; font-weight: 500; }
     .post-body { min-height: 90px; padding: 4px 0 12px; font-size: 16px; line-height: 1.8; }
 
     .image-review-tip {
@@ -215,8 +264,6 @@
       margin-left: 0;
       padding-inline: 6px;
     }
-
-    .reaction-picker { display: none; }
 
   }
 
@@ -282,10 +329,12 @@
     }
     .reply.nested .reply-author-panel .author { top: 12px; left: 56px; }
     .reply-author-badges { display: none; }
-    .reply-moderation-actions {
+    .reply-moderation-actions-desktop { display: none; }
+    .reply-moderation-actions-mobile { display: flex; }
+    .reply-moderation-actions-mobile {
       flex-wrap: nowrap;
     }
-    .reply-moderation-actions :deep(.el-button) {
+    .reply-moderation-actions-mobile :deep(.el-button) {
       min-width: 44px;
       height: 32px;
       margin: 0;

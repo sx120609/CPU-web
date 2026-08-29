@@ -1243,7 +1243,7 @@ onMounted(() => {
   background: linear-gradient(180deg, rgba(22, 135, 118, 0.28) 0%, rgba(22, 135, 118, 0.12) 100%);
 }
 
-@media (max-width: 700px) {
+@media (max-width: 768px) {
   .md :deep(.md-image-album),
   .md :deep(.md-image-album[data-image-count="3"]),
   .md :deep(.md-image-album[data-image-count="4"]),
