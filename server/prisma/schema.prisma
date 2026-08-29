@@ -107,6 +107,10 @@ model User {
   marketBuyerConversations     MarketConversation[]          @relation("MarketConversationBuyer")
   marketSellerConversations    MarketConversation[]          @relation("MarketConversationSeller")
   marketMessages               MarketMessage[]               @relation("MarketMessageSender")
+  directConversationsAsLower   DirectConversation[]          @relation("DirectConversationLowerParticipant")
+  directConversationsAsUpper   DirectConversation[]          @relation("DirectConversationUpperParticipant")
+  initiatedDirectConversations DirectConversation[]          @relation("DirectConversationInitiator")
+  directMessages               DirectMessage[]               @relation("DirectMessageSender")
   marketReviewsAuthored        MarketReview[]                @relation("MarketReviewAuthor")
   marketReviewsReceived        MarketReview[]                @relation("MarketReviewTarget")
   marketReports                MarketReport[]                @relation("MarketReportReporter")
@@ -1117,6 +1121,46 @@ model MarketMessage {
   sender       User               @relation("MarketMessageSender", fields: [senderId], references: [id], onDelete: Cascade)
 
   @@index([conversationId, createdAt])
+  @@index([senderId, createdAt])
+}
+
+// ============ 站内私聊（与交易会话分离） ============
+
+model DirectConversation {
+  id                 Int       @id @default(autoincrement())
+  participantLowId   Int
+  participantHighId  Int
+  initiatedById      Int
+  recipientRepliedAt DateTime?
+  lastMessageAt      DateTime
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  participantLow  User            @relation("DirectConversationLowerParticipant", fields: [participantLowId], references: [id], onDelete: Restrict)
+  participantHigh User            @relation("DirectConversationUpperParticipant", fields: [participantHighId], references: [id], onDelete: Restrict)
+  initiatedBy     User            @relation("DirectConversationInitiator", fields: [initiatedById], references: [id], onDelete: Restrict)
+  messages        DirectMessage[]
+
+  @@unique([participantLowId, participantHighId])
+  @@index([participantLowId, lastMessageAt])
+  @@index([participantHighId, lastMessageAt])
+  @@index([initiatedById, recipientRepliedAt])
+}
+
+model DirectMessage {
+  id             Int       @id @default(autoincrement())
+  conversationId Int
+  senderId       Int
+  content        String
+  readAt         DateTime?
+  createdAt      DateTime  @default(now())
+
+  conversation DirectConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User               @relation("DirectMessageSender", fields: [senderId], references: [id], onDelete: Restrict)
+
+  @@index([conversationId, id])
+  @@index([conversationId, senderId, createdAt])
+  @@index([conversationId, readAt])
   @@index([senderId, createdAt])
 }
 

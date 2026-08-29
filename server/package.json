@@ -33,7 +33,8 @@
     "test:market": "node --import tsx --test tests/marketPayment.test.ts",
     "test:forum": "node --import tsx --test tests/forumSubmission.test.ts tests/forumSubmissionReview.test.ts",
     "test:cache": "node --import tsx --test tests/cache.test.ts tests/publicAvatar.test.ts",
-    "test:deployment": "node --import tsx --test tests/deployment.test.ts"
+    "test:deployment": "node --import tsx --test tests/deployment.test.ts",
+    "test:direct-messages": "node --import tsx --test tests/directMessagePolicy.test.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

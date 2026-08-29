@@ -39,6 +39,12 @@
           <span>声望 {{ user.reputation }}</span>
           <span v-if="user.sponsorAmount > 0" class="sponsor-badge">已赞助 ¥{{ formatMoney(user.sponsorAmount) }}</span>
         </div>
+        <div v-if="user.id !== auth.user?.id && user.role !== 'bot'" class="profile-actions">
+          <el-button type="primary" plain @click="startDirectMessage">
+            <el-icon><Message /></el-icon>
+            站内私聊
+          </el-button>
+        </div>
         <div v-if="auth.isMod" class="staff-panel">
           <UserModerationActions :user="user" display="inline" plain @updated="applyModerationUpdate" />
           <span v-if="user.status === 'muted'" class="staff-note">
@@ -73,7 +79,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ArrowLeft } from "@element-plus/icons-vue";
+import { ArrowLeft, Message } from "@element-plus/icons-vue";
 import UserAvatar from "@/components/common/UserAvatar.vue";
 import UserModerationActions from "@/components/common/UserModerationActions.vue";
 import { request } from "@/api/request";
@@ -148,6 +154,15 @@ function openTopic(id: number) {
   router.push(`/forum/topic/${id}`);
 }
 
+function startDirectMessage() {
+  if (!user.value) return;
+  if (!auth.isLoggedIn) {
+    router.push({ name: "login", query: { redirect: route.fullPath } });
+    return;
+  }
+  router.push({ path: "/messages", query: { tab: "private", user: String(user.value.id) } });
+}
+
 function normalizeUserLoadError(loadError: unknown) {
   const status = (loadError as { response?: { status?: number; data?: { message?: string } } })?.response?.status;
   if (status === 404) return "用户不存在或已被删除";
@@ -193,6 +208,7 @@ function normalizeUserLoadError(loadError: unknown) {
 .vip-tag { letter-spacing: .08em; font-weight: 800; }
 .bio { font-size: 13px; color: #4b5563; margin: 0 0 8px; }
 .meta { display: flex; gap: 12px; font-size: 12px; color: #6b7280; flex-wrap: wrap; }
+.profile-actions { margin-top: 12px; }
 .staff-panel { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
 .staff-note { font-size: 12px; color: #6b7280; }
 .sponsor-badge { color: #b45309; font-weight: 700; }

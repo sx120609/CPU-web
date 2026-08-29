@@ -28,6 +28,7 @@ import { forumAdsRouter } from "./forumAds";
 import { vipRouter } from "./vip";
 import { wechatRouter } from "./wechat";
 import { userAvatarRouter } from "./userAvatar";
+import { directMessageRouter } from "./directMessage";
 
 export const router = Router();
 
@@ -62,6 +63,7 @@ router.use("/user", authRequired, userRouter);
 router.use("/likes", authRequired, likeRouter);
 router.use("/reactions", reactionRouter);
 router.use("/messages", authRequired, messageRouter);
+router.use("/direct-messages", authRequired, directMessageRouter);
 router.use("/uploads", uploadRouter);
 
 // 管理后台：需登录 + 内部按 role 分级

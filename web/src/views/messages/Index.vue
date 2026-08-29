@@ -3,18 +3,21 @@
     <div class="page-head">
       <div class="page-head-main">
         <h2 class="page-title">消息中心</h2>
-        <span v-if="tab !== 'settings'" class="page-sub">{{ unreadCount ? `${unreadCount} 条未读` : "当前全部已读" }}</span>
+        <span v-if="tab !== 'settings' && tab !== 'private'" class="page-sub">{{ unreadCount ? `${unreadCount} 条未读` : "当前全部已读" }}</span>
       </div>
-      <div v-if="tab !== 'settings'" class="page-head-actions">
+      <div v-if="tab !== 'settings' && tab !== 'private'" class="page-head-actions">
         <el-button text :loading="markingAll" :disabled="!unreadCount || markingAll" @click="readAll">全部标为已读</el-button>
       </div>
     </div>
-    <div v-if="pageError" class="cpu-card page-error">
+    <div v-if="pageError && tab !== 'private'" class="cpu-card page-error">
       <el-empty :description="pageError">
         <el-button type="primary" @click="loadPage">重试</el-button>
       </el-empty>
     </div>
     <el-tabs v-else v-model="tab" class="cpu-card messages-tabs">
+      <el-tab-pane label="私聊" name="private" lazy>
+        <DirectMessages @notices-read="onDirectNoticesRead" />
+      </el-tab-pane>
       <el-tab-pane label="全部" name="all">
         <MessageList :list="filteredMessages('')" @read="onRead" @open="openNotification" />
       </el-tab-pane>
@@ -323,6 +326,7 @@ import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { ArrowRight, Bell } from "@element-plus/icons-vue";
 import MessageList from "@/components/messages/MessageList.vue";
+import DirectMessages from "@/components/messages/DirectMessages.vue";
 import { messageApi } from "@/api/message";
 import { topicApi } from "@/api/topic";
 import { authApi, type QqBotProfile, type WechatProfile } from "@/api/auth";
@@ -341,7 +345,7 @@ const msg = useMessageStore();
 const auth = useAuthStore();
 const wechatChannelVisible = false;
 
-const messageTabs = new Set(["all", "reply", "like", "system", "service-tool", "lost-found", "settings"]);
+const messageTabs = new Set(["all", "private", "reply", "like", "system", "service-tool", "lost-found", "settings"]);
 const tab = ref(normalizeMessageTab(route.query.tab));
 const list = ref<any[]>([]);
 const settings = ref<any>(null);
@@ -581,6 +585,20 @@ async function loadQqBotProfile(opts?: { silent?: boolean }) {
 
 function refreshQqBotProfile() {
   return loadQqBotProfile();
+}
+
+function onDirectNoticesRead(conversationId: number) {
+  const readAt = new Date().toISOString();
+  list.value.forEach((notice) => {
+    if (
+      notice.category === "direct-message"
+      && Number(notice.payload?.conversationId || 0) === conversationId
+      && !notice.readAt
+    ) {
+      notice.readAt = readAt;
+    }
+  });
+  msg.unreadCount = list.value.filter((notice) => !notice.readAt).length;
 }
 
 async function loadWechatProfile(opts?: { silent?: boolean }) {

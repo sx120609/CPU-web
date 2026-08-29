@@ -76,6 +76,7 @@ function categoryLabel(category?: string | null) {
   if (category === "school" || category === "school-feed") return "公告";
   if (category === "service-tool") return "小工具";
   if (category === "lost-found") return "失物招领";
+  if (category === "direct-message") return "私聊";
   return category || "消息";
 }
 </script>
@@ -140,6 +141,7 @@ function categoryLabel(category?: string | null) {
 .tag-school { background: rgba(34, 197, 94, 0.14); color: #4ade80; }
 .tag-service-tool { background: rgba(14, 165, 233, 0.14); color: #38bdf8; }
 .tag-lost-found { background: rgba(16, 185, 129, 0.14); color: #34d399; }
+.tag-direct-message { background: rgba(20, 184, 166, 0.14); color: #2dd4bf; }
 .tag-事务 { background: rgba(239, 68, 68, 0.14); color: #f87171; }
 .tag-通知 { background: rgba(59, 130, 246, 0.14); color: #60a5fa; }
 .tag-服务 { background: rgba(34, 197, 94, 0.14); color: #4ade80; }
