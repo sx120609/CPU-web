@@ -19,7 +19,7 @@
             <div class="section-kicker">当前状态</div>
             <h2>{{ status?.vipActive ? "VIP" : "普通用户" }}</h2>
           </div>
-          <div class="status-orb" :class="{ active: status?.vipActive }">✦</div>
+          <div class="status-orb" :class="{ active: status?.vipActive }"><AppIcon name="star" /></div>
         </div>
         <p v-if="status?.vipActive" class="expiry-copy">VIP 一次开通，永久有效。</p>
         <p v-else class="expiry-copy">还没有 VIP？使用右侧礼品码即可兑换。</p>
@@ -65,7 +65,7 @@
       </div>
       <div class="benefits-grid">
         <article v-for="benefit in benefits" :key="benefit.key" class="benefit-item">
-          <div class="benefit-icon">✓</div>
+          <div class="benefit-icon"><AppIcon name="success" /></div>
           <div>
             <h3>{{ benefit.title }}</h3>
             <p>{{ benefit.description }}</p>

@@ -38,7 +38,7 @@
         <template #default="{ row }">
           <span v-if="!row.lastRunAt" class="muted">—</span>
           <span v-else :style="{ color: row.lastRunOk ? '#16a34a' : '#dc2626' }">
-            {{ fmtRelative(row.lastRunAt) }} · {{ row.lastRunOk ? '✓' : '✗' }}
+            {{ fmtRelative(row.lastRunAt) }} · <AppIcon :name="row.lastRunOk ? 'success' : 'close'" />
           </span>
         </template>
       </el-table-column>
@@ -126,6 +126,7 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { Refresh, MoreFilled } from "@element-plus/icons-vue";
 import { adminApi } from "@/api/admin";
 import { fmtRelative } from "@/utils/format";
+import AppIcon from "@/components/common/AppIcon.vue";
 
 const list = ref<any[]>([]);
 const loading = ref(false);

@@ -18,7 +18,7 @@
             @click="openDownloadGuide(recommendedCard.key)"
           >
             下载{{ recommendedCard.name }}
-            <span aria-hidden="true">↓</span>
+            <AppIcon name="arrow-down" />
           </a>
           <router-link
             v-else-if="recommendedCard?.route"
@@ -26,11 +26,11 @@
             :to="recommendedCard.route"
           >
             {{ recommendedCard.actionLabel }}
-            <span aria-hidden="true">→</span>
+            <AppIcon name="arrow-right" />
           </router-link>
           <a v-else class="primary-action secondary" href="#platforms">
             选择你的设备
-            <span aria-hidden="true">↓</span>
+            <AppIcon name="arrow-down" />
           </a>
           <span class="device-result">
             <span class="device-dot" aria-hidden="true"></span>
@@ -84,7 +84,7 @@
 
           <ul class="feature-list">
             <li v-for="feature in card.features" :key="feature">
-              <span aria-hidden="true">✓</span>
+              <AppIcon name="success" />
               {{ feature }}
             </li>
           </ul>
@@ -99,7 +99,7 @@
               @click="openDownloadGuide(card.key)"
             >
               {{ card.actionLabel }}
-              <span aria-hidden="true">↓</span>
+              <AppIcon name="arrow-down" />
             </a>
             <router-link
               v-else-if="card.route"
@@ -107,7 +107,7 @@
               :to="card.route"
             >
               {{ card.actionLabel }}
-              <span aria-hidden="true">→</span>
+              <AppIcon name="arrow-right" />
             </router-link>
             <button v-else type="button" class="platform-action unavailable" disabled>
               {{ card.loading ? "正在获取下载信息" : "安装包暂时不可用" }}
@@ -166,6 +166,7 @@ import {
   isLikelyIosDevice,
 } from "@/utils/clientInfo";
 import DownloadSafetyGuideDialog from "@/components/common/DownloadSafetyGuideDialog.vue";
+import AppIcon from "@/components/common/AppIcon.vue";
 
 type DownloadPlatform = "android" | "ios" | "windows" | "macos";
 

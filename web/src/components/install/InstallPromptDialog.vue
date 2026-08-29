@@ -320,9 +320,15 @@ defineExpose({ openDialog, requestInstall, autoPromptIfEligible, canShow, platfo
   position: relative;
 }
 .bullets li::before {
-  content: "✓";
+  width: 6px;
+  height: 10px;
   position: absolute;
   left: 0;
+  top: 3px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  content: "";
+  transform: rotate(45deg);
   color: var(--cpu-primary);
   font-weight: 700;
 }

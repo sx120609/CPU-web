@@ -5,6 +5,8 @@
 <script setup lang="ts">
 import {
   Aim,
+  ArrowDown,
+  ArrowUp,
   Bell,
   Box,
   Calendar,
@@ -41,6 +43,7 @@ import {
   QuestionFilled,
   Reading,
   Refresh,
+  Right,
   School,
   Search,
   Sell,
@@ -64,6 +67,9 @@ const props = withDefaults(defineProps<{ name?: string; legacy?: string | null }
 
 const icons: Record<string, Component> = {
   ai: MagicStick,
+  "arrow-down": ArrowDown,
+  "arrow-right": Right,
+  "arrow-up": ArrowUp,
   announcement: Notification,
   announce: Notification,
   bell: Bell,

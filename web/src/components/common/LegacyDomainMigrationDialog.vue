@@ -11,7 +11,7 @@
     align-center
   >
     <div class="migration-heading">
-      <span class="migration-mark" aria-hidden="true">↗</span>
+      <span class="migration-mark" aria-hidden="true"><AppIcon name="arrow-right" /></span>
       <div>
         <div class="migration-kicker">旧入口迁移提醒</div>
         <h2>请更新入口或客户端</h2>
@@ -56,7 +56,7 @@
         <el-button size="large" @click="remindTomorrow">稍后提醒</el-button>
         <el-button type="primary" size="large" @click="openPrimarySite">
           前往 cputime.cn
-          <span aria-hidden="true">→</span>
+          <AppIcon name="arrow-right" />
         </el-button>
       </div>
     </template>
@@ -65,6 +65,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import AppIcon from "@/components/common/AppIcon.vue";
 import {
   isAndroidNativeApp,
   isDesktopNativeApp,

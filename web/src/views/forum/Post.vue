@@ -101,7 +101,7 @@
                 <b>{{ option.label }}</b>
                 <small>{{ option.description }}</small>
               </span>
-              <span class="second-hand-kind__check">✓</span>
+              <span class="second-hand-kind__check"><AppIcon name="success" /></span>
             </button>
           </div>
 
@@ -321,7 +321,7 @@
         <el-form-item :label="postContentLabel" required>
           <div class="post-editor-shell">
             <div v-if="isSecondHandPost" class="second-hand-description-guide">
-              <span>✦</span>
+              <span><AppIcon name="ai" /></span>
               <div>
                 <b>{{ secondHandDescriptionTitle }}</b>
                 <p>{{ secondHandDescriptionHint }}</p>

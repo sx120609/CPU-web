@@ -10,7 +10,7 @@
       <div class="nav-preview">
         <span class="preview-brand">药大拾间</span>
         <span v-for="item in items.filter((entry) => entry.primary)" :key="item.id" :class="{ disabled: !item.enabled }">{{ item.label }}</span>
-        <span v-if="items.some((entry) => !entry.primary)" class="more">更多⌄</span>
+        <span v-if="items.some((entry) => !entry.primary)" class="more">更多<el-icon><ArrowDown /></el-icon></span>
       </div>
       <div class="drawer-preview"><small>移动端抽屉</small><span v-for="item in items.filter((entry) => entry.showInDrawer)" :key="item.id" :class="{ disabled: !item.enabled }"><el-icon><component :is="iconComponents[item.icon]" /></el-icon>{{ item.fullLabel || item.label }}</span></div>
     </section>
@@ -34,12 +34,12 @@
         @drop="dropAt(index)"
       >
         <header>
-          <span class="drag-handle" title="拖动排序">⋮⋮</span>
+          <span class="drag-handle" title="拖动排序"><el-icon><Rank /></el-icon></span>
           <span class="item-icon"><el-icon><component :is="iconComponents[item.icon]" /></el-icon></span>
           <div class="item-title"><strong>{{ item.fullLabel || item.label || '未命名入口' }}</strong><small>{{ item.to || '尚未填写链接' }}</small></div>
           <el-tag size="small" :type="item.primary ? 'success' : 'info'">{{ item.primary ? '主导航' : '更多' }}</el-tag>
           <el-switch v-model="item.enabled" inline-prompt active-text="显" inactive-text="隐" />
-          <div class="row-actions"><el-button circle size="small" :disabled="index === 0" @click="move(index, -1)">↑</el-button><el-button circle size="small" :disabled="index === items.length - 1" @click="move(index, 1)">↓</el-button><el-button size="small" @click="duplicate(index)">复制</el-button><el-button size="small" type="danger" plain @click="remove(index)">删除</el-button></div>
+          <div class="row-actions"><el-button circle size="small" :icon="ArrowUp" :disabled="index === 0" @click="move(index, -1)" /><el-button circle size="small" :icon="ArrowDown" :disabled="index === items.length - 1" @click="move(index, 1)" /><el-button size="small" @click="duplicate(index)">复制</el-button><el-button size="small" type="danger" plain @click="remove(index)">删除</el-button></div>
         </header>
 
         <div class="editor-grid">
@@ -69,7 +69,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { Bell, Calendar, ChatLineRound, Compass, Goods, House, Link, Reading, Search, Service } from "@element-plus/icons-vue";
+import { ArrowDown, ArrowUp, Bell, Calendar, ChatLineRound, Compass, Goods, House, Link, Rank, Reading, Search, Service } from "@element-plus/icons-vue";
 import { adminApi } from "@/api/admin";
 import type { TopNavigationIcon, TopNavigationItem } from "@/api/site";
 import { useSiteStore } from "@/stores/site";

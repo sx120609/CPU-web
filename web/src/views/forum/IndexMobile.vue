@@ -21,7 +21,7 @@
       >
         <AppIcon :name="channel.icon" />{{ channel.label }}
       </button>
-      <button type="button" class="all-boards-tab" @click="boardsOpen = true"><span>▦</span>板块</button>
+      <button type="button" class="all-boards-tab" @click="boardsOpen = true"><AppIcon name="board" />板块</button>
     </nav>
 
     <PinnedTopicStrip v-if="selectedChannel === 'latest'" :topics="pinnedList" />
