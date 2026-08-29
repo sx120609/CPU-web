@@ -106,6 +106,7 @@ const error = ref("");
 let pendingRestoreState: BoardRestoreState | null = null;
 let loadSeq = 0;
 
+const boardSlug = computed(() => String(route.params.slug || (route.name === "market" ? "market" : "")));
 const canPost = computed(() => !!board.value && !board.value.readOnly && auth.canAccessForum);
 const boardDisplayName = computed(() => board.value?.name || "");
 const boardDisplayDescription = computed(() => board.value?.description || "");
@@ -129,7 +130,7 @@ watch(() => route.fullPath, async () => {
 
 async function reload(options: { scrollToTop?: boolean } = {}) {
   const seq = ++loadSeq;
-  const slug = String(route.params.slug);
+  const slug = boardSlug.value;
   const scope = forumCacheScope(auth.user);
   const cached = readForumBoardPage(scope, slug, page.value, sort.value);
   if (cached) {
@@ -218,7 +219,7 @@ function goPost() {
     router.push({ name: "login", query: { redirect: route.fullPath } });
     return;
   }
-  router.push({ name: "post", query: { board: route.params.slug } });
+  router.push({ name: "post", query: { board: boardSlug.value } });
 }
 
 async function restoreScrollIfNeeded() {
