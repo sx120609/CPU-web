@@ -283,7 +283,9 @@
         <p v-if="topic.aiReviewReason" class="cpu-muted">{{ topic.aiReviewReason }}</p>
       </div>
 
-      <MarkdownView :content="displayContent" class="post-body topic-markdown" clickable-images media-loading="eager" />
+      <div class="post-body">
+        <MarkdownView :content="displayContent" class="topic-markdown" clickable-images media-loading="eager" />
+      </div>
 
       <footer class="post-foot">
         <el-button :type="liked ? 'primary' : 'default'" :icon="Star" :loading="topicActionBusy === 'like'" :disabled="isTopicActionBusy || topic.hidden" @click="onLike">
