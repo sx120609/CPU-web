@@ -33,7 +33,7 @@ const SCHEDULE_OFFLINE_STATIC_URLS = [
   "/apple-touch-icon-v3.png?v=20260830",
   "/icon-192-v3.png?v=20260830",
   "/icon-512-v3.png?v=20260830",
-  "/favicon.svg?v=20260530",
+  "/favicon.svg?v=20260830",
 ];
 
 let serviceWorkerReady: Promise<ServiceWorkerRegistration | null> | null = null;

@@ -7,7 +7,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
 const sharp = require(path.join(root, "server", "node_modules", "sharp"));
 const splashRoot = path.join(root, "web", "public", "splash");
-const logoPath = path.join(root, "web", "public", "brand", "original-logo-1024.png");
+const logoPath = path.join(root, "web", "public", "favicon.svg");
 
 for (const fileName of (await readdir(splashRoot)).filter((name) => /^ios-launch-v4-\d+x\d+\.png$/u.test(name))) {
   const sourcePath = path.join(splashRoot, fileName);
@@ -36,5 +36,5 @@ for (const fileName of (await readdir(splashRoot)).filter((name) => /^ios-launch
   await sharp(sourcePath)
     .composite([{ input: logo, left, top }])
     .png({ compressionLevel: 9 })
-    .toFile(path.join(splashRoot, fileName.replace("ios-launch-v4-", "ios-launch-v5-")));
+    .toFile(path.join(splashRoot, fileName.replace("ios-launch-v4-", "ios-launch-v6-")));
 }

@@ -17,7 +17,7 @@
         <router-link to="/home" class="brand">
           <img
             class="brand-logo"
-            src="/brand/original-logo-1024.png"
+            src="/favicon.svg?v=20260830"
             alt=""
             aria-hidden="true"
             decoding="async"
@@ -246,7 +246,6 @@
       <router-link class="footer-item" to="/download">客户端下载</router-link>
       <a class="footer-item" href="https://github.com/sx120609/CPU-web" target="_blank" rel="noopener noreferrer">GitHub</a>
       <span class="footer-item">非学校官方站点</span>
-      <span class="footer-item">严禁商业用途</span>
       <a
         v-if="site.siteFilingNumber"
         class="footer-item"
