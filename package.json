@@ -14,7 +14,6 @@
     "dev:web": "npm run dev --prefix web",
     "dev:voicehub": "npm run dev:cpu --prefix voicehub",
     "build": "npm run build --prefix server && npm run build --prefix web && npm run build:cpu --prefix voicehub",
-    "verify:push": "npm run build",
     "typecheck": "npm run build --prefix server && npm run type-check --prefix web",
     "start": "concurrently -k -n server,voicehub -c blue,magenta \"npm run start --prefix server\" \"npm run start:cpu --prefix voicehub\"",
     "start:server": "npm run start --prefix server",

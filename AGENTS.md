@@ -2,14 +2,14 @@
 
 ## Mandatory production push gate
 
-These requirements apply to every remote push from this repository, including documentation-only pushes.
+These requirements apply to every push to `main`, including documentation-only pushes.
 
 1. Preserve unrelated user files and selectively stage only the files that belong to the current task.
-2. Finalize the commit first. In the clean tracked worktree at the exact `HEAD` that will be pushed, run `npm run verify:push` from the repository root.
-3. `verify:push` must finish successfully. It compiles the server, web client, and VoiceHub; a partial build or type-check alone does not satisfy this gate.
-4. Do not push when the local gate fails. Fix the failure, finalize the commit, and rerun the full gate.
-5. After pushing, verify that `HEAD` equals the intended remote commit. For pushes to `main`, wait for the `Linux deployment artifact` workflow for that exact full commit SHA, require it to succeed, and verify that the commit-bound artifact exists.
-6. A successful `git push` without the completed local build and exact-SHA CI artifact verification is not a completed production push.
-7. Pushing and compiling do not authorize a production deployment. Deploy only when the user explicitly requests it.
+2. Local tests, type-checks, or builds may be run when appropriate, but there is no mandatory local full-build gate. Local output is not an official production artifact and is not proof that a production push is complete.
+3. Push the finalized commit, then verify that local `HEAD` equals the intended remote commit.
+4. GitHub Actions is the authoritative production builder. Wait for the `Linux deployment artifact` workflow for the exact full commit SHA, require it to build the server, web client, and VoiceHub successfully on Ubuntu 24.04 with Node.js 24, and verify that the commit-bound artifact exists.
+5. A successful `git push`, a local build, or a workflow run for a different SHA is not a completed production push. CI pending, failed, cancelled, missing, or missing its artifact must be reported as incomplete.
+6. Production deployment must consume the verified GitHub artifact rather than treating a local or production-server compilation as the normal production path.
+7. Pushing and GitHub compilation do not authorize a production deployment. Deploy only when the user explicitly requests it.
 
 The detailed, auditable procedure is in `docs/production-requirements.md`.
