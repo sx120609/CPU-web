@@ -2,8 +2,8 @@
 @use "./variables.scss" as *;
 
 :root {
-  --cpu-font-sans: "Inter Variable", "Noto Color Emoji", "Noto Sans SC Variable", sans-serif;
-  --cpu-font-mono: "Roboto Mono Variable", "Noto Color Emoji", "Noto Sans SC Variable", monospace;
+  --cpu-font-sans: "Inter Variable", "HarmonyOS Sans SC", -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+  --cpu-font-mono: "JetBrains Mono", "SF Mono", "Menlo", "Consolas", monospace;
   --cpu-primary: #{$cpu-primary};
   --cpu-primary-light: #{$cpu-primary-light};
   --cpu-primary-dark: #{$cpu-primary-dark};
