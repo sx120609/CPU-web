@@ -1,33 +1,42 @@
 import tiku from "./safetyPlatformTiku.json";
 
-const SAFETY_PLATFORM_BASE = "http://wap.xiaoyuananquantong.com/guns-vip-main";
-const SAFETY_PLATFORM_COLLEGE_ID = "1224316234189443073";
-const SAFETY_EXAM_ID = "1948924196784492546";
-const SAFETY_EXAM_QUESTION_COUNT = 50;
-const SAFETY_REQUEST_TIMEOUT_MS = 15_000;
+const SAFETY_PLATFORM_HOST = "wap.xiaoyuananquantong.com";
+const SAFETY_PLATFORM_BASE = `http://${SAFETY_PLATFORM_HOST}/guns-vip-main`;
+const SAFETY_PLATFORM_ORIGIN = `http://${SAFETY_PLATFORM_HOST}`;
+export const SAFETY_PLATFORM_COLLEGE_ID = "1224316225859555329";
+const SAFETY_REQUEST_TIMEOUT_MS = 20_000;
+const SAFETY_MAX_REDIRECTS = 5;
+const SAFETY_USER_AGENT =
+  "Mozilla/5.0 (Linux; Android 16; wv) AppleWebKit/537.36 (KHTML, like Gecko) " +
+  "Version/4.0 Chrome/146.0.7680.178 Mobile Safari/537.36 MicroMessenger/8.0.71";
 
-type SafetyUnitPayload = {
-  articleId: string;
-  title: string;
-  userId: string;
-  ah: string;
-  question: string;
-  quesType: string;
+type SafetyApiResponse = {
+  code?: number | string;
+  success?: boolean | string;
+  message?: string;
+  data?: any;
 };
 
-const SAFETY_UNITS: SafetyUnitPayload[] = [
-  { articleId: "2080135073788600321", title: "题库学习", userId: "", ah: "", question: "2080136617019842561-1", quesType: "3" },
-  { articleId: "2079132357549375490", title: "入学安全", userId: "", ah: "", question: "2079154657984266242-1", quesType: "3" },
-  { articleId: "2079133938168643585", title: "国家安全", userId: "", ah: "", question: "2079156723934838786-B", quesType: "1" },
-  { articleId: "2079139032318623745", title: "财物安全", userId: "", ah: "", question: "2079446660177477633-1", quesType: "3" },
-  { articleId: "2079140991327027201", title: "心理健康", userId: "", ah: "", question: "2079467760328392705-D", quesType: "1" },
-  { articleId: "2079142411614830593", title: "消防安全", userId: "", ah: "", question: "2079492272201678850-C", quesType: "1" },
-  { articleId: "2079143452481699842", title: "人身安全", userId: "", ah: "", question: "2079527272678703105-1", quesType: "3" },
-  { articleId: "2079144978977669121", title: "交通安全", userId: "", ah: "", question: "2079540470853156866-A", quesType: "1" },
-  { articleId: "2079146093836255234", title: "禁毒防艾", userId: "", ah: "", question: "2079548501443756034-1", quesType: "3" },
-  { articleId: "2079146628521934850", title: "应急救护", userId: "", ah: "", question: "~2079553855799967746-A~2079553855799967746-B~2079553855799967746-C~2079553855799967746-D", quesType: "2" },
-  { articleId: "2079147344531570690", title: "防灾减灾", userId: "", ah: "", question: "2079558043292418049-D", quesType: "1" },
-];
+type SafetyCourse = {
+  id?: string | number;
+  name?: string;
+  isFinsh?: boolean;
+};
+
+type SafetyArticle = {
+  id?: string | number;
+};
+
+type SafetyQuestion = {
+  id?: string | number;
+  questionId?: string | number;
+  quesType?: string | number;
+};
+
+type SafetyExamRow = {
+  questionId?: string | number;
+  question?: SafetyQuestion;
+};
 
 type SafetyTikuRow = {
   questionId: string;
@@ -35,185 +44,480 @@ type SafetyTikuRow = {
   quesType: string;
 };
 
-const safetyAnswerIndex = (() => {
-  const index = new Map<string, SafetyTikuRow[]>();
-  for (const row of tiku as SafetyTikuRow[]) {
-    const list = index.get(row.questionId);
-    if (list) list.push(row);
-    else index.set(row.questionId, [row]);
-  }
-  return index;
-})();
+export type SafetyPlatformCredentials = {
+  username: string;
+  password: string;
+};
 
-async function safetyPostForm(path: string, fields: Record<string, unknown>) {
-  const body = new URLSearchParams();
-  for (const [key, value] of Object.entries(fields)) {
-    if (value !== undefined && value !== null) body.append(key, String(value));
+type SafetyPlatformSession = {
+  jar: SafetyCookieJar;
+  userId: string;
+  collegeId: string;
+};
+
+/**
+ * 平台登录后通过 Cookie 维持会话。每次刷课任务创建独立 jar，避免不同用户串会话。
+ * 这里只保留内存中的 Cookie，不落库，也不进入日志。
+ */
+class SafetyCookieJar {
+  private readonly cookies = new Map<string, string>();
+
+  ingest(response: Response) {
+    const headers = response.headers as Headers & { getSetCookie?: () => string[] };
+    const raw = headers.getSetCookie?.() ?? response.headers.get("set-cookie");
+    if (!raw) return;
+    const values = Array.isArray(raw) ? raw : splitSetCookieHeader(raw);
+    for (const value of values) {
+      const separator = value.indexOf("=");
+      if (separator <= 0) continue;
+      const name = value.slice(0, separator).trim();
+      const cookieValue = value.slice(separator + 1).split(";", 1)[0].trim();
+      if (!name) continue;
+      if (!cookieValue || /expires=.*1970/i.test(value)) this.cookies.delete(name);
+      else this.cookies.set(name, cookieValue);
+    }
   }
-  const response = await fetch(`${SAFETY_PLATFORM_BASE}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
-    body,
-    signal: AbortSignal.timeout(SAFETY_REQUEST_TIMEOUT_MS),
-  });
-  if (!response.ok) throw new Error(`江苏省大学生安全教育考试请求失败（${response.status}）：${path}`);
-  return response.json() as Promise<any>;
+
+  toHeader() {
+    return Array.from(this.cookies.entries())
+      .map(([name, value]) => `${name}=${value}`)
+      .join("; ");
+  }
 }
 
-async function safetyGet(path: string, params: Record<string, unknown>) {
-  const query = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined && value !== null) query.append(key, String(value));
+function splitSetCookieHeader(raw: string) {
+  const values: string[] = [];
+  let start = 0;
+  for (let index = 0; index < raw.length; index += 1) {
+    if (raw[index] !== ",") continue;
+    const next = raw.slice(index + 1).trimStart();
+    if (/^[\w!#$%&'*+\-.^`|~]+\s*=/.test(next)) {
+      values.push(raw.slice(start, index));
+      start = index + 1;
+    }
   }
-  const response = await fetch(`${SAFETY_PLATFORM_BASE}${path}?${query.toString()}`, {
-    method: "GET",
-    signal: AbortSignal.timeout(SAFETY_REQUEST_TIMEOUT_MS),
-  });
-  if (!response.ok) throw new Error(`江苏省大学生安全教育考试请求失败（${response.status}）：${path}`);
-  return response.json() as Promise<any>;
+  values.push(raw.slice(start));
+  return values.map((value) => value.trim()).filter(Boolean);
 }
 
-export function isValidSafetyUserId(userId: string) {
-  return /^\d{19}$/.test(userId);
+function getSafetyErrorMessage(payload: SafetyApiResponse, fallback: string) {
+  const message = String(payload?.message || "").trim();
+  return message || fallback;
 }
 
-export function extractSafetyUserIdFromUrl(url: string) {
+function isSuccessfulSafetyResponse(payload: SafetyApiResponse) {
+  const code = payload?.code === undefined ? 200 : Number(payload.code);
+  return code === 200 && payload?.success !== false && payload?.success !== "false";
+}
+
+async function safetyRequest(jar: SafetyCookieJar, url: string, init: RequestInit = {}) {
+  let currentUrl = url;
+  let currentInit = init;
+
+  for (let redirectCount = 0; redirectCount <= SAFETY_MAX_REDIRECTS; redirectCount += 1) {
+    const parsed = new URL(currentUrl);
+    if (parsed.hostname !== SAFETY_PLATFORM_HOST) {
+      throw new Error("江苏省大学生安全教育平台重定向到未知地址，已停止请求。");
+    }
+    const headers = new Headers(currentInit.headers);
+    if (!headers.has("User-Agent")) headers.set("User-Agent", SAFETY_USER_AGENT);
+    if (!headers.has("Accept")) headers.set("Accept", "application/json, text/javascript, */*; q=0.01");
+    if (!headers.has("Origin")) headers.set("Origin", SAFETY_PLATFORM_ORIGIN);
+    if (!headers.has("X-Requested-With")) headers.set("X-Requested-With", "XMLHttpRequest");
+    const cookie = jar.toHeader();
+    if (cookie) headers.set("Cookie", cookie);
+
+    const response = await fetch(currentUrl, {
+      ...currentInit,
+      headers,
+      redirect: "manual",
+      signal: currentInit.signal || AbortSignal.timeout(SAFETY_REQUEST_TIMEOUT_MS),
+    });
+    jar.ingest(response);
+
+    if (response.status < 300 || response.status >= 400) return response;
+    const location = response.headers.get("location");
+    if (!location || redirectCount === SAFETY_MAX_REDIRECTS) return response;
+    const nextUrl = new URL(location, currentUrl);
+    if (nextUrl.hostname !== SAFETY_PLATFORM_HOST) {
+      throw new Error("江苏省大学生安全教育平台重定向到未知地址，已停止请求。");
+    }
+    currentUrl = nextUrl.toString();
+    if (response.status !== 307 && response.status !== 308) {
+      currentInit = { method: "GET", headers: { Referer: url } };
+    }
+  }
+
+  throw new Error("江苏省大学生安全教育平台重定向次数过多。");
+}
+
+async function readSafetyJson(jar: SafetyCookieJar, path: string, init: RequestInit, fallback: string) {
+  const response = await safetyRequest(jar, `${SAFETY_PLATFORM_BASE}${path}`, init);
+  if (!response.ok) {
+    throw new Error(`江苏省大学生安全教育平台请求失败（${response.status}）：${path}`);
+  }
+  let payload: SafetyApiResponse;
   try {
-    const parsed = new URL(url);
-    const userId = parsed.searchParams.get("userId")
-      || parsed.searchParams.get("userid")
-      || parsed.searchParams.get("user_id");
-    return userId ?? "";
+    payload = await response.json() as SafetyApiResponse;
   } catch {
-    return "";
+    throw new Error(`江苏省大学生安全教育平台返回了无法解析的数据：${path}`);
   }
+  if (!isSuccessfulSafetyResponse(payload)) {
+    throw new Error(getSafetyErrorMessage(payload, fallback));
+  }
+  return payload;
 }
 
-export function extractSafetyPlatformUrlFromText(text: string) {
-  const match = String(text || "").trim().match(/https?:\/\/[^\s<>"']+/i);
-  if (!match) return "";
-  const url = match[0];
-  const cut = url.search(/[^\x00-\x7E]/);
-  const truncated = cut === -1 ? url : url.slice(0, cut);
-  return truncated.replace(/[)\]}>]+$/, "").trim();
-}
-
-export function isSafetyPlatformJshomeUrl(url: string) {
-  let parsed: URL;
-  try {
-    parsed = new URL(String(url || "").trim());
-  } catch {
-    return false;
-  }
-  const isHttp = parsed.protocol === "http:" || parsed.protocol === "https:";
-  const isJshome = parsed.hostname === "wap.xiaoyuananquantong.com"
-    && parsed.pathname === "/guns-vip-main/wap/jshome";
-  if (!isHttp || !isJshome) return false;
-  return Boolean(
-    parsed.searchParams.get("userId")
-    || parsed.searchParams.get("userid")
-    || parsed.searchParams.get("user_id"),
+async function safetyPostForm(
+  jar: SafetyCookieJar,
+  path: string,
+  fields: Array<[string, string]>,
+  fallback: string,
+  referer?: string,
+) {
+  const body = new URLSearchParams(fields);
+  return readSafetyJson(
+    jar,
+    path,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+        ...(referer ? { Referer: referer } : {}),
+      },
+      body,
+    },
+    fallback,
   );
 }
 
-export async function getSafetyCourseList(userId: string) {
-  const data = await safetyPostForm("/wap/compulsory/list", {
-    userId,
-    collegeId: SAFETY_PLATFORM_COLLEGE_ID,
-  });
-  return data.data as Array<{ name?: string; isFinsh?: boolean }>;
+async function safetyGet(
+  jar: SafetyCookieJar,
+  path: string,
+  params: Record<string, string>,
+  fallback: string,
+  referer?: string,
+) {
+  const query = new URLSearchParams(params);
+  return readSafetyJson(
+    jar,
+    `${path}?${query.toString()}`,
+    { method: "GET", headers: referer ? { Referer: referer } : undefined },
+    fallback,
+  );
 }
 
-export async function completeSafetyUnit(userId: string, index: number) {
-  const unit = SAFETY_UNITS[index];
-  if (!unit) throw new Error(`未知的课程序号：${index}`);
-  const data = await safetyPostForm("/wap/unitTest", { ...unit, userId });
-  return data;
+function normalizeCredentialPart(value: string, maxLength: number) {
+  const normalized = String(value || "").trim();
+  if (!normalized || normalized.length > maxLength || /[\r\n]/.test(normalized)) return "";
+  return normalized;
 }
 
-export async function createSafetyExam(userId: string) {
-  const data = await safetyPostForm("/wap/test/create", {
-    examId: SAFETY_EXAM_ID,
-    userId,
-  });
-  return data;
+export function validateSafetyPlatformCredentials(input: SafetyPlatformCredentials) {
+  const username = normalizeCredentialPart(input.username, 128);
+  const password = normalizeCredentialPart(input.password, 256);
+  if (!username || !password) return null;
+  return { username, password };
 }
 
-export async function getSafetyExamQuestions(logId: string, userId: string) {
-  return safetyGet("/wap/test/list", {
-    logId,
-    page: 1,
-    limit: 200,
-    ah: "",
-    userId,
-  });
+export function parseSafetyPlatformCredentials(message: string) {
+  const normalized = String(message || "").trim();
+  if (!normalized || /[\r\n]/.test(normalized)) return null;
+  const match = normalized.match(/^(\S+)\s+(.+)$/);
+  if (!match) return null;
+  return validateSafetyPlatformCredentials({ username: match[1], password: match[2] });
 }
 
-export async function getSafetyExamId(userId: string) {
-  return safetyPostForm("/wap/test/getTest", {
-    examType: 2,
-    examClass: 20,
-    userId,
-    ah: "",
-  });
+export async function loginSafetyPlatform(input: SafetyPlatformCredentials): Promise<SafetyPlatformSession> {
+  const credentials = validateSafetyPlatformCredentials(input);
+  if (!credentials) throw new Error("用户名或密码格式不正确，请按“用户名 密码”重新发送。");
+
+  const jar = new SafetyCookieJar();
+  const payload = await safetyPostForm(
+    jar,
+    "/wap/jsUserLogin",
+    [
+      ["openId", ""],
+      ["account", credentials.username],
+      ["collegeId", SAFETY_PLATFORM_COLLEGE_ID],
+      ["password", credentials.password],
+    ],
+    "登录失败，请检查用户名、密码是否正确。",
+    `${SAFETY_PLATFORM_BASE}/wap/jiangsuwxJsback`,
+  );
+  const userId = String(payload.data?.userId || "").trim();
+  if (!userId) throw new Error(getSafetyErrorMessage(payload, "登录失败，平台没有返回用户信息。"));
+  return { jar, userId, collegeId: SAFETY_PLATFORM_COLLEGE_ID };
 }
 
-export function getSafetyAnswerRows(questionId: string) {
-  return safetyAnswerIndex.get(questionId) ?? null;
+function buildQuestionIndex() {
+  const index = new Map<string, SafetyTikuRow[]>();
+  for (const row of tiku as SafetyTikuRow[]) {
+    const questionId = String(row.questionId || "").trim();
+    if (!questionId) continue;
+    const list = index.get(questionId);
+    if (list) list.push(row);
+    else index.set(questionId, [row]);
+  }
+  return index;
 }
 
-export function buildSafetyAnswerTuples(questionId: string) {
-  const rows = safetyAnswerIndex.get(questionId);
-  if (!rows || rows.length === 0) return null;
-  const quesType = rows[0].quesType;
-  if (quesType === "2") {
-    const question = rows.map((row) => `~${row.questionId}-${row.answer}`).join("");
+const safetyAnswerIndex = buildQuestionIndex();
+
+function answerTupleForQuestion(questionId: string, quesType?: string | number) {
+  const rows = safetyAnswerIndex.get(String(questionId));
+  if (!rows?.length) return null;
+  const type = String(quesType || rows[0].quesType);
+  if (type === "2") {
+    const letters = rows
+      .flatMap((row) => String(row.answer || "").trim().split(/[,，\s]+/))
+      .filter((answer) => /^[A-F]$/.test(answer));
+    if (!letters.length) return null;
     return {
-      question,
+      question: letters.map((answer) => `~${questionId}-${answer}`).join(""),
       questionId,
-      quesType,
+      quesType: type,
     };
   }
-  const row = rows[0];
+  const answer = String(rows[0].answer || "").trim();
+  if (!answer) return null;
   return {
-    question: `${row.questionId}-${row.answer}`,
-    questionId: row.questionId,
-    quesType,
+    question: `${questionId}-${answer === "正确" ? "1" : answer === "错误" ? "0" : answer}`,
+    questionId,
+    quesType: type,
   };
 }
 
-export async function submitSafetyExam(input: {
-  examId: string;
-  logId: string;
-  userId: string;
-  answers: Array<{ question: string; questionId: string; quesType: string }>;
-}) {
-  const fields: Array<[string, string]> = [
-    ["examId", input.examId],
-    ["examType", "2"],
-    ["sysSource", "20"],
-    ["logId", input.logId],
-    ["userId", input.userId],
+export function getSafetyAnswerRows(questionId: string) {
+  return safetyAnswerIndex.get(String(questionId)) ?? null;
+}
+
+export function buildSafetyAnswerTuples(questionId: string, quesType?: string | number) {
+  return answerTupleForQuestion(String(questionId), quesType);
+}
+
+async function getSafetyCourseList(session: SafetyPlatformSession, courseType: "1" | "2") {
+  const payload = await safetyPostForm(
+    session.jar,
+    "/wap/compulsory/list",
+    [
+      ["name", ""],
+      ["courseType", courseType],
+      ["userId", session.userId],
+      ["collegeId", session.collegeId],
+      ["ah", ""],
+    ],
+    "获取安全教育课程列表失败，请稍后重试。",
+  );
+  if (!Array.isArray(payload.data)) throw new Error("安全教育平台返回的课程列表格式异常。");
+  return payload.data as SafetyCourse[];
+}
+
+async function getSafetyArticles(session: SafetyPlatformSession, courseId: string) {
+  const payload = await safetyPostForm(
+    session.jar,
+    "/wap/directory/list",
+    [
+      ["name", ""],
+      ["courseId", courseId],
+      ["userId", session.userId],
+      ["collegeId", session.collegeId],
+      ["ah", ""],
+    ],
+    "获取安全教育课程目录失败，请稍后重试。",
+  );
+  const chapters = Array.isArray(payload.data) ? payload.data : [];
+  return chapters.flatMap((chapter: { list?: SafetyArticle[] }) => Array.isArray(chapter?.list) ? chapter.list : [])
+    .map((article) => String(article.id || "").trim())
+    .filter(Boolean);
+}
+
+async function getSafetyArticleQuestions(session: SafetyPlatformSession, articleId: string) {
+  const payload = await safetyGet(
+    session.jar,
+    "/wap/question/list",
+    { articleId, ah: "" },
+    "获取安全教育题目失败，请稍后重试。",
+  );
+  const questions = payload.data?.list;
+  if (!Array.isArray(questions)) throw new Error("安全教育平台返回的题目列表格式异常。");
+  return questions as SafetyQuestion[];
+}
+
+function buildUnitAnswers(
+  userId: string,
+  courseName: string,
+  articleId: string,
+  questions: SafetyQuestion[],
+) {
+  const answers: Array<[string, string]> = [
+    ["articleId", articleId],
+    ["title", courseName],
+    ["userId", userId],
     ["ah", ""],
   ];
-  for (const answer of input.answers) {
+  const missing: string[] = [];
+  for (const question of questions) {
+    const questionId = String(question.id || question.questionId || "").trim();
+    if (!questionId) {
+      missing.push("unknown");
+      continue;
+    }
+    const answer = answerTupleForQuestion(questionId, question.quesType);
+    if (!answer) {
+      missing.push(questionId);
+      continue;
+    }
+    answers.push(["question", answer.question], ["quesType", answer.quesType]);
+  }
+  return { answers, missing };
+}
+
+async function completeSafetyArticle(session: SafetyPlatformSession, courseName: string, articleId: string) {
+  const questions = await getSafetyArticleQuestions(session, articleId);
+  if (!questions.length) return;
+  const { answers, missing } = buildUnitAnswers(session.userId, courseName, articleId, questions);
+  if (missing.length) {
+    throw new Error(`课程“${courseName}”有 ${missing.length} 道题不在当前题库中，已停止提交，题目：${missing.join("、")}`);
+  }
+  const payload = await safetyPostForm(
+    session.jar,
+    "/wap/unitTest",
+    answers,
+    `课程“${courseName}”提交失败，请稍后重试。`,
+  );
+  if (!payload.data?.isSuccess) {
+    throw new Error(getSafetyErrorMessage(payload, `课程“${courseName}”未完成。`));
+  }
+}
+
+async function completeSafetyCourses(session: SafetyPlatformSession, emit: (message: string) => Promise<void>) {
+  const courseGroups = await Promise.all([
+    getSafetyCourseList(session, "2"),
+    getSafetyCourseList(session, "1"),
+  ]);
+  const courses = courseGroups.flat();
+  const unfinished = courses.filter((course) => !course.isFinsh);
+  if (unfinished.length) {
+    await emit(`正在完成 ${unfinished.length} 门未完成课程，请稍候。`);
+    for (const course of unfinished) {
+      const courseName = String(course.name || "未命名课程");
+      const courseId = String(course.id || "").trim();
+      if (!courseId) throw new Error(`课程“${courseName}”缺少课程编号。`);
+      const articles = await getSafetyArticles(session, courseId);
+      for (const articleId of articles) {
+        await completeSafetyArticle(session, courseName, articleId);
+      }
+      await emit(`已处理课程：${courseName}`);
+    }
+  }
+
+  const verifiedGroups = await Promise.all([
+    getSafetyCourseList(session, "2"),
+    getSafetyCourseList(session, "1"),
+  ]);
+  const remaining = verifiedGroups.flat().filter((course) => !course.isFinsh);
+  if (remaining.length) {
+    throw new Error(`仍有 ${remaining.length} 门必修课程未完成，请稍后重试。`);
+  }
+  return verifiedGroups.flat()
+    .map((course) => String(course.name || "未命名课程"))
+    .filter(Boolean);
+}
+
+async function getSafetyExamId(session: SafetyPlatformSession) {
+  const payload = await safetyPostForm(
+    session.jar,
+    "/wap/test/getTest",
+    [
+      ["examType", "2"],
+      ["examClass", "20"],
+      ["userId", session.userId],
+      ["ah", ""],
+    ],
+    "获取考试配置失败，请确认必修课程已经完成。",
+  );
+  const examId = String(payload.data?.id || "").trim();
+  if (!examId) throw new Error("平台没有返回有效的考试编号，请稍后重试。");
+  return examId;
+}
+
+async function createSafetyExam(session: SafetyPlatformSession, examId: string) {
+  const payload = await safetyPostForm(
+    session.jar,
+    "/wap/test/create",
+    [
+      ["examId", examId],
+      ["userId", session.userId],
+      ["ah", ""],
+    ],
+    "创建考试失败，请确认必修课程已经完成。",
+  );
+  const logId = String(payload.data?.logId || "").trim();
+  if (!logId) throw new Error(getSafetyErrorMessage(payload, "创建考试失败，请稍后重试。"));
+  return logId;
+}
+
+async function getSafetyExamQuestions(session: SafetyPlatformSession, logId: string, examId: string) {
+  const payload = await safetyGet(
+    session.jar,
+    "/wap/test/list",
+    { logId, page: "1", limit: "200", ah: "", userId: session.userId },
+    "获取考试题目失败，请稍后重试。",
+    `${SAFETY_PLATFORM_BASE}/wap/newStudentssimulate?examId=${encodeURIComponent(examId)}&examType=2&userId=${encodeURIComponent(session.userId)}&ah`,
+  );
+  const rows = payload.data?.data;
+  if (!Array.isArray(rows) || !rows.length) throw new Error("考试没有返回题目，请稍后重试。");
+  return rows as SafetyExamRow[];
+}
+
+async function submitSafetyExam(
+  session: SafetyPlatformSession,
+  examId: string,
+  logId: string,
+  rows: SafetyExamRow[],
+) {
+  const fields: Array<[string, string]> = [
+    ["examId", examId],
+    ["examType", "2"],
+    ["sysSource", "20"],
+    ["logId", logId],
+    ["userId", session.userId],
+    ["ah", ""],
+  ];
+  const missing: string[] = [];
+  for (const row of rows) {
+    const question = row.question;
+    const questionId = String(question?.id || question?.questionId || row.questionId || "").trim();
+    if (!questionId) {
+      missing.push("unknown");
+      continue;
+    }
+    const answer = answerTupleForQuestion(questionId, question?.quesType);
+    if (!answer) {
+      missing.push(questionId);
+      continue;
+    }
     fields.push(["question", answer.question], ["questionId", answer.questionId], ["quesType", answer.quesType]);
   }
-  const response = await fetch(`${SAFETY_PLATFORM_BASE}/wap/imitateTest`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
-      Referer: `${SAFETY_PLATFORM_BASE}/wap/newStudentssimulate?examId=${input.examId}&examType=2&userId=${input.userId}&ah`,
-    },
-    body: new URLSearchParams(fields),
-    signal: AbortSignal.timeout(SAFETY_REQUEST_TIMEOUT_MS),
-  });
-  if (!response.ok) throw new Error("江苏省大学生安全教育考试提交失败");
-  return response.json() as Promise<any>;
+  if (missing.length) {
+    throw new Error(`考试题库缺少 ${missing.length} 道题，已停止交卷，题目：${missing.join("、")}`);
+  }
+  const payload = await safetyPostForm(
+    session.jar,
+    "/wap/imitateTest",
+    fields,
+    "考试提交失败，请稍后重试。",
+    `${SAFETY_PLATFORM_BASE}/wap/newStudentssimulate?examId=${encodeURIComponent(examId)}&examType=2&userId=${encodeURIComponent(session.userId)}&ah`,
+  );
+  if (!payload.data?.isSuccess) throw new Error(getSafetyErrorMessage(payload, "考试未通过，请稍后重试。"));
+  const score = Number(payload.data?.count);
+  if (!Number.isFinite(score)) throw new Error("考试提交成功，但平台没有返回有效分数。");
+  return score;
 }
 
 export function buildSafetyCertificateUrl(userId: string) {
-  return `${SAFETY_PLATFORM_BASE}/wap/qrCode?userId=${userId}`;
+  return `${SAFETY_PLATFORM_BASE}/wap/qrCode?userId=${encodeURIComponent(userId)}`;
 }
 
 export type SafetyPlatformProgress = (message: string) => void | Promise<void>;
@@ -225,70 +529,24 @@ export type SafetyPlatformRunResult = {
   fullScore: boolean;
 };
 
-export async function runSafetyPlatform(userId: string, onProgress?: SafetyPlatformProgress): Promise<SafetyPlatformRunResult> {
-  if (!isValidSafetyUserId(userId)) {
-    throw new Error("userId 格式不正确，应为 19 位纯数字，请检查你提供的链接。");
-  }
+export async function runSafetyPlatform(
+  credentials: SafetyPlatformCredentials,
+  onProgress?: SafetyPlatformProgress,
+): Promise<SafetyPlatformRunResult> {
+  const session = await loginSafetyPlatform(credentials);
   const emit = async (message: string) => {
     if (onProgress) await onProgress(message);
   };
-
-  const courses = await getSafetyCourseList(userId);
-  const nameOf = (index: number) => courses[index]?.name || `课程${index + 1}`;
-  const unfinished: number[] = [];
-  courses.forEach((course, index) => {
-    if (!course.isFinsh) unfinished.push(index);
-  });
-
-  if (unfinished.length) {
-    await emit(`正在完成未学课程：${unfinished.map(nameOf).join("、")}`);
-    for (const index of unfinished) {
-      await completeSafetyUnit(userId, index);
-    }
-    const after = await getSafetyCourseList(userId);
-    const remaining = after
-      .map((course, index) => ({ name: course.name || `课程${index + 1}`, isFinsh: course.isFinsh }))
-      .filter((course) => !course.isFinsh)
-      .map((course) => course.name);
-    if (remaining.length) {
-      await emit(`仍有课程未完成：${remaining.join("、")}，尝试继续下一步。`);
-    }
-  }
-
-  const created = await createSafetyExam(userId);
-  const logId = created?.data?.logId;
-  if (!logId) throw new Error("创建考试失败，请稍后重试。");
-
-  const examList = await getSafetyExamQuestions(logId, userId);
-  const questions = examList?.data?.data ?? [];
-  const examData = await getSafetyExamId(userId);
-  if (examData?.code === 500) {
-    throw new Error("账号未完成内容学习，无法进入考试。可能原因：学校不属于江苏省、脚本题库出错或平台更新。");
-  }
-  const examId = examData?.data?.id;
-  if (!examId) throw new Error("获取考试编号失败，请稍后重试。");
-
-  const answers: Array<{ question: string; questionId: string; quesType: string }> = [];
-  const missing: string[] = [];
-  for (let i = 0; i < SAFETY_EXAM_QUESTION_COUNT && i < questions.length; i += 1) {
-    const questionId = questions[i]?.questionId;
-    if (!questionId) continue;
-    const answer = buildSafetyAnswerTuples(questionId);
-    if (answer) answers.push(answer);
-    else missing.push(String(questionId));
-  }
-
-  const submitted = await submitSafetyExam({ examId, logId, userId, answers });
-  const score = Number(submitted?.data?.count ?? 0);
-
-  const completedCourses = courses
-    .map((course, index) => ({ name: course.name || `课程${index + 1}`, isFinsh: course.isFinsh, index }))
-    .filter((course) => course.isFinsh || !unfinished.includes(course.index))
-    .map((course) => course.name);
-
+  const completedCourses = await completeSafetyCourses(session, emit);
+  await emit("必修课程已完成，正在准备考试。");
+  const examId = await getSafetyExamId(session);
+  const logId = await createSafetyExam(session, examId);
+  const rows = await getSafetyExamQuestions(session, logId, examId);
+  await emit(`已获取 ${rows.length} 道考试题目，正在提交答案。`);
+  const score = await submitSafetyExam(session, examId, logId, rows);
   return {
     score,
-    certificateUrl: buildSafetyCertificateUrl(userId),
+    certificateUrl: buildSafetyCertificateUrl(session.userId),
     completedCourses,
     fullScore: score === 100,
   };

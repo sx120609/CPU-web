@@ -1,6 +1,4 @@
 import crypto from "node:crypto";
-import path from "node:path";
-import { existsSync } from "node:fs";
 import { prisma } from "../prisma";
 import { Errors } from "../utils/response";
 import { parseMessageBindToken } from "./bindToken";
@@ -100,9 +98,7 @@ import {
 export { resolveQqGroupWhitelistReviewPlan };
 import { containsQqGroupCard } from "./qqbot/groupCard";
 import {
-  extractSafetyPlatformUrlFromText,
-  extractSafetyUserIdFromUrl,
-  isSafetyPlatformJshomeUrl,
+  parseSafetyPlatformCredentials,
   runSafetyPlatform,
 } from "./safetyPlatform";
 import {
@@ -278,52 +274,37 @@ type QqBotDailyAssistantBatch = {
   timer?: ReturnType<typeof setTimeout>;
 };
 const qqBotDailyAssistantBatches = new Map<string, QqBotDailyAssistantBatch>();
-const safetyPlatformTasks = new Map<string, { startedAt: number }>();
-const SAFETY_PLATFORM_TASK_COOLDOWN_MS = 60_000;
+type SafetyPlatformTask = {
+  status: "awaiting-credentials" | "running";
+  startedAt: number;
+  expiresAt: number;
+};
+const safetyPlatformTasks = new Map<string, SafetyPlatformTask>();
+const SAFETY_PLATFORM_CREDENTIAL_TTL_MS = 10 * 60_000;
+const SAFETY_PLATFORM_RUNNING_NOTICE = "江苏省大学生安全教育考试任务正在处理中，请稍候，不要重复发送账号密码。";
 const QQBOT_ASSISTANT_HISTORY_TTL_MS = 30 * 60_000;
 const QQBOT_ASSISTANT_HISTORY_MAX_MESSAGES = 8;
-const SAFETY_PLATFORM_GUIDE_IMAGE_RELATIVE = "qqbot/safety-platform-guide.png";
-const SAFETY_PLATFORM_QRCODE_IMAGE_RELATIVE = "qqbot/safety-platform-qrcode.png";
 
-function buildSafetyPlatformCqImage(relative: string) {
-  const origin = getSiteOrigin().replace(/\/+$/, "");
-  const imagePath = path.join(process.cwd(), "uploads", relative);
-  if (!origin || !existsSync(imagePath)) return "";
-  return `[CQ:image,file=${origin}/uploads/${relative}]`;
-}
-
-export function buildSafetyPlatformGuideBlockLines(qrCodeSendingEnabled = false) {
-  const lines = [
-    "刷课",
-  ];
-  if (qrCodeSendingEnabled) {
-    lines.push("1. 微信扫描二维码");
-    const qrCodeImage = buildSafetyPlatformCqImage(SAFETY_PLATFORM_QRCODE_IMAGE_RELATIVE);
-    if (qrCodeImage) lines.push(qrCodeImage);
-  } else {
-    lines.push("1. QQBot 已关闭二维码发送，请从 QQ 用户群 704825850 的群文件或公告获取入口");
-  }
-  lines.push("2. 按下图操作，获取链接");
-  const guideImage = buildSafetyPlatformCqImage(SAFETY_PLATFORM_GUIDE_IMAGE_RELATIVE);
-  if (guideImage) lines.push(guideImage);
-  lines.push(
-    "3. 私聊发送链接",
-    "（链接形如 http://wap.xiaoyuananquantong.com/guns-vip-main/wap/jshome?userid=19位数字）",
-    "收到后自动完成课程考试，并返回结课证书",
+export function buildSafetyPlatformGuideBlockLines(_qrCodeSendingEnabled = false) {
+  return [
+    "江苏省大学生安全教育考试",
+    "学校 ID 已固定为：1224316225859555329。",
+    "使用方式：请先私聊发送“刷课”，然后按下一条提示发送：",
+    "<用户名> <密码>（不需要输入尖括号，中间用空格分隔）",
+    "例如：2023123456 your-password",
     "",
-    "江苏省大学生安全教育考试可以直接在 QQ Bot 内完成。",
-    "安全微伴可使用 QQ 用户群群文件中的程序。",
-    "其他刷课功能请下载药大拾间 App 使用。",
-    "详情建议加入 QQ 用户群了解：704825850",
-  );
-  return lines;
+    "用户名和密码仅用于本次登录，不会保存；任务结束后立即清除。请不要在群聊中发送账号密码。",
+    "发送“取消”可以退出本次操作。",
+  ];
 }
 
-function buildSafetyPlatformGuideMessage() {
-  const lines = ["按照下图获取链接，再发给我"];
-  const image = buildSafetyPlatformCqImage(SAFETY_PLATFORM_GUIDE_IMAGE_RELATIVE);
-  if (image) lines.push(image);
-  return lines.join("\n");
+function getSafetyPlatformTask(qqId: string) {
+  const task = safetyPlatformTasks.get(qqId);
+  if (task?.status === "awaiting-credentials" && task.expiresAt <= Date.now()) {
+    safetyPlatformTasks.delete(qqId);
+    return null;
+  }
+  return task || null;
 }
 
 const CONFIG_ID = 1;
@@ -729,6 +710,20 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
   }
   if (canHandlePlainCommand && isSafetyPlatformGuideCommand(commandText)) {
     await logHandledInboundMessage(context, "message", "assistant:safety-platform-guide");
+    if (event.message_type === "group") {
+      await replyToEvent(context, "刷课功能仅支持私聊。请私聊我后发送“刷课”，再按提示发送用户名和密码。不要在群聊中发送账号密码。");
+      return { ok: true };
+    }
+    const currentTask = getSafetyPlatformTask(qqId);
+    if (currentTask?.status === "running") {
+      await replyToEvent(context, SAFETY_PLATFORM_RUNNING_NOTICE);
+      return { ok: true };
+    }
+    safetyPlatformTasks.set(qqId, {
+      status: "awaiting-credentials",
+      startedAt: Date.now(),
+      expiresAt: Date.now() + SAFETY_PLATFORM_CREDENTIAL_TTL_MS,
+    });
     await replyToEvent(context, buildSafetyPlatformGuideBlockLines(config.qrCodeSendingEnabled).join("\n"));
     return { ok: true };
   }
@@ -879,40 +874,39 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
   }
 
   if (event.message_type !== "group") {
-    const safetyUrl = extractSafetyPlatformUrlFromText(messageText);
-    if (safetyUrl) {
-      if (!isSafetyPlatformJshomeUrl(safetyUrl)) {
-        await logHandledInboundMessage(context, "message", "assistant:safety-platform-guide");
-        await replyToEvent(context, buildSafetyPlatformGuideMessage());
+    const safetyTask = getSafetyPlatformTask(qqId);
+    if (safetyTask?.status === "awaiting-credentials") {
+      if (isCancelMessage(messageText)) {
+        safetyPlatformTasks.delete(qqId);
+        await replyToEvent(context, "已取消本次安全教育考试任务。");
+        return { ok: true, cancelled: true };
+      }
+      const credentials = parseSafetyPlatformCredentials(messageText);
+      if (!credentials) {
+        await replyToEvent(context, "格式不正确，请只发送一行“<用户名> <密码>”（不需要输入尖括号），例如：2023123456 your-password。发送“取消”可以退出。");
         return { ok: true };
       }
-      const lastTask = safetyPlatformTasks.get(qqId);
-      const remainingMs = lastTask
-        ? SAFETY_PLATFORM_TASK_COOLDOWN_MS - (Date.now() - lastTask.startedAt)
-        : 0;
-      if (remainingMs > 0) {
-        await replyToEvent(context, `江苏省大学生安全教育考试任务处理中，请 ${Math.ceil(remainingMs / 1000)} 秒后再试。`);
-        return { ok: true };
-      }
-      safetyPlatformTasks.set(qqId, { startedAt: Date.now() });
-      await logHandledInboundMessage(context, "message", "assistant:safety-platform");
-      await replyToEvent(context, "收到，正在为你完成江苏省大学生安全教育考试的学习与考试，请稍候…");
+      safetyPlatformTasks.set(qqId, {
+        status: "running",
+        startedAt: Date.now(),
+        expiresAt: Number.MAX_SAFE_INTEGER,
+      });
+      await replyToEvent(context, "已收到登录信息，正在登录并检查课程状态，请稍候…");
       try {
-        const userId = extractSafetyUserIdFromUrl(safetyUrl);
         const progress = async (message: string) => {
           await sendQqMessage({ qqId, tempGroupId: context.groupId }, message).catch(() => undefined);
         };
-        const result = await runSafetyPlatform(userId, progress);
+        const result = await runSafetyPlatform(credentials, progress);
         const lines = [
           "江苏省大学生安全教育考试已完成：",
           `得分：${result.score}`,
-          `已完成课程：${result.completedCourses.join("、") || "无（此前已全部完成）"}`,
+          `已完成课程：${result.completedCourses.join("、") || "无"}`,
           "",
           `结课证书：${result.certificateUrl}`,
-          "证书请用江苏省大学生安全教育考试微信小程序或浏览器打开下载。",
+          "证书入口请在平台登录状态下打开，或使用江苏省大学生安全教育考试微信小程序查看。",
         ];
         if (!result.fullScore) {
-          lines.push("未满 100 分是题库录入的历史遗留问题，可直接把链接再发一次重试。");
+          lines.push("本次分数未达到 100 分，题库可能存在历史差异；如需重试，请重新发送“刷课”。");
         }
         await replyToEvent(context, lines.join("\n"));
       } catch (error) {
@@ -3363,7 +3357,7 @@ function renderPrivateFallbackReply() {
   return [
     "我收到啦。",
     "你可以直接发：帮助 / 投稿 / 状态 / 板块 / 我的投稿 / 刷课。",
-    "如果是江苏省大学生安全教育考试链接（jshome?userid=），直接发给我即可自动刷课。",
+    "江苏省大学生安全教育考试请先私聊发送“刷课”，再按提示发送一行“<用户名> <密码>”（不需要输入尖括号）。",
     "安全微伴可使用 QQ 用户群群文件中的程序，详情建议加群了解。",
     "如果不确定怎么说，发“帮助”就行。",
   ].join("\n");
