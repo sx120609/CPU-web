@@ -46,6 +46,11 @@
   color-scheme: light;
 }
 
+// iOS / iPadOS 使用系统原生排版，不加载 Inter 或 HarmonyOS Sans。
+html[data-cpu-platform="ios"] {
+  --cpu-font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+}
+
 /*
  * Element Plus 默认 loading mask 会用不透明底色擦掉已经渲染的内容，网络稍有
  * 抖动就形成明显白屏。全站统一延迟显示，并只覆盖一层轻量雾面；已有内容始终可见。

@@ -199,6 +199,9 @@ function installFeedbackLayerGuard() {
 
 function installNativeAppMarker() {
   const ua = navigator.userAgent;
+  if (isLikelyIosDevice(ua)) {
+    document.documentElement.dataset.cpuPlatform = "ios";
+  }
   const nativeOrStandalone = /cpuwebscheduleapp|cpuwebharmonyapp/i.test(ua)
     || isFlutterNativeShell(ua)
     || window.matchMedia?.("(display-mode: standalone)").matches
