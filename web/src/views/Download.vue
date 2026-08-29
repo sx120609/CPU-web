@@ -821,7 +821,7 @@ onMounted(async () => {
   border-radius: 5px;
   background: var(--cpu-surface-soft);
   color: var(--cpu-primary-dark);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--cpu-font-mono);
   font-size: 0.95em;
 }
 

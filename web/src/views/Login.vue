@@ -305,7 +305,7 @@ async function onDevSubmit() {
   color: #e8a317;
   display: grid;
   place-items: center;
-  font-family: serif;
+  font-family: var(--cpu-font-sans);
   font-size: 24px;
   font-weight: 700;
 }

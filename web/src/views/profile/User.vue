@@ -22,7 +22,7 @@
       <div>
         <h2 class="name">
           <el-tag v-if="user.vipActive" class="vip-tag" type="warning" effect="dark">VIP</el-tag>
-          {{ user.nickname }}
+          <DisplayNickname :name="user.nickname" />
           <el-tag v-if="user.role === 'admin'" size="small" type="danger">管理员</el-tag>
           <el-tag v-else-if="user.role === 'mod'" size="small" type="warning">论坛管理员</el-tag>
           <el-tag v-else-if="user.role === 'bot'" size="small" type="warning">系统账号</el-tag>
@@ -81,6 +81,7 @@ import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ArrowLeft, Message } from "@element-plus/icons-vue";
 import UserAvatar from "@/components/common/UserAvatar.vue";
+import DisplayNickname from "@/components/common/DisplayNickname.vue";
 import UserModerationActions from "@/components/common/UserModerationActions.vue";
 import { request } from "@/api/request";
 import { useAuthStore } from "@/stores/auth";
@@ -204,7 +205,8 @@ function normalizeUserLoadError(loadError: unknown) {
 .profile-card.profile-frame-neon { border: 2px solid #8b5cf6; box-shadow: 0 0 18px rgba(139, 92, 246, .24); }
 .profile-card.profile-frame-campus { border: 2px solid #168776; }
 .avatar { font-size: 24px; font-weight: 600; flex-shrink: 0; }
-.name { margin: 0; font-size: 20px; display: flex; align-items: center; gap: 8px; }
+.name { min-width: 0; margin: 0; font-size: 20px; display: flex; align-items: center; gap: 8px; }
+.name :deep(.display-nickname) { min-width: 0; overflow-wrap: anywhere; }
 .vip-tag { letter-spacing: .08em; font-weight: 800; }
 .bio { font-size: 13px; color: #4b5563; margin: 0 0 8px; }
 .meta { display: flex; gap: 12px; font-size: 12px; color: #6b7280; flex-wrap: wrap; }

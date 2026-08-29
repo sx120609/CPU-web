@@ -15,7 +15,13 @@
       </el-empty>
     </div>
     <el-tabs v-else v-model="tab" class="cpu-card messages-tabs" :class="{ 'is-private': tab === 'private' }">
-      <el-tab-pane label="私聊" name="private" lazy>
+      <el-tab-pane name="private" lazy>
+        <template #label>
+          <span class="private-tab-label">
+            私聊
+            <span v-if="msg.directUnreadCount" class="private-tab-count">{{ Math.min(msg.directUnreadCount, 99) }}</span>
+          </span>
+        </template>
         <DirectMessages @notices-read="onDirectNoticesRead" />
       </el-tab-pane>
       <el-tab-pane label="全部" name="all">
@@ -495,7 +501,7 @@ async function reloadNoticeState() {
   list.value = nextList;
   settings.value = normalizeMessageSettings(nextSettings);
   pageError.value = "";
-  void msg.refresh();
+  msg.setNotices(list.value);
 }
 
 async function refreshNoticeStateAfterAction() {
@@ -519,7 +525,7 @@ async function onRead(id: number) {
     if (disposed) return;
     const n = list.value.find((x) => x.id === id);
     if (n) n.readAt = new Date().toISOString();
-    void msg.refresh();
+    msg.setNotices(list.value);
   } catch (error) {
     if (disposed) return;
     ElMessage.error(normalizeMessageActionError(error, "消息标记已读失败"));
@@ -534,7 +540,7 @@ async function readAll() {
     if (disposed) return;
     list.value.forEach((n) => (n.readAt = new Date().toISOString()));
     ElMessage.success("已全部已读");
-    void msg.refresh();
+    msg.setNotices(list.value);
   } catch (error) {
     if (disposed) return;
     ElMessage.error(normalizeMessageActionError(error, "全部已读失败"));
@@ -598,7 +604,7 @@ function onDirectNoticesRead(conversationId: number) {
       notice.readAt = readAt;
     }
   });
-  msg.unreadCount = list.value.filter((notice) => !notice.readAt).length;
+  msg.setNotices(list.value);
 }
 
 async function loadWechatProfile(opts?: { silent?: boolean }) {
@@ -731,7 +737,7 @@ async function loadPage() {
     if (disposed || seq !== loadSeq) return;
     list.value = nextList;
     settings.value = normalizeMessageSettings(nextSettings);
-    void msg.refresh();
+    msg.setNotices(list.value);
   } catch (error) {
     if (disposed || seq !== loadSeq) return;
     list.value = [];
@@ -1015,6 +1021,25 @@ function normalizeMessageSettings(value: any) {
   border: 1px solid color-mix(in srgb, var(--cpu-primary) 28%, var(--cpu-border-soft));
   border-radius: 10px;
   background: color-mix(in srgb, var(--cpu-primary) 8%, var(--cpu-card));
+}
+.private-tab-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.private-tab-count {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  box-sizing: border-box;
 }
 .qq-bind-guide-copy {
   display: flex;
@@ -1309,12 +1334,8 @@ function normalizeMessageSettings(value: any) {
     max-width: 100%;
     min-width: 0;
     padding: 0 4px 2px;
-    overflow-x: auto;
-    overflow-y: hidden;
+    overflow: visible;
     scrollbar-width: none;
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior-x: contain;
-    touch-action: pan-x;
   }
 
   .messages-tabs :deep(.el-tabs__nav-wrap::after),
@@ -1328,16 +1349,16 @@ function normalizeMessageSettings(value: any) {
 
   .messages-tabs :deep(.el-tabs__nav) {
     display: flex;
+    flex-wrap: wrap;
     float: none;
-    width: max-content;
-    min-width: max-content;
-    white-space: nowrap;
-    gap: 8px;
+    width: 100%;
+    min-width: 0;
+    gap: 7px 6px;
     padding-inline: 4px;
-    padding-right: max(16px, env(safe-area-inset-right));
   }
 
   .messages-tabs :deep(.el-tabs__item) {
+    flex: 0 0 auto;
     height: 34px;
     padding: 0 12px;
     font-size: 13px;
@@ -1448,12 +1469,14 @@ function normalizeMessageSettings(value: any) {
     min-height: 0;
     flex: 1;
     flex-direction: column;
-    padding-bottom: 0;
+    margin: 0;
+    padding: 0;
+    border-radius: 14px;
     overflow: hidden;
   }
 
   .messages-tabs.is-private :deep(.el-tabs__header) {
-    flex: 0 0 auto;
+    display: none;
   }
 
   .messages-tabs.is-private :deep(.el-tabs__content),

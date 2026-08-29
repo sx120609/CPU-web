@@ -1461,7 +1461,7 @@ onBeforeUnmount(() => {
   padding: 0.12em 0.35em;
   border-radius: 5px;
   background: var(--cpu-surface);
-  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-family: var(--cpu-font-mono);
   font-size: 0.92em;
 }
 .message-markdown :deep(pre) {

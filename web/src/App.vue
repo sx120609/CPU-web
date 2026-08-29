@@ -78,6 +78,34 @@
       </template>
     </el-dialog>
     <el-dialog
+      v-model="directNoticeOpen"
+      title="收到新私信"
+      width="420"
+      class="direct-notice-dialog"
+      append-to-body
+      :close-on-click-modal="false"
+      :close-on-press-escape="false"
+      :show-close="false"
+    >
+      <div v-if="currentDirectNotice" class="direct-notice">
+        <div class="direct-notice-icon" aria-hidden="true">
+          <el-icon><ChatDotRound /></el-icon>
+          <span>{{ Math.min(msg.directUnreadCount, 99) }}</span>
+        </div>
+        <div class="direct-notice-copy">
+          <h3>你有 {{ msg.directUnreadCount }} 条未读私信</h3>
+          <p>{{ currentDirectNotice.title || "有用户发来私聊" }}</p>
+          <span>点击“立即查看”可直接进入对应会话。</span>
+        </div>
+      </div>
+      <template #footer>
+        <div class="direct-notice-footer">
+          <el-button @click="deferDirectNotice">稍后查看</el-button>
+          <el-button type="primary" @click="openDirectNotice">立即查看</el-button>
+        </div>
+      </template>
+    </el-dialog>
+    <el-dialog
       v-model="inAppTipOpen"
       title="建议使用外部浏览器打开"
       width="420"
@@ -111,6 +139,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import zhCn from "element-plus/es/locale/lang/zh-cn";
 import { ElMessage } from "element-plus";
+import { ChatDotRound } from "@element-plus/icons-vue";
 import { useAuthStore } from "@/stores/auth";
 import { useMessageStore } from "@/stores/message";
 import { router } from "@/router";
@@ -156,6 +185,8 @@ let strongNoticeLoadSeq = 0;
 let disposed = false;
 
 const currentStrongNotice = computed(() => strongNoticeQueue.value[0] ?? null);
+const directNoticeOpen = ref(false);
+const currentDirectNotice = computed(() => msg.latestDirectNotice);
 
 onMounted(() => {
   disposed = false;
@@ -177,6 +208,7 @@ watch(inAppTipOpen, (open) => {
     if (strongNoticeQueue.value.length && !strongNoticeOpen.value) {
       requestStrongNoticeOpen();
     }
+    requestDirectNoticeOpen();
   }
 });
 
@@ -199,6 +231,7 @@ function handleAuthExpired() {
   strongNoticeOpen.value = false;
   strongNoticeQueue.value = [];
   pendingStrongNoticeOpen = false;
+  directNoticeOpen.value = false;
   clearDataAuthTimer();
   clearStrongNoticeTimer();
   clearStrongNoticePoller();
@@ -249,7 +282,7 @@ watch(
         clearStrongNoticeTimer();
         clearStrongNoticePoller();
       } else {
-        void loadStrongNotices();
+        void loadMessageAlerts();
         startStrongNoticePoller();
       }
     } else {
@@ -258,6 +291,7 @@ watch(
       strongNoticeQueue.value = [];
       strongNoticeOpen.value = false;
       pendingStrongNoticeOpen = false;
+      directNoticeOpen.value = false;
       clearStrongNoticeTimer();
       clearStrongNoticePoller();
     }
@@ -273,6 +307,7 @@ watch(dataAuthOpen, async (open) => {
   await nextTick();
   if (disposed) return;
   requestStrongNoticeOpen();
+  requestDirectNoticeOpen();
 });
 
 function openDataAuth() {
@@ -338,6 +373,69 @@ async function loadStrongNotices() {
   }
 }
 
+async function loadMessageAlerts() {
+  await loadStrongNotices();
+  if (disposed || !auth.isLoggedIn || auth.needDataAuthAgreement) return;
+  await msg.refresh();
+  if (disposed || !auth.isLoggedIn || auth.needDataAuthAgreement) return;
+  if (!currentDirectNotice.value) {
+    directNoticeOpen.value = false;
+    return;
+  }
+  requestDirectNoticeOpen();
+}
+
+function directNoticeSeenKey() {
+  return `cpu-direct-notice-seen:${auth.user?.id || "session"}`;
+}
+
+function readSeenDirectNoticeId() {
+  try {
+    return Number(window.sessionStorage.getItem(directNoticeSeenKey()) || 0);
+  } catch {
+    return 0;
+  }
+}
+
+function rememberDirectNotice(id: number) {
+  try {
+    window.sessionStorage.setItem(directNoticeSeenKey(), String(id));
+  } catch {
+    // Storage may be disabled in hardened browsers. The prompt still works.
+  }
+}
+
+function requestDirectNoticeOpen() {
+  if (disposed || !auth.isLoggedIn || auth.needDataAuthAgreement) return;
+  const current = currentDirectNotice.value;
+  if (!current) {
+    return;
+  }
+  const seenId = readSeenDirectNoticeId();
+  if (seenId === current.id) {
+    return;
+  }
+  if (inAppTipOpen.value || dataAuthOpen.value || strongNoticeOpen.value || currentStrongNotice.value) {
+    return;
+  }
+  rememberDirectNotice(current.id);
+  directNoticeOpen.value = true;
+}
+
+function deferDirectNotice() {
+  directNoticeOpen.value = false;
+}
+
+function openDirectNotice() {
+  const link = currentDirectNotice.value?.link || "/messages?tab=private";
+  directNoticeOpen.value = false;
+  if (link.startsWith("/")) {
+    void router.push(link);
+  } else {
+    window.open(link, "_blank", "noopener,noreferrer");
+  }
+}
+
 function openStrongNotice() {
   if (disposed) return;
   if (auth.needDataAuthAgreement) return;
@@ -398,8 +496,8 @@ function startStrongNoticePoller() {
   if (disposed || strongNoticePoller || !auth.isLoggedIn) return;
   strongNoticePoller = window.setInterval(() => {
     if (document.hidden) return;
-    void loadStrongNotices();
-  }, 60_000);
+    void loadMessageAlerts();
+  }, 30_000);
 }
 
 function clearStrongNoticePoller() {
@@ -426,6 +524,7 @@ async function ackStrongNotice() {
       strongNoticeOpen.value = false;
       pendingStrongNoticeOpen = false;
       clearStrongNoticeTimer();
+      requestDirectNoticeOpen();
     }
   } catch {
     ElMessage.error("已读标记失败，请稍后重试");
@@ -511,6 +610,108 @@ html, body, #app {
 .read-hint {
   font-size: 12px;
   color: #9ca3af;
+}
+
+.direct-notice {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 6px 0;
+  color: var(--cpu-text);
+}
+
+.direct-notice-icon {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  flex: 0 0 72px;
+  display: grid;
+  place-items: center;
+  border-radius: 22px;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--cpu-primary) 14%, var(--cpu-card)), color-mix(in srgb, var(--cpu-primary) 28%, var(--cpu-card)));
+  color: var(--cpu-primary);
+  box-shadow: 0 12px 30px color-mix(in srgb, var(--cpu-primary) 18%, transparent);
+}
+
+.direct-notice-icon .el-icon {
+  font-size: 34px;
+}
+
+.direct-notice-icon span {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
+  display: grid;
+  place-items: center;
+  border: 3px solid var(--cpu-card);
+  border-radius: 999px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  box-sizing: border-box;
+}
+
+.direct-notice-copy {
+  min-width: 0;
+}
+
+.direct-notice-copy h3 {
+  margin: 0 0 6px;
+  color: var(--cpu-text);
+  font-size: 19px;
+  line-height: 1.4;
+}
+
+.direct-notice-copy p {
+  margin: 0 0 4px;
+  color: var(--cpu-text-secondary);
+  font-size: 14px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.direct-notice-copy > span {
+  color: var(--cpu-text-muted);
+  font-size: 12px;
+}
+
+.direct-notice-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+@media (max-width: 520px) {
+  .direct-notice {
+    align-items: flex-start;
+    gap: 13px;
+  }
+
+  .direct-notice-icon {
+    width: 58px;
+    height: 58px;
+    flex-basis: 58px;
+    border-radius: 18px;
+  }
+
+  .direct-notice-icon .el-icon { font-size: 28px; }
+  .direct-notice-copy h3 { font-size: 17px; }
+
+  .direct-notice-footer {
+    display: grid;
+    grid-template-columns: 1fr 1.25fr;
+  }
+
+  .direct-notice-footer .el-button {
+    width: 100%;
+    min-height: 42px;
+    margin-left: 0;
+  }
 }
 
 .strong-notice {

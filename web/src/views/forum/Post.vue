@@ -1967,7 +1967,7 @@ function notifyVideoReviewState(summary?: {
   padding: 14px 16px;
   background: #0f172a;
   color: #e2e8f0;
-  font: 13px/1.75 "Consolas", "SFMono-Regular", "Courier New", monospace;
+  font: 13px/1.75 var(--cpu-font-mono);
   outline: none;
   box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.18);
 }

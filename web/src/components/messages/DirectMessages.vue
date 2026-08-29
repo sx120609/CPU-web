@@ -2,11 +2,14 @@
   <div class="direct-messages" :class="{ 'has-active': !!activeCounterpart }">
     <aside class="conversation-sidebar">
       <div class="sidebar-head">
-        <div>
-          <b>站内私聊</b>
-          <span>消息记录会保存在站内</span>
+        <div class="sidebar-copy">
+          <b>私信</b>
+          <span>{{ totalUnread ? `${totalUnread} 条未读消息` : "消息记录仅会显示给会话双方" }}</span>
         </div>
-        <el-badge :value="totalUnread" :hidden="!totalUnread" :max="99" />
+        <div class="sidebar-actions">
+          <el-badge :value="totalUnread" :hidden="!totalUnread" :max="99" />
+          <el-button class="notice-link" text type="primary" @click="openNoticeCenter">其他通知</el-button>
+        </div>
       </div>
 
       <div v-if="listLoading && !conversations.length" class="sidebar-state">正在加载会话...</div>
@@ -36,7 +39,7 @@
           />
           <span class="conversation-copy">
             <span class="conversation-line">
-              <b>{{ conversation.counterpart.nickname }}</b>
+              <b><DisplayNickname :name="conversation.counterpart.nickname" /></b>
               <small>{{ shortTime(conversation.lastMessageAt) }}</small>
             </span>
             <span class="conversation-preview">
@@ -72,7 +75,7 @@
             alt="私聊对象头像"
           />
           <div class="chat-title">
-            <b>{{ activeCounterpart.nickname }}</b>
+            <b><DisplayNickname :name="activeCounterpart.nickname" /></b>
             <span v-if="activeConversation?.sendState.limitedUntilReply">
               对方回复前还可发送 {{ activeConversation.sendState.remainingBeforeReply }} 条
             </span>
@@ -92,8 +95,16 @@
             <el-button text type="primary" @click="loadMessages(true)">重试</el-button>
           </div>
           <div v-else-if="!messages.length" class="new-chat-tip">
-            <b>开始和 {{ activeCounterpart.nickname }} 私聊</b>
-            <span>为减少打扰，对方首次回复前你最多可以发送两条消息。</span>
+            <UserAvatar
+              :size="56"
+              :src="activeCounterpart.avatar"
+              :name="activeCounterpart.nickname"
+              :seed="activeCounterpart.id"
+              :profile-frame="activeCounterpart.profileFrame"
+              alt="私聊对象头像"
+            />
+            <b>发消息给 <DisplayNickname :name="activeCounterpart.nickname" /></b>
+            <span>对方首次回复前最多发送两条，回复后即可继续交流。</span>
           </div>
           <div
             v-for="message in messages"
@@ -119,21 +130,20 @@
             show-icon
             title="已发送两条消息，请等待对方回复后再继续"
           />
-          <el-input
-            v-model="draft"
-            type="textarea"
-            :autosize="{ minRows: 1, maxRows: 4 }"
-            resize="none"
-            maxlength="2000"
-            show-word-limit
-            :disabled="sendBlocked || sending"
-            :placeholder="sendBlocked ? '等待对方回复' : '输入消息'"
-            @keydown="onComposerKeydown"
-          />
-          <div class="composer-actions">
-            <span>{{ composerHint }}</span>
+          <div class="composer-row">
+            <el-input
+              v-model="draft"
+              type="textarea"
+              :autosize="{ minRows: 1, maxRows: 4 }"
+              resize="none"
+              maxlength="2000"
+              :disabled="sendBlocked || sending"
+              :placeholder="sendBlocked ? '等待对方回复' : '输入消息'"
+              @keydown="onComposerKeydown"
+            />
             <el-button type="primary" :loading="sending" :disabled="!canSubmit" @click="sendMessage">发送</el-button>
           </div>
+          <span class="composer-hint">{{ composerHint }}</span>
         </footer>
       </template>
     </section>
@@ -146,6 +156,7 @@ import { ElMessage } from "element-plus";
 import { ArrowLeft } from "@element-plus/icons-vue";
 import { useRoute, useRouter } from "vue-router";
 import UserAvatar from "@/components/common/UserAvatar.vue";
+import DisplayNickname from "@/components/common/DisplayNickname.vue";
 import {
   directMessageApi,
   type DirectConversation,
@@ -427,6 +438,10 @@ function openProfile() {
   if (activeCounterpart.value) router.push(`/u/${activeCounterpart.value.id}`);
 }
 
+function openNoticeCenter() {
+  router.replace({ query: { ...route.query, tab: "all", conversation: undefined, user: undefined } }).catch(() => null);
+}
+
 function positiveQueryId(value: unknown) {
   const raw = Array.isArray(value) ? value[0] : value;
   const id = Number(raw || 0);
@@ -461,10 +476,12 @@ function errorMessage(error: unknown, fallback: string) {
   background: var(--cpu-card);
 }
 .conversation-sidebar { min-width: 0; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); border-right: 1px solid var(--cpu-border-soft); background: var(--cpu-surface-soft); }
-.sidebar-head { min-height: 68px; padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--cpu-border-soft); }
-.sidebar-head > div { display: flex; flex-direction: column; gap: 3px; }
+.sidebar-head { min-height: 68px; padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; gap: 12px; border-bottom: 1px solid var(--cpu-border-soft); }
+.sidebar-copy { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .sidebar-head b { color: var(--cpu-text); }
 .sidebar-head span { color: var(--cpu-text-secondary); font-size: 12px; }
+.sidebar-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; }
+.notice-link { display: none; margin-left: 0 !important; }
 .conversation-list { min-height: 0; display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
 .conversation-row { position: relative; width: 100%; min-width: 0; min-height: 68px; padding: 13px 14px; display: flex; gap: 10px; align-items: center; border: 0; border-bottom: 1px solid var(--cpu-border-soft); background: transparent; color: inherit; text-align: left; cursor: pointer; transition: background-color .16s ease, box-shadow .16s ease; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
 .conversation-row:hover, .conversation-row.active { background: var(--cpu-card); }
@@ -480,50 +497,56 @@ function errorMessage(error: unknown, fallback: string) {
 .sidebar-error { display: flex; flex-direction: column; justify-content: center; gap: 6px; }
 .chat-pane { min-width: 0; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
 .chat-state { grid-row: 1 / -1; min-height: 520px; display: grid; place-items: center; color: var(--cpu-text-secondary); }
-.chat-head { min-height: 68px; padding: 10px 16px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--cpu-border-soft); }
+.chat-head { width: 100%; min-width: 0; min-height: 68px; padding: 10px 16px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--cpu-border-soft); box-sizing: border-box; overflow: hidden; }
 .chat-title { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 3px; }
-.chat-title b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-title b { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-title b :deep(.display-nickname) { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-title span { color: var(--cpu-text-secondary); font-size: 12px; }
 .mobile-back { display: none; width: 38px; height: 38px; flex: 0 0 38px; place-items: center; padding: 0; border: 0; border-radius: 12px; background: var(--cpu-surface-soft); color: var(--cpu-primary); font-size: 20px; cursor: pointer; touch-action: manipulation; }
 .mobile-back:focus-visible { outline: 2px solid var(--cpu-primary); outline-offset: 2px; }
-.message-scroller { min-height: 0; padding: 18px; overflow-y: auto; overscroll-behavior: contain; scroll-behavior: smooth; background: linear-gradient(180deg, var(--cpu-surface-soft), var(--cpu-card)); }
+.message-scroller { width: 100%; min-width: 0; min-height: 0; padding: 18px; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; scroll-behavior: smooth; background: linear-gradient(180deg, var(--cpu-surface-soft), var(--cpu-card)); box-sizing: border-box; }
 .message-row { display: flex; margin: 8px 0; justify-content: flex-start; }
 .message-row.mine { justify-content: flex-end; }
 .message-bubble { max-width: min(76%, 620px); padding: 10px 12px 8px; border-radius: 6px 16px 16px 16px; background: var(--cpu-card); border: 1px solid var(--cpu-border-soft); box-shadow: 0 3px 12px rgba(15, 23, 42, .06); }
 .mine .message-bubble { border-radius: 16px 6px 16px 16px; background: color-mix(in srgb, var(--cpu-primary) 14%, var(--cpu-card)); border-color: color-mix(in srgb, var(--cpu-primary) 30%, var(--cpu-border-soft)); }
 .message-bubble p { margin: 0; color: var(--cpu-text); line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
 .message-bubble span { display: block; margin-top: 5px; color: var(--cpu-text-muted); font-size: 10px; text-align: right; }
-.new-chat-tip { min-height: 260px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 8px; color: var(--cpu-text-secondary); text-align: center; }
-.new-chat-tip b { color: var(--cpu-text); }
+.new-chat-tip { width: 100%; min-width: 0; min-height: 260px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 10px; color: var(--cpu-text-secondary); text-align: center; box-sizing: border-box; }
+.new-chat-tip b { width: 100%; max-width: 440px; color: var(--cpu-text); overflow-wrap: anywhere; }
+.new-chat-tip > span { max-width: 440px; line-height: 1.6; }
 .load-more { display: flex; justify-content: center; }
-.composer { position: relative; z-index: 1; padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 9px; border-top: 1px solid var(--cpu-border-soft); background: color-mix(in srgb, var(--cpu-card) 94%, transparent); box-shadow: 0 -8px 24px rgba(15, 23, 42, .04); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+.composer { position: relative; z-index: 1; width: 100%; min-width: 0; padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 7px; border-top: 1px solid var(--cpu-border-soft); background: color-mix(in srgb, var(--cpu-card) 94%, transparent); box-shadow: 0 -8px 24px rgba(15, 23, 42, .04); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); box-sizing: border-box; overflow: hidden; }
+.composer-row { width: 100%; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 10px; }
+.composer-row :deep(.el-textarea) { min-width: 0; }
 .composer :deep(.el-textarea__inner) { min-height: 42px !important; padding: 10px 12px; line-height: 1.5; border-radius: 12px; }
-.composer-actions { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
-.composer-actions span { color: var(--cpu-text-secondary); font-size: 11px; }
+.composer-row :deep(.el-button) { min-width: 76px; min-height: 42px; margin-left: 0; }
+.composer-hint { min-width: 0; color: var(--cpu-text-secondary); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 @media (max-width: 720px) {
-  .direct-messages { display: block; width: 100%; height: 100%; min-height: 0; border-radius: 12px; }
+  .direct-messages { display: block; width: 100%; max-width: 100%; height: 100%; min-height: 0; border: 0; border-radius: 0; box-sizing: border-box; }
   .conversation-sidebar { height: 100%; border-right: 0; }
   .chat-pane { display: none; height: 100%; min-height: 0; }
   .direct-messages.has-active .conversation-sidebar { display: none; }
   .direct-messages.has-active .chat-pane { display: grid; }
   .mobile-back { display: grid; }
+  .sidebar-head { min-height: 64px; padding: 10px 14px; }
+  .notice-link { display: inline-flex; }
   .message-scroller { padding: 14px 12px 18px; }
   .message-row { margin: 7px 0; }
   .message-bubble { max-width: 88%; padding: 9px 11px 7px; }
   .chat-head { min-height: 60px; padding: 8px 10px; gap: 8px; }
   .chat-title span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .profile-link { margin-left: 0 !important; padding-left: 6px !important; padding-right: 6px !important; }
+  .profile-link { flex: 0 0 auto; min-width: 44px; margin-left: 0 !important; padding-left: 5px !important; padding-right: 5px !important; font-size: 12px; }
   .composer { padding: 10px 10px max(10px, env(safe-area-inset-bottom)); gap: 8px; }
-  .composer-actions :deep(.el-button) { min-width: 72px; min-height: 38px; margin-left: 0; }
-  .composer-actions span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .new-chat-tip { min-height: 100%; padding: 24px 18px; }
+  .composer-row { gap: 8px; }
+  .composer-row :deep(.el-button) { min-width: 64px; min-height: 42px; padding-inline: 14px; }
+  .new-chat-tip { min-height: 100%; padding: 24px 22px; }
 }
 
 @media (max-width: 380px) {
   .chat-head :deep(.user-avatar) { width: 34px !important; height: 34px !important; }
-  .profile-link { font-size: 12px; }
+  .profile-link { display: none; }
   .message-bubble { max-width: 92%; }
-  .composer-actions span { font-size: 10px; }
+  .composer-hint { font-size: 10px; }
 }
 </style>

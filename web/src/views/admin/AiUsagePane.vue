@@ -172,7 +172,7 @@ onMounted(load);
 .table-wrap { overflow-x: auto; border: 1px solid var(--el-border-color-light); border-radius: 12px; background: var(--el-bg-color); }
 .detail-grid { display: grid; gap: 12px; padding: 8px 22px 18px; }
 .detail-grid span { display: block; margin-bottom: 5px; color: var(--el-text-color-secondary); font-size: 12px; }
-.detail-grid pre { max-height: 220px; margin: 0; overflow: auto; padding: 10px 12px; border-radius: 8px; background: var(--el-fill-color-light); color: var(--el-text-color-primary); white-space: pre-wrap; word-break: break-word; font: 12px/1.6 ui-monospace, SFMono-Regular, Consolas, monospace; }
+.detail-grid pre { max-height: 220px; margin: 0; overflow: auto; padding: 10px 12px; border-radius: 8px; background: var(--el-fill-color-light); color: var(--el-text-color-primary); white-space: pre-wrap; word-break: break-word; font: 12px/1.6 var(--cpu-font-mono); }
 .detail-error pre { color: var(--el-color-danger); }
 .pagination { justify-content: flex-end; }
 @media (max-width: 1100px) {

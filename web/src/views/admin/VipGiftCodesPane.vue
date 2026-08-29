@@ -176,13 +176,13 @@ function formatDate(value: string) {
 .code-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; padding: 14px; border: 1px solid var(--cpu-border-soft); border-radius: 12px; }
 .code-main { min-width: 0; flex: 1; }
 .code-title { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
-.code-title strong { color: var(--cpu-text); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: .04em; }
+.code-title strong { color: var(--cpu-text); font-family: var(--cpu-font-mono); letter-spacing: .04em; }
 .code-row p, .code-row small { display: block; margin: 7px 0 0; color: var(--cpu-text-secondary); font-size: 12px; }
 .code-row small { color: var(--cpu-text-muted); font-size: 11px; }
 .generated-codes { display: flex; flex-direction: column; gap: 8px; max-height: 320px; margin-top: 16px; overflow: auto; padding: 12px; border-radius: 10px; background: var(--cpu-surface-soft); }
 .generated-item { display: flex; flex-direction: column; gap: 5px; padding-bottom: 8px; border-bottom: 1px solid var(--cpu-border-soft); }
 .generated-item:last-child { padding-bottom: 0; border-bottom: 0; }
-.generated-item code { color: var(--cpu-text); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 14px; letter-spacing: .06em; user-select: all; }
+.generated-item code { color: var(--cpu-text); font-family: var(--cpu-font-mono); font-size: 14px; letter-spacing: .06em; user-select: all; }
 .generated-item a { color: var(--cpu-primary); font-size: 12px; overflow-wrap: anywhere; user-select: all; }
 @media (max-width: 650px) { .form-grid { grid-template-columns: 1fr; } .code-row { flex-direction: column; } }
 </style>

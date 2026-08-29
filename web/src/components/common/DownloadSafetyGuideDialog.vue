@@ -346,7 +346,7 @@ kbd {
   border-radius: 5px;
   background: var(--cpu-surface-soft);
   color: var(--cpu-text);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--cpu-font-mono);
   font-size: 12px;
 }
 
@@ -365,7 +365,7 @@ kbd {
   border-radius: 5px;
   background: var(--cpu-surface-soft);
   color: var(--cpu-primary-dark);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--cpu-font-mono);
 }
 
 @media (max-width: 520px) {

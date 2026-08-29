@@ -709,7 +709,7 @@ onMounted(() => {
   padding: 2px 6px;
   border-radius: 4px;
   font-size: 0.9em;
-  font-family: "Cascadia Mono", Consolas, Menlo, monospace;
+  font-family: var(--cpu-font-mono);
 }
 .md :deep(pre) {
   background: #1e293b;

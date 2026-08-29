@@ -471,7 +471,7 @@ onMounted(load);
 .endpoint-card { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 18px; border: 1px solid var(--cpu-border-soft); border-radius: 14px; background: linear-gradient(135deg, color-mix(in srgb, var(--cpu-primary) 5%, var(--cpu-surface)), var(--cpu-surface-soft)); }
 .endpoint-card > div { min-width: 0; display: grid; gap: 6px; }
 .eyebrow { color: var(--cpu-text-secondary); font-size: 12px; }
-code { color: var(--cpu-primary); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
+code { color: var(--cpu-primary); font-family: var(--cpu-font-mono); overflow-wrap: anywhere; }
 .settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .setting-card { padding: 18px; border: 1px solid var(--cpu-border-soft); border-radius: 14px; background: var(--cpu-surface); }
 .setting-title strong, .setting-title span { display: block; }
@@ -510,7 +510,7 @@ code { color: var(--cpu-primary); font-family: ui-monospace, SFMono-Regular, Men
 .identity-state { color: var(--cpu-text-secondary); }
 .token-state { color: var(--cpu-text-muted); font-size: 12px; }
 .dialog-capabilities { display: flex; gap: 24px; }
-.env-block { margin: 16px 0 0; padding: 16px; overflow: auto; border-radius: 12px; background: #111827; color: #d1fae5; font: 13px/1.7 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.env-block { margin: 16px 0 0; padding: 16px; overflow: auto; border-radius: 12px; background: #111827; color: #d1fae5; font: 13px/1.7 var(--cpu-font-mono); }
 :global(html[data-theme="dark"]) .agent-card {
   box-shadow: 0 8px 24px rgba(0, 0, 0, .2);
 }

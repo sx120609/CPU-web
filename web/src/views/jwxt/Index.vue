@@ -205,7 +205,7 @@
               <el-input v-model="probePath" placeholder="例如 /jsxsd/xskb/xskb_list.do?xnxqid=2024-2025-2-1" :disabled="probing" />
               <el-button @click="onProbe" :loading="probing" :disabled="probing">GET</el-button>
             </div>
-            <el-input v-if="probeHtml" v-model="probeHtml" type="textarea" :rows="14" readonly style="margin-top:8px;font-family:monospace" />
+            <el-input v-if="probeHtml" v-model="probeHtml" type="textarea" :rows="14" readonly style="margin-top:8px;font-family:var(--cpu-font-mono)" />
           </div>
         </el-tab-pane>
       </el-tabs>
@@ -908,7 +908,7 @@ async function onProbe() {
   gap: 8px;
 }
 .snap-list { font-size: 12px; color: var(--cpu-text-secondary); list-style: none; padding: 0; margin: 10px 0; }
-.snap-list li { padding: 2px 0; font-family: monospace; }
+.snap-list li { padding: 2px 0; font-family: var(--cpu-font-mono); }
 .cpu-muted { font-size: 12px; color: var(--cpu-text-muted); }
 .mobile-schedule-hint {
   display: flex;

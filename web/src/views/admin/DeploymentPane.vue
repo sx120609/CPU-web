@@ -299,7 +299,7 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 .status-card small { font-size: 11px; line-height: 1.5; }
-.commit { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+.commit { font-family: var(--cpu-font-mono); }
 .phase-running { color: #2563eb; }
 .phase-success { color: #059669; }
 .phase-failed { color: #dc2626; }
@@ -332,7 +332,7 @@ onBeforeUnmount(() => {
   padding: 18px;
   background: #0b1220;
   color: #d6e4ff;
-  font: 12px/1.65 "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font: 12px/1.65 var(--cpu-font-mono);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }

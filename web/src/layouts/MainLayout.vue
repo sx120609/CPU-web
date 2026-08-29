@@ -102,8 +102,15 @@
                 <el-icon size="20"><Refresh /></el-icon>
               </el-button>
             </el-tooltip>
-            <el-tooltip content="消息">
-              <el-button text @click="$router.push('/messages')">
+            <el-tooltip v-if="msg.directUnreadCount" :content="`${msg.directUnreadCount} 条未读私信`">
+              <el-button class="direct-message-shortcut" text @click="$router.push('/messages?tab=private')">
+                <el-icon><Message /></el-icon>
+                <span>私信</span>
+                <span class="direct-message-count">{{ Math.min(msg.directUnreadCount, 99) }}</span>
+              </el-button>
+            </el-tooltip>
+            <el-tooltip :content="messageAriaLabel">
+              <el-button class="message-entry" :class="{ 'has-direct': msg.directUnreadCount }" text :aria-label="messageAriaLabel" @click="$router.push('/messages')">
                 <el-badge :value="msg.unreadCount" :hidden="msg.unreadCount === 0">
                   <el-icon size="20"><Bell /></el-icon>
                 </el-badge>
@@ -138,9 +145,16 @@
           <el-button text class="touch-icon-btn assistant-shortcut-touch" aria-label="拾间AI" @click="$router.push('/search')">
             <el-icon><ChatDotRound /></el-icon>
           </el-button>
-          <el-button v-if="auth.isLoggedIn" text class="touch-icon-btn" aria-label="消息" @click="$router.push('/messages')">
+          <el-button
+            v-if="auth.isLoggedIn"
+            text
+            class="touch-icon-btn message-entry"
+            :class="{ 'has-direct': msg.directUnreadCount }"
+            :aria-label="messageAriaLabel"
+            @click="$router.push(msg.directUnreadCount ? '/messages?tab=private' : '/messages')"
+          >
             <el-badge :value="msg.unreadCount" :hidden="msg.unreadCount === 0">
-              <el-icon><Bell /></el-icon>
+              <el-icon><component :is="msg.directUnreadCount ? Message : Bell" /></el-icon>
             </el-badge>
           </el-button>
           <el-button v-else text class="mobile-login-btn" @click="goAuth('login')">登录</el-button>
@@ -442,6 +456,10 @@ const appearanceOptions: Array<{ value: AppearanceMode; label: string; icon: unk
 const appearanceIcon = computed(() => (
   appearance.mode === "system" ? Monitor : appearance.resolved === "dark" ? Moon : Sunny
 ));
+const messageAriaLabel = computed(() => {
+  if (msg.directUnreadCount) return `消息，${msg.unreadCount} 条未读，其中 ${msg.directUnreadCount} 条私信`;
+  return msg.unreadCount ? `消息，${msg.unreadCount} 条未读` : "消息";
+});
 
 /** 某些路由（如 /schedule）希望"裸壳"渲染，没有顶栏/免责声明/footer */
 const hideChrome = computed(() => Boolean(route.meta?.hideChrome));
@@ -1320,6 +1338,55 @@ function setAppearanceMode(command: string | number | object) {
 .assistant-fab:focus-visible {
   outline: 3px solid color-mix(in srgb, var(--cpu-primary) 30%, transparent);
   outline-offset: 3px;
+}
+
+.direct-message-shortcut {
+  min-height: 34px;
+  margin-left: 0 !important;
+  padding: 0 10px !important;
+  gap: 5px;
+  border-radius: 999px;
+  color: var(--cpu-primary);
+  background: color-mix(in srgb, var(--cpu-primary) 11%, transparent);
+  font-weight: 650;
+}
+
+.direct-message-shortcut:hover {
+  color: #fff;
+  background: var(--cpu-primary);
+}
+
+.direct-message-count {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 10px;
+  line-height: 1;
+  box-sizing: border-box;
+}
+
+.message-entry.has-direct {
+  color: var(--cpu-primary);
+  background: color-mix(in srgb, var(--cpu-primary) 10%, transparent);
+}
+
+.message-entry.has-direct :deep(.el-badge__content) {
+  border-color: var(--cpu-card);
+  animation: direct-message-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes direct-message-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, .18); }
+  50% { box-shadow: 0 0 0 5px rgba(239, 68, 68, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .message-entry.has-direct :deep(.el-badge__content) { animation: none; }
 }
 
 .forum-post-fab {

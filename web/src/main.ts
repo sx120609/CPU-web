@@ -17,6 +17,10 @@ import { scheduleJwxtDataPrewarm } from "./utils/jwxtPrewarm";
 import "element-plus/dist/index.css";
 import "element-plus/theme-chalk/dark/css-vars.css";
 import "photoswipe/style.css";
+import "@fontsource-variable/inter/standard.css";
+import "@fontsource-variable/noto-sans-sc";
+import "@fontsource-variable/roboto-mono";
+import "@fontsource/noto-color-emoji";
 import "./styles/index.scss";
 import "./styles/image-viewer.scss";
 

@@ -110,7 +110,7 @@ body {
   touch-action: pan-y;
   color: var(--text);
   background: var(--bg);
-  font-family: "Inter", -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-family: var(--cpu-font-sans);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -525,7 +525,7 @@ p {
   border-radius: 10px;
   background: linear-gradient(135deg, var(--accent), var(--accent-dark));
   color: var(--gold);
-  font-family: serif;
+  font-family: var(--cpu-font-sans);
   font-size: 20px;
   font-weight: 700;
 }
@@ -1748,7 +1748,7 @@ tr:hover td {
 /* Expected entries text */
 #expectedEntries {
   min-height: 160px;
-  font-family: monospace;
+  font-family: var(--cpu-font-mono);
   font-size: 13px;
 }
 

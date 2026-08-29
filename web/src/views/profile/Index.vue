@@ -14,7 +14,7 @@
       </div>
       <h3 class="name">
         <el-tag v-if="user?.vipActive" class="vip-tag" type="warning" effect="dark">VIP</el-tag>
-        {{ user?.nickname }}
+        <DisplayNickname :name="user?.nickname" />
         <el-tag v-if="user?.role === 'admin'" size="small" type="danger">管理员</el-tag>
         <el-tag v-else-if="user?.role === 'mod'" size="small">论坛管理员</el-tag>
         <el-tag v-if="user?.reputationLevel" size="small" type="warning" effect="plain">
@@ -438,6 +438,7 @@ import { navigateToEpayCheckout, paymentsApi, type PayType, type SponsorOptions 
 import { request } from "@/api/request";
 import { searchApi, type CampusAssistantQuota } from "@/api/search";
 import UserAvatar from "@/components/common/UserAvatar.vue";
+import DisplayNickname from "@/components/common/DisplayNickname.vue";
 import { fmtDate, fmtRelative } from "@/utils/format";
 import { compressImageFile, normalizeImageUploadError } from "@/utils/imageUpload";
 import { copyText, openUserGroup, USER_QQ_GROUP } from "@/utils/userGroup";
@@ -932,6 +933,7 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
   flex-wrap: wrap;
 }
 .name {
+  min-width: 0;
   margin: 12px 0 4px;
   font-size: 20px;
   display: flex;
@@ -939,6 +941,7 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
   align-items: center;
   gap: 8px;
 }
+.name :deep(.display-nickname) { min-width: 0; overflow-wrap: anywhere; }
 .vip-tag { letter-spacing: .08em; font-weight: 800; }
 .account-note { font-size: 12px; color: var(--cpu-text-muted); margin: 0 0 8px; }
 .bio { font-size: 13px; color: var(--cpu-text-secondary); margin: 0 0 16px; }
