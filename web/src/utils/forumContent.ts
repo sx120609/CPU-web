@@ -18,6 +18,7 @@ export function forumContentExcerpt(content: unknown, maxLength = 90) {
     .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, " ")
     .replace(/<\/?(?:p|div|h[1-6]|blockquote|li|br)\b[^>]*>/gi, " ")
     .replace(/<[^>]+>/g, " ")
+    .replace(/<[^>]*$/g, " ")
     .replace(/!\[[^\]]*\]\([^\n)]+\)/g, " ")
     .replace(/\[([^\]]+)\]\([^\n)]+\)/g, "$1")
     .replace(/[`*_~#>|]/g, " ")
