@@ -39,14 +39,14 @@ homeRouter.get("/summary", async (req, res, next) => {
     const globalPinnedIds = getGlobalPinnedTopicIds();
     const publicSummary = await withCache(
       "home",
-      ["summary-v2", forumAccessEnabled ? "forum-enabled" : "announce-only"],
+      ["summary-v3", forumAccessEnabled ? "forum-enabled" : "announce-only"],
       60_000,
       async () => {
         const [pinnedTopics, hotTopics, latestTopics, announce, services] = await Promise.all([
           forumAccessEnabled ? listGlobalPinnedTopics(globalPinnedIds, contentBoardTypes, 6) : Promise.resolve([]),
           forumAccessEnabled ? listHotTopics(6, contentBoardTypes) : Promise.resolve([]),
           forumAccessEnabled ? prisma.topic.findMany({
-            where: { hidden: false, id: { notIn: globalPinnedIds }, board: { type: { in: contentBoardTypes }, ...visibleBoardSlugFilter() } },
+            where: { hidden: false, board: { type: { in: contentBoardTypes }, ...visibleBoardSlugFilter() } },
             orderBy: { createdAt: "desc" },
             take: 10,
             include: {
@@ -149,10 +149,9 @@ homeRouter.get("/latest-feed", async (req, res, next) => {
     const globalPinnedIds = getGlobalPinnedTopicIds();
     const where = {
       ...forumContentVisibilityWhere(userId),
-      id: { notIn: globalPinnedIds },
       board: { type: { in: contentBoardTypes }, ...visibleBoardSlugFilter() },
     };
-    const cached = await withCache("home", ["latest-feed-v3", userId ? `viewer-${userId}` : "public", page, size], 60_000, async () => {
+    const cached = await withCache("home", ["latest-feed-v4", userId ? `viewer-${userId}` : "public", page, size], 60_000, async () => {
       const [pins, list, total] = await Promise.all([
         listGlobalPinnedTopics(globalPinnedIds, contentBoardTypes, 20),
         prisma.topic.findMany({
