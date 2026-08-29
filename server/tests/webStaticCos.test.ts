@@ -41,10 +41,26 @@ test("static COS manifest is accepted only for the expected version and prefix",
   assert.equal(loadWebStaticCosManifest(directory).size, 0);
 });
 
-test("index asset tags are rewritten directly to COS without touching unrelated text", () => {
+test("index asset tags are rewritten to the current delivery origin without touching unrelated text", () => {
   const html = '<script src="/assets/main.js"></script><link href="/assets/main.css"><script>const example = "/assets/local-only"</script>';
   assert.equal(
     rewriteWebStaticAssetUrls(html, "https://static.example/root/assets/"),
     '<script src="https://static.example/root/assets/main.js"></script><link href="https://static.example/root/assets/main.css"><script>const example = "/assets/local-only"</script>',
+  );
+});
+
+test("index asset tags migrate from a previous remote origin to the current CDN", () => {
+  const html = [
+    '<script src="https://old-cos.example/cpu-web-media/web-static/assets/dual-origin-v2/main.js"></script>',
+    '<link href="https://old-cdn.example/cpu-web-media/web-static/assets/dual-origin-v2/main.css">',
+    '<img src="https://old-cos.example/cpu-web-media/forum/unrelated.png">',
+  ].join("");
+  assert.equal(
+    rewriteWebStaticAssetUrls(html, "https://img.cputime.cn/cpu-web-media/web-static/assets/dual-origin-v2"),
+    [
+      '<script src="https://img.cputime.cn/cpu-web-media/web-static/assets/dual-origin-v2/main.js"></script>',
+      '<link href="https://img.cputime.cn/cpu-web-media/web-static/assets/dual-origin-v2/main.css">',
+      '<img src="https://old-cos.example/cpu-web-media/forum/unrelated.png">',
+    ].join(""),
   );
 });

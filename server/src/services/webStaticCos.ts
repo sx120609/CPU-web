@@ -62,7 +62,21 @@ export function normalizeWebStaticAssetPath(value: string) {
 export function rewriteWebStaticAssetUrls(html: string, assetBaseUrl: string) {
   const baseUrl = String(assetBaseUrl || "").trim().replace(/\/+$/gu, "");
   if (!baseUrl) return html;
-  return String(html || "").replace(
+  let rewritten = String(html || "");
+  try {
+    const remotePath = new URL(baseUrl).pathname.replace(/\/+$/gu, "");
+    if (remotePath) {
+      const escapedRemotePath = remotePath.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+      rewritten = rewritten.replace(
+        new RegExp(`\\b(src|href)="https?:\\/\\/[^"/]+${escapedRemotePath}\\/`, "gu"),
+        (_match, attribute: string) => `${attribute}="${baseUrl}/`,
+      );
+    }
+  } catch {
+    // Invalid public delivery URLs are rejected by storage configuration. Keep
+    // the local-path rewrite as a defensive fallback for direct callers.
+  }
+  return rewritten.replace(
     /\b(src|href)="\/assets\//gu,
     (_match, attribute: string) => `${attribute}="${baseUrl}/`,
   );
