@@ -7,6 +7,7 @@
   font-family: "HarmonyOS Sans SC";
   src:
     local("HarmonyOS Sans SC"),
+    url("https://img.cputime.cn/cpu-web-media/web-static/assets/dual-origin-v2/fonts/harmonyos-sans-sc/v1/HarmonyOS_Sans_SC_Regular.woff2") format("woff2"),
     url("../assets/fonts/HarmonyOS_Sans_SC_Regular.woff2") format("woff2");
   font-weight: 400;
   font-style: normal;
@@ -17,6 +18,7 @@
   font-family: "HarmonyOS Sans SC";
   src:
     local("HarmonyOS Sans SC Medium"),
+    url("https://img.cputime.cn/cpu-web-media/web-static/assets/dual-origin-v2/fonts/harmonyos-sans-sc/v1/HarmonyOS_Sans_SC_Medium.woff2") format("woff2"),
     url("../assets/fonts/HarmonyOS_Sans_SC_Medium.woff2") format("woff2");
   font-weight: 500;
   font-style: normal;
@@ -27,6 +29,7 @@
   font-family: "HarmonyOS Sans SC";
   src:
     local("HarmonyOS Sans SC Bold"),
+    url("https://img.cputime.cn/cpu-web-media/web-static/assets/dual-origin-v2/fonts/harmonyos-sans-sc/v1/HarmonyOS_Sans_SC_Bold.woff2") format("woff2"),
     url("../assets/fonts/HarmonyOS_Sans_SC_Bold.woff2") format("woff2");
   font-weight: 700;
   font-style: normal;
