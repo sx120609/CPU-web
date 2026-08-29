@@ -5,14 +5,6 @@ on:
   push:
     branches:
       - main
-    paths:
-      - ".github/workflows/linux-deploy-artifact.yml"
-      - "deploy.sh"
-      - "ops/deploy/**"
-      - "ops/nginx/**"
-      - "server/**"
-      - "web/**"
-      - "voicehub/**"
 
 permissions:
   contents: write
