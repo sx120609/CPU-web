@@ -875,7 +875,44 @@ install_project_dependencies() {
 
 do_install_server() { install_project_dependencies server; }
 do_install_web() { install_project_dependencies web; }
-do_install_voicehub() { install_project_dependencies voicehub; }
+
+repair_voicehub_native_executables() {
+  local node_modules="$ROOT_DIR/voicehub/node_modules"
+  local executable found=0 repaired=0
+
+  [ -d "$node_modules" ] || return 1
+  while IFS= read -r -d '' executable; do
+    found=1
+    if [ ! -x "$executable" ]; then
+      chmod u+x "$executable" || err "无法恢复 VoiceHub 原生依赖执行权限：$executable"
+      repaired=$((repaired + 1))
+    fi
+  done < <(find "$node_modules" -type f -path '*/@esbuild/*/bin/esbuild' -print0)
+
+  [ "$found" = "1" ] || return 1
+  if [ "$repaired" -gt 0 ]; then
+    log "已恢复 $repaired 个 VoiceHub esbuild 可执行文件的权限"
+  fi
+}
+
+do_install_voicehub() {
+  install_project_dependencies voicehub
+  repair_voicehub_native_executables \
+    || err "VoiceHub 依赖安装后仍缺少 esbuild 原生可执行文件"
+}
+
+ensure_voicehub_runtime_dependencies() {
+  if ! project_bin_available voicehub drizzle-kit; then
+    warn "VoiceHub migration tool is missing; restoring project dependencies"
+    do_install_voicehub
+    return
+  fi
+  if ! repair_voicehub_native_executables; then
+    warn "VoiceHub esbuild runtime is missing; restoring project dependencies"
+    do_install_voicehub
+  fi
+}
+
 do_install_all() {
   do_install_server
   do_install_web
@@ -1300,6 +1337,7 @@ wait_for_main_health() {
 do_voicehub_start() {
   ensure_node
   ensure_pm2
+  ensure_voicehub_runtime_dependencies
   local voice_url
   voice_url="$(configured_voicehub_database_url)"
   is_postgres_url "$voice_url" || err "缺少 VOICEHUB_DATABASE_URL，请先运行数据库初始化"
