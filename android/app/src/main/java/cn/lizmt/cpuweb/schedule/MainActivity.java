@@ -121,6 +121,11 @@ public final class MainActivity extends Activity {
             WebView.setWebContentsDebuggingEnabled(true);
         }
 
+        // Android 12+ stretches the whole WebView after the page reaches a
+        // scroll boundary. The web app already handles its own scroll areas;
+        // disabling native overscroll keeps the shell steady like the iOS app.
+        webView.setOverScrollMode(View.OVER_SCROLL_NEVER);
+
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
@@ -173,6 +178,7 @@ public final class MainActivity extends Activity {
             @Override
             public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture, Message resultMsg) {
                 WebView popup = new WebView(view.getContext());
+                popup.setOverScrollMode(View.OVER_SCROLL_NEVER);
                 popup.setWebViewClient(new WebViewClient() {
                     private boolean opened;
 

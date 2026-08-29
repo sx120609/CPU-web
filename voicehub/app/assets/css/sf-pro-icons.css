@@ -1,7 +1,4 @@
-/* SF Pro 字体导入 */
-@import url('https://cdn.jsdelivr.net/npm/sf-font@1.0.0/stylesheet.min.css');
-
-/* SF Symbols 图标类 */
+/* SF Symbols 图标类：仅使用系统已有字体，不再依赖第三方 CDN。 */
 .sf-symbol {
   font-family:
     'SF Pro Icons',

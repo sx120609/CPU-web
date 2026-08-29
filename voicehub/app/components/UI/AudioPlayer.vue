@@ -1280,9 +1280,7 @@ const getFirstChar = (text) => {
 </script>
 
 <style scoped>
-/* 导入 SF Pro 字体 - 使用官方 CDN */
-@import url('https://cdn.jsdelivr.net/npm/sf-font@1.0.0/stylesheet.min.css');
-
+/* 字体平滑优化；字体来源由全局自有 CDN / 系统字体栈统一管理。 */
 /* 全局字体平滑优化 */
 * {
   -webkit-font-smoothing: antialiased;

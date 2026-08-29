@@ -195,7 +195,7 @@ function normalizeUserLoadError(loadError: unknown) {
   font-weight: 600;
   cursor: pointer;
 }
-.cpu-card { background: #fff; border-radius: 12px; padding: 20px 24px; box-shadow: 0 2px 12px rgba(0,0,0,0.04); }
+.cpu-card { background: var(--cpu-card); border-radius: 12px; padding: 20px 24px; box-shadow: var(--cpu-shadow-sm); }
 .profile-card { display: flex; align-items: flex-start; gap: 16px; }
 .profile-card.profile-theme-mint { background: linear-gradient(135deg, #ecfdf5, #ffffff); }
 .profile-card.profile-theme-sunset { background: linear-gradient(135deg, #fff7ed, #ffffff); }
@@ -208,11 +208,11 @@ function normalizeUserLoadError(loadError: unknown) {
 .name { min-width: 0; margin: 0; font-size: 20px; display: flex; align-items: center; gap: 8px; }
 .name :deep(.display-nickname) { min-width: 0; overflow-wrap: anywhere; }
 .vip-tag { letter-spacing: .08em; font-weight: 800; }
-.bio { font-size: 13px; color: #4b5563; margin: 0 0 8px; }
-.meta { display: flex; gap: 12px; font-size: 12px; color: #6b7280; flex-wrap: wrap; }
+.bio { font-size: 13px; color: var(--cpu-text-secondary); margin: 0 0 8px; }
+.meta { display: flex; gap: 12px; font-size: 12px; color: var(--cpu-text-secondary); flex-wrap: wrap; }
 .profile-actions { margin-top: 12px; }
 .staff-panel { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
-.staff-note { font-size: 12px; color: #6b7280; }
+.staff-note { font-size: 12px; color: var(--cpu-text-secondary); }
 .sponsor-badge { color: #b45309; font-weight: 700; }
 
 .topic-line {
@@ -220,14 +220,15 @@ function normalizeUserLoadError(loadError: unknown) {
   align-items: center;
   gap: 10px;
   padding: 10px 4px;
-  border-bottom: 1px dashed #f1f5f9;
+  border-bottom: 1px dashed var(--cpu-border-soft);
   cursor: pointer;
   border-radius: 6px;
   min-width: 0;
   overflow: hidden;
+  background: transparent;
+  transition: background-color .16s ease;
 }
 .topic-line:last-child { border-bottom: none; }
-.topic-line:hover { background: #f4f6f8; }
 .topic-line:focus-visible {
   outline: 2px solid var(--cpu-primary);
   outline-offset: 2px;
@@ -235,8 +236,14 @@ function normalizeUserLoadError(loadError: unknown) {
 .tag { color: #fff; font-size: 11px; padding: 2px 6px; border-radius: 4px; flex-shrink: 0; }
 .anon-tag { color: #7c3aed; font-size: 12px; font-weight: 600; }
 .title { font-size: 14px; flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.meta { font-size: 12px; color: #9ca3af; flex-shrink: 0; }
+.topic-line .meta { font-size: 12px; color: var(--cpu-text-muted); flex-shrink: 0; }
 .cpu-section-title { font-size: 16px; font-weight: 600; margin: 0 0 12px; }
+
+@media (hover: hover) and (pointer: fine) {
+  .topic-line:hover { background: var(--cpu-surface-soft); }
+}
+
+.topic-line:active { background: var(--cpu-surface-soft); }
 
 @media (max-width: 640px) {
   .cpu-card {

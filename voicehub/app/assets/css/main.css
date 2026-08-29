@@ -12,6 +12,40 @@
     'PingFang SC', 'Microsoft YaHei', 'Segoe UI', sans-serif;
 }
 
+/*
+ * The web build publishes these unmodified fonts to the project's own
+ * Tencent COS/CDN path. VoiceHub reuses the same first-party assets.
+ */
+@font-face {
+  font-family: 'HarmonyOS Sans SC';
+  src:
+    local('HarmonyOS Sans SC'),
+    url('https://img.cputime.cn/cpu-web-media/web-static/assets/dual-origin-v2/fonts/harmonyos-sans-sc/v1/HarmonyOS_Sans_SC_Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'HarmonyOS Sans SC';
+  src:
+    local('HarmonyOS Sans SC Medium'),
+    url('https://img.cputime.cn/cpu-web-media/web-static/assets/dual-origin-v2/fonts/harmonyos-sans-sc/v1/HarmonyOS_Sans_SC_Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'HarmonyOS Sans SC';
+  src:
+    local('HarmonyOS Sans SC Bold'),
+    url('https://img.cputime.cn/cpu-web-media/web-static/assets/dual-origin-v2/fonts/harmonyos-sans-sc/v1/HarmonyOS_Sans_SC_Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* 流体背景与全局样式 */
 
 * {
@@ -26,24 +60,36 @@
 @font-face {
   font-family: 'MiSans';
   src:
-    local('HarmonyOS Sans SC'), local('Inter'), local('PingFang SC'),
+    local('HarmonyOS Sans SC'),
+    url('https://img.cputime.cn/cpu-web-media/web-static/assets/dual-origin-v2/fonts/harmonyos-sans-sc/v1/HarmonyOS_Sans_SC_Regular.woff2') format('woff2'),
+    local('Inter'), local('PingFang SC'),
     local('PingFangSC-Regular');
+  font-weight: 400;
+  font-style: normal;
   font-display: swap;
 }
 
 @font-face {
   font-family: 'MiSans-Demibold';
   src:
-    local('HarmonyOS Sans SC Medium'), local('Inter Medium'), local('PingFang SC Semibold'),
+    local('HarmonyOS Sans SC Medium'),
+    url('https://img.cputime.cn/cpu-web-media/web-static/assets/dual-origin-v2/fonts/harmonyos-sans-sc/v1/HarmonyOS_Sans_SC_Medium.woff2') format('woff2'),
+    local('Inter Medium'), local('PingFang SC Semibold'),
     local('PingFangSC-Semibold');
+  font-weight: 600;
+  font-style: normal;
   font-display: swap;
 }
 
 @font-face {
   font-family: 'MiSans-Bold';
   src:
-    local('HarmonyOS Sans SC Bold'), local('Inter Bold'), local('PingFang SC Semibold'),
+    local('HarmonyOS Sans SC Bold'),
+    url('https://img.cputime.cn/cpu-web-media/web-static/assets/dual-origin-v2/fonts/harmonyos-sans-sc/v1/HarmonyOS_Sans_SC_Bold.woff2') format('woff2'),
+    local('Inter Bold'), local('PingFang SC Semibold'),
     local('PingFangSC-Semibold');
+  font-weight: 700;
+  font-style: normal;
   font-display: swap;
 }
 

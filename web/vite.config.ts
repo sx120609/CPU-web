@@ -28,6 +28,13 @@ export default defineConfig(({ command }) => ({
     manifest: true,
     rollupOptions: {
       output: {
+        assetFileNames(assetInfo) {
+          const originalName = assetInfo.names?.[0] || assetInfo.name || "";
+          if (/^HarmonyOS_Sans_SC_(Regular|Medium|Bold)\.woff2$/u.test(originalName)) {
+            return "assets/fonts/harmonyos-sans-sc/v1/[name][extname]";
+          }
+          return "assets/[name]-[hash][extname]";
+        },
         manualChunks(id) {
           if (!id.includes("node_modules")) return undefined;
           if (id.includes("/echarts/") || id.includes("/vue-echarts/")) {

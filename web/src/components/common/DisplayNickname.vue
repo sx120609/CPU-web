@@ -2,7 +2,7 @@
   <span class="display-nickname" :aria-label="resolvedName">
     <template v-for="(part, index) in parts" :key="`${index}-${part.value}`">
       <span v-if="part.symbol" class="nickname-symbol" aria-hidden="true">{{ part.value }}</span>
-      <span v-else aria-hidden="true">{{ part.value }}</span>
+      <span v-else class="nickname-text" aria-hidden="true">{{ part.value }}</span>
     </template>
   </span>
 </template>
@@ -27,15 +27,28 @@ const parts = computed(() => resolvedName.value
 <style scoped>
 .display-nickname {
   min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  line-height: inherit;
+}
+
+.nickname-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .nickname-symbol {
-  display: inline-block;
-  font-family: "Inter Variable", sans-serif;
-  font-size: .9em;
+  position: relative;
+  top: -.16em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  margin-inline: .03em;
+  font-family: "Inter Variable", "Segoe UI Symbol", sans-serif;
+  font-size: .86em;
   font-variant-emoji: text;
   line-height: 1;
-  vertical-align: .08em;
-  transform: translateY(-.06em);
 }
 </style>
