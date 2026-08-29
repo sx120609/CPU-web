@@ -1,7 +1,7 @@
 <template>
   <div class="announce-page">
     <header class="page-head">
-      <h1 class="title">📢 校园公告</h1>
+      <h1 class="title"><AppIcon name="announcement" /> 校园公告</h1>
       <p class="sub">整理学校公开渠道的公告入口</p>
     </header>
 
@@ -19,7 +19,7 @@
         :to="`/forum/b/${b.slug}`"
         class="board-card"
       >
-        <div class="icon" :style="{ background: b.color || '#1d4d8a' }">{{ b.icon || '📢' }}</div>
+        <div class="icon" :style="{ background: b.color || '#1d4d8a' }"><AppIcon :legacy="b.icon" name="announcement" /></div>
         <div class="body">
           <div class="name-row">
             <span class="name">{{ b.name }}</span>
@@ -42,6 +42,7 @@ import { ref, computed, onMounted } from "vue";
 import { Right } from "@element-plus/icons-vue";
 import { boardApi, type Board } from "@/api/board";
 import { fmtRelative } from "@/utils/format";
+import AppIcon from "@/components/common/AppIcon.vue";
 
 const all = ref<Board[]>([]);
 const loading = ref(false);

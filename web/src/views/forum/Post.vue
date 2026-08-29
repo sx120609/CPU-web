@@ -24,10 +24,10 @@
                 v-for="b in group"
                 :key="b.slug"
                 :value="b.slug"
-                :label="`${b.icon ?? ''} ${b.name}`"
+                :label="b.name"
                 :disabled="b.readOnly"
               >
-                <span class="option-icon">{{ b.icon }}</span>{{ b.name }}
+                <span class="option-icon"><AppIcon :legacy="b.icon" name="forum" /></span>{{ b.name }}
                 <span class="option-note">{{ b.readOnly ? '不可发帖' : '' }}</span>
               </el-option>
             </el-option-group>
@@ -96,7 +96,7 @@
               :aria-checked="meta.marketKind === option.value"
               @click="meta.marketKind = option.value"
             >
-              <span class="second-hand-kind__icon">{{ option.icon }}</span>
+              <span class="second-hand-kind__icon"><AppIcon :name="option.icon" /></span>
               <span>
                 <b>{{ option.label }}</b>
                 <small>{{ option.description }}</small>
@@ -122,8 +122,8 @@
                       v-for="category in SECOND_HAND_CATEGORIES"
                       :key="category.value"
                       :value="category.value"
-                      :label="`${category.icon} ${category.label}`"
-                    />
+                      :label="category.label"
+                    ><AppIcon :name="category.icon" /> {{ category.label }}</el-option>
                   </el-select>
                 </el-form-item>
 
@@ -219,7 +219,7 @@
           </template>
 
           <div v-else class="second-hand-discuss-prompt">
-            <span>💬</span>
+            <AppIcon name="forum" />
             <div>
               <b>按普通讨论帖发布</b>
               <p>适合交流避坑经验、询价、鉴别和物品循环建议，不需要填写商品表单。</p>
@@ -527,7 +527,7 @@
         <el-tag v-if="form.anonymous" type="warning" effect="plain" class="preview-anon-tag">匿名发布</el-tag>
         <div v-if="isSecondHandPost" class="second-hand-preview-summary">
           <div v-for="fact in marketPreviewFacts" :key="fact.label" class="second-hand-preview-fact">
-            <span>{{ fact.icon }}</span>
+            <AppIcon :name="fact.icon" />
             <small>{{ fact.label }}</small>
             <b>{{ fact.value }}</b>
           </div>
@@ -576,6 +576,7 @@ import { ElMessage } from "element-plus";
 import MarkdownView from "@/components/forum/MarkdownView.vue";
 import RichTextEditor from "@/components/forum/RichTextEditor.vue";
 import ManualReviewConfirmDialog from "@/components/forum/ManualReviewConfirmDialog.vue";
+import AppIcon from "@/components/common/AppIcon.vue";
 import { boardApi, type Board } from "@/api/board";
 import { topicApi, type SmartPostOperation, type SmartPostQuotaEstimate, type TopicSubmissionResponse } from "@/api/topic";
 import { courseApi, type Course } from "@/api/course";
@@ -607,7 +608,6 @@ const courseLoadError = ref("");
 const submitting = ref(false);
 const submissionProgress = ref("");
 const pendingSubmissionAttempt = ref<{ fingerprint: string; submissionId: string } | null>(null);
-const PENDING_TOPIC_SUBMISSION_KEY = "cpu-forum-pending-topic-submission";
 let pendingSubmissionMonitorSeq = 0;
 const editingId = computed(() => {
   if (!route.params.id) return null;
@@ -648,6 +648,10 @@ const blockedReviewInfo = reactive<{ reason: string; riskScore: number | null }>
 let loadSeq = 0;
 let formDraftTimer = 0;
 let markupDraftTimer = 0;
+let pendingFormDraftKey = "";
+let pendingFormDraftPayload = "";
+let pendingMarkupDraftKey = "";
+let pendingMarkupDraftContent = "";
 const markupHeadingSnippet = "## 小标题\n\n";
 const markupQuoteSnippet = "> 引用内容\n\n";
 const markupListSnippet = "- 要点一\n- 要点二\n\n";
@@ -668,19 +672,19 @@ function routeMarketKind(): "sell" | "wanted" | "discuss" {
 
 type SecondHandKind = "sell" | "wanted" | "discuss";
 const SECOND_HAND_KINDS: Array<{ value: SecondHandKind; icon: string; label: string; description: string }> = [
-  { value: "sell", icon: "📦", label: "出闲置", description: "发布自己想转让的物品" },
-  { value: "wanted", icon: "🔎", label: "收求购", description: "说明正在寻找的物品" },
-  { value: "discuss", icon: "💬", label: "聊二手", description: "询价、避坑或经验交流" },
+  { value: "sell", icon: "box", label: "出闲置", description: "发布自己想转让的物品" },
+  { value: "wanted", icon: "search", label: "收求购", description: "说明正在寻找的物品" },
+  { value: "discuss", icon: "forum", label: "聊二手", description: "询价、避坑或经验交流" },
 ];
 const SECOND_HAND_CATEGORIES = [
-  { value: "books", icon: "📚", label: "教材书籍" },
-  { value: "digital", icon: "💻", label: "数码电器" },
-  { value: "dorm", icon: "🛏️", label: "宿舍生活" },
-  { value: "fashion", icon: "👕", label: "衣物日用" },
-  { value: "sports", icon: "🏸", label: "运动户外" },
-  { value: "tickets", icon: "🎫", label: "票券周边" },
-  { value: "digital_goods", icon: "📁", label: "电子资料" },
-  { value: "other", icon: "📦", label: "其他" },
+  { value: "books", icon: "course", label: "教材书籍" },
+  { value: "digital", icon: "desktop", label: "数码电器" },
+  { value: "dorm", icon: "school", label: "宿舍生活" },
+  { value: "fashion", icon: "condition", label: "衣物日用" },
+  { value: "sports", icon: "star", label: "运动户外" },
+  { value: "tickets", icon: "ticket", label: "票券周边" },
+  { value: "digital_goods", icon: "folder", label: "电子资料" },
+  { value: "other", icon: "box", label: "其他" },
 ];
 const SECOND_HAND_CONDITIONS = ["全新未拆", "几乎全新", "使用良好", "明显使用痕迹"];
 const SECOND_HAND_TRADE_MODES = ["校内面交", "邮寄", "均可", "线上沟通"];
@@ -792,16 +796,16 @@ const marketPriceDisplay = computed(() => {
 });
 const marketPreviewFacts = computed(() => {
   const kind = SECOND_HAND_KINDS.find((item) => item.value === meta.marketKind);
-  const facts = [{ icon: kind?.icon || "💬", label: "发布方式", value: kind?.label || "二手交流" }];
+  const facts = [{ icon: kind?.icon || "forum", label: "发布方式", value: kind?.label || "二手交流" }];
   if (meta.marketKind === "discuss") return facts;
   if (selectedMarketCategory.value) {
     facts.push({ icon: selectedMarketCategory.value.icon, label: "物品分类", value: selectedMarketCategory.value.label });
   }
-  facts.push({ icon: "¥", label: meta.marketKind === "wanted" ? "预算" : "价格", value: marketPriceDisplay.value });
-  if (meta.marketKind === "sell") facts.push({ icon: "◫", label: "物品成色", value: meta.condition });
-  facts.push({ icon: "🤝", label: "交接偏好", value: meta.tradeMode });
-  if (meta.campus) facts.push({ icon: "🏫", label: "所在校区", value: meta.campus });
-  if (meta.location?.trim()) facts.push({ icon: "📍", label: "参考地点", value: meta.location.trim() });
+  facts.push({ icon: "price", label: meta.marketKind === "wanted" ? "预算" : "价格", value: marketPriceDisplay.value });
+  if (meta.marketKind === "sell") facts.push({ icon: "condition", label: "物品成色", value: meta.condition });
+  facts.push({ icon: "trade", label: "交接偏好", value: meta.tradeMode });
+  if (meta.campus) facts.push({ icon: "school", label: "所在校区", value: meta.campus });
+  if (meta.location?.trim()) facts.push({ icon: "pin", label: "参考地点", value: meta.location.trim() });
   return facts;
 });
 const submitButtonLabel = computed(() => {
@@ -813,11 +817,20 @@ const submitButtonLabel = computed(() => {
 });
 const LEGACY_FORM_DRAFT_KEY = "cpu-post-new-draft";
 const LEGACY_CONTENT_DRAFT_KEY = `${LEGACY_FORM_DRAFT_KEY}-content`;
+const previousFormDraftKey = computed(() => isSecondHandPost.value ? "cpu-post-new-draft-market" : "cpu-post-new-draft-general");
+const composeDraftScope = computed(() => {
+  const board = typeof route.query.board === "string" && route.query.board ? route.query.board : "general";
+  const kind = board === "market" ? routeMarketKind() : "default";
+  const mode = route.query.mode === "say" ? "say" : "post";
+  return `${board}:${kind}:${mode}`;
+});
 const formDraftKey = computed(() => {
   if (editingId.value) return "";
-  return isSecondHandPost.value ? "cpu-post-new-draft-market" : "cpu-post-new-draft-general";
+  const userId = auth.user?.id;
+  return userId ? `cpu-post-draft-v2:user-${userId}:${composeDraftScope.value}` : "";
 });
 const contentDraftKey = computed(() => formDraftKey.value ? `${formDraftKey.value}-content` : "");
+const pendingTopicSubmissionKey = computed(() => `${formDraftKey.value || `cpu-post-edit-${editingId.value || 0}`}:pending-submission`);
 const anonymousEnabledForForm = computed(() => {
   const anonymousState = auth.user?.anonymousState;
   // 已有匿名帖转版后仍应允许编辑；匿名能力开关只约束新发布。
@@ -852,11 +865,11 @@ const submitDisabled = computed(() =>
 );
 
 const groupedBoards = computed(() => {
-  const groups: Record<string, Board[]> = { "💬 综合讨论": [], "🎒 学生共建": [], "📢 校园公告": [] };
+  const groups: Record<string, Board[]> = { "综合讨论": [], "学生共建": [], "校园公告": [] };
   for (const b of boards.value) {
-    if (b.type === "announce") groups["📢 校园公告"].push(b);
-    else if (["market", "question", "coursereview"].includes(b.type)) groups["🎒 学生共建"].push(b);
-    else groups["💬 综合讨论"].push(b);
+    if (b.type === "announce") groups["校园公告"].push(b);
+    else if (["market", "question", "coursereview"].includes(b.type)) groups["学生共建"].push(b);
+    else groups["综合讨论"].push(b);
   }
   return groups;
 });
@@ -913,8 +926,7 @@ watch(
 onBeforeUnmount(() => {
   pendingSubmissionMonitorSeq += 1;
   smartPostEstimateSeq += 1;
-  window.clearTimeout(formDraftTimer);
-  window.clearTimeout(markupDraftTimer);
+  flushPostDraftSaves();
   window.clearTimeout(smartPostEstimateTimer);
 });
 
@@ -1000,8 +1012,7 @@ async function loadInitial() {
 }
 
 function resetEditorStateForLoad() {
-  window.clearTimeout(formDraftTimer);
-  window.clearTimeout(markupDraftTimer);
+  flushPostDraftSaves();
   previewOpen.value = false;
   pendingMetadata.value = null;
   reviewBlockedOpen.value = false;
@@ -1145,14 +1156,18 @@ function migrateLegacyDraftForCurrentScope() {
   if (!formDraftKey.value) return;
   try {
     if (localStorage.getItem(formDraftKey.value)) return;
-    const raw = localStorage.getItem(LEGACY_FORM_DRAFT_KEY);
+    const previousKey = previousFormDraftKey.value;
+    const raw = localStorage.getItem(previousKey) || localStorage.getItem(LEGACY_FORM_DRAFT_KEY);
     if (!raw) return;
     const draft = JSON.parse(raw);
     const draftIsMarket = draft?.boardSlug === "market";
     if (draftIsMarket !== isSecondHandPost.value) return;
     localStorage.setItem(formDraftKey.value, raw);
-    const legacyContent = localStorage.getItem(LEGACY_CONTENT_DRAFT_KEY);
+    const previousContentKey = `${previousKey}-content`;
+    const legacyContent = localStorage.getItem(previousContentKey) || localStorage.getItem(LEGACY_CONTENT_DRAFT_KEY);
     if (legacyContent && contentDraftKey.value) localStorage.setItem(contentDraftKey.value, legacyContent);
+    localStorage.removeItem(previousKey);
+    localStorage.removeItem(previousContentKey);
     localStorage.removeItem(LEGACY_FORM_DRAFT_KEY);
     localStorage.removeItem(LEGACY_CONTENT_DRAFT_KEY);
   } catch {
@@ -1205,46 +1220,94 @@ function hasSavedDraft(key: string) {
 }
 
 function scheduleFormDraftSave() {
-  if (!formDraftKey.value) return;
+  const key = formDraftKey.value;
+  if (!key) return;
   window.clearTimeout(formDraftTimer);
+  pendingFormDraftKey = key;
+  pendingFormDraftPayload = JSON.stringify({
+    boardSlug: form.boardSlug,
+    title: form.title,
+    anonymous: form.anonymous,
+    publishMode: publishMode.value,
+    editorMode: editorMode.value,
+    meta,
+    savedAt: Date.now(),
+  });
   formDraftTimer = window.setTimeout(() => {
-    try {
-      localStorage.setItem(formDraftKey.value, JSON.stringify({
-        boardSlug: form.boardSlug,
-        title: form.title,
-        anonymous: form.anonymous,
-        publishMode: publishMode.value,
-        editorMode: editorMode.value,
-        meta,
-        savedAt: Date.now(),
-      }));
-    } catch {
-      /* ignore */
-    }
+    formDraftTimer = 0;
+    persistFormDraft(pendingFormDraftKey, pendingFormDraftPayload);
+    pendingFormDraftKey = "";
+    pendingFormDraftPayload = "";
   }, 400);
 }
 
 function scheduleMarkupDraftSave(content: string) {
-  if (!contentDraftKey.value) return;
+  const key = contentDraftKey.value;
+  if (!key) return;
   window.clearTimeout(markupDraftTimer);
+  pendingMarkupDraftKey = key;
+  pendingMarkupDraftContent = content;
   markupDraftTimer = window.setTimeout(() => {
-    try {
-      if (isMarkupContentEmpty(content)) {
-        localStorage.removeItem(contentDraftKey.value);
-      } else {
-        localStorage.setItem(contentDraftKey.value, JSON.stringify({
-          content,
-          savedAt: Date.now(),
-        }));
-      }
-    } catch {
-      /* ignore */
-    }
+    markupDraftTimer = 0;
+    persistMarkupDraft(pendingMarkupDraftKey, pendingMarkupDraftContent);
+    pendingMarkupDraftKey = "";
+    pendingMarkupDraftContent = "";
   }, 400);
+}
+
+function persistFormDraft(key: string, payload: string) {
+  if (!key || !payload) return;
+  try {
+    localStorage.setItem(key, payload);
+  } catch {
+    return;
+  }
+}
+
+function persistMarkupDraft(key: string, content: string) {
+  if (!key) return;
+  try {
+    if (isMarkupContentEmpty(content)) {
+      localStorage.removeItem(key);
+    } else {
+      localStorage.setItem(key, JSON.stringify({ content, savedAt: Date.now() }));
+    }
+  } catch {
+    return;
+  }
+}
+
+function flushPostDraftSaves() {
+  if (pendingFormDraftKey) {
+    window.clearTimeout(formDraftTimer);
+    formDraftTimer = 0;
+    persistFormDraft(pendingFormDraftKey, pendingFormDraftPayload);
+    pendingFormDraftKey = "";
+    pendingFormDraftPayload = "";
+  }
+  if (pendingMarkupDraftKey) {
+    window.clearTimeout(markupDraftTimer);
+    markupDraftTimer = 0;
+    persistMarkupDraft(pendingMarkupDraftKey, pendingMarkupDraftContent);
+    pendingMarkupDraftKey = "";
+    pendingMarkupDraftContent = "";
+  }
 }
 
 function clearDrafts() {
   if (!formDraftKey.value) return;
+  if (pendingFormDraftKey === formDraftKey.value) {
+    window.clearTimeout(formDraftTimer);
+    formDraftTimer = 0;
+    pendingFormDraftKey = "";
+    pendingFormDraftPayload = "";
+  }
+  if (pendingMarkupDraftKey === contentDraftKey.value) {
+    window.clearTimeout(markupDraftTimer);
+    markupDraftTimer = 0;
+    pendingMarkupDraftKey = "";
+    pendingMarkupDraftContent = "";
+  }
   localStorage.removeItem(formDraftKey.value);
   if (contentDraftKey.value) localStorage.removeItem(contentDraftKey.value);
   editorRef.value?.clearDraft();
@@ -1500,9 +1563,9 @@ function getTopicSubmissionId(fingerprint: string) {
 function persistPendingTopicSubmission() {
   try {
     if (pendingSubmissionAttempt.value) {
-      localStorage.setItem(PENDING_TOPIC_SUBMISSION_KEY, JSON.stringify(pendingSubmissionAttempt.value));
+      localStorage.setItem(pendingTopicSubmissionKey.value, JSON.stringify(pendingSubmissionAttempt.value));
     } else {
-      localStorage.removeItem(PENDING_TOPIC_SUBMISSION_KEY);
+      localStorage.removeItem(pendingTopicSubmissionKey.value);
     }
   } catch {
     // Storage may be unavailable; the server-side submission remains recoverable by notification.
@@ -1511,7 +1574,7 @@ function persistPendingTopicSubmission() {
 
 function restorePendingTopicSubmission() {
   try {
-    const parsed = JSON.parse(localStorage.getItem(PENDING_TOPIC_SUBMISSION_KEY) || "null");
+    const parsed = JSON.parse(localStorage.getItem(pendingTopicSubmissionKey.value) || "null");
     if (parsed && typeof parsed.fingerprint === "string" && typeof parsed.submissionId === "string") {
       pendingSubmissionAttempt.value = parsed;
     }

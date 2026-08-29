@@ -127,7 +127,7 @@
                   <el-dropdown-item command="profile">个人中心</el-dropdown-item>
                   <el-dropdown-item command="vip">VIP 中心</el-dropdown-item>
                   <el-dropdown-item command="settings">消息设置</el-dropdown-item>
-                  <el-dropdown-item v-if="auth.canAccessModuleAdmin" command="admin" divided>🛠 管理后台</el-dropdown-item>
+                  <el-dropdown-item v-if="auth.canAccessModuleAdmin" command="admin" divided><AppIcon name="tools" /> 管理后台</el-dropdown-item>
                   <el-dropdown-item command="logout" :divided="!auth.canAccessModuleAdmin" :disabled="logoutPending">退出登录</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
@@ -404,6 +404,7 @@ import UserAvatar from "@/components/common/UserAvatar.vue";
 import ShijianAssistant from "@/views/search/Result.vue";
 import DesktopToolsPanel from "@/components/common/DesktopToolsPanel.vue";
 import DownloadSafetyGuideDialog from "@/components/common/DownloadSafetyGuideDialog.vue";
+import AppIcon from "@/components/common/AppIcon.vue";
 import ComposeActionSheet from "@/components/forum/ComposeActionSheet.vue";
 import { useAuthStore } from "@/stores/auth";
 import { useMessageStore } from "@/stores/message";

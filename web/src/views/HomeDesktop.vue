@@ -12,7 +12,7 @@
             <span class="action-label-short">论坛</span>
           </el-button>
           <el-button v-if="site.features.market && auth.canAccessForum" size="large" @click="$router.push('/market')">
-            <span>♻️</span>
+            <AppIcon name="market" />
             <span class="action-label-full">二手交流</span>
             <span class="action-label-short">二手</span>
           </el-button>
@@ -52,7 +52,7 @@
       <div class="col-left" v-if="showForumContent">
         <section class="block" v-if="summary?.pinnedTopics?.length">
           <div class="block-head">
-            <h3>📌 全局置顶</h3>
+            <h3><AppIcon name="pin" /> 全局置顶</h3>
             <span class="cpu-muted">重要内容</span>
           </div>
           <ForumAdCard v-if="pinnedAd" :ad="pinnedAd" compact />
@@ -62,7 +62,7 @@
         <section class="block">
           <div class="block-head latest-head">
             <div>
-              <h3>🔥 热议</h3>
+              <h3><AppIcon name="hot" /> 热议</h3>
               <span class="block-summary">全站互动热度 Top 3</span>
             </div>
             <router-link to="/forum/hot" class="more">查看前十 →</router-link>
@@ -86,7 +86,7 @@
         <section class="block">
           <div class="block-head latest-head">
             <div>
-              <h3>🆕 最新</h3>
+              <h3><AppIcon name="new" /> 最新</h3>
               <span class="block-summary">全站最近发布与回复</span>
             </div>
             <router-link to="/forum/latest" class="more">查看全部 →</router-link>
@@ -100,7 +100,7 @@
       <div class="col-right">
         <section class="block">
           <div class="block-head">
-            <h3>📢 校园公告</h3>
+            <h3><AppIcon name="announcement" /> 校园公告</h3>
             <span class="cpu-muted">学校公开信息</span>
           </div>
           <ul v-if="summary?.announce?.length" class="announce-list">
@@ -125,7 +125,7 @@
 
         <section class="block" v-if="site.features.market && auth.canAccessForum">
           <div class="block-head">
-            <h3>♻️ 二手交流</h3>
+            <h3><AppIcon name="market" /> 二手交流</h3>
             <router-link to="/market" class="more">进入板块 →</router-link>
           </div>
           <p class="second-hand-note">校内闲置与求购，按论坛帖子发布和交流。</p>
@@ -138,7 +138,7 @@
 
         <section class="block">
           <div class="block-head">
-            <h3>🧭 校园服务</h3>
+            <h3><AppIcon name="service" /> 校园服务</h3>
             <router-link to="/services" class="more">全部 →</router-link>
           </div>
           <div v-if="hasServiceEntries" class="service-grid">
@@ -151,7 +151,7 @@
               @keydown.enter.prevent="electricOpen = true"
               @keydown.space.prevent="electricOpen = true"
             >
-              <div class="svc-icon">💡</div>
+              <div class="svc-icon"><AppIcon name="electric" /></div>
               <div class="svc-name">宿舍电费</div>
               <div class="svc-tag svc-tag-fresh">站内查</div>
             </div>
@@ -165,7 +165,7 @@
               @keydown.enter.prevent="openUrl(s.url, s.name)"
               @keydown.space.prevent="openUrl(s.url, s.name)"
             >
-              <div class="svc-icon">{{ s.icon || "🔗" }}</div>
+              <div class="svc-icon"><AppIcon :legacy="s.icon" name="link" /></div>
               <div class="svc-name">{{ s.name }}</div>
               <div class="svc-tag" v-if="s.needSso">需登录</div>
             </div>
@@ -197,6 +197,7 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import TopicListItem from "@/components/forum/TopicListItem.vue";
 import ForumAdCard from "@/components/forum/ForumAdCard.vue";
 import SiteSearchBar from "@/components/search/SiteSearchBar.vue";
+import AppIcon from "@/components/common/AppIcon.vue";
 import DormElectricDialog from "@/components/services/DormElectricDialog.vue";
 import { homeApi, type HomeSummary } from "@/api/home";
 import { forumAdsApi, type ForumAd } from "@/api/forumAds";

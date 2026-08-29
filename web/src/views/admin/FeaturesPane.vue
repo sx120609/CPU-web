@@ -169,7 +169,7 @@
           <div class="feature-head">
             <div class="left">
               <div class="card-title">
-                <span class="icon">{{ f.icon }}</span> {{ f.title }}
+                <span class="icon"><AppIcon :name="f.icon" /></span> {{ f.title }}
               </div>
               <div class="desc">{{ f.desc }}</div>
             </div>
@@ -202,7 +202,7 @@
         <div v-for="platform in learningPlatformMeta" :key="platform.key" class="feature-row">
           <div class="feature-head">
             <div class="left">
-              <div class="card-title"><span class="icon">{{ platform.icon }}</span> {{ platform.title }}</div>
+              <div class="card-title"><span class="icon"><AppIcon name="course" /></span> {{ platform.title }}</div>
               <div class="desc">{{ platform.desc }}</div>
             </div>
             <el-switch
@@ -228,6 +228,7 @@ import { computed, reactive, ref, onMounted } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { adminApi, type LearningPlatformAvailability } from "@/api/admin";
 import { useSiteStore } from "@/stores/site";
+import AppIcon from "@/components/common/AppIcon.vue";
 
 type FKey = "forum" | "market" | "coursereview" | "electric" | "sponsor";
 type LearningPlatformKey = keyof LearningPlatformAvailability;
@@ -301,40 +302,40 @@ let featureLoadSeq = 0;
 
 const featureMeta: { key: FKey; icon: string; title: string; desc: string; paths: string[] }[] = [
   {
-    key: "forum", icon: "💬", title: "论坛（通用板块 + 发帖）",
+    key: "forum", icon: "forum", title: "论坛（通用板块 + 发帖）",
     desc: "灌水广场 / 校园生活 / 新生入学 / 提问广场等通用板块的可见与发帖。",
     paths: ["/forum", "/post", "/forum/topic/:id"],
   },
   {
-    key: "market", icon: "♻️", title: "二手交流（论坛板块）",
+    key: "market", icon: "market", title: "二手交流（论坛板块）",
     desc: "闲置、求购和经验交流帖；只提供论坛发帖与回复，不提供站内交易。",
     paths: ["/market", "boards type=market"],
   },
   {
-    key: "coursereview", icon: "📊", title: "课程点评",
+    key: "coursereview", icon: "chart", title: "课程点评",
     desc: "评老师 / 课程的板块。",
     paths: ["/coursereview", "/coursereview/:id"],
   },
   {
-    key: "electric", icon: "💡", title: "宿舍电费查询",
+    key: "electric", icon: "electric", title: "宿舍电费查询",
     desc: "首页与校园服务页的电费快捷卡片；如果隧道不通、不想暴露这个功能时关掉。",
     paths: ["/api/services/dorm-electric", "首页电费卡片"],
   },
   {
-    key: "sponsor", icon: "💳", title: "赞助入口",
+    key: "sponsor", icon: "card", title: "赞助入口",
     desc: "个人中心的赞助入口和下单接口。关闭后不影响已完成赞助金额展示。",
     paths: ["/profile", "/api/payments/sponsor/orders"],
   },
 ];
 
-const learningPlatformMeta: Array<{ key: LearningPlatformKey; icon: string; title: string; desc: string }> = [
-  { key: "chaoxing", icon: "学习", title: "超星学习通", desc: "继续使用药大拾间专用学习通助手。" },
-  { key: "zhihuishu", icon: "智慧", title: "知到智慧树", desc: "共享课、视频与作业。" },
-  { key: "icve", icon: "职教", title: "智慧职教 / MOOC", desc: "职教课程、视频与测验。" },
-  { key: "zjy", icon: "职教", title: "职教云", desc: "职教云课程与作业。" },
-  { key: "icourse", icon: "大学", title: "中国大学 MOOC", desc: "课程视频、测验与作业。" },
-  { key: "yuketang", icon: "雨课", title: "雨课堂", desc: "课程、视频与课堂任务。" },
-  { key: "weban", icon: "微伴", title: "安全微伴", desc: "安全教育课程与考试。" },
+const learningPlatformMeta: Array<{ key: LearningPlatformKey; title: string; desc: string }> = [
+  { key: "chaoxing", title: "超星学习通", desc: "继续使用药大拾间专用学习通助手。" },
+  { key: "zhihuishu", title: "知到智慧树", desc: "共享课、视频与作业。" },
+  { key: "icve", title: "智慧职教 / MOOC", desc: "职教课程、视频与测验。" },
+  { key: "zjy", title: "职教云", desc: "职教云课程与作业。" },
+  { key: "icourse", title: "中国大学 MOOC", desc: "课程视频、测验与作业。" },
+  { key: "yuketang", title: "雨课堂", desc: "课程、视频与课堂任务。" },
+  { key: "weban", title: "安全微伴", desc: "安全教育课程与考试。" },
 ];
 
 onMounted(reload);

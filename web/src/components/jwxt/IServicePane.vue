@@ -7,7 +7,7 @@
         </el-input>
         <el-radio-group v-model="filterFav" size="default">
           <el-radio-button value="">全部</el-radio-button>
-          <el-radio-button value="fav">⭐ 我的收藏</el-radio-button>
+          <el-radio-button value="fav"><AppIcon name="star" /> 我的收藏</el-radio-button>
         </el-radio-group>
       </div>
       <div class="ctrl-right">
@@ -94,6 +94,7 @@
 </template>
 
 <script setup lang="ts">
+import AppIcon from "@/components/common/AppIcon.vue";
 import { ref, reactive, computed, onBeforeUnmount, onMounted } from "vue";
 import { Search, Star, StarFilled } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";

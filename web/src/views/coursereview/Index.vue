@@ -1,7 +1,7 @@
 <template>
   <div class="cr-page">
     <div class="head">
-      <h2>📊 课程点评</h2>
+      <h2><AppIcon name="chart" /> 课程点评</h2>
       <div class="head-right">
         <el-button v-if="auth.canAccessForum" :loading="syncing" :disabled="syncing" @click="onSync">
           <el-icon><Refresh /></el-icon> 同步我的课程
@@ -15,7 +15,7 @@
     <div class="filter-bar">
       <el-radio-group v-model="scope" size="default" @change="reload">
         <el-radio-button value="all">全部课程</el-radio-button>
-        <el-radio-button value="mine" :disabled="!auth.canAccessForum">⭐ 我学过的</el-radio-button>
+        <el-radio-button value="mine" :disabled="!auth.canAccessForum"><AppIcon name="star" /> 我学过的</el-radio-button>
       </el-radio-group>
       <el-input
         v-model="q"
@@ -92,6 +92,7 @@ import { Plus, Search, Refresh } from "@element-plus/icons-vue";
 import { courseApi, type Course } from "@/api/course";
 import { useAuthStore } from "@/stores/auth";
 import { getJwxtToken } from "@/api/jwxt";
+import AppIcon from "@/components/common/AppIcon.vue";
 
 const auth = useAuthStore();
 const router = useRouter();

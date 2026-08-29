@@ -61,7 +61,7 @@
           class="result-row"
           @click="openCourse(course.id)"
         >
-          <span class="result-icon">📚</span>
+          <span class="result-icon"><AppIcon name="course" /></span>
           <span class="result-copy">
             <b>{{ [course.code, course.name].filter(Boolean).join(" · ") }}</b>
             <small>{{ courseTeacherNames(course) }}</small>
@@ -85,7 +85,7 @@
           class="result-row"
           @click="openService(service)"
         >
-          <span class="result-icon">{{ service.icon || "🔗" }}</span>
+          <span class="result-icon"><AppIcon :legacy="service.icon" name="link" /></span>
           <span class="result-copy">
             <b>{{ service.name }}</b>
             <small>{{ [service.owner, service.description].filter(Boolean).join(" · ") }}</small>
@@ -104,6 +104,7 @@
 </template>
 
 <script setup lang="ts">
+import AppIcon from "@/components/common/AppIcon.vue";
 import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { Right, Search } from "@element-plus/icons-vue";

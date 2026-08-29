@@ -56,7 +56,7 @@
         <p v-if="cardExcerpt && !isSayTopic" class="market-card-excerpt">{{ cardExcerpt }}</p>
         <strong v-if="metaPriceLabel" class="market-card-price">{{ metaPriceLabel }}</strong>
         <div v-if="marketCardFacts.length" class="market-card-facts">
-          <span v-for="fact in marketCardFacts" :key="fact">{{ fact }}</span>
+          <span v-for="fact in marketCardFacts" :key="fact.label"><AppIcon :name="fact.icon" /> {{ fact.label }}</span>
         </div>
         <div class="market-card-meta">
           <UserAvatar :size="28" class="avatar" :src="topic.author?.avatar" :name="topic.author?.nickname" :seed="topic.author?.id ?? topic.anonymousAlias ?? topic.id" :profile-frame="topic.author?.profileFrame" alt="作者头像" />
@@ -97,7 +97,7 @@
         >
           {{ tag.name }}
         </el-tag>
-        <el-tag v-if="topic.locked" size="small" type="info" class="tag">🔒</el-tag>
+        <el-tag v-if="topic.locked" size="small" type="info" class="tag"><AppIcon name="lock" /></el-tag>
         <el-tag v-if="metaSolved" size="small" type="success" class="tag">已解决</el-tag>
         <el-tag v-if="metaBounty" size="small" type="warning" class="tag">悬赏 {{ metaBounty }}</el-tag>
       </div>
@@ -106,7 +106,7 @@
           <span v-if="topic.author?.vipActive" class="vip-badge" title="VIP 用户">VIP</span>
           <span class="author">{{ topic.author?.nickname ?? "—" }}</span>
           <span v-if="topic.isAnonymous" class="anon">匿名</span>
-          <span v-if="topic.author?.role === 'bot'" class="bot">🤖 公告同步</span>
+          <span v-if="topic.author?.role === 'bot'" class="bot"><AppIcon name="bot" /> 公告同步</span>
           <span class="meta-separator">·</span>
           <span class="row-time">{{ fmtRelative(topic.lastReplyAt || topic.createdAt) }}</span>
           <span v-if="topic.editCount && topic.editCount > 0" class="edited">已编辑 {{ topic.editCount }} 次</span>
@@ -131,6 +131,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { View, ChatLineRound, Star } from "@element-plus/icons-vue";
 import UserAvatar from "@/components/common/UserAvatar.vue";
+import AppIcon from "@/components/common/AppIcon.vue";
 import { fmtRelative } from "@/utils/format";
 import { forumContentExcerpt } from "@/utils/forumContent";
 import {
@@ -205,13 +206,13 @@ const metaPriceLabel = computed(() => {
 });
 const marketCardFacts = computed(() => {
   if (!marketKind.value || marketKind.value === "discuss") return [];
-  const facts: string[] = [];
+  const facts: Array<{ icon: string; label: string }> = [];
   const campus = String(props.topic.metadata?.campus || "").trim();
   const tradeMode = String(props.topic.metadata?.tradeMode || "").trim();
   const condition = String(props.topic.metadata?.condition || "").trim();
-  if (campus) facts.push(`🏫 ${campus}`);
-  if (tradeMode) facts.push(`🤝 ${tradeMode}`);
-  if (marketKind.value === "sell" && condition) facts.push(`◫ ${condition}`);
+  if (campus) facts.push({ icon: "school", label: campus });
+  if (tradeMode) facts.push({ icon: "trade", label: tradeMode });
+  if (marketKind.value === "sell" && condition) facts.push({ icon: "condition", label: condition });
   return facts;
 });
 const metaSolved = computed(() => props.topic.metadata?.resolved === true);

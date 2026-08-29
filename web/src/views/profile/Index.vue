@@ -342,7 +342,7 @@
         <div v-if="anonymousBoardsOpen" class="trust-section-body">
           <div class="anonymous-board-tags">
             <el-tag v-for="board in anonymousBoards" :key="board.slug" effect="plain">
-              {{ board.icon || "💬" }} {{ board.name }}
+              <AppIcon :legacy="board.icon" name="forum" /> {{ board.name }}
             </el-tag>
             <span v-if="!anonymousBoards.length" class="cpu-muted">当前还没有开放匿名的板块</span>
           </div>
@@ -438,6 +438,7 @@ import { navigateToEpayCheckout, paymentsApi, type PayType, type SponsorOptions 
 import { request } from "@/api/request";
 import { searchApi, type CampusAssistantQuota } from "@/api/search";
 import UserAvatar from "@/components/common/UserAvatar.vue";
+import AppIcon from "@/components/common/AppIcon.vue";
 import DisplayNickname from "@/components/common/DisplayNickname.vue";
 import { fmtDate, fmtRelative } from "@/utils/format";
 import { compressImageFile, normalizeImageUploadError } from "@/utils/imageUpload";

@@ -1,7 +1,6 @@
 <template>
   <el-dialog
     :model-value="modelValue"
-    title="💡 宿舍电费"
     width="420"
     :close-on-click-modal="true"
     @update:model-value="$emit('update:modelValue', $event)"
@@ -59,6 +58,7 @@
     append-to-body
     class="recharge-dialog"
   >
+    <template #header><span class="dialog-title"><AppIcon name="electric" /> 宿舍电费</span></template>
     <div class="recharge-confirm">
       <ol class="payment-steps">
         <li>
@@ -86,6 +86,7 @@
 </template>
 
 <script setup lang="ts">
+import AppIcon from "@/components/common/AppIcon.vue";
 import { onBeforeUnmount, ref, watch } from "vue";
 import { Loading, WarningFilled, Refresh } from "@element-plus/icons-vue";
 import { servicesApi, type DormElectricResult } from "@/api/services";

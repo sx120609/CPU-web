@@ -35,7 +35,7 @@
             <div class="section-kicker">兑换中心</div>
             <h2>输入礼品码</h2>
           </div>
-          <span class="ticket-icon">🎁</span>
+          <span class="ticket-icon"><AppIcon name="gift" /></span>
         </div>
         <el-input
           v-model="giftCode"
@@ -46,7 +46,7 @@
           :disabled="redeeming"
           @keyup.enter="redeem()"
         >
-          <template #prefix>🎟️</template>
+          <template #prefix><AppIcon name="ticket" /></template>
         </el-input>
         <el-button class="redeem-button" type="primary" size="large" :loading="redeeming" :disabled="!giftCode.trim()" @click="redeem()">
           立即兑换
@@ -98,6 +98,7 @@
 </template>
 
 <script setup lang="ts">
+import AppIcon from "@/components/common/AppIcon.vue";
 import { computed, onMounted, ref } from "vue";
 import { ElMessage } from "element-plus";
 import { useRoute, useRouter } from "vue-router";

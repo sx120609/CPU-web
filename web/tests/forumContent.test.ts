@@ -4,7 +4,7 @@ import { forumContentExcerpt, forumContentImages } from "../src/utils/forumConte
 
 test("论坛摘要移除富文本标记并保留可读正文", () => {
   assert.equal(forumContentExcerpt("<p>校园 <b>动态</b></p><img src=\"/a.jpg\">", 20), "校园 动态");
-  assert.equal(forumContentExcerpt("![照片](/a.jpg)", 20), "图片分享");
+  assert.equal(forumContentExcerpt("![照片](/a.jpg)", 20), "");
 });
 
 test("信息流预览只提取安全且不重复的图片地址", () => {

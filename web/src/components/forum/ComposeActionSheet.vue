@@ -11,7 +11,7 @@
     <p class="compose-intro">先选你想做的事，发布页会自动准备对应板块和表单。</p>
     <div class="compose-grid">
       <button v-for="action in actions" :key="action.label" type="button" class="compose-action" @click="go(action.to)">
-        <span class="compose-icon">{{ action.icon }}</span>
+        <span class="compose-icon"><AppIcon :name="action.icon" /></span>
         <span><b>{{ action.label }}</b><small>{{ action.description }}</small></span>
       </button>
     </div>
@@ -21,17 +21,18 @@
 <script setup lang="ts">
 import { useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
+import AppIcon from "@/components/common/AppIcon.vue";
 
 defineProps<{ modelValue: boolean }>();
 const emit = defineEmits<{ "update:modelValue": [value: boolean] }>();
 const router = useRouter();
 const auth = useAuthStore();
 const actions = [
-  { icon: "💬", label: "发动态", description: "分享校园见闻和日常", to: "/post?board=general&mode=say" },
-  { icon: "❓", label: "提问题", description: "求助、咨询或悬赏", to: "/post?board=question" },
-  { icon: "📦", label: "发布闲置", description: "转让校内闲置物品", to: "/post?board=market&kind=sell" },
-  { icon: "🔎", label: "发布求购", description: "说明需求、预算和校区", to: "/post?board=market&kind=wanted" },
-  { icon: "🧭", label: "选择其他板块", description: "使用完整发帖表单", to: "/post" },
+  { icon: "forum", label: "发动态", description: "分享校园见闻和日常", to: "/post?board=general&mode=say" },
+  { icon: "question", label: "提问题", description: "求助、咨询或悬赏", to: "/post?board=question" },
+  { icon: "box", label: "发布闲置", description: "转让校内闲置物品", to: "/post?board=market&kind=sell" },
+  { icon: "search", label: "发布求购", description: "说明需求、预算和校区", to: "/post?board=market&kind=wanted" },
+  { icon: "board", label: "选择其他板块", description: "使用完整发帖表单", to: "/post" },
 ];
 
 function go(to: string) {

@@ -112,7 +112,7 @@
                 class="action-card"
                 @click="open(action)"
               >
-                <span class="action-icon">{{ action.icon || "🔗" }}</span>
+                <span class="action-icon"><AppIcon :legacy="action.icon" name="link" /></span>
                 <span class="action-copy">
                   <strong>{{ action.label }}</strong>
                   <small>{{ action.description }}</small>
@@ -251,6 +251,7 @@
 </template>
 
 <script setup lang="ts">
+import AppIcon from "@/components/common/AppIcon.vue";
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {

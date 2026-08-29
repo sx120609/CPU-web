@@ -227,7 +227,7 @@ function createVideoThumbnailShell(
 
   const overlay = document.createElement("span");
   overlay.className = "md-video-thumb__overlay";
-  overlay.innerHTML = `<span class="md-video-thumb__play" aria-hidden="true">▶</span>`;
+  overlay.innerHTML = `<span class="md-video-thumb__play" aria-hidden="true"></span>`;
   button.appendChild(overlay);
   shell.appendChild(button);
   return shell;
@@ -890,8 +890,15 @@ onMounted(() => {
   background: rgba(15, 23, 42, 0.56);
   backdrop-filter: blur(10px);
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.18);
-  font-size: 24px;
-  text-indent: 4px;
+}
+.md :deep(.md-video-thumb__play::before) {
+  width: 0;
+  height: 0;
+  margin-left: 4px;
+  border-top: 9px solid transparent;
+  border-bottom: 9px solid transparent;
+  border-left: 14px solid currentColor;
+  content: "";
 }
 .md-video-lightbox {
   position: fixed;

@@ -2,7 +2,7 @@
   <div class="services-page">
     <div class="page-head" :class="{ centered: !jwxt.isLoggedIn && !academicDataUnavailable }">
       <div>
-        <h2>🎯 校园服务</h2>
+        <h2><AppIcon name="service" /> 校园服务</h2>
         <p v-if="academicDataUnavailable" class="hint">
           当前账号已完成站内登录，但学校暂未开放可读取的教务数据；公共服务仍可正常使用，教务相关入口会在数据可用后自动显示。
         </p>
@@ -56,7 +56,7 @@
     <!-- 客户端下载对访客也可见；电费查询只需要站内登录 -->
     <div class="quick-row">
       <button v-if="auth.isLoggedIn && site.features.electric" type="button" class="quick-card electric-card" @click="electricOpen = true">
-        <span class="quick-icon">💡</span>
+        <span class="quick-icon"><AppIcon name="electric" /></span>
         <div class="quick-body">
           <div class="quick-title">宿舍电费查询</div>
           <div class="quick-sub">站内查询本宿舍剩余电量、剩余金额与抄表时间</div>
@@ -64,7 +64,7 @@
         <el-icon class="quick-arrow"><Right /></el-icon>
       </button>
       <button type="button" class="quick-card network-card" @click="router.push('/download')">
-        <span class="quick-icon">🖥️</span>
+        <span class="quick-icon"><AppIcon name="desktop" /></span>
         <div class="quick-body">
           <div class="quick-title-row">
             <div class="quick-title">药大拾间桌面客户端</div>
@@ -107,12 +107,12 @@
     <div v-if="!jwxt.isLoggedIn" class="fallback">
       <h4 class="fb-title">公开入口</h4>
       <div class="fb-grid">
-        <a href="http://lib.cpu.edu.cn" target="_blank" rel="noopener noreferrer" class="fb-card"><span class="fb-icon">📚</span><span>图书馆</span></a>
-        <a href="http://opac.cpu.edu.cn" target="_blank" rel="noopener noreferrer" class="fb-card"><span class="fb-icon">🔍</span><span>馆藏检索</span></a>
-        <a href="https://i.cpu.edu.cn" target="_blank" rel="noopener noreferrer" class="fb-card"><span class="fb-icon">🏛️</span><span>融合门户</span></a>
-        <a href="http://jwc.cpu.edu.cn" target="_blank" rel="noopener noreferrer" class="fb-card"><span class="fb-icon">📋</span><span>教务处</span></a>
-        <a href="http://news.cpu.edu.cn" target="_blank" rel="noopener noreferrer" class="fb-card"><span class="fb-icon">📢</span><span>校园新闻</span></a>
-        <a href="https://cpu.91job.org.cn/sub-station/home/10316" target="_blank" rel="noopener noreferrer" class="fb-card"><span class="fb-icon">💼</span><span>就业平台</span></a>
+        <a href="http://lib.cpu.edu.cn" target="_blank" rel="noopener noreferrer" class="fb-card"><span class="fb-icon"><AppIcon name="course" /></span><span>图书馆</span></a>
+        <a href="http://opac.cpu.edu.cn" target="_blank" rel="noopener noreferrer" class="fb-card"><span class="fb-icon"><AppIcon name="search" /></span><span>馆藏检索</span></a>
+        <a href="https://i.cpu.edu.cn" target="_blank" rel="noopener noreferrer" class="fb-card"><span class="fb-icon"><AppIcon name="school" /></span><span>融合门户</span></a>
+        <a href="http://jwc.cpu.edu.cn" target="_blank" rel="noopener noreferrer" class="fb-card"><span class="fb-icon"><AppIcon name="document" /></span><span>教务处</span></a>
+        <a href="http://news.cpu.edu.cn" target="_blank" rel="noopener noreferrer" class="fb-card"><span class="fb-icon"><AppIcon name="announcement" /></span><span>校园新闻</span></a>
+        <a href="https://cpu.91job.org.cn/sub-station/home/10316" target="_blank" rel="noopener noreferrer" class="fb-card"><span class="fb-icon"><AppIcon name="work" /></span><span>就业平台</span></a>
       </div>
     </div>
 
@@ -132,6 +132,7 @@ import { readViewCache, writeViewCache } from "@/utils/viewCache";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
 import IServicePane from "@/components/jwxt/IServicePane.vue";
 import DormElectricDialog from "@/components/services/DormElectricDialog.vue";
+import AppIcon from "@/components/common/AppIcon.vue";
 import { serviceTools, type ServiceTool } from "@/data/serviceTools";
 import { toolsApi, type ToolMeta } from "@/api/tools";
 

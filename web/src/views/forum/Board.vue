@@ -2,7 +2,7 @@
   <div class="board-page">
     <div v-if="board" class="board-head">
       <div class="head-left">
-        <div class="head-icon" :style="{ background: board.color || '#168776' }">{{ board.icon || fallbackBoardIcon }}</div>
+        <div class="head-icon" :style="{ background: board.color || '#168776' }"><AppIcon :legacy="board.icon" :name="board.type" /></div>
         <div>
           <h2 class="head-name">{{ boardDisplayName }}</h2>
           <p class="head-desc">{{ boardDisplayDescription }}</p>
@@ -75,6 +75,7 @@ import { onBeforeRouteLeave, useRoute, useRouter } from "vue-router";
 import { Edit } from "@element-plus/icons-vue";
 import TopicListItem from "@/components/forum/TopicListItem.vue";
 import ForumAdCard from "@/components/forum/ForumAdCard.vue";
+import AppIcon from "@/components/common/AppIcon.vue";
 import { boardApi, type Board } from "@/api/board";
 import { forumAdsApi, type ForumAd } from "@/api/forumAds";
 import { topicApi } from "@/api/topic";
@@ -110,13 +111,6 @@ const boardSlug = computed(() => String(route.params.slug || (route.name === "ma
 const canPost = computed(() => !!board.value && !board.value.readOnly && auth.canAccessForum);
 const boardDisplayName = computed(() => board.value?.name || "");
 const boardDisplayDescription = computed(() => board.value?.description || "");
-const fallbackBoardIcon = computed(() => {
-  if (board.value?.type === "market") return "♻️";
-  if (board.value?.type === "question") return "❓";
-  if (board.value?.type === "coursereview") return "📚";
-  if (board.value?.type === "announce") return "📢";
-  return "💬";
-});
 const orderedPinnedList = computed(() => pinnedList.value);
 
 watch(() => route.fullPath, async () => {

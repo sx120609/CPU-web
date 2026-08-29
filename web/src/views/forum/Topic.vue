@@ -140,7 +140,7 @@
 
       <!-- 板块特化 metadata -->
       <div v-if="topic.metadata?.sourceUrl" class="source-bar" :class="{ wechat: topic.metadata?.externalType === 'wechat', external: topic.metadata?.externalType !== 'wechat' }">
-        <span class="src-icon">{{ topic.metadata?.externalType === 'wechat' ? '💬' : '📢' }}</span>
+        <span class="src-icon"><AppIcon :name="topic.metadata?.externalType === 'wechat' ? 'forum' : 'announcement'" /></span>
         <span class="src-text-wrap">
           <span class="src-text">
             <template v-if="topic.metadata?.externalType === 'wechat'">
@@ -291,7 +291,7 @@
         <el-button :type="liked ? 'primary' : 'default'" :icon="Star" :loading="topicActionBusy === 'like'" :disabled="isTopicActionBusy || topic.hidden" @click="onLike">
           {{ liked ? '已点赞' : '点赞' }} · {{ topic.likeCount }}
         </el-button>
-        <el-button :icon="ChatLineRound" :disabled="!canReply" @click="openReplyDialog">回复 · {{ topic.replyCount }}</el-button>
+        <el-button :icon="ChatLineRound" :disabled="!canReply" @click="openReplyDialog()">回复 · {{ topic.replyCount }}</el-button>
         <el-button :disabled="topic.hidden" @click="shareDialogOpen = true">分享</el-button>
       </footer>
       </div>
@@ -364,14 +364,14 @@
               <el-button v-if="!entry.item.hidden" text size="small" @click="replyTo(entry.item)">回复</el-button>
               <el-button v-if="canEditReply(entry.item)" text size="small" @click="editReply(entry.item)">编辑</el-button>
               <el-button v-if="canEditReply(entry.item)" text size="small" type="danger" :loading="replyActionBusyId === entry.item.id" :disabled="replyActionBusyId !== null" @click="removeReply(entry.item)">删除</el-button>
-              <el-button v-if="!entry.item.hidden" text size="small" :loading="replyLikeBusyId === entry.item.id" :disabled="replyLikeBusyId !== null" @click="onLikeReply(entry.item)">👍 {{ entry.item.likeCount }}</el-button>
+              <el-button v-if="!entry.item.hidden" text size="small" :loading="replyLikeBusyId === entry.item.id" :disabled="replyLikeBusyId !== null" @click="onLikeReply(entry.item)"><AppIcon name="like" /> {{ entry.item.likeCount }}</el-button>
             </div>
           </div>
         </div>
       </template>
     </section>
 
-    <button v-if="canReply && auth.isLoggedIn" type="button" class="mobile-reply-composer" @click="openReplyDialog">
+    <button v-if="canReply && auth.isLoggedIn" type="button" class="mobile-reply-composer" @click="openReplyDialog()">
       <UserAvatar :size="34" :src="auth.user?.avatar" :name="auth.user?.nickname" :seed="auth.user?.id" alt="我的头像" />
       <span>说点什么…</span>
       <b>发布</b>
@@ -603,9 +603,7 @@
     <div class="share-card-export-shell" aria-hidden="true">
       <div class="share-card-dom share-card-dom--export" ref="shareCardExportRef">
         <div class="share-card-top">
-          <div class="share-card-icon" :style="{ background: shareCardAccent }">
-            {{ topic?.board?.icon || "💬" }}
-          </div>
+          <div class="share-card-icon" :style="{ background: shareCardAccent }"><AppIcon :legacy="topic?.board?.icon" name="forum" /></div>
           <div class="share-card-meta">
             <div class="share-card-board">{{ boardDisplayName }}</div>
             <div class="share-card-subtitle">{{ shareCardSubtitle }}</div>
@@ -665,7 +663,7 @@
       @confirm="confirmTopicManualReviewRequest"
     />
 
-    <div v-if="topic.locked" class="locked-tip cpu-card">🔒 该帖已锁定，无法回复</div>
+    <div v-if="topic.locked" class="locked-tip cpu-card"><AppIcon name="lock" /> 该帖已锁定，无法回复</div>
     <div v-if="!auth.isLoggedIn" class="login-tip cpu-card">
       <p><router-link to="/login">登录</router-link> 或 <router-link to="/register">注册</router-link> 后参与回复</p>
       <PrivacyPolicyNotice compact />
@@ -691,6 +689,7 @@ import { ArrowLeft, Star, ChatLineRound, Link, Picture, VideoCamera } from "@ele
 import UserAvatar from "@/components/common/UserAvatar.vue";
 import UserModerationActions from "@/components/common/UserModerationActions.vue";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
+import AppIcon from "@/components/common/AppIcon.vue";
 import MarkdownView from "@/components/forum/MarkdownView.vue";
 import RichTextEditor from "@/components/forum/RichTextEditor.vue";
 import ManualReviewConfirmDialog from "@/components/forum/ManualReviewConfirmDialog.vue";
@@ -951,7 +950,13 @@ const canReviewTopicVideos = computed(() => (
     || ((topic.value?.videoReview?.rejectedCount ?? 0) > 0)
   )
 ));
-const replyDraftKey = computed(() => topic.value?.id ? `cpu-reply-draft-${topic.value.id}` : "");
+const replyDraftKey = computed(() => {
+  const base = replyDraftBaseKey();
+  if (!base) return "";
+  if (editingReplyId.value) return `${base}:edit-${editingReplyId.value}`;
+  if (replyParentId.value) return `${base}:parent-${replyParentId.value}`;
+  return `${base}:root`;
+});
 const currentMuteMessage = computed(() => auth.user?.mutedUntil ? `你已被禁言至 ${fmtDate(auth.user.mutedUntil)}` : "你当前已被禁言，暂时无法回复");
 const shareLandingUrl = computed(() => topic.value ? new URL(`/share/topic/${topic.value.id}`, window.location.origin).toString() : "");
 const shareSummary = computed(() => {
@@ -1091,12 +1096,19 @@ watch(shareLandingUrl, async (url) => {
 }, { immediate: true });
 
 watch(replyDialogOpen, (open) => {
-  if (!open && !replying.value) {
-    replyAnonymous.value = false;
-    editingReplyId.value = null;
-    replyParentId.value = null;
+  if (open || replying.value) return;
+  if (editingReplyId.value) {
+    finishReplyEdit(false);
+    return;
   }
+  replyEditorRef.value?.flushDraftSave();
+  const rootDraft = readReplyDraft(rootReplyDraftKey());
+  replyAnonymous.value = false;
+  replyParentId.value = null;
+  replyText.value = rootDraft;
 });
+
+watch(() => [topic.value?.id, auth.user?.id], migrateLegacyReplyDraft, { immediate: true });
 
 function clearTopicReviewPollTimer() {
   if (topicReviewPollTimer !== null) {
@@ -1263,8 +1275,7 @@ async function onLikeReply(reply: any) {
 }
 
 function replyTo(r: Reply) {
-  if (!openReplyDialog()) return;
-  replyParentId.value = r.id;
+  openReplyDialog(r.id);
 }
 
 function replyReviewLabel(reply: Reply) {
@@ -1281,7 +1292,8 @@ function replyReviewLabel(reply: Reply) {
 }
 
 function clearReplyParent() {
-  replyParentId.value = null;
+  if (!replyParentId.value) return;
+  switchReplyContext({ parentId: null });
 }
 
 function canEditReply(reply: Reply) {
@@ -1297,20 +1309,15 @@ function canEditReply(reply: Reply) {
 
 function editReply(reply: Reply) {
   if (!canEditReply(reply)) return;
-  editingReplyId.value = reply.id;
-  replyParentId.value = null;
-  replyText.value = reply.content;
-  replyAnonymous.value = false;
+  switchReplyContext({ editingId: reply.id, initialContent: reply.content });
   replyDialogOpen.value = true;
 }
 
 function cancelReplyEdit() {
-  editingReplyId.value = null;
-  replyParentId.value = null;
-  replyText.value = "";
+  finishReplyEdit();
 }
 
-function openReplyDialog() {
+function openReplyDialog(parentId: number | null = null) {
   if (!auth.isLoggedIn) {
     router.push({ name: "login", query: { redirect: route.fullPath } });
     return false;
@@ -1327,8 +1334,71 @@ function openReplyDialog() {
     ElMessage.warning(currentMuteMessage.value);
     return false;
   }
+  if (editingReplyId.value || replyParentId.value !== parentId) switchReplyContext({ parentId });
   replyDialogOpen.value = true;
   return true;
+}
+
+function replyDraftBaseKey() {
+  const topicId = topic.value?.id;
+  const userId = auth.user?.id;
+  return topicId && userId ? `cpu-reply-draft-v2:user-${userId}:topic-${topicId}` : "";
+}
+
+function rootReplyDraftKey() {
+  const base = replyDraftBaseKey();
+  return base ? `${base}:root` : "";
+}
+
+function readReplyDraft(key: string) {
+  if (!key) return "";
+  try {
+    const parsed = JSON.parse(localStorage.getItem(key) || "null");
+    return typeof parsed?.content === "string" ? parsed.content : "";
+  } catch {
+    return "";
+  }
+}
+
+function migrateLegacyReplyDraft() {
+  const topicId = topic.value?.id;
+  const rootKey = rootReplyDraftKey();
+  if (!topicId || !rootKey) return;
+  try {
+    const legacyKey = `cpu-reply-draft-${topicId}`;
+    const legacyDraft = localStorage.getItem(legacyKey);
+    if (legacyDraft && !localStorage.getItem(rootKey)) localStorage.setItem(rootKey, legacyDraft);
+    if (legacyDraft) localStorage.removeItem(legacyKey);
+  } catch {
+    return;
+  }
+}
+
+function switchReplyContext(options: { editingId?: number | null; parentId?: number | null; initialContent?: string }) {
+  replyEditorRef.value?.flushDraftSave();
+  editingReplyId.value = options.editingId ?? null;
+  replyParentId.value = options.editingId ? null : options.parentId ?? null;
+  replyAnonymous.value = false;
+  replyText.value = readReplyDraft(replyDraftKey.value) || options.initialContent || "";
+}
+
+function finishReplyEdit(closeDialog = true) {
+  replyEditorRef.value?.clearDraft();
+  const rootDraft = readReplyDraft(rootReplyDraftKey());
+  editingReplyId.value = null;
+  replyParentId.value = null;
+  replyAnonymous.value = false;
+  replyText.value = rootDraft;
+  if (closeDialog) replyDialogOpen.value = false;
+}
+
+function clearCurrentReplyDraftAndReset() {
+  replyEditorRef.value?.clearDraft();
+  const rootDraft = replyParentId.value ? readReplyDraft(rootReplyDraftKey()) : "";
+  editingReplyId.value = null;
+  replyParentId.value = null;
+  replyAnonymous.value = false;
+  replyText.value = rootDraft;
 }
 
 function replySubmissionFingerprint() {
@@ -1351,7 +1421,7 @@ function getReplySubmissionId(fingerprint: string) {
 }
 
 function pendingReplyStorageKey() {
-  return `cpu-forum-pending-reply-${Number(route.params.id) || 0}`;
+  return `cpu-forum-pending-reply:user-${auth.user?.id || 0}:topic-${Number(route.params.id) || 0}`;
 }
 
 function persistPendingReplySubmission() {
@@ -1406,14 +1476,9 @@ async function handleReplySubmissionResult(r: ReplySubmissionResponse) {
   if (replyAnonymous.value) await auth.fetchMe();
   if (r.submissionResult?.status === "pending") {
     const acceptedCurrentDraft = pendingReplyStillMatchesCurrentDraft();
-    replyDialogOpen.value = false;
     upsertReplySubmission(r);
-    if (acceptedCurrentDraft) {
-      replyText.value = "";
-      replyAnonymous.value = false;
-      replyParentId.value = null;
-      replyEditorRef.value?.clearDraft();
-    }
+    if (acceptedCurrentDraft) clearCurrentReplyDraftAndReset();
+    replyDialogOpen.value = false;
     ElMessage.success("评论已提交审核，已在评论区标记为仅自己可见");
     const submissionId = r.submissionId || pendingReplySubmission.value?.submissionId;
     if (submissionId) void monitorPendingReplySubmission(submissionId);
@@ -1454,11 +1519,8 @@ async function handleReplySubmissionResult(r: ReplySubmissionResponse) {
   clearPendingReplySubmission();
   const { existingIndex, wasHidden } = upsertReplySubmission(r);
   if (shouldClearCurrentDraft) {
-    replyText.value = "";
-    replyAnonymous.value = false;
-    replyParentId.value = null;
+    clearCurrentReplyDraftAndReset();
     replyDialogOpen.value = false;
-    replyEditorRef.value?.clearDraft();
   }
   if (topic.value && (existingIndex < 0 || wasHidden)) topic.value.replyCount += 1;
   ElMessage.success(wasHidden ? "评论审核已通过，现已公开" : (r.submissionResult?.replayed ? "已确认评论发布成功" : "评论已发布"));
@@ -1489,11 +1551,7 @@ async function submitReply() {
         const updated = await replyApi.update(editingId, { content: replyText.value });
         const idx = replies.value.findIndex((item) => item.id === editingId);
         if (idx >= 0) replies.value[idx] = { ...replies.value[idx], ...updated } as any;
-        replyText.value = "";
-        replyAnonymous.value = false;
-        replyDialogOpen.value = false;
-        editingReplyId.value = null;
-        replyEditorRef.value?.clearDraft();
+        finishReplyEdit();
         ElMessage.success("回复已修改");
       } catch (error) {
         if (!isAmbiguousForumSubmissionError(error)) {
@@ -1508,10 +1566,7 @@ async function submitReply() {
         if (saved) {
           const idx = replies.value.findIndex((item) => item.id === editingId);
           if (idx >= 0) replies.value[idx] = { ...replies.value[idx], ...saved } as any;
-          replyText.value = "";
-          replyDialogOpen.value = false;
-          editingReplyId.value = null;
-          replyEditorRef.value?.clearDraft();
+          finishReplyEdit();
           ElMessage.success("已确认回复修改成功");
           return;
         }
@@ -1563,9 +1618,7 @@ async function removeReply(reply: Reply) {
     replies.value = replies.value.filter((item) => item.id !== reply.id);
     if (topic.value && topic.value.replyCount > 0) topic.value.replyCount -= 1;
     if (editingReplyId.value === reply.id) {
-      editingReplyId.value = null;
-      replyText.value = "";
-      replyDialogOpen.value = false;
+      finishReplyEdit();
     }
     ElMessage.success("已删除回复");
   } finally {
@@ -1579,9 +1632,7 @@ async function confirmReplyManualReviewRequest() {
   try {
     await replyApi.requestManualReview(blockedReplyId.value);
     await auth.fetchMe();
-    replyEditorRef.value?.clearDraft();
-    replyText.value = "";
-    replyAnonymous.value = false;
+    clearCurrentReplyDraftAndReset();
     replyDialogOpen.value = false;
     replyReviewBlockedOpen.value = false;
     ElMessage.success("已提交回复人工复核申请");

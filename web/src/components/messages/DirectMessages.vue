@@ -195,6 +195,14 @@ let messageSeq = 0;
 const activeCounterpart = computed(() => activeConversation.value?.counterpart || pendingTarget.value);
 const sendBlocked = computed(() => Boolean(activeConversation.value && !activeConversation.value.sendState.canSend));
 const canSubmit = computed(() => Boolean(draft.value.trim()) && !sendBlocked.value && !sending.value);
+const composerDraftKey = computed(() => {
+  const userId = auth.user?.id;
+  const counterpartId = activeCounterpart.value?.id;
+  return userId && counterpartId ? `cpu-direct-message-draft-v2:user-${userId}:counterpart-${counterpartId}` : "";
+});
+let draftSaveTimer = 0;
+let pendingDraftKey = "";
+let pendingDraftContent = "";
 const composerHint = computed(() => {
   if (!activeConversation.value) return "对方回复前最多发送两条";
   const remaining = activeConversation.value.sendState.remainingBeforeReply;
@@ -216,6 +224,7 @@ onBeforeUnmount(() => {
   routeSeq += 1;
   messageSeq += 1;
   if (refreshTimer) window.clearInterval(refreshTimer);
+  flushComposerDraft();
 });
 
 watch(
@@ -224,6 +233,26 @@ watch(
     if (route.query.tab === "private") void applyRouteTarget();
   },
 );
+
+watch(composerDraftKey, (key, previousKey) => {
+  flushComposerDraft();
+  if (previousKey) persistComposerDraft(previousKey, draft.value);
+  draft.value = readComposerDraft(key);
+}, { immediate: true });
+
+watch(draft, (content) => {
+  const key = composerDraftKey.value;
+  if (!key) return;
+  window.clearTimeout(draftSaveTimer);
+  pendingDraftKey = key;
+  pendingDraftContent = content;
+  draftSaveTimer = window.setTimeout(() => {
+    draftSaveTimer = 0;
+    persistComposerDraft(pendingDraftKey, pendingDraftContent);
+    pendingDraftKey = "";
+    pendingDraftContent = "";
+  }, 300);
+});
 
 async function loadConversationList() {
   if (disposed || listLoading.value) return;
@@ -367,6 +396,7 @@ async function sendMessage() {
     const result = activeConversation.value
       ? await directMessageApi.send(activeConversation.value.id, content, { suppressErrorMessage: true })
       : await directMessageApi.sendToUser(counterpart.id, content, { suppressErrorMessage: true });
+    clearComposerDraft(composerDraftKey.value);
     draft.value = "";
     pendingTarget.value = null;
     activeConversation.value = result.conversation;
@@ -389,6 +419,53 @@ async function sendMessage() {
     }
   } finally {
     sending.value = false;
+  }
+}
+
+function readComposerDraft(key: string) {
+  if (!key) return "";
+  try {
+    const parsed = JSON.parse(localStorage.getItem(key) || "null");
+    return typeof parsed?.content === "string" ? parsed.content : "";
+  } catch {
+    return "";
+  }
+}
+
+function persistComposerDraft(key: string, content: string) {
+  if (!key) return;
+  try {
+    if (content.trim()) {
+      localStorage.setItem(key, JSON.stringify({ content, savedAt: Date.now() }));
+    } else {
+      localStorage.removeItem(key);
+    }
+  } catch {
+    return;
+  }
+}
+
+function flushComposerDraft() {
+  if (!pendingDraftKey) return;
+  window.clearTimeout(draftSaveTimer);
+  draftSaveTimer = 0;
+  persistComposerDraft(pendingDraftKey, pendingDraftContent);
+  pendingDraftKey = "";
+  pendingDraftContent = "";
+}
+
+function clearComposerDraft(key: string) {
+  if (!key) return;
+  if (pendingDraftKey === key) {
+    window.clearTimeout(draftSaveTimer);
+    draftSaveTimer = 0;
+    pendingDraftKey = "";
+    pendingDraftContent = "";
+  }
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    return;
   }
 }
 

@@ -19,7 +19,7 @@
         :class="{ active: selectedChannel === channel.id }"
         @click="selectChannel(channel.id)"
       >
-        <span>{{ channel.icon }}</span>{{ channel.label }}
+        <AppIcon :name="channel.icon" />{{ channel.label }}
       </button>
       <button type="button" class="all-boards-tab" @click="boardsOpen = true"><span>▦</span>板块</button>
     </nav>
@@ -65,7 +65,7 @@
       </div>
       <div v-else class="board-grid" v-loading="boardsLoading && !boards.length">
         <button v-for="board in discussionBoards" :key="board.slug" type="button" class="board-choice" @click="openBoard(board)">
-          <span class="board-icon" :style="{ background: board.color || '#168776' }">{{ board.icon || "💬" }}</span>
+          <span class="board-icon" :style="{ background: board.color || '#168776' }"><AppIcon :legacy="board.icon" name="board" /></span>
           <span class="board-copy"><b>{{ board.name }}</b><small>{{ board.description }}</small></span>
           <span class="board-count">{{ board.topicCount }} 帖</span>
         </button>
@@ -88,6 +88,7 @@ import ForumAdCard from "@/components/forum/ForumAdCard.vue";
 import ForumFeedCard from "@/components/forum/ForumFeedCard.vue";
 import PinnedTopicStrip from "@/components/forum/PinnedTopicStrip.vue";
 import SiteSearchBar from "@/components/search/SiteSearchBar.vue";
+import AppIcon from "@/components/common/AppIcon.vue";
 import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
 import {
@@ -115,11 +116,11 @@ const auth = useAuthStore();
 const site = useSiteStore();
 const cacheScope = computed(() => forumCacheScope(auth.user));
 const baseChannels: Channel[] = [
-  { id: "latest", label: "最新", icon: "◷", description: "直接看看校园里刚刚发生了什么。", feedTitle: "最新内容", feedHint: "按发布时间排列" },
-  { id: "hot", label: "热议", icon: "🔥", description: "近 24 小时大家正在讨论的内容。", feedTitle: "今日热议", feedHint: "综合回复、点赞和浏览" },
-  { id: "question", label: "求助", icon: "?", description: "提问、咨询和同学互助。", feedTitle: "求助答疑", feedHint: "来自提问广场", board: "question" },
-  { id: "market", label: "二手", icon: "♻", description: "闲置、求购和二手经验交流。", feedTitle: "二手交流", feedHint: "仅提供信息发布与公开交流", board: "market" },
-  { id: "freshman", label: "新生", icon: "🌱", description: "入学攻略和新生常见问题。", feedTitle: "新生入学", feedHint: "学长学姐经验分享", board: "freshman" },
+  { id: "latest", label: "最新", icon: "new", description: "直接看看校园里刚刚发生了什么。", feedTitle: "最新内容", feedHint: "按发布时间排列" },
+  { id: "hot", label: "热议", icon: "hot", description: "近 24 小时大家正在讨论的内容。", feedTitle: "今日热议", feedHint: "综合回复、点赞和浏览" },
+  { id: "question", label: "求助", icon: "question", description: "提问、咨询和同学互助。", feedTitle: "求助答疑", feedHint: "来自提问广场", board: "question" },
+  { id: "market", label: "二手", icon: "market", description: "闲置、求购和二手经验交流。", feedTitle: "二手交流", feedHint: "仅提供信息发布与公开交流", board: "market" },
+  { id: "freshman", label: "新生", icon: "school", description: "入学攻略和新生常见问题。", feedTitle: "新生入学", feedHint: "学长学姐经验分享", board: "freshman" },
 ];
 const channels = computed(() => baseChannels.filter((channel) => channel.id !== "market" || site.features.market));
 const selectedChannel = computed<ChannelId>(() => {

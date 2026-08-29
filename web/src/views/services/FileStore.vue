@@ -3,7 +3,7 @@
     <div class="admin-body">
       <div :class="['sidebar-scrim', { open: sidebarOpen }]" @click="sidebarOpen = false"></div>
       <div class="mobile-nav">
-        <button type="button" class="icon-button" title="菜单" @click="sidebarOpen = true">☰</button>
+        <button type="button" class="icon-button" title="菜单" @click="sidebarOpen = true"><AppIcon name="menu" /></button>
         <div class="mobile-brand">
           <span class="brand-mark">药</span>
           <strong>文件收集工作台</strong>
@@ -613,6 +613,7 @@
 </template>
 
 <script setup lang="ts">
+import AppIcon from "@/components/common/AppIcon.vue";
 import { computed, nextTick, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 import {

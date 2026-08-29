@@ -1,7 +1,7 @@
 <template>
   <div class="jwxt-page">
     <div class="page-head" :class="{ centered: !showDataShell, compact: showDataShell }">
-      <h2>🎓 教务数据</h2>
+      <h2><AppIcon name="school" /> 教务数据</h2>
       <p class="hint">
         {{ pageHintText }}
         学号 / 工号仅用于关联站内账号；勾选保持登录后，<b>学校密码会加密保存在当前浏览器</b>，验证码不会保存。
@@ -176,28 +176,34 @@
       </div>
 
       <el-tabs v-if="!academicDataUnavailable && hasJwxtTabs" v-model="tab" class="cpu-card jwxt-tabs" @tab-change="onTabChange">
-        <el-tab-pane v-if="showScheduleTab" :label="isMobileViewport ? '课表' : '📅 课表'" name="schedule">
+        <el-tab-pane v-if="showScheduleTab" name="schedule">
+          <template #label><AppIcon v-if="!isMobileViewport" name="calendar" /> 课表</template>
           <SchedulePane :data="schedule" :loading="tabLoading" :source="isGraduateIdentity ? 'graduate' : 'jwxt'" />
         </el-tab-pane>
-        <el-tab-pane v-if="!isGraduateIdentity" :label="isMobileViewport ? '成绩' : '📊 成绩'" name="grades">
+        <el-tab-pane v-if="!isGraduateIdentity" name="grades">
+          <template #label><AppIcon v-if="!isMobileViewport" name="chart" /> 成绩</template>
           <GradesPane :data="grades" :loading="tabLoading" />
         </el-tab-pane>
-        <el-tab-pane v-if="!isGraduateIdentity" :label="isMobileViewport ? '期中' : '📝 期中成绩'" name="midterm">
+        <el-tab-pane v-if="!isGraduateIdentity" name="midterm">
+          <template #label><AppIcon v-if="!isMobileViewport" name="document" /> {{ isMobileViewport ? "期中" : "期中成绩" }}</template>
           <MidtermGradesPane :data="midtermGrades" :loading="tabLoading" />
         </el-tab-pane>
-        <el-tab-pane v-if="!isGraduateIdentity" :label="isMobileViewport ? '学业' : '🎓 学业完成情况'" name="progress">
+        <el-tab-pane v-if="!isGraduateIdentity" name="progress">
+          <template #label><AppIcon v-if="!isMobileViewport" name="school" /> {{ isMobileViewport ? "学业" : "学业完成情况" }}</template>
           <ProgressPane :data="progress" :loading="tabLoading" />
         </el-tab-pane>
-        <el-tab-pane v-if="!isGraduateIdentity" :label="isMobileViewport ? '培养' : '📖 培养方案'" name="pyfa">
+        <el-tab-pane v-if="!isGraduateIdentity" name="pyfa">
+          <template #label><AppIcon v-if="!isMobileViewport" name="course" /> {{ isMobileViewport ? "培养" : "培养方案" }}</template>
           <PyfaPane :data="pyfa" :loading="tabLoading" />
         </el-tab-pane>
-        <el-tab-pane label="🛠 调试" name="debug" v-if="isDev">
+        <el-tab-pane name="debug" v-if="isDev">
+          <template #label><AppIcon name="tools" /> 调试</template>
           <div class="debug-pane">
             <p class="cpu-muted">开发模式：点击「拉取调试快照」后端会把教务页面 HTML 落到 <code>server/.debug/</code>，供解析器开发用。</p>
-            <el-button type="primary" :loading="snapping" :disabled="snapping" @click="onSnapshot">📸 拉取调试快照</el-button>
+            <el-button type="primary" :loading="snapping" :disabled="snapping" @click="onSnapshot"><AppIcon name="camera" /> 拉取调试快照</el-button>
             <ul v-if="snapResult?.saved?.length" class="snap-list">
-              <li v-for="s in snapResult.saved" :key="s">✅ {{ s }}</li>
-              <li v-for="e in snapResult.errors" :key="e" style="color:#dc2626">❌ {{ e }}</li>
+              <li v-for="s in snapResult.saved" :key="s"><AppIcon name="success" /> {{ s }}</li>
+              <li v-for="e in snapResult.errors" :key="e" style="color:#dc2626"><AppIcon name="close" /> {{ e }}</li>
             </ul>
             <el-divider />
             <p class="cpu-muted">自定义路径探针（仅 dev）：</p>
@@ -221,6 +227,7 @@
 </template>
 
 <script setup lang="ts">
+import AppIcon from "@/components/common/AppIcon.vue";
 import { ref, reactive, onMounted, onBeforeUnmount, computed, watch } from "vue";
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from "element-plus";
 import { Lock, User, Refresh, CircleCheckFilled, CircleClose, InfoFilled } from "@element-plus/icons-vue";

@@ -210,6 +210,8 @@ const toolbarState = reactive({
 let savedSelection: Range | null = null;
 let selectedImage: HTMLImageElement | null = null;
 let draftTimer = 0;
+let pendingDraftKey = "";
+let pendingDraftContent = "";
 let uploadCleanupTimer = 0;
 let editorDisposed = false;
 let mobileViewportQuery: MediaQueryList | null = null;
@@ -317,7 +319,7 @@ onBeforeUnmount(() => {
   editorRef.value?.removeEventListener("touchstart", handleEditorTouchStart);
   editorRef.value?.removeEventListener("touchmove", handleEditorTouchMove);
   editorRef.value?.removeEventListener("touchend", handleEditorTouchEnd);
-  window.clearTimeout(draftTimer);
+  flushDraftSave();
   window.clearTimeout(uploadCleanupTimer);
 });
 
@@ -409,6 +411,8 @@ watch(() => props.modelValue, (value) => {
 });
 
 watch(() => props.draftKey, () => {
+  flushDraftSave();
+  draftHint.value = "";
   hydrateEditor((props.restoreDraft ? readDraft() : "") || props.modelValue);
 });
 
@@ -1094,25 +1098,59 @@ function readDraft() {
 }
 
 function scheduleDraftSave(content: string) {
-  if (!props.draftKey) return;
+  const key = props.draftKey;
+  if (!key) return;
   window.clearTimeout(draftTimer);
+  pendingDraftKey = key;
+  pendingDraftContent = content;
   draftTimer = window.setTimeout(() => {
-    try {
-      if (isContentEmpty()) {
-        localStorage.removeItem(props.draftKey);
-        draftHint.value = "";
-      } else {
-        localStorage.setItem(props.draftKey, JSON.stringify({ content, savedAt: Date.now() }));
-        draftHint.value = "草稿已保存";
-      }
-    } catch {
-      draftHint.value = "草稿保存失败";
-    }
+    draftTimer = 0;
+    persistDraft(pendingDraftKey, pendingDraftContent);
+    pendingDraftKey = "";
+    pendingDraftContent = "";
   }, 400);
+}
+
+function flushDraftSave() {
+  if (!pendingDraftKey) return;
+  window.clearTimeout(draftTimer);
+  draftTimer = 0;
+  persistDraft(pendingDraftKey, pendingDraftContent);
+  pendingDraftKey = "";
+  pendingDraftContent = "";
+}
+
+function persistDraft(key: string, content: string) {
+  try {
+    if (isDraftContentEmpty(content)) {
+      localStorage.removeItem(key);
+      draftHint.value = "";
+    } else {
+      localStorage.setItem(key, JSON.stringify({ content, savedAt: Date.now() }));
+      draftHint.value = "草稿已保存";
+    }
+  } catch {
+    draftHint.value = "草稿保存失败";
+  }
+}
+
+function isDraftContentEmpty(content: string) {
+  if (/<(?:img|video)\b/i.test(content)) return false;
+  return !content
+    .replace(/<br\s*\/?\s*>/gi, "")
+    .replace(/&nbsp;|&#160;/gi, " ")
+    .replace(/<[^>]+>/g, "")
+    .trim();
 }
 
 function clearDraft() {
   if (!props.draftKey) return;
+  if (pendingDraftKey === props.draftKey) {
+    window.clearTimeout(draftTimer);
+    draftTimer = 0;
+    pendingDraftKey = "";
+    pendingDraftContent = "";
+  }
   localStorage.removeItem(props.draftKey);
   draftHint.value = "";
 }
@@ -1131,7 +1169,7 @@ function escapeHtml(value: string) {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-defineExpose({ clearDraft, isContentEmpty, pickImages });
+defineExpose({ clearDraft, flushDraftSave, isContentEmpty, pickImages });
 </script>
 
 <style scoped src="./styles/rich-editor-toolbar.css"></style>

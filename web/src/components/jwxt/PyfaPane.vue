@@ -24,7 +24,7 @@
         </label>
       </div>
       <div class="ctrl-right">
-        <span class="stat">📚 {{ filtered.length }} / {{ parsed.list.length }} 门</span>
+        <span class="stat"><AppIcon name="course" /> {{ filtered.length }} / {{ parsed.list.length }} 门</span>
         <span class="stat">· {{ totalCredits.toFixed(1) }} 学分</span>
       </div>
     </div>
@@ -80,6 +80,7 @@
 </template>
 
 <script setup lang="ts">
+import AppIcon from "@/components/common/AppIcon.vue";
 import { ref, computed, watch } from "vue";
 
 interface PyfaCourse {

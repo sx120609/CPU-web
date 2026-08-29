@@ -71,8 +71,8 @@
             </div>
           </div>
           <div class="middle">
-            <div class="time" v-if="e.examTime">🕒 {{ e.examTime }}</div>
-            <div class="loc" v-if="e.location">📍 {{ e.location }}</div>
+            <div class="time" v-if="e.examTime"><AppIcon name="clock" /> {{ e.examTime }}</div>
+            <div class="loc" v-if="e.location"><AppIcon name="pin" /> {{ e.location }}</div>
             <div class="seat" v-if="e.seat">座位：{{ e.seat }}</div>
           </div>
         </div>
@@ -82,6 +82,7 @@
 </template>
 
 <script setup lang="ts">
+import AppIcon from "@/components/common/AppIcon.vue";
 import { ref, computed, watch } from "vue";
 import { Calendar } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";

@@ -70,7 +70,7 @@
     <el-card v-if="parsed?.uncompleted?.length" class="block" shadow="never">
       <template #header>
         <div class="block-head">
-          <h3 class="title warn">🚧 未完成必修课程</h3>
+          <h3 class="title warn"><AppIcon name="warning" /> 未完成必修课程</h3>
           <span class="cnt">{{ parsed.uncompleted.length }} 门 · {{ totalUncompletedCredits.toFixed(1) }} 学分</span>
         </div>
       </template>
@@ -115,7 +115,7 @@
     <el-card v-if="parsed?.completed?.length" class="block" shadow="never">
       <template #header>
         <div class="block-head">
-          <h3 class="title ok">✅ 已完成必修课程</h3>
+          <h3 class="title ok"><AppIcon name="success" /> 已完成必修课程</h3>
           <span class="cnt">{{ parsed.completed.length }} 门 · {{ totalCompletedCredits.toFixed(1) }} 学分</span>
         </div>
       </template>
@@ -157,6 +157,7 @@
 </template>
 
 <script setup lang="ts">
+import AppIcon from "@/components/common/AppIcon.vue";
 import { ref, computed, watch, onMounted, onBeforeUnmount } from "vue";
 
 const props = defineProps<{ data: any; loading?: boolean }>();

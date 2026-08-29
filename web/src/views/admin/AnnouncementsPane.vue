@@ -1,7 +1,7 @@
 <template>
   <div class="ann-pane">
     <el-card shadow="never" class="composer">
-      <template #header><h3 style="margin:0;font-size:15px">{{ editingId ? "✏️ 编辑全站公告" : "📣 发布全站公告" }}</h3></template>
+      <template #header><h3 style="margin:0;font-size:15px"><AppIcon :name="editingId ? 'edit' : 'announcement'" /> {{ editingId ? "编辑全站公告" : "发布全站公告" }}</h3></template>
       <el-form :model="form" label-position="top">
         <el-form-item label="标题">
           <el-input v-model="form.title" maxlength="120" placeholder="公告标题" show-word-limit />
@@ -44,7 +44,7 @@
     <el-card shadow="never">
       <template #header>
         <div class="hdr">
-          <h3 style="margin:0;font-size:15px">📜 历史公告</h3>
+          <h3 style="margin:0;font-size:15px"><AppIcon name="document" /> 历史公告</h3>
           <el-button text :loading="loading" :disabled="loading" @click="reload">刷新</el-button>
         </div>
       </template>
@@ -94,6 +94,7 @@
 </template>
 
 <script setup lang="ts">
+import AppIcon from "@/components/common/AppIcon.vue";
 import { ref, reactive, onMounted } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { MoreFilled } from "@element-plus/icons-vue";

@@ -11,7 +11,7 @@
 
       <template v-else>
         <button type="button" class="latest-entry cpu-card" @click="$router.push('/forum/latest')">
-          <div class="latest-entry-icon">🆕</div>
+          <div class="latest-entry-icon"><AppIcon name="new" /></div>
           <div class="latest-entry-body">
             <div class="latest-entry-title">最新内容</div>
             <div class="latest-entry-desc">按时间看看最近有哪些新帖子和新回复</div>
@@ -23,7 +23,7 @@
 
         <div v-loading="loading" class="boards-content">
           <div class="cluster" v-if="general.length">
-            <h3 class="cluster-title">💬 综合讨论</h3>
+            <h3 class="cluster-title"><AppIcon name="forum" /> 综合讨论</h3>
             <div class="grid">
               <div
                 v-for="b in general"
@@ -35,7 +35,7 @@
                 @keydown.enter.prevent="openBoard(b.slug)"
                 @keydown.space.prevent="openBoard(b.slug)"
               >
-                <div class="icon" :style="{ background: b.color || '#168776' }">{{ b.icon || "💬" }}</div>
+                <div class="icon" :style="{ background: b.color || '#168776' }"><AppIcon :legacy="b.icon" name="forum" /></div>
                 <div class="body">
                   <div class="name">{{ b.name }}</div>
                   <div class="desc">{{ b.description }}</div>
@@ -46,7 +46,7 @@
           </div>
 
           <div class="cluster" v-if="ugc.length">
-            <h3 class="cluster-title">🎒 学生共建</h3>
+            <h3 class="cluster-title"><AppIcon name="school" /> 学生共建</h3>
             <div class="grid">
               <div
                 v-for="b in ugc"
@@ -58,7 +58,7 @@
                 @keydown.enter.prevent="openBoard(b.slug)"
                 @keydown.space.prevent="openBoard(b.slug)"
               >
-                <div class="icon" :style="{ background: b.color || '#168776' }">{{ b.icon || "🎒" }}</div>
+                <div class="icon" :style="{ background: b.color || '#168776' }"><AppIcon :legacy="b.icon" name="school" /></div>
                 <div class="body">
                   <div class="name">{{ b.name }}</div>
                   <div class="desc">{{ b.description }}</div>
@@ -86,6 +86,7 @@ import { boardApi, type Board } from "@/api/board";
 import { forumAdsApi, type ForumAd } from "@/api/forumAds";
 import ForumAdCard from "@/components/forum/ForumAdCard.vue";
 import SiteSearchBar from "@/components/search/SiteSearchBar.vue";
+import AppIcon from "@/components/common/AppIcon.vue";
 import { useAuthStore } from "@/stores/auth";
 import { forumCacheScope, readForumBoards, writeForumBoards } from "@/utils/forumCache";
 

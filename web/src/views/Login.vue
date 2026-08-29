@@ -76,7 +76,7 @@
 
       <!-- 站内独立账号：新生 / 毕业生 / 站务 / 管理员 -->
       <details class="dev-fallback">
-        <summary>🔑 其他方式登录</summary>
+        <summary><AppIcon name="key" /> 其他方式登录</summary>
         <div class="dev-tip">
           适用于暂时无法使用统一认证的账号，例如新生、毕业生或站务账号。
         </div>
@@ -113,6 +113,7 @@ import { useSiteStore } from "@/stores/site";
 import { loadCreds } from "@/utils/credCrypto";
 import { isOAuthAuthorizationRedirect, isServerHandledRedirect, resolveLoginRedirect } from "@/utils/redirect";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
+import AppIcon from "@/components/common/AppIcon.vue";
 
 const router = useRouter();
 const route = useRoute();

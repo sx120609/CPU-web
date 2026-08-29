@@ -53,9 +53,9 @@
       </el-table-column>
       <el-table-column label="标题" min-width="280">
         <template #default="{ row }">
-          <span v-if="row.globalPinned" style="color:#b45309;margin-right:4px">📍</span>
-          <span v-if="row.pinned" style="color:#dc2626;margin-right:4px">📌</span>
-          <span v-if="row.locked" style="margin-right:4px">🔒</span>
+          <AppIcon v-if="row.globalPinned" name="pin" style="color:#b45309;margin-right:4px" />
+          <AppIcon v-if="row.pinned" name="pin" style="color:#dc2626;margin-right:4px" />
+          <AppIcon v-if="row.locked" name="lock" style="margin-right:4px" />
           <span v-if="row.hidden" style="color:#9ca3af;text-decoration:line-through">{{ row.title }}</span>
           <a v-else :href="`/forum/topic/${row.id}`" target="_blank" rel="noopener noreferrer">{{ row.title }}</a>
         </template>
@@ -209,6 +209,7 @@
 </template>
 
 <script setup lang="ts">
+import AppIcon from "@/components/common/AppIcon.vue";
 import { ref, onMounted } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { Search, MoreFilled } from "@element-plus/icons-vue";

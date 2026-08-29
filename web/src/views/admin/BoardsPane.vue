@@ -24,7 +24,7 @@
       <el-table-column label="板块" min-width="220">
         <template #default="{ row }">
           <div class="board-main">
-            <span class="icon" :style="{ background: row.color || '#168776' }">{{ row.icon || "💬" }}</span>
+            <span class="icon" :style="{ background: row.color || '#168776' }"><AppIcon :legacy="row.icon" name="forum" /></span>
             <div>
               <div class="name">{{ row.name }}</div>
               <div class="desc">{{ row.description || "暂无描述" }}</div>
@@ -61,7 +61,7 @@
     <div class="mobile-list" v-loading="loading">
       <article v-for="row in list" :key="row.id" class="board-card">
         <div class="board-main">
-          <span class="icon" :style="{ background: row.color || '#168776' }">{{ row.icon || "💬" }}</span>
+          <span class="icon" :style="{ background: row.color || '#168776' }"><AppIcon :legacy="row.icon" name="forum" /></span>
           <div>
             <div class="name">{{ row.name }}</div>
             <div class="desc">{{ row.description || "暂无描述" }}</div>
@@ -103,7 +103,11 @@
         </el-form-item>
         <div class="row2">
           <el-form-item label="图标">
-            <el-input v-model="form.icon" maxlength="8" placeholder="📚" />
+            <el-select v-model="form.icon" placeholder="选择图标">
+              <el-option v-for="option in boardIconOptions" :key="option.value" :label="option.label" :value="option.value">
+                <AppIcon :name="option.value" /> {{ option.label }}
+              </el-option>
+            </el-select>
           </el-form-item>
           <el-form-item label="颜色">
             <el-input v-model="form.color" maxlength="20" placeholder="#168776" />
@@ -140,6 +144,7 @@ import { reactive, ref, onMounted } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { MoreFilled } from "@element-plus/icons-vue";
 import { adminApi } from "@/api/admin";
+import AppIcon from "@/components/common/AppIcon.vue";
 
 const loading = ref(false);
 const loadError = ref("");
@@ -160,6 +165,15 @@ const form = reactive({
   type: "normal" as "normal" | "question" | "market" | "coursereview",
   anonymousEnabled: false,
 });
+const boardIconOptions = [
+  { value: "forum", label: "讨论" },
+  { value: "question", label: "问答" },
+  { value: "market", label: "二手" },
+  { value: "course", label: "课程" },
+  { value: "announcement", label: "公告" },
+  { value: "school", label: "校园" },
+  { value: "service", label: "服务" },
+];
 
 onMounted(reload);
 
@@ -220,13 +234,19 @@ function openEdit(row: any) {
     slug: row.slug,
     name: row.name,
     description: row.description || "",
-    icon: row.icon || "",
+    icon: normalizeBoardIcon(row.icon),
     color: row.color || "",
     order: row.order ?? 0,
     type: row.type,
     anonymousEnabled: Boolean(row.anonymousEnabled),
   });
   dialogOpen.value = true;
+}
+
+function normalizeBoardIcon(value: unknown) {
+  const legacy: Record<string, string> = { "💬": "forum", "❓": "question", "♻": "market", "♻️": "market", "📚": "course", "📢": "announcement", "📣": "announcement", "🎓": "school", "🧭": "service" };
+  const normalized = String(value || "");
+  return legacy[normalized] || (boardIconOptions.some((item) => item.value === normalized) ? normalized : "forum");
 }
 
 async function submitBoard() {

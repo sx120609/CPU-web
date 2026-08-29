@@ -1,7 +1,7 @@
 <template>
   <div class="admin-page">
     <div class="admin-head">
-      <h1 class="title">🛠 管理后台</h1>
+      <h1 class="title"><AppIcon name="tools" /> 管理后台</h1>
       <div class="user-tag">
         <el-button v-if="canOpenVoiceHub" size="small" @click="openVoiceHubDashboard">
           药苑之声控制台
@@ -73,32 +73,33 @@
     </div>
 
     <el-tabs v-model="tab" class="cpu-card">
-      <el-tab-pane v-if="canManageUsers" label="👥 用户与模块权限" name="users"><UsersPane v-if="tab === 'users'" /></el-tab-pane>
-      <el-tab-pane label="🧩 板块" name="boards" v-if="auth.isAdmin"><BoardsPane v-if="tab === 'boards'" /></el-tab-pane>
-      <el-tab-pane v-if="isCoreStaff" label="📝 帖子" name="topics"><TopicsPane v-if="tab === 'topics'" /></el-tab-pane>
-      <el-tab-pane v-if="isCoreStaff" label="🛡 人工审核" name="manual-reviews"><ManualReviewsPane v-if="tab === 'manual-reviews'" /></el-tab-pane>
-      <el-tab-pane v-if="canManageLostFound" label="🧭 失物招领" name="lost-found"><LostFoundPane v-if="tab === 'lost-found'" /></el-tab-pane>
-      <el-tab-pane label="🧭 顶部导航" name="navigation" v-if="auth.isAdmin"><NavigationPane v-if="tab === 'navigation'" /></el-tab-pane>
-      <el-tab-pane label="🔄 同步源" name="feeds" v-if="auth.isAdmin"><FeedsPane v-if="tab === 'feeds'" /></el-tab-pane>
-      <el-tab-pane label="🌐 教务节点" name="jwxt-agents" v-if="auth.isAdmin"><JwxtAgentsPane v-if="tab === 'jwxt-agents'" /></el-tab-pane>
-      <el-tab-pane label="📣 公告" name="announcements" v-if="auth.isAdmin"><AnnouncementsPane v-if="tab === 'announcements'" /></el-tab-pane>
-      <el-tab-pane label="📢 论坛广告" name="forum-ads" v-if="auth.isAdmin"><ForumAdsPane v-if="tab === 'forum-ads'" /></el-tab-pane>
-      <el-tab-pane label="🎁 VIP 礼品码" name="vip-gift-codes" v-if="auth.isAdmin"><VipGiftCodesPane v-if="tab === 'vip-gift-codes'" /></el-tab-pane>
-      <el-tab-pane label="💳 支付对接" name="epay" v-if="auth.isAdmin"><EpayPane v-if="tab === 'epay'" /></el-tab-pane>
-      <el-tab-pane label="💛 赞助" name="sponsor" v-if="auth.isAdmin"><SponsorPane v-if="tab === 'sponsor'" /></el-tab-pane>
-      <el-tab-pane label="🤖 QQBot" name="qqbot" v-if="auth.isAdmin"><QqBotPane v-if="tab === 'qqbot'" /></el-tab-pane>
-      <el-tab-pane label="💬 微信服务号" name="wechat" v-if="auth.isAdmin"><WechatServicePane v-if="tab === 'wechat'" /></el-tab-pane>
-      <el-tab-pane label="✨ AI 管理" name="ai" v-if="auth.isAdmin"><AiManagementPane v-if="tab === 'ai'" /></el-tab-pane>
-      <el-tab-pane label="🚀 更新部署" name="deployment" v-if="auth.isAdmin"><DeploymentPane v-if="tab === 'deployment'" /></el-tab-pane>
-      <el-tab-pane label="🗄 数据备份" name="database" v-if="auth.isAdmin"><DatabasePane v-if="tab === 'database'" /></el-tab-pane>
-      <el-tab-pane label="🗂 媒体存储" name="media-storage" v-if="auth.isAdmin"><MediaStoragePane v-if="tab === 'media-storage'" /></el-tab-pane>
-      <el-tab-pane label="📦 文件收集" name="filestore-settings" v-if="auth.isAdmin"><FilestoreSettingsPane v-if="tab === 'filestore-settings'" /></el-tab-pane>
-      <el-tab-pane label="⚙ 功能开关" name="features" v-if="auth.isAdmin"><FeaturesPane v-if="tab === 'features'" /></el-tab-pane>
+      <el-tab-pane v-if="canManageUsers" name="users"><template #label><AppIcon name="user" /> 用户与模块权限</template><UsersPane v-if="tab === 'users'" /></el-tab-pane>
+      <el-tab-pane name="boards" v-if="auth.isAdmin"><template #label><AppIcon name="board" /> 板块</template><BoardsPane v-if="tab === 'boards'" /></el-tab-pane>
+      <el-tab-pane v-if="isCoreStaff" name="topics"><template #label><AppIcon name="document" /> 帖子</template><TopicsPane v-if="tab === 'topics'" /></el-tab-pane>
+      <el-tab-pane v-if="isCoreStaff" name="manual-reviews"><template #label><AppIcon name="shield" /> 人工审核</template><ManualReviewsPane v-if="tab === 'manual-reviews'" /></el-tab-pane>
+      <el-tab-pane v-if="canManageLostFound" name="lost-found"><template #label><AppIcon name="service" /> 失物招领</template><LostFoundPane v-if="tab === 'lost-found'" /></el-tab-pane>
+      <el-tab-pane name="navigation" v-if="auth.isAdmin"><template #label><AppIcon name="menu" /> 顶部导航</template><NavigationPane v-if="tab === 'navigation'" /></el-tab-pane>
+      <el-tab-pane name="feeds" v-if="auth.isAdmin"><template #label><AppIcon name="sync" /> 同步源</template><FeedsPane v-if="tab === 'feeds'" /></el-tab-pane>
+      <el-tab-pane name="jwxt-agents" v-if="auth.isAdmin"><template #label><AppIcon name="school" /> 教务节点</template><JwxtAgentsPane v-if="tab === 'jwxt-agents'" /></el-tab-pane>
+      <el-tab-pane name="announcements" v-if="auth.isAdmin"><template #label><AppIcon name="announcement" /> 公告</template><AnnouncementsPane v-if="tab === 'announcements'" /></el-tab-pane>
+      <el-tab-pane name="forum-ads" v-if="auth.isAdmin"><template #label><AppIcon name="promotion" /> 论坛广告</template><ForumAdsPane v-if="tab === 'forum-ads'" /></el-tab-pane>
+      <el-tab-pane name="vip-gift-codes" v-if="auth.isAdmin"><template #label><AppIcon name="gift" /> VIP 礼品码</template><VipGiftCodesPane v-if="tab === 'vip-gift-codes'" /></el-tab-pane>
+      <el-tab-pane name="epay" v-if="auth.isAdmin"><template #label><AppIcon name="card" /> 支付对接</template><EpayPane v-if="tab === 'epay'" /></el-tab-pane>
+      <el-tab-pane name="sponsor" v-if="auth.isAdmin"><template #label><AppIcon name="star" /> 赞助</template><SponsorPane v-if="tab === 'sponsor'" /></el-tab-pane>
+      <el-tab-pane name="qqbot" v-if="auth.isAdmin"><template #label><AppIcon name="bot" /> QQBot</template><QqBotPane v-if="tab === 'qqbot'" /></el-tab-pane>
+      <el-tab-pane name="wechat" v-if="auth.isAdmin"><template #label><AppIcon name="forum" /> 微信服务号</template><WechatServicePane v-if="tab === 'wechat'" /></el-tab-pane>
+      <el-tab-pane name="ai" v-if="auth.isAdmin"><template #label><AppIcon name="ai" /> AI 管理</template><AiManagementPane v-if="tab === 'ai'" /></el-tab-pane>
+      <el-tab-pane name="deployment" v-if="auth.isAdmin"><template #label><AppIcon name="promotion" /> 更新部署</template><DeploymentPane v-if="tab === 'deployment'" /></el-tab-pane>
+      <el-tab-pane name="database" v-if="auth.isAdmin"><template #label><AppIcon name="database" /> 数据备份</template><DatabasePane v-if="tab === 'database'" /></el-tab-pane>
+      <el-tab-pane name="media-storage" v-if="auth.isAdmin"><template #label><AppIcon name="folder" /> 媒体存储</template><MediaStoragePane v-if="tab === 'media-storage'" /></el-tab-pane>
+      <el-tab-pane name="filestore-settings" v-if="auth.isAdmin"><template #label><AppIcon name="box" /> 文件收集</template><FilestoreSettingsPane v-if="tab === 'filestore-settings'" /></el-tab-pane>
+      <el-tab-pane name="features" v-if="auth.isAdmin"><template #label><AppIcon name="settings" /> 功能开关</template><FeaturesPane v-if="tab === 'features'" /></el-tab-pane>
     </el-tabs>
   </div>
 </template>
 
 <script setup lang="ts">
+import AppIcon from "@/components/common/AppIcon.vue";
 import { computed, defineAsyncComponent, ref, onMounted, watch } from "vue";
 import type { EChartsOption } from "echarts";
 import { useRoute, useRouter } from "vue-router";
