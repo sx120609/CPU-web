@@ -26,6 +26,10 @@
   }
 
   .reply.nested { border-left: 3px solid color-mix(in srgb, var(--cpu-primary) 48%, var(--cpu-border)); }
+  .reply.accepted {
+    background: linear-gradient(180deg, color-mix(in srgb, #10b981 7%, var(--cpu-card)) 0%, var(--cpu-card) 100%);
+    box-shadow: 4px 0 0 color-mix(in srgb, #10b981 76%, var(--cpu-primary)) inset;
+  }
   .reply:target {
     background: linear-gradient(180deg, color-mix(in srgb, var(--cpu-gold) 13%, var(--cpu-card)) 0%, var(--cpu-card) 100%);
     box-shadow: 0 0 0 1px color-mix(in srgb, var(--cpu-gold) 45%, var(--cpu-border)) inset;

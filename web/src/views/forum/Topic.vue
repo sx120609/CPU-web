@@ -164,6 +164,19 @@
         <span>推荐 <el-rate :model-value="topic.metadata.ratings.recommend" disabled size="small" /></span>
         <span>给分 <el-rate :model-value="topic.metadata.ratings.givingScore" disabled size="small" /></span>
       </div>
+      <div
+        v-if="isQuestionTopic"
+        class="extra-bar question-bounty-bar"
+        :class="{ resolved: questionResolved }"
+      >
+        <AppIcon name="question" class="question-bounty-icon" />
+        <div class="question-bounty-copy">
+          <b>{{ questionResolved ? "问题已解决" : `平台悬赏 ${questionBountyPoints} AI 点` }}</b>
+          <span v-if="questionRewardPaid">最佳回答者已获得 {{ questionBountyPoints }} AI 点。</span>
+          <span v-else-if="questionResolved">该问题已标记为解决。</span>
+          <span v-else>提问者采纳回答后，由平台直接奖励回答者，无需提问者支付。</span>
+        </div>
+      </div>
       <section v-if="topic.board?.type === 'market'" class="second-hand-summary">
         <div class="second-hand-summary-head">
           <b>{{ marketKindLabel }}</b>
@@ -315,7 +328,7 @@
           :id="`reply-${entry.item.id}`"
           :key="entry.item.id"
           class="reply"
-          :class="{ nested: entry.depth > 0 }"
+          :class="{ nested: entry.depth > 0, accepted: isAcceptedAnswer(entry.item) }"
         >
           <aside class="reply-author-panel">
             <UserAvatar :size="48" class="avatar" :src="entry.item.author?.avatar" :name="entry.item.author?.nickname" :seed="entry.item.author?.id ?? entry.item.anonymousAlias ?? entry.item.id" :profile-frame="entry.item.author?.profileFrame" alt="回复头像" />
@@ -341,6 +354,7 @@
           <div class="reply-body">
             <div class="reply-meta">
               <span class="floor">{{ entry.item.hidden ? "待审核" : `#${entry.item.floor}` }}</span>
+              <el-tag v-if="isAcceptedAnswer(entry.item)" size="small" type="success" effect="dark">最佳回答</el-tag>
               <span v-if="entry.parent" class="reply-parent-chip">回复 {{ entry.parent.author?.nickname || "同学" }} · #{{ entry.parent.floor }}</span>
               <span>{{ fmtRelative(entry.item.createdAt) }}</span>
             </div>
@@ -361,6 +375,17 @@
                 label="管理"
                 @updated="applyReplyAuthorModeration(entry.item, $event)"
               />
+              <el-button
+                v-if="canAcceptAnswer(entry.item)"
+                size="small"
+                type="warning"
+                plain
+                :loading="acceptAnswerBusyId === entry.item.id"
+                :disabled="acceptAnswerBusyId !== null"
+                @click="acceptAnswer(entry.item)"
+              >
+                采纳并奖励 {{ questionBountyPoints }} AI 点
+              </el-button>
               <el-button v-if="!entry.item.hidden" text size="small" @click="replyTo(entry.item)">回复</el-button>
               <el-button v-if="canEditReply(entry.item)" text size="small" @click="editReply(entry.item)">编辑</el-button>
               <el-button v-if="canEditReply(entry.item)" text size="small" type="danger" :loading="replyActionBusyId === entry.item.id" :disabled="replyActionBusyId !== null" @click="removeReply(entry.item)">删除</el-button>
@@ -757,6 +782,7 @@ type TopicAction = "" | "like" | "pin" | "globalPin" | "lock" | "delete";
 const topicActionBusy = ref<TopicAction>("");
 const replyActionBusyId = ref<number | null>(null);
 const replyLikeBusyId = ref<number | null>(null);
+const acceptAnswerBusyId = ref<number | null>(null);
 const blockedReplyId = ref<number | null>(null);
 const blockedReplyInfo = reactive<{ reason: string; riskScore: number | null }>({
   reason: "",
@@ -774,6 +800,7 @@ const replyEditorRef = ref<InstanceType<typeof RichTextEditor> | null>(null);
 const shareCardExportRef = ref<HTMLElement | null>(null);
 let mainFloorResizeObserver: ResizeObserver | null = null;
 const REPLY_MAX = 10000;
+const QUESTION_BOUNTY_POINTS = 10;
 const isTopicActionBusy = computed(() => topicActionBusy.value !== "");
 
 const marketKind = computed(() => {
@@ -816,6 +843,15 @@ const boardDisplayName = computed(() => topic.value?.board?.name || "药大拾�
 const displayTopicTitle = computed(() => topic.value?.title || "");
 const isSayTopic = computed(() => topic.value?.metadata?._postMode === "say");
 const isReadOnly = computed(() => topic.value?.board?.readOnly);
+const isQuestionTopic = computed(() => topic.value?.board?.type === "question");
+const questionResolved = computed(() => topic.value?.metadata?.resolved === true);
+const questionAcceptedReplyId = computed(() => Number(topic.value?.metadata?.acceptedReplyId || 0));
+const questionBountyPoints = computed(() => QUESTION_BOUNTY_POINTS);
+const questionRewardPaid = computed(() => Boolean(
+  questionResolved.value
+  && questionAcceptedReplyId.value > 0
+  && Number(topic.value?.metadata?.awardedAiPoints || 0) === questionBountyPoints.value
+));
 const topicModerationUser = computed(() => {
   if (topic.value?.realAuthor) return topic.value.realAuthor as any;
   if (topic.value?.author?.id) return topic.value.author as any;
@@ -1311,6 +1347,48 @@ function editReply(reply: Reply) {
   if (!canEditReply(reply)) return;
   switchReplyContext({ editingId: reply.id, initialContent: reply.content });
   replyDialogOpen.value = true;
+}
+
+function replyOwnerId(reply: Reply) {
+  return Number(reply.realAuthor?.id ?? reply.authorId ?? reply.author?.id ?? 0);
+}
+
+function isAcceptedAnswer(reply: Reply) {
+  return questionAcceptedReplyId.value > 0 && questionAcceptedReplyId.value === reply.id;
+}
+
+function canAcceptAnswer(reply: Reply) {
+  return Boolean(
+    isQuestionTopic.value
+    && !questionResolved.value
+    && !reply.hidden
+    && auth.user?.id === topic.value?.authorId
+    && replyOwnerId(reply) !== auth.user?.id
+  );
+}
+
+async function acceptAnswer(reply: Reply) {
+  if (!topic.value || !canAcceptAnswer(reply) || acceptAnswerBusyId.value !== null) return;
+  const confirmed = await ElMessageBox.confirm(
+    `采纳后，平台会立即奖励回答者 ${questionBountyPoints.value} 个 AI 点，且不能改选其他回答。`,
+    "确认采纳回答",
+    { type: "warning", confirmButtonText: "确认采纳", cancelButtonText: "再看看" },
+  ).then(() => true).catch(() => false);
+  if (!confirmed) return;
+
+  acceptAnswerBusyId.value = reply.id;
+  try {
+    const result = await topicApi.acceptAnswer(topic.value.id, reply.id);
+    topic.value.metadata = { ...result.metadata };
+    writeForumTopic(forumCacheScope(auth.user), topic.value.id, { topic: topic.value, replies: replies.value });
+    ElMessage.success(result.replayed ? "这条回答已经采纳" : `已采纳，平台已奖励回答者 ${result.rewardPoints} 个 AI 点`);
+  } catch (error) {
+    const latest = await loadTopicDetail(topic.value.id);
+    if (latest) topic.value = latest;
+    ElMessage.error(getForumRequestMessage(error) || "采纳失败，请刷新后重试");
+  } finally {
+    acceptAnswerBusyId.value = null;
+  }
 }
 
 function cancelReplyEdit() {

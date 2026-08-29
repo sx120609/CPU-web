@@ -57,6 +57,10 @@ import {
   scheduleForumBackgroundTask,
 } from "../services/forumSubmission";
 import { scheduleTopicSubmissionReview } from "../services/forumSubmissionReview";
+import {
+  acceptQuestionAnswer,
+  normalizeQuestionMetadataForWrite,
+} from "../services/questionBounty";
 
 export const topicRouter = Router();
 
@@ -539,6 +543,10 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
       throw Errors.forbidden("该板块暂不支持匿名发布");
     }
 
+    const effectiveMetadata = board.type === "question"
+      ? normalizeQuestionMetadataForWrite(metadata)
+      : (metadata ?? {});
+
     const now = new Date();
     const bypassAiReview = await shouldBypassAiReviewForUser(userId, req.user!.role);
     const shouldReview = shouldRunAiReview() && !bypassAiReview;
@@ -556,7 +564,7 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
             submissionId,
             title,
             content,
-            metadata: JSON.stringify(metadata ?? {}),
+            metadata: JSON.stringify(effectiveMetadata),
             aiReviewStatus: shouldReview ? "checking" : "auto_passed",
             aiRiskLevel: shouldReview ? null : "low",
             aiRiskScore: shouldReview ? null : 0,
@@ -611,26 +619,26 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
       content,
       boardName: board.name,
       boardType: board.type,
-      metadata: metadata ?? {},
+      metadata: effectiveMetadata,
     }, topic.id);
 
     // 课评：写入 CourseRating 派生表
-    if (board.type === "coursereview" && metadata?.courseId && metadata?.ratings) {
-      const r = metadata.ratings;
-      const courseId = Number(metadata.courseId);
+    if (board.type === "coursereview" && effectiveMetadata?.courseId && effectiveMetadata?.ratings) {
+      const r = effectiveMetadata.ratings;
+      const courseId = Number(effectiveMetadata.courseId);
 
       // 解析"针对哪位老师"：
       //   - 优先用 metadata.courseTeacherId（前端已选的 CourseTeacher 关联 id）
       //   - 否则若给了 teacherName 字符串，自助 upsert Teacher + CourseTeacher
       //   - 都没给则 null（旧行为兼容）
       let courseTeacherId: number | null = null;
-      if (metadata.courseTeacherId) {
+      if (effectiveMetadata.courseTeacherId) {
         const ct = await prisma.courseTeacher.findFirst({
-          where: { id: Number(metadata.courseTeacherId), courseId },
+          where: { id: Number(effectiveMetadata.courseTeacherId), courseId },
         });
         if (ct) courseTeacherId = ct.id;
-      } else if (typeof metadata.teacherName === "string" && metadata.teacherName.trim()) {
-        const name = metadata.teacherName.trim().slice(0, 40);
+      } else if (typeof effectiveMetadata.teacherName === "string" && effectiveMetadata.teacherName.trim()) {
+        const name = effectiveMetadata.teacherName.trim().slice(0, 40);
         const teacher = await prisma.teacher.upsert({
           where: { name },
           update: {},
@@ -654,7 +662,7 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
           reward: clampInt(r.reward, 1, 5),
           recommend: clampInt(r.recommend, 1, 5),
           givingScore: clampInt(r.givingScore ?? r.score, 1, 5),
-          semester: metadata.semester ?? null,
+          semester: effectiveMetadata.semester ?? null,
         },
       }).catch(() => {});
       await refreshCourseStats(courseId);
@@ -718,6 +726,26 @@ topicRouter.post("/:id/request-manual-review", authRequired, async (req, res, ne
   } catch (e) { next(e); }
 });
 
+const acceptAnswerSchema = z.object({
+  replyId: z.number().int().positive(),
+});
+
+topicRouter.post("/:id/accept-answer", authRequired, validate(acceptAnswerSchema), async (req, res, next) => {
+  try {
+    res.setHeader("Cache-Control", "no-store");
+    const topicId = Number(req.params.id);
+    if (!Number.isFinite(topicId) || topicId <= 0) throw Errors.badRequest("问题 ID 不合法");
+    await ensureForumAccessEnabled(req.user!.userId, req.user!.role);
+    const result = await acceptQuestionAnswer({
+      topicId,
+      replyId: req.body.replyId,
+      actorUserId: req.user!.userId,
+    });
+    await invalidateForumCaches();
+    ok(res, result);
+  } catch (e) { next(e); }
+});
+
 topicRouter.patch("/:id", authRequired, async (req, res, next) => {
   try {
     res.setHeader("Cache-Control", "no-store");
@@ -741,7 +769,12 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
     let queuedForReview = false;
     const nextTitle = typeof body.title === "string" && canEditContent ? body.title : t.title;
     const nextContent = typeof body.content === "string" && canEditContent ? body.content : t.content;
-    const nextMetadataRaw = typeof body.metadata === "object" && body.metadata ? JSON.stringify(body.metadata) : t.metadata;
+    const currentMetadata = parseJsonSafe(t.metadata);
+    const requestedMetadata = typeof body.metadata === "object" && body.metadata ? body.metadata : currentMetadata;
+    const nextMetadata = t.board?.type === "question"
+      ? normalizeQuestionMetadataForWrite(requestedMetadata, currentMetadata)
+      : requestedMetadata;
+    const nextMetadataRaw = JSON.stringify(nextMetadata);
     if (typeof body.title === "string" && canEditContent) data.title = body.title;
     if (typeof body.content === "string" && canEditContent) data.content = body.content;
     if (typeof body.metadata === "object" && body.metadata && canEditContent) data.metadata = nextMetadataRaw;
@@ -773,7 +806,7 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
         where: { id: t.boardId },
         select: { name: true, type: true },
       });
-      const metadata = typeof body.metadata === "object" && body.metadata ? body.metadata : parseJsonSafe(t.metadata);
+      const metadata = nextMetadata;
       queuedForReview = shouldRunAiReview() && !bypassAiReview;
       const similarityThreshold = getSiteConfig().aiEditSimilarityThreshold ?? 0;
       Object.assign(data, queuedForReview

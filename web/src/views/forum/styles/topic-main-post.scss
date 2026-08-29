@@ -174,6 +174,21 @@
     a { color: var(--cpu-primary); text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
   }
   .extra-bar.ratings { background: color-mix(in srgb, #10b981 9%, var(--cpu-card)); }
+  .question-bounty-bar {
+    align-items: center;
+    border: 1px solid color-mix(in srgb, #f59e0b 28%, var(--cpu-border-soft));
+    background: color-mix(in srgb, #f59e0b 9%, var(--cpu-card));
+    color: color-mix(in srgb, #b45309 72%, var(--cpu-text));
+  }
+  .question-bounty-icon { flex: 0 0 auto; font-size: 20px; }
+  .question-bounty-bar.resolved {
+    border-color: color-mix(in srgb, #10b981 28%, var(--cpu-border-soft));
+    background: color-mix(in srgb, #10b981 8%, var(--cpu-card));
+    color: color-mix(in srgb, #047857 72%, var(--cpu-text));
+  }
+  .question-bounty-copy { display: grid; gap: 2px; }
+  .question-bounty-copy b { color: currentColor; font-size: 13px; }
+  .question-bounty-copy span { color: var(--cpu-text-secondary); font-size: 12px; line-height: 1.5; }
 
   .second-hand-summary {
     overflow: hidden;

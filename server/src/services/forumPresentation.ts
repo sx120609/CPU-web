@@ -4,6 +4,7 @@ import { sanitizeLostFoundTopicFields } from "./lostFoundPrivacy";
 import { isGlobalPinnedTopic } from "./siteSettings";
 import { renderModeratedVideoContent, summarizeForumVideoModerationForContent } from "./videoModeration";
 import { presentAnonymousAlias } from "./userTrust";
+import { presentQuestionMetadata } from "./questionBounty";
 
 type Viewer = {
   userId?: number | null;
@@ -44,7 +45,9 @@ export function decodeTopicForViewer(topic: any, viewer?: Viewer) {
   const { submissionId: _submissionId, ...publicTopic } = privacySafeTopic;
   const rawMetadata = safeJson(privacySafeTopic.metadata);
   const baseMetadata = rawMetadata && typeof rawMetadata === "object" ? rawMetadata : {};
-  const metadata = baseMetadata;
+  const metadata = privacySafeTopic.board?.type === "question"
+    ? presentQuestionMetadata(baseMetadata)
+    : baseMetadata;
   const anonymous = Boolean(privacySafeTopic?.isAnonymous);
   const reveal = anonymous && canRevealAnonymousAuthor(viewer, privacySafeTopic?.authorId);
   return {

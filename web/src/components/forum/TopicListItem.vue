@@ -99,7 +99,7 @@
         </el-tag>
         <el-tag v-if="topic.locked" size="small" type="info" class="tag"><AppIcon name="lock" /></el-tag>
         <el-tag v-if="metaSolved" size="small" type="success" class="tag">已解决</el-tag>
-        <el-tag v-if="metaBounty" size="small" type="warning" class="tag">悬赏 {{ metaBounty }}</el-tag>
+        <el-tag v-if="metaBounty && !metaSolved" size="small" type="warning" class="tag">悬赏 {{ metaBounty }} AI 点</el-tag>
       </div>
       <div class="line2">
         <div class="row-byline">
@@ -221,7 +221,7 @@ const marketCardFacts = computed(() => {
   return facts;
 });
 const metaSolved = computed(() => props.topic.metadata?.resolved === true);
-const metaBounty = computed(() => props.topic.metadata?.bounty ? props.topic.metadata.bounty : 0);
+const metaBounty = computed(() => props.topic.board?.type === "question" ? 10 : 0);
 const boardDisplayName = computed(() => props.topic.board?.name || "");
 const metaRating = computed(() => {
   const r = props.topic.metadata?.ratings?.recommend;

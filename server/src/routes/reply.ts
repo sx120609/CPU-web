@@ -21,6 +21,7 @@ import {
   normalizeForumSubmissionId,
 } from "../services/forumSubmission";
 import { scheduleReplySubmissionReview } from "../services/forumSubmissionReview";
+import { parseQuestionMetadata } from "../services/questionBounty";
 
 export const replyRouter = Router();
 
@@ -336,6 +337,7 @@ replyRouter.patch("/:id", authRequired, validate(updateSchema), async (req, res,
             id: true,
             locked: true,
             hidden: true,
+            metadata: true,
             board: { select: { slug: true, type: true } },
           },
         },
@@ -347,6 +349,10 @@ replyRouter.patch("/:id", authRequired, validate(updateSchema), async (req, res,
     const isOwner = reply.authorId === req.user!.userId;
     const isMod = req.user!.role === "mod" || req.user!.role === "admin";
     if (!isOwner && !isMod) throw Errors.forbidden();
+    const acceptedReplyId = Number(parseQuestionMetadata(reply.topic.metadata).acceptedReplyId || 0);
+    if (isOwner && !isMod && acceptedReplyId === reply.id) {
+      throw Errors.forbidden("已采纳回答不能再修改，如需处理请联系管理员");
+    }
     if (!isMod && !isBoardTypeEnabled(reply.topic.board?.type)) throw Errors.forbidden(featureClosedMessage(reply.topic.board?.type));
     if (reply.topic.locked && !isMod) throw Errors.forbidden("帖子已锁定，无法修改回复");
     if (isOwner) {
@@ -380,13 +386,17 @@ replyRouter.delete("/:id", authRequired, async (req, res, next) => {
     const id = Number(req.params.id);
     const r = await prisma.reply.findUnique({
       where: { id },
-      include: { topic: { select: { id: true, authorId: true, createdAt: true, board: { select: { slug: true, type: true } } } } },
+      include: { topic: { select: { id: true, authorId: true, createdAt: true, metadata: true, board: { select: { slug: true, type: true } } } } },
     });
     if (!r) throw Errors.notFound();
     if (isRetiredBoardSlug(r.topic?.board?.slug)) throw Errors.notFound();
     const isOwner = r.authorId === req.user!.userId;
     const isMod = req.user!.role === "mod" || req.user!.role === "admin";
     if (!isOwner && !isMod) throw Errors.forbidden();
+    const acceptedReplyId = Number(parseQuestionMetadata(r.topic.metadata).acceptedReplyId || 0);
+    if (isOwner && !isMod && acceptedReplyId === r.id) {
+      throw Errors.forbidden("已采纳回答不能删除，如需处理请联系管理员");
+    }
     if (!isMod && !isBoardTypeEnabled(r.topic?.board?.type)) throw Errors.forbidden(featureClosedMessage(r.topic?.board?.type));
     if (isOwner) await ensureForumAccessEnabled(req.user!.userId, req.user!.role);
     await prisma.$transaction(async (tx) => {

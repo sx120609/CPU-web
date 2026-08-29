@@ -227,6 +227,7 @@
           <el-option label="全部来源" value="" />
           <el-option label="后台发放" value="admin_grant" />
           <el-option label="赞助奖励" value="sponsor_reward" />
+          <el-option label="悬赏奖励" value="question_bounty_reward" />
           <el-option label="AI 消耗" value="ai_usage" />
           <el-option label="失败返还" value="ai_refund" />
         </el-select>
@@ -691,6 +692,7 @@ function changeLedgerSize() {
 function sourceLabel(source: string) {
   if (source === "admin_grant") return "后台发放";
   if (source === "sponsor_reward") return "赞助奖励";
+  if (source === "question_bounty_reward") return "悬赏奖励";
   if (source === "ai_refund") return "失败返还";
   return "AI 消耗";
 }
@@ -698,6 +700,7 @@ function sourceLabel(source: string) {
 function sourceType(source: string) {
   if (source === "admin_grant") return "success";
   if (source === "sponsor_reward") return "warning";
+  if (source === "question_bounty_reward") return "success";
   if (source === "ai_refund") return "info";
   return "danger";
 }

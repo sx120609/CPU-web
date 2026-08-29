@@ -125,6 +125,14 @@ export type ForumSubmissionResult = {
 };
 
 export type TopicSubmissionResponse = Topic & { submissionResult?: ForumSubmissionResult };
+export type QuestionAnswerAcceptance = {
+  topicId: number;
+  replyId: number;
+  metadata: Record<string, any>;
+  rewardPoints: number;
+  recipientBalance: number;
+  replayed: boolean;
+};
 export type ReplySubmissionResponse = Reply & {
   blocked?: boolean;
   submissionResult?: ForumSubmissionResult;
@@ -272,6 +280,8 @@ export const topicApi = {
     }),
   remove: (id: number) => request.delete<any>(`/topics/${id}`),
   requestManualReview: (id: number) => request.post<{ ok: true }>(`/topics/${id}/request-manual-review`),
+  acceptAnswer: (topicId: number, replyId: number) =>
+    request.post<QuestionAnswerAcceptance>(`/topics/${topicId}/accept-answer`, { replyId }, { suppressErrorMessage: true }),
 };
 
 export const replyApi = {

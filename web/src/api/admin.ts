@@ -135,7 +135,7 @@ export type AssistantPointLedgerRow = {
   userId: number;
   delta: number;
   balanceAfter: number;
-  source: "admin_grant" | "sponsor_reward" | "ai_usage" | "ai_refund";
+  source: "admin_grant" | "sponsor_reward" | "question_bounty_reward" | "ai_usage" | "ai_refund";
   reason: string;
   referenceType?: string | null;
   referenceId?: string | null;

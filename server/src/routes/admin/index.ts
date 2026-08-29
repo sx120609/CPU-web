@@ -2590,7 +2590,7 @@ adminRouter.get("/campus-assistant/points/ledger", adminOnly, async (req, res, n
     const rawSize = Number(req.query.size ?? 20);
     const page = Number.isFinite(rawPage) ? Math.max(1, Math.floor(rawPage)) : 1;
     const size = Number.isFinite(rawSize) ? Math.min(100, Math.max(10, Math.floor(rawSize))) : 20;
-    const sources = new Set(["admin_grant", "sponsor_reward", "ai_usage", "ai_refund"]);
+    const sources = new Set(["admin_grant", "sponsor_reward", "question_bounty_reward", "ai_usage", "ai_refund"]);
     const directions = new Set(["income", "expense"]);
 
     if (q.length > 100) throw Errors.badRequest("搜索内容不能超过 100 个字符");

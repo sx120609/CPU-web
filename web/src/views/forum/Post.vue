@@ -232,13 +232,13 @@
           </div>
         </section>
 
-        <!-- 提问板块特化 -->
-        <template v-if="boardType === 'question'">
-          <el-form-item label="悬赏（声望）">
-            <el-input-number v-model="meta.bounty" :min="0" :max="999" :step="5" />
-            <span class="cpu-muted" style="margin-left:8px">采纳回答者获得声望</span>
-          </el-form-item>
-        </template>
+        <div v-if="boardType === 'question'" class="question-bounty-notice">
+          <AppIcon name="question" class="question-bounty-icon" />
+          <div>
+            <b>自动开启 10 AI 点悬赏</b>
+            <p>发布后无需支付点数；采纳回答时，平台会直接奖励回答者 10 AI 点。</p>
+          </div>
+        </div>
 
         <!-- 课程点评特化 -->
         <template v-if="boardType === 'coursereview'">
@@ -525,6 +525,10 @@
           <span>{{ form.content.length }} / {{ CONTENT_MAX }}</span>
         </div>
         <el-tag v-if="form.anonymous" type="warning" effect="plain" class="preview-anon-tag">匿名发布</el-tag>
+        <div v-if="boardType === 'question'" class="question-bounty-notice preview-question-bounty">
+          <AppIcon name="question" class="question-bounty-icon" />
+          <div><b>平台悬赏 10 AI 点</b><p>采纳回答后由平台直接发放。</p></div>
+        </div>
         <div v-if="isSecondHandPost" class="second-hand-preview-summary">
           <div v-for="fact in marketPreviewFacts" :key="fact.label" class="second-hand-preview-fact">
             <AppIcon :name="fact.icon" />
@@ -742,7 +746,6 @@ function defaultPostMeta() {
     tradeMode: "校内面交",
     campus: "",
     location: "",
-    bounty: 0,
     courseId: undefined,
     courseTeacherId: undefined,
     teacherName: "",
@@ -951,7 +954,7 @@ watch(anonymousEnabledForForm, (enabled) => {
   if (!enabled && !editingId.value) form.anonymous = false;
 }, { immediate: true });
 
-watch(() => [form.boardSlug, form.title, form.anonymous, publishMode.value, meta.marketKind, meta.category, meta.priceType, meta.price, meta.negotiable, meta.condition, meta.tradeMode, meta.campus, meta.location, meta.bounty, meta.courseId, meta.courseTeacherId, meta.teacherName, meta.semester, editorMode.value], () => {
+watch(() => [form.boardSlug, form.title, form.anonymous, publishMode.value, meta.marketKind, meta.category, meta.priceType, meta.price, meta.negotiable, meta.condition, meta.tradeMode, meta.campus, meta.location, meta.courseId, meta.courseTeacherId, meta.teacherName, meta.semester, editorMode.value], () => {
   scheduleFormDraftSave();
 }, { deep: true });
 
@@ -1523,7 +1526,7 @@ function buildMetadata() {
       if (meta.location?.trim()) metadata.location = meta.location.trim();
     }
   } else if (boardType.value === "question") {
-    metadata.bounty = meta.bounty;
+    metadata.bounty = 10;
     metadata.resolved = false;
   } else if (boardType.value === "coursereview") {
     if (!meta.courseId) { ElMessage.warning("请选择课程"); return null; }
@@ -1690,7 +1693,10 @@ async function confirmSubmit() {
         const saved = current
           && current.title === form.title
           && current.content === form.content
-          && JSON.stringify(current.metadata ?? {}) === JSON.stringify(metadata ?? {});
+          && (
+            current.board?.type === "question"
+            || JSON.stringify(current.metadata ?? {}) === JSON.stringify(metadata ?? {})
+          );
         const reviewState = current ? resolveForumReviewState(current) : "unknown";
         if (saved && reviewState !== "unknown") {
           await handleTopicSubmissionResult({
@@ -2444,6 +2450,40 @@ function notifyVideoReviewState(summary?: {
 .second-hand-safety b {
   flex: 0 0 auto;
   color: color-mix(in srgb, #b45309 72%, var(--cpu-text));
+}
+
+.question-bounty-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  margin-bottom: 18px;
+  padding: 13px 15px;
+  border: 1px solid color-mix(in srgb, #f59e0b 28%, var(--cpu-border-soft));
+  border-radius: 12px;
+  background: color-mix(in srgb, #f59e0b 8%, var(--cpu-card));
+  color: var(--cpu-text-secondary);
+}
+
+.question-bounty-icon {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: color-mix(in srgb, #d97706 78%, var(--cpu-text));
+  font-size: 20px;
+}
+
+.question-bounty-notice b {
+  color: color-mix(in srgb, #b45309 72%, var(--cpu-text));
+  font-size: 13px;
+}
+
+.question-bounty-notice p {
+  margin: 3px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.preview-question-bounty {
+  margin-bottom: 12px;
 }
 
 .second-hand-description-guide {
