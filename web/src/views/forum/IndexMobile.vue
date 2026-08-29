@@ -25,7 +25,7 @@
     </nav>
 
     <PinnedTopicStrip v-if="selectedChannel === 'latest'" :topics="pinnedList" />
-    <ForumAdCard v-if="forumAd" :ad="forumAd" compact />
+    <ForumAdCard v-if="topAd" :ad="topAd" compact />
 
     <section class="feed-panel" :aria-busy="loading">
       <div class="feed-panel-head">
@@ -40,12 +40,14 @@
         <el-empty :description="error"><el-button type="primary" @click="loadFeed">重试</el-button></el-empty>
       </div>
       <div v-else class="feed-list" v-loading="loading && !feedItems.length">
-        <ForumFeedCard
-          v-for="topic in feedItems"
-          :key="topic.id"
-          :topic="topic"
-          :rank="selectedChannel === 'hot' ? Number((topic as any).rank || 0) : 0"
-        />
+        <template v-for="(topic, index) in feedItems" :key="topic.id">
+          <ForumFeedCard
+            :topic="topic"
+            :rank="selectedChannel === 'hot' ? Number((topic as any).rank || 0) : 0"
+          />
+          <ForumAdCard v-if="inlineAd && index === 2" :ad="inlineAd" compact />
+        </template>
+        <ForumAdCard v-if="inlineAd && feedItems.length > 0 && feedItems.length < 3" :ad="inlineAd" compact />
         <el-empty v-if="!loading && !feedItems.length" description="这个分类暂时还没有内容" />
       </div>
 
@@ -142,7 +144,8 @@ const loading = ref(false);
 const loadingMore = ref(false);
 const error = ref("");
 const loadMoreError = ref("");
-const forumAd = ref<ForumAd | null>(null);
+const topAd = ref<ForumAd | null>(null);
+const inlineAd = ref<ForumAd | null>(null);
 const loadMoreSentinelRef = ref<HTMLElement | null>(null);
 const canLoadMore = computed(() => selectedChannel.value !== "hot" && feedItems.value.length < total.value);
 let loadObserver: IntersectionObserver | null = null;
@@ -336,8 +339,17 @@ async function loadBoards() {
 }
 
 async function loadAd() {
-  try { forumAd.value = (await forumAdsApi.list("forum-index-top"))[0] || null; }
-  catch { forumAd.value = null; }
+  try {
+    const [top, inline] = await Promise.all([
+      forumAdsApi.list("forum-index-top").catch(() => []),
+      forumAdsApi.list("forum-feed-inline").catch(() => []),
+    ]);
+    topAd.value = top[0] || null;
+    inlineAd.value = inline[0] || null;
+  } catch {
+    topAd.value = null;
+    inlineAd.value = null;
+  }
 }
 
 function openBoard(board: Board) {

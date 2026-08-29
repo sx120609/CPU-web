@@ -7,6 +7,29 @@
       title="广告默认只显示在论坛页面的指定广告位，不插入帖子正文或回复；勾选 VIP 免广告后，VIP 用户不会看到该条广告。"
     />
 
+    <section v-if="list.length" class="metric-overview" aria-label="广告效果概览">
+      <div>
+        <span>投放中</span>
+        <strong>{{ activeAds }}</strong>
+        <small>共 {{ list.length }} 条广告</small>
+      </div>
+      <div>
+        <span>累计有效曝光</span>
+        <strong>{{ formatNumber(totalMetrics.impressions) }}</strong>
+        <small>进入屏幕超过 0.7 秒</small>
+      </div>
+      <div>
+        <span>累计点击</span>
+        <strong>{{ formatNumber(totalMetrics.clicks) }}</strong>
+        <small>移动端与桌面端合计</small>
+      </div>
+      <div>
+        <span>整体点击率</span>
+        <strong>{{ formatCtr(totalMetrics.ctr) }}</strong>
+        <small>点击 ÷ 有效曝光</small>
+      </div>
+    </section>
+
     <el-card shadow="never" class="editor-card">
       <template #header>
         <div class="card-header">
@@ -66,7 +89,7 @@
     <el-card shadow="never">
       <template #header>
         <div class="card-header">
-          <div><h3>广告列表</h3><p>按广告位和排序展示，最多同时返回 3 条。</p></div>
+          <div><h3>广告列表与效果</h3><p>曝光按真正进入屏幕统计，可对比近 7 天、近 30 天和设备分布。</p></div>
           <el-button text :loading="loading" @click="load">刷新</el-button>
         </div>
       </template>
@@ -82,6 +105,25 @@
             <p>{{ item.description || "无说明" }}</p>
             <small>{{ item.linkUrl }} · {{ item.vipExempt ? "VIP 免广告" : "所有用户展示" }} · 排序 {{ item.sortOrder }}</small>
             <small v-if="item.startsAt || item.endsAt">{{ formatDate(item.startsAt) }} — {{ formatDate(item.endsAt) }}</small>
+            <div class="row-metrics">
+              <div><span>累计曝光</span><strong>{{ formatNumber(item.metrics.all.impressions) }}</strong></div>
+              <div><span>累计点击</span><strong>{{ formatNumber(item.metrics.all.clicks) }}</strong></div>
+              <div><span>累计 CTR</span><strong>{{ formatCtr(item.metrics.all.ctr) }}</strong></div>
+              <div><span>近 7 天</span><strong>{{ formatCtr(item.metrics.last7Days.ctr) }}</strong></div>
+              <div><span>近 30 天</span><strong>{{ formatCtr(item.metrics.last30Days.ctr) }}</strong></div>
+              <div><span>移动端曝光</span><strong>{{ deviceShare(item) }}</strong></div>
+            </div>
+            <div v-if="item.metrics.daily.length" class="daily-trend">
+              <span>近 30 天</span>
+              <div class="trend-bars" aria-label="近 30 天曝光趋势">
+                <i
+                  v-for="day in item.metrics.daily"
+                  :key="day.day"
+                  :style="{ height: `${trendHeight(item, day.impressions)}%` }"
+                  :title="`${day.day}：${day.impressions} 次曝光，${day.clicks} 次点击`"
+                ></i>
+              </div>
+            </div>
           </div>
           <div class="row-actions">
             <el-button size="small" @click="edit(item)">编辑</el-button>
@@ -94,15 +136,15 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { adminApi, type ForumAdAdmin } from "@/api/admin";
 
 const placementOptions = [
-  { value: "forum-index-top" as const, label: "论坛首页 · 顶部" },
+  { value: "forum-index-top" as const, label: "论坛首页 · 顶部（桌面 / 移动）" },
   { value: "forum-home-pinned" as const, label: "首页 · 全局置顶下方" },
   { value: "forum-home-hot" as const, label: "首页 · 热议下方" },
-  { value: "forum-feed-inline" as const, label: "热榜 / 最新 · 内容区" },
+  { value: "forum-feed-inline" as const, label: "热榜 / 最新 · 内容区（桌面 / 移动）" },
   { value: "forum-board-top" as const, label: "板块页 · 标题下方" },
 ];
 
@@ -110,6 +152,18 @@ const list = ref<ForumAdAdmin[]>([]);
 const loading = ref(false);
 const saving = ref(false);
 const editingId = ref<number | null>(null);
+const activeAds = computed(() => list.value.filter((item) => item.enabled).length);
+const totalMetrics = computed(() => {
+  const totals = list.value.reduce((result, item) => {
+    result.impressions += item.metrics.all.impressions;
+    result.clicks += item.metrics.all.clicks;
+    return result;
+  }, { impressions: 0, clicks: 0 });
+  return {
+    ...totals,
+    ctr: totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0,
+  };
+});
 const form = reactive({
   title: "",
   description: "",
@@ -223,10 +277,32 @@ function placementLabel(value: ForumAdAdmin["placement"]) {
 function formatDate(value: string | null) {
   return value ? new Date(value).toLocaleString("zh-CN", { hour12: false }) : "不限";
 }
+
+function formatNumber(value: number) {
+  return new Intl.NumberFormat("zh-CN").format(value || 0);
+}
+
+function formatCtr(value: number) {
+  return `${Number(value || 0).toFixed(2)}%`;
+}
+
+function deviceShare(item: ForumAdAdmin) {
+  const total = item.metrics.all.impressions;
+  return total > 0 ? `${Math.round((item.metrics.mobile.impressions / total) * 100)}%` : "—";
+}
+
+function trendHeight(item: ForumAdAdmin, impressions: number) {
+  const max = Math.max(1, ...item.metrics.daily.map((day) => day.impressions));
+  return Math.max(10, Math.round((impressions / max) * 100));
+}
 </script>
 
 <style scoped>
 .forum-ads-pane { display: flex; flex-direction: column; gap: 14px; }
+.metric-overview { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.metric-overview > div { padding: 15px; border: 1px solid var(--cpu-border-soft); border-radius: 13px; background: var(--cpu-card); }
+.metric-overview span, .metric-overview small { display: block; color: var(--cpu-text-muted); font-size: 11px; }
+.metric-overview strong { display: block; margin: 7px 0 5px; color: var(--cpu-text); font-size: 23px; line-height: 1; }
 .card-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .card-header h3 { margin: 0; font-size: 15px; }
 .card-header p { margin: 5px 0 0; color: var(--cpu-text-muted); font-size: 12px; }
@@ -241,5 +317,13 @@ function formatDate(value: string | null) {
 .row-title strong { color: var(--cpu-text); }
 .ad-row p { margin: 7px 0; color: var(--cpu-text-secondary); font-size: 13px; }
 .ad-row small { display: block; margin-top: 3px; overflow-wrap: anywhere; color: var(--cpu-text-muted); font-size: 11px; }
-@media (max-width: 650px) { .form-grid { grid-template-columns: 1fr; } .ad-row { flex-direction: column; } }
+.row-metrics { display: grid; grid-template-columns: repeat(6, minmax(76px, 1fr)); gap: 7px; margin-top: 12px; }
+.row-metrics > div { padding: 8px 9px; border-radius: 9px; background: var(--cpu-surface-soft); }
+.row-metrics span { display: block; color: var(--cpu-text-muted); font-size: 10px; }
+.row-metrics strong { display: block; margin-top: 4px; color: var(--cpu-text); font-size: 14px; }
+.daily-trend { display: flex; align-items: flex-end; gap: 10px; margin-top: 10px; color: var(--cpu-text-muted); font-size: 10px; }
+.trend-bars { display: flex; align-items: flex-end; gap: 2px; width: min(320px, 100%); height: 34px; }
+.trend-bars i { flex: 1; min-width: 3px; border-radius: 3px 3px 0 0; background: color-mix(in srgb, var(--cpu-primary) 68%, transparent); }
+@media (max-width: 900px) { .metric-overview { grid-template-columns: repeat(2, minmax(0, 1fr)); } .row-metrics { grid-template-columns: repeat(3, minmax(76px, 1fr)); } }
+@media (max-width: 650px) { .form-grid { grid-template-columns: 1fr; } .ad-row { flex-direction: column; } .metric-overview { grid-template-columns: 1fr 1fr; } .row-metrics { grid-template-columns: repeat(2, minmax(76px, 1fr)); } }
 </style>

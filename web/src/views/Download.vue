@@ -1,144 +1,224 @@
 <template>
   <div class="download-page">
-    <section class="download-hero">
-      <div class="hero-copy">
-        <span class="hero-eyebrow">药大拾间客户端</span>
-        <h1>一个页面，装好药大拾间</h1>
-        <p>
-          安卓/鸿蒙卓易通、iOS、Windows 和 macOS 的入口都集中在这里。
-          页面会优先推荐当前设备适合的版本，已有安装提示与更新弹窗仍会照常工作。
-        </p>
-        <div class="hero-actions">
+    <div class="download-desktop">
+      <section class="desktop-hero">
+        <div class="desktop-hero-copy">
+          <span class="page-kicker">药大拾间客户端</span>
+          <h1>按你的设备，直接安装</h1>
+          <p>保留真正需要的版本、入口和安装提示。系统会识别当前设备，其他平台也可以随时查看。</p>
+          <div class="desktop-hero-meta">
+            <span><AppIcon name="success" /> 官方发布源</span>
+            <span><AppIcon name="sync" /> 跟随站点更新</span>
+            <span><AppIcon name="shield" /> 安装前安全提示</span>
+          </div>
+        </div>
+
+        <article v-if="recommendedCard" class="desktop-recommend-card">
+          <header>
+            <span class="platform-icon platform-icon--primary"><AppIcon :name="platformIconName(recommendedCard.key)" /></span>
+            <div>
+              <small>推荐给当前设备</small>
+              <h2>{{ recommendedCard.name }}</h2>
+            </div>
+            <span class="version-pill">{{ recommendedCard.versionLabel }}</span>
+          </header>
+          <p>{{ recommendedCard.summary }}</p>
+          <div class="recommend-action-row">
           <a
-            v-if="recommendedCard?.downloadUrl"
-            class="primary-action"
+              v-if="recommendedCard.downloadUrl"
+              class="download-action"
             :href="recommendedCard.downloadUrl"
             target="_blank"
             rel="noopener noreferrer"
             @click="openDownloadGuide(recommendedCard.key)"
           >
-            下载{{ recommendedCard.name }}
-            <AppIcon name="arrow-down" />
+              {{ recommendedCard.actionLabel }}
+              <AppIcon name="download" />
           </a>
           <router-link
-            v-else-if="recommendedCard?.route"
-            class="primary-action"
+              v-else-if="recommendedCard.route"
+              class="download-action"
             :to="recommendedCard.route"
           >
             {{ recommendedCard.actionLabel }}
             <AppIcon name="arrow-right" />
           </router-link>
-          <a v-else class="primary-action secondary" href="#platforms">
-            选择你的设备
-            <AppIcon name="arrow-down" />
-          </a>
-          <span class="device-result">
-            <span class="device-dot" aria-hidden="true"></span>
+            <span class="detected-device">
+              <span aria-hidden="true"></span>
             {{ detectedLabel }}
           </span>
         </div>
-      </div>
+        </article>
+        <a v-else class="desktop-recommend-card desktop-recommend-card--empty" href="#desktop-platforms">
+          <span class="platform-icon platform-icon--primary"><AppIcon name="download" /></span>
+          <span><small>暂未识别当前设备</small><b>手动选择客户端</b></span>
+          <AppIcon name="arrow-down" />
+        </a>
+      </section>
 
-      <div class="hero-mark" aria-hidden="true">
-        <div class="hero-logo">药</div>
-        <div>
-          <strong>药大拾间</strong>
-          <span>一个入口，连接校园生活</span>
-        </div>
-      </div>
-    </section>
+      <section id="desktop-platforms" class="desktop-platform-section" aria-labelledby="desktop-platform-title">
+        <header class="desktop-section-head">
+          <div>
+            <span class="page-kicker">全部平台</span>
+            <h2 id="desktop-platform-title">选择客户端</h2>
+          </div>
+          <p>桌面端版本信息实时读取发布源，下载地址不写死在页面中。</p>
+        </header>
 
-    <section id="platforms" class="platform-section" aria-labelledby="platform-title">
-      <header class="section-head">
-        <div>
-          <span>安卓/鸿蒙卓易通 · iOS · Windows · macOS</span>
-          <h2 id="platform-title">选择你的设备</h2>
-        </div>
-        <p>版本信息来自现有发布源，不在页面里写死桌面端下载地址。</p>
-      </header>
-
-      <div class="platform-grid">
+        <div class="desktop-platform-grid">
         <article
           v-for="card in platformCards"
           :key="card.key"
-          class="platform-card"
+            class="desktop-platform-card"
           :class="{ recommended: card.key === detectedPlatform }"
         >
-          <header class="platform-card-head">
-            <span class="platform-symbol" :class="`platform-symbol--${card.key}`">
-              {{ card.symbol }}
-            </span>
-            <span class="platform-title">
-              <span class="platform-name-row">
+            <header class="desktop-platform-card-head">
+              <span class="platform-icon" :class="`platform-icon--${card.key}`"><AppIcon :name="platformIconName(card.key)" /></span>
+              <span class="platform-heading">
+                <span class="platform-name-line">
                 <strong>{{ card.name }}</strong>
-                <em v-if="card.key === detectedPlatform">当前设备</em>
+                  <em v-if="card.key === detectedPlatform">推荐</em>
               </span>
               <small>{{ card.support }}</small>
             </span>
-            <span class="version-badge" :class="{ loading: card.loading }">
+              <span class="version-pill" :class="{ loading: card.loading }">
               {{ card.versionLabel }}
             </span>
           </header>
 
-          <p class="platform-summary">{{ card.summary }}</p>
+            <p class="desktop-platform-summary">{{ card.summary }}</p>
+            <div class="feature-chips">
+              <span v-for="feature in card.features" :key="feature">{{ feature }}</span>
+            </div>
 
-          <ul class="feature-list">
-            <li v-for="feature in card.features" :key="feature">
-              <AppIcon name="success" />
-              {{ feature }}
-            </li>
-          </ul>
-
-          <div class="platform-action-row">
+            <footer class="desktop-platform-footer">
             <a
               v-if="card.downloadUrl"
-              class="platform-action"
+                class="card-action"
               :href="card.downloadUrl"
               target="_blank"
               rel="noopener noreferrer"
               @click="openDownloadGuide(card.key)"
             >
               {{ card.actionLabel }}
-              <AppIcon name="arrow-down" />
+                <AppIcon name="download" />
             </a>
             <router-link
               v-else-if="card.route"
-              class="platform-action"
+                class="card-action"
               :to="card.route"
             >
               {{ card.actionLabel }}
               <AppIcon name="arrow-right" />
             </router-link>
-            <button v-else type="button" class="platform-action unavailable" disabled>
+              <button v-else type="button" class="card-action unavailable" disabled>
               {{ card.loading ? "正在获取下载信息" : "安装包暂时不可用" }}
             </button>
-            <span>{{ card.actionHint }}</span>
-          </div>
+              <span>{{ card.actionHint }}</span>
+            </footer>
 
-          <details class="install-steps">
-            <summary>{{ card.key === "ios" ? "点击查看教程" : "查看安装步骤" }}</summary>
+            <details class="desktop-install-steps">
+              <summary>{{ card.key === "ios" ? "查看添加教程" : "查看安装步骤" }}<AppIcon name="arrow-down" /></summary>
             <ol>
               <li v-for="step in card.steps" :key="step">{{ step }}</li>
             </ol>
           </details>
         </article>
       </div>
-    </section>
+      </section>
 
-    <section class="web-entry">
-      <div>
-        <span class="web-entry-kicker">不在自己的设备上？</span>
-        <h2>也可以直接使用网页版</h2>
-        <p>
-          网页版适合临时访问；Windows、M 芯片 Mac 和安卓/鸿蒙卓易通
-          仍优先推荐对应客户端，iPhone / iPad 可将课表添加到主屏幕。
-        </p>
-      </div>
-      <div class="web-entry-actions">
-        <router-link to="/home">进入药大拾间</router-link>
-        <router-link class="soft" to="/schedule">打开课表</router-link>
-      </div>
-    </section>
+      <section class="desktop-web-entry">
+        <span class="platform-icon"><AppIcon name="link" /></span>
+        <div>
+          <span class="page-kicker">无需安装</span>
+          <h2>临时使用，直接打开网页版</h2>
+          <p>公共设备上无需留下安装记录；自己的设备仍推荐使用对应客户端。</p>
+        </div>
+        <div class="desktop-web-actions">
+          <router-link to="/home">进入药大拾间</router-link>
+          <router-link class="soft" to="/schedule">打开课表</router-link>
+        </div>
+      </section>
+    </div>
+
+    <div class="download-mobile">
+      <header class="mobile-page-head">
+        <span class="page-kicker">客户端下载</span>
+        <h1>{{ recommendedCard ? "为这台设备准备好了" : "选择你的设备" }}</h1>
+        <p>{{ detectedLabel }}</p>
+      </header>
+
+      <section v-if="recommendedCard" class="mobile-recommend-card">
+        <header>
+          <span class="platform-icon platform-icon--primary"><AppIcon :name="platformIconName(recommendedCard.key)" /></span>
+          <div>
+            <small>推荐</small>
+            <h2>{{ recommendedCard.name }}</h2>
+          </div>
+          <span class="version-pill">{{ recommendedCard.versionLabel }}</span>
+        </header>
+        <p>{{ recommendedCard.summary }}</p>
+        <a
+          v-if="recommendedCard.downloadUrl"
+          class="mobile-primary-action"
+          :href="recommendedCard.downloadUrl"
+          target="_blank"
+          rel="noopener noreferrer"
+          @click="openDownloadGuide(recommendedCard.key)"
+        >
+          {{ recommendedCard.actionLabel }}
+          <AppIcon name="download" />
+        </a>
+        <router-link
+          v-else-if="recommendedCard.route"
+          class="mobile-primary-action"
+          :to="recommendedCard.route"
+        >
+          {{ recommendedCard.actionLabel }}
+          <AppIcon name="arrow-right" />
+        </router-link>
+        <details class="mobile-install-steps">
+          <summary>{{ recommendedCard.key === "ios" ? "如何添加到主屏幕" : "安装时需要注意什么" }}<AppIcon name="arrow-down" /></summary>
+          <ol><li v-for="step in recommendedCard.steps" :key="step">{{ step }}</li></ol>
+        </details>
+      </section>
+
+      <section class="mobile-platform-section" aria-labelledby="mobile-platform-title">
+        <header>
+          <div><h2 id="mobile-platform-title">{{ recommendedCard ? "其他设备" : "全部平台" }}</h2><p>点开后查看版本与安装步骤</p></div>
+        </header>
+        <div class="mobile-platform-list">
+          <details v-for="card in mobilePlatformCards" :key="card.key" class="mobile-platform-item">
+            <summary>
+              <span class="platform-icon" :class="`platform-icon--${card.key}`"><AppIcon :name="platformIconName(card.key)" /></span>
+              <span class="mobile-platform-name"><b>{{ card.name }}</b><small>{{ card.support }}</small></span>
+              <span class="mobile-version">{{ card.versionLabel }}</span>
+              <AppIcon name="arrow-down" />
+            </summary>
+            <div class="mobile-platform-detail">
+              <p>{{ card.summary }}</p>
+              <a
+                v-if="card.downloadUrl"
+                class="mobile-secondary-action"
+                :href="card.downloadUrl"
+                target="_blank"
+                rel="noopener noreferrer"
+                @click="openDownloadGuide(card.key)"
+              >{{ card.actionLabel }}<AppIcon name="download" /></a>
+              <router-link v-else-if="card.route" class="mobile-secondary-action" :to="card.route">{{ card.actionLabel }}<AppIcon name="arrow-right" /></router-link>
+              <button v-else type="button" class="mobile-secondary-action unavailable" disabled>{{ card.loading ? "正在获取下载信息" : "安装包暂时不可用" }}</button>
+              <ol><li v-for="step in card.steps" :key="step">{{ step }}</li></ol>
+            </div>
+          </details>
+        </div>
+      </section>
+
+      <section class="mobile-web-entry">
+        <span class="platform-icon"><AppIcon name="link" /></span>
+        <div><h2>不安装也能用</h2><p>临时访问可直接打开网页版。</p></div>
+        <router-link to="/home">直接进入</router-link>
+      </section>
+    </div>
 
     <p class="download-note">
       药大拾间是学生自主开发维护的校园互助平台，并非学校官方应用，仅供学习研究与校园公益使用，严禁未经授权的商业用途。
@@ -305,6 +385,16 @@ const recommendedCard = computed(() => (
   platformCards.value.find((card) => card.key === detectedPlatform.value)
 ));
 
+const mobilePlatformCards = computed(() => (
+  recommendedCard.value
+    ? platformCards.value.filter((card) => card.key !== recommendedCard.value?.key)
+    : platformCards.value
+));
+
+function platformIconName(platform: DownloadPlatform) {
+  return platform === "android" || platform === "ios" ? "mobile" : "desktop";
+}
+
 type DownloadGuidePlatform = "android" | "windows";
 
 const downloadGuideVisible = ref(false);
@@ -332,645 +422,763 @@ onMounted(async () => {
 
 <style scoped>
 .download-page {
-  width: min(1180px, 100%);
+  width: min(1160px, 100%);
   margin: 0 auto;
-  padding: 20px 0 36px;
+  padding: 10px 0 34px;
   color: var(--cpu-text);
 }
 
-.download-hero {
-  position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
-  gap: 32px;
-  overflow: hidden;
-  padding: 36px 40px;
-  border: 1px solid color-mix(in srgb, var(--cpu-primary) 26%, var(--cpu-border-soft));
-  border-radius: 24px;
-  background:
-    radial-gradient(circle at 92% 8%, color-mix(in srgb, var(--cpu-primary-light) 25%, transparent) 0, transparent 34%),
-    linear-gradient(140deg, color-mix(in srgb, var(--cpu-primary) 12%, var(--cpu-surface)) 0%, var(--cpu-surface) 64%);
-  box-shadow: var(--cpu-shadow-md);
+.download-mobile {
+  display: none;
 }
 
-.hero-copy {
-  position: relative;
-  z-index: 1;
-}
-
-.hero-eyebrow,
-.section-head span,
-.web-entry-kicker {
+.page-kicker {
   color: var(--cpu-primary);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 800;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
 }
 
-.hero-copy h1 {
-  max-width: 680px;
-  margin: 10px 0 12px;
-  font-size: clamp(32px, 3.6vw, 46px);
-  line-height: 1.1;
-  letter-spacing: -0.035em;
+.desktop-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.08fr) minmax(360px, 0.92fr);
+  align-items: stretch;
+  gap: 20px;
+  padding: 28px;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 4% 0%, color-mix(in srgb, var(--cpu-primary) 8%, transparent), transparent 34%),
+    var(--cpu-card);
+  box-shadow: var(--cpu-shadow-sm);
 }
 
-.hero-copy > p {
-  max-width: 700px;
+.desktop-hero-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+  padding: 12px 8px;
+}
+
+.desktop-hero-copy h1 {
+  margin: 9px 0 11px;
+  font-size: clamp(32px, 4vw, 48px);
+  line-height: 1.08;
+  letter-spacing: -0.045em;
+}
+
+.desktop-hero-copy > p {
+  max-width: 620px;
   margin: 0;
   color: var(--cpu-text-secondary);
   font-size: 14px;
-  line-height: 1.7;
+  line-height: 1.75;
 }
 
-.hero-actions {
+.desktop-hero-meta {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 14px;
+  gap: 9px 18px;
   margin-top: 22px;
 }
 
-.primary-action,
-.platform-action,
-.web-entry-actions a {
+.desktop-hero-meta span {
   display: inline-flex;
   align-items: center;
+  gap: 6px;
+  color: var(--cpu-text-muted);
+  font-size: 12px;
+}
+
+.desktop-hero-meta :deep(.app-icon) {
+  color: var(--cpu-primary);
+  font-size: 15px;
+}
+
+.desktop-recommend-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
   justify-content: center;
+  padding: 22px;
+  border: 1px solid color-mix(in srgb, var(--cpu-primary) 28%, var(--cpu-border-soft));
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--cpu-primary) 6%, var(--cpu-surface));
+}
+
+.desktop-recommend-card header,
+.mobile-recommend-card header {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr) auto;
+  align-items: center;
   gap: 12px;
-  min-height: 42px;
-  padding: 0 18px;
-  border: 1px solid var(--cpu-primary);
+}
+
+.desktop-recommend-card header div,
+.mobile-recommend-card header div {
+  min-width: 0;
+}
+
+.desktop-recommend-card small,
+.mobile-recommend-card small {
+  color: var(--cpu-primary);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
+.desktop-recommend-card h2,
+.mobile-recommend-card h2 {
+  margin: 3px 0 0;
+  font-size: 20px;
+  line-height: 1.25;
+}
+
+.desktop-recommend-card > p {
+  margin: 18px 0;
+  color: var(--cpu-text-secondary);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.desktop-recommend-card--empty {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.desktop-recommend-card--empty > span:nth-child(2) {
+  display: grid;
+  gap: 3px;
+}
+
+.desktop-recommend-card--empty b {
+  font-size: 17px;
+}
+
+.platform-icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  place-items: center;
   border-radius: 12px;
+  background: var(--cpu-surface-soft);
+  color: var(--cpu-text-secondary);
+}
+
+.platform-icon :deep(.app-icon) {
+  font-size: 21px;
+}
+
+.platform-icon--primary {
   background: var(--cpu-primary);
   color: #fff;
-  font-size: 14px;
-  font-weight: 800;
-  text-decoration: none;
-  transition: transform 0.16s ease, box-shadow 0.16s ease, background-color 0.16s ease;
 }
 
-.primary-action:hover,
-.platform-action:hover,
-.web-entry-actions a:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 10px 24px color-mix(in srgb, var(--cpu-primary-dark) 22%, transparent);
+.platform-icon--android {
+  background: color-mix(in srgb, #35b86d 12%, var(--cpu-surface-soft));
+  color: #229254;
 }
 
-.primary-action.secondary {
-  border-color: var(--cpu-border);
-  background: var(--cpu-surface);
+.platform-icon--ios,
+.platform-icon--macos {
+  background: color-mix(in srgb, var(--cpu-text) 7%, var(--cpu-surface-soft));
   color: var(--cpu-text);
 }
 
-.device-result {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--cpu-text-secondary);
-  font-size: 13px;
+.platform-icon--windows {
+  background: color-mix(in srgb, #168be5 11%, var(--cpu-surface-soft));
+  color: #1677bd;
 }
 
-.device-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--cpu-primary);
-  box-shadow: 0 0 0 5px color-mix(in srgb, var(--cpu-primary) 12%, transparent);
+.version-pill,
+.mobile-version {
+  white-space: nowrap;
+  color: var(--cpu-text-muted);
+  font-size: 11px;
+  font-weight: 750;
 }
 
-.hero-mark {
-  position: relative;
-  z-index: 1;
-  align-self: center;
+.version-pill {
+  padding: 5px 8px;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 999px;
+  background: var(--cpu-card);
+}
+
+.version-pill.loading {
+  opacity: 0.7;
+}
+
+.recommend-action-row {
   display: flex;
   align-items: center;
-  gap: 14px;
-  min-width: 0;
-  padding: 18px;
-  border: 1px solid color-mix(in srgb, var(--cpu-primary) 20%, var(--cpu-border-soft));
-  border-radius: 18px;
-  background: color-mix(in srgb, var(--cpu-surface) 82%, transparent);
-  backdrop-filter: blur(16px);
+  gap: 12px;
 }
 
-.hero-logo {
-  display: grid;
-  flex: 0 0 auto;
-  width: 58px;
-  height: 58px;
-  place-items: center;
-  border-radius: 17px;
-  background: linear-gradient(145deg, var(--cpu-primary), var(--cpu-primary-dark));
-  color: #ffd46b;
-  font-size: 29px;
-  font-weight: 900;
-  box-shadow: 0 14px 30px color-mix(in srgb, var(--cpu-primary-dark) 24%, transparent);
-}
-
-.hero-mark > div:last-child {
-  display: grid;
-  min-width: 0;
-  gap: 5px;
-}
-
-.hero-mark strong {
-  font-size: 19px;
-}
-
-.hero-mark span {
-  color: var(--cpu-text-secondary);
+.download-action,
+.card-action,
+.desktop-web-actions a,
+.mobile-primary-action,
+.mobile-secondary-action {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid var(--cpu-primary);
+  border-radius: 11px;
+  background: var(--cpu-primary);
+  color: #fff;
   font-size: 13px;
-  line-height: 1.5;
+  font-weight: 800;
+  text-decoration: none;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
 }
 
-.platform-section {
-  padding: 40px 0 0;
+.download-action {
+  padding: 0 17px;
 }
 
-.section-head {
+.download-action:hover,
+.card-action:hover,
+.desktop-web-actions a:hover,
+.mobile-primary-action:hover,
+.mobile-secondary-action:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--cpu-primary) 18%, transparent);
+}
+
+.detected-device {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  color: var(--cpu-text-muted);
+  font-size: 11px;
+}
+
+.detected-device > span {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--cpu-primary);
+}
+
+.desktop-platform-section {
+  padding-top: 34px;
+}
+
+.desktop-section-head {
   display: flex;
   align-items: end;
   justify-content: space-between;
-  gap: 28px;
-  margin-bottom: 18px;
+  gap: 24px;
+  margin-bottom: 14px;
+  padding: 0 2px;
 }
 
-.section-head h2,
-.web-entry h2 {
-  margin: 6px 0 0;
-  font-size: clamp(24px, 2.6vw, 31px);
-  line-height: 1.25;
-  letter-spacing: -0.025em;
+.desktop-section-head h2 {
+  margin: 5px 0 0;
+  font-size: 27px;
+  letter-spacing: -0.03em;
 }
 
-.section-head > p {
+.desktop-section-head > p {
   max-width: 420px;
   margin: 0;
-  color: var(--cpu-text-secondary);
-  font-size: 13px;
+  color: var(--cpu-text-muted);
+  font-size: 12px;
   line-height: 1.7;
   text-align: right;
 }
 
-.platform-grid {
+.desktop-platform-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
-  align-items: start;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
 }
 
-.platform-card {
-  position: relative;
+.desktop-platform-card {
   display: flex;
   min-width: 0;
   flex-direction: column;
-  overflow: hidden;
   padding: 20px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 18px;
-  background: var(--cpu-surface);
+  border-radius: 16px;
+  background: var(--cpu-card);
   box-shadow: var(--cpu-shadow-sm);
-  transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+  transition: border-color 0.16s ease, transform 0.16s ease;
 }
 
-.platform-card::before {
-  position: absolute;
-  inset: 0 0 auto;
-  height: 3px;
-  background: linear-gradient(90deg, var(--cpu-primary), color-mix(in srgb, var(--cpu-primary-light) 60%, transparent));
-  content: "";
-  opacity: 0.38;
+.desktop-platform-card:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--cpu-primary) 30%, var(--cpu-border-soft));
 }
 
-.platform-card:hover {
-  transform: translateY(-2px);
-  border-color: color-mix(in srgb, var(--cpu-primary) 35%, var(--cpu-border));
-  box-shadow: var(--cpu-shadow-md);
+.desktop-platform-card.recommended {
+  border-color: color-mix(in srgb, var(--cpu-primary) 42%, var(--cpu-border-soft));
 }
 
-.platform-card.recommended {
-  border-color: color-mix(in srgb, var(--cpu-primary) 62%, var(--cpu-border));
-  box-shadow:
-    0 0 0 3px color-mix(in srgb, var(--cpu-primary) 9%, transparent),
-    var(--cpu-shadow-md);
-}
-
-.platform-card-head {
+.desktop-platform-card-head {
   display: grid;
-  grid-template-columns: 46px minmax(0, 1fr);
+  grid-template-columns: 42px minmax(0, 1fr) auto;
   align-items: center;
   gap: 11px;
 }
 
-.platform-symbol {
-  display: grid;
-  width: 46px;
-  height: 46px;
-  place-items: center;
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--cpu-primary) 11%, var(--cpu-surface-soft));
-  color: var(--cpu-primary);
-  font-size: 16px;
-  font-weight: 900;
-  letter-spacing: -0.03em;
-}
-
-.platform-symbol--android {
-  background: color-mix(in srgb, #3ddc84 16%, var(--cpu-surface-soft));
-  color: color-mix(in srgb, #22a760 78%, var(--cpu-text));
-}
-
-.platform-symbol--ios,
-.platform-symbol--macos {
-  background: color-mix(in srgb, var(--cpu-text) 8%, var(--cpu-surface-soft));
-  color: var(--cpu-text);
-}
-
-.platform-symbol--windows {
-  background: color-mix(in srgb, #168be5 14%, var(--cpu-surface-soft));
-  color: color-mix(in srgb, #168be5 82%, var(--cpu-text));
-}
-
-.platform-title {
+.platform-heading {
   display: grid;
   min-width: 0;
-  gap: 4px;
+  gap: 3px;
 }
 
-.platform-name-row {
+.platform-name-line {
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
 }
 
-.platform-name-row strong {
-  font-size: 17px;
-}
-
-.platform-name-row em {
-  padding: 3px 7px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--cpu-primary) 12%, transparent);
-  color: var(--cpu-primary);
-  font-size: 10px;
-  font-style: normal;
-  font-weight: 800;
-}
-
-.platform-title small {
+.platform-name-line strong {
   overflow: hidden;
-  color: var(--cpu-text-secondary);
-  font-size: 12px;
+  font-size: 16px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.version-badge {
-  grid-column: 2;
-  justify-self: start;
-  padding: 5px 9px;
-  border: 1px solid var(--cpu-border-soft);
+.platform-name-line em {
+  padding: 2px 6px;
   border-radius: 999px;
-  background: var(--cpu-surface-soft);
-  color: var(--cpu-text-secondary);
-  font-size: 11px;
-  font-weight: 700;
+  background: color-mix(in srgb, var(--cpu-primary) 10%, transparent);
+  color: var(--cpu-primary);
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 800;
 }
 
-.version-badge.loading {
+.platform-heading small {
+  overflow: hidden;
   color: var(--cpu-text-muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.platform-summary {
-  min-height: 76px;
-  margin: 17px 0 14px;
+.desktop-platform-summary {
+  min-height: 46px;
+  margin: 16px 0 12px;
   color: var(--cpu-text-secondary);
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.65;
 }
 
-.feature-list {
-  display: grid;
-  gap: 8px;
-  margin: 0 0 18px;
-  padding: 0;
-  list-style: none;
-}
-
-.feature-list li {
+.feature-chips {
   display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.feature-chips span {
+  padding: 5px 8px;
+  border-radius: 8px;
+  background: var(--cpu-surface-soft);
+  color: var(--cpu-text-secondary);
+  font-size: 10px;
+}
+
+.desktop-platform-footer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 9px;
-  color: var(--cpu-text);
-  font-size: 13px;
-}
-
-.feature-list span {
-  display: grid;
-  width: 20px;
-  height: 20px;
-  flex: 0 0 auto;
-  place-items: center;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--cpu-primary) 11%, transparent);
-  color: var(--cpu-primary);
-  font-size: 11px;
-  font-weight: 900;
-}
-
-.platform-action-row {
-  display: grid;
-  gap: 8px;
+  gap: 10px;
   margin-top: auto;
 }
 
-.platform-action {
-  width: 100%;
-  min-height: 42px;
-  padding: 0 16px;
-  border-radius: 12px;
-  font-size: 13px;
+.card-action {
+  min-height: 40px;
+  padding: 0 14px;
 }
 
-.platform-action.unavailable {
+.card-action.unavailable,
+.mobile-secondary-action.unavailable {
   cursor: not-allowed;
-  border-color: var(--cpu-border);
-  background: var(--cpu-surface-subtle);
+  border-color: var(--cpu-border-soft);
+  background: var(--cpu-surface-soft);
   color: var(--cpu-text-muted);
   box-shadow: none;
 }
 
-.platform-action-row > span {
+.desktop-platform-footer > span {
   color: var(--cpu-text-muted);
-  font-size: 11px;
-  text-align: center;
+  font-size: 10px;
+  text-align: right;
 }
 
-.install-steps {
-  margin-top: 14px;
-  padding-top: 13px;
+.desktop-install-steps {
+  margin-top: 13px;
+  padding-top: 12px;
   border-top: 1px solid var(--cpu-border-soft);
 }
 
-.install-steps summary {
-  cursor: pointer;
-  color: var(--cpu-text-secondary);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.install-steps ol {
-  display: grid;
-  gap: 8px;
-  margin: 13px 0 0;
-  padding-left: 20px;
-  color: var(--cpu-text-secondary);
-  font-size: 12px;
-  line-height: 1.65;
-}
-
-.web-entry {
+.desktop-install-steps summary,
+.mobile-install-steps summary {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 24px;
-  margin-top: 16px;
-  padding: 22px 26px;
-  border: 1px solid color-mix(in srgb, var(--cpu-primary) 22%, var(--cpu-border-soft));
-  border-radius: 18px;
-  background: color-mix(in srgb, var(--cpu-primary) 7%, var(--cpu-surface));
-}
-
-.web-entry h2 {
-  font-size: 23px;
-}
-
-.web-entry p {
-  max-width: 720px;
-  margin: 8px 0 0;
-  color: var(--cpu-text-secondary);
-  font-size: 13px;
-  line-height: 1.75;
-}
-
-.web-entry-actions {
-  display: flex;
-  flex: 0 0 auto;
   gap: 10px;
+  cursor: pointer;
+  color: var(--cpu-text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  list-style: none;
 }
 
-.web-entry-actions a {
-  min-height: 42px;
-  padding: 0 16px;
-  border-radius: 12px;
-  font-size: 13px;
+.desktop-install-steps summary::-webkit-details-marker,
+.mobile-install-steps summary::-webkit-details-marker,
+.mobile-platform-item > summary::-webkit-details-marker {
+  display: none;
 }
 
-.web-entry-actions a.soft {
-  border-color: var(--cpu-border);
-  background: var(--cpu-surface);
-  color: var(--cpu-text);
+.desktop-install-steps summary :deep(.app-icon),
+.mobile-install-steps summary :deep(.app-icon),
+.mobile-platform-item > summary > :deep(.app-icon) {
+  transition: transform 0.16s ease;
+}
+
+.desktop-install-steps[open] summary :deep(.app-icon),
+.mobile-install-steps[open] summary :deep(.app-icon),
+.mobile-platform-item[open] > summary > :deep(.app-icon) {
+  transform: rotate(180deg);
+}
+
+.desktop-install-steps ol,
+.mobile-install-steps ol,
+.mobile-platform-detail ol {
+  display: grid;
+  gap: 7px;
+  margin: 11px 0 0;
+  padding-left: 19px;
+  color: var(--cpu-text-secondary);
+  font-size: 11px;
+  line-height: 1.65;
+}
+
+.desktop-web-entry {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 15px;
+  margin-top: 12px;
+  padding: 18px 20px;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 16px;
+  background: var(--cpu-card);
+}
+
+.desktop-web-entry h2 {
+  margin: 3px 0 0;
+  font-size: 18px;
+}
+
+.desktop-web-entry p {
+  margin: 4px 0 0;
+  color: var(--cpu-text-muted);
+  font-size: 11px;
+}
+
+.desktop-web-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.desktop-web-actions a {
+  min-height: 38px;
+  padding: 0 14px;
+  font-size: 12px;
+}
+
+.desktop-web-actions a.soft {
+  border-color: var(--cpu-border-soft);
+  background: var(--cpu-surface-soft);
+  color: var(--cpu-text-secondary);
 }
 
 .download-note {
-  margin: 20px 0 0;
+  max-width: 880px;
+  margin: 18px auto 0;
   color: var(--cpu-text-muted);
-  font-size: 11px;
+  font-size: 10px;
   line-height: 1.7;
   text-align: center;
 }
 
-.download-guide-content {
-  display: grid;
-  gap: 16px;
-  color: var(--cpu-text-secondary);
-  font-size: 14px;
-  line-height: 1.75;
-}
-
-.download-guide-intro,
-.download-guide-note {
-  margin: 0;
-}
-
-.download-guide-list {
-  display: grid;
-  gap: 10px;
-  margin: 0;
-  padding-left: 22px;
-}
-
-.download-guide-list li::marker {
-  color: var(--cpu-primary);
-  font-weight: 800;
-}
-
-.download-guide-note {
-  padding: 11px 13px;
-  border: 1px solid color-mix(in srgb, var(--cpu-primary) 22%, var(--cpu-border-soft));
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--cpu-primary) 7%, var(--cpu-surface));
-  color: var(--cpu-text-muted);
-  font-size: 12px;
-  line-height: 1.65;
-}
-
-.download-guide-note code {
-  padding: 1px 5px;
-  border-radius: 5px;
-  background: var(--cpu-surface-soft);
-  color: var(--cpu-primary-dark);
-  font-family: var(--cpu-font-mono);
-  font-size: 0.95em;
-}
-
-@media (max-width: 900px) {
-  .download-page {
-    padding-top: 18px;
-  }
-
-  .download-hero {
-    grid-template-columns: 1fr;
-    gap: 26px;
-    padding: 40px;
-  }
-
-  .hero-mark {
-    max-width: 440px;
-  }
-}
-
-@media (max-width: 1100px) {
-  .platform-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .platform-summary {
-    min-height: 52px;
-  }
-}
-
-@media (max-width: 720px) {
-  .download-page {
-    padding: 10px 0 32px;
-  }
-
-  .download-hero {
-    gap: 22px;
-    padding: 28px 22px;
-    border-radius: 22px;
-  }
-
-  .hero-copy h1 {
-    font-size: 32px;
-  }
-
-  .hero-copy > p {
-    font-size: 14px;
-  }
-
-  .hero-actions {
-    align-items: stretch;
-  }
-
-  .primary-action {
-    width: 100%;
-  }
-
-  .device-result {
-    justify-content: center;
-    width: 100%;
-  }
-
-  .hero-mark {
-    padding: 16px;
-  }
-
-  .hero-logo {
-    width: 56px;
-    height: 56px;
-    border-radius: 16px;
-    font-size: 28px;
-  }
-
-  .platform-section {
-    padding-top: 38px;
-  }
-
-  .section-head {
-    display: grid;
-    gap: 10px;
-  }
-
-  .section-head > p {
-    text-align: left;
-  }
-
-  .platform-grid {
+@media (max-width: 920px) {
+  .desktop-hero {
     grid-template-columns: 1fr;
   }
 
-  .platform-card {
-    padding: 20px;
-    border-radius: 18px;
-  }
-
-  .platform-summary {
+  .desktop-recommend-card {
     min-height: 0;
   }
 
-  .web-entry {
-    display: grid;
-    padding: 22px;
+  .desktop-platform-footer {
+    grid-template-columns: 1fr;
   }
 
-  .web-entry-actions {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .download-guide-content {
-    font-size: 13px;
-  }
-}
-
-@media (max-width: 420px) {
-  .platform-card-head {
-    grid-template-columns: 46px minmax(0, 1fr);
-  }
-
-  .platform-symbol {
-    width: 46px;
-    height: 46px;
-    border-radius: 14px;
-    font-size: 14px;
-  }
-
-  .version-badge {
-    grid-column: 2;
-    justify-self: start;
-  }
-
-  .platform-action-row {
-    display: grid;
-  }
-
-  .platform-action {
-    width: 100%;
-  }
-
-  .platform-action-row > span {
+  .desktop-platform-footer > span {
     text-align: center;
   }
 }
 
+@media (max-width: 760px) {
+  .download-page {
+    padding: 0 0 22px;
+  }
+
+  .download-desktop {
+    display: none;
+  }
+
+  .download-mobile {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .mobile-page-head {
+    padding: 7px 2px 5px;
+  }
+
+  .mobile-page-head h1 {
+    margin: 5px 0 4px;
+    font-size: 24px;
+    line-height: 1.18;
+    letter-spacing: -0.035em;
+  }
+
+  .mobile-page-head p {
+    margin: 0;
+    color: var(--cpu-text-muted);
+    font-size: 11px;
+  }
+
+  .mobile-recommend-card {
+    padding: 15px;
+    border: 1px solid color-mix(in srgb, var(--cpu-primary) 34%, var(--cpu-border-soft));
+    border-radius: 15px;
+    background:
+      linear-gradient(145deg, color-mix(in srgb, var(--cpu-primary) 8%, var(--cpu-card)), var(--cpu-card));
+    box-shadow: var(--cpu-shadow-sm);
+  }
+
+  .mobile-recommend-card header {
+    grid-template-columns: 42px minmax(0, 1fr) auto;
+    gap: 10px;
+  }
+
+  .mobile-recommend-card h2 {
+    overflow: hidden;
+    font-size: 17px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobile-recommend-card > p {
+    margin: 13px 0;
+    color: var(--cpu-text-secondary);
+    font-size: 12px;
+    line-height: 1.65;
+  }
+
+  .mobile-primary-action {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .mobile-install-steps {
+    margin-top: 12px;
+    padding-top: 11px;
+    border-top: 1px solid var(--cpu-border-soft);
+  }
+
+  .mobile-platform-section {
+    padding: 13px 12px 5px;
+    border: 1px solid var(--cpu-border-soft);
+    border-radius: 14px;
+    background: var(--cpu-card);
+  }
+
+  .mobile-platform-section > header {
+    padding: 0 2px 9px;
+  }
+
+  .mobile-platform-section h2 {
+    margin: 0;
+    font-size: 15px;
+  }
+
+  .mobile-platform-section header p {
+    margin: 3px 0 0;
+    color: var(--cpu-text-muted);
+    font-size: 10px;
+  }
+
+  .mobile-platform-list {
+    display: grid;
+  }
+
+  .mobile-platform-item {
+    border-top: 1px solid var(--cpu-border-soft);
+  }
+
+  .mobile-platform-item > summary {
+    display: grid;
+    grid-template-columns: 38px minmax(0, 1fr) auto 16px;
+    align-items: center;
+    gap: 9px;
+    min-height: 62px;
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .mobile-platform-item .platform-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+  }
+
+  .mobile-platform-item .platform-icon :deep(.app-icon) {
+    font-size: 19px;
+  }
+
+  .mobile-platform-name {
+    display: grid;
+    min-width: 0;
+    gap: 2px;
+  }
+
+  .mobile-platform-name b,
+  .mobile-platform-name small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobile-platform-name b {
+    font-size: 13px;
+  }
+
+  .mobile-platform-name small {
+    color: var(--cpu-text-muted);
+    font-size: 9px;
+  }
+
+  .mobile-version {
+    font-size: 9px;
+  }
+
+  .mobile-platform-detail {
+    padding: 0 0 13px 47px;
+  }
+
+  .mobile-platform-detail > p {
+    margin: 0 0 10px;
+    color: var(--cpu-text-secondary);
+    font-size: 11px;
+    line-height: 1.6;
+  }
+
+  .mobile-secondary-action {
+    width: 100%;
+    min-height: 40px;
+    font-size: 11px;
+  }
+
+  .mobile-platform-detail ol {
+    margin-top: 10px;
+    font-size: 10px;
+  }
+
+  .mobile-web-entry {
+    display: grid;
+    grid-template-columns: 38px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid var(--cpu-border-soft);
+    border-radius: 13px;
+    background: var(--cpu-card);
+  }
+
+  .mobile-web-entry .platform-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+  }
+
+  .mobile-web-entry h2 {
+    margin: 0;
+    font-size: 13px;
+  }
+
+  .mobile-web-entry p {
+    margin: 3px 0 0;
+    color: var(--cpu-text-muted);
+    font-size: 9px;
+  }
+
+  .mobile-web-entry > a {
+    padding: 7px 9px;
+    border-radius: 9px;
+    background: var(--cpu-surface-soft);
+    color: var(--cpu-primary);
+    font-size: 10px;
+    font-weight: 800;
+    text-decoration: none;
+  }
+
+  .download-note {
+    margin-top: 12px;
+    padding: 0 6px;
+    font-size: 9px;
+    text-align: left;
+  }
+}
+
+@media (max-width: 420px) {
+  .mobile-page-head h1 {
+    font-size: 22px;
+  }
+
+  .mobile-recommend-card {
+    padding: 14px;
+  }
+
+  .version-pill {
+    padding: 4px 6px;
+    font-size: 9px;
+  }
+
+  .mobile-platform-detail {
+    padding-left: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .primary-action,
-  .platform-action,
-  .web-entry-actions a,
-  .platform-card {
+  .download-action,
+  .card-action,
+  .desktop-web-actions a,
+  .mobile-primary-action,
+  .mobile-secondary-action,
+  .desktop-platform-card {
     transition: none;
   }
 }

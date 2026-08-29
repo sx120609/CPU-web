@@ -1781,9 +1781,28 @@ model ForumAd {
   createdById Int?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  metrics     ForumAdMetric[]
 
   @@index([placement, enabled, sortOrder])
   @@index([startsAt, endsAt])
+}
+
+model ForumAdMetric {
+  id          Int      @id @default(autoincrement())
+  adId        Int
+  day         String
+  device      String
+  placement   String
+  impressions Int      @default(0)
+  clicks      Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  ad ForumAd @relation(fields: [adId], references: [id], onDelete: Cascade)
+
+  @@unique([adId, day, device, placement])
+  @@index([day])
+  @@index([placement, day])
 }
 
 // ============ 刷课工具：AI 答题额度与消耗 ============

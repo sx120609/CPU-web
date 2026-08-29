@@ -707,6 +707,20 @@ export type ForumAdAdmin = {
   endsAt: string | null;
   createdAt: string;
   updatedAt: string;
+  metrics: {
+    all: ForumAdMetricCounter;
+    last7Days: ForumAdMetricCounter;
+    last30Days: ForumAdMetricCounter;
+    mobile: ForumAdMetricCounter;
+    desktop: ForumAdMetricCounter;
+    daily: Array<{ day: string; impressions: number; clicks: number; ctr: number }>;
+  };
+};
+
+export type ForumAdMetricCounter = {
+  impressions: number;
+  clicks: number;
+  ctr: number;
 };
 
 export type VipGiftCodeAdmin = {
@@ -1227,9 +1241,9 @@ export const adminApi = {
   deleteAnnouncement: (id: number) => request.delete<any>(`/admin/announcements/${id}`),
   // 论坛广告
   forumAds: (options?: RequestOptions) => request.get<ForumAdAdmin[]>("/admin/forum-ads", undefined, options),
-  createForumAd: (payload: Partial<Omit<ForumAdAdmin, "id" | "createdAt" | "updatedAt">> & Pick<ForumAdAdmin, "title" | "linkUrl" | "placement">) =>
+  createForumAd: (payload: Partial<Omit<ForumAdAdmin, "id" | "createdAt" | "updatedAt" | "metrics">> & Pick<ForumAdAdmin, "title" | "linkUrl" | "placement">) =>
     request.post<ForumAdAdmin>("/admin/forum-ads", payload),
-  updateForumAd: (id: number, payload: Partial<Omit<ForumAdAdmin, "id" | "createdAt" | "updatedAt">>) =>
+  updateForumAd: (id: number, payload: Partial<Omit<ForumAdAdmin, "id" | "createdAt" | "updatedAt" | "metrics">>) =>
     request.patch<ForumAdAdmin>(`/admin/forum-ads/${id}`, payload),
   deleteForumAd: (id: number) => request.delete<{ ok: true }>(`/admin/forum-ads/${id}`),
   // VIP 礼品码

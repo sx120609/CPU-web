@@ -1,10 +1,11 @@
 <template>
-  <article v-if="ad" class="forum-ad-card" :class="{ compact }">
+  <article v-if="ad" ref="cardRef" class="forum-ad-card" :class="{ compact }" :data-placement="ad.placement">
     <a
       class="forum-ad-link"
       :href="ad.linkUrl"
       :target="isExternal ? '_blank' : undefined"
       :rel="isExternal ? 'noopener noreferrer sponsored' : 'sponsored'"
+      @click="trackClick"
     >
       <div class="ad-media">
         <img
@@ -30,17 +31,71 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
-import type { ForumAd } from "@/api/forumAds";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { forumAdsApi, type ForumAd } from "@/api/forumAds";
 import AppIcon from "@/components/common/AppIcon.vue";
 
 const props = withDefaults(defineProps<{ ad: ForumAd; compact?: boolean }>(), { compact: false });
 const isExternal = computed(() => /^https?:\/\//i.test(props.ad.linkUrl));
 const imageVisible = ref(Boolean(props.ad.imageUrl));
+const cardRef = ref<HTMLElement | null>(null);
+let impressionObserver: IntersectionObserver | null = null;
+let impressionTimer: ReturnType<typeof setTimeout> | null = null;
+let impressionTracked = false;
 
 watch(() => props.ad.imageUrl, (value) => {
   imageVisible.value = Boolean(value);
 });
+
+watch(() => props.ad.id, async () => {
+  impressionTracked = false;
+  clearImpressionTimer();
+  await nextTick();
+  observeCard();
+});
+
+onMounted(observeCard);
+
+onBeforeUnmount(() => {
+  clearImpressionTimer();
+  impressionObserver?.disconnect();
+});
+
+function clearImpressionTimer() {
+  if (!impressionTimer) return;
+  clearTimeout(impressionTimer);
+  impressionTimer = null;
+}
+
+function observeCard() {
+  impressionObserver?.disconnect();
+  if (!cardRef.value || impressionTracked) return;
+  if (typeof IntersectionObserver === "undefined") {
+    trackImpression();
+    return;
+  }
+  impressionObserver = new IntersectionObserver(([entry]) => {
+    if (!entry || entry.intersectionRatio < 0.5) {
+      clearImpressionTimer();
+      return;
+    }
+    if (!impressionTimer) impressionTimer = setTimeout(trackImpression, 700);
+  }, { threshold: [0.5, 0.75] });
+  impressionObserver.observe(cardRef.value);
+}
+
+function trackImpression() {
+  clearImpressionTimer();
+  if (impressionTracked) return;
+  impressionTracked = true;
+  impressionObserver?.disconnect();
+  void forumAdsApi.track(props.ad, "impression");
+}
+
+function trackClick() {
+  if (!impressionTracked) trackImpression();
+  void forumAdsApi.track(props.ad, "click");
+}
 </script>
 
 <style scoped>

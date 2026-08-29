@@ -4,7 +4,7 @@ import { prisma } from "../../prisma";
 import { adminOnly } from "../../middleware/admin";
 import { validate } from "../../middleware/validate";
 import { Errors, ok } from "../../utils/response";
-import { FORUM_AD_PLACEMENTS, isForumAdPlacement } from "../../services/forumAds";
+import { FORUM_AD_PLACEMENTS, isForumAdPlacement, summarizeForumAdMetrics } from "../../services/forumAds";
 import { invalidateForumAdCaches } from "../../services/cacheInvalidation";
 
 export const forumAdsAdminRouter = Router();
@@ -73,8 +73,17 @@ forumAdsAdminRouter.get("/", adminOnly, async (_req, res, next) => {
   try {
     const list = await prisma.forumAd.findMany({
       orderBy: [{ placement: "asc" }, { sortOrder: "asc" }, { updatedAt: "desc" }],
+      include: {
+        metrics: {
+          select: { day: true, device: true, impressions: true, clicks: true },
+          orderBy: { day: "asc" },
+        },
+      },
     });
-    ok(res, list);
+    ok(res, list.map(({ metrics, ...item }) => ({
+      ...item,
+      metrics: summarizeForumAdMetrics(metrics),
+    })));
   } catch (error) { next(error); }
 });
 
