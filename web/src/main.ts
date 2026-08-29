@@ -20,6 +20,7 @@ import "element-plus/theme-chalk/dark/css-vars.css";
 import "photoswipe/style.css";
 import "@fontsource-variable/inter/standard.css";
 import "@fontsource/jetbrains-mono";
+import "./styles/harmonyos-emoji.css";
 import "./styles/harmonyos-sans.css";
 import "./styles/index.scss";
 import "./styles/image-viewer.scss";
