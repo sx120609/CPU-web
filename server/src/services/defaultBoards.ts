@@ -1,4 +1,5 @@
 import { prisma } from "../prisma";
+import { invalidateBoardCaches } from "./cacheInvalidation";
 import { COMMUNITY_BOARD_DEFS, type CommunityBoardDefinition } from "./defaultBoardCatalog";
 
 const BOOTSTRAP_BOARD_SLUGS = new Set<string>(["treehole", "market", "group"]);
@@ -61,5 +62,6 @@ export async function ensureBuiltinBoards() {
     });
     synchronized.push(board);
   }
+  if (synchronized.length) await invalidateBoardCaches();
   return synchronized;
 }
