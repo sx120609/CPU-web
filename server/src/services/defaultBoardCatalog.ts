@@ -14,6 +14,7 @@ export const COMMUNITY_BOARD_DEFS: readonly CommunityBoardDefinition[] = [
   { slug: "general", name: "灌水广场", description: "无主题闲聊，怎么舒服怎么来", icon: "💬", color: "#10b981", type: "normal" },
   { slug: "treehole", name: "树洞", description: "想说的话、烦恼和碎碎念都可以发这里", icon: "🕳️", color: "#6366f1", type: "normal", anonymousEnabled: true },
   { slug: "life", name: "校园生活", description: "食堂 / 校车 / 快递 / 周边吃喝玩乐", icon: "🍜", color: "#f59e0b", type: "normal" },
+  { slug: "group", name: "社群汇总", description: "这里汇总学校的社团组织", icon: "👥", color: "#0ea5e9", type: "normal", anonymousEnabled: true },
   { slug: "freshman", name: "新生入学", description: "学长学姐答疑 + 入学攻略", icon: "🌱", color: "#84cc16", type: "normal" },
   { slug: "question", name: "提问广场", description: "提问、悬赏、求助", icon: "❓", color: "#3b82f6", type: "question" },
   { slug: "market", name: "二手交流", description: "闲置转让、求购信息与二手经验交流（仅论坛交流）", icon: "♻️", color: "#168c78", type: "market" },

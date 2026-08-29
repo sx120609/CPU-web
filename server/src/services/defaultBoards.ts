@@ -1,7 +1,7 @@
 import { prisma } from "../prisma";
 import { COMMUNITY_BOARD_DEFS, type CommunityBoardDefinition } from "./defaultBoardCatalog";
 
-const BOOTSTRAP_BOARD_SLUGS = new Set<string>(["treehole", "market"]);
+const BOOTSTRAP_BOARD_SLUGS = new Set<string>(["treehole", "market", "group"]);
 const LEGACY_MARKET_NAMES = new Set(["商城", "校园商城"]);
 const LEGACY_MARKET_DESCRIPTIONS = new Set([
   "实体商品、电子资料、校园好物",
@@ -26,6 +26,13 @@ export async function ensureBuiltinBoards() {
   for (const board of defs) {
     const current = existingBySlug.get(board.slug);
     if (current) {
+      if (board.slug === "group" && !current.icon?.trim()) {
+        await prisma.board.update({
+          where: { slug: board.slug },
+          data: { icon: board.icon },
+        });
+        synchronized.push(board);
+      }
       if (board.slug === "market") {
         const data: Record<string, unknown> = {};
         if (LEGACY_MARKET_NAMES.has(current.name)) data.name = board.name;
