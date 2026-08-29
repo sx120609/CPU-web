@@ -1,21 +1,21 @@
 <template>
   <div class="second-hand-page">
-    <section class="entry-grid" aria-label="二手交流快捷入口">
-      <button type="button" class="entry-card entry-card--sell" @click="openPost('sell')">
-        <span class="entry-icon"><el-icon><Goods /></el-icon></span>
-        <span class="entry-copy"><b>发布闲置</b><small>写清物品状态与期望价格</small></span>
-        <el-icon class="entry-arrow"><ArrowRight /></el-icon>
-      </button>
-      <button type="button" class="entry-card entry-card--wanted" @click="openPost('wanted')">
-        <span class="entry-icon"><el-icon><Search /></el-icon></span>
-        <span class="entry-copy"><b>发布求购</b><small>说清需求、预算与校区</small></span>
-        <el-icon class="entry-arrow"><ArrowRight /></el-icon>
-      </button>
-      <button type="button" class="entry-card entry-card--talk" @click="openPost('discuss')">
-        <span class="entry-icon"><el-icon><ChatDotRound /></el-icon></span>
-        <span class="entry-copy"><b>发起讨论</b><small>询价、避坑或分享经验</small></span>
-        <el-icon class="entry-arrow"><ArrowRight /></el-icon>
-      </button>
+    <section class="market-hero" aria-label="二手交流">
+      <div>
+        <span class="section-eyebrow">SECOND-HAND COMMUNITY</span>
+        <h1>二手交流</h1>
+        <p>浏览闲置、求购和经验帖，所有沟通均由同学自行完成。</p>
+      </div>
+      <el-dropdown trigger="click" @command="openPost">
+        <el-button type="primary"><el-icon><Plus /></el-icon>发布二手内容<el-icon><ArrowDown /></el-icon></el-button>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item command="sell">发布闲置</el-dropdown-item>
+            <el-dropdown-item command="wanted">发布求购</el-dropdown-item>
+            <el-dropdown-item command="discuss">发起讨论</el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
     </section>
 
     <section class="safety-note" aria-label="二手交流说明">
@@ -96,12 +96,12 @@
         <div v-if="pinnedList.length" class="pinned-block">
           <div class="list-label"><span>置顶</span><small>{{ pinnedList.length }} 条</small></div>
           <div class="market-card-flow">
-            <TopicListItem v-for="topic in pinnedList" :key="`pinned-${topic.id}`" :topic="topic" variant="card" />
+            <MarketTopicCard v-for="topic in pinnedList" :key="`pinned-${topic.id}`" :topic="topic" />
           </div>
         </div>
         <div class="topic-list" v-loading="loading">
           <div v-if="list.length" class="market-card-flow">
-            <TopicListItem v-for="topic in list" :key="topic.id" :topic="topic" variant="card" />
+            <MarketTopicCard v-for="topic in list" :key="topic.id" :topic="topic" />
           </div>
           <el-empty v-else-if="!loading" :description="hasActiveFilter ? '当前筛选条件下没有帖子，换个条件试试' : '还没有二手交流帖，来发布第一条吧'">
             <el-button type="primary" @click="openPost('sell')">发布闲置</el-button>
@@ -124,8 +124,8 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ArrowDown, ArrowRight, ChatDotRound, Goods, Search } from "@element-plus/icons-vue";
-import TopicListItem from "@/components/forum/TopicListItem.vue";
+import { ArrowDown, Plus, Search } from "@element-plus/icons-vue";
+import MarketTopicCard from "@/components/forum/MarketTopicCard.vue";
 import { boardApi, type Board } from "@/api/board";
 import { topicApi, type Topic } from "@/api/topic";
 import { useAuthStore } from "@/stores/auth";
@@ -281,32 +281,10 @@ function openPost(kind: SecondHandPostKind) {
   gap: 18px;
 }
 
-.section-eyebrow { font-size: 11px; font-weight: 800; letter-spacing: 0.12em; }
-
-.entry-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
-.entry-card {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 20px;
-  border: 1px solid transparent;
-  border-radius: 17px;
-  color: var(--cpu-text);
-  text-align: left;
-  cursor: pointer;
-  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
-}
-.entry-card:hover { transform: translateY(-2px); box-shadow: var(--cpu-shadow-md); }
-.entry-card:focus-visible { outline: 2px solid var(--cpu-primary); outline-offset: 2px; }
-.entry-card--sell { border-color: color-mix(in srgb, #0d9488 28%, var(--cpu-border)); background: linear-gradient(135deg, color-mix(in srgb, #2dd4bf 16%, var(--cpu-card)), color-mix(in srgb, #60a5fa 14%, var(--cpu-card))); }
-.entry-card--wanted { border-color: color-mix(in srgb, #f59e0b 28%, var(--cpu-border)); background: linear-gradient(135deg, color-mix(in srgb, #fbbf24 18%, var(--cpu-card)), color-mix(in srgb, #fb7185 12%, var(--cpu-card))); }
-.entry-card--talk { border-color: color-mix(in srgb, #8b5cf6 25%, var(--cpu-border)); background: linear-gradient(135deg, color-mix(in srgb, #a78bfa 17%, var(--cpu-card)), color-mix(in srgb, #60a5fa 12%, var(--cpu-card))); }
-.entry-icon { flex: 0 0 48px; height: 48px; display: grid; place-items: center; border-radius: 14px; background: color-mix(in srgb, var(--cpu-card) 84%, transparent); color: var(--cpu-primary); font-size: 23px; }
-.entry-copy { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 5px; }
-.entry-copy b { font-size: 16px; }
-.entry-copy small { color: var(--cpu-text-secondary); line-height: 1.45; }
-.entry-arrow { flex-shrink: 0; color: var(--cpu-text-muted); }
+.section-eyebrow { color: var(--cpu-primary); font-size: 10px; font-weight: 800; letter-spacing: 0.12em; }
+.market-hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; }
+.market-hero h1 { margin: 3px 0 0; color: var(--cpu-text); font-size: 24px; }
+.market-hero p { margin: 5px 0 0; color: var(--cpu-text-secondary); font-size: 12px; }
 
 .safety-note { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border: 1px solid color-mix(in srgb, #f59e0b 28%, var(--cpu-border)); border-radius: 14px; background: color-mix(in srgb, #f59e0b 8%, var(--cpu-card)); }
 .safety-icon { font-size: 20px; line-height: 1.4; }
@@ -349,51 +327,10 @@ function openPost(kind: SecondHandPostKind) {
 
 @media (max-width: 720px) {
   .second-hand-page { gap: 10px; }
-  .entry-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 6px;
-    padding: 6px;
-    border: 1px solid var(--cpu-border-soft);
-    border-radius: 14px;
-    background: color-mix(in srgb, var(--cpu-card) 92%, transparent);
-    box-shadow: var(--cpu-shadow-sm);
-    backdrop-filter: blur(18px) saturate(140%);
-  }
-  .entry-card {
-    min-height: 40px;
-    align-items: center;
-    justify-content: center;
-    flex-direction: row;
-    gap: 5px;
-    padding: 0 7px;
-    border: 1px solid var(--cpu-border-soft);
-    border-radius: 999px;
-    background: var(--cpu-surface-soft);
-    box-shadow: none;
-    color: var(--cpu-text-secondary);
-    text-align: center;
-  }
-  .entry-card:hover,
-  .entry-card:focus-visible { transform: none; box-shadow: none; }
-  .entry-card--sell {
-    border-color: var(--cpu-primary);
-    background: var(--cpu-primary);
-    color: #fff;
-  }
-  .entry-card--wanted,
-  .entry-card--talk { border-color: var(--cpu-border-soft); background: var(--cpu-surface-soft); }
-  .entry-icon {
-    flex: 0 0 auto;
-    width: auto;
-    height: auto;
-    border-radius: 0;
-    background: transparent;
-    color: currentColor;
-    font-size: 16px;
-  }
-  .entry-copy { flex: 0 1 auto; gap: 0; }
-  .entry-copy b { font-size: 12px; font-weight: 650; white-space: nowrap; }
-  .entry-copy small, .entry-arrow { display: none; }
+  .market-hero { align-items: center; }
+  .market-hero h1 { font-size: 20px; }
+  .market-hero p, .market-hero .section-eyebrow { display: none; }
+  .market-hero :deep(.el-button) { min-height: 38px; padding-inline: 12px; }
   .safety-note {
     align-items: center;
     gap: 8px;
@@ -460,38 +397,7 @@ function openPost(kind: SecondHandPostKind) {
   .filter-advanced :deep(.el-select__wrapper) { min-height: 36px; border-radius: 8px; }
   .filter-reset { grid-column: 1 / -1; justify-self: start; min-height: 28px; padding: 0 4px; }
   .market-card-flow { columns: 1; padding: 4px 0 0; }
-  .market-card-flow :deep(.topic-row--card) {
-    display: flex;
-    align-items: stretch;
-    gap: 10px;
-    margin: 0;
-    border: 0;
-    border-bottom: 1px solid var(--cpu-border-soft);
-    border-radius: 0;
-    background: transparent;
-    box-shadow: none;
-  }
-  .market-card-flow :deep(.market-card-image) {
-    flex: 0 0 82px;
-    width: 82px;
-    height: 82px;
-    margin: 10px 0;
-    border-radius: 9px;
-  }
-  .market-card-flow :deep(.market-card-body) { flex: 1; min-width: 0; padding: 10px 0; }
-  .market-card-flow :deep(.market-card-tags) { flex-wrap: nowrap; margin-bottom: 5px; overflow: hidden; }
-  .market-card-flow :deep(.market-card-body h3) { font-size: 14px; line-height: 1.45; }
-  .market-card-flow :deep(.market-card-excerpt) { margin-top: 4px; line-height: 1.45; -webkit-line-clamp: 2; }
-  .market-card-flow :deep(.market-card-price) { display: inline-block; margin-top: 6px; font-size: 15px; }
-  .market-card-flow :deep(.market-card-facts) { margin-top: 6px; }
-  .market-card-flow :deep(.market-card-meta) { margin-top: 7px; padding-top: 0; border-top: 0; }
-  .market-card-flow :deep(.market-card-stat) { display: none; }
   .pinned-block { margin: 8px 0 2px; padding: 7px 4px 0; border-color: var(--cpu-border-soft); background: transparent; }
   .topic-list { min-height: 80px; padding-top: 0; }
-}
-
-@media (max-width: 380px) {
-  .entry-card { padding-inline: 4px; }
-  .entry-copy b { font-size: 11px; }
 }
 </style>

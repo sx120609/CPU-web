@@ -211,6 +211,8 @@
       platform="windows"
     />
 
+    <ComposeActionSheet v-model="composeMenuOpen" />
+
     <button
       v-if="showForumPostFab"
       type="button"
@@ -404,6 +406,7 @@ import UserAvatar from "@/components/common/UserAvatar.vue";
 import ShijianAssistant from "@/views/search/Result.vue";
 import DesktopToolsPanel from "@/components/common/DesktopToolsPanel.vue";
 import DownloadSafetyGuideDialog from "@/components/common/DownloadSafetyGuideDialog.vue";
+import ComposeActionSheet from "@/components/forum/ComposeActionSheet.vue";
 import { useAuthStore } from "@/stores/auth";
 import { useMessageStore } from "@/stores/message";
 import { useSiteStore } from "@/stores/site";
@@ -422,6 +425,7 @@ const logoutPending = ref(false);
 const assistantWidgetOpen = ref(false);
 const toolsWidgetOpen = ref(false);
 const downloadSafetyGuideVisible = ref(false);
+const composeMenuOpen = ref(false);
 const keyboardOpen = ref(false);
 const keyboardGeometryOpen = ref(false);
 const mobileViewportHeight = ref(0);
@@ -475,20 +479,17 @@ const showFloatingActions = computed(() => (
 ));
 // 桌面客户端把这些工具做成了应用自己的标签页，站内再挂一个悬浮球就是重复入口
 const showToolsFab = computed(() => showFloatingActions.value && !isDesktopNativeApp());
-const forumRouteNames = new Set(["forum", "forum-hot", "forum-latest", "board", "topic", "market"]);
+const forumRouteNames = new Set(["home", "forum", "forum-hot", "forum-latest", "board", "topic", "market"]);
 const showForumPostFab = computed(() => (
   !hideChrome.value
   && !useNativeShell.value
   && site.features.forum
+  && auth.canAccessForum
   && forumRouteNames.has(String(route.name || ""))
 ));
 
 function openForumPost() {
-  if (!auth.isLoggedIn) {
-    router.push({ name: "login", query: { redirect: "/post" } });
-    return;
-  }
-  router.push({ name: "post" });
+  composeMenuOpen.value = true;
 }
 
 // 两个面板占同一块位置，只能开一个

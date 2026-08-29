@@ -39,3 +39,35 @@ export function forumInternalTitle(content: unknown, fallback = "新帖子") {
   const excerpt = forumContentExcerpt(content, 60).replace(/…$/, "").trim();
   return excerpt.length >= 2 ? excerpt : fallback;
 }
+
+function normalizeForumImageUrl(value: string) {
+  const url = value.trim().replace(/&amp;/gi, "&");
+  if (!url || !/^(?:https?:\/\/|\/(?!\/))/i.test(url)) return "";
+  return url;
+}
+
+/** Extract a small, stable preview set without rendering the post's raw HTML. */
+export function forumContentImages(content: unknown, limit = 9) {
+  const source = String(content || "");
+  const max = Math.min(9, Math.max(0, Math.trunc(limit)));
+  if (!max) return [];
+
+  const candidates: string[] = [];
+  for (const match of source.matchAll(/<img\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/gi)) {
+    candidates.push(match[1] || "");
+  }
+  for (const match of source.matchAll(/!\[[^\]]*\]\(([^\s)]+)(?:\s+["'][^"']*["'])?\)/g)) {
+    candidates.push(match[1] || "");
+  }
+
+  const seen = new Set<string>();
+  const images: string[] = [];
+  for (const candidate of candidates) {
+    const normalized = normalizeForumImageUrl(candidate);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    images.push(normalized);
+    if (images.length >= max) break;
+  }
+  return images;
+}
