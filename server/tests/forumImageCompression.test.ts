@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import test from "node:test";
 import sharp from "sharp";
 import { buildOptimizedForumImagePath, replaceForumImageReference } from "../src/services/forumImageArchive";
+import { renderModeratedContents } from "../src/services/imageModeration";
 import {
   FORUM_IMAGE_REVIEW_MAX_BYTES,
   FORUM_IMAGE_UPLOAD_MAX_BYTES,
@@ -116,4 +117,10 @@ test("builds deterministic optimized paths and rewrites relative or absolute for
     replaceForumImageReference(`<img src="https://cputime.cn${oldUrl}"><img src="${oldUrl}">`, oldUrl, newUrl),
     `<img src="https://cputime.cn${newUrl}"><img src="${newUrl}">`,
   );
+});
+
+test("returns resolved strings when batch-rendering text-only forum topics", async () => {
+  const rendered = await renderModeratedContents(["纯文本动态", "另一条动态"]);
+  assert.deepEqual(rendered, ["纯文本动态", "另一条动态"]);
+  assert.ok(rendered.every((content) => typeof content === "string"));
 });

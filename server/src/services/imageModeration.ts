@@ -425,7 +425,7 @@ export async function renderModeratedContents(contents: string[], _viewer?: View
     matchesByContent.flatMap((matches) => matches.map((item) => normalizeForumImageUrl(item.url)))
       .filter(Boolean) as string[],
   ));
-  if (!localUrls.length) return sourceContents.map(rewriteUploadMediaAttributes);
+  if (!localUrls.length) return Promise.all(sourceContents.map(rewriteUploadMediaAttributes));
 
   const rows = await prisma.forumImageAsset.findMany({
     where: { url: { in: localUrls } },
@@ -456,7 +456,7 @@ export async function renderModeratedContents(contents: string[], _viewer?: View
     publicUrlMap.set(url, await resolveMediaPublicUrl(url));
   }));
 
-  return sourceContents.map((content, index) => {
+  return Promise.all(sourceContents.map(async (content, index) => {
     let rendered = "";
     let lastIndex = 0;
     for (const match of matchesByContent[index]) {
@@ -468,7 +468,7 @@ export async function renderModeratedContents(contents: string[], _viewer?: View
     }
     rendered += content.slice(lastIndex);
     return rewriteUploadMediaAttributes(rendered);
-  });
+  }));
 }
 
 function rewriteImageToken(
