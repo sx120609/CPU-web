@@ -10,7 +10,11 @@ import { Errors, ok } from "../utils/response";
 import { authRequired } from "../middleware/auth";
 import { validate } from "../middleware/validate";
 import { registerForumImageAsset } from "../services/imageModeration";
-import { FORUM_IMAGE_MAX_SOURCE_BYTES, normalizeForumImageUpload } from "../services/forumImageCompression";
+import {
+  FORUM_IMAGE_MAX_SOURCE_BYTES,
+  FORUM_IMAGE_UPLOAD_MAX_BYTES,
+  normalizeForumImageUpload,
+} from "../services/forumImageCompression";
 import {
   buildUploadUrl,
   createRemoteMediaUploadSession,
@@ -110,13 +114,12 @@ uploadRouter.post("/media/init", authRequired, validate(mediaInitSchema), async 
     const ext = resolveUploadExtension(kind, mimeType, req.body.fileName);
     if (!ext) throw Errors.badRequest("当前文件格式暂不支持上传");
 
-    // Static forum images must pass through the server-side compression gate.
-    // This also covers Android clients, which intentionally upload the original
-    // file because canvas encoding is not reliable in every embedded WebView.
     if (kind === "image") {
       if (req.body.fileSize > FORUM_IMAGE_MAX_SOURCE_BYTES) throw Errors.badRequest("图片不能超过 32MB");
-      ok(res, { mode: "proxy" as const, kind });
-      return;
+      if (ext !== "gif" && req.body.fileSize > FORUM_IMAGE_UPLOAD_MAX_BYTES) {
+        ok(res, { mode: "proxy" as const, kind });
+        return;
+      }
     }
 
     const relativePath = buildForumMediaRelativePath(ext);

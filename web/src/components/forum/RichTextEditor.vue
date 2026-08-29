@@ -146,7 +146,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import { ElMessage, ElMessageBox } from "element-plus";
 import DOMPurify from "dompurify";
 import { uploadApi } from "@/api/topic";
-import { compressImageFile, dataUrlToBlob, normalizeImageUploadError } from "@/utils/imageUpload";
+import { normalizeImageUploadError, prepareForumImageUpload } from "@/utils/imageUpload";
 import { isAndroidNativeApp } from "@/utils/clientInfo";
 import { normalizeSafeBlankTargets, renderMarkdown } from "@/utils/markdown";
 type Alignment = "left" | "center" | "right";
@@ -647,23 +647,14 @@ async function uploadAndInsertMedia(files: File[]) {
             totalBytes: file.size,
             errorMessage: "",
           });
-          const useOriginalFile = shouldUploadImageOriginal(file);
-          const imageBlob = useOriginalFile
-            ? file
-            : dataUrlToBlob(await compressImageFile(file, {
-              maxWidth: 1400,
-              maxHeight: 1400,
-              quality: 0.82,
-              mimeType: "image/jpeg",
-              maxBytes: 520 * 1024,
-            }));
+          const preparedImage = await prepareForumImageUpload(file);
+          const imageBlob = preparedImage.blob;
           if (editorDisposed) return;
           updateUploadTask(task.id, {
             totalBytes: imageBlob.size || file.size,
             loadedBytes: 0,
           });
-          const { url } = await uploadApi.media(imageBlob, useOriginalFile ? safeMediaFileName(file, "image.jpg") : replaceFileExtension(file.name || "image.jpg", "jpg"), {
-            forceProxy: isAndroidNativeApp(),
+          const { url } = await uploadApi.media(imageBlob, preparedImage.fileName, {
             onProgress: (state) => syncUploadTaskProgress(task.id, state),
           });
           if (editorDisposed) return;
@@ -802,11 +793,6 @@ function insertHtmlAtCursor(html: string, caretMarkerId = "") {
   rememberSelection();
 }
 
-function replaceFileExtension(name: string, extension: string) {
-  const base = String(name || "").replace(/\.[^.]+$/, "") || "image";
-  return `${base}.${extension}`;
-}
-
 function inferMediaKind(file: File): "image" | "video" | "" {
   const mime = String(file.type || "").toLowerCase();
   if (mime.startsWith("image/")) return "image";
@@ -819,11 +805,6 @@ function inferMediaKind(file: File): "image" | "video" | "" {
 
 function isSupportedMediaFile(file: File) {
   return Boolean(inferMediaKind(file));
-}
-
-function shouldUploadImageOriginal(file: File) {
-  const mime = String(file.type || "").toLowerCase();
-  return isAndroidNativeApp() || !mime.startsWith("image/") || mime === "image/gif";
 }
 
 function safeMediaFileName(file: File, fallback: string) {

@@ -171,7 +171,7 @@ import dayjs from "dayjs";
 import { lostFoundApi, type LostFoundClaim, type LostFoundClaimStatus, type LostFoundItem, type LostFoundKind, type LostFoundStatus } from "@/api/lostFound";
 import { uploadApi } from "@/api/topic";
 import { useAuthStore } from "@/stores/auth";
-import { isAndroidNativeApp } from "@/utils/clientInfo";
+import { normalizeImageUploadError, prepareForumImageUpload } from "@/utils/imageUpload";
 import { openImageGallery } from "@/utils/imageViewer";
 
 const auth = useAuthStore();
@@ -219,7 +219,7 @@ function openPublish(kind: LostFoundKind) { if (!ensureLogin()) return; const ca
 function openPublishImages(index: number) { openImageGallery(publishForm.images.map((src, imageIndex) => ({ src, title: `物品图片 ${imageIndex + 1}` })), index, { className: "cpu-lost-found-image-viewer" }); }
 function openLostFoundImages(index: number) { if (!detail.value) return; openImageGallery(detail.value.images.map((image) => ({ src: image.url, title: detail.value?.itemName || "失物招领图片" })), index, { className: "cpu-lost-found-image-viewer" }); }
 
-async function uploadImages(event: Event) { const input = event.target as HTMLInputElement; const files = Array.from(input.files || []).slice(0, 6 - publishForm.images.length); if (!files.length) return; uploading.value = true; try { for (let i = 0; i < files.length; i++) { const result = await uploadApi.media(files[i], files[i].name, { forceProxy: isAndroidNativeApp(), onProgress: (state) => { uploadProgress.value = Math.round(((i + state.percent / 100) / files.length) * 100); } }); publishForm.images.push(result.url); } } finally { uploading.value = false; uploadProgress.value = 0; input.value = ""; } }
+async function uploadImages(event: Event) { const input = event.target as HTMLInputElement; const files = Array.from(input.files || []).slice(0, 6 - publishForm.images.length); if (!files.length) return; uploading.value = true; try { for (let i = 0; i < files.length; i++) { const prepared = await prepareForumImageUpload(files[i]); const result = await uploadApi.media(prepared.blob, prepared.fileName, { onProgress: (state) => { uploadProgress.value = Math.round(((i + state.percent / 100) / files.length) * 100); } }); publishForm.images.push(result.url); } } catch (error) { ElMessage.error(normalizeImageUploadError(error, "图片上传失败，请稍后重试")); } finally { uploading.value = false; uploadProgress.value = 0; input.value = ""; } }
 function validPublish() { if (publishForm.itemName.trim().length < 2) return ElMessage.warning("请填写物品名称"), false; if (!publishForm.campus.trim()) return ElMessage.warning("请填写校区"), false; if (publishForm.location.trim().length < 2) return ElMessage.warning("请填写具体地点"), false; if (publishForm.kind === "found" && publishForm.storageLocation.trim().length < 2) return ElMessage.warning("请填写物品放到哪里了"), false; if (!publishForm.happenedAt) return ElMessage.warning("请选择时间"), false; if (publishForm.contact.trim().length < 2) return ElMessage.warning("请填写联系方式"), false; return true; }
 async function submitItem() { if (!validPublish() || submitting.value) return; submitting.value = true; try { const item = await lostFoundApi.create({ ...publishForm }); publishOpen.value = false; ElMessage.success(item.status === "reviewing" ? "已提交审核，通过后会公开展示" : "已发布，并同步到论坛讨论区"); await Promise.all([loadItems(), loadMeta()]); await openDetail(item.id); } finally { submitting.value = false; } }
 async function prefetchDetail(id: number) {

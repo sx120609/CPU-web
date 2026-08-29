@@ -6,15 +6,33 @@ export interface CompressImageOptions {
   maxBytes?: number;
 }
 
-const MAX_SOURCE_BYTES = 8 * 1024 * 1024;
+const MAX_SOURCE_BYTES = 32 * 1024 * 1024;
+const FORUM_IMAGE_MAX_BYTES = 520 * 1024;
+const FORUM_IMAGE_MAX_DIMENSION = 1400;
+
+export async function prepareForumImageUpload(file: File) {
+  validateImageFile(file);
+  if (isGifFile(file)) {
+    return {
+      blob: file as Blob,
+      fileName: safeFileName(file.name, "image.gif"),
+    };
+  }
+  const dataUrl = await compressImageFile(file, {
+    maxWidth: FORUM_IMAGE_MAX_DIMENSION,
+    maxHeight: FORUM_IMAGE_MAX_DIMENSION,
+    quality: 0.82,
+    mimeType: "image/jpeg",
+    maxBytes: FORUM_IMAGE_MAX_BYTES,
+  });
+  return {
+    blob: dataUrlToBlob(dataUrl),
+    fileName: replaceFileExtension(file.name || "image.jpg", "jpg"),
+  };
+}
 
 export async function compressImageFile(file: File, options: CompressImageOptions) {
-  if (!file.type.startsWith("image/")) {
-    throw new Error("请选择图片文件");
-  }
-  if (file.size > MAX_SOURCE_BYTES) {
-    throw new Error("图片不能超过 8MB");
-  }
+  validateImageFile(file);
 
   const image = await loadImage(file);
   const ratio = Math.min(
@@ -22,31 +40,34 @@ export async function compressImageFile(file: File, options: CompressImageOption
     options.maxWidth / image.naturalWidth,
     options.maxHeight / image.naturalHeight,
   );
-  const width = Math.max(1, Math.round(image.naturalWidth * ratio));
-  const height = Math.max(1, Math.round(image.naturalHeight * ratio));
+  let width = Math.max(1, Math.round(image.naturalWidth * ratio));
+  let height = Math.max(1, Math.round(image.naturalHeight * ratio));
   const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("当前浏览器不支持图片处理");
-
-  ctx.fillStyle = "#fff";
-  ctx.fillRect(0, 0, width, height);
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(image, 0, 0, width, height);
-
   const mimeType = options.mimeType ?? "image/jpeg";
-  let quality = options.quality ?? 0.82;
-  let dataUrl = canvas.toDataURL(mimeType, quality);
-  while (options.maxBytes && estimateDataUrlBytes(dataUrl) > options.maxBytes && quality > 0.54) {
-    quality -= 0.08;
-    dataUrl = canvas.toDataURL(mimeType, quality);
+  const initialQuality = options.quality ?? 0.82;
+  for (let resizeAttempt = 0; resizeAttempt < 7; resizeAttempt += 1) {
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("当前浏览器不支持图片处理");
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, width, height);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(image, 0, 0, width, height);
+
+    let quality = initialQuality;
+    let dataUrl = canvas.toDataURL(mimeType, quality);
+    while (options.maxBytes && estimateDataUrlBytes(dataUrl) > options.maxBytes && quality > 0.5) {
+      quality = Math.max(0.5, quality - 0.08);
+      dataUrl = canvas.toDataURL(mimeType, quality);
+    }
+    if (!options.maxBytes || estimateDataUrlBytes(dataUrl) <= options.maxBytes) return dataUrl;
+
+    width = Math.max(1, Math.round(width * 0.82));
+    height = Math.max(1, Math.round(height * 0.82));
   }
-  if (options.maxBytes && estimateDataUrlBytes(dataUrl) > options.maxBytes) {
-    throw new Error("图片压缩后仍然过大，请换一张更小的图片");
-  }
-  return dataUrl;
+  throw new Error("图片压缩后仍然过大，请换一张更小的图片");
 }
 
 export function normalizeImageUploadError(error: unknown, fallback = "媒体上传失败，请稍后重试") {
@@ -96,4 +117,27 @@ function estimateDataUrlBytes(dataUrl: string) {
   const commaIndex = dataUrl.indexOf(",");
   const base64 = commaIndex >= 0 ? dataUrl.slice(commaIndex + 1) : dataUrl;
   return Math.ceil(base64.length * 0.75);
+}
+
+function validateImageFile(file: File) {
+  const mimeType = String(file.type || "").toLowerCase();
+  const extension = String(file.name || "").split(".").pop()?.toLowerCase() || "";
+  if (!mimeType.startsWith("image/") && !["jpg", "jpeg", "png", "webp", "gif"].includes(extension)) {
+    throw new Error("请选择图片文件");
+  }
+  if (file.size > MAX_SOURCE_BYTES) throw new Error("图片不能超过 32MB");
+}
+
+function isGifFile(file: File) {
+  return String(file.type || "").toLowerCase() === "image/gif"
+    || String(file.name || "").toLowerCase().endsWith(".gif");
+}
+
+function replaceFileExtension(name: string, extension: string) {
+  const base = String(name || "").replace(/\.[^.]+$/, "") || "image";
+  return `${base}.${extension}`;
+}
+
+function safeFileName(name: string, fallback: string) {
+  return String(name || "").trim() || fallback;
 }
