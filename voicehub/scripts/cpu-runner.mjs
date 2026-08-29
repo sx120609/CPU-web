@@ -45,6 +45,9 @@ const env = {
   VOICEHUB_INTEGRATION_SECRET: process.env.VOICEHUB_INTEGRATION_SECRET || '',
   NUXT_APP_BASE_URL: '/voicehub/',
   NUXT_PUBLIC_API_BASE: '/voicehub/api',
+  NUXT_PUBLIC_OAUTH_GITHUB: process.env.NUXT_PUBLIC_OAUTH_GITHUB || String(Boolean(process.env.GITHUB_CLIENT_ID)),
+  NUXT_PUBLIC_OAUTH_CASDOOR: process.env.NUXT_PUBLIC_OAUTH_CASDOOR || String(Boolean(process.env.CASDOOR_CLIENT_ID)),
+  NUXT_PUBLIC_OAUTH_GOOGLE: process.env.NUXT_PUBLIC_OAUTH_GOOGLE || String(Boolean(process.env.GOOGLE_CLIENT_ID)),
   NUXT_PUBLIC_SITE_TITLE: process.env.NUXT_PUBLIC_SITE_TITLE || '药苑之声',
   NUXT_PUBLIC_SITE_DESCRIPTION: process.env.NUXT_PUBLIC_SITE_DESCRIPTION || '中国药科大学广播站点歌与播出平台',
   NITRO_HOST: process.env.NITRO_HOST || '127.0.0.1',
@@ -92,7 +95,7 @@ if (action === 'migrate') {
 
 let executable = process.execPath
 let args = []
-if (action === 'start') {
+if (action === 'start' || action === 'serve') {
   args = [path.join(voiceHubDir, '.output', 'server', 'index.mjs')]
 } else {
   const nuxtCli = path.join(voiceHubDir, 'node_modules', 'nuxt', 'bin', 'nuxt.mjs')

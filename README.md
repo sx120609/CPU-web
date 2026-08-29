@@ -618,6 +618,10 @@ chmod +x deploy.sh
 ./deploy.sh
 ./deploy.sh update
 ./deploy.sh update-all
+./deploy.sh swap-init 6
+./deploy.sh build-status
+./deploy.sh artifact-check
+./deploy.sh nginx-http-fix
 ./deploy.sh restart
 ./deploy.sh logs
 ./deploy.sh status
@@ -649,6 +653,12 @@ chmod +x deploy.sh
 部署脚本会同时构建并由 PM2 管理 `cpu-web` 与 `cpu-voicehub`。`./deploy.sh autostart` 会为这两个主服务生成独立的 systemd 启动单元；Agent 机器使用 `./deploy.sh agent-autostart`，两套单元互不代替，也不会通过全局 `pm2 resurrect` 拉起无关进程。请用实际运行对应 PM2 进程的同一个 Linux 账号执行自启命令，脚本会在需要写入 systemd 时自动调用 `sudo`。关闭自启不会停止当前正在运行的进程。
 
 `./deploy.sh update` 会根据上次成功部署以来的变更路径，只安装、构建和重启受影响的子项目：只改主站不会重装、迁移、构建或重启药苑之声；只改药苑之声也不会重建主站。部署基线记录在 Git 元数据中，因此即使先手动执行 `git pull`，随后运行 `update` 也不会漏掉尚未部署的改动；首次启用基线记录时会安全地完整更新一次。依赖目录变更才会执行对应项目的 `npm ci`，Prisma 目录变更才会同步主站数据库。需要完整重建时，使用 `./deploy.sh update-all`。主站把 `/voicehub/`（含 WebSocket）反向代理到仅监听 `127.0.0.1:23335` 的 Nuxt/Nitro 进程；可用 `./deploy.sh voicehub-logs` 单独查看日志。
+
+低配生产机应先执行一次 `./deploy.sh swap-init 6`。该命令只使用固定路径 `/swapfile-cpu-web`，创建并持久启用 6 GiB Swap，同时设置 `vm.swappiness=10`；已启用时可重复执行。所有本机 `npm ci` 与生产构建都会经过资源护栏：低 CPU/IO 优先级、默认 2304 MiB Node heap、2 GiB 磁盘余量检查，并在低内存机器没有至少 2 GiB Swap 时拒绝冒险编译。可用 `./deploy.sh build-status` 查看实时资源状态。
+
+推送到 `main` 的主站、前端或药苑之声变更会触发 `Linux deployment artifact` GitHub Actions。工作流在 Ubuntu/Node 24 上构建 `server/dist`、`web/dist` 与 `voicehub/.output`，生成绑定完整提交 SHA 的清单和三个 SHA-256 校验值，同时上传短期 Actions 审计制品并更新固定的 `deploy-artifacts` 预发布资产。`./deploy.sh update` 默认使用 `DEPLOY_BUILD_MODE=auto`：先等待并验证与当前 `HEAD` 完全匹配的 CI 制品，再暂存、原子发布和健康检查；CI 不可用时才回退到受保护的本机编译。设置 `DEPLOY_BUILD_MODE=ci` 可禁止生产机编译并在制品缺失时失败关闭，设置为 `local` 可强制使用资源受限的本机编译。`./deploy.sh artifact-check [完整提交 SHA]` 只下载、校验并缓存制品，不发布文件。
+
+若宝塔把 HTTP 与 HTTPS 合并在同一个 Nginx `server` 中，可执行一次 `./deploy.sh nginx-http-fix`。脚本会备份 `/www/server/panel/vhost/nginx/cpu.lizmt.cn.conf`，把 80 端口拆成只负责跳转的入口，保留宝塔 ACME 验证 include，并把 `cputime.cn`、`www.cputime.cn`、`cpu.lizmt.cn` 统一 301 到 `https://cputime.cn`；只有 `nginx -t`、reload 和本机响应头回读全部通过才保留新配置，否则自动恢复备份。前端还包含同域 HTTP 页面兜底跳转，用于处理内置 WebView 未正确遵循代理跳转的情况。
 
 生产环境的站点超级管理员也可以在“管理后台 → 更新部署”中触发同一套增量更新。后台入口只执行固定的 `bash deploy.sh update`，使用独立 runner 和 Git 元数据目录中的文件锁、状态及脱敏日志，因此主服务被 PM2 重载后仍能继续查询结果。首次加入该功能时仍需按原方式部署一次；如需紧急关闭后台部署，可在 `server/.env` 设置 `ADMIN_DEPLOY_ENABLED=false` 并重启主服务。
 

@@ -5,6 +5,10 @@
 #   ./deploy.sh                  # 首次部署：装依赖 + 初始化 DB + 构建前端 + 启动
 #   ./deploy.sh update           # 增量更新：仅更新本次变更涉及的子项目
 #   ./deploy.sh update-all       # 强制完整更新主站与药苑之声
+#   ./deploy.sh swap-init [GB]   # 为低配构建机创建持久 Swap（默认 6 GiB）
+#   ./deploy.sh build-status     # 查看内存、Swap 与 CI 制品构建配置
+#   ./deploy.sh artifact-check [commit] # 下载并校验指定提交的 CI 制品，不发布
+#   ./deploy.sh nginx-http-fix   # 拆分 80/443，并将 HTTP 稳定跳转到主域名 HTTPS
 #   ./deploy.sh start            # 仅启动
 #   ./deploy.sh stop             # 停止
 #   ./deploy.sh restart          # 重启
@@ -66,6 +70,21 @@ ENV_FILE="server/.env"
 CMD_ARG_1="${2:-}"
 CMD_ARG_2="${3:-}"
 DEPLOY_MAIN_SERVICE_PAUSED=0
+DEPLOY_BUILD_MODE="${DEPLOY_BUILD_MODE:-auto}"
+DEPLOY_BUILD_NICE="${DEPLOY_BUILD_NICE:-10}"
+DEPLOY_NODE_HEAP_MB="${DEPLOY_NODE_HEAP_MB:-2304}"
+DEPLOY_CI_WAIT_SECONDS="${DEPLOY_CI_WAIT_SECONDS:-600}"
+DEPLOY_CI_POLL_SECONDS="${DEPLOY_CI_POLL_SECONDS:-15}"
+DEPLOY_ARTIFACT_URL="${DEPLOY_ARTIFACT_URL:-https://github.com/sx120609/CPU-web/releases/download/deploy-artifacts/cpu-web-linux-deploy.tar.gz}"
+DEPLOY_ARTIFACT_READY=0
+DEPLOY_ARTIFACT_DIR=""
+DEPLOY_BUILD_CAPACITY_CHECKED=0
+DEPLOY_CI_SERVER_SWAPPED=0
+DEPLOY_CI_WEB_SWAPPED=0
+DEPLOY_CI_VOICEHUB_SWAPPED=0
+NGINX_SITE_CONFIG="${NGINX_SITE_CONFIG:-/www/server/panel/vhost/nginx/cpu.lizmt.cn.conf}"
+NGINX_WELL_KNOWN_INCLUDE="${NGINX_WELL_KNOWN_INCLUDE:-/www/server/panel/vhost/nginx/well-known/cpu.lizmt.cn.conf}"
+NGINX_BIN="${NGINX_BIN:-/www/server/nginx/sbin/nginx}"
 
 restore_paused_main_service() {
   [ "$DEPLOY_MAIN_SERVICE_PAUSED" = "1" ] || return 0
@@ -77,7 +96,38 @@ restore_paused_main_service() {
   fi
 }
 
-trap restore_paused_main_service EXIT
+rollback_ci_artifact_publish() {
+  if [ "$DEPLOY_CI_SERVER_SWAPPED" = "1" ] && [ -d "$ROOT_DIR/server/dist.previous-ci" ]; then
+    warn "CI 部署失败，恢复上一版 server/dist"
+    rm -rf "$ROOT_DIR/server/dist.failed-ci"
+    mv "$ROOT_DIR/server/dist" "$ROOT_DIR/server/dist.failed-ci" 2>/dev/null || true
+    mv "$ROOT_DIR/server/dist.previous-ci" "$ROOT_DIR/server/dist" 2>/dev/null || true
+    pm2 restart "$SERVICE_NAME" >/dev/null 2>&1 || true
+  fi
+  if [ "$DEPLOY_CI_WEB_SWAPPED" = "1" ] && [ -f "$ROOT_DIR/web/dist/index.previous-ci.html" ]; then
+    warn "CI 部署失败，恢复上一版 web/index.html"
+    mv -f "$ROOT_DIR/web/dist/index.previous-ci.html" "$ROOT_DIR/web/dist/index.html" 2>/dev/null || true
+  fi
+  if [ "$DEPLOY_CI_VOICEHUB_SWAPPED" = "1" ] && [ -d "$ROOT_DIR/voicehub/.output.previous-ci" ]; then
+    warn "CI 部署失败，恢复上一版 voicehub/.output"
+    rm -rf "$ROOT_DIR/voicehub/.output.failed-ci"
+    mv "$ROOT_DIR/voicehub/.output" "$ROOT_DIR/voicehub/.output.failed-ci" 2>/dev/null || true
+    mv "$ROOT_DIR/voicehub/.output.previous-ci" "$ROOT_DIR/voicehub/.output" 2>/dev/null || true
+    pm2 restart "$VOICEHUB_SERVICE_NAME" >/dev/null 2>&1 || true
+  fi
+}
+
+handle_deploy_exit() {
+  local status=$?
+  trap - EXIT
+  if [ "$status" -ne 0 ]; then
+    rollback_ci_artifact_publish
+  fi
+  restore_paused_main_service
+  exit "$status"
+}
+
+trap handle_deploy_exit EXIT
 
 escape_env_value() {
   printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
@@ -861,15 +911,205 @@ configured_voicehub_database_url() {
   fi
 }
 
+run_privileged() {
+  if [ "$(id -u)" = "0" ]; then
+    "$@"
+  elif command -v sudo >/dev/null 2>&1; then
+    sudo "$@"
+  else
+    err "该操作需要 root 权限或 sudo"
+  fi
+}
+
+meminfo_mb() {
+  local key="$1"
+  awk -v key="$key" '$1 == key ":" { printf "%d", $2 / 1024 }' /proc/meminfo 2>/dev/null
+}
+
+do_build_status() {
+  log "CPU cores: $(getconf _NPROCESSORS_ONLN 2>/dev/null || echo unknown)"
+  if [ -r /proc/meminfo ]; then
+    log "Memory: total=$(meminfo_mb MemTotal) MiB available=$(meminfo_mb MemAvailable) MiB"
+    log "Swap: total=$(meminfo_mb SwapTotal) MiB free=$(meminfo_mb SwapFree) MiB"
+  fi
+  log "Build mode: $DEPLOY_BUILD_MODE (CI wait ${DEPLOY_CI_WAIT_SECONDS}s, local Node heap ${DEPLOY_NODE_HEAP_MB} MiB)"
+  df -h "$ROOT_DIR" | tail -n 1
+}
+
+do_swap_init() {
+  local size_gb="${CMD_ARG_1:-6}"
+  local swap_file="/swapfile-cpu-web"
+  local required_mb available_mb current_bytes expected_bytes sysctl_tmp
+
+  [[ "$size_gb" =~ ^[0-9]+$ ]] || err "Swap 大小必须是整数 GiB"
+  [ "$size_gb" -ge 2 ] && [ "$size_gb" -le 16 ] || err "Swap 大小必须在 2 到 16 GiB 之间"
+  command -v swapon >/dev/null 2>&1 || err "系统缺少 swapon"
+
+  expected_bytes=$((size_gb * 1024 * 1024 * 1024))
+  if swapon --show=NAME --noheadings 2>/dev/null | awk '{$1=$1};1' | grep -Fxq "$swap_file"; then
+    current_bytes="$(stat -c %s "$swap_file" 2>/dev/null || echo 0)"
+    [ "$current_bytes" -ge "$expected_bytes" ] \
+      || err "$swap_file 已启用但小于 ${size_gb} GiB；请人工扩容，脚本不会覆盖正在使用的 Swap"
+    log "$swap_file 已启用"
+  else
+    if [ -e "$swap_file" ]; then
+      [ -f "$swap_file" ] || err "$swap_file 已存在但不是普通文件，拒绝覆盖"
+      current_bytes="$(stat -c %s "$swap_file" 2>/dev/null || echo 0)"
+      [ "$current_bytes" -ge "$expected_bytes" ] \
+        || err "$swap_file 已存在但小于 ${size_gb} GiB，拒绝自动覆盖"
+    else
+      required_mb=$((size_gb * 1024 + 1024))
+      available_mb="$(df -Pm / | awk 'NR == 2 { print $4 }')"
+      [ "$available_mb" -ge "$required_mb" ] \
+        || err "磁盘空间不足：创建 ${size_gb} GiB Swap 后至少还需保留 1 GiB"
+      log "创建 ${size_gb} GiB 低配构建保护 Swap：$swap_file"
+      if command -v fallocate >/dev/null 2>&1; then
+        run_privileged fallocate -l "${size_gb}G" "$swap_file"
+      else
+        run_privileged dd if=/dev/zero of="$swap_file" bs=1M count="$((size_gb * 1024))" status=progress
+      fi
+    fi
+    run_privileged chmod 600 "$swap_file"
+    run_privileged mkswap "$swap_file" >/dev/null
+    run_privileged swapon "$swap_file"
+  fi
+
+  if ! grep -Fq "$swap_file none swap sw 0 0" /etc/fstab 2>/dev/null; then
+    printf '%s\n' "$swap_file none swap sw 0 0" | run_privileged tee -a /etc/fstab >/dev/null
+  fi
+  sysctl_tmp="$(mktemp)"
+  printf '%s\n' 'vm.swappiness=10' > "$sysctl_tmp"
+  run_privileged install -m 644 "$sysctl_tmp" /etc/sysctl.d/99-cpu-web-build.conf
+  rm -f "$sysctl_tmp"
+  run_privileged sysctl -p /etc/sysctl.d/99-cpu-web-build.conf >/dev/null
+  log "Swap 已持久启用，vm.swappiness=10"
+  do_build_status
+}
+
+do_artifact_check() {
+  local commit="${CMD_ARG_1:-}"
+  [ -n "$commit" ] || commit="$(git rev-parse HEAD 2>/dev/null)"
+  download_ci_artifact "$commit" \
+    || err "未取得与 ${commit:0:12} 完全匹配的 CI 制品"
+  log "CI artifact check passed: $DEPLOY_ARTIFACT_DIR"
+}
+
+do_nginx_http_fix() {
+  local patcher="$ROOT_DIR/ops/nginx/patch-nginx-http-redirect.mjs"
+  local temporary backup nginx_bin mode headers location
+  [ -f "$patcher" ] || err "缺少 Nginx 修复脚本：$patcher"
+  case "$NGINX_SITE_CONFIG" in
+    /www/server/panel/vhost/nginx/*.conf) ;;
+    *) err "拒绝修改预期目录之外的 Nginx 配置：$NGINX_SITE_CONFIG" ;;
+  esac
+  [ -f "$NGINX_SITE_CONFIG" ] || err "Nginx 站点配置不存在：$NGINX_SITE_CONFIG"
+
+  nginx_bin="$NGINX_BIN"
+  if [ ! -x "$nginx_bin" ]; then
+    nginx_bin="$(command -v nginx 2>/dev/null || true)"
+  fi
+  [ -n "$nginx_bin" ] && [ -x "$nginx_bin" ] || err "找不到可执行的 nginx"
+
+  temporary="$(mktemp)"
+  if ! node "$patcher" "$NGINX_SITE_CONFIG" "$ROOT_DIR" "$NGINX_WELL_KNOWN_INCLUDE" > "$temporary"; then
+    rm -f "$temporary"
+    err "无法安全生成 Nginx HTTP 跳转配置"
+  fi
+
+  if cmp -s "$temporary" "$NGINX_SITE_CONFIG"; then
+    rm -f "$temporary"
+    run_privileged "$nginx_bin" -t
+    log "Nginx HTTP/HTTPS 已是拆分配置"
+    return 0
+  fi
+
+  backup="${NGINX_SITE_CONFIG}.cpu-web-backup.$(date +%Y%m%d%H%M%S)"
+  mode="$(stat -c %a "$NGINX_SITE_CONFIG" 2>/dev/null || echo 644)"
+  run_privileged cp -a "$NGINX_SITE_CONFIG" "$backup"
+  run_privileged install -m "$mode" "$temporary" "$NGINX_SITE_CONFIG"
+  rm -f "$temporary"
+
+  if ! run_privileged "$nginx_bin" -t; then
+    run_privileged cp -a "$backup" "$NGINX_SITE_CONFIG"
+    run_privileged "$nginx_bin" -t || true
+    err "新配置未通过 nginx -t，已恢复：$backup"
+  fi
+  if ! run_privileged "$nginx_bin" -s reload; then
+    run_privileged cp -a "$backup" "$NGINX_SITE_CONFIG"
+    run_privileged "$nginx_bin" -t || true
+    run_privileged "$nginx_bin" -s reload || true
+    err "Nginx reload 失败，已恢复：$backup"
+  fi
+
+  if command -v curl >/dev/null 2>&1; then
+    headers="$(curl -sSI --max-time 10 -H 'Host: cputime.cn' http://127.0.0.1/voicehub/ | tr -d '\r')"
+    location="$(printf '%s\n' "$headers" | awk 'BEGIN { IGNORECASE=1 } /^Location:/ { sub(/^[^:]+:[[:space:]]*/, ""); print; exit }')"
+    if [ "$location" != "https://cputime.cn/voicehub/" ]; then
+      run_privileged cp -a "$backup" "$NGINX_SITE_CONFIG"
+      run_privileged "$nginx_bin" -t || true
+      run_privileged "$nginx_bin" -s reload || true
+      err "本机 HTTP 跳转验证失败，已恢复旧配置（Location: ${location:-missing}）"
+    fi
+    if printf '%s\n' "$headers" | grep -Eqi '^(Strict-Transport-Security|Alt-Svc):'; then
+      run_privileged cp -a "$backup" "$NGINX_SITE_CONFIG"
+      run_privileged "$nginx_bin" -t || true
+      run_privileged "$nginx_bin" -s reload || true
+      err "HTTP 入口仍泄漏 TLS/QUIC 响应头，已恢复旧配置"
+    fi
+  fi
+  log "Nginx HTTP 入口已独立：所有生产域名 301 到 https://cputime.cn，备份：$backup"
+}
+
+ensure_local_build_capacity() {
+  [ "$DEPLOY_BUILD_CAPACITY_CHECKED" = "1" ] && return 0
+  DEPLOY_BUILD_CAPACITY_CHECKED=1
+  [ -r /proc/meminfo ] || return 0
+
+  local total_mb available_mb swap_total_mb swap_free_mb disk_free_mb
+  total_mb="$(meminfo_mb MemTotal)"
+  available_mb="$(meminfo_mb MemAvailable)"
+  swap_total_mb="$(meminfo_mb SwapTotal)"
+  swap_free_mb="$(meminfo_mb SwapFree)"
+  disk_free_mb="$(df -Pm "$ROOT_DIR" | awk 'NR == 2 { print $4 }')"
+
+  if [ "$total_mb" -lt 6144 ] && [ "$swap_total_mb" -lt 2048 ]; then
+    err "低配服务器没有足够 Swap，拒绝冒险本机编译；请先运行 bash deploy.sh swap-init 6"
+  fi
+  [ "$((available_mb + swap_free_mb))" -ge 1536 ] \
+    || err "当前可用内存与 Swap 少于 1536 MiB，已取消本机编译以保护在线服务"
+  [ "$disk_free_mb" -ge 2048 ] || err "可用磁盘少于 2 GiB，已取消本机编译"
+  log "Local build guard: available=${available_mb} MiB swap-free=${swap_free_mb} MiB disk-free=${disk_free_mb} MiB"
+}
+
+run_guarded_process() {
+  local label="$1"
+  shift
+  ensure_local_build_capacity
+  local node_options="${NODE_OPTIONS:-}"
+  local -a runner=()
+  if [[ "$node_options" != *--max-old-space-size* ]]; then
+    node_options="${node_options:+$node_options }--max-old-space-size=$DEPLOY_NODE_HEAP_MB"
+  fi
+  runner=(env "NODE_OPTIONS=$node_options" npm_config_jobs=2 "$@")
+  if command -v ionice >/dev/null 2>&1; then
+    runner=(ionice -c 3 "${runner[@]}")
+  fi
+  if command -v nice >/dev/null 2>&1; then
+    runner=(nice -n "$DEPLOY_BUILD_NICE" "${runner[@]}")
+  fi
+  log "$label（低优先级，Node heap ${DEPLOY_NODE_HEAP_MB} MiB）"
+  "${runner[@]}"
+}
+
 # ---------- 子步骤 ----------
 install_project_dependencies() {
   local project="$1"
   if [ -f "$project/package-lock.json" ]; then
-    log "Installing $project dependencies with npm ci"
-    npm ci --prefix "$project" --include=dev --no-audit --no-fund
+    run_guarded_process "Installing $project dependencies with npm ci" \
+      npm ci --prefix "$project" --include=dev --no-audit --no-fund
   else
-    log "Installing $project dependencies with npm install (no lockfile)"
-    npm install --prefix "$project" --include=dev --no-audit --no-fund
+    run_guarded_process "Installing $project dependencies with npm install (no lockfile)" \
+      npm install --prefix "$project" --include=dev --no-audit --no-fund
   fi
 }
 
@@ -940,43 +1180,49 @@ ensure_project_build_dependencies() {
 }
 
 do_generate_prisma() {
-  log "Generating Prisma Client"
-  npm run prisma:generate --prefix server || err "Prisma Client generation failed"
+  run_guarded_process "Generating Prisma Client" \
+    npm run prisma:generate --prefix server \
+    || err "Prisma Client generation failed"
 }
 
 do_build_server() {
   ensure_project_build_dependencies server tsc
-  log "Building server TypeScript -> server/dist"
-  npm run build:compile --prefix server
+  run_guarded_process "Building server TypeScript -> server/dist" \
+    npm run build:compile --prefix server
+}
+
+publish_staged_web_dist() {
+  local staged_dist="$1"
+  local live_dist="$ROOT_DIR/web/dist"
+  local source_file relative_path target_file
+  [ -f "$staged_dist/index.html" ] || err "Web artifact is missing index.html"
+  mkdir -p "$live_dist"
+  while IFS= read -r -d '' source_file; do
+    relative_path="${source_file#"$staged_dist"/}"
+    [ "$relative_path" = "index.html" ] && continue
+    target_file="$live_dist/$relative_path"
+    mkdir -p "$(dirname "$target_file")"
+    mv -f "$source_file" "$target_file"
+  done < <(find "$staged_dist" -type f -print0)
+  mv -f "$staged_dist/index.html" "$live_dist/index.html"
+  rm -rf "$staged_dist"
+  log "Web assets published atomically; previous hashed chunks were retained"
 }
 
 do_build_web() {
   ensure_project_build_dependencies web vue-tsc vite
   local web_dir="$ROOT_DIR/web"
-  local live_dist="$web_dir/dist"
   local staged_dist="$web_dir/dist.next"
 
   # Vite clears outDir before building. Publishing through a staging directory keeps
   # the current site and its hashed chunks available throughout the build.
   [ "$staged_dist" = "$ROOT_DIR/web/dist.next" ] || err "Refusing unsafe web staging path: $staged_dist"
   rm -rf "$staged_dist"
-  log "Building web Vite -> web/dist.next"
-  npm run build --prefix web -- --outDir "$staged_dist" --emptyOutDir
+  run_guarded_process "Building web Vite -> web/dist.next" \
+    npm run build --prefix web -- --outDir "$staged_dist" --emptyOutDir
   [ -f "$staged_dist/index.html" ] || err "Web build completed without index.html"
-
-  mkdir -p "$live_dist"
-  while IFS= read -r -d '' source_file; do
-    local relative_path="${source_file#"$staged_dist"/}"
-    [ "$relative_path" = "index.html" ] && continue
-    local target_file="$live_dist/$relative_path"
-    mkdir -p "$(dirname "$target_file")"
-    mv -f "$source_file" "$target_file"
-  done < <(find "$staged_dist" -type f -print0)
-
   # Switch HTML last. Older hashed chunks stay in place for already-open clients.
-  mv -f "$staged_dist/index.html" "$live_dist/index.html"
-  rm -rf "$staged_dist"
-  log "Web assets published atomically; previous hashed chunks were retained"
+  publish_staged_web_dist "$staged_dist"
 }
 
 do_sync_web_static_assets() {
@@ -998,8 +1244,8 @@ do_sync_web_static_assets() {
 
 do_build_voicehub() {
   ensure_project_build_dependencies voicehub nuxt
-  log "Building VoiceHub Nuxt/Nitro -> voicehub/.output"
-  npm run build:cpu --prefix voicehub
+  run_guarded_process "Building VoiceHub Nuxt/Nitro -> voicehub/.output" \
+    npm run build:cpu --prefix voicehub
 }
 
 do_build_all() {
@@ -1007,6 +1253,199 @@ do_build_all() {
   do_build_web
   do_sync_web_static_assets
   do_build_voicehub
+}
+
+validate_bundle_archive() {
+  local archive="$1"
+  local entry normalized manifest_count=0 server_count=0 web_count=0 voicehub_count=0
+  while IFS= read -r entry; do
+    normalized="${entry#./}"
+    case "$normalized" in
+      manifest.json) manifest_count=$((manifest_count + 1)) ;;
+      server-dist.tar.gz) server_count=$((server_count + 1)) ;;
+      web-dist.tar.gz) web_count=$((web_count + 1)) ;;
+      voicehub-output.tar.gz) voicehub_count=$((voicehub_count + 1)) ;;
+      *) return 1 ;;
+    esac
+  done < <(tar -tzf "$archive")
+  [ "$manifest_count" = "1" ] \
+    && [ "$server_count" = "1" ] \
+    && [ "$web_count" = "1" ] \
+    && [ "$voicehub_count" = "1" ]
+}
+
+validate_component_archive() {
+  local archive="$1"
+  local root_name="$2"
+  local required_entry="$3"
+  local entry normalized found=0
+  while IFS= read -r entry; do
+    normalized="${entry#./}"
+    case "$normalized" in
+      /*|..|../*|*/..|*/../*) return 1 ;;
+      "$root_name"|"$root_name/"|"$root_name/"*) ;;
+      *) return 1 ;;
+    esac
+    [ "$normalized" = "$required_entry" ] && found=1
+  done < <(tar -tzf "$archive")
+  [ "$found" = "1" ]
+}
+
+artifact_cache_root() {
+  local git_dir
+  git_dir="$(git rev-parse --absolute-git-dir 2>/dev/null)" || return 1
+  printf '%s/cpu-web-deploy-artifacts' "$git_dir"
+}
+
+verify_ci_artifact_directory() {
+  local commit="$1"
+  local directory="$2"
+  local filename
+  for filename in manifest.json server-dist.tar.gz web-dist.tar.gz voicehub-output.tar.gz; do
+    [ -f "$directory/$filename" ] && [ ! -L "$directory/$filename" ] || return 1
+  done
+  if find "$directory" -mindepth 1 -maxdepth 1 ! -type f -print -quit | grep -q .; then
+    return 1
+  fi
+  node "$ROOT_DIR/ops/deploy/verify-artifact-manifest.mjs" "$commit" "$directory" \
+    || return 1
+  validate_component_archive "$directory/server-dist.tar.gz" dist dist/index.js \
+    || return 1
+  validate_component_archive "$directory/web-dist.tar.gz" dist dist/index.html \
+    || return 1
+  validate_component_archive "$directory/voicehub-output.tar.gz" .output .output/server/index.mjs \
+    || return 1
+}
+
+download_ci_artifact() {
+  local commit="$1"
+  local cache_root target_dir incoming_dir extract_dir bundle_url deadline attempt=1
+  [[ "$commit" =~ ^[0-9a-fA-F]{40}$ ]] || return 1
+  commit="${commit,,}"
+  command -v curl >/dev/null 2>&1 || return 1
+  command -v tar >/dev/null 2>&1 || return 1
+  cache_root="$(artifact_cache_root)" || return 1
+  target_dir="$cache_root/$commit"
+  incoming_dir="$cache_root/.incoming-$commit-$$"
+  extract_dir="$incoming_dir/extracted"
+  case "$target_dir" in "$cache_root/"*) ;; *) return 1 ;; esac
+  case "$incoming_dir" in "$cache_root/"*) ;; *) return 1 ;; esac
+
+  mkdir -p "$cache_root"
+  if [ -d "$target_dir" ] && verify_ci_artifact_directory "$commit" "$target_dir" >/dev/null 2>&1; then
+    DEPLOY_ARTIFACT_DIR="$target_dir"
+    DEPLOY_ARTIFACT_READY=1
+    log "Using cached CI deployment artifact for ${commit:0:12}"
+    return 0
+  fi
+
+  rm -rf "$target_dir" "$incoming_dir"
+  deadline=$((SECONDS + DEPLOY_CI_WAIT_SECONDS))
+  while [ "$SECONDS" -le "$deadline" ]; do
+    rm -rf "$incoming_dir"
+    mkdir -p "$extract_dir"
+    bundle_url="${DEPLOY_ARTIFACT_URL}?commit=$commit&attempt=$attempt"
+    if curl -fsSL \
+      --connect-timeout 15 \
+      --max-time 300 \
+      --retry 2 \
+      --retry-delay 2 \
+      -H 'Cache-Control: no-cache' \
+      "$bundle_url" \
+      -o "$incoming_dir/bundle.tar.gz" \
+      && validate_bundle_archive "$incoming_dir/bundle.tar.gz" \
+      && tar -xzf "$incoming_dir/bundle.tar.gz" -C "$extract_dir" \
+      && verify_ci_artifact_directory "$commit" "$extract_dir"; then
+      mv "$extract_dir" "$target_dir"
+      rm -rf "$incoming_dir"
+      DEPLOY_ARTIFACT_DIR="$target_dir"
+      DEPLOY_ARTIFACT_READY=1
+      log "CI deployment artifact is ready for ${commit:0:12}"
+      return 0
+    fi
+    if [ "$SECONDS" -le "$deadline" ]; then
+      warn "CI artifact for ${commit:0:12} is not ready; retrying in ${DEPLOY_CI_POLL_SECONDS}s"
+      sleep "$DEPLOY_CI_POLL_SECONDS"
+    fi
+    attempt=$((attempt + 1))
+  done
+  rm -rf "$incoming_dir"
+  return 1
+}
+
+select_deploy_build_source() {
+  case "$DEPLOY_BUILD_MODE" in
+    local)
+      log "Build source: protected local compilation"
+      ;;
+    ci)
+      download_ci_artifact "$DEPLOY_TARGET_COMMIT" \
+        || err "未取得与 ${DEPLOY_TARGET_COMMIT:0:12} 完全匹配的 CI 制品，已禁止生产机编译"
+      ;;
+    auto)
+      if download_ci_artifact "$DEPLOY_TARGET_COMMIT"; then
+        log "Build source: verified CI artifact"
+      else
+        warn "CI 制品不可用，回退到受资源保护的本机编译"
+      fi
+      ;;
+    *) err "DEPLOY_BUILD_MODE 仅支持 auto、ci 或 local" ;;
+  esac
+}
+
+publish_ci_server_artifact() {
+  local stage="$ROOT_DIR/server/dist.next-ci"
+  local live="$ROOT_DIR/server/dist"
+  local backup="$ROOT_DIR/server/dist.previous-ci"
+  rm -rf "$stage" "$backup" "$ROOT_DIR/server/dist.failed-ci"
+  mkdir -p "$stage"
+  tar -xzf "$DEPLOY_ARTIFACT_DIR/server-dist.tar.gz" -C "$stage"
+  [ -f "$stage/dist/index.js" ] || err "CI server artifact is missing dist/index.js"
+  [ -d "$live" ] && mv "$live" "$backup"
+  mv "$stage/dist" "$live"
+  rm -rf "$stage"
+  DEPLOY_CI_SERVER_SWAPPED=1
+  log "Published CI server artifact"
+}
+
+publish_ci_web_artifact() {
+  local stage="$ROOT_DIR/web/dist.next-ci"
+  local live="$ROOT_DIR/web/dist"
+  rm -rf "$stage"
+  mkdir -p "$stage"
+  tar -xzf "$DEPLOY_ARTIFACT_DIR/web-dist.tar.gz" -C "$stage"
+  [ -f "$stage/dist/index.html" ] || err "CI web artifact is missing dist/index.html"
+  if [ -f "$live/index.html" ]; then
+    cp -f "$live/index.html" "$live/index.previous-ci.html"
+    DEPLOY_CI_WEB_SWAPPED=1
+  fi
+  publish_staged_web_dist "$stage/dist"
+  rm -rf "$stage"
+  log "Published CI web artifact"
+}
+
+publish_ci_voicehub_artifact() {
+  local stage="$ROOT_DIR/voicehub/.output.next-ci"
+  local live="$ROOT_DIR/voicehub/.output"
+  local backup="$ROOT_DIR/voicehub/.output.previous-ci"
+  rm -rf "$stage" "$backup" "$ROOT_DIR/voicehub/.output.failed-ci"
+  mkdir -p "$stage"
+  tar -xzf "$DEPLOY_ARTIFACT_DIR/voicehub-output.tar.gz" -C "$stage"
+  [ -f "$stage/.output/server/index.mjs" ] || err "CI VoiceHub artifact is missing .output/server/index.mjs"
+  [ -d "$live" ] && mv "$live" "$backup"
+  mv "$stage/.output" "$live"
+  rm -rf "$stage"
+  DEPLOY_CI_VOICEHUB_SWAPPED=1
+  log "Published CI VoiceHub artifact"
+}
+
+commit_ci_artifact_publish() {
+  [ "$DEPLOY_CI_SERVER_SWAPPED" = "1" ] && rm -rf "$ROOT_DIR/server/dist.previous-ci"
+  [ "$DEPLOY_CI_WEB_SWAPPED" = "1" ] && rm -f "$ROOT_DIR/web/dist/index.previous-ci.html"
+  [ "$DEPLOY_CI_VOICEHUB_SWAPPED" = "1" ] && rm -rf "$ROOT_DIR/voicehub/.output.previous-ci"
+  DEPLOY_CI_SERVER_SWAPPED=0
+  DEPLOY_CI_WEB_SWAPPED=0
+  DEPLOY_CI_VOICEHUB_SWAPPED=0
 }
 
 ensure_voicehub_database_url() {
@@ -1348,22 +1787,31 @@ do_voicehub_start() {
   log "通过 pm2 启动药苑之声（本机端口 $VOICEHUB_PORT）"
   cd voicehub
   if pm2 describe "$VOICEHUB_SERVICE_NAME" >/dev/null 2>&1; then
-    DATABASE_URL="$voice_url" CPU_WEB_ORIGIN="http://127.0.0.1:$PORT" \
-      VOICEHUB_INTEGRATION_SECRET="$(env_get VOICEHUB_INTEGRATION_SECRET)" \
-      NUXT_APP_BASE_URL="/voicehub/" NUXT_PUBLIC_API_BASE="/voicehub/api" \
-      NITRO_HOST="127.0.0.1" NITRO_PORT="$VOICEHUB_PORT" \
-      pm2 restart "$VOICEHUB_SERVICE_NAME" --update-env
-  else
-    DATABASE_URL="$voice_url" CPU_WEB_ORIGIN="http://127.0.0.1:$PORT" \
+    if pm2 describe "$VOICEHUB_SERVICE_NAME" | grep -Fq "$ROOT_DIR/voicehub/scripts/cpu-runner.mjs"; then
+      VOICEHUB_DATABASE_URL="$voice_url" \
+        CPU_WEB_ORIGIN="http://127.0.0.1:$PORT" \
+        VOICEHUB_INTEGRATION_SECRET="$(env_get VOICEHUB_INTEGRATION_SECRET)" \
+        NUXT_APP_BASE_URL="/voicehub/" NUXT_PUBLIC_API_BASE="/voicehub/api" \
+        NUXT_PUBLIC_SITE_TITLE="药苑之声" NITRO_HOST="127.0.0.1" NITRO_PORT="$VOICEHUB_PORT" \
+        NODE_ENV=production pm2 restart "$VOICEHUB_SERVICE_NAME" --update-env
+    else
+      warn "升级 $VOICEHUB_SERVICE_NAME 到运行时环境加载器"
+      pm2 delete "$VOICEHUB_SERVICE_NAME"
+    fi
+  fi
+  if ! pm2 describe "$VOICEHUB_SERVICE_NAME" >/dev/null 2>&1; then
+    VOICEHUB_DATABASE_URL="$voice_url" CPU_WEB_ORIGIN="http://127.0.0.1:$PORT" \
       VOICEHUB_INTEGRATION_SECRET="$(env_get VOICEHUB_INTEGRATION_SECRET)" \
       NUXT_APP_BASE_URL="/voicehub/" NUXT_PUBLIC_API_BASE="/voicehub/api" \
       NUXT_PUBLIC_SITE_TITLE="药苑之声" NITRO_HOST="127.0.0.1" NITRO_PORT="$VOICEHUB_PORT" \
-      NODE_ENV=production pm2 start "node .output/server/index.mjs" \
+      NODE_ENV=production pm2 start scripts/cpu-runner.mjs \
+        --interpreter node \
         --name "$VOICEHUB_SERVICE_NAME" \
         --time \
         --max-memory-restart 900M \
         --log-date-format "YYYY-MM-DD HH:mm:ss" \
-        --merge-logs
+        --merge-logs \
+        -- serve
   fi
   cd ..
   wait_for_voicehub_health
@@ -1534,7 +1982,7 @@ record_successful_deployment() {
 }
 
 collect_update_changes() {
-  local after baseline state_file
+  local before after baseline state_file reexec_command
   if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     warn "Not a Git checkout; performing a full update"
     DEPLOY_FORCE_ALL=1
@@ -1542,8 +1990,17 @@ collect_update_changes() {
   fi
 
   log "Pulling latest code"
+  before="$(git rev-parse HEAD)"
   pull_latest_or_abort "incremental update"
   after="$(git rev-parse HEAD)"
+  if [ "${CPU_WEB_UPDATE_REEXEC:-0}" != "1" ] \
+    && [ "$before" != "$after" ] \
+    && ! git diff --quiet "$before" "$after" -- deploy.sh; then
+    reexec_command=update
+    [ "$DEPLOY_FORCE_ALL" = "1" ] && reexec_command=update-all
+    log "检测到主站部署脚本已更新，重新载入新脚本"
+    CPU_WEB_UPDATE_REEXEC=1 exec bash "$ROOT_DIR/deploy.sh" "$reexec_command"
+  fi
   DEPLOY_TARGET_COMMIT="$after"
 
   baseline=""
@@ -1630,18 +2087,28 @@ do_update() {
     return
   fi
 
+  select_deploy_build_source
+
   if [ "$server_changed" = "1" ]; then
     [ "$server_dependencies_changed" = "1" ] && do_install_server
     if [ "$prisma_changed" = "1" ] || [ "$server_dependencies_changed" = "1" ]; then
       do_db_migrate
       do_generate_prisma
     fi
-    do_build_server
+    if [ "$DEPLOY_ARTIFACT_READY" = "1" ]; then
+      publish_ci_server_artifact
+    else
+      do_build_server
+    fi
   fi
 
   if [ "$web_changed" = "1" ]; then
     [ "$web_dependencies_changed" = "1" ] && do_install_web
-    do_build_web
+    if [ "$DEPLOY_ARTIFACT_READY" = "1" ]; then
+      publish_ci_web_artifact
+    else
+      do_build_web
+    fi
   fi
 
   if [ "$server_changed" = "1" ] || [ "$web_changed" = "1" ]; then
@@ -1655,13 +2122,18 @@ do_update() {
   if [ "$voicehub_changed" = "1" ]; then
     [ "$voicehub_dependencies_changed" = "1" ] && do_install_voicehub
     do_voicehub_db_init
-    do_build_voicehub
+    if [ "$DEPLOY_ARTIFACT_READY" = "1" ]; then
+      publish_ci_voicehub_artifact
+    else
+      do_build_voicehub
+    fi
     do_voicehub_start
     ensure_pm2
     pm2 save >/dev/null
   fi
 
   ensure_update_runtime_services
+  commit_ci_artifact_publish
   record_successful_deployment
 }
 
@@ -1752,6 +2224,24 @@ main() {
     runtime_uses_postgres || err "PostgreSQL must be configured before updating"
     DEPLOY_FORCE_ALL=1
     do_update
+    ;;
+  swap-init)
+    log "=== 低配构建机 Swap 初始化 ==="
+    do_swap_init
+    ;;
+  build-status)
+    log "=== 构建资源状态 ==="
+    do_build_status
+    ;;
+  artifact-check)
+    log "=== CI 部署制品校验 ==="
+    ensure_node
+    do_artifact_check
+    ;;
+  nginx-http-fix)
+    log "=== Nginx HTTP/HTTPS 拆分与 QQ WebView 跳转修复 ==="
+    ensure_node
+    do_nginx_http_fix
     ;;
   proxy-init)
     log "=== 教务代理首次部署模式 ==="

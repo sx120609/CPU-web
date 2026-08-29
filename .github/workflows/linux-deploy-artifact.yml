@@ -1,0 +1,113 @@
+name: Linux deployment artifact
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/linux-deploy-artifact.yml"
+      - "deploy.sh"
+      - "ops/deploy/**"
+      - "ops/nginx/**"
+      - "server/**"
+      - "web/**"
+      - "voicehub/**"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: linux-deployment-artifact
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build verified Linux bundle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout exact commit
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: |
+            server/package-lock.json
+            web/package-lock.json
+            voicehub/package-lock.json
+
+      - name: Install project dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --prefix server --include=dev --no-audit --no-fund
+          npm ci --prefix web --include=dev --no-audit --no-fund
+          npm ci --prefix voicehub --include=dev --no-audit --no-fund
+
+      - name: Build server, web, and VoiceHub
+        shell: bash
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+        run: |
+          set -euo pipefail
+          npm run prisma:generate --prefix server
+          npm run build:compile --prefix server
+          npm run build --prefix web
+          npm run build:cpu --prefix voicehub
+
+      - name: Package and verify commit-bound bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf deploy-bundle
+          mkdir -p deploy-bundle
+          tar -C server -czf deploy-bundle/server-dist.tar.gz dist
+          tar -C web -czf deploy-bundle/web-dist.tar.gz dist
+          tar -C voicehub -czf deploy-bundle/voicehub-output.tar.gz .output
+          node ops/deploy/create-artifact-manifest.mjs "$GITHUB_SHA" deploy-bundle
+          node ops/deploy/verify-artifact-manifest.mjs "$GITHUB_SHA" deploy-bundle
+          node --test \
+            ops/deploy/artifact-manifest.test.mjs \
+            ops/nginx/nginx-http-redirect.test.mjs \
+            web/tests/transportBootstrap.test.mjs
+          bash -n deploy.sh
+          tar -C deploy-bundle -czf cpu-web-linux-deploy.tar.gz \
+            manifest.json server-dist.tar.gz web-dist.tar.gz voicehub-output.tar.gz
+          sha256sum cpu-web-linux-deploy.tar.gz > cpu-web-linux-deploy.tar.gz.sha256
+
+      - name: Upload immutable workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cpu-web-linux-${{ github.sha }}
+          path: |
+            cpu-web-linux-deploy.tar.gz
+            cpu-web-linux-deploy.tar.gz.sha256
+          compression-level: 0
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Publish stable deployment transport
+        if: github.ref == 'refs/heads/main'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if ! gh release view deploy-artifacts --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create deploy-artifacts \
+              --repo "$GITHUB_REPOSITORY" \
+              --target main \
+              --prerelease \
+              --title "Automated Linux deployment artifacts" \
+              --notes "Machine-generated, commit-bound Linux deployment bundle. The production deploy script verifies the embedded commit and SHA-256 hashes before publishing files."
+          fi
+          gh release upload deploy-artifacts \
+            cpu-web-linux-deploy.tar.gz \
+            cpu-web-linux-deploy.tar.gz.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber

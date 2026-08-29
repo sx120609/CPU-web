@@ -13,6 +13,7 @@
     "preview": "nuxt preview",
     "start": "node .output/server/index.mjs",
     "start:cpu": "node scripts/cpu-runner.mjs start",
+    "serve:cpu": "node scripts/cpu-runner.mjs serve",
     "db:migrate": "npx drizzle-kit migrate",
     "db:migrate:cpu": "node scripts/cpu-runner.mjs migrate",
     "db:generate": "npx drizzle-kit generate --name=auto-migration",
