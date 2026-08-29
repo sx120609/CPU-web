@@ -1,6 +1,4 @@
-// v3 clears module aliases cached before both production domains shared one
-// versioned COS module graph.
-const SW_VERSION = "cpu-schedule-offline-20260829-v3";
+const SW_VERSION = "cpu-schedule-offline-20260830-v4";
 const APP_SHELL_CACHE = `${SW_VERSION}:shell`;
 const ASSET_CACHE = `${SW_VERSION}:assets`;
 const SCHEDULE_PATH = "/schedule";
@@ -8,10 +6,10 @@ const WARMUP_MESSAGE = "cpu-schedule-offline-warmup";
 const STATIC_PREFIXES = ["/assets/", "/brand/", "/splash/"];
 const PRECACHE_URLS = [
   SCHEDULE_PATH,
-  "/manifest-v3.webmanifest?v=20260530",
-  "/apple-touch-icon-v3.png?v=20260530-hw",
-  "/icon-192-v3.png?v=20260530-hw",
-  "/icon-512-v3.png?v=20260530-hw",
+  "/manifest-v3.webmanifest?v=20260830",
+  "/apple-touch-icon-v3.png?v=20260830",
+  "/icon-192-v3.png?v=20260830",
+  "/icon-512-v3.png?v=20260830",
   "/favicon.svg?v=20260530",
 ];
 

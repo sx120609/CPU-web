@@ -11,7 +11,9 @@
         <img
           v-if="ad.imageUrl && imageVisible"
           class="ad-image"
-          :src="ad.imageUrl"
+          :src="adImage"
+          :srcset="adImageSrcset"
+          sizes="(max-width: 600px) 82px, 108px"
           :alt="ad.title"
           loading="lazy"
           decoding="async"
@@ -34,9 +36,12 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { forumAdsApi, type ForumAd } from "@/api/forumAds";
 import AppIcon from "@/components/common/AppIcon.vue";
+import { cdnImageSrcset, cdnImageUrl } from "@/utils/cdnMedia";
 
 const props = withDefaults(defineProps<{ ad: ForumAd; compact?: boolean }>(), { compact: false });
 const isExternal = computed(() => /^https?:\/\//i.test(props.ad.linkUrl));
+const adImage = computed(() => cdnImageUrl(props.ad.imageUrl, { width: 480, quality: 82 }));
+const adImageSrcset = computed(() => cdnImageSrcset(props.ad.imageUrl, [180, 320, 480, 720], 82));
 const imageVisible = ref(Boolean(props.ad.imageUrl));
 const cardRef = ref<HTMLElement | null>(null);
 let impressionObserver: IntersectionObserver | null = null;

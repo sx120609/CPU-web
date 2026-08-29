@@ -28,17 +28,6 @@
           </span>
         </router-link>
 
-        <div class="top-search">
-          <el-input
-            v-model="q"
-            :placeholder="searchPlaceholder"
-            clearable
-            @keyup.enter="goSearch"
-          >
-            <template #prefix><el-icon><Search /></el-icon></template>
-          </el-input>
-        </div>
-
         <nav class="top-nav" aria-label="主导航">
           <template
             v-for="item in desktopPrimaryNavItems"
@@ -418,7 +407,6 @@ const site = useSiteStore();
 const appearance = useAppearanceStore();
 const router = useRouter();
 const route = useRoute();
-const q = ref("");
 const mobileMenuOpen = ref(false);
 const logoutPending = ref(false);
 const assistantWidgetOpen = ref(false);
@@ -545,16 +533,6 @@ const layoutStyle = computed(() => {
     "--layout-viewport-offset-top": `${mobileViewportOffsetTop.value}px`,
     "--layout-keyboard-inset": `${keyboardInset}px`,
   };
-});
-
-const searchPlaceholder = computed(() => {
-  const scopes: string[] = [];
-  if (site.features.forum && auth.canAccessForum) scopes.push("帖子");
-  scopes.push("失物");
-  if (site.features.coursereview && auth.canAccessForum) scopes.push("课程");
-  scopes.push("公告");
-  scopes.push("服务");
-  return `问拾间AI：${scopes.join(" / ")}`;
 });
 
 type DesktopNavItem = TopNavigationItem;
@@ -882,10 +860,6 @@ function scheduleKeyboardGeometryClose() {
   }, KEYBOARD_GEOMETRY_CLOSE_DELAY_MS);
 }
 
-function goSearch() {
-  if (q.value.trim()) router.push({ name: "search", query: { q: q.value.trim() } });
-}
-
 function goDesktopNav(command: string | number | object) {
   const id = String(command || "");
   const item = desktopOverflowNavItems.value.find((candidate) => candidate.id === id);
@@ -1058,13 +1032,6 @@ function setAppearanceMode(command: string | number | object) {
   font-size: 10.5px;
   color: var(--cpu-text-muted);
   letter-spacing: 0.8px;
-}
-
-.top-search {
-  width: clamp(210px, 22vw, 320px);
-  max-width: 320px;
-  flex: 1 1 260px;
-  min-width: 180px;
 }
 
 .top-nav {
@@ -1801,12 +1768,6 @@ function setAppearanceMode(command: string | number | object) {
     padding: 8px 8px;
   }
 
-  .top-search {
-    width: 220px;
-    flex: 0 1 220px;
-    max-width: 220px;
-  }
-
   .brand-sub,
   .user-name {
     display: none;
@@ -1814,17 +1775,10 @@ function setAppearanceMode(command: string | number | object) {
 }
 
 @media (max-width: 1040px) {
-  .top-search {
-    width: 190px;
-    flex-basis: 190px;
-    min-width: 160px;
-  }
-
 }
 
 @media (max-width: 960px) {
   .top-nav { display: none; }
-  .top-search { width: 200px; }
   .top-right { display: none; }
   .mobile-actions {
     display: flex;
@@ -1920,10 +1874,6 @@ function setAppearanceMode(command: string | number | object) {
   }
 
   .brand-sub {
-    display: none;
-  }
-
-  .top-search {
     display: none;
   }
 

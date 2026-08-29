@@ -1,14 +1,12 @@
 /*
- * HarmonyOS Sans SC is bundled as an unmodified web font and emitted by Vite
- * under /assets/fonts/harmonyos-sans-sc/v1/. Production deploys mirror those
- * assets to the project's Tencent COS/CDN before publishing the web shell.
+ * HarmonyOS Sans SC UI subsets are emitted under a versioned CDN path.
  */
 @font-face {
   font-family: "HarmonyOS Sans SC";
   src:
     local("HarmonyOS Sans SC"),
-    url("https://img.cputime.cn/cpu-web-media/web-static/assets/dual-origin-v2/fonts/harmonyos-sans-sc/v1/HarmonyOS_Sans_SC_Regular.woff2") format("woff2"),
-    url("../assets/fonts/HarmonyOS_Sans_SC_Regular.woff2") format("woff2");
+    url("https://img.cputime.cn/cpu-web-media/web-static/assets/dual-origin-v2/fonts/harmonyos-sans-sc/v2/HarmonyOS_Sans_SC_Regular_UI.woff2") format("woff2"),
+    url("../assets/fonts/HarmonyOS_Sans_SC_Regular_UI.woff2") format("woff2");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
@@ -18,8 +16,8 @@
   font-family: "HarmonyOS Sans SC";
   src:
     local("HarmonyOS Sans SC Medium"),
-    url("https://img.cputime.cn/cpu-web-media/web-static/assets/dual-origin-v2/fonts/harmonyos-sans-sc/v1/HarmonyOS_Sans_SC_Medium.woff2") format("woff2"),
-    url("../assets/fonts/HarmonyOS_Sans_SC_Medium.woff2") format("woff2");
+    url("https://img.cputime.cn/cpu-web-media/web-static/assets/dual-origin-v2/fonts/harmonyos-sans-sc/v2/HarmonyOS_Sans_SC_Medium_UI.woff2") format("woff2"),
+    url("../assets/fonts/HarmonyOS_Sans_SC_Medium_UI.woff2") format("woff2");
   font-weight: 500;
   font-style: normal;
   font-display: swap;
@@ -29,8 +27,8 @@
   font-family: "HarmonyOS Sans SC";
   src:
     local("HarmonyOS Sans SC Bold"),
-    url("https://img.cputime.cn/cpu-web-media/web-static/assets/dual-origin-v2/fonts/harmonyos-sans-sc/v1/HarmonyOS_Sans_SC_Bold.woff2") format("woff2"),
-    url("../assets/fonts/HarmonyOS_Sans_SC_Bold.woff2") format("woff2");
+    url("https://img.cputime.cn/cpu-web-media/web-static/assets/dual-origin-v2/fonts/harmonyos-sans-sc/v2/HarmonyOS_Sans_SC_Bold_UI.woff2") format("woff2"),
+    url("../assets/fonts/HarmonyOS_Sans_SC_Bold_UI.woff2") format("woff2");
   font-weight: 700;
   font-style: normal;
   font-display: swap;

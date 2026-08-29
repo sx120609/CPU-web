@@ -41,9 +41,11 @@
       </div>
       <p v-if="excerpt" class="feed-excerpt">{{ excerpt }}</p>
       <div v-if="images.length" class="feed-media" :class="`feed-media--${Math.min(images.length, 3)}`">
-        <span v-for="(src, index) in images.slice(0, 3)" :key="src" class="feed-media-cell">
+        <span v-for="(image, index) in previewImages" :key="image.original" class="feed-media-cell">
           <img
-            :src="src"
+            :src="image.src"
+            :srcset="image.srcset"
+            sizes="(max-width: 480px) 42vw, (max-width: 768px) 30vw, 220px"
             :alt="`帖子图片 ${index + 1}`"
             loading="lazy"
             decoding="async"
@@ -75,6 +77,7 @@ import type { Topic } from "@/api/topic";
 import UserAvatar from "@/components/common/UserAvatar.vue";
 import { fmtRelative } from "@/utils/format";
 import { forumContentExcerpt, forumContentImages } from "@/utils/forumContent";
+import { cdnImageSrcset, cdnImageUrl } from "@/utils/cdnMedia";
 import { hasTrackedTopicImpression, queueTopicImpression } from "@/utils/topicImpressions";
 
 const props = withDefaults(defineProps<{ topic: Topic; rank?: number }>(), { rank: 0 });
@@ -89,6 +92,11 @@ const contentExcerpt = computed(() => forumContentExcerpt(props.topic.content, i
 const displayTitle = computed(() => isSayTopic.value ? contentExcerpt.value || props.topic.title : props.topic.title);
 const excerpt = computed(() => isSayTopic.value ? "" : contentExcerpt.value && contentExcerpt.value !== props.topic.title ? contentExcerpt.value : "");
 const images = computed(() => forumContentImages(props.topic.content, 9));
+const previewImages = computed(() => images.value.slice(0, 3).map((original) => ({
+  original,
+  src: cdnImageUrl(original, { width: 720, quality: 80 }),
+  srcset: cdnImageSrcset(original, [320, 480, 720, 960], 80),
+})));
 const boardBadgeStyle = computed(() => ({
   color: props.topic.board?.color || "var(--cpu-primary)",
   borderColor: `color-mix(in srgb, ${props.topic.board?.color || "var(--cpu-primary)"} 26%, var(--cpu-border-soft))`,

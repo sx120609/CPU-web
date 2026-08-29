@@ -1241,6 +1241,11 @@ export const adminApi = {
   deleteAnnouncement: (id: number) => request.delete<any>(`/admin/announcements/${id}`),
   // 论坛广告
   forumAds: (options?: RequestOptions) => request.get<ForumAdAdmin[]>("/admin/forum-ads", undefined, options),
+  uploadForumAdImage: (file: File) => {
+    const data = new FormData();
+    data.append("file", file);
+    return request.post<{ url: string; size: number; transcoded: boolean }>("/admin/forum-ads/image", data);
+  },
   createForumAd: (payload: Partial<Omit<ForumAdAdmin, "id" | "createdAt" | "updatedAt" | "metrics">> & Pick<ForumAdAdmin, "title" | "linkUrl" | "placement">) =>
     request.post<ForumAdAdmin>("/admin/forum-ads", payload),
   updateForumAd: (id: number, payload: Partial<Omit<ForumAdAdmin, "id" | "createdAt" | "updatedAt" | "metrics">>) =>

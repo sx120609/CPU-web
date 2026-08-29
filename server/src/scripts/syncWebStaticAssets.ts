@@ -15,13 +15,15 @@ async function main() {
   const collectedFiles = await collectFiles(assetsRoot);
   const selection = await selectCurrentBuildFiles(distRoot, collectedFiles);
   const files = selection.files;
-  const totalBytes = files.reduce((sum, item) => sum + item.size, 0);
+  const publicFiles = (await collectFiles(distRoot)).filter((file) => isPublicCdnAsset(file.relativePath));
+  const uploadFiles = [...files, ...publicFiles];
+  const totalBytes = uploadFiles.reduce((sum, item) => sum + item.size, 0);
   if (dryRun) {
-    console.log(`[static-cos] dry-run: ${files.length} files, ${formatBytes(totalBytes)}, selection=${selection.source}, source=${assetsRoot}`);
+    console.log(`[static-cos] dry-run: ${files.length} build assets + ${publicFiles.length} public assets, ${formatBytes(totalBytes)}, selection=${selection.source}`);
     return;
   }
-  if (!files.length) {
-    console.warn(`[static-cos] no files found in ${assetsRoot}; keeping local static delivery`);
+  if (!uploadFiles.length) {
+    console.warn(`[static-cos] no files found in ${distRoot}; keeping local static delivery`);
     return;
   }
 
@@ -44,7 +46,7 @@ async function main() {
         .filter((item) => item.relativePath.startsWith(`${manifest.WEB_STATIC_COS_PREFIX}/`))
         .map((item) => [item.relativePath, item]),
     );
-    const pending = files.filter((file) => {
+    const pending = uploadFiles.filter((file) => {
       const remotePath = `${manifest.WEB_STATIC_COS_PREFIX}/${file.relativePath}`;
       return remoteFiles.get(remotePath)?.size !== file.size;
     });
@@ -83,8 +85,9 @@ async function main() {
       generatedAt: new Date().toISOString(),
       remotePrefix: manifest.WEB_STATIC_COS_PREFIX,
       assets: files.map((file) => file.relativePath).sort((a, b) => a.localeCompare(b, "en")),
+      publicAssets: publicFiles.map((file) => file.relativePath).sort((a, b) => a.localeCompare(b, "en")),
     });
-    console.log(`[static-cos] ready: ${files.length} files (${formatBytes(totalBytes)}), uploaded=${uploaded}, reused=${files.length - uploaded}`);
+    console.log(`[static-cos] ready: ${uploadFiles.length} files (${formatBytes(totalBytes)}), uploaded=${uploaded}, reused=${uploadFiles.length - uploaded}`);
   } finally {
     await prisma.$disconnect();
   }
@@ -192,7 +195,16 @@ function contentTypeFor(relativePath: string) {
     ".woff": "font/woff",
     ".woff2": "font/woff2",
     ".ttf": "font/ttf",
+    ".apk": "application/vnd.android.package-archive",
   } as Record<string, string>)[extension] || "application/octet-stream";
+}
+
+function isPublicCdnAsset(relativePath: string) {
+  const normalized = relativePath.replace(/\\/gu, "/").replace(/^\/+|\/+$/gu, "");
+  if (!normalized || normalized.startsWith("assets/") || normalized.startsWith(".vite/")) return false;
+  if (normalized.startsWith("splash/")) return /^splash\/ios-launch-v5-\d+x\d+\.png$/u.test(normalized);
+  if (/^(?:brand|downloads)\//u.test(normalized)) return /\.(?:apk|avif|gif|jpe?g|png|svg|webp)$/iu.test(normalized);
+  return /^(?:apple-touch-icon-v\d+|icon-(?:192|512)-v\d+|icon-huawei-standard-\d+|image-placeholder|wechat-service-qrcode)\.(?:png|svg)$/iu.test(normalized);
 }
 
 function formatBytes(value: number) {

@@ -18,12 +18,12 @@ type NormalizedForumImage = {
   transcoded: boolean;
 };
 
-type JpegAttempt = {
+type EncodeAttempt = {
   maxDimension: number;
   quality: number;
 };
 
-const UPLOAD_JPEG_ATTEMPTS: JpegAttempt[] = [
+const UPLOAD_WEBP_ATTEMPTS: EncodeAttempt[] = [
   { maxDimension: FORUM_IMAGE_UPLOAD_MAX_DIMENSION, quality: 82 },
   { maxDimension: FORUM_IMAGE_UPLOAD_MAX_DIMENSION, quality: 72 },
   { maxDimension: 1200, quality: 68 },
@@ -32,7 +32,7 @@ const UPLOAD_JPEG_ATTEMPTS: JpegAttempt[] = [
   { maxDimension: 640, quality: 52 },
 ];
 
-const REVIEW_JPEG_ATTEMPTS: JpegAttempt[] = [
+const REVIEW_WEBP_ATTEMPTS: EncodeAttempt[] = [
   { maxDimension: FORUM_IMAGE_REVIEW_MAX_DIMENSION, quality: 85 },
   { maxDimension: FORUM_IMAGE_REVIEW_MAX_DIMENSION, quality: 75 },
   { maxDimension: 1800, quality: 72 },
@@ -63,7 +63,8 @@ export async function normalizeForumImageUpload(input: {
     }
     const orientation = Number(metadata.orientation || 1);
     if (
-      input.buffer.length <= FORUM_IMAGE_UPLOAD_MAX_BYTES
+      source.mimeType === "image/webp"
+      && input.buffer.length <= FORUM_IMAGE_UPLOAD_MAX_BYTES
       && metadata.width <= FORUM_IMAGE_UPLOAD_MAX_DIMENSION
       && metadata.height <= FORUM_IMAGE_UPLOAD_MAX_DIMENSION
       && orientation <= 1
@@ -76,11 +77,11 @@ export async function normalizeForumImageUpload(input: {
       };
     }
 
-    const buffer = await encodeBoundedJpeg(input.buffer, UPLOAD_JPEG_ATTEMPTS, FORUM_IMAGE_UPLOAD_MAX_BYTES);
+    const buffer = await encodeBoundedWebp(input.buffer, UPLOAD_WEBP_ATTEMPTS, FORUM_IMAGE_UPLOAD_MAX_BYTES);
     return {
       buffer,
-      mimeType: "image/jpeg",
-      extension: "jpg",
+      mimeType: "image/webp",
+      extension: "webp",
       transcoded: true,
     };
   } catch (error) {
@@ -111,11 +112,11 @@ export async function prepareForumImageForReview(input: {
         transcoded: false,
       };
     }
-    const buffer = await encodeBoundedJpeg(input.buffer, REVIEW_JPEG_ATTEMPTS, FORUM_IMAGE_REVIEW_MAX_BYTES);
+    const buffer = await encodeBoundedWebp(input.buffer, REVIEW_WEBP_ATTEMPTS, FORUM_IMAGE_REVIEW_MAX_BYTES);
     return {
       buffer,
-      mimeType: "image/jpeg",
-      extension: "jpg",
+      mimeType: "image/webp",
+      extension: "webp",
       transcoded: true,
     };
   } catch (error) {
@@ -138,7 +139,7 @@ function validateForumImageSource(input: {
   };
 }
 
-async function encodeBoundedJpeg(buffer: Buffer, attempts: JpegAttempt[], maxBytes: number) {
+async function encodeBoundedWebp(buffer: Buffer, attempts: EncodeAttempt[], maxBytes: number) {
   let smallest = Buffer.alloc(0);
   for (const attempt of attempts) {
     const output = await createSharpInput(buffer)
@@ -149,8 +150,7 @@ async function encodeBoundedJpeg(buffer: Buffer, attempts: JpegAttempt[], maxByt
         fit: "inside",
         withoutEnlargement: true,
       })
-      .flatten({ background: "#ffffff" })
-      .jpeg({ quality: attempt.quality, mozjpeg: true })
+      .webp({ quality: attempt.quality, effort: 4, smartSubsample: true })
       .toBuffer();
     if (!smallest.length || output.length < smallest.length) smallest = output;
     if (output.length && output.length <= maxBytes) return output;

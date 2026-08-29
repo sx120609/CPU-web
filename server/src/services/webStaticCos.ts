@@ -14,6 +14,7 @@ type WebStaticCosManifest = {
   generatedAt: string;
   remotePrefix: string;
   assets: string[];
+  publicAssets?: string[];
 };
 
 export function createWebStaticCosHandler(distRoot: string): RequestHandler {
@@ -38,6 +39,26 @@ export function createWebStaticCosHandler(distRoot: string): RequestHandler {
   };
 }
 
+export function createWebStaticPublicCosHandler(distRoot: string): RequestHandler {
+  const assets = loadWebStaticCosPublicManifest(distRoot);
+  if (!assets.size) return (_req, _res, next) => next();
+  console.log(`[static-cos] public redirect manifest active: ${assets.size} assets`);
+
+  return async (req, res, next) => {
+    if (req.method !== "GET" && req.method !== "HEAD") return next();
+    const assetPath = normalizeWebStaticAssetPath(decodeRequestPathname(req.path));
+    if (!assetPath || !assets.has(assetPath)) return next();
+    try {
+      const remoteUrl = await resolveTencentCosDeliveryUrl(`${WEB_STATIC_COS_PREFIX}/${assetPath}`);
+      res.setHeader("Cache-Control", "public, max-age=3600, stale-while-revalidate=86400");
+      res.setHeader("X-Static-Asset-Backend", "cos");
+      res.redirect(302, remoteUrl);
+    } catch {
+      next();
+    }
+  };
+}
+
 export function loadWebStaticCosManifest(distRoot: string) {
   try {
     const manifestPath = path.resolve(distRoot, WEB_STATIC_COS_MANIFEST);
@@ -46,6 +67,19 @@ export function loadWebStaticCosManifest(distRoot: string) {
       return new Set<string>();
     }
     return new Set(parsed.assets.map(normalizeWebStaticAssetPath).filter(Boolean));
+  } catch {
+    return new Set<string>();
+  }
+}
+
+export function loadWebStaticCosPublicManifest(distRoot: string) {
+  try {
+    const manifestPath = path.resolve(distRoot, WEB_STATIC_COS_MANIFEST);
+    const parsed = JSON.parse(readFileSync(manifestPath, "utf8")) as Partial<WebStaticCosManifest>;
+    if (parsed.version !== 1 || parsed.remotePrefix !== WEB_STATIC_COS_PREFIX || !Array.isArray(parsed.publicAssets)) {
+      return new Set<string>();
+    }
+    return new Set(parsed.publicAssets.map(normalizeWebStaticAssetPath).filter(Boolean));
   } catch {
     return new Set<string>();
   }

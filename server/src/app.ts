@@ -14,7 +14,7 @@ import { filestoreHandler } from "./services/filestore";
 import { startForumImageModerationPoller } from "./services/imageModeration";
 import { startForumVideoModerationPoller } from "./services/videoModeration";
 import { uploadAssetHandler } from "./services/mediaStorage";
-import { createWebStaticCosHandler } from "./services/webStaticCos";
+import { createWebStaticCosHandler, createWebStaticPublicCosHandler } from "./services/webStaticCos";
 import { startQqNotificationPoller } from "./services/qqbot";
 import { startSponsorOrderExpiryPoller } from "./services/sponsor";
 import { startForumSubmissionReviewPoller } from "./services/forumSubmissionReview";
@@ -108,6 +108,7 @@ export function createApp() {
     if (dist) {
       console.log(`📦 静态资源目录: ${dist}`);
       app.use("/assets", createWebStaticCosHandler(dist));
+      app.use(createWebStaticPublicCosHandler(dist));
       app.use(express.static(dist, {
         index: false,
         maxAge: "1h",

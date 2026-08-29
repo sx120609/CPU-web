@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import {
   loadWebStaticCosManifest,
+  loadWebStaticCosPublicManifest,
   normalizeWebStaticAssetPath,
   rewriteWebStaticAssetUrls,
   WEB_STATIC_COS_MANIFEST,
@@ -27,10 +28,15 @@ test("static COS manifest is accepted only for the expected version and prefix",
     generatedAt: new Date().toISOString(),
     remotePrefix: WEB_STATIC_COS_PREFIX,
     assets: ["main.abc123.js", "fonts/app.woff2", "../secret.js"],
+    publicAssets: ["splash/launch.png", "downloads/app.apk", "../ignored.png"],
   }));
   assert.deepEqual(
     Array.from(loadWebStaticCosManifest(directory)).sort(),
     ["fonts/app.woff2", "main.abc123.js"],
+  );
+  assert.deepEqual(
+    Array.from(loadWebStaticCosPublicManifest(directory)).sort(),
+    ["downloads/app.apk", "splash/launch.png"],
   );
 
   await writeFile(path.join(directory, WEB_STATIC_COS_MANIFEST), JSON.stringify({
@@ -39,6 +45,7 @@ test("static COS manifest is accepted only for the expected version and prefix",
     assets: ["main.abc123.js"],
   }));
   assert.equal(loadWebStaticCosManifest(directory).size, 0);
+  assert.equal(loadWebStaticCosPublicManifest(directory).size, 0);
 });
 
 test("index asset tags are rewritten to the current delivery origin without touching unrelated text", () => {

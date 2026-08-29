@@ -13,7 +13,7 @@ function decodeCodePoint(value: string, radix: number) {
 }
 
 export function forumContentExcerpt(content: unknown, maxLength = 90) {
-  const source = String(content || "");
+  const source = stripForumReviewPlaceholders(content);
   const text = source
     .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, " ")
     .replace(/<\/?(?:p|div|h[1-6]|blockquote|li|br)\b[^>]*>/gi, " ")
@@ -33,6 +33,12 @@ export function forumContentExcerpt(content: unknown, maxLength = 90) {
   if (!text) return "";
   const chars = Array.from(text);
   return chars.length > maxLength ? `${chars.slice(0, maxLength).join("")}…` : text;
+}
+
+export function stripForumReviewPlaceholders(content: unknown) {
+  return String(content || "")
+    .replace(/<span\b(?=[^>]*(?:data-(?:image|video)-review-state|(?:image|video)-review-placeholder))[^>]*>[\s\S]*?<\/span>/gi, " ")
+    .replace(/\[(?:图片|视频)(?:审核中[^\]\n]*|未通过审核[^\]\n]*|审核失败[^\]\n]*|暂时不可查看[^\]\n]*)\]/g, " ");
 }
 
 export function forumInternalTitle(content: unknown, fallback = "新帖子") {

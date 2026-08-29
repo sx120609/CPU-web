@@ -45,7 +45,7 @@
       </div>
     </template>
     <template v-else-if="isCard">
-      <img v-if="cardImage" class="market-card-image" :src="cardImage" alt="帖子图片" loading="lazy" decoding="async" />
+      <img v-if="cardImage" class="market-card-image" :src="cardImage.src" :srcset="cardImage.srcset" sizes="(max-width: 768px) 36vw, 210px" alt="帖子图片" loading="lazy" decoding="async" />
       <div class="market-card-body">
         <div class="market-card-tags">
           <el-tag v-if="topic.globalPinned || topic.pinned" size="small" type="danger" effect="plain">置顶</el-tag>
@@ -134,6 +134,7 @@ import UserAvatar from "@/components/common/UserAvatar.vue";
 import AppIcon from "@/components/common/AppIcon.vue";
 import { fmtRelative } from "@/utils/format";
 import { forumContentExcerpt } from "@/utils/forumContent";
+import { cdnImageSrcset, cdnImageUrl } from "@/utils/cdnMedia";
 import {
   hasTrackedTopicImpression,
   knownTopicViewCount,
@@ -162,8 +163,12 @@ const cardExcerpt = computed(() => forumContentExcerpt(props.topic.content, 90))
 const cardImage = computed(() => {
   const content = String(props.topic.content || "");
   const htmlMatch = content.match(/<img\b[^>]*\bsrc=["']([^"']+)["']/i);
-  if (htmlMatch?.[1]) return htmlMatch[1];
-  return content.match(/!\[[^\]]*\]\(([^\n)]+)\)/)?.[1] || "";
+  const original = htmlMatch?.[1] || content.match(/!\[[^\]]*\]\(([^\n)]+)\)/)?.[1] || "";
+  if (!original) return null;
+  return {
+    src: cdnImageUrl(original, { width: 720, quality: 80 }),
+    srcset: cdnImageSrcset(original, [360, 540, 720, 960], 80),
+  };
 });
 const marketKind = computed(() => {
   if (props.topic.board?.type !== "market") return "";

@@ -30,8 +30,8 @@ export default defineConfig(({ command }) => ({
       output: {
         assetFileNames(assetInfo) {
           const originalName = assetInfo.names?.[0] || assetInfo.name || "";
-          if (/^HarmonyOS_Sans_SC_(Regular|Medium|Bold)\.woff2$/u.test(originalName)) {
-            return "assets/fonts/harmonyos-sans-sc/v1/[name][extname]";
+          if (/^HarmonyOS_Sans_SC_(Regular|Medium|Bold)_UI\.woff2$/u.test(originalName)) {
+            return "assets/fonts/harmonyos-sans-sc/v2/[name][extname]";
           }
           return "assets/[name]-[hash][extname]";
         },

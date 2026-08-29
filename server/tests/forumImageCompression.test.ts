@@ -25,8 +25,8 @@ test("compresses a large forum photo before upload and AI review", async () => {
     fileName: "phone-photo.png",
   });
   const uploadMetadata = await sharp(upload.buffer).metadata();
-  assert.equal(upload.mimeType, "image/jpeg");
-  assert.equal(upload.extension, "jpg");
+  assert.equal(upload.mimeType, "image/webp");
+  assert.equal(upload.extension, "webp");
   assert.equal(upload.transcoded, true);
   assert.ok(upload.buffer.length <= FORUM_IMAGE_UPLOAD_MAX_BYTES);
   assert.ok(Math.max(uploadMetadata.width || 0, uploadMetadata.height || 0) <= 1400);
@@ -37,13 +37,13 @@ test("compresses a large forum photo before upload and AI review", async () => {
     fileName: "legacy-large-photo.png",
   });
   const reviewMetadata = await sharp(review.buffer).metadata();
-  assert.equal(review.mimeType, "image/jpeg");
+  assert.equal(review.mimeType, "image/webp");
   assert.equal(review.transcoded, true);
   assert.ok(review.buffer.length <= FORUM_IMAGE_REVIEW_MAX_BYTES);
   assert.ok(Math.max(reviewMetadata.width || 0, reviewMetadata.height || 0) <= 2048);
 });
 
-test("does not recompress an already bounded forum JPEG", async () => {
+test("stores a bounded JPEG as WebP and keeps an already bounded WebP", async () => {
   const source = await sharp({
     create: {
       width: 800,
@@ -64,10 +64,19 @@ test("does not recompress an already bounded forum JPEG", async () => {
     fileName: "small.jpg",
   });
 
-  assert.equal(upload.transcoded, false);
-  assert.equal(upload.buffer, source);
+  assert.equal(upload.mimeType, "image/webp");
+  assert.equal(upload.extension, "webp");
+  assert.equal(upload.transcoded, true);
   assert.equal(review.transcoded, false);
   assert.equal(review.buffer, source);
+
+  const boundedWebp = await normalizeForumImageUpload({
+    buffer: upload.buffer,
+    mimeType: "image/webp",
+    fileName: "small.webp",
+  });
+  assert.equal(boundedWebp.transcoded, false);
+  assert.equal(boundedWebp.buffer, upload.buffer);
 });
 
 test("uses decoded bytes instead of trusting a misleading image filename", async () => {
@@ -108,7 +117,7 @@ test("keeps an animated image above the preferred upload budget instead of break
 test("builds deterministic optimized paths and rewrites relative or absolute forum image references", () => {
   const buffer = Buffer.from("optimized-image");
   const path = buildOptimizedForumImagePath(buffer);
-  assert.match(path, /^forum\/optimized\/[0-9a-f]{2}\/[0-9a-f]{24}\.jpg$/u);
+  assert.match(path, /^forum\/optimized\/[0-9a-f]{2}\/[0-9a-f]{24}\.webp$/u);
   assert.equal(buildOptimizedForumImagePath(buffer), path);
 
   const oldUrl = "/uploads/forum/2026-08/large.jpg";

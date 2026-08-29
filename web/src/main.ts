@@ -29,10 +29,10 @@ import "./styles/image-viewer.scss";
 const SCHEDULE_OFFLINE_WARMUP_MESSAGE = "cpu-schedule-offline-warmup";
 const SCHEDULE_OFFLINE_STATIC_URLS = [
   "/schedule",
-  "/manifest-v3.webmanifest?v=20260530",
-  "/apple-touch-icon-v3.png?v=20260530-hw",
-  "/icon-192-v3.png?v=20260530-hw",
-  "/icon-512-v3.png?v=20260530-hw",
+  "/manifest-v3.webmanifest?v=20260830",
+  "/apple-touch-icon-v3.png?v=20260830",
+  "/icon-192-v3.png?v=20260830",
+  "/icon-512-v3.png?v=20260830",
   "/favicon.svg?v=20260530",
 ];
 

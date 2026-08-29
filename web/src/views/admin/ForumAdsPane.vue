@@ -64,8 +64,14 @@
             <el-input v-model="form.linkUrl" maxlength="500" placeholder="/services 或 https://example.com" />
           </el-form-item>
         </div>
-        <el-form-item label="图片地址">
-          <el-input v-model="form.imageUrl" maxlength="500" placeholder="/uploads/... 或 https://...，可留空" />
+        <el-form-item label="广告图片">
+          <div class="image-editor">
+            <el-input v-model="form.imageUrl" maxlength="500" placeholder="上传图片，或填写站内 / https 地址" />
+            <el-button :loading="uploadingImage" @click="imageInput?.click()">上传素材</el-button>
+            <input ref="imageInput" class="image-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif" @change="uploadImage" />
+          </div>
+          <img v-if="form.imageUrl" class="image-preview" :src="form.imageUrl" alt="广告图片预览" />
+          <small class="image-tip">上传后自动压缩并存入媒体 CDN，前台按移动端和桌面端尺寸加载。</small>
         </el-form-item>
         <div class="form-grid">
           <el-form-item label="开始时间">
@@ -151,6 +157,8 @@ const placementOptions = [
 const list = ref<ForumAdAdmin[]>([]);
 const loading = ref(false);
 const saving = ref(false);
+const uploadingImage = ref(false);
+const imageInput = ref<HTMLInputElement | null>(null);
 const editingId = ref<number | null>(null);
 const activeAds = computed(() => list.value.filter((item) => item.enabled).length);
 const totalMetrics = computed(() => {
@@ -179,6 +187,23 @@ const form = reactive({
 });
 
 onMounted(load);
+
+async function uploadImage(event: Event) {
+  const input = event.currentTarget as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = "";
+  if (!file) return;
+  uploadingImage.value = true;
+  try {
+    const result = await adminApi.uploadForumAdImage(file);
+    form.imageUrl = result.url;
+    ElMessage.success(result.transcoded ? "图片已压缩并上传" : "图片已上传");
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : "广告图片上传失败");
+  } finally {
+    uploadingImage.value = false;
+  }
+}
 
 async function load() {
   loading.value = true;
@@ -307,6 +332,10 @@ function trendHeight(item: ForumAdAdmin, impressions: number) {
 .card-header h3 { margin: 0; font-size: 15px; }
 .card-header p { margin: 5px 0 0; color: var(--cpu-text-muted); font-size: 12px; }
 .ad-form { max-width: 900px; }
+.image-editor { display: flex; width: 100%; gap: 8px; }
+.image-input { display: none; }
+.image-preview { display: block; width: 180px; max-height: 120px; margin-top: 10px; border-radius: 10px; object-fit: cover; background: var(--cpu-surface-soft); }
+.image-tip { display: block; width: 100%; margin-top: 7px; color: var(--cpu-text-muted); font-size: 11px; }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 14px; }
 .switches, .form-actions, .row-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .form-actions { margin-top: 4px; }

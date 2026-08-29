@@ -130,7 +130,7 @@ async function replaceReferences(assetId: number, oldUrl: string, newUrl: string
     }
     await tx.forumImageAsset.update({
       where: { id: assetId },
-      data: { url: newUrl, localPath, mimeType: "image/jpeg", fileSize },
+      data: { url: newUrl, localPath, mimeType: "image/webp", fileSize },
     });
   });
 }

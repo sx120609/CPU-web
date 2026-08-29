@@ -1,4 +1,7 @@
 import { Router } from "express";
+import path from "node:path";
+import { randomUUID } from "node:crypto";
+import multer from "multer";
 import { z } from "zod";
 import { prisma } from "../../prisma";
 import { adminOnly } from "../../middleware/admin";
@@ -6,8 +9,11 @@ import { validate } from "../../middleware/validate";
 import { Errors, ok } from "../../utils/response";
 import { FORUM_AD_PLACEMENTS, isForumAdPlacement, summarizeForumAdMetrics } from "../../services/forumAds";
 import { invalidateForumAdCaches } from "../../services/cacheInvalidation";
+import { FORUM_IMAGE_MAX_SOURCE_BYTES, normalizeForumImageUpload } from "../../services/forumImageCompression";
+import { resolveMediaPublicUrl, saveMediaAsset } from "../../services/mediaStorage";
 
 export const forumAdsAdminRouter = Router();
+const uploadAdImage = multer({ storage: multer.memoryStorage(), limits: { fileSize: FORUM_IMAGE_MAX_SOURCE_BYTES } });
 
 const placementSchema = z.enum(FORUM_AD_PLACEMENTS);
 const adInputSchema = z.object({
@@ -84,6 +90,37 @@ forumAdsAdminRouter.get("/", adminOnly, async (_req, res, next) => {
       ...item,
       metrics: summarizeForumAdMetrics(metrics),
     })));
+  } catch (error) { next(error); }
+});
+
+forumAdsAdminRouter.post("/image", adminOnly, (req, res, next) => {
+  uploadAdImage.single("file")(req, res, (error: any) => {
+    if (error?.code === "LIMIT_FILE_SIZE") return next(Errors.badRequest("广告图片不能超过 32MB"));
+    return error ? next(error) : next();
+  });
+}, async (req, res, next) => {
+  try {
+    if (!req.file?.buffer?.length) throw Errors.badRequest("请先选择广告图片");
+    const normalized = await normalizeForumImageUpload({
+      buffer: req.file.buffer,
+      mimeType: req.file.mimetype,
+      fileName: req.file.originalname,
+    }).catch((error: unknown) => {
+      throw Errors.badRequest(String((error as Error)?.message || "广告图片压缩失败"));
+    });
+    const month = new Date().toISOString().slice(0, 7).replace("-", "/");
+    const relativePath = path.posix.join("forum", "ads", month, `${randomUUID()}.${normalized.extension}`);
+    const saved = await saveMediaAsset({
+      relativePath,
+      buffer: normalized.buffer,
+      contentType: normalized.mimeType,
+      mediaKind: "image",
+    });
+    ok(res, {
+      url: await resolveMediaPublicUrl(saved.url),
+      size: normalized.buffer.length,
+      transcoded: normalized.transcoded,
+    });
   } catch (error) { next(error); }
 });
 

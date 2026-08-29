@@ -98,6 +98,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import { cdnImageUrl } from "@/utils/cdnMedia";
 
 const props = defineProps<{
   size: number;
@@ -109,7 +110,7 @@ const props = defineProps<{
 }>();
 
 const broken = ref(false);
-const resolvedSrc = computed(() => (broken.value ? "" : (props.src ?? "").trim()));
+const resolvedSrc = computed(() => broken.value ? "" : cdnImageUrl(props.src, { width: Math.max(96, props.size * 3), quality: 84 }));
 const palettes = [
   { background: "#dff7ef", body: "#36b99b", accent: "#ffbd66", ink: "#173d36", blush: "#ff8f8f" },
   { background: "#e8e4ff", body: "#8c7cf0", accent: "#67d7c3", ink: "#2f285c", blush: "#ff9fb2" },

@@ -3,6 +3,7 @@ import path from "node:path";
 import { readFile, rm } from "node:fs/promises";
 import { prisma } from "../prisma";
 import { runWithDistributedLock } from "./cache";
+import { invalidateForumCaches } from "./cacheInvalidation";
 import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } from "./aiReviewLog";
 import { extractAiJsonTextResponse, normalizeAiJsonApiUrl, sendAiJsonRequestWithProviderFallback } from "./aiJsonApi";
 import { prepareForumImageForReview } from "./forumImageCompression";
@@ -229,6 +230,7 @@ export async function moderatePendingForumImages(limit = getImageReviewDispatchC
       });
     }
   }
+  if (list.length) await invalidateForumCaches({ includeBoards: false });
   return { processed: list.length };
 }
 
