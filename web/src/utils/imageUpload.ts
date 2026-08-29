@@ -45,6 +45,8 @@ export async function compressImageFile(file: File, options: CompressImageOption
   const canvas = document.createElement("canvas");
   const mimeType = options.mimeType ?? "image/jpeg";
   const initialQuality = options.quality ?? 0.82;
+  let smallestDataUrl = "";
+  let smallestBytes = Number.POSITIVE_INFINITY;
   for (let resizeAttempt = 0; resizeAttempt < 7; resizeAttempt += 1) {
     canvas.width = width;
     canvas.height = height;
@@ -62,12 +64,18 @@ export async function compressImageFile(file: File, options: CompressImageOption
       quality = Math.max(0.5, quality - 0.08);
       dataUrl = canvas.toDataURL(mimeType, quality);
     }
-    if (!options.maxBytes || estimateDataUrlBytes(dataUrl) <= options.maxBytes) return dataUrl;
+    const outputBytes = estimateDataUrlBytes(dataUrl);
+    if (outputBytes < smallestBytes) {
+      smallestDataUrl = dataUrl;
+      smallestBytes = outputBytes;
+    }
+    if (!options.maxBytes || outputBytes <= options.maxBytes) return dataUrl;
 
     width = Math.max(1, Math.round(width * 0.82));
     height = Math.max(1, Math.round(height * 0.82));
   }
-  throw new Error("图片压缩后仍然过大，请换一张更小的图片");
+  if (smallestDataUrl) return smallestDataUrl;
+  throw new Error("图片处理失败，请换一张图片后重试");
 }
 
 export function normalizeImageUploadError(error: unknown, fallback = "媒体上传失败，请稍后重试") {

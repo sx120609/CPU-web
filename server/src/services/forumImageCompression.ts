@@ -40,14 +40,6 @@ const REVIEW_JPEG_ATTEMPTS: JpegAttempt[] = [
   { maxDimension: 1400, quality: 62 },
 ];
 
-/**
- * Enforce the forum's static-image upload budget on the server as well as in
- * the editor. Native clients and direct API callers must not be able to bypass
- * the browser-side 1400px / 520KB compression policy.
- *
- * GIFs are kept byte-for-byte so animation is not destroyed. Oversized GIFs
- * are still made safe for AI review by prepareForumImageForReview below.
- */
 export async function normalizeForumImageUpload(input: {
   buffer: Buffer;
   mimeType?: string | null;
@@ -147,6 +139,7 @@ function validateForumImageSource(input: {
 }
 
 async function encodeBoundedJpeg(buffer: Buffer, attempts: JpegAttempt[], maxBytes: number) {
+  let smallest = Buffer.alloc(0);
   for (const attempt of attempts) {
     const output = await createSharpInput(buffer)
       .rotate()
@@ -159,8 +152,10 @@ async function encodeBoundedJpeg(buffer: Buffer, attempts: JpegAttempt[], maxByt
       .flatten({ background: "#ffffff" })
       .jpeg({ quality: attempt.quality, mozjpeg: true })
       .toBuffer();
+    if (!smallest.length || output.length < smallest.length) smallest = output;
     if (output.length && output.length <= maxBytes) return output;
   }
+  if (smallest.length) return smallest;
   throw new Error("图片压缩后仍然过大");
 }
 

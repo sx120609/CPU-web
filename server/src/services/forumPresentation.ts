@@ -1,5 +1,5 @@
 import { buildUserPreview } from "../utils/publicUser";
-import { renderModeratedContent, summarizeForumImageModerationForContent } from "./imageModeration";
+import { renderModeratedContent, renderModeratedContents, summarizeForumImageModerationForContent } from "./imageModeration";
 import { sanitizeLostFoundTopicFields } from "./lostFoundPrivacy";
 import { isGlobalPinnedTopic } from "./siteSettings";
 import { renderModeratedVideoContent, summarizeForumVideoModerationForContent } from "./videoModeration";
@@ -89,6 +89,13 @@ export async function decodeTopicForViewerWithImages(topic: any, viewer?: Viewer
     videoReview,
     content,
   };
+}
+
+export async function decodeTopicsForViewerForList(topics: any[], viewer?: Viewer) {
+  const decoded = topics.map((topic) => decodeTopicForViewer(topic, viewer));
+  const videoRendered = await Promise.all(decoded.map((topic) => renderModeratedVideoContent(String(topic.content || ""), viewer)));
+  const rendered = await renderModeratedContents(videoRendered, viewer);
+  return decoded.map((topic, index) => ({ ...topic, content: rendered[index] }));
 }
 
 export async function decodeReplyForViewerWithImages(reply: any, viewer?: Viewer) {

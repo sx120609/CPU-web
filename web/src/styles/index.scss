@@ -77,6 +77,23 @@ html[data-cpu-platform="ios"] {
   }
 }
 
+img.cpu-image-pending {
+  background-color: color-mix(in srgb, var(--cpu-surface-subtle) 86%, var(--cpu-card));
+  background-image: url("/image-placeholder.svg");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: min(42%, 92px) auto;
+  object-position: -10000px -10000px !important;
+}
+
+img.cpu-image-error {
+  background-color: color-mix(in srgb, var(--cpu-surface-subtle) 86%, var(--cpu-card));
+  background-image: url("/image-placeholder.svg");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: min(42%, 92px) auto;
+}
+
 body[data-cpu-top-safe-area="1"] {
   --cpu-safe-area-inset-top: env(safe-area-inset-top, 0px);
 }

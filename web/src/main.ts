@@ -13,6 +13,7 @@ import {
   isLikelyIosDevice,
 } from "./utils/clientInfo";
 import { scheduleJwxtDataPrewarm } from "./utils/jwxtPrewarm";
+import { installUnifiedImageLoading } from "./utils/imageLoading";
 
 import "element-plus/dist/index.css";
 import "element-plus/theme-chalk/dark/css-vars.css";
@@ -390,6 +391,7 @@ function installJwxtDataPrewarmTriggers() {
 
 installTouchGuards();
 installFeedbackLayerGuard();
+installUnifiedImageLoading();
 installIosNativeImageBridge();
 installNativeAppMarker();
 installDesktopWebReleaseRefresh();

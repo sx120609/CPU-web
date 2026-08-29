@@ -54,9 +54,8 @@
           <span>{{ loadMoreError }}</span><el-button text size="small" @click="loadMore">重试</el-button>
         </div>
         <div v-else-if="canLoadMore" ref="loadMoreSentinelRef" class="load-sentinel">
-          {{ loadingMore ? "正在加载更多…" : "继续下滑查看更多" }}
+          <span v-if="loadingMore">正在加载…</span>
         </div>
-        <div v-else class="load-sentinel is-done">{{ selectedChannel === "hot" ? "近 24 小时热议内容" : "已看到当前分类的全部内容" }}</div>
       </div>
     </section>
 
@@ -80,7 +79,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { onBeforeRouteLeave, useRoute, useRouter } from "vue-router";
 import { boardApi, type Board } from "@/api/board";
 import { homeApi } from "@/api/home";
 import { topicApi, type Topic } from "@/api/topic";
@@ -100,9 +99,15 @@ import {
   writeForumHotFeed,
   writeForumLatestFeed,
 } from "@/utils/forumCache";
+import { clearForumListRestoreState, readForumListRestoreState, writeForumListRestoreState } from "@/utils/forumListRestore";
 
 type ChannelId = "latest" | "hot" | "question" | "market" | "freshman";
 type Channel = { id: ChannelId; label: string; icon: string; description: string; feedTitle: string; feedHint: string; board?: string };
+type MobileFeedRestoreState = {
+  scrollY: number;
+  page?: number;
+  savedAt: number;
+};
 
 const route = useRoute();
 const router = useRouter();
@@ -142,6 +147,7 @@ const canLoadMore = computed(() => selectedChannel.value !== "hot" && feedItems.
 let loadObserver: IntersectionObserver | null = null;
 let loadSequence = 0;
 let disposed = false;
+let pendingRestoreState: MobileFeedRestoreState | null = null;
 
 onMounted(() => {
   void loadBoards();
@@ -159,10 +165,19 @@ onBeforeUnmount(() => {
 });
 
 watch(() => [selectedChannel.value, cacheScope.value], () => {
+  pendingRestoreState = readForumListRestoreState<MobileFeedRestoreState>(route.fullPath);
   void loadFeed();
 }, { immediate: true });
 
 watch(canLoadMore, () => void nextTick(observeLoadMore));
+
+onBeforeRouteLeave((to) => {
+  if (to.name !== "topic" || !feedItems.value.length) return;
+  writeForumListRestoreState(route.fullPath, {
+    scrollY: window.scrollY,
+    page: page.value,
+  });
+});
 
 function observeLoadMore() {
   loadObserver?.disconnect();
@@ -179,7 +194,7 @@ function selectChannel(channel: ChannelId) {
 async function loadFeed() {
   const sequence = ++loadSequence;
   const channel = activeChannel.value;
-  page.value = 1;
+  page.value = Math.max(1, Number(pendingRestoreState?.page || 1));
   error.value = "";
   loadMoreError.value = "";
   pinnedList.value = [];
@@ -190,7 +205,7 @@ async function loadFeed() {
     const cached = readForumLatestFeed(cacheScope.value);
     if (cached) {
       pinnedList.value = cached.pins;
-      feedItems.value = cached.list;
+      feedItems.value = cached.list.slice(0, page.value * pageSize);
       total.value = cached.total;
     }
   } else if (channel.id === "hot") {
@@ -210,17 +225,27 @@ async function loadFeed() {
       total.value = list.length;
       writeForumHotFeed(cacheScope.value, list);
     } else if (channel.id === "latest") {
-      const result = await homeApi.latestFeed({ page: 1, size: pageSize }, { suppressErrorMessage: true });
+      const pages = await Promise.all(
+        Array.from({ length: page.value }, (_, index) => homeApi.latestFeed(
+          { page: index + 1, size: pageSize },
+          { suppressErrorMessage: true },
+        )),
+      );
       if (disposed || sequence !== loadSequence) return;
-      pinnedList.value = result.pins;
-      feedItems.value = result.list;
-      total.value = result.total;
-      writeForumLatestFeed(cacheScope.value, { pins: result.pins, list: result.list, total: result.total, page: 1 });
+      pinnedList.value = pages[0]?.pins || [];
+      feedItems.value = dedupeTopics(pages.flatMap((result) => result.list));
+      total.value = pages[0]?.total || feedItems.value.length;
+      writeForumLatestFeed(cacheScope.value, { pins: pinnedList.value, list: feedItems.value, total: total.value, page: page.value });
     } else {
-      const result = await topicApi.list({ board: channel.board, page: 1, size: pageSize, sort: "new", pinned: "exclude" }, { suppressErrorMessage: true });
+      const pages = await Promise.all(
+        Array.from({ length: page.value }, (_, index) => topicApi.list(
+          { board: channel.board, page: index + 1, size: pageSize, sort: "new", pinned: "exclude" },
+          { suppressErrorMessage: true },
+        )),
+      );
       if (disposed || sequence !== loadSequence) return;
-      feedItems.value = result.list;
-      total.value = result.total;
+      feedItems.value = dedupeTopics(pages.flatMap((result) => result.list));
+      total.value = pages[0]?.total || feedItems.value.length;
     }
   } catch (requestError) {
     if (disposed || sequence !== loadSequence) return;
@@ -229,9 +254,23 @@ async function loadFeed() {
     if (!disposed && sequence === loadSequence) {
       loading.value = false;
       await nextTick();
+      await restoreScrollIfNeeded();
       observeLoadMore();
     }
   }
+}
+
+async function restoreScrollIfNeeded() {
+  if (!pendingRestoreState) return;
+  const scrollY = Math.max(0, Number(pendingRestoreState.scrollY || 0));
+  await new Promise<void>((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      window.scrollTo({ top: scrollY, behavior: "auto" });
+      resolve();
+    }));
+  });
+  clearForumListRestoreState(route.fullPath);
+  pendingRestoreState = null;
 }
 
 async function loadMore() {
@@ -332,7 +371,6 @@ function requestMessage(requestError: unknown) {
 .feed-more { padding-top: 10px; }
 .load-sentinel { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; border-radius: 10px; color: var(--cpu-text-muted); font-size: 11px; }
 .load-sentinel.is-error { color: #b91c1c; }
-.load-sentinel.is-done { opacity: .75; }
 .board-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; min-height: 120px; }
 .board-choice { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: 10px; min-width: 0; padding: 11px; border: 1px solid var(--cpu-border-soft); border-radius: 11px; background: var(--cpu-card); color: var(--cpu-text); text-align: left; cursor: pointer; }
 .board-choice:hover { border-color: var(--cpu-primary); background: var(--cpu-surface-soft); }

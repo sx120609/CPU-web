@@ -5,7 +5,7 @@ import { withCache } from "../services/cache";
 import { normalizeServiceCard, visibleServiceWhere } from "../services/serviceCards";
 import { enabledBoardTypes, getGlobalPinnedTopicIds } from "../services/siteSettings";
 import { resolveForumAccess } from "../services/forumAccess";
-import { decodeTopicForViewer } from "../services/forumPresentation";
+import { decodeTopicForViewer, decodeTopicsForViewerForList } from "../services/forumPresentation";
 import { buildUserTrustSnapshot } from "../services/userTrust";
 import { visibleBoardSlugFilter } from "../services/retiredBoards";
 import { FORUM_SELF_VISIBLE_REVIEW_STATUSES, forumContentVisibilityWhere } from "../services/forumSubmission";
@@ -111,7 +111,7 @@ homeRouter.get("/summary", async (req, res, next) => {
         hotScore: computeHotScore(item, isRecentTopic(item)),
         ...decodeTopicForViewer(item, req.user),
       })) : [],
-      latestTopics: forumAccessEnabled ? latestTopics.map((item: any) => decodeTopicForViewer(item, req.user)) : [],
+      latestTopics: forumAccessEnabled ? await decodeTopicsForViewerForList(latestTopics, req.user) : [],
       announce: publicSummary.announce.map((item: any) => decodeTopicForViewer(item, req.user)),
       services: publicSummary.services
         .filter((s) => !HOME_HIDDEN_SERVICE_CODES.includes(s.code))
@@ -128,10 +128,11 @@ homeRouter.get("/hot-ranking", async (_req, res, next) => {
     if (!forumAccessEnabled) return ok(res, []);
     const contentBoardTypes = enabledBoardTypes().filter((type) => type !== "announce");
     const list = await withCache("home", ["hot-ranking-v2"], 60_000, async () => listHotTopics(HOT_TOPIC_DEFAULT_SIZE, contentBoardTypes));
-    ok(res, list.map((item, index) => ({
+    const presented = await decodeTopicsForViewerForList(list, _req.user);
+    ok(res, presented.map((item, index) => ({
       rank: index + 1,
-      hotScore: computeHotScore(item, isRecentTopic(item)),
-      ...decodeTopicForViewer(item, _req.user),
+      hotScore: computeHotScore(list[index], isRecentTopic(list[index])),
+      ...item,
     })));
   } catch (e) { next(e); }
 });
@@ -169,12 +170,16 @@ homeRouter.get("/latest-feed", async (req, res, next) => {
       ]);
       return { pins, list, total };
     });
+    const [pins, list] = await Promise.all([
+      Promise.resolve(cached.pins.map((item: any) => decodeTopicForViewer(item, req.user))),
+      decodeTopicsForViewerForList(cached.list, req.user),
+    ]);
     ok(res, {
       page,
       size,
       total: cached.total,
-      pins: cached.pins.map((item: any) => decodeTopicForViewer(item, req.user)),
-      list: cached.list.map((item: any) => decodeTopicForViewer(item, req.user)),
+      pins,
+      list,
     });
   } catch (e) { next(e); }
 });

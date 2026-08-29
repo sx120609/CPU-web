@@ -42,7 +42,7 @@ import {
 import { ensureCanReadBoardType, ensureForumAccessEnabled, resolveForumAccess } from "../services/forumAccess";
 import { ensureUserCanSpeak, releaseExpiredMutes } from "../services/userModeration";
 import { consumeAnonymousCredit, createAnonymousAlias } from "../services/userTrust";
-import { decodeReplyForViewer, decodeReplyForViewerWithImages, decodeTopicForViewer, decodeTopicForViewerWithImages } from "../services/forumPresentation";
+import { decodeReplyForViewer, decodeReplyForViewerWithImages, decodeTopicForViewer, decodeTopicForViewerWithImages, decodeTopicsForViewerForList } from "../services/forumPresentation";
 import { ensureForumImageAssetsForContent, summarizeForumImageModerationForContent } from "../services/imageModeration";
 import { ensureForumVideoAssetsForContent, summarizeForumVideoModerationForContent } from "../services/videoModeration";
 import { invalidateCourseCaches, invalidateForumCaches } from "../services/cacheInvalidation";
@@ -279,7 +279,7 @@ topicRouter.get("/", async (req, res, next) => {
       page,
       size,
       total: cached.total,
-      list: cached.list.map((item: any) => decodeTopicForViewer(item, req.user)),
+      list: await decodeTopicsForViewerForList(cached.list, req.user),
     });
   } catch (e) { next(e); }
 });

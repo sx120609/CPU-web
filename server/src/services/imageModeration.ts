@@ -415,10 +415,17 @@ export async function applyManualForumImageReview(input: {
 }
 
 export async function renderModeratedContent(content: string, _viewer?: Viewer) {
-  const matches = collectImageMatches(content);
-  if (!matches.length) return rewriteUploadMediaAttributes(content);
-  const localUrls = Array.from(new Set(matches.map((item) => normalizeForumImageUrl(item.url)).filter(Boolean) as string[]));
-  if (!localUrls.length) return rewriteUploadMediaAttributes(content);
+  return (await renderModeratedContents([content], _viewer))[0] || "";
+}
+
+export async function renderModeratedContents(contents: string[], _viewer?: Viewer) {
+  const sourceContents = contents.map((content) => String(content || ""));
+  const matchesByContent = sourceContents.map(collectImageMatches);
+  const localUrls = Array.from(new Set(
+    matchesByContent.flatMap((matches) => matches.map((item) => normalizeForumImageUrl(item.url)))
+      .filter(Boolean) as string[],
+  ));
+  if (!localUrls.length) return sourceContents.map(rewriteUploadMediaAttributes);
 
   const rows = await prisma.forumImageAsset.findMany({
     where: { url: { in: localUrls } },
@@ -449,17 +456,19 @@ export async function renderModeratedContent(content: string, _viewer?: Viewer) 
     publicUrlMap.set(url, await resolveMediaPublicUrl(url));
   }));
 
-  let rendered = "";
-  let lastIndex = 0;
-  for (const match of matches) {
-    rendered += content.slice(lastIndex, match.index);
-    const normalizedUrl = normalizeForumImageUrl(match.url);
-    const row = normalizedUrl ? rowMap.get(normalizedUrl) : null;
-    rendered += rewriteImageToken(match, row, normalizedUrl ? publicUrlMap.get(normalizedUrl) : "");
-    lastIndex = match.index + match.raw.length;
-  }
-  rendered += content.slice(lastIndex);
-  return rewriteUploadMediaAttributes(rendered);
+  return sourceContents.map((content, index) => {
+    let rendered = "";
+    let lastIndex = 0;
+    for (const match of matchesByContent[index]) {
+      rendered += content.slice(lastIndex, match.index);
+      const normalizedUrl = normalizeForumImageUrl(match.url);
+      const row = normalizedUrl ? rowMap.get(normalizedUrl) : null;
+      rendered += rewriteImageToken(match, row, normalizedUrl ? publicUrlMap.get(normalizedUrl) : "");
+      lastIndex = match.index + match.raw.length;
+    }
+    rendered += content.slice(lastIndex);
+    return rewriteUploadMediaAttributes(rendered);
+  });
 }
 
 function rewriteImageToken(

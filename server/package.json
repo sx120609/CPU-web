@@ -17,6 +17,7 @@
     "login-agent": "npm run jwxt-agent",
     "login-agent:dev": "npm run jwxt-agent:dev",
     "forum:recount-stats": "tsx scripts/recount-forum-stats.ts",
+    "forum:compress-images": "tsx scripts/compress-historical-forum-images.ts",
     "market:check-db": "tsx scripts/check-market-db.ts",
     "market:smoke": "tsx scripts/smoke-market.ts",
     "db:migrate": "prisma db push --skip-generate && node scripts/backfill-permanent-vip.mjs",
