@@ -8,8 +8,10 @@ import { useSiteStore } from "./stores/site";
 import { applyInitialAppearance, useAppearanceStore } from "./stores/appearance";
 import { installIosNativeImageBridge } from "./utils/nativeBridge";
 import {
+  isAndroidNativeApp,
   isDesktopNativeApp,
   isFlutterNativeShell,
+  isLikelyAndroidDevice,
   isLikelyIosDevice,
 } from "./utils/clientInfo";
 import { scheduleJwxtDataPrewarm } from "./utils/jwxtPrewarm";
@@ -20,7 +22,6 @@ import "element-plus/theme-chalk/dark/css-vars.css";
 import "photoswipe/style.css";
 import "@fontsource-variable/inter/standard.css";
 import "@fontsource/jetbrains-mono";
-import "./styles/harmonyos-emoji.css";
 import "./styles/harmonyos-sans.css";
 import "./styles/index.scss";
 import "./styles/image-viewer.scss";
@@ -203,6 +204,8 @@ function installNativeAppMarker() {
   const ua = navigator.userAgent;
   if (isLikelyIosDevice(ua)) {
     document.documentElement.dataset.cpuPlatform = "ios";
+  } else if (isAndroidNativeApp(ua) || isLikelyAndroidDevice(ua)) {
+    document.documentElement.dataset.cpuPlatform = "android";
   }
   const nativeOrStandalone = /cpuwebscheduleapp|cpuwebharmonyapp/i.test(ua)
     || isFlutterNativeShell(ua)

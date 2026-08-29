@@ -16,12 +16,6 @@ Distributed unmodified under the HarmonyOS Sans Fonts License Agreement.
 The complete agreement is available alongside this file as
 HarmonyOS-Sans-LICENSE.txt.
 
-HMOS Color Emoji and HMOS Color Emoji Flags
-Copyright 2021 Huawei Device Co., Ltd.
-Distributed unmodified from OpenHarmony system resources under the HarmonyOS
-Fonts License Agreement. The complete agreement is available alongside this
-file as HarmonyOS-Emoji-LICENSE.txt.
-
 -----------------------------------------------------------
 SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
 -----------------------------------------------------------

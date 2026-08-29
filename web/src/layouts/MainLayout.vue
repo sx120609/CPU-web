@@ -1909,13 +1909,13 @@ function setAppearanceMode(command: string | number | object) {
   }
 
   .brand-logo {
-    width: 34px;
-    height: 34px;
-    border-radius: 9px;
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
   }
 
   .brand-name {
-    font-size: 16px;
+    font-size: 17px;
   }
 
   .brand-sub {
@@ -1933,6 +1933,18 @@ function setAppearanceMode(command: string | number | object) {
   .mobile-actions {
     display: flex;
     flex: 0 0 auto;
+  }
+
+  :global(html[data-cpu-platform="android"] .mobile-actions) {
+    --mobile-header-control-size: 34px;
+    gap: 0;
+    padding: 1px 2px;
+  }
+
+  :global(html[data-cpu-platform="android"] .touch-icon-btn .el-icon) {
+    width: 20px;
+    height: 20px;
+    font-size: 20px;
   }
 
   .main {

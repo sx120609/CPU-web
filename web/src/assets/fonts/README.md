@@ -14,16 +14,3 @@ Checksums:
 The fonts are licensed under the HarmonyOS Sans Fonts License Agreement. The
 copyright notice and complete license are shipped at
 `web/public/licenses/fonts/HarmonyOS-Sans-LICENSE.txt`.
-
-## HarmonyOS Color Emoji web fonts
-
-`HMOSColorEmojiCompat.ttf` and `HMOSColorEmojiFlags.ttf` are unmodified copies
-from the OpenHarmony `utils_system_resources` repository.
-
-Checksums:
-
-- `HMOSColorEmojiCompat.ttf`: `AC92FA6AA065DC74DF7F90738A0E6FB5AF520E6EDB0896027D82F249A0C2A989`
-- `HMOSColorEmojiFlags.ttf`: `1BF7D7FD57D2F6C622F1ED19E3B2ACBFB2875BC778C62E7729CB9A9ED5E958E0`
-
-The complete license is shipped at
-`web/public/licenses/fonts/HarmonyOS-Emoji-LICENSE.txt`.
