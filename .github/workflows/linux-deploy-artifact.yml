@@ -91,6 +91,25 @@ jobs:
           retention-days: 14
           if-no-files-found: error
 
+      - name: Publish fast Git deployment transport
+        if: github.ref == 'refs/heads/main'
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle_blob="$(git hash-object -w cpu-web-linux-deploy.tar.gz)"
+          checksum_blob="$(git hash-object -w cpu-web-linux-deploy.tar.gz.sha256)"
+          transport_tree="$(
+            printf '100644 blob %s\tcpu-web-linux-deploy.tar.gz\n100644 blob %s\tcpu-web-linux-deploy.tar.gz.sha256\n' \
+              "$bundle_blob" "$checksum_blob" | git mktree
+          )"
+          transport_commit="$(
+            printf 'CPU-web Linux deployment artifact for %s\n' "$GITHUB_SHA" \
+              | git -c user.name='github-actions[bot]' \
+                  -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+                  commit-tree "$transport_tree"
+          )"
+          git push --force origin "$transport_commit:refs/heads/deploy-artifacts"
+
       - name: Publish stable deployment transport
         if: github.ref == 'refs/heads/main'
         shell: bash

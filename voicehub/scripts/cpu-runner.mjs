@@ -36,7 +36,7 @@ if (voiceHubDatabaseUrl && sameDatabase(voiceHubDatabaseUrl, process.env.DATABAS
   process.exit(1)
 }
 
-const port = String(process.env.VOICEHUB_PORT || '3001')
+const port = String(process.env.VOICEHUB_PORT || process.env.NITRO_PORT || '3001')
 const cpuPort = String(process.env.PORT || '3000')
 const env = {
   ...process.env,

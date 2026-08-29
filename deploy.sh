@@ -76,6 +76,8 @@ DEPLOY_NODE_HEAP_MB="${DEPLOY_NODE_HEAP_MB:-2304}"
 DEPLOY_CI_WAIT_SECONDS="${DEPLOY_CI_WAIT_SECONDS:-600}"
 DEPLOY_CI_POLL_SECONDS="${DEPLOY_CI_POLL_SECONDS:-15}"
 DEPLOY_ARTIFACT_URL="${DEPLOY_ARTIFACT_URL:-https://github.com/sx120609/CPU-web/releases/download/deploy-artifacts/cpu-web-linux-deploy.tar.gz}"
+DEPLOY_ARTIFACT_GIT_SOURCE="${DEPLOY_ARTIFACT_GIT_SOURCE:-refs/heads/deploy-artifacts}"
+DEPLOY_ARTIFACT_GIT_REF="${DEPLOY_ARTIFACT_GIT_REF:-refs/remotes/origin/deploy-artifacts}"
 DEPLOY_ARTIFACT_READY=0
 DEPLOY_ARTIFACT_DIR=""
 DEPLOY_BUILD_CAPACITY_CHECKED=0
@@ -435,6 +437,37 @@ redis_is_ready() {
   redis-cli ping >/dev/null 2>&1
 }
 
+wait_for_redis_ready() {
+  local attempt=1
+  while [ "$attempt" -le 12 ]; do
+    redis_is_ready && return 0
+    sleep 1
+    attempt=$((attempt + 1))
+  done
+  return 1
+}
+
+redis_systemd_needs_jemalloc_repair() {
+  can_use_systemd || return 1
+  local unit_text journal_text
+  unit_text="$(systemctl cat redis-server --no-pager 2>/dev/null)" || return 1
+  grep -Fq 'MemoryDenyWriteExecute=true' <<<"$unit_text" || return 1
+  journal_text="$(journalctl -u redis-server -n 80 --no-pager 2>/dev/null)" || return 1
+  grep -Fq 'libjemalloc.so.2: failed to map segment from shared object' <<<"$journal_text"
+}
+
+repair_redis_systemd_jemalloc_mapping() {
+  redis_systemd_needs_jemalloc_repair || return 1
+  local dropin_dir="/etc/systemd/system/redis-server.service.d"
+  local dropin_file="$dropin_dir/cpu-web-jemalloc.conf"
+  log "检测到 Redis 与 systemd MemoryDenyWriteExecute 的 jemalloc 映射冲突，应用最小兼容覆盖"
+  run_privileged install -d -m 0755 "$dropin_dir"
+  printf '%s\n' '[Service]' 'MemoryDenyWriteExecute=false' \
+    | run_privileged tee "$dropin_file" >/dev/null
+  run_privileged systemctl daemon-reload
+  run_privileged systemctl reset-failed redis-server >/dev/null 2>&1 || true
+}
+
 start_redis_fallback() {
   local conf="/etc/redis/redis.conf"
   if [ -f "$conf" ]; then
@@ -447,13 +480,42 @@ start_redis_fallback() {
 ensure_redis_started() {
   redis_is_ready && return 0
   if start_managed_service redis-server; then
-    redis_is_ready && return 0
+    wait_for_redis_ready && return 0
+  fi
+  if repair_redis_systemd_jemalloc_mapping && start_managed_service redis-server; then
+    wait_for_redis_ready && return 0
   fi
   if start_redis_fallback; then
     log "systemd/service 未成功启动 Redis，已直接以 daemon 模式回退启动"
-    redis_is_ready && return 0
+    wait_for_redis_ready && return 0
   fi
   warn "Redis 启动失败，请手动检查 Redis 服务状态"
+  return 1
+}
+
+ensure_redis_systemd_persistence() {
+  can_use_systemd || return 0
+  systemctl is-active --quiet redis-server && return 0
+  repair_redis_systemd_jemalloc_mapping || return 0
+
+  if redis_is_ready; then
+    log "将 Redis 从临时 daemon 平滑切换到开机自启的 systemd 服务"
+    redis-cli shutdown >/dev/null 2>&1 || true
+    local attempt=1
+    while redis_is_ready && [ "$attempt" -le 10 ]; do
+      sleep 1
+      attempt=$((attempt + 1))
+    done
+  fi
+
+  if start_managed_service redis-server && wait_for_redis_ready; then
+    log "Redis systemd 服务已恢复并启用开机自启"
+    return 0
+  fi
+
+  warn "Redis systemd 持久服务仍未启动，恢复 daemon 以保护当前站点"
+  start_redis_fallback || true
+  wait_for_redis_ready || true
   return 1
 }
 
@@ -1095,7 +1157,7 @@ run_guarded_process() {
   if [[ "$node_options" != *--max-old-space-size* ]]; then
     node_options="${node_options:+$node_options }--max-old-space-size=$DEPLOY_NODE_HEAP_MB"
   fi
-  runner=(env "NODE_OPTIONS=$node_options" npm_config_jobs=2 "$@")
+  runner=(env "NODE_OPTIONS=$node_options" "$@")
   if command -v ionice >/dev/null 2>&1; then
     runner=(ionice -c 3 "${runner[@]}")
   fi
@@ -1327,7 +1389,6 @@ download_ci_artifact() {
   local cache_root target_dir incoming_dir extract_dir bundle_url deadline attempt=1
   [[ "$commit" =~ ^[0-9a-fA-F]{40}$ ]] || return 1
   commit="${commit,,}"
-  command -v curl >/dev/null 2>&1 || return 1
   command -v tar >/dev/null 2>&1 || return 1
   cache_root="$(artifact_cache_root)" || return 1
   target_dir="$cache_root/$commit"
@@ -1350,23 +1411,35 @@ download_ci_artifact() {
     rm -rf "$incoming_dir"
     mkdir -p "$extract_dir"
     bundle_url="${DEPLOY_ARTIFACT_URL}?commit=$commit&attempt=$attempt"
-    if curl -fsSL \
-      --connect-timeout 15 \
-      --max-time 300 \
-      --retry 2 \
-      --retry-delay 2 \
-      -H 'Cache-Control: no-cache' \
-      "$bundle_url" \
-      -o "$incoming_dir/bundle.tar.gz" \
-      && validate_bundle_archive "$incoming_dir/bundle.tar.gz" \
+    if { \
+        git fetch --force --no-tags origin \
+          "$DEPLOY_ARTIFACT_GIT_SOURCE:$DEPLOY_ARTIFACT_GIT_REF" >/dev/null 2>&1 \
+        && git show "$DEPLOY_ARTIFACT_GIT_REF:cpu-web-linux-deploy.tar.gz" \
+          > "$incoming_dir/bundle.tar.gz"; \
+      } \
+      || { \
+        command -v curl >/dev/null 2>&1 \
+        && curl -fsSL \
+          --connect-timeout 15 \
+          --max-time 60 \
+          --retry 1 \
+          --retry-delay 2 \
+          --speed-limit 10240 \
+          --speed-time 20 \
+          -H 'Cache-Control: no-cache' \
+          "$bundle_url" \
+          -o "$incoming_dir/bundle.tar.gz"; \
+      }; then
+      if validate_bundle_archive "$incoming_dir/bundle.tar.gz" \
       && tar -xzf "$incoming_dir/bundle.tar.gz" -C "$extract_dir" \
       && verify_ci_artifact_directory "$commit" "$extract_dir"; then
-      mv "$extract_dir" "$target_dir"
-      rm -rf "$incoming_dir"
-      DEPLOY_ARTIFACT_DIR="$target_dir"
-      DEPLOY_ARTIFACT_READY=1
-      log "CI deployment artifact is ready for ${commit:0:12}"
-      return 0
+        mv "$extract_dir" "$target_dir"
+        rm -rf "$incoming_dir"
+        DEPLOY_ARTIFACT_DIR="$target_dir"
+        DEPLOY_ARTIFACT_READY=1
+        log "CI deployment artifact is ready for ${commit:0:12}"
+        return 0
+      fi
     fi
     if [ "$SECONDS" -le "$deadline" ]; then
       warn "CI artifact for ${commit:0:12} is not ready; retrying in ${DEPLOY_CI_POLL_SECONDS}s"
@@ -1678,6 +1751,7 @@ do_redis_config() {
 do_redis_init() {
   ensure_env
   ensure_redis
+  ensure_redis_systemd_persistence || true
   local db_index
   db_index="${REDIS_DB_INDEX:-${CMD_ARG_1:-0}}"
   [[ "$db_index" =~ ^[0-9]+$ ]] || err "Redis DB index 必须是非负整数：$db_index"
@@ -1797,7 +1871,8 @@ do_voicehub_start() {
         CPU_WEB_ORIGIN="http://127.0.0.1:$PORT" \
         VOICEHUB_INTEGRATION_SECRET="$(env_get VOICEHUB_INTEGRATION_SECRET)" \
         NUXT_APP_BASE_URL="/voicehub/" NUXT_PUBLIC_API_BASE="/voicehub/api" \
-        NUXT_PUBLIC_SITE_TITLE="药苑之声" NITRO_HOST="127.0.0.1" NITRO_PORT="$VOICEHUB_PORT" \
+        NUXT_PUBLIC_SITE_TITLE="药苑之声" NITRO_HOST="127.0.0.1" \
+        VOICEHUB_PORT="$VOICEHUB_PORT" NITRO_PORT="$VOICEHUB_PORT" \
         NODE_ENV=production pm2 restart "$VOICEHUB_SERVICE_NAME" --update-env
     else
       warn "升级 $VOICEHUB_SERVICE_NAME 到运行时环境加载器"
@@ -1808,7 +1883,8 @@ do_voicehub_start() {
     VOICEHUB_DATABASE_URL="$voice_url" CPU_WEB_ORIGIN="http://127.0.0.1:$PORT" \
       VOICEHUB_INTEGRATION_SECRET="$(env_get VOICEHUB_INTEGRATION_SECRET)" \
       NUXT_APP_BASE_URL="/voicehub/" NUXT_PUBLIC_API_BASE="/voicehub/api" \
-      NUXT_PUBLIC_SITE_TITLE="药苑之声" NITRO_HOST="127.0.0.1" NITRO_PORT="$VOICEHUB_PORT" \
+      NUXT_PUBLIC_SITE_TITLE="药苑之声" NITRO_HOST="127.0.0.1" \
+      VOICEHUB_PORT="$VOICEHUB_PORT" NITRO_PORT="$VOICEHUB_PORT" \
       NODE_ENV=production pm2 start scripts/cpu-runner.mjs \
         --interpreter node \
         --name "$VOICEHUB_SERVICE_NAME" \

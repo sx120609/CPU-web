@@ -656,7 +656,9 @@ chmod +x deploy.sh
 
 低配生产机应先执行一次 `./deploy.sh swap-init 6`。该命令只使用固定路径 `/swapfile-cpu-web`，创建并持久启用 6 GiB Swap，同时设置 `vm.swappiness=10`；已启用时可重复执行。所有本机 `npm ci` 与生产构建都会经过资源护栏：低 CPU/IO 优先级、默认 2304 MiB Node heap、2 GiB 磁盘余量检查，并在低内存机器没有至少 2 GiB Swap 时拒绝冒险编译。可用 `./deploy.sh build-status` 查看实时资源状态。
 
-推送到 `main` 的主站、前端或药苑之声变更会触发 `Linux deployment artifact` GitHub Actions。工作流在 Ubuntu/Node 24 上构建 `server/dist`、`web/dist` 与 `voicehub/.output`，生成绑定完整提交 SHA 的清单和三个 SHA-256 校验值，同时上传短期 Actions 审计制品并更新固定的 `deploy-artifacts` 预发布资产。`./deploy.sh update` 默认使用 `DEPLOY_BUILD_MODE=auto`：先等待并验证与当前 `HEAD` 完全匹配的 CI 制品，再暂存、原子发布和健康检查；CI 不可用时才回退到受保护的本机编译。设置 `DEPLOY_BUILD_MODE=ci` 可禁止生产机编译并在制品缺失时失败关闭，设置为 `local` 可强制使用资源受限的本机编译。`./deploy.sh artifact-check [完整提交 SHA]` 只下载、校验并缓存制品，不发布文件。
+推送到 `main` 的主站、前端或药苑之声变更会触发 `Linux deployment artifact` GitHub Actions。工作流在 Ubuntu/Node 24 上构建 `server/dist`、`web/dist` 与 `voicehub/.output`，生成绑定完整提交 SHA 的清单和三个 SHA-256 校验值，同时上传短期 Actions 审计制品、强制更新仅含当前制品的 `deploy-artifacts` Git 传输分支，并更新同名预发布资产作为备用下载源。`./deploy.sh update` 默认使用 `DEPLOY_BUILD_MODE=auto`：优先经现有 Git 远端取得制品，等待并验证它与当前 `HEAD` 完全匹配后再暂存、原子发布和健康检查；Git 传输不可用时才尝试预发布下载，CI 整体不可用时才回退到受保护的本机编译。设置 `DEPLOY_BUILD_MODE=ci` 可禁止生产机编译并在制品缺失时失败关闭，设置为 `local` 可强制使用资源受限的本机编译。`./deploy.sh artifact-check [完整提交 SHA]` 只下载、校验并缓存制品，不发布文件。
+
+`./deploy.sh redis-init` 会优先启用发行版自带的 `redis-server` systemd 服务。若日志明确出现 `libjemalloc.so.2: failed to map segment`，且原服务启用了 `MemoryDenyWriteExecute`，脚本只为该服务写入最小 drop-in 兼容覆盖并重新验证；切换失败时会恢复临时 daemon，避免部署期间直接丢失 Redis。
 
 若宝塔把 HTTP 与 HTTPS 合并在同一个 Nginx `server` 中，可执行一次 `./deploy.sh nginx-http-fix`。脚本会备份 `/www/server/panel/vhost/nginx/cpu.lizmt.cn.conf`，把 80 端口拆成只负责跳转的入口，保留宝塔 ACME 验证 include，并把 `cputime.cn`、`www.cputime.cn`、`cpu.lizmt.cn` 统一 301 到 `https://cputime.cn`；只有 `nginx -t`、reload 和本机响应头回读全部通过才保留新配置，否则自动恢复备份。前端还包含同域 HTTP 页面兜底跳转，用于处理内置 WebView 未正确遵循代理跳转的情况。
 
