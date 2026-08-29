@@ -541,7 +541,6 @@ html[data-theme="dark"] {
   .reminder-panel,
   .reminder-item,
   .app-card,
-  .app-icon,
   .retry-card,
   .error-card,
   .gpa-tool,
@@ -1039,20 +1038,6 @@ html[data-theme="dark"] {
     color: var(--cpu-primary-light) !important;
   }
 
-  .app-icon {
-    background: rgba(241, 245, 249, 0.92) !important;
-    border: 1px solid rgba(226, 232, 240, 0.86) !important;
-    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.18), inset 0 0 0 1px rgba(255, 255, 255, 0.72) !important;
-    color: #0f172a !important;
-  }
-
-  .app-icon img {
-    filter: saturate(1.05) contrast(1.08);
-  }
-
-  .app-icon .icon-fallback {
-    color: #0f766e !important;
-  }
 }
 
 @media (max-width: 768px) {

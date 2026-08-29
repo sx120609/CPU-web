@@ -246,7 +246,7 @@ function formatDate(value: string) {
 .membership-pass.active, .mobile-membership-pass.active { background: linear-gradient(145deg, #163d38 0%, #0f2927 58%, #122220 100%); }
 .pass-topline, .pass-footer { position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .pass-brand { display: inline-flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 800; letter-spacing: .06em; }
-.pass-brand .app-icon { color: #fbbf24; }
+.pass-brand .cpu-app-icon { color: #fbbf24; }
 .pass-state { padding: 5px 9px; border: 1px solid rgba(255,255,255,.14); border-radius: 999px; background: rgba(255,255,255,.08); color: rgba(255,255,255,.8); font-size: 11px; }
 .pass-main { position: relative; z-index: 1; margin: auto 0; }
 .pass-main small { color: rgba(255,255,255,.56); font-size: 11px; letter-spacing: .08em; }
@@ -283,7 +283,7 @@ function formatDate(value: string) {
 .history-row small, .history-row time { margin-top: 3px; color: var(--cpu-text-muted); font-size: 10px; }
 .history-row time { text-align: right; }
 .history-empty { display: grid; min-height: 94px; place-items: center; align-content: center; gap: 8px; color: var(--cpu-text-muted); font-size: 12px; }
-.history-empty .app-icon { font-size: 22px; }
+.history-empty .cpu-app-icon { font-size: 22px; }
 @media (max-width: 760px) {
   .vip-desktop { display: none; }
   .vip-mobile { display: flex; flex-direction: column; gap: 14px; }

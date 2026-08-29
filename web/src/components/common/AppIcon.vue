@@ -1,5 +1,5 @@
 <template>
-  <el-icon class="app-icon" aria-hidden="true"><component :is="resolvedIcon" /></el-icon>
+  <el-icon class="cpu-app-icon" aria-hidden="true"><component :is="resolvedIcon" /></el-icon>
 </template>
 
 <script setup lang="ts">
@@ -97,6 +97,7 @@ const icons: Record<string, Component> = {
   forum: ChatDotRound,
   gift: Present,
   hot: TrendCharts,
+  home: House,
   key: Key,
   like: Pointer,
   link: Link,
@@ -196,5 +197,5 @@ const resolvedIcon = computed(() => icons[props.legacy || ""] || icons[props.nam
 </script>
 
 <style scoped>
-.app-icon { flex: 0 0 auto; vertical-align: -0.14em; }
+.cpu-app-icon { flex: 0 0 auto; vertical-align: -0.14em; }
 </style>

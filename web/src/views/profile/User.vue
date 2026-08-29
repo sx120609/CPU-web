@@ -201,6 +201,10 @@ function normalizeUserLoadError(loadError: unknown) {
 .profile-card.profile-theme-sunset { background: linear-gradient(135deg, #fff7ed, #ffffff); }
 .profile-card.profile-theme-ocean { background: linear-gradient(135deg, #eff6ff, #ffffff); }
 .profile-card.profile-theme-lavender { background: linear-gradient(135deg, #f5f3ff, #ffffff); }
+:global(html[data-theme="dark"] .profile-card.profile-theme-mint) { background: linear-gradient(135deg, rgba(16, 185, 129, .18), var(--cpu-card) 72%); }
+:global(html[data-theme="dark"] .profile-card.profile-theme-sunset) { background: linear-gradient(135deg, rgba(249, 115, 22, .16), var(--cpu-card) 72%); }
+:global(html[data-theme="dark"] .profile-card.profile-theme-ocean) { background: linear-gradient(135deg, rgba(59, 130, 246, .18), var(--cpu-card) 72%); }
+:global(html[data-theme="dark"] .profile-card.profile-theme-lavender) { background: linear-gradient(135deg, rgba(139, 92, 246, .18), var(--cpu-card) 72%); }
 .profile-card.profile-frame-gold { border: 2px solid #f5c451; }
 .profile-card.profile-frame-neon { border: 2px solid #8b5cf6; box-shadow: 0 0 18px rgba(139, 92, 246, .24); }
 .profile-card.profile-frame-campus { border: 2px solid #168776; }

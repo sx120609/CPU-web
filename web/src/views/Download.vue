@@ -491,7 +491,7 @@ onMounted(async () => {
   font-size: 12px;
 }
 
-.desktop-hero-meta :deep(.app-icon) {
+.desktop-hero-meta :deep(.cpu-app-icon) {
   color: var(--cpu-primary);
   font-size: 15px;
 }
@@ -571,7 +571,7 @@ onMounted(async () => {
   color: var(--cpu-text-secondary);
 }
 
-.platform-icon :deep(.app-icon) {
+.platform-icon :deep(.cpu-app-icon) {
   font-size: 21px;
 }
 
@@ -847,15 +847,15 @@ onMounted(async () => {
   display: none;
 }
 
-.desktop-install-steps summary :deep(.app-icon),
-.mobile-install-steps summary :deep(.app-icon),
-.mobile-platform-item > summary > :deep(.app-icon) {
+.desktop-install-steps summary :deep(.cpu-app-icon),
+.mobile-install-steps summary :deep(.cpu-app-icon),
+.mobile-platform-item > summary > :deep(.cpu-app-icon) {
   transition: transform 0.16s ease;
 }
 
-.desktop-install-steps[open] summary :deep(.app-icon),
-.mobile-install-steps[open] summary :deep(.app-icon),
-.mobile-platform-item[open] > summary > :deep(.app-icon) {
+.desktop-install-steps[open] summary :deep(.cpu-app-icon),
+.mobile-install-steps[open] summary :deep(.cpu-app-icon),
+.mobile-platform-item[open] > summary > :deep(.cpu-app-icon) {
   transform: rotate(180deg);
 }
 
@@ -1055,7 +1055,7 @@ onMounted(async () => {
     border-radius: 10px;
   }
 
-  .mobile-platform-item .platform-icon :deep(.app-icon) {
+  .mobile-platform-item .platform-icon :deep(.cpu-app-icon) {
     font-size: 19px;
   }
 

@@ -53,6 +53,7 @@
             type="button"
             class="vip-style-option"
             :class="[`vip-theme-${item.value}`, { active: user?.profileTheme === item.value }]"
+            :aria-pressed="user?.profileTheme === item.value"
             :disabled="vipStyleSaving"
             @click="saveVipDecoration('profileTheme', item.value)"
           >{{ item.label }}</button>
@@ -67,6 +68,7 @@
             type="button"
             class="vip-style-option"
             :class="[{ active: user?.profileFrame === item.value }, `vip-frame-${item.value}`]"
+            :aria-pressed="user?.profileFrame === item.value"
             :disabled="vipStyleSaving"
             @click="saveVipDecoration('profileFrame', item.value)"
           >{{ item.label }}</button>
@@ -918,6 +920,10 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
 .profile-card.profile-theme-sunset { background: linear-gradient(135deg, #fff7ed, #ffffff); }
 .profile-card.profile-theme-ocean { background: linear-gradient(135deg, #eff6ff, #ffffff); }
 .profile-card.profile-theme-lavender { background: linear-gradient(135deg, #f5f3ff, #ffffff); }
+:global(html[data-theme="dark"] .profile-card.profile-theme-mint) { background: linear-gradient(135deg, rgba(16, 185, 129, .18), var(--cpu-card) 72%); }
+:global(html[data-theme="dark"] .profile-card.profile-theme-sunset) { background: linear-gradient(135deg, rgba(249, 115, 22, .16), var(--cpu-card) 72%); }
+:global(html[data-theme="dark"] .profile-card.profile-theme-ocean) { background: linear-gradient(135deg, rgba(59, 130, 246, .18), var(--cpu-card) 72%); }
+:global(html[data-theme="dark"] .profile-card.profile-theme-lavender) { background: linear-gradient(135deg, rgba(139, 92, 246, .18), var(--cpu-card) 72%); }
 .profile-card.profile-frame-gold { border: 2px solid #f5c451; }
 .profile-card.profile-frame-neon { border: 2px solid #8b5cf6; box-shadow: 0 0 18px rgba(139, 92, 246, .24); }
 .profile-card.profile-frame-campus { border: 2px solid #168776; }
@@ -979,11 +985,15 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
 .vip-style-label { min-width: 70px; color: var(--cpu-text-secondary); font-size: 13px; }
 .vip-style-options { display: flex; gap: 8px; flex-wrap: wrap; }
 .vip-style-option { border: 1px solid var(--cpu-border-soft); border-radius: 999px; padding: 7px 13px; background: var(--cpu-surface-soft); color: var(--cpu-text); cursor: pointer; font: inherit; font-size: 12px; }
-.vip-style-option.active { border-color: #f59e0b; box-shadow: 0 0 0 2px rgba(245, 158, 11, .16); font-weight: 700; }
-.vip-theme-mint { background: #ecfdf5; }
-.vip-theme-sunset { background: #fff7ed; }
-.vip-theme-ocean { background: #eff6ff; }
-.vip-theme-lavender { background: #f5f3ff; }
+.vip-style-option.active { border-color: var(--vip-theme-accent, #f59e0b); box-shadow: 0 0 0 2px var(--vip-theme-ring, rgba(245, 158, 11, .16)); font-weight: 700; }
+.vip-theme-mint { --vip-theme-accent: #047857; --vip-theme-ring: rgba(4, 120, 87, .16); border-color: #a7f3d0; background: #ecfdf5; color: #047857; }
+.vip-theme-sunset { --vip-theme-accent: #c2410c; --vip-theme-ring: rgba(194, 65, 12, .16); border-color: #fed7aa; background: #fff7ed; color: #c2410c; }
+.vip-theme-ocean { --vip-theme-accent: #1d4ed8; --vip-theme-ring: rgba(29, 78, 216, .16); border-color: #bfdbfe; background: #eff6ff; color: #1d4ed8; }
+.vip-theme-lavender { --vip-theme-accent: #6d28d9; --vip-theme-ring: rgba(109, 40, 217, .16); border-color: #ddd6fe; background: #f5f3ff; color: #6d28d9; }
+:global(html[data-theme="dark"] .vip-theme-mint) { --vip-theme-accent: #6ee7b7; --vip-theme-ring: rgba(110, 231, 183, .2); border-color: rgba(52, 211, 153, .42); background: rgba(16, 185, 129, .16); color: #6ee7b7; }
+:global(html[data-theme="dark"] .vip-theme-sunset) { --vip-theme-accent: #fdba74; --vip-theme-ring: rgba(253, 186, 116, .2); border-color: rgba(251, 146, 60, .44); background: rgba(249, 115, 22, .16); color: #fdba74; }
+:global(html[data-theme="dark"] .vip-theme-ocean) { --vip-theme-accent: #93c5fd; --vip-theme-ring: rgba(147, 197, 253, .2); border-color: rgba(96, 165, 250, .44); background: rgba(59, 130, 246, .16); color: #93c5fd; }
+:global(html[data-theme="dark"] .vip-theme-lavender) { --vip-theme-accent: #c4b5fd; --vip-theme-ring: rgba(196, 181, 253, .2); border-color: rgba(167, 139, 250, .44); background: rgba(139, 92, 246, .16); color: #c4b5fd; }
 .vip-frame-gold { border-color: #f5c451; }
 .vip-frame-neon { border-color: #8b5cf6; }
 .vip-frame-campus { border-color: #168776; }

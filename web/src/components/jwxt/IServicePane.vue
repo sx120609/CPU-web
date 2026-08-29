@@ -51,9 +51,10 @@
         @keydown.space.self.prevent="openApp(a)"
         :title="a.detail || a.name"
       >
-        <div class="app-icon">
+        <div class="iservice-logo" :class="`iservice-logo--${darkAppIconTone(a)}`">
           <img
             v-if="hasAppIcon(a)"
+            class="iservice-logo-light"
             :src="appIconSource(a)"
             :alt="a.name"
             loading="lazy"
@@ -62,7 +63,12 @@
             @error="onIconError(a)"
             referrerpolicy="no-referrer"
           />
-          <span v-else class="icon-fallback">{{ a.name.charAt(0) }}</span>
+          <span v-else class="iservice-logo-light icon-fallback">{{ a.name.charAt(0) }}</span>
+          <AppIcon
+            class="iservice-logo-dark"
+            :class="`iservice-logo-dark--${darkAppIconTone(a)}`"
+            :name="darkAppIconName(a)"
+          />
         </div>
         <div class="app-name">{{ a.name }}</div>
         <div v-if="a.types.length" class="app-types">
@@ -125,6 +131,19 @@ const filterFav = ref<"" | "fav">("");
 const iconLoadState = reactive(new Map<string, "proxy" | "failed">());
 const FAVORITES_KEY = "cpu-iservice-favorite-overrides";
 const APPS_CACHE_KEY = "cpu-iservice-apps-cache-v1";
+const darkAppIconRules = [
+  { pattern: /缴费|费用|财务|支付|校园卡|一卡通|账单|补助|奖学金/, icon: "card", tone: "amber" },
+  { pattern: /图书|借阅|馆藏|文献|数据库/, icon: "course", tone: "blue" },
+  { pattern: /成绩|考试|课表|选课|课程|培养|教务|学籍|学分|毕业|补考|缓考/, icon: "school", tone: "blue" },
+  { pattern: /宿舍|公寓|报修|水电|后勤/, icon: "home", tone: "green" },
+  { pattern: /就业|招聘|勤工|实习/, icon: "work", tone: "violet" },
+  { pattern: /邮箱|通知|公告|消息/, icon: "announcement", tone: "cyan" },
+  { pattern: /申请|审批|证明|请假|离校|报到|办事/, icon: "document", tone: "indigo" },
+  { pattern: /网络|VPN|信息|系统|门户|登录|账号/, icon: "desktop", tone: "violet" },
+  { pattern: /健康|心理|医疗|体检/, icon: "service", tone: "rose" },
+  { pattern: /体育|场馆|运动/, icon: "trophy", tone: "amber" },
+  { pattern: /问卷|评价|反馈/, icon: "edit", tone: "cyan" },
+] as const;
 let activeRequest: Promise<any> | null = null;
 let disposed = false;
 
@@ -263,6 +282,19 @@ function onIconError(a: IServiceApp) {
     return;
   }
   iconLoadState.set(key, "failed");
+}
+
+function darkAppIcon(a: IServiceApp) {
+  const searchText = [a.name, a.detail, a.dept, ...a.types].join(" ");
+  return darkAppIconRules.find((rule) => rule.pattern.test(searchText)) || { icon: "service", tone: "teal" };
+}
+
+function darkAppIconName(a: IServiceApp) {
+  return darkAppIcon(a).icon;
+}
+
+function darkAppIconTone(a: IServiceApp) {
+  return darkAppIcon(a).tone;
 }
 
 function favoriteKey(a: IServiceApp) {
@@ -423,7 +455,7 @@ function openRawApp(a: IServiceApp) {
   background: linear-gradient(180deg, rgba(251, 191, 36, 0.16) 0%, var(--cpu-card) 34%);
 }
 
-.app-icon {
+.iservice-logo {
   width: 48px;
   height: 48px;
   display: grid;
@@ -433,7 +465,7 @@ function openRawApp(a: IServiceApp) {
   border-radius: 12px;
   overflow: hidden;
 }
-.app-icon img {
+.iservice-logo img {
   width: 38px;
   height: 38px;
   object-fit: contain;
@@ -442,6 +474,10 @@ function openRawApp(a: IServiceApp) {
   font-size: 20px;
   color: var(--cpu-primary);
   font-weight: 600;
+}
+
+.iservice-logo-dark {
+  display: none;
 }
 
 .app-name {
@@ -501,19 +537,30 @@ function openRawApp(a: IServiceApp) {
   font-size: 15px;
 }
 
-:global(html[data-theme="dark"]) .app-icon {
-  background: rgba(241, 245, 249, 0.92) !important;
-  border-color: rgba(226, 232, 240, 0.86) !important;
-  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.18), inset 0 0 0 1px rgba(255, 255, 255, 0.72);
+:global(html[data-theme="dark"] .iservice-logo) {
+  background: color-mix(in srgb, var(--iservice-icon-color, var(--cpu-primary)) 13%, var(--cpu-surface-soft));
+  border-color: color-mix(in srgb, var(--iservice-icon-color, var(--cpu-primary)) 30%, var(--cpu-border-soft));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .05);
 }
 
-:global(html[data-theme="dark"]) .app-icon img {
-  filter: saturate(1.05) contrast(1.08);
+:global(html[data-theme="dark"] .iservice-logo-light) {
+  display: none;
 }
 
-:global(html[data-theme="dark"]) .icon-fallback {
-  color: #0f766e !important;
+:global(html[data-theme="dark"] .iservice-logo-dark) {
+  display: inline-flex;
+  color: var(--iservice-icon-color, var(--cpu-primary-light));
+  font-size: 25px;
 }
+
+:global(html[data-theme="dark"] .iservice-logo--teal) { --iservice-icon-color: #5eead4; }
+:global(html[data-theme="dark"] .iservice-logo--blue) { --iservice-icon-color: #93c5fd; }
+:global(html[data-theme="dark"] .iservice-logo--cyan) { --iservice-icon-color: #67e8f9; }
+:global(html[data-theme="dark"] .iservice-logo--green) { --iservice-icon-color: #86efac; }
+:global(html[data-theme="dark"] .iservice-logo--amber) { --iservice-icon-color: #fcd34d; }
+:global(html[data-theme="dark"] .iservice-logo--violet) { --iservice-icon-color: #c4b5fd; }
+:global(html[data-theme="dark"] .iservice-logo--indigo) { --iservice-icon-color: #a5b4fc; }
+:global(html[data-theme="dark"] .iservice-logo--rose) { --iservice-icon-color: #fda4af; }
 
 @media (max-width: 700px) {
   .ctrl-bar {
@@ -599,13 +646,13 @@ function openRawApp(a: IServiceApp) {
     padding: 14px 8px 10px;
   }
 
-  .app-icon {
+  .iservice-logo {
     width: 42px;
     height: 42px;
     border-radius: 10px;
   }
 
-  .app-icon img {
+  .iservice-logo img {
     width: 34px;
     height: 34px;
   }
