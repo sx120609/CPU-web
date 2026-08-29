@@ -139,6 +139,9 @@
         </div>
 
         <div class="mobile-actions">
+          <el-button text class="touch-icon-btn" aria-label="刷新页面" @click="reloadPage">
+            <el-icon><Refresh /></el-icon>
+          </el-button>
           <el-button
             v-if="auth.isLoggedIn"
             text
@@ -1860,6 +1863,26 @@ function setAppearanceMode(command: string | number | object) {
   }
 
   .layout-root.keyboard-open .forum-post-fab { display: none; }
+
+  .forum-post-fab {
+    right: 14px;
+    bottom: calc(var(--layout-mobile-tabbar-reserve) + 12px);
+    width: 46px;
+    height: 46px;
+    min-height: 46px;
+    padding: 0;
+    border: 1px solid color-mix(in srgb, var(--cpu-primary) 24%, var(--cpu-border));
+    border-radius: 15px;
+    background: color-mix(in srgb, var(--cpu-card) 94%, transparent);
+    color: var(--cpu-primary);
+    box-shadow: 0 8px 22px rgba(15, 23, 42, .12);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
+
+  .forum-post-fab .el-icon { font-size: 21px; }
+  .forum-post-fab span { display: none; }
+  .forum-post-fab:hover { background: var(--cpu-card); color: var(--cpu-primary-dark); }
 
   .layout-root.keyboard-open .main--bare {
     padding-bottom: 0 !important;
