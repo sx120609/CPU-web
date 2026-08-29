@@ -1,7 +1,7 @@
 import type { RequestHandler } from "express";
 import path from "node:path";
 import { readFileSync } from "node:fs";
-import { resolveTencentCosOriginUrl } from "./tencentCos";
+import { resolveTencentCosDeliveryUrl } from "./tencentCos";
 
 // Keep the whole ES module graph under one versioned URL prefix. Query-string
 // cache busting would give the entry module a different identity from chunks
@@ -27,7 +27,7 @@ export function createWebStaticCosHandler(distRoot: string): RequestHandler {
     if (!assetPath || !assets.has(assetPath)) return next();
 
     try {
-      const remoteUrl = await resolveTencentCosOriginUrl(`${WEB_STATIC_COS_PREFIX}/${assetPath}`);
+      const remoteUrl = await resolveTencentCosDeliveryUrl(`${WEB_STATIC_COS_PREFIX}/${assetPath}`);
       // Vite 文件名带内容哈希，重定向地址和 COS 对象都可以长期缓存。
       res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
       res.setHeader("X-Static-Asset-Backend", "cos");

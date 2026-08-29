@@ -207,6 +207,12 @@ export async function resolveTencentCosOriginUrl(relativePath: string) {
   return `${defaultTencentCosOrigin(config)}/${encodeObjectKey(key)}`;
 }
 
+export async function resolveTencentCosDeliveryUrl(relativePath: string) {
+  const config = await resolveTencentCosConfig();
+  if (!config.bucket || !config.region) throw new Error("腾讯云 COS 存储桶或地域尚未配置");
+  return buildTencentCosDeliveryUrl(relativePath, config);
+}
+
 async function requireTencentCosClient() {
   const config = await resolveTencentCosConfig();
   if (!config.secretId || !config.secretKey) throw new Error("腾讯云 COS SecretId / SecretKey 尚未配置");
@@ -257,6 +263,15 @@ function normalizeObjectPath(value: string) {
 
 export function encodeObjectKey(value: string) {
   return normalizeObjectPath(value).split("/").map((segment) => encodeURIComponent(segment)).join("/");
+}
+
+export function buildTencentCosDeliveryUrl(
+  relativePath: string,
+  config: Pick<ResolvedTencentCosConfig, "bucket" | "region" | "rootPath" | "publicBaseUrl">,
+) {
+  const key = buildTencentCosObjectKey(relativePath, config.rootPath);
+  const baseUrl = config.publicBaseUrl || defaultTencentCosOrigin(config);
+  return `${baseUrl.replace(/\/+$/u, "")}/${encodeObjectKey(key)}`;
 }
 
 function defaultTencentCosOrigin(config: Pick<ResolvedTencentCosConfig, "bucket" | "region">) {

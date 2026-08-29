@@ -2,16 +2,18 @@ import type { NextFunction, Request, Response } from "express";
 import { isDev } from "../config";
 
 export const WEB_STATIC_COS_ORIGIN = "https://cputime-1462084442.cos.ap-shanghai.myqcloud.com";
+export const WEB_STATIC_CDN_ORIGIN = "https://img.cputime.cn";
+const WEB_STATIC_ORIGINS = `${WEB_STATIC_CDN_ORIGIN} ${WEB_STATIC_COS_ORIGIN}`;
 
 const CSP_DIRECTIVES = [
   "default-src 'self'",
-  `script-src 'self' ${WEB_STATIC_COS_ORIGIN}`,
-  `style-src 'self' 'unsafe-inline' ${WEB_STATIC_COS_ORIGIN}`,
+  `script-src 'self' ${WEB_STATIC_ORIGINS}`,
+  `style-src 'self' 'unsafe-inline' ${WEB_STATIC_ORIGINS}`,
   "img-src 'self' data: blob: https:",
-  `font-src 'self' data: ${WEB_STATIC_COS_ORIGIN}`,
+  `font-src 'self' data: ${WEB_STATIC_ORIGINS}`,
   "connect-src 'self' https: wss:",
   "media-src 'self' blob: https:",
-  `worker-src 'self' blob: ${WEB_STATIC_COS_ORIGIN}`,
+  `worker-src 'self' blob: ${WEB_STATIC_ORIGINS}`,
   "frame-src 'self' https:",
   "manifest-src 'self'",
   "object-src 'none'",

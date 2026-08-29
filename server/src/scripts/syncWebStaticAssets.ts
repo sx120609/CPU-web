@@ -76,7 +76,7 @@ async function main() {
       return;
     }
 
-    const remoteAssetBaseUrl = await cos.resolveTencentCosOriginUrl(manifest.WEB_STATIC_COS_PREFIX);
+    const remoteAssetBaseUrl = await cos.resolveTencentCosDeliveryUrl(manifest.WEB_STATIC_COS_PREFIX);
     await rewriteIndexHtml(distRoot, remoteAssetBaseUrl, manifest.rewriteWebStaticAssetUrls);
     await writeManifest(distRoot, manifest.WEB_STATIC_COS_MANIFEST, {
       version: 1,
