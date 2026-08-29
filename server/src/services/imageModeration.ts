@@ -5,6 +5,7 @@ import { prisma } from "../prisma";
 import { runWithDistributedLock } from "./cache";
 import { finishAiReviewLogError, finishAiReviewLogSuccess, startAiReviewLog } from "./aiReviewLog";
 import { extractAiJsonTextResponse, normalizeAiJsonApiUrl, sendAiJsonRequestWithProviderFallback } from "./aiJsonApi";
+import { prepareForumImageForReview } from "./forumImageCompression";
 import { prepareMediaLocalFileForProcessing, resolveMediaLocalPathFromUploadUrl, resolveMediaPublicUrl } from "./mediaStorage";
 import { resolveModelCandidates, shouldFallbackToNextModel } from "./modelFallback";
 import { getSiteConfig, isAiProviderReady, resolveAiServiceCandidatesForScene } from "./siteSettings";
@@ -12,7 +13,6 @@ import { getSiteConfig, isAiProviderReady, resolveAiServiceCandidatesForScene } 
 const IMAGE_MARKDOWN_RE = /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
 const IMAGE_HTML_RE = /<img\b[^>]*\bsrc\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s"'=<>`]+))[^>]*>/gi;
 const MEDIA_HTML_ATTR_RE = /<(video|source|a)\b[^>]*\b(src|href|poster)\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s"'=<>`]+))[^>]*>/gi;
-const IMAGE_REVIEW_MAX_INLINE_BYTES = 6 * 1024 * 1024;
 const IMAGE_REVIEW_MAX_BATCH_INLINE_BYTES = 12 * 1024 * 1024;
 const IMAGE_REVIEW_POLL_INTERVAL_MS = 20_000;
 const IMAGE_REVIEW_DEFAULT_CONCURRENCY = 2;
@@ -877,11 +877,11 @@ async function prepareImageReviewInput(asset: {
   const localPath = preparedFile.localPath || asset.localPath;
   try {
     const buffer = await readFile(localPath);
-    if (!buffer.length || buffer.length > IMAGE_REVIEW_MAX_INLINE_BYTES) {
-      throw new Error(buffer.length ? "图片文件过大，无法送审" : "图片文件为空");
-    }
-    const mimeType = resolveMimeType(asset.mimeType, localPath, buffer);
-    if (!mimeType) throw new Error("图片格式暂不支持审核");
+    const normalized = await prepareForumImageForReview({
+      buffer,
+      mimeType: asset.mimeType,
+      fileName: localPath,
+    });
     if (!preparedFile.temporary && localPath !== asset.localPath) {
       await prisma.forumImageAsset.update({
         where: { id: asset.id },
@@ -893,8 +893,8 @@ async function prepareImageReviewInput(asset: {
         ...asset,
         localPath,
       },
-      mimeType,
-      dataUrl: `data:${mimeType};base64,${buffer.toString("base64")}`,
+      mimeType: normalized.mimeType,
+      dataUrl: `data:${normalized.mimeType};base64,${normalized.buffer.toString("base64")}`,
     };
   } finally {
     if (preparedFile.temporary && preparedFile.localPath) {
@@ -1212,24 +1212,6 @@ function stringifyPromptValue(value: unknown) {
   } catch {
     return String(value);
   }
-}
-
-function resolveMimeType(inputMime: string | null | undefined, filePath: string, buffer: Buffer) {
-  const normalized = String(inputMime || "").trim().toLowerCase();
-  if (["image/jpeg", "image/png", "image/webp", "image/gif"].includes(normalized)) return normalized;
-  const ext = path.extname(filePath).replace(/^\./, "").toLowerCase();
-  if (ext === "jpg" || ext === "jpeg") return "image/jpeg";
-  if (ext === "png") return "image/png";
-  if (ext === "webp") return "image/webp";
-  if (ext === "gif") return "image/gif";
-  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return "image/jpeg";
-  if (buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return "image/png";
-  if (buffer.length >= 12 && buffer.subarray(0, 4).toString("ascii") === "RIFF" && buffer.subarray(8, 12).toString("ascii") === "WEBP") return "image/webp";
-  if (buffer.length >= 6) {
-    const head = buffer.subarray(0, 6).toString("ascii");
-    if (head === "GIF87a" || head === "GIF89a") return "image/gif";
-  }
-  return "";
 }
 
 function clampImageRiskScore(value: unknown, approved?: boolean) {
