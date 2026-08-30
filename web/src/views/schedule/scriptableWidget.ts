@@ -64,6 +64,10 @@ function deviceDayOfWeek(offset) {
   return day === 0 ? 7 : day;
 }
 
+function dayLabel(day) {
+  return ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][day - 1] || "";
+}
+
 function parseMinutes(value) {
   const match = String(value || "").match(/^(\\d{2}):(\\d{2})/);
   return match ? Number(match[1]) * 60 + Number(match[2]) : -1;
@@ -82,6 +86,9 @@ function resolveDay(data, offset) {
   const byDate = days.find((day) => String(day.date || "") === target);
   if (byDate) return byDate;
   const targetDay = deviceDayOfWeek(offset);
+  if (data.strictDate === true) {
+    return { day: targetDay, label: dayLabel(targetDay), date: target, week: "", courses: [] };
+  }
   return days.find((day) => Number(day.day) === targetDay) || (offset === 0 ? data.today : null);
 }
 
@@ -110,10 +117,15 @@ function dayTitle(day, fallback) {
   return (day?.label || fallback) + (date ? " " + date : "");
 }
 
+function weekText(data, day) {
+  const week = day && Object.prototype.hasOwnProperty.call(day, "week") ? day.week : data.week;
+  return week || "--";
+}
+
 function header(widget, data, day, modeText) {
   addLine(widget, "药大课表", Font.boldSystemFont(15), color("#172033", "#f8fafc"));
   const dateText = shortDate(day?.date);
-  const sub = "第 " + (data.week || "--") + " 周 · " + modeText + (dateText ? " " + dateText : "");
+  const sub = "第 " + weekText(data, day) + " 周 · " + modeText + (dateText ? " " + dateText : "");
   addLine(widget, sub, Font.systemFont(11), color("#64748b", "#cbd5e1"));
   widget.addSpacer(8);
 }

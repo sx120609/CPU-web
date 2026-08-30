@@ -1,6 +1,6 @@
 import { normalizeCalendarWeekDays } from "./jwxtParser";
 
-export const SCHEDULE_WIDGET_PAYLOAD_VERSION = 4;
+export const SCHEDULE_WIDGET_PAYLOAD_VERSION = 5;
 
 const SMALL_SLOTS = [
   { no: 1, start: "08:00", end: "08:45" },
@@ -122,6 +122,13 @@ function chinaDayOfWeek(parts: ReturnType<typeof chinaDateParts>) {
   return day === 0 ? 7 : day;
 }
 
+function dayOfWeekForYmd(ymd: string) {
+  const match = String(ymd || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return 0;
+  const day = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]))).getUTCDay();
+  return day === 0 ? 7 : day;
+}
+
 function addDaysToYmd(ymd: string, days: number) {
   const match = String(ymd || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) return "";
@@ -185,6 +192,31 @@ function dedupeWidgetCourses(courses: WidgetCourse[]) {
   return [...seen.values()];
 }
 
+function coursesForWeek(parsed: any, week: number, calendarDays: string[]) {
+  if (week <= 0) return [] as WidgetCourse[];
+  return dedupeWidgetCourses((parsed?.cells ?? [])
+    .flatMap((cell: any) => (cell.courses ?? [])
+      .filter((course: any) => courseMatchesWeek(course, week))
+      .map((course: any) => {
+        const range = normalizeSlotRange(cell.bigSlot, course);
+        return {
+          day: Number(cell.day),
+          dayLabel: dayLabel(Number(cell.day)),
+          date: calendarDays[Number(cell.day) - 1] || "",
+          startSlot: range.start,
+          endSlot: range.end,
+          startTime: SMALL_SLOTS[range.start - 1]?.start ?? "",
+          endTime: SMALL_SLOTS[range.end - 1]?.end ?? "",
+          name: String(course.name || ""),
+          teacher: course.teacher || "",
+          location: course.location || "",
+          note: course.slotNote || course.weeks || "",
+          custom: Boolean(course.custom),
+        } satisfies WidgetCourse;
+      }))
+    .sort((a: WidgetCourse, b: WidgetCourse) => a.day - b.day || a.startSlot - b.startSlot || a.endSlot - b.endSlot));
+}
+
 export function buildScheduleWidgetPayload(parsed: any, calendar: any | null, queryWeek = "", now = new Date()) {
   const today = chinaDateParts(now);
   const todayDay = chinaDayOfWeek(today);
@@ -203,29 +235,7 @@ export function buildScheduleWidgetPayload(parsed: any, calendar: any | null, qu
     : currentCalendarWeekDays(today.ymd, todayDay);
   const canExposeCourses = week > 0 && (explicitWeek || teachingWeekActive);
 
-  const allCourses = canExposeCourses
-    ? dedupeWidgetCourses((parsed?.cells ?? [])
-      .flatMap((cell: any) => (cell.courses ?? [])
-        .filter((course: any) => courseMatchesWeek(course, week))
-        .map((course: any) => {
-          const range = normalizeSlotRange(cell.bigSlot, course);
-          return {
-            day: Number(cell.day),
-            dayLabel: dayLabel(Number(cell.day)),
-            date: calendarDays[Number(cell.day) - 1] || "",
-            startSlot: range.start,
-            endSlot: range.end,
-            startTime: SMALL_SLOTS[range.start - 1]?.start ?? "",
-            endTime: SMALL_SLOTS[range.end - 1]?.end ?? "",
-            name: String(course.name || ""),
-            teacher: course.teacher || "",
-            location: course.location || "",
-            note: course.slotNote || course.weeks || "",
-            custom: Boolean(course.custom),
-          } satisfies WidgetCourse;
-        }))
-      .sort((a: WidgetCourse, b: WidgetCourse) => a.day - b.day || a.startSlot - b.startSlot || a.endSlot - b.endSlot))
-    : [];
+  const allCourses = canExposeCourses ? coursesForWeek(parsed, week, calendarDays) : [];
 
   const nowMinutes = chinaMinutes(now);
   const visibleCourses = allCourses.filter((course) => (
@@ -239,10 +249,35 @@ export function buildScheduleWidgetPayload(parsed: any, calendar: any | null, qu
       day,
       label: dayLabel(day),
       date: calendarDays[index] || "",
+      week,
       isToday: day === activeDay && !explicitWeek && calendarDays[index] === today.ymd,
       courses: visibleCourses.filter((course) => course.day === day),
     };
   });
+
+  if (!explicitWeek) {
+    for (const offset of [1, 2]) {
+      const date = addDaysToYmd(today.ymd, offset);
+      if (days.some((day) => day.date === date)) continue;
+      const targetCalendar = calendarWeekForDate(calendar, date);
+      const targetDay = targetCalendar.day || dayOfWeekForYmd(date);
+      const targetWeek = targetCalendar.week;
+      const targetDays = targetCalendar.days.some(Boolean)
+        ? targetCalendar.days
+        : currentCalendarWeekDays(date, targetDay);
+      const targetCourses = targetWeek > 0
+        ? coursesForWeek(parsed, targetWeek, targetDays).filter((course) => course.day === targetDay)
+        : [];
+      days.push({
+        day: targetDay,
+        label: dayLabel(targetDay),
+        date,
+        week: targetWeek,
+        isToday: false,
+        courses: targetCourses,
+      });
+    }
+  }
   const upcoming = visibleCourses.filter((course) => course.day === activeDay);
 
   return {

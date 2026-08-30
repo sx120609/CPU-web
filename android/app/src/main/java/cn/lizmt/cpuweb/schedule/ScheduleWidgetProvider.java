@@ -243,7 +243,7 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
     }
 
     private static void renderHeader(RemoteViews views, JSONObject data, JSONObject day, String modeText) {
-        String week = data.optString("week", "");
+        String week = weekForDay(data, day);
         String dateText = day != null ? shortDate(day.optString("date", "")) : "";
         String subtitle = "第 " + (week.isEmpty() ? "--" : week) + " 周 · " + modeText;
         if (!dateText.isEmpty()) subtitle += " " + dateText;
@@ -251,7 +251,7 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
     }
 
     private static void setSubtitle(RemoteViews views, JSONObject data, JSONObject day, String modeText) {
-        String week = data.optString("week", "");
+        String week = weekForDay(data, day);
         String label = day != null ? day.optString("label", modeText) : modeText;
         String date = day != null ? shortDate(day.optString("date", "")) : "";
         String subtitle = "第 " + (week.isEmpty() ? "--" : week) + " 周 · " + label;
@@ -273,6 +273,18 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
         }
 
         int targetDay = ((deviceDayOfWeek() - 1 + offset) % 7) + 1;
+        if (data.optBoolean("strictDate", false)) {
+            try {
+                return new JSONObject()
+                        .put("day", targetDay)
+                        .put("label", dayLabel(targetDay))
+                        .put("date", targetDate)
+                        .put("week", "")
+                        .put("courses", new JSONArray());
+            } catch (Exception ignored) {
+                return null;
+            }
+        }
         if (days != null) {
             for (int i = 0; i < days.length(); i++) {
                 JSONObject day = days.optJSONObject(i);
@@ -284,6 +296,18 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
             return today;
         }
         return null;
+    }
+
+    private static String weekForDay(JSONObject data, JSONObject day) {
+        Object value = day != null && day.has("week") ? day.opt("week") : data.opt("week");
+        if (value == null || JSONObject.NULL.equals(value)) return "";
+        String week = String.valueOf(value).trim();
+        return "0".equals(week) ? "" : week;
+    }
+
+    private static String dayLabel(int day) {
+        String[] labels = {"周一", "周二", "周三", "周四", "周五", "周六", "周日"};
+        return day >= 1 && day <= labels.length ? labels[day - 1] : "";
     }
 
     private static boolean shouldPreferTomorrow(JSONObject data) {

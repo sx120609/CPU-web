@@ -136,3 +136,38 @@ test("schedule widget removes today's completed courses from the API payload", (
   assert.deepEqual(payload.today.courses.map((item) => item.name), ["下午课程"]);
   assert.deepEqual(payload.upcoming.map((item) => item.name), ["下午课程"]);
 });
+
+test("schedule widget includes the next teaching week after Sunday without reusing the previous Monday", () => {
+  const payload = buildScheduleWidgetPayload(
+    {
+      currentSemester: "2026-2027-1",
+      cells: [{
+        day: 1,
+        bigSlot: 1,
+        courses: [course("第二周课程", "2周", "甲", 1, 2)],
+      }],
+    },
+    {
+      currentWeek: 1,
+      weeks: [
+        calendarFor(1, [
+          "2026-08-24", "2026-08-25", "2026-08-26", "2026-08-27",
+          "2026-08-28", "2026-08-29", "2026-08-30",
+        ]).weeks[0],
+        calendarFor(2, [
+          "2026-08-31", "2026-09-01", "2026-09-02", "2026-09-03",
+          "2026-09-04", "2026-09-05", "2026-09-06",
+        ]).weeks[0],
+      ],
+    },
+    "",
+    new Date("2026-08-30T04:39:00.000Z"),
+  );
+
+  const tomorrow = payload.days.find((day) => day.date === "2026-08-31");
+  assert.equal(payload.today.date, "2026-08-30");
+  assert.equal(tomorrow?.label, "周一");
+  assert.equal(tomorrow?.week, 2);
+  assert.deepEqual(tomorrow?.courses.map((item) => item.name), ["第二周课程"]);
+  assert.notEqual(tomorrow?.date, "2026-08-24");
+});
