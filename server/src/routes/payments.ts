@@ -23,7 +23,9 @@ import {
   closeExpiredSponsorOrders,
   formatSponsorOrder,
   formatSponsorWallOrder,
+  getSponsorCategoriesWithStats,
   getSponsorConfig,
+  isSponsorCategoryAccepting,
   sponsorConfigToCents,
 } from "../services/sponsor";
 import { awardSponsorAssistantPoints } from "../services/campusAssistantPoints";
@@ -51,14 +53,14 @@ async function buildSponsorPayment(order: any, req: any) {
   if (!callbacks.notifyUrl || !callbacks.returnUrl) throw Errors.badRequest("请先在后台基础配置中设置网站域名");
   return buildEpaySubmitPayload({
     outTradeNo: order.outTradeNo,
-    name: "赞助药大拾间",
+    name: `赞助：${order.categoryTitle || "药大拾间"}`,
     money: amountCentsToMoney(order.amountCents),
     type: order.payType,
     notifyUrl: callbacks.notifyUrl,
     returnUrl: callbacks.returnUrl,
     clientIp: req.ip,
     device: /Android|iPhone|iPad|Mobile/i.test(String(req.headers["user-agent"] || "")) ? "mobile" : "pc",
-    param: `sponsor:${order.userId}`,
+    param: `sponsor:${order.userId}:${order.categoryId || "general"}`,
   });
 }
 
@@ -82,12 +84,16 @@ function normalizeParams(input: Record<string, unknown>) {
   return params;
 }
 
-paymentsRouter.get("/sponsor/options", authRequired, async (_req, res, next) => {
+paymentsRouter.get("/sponsor/options", async (_req, res, next) => {
   try {
     const config = await getSponsorConfig();
-    const payTypes = await getEnabledEpayTypes();
+    const [payTypes, categories] = await Promise.all([
+      getEnabledEpayTypes(),
+      getSponsorCategoriesWithStats(config),
+    ]);
+    const visibleCategories = categories.filter((category) => category.enabled);
     ok(res, {
-      enabled: isFeatureOn("sponsor") && payTypes.length > 0,
+      enabled: isFeatureOn("sponsor") && payTypes.length > 0 && visibleCategories.some((category) => category.accepting),
       payTypes,
       amounts: config.presetAmounts,
       minAmount: config.minAmount,
@@ -97,6 +103,7 @@ paymentsRouter.get("/sponsor/options", authRequired, async (_req, res, next) => 
       wallEnabled: config.wallEnabled,
       allowMessage: config.allowMessage,
       assistantPointsPerYuan: config.assistantPointsPerYuan,
+      categories: visibleCategories,
     });
   } catch (e) { next(e); }
 });
@@ -104,6 +111,7 @@ paymentsRouter.get("/sponsor/options", authRequired, async (_req, res, next) => 
 const sponsorCreateSchema = z.object({
   amount: z.union([z.string(), z.number()]),
   payType: z.enum(["alipay", "wxpay", "qqpay", "bank", "jdpay"]),
+  categoryId: z.string().trim().min(1).max(40).optional(),
   message: z.string().trim().max(80).optional(),
   displayMode: z.enum(["public", "anonymous", "hidden"]).optional(),
 });
@@ -120,6 +128,14 @@ paymentsRouter.post("/sponsor/orders", authRequired, validate(sponsorCreateSchem
     const enabledTypes = await getEnabledEpayTypes();
     if (!enabledTypes.includes(req.body.payType as EpayPayType)) throw Errors.badRequest("该支付方式暂不可用");
 
+    const fallbackCategory = config.categories.find((category) => category.featured && isSponsorCategoryAccepting(category))
+      ?? config.categories.find((category) => isSponsorCategoryAccepting(category));
+    const category = req.body.categoryId
+      ? config.categories.find((candidate) => candidate.id === req.body.categoryId)
+      : fallbackCategory;
+    if (!category) throw Errors.badRequest("请选择有效的赞助类别");
+    if (!isSponsorCategoryAccepting(category)) throw Errors.badRequest("该赞助类别当前已结束或暂停");
+
     const userId = req.user!.userId;
     const outTradeNo = nextSponsorTradeNo(userId);
     const order = await prisma.sponsorOrder.create({
@@ -128,6 +144,8 @@ paymentsRouter.post("/sponsor/orders", authRequired, validate(sponsorCreateSchem
         outTradeNo,
         payType: req.body.payType,
         amountCents,
+        categoryId: category.id,
+        categoryTitle: category.title,
         message: config.allowMessage ? (req.body.message ?? "") : "",
         displayMode: req.body.displayMode ?? "public",
         expiresAt: calcSponsorOrderExpiresAt(),
@@ -262,9 +280,10 @@ paymentsRouter.post("/sponsor/orders/:outTradeNo/close", authRequired, async (re
 paymentsRouter.get("/sponsor/wall", async (_req, res, next) => {
   try {
     const config = await getSponsorConfig();
-    if (!config.wallEnabled) return ok(res, { enabled: false, total: 0, list: [] });
+    const categoriesPromise = getSponsorCategoriesWithStats(config);
+    if (!config.wallEnabled) return ok(res, { enabled: false, total: 0, list: [], categories: (await categoriesPromise).filter((category) => category.enabled) });
     const where = { status: "paid" as const, displayMode: { not: "hidden" } };
-    const [list, totalAmount] = await Promise.all([
+    const [list, totalAmount, categories] = await Promise.all([
       prisma.sponsorOrder.findMany({
         where,
         orderBy: [{ paidAt: "desc" }, { id: "desc" }],
@@ -272,11 +291,13 @@ paymentsRouter.get("/sponsor/wall", async (_req, res, next) => {
         include: { user: { select: { id: true, nickname: true, avatar: true } } },
       }),
       prisma.sponsorOrder.aggregate({ where: { status: "paid" }, _sum: { amountCents: true }, _count: true }),
+      categoriesPromise,
     ]);
     ok(res, {
       enabled: true,
       total: totalAmount._count,
       totalAmount: amountCentsToMoney(totalAmount._sum.amountCents ?? 0),
+      categories: categories.filter((category) => category.enabled),
       list: list.map(formatSponsorWallOrder),
     });
   } catch (e) { next(e); }
@@ -357,13 +378,15 @@ paymentsRouter.all("/epay/notify", async (req, res, next) => {
           category: "system",
           level: "normal",
           title: "赞助已到账",
-          content: `感谢赞助 ¥${amountCentsToMoney(paidOrder.amountCents)}，你的支持已经记录在个人资料中${awardedPoints > 0 ? `，并获得 ${awardedPoints} 个 AI 点数` : ""}。`,
+          content: `感谢为“${paidOrder.categoryTitle || "药大拾间"}”赞助 ¥${amountCentsToMoney(paidOrder.amountCents)}，你的支持已经记录在个人资料中${awardedPoints > 0 ? `，并获得 ${awardedPoints} 个 AI 点数` : ""}。`,
           link: "/profile",
           source: "赞助",
           payload: JSON.stringify({
             type: "sponsor-paid",
             outTradeNo: paidOrder.outTradeNo,
             amount: amountCentsToMoney(paidOrder.amountCents),
+            categoryId: paidOrder.categoryId,
+            categoryTitle: paidOrder.categoryTitle,
             assistantPoints: awardedPoints,
           }),
         },
@@ -376,10 +399,10 @@ paymentsRouter.all("/epay/notify", async (req, res, next) => {
             category: "system",
             level: "weak",
             title: "收到一笔赞助",
-            content: `订单 ${paidOrder.outTradeNo} 已支付 ¥${amountCentsToMoney(paidOrder.amountCents)}。`,
+            content: `订单 ${paidOrder.outTradeNo} 已为“${paidOrder.categoryTitle || "药大拾间"}”支付 ¥${amountCentsToMoney(paidOrder.amountCents)}。`,
             link: "/admin",
             source: "赞助",
-            payload: JSON.stringify({ type: "sponsor-admin", outTradeNo: paidOrder.outTradeNo }),
+            payload: JSON.stringify({ type: "sponsor-admin", outTradeNo: paidOrder.outTradeNo, categoryId: paidOrder.categoryId }),
           })),
         }).catch(() => {});
       }

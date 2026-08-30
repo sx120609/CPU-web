@@ -16,7 +16,49 @@ export type SponsorConfig = {
   wallEnabled: boolean;
   allowMessage: boolean;
   assistantPointsPerYuan: number;
+  categories: SponsorCategoryConfig[];
 };
+
+export type SponsorCategoryConfig = {
+  id: string;
+  title: string;
+  description: string;
+  goalAmount: string | null;
+  deadline: string | null;
+  enabled: boolean;
+  featured: boolean;
+};
+
+export type SponsorCategory = SponsorCategoryConfig & {
+  raisedAmount: string;
+  raisedAmountCents: number;
+  paidOrderCount: number;
+  supporterCount: number;
+  progressPercent: number | null;
+  goalReached: boolean;
+  accepting: boolean;
+};
+
+const DEFAULT_CATEGORIES: SponsorCategoryConfig[] = [
+  {
+    id: "app-store-2026",
+    title: "App Store 首年上架计划",
+    description: "用于 2026 年 Apple Developer Program 与 App Store 首年上架相关费用。",
+    goalAmount: "750.00",
+    deadline: "2026-09-30",
+    enabled: true,
+    featured: true,
+  },
+  {
+    id: "general",
+    title: "支持药大拾间",
+    description: "用于服务器、校园服务与长期维护。",
+    goalAmount: null,
+    deadline: null,
+    enabled: true,
+    featured: false,
+  },
+];
 
 const DEFAULT_CONFIG: SponsorConfig = {
   title: "赞助本站",
@@ -27,6 +69,7 @@ const DEFAULT_CONFIG: SponsorConfig = {
   wallEnabled: true,
   allowMessage: true,
   assistantPointsPerYuan: 1,
+  categories: DEFAULT_CATEGORIES,
 };
 
 function clampCents(value: number, min: number, max: number) {
@@ -50,7 +93,54 @@ function normalizePresetAmounts(input: unknown, minCents: number, maxCents: numb
   return (cents.length ? cents : DEFAULT_CONFIG.presetAmounts.map(moneyToAmountCents)).map((item) => Number(amountCentsToMoney(item)));
 }
 
-function normalizeConfig(input: Partial<SponsorConfig> | null | undefined): SponsorConfig {
+function normalizeGoalAmount(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+  try {
+    const cents = moneyToAmountCents(value as string | number);
+    return cents > 0 ? amountCentsToMoney(cents) : null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeDeadline(value: unknown) {
+  const deadline = String(value ?? "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(deadline)) return null;
+  const parsed = new Date(`${deadline}T00:00:00.000Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === deadline ? deadline : null;
+}
+
+export function normalizeSponsorCategories(input: unknown): SponsorCategoryConfig[] {
+  const source = Array.isArray(input) && input.length ? input : DEFAULT_CATEGORIES;
+  const seen = new Set<string>();
+  const categories: SponsorCategoryConfig[] = [];
+  let featuredAssigned = false;
+
+  for (const item of source.slice(0, 12)) {
+    if (!item || typeof item !== "object") continue;
+    const raw = item as Partial<SponsorCategoryConfig>;
+    const id = String(raw.id ?? "").trim().toLowerCase();
+    if (!/^[a-z0-9][a-z0-9-]{0,39}$/.test(id) || seen.has(id)) continue;
+    const title = String(raw.title ?? "").trim().slice(0, 40);
+    if (!title) continue;
+    const featured = Boolean(raw.featured) && !featuredAssigned;
+    if (featured) featuredAssigned = true;
+    seen.add(id);
+    categories.push({
+      id,
+      title,
+      description: String(raw.description ?? "").trim().slice(0, 200),
+      goalAmount: normalizeGoalAmount(raw.goalAmount),
+      deadline: normalizeDeadline(raw.deadline),
+      enabled: raw.enabled !== false,
+      featured,
+    });
+  }
+
+  return categories.length ? categories : DEFAULT_CATEGORIES.map((item) => ({ ...item }));
+}
+
+export function normalizeSponsorConfig(input: Partial<SponsorConfig> | null | undefined): SponsorConfig {
   const raw = input ?? {};
   const minCents = clampCents(moneyToAmountCents(raw.minAmount ?? DEFAULT_CONFIG.minAmount), 1, 99999900);
   const maxCents = Math.max(
@@ -69,28 +159,90 @@ function normalizeConfig(input: Partial<SponsorConfig> | null | undefined): Spon
       0,
       Math.min(10000, Math.floor(Number(raw.assistantPointsPerYuan ?? DEFAULT_CONFIG.assistantPointsPerYuan) || 0)),
     ),
+    categories: normalizeSponsorCategories(raw.categories),
   };
 }
 
 export async function getSponsorConfig() {
   const row = await prisma.siteSetting.findUnique({ where: { key: SPONSOR_CONFIG_KEY } });
-  if (!row?.value) return { ...DEFAULT_CONFIG };
+  if (!row?.value) return normalizeSponsorConfig(DEFAULT_CONFIG);
   try {
-    return normalizeConfig(JSON.parse(row.value));
+    return normalizeSponsorConfig(JSON.parse(row.value));
   } catch {
-    return { ...DEFAULT_CONFIG };
+    return normalizeSponsorConfig(DEFAULT_CONFIG);
   }
 }
 
 export async function updateSponsorConfig(input: Partial<SponsorConfig>) {
   const current = await getSponsorConfig();
-  const next = normalizeConfig({ ...current, ...input });
+  const next = normalizeSponsorConfig({ ...current, ...input });
   await prisma.siteSetting.upsert({
     where: { key: SPONSOR_CONFIG_KEY },
     update: { value: JSON.stringify(next) },
     create: { key: SPONSOR_CONFIG_KEY, value: JSON.stringify(next) },
   });
   return next;
+}
+
+export function isSponsorCategoryAccepting(category: SponsorCategoryConfig, now = new Date()) {
+  if (!category.enabled) return false;
+  if (!category.deadline) return true;
+  const deadline = new Date(`${category.deadline}T23:59:59.999+08:00`);
+  return !Number.isNaN(deadline.getTime()) && now.getTime() <= deadline.getTime();
+}
+
+export function buildSponsorCategoryStats(
+  category: SponsorCategoryConfig,
+  raisedAmountCents: number,
+  paidOrderCount: number,
+  supporterCount: number,
+  now = new Date(),
+): SponsorCategory {
+  const goalAmountCents = category.goalAmount ? moneyToAmountCents(category.goalAmount) : 0;
+  return {
+    ...category,
+    raisedAmount: amountCentsToMoney(raisedAmountCents),
+    raisedAmountCents,
+    paidOrderCount,
+    supporterCount,
+    progressPercent: goalAmountCents > 0 ? Math.min(100, Math.round((raisedAmountCents / goalAmountCents) * 1000) / 10) : null,
+    goalReached: goalAmountCents > 0 && raisedAmountCents >= goalAmountCents,
+    accepting: isSponsorCategoryAccepting(category, now),
+  };
+}
+
+export async function getSponsorCategoriesWithStats(config?: SponsorConfig, now = new Date()): Promise<SponsorCategory[]> {
+  const sponsorConfig = config ?? await getSponsorConfig();
+  const [totals, supporters] = await Promise.all([
+    prisma.sponsorOrder.groupBy({
+      by: ["categoryId"],
+      where: { status: "paid" },
+      _sum: { amountCents: true },
+      _count: { _all: true },
+    }),
+    prisma.sponsorOrder.findMany({
+      where: { status: "paid" },
+      distinct: ["categoryId", "userId"],
+      select: { categoryId: true, userId: true },
+    }),
+  ]);
+  const supporterCounts = new Map<string, number>();
+  for (const row of supporters) {
+    supporterCounts.set(row.categoryId, (supporterCounts.get(row.categoryId) ?? 0) + 1);
+  }
+  const totalByCategory = new Map(totals.map((row) => [row.categoryId, row]));
+
+  return sponsorConfig.categories.map((category) => {
+    const total = totalByCategory.get(category.id);
+    const raisedAmountCents = total?._sum.amountCents ?? 0;
+    return buildSponsorCategoryStats(
+      category,
+      raisedAmountCents,
+      total?._count._all ?? 0,
+      supporterCounts.get(category.id) ?? 0,
+      now,
+    );
+  });
 }
 
 export function sponsorConfigToCents(config: SponsorConfig) {
@@ -171,6 +323,8 @@ export function formatSponsorOrder(order: any) {
     payType: order.payType,
     amount: amountCentsToMoney(order.amountCents),
     amountCents: order.amountCents,
+    categoryId: order.categoryId ?? "general",
+    categoryTitle: order.categoryTitle ?? "支持药大拾间",
     assistantPointsAwarded: order.assistantPointsAwarded ?? 0,
     message: order.message ?? "",
     displayMode: order.displayMode ?? "public",
@@ -194,6 +348,8 @@ export function formatSponsorWallOrder(order: any) {
   return {
     id: order.id,
     amount: amountCentsToMoney(order.amountCents),
+    categoryId: order.categoryId ?? "general",
+    categoryTitle: order.categoryTitle ?? "支持药大拾间",
     message: order.message ?? "",
     paidAt: order.paidAt,
     user: anonymous ? null : {

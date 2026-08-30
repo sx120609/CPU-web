@@ -6,11 +6,11 @@
           <el-icon><ArrowLeft /></el-icon>
           返回
         </el-button>
-        <p class="eyebrow">Sponsor Wall</p>
-        <h1>鸣谢墙</h1>
-        <p class="hero-desc">每一笔赞助都会转化为本站继续维护的动力。这里记录愿意公开展示的支持与留言。</p>
+        <p class="eyebrow">Support Yaoda Shijian</p>
+        <h1>支持药大拾间</h1>
+        <p class="hero-desc">选择你希望支持的计划，查看公开筹集进度；每一笔赞助都会保留类别记录并进入鸣谢墙。</p>
         <div class="hero-actions">
-          <el-button type="primary" @click="router.push('/profile')">
+          <el-button type="primary" @click="router.push({ path: '/profile', hash: '#sponsor' })">
             <el-icon><Money /></el-icon>
             我要赞助
           </el-button>
@@ -38,44 +38,81 @@
       <el-button type="primary" :loading="loading" @click="loadWall">重试</el-button>
     </el-empty>
 
-    <el-empty v-else-if="!wall.enabled" description="鸣谢墙当前未开启" />
-
-    <el-empty v-else-if="!wall.list.length" description="还没有公开展示的赞助" />
-
-    <section v-else class="wall-content">
-      <div class="section-head">
-        <div>
-          <h2>感谢这些同学</h2>
-          <p>公开和匿名鸣谢都会显示在这里，选择不展示的赞助不会出现在名单中。</p>
+    <template v-else>
+      <section v-if="wall.categories.length" class="campaign-section">
+        <div class="section-head">
+          <div>
+            <h2>赞助计划</h2>
+            <p>目标与进度由站内已支付订单实时统计。</p>
+          </div>
         </div>
-        <el-tag effect="plain" type="warning">{{ wall.total }} 条</el-tag>
-      </div>
-
-      <div class="wall-grid">
-        <article v-for="item in wall.list" :key="item.id" class="wall-item">
-          <div class="item-top">
-            <UserAvatar
-              :size="42"
-              :src="item.anonymous ? null : item.user?.avatar"
-              :name="item.anonymous ? '匿名同学' : item.user?.nickname"
-              :seed="item.anonymous ? `sponsor-${item.id}` : item.user?.id ?? item.id"
-              alt="赞助者头像"
-            />
-            <div class="item-user">
-              <strong>{{ item.anonymous ? "匿名同学" : item.user?.nickname || "同学" }}</strong>
-              <span>{{ item.paidAt ? fmtDate(item.paidAt, "YYYY-MM-DD HH:mm") : "刚刚" }}</span>
+        <div class="campaign-grid">
+          <article v-for="category in wall.categories" :key="category.id" class="campaign-card" :class="{ featured: category.featured }">
+            <div class="campaign-card-head">
+              <div>
+                <span v-if="category.featured" class="campaign-kicker">当前计划</span>
+                <h3>{{ category.title }}</h3>
+              </div>
+              <el-tag v-if="category.goalReached" type="success" effect="plain">已达成</el-tag>
+              <el-tag v-else-if="!category.accepting" type="info" effect="plain">已结束</el-tag>
             </div>
-            <div class="item-amount">¥{{ item.amount }}</div>
+            <p>{{ category.description }}</p>
+            <div v-if="category.goalAmount" class="campaign-progress-copy">
+              <b>¥{{ category.raisedAmount }}</b>
+              <span>目标 ¥{{ category.goalAmount }}</span>
+            </div>
+            <div v-if="category.goalAmount" class="campaign-progress"><i :style="{ width: `${category.progressPercent ?? 0}%` }"></i></div>
+            <div class="campaign-meta">
+              <span>{{ category.supporterCount }} 人支持 · {{ category.paidOrderCount }} 笔赞助</span>
+              <span v-if="category.deadline">截止 {{ category.deadline }}</span>
+            </div>
+            <el-button type="primary" :disabled="!category.accepting" @click="supportCategory(category.id)">
+              {{ category.accepting ? "支持这个计划" : "计划已结束" }}
+            </el-button>
+          </article>
+        </div>
+      </section>
+
+      <el-empty v-if="!wall.enabled" description="鸣谢墙当前未开启" />
+
+      <el-empty v-else-if="!wall.list.length" description="还没有公开展示的赞助" />
+
+      <section v-else class="wall-content">
+        <div class="section-head">
+          <div>
+            <h2>感谢这些同学</h2>
+            <p>公开和匿名鸣谢都会显示在这里，选择不展示的赞助不会出现在名单中。</p>
           </div>
-          <p v-if="item.message" class="item-message">{{ item.message }}</p>
-          <p v-else class="item-message muted">这位同学把支持留给了行动。</p>
-          <div class="item-mark">
-            <el-icon><Medal /></el-icon>
-            <span>感谢支持</span>
-          </div>
-        </article>
-      </div>
-    </section>
+          <el-tag effect="plain" type="warning">{{ wall.total }} 条</el-tag>
+        </div>
+
+        <div class="wall-grid">
+          <article v-for="item in wall.list" :key="item.id" class="wall-item">
+            <div class="item-top">
+              <UserAvatar
+                :size="42"
+                :src="item.anonymous ? null : item.user?.avatar"
+                :name="item.anonymous ? '匿名同学' : item.user?.nickname"
+                :seed="item.anonymous ? `sponsor-${item.id}` : item.user?.id ?? item.id"
+                alt="赞助者头像"
+              />
+              <div class="item-user">
+                <strong>{{ item.anonymous ? "匿名同学" : item.user?.nickname || "同学" }}</strong>
+                <span>{{ item.paidAt ? fmtDate(item.paidAt, "YYYY-MM-DD HH:mm") : "刚刚" }}</span>
+              </div>
+              <div class="item-amount">¥{{ item.amount }}</div>
+            </div>
+            <el-tag class="item-category" size="small" effect="plain">{{ item.categoryTitle }}</el-tag>
+            <p v-if="item.message" class="item-message">{{ item.message }}</p>
+            <p v-else class="item-message muted">这位同学把支持留给了行动。</p>
+            <div class="item-mark">
+              <el-icon><Medal /></el-icon>
+              <span>感谢支持</span>
+            </div>
+          </article>
+        </div>
+      </section>
+    </template>
   </div>
 </template>
 
@@ -84,18 +121,23 @@ import { onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 import { ArrowLeft, Medal, Money, Refresh } from "@element-plus/icons-vue";
 import UserAvatar from "@/components/common/UserAvatar.vue";
-import { paymentsApi, type SponsorWallItem } from "@/api/payments";
+import { paymentsApi, type SponsorCategory, type SponsorWallItem } from "@/api/payments";
 import { fmtDate } from "@/utils/format";
 
 const router = useRouter();
 const loading = ref(false);
 const error = ref("");
-const wall = reactive<{ enabled: boolean; total: number; totalAmount?: string; list: SponsorWallItem[] }>({
+const wall = reactive<{ enabled: boolean; total: number; totalAmount?: string; categories: SponsorCategory[]; list: SponsorWallItem[] }>({
   enabled: true,
   total: 0,
   totalAmount: "0.00",
+  categories: [],
   list: [],
 });
+
+function supportCategory(categoryId: string) {
+  router.push({ path: "/profile", query: { sponsorCategory: categoryId }, hash: "#sponsor" });
+}
 let loadSeq = 0;
 
 onMounted(loadWall);
@@ -217,6 +259,100 @@ function normalizeSponsorWallError(error_: unknown) {
   background: var(--cpu-card);
 }
 
+.campaign-section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.campaign-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.campaign-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 260px;
+  padding: 18px;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 12px;
+  background: var(--cpu-card);
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.05);
+}
+
+.campaign-card.featured {
+  border-color: color-mix(in srgb, var(--cpu-primary) 46%, var(--cpu-border-soft));
+  background: linear-gradient(145deg, color-mix(in srgb, var(--cpu-primary) 7%, var(--cpu-card)), var(--cpu-card));
+}
+
+.campaign-card-head,
+.campaign-progress-copy,
+.campaign-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.campaign-card-head {
+  align-items: flex-start;
+}
+
+.campaign-card h3 {
+  margin: 2px 0 0;
+  color: var(--cpu-text);
+  font-size: 18px;
+}
+
+.campaign-card > p {
+  flex: 1;
+  margin: 0;
+  color: var(--cpu-text-secondary);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.campaign-kicker {
+  color: var(--cpu-primary);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.campaign-progress-copy {
+  align-items: baseline;
+}
+
+.campaign-progress-copy b {
+  color: #b45309;
+  font-size: 23px;
+}
+
+.campaign-progress-copy span,
+.campaign-meta {
+  color: var(--cpu-text-muted);
+  font-size: 12px;
+}
+
+.campaign-progress {
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--cpu-border-soft);
+}
+
+.campaign-progress i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--cpu-primary), #f59e0b);
+}
+
+.campaign-meta {
+  flex-wrap: wrap;
+}
+
 .wall-content {
   display: flex;
   flex-direction: column;
@@ -304,6 +440,11 @@ function normalizeSponsorWallError(error_: unknown) {
   overflow-wrap: anywhere;
 }
 
+.item-category {
+  align-self: flex-start;
+  max-width: 100%;
+}
+
 .item-message.muted {
   color: var(--cpu-text-muted);
 }
@@ -329,6 +470,10 @@ function normalizeSponsorWallError(error_: unknown) {
   .wall-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .campaign-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 640px) {
@@ -342,7 +487,8 @@ function normalizeSponsorWallError(error_: unknown) {
   }
 
   .hero-stats,
-  .wall-grid {
+  .wall-grid,
+  .campaign-grid {
     grid-template-columns: 1fr;
   }
 

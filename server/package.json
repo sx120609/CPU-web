@@ -35,6 +35,7 @@
     "test:forum": "node --import tsx --test tests/forumImageCompression.test.ts tests/forumSubmission.test.ts tests/forumSubmissionReview.test.ts tests/questionBounty.test.ts",
     "test:cache": "node --import tsx --test tests/cache.test.ts tests/publicAvatar.test.ts",
     "test:deployment": "node --import tsx --test tests/deployment.test.ts",
+    "test:sponsor": "node --import tsx --test tests/sponsorCategories.test.ts",
     "test:direct-messages": "node --import tsx --test tests/directMessagePolicy.test.ts"
   },
   "prisma": {

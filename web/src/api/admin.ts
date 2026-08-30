@@ -543,6 +543,15 @@ export type SponsorConfig = {
   wallEnabled: boolean;
   allowMessage: boolean;
   assistantPointsPerYuan: number;
+  categories: Array<{
+    id: string;
+    title: string;
+    description: string;
+    goalAmount: string | null;
+    deadline: string | null;
+    enabled: boolean;
+    featured: boolean;
+  }>;
 };
 
 export type QqBotConfig = {
@@ -1061,9 +1070,9 @@ export const adminApi = {
   updateSponsorConfig: (payload: Partial<SponsorConfig>) =>
     request.patch<SponsorConfig>("/admin/sponsor-config", payload),
   sponsorOverview: () => request.get<any>("/admin/sponsor-overview"),
-  sponsorOrders: (params: { q?: string; status?: string; page?: number; size?: number }) =>
+  sponsorOrders: (params: { q?: string; status?: string; categoryId?: string; page?: number; size?: number }) =>
     request.get<{ page: number; size: number; total: number; list: any[] }>("/admin/sponsor-orders", params),
-  updateSponsorOrder: (id: number, payload: { status?: "pending" | "paid" | "closed"; message?: string; displayMode?: "public" | "anonymous" | "hidden" }) =>
+  updateSponsorOrder: (id: number, payload: { status?: "pending" | "paid" | "closed"; categoryId?: string; message?: string; displayMode?: "public" | "anonymous" | "hidden" }) =>
     request.patch<any>(`/admin/sponsor-orders/${id}`, payload),
   sponsorLogs: (params: { q?: string; signOk?: "0" | "1"; page?: number; size?: number }) =>
     request.get<{ page: number; size: number; total: number; list: any[] }>("/admin/sponsor-logs", params),

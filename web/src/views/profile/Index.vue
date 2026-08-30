@@ -160,13 +160,47 @@
           </p>
           <strong>已赞助 ¥{{ formatMoney(user?.sponsorAmount) }}</strong>
           <div class="sponsor-actions">
-            <el-button v-if="sponsorOptions.wallEnabled" plain @click="router.push('/sponsor-wall')">查看鸣谢墙</el-button>
+            <el-button v-if="sponsorOptions.wallEnabled" plain @click="router.push('/sponsor')">查看计划与鸣谢</el-button>
           </div>
         </div>
 
         <div class="sponsor-panel">
           <template v-if="site.features.sponsor">
             <div v-if="sponsorOptions.enabled" class="sponsor-form">
+              <div class="sponsor-category-grid" role="radiogroup" aria-label="赞助类别">
+                <button
+                  v-for="category in sponsorOptions.categories"
+                  :key="category.id"
+                  type="button"
+                  class="sponsor-category"
+                  :class="{ active: sponsorCategoryId === category.id, ended: !category.accepting }"
+                  role="radio"
+                  :aria-checked="sponsorCategoryId === category.id"
+                  :disabled="sponsorSubmitting || !category.accepting"
+                  @click="sponsorCategoryId = category.id"
+                >
+                  <span class="sponsor-category-head">
+                    <b>{{ category.title }}</b>
+                    <em v-if="category.goalReached">已达成</em>
+                    <em v-else-if="category.featured">当前计划</em>
+                    <em v-else-if="!category.accepting">已结束</em>
+                  </span>
+                  <span class="sponsor-category-desc">{{ category.description }}</span>
+                  <template v-if="category.goalAmount">
+                    <span class="sponsor-category-progress-copy">
+                      已筹 ¥{{ category.raisedAmount }} / ¥{{ category.goalAmount }}
+                    </span>
+                    <span class="sponsor-category-progress" aria-hidden="true">
+                      <i :style="{ width: `${category.progressPercent ?? 0}%` }"></i>
+                    </span>
+                  </template>
+                  <span class="sponsor-category-meta">
+                    {{ category.supporterCount }} 人支持
+                    <template v-if="category.deadline"> · 截止 {{ category.deadline }}</template>
+                  </span>
+                </button>
+              </div>
+
               <div class="amount-grid">
                 <button
                   v-for="amount in sponsorOptions.amounts"
@@ -201,7 +235,7 @@
         <div v-for="order in sponsorOrders" :key="order.outTradeNo" class="sponsor-order-row">
           <div>
             <b>¥{{ order.amount }}</b>
-            <span>{{ payTypeLabels[order.payType as PayType] || order.payType }} · 已支付</span>
+            <span>{{ order.categoryTitle || "支持药大拾间" }} · {{ payTypeLabels[order.payType as PayType] || order.payType }} · 已支付</span>
           </div>
           <div class="order-actions">
             <span>{{ fmtDate(order.paidAt || order.createdAt, "MM-DD HH:mm") }}</span>
@@ -224,6 +258,10 @@
         <div class="sponsor-confirm-summary">
           <span>赞助金额</span>
           <b>¥{{ formatMoney(sponsorAmount) }}</b>
+        </div>
+        <div class="sponsor-confirm-line">
+          <span>赞助类别</span>
+          <strong>{{ selectedSponsorCategory?.title || "支持药大拾间" }}</strong>
         </div>
         <div class="sponsor-confirm-line">
           <span>支付方式</span>
@@ -436,7 +474,7 @@ import { useSiteStore } from "@/stores/site";
 import { useAppearanceStore, type AppearanceMode } from "@/stores/appearance";
 import { authApi } from "@/api/auth";
 import { boardApi, type Board } from "@/api/board";
-import { navigateToEpayCheckout, paymentsApi, type PayType, type SponsorOptions } from "@/api/payments";
+import { navigateToEpayCheckout, paymentsApi, type PayType, type SponsorCategory, type SponsorOptions } from "@/api/payments";
 import { request } from "@/api/request";
 import { searchApi, type CampusAssistantQuota } from "@/api/search";
 import UserAvatar from "@/components/common/UserAvatar.vue";
@@ -472,6 +510,7 @@ const anonymousBoardsOpen = ref(false);
 const sponsorSubmitting = ref(false);
 const sponsorAmount = ref("10");
 const sponsorPayType = ref<PayType>("alipay");
+const sponsorCategoryId = ref("");
 const sponsorMessage = ref("");
 const sponsorDisplayMode = ref<"public" | "anonymous" | "hidden">("public");
 const sponsorConfirmOpen = ref(false);
@@ -494,6 +533,7 @@ const sponsorOptions = reactive<SponsorOptions>({
   wallEnabled: true,
   allowMessage: true,
   assistantPointsPerYuan: 1,
+  categories: [],
 });
 let profileLoadSeq = 0;
 let handledSponsorReturnKey = "";
@@ -541,6 +581,9 @@ const sponsorDisplayOptions = [
   { value: "hidden", label: "不展示" },
 ] as const;
 const enabledPayTypes = computed(() => sponsorOptions.payTypes.map((value) => ({ value, label: payTypeLabels[value] })));
+const selectedSponsorCategory = computed<SponsorCategory | undefined>(() => (
+  sponsorOptions.categories.find((category) => category.id === sponsorCategoryId.value)
+));
 const appearanceOptions: Array<{ value: AppearanceMode; label: string; icon: unknown }> = [
   { value: "system", label: "跟随系统", icon: Monitor },
   { value: "light", label: "浅色", icon: Sunny },
@@ -559,6 +602,10 @@ onMounted(() => {
 
 watch(() => [route.query.sponsor, route.query.outTradeNo], () => {
   void handleSponsorReturnFromQuery();
+});
+
+watch(() => route.query.sponsorCategory, () => {
+  selectDefaultSponsorCategory();
 });
 
 watch(editing, (v) => {
@@ -666,6 +713,7 @@ async function loadSponsorOptions() {
     sponsorOptionsCached.value = true;
     if (sponsorOptions.amounts.length) sponsorAmount.value = String(sponsorOptions.amounts[1] ?? sponsorOptions.amounts[0]);
     if (sponsorOptions.payTypes.length) sponsorPayType.value = sponsorOptions.payTypes[0];
+    selectDefaultSponsorCategory();
   } catch {
     if (!sponsorOptionsCached.value) sponsorOptions.enabled = false;
   }
@@ -701,7 +749,22 @@ function restoreProfileCache() {
   profileSnapshotReady.value = true;
   if (sponsorOptions.amounts.length) sponsorAmount.value = String(sponsorOptions.amounts[1] ?? sponsorOptions.amounts[0]);
   if (sponsorOptions.payTypes.length) sponsorPayType.value = sponsorOptions.payTypes[0];
+  selectDefaultSponsorCategory();
   return true;
+}
+
+function selectDefaultSponsorCategory() {
+  const requestedId = String(route.query.sponsorCategory ?? "").trim();
+  const requested = sponsorOptions.categories.find((category) => category.id === requestedId && category.accepting);
+  if (requested) {
+    sponsorCategoryId.value = requested.id;
+    return;
+  }
+  const current = sponsorOptions.categories.find((category) => category.id === sponsorCategoryId.value && category.accepting);
+  if (current) return;
+  const next = sponsorOptions.categories.find((category) => category.featured && category.accepting)
+    ?? sponsorOptions.categories.find((category) => category.accepting);
+  sponsorCategoryId.value = next?.id ?? "";
 }
 
 function writeProfileCache() {
@@ -734,6 +797,10 @@ function formatMoney(value: number | string | undefined | null) {
 }
 
 function validateSponsorAmount() {
+  if (!selectedSponsorCategory.value?.accepting) {
+    ElMessage.warning("请选择仍在进行中的赞助类别");
+    return false;
+  }
   const amount = Number(sponsorAmount.value);
   const min = Number(sponsorOptions.minAmount);
   const max = Number(sponsorOptions.maxAmount);
@@ -766,6 +833,7 @@ async function submitSponsor() {
     const result = await paymentsApi.createSponsorOrderWithOptions({
       amount: sponsorAmount.value,
       payType: sponsorPayType.value,
+      categoryId: sponsorCategoryId.value,
       message: sponsorMessage.value.trim(),
       displayMode: sponsorDisplayMode.value,
     });
@@ -1181,6 +1249,90 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+.sponsor-category-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.sponsor-category {
+  appearance: none;
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid var(--cpu-border);
+  border-radius: 10px;
+  background: var(--cpu-surface);
+  color: var(--cpu-text);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+}
+.sponsor-category:not(:disabled):hover {
+  border-color: var(--cpu-primary);
+  transform: translateY(-1px);
+}
+.sponsor-category.active {
+  border-color: var(--cpu-primary);
+  background: color-mix(in srgb, var(--cpu-primary) 8%, var(--cpu-surface));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cpu-primary) 25%, transparent);
+}
+.sponsor-category.ended {
+  opacity: 0.66;
+  cursor: not-allowed;
+}
+.sponsor-category-head,
+.sponsor-category-meta,
+.sponsor-category-progress-copy,
+.sponsor-category-desc {
+  display: block;
+}
+.sponsor-category-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+.sponsor-category-head b {
+  min-width: 0;
+  font-size: 14px;
+  line-height: 1.4;
+}
+.sponsor-category-head em {
+  flex-shrink: 0;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--cpu-primary) 14%, transparent);
+  color: var(--cpu-primary);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 800;
+}
+.sponsor-category-desc {
+  min-height: 38px;
+  margin-top: 6px;
+  color: var(--cpu-text-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.sponsor-category-progress-copy,
+.sponsor-category-meta {
+  margin-top: 8px;
+  color: var(--cpu-text-muted);
+  font-size: 11px;
+}
+.sponsor-category-progress {
+  display: block;
+  height: 5px;
+  margin-top: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--cpu-border-soft);
+}
+.sponsor-category-progress i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--cpu-primary), #f59e0b);
 }
 .amount-grid {
   display: grid;
@@ -1666,6 +1818,14 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
   .amount-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
+  }
+
+  .sponsor-category-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sponsor-category-desc {
+    min-height: 0;
   }
 
   .amount-grid button {

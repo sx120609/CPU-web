@@ -46,6 +46,50 @@
           <el-switch v-model="config.allowMessage" />
         </label>
       </div>
+      <div class="category-config-head">
+        <div>
+          <h4>赞助类别</h4>
+          <p>每笔订单会保存类别快照；修改类别名称不会改写历史记录。</p>
+        </div>
+        <el-button plain @click="addCategory">新增类别</el-button>
+      </div>
+      <div class="category-config-list">
+        <article v-for="(category, index) in config.categories" :key="`${category.id}-${index}`" class="category-config-card">
+          <div class="category-config-title">
+            <b>{{ category.title || `赞助类别 ${index + 1}` }}</b>
+            <div>
+              <el-switch v-model="category.enabled" inline-prompt active-text="启用" inactive-text="停用" />
+              <el-button text type="danger" :disabled="config.categories.length <= 1" @click="removeCategory(index)">删除</el-button>
+            </div>
+          </div>
+          <div class="config-grid category-fields">
+            <label class="field">
+              <span>类别名称</span>
+              <el-input v-model="category.title" maxlength="40" />
+            </label>
+            <label class="field">
+              <span>稳定标识（保存后勿改）</span>
+              <el-input v-model="category.id" maxlength="40" placeholder="app-store-2026" />
+            </label>
+            <label class="field">
+              <span>目标金额（留空为长期支持）</span>
+              <el-input v-model="category.goalAmount" placeholder="750.00" />
+            </label>
+            <label class="field">
+              <span>截止日期（留空为长期）</span>
+              <input v-model="category.deadline" class="native-date-input" type="date" />
+            </label>
+            <label class="field field--wide">
+              <span>类别说明</span>
+              <el-input v-model="category.description" type="textarea" :rows="2" maxlength="200" />
+            </label>
+            <label class="field field--switch">
+              <span>默认选中</span>
+              <el-switch :model-value="category.featured" @change="setFeaturedCategory(index, Boolean($event))" />
+            </label>
+          </div>
+        </article>
+      </div>
     </section>
 
     <section class="panel">
@@ -64,6 +108,10 @@
           <el-option label="已支付" value="paid" />
           <el-option label="已关闭" value="closed" />
         </el-select>
+        <el-select v-model="filters.categoryId">
+          <el-option label="全部类别" value="all" />
+          <el-option v-for="category in config.categories" :key="category.id" :label="category.title" :value="category.id" />
+        </el-select>
         <el-button type="primary" :loading="ordersLoading" :disabled="ordersLoading" @click="reloadOrders">查询</el-button>
       </div>
       <el-table :data="orders" v-loading="ordersLoading" border size="small" class="interactive-table">
@@ -74,6 +122,7 @@
         <el-table-column label="金额" width="90">
           <template #default="{ row }">¥{{ row.amount }}</template>
         </el-table-column>
+        <el-table-column prop="categoryTitle" label="赞助类别" min-width="150" show-overflow-tooltip />
         <el-table-column prop="payType" label="方式" width="90" />
         <el-table-column label="状态" width="90">
           <template #default="{ row }">
@@ -112,6 +161,7 @@
           </div>
           <div class="record-meta">
             <span>金额：¥{{ row.amount }}</span>
+            <span>类别：{{ row.categoryTitle || "支持药大拾间" }}</span>
             <span>方式：{{ row.payType || "—" }}</span>
             <span>展示：{{ row.displayMode }}</span>
             <span>留言：{{ row.message || "—" }}</span>
@@ -192,8 +242,28 @@ const config = reactive<SponsorConfig>({
   wallEnabled: true,
   allowMessage: true,
   assistantPointsPerYuan: 1,
+  categories: [
+    {
+      id: "app-store-2026",
+      title: "App Store 首年上架计划",
+      description: "用于 2026 年 Apple Developer Program 与 App Store 首年上架相关费用。",
+      goalAmount: "750.00",
+      deadline: "2026-09-30",
+      enabled: true,
+      featured: true,
+    },
+    {
+      id: "general",
+      title: "支持药大拾间",
+      description: "用于服务器、校园服务与长期维护。",
+      goalAmount: null,
+      deadline: null,
+      enabled: true,
+      featured: false,
+    },
+  ],
 });
-const filters = reactive({ q: "", status: "all", page: 1, size: 20 });
+const filters = reactive({ q: "", status: "all", categoryId: "all", page: 1, size: 20 });
 let sponsorOrdersSeq = 0;
 
 onMounted(async () => {
@@ -219,10 +289,45 @@ async function saveConfig() {
   savingConfig.value = true;
   try {
     const amounts = presetAmountsText.value.split(/[,，\s]+/).map((item) => Number(item)).filter((item) => Number.isFinite(item) && item > 0);
-    Object.assign(config, await adminApi.updateSponsorConfig({ ...config, presetAmounts: amounts }));
+    const categories = config.categories.map((category) => ({
+      ...category,
+      id: category.id.trim().toLowerCase(),
+      title: category.title.trim(),
+      description: category.description.trim(),
+      goalAmount: String(category.goalAmount ?? "").trim() || null,
+      deadline: String(category.deadline ?? "").trim() || null,
+    }));
+    Object.assign(config, await adminApi.updateSponsorConfig({ ...config, presetAmounts: amounts, categories }));
     presetAmountsText.value = config.presetAmounts.join(",");
     ElMessage.success("赞助配置已保存");
   } finally { savingConfig.value = false; }
+}
+
+function addCategory() {
+  const existing = new Set(config.categories.map((category) => category.id));
+  let suffix = config.categories.length + 1;
+  while (existing.has(`category-${suffix}`)) suffix += 1;
+  config.categories.push({
+    id: `category-${suffix}`,
+    title: "新的赞助类别",
+    description: "",
+    goalAmount: null,
+    deadline: null,
+    enabled: true,
+    featured: false,
+  });
+}
+
+function removeCategory(index: number) {
+  if (config.categories.length <= 1) return;
+  const [removed] = config.categories.splice(index, 1);
+  if (removed?.featured && config.categories.length) config.categories[0].featured = true;
+}
+
+function setFeaturedCategory(index: number, featured: boolean) {
+  config.categories.forEach((category, categoryIndex) => {
+    category.featured = featured && categoryIndex === index;
+  });
 }
 
 async function reloadOrders() {
@@ -346,7 +451,28 @@ async function editMessage(row: any) {
 .field { display: flex; flex-direction: column; gap: 6px; color: #6b7280; font-size: 12px; }
 .field--wide { grid-column: 1 / -1; }
 .field--switch { align-items: center; flex-direction: row; justify-content: space-between; padding: 8px 0; }
-.filters { display: grid; grid-template-columns: minmax(0, 1fr) 140px 90px; gap: 8px; }
+.category-config-head,
+.category-config-title { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.category-config-head { padding-top: 4px; border-top: 1px solid #edf1f6; }
+.category-config-head h4 { margin: 0; color: #111827; font-size: 14px; }
+.category-config-head p { margin: 4px 0 0; color: #667085; font-size: 12px; }
+.category-config-list { display: grid; gap: 10px; }
+.category-config-card { padding: 14px; border: 1px solid #e7edf5; border-radius: 10px; background: #f8fafc; }
+.category-config-title { margin-bottom: 12px; }
+.category-config-title > div { display: flex; align-items: center; gap: 8px; }
+.category-fields { align-items: end; }
+.native-date-input {
+  width: 100%;
+  min-height: 32px;
+  box-sizing: border-box;
+  padding: 0 10px;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  background: #fff;
+  color: #606266;
+  font: inherit;
+}
+.filters { display: grid; grid-template-columns: minmax(0, 1fr) 140px 180px 90px; gap: 8px; }
 .muted { color: #9ca3af; font-size: 12px; }
 .interactive-table { display: block; }
 .record-list {

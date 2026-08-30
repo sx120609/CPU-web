@@ -2,6 +2,23 @@ import { request, type RequestOptions } from "./request";
 
 export type PayType = "alipay" | "wxpay" | "qqpay" | "bank" | "jdpay";
 
+export type SponsorCategory = {
+  id: string;
+  title: string;
+  description: string;
+  goalAmount: string | null;
+  deadline: string | null;
+  enabled: boolean;
+  featured: boolean;
+  raisedAmount: string;
+  raisedAmountCents: number;
+  paidOrderCount: number;
+  supporterCount: number;
+  progressPercent: number | null;
+  goalReached: boolean;
+  accepting: boolean;
+};
+
 export type SponsorOptions = {
   enabled: boolean;
   payTypes: PayType[];
@@ -13,11 +30,14 @@ export type SponsorOptions = {
   wallEnabled: boolean;
   allowMessage: boolean;
   assistantPointsPerYuan: number;
+  categories: SponsorCategory[];
 };
 
 export type SponsorWallItem = {
   id: number;
   amount: string;
+  categoryId: string;
+  categoryTitle: string;
   message?: string;
   paidAt?: string;
   anonymous: boolean;
@@ -40,6 +60,8 @@ export type SponsorOrderResult = {
     outTradeNo: string;
     amount: string;
     status: string;
+    categoryId: string;
+    categoryTitle: string;
   };
   epay: EpaySubmit;
   checkoutUrl: string;
@@ -56,12 +78,12 @@ export function navigateToEpayCheckout(result: { checkoutUrl: string }) {
 export const paymentsApi = {
   sponsorOptions: (options?: RequestOptions) => request.get<SponsorOptions>("/payments/sponsor/options", undefined, options),
   sponsorWall: (options?: RequestOptions) =>
-    request.get<{ enabled: boolean; total: number; totalAmount?: string; list: SponsorWallItem[] }>("/payments/sponsor/wall", undefined, options),
+    request.get<{ enabled: boolean; total: number; totalAmount?: string; categories: SponsorCategory[]; list: SponsorWallItem[] }>("/payments/sponsor/wall", undefined, options),
   sponsorOrders: (params?: { page?: number; size?: number; status?: "pending" | "paid" | "closed" }, options?: RequestOptions) =>
     request.get<{ page: number; size: number; total: number; list: any[] }>("/payments/sponsor/orders", params, options),
   createSponsorOrder: (payload: { amount: string | number; payType: PayType }) =>
     request.post<SponsorOrderResult>("/payments/sponsor/orders", payload),
-  createSponsorOrderWithOptions: (payload: { amount: string | number; payType: PayType; message?: string; displayMode?: "public" | "anonymous" | "hidden" }) =>
+  createSponsorOrderWithOptions: (payload: { amount: string | number; payType: PayType; categoryId: string; message?: string; displayMode?: "public" | "anonymous" | "hidden" }) =>
     request.post<SponsorOrderResult>("/payments/sponsor/orders", payload),
   paySponsorOrder: (outTradeNo: string) =>
     request.post<SponsorOrderResult>(`/payments/sponsor/orders/${outTradeNo}/pay`),

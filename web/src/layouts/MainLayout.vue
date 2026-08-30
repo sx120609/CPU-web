@@ -582,7 +582,7 @@ const mobileNavItems = computed(() => {
     { to: "/jwxt", label: "教务", icon: Reading, match: ["/jwxt"] },
     { to: "/schedule", label: "课表", icon: Calendar, match: ["/schedule"] },
     { to: "/services", label: "服务", icon: Service, match: ["/services"] },
-    { to: "/profile", label: "我的", icon: UserFilled, match: ["/profile", "/vip", "/sponsor-wall", "/messages", "/admin", "/u/"], auth: true },
+    { to: "/profile", label: "我的", icon: UserFilled, match: ["/profile", "/vip", "/sponsor", "/sponsor-wall", "/messages", "/admin", "/u/"], auth: true },
   ] as { to: string; label: string; icon: any; match: string[]; auth?: boolean }[];
 });
 

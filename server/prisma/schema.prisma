@@ -880,6 +880,8 @@ model SponsorOrder {
   tradeNo                String?
   payType                String
   amountCents            Int
+  categoryId             String    @default("general")
+  categoryTitle          String    @default("支持药大拾间")
   assistantPointsAwarded Int       @default(0)
   message                String    @default("")
   displayMode            String    @default("public") // public / anonymous / hidden
@@ -894,6 +896,7 @@ model SponsorOrder {
   paymentLogs SponsorPaymentLog[]
 
   @@index([userId, status])
+  @@index([categoryId, status, paidAt])
   @@index([status, createdAt])
   @@index([status, expiresAt])
 }

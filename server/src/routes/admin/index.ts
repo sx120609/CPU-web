@@ -61,6 +61,7 @@ import {
   calcSponsorOrderExpiresAt,
   closeExpiredSponsorOrders,
   formatSponsorOrder,
+  getSponsorCategoriesWithStats,
   getSponsorConfig,
   updateSponsorConfig,
 } from "../../services/sponsor";
@@ -1739,6 +1740,16 @@ adminRouter.get("/sponsor-config", adminOnly, async (_req, res, next) => {
   } catch (e) { next(e); }
 });
 
+const sponsorCategorySchema = z.object({
+  id: z.string().trim().min(1).max(40).regex(/^[a-z0-9][a-z0-9-]*$/, "类别标识仅支持小写字母、数字和横线"),
+  title: z.string().trim().min(1).max(40),
+  description: z.string().trim().max(200),
+  goalAmount: z.union([z.string(), z.number(), z.null()]),
+  deadline: z.union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/), z.null()]),
+  enabled: z.boolean(),
+  featured: z.boolean(),
+});
+
 const sponsorConfigPatchSchema = z.object({
   title: z.string().trim().max(40).optional(),
   description: z.string().trim().max(300).optional(),
@@ -1748,6 +1759,17 @@ const sponsorConfigPatchSchema = z.object({
   wallEnabled: z.boolean().optional(),
   allowMessage: z.boolean().optional(),
   assistantPointsPerYuan: z.number().int().min(0).max(10000).optional(),
+  categories: z.array(sponsorCategorySchema).min(1).max(12).optional(),
+}).superRefine((value, ctx) => {
+  if (!value.categories) return;
+  const ids = new Set<string>();
+  let featuredCount = 0;
+  for (const [index, category] of value.categories.entries()) {
+    if (ids.has(category.id)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["categories", index, "id"], message: "类别标识不能重复" });
+    ids.add(category.id);
+    if (category.featured) featuredCount += 1;
+  }
+  if (featuredCount > 1) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["categories"], message: "只能设置一个默认赞助类别" });
 });
 
 adminRouter.patch("/sponsor-config", adminOnly, validate(sponsorConfigPatchSchema), async (req, res, next) => {
@@ -1768,7 +1790,7 @@ adminRouter.get("/sponsor-overview", adminOnly, async (_req, res, next) => {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
     const monthStart = new Date(todayStart.getFullYear(), todayStart.getMonth(), 1);
-    const [paid, today, month, pending, closed, sponsors, payTypes] = await Promise.all([
+    const [paid, today, month, pending, closed, sponsors, payTypes, categories] = await Promise.all([
       prisma.sponsorOrder.aggregate({ where: { status: "paid" }, _sum: { amountCents: true }, _count: true }),
       prisma.sponsorOrder.aggregate({ where: { status: "paid", paidAt: { gte: todayStart } }, _sum: { amountCents: true }, _count: true }),
       prisma.sponsorOrder.aggregate({ where: { status: "paid", paidAt: { gte: monthStart } }, _sum: { amountCents: true }, _count: true }),
@@ -1776,6 +1798,7 @@ adminRouter.get("/sponsor-overview", adminOnly, async (_req, res, next) => {
       prisma.sponsorOrder.count({ where: { status: "closed" } }),
       prisma.sponsorOrder.groupBy({ by: ["userId"], where: { status: "paid" }, _sum: { amountCents: true } }),
       prisma.sponsorOrder.groupBy({ by: ["payType"], where: { status: "paid" }, _sum: { amountCents: true }, _count: true }),
+      getSponsorCategoriesWithStats(),
     ]);
     ok(res, {
       totalAmount: amountCentsToMoney(paid._sum.amountCents ?? 0),
@@ -1787,6 +1810,7 @@ adminRouter.get("/sponsor-overview", adminOnly, async (_req, res, next) => {
       pendingOrders: pending,
       closedOrders: closed,
       sponsorCount: sponsors.length,
+      categories,
       payTypes: payTypes.map((item) => ({
         payType: item.payType,
         count: item._count,
@@ -1801,10 +1825,12 @@ adminRouter.get("/sponsor-orders", adminOnly, async (req, res, next) => {
     await closeExpiredSponsorOrders();
     const q = String(req.query.q ?? "").trim();
     const status = String(req.query.status ?? "").trim();
+    const categoryId = String(req.query.categoryId ?? "").trim();
     const page = Math.max(1, Number(req.query.page ?? 1));
     const size = Math.min(100, Math.max(10, Number(req.query.size ?? 20)));
     const where: any = {};
     if (status && status !== "all") where.status = status;
+    if (categoryId && categoryId !== "all") where.categoryId = categoryId;
     if (q) {
       where.OR = [
         { outTradeNo: { contains: q } },
@@ -1829,6 +1855,7 @@ adminRouter.get("/sponsor-orders", adminOnly, async (req, res, next) => {
 
 const sponsorOrderPatchSchema = z.object({
   status: z.enum(["pending", "paid", "closed"]).optional(),
+  categoryId: z.string().trim().min(1).max(40).optional(),
   message: z.string().trim().max(80).optional(),
   displayMode: z.enum(["public", "anonymous", "hidden"]).optional(),
 });
@@ -1838,10 +1865,17 @@ adminRouter.patch("/sponsor-orders/:id", adminOnly, validate(sponsorOrderPatchSc
     const id = Number(req.params.id);
     const current = await prisma.sponsorOrder.findUnique({ where: { id }, include: { user: true } });
     if (!current) throw Errors.notFound("订单不存在");
+    const sponsorConfig = await getSponsorConfig();
     const data: any = {
       message: req.body.message,
       displayMode: req.body.displayMode,
     };
+    if (req.body.categoryId && req.body.categoryId !== current.categoryId) {
+      const category = sponsorConfig.categories.find((candidate) => candidate.id === req.body.categoryId);
+      if (!category) throw Errors.badRequest("赞助类别不存在");
+      data.categoryId = category.id;
+      data.categoryTitle = category.title;
+    }
     if (req.body.status && req.body.status !== current.status) {
       if (req.body.status === "paid") {
         data.status = "paid";
@@ -1857,7 +1891,6 @@ adminRouter.patch("/sponsor-orders/:id", adminOnly, validate(sponsorOrderPatchSc
         data.expiresAt = calcSponsorOrderExpiresAt();
       }
     }
-    const sponsorConfig = await getSponsorConfig();
     let awardedPoints = current.assistantPointsAwarded;
     const updated = await prisma.$transaction(async (tx) => {
       const row = await tx.sponsorOrder.update({ where: { id }, data, include: { user: true } });
