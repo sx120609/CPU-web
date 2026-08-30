@@ -10,6 +10,8 @@
       </nav>
     </section>
 
+    <ForumAdCard v-if="mobileHomeAd" :ad="mobileHomeAd" compact />
+
     <section v-if="showForumContent && hotPreview.length" class="hot-strip" aria-label="今日热议">
       <header><b>今日热议</b><router-link to="/forum?channel=hot">查看全部 →</router-link></header>
       <button v-for="(topic, index) in hotPreview" :key="topic.id" type="button" @click="openTopic(topic.id)">
@@ -90,6 +92,7 @@ const loading = ref(false);
 const loadingMore = ref(false);
 const homeError = ref("");
 const loadMoreError = ref("");
+const mobileHomeAd = ref<ForumAd | null>(null);
 const pinnedAd = ref<ForumAd | null>(null);
 const hotAd = ref<ForumAd | null>(null);
 const feedTopics = ref<Topic[]>([]);
@@ -174,15 +177,18 @@ async function loadHomeScope() {
 async function loadAds() {
   const sequence = ++adSequence;
   try {
-    const [pinned, hot] = await Promise.all([
-      forumAdsApi.list("forum-home-pinned"),
-      forumAdsApi.list("forum-home-hot"),
+    const [mobileHome, pinned, hot] = await Promise.all([
+      forumAdsApi.list("home-mobile-top").catch(() => []),
+      forumAdsApi.list("forum-home-pinned").catch(() => []),
+      forumAdsApi.list("forum-home-hot").catch(() => []),
     ]);
     if (sequence !== adSequence) return;
+    mobileHomeAd.value = mobileHome[0] || null;
     pinnedAd.value = pinned[0] || null;
     hotAd.value = hot[0] || null;
   } catch {
     if (sequence !== adSequence) return;
+    mobileHomeAd.value = null;
     pinnedAd.value = null;
     hotAd.value = null;
   }

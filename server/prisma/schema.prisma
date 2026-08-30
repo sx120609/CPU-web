@@ -1787,7 +1787,8 @@ model ForumAd {
   imageUrl    String?
   linkUrl     String
   buttonText  String?
-  placement   String   @default("forum-index-top") // forum-index-top / forum-feed-inline / forum-board-top
+  placement   String   @default("forum-index-top") // 兼容旧数据，并保存多选位置中的首项
+  placements  String[] @default([])
   sortOrder   Int      @default(0)
   enabled     Boolean  @default(false)
   vipExempt   Boolean  @default(true)

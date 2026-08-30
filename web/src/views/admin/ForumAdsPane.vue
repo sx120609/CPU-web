@@ -4,7 +4,7 @@
       type="info"
       :closable="false"
       show-icon
-      title="广告默认只显示在论坛页面的指定广告位，不插入帖子正文或回复；勾选 VIP 免广告后，VIP 用户不会看到该条广告。"
+      title="一条广告可以同时投放到多个位置；广告不会插入帖子正文或回复。勾选 VIP 免广告后，VIP 用户不会看到该条广告。"
     />
 
     <section v-if="list.length" class="metric-overview" aria-label="广告效果概览">
@@ -34,7 +34,7 @@
       <template #header>
         <div class="card-header">
           <div>
-            <h3>{{ editingId ? "编辑论坛广告" : "新增论坛广告" }}</h3>
+            <h3>{{ editingId ? "编辑站内广告" : "新增站内广告" }}</h3>
             <p>建议使用简短标题和一张比例接近 3:2 的图片。</p>
           </div>
           <el-button v-if="editingId" text @click="resetForm">取消编辑</el-button>
@@ -50,7 +50,7 @@
         </el-form-item>
         <div class="form-grid">
           <el-form-item label="投放位置" required>
-            <el-select v-model="form.placement" style="width:100%">
+            <el-select v-model="form.placements" multiple collapse-tags :max-collapse-tags="2" placeholder="可多选" style="width:100%">
               <el-option v-for="item in placementOptions" :key="item.value" :label="item.label" :value="item.value" />
             </el-select>
           </el-form-item>
@@ -104,7 +104,7 @@
         <div v-for="item in list" :key="item.id" class="ad-row">
           <div class="ad-row-main">
             <div class="row-title">
-              <el-tag size="small" effect="plain">{{ placementLabel(item.placement) }}</el-tag>
+              <el-tag v-for="placement in placementValues(item)" :key="placement" size="small" effect="plain">{{ placementLabel(placement) }}</el-tag>
               <el-tag size="small" :type="item.enabled ? 'success' : 'info'">{{ item.enabled ? "投放中" : "已停用" }}</el-tag>
               <strong>{{ item.title }}</strong>
             </div>
@@ -147,6 +147,7 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { adminApi, type ForumAdAdmin } from "@/api/admin";
 
 const placementOptions = [
+  { value: "home-mobile-top" as const, label: "移动端首页 · 快捷入口下方" },
   { value: "forum-index-top" as const, label: "论坛首页 · 顶部（桌面 / 移动）" },
   { value: "forum-home-pinned" as const, label: "首页 · 全局置顶下方" },
   { value: "forum-home-hot" as const, label: "首页 · 热议下方" },
@@ -178,7 +179,7 @@ const form = reactive({
   imageUrl: "",
   linkUrl: "",
   buttonText: "了解详情",
-  placement: "forum-index-top" as ForumAdAdmin["placement"],
+  placements: ["home-mobile-top"] as ForumAdAdmin["placements"],
   sortOrder: 0,
   enabled: false,
   vipExempt: true,
@@ -223,7 +224,7 @@ function resetForm() {
   form.imageUrl = "";
   form.linkUrl = "";
   form.buttonText = "了解详情";
-  form.placement = "forum-index-top";
+  form.placements = ["home-mobile-top"];
   form.sortOrder = 0;
   form.enabled = false;
   form.vipExempt = true;
@@ -238,7 +239,7 @@ function edit(item: ForumAdAdmin) {
   form.imageUrl = item.imageUrl || "";
   form.linkUrl = item.linkUrl;
   form.buttonText = item.buttonText || "";
-  form.placement = item.placement;
+  form.placements = placementValues(item);
   form.sortOrder = item.sortOrder;
   form.enabled = item.enabled;
   form.vipExempt = item.vipExempt;
@@ -254,7 +255,7 @@ function payload() {
     imageUrl: form.imageUrl.trim() || null,
     linkUrl: form.linkUrl.trim(),
     buttonText: form.buttonText.trim() || null,
-    placement: form.placement,
+    placements: [...form.placements],
     sortOrder: form.sortOrder,
     enabled: form.enabled,
     vipExempt: form.vipExempt,
@@ -264,8 +265,8 @@ function payload() {
 }
 
 async function save() {
-  if (!form.title.trim() || !form.linkUrl.trim()) {
-    ElMessage.warning("请填写广告标题和跳转链接");
+  if (!form.title.trim() || !form.linkUrl.trim() || !form.placements.length) {
+    ElMessage.warning("请填写广告标题、跳转链接，并至少选择一个投放位置");
     return;
   }
   saving.value = true;
@@ -297,6 +298,10 @@ async function remove(item: ForumAdAdmin) {
 
 function placementLabel(value: ForumAdAdmin["placement"]) {
   return placementOptions.find((item) => item.value === value)?.label || value;
+}
+
+function placementValues(item: ForumAdAdmin) {
+  return item.placements?.length ? item.placements : [item.placement];
 }
 
 function formatDate(value: string | null) {

@@ -7,7 +7,12 @@ import { prisma } from "../../prisma";
 import { adminOnly } from "../../middleware/admin";
 import { validate } from "../../middleware/validate";
 import { Errors, ok } from "../../utils/response";
-import { FORUM_AD_PLACEMENTS, isForumAdPlacement, summarizeForumAdMetrics } from "../../services/forumAds";
+import {
+  FORUM_AD_PLACEMENTS,
+  isForumAdPlacement,
+  normalizeForumAdPlacements,
+  summarizeForumAdMetrics,
+} from "../../services/forumAds";
 import { invalidateForumAdCaches } from "../../services/cacheInvalidation";
 import { FORUM_IMAGE_MAX_SOURCE_BYTES, normalizeForumImageUpload } from "../../services/forumImageCompression";
 import { resolveMediaPublicUrl, saveMediaAsset } from "../../services/mediaStorage";
@@ -16,13 +21,14 @@ export const forumAdsAdminRouter = Router();
 const uploadAdImage = multer({ storage: multer.memoryStorage(), limits: { fileSize: FORUM_IMAGE_MAX_SOURCE_BYTES } });
 
 const placementSchema = z.enum(FORUM_AD_PLACEMENTS);
-const adInputSchema = z.object({
+const adInputFields = z.object({
   title: z.string().trim().min(1).max(80),
   description: z.string().trim().max(240).nullable().optional(),
   imageUrl: z.string().trim().max(500).nullable().optional(),
   linkUrl: z.string().trim().min(1).max(500),
   buttonText: z.string().trim().max(24).nullable().optional(),
-  placement: placementSchema,
+  placement: placementSchema.optional(),
+  placements: z.array(placementSchema).min(1).max(FORUM_AD_PLACEMENTS.length).optional(),
   sortOrder: z.number().int().min(-1000).max(1000).optional(),
   enabled: z.boolean().optional(),
   vipExempt: z.boolean().optional(),
@@ -30,7 +36,11 @@ const adInputSchema = z.object({
   endsAt: z.string().trim().max(64).nullable().optional(),
 });
 
-const adPatchSchema = adInputSchema.partial();
+const adInputSchema = adInputFields.refine((value) => Boolean(value.placement || value.placements?.length), {
+  message: "请至少选择一个广告投放位置",
+  path: ["placements"],
+});
+const adPatchSchema = adInputFields.partial();
 
 function normalizeUrl(value: string | null | undefined, field: string, required = false) {
   const input = String(value ?? "").trim();
@@ -56,17 +66,20 @@ function normalizeDate(value: string | null | undefined, field: string) {
   return date;
 }
 
-function normalizePayload(input: z.infer<typeof adInputSchema>) {
+function normalizePayload(input: z.infer<typeof adInputFields>) {
   const startsAt = normalizeDate(input.startsAt, "开始");
   const endsAt = normalizeDate(input.endsAt, "结束");
   if (startsAt && endsAt && startsAt >= endsAt) throw Errors.badRequest("结束时间必须晚于开始时间");
+  const placements = normalizeForumAdPlacements(input.placements, input.placement);
+  if (!placements.length) throw Errors.badRequest("请至少选择一个广告投放位置");
   return {
     title: input.title,
     description: input.description?.trim() || null,
     imageUrl: normalizeUrl(input.imageUrl, "图片地址"),
     linkUrl: normalizeUrl(input.linkUrl, "跳转链接", true)!,
     buttonText: input.buttonText?.trim() || null,
-    placement: input.placement,
+    placement: placements[0],
+    placements,
     sortOrder: input.sortOrder ?? 0,
     enabled: input.enabled ?? false,
     vipExempt: input.vipExempt ?? true,
@@ -88,6 +101,7 @@ forumAdsAdminRouter.get("/", adminOnly, async (_req, res, next) => {
     });
     ok(res, list.map(({ metrics, ...item }) => ({
       ...item,
+      placements: normalizeForumAdPlacements(item.placements, item.placement),
       metrics: summarizeForumAdMetrics(metrics),
     })));
   } catch (error) { next(error); }
@@ -140,13 +154,16 @@ forumAdsAdminRouter.patch("/:id", adminOnly, validate(adPatchSchema), async (req
     if (!Number.isInteger(id) || id <= 0) throw Errors.badRequest("广告 ID 无效");
     const existing = await prisma.forumAd.findUnique({ where: { id } });
     if (!existing) throw Errors.notFound("广告不存在");
+    const placements = req.body.placements
+      ?? (req.body.placement ? [req.body.placement] : normalizeForumAdPlacements(existing.placements, existing.placement));
     const merged = {
       title: req.body.title ?? existing.title,
       description: req.body.description === undefined ? existing.description : req.body.description,
       imageUrl: req.body.imageUrl === undefined ? existing.imageUrl : req.body.imageUrl,
       linkUrl: req.body.linkUrl ?? existing.linkUrl,
       buttonText: req.body.buttonText === undefined ? existing.buttonText : req.body.buttonText,
-      placement: req.body.placement ?? existing.placement,
+      placement: placements[0],
+      placements,
       sortOrder: req.body.sortOrder ?? existing.sortOrder,
       enabled: req.body.enabled ?? existing.enabled,
       vipExempt: req.body.vipExempt ?? existing.vipExempt,

@@ -1,5 +1,6 @@
 import { request, type RequestOptions } from "./request";
 import type { TopNavigationItem } from "./site";
+import type { ForumAdPlacement } from "./forumAds";
 
 export type AiServiceConfig = {
   id: string;
@@ -715,7 +716,8 @@ export type ForumAdAdmin = {
   imageUrl: string | null;
   linkUrl: string;
   buttonText: string | null;
-  placement: "forum-index-top" | "forum-home-pinned" | "forum-home-hot" | "forum-feed-inline" | "forum-board-top";
+  placement: ForumAdPlacement;
+  placements: ForumAdPlacement[];
   sortOrder: number;
   enabled: boolean;
   vipExempt: boolean;
@@ -1270,7 +1272,7 @@ export const adminApi = {
     data.append("file", file);
     return request.post<{ url: string; size: number; transcoded: boolean }>("/admin/forum-ads/image", data);
   },
-  createForumAd: (payload: Partial<Omit<ForumAdAdmin, "id" | "createdAt" | "updatedAt" | "metrics">> & Pick<ForumAdAdmin, "title" | "linkUrl" | "placement">) =>
+  createForumAd: (payload: Partial<Omit<ForumAdAdmin, "id" | "createdAt" | "updatedAt" | "metrics">> & Pick<ForumAdAdmin, "title" | "linkUrl" | "placements">) =>
     request.post<ForumAdAdmin>("/admin/forum-ads", payload),
   updateForumAd: (id: number, payload: Partial<Omit<ForumAdAdmin, "id" | "createdAt" | "updatedAt" | "metrics">>) =>
     request.patch<ForumAdAdmin>(`/admin/forum-ads/${id}`, payload),

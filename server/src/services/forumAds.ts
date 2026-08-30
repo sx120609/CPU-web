@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "../prisma";
 
 export const FORUM_AD_PLACEMENTS = [
+  "home-mobile-top",
   "forum-index-top",
   "forum-home-pinned",
   "forum-home-hot",
@@ -50,6 +51,12 @@ export type ForumAdPublic = {
 
 export function isForumAdPlacement(value: string): value is ForumAdPlacement {
   return (FORUM_AD_PLACEMENTS as readonly string[]).includes(value);
+}
+
+export function normalizeForumAdPlacements(values: readonly string[] | null | undefined, legacy?: string | null) {
+  const normalized = [...new Set((values || []).filter(isForumAdPlacement))];
+  if (normalized.length) return normalized;
+  return legacy && isForumAdPlacement(legacy) ? [legacy] : [];
 }
 
 export function forumAdMetricDay(value = new Date()) {
@@ -128,7 +135,10 @@ export async function recordForumAdEvent(input: {
     where: {
       id: input.adId,
       enabled: true,
-      placement: input.placement,
+      OR: [
+        { placements: { has: input.placement } },
+        { placements: { isEmpty: true }, placement: input.placement },
+      ],
       AND: [
         { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
         { OR: [{ endsAt: null }, { endsAt: { gte: now } }] },
@@ -168,14 +178,17 @@ export async function listActiveForumAds(placement: ForumAdPlacement, vip: boole
   const now = new Date();
   const where: Prisma.ForumAdWhereInput = {
     enabled: true,
-    placement,
+    OR: [
+      { placements: { has: placement } },
+      { placements: { isEmpty: true }, placement },
+    ],
     ...(vip ? { vipExempt: false } : {}),
     AND: [
       { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
       { OR: [{ endsAt: null }, { endsAt: { gte: now } }] },
     ],
   };
-  return prisma.forumAd.findMany({
+  const ads = await prisma.forumAd.findMany({
     where,
     orderBy: [{ sortOrder: "asc" }, { updatedAt: "desc" }],
     take: 3,
@@ -187,9 +200,11 @@ export async function listActiveForumAds(placement: ForumAdPlacement, vip: boole
       linkUrl: true,
       buttonText: true,
       placement: true,
+      placements: true,
       sortOrder: true,
       startsAt: true,
       endsAt: true,
     },
-  }) as Promise<ForumAdPublic[]>;
+  });
+  return ads.map(({ placements: _placements, ...ad }) => ({ ...ad, placement })) satisfies ForumAdPublic[];
 }

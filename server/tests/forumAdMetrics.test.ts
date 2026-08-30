@@ -1,6 +1,23 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { forumAdMetricDay, summarizeForumAdMetrics } from "../src/services/forumAds";
+import {
+  FORUM_AD_PLACEMENTS,
+  forumAdMetricDay,
+  isForumAdPlacement,
+  normalizeForumAdPlacements,
+  summarizeForumAdMetrics,
+} from "../src/services/forumAds";
+
+test("supports a dedicated mobile home placement and normalizes multiple placements", () => {
+  assert.equal(isForumAdPlacement("home-mobile-top"), true);
+  assert.ok(FORUM_AD_PLACEMENTS.includes("home-mobile-top"));
+  assert.deepEqual(
+    normalizeForumAdPlacements(["home-mobile-top", "forum-index-top", "home-mobile-top"]),
+    ["home-mobile-top", "forum-index-top"],
+  );
+  assert.deepEqual(normalizeForumAdPlacements([], "forum-board-top"), ["forum-board-top"]);
+  assert.deepEqual(normalizeForumAdPlacements(["unknown"]), []);
+});
 
 test("uses the China calendar day for forum ad metrics", () => {
   assert.equal(forumAdMetricDay(new Date("2026-08-29T15:59:59.000Z")), "2026-08-29");
