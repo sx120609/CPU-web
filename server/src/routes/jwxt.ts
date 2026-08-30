@@ -16,6 +16,7 @@ import { buildRedisKey } from "../services/redis";
 import { getSiteOrigin } from "../services/siteSettings";
 import {
   buildScheduleWidgetPayload,
+  resolveScheduleWidgetPreviewWeeks,
   SCHEDULE_WIDGET_PAYLOAD_VERSION,
 } from "../services/scheduleWidget";
 import {
@@ -619,16 +620,33 @@ jwxtRouter.get("/schedule-widget", async (req, res, next) => {
       return;
     }
     try {
+      const now = new Date();
       const [calendar, parsed] = await Promise.all([
         getCalendar(row.jwxtToken).catch(() => null),
         getSchedule(row.jwxtToken, { week: requestedWeek }),
       ]);
-      const semester = parsed.currentSemester || "current";
-      const edits = await readScheduleEditsForWidget(row.userId, semester);
+      const scheduleSemester = parsed.currentSemester || "";
+      const previewWeeks = resolveScheduleWidgetPreviewWeeks(calendar, requestedWeek, now);
+      const [edits, previewEntries] = await Promise.all([
+        readScheduleEditsForWidget(row.userId, scheduleSemester || "current"),
+        Promise.all(previewWeeks.map(async (week) => [
+          week,
+          await getSchedule(row.jwxtToken, { semester: scheduleSemester, week: String(week) }),
+        ] as const)),
+      ]);
+      const applyEdits = (schedule: any) => ({
+        ...schedule,
+        cells: applyScheduleEditsToCells(schedule.cells ?? [], edits),
+      });
+      const schedulesByWeek = Object.fromEntries(
+        previewEntries.map(([week, schedule]) => [week, applyEdits(schedule)]),
+      );
       const payload = buildScheduleWidgetPayload(
-        { ...parsed, cells: applyScheduleEditsToCells(parsed.cells ?? [], edits) },
+        applyEdits(parsed),
         calendar,
         requestedWeek,
+        now,
+        schedulesByWeek,
       );
       await prisma.scheduleWidgetToken.update({
         where: { id: row.id },

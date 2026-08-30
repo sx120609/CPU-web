@@ -1,6 +1,6 @@
 import { normalizeCalendarWeekDays } from "./jwxtParser";
 
-export const SCHEDULE_WIDGET_PAYLOAD_VERSION = 5;
+export const SCHEDULE_WIDGET_PAYLOAD_VERSION = 6;
 
 const SMALL_SLOTS = [
   { no: 1, start: "08:00", end: "08:45" },
@@ -150,6 +150,15 @@ function calendarWeekForDate(calendar: any | null, ymd: string) {
   return { week: 0, day: 0, days: [] as string[] };
 }
 
+export function resolveScheduleWidgetPreviewWeeks(calendar: any | null, queryWeek = "", now = new Date()) {
+  if (Number(queryWeek) > 0) return [] as number[];
+  const today = chinaDateParts(now);
+  const currentWeek = calendarWeekForDate(calendar, today.ymd).week;
+  return [...new Set([1, 2]
+    .map((offset) => calendarWeekForDate(calendar, addDaysToYmd(today.ymd, offset)).week)
+    .filter((week) => week > 0 && week !== currentWeek))];
+}
+
 function dayLabel(day: number) {
   return ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][day - 1] ?? `周${day}`;
 }
@@ -217,7 +226,13 @@ function coursesForWeek(parsed: any, week: number, calendarDays: string[]) {
     .sort((a: WidgetCourse, b: WidgetCourse) => a.day - b.day || a.startSlot - b.startSlot || a.endSlot - b.endSlot));
 }
 
-export function buildScheduleWidgetPayload(parsed: any, calendar: any | null, queryWeek = "", now = new Date()) {
+export function buildScheduleWidgetPayload(
+  parsed: any,
+  calendar: any | null,
+  queryWeek = "",
+  now = new Date(),
+  schedulesByWeek: Record<number, any> = {},
+) {
   const today = chinaDateParts(now);
   const todayDay = chinaDayOfWeek(today);
   const calendarToday = calendarWeekForDate(calendar, today.ymd);
@@ -265,8 +280,9 @@ export function buildScheduleWidgetPayload(parsed: any, calendar: any | null, qu
       const targetDays = targetCalendar.days.some(Boolean)
         ? targetCalendar.days
         : currentCalendarWeekDays(date, targetDay);
+      const targetSchedule = schedulesByWeek[targetWeek] ?? parsed;
       const targetCourses = targetWeek > 0
-        ? coursesForWeek(parsed, targetWeek, targetDays).filter((course) => course.day === targetDay)
+        ? coursesForWeek(targetSchedule, targetWeek, targetDays).filter((course) => course.day === targetDay)
         : [];
       days.push({
         day: targetDay,
