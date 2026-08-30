@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="widget_schedule_name">药大课表·下一节 2×2</string>
-    <string name="widget_schedule_name_wide">药大课表·今日 4×2</string>
-    <string name="widget_schedule_name_large">药大课表·周视图 4×4</string>
-    <string name="widget_schedule_description">在桌面查看下一节、今日课程或图形化周课表</string>
+    <string name="widget_schedule_name">药大课表·临近课程 2×2</string>
+    <string name="widget_schedule_name_wide">药大课表·当前/接下来 4×2</string>
+    <string name="widget_schedule_name_today_wide">药大课表·今日课程 4×2</string>
+    <string name="widget_schedule_name_today_large">药大课表·今日课程 4×4</string>
+    <string name="widget_schedule_name_large">药大课表·整周课表 4×4</string>
+    <string name="widget_schedule_description">五种桌面课表样式：临近课程、今日课程和整周课表</string>
 </resources>

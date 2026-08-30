@@ -52,16 +52,16 @@ public class ScheduleWidgetWeekRendererTest {
             days.put(value);
         }
 
-        Bitmap bitmap = ScheduleWidgetWeekRenderer.render(days);
+        Bitmap bitmap = ScheduleWidgetWeekRenderer.render(days, 1);
 
-        assertEquals(840, bitmap.getWidth());
-        assertEquals(600, bitmap.getHeight());
-        assertTrue(Color.alpha(bitmap.getPixel(90, 82)) > 0);
-        assertTrue(bitmap.getPixel(90, 82) != bitmap.getPixel(205, 82));
+        assertEquals(1080, bitmap.getWidth());
+        assertEquals(820, bitmap.getHeight());
+        assertTrue(Color.alpha(bitmap.getPixel(105, 160)) > 0);
+        assertTrue(bitmap.getPixel(105, 160) != bitmap.getPixel(246, 160));
         ByteArrayOutputStream output = new ByteArrayOutputStream();
         assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output));
         assertTrue(output.size() > 10_000);
-        File preview = new File("build/reports/widget-week-render.png");
+        File preview = new File("build/reports/widget-previews/week-large.png");
         assertTrue(preview.getParentFile().exists() || preview.getParentFile().mkdirs());
         try (FileOutputStream stream = new FileOutputStream(preview)) {
             assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream));

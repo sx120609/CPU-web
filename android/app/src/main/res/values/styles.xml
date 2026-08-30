@@ -8,7 +8,6 @@
         <item name="android:statusBarColor">@color/launch_bg</item>
         <item name="android:navigationBarColor">@color/launch_bg_bottom</item>
         <item name="android:windowLightStatusBar">true</item>
-        <item name="android:windowLightNavigationBar">true</item>
     </style>
 
     <style name="WidgetScheduleLine">

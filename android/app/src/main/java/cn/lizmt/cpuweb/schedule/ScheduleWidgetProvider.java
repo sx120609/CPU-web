@@ -41,6 +41,8 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
     enum WidgetMode {
         COMPACT,
         WIDE,
+        TODAY_WIDE,
+        TODAY_LARGE,
         LARGE
     }
 
@@ -73,6 +75,8 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
         AppWidgetManager manager = AppWidgetManager.getInstance(appContext);
         updateProvider(appContext, manager, ScheduleWidgetProvider.class, WidgetMode.COMPACT);
         updateProvider(appContext, manager, ScheduleWidgetProviderWide.class, WidgetMode.WIDE);
+        updateProvider(appContext, manager, ScheduleWidgetProviderTodayWide.class, WidgetMode.TODAY_WIDE);
+        updateProvider(appContext, manager, ScheduleWidgetProviderTodayLarge.class, WidgetMode.TODAY_LARGE);
         updateProvider(appContext, manager, ScheduleWidgetProviderLarge.class, WidgetMode.LARGE);
     }
 
@@ -119,9 +123,18 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
     }
 
     private static RemoteViews baseViews(Context context, WidgetMode mode) {
-        int layout = mode == WidgetMode.LARGE
-                ? R.layout.widget_schedule_week
-                : mode == WidgetMode.WIDE ? R.layout.widget_schedule_wide : R.layout.widget_schedule;
+        int layout;
+        if (mode == WidgetMode.LARGE) {
+            layout = R.layout.widget_schedule_week;
+        } else if (mode == WidgetMode.TODAY_LARGE) {
+            layout = R.layout.widget_schedule_today_large;
+        } else if (mode == WidgetMode.TODAY_WIDE) {
+            layout = R.layout.widget_schedule_today_wide;
+        } else if (mode == WidgetMode.WIDE) {
+            layout = R.layout.widget_schedule_upcoming_wide;
+        } else {
+            layout = R.layout.widget_schedule_upcoming_compact;
+        }
         RemoteViews views = new RemoteViews(context.getPackageName(), layout);
         Intent intent = new Intent(context, MainActivity.class);
         intent.setData(Uri.parse(BuildConfig.APP_URL));
@@ -131,8 +144,6 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
         }
         PendingIntent pendingIntent = PendingIntent.getActivity(context, 0, intent, flags);
         views.setOnClickPendingIntent(R.id.widget_root, pendingIntent);
-        views.setOnClickPendingIntent(R.id.widget_refresh, refreshPendingIntent(context));
-        views.setTextViewText(R.id.widget_title, "药大课表");
         return views;
     }
 
@@ -171,61 +182,42 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
     private static void renderSchedule(RemoteViews views, JSONObject data, WidgetMode mode) {
         if (mode == WidgetMode.LARGE) {
             renderLarge(views, data);
-        } else if (mode == WidgetMode.WIDE) {
-            renderWide(views, data);
+        } else if (mode == WidgetMode.TODAY_WIDE || mode == WidgetMode.TODAY_LARGE) {
+            renderToday(views, data, mode == WidgetMode.TODAY_LARGE);
         } else {
-            renderCompact(views, data);
+            renderUpcoming(views, data, mode == WidgetMode.WIDE);
         }
     }
 
-    private static void renderCompact(RemoteViews views, JSONObject data) {
+    private static void renderUpcoming(RemoteViews views, JSONObject data, boolean wide) {
         boolean preferTomorrow = shouldPreferTomorrow(data);
         JSONObject primaryDay = resolveDay(data, preferTomorrow ? 1 : 0);
         List<JSONObject> courses = preferTomorrow
-                ? firstCourses(primaryDay, 1)
-                : nextCourses(primaryDay, currentMinutes(), 1);
+                ? firstCourses(primaryDay, 2)
+                : nextCourses(primaryDay, currentMinutes(), 2);
         if (courses.isEmpty() && !preferTomorrow) {
             primaryDay = resolveDay(data, 1);
-            courses = firstCourses(primaryDay, 1);
-            preferTomorrow = true;
+            courses = firstCourses(primaryDay, 2);
         }
-
-        setSubtitle(views, data, primaryDay, preferTomorrow ? "明日课程" : "今日课程");
-        if (courses.isEmpty()) {
-            views.setTextViewText(R.id.widget_line_1, preferTomorrow ? "明天没有课程" : "今日暂无课程");
-            setLineVisibility(views, 1);
-        } else {
-            JSONObject first = courses.get(0);
-            views.setTextViewText(R.id.widget_line_1, compactLabel(first, preferTomorrow ? "明日下节" : "下节"));
-            views.setTextViewText(R.id.widget_line_2, first.optString("name", "课程"));
-            String meta = courseMetaLine(first);
-            views.setTextViewText(R.id.widget_line_3, meta.isEmpty() ? "地点待确认" : meta);
-            setLineVisibility(views, 3);
-        }
-        setFooter(views, data);
+        showBitmap(views, ScheduleWidgetCardRenderer.renderUpcoming(primaryDay, courses, wide));
     }
 
-    private static void renderWide(RemoteViews views, JSONObject data) {
-        boolean preferTomorrow = shouldPreferTomorrow(data);
-        JSONObject day = resolveDay(data, preferTomorrow ? 1 : 0);
-        renderHeader(views, data, day, preferTomorrow ? "明日课程" : "今日课程");
-        renderColumn(views, true, dayTitle(day, preferTomorrow ? "明日" : "今日"), firstCourses(day, 6), 6);
-        setFooter(views, data);
+    private static void renderToday(RemoteViews views, JSONObject data, boolean large) {
+        JSONObject day = fullDayForDate(data, deviceDateOffset(0));
+        showBitmap(views, ScheduleWidgetCardRenderer.renderToday(day, large));
     }
 
     private static void renderLarge(RemoteViews views, JSONObject data) {
         JSONArray days = data.optJSONArray("weekDays");
         if (days == null || days.length() == 0) days = data.optJSONArray("days");
         int week = data.optInt("displayWeek", data.optInt("week", 0));
-        String dateRange = weekDateRange(days);
-        String subtitle = week > 0 ? "第 " + week + " 周" : "本周课表";
-        if (!dateRange.isEmpty()) subtitle += " · " + dateRange;
-        views.setTextViewText(R.id.widget_subtitle, subtitle);
-        views.setViewVisibility(R.id.widget_week_message, View.GONE);
-        views.setViewVisibility(R.id.widget_week_image, View.VISIBLE);
-        Bitmap schedule = ScheduleWidgetWeekRenderer.render(days);
-        views.setImageViewBitmap(R.id.widget_week_image, schedule);
-        setFooter(views, data);
+        showBitmap(views, ScheduleWidgetWeekRenderer.render(days, week));
+    }
+
+    private static void showBitmap(RemoteViews views, Bitmap bitmap) {
+        views.setViewVisibility(R.id.widget_message, View.GONE);
+        views.setViewVisibility(R.id.widget_content_image, View.VISIBLE);
+        views.setImageViewBitmap(R.id.widget_content_image, bitmap);
     }
 
     private static void renderMessage(
@@ -235,20 +227,10 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
             String message,
             String footer
     ) {
-        views.setTextViewText(R.id.widget_subtitle, subtitle);
-        views.setTextViewText(R.id.widget_footer, footer);
-        if (mode == WidgetMode.LARGE) {
-            views.setViewVisibility(R.id.widget_week_image, View.GONE);
-            views.setViewVisibility(R.id.widget_week_message, View.VISIBLE);
-            views.setTextViewText(R.id.widget_week_message, message);
-            return;
-        }
-        if (mode == WidgetMode.COMPACT) {
-            views.setTextViewText(R.id.widget_line_1, message);
-            setLineVisibility(views, 1);
-            return;
-        }
-        renderColumn(views, true, "提示", singleLine(message), 4);
+        String detail = footer == null || footer.isEmpty() ? message : message + "\n" + footer;
+        views.setViewVisibility(R.id.widget_content_image, View.GONE);
+        views.setViewVisibility(R.id.widget_message, View.VISIBLE);
+        views.setTextViewText(R.id.widget_message, subtitle + "\n" + detail);
     }
 
     private static void renderHeader(RemoteViews views, JSONObject data, JSONObject day, String modeText) {
@@ -307,6 +289,18 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
         return null;
     }
 
+    private static JSONObject fullDayForDate(JSONObject data, String targetDate) {
+        for (String key : new String[]{"weekDays", "days"}) {
+            JSONArray days = data.optJSONArray(key);
+            if (days == null) continue;
+            for (int index = 0; index < days.length(); index++) {
+                JSONObject day = days.optJSONObject(index);
+                if (dateMatches(day, targetDate)) return day;
+            }
+        }
+        return resolveDay(data, 0);
+    }
+
     private static String weekForDay(JSONObject data, JSONObject day) {
         boolean dayHasWeek = day != null && day.has("week");
         Object dayWeek = dayHasWeek ? nullableJsonValue(day.opt("week")) : null;
@@ -336,14 +330,14 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
         return true;
     }
 
-    private static List<JSONObject> nextCourses(JSONObject day, int now, int limit) {
+    static List<JSONObject> nextCourses(JSONObject day, int now, int limit) {
         List<JSONObject> result = new ArrayList<>();
         JSONArray courses = coursesOf(day);
         if (courses == null) return result;
         for (int i = 0; i < courses.length() && result.size() < limit; i++) {
             JSONObject course = courses.optJSONObject(i);
-            int start = courseStartMinutes(course);
-            if (course != null && (start >= now || (start < 0 && courseEndMinutes(course) >= now))) {
+            int end = courseEndMinutes(course);
+            if (course != null && (end >= now || (courseStartMinutes(course) < 0 && end <= 0))) {
                 result.add(course);
             }
         }

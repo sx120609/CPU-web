@@ -10,9 +10,9 @@
         android:id="@+id/widget_content_image"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:contentDescription="整周课表"
+        android:contentDescription="今日课程列表"
         android:scaleType="fitXY"
-        android:src="@drawable/widget_schedule_week_preview_v2" />
+        android:src="@drawable/widget_schedule_today_large_preview" />
 
     <TextView
         android:id="@+id/widget_message"
