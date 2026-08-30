@@ -203,6 +203,7 @@ import type JSZip from "jszip";
 import type { PDFDocument as PdfDocumentInstance } from "pdf-lib";
 import { getToken } from "@/api/request";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
+import { resolvePdfWorkerUrl } from "@/utils/pdfWorker";
 
 type PdfMode = "merge" | "split" | "compress" | "images_to_pdf" | "pdf_to_images" | "extract_text" | "rotate";
 type LocalFileKind = "pdf" | "image";
@@ -233,7 +234,8 @@ const busy = ref(false);
 const isDragging = ref(false);
 const progressText = ref("");
 const resultText = ref("");
-const pdfWorkerSrc = new URL("pdfjs-dist/build/pdf.worker.mjs", import.meta.url).toString();
+const bundledPdfWorkerSrc = new URL("pdfjs-dist/build/pdf.worker.mjs", import.meta.url).toString();
+const pdfWorkerSrc = resolvePdfWorkerUrl(bundledPdfWorkerSrc, window.location.origin);
 
 let pdfLibPromise: Promise<typeof import("pdf-lib")> | null = null;
 let pdfJsPromise: Promise<typeof import("pdfjs-dist")> | null = null;

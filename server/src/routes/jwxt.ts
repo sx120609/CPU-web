@@ -16,6 +16,8 @@ import { buildRedisKey } from "../services/redis";
 import { getSiteOrigin } from "../services/siteSettings";
 import {
   buildScheduleWidgetPayload,
+  inferScheduleWidgetSemester,
+  resolveScheduleWidgetCalendar,
   resolveScheduleWidgetPreviewWeeks,
   SCHEDULE_WIDGET_PAYLOAD_VERSION,
 } from "../services/scheduleWidget";
@@ -621,12 +623,14 @@ jwxtRouter.get("/schedule-widget", async (req, res, next) => {
     }
     try {
       const now = new Date();
+      const inferredSemester = inferScheduleWidgetSemester(now);
       const [calendar, parsed] = await Promise.all([
         getCalendar(row.jwxtToken).catch(() => null),
-        getSchedule(row.jwxtToken, { week: requestedWeek }),
+        getSchedule(row.jwxtToken, { semester: inferredSemester, week: requestedWeek }),
       ]);
-      const scheduleSemester = parsed.currentSemester || "";
-      const previewWeeks = resolveScheduleWidgetPreviewWeeks(calendar, requestedWeek, now);
+      const scheduleSemester = parsed.currentSemester || inferredSemester;
+      const widgetCalendar = resolveScheduleWidgetCalendar(calendar, parsed, now);
+      const previewWeeks = resolveScheduleWidgetPreviewWeeks(widgetCalendar, requestedWeek, now);
       const [edits, previewEntries] = await Promise.all([
         readScheduleEditsForWidget(row.userId, scheduleSemester || "current"),
         Promise.all(previewWeeks.map(async (week) => [
@@ -643,7 +647,7 @@ jwxtRouter.get("/schedule-widget", async (req, res, next) => {
       );
       const payload = buildScheduleWidgetPayload(
         applyEdits(parsed),
-        calendar,
+        widgetCalendar,
         requestedWeek,
         now,
         schedulesByWeek,

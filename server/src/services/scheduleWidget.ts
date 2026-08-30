@@ -1,6 +1,6 @@
 import { normalizeCalendarWeekDays } from "./jwxtParser";
 
-export const SCHEDULE_WIDGET_PAYLOAD_VERSION = 6;
+export const SCHEDULE_WIDGET_PAYLOAD_VERSION = 7;
 
 const SMALL_SLOTS = [
   { no: 1, start: "08:00", end: "08:45" },
@@ -150,6 +150,65 @@ function calendarWeekForDate(calendar: any | null, ymd: string) {
   return { week: 0, day: 0, days: [] as string[] };
 }
 
+function semesterAnchorMonday(semester: string) {
+  const match = String(semester || "").match(/^(\d{4})-(\d{4})-(1|2)$/);
+  if (!match) return "";
+  const anchor = match[3] === "1"
+    ? `${match[1]}-09-01`
+    : `${match[2]}-03-01`;
+  const day = dayOfWeekForYmd(anchor);
+  return day ? addDaysToYmd(anchor, 1 - day) : "";
+}
+
+export function inferScheduleWidgetSemester(now = new Date(), previewDays = 2) {
+  const target = addDaysToYmd(chinaDateParts(now).ymd, Math.max(0, previewDays));
+  const year = Number(target.slice(0, 4));
+  if (!Number.isFinite(year)) return "";
+  const fallSemester = `${year}-${year + 1}-1`;
+  if (target >= semesterAnchorMonday(fallSemester)) return fallSemester;
+  const springSemester = `${year - 1}-${year}-2`;
+  if (target >= semesterAnchorMonday(springSemester)) return springSemester;
+  return `${year - 1}-${year}-1`;
+}
+
+function scheduleWeekCount(parsed: any) {
+  const optionMax = Math.max(0, ...(parsed?.weeks ?? []).map((item: any) => Number(item?.value) || 0));
+  const courseMax = Math.max(0, ...(parsed?.cells ?? [])
+    .flatMap((cell: any) => (cell?.courses ?? []).flatMap((course: any) => normalizedCourseWeekList(course))));
+  return Math.max(20, optionMax, courseMax);
+}
+
+export function resolveScheduleWidgetCalendar(calendar: any | null, parsed: any, now = new Date()) {
+  const semester = String(parsed?.currentSemester || "").trim();
+  const anchorMonday = semesterAnchorMonday(semester);
+  const today = chinaDateParts(now).ymd;
+  const calendarWeekOne = normalizeCalendarWeekDays(
+    (calendar?.weeks ?? []).find((item: any) => Number(item?.week) === 1)?.days ?? [],
+  )[0] || "";
+  const sameSemester = semester && String(calendar?.currentSemester || "").trim() === semester;
+  const containsToday = (calendar?.weeks ?? []).some((item: any) => (
+    normalizeCalendarWeekDays(item?.days ?? []).includes(today)
+  ));
+  if (calendar?.weeks?.length && (sameSemester || containsToday || (anchorMonday && calendarWeekOne === anchorMonday))) {
+    return calendar;
+  }
+  if (!anchorMonday) return calendar;
+
+  const weeks = Array.from({ length: scheduleWeekCount(parsed) }, (_, index) => {
+    const monday = addDaysToYmd(anchorMonday, index * 7);
+    const days = Array.from({ length: 7 }, (_, offset) => addDaysToYmd(monday, offset));
+    return { week: index + 1, days, monday, sunday: days[6] };
+  });
+  return {
+    currentSemester: semester,
+    semesterStart: anchorMonday,
+    semesterEnd: weeks[weeks.length - 1]?.sunday || anchorMonday,
+    currentWeek: weeks.find((item) => item.days.includes(today))?.week ?? 0,
+    today,
+    weeks,
+  };
+}
+
 export function resolveScheduleWidgetPreviewWeeks(calendar: any | null, queryWeek = "", now = new Date()) {
   if (Number(queryWeek) > 0) return [] as number[];
   const today = chinaDateParts(now);
@@ -235,7 +294,8 @@ export function buildScheduleWidgetPayload(
 ) {
   const today = chinaDateParts(now);
   const todayDay = chinaDayOfWeek(today);
-  const calendarToday = calendarWeekForDate(calendar, today.ymd);
+  const effectiveCalendar = resolveScheduleWidgetCalendar(calendar, parsed, now);
+  const calendarToday = calendarWeekForDate(effectiveCalendar, today.ymd);
   const requestedWeek = Number(queryWeek || 0);
   const explicitWeek = Number.isFinite(requestedWeek) && requestedWeek > 0;
   const week = explicitWeek ? requestedWeek : calendarToday.week;
@@ -243,7 +303,7 @@ export function buildScheduleWidgetPayload(
   const activeDay = explicitWeek && requestedWeek !== calendarToday.week
     ? 1
     : (calendarToday.day || todayDay);
-  const requestedCalendarDays = (calendar?.weeks ?? []).find((item: any) => Number(item.week) === week)?.days ?? [];
+  const requestedCalendarDays = (effectiveCalendar?.weeks ?? []).find((item: any) => Number(item.week) === week)?.days ?? [];
   const normalizedRequestedDays = normalizeCalendarWeekDays(requestedCalendarDays);
   const calendarDays = normalizedRequestedDays.some(Boolean)
     ? normalizedRequestedDays
@@ -274,7 +334,7 @@ export function buildScheduleWidgetPayload(
     for (const offset of [1, 2]) {
       const date = addDaysToYmd(today.ymd, offset);
       if (days.some((day) => day.date === date)) continue;
-      const targetCalendar = calendarWeekForDate(calendar, date);
+      const targetCalendar = calendarWeekForDate(effectiveCalendar, date);
       const targetDay = targetCalendar.day || dayOfWeekForYmd(date);
       const targetWeek = targetCalendar.week;
       const targetDays = targetCalendar.days.some(Boolean)
