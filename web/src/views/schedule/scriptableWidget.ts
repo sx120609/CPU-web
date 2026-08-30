@@ -1,6 +1,6 @@
 export function buildScriptableWidgetScript(endpoint: string) {
   return `// 药大课表小组件
-// 小组件参数：upcoming（临近课程）、split（当前/接下来）、today（今日课程）、week（整周课表）。
+// 小组件参数：upcoming（临近课程）、split（当前/接下来）、today（今日课程）、twoday（两日课表）。
 const API_ENDPOINT = ${JSON.stringify(endpoint)};
 const MINUTES_22_00 = 22 * 60;
 const FAMILY = config.widgetFamily || "medium";
@@ -8,8 +8,6 @@ const STYLE_PARAMETER = String(args.widgetParameter || "").trim().toLowerCase();
 const ACCENTS = ["#e85b4b", "#4a78f2", "#8b5cf6", "#17a69a", "#e0a224", "#ec70a1"];
 const TINTS = ["#fdece9", "#eaf0ff", "#f2ecff", "#e5f8f5", "#fff7e0", "#fdebf4"];
 const DARK_TINTS = ["#42221f", "#1e2d52", "#32244f", "#153c38", "#403418", "#48243a"];
-const SLOT_STARTS = ["08:00", "08:55", "09:55", "10:50", "13:30", "14:25", "15:25", "16:20", "18:30", "19:25", "20:20"];
-const SLOT_ENDS = ["08:45", "09:40", "10:40", "11:35", "14:15", "15:10", "16:10", "17:05", "19:15", "20:10", "21:05"];
 
 async function loadSchedule() {
   const req = new Request(API_ENDPOINT);
@@ -247,146 +245,108 @@ function addTodayRow(widget, course, large) {
   row.layoutHorizontally();
   row.centerAlignContent();
   row.backgroundColor = tintColor(course);
-  row.cornerRadius = large ? 12 : 10;
-  row.setPadding(large ? 8 : 7, 0, large ? 8 : 7, large ? 8 : 7);
-  addAccentBar(row, course, large ? 42 : 38);
-  row.addSpacer(8);
+  row.cornerRadius = large ? 12 : 7;
+  row.setPadding(large ? 8 : 2, large ? 0 : 4, large ? 8 : 2, large ? 8 : 4);
+  addAccentBar(row, course, large ? 42 : 16);
+  row.addSpacer(large ? 8 : 5);
+  if (!large) {
+    const summary = [course?.name || "课程", course?.location].filter(Boolean).join(" · ");
+    addLine(row, summary, Font.boldSystemFont(10), color("#172033", "#f8fafc"));
+    row.addSpacer(6);
+    addLine(row, timeRange(course), Font.semiboldSystemFont(9), color("#475467", "#cbd5e1"));
+    return;
+  }
   const content = row.addStack();
   content.layoutVertically();
-  addLine(content, course?.name || "课程", Font.boldSystemFont(large ? 13 : 12), color("#172033", "#f8fafc"));
-  addLine(content, courseMetaText(course), Font.systemFont(large ? 9 : 8), color("#526078", "#cbd5e1"));
+  addLine(content, course?.name || "课程", Font.boldSystemFont(13), color("#172033", "#f8fafc"));
+  addLine(content, courseMetaText(course), Font.systemFont(9), color("#526078", "#cbd5e1"));
   row.addSpacer();
   const times = row.addStack();
   times.layoutVertically();
-  addLine(times, course?.startTime || "--:--", Font.semiboldSystemFont(large ? 11 : 10), color("#172033", "#f8fafc"));
-  addLine(times, course?.endTime || "--:--", Font.semiboldSystemFont(large ? 11 : 10), color("#172033", "#f8fafc"));
+  addLine(times, course?.startTime || "--:--", Font.semiboldSystemFont(11), color("#172033", "#f8fafc"));
+  addLine(times, course?.endTime || "--:--", Font.semiboldSystemFont(11), color("#172033", "#f8fafc"));
 }
 
 function renderToday(widget, data, large) {
   const day = resolveDay(data, 0);
-  const courses = firstCourses(day, large ? 6 : 2);
+  const courses = firstCourses(day, large ? 6 : 5);
   addDateHeader(widget, day, large);
-  widget.addSpacer(large ? 10 : 8);
+  widget.addSpacer(large ? 10 : 4);
   if (!courses.length) {
     addLine(widget, "今日暂无课程", Font.semiboldSystemFont(13), color("#98a2b3", "#94a3b8"));
     return;
   }
   courses.forEach((course, index) => {
-    if (index > 0) widget.addSpacer(large ? 7 : 6);
+    if (index > 0) widget.addSpacer(large ? 7 : 2);
     addTodayRow(widget, course, large);
   });
 }
 
-function roundedRect(ctx, rect, radius, fill, stroke) {
-  const path = new Path();
-  path.addRoundedRect(rect, radius, radius);
-  ctx.addPath(path);
-  ctx.setFillColor(fill);
-  ctx.fillPath();
-  if (stroke) {
-    ctx.addPath(path);
-    ctx.setStrokeColor(stroke);
-    ctx.setLineWidth(2);
-    ctx.strokePath();
+function addTwoDayCourse(column, course) {
+  const row = column.addStack();
+  row.layoutHorizontally();
+  row.centerAlignContent();
+  row.backgroundColor = tintColor(course);
+  row.cornerRadius = 9;
+  row.setPadding(6, 6, 6, 6);
+  addAccentBar(row, course, 34);
+  row.addSpacer(7);
+  const details = row.addStack();
+  details.layoutVertically();
+  addLine(details, course?.name || "课程", Font.boldSystemFont(11), color("#172033", "#f8fafc"));
+  addLine(details, courseMetaText(course), Font.systemFont(8), color("#526078", "#cbd5e1"));
+  addLine(details, timeRange(course), Font.semiboldSystemFont(9), color("#172033", "#f8fafc"));
+}
+
+function addTwoDayColumn(parent, day) {
+  const column = parent.addStack();
+  column.layoutVertically();
+  column.size = new Size(145, 0);
+  addDateHeader(column, day, false);
+  column.addSpacer(7);
+  const courses = firstCourses(day, 5);
+  if (!courses.length) {
+    addLine(column, "没有课程", Font.semiboldSystemFont(11), color("#98a2b3", "#94a3b8"));
+    return;
+  }
+  courses.forEach((course, index) => {
+    if (index > 0) column.addSpacer(5);
+    addTwoDayCourse(column, course);
+  });
+  if ((day?.courses || []).length > courses.length) {
+    column.addSpacer(5);
+    addLine(column, "还有 " + (day.courses.length - courses.length) + " 门", Font.systemFont(9), color("#667085", "#cbd5e1"));
   }
 }
 
-function canvasText(ctx, text, rect, font, value, align) {
-  ctx.setFont(font);
-  ctx.setTextColor(value);
-  if (align === "center") ctx.setTextAlignedCenter();
-  else if (align === "right") ctx.setTextAlignedRight();
-  else ctx.setTextAlignedLeft();
-  ctx.drawTextInRect(String(text || ""), rect);
-}
-
-function weekDays(data) {
-  const source = data.weekDays?.length ? data.weekDays : data.days || [];
-  return Array.from({ length: 7 }, (_, index) => source.find((day) => Number(day.day) === index + 1) || null);
-}
-
-function weekRange(days) {
-  const first = days.find(Boolean);
-  const last = [...days].reverse().find(Boolean);
-  const start = shortDate(first?.date);
-  const end = shortDate(last?.date);
-  return start && end ? start + " - " + end : start || end;
-}
-
-function compactCourseName(value) {
-  const text = String(value || "课程");
-  if (text.length <= 8) return text.length > 4 ? text.slice(0, 4) + "\\n" + text.slice(4) : text;
-  return text.slice(0, 4) + "\\n" + text.slice(4, 7) + "…";
-}
-
-function drawWeekImage(data) {
-  const width = 920;
-  const height = 920;
-  const summaryHeight = 70;
-  const labelWidth = 80;
-  const headerHeight = 70;
-  const columnWidth = (width - labelWidth) / 7;
-  const rowHeight = (height - summaryHeight - headerHeight) / 11;
-  const days = weekDays(data);
-  const ctx = new DrawContext();
-  ctx.size = new Size(width, height);
-  ctx.opaque = true;
-  ctx.respectScreenScale = false;
-  ctx.setFillColor(color("#f8fbff", "#111827"));
-  ctx.fillRect(new Rect(0, 0, width, height));
-
-  const week = data.displayWeek || data.week;
-  canvasText(ctx, week ? "第 " + week + " 周" : "整周课表", new Rect(30, 16, 300, 45), Font.boldSystemFont(34), color("#4338ca", "#a5b4fc"), "left");
-  canvasText(ctx, weekRange(days), new Rect(580, 18, 314, 42), Font.systemFont(23), color("#667085", "#cbd5e1"), "right");
-  canvasText(ctx, "节次", new Rect(4, summaryHeight + 22, labelWidth - 8, 32), Font.boldSystemFont(22), color("#667085", "#cbd5e1"), "center");
-
-  const labels = ["一", "二", "三", "四", "五", "六", "日"];
-  days.forEach((day, index) => {
-    const left = labelWidth + index * columnWidth + 4;
-    const rect = new Rect(left, summaryHeight + 2, columnWidth - 8, headerHeight - 6);
-    const today = day?.isToday === true;
-    roundedRect(ctx, rect, 15, today ? color("#e4f8f4", "#17443c") : color("#f8fbff", "#111827"), today ? color("#2cb39a", "#5eead4") : color("#dce6ee", "#334155"));
-    canvasText(ctx, labels[index], new Rect(left, summaryHeight + 11, columnWidth - 8, 30), Font.boldSystemFont(25), today ? color("#0c846f", "#5eead4") : color("#2f3b4e", "#f8fafc"), "center");
-    canvasText(ctx, shortDate(day?.date), new Rect(left, summaryHeight + 39, columnWidth - 8, 24), Font.systemFont(18), color("#667085", "#cbd5e1"), "center");
-  });
-
-  for (let slot = 0; slot < 11; slot++) {
-    const top = summaryHeight + headerHeight + slot * rowHeight;
-    canvasText(ctx, String(slot + 1), new Rect(4, top + 7, labelWidth - 8, 24), Font.boldSystemFont(22), color("#1d2939", "#f8fafc"), "center");
-    canvasText(ctx, SLOT_STARTS[slot] + "\\n" + SLOT_ENDS[slot], new Rect(4, top + 31, labelWidth - 8, 34), Font.systemFont(13), color("#667085", "#cbd5e1"), "center");
-    for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
-      const left = labelWidth + dayIndex * columnWidth + 4;
-      roundedRect(ctx, new Rect(left, top + 3, columnWidth - 8, rowHeight - 7), 11, color("#fafcfe", "#16202f"), color("#dce6ee", "#334155"));
-    }
-  }
-
-  days.forEach((day, dayIndex) => {
-    (day?.courses || []).forEach((course) => {
-      const start = Math.max(1, Math.min(11, Number(course.startSlot) || 1));
-      const end = Math.max(start, Math.min(11, Number(course.endSlot) || start));
-      const left = labelWidth + dayIndex * columnWidth + 7;
-      const top = summaryHeight + headerHeight + (start - 1) * rowHeight + 6;
-      const courseHeight = (end - start + 1) * rowHeight - 13;
-      const index = paletteIndex(course);
-      const rect = new Rect(left, top, columnWidth - 14, courseHeight);
-      roundedRect(ctx, rect, 13, color(TINTS[index], DARK_TINTS[index]), color(ACCENTS[index]));
-      canvasText(ctx, compactCourseName(course.name), new Rect(left + 5, top + Math.max(8, courseHeight / 2 - 28), columnWidth - 24, Math.min(58, courseHeight - 8)), Font.boldSystemFont(20), color("#27364a", "#f8fafc"), "center");
-      if (course.location && courseHeight > 88) {
-        canvasText(ctx, "@" + course.location, new Rect(left + 5, top + courseHeight - 29, columnWidth - 24, 22), Font.systemFont(15), color("#526078", "#cbd5e1"), "center");
-      }
-    });
-  });
-  return ctx.getImage();
+function renderTwoDay(widget, data) {
+  const today = resolveDay(data, 0);
+  const tomorrow = resolveDay(data, 1);
+  const heading = widget.addStack();
+  heading.layoutHorizontally();
+  addLine(heading, "两日课表", Font.boldSystemFont(16), color("#172033", "#f8fafc"));
+  heading.addSpacer();
+  addLine(heading, shortDate(today?.date) + " - " + shortDate(tomorrow?.date), Font.systemFont(10), color("#667085", "#cbd5e1"));
+  widget.addSpacer(10);
+  const content = widget.addStack();
+  content.layoutHorizontally();
+  addTwoDayColumn(content, today);
+  content.addSpacer(10);
+  const divider = content.addStack();
+  divider.backgroundColor = color("#dfe6ef", "#334155");
+  divider.size = new Size(1, 250);
+  content.addSpacer(10);
+  addTwoDayColumn(content, tomorrow);
 }
 
 function normalizedStyle() {
   if (["upcoming", "near", "临近", "临近课程"].includes(STYLE_PARAMETER)) return "upcoming";
   if (["split", "next", "当前接下来", "当前/接下来"].includes(STYLE_PARAMETER)) return "split";
   if (["today", "今日", "今日课程"].includes(STYLE_PARAMETER)) return "today";
-  if (["week", "weekly", "整周", "整周课表"].includes(STYLE_PARAMETER)) return "week";
+  if (["twoday", "two-day", "两日", "两日课表"].includes(STYLE_PARAMETER)) return "twoday";
   if (FAMILY === "small") return "upcoming";
-  if (FAMILY === "large") return "week";
-  return "split";
+  if (FAMILY === "large") return "twoday";
+  return "today";
 }
 
 async function render() {
@@ -396,9 +356,8 @@ async function render() {
   widget.setPadding(12, 12, 12, 12);
   widget.refreshAfterDate = new Date(Date.now() + 15 * 60 * 1000);
   const style = normalizedStyle();
-  if (style === "week" && FAMILY === "large") {
-    widget.setPadding(0, 0, 0, 0);
-    widget.backgroundImage = drawWeekImage(data);
+  if (style === "twoday" && FAMILY === "large") {
+    renderTwoDay(widget, data);
   } else if (style === "today") {
     renderToday(widget, data, FAMILY === "large");
   } else if (style === "split" && FAMILY !== "small") {

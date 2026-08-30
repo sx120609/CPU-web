@@ -125,7 +125,7 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
     private static RemoteViews baseViews(Context context, WidgetMode mode) {
         int layout;
         if (mode == WidgetMode.LARGE) {
-            layout = R.layout.widget_schedule_week;
+            layout = R.layout.widget_schedule_two_day;
         } else if (mode == WidgetMode.TODAY_LARGE) {
             layout = R.layout.widget_schedule_today_large;
         } else if (mode == WidgetMode.TODAY_WIDE) {
@@ -203,15 +203,14 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
     }
 
     private static void renderToday(RemoteViews views, JSONObject data, boolean large) {
-        JSONObject day = fullDayForDate(data, deviceDateOffset(0));
+        JSONObject day = fullDayForDate(data, deviceDateOffset(0), 0);
         showBitmap(views, ScheduleWidgetCardRenderer.renderToday(day, large));
     }
 
     private static void renderLarge(RemoteViews views, JSONObject data) {
-        JSONArray days = data.optJSONArray("weekDays");
-        if (days == null || days.length() == 0) days = data.optJSONArray("days");
-        int week = data.optInt("displayWeek", data.optInt("week", 0));
-        showBitmap(views, ScheduleWidgetWeekRenderer.render(days, week));
+        JSONObject today = fullDayForDate(data, deviceDateOffset(0), 0);
+        JSONObject tomorrow = fullDayForDate(data, deviceDateOffset(1), 1);
+        showBitmap(views, ScheduleWidgetCardRenderer.renderTwoDay(today, tomorrow));
     }
 
     private static void showBitmap(RemoteViews views, Bitmap bitmap) {
@@ -289,7 +288,7 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
         return null;
     }
 
-    private static JSONObject fullDayForDate(JSONObject data, String targetDate) {
+    private static JSONObject fullDayForDate(JSONObject data, String targetDate, int fallbackOffset) {
         for (String key : new String[]{"weekDays", "days"}) {
             JSONArray days = data.optJSONArray(key);
             if (days == null) continue;
@@ -298,7 +297,7 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
                 if (dateMatches(day, targetDate)) return day;
             }
         }
-        return resolveDay(data, 0);
+        return resolveDay(data, fallbackOffset);
     }
 
     private static String weekForDay(JSONObject data, JSONObject day) {

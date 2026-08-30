@@ -557,7 +557,7 @@
         {{ widgetCopyMessage }}
       </p>
       <p class="widget-copy-message">
-        同一脚本可添加多次：小号默认“临近课程”，中号默认“当前/接下来”，大号默认“整周课表”；在小组件 Parameter 中填写“今日课程”，可切换为今日列表样式。
+        同一脚本可添加多次：小号默认“临近课程”，中号默认“今日课程”，大号默认“两日课表”；在小组件 Parameter 中填写“当前/接下来”，可切换为双课程样式。
       </p>
       <p class="support-note">
         仍有疑问，建议
@@ -590,7 +590,7 @@
         <li>确认无误后回到桌面，长按空白处，进入编辑模式并选择添加小组件。</li>
         <li>找到 Scriptable 小组件并添加到桌面。</li>
         <li>添加后长按小组件，选择编辑小组件，把 Script 设为刚才导入的课表脚本。</li>
-        <li>需要其他样式时，可再次添加同一脚本，并在 Parameter 填写“临近课程”“当前/接下来”“今日课程”或“整周课表”。</li>
+        <li>需要其他样式时，可再次添加同一脚本，并在 Parameter 填写“临近课程”“当前/接下来”“今日课程”或“两日课表”。</li>
       </ol>
       <p class="widget-countdown">
         {{ widgetInstructionCountdown > 0 ? `请先阅读说明，${widgetInstructionCountdown} 秒后可继续。` : "已可继续打开 Scriptable。" }}

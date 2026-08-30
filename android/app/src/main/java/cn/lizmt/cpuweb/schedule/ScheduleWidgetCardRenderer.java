@@ -87,6 +87,133 @@ final class ScheduleWidgetCardRenderer {
         return bitmap;
     }
 
+    static Bitmap renderTwoDay(JSONObject today, JSONObject tomorrow) {
+        Bitmap bitmap = Bitmap.createBitmap(LARGE_SIZE, LARGE_SIZE, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bitmap);
+        canvas.drawColor(BACKGROUND);
+        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+        paint.setStyle(Paint.Style.FILL);
+        paint.setTextAlign(Paint.Align.LEFT);
+        paint.setColor(PRIMARY_TEXT);
+        paint.setTextSize(36f);
+        paint.setFakeBoldText(true);
+        canvas.drawText("两日课表", 38f, 58f, paint);
+
+        paint.setTextAlign(Paint.Align.RIGHT);
+        paint.setColor(SECONDARY_TEXT);
+        paint.setTextSize(22f);
+        paint.setFakeBoldText(false);
+        canvas.drawText(
+                compactDate(today == null ? "" : today.optString("date", ""))
+                        + " — "
+                        + compactDate(tomorrow == null ? "" : tomorrow.optString("date", "")),
+                LARGE_SIZE - 38f,
+                54f,
+                paint
+        );
+
+        drawDayPanel(canvas, paint, today, new RectF(34f, 82f, 450f, 886f));
+        drawDayPanel(canvas, paint, tomorrow, new RectF(470f, 82f, 886f, 886f));
+        return bitmap;
+    }
+
+    private static void drawDayPanel(Canvas canvas, Paint paint, JSONObject day, RectF panel) {
+        paint.setStyle(Paint.Style.FILL);
+        paint.setColor(Color.WHITE);
+        canvas.drawRoundRect(panel, 26f, 26f, paint);
+        paint.setStyle(Paint.Style.STROKE);
+        paint.setStrokeWidth(2f);
+        paint.setColor(Color.rgb(226, 234, 242));
+        canvas.drawRoundRect(panel, 26f, 26f, paint);
+
+        String date = compactDate(day == null ? "" : day.optString("date", ""));
+        String label = day == null ? "" : day.optString("label", "");
+        paint.setStyle(Paint.Style.FILL);
+        paint.setTextAlign(Paint.Align.LEFT);
+        paint.setColor(PRIMARY_TEXT);
+        paint.setTextSize(29f);
+        paint.setFakeBoldText(true);
+        canvas.drawText(date.isEmpty() ? "课程" : date, panel.left + 22f, panel.top + 43f, paint);
+        float dateWidth = paint.measureText(date.isEmpty() ? "课程" : date);
+        paint.setColor("周六".equals(label) || "周日".equals(label)
+                ? Color.rgb(244, 63, 94)
+                : Color.rgb(15, 143, 127));
+        canvas.drawText(label, panel.left + 32f + dateWidth, panel.top + 43f, paint);
+
+        JSONArray source = day == null ? null : day.optJSONArray("courses");
+        List<JSONObject> courses = new ArrayList<>();
+        if (source != null) {
+            for (int index = 0; index < source.length(); index++) {
+                JSONObject course = source.optJSONObject(index);
+                if (course != null) courses.add(course);
+            }
+        }
+        if (courses.isEmpty()) {
+            paint.setTextAlign(Paint.Align.CENTER);
+            paint.setColor(MUTED_TEXT);
+            paint.setTextSize(25f);
+            paint.setFakeBoldText(true);
+            canvas.drawText("没有课程", panel.centerX(), panel.centerY() + 10f, paint);
+            paint.setTextAlign(Paint.Align.LEFT);
+            paint.setFakeBoldText(false);
+            return;
+        }
+
+        int limit = 5;
+        int count = Math.min(courses.size(), limit);
+        float listTop = panel.top + 68f;
+        float listBottom = panel.bottom - (courses.size() > limit ? 34f : 16f);
+        float gap = 10f;
+        float rowHeight = Math.min(125f, (listBottom - listTop - gap * (count - 1)) / count);
+        for (int index = 0; index < count; index++) {
+            JSONObject course = courses.get(index);
+            int color = colorIndex(course);
+            float rowTop = listTop + index * (rowHeight + gap);
+            RectF row = new RectF(panel.left + 16f, rowTop, panel.right - 16f, rowTop + rowHeight);
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(TINTS[color]);
+            canvas.drawRoundRect(row, 18f, 18f, paint);
+            drawBar(canvas, paint, row.left, row.top + 9f, 8f, row.height() - 18f, ACCENTS[color]);
+
+            float textLeft = row.left + 26f;
+            float timeWidth = 96f;
+            paint.setTextAlign(Paint.Align.LEFT);
+            paint.setColor(PRIMARY_TEXT);
+            paint.setTextSize(27f);
+            paint.setFakeBoldText(true);
+            canvas.drawText(
+                    fit(course.optString("name", "课程"), paint, row.width() - timeWidth - 50f),
+                    textLeft,
+                    row.top + row.height() * 0.43f,
+                    paint
+            );
+            paint.setColor(SECONDARY_TEXT);
+            paint.setTextSize(20f);
+            paint.setFakeBoldText(false);
+            canvas.drawText(
+                    fit(courseMeta(course), paint, row.width() - 48f),
+                    textLeft,
+                    row.top + row.height() * 0.72f,
+                    paint
+            );
+            paint.setTextAlign(Paint.Align.RIGHT);
+            paint.setColor(PRIMARY_TEXT);
+            paint.setTextSize(22f);
+            paint.setFakeBoldText(true);
+            canvas.drawText(course.optString("startTime", "--:--"), row.right - 15f, row.top + row.height() * 0.43f, paint);
+        }
+        if (courses.size() > limit) {
+            paint.setTextAlign(Paint.Align.RIGHT);
+            paint.setColor(MUTED_TEXT);
+            paint.setTextSize(20f);
+            paint.setFakeBoldText(false);
+            canvas.drawText("还有 " + (courses.size() - limit) + " 门课程", panel.right - 18f, panel.bottom - 10f, paint);
+        }
+        paint.setTextAlign(Paint.Align.LEFT);
+        paint.setFakeBoldText(false);
+    }
+
     private static void drawUpcomingCompact(Canvas canvas, Paint paint, List<JSONObject> courses) {
         JSONObject current = courses.get(0);
         int color = colorIndex(current);

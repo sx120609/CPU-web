@@ -24,7 +24,7 @@ import static org.junit.Assert.assertTrue;
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 public class ScheduleWidgetCardRendererTest {
     @Test
-    public void rendersAllFourReferenceCardStyles() throws Exception {
+    public void rendersAllFiveReferenceCardStyles() throws Exception {
         JSONObject day = new JSONObject()
                 .put("date", "2026-08-31")
                 .put("label", "周一")
@@ -37,11 +37,19 @@ public class ScheduleWidgetCardRendererTest {
         List<JSONObject> firstTwo = new ArrayList<>();
         firstTwo.add(day.getJSONArray("courses").getJSONObject(0));
         firstTwo.add(day.getJSONArray("courses").getJSONObject(1));
+        JSONObject tomorrow = new JSONObject()
+                .put("date", "2026-09-01")
+                .put("label", "周二")
+                .put("courses", new JSONArray()
+                        .put(course("药剂学", "E104", "苏老师", "09:55", "11:35"))
+                        .put(course("药物分析", "B211", "陈老师", "13:30", "15:10"))
+                        .put(course("人工智能药学", "B201", "杨老师", "18:30", "20:10")));
 
         assertPreview(ScheduleWidgetCardRenderer.renderUpcoming(day, firstTwo, false), 520, 520, "upcoming-compact.png");
         assertPreview(ScheduleWidgetCardRenderer.renderUpcoming(day, firstTwo, true), 920, 410, "upcoming-wide.png");
         assertPreview(ScheduleWidgetCardRenderer.renderToday(day, false), 920, 410, "today-wide.png");
         assertPreview(ScheduleWidgetCardRenderer.renderToday(day, true), 920, 920, "today-large.png");
+        assertPreview(ScheduleWidgetCardRenderer.renderTwoDay(day, tomorrow), 920, 920, "two-day-large.png");
     }
 
     private static void assertPreview(Bitmap bitmap, int width, int height, String name) throws Exception {

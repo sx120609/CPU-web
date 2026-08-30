@@ -10,9 +10,9 @@
         android:id="@+id/widget_content_image"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:contentDescription="临近课程"
+        android:contentDescription="今天和明天的课程"
         android:scaleType="fitCenter"
-        android:src="@drawable/widget_schedule_upcoming_compact_preview" />
+        android:src="@drawable/widget_schedule_two_day_preview" />
 
     <TextView
         android:id="@+id/widget_message"

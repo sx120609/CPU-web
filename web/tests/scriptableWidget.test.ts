@@ -13,11 +13,10 @@ type Course = {
   endSlot?: number;
 };
 
-type WidgetResult = TextContainer & { backgroundImage?: { texts: string[] } };
+type WidgetResult = TextContainer;
 
 class TextContainer {
   texts: string[];
-  backgroundImage?: { texts: string[] };
 
   constructor(texts: string[] = []) {
     this.texts = texts;
@@ -50,7 +49,6 @@ async function runWidget(input: {
   parameter?: string;
 }) {
   const fixedNow = new Date(input.fixedNow).getTime();
-  const drawnTexts: string[] = [];
   let rendered: WidgetResult | undefined;
 
   class FixedDate extends Date {
@@ -86,33 +84,8 @@ async function runWidget(input: {
     }
   }
 
-  class DrawContext {
-    setFillColor() {}
-    setStrokeColor() {}
-    setLineWidth() {}
-    setFont() {}
-    setTextColor() {}
-    setTextAlignedLeft() {}
-    setTextAlignedCenter() {}
-    setTextAlignedRight() {}
-    fillRect() {}
-    addPath() {}
-    fillPath() {}
-    strokePath() {}
-    drawTextInRect(value: string) { drawnTexts.push(String(value)); }
-    getImage() { return { texts: [...drawnTexts] }; }
-  }
-
-  class Path {
-    addRoundedRect() {}
-  }
-
   class Size {
-    constructor(_width: number, _height: number) {}
-  }
-
-  class Rect {
-    constructor(_x: number, _y: number, _width: number, _height: number) {}
+    constructor(public width: number, public height: number) {}
   }
 
   const source = buildScriptableWidgetScript("https://example.test/widget");
@@ -121,10 +94,7 @@ async function runWidget(input: {
     DateFormatter,
     Request,
     ListWidget,
-    DrawContext,
-    Path,
     Size,
-    Rect,
     Color: class Color {
       constructor(_value: string) {}
       static dynamic(light: unknown) { return light; }
@@ -194,7 +164,7 @@ test("Scriptable upcoming style removes courses that have already ended", async 
   assert.ok(rendered.texts.includes("下一节课"));
 });
 
-test("Scriptable parameter exposes today and full-week variants", async () => {
+test("Scriptable parameter exposes today and two-day variants", async () => {
   const today = {
     day: 1,
     label: "周一",
@@ -211,20 +181,55 @@ test("Scriptable parameter exposes today and full-week variants", async () => {
     label: ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][index],
     date: index === 0 ? "2026-08-31" : `2026-09-0${index}`,
     isToday: index === 0,
-    courses: index === 0 ? today.courses : [],
+    courses: index === 0
+      ? today.courses
+      : index === 1
+        ? [course("药剂学", "13:30", "15:10", 5, 6)]
+        : [],
   }));
   const payload = { week: 1, displayWeek: 1, strictDate: true, today, days: [today], weekDays };
 
   const medium = await runWidget({ payload, fixedNow: "2026-08-31T00:00:00.000Z", family: "medium", parameter: "今日课程" });
-  assert.ok(medium.texts.includes("高等数学"));
-  assert.ok(medium.texts.includes("数据库原理"));
-  assert.ok(!medium.texts.includes("工程伦理"));
+  assert.ok(medium.texts.includes("高等数学 · B201"));
+  assert.ok(medium.texts.includes("数据库原理 · B201"));
+  assert.ok(medium.texts.includes("工程伦理 · B201"));
 
   const large = await runWidget({ payload, fixedNow: "2026-08-31T00:00:00.000Z", family: "large", parameter: "今日课程" });
   assert.ok(large.texts.includes("工程伦理"));
 
-  const weekly = await runWidget({ payload, fixedNow: "2026-08-31T00:00:00.000Z", family: "large", parameter: "整周课表" });
-  assert.ok(weekly.backgroundImage);
-  assert.ok(weekly.backgroundImage.texts.includes("第 1 周"));
-  assert.ok(weekly.backgroundImage.texts.includes("高等数学"));
+  const twoDay = await runWidget({ payload, fixedNow: "2026-08-31T00:00:00.000Z", family: "large" });
+  assert.ok(twoDay.texts.includes("两日课表"));
+  assert.ok(twoDay.texts.includes("高等数学"));
+  assert.ok(twoDay.texts.includes("药剂学"));
+  assert.ok(twoDay.texts.includes("8.31"));
+  assert.ok(twoDay.texts.includes("9.1"));
+
+  const removedWeekParameter = await runWidget({ payload, fixedNow: "2026-08-31T00:00:00.000Z", family: "large", parameter: "整周课表" });
+  assert.ok(removedWeekParameter.texts.includes("两日课表"));
+  assert.ok(!removedWeekParameter.texts.includes("整周课表"));
+});
+
+test("Scriptable medium defaults to the compact full-day timeline", async () => {
+  const today = {
+    day: 1,
+    label: "周一",
+    date: "2026-08-31",
+    isToday: true,
+    courses: [
+      course("药物设计学", "08:00", "09:40", 1, 2),
+      course("药剂学", "09:55", "11:35", 3, 4),
+      course("药物化学", "13:30", "15:10", 5, 6),
+      course("医学免疫学", "18:30", "20:10", 9, 10),
+    ],
+  };
+  const rendered = await runWidget({
+    payload: { week: 1, strictDate: true, today, days: [today] },
+    fixedNow: "2026-08-31T00:00:00.000Z",
+    family: "medium",
+  });
+
+  assert.ok(rendered.texts.includes("药物设计学 · B201"));
+  assert.ok(rendered.texts.includes("医学免疫学 · B201"));
+  assert.ok(!rendered.texts.includes("当前"));
+  assert.ok(!rendered.texts.includes("接下来"));
 });
