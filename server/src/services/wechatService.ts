@@ -31,6 +31,13 @@ const WECHAT_SCHEDULE_EVENT_QUERIES = new Map<string, WechatScheduleQuery>([
   ["SHIJIAN_THIS_WEEK_SCHEDULE", { scope: "week", label: "本周课表", weekOffset: 0 }],
   ["SHIJIAN_NEXT_WEEK_SCHEDULE", { scope: "week", label: "下周课表", weekOffset: 1 }],
 ]);
+const WECHAT_SCHEDULE_QUICK_COMMANDS = [
+  { id: "SHIJIAN_QUERY_TODAY", content: "今日课表" },
+  { id: "SHIJIAN_QUERY_TOMORROW", content: "明日课表" },
+  { id: "SHIJIAN_QUERY_THIS_WEEK", content: "本周课表" },
+  { id: "SHIJIAN_QUERY_NEXT_WEEK", content: "下周课表" },
+  { id: "SHIJIAN_QUERY_WEEK_AFTER_NEXT", content: "下下周课表" },
+];
 const DEFAULT_NOTIFY_CATEGORIES = ["reply", "mention", "like", "system", "service-tool", "lost-found", "school-feed"];
 const NOTIFY_CATEGORY_OPTIONS = new Set(DEFAULT_NOTIFY_CATEGORIES);
 const MAX_WECHAT_TEXT_LENGTH = 1800;
@@ -222,11 +229,10 @@ export function buildWechatBoundMenu(siteOrigin = normalizedSiteOrigin()) {
       {
         name: "校园",
         sub_button: [
+          view("我的课表", "/schedule"),
           click("今日课表", "SHIJIAN_TODAY_SCHEDULE"),
-          click("明日课表", "SHIJIAN_TOMORROW_SCHEDULE"),
-          click("本周课表", "SHIJIAN_THIS_WEEK_SCHEDULE"),
-          click("下周课表", "SHIJIAN_NEXT_WEEK_SCHEDULE"),
-          view("完整课表", "/schedule"),
+          view("教务中心", "/jwxt"),
+          view("校园服务", "/services"),
         ],
       },
       {
@@ -629,6 +635,25 @@ export async function sendWechatCustomerText(openId: string, content: string) {
   return lastResult;
 }
 
+export function buildWechatScheduleCommandMenu(openId: string, currentLabel: string) {
+  return {
+    touser: openId,
+    msgtype: "msgmenu",
+    msgmenu: {
+      head_content: "查询其他课表",
+      list: WECHAT_SCHEDULE_QUICK_COMMANDS.filter((item) => item.content !== currentLabel),
+      tail_content: "",
+    },
+  };
+}
+
+export async function sendWechatScheduleCommandMenu(openId: string, currentLabel: string) {
+  return callWechatApi("/cgi-bin/message/custom/send", {
+    method: "POST",
+    body: buildWechatScheduleCommandMenu(openId, currentLabel),
+  });
+}
+
 export async function sendWechatCustomerImage(openId: string, image: Buffer) {
   const mediaId = await uploadWechatTemporaryImage(image);
   await callWechatApi("/cgi-bin/message/custom/send", {
@@ -744,6 +769,7 @@ function queueWechatScheduleReply(
         description: "切换日期与周次，并使用完整课表工具",
         url: markWechatServiceClientUrl("/schedule"),
       }).catch(() => undefined);
+      await sendWechatScheduleCommandMenu(openId, schedule.query.label).catch(() => undefined);
       await logWechatMessage({
         direction: "outbound",
         eventType: `schedule:${schedule.query.scope}:${schedule.week}`,
@@ -1461,7 +1487,7 @@ function renderWechatWelcome() {
   return [
     "欢迎关注拾小间。",
     "可直接发送文字、语音或图片向拾间AI提问；需要生图时会直接发送生成图片。",
-    "绑定后还可从菜单查看今日、明日、本周和下周课表，并接收已开启的站内通知。",
+    "绑定后可从菜单进入课表、教务中心和校园服务，并接收已开启的站内通知。",
     renderWechatFollowSettingsTip(),
     `绑定账号：${wechatSettingsUrl()}`,
   ].join("\n");

@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   buildWechatDefaultMenu,
   buildWechatBoundMenu,
+  buildWechatScheduleCommandMenu,
   buildWechatSubscriptionNotificationPayload,
   createWechatJsSdkSignature,
   decryptWechatPayload,
@@ -126,13 +127,29 @@ test("builds a three-column HTTPS custom menu for campus, community, and account
   assert.throws(() => buildWechatDefaultMenu("http://localhost:5173"), /HTTPS/);
 });
 
-test("builds a personalized bound menu with common schedule-range events", () => {
+test("builds a balanced personalized bound menu for schedules and campus portals", () => {
   const menu = buildWechatBoundMenu("https://cputime.cn");
   const campus = menu.button[0].sub_button;
   assert.deepEqual(menu.button.map((group) => group.name), ["校园", "社区", "我的"]);
-  assert.deepEqual(campus[0], { type: "click", name: "今日课表", key: "SHIJIAN_TODAY_SCHEDULE" });
-  assert.deepEqual(campus.slice(0, 4).map((item) => item.name), ["今日课表", "明日课表", "本周课表", "下周课表"]);
-  assert.equal(new URL(campus[4].url!).searchParams.get("client"), "wechat-service");
+  assert.deepEqual(campus.map((item) => item.name), ["我的课表", "今日课表", "教务中心", "校园服务"]);
+  assert.deepEqual(campus[1], { type: "click", name: "今日课表", key: "SHIJIAN_TODAY_SCHEDULE" });
+  assert.deepEqual(
+    [campus[0], campus[2], campus[3]].map((item) => new URL(item.url!).pathname),
+    ["/schedule", "/jwxt", "/services"],
+  );
+  assert.ok([campus[0], campus[2], campus[3]].every((item) => new URL(item.url!).searchParams.get("client") === "wechat-service"));
+});
+
+test("offers contextual clickable schedule commands without repeating the current query", () => {
+  const message = buildWechatScheduleCommandMenu("openid-1", "今日课表");
+  assert.equal(message.msgtype, "msgmenu");
+  assert.equal(message.msgmenu.head_content, "查询其他课表");
+  assert.equal(message.msgmenu.tail_content, "");
+  assert.deepEqual(
+    message.msgmenu.list.map((item) => item.content),
+    ["明日课表", "本周课表", "下周课表", "下下周课表"],
+  );
+  assert.ok(message.msgmenu.list.every((item) => item.id && item.content !== "今日课表"));
 });
 
 test("marks same-site service-account links without changing external links", () => {
