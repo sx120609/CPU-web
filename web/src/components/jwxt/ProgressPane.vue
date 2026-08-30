@@ -1,5 +1,6 @@
 <template>
   <div class="progress-pane" v-loading="loading">
+    <AcademicDataSourceBadge :source="parsed?.source" />
     <div class="data-note">
       以下信息整理自教务系统，最终请以学校和学院通知为准。
     </div>
@@ -158,6 +159,7 @@
 
 <script setup lang="ts">
 import AppIcon from "@/components/common/AppIcon.vue";
+import AcademicDataSourceBadge from "@/components/jwxt/AcademicDataSourceBadge.vue";
 import { ref, computed, watch, onMounted, onBeforeUnmount } from "vue";
 
 const props = defineProps<{ data: any; loading?: boolean }>();

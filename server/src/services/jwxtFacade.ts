@@ -26,12 +26,14 @@ import {
   parseSchedule,
 } from "./jwxtParser";
 
-async function modernFirst<T>(modern: () => Promise<T>, legacy: () => Promise<T>) {
+export type JwxtDataSource = "modern" | "legacy";
+
+export async function modernFirst<T extends object>(modern: () => Promise<T>, legacy: () => Promise<T>) {
   try {
-    return await modern();
+    return { ...await modern(), source: "modern" as const };
   } catch (modernError) {
     try {
-      return await legacy();
+      return { ...await legacy(), source: "legacy" as const };
     } catch {
       throw modernError;
     }
@@ -137,7 +139,8 @@ export async function getMidtermGrades(token: string, args: { semester?: string 
     kcmc: "",
     xsfs: "all",
   }));
-  return parsed.semesters.length ? parsed : { ...parsed, semesters };
+  const result = parsed.semesters.length ? parsed : { ...parsed, semesters };
+  return { ...result, source: "legacy" as const };
 }
 
 export async function getExams(token: string, args: { semester?: string; type?: string } = {}) {

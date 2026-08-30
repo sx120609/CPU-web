@@ -23,6 +23,7 @@
       <div v-else class="top-placeholder">课表</div>
 
       <div class="top-actions">
+        <AcademicDataSourceBadge v-if="!isGraduateSource" :source="parsed?.source" compact />
         <div v-if="parsed" class="view-switch" aria-label="切换课表视图">
           <button type="button" :class="{ active: viewMode === 'day' }" :disabled="loading" @click="setViewMode('day')">日</button>
           <button type="button" :class="{ active: viewMode === 'week' }" :disabled="loading" @click="setViewMode('week')">周</button>
@@ -340,6 +341,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { Aim, ArrowLeft, ArrowRight, Moon, Refresh } from "@element-plus/icons-vue";
+import AcademicDataSourceBadge from "@/components/jwxt/AcademicDataSourceBadge.vue";
 import { jwxtApi } from "@/api/jwxt";
 import { useAppearanceStore } from "@/stores/appearance";
 import { useAuthStore } from "@/stores/auth";

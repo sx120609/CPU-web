@@ -176,6 +176,14 @@ export interface ScheduleWidgetTokenResult {
   endpoint: string;
 }
 
+export type JwxtDataSource = "modern" | "legacy";
+
+type JwxtDataResponse = {
+  html?: string;
+  parsed: any;
+  source: JwxtDataSource;
+};
+
 export const jwxtApi = {
   beginLogin: (options?: { silent?: boolean }) =>
     inst.post<unknown, BeginLoginResult>(
@@ -204,32 +212,32 @@ export const jwxtApi = {
       options?.silent ? ({ suppressErrorMessage: true } as any) : undefined
     ),
   schedule: (params?: { semester?: string; week?: string; refresh?: boolean | string }, options?: { silent?: boolean }) =>
-    inst.get<unknown, { html: string; parsed: any }>("/schedule", {
+    inst.get<unknown, JwxtDataResponse>("/schedule", {
       params,
       ...(options?.silent ? ({ suppressErrorMessage: true } as any) : undefined),
     }),
   grades: (params?: { semester?: string }, options?: { silent?: boolean }) =>
-    inst.get<unknown, { html: string; parsed: any }>("/grades", {
+    inst.get<unknown, JwxtDataResponse>("/grades", {
       params,
       ...(options?.silent ? ({ suppressErrorMessage: true } as any) : undefined),
     }),
   midtermGrades: (params?: { semester?: string }, options?: { silent?: boolean }) =>
-    inst.get<unknown, { html: string; parsed: any }>("/midterm-grades", {
+    inst.get<unknown, JwxtDataResponse>("/midterm-grades", {
       params,
       ...(options?.silent ? ({ suppressErrorMessage: true } as any) : undefined),
     }),
   exams: (params?: { semester?: string; type?: string }, options?: { silent?: boolean }) =>
-    inst.get<unknown, { html: string; parsed: any }>("/exams", {
+    inst.get<unknown, JwxtDataResponse>("/exams", {
       params,
       ...(options?.silent ? ({ suppressErrorMessage: true } as any) : undefined),
     }),
-  progress: (options?: { silent?: boolean }) => inst.get<unknown, { parsed: any }>("/progress", {
+  progress: (options?: { silent?: boolean }) => inst.get<unknown, JwxtDataResponse>("/progress", {
     ...(options?.silent ? ({ suppressErrorMessage: true } as any) : undefined),
   }),
-  pyfa: (options?: { silent?: boolean }) => inst.get<unknown, { parsed: any }>("/pyfa", {
+  pyfa: (options?: { silent?: boolean }) => inst.get<unknown, JwxtDataResponse>("/pyfa", {
     ...(options?.silent ? ({ suppressErrorMessage: true } as any) : undefined),
   }),
-  calendar: (params?: { semester?: string }, options?: { silent?: boolean }) => inst.get<unknown, { parsed: any }>("/calendar", {
+  calendar: (params?: { semester?: string }, options?: { silent?: boolean }) => inst.get<unknown, JwxtDataResponse>("/calendar", {
     params,
     ...(options?.silent ? ({ suppressErrorMessage: true } as any) : undefined),
   }),

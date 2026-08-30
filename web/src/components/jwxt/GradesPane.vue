@@ -29,6 +29,7 @@
         </label>
       </div>
       <div class="ctrl-right">
+        <AcademicDataSourceBadge :source="parsed.source" />
         <span class="stat desktop-stat"><AppIcon name="course" /> 显示 {{ filteredList.length }} / {{ parsed.list.length }} 门</span>
         <span class="stat desktop-stat">· 统计 {{ statList.length }} 门</span>
         <span class="stat desktop-stat" v-if="statCredits">· {{ statCredits.toFixed(1) }} 学分</span>
@@ -220,6 +221,7 @@
 
 <script setup lang="ts">
 import AppIcon from "@/components/common/AppIcon.vue";
+import AcademicDataSourceBadge from "@/components/jwxt/AcademicDataSourceBadge.vue";
 import { ref, computed, watch, onMounted, onBeforeUnmount } from "vue";
 import { Check, Close, Filter, InfoFilled, Switch } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";

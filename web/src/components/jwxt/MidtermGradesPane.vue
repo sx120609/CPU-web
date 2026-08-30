@@ -14,6 +14,7 @@
         </label>
       </div>
       <div class="ctrl-right">
+        <AcademicDataSourceBadge :source="parsed.source" />
         <span class="stat"><AppIcon name="document" /> {{ publishedCount }} / {{ filteredList.length }} 门已出分</span>
         <span class="stat" v-if="midtermAverage !== null">
           · 期中均分 <b>{{ midtermAverage.toFixed(1) }}</b>
@@ -115,6 +116,7 @@
 
 <script setup lang="ts">
 import AppIcon from "@/components/common/AppIcon.vue";
+import AcademicDataSourceBadge from "@/components/jwxt/AcademicDataSourceBadge.vue";
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { jwxtApi } from "@/api/jwxt";
 import { useJwxtStore } from "@/stores/jwxt";

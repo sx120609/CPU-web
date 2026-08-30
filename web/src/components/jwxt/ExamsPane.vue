@@ -18,6 +18,7 @@
         </label>
       </div>
       <div class="ctrl-right" v-if="parsed">
+        <AcademicDataSourceBadge :source="parsed.source" />
         <span class="stat">{{ parsed.list?.length ?? 0 }} 场考试</span>
       </div>
     </div>
@@ -83,6 +84,7 @@
 
 <script setup lang="ts">
 import AppIcon from "@/components/common/AppIcon.vue";
+import AcademicDataSourceBadge from "@/components/jwxt/AcademicDataSourceBadge.vue";
 import { ref, computed, watch } from "vue";
 import { Calendar } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";

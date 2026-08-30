@@ -117,7 +117,8 @@ proxyJwxtRouter.post(
   async (req, res, next) => {
     try {
       const { token, semester, week } = req.body;
-      ok(res, { parsed: await getSchedule(token, { semester, week }) });
+      const parsed = await getSchedule(token, { semester, week });
+      ok(res, { parsed, source: parsed.source });
     } catch (e) { next(e); }
   },
 );
@@ -128,7 +129,8 @@ proxyJwxtRouter.post(
   async (req, res, next) => {
     try {
       const { token, semester } = req.body;
-      ok(res, { parsed: await getGrades(token, { semester }) });
+      const parsed = await getGrades(token, { semester });
+      ok(res, { parsed, source: parsed.source });
     } catch (e) { next(e); }
   },
 );
@@ -139,7 +141,8 @@ proxyJwxtRouter.post(
   async (req, res, next) => {
     try {
       const { token, semester } = req.body;
-      ok(res, { parsed: await getMidtermGrades(token, { semester }) });
+      const parsed = await getMidtermGrades(token, { semester });
+      ok(res, { parsed, source: parsed.source });
     } catch (e) { next(e); }
   },
 );
@@ -150,7 +153,8 @@ proxyJwxtRouter.post(
   async (req, res, next) => {
     try {
       const { token, semester, type } = req.body;
-      ok(res, { parsed: await getExams(token, { semester, type }) });
+      const parsed = await getExams(token, { semester, type });
+      ok(res, { parsed, source: parsed.source });
     } catch (e) { next(e); }
   },
 );
@@ -160,20 +164,23 @@ proxyJwxtRouter.post(
   validate(tokenSchema.extend({ semester: z.string().max(64).optional() })),
   async (req, res, next) => {
     try {
-      ok(res, { parsed: await getCalendar(req.body.token, { semester: req.body.semester }) });
+      const parsed = await getCalendar(req.body.token, { semester: req.body.semester });
+      ok(res, { parsed, source: parsed.source });
     } catch (e) { next(e); }
   },
 );
 
 proxyJwxtRouter.post("/v1/progress", validate(tokenSchema), async (req, res, next) => {
   try {
-    ok(res, { parsed: await getProgress(req.body.token) });
+    const parsed = await getProgress(req.body.token);
+    ok(res, { parsed, source: parsed.source });
   } catch (e) { next(e); }
 });
 
 proxyJwxtRouter.post("/v1/pyfa", validate(tokenSchema), async (req, res, next) => {
   try {
-    ok(res, { parsed: await getPyfa(req.body.token) });
+    const parsed = await getPyfa(req.body.token);
+    ok(res, { parsed, source: parsed.source });
   } catch (e) { next(e); }
 });
 
