@@ -87,11 +87,11 @@
           <div class="block-head latest-head">
             <div>
               <h3><AppIcon name="new" /> 最新</h3>
-              <span class="block-summary">全站最近发布与回复</span>
+              <span class="block-summary">全站最近发布</span>
             </div>
             <router-link to="/forum/latest" class="more">查看全部 →</router-link>
           </div>
-          <TopicListItem v-for="t in summary?.latestTopics ?? []" :key="'new-' + t.id" :topic="t" variant="simple" />
+          <TopicListItem v-for="t in summary?.latestTopics ?? []" :key="'new-' + t.id" :topic="t" variant="simple" time-mode="published" />
           <el-empty v-if="!summary?.latestTopics?.length" description="暂无内容" />
         </section>
       </div>

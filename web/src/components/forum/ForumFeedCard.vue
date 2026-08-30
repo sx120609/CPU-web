@@ -25,7 +25,7 @@
           <span v-if="topic.isAnonymous" class="anonymous-badge">匿名</span>
         </div>
         <div class="feed-context">
-          <span>{{ fmtRelative(topic.lastReplyAt || topic.createdAt) }}</span>
+          <span>{{ fmtRelative(displayedTime) }}</span>
           <span class="feed-dot">·</span>
           <span class="board-badge" :style="boardBadgeStyle">{{ topic.board?.name || "校园动态" }}</span>
         </div>
@@ -80,7 +80,10 @@ import { forumContentExcerpt, forumContentImages } from "@/utils/forumContent";
 import { cdnImageSrcset, cdnImageUrl } from "@/utils/cdnMedia";
 import { hasTrackedTopicImpression, queueTopicImpression } from "@/utils/topicImpressions";
 
-const props = withDefaults(defineProps<{ topic: Topic; rank?: number }>(), { rank: 0 });
+const props = withDefaults(defineProps<{ topic: Topic; rank?: number; timeMode?: "activity" | "published" }>(), {
+  rank: 0,
+  timeMode: "activity",
+});
 const route = useRoute();
 const router = useRouter();
 const cardRef = ref<HTMLElement | null>(null);
@@ -88,6 +91,7 @@ let impressionObserver: IntersectionObserver | null = null;
 let impressionTimer: ReturnType<typeof setTimeout> | null = null;
 
 const isSayTopic = computed(() => props.topic.metadata?._postMode === "say");
+const displayedTime = computed(() => props.timeMode === "published" ? props.topic.createdAt : props.topic.lastReplyAt || props.topic.createdAt);
 const contentExcerpt = computed(() => forumContentExcerpt(props.topic.content, isSayTopic.value ? 180 : 120));
 const displayTitle = computed(() => isSayTopic.value ? contentExcerpt.value || props.topic.title : props.topic.title);
 const excerpt = computed(() => isSayTopic.value ? "" : contentExcerpt.value && contentExcerpt.value !== props.topic.title ? contentExcerpt.value : "");

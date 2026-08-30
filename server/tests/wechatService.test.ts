@@ -22,7 +22,12 @@ import {
   verifyWechatSignature,
 } from "../src/services/wechatService";
 import { normalizeAudioTranscriptionsUrl } from "../src/services/audioTranscription";
-import { renderWechatTodayScheduleMarkdown } from "../src/services/wechatSchedule";
+import {
+  parseWechatScheduleRequest,
+  renderWechatScheduleMarkdown,
+  renderWechatTodayScheduleMarkdown,
+} from "../src/services/wechatSchedule";
+import { renderWechatScheduleImage } from "../src/services/wechatScheduleImage";
 
 test("verifies plaintext and encrypted callback signatures", () => {
   const token = "test-token";
@@ -121,12 +126,13 @@ test("builds a three-column HTTPS custom menu for campus, community, and account
   assert.throws(() => buildWechatDefaultMenu("http://localhost:5173"), /HTTPS/);
 });
 
-test("builds a personalized bound menu with a direct today-schedule event", () => {
+test("builds a personalized bound menu with common schedule-range events", () => {
   const menu = buildWechatBoundMenu("https://cputime.cn");
   const campus = menu.button[0].sub_button;
   assert.deepEqual(menu.button.map((group) => group.name), ["校园", "社区", "我的"]);
   assert.deepEqual(campus[0], { type: "click", name: "今日课表", key: "SHIJIAN_TODAY_SCHEDULE" });
-  assert.equal(new URL(campus[1].url!).searchParams.get("client"), "wechat-service");
+  assert.deepEqual(campus.slice(0, 4).map((item) => item.name), ["今日课表", "明日课表", "本周课表", "下周课表"]);
+  assert.equal(new URL(campus[4].url!).searchParams.get("client"), "wechat-service");
 });
 
 test("marks same-site service-account links without changing external links", () => {
@@ -219,6 +225,71 @@ test("renders a concise today-schedule image body", () => {
   assert.match(markdown, /第 3 周/);
   assert.match(markdown, /08:00-09:40  药物化学/);
   assert.match(markdown, /地点：D313/);
+});
+
+test("parses day, week, numbered-week, and weekday schedule requests", () => {
+  assert.deepEqual(parseWechatScheduleRequest("明天有什么课？"), {
+    scope: "day",
+    label: "明日课表",
+    dayOffset: 1,
+  });
+  assert.deepEqual(parseWechatScheduleRequest("下周课表"), {
+    scope: "week",
+    label: "下周课表",
+    weekOffset: 1,
+  });
+  assert.deepEqual(parseWechatScheduleRequest("第8教学周课表"), {
+    scope: "week",
+    label: "第 8 周课表",
+    weekNumber: 8,
+  });
+  assert.deepEqual(parseWechatScheduleRequest("下周三有什么课"), {
+    scope: "day",
+    label: "下周三课表",
+    weekOffset: 1,
+    weekday: 3,
+  });
+  assert.equal(parseWechatScheduleRequest("帮我规划下学期课程"), null);
+});
+
+test("renders a complete weekly schedule image body", () => {
+  const days = [
+    { day: 1, label: "周一", date: "2026-09-14", courses: [{ startTime: "08:00", endTime: "09:40", name: "药剂学", location: "E104" }] },
+    { day: 2, label: "周二", date: "2026-09-15", courses: [] },
+    { day: 3, label: "周三", date: "2026-09-16", courses: [{ startTime: "13:30", endTime: "15:10", name: "药物化学", teacher: "张老师" }] },
+  ];
+  const markdown = renderWechatScheduleMarkdown({
+    payload: { currentWeek: 3, teachingWeekActive: true, weekDays: days },
+    cached: false,
+    query: { scope: "week", label: "本周课表", weekOffset: 0 },
+    week: 3,
+    days,
+    scopeDescription: "第 3 周 · 2026-09-14 至 2026-09-20",
+  });
+  assert.match(markdown, /本周课表/);
+  assert.match(markdown, /周一 · 2026-09-14/);
+  assert.match(markdown, /08:00-09:40  药剂学/);
+  assert.match(markdown, /周三 · 2026-09-16/);
+  assert.match(markdown, /13:30-15:10  药物化学/);
+});
+
+test("renders service-account schedules with the timetable image renderer", () => {
+  const day = {
+    day: 3,
+    label: "周三",
+    date: "2026-09-16",
+    courses: [{ startSlot: 1, endSlot: 2, startTime: "08:00", endTime: "09:40", name: "药物化学", location: "D313", teacher: "张老师" }],
+  };
+  const image = renderWechatScheduleImage({
+    payload: { currentWeek: 3, teachingWeekActive: true },
+    cached: false,
+    query: { scope: "day", label: "明日课表", dayOffset: 1 },
+    week: 3,
+    day,
+    scopeDescription: "2026-09-16 · 第 3 周",
+  });
+  assert.deepEqual([...image.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+  assert.ok(image.length > 20_000);
 });
 
 test("recommends notification settings after the user follows the service account", () => {

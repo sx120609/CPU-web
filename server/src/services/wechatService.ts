@@ -11,7 +11,12 @@ import { prepareMediaLocalFileForProcessing } from "./mediaStorage";
 import { appendQqBotAiDisclosure } from "./qqbot/dailyAssistant";
 import { renderQqBotAiReplyImage } from "./qqbot/aiReplyImage";
 import { getFeatures, getSiteOrigin } from "./siteSettings";
-import { loadWechatTodaySchedule, renderWechatTodayScheduleMarkdown } from "./wechatSchedule";
+import {
+  loadWechatSchedule,
+  parseWechatScheduleRequest,
+  type WechatScheduleQuery,
+} from "./wechatSchedule";
+import { renderWechatScheduleImage } from "./wechatScheduleImage";
 
 const CONFIG_ID = 1;
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
@@ -20,7 +25,12 @@ const WECHAT_API_TIMEOUT_MS = 12_000;
 const WECHAT_TEMP_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 const WECHAT_INBOUND_MEDIA_MAX_BYTES = 15 * 1024 * 1024;
 const WECHAT_BOUND_TAG_NAME = "拾间已绑定";
-const WECHAT_TODAY_SCHEDULE_EVENT_KEY = "SHIJIAN_TODAY_SCHEDULE";
+const WECHAT_SCHEDULE_EVENT_QUERIES = new Map<string, WechatScheduleQuery>([
+  ["SHIJIAN_TODAY_SCHEDULE", { scope: "day", label: "今日课表", dayOffset: 0 }],
+  ["SHIJIAN_TOMORROW_SCHEDULE", { scope: "day", label: "明日课表", dayOffset: 1 }],
+  ["SHIJIAN_THIS_WEEK_SCHEDULE", { scope: "week", label: "本周课表", weekOffset: 0 }],
+  ["SHIJIAN_NEXT_WEEK_SCHEDULE", { scope: "week", label: "下周课表", weekOffset: 1 }],
+]);
 const DEFAULT_NOTIFY_CATEGORIES = ["reply", "mention", "like", "system", "service-tool", "lost-found", "school-feed"];
 const NOTIFY_CATEGORY_OPTIONS = new Set(DEFAULT_NOTIFY_CATEGORIES);
 const MAX_WECHAT_TEXT_LENGTH = 1800;
@@ -212,9 +222,11 @@ export function buildWechatBoundMenu(siteOrigin = normalizedSiteOrigin()) {
       {
         name: "校园",
         sub_button: [
-          click("今日课表", WECHAT_TODAY_SCHEDULE_EVENT_KEY),
+          click("今日课表", "SHIJIAN_TODAY_SCHEDULE"),
+          click("明日课表", "SHIJIAN_TOMORROW_SCHEDULE"),
+          click("本周课表", "SHIJIAN_THIS_WEEK_SCHEDULE"),
+          click("下周课表", "SHIJIAN_NEXT_WEEK_SCHEDULE"),
           view("完整课表", "/schedule"),
-          view("教务中心", "/jwxt"),
         ],
       },
       {
@@ -542,31 +554,31 @@ export async function processWechatInbound(message: WechatInboundMessage, option
     content: message.content,
     rawPayload: message,
   });
-  if (
-    message.msgType === "event"
-    && message.event.toLowerCase() === "click"
-    && message.eventKey === WECHAT_TODAY_SCHEDULE_EVENT_KEY
-  ) {
+  const scheduleEventQuery = message.msgType === "event" && message.event.toLowerCase() === "click"
+    ? WECHAT_SCHEDULE_EVENT_QUERIES.get(message.eventKey)
+    : undefined;
+  if (scheduleEventQuery) {
     if (binding?.enabled) {
-      queueWechatTodayScheduleReply(openId, binding.userId, binding.jwxtToken);
+      queueWechatScheduleReply(openId, binding.userId, scheduleEventQuery, binding.jwxtToken);
     } else {
       replyText = `请先绑定微信服务号身份，再使用个人课表：\n${wechatSettingsUrl()}`;
     }
   } else if (message.msgType === "text") {
     if (!replyText) replyText = renderWechatAutomaticReply(message.content, Boolean(binding?.userId));
     if (!replyText) {
-      const config = await getWechatServiceConfigRaw();
-      if (config.assistantEnabled) {
-        if (isWechatTodayScheduleRequest(message.content)) {
-          if (binding?.enabled) queueWechatTodayScheduleReply(openId, binding.userId, binding.jwxtToken);
-          else replyText = `请先绑定微信服务号身份，再查询个人课表：\n${wechatSettingsUrl()}`;
-        } else {
+      const scheduleQuery = parseWechatScheduleRequest(message.content);
+      if (scheduleQuery) {
+        if (binding?.enabled) queueWechatScheduleReply(openId, binding.userId, scheduleQuery, binding.jwxtToken);
+        else replyText = `请先绑定微信服务号身份，再查询个人课表：\n${wechatSettingsUrl()}`;
+      } else {
+        const config = await getWechatServiceConfigRaw();
+        if (config.assistantEnabled) {
           queueWechatAssistantReply(openId, binding?.enabled ? binding.userId : null, {
             question: message.content,
           });
+        } else {
+          replyText = renderWechatHelp(Boolean(binding?.userId));
         }
-      } else {
-        replyText = renderWechatHelp(Boolean(binding?.userId));
       }
     }
   } else if (message.msgType === "image") {
@@ -630,30 +642,6 @@ export async function sendWechatTyping(openId: string, active: boolean) {
   return callWechatApi("/cgi-bin/message/custom/typing", {
     method: "POST",
     body: { touser: openId, command: active ? "Typing" : "CancelTyping" },
-  });
-}
-
-export async function sendWechatCustomerMenu(
-  openId: string,
-  items: Array<{ id: string; content: string }>,
-  options?: { headContent?: string; tailContent?: string },
-) {
-  const list = items
-    .map((item) => ({ id: String(item.id || "").slice(0, 64), content: String(item.content || "").slice(0, 64) }))
-    .filter((item) => item.id && item.content)
-    .slice(0, 10);
-  if (!list.length) return {};
-  return callWechatApi("/cgi-bin/message/custom/send", {
-    method: "POST",
-    body: {
-      touser: openId,
-      msgtype: "msgmenu",
-      msgmenu: {
-        head_content: options?.headContent || "继续使用：",
-        list,
-        tail_content: options?.tailContent || "",
-      },
-    },
   });
 }
 
@@ -740,27 +728,31 @@ function queueWechatInboundVoiceReply(openId: string, userId: number | null, mes
   });
 }
 
-function queueWechatTodayScheduleReply(openId: string, userId: number, jwxtToken?: string | null) {
+function queueWechatScheduleReply(
+  openId: string,
+  userId: number,
+  query: WechatScheduleQuery,
+  jwxtToken?: string | null,
+) {
   setImmediate(() => {
     void runWechatTypingTask(openId, async () => {
-      const schedule = await loadWechatTodaySchedule(userId, jwxtToken);
-      const markdown = appendQqBotAiDisclosure(renderWechatTodayScheduleMarkdown(schedule.payload, { cached: schedule.cached }));
-      const image = renderQqBotAiReplyImage(markdown, { qrCodeEnabled: false });
+      const schedule = await loadWechatSchedule(userId, query, jwxtToken);
+      const image = renderWechatScheduleImage(schedule);
       const result = await sendWechatCustomerImage(openId, image);
       await sendWechatCustomerLink(openId, {
         title: "打开完整课表",
-        description: "查看本周课表、切换周次并使用课表工具",
+        description: "切换日期与周次，并使用完整课表工具",
         url: markWechatServiceClientUrl("/schedule"),
       }).catch(() => undefined);
       await logWechatMessage({
         direction: "outbound",
-        eventType: "schedule:today",
+        eventType: `schedule:${schedule.query.scope}:${schedule.week}`,
         status: "ok",
         openId,
         userId,
         result: result.mediaId,
       });
-    }).catch((error) => handleWechatAsyncReplyFailure(openId, userId, "schedule:today", "今日课表", error));
+    }).catch((error) => handleWechatAsyncReplyFailure(openId, userId, "schedule:query", query.label, error));
   });
 }
 
@@ -844,13 +836,8 @@ async function sendWechatAssistantActions(openId: string, response: CampusAssist
       title: "打开拾间AI",
       description: "进入网页继续提问，并使用完整的历史记录与站内功能",
       url: markWechatServiceClientUrl("/search"),
-    };
+  };
   await sendWechatCustomerLink(openId, action);
-  await sendWechatCustomerMenu(openId, [
-    { id: "今日课表", content: "今日课表" },
-    { id: "帮助", content: "功能帮助" },
-    { id: "状态", content: "绑定状态" },
-  ], { headContent: "还可以继续：" });
 }
 
 async function readWechatGeneratedImage(value: string) {
@@ -1474,7 +1461,7 @@ function renderWechatWelcome() {
   return [
     "欢迎关注拾小间。",
     "可直接发送文字、语音或图片向拾间AI提问；需要生图时会直接发送生成图片。",
-    "绑定后还可从菜单一键查看今日课表，并接收已开启的站内通知。",
+    "绑定后还可从菜单查看今日、明日、本周和下周课表，并接收已开启的站内通知。",
     renderWechatFollowSettingsTip(),
     `绑定账号：${wechatSettingsUrl()}`,
   ].join("\n");
@@ -1484,7 +1471,7 @@ function renderWechatHelp(bound: boolean, siteOrigin = normalizedSiteOrigin()) {
   return [
     "拾小间服务号",
     "直接发送文字、语音或图片即可向拾间AI提问；需要生图时会直接发送生成图片。",
-    "发送“今日课表”可获取当天课程卡片。",
+    "发送“今日课表”“明日课表”“本周课表”或“下周课表”可获取对应课程卡片。",
     "发送“状态”可查看绑定状态。",
     "",
     bound ? `通知设置：${wechatSettingsUrl(siteOrigin)}` : `绑定入口：${wechatSettingsUrl(siteOrigin)}`,
@@ -1540,10 +1527,6 @@ function canSendSubscriptionNotification(config: WechatConfigRow) {
     && config.subscriptionTitleField
     && config.subscriptionContentField
   );
-}
-
-function isWechatTodayScheduleRequest(value: string) {
-  return /^(?:今日|今天|当天)?课表$/u.test(String(value || "").trim());
 }
 
 function ensureWechatOauthReady(config: WechatConfigRow) {

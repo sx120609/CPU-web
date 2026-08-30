@@ -33,7 +33,7 @@
         <router-link to="/forum">进入信息流 →</router-link>
       </header>
       <div class="home-feed-list">
-        <ForumFeedCard v-for="topic in latestTopics" :key="topic.id" :topic="topic" />
+        <ForumFeedCard v-for="topic in latestTopics" :key="topic.id" :topic="topic" time-mode="published" />
         <el-empty v-if="!loading && !latestTopics.length" description="校园里暂时还没有新动态" />
       </div>
       <div v-if="loadMoreError" class="feed-load-error">

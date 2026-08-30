@@ -1,6 +1,6 @@
 import { normalizeCalendarWeekDays } from "./jwxtParser";
 
-export const SCHEDULE_WIDGET_PAYLOAD_VERSION = 8;
+export const SCHEDULE_WIDGET_PAYLOAD_VERSION = 9;
 
 const SMALL_SLOTS = [
   { no: 1, start: "08:00", end: "08:45" },
@@ -213,7 +213,7 @@ export function resolveScheduleWidgetPreviewWeeks(calendar: any | null, queryWee
   if (Number(queryWeek) > 0) return [] as number[];
   const today = chinaDateParts(now);
   const currentWeek = calendarWeekForDate(calendar, today.ymd).week;
-  return [...new Set([1, 2]
+  return [...new Set(Array.from({ length: 7 }, (_, index) => index + 1)
     .map((offset) => calendarWeekForDate(calendar, addDaysToYmd(today.ymd, offset)).week)
     .filter((week) => week > 0 && week !== currentWeek))];
 }
@@ -331,7 +331,7 @@ export function buildScheduleWidgetPayload(
   });
 
   if (!explicitWeek) {
-    for (const offset of [1, 2]) {
+    for (const offset of Array.from({ length: 7 }, (_, index) => index + 1)) {
       const date = addDaysToYmd(today.ymd, offset);
       if (days.some((day) => day.date === date)) continue;
       const targetCalendar = calendarWeekForDate(effectiveCalendar, date);

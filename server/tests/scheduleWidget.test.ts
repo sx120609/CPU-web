@@ -141,6 +141,25 @@ test("schedule widget removes today's completed courses from the API payload", (
   assert.deepEqual(payload.weekDays[2].courses.map((item) => item.name), ["上午课程", "下午课程"]);
 });
 
+test("schedule widget includes the next seven days so an empty day can advance to the next course day", () => {
+  const calendar = {
+    currentSemester: "2025-2026-2",
+    currentWeek: 3,
+    weeks: [
+      { week: 3, days: ["2026-07-20", "2026-07-21", "2026-07-22", "2026-07-23", "2026-07-24", "2026-07-25", "2026-07-26"] },
+      { week: 4, days: ["2026-07-27", "2026-07-28", "2026-07-29", "2026-07-30", "2026-07-31", "2026-08-01", "2026-08-02"] },
+    ],
+  };
+  const currentSchedule = { currentSemester: "2025-2026-2", cells: [] };
+  const nextWeekSchedule = {
+    currentSemester: "2025-2026-2",
+    cells: [{ day: 3, bigSlot: 1, courses: [course("下周课程", "4周", "甲", 1, 2)] }],
+  };
+  assert.deepEqual(resolveScheduleWidgetPreviewWeeks(calendar, "", WEDNESDAY_1302_CHINA), [4]);
+  const payload = buildScheduleWidgetPayload(currentSchedule, calendar, "", WEDNESDAY_1302_CHINA, { 4: nextWeekSchedule });
+  assert.equal(payload.days.find((day) => day.date === "2026-07-29")?.courses[0]?.name, "下周课程");
+});
+
 test("schedule widget loads real Monday courses when the default calendar belongs to the old semester", () => {
   const calendar = {
     currentSemester: "2025-2026-2",

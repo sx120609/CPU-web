@@ -2,7 +2,6 @@ export function buildScriptableWidgetScript(endpoint: string) {
   return `// 药大课表小组件
 // 小组件参数：upcoming（临近课程）、split（当前/接下来）、today（今日课程）、twoday（两日课表）。
 const API_ENDPOINT = ${JSON.stringify(endpoint)};
-const MINUTES_22_00 = 22 * 60;
 const FAMILY = config.widgetFamily || "medium";
 const STYLE_PARAMETER = String(args.widgetParameter || "").trim().toLowerCase();
 const TWO_DAY_COLUMN_WIDTH = 145;
@@ -92,14 +91,6 @@ function resolveDay(data, offset) {
   return candidates.find((day) => Number(day.day) === targetDay) || (offset === 0 ? data.today : null);
 }
 
-function shouldPreferTomorrow(data) {
-  const now = deviceMinutes();
-  if (now >= MINUTES_22_00) return true;
-  const courses = resolveDay(data, 0)?.courses || [];
-  if (!courses.length) return false;
-  return courses.every((course) => courseEndMinutes(course) < now);
-}
-
 function firstCourses(day, limit) {
   return (day?.courses || []).slice(0, limit);
 }
@@ -110,6 +101,23 @@ function nextCourses(day, limit) {
     const end = courseEndMinutes(course);
     return end >= now || (parseMinutes(course?.startTime) < 0 && end <= 0);
   }).slice(0, limit);
+}
+
+function preferredCourseDay(data) {
+  const now = deviceMinutes();
+  const today = resolveDay(data, 0);
+  const todayCourses = today?.courses || [];
+  const hasRemainingToday = todayCourses.some((course) => {
+    const end = courseEndMinutes(course);
+    return end >= now || (parseMinutes(course?.startTime) < 0 && end <= 0);
+  });
+  if (hasRemainingToday) return { day: today, courses: todayCourses, offset: 0 };
+  for (let offset = 1; offset <= 7; offset += 1) {
+    const day = resolveDay(data, offset);
+    const courses = day?.courses || [];
+    if (courses.length) return { day, courses, offset };
+  }
+  return { day: today, courses: [], offset: 0 };
 }
 
 function courseMetaText(course) {
@@ -170,14 +178,9 @@ function addCourseDetails(parent, course, roomy) {
 }
 
 function upcomingSelection(data) {
-  const preferTomorrow = shouldPreferTomorrow(data);
-  let day = resolveDay(data, preferTomorrow ? 1 : 0);
-  let courses = preferTomorrow ? firstCourses(day, 2) : nextCourses(day, 2);
-  if (!courses.length && !preferTomorrow) {
-    day = resolveDay(data, 1);
-    courses = firstCourses(day, 2);
-  }
-  return { day, courses };
+  const selected = preferredCourseDay(data);
+  const courses = selected.offset === 0 ? nextCourses(selected.day, 2) : firstCourses(selected.day, 2);
+  return { day: selected.day, courses, offset: selected.offset };
 }
 
 function renderUpcoming(widget, data) {
@@ -185,7 +188,7 @@ function renderUpcoming(widget, data) {
   addDateHeader(widget, selected.day, false);
   widget.addSpacer(10);
   if (!selected.courses.length) {
-    addLine(widget, "今天没有课程", Font.semiboldSystemFont(13), color("#98a2b3", "#94a3b8"));
+    addLine(widget, "近期没有课程", Font.semiboldSystemFont(13), color("#98a2b3", "#94a3b8"));
     return;
   }
   const current = widget.addStack();
@@ -269,12 +272,13 @@ function addTodayRow(widget, course, large) {
 }
 
 function renderToday(widget, data, large) {
-  const day = resolveDay(data, 0);
-  const courses = firstCourses(day, large ? 6 : 5);
+  const selected = preferredCourseDay(data);
+  const day = selected.day;
+  const courses = selected.courses.slice(0, large ? 6 : 5);
   addDateHeader(widget, day, large);
   widget.addSpacer(large ? 10 : 4);
   if (!courses.length) {
-    addLine(widget, "今日暂无课程", Font.semiboldSystemFont(13), color("#98a2b3", "#94a3b8"));
+    addLine(widget, "近期暂无课程", Font.semiboldSystemFont(13), color("#98a2b3", "#94a3b8"));
     return;
   }
   courses.forEach((course, index) => {
@@ -322,8 +326,9 @@ function addTwoDayColumn(parent, day) {
 }
 
 function renderTwoDay(widget, data) {
-  const today = resolveDay(data, 0);
-  const tomorrow = resolveDay(data, 1);
+  const selected = preferredCourseDay(data);
+  const today = selected.day;
+  const tomorrow = resolveDay(data, selected.offset + 1);
   const heading = widget.addStack();
   heading.layoutHorizontally();
   addLine(heading, "药大拾间·课表", Font.boldSystemFont(16), color("#172033", "#f8fafc"));
