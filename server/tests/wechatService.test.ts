@@ -6,6 +6,7 @@ import {
   encryptWechatPayload,
   generateWechatEncodingAesKey,
   generateWechatToken,
+  getWechatBindingCapabilities,
   parseWechatBindCommand,
   parseWechatXml,
   shouldDeliverWechatNotification,
@@ -66,6 +67,25 @@ test("respects channel and category preferences", () => {
 test("generates credentials accepted by the public-platform form", () => {
   assert.match(generateWechatToken(), /^[a-f0-9]{32}$/);
   assert.match(generateWechatEncodingAesKey(), /^[A-Za-z0-9]{43}$/);
+});
+
+test("exposes every supported binding path when the service account is ready", () => {
+  const ready = { enabled: true, appId: "wx-app-id", appSecret: "app-secret", token: "callback-token" };
+  assert.deepEqual(getWechatBindingCapabilities(ready, "https://cputime.cn"), {
+    oauthAvailable: true,
+    qrBindingAvailable: true,
+    messageBindingAvailable: true,
+  });
+  assert.deepEqual(getWechatBindingCapabilities(ready, ""), {
+    oauthAvailable: false,
+    qrBindingAvailable: true,
+    messageBindingAvailable: true,
+  });
+  assert.deepEqual(getWechatBindingCapabilities({ ...ready, enabled: false }, "https://cputime.cn"), {
+    oauthAvailable: false,
+    qrBindingAvailable: false,
+    messageBindingAvailable: false,
+  });
 });
 
 test("parses WeChat message binding commands", () => {

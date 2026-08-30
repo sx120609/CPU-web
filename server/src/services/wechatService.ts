@@ -155,7 +155,7 @@ export async function getUserWechatProfile(userId: number) {
     accountName: config.accountName,
     notificationEnabled: config.notificationEnabled,
     assistantEnabled: config.assistantEnabled,
-    messageBindingAvailable: Boolean(config.enabled && config.token),
+    ...getWechatBindingCapabilities(config),
     binding: binding ? {
       id: binding.id,
       enabled: binding.enabled,
@@ -170,6 +170,18 @@ export async function getUserWechatProfile(userId: number) {
       token: activeToken.token,
       expiresAt: activeToken.expiresAt,
     } : null,
+  };
+}
+
+export function getWechatBindingCapabilities(
+  config: { enabled: boolean; appId: string; appSecret: string; token: string },
+  siteOrigin = normalizedSiteOrigin(),
+) {
+  const apiReady = Boolean(config.enabled && config.appId && config.appSecret);
+  return {
+    oauthAvailable: Boolean(apiReady && siteOrigin),
+    qrBindingAvailable: apiReady,
+    messageBindingAvailable: Boolean(config.enabled && config.token),
   };
 }
 

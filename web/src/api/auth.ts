@@ -104,6 +104,8 @@ export interface WechatProfile {
   accountName: string;
   notificationEnabled: boolean;
   assistantEnabled: boolean;
+  oauthAvailable: boolean;
+  qrBindingAvailable: boolean;
   messageBindingAvailable: boolean;
   binding: null | {
     id: number;

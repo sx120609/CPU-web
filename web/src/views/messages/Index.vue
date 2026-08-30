@@ -58,7 +58,7 @@
             </el-button>
           </div>
           <h4>通知渠道</h4>
-          <div v-if="wechatChannelVisible" class="qq-channel-card wechat-channel-card" v-loading="wechatLoading">
+          <div class="qq-channel-card wechat-channel-card" v-loading="wechatLoading">
             <div class="qq-channel-head">
               <div>
                 <b>微信服务号</b>
@@ -81,11 +81,18 @@
                 <div><span>服务号</span><b>{{ wechatProfile?.accountName || "未配置" }}</b></div>
                 <div><span>账号状态</span><b>{{ wechatProfile?.binding ? (wechatProfile.binding.subscribed ? "已关注并绑定" : "已绑定，当前未关注") : "未绑定" }}</b></div>
               </div>
-              <div v-if="!wechatProfile?.binding" class="channel-qr-box">
+              <div v-if="wechatQr" class="channel-qr-box">
+                <img :src="wechatQr.imageUrl" alt="微信服务号绑定二维码" />
+                <div>
+                  <b>使用微信扫码完成绑定</b>
+                  <span>专属二维码有效期至 {{ formatNoticeTime(wechatQr.expiresAt) }}</span>
+                </div>
+              </div>
+              <div v-else-if="!wechatProfile?.binding" class="channel-qr-box">
                 <img src="/wechat-service-qrcode.png" :alt="`${wechatProfile?.accountName || '药里拾间'}服务号二维码`" />
                 <div>
                   <b>扫码关注 {{ wechatProfile?.accountName || "药里拾间" }}</b>
-                  <span>关注后发送下方绑定指令。</span>
+                  <span>可生成专属二维码直接绑定；也可关注后发送下方绑定指令。</span>
                 </div>
               </div>
               <div v-if="wechatProfile?.activeBindToken" class="qq-token-box">
@@ -105,8 +112,26 @@
               </label>
               <div class="qq-channel-actions">
                 <el-button
+                  v-if="!wechatProfile?.binding && isWechatBrowser"
+                  type="primary"
+                  :loading="wechatLoading"
+                  :disabled="wechatLoading || !wechatProfile?.oauthAvailable"
+                  @click="startWechatOauthBinding"
+                >
+                  微信内绑定
+                </el-button>
+                <el-button
                   v-if="!wechatProfile?.binding"
                   type="primary"
+                  plain
+                  :loading="wechatLoading"
+                  :disabled="wechatLoading || !wechatProfile?.qrBindingAvailable"
+                  @click="createWechatQr"
+                >
+                  {{ wechatQr ? "重新生成二维码" : "扫码绑定" }}
+                </el-button>
+                <el-button
+                  v-if="!wechatProfile?.binding"
                   plain
                   :loading="wechatLoading"
                   :disabled="wechatLoading || !wechatProfile?.messageBindingAvailable"
@@ -350,7 +375,6 @@ const route = useRoute();
 const router = useRouter();
 const msg = useMessageStore();
 const auth = useAuthStore();
-const wechatChannelVisible = false;
 
 const messageTabs = new Set(["all", "private", "reply", "like", "system", "service-tool", "lost-found", "settings"]);
 const tab = ref(normalizeMessageTab(route.query.tab));
@@ -363,6 +387,7 @@ const qqBotAddFriendQr = ref("");
 const wechatProfile = ref<WechatProfile | null>(null);
 const wechatLoading = ref(false);
 const wechatProfileError = ref("");
+const wechatQr = ref<{ imageUrl: string; expiresAt: string } | null>(null);
 const loading = ref(false);
 const pageError = ref("");
 const saving = ref(false);
@@ -379,8 +404,10 @@ let qqBotAddFriendQrSeq = 0;
 let wechatProfileSeq = 0;
 let reviewTargetSeq = 0;
 let disposed = false;
+let wechatQrPollTimer: ReturnType<typeof setInterval> | null = null;
 
 const unreadCount = computed(() => list.value.filter((item) => !item.readAt).length);
+const isWechatBrowser = /MicroMessenger/i.test(navigator.userAgent);
 const activeNoticeContent = computed(() => forumContentExcerpt(activeNotice.value?.content, 500));
 const wechatChannelStateText = computed(() => {
   if (wechatProfileError.value) return "状态未知";
@@ -434,7 +461,7 @@ onMounted(() => {
   disposed = false;
   void loadPage();
   void loadQqBotProfile({ silent: true });
-  if (wechatChannelVisible) void loadWechatProfile({ silent: true });
+  void loadWechatProfile({ silent: true });
   if (route.query.wechat === "bound") {
     ElMessage.success("微信服务号绑定成功");
     router.replace({ query: { ...route.query, wechat: undefined } }).catch(() => null);
@@ -459,6 +486,7 @@ onBeforeUnmount(() => {
   reviewing.value = false;
   requestingManualReview.value = false;
   reviewTargetLoading.value = false;
+  stopWechatQrPolling();
 });
 
 watch(() => route.query.tab, (value) => {
@@ -618,6 +646,10 @@ async function loadWechatProfile(opts?: { silent?: boolean }) {
     const profile = await authApi.wechatProfile({ suppressErrorMessage: true });
     if (disposed || seq !== wechatProfileSeq) return;
     wechatProfile.value = profile;
+    if (profile.binding) {
+      wechatQr.value = null;
+      stopWechatQrPolling();
+    }
   } catch (error) {
     if (disposed || seq !== wechatProfileSeq) return;
     wechatProfile.value = null;
@@ -630,6 +662,49 @@ async function loadWechatProfile(opts?: { silent?: boolean }) {
 
 function refreshWechatProfile() {
   return loadWechatProfile();
+}
+
+async function startWechatOauthBinding() {
+  if (disposed || wechatLoading.value) return;
+  wechatLoading.value = true;
+  try {
+    const result = await authApi.createWechatOauthUrl({ suppressErrorMessage: true });
+    window.location.assign(result.url);
+  } catch (error) {
+    if (!disposed) ElMessage.error(normalizeMessageActionError(error, "微信授权发起失败"));
+    wechatLoading.value = false;
+  }
+}
+
+async function createWechatQr() {
+  if (disposed || wechatLoading.value) return;
+  wechatLoading.value = true;
+  try {
+    wechatQr.value = await authApi.createWechatBindQr({ suppressErrorMessage: true });
+    startWechatQrPolling();
+  } catch (error) {
+    if (!disposed) ElMessage.error(normalizeMessageActionError(error, "绑定二维码生成失败"));
+  } finally {
+    if (!disposed) wechatLoading.value = false;
+  }
+}
+
+function startWechatQrPolling() {
+  stopWechatQrPolling();
+  wechatQrPollTimer = setInterval(() => {
+    if (!wechatQr.value || new Date(wechatQr.value.expiresAt).getTime() <= Date.now()) {
+      wechatQr.value = null;
+      stopWechatQrPolling();
+      return;
+    }
+    void loadWechatProfile({ silent: true });
+  }, 2500);
+}
+
+function stopWechatQrPolling() {
+  if (!wechatQrPollTimer) return;
+  clearInterval(wechatQrPollTimer);
+  wechatQrPollTimer = null;
 }
 
 async function refreshWechatToken() {
