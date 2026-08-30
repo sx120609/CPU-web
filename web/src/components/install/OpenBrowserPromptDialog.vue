@@ -96,7 +96,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from "vue";
 import { ElMessage } from "element-plus";
-import { detectInAppBrowser } from "@/utils/inAppBrowser";
+import { detectInAppBrowser, shouldAutoSuggestExternalBrowser } from "@/utils/inAppBrowser";
 import { ANDROID_APP_DOWNLOAD_URL, isFlutterNativeShell } from "@/utils/clientInfo";
 import { USER_QQ_GROUP, copyText, openUserGroup } from "@/utils/userGroup";
 
@@ -165,12 +165,12 @@ function openDialog() {
 
 function autoPromptIfEligible() {
   if (disposed) return;
-  if (!inAppBrowser.value.isInApp || isStandalone() || isNativeApp()) return;
+  if (!shouldAutoSuggestExternalBrowser() || isStandalone() || isNativeApp()) return;
   clearAutoPromptTimer();
   autoPromptTimer = window.setTimeout(() => {
     autoPromptTimer = null;
     if (disposed) return;
-    if (detectInAppBrowser().isInApp && !isStandalone() && !isNativeApp()) {
+    if (shouldAutoSuggestExternalBrowser() && !isStandalone() && !isNativeApp()) {
       selectedPlatform.value = detectDevicePlatform();
       open.value = true;
     }

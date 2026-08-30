@@ -368,14 +368,14 @@ const CAMPUS_ASSISTANT_ROUTES: CampusAssistantRoute[] = [
     keywords: ["消息", "通知消息", "回复提醒", "站内信"],
   },
   {
-    id: "qqbot-bind",
-    label: "QQ绑定",
-    description: "直接打开消息中心设置页绑定 QQBot",
+    id: "wechat-bind",
+    label: "微信绑定",
+    description: "直接打开消息中心设置页绑定微信服务号",
     url: "/messages?tab=settings",
     icon: "🔗",
     owner: "药大拾间",
     requireLogin: true,
-    keywords: ["qq绑定", "绑定qq", "qqbot绑定", "绑定qqbot", "机器人绑定", "绑定机器人"],
+    keywords: ["微信绑定", "绑定微信", "服务号绑定", "绑定服务号", "qq绑定", "绑定qq", "qqbot绑定", "绑定qqbot", "机器人绑定", "绑定机器人"],
   },
   {
     id: "profile",
@@ -432,7 +432,7 @@ const CAMPUS_ASSISTANT_ROUTES: CampusAssistantRoute[] = [
 const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
   {
     relatedActionIds: ["home", "profile", "jwxt"],
-    fact: "账号与登录：站内使用学校统一认证登录，登录成功后会创建或关联站内账号。个人中心用于管理账号、外观等设置；QQ 绑定请使用消息中心的设置页。拾间AI不会读取或代查用户的课表、成绩、考试、学业进度、账号额度或站内消息；涉及本人数据时应引导用户进入对应页面自行查看。",
+    fact: "账号与登录：站内使用学校统一认证登录，登录成功后会创建或关联站内账号。个人中心用于管理账号、外观等设置；微信服务号绑定请使用消息中心的设置页，QQBot 将逐步退出身份绑定功能。拾间AI不会读取或代查用户的课表、成绩、考试、学业进度、账号额度或站内消息；涉及本人数据时应引导用户进入对应页面自行查看。",
   },
   {
     relatedActionIds: ["jwxt"],
@@ -581,12 +581,12 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
     fact: "需求反馈：用于提交功能建议、使用问题和校园工具需求，提交后由站点维护者在后台处理。",
   },
   {
-    relatedActionIds: ["messages", "qqbot-bind"],
-    fact: "通知与 QQ：消息中心查看站内通知、回复提醒和系统消息。QQBot 绑定有直接入口：登录后打开 https://cputime.cn/messages?tab=settings，进入消息中心的“设置”页即可生成绑定码；不要引导用户进入个人中心，也不要把绑定入口说成消息列表首页。绑定后可在 QQ 同步接收部分站内通知。",
+    relatedActionIds: ["messages", "wechat-bind"],
+    fact: "通知与微信：消息中心查看站内通知、回复提醒和系统消息。微信服务号绑定有直接入口：登录后打开 https://cputime.cn/messages?tab=settings，进入消息中心的“设置”页，可在微信内授权、扫描专属二维码或发送绑定码完成绑定；二维码授权完成后页面会自动确认，不需要再向服务号发送消息。绑定后可通过微信接收已开启的站内通知。QQBot 将逐步退出身份绑定功能。",
   },
   {
     id: "qqbot-daily-assistant-2026-08",
-    relatedActionIds: ["campus-assistant", "messages", "qqbot-bind"],
+    relatedActionIds: ["campus-assistant", "messages"],
     fact: "QQBot 日常问答：私聊可以直接发送普通文字咨询；群聊默认只有在消息中 @拾间AI 后才会回答。管理员也可以在后台按群开启主动回答，此时仍只会把模型识别为明确内容问题的纯文字消息转给拾间AI，不回答“在吗”“为什么不理我”等催促机器人回应的社交闲聊。用户连续发送多条普通文字时，QQBot 会等待短暂停顿后合并为一轮回答，避免用户还没说完就连续回复。命令、图片、语音、转发以及已有的审核、识别等专用功能继续走对应流程，不会交给拾间AI。QQBot 的 AI 日常问答统一以图片发送，回复由 AI 生成，可能存在偏差，应自行鉴别并以官方信息为准；当前 Qwen 路由支持最近有限的对话上下文，服务端只保留最近几条消息，知识库事实优先。",
     source: "药大拾间 QQBot 使用规则与用户补充",
     sourceRef: "https://cputime.cn",
@@ -762,17 +762,17 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
     verifiedAt: "2026-08-21",
   },
   {
-    id: "messages-and-qq-notification-2026-08",
-    relatedActionIds: ["messages", "qqbot-bind"],
-    fact: "消息中心使用：登录后可在“全部、回复/提及、点赞、系统/站务、小工具、失物招领”标签中筛选通知，也可以一键标记全部已读。QQ 绑定和通知订阅在“设置”标签完成：生成绑定码后按页面提示私聊 QQ Bot 发送绑定指令，刷新状态确认绑定，再选择是否通过 QQ 私聊接收已订阅通知并保存设置；关闭 QQ 私聊后，通知仍保留在站内消息中心。",
+    id: "messages-and-wechat-notification-2026-08",
+    relatedActionIds: ["messages", "wechat-bind"],
+    fact: "消息中心使用：登录后可在“全部、回复/提及、点赞、系统/站务、小工具、失物招领”标签中筛选通知，也可以一键标记全部已读。微信服务号绑定和通知订阅在“设置”标签完成：可在微信内授权、扫描专属二维码或发送绑定码；二维码授权完成后页面会自动确认，无需再主动发送消息。关注后建议从服务号右上角进入设置，关闭“消息免打扰”并设为置顶，以便及时看到通知。关闭微信提醒后，通知仍保留在站内消息中心。",
     source: "药大拾间消息中心页面",
     sourceRef: "CPU-web",
     verifiedAt: "2026-08-21",
   },
   {
     id: "qqbot-reminder-settings-2026-08",
-    relatedActionIds: ["messages", "qqbot-bind", "questionnaire", "file-collect", "grade-check"],
-    fact: "QQBot 小工具提醒：绑定 QQ 后，可在消息中心“设置”里的“小工具提醒规则”选择哪些问卷、文件收集和成绩表通过 QQ 私聊提醒；这是通知订阅，不会替用户填写问卷、上传文件或查看个人成绩。提醒规则修改后应点击“保存设置”，具体是否产生提醒取决于对应任务和当前订阅状态。",
+    relatedActionIds: ["messages", "wechat-bind", "questionnaire", "file-collect", "grade-check"],
+    fact: "QQBot 小工具提醒属于存量通知能力：已绑定用户可在消息中心“设置”里的“小工具提醒规则”选择哪些问卷、文件收集和成绩表通过 QQ 私聊提醒；QQBot 将逐步退出身份绑定功能，新用户应优先绑定微信服务号接收通知。这些提醒不会替用户填写问卷、上传文件或查看个人成绩。",
     source: "药大拾间消息中心与小工具提醒设置",
     sourceRef: "CPU-web",
     verifiedAt: "2026-08-21",
@@ -804,7 +804,7 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
   {
     id: "profile-settings-and-privacy-2026-08",
     relatedActionIds: ["profile", "home"],
-    fact: "个人中心使用：登录后可上传或移除头像、编辑公开资料、切换浅色/深色外观、查看拾间AI今日额度和 AI 点数，并进入 VIP、赞助和 QQBot 管理入口。个人中心会提示学号或登录账号仅用于登录和身份校验、不会公开展示；修改资料后以页面保存结果为准，退出登录只清除当前站内会话，不要把密码发送给 AI、QQ 群或其他用户。",
+    fact: "个人中心使用：登录后可上传或移除头像、编辑公开资料、切换浅色/深色外观、查看拾间AI今日额度和 AI 点数，并进入 VIP、赞助及微信服务号绑定与通知管理入口。个人中心会提示学号或登录账号仅用于登录和身份校验、不会公开展示；修改资料后以页面保存结果为准，退出登录只清除当前站内会话，不要把密码发送给 AI、QQ 群或其他用户。",
     source: "药大拾间个人中心页面",
     sourceRef: "CPU-web",
     verifiedAt: "2026-08-21",
@@ -855,6 +855,7 @@ export function searchCampusAssistantActions(query: string, context: CampusAssis
   const normalizedQuery = normalizeSearchText(query);
   if (!normalizedQuery) return [] as CampusAssistantAction[];
   const unifiedAuthIntent = UNIFIED_AUTH_TROUBLESHOOTING_PATTERN.test(normalizedQuery);
+  const identityBindIntent = /(?:(?:微信|服务号|qqbot|qq|机器人).*绑定|绑定.*(?:微信|服务号|qqbot|qq|机器人))/iu.test(normalizedQuery);
   return CAMPUS_ASSISTANT_ROUTES
     .filter((item) => !item.feature || context.features[item.feature])
     .filter((item) => !item.requireForumAccess || context.forumAccessEnabled)
@@ -862,6 +863,8 @@ export function searchCampusAssistantActions(query: string, context: CampusAssis
       item,
       score: unifiedAuthIntent && item.id === "unified-auth"
         ? 200
+        : identityBindIntent && item.id === "wechat-bind"
+          ? 190
         : scoreRoute(item, normalizedQuery),
     }))
     .filter((entry) => entry.score > 0)

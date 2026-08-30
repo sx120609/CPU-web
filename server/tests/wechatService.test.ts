@@ -8,9 +8,11 @@ import {
   generateWechatEncodingAesKey,
   generateWechatToken,
   getWechatBindingCapabilities,
+  markWechatServiceClientUrl,
   parseWechatBindCommand,
   parseWechatXml,
   renderWechatAutomaticReply,
+  renderWechatFollowSettingsTip,
   shouldDeliverWechatNotification,
   verifyWechatSignature,
 } from "../src/services/wechatService";
@@ -96,9 +98,19 @@ test("builds a three-column HTTPS custom menu for campus, community, and account
   assert.equal(menu.button.length, 3);
   assert.ok(menu.button.every((group) => group.name.length <= 4 && group.sub_button.length <= 5));
   assert.ok(menu.button.flatMap((group) => group.sub_button).every((item) => item.name.length <= 7 && item.url.startsWith("https://cputime.cn/")));
+  assert.ok(menu.button.flatMap((group) => group.sub_button).every((item) => new URL(item.url).searchParams.get("client") === "wechat-service"));
   assert.deepEqual(menu.button[0].sub_button.map((item) => new URL(item.url).pathname), ["/schedule", "/jwxt", "/services"]);
   assert.deepEqual(menu.button[1].sub_button.map((item) => new URL(item.url).pathname), ["/forum", "/lost-found", "/post"]);
   assert.throws(() => buildWechatDefaultMenu("http://localhost:5173"), /HTTPS/);
+});
+
+test("marks same-site service-account links without changing external links", () => {
+  const marked = new URL(markWechatServiceClientUrl("/schedule?week=2#today", "https://cputime.cn"));
+  assert.equal(marked.pathname, "/schedule");
+  assert.equal(marked.searchParams.get("week"), "2");
+  assert.equal(marked.searchParams.get("client"), "wechat-service");
+  assert.equal(marked.hash, "#today");
+  assert.equal(markWechatServiceClientUrl("https://example.com/path", "https://cputime.cn"), "https://example.com/path");
 });
 
 test("keeps automatic replies limited to binding and notification guidance", () => {
@@ -108,6 +120,13 @@ test("keeps automatic replies limited to binding and notification guidance", () 
   const ordinaryReply = renderWechatAutomaticReply("帮我查一下课表", true, origin);
   assert.match(ordinaryReply, /不提供对话查询/);
   assert.doesNotMatch(ordinaryReply, /AI|投稿|论坛/iu);
+});
+
+test("recommends notification settings after the user follows the service account", () => {
+  const tip = renderWechatFollowSettingsTip();
+  assert.match(tip, /右上角进入设置/);
+  assert.match(tip, /关闭“消息免打扰”/);
+  assert.match(tip, /设为置顶/);
 });
 
 test("parses WeChat message binding commands", () => {

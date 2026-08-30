@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import QRCode from "qrcode";
 import { prisma } from "../prisma";
 import { Errors } from "../utils/response";
 import { parseMessageBindToken } from "./bindToken";
@@ -134,7 +135,7 @@ export function generateWechatEncodingAesKey() {
 
 export function buildWechatDefaultMenu(siteOrigin = normalizedSiteOrigin()) {
   const origin = normalizeWechatMenuOrigin(siteOrigin);
-  const view = (name: string, path: string) => ({ type: "view", name, url: new URL(path, `${origin}/`).toString() });
+  const view = (name: string, path: string) => ({ type: "view", name, url: markWechatServiceClientUrl(path, origin) });
   return {
     button: [
       {
@@ -163,6 +164,21 @@ export function buildWechatDefaultMenu(siteOrigin = normalizedSiteOrigin()) {
       },
     ],
   };
+}
+
+export function markWechatServiceClientUrl(rawUrl: string, siteOrigin = normalizedSiteOrigin()) {
+  const raw = String(rawUrl || "").trim();
+  const origin = String(siteOrigin || "").trim().replace(/\/+$/, "");
+  if (!raw || !origin) return raw;
+  try {
+    const site = new URL(origin);
+    const target = new URL(raw, `${site.origin}/`);
+    if (target.origin !== site.origin) return raw;
+    target.searchParams.set("client", "wechat-service");
+    return target.toString();
+  } catch {
+    return raw;
+  }
 }
 
 export async function publishWechatDefaultMenu() {
@@ -253,6 +269,8 @@ export async function deleteUserWechatBinding(userId: number) {
 export async function createWechatOauthBindUrl(userId: number) {
   const config = await getWechatServiceConfigRaw();
   ensureWechatOauthReady(config);
+  const existing = await prisma.wechatBinding.findUnique({ where: { userId }, select: { id: true } });
+  if (existing) throw Errors.badRequest("当前账号已经绑定微信服务号，如需更换请先解绑");
   const origin = normalizedSiteOrigin();
   const state = crypto.randomBytes(24).toString("base64url");
   await prisma.wechatOauthState.create({
@@ -306,30 +324,14 @@ export async function completeWechatOauthBinding(code: string, state: string) {
 }
 
 export async function createWechatBindQrCode(userId: number) {
-  const config = await getWechatServiceConfigRaw();
-  ensureWechatApiReady(config);
-  const existing = await prisma.wechatBinding.findUnique({ where: { userId }, select: { id: true } });
-  if (existing) throw Errors.badRequest("当前账号已经绑定微信服务号，如需更换请先解绑");
-  const rawToken = crypto.randomBytes(16).toString("base64url");
-  const scene = `bind_${rawToken}`;
-  const expiresAt = new Date(Date.now() + BIND_TOKEN_TTL_MS);
-  await prisma.wechatBindToken.create({
-    data: { userId, tokenHash: hashToken(rawToken), expiresAt },
+  const oauth = await createWechatOauthBindUrl(userId);
+  const imageUrl = await QRCode.toDataURL(oauth.url, {
+    width: 360,
+    margin: 2,
+    errorCorrectionLevel: "M",
+    color: { dark: "#172033", light: "#ffffffff" },
   });
-  const result = await callWechatApi("/cgi-bin/qrcode/create", {
-    method: "POST",
-    body: {
-      expire_seconds: Math.floor(BIND_TOKEN_TTL_MS / 1000),
-      action_name: "QR_STR_SCENE",
-      action_info: { scene: { scene_str: scene } },
-    },
-  });
-  const ticket = String(result.ticket || "").trim();
-  if (!ticket) throw new Error(`生成微信绑定二维码失败：${wechatApiErrorMessage(result)}`);
-  return {
-    imageUrl: `https://mp.weixin.qq.com/cgi-bin/showqrcode?ticket=${encodeURIComponent(ticket)}`,
-    expiresAt,
-  };
+  return { imageUrl, expiresAt: oauth.expiresAt };
 }
 
 export async function verifyWechatCallback(input: {
@@ -420,7 +422,11 @@ export async function processWechatInbound(message: WechatInboundMessage, option
     }
     await logWechatMessage({ direction: "inbound", eventType, status: "ok", openId, userId: binding?.userId, messageId, rawPayload: message });
     const replyText = binding
-      ? `微信服务号绑定成功，之后可在这里接收已开启的站内通知。\n通知设置：${normalizedSiteOrigin()}/messages?tab=settings`
+      ? [
+          "微信服务号绑定成功，之后可在这里接收已开启的站内通知。",
+          renderWechatFollowSettingsTip(),
+          `通知设置：${wechatSettingsUrl()}`,
+        ].join("\n")
       : message.event.toLowerCase() === "subscribe" ? renderWechatWelcome() : "";
     if (replyText) {
       if (options?.passiveReply) {
@@ -699,16 +705,20 @@ export function renderWechatAutomaticReply(rawContent: string, bound: boolean, s
   if (/^绑定(?:\s|$)/iu.test(content)) {
     return bound
       ? "当前微信已经绑定药大拾间账号，如需更换请先在站内解绑。"
-      : `绑定需要使用站内生成的绑定码。\n请打开：${siteOrigin}/messages?tab=settings\n然后发送：绑定 绑定码`;
+      : `绑定需要使用站内生成的绑定码。\n请打开：${wechatSettingsUrl(siteOrigin)}\n然后发送：绑定 绑定码`;
   }
   if (/^(状态|我的)$/u.test(content)) {
     return bound
-      ? `当前微信已绑定药大拾间账号。\n通知设置：${siteOrigin}/messages?tab=settings`
-      : `当前微信尚未绑定。\n绑定入口：${siteOrigin}/messages?tab=settings`;
+      ? `当前微信已绑定药大拾间账号。\n通知设置：${wechatSettingsUrl(siteOrigin)}`
+      : `当前微信尚未绑定。\n绑定入口：${wechatSettingsUrl(siteOrigin)}`;
   }
   return bound
-    ? `本服务号当前仅用于接收站内通知，不提供对话查询。\n通知设置：${siteOrigin}/messages?tab=settings`
-    : `本服务号当前仅用于账号绑定和接收站内通知，不提供对话查询。\n绑定入口：${siteOrigin}/messages?tab=settings`;
+    ? `本服务号当前仅用于接收站内通知，不提供对话查询。\n通知设置：${wechatSettingsUrl(siteOrigin)}`
+    : `本服务号当前仅用于账号绑定和接收站内通知，不提供对话查询。\n绑定入口：${wechatSettingsUrl(siteOrigin)}`;
+}
+
+export function renderWechatFollowSettingsTip() {
+  return "为避免错过通知，请点击服务号右上角进入设置，关闭“消息免打扰”，并建议设为置顶。";
 }
 
 async function consumeWechatBindToken(rawToken: string, openId: string) {
@@ -750,7 +760,8 @@ async function consumeWechatMessageBindToken(rawToken: string, openId: string) {
     message: [
       `绑定成功：${token.user.nickname}`,
       "之后可通过本服务号接收已开启的站内通知。",
-      `通知设置：${normalizedSiteOrigin()}/messages?tab=settings`,
+      renderWechatFollowSettingsTip(),
+      `通知设置：${wechatSettingsUrl()}`,
     ].join("\n"),
   };
 }
@@ -910,7 +921,8 @@ function renderWechatWelcome() {
   return [
     "欢迎关注药里拾间。",
     "本服务号当前仅用于账号绑定和接收站内通知。",
-    `绑定账号：${normalizedSiteOrigin()}/messages?tab=settings`,
+    renderWechatFollowSettingsTip(),
+    `绑定账号：${wechatSettingsUrl()}`,
     "生成绑定码后发送：绑定 绑定码",
   ].join("\n");
 }
@@ -921,7 +933,7 @@ function renderWechatHelp(bound: boolean, siteOrigin = normalizedSiteOrigin()) {
     "当前仅用于账号绑定和接收站内通知。",
     "发送“状态”可查看绑定状态。",
     "",
-    bound ? `通知设置：${siteOrigin}/messages?tab=settings` : `绑定入口：${siteOrigin}/messages?tab=settings\n生成绑定码后发送：绑定 绑定码`,
+    bound ? `通知设置：${wechatSettingsUrl(siteOrigin)}` : `绑定入口：${wechatSettingsUrl(siteOrigin)}\n生成绑定码后发送：绑定 绑定码`,
   ].join("\n");
 }
 
@@ -954,13 +966,17 @@ function createWechatSignature(token: string, timestamp: string, nonce: string, 
 
 function resolveNotificationLink(rawLink: string | null | undefined, payloadValue: unknown) {
   const raw = String(rawLink || "").trim();
-  if (/^https?:\/\//i.test(raw)) return raw;
-  if (raw.startsWith("/")) return absoluteSiteUrl(raw);
+  if (/^https?:\/\//i.test(raw)) return markWechatServiceClientUrl(raw);
+  if (raw.startsWith("/")) return markWechatServiceClientUrl(raw);
   const payload = parseJsonObject(payloadValue);
   const topicId = positiveInt(payload.topicId);
   const replyId = positiveInt(payload.replyId);
   if (!topicId) return "";
-  return `${normalizedSiteOrigin()}/forum/topic/${topicId}${replyId ? `#reply-${replyId}` : ""}`;
+  return markWechatServiceClientUrl(`/forum/topic/${topicId}${replyId ? `#reply-${replyId}` : ""}`);
+}
+
+function wechatSettingsUrl(siteOrigin = normalizedSiteOrigin()) {
+  return markWechatServiceClientUrl("/messages?tab=settings", siteOrigin);
 }
 
 function canSendNotificationTemplate(config: WechatConfigRow) {
@@ -1096,12 +1112,6 @@ function normalizeWechatMenuOrigin(value: string) {
     throw Errors.badRequest("服务号菜单需要使用站点的 HTTPS 根域名");
   }
   return url.origin;
-}
-
-function absoluteSiteUrl(value: string) {
-  if (/^https?:\/\//i.test(value)) return value;
-  const origin = normalizedSiteOrigin();
-  return value.startsWith("/") ? `${origin}${value}` : `${origin}/${value}`;
 }
 
 function hashToken(value: string) {

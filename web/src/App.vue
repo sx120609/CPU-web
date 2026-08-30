@@ -107,7 +107,7 @@
     </el-dialog>
     <el-dialog
       v-model="inAppTipOpen"
-      title="建议使用外部浏览器打开"
+      :title="inAppTipTitle"
       width="420"
       class="in-app-tip-dialog"
       append-to-body
@@ -115,7 +115,21 @@
       :close-on-press-escape="inAppReadSeconds <= 0"
       :show-close="inAppReadSeconds <= 0"
     >
-      <div class="in-app-tip">
+      <div v-if="inAppTipMode === 'follow'" class="in-app-tip">
+        <p><b>推荐关注药里拾间微信服务号</b></p>
+        <p>可接收已开启的站内通知，并从服务号菜单直接进入课表、教务、论坛等功能。</p>
+        <p class="muted">点击下方按钮可直接前往服务号关注页面。以后从服务号菜单打开本站，将作为微信客户端使用，不再主动弹出安装提示。</p>
+      </div>
+      <div v-else-if="inAppTipMode === 'bind'" class="in-app-tip">
+        <p><b>{{ auth.isLoggedIn ? "当前账号尚未绑定微信服务号" : "登录后绑定微信服务号" }}</b></p>
+        <p>
+          {{ auth.isLoggedIn
+            ? "完成绑定后，服务号才能识别你的站内身份并向你传递已开启的通知。"
+            : "当前尚未登录，暂时无法检查账号的微信绑定状态。请先登录，再完成微信身份绑定。" }}
+        </p>
+        <p class="muted">绑定入口位于消息中心的“设置”页。</p>
+      </div>
+      <div v-else class="in-app-tip">
         <p>
           当前可能正在{{ inAppBrowserLabel }}内打开本站。部分学校系统、统一认证或外部跳转页面可能无法正常加载。
         </p>
@@ -127,7 +141,17 @@
         </p>
       </div>
       <template #footer>
-        <el-button type="primary" :disabled="inAppReadSeconds > 0" @click="dismissInAppTip">
+        <template v-if="inAppTipMode === 'bind'">
+          <el-button @click="dismissInAppTip">稍后处理</el-button>
+          <el-button type="primary" @click="openWechatBindingGuide">
+            {{ auth.isLoggedIn ? "前往绑定" : "登录后绑定" }}
+          </el-button>
+        </template>
+        <template v-else-if="inAppTipMode === 'follow'">
+          <el-button @click="dismissInAppTip">暂时不用</el-button>
+          <el-button type="primary" @click="openWechatServiceFollowPage">前往关注服务号</el-button>
+        </template>
+        <el-button v-else type="primary" :disabled="inAppReadSeconds > 0" @click="dismissInAppTip">
           {{ inAppReadSeconds > 0 ? `请先阅读 ${inAppReadSeconds}s` : "我知道了" }}
         </el-button>
       </template>
@@ -143,12 +167,13 @@ import { ChatDotRound } from "@element-plus/icons-vue";
 import { useAuthStore } from "@/stores/auth";
 import { useMessageStore } from "@/stores/message";
 import { router } from "@/router";
+import { authApi } from "@/api/auth";
 import { messageApi } from "@/api/message";
 import { AUTH_EXPIRED_EVENT } from "@/api/request";
 import AndroidUpdateDialog from "@/components/install/AndroidUpdateDialog.vue";
 import SmartPostTaskIndicator from "@/components/forum/SmartPostTaskIndicator.vue";
 import LegacyDomainMigrationDialog from "@/components/common/LegacyDomainMigrationDialog.vue";
-import { detectInAppBrowser } from "@/utils/inAppBrowser";
+import { detectInAppBrowser, isWechatServiceClient, shouldAutoSuggestExternalBrowser, WECHAT_SERVICE_FOLLOW_URL } from "@/utils/inAppBrowser";
 
 const auth = useAuthStore();
 const msg = useMessageStore();
@@ -160,6 +185,15 @@ const dataAuthReadSeconds = ref(0);
 const inAppTipOpen = ref(false);
 const inAppBrowserLabel = ref("微信 / QQ");
 const inAppReadSeconds = ref(0);
+const inAppTipMode = ref<"external" | "follow" | "bind">("external");
+const inAppTipTitle = computed(() => {
+  if (inAppTipMode.value === "follow") return "推荐关注微信服务号";
+  if (inAppTipMode.value === "bind") return "绑定微信服务号";
+  return "建议使用外部浏览器打开";
+});
+const wechatServiceSession = ref(false);
+let wechatBindingCheckSeq = 0;
+let wechatBindingGuideKey = "";
 let inAppReadTimer: number | null = null;
 let dataAuthTimer: number | null = null;
 
@@ -191,12 +225,31 @@ const currentDirectNotice = computed(() => msg.latestDirectNotice);
 onMounted(() => {
   disposed = false;
   window.addEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
-  if (isSchedulePage()) return;
   const info = detectInAppBrowser();
-  if (!info.isInApp) return;
+  if (info.label === "微信") {
+    wechatServiceSession.value = isWechatServiceClient();
+    if (wechatServiceSession.value) {
+      void checkWechatServiceBinding();
+    } else {
+      inAppBrowserLabel.value = info.label;
+      inAppTipMode.value = "follow";
+      inAppTipOpen.value = true;
+    }
+    return;
+  }
+  if (isSchedulePage()) return;
+  if (!shouldAutoSuggestExternalBrowser()) return;
   inAppBrowserLabel.value = info.label;
+  inAppTipMode.value = "external";
   inAppTipOpen.value = true;
 });
+
+watch(
+  () => [auth.ready, auth.isLoggedIn, auth.user?.id],
+  () => {
+    if (wechatServiceSession.value) void checkWechatServiceBinding();
+  },
+);
 
 watch(inAppTipOpen, (open) => {
   if (open) startInAppReadTimer();
@@ -371,6 +424,44 @@ async function loadStrongNotices() {
   } finally {
     if (seq === strongNoticeLoadSeq) strongNoticeLoading = false;
   }
+}
+
+async function checkWechatServiceBinding() {
+  if (!auth.ready || disposed) return;
+  const guideKey = auth.isLoggedIn ? `user:${auth.user?.id || "unknown"}` : "guest";
+  if (wechatBindingGuideKey === guideKey) return;
+  const seq = ++wechatBindingCheckSeq;
+  if (!auth.isLoggedIn) {
+    wechatBindingGuideKey = guideKey;
+    inAppTipMode.value = "bind";
+    inAppTipOpen.value = true;
+    return;
+  }
+  try {
+    const profile = await authApi.wechatProfile({ suppressErrorMessage: true });
+    if (disposed || seq !== wechatBindingCheckSeq) return;
+    wechatBindingGuideKey = guideKey;
+    if (profile.enabled && !profile.binding) {
+      inAppTipMode.value = "bind";
+      inAppTipOpen.value = true;
+    }
+  } catch {
+    // 状态查询失败时保持静默，避免临时网络问题阻塞服务号菜单页面。
+  }
+}
+
+function openWechatBindingGuide() {
+  inAppTipOpen.value = false;
+  const target = "/messages?tab=settings&client=wechat-service";
+  if (auth.isLoggedIn) {
+    void router.push(target);
+    return;
+  }
+  void router.push({ name: "login", query: { redirect: target } });
+}
+
+function openWechatServiceFollowPage() {
+  window.location.href = WECHAT_SERVICE_FOLLOW_URL;
 }
 
 async function loadMessageAlerts() {
@@ -610,6 +701,10 @@ html, body, #app {
 .read-hint {
   font-size: 12px;
   color: #9ca3af;
+}
+
+.in-app-tip b {
+  color: var(--cpu-primary);
 }
 
 .direct-notice {

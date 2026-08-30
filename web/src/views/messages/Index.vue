@@ -85,7 +85,7 @@
                 <img :src="wechatQr.imageUrl" alt="微信服务号绑定二维码" />
                 <div>
                   <b>使用微信扫码完成绑定</b>
-                  <span>专属二维码有效期至 {{ formatNoticeTime(wechatQr.expiresAt) }}</span>
+                  <span>在微信中打开授权页后会立即确认；二维码有效期至 {{ formatNoticeTime(wechatQr.expiresAt) }}</span>
                 </div>
               </div>
               <div v-else-if="!wechatProfile?.binding" class="channel-qr-box">
@@ -119,6 +119,14 @@
                   @click="startWechatOauthBinding"
                 >
                   微信内绑定
+                </el-button>
+                <el-button
+                  v-if="isWechatBrowser && !wechatProfile?.binding?.subscribed"
+                  type="primary"
+                  plain
+                  @click="openWechatServiceFollowPage"
+                >
+                  前往关注服务号
                 </el-button>
                 <el-button
                   v-if="!wechatProfile?.binding"
@@ -370,6 +378,7 @@ import QRCode from "qrcode";
 import { buildQqAddFriendUrl } from "@/utils/qqContact";
 import { isServerHandledRedirect, resolveSafeRedirect } from "@/utils/redirect";
 import { forumContentExcerpt } from "@/utils/forumContent";
+import { WECHAT_SERVICE_FOLLOW_URL } from "@/utils/inAppBrowser";
 
 const route = useRoute();
 const router = useRouter();
@@ -404,7 +413,8 @@ let qqBotAddFriendQrSeq = 0;
 let wechatProfileSeq = 0;
 let reviewTargetSeq = 0;
 let disposed = false;
-let wechatQrPollTimer: ReturnType<typeof setInterval> | null = null;
+let wechatQrPollTimer: ReturnType<typeof setTimeout> | null = null;
+let wechatQrPollSeq = 0;
 
 const unreadCount = computed(() => list.value.filter((item) => !item.readAt).length);
 const isWechatBrowser = /MicroMessenger/i.test(navigator.userAgent);
@@ -676,6 +686,10 @@ async function startWechatOauthBinding() {
   }
 }
 
+function openWechatServiceFollowPage() {
+  window.location.href = WECHAT_SERVICE_FOLLOW_URL;
+}
+
 async function createWechatQr() {
   if (disposed || wechatLoading.value) return;
   wechatLoading.value = true;
@@ -691,19 +705,40 @@ async function createWechatQr() {
 
 function startWechatQrPolling() {
   stopWechatQrPolling();
-  wechatQrPollTimer = setInterval(() => {
-    if (!wechatQr.value || new Date(wechatQr.value.expiresAt).getTime() <= Date.now()) {
+  const seq = ++wechatQrPollSeq;
+  void pollWechatQrStatus(seq);
+}
+
+async function pollWechatQrStatus(seq: number) {
+  if (disposed || seq !== wechatQrPollSeq || !wechatQr.value) return;
+  if (new Date(wechatQr.value.expiresAt).getTime() <= Date.now()) {
+    wechatQr.value = null;
+    stopWechatQrPolling();
+    return;
+  }
+  try {
+    const profile = await authApi.wechatProfile({ suppressErrorMessage: true });
+    if (disposed || seq !== wechatQrPollSeq || !wechatQr.value) return;
+    if (profile.binding) {
+      wechatProfile.value = profile;
+      wechatProfileError.value = "";
       wechatQr.value = null;
       stopWechatQrPolling();
+      ElMessage.success("微信服务号绑定成功");
       return;
     }
-    void loadWechatProfile({ silent: true });
-  }, 2500);
+  } catch {
+    // 下一轮继续确认，短暂网络错误不打断扫码流程。
+  }
+  if (seq === wechatQrPollSeq) {
+    wechatQrPollTimer = setTimeout(() => void pollWechatQrStatus(seq), 1000);
+  }
 }
 
 function stopWechatQrPolling() {
+  wechatQrPollSeq += 1;
   if (!wechatQrPollTimer) return;
-  clearInterval(wechatQrPollTimer);
+  clearTimeout(wechatQrPollTimer);
   wechatQrPollTimer = null;
 }
 

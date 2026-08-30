@@ -1362,7 +1362,7 @@ onMounted(() => {
   window.visualViewport?.addEventListener("resize", updateViewportHeight);
   window.visualViewport?.addEventListener("scroll", updateViewportHeight);
 
-  // 内置浏览器先提示跳外部浏览器；普通移动浏览器再提示安装 / 添加桌面。
+  // 服务号来源作为微信客户端使用；普通微信链接由全局关注引导接管，其他受限内置浏览器仍提示跳转。
   openBrowserPromptRef.value?.autoPromptIfEligible();
   installPromptRef.value?.autoPromptIfEligible();
 

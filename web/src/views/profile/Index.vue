@@ -97,25 +97,18 @@
       </div>
     </div>
 
-    <div class="cpu-card user-group-card">
+    <div class="cpu-card wechat-bind-card">
       <div>
-        <h3 class="cpu-section-title">加入用户 QQ 群</h3>
-        <p>遇到课表显示问题，或想反馈建议，可以加入用户群。</p>
-        <strong>{{ USER_QQ_GROUP }}</strong>
+        <h3 class="cpu-section-title">绑定微信服务号</h3>
+        <p>绑定后可通过微信接收已开启的站内通知。</p>
+        <strong>{{ wechatBindingStateText }}</strong>
       </div>
-      <div class="user-group-actions">
-        <el-button type="primary" @click="joinUserGroup">
-          <el-icon><ChatDotRound /></el-icon>
-          加入群聊
-        </el-button>
-        <el-button plain @click="openQqBotManage">
+      <div class="wechat-bind-actions">
+        <el-button type="primary" @click="openWechatBinding">
           <el-icon><Bell /></el-icon>
-          QQBot 管理
+          {{ wechatProfile?.binding ? "管理微信通知" : "去绑定微信" }}
         </el-button>
-        <el-button plain @click="copyUserGroup">
-          <el-icon><CopyDocument /></el-icon>
-          复制群号
-        </el-button>
+        <el-button plain :loading="wechatProfileLoading" @click="refreshWechatBinding">刷新状态</el-button>
       </div>
     </div>
 
@@ -468,11 +461,11 @@
 import { ref, reactive, computed, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { ArrowRight, Bell, ChatDotRound, CopyDocument, Monitor, Moon, Sunny } from "@element-plus/icons-vue";
+import { ArrowRight, Bell, Monitor, Moon, Sunny } from "@element-plus/icons-vue";
 import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
 import { useAppearanceStore, type AppearanceMode } from "@/stores/appearance";
-import { authApi } from "@/api/auth";
+import { authApi, type WechatProfile } from "@/api/auth";
 import { boardApi, type Board } from "@/api/board";
 import { navigateToEpayCheckout, paymentsApi, type PayType, type SponsorCategory, type SponsorOptions } from "@/api/payments";
 import { request } from "@/api/request";
@@ -482,7 +475,6 @@ import AppIcon from "@/components/common/AppIcon.vue";
 import DisplayNickname from "@/components/common/DisplayNickname.vue";
 import { fmtDate, fmtRelative } from "@/utils/format";
 import { compressImageFile, normalizeImageUploadError } from "@/utils/imageUpload";
-import { copyText, openUserGroup, USER_QQ_GROUP } from "@/utils/userGroup";
 import { readViewCache, writeViewCache } from "@/utils/viewCache";
 
 interface ProfileViewCache {
@@ -521,6 +513,9 @@ const profileSnapshotReady = ref(false);
 const assistantQuota = ref<CampusAssistantQuota | null>(null);
 const assistantQuotaLoading = ref(false);
 const assistantQuotaError = ref("");
+const wechatProfile = ref<WechatProfile | null>(null);
+const wechatProfileLoading = ref(false);
+const wechatProfileError = ref("");
 const sponsorOptionsCached = ref(false);
 const sponsorOptions = reactive<SponsorOptions>({
   enabled: false,
@@ -591,6 +586,12 @@ const appearanceOptions: Array<{ value: AppearanceMode; label: string; icon: unk
 ];
 const profileThemeClass = computed(() => user.value?.profileTheme ? `profile-theme-${user.value.profileTheme}` : "");
 const profileFrameClass = computed(() => user.value?.profileFrame ? `profile-frame-${user.value.profileFrame}` : "");
+const wechatBindingStateText = computed(() => {
+  if (wechatProfileLoading.value && !wechatProfile.value) return "正在查询绑定状态";
+  if (wechatProfileError.value && !wechatProfile.value) return "绑定状态暂不可用";
+  if (!wechatProfile.value?.binding) return "尚未绑定";
+  return wechatProfile.value.binding.subscribed ? "已关注并绑定" : "已绑定，当前未关注";
+});
 
 watch(passwordDialog, (v) => {
   if (!v) { pwForm.oldPassword = ""; pwForm.newPassword = ""; pwForm.confirm = ""; }
@@ -631,6 +632,7 @@ async function loadProfilePage() {
       return;
     }
     void loadAssistantQuota();
+    void loadWechatBinding({ silent: true });
     restoredFromCache = restoreProfileCache();
     if (!site.loaded) await site.fetch();
     if (seq !== profileLoadSeq) return;
@@ -895,17 +897,26 @@ async function onLogout() {
   }
 }
 
-async function copyUserGroup() {
-  await copyText(USER_QQ_GROUP);
-  ElMessage.success(`已复制QQ群号 ${USER_QQ_GROUP}`);
-}
-
-function joinUserGroup() {
-  openUserGroup();
-}
-
-function openQqBotManage() {
+function openWechatBinding() {
   router.push("/messages?tab=settings");
+}
+
+async function loadWechatBinding(opts?: { silent?: boolean }) {
+  if (wechatProfileLoading.value) return;
+  wechatProfileLoading.value = true;
+  wechatProfileError.value = "";
+  try {
+    wechatProfile.value = await authApi.wechatProfile({ suppressErrorMessage: true });
+  } catch (error) {
+    wechatProfileError.value = normalizeProfileLoadError(error);
+    if (!opts?.silent) ElMessage.error("微信绑定状态加载失败");
+  } finally {
+    wechatProfileLoading.value = false;
+  }
+}
+
+function refreshWechatBinding() {
+  return loadWechatBinding();
 }
 
 function pickAvatar() {
@@ -1655,29 +1666,29 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
   gap: 8px;
 }
 
-.user-group-card {
+.wechat-bind-card {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
 }
-.user-group-card p {
+.wechat-bind-card p {
   margin: 4px 0 8px;
   color: var(--cpu-text-secondary);
   font-size: 13px;
   line-height: 1.6;
 }
-.user-group-card strong {
+.wechat-bind-card strong {
   color: var(--cpu-primary);
   font-size: 20px;
   letter-spacing: 0;
 }
-.user-group-actions {
+.wechat-bind-actions {
   display: flex;
   gap: 8px;
   flex-shrink: 0;
 }
-.user-group-actions .el-button {
+.wechat-bind-actions .el-button {
   margin-left: 0 !important;
 }
 
@@ -1932,25 +1943,25 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
     padding-bottom: 7px;
   }
 
-  .user-group-card {
+  .wechat-bind-card {
     align-items: stretch;
     flex-direction: column;
     gap: 10px;
   }
 
-  .user-group-actions {
+  .wechat-bind-actions {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 6px;
   }
 
-  .user-group-actions .el-button {
+  .wechat-bind-actions .el-button {
     min-width: 0;
     padding-inline: 6px;
     font-size: 12px;
   }
 
-  .user-group-actions .el-button :deep(span) {
+  .wechat-bind-actions .el-button :deep(span) {
     min-width: 0;
     gap: 3px;
     white-space: nowrap;
