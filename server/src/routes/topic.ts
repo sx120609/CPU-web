@@ -856,6 +856,7 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
 
     if (hasEditedContent) {
       data.editCount = { increment: 1 };
+      data.reportHiddenAt = null;
     }
 
     const hiddenChanged = typeof data.hidden === "boolean" && data.hidden !== t.hidden;
@@ -918,7 +919,7 @@ topicRouter.delete("/:id", authRequired, async (req, res, next) => {
     if (!isMod && !isBoardTypeEnabled(t.board?.type)) throw Errors.forbidden(featureClosedMessage(t.board?.type));
     if (isOwner) await ensureForumAccessEnabled(req.user!.userId, req.user!.role);
     await prisma.$transaction(async (tx) => {
-      await tx.topic.update({ where: { id }, data: { hidden: true, aiReviewStatus: "deleted" } });
+      await tx.topic.update({ where: { id }, data: { hidden: true, reportHiddenAt: null, aiReviewStatus: "deleted" } });
       if (!t.hidden) {
         await Promise.all([
           refreshBoardTopicCounts([t.boardId], tx),

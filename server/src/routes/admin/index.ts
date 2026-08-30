@@ -123,6 +123,7 @@ import { fetchAiModelCatalog } from "../../services/aiModelCatalog";
 import { forumAdsAdminRouter } from "./forumAds";
 import { vipGiftCodesAdminRouter } from "./vipGiftCodes";
 import { wechatAdminRouter } from "./wechat";
+import { forumReportAdminRouter } from "../forumReport";
 import {
   DeploymentAlreadyRunningError,
   DeploymentUnavailableError,
@@ -133,6 +134,7 @@ import {
 export const adminRouter = Router();
 adminRouter.use("/forum-ads", forumAdsAdminRouter);
 adminRouter.use("/vip-gift-codes", vipGiftCodesAdminRouter);
+adminRouter.use("/forum-reports", modOrAbove, forumReportAdminRouter);
 const deploymentUpdateSchema = z.object({
   confirmation: z.literal("UPDATE_AND_DEPLOY"),
 });
@@ -1125,7 +1127,10 @@ adminRouter.patch("/topics/:id", modOrAbove, validate(topicPatchSchema), async (
     });
     if (!existing) throw Errors.notFound("帖子不存在");
     const data: any = {};
-    if (typeof req.body.hidden === "boolean") data.hidden = req.body.hidden;
+    if (typeof req.body.hidden === "boolean") {
+      data.hidden = req.body.hidden;
+      data.reportHiddenAt = null;
+    }
     if (typeof req.body.pinned === "boolean") data.pinned = req.body.pinned;
     if (typeof req.body.locked === "boolean") data.locked = req.body.locked;
     const wantsGlobalPinned = typeof req.body.globalPinned === "boolean" ? req.body.globalPinned : undefined;
@@ -1154,10 +1159,12 @@ adminRouter.patch("/topics/:id", modOrAbove, validate(topicPatchSchema), async (
       data.manualReviewNote = req.body.manualReviewNote ?? "";
       if (req.body.aiReviewStatus === "approved_manual") {
         data.hidden = false;
+        data.reportHiddenAt = null;
         if (existing.marketItem) data.locked = false;
       }
       if (req.body.aiReviewStatus === "rejected_manual") {
         data.hidden = true;
+        data.reportHiddenAt = null;
       }
     }
     const hiddenChanged = typeof data.hidden === "boolean" && data.hidden !== existing.hidden;
@@ -1243,7 +1250,7 @@ adminRouter.delete("/topics/:id", modOrAbove, async (req, res, next) => {
       });
     } else {
       await prisma.$transaction(async (tx) => {
-        await tx.topic.update({ where: { id }, data: { hidden: true, aiReviewStatus: "deleted" } });
+        await tx.topic.update({ where: { id }, data: { hidden: true, reportHiddenAt: null, aiReviewStatus: "deleted" } });
         if (!topic.hidden) {
           await Promise.all([
             refreshBoardTopicCounts([topic.boardId], tx),

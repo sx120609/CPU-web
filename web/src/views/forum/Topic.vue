@@ -41,6 +41,7 @@
         <template #dropdown>
           <el-dropdown-menu>
             <el-dropdown-item command="share" :disabled="topic.hidden">分享帖子</el-dropdown-item>
+            <el-dropdown-item v-if="canReportPost(topic)" command="report">举报帖子</el-dropdown-item>
             <el-dropdown-item v-if="canEdit" command="edit" :disabled="isTopicActionBusy || topicEditDisabled">{{ topicEditLabel }}</el-dropdown-item>
             <el-dropdown-item v-if="canPin && !isReadOnly" command="pin">{{ topic.pinned ? '取消板块置顶' : '板块置顶' }}</el-dropdown-item>
             <el-dropdown-item v-if="canPin && !isReadOnly" command="globalPin">{{ topic.globalPinned ? '取消全局置顶' : '全局置顶' }}</el-dropdown-item>
@@ -239,6 +240,12 @@
         <el-button v-if="canReviewTopicVideos" link type="warning" class="review-tip-action" @click="openTopicVideoReviewDialog">手动复核</el-button>
       </div>
 
+      <div v-if="topic.reportHiddenAt" class="topic-review-tip cpu-card topic-review-tip-pending">
+        <div class="review-blocked">
+          <p>这篇帖子收到 3 个不同账号举报，已暂时隐藏。</p>
+          <p class="cpu-muted">论坛管理员正在复核；若判定为恶意举报，内容会自动恢复，举报记录会保留追查。</p>
+        </div>
+      </div>
       <div v-if="isOwnTopicChecking" class="topic-review-tip cpu-card topic-review-tip-pending">
         <div class="review-blocked">
           <p>{{ isOwnTopicReviewRetrying ? "AI 审核服务暂时异常，系统正在后台自动重试。" : "帖子已经提交，正在后台审核。" }}</p>
@@ -312,6 +319,7 @@
         </el-button>
         <el-button :icon="ChatLineRound" :disabled="!canReply" @click="openReplyDialog()">回复 · {{ topic.replyCount }}</el-button>
         <el-button :disabled="topic.hidden" @click="shareDialogOpen = true">分享</el-button>
+        <el-button v-if="canReportPost(topic)" type="danger" plain @click="openReport('topic', topic.id, topic.title)">举报</el-button>
       </footer>
       </div>
     </article>
@@ -401,6 +409,7 @@
                 采纳并奖励 {{ questionBountyPoints }} AI 点
               </el-button>
               <el-button v-if="!entry.item.hidden" text size="small" @click="replyTo(entry.item)">回复</el-button>
+              <el-button v-if="canReportPost(entry.item)" text size="small" type="danger" @click="openReport('reply', entry.item.id, `#${entry.item.floor} 评论`)">举报</el-button>
               <el-button v-if="canEditReply(entry.item)" text size="small" @click="editReply(entry.item)">编辑</el-button>
               <el-button v-if="canEditReply(entry.item)" text size="small" type="danger" :loading="replyActionBusyId === entry.item.id" :disabled="replyActionBusyId !== null" @click="removeReply(entry.item)">删除</el-button>
               <el-button v-if="!entry.item.hidden" text size="small" :loading="replyLikeBusyId === entry.item.id" :disabled="replyLikeBusyId !== null" @click="onLikeReply(entry.item)"><AppIcon name="like" /> {{ entry.item.likeCount }}</el-button>
@@ -702,6 +711,14 @@
       @confirm="confirmTopicManualReviewRequest"
     />
 
+    <ContentReportDialog
+      v-if="reportTarget"
+      v-model="reportDialogOpen"
+      :target-type="reportTarget.type"
+      :target-id="reportTarget.id"
+      :target-label="reportTarget.label"
+    />
+
     <div v-if="topic.locked" class="locked-tip cpu-card"><AppIcon name="lock" /> 该帖已锁定，无法回复</div>
     <div v-if="!auth.isLoggedIn" class="login-tip cpu-card">
       <p><router-link to="/login">登录</router-link> 或 <router-link to="/register">注册</router-link> 后参与回复</p>
@@ -739,6 +756,8 @@ import { fmtDate, fmtRelative } from "@/utils/format";
 import { forumCacheScope, readForumTopic, writeForumTopic } from "@/utils/forumCache";
 import { rememberTopicViewCount } from "@/utils/topicImpressions";
 import { copyText } from "@/utils/userGroup";
+import ContentReportDialog from "@/components/forum/ContentReportDialog.vue";
+import type { ForumReportTargetType } from "@/api/forumReport";
 import { isAndroidNativeApp, isHarmonyNativeApp } from "@/utils/clientInfo";
 import { getNativeBridge, hasNativeImageSaveBridge } from "@/utils/nativeBridge";
 import { openImageGallery } from "@/utils/imageViewer";
@@ -792,6 +811,8 @@ const replyManualReviewConfirmOpen = ref(false);
 const requestingTopicManualReview = ref(false);
 const topicManualReviewConfirmOpen = ref(false);
 const topicAdminReviewAction = ref<"" | "approved" | "rejected">("");
+const reportDialogOpen = ref(false);
+const reportTarget = ref<{ type: ForumReportTargetType; id: number; label: string } | null>(null);
 type TopicAction = "" | "like" | "pin" | "globalPin" | "lock" | "delete";
 const topicActionBusy = ref<TopicAction>("");
 const replyActionBusyId = ref<number | null>(null);
@@ -1330,6 +1351,7 @@ function replyTo(r: Reply) {
 
 function replyReviewLabel(reply: Reply) {
   if (!reply.hidden) return "";
+  if (reply.reportHiddenAt) return "多人举报 · 待复核";
   const status = String(reply.aiReviewStatus || "");
   if (status === "checking") return "审核中 · 仅自己可见";
   if (status === "review_failed") return "审核暂未完成";
@@ -1371,6 +1393,17 @@ function canPrivateChatPost(post: Topic | Reply) {
   if (!auth.isLoggedIn || post.author?.role === "bot") return false;
   const ownerId = Number(post.realAuthor?.id ?? post.authorId ?? post.author?.id ?? 0);
   return ownerId <= 0 || ownerId !== auth.user?.id;
+}
+
+function canReportPost(post: Topic | Reply) {
+  if (!auth.isLoggedIn || post.hidden) return false;
+  const ownerId = Number(post.realAuthor?.id ?? post.authorId ?? post.author?.id ?? 0);
+  return ownerId > 0 && ownerId !== auth.user?.id;
+}
+
+function openReport(type: "topic" | "reply", id: number, label: string) {
+  reportTarget.value = { type, id, label };
+  reportDialogOpen.value = true;
 }
 
 function openPrivateChat(kind: "topic" | "reply", postId: number) {
@@ -2223,8 +2256,11 @@ function onTopicManageCommand(command: "pin" | "globalPin" | "lock" | "delete") 
   else if (command === "delete") void onDelete();
 }
 
-function onMobileTopicCommand(command: "share" | "edit" | "pin" | "globalPin" | "lock" | "delete") {
+function onMobileTopicCommand(command: "share" | "report" | "edit" | "pin" | "globalPin" | "lock" | "delete") {
   if (command === "share") shareDialogOpen.value = true;
+  else if (command === "report") {
+    if (topic.value) openReport("topic", topic.value.id, topic.value.title);
+  }
   else if (command === "edit") onEdit();
   else onTopicManageCommand(command);
 }

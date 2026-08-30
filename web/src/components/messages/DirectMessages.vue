@@ -117,6 +117,12 @@
               <span>
                 {{ messageTime(message.createdAt) }}
                 <template v-if="message.senderId === auth.user?.id"> · {{ message.readAt ? "已读" : "未读" }}</template>
+                <button
+                  v-else
+                  type="button"
+                  class="message-report-button"
+                  @click="openMessageReport(message)"
+                >举报</button>
               </span>
             </div>
           </div>
@@ -143,10 +149,17 @@
             />
             <el-button type="primary" :loading="sending" :disabled="!canSubmit" @click="sendMessage">发送</el-button>
           </div>
-          <span class="composer-hint">{{ composerHint }}</span>
+          <span class="composer-hint">{{ composerHint }} · 发送前进行 AI 内容审核</span>
         </footer>
       </template>
     </section>
+    <ContentReportDialog
+      v-if="reportMessage"
+      v-model="reportDialogOpen"
+      target-type="direct_message"
+      :target-id="reportMessage.id"
+      :target-label="`与 ${activeCounterpart?.nickname || '对方'} 的私聊消息`"
+    />
   </div>
 </template>
 
@@ -157,6 +170,7 @@ import { ArrowLeft } from "@element-plus/icons-vue";
 import { useRoute, useRouter } from "vue-router";
 import UserAvatar from "@/components/common/UserAvatar.vue";
 import DisplayNickname from "@/components/common/DisplayNickname.vue";
+import ContentReportDialog from "@/components/forum/ContentReportDialog.vue";
 import {
   directMessageApi,
   type DirectConversation,
@@ -189,6 +203,8 @@ const listError = ref("");
 const targetError = ref("");
 const messageError = ref("");
 const messageScroller = ref<HTMLElement | null>(null);
+const reportDialogOpen = ref(false);
+const reportMessage = ref<DirectMessageItem | null>(null);
 let disposed = false;
 let refreshTimer = 0;
 let routeSeq = 0;
@@ -490,6 +506,12 @@ async function sendMessage() {
   }
 }
 
+function openMessageReport(message: DirectMessageItem) {
+  if (message.senderId === auth.user?.id) return;
+  reportMessage.value = message;
+  reportDialogOpen.value = true;
+}
+
 function readComposerDraft(key: string) {
   if (!key) return "";
   try {
@@ -692,6 +714,8 @@ function errorMessage(error: unknown, fallback: string) {
 .composer :deep(.el-textarea__inner) { min-height: 42px !important; padding: 10px 12px; line-height: 1.5; border-radius: 12px; }
 .composer-row :deep(.el-button) { min-width: 76px; min-height: 42px; margin-left: 0; }
 .composer-hint { min-width: 0; color: var(--cpu-text-secondary); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.message-report-button { margin-left: 6px; padding: 0; border: 0; background: transparent; color: var(--el-color-danger); font: inherit; cursor: pointer; }
+.message-report-button:hover { text-decoration: underline; }
 
 @media (max-width: 720px) {
   .direct-messages { display: block; width: 100%; max-width: 100%; height: 100%; min-height: 0; border: 0; border-radius: 0; box-sizing: border-box; }

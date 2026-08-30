@@ -735,6 +735,40 @@ export type ForumAdAdmin = {
   };
 };
 
+export type ForumReportAdminRow = {
+  id: number;
+  reporterId: number;
+  targetAuthorId?: number | null;
+  targetType: "topic" | "reply" | "direct_message";
+  targetId: number;
+  targetLabel: string;
+  targetUrl?: string | null;
+  contentSnapshot: string;
+  reason: string;
+  reasonLabel: string;
+  detail: string;
+  status: "pending" | "resolved" | "rejected";
+  targetReportCount: number;
+  activeTargetReportCount: number;
+  reporterReportCount: number;
+  reporterRejectedCount: number;
+  handledNote: string;
+  handledAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  reporter: { id: number; username: string; nickname: string; avatar?: string | null; role: string };
+  targetAuthor?: { id: number; username: string; nickname: string; avatar?: string | null; role: string } | null;
+  handledBy?: { id: number; username: string; nickname: string; avatar?: string | null; role: string } | null;
+};
+
+export type ForumReportAdminPage = {
+  page: number;
+  size: number;
+  total: number;
+  counts: Record<string, number>;
+  list: ForumReportAdminRow[];
+};
+
 export type ForumAdMetricCounter = {
   impressions: number;
   clicks: number;
@@ -1184,6 +1218,12 @@ export const adminApi = {
     request.get<{ page: number; size: number; total: number; list: any[] }>("/admin/topics", params, options),
   manualReviews: (options?: RequestOptions) =>
     request.get<{ total: number; topicCount: number; replyCount: number; topics: any[]; replies: any[] }>("/admin/manual-reviews", undefined, options),
+  forumReports: (
+    params: { status?: "pending" | "resolved" | "rejected" | "all"; targetType?: "topic" | "reply" | "direct_message" | "all"; page?: number; size?: number },
+    options?: RequestOptions,
+  ) => request.get<ForumReportAdminPage>("/admin/forum-reports", params, options),
+  handleForumReport: (id: number, payload: { status: "resolved" | "rejected"; note?: string }) =>
+    request.patch<ForumReportAdminRow>(`/admin/forum-reports/${id}`, payload),
   updateTopic: (id: number, patch: {
     hidden?: boolean;
     pinned?: boolean;

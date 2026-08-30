@@ -115,7 +115,7 @@ export function shouldRunAiReview() {
 }
 
 type AiReviewLogContext = {
-  kind: "topic" | "reply" | "topic-edit" | "smart-post";
+  kind: "topic" | "reply" | "direct-message" | "topic-edit" | "smart-post";
   targetId?: number | null;
   targetLabel?: string | null;
   createdById?: number | null;
@@ -318,7 +318,7 @@ function describeAiRequestError(error: unknown) {
 
 function buildAiReviewUnavailableResult(
   config: ReturnType<typeof getSiteConfig>,
-  scope: "topic" | "reply",
+  scope: "topic" | "reply" | "direct-message",
   error: unknown,
   model = config.aiReviewModel,
 ): TopicAiReviewResult {
@@ -939,6 +939,75 @@ export async function refreshTopicSubmissionLock(userId: number) {
     where: { id: userId },
     data: { topicSubmissionLocked: hasBlockingManualReview },
   }).catch(() => {});
+}
+
+export async function reviewDirectMessageContent(input: {
+  content: string;
+  createdById: number;
+}): Promise<TopicAiReviewResult> {
+  const config = getSiteConfig();
+  if (!shouldRunAiReview()) {
+    return buildAiReviewUnavailableResult(
+      config,
+      "direct-message",
+      new Error("AI 审核未开启或文本审核服务未配置"),
+    );
+  }
+
+  let content = "";
+  let model = config.aiReviewModel;
+  try {
+    const result = await requestAiJson([
+      {
+        role: "system",
+        content: config.aiReplyReviewSystemPrompt,
+      },
+      {
+        role: "user",
+        content: renderPromptTemplate(config.aiReplyReviewUserPrompt, {
+          topicTitle: "站内私聊",
+          boardName: "站内私聊",
+          boardType: "direct-message",
+          parentContent: "",
+          content: normalizeTextContentForAiReview(input.content),
+        }),
+      },
+    ], {
+      ...INTERACTIVE_TEXT_REVIEW_OPTIONS,
+      logContext: {
+        kind: "direct-message",
+        targetLabel: normalizeTextContentForAiReview(input.content).slice(0, 60),
+        createdById: input.createdById,
+      },
+      promptCacheScope: "direct-message-review",
+    });
+    content = result.content;
+    model = result.model;
+  } catch (error) {
+    return buildAiReviewUnavailableResult(config, "direct-message", error);
+  }
+  let parsed: DeepSeekReviewResponse;
+  try {
+    parsed = parseReviewJson(content);
+  } catch (error) {
+    return buildAiReviewUnavailableResult(config, "direct-message", error, model);
+  }
+  const riskScore = clampScore(parsed.risk_score);
+  const riskLevel = normalizeRiskLevel(parsed.risk_level, riskScore);
+  const decision = decideByThreshold(riskScore, config.aiReviewThreshold);
+  return {
+    status: decision === "auto_pass" ? "auto_passed" : "blocked_ai",
+    riskLevel,
+    riskScore,
+    reason: String(parsed.reason || fallbackReason(riskLevel)).slice(0, 120),
+    detail: JSON.stringify({
+      modelDecision: parsed.decision ?? "",
+      decision,
+      categories: parsed.categories ?? {},
+      detail: String(parsed.detail || "").slice(0, 1000),
+    }),
+    model,
+  };
 }
 
 export async function notifyTopicAiBlocked(input: {

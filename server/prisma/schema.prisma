@@ -111,6 +111,9 @@ model User {
   directConversationsAsUpper   DirectConversation[]          @relation("DirectConversationUpperParticipant")
   initiatedDirectConversations DirectConversation[]          @relation("DirectConversationInitiator")
   directMessages               DirectMessage[]               @relation("DirectMessageSender")
+  forumReportsSubmitted        ForumReport[]                  @relation("ForumReportReporter")
+  forumReportsReceived         ForumReport[]                  @relation("ForumReportTargetAuthor")
+  forumReportsHandled          ForumReport[]                  @relation("ForumReportHandler")
   marketReviewsAuthored        MarketReview[]                @relation("MarketReviewAuthor")
   marketReviewsReceived        MarketReview[]                @relation("MarketReviewTarget")
   marketReports                MarketReport[]                @relation("MarketReportReporter")
@@ -251,6 +254,7 @@ model Topic {
   pinned             Boolean   @default(false)
   locked             Boolean   @default(false) // 锁帖后不能回复
   hidden             Boolean   @default(false) // 被管理员隐藏
+  reportHiddenAt     DateTime?
   viewCount          Int       @default(0)
   replyCount         Int       @default(0)
   likeCount          Int       @default(0)
@@ -300,6 +304,7 @@ model Reply {
   floor          Int       @default(0)
   likeCount      Int       @default(0)
   hidden         Boolean   @default(false)
+  reportHiddenAt DateTime?
   createdAt      DateTime  @default(now())
 
   topic       Topic            @relation(fields: [topicId], references: [id], onDelete: Cascade)
@@ -1168,6 +1173,34 @@ model DirectMessage {
   @@index([conversationId, senderId, createdAt])
   @@index([conversationId, readAt])
   @@index([senderId, createdAt])
+}
+
+model ForumReport {
+  id              Int       @id @default(autoincrement())
+  reporterId      Int
+  targetAuthorId  Int?
+  targetType      String
+  targetId        Int
+  targetLabel     String
+  contentSnapshot String
+  reason          String
+  detail          String    @default("")
+  status          String    @default("pending")
+  handledById     Int?
+  handledNote     String    @default("")
+  handledAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  reporter     User  @relation("ForumReportReporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  targetAuthor User? @relation("ForumReportTargetAuthor", fields: [targetAuthorId], references: [id], onDelete: SetNull)
+  handledBy    User? @relation("ForumReportHandler", fields: [handledById], references: [id], onDelete: SetNull)
+
+  @@unique([reporterId, targetType, targetId])
+  @@index([status, createdAt])
+  @@index([targetType, targetId])
+  @@index([targetAuthorId, createdAt])
+  @@index([handledById, handledAt])
 }
 
 model MarketReview {

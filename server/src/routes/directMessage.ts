@@ -9,6 +9,7 @@ import { ensureCanReadBoardType } from "../services/forumAccess";
 import { isRetiredBoardSlug } from "../services/retiredBoards";
 import { featureClosedMessage, isBoardTypeEnabled } from "../services/siteSettings";
 import { presentAnonymousAlias } from "../services/userTrust";
+import { ensureDirectMessageContentApproved } from "../services/directMessageModeration";
 import {
   anonymousForumDirectScope,
   canonicalDirectParticipants,
@@ -228,6 +229,7 @@ async function sendDirectMessage(
   context: DirectMessageContext = {},
 ) {
   const { sender } = await requireDirectMessageTarget(senderId, recipientId);
+  await ensureDirectMessageContentApproved(senderId, content);
   const pair = canonicalDirectParticipants(senderId, recipientId);
   const scopeKey = context.scopeKey || DIRECT_MESSAGE_DEFAULT_SCOPE;
   const recipientAlias = String(context.recipientAlias || "").trim() || null;

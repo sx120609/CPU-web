@@ -15,6 +15,7 @@ export interface Topic {
   globalPinned?: boolean;
   locked: boolean;
   hidden: boolean;
+  reportHiddenAt?: string | null;
   viewCount: number;
   replyCount: number;
   likeCount: number;
@@ -59,6 +60,7 @@ export interface Reply {
   parentReplyId?: number | null;
   floor: number;
   hidden?: boolean;
+  reportHiddenAt?: string | null;
   aiReviewStatus?: string;
   aiReviewReason?: string | null;
   likeCount: number;

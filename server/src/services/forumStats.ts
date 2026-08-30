@@ -43,3 +43,23 @@ export async function refreshUserReplyCount(userId: number, client: ForumStatsCl
   });
   return replyCount;
 }
+
+export async function refreshTopicReplyStats(topicId: number, client: ForumStatsClient = prisma) {
+  const [replyCount, latestReply] = await Promise.all([
+    client.reply.count({ where: { topicId, hidden: false } }),
+    client.reply.findFirst({
+      where: { topicId, hidden: false },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      select: { createdAt: true, authorId: true },
+    }),
+  ]);
+  await client.topic.update({
+    where: { id: topicId },
+    data: {
+      replyCount,
+      lastReplyAt: latestReply?.createdAt ?? null,
+      lastReplyById: latestReply?.authorId ?? null,
+    },
+  });
+  return replyCount;
+}

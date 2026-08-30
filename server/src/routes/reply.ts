@@ -400,7 +400,7 @@ replyRouter.delete("/:id", authRequired, async (req, res, next) => {
     if (!isMod && !isBoardTypeEnabled(r.topic?.board?.type)) throw Errors.forbidden(featureClosedMessage(r.topic?.board?.type));
     if (isOwner) await ensureForumAccessEnabled(req.user!.userId, req.user!.role);
     await prisma.$transaction(async (tx) => {
-      await tx.reply.update({ where: { id }, data: { hidden: true, aiReviewStatus: "deleted" } });
+      await tx.reply.update({ where: { id }, data: { hidden: true, reportHiddenAt: null, aiReviewStatus: "deleted" } });
       if (!r.hidden) {
         const [replyCount, lastReply] = await Promise.all([
           tx.reply.count({ where: { topicId: r.topicId, hidden: false } }),
