@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="widget_schedule_name">药大课表小组件 2x2</string>
-    <string name="widget_schedule_name_wide">药大课表小组件 4x2</string>
-    <string name="widget_schedule_name_large">药大课表小组件 4x4</string>
-    <string name="widget_schedule_description">在桌面查看今日课程和更新时间</string>
+    <string name="widget_schedule_name">药大课表·下一节 2×2</string>
+    <string name="widget_schedule_name_wide">药大课表·今日 4×2</string>
+    <string name="widget_schedule_name_large">药大课表·周视图 4×4</string>
+    <string name="widget_schedule_description">在桌面查看下一节、今日课程或图形化周课表</string>
 </resources>

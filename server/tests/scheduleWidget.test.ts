@@ -138,6 +138,7 @@ test("schedule widget removes today's completed courses from the API payload", (
 
   assert.deepEqual(payload.today.courses.map((item) => item.name), ["下午课程"]);
   assert.deepEqual(payload.upcoming.map((item) => item.name), ["下午课程"]);
+  assert.deepEqual(payload.weekDays[2].courses.map((item) => item.name), ["上午课程", "下午课程"]);
 });
 
 test("schedule widget loads real Monday courses when the default calendar belongs to the old semester", () => {
@@ -179,6 +180,11 @@ test("schedule widget loads real Monday courses when the default calendar belong
 
   const tomorrow = payload.days.find((day) => day.date === "2026-08-31");
   assert.equal(payload.today.date, "2026-08-30");
+  assert.equal(payload.displayWeek, 1);
+  assert.equal(payload.weekDays.length, 7);
+  assert.equal(payload.weekDays[0].date, "2026-08-31");
+  assert.equal(payload.weekDays[6].date, "2026-09-06");
+  assert.deepEqual(payload.weekDays[0].courses.map((item) => item.name), ["药物设计学", "药剂学", "医学免疫学"]);
   assert.equal(tomorrow?.label, "周一");
   assert.equal(tomorrow?.week, 1);
   assert.deepEqual(tomorrow?.courses.map((item) => item.name), ["药物设计学", "药剂学", "医学免疫学"]);

@@ -1,6 +1,6 @@
 import { normalizeCalendarWeekDays } from "./jwxtParser";
 
-export const SCHEDULE_WIDGET_PAYLOAD_VERSION = 7;
+export const SCHEDULE_WIDGET_PAYLOAD_VERSION = 8;
 
 const SMALL_SLOTS = [
   { no: 1, start: "08:00", end: "08:45" },
@@ -354,6 +354,29 @@ export function buildScheduleWidgetPayload(
       });
     }
   }
+  const displayWeek = week > 0
+    ? week
+    : (days.find((day) => Number(day.week) > 0)?.week ?? 0);
+  const displayCalendarDays = normalizeCalendarWeekDays(
+    (effectiveCalendar?.weeks ?? []).find((item: any) => Number(item.week) === displayWeek)?.days ?? [],
+  );
+  const displaySchedule = displayWeek === week
+    ? parsed
+    : (schedulesByWeek[displayWeek] ?? parsed);
+  const displayCourses = displayWeek > 0
+    ? coursesForWeek(displaySchedule, displayWeek, displayCalendarDays)
+    : [];
+  const weekDays = Array.from({ length: 7 }, (_, index) => {
+    const day = index + 1;
+    return {
+      day,
+      label: dayLabel(day),
+      date: displayCalendarDays[index] || "",
+      week: displayWeek,
+      isToday: displayCalendarDays[index] === today.ymd,
+      courses: displayCourses.filter((course) => course.day === day),
+    };
+  });
   const upcoming = visibleCourses.filter((course) => course.day === activeDay);
 
   return {
@@ -362,9 +385,11 @@ export function buildScheduleWidgetPayload(
     semester: parsed?.currentSemester || "",
     week,
     currentWeek: calendarToday.week,
+    displayWeek,
     teachingWeekActive,
     today: days[activeDay - 1],
     days,
+    weekDays,
     upcoming: upcoming.slice(0, 6),
     strictDate: true,
     payloadVersion: SCHEDULE_WIDGET_PAYLOAD_VERSION,
