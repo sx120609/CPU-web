@@ -57,19 +57,19 @@ function renderWeekSvg(result: WechatScheduleResult) {
   const headCells = days.map((day, index) => {
     const x = SIDE + AXIS_WIDTH + GAP + index * (dayWidth + GAP);
     return `
-      <rect x="${n(x)}" y="${headY + 7}" width="${n(dayWidth)}" height="${GRID_HEAD_HEIGHT - 14}" rx="16" fill="${day.isToday ? "#173f38" : "#12332c"}" stroke="${day.isToday ? "#35d6b3" : "#31564e"}" stroke-width="${day.isToday ? 3 : 1.5}" />
-      <text x="${n(x + dayWidth / 2)}" y="${headY + 39}" text-anchor="middle" font-size="22" font-weight="800" fill="${day.isToday ? "#54e2c5" : "#d9ebe6"}">${escapeXml(day.label.replace("周", ""))}</text>
-      <text x="${n(x + dayWidth / 2)}" y="${headY + 65}" text-anchor="middle" font-size="17" font-weight="650" fill="#9fbcb4">${escapeXml(shortDate(day.date))}</text>`;
+      <rect x="${n(x)}" y="${headY + 7}" width="${n(dayWidth)}" height="${GRID_HEAD_HEIGHT - 14}" rx="16" fill="${day.isToday ? "url(#color-soft)" : "#ffffff"}" fill-opacity="${day.isToday ? 1 : 0.56}" stroke="${day.isToday ? "#7669ff" : "#dae3ef"}" stroke-opacity="${day.isToday ? 0.22 : 0.82}" stroke-width="1.5" />
+      <text x="${n(x + dayWidth / 2)}" y="${headY + 39}" text-anchor="middle" font-size="22" font-weight="800" fill="${day.isToday ? "#3b2f9a" : "#172033"}">${escapeXml(day.label.replace("周", ""))}</text>
+      <text x="${n(x + dayWidth / 2)}" y="${headY + 65}" text-anchor="middle" font-size="17" font-weight="650" fill="${day.isToday ? "#5b50aa" : "#667085"}">${escapeXml(shortDate(day.date))}</text>`;
   }).join("");
   const cells = SLOTS.flatMap((slot, slotIndex) => {
     const y = bodyY + slotIndex * (SLOT_HEIGHT + GAP);
     const axis = `
-      <text x="${SIDE + AXIS_WIDTH / 2}" y="${y + 38}" text-anchor="middle" font-size="25" font-weight="850" fill="#f4fbf8">${slot.no}</text>
-      <text x="${SIDE + AXIS_WIDTH / 2}" y="${y + 70}" text-anchor="middle" font-size="16" font-weight="650" fill="#9fbcb4">${slot.start}</text>
-      <text x="${SIDE + AXIS_WIDTH / 2}" y="${y + 94}" text-anchor="middle" font-size="16" font-weight="650" fill="#9fbcb4">${slot.end}</text>`;
+      <text x="${SIDE + AXIS_WIDTH / 2}" y="${y + 38}" text-anchor="middle" font-size="25" font-weight="850" fill="#172033">${slot.no}</text>
+      <text x="${SIDE + AXIS_WIDTH / 2}" y="${y + 70}" text-anchor="middle" font-size="16" font-weight="650" fill="#667085">${slot.start}</text>
+      <text x="${SIDE + AXIS_WIDTH / 2}" y="${y + 94}" text-anchor="middle" font-size="16" font-weight="650" fill="#667085">${slot.end}</text>`;
     const dayCells = days.map((day, dayIndex) => {
       const x = SIDE + AXIS_WIDTH + GAP + dayIndex * (dayWidth + GAP);
-      return `<rect x="${n(x)}" y="${n(y)}" width="${n(dayWidth)}" height="${SLOT_HEIGHT}" rx="14" fill="${day.isToday ? "#153a32" : "#102f28"}" stroke="#315149" stroke-width="1.5" />`;
+      return `<rect x="${n(x)}" y="${n(y)}" width="${n(dayWidth)}" height="${SLOT_HEIGHT}" rx="14" fill="#ffffff" fill-opacity="0.36" stroke="#dae3ef" stroke-opacity="0.82" stroke-width="1.5" />`;
     }).join("");
     return axis + dayCells;
   }).join("");
@@ -88,12 +88,12 @@ function renderWeekSvg(result: WechatScheduleResult) {
     const totalHeight = nameHeight + (showMeta ? 28 : 0);
     const firstY = y + Math.max(28, (h - totalHeight) / 2 + 23);
     return `
-      <rect x="${n(x)}" y="${n(y)}" width="${n(w)}" height="${n(h)}" rx="16" fill="url(#${tone.id})" stroke="${tone.border}" stroke-width="2.5" />
+      <rect x="${n(x)}" y="${n(y)}" width="${n(w)}" height="${n(h)}" rx="16" fill="url(#${tone.id})" stroke="${tone.border}" stroke-width="1.5" filter="url(#course-shadow)" />
       ${renderCenteredLines(nameLines, x + w / 2, firstY, 25, 29, tone.text, 850)}
       ${showMeta ? `<text x="${n(x + w / 2)}" y="${n(firstY + nameHeight + 2)}" text-anchor="middle" font-size="18" font-weight="750" fill="${tone.text}" opacity="0.92">${escapeXml(`@${truncate(meta, 8)}`)}</text>` : ""}`;
   }).join("");
   return svgFrame(height, result, defs, `
-    <text x="${SIDE + AXIS_WIDTH / 2}" y="${headY + 53}" text-anchor="middle" font-size="19" font-weight="750" fill="#9fbcb4">节次</text>
+    <text x="${SIDE + AXIS_WIDTH / 2}" y="${headY + 53}" text-anchor="middle" font-size="19" font-weight="750" fill="#667085">节次</text>
     ${headCells}${cells}${blocks}`);
 }
 
@@ -109,10 +109,10 @@ function renderDaySvg(result: WechatScheduleResult) {
   const cells = SLOTS.map((slot, index) => {
     const y = bodyY + index * (SLOT_HEIGHT + GAP);
     return `
-      <text x="${SIDE + AXIS_WIDTH / 2}" y="${y + 38}" text-anchor="middle" font-size="25" font-weight="850" fill="#f4fbf8">${slot.no}</text>
-      <text x="${SIDE + AXIS_WIDTH / 2}" y="${y + 70}" text-anchor="middle" font-size="16" font-weight="650" fill="#9fbcb4">${slot.start}</text>
-      <text x="${SIDE + AXIS_WIDTH / 2}" y="${y + 94}" text-anchor="middle" font-size="16" font-weight="650" fill="#9fbcb4">${slot.end}</text>
-      <rect x="${courseX}" y="${y}" width="${courseWidth}" height="${SLOT_HEIGHT}" rx="16" fill="#102f28" stroke="#315149" stroke-width="1.5" />`;
+      <text x="${SIDE + AXIS_WIDTH / 2}" y="${y + 38}" text-anchor="middle" font-size="25" font-weight="850" fill="#172033">${slot.no}</text>
+      <text x="${SIDE + AXIS_WIDTH / 2}" y="${y + 70}" text-anchor="middle" font-size="16" font-weight="650" fill="#667085">${slot.start}</text>
+      <text x="${SIDE + AXIS_WIDTH / 2}" y="${y + 94}" text-anchor="middle" font-size="16" font-weight="650" fill="#667085">${slot.end}</text>
+      <rect x="${courseX}" y="${y}" width="${courseWidth}" height="${SLOT_HEIGHT}" rx="16" fill="#ffffff" fill-opacity="0.36" stroke="#dae3ef" stroke-opacity="0.82" stroke-width="1.5" />`;
   }).join("");
   const blocks = courses.map((course: any) => {
     const startSlot = clampSlot(course.startSlot);
@@ -126,16 +126,16 @@ function renderDaySvg(result: WechatScheduleResult) {
     const nameLines = wrapText(String(course.name || "未命名课程"), 22, Math.max(1, Math.min(3, Math.floor(h / 42))));
     const startY = y + Math.max(43, (h - nameLines.length * 40 - (detail ? 32 : 0)) / 2 + 32);
     return `
-      <rect x="${n(x)}" y="${n(y)}" width="${n(w)}" height="${n(h)}" rx="22" fill="url(#${tone.id})" stroke="${tone.border}" stroke-width="3" />
+      <rect x="${n(x)}" y="${n(y)}" width="${n(w)}" height="${n(h)}" rx="22" fill="url(#${tone.id})" stroke="${tone.border}" stroke-width="1.5" filter="url(#course-shadow)" />
       ${renderLeftLines(nameLines, x + 30, startY, 34, 40, tone.text, 850)}
       ${detail ? `<text x="${n(x + 30)}" y="${n(startY + nameLines.length * 40 + 2)}" font-size="23" font-weight="720" fill="${tone.text}" opacity="0.92">${escapeXml(truncate(detail, 38))}</text>` : ""}`;
   }).join("");
   const label = String(day.label || weekdayLabel(day.day));
   return svgFrame(height, result, defs, `
-    <rect x="${courseX}" y="${headY + 7}" width="${courseWidth}" height="${GRID_HEAD_HEIGHT - 14}" rx="18" fill="#153a32" stroke="#35d6b3" stroke-width="2.5" />
-    <text x="${courseX + 28}" y="${headY + 42}" font-size="25" font-weight="850" fill="#54e2c5">${escapeXml(label)}</text>
-    <text x="${courseX + 28}" y="${headY + 68}" font-size="18" font-weight="650" fill="#a9c8c0">${escapeXml(String(day.date || ""))}</text>
-    <text x="${SIDE + AXIS_WIDTH / 2}" y="${headY + 53}" text-anchor="middle" font-size="19" font-weight="750" fill="#9fbcb4">节次</text>
+    <rect x="${courseX}" y="${headY + 7}" width="${courseWidth}" height="${GRID_HEAD_HEIGHT - 14}" rx="18" fill="url(#color-soft)" stroke="#7669ff" stroke-opacity="0.22" stroke-width="1.5" />
+    <text x="${courseX + 28}" y="${headY + 42}" font-size="25" font-weight="850" fill="#3b2f9a">${escapeXml(label)}</text>
+    <text x="${courseX + 28}" y="${headY + 68}" font-size="18" font-weight="650" fill="#5b50aa">${escapeXml(String(day.date || ""))}</text>
+    <text x="${SIDE + AXIS_WIDTH / 2}" y="${headY + 53}" text-anchor="middle" font-size="19" font-weight="750" fill="#667085">节次</text>
     ${cells}${blocks}`);
 }
 
@@ -144,19 +144,26 @@ function svgFrame(height: number, result: WechatScheduleResult, defs: string, co
   return `<?xml version="1.0" encoding="UTF-8"?>
   <svg width="${WIDTH}" height="${height}" viewBox="0 0 ${WIDTH} ${height}" xmlns="http://www.w3.org/2000/svg">
     <defs>
-      <linearGradient id="page-bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0b211d"/><stop offset="1" stop-color="#102c26"/></linearGradient>
-      <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#020b09" flood-opacity="0.32"/></filter>
+      <linearGradient id="page-bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#edf4ff"/><stop offset="0.42" stop-color="#f7fbff"/><stop offset="1" stop-color="#f8fafc"/></linearGradient>
+      <radialGradient id="ambient-blue" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 0) rotate(35) scale(700 470)"><stop offset="0" stop-color="#aed3ff" stop-opacity="0.36"/><stop offset="1" stop-color="#aed3ff" stop-opacity="0"/></radialGradient>
+      <radialGradient id="ambient-green" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(1260 0) rotate(145) scale(660 430)"><stop offset="0" stop-color="#b7e8db" stop-opacity="0.32"/><stop offset="1" stop-color="#b7e8db" stop-opacity="0"/></radialGradient>
+      <linearGradient id="color-ring" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f43f5e" stop-opacity="0.58"/><stop offset="0.22" stop-color="#f97316" stop-opacity="0.50"/><stop offset="0.48" stop-color="#22c55e" stop-opacity="0.45"/><stop offset="0.74" stop-color="#3b82f6" stop-opacity="0.54"/><stop offset="1" stop-color="#8b5cf6" stop-opacity="0.52"/></linearGradient>
+      <linearGradient id="color-soft" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f43f5e" stop-opacity="0.09"/><stop offset="0.24" stop-color="#f97316" stop-opacity="0.07"/><stop offset="0.48" stop-color="#22c55e" stop-opacity="0.07"/><stop offset="0.74" stop-color="#3b82f6" stop-opacity="0.10"/><stop offset="1" stop-color="#8b5cf6" stop-opacity="0.09"/></linearGradient>
+      <filter id="course-shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="4" stdDeviation="7" flood-color="#182233" flood-opacity="0.08"/></filter>
       ${defs}
     </defs>
     <rect width="${WIDTH}" height="${height}" fill="url(#page-bg)" />
-    <text x="${SIDE}" y="62" font-size="35" font-weight="880" fill="#f3fbf8">${escapeXml(result.query.label)}</text>
-    <text x="${SIDE}" y="105" font-size="22" font-weight="650" fill="#9fbcb4">${escapeXml(result.scopeDescription)}</text>
-    <rect x="${WIDTH - SIDE - 185}" y="44" width="185" height="52" rx="26" fill="#153b33" stroke="#327565" />
-    <text x="${WIDTH - SIDE - 92.5}" y="78" text-anchor="middle" font-size="19" font-weight="780" fill="#5ce0c3">拾小间课表</text>
+    <rect width="${WIDTH}" height="${height}" fill="url(#ambient-blue)" />
+    <rect width="${WIDTH}" height="${height}" fill="url(#ambient-green)" />
+    <text x="${SIDE}" y="62" font-size="35" font-weight="880" fill="#172033">${escapeXml(result.query.label)}</text>
+    <text x="${SIDE}" y="105" font-size="22" font-weight="650" fill="#667085">${escapeXml(result.scopeDescription)}</text>
+    <rect x="${WIDTH - SIDE - 185}" y="44" width="185" height="52" rx="26" fill="url(#color-ring)" />
+    <rect x="${WIDTH - SIDE - 183.5}" y="45.5" width="182" height="49" rx="24.5" fill="#ffffff" fill-opacity="0.86" />
+    <text x="${WIDTH - SIDE - 92.5}" y="78" text-anchor="middle" font-size="19" font-weight="780" fill="#334155">拾小间课表</text>
     ${content}
-    <line x1="${SIDE}" y1="${height - FOOTER_HEIGHT}" x2="${WIDTH - SIDE}" y2="${height - FOOTER_HEIGHT}" stroke="#2c4d45" />
-    <text x="${SIDE}" y="${height - 28}" font-size="18" font-weight="650" fill="#789c93">课程安排以学校教务系统为准</text>
-    <text x="${WIDTH - SIDE}" y="${height - 28}" text-anchor="end" font-size="18" font-weight="700" fill="#789c93">${cacheText}</text>
+    <line x1="${SIDE}" y1="${height - FOOTER_HEIGHT}" x2="${WIDTH - SIDE}" y2="${height - FOOTER_HEIGHT}" stroke="#dde4ee" />
+    <text x="${SIDE}" y="${height - 28}" font-size="18" font-weight="650" fill="#8a94a6">课程安排以学校教务系统为准</text>
+    <text x="${WIDTH - SIDE}" y="${height - 28}" text-anchor="end" font-size="18" font-weight="700" fill="#8a94a6">${cacheText}</text>
   </svg>`;
 }
 
@@ -167,7 +174,7 @@ function renderCourseGradients(courses: any[]) {
     seen.set(tone.id, tone);
   }
   return [...seen.values()].map((tone) => (
-    `<linearGradient id="${tone.id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${tone.top}"/><stop offset="1" stop-color="${tone.bottom}"/></linearGradient>`
+    `<linearGradient id="${tone.id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${tone.bg}" stop-opacity="0.86"/><stop offset="1" stop-color="${tone.bg}" stop-opacity="0.86"/></linearGradient>`
   )).join("");
 }
 
@@ -176,13 +183,15 @@ function courseTone(name: unknown) {
   const seed = String(name || "课程").trim().replace(/\s+/g, " ");
   for (let index = 0; index < seed.length; index += 1) hash = (hash * 31 + seed.charCodeAt(index)) >>> 0;
   const hue = hash % 360;
-  const saturation = Math.min(82, 58 + ((hash >>> 8) % 18) + 4);
+  const saturation = 58 + ((hash >>> 8) % 18);
+  const bgLightness = 89 + ((hash >>> 16) % 5);
+  const borderLightness = 48 + ((hash >>> 20) % 10);
+  const textLightness = 25 + ((hash >>> 24) % 8);
   return {
     id: `course-${hash.toString(16)}`,
-    top: `hsl(${hue}, ${saturation}%, 34%)`,
-    bottom: `hsl(${hue}, ${saturation}%, 24%)`,
-    border: `hsl(${hue}, ${Math.min(86, saturation + 4)}%, 72%)`,
-    text: "#f8fffd",
+    bg: `hsl(${hue}, ${saturation}%, ${bgLightness}%)`,
+    border: `hsla(${hue}, ${Math.min(82, saturation + 8)}%, ${borderLightness}%, 0.48)`,
+    text: `hsl(${hue}, ${Math.min(76, saturation + 4)}%, ${textLightness}%)`,
   };
 }
 
