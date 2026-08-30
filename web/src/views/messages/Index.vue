@@ -105,6 +105,17 @@
                 </span>
                 <el-switch v-model="settings.wechatNotifyEnabled" />
               </label>
+              <div
+                v-if="wechatProfile?.binding && wechatProfile.subscriptionAvailable && isWechatBrowser"
+                class="wechat-subscribe-card"
+              >
+                <div>
+                  <b>一次性微信提醒</b>
+                  <span>每次同意可接收下一条超出客服窗口的站内通知，由微信原生界面确认。</span>
+                </div>
+                <div ref="wechatSubscribeContainer" class="wechat-subscribe-button-host" />
+                <small v-if="wechatSubscribeState">{{ wechatSubscribeState }}</small>
+              </div>
               <div class="qq-channel-actions">
                 <el-button
                   v-if="!wechatProfile?.binding && isWechatBrowser"
@@ -347,6 +358,7 @@ import QRCode from "qrcode";
 import { buildQqAddFriendUrl } from "@/utils/qqContact";
 import { isServerHandledRedirect, resolveSafeRedirect } from "@/utils/redirect";
 import { forumContentExcerpt } from "@/utils/forumContent";
+import { isWechatBrowser as detectWechatBrowser, mountWechatSubscribeButton } from "@/utils/wechatBridge";
 
 const route = useRoute();
 const router = useRouter();
@@ -365,6 +377,8 @@ const wechatProfile = ref<WechatProfile | null>(null);
 const wechatLoading = ref(false);
 const wechatProfileError = ref("");
 const wechatQr = ref<{ imageUrl: string; expiresAt: string } | null>(null);
+const wechatSubscribeContainer = ref<HTMLElement | null>(null);
+const wechatSubscribeState = ref("");
 const loading = ref(false);
 const pageError = ref("");
 const saving = ref(false);
@@ -383,9 +397,10 @@ let reviewTargetSeq = 0;
 let disposed = false;
 let wechatQrPollTimer: ReturnType<typeof setTimeout> | null = null;
 let wechatQrPollSeq = 0;
+let disposeWechatSubscribeButton: (() => void) | null = null;
 
 const unreadCount = computed(() => list.value.filter((item) => !item.readAt).length);
-const isWechatBrowser = /MicroMessenger/i.test(navigator.userAgent);
+const isWechatBrowser = detectWechatBrowser();
 const activeNoticeContent = computed(() => forumContentExcerpt(activeNotice.value?.content, 500));
 const wechatChannelStateText = computed(() => {
   if (wechatProfileError.value) return "状态未知";
@@ -460,6 +475,8 @@ onBeforeUnmount(() => {
   requestingManualReview.value = false;
   reviewTargetLoading.value = false;
   stopWechatQrPolling();
+  disposeWechatSubscribeButton?.();
+  disposeWechatSubscribeButton = null;
 });
 
 watch(() => route.query.tab, (value) => {
@@ -623,6 +640,8 @@ async function loadWechatProfile(opts?: { silent?: boolean }) {
       wechatQr.value = null;
       stopWechatQrPolling();
     }
+    await nextTick();
+    await initializeWechatSubscribeButton(profile);
   } catch (error) {
     if (disposed || seq !== wechatProfileSeq) return;
     wechatProfile.value = null;
@@ -630,6 +649,35 @@ async function loadWechatProfile(opts?: { silent?: boolean }) {
     if (!opts?.silent) ElMessage.error(wechatProfileError.value);
   } finally {
     if (!disposed && seq === wechatProfileSeq) wechatLoading.value = false;
+  }
+}
+
+async function initializeWechatSubscribeButton(profile: WechatProfile) {
+  disposeWechatSubscribeButton?.();
+  disposeWechatSubscribeButton = null;
+  wechatSubscribeState.value = "";
+  if (!isWechatBrowser || !profile.binding || !profile.subscriptionAvailable || !profile.subscriptionTemplateId) return;
+  const container = wechatSubscribeContainer.value;
+  if (!container) return;
+  try {
+    const config = await authApi.wechatJsSdkConfig(window.location.href, { suppressErrorMessage: true });
+    if (disposed || container !== wechatSubscribeContainer.value) return;
+    disposeWechatSubscribeButton = await mountWechatSubscribeButton(
+      container,
+      profile.subscriptionTemplateId,
+      config,
+      {
+        onSuccess: () => {
+          wechatSubscribeState.value = "已完成选择；同意后可接收下一条对应提醒。";
+          ElMessage.success("微信提醒订阅状态已更新");
+        },
+        onError: () => {
+          wechatSubscribeState.value = "微信未能打开订阅界面，请确认 JS 接口安全域名和模板配置。";
+        },
+      },
+    );
+  } catch (error) {
+    if (!disposed) wechatSubscribeState.value = normalizeMessageActionError(error, "微信订阅按钮暂不可用");
   }
 }
 
@@ -1115,6 +1163,19 @@ function normalizeMessageSettings(value: any) {
 }
 .wechat-channel-card { margin-bottom: 12px; }
 .wechat-channel-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.wechat-subscribe-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, #07c160 28%, var(--cpu-border-soft));
+  border-radius: 8px;
+  background: color-mix(in srgb, #07c160 6%, var(--cpu-card));
+}
+.wechat-subscribe-card > div:first-child { display: grid; gap: 4px; }
+.wechat-subscribe-card b { color: var(--cpu-text); font-size: 14px; }
+.wechat-subscribe-card span,
+.wechat-subscribe-card small { color: var(--cpu-text-secondary); font-size: 12px; line-height: 1.5; }
+.wechat-subscribe-button-host { min-height: 42px; }
 .channel-qr-box {
   display: flex;
   align-items: center;

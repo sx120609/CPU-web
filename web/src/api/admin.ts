@@ -638,6 +638,12 @@ export type WechatServiceConfig = {
   templateContentField: string;
   templateTimeField: string;
   templateRemarkField: string;
+  subscriptionEnabled: boolean;
+  subscriptionTemplateId: string;
+  subscriptionTitleField: string;
+  subscriptionContentField: string;
+  subscriptionTimeField: string;
+  subscriptionRemarkField: string;
   callbackUrl: string;
   oauthCallbackUrl: string;
   oauthDomain: string;
@@ -1149,6 +1155,12 @@ export const adminApi = {
     templateContentField: string;
     templateTimeField: string;
     templateRemarkField: string;
+    subscriptionEnabled: boolean;
+    subscriptionTemplateId: string;
+    subscriptionTitleField: string;
+    subscriptionContentField: string;
+    subscriptionTimeField: string;
+    subscriptionRemarkField: string;
   }>) => request.patch<WechatServiceConfig>("/admin/wechat/config", payload),
   generateWechatCredentials: (target: "token" | "encodingAesKey" | "both") =>
     request.post<WechatServiceConfig>("/admin/wechat/credentials", { target }),
@@ -1157,7 +1169,7 @@ export const adminApi = {
   deleteWechatBinding: (id: number) => request.delete<{ ok: true }>(`/admin/wechat/bindings/${id}`),
   sendWechatTestMessage: (id: number, message: string) => request.post<{ ok: true }>(`/admin/wechat/bindings/${id}/test-message`, { message }),
   dispatchWechatNotifications: () => request.post<{ sent: number; skipped: number }>("/admin/wechat/dispatch-notifications"),
-  publishWechatMenu: () => request.post<{ ok: true; menu: { button: Array<{ name: string; sub_button: Array<{ type: "view"; name: string; url: string }> }> } }>("/admin/wechat/menu/publish"),
+  publishWechatMenu: () => request.post<{ ok: true; taggedCount: number; conditionalMenuId: string }>("/admin/wechat/menu/publish"),
   wechatLogs: (params: { status?: string; eventType?: string; page?: number; size?: number }, options?: RequestOptions) =>
     request.get<{ page: number; size: number; total: number; list: any[] }>("/admin/wechat/logs", params, options),
   // 帖子

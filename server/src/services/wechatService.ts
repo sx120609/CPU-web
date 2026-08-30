@@ -1,18 +1,26 @@
 import crypto from "node:crypto";
+import { readFile, rm } from "node:fs/promises";
 import QRCode from "qrcode";
 import { prisma } from "../prisma";
 import { Errors } from "../utils/response";
 import { askCampusAssistant, type CampusAssistantResponse } from "./campusAssistant";
+import { normalizeAiImageDataUrl } from "./aiImageValidation";
+import { transcribeAudioBuffer } from "./audioTranscription";
 import { runWithDistributedLock } from "./cache";
+import { prepareMediaLocalFileForProcessing } from "./mediaStorage";
 import { appendQqBotAiDisclosure } from "./qqbot/dailyAssistant";
 import { renderQqBotAiReplyImage } from "./qqbot/aiReplyImage";
 import { getFeatures, getSiteOrigin } from "./siteSettings";
+import { loadWechatTodaySchedule, renderWechatTodayScheduleMarkdown } from "./wechatSchedule";
 
 const CONFIG_ID = 1;
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 const CUSTOMER_MESSAGE_WINDOW_MS = 48 * 60 * 60 * 1000;
 const WECHAT_API_TIMEOUT_MS = 12_000;
 const WECHAT_TEMP_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+const WECHAT_INBOUND_MEDIA_MAX_BYTES = 15 * 1024 * 1024;
+const WECHAT_BOUND_TAG_NAME = "拾间已绑定";
+const WECHAT_TODAY_SCHEDULE_EVENT_KEY = "SHIJIAN_TODAY_SCHEDULE";
 const DEFAULT_NOTIFY_CATEGORIES = ["reply", "mention", "like", "system", "service-tool", "lost-found", "school-feed"];
 const NOTIFY_CATEGORY_OPTIONS = new Set(DEFAULT_NOTIFY_CATEGORIES);
 const MAX_WECHAT_TEXT_LENGTH = 1800;
@@ -30,9 +38,15 @@ export type WechatInboundMessage = {
   event: string;
   eventKey: string;
   ticket: string;
+  mediaId: string;
+  picUrl: string;
+  format: string;
+  recognition: string;
+  thumbMediaId: string;
 };
 
 let accessTokenCache: { fingerprint: string; token: string; expiresAt: number } | null = null;
+let jsapiTicketCache: { fingerprint: string; ticket: string; expiresAt: number } | null = null;
 let notificationPollerStarted = false;
 
 export async function getWechatServiceConfigRaw() {
@@ -63,6 +77,12 @@ export function formatWechatServiceConfig(config: WechatConfigRow) {
     templateContentField: config.templateContentField,
     templateTimeField: config.templateTimeField,
     templateRemarkField: config.templateRemarkField,
+    subscriptionEnabled: config.subscriptionEnabled,
+    subscriptionTemplateId: config.subscriptionTemplateId,
+    subscriptionTitleField: config.subscriptionTitleField,
+    subscriptionContentField: config.subscriptionContentField,
+    subscriptionTimeField: config.subscriptionTimeField,
+    subscriptionRemarkField: config.subscriptionRemarkField,
     callbackUrl: origin ? `${origin}/api/wechat/callback` : "/api/wechat/callback",
     oauthCallbackUrl: origin ? `${origin}/api/wechat/oauth/callback` : "/api/wechat/oauth/callback",
     oauthDomain: origin ? new URL(origin).hostname : "",
@@ -88,6 +108,12 @@ export async function updateWechatServiceConfig(input: {
   templateContentField?: string;
   templateTimeField?: string;
   templateRemarkField?: string;
+  subscriptionEnabled?: boolean;
+  subscriptionTemplateId?: string;
+  subscriptionTitleField?: string;
+  subscriptionContentField?: string;
+  subscriptionTimeField?: string;
+  subscriptionRemarkField?: string;
 }) {
   const current = await getWechatServiceConfigRaw();
   const data: Record<string, unknown> = {};
@@ -106,6 +132,12 @@ export async function updateWechatServiceConfig(input: {
   if (input.templateContentField !== undefined) data.templateContentField = normalizeTemplateField(input.templateContentField);
   if (input.templateTimeField !== undefined) data.templateTimeField = normalizeTemplateField(input.templateTimeField);
   if (input.templateRemarkField !== undefined) data.templateRemarkField = normalizeTemplateField(input.templateRemarkField);
+  if (input.subscriptionEnabled !== undefined) data.subscriptionEnabled = input.subscriptionEnabled;
+  if (input.subscriptionTemplateId !== undefined) data.subscriptionTemplateId = input.subscriptionTemplateId.trim().slice(0, 160);
+  if (input.subscriptionTitleField !== undefined) data.subscriptionTitleField = normalizeTemplateField(input.subscriptionTitleField);
+  if (input.subscriptionContentField !== undefined) data.subscriptionContentField = normalizeTemplateField(input.subscriptionContentField);
+  if (input.subscriptionTimeField !== undefined) data.subscriptionTimeField = normalizeTemplateField(input.subscriptionTimeField);
+  if (input.subscriptionRemarkField !== undefined) data.subscriptionRemarkField = normalizeTemplateField(input.subscriptionRemarkField);
 
   const nextEnabled = input.enabled ?? current.enabled;
   const nextAppId = String(data.appId ?? current.appId).trim();
@@ -126,6 +158,7 @@ export async function updateWechatServiceConfig(input: {
     data,
   });
   accessTokenCache = null;
+  jsapiTicketCache = null;
   return formatWechatServiceConfig(updated);
 }
 
@@ -162,7 +195,41 @@ export function buildWechatDefaultMenu(siteOrigin = normalizedSiteOrigin()) {
         name: "我的",
         sub_button: [
           view("消息中心", "/messages"),
-          view("绑定设置", "/messages?tab=settings"),
+          view("微信绑定", "/messages?tab=settings"),
+          view("个人中心", "/profile"),
+        ],
+      },
+    ],
+  };
+}
+
+export function buildWechatBoundMenu(siteOrigin = normalizedSiteOrigin()) {
+  const origin = normalizeWechatMenuOrigin(siteOrigin);
+  const view = (name: string, path: string) => ({ type: "view", name, url: markWechatServiceClientUrl(path, origin) });
+  const click = (name: string, key: string) => ({ type: "click", name, key });
+  return {
+    button: [
+      {
+        name: "校园",
+        sub_button: [
+          click("今日课表", WECHAT_TODAY_SCHEDULE_EVENT_KEY),
+          view("完整课表", "/schedule"),
+          view("教务中心", "/jwxt"),
+        ],
+      },
+      {
+        name: "社区",
+        sub_button: [
+          view("论坛首页", "/forum"),
+          view("失物招领", "/lost-found"),
+          view("发布内容", "/post"),
+        ],
+      },
+      {
+        name: "我的",
+        sub_button: [
+          view("消息中心", "/messages"),
+          view("通知订阅", "/messages?tab=settings"),
           view("个人中心", "/profile"),
         ],
       },
@@ -187,20 +254,63 @@ export function markWechatServiceClientUrl(rawUrl: string, siteOrigin = normaliz
 
 export async function publishWechatDefaultMenu() {
   const menu = buildWechatDefaultMenu();
+  const boundMenu = buildWechatBoundMenu();
+  await callWechatApi("/cgi-bin/menu/delete", { method: "GET" }).catch(() => undefined);
   await callWechatApi("/cgi-bin/menu/create", { method: "POST", body: menu });
-  return { ok: true, menu };
+  const tagId = await ensureWechatBoundTagId();
+  const bindings = await prisma.wechatBinding.findMany({
+    where: { enabled: true, subscribed: true },
+    select: { openId: true },
+  });
+  let taggedCount = 0;
+  for (let index = 0; index < bindings.length; index += 50) {
+    const openidList = bindings.slice(index, index + 50).map((binding) => binding.openId);
+    if (!openidList.length) continue;
+    await callWechatApi("/cgi-bin/tags/members/batchtagging", {
+      method: "POST",
+      body: { openid_list: openidList, tagid: tagId },
+    });
+    taggedCount += openidList.length;
+  }
+  const conditional = await callWechatApi("/cgi-bin/menu/addconditional", {
+    method: "POST",
+    body: { ...boundMenu, matchrule: { tag_id: String(tagId) } },
+  });
+  return {
+    ok: true,
+    menu,
+    boundMenu,
+    tagId,
+    taggedCount,
+    conditionalMenuId: String(conditional.menuid || ""),
+  };
 }
 
-export async function getUserWechatProfile(userId: number) {
+export async function getUserWechatProfile(userId: number, jwxtToken?: string | null) {
   const [config, binding] = await Promise.all([
     getWechatServiceConfigRaw(),
     prisma.wechatBinding.findUnique({ where: { userId } }),
   ]);
+  const token = String(jwxtToken || "").trim();
+  if (binding && token && token !== binding.jwxtToken) {
+    await prisma.wechatBinding.update({
+      where: { id: binding.id },
+      data: { jwxtToken: token, jwxtTokenUpdatedAt: new Date() },
+    });
+  }
   return {
     enabled: config.enabled,
     accountName: config.accountName,
     notificationEnabled: config.notificationEnabled,
     assistantEnabled: config.assistantEnabled,
+    subscriptionAvailable: Boolean(
+      config.enabled
+      && config.subscriptionEnabled
+      && config.subscriptionTemplateId
+      && config.appId
+      && normalizedSiteOrigin()
+    ),
+    subscriptionTemplateId: config.subscriptionEnabled ? config.subscriptionTemplateId : "",
     ...getWechatBindingCapabilities(config),
     binding: binding ? {
       id: binding.id,
@@ -233,9 +343,10 @@ export async function createWechatBindToken(_userId: number) {
 }
 
 export async function deleteUserWechatBinding(userId: number) {
-  const binding = await prisma.wechatBinding.findUnique({ where: { userId }, select: { id: true } });
+  const binding = await prisma.wechatBinding.findUnique({ where: { userId }, select: { id: true, openId: true } });
   if (!binding) throw Errors.notFound("当前没有可解绑的微信服务号账号");
   await prisma.wechatBinding.delete({ where: { id: binding.id } });
+  void syncWechatBoundTag(binding.openId, false).catch(() => undefined);
   return { ok: true };
 }
 
@@ -371,6 +482,7 @@ export async function processWechatInbound(message: WechatInboundMessage, option
         where: { id: binding.id },
         data: { subscribed: false, unsubscribedAt: now },
       });
+      void syncWechatBoundTag(openId, false).catch(() => undefined);
     }
     await logWechatMessage({ direction: "inbound", eventType, status: "ok", openId, userId: binding?.userId, messageId, rawPayload: message });
     return { ok: true };
@@ -392,6 +504,7 @@ export async function processWechatInbound(message: WechatInboundMessage, option
           lastInteractionType: "scan",
         },
       });
+      void syncWechatBoundTag(openId, true).catch(() => undefined);
     }
     await logWechatMessage({ direction: "inbound", eventType, status: "ok", openId, userId: binding?.userId, messageId, rawPayload: message });
     const replyText = binding
@@ -429,22 +542,53 @@ export async function processWechatInbound(message: WechatInboundMessage, option
     content: message.content,
     rawPayload: message,
   });
-  if (message.msgType === "text") {
+  if (
+    message.msgType === "event"
+    && message.event.toLowerCase() === "click"
+    && message.eventKey === WECHAT_TODAY_SCHEDULE_EVENT_KEY
+  ) {
+    if (binding?.enabled) {
+      queueWechatTodayScheduleReply(openId, binding.userId, binding.jwxtToken);
+    } else {
+      replyText = `请先绑定微信服务号身份，再使用个人课表：\n${wechatSettingsUrl()}`;
+    }
+  } else if (message.msgType === "text") {
     if (!replyText) replyText = renderWechatAutomaticReply(message.content, Boolean(binding?.userId));
     if (!replyText) {
       const config = await getWechatServiceConfigRaw();
       if (config.assistantEnabled) {
-        queueWechatAssistantImageReply(openId, binding?.enabled ? binding.userId : null, message.content);
+        if (isWechatTodayScheduleRequest(message.content)) {
+          if (binding?.enabled) queueWechatTodayScheduleReply(openId, binding.userId, binding.jwxtToken);
+          else replyText = `请先绑定微信服务号身份，再查询个人课表：\n${wechatSettingsUrl()}`;
+        } else {
+          queueWechatAssistantReply(openId, binding?.enabled ? binding.userId : null, {
+            question: message.content,
+          });
+        }
       } else {
         replyText = renderWechatHelp(Boolean(binding?.userId));
       }
     }
-    if (replyText) {
-      if (options?.passiveReply) {
-        await logWechatMessage({ direction: "outbound", eventType: "passive", status: "ok", openId, userId: binding?.userId, content: replyText });
-      } else {
-        await sendWechatCustomerText(openId, replyText);
-      }
+  } else if (message.msgType === "image") {
+    const config = await getWechatServiceConfigRaw();
+    if (config.assistantEnabled && message.mediaId) {
+      queueWechatInboundImageReply(openId, binding?.enabled ? binding.userId : null, message.mediaId);
+    } else {
+      replyText = config.assistantEnabled ? "没有收到可识别的图片，请重新发送。" : renderWechatHelp(Boolean(binding?.userId));
+    }
+  } else if (message.msgType === "voice") {
+    const config = await getWechatServiceConfigRaw();
+    if (config.assistantEnabled) {
+      queueWechatInboundVoiceReply(openId, binding?.enabled ? binding.userId : null, message);
+    } else {
+      replyText = renderWechatHelp(Boolean(binding?.userId));
+    }
+  }
+  if (replyText) {
+    if (options?.passiveReply) {
+      await logWechatMessage({ direction: "outbound", eventType: "passive", status: "ok", openId, userId: binding?.userId, content: replyText });
+    } else {
+      await sendWechatCustomerText(openId, replyText);
     }
   }
   return { ok: true, replyText: options?.passiveReply ? replyText || undefined : undefined };
@@ -482,9 +626,66 @@ export async function sendWechatCustomerImage(openId: string, image: Buffer) {
   return { mediaId };
 }
 
-function queueWechatAssistantImageReply(openId: string, userId: number | null, question: string) {
+export async function sendWechatTyping(openId: string, active: boolean) {
+  return callWechatApi("/cgi-bin/message/custom/typing", {
+    method: "POST",
+    body: { touser: openId, command: active ? "Typing" : "CancelTyping" },
+  });
+}
+
+export async function sendWechatCustomerMenu(
+  openId: string,
+  items: Array<{ id: string; content: string }>,
+  options?: { headContent?: string; tailContent?: string },
+) {
+  const list = items
+    .map((item) => ({ id: String(item.id || "").slice(0, 64), content: String(item.content || "").slice(0, 64) }))
+    .filter((item) => item.id && item.content)
+    .slice(0, 10);
+  if (!list.length) return {};
+  return callWechatApi("/cgi-bin/message/custom/send", {
+    method: "POST",
+    body: {
+      touser: openId,
+      msgtype: "msgmenu",
+      msgmenu: {
+        head_content: options?.headContent || "继续使用：",
+        list,
+        tail_content: options?.tailContent || "",
+      },
+    },
+  });
+}
+
+export async function sendWechatCustomerLink(
+  openId: string,
+  article: { title: string; description: string; url: string; picUrl?: string },
+) {
+  return callWechatApi("/cgi-bin/message/custom/send", {
+    method: "POST",
+    body: {
+      touser: openId,
+      msgtype: "news",
+      news: {
+        articles: [{
+          title: limitText(article.title, 64),
+          description: limitText(article.description, 120),
+          url: article.url,
+          picurl: article.picUrl || `${normalizedSiteOrigin() || "https://cputime.cn"}/icon-512-v3.png`,
+        }],
+      },
+    },
+  });
+}
+
+type WechatAssistantReplyInput = {
+  question: string;
+  images?: Array<{ dataUrl: string; detail?: "low" | "high" | "auto" | "original" }>;
+};
+
+function queueWechatAssistantReply(openId: string, userId: number | null, input: WechatAssistantReplyInput) {
   setImmediate(() => {
-    void sendWechatAssistantImageReply(openId, userId, question).catch(async (error) => {
+    void runWechatTypingTask(openId, () => sendWechatAssistantReply(openId, userId, input)).catch(async (error) => {
       const message = error instanceof Error ? error.message : String(error);
       console.warn("[wechat] assistant image reply failed", message);
       await logWechatMessage({
@@ -493,7 +694,7 @@ function queueWechatAssistantImageReply(openId: string, userId: number | null, q
         status: "failed",
         openId,
         userId: userId || undefined,
-        content: question,
+        content: input.question,
         result: message,
       });
       try {
@@ -508,10 +709,66 @@ function queueWechatAssistantImageReply(openId: string, userId: number | null, q
   });
 }
 
-async function sendWechatAssistantImageReply(openId: string, userId: number | null, question: string) {
+function queueWechatInboundImageReply(openId: string, userId: number | null, mediaId: string) {
+  setImmediate(() => {
+    void runWechatTypingTask(openId, async () => {
+      const media = await downloadWechatMedia(mediaId);
+      const contentType = /^image\/(?:jpeg|jpg|png|webp|gif)/iu.test(media.contentType) ? media.contentType.split(";")[0] : "image/jpeg";
+      const normalized = await normalizeAiImageDataUrl(`data:${contentType};base64,${media.buffer.toString("base64")}`);
+      await sendWechatAssistantReply(openId, userId, {
+        question: "请描述并分析这张图片中的内容。",
+        images: [{ dataUrl: normalized.dataUrl, detail: "high" }],
+      });
+    }).catch((error) => handleWechatAsyncReplyFailure(openId, userId, "assistant:vision", "图片分析", error));
+  });
+}
+
+function queueWechatInboundVoiceReply(openId: string, userId: number | null, message: WechatInboundMessage) {
+  setImmediate(() => {
+    void runWechatTypingTask(openId, async () => {
+      let question = message.recognition.trim();
+      if (!question) {
+        if (!message.mediaId) throw new Error("没有收到可用的语音素材");
+        const media = await downloadWechatMedia(message.mediaId);
+        question = await transcribeAudioBuffer(media.buffer, {
+          extension: message.format || extensionForContentType(media.contentType),
+          language: "zh",
+        });
+      }
+      await sendWechatAssistantReply(openId, userId, { question });
+    }).catch((error) => handleWechatAsyncReplyFailure(openId, userId, "assistant:voice", "语音问答", error));
+  });
+}
+
+function queueWechatTodayScheduleReply(openId: string, userId: number, jwxtToken?: string | null) {
+  setImmediate(() => {
+    void runWechatTypingTask(openId, async () => {
+      const schedule = await loadWechatTodaySchedule(userId, jwxtToken);
+      const markdown = appendQqBotAiDisclosure(renderWechatTodayScheduleMarkdown(schedule.payload, { cached: schedule.cached }));
+      const image = renderQqBotAiReplyImage(markdown, { qrCodeEnabled: false });
+      const result = await sendWechatCustomerImage(openId, image);
+      await sendWechatCustomerLink(openId, {
+        title: "打开完整课表",
+        description: "查看本周课表、切换周次并使用课表工具",
+        url: markWechatServiceClientUrl("/schedule"),
+      }).catch(() => undefined);
+      await logWechatMessage({
+        direction: "outbound",
+        eventType: "schedule:today",
+        status: "ok",
+        openId,
+        userId,
+        result: result.mediaId,
+      });
+    }).catch((error) => handleWechatAsyncReplyFailure(openId, userId, "schedule:today", "今日课表", error));
+  });
+}
+
+async function sendWechatAssistantReply(openId: string, userId: number | null, input: WechatAssistantReplyInput) {
   const response = await askCampusAssistant({
-    message: question.trim(),
+    message: input.question.trim(),
     history: [],
+    images: input.images,
     context: {
       features: getFeatures(),
       forumAccessEnabled: true,
@@ -519,17 +776,144 @@ async function sendWechatAssistantImageReply(openId: string, userId: number | nu
     },
     usage: userId ? { createdById: userId } : undefined,
   });
-  const image = renderWechatAssistantReplyImage(response);
-  const result = await sendWechatCustomerImage(openId, image);
+  let result: { mediaId: string };
+  const generatedImageUrl = selectWechatGeneratedImageUrl(response);
+  if (generatedImageUrl) {
+    result = await sendWechatCustomerImage(openId, await readWechatGeneratedImage(generatedImageUrl));
+  } else {
+    result = await sendWechatCustomerImage(openId, renderWechatAssistantReplyImage(response));
+  }
+  await sendWechatAssistantActions(openId, response).catch((error) => {
+    console.warn("[wechat] assistant action links failed", error instanceof Error ? error.message : error);
+  });
   await logWechatMessage({
     direction: "outbound",
     eventType: "assistant:image",
     status: "ok",
     openId,
     userId: userId || undefined,
-    content: question,
+    content: input.question,
     result: result.mediaId,
   });
+}
+
+export function selectWechatGeneratedImageUrl(response: Pick<CampusAssistantResponse, "images">) {
+  const value = String(response.images?.[0]?.url || "").trim();
+  if (!/^\/uploads\/assistant-generated\/\d{4}\/\d{2}\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(?:png|jpg)$/iu.test(value)) return "";
+  return value;
+}
+
+async function runWechatTypingTask(openId: string, task: () => Promise<void>) {
+  await sendWechatTyping(openId, true).catch(() => undefined);
+  try {
+    await task();
+  } finally {
+    await sendWechatTyping(openId, false).catch(() => undefined);
+  }
+}
+
+async function handleWechatAsyncReplyFailure(
+  openId: string,
+  userId: number | null,
+  eventType: string,
+  content: string,
+  error: unknown,
+) {
+  const message = error instanceof Error ? error.message : String(error);
+  console.warn(`[wechat] ${eventType} failed`, message);
+  await logWechatMessage({
+    direction: "outbound",
+    eventType,
+    status: "failed",
+    openId,
+    userId: userId || undefined,
+    content,
+    result: message,
+  });
+  await sendWechatCustomerText(openId, `${content}暂时无法完成：${limitText(message, 120)}。`).catch(() => undefined);
+}
+
+async function sendWechatAssistantActions(openId: string, response: CampusAssistantResponse) {
+  const action = (response.actions || [])
+    .map((item) => ({
+      title: sanitizeWechatReplyLabel(item.label, "相关入口"),
+      description: sanitizeWechatReplyLabel(item.description, "点击打开拾小间相关功能"),
+      url: markWechatServiceClientUrl(absoluteWechatAssistantUrl(item.url)),
+    }))
+    .find((item) => Boolean(item.url)) || {
+      title: "打开拾间AI",
+      description: "进入网页继续提问，并使用完整的历史记录与站内功能",
+      url: markWechatServiceClientUrl("/search"),
+    };
+  await sendWechatCustomerLink(openId, action);
+  await sendWechatCustomerMenu(openId, [
+    { id: "今日课表", content: "今日课表" },
+    { id: "帮助", content: "功能帮助" },
+    { id: "状态", content: "绑定状态" },
+  ], { headContent: "还可以继续：" });
+}
+
+async function readWechatGeneratedImage(value: string) {
+  const raw = String(value || "").trim();
+  let target: URL;
+  try {
+    target = new URL(raw, `${normalizedSiteOrigin() || "https://cputime.cn"}/`);
+  } catch {
+    throw new Error("AI 返回了无效的生成图片地址");
+  }
+  if (!/^\/uploads\/assistant-generated\/\d{4}\/\d{2}\/[0-9a-f-]+\.(?:png|jpg)$/iu.test(target.pathname)) {
+    throw new Error("AI 返回的生成图片地址不在允许目录中");
+  }
+  const prepared = await prepareMediaLocalFileForProcessing(raw);
+  try {
+    let buffer = prepared.localPath ? await readFile(prepared.localPath).catch(() => Buffer.alloc(0)) : Buffer.alloc(0);
+    let contentType = target.pathname.toLowerCase().endsWith(".jpg") ? "image/jpeg" : "image/png";
+    if (!buffer.length) {
+      const response = await fetch(target, { signal: AbortSignal.timeout(WECHAT_API_TIMEOUT_MS) });
+      if (!response.ok) throw new Error(`生成图片下载失败：${response.status}`);
+      contentType = String(response.headers.get("content-type") || contentType).split(";")[0];
+      buffer = Buffer.from(await response.arrayBuffer());
+    }
+    if (!buffer.length || buffer.length > WECHAT_TEMP_IMAGE_MAX_BYTES) throw new Error("生成图片为空或超过微信限制");
+    const normalized = await normalizeAiImageDataUrl(`data:${contentType};base64,${buffer.toString("base64")}`);
+    return Buffer.from(normalized.dataUrl.slice(normalized.dataUrl.indexOf(",") + 1), "base64");
+  } finally {
+    if (prepared.temporary && prepared.localPath) await rm(prepared.localPath, { force: true }).catch(() => undefined);
+  }
+}
+
+async function downloadWechatMedia(mediaId: string, retry = true): Promise<{ buffer: Buffer; contentType: string }> {
+  const config = await getWechatServiceConfigRaw();
+  ensureWechatApiReady(config);
+  const accessToken = await getWechatAccessToken(config);
+  const url = new URL("https://api.weixin.qq.com/cgi-bin/media/get");
+  url.searchParams.set("access_token", accessToken);
+  url.searchParams.set("media_id", mediaId);
+  const response = await fetch(url, { signal: AbortSignal.timeout(WECHAT_API_TIMEOUT_MS) });
+  const contentType = String(response.headers.get("content-type") || "application/octet-stream").toLowerCase();
+  if (contentType.includes("json") || contentType.includes("text")) {
+    const payload = JSON.parse(await response.text().catch(() => "{}")) as Record<string, any>;
+    if ([40001, 40014, 42001].includes(Number(payload.errcode)) && retry) {
+      accessTokenCache = null;
+      return downloadWechatMedia(mediaId, false);
+    }
+    throw new Error(wechatApiErrorMessage(payload));
+  }
+  const contentLength = Number(response.headers.get("content-length") || 0);
+  if (!response.ok || contentLength > WECHAT_INBOUND_MEDIA_MAX_BYTES) {
+    throw new Error(response.ok ? "微信素材超过 15MB 限制" : `微信素材下载失败：${response.status}`);
+  }
+  const buffer = Buffer.from(await response.arrayBuffer());
+  if (!buffer.length || buffer.length > WECHAT_INBOUND_MEDIA_MAX_BYTES) throw new Error("微信素材为空或超过 15MB 限制");
+  return { buffer, contentType };
+}
+
+function extensionForContentType(contentType: string) {
+  if (/speex/iu.test(contentType)) return "speex";
+  if (/mpeg|mp3/iu.test(contentType)) return "mp3";
+  if (/wav/iu.test(contentType)) return "wav";
+  if (/mp4|m4a/iu.test(contentType)) return "m4a";
+  return "amr";
 }
 
 export function renderWechatAssistantReplyMarkdown(response: CampusAssistantResponse) {
@@ -634,6 +1018,13 @@ export async function dispatchRecentWechatNotifications() {
         const withinCustomerWindow = Boolean(binding.lastInteractionAt && Date.now() - binding.lastInteractionAt.getTime() <= customerWindow);
         if (withinCustomerWindow) {
           await sendWechatCustomerText(binding.openId, renderNotificationText(notification, link));
+        } else if (canSendSubscriptionNotification(config)) {
+          try {
+            await sendWechatSubscriptionNotification(config, binding.openId, notification);
+          } catch (error) {
+            if (!canSendNotificationTemplate(config)) throw error;
+            await sendWechatTemplateNotification(config, binding.openId, notification, link);
+          }
         } else if (canSendNotificationTemplate(config)) {
           await sendWechatTemplateNotification(config, binding.openId, notification, link);
         } else {
@@ -735,6 +1126,11 @@ export function parseWechatXml(xml: string): WechatInboundMessage & { encrypt: s
     event: readXmlTag(xml, "Event"),
     eventKey: readXmlTag(xml, "EventKey"),
     ticket: readXmlTag(xml, "Ticket"),
+    mediaId: readXmlTag(xml, "MediaId"),
+    picUrl: readXmlTag(xml, "PicUrl"),
+    format: readXmlTag(xml, "Format"),
+    recognition: readXmlTag(xml, "Recognition"),
+    thumbMediaId: readXmlTag(xml, "ThumbMediaId"),
     encrypt: readXmlTag(xml, "Encrypt"),
   };
 }
@@ -766,12 +1162,12 @@ export function renderWechatAutomaticReply(rawContent: string, bound: boolean, s
   }
   if (/^(绑定|绑定码)/iu.test(content)) {
     return bound
-      ? "当前微信已经绑定药大拾间账号，如需更换请先在站内解绑。"
+      ? "当前微信已经绑定拾小间账号，如需更换请先在站内解绑。"
       : `微信不再使用手动绑定码。请登录后选择“微信内绑定”或“扫码绑定”：\n${wechatSettingsUrl(siteOrigin)}`;
   }
   if (/^(状态|我的)$/u.test(content)) {
     return bound
-      ? `当前微信已绑定药大拾间账号。\n通知设置：${wechatSettingsUrl(siteOrigin)}`
+      ? `当前微信已绑定拾小间账号。\n通知设置：${wechatSettingsUrl(siteOrigin)}`
       : `当前微信尚未绑定。\n绑定入口：${wechatSettingsUrl(siteOrigin)}`;
   }
   return "";
@@ -837,6 +1233,76 @@ async function bindWechatIdentity(
     if (options.oauthStateId) await tx.wechatOauthState.update({ where: { id: options.oauthStateId }, data: { usedAt: new Date() } });
     if (options.bindTokenId) await tx.wechatBindToken.update({ where: { id: options.bindTokenId }, data: { usedAt: new Date() } });
   });
+  if (options.subscribed) void syncWechatBoundTag(openId, true).catch(() => undefined);
+}
+
+async function ensureWechatBoundTagId() {
+  const existing = await callWechatApi("/cgi-bin/tags/get", { method: "GET" });
+  const tag = Array.isArray(existing.tags)
+    ? existing.tags.find((item: any) => String(item?.name || "").trim() === WECHAT_BOUND_TAG_NAME)
+    : null;
+  const currentId = Number(tag?.id || 0);
+  if (currentId > 0) return currentId;
+  const created = await callWechatApi("/cgi-bin/tags/create", {
+    method: "POST",
+    body: { tag: { name: WECHAT_BOUND_TAG_NAME } },
+  });
+  const tagId = Number(created?.tag?.id || 0);
+  if (!tagId) throw new Error("微信未返回已绑定用户标签 ID");
+  return tagId;
+}
+
+export async function syncWechatBoundTag(openId: string, bound: boolean) {
+  const tagId = await ensureWechatBoundTagId();
+  return callWechatApi(bound ? "/cgi-bin/tags/members/batchtagging" : "/cgi-bin/tags/members/batchuntagging", {
+    method: "POST",
+    body: { openid_list: [openId], tagid: tagId },
+  });
+}
+
+export async function createWechatJsSdkConfig(rawUrl: string) {
+  const config = await getWechatServiceConfigRaw();
+  ensureWechatApiReady(config);
+  const siteOrigin = normalizeWechatMenuOrigin(normalizedSiteOrigin());
+  let url: URL;
+  try {
+    url = new URL(String(rawUrl || "").trim());
+  } catch {
+    throw Errors.badRequest("微信 JS-SDK 页面地址无效");
+  }
+  if (url.origin !== siteOrigin) throw Errors.badRequest("微信 JS-SDK 只能为本站页面签名");
+  url.hash = "";
+  const ticket = await getWechatJsapiTicket(config);
+  const timestamp = Math.floor(Date.now() / 1000);
+  const nonceStr = crypto.randomBytes(16).toString("hex");
+  return {
+    appId: config.appId,
+    timestamp,
+    nonceStr,
+    signature: createWechatJsSdkSignature(ticket, nonceStr, timestamp, url.toString()),
+  };
+}
+
+export function createWechatJsSdkSignature(ticket: string, nonceStr: string, timestamp: number, url: string) {
+  return crypto.createHash("sha1").update([
+    `jsapi_ticket=${ticket}`,
+    `noncestr=${nonceStr}`,
+    `timestamp=${timestamp}`,
+    `url=${url}`,
+  ].join("&")).digest("hex");
+}
+
+async function getWechatJsapiTicket(config: WechatConfigRow) {
+  const fingerprint = hashToken(`${config.appId}:${config.appSecret}`);
+  if (jsapiTicketCache && jsapiTicketCache.fingerprint === fingerprint && jsapiTicketCache.expiresAt > Date.now()) {
+    return jsapiTicketCache.ticket;
+  }
+  const payload = await callWechatApi("/cgi-bin/ticket/getticket?type=jsapi", { method: "GET" });
+  const ticket = String(payload.ticket || "").trim();
+  if (!ticket) throw new Error(`获取微信 jsapi_ticket 失败：${wechatApiErrorMessage(payload)}`);
+  const expiresIn = Math.max(300, Number(payload.expires_in || 7200));
+  jsapiTicketCache = { fingerprint, ticket, expiresAt: Date.now() + (expiresIn - 300) * 1000 };
+  return ticket;
 }
 
 async function sendWechatTemplateNotification(config: WechatConfigRow, openId: string, notification: any, link: string) {
@@ -848,6 +1314,35 @@ async function sendWechatTemplateNotification(config: WechatConfigRow, openId: s
   return callWechatApi("/cgi-bin/message/template/send", {
     method: "POST",
     body: { touser: openId, template_id: config.notificationTemplateId, url: link || undefined, data },
+  });
+}
+
+export function buildWechatSubscriptionNotificationPayload(
+  config: Pick<WechatConfigRow,
+    "subscriptionTemplateId"
+    | "subscriptionTitleField"
+    | "subscriptionContentField"
+    | "subscriptionTimeField"
+    | "subscriptionRemarkField">,
+  openId: string,
+  notification: any,
+) {
+  const data: Record<string, { value: string }> = {};
+  if (config.subscriptionTitleField) data[config.subscriptionTitleField] = { value: limitText(notification.title, 20) };
+  if (config.subscriptionContentField) data[config.subscriptionContentField] = { value: limitText(notification.content, 60) };
+  if (config.subscriptionTimeField) data[config.subscriptionTimeField] = { value: formatWechatTime(notification.createdAt) };
+  if (config.subscriptionRemarkField) data[config.subscriptionRemarkField] = { value: limitText(notification.source || "拾小间", 20) };
+  return {
+    touser: openId,
+    template_id: config.subscriptionTemplateId,
+    data,
+  };
+}
+
+async function sendWechatSubscriptionNotification(config: WechatConfigRow, openId: string, notification: any) {
+  return callWechatApi("/cgi-bin/message/subscribe/bizsend", {
+    method: "POST",
+    body: buildWechatSubscriptionNotificationPayload(config, openId, notification),
   });
 }
 
@@ -888,7 +1383,12 @@ async function uploadWechatTemporaryImage(image: Buffer, retry = true): Promise<
   url.searchParams.set("access_token", accessToken);
   url.searchParams.set("type", "image");
   const form = new FormData();
-  form.append("media", new Blob([new Uint8Array(image)], { type: "image/png" }), "shijian-ai.png");
+  const jpeg = image.length >= 3 && image[0] === 0xff && image[1] === 0xd8 && image[2] === 0xff;
+  form.append(
+    "media",
+    new Blob([new Uint8Array(image)], { type: jpeg ? "image/jpeg" : "image/png" }),
+    jpeg ? "shijian-ai.jpg" : "shijian-ai.png",
+  );
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), WECHAT_API_TIMEOUT_MS);
   try {
@@ -973,7 +1473,8 @@ async function logWechatMessage(input: {
 function renderWechatWelcome() {
   return [
     "欢迎关注拾小间。",
-    "可直接发送文字向拾间AI提问，回答会以图片形式发送；也可接收已开启的站内通知。",
+    "可直接发送文字、语音或图片向拾间AI提问；需要生图时会直接发送生成图片。",
+    "绑定后还可从菜单一键查看今日课表，并接收已开启的站内通知。",
     renderWechatFollowSettingsTip(),
     `绑定账号：${wechatSettingsUrl()}`,
   ].join("\n");
@@ -982,7 +1483,8 @@ function renderWechatWelcome() {
 function renderWechatHelp(bound: boolean, siteOrigin = normalizedSiteOrigin()) {
   return [
     "拾小间服务号",
-    "直接发送文字即可向拾间AI提问，回答会以图片形式发送。",
+    "直接发送文字、语音或图片即可向拾间AI提问；需要生图时会直接发送生成图片。",
+    "发送“今日课表”可获取当天课程卡片。",
     "发送“状态”可查看绑定状态。",
     "",
     bound ? `通知设置：${wechatSettingsUrl(siteOrigin)}` : `绑定入口：${wechatSettingsUrl(siteOrigin)}`,
@@ -1029,6 +1531,19 @@ function wechatSettingsUrl(siteOrigin = normalizedSiteOrigin()) {
 
 function canSendNotificationTemplate(config: WechatConfigRow) {
   return Boolean(config.notificationTemplateId && config.templateTitleField && config.templateContentField);
+}
+
+function canSendSubscriptionNotification(config: WechatConfigRow) {
+  return Boolean(
+    config.subscriptionEnabled
+    && config.subscriptionTemplateId
+    && config.subscriptionTitleField
+    && config.subscriptionContentField
+  );
+}
+
+function isWechatTodayScheduleRequest(value: string) {
+  return /^(?:今日|今天|当天)?课表$/u.test(String(value || "").trim());
 }
 
 function ensureWechatOauthReady(config: WechatConfigRow) {

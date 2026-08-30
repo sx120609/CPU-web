@@ -3,6 +3,9 @@ import crypto from "node:crypto";
 import test from "node:test";
 import {
   buildWechatDefaultMenu,
+  buildWechatBoundMenu,
+  buildWechatSubscriptionNotificationPayload,
+  createWechatJsSdkSignature,
   decryptWechatPayload,
   encryptWechatPayload,
   generateWechatEncodingAesKey,
@@ -14,9 +17,12 @@ import {
   renderWechatAssistantReplyMarkdown,
   renderWechatAutomaticReply,
   renderWechatFollowSettingsTip,
+  selectWechatGeneratedImageUrl,
   shouldDeliverWechatNotification,
   verifyWechatSignature,
 } from "../src/services/wechatService";
+import { normalizeAudioTranscriptionsUrl } from "../src/services/audioTranscription";
+import { renderWechatTodayScheduleMarkdown } from "../src/services/wechatSchedule";
 
 test("verifies plaintext and encrypted callback signatures", () => {
   const token = "test-token";
@@ -62,6 +68,16 @@ test("parses text and scan event XML", () => {
   assert.equal(event.eventKey, "bind_token");
 });
 
+test("parses image and voice fields used by the multimodal assistant", () => {
+  const image = parseWechatXml("<xml><MsgType><![CDATA[image]]></MsgType><MediaId><![CDATA[image-media]]></MediaId><PicUrl><![CDATA[https://example.com/a.jpg]]></PicUrl></xml>");
+  assert.equal(image.mediaId, "image-media");
+  assert.equal(image.picUrl, "https://example.com/a.jpg");
+  const voice = parseWechatXml("<xml><MsgType><![CDATA[voice]]></MsgType><MediaId><![CDATA[voice-media]]></MediaId><Format><![CDATA[amr]]></Format><Recognition><![CDATA[今天有什么课？]]></Recognition></xml>");
+  assert.equal(voice.mediaId, "voice-media");
+  assert.equal(voice.format, "amr");
+  assert.equal(voice.recognition, "今天有什么课？");
+});
+
 test("respects channel and category preferences", () => {
   assert.equal(shouldDeliverWechatNotification({ category: "reply" }, { wechatNotifyEnabled: true, subscribeReply: true }), true);
   assert.equal(shouldDeliverWechatNotification({ category: "reply" }, { wechatNotifyEnabled: true, subscribeReply: false }), false);
@@ -103,6 +119,14 @@ test("builds a three-column HTTPS custom menu for campus, community, and account
   assert.deepEqual(menu.button[0].sub_button.map((item) => new URL(item.url).pathname), ["/schedule", "/jwxt", "/services"]);
   assert.deepEqual(menu.button[1].sub_button.map((item) => new URL(item.url).pathname), ["/forum", "/lost-found", "/post"]);
   assert.throws(() => buildWechatDefaultMenu("http://localhost:5173"), /HTTPS/);
+});
+
+test("builds a personalized bound menu with a direct today-schedule event", () => {
+  const menu = buildWechatBoundMenu("https://cputime.cn");
+  const campus = menu.button[0].sub_button;
+  assert.deepEqual(menu.button.map((group) => group.name), ["校园", "社区", "我的"]);
+  assert.deepEqual(campus[0], { type: "click", name: "今日课表", key: "SHIJIAN_TODAY_SCHEDULE" });
+  assert.equal(new URL(campus[1].url!).searchParams.get("client"), "wechat-service");
 });
 
 test("marks same-site service-account links without changing external links", () => {
@@ -148,6 +172,53 @@ test("formats WeChat assistant answers for the QQBot image renderer", () => {
   assert.match(reply, /以上回复由拾间AI生成/);
   const image = renderWechatAssistantReplyImage(response);
   assert.deepEqual([...image.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+});
+
+test("selects only persisted assistant-generated images for direct WeChat delivery", () => {
+  const valid = "/uploads/assistant-generated/2026/08/123e4567-e89b-12d3-a456-426614174000.png";
+  assert.equal(selectWechatGeneratedImageUrl({ images: [{ url: valid, alt: "生成图" }] }), valid);
+  assert.equal(selectWechatGeneratedImageUrl({ images: [{ url: "https://example.com/image.png", alt: "外链" }] }), "");
+  assert.equal(selectWechatGeneratedImageUrl({ images: [] }), "");
+});
+
+test("signs JS-SDK requests and builds one-time subscription payloads", () => {
+  const ticket = "ticket";
+  const nonce = "nonce";
+  const timestamp = 1724550000;
+  const url = "https://cputime.cn/messages?tab=settings";
+  const expected = crypto.createHash("sha1").update(`jsapi_ticket=${ticket}&noncestr=${nonce}&timestamp=${timestamp}&url=${url}`).digest("hex");
+  assert.equal(createWechatJsSdkSignature(ticket, nonce, timestamp, url), expected);
+  assert.equal(normalizeAudioTranscriptionsUrl("https://api.example.com/v1/responses"), "https://api.example.com/v1/audio/transcriptions");
+  const payload = buildWechatSubscriptionNotificationPayload({
+    subscriptionTemplateId: "template-id",
+    subscriptionTitleField: "thing1",
+    subscriptionContentField: "thing2",
+    subscriptionTimeField: "time3",
+    subscriptionRemarkField: "thing4",
+  }, "openid", {
+    title: "课程提醒",
+    content: "课程即将开始",
+    createdAt: new Date("2026-08-30T08:00:00Z"),
+    source: "拾小间",
+  });
+  assert.equal(payload.touser, "openid");
+  assert.equal(payload.template_id, "template-id");
+  assert.equal(payload.data.thing1.value, "课程提醒");
+  assert.equal(payload.data.thing2.value, "课程即将开始");
+});
+
+test("renders a concise today-schedule image body", () => {
+  const markdown = renderWechatTodayScheduleMarkdown({
+    currentWeek: 3,
+    teachingWeekActive: true,
+    today: {
+      date: "2026-09-16",
+      courses: [{ startTime: "08:00", endTime: "09:40", name: "药物化学", location: "D313", teacher: "张老师" }],
+    },
+  });
+  assert.match(markdown, /第 3 周/);
+  assert.match(markdown, /08:00-09:40  药物化学/);
+  assert.match(markdown, /地点：D313/);
 });
 
 test("recommends notification settings after the user follows the service account", () => {

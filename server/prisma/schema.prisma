@@ -1439,6 +1439,12 @@ model WechatServiceConfig {
   templateContentField  String   @default("")
   templateTimeField     String   @default("")
   templateRemarkField   String   @default("")
+  subscriptionEnabled   Boolean  @default(false)
+  subscriptionTemplateId String @default("")
+  subscriptionTitleField String @default("")
+  subscriptionContentField String @default("")
+  subscriptionTimeField String @default("")
+  subscriptionRemarkField String @default("")
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 }
@@ -1454,6 +1460,8 @@ model WechatBinding {
   unsubscribedAt    DateTime?
   lastInteractionAt DateTime?
   lastInteractionType String   @default("")
+  jwxtToken         String?
+  jwxtTokenUpdatedAt DateTime?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 

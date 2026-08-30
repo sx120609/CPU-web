@@ -11,6 +11,7 @@ import {
   getWechatServiceConfigRaw,
   publishWechatDefaultMenu,
   sendWechatTestMessage,
+  syncWechatBoundTag,
   updateWechatServiceConfig,
 } from "../../services/wechatService";
 
@@ -33,6 +34,12 @@ const configPatchSchema = z.object({
   templateContentField: z.string().trim().max(64).optional(),
   templateTimeField: z.string().trim().max(64).optional(),
   templateRemarkField: z.string().trim().max(64).optional(),
+  subscriptionEnabled: z.boolean().optional(),
+  subscriptionTemplateId: z.string().trim().max(160).optional(),
+  subscriptionTitleField: z.string().trim().max(64).optional(),
+  subscriptionContentField: z.string().trim().max(64).optional(),
+  subscriptionTimeField: z.string().trim().max(64).optional(),
+  subscriptionRemarkField: z.string().trim().max(64).optional(),
 });
 
 wechatAdminRouter.get("/config", async (_req, res, next) => {
@@ -98,7 +105,9 @@ wechatAdminRouter.get("/bindings", async (req, res, next) => {
 wechatAdminRouter.patch("/bindings/:id", validate(z.object({ enabled: z.boolean() })), async (req, res, next) => {
   try {
     const id = positiveId(req.params.id);
-    ok(res, await prisma.wechatBinding.update({ where: { id }, data: { enabled: req.body.enabled } }));
+    const binding = await prisma.wechatBinding.update({ where: { id }, data: { enabled: req.body.enabled } });
+    void syncWechatBoundTag(binding.openId, Boolean(binding.enabled && binding.subscribed)).catch(() => undefined);
+    ok(res, binding);
   } catch (error) {
     next(error);
   }
@@ -107,7 +116,8 @@ wechatAdminRouter.patch("/bindings/:id", validate(z.object({ enabled: z.boolean(
 wechatAdminRouter.delete("/bindings/:id", async (req, res, next) => {
   try {
     const id = positiveId(req.params.id);
-    await prisma.wechatBinding.delete({ where: { id } });
+    const binding = await prisma.wechatBinding.delete({ where: { id } });
+    void syncWechatBoundTag(binding.openId, false).catch(() => undefined);
     ok(res, { ok: true });
   } catch (error) {
     next(error);

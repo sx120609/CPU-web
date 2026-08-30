@@ -16,6 +16,8 @@ import {
 } from "./utils/clientInfo";
 import { scheduleJwxtDataPrewarm } from "./utils/jwxtPrewarm";
 import { installUnifiedImageLoading } from "./utils/imageLoading";
+import { authApi } from "./api/auth";
+import { hideWechatToolbarBestEffort, isWechatBrowser } from "./utils/wechatBridge";
 
 import "element-plus/dist/index.css";
 import "element-plus/theme-chalk/dark/css-vars.css";
@@ -340,7 +342,10 @@ async function bootstrapJwxtSession() {
     if (shouldSkipJwxtSessionBootstrap()) return;
     jwxt.hydrate();
     const ready = await jwxt.ensureSession({ refresh: true, silent: true, allowAutoLogin: false }).catch(() => false);
-    if (ready) scheduleJwxtDataPrewarm();
+    if (ready) {
+      scheduleJwxtDataPrewarm();
+      if (isWechatBrowser()) void authApi.wechatProfile({ suppressErrorMessage: true }).catch(() => undefined);
+    }
   } catch {
     // Keep background restore quiet; education pages still expose manual captcha/login flow.
   } finally {
@@ -429,9 +434,11 @@ installJwxtDataPrewarmTriggers();
 useSiteStore().fetch();
 app.use(router);
 app.mount("#app");
+hideWechatToolbarBestEffort();
 scheduleEducationViewPreload();
 
 router.afterEach((to) => {
+  hideWechatToolbarBestEffort();
   if (!serviceWorkerReady || !to.path.startsWith("/schedule")) return;
   void serviceWorkerReady.then((registration) => warmScheduleOfflineCache(registration));
 });

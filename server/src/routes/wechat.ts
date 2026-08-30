@@ -6,6 +6,7 @@ import {
   completeWechatOauthBinding,
   createWechatBindQrCode,
   createWechatBindToken,
+  createWechatJsSdkConfig,
   createWechatOauthBindUrl,
   decodeWechatCallback,
   deleteUserWechatBinding,
@@ -73,7 +74,15 @@ wechatRouter.get("/oauth/callback", async (req, res) => {
 
 wechatRouter.get("/me", authRequired, async (req, res, next) => {
   try {
-    ok(res, await getUserWechatProfile(req.user!.userId));
+    ok(res, await getUserWechatProfile(req.user!.userId, req.browserSession?.jwxtToken));
+  } catch (error) {
+    next(error);
+  }
+});
+
+wechatRouter.post("/js-sdk-config", authRequired, express.json(), async (req, res, next) => {
+  try {
+    ok(res, await createWechatJsSdkConfig(String(req.body?.url || "")));
   } catch (error) {
     next(error);
   }

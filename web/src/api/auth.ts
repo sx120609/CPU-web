@@ -104,6 +104,8 @@ export interface WechatProfile {
   accountName: string;
   notificationEnabled: boolean;
   assistantEnabled: boolean;
+  subscriptionAvailable: boolean;
+  subscriptionTemplateId: string;
   oauthAvailable: boolean;
   qrBindingAvailable: boolean;
   messageBindingAvailable: boolean;
@@ -169,5 +171,11 @@ export const authApi = {
   wechatProfile: (options?: RequestOptions) => request.get<WechatProfile>("/wechat/me", undefined, options),
   createWechatOauthUrl: (options?: RequestOptions) => request.post<{ url: string; expiresAt: string }>("/wechat/oauth-url", undefined, options),
   createWechatBindQr: (options?: RequestOptions) => request.post<{ imageUrl: string; expiresAt: string }>("/wechat/bind-qr", undefined, options),
+  wechatJsSdkConfig: (url: string, options?: RequestOptions) => request.post<{
+    appId: string;
+    timestamp: number;
+    nonceStr: string;
+    signature: string;
+  }>("/wechat/js-sdk-config", { url }, options),
   deleteWechatBinding: (options?: RequestOptions) => request.delete<{ ok: true }>("/wechat/binding", options),
 };

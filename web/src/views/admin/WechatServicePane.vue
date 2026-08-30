@@ -76,7 +76,7 @@
         <div class="section-head">
           <div>
             <h3>消息能力</h3>
-            <p>客服消息优先用于最近主动交互的用户；超出窗口后，仅在模板配置完整时发送服务通知。</p>
+            <p>客服消息优先用于最近主动交互的用户；超出窗口后优先使用用户主动同意的一次性订阅通知，再回退到模板消息。</p>
           </div>
         </div>
         <div class="switch-grid">
@@ -100,6 +100,24 @@
           </div>
         </el-form>
 
+        <el-divider />
+        <div class="section-head compact-head">
+          <div>
+            <h4>一次性订阅通知</h4>
+            <p>需在微信后台配置订阅通知模板与 JS 接口安全域名；用户在微信内主动同意后，每次同意可发送一条通知。</p>
+          </div>
+          <el-switch v-model="form.subscriptionEnabled" />
+        </div>
+        <el-form label-position="top">
+          <el-form-item label="订阅模板 ID"><el-input v-model="form.subscriptionTemplateId" /></el-form-item>
+          <div class="template-grid">
+            <el-form-item label="标题字段"><el-input v-model="form.subscriptionTitleField" placeholder="例如 thing1" /></el-form-item>
+            <el-form-item label="内容字段"><el-input v-model="form.subscriptionContentField" placeholder="例如 thing2" /></el-form-item>
+            <el-form-item label="时间字段（可选）"><el-input v-model="form.subscriptionTimeField" placeholder="例如 time3" /></el-form-item>
+            <el-form-item label="备注字段（可选）"><el-input v-model="form.subscriptionRemarkField" placeholder="例如 thing4" /></el-form-item>
+          </div>
+        </el-form>
+
         <div class="section-actions">
           <el-button type="primary" :loading="saving" @click="saveConfig">保存配置</el-button>
           <el-button :loading="dispatching" @click="dispatchNotifications">立即检查通知</el-button>
@@ -110,7 +128,7 @@
         <div class="section-head">
           <div>
             <h3>自定义菜单</h3>
-            <p>发布后会覆盖服务号当前菜单；全部入口均跳转到本站 HTTPS 页面。</p>
+            <p>发布后会覆盖当前菜单，并为已绑定用户发布带“今日课表”的个性化菜单。</p>
           </div>
         </div>
         <div class="menu-preview-grid">
@@ -174,9 +192,10 @@ const categoryOptions = [
 ];
 
 const menuPreview = [
-  { name: "校园", items: ["我的课表", "教务中心", "校园服务"] },
+  { name: "未绑定 · 校园", items: ["我的课表", "教务中心", "校园服务"] },
+  { name: "已绑定 · 校园", items: ["今日课表", "完整课表", "教务中心"] },
   { name: "社区", items: ["论坛首页", "失物招领", "发布内容"] },
-  { name: "我的", items: ["消息中心", "绑定设置", "个人中心"] },
+  { name: "我的", items: ["消息中心", "通知订阅", "个人中心"] },
 ];
 
 const config = ref<WechatServiceConfig | null>(null);
@@ -205,6 +224,12 @@ const form = reactive({
   templateContentField: "",
   templateTimeField: "",
   templateRemarkField: "",
+  subscriptionEnabled: false,
+  subscriptionTemplateId: "",
+  subscriptionTitleField: "",
+  subscriptionContentField: "",
+  subscriptionTimeField: "",
+  subscriptionRemarkField: "",
 });
 
 onMounted(loadAll);
@@ -244,6 +269,12 @@ function applyConfig(value: WechatServiceConfig) {
     templateContentField: value.templateContentField,
     templateTimeField: value.templateTimeField,
     templateRemarkField: value.templateRemarkField,
+    subscriptionEnabled: value.subscriptionEnabled,
+    subscriptionTemplateId: value.subscriptionTemplateId,
+    subscriptionTitleField: value.subscriptionTitleField,
+    subscriptionContentField: value.subscriptionContentField,
+    subscriptionTimeField: value.subscriptionTimeField,
+    subscriptionRemarkField: value.subscriptionRemarkField,
   });
 }
 
@@ -299,8 +330,8 @@ async function publishMenu() {
   if (!confirmed) return;
   publishingMenu.value = true;
   try {
-    await adminApi.publishWechatMenu();
-    ElMessage.success("自定义菜单已发布到微信");
+    const result = await adminApi.publishWechatMenu();
+    ElMessage.success(`菜单已发布，已同步 ${result.taggedCount} 个绑定账号`);
   } finally {
     publishingMenu.value = false;
   }
@@ -349,6 +380,7 @@ async function removeBinding(row: any) {
 .wechat-pane { display: grid; gap: 16px; }
 .pane-section { padding: 18px; border: 1px solid var(--cpu-border); border-radius: 14px; background: var(--cpu-surface); }
 .section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.compact-head { margin-bottom: 12px; }
 .section-head h3, .pane-section h4 { margin: 0 0 6px; }
 .section-head p, .section-note, .form-tip { margin: 0; color: var(--cpu-text-secondary); font-size: 13px; line-height: 1.6; }
 .form-grid, .template-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px; }
