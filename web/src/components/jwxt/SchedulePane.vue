@@ -23,7 +23,7 @@
       <div v-else class="top-placeholder">课表</div>
 
       <div class="top-actions">
-        <AcademicDataSourceBadge v-if="!isGraduateSource" :source="parsed?.source" compact />
+        <AcademicDataSourceBadge v-if="!isGraduateSource" :source="parsed?.source" />
         <div v-if="parsed" class="view-switch" aria-label="切换课表视图">
           <button type="button" :class="{ active: viewMode === 'day' }" :disabled="loading" @click="setViewMode('day')">日</button>
           <button type="button" :class="{ active: viewMode === 'week' }" :disabled="loading" @click="setViewMode('week')">周</button>

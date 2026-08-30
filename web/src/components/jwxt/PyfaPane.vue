@@ -1,8 +1,8 @@
 <template>
   <div class="pyfa-pane" v-loading="loading">
-    <AcademicDataSourceBadge :source="parsed?.source" />
     <div class="data-note">
-      以下信息整理自教务系统，最终请以学校和学院通知为准。
+      <span>以下信息整理自教务系统，最终请以学校和学院通知为准。</span>
+      <AcademicDataSourceBadge :source="parsed?.source" />
     </div>
 
     <div class="ctrl-bar" v-if="parsed">
@@ -165,6 +165,11 @@ function attrTagType(attr?: string): "success" | "warning" | "info" | "primary" 
 .pyfa-pane { display: flex; flex-direction: column; gap: 12px; }
 
 .data-note {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
   border: 1px solid rgba(245, 158, 11, 0.34);
   border-radius: 8px;
   background: rgba(245, 158, 11, 0.12);
@@ -173,6 +178,7 @@ function attrTagType(attr?: string): "success" | "warning" | "info" | "primary" 
   line-height: 1.6;
   padding: 10px 12px;
 }
+.data-note > :last-child { margin-left: auto; }
 
 .ctrl-bar { display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 12px; }
 .ctrl-left {

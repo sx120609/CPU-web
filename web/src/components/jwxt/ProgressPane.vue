@@ -1,8 +1,8 @@
 <template>
   <div class="progress-pane" v-loading="loading">
-    <AcademicDataSourceBadge :source="parsed?.source" />
     <div class="data-note">
-      以下信息整理自教务系统，最终请以学校和学院通知为准。
+      <span>以下信息整理自教务系统，最终请以学校和学院通知为准。</span>
+      <AcademicDataSourceBadge :source="parsed?.source" />
     </div>
 
     <!-- 总览大卡 -->
@@ -300,6 +300,11 @@ function scoreColor(s: string) {
 .progress-pane { display: flex; flex-direction: column; gap: 16px; }
 
 .data-note {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
   border: 1px solid rgba(245, 158, 11, 0.34);
   border-radius: 8px;
   background: rgba(245, 158, 11, 0.12);
@@ -308,6 +313,7 @@ function scoreColor(s: string) {
   line-height: 1.6;
   padding: 10px 12px;
 }
+.data-note > :last-child { margin-left: auto; }
 
 /* 顶部总览大卡 */
 .overall {

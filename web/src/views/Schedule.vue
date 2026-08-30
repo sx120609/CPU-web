@@ -25,7 +25,7 @@
         <el-option v-for="s in semesters" :key="s.value" :value="s.value" :label="s.label" />
       </el-select>
       <div class="top-actions">
-        <AcademicDataSourceBadge v-if="scheduleSource === 'jwxt'" :source="parsed?.source" compact />
+        <AcademicDataSourceBadge v-if="scheduleSource === 'jwxt'" :source="parsed?.source" />
         <button
           v-if="showScheduleExitButton"
           type="button"
