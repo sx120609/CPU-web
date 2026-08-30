@@ -50,6 +50,13 @@
   }
 
   .avatar { flex-shrink: 0; background: var(--cpu-primary); color: #fff; font-weight: 600; }
+  .reply-author-line {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    max-width: 100%;
+  }
   .reply-author-panel .author {
     max-width: 100%;
     color: var(--cpu-primary);
@@ -58,6 +65,17 @@
     text-decoration: none;
     overflow-wrap: anywhere;
   }
+  .post-private-chat-button {
+    flex: 0 0 auto;
+    padding: 1px 3px;
+    border: 0;
+    background: transparent;
+    color: var(--cpu-primary);
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .post-private-chat-button:hover { text-decoration: underline; }
   .reply-author-badges { display: flex; justify-content: center; flex-wrap: wrap; gap: 5px; }
   .real-author-inline {
     color: color-mix(in srgb, var(--cpu-gold) 78%, var(--cpu-text));

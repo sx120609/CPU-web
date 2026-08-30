@@ -317,17 +317,24 @@
 
     .reply-author-panel .avatar { width: 38px !important; height: 38px !important; }
     .reply.nested .reply-author-panel .avatar { width: 32px !important; height: 32px !important; }
-    .reply-author-panel .author {
+    .reply-author-panel .reply-author-line {
       position: absolute;
       top: 15px;
       left: 68px;
-      max-width: calc(100% - 150px);
+      max-width: calc(100% - 120px);
+      align-items: center;
+      justify-content: flex-start;
+      gap: 5px;
+    }
+    .reply-author-panel .author {
+      min-width: 0;
+      max-width: 100%;
       overflow: hidden;
       color: var(--cpu-text);
       text-overflow: ellipsis;
       white-space: nowrap;
     }
-    .reply.nested .reply-author-panel .author { top: 12px; left: 56px; }
+    .reply.nested .reply-author-panel .reply-author-line { top: 12px; left: 56px; }
     .reply-author-badges { display: none; }
     .reply-moderation-actions-desktop { display: none; }
     .reply-moderation-actions-mobile { display: flex; }

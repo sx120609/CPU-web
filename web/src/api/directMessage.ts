@@ -8,7 +8,10 @@ export interface DirectMessageUser {
   vipActive?: boolean;
   profileTheme?: string | null;
   profileFrame?: string | null;
+  anonymous?: boolean;
 }
+
+export type ForumDirectMessageKind = "topic" | "reply";
 
 export interface DirectMessageSendState {
   limitedUntilReply: boolean;
@@ -63,10 +66,18 @@ export const directMessageApi = {
       undefined,
       options,
     ),
+  withForumPost: (kind: ForumDirectMessageKind, postId: number, options?: RequestOptions) =>
+    request.get<{ counterpart: DirectMessageUser; conversation: DirectConversation | null }>(
+      `/direct-messages/forum/${kind}/${postId}`,
+      undefined,
+      options,
+    ),
   messages: (conversationId: number, params?: { before?: number; limit?: number }, options?: RequestOptions) =>
     request.get<DirectMessagePage>(`/direct-messages/conversations/${conversationId}/messages`, params, options),
   send: (conversationId: number, content: string, options?: RequestOptions) =>
     request.post<DirectMessageSendResult>(`/direct-messages/conversations/${conversationId}/messages`, { content }, options),
   sendToUser: (userId: number, content: string, options?: RequestOptions) =>
     request.post<DirectMessageSendResult>(`/direct-messages/with/${userId}/messages`, { content }, options),
+  sendToForumPost: (kind: ForumDirectMessageKind, postId: number, content: string, options?: RequestOptions) =>
+    request.post<DirectMessageSendResult>(`/direct-messages/forum/${kind}/${postId}/messages`, { content }, options),
 };

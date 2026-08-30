@@ -83,6 +83,12 @@
               <span v-if="topic.author?.vipActive" class="vip-badge">VIP</span>
               <router-link v-if="topic.author?.id" :to="`/u/${topic.author.id}`">{{ topic.author?.nickname }}</router-link>
               <span v-else>{{ topic.author?.nickname }}</span>
+              <button
+                v-if="canPrivateChatPost(topic)"
+                type="button"
+                class="post-private-chat-button"
+                @click="openPrivateChat('topic', topic.id)"
+              >私聊</button>
               <el-tag v-if="topic.isAnonymous" size="small" type="warning" effect="plain">匿名发布</el-tag>
               <el-tag v-else-if="topic.author?.role === 'bot'" size="small" type="warning">公告同步</el-tag>
               <el-tag v-else-if="topic.author?.role === 'admin'" size="small" type="danger">管理员</el-tag>
@@ -332,8 +338,16 @@
         >
           <aside class="reply-author-panel">
             <UserAvatar :size="48" class="avatar" :src="entry.item.author?.avatar" :name="entry.item.author?.nickname" :seed="entry.item.author?.id ?? entry.item.anonymousAlias ?? entry.item.id" :profile-frame="entry.item.author?.profileFrame" alt="回复头像" />
-            <router-link v-if="entry.item.author?.id" :to="`/u/${entry.item.author.id}`" class="author">{{ entry.item.author?.nickname }}</router-link>
-            <span v-else class="author">{{ entry.item.author?.nickname }}</span>
+            <div class="reply-author-line">
+              <router-link v-if="entry.item.author?.id" :to="`/u/${entry.item.author.id}`" class="author">{{ entry.item.author?.nickname }}</router-link>
+              <span v-else class="author">{{ entry.item.author?.nickname }}</span>
+              <button
+                v-if="canPrivateChatPost(entry.item)"
+                type="button"
+                class="post-private-chat-button"
+                @click="openPrivateChat('reply', entry.item.id)"
+              >私聊</button>
+            </div>
             <div class="reply-author-badges">
               <el-tag v-if="entry.item.isAnonymous" size="small" type="warning" effect="plain">匿名</el-tag>
               <el-tag v-if="replyReviewLabel(entry.item)" size="small" type="warning" effect="plain">{{ replyReviewLabel(entry.item) }}</el-tag>
@@ -1351,6 +1365,23 @@ function editReply(reply: Reply) {
 
 function replyOwnerId(reply: Reply) {
   return Number(reply.realAuthor?.id ?? reply.authorId ?? reply.author?.id ?? 0);
+}
+
+function canPrivateChatPost(post: Topic | Reply) {
+  if (!auth.isLoggedIn || post.author?.role === "bot") return false;
+  const ownerId = Number(post.realAuthor?.id ?? post.authorId ?? post.author?.id ?? 0);
+  return ownerId <= 0 || ownerId !== auth.user?.id;
+}
+
+function openPrivateChat(kind: "topic" | "reply", postId: number) {
+  if (!auth.isLoggedIn) {
+    router.push({ name: "login", query: { redirect: route.fullPath } });
+    return;
+  }
+  router.push({
+    name: "messages",
+    query: { tab: "private", forumKind: kind, forumId: String(postId) },
+  });
 }
 
 function isAcceptedAnswer(reply: Reply) {

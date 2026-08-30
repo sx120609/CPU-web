@@ -5,8 +5,17 @@ import { validate } from "../middleware/validate";
 import { Errors, ok } from "../utils/response";
 import { ensureUserCanSpeak } from "../services/userModeration";
 import { buildUserPreview } from "../utils/publicUser";
+import { ensureCanReadBoardType } from "../services/forumAccess";
+import { isRetiredBoardSlug } from "../services/retiredBoards";
+import { featureClosedMessage, isBoardTypeEnabled } from "../services/siteSettings";
+import { presentAnonymousAlias } from "../services/userTrust";
 import {
+  anonymousForumDirectScope,
   canonicalDirectParticipants,
+  directCounterpartId,
+  directParticipantAlias,
+  DIRECT_MESSAGE_DEFAULT_SCOPE,
+  presentDirectParticipantId,
   resolveDirectMessageSendState,
 } from "../services/directMessagePolicy";
 
@@ -41,6 +50,9 @@ type DirectConversationRow = {
   id: number;
   participantLowId: number;
   participantHighId: number;
+  scopeKey: string;
+  participantLowAlias: string | null;
+  participantHighAlias: string | null;
   initiatedById: number;
   recipientRepliedAt: Date | null;
   lastMessageAt: Date;
@@ -54,11 +66,35 @@ function parsePositiveId(raw: string, label: string) {
   return id;
 }
 
+function anonymousDirectUser(alias: string) {
+  return {
+    id: 0,
+    nickname: alias,
+    avatar: null,
+    role: "anonymous",
+    anonymous: true,
+    vipActive: false,
+    profileTheme: null,
+    profileFrame: null,
+  };
+}
+
 function directCounterpart(conversation: any, viewerId: number) {
-  const user = conversation.participantLowId === viewerId
-    ? conversation.participantHigh
-    : conversation.participantLow;
+  const counterpartId = directCounterpartId(conversation, viewerId);
+  const alias = directParticipantAlias(conversation, counterpartId);
+  if (alias) return anonymousDirectUser(alias);
+  const user = conversation.participantLowId === counterpartId
+    ? conversation.participantLow
+    : conversation.participantHigh;
   return buildUserPreview(user);
+}
+
+function serializeDirectMessage(message: any, conversation: any, viewerId: number) {
+  if (!message) return null;
+  return {
+    ...message,
+    senderId: presentDirectParticipantId(conversation, viewerId, message.senderId),
+  };
 }
 
 function serializeConversation(
@@ -69,7 +105,7 @@ function serializeConversation(
 ) {
   return {
     id: conversation.id,
-    initiatedById: conversation.initiatedById,
+    initiatedById: presentDirectParticipantId(conversation, viewerId, conversation.initiatedById),
     recipientRepliedAt: conversation.recipientRepliedAt,
     lastMessageAt: conversation.lastMessageAt,
     createdAt: conversation.createdAt,
@@ -97,30 +133,121 @@ async function requireDirectMessageTarget(senderId: number, recipientId: number)
   return { sender, recipient };
 }
 
-async function findConversationForUsers(firstUserId: number, secondUserId: number) {
+async function findConversationForUsers(
+  firstUserId: number,
+  secondUserId: number,
+  scopeKey = DIRECT_MESSAGE_DEFAULT_SCOPE,
+) {
   const pair = canonicalDirectParticipants(firstUserId, secondUserId);
   return prisma.directConversation.findUnique({
-    where: { participantLowId_participantHighId: pair },
+    where: { participantLowId_participantHighId_scopeKey: { ...pair, scopeKey } },
     include: directConversationInclude,
   });
 }
 
-async function sendDirectMessage(senderId: number, recipientId: number, content: string) {
+type ForumDirectKind = "topic" | "reply";
+
+function parseForumDirectKind(raw: string): ForumDirectKind {
+  if (raw === "topic" || raw === "reply") return raw;
+  throw Errors.badRequest("帖子类型不正确");
+}
+
+async function resolveForumDirectTarget(
+  viewerId: number,
+  viewerRole: string,
+  kind: ForumDirectKind,
+  postId: number,
+) {
+  const raw = kind === "topic"
+    ? await prisma.topic.findUnique({
+        where: { id: postId },
+        select: {
+          id: true,
+          authorId: true,
+          isAnonymous: true,
+          anonymousAlias: true,
+          hidden: true,
+          author: { select: directUserSelect },
+          board: { select: { slug: true, type: true } },
+        },
+      })
+    : await prisma.reply.findUnique({
+        where: { id: postId },
+        select: {
+          id: true,
+          topicId: true,
+          authorId: true,
+          isAnonymous: true,
+          anonymousAlias: true,
+          hidden: true,
+          author: { select: directUserSelect },
+          topic: {
+            select: {
+              id: true,
+              authorId: true,
+              hidden: true,
+              board: { select: { slug: true, type: true } },
+            },
+          },
+        },
+      });
+  if (!raw) throw Errors.notFound("帖子或回复不存在");
+
+  const post = raw as any;
+  const topic = kind === "topic" ? post : post.topic;
+  const isStaff = viewerRole === "admin" || viewerRole === "mod";
+  if (topic.hidden && topic.authorId !== viewerId && !isStaff) throw Errors.notFound("帖子或回复不存在");
+  if (post.hidden && post.authorId !== viewerId && !isStaff) throw Errors.notFound("帖子或回复不存在");
+  if (isRetiredBoardSlug(topic.board?.slug)) throw Errors.notFound("帖子或回复不存在");
+  if (!isBoardTypeEnabled(topic.board?.type)) throw Errors.forbidden(featureClosedMessage(topic.board?.type));
+  await ensureCanReadBoardType(topic.board?.type, viewerId, viewerRole);
+
+  if (post.authorId === viewerId) throw Errors.badRequest("不能与自己私聊");
+  if (!post.author || post.author.status === "banned") throw Errors.notFound("用户不存在或暂时无法接收私聊");
+  if (post.author.role === "bot") throw Errors.badRequest("不能向系统账号发起私聊");
+
+  const alias = post.isAnonymous ? presentAnonymousAlias(post.anonymousAlias) : null;
+  const topicId = Number(topic.id);
+  return {
+    recipientId: Number(post.authorId),
+    recipient: post.author,
+    recipientAlias: alias,
+    scopeKey: alias ? anonymousForumDirectScope(topicId, alias) : DIRECT_MESSAGE_DEFAULT_SCOPE,
+  };
+}
+
+type DirectMessageContext = {
+  scopeKey?: string;
+  recipientAlias?: string | null;
+};
+
+async function sendDirectMessage(
+  senderId: number,
+  recipientId: number,
+  content: string,
+  context: DirectMessageContext = {},
+) {
   const { sender } = await requireDirectMessageTarget(senderId, recipientId);
   const pair = canonicalDirectParticipants(senderId, recipientId);
+  const scopeKey = context.scopeKey || DIRECT_MESSAGE_DEFAULT_SCOPE;
+  const recipientAlias = String(context.recipientAlias || "").trim() || null;
+  const participantLowAlias = pair.participantLowId === recipientId ? recipientAlias : null;
+  const participantHighAlias = pair.participantHighId === recipientId ? recipientAlias : null;
 
   const result = await prisma.$transaction(async (tx) => {
-    // INSERT ... ON CONFLICT 会锁住这一对用户唯一的会话行；后续计数和写入在同一事务内，
+    // INSERT ... ON CONFLICT 会锁住这一对用户在当前身份作用域里的唯一会话行；后续计数和写入在同一事务内，
     // 即使用户并发点击发送，也不能越过“回复前两条”的服务端限制。
     const rows = await tx.$queryRaw<DirectConversationRow[]>`
       INSERT INTO "DirectConversation" (
-        "participantLowId", "participantHighId", "initiatedById",
+        "participantLowId", "participantHighId", "scopeKey",
+        "participantLowAlias", "participantHighAlias", "initiatedById",
         "lastMessageAt", "createdAt", "updatedAt"
       ) VALUES (
-        ${pair.participantLowId}, ${pair.participantHighId}, ${senderId},
+        ${pair.participantLowId}, ${pair.participantHighId}, ${scopeKey},
+        ${participantLowAlias}, ${participantHighAlias}, ${senderId},
         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
       )
-      ON CONFLICT ("participantLowId", "participantHighId")
+      ON CONFLICT ("participantLowId", "participantHighId", "scopeKey")
       DO UPDATE SET "updatedAt" = "DirectConversation"."updatedAt"
       RETURNING *
     `;
@@ -157,7 +284,7 @@ async function sendDirectMessage(senderId: number, recipientId: number, content:
         userId: recipientId,
         category: "direct-message",
         level: "normal",
-        title: `${sender.nickname || "有用户"} 发来私聊`,
+        title: `${directParticipantAlias(conversation, senderId) || sender.nickname || "有用户"} 发来私聊`,
         content: "有一条新私聊消息，进入站内私聊查看。",
         link: `/messages?tab=private&conversation=${conversation.id}`,
         source: "站内私聊",
@@ -177,7 +304,7 @@ async function sendDirectMessage(senderId: number, recipientId: number, content:
     : 0;
   return {
     conversation: serializeConversation(conversation, senderId, initiatorMessageCount),
-    message: result.message,
+    message: serializeDirectMessage(result.message, conversation, senderId),
   };
 }
 
@@ -217,7 +344,7 @@ directMessageRouter.get("/conversations", async (req, res, next) => {
         sentByConversation.get(conversation.id) || 0,
         unreadByConversation.get(conversation.id) || 0,
       ),
-      lastMessage: conversation.messages[0] || null,
+      lastMessage: serializeDirectMessage(conversation.messages[0], conversation, userId),
     }));
     ok(res, {
       conversations,
@@ -251,6 +378,41 @@ directMessageRouter.post("/with/:userId/messages", validate(sendSchema), async (
   try {
     const recipientId = parsePositiveId(req.params.userId, "用户");
     ok(res, await sendDirectMessage(req.user!.userId, recipientId, req.body.content));
+  } catch (error) { next(error); }
+});
+
+directMessageRouter.get("/forum/:kind/:postId", async (req, res, next) => {
+  try {
+    const userId = req.user!.userId;
+    const kind = parseForumDirectKind(req.params.kind);
+    const postId = parsePositiveId(req.params.postId, kind === "topic" ? "帖子" : "回复");
+    const target = await resolveForumDirectTarget(userId, req.user!.role, kind, postId);
+    const conversation = await findConversationForUsers(userId, target.recipientId, target.scopeKey);
+    const counterpart = target.recipientAlias
+      ? anonymousDirectUser(target.recipientAlias)
+      : buildUserPreview(target.recipient);
+    if (!conversation) return ok(res, { counterpart, conversation: null });
+    const [sentCount, unreadCount] = await Promise.all([
+      prisma.directMessage.count({ where: { conversationId: conversation.id, senderId: userId } }),
+      prisma.directMessage.count({ where: { conversationId: conversation.id, senderId: { not: userId }, readAt: null } }),
+    ]);
+    ok(res, {
+      counterpart,
+      conversation: serializeConversation(conversation, userId, sentCount, unreadCount),
+    });
+  } catch (error) { next(error); }
+});
+
+directMessageRouter.post("/forum/:kind/:postId/messages", validate(sendSchema), async (req, res, next) => {
+  try {
+    const userId = req.user!.userId;
+    const kind = parseForumDirectKind(req.params.kind);
+    const postId = parsePositiveId(req.params.postId, kind === "topic" ? "帖子" : "回复");
+    const target = await resolveForumDirectTarget(userId, req.user!.role, kind, postId);
+    ok(res, await sendDirectMessage(userId, target.recipientId, req.body.content, {
+      scopeKey: target.scopeKey,
+      recipientAlias: target.recipientAlias,
+    }));
   } catch (error) { next(error); }
 });
 
@@ -298,10 +460,10 @@ directMessageRouter.get("/conversations/:id/messages", validate(pageQuerySchema,
       : 0;
     ok(res, {
       conversation: serializeConversation(conversation, userId, initiatorMessageCount, 0),
-      messages: pageRows.map((message) => ({
+      messages: pageRows.map((message) => serializeDirectMessage({
         ...message,
         readAt: message.senderId !== userId && !message.readAt ? now : message.readAt,
-      })),
+      }, conversation, userId)),
       nextCursor: hasMore ? pageRows[0]?.id || null : null,
     });
   } catch (error) { next(error); }
@@ -318,6 +480,8 @@ directMessageRouter.post("/conversations/:id/messages", validate(sendSchema), as
     const recipientId = conversation.participantLowId === userId
       ? conversation.participantHighId
       : conversation.participantLowId;
-    ok(res, await sendDirectMessage(userId, recipientId, req.body.content));
+    ok(res, await sendDirectMessage(userId, recipientId, req.body.content, {
+      scopeKey: conversation.scopeKey,
+    }));
   } catch (error) { next(error); }
 });

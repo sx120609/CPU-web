@@ -1133,6 +1133,9 @@ model DirectConversation {
   id                 Int       @id @default(autoincrement())
   participantLowId   Int
   participantHighId  Int
+  scopeKey            String    @default("direct")
+  participantLowAlias  String?
+  participantHighAlias String?
   initiatedById      Int
   recipientRepliedAt DateTime?
   lastMessageAt      DateTime
@@ -1144,7 +1147,7 @@ model DirectConversation {
   initiatedBy     User            @relation("DirectConversationInitiator", fields: [initiatedById], references: [id], onDelete: Restrict)
   messages        DirectMessage[]
 
-  @@unique([participantLowId, participantHighId])
+  @@unique([participantLowId, participantHighId, scopeKey])
   @@index([participantLowId, lastMessageAt])
   @@index([participantHighId, lastMessageAt])
   @@index([initiatedById, recipientRepliedAt])

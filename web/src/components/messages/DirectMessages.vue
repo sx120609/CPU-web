@@ -33,7 +33,7 @@
             :size="42"
             :src="conversation.counterpart.avatar"
             :name="conversation.counterpart.nickname"
-            :seed="conversation.counterpart.id"
+            :seed="conversation.counterpart.id || conversation.counterpart.nickname"
             :profile-frame="conversation.counterpart.profileFrame"
             alt="私聊对象头像"
           />
@@ -59,7 +59,7 @@
         </el-empty>
       </div>
       <div v-else-if="!activeCounterpart" class="chat-state chat-placeholder">
-        <el-empty description="从用户主页发起私聊，或在左侧选择一个会话" />
+        <el-empty description="从帖子或用户主页发起私聊，或在左侧选择一个会话" />
       </div>
       <template v-else>
         <header class="chat-head">
@@ -70,7 +70,7 @@
             :size="40"
             :src="activeCounterpart.avatar"
             :name="activeCounterpart.nickname"
-            :seed="activeCounterpart.id"
+            :seed="activeCounterpart.id || activeCounterpart.nickname"
             :profile-frame="activeCounterpart.profileFrame"
             alt="私聊对象头像"
           />
@@ -82,7 +82,7 @@
             <span v-else-if="!activeConversation">新私聊 · 对方回复前最多发送两条</span>
             <span v-else>站内私聊</span>
           </div>
-          <el-button class="profile-link" text type="primary" @click="openProfile">查看资料</el-button>
+          <el-button v-if="!activeCounterpart.anonymous" class="profile-link" text type="primary" @click="openProfile">查看资料</el-button>
         </header>
 
         <div ref="messageScroller" class="message-scroller" aria-live="polite" aria-label="私聊消息记录">
@@ -99,7 +99,7 @@
               :size="56"
               :src="activeCounterpart.avatar"
               :name="activeCounterpart.nickname"
-              :seed="activeCounterpart.id"
+              :seed="activeCounterpart.id || activeCounterpart.nickname"
               :profile-frame="activeCounterpart.profileFrame"
               alt="私聊对象头像"
             />
@@ -160,6 +160,7 @@ import DisplayNickname from "@/components/common/DisplayNickname.vue";
 import {
   directMessageApi,
   type DirectConversation,
+  type ForumDirectMessageKind,
   type DirectMessageItem,
   type DirectMessageUser,
 } from "@/api/directMessage";
@@ -175,6 +176,7 @@ const conversations = ref<DirectConversation[]>([]);
 const totalUnread = ref(0);
 const activeConversation = ref<DirectConversation | null>(null);
 const pendingTarget = ref<DirectMessageUser | null>(null);
+const pendingForumTarget = ref<{ kind: ForumDirectMessageKind; postId: number } | null>(null);
 const messages = ref<DirectMessageItem[]>([]);
 const nextCursor = ref<number | null>(null);
 const draft = ref("");
@@ -197,8 +199,15 @@ const sendBlocked = computed(() => Boolean(activeConversation.value && !activeCo
 const canSubmit = computed(() => Boolean(draft.value.trim()) && !sendBlocked.value && !sending.value);
 const composerDraftKey = computed(() => {
   const userId = auth.user?.id;
+  if (!userId) return "";
+  if (activeConversation.value?.id && activeCounterpart.value?.anonymous) {
+    return `cpu-direct-message-draft-v2:user-${userId}:conversation-${activeConversation.value.id}`;
+  }
+  if (pendingForumTarget.value) {
+    return `cpu-direct-message-draft-v2:user-${userId}:forum-${pendingForumTarget.value.kind}-${pendingForumTarget.value.postId}`;
+  }
   const counterpartId = activeCounterpart.value?.id;
-  return userId && counterpartId ? `cpu-direct-message-draft-v2:user-${userId}:counterpart-${counterpartId}` : "";
+  return counterpartId ? `cpu-direct-message-draft-v2:user-${userId}:counterpart-${counterpartId}` : "";
 });
 let draftSaveTimer = 0;
 let pendingDraftKey = "";
@@ -228,7 +237,7 @@ onBeforeUnmount(() => {
 });
 
 watch(
-  () => [route.query.tab, route.query.user, route.query.conversation],
+  () => [route.query.tab, route.query.user, route.query.conversation, route.query.forumKind, route.query.forumId],
   () => {
     if (route.query.tab === "private") void applyRouteTarget();
   },
@@ -280,19 +289,57 @@ async function applyRouteTarget() {
   targetError.value = "";
   const conversationId = positiveQueryId(route.query.conversation);
   const userId = positiveQueryId(route.query.user);
+  const forumKind = forumKindQuery(route.query.forumKind);
+  const forumId = positiveQueryId(route.query.forumId);
 
   if (conversationId) {
     const conversation = conversations.value.find((item) => item.id === conversationId);
     if (!conversation) {
       activeConversation.value = null;
       pendingTarget.value = null;
+      pendingForumTarget.value = null;
       messages.value = [];
       targetError.value = "会话不存在或已不可访问";
       return;
     }
     pendingTarget.value = null;
+    pendingForumTarget.value = null;
     activeConversation.value = conversation;
     await loadMessages(true);
+    return;
+  }
+
+  if (forumKind && forumId) {
+    targetLoading.value = true;
+    try {
+      const result = await directMessageApi.withForumPost(forumKind, forumId, {
+        cacheTtlMs: 0,
+        suppressErrorMessage: true,
+      });
+      if (disposed || seq !== routeSeq) return;
+      if (result.conversation) {
+        upsertConversation(result.conversation);
+        activeConversation.value = result.conversation;
+        pendingTarget.value = null;
+        pendingForumTarget.value = null;
+        await loadMessages(true);
+      } else {
+        activeConversation.value = null;
+        pendingTarget.value = result.counterpart;
+        pendingForumTarget.value = { kind: forumKind, postId: forumId };
+        messages.value = [];
+        nextCursor.value = null;
+      }
+    } catch (error) {
+      if (disposed || seq !== routeSeq) return;
+      activeConversation.value = null;
+      pendingTarget.value = null;
+      pendingForumTarget.value = null;
+      messages.value = [];
+      targetError.value = errorMessage(error, "私聊对象加载失败");
+    } finally {
+      if (!disposed && seq === routeSeq) targetLoading.value = false;
+    }
     return;
   }
 
@@ -305,10 +352,12 @@ async function applyRouteTarget() {
         upsertConversation(result.conversation);
         activeConversation.value = result.conversation;
         pendingTarget.value = null;
+        pendingForumTarget.value = null;
         await loadMessages(true);
       } else {
         activeConversation.value = null;
         pendingTarget.value = result.counterpart;
+        pendingForumTarget.value = null;
         messages.value = [];
         nextCursor.value = null;
       }
@@ -316,6 +365,7 @@ async function applyRouteTarget() {
       if (disposed || seq !== routeSeq) return;
       activeConversation.value = null;
       pendingTarget.value = null;
+      pendingForumTarget.value = null;
       messages.value = [];
       targetError.value = errorMessage(error, "私聊对象加载失败");
     } finally {
@@ -329,7 +379,14 @@ async function applyRouteTarget() {
 
 function openConversation(conversationId: number) {
   router.replace({
-    query: { ...route.query, tab: "private", conversation: String(conversationId), user: undefined },
+    query: {
+      ...route.query,
+      tab: "private",
+      conversation: String(conversationId),
+      user: undefined,
+      forumKind: undefined,
+      forumId: undefined,
+    },
   }).catch(() => null);
 }
 
@@ -393,17 +450,28 @@ async function sendMessage() {
   if (!content || !counterpart || sending.value || sendBlocked.value) return;
   sending.value = true;
   try {
+    const forumTarget = pendingForumTarget.value;
     const result = activeConversation.value
       ? await directMessageApi.send(activeConversation.value.id, content, { suppressErrorMessage: true })
-      : await directMessageApi.sendToUser(counterpart.id, content, { suppressErrorMessage: true });
+      : forumTarget
+        ? await directMessageApi.sendToForumPost(forumTarget.kind, forumTarget.postId, content, { suppressErrorMessage: true })
+        : await directMessageApi.sendToUser(counterpart.id, content, { suppressErrorMessage: true });
     clearComposerDraft(composerDraftKey.value);
     draft.value = "";
     pendingTarget.value = null;
+    pendingForumTarget.value = null;
     activeConversation.value = result.conversation;
     mergeMessages([result.message]);
     upsertConversation({ ...result.conversation, lastMessage: result.message });
     await router.replace({
-      query: { ...route.query, tab: "private", conversation: String(result.conversation.id), user: undefined },
+      query: {
+        ...route.query,
+        tab: "private",
+        conversation: String(result.conversation.id),
+        user: undefined,
+        forumKind: undefined,
+        forumId: undefined,
+      },
     }).catch(() => null);
     await scrollToBottom();
     void loadConversationList();
@@ -507,22 +575,48 @@ async function scrollToBottom() {
 function backToList() {
   activeConversation.value = null;
   pendingTarget.value = null;
+  pendingForumTarget.value = null;
   messages.value = [];
-  router.replace({ query: { ...route.query, tab: "private", conversation: undefined, user: undefined } }).catch(() => null);
+  router.replace({
+    query: {
+      ...route.query,
+      tab: "private",
+      conversation: undefined,
+      user: undefined,
+      forumKind: undefined,
+      forumId: undefined,
+    },
+  }).catch(() => null);
 }
 
 function openProfile() {
-  if (activeCounterpart.value) router.push(`/u/${activeCounterpart.value.id}`);
+  if (activeCounterpart.value && !activeCounterpart.value.anonymous && activeCounterpart.value.id > 0) {
+    router.push(`/u/${activeCounterpart.value.id}`);
+  }
 }
 
 function openNoticeCenter() {
-  router.replace({ query: { ...route.query, tab: "all", conversation: undefined, user: undefined } }).catch(() => null);
+  router.replace({
+    query: {
+      ...route.query,
+      tab: "all",
+      conversation: undefined,
+      user: undefined,
+      forumKind: undefined,
+      forumId: undefined,
+    },
+  }).catch(() => null);
 }
 
 function positiveQueryId(value: unknown) {
   const raw = Array.isArray(value) ? value[0] : value;
   const id = Number(raw || 0);
   return Number.isInteger(id) && id > 0 ? id : 0;
+}
+
+function forumKindQuery(value: unknown): ForumDirectMessageKind | null {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return raw === "topic" || raw === "reply" ? raw : null;
 }
 
 function shortTime(value: string) {
