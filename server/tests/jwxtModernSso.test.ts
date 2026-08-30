@@ -5,6 +5,7 @@ import {
   isModernJwxtLoginPage,
 } from "../src/services/modernJwxtSso";
 import {
+  exportSessionSnapshot,
   importSessionSnapshot,
   jwxtFetchModernHtml,
   logout,
@@ -71,7 +72,7 @@ test("modern JWXT reuses the unified-auth cookie and consumes the automatic SSO 
 
     if (url.hostname === "jwxt.cpu.edu.cn" && url.pathname === "/jsxsd/xskb/xskb_list.do") {
       scheduleRequests += 1;
-      if (scheduleRequests === 1) {
+      if (!/bzb_jsxsd=modern-session/.test(cookie)) {
         return new Response('<form action="/jsxsd/xk/LoginToXk"><input name="userAccount"></form>', {
           status: 200,
           headers: { "content-type": "text/html", "set-cookie": "bzb_jsxsd=pre-sso; Path=/jsxsd; HttpOnly" },
@@ -112,7 +113,70 @@ test("modern JWXT reuses the unified-auth cookie and consumes the automatic SSO 
   try {
     const html = await jwxtFetchModernHtml(token, "/jsxsd/xskb/xskb_list.do?viweType=0");
     assert.match(html, /2026-2027-1/);
-    assert.equal(scheduleRequests, 3);
+    assert.equal(scheduleRequests, 4);
+  } finally {
+    globalThis.fetch = originalFetch;
+    await logout(token);
+  }
+});
+
+test("concurrent modern requests share one SSO renewal and keep the restored cookie", async () => {
+  const token = "modern-sso-concurrent-token";
+  const now = Date.now();
+  await importSessionSnapshot(token, {
+    version: 1,
+    jar: {
+      "jsxsd.cpu.edu.cn": { JSESSIONID: "legacy-session" },
+      "id.cpu.edu.cn": { SESSION: "unified-session" },
+    },
+    username: "2020240444",
+    createdAt: now,
+    lastSeenAt: now,
+  });
+
+  const originalFetch = globalThis.fetch;
+  let ssoEntries = 0;
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = new URL(typeof input === "string" || input instanceof URL ? input : input.url);
+    const cookie = new Headers(init?.headers).get("cookie") || "";
+
+    if (url.hostname === "jwxt.cpu.edu.cn" && url.pathname.startsWith("/jsxsd/") && url.pathname !== "/jsxsd/sso.jsp") {
+      if (/bzb_jsxsd=modern-session/.test(cookie)) {
+        return new Response(`<html><body>${url.pathname}</body></html>`, { status: 200 });
+      }
+      return new Response('<form action="/jsxsd/xk/LoginToXk"><input name="userAccount"></form>', { status: 200 });
+    }
+    if (url.hostname === "jwxt.cpu.edu.cn" && url.pathname === "/jsxsd/sso.jsp" && !url.searchParams.has("ticket")) {
+      ssoEntries += 1;
+      return new Response(`<script>window.location.href='${ssoUrl}'</script>`, { status: 200 });
+    }
+    if (url.hostname === "id.cpu.edu.cn" && url.pathname === "/sso/login") {
+      assert.match(cookie, /SESSION=unified-session/);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      return new Response(null, {
+        status: 302,
+        headers: { location: "http://jwxt.cpu.edu.cn/jsxsd/sso.jsp?ticket=ST-concurrent" },
+      });
+    }
+    if (url.hostname === "jwxt.cpu.edu.cn" && url.pathname === "/jsxsd/sso.jsp" && url.searchParams.has("ticket")) {
+      return new Response("<script>window.location.href='/jsxsd/framework/xsMainV.jsp'</script>", {
+        status: 200,
+        headers: { "set-cookie": "bzb_jsxsd=modern-session; Path=/jsxsd; HttpOnly" },
+      });
+    }
+    throw new Error(`unexpected request: ${url.toString()}`);
+  }) as typeof fetch;
+
+  try {
+    const [schedule, grades] = await Promise.all([
+      jwxtFetchModernHtml(token, "/jsxsd/xskb/xskb_list.do?viweType=0"),
+      jwxtFetchModernHtml(token, "/jsxsd/kscj/cjcx_frm"),
+    ]);
+    assert.match(schedule, /xskb/);
+    assert.match(grades, /cjcx/);
+    assert.equal(ssoEntries, 1);
+    const snapshot = await exportSessionSnapshot(token);
+    assert.equal(snapshot?.jar["jwxt.cpu.edu.cn"]?.bzb_jsxsd, "modern-session");
   } finally {
     globalThis.fetch = originalFetch;
     await logout(token);

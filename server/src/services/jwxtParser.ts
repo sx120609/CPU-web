@@ -442,6 +442,39 @@ export interface GradesResult {
   list: GradeRow[];
 }
 
+type ModernListEnvelope = {
+  code?: number;
+  count?: number;
+  data?: unknown[];
+};
+
+function parseModernListEnvelope(input: string): ModernListEnvelope | null {
+  const text = String(input || "").trim();
+  if (!text.startsWith("{")) return null;
+  try {
+    const parsed = JSON.parse(text) as ModernListEnvelope;
+    return parsed && Array.isArray(parsed.data) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function textValue(value: unknown) {
+  return value === null || value === undefined ? "" : String(value).trim();
+}
+
+function numberValue(value: unknown) {
+  const parsed = typeof value === "number" ? value : Number.parseFloat(textValue(value));
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function semesterOptionsFromValues(values: string[]): SemesterOption[] {
+  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)))
+    .sort()
+    .reverse()
+    .map((value) => ({ value, label: value, current: false }));
+}
+
 /**
  * 5.0 制绩点换算（中国药科大学使用）
  *   数字成绩：gpa = max(0, (score - 50) / 10)，封顶 5.0
@@ -484,6 +517,35 @@ export function normalizeGradesResult(result: GradesResult): GradesResult {
 }
 
 export function parseGrades(html: string): GradesResult {
+  const modern = parseModernListEnvelope(html);
+  if (modern) {
+    const list = modern.data!.flatMap((value): GradeRow[] => {
+      if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+      const row = value as Record<string, unknown>;
+      const courseName = textValue(row.kc_mc ?? row.kcmc);
+      if (!courseName) return [];
+      const score = textValue(row.zcjstr ?? row.zcj);
+      const scoreNum = Number.parseFloat(score);
+      return [{
+        semester: textValue(row.xnxqid ?? row.kksj),
+        courseCode: textValue(row.kch) || undefined,
+        courseName,
+        score,
+        scoreNum: Number.isFinite(scoreNum) ? scoreNum : null,
+        credits: numberValue(row.xf),
+        hours: numberValue(row.zxs),
+        gpa: numberValue(row.jd) ?? scoreToGpa(score),
+        courseAttr: textValue(row.kcsx ?? row.kcxzmc) || undefined,
+        examType: textValue(row.ksxz ?? row.ksfs) || undefined,
+        remark: textValue(row.cjbz ?? row.bz) || undefined,
+      }];
+    });
+    return normalizeGradesResult({
+      semesters: semesterOptionsFromValues(list.map((row) => row.semester)),
+      list,
+    });
+  }
+
   const $ = cheerio.load(html);
   // 优先从 select 拿（query 页有）；list 页没有，后面从数据聚合兜底
   let semesters = parseSelectOptions($, "kksj");
@@ -635,6 +697,27 @@ export interface ExamsResult {
 }
 
 export function parseExams(html: string): ExamsResult {
+  const modern = parseModernListEnvelope(html);
+  if (modern) {
+    const list = modern.data!.flatMap((value): ExamRow[] => {
+      if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+      const row = value as Record<string, unknown>;
+      const courseName = textValue(row.kskcmc ?? row.kc_mc ?? row.kcmc);
+      if (!courseName) return [];
+      return [{
+        semester: textValue(row.xnxqid) || undefined,
+        examName: textValue(row.ksccmc) || undefined,
+        courseCode: textValue(row.kch) || undefined,
+        courseName,
+        examTime: textValue(row.kssj) || undefined,
+        location: textValue(row.js_mc ?? row.ksdd ?? row.kc) || undefined,
+        seat: textValue(row.zwh) || undefined,
+        examType: textValue(row.xqlbmc ?? row.ksxz ?? row.ksccmc) || undefined,
+      }];
+    });
+    return { semesters: semesterOptionsFromValues(list.map((row) => row.semester || "")), list };
+  }
+
   const $ = cheerio.load(html);
   const semesters = parseSelectOptions($, "xnxqid");
   const list: ExamRow[] = [];
@@ -761,7 +844,7 @@ export function parseCalendar(html: string): CalendarResult {
   $tbl.find("> tbody > tr, > tr").each((_, tr) => {
     const tds = $(tr).find("> th, > td").map((_, c) => $(c).text().replace(/ /g, " ").trim()).get();
     if (tds.length < 8) return;
-    const wk = parseInt(tds[0]);
+    const wk = parseInt(tds[0].match(/\d+/)?.[0] ?? "");
     if (!Number.isFinite(wk) || wk < 1 || wk > 30) return;
     let curYear = baseYear;
     let curMonth = lastSeenMonth;
@@ -877,6 +960,62 @@ export function parseProgress(html: string): ProgressResult {
   const completed: ProgressCourseRow[] = [];
   const uncompleted: ProgressCourseRow[] = [];
 
+  if ($(".mod-total-area .total-list").length || $(".mod-item-detail .sub-table").length) {
+    $(".mod-total-area .total-list").each((_, list) => {
+      $(list).find("> .list-tr").not(".total-tr").each((__, row) => {
+        const cells = $(row).find("> .list-td").map((___, cell) => $(cell).text().replace(/\s+/g, " ").trim()).get();
+        if (cells.length < 4 || !cells[0]) return;
+        const optional = /选修/.test(cells[0]);
+        const required = numberValue(cells[1]) ?? 0;
+        const earned = numberValue(cells[2]) ?? 0;
+        const left = numberValue(cells[3]) ?? 0;
+        summary.push({
+          name: cells[0],
+          requiredMust: optional ? 0 : required,
+          requiredOpt: optional ? required : 0,
+          earnedMust: optional ? 0 : earned,
+          earnedOpt: optional ? earned : 0,
+          leftMust: optional ? 0 : left,
+          leftOpt: optional ? left : 0,
+        });
+      });
+    });
+
+    $(".mod-item-detail .sub-table").each((_, table) => {
+      const headers = $(table).find("> .sub-table-header-tr .header-th-cell")
+        .map((__, cell) => $(cell).text().replace(/\s+/g, " ").trim()).get();
+      const find = (keyword: string | RegExp) => headers.findIndex((header) =>
+        typeof keyword === "string" ? header.includes(keyword) : keyword.test(header));
+      const idxSem = find("学年学期");
+      const idxCode = find("课程编号");
+      const idxName = find("课程名称");
+      const idxCredits = find("学分");
+      const idxAttr = find("课程属性");
+      const idxStatus = find("修读情况");
+      const idxScore = find("总成绩");
+      const idxRemark = find("备注");
+      $(table).find("> .list-tr").each((__, row) => {
+        const cells = $(row).find("> .list-td").map((___, cell) => $(cell).text().replace(/\s+/g, " ").trim()).get();
+        const courseName = idxName >= 0 ? cells[idxName] : "";
+        if (!courseName) return;
+        const status = idxStatus >= 0 ? cells[idxStatus] : "";
+        const score = idxScore >= 0 ? cells[idxScore] : "";
+        const remark = idxRemark >= 0 ? cells[idxRemark] : "";
+        const isCompleted = /已修读|已完成/.test(status);
+        const course: ProgressCourseRow = {
+          courseName,
+          courseCode: idxCode >= 0 ? cells[idxCode] || undefined : undefined,
+          semester: idxSem >= 0 ? cells[idxSem] || undefined : undefined,
+          credits: idxCredits >= 0 ? numberValue(cells[idxCredits]) : undefined,
+          attr: idxAttr >= 0 ? cells[idxAttr] || undefined : undefined,
+          score: score || undefined,
+          passed: isCompleted && !/未通过|不及格|不合格/.test(`${remark} ${score}`),
+        };
+        (isCompleted ? completed : uncompleted).push(course);
+      });
+    });
+  }
+
   $("table").each((_, tbl) => {
     const $tbl = $(tbl);
     const allRows = $tbl.find("tr");
@@ -972,6 +1111,29 @@ export interface PyfaResult {
 }
 
 export function parsePyfa(html: string): PyfaResult {
+  const modern = parseModernListEnvelope(html);
+  if (modern) {
+    const list = modern.data!.flatMap((value): PyfaCourse[] => {
+      if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+      const row = value as Record<string, unknown>;
+      const courseName = textValue(row.kc_mc ?? row.kcmc);
+      if (!courseName) return [];
+      return [{
+        index: numberValue(row.rownum_),
+        semester: textValue(row.kkxq) || undefined,
+        courseCode: textValue(row.kch) || undefined,
+        courseName,
+        unit: textValue(row.yx_mc) || undefined,
+        credits: numberValue(row.xf),
+        hours: numberValue(row.zxs),
+        examMethod: textValue(row.khlb_mc) || undefined,
+        attr: textValue(row.kclb_mc ?? row.kcxz_mc) || undefined,
+        isExam: textValue(row.sfks) || undefined,
+      }];
+    });
+    return buildPyfaResult(list);
+  }
+
   const $ = cheerio.load(html);
   const list: PyfaCourse[] = [];
 
@@ -1012,6 +1174,10 @@ export function parsePyfa(html: string): PyfaResult {
     });
   });
 
+  return buildPyfaResult(list);
+}
+
+function buildPyfaResult(list: PyfaCourse[]): PyfaResult {
   const semMap = new Map<string, { courses: number; credits: number }>();
   for (const c of list) {
     const k = c.semester || "未指定";

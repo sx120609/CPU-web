@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { normalizeCalendarWeekDays, parseSchedule } from "../src/services/jwxtParser";
+import {
+  normalizeCalendarWeekDays,
+  parseCalendar,
+  parseExams,
+  parseGrades,
+  parseProgress,
+  parsePyfa,
+  parseSchedule,
+} from "../src/services/jwxtParser";
 
 test("normalizeCalendarWeekDays fills a partial Sunday-first final week", () => {
   assert.deepEqual(
@@ -145,4 +153,110 @@ test("parseSchedule parses the modern qz weekly table and restores rowspan colum
   assert.equal(afterRowspan?.courses[0].name, "生物化学");
   assert.equal(afterRowspan?.courses[0].teacher, "王五");
   assert.equal(afterRowspan?.courses[0].location, "B201");
+});
+
+test("parseGrades maps the modern paged JSON response", () => {
+  const result = parseGrades(JSON.stringify({
+    code: 0,
+    count: 1,
+    data: [{
+      xnxqid: "2025-2026-2",
+      kch: "C1001",
+      kc_mc: "药理学",
+      zcj: 88,
+      zcjstr: "88",
+      xf: 3,
+      zxs: 48,
+      jd: 3.8,
+      kcsx: "必修",
+      ksxz: "正常考试",
+    }],
+  }));
+
+  assert.deepEqual(result.semesters.map((item) => item.value), ["2025-2026-2"]);
+  assert.deepEqual(result.list[0], {
+    semester: "2025-2026-2",
+    courseCode: "C1001",
+    courseName: "药理学",
+    score: "88",
+    scoreNum: 88,
+    credits: 3,
+    hours: 48,
+    gpa: 3.8,
+    courseAttr: "必修",
+    examType: "正常考试",
+    remark: undefined,
+  });
+});
+
+test("parseExams maps the modern paged JSON response", () => {
+  const result = parseExams(JSON.stringify({
+    code: 0,
+    count: 1,
+    data: [{
+      xnxqid: "2025-2026-2",
+      kch: "C1001",
+      kskcmc: "药理学",
+      kssj: "2026-06-20 09:00-11:00",
+      js_mc: "教学楼A101",
+      zwh: "18",
+      ksccmc: "第一场",
+    }],
+  }));
+
+  assert.equal(result.list[0].courseName, "药理学");
+  assert.equal(result.list[0].location, "教学楼A101");
+  assert.equal(result.list[0].seat, "18");
+});
+
+test("parseCalendar accepts the modern 第N周 row label", () => {
+  const result = parseCalendar(`
+    <select id="xnxq01id"><option value="2025-2026-2" selected>2025-2026-2</option></select>
+    <table><tr><th>周次</th><th>星期一</th><th>星期二</th><th>星期三</th><th>星期四</th><th>星期五</th><th>星期六</th><th>星期日</th><th>备注</th></tr>
+      <tr><td>第1周</td><td>02</td><td>03</td><td>04</td><td>05</td><td>06</td><td>03月07日</td><td>03月08日</td><td>开学</td></tr>
+    </table>
+  `);
+  assert.equal(result.weeks[0].week, 1);
+  assert.equal(result.weeks[0].monday, "2026-03-02");
+  assert.equal(result.weeks[0].sunday, "2026-03-08");
+});
+
+test("parseProgress maps the modern card-and-div layout", () => {
+  const result = parseProgress(`
+    <div class="mod-total-area"><div class="total-list">
+      <div class="list-header-tr"><div class="header-th"><span class="header-th-cell">课程性质</span></div></div>
+      <div class="list-tr"><div class="list-td"><span class="list-td-cell">专业选修课</span></div><div class="list-td"><span class="list-td-cell">10</span></div><div class="list-td"><span class="list-td-cell">6</span></div><div class="list-td"><span class="list-td-cell">4</span></div></div>
+    </div></div>
+    <div class="mod-item-detail"><div class="sub-table">
+      <div class="sub-table-header-tr">${["学年学期", "课程编号", "课程名称", "学分", "课程属性", "课程性质", "修读情况", "总成绩", "备注"].map((header) => `<div class="header-th"><span class="header-th-cell">${header}</span></div>`).join("")}</div>
+      <div class="list-tr">${["2025-2026-2", "C1001", "药理学", "3", "必修", "专业基础课", "已修读", "88", "通过"].map((cell) => `<div class="list-td"><span class="list-td-cell">${cell}</span></div>`).join("")}</div>
+      <div class="list-tr">${["2026-2027-1", "C1002", "药物分析", "2", "必修", "专业核心课", "修读中", "", ""].map((cell) => `<div class="list-td"><span class="list-td-cell">${cell}</span></div>`).join("")}</div>
+    </div></div>
+  `);
+
+  assert.equal(result.summary[0].requiredOpt, 10);
+  assert.equal(result.completed[0].courseName, "药理学");
+  assert.equal(result.completed[0].passed, true);
+  assert.equal(result.uncompleted[0].courseName, "药物分析");
+});
+
+test("parsePyfa maps the modern paged JSON response", () => {
+  const result = parsePyfa(JSON.stringify({
+    code: 0,
+    count: 1,
+    data: [{
+      rownum_: 1,
+      kkxq: "2026-2027-1",
+      kch: "C1002",
+      kc_mc: "药物分析",
+      yx_mc: "药学院",
+      xf: 2,
+      zxs: 32,
+      khlb_mc: "考试",
+      kclb_mc: "必修",
+      sfks: "是",
+    }],
+  }));
+  assert.equal(result.list[0].courseName, "药物分析");
+  assert.deepEqual(result.bySemester, [{ semester: "2026-2027-1", courses: 1, credits: 2 }]);
 });

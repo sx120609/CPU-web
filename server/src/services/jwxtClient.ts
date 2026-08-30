@@ -6,7 +6,7 @@
  *  2) 服务端保留统一认证 Cookie；访问新版课表时自动请求 jwxt 的 sso.jsp
  *  3) id.cpu.edu.cn 使用既有统一认证会话向 jwxt 签发一次性 service ticket
  *  4) 同一个 CookieJar 最终持有 id、jsxsd 与 jwxt 三个域的会话
- *  5) 新版提供课表，旧版继续提供成绩、考试、培养方案等能力
+ *  5) 新版优先提供课表、成绩、考试、日历和培养数据，旧版保留兼容回退
  *
  * 安全约定：
  *  - 用户名密码绝不写入磁盘 / 数据库 / 日志
@@ -27,6 +27,7 @@ import {
   jwxtSessionPrefix,
   runWithDistributedLock,
   setEphemeralValue,
+  touchEphemeralValue,
 } from "./cache";
 import { buildRedisKey } from "./redis";
 import { config, isDev } from "../config";
@@ -111,6 +112,10 @@ export class CookieJar {
     if (!map) return;
     map.delete(name);
     if (map.size === 0) this.byHost.delete(host);
+  }
+
+  clearHost(host: string) {
+    this.byHost.delete(host);
   }
 
   toJson(): Record<string, Record<string, string>> {
@@ -275,6 +280,7 @@ interface ActiveSession {
   username: string;     // 仅用于日志展示（不含密码）
   createdAt: number;
   lastSeenAt: number;
+  loadedJar?: Record<string, Record<string, string>>;
 }
 
 export type JwxtSessionSnapshot = {
@@ -349,7 +355,9 @@ async function deletePendingLogin(id: string) {
 }
 
 async function saveActiveSession(token: string, session: ActiveSession) {
-  await setEphemeralValue(jwxtSessionKey(token), encryptJwxtSensitiveJson("active-session", token, activeSessionSnapshot(session)), SESSION_IDLE_TTL);
+  const snapshot = activeSessionSnapshot(session);
+  await setEphemeralValue(jwxtSessionKey(token), encryptJwxtSensitiveJson("active-session", token, snapshot), SESSION_IDLE_TTL);
+  session.loadedJar = structuredClone(snapshot.jar);
 }
 
 function activeSessionSnapshot(session: ActiveSession): JwxtSessionSnapshot {
@@ -395,6 +403,7 @@ function activeSessionFromSnapshot(snapshot: JwxtSessionSnapshot): ActiveSession
     username: snapshot.username,
     createdAt: snapshot.createdAt,
     lastSeenAt: snapshot.lastSeenAt,
+    loadedJar: structuredClone(snapshot.jar),
   };
 }
 
@@ -404,7 +413,52 @@ async function deleteActiveSession(token: string) {
 
 async function persistActiveSession(token: string, session: ActiveSession) {
   session.lastSeenAt = Date.now();
-  await saveActiveSession(token, session);
+  const lockId = crypto.createHash("sha256").update(token).digest("hex");
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const locked = await runWithDistributedLock(`jwxt-session-persist:${lockId}`, 10_000, async () => {
+      const latestRaw = await getEphemeralValue(jwxtSessionKey(token));
+      let latestJar: Record<string, Record<string, string>> = {};
+      if (latestRaw) {
+        try {
+          const latestSnapshot = decryptJwxtSensitiveJson<JwxtSessionSnapshot>(
+            "active-session",
+            token,
+            latestRaw,
+            { allowLegacyPlaintext: true },
+          ).value;
+          latestJar = activeSessionFromSnapshot(latestSnapshot).jar.toJson();
+        } catch { /* replace an unreadable stale value with the current valid session */ }
+      }
+      const mergedJar = mergeSessionCookieJars(session.loadedJar ?? {}, session.jar.toJson(), latestJar);
+      session.jar = CookieJar.fromJson(mergedJar);
+      await saveActiveSession(token, session);
+      return true;
+    });
+    if (locked.acquired) return;
+    await new Promise<void>((resolve) => setTimeout(resolve, 50));
+  }
+  throw Errors.conflict("教务会话正在续期，请稍后重试");
+}
+
+function mergeSessionCookieJars(
+  base: Record<string, Record<string, string>>,
+  current: Record<string, Record<string, string>>,
+  latest: Record<string, Record<string, string>>,
+) {
+  const merged = structuredClone(latest);
+  for (const host of new Set([...Object.keys(base), ...Object.keys(current)])) {
+    const before = base[host] ?? {};
+    const after = current[host] ?? {};
+    const target = { ...(merged[host] ?? {}) };
+    for (const name of new Set([...Object.keys(before), ...Object.keys(after)])) {
+      if (before[name] === after[name] && Object.prototype.hasOwnProperty.call(before, name) === Object.prototype.hasOwnProperty.call(after, name)) continue;
+      if (Object.prototype.hasOwnProperty.call(after, name)) target[name] = after[name];
+      else delete target[name];
+    }
+    if (Object.keys(target).length) merged[host] = target;
+    else delete merged[host];
+  }
+  return merged;
 }
 
 async function getActiveSession(token: string | undefined | null): Promise<ActiveSession | null> {
@@ -417,7 +471,7 @@ async function getActiveSession(token: string | undefined | null): Promise<Activ
     if (legacy.version === undefined) legacy.version = 1;
     const session = activeSessionFromSnapshot(legacy as JwxtSessionSnapshot);
     session.lastSeenAt = Date.now();
-    await saveActiveSession(token, session);
+    await touchEphemeralValue(jwxtSessionKey(token), SESSION_IDLE_TTL);
     return session;
   } catch {
     await deleteActiveSession(String(token));
@@ -895,9 +949,44 @@ async function establishModernJwxtSession(jar: CookieJar) {
     && !isModernJwxtLoginPage(probeHtml);
 }
 
+async function fetchModernPage(session: ActiveSession, target: URL) {
+  const result = await followRedirects(session.jar, target.toString());
+  return {
+    result,
+    finalHost: new URL(result.finalUrl).hostname.toLowerCase(),
+    html: await result.res.text(),
+  };
+}
+
+function modernPageNeedsLogin(page: Awaited<ReturnType<typeof fetchModernPage>>) {
+  return page.finalHost !== MODERN_JWXT_HOST || isModernJwxtLoginPage(page.html);
+}
+
+async function renewModernJwxtSession(token: string, target: URL) {
+  const lockId = crypto.createHash("sha256").update(token).digest("hex");
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const locked = await runWithDistributedLock(`jwxt-modern-session:${lockId}`, 30_000, async () => {
+      const current = await getSession(token);
+      if (!current) return false;
+      const latest = await fetchModernPage(current, target);
+      if (!modernPageNeedsLogin(latest)) {
+        await persistActiveSession(token, current);
+        return true;
+      }
+      current.jar.clearHost(MODERN_JWXT_HOST);
+      const established = await establishModernJwxtSession(current.jar);
+      await persistActiveSession(token, current);
+      return established;
+    });
+    if (locked.acquired) return Boolean(locked.result);
+    await new Promise<void>((resolve) => setTimeout(resolve, 50));
+  }
+  throw Errors.conflict("新版教务会话正在恢复，请稍后重试");
+}
+
 /** 使用同一个统一认证会话自动换票后访问新版 /jsxsd/ 教务页面。 */
 export async function jwxtFetchModernHtml(token: string, path: string): Promise<string> {
-  const sess = await getSession(token);
+  let sess = await getSession(token);
   if (!sess) throw Errors.unauthorized("教务会话已失效，请重新登录");
   const target = new URL(path, MODERN_JWXT_ORIGIN);
   if (
@@ -908,26 +997,23 @@ export async function jwxtFetchModernHtml(token: string, path: string): Promise<
     || target.hash
     || !target.pathname.startsWith("/jsxsd/")
   ) throw Errors.badRequest("新版教务请求地址不受信任");
-  let result = await followRedirects(sess.jar, target.toString());
-  let finalHost = new URL(result.finalUrl).hostname.toLowerCase();
-  let html = await result.res.text();
-  if (finalHost !== MODERN_JWXT_HOST || isModernJwxtLoginPage(html)) {
-    const established = await establishModernJwxtSession(sess.jar);
+  let page = await fetchModernPage(sess, target);
+  if (modernPageNeedsLogin(page)) {
+    const established = await renewModernJwxtSession(token, target);
     if (established) {
-      result = await followRedirects(sess.jar, target.toString());
-      finalHost = new URL(result.finalUrl).hostname.toLowerCase();
-      html = await result.res.text();
+      sess = await getSession(token);
+      if (!sess) throw Errors.unauthorized("教务会话已失效，请重新登录");
+      page = await fetchModernPage(sess, target);
     }
   }
-  if (finalHost !== MODERN_JWXT_HOST || isModernJwxtLoginPage(html)) {
-    await deleteActiveSession(token);
+  if (modernPageNeedsLogin(page)) {
     throw Errors.unauthorized("统一认证会话已失效，请重新登录");
   }
-  if (!result.res.ok) {
-    throw new HttpError(result.res.status, 5400 + Math.min(199, Math.max(0, result.res.status - 400)), `新版教务请求失败 (${result.res.status})`);
+  if (!page.result.res.ok) {
+    throw new HttpError(page.result.res.status, 5400 + Math.min(199, Math.max(0, page.result.res.status - 400)), `新版教务请求失败 (${page.result.res.status})`);
   }
   await persistActiveSession(token, sess);
-  return html;
+  return page.html;
 }
 
 export interface CpuFetchTextResult {
