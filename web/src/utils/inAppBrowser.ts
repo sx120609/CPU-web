@@ -4,7 +4,6 @@ export interface InAppBrowserInfo {
 }
 
 const WECHAT_SERVICE_CLIENT_KEY = "cpu-wechat-service-client";
-export const WECHAT_SERVICE_FOLLOW_URL = "https://weixin.qq.com/r/mp/FSDu9jLEjG-zrXaV93UH";
 
 export function detectInAppBrowser(ua = navigator.userAgent): InAppBrowserInfo {
   const source = ua || "";

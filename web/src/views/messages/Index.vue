@@ -89,9 +89,9 @@
                 </div>
               </div>
               <div v-else-if="!wechatProfile?.binding" class="channel-qr-box">
-                <img src="/wechat-service-qrcode.png" :alt="`${wechatProfile?.accountName || '药里拾间'}服务号二维码`" />
+                <img src="/wechat-service-qrcode.png" :alt="`${wechatProfile?.accountName || '拾小间'}服务号二维码`" />
                 <div>
-                  <b>扫码关注 {{ wechatProfile?.accountName || "药里拾间" }}</b>
+                  <b>扫码关注 {{ wechatProfile?.accountName || "拾小间" }}</b>
                   <span>可生成专属二维码直接绑定；也可关注后发送下方绑定指令。</span>
                 </div>
               </div>
@@ -119,14 +119,6 @@
                   @click="startWechatOauthBinding"
                 >
                   微信内绑定
-                </el-button>
-                <el-button
-                  v-if="isWechatBrowser && !wechatProfile?.binding?.subscribed"
-                  type="primary"
-                  plain
-                  @click="openWechatServiceFollowPage"
-                >
-                  前往关注服务号
                 </el-button>
                 <el-button
                   v-if="!wechatProfile?.binding"
@@ -378,7 +370,6 @@ import QRCode from "qrcode";
 import { buildQqAddFriendUrl } from "@/utils/qqContact";
 import { isServerHandledRedirect, resolveSafeRedirect } from "@/utils/redirect";
 import { forumContentExcerpt } from "@/utils/forumContent";
-import { WECHAT_SERVICE_FOLLOW_URL } from "@/utils/inAppBrowser";
 
 const route = useRoute();
 const router = useRouter();
@@ -684,10 +675,6 @@ async function startWechatOauthBinding() {
     if (!disposed) ElMessage.error(normalizeMessageActionError(error, "微信授权发起失败"));
     wechatLoading.value = false;
   }
-}
-
-function openWechatServiceFollowPage() {
-  window.location.href = WECHAT_SERVICE_FOLLOW_URL;
 }
 
 async function createWechatQr() {

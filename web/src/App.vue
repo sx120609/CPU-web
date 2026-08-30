@@ -116,17 +116,13 @@
       :show-close="inAppReadSeconds <= 0"
     >
       <div v-if="inAppTipMode === 'follow'" class="in-app-tip">
-        <p><b>推荐关注药里拾间微信服务号</b></p>
+        <p><b>推荐关注拾小间微信服务号</b></p>
         <p>可接收已开启的站内通知，并从服务号菜单直接进入课表、教务、论坛等功能。</p>
-        <p class="muted">点击下方按钮可直接前往服务号关注页面。以后从服务号菜单打开本站，将作为微信客户端使用，不再主动弹出安装提示。</p>
+        <p class="muted">请在微信顶部搜索服务号 ID“cputimecn”，也可以搜索名称“拾小间”，进入公众号结果并关注。以后从服务号菜单打开本站，将作为微信客户端使用，不再主动弹出安装提示。</p>
       </div>
       <div v-else-if="inAppTipMode === 'bind'" class="in-app-tip">
-        <p><b>{{ auth.isLoggedIn ? "当前账号尚未绑定微信服务号" : "登录后绑定微信服务号" }}</b></p>
-        <p>
-          {{ auth.isLoggedIn
-            ? "完成绑定后，服务号才能识别你的站内身份并向你传递已开启的通知。"
-            : "当前尚未登录，暂时无法检查账号的微信绑定状态。请先登录，再完成微信身份绑定。" }}
-        </p>
+        <p><b>当前账号尚未绑定微信服务号</b></p>
+        <p>完成绑定后，服务号才能识别你的站内身份并向你传递已开启的通知。</p>
         <p class="muted">绑定入口位于消息中心的“设置”页。</p>
       </div>
       <div v-else class="in-app-tip">
@@ -143,13 +139,11 @@
       <template #footer>
         <template v-if="inAppTipMode === 'bind'">
           <el-button @click="dismissInAppTip">稍后处理</el-button>
-          <el-button type="primary" @click="openWechatBindingGuide">
-            {{ auth.isLoggedIn ? "前往绑定" : "登录后绑定" }}
-          </el-button>
+          <el-button type="primary" @click="openWechatBindingGuide">前往绑定</el-button>
         </template>
         <template v-else-if="inAppTipMode === 'follow'">
           <el-button @click="dismissInAppTip">暂时不用</el-button>
-          <el-button type="primary" @click="openWechatServiceFollowPage">前往关注服务号</el-button>
+          <el-button type="primary" @click="copyWechatServiceSearchText">复制 ID：cputimecn</el-button>
         </template>
         <el-button v-else type="primary" :disabled="inAppReadSeconds > 0" @click="dismissInAppTip">
           {{ inAppReadSeconds > 0 ? `请先阅读 ${inAppReadSeconds}s` : "我知道了" }}
@@ -173,7 +167,8 @@ import { AUTH_EXPIRED_EVENT } from "@/api/request";
 import AndroidUpdateDialog from "@/components/install/AndroidUpdateDialog.vue";
 import SmartPostTaskIndicator from "@/components/forum/SmartPostTaskIndicator.vue";
 import LegacyDomainMigrationDialog from "@/components/common/LegacyDomainMigrationDialog.vue";
-import { detectInAppBrowser, isWechatServiceClient, shouldAutoSuggestExternalBrowser, WECHAT_SERVICE_FOLLOW_URL } from "@/utils/inAppBrowser";
+import { detectInAppBrowser, isWechatServiceClient, shouldAutoSuggestExternalBrowser } from "@/utils/inAppBrowser";
+import { copyText } from "@/utils/userGroup";
 
 const auth = useAuthStore();
 const msg = useMessageStore();
@@ -428,15 +423,10 @@ async function loadStrongNotices() {
 
 async function checkWechatServiceBinding() {
   if (!auth.ready || disposed) return;
-  const guideKey = auth.isLoggedIn ? `user:${auth.user?.id || "unknown"}` : "guest";
+  if (!auth.isLoggedIn) return;
+  const guideKey = `user:${auth.user?.id || "unknown"}`;
   if (wechatBindingGuideKey === guideKey) return;
   const seq = ++wechatBindingCheckSeq;
-  if (!auth.isLoggedIn) {
-    wechatBindingGuideKey = guideKey;
-    inAppTipMode.value = "bind";
-    inAppTipOpen.value = true;
-    return;
-  }
   try {
     const profile = await authApi.wechatProfile({ suppressErrorMessage: true });
     if (disposed || seq !== wechatBindingCheckSeq) return;
@@ -460,8 +450,9 @@ function openWechatBindingGuide() {
   void router.push({ name: "login", query: { redirect: target } });
 }
 
-function openWechatServiceFollowPage() {
-  window.location.href = WECHAT_SERVICE_FOLLOW_URL;
+async function copyWechatServiceSearchText() {
+  await copyText("cputimecn");
+  ElMessage.success("已复制服务号 ID：cputimecn");
 }
 
 async function loadMessageAlerts() {

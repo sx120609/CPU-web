@@ -919,7 +919,7 @@ async function logWechatMessage(input: {
 
 function renderWechatWelcome() {
   return [
-    "欢迎关注药里拾间。",
+    "欢迎关注拾小间。",
     "本服务号当前仅用于账号绑定和接收站内通知。",
     renderWechatFollowSettingsTip(),
     `绑定账号：${wechatSettingsUrl()}`,
@@ -929,7 +929,7 @@ function renderWechatWelcome() {
 
 function renderWechatHelp(bound: boolean, siteOrigin = normalizedSiteOrigin()) {
   return [
-    "药里拾间服务号",
+    "拾小间服务号",
     "当前仅用于账号绑定和接收站内通知。",
     "发送“状态”可查看绑定状态。",
     "",

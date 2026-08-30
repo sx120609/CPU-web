@@ -115,7 +115,10 @@ test("marks same-site service-account links without changing external links", ()
 
 test("keeps automatic replies limited to binding and notification guidance", () => {
   const origin = "https://cputime.cn";
-  assert.match(renderWechatAutomaticReply("帮助", true, origin), /仅用于账号绑定和接收站内通知/);
+  const helpReply = renderWechatAutomaticReply("帮助", true, origin);
+  assert.match(helpReply, /拾小间服务号/);
+  assert.doesNotMatch(helpReply, /药里拾间服务号/);
+  assert.match(helpReply, /仅用于账号绑定和接收站内通知/);
   assert.match(renderWechatAutomaticReply("状态", false, origin), /尚未绑定/);
   const ordinaryReply = renderWechatAutomaticReply("帮我查一下课表", true, origin);
   assert.match(ordinaryReply, /不提供对话查询/);
