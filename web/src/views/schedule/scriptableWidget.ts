@@ -117,7 +117,8 @@ function preferredCourseDay(data) {
     const courses = day?.courses || [];
     if (courses.length) return { day, courses, offset };
   }
-  return { day: today, courses: [], offset: 0 };
+  const tomorrow = resolveDay(data, 1);
+  return { day: tomorrow, courses: tomorrow?.courses || [], offset: 1 };
 }
 
 function courseMetaText(course) {
@@ -291,7 +292,7 @@ function addTwoDayCourse(column, course) {
   const row = column.addStack();
   row.layoutHorizontally();
   row.size = new Size(TWO_DAY_COLUMN_WIDTH, 0);
-  row.centerAlignContent();
+  row.topAlignContent();
   row.backgroundColor = tintColor(course);
   row.cornerRadius = 9;
   row.setPadding(6, 6, 6, 6);
@@ -299,9 +300,19 @@ function addTwoDayCourse(column, course) {
   row.addSpacer(7);
   const details = row.addStack();
   details.layoutVertically();
-  addLine(details, course?.name || "课程", Font.boldSystemFont(11), color("#172033", "#f8fafc"));
-  addLine(details, courseMetaText(course), Font.systemFont(8), color("#526078", "#cbd5e1"));
-  addLine(details, timeRange(course), Font.semiboldSystemFont(9), color("#172033", "#f8fafc"));
+  const nameRow = details.addStack();
+  nameRow.layoutHorizontally();
+  addLine(nameRow, course?.name || "课程", Font.boldSystemFont(11), color("#172033", "#f8fafc"));
+  nameRow.addSpacer();
+  const metaRow = details.addStack();
+  metaRow.layoutHorizontally();
+  addLine(metaRow, courseMetaText(course), Font.systemFont(8), color("#526078", "#cbd5e1"));
+  metaRow.addSpacer();
+  const timeRow = details.addStack();
+  timeRow.layoutHorizontally();
+  addLine(timeRow, timeRange(course), Font.semiboldSystemFont(9), color("#172033", "#f8fafc"));
+  timeRow.addSpacer();
+  row.addSpacer();
 }
 
 function addTwoDayColumn(parent, day) {

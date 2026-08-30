@@ -37,6 +37,7 @@ class TextContainer {
   setPadding() {}
   layoutHorizontally() {}
   layoutVertically() {}
+  topAlignContent() {}
   centerAlignContent() {}
 
   addStack() {
