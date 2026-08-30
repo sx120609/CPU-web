@@ -27,6 +27,7 @@ import {
   parseWechatScheduleRequest,
   renderWechatScheduleMarkdown,
   renderWechatTodayScheduleMarkdown,
+  selectWechatSchedule,
 } from "../src/services/wechatSchedule";
 import { renderWechatScheduleImage } from "../src/services/wechatScheduleImage";
 
@@ -288,6 +289,37 @@ test("renders a complete weekly schedule image body", () => {
   assert.match(markdown, /08:00-09:40  药剂学/);
   assert.match(markdown, /周三 · 2026-09-16/);
   assert.match(markdown, /13:30-15:10  药物化学/);
+});
+
+test("resolves next-week schedules from pre-semester week zero", () => {
+  const weekOneDays = [
+    { day: 1, label: "周一", date: "2026-08-31", courses: [{ name: "药物设计学" }] },
+    { day: 2, label: "周二", date: "2026-09-01", courses: [] },
+    { day: 3, label: "周三", date: "2026-09-02", courses: [{ name: "药物化学" }] },
+  ];
+  const payload = {
+    currentWeek: 0,
+    week: 0,
+    displayWeek: 1,
+    teachingWeekActive: false,
+    weekDays: weekOneDays,
+  };
+
+  const nextWeek = selectWechatSchedule(
+    payload,
+    { scope: "week", label: "下周课表", weekOffset: 1 },
+    { cached: false },
+  );
+  const nextWednesday = selectWechatSchedule(
+    payload,
+    { scope: "day", label: "下周三课表", weekOffset: 1, weekday: 3 },
+    { cached: false },
+  );
+
+  assert.equal(nextWeek.week, 1);
+  assert.equal(nextWeek.days, weekOneDays);
+  assert.equal(nextWednesday.week, 1);
+  assert.equal(nextWednesday.day, weekOneDays[2]);
 });
 
 test("renders service-account schedules with the timetable image renderer", () => {

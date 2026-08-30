@@ -136,14 +136,14 @@ export function renderWechatTodayScheduleMarkdown(payload: any, options?: { cach
   return renderWechatScheduleMarkdown(result);
 }
 
-function selectWechatSchedule(
+export function selectWechatSchedule(
   payload: any,
   query: WechatScheduleQuery,
   options: { cached: boolean; buildWeek?: (week: number) => any; now?: Date },
 ): WechatScheduleResult {
   const currentWeek = Number(payload?.currentWeek || payload?.week || 0);
   if (query.scope === "week") {
-    const targetWeek = Number(query.weekNumber || (currentWeek > 0 ? currentWeek + Number(query.weekOffset || 0) : 0));
+    const targetWeek = Number(query.weekNumber || currentWeek + Number(query.weekOffset || 0));
     if (!targetWeek) throw new Error("当前不在可识别的教学周，暂时无法定位所选周次");
     const selectedPayload = targetWeek === Number(payload?.displayWeek || payload?.week || 0)
       ? payload
@@ -161,7 +161,7 @@ function selectWechatSchedule(
   }
 
   if (Number(query.weekday) > 0) {
-    const targetWeek = Number(query.weekNumber || (currentWeek > 0 ? currentWeek + Number(query.weekOffset || 0) : 0));
+    const targetWeek = Number(query.weekNumber || currentWeek + Number(query.weekOffset || 0));
     if (!targetWeek) throw new Error("当前不在可识别的教学周，暂时无法定位所选日期");
     const selectedPayload = targetWeek === Number(payload?.displayWeek || payload?.week || 0)
       ? payload
