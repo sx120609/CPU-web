@@ -9,8 +9,9 @@ import {
   generateWechatToken,
   getWechatBindingCapabilities,
   markWechatServiceClientUrl,
-  parseWechatBindCommand,
   parseWechatXml,
+  renderWechatAssistantReplyImage,
+  renderWechatAssistantReplyMarkdown,
   renderWechatAutomaticReply,
   renderWechatFollowSettingsTip,
   shouldDeliverWechatNotification,
@@ -73,17 +74,17 @@ test("generates credentials accepted by the public-platform form", () => {
   assert.match(generateWechatEncodingAesKey(), /^[A-Za-z0-9]{43}$/);
 });
 
-test("exposes every supported binding path when the service account is ready", () => {
+test("exposes OAuth binding paths without manual message codes", () => {
   const ready = { enabled: true, appId: "wx-app-id", appSecret: "app-secret", token: "callback-token" };
   assert.deepEqual(getWechatBindingCapabilities(ready, "https://cputime.cn"), {
     oauthAvailable: true,
     qrBindingAvailable: true,
-    messageBindingAvailable: true,
+    messageBindingAvailable: false,
   });
   assert.deepEqual(getWechatBindingCapabilities(ready, ""), {
     oauthAvailable: false,
     qrBindingAvailable: true,
-    messageBindingAvailable: true,
+    messageBindingAvailable: false,
   });
   assert.deepEqual(getWechatBindingCapabilities({ ...ready, enabled: false }, "https://cputime.cn"), {
     oauthAvailable: false,
@@ -113,16 +114,40 @@ test("marks same-site service-account links without changing external links", ()
   assert.equal(markWechatServiceClientUrl("https://example.com/path", "https://cputime.cn"), "https://example.com/path");
 });
 
-test("keeps automatic replies limited to binding and notification guidance", () => {
+test("keeps fixed replies concise and lets ordinary text continue to the assistant", () => {
   const origin = "https://cputime.cn";
   const helpReply = renderWechatAutomaticReply("帮助", true, origin);
   assert.match(helpReply, /拾小间服务号/);
   assert.doesNotMatch(helpReply, /药里拾间服务号/);
-  assert.match(helpReply, /仅用于账号绑定和接收站内通知/);
+  assert.match(helpReply, /拾间AI/);
   assert.match(renderWechatAutomaticReply("状态", false, origin), /尚未绑定/);
+  const bindReply = renderWechatAutomaticReply("绑定 A1B2C3D4", false, origin);
+  assert.match(bindReply, /不再使用手动绑定码/);
+  assert.match(bindReply, /微信内绑定.*扫码绑定/);
   const ordinaryReply = renderWechatAutomaticReply("帮我查一下课表", true, origin);
-  assert.match(ordinaryReply, /不提供对话查询/);
-  assert.doesNotMatch(ordinaryReply, /AI|投稿|论坛/iu);
+  assert.equal(ordinaryReply, "");
+  assert.doesNotMatch(helpReply, /生成绑定码|发送：绑定/);
+});
+
+test("formats WeChat assistant answers for the QQBot image renderer", () => {
+  const response = {
+    answer: "今天是第 3 教学周。",
+    actions: [{ id: "schedule", label: "我的课表", description: "", url: "/schedule", icon: "", owner: "", requireLogin: true }],
+    suggestions: [],
+    fallback: false,
+    sources: [
+      { title: "校历", url: "https://example.edu/calendar" },
+      { title: "无效", url: "javascript:alert(1)" },
+    ],
+  };
+  const reply = renderWechatAssistantReplyMarkdown(response);
+  assert.match(reply, /今天是第 3 教学周/);
+  assert.match(reply, /校历：https:\/\/example\.edu\/calendar/);
+  assert.match(reply, /我的课表：https:\/\/cputime\.cn\/schedule/);
+  assert.doesNotMatch(reply, /javascript:/);
+  assert.match(reply, /以上回复由拾间AI生成/);
+  const image = renderWechatAssistantReplyImage(response);
+  assert.deepEqual([...image.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
 });
 
 test("recommends notification settings after the user follows the service account", () => {
@@ -130,17 +155,6 @@ test("recommends notification settings after the user follows the service accoun
   assert.match(tip, /右上角进入设置/);
   assert.match(tip, /关闭“消息免打扰”/);
   assert.match(tip, /设为置顶/);
-});
-
-test("parses WeChat message binding commands", () => {
-  assert.equal(parseWechatBindCommand("绑定 A1b2C3d4"), "A1B2C3D4");
-  assert.equal(parseWechatBindCommand("绑定A1b2C3d4"), "A1B2C3D4");
-  assert.equal(parseWechatBindCommand("绑定码：A1b2C3d4"), "A1B2C3D4");
-  assert.equal(parseWechatBindCommand("A1b2C3d4"), "A1B2C3D4");
-  assert.equal(parseWechatBindCommand("  绑定   123456  "), "123456");
-  assert.equal(parseWechatBindCommand("绑定"), "");
-  assert.equal(parseWechatBindCommand("绑定 12345"), "");
-  assert.equal(parseWechatBindCommand("请绑定 A1B2C3D4"), "");
 });
 
 function sha1(parts: string[]) {

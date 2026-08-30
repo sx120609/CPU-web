@@ -20,7 +20,7 @@
     "forum:compress-images": "tsx scripts/compress-historical-forum-images.ts",
     "market:check-db": "tsx scripts/check-market-db.ts",
     "market:smoke": "tsx scripts/smoke-market.ts",
-    "db:migrate": "prisma db push --skip-generate && node scripts/backfill-permanent-vip.mjs",
+    "db:migrate": "prisma db push --skip-generate && node scripts/backfill-permanent-vip.mjs && node scripts/restore-wechat-assistant.mjs",
     "db:cleanup-retired-boards": "tsx prisma/cleanup-retired-boards.ts",
     "db:seed": "tsx prisma/seed.ts",
     "db:reset": "prisma db push --force-reset --skip-generate && npm run db:seed",

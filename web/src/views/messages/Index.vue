@@ -92,16 +92,11 @@
                 <img src="/wechat-service-qrcode.png" :alt="`${wechatProfile?.accountName || '拾小间'}服务号二维码`" />
                 <div>
                   <b>扫码关注 {{ wechatProfile?.accountName || "拾小间" }}</b>
-                  <span>可生成专属二维码直接绑定；也可关注后发送下方绑定指令。</span>
+                  <span>关注后可在微信内打开本页授权绑定；也可点击下方“扫码绑定”生成专属二维码。</span>
                 </div>
               </div>
-              <div v-if="wechatProfile?.activeBindToken" class="qq-token-box">
-                <strong>{{ wechatProfile.activeBindToken.token }}</strong>
-                <span>请在微信服务号发送：{{ wechatBindCommandText }}</span>
-                <span>有效期至 {{ formatNoticeTime(wechatProfile.activeBindToken.expiresAt) }}</span>
-              </div>
-              <p v-else class="qq-channel-hint">
-                {{ wechatProfile?.binding ? "当前账号已绑定微信服务号。" : "生成绑定码后，在微信服务号发送绑定指令即可完成绑定。" }}
+              <p class="qq-channel-hint">
+                {{ wechatProfile?.binding ? "当前账号已绑定微信服务号。" : "微信绑定不需要输入绑定码，请使用微信内授权或专属二维码。" }}
               </p>
               <label class="qq-channel-toggle">
                 <span>
@@ -129,24 +124,6 @@
                   @click="createWechatQr"
                 >
                   {{ wechatQr ? "重新生成二维码" : "扫码绑定" }}
-                </el-button>
-                <el-button
-                  v-if="!wechatProfile?.binding"
-                  plain
-                  :loading="wechatLoading"
-                  :disabled="wechatLoading || !wechatProfile?.messageBindingAvailable"
-                  @click="refreshWechatToken"
-                >
-                  {{ wechatProfile?.activeBindToken ? "重新生成绑定码" : "生成绑定码" }}
-                </el-button>
-                <el-button
-                  v-if="wechatProfile?.activeBindToken"
-                  plain
-                  :loading="wechatLoading"
-                  :disabled="wechatLoading"
-                  @click="copyWechatCommand"
-                >
-                  复制完整绑定指令
                 </el-button>
                 <el-button
                   v-if="wechatProfile?.binding"
@@ -453,11 +430,6 @@ const qqBotBindCommandText = computed(() => {
 const qqBotAddFriendUrl = computed(() => {
   return buildQqAddFriendUrl(qqBotProfile.value?.botQqId);
 });
-const wechatBindCommandText = computed(() => {
-  if (wechatProfile.value?.activeBindToken) return `绑定 ${wechatProfile.value.activeBindToken.token}`;
-  return "绑定 绑定码";
-});
-
 onMounted(() => {
   disposed = false;
   void loadPage();
@@ -727,30 +699,6 @@ function stopWechatQrPolling() {
   if (!wechatQrPollTimer) return;
   clearTimeout(wechatQrPollTimer);
   wechatQrPollTimer = null;
-}
-
-async function refreshWechatToken() {
-  if (disposed || wechatLoading.value) return;
-  wechatLoading.value = true;
-  try {
-    await authApi.createWechatBindToken({ suppressErrorMessage: true });
-    await loadWechatProfile({ silent: true });
-    if (!disposed) ElMessage.success("绑定码已生成");
-  } catch (error) {
-    if (!disposed) ElMessage.error(normalizeMessageActionError(error, "绑定码生成失败"));
-  } finally {
-    if (!disposed) wechatLoading.value = false;
-  }
-}
-
-async function copyWechatCommand() {
-  if (disposed || wechatLoading.value) return;
-  if (!wechatProfile.value?.activeBindToken) {
-    ElMessage.warning("请先生成绑定码");
-    return;
-  }
-  await copyText(wechatBindCommandText.value);
-  ElMessage.success("已复制绑定指令");
 }
 
 async function unbindWechat() {

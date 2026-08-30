@@ -1445,7 +1445,10 @@ test("campus assistant knowledge covers every active action and carries freshnes
   assert.match(combined, /桌面设备不推荐 PWA/);
   assert.match(combined, /https:\/\/cputime\.cn 就可以直接使用/);
   assert.match(combined, /https:\/\/cputime\.cn\/messages\?tab=settings/);
-  assert.match(combined, /微信服务号绑定有直接入口/);
+  assert.match(combined, /服务号名称为“拾小间”，微信号为 cputimecn/);
+  assert.match(combined, /微信绑定不再生成、输入或发送绑定码/);
+  assert.match(combined, /AI回答通过微信客服接口以和 QQBot 相同风格的图片发送/);
+  assert.match(combined, /服务号自定义菜单包含课表、教务、校园服务、论坛/);
   assert.doesNotMatch(combined, /个人中心可绑定 QQBot/);
   assert.match(combined, /QQBot 将逐步退出身份绑定功能/);
   assert.match(combined, /学生自主开发维护的独立、非官方校园服务站点/);

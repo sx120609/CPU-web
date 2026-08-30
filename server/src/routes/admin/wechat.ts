@@ -26,6 +26,7 @@ const configPatchSchema = z.object({
   encodingAesKey: z.string().trim().max(80).optional(),
   messageMode: z.enum(["plaintext", "compatible", "safe"]).optional(),
   notificationEnabled: z.boolean().optional(),
+  assistantEnabled: z.boolean().optional(),
   notifyCategories: z.array(z.string().trim().min(1).max(40)).max(20).optional(),
   notificationTemplateId: z.string().trim().max(160).optional(),
   templateTitleField: z.string().trim().max(64).optional(),

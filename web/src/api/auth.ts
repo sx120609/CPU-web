@@ -169,6 +169,5 @@ export const authApi = {
   wechatProfile: (options?: RequestOptions) => request.get<WechatProfile>("/wechat/me", undefined, options),
   createWechatOauthUrl: (options?: RequestOptions) => request.post<{ url: string; expiresAt: string }>("/wechat/oauth-url", undefined, options),
   createWechatBindQr: (options?: RequestOptions) => request.post<{ imageUrl: string; expiresAt: string }>("/wechat/bind-qr", undefined, options),
-  createWechatBindToken: (options?: RequestOptions) => request.post<{ token: string; expiresAt: string }>("/wechat/bind-token", undefined, options),
   deleteWechatBinding: (options?: RequestOptions) => request.delete<{ ok: true }>("/wechat/binding", options),
 };

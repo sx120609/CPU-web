@@ -1142,6 +1142,7 @@ export const adminApi = {
     encodingAesKey: string;
     messageMode: "plaintext" | "compatible" | "safe";
     notificationEnabled: boolean;
+    assistantEnabled: boolean;
     notifyCategories: string[];
     notificationTemplateId: string;
     templateTitleField: string;

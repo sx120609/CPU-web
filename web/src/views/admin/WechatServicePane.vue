@@ -9,7 +9,7 @@
         <div class="section-head">
           <div>
             <h3>服务号接入</h3>
-            <p>用于账号绑定和站内通知投递；QQ群管理仍由 QQBot 负责。</p>
+            <p>用于微信授权绑定、站内通知和拾间AI图片问答；QQ群管理仍由 QQBot 负责。</p>
           </div>
           <el-tag :type="config.enabled ? 'success' : 'info'">{{ config.enabled ? "已启用" : "未启用" }}</el-tag>
         </div>
@@ -81,6 +81,7 @@
         </div>
         <div class="switch-grid">
           <label><span><b>站内通知转发</b><small>按用户订阅偏好发送微信提醒</small></span><el-switch v-model="form.notificationEnabled" /></label>
+          <label><span><b>拾间AI客服问答</b><small>通过客服接口把 AI 回答渲染成图片发送</small></span><el-switch v-model="form.assistantEnabled" /></label>
         </div>
         <el-checkbox-group v-model="form.notifyCategories" class="category-grid">
           <el-checkbox v-for="item in categoryOptions" :key="item.value" :value="item.value">{{ item.label }}</el-checkbox>
@@ -197,6 +198,7 @@ const form = reactive({
   encodingAesKey: "",
   messageMode: "safe" as "plaintext" | "compatible" | "safe",
   notificationEnabled: true,
+  assistantEnabled: true,
   notifyCategories: [] as string[],
   notificationTemplateId: "",
   templateTitleField: "",
@@ -235,6 +237,7 @@ function applyConfig(value: WechatServiceConfig) {
     encodingAesKey: value.encodingAesKey,
     messageMode: value.messageMode,
     notificationEnabled: value.notificationEnabled,
+    assistantEnabled: value.assistantEnabled,
     notifyCategories: [...value.notifyCategories],
     notificationTemplateId: value.notificationTemplateId,
     templateTitleField: value.templateTitleField,
