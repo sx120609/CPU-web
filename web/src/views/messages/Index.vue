@@ -62,7 +62,7 @@
             <div class="qq-channel-head">
               <div>
                 <b>微信服务号</b>
-                <span>绑定后可接收站内提醒，并在服务号内使用拾间AI。</span>
+                <span>绑定后可通过服务号接收已开启的站内通知。</span>
               </div>
               <el-tag :type="wechatChannelTagType" effect="plain">{{ wechatChannelStateText }}</el-tag>
             </div>

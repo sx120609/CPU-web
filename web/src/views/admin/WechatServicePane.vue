@@ -9,7 +9,7 @@
         <div class="section-head">
           <div>
             <h3>服务号接入</h3>
-            <p>用于账号绑定、消息通知和拾间AI私聊；QQ群管理仍由 QQBot 负责。</p>
+            <p>用于账号绑定和站内通知投递；QQ群管理仍由 QQBot 负责。</p>
           </div>
           <el-tag :type="config.enabled ? 'success' : 'info'">{{ config.enabled ? "已启用" : "未启用" }}</el-tag>
         </div>
@@ -81,7 +81,6 @@
         </div>
         <div class="switch-grid">
           <label><span><b>站内通知转发</b><small>按用户订阅偏好发送微信提醒</small></span><el-switch v-model="form.notificationEnabled" /></label>
-          <label><span><b>拾间AI私聊</b><small>用户直接发送文字即可提问</small></span><el-switch v-model="form.assistantEnabled" /></label>
         </div>
         <el-checkbox-group v-model="form.notifyCategories" class="category-grid">
           <el-checkbox v-for="item in categoryOptions" :key="item.value" :value="item.value">{{ item.label }}</el-checkbox>
@@ -103,6 +102,24 @@
         <div class="section-actions">
           <el-button type="primary" :loading="saving" @click="saveConfig">保存配置</el-button>
           <el-button :loading="dispatching" @click="dispatchNotifications">立即检查通知</el-button>
+        </div>
+      </section>
+
+      <section class="pane-section">
+        <div class="section-head">
+          <div>
+            <h3>自定义菜单</h3>
+            <p>发布后会覆盖服务号当前菜单；全部入口均跳转到本站 HTTPS 页面。</p>
+          </div>
+        </div>
+        <div class="menu-preview-grid">
+          <div v-for="group in menuPreview" :key="group.name" class="menu-preview-group">
+            <b>{{ group.name }}</b>
+            <span v-for="item in group.items" :key="item">{{ item }}</span>
+          </div>
+        </div>
+        <div class="section-actions">
+          <el-button type="primary" :loading="publishingMenu" @click="publishMenu">发布到微信</el-button>
         </div>
       </section>
 
@@ -155,11 +172,18 @@ const categoryOptions = [
   { value: "school-feed", label: "校园公告" },
 ];
 
+const menuPreview = [
+  { name: "校园", items: ["我的课表", "教务中心", "校园服务"] },
+  { name: "社区", items: ["论坛首页", "失物招领", "发布内容"] },
+  { name: "我的", items: ["消息中心", "绑定设置", "个人中心"] },
+];
+
 const config = ref<WechatServiceConfig | null>(null);
 const loading = ref(false);
 const saving = ref(false);
 const generating = ref(false);
 const dispatching = ref(false);
+const publishingMenu = ref(false);
 const bindingsLoading = ref(false);
 const loadError = ref("");
 const bindings = ref<any[]>([]);
@@ -173,7 +197,6 @@ const form = reactive({
   encodingAesKey: "",
   messageMode: "safe" as "plaintext" | "compatible" | "safe",
   notificationEnabled: true,
-  assistantEnabled: true,
   notifyCategories: [] as string[],
   notificationTemplateId: "",
   templateTitleField: "",
@@ -212,7 +235,6 @@ function applyConfig(value: WechatServiceConfig) {
     encodingAesKey: value.encodingAesKey,
     messageMode: value.messageMode,
     notificationEnabled: value.notificationEnabled,
-    assistantEnabled: value.assistantEnabled,
     notifyCategories: [...value.notifyCategories],
     notificationTemplateId: value.notificationTemplateId,
     templateTitleField: value.templateTitleField,
@@ -261,6 +283,23 @@ async function dispatchNotifications() {
     ElMessage.success(`已发送 ${result.sent} 条，暂不具备发送条件 ${result.skipped} 条`);
   } finally {
     dispatching.value = false;
+  }
+}
+
+async function publishMenu() {
+  if (publishingMenu.value) return;
+  const confirmed = await ElMessageBox.confirm(
+    "发布后将覆盖服务号当前自定义菜单，确认继续？",
+    "发布自定义菜单",
+    { type: "warning", confirmButtonText: "确认发布" },
+  ).then(() => true).catch(() => false);
+  if (!confirmed) return;
+  publishingMenu.value = true;
+  try {
+    await adminApi.publishWechatMenu();
+    ElMessage.success("自定义菜单已发布到微信");
+  } finally {
+    publishingMenu.value = false;
   }
 }
 
@@ -321,6 +360,10 @@ async function removeBinding(row: any) {
 .switch-grid span, .switch-grid b, .switch-grid small { display: block; }
 .switch-grid small { margin-top: 4px; color: var(--cpu-text-secondary); }
 .category-grid { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.menu-preview-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+.menu-preview-group { display: grid; gap: 7px; padding: 13px; border: 1px solid var(--cpu-border); border-radius: 10px; background: var(--cpu-bg-soft); }
+.menu-preview-group b { color: var(--cpu-text); }
+.menu-preview-group span { color: var(--cpu-text-secondary); font-size: 13px; }
 .section-note { margin-bottom: 12px; }
 .section-actions { display: flex; gap: 10px; margin-top: 8px; }
 .binding-search { max-width: 360px; margin-bottom: 14px; }
@@ -328,7 +371,7 @@ async function removeBinding(row: any) {
 @media (max-width: 760px) {
   .pane-section { padding: 14px; }
   .section-head { align-items: stretch; flex-direction: column; }
-  .form-grid, .template-grid, .endpoint-grid, .switch-grid { grid-template-columns: 1fr; }
+  .form-grid, .template-grid, .endpoint-grid, .switch-grid, .menu-preview-grid { grid-template-columns: 1fr; }
   .secret-row, .section-actions { align-items: stretch; flex-direction: column; }
 }
 </style>

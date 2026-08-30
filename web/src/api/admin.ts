@@ -1142,7 +1142,6 @@ export const adminApi = {
     encodingAesKey: string;
     messageMode: "plaintext" | "compatible" | "safe";
     notificationEnabled: boolean;
-    assistantEnabled: boolean;
     notifyCategories: string[];
     notificationTemplateId: string;
     templateTitleField: string;
@@ -1157,6 +1156,7 @@ export const adminApi = {
   deleteWechatBinding: (id: number) => request.delete<{ ok: true }>(`/admin/wechat/bindings/${id}`),
   sendWechatTestMessage: (id: number, message: string) => request.post<{ ok: true }>(`/admin/wechat/bindings/${id}/test-message`, { message }),
   dispatchWechatNotifications: () => request.post<{ sent: number; skipped: number }>("/admin/wechat/dispatch-notifications"),
+  publishWechatMenu: () => request.post<{ ok: true; menu: { button: Array<{ name: string; sub_button: Array<{ type: "view"; name: string; url: string }> }> } }>("/admin/wechat/menu/publish"),
   wechatLogs: (params: { status?: string; eventType?: string; page?: number; size?: number }, options?: RequestOptions) =>
     request.get<{ page: number; size: number; total: number; list: any[] }>("/admin/wechat/logs", params, options),
   // 帖子

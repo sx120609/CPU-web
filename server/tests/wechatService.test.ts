@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import test from "node:test";
 import {
+  buildWechatDefaultMenu,
   decryptWechatPayload,
   encryptWechatPayload,
   generateWechatEncodingAesKey,
@@ -9,6 +10,7 @@ import {
   getWechatBindingCapabilities,
   parseWechatBindCommand,
   parseWechatXml,
+  renderWechatAutomaticReply,
   shouldDeliverWechatNotification,
   verifyWechatSignature,
 } from "../src/services/wechatService";
@@ -86,6 +88,26 @@ test("exposes every supported binding path when the service account is ready", (
     qrBindingAvailable: false,
     messageBindingAvailable: false,
   });
+});
+
+test("builds a three-column HTTPS custom menu for campus, community, and account links", () => {
+  const menu = buildWechatDefaultMenu("https://cputime.cn");
+  assert.deepEqual(menu.button.map((group) => group.name), ["校园", "社区", "我的"]);
+  assert.equal(menu.button.length, 3);
+  assert.ok(menu.button.every((group) => group.name.length <= 4 && group.sub_button.length <= 5));
+  assert.ok(menu.button.flatMap((group) => group.sub_button).every((item) => item.name.length <= 7 && item.url.startsWith("https://cputime.cn/")));
+  assert.deepEqual(menu.button[0].sub_button.map((item) => new URL(item.url).pathname), ["/schedule", "/jwxt", "/services"]);
+  assert.deepEqual(menu.button[1].sub_button.map((item) => new URL(item.url).pathname), ["/forum", "/lost-found", "/post"]);
+  assert.throws(() => buildWechatDefaultMenu("http://localhost:5173"), /HTTPS/);
+});
+
+test("keeps automatic replies limited to binding and notification guidance", () => {
+  const origin = "https://cputime.cn";
+  assert.match(renderWechatAutomaticReply("帮助", true, origin), /仅用于账号绑定和接收站内通知/);
+  assert.match(renderWechatAutomaticReply("状态", false, origin), /尚未绑定/);
+  const ordinaryReply = renderWechatAutomaticReply("帮我查一下课表", true, origin);
+  assert.match(ordinaryReply, /不提供对话查询/);
+  assert.doesNotMatch(ordinaryReply, /AI|投稿|论坛/iu);
 });
 
 test("parses WeChat message binding commands", () => {

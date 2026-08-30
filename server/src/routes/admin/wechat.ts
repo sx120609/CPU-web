@@ -9,6 +9,7 @@ import {
   generateWechatEncodingAesKey,
   generateWechatToken,
   getWechatServiceConfigRaw,
+  publishWechatDefaultMenu,
   sendWechatTestMessage,
   updateWechatServiceConfig,
 } from "../../services/wechatService";
@@ -25,7 +26,6 @@ const configPatchSchema = z.object({
   encodingAesKey: z.string().trim().max(80).optional(),
   messageMode: z.enum(["plaintext", "compatible", "safe"]).optional(),
   notificationEnabled: z.boolean().optional(),
-  assistantEnabled: z.boolean().optional(),
   notifyCategories: z.array(z.string().trim().min(1).max(40)).max(20).optional(),
   notificationTemplateId: z.string().trim().max(160).optional(),
   templateTitleField: z.string().trim().max(64).optional(),
@@ -45,6 +45,14 @@ wechatAdminRouter.get("/config", async (_req, res, next) => {
 wechatAdminRouter.patch("/config", validate(configPatchSchema), async (req, res, next) => {
   try {
     ok(res, await updateWechatServiceConfig(req.body));
+  } catch (error) {
+    next(error);
+  }
+});
+
+wechatAdminRouter.post("/menu/publish", async (_req, res, next) => {
+  try {
+    ok(res, await publishWechatDefaultMenu());
   } catch (error) {
     next(error);
   }
