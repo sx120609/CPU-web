@@ -80,6 +80,7 @@ export function formatWechatServiceConfig(config: WechatConfigRow) {
     id: config.id,
     enabled: config.enabled,
     accountName: config.accountName,
+    wechatId: config.wechatId,
     appId: config.appId,
     hasAppSecret: Boolean(config.appSecret),
     appSecretMasked: maskSecret(config.appSecret),
@@ -111,6 +112,7 @@ export function formatWechatServiceConfig(config: WechatConfigRow) {
 export async function updateWechatServiceConfig(input: {
   enabled?: boolean;
   accountName?: string;
+  wechatId?: string;
   appId?: string;
   appSecret?: string;
   clearAppSecret?: boolean;
@@ -135,6 +137,7 @@ export async function updateWechatServiceConfig(input: {
   const current = await getWechatServiceConfigRaw();
   const data: Record<string, unknown> = {};
   if (input.accountName !== undefined) data.accountName = input.accountName.trim().slice(0, 80);
+  if (input.wechatId !== undefined) data.wechatId = input.wechatId.trim().slice(0, 80);
   if (input.appId !== undefined) data.appId = input.appId.trim().slice(0, 80);
   if (input.clearAppSecret) data.appSecret = "";
   else if (input.appSecret?.trim()) data.appSecret = input.appSecret.trim().slice(0, 240);
@@ -319,6 +322,7 @@ export async function getUserWechatProfile(userId: number, jwxtToken?: string | 
   return {
     enabled: config.enabled,
     accountName: config.accountName,
+    wechatId: config.wechatId,
     notificationEnabled: config.notificationEnabled,
     assistantEnabled: config.assistantEnabled,
     subscriptionAvailable: Boolean(

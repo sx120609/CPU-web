@@ -624,6 +624,7 @@ export type WechatServiceConfig = {
   id: number;
   enabled: boolean;
   accountName: string;
+  wechatId: string;
   appId: string;
   hasAppSecret: boolean;
   appSecretMasked: string;
@@ -1141,6 +1142,7 @@ export const adminApi = {
   updateWechatConfig: (payload: Partial<{
     enabled: boolean;
     accountName: string;
+    wechatId: string;
     appId: string;
     appSecret: string;
     clearAppSecret: boolean;

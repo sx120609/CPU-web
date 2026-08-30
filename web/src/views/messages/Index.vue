@@ -79,6 +79,7 @@
             <template v-else>
               <div class="qq-channel-grid wechat-channel-grid">
                 <div><span>服务号</span><b>{{ wechatProfile?.accountName || "未配置" }}</b></div>
+                <div><span>微信号</span><b>{{ wechatProfile?.wechatId || "未配置" }}</b></div>
                 <div><span>账号状态</span><b>{{ wechatProfile?.binding ? (wechatProfile.binding.subscribed ? "已关注并绑定" : "已绑定，当前未关注") : "未绑定" }}</b></div>
               </div>
               <div v-if="wechatQr" class="channel-qr-box">
@@ -92,6 +93,7 @@
                 <img src="/wechat-service-qrcode.png" :alt="`${wechatProfile?.accountName || '拾小间'}服务号二维码`" />
                 <div>
                   <b>扫码关注 {{ wechatProfile?.accountName || "拾小间" }}</b>
+                  <span v-if="wechatProfile?.wechatId">微信号：{{ wechatProfile.wechatId }}</span>
                   <span>关注后可在微信内打开本页授权绑定；也可点击下方“扫码绑定”生成专属二维码。</span>
                 </div>
               </div>
@@ -1162,7 +1164,7 @@ function normalizeMessageSettings(value: any) {
   background: var(--cpu-card);
 }
 .wechat-channel-card { margin-bottom: 12px; }
-.wechat-channel-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.wechat-channel-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .wechat-subscribe-card {
   display: grid;
   gap: 10px;

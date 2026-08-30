@@ -20,6 +20,7 @@ export const wechatAdminRouter = Router();
 const configPatchSchema = z.object({
   enabled: z.boolean().optional(),
   accountName: z.string().trim().max(80).optional(),
+  wechatId: z.string().trim().max(80).optional(),
   appId: z.string().trim().max(80).optional(),
   appSecret: z.string().trim().max(240).optional(),
   clearAppSecret: z.boolean().optional(),

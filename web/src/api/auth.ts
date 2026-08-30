@@ -102,6 +102,7 @@ export interface QqBotProfile {
 export interface WechatProfile {
   enabled: boolean;
   accountName: string;
+  wechatId: string;
   notificationEnabled: boolean;
   assistantEnabled: boolean;
   subscriptionAvailable: boolean;

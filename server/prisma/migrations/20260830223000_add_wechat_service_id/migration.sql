@@ -1,0 +1,2 @@
+ALTER TABLE "WechatServiceConfig"
+ADD COLUMN IF NOT EXISTS "wechatId" TEXT NOT NULL DEFAULT '';

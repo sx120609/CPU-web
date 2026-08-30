@@ -19,6 +19,9 @@
             <el-form-item label="服务号名称">
               <el-input v-model="form.accountName" maxlength="80" placeholder="例如：拾小间" />
             </el-form-item>
+            <el-form-item label="微信号（ID）">
+              <el-input v-model="form.wechatId" maxlength="80" placeholder="例如：shijian_cpu" />
+            </el-form-item>
             <el-form-item label="AppID">
               <el-input v-model="form.appId" maxlength="80" autocomplete="off" />
             </el-form-item>
@@ -211,6 +214,7 @@ const bindingQuery = ref("");
 const form = reactive({
   enabled: false,
   accountName: "",
+  wechatId: "",
   appId: "",
   appSecret: "",
   token: "",
@@ -256,6 +260,7 @@ function applyConfig(value: WechatServiceConfig) {
   Object.assign(form, {
     enabled: value.enabled,
     accountName: value.accountName,
+    wechatId: value.wechatId,
     appId: value.appId,
     appSecret: "",
     token: value.token,

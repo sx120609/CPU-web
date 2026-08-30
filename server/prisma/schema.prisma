@@ -1429,6 +1429,7 @@ model WechatServiceConfig {
   id                    Int      @id @default(autoincrement())
   enabled               Boolean  @default(false)
   accountName           String   @default("")
+  wechatId              String   @default("")
   appId                 String   @default("")
   appSecret             String   @default("")
   token                 String   @default("")
