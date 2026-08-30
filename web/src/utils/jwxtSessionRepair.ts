@@ -1,6 +1,6 @@
 type StorageLike = Pick<Storage, "getItem" | "setItem">;
 
-const SESSION_REPAIR_KEY_PREFIX = "cpu-jwxt-session-repair-modern-v1";
+const SESSION_REPAIR_KEY_PREFIX = "cpu-jwxt-session-repair-modern-v2";
 const attemptedInMemory = new Set<string>();
 
 function repairKey(username: string) {

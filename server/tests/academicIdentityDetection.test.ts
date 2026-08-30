@@ -64,6 +64,54 @@ test("研究生入口不可用时仍可正确识别本科教务", async () => {
   });
 });
 
+test("研究生入口返回空数据时继续探测并识别本科教务", async () => {
+  let undergraduateProbeCount = 0;
+  const result = await detectAcademicIdentityFromProbes({
+    probeGraduate: async () => ({
+      parsed: {
+        currentSemester: "",
+        semesters: [],
+        cells: [],
+      },
+    }),
+    probeUndergraduate: async () => {
+      undergraduateProbeCount += 1;
+      return {
+        currentSemester: "2026-2027-1",
+        semesters: [{ value: "2026-2027-1" }],
+        cells: [],
+      };
+    },
+    isGraduateUsable: (value) => Boolean(value.parsed.currentSemester),
+    isUndergraduateUsable: (value) => Boolean(value.currentSemester),
+  });
+
+  assert.equal(undergraduateProbeCount, 1);
+  assert.equal(result.identity, "undergraduate");
+  assert.deepEqual(result.capabilities, {
+    undergraduate: true,
+    graduate: false,
+  });
+});
+
+test("两个入口都没有数据时保留已认证的研究生空状态", async () => {
+  const result = await detectAcademicIdentityFromProbes({
+    probeGraduate: async () => ({ parsed: { currentSemester: "", semesters: [], cells: [] } }),
+    probeUndergraduate: async () => ({ currentSemester: "", semesters: [], cells: [] }),
+    isGraduateUsable: () => false,
+    isUndergraduateUsable: () => false,
+  });
+
+  assert.deepEqual(result, {
+    identity: "graduate",
+    source: "fallback",
+    capabilities: {
+      undergraduate: false,
+      graduate: false,
+    },
+  });
+});
+
 test("研究生课表 JSON 能解析为统一课表结构", () => {
   const parsed = parseGraduateSchedulePayload(
     {

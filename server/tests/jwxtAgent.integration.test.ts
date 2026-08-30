@@ -285,6 +285,13 @@ test("outbound JWXT Agent handles login, queries, dorm electricity, and crawler 
   assert.ok(actions.some((item) => item.action === "school-feed.crawl"));
   assert.equal(actions[1].payload.password, "not-logged-or-stored");
 
+  snapshotsA.clear();
+  const recoveredAtOwnerStatus = await transport.getStatus(login.token);
+  assert.equal(recoveredAtOwnerStatus.active, true);
+  assert.ok(actions.some((item) => item.action === "session.import-snapshot"));
+  const recoveredAtOwnerReplica = await replica.loadJwxtSessionReplica("agent-query-token");
+  assert.equal(recoveredAtOwnerReplica?.ownerAgentId, "campus-agent-a");
+
   client.stop();
   await waitFor(() => !gateway.getJwxtAgentState("campus-agent-a").online);
   const migratedStatus = await transport.getStatus(login.token);

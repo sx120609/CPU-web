@@ -27,10 +27,10 @@ function isUnauthorizedReason(reason: unknown) {
 /**
  * 研究生与本科入口共享同一份统一认证 CookieJar。
  *
- * 研究生账号可能没有本科教务权限，因此必须先探测研究生入口；一旦研究生入口
- * 可达，就不能再调用可能清理共享会话的本科探测。若研究生入口返回的是解析/
- * 上游错误，而本科入口返回 401，也优先保留研究生错误，避免前端把整套统一认证
- * 误判为过期并立刻退出。
+ * 研究生账号可能没有本科教务权限，因此先探测研究生入口。只有研究生数据可用时
+ * 才能提前结束；空响应还要继续验证本科入口，避免把本科账号误判成尚未开通。
+ * 若研究生入口返回的是解析/上游错误，而本科入口返回 401，优先保留研究生错误，
+ * 避免前端把整套统一认证误判为过期并立刻退出。
  */
 export async function detectAcademicIdentityFromProbes<TGraduate, TUndergraduate>(input: {
   probeGraduate: () => Promise<TGraduate>;
@@ -39,15 +39,16 @@ export async function detectAcademicIdentityFromProbes<TGraduate, TUndergraduate
   isUndergraduateUsable: (value: TUndergraduate) => boolean;
 }): Promise<AcademicIdentityDetectionResult> {
   const graduate = await settle(input.probeGraduate);
-  if (graduate.status === "fulfilled") {
-    const usable = input.isGraduateUsable(graduate.value);
+  const graduateUsable = graduate.status === "fulfilled"
+    ? input.isGraduateUsable(graduate.value)
+    : false;
+  if (graduateUsable) {
     return {
       identity: "graduate",
-      source: usable ? "detected" : "fallback",
+      source: "detected",
       capabilities: {
         undergraduate: false,
-        // 能完成研究生入口请求就说明统一认证交接成功；没有课程也不应被踢出。
-        graduate: usable,
+        graduate: true,
       },
     };
   }
@@ -55,6 +56,16 @@ export async function detectAcademicIdentityFromProbes<TGraduate, TUndergraduate
   const undergraduate = await settle(input.probeUndergraduate);
   if (undergraduate.status === "fulfilled") {
     const usable = input.isUndergraduateUsable(undergraduate.value);
+    if (!usable && graduate.status === "fulfilled") {
+      return {
+        identity: "graduate",
+        source: "fallback",
+        capabilities: {
+          undergraduate: false,
+          graduate: false,
+        },
+      };
+    }
     return {
       identity: "undergraduate",
       source: usable ? "detected" : "fallback",
@@ -65,6 +76,16 @@ export async function detectAcademicIdentityFromProbes<TGraduate, TUndergraduate
     };
   }
 
+  if (graduate.status === "fulfilled") {
+    return {
+      identity: "graduate",
+      source: "fallback",
+      capabilities: {
+        undergraduate: false,
+        graduate: false,
+      },
+    };
+  }
   if (isUnauthorizedReason(undergraduate.reason) && !isUnauthorizedReason(graduate.reason)) {
     throw graduate.reason;
   }

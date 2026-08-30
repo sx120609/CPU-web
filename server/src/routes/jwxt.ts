@@ -65,6 +65,7 @@ const JWXT_PYFA_CACHE_TTL_MS = 6 * 60 * 60_000;
 const JWXT_IAPPS_CACHE_TTL_MS = 60 * 60_000;
 const JWXT_IAPP_ICON_CACHE_TTL_MS = 7 * 24 * 60 * 60_000;
 const JWXT_SOURCE_CACHE_REVISION = "source-v1";
+const JWXT_IDENTITY_CACHE_REVISION = "probe-v2";
 const GRAD_SCHEDULE_DEBUG_BINDTERM_CANDIDATES = [
   path.resolve(process.cwd(), ".debug", "grad-bindterm.json"),
   path.resolve(process.cwd(), "server", ".debug", "grad-bindterm.json"),
@@ -328,8 +329,8 @@ function hasUsableGraduateSchedule(result: any) {
 
 async function detectAcademicIdentity(token: string) {
   return detectAcademicIdentityFromProbes({
-    // 研究生账号可能没有本科教务权限，本科探测失败会清理共享会话；
-    // 因此先确认研究生入口，成功后不再触碰本科入口。
+    // 研究生账号可能没有本科教务权限，因此先探测研究生入口；只有返回了
+    // 可识别的学期或课程时才停止，空壳响应仍需用本科入口完成身份判定。
     probeGraduate: () => getGraduateSchedule(token, {}),
     // Keep an empty but authenticated schedule as a valid probe result. The
     // identity predicate below reports it as unavailable; wrapping this probe
@@ -765,7 +766,7 @@ jwxtRouter.get("/identity", async (req, res, next) => {
     const cacheId = jwxtTokenCacheId(token);
     const payload = await withCache(
       "jwxt-identity",
-      [cacheId],
+      [JWXT_IDENTITY_CACHE_REVISION, cacheId],
       JWXT_IDENTITY_CACHE_TTL_MS,
       async () => detectAcademicIdentity(token),
     );

@@ -56,3 +56,21 @@ test("同一迁移版本每个账号只自动修复一次", async () => {
   assert.equal(await repairUnavailableJwxtSession(input), false);
   assert.equal(disconnects, 1);
 });
+
+test("旧版修复标记不会阻止新版会话修复", async () => {
+  const storage = memoryStorage();
+  storage.setItem("cpu-jwxt-session-repair-modern-v1:stale-mobile-session", "1");
+  let disconnects = 0;
+
+  const recovered = await repairUnavailableJwxtSession({
+    username: "stale-mobile-session",
+    storage,
+    disconnect: async () => { disconnects += 1; },
+    resetLocalState: () => undefined,
+    hasSavedCredentials: () => true,
+    autoLogin: async () => true,
+  });
+
+  assert.equal(recovered, true);
+  assert.equal(disconnects, 1);
+});

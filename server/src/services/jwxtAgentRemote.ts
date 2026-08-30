@@ -305,10 +305,29 @@ async function migrateSessionAndRetry<A extends JwxtAgentAction>(
     const latest = await loadJwxtSessionReplica(innerToken);
     if (!latest) throw originalError;
 
-    const excluded = new Set<string>([failedAgentId]);
     let lastError: unknown = originalError;
     let attempted = 0;
     let unauthorized = 0;
+
+    // Agent 重启会清空进程内会话，但持久化私钥仍能解开写给自己的副本。
+    // 先在原节点原地恢复，可避免两个节点同时重连时把仍可恢复的手机会话判为失效。
+    syncQueryRuntimes();
+    const failedRuntime = runtimeById.get(failedAgentId);
+    const selfReplica = latest.replicas.find((item) => item.recipientAgentId === failedAgentId);
+    if (failedRuntime && isRuntimeAvailable(failedRuntime) && selfReplica) {
+      attempted += 1;
+      try {
+        await importSessionReplicaToRuntime(failedRuntime, innerToken, selfReplica);
+        const result = await callRuntime(failedRuntime, action, payload);
+        console.log(`[jwxt-agent] 教务会话已在重连节点 ${failedAgentId} 恢复`);
+        return result;
+      } catch (error) {
+        lastError = error;
+        if (error instanceof HttpError && error.status === 401) unauthorized += 1;
+      }
+    }
+
+    const excluded = new Set<string>([failedAgentId]);
 
     if (latest.ownerAgentId !== failedAgentId) {
       try {
@@ -327,20 +346,7 @@ async function migrateSessionAndRetry<A extends JwxtAgentAction>(
       if (!encryptedReplica) continue;
       attempted += 1;
       try {
-        if (runtime.kind === "local") {
-          const snapshot = decryptSessionSnapshotReplica(
-            encryptedReplica,
-            innerToken,
-            "local",
-            getLocalAgentReplicaIdentity(),
-          );
-          await dispatchJwxtAgentAction("session.import-snapshot", { token: innerToken, snapshot });
-        } else {
-          await callRuntime(runtime, "session.import-encrypted-snapshot", {
-            token: innerToken,
-            replica: encryptedReplica,
-          });
-        }
+        await importSessionReplicaToRuntime(runtime, innerToken, encryptedReplica);
         const result = await callRuntime(runtime, action, payload);
         console.log(`[jwxt-agent] 教务会话已从 ${failedAgentId} 迁移到 ${runtime.id}`);
         return result;
@@ -360,6 +366,19 @@ async function migrateSessionAndRetry<A extends JwxtAgentAction>(
     return callSticky(latest.ownerAgentId, action, payload);
   }
   throw new HttpError(503, 5000, "教务会话正在迁移，请稍后重试");
+}
+
+async function importSessionReplicaToRuntime(
+  runtime: QueryRuntime,
+  token: string,
+  replica: Parameters<typeof decryptSessionSnapshotReplica>[0],
+) {
+  if (runtime.kind === "local") {
+    const snapshot = decryptSessionSnapshotReplica(replica, token, "local", getLocalAgentReplicaIdentity());
+    await dispatchJwxtAgentAction("session.import-snapshot", { token, snapshot });
+    return;
+  }
+  await callRuntime(runtime, "session.import-encrypted-snapshot", { token, replica });
 }
 
 function isSessionFailoverError(error: unknown) {
