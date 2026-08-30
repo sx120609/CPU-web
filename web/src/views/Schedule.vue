@@ -1378,7 +1378,12 @@ onMounted(() => {
     try {
       if (!auth.ready) await auth.fetchMe({ probe: true }).catch(() => undefined);
       jwxt.hydrate();
-      const ready = await jwxt.ensureSession({ refresh: true, silent: true, allowAutoLogin: false });
+      const ready = await jwxt.ensureSession({
+        refresh: true,
+        silent: true,
+        allowAutoLogin: false,
+        repairUnavailableSession: true,
+      });
       if (disposed || !ready) return;
       if (jwxt.isLoggedIn) {
         const background = Boolean(parsed.value);

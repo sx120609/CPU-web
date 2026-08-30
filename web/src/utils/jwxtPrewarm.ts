@@ -106,7 +106,12 @@ async function prewarmJwxtData(options?: { force?: boolean }) {
     if (!auth.isLoggedIn || justLoggedOutThisSession()) return false;
 
     jwxt.hydrate();
-    const ready = await jwxt.ensureSession({ refresh: true, silent: true, allowAutoLogin: false }).catch(() => false);
+    const ready = await jwxt.ensureSession({
+      refresh: true,
+      silent: true,
+      allowAutoLogin: false,
+      repairUnavailableSession: true,
+    }).catch(() => false);
     if (!ready || !auth.isLoggedIn) return false;
 
     const identity = await auth.detectAcademicIdentity({

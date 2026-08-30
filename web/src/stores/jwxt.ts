@@ -11,6 +11,7 @@ import {
 import { clearCreds, hasCreds } from "@/utils/credCrypto";
 import { useAuthStore } from "@/stores/auth";
 import { clearJwxtDataCaches } from "@/utils/jwxtCache";
+import { repairUnavailableJwxtSession } from "@/utils/jwxtSessionRepair";
 
 let authExpiredListenerInstalled = false;
 let jwxtStatusRefreshInFlight: Promise<void> | null = null;
@@ -209,6 +210,7 @@ export const useJwxtStore = defineStore("jwxt", {
       forceLogin?: boolean;
       silent?: boolean;
       allowAutoLogin?: boolean;
+      repairUnavailableSession?: boolean;
     }): Promise<boolean> {
       if (!options?.forceLogin && jwxtEnsureSessionInFlight) return jwxtEnsureSessionInFlight;
       const task = (async () => {
@@ -223,6 +225,10 @@ export const useJwxtStore = defineStore("jwxt", {
           await this.refreshStatus().catch(() => undefined);
         }
         if (auth.academicIdentityUnavailable && auth.user?.studentSso && !options?.forceLogin) {
+          if (options?.repairUnavailableSession) {
+            const repaired = await this.repairUnavailableSession({ silent: options?.silent });
+            if (repaired) return true;
+          }
           return false;
         }
         if (this.active && this.token && !options?.forceLogin) return true;
@@ -240,6 +246,23 @@ export const useJwxtStore = defineStore("jwxt", {
       } finally {
         if (jwxtEnsureSessionInFlight === task) jwxtEnsureSessionInFlight = null;
       }
+    },
+    async repairUnavailableSession(options?: { silent?: boolean }): Promise<boolean> {
+      const auth = useAuthStore();
+      if (!auth.user?.studentSso || !auth.academicIdentityUnavailable) return false;
+      return repairUnavailableJwxtSession({
+        username: auth.user.username,
+        disconnect: () => jwxtApi.logout(),
+        resetLocalState: () => {
+          clearJwxtToken();
+          this.token = "";
+          this.active = false;
+          this.rememberSaved = hasCreds();
+          auth.clearAcademicIdentityUnavailable();
+        },
+        hasSavedCredentials: () => this.rememberSaved,
+        autoLogin: () => this.tryAutoLogin({ silent: options?.silent }),
+      });
     },
     async recoverSession(): Promise<boolean> {
       if (jwxtSessionRecoveryInFlight) return jwxtSessionRecoveryInFlight;

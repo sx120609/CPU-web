@@ -389,7 +389,12 @@ async function initPage() {
   ensureVisibleTab();
   restoreAllTabCaches();
   if (jwxt.isLoggedIn || hasCachedData.value) void loadCurrentTab(false);
-  const ready = await jwxt.ensureSession({ refresh: true, silent: true, allowAutoLogin: false });
+  const ready = await jwxt.ensureSession({
+    refresh: true,
+    silent: true,
+    allowAutoLogin: false,
+    repairUnavailableSession: true,
+  });
   if (disposed || seq !== pageInitSeq || !ready) return;
   ensureVisibleTab();
   showLoginOverride.value = false;

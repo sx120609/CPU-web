@@ -341,7 +341,12 @@ async function bootstrapJwxtSession() {
     }
     if (shouldSkipJwxtSessionBootstrap()) return;
     jwxt.hydrate();
-    const ready = await jwxt.ensureSession({ refresh: true, silent: true, allowAutoLogin: false }).catch(() => false);
+    const ready = await jwxt.ensureSession({
+      refresh: true,
+      silent: true,
+      allowAutoLogin: false,
+      repairUnavailableSession: true,
+    }).catch(() => false);
     if (ready) {
       scheduleJwxtDataPrewarm();
       if (isWechatBrowser()) void authApi.wechatProfile({ suppressErrorMessage: true }).catch(() => undefined);
