@@ -53,13 +53,14 @@ export function isTranscriptPassing(row: TranscriptGradeRow) {
   return PASS_LEVELS.has(level);
 }
 
+function isTranscriptMakeup(row: TranscriptGradeRow) {
+  return String(row.examType ?? "").replace(/\s+/g, "").includes("补考");
+}
+
 export function transcriptGradePoint(row: TranscriptGradeRow): number | undefined {
   const { level, scoreNum } = normalizedScore(row);
-  // 学校规定补考及格后的成绩如实记载，但绩点统一按 1.0 计算。
-  if (String(row.examType ?? "").replace(/\s+/g, "").includes("补考")
-    && isTranscriptPassing(row)) {
-    return 1;
-  }
+  // 补考成绩无论分数高低，绩点均按 1.0 计算。
+  if (isTranscriptMakeup(row)) return 1;
   if (Object.prototype.hasOwnProperty.call(TRANSCRIPT_LEVEL_GPA, level)) {
     return TRANSCRIPT_LEVEL_GPA[level];
   }
@@ -84,7 +85,7 @@ function attemptRank(row: TranscriptGradeRow) {
     : Number.NEGATIVE_INFINITY;
 }
 
-/** 保留每门课的通过成绩；同一课程优先通过记录，再取更高的成绩。 */
+/** 同一课程优先保留补考记录；无补考时优先通过记录，再取更高的成绩。 */
 export function collapseTranscriptGrades<T extends TranscriptGradeRow>(rows: T[]) {
   const byCourse = new Map<string, T>();
   for (const row of rows) {
@@ -94,9 +95,16 @@ export function collapseTranscriptGrades<T extends TranscriptGradeRow>(rows: T[]
       byCourse.set(key, row);
       continue;
     }
+    const currentMakeup = isTranscriptMakeup(row);
+    const previousMakeup = isTranscriptMakeup(previous);
     const currentPassed = isTranscriptPassing(row);
     const previousPassed = isTranscriptPassing(previous);
-    if (currentPassed !== previousPassed || attemptRank(row) > attemptRank(previous)) {
+    const shouldReplace = currentMakeup !== previousMakeup
+      ? currentMakeup
+      : currentPassed !== previousPassed
+        ? currentPassed
+        : attemptRank(row) > attemptRank(previous);
+    if (shouldReplace) {
       byCourse.set(key, row);
     }
   }
@@ -112,7 +120,7 @@ export interface TranscriptGradeStats<T extends TranscriptGradeRow = TranscriptG
 /** 对当前筛选/选择范围按电子成绩单口径统计。 */
 export function transcriptGradeStats<T extends TranscriptGradeRow>(rows: T[]): TranscriptGradeStats<T> {
   const countedRows = collapseTranscriptGrades(rows).filter((row) => {
-    return isTranscriptPassing(row)
+    return (isTranscriptMakeup(row) || isTranscriptPassing(row))
       && typeof row.credits === "number"
       && Number.isFinite(row.credits)
       && row.credits > 0

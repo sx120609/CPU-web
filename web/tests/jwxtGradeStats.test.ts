@@ -40,6 +40,21 @@ test("同一学期同一课程代码存在多次成绩时保留通过且较高�
   assert.equal(rows[0]?.score, "96");
 });
 
+test("新版成绩先返回补考、后返回正常考试时仍保留补考记录", () => {
+  const input = [
+    { semester: "2025-2026-1", courseCode: "1112010039", courseName: "人体解剖生理学", score: "73", credits: 3, examType: "补考" },
+    { semester: "2025-2026-1", courseCode: "1112010039", courseName: "人体解剖生理学", score: "56", credits: 3, examType: "正常考试" },
+  ];
+  const rows = collapseTranscriptGrades(input);
+  const stats = transcriptGradeStats(input);
+
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0]?.score, "73");
+  assert.equal(rows[0]?.examType, "补考");
+  assert.equal(stats.credits, 3);
+  assert.equal(stats.gpa, 1);
+});
+
 test("等级成绩优按 4.5 绩点计入汇总", () => {
   const stats = transcriptGradeStats([
     { semester: "2025-2026-1", courseCode: "1911130005", courseName: "军事技能", score: "优", credits: 2 },
@@ -49,13 +64,13 @@ test("等级成绩优按 4.5 绩点计入汇总", () => {
   assert.equal(stats.gpa, 4.5);
 });
 
-test("补考及格成绩如实显示但绩点按 1.0 计入汇总", () => {
+test("补考无论成绩高低都按 1.0 绩点计入汇总", () => {
   const stats = transcriptGradeStats([
     {
       semester: "2025-2026-1",
       courseCode: "1112010039",
       courseName: "人体解剖生理学",
-      score: "73",
+      score: "55",
       credits: 3,
       examType: "补考",
     },

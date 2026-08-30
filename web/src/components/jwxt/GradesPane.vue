@@ -39,10 +39,10 @@
         <span class="stat mobile-stat">{{ compactStatsText }}</span>
         <el-tooltip placement="top">
           <template #content>
-            GPA 按学校电子证明成绩单的汇总口径统计：只统计通过成绩，并按课程取一条有效记录后按学分加权<br/>
-            <code>GPA = max(0, (成绩 − 50) ÷ 10)</code>，封顶 5.0；0–59 分不计入学分分母<br/>
+            GPA 按学校电子证明成绩单的汇总口径统计：普通考试只统计通过成绩，并按课程取一条有效记录后按学分加权<br/>
+            <code>GPA = max(0, (成绩 − 50) ÷ 10)</code>，封顶 5.0；普通考试 0–59 分不计入学分分母<br/>
             60→1.0 · 70→2.0 · 80→3.0 · 90→4.0 · 100→5.0<br/>
-            补考及格成绩如实显示，绩点按 1.0 计算；同一学期同一课程代码的重复记录只保留一条<br/>
+            补考成绩无论分数高低，绩点均按 1.0 计算；同一学期同一课程代码存在补考时优先保留补考记录<br/>
             明细行绩点与汇总均采用学校电子成绩单口径
           </template>
           <el-icon class="hint-icon"><InfoFilled /></el-icon>
