@@ -1,5 +1,6 @@
 import { Resvg } from "@resvg/resvg-js";
 import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 import type { WechatScheduleResult } from "./wechatSchedule";
 
 const SLOTS = [
@@ -15,7 +16,12 @@ const SLOTS = [
   { no: 10, start: "19:25", end: "20:10" },
   { no: 11, start: "20:20", end: "21:05" },
 ];
+const HARMONY_FONT_FILES = ["HarmonyOS_Sans_SC_Regular.ttf", "HarmonyOS_Sans_SC_Bold.ttf"];
 const FONT_FILES = [
+  ...HARMONY_FONT_FILES.flatMap((file) => [
+    resolve(__dirname, "../assets/fonts", file),
+    resolve(__dirname, "../../assets/fonts", file),
+  ]),
   "C:/Windows/Fonts/msyh.ttc",
   "C:/Windows/Fonts/msyhbd.ttc",
   "C:/Windows/Fonts/simhei.ttf",
@@ -39,7 +45,7 @@ export function renderWechatScheduleImage(result: WechatScheduleResult) {
     font: {
       loadSystemFonts: true,
       fontFiles: FONT_FILES,
-      defaultFontFamily: "Microsoft YaHei",
+      defaultFontFamily: "HarmonyOS Sans SC",
     },
   });
   return resvg.render().asPng();
