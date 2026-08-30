@@ -5,6 +5,7 @@ const API_ENDPOINT = ${JSON.stringify(endpoint)};
 const MINUTES_22_00 = 22 * 60;
 const FAMILY = config.widgetFamily || "medium";
 const STYLE_PARAMETER = String(args.widgetParameter || "").trim().toLowerCase();
+const TWO_DAY_COLUMN_WIDTH = 145;
 const ACCENTS = ["#e85b4b", "#4a78f2", "#8b5cf6", "#17a69a", "#e0a224", "#ec70a1"];
 const TINTS = ["#fdece9", "#eaf0ff", "#f2ecff", "#e5f8f5", "#fff7e0", "#fdebf4"];
 const DARK_TINTS = ["#42221f", "#1e2d52", "#32244f", "#153c38", "#403418", "#48243a"];
@@ -285,6 +286,7 @@ function renderToday(widget, data, large) {
 function addTwoDayCourse(column, course) {
   const row = column.addStack();
   row.layoutHorizontally();
+  row.size = new Size(TWO_DAY_COLUMN_WIDTH, 0);
   row.centerAlignContent();
   row.backgroundColor = tintColor(course);
   row.cornerRadius = 9;
@@ -301,7 +303,7 @@ function addTwoDayCourse(column, course) {
 function addTwoDayColumn(parent, day) {
   const column = parent.addStack();
   column.layoutVertically();
-  column.size = new Size(145, 0);
+  column.size = new Size(TWO_DAY_COLUMN_WIDTH, 0);
   addDateHeader(column, day, false);
   column.addSpacer(7);
   const courses = firstCourses(day, 5);
@@ -324,7 +326,7 @@ function renderTwoDay(widget, data) {
   const tomorrow = resolveDay(data, 1);
   const heading = widget.addStack();
   heading.layoutHorizontally();
-  addLine(heading, "两日课表", Font.boldSystemFont(16), color("#172033", "#f8fafc"));
+  addLine(heading, "药大拾间·课表", Font.boldSystemFont(16), color("#172033", "#f8fafc"));
   heading.addSpacer();
   addLine(heading, shortDate(today?.date) + " - " + shortDate(tomorrow?.date), Font.systemFont(10), color("#667085", "#cbd5e1"));
   widget.addSpacer(10);

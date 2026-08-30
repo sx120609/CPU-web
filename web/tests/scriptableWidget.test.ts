@@ -17,9 +17,15 @@ type WidgetResult = TextContainer;
 
 class TextContainer {
   texts: string[];
+  sizes: Array<{ width: number; height: number }>;
 
-  constructor(texts: string[] = []) {
+  constructor(texts: string[] = [], sizes: Array<{ width: number; height: number }> = []) {
     this.texts = texts;
+    this.sizes = sizes;
+  }
+
+  set size(value: { width: number; height: number }) {
+    this.sizes.push({ width: value.width, height: value.height });
   }
 
   addText(value: string) {
@@ -34,7 +40,7 @@ class TextContainer {
   centerAlignContent() {}
 
   addStack() {
-    return new TextContainer(this.texts);
+    return new TextContainer(this.texts, this.sizes);
   }
 
   async presentSmall() {}
@@ -198,14 +204,15 @@ test("Scriptable parameter exposes today and two-day variants", async () => {
   assert.ok(large.texts.includes("工程伦理"));
 
   const twoDay = await runWidget({ payload, fixedNow: "2026-08-31T00:00:00.000Z", family: "large" });
-  assert.ok(twoDay.texts.includes("两日课表"));
+  assert.ok(twoDay.texts.includes("药大拾间·课表"));
   assert.ok(twoDay.texts.includes("高等数学"));
   assert.ok(twoDay.texts.includes("药剂学"));
   assert.ok(twoDay.texts.includes("8.31"));
   assert.ok(twoDay.texts.includes("9.1"));
+  assert.equal(twoDay.sizes.filter(({ width }) => width === 145).length, 6);
 
   const removedWeekParameter = await runWidget({ payload, fixedNow: "2026-08-31T00:00:00.000Z", family: "large", parameter: "整周课表" });
-  assert.ok(removedWeekParameter.texts.includes("两日课表"));
+  assert.ok(removedWeekParameter.texts.includes("药大拾间·课表"));
   assert.ok(!removedWeekParameter.texts.includes("整周课表"));
 });
 

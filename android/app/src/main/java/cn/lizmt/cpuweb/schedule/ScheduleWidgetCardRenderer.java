@@ -98,7 +98,7 @@ final class ScheduleWidgetCardRenderer {
         paint.setColor(PRIMARY_TEXT);
         paint.setTextSize(36f);
         paint.setFakeBoldText(true);
-        canvas.drawText("两日课表", 38f, 58f, paint);
+        canvas.drawText("药大拾间·课表", 38f, 58f, paint);
 
         paint.setTextAlign(Paint.Align.RIGHT);
         paint.setColor(SECONDARY_TEXT);

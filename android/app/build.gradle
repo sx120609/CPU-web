@@ -29,8 +29,8 @@ android {
         applicationId resolvedApplicationId
         minSdk 23
         targetSdk 35
-        versionCode 32
-        versionName "3.0.32"
+        versionCode 33
+        versionName "3.0.33"
 
         buildConfigField "String", "APP_URL", "\"${escapeJavaString(resolvedAppUrl)}\""
         resValue "string", "app_name", resolvedAppName
