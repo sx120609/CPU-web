@@ -971,7 +971,7 @@ const SCRIPTABLE_ADD_URL = "https://open.scriptable.app/add";
 let widgetInstructionTimer = 0;
 const prefersGraduateIdentity = computed(() => auth.academicIdentity === "graduate");
 const academicDataUnavailable = computed(() => Boolean(
-  auth.user?.studentSso && auth.academicIdentityUnavailable,
+  jwxt.isLoggedIn && auth.user?.studentSso && auth.academicIdentityUnavailable,
 ));
 const scheduleLoginScopeText = computed(() => (
   "登录后会自动识别你当前可用的教务入口。本科生默认显示本科课表，研究生当前显示研究生课表。"

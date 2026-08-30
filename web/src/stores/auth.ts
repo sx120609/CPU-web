@@ -135,8 +135,12 @@ export const useAuthStore = defineStore("auth", {
     setAcademicIdentity(identity: AcademicIdentity) {
       this.academicIdentity = identity;
       this.academicIdentityResolved = true;
-      this.academicIdentityUnavailable = false;
+      this.clearAcademicIdentityUnavailable();
       writeAcademicIdentity(identity);
+    },
+
+    clearAcademicIdentityUnavailable() {
+      this.academicIdentityUnavailable = false;
       writeAcademicIdentityUnavailable(this.user?.username, false);
     },
 

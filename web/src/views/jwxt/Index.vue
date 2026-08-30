@@ -300,7 +300,7 @@ const hasJwxtTabs = computed(() => availableDataTabs.value.length > 0 || isDev.v
 const hasCachedData = computed(() => availableDataTabs.value.some((item) => Boolean(getTabData(item))));
 const showDataShell = computed(() => !showLoginOverride.value && (jwxt.isLoggedIn || hasCachedData.value || academicDataUnavailable.value));
 const academicDataUnavailable = computed(() => Boolean(
-  auth.user?.studentSso && auth.academicIdentityUnavailable,
+  jwxt.isLoggedIn && auth.user?.studentSso && auth.academicIdentityUnavailable,
 ));
 const usingSavedCaptchaRecovery = computed(() => (
   jwxt.needCaptcha && jwxt.rememberSaved && !form.password

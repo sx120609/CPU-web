@@ -125,6 +125,7 @@ export const useJwxtStore = defineStore("jwxt", {
             // 会话过期不等于本地数据失效：保留课表/成绩缓存供秒开和离线查看。
             clearJwxtToken();
             this.token = "";
+            auth.clearAcademicIdentityUnavailable();
           } else {
             setJwxtToken(JWXT_COOKIE_SESSION_MARKER);
             this.token = JWXT_COOKIE_SESSION_MARKER;
@@ -139,6 +140,7 @@ export const useJwxtStore = defineStore("jwxt", {
           if (isJwxtAuthExpired(error) || !getJwxtToken()) {
             this.active = false;
             this.token = "";
+            useAuthStore().clearAcademicIdentityUnavailable();
           } else {
             // 网络抖动时继续乐观使用现有会话；真实查询若返回 401 会触发自动恢复。
             this.token = getJwxtToken();
