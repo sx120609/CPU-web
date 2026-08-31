@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { repairUnavailableJwxtSession } from "../src/utils/jwxtSessionRepair";
+import {
+  prepareManualJwxtReauthorization,
+  repairUnavailableJwxtSession,
+} from "../src/utils/jwxtSessionRepair";
 
 function memoryStorage() {
   const values = new Map<string, string>();
@@ -57,9 +60,9 @@ test("同一迁移版本每个账号只自动修复一次", async () => {
   assert.equal(disconnects, 1);
 });
 
-test("旧版修复标记不会阻止新版会话修复", async () => {
+test("上一版修复标记不会阻止新版会话修复", async () => {
   const storage = memoryStorage();
-  storage.setItem("cpu-jwxt-session-repair-modern-v1:stale-mobile-session", "1");
+  storage.setItem("cpu-jwxt-session-repair-modern-v2:stale-mobile-session", "1");
   let disconnects = 0;
 
   const recovered = await repairUnavailableJwxtSession({
@@ -73,4 +76,17 @@ test("旧版修复标记不会阻止新版会话修复", async () => {
 
   assert.equal(recovered, true);
   assert.equal(disconnects, 1);
+});
+
+test("手动重新授权即使断开请求失败也会清理本地误判状态", async () => {
+  const steps: string[] = [];
+  await prepareManualJwxtReauthorization({
+    disconnect: async () => {
+      steps.push("disconnect");
+      throw new Error("upstream unavailable");
+    },
+    resetLocalState: () => { steps.push("reset"); },
+  });
+
+  assert.deepEqual(steps, ["disconnect", "reset"]);
 });

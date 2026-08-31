@@ -56,6 +56,8 @@ export interface ScheduleCell {
 
 export interface ScheduleResult {
   title: string;
+  /** 响应中存在真实课表结构；即使新生暂时没有课程，这个值仍为 true。 */
+  pageRecognized?: boolean;
   semesters: SemesterOption[];
   /** 当前选中的学期 */
   currentSemester: string;
@@ -70,16 +72,21 @@ export interface ScheduleResult {
 export function parseSchedule(html: string): ScheduleResult {
   const $ = cheerio.load(html);
   const title = $("title").text().trim();
+  const hasLegacyScheduleTable = $("table#kbtable").length > 0;
+  const hasModernScheduleTable = $("table.qz-weeklyTable").filter((_, table) => (
+    $(table).find('td[name="kbDataTd"], td[name="timeTd"]').length > 0
+  )).length > 0;
   const semesters = parseSelectOptions($, "xnxq01id");
   const weeks = parseSelectOptions($, "zc");
   const currentSemester = semesters.find((s) => s.current)?.value ?? "";
   const currentWeek = weeks.find((s) => s.current)?.value ?? "";
-  const cells = $("table#kbtable").length
+  const cells = hasLegacyScheduleTable
     ? parseLegacyScheduleCells($)
     : parseModernScheduleCells($);
 
   return {
     title,
+    pageRecognized: hasLegacyScheduleTable || hasModernScheduleTable,
     semesters,
     currentSemester,
     weeks,

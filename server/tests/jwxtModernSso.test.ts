@@ -47,6 +47,14 @@ test("modern JWXT still recognizes the independent login page as an expired SSO 
     </form>
   `;
   assert.equal(isModernJwxtLoginPage(loginHtml), true);
+  assert.equal(isModernJwxtLoginPage(
+    `<script>window.location.href='${ssoUrl}'</script>`,
+  ), true);
+  assert.equal(isModernJwxtLoginPage(`
+    <form id="loginForm" action="/sso/login">
+      <input name="execution" value="e1s1">
+    </form>
+  `), true);
   assert.equal(isModernJwxtLoginPage("<table class='qz-weeklyTable'></table>"), false);
 });
 
@@ -73,7 +81,7 @@ test("modern JWXT reuses the unified-auth cookie and consumes the automatic SSO 
     if (url.hostname === "jwxt.cpu.edu.cn" && url.pathname === "/jsxsd/xskb/xskb_list.do") {
       scheduleRequests += 1;
       if (!/bzb_jsxsd=modern-session/.test(cookie)) {
-        return new Response('<form action="/jsxsd/xk/LoginToXk"><input name="userAccount"></form>', {
+        return new Response(`<script>window.location.href='${ssoUrl}'</script>`, {
           status: 200,
           headers: { "content-type": "text/html", "set-cookie": "bzb_jsxsd=pre-sso; Path=/jsxsd; HttpOnly" },
         });

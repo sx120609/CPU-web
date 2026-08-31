@@ -28,10 +28,16 @@ import {
 
 export type JwxtDataSource = "modern" | "legacy";
 
+function isUnauthorizedUpstreamError(error: unknown) {
+  const candidate = error as { status?: unknown; code?: unknown } | null | undefined;
+  return Number(candidate?.status || 0) === 401 || Number(candidate?.code || 0) === 4001;
+}
+
 export async function modernFirst<T extends object>(modern: () => Promise<T>, legacy: () => Promise<T>) {
   try {
     return { ...await modern(), source: "modern" as const };
   } catch (modernError) {
+    if (isUnauthorizedUpstreamError(modernError)) throw modernError;
     try {
       return { ...await legacy(), source: "legacy" as const };
     } catch {

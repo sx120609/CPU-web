@@ -27,7 +27,15 @@
       :closable="false"
       show-icon
       class="scope-tip"
-      title="当前账号的教务数据尚未开通，暂不需要教务登录。站内账号仍可正常使用；数据开通后可再次尝试。"
+      title="学校没有返回授权失效提示，但尚未返回可读取的教务数据。站内账号仍可正常使用，也可以手动重新授权核验。"
+    />
+    <el-alert
+      v-else-if="jwxt.authorizationExpired"
+      type="warning"
+      :closable="false"
+      show-icon
+      class="scope-tip"
+      title="学校返回了登录或统一认证提示，当前教务授权已失效，请重新授权。"
     />
 
     <!-- 未登录：显示登录卡片 -->
@@ -128,9 +136,12 @@
       <div v-if="academicDataUnavailable" class="cpu-card academic-empty-state">
         <el-empty description="暂无教务数据" :image-size="88" />
         <div class="academic-empty-desc">
-          <p>当前账号已登录站内服务，但学校暂未创建可读取的教务入口。</p>
-          <p>等教务数据开通后，这里会直接显示，无需重新登录。</p>
+          <p>学校没有返回授权失效提示，但尚未创建可读取的教务入口或课表数据。</p>
+          <p>这不会被当成授权失效；如果学校原站已经有数据，可以手动重新授权核验。</p>
         </div>
+        <el-button type="primary" :loading="reauthorizeBusy" :disabled="reauthorizeBusy" @click="onManualReauthorize">
+          <el-icon><Refresh /></el-icon> 重新核验授权
+        </el-button>
       </div>
 
       <div v-if="!academicDataUnavailable" class="cpu-card session-info" :class="{ 'is-cache-only': !jwxt.isLoggedIn }">
@@ -229,6 +240,7 @@
 <script setup lang="ts">
 import AppIcon from "@/components/common/AppIcon.vue";
 import { ref, reactive, onMounted, onBeforeUnmount, computed, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from "element-plus";
 import { Lock, User, Refresh, CircleCheckFilled, CircleClose, InfoFilled } from "@element-plus/icons-vue";
 import { useJwxtStore } from "@/stores/jwxt";
@@ -251,6 +263,8 @@ import PyfaPane from "@/components/jwxt/PyfaPane.vue";
 
 const jwxt = useJwxtStore();
 const auth = useAuthStore();
+const route = useRoute();
+const router = useRouter();
 const formRef = ref<FormInstance>();
 const form = reactive({ username: "", password: "", captcha: "" });
 const remember = ref(true); // 默认勾选"记住"
@@ -273,6 +287,7 @@ const activeRequests = new Map<string, Promise<any>>();
 const captchaLoading = ref(false);
 const logoutBusy = ref(false);
 const forgetBusy = ref(false);
+const reauthorizeBusy = ref(false);
 const showLoginOverride = ref(false);
 let tabLoadSeq = 0;
 let pageInitSeq = 0;
@@ -307,7 +322,7 @@ const usingSavedCaptchaRecovery = computed(() => (
 ));
 const pageHintText = computed(() => (
   academicDataUnavailable.value
-    ? "当前账号已完成站内登录，但学校暂未开放可读取的教务数据。"
+    ? "当前账号已通过学校登录，但教务数据尚未开通。"
     : isGraduateIdentity.value
     ? showScheduleTab.value
       ? "通过学校统一认证查看研究生课表，信息会整理成更方便阅读的样子。"
@@ -388,6 +403,10 @@ async function initPage() {
   jwxt.hydrate();
   ensureVisibleTab();
   restoreAllTabCaches();
+  if (route.query.reauthorize === "1") {
+    await onManualReauthorize();
+    return;
+  }
   if (jwxt.isLoggedIn || hasCachedData.value) void loadCurrentTab(false);
   const ready = await jwxt.ensureSession({
     refresh: true,
@@ -607,7 +626,12 @@ async function onSubmit() {
   if (ok) {
     ElMessage.success("登录成功");
     showLoginOverride.value = false;
-    loadCurrentTab(false);
+    const redirect = typeof route.query.redirect === "string" ? route.query.redirect : "";
+    if (redirect.startsWith("/") && !redirect.startsWith("//")) {
+      await router.replace(redirect);
+    } else {
+      loadCurrentTab(false);
+    }
   } else if (jwxt.needCaptcha) {
     form.captcha = "";
   }
@@ -693,6 +717,25 @@ async function onProbe() {
     const r = await jwxtApi.probe(probePath.value);
     probeHtml.value = r.html.length > 30000 ? r.html.slice(0, 30000) + "\n\n...（已截断）" : r.html;
   } finally { probing.value = false; }
+}
+
+async function onManualReauthorize() {
+  if (reauthorizeBusy.value || jwxt.loading) return;
+  reauthorizeBusy.value = true;
+  showLoginOverride.value = true;
+  try {
+    await jwxt.prepareManualReauthorization();
+    if (!form.username && auth.user?.username) form.username = auth.user.username;
+    const nextQuery = { ...route.query };
+    delete nextQuery.reauthorize;
+    void router.replace({ query: nextQuery });
+    await jwxt.beginLogin();
+    ElMessage.info("请重新完成学校统一身份认证");
+  } catch {
+    ElMessage.error("重新授权准备失败，请稍后再试");
+  } finally {
+    reauthorizeBusy.value = false;
+  }
 }
 </script>
 
@@ -904,6 +947,9 @@ async function onProbe() {
 }
 .academic-empty-desc p {
   margin: 0;
+}
+.academic-empty-state > .el-button {
+  margin-top: 14px;
 }
 .remember-tag {
   margin-right: 0;

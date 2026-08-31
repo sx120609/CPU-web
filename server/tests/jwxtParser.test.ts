@@ -62,6 +62,7 @@ test("parseSchedule keeps supporting the legacy kbtable layout", () => {
   `);
 
   assert.equal(result.currentSemester, "2025-2026-2");
+  assert.equal(result.pageRecognized, true);
   assert.equal(result.currentWeek, "1");
   assert.deepEqual(result.cells, [{
     day: 1,
@@ -121,6 +122,7 @@ test("parseSchedule parses the modern qz weekly table and restores rowspan colum
   `);
 
   assert.equal(result.title, "个人课表信息");
+  assert.equal(result.pageRecognized, true);
   assert.equal(result.currentSemester, "2025-2026-2");
   assert.equal(result.currentWeek, "2");
   assert.equal(result.cells.length, 3);
@@ -153,6 +155,27 @@ test("parseSchedule parses the modern qz weekly table and restores rowspan colum
   assert.equal(afterRowspan?.courses[0].name, "生物化学");
   assert.equal(afterRowspan?.courses[0].teacher, "王五");
   assert.equal(afterRowspan?.courses[0].location, "B201");
+});
+
+test("parseSchedule distinguishes an authenticated empty timetable from an unrelated shell page", () => {
+  const freshman = parseSchedule(`
+    <html>
+      <head><title>个人课表信息</title></head>
+      <body>
+        <table class="qz-weeklyTable">
+          <tr><td name="timeTd"><div class="index-title">第一大节</div></td></tr>
+        </table>
+      </body>
+    </html>
+  `);
+  const expiredShell = parseSchedule(`
+    <html><head><title>首页</title></head><body><div id="app"></div></body></html>
+  `);
+
+  assert.equal(freshman.pageRecognized, true);
+  assert.deepEqual(freshman.cells, []);
+  assert.equal(expiredShell.pageRecognized, false);
+  assert.deepEqual(expiredShell.cells, []);
 });
 
 test("parseGrades maps the modern paged JSON response", () => {

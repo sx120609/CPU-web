@@ -1,6 +1,6 @@
 type StorageLike = Pick<Storage, "getItem" | "setItem">;
 
-const SESSION_REPAIR_KEY_PREFIX = "cpu-jwxt-session-repair-modern-v2";
+const SESSION_REPAIR_KEY_PREFIX = "cpu-jwxt-session-repair-modern-v3";
 const attemptedInMemory = new Set<string>();
 
 function repairKey(username: string) {
@@ -55,4 +55,12 @@ export async function repairUnavailableJwxtSession(input: {
   input.resetLocalState();
   if (!input.hasSavedCredentials()) return false;
   return input.autoLogin();
+}
+
+export async function prepareManualJwxtReauthorization(input: {
+  disconnect: () => Promise<unknown>;
+  resetLocalState: () => void;
+}) {
+  await input.disconnect().catch(() => undefined);
+  input.resetLocalState();
 }

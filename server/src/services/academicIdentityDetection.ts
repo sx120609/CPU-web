@@ -24,6 +24,21 @@ function isUnauthorizedReason(reason: unknown) {
   return Number(candidate?.status || 0) === 401 || Number(candidate?.code || 0) === 4001;
 }
 
+export function isRecognizableUndergraduateSchedule(value: {
+  title?: unknown;
+  pageRecognized?: unknown;
+  currentSemester?: unknown;
+  semesters?: unknown[];
+  cells?: unknown[];
+} | null | undefined) {
+  return Boolean(
+    value?.pageRecognized === true
+    || String(value?.currentSemester ?? "").trim()
+    || (Array.isArray(value?.semesters) && value.semesters.length)
+    || (Array.isArray(value?.cells) && value.cells.length)
+  );
+}
+
 /**
  * 研究生与本科入口共享同一份统一认证 CookieJar。
  *
@@ -77,6 +92,7 @@ export async function detectAcademicIdentityFromProbes<TGraduate, TUndergraduate
   }
 
   if (graduate.status === "fulfilled") {
+    if (isUnauthorizedReason(undergraduate.reason)) throw undergraduate.reason;
     return {
       identity: "graduate",
       source: "fallback",

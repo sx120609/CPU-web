@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { HttpError } from "../src/utils/response";
-import { detectAcademicIdentityFromProbes } from "../src/services/academicIdentityDetection";
+import {
+  detectAcademicIdentityFromProbes,
+  isRecognizableUndergraduateSchedule,
+} from "../src/services/academicIdentityDetection";
 import { parseGraduateSchedulePayload } from "../src/services/graduateScheduleParser";
 
 test("研究生入口成功后不会再触发可能清理共享会话的本科探测", async () => {
@@ -41,6 +44,37 @@ test("研究生上游错误不会被本科 401 覆盖成整套统一认证过期
     }),
     (error: unknown) => error === graduateError,
   );
+});
+
+test("研究生空壳响应不能掩盖本科教务已经失效", async () => {
+  const expired = new HttpError(401, 4001, "教务会话已失效，请重新授权");
+
+  await assert.rejects(
+    () => detectAcademicIdentityFromProbes({
+      probeGraduate: async () => ({ parsed: { currentSemester: "", semesters: [], cells: [] } }),
+      probeUndergraduate: async () => { throw expired; },
+      isGraduateUsable: () => false,
+      isUndergraduateUsable: () => false,
+    }),
+    (error: unknown) => error === expired,
+  );
+});
+
+test("本科空课表必须有课表页面特征，普通首页不能冒充无数据账号", () => {
+  assert.equal(isRecognizableUndergraduateSchedule({
+    title: "个人课表信息",
+    pageRecognized: true,
+    currentSemester: "",
+    semesters: [],
+    cells: [],
+  }), true);
+  assert.equal(isRecognizableUndergraduateSchedule({
+    title: "个人课表信息",
+    pageRecognized: false,
+    currentSemester: "",
+    semesters: [],
+    cells: [],
+  }), false);
 });
 
 test("研究生入口不可用时仍可正确识别本科教务", async () => {

@@ -29,7 +29,10 @@ import {
   type GraduateTermOption,
 } from "../services/graduateScheduleParser";
 import { normalizeGraduateSemesterLabel, type GraduateScheduleFetchResult } from "../services/graduateScheduleService";
-import { detectAcademicIdentityFromProbes } from "../services/academicIdentityDetection";
+import {
+  detectAcademicIdentityFromProbes,
+  isRecognizableUndergraduateSchedule,
+} from "../services/academicIdentityDetection";
 import { I_SERVICE_ICON_PATH_PATTERN } from "../services/jwxtClient";
 import {
   beginLogin,
@@ -64,8 +67,8 @@ const JWXT_PROGRESS_CACHE_TTL_MS = 30 * 60_000;
 const JWXT_PYFA_CACHE_TTL_MS = 6 * 60 * 60_000;
 const JWXT_IAPPS_CACHE_TTL_MS = 60 * 60_000;
 const JWXT_IAPP_ICON_CACHE_TTL_MS = 7 * 24 * 60 * 60_000;
-const JWXT_SOURCE_CACHE_REVISION = "source-v1";
-const JWXT_IDENTITY_CACHE_REVISION = "probe-v2";
+const JWXT_SOURCE_CACHE_REVISION = "source-v2";
+const JWXT_IDENTITY_CACHE_REVISION = "probe-v3";
 const GRAD_SCHEDULE_DEBUG_BINDTERM_CANDIDATES = [
   path.resolve(process.cwd(), ".debug", "grad-bindterm.json"),
   path.resolve(process.cwd(), "server", ".debug", "grad-bindterm.json"),
@@ -270,43 +273,7 @@ async function loadGraduateScheduleResponse(
 }
 
 function hasUsableUndergraduateSchedule(parsed: any) {
-  return Boolean(
-    parsed?.currentSemester
-    || (Array.isArray(parsed?.semesters) && parsed.semesters.length)
-    || (Array.isArray(parsed?.cells) && parsed.cells.length)
-  );
-}
-
-function hasItems(value: unknown) {
-  return Array.isArray(value) && value.length > 0;
-}
-
-function staleJwxtSessionError() {
-  return Errors.unauthorized("教务会话已失效，请重新授权");
-}
-
-function assertUsableUndergraduateSchedule<T>(parsed: T): T {
-  if (!hasUsableUndergraduateSchedule(parsed)) throw staleJwxtSessionError();
-  return parsed;
-}
-
-function assertUsableGrades<T extends { semesters?: unknown[]; list?: unknown[] }>(parsed: T): T {
-  if (!hasItems(parsed?.semesters) && !hasItems(parsed?.list)) throw staleJwxtSessionError();
-  return parsed;
-}
-
-function assertUsableProgress<T extends { summary?: unknown[]; completed?: unknown[]; uncompleted?: unknown[]; totals?: Record<string, unknown> }>(parsed: T): T {
-  const totals = parsed?.totals ?? {};
-  const hasTotals = Object.values(totals).some((value) => Number(value) > 0);
-  if (!hasItems(parsed?.summary) && !hasItems(parsed?.completed) && !hasItems(parsed?.uncompleted) && !hasTotals) {
-    throw staleJwxtSessionError();
-  }
-  return parsed;
-}
-
-function assertUsablePyfa<T extends { list?: unknown[]; bySemester?: unknown[] }>(parsed: T): T {
-  if (!hasItems(parsed?.list) && !hasItems(parsed?.bySemester)) throw staleJwxtSessionError();
-  return parsed;
+  return isRecognizableUndergraduateSchedule(parsed);
 }
 
 function graduateScheduleCourseCount(result: any) {
@@ -332,10 +299,7 @@ async function detectAcademicIdentity(token: string) {
     // 研究生账号可能没有本科教务权限，因此先探测研究生入口；只有返回了
     // 可识别的学期或课程时才停止，空壳响应仍需用本科入口完成身份判定。
     probeGraduate: () => getGraduateSchedule(token, {}),
-    // Keep an empty but authenticated schedule as a valid probe result. The
-    // identity predicate below reports it as unavailable; wrapping this probe
-    // in the normal data assertion would turn a new student's empty record
-    // into a false session-expired 401.
+    // 授权失效必须由上游的登录/SSO 响应触发 401；空响应本身只表示暂无数据。
     probeUndergraduate: () => getSchedule(token, {}),
     isGraduateUsable: hasUsableGraduateSchedule,
     isUndergraduateUsable: hasUsableUndergraduateSchedule,
@@ -784,13 +748,13 @@ jwxtRouter.get("/schedule", async (req, res, next) => {
     const refresh = req.query.refresh === "1" || req.query.refresh === "true";
     const cacheId = jwxtTokenCacheId(t);
     const parsed = refresh
-      ? assertUsableUndergraduateSchedule(await getSchedule(t, { semester, week }))
-      : assertUsableUndergraduateSchedule(await withCache(
+      ? await getSchedule(t, { semester, week })
+      : await withCache(
         "jwxt-schedule",
         [JWXT_SOURCE_CACHE_REVISION, cacheId, semester || "_", week || "_"],
         JWXT_SCHEDULE_CACHE_TTL_MS,
-        async () => assertUsableUndergraduateSchedule(await getSchedule(t, { semester, week })),
-      ));
+        async () => getSchedule(t, { semester, week }),
+      );
     if (refresh) {
       await prisma.scheduleWidgetToken.updateMany({
         where: { jwxtToken: t, revokedAt: null },
@@ -838,12 +802,12 @@ jwxtRouter.get("/grades", async (req, res, next) => {
     if (!t) throw Errors.unauthorized("请先登录教务系统");
     const semester = req.query.semester ? String(req.query.semester) : "";
     const cacheId = jwxtTokenCacheId(t);
-    const parsed = assertUsableGrades(await withCache(
+    const parsed = await withCache(
       "jwxt-grades",
       [JWXT_SOURCE_CACHE_REVISION, cacheId, semester || "_"],
       JWXT_GRADES_CACHE_TTL_MS,
-      async () => assertUsableGrades(await getGrades(t, { semester })),
-    ));
+      async () => getGrades(t, { semester }),
+    );
     res.setHeader("Cache-Control", "private, max-age=1800, stale-while-revalidate=604800");
     ok(res, { parsed, source: parsed.source });
   } catch (e) { next(e); }
@@ -856,12 +820,12 @@ jwxtRouter.get("/midterm-grades", async (req, res, next) => {
     if (!t) throw Errors.unauthorized("请先登录教务系统");
     const semester = req.query.semester ? String(req.query.semester) : "";
     const cacheId = jwxtTokenCacheId(t);
-    const parsed = assertUsableGrades(await withCache(
+    const parsed = await withCache(
       "jwxt-midterm-grades",
       [JWXT_SOURCE_CACHE_REVISION, cacheId, semester || "_"],
       JWXT_MIDTERM_CACHE_TTL_MS,
-      async () => assertUsableGrades(await getMidtermGrades(t, { semester })),
-    ));
+      async () => getMidtermGrades(t, { semester }),
+    );
     res.setHeader("Cache-Control", "private, max-age=1800, stale-while-revalidate=604800");
     ok(res, { parsed, source: parsed.source });
   } catch (e) { next(e); }
@@ -980,12 +944,12 @@ jwxtRouter.get("/progress", async (req, res, next) => {
     const t = getToken(req);
     if (!t) throw Errors.unauthorized("请先登录教务系统");
     const cacheId = jwxtTokenCacheId(t);
-    const parsed = assertUsableProgress(await withCache(
+    const parsed = await withCache(
       "jwxt-progress",
       [JWXT_SOURCE_CACHE_REVISION, cacheId],
       JWXT_PROGRESS_CACHE_TTL_MS,
-      async () => assertUsableProgress(await getProgress(t)),
-    ));
+      async () => getProgress(t),
+    );
     res.setHeader("Cache-Control", "private, max-age=1800, stale-while-revalidate=604800");
     ok(res, { parsed, source: parsed.source });
   } catch (e) { next(e); }
@@ -997,12 +961,12 @@ jwxtRouter.get("/pyfa", async (req, res, next) => {
     const t = getToken(req);
     if (!t) throw Errors.unauthorized("请先登录教务系统");
     const cacheId = jwxtTokenCacheId(t);
-    const parsed = assertUsablePyfa(await withCache(
+    const parsed = await withCache(
       "jwxt-pyfa",
       [JWXT_SOURCE_CACHE_REVISION, cacheId],
       JWXT_PYFA_CACHE_TTL_MS,
-      async () => assertUsablePyfa(await getPyfa(t)),
-    ));
+      async () => getPyfa(t),
+    );
     res.setHeader("Cache-Control", "private, max-age=21600, stale-while-revalidate=604800");
     ok(res, { parsed, source: parsed.source });
   } catch (e) { next(e); }

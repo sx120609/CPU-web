@@ -45,6 +45,11 @@ export function extractModernJwxtSsoRedirect(html: string, pageUrl: string) {
 }
 
 export function isModernJwxtLoginPage(html: string) {
-  return /<form\b[^>]*action=["'][^"']*LoginToXk/i.test(html)
-    && /name=["']userAccount["']/i.test(html);
+  return (
+    /<form\b[^>]*action=["'][^"']*LoginToXk/i.test(html)
+      && /name=["']userAccount["']/i.test(html)
+  )
+    || /window\.location(?:\.href)?\s*=\s*["'][^"']*id\.cpu\.edu\.cn\/sso\/login\b/i.test(html)
+    || /window\.location\.replace\(\s*["'][^"']*id\.cpu\.edu\.cn\/sso\/login\b/i.test(html)
+    || /<form\b[^>]*id=["']loginForm["'][^>]*>[\s\S]*name=["']execution["']/i.test(html);
 }
