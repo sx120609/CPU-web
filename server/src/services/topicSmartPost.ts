@@ -839,7 +839,7 @@ function normalizeStringList(input: unknown, maxItems: number, maxItemLength: nu
     .filter(Boolean);
 }
 
-function ensureNoInventedContacts(sourceText: string, draft: { title: string; content: string }) {
+export function ensureNoInventedContacts(sourceText: string, draft: { title: string; content: string }) {
   const sourceUrls = new Set(extractUrls(sourceText));
   const sourceContacts = new Set(extractContactTokens(sourceText));
   const outputText = `${draft.title}\n${draft.content}`;
@@ -851,12 +851,26 @@ function ensureNoInventedContacts(sourceText: string, draft: { title: string; co
 }
 
 function extractUrls(input: string) {
-  return Array.from(input.matchAll(/https?:\/\/[^\s<>"'）)]+/giu), (match) => match[0].replace(/[.,，。;；!?！？]+$/u, ""));
+  const decoded = decodeXmlEntities(String(input || ""));
+  return Array.from(decoded.matchAll(/https?:\/\/[^\s<>"'）)]+/giu), (match) => normalizeSmartPostUrl(match[0]))
+    .filter(Boolean);
+}
+
+function normalizeSmartPostUrl(input: string) {
+  const raw = input.replace(/[.,，。;；!?！？]+$/u, "");
+  try {
+    const url = new URL(raw);
+    url.searchParams.sort();
+    return url.toString();
+  } catch {
+    return raw;
+  }
 }
 
 function extractContactTokens(input: string) {
-  const emails = Array.from(input.matchAll(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/giu), (match) => match[0].toLowerCase());
-  const phones = Array.from(input.matchAll(/(?<!\d)(?:\+?86[- ]?)?1[3-9]\d{9}(?!\d)/gu), (match) => match[0].replace(/\D/gu, ""));
+  const decoded = decodeXmlEntities(String(input || ""));
+  const emails = Array.from(decoded.matchAll(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/giu), (match) => match[0].toLowerCase());
+  const phones = Array.from(decoded.matchAll(/(?<!\d)(?:\+?86[- ]?)?1[3-9]\d{9}(?!\d)/gu), (match) => match[0].replace(/\D/gu, ""));
   return [...emails, ...phones];
 }
 

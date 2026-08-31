@@ -7,6 +7,7 @@ import {
 } from "../src/services/aiJsonApi";
 import {
   estimateSmartPostQuota,
+  ensureNoInventedContacts,
   extractSmartPostFileText,
   normalizeSmartPostFile,
   normalizeSmartPostFiles,
@@ -14,6 +15,37 @@ import {
   parseSmartPostDraft,
   resolveSmartPostUsage,
 } from "../src/services/topicSmartPost";
+
+test("智慧发帖把富文本实体和查询参数顺序视为同一条来源链接", () => {
+  const source = [
+    "<p>中国药科大学教材汇总</p>",
+    '<p><a href="https://docs.qq.com/aio/DVEhuYVRmdm9vY3pQ?nlc=1&amp;p=lOn3uQYrsr8Bs7kax082Ox">教材汇总</a></p>',
+    "<p>联系邮箱：editor&#64;cputime.cn</p>",
+  ].join("");
+
+  assert.doesNotThrow(() => ensureNoInventedContacts(source, {
+    title: "中国药科大学教材汇总",
+    content: [
+      "[查看教材汇总](https://docs.qq.com/aio/DVEhuYVRmdm9vY3pQ?p=lOn3uQYrsr8Bs7kax082Ox&nlc=1)",
+      "联系邮箱：editor@cputime.cn",
+    ].join("\n\n"),
+  }));
+});
+
+test("智慧发帖仍拦截材料中不存在的链接和联系方式", () => {
+  assert.throws(() => ensureNoInventedContacts("材料仅包含 https://cputime.cn/help", {
+    title: "帮助",
+    content: "请访问 https://example.com/new",
+  }), /不存在的链接或联系方式/u);
+  assert.throws(() => ensureNoInventedContacts("材料仅包含 https://cputime.cn/help?ticket=source", {
+    title: "帮助",
+    content: "请访问 https://cputime.cn/help?ticket=changed",
+  }), /不存在的链接或联系方式/u);
+  assert.throws(() => ensureNoInventedContacts("材料没有联系方式", {
+    title: "联系",
+    content: "联系电话：13800138000",
+  }), /不存在的链接或联系方式/u);
+});
 
 test("Responses 请求把原始 PDF/PPTX 映射为 input_file，并把图片映射为 input_image", async () => {
   const originalFetch = globalThis.fetch;
