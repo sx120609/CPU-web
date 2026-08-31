@@ -619,11 +619,19 @@ export const DEFAULT_TOP_NAVIGATION: TopNavigationItem[] = [
   { id: "coursereview", label: "课评", fullLabel: "课程点评", to: "/coursereview", icon: "course", enabled: true, primary: false, showInDrawer: true, audience: "all", feature: "coursereview", requireForumAccess: true, openInNewTab: false },
   { id: "market", label: "二手", fullLabel: "二手交流", to: "/forum/b/market", icon: "market", enabled: true, primary: false, showInDrawer: true, audience: "all", feature: "market", requireForumAccess: true, openInNewTab: false },
 ];
-export const DEFAULT_ANONYMOUS_TIERS: AnonymousTierConfig[] = [
+export const DEFAULT_ANONYMOUS_MIN_REPUTATION = 0;
+const LEGACY_DEFAULT_ANONYMOUS_TIERS: AnonymousTierConfig[] = [
   { reputation: 30, quota: 1 },
   { reputation: 60, quota: 2 },
   { reputation: 90, quota: 3 },
   { reputation: 120, quota: 4 },
+];
+export const DEFAULT_ANONYMOUS_TIERS: AnonymousTierConfig[] = [
+  { reputation: 0, quota: 1 },
+  { reputation: 30, quota: 2 },
+  { reputation: 60, quota: 3 },
+  { reputation: 90, quota: 4 },
+  { reputation: 120, quota: 5 },
 ];
 export const DEFAULT_REPUTATION_LEVELS: ReputationLevelConfig[] = [
   { level: 1, name: "初来乍到", minReputation: 0 },
@@ -730,6 +738,8 @@ const AI_REPLY_REVIEW_USER_PROMPT_KEY = "ai.review.reply.userPrompt";
 const AI_EDIT_SIMILARITY_SYSTEM_PROMPT_KEY = "ai.review.editSimilarity.systemPrompt";
 const AI_EDIT_SIMILARITY_USER_PROMPT_KEY = "ai.review.editSimilarity.userPrompt";
 const ANONYMOUS_MIN_REPUTATION_KEY = "forum.anonymous.minReputation";
+const ANONYMOUS_POLICY_VERSION_KEY = "forum.anonymous.policyVersion";
+const CURRENT_ANONYMOUS_POLICY_VERSION = "new-user-weekly-v2";
 const ACCOUNT_AGE_DAYS_PER_STEP_KEY = "forum.reputation.accountAgeDaysPerStep";
 const ACCOUNT_AGE_POINTS_PER_STEP_KEY = "forum.reputation.accountAgePointsPerStep";
 const ACCOUNT_AGE_POINTS_CAP_KEY = "forum.reputation.accountAgePointsCap";
@@ -1044,7 +1054,7 @@ const configCache: SiteConfig = {
   aiReplyReviewUserPrompt: DEFAULT_AI_PROMPTS.replyReviewUser,
   aiEditSimilaritySystemPrompt: DEFAULT_AI_PROMPTS.editSimilaritySystem,
   aiEditSimilarityUserPrompt: DEFAULT_AI_PROMPTS.editSimilarityUser,
-  anonymousMinReputation: 30,
+  anonymousMinReputation: DEFAULT_ANONYMOUS_MIN_REPUTATION,
   accountAgeDaysPerStep: 14,
   accountAgePointsPerStep: 2,
   accountAgePointsCap: 36,
@@ -1228,6 +1238,7 @@ export async function loadFeatures(): Promise<void> {
           AI_EDIT_SIMILARITY_SYSTEM_PROMPT_KEY,
           AI_EDIT_SIMILARITY_USER_PROMPT_KEY,
           ANONYMOUS_MIN_REPUTATION_KEY,
+          ANONYMOUS_POLICY_VERSION_KEY,
           ACCOUNT_AGE_DAYS_PER_STEP_KEY,
           ACCOUNT_AGE_POINTS_PER_STEP_KEY,
           ACCOUNT_AGE_POINTS_CAP_KEY,
@@ -1548,7 +1559,12 @@ export async function loadFeatures(): Promise<void> {
       continue;
     }
     if (r.key === ANONYMOUS_MIN_REPUTATION_KEY) {
-      configCache.anonymousMinReputation = normalizeSmallInt(r.value, 30, 0, 9999);
+      configCache.anonymousMinReputation = normalizeSmallInt(
+        r.value,
+        DEFAULT_ANONYMOUS_MIN_REPUTATION,
+        0,
+        9999
+      );
       continue;
     }
     if (r.key === ACCOUNT_AGE_DAYS_PER_STEP_KEY) {
@@ -1625,6 +1641,7 @@ export async function loadFeatures(): Promise<void> {
     const f = r.key.replace(/^feature\./, "") as FeatureKey;
     if (ALL_FEATURES.includes(f)) cache[f] = r.value === "on";
   }
+  await upgradeStoredAnonymousPolicy(rows);
   await upgradeStoredDefaultTextReviewPrompts(rows);
   const storedQqGroupAdThreshold = rows.find((row) => row.key === QQ_GROUP_AD_REVIEW_THRESHOLD_KEY);
   if (storedQqGroupAdThreshold?.value.trim() === "70") {
@@ -2201,6 +2218,63 @@ function upgradeLegacyImageReviewPrompts() {
   }
 }
 
+function anonymousTiersEqual(left: AnonymousTierConfig[], right: AnonymousTierConfig[]) {
+  return left.length === right.length && left.every((item, index) => (
+    item.reputation === right[index]?.reputation && item.quota === right[index]?.quota
+  ));
+}
+
+export function buildAnonymousPolicyUpgrade(input: {
+  anonymousMinReputation: number;
+  anonymousTiers: AnonymousTierConfig[];
+}) {
+  const tiers = normalizeAnonymousTiers(input.anonymousTiers, LEGACY_DEFAULT_ANONYMOUS_TIERS);
+  if (anonymousTiersEqual(tiers, LEGACY_DEFAULT_ANONYMOUS_TIERS)) {
+    return {
+      anonymousMinReputation: DEFAULT_ANONYMOUS_MIN_REPUTATION,
+      anonymousTiers: DEFAULT_ANONYMOUS_TIERS.map((item) => ({ ...item })),
+    };
+  }
+  const existingNewUserTier = tiers.find((item) => item.reputation === 0);
+  return {
+    anonymousMinReputation: DEFAULT_ANONYMOUS_MIN_REPUTATION,
+    anonymousTiers: [
+      { reputation: 0, quota: Math.max(1, existingNewUserTier?.quota ?? 1) },
+      ...tiers.filter((item) => item.reputation > 0),
+    ],
+  };
+}
+
+async function upgradeStoredAnonymousPolicy(rows: Array<{ key: string; value: string }>) {
+  if (rows.find((row) => row.key === ANONYMOUS_POLICY_VERSION_KEY)?.value === CURRENT_ANONYMOUS_POLICY_VERSION) {
+    return;
+  }
+  const next = buildAnonymousPolicyUpgrade({
+    anonymousMinReputation: configCache.anonymousMinReputation,
+    anonymousTiers: configCache.anonymousTiers,
+  });
+  await prisma.$transaction([
+    prisma.siteSetting.upsert({
+      where: { key: ANONYMOUS_MIN_REPUTATION_KEY },
+      update: { value: String(next.anonymousMinReputation) },
+      create: { key: ANONYMOUS_MIN_REPUTATION_KEY, value: String(next.anonymousMinReputation) },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: ANONYMOUS_TIERS_KEY },
+      update: { value: JSON.stringify(next.anonymousTiers) },
+      create: { key: ANONYMOUS_TIERS_KEY, value: JSON.stringify(next.anonymousTiers) },
+    }),
+    prisma.siteSetting.upsert({
+      where: { key: ANONYMOUS_POLICY_VERSION_KEY },
+      update: { value: CURRENT_ANONYMOUS_POLICY_VERSION },
+      create: { key: ANONYMOUS_POLICY_VERSION_KEY, value: CURRENT_ANONYMOUS_POLICY_VERSION },
+    }),
+    prisma.user.updateMany({ data: { anonymousWeekKey: null } }),
+  ]);
+  configCache.anonymousMinReputation = next.anonymousMinReputation;
+  configCache.anonymousTiers = next.anonymousTiers;
+}
+
 async function upgradeStoredDefaultTextReviewPrompts(rows: Array<{ key: string; value: string }>) {
   const prompts = [
     {
@@ -2239,7 +2313,12 @@ async function upgradeStoredDefaultTextReviewPrompts(rows: Array<{ key: string; 
 }
 
 function sanitizeCommunityTrustConfig() {
-  configCache.anonymousMinReputation = normalizeSmallInt(configCache.anonymousMinReputation, 30, 0, 9999);
+  configCache.anonymousMinReputation = normalizeSmallInt(
+    configCache.anonymousMinReputation,
+    DEFAULT_ANONYMOUS_MIN_REPUTATION,
+    0,
+    9999
+  );
   configCache.accountAgeDaysPerStep = normalizeSmallInt(configCache.accountAgeDaysPerStep, 14, 1, 3650);
   configCache.accountAgePointsPerStep = normalizeSmallInt(configCache.accountAgePointsPerStep, 2, 0, 999);
   configCache.accountAgePointsCap = normalizeSmallInt(configCache.accountAgePointsCap, 36, 0, 9999);
@@ -2852,6 +2931,11 @@ export async function setCommunityTrustConfig(input: Partial<SiteConfig>): Promi
       create: { key: ANONYMOUS_MIN_REPUTATION_KEY, value: String(next.anonymousMinReputation) },
     }),
     prisma.siteSetting.upsert({
+      where: { key: ANONYMOUS_POLICY_VERSION_KEY },
+      update: { value: CURRENT_ANONYMOUS_POLICY_VERSION },
+      create: { key: ANONYMOUS_POLICY_VERSION_KEY, value: CURRENT_ANONYMOUS_POLICY_VERSION },
+    }),
+    prisma.siteSetting.upsert({
       where: { key: ACCOUNT_AGE_DAYS_PER_STEP_KEY },
       update: { value: String(next.accountAgeDaysPerStep) },
       create: { key: ACCOUNT_AGE_DAYS_PER_STEP_KEY, value: String(next.accountAgeDaysPerStep) },
@@ -2906,6 +2990,7 @@ export async function setCommunityTrustConfig(input: Partial<SiteConfig>): Promi
       update: { value: JSON.stringify(next.assistantDailyQuotas) },
       create: { key: ASSISTANT_DAILY_QUOTAS_KEY, value: JSON.stringify(next.assistantDailyQuotas) },
     }),
+    prisma.user.updateMany({ data: { anonymousWeekKey: null } }),
   ]);
   Object.assign(configCache, next);
   sanitizeCommunityTrustConfig();
@@ -2914,7 +2999,12 @@ export async function setCommunityTrustConfig(input: Partial<SiteConfig>): Promi
 }
 
 function sanitizeCommunityTrustConfigFor(next: SiteConfig) {
-  next.anonymousMinReputation = normalizeSmallInt(next.anonymousMinReputation, 30, 0, 9999);
+  next.anonymousMinReputation = normalizeSmallInt(
+    next.anonymousMinReputation,
+    DEFAULT_ANONYMOUS_MIN_REPUTATION,
+    0,
+    9999
+  );
   next.accountAgeDaysPerStep = normalizeSmallInt(next.accountAgeDaysPerStep, 14, 1, 3650);
   next.accountAgePointsPerStep = normalizeSmallInt(next.accountAgePointsPerStep, 2, 0, 999);
   next.accountAgePointsCap = normalizeSmallInt(next.accountAgePointsCap, 36, 0, 9999);

@@ -79,11 +79,11 @@
           </button>
         </div>
 
-        <el-form-item v-if="currentBoard?.anonymousEnabled" label="匿名发布">
+        <el-form-item v-if="currentBoard?.anonymousEnabled || activityTheme" label="匿名发布">
           <div class="anonymous-box" :class="{ disabled: !anonymousEnabledForForm }">
             <el-switch v-model="form.anonymous" :disabled="!anonymousEnabledForForm || !!editingId" />
             <div class="anonymous-copy">
-              <b>{{ editingId ? "保持匿名状态" : "使用匿名积分发帖" }}</b>
+              <b>{{ editingId ? "保持匿名状态" : activityTheme ? "匿名参加活动" : "使用匿名积分发帖" }}</b>
               <p>{{ anonymousHint }}</p>
             </div>
           </div>
@@ -876,7 +876,7 @@ const anonymousEnabledForForm = computed(() => {
   const anonymousState = auth.user?.anonymousState;
   // 已有匿名帖转版后仍应允许编辑；匿名能力开关只约束新发布。
   if (editingId.value) return true;
-  if (!currentBoard.value?.anonymousEnabled) return false;
+  if (!currentBoard.value?.anonymousEnabled && !activityTheme.value) return false;
   return Boolean(
     anonymousState?.eligible &&
     !anonymousState?.frozen &&
@@ -888,11 +888,14 @@ const anonymousHint = computed(() => {
   if (editingId.value) {
     return form.anonymous ? "这篇帖子会继续以匿名身份展示，编辑不会公开你的真实身份。" : "这篇帖子当前不是匿名帖。";
   }
-  if (!currentBoard.value?.anonymousEnabled) return "当前板块暂不支持匿名发帖。";
-  if (!anonymousState?.eligible) return `信誉值达到 ${anonymousState?.minReputation ?? 30} 后才能匿名发帖。`;
+  if (!currentBoard.value?.anonymousEnabled && !activityTheme.value) return "当前板块暂不支持匿名发帖。";
+  if (!anonymousState?.eligible) return `信誉值达到 ${anonymousState?.minReputation ?? 0} 后才能匿名发帖。`;
   if (anonymousState?.frozen) return "你的匿名积分当前已被冻结，请联系管理员处理。";
   if ((anonymousState?.availableCredits ?? 0) <= 0) return "本周匿名积分已用完，下周会自动刷新。";
-  return `本周还剩 ${anonymousState?.availableCredits ?? 0} / ${anonymousState?.weeklyQuota ?? 0} 点匿名积分。`;
+  const quota = `本周还剩 ${anonymousState?.availableCredits ?? 0} / ${anonymousState?.weeklyQuota ?? 0} 点匿名积分。`;
+  return activityTheme.value
+    ? `${quota} 匿名投稿可以参评，但同等质量下评分权重可能略低。`
+    : `${quota} 我们更鼓励使用固定社区身份，彼此更容易认识。`;
 });
 
 const selectedCourse = computed(() => courses.value.find((c) => c.id === meta.courseId));

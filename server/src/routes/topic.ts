@@ -42,6 +42,7 @@ import {
 import { ensureCanReadBoardType, ensureForumAccessEnabled, resolveForumAccess } from "../services/forumAccess";
 import { ensureUserCanSpeak, releaseExpiredMutes } from "../services/userModeration";
 import { consumeAnonymousCredit, createAnonymousAlias } from "../services/userTrust";
+import { allowsCampusLifeCampaignAnonymousPost } from "../services/forumAds";
 import { decodeReplyForViewer, decodeReplyForViewerWithImages, decodeTopicForViewer, decodeTopicForViewerWithImages, decodeTopicsForViewerForList } from "../services/forumPresentation";
 import { ensureForumImageAssetsForContent, summarizeForumImageModerationForContent } from "../services/imageModeration";
 import { ensureForumVideoAssetsForContent, summarizeForumVideoModerationForContent } from "../services/videoModeration";
@@ -539,13 +540,15 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
         throw Errors.forbidden("该板块当前不可发帖，已被站方临时关闭");
       }
     }
-    if (anonymous && !board.anonymousEnabled) {
-      throw Errors.forbidden("该板块暂不支持匿名发布");
-    }
-
     const effectiveMetadata = board.type === "question"
       ? normalizeQuestionMetadataForWrite(metadata)
       : (metadata ?? {});
+    const activityAllowsAnonymous = anonymous
+      && !board.anonymousEnabled
+      && await allowsCampusLifeCampaignAnonymousPost(board.slug, effectiveMetadata);
+    if (anonymous && !board.anonymousEnabled && !activityAllowsAnonymous) {
+      throw Errors.forbidden("该板块暂不支持匿名发布");
+    }
 
     const now = new Date();
     const bypassAiReview = await shouldBypassAiReviewForUser(userId, req.user!.role);

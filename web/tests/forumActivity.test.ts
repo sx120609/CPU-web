@@ -31,5 +31,7 @@ test("accepts only known campaign themes and keeps the promised judging rules", 
   assert.match(CAMPUS_LIFE_ACTIVITY.judging, /回复奖与投稿奖不可兼得/);
   assert.match(CAMPUS_LIFE_ACTIVITY.funding, /用户的暖心赞助/);
   assert.match(CAMPUS_LIFE_ACTIVITY.funding, /10份以上 VIP 权限/);
+  assert.match(CAMPUS_LIFE_ACTIVITY.judging, /匿名参与/);
+  assert.match(CAMPUS_LIFE_ACTIVITY.judging, /评分权重可能略低/);
   assert.match(CAMPUS_LIFE_ACTIVITY.funding, /只多不少/);
 });

@@ -74,7 +74,7 @@
             <h3 class="section-title">匿名与信誉规则</h3>
             <span class="toggle-pill on">5 级规则</span>
           </div>
-          <p class="section-desc">默认收起。需要时再展开调整匿名门槛、周额度、信誉积分公式和等级门槛，避免基础配置区太长。</p>
+          <p class="section-desc">新用户默认每周可匿名 1 次，活跃用户按信誉逐级增加；匿名仍保留周额度、冻结与审核限制。</p>
           <div class="summary-row">
             <span class="summary-pill">匿名门槛 {{ anonymousMinReputation }}</span>
             <span class="summary-pill">Lv.5 {{ reputationLevels[4]?.minReputation ?? 0 }}</span>
@@ -86,7 +86,7 @@
       <div v-if="trustConfigExpanded" class="site-config trust-config">
         <div class="config-copy">
           <div class="card-title">匿名与信誉规则</div>
-          <div class="desc">匿名最低信誉、周额度档位、信誉积分公式和 5 级信誉等级都可以在这里调整。匿名楼主在自己的匿名帖下匿名回复时会自动免扣点。</div>
+          <div class="desc">匿名默认向新用户开放，但次数严格受周额度控制；冻结、禁言和内容审核仍然生效。匿名楼主在自己的匿名帖下匿名回复时会自动免扣点。</div>
         </div>
         <div class="trust-config-form">
           <div class="trust-grid">
@@ -263,7 +263,7 @@ const aiReplyReviewSystemPrompt = ref("");
 const aiReplyReviewUserPrompt = ref("");
 const aiEditSimilaritySystemPrompt = ref("");
 const aiEditSimilarityUserPrompt = ref("");
-const anonymousMinReputation = ref(30);
+const anonymousMinReputation = ref(0);
 const accountAgeDaysPerStep = ref(14);
 const accountAgePointsPerStep = ref(2);
 const accountAgePointsCap = ref(36);
@@ -272,10 +272,11 @@ const postPointsCap = ref(48);
 const replyPointsPerReply = ref(2);
 const replyPointsCap = ref(48);
 const anonymousTiers = ref([
-  { reputation: 30, quota: 1 },
-  { reputation: 60, quota: 2 },
-  { reputation: 90, quota: 3 },
-  { reputation: 120, quota: 4 },
+  { reputation: 0, quota: 1 },
+  { reputation: 30, quota: 2 },
+  { reputation: 60, quota: 3 },
+  { reputation: 90, quota: 4 },
+  { reputation: 120, quota: 5 },
 ]);
 const reputationLevels = ref([
   { level: 1, name: "初来乍到", minReputation: 0 },

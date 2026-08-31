@@ -64,6 +64,18 @@ export function normalizeForumAdVipExempt(placements: readonly ForumAdPlacement[
   return placements.includes("compose-mobile-campaign") ? false : vipExempt;
 }
 
+export function isCampusLifeCampaignMetadata(value: unknown) {
+  if (!value || typeof value !== "object") return false;
+  const metadata = value as Record<string, unknown>;
+  return metadata.campaignId === "campus-life-2026"
+    && ["canteen", "nearby", "today", "fun"].includes(String(metadata.campaignTheme || ""));
+}
+
+export async function allowsCampusLifeCampaignAnonymousPost(boardSlug: string, metadata: unknown) {
+  if (boardSlug !== "life" || !isCampusLifeCampaignMetadata(metadata)) return false;
+  return (await listActiveForumAds("compose-mobile-campaign", false)).length > 0;
+}
+
 export function forumAdMetricDay(value = new Date()) {
   return new Date(value.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }

@@ -897,7 +897,7 @@ const form = reactive<SiteConfig>({
   aiReplyReviewUserPrompt: "",
   aiEditSimilaritySystemPrompt: "",
   aiEditSimilarityUserPrompt: "",
-  anonymousMinReputation: 30,
+  anonymousMinReputation: 0,
   accountAgeDaysPerStep: 14,
   accountAgePointsPerStep: 2,
   accountAgePointsCap: 36,

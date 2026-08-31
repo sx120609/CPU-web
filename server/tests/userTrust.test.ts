@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { computeUserReputationBreakdown, createAnonymousAlias, presentAnonymousAlias } from "../src/services/userTrust.js";
+import { buildAnonymousPolicyUpgrade } from "../src/services/siteSettings.js";
+import { computeAnonymousWeeklyQuota, computeUserReputationBreakdown, createAnonymousAlias, presentAnonymousAlias } from "../src/services/userTrust.js";
 
 const config = {
   anonymousMinReputation: 30,
@@ -48,4 +49,47 @@ test("匿名身份使用校园趣味昵称并兼容旧昵称", () => {
   assert.equal(upgraded, presentAnonymousAlias("匿名同学 ABCD"));
   assert.doesNotMatch(upgraded, /^匿名同学/);
   assert.equal(presentAnonymousAlias("自定义匿名名"), "自定义匿名名");
+});
+
+test("匿名策略允许新用户每周有限参与并保持严格周额度", () => {
+  const upgraded = buildAnonymousPolicyUpgrade({
+    anonymousMinReputation: 20,
+    anonymousTiers: [
+      { reputation: 20, quota: 3 },
+      { reputation: 60, quota: 5 },
+      { reputation: 90, quota: 7 },
+      { reputation: 120, quota: 10 },
+    ],
+  });
+
+  assert.equal(upgraded.anonymousMinReputation, 0);
+  assert.deepEqual(upgraded.anonymousTiers, [
+    { reputation: 0, quota: 1 },
+    { reputation: 20, quota: 3 },
+    { reputation: 60, quota: 5 },
+    { reputation: 90, quota: 7 },
+    { reputation: 120, quota: 10 },
+  ]);
+  assert.equal(computeAnonymousWeeklyQuota(0, { ...config, ...upgraded }), 1);
+  assert.equal(computeAnonymousWeeklyQuota(20, { ...config, ...upgraded }), 3);
+});
+
+test("旧默认匿名策略升级到新的渐进式额度", () => {
+  const upgraded = buildAnonymousPolicyUpgrade({
+    anonymousMinReputation: 30,
+    anonymousTiers: [
+      { reputation: 30, quota: 1 },
+      { reputation: 60, quota: 2 },
+      { reputation: 90, quota: 3 },
+      { reputation: 120, quota: 4 },
+    ],
+  });
+
+  assert.deepEqual(upgraded.anonymousTiers, [
+    { reputation: 0, quota: 1 },
+    { reputation: 30, quota: 2 },
+    { reputation: 60, quota: 3 },
+    { reputation: 90, quota: 4 },
+    { reputation: 120, quota: 5 },
+  ]);
 });

@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   FORUM_AD_PLACEMENTS,
   forumAdMetricDay,
+  isCampusLifeCampaignMetadata,
   isForumAdPlacement,
   normalizeForumAdPlacements,
   normalizeForumAdVipExempt,
@@ -24,6 +25,12 @@ test("campaign compose placement always reaches every user", () => {
   assert.equal(isForumAdPlacement("compose-mobile-campaign"), true);
   assert.equal(normalizeForumAdVipExempt(["home-mobile-top", "compose-mobile-campaign"], true), false);
   assert.equal(normalizeForumAdVipExempt(["home-mobile-top"], true), true);
+});
+
+test("recognizes only supported campus life campaign entries", () => {
+  assert.equal(isCampusLifeCampaignMetadata({ campaignId: "campus-life-2026", campaignTheme: "canteen" }), true);
+  assert.equal(isCampusLifeCampaignMetadata({ campaignId: "campus-life-2026", campaignTheme: "unknown" }), false);
+  assert.equal(isCampusLifeCampaignMetadata({ campaignId: "another", campaignTheme: "canteen" }), false);
 });
 
 test("uses the China calendar day for forum ad metrics", () => {
