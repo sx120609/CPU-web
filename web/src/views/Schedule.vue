@@ -122,7 +122,7 @@
                 v-if="widgetMenuPlatform"
                 type="button"
                 class="more-action"
-                :disabled="androidWidgetInstalling"
+                :disabled="widgetInstalling"
                 @click="handleWidgetMenuAction"
               >
                 <el-icon><Iphone /></el-icon>
@@ -754,6 +754,7 @@ import {
   isAndroidAppUpdateAvailable,
   isAndroidNativeApp,
   isFlutterNativeShell,
+  isIosNativeApp,
   isIosStandalone,
   supportsAndroidScheduleWidget,
 } from "@/utils/clientInfo";
@@ -923,7 +924,7 @@ const moreMenuOpen = ref(false);
 const moreMenuView = ref<"menu" | "theme" | "background">("menu");
 const widgetConfigCopying = ref(false);
 const widgetConfigCopied = ref(false);
-const androidWidgetInstalling = ref(false);
+const widgetInstalling = ref(false);
 const {
   backgroundImageInputRef,
   backgroundPreviewStyle,
@@ -976,7 +977,7 @@ const academicDataUnavailable = computed(() => Boolean(
 const scheduleLoginScopeText = computed(() => (
   "登录后会自动识别你当前可用的教务入口。本科生默认显示本科课表，研究生当前显示研究生课表。"
 ));
-type WidgetMenuPlatform = "ios" | "android" | "android-old";
+type WidgetMenuPlatform = "ios" | "ios-native" | "android" | "android-old";
 interface AndroidWidgetBridge {
   getVersionCode?: () => number;
   getVersionName?: () => string;
@@ -986,6 +987,11 @@ interface AndroidWidgetBridge {
   openExternalUrl?: (url: string) => void;
   supportsInAppApkDownload?: () => boolean;
   downloadAndInstallApk?: (url: string, fileName: string) => boolean;
+}
+
+interface IOSWidgetBridge {
+  supportsScheduleWidget?: () => boolean;
+  installScheduleWidget?: (payload: string) => void;
 }
 
 function scheduleStorageScope() {
@@ -1013,6 +1019,10 @@ function openMoreMenu() {
 
 function getAndroidWidgetBridge(): AndroidWidgetBridge | null {
   return ((window as any).CPUAndroid ?? null) as AndroidWidgetBridge | null;
+}
+
+function getIOSWidgetBridge(): IOSWidgetBridge | null {
+  return ((window as any).CPUIOS ?? null) as IOSWidgetBridge | null;
 }
 
 async function copyGradDebugGuide() {
@@ -1167,6 +1177,10 @@ function openGradSystemDebug() {
 }
 
 const widgetMenuPlatform = computed<WidgetMenuPlatform | null>(() => {
+  const iosBridge = getIOSWidgetBridge();
+  if (isIosNativeApp()
+    && typeof iosBridge?.installScheduleWidget === "function"
+    && iosBridge.supportsScheduleWidget?.() !== false) return "ios-native";
   if (isIosStandalone()) return "ios";
   if (isFlutterNativeShell()) return null;
   if (!isAndroidNativeApp()) return null;
@@ -1174,6 +1188,7 @@ const widgetMenuPlatform = computed<WidgetMenuPlatform | null>(() => {
 });
 
 const widgetMenuLabel = computed(() => {
+  if (widgetMenuPlatform.value === "ios-native") return "添加 iOS 小组件";
   if (widgetMenuPlatform.value === "android") return "添加安卓小组件";
   if (widgetMenuPlatform.value === "android-old") return "更新安卓客户端";
   return "导入 iOS 小组件";
@@ -1190,6 +1205,10 @@ const canShowAndroidClientDownload = computed(() => {
 });
 
 function handleWidgetMenuAction() {
+  if (widgetMenuPlatform.value === "ios-native") {
+    void installIOSWidget();
+    return;
+  }
   if (widgetMenuPlatform.value === "ios") {
     openWidgetDialog();
     return;
@@ -1199,6 +1218,31 @@ function handleWidgetMenuAction() {
     return;
   }
   showAndroidUpdateRequired("widget");
+}
+
+async function installIOSWidget() {
+  moreMenuOpen.value = false;
+  const bridge = getIOSWidgetBridge();
+  if (typeof bridge?.installScheduleWidget !== "function") {
+    ElMessage.warning("当前 iOS 客户端暂不支持原生小组件");
+    return;
+  }
+  if (!jwxt.isLoggedIn) {
+    ElMessage.warning("请先完成教务授权，再添加 iOS 小组件");
+    return;
+  }
+
+  widgetInstalling.value = true;
+  try {
+    const token = await jwxtApi.createScheduleWidgetToken({ name: "iOS 小组件" });
+    bridge.installScheduleWidget(JSON.stringify({
+      endpoint: token.endpoint,
+      title: "药大课表",
+    }));
+    ElMessage.success("小组件配置已保存");
+  } finally {
+    widgetInstalling.value = false;
+  }
 }
 
 function openWidgetDialog() {
@@ -1227,7 +1271,7 @@ async function installAndroidWidget() {
     return;
   }
 
-  androidWidgetInstalling.value = true;
+  widgetInstalling.value = true;
   try {
     const token = await jwxtApi.createScheduleWidgetToken({ name: "Android 小组件" });
     bridge.installScheduleWidget(JSON.stringify({
@@ -1237,7 +1281,7 @@ async function installAndroidWidget() {
     androidWidgetGuideOpen.value = true;
     ElMessage.success("小组件配置已保存");
   } finally {
-    androidWidgetInstalling.value = false;
+    widgetInstalling.value = false;
   }
 }
 

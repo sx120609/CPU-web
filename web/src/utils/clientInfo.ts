@@ -17,6 +17,7 @@ export function detectClientPlatform(ua = navigator.userAgent): ClientPlatform {
   const override = resolveClientOverride();
   if (override) return override;
 
+  if (isIosNativeApp(ua)) return "ios";
   if (isHarmonyNativeApp(ua)) return "harmony";
   if (isAndroidNativeApp(ua)) return "android";
   if (isDesktopNativeApp(ua)) return "desktop";
@@ -61,6 +62,13 @@ export function isLikelyAndroidDevice(ua = navigator.userAgent) {
 export function isAndroidNativeApp(ua = navigator.userAgent) {
   const source = (ua || "").toLowerCase();
   return source.includes("cpuwebscheduleapp") || resolveClientOverride() === "android";
+}
+
+export function isIosNativeApp(ua = navigator.userAgent) {
+  const source = (ua || "").toLowerCase();
+  const bridge = typeof window === "undefined" ? null : (window as any).CPUIOS;
+  return source.includes("cpuwebiosapp")
+    || (typeof bridge?.supportsScheduleWidget === "function" && bridge.supportsScheduleWidget() === true);
 }
 
 export function isHarmonyNativeApp(ua = navigator.userAgent) {
