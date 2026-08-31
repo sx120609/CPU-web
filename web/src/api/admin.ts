@@ -1206,6 +1206,7 @@ export const adminApi = {
   updateWechatBinding: (id: number, payload: { enabled: boolean }) => request.patch<any>(`/admin/wechat/bindings/${id}`, payload),
   deleteWechatBinding: (id: number) => request.delete<{ ok: true }>(`/admin/wechat/bindings/${id}`),
   sendWechatTestMessage: (id: number, message: string) => request.post<{ ok: true }>(`/admin/wechat/bindings/${id}/test-message`, { message }),
+  sendWechatTemplateTestMessage: (id: number) => request.post<{ ok: true; status: string; callbackExpected: boolean }>(`/admin/wechat/bindings/${id}/test-template`),
   dispatchWechatNotifications: () => request.post<{ sent: number; skipped: number }>("/admin/wechat/dispatch-notifications"),
   publishWechatMenu: () => request.post<{ ok: true; taggedCount: number; conditionalMenuId: string }>("/admin/wechat/menu/publish"),
   wechatLogs: (params: { status?: string; eventType?: string; page?: number; size?: number }, options?: RequestOptions) =>

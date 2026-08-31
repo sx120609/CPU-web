@@ -10,6 +10,7 @@ import {
   generateWechatToken,
   getWechatServiceConfigRaw,
   publishWechatDefaultMenu,
+  sendWechatTemplateTestMessage,
   sendWechatTestMessage,
   syncWechatBoundTag,
   updateWechatServiceConfig,
@@ -131,6 +132,17 @@ wechatAdminRouter.post("/bindings/:id/test-message", validate(z.object({ message
     const binding = await prisma.wechatBinding.findUnique({ where: { id } });
     if (!binding) throw Errors.notFound("微信绑定不存在");
     ok(res, await sendWechatTestMessage(binding.openId, req.body.message));
+  } catch (error) {
+    next(error);
+  }
+});
+
+wechatAdminRouter.post("/bindings/:id/test-template", async (req, res, next) => {
+  try {
+    const id = positiveId(req.params.id);
+    const binding = await prisma.wechatBinding.findUnique({ where: { id } });
+    if (!binding) throw Errors.notFound("微信绑定不存在");
+    ok(res, await sendWechatTemplateTestMessage(binding.openId, binding.userId));
   } catch (error) {
     next(error);
   }

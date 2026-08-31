@@ -60,12 +60,18 @@ export type WechatInboundMessage = {
   msgId: string;
   event: string;
   eventKey: string;
+  status: string;
   ticket: string;
   mediaId: string;
   picUrl: string;
   format: string;
   recognition: string;
   thumbMediaId: string;
+};
+
+type WechatPersistentDelivery = {
+  channel: "subscription" | "template";
+  response: Record<string, any>;
 };
 
 let accessTokenCache: { fingerprint: string; token: string; expiresAt: number } | null = null;
@@ -500,12 +506,40 @@ export async function processWechatInbound(message: WechatInboundMessage, option
   const openId = message.fromUserName.trim();
   if (!openId) return { ignored: true };
   const eventType = message.msgType === "event" ? `event:${message.event.toLowerCase()}` : message.msgType;
-  const messageId = message.msgId || [openId, message.createTime, eventType, message.eventKey].join(":");
+  const templateDeliveryEvent = isWechatTemplateDeliveryEvent(message);
+  const messageId = templateDeliveryEvent && message.msgId
+    ? `callback:template:${message.msgId}`
+    : message.msgId || [openId, message.createTime, eventType, message.eventKey].join(":");
   const existing = await prisma.wechatMessageLog.findUnique({ where: { messageId }, select: { id: true } }).catch(() => null);
   if (existing) return { duplicate: true };
 
   let binding = await prisma.wechatBinding.findUnique({ where: { openId } });
   const now = new Date();
+  if (templateDeliveryEvent) {
+    const delivery = wechatTemplateDeliveryResult(message.status);
+    const outboundMessageId = wechatTemplateOutboundMessageId(message.msgId);
+    const reconciled = outboundMessageId
+      ? await prisma.wechatMessageLog.updateMany({
+          where: { messageId: outboundMessageId, direction: "outbound" },
+          data: {
+            status: delivery.status,
+            result: delivery.result,
+            rawPayload: JSON.stringify(message).slice(0, 12_000),
+          },
+        })
+      : { count: 0 };
+    await logWechatMessage({
+      direction: "inbound",
+      eventType,
+      status: "ok",
+      openId,
+      userId: binding?.userId,
+      messageId,
+      result: `${delivery.result}:reconciled=${reconciled.count}`,
+      rawPayload: message,
+    });
+    return { ok: true, reconciled: reconciled.count };
+  }
   if (message.msgType === "event" && message.event.toLowerCase() === "unsubscribe") {
     if (binding) {
       binding = await prisma.wechatBinding.update({
@@ -980,9 +1014,70 @@ export function renderWechatAssistantReplyImage(response: CampusAssistantRespons
 export async function sendWechatTestMessage(openId: string, content: string) {
   const normalizedOpenId = openId.trim();
   if (!normalizedOpenId) throw Errors.badRequest("请填写接收人的 OpenID");
-  await sendWechatCustomerText(normalizedOpenId, content.trim());
-  await logWechatMessage({ direction: "outbound", eventType: "test", status: "ok", openId: normalizedOpenId, content });
-  return { ok: true };
+  try {
+    const response = await sendWechatCustomerText(normalizedOpenId, content.trim());
+    await logWechatMessage({
+      direction: "outbound",
+      eventType: "test",
+      status: "ok",
+      openId: normalizedOpenId,
+      content,
+      result: "customer",
+      rawPayload: response,
+    });
+    return { ok: true };
+  } catch (error) {
+    const result = `customer:${error instanceof Error ? error.message : String(error)}`;
+    await logWechatMessage({ direction: "outbound", eventType: "test", status: "error", openId: normalizedOpenId, content, result });
+    if (isWechatCustomerWindowError(error)) {
+      throw Errors.badRequest("客服消息窗口已关闭，请让用户先主动发消息，或改用模板测试");
+    }
+    throw error;
+  }
+}
+
+export async function sendWechatTemplateTestMessage(openId: string, userId?: number | null) {
+  const normalizedOpenId = openId.trim();
+  if (!normalizedOpenId) throw Errors.badRequest("请填写接收人的 OpenID");
+  const config = await getWechatServiceConfigRaw();
+  if (!canSendNotificationTemplate(config)) throw Errors.badRequest("请先完整配置模板消息");
+  const createdAt = new Date();
+  const notification = {
+    id: Number(String(createdAt.getTime()).slice(-8)),
+    title: "微信通知通道正常",
+    content: "这是一条来自药大拾间的模板通知测试。",
+    createdAt,
+    source: "药大拾间",
+  };
+  const link = wechatSettingsUrl();
+  try {
+    const response = await sendWechatTemplateNotification(config, normalizedOpenId, notification, link);
+    const messageId = wechatTemplateOutboundMessageId(response?.msgid);
+    await logWechatMessage({
+      direction: "outbound",
+      eventType: "template-test",
+      status: "accepted",
+      openId: normalizedOpenId,
+      userId: userId || undefined,
+      messageId: messageId || undefined,
+      content: notification.content,
+      result: "template",
+      rawPayload: response,
+    });
+    return { ok: true, status: "accepted", callbackExpected: Boolean(messageId) };
+  } catch (error) {
+    const result = `template:${error instanceof Error ? error.message : String(error)}`;
+    await logWechatMessage({
+      direction: "outbound",
+      eventType: "template-test",
+      status: "error",
+      openId: normalizedOpenId,
+      userId: userId || undefined,
+      content: notification.content,
+      result,
+    });
+    throw error;
+  }
 }
 
 export async function dispatchRecentWechatNotifications() {
@@ -1087,7 +1182,7 @@ export async function dispatchRecentWechatNotifications() {
   deliveryLogs.forEach((delivery) => {
     if (!delivery.userId || !delivery.notificationId) return;
     const key = wechatNotificationDeliveryKey(delivery.notificationId, delivery.userId);
-    if (delivery.status === "ok") deliveredKeys.add(key);
+    if (delivery.status === "ok" || delivery.status === "accepted") deliveredKeys.add(key);
     else if (delivery.status === "skipped") skippedKeys.add(key);
     else if (delivery.status === "error") {
       const current = failedLogsByKey.get(key) || [];
@@ -1115,6 +1210,11 @@ export async function dispatchRecentWechatNotifications() {
       const failedCustomerAttempts = (failedLogsByKey.get(deliveryKey) || []).filter((entry) => (
         entry.createdAt >= attemptSince && isWechatCustomerDeliveryFailure(entry.result)
       )).length;
+      const persistentFailures = (failedLogsByKey.get(deliveryKey) || []).filter((entry) => (
+        isWechatPersistentDeliveryFailure(entry.result)
+      ));
+      const persistentRetryBlocked = persistentFailures.length >= 3
+        || persistentFailures.some((entry) => isWechatPermanentPersistentDeliveryFailure(entry.result));
       let attemptedChannel = "";
       try {
         const link = resolveNotificationLink(notification.link, notification.payload);
@@ -1128,11 +1228,12 @@ export async function dispatchRecentWechatNotifications() {
           && wechatNotificationPriority(notification) >= 60
           && !unavailableCustomerWindows.has(binding.userId);
         let deliveryChannel = "";
+        let deliveryResponse: Record<string, any> | null = null;
         let customerError: unknown = null;
         if (canTryCustomer) {
           attemptedChannel = "customer";
           try {
-            await sendWechatCustomerText(binding.openId, renderNotificationText(notification, link));
+            deliveryResponse = await sendWechatCustomerText(binding.openId, renderNotificationText(notification, link));
             customerDeliveriesByUserId.set(binding.userId, customerDeliveries + 1);
             deliveryChannel = "customer";
           } catch (error) {
@@ -1141,9 +1242,11 @@ export async function dispatchRecentWechatNotifications() {
             unavailableCustomerWindows.add(binding.userId);
           }
         }
-        if (!deliveryChannel) {
+        if (!deliveryChannel && !persistentRetryBlocked) {
           attemptedChannel = canSendSubscriptionNotification(config) ? "subscription" : canSendNotificationTemplate(config) ? "template" : attemptedChannel;
-          deliveryChannel = await sendWechatPersistentNotification(config, binding.openId, notification, link);
+          const persistentDelivery = await sendWechatPersistentNotification(config, binding.openId, notification, link);
+          deliveryChannel = persistentDelivery?.channel || "";
+          deliveryResponse = persistentDelivery?.response || null;
         }
         if (!deliveryChannel && customerError) throw customerError;
         if (!deliveryChannel) {
@@ -1164,6 +1267,7 @@ export async function dispatchRecentWechatNotifications() {
                 failedCustomerAttempts,
                 priority: wechatNotificationPriority(notification),
                 customerWindowUnavailable: unavailableCustomerWindows.has(binding.userId),
+                persistentRetryBlocked,
               }),
             });
             skippedKeys.add(deliveryKey);
@@ -1173,12 +1277,16 @@ export async function dispatchRecentWechatNotifications() {
         await logWechatMessage({
           direction: "outbound",
           eventType: "notification",
-          status: "ok",
+          status: deliveryChannel === "template" ? "accepted" : "ok",
           openId: binding.openId,
           userId: binding.userId,
+          messageId: deliveryChannel === "template"
+            ? wechatTemplateOutboundMessageId(deliveryResponse?.msgid)
+            : undefined,
           notificationId: notification.id,
           content: notification.content,
           result: deliveryChannel,
+          rawPayload: deliveryResponse || undefined,
         });
         deliveredKeys.add(deliveryKey);
         sent += 1;
@@ -1235,6 +1343,14 @@ export function isWechatCustomerDeliveryFailure(result?: string | null) {
   return value.startsWith("customer:") || isWechatCustomerWindowError(value);
 }
 
+export function isWechatPersistentDeliveryFailure(result?: string | null) {
+  return /^(?:template|subscription):/i.test(String(result || ""));
+}
+
+export function isWechatPermanentPersistentDeliveryFailure(result?: string | null) {
+  return /^(?:template|subscription):.*(?:user block|user reject|user refuse|account is not followed)/i.test(String(result || ""));
+}
+
 function wechatNotificationDeliveryKey(notificationId: number, userId: number) {
   return `${notificationId}:${userId}`;
 }
@@ -1246,7 +1362,9 @@ function wechatNotificationSkipReason(input: {
   failedCustomerAttempts: number;
   priority: number;
   customerWindowUnavailable: boolean;
+  persistentRetryBlocked: boolean;
 }) {
+  if (input.persistentRetryBlocked) return "persistent-delivery-retry-limit-reached";
   if (!input.withinCustomerWindow) return "no-persistent-delivery-channel";
   if (input.customerWindowUnavailable) return "customer-window-unavailable";
   if (input.customerDeliveries >= input.customerLimit) return "customer-message-quota-exhausted";
@@ -1255,20 +1373,25 @@ function wechatNotificationSkipReason(input: {
   return "no-available-delivery-channel";
 }
 
-async function sendWechatPersistentNotification(config: WechatConfigRow, openId: string, notification: any, link: string) {
+async function sendWechatPersistentNotification(
+  config: WechatConfigRow,
+  openId: string,
+  notification: any,
+  link: string,
+): Promise<WechatPersistentDelivery | null> {
   if (canSendSubscriptionNotification(config)) {
     try {
-      await sendWechatSubscriptionNotification(config, openId, notification);
-      return "subscription";
+      const response = await sendWechatSubscriptionNotification(config, openId, notification);
+      return { channel: "subscription", response };
     } catch (error) {
       if (!canSendNotificationTemplate(config)) throw error;
     }
   }
   if (canSendNotificationTemplate(config)) {
-    await sendWechatTemplateNotification(config, openId, notification, link);
-    return "template";
+    const response = await sendWechatTemplateNotification(config, openId, notification, link);
+    return { channel: "template", response };
   }
-  return "";
+  return null;
 }
 
 export function wechatNotificationPriority(notification: { category?: string | null; payload?: string | null }) {
@@ -1366,9 +1489,10 @@ export function parseWechatXml(xml: string): WechatInboundMessage & { encrypt: s
     createTime: readXmlTag(xml, "CreateTime"),
     msgType: readXmlTag(xml, "MsgType").toLowerCase(),
     content: readXmlTag(xml, "Content"),
-    msgId: readXmlTag(xml, "MsgId"),
+    msgId: readXmlTag(xml, "MsgId") || readXmlTag(xml, "MsgID"),
     event: readXmlTag(xml, "Event"),
     eventKey: readXmlTag(xml, "EventKey"),
+    status: readXmlTag(xml, "Status"),
     ticket: readXmlTag(xml, "Ticket"),
     mediaId: readXmlTag(xml, "MediaId"),
     picUrl: readXmlTag(xml, "PicUrl"),
@@ -1377,6 +1501,22 @@ export function parseWechatXml(xml: string): WechatInboundMessage & { encrypt: s
     thumbMediaId: readXmlTag(xml, "ThumbMediaId"),
     encrypt: readXmlTag(xml, "Encrypt"),
   };
+}
+
+export function isWechatTemplateDeliveryEvent(message: Pick<WechatInboundMessage, "msgType" | "event">) {
+  return message.msgType.toLowerCase() === "event" && message.event.toLowerCase() === "templatesendjobfinish";
+}
+
+export function wechatTemplateOutboundMessageId(value?: string | number | null) {
+  const messageId = String(value ?? "").trim();
+  return messageId ? `outbound:template:${messageId}` : "";
+}
+
+export function wechatTemplateDeliveryResult(rawStatus?: string | null) {
+  const callbackStatus = String(rawStatus || "unknown").trim().toLowerCase() || "unknown";
+  return callbackStatus === "success"
+    ? { status: "ok", result: "template" }
+    : { status: "error", result: `template:${callbackStatus}` };
 }
 
 export function shouldDeliverWechatNotification(

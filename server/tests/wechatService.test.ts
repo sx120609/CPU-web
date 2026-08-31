@@ -15,6 +15,9 @@ import {
   getWechatBindingCapabilities,
   isWechatCustomerDeliveryFailure,
   isWechatCustomerWindowError,
+  isWechatPermanentPersistentDeliveryFailure,
+  isWechatPersistentDeliveryFailure,
+  isWechatTemplateDeliveryEvent,
   markWechatServiceClientUrl,
   parseWechatXml,
   renderWechatAssistantReplyImage,
@@ -27,6 +30,8 @@ import {
   wechatNotificationAttemptSince,
   wechatNotificationAudienceWhere,
   wechatNotificationPriority,
+  wechatTemplateDeliveryResult,
+  wechatTemplateOutboundMessageId,
   verifyWechatSignature,
 } from "../src/services/wechatService";
 import { normalizeAudioTranscriptionsUrl } from "../src/services/audioTranscription";
@@ -80,6 +85,16 @@ test("parses text and scan event XML", () => {
   assert.equal(event.msgType, "event");
   assert.equal(event.event, "SCAN");
   assert.equal(event.eventKey, "bind_token");
+});
+
+test("parses and classifies final template-delivery callbacks", () => {
+  const callback = parseWechatXml("<xml><FromUserName><![CDATA[o789]]></FromUserName><CreateTime>1788171600</CreateTime><MsgType><![CDATA[event]]></MsgType><Event><![CDATA[TEMPLATESENDJOBFINISH]]></Event><MsgID>987654321</MsgID><Status><![CDATA[failed:user block]]></Status></xml>");
+  assert.equal(callback.msgId, "987654321");
+  assert.equal(callback.status, "failed:user block");
+  assert.equal(isWechatTemplateDeliveryEvent(callback), true);
+  assert.equal(wechatTemplateOutboundMessageId(callback.msgId), "outbound:template:987654321");
+  assert.deepEqual(wechatTemplateDeliveryResult("success"), { status: "ok", result: "template" });
+  assert.deepEqual(wechatTemplateDeliveryResult(callback.status), { status: "error", result: "template:failed:user block" });
 });
 
 test("parses image and voice fields used by the multimodal assistant", () => {
@@ -142,6 +157,10 @@ test("recognizes WeChat customer-window and quota errors across old and new log 
   assert.equal(isWechatCustomerDeliveryFailure("customer:network timeout"), true);
   assert.equal(isWechatCustomerDeliveryFailure("response out of time limit (45015)"), true);
   assert.equal(isWechatCustomerDeliveryFailure("template:invalid template"), false);
+  assert.equal(isWechatPersistentDeliveryFailure("template:failed:system failed"), true);
+  assert.equal(isWechatPersistentDeliveryFailure("customer:response out of time limit (45015)"), false);
+  assert.equal(isWechatPermanentPersistentDeliveryFailure("template:failed:user block"), true);
+  assert.equal(isWechatPermanentPersistentDeliveryFailure("template:failed:system failed"), false);
 });
 
 test("generates credentials accepted by the public-platform form", () => {

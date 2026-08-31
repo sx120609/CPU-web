@@ -173,9 +173,10 @@
           <el-table-column label="最近交互" min-width="150">
             <template #default="{ row }">{{ row.lastInteractionAt ? fmtDate(row.lastInteractionAt) : "—" }}</template>
           </el-table-column>
-          <el-table-column label="操作" width="170" fixed="right">
+          <el-table-column label="操作" width="230" fixed="right">
             <template #default="{ row }">
-              <el-button text type="primary" @click="sendTest(row)">测试</el-button>
+              <el-button text type="primary" @click="sendCustomerTest(row)">客服测试</el-button>
+              <el-button text type="primary" @click="sendTemplateTest(row)">模板测试</el-button>
               <el-button text type="danger" @click="removeBinding(row)">删除</el-button>
             </template>
           </el-table-column>
@@ -373,7 +374,7 @@ async function toggleBinding(row: any, value: string | number | boolean) {
   }
 }
 
-async function sendTest(row: any) {
+async function sendCustomerTest(row: any) {
   const result = await ElMessageBox.prompt("这条消息会通过服务号客服接口发送给该用户。", "发送测试消息", {
     inputValue: "这是一条来自药大拾间的服务号接入测试消息。",
     inputValidator: (value) => value.trim().length > 0 || "请输入消息内容",
@@ -381,6 +382,17 @@ async function sendTest(row: any) {
   if (!result) return;
   await adminApi.sendWechatTestMessage(row.id, result.value.trim());
   ElMessage.success("测试消息已提交");
+}
+
+async function sendTemplateTest(row: any) {
+  const confirmed = await ElMessageBox.confirm(
+    "这条消息会通过当前模板发送，并等待微信最终投递回执。确认继续？",
+    "发送模板测试",
+    { type: "info", confirmButtonText: "确认发送" },
+  ).then(() => true).catch(() => false);
+  if (!confirmed) return;
+  const result = await adminApi.sendWechatTemplateTestMessage(row.id);
+  ElMessage.success(result.callbackExpected ? "微信已受理，正在等待最终投递回执" : "微信已受理，但未返回可追踪的消息 ID");
 }
 
 async function removeBinding(row: any) {
