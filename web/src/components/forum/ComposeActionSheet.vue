@@ -11,7 +11,7 @@
     <p class="compose-intro">先选你想做的事，发布页会自动准备对应板块和表单。</p>
     <section v-if="campaignAd" class="campaign-section">
       <button type="button" class="campaign-banner" @click="openCampaign">
-        <span class="campaign-kicker"><AppIcon name="gift" />限时活动 · 总奖金 200 元</span>
+        <span class="campaign-kicker"><AppIcon name="gift" />限时活动 · 200 元奖金 + 10份以上 VIP</span>
         <b>{{ CAMPUS_LIFE_ACTIVITY.shortTitle }}</b>
         <small>{{ CAMPUS_LIFE_ACTIVITY.compactRule }}</small>
         <span class="campaign-link">{{ campaignAd.buttonText || "查看活动规则" }}<AppIcon name="arrow-right" /></span>

@@ -17,7 +17,11 @@
 
     <div v-else v-loading="loading" class="cpu-card form">
       <el-form label-position="top" :model="form">
-        <el-form-item label="选择板块" required>
+        <div v-if="currentBoard && !boardPickerExpanded" class="selected-board-row">
+          <span><AppIcon name="board" />发布到 <b>{{ currentBoard.name }}</b></span>
+          <button v-if="!editingId" type="button" @click="boardPickerExpanded = true">更换</button>
+        </div>
+        <el-form-item v-else label="选择板块" required>
           <el-select v-model="form.boardSlug" placeholder="选择要发帖的板块" :disabled="!!editingId" @change="onBoardChange">
             <el-option-group v-for="(group, label) in groupedBoards" :key="label" :label="label">
               <el-option
@@ -42,13 +46,17 @@
           <div>
             <span class="activity-guide__kicker">{{ CAMPUS_LIFE_ACTIVITY.title }} · {{ activityTheme.label }}</span>
             <b>{{ activityTheme.prompt }}</b>
-            <p>{{ CAMPUS_LIFE_ACTIVITY.judging }}</p>
-            <p>{{ CAMPUS_LIFE_ACTIVITY.funding }}</p>
-            <small>{{ CAMPUS_LIFE_ACTIVITY.intro }}</small>
+            <p>{{ CAMPUS_LIFE_ACTIVITY.compactRule }}</p>
+            <details>
+              <summary>查看评选规则与奖金来源</summary>
+              <p>{{ CAMPUS_LIFE_ACTIVITY.judging }}</p>
+              <p>{{ CAMPUS_LIFE_ACTIVITY.funding }}</p>
+              <small>{{ CAMPUS_LIFE_ACTIVITY.intro }}</small>
+            </details>
           </div>
         </section>
 
-        <div class="publish-mode-picker" role="radiogroup" aria-label="发布形式">
+        <div v-if="!activityTheme" class="publish-mode-picker" role="radiogroup" aria-label="发布形式">
           <button
             type="button"
             class="publish-mode-option"
@@ -57,8 +65,7 @@
             :aria-checked="publishMode === 'say'"
             @click="selectPublishMode('say')"
           >
-            <b>发说说</b>
-            <span>只写正文，内容流直接展示正文摘要</span>
+            <b>说说</b>
           </button>
           <button
             type="button"
@@ -68,8 +75,7 @@
             :aria-checked="publishMode === 'post'"
             @click="selectPublishMode('post')"
           >
-            <b>发帖子</b>
-            <span>标题加正文，适合信息较完整的内容</span>
+            <b>帖子</b>
           </button>
         </div>
 
@@ -338,7 +344,7 @@
                 <p>{{ secondHandDescriptionHint }}</p>
               </div>
             </div>
-            <div class="post-editor-toolbar">
+            <div v-if="!isMobileLayout || mobileAdvancedToolsOpen" class="post-editor-toolbar">
               <div class="editor-mode-switch" role="tablist" aria-label="正文编辑模式">
                 <button
                   type="button"
@@ -346,7 +352,7 @@
                   :class="{ active: editorMode === 'visual' }"
                   @click="setEditorMode('visual')"
                 >
-                  可视化编辑
+                  排版
                 </button>
                 <button
                   type="button"
@@ -354,21 +360,16 @@
                   :class="{ active: editorMode === 'markup' }"
                   @click="setEditorMode('markup')"
                 >
-                  Markdown / HTML
+                  Markdown
                 </button>
               </div>
               <el-button size="small" type="primary" plain :disabled="smartPostBusy" @click="openSmartPost">
-                {{ smartPostBusy ? "Agent 后台处理中" : "智慧发帖" }}
+                {{ smartPostBusy ? "AI 处理中" : "AI 帮写" }}
               </el-button>
             </div>
 
-            <p class="editor-mode-hint">
-              <template v-if="editorMode === 'visual'">
-                适合直接排版、插图和视频。想写源码可切到 Markdown / HTML 高级模式。
-              </template>
-              <template v-else>
-                高级模式支持 Markdown 和安全 HTML。切回可视化后，会按最终渲染效果继续编辑。
-              </template>
+            <p v-if="editorMode === 'markup'" class="editor-mode-hint">
+              支持 Markdown 与安全 HTML，可随时切回排版。
             </p>
 
             <RichTextEditor
@@ -378,6 +379,7 @@
               :max-length="CONTENT_MAX"
               :draft-key="contentDraftKey"
               :restore-draft="false"
+              :simple-mobile="isMobileLayout && !mobileAdvancedToolsOpen"
             />
 
             <div v-else class="markup-editor-shell">
@@ -386,7 +388,7 @@
                 <button type="button" class="markup-helper-btn" @click="insertMarkupSnippet(markupQuoteSnippet)">引用</button>
                 <button type="button" class="markup-helper-btn" @click="insertMarkupSnippet(markupListSnippet)">列表</button>
                 <button type="button" class="markup-helper-btn" @click="insertMarkupSnippet(markupTableSnippet)">表格</button>
-                <button type="button" class="markup-helper-btn" @click="insertMarkupSnippet(markupCenterSnippet)">居中 HTML</button>
+                <button type="button" class="markup-helper-btn" @click="insertMarkupSnippet(markupCenterSnippet)">居中</button>
               </div>
               <textarea
                 ref="markupTextareaRef"
@@ -410,6 +412,14 @@
                 <MarkdownView v-else :content="form.content" />
               </div>
             </div>
+            <button
+              v-if="isMobileLayout"
+              type="button"
+              class="creator-tools-toggle"
+              @click="toggleMobileAdvancedTools"
+            >
+              <AppIcon name="tools" />{{ mobileAdvancedToolsOpen ? "收起创作工具" : "更多创作工具" }}
+            </button>
           </div>
         </el-form-item>
 
@@ -431,7 +441,7 @@
 
         <el-form-item class="form-actions">
           <el-button type="primary" :loading="submitting" :disabled="submitDisabled" @click="submit">{{ submitButtonLabel }}</el-button>
-          <el-button :disabled="submitting" @click="$router.back()">取消</el-button>
+          <el-button v-if="!isMobileLayout" :disabled="submitting" @click="$router.back()">取消</el-button>
         </el-form-item>
       </el-form>
     </div>
@@ -601,6 +611,7 @@ import { useSmartPostJobStore } from "@/stores/smartPostJob";
 import { fmtDate } from "@/utils/format";
 import { forumInternalTitle } from "@/utils/forumContent";
 import { CAMPUS_LIFE_ACTIVITY, resolveCampusLifeActivityTheme } from "@/utils/forumActivity";
+import { useMobileLayout } from "@/utils/mobileLayout";
 import {
   createForumSubmissionId,
   getForumRequestMessage,
@@ -614,6 +625,7 @@ const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
 const smartPost = useSmartPostJobStore();
+const isMobileLayout = useMobileLayout();
 
 const boards = ref<Board[]>([]);
 const courses = ref<Course[]>([]);
@@ -623,6 +635,8 @@ const coursesLoading = ref(false);
 const coursesLoaded = ref(false);
 const courseLoadError = ref("");
 const activityAvailable = ref(false);
+const boardPickerExpanded = ref(!(typeof route.query.board === "string" && route.query.board));
+const mobileAdvancedToolsOpen = ref(false);
 const submitting = ref(false);
 const submissionProgress = ref("");
 const pendingSubmissionAttempt = ref<{ fingerprint: string; submissionId: string } | null>(null);
@@ -833,6 +847,7 @@ const marketPreviewFacts = computed(() => {
   return facts;
 });
 const submitButtonLabel = computed(() => {
+  if (isMobileLayout.value) return editingId.value ? "预览提交" : "预览发布";
   if (editingId.value) return "预览并重新提交";
   if (!isSecondHandPost.value) return "预览并发布";
   if (meta.marketKind === "wanted") return "预览求购帖";
@@ -965,6 +980,7 @@ watch(() => route.query.board, async (value) => {
   const nextBoard = typeof value === "string" ? value : "";
   if (!nextBoard || nextBoard === form.boardSlug) return;
   form.boardSlug = nextBoard;
+  boardPickerExpanded.value = false;
   normalizeSelectedBoard();
   if (boardType.value === "coursereview") await loadCoursesForReview();
 });
@@ -1014,6 +1030,7 @@ async function loadInitial() {
       const t = await topicApi.detail(editingId.value, { suppressErrorMessage: true });
       if (seq !== loadSeq) return;
       form.boardSlug = t.board?.slug ?? "";
+      boardPickerExpanded.value = false;
       form.title = t.title;
       form.content = t.content;
       form.anonymous = Boolean(t.isAnonymous);
@@ -1022,6 +1039,7 @@ async function loadInitial() {
       publishModeTouched.value = true;
       if (t.board?.type === "market") normalizeExistingMarketMeta(t.metadata || {});
       editorMode.value = resolveInitialEditorMode(t.content, t.metadata);
+      if (editorMode.value === "markup") mobileAdvancedToolsOpen.value = true;
       normalizeSelectedBoard();
     } else {
       migrateLegacyDraftForCurrentScope();
@@ -1055,6 +1073,8 @@ function resetEditorStateForLoad() {
   blockedReviewInfo.riskScore = null;
   editorMode.value = "visual";
   activityAvailable.value = false;
+  boardPickerExpanded.value = !(typeof route.query.board === "string" && route.query.board);
+  mobileAdvancedToolsOpen.value = false;
   publishMode.value = route.query.mode === "say" ? "say" : "post";
   publishModeTouched.value = typeof route.query.mode === "string";
   form.boardSlug = typeof route.query.board === "string" && !editingId.value ? route.query.board : "";
@@ -1081,6 +1101,7 @@ async function loadCoursesForReview(force = false) {
 }
 
 function onBoardChange() {
+  boardPickerExpanded.value = false;
   publishModeTouched.value = false;
   publishMode.value = defaultPublishMode();
   if (boardType.value === "coursereview") void loadCoursesForReview();
@@ -1351,6 +1372,11 @@ function setEditorMode(nextMode: PostEditorMode) {
   editorMode.value = nextMode;
   scheduleFormDraftSave();
   if (nextMode === "markup") scheduleMarkupDraftSave(form.content);
+}
+
+function toggleMobileAdvancedTools() {
+  if (mobileAdvancedToolsOpen.value && editorMode.value === "markup") setEditorMode("visual");
+  mobileAdvancedToolsOpen.value = !mobileAdvancedToolsOpen.value;
 }
 
 async function openSecondHandImagePicker() {
@@ -1872,21 +1898,41 @@ function notifyVideoReviewState(summary?: {
 }
 .post-load-state { min-height: 280px; display: grid; place-items: center; }
 
+.selected-board-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 9px 12px;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 10px;
+  color: var(--cpu-text-secondary);
+  background: var(--cpu-surface-subtle);
+  font-size: 12px;
+}
+
+.selected-board-row span { display: inline-flex; align-items: center; gap: 6px; }
+.selected-board-row b { color: var(--cpu-text); }
+.selected-board-row button { padding: 3px 5px; border: 0; color: var(--cpu-primary); background: transparent; font-size: 12px; font-weight: 700; cursor: pointer; }
+
 .activity-guide {
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr);
-  gap: 12px;
-  margin: 0 0 18px;
-  padding: 15px;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 10px;
+  margin: 0 0 14px;
+  padding: 12px;
   border: 1px solid color-mix(in srgb, var(--cpu-primary) 23%, var(--cpu-border-soft));
   border-radius: 14px;
   background: linear-gradient(135deg, color-mix(in srgb, var(--cpu-primary) 9%, var(--cpu-card)), var(--cpu-card));
 }
-.activity-guide__icon { display: grid; width: 42px; height: 42px; place-items: center; border-radius: 12px; color: var(--cpu-primary); background: var(--cpu-card); font-size: 21px; }
+.activity-guide__icon { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 10px; color: var(--cpu-primary); background: var(--cpu-card); font-size: 17px; }
 .activity-guide__kicker { display: block; margin-bottom: 4px; color: var(--cpu-primary); font-size: 11px; font-weight: 800; }
 .activity-guide b { display: block; color: var(--cpu-text); font-size: 14px; line-height: 1.55; }
 .activity-guide p { margin: 5px 0 0; color: var(--cpu-text-secondary); font-size: 12px; line-height: 1.65; }
 .activity-guide small { display: block; margin-top: 6px; color: var(--cpu-text-muted); font-size: 11px; line-height: 1.6; }
+.activity-guide details { margin-top: 7px; color: var(--cpu-text-secondary); font-size: 11px; }
+.activity-guide summary { width: fit-content; color: var(--cpu-primary); font-weight: 700; cursor: pointer; }
 
 .option-icon {
   margin-right: 6px;
@@ -1916,8 +1962,8 @@ function notifyVideoReviewState(summary?: {
 .editor-mode-switch {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px;
+  gap: 3px;
+  padding: 3px;
   border-radius: 999px;
   background: var(--cpu-surface-subtle);
   border: 1px solid var(--cpu-border-soft);
@@ -1928,8 +1974,8 @@ function notifyVideoReviewState(summary?: {
   background: transparent;
   color: var(--cpu-text-secondary);
   border-radius: 999px;
-  padding: 8px 14px;
-  font-size: 13px;
+  padding: 6px 11px;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   transition: background-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
@@ -2147,30 +2193,42 @@ function notifyVideoReviewState(summary?: {
 
 .board-hint { font-size: 12px; color: var(--cpu-text-secondary); margin-top: 6px; }
 .publish-mode-picker {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  margin: -2px 0 22px;
-}
-.publish-mode-option {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-  min-width: 0;
-  padding: 13px 14px;
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(72px, 1fr));
+  gap: 3px;
+  margin: 0 0 16px;
+  padding: 3px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 12px;
-  background: var(--cpu-card);
-  color: var(--cpu-text);
-  text-align: left;
+  border-radius: 999px;
+  background: var(--cpu-surface-subtle);
+}
+
+.creator-tools-toggle {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 8px;
+  border: 0;
+  color: var(--cpu-text-secondary);
+  background: transparent;
+  font-size: 11px;
   cursor: pointer;
 }
-.publish-mode-option span { color: var(--cpu-text-secondary); font-size: 12px; line-height: 1.5; }
+.publish-mode-option {
+  min-width: 0;
+  padding: 6px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--cpu-text-secondary);
+  text-align: center;
+  cursor: pointer;
+}
 .publish-mode-option.active {
-  border-color: color-mix(in srgb, var(--cpu-primary) 58%, var(--cpu-border));
-  background: color-mix(in srgb, var(--cpu-primary) 8%, var(--cpu-card));
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--cpu-primary) 10%, transparent);
+  color: var(--cpu-text);
+  background: var(--cpu-card);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
 }
 .field-error {
   display: flex;
@@ -2678,9 +2736,7 @@ function notifyVideoReviewState(summary?: {
     padding: 16px 14px 11px;
   }
 
-  .publish-mode-picker { gap: 7px; margin-bottom: 18px; }
-  .publish-mode-option { padding: 11px; }
-  .publish-mode-option span { font-size: 11px; }
+  .publish-mode-picker { display: grid; margin-bottom: 14px; }
 
   .second-hand-kind-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2741,7 +2797,6 @@ function notifyVideoReviewState(summary?: {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .post-editor-toolbar,
   .markup-meta,
   .markup-preview__head {
     align-items: stretch;
@@ -2749,13 +2804,11 @@ function notifyVideoReviewState(summary?: {
   }
 
   .editor-mode-switch {
-    width: 100%;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
+    width: auto;
   }
 
   .editor-mode-btn {
-    width: 100%;
+    width: auto;
     text-align: center;
   }
 
@@ -2801,7 +2854,7 @@ function notifyVideoReviewState(summary?: {
 
   .form-actions :deep(.el-form-item__content) {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
     gap: 8px;
   }
 

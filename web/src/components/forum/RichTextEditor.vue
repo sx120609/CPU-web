@@ -1,6 +1,6 @@
 <template>
-  <div class="rich-editor" :class="toolbarModeClass" :style="rootStyle">
-    <div class="editor-toolbar" @mousedown.prevent @touchstart.passive="rememberSelection">
+  <div class="rich-editor" :class="[toolbarModeClass, { 'simple-mobile': isSimpleMobile }]" :style="rootStyle">
+    <div v-if="!isSimpleMobile" class="editor-toolbar" @mousedown.prevent @touchstart.passive="rememberSelection">
       <div class="toolbar-head">
         <span class="toolbar-title">{{ label }}</span>
         <span v-if="toolbarStatusText" class="toolbar-status">{{ toolbarStatusText }}</span>
@@ -81,6 +81,13 @@
       @keyup="handleEditorSelectionChange"
       @focus="handleEditorSelectionChange"
     ></div>
+
+    <div v-if="isSimpleMobile" class="simple-mobile-media-row">
+      <button type="button" :disabled="imageUploading" @mousedown.prevent @click="pickContentMedia">
+        <span>＋</span>{{ imageUploading ? "上传中" : "添加图片" }}
+      </button>
+      <small>{{ toolbarStatusText || "可一次选择多张" }}</small>
+    </div>
 
     <div v-if="mediaUploadTasks.length" class="upload-progress-panel">
       <div class="upload-progress-head">
@@ -169,6 +176,7 @@ const props = withDefaults(defineProps<{
   draftKey?: string;
   restoreDraft?: boolean;
   toolbarMode?: "sticky" | "static";
+  simpleMobile?: boolean;
 }>(), {
   placeholder: DEFAULT_PLACEHOLDER,
   label: "可视化编辑",
@@ -177,6 +185,7 @@ const props = withDefaults(defineProps<{
   draftKey: "",
   restoreDraft: true,
   toolbarMode: "sticky",
+  simpleMobile: false,
 });
 
 const emit = defineEmits<{
@@ -273,6 +282,7 @@ const toolbarStatusText = computed(() => {
 const toolbarModeClass = computed(() => ({
   "toolbar-static": props.toolbarMode === "static",
 }));
+const isSimpleMobile = computed(() => props.simpleMobile && isMobileViewport.value);
 
 const rootStyle = computed(() => ({
   "--editor-toolbar-top": `${toolbarStickyOffset.value}px`,

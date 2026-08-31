@@ -132,6 +132,44 @@
     padding: 14px 12px 18px;
   }
 
+  .rich-editor.simple-mobile {
+    overflow: hidden;
+    box-shadow: none;
+  }
+
+  .rich-editor.simple-mobile .editor-surface {
+    min-height: min(34dvh, 270px);
+    max-height: min(52dvh, 430px);
+    padding: 14px;
+  }
+
+  .simple-mobile-media-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 11px;
+    border-top: 1px solid var(--cpu-border-soft);
+    background: var(--cpu-surface-subtle);
+  }
+
+  .simple-mobile-media-row button {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-height: 32px;
+    padding: 0 10px;
+    border: 1px solid var(--cpu-border-soft);
+    border-radius: 9px;
+    color: var(--cpu-text-secondary);
+    background: var(--cpu-card);
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .simple-mobile-media-row button span { color: var(--cpu-primary); font-size: 17px; line-height: 1; }
+  .simple-mobile-media-row button:disabled { opacity: 0.6; }
+  .simple-mobile-media-row small { color: var(--cpu-text-muted); font-size: 11px; }
+
   .editor-surface :deep(img[data-size="small"]) {
     max-width: min(100%, 120px);
     max-height: 100px;
