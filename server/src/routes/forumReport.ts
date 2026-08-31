@@ -7,6 +7,7 @@ import { ensureCanReadBoardType } from "../services/forumAccess";
 import { featureClosedMessage, isBoardTypeEnabled, removeTopicFromGlobalPins } from "../services/siteSettings";
 import { isRetiredBoardSlug } from "../services/retiredBoards";
 import { invalidateForumCaches } from "../services/cacheInvalidation";
+import { acquireForumReportTargetLock } from "../services/forumReportLock";
 import {
   refreshBoardTopicCounts,
   refreshTopicReplyStats,
@@ -176,8 +177,7 @@ forumReportRouter.post(
       if (recentCount >= 20) throw new HttpError(429, 4029, "举报提交过于频繁，请稍后再试");
       const target = await resolveReportTarget(targetType, targetId, reporterId, req.user!.role);
       const created = await prisma.$transaction(async (tx) => {
-        const lockNamespace = targetType === "topic" ? 73101 : targetType === "reply" ? 73102 : 73103;
-        await tx.$queryRaw`SELECT pg_advisory_xact_lock(${lockNamespace}, ${targetId})`;
+        await acquireForumReportTargetLock(tx, targetType, targetId);
         const report = await tx.forumReport.create({
           data: {
             reporterId,
@@ -398,8 +398,7 @@ forumReportAdminRouter.patch("/:id", validate(handleSchema), async (req, res, ne
     const { status, note } = req.body as z.infer<typeof handleSchema>;
     const handledAt = new Date();
     const handled = await prisma.$transaction(async (tx) => {
-      const lockNamespace = existing.targetType === "topic" ? 73101 : existing.targetType === "reply" ? 73102 : 73103;
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(${lockNamespace}, ${existing.targetId})`;
+      await acquireForumReportTargetLock(tx, existing.targetType as ForumReportTargetType, existing.targetId);
       const report = await tx.forumReport.update({
         where: { id },
         data: { status, handledNote: note, handledById: req.user!.userId, handledAt },
