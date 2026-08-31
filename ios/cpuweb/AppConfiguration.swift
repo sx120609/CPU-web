@@ -3,6 +3,7 @@ import Foundation
 enum AppConfiguration {
     static let appGroup = "group.cn.lizmt.cpuweb"
     static let widgetEndpointKey = "scheduleWidgetEndpoint"
+    static let widgetEndpointFileName = "schedule-widget-endpoint.txt"
     static let versionCode = 1
     static let versionName = "1.0.0"
 

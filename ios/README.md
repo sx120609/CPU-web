@@ -27,9 +27,10 @@ xcodebuild \
   -scheme cpuweb \
   -sdk iphonesimulator \
   -configuration Debug \
-  CODE_SIGNING_ALLOWED=NO \
   build
 ```
+
+不要用 `CODE_SIGNING_ALLOWED=NO` 测试小组件。该选项只适合验证源码能否编译，生成的 App 不具备 App Group entitlement，主 App 无法把课表配置共享给 Widget。
 
 首屏地址由 `CPU_APP_URL` build setting 控制，默认值为 `https://cputime.cn`。
 

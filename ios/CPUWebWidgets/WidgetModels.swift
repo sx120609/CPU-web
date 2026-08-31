@@ -4,6 +4,7 @@ import WidgetKit
 enum AppWidgetConfiguration {
     static let appGroup = "group.cn.lizmt.cpuweb"
     static let endpointKey = "scheduleWidgetEndpoint"
+    static let endpointFileName = "schedule-widget-endpoint.txt"
     static let appURL = URL(string: "cpuweb://schedule")!
 }
 
@@ -188,9 +189,7 @@ enum ScheduleWidgetError: LocalizedError {
 
 enum ScheduleWidgetClient {
     static func load() async throws -> SchedulePayload {
-        guard let stored = UserDefaults(suiteName: AppWidgetConfiguration.appGroup)?
-            .string(forKey: AppWidgetConfiguration.endpointKey),
-              !stored.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        guard let stored = storedEndpoint(), !stored.isEmpty else {
             throw ScheduleWidgetError.unconfigured
         }
 
@@ -206,6 +205,23 @@ enum ScheduleWidgetClient {
             }
         }
         throw lastError
+    }
+
+    private static func storedEndpoint() -> String? {
+        if let containerURL = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: AppWidgetConfiguration.appGroup
+        ) {
+            let endpointFile = containerURL.appendingPathComponent(AppWidgetConfiguration.endpointFileName)
+            if let value = try? String(contentsOf: endpointFile, encoding: .utf8) {
+                let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !normalized.isEmpty { return normalized }
+            }
+        }
+
+        let value = UserDefaults(suiteName: AppWidgetConfiguration.appGroup)?
+            .string(forKey: AppWidgetConfiguration.endpointKey)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return value?.isEmpty == false ? value : nil
     }
 
     private static func fetch(_ endpoint: URL) async throws -> SchedulePayload {

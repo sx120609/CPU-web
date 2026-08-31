@@ -1239,7 +1239,6 @@ async function installIOSWidget() {
       endpoint: token.endpoint,
       title: "药大课表",
     }));
-    ElMessage.success("小组件配置已保存");
   } finally {
     widgetInstalling.value = false;
   }

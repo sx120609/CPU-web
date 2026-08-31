@@ -149,12 +149,36 @@ final class CPUIOSBridge: NSObject, WKScriptMessageHandler {
     }
 
     private func installScheduleWidget(payload: String?) {
-        guard let endpoint = Self.widgetEndpoint(from: payload),
-              let defaults = UserDefaults(suiteName: AppConfiguration.appGroup) else {
+        guard let endpoint = Self.widgetEndpoint(from: payload) else {
             showMessage(title: "配置失败", message: "小组件配置无效，请重新添加。")
             return
         }
-        defaults.set(Self.normalizeEndpoint(endpoint), forKey: AppConfiguration.widgetEndpointKey)
+        guard let containerURL = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: AppConfiguration.appGroup
+        ), let defaults = UserDefaults(suiteName: AppConfiguration.appGroup) else {
+            showMessage(
+                title: "配置失败",
+                message: "App Group 不可用。请使用正常签名的客户端，并确认 App 与小组件使用同一个 App Group。"
+            )
+            return
+        }
+
+        let normalizedEndpoint = Self.normalizeEndpoint(endpoint)
+        let endpointFile = containerURL.appendingPathComponent(AppConfiguration.widgetEndpointFileName)
+        do {
+            defaults.set(normalizedEndpoint, forKey: AppConfiguration.widgetEndpointKey)
+            defaults.synchronize()
+            try normalizedEndpoint.write(to: endpointFile, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes(
+                [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
+                ofItemAtPath: endpointFile.path
+            )
+        } catch {
+            defaults.removeObject(forKey: AppConfiguration.widgetEndpointKey)
+            showMessage(title: "配置失败", message: "无法写入小组件共享配置，请检查签名和 App Group 设置。")
+            return
+        }
+
         WidgetCenter.shared.reloadAllTimelines()
         showMessage(
             title: "小组件配置已保存",
