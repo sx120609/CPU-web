@@ -64,3 +64,37 @@ export async function prepareManualJwxtReauthorization(input: {
   await input.disconnect().catch(() => undefined);
   input.resetLocalState();
 }
+
+export type JwxtAuthorizationRetryResult = "restored" | "saved-captcha" | "manual";
+
+export function shouldAutoRecoverJwxtSession(input: {
+  allowAutoLogin: boolean;
+  authorizationExpired: boolean;
+  hasSavedCredentials: boolean;
+}) {
+  return input.hasSavedCredentials && (input.allowAutoLogin || input.authorizationExpired);
+}
+
+/**
+ * 用户主动重试时也应先兑现“保持登录”的承诺。只有本机没有可用凭据，
+ * 或自动登录确实失败时，才准备一份新的手动登录表单。
+ */
+export async function retryJwxtAuthorization(input: {
+  disconnect: () => Promise<unknown>;
+  resetLocalState: () => void;
+  hasSavedCredentials: () => boolean;
+  autoLogin: () => Promise<boolean>;
+  needsCaptcha: () => boolean;
+  prepareLogin: () => Promise<unknown>;
+}): Promise<JwxtAuthorizationRetryResult> {
+  await input.disconnect().catch(() => undefined);
+  input.resetLocalState();
+
+  if (input.hasSavedCredentials()) {
+    if (await input.autoLogin()) return "restored";
+    if (input.needsCaptcha()) return "saved-captcha";
+  }
+
+  await input.prepareLogin();
+  return "manual";
+}

@@ -70,12 +70,19 @@
         size="large"
         class="form"
       >
-        <el-form-item v-if="!usingSavedCaptchaRecovery" label="学号 / 工号" prop="username">
+        <el-alert
+          v-if="usingSavedCredentialRecovery"
+          type="success"
+          :closable="false"
+          show-icon
+          title="已读取本浏览器保存的登录信息，恢复时无需重新输入密码。"
+        />
+        <el-form-item v-if="!usingSavedCredentialRecovery" label="学号 / 工号" prop="username">
           <el-input v-model="form.username" name="username" placeholder="学号 / 工号" autocomplete="username" :disabled="jwxt.loading">
             <template #prefix><el-icon><User /></el-icon></template>
           </el-input>
         </el-form-item>
-        <el-form-item v-if="!usingSavedCaptchaRecovery" label="密码" prop="password">
+        <el-form-item v-if="!usingSavedCredentialRecovery" label="密码" prop="password">
           <el-input v-model="form.password" name="password" type="password" show-password placeholder="统一认证密码" autocomplete="current-password" :disabled="jwxt.loading">
             <template #prefix><el-icon><Lock /></el-icon></template>
           </el-input>
@@ -110,6 +117,9 @@
             <el-button v-if="jwxt.rememberSaved" text type="danger" size="small" class="forget-saved-btn" :loading="forgetBusy" :disabled="jwxt.loading || forgetBusy" @click="onForget">
               忘记已保存账号
             </el-button>
+            <el-button v-if="usingSavedCredentialRecovery" text size="small" :disabled="jwxt.loading" @click="useManualCredentials">
+              改用账号密码
+            </el-button>
           </div>
         </el-form-item>
 
@@ -119,7 +129,7 @@
 
         <el-form-item>
           <el-button type="primary" native-type="submit" :loading="jwxt.loading" :disabled="jwxt.loading || captchaLoading" class="btn-submit">
-            登录并查看
+            {{ usingSavedCredentialRecovery ? (jwxt.needCaptcha ? "验证并恢复" : "使用已保存信息恢复") : "登录并查看" }}
           </el-button>
         </el-form-item>
       </el-form>
@@ -165,7 +175,7 @@
           <el-button v-if="jwxt.isLoggedIn" plain type="danger" size="small" :loading="logoutBusy" :disabled="logoutBusy || forgetBusy" @click="onLogout">
             <el-icon><CircleClose /></el-icon> 断开连接
           </el-button>
-          <el-button v-else type="primary" size="small" @click="showLoginOverride = true">
+          <el-button v-else type="primary" size="small" :loading="reauthorizeBusy" :disabled="reauthorizeBusy" @click="onManualReauthorize">
             {{ jwxt.needCaptcha ? "补充验证码" : "恢复连接" }}
           </el-button>
         </div>
@@ -181,7 +191,7 @@
             </el-button>
           </div>
         </details>
-        <el-button v-else class="session-mobile-recover" type="primary" size="small" @click="showLoginOverride = true">
+        <el-button v-else class="session-mobile-recover" type="primary" size="small" :loading="reauthorizeBusy" :disabled="reauthorizeBusy" @click="onManualReauthorize">
           {{ jwxt.needCaptcha ? "验证" : "恢复" }}
         </el-button>
       </div>
@@ -289,6 +299,7 @@ const logoutBusy = ref(false);
 const forgetBusy = ref(false);
 const reauthorizeBusy = ref(false);
 const showLoginOverride = ref(false);
+const manualCredentialOverride = ref(false);
 let tabLoadSeq = 0;
 let pageInitSeq = 0;
 let disposed = false;
@@ -317,8 +328,8 @@ const showDataShell = computed(() => !showLoginOverride.value && (jwxt.isLoggedI
 const academicDataUnavailable = computed(() => Boolean(
   jwxt.isLoggedIn && auth.user?.studentSso && auth.academicIdentityUnavailable,
 ));
-const usingSavedCaptchaRecovery = computed(() => (
-  jwxt.needCaptcha && jwxt.rememberSaved && !form.password
+const usingSavedCredentialRecovery = computed(() => (
+  jwxt.rememberSaved && !manualCredentialOverride.value && !form.password
 ));
 const pageHintText = computed(() => (
   academicDataUnavailable.value
@@ -586,7 +597,7 @@ async function reloadCaptcha() {
 
 async function onSubmit() {
   if (jwxt.loading || captchaLoading.value) return;
-  if (!usingSavedCaptchaRecovery.value) {
+  if (!usingSavedCredentialRecovery.value) {
     try { await formRef.value?.validate(); } catch { return; }
   }
   if (jwxt.needCaptcha && !form.captcha) { ElMessage.warning("请输入验证码"); return; }
@@ -603,10 +614,11 @@ async function onSubmit() {
       return;
     }
   }
-  const saved = usingSavedCaptchaRecovery.value ? await loadCreds().catch(() => null) : null;
-  if (usingSavedCaptchaRecovery.value && !saved) {
+  const saved = usingSavedCredentialRecovery.value ? await loadCreds().catch(() => null) : null;
+  if (usingSavedCredentialRecovery.value && !saved) {
     ElMessage.warning("未找到已保存的登录信息，请重新输入账号密码");
     jwxt.forgetSavedCreds();
+    manualCredentialOverride.value = true;
     return;
   }
   let ok = false;
@@ -626,6 +638,7 @@ async function onSubmit() {
   if (ok) {
     ElMessage.success("登录成功");
     showLoginOverride.value = false;
+    manualCredentialOverride.value = false;
     const redirect = typeof route.query.redirect === "string" ? route.query.redirect : "";
     if (redirect.startsWith("/") && !redirect.startsWith("//")) {
       await router.replace(redirect);
@@ -668,6 +681,7 @@ async function onForget() {
   forgetBusy.value = true;
   try {
     jwxt.forgetSavedCreds();
+    manualCredentialOverride.value = true;
     ElMessage.success("已清除保存的账号");
   } finally {
     forgetBusy.value = false;
@@ -722,20 +736,47 @@ async function onProbe() {
 async function onManualReauthorize() {
   if (reauthorizeBusy.value || jwxt.loading) return;
   reauthorizeBusy.value = true;
-  showLoginOverride.value = true;
+  showLoginOverride.value = false;
+  manualCredentialOverride.value = false;
   try {
-    await jwxt.prepareManualReauthorization();
-    if (!form.username && auth.user?.username) form.username = auth.user.username;
+    const redirect = typeof route.query.redirect === "string" ? route.query.redirect : "";
     const nextQuery = { ...route.query };
     delete nextQuery.reauthorize;
-    void router.replace({ query: nextQuery });
-    await jwxt.beginLogin();
-    ElMessage.info("请重新完成学校统一身份认证");
+    await router.replace({ query: nextQuery });
+    const result = await jwxt.retryAuthorization({ silent: true });
+    if (disposed) return;
+    if (result === "restored") {
+      ElMessage.success("已使用保存的登录信息恢复教务连接");
+      if (redirect.startsWith("/") && !redirect.startsWith("//")) {
+        await router.replace(redirect);
+      } else {
+        loadCurrentTab(true);
+      }
+      return;
+    }
+    showLoginOverride.value = true;
+    if (!form.username && auth.user?.username) form.username = auth.user.username;
+    if (result === "saved-captcha") {
+      ElMessage.info("学校要求验证码；保存的账号密码已读取，只需输入验证码");
+    } else if (jwxt.rememberSaved) {
+      ElMessage.warning("自动恢复未成功，可再次使用已保存信息重试，或改用账号密码");
+    } else {
+      ElMessage.info("请重新完成学校统一身份认证");
+    }
   } catch {
+    showLoginOverride.value = true;
+    manualCredentialOverride.value = !jwxt.rememberSaved;
+    if (!form.username && auth.user?.username) form.username = auth.user.username;
     ElMessage.error("重新授权准备失败，请稍后再试");
   } finally {
     reauthorizeBusy.value = false;
   }
+}
+
+function useManualCredentials() {
+  manualCredentialOverride.value = true;
+  if (!form.username && auth.user?.username) form.username = auth.user.username;
+  form.password = "";
 }
 </script>
 

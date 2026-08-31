@@ -14,6 +14,9 @@ import { clearJwxtDataCaches } from "@/utils/jwxtCache";
 import {
   prepareManualJwxtReauthorization,
   repairUnavailableJwxtSession,
+  retryJwxtAuthorization,
+  shouldAutoRecoverJwxtSession,
+  type JwxtAuthorizationRetryResult,
 } from "@/utils/jwxtSessionRepair";
 
 let authExpiredListenerInstalled = false;
@@ -31,6 +34,10 @@ function justLoggedOutThisSession() {
 
 function markLoggedOutThisSession() {
   try { sessionStorage.setItem("cpu-just-logged-out", "1"); } catch { /* ignore */ }
+}
+
+function clearLoggedOutThisSession() {
+  try { sessionStorage.removeItem("cpu-just-logged-out"); } catch { /* ignore */ }
 }
 
 function isJwxtAuthExpired(error: unknown) {
@@ -131,6 +138,7 @@ export const useJwxtStore = defineStore("jwxt", {
             // 会话过期不等于本地数据失效：保留课表/成绩缓存供秒开和离线查看。
             clearJwxtToken();
             this.token = "";
+            this.authorizationExpired = true;
             auth.clearAcademicIdentityUnavailable();
           } else {
             setJwxtToken(JWXT_COOKIE_SESSION_MARKER);
@@ -147,6 +155,7 @@ export const useJwxtStore = defineStore("jwxt", {
           if (isJwxtAuthExpired(error) || !getJwxtToken()) {
             this.active = false;
             this.token = "";
+            this.authorizationExpired = true;
             useAuthStore().clearAcademicIdentityUnavailable();
           } else {
             // 网络抖动时继续乐观使用现有会话；真实查询若返回 401 会触发自动恢复。
@@ -183,6 +192,7 @@ export const useJwxtStore = defineStore("jwxt", {
         this.token = getJwxtToken();
         this.active = !!this.token;
         this.authorizationExpired = false;
+        clearLoggedOutThisSession();
         if (remember) this.rememberSaved = hasCreds();
         void this.refreshWidgetTokens();
         return true;
@@ -191,8 +201,8 @@ export const useJwxtStore = defineStore("jwxt", {
       return false;
     },
     /** 用本地保存的账号悄悄走一遍统一登录 */
-    async tryAutoLogin(options?: { silent?: boolean }): Promise<boolean> {
-      if (justLoggedOutThisSession()) return false;
+    async tryAutoLogin(options?: { silent?: boolean; force?: boolean }): Promise<boolean> {
+      if (!options?.force && justLoggedOutThisSession()) return false;
       const auth = useAuthStore();
       if (auth.academicIdentityUnavailable && auth.user?.studentSso) return false;
       // Agent 重启后旧会话会返回 401；拦截器会清除内存状态，避免误判为在线。
@@ -203,10 +213,14 @@ export const useJwxtStore = defineStore("jwxt", {
       if (this.active && auth.isLoggedIn) return true;
       try {
         const ok = await useAuthStore().tryAutoSsoLogin({ silent: options?.silent });
+        this.rememberSaved = hasCreds();
         if (!ok) return false;
         this.token = getJwxtToken();
         this.active = !!this.token;
-        if (this.active) this.authorizationExpired = false;
+        if (this.active) {
+          this.authorizationExpired = false;
+          clearLoggedOutThisSession();
+        }
         if (this.active) void this.refreshWidgetTokens();
         return this.active;
       } catch {
@@ -226,9 +240,8 @@ export const useJwxtStore = defineStore("jwxt", {
         const auth = useAuthStore();
         // 验活与 SSO 表单准备并行：真过期时可以少等一次 Agent/学校往返。
         const allowAutoLogin = options?.allowAutoLogin !== false;
-        // Page initialization should only probe an existing session. A
-        // background saved-credential login is opt-in so a freshman with no
-        // academic record is never left with a permanently disabled form.
+        // 普通页面初始化只探测现有会话；但学校明确返回“会话过期”时，
+        // 应兑现保持登录，用本机加密保存的凭据自动恢复。
         if (options?.refresh && this.token) {
           await this.refreshStatus().catch(() => undefined);
         }
@@ -240,7 +253,11 @@ export const useJwxtStore = defineStore("jwxt", {
           return false;
         }
         if (this.active && this.token && !options?.forceLogin) return true;
-        if (!allowAutoLogin || !this.rememberSaved) return false;
+        if (!shouldAutoRecoverJwxtSession({
+          allowAutoLogin,
+          authorizationExpired: this.authorizationExpired,
+          hasSavedCredentials: this.rememberSaved,
+        })) return false;
         const recoveryPreparation = auth.ssoPendingId.trim().length < 8
           && !auth.ssoNeedCaptcha
           ? auth.ssoBegin({ silent: true }).catch(() => undefined)
@@ -285,6 +302,28 @@ export const useJwxtStore = defineStore("jwxt", {
           this.rememberSaved = hasCreds();
           auth.clearAcademicIdentity();
         },
+      });
+    },
+    async retryAuthorization(options?: { silent?: boolean }): Promise<JwxtAuthorizationRetryResult> {
+      const auth = useAuthStore();
+      return retryJwxtAuthorization({
+        disconnect: () => jwxtApi.logout(),
+        resetLocalState: () => {
+          clearJwxtToken();
+          this.token = "";
+          this.active = false;
+          this.authorizationExpired = false;
+          this.rememberSaved = hasCreds();
+          auth.clearAcademicIdentity();
+        },
+        hasSavedCredentials: () => this.rememberSaved,
+        autoLogin: async () => {
+          const restored = await this.tryAutoLogin({ silent: options?.silent, force: true });
+          this.rememberSaved = hasCreds();
+          return restored;
+        },
+        needsCaptcha: () => this.needCaptcha && this.rememberSaved,
+        prepareLogin: () => this.beginLogin({ silent: options?.silent }),
       });
     },
     async recoverSession(): Promise<boolean> {

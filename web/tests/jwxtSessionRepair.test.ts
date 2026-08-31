@@ -3,6 +3,8 @@ import test from "node:test";
 import {
   prepareManualJwxtReauthorization,
   repairUnavailableJwxtSession,
+  retryJwxtAuthorization,
+  shouldAutoRecoverJwxtSession,
 } from "../src/utils/jwxtSessionRepair";
 
 function memoryStorage() {
@@ -89,4 +91,67 @@ test("手动重新授权即使断开请求失败也会清理本地误判状态",
   });
 
   assert.deepEqual(steps, ["disconnect", "reset"]);
+});
+
+test("用户点重试时优先使用已保存信息自动恢复", async () => {
+  const steps: string[] = [];
+  const result = await retryJwxtAuthorization({
+    disconnect: async () => { steps.push("disconnect"); },
+    resetLocalState: () => { steps.push("reset"); },
+    hasSavedCredentials: () => true,
+    autoLogin: async () => { steps.push("auto-login"); return true; },
+    needsCaptcha: () => false,
+    prepareLogin: async () => { steps.push("prepare-manual"); },
+  });
+
+  assert.equal(result, "restored");
+  assert.deepEqual(steps, ["disconnect", "reset", "auto-login"]);
+});
+
+test("页面禁用常规自动登录时，已确认过期的会话仍会自动恢复", () => {
+  assert.equal(shouldAutoRecoverJwxtSession({
+    allowAutoLogin: false,
+    authorizationExpired: true,
+    hasSavedCredentials: true,
+  }), true);
+  assert.equal(shouldAutoRecoverJwxtSession({
+    allowAutoLogin: false,
+    authorizationExpired: false,
+    hasSavedCredentials: true,
+  }), false);
+  assert.equal(shouldAutoRecoverJwxtSession({
+    allowAutoLogin: true,
+    authorizationExpired: true,
+    hasSavedCredentials: false,
+  }), false);
+});
+
+test("保存信息触发验证码时保留当前验证码流程且不要求密码", async () => {
+  const steps: string[] = [];
+  const result = await retryJwxtAuthorization({
+    disconnect: async () => { steps.push("disconnect"); },
+    resetLocalState: () => { steps.push("reset"); },
+    hasSavedCredentials: () => true,
+    autoLogin: async () => { steps.push("auto-login"); return false; },
+    needsCaptcha: () => true,
+    prepareLogin: async () => { steps.push("prepare-manual"); },
+  });
+
+  assert.equal(result, "saved-captcha");
+  assert.deepEqual(steps, ["disconnect", "reset", "auto-login"]);
+});
+
+test("没有保存信息时才准备手动登录表单", async () => {
+  const steps: string[] = [];
+  const result = await retryJwxtAuthorization({
+    disconnect: async () => { steps.push("disconnect"); },
+    resetLocalState: () => { steps.push("reset"); },
+    hasSavedCredentials: () => false,
+    autoLogin: async () => { steps.push("auto-login"); return true; },
+    needsCaptcha: () => false,
+    prepareLogin: async () => { steps.push("prepare-manual"); },
+  });
+
+  assert.equal(result, "manual");
+  assert.deepEqual(steps, ["disconnect", "reset", "prepare-manual"]);
 });
