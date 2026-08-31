@@ -82,6 +82,14 @@
             <p>客服消息优先用于最近主动交互的用户；超出窗口后优先使用用户主动同意的一次性订阅通知，再回退到模板消息。</p>
           </div>
         </div>
+        <el-alert
+          v-if="!persistentNotificationReady"
+          type="warning"
+          :closable="false"
+          show-icon
+          title="尚未配置全时段微信推送通道"
+          description="当前只能使用客服消息：用户主动发送消息后 48 小时内最多 5 条，点击菜单、关注或扫码后仅 1 分钟内最多 3 条。请配置模板消息或一次性订阅通知，超出互动窗口后才能继续推送。"
+        />
         <div class="switch-grid">
           <label><span><b>站内通知转发</b><small>按用户订阅偏好发送微信提醒</small></span><el-switch v-model="form.notificationEnabled" /></label>
           <label><span><b>拾间AI客服问答</b><small>通过客服接口把 AI 回答渲染成图片发送</small></span><el-switch v-model="form.assistantEnabled" /></label>
@@ -178,7 +186,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { adminApi, type WechatServiceConfig } from "@/api/admin";
 import { copyText } from "@/utils/userGroup";
@@ -235,6 +243,11 @@ const form = reactive({
   subscriptionTimeField: "",
   subscriptionRemarkField: "",
 });
+
+const persistentNotificationReady = computed(() => Boolean(
+  (form.notificationTemplateId && form.templateTitleField && form.templateContentField)
+  || (form.subscriptionEnabled && form.subscriptionTemplateId && form.subscriptionTitleField && form.subscriptionContentField),
+));
 
 onMounted(loadAll);
 

@@ -22,7 +22,11 @@ const CONFIG_ID = 1;
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 const CUSTOMER_MESSAGE_WINDOW_MS = 48 * 60 * 60 * 1000;
 const CUSTOMER_MESSAGE_LIMIT_PER_WINDOW = 5;
-const NOTIFICATION_LOOKBACK_MS = 6 * 60 * 60 * 1000;
+const CUSTOMER_EVENT_WINDOW_MS = 60_000;
+const CUSTOMER_EVENT_LIMIT_PER_WINDOW = 3;
+const NOTIFICATION_LOOKBACK_MS = CUSTOMER_MESSAGE_WINDOW_MS;
+const NOTIFICATION_BATCH_MIN = 500;
+const NOTIFICATION_BATCH_MAX = 5_000;
 const WECHAT_API_TIMEOUT_MS = 12_000;
 const WECHAT_TEMP_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 const WECHAT_INBOUND_MEDIA_MAX_BYTES = 15 * 1024 * 1024;
@@ -67,6 +71,7 @@ export type WechatInboundMessage = {
 let accessTokenCache: { fingerprint: string; token: string; expiresAt: number } | null = null;
 let jsapiTicketCache: { fingerprint: string; ticket: string; expiresAt: number } | null = null;
 let notificationPollerStarted = false;
+let notificationDispatchWakeTimer: NodeJS.Timeout | null = null;
 
 export async function getWechatServiceConfigRaw() {
   return prisma.wechatServiceConfig.upsert({
@@ -327,6 +332,7 @@ export async function getUserWechatProfile(userId: number, jwxtToken?: string | 
     wechatId: config.wechatId,
     notificationEnabled: config.notificationEnabled,
     assistantEnabled: config.assistantEnabled,
+    persistentNotificationAvailable: canSendNotificationTemplate(config) || canSendSubscriptionNotification(config),
     subscriptionAvailable: Boolean(
       config.enabled
       && config.subscriptionEnabled
@@ -531,6 +537,7 @@ export async function processWechatInbound(message: WechatInboundMessage, option
       void syncWechatBoundTag(openId, true).catch(() => undefined);
     }
     await logWechatMessage({ direction: "inbound", eventType, status: "ok", openId, userId: binding?.userId, messageId, rawPayload: message });
+    if (binding?.enabled && binding.subscribed) queueWechatNotificationDispatch();
     const replyText = binding
       ? [
           "微信服务号绑定成功，之后可在这里接收已开启的站内通知。",
@@ -566,6 +573,7 @@ export async function processWechatInbound(message: WechatInboundMessage, option
     content: message.content,
     rawPayload: message,
   });
+  if (binding?.enabled && binding.subscribed) queueWechatNotificationDispatch();
   const scheduleEventQuery = message.msgType === "event" && message.event.toLowerCase() === "click"
     ? WECHAT_SCHEDULE_EVENT_QUERIES.get(message.eventKey)
     : undefined;
@@ -983,40 +991,89 @@ export async function dispatchRecentWechatNotifications() {
   const categories = normalizeNotifyCategories(parseStringArray(config.notifyCategories));
   if (!categories.length) return { sent: 0, skipped: 0 };
   const since = new Date(Date.now() - NOTIFICATION_LOOKBACK_MS);
-  const [notifications, bindings, recentDeliveries] = await Promise.all([
-    prisma.notification.findMany({
-      where: {
-        createdAt: { gte: since },
-        category: { in: categories },
-      },
-      orderBy: { createdAt: "desc" },
-      take: 200,
-    }),
-    prisma.wechatBinding.findMany({
-      where: { enabled: true, subscribed: true },
-      include: {
-        user: {
-          select: {
-            messageSetting: {
-              select: {
-                wechatNotifyEnabled: true,
-                subscribeReply: true,
-                subscribeLike: true,
-                subscribeSchool: true,
-                subscribeSystem: true,
-              },
+  const bindings = await prisma.wechatBinding.findMany({
+    where: { enabled: true, subscribed: true },
+    include: {
+      user: {
+        select: {
+          messageSetting: {
+            select: {
+              wechatNotifyEnabled: true,
+              subscribeReply: true,
+              subscribeLike: true,
+              subscribeSchool: true,
+              subscribeSystem: true,
             },
           },
         },
       },
+    },
+  });
+  if (!bindings.length) return { sent: 0, skipped: 0 };
+
+  const bindingUserIds = bindings.map((binding) => binding.userId);
+  const audience = wechatNotificationAudienceWhere(bindingUserIds);
+  const batchSize = Math.min(
+    NOTIFICATION_BATCH_MAX,
+    Math.max(NOTIFICATION_BATCH_MIN, bindings.length * 100),
+  );
+  const importantPayloadMarkers = [
+    "submission-published",
+    "submission-blocked",
+    "submission-review",
+    "ai-blocked",
+    "ai-recovered",
+    "review-outage",
+    "review-failed",
+  ];
+  const [recentNotifications, importantNotifications] = await Promise.all([
+    prisma.notification.findMany({
+      where: {
+        createdAt: { gte: since },
+        category: { in: categories },
+        AND: [audience],
+      },
+      orderBy: { createdAt: "desc" },
+      take: batchSize,
+    }),
+    prisma.notification.findMany({
+      where: {
+        createdAt: { gte: since },
+        category: { in: categories },
+        AND: [
+          audience,
+          { OR: importantPayloadMarkers.map((marker) => ({ payload: { contains: marker } })) },
+        ],
+      },
+      orderBy: { createdAt: "desc" },
+      take: NOTIFICATION_BATCH_MIN,
+    }),
+  ]);
+  const notifications = Array.from(new Map(
+    [...recentNotifications, ...importantNotifications].map((notification) => [notification.id, notification]),
+  ).values());
+  if (!notifications.length) return { sent: 0, skipped: 0 };
+
+  const notificationIds = notifications.map((notification) => notification.id);
+  const [deliveryLogs, recentCustomerDeliveries] = await Promise.all([
+    prisma.wechatMessageLog.findMany({
+      where: {
+        eventType: "notification",
+        userId: { in: bindingUserIds },
+        notificationId: { in: notificationIds },
+        createdAt: { gte: since },
+      },
+      select: { userId: true, notificationId: true, status: true, result: true, createdAt: true },
     }),
     prisma.wechatMessageLog.findMany({
       where: {
         eventType: "notification",
         status: "ok",
+        result: "customer",
+        userId: { in: bindingUserIds },
         createdAt: { gte: new Date(Date.now() - CUSTOMER_MESSAGE_WINDOW_MS) },
       },
-      select: { userId: true, result: true, createdAt: true },
+      select: { userId: true, createdAt: true },
     }),
   ]);
   notifications.sort((a, b) => (
@@ -1024,59 +1081,93 @@ export async function dispatchRecentWechatNotifications() {
     || a.createdAt.getTime() - b.createdAt.getTime()
   ));
   const bindingByUserId = new Map(bindings.map((binding) => [binding.userId, binding]));
+  const deliveredKeys = new Set<string>();
+  const skippedKeys = new Set<string>();
+  const failedLogsByKey = new Map<string, typeof deliveryLogs>();
+  deliveryLogs.forEach((delivery) => {
+    if (!delivery.userId || !delivery.notificationId) return;
+    const key = wechatNotificationDeliveryKey(delivery.notificationId, delivery.userId);
+    if (delivery.status === "ok") deliveredKeys.add(key);
+    else if (delivery.status === "skipped") skippedKeys.add(key);
+    else if (delivery.status === "error") {
+      const current = failedLogsByKey.get(key) || [];
+      current.push(delivery);
+      failedLogsByKey.set(key, current);
+    }
+  });
   const customerDeliveriesByUserId = new Map<number, number>();
-  recentDeliveries.forEach((delivery) => {
-    if (!delivery.userId || (delivery.result && delivery.result !== "customer")) return;
+  recentCustomerDeliveries.forEach((delivery) => {
+    if (!delivery.userId) return;
     const binding = bindingByUserId.get(delivery.userId);
     if (!binding?.lastInteractionAt || delivery.createdAt < binding.lastInteractionAt) return;
     customerDeliveriesByUserId.set(delivery.userId, (customerDeliveriesByUserId.get(delivery.userId) || 0) + 1);
   });
+  const unavailableCustomerWindows = new Set<number>();
   let sent = 0;
   let skipped = 0;
   for (const notification of notifications) {
     const targets = notification.userId ? [bindingByUserId.get(notification.userId)].filter(Boolean) : bindings;
     for (const binding of targets) {
       if (!binding || !shouldDeliverWechatNotification(notification, binding.user.messageSetting)) continue;
-      const delivered = await prisma.wechatMessageLog.findFirst({
-        where: { notificationId: notification.id, userId: binding.userId, status: "ok" },
-        select: { id: true },
-      });
-      if (delivered) continue;
-      const failedAttempts = await prisma.wechatMessageLog.count({
-        where: { notificationId: notification.id, userId: binding.userId, status: "error" },
-      });
-      if (failedAttempts >= 3) {
-        skipped += 1;
-        continue;
-      }
+      const deliveryKey = wechatNotificationDeliveryKey(notification.id, binding.userId);
+      if (deliveredKeys.has(deliveryKey)) continue;
+      const attemptSince = wechatNotificationAttemptSince(notification.createdAt, binding.lastInteractionAt);
+      const failedCustomerAttempts = (failedLogsByKey.get(deliveryKey) || []).filter((entry) => (
+        entry.createdAt >= attemptSince && isWechatCustomerDeliveryFailure(entry.result)
+      )).length;
+      let attemptedChannel = "";
       try {
         const link = resolveNotificationLink(notification.link, notification.payload);
-        const customerWindow = binding.lastInteractionType === "message" ? CUSTOMER_MESSAGE_WINDOW_MS : 60_000;
-        const withinCustomerWindow = Boolean(binding.lastInteractionAt && Date.now() - binding.lastInteractionAt.getTime() <= customerWindow);
+        const customerPolicy = wechatCustomerMessagePolicy(binding.lastInteractionType);
+        const interactionAge = binding.lastInteractionAt ? Date.now() - binding.lastInteractionAt.getTime() : Number.POSITIVE_INFINITY;
+        const withinCustomerWindow = interactionAge >= 0 && interactionAge <= customerPolicy.windowMs;
+        const customerDeliveries = customerDeliveriesByUserId.get(binding.userId) || 0;
+        const canTryCustomer = withinCustomerWindow
+          && customerDeliveries < customerPolicy.limit
+          && failedCustomerAttempts < 3
+          && wechatNotificationPriority(notification) >= 60
+          && !unavailableCustomerWindows.has(binding.userId);
         let deliveryChannel = "";
-        if (withinCustomerWindow) {
-          const customerDeliveries = customerDeliveriesByUserId.get(binding.userId) || 0;
-          if (customerDeliveries >= CUSTOMER_MESSAGE_LIMIT_PER_WINDOW || wechatNotificationPriority(notification) < 60) {
-            skipped += 1;
-            continue;
-          }
-          await sendWechatCustomerText(binding.openId, renderNotificationText(notification, link));
-          customerDeliveriesByUserId.set(binding.userId, customerDeliveries + 1);
-          deliveryChannel = "customer";
-        } else if (canSendSubscriptionNotification(config)) {
+        let customerError: unknown = null;
+        if (canTryCustomer) {
+          attemptedChannel = "customer";
           try {
-            await sendWechatSubscriptionNotification(config, binding.openId, notification);
-            deliveryChannel = "subscription";
+            await sendWechatCustomerText(binding.openId, renderNotificationText(notification, link));
+            customerDeliveriesByUserId.set(binding.userId, customerDeliveries + 1);
+            deliveryChannel = "customer";
           } catch (error) {
-            if (!canSendNotificationTemplate(config)) throw error;
-            await sendWechatTemplateNotification(config, binding.openId, notification, link);
-            deliveryChannel = "template";
+            customerError = error;
+            if (!isWechatCustomerWindowError(error)) throw error;
+            unavailableCustomerWindows.add(binding.userId);
           }
-        } else if (canSendNotificationTemplate(config)) {
-          await sendWechatTemplateNotification(config, binding.openId, notification, link);
-          deliveryChannel = "template";
-        } else {
+        }
+        if (!deliveryChannel) {
+          attemptedChannel = canSendSubscriptionNotification(config) ? "subscription" : canSendNotificationTemplate(config) ? "template" : attemptedChannel;
+          deliveryChannel = await sendWechatPersistentNotification(config, binding.openId, notification, link);
+        }
+        if (!deliveryChannel && customerError) throw customerError;
+        if (!deliveryChannel) {
           skipped += 1;
+          if (!skippedKeys.has(deliveryKey)) {
+            await logWechatMessage({
+              direction: "outbound",
+              eventType: "notification",
+              status: "skipped",
+              openId: binding.openId,
+              userId: binding.userId,
+              notificationId: notification.id,
+              content: notification.content,
+              result: wechatNotificationSkipReason({
+                withinCustomerWindow,
+                customerDeliveries,
+                customerLimit: customerPolicy.limit,
+                failedCustomerAttempts,
+                priority: wechatNotificationPriority(notification),
+                customerWindowUnavailable: unavailableCustomerWindows.has(binding.userId),
+              }),
+            });
+            skippedKeys.add(deliveryKey);
+          }
           continue;
         }
         await logWechatMessage({
@@ -1089,8 +1180,10 @@ export async function dispatchRecentWechatNotifications() {
           content: notification.content,
           result: deliveryChannel,
         });
+        deliveredKeys.add(deliveryKey);
         sent += 1;
       } catch (error) {
+        const result = `${attemptedChannel || "unknown"}:${error instanceof Error ? error.message : String(error)}`;
         await logWechatMessage({
           direction: "outbound",
           eventType: "notification",
@@ -1099,12 +1192,83 @@ export async function dispatchRecentWechatNotifications() {
           userId: binding.userId,
           notificationId: notification.id,
           content: notification.content,
-          result: error instanceof Error ? error.message : String(error),
+          result,
         });
+        const current = failedLogsByKey.get(deliveryKey) || [];
+        current.push({
+          userId: binding.userId,
+          notificationId: notification.id,
+          status: "error",
+          result,
+          createdAt: new Date(),
+        });
+        failedLogsByKey.set(deliveryKey, current);
       }
     }
   }
   return { sent, skipped };
+}
+
+export function wechatNotificationAudienceWhere(userIds: readonly number[]) {
+  const ids = Array.from(new Set(userIds.filter((userId) => Number.isInteger(userId) && userId > 0)));
+  return { OR: [{ userId: null }, { userId: { in: ids } }] };
+}
+
+export function wechatNotificationAttemptSince(notificationCreatedAt: Date, lastInteractionAt?: Date | null) {
+  if (!lastInteractionAt || lastInteractionAt <= notificationCreatedAt) return notificationCreatedAt;
+  return lastInteractionAt;
+}
+
+export function wechatCustomerMessagePolicy(lastInteractionType?: string | null) {
+  return lastInteractionType === "message"
+    ? { windowMs: CUSTOMER_MESSAGE_WINDOW_MS, limit: CUSTOMER_MESSAGE_LIMIT_PER_WINDOW }
+    : { windowMs: CUSTOMER_EVENT_WINDOW_MS, limit: CUSTOMER_EVENT_LIMIT_PER_WINDOW };
+}
+
+export function isWechatCustomerWindowError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error || "");
+  return /(?:\(|\b)(?:45015|45047)(?:\)|\b)|response out of time limit|response count is limited/iu.test(message);
+}
+
+export function isWechatCustomerDeliveryFailure(result?: string | null) {
+  const value = String(result || "");
+  return value.startsWith("customer:") || isWechatCustomerWindowError(value);
+}
+
+function wechatNotificationDeliveryKey(notificationId: number, userId: number) {
+  return `${notificationId}:${userId}`;
+}
+
+function wechatNotificationSkipReason(input: {
+  withinCustomerWindow: boolean;
+  customerDeliveries: number;
+  customerLimit: number;
+  failedCustomerAttempts: number;
+  priority: number;
+  customerWindowUnavailable: boolean;
+}) {
+  if (!input.withinCustomerWindow) return "no-persistent-delivery-channel";
+  if (input.customerWindowUnavailable) return "customer-window-unavailable";
+  if (input.customerDeliveries >= input.customerLimit) return "customer-message-quota-exhausted";
+  if (input.failedCustomerAttempts >= 3) return "customer-window-retry-limit-reached";
+  if (input.priority < 60) return "customer-quota-reserved-for-important-notifications";
+  return "no-available-delivery-channel";
+}
+
+async function sendWechatPersistentNotification(config: WechatConfigRow, openId: string, notification: any, link: string) {
+  if (canSendSubscriptionNotification(config)) {
+    try {
+      await sendWechatSubscriptionNotification(config, openId, notification);
+      return "subscription";
+    } catch (error) {
+      if (!canSendNotificationTemplate(config)) throw error;
+    }
+  }
+  if (canSendNotificationTemplate(config)) {
+    await sendWechatTemplateNotification(config, openId, notification, link);
+    return "template";
+  }
+  return "";
 }
 
 export function wechatNotificationPriority(notification: { category?: string | null; payload?: string | null }) {
@@ -1124,12 +1288,26 @@ export function wechatNotificationPriority(notification: { category?: string | n
   return 30;
 }
 
+function runWechatNotificationDispatchTick() {
+  return runWithDistributedLock("wechat-notification-dispatch:tick", 25_000, async () => {
+    await dispatchRecentWechatNotifications();
+  });
+}
+
+function queueWechatNotificationDispatch() {
+  if (notificationDispatchWakeTimer) return;
+  notificationDispatchWakeTimer = setTimeout(() => {
+    notificationDispatchWakeTimer = null;
+    void runWechatNotificationDispatchTick().catch((error) => {
+      console.warn("[wechat] notification dispatch failed", error instanceof Error ? error.message : error);
+    });
+  }, 250);
+}
+
 export function startWechatNotificationPoller() {
   if (notificationPollerStarted) return;
   notificationPollerStarted = true;
-  const tick = () => runWithDistributedLock("wechat-notification-dispatch:tick", 25_000, async () => {
-    await dispatchRecentWechatNotifications();
-  }).catch((error) => {
+  const tick = () => runWechatNotificationDispatchTick().catch((error) => {
     console.warn("[wechat] notification dispatch failed", error instanceof Error ? error.message : error);
   });
   setTimeout(tick, 7_000);

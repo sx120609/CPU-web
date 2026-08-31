@@ -105,6 +105,7 @@ export interface WechatProfile {
   wechatId: string;
   notificationEnabled: boolean;
   assistantEnabled: boolean;
+  persistentNotificationAvailable: boolean;
   subscriptionAvailable: boolean;
   subscriptionTemplateId: string;
   oauthAvailable: boolean;

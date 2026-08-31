@@ -100,6 +100,15 @@
               <p class="qq-channel-hint">
                 {{ wechatProfile?.binding ? "当前账号已绑定微信服务号。" : "微信绑定不需要输入绑定码，请使用微信内授权或专属二维码。" }}
               </p>
+              <el-alert
+                v-if="wechatProfile?.binding?.subscribed && !wechatProfile.persistentNotificationAvailable"
+                type="warning"
+                :closable="false"
+                show-icon
+                class="qq-channel-alert"
+                title="当前仅支持互动窗口内推送"
+                description="请先向服务号发送一条文字消息，系统会立即补发近 48 小时内尚未送达的重要通知；只点击菜单的有效窗口仅为 1 分钟。"
+              />
               <label class="qq-channel-toggle">
                 <span>
                   <b>微信提醒</b>

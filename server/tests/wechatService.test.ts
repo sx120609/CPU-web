@@ -12,6 +12,8 @@ import {
   generateWechatEncodingAesKey,
   generateWechatToken,
   getWechatBindingCapabilities,
+  isWechatCustomerDeliveryFailure,
+  isWechatCustomerWindowError,
   markWechatServiceClientUrl,
   parseWechatXml,
   renderWechatAssistantReplyImage,
@@ -20,6 +22,9 @@ import {
   renderWechatFollowSettingsTip,
   selectWechatGeneratedImageUrl,
   shouldDeliverWechatNotification,
+  wechatCustomerMessagePolicy,
+  wechatNotificationAttemptSince,
+  wechatNotificationAudienceWhere,
   wechatNotificationPriority,
   verifyWechatSignature,
 } from "../src/services/wechatService";
@@ -102,6 +107,40 @@ test("prioritizes review outcomes over likes when customer-message quota is limi
   const like = wechatNotificationPriority({ category: "like", payload: "{}" });
   assert.ok(approved > direct);
   assert.ok(direct > like);
+});
+
+test("limits notification scans to bound users while retaining global notices", () => {
+  assert.deepEqual(wechatNotificationAudienceWhere([11, 23, 11, 0, -1]), {
+    OR: [{ userId: null }, { userId: { in: [11, 23] } }],
+  });
+});
+
+test("opens the correct customer-message quota for messages and short-lived events", () => {
+  assert.deepEqual(wechatCustomerMessagePolicy("message"), {
+    windowMs: 48 * 60 * 60 * 1000,
+    limit: 5,
+  });
+  assert.deepEqual(wechatCustomerMessagePolicy("event"), {
+    windowMs: 60_000,
+    limit: 3,
+  });
+});
+
+test("resets customer delivery failures after a newer user interaction", () => {
+  const createdAt = new Date("2026-08-31T00:04:40.003Z");
+  const olderInteraction = new Date("2026-08-30T23:00:00.000Z");
+  const newerInteraction = new Date("2026-08-31T01:16:45.998Z");
+  assert.equal(wechatNotificationAttemptSince(createdAt, olderInteraction), createdAt);
+  assert.equal(wechatNotificationAttemptSince(createdAt, newerInteraction), newerInteraction);
+});
+
+test("recognizes WeChat customer-window and quota errors across old and new log formats", () => {
+  assert.equal(isWechatCustomerWindowError(new Error("response out of time limit (45015)")), true);
+  assert.equal(isWechatCustomerWindowError("response count is limited (45047)"), true);
+  assert.equal(isWechatCustomerWindowError("invalid appsecret (40125)"), false);
+  assert.equal(isWechatCustomerDeliveryFailure("customer:network timeout"), true);
+  assert.equal(isWechatCustomerDeliveryFailure("response out of time limit (45015)"), true);
+  assert.equal(isWechatCustomerDeliveryFailure("template:invalid template"), false);
 });
 
 test("generates credentials accepted by the public-platform form", () => {
