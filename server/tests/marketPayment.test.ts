@@ -75,6 +75,36 @@ test("EasyPay checkout is submitted by the server and returns a safe checkout re
   });
 });
 
+test("EasyPay checkout accepts the legacy HTTP 200 HTML redirect page", async () => {
+  const result = await submitEpayCheckout(epayFixture, {
+    fetchImpl: async () => new Response(`<!DOCTYPE html>
+      <html><head><title>正在跳转</title></head><body>
+      <script>window.location.replace('/pay/qrcode/2026083119110679226/');</script>
+      </body></html>`, {
+      status: 200,
+      headers: { "Content-Type": "text/html; charset=UTF-8" },
+    }),
+  });
+  assert.deepEqual(result, {
+    ok: true,
+    redirectUrl: "https://pay.example.test/pay/qrcode/2026083119110679226/",
+  });
+});
+
+test("EasyPay checkout does not expose an unrecognized HTML response as an error message", async () => {
+  const result = await submitEpayCheckout(epayFixture, {
+    fetchImpl: async () => new Response(`<!DOCTYPE html><html><body><h1>等待支付</h1></body></html>`, {
+      status: 200,
+      headers: { "Content-Type": "text/html" },
+    }),
+  });
+  assert.deepEqual(result, {
+    ok: false,
+    message: "支付平台返回了无法识别的收银台页面",
+    upstreamStatus: 200,
+  });
+});
+
 test("EasyPay checkout surfaces a bounded plain-text gateway failure", async () => {
   const result = await submitEpayCheckout(epayFixture, {
     fetchImpl: async () => new Response(
@@ -87,6 +117,20 @@ test("EasyPay checkout surfaces a bounded plain-text gateway failure", async () 
   assert.equal(result.upstreamStatus, 400);
   assert.match(result.message, /^创建订单失败：当前无可用支付通道 x+/);
   assert.equal(result.message.length, 300);
+});
+
+test("EasyPay checkout strips markup from gateway failure messages", async () => {
+  const result = await submitEpayCheckout(epayFixture, {
+    fetchImpl: async () => new Response(
+      `<!DOCTYPE html><html><head><style>body{color:red}</style></head><body><h1>创建订单失败</h1><script>alert(1)</script></body></html>`,
+      { status: 400, headers: { "Content-Type": "text/html" } },
+    ),
+  });
+  assert.deepEqual(result, {
+    ok: false,
+    message: "创建订单失败",
+    upstreamStatus: 400,
+  });
 });
 
 test("EasyPay checkout rejects an insecure upstream redirect", async () => {

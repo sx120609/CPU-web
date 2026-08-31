@@ -95,12 +95,62 @@ export function buildEpayCheckoutErrorPage(
 }
 
 function sanitizeGatewayMessage(value: string, status: number) {
-  const message = value
+  const withoutMarkup = value
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;|&#160;/gi, " ")
+    .replace(/&quot;|&#34;/gi, '"')
+    .replace(/&apos;|&#39;/gi, "'")
+    .replace(/&lt;|&#60;/gi, "<")
+    .replace(/&gt;|&#62;/gi, ">")
+    .replace(/&amp;|&#38;/gi, "&");
+  const message = withoutMarkup
     .replace(/[\u0000-\u001f\u007f]+/g, " ")
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 300);
   return message || `支付平台拒绝了本次请求（HTTP ${status}）`;
+}
+
+function decodeHtmlUrl(value: string) {
+  return value
+    .replace(/&amp;|&#38;/gi, "&")
+    .replace(/&quot;|&#34;/gi, '"')
+    .replace(/&apos;|&#39;/gi, "'")
+    .replace(/&#x([0-9a-f]+);/gi, (_match, hex) => String.fromCodePoint(Number.parseInt(hex, 16)))
+    .replace(/&#([0-9]+);/g, (_match, decimal) => String.fromCodePoint(Number.parseInt(decimal, 10)))
+    .trim();
+}
+
+function resolveSafeCheckoutRedirect(value: string, submitUrl: URL) {
+  try {
+    const redirectUrl = new URL(decodeHtmlUrl(value), submitUrl);
+    return redirectUrl.protocol === "https:" ? redirectUrl.toString() : "";
+  } catch {
+    return "";
+  }
+}
+
+function extractHtmlCheckoutRedirect(html: string, submitUrl: URL) {
+  const source = html.slice(0, 128_000);
+  const scriptPatterns = [
+    /(?:window\.)?location\.replace\s*\(\s*(["'])([^"']+)\1\s*\)/i,
+    /(?:window\.)?location(?:\.href)?\s*=\s*(["'])([^"']+)\1/i,
+  ];
+  for (const pattern of scriptPatterns) {
+    const match = source.match(pattern);
+    if (!match?.[2]) continue;
+    const redirectUrl = resolveSafeCheckoutRedirect(match[2], submitUrl);
+    if (redirectUrl) return redirectUrl;
+  }
+
+  const metaTag = source.match(/<meta\b[^>]*http-equiv\s*=\s*(["']?)refresh\1[^>]*>/i)?.[0]
+    ?? source.match(/<meta\b[^>]*content\s*=\s*(["'])[^"']*url\s*=[^"']+\1[^>]*>/i)?.[0];
+  const content = metaTag?.match(/content\s*=\s*(["'])(.*?)\1/i)?.[2];
+  const metaUrl = content?.match(/(?:^|;)\s*url\s*=\s*(.+)\s*$/i)?.[1]
+    ?.replace(/^(["'])(.*)\1$/, "$2");
+  return metaUrl ? resolveSafeCheckoutRedirect(metaUrl, submitUrl) : "";
 }
 
 export async function submitEpayCheckout(
@@ -140,6 +190,16 @@ export async function submitEpayCheckout(
     }
 
     const body = await response.text();
+    const contentType = String(response.headers.get("content-type") || "").toLowerCase();
+    if (response.ok && (contentType.includes("text/html") || /^\s*<!doctype\s+html|^\s*<html\b/i.test(body))) {
+      const redirectUrl = extractHtmlCheckoutRedirect(body, submitUrl);
+      if (redirectUrl) return { ok: true, redirectUrl };
+      return {
+        ok: false,
+        message: "支付平台返回了无法识别的收银台页面",
+        upstreamStatus: response.status,
+      };
+    }
     return {
       ok: false,
       message: sanitizeGatewayMessage(body, response.status),
