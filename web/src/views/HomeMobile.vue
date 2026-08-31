@@ -12,6 +12,27 @@
 
     <ForumAdCard v-if="mobileHomeAd" :ad="mobileHomeAd" compact />
 
+    <section class="announcement-panel" aria-label="校园公告" v-loading="loading && !summary">
+      <header class="announcement-head">
+        <div class="announcement-heading">
+          <span class="announcement-icon" aria-hidden="true"><el-icon><Notification /></el-icon></span>
+          <div><h2>校园公告</h2><p>学校最新公开信息</p></div>
+        </div>
+        <router-link to="/announcements">全部公告 →</router-link>
+      </header>
+      <div v-if="announcements.length" class="announcement-list">
+        <button v-for="(topic, index) in announcements" :key="topic.id" type="button" @click="openTopic(topic.id)">
+          <span class="announcement-marker" :class="{ latest: index === 0 }" aria-hidden="true"></span>
+          <span class="announcement-copy">
+            <b>{{ topic.title }}</b>
+            <small>{{ topic.board?.name || "校园公告" }} · {{ fmtRelative(topic.createdAt) }}</small>
+          </span>
+          <span class="announcement-arrow" aria-hidden="true">›</span>
+        </button>
+      </div>
+      <el-empty v-else-if="!loading" :image-size="54" description="暂无校园公告" />
+    </section>
+
     <section v-if="showForumContent && hotPreview.length" class="hot-strip" aria-label="今日热议">
       <header><b>今日热议</b><router-link to="/forum?channel=hot">查看全部 →</router-link></header>
       <button v-for="(topic, index) in hotPreview" :key="topic.id" type="button" @click="openTopic(topic.id)">
@@ -46,16 +67,6 @@
       </div>
     </section>
 
-    <section v-else class="official-feed" v-loading="loading && !summary">
-      <header class="section-head">
-        <div><h1>校园公告</h1><p>学校公开信息</p></div>
-        <router-link to="/announcements">查看全部 →</router-link>
-      </header>
-      <button v-for="topic in announcements" :key="topic.id" type="button" @click="openTopic(topic.id)">
-        <b>{{ topic.title }}</b><span>{{ topic.board?.name }} · {{ fmtRelative(topic.createdAt) }}</span>
-      </button>
-      <el-empty v-if="!loading && !announcements.length" description="暂无校园公告" />
-    </section>
   </div>
 </template>
 
@@ -104,7 +115,7 @@ const showForumContent = computed(() => site.features.forum && auth.canAccessFor
 const hotPreview = computed(() => (summary.value?.hotTopics || []).slice(0, 3) as Topic[]);
 const pinnedTopics = computed(() => (summary.value?.pinnedTopics || []) as Topic[]);
 const latestTopics = computed(() => feedTopics.value);
-const announcements = computed(() => (summary.value?.announce || []).slice(0, 8) as Topic[]);
+const announcements = computed(() => (summary.value?.announce || []).slice(0, 4) as Topic[]);
 const canLoadMore = computed(() => showForumContent.value && feedTopics.value.length < feedTotal.value);
 const quickEntries = computed(() => [
   showForumContent.value ? { icon: ChatDotRound, label: "论坛", to: "/forum" } : null,
@@ -325,6 +336,22 @@ function requestMessage(requestError: unknown) {
 .quick-grid button:focus-visible { outline: 2px solid var(--cpu-primary); outline-offset: 2px; }
 .quick-icon { display: grid; width: 24px; height: 24px; place-items: center; color: var(--cpu-primary); line-height: 1; }
 .quick-icon :deep(.el-icon) { width: 22px; height: 22px; font-size: 22px; }
+.announcement-panel { overflow: hidden; border: 1px solid color-mix(in srgb, var(--cpu-primary) 22%, var(--cpu-border-soft)); border-radius: 15px; background: var(--cpu-card); box-shadow: var(--cpu-shadow-sm); }
+.announcement-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 13px 10px; background: linear-gradient(135deg, color-mix(in srgb, var(--cpu-primary) 10%, var(--cpu-card)), var(--cpu-card)); }
+.announcement-heading { display: flex; min-width: 0; align-items: center; gap: 9px; }
+.announcement-icon { display: grid; width: 32px; height: 32px; flex: 0 0 32px; place-items: center; border-radius: 10px; background: var(--cpu-primary); color: #fff; font-size: 18px; }
+.announcement-heading h2 { margin: 0; color: var(--cpu-text); font-size: 16px; line-height: 1.2; }
+.announcement-heading p { margin: 3px 0 0; color: var(--cpu-text-muted); font-size: 10px; }
+.announcement-head a { flex: 0 0 auto; color: var(--cpu-primary); font-size: 11px; font-weight: 650; text-decoration: none; }
+.announcement-list { padding: 0 12px 5px; }
+.announcement-list button { display: grid; width: 100%; grid-template-columns: 8px minmax(0, 1fr) 14px; align-items: center; gap: 8px; padding: 10px 1px; border: 0; border-top: 1px dashed var(--cpu-border-soft); background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.announcement-list button:focus-visible { border-radius: 7px; outline: 2px solid var(--cpu-primary); outline-offset: 1px; }
+.announcement-marker { width: 6px; height: 6px; border-radius: 50%; background: var(--cpu-border); }
+.announcement-marker.latest { background: #f59e0b; box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.14); }
+.announcement-copy { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
+.announcement-copy b { overflow: hidden; color: var(--cpu-text); font-size: 13px; font-weight: 620; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.announcement-copy small { overflow: hidden; color: var(--cpu-text-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.announcement-arrow { color: var(--cpu-text-muted); font-size: 20px; line-height: 1; text-align: right; }
 .hot-strip { padding: 10px 12px; border: 1px solid var(--cpu-border-soft); border-radius: 12px; background: var(--cpu-card); }
 .hot-strip header, .section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .hot-strip header { margin-bottom: 4px; }
@@ -335,16 +362,13 @@ function requestMessage(requestError: unknown) {
 .hot-strip button > span.top { color: #dc2626; }
 .hot-strip button b { overflow: hidden; color: var(--cpu-text); font-size: 12px; font-weight: 580; text-overflow: ellipsis; white-space: nowrap; }
 .hot-strip button small { max-width: 90px; overflow: hidden; color: var(--cpu-text-muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
-.home-feed, .official-feed { padding: 14px; border: 1px solid var(--cpu-border-soft); border-radius: 15px; background: color-mix(in srgb, var(--cpu-surface-soft) 58%, var(--cpu-card)); }
+.home-feed { padding: 14px; border: 1px solid var(--cpu-border-soft); border-radius: 15px; background: color-mix(in srgb, var(--cpu-surface-soft) 58%, var(--cpu-card)); }
 .section-head { align-items: flex-end; padding: 0 2px 11px; }
 .section-head h1 { margin: 0; color: var(--cpu-text); font-size: 18px; }
 .section-head p { margin: 3px 0 0; color: var(--cpu-text-muted); font-size: 10px; }
 .home-feed-list { display: flex; min-height: 140px; flex-direction: column; gap: 8px; }
 .feed-load-sentinel, .feed-load-error { display: flex; min-height: 42px; align-items: center; justify-content: center; gap: 6px; color: var(--cpu-text-muted); font-size: 11px; }
 .feed-load-error { color: var(--cpu-danger); }
-.official-feed > button { display: flex; width: 100%; flex-direction: column; gap: 3px; padding: 10px 3px; border: 0; border-top: 1px dashed var(--cpu-border-soft); background: transparent; color: inherit; text-align: left; cursor: pointer; }
-.official-feed > button b { color: var(--cpu-text); font-size: 13px; }
-.official-feed > button span { color: var(--cpu-text-muted); font-size: 10px; }
 .home-state { padding: 28px 12px; border-radius: 14px; background: var(--cpu-card); }
 @media (max-width: 640px) {
   .home-stream { gap: 10px; }
@@ -354,7 +378,9 @@ function requestMessage(requestError: unknown) {
   .quick-icon { width: 22px; height: 22px; }
   .quick-icon :deep(.el-icon) { width: 20px; height: 20px; font-size: 20px; }
   .hot-strip { padding: 9px 10px; }
-  .home-feed, .official-feed { margin-inline: -4px; padding: 10px 8px; border-radius: 12px; }
+  .announcement-head { padding: 11px 11px 9px; }
+  .announcement-list { padding-inline: 10px; }
+  .home-feed { margin-inline: -4px; padding: 10px 8px; border-radius: 12px; }
   .home-feed-list { gap: 7px; }
 }
 @media (max-width: 420px) {
