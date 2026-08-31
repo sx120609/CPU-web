@@ -11,6 +11,7 @@ import {
   FORUM_AD_PLACEMENTS,
   isForumAdPlacement,
   normalizeForumAdPlacements,
+  normalizeForumAdVipExempt,
   summarizeForumAdMetrics,
 } from "../../services/forumAds";
 import { invalidateForumAdCaches } from "../../services/cacheInvalidation";
@@ -82,7 +83,7 @@ function normalizePayload(input: z.infer<typeof adInputFields>) {
     placements,
     sortOrder: input.sortOrder ?? 0,
     enabled: input.enabled ?? false,
-    vipExempt: input.vipExempt ?? true,
+    vipExempt: normalizeForumAdVipExempt(placements, input.vipExempt ?? true),
     startsAt,
     endsAt,
   };

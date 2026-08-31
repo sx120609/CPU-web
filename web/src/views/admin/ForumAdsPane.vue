@@ -83,7 +83,11 @@
         </div>
         <div class="switches">
           <el-switch v-model="form.enabled" active-text="启用广告" />
-          <el-switch v-model="form.vipExempt" active-text="VIP 免广告" />
+          <el-switch
+            v-model="form.vipExempt"
+            :disabled="campaignPlacementSelected"
+            :active-text="campaignPlacementSelected ? '活动面向全部用户' : 'VIP 免广告'"
+          />
         </div>
         <div class="form-actions">
           <el-button type="primary" :loading="saving" @click="save">{{ editingId ? "保存修改" : "创建广告" }}</el-button>
@@ -142,12 +146,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { adminApi, type ForumAdAdmin } from "@/api/admin";
 
 const placementOptions = [
   { value: "home-mobile-top" as const, label: "移动端首页 · 快捷入口下方" },
+  { value: "compose-mobile-campaign" as const, label: "移动端发布 · 限时活动入口" },
   { value: "forum-index-top" as const, label: "论坛首页 · 顶部（桌面 / 移动）" },
   { value: "forum-home-pinned" as const, label: "首页 · 全局置顶下方" },
   { value: "forum-home-hot" as const, label: "首页 · 热议下方" },
@@ -186,8 +191,13 @@ const form = reactive({
   startsAt: "",
   endsAt: "",
 });
+const campaignPlacementSelected = computed(() => form.placements.includes("compose-mobile-campaign"));
 
 onMounted(load);
+
+watch(campaignPlacementSelected, (selected) => {
+  if (selected) form.vipExempt = false;
+});
 
 async function uploadImage(event: Event) {
   const input = event.currentTarget as HTMLInputElement;

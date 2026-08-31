@@ -5,6 +5,7 @@ import {
   forumAdMetricDay,
   isForumAdPlacement,
   normalizeForumAdPlacements,
+  normalizeForumAdVipExempt,
   summarizeForumAdMetrics,
 } from "../src/services/forumAds";
 
@@ -17,6 +18,12 @@ test("supports a dedicated mobile home placement and normalizes multiple placeme
   );
   assert.deepEqual(normalizeForumAdPlacements([], "forum-board-top"), ["forum-board-top"]);
   assert.deepEqual(normalizeForumAdPlacements(["unknown"]), []);
+});
+
+test("campaign compose placement always reaches every user", () => {
+  assert.equal(isForumAdPlacement("compose-mobile-campaign"), true);
+  assert.equal(normalizeForumAdVipExempt(["home-mobile-top", "compose-mobile-campaign"], true), false);
+  assert.equal(normalizeForumAdVipExempt(["home-mobile-top"], true), true);
 });
 
 test("uses the China calendar day for forum ad metrics", () => {

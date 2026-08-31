@@ -3,6 +3,7 @@ import { prisma } from "../prisma";
 
 export const FORUM_AD_PLACEMENTS = [
   "home-mobile-top",
+  "compose-mobile-campaign",
   "forum-index-top",
   "forum-home-pinned",
   "forum-home-hot",
@@ -57,6 +58,10 @@ export function normalizeForumAdPlacements(values: readonly string[] | null | un
   const normalized = [...new Set((values || []).filter(isForumAdPlacement))];
   if (normalized.length) return normalized;
   return legacy && isForumAdPlacement(legacy) ? [legacy] : [];
+}
+
+export function normalizeForumAdVipExempt(placements: readonly ForumAdPlacement[], vipExempt: boolean) {
+  return placements.includes("compose-mobile-campaign") ? false : vipExempt;
 }
 
 export function forumAdMetricDay(value = new Date()) {

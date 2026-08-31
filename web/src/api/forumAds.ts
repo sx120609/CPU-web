@@ -1,6 +1,6 @@
 import { getCsrfToken, request, type RequestOptions } from "./request";
 
-export type ForumAdPlacement = "home-mobile-top" | "forum-index-top" | "forum-home-pinned" | "forum-home-hot" | "forum-feed-inline" | "forum-board-top";
+export type ForumAdPlacement = "home-mobile-top" | "compose-mobile-campaign" | "forum-index-top" | "forum-home-pinned" | "forum-home-hot" | "forum-feed-inline" | "forum-board-top";
 
 export type ForumAd = {
   id: number;

@@ -37,6 +37,17 @@
           </div>
         </el-form-item>
 
+        <section v-if="activityTheme" class="activity-guide">
+          <span class="activity-guide__icon"><AppIcon :name="activityTheme.icon" /></span>
+          <div>
+            <span class="activity-guide__kicker">{{ CAMPUS_LIFE_ACTIVITY.title }} · {{ activityTheme.label }}</span>
+            <b>{{ activityTheme.prompt }}</b>
+            <p>{{ CAMPUS_LIFE_ACTIVITY.judging }}</p>
+            <p>{{ CAMPUS_LIFE_ACTIVITY.funding }}</p>
+            <small>{{ CAMPUS_LIFE_ACTIVITY.intro }}</small>
+          </div>
+        </section>
+
         <div class="publish-mode-picker" role="radiogroup" aria-label="发布形式">
           <button
             type="button"
@@ -315,7 +326,7 @@
         </template>
 
         <el-form-item v-if="publishMode === 'post'" label="标题" required>
-          <el-input v-model="form.title" placeholder="一句话概括主要内容" maxlength="120" show-word-limit />
+          <el-input v-model="form.title" :placeholder="activityTheme?.titlePlaceholder || '一句话概括主要内容'" maxlength="120" show-word-limit />
         </el-form-item>
 
         <el-form-item :label="postContentLabel" required>
@@ -582,12 +593,14 @@ import RichTextEditor from "@/components/forum/RichTextEditor.vue";
 import ManualReviewConfirmDialog from "@/components/forum/ManualReviewConfirmDialog.vue";
 import AppIcon from "@/components/common/AppIcon.vue";
 import { boardApi, type Board } from "@/api/board";
+import { forumAdsApi } from "@/api/forumAds";
 import { topicApi, type SmartPostOperation, type SmartPostQuotaEstimate, type TopicSubmissionResponse } from "@/api/topic";
 import { courseApi, type Course } from "@/api/course";
 import { useAuthStore } from "@/stores/auth";
 import { useSmartPostJobStore } from "@/stores/smartPostJob";
 import { fmtDate } from "@/utils/format";
 import { forumInternalTitle } from "@/utils/forumContent";
+import { CAMPUS_LIFE_ACTIVITY, resolveCampusLifeActivityTheme } from "@/utils/forumActivity";
 import {
   createForumSubmissionId,
   getForumRequestMessage,
@@ -609,6 +622,7 @@ const loadError = ref("");
 const coursesLoading = ref(false);
 const coursesLoaded = ref(false);
 const courseLoadError = ref("");
+const activityAvailable = ref(false);
 const submitting = ref(false);
 const submissionProgress = ref("");
 const pendingSubmissionAttempt = ref<{ fingerprint: string; submissionId: string } | null>(null);
@@ -759,7 +773,14 @@ const meta = reactive<any>(defaultPostMeta());
 const currentBoard = computed(() => boards.value.find((b) => b.slug === form.boardSlug));
 const boardType = computed(() => currentBoard.value?.type ?? "normal");
 const isSecondHandPost = computed(() => boardType.value === "market" || form.boardSlug === "market");
+const requestedActivityTheme = computed(() => resolveCampusLifeActivityTheme(route.query.activity, route.query.theme));
+const activityTheme = computed(() => {
+  if (form.boardSlug !== "life") return null;
+  if (editingId.value) return resolveCampusLifeActivityTheme(meta.campaignId, meta.campaignTheme);
+  return activityAvailable.value ? requestedActivityTheme.value : null;
+});
 const pageTitle = computed(() => {
+  if (activityTheme.value) return `发布 · ${activityTheme.value.label}`;
   if (!isSecondHandPost.value) return editingId.value ? "修改内容" : publishMode.value === "say" ? "发说说" : "发表帖子";
   if (editingId.value) return "修改二手信息";
   if (meta.marketKind === "wanted") return "发布求购";
@@ -825,7 +846,9 @@ const composeDraftScope = computed(() => {
   const board = typeof route.query.board === "string" && route.query.board ? route.query.board : "general";
   const kind = board === "market" ? routeMarketKind() : "default";
   const mode = route.query.mode === "say" ? "say" : "post";
-  return `${board}:${kind}:${mode}`;
+  const activity = typeof route.query.activity === "string" ? route.query.activity : "default";
+  const theme = typeof route.query.theme === "string" ? route.query.theme : "default";
+  return `${board}:${kind}:${mode}:${activity}:${theme}`;
 });
 const formDraftKey = computed(() => {
   if (editingId.value) return "";
@@ -977,9 +1000,15 @@ async function loadInitial() {
     return;
   }
   try {
-    const boardList = await boardApi.list({ suppressErrorMessage: true });
+    const [boardList, activityAds] = await Promise.all([
+      boardApi.list({ suppressErrorMessage: true }),
+      requestedActivityTheme.value
+        ? forumAdsApi.list("compose-mobile-campaign", { suppressErrorMessage: true }).catch(() => [])
+        : Promise.resolve([]),
+    ]);
     if (seq !== loadSeq) return;
     boards.value = boardList;
+    activityAvailable.value = activityAds.length > 0;
     normalizeSelectedBoard();
     if (editingId.value) {
       const t = await topicApi.detail(editingId.value, { suppressErrorMessage: true });
@@ -1025,6 +1054,7 @@ function resetEditorStateForLoad() {
   blockedReviewInfo.reason = "";
   blockedReviewInfo.riskScore = null;
   editorMode.value = "visual";
+  activityAvailable.value = false;
   publishMode.value = route.query.mode === "say" ? "say" : "post";
   publishModeTouched.value = typeof route.query.mode === "string";
   form.boardSlug = typeof route.query.board === "string" && !editingId.value ? route.query.board : "";
@@ -1489,6 +1519,11 @@ function buildMetadata() {
     _editorMode: editorMode.value,
     _postMode: publishMode.value,
   };
+  if (activityTheme.value) {
+    metadata.campaignId = CAMPUS_LIFE_ACTIVITY.id;
+    metadata.campaignTheme = activityTheme.value.key;
+    metadata.campaignLabel = activityTheme.value.label;
+  }
   if (boardType.value === "market") {
     metadata.marketKind = meta.marketKind;
     if (meta.marketKind !== "discuss") {
@@ -1836,6 +1871,22 @@ function notifyVideoReviewState(summary?: {
   box-shadow: var(--cpu-shadow-sm);
 }
 .post-load-state { min-height: 280px; display: grid; place-items: center; }
+
+.activity-guide {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 12px;
+  margin: 0 0 18px;
+  padding: 15px;
+  border: 1px solid color-mix(in srgb, var(--cpu-primary) 23%, var(--cpu-border-soft));
+  border-radius: 14px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--cpu-primary) 9%, var(--cpu-card)), var(--cpu-card));
+}
+.activity-guide__icon { display: grid; width: 42px; height: 42px; place-items: center; border-radius: 12px; color: var(--cpu-primary); background: var(--cpu-card); font-size: 21px; }
+.activity-guide__kicker { display: block; margin-bottom: 4px; color: var(--cpu-primary); font-size: 11px; font-weight: 800; }
+.activity-guide b { display: block; color: var(--cpu-text); font-size: 14px; line-height: 1.55; }
+.activity-guide p { margin: 5px 0 0; color: var(--cpu-text-secondary); font-size: 12px; line-height: 1.65; }
+.activity-guide small { display: block; margin-top: 6px; color: var(--cpu-text-muted); font-size: 11px; line-height: 1.6; }
 
 .option-icon {
   margin-right: 6px;
