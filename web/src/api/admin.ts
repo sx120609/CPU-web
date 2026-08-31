@@ -636,6 +636,8 @@ export type WechatServiceConfig = {
   assistantEnabled: boolean;
   notifyCategories: string[];
   notificationTemplateId: string;
+  workOrderTemplateId: string;
+  paymentSuccessTemplateId: string;
   templateTitleField: string;
   templateContentField: string;
   templateTimeField: string;
@@ -1189,6 +1191,8 @@ export const adminApi = {
     assistantEnabled: boolean;
     notifyCategories: string[];
     notificationTemplateId: string;
+    workOrderTemplateId: string;
+    paymentSuccessTemplateId: string;
     templateTitleField: string;
     templateContentField: string;
     templateTimeField: string;

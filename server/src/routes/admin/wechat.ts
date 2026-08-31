@@ -32,6 +32,8 @@ const configPatchSchema = z.object({
   assistantEnabled: z.boolean().optional(),
   notifyCategories: z.array(z.string().trim().min(1).max(40)).max(20).optional(),
   notificationTemplateId: z.string().trim().max(160).optional(),
+  workOrderTemplateId: z.string().trim().max(160).optional(),
+  paymentSuccessTemplateId: z.string().trim().max(160).optional(),
   templateTitleField: z.string().trim().max(64).optional(),
   templateContentField: z.string().trim().max(64).optional(),
   templateTimeField: z.string().trim().max(64).optional(),

@@ -5,6 +5,7 @@ import {
   buildWechatDefaultMenu,
   buildWechatBoundMenu,
   buildWechatScheduleCommandMenu,
+  buildWechatRoutedTemplateNotificationPayload,
   buildWechatTemplateNotificationPayload,
   buildWechatSubscriptionNotificationPayload,
   createWechatJsSdkSignature,
@@ -20,6 +21,7 @@ import {
   isWechatTemplateDeliveryEvent,
   markWechatServiceClientUrl,
   parseWechatXml,
+  parseWechatApiResponseText,
   renderWechatAssistantReplyImage,
   renderWechatAssistantReplyMarkdown,
   renderWechatAutomaticReply,
@@ -95,6 +97,12 @@ test("parses and classifies final template-delivery callbacks", () => {
   assert.equal(wechatTemplateOutboundMessageId(callback.msgId), "outbound:template:987654321");
   assert.deepEqual(wechatTemplateDeliveryResult("success"), { status: "ok", result: "template" });
   assert.deepEqual(wechatTemplateDeliveryResult(callback.status), { status: "error", result: "template:failed:user block" });
+});
+
+test("preserves 64-bit template message IDs from WeChat JSON responses", () => {
+  const payload = parseWechatApiResponseText('{"errcode":0,"errmsg":"ok","msgid":4674045479742390277}');
+  assert.equal(payload.msgid, "4674045479742390277");
+  assert.equal(wechatTemplateOutboundMessageId(payload.msgid), "outbound:template:4674045479742390277");
 });
 
 test("parses image and voice fields used by the multimodal assistant", () => {
@@ -321,6 +329,44 @@ test("builds regular template payloads with a safe work-order number", () => {
   assert.equal(payload.data.thing3.value, "稿件审核通过");
   assert.equal(payload.data.character_string11.value, "SJ42");
   assert.equal(payload.data.time18.value, "2026年08月31日 16:00");
+});
+
+test("routes community and payment notifications to verified category templates", () => {
+  const config = {
+    workOrderTemplateId: "work-order-template",
+    paymentSuccessTemplateId: "payment-template",
+    notificationTemplateId: "",
+    templateTitleField: "",
+    templateContentField: "",
+    templateTimeField: "",
+    templateRemarkField: "",
+  };
+  const reply = buildWechatRoutedTemplateNotificationPayload(config, "openid", {
+    id: 42,
+    category: "reply",
+    title: "有人回复了你的评论",
+    content: "回复内容",
+    createdAt: new Date("2026-08-31T08:00:00Z"),
+    payload: JSON.stringify({ type: "reply" }),
+  }, "https://cputime.cn/forum/topic/1");
+  assert.equal(reply?.template_id, "work-order-template");
+  assert.equal(reply?.data.thing2.value, "药大拾间");
+  assert.equal(reply?.data.thing3.value, "回复通知");
+  assert.equal(reply?.data.thing4.value, "有人回复了你的评论");
+  assert.equal(reply?.data.character_string5.value, "SJ42");
+
+  const payment = buildWechatRoutedTemplateNotificationPayload(config, "openid", {
+    id: 43,
+    category: "system",
+    title: "赞助支付成功",
+    content: "感谢支持",
+    createdAt: new Date("2026-08-31T08:00:00Z"),
+    payload: JSON.stringify({ type: "sponsor-paid", amount: "6.00", categoryTitle: "服务器费用" }),
+  }, "https://cputime.cn/profile");
+  assert.equal(payment?.template_id, "payment-template");
+  assert.equal(payment?.data.thing10.value, "赞助订单");
+  assert.equal(payment?.data.thing11.value, "服务器费用 ¥6.00");
+  assert.equal(payment?.data.thing12.value, "赞助支付成功");
 });
 
 test("renders a concise today-schedule image body", () => {

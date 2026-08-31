@@ -100,9 +100,17 @@
 
         <el-divider />
         <h4>模板消息</h4>
-        <p class="section-note">先在微信后台选定合规模板，再填写模板 ID 和模板中的字段名；留空时不会尝试模板推送。</p>
+        <p class="section-note">优先按通知场景使用已验证的类目模板；旧的通用模板配置仅作为兼容回退。</p>
         <el-form label-position="top">
-          <el-form-item label="模板 ID"><el-input v-model="form.notificationTemplateId" /></el-form-item>
+          <div class="template-grid">
+            <el-form-item label="工单已生成通知 · 模板 ID">
+              <el-input v-model="form.workOrderTemplateId" placeholder="论坛、私信、审核和系统通知" />
+            </el-form-item>
+            <el-form-item label="订单支付成功通知 · 模板 ID">
+              <el-input v-model="form.paymentSuccessTemplateId" placeholder="赞助与校园商城支付成功" />
+            </el-form-item>
+          </div>
+          <el-form-item label="通用回退模板 ID"><el-input v-model="form.notificationTemplateId" /></el-form-item>
           <div class="template-grid">
             <el-form-item label="标题字段"><el-input v-model="form.templateTitleField" placeholder="例如 thing1" /></el-form-item>
             <el-form-item label="内容字段"><el-input v-model="form.templateContentField" placeholder="例如 thing2" /></el-form-item>
@@ -196,10 +204,12 @@ import { fmtDate } from "@/utils/format";
 const categoryOptions = [
   { value: "reply", label: "回复" },
   { value: "mention", label: "提及" },
+  { value: "direct-message", label: "私信" },
   { value: "like", label: "点赞" },
   { value: "system", label: "系统 / 站务" },
   { value: "service-tool", label: "小工具" },
   { value: "lost-found", label: "失物招领" },
+  { value: "market", label: "校园商城" },
   { value: "school-feed", label: "校园公告" },
 ];
 
@@ -233,6 +243,8 @@ const form = reactive({
   assistantEnabled: true,
   notifyCategories: [] as string[],
   notificationTemplateId: "",
+  workOrderTemplateId: "",
+  paymentSuccessTemplateId: "",
   templateTitleField: "",
   templateContentField: "",
   templateTimeField: "",
@@ -246,7 +258,9 @@ const form = reactive({
 });
 
 const persistentNotificationReady = computed(() => Boolean(
-  (form.notificationTemplateId && form.templateTitleField && form.templateContentField)
+  form.workOrderTemplateId
+  || form.paymentSuccessTemplateId
+  || (form.notificationTemplateId && form.templateTitleField && form.templateContentField)
   || (form.subscriptionEnabled && form.subscriptionTemplateId && form.subscriptionTitleField && form.subscriptionContentField),
 ));
 
@@ -284,6 +298,8 @@ function applyConfig(value: WechatServiceConfig) {
     assistantEnabled: value.assistantEnabled,
     notifyCategories: [...value.notifyCategories],
     notificationTemplateId: value.notificationTemplateId,
+    workOrderTemplateId: value.workOrderTemplateId,
+    paymentSuccessTemplateId: value.paymentSuccessTemplateId,
     templateTitleField: value.templateTitleField,
     templateContentField: value.templateContentField,
     templateTimeField: value.templateTimeField,

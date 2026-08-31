@@ -44,7 +44,7 @@ const WECHAT_SCHEDULE_QUICK_COMMANDS = [
   { id: "SHIJIAN_QUERY_NEXT_WEEK", content: "下周课表" },
   { id: "SHIJIAN_QUERY_WEEK_AFTER_NEXT", content: "下下周课表" },
 ];
-const DEFAULT_NOTIFY_CATEGORIES = ["reply", "mention", "like", "system", "service-tool", "lost-found", "school-feed"];
+const DEFAULT_NOTIFY_CATEGORIES = ["reply", "mention", "direct-message", "like", "system", "service-tool", "lost-found", "market", "school-feed"];
 const NOTIFY_CATEGORY_OPTIONS = new Set(DEFAULT_NOTIFY_CATEGORIES);
 const MAX_WECHAT_TEXT_LENGTH = 1800;
 const WECHAT_AES_KEY_CHARACTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -104,6 +104,8 @@ export function formatWechatServiceConfig(config: WechatConfigRow) {
     assistantEnabled: config.assistantEnabled,
     notifyCategories: normalizeNotifyCategories(parseStringArray(config.notifyCategories)),
     notificationTemplateId: config.notificationTemplateId,
+    workOrderTemplateId: config.workOrderTemplateId,
+    paymentSuccessTemplateId: config.paymentSuccessTemplateId,
     templateTitleField: config.templateTitleField,
     templateContentField: config.templateContentField,
     templateTimeField: config.templateTimeField,
@@ -136,6 +138,8 @@ export async function updateWechatServiceConfig(input: {
   assistantEnabled?: boolean;
   notifyCategories?: string[];
   notificationTemplateId?: string;
+  workOrderTemplateId?: string;
+  paymentSuccessTemplateId?: string;
   templateTitleField?: string;
   templateContentField?: string;
   templateTimeField?: string;
@@ -161,6 +165,8 @@ export async function updateWechatServiceConfig(input: {
   if (input.assistantEnabled !== undefined) data.assistantEnabled = input.assistantEnabled;
   if (input.notifyCategories !== undefined) data.notifyCategories = JSON.stringify(normalizeNotifyCategories(input.notifyCategories));
   if (input.notificationTemplateId !== undefined) data.notificationTemplateId = input.notificationTemplateId.trim().slice(0, 160);
+  if (input.workOrderTemplateId !== undefined) data.workOrderTemplateId = input.workOrderTemplateId.trim().slice(0, 160);
+  if (input.paymentSuccessTemplateId !== undefined) data.paymentSuccessTemplateId = input.paymentSuccessTemplateId.trim().slice(0, 160);
   if (input.templateTitleField !== undefined) data.templateTitleField = normalizeTemplateField(input.templateTitleField);
   if (input.templateContentField !== undefined) data.templateContentField = normalizeTemplateField(input.templateContentField);
   if (input.templateTimeField !== undefined) data.templateTimeField = normalizeTemplateField(input.templateTimeField);
@@ -1395,11 +1401,7 @@ async function sendWechatPersistentNotification(
 }
 
 export function wechatNotificationPriority(notification: { category?: string | null; payload?: string | null }) {
-  let payload: Record<string, unknown> = {};
-  try {
-    const parsed = JSON.parse(notification.payload || "{}");
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) payload = parsed;
-  } catch { /* invalid payload falls back to category priority */ }
+  const payload = parseNotificationPayload(notification.payload);
   const type = String(payload.type || "");
   if (/submission-(?:published|blocked|review)|ai-(?:blocked|recovered)|review-(?:outage|failed)/.test(type)) return 100;
   if (type === "direct-message" || notification.category === "direct-message") return 90;
@@ -1409,6 +1411,33 @@ export function wechatNotificationPriority(notification: { category?: string | n
   if (notification.category === "school-feed") return 40;
   if (notification.category === "like") return 10;
   return 30;
+}
+
+function parseNotificationPayload(value?: string | null) {
+  try {
+    const parsed = JSON.parse(value || "{}");
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed as Record<string, unknown>;
+  } catch { /* invalid payload falls back to notification metadata */ }
+  return {};
+}
+
+function isWechatPaymentSuccessNotification(notification: { payload?: string | null }) {
+  const type = String(parseNotificationPayload(notification.payload).type || "");
+  return /^(?:sponsor-paid|sponsor-admin|market-paid|market-paid-seller|payment-success|order-paid)$/.test(type);
+}
+
+function wechatWorkOrderType(notification: { category?: string | null; payload?: string | null }) {
+  const type = String(parseNotificationPayload(notification.payload).type || "");
+  if (type.includes("submission") || type.includes("review") || type.includes("ai-blocked") || type.includes("ai-recovered")) return "内容审核";
+  if (notification.category === "direct-message") return "私信通知";
+  if (notification.category === "reply") return "回复通知";
+  if (notification.category === "mention") return "提及通知";
+  if (notification.category === "like") return "点赞通知";
+  if (notification.category === "lost-found") return "失物招领";
+  if (notification.category === "service-tool") return "校园服务";
+  if (notification.category === "market") return "校园商城";
+  if (notification.category === "school-feed") return "校园公告";
+  return "系统通知";
 }
 
 function runWechatNotificationDispatchTick() {
@@ -1690,10 +1719,64 @@ async function getWechatJsapiTicket(config: WechatConfigRow) {
 }
 
 async function sendWechatTemplateNotification(config: WechatConfigRow, openId: string, notification: any, link: string) {
+  const body = buildWechatRoutedTemplateNotificationPayload(config, openId, notification, link);
+  if (!body) throw new Error("当前通知没有可用的微信模板消息配置");
   return callWechatApi("/cgi-bin/message/template/send", {
     method: "POST",
-    body: buildWechatTemplateNotificationPayload(config, openId, notification, link),
+    body,
   });
+}
+
+export function buildWechatRoutedTemplateNotificationPayload(
+  config: Pick<WechatConfigRow,
+    "workOrderTemplateId"
+    | "paymentSuccessTemplateId"
+    | "notificationTemplateId"
+    | "templateTitleField"
+    | "templateContentField"
+    | "templateTimeField"
+    | "templateRemarkField">,
+  openId: string,
+  notification: any,
+  link: string,
+) {
+  if (config.paymentSuccessTemplateId && isWechatPaymentSuccessNotification(notification)) {
+    const payload = parseNotificationPayload(notification.payload);
+    const type = String(payload.type || "");
+    const orderType = type.startsWith("sponsor") ? "赞助订单" : type.startsWith("market") ? "校园商城订单" : "支付订单";
+    const amount = String(payload.amount || "").trim();
+    const item = String(payload.categoryTitle || payload.itemTitle || notification.content || notification.title || "平台服务");
+    return {
+      touser: openId,
+      template_id: config.paymentSuccessTemplateId,
+      url: link || undefined,
+      data: {
+        thing9: { value: "药大拾间" },
+        thing10: { value: orderType },
+        thing11: { value: limitText(amount ? `${item} ¥${amount}` : item, 20) },
+        thing12: { value: limitText(notification.title || "订单支付成功", 20) },
+        thing13: { value: "药大拾间用户" },
+      },
+    };
+  }
+  if (config.workOrderTemplateId) {
+    return {
+      touser: openId,
+      template_id: config.workOrderTemplateId,
+      url: link || undefined,
+      data: {
+        thing2: { value: "药大拾间" },
+        thing3: { value: wechatWorkOrderType(notification) },
+        thing4: { value: limitText(notification.title || "站内通知", 20) },
+        character_string5: { value: `SJ${Math.max(0, Number(notification.id) || 0)}` },
+        time6: { value: formatWechatTime(notification.createdAt) },
+      },
+    };
+  }
+  if (config.notificationTemplateId && config.templateTitleField && config.templateContentField) {
+    return buildWechatTemplateNotificationPayload(config, openId, notification, link);
+  }
+  return null;
 }
 
 export function buildWechatTemplateNotificationPayload(
@@ -1764,7 +1847,7 @@ async function callWechatApi(pathname: string, options: { method: "GET" | "POST"
       body: options.body ? JSON.stringify(options.body) : undefined,
       signal: controller.signal,
     });
-    const payload = await response.json() as Record<string, any>;
+    const payload = parseWechatApiResponseText(await response.text());
     if ([40001, 40014, 42001].includes(Number(payload.errcode)) && retry) {
       accessTokenCache = null;
       return callWechatApi(pathname, options, false);
@@ -1933,7 +2016,11 @@ function wechatSettingsUrl(siteOrigin = normalizedSiteOrigin()) {
 }
 
 function canSendNotificationTemplate(config: WechatConfigRow) {
-  return Boolean(config.notificationTemplateId && config.templateTitleField && config.templateContentField);
+  return Boolean(
+    config.workOrderTemplateId
+    || config.paymentSuccessTemplateId
+    || (config.notificationTemplateId && config.templateTitleField && config.templateContentField),
+  );
 }
 
 function canSendSubscriptionNotification(config: WechatConfigRow) {
@@ -2121,4 +2208,9 @@ function wechatApiErrorMessage(payload: Record<string, any>) {
   const code = Number(payload.errcode || 0);
   const message = String(payload.errmsg || payload.message || "微信接口返回异常");
   return code ? `${message} (${code})` : message;
+}
+
+export function parseWechatApiResponseText(rawText: string) {
+  const preserved = rawText.replace(/("msgid"\s*:\s*)(\d{16,})(?=\s*[,}])/g, '$1"$2"');
+  return JSON.parse(preserved) as Record<string, any>;
 }
