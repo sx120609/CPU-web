@@ -15,7 +15,13 @@ final class ScheduleWidgetPrefs {
     }
 
     static String endpoint(Context context) {
-        return prefs(context).getString(KEY_ENDPOINT, "");
+        SharedPreferences preferences = prefs(context);
+        String stored = preferences.getString(KEY_ENDPOINT, "");
+        String normalized = ScheduleWidgetEndpoint.normalize(stored);
+        if (!normalized.equals(stored)) {
+            preferences.edit().putString(KEY_ENDPOINT, normalized).apply();
+        }
+        return normalized;
     }
 
     private static SharedPreferences prefs(Context context) {

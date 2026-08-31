@@ -17,6 +17,7 @@ import { getSiteOrigin } from "../services/siteSettings";
 import {
   buildScheduleWidgetPayload,
   inferScheduleWidgetSemester,
+  isScheduleWidgetCredentialActive,
   resolveScheduleWidgetCalendar,
   resolveScheduleWidgetPreviewWeeks,
   SCHEDULE_WIDGET_PAYLOAD_VERSION,
@@ -52,7 +53,6 @@ import {
 
 export const jwxtRouter = Router();
 
-const WIDGET_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const JWXT_STATUS_CACHE_TTL_MS = 60_000;
 const JWXT_IDENTITY_CACHE_TTL_MS = 5 * 60_000;
 const JWXT_SCHEDULE_CACHE_TTL_MS = 5 * 60_000;
@@ -524,7 +524,6 @@ jwxtRouter.post(
       if (!status?.active) throw Errors.unauthorized("教务会话已失效，请重新授权");
 
       const token = generateWidgetToken();
-      const expiresAt = new Date(Date.now() + WIDGET_TOKEN_TTL_MS);
       const row = await prisma.scheduleWidgetToken.create({
         data: {
           userId: req.user.userId,
@@ -532,7 +531,7 @@ jwxtRouter.post(
           tokenHash: hashWidgetToken(token),
           tokenSuffix: token.slice(-6),
           jwxtToken,
-          expiresAt,
+          expiresAt: null,
         },
         select: {
           id: true,
@@ -561,7 +560,7 @@ jwxtRouter.post("/schedule-widget-tokens/refresh", authRequired, async (req: any
       where: { userId: req.user.userId, revokedAt: null },
       data: {
         jwxtToken,
-        expiresAt: new Date(Date.now() + WIDGET_TOKEN_TTL_MS),
+        expiresAt: null,
         cachedPayload: null,
         cachedAt: null,
       },
@@ -600,10 +599,7 @@ jwxtRouter.get("/schedule-widget", async (req, res, next) => {
         revokedAt: true,
       },
     });
-    if (!row || row.revokedAt) throw Errors.unauthorized("小组件 token 已失效");
-    if (row.expiresAt && row.expiresAt.getTime() < Date.now()) {
-      throw Errors.unauthorized("小组件 token 已过期，请重新复制配置");
-    }
+    if (!isScheduleWidgetCredentialActive(row)) throw Errors.unauthorized("小组件 token 已失效");
 
     const requestedWeek = req.query.week ? String(req.query.week) : "";
     const widgetCacheVersion = await getCacheVersion("jwxt-widget");
@@ -619,7 +615,7 @@ jwxtRouter.get("/schedule-widget", async (req, res, next) => {
     if (sharedCachedPayload) {
       await prisma.scheduleWidgetToken.update({
         where: { id: row.id },
-        data: { lastUsedAt: new Date() },
+        data: { lastUsedAt: new Date(), expiresAt: null },
       }).catch(() => undefined);
       res.setHeader("Cache-Control", "private, no-store, max-age=0");
       ok(res, sharedCachedPayload);
@@ -660,6 +656,7 @@ jwxtRouter.get("/schedule-widget", async (req, res, next) => {
         where: { id: row.id },
         data: {
           lastUsedAt: new Date(),
+          expiresAt: null,
           cachedPayload: JSON.stringify(payload),
           cachedAt: new Date(),
         },
@@ -672,7 +669,7 @@ jwxtRouter.get("/schedule-widget", async (req, res, next) => {
       if (!cached) throw e;
       await prisma.scheduleWidgetToken.update({
         where: { id: row.id },
-        data: { lastUsedAt: new Date() },
+        data: { lastUsedAt: new Date(), expiresAt: null },
       }).catch(() => undefined);
       res.setHeader("Cache-Control", "private, no-store, max-age=0");
       ok(res, {

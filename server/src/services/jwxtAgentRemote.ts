@@ -42,7 +42,10 @@ type PendingRoute = { version: 1; agentId: string; innerPendingId: string; issue
 
 const TOKEN_PREFIX = "jqa1";
 const PENDING_PREFIX = "jqap1";
-const MAX_TOKEN_ROUTE_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+// A signed Agent route is only an envelope around the encrypted JWXT session.
+// Expiring the envelope before the session made otherwise healthy sessions (and
+// every widget that referenced them) fail after seven days.
+export const JWXT_TOKEN_ROUTE_MAX_AGE_MS = config.jwxtSessionIdleMs;
 const MAX_PENDING_ROUTE_AGE_MS = 10 * 60 * 1000;
 
 const runtimeById = new Map<string, QueryRuntime>();
@@ -462,7 +465,9 @@ function isRuntimeAvailable(runtime: QueryRuntime) {
 }
 
 function resolveTokenRoute(token: string): TokenRoute {
-  if (token.startsWith(`${TOKEN_PREFIX}.`)) return decodeSignedRoute<TokenRoute>(token, TOKEN_PREFIX, MAX_TOKEN_ROUTE_AGE_MS);
+  if (token.startsWith(`${TOKEN_PREFIX}.`)) {
+    return decodeSignedRoute<TokenRoute>(token, TOKEN_PREFIX, JWXT_TOKEN_ROUTE_MAX_AGE_MS);
+  }
   const primary = syncQueryRuntimes()[0];
   if (!primary) throw noQueryAgentError();
   return { version: 1, agentId: primary.id, innerToken: token, issuedAt: Date.now() };

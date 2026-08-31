@@ -19,6 +19,7 @@ import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
+import java.io.IOException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
@@ -116,7 +117,7 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
                 JSONObject data = fetchSchedule(endpoint);
                 renderSchedule(views, data, mode);
             } catch (Exception error) {
-                renderMessage(views, mode, "读取失败", "请打开 App 完成教务授权后重试", safeMessage(error));
+                renderFailure(views, mode, error);
             }
             manager.updateAppWidget(appWidgetId, views);
         });
@@ -158,25 +159,61 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
     }
 
     private static JSONObject fetchSchedule(String endpoint) throws Exception {
-        HttpURLConnection connection = (HttpURLConnection) new URL(cacheBustedEndpoint(endpoint)).openConnection();
-        connection.setConnectTimeout(10000);
-        connection.setReadTimeout(15000);
-        connection.setRequestMethod("GET");
-        connection.setUseCaches(false);
-        connection.setRequestProperty("Cache-Control", "no-cache");
-        connection.setRequestProperty("Pragma", "no-cache");
-        int status = connection.getResponseCode();
-        InputStream stream = status >= 200 && status < 300
-                ? connection.getInputStream()
-                : connection.getErrorStream();
-        String body = readFully(stream);
-        connection.disconnect();
-
-        JSONObject wrapper = new JSONObject(body);
-        if (wrapper.optInt("code", -1) != 0) {
-            throw new IllegalStateException(wrapper.optString("message", "课表读取失败"));
+        IOException networkFailure = null;
+        for (String candidate : ScheduleWidgetEndpoint.candidates(endpoint)) {
+            try {
+                return fetchScheduleOnce(candidate);
+            } catch (IOException error) {
+                networkFailure = error;
+            }
         }
-        return wrapper.getJSONObject("data");
+        if (networkFailure != null) throw networkFailure;
+        throw new IOException("没有可用的课表服务地址");
+    }
+
+    private static JSONObject fetchScheduleOnce(String endpoint) throws Exception {
+        HttpURLConnection connection = (HttpURLConnection) new URL(cacheBustedEndpoint(endpoint)).openConnection();
+        try {
+            connection.setConnectTimeout(10000);
+            connection.setReadTimeout(15000);
+            connection.setRequestMethod("GET");
+            connection.setUseCaches(false);
+            connection.setRequestProperty("Cache-Control", "no-cache");
+            connection.setRequestProperty("Pragma", "no-cache");
+            int status = connection.getResponseCode();
+            InputStream stream = status >= 200 && status < 300
+                    ? connection.getInputStream()
+                    : connection.getErrorStream();
+            String body = readFully(stream);
+            JSONObject wrapper = new JSONObject(body);
+            if (status == 401 || status == 403 || wrapper.optInt("code", -1) == 401) {
+                throw new WidgetAuthorizationException(wrapper.optString("message", "教务授权已失效"));
+            }
+            if (wrapper.optInt("code", -1) != 0) {
+                throw new IllegalStateException(wrapper.optString("message", "课表读取失败"));
+            }
+            return wrapper.getJSONObject("data");
+        } finally {
+            connection.disconnect();
+        }
+    }
+
+    private static void renderFailure(RemoteViews views, WidgetMode mode, Exception error) {
+        if (error instanceof WidgetAuthorizationException) {
+            renderMessage(views, mode, "授权已失效", "请打开 App 重新登录教务", safeMessage(error));
+            return;
+        }
+        if (error instanceof IOException) {
+            renderMessage(views, mode, "网络连接失败", "请检查网络后点刷新重试", "已自动尝试备用入口");
+            return;
+        }
+        renderMessage(views, mode, "读取失败", "课表服务暂时不可用，请稍后重试", safeMessage(error));
+    }
+
+    private static final class WidgetAuthorizationException extends IllegalStateException {
+        WidgetAuthorizationException(String message) {
+            super(message);
+        }
     }
 
     private static void renderSchedule(RemoteViews views, JSONObject data, WidgetMode mode) {

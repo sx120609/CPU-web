@@ -56,6 +56,7 @@ import {
   isAndroidNativeApp,
   supportsAndroidInAppApkDownload,
 } from "@/utils/clientInfo";
+import { shouldAutoPromptAndroidUpdate } from "@/utils/domainMigration";
 
 interface AndroidBridge {
   copyText?: (text: string) => boolean;
@@ -104,7 +105,11 @@ function onPromptEvent(event: CustomEvent<AndroidUpdatePromptDetail>) {
 function autoPromptIfNeeded() {
   autoPromptTimer = 0;
   if (autoPrompted) return;
-  if (!isAndroidAppUpdateAvailable()) return;
+  if (!shouldAutoPromptAndroidUpdate(
+    window.location.hostname,
+    isAndroidAppUpdateAvailable(),
+    isAndroidLegacyMajorUpgrade(),
+  )) return;
   autoPrompted = true;
   openPrompt("app", true);
 }

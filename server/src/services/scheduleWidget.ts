@@ -2,6 +2,12 @@ import { normalizeCalendarWeekDays } from "./jwxtParser";
 
 export const SCHEDULE_WIDGET_PAYLOAD_VERSION = 10;
 
+export function isScheduleWidgetCredentialActive<T extends { revokedAt?: Date | null }>(
+  record: T | null | undefined,
+): record is T {
+  return Boolean(record && !record.revokedAt);
+}
+
 const SMALL_SLOTS = [
   { no: 1, start: "08:00", end: "08:45" },
   { no: 2, start: "08:55", end: "09:40" },

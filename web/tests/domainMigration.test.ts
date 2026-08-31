@@ -5,6 +5,7 @@ import {
   buildPrimarySiteUrl,
   isLegacySiteHostname,
   resolveMigrationAudience,
+  shouldAutoPromptAndroidUpdate,
   shouldShowLegacyDomainNotice,
 } from "../src/utils/domainMigration";
 
@@ -24,6 +25,14 @@ test("旧域名提醒可以暂缓一天并在到期后重新出现", () => {
   assert.equal(shouldShowLegacyDomainNotice("cpu.lizmt.cn", String(now + 1), now), false);
   assert.equal(shouldShowLegacyDomainNotice("cpu.lizmt.cn", String(now), now), true);
   assert.equal(shouldShowLegacyDomainNotice("cpu.lizmt.cn", "invalid", now), true);
+  assert.equal(shouldShowLegacyDomainNotice("cpu.lizmt.cn", null, now, true), false);
+});
+
+test("旧版安卓客户端继续使用兼容域名时不强制弹出升级", () => {
+  assert.equal(shouldAutoPromptAndroidUpdate("cpu.lizmt.cn", true, true), false);
+  assert.equal(shouldAutoPromptAndroidUpdate("cpu.lizmt.cn", true, false), true);
+  assert.equal(shouldAutoPromptAndroidUpdate("cputime.cn", true, true), true);
+  assert.equal(shouldAutoPromptAndroidUpdate("cputime.cn", false, true), false);
 });
 
 test("迁移提醒只选择一套与当前客户端匹配的说明", () => {

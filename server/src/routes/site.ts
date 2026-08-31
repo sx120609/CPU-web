@@ -146,6 +146,20 @@ siteRouter.get("/userscripts/weban-helper/source", async (req, res, next) => {
 });
 
 siteRouter.get("/downloads/android-app", async (_req, res) => {
+  const configuredUrl = normalizeAndroidDownloadUrl(config.androidAppDownloadUrl);
+  if (configuredUrl) {
+    res.redirect(302, configuredUrl);
+    return;
+  }
+
+  // A bundled APK is commit-bound and can be checked alongside the web release.
+  // Prefer it over a shared folder that may still expose the previous version.
+  const bundledFileName = resolveLatestAndroidApkFileName();
+  if (bundledFileName) {
+    res.redirect(302, `/downloads/${encodeURIComponent(bundledFileName)}`);
+    return;
+  }
+
   if (hasAndroidPdsShare()) {
     try {
       const file = await resolveAndroidDownload();
@@ -157,14 +171,7 @@ siteRouter.get("/downloads/android-app", async (_req, res) => {
     }
   }
 
-  const configuredUrl = normalizeAndroidDownloadUrl(config.androidAppDownloadUrl);
-  if (configuredUrl) {
-    res.redirect(302, configuredUrl);
-    return;
-  }
-
-  const fileName = resolveLatestAndroidApkFileName() || "CPU-Web-Android-V33.apk";
-  res.redirect(302, `/downloads/${encodeURIComponent(fileName)}`);
+  res.redirect(302, "/downloads/CPU-Web-Android-V34.apk");
 });
 
 /** 校园地图原图的稳定下载入口；实际文件由 PDS 临时直链提供，不经过本站传输。 */

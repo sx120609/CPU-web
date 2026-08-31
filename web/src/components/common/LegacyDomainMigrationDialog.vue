@@ -164,7 +164,12 @@ function openPrimarySite() {
 onMounted(() => {
   const isDevPreview = import.meta.env.DEV
     && new URLSearchParams(window.location.search).get("previewLegacyDomainNotice") === "1";
-  if (!isDevPreview && !shouldShowLegacyDomainNotice(window.location.hostname, readSnoozeUntil())) return;
+  if (!isDevPreview && !shouldShowLegacyDomainNotice(
+    window.location.hostname,
+    readSnoozeUntil(),
+    Date.now(),
+    isAndroidNativeApp(),
+  )) return;
   audience.value = detectAudience();
   visible.value = true;
 });

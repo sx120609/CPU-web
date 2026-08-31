@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   buildScheduleWidgetPayload,
   inferScheduleWidgetSemester,
+  isScheduleWidgetCredentialActive,
   parseScheduleWidgetWeeks,
   resolveScheduleWidgetCalendar,
   resolveScheduleWidgetPreviewWeeks,
@@ -10,6 +11,12 @@ import {
 } from "../src/services/scheduleWidget";
 
 const WEDNESDAY_1302_CHINA = new Date("2026-07-22T05:02:00.000Z");
+
+test("schedule widget credentials remain active until explicitly revoked", () => {
+  assert.equal(isScheduleWidgetCredentialActive({ revokedAt: null }), true);
+  assert.equal(isScheduleWidgetCredentialActive({ revokedAt: new Date() }), false);
+  assert.equal(isScheduleWidgetCredentialActive(null), false);
+});
 
 function calendarFor(week: number, days: string[]) {
   return {

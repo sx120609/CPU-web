@@ -22,12 +22,26 @@ export function shouldShowLegacyDomainNotice(
   hostname: string,
   snoozeUntil: string | null,
   now = Date.now(),
+  nativeAndroidClient = false,
 ) {
   if (!isLegacySiteHostname(hostname)) return false;
+  // 2.x Android clients are permanently pinned to the legacy host. The host
+  // remains a supported compatibility entry, so blocking the app with a
+  // migration dialog only turns an otherwise usable client into a dead end.
+  if (nativeAndroidClient) return false;
   if (!snoozeUntil) return true;
 
   const timestamp = Number(snoozeUntil);
   return !Number.isFinite(timestamp) || timestamp <= now;
+}
+
+export function shouldAutoPromptAndroidUpdate(
+  hostname: string,
+  updateAvailable: boolean,
+  legacyMajorUpgrade: boolean,
+) {
+  if (!updateAvailable) return false;
+  return !(legacyMajorUpgrade && isLegacySiteHostname(hostname));
 }
 
 export function resolveMigrationAudience({
