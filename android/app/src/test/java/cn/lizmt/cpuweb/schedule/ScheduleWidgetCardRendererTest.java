@@ -47,9 +47,9 @@ public class ScheduleWidgetCardRendererTest {
 
         assertPreview(ScheduleWidgetCardRenderer.renderUpcoming(day, firstTwo, false), 520, 520, "upcoming-compact.png");
         assertPreview(ScheduleWidgetCardRenderer.renderUpcoming(day, firstTwo, true), 920, 410, "upcoming-wide.png");
-        assertPreview(ScheduleWidgetCardRenderer.renderToday(day, false), 920, 410, "today-wide.png");
-        assertPreview(ScheduleWidgetCardRenderer.renderToday(day, true), 920, 920, "today-large.png");
-        assertPreview(ScheduleWidgetCardRenderer.renderTwoDay(day, tomorrow), 920, 920, "two-day-large.png");
+        assertPreview(ScheduleWidgetCardRenderer.renderToday(day, false, minutes("10:00")), 920, 410, "today-wide.png");
+        assertPreview(ScheduleWidgetCardRenderer.renderToday(day, true, minutes("10:00")), 920, 920, "today-large.png");
+        assertPreview(ScheduleWidgetCardRenderer.renderTwoDay(day, tomorrow, minutes("10:00")), 920, 920, "two-day-large.png");
     }
 
     private static void assertPreview(Bitmap bitmap, int width, int height, String name) throws Exception {
@@ -78,5 +78,10 @@ public class ScheduleWidgetCardRendererTest {
                 .put("teacher", teacher)
                 .put("startTime", start)
                 .put("endTime", end);
+    }
+
+    private static int minutes(String value) {
+        return Integer.parseInt(value.substring(0, 2)) * 60
+                + Integer.parseInt(value.substring(3, 5));
     }
 }

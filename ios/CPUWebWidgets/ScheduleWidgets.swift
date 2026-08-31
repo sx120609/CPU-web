@@ -234,22 +234,27 @@ private struct TodayScheduleView: View {
     @Environment(\.widgetFamily) private var family
 
     var body: some View {
-        let today = payload.fullDay(for: SchedulePayload.dateString(.now), fallbackOffset: 0)
+        let now = Date.now
+        let todayDate = SchedulePayload.dateString(now)
+        let today = payload.fullDay(for: todayDate, fallbackOffset: 0)
         let limit = family == .systemLarge ? 7 : 2
+        let nowMinutes = today.date == todayDate ? SchedulePayload.minutesSinceMidnight(now) : nil
+        let window = today.courseWindow(limit: limit, nowMinutes: nowMinutes)
         VStack(alignment: .leading, spacing: family == .systemLarge ? 8 : 7) {
             WidgetDateHeader(day: today)
             if today.courseList.isEmpty {
                 EmptyCoursesView(message: "今天没有课程")
             } else {
-                ForEach(Array(today.courseList.prefix(limit).enumerated()), id: \.offset) { _, course in
+                ForEach(Array(window.courses.enumerated()), id: \.offset) { _, course in
                     TodayCourseRow(
                         course: course,
                         large: family == .systemLarge,
-                        timeOnSeparateLine: false
+                        timeOnSeparateLine: false,
+                        completed: nowMinutes.map { course.hasEnded(at: $0) } ?? false
                     )
                 }
-                if today.courseList.count > limit {
-                    Text("还有 \(today.courseList.count - limit) 门课程")
+                if window.remainingCount > 0 {
+                    Text("还有 \(window.remainingCount) 门课程")
                         .font(.system(size: 9))
                         .foregroundStyle(WidgetPalette.muted)
                         .frame(maxWidth: .infinity, alignment: .trailing)
@@ -263,6 +268,7 @@ private struct TodayCourseRow: View {
     let course: ScheduleCourse
     let large: Bool
     let timeOnSeparateLine: Bool
+    let completed: Bool
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.scheduleWidgetTheme) private var theme
     @Environment(\.widgetRenderingMode) private var renderingMode
@@ -304,6 +310,8 @@ private struct TodayCourseRow: View {
                 // accented mode and remap opaque colors to solid white.
                 .opacity(renderingMode == .fullColor ? 1 : 0.14)
         }
+        .saturation(completed ? 0 : 1)
+        .opacity(completed ? 0.56 : 1)
     }
 
     private var timeLabel: some View {
@@ -319,30 +327,41 @@ private struct TwoDayScheduleView: View {
     let payload: SchedulePayload
 
     var body: some View {
-        let todayDate = SchedulePayload.dateString(.now)
-        let tomorrowDate = SchedulePayload.dateString(Calendar.current.date(byAdding: .day, value: 1, to: .now) ?? .now)
+        let now = Date.now
+        let todayDate = SchedulePayload.dateString(now)
+        let tomorrowDate = SchedulePayload.dateString(Calendar.current.date(byAdding: .day, value: 1, to: now) ?? now)
         let today = payload.fullDay(for: todayDate, fallbackOffset: 0)
         let tomorrow = payload.fullDay(for: tomorrowDate, fallbackOffset: 1)
 
         HStack(alignment: .top, spacing: 13) {
-            DayColumn(day: today)
+            DayColumn(
+                day: today,
+                nowMinutes: today.date == todayDate ? SchedulePayload.minutesSinceMidnight(now) : nil
+            )
             Divider()
-            DayColumn(day: tomorrow)
+            DayColumn(day: tomorrow, nowMinutes: nil)
         }
     }
 }
 
 private struct DayColumn: View {
     let day: ScheduleDay
+    let nowMinutes: Int?
 
     var body: some View {
+        let window = day.courseWindow(limit: 5, nowMinutes: nowMinutes)
         VStack(alignment: .leading, spacing: 7) {
             WidgetDateHeader(day: day)
             if day.courseList.isEmpty {
                 EmptyCoursesView(message: "没有课程")
             } else {
-                ForEach(Array(day.courseList.prefix(5).enumerated()), id: \.offset) { _, course in
-                    TodayCourseRow(course: course, large: false, timeOnSeparateLine: true)
+                ForEach(Array(window.courses.enumerated()), id: \.offset) { _, course in
+                    TodayCourseRow(
+                        course: course,
+                        large: false,
+                        timeOnSeparateLine: true,
+                        completed: nowMinutes.map { course.hasEnded(at: $0) } ?? false
+                    )
                 }
             }
         }

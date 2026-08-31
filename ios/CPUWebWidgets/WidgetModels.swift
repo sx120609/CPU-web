@@ -63,6 +63,10 @@ struct ScheduleCourse: Decodable, Identifiable {
 
     var hasUsableStartTime: Bool { Self.minutes(startTime) != nil }
 
+    func hasEnded(at minutes: Int) -> Bool {
+        endMinutes > 0 && endMinutes < minutes
+    }
+
     private func normalized(_ value: String?) -> String? {
         guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
             return nil
@@ -96,6 +100,28 @@ struct ScheduleDay: Decodable, Identifiable {
         let day = Int(date.dropFirst(8).prefix(2)) ?? 0
         return month > 0 && day > 0 ? "\(month).\(day)" : String(date.dropFirst(5)).replacingOccurrences(of: "-", with: ".")
     }
+
+    func courseWindow(limit: Int, nowMinutes: Int?) -> ScheduleCourseWindow {
+        let safeLimit = max(0, limit)
+        let overflow = max(0, courseList.count - safeLimit)
+        let completedPrefix = nowMinutes.map { minutes in
+            courseList.prefix { $0.hasEnded(at: minutes) }.count
+        } ?? 0
+        let skippedCompletedCount = min(overflow, completedPrefix)
+        let visible = Array(courseList.dropFirst(skippedCompletedCount).prefix(safeLimit))
+        let remainingCount = max(0, courseList.count - skippedCompletedCount - visible.count)
+        return ScheduleCourseWindow(
+            courses: visible,
+            remainingCount: remainingCount,
+            skippedCompletedCount: skippedCompletedCount
+        )
+    }
+}
+
+struct ScheduleCourseWindow {
+    let courses: [ScheduleCourse]
+    let remainingCount: Int
+    let skippedCompletedCount: Int
 }
 
 struct SchedulePayload: Decodable {
@@ -159,6 +185,11 @@ struct SchedulePayload: Decodable {
         formatter.locale = Locale(identifier: "zh_CN")
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter.string(from: date)
+    }
+
+    static func minutesSinceMidnight(_ date: Date) -> Int {
+        Calendar.current.component(.hour, from: date) * 60
+            + Calendar.current.component(.minute, from: date)
     }
 }
 

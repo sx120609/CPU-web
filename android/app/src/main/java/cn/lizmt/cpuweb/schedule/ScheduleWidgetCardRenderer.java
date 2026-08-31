@@ -21,6 +21,10 @@ final class ScheduleWidgetCardRenderer {
     private static final int PRIMARY_TEXT = Color.rgb(23, 32, 51);
     private static final int SECONDARY_TEXT = Color.rgb(71, 84, 103);
     private static final int MUTED_TEXT = Color.rgb(152, 162, 179);
+    private static final int COMPLETED_BACKGROUND = Color.rgb(239, 242, 246);
+    private static final int COMPLETED_ACCENT = Color.rgb(152, 162, 179);
+    private static final int COMPLETED_PRIMARY_TEXT = Color.rgb(102, 112, 133);
+    private static final int COMPLETED_SECONDARY_TEXT = Color.rgb(152, 162, 179);
     private static final int[] ACCENTS = {
             Color.rgb(232, 91, 75),
             Color.rgb(74, 120, 242),
@@ -61,7 +65,7 @@ final class ScheduleWidgetCardRenderer {
         return bitmap;
     }
 
-    static Bitmap renderToday(JSONObject day, boolean large) {
+    static Bitmap renderToday(JSONObject day, boolean large, int nowMinutes) {
         Bitmap bitmap = Bitmap.createBitmap(
                 large ? LARGE_SIZE : WIDE_WIDTH,
                 large ? LARGE_SIZE : WIDE_HEIGHT,
@@ -83,11 +87,11 @@ final class ScheduleWidgetCardRenderer {
             drawEmpty(canvas, paint, bitmap.getWidth(), bitmap.getHeight(), "今日暂无课程");
             return bitmap;
         }
-        drawTodayRows(canvas, paint, courses, large);
+        drawTodayRows(canvas, paint, courses, large, nowMinutes);
         return bitmap;
     }
 
-    static Bitmap renderTwoDay(JSONObject today, JSONObject tomorrow) {
+    static Bitmap renderTwoDay(JSONObject today, JSONObject tomorrow, int nowMinutes) {
         Bitmap bitmap = Bitmap.createBitmap(LARGE_SIZE, LARGE_SIZE, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(bitmap);
         canvas.drawColor(BACKGROUND);
@@ -113,12 +117,18 @@ final class ScheduleWidgetCardRenderer {
                 paint
         );
 
-        drawDayPanel(canvas, paint, today, new RectF(34f, 82f, 450f, 886f));
-        drawDayPanel(canvas, paint, tomorrow, new RectF(470f, 82f, 886f, 886f));
+        drawDayPanel(canvas, paint, today, new RectF(34f, 82f, 450f, 886f), nowMinutes);
+        drawDayPanel(canvas, paint, tomorrow, new RectF(470f, 82f, 886f, 886f), -1);
         return bitmap;
     }
 
-    private static void drawDayPanel(Canvas canvas, Paint paint, JSONObject day, RectF panel) {
+    private static void drawDayPanel(
+            Canvas canvas,
+            Paint paint,
+            JSONObject day,
+            RectF panel,
+            int nowMinutes
+    ) {
         paint.setStyle(Paint.Style.FILL);
         paint.setColor(Color.WHITE);
         canvas.drawRoundRect(panel, 26f, 26f, paint);
@@ -161,25 +171,36 @@ final class ScheduleWidgetCardRenderer {
         }
 
         int limit = 5;
-        int count = Math.min(courses.size(), limit);
+        CourseWindow window = selectCourseWindow(courses, limit, nowMinutes);
+        List<JSONObject> visibleCourses = window.courses;
+        int count = visibleCourses.size();
         float listTop = panel.top + 68f;
-        float listBottom = panel.bottom - (courses.size() > limit ? 34f : 16f);
+        float listBottom = panel.bottom - (window.remainingCount > 0 ? 34f : 16f);
         float gap = 10f;
         float rowHeight = Math.min(125f, (listBottom - listTop - gap * (count - 1)) / count);
         for (int index = 0; index < count; index++) {
-            JSONObject course = courses.get(index);
+            JSONObject course = visibleCourses.get(index);
             int color = colorIndex(course);
+            boolean completed = isCompleted(course, nowMinutes);
             float rowTop = listTop + index * (rowHeight + gap);
             RectF row = new RectF(panel.left + 16f, rowTop, panel.right - 16f, rowTop + rowHeight);
             paint.setStyle(Paint.Style.FILL);
-            paint.setColor(TINTS[color]);
+            paint.setColor(completed ? COMPLETED_BACKGROUND : TINTS[color]);
             canvas.drawRoundRect(row, 18f, 18f, paint);
-            drawBar(canvas, paint, row.left, row.top + 9f, 8f, row.height() - 18f, ACCENTS[color]);
+            drawBar(
+                    canvas,
+                    paint,
+                    row.left,
+                    row.top + 9f,
+                    8f,
+                    row.height() - 18f,
+                    completed ? COMPLETED_ACCENT : ACCENTS[color]
+            );
 
             float textLeft = row.left + 26f;
             float timeWidth = 96f;
             paint.setTextAlign(Paint.Align.LEFT);
-            paint.setColor(PRIMARY_TEXT);
+            paint.setColor(completed ? COMPLETED_PRIMARY_TEXT : PRIMARY_TEXT);
             paint.setTextSize(27f);
             paint.setFakeBoldText(true);
             canvas.drawText(
@@ -188,7 +209,7 @@ final class ScheduleWidgetCardRenderer {
                     row.top + row.height() * 0.43f,
                     paint
             );
-            paint.setColor(SECONDARY_TEXT);
+            paint.setColor(completed ? COMPLETED_SECONDARY_TEXT : SECONDARY_TEXT);
             paint.setTextSize(20f);
             paint.setFakeBoldText(false);
             canvas.drawText(
@@ -198,17 +219,17 @@ final class ScheduleWidgetCardRenderer {
                     paint
             );
             paint.setTextAlign(Paint.Align.RIGHT);
-            paint.setColor(PRIMARY_TEXT);
+            paint.setColor(completed ? COMPLETED_PRIMARY_TEXT : PRIMARY_TEXT);
             paint.setTextSize(22f);
             paint.setFakeBoldText(true);
             canvas.drawText(course.optString("startTime", "--:--"), row.right - 15f, row.top + row.height() * 0.43f, paint);
         }
-        if (courses.size() > limit) {
+        if (window.remainingCount > 0) {
             paint.setTextAlign(Paint.Align.RIGHT);
             paint.setColor(MUTED_TEXT);
             paint.setTextSize(20f);
             paint.setFakeBoldText(false);
-            canvas.drawText("还有 " + (courses.size() - limit) + " 门课程", panel.right - 18f, panel.bottom - 10f, paint);
+            canvas.drawText("还有 " + window.remainingCount + " 门课程", panel.right - 18f, panel.bottom - 10f, paint);
         }
         paint.setTextAlign(Paint.Align.LEFT);
         paint.setFakeBoldText(false);
@@ -306,41 +327,62 @@ final class ScheduleWidgetCardRenderer {
             Canvas canvas,
             Paint paint,
             List<JSONObject> courses,
-            boolean large
+            boolean large,
+            int nowMinutes
     ) {
         int limit = large ? 7 : 2;
-        int count = Math.min(courses.size(), limit);
+        CourseWindow window = selectCourseWindow(courses, limit, nowMinutes);
+        List<JSONObject> visibleCourses = window.courses;
+        int count = visibleCourses.size();
         float top = large ? 104f : 82f;
         float available = (large ? 876f : 392f) - top;
         float gap = large ? 13f : 10f;
         float rowHeight = Math.min(large ? 103f : 140f, (available - gap * (count - 1)) / count);
         for (int index = 0; index < count; index++) {
-            JSONObject course = courses.get(index);
+            JSONObject course = visibleCourses.get(index);
             int color = colorIndex(course);
+            boolean completed = isCompleted(course, nowMinutes);
             float rowTop = top + index * (rowHeight + gap);
             RectF row = new RectF(38f, rowTop, (large ? LARGE_SIZE : WIDE_WIDTH) - 38f, rowTop + rowHeight);
             paint.setStyle(Paint.Style.FILL);
-            paint.setColor(TINTS[color]);
+            paint.setColor(completed ? COMPLETED_BACKGROUND : TINTS[color]);
             canvas.drawRoundRect(row, 22f, 22f, paint);
-            drawBar(canvas, paint, 38f, rowTop + 8f, 10f, rowHeight - 16f, ACCENTS[color]);
+            drawBar(
+                    canvas,
+                    paint,
+                    38f,
+                    rowTop + 8f,
+                    10f,
+                    rowHeight - 16f,
+                    completed ? COMPLETED_ACCENT : ACCENTS[color]
+            );
 
             float textX = 66f;
-            paint.setColor(PRIMARY_TEXT);
+            paint.setColor(completed ? COMPLETED_PRIMARY_TEXT : PRIMARY_TEXT);
             paint.setTextSize(large ? 29f : 31f);
             paint.setFakeBoldText(true);
             float timeWidth = large ? 150f : 165f;
             canvas.drawText(fit(course.optString("name", "课程"), paint, row.width() - timeWidth - 48f), textX, rowTop + rowHeight * 0.42f, paint);
-            paint.setColor(SECONDARY_TEXT);
+            paint.setColor(completed ? COMPLETED_SECONDARY_TEXT : SECONDARY_TEXT);
             paint.setTextSize(large ? 23f : 25f);
             paint.setFakeBoldText(false);
             canvas.drawText(fit(courseMeta(course), paint, row.width() - timeWidth - 48f), textX, rowTop + rowHeight * 0.72f, paint);
-            drawTimes(canvas, paint, course, row.right - 26f, rowTop, rowHeight, large ? 24f : 27f);
+            drawTimes(
+                    canvas,
+                    paint,
+                    course,
+                    row.right - 26f,
+                    rowTop,
+                    rowHeight,
+                    large ? 24f : 27f,
+                    completed
+            );
         }
-        if (large && courses.size() > limit) {
+        if (large && window.remainingCount > 0) {
             paint.setColor(MUTED_TEXT);
             paint.setTextSize(22f);
             paint.setTextAlign(Paint.Align.RIGHT);
-            canvas.drawText("还有 " + (courses.size() - limit) + " 门课程", (large ? LARGE_SIZE : WIDE_WIDTH) - 42f, (large ? LARGE_SIZE : WIDE_HEIGHT) - 20f, paint);
+            canvas.drawText("还有 " + window.remainingCount + " 门课程", (large ? LARGE_SIZE : WIDE_WIDTH) - 42f, (large ? LARGE_SIZE : WIDE_HEIGHT) - 20f, paint);
             paint.setTextAlign(Paint.Align.LEFT);
         }
     }
@@ -352,9 +394,10 @@ final class ScheduleWidgetCardRenderer {
             float right,
             float top,
             float height,
-            float size
+            float size,
+            boolean completed
     ) {
-        paint.setColor(PRIMARY_TEXT);
+        paint.setColor(completed ? COMPLETED_PRIMARY_TEXT : PRIMARY_TEXT);
         paint.setTextSize(size);
         paint.setFakeBoldText(true);
         paint.setTextAlign(Paint.Align.RIGHT);
@@ -364,6 +407,43 @@ final class ScheduleWidgetCardRenderer {
         canvas.drawText(end, right, top + height * 0.72f, paint);
         paint.setTextAlign(Paint.Align.LEFT);
         paint.setFakeBoldText(false);
+    }
+
+    static CourseWindow selectCourseWindow(List<JSONObject> courses, int limit, int nowMinutes) {
+        int safeLimit = Math.max(0, limit);
+        int overflow = Math.max(0, courses.size() - safeLimit);
+        int completedPrefix = 0;
+        if (nowMinutes >= 0) {
+            while (completedPrefix < courses.size() && isCompleted(courses.get(completedPrefix), nowMinutes)) {
+                completedPrefix++;
+            }
+        }
+        int skip = Math.min(overflow, completedPrefix);
+        int end = Math.min(courses.size(), skip + safeLimit);
+        List<JSONObject> selected = new ArrayList<>(courses.subList(skip, end));
+        return new CourseWindow(selected, Math.max(0, courses.size() - end), skip);
+    }
+
+    static boolean isCompleted(JSONObject course, int nowMinutes) {
+        if (course == null || nowMinutes < 0) return false;
+        int end = parseMinutes(course.optString("endTime", ""));
+        if (end < 0) {
+            int start = parseMinutes(course.optString("startTime", ""));
+            end = start < 0 ? -1 : start + 45;
+        }
+        return end >= 0 && end < nowMinutes;
+    }
+
+    static final class CourseWindow {
+        final List<JSONObject> courses;
+        final int remainingCount;
+        final int skippedCompletedCount;
+
+        CourseWindow(List<JSONObject> courses, int remainingCount, int skippedCompletedCount) {
+            this.courses = courses;
+            this.remainingCount = remainingCount;
+            this.skippedCompletedCount = skippedCompletedCount;
+        }
     }
 
     private static void drawDate(Canvas canvas, Paint paint, JSONObject day, float x, float y, float size) {
@@ -431,6 +511,17 @@ final class ScheduleWidgetCardRenderer {
         String end = course.optString("endTime", "").trim();
         if (start.isEmpty()) return "时间待确认";
         return end.isEmpty() ? start : start + " - " + end;
+    }
+
+    private static int parseMinutes(String value) {
+        if (value == null || value.length() < 5) return -1;
+        try {
+            int hour = Integer.parseInt(value.substring(0, 2));
+            int minute = Integer.parseInt(value.substring(3, 5));
+            return hour * 60 + minute;
+        } catch (Exception ignored) {
+            return -1;
+        }
     }
 
     private static String fit(String value, Paint paint, float maxWidth) {

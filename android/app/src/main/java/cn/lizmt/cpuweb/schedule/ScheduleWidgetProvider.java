@@ -241,13 +241,13 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
 
     private static void renderToday(RemoteViews views, JSONObject data, boolean large) {
         JSONObject day = fullDayForDate(data, deviceDateOffset(0), 0);
-        showBitmap(views, ScheduleWidgetCardRenderer.renderToday(day, large));
+        showBitmap(views, ScheduleWidgetCardRenderer.renderToday(day, large, currentMinutes()));
     }
 
     private static void renderLarge(RemoteViews views, JSONObject data) {
         JSONObject today = fullDayForDate(data, deviceDateOffset(0), 0);
         JSONObject tomorrow = fullDayForDate(data, deviceDateOffset(1), 1);
-        showBitmap(views, ScheduleWidgetCardRenderer.renderTwoDay(today, tomorrow));
+        showBitmap(views, ScheduleWidgetCardRenderer.renderTwoDay(today, tomorrow, currentMinutes()));
     }
 
     private static void showBitmap(RemoteViews views, Bitmap bitmap) {
