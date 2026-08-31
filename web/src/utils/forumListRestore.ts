@@ -36,7 +36,7 @@ export function clearForumListRestoreState(routePath: string) {
   window.sessionStorage.removeItem(storageKey(routePath));
 }
 
-export function writeForumListRestoreState(routePath: string, payload: Omit<RestorePayload, "savedAt">) {
+export function writeForumListRestoreState<T extends RestorePayload = RestorePayload>(routePath: string, payload: Omit<T, "savedAt">) {
   if (typeof window === "undefined") return;
   window.sessionStorage.setItem(storageKey(routePath), JSON.stringify({
     ...payload,

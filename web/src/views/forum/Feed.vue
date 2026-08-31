@@ -182,7 +182,7 @@ async function load() {
   const seq = ++loadSeq;
   const scope = forumCacheScope(auth.user);
   const cachedHot = isHot.value ? readForumHotFeed(scope) : null;
-  const cachedLatest = !isHot.value ? readForumLatestFeed(scope) : null;
+  const cachedLatest = !isHot.value ? readForumLatestFeed(scope, "forum") : null;
   if (cachedHot?.length) hotList.value = cachedHot;
   if (cachedLatest) {
     pinnedList.value = cachedLatest.pins;
@@ -196,7 +196,7 @@ async function load() {
   loadMoreError.value = "";
   try {
     if (isHot.value) {
-      const nextHotList = await homeApi.hotRanking({ suppressErrorMessage: true });
+      const nextHotList = await homeApi.hotRanking({ stream: "forum" }, { suppressErrorMessage: true });
       if (seq !== loadSeq) return;
       hotList.value = nextHotList;
       writeForumHotFeed(scope, nextHotList);
@@ -207,14 +207,14 @@ async function load() {
     }
     if (latestPage.value > 1) {
       const pages = await Promise.all(
-        Array.from({ length: latestPage.value }, (_, index) => homeApi.latestFeed({ page: index + 1, size: latestSize.value }, { suppressErrorMessage: true })),
+        Array.from({ length: latestPage.value }, (_, index) => homeApi.latestFeed({ page: index + 1, size: latestSize.value, stream: "forum" }, { suppressErrorMessage: true })),
       );
       if (seq !== loadSeq) return;
       pinnedList.value = pages[0]?.pins ?? [];
       latestTotal.value = pages[0]?.total ?? 0;
       latestList.value = dedupeTopicsById(pages.flatMap((pageResult) => pageResult.list ?? []));
     } else {
-      const res = await homeApi.latestFeed({ page: latestPage.value, size: latestSize.value }, { suppressErrorMessage: true });
+      const res = await homeApi.latestFeed({ page: latestPage.value, size: latestSize.value, stream: "forum" }, { suppressErrorMessage: true });
       if (seq !== loadSeq) return;
       pinnedList.value = res.pins ?? [];
       latestList.value = res.list ?? [];
@@ -225,7 +225,7 @@ async function load() {
       list: latestList.value,
       total: latestTotal.value,
       page: latestPage.value,
-    });
+    }, "forum");
   } catch (e) {
     if (seq !== loadSeq) return;
     if (!hasCached) {
@@ -277,7 +277,7 @@ async function loadMore() {
   loadMoreObserver?.disconnect();
   const nextPage = latestPage.value + 1;
   try {
-    const res = await homeApi.latestFeed({ page: nextPage, size: latestSize.value }, { suppressErrorMessage: true });
+    const res = await homeApi.latestFeed({ page: nextPage, size: latestSize.value, stream: "forum" }, { suppressErrorMessage: true });
     if (seq !== loadSeq || isHot.value) return;
     latestPage.value = nextPage;
     pinnedList.value = res.pins ?? pinnedList.value;
@@ -288,7 +288,7 @@ async function loadMore() {
       list: latestList.value,
       total: latestTotal.value,
       page: latestPage.value,
-    });
+    }, "forum");
   } catch (e) {
     if (seq === loadSeq) {
       loadMoreError.value = normalizeFeedError(e);

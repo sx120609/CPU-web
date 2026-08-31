@@ -43,7 +43,7 @@ export default defineConfig(({ command }) => ({
           if (id.includes("/zrender/")) {
             return "zrender";
           }
-          if (id.includes("/viewerjs/") || id.includes("/artplayer/") || id.includes("/html-to-image/") || id.includes("/qrcode/")) {
+          if (id.includes("/viewerjs/") || id.includes("/artplayer/") || id.includes("/qrcode/")) {
             return "media-tools";
           }
           if (id.includes("/xlsx/")) {
@@ -77,6 +77,10 @@ export default defineConfig(({ command }) => ({
         changeOrigin: true,
       },
       "/filestore": {
+        target: "http://localhost:3000",
+        changeOrigin: true,
+      },
+      "/share": {
         target: "http://localhost:3000",
         changeOrigin: true,
       },

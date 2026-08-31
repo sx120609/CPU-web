@@ -92,12 +92,12 @@ export function writeForumHotFeed(scope: string, list: Topic[]) {
   writeViewCache(cacheKey(scope, "hot"), list);
 }
 
-export function readForumLatestFeed(scope: string) {
-  return readViewCache(cacheKey(scope, "latest"), isLatestFeed, MAX_AGE_MS);
+export function readForumLatestFeed(scope: string, stream = "all") {
+  return readViewCache(cacheKey(scope, "latest", stream), isLatestFeed, MAX_AGE_MS);
 }
 
-export function writeForumLatestFeed(scope: string, data: ForumLatestFeedCache) {
-  writeViewCache(cacheKey(scope, "latest"), data);
+export function writeForumLatestFeed(scope: string, data: ForumLatestFeedCache, stream = "all") {
+  writeViewCache(cacheKey(scope, "latest", stream), data);
 }
 
 export function readForumTopic(scope: string, id: number) {

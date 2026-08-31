@@ -12,25 +12,14 @@
 
     <ForumAdCard v-if="mobileHomeAd" :ad="mobileHomeAd" compact />
 
-    <section class="announcement-panel" aria-label="校园公告" v-loading="loading && !summary">
-      <header class="announcement-head">
-        <div class="announcement-heading">
-          <span class="announcement-icon" aria-hidden="true"><el-icon><Notification /></el-icon></span>
-          <div><h2>校园公告</h2><p>学校最新公开信息</p></div>
-        </div>
-        <router-link to="/announcements">全部公告 →</router-link>
-      </header>
-      <div v-if="announcements.length" class="announcement-list">
-        <button v-for="(topic, index) in announcements" :key="topic.id" type="button" @click="openTopic(topic.id)">
-          <span class="announcement-marker" :class="{ latest: index === 0 }" aria-hidden="true"></span>
-          <span class="announcement-copy">
-            <b>{{ topic.title }}</b>
-            <small>{{ topic.board?.name || "校园公告" }} · {{ fmtRelative(topic.createdAt) }}</small>
-          </span>
-          <span class="announcement-arrow" aria-hidden="true">›</span>
-        </button>
-      </div>
-      <el-empty v-else-if="!loading" :image-size="54" description="暂无校园公告" />
+    <section class="hot-strip announcement-strip" aria-label="校园公告" v-loading="loading && !summary">
+      <header><b><el-icon><Notification /></el-icon>校园公告</b><router-link to="/announcements">查看全部 →</router-link></header>
+      <button v-for="(topic, index) in announcements" :key="topic.id" type="button" @click="openTopic(topic.id)">
+        <span :class="{ top: index === 0 }">{{ index + 1 }}</span>
+        <b>{{ topic.title }}</b>
+        <small>{{ topic.board?.name || "公告" }} · {{ fmtRelative(topic.createdAt) }}</small>
+      </button>
+      <p v-if="!loading && !announcements.length" class="strip-empty">暂无校园公告</p>
     </section>
 
     <section v-if="showForumContent && hotPreview.length" class="hot-strip" aria-label="今日热议">
@@ -52,18 +41,29 @@
 
     <section v-else-if="showForumContent" class="home-feed" v-loading="loading && !summary">
       <header class="section-head">
-        <div><h1>校园动态</h1><p>最近发布的校园内容</p></div>
-        <router-link to="/forum">进入信息流 →</router-link>
+        <div><h1>校园动态</h1><p>{{ activeFeedDescription }}</p></div>
+        <router-link :to="activeFeedLink">{{ activeFeedLinkLabel }} →</router-link>
       </header>
-      <div class="home-feed-list">
-        <ForumFeedCard v-for="topic in latestTopics" :key="topic.id" :topic="topic" time-mode="published" />
-        <el-empty v-if="!loading && !latestTopics.length" description="校园里暂时还没有新动态" />
+      <nav class="feed-tabs" role="tablist" aria-label="校园动态分流">
+        <button type="button" role="tab" :aria-selected="activeFeedStream === 'forum'" :class="{ active: activeFeedStream === 'forum' }" @click="selectFeedStream('forum')">
+          <el-icon><ChatDotRound /></el-icon>论坛
+        </button>
+        <button v-if="marketFeedEnabled" type="button" role="tab" :aria-selected="activeFeedStream === 'market'" :class="{ active: activeFeedStream === 'market' }" @click="selectFeedStream('market')">
+          <el-icon><Sell /></el-icon>二手
+        </button>
+      </nav>
+      <div v-if="activeFeed.error && !latestTopics.length" class="feed-state">
+        <el-empty :description="activeFeed.error"><el-button type="primary" @click="loadFeedPages(activeFeedStream)">重试</el-button></el-empty>
       </div>
-      <div v-if="loadMoreError" class="feed-load-error">
-        <span>{{ loadMoreError }}</span><el-button text size="small" @click="loadMore">重试</el-button>
+      <div v-else class="home-feed-list" v-loading="activeFeed.loading && !latestTopics.length">
+        <ForumFeedCard v-for="topic in latestTopics" :key="topic.id" :topic="topic" time-mode="published" />
+        <el-empty v-if="!activeFeed.loading && !latestTopics.length" :description="activeFeedEmptyText" />
+      </div>
+      <div v-if="activeFeed.loadMoreError" class="feed-load-error">
+        <span>{{ activeFeed.loadMoreError }}</span><el-button text size="small" @click="loadMore">重试</el-button>
       </div>
       <div v-else-if="canLoadMore" ref="loadMoreSentinelRef" class="feed-load-sentinel">
-        <span v-if="loadingMore">正在加载…</span>
+        <span v-if="activeFeed.loadingMore">正在加载…</span>
       </div>
     </section>
 
@@ -72,10 +72,10 @@
 
 <script setup lang="ts">
 import { ChatDotRound, MagicStick, Notification, Sell, Service } from "@element-plus/icons-vue";
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type Component } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch, type Component } from "vue";
 import { onBeforeRouteLeave, useRoute, useRouter } from "vue-router";
 import type { Topic } from "@/api/topic";
-import { homeApi, type HomeSummary } from "@/api/home";
+import { homeApi, type HomeFeedStream, type HomeSummary } from "@/api/home";
 import { forumAdsApi, type ForumAd } from "@/api/forumAds";
 import ForumAdCard from "@/components/forum/ForumAdCard.vue";
 import ForumFeedCard from "@/components/forum/ForumFeedCard.vue";
@@ -88,11 +88,30 @@ import { forumCacheScope, readForumLatestFeed, writeForumLatestFeed } from "@/ut
 import { clearForumListRestoreState, readForumListRestoreState, writeForumListRestoreState } from "@/utils/forumListRestore";
 import { readHomeSummaryCache, writeHomeSummaryCache } from "@/utils/homeCache";
 
+type MobileHomeFeedStream = Exclude<HomeFeedStream, "all">;
 type HomeFeedRestoreState = {
   scrollY: number;
   page?: number;
+  stream?: MobileHomeFeedStream;
+  forumPage?: number;
+  marketPage?: number;
   savedAt: number;
 };
+
+type HomeFeedState = {
+  list: Topic[];
+  total: number;
+  page: number;
+  loaded: boolean;
+  loading: boolean;
+  loadingMore: boolean;
+  error: string;
+  loadMoreError: string;
+};
+
+function createFeedState(): HomeFeedState {
+  return { list: [], total: 0, page: 1, loaded: false, loading: false, loadingMore: false, error: "", loadMoreError: "" };
+}
 
 const auth = useAuthStore();
 const site = useSiteStore();
@@ -100,23 +119,29 @@ const route = useRoute();
 const router = useRouter();
 const summary = ref<HomeSummary | null>(null);
 const loading = ref(false);
-const loadingMore = ref(false);
 const homeError = ref("");
-const loadMoreError = ref("");
 const mobileHomeAd = ref<ForumAd | null>(null);
 const pinnedAd = ref<ForumAd | null>(null);
 const hotAd = ref<ForumAd | null>(null);
-const feedTopics = ref<Topic[]>([]);
-const feedTotal = ref(0);
-const feedPage = ref(1);
+const activeFeedStream = ref<MobileHomeFeedStream>("forum");
+const feedStates = reactive<Record<MobileHomeFeedStream, HomeFeedState>>({
+  forum: createFeedState(),
+  market: createFeedState(),
+});
 const feedPageSize = 10;
 const loadMoreSentinelRef = ref<HTMLElement | null>(null);
 const showForumContent = computed(() => site.features.forum && auth.canAccessForum);
+const marketFeedEnabled = computed(() => site.features.market && auth.canAccessForum);
 const hotPreview = computed(() => (summary.value?.hotTopics || []).slice(0, 3) as Topic[]);
 const pinnedTopics = computed(() => (summary.value?.pinnedTopics || []) as Topic[]);
-const latestTopics = computed(() => feedTopics.value);
-const announcements = computed(() => (summary.value?.announce || []).slice(0, 4) as Topic[]);
-const canLoadMore = computed(() => showForumContent.value && feedTopics.value.length < feedTotal.value);
+const activeFeed = computed(() => feedStates[activeFeedStream.value]);
+const latestTopics = computed(() => activeFeed.value.list);
+const announcements = computed(() => (summary.value?.announce || []).slice(0, 3) as Topic[]);
+const canLoadMore = computed(() => showForumContent.value && latestTopics.value.length < activeFeed.value.total);
+const activeFeedDescription = computed(() => activeFeedStream.value === "market" ? "闲置转让、求购与二手交流" : "最近发布的讨论与校园内容");
+const activeFeedEmptyText = computed(() => activeFeedStream.value === "market" ? "暂时还没有二手信息" : "校园里暂时还没有新动态");
+const activeFeedLink = computed(() => activeFeedStream.value === "market" ? "/forum?channel=market" : "/forum");
+const activeFeedLinkLabel = computed(() => activeFeedStream.value === "market" ? "进入二手" : "进入论坛");
 const quickEntries = computed(() => [
   showForumContent.value ? { icon: ChatDotRound, label: "论坛", to: "/forum" } : null,
   { icon: Notification, label: "公告", to: "/announcements" },
@@ -129,7 +154,7 @@ const homeCacheScope = computed(() => {
   return `${identity}:forum-${auth.canAccessForum ? "on" : "off"}`;
 });
 let loadSequence = 0;
-let feedSequence = 0;
+const feedSequences: Record<MobileHomeFeedStream, number> = { forum: 0, market: 0 };
 let adSequence = 0;
 let mounted = false;
 let disposed = false;
@@ -139,8 +164,9 @@ let pendingRestoreState: HomeFeedRestoreState | null = null;
 onMounted(() => {
   mounted = true;
   pendingRestoreState = readForumListRestoreState<HomeFeedRestoreState>(route.fullPath);
+  if (pendingRestoreState?.stream === "market" && marketFeedEnabled.value) activeFeedStream.value = "market";
   loadObserver = typeof IntersectionObserver === "undefined" ? null : new IntersectionObserver(([entry]) => {
-    if (entry?.isIntersecting && canLoadMore.value && !loading.value && !loadingMore.value && !loadMoreError.value) void loadMore();
+    if (entry?.isIntersecting && canLoadMore.value && !activeFeed.value.loading && !activeFeed.value.loadingMore && !activeFeed.value.loadMoreError) void loadMore();
   }, { rootMargin: "220px 0px 320px", threshold: .01 });
   void loadHomeScope();
 });
@@ -151,21 +177,31 @@ watch(homeCacheScope, () => {
   void loadHomeScope();
 });
 
+watch(marketFeedEnabled, (enabled) => {
+  if (enabled || activeFeedStream.value !== "market") return;
+  activeFeedStream.value = "forum";
+  if (!feedStates.forum.loaded && !feedStates.forum.loading) void loadFeedPages("forum");
+});
+
 watch(canLoadMore, () => void nextTick(observeLoadMore));
 
 onBeforeUnmount(() => {
   disposed = true;
   loadSequence += 1;
-  feedSequence += 1;
+  feedSequences.forum += 1;
+  feedSequences.market += 1;
   adSequence += 1;
   loadObserver?.disconnect();
 });
 
 onBeforeRouteLeave((to) => {
-  if (to.name !== "topic" || !feedTopics.value.length) return;
-  writeForumListRestoreState(route.fullPath, {
+  if (to.name !== "topic" || !latestTopics.value.length) return;
+  writeForumListRestoreState<HomeFeedRestoreState>(route.fullPath, {
     scrollY: window.scrollY,
-    page: feedPage.value,
+    page: activeFeed.value.page,
+    stream: activeFeedStream.value,
+    forumPage: feedStates.forum.page,
+    marketPage: feedStates.market.page,
   });
 });
 
@@ -173,15 +209,29 @@ async function loadHomeScope() {
   const scope = homeCacheScope.value;
   const cached = readHomeSummaryCache(scope);
   summary.value = cached;
-  feedPage.value = Math.max(1, Number(pendingRestoreState?.page || 1));
-  const cachedFeed = readForumLatestFeed(forumCacheScope(auth.user));
-  feedTopics.value = cachedFeed?.list.slice(0, feedPage.value * feedPageSize)
-    || (cached?.latestTopics || []).slice(0, feedPageSize) as Topic[];
-  feedTotal.value = cachedFeed?.total || feedTopics.value.length;
-  loadMoreError.value = "";
+  if (!marketFeedEnabled.value) activeFeedStream.value = "forum";
+  for (const stream of ["forum", "market"] as const) {
+    const state = feedStates[stream];
+    const restoredPage = stream === "forum" ? pendingRestoreState?.forumPage : pendingRestoreState?.marketPage;
+    state.page = Math.max(1, Number(restoredPage || (pendingRestoreState?.stream === stream ? pendingRestoreState.page : 1) || 1));
+    const cachedFeed = readForumLatestFeed(forumCacheScope(auth.user), stream);
+    state.list = cachedFeed?.list.slice(0, state.page * feedPageSize) || [];
+    state.total = cachedFeed?.total || state.list.length;
+    state.loaded = false;
+    state.loading = false;
+    state.loadingMore = false;
+    state.error = "";
+    state.loadMoreError = "";
+  }
+  if (!feedStates.forum.list.length && cached?.latestTopics?.length) {
+    feedStates.forum.list = (cached.latestTopics as Topic[])
+      .filter((topic) => topic.board?.type !== "market")
+      .slice(0, feedPageSize);
+    feedStates.forum.total = feedStates.forum.list.length;
+  }
   homeError.value = "";
   void loadSummary({ scope, fallback: cached });
-  void loadFeedPages();
+  void loadFeedPages(activeFeedStream.value);
   void loadAds();
 }
 
@@ -214,7 +264,12 @@ async function loadSummary(options: { scope?: string; fallback?: HomeSummary | n
     const result = await homeApi.summary({ suppressErrorMessage: true, cacheTtlMs: 0 });
     if (disposed || sequence !== loadSequence || scope !== homeCacheScope.value) return;
     summary.value = result;
-    if (!feedTopics.value.length) feedTopics.value = (result.latestTopics || []).slice(0, feedPageSize) as Topic[];
+    if (!feedStates.forum.list.length && !feedStates.forum.loaded) {
+      feedStates.forum.list = ((result.latestTopics || []) as Topic[])
+        .filter((topic) => topic.board?.type !== "market")
+        .slice(0, feedPageSize);
+      feedStates.forum.total = feedStates.forum.list.length;
+    }
     writeHomeSummaryCache(scope, result);
   } catch (requestError) {
     if (disposed || sequence !== loadSequence) return;
@@ -225,75 +280,85 @@ async function loadSummary(options: { scope?: string; fallback?: HomeSummary | n
   }
 }
 
-async function loadFeedPages() {
-  if (!showForumContent.value) return;
-  const sequence = ++feedSequence;
-  const targetPage = feedPage.value;
+async function loadFeedPages(stream: MobileHomeFeedStream) {
+  if (!showForumContent.value || (stream === "market" && !marketFeedEnabled.value)) return;
+  const state = feedStates[stream];
+  const sequence = ++feedSequences[stream];
+  const targetPage = state.page;
+  state.loading = !state.list.length;
+  state.error = "";
+  state.loadMoreError = "";
   try {
     const pages = await Promise.all(
       Array.from({ length: targetPage }, (_, index) => homeApi.latestFeed(
-        { page: index + 1, size: feedPageSize },
+        { page: index + 1, size: feedPageSize, stream },
         { suppressErrorMessage: true },
       )),
     );
-    if (disposed || sequence !== feedSequence) return;
-    feedTopics.value = dedupeTopics(pages.flatMap((result) => result.list as Topic[]));
-    feedTotal.value = pages[0]?.total || feedTopics.value.length;
+    if (disposed || sequence !== feedSequences[stream]) return;
+    state.list = dedupeTopics(pages.flatMap((result) => result.list as Topic[]));
+    state.total = pages[0]?.total || state.list.length;
+    state.loaded = true;
     writeForumLatestFeed(forumCacheScope(auth.user), {
       pins: pages[0]?.pins || [],
-      list: feedTopics.value,
-      total: feedTotal.value,
-      page: feedPage.value,
-    });
+      list: state.list,
+      total: state.total,
+      page: state.page,
+    }, stream);
   } catch (requestError) {
-    if (!feedTopics.value.length && !disposed && sequence === feedSequence) {
-      homeError.value = requestMessage(requestError) || "校园动态加载失败，请稍后重试";
+    if (!state.list.length && !disposed && sequence === feedSequences[stream]) {
+      state.error = requestMessage(requestError) || (stream === "market" ? "二手信息加载失败，请稍后重试" : "校园动态加载失败，请稍后重试");
     }
   } finally {
-    if (!disposed && sequence === feedSequence) {
+    if (!disposed && sequence === feedSequences[stream]) {
+      state.loading = false;
       await nextTick();
-      await restoreScrollIfNeeded();
-      observeLoadMore();
+      if (stream === activeFeedStream.value) {
+        await restoreScrollIfNeeded();
+        observeLoadMore();
+      }
     }
   }
 }
 
 async function loadMore() {
-  if (!canLoadMore.value || loadingMore.value) return;
-  const sequence = feedSequence;
-  const nextPage = feedPage.value + 1;
-  loadingMore.value = true;
-  loadMoreError.value = "";
+  const stream = activeFeedStream.value;
+  const state = feedStates[stream];
+  if (!canLoadMore.value || state.loadingMore || state.loading) return;
+  const sequence = feedSequences[stream];
+  const nextPage = state.page + 1;
+  state.loadingMore = true;
+  state.loadMoreError = "";
   loadObserver?.disconnect();
   try {
     const result = await homeApi.latestFeed(
-      { page: nextPage, size: feedPageSize },
+      { page: nextPage, size: feedPageSize, stream },
       { suppressErrorMessage: true },
     );
-    if (disposed || sequence !== feedSequence) return;
-    feedPage.value = nextPage;
-    feedTopics.value = dedupeTopics([...feedTopics.value, ...(result.list as Topic[])]);
-    feedTotal.value = result.total;
+    if (disposed || sequence !== feedSequences[stream]) return;
+    state.page = nextPage;
+    state.list = dedupeTopics([...state.list, ...(result.list as Topic[])]);
+    state.total = result.total;
     writeForumLatestFeed(forumCacheScope(auth.user), {
       pins: result.pins || [],
-      list: feedTopics.value,
-      total: feedTotal.value,
-      page: feedPage.value,
-    });
+      list: state.list,
+      total: state.total,
+      page: state.page,
+    }, stream);
   } catch (requestError) {
-    if (!disposed && sequence === feedSequence) loadMoreError.value = requestMessage(requestError) || "加载更多失败";
+    if (!disposed && sequence === feedSequences[stream]) state.loadMoreError = requestMessage(requestError) || "加载更多失败";
   } finally {
-    if (!disposed && sequence === feedSequence) {
-      loadingMore.value = false;
+    if (!disposed && sequence === feedSequences[stream]) {
+      state.loadingMore = false;
       await nextTick();
-      observeLoadMore();
+      if (stream === activeFeedStream.value) observeLoadMore();
     }
   }
 }
 
 function observeLoadMore() {
   loadObserver?.disconnect();
-  if (canLoadMore.value && loadMoreSentinelRef.value && !loadMoreError.value) {
+  if (canLoadMore.value && loadMoreSentinelRef.value && !activeFeed.value.loadMoreError) {
     loadObserver?.observe(loadMoreSentinelRef.value);
   }
 }
@@ -320,6 +385,15 @@ function dedupeTopics(items: Topic[]) {
   });
 }
 
+function selectFeedStream(stream: MobileHomeFeedStream) {
+  if (stream === "market" && !marketFeedEnabled.value) return;
+  if (activeFeedStream.value === stream) return;
+  activeFeedStream.value = stream;
+  loadObserver?.disconnect();
+  if (!feedStates[stream].loaded && !feedStates[stream].loading) void loadFeedPages(stream);
+  void nextTick(observeLoadMore);
+}
+
 function openQuickEntry(to: string) { void router.push(to); }
 function openTopic(id: number) { void router.push(`/forum/topic/${id}`); }
 function requestMessage(requestError: unknown) {
@@ -336,26 +410,13 @@ function requestMessage(requestError: unknown) {
 .quick-grid button:focus-visible { outline: 2px solid var(--cpu-primary); outline-offset: 2px; }
 .quick-icon { display: grid; width: 24px; height: 24px; place-items: center; color: var(--cpu-primary); line-height: 1; }
 .quick-icon :deep(.el-icon) { width: 22px; height: 22px; font-size: 22px; }
-.announcement-panel { overflow: hidden; border: 1px solid color-mix(in srgb, var(--cpu-primary) 22%, var(--cpu-border-soft)); border-radius: 15px; background: var(--cpu-card); box-shadow: var(--cpu-shadow-sm); }
-.announcement-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 13px 10px; background: linear-gradient(135deg, color-mix(in srgb, var(--cpu-primary) 10%, var(--cpu-card)), var(--cpu-card)); }
-.announcement-heading { display: flex; min-width: 0; align-items: center; gap: 9px; }
-.announcement-icon { display: grid; width: 32px; height: 32px; flex: 0 0 32px; place-items: center; border-radius: 10px; background: var(--cpu-primary); color: #fff; font-size: 18px; }
-.announcement-heading h2 { margin: 0; color: var(--cpu-text); font-size: 16px; line-height: 1.2; }
-.announcement-heading p { margin: 3px 0 0; color: var(--cpu-text-muted); font-size: 10px; }
-.announcement-head a { flex: 0 0 auto; color: var(--cpu-primary); font-size: 11px; font-weight: 650; text-decoration: none; }
-.announcement-list { padding: 0 12px 5px; }
-.announcement-list button { display: grid; width: 100%; grid-template-columns: 8px minmax(0, 1fr) 14px; align-items: center; gap: 8px; padding: 10px 1px; border: 0; border-top: 1px dashed var(--cpu-border-soft); background: transparent; color: inherit; text-align: left; cursor: pointer; }
-.announcement-list button:focus-visible { border-radius: 7px; outline: 2px solid var(--cpu-primary); outline-offset: 1px; }
-.announcement-marker { width: 6px; height: 6px; border-radius: 50%; background: var(--cpu-border); }
-.announcement-marker.latest { background: #f59e0b; box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.14); }
-.announcement-copy { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
-.announcement-copy b { overflow: hidden; color: var(--cpu-text); font-size: 13px; font-weight: 620; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
-.announcement-copy small { overflow: hidden; color: var(--cpu-text-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.announcement-arrow { color: var(--cpu-text-muted); font-size: 20px; line-height: 1; text-align: right; }
 .hot-strip { padding: 10px 12px; border: 1px solid var(--cpu-border-soft); border-radius: 12px; background: var(--cpu-card); }
 .hot-strip header, .section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .hot-strip header { margin-bottom: 4px; }
-.hot-strip header b { color: var(--cpu-text); font-size: 13px; }
+.hot-strip header b { display: inline-flex; align-items: center; gap: 5px; color: var(--cpu-text); font-size: 13px; }
+.announcement-strip { border-color: color-mix(in srgb, var(--cpu-primary) 20%, var(--cpu-border-soft)); box-shadow: var(--cpu-shadow-sm); }
+.announcement-strip header .el-icon { color: var(--cpu-primary); font-size: 15px; }
+.strip-empty { margin: 8px 0 2px; color: var(--cpu-text-muted); font-size: 11px; text-align: center; }
 .hot-strip a, .section-head a { color: var(--cpu-primary); font-size: 11px; text-decoration: none; }
 .hot-strip button { display: grid; width: 100%; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; gap: 7px; padding: 6px 1px; border: 0; border-top: 1px dashed var(--cpu-border-soft); background: transparent; color: inherit; text-align: left; cursor: pointer; }
 .hot-strip button > span { color: var(--cpu-text-muted); font-size: 10px; font-weight: 800; text-align: center; }
@@ -366,7 +427,13 @@ function requestMessage(requestError: unknown) {
 .section-head { align-items: flex-end; padding: 0 2px 11px; }
 .section-head h1 { margin: 0; color: var(--cpu-text); font-size: 18px; }
 .section-head p { margin: 3px 0 0; color: var(--cpu-text-muted); font-size: 10px; }
+.feed-tabs { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 5px; margin-bottom: 10px; padding: 4px; border: 1px solid var(--cpu-border-soft); border-radius: 11px; background: var(--cpu-card); }
+.feed-tabs button { display: inline-flex; min-width: 0; min-height: 36px; align-items: center; justify-content: center; gap: 5px; border: 0; border-radius: 8px; background: transparent; color: var(--cpu-text-secondary); font-size: 13px; font-weight: 700; cursor: pointer; }
+.feed-tabs button:hover { color: var(--cpu-primary); }
+.feed-tabs button.active { background: var(--cpu-primary); box-shadow: 0 4px 12px color-mix(in srgb, var(--cpu-primary) 20%, transparent); color: #fff; }
+.feed-tabs button:focus-visible { outline: 2px solid var(--cpu-primary); outline-offset: 2px; }
 .home-feed-list { display: flex; min-height: 140px; flex-direction: column; gap: 8px; }
+.feed-state { min-height: 140px; }
 .feed-load-sentinel, .feed-load-error { display: flex; min-height: 42px; align-items: center; justify-content: center; gap: 6px; color: var(--cpu-text-muted); font-size: 11px; }
 .feed-load-error { color: var(--cpu-danger); }
 .home-state { padding: 28px 12px; border-radius: 14px; background: var(--cpu-card); }
@@ -378,8 +445,6 @@ function requestMessage(requestError: unknown) {
   .quick-icon { width: 22px; height: 22px; }
   .quick-icon :deep(.el-icon) { width: 20px; height: 20px; font-size: 20px; }
   .hot-strip { padding: 9px 10px; }
-  .announcement-head { padding: 11px 11px 9px; }
-  .announcement-list { padding-inline: 10px; }
   .home-feed { margin-inline: -4px; padding: 10px 8px; border-radius: 12px; }
   .home-feed-list { gap: 7px; }
 }

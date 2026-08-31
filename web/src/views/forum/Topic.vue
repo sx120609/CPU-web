@@ -510,12 +510,16 @@
           v-else-if="shareCardRenderedUrl"
           :src="shareCardRenderedUrl"
           alt="分享卡片"
-          loading="lazy"
+          loading="eager"
           decoding="async"
           fetchpriority="low"
           class="share-card-image"
           @click="openShareCardImagePreview"
         />
+        <div v-else class="share-card-load-error">
+          <span>{{ shareCardError || "分享卡片暂时不可用" }}</span>
+          <el-button type="primary" plain @click="ensureShareCardRendered">重新生成</el-button>
+        </div>
         <p v-if="isNativeAppClient && !hasNativeSaveBridge" class="share-card-tip">客户端受 WebView 限制，建议点开图片后截图保存。</p>
         <div class="share-card-actions">
           <button v-if="!isNativeAppClient || hasNativeSaveBridge" type="button" class="share-card-save-link" :disabled="shareCardSaving" @click="saveShareCardAsPng">
@@ -648,36 +652,6 @@
       </div>
     </el-dialog>
 
-    <div class="share-card-export-shell" aria-hidden="true">
-      <div class="share-card-dom share-card-dom--export" ref="shareCardExportRef">
-        <div class="share-card-top">
-          <div class="share-card-icon" :style="{ background: shareCardAccent }"><AppIcon :legacy="topic?.board?.icon" name="forum" /></div>
-          <div class="share-card-meta">
-            <div class="share-card-board">{{ boardDisplayName }}</div>
-            <div class="share-card-subtitle">{{ shareCardSubtitle }}</div>
-            <div class="share-card-stats">{{ shareCardStats }}</div>
-          </div>
-        </div>
-        <div class="share-card-hero" :style="{ background: shareCardSoftBg }">
-          <div class="share-card-hero-orb" :style="{ background: shareCardSoftOrb }"></div>
-          <div class="share-card-hero-line" :style="{ background: shareCardSoftLine }"></div>
-          <h3 class="share-card-title">{{ topic?.title }}</h3>
-          <p class="share-card-subcopy">{{ shareCardSubtitle }}</p>
-        </div>
-        <div class="share-card-bottom">
-          <div class="share-card-brand">
-            <div class="share-card-brand-title">药大拾间</div>
-            <div class="share-card-brand-copy">扫描二维码，直接打开原帖</div>
-            <div class="share-card-brand-host">cputime.cn</div>
-          </div>
-          <div class="share-card-qr-box">
-            <img v-if="shareCardQrDataUrl" :src="shareCardQrDataUrl" alt="分享二维码" loading="lazy" decoding="async" fetchpriority="low" class="share-card-qr" />
-            <div v-else class="share-card-qr share-card-qr-placeholder"></div>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <div v-if="auth.isLoggedIn && !topic.locked && auth.user?.status === 'muted'" class="locked-tip cpu-card">
       {{ currentMuteMessage }}
     </div>
@@ -739,8 +713,6 @@
 import { ref, reactive, computed, nextTick, onBeforeUnmount, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { toPng } from "html-to-image";
-import QRCode from "qrcode";
 import { ArrowLeft, Star, ChatLineRound, Link, Picture, VideoCamera } from "@element-plus/icons-vue";
 import UserAvatar from "@/components/common/UserAvatar.vue";
 import UserModerationActions from "@/components/common/UserModerationActions.vue";
@@ -794,7 +766,7 @@ const shareCardDialogOpen = ref(false);
 const shareCardSaving = ref(false);
 const shareCardRendering = ref(false);
 const shareCardRenderedUrl = ref("");
-const shareCardQrDataUrl = ref("");
+const shareCardError = ref("");
 const topicImageReviewDialogOpen = ref(false);
 const topicImageReviewLoading = ref(false);
 const topicImageReviewSavingId = ref<number | null>(null);
@@ -825,14 +797,14 @@ const blockedReplyInfo = reactive<{ reason: string; riskScore: number | null }>(
 });
 const liked = ref(false);
 let loadSeq = 0;
-let shareCardQrSeq = 0;
+let shareCardRenderSeq = 0;
+let shareCardRenderPromise: Promise<string> | null = null;
 let topicReviewPollSeq = 0;
 let topicReviewPollTimer: ReturnType<typeof setTimeout> | null = null;
 const repliesEl = ref<HTMLElement | null>(null);
 const mainFloorRef = ref<HTMLElement | null>(null);
 const mainPostUsesStickyAuthor = ref(false);
 const replyEditorRef = ref<InstanceType<typeof RichTextEditor> | null>(null);
-const shareCardExportRef = ref<HTMLElement | null>(null);
 let mainFloorResizeObserver: ResizeObserver | null = null;
 const REPLY_MAX = 10000;
 const QUESTION_BOUNTY_POINTS = 10;
@@ -1045,16 +1017,12 @@ const shareCardDownloadName = computed(() => {
   const safeTitle = (topic.value?.title || "分享卡片").replace(/[\\/:*?"<>|]/g, "_").slice(0, 40);
   return `${safeTitle || "分享卡片"}-cpu-share.png`;
 });
-const shareCardAccent = computed(() => topic.value?.board?.color || "#168776");
-const shareCardSoftBg = computed(() => `linear-gradient(135deg, ${hexToRgba(shareCardAccent.value, 0.08)} 0%, #f7fbff 100%)`);
-const shareCardSoftOrb = computed(() => hexToRgba(shareCardAccent.value, 0.13));
-const shareCardSoftLine = computed(() => hexToRgba(shareCardAccent.value, 0.22));
-const shareCardSubtitle = computed(() => {
-  const board = boardDisplayName.value;
-  const author = topic.value?.author?.nickname || "同学";
-  return `${board} · ${author}`;
+const shareCardServerUrl = computed(() => {
+  if (!topic.value) return "";
+  const url = new URL(`/share/topic/${topic.value.id}/card.png`, window.location.origin);
+  url.searchParams.set("v", String(topic.value.updatedAt || topic.value.createdAt || topic.value.id));
+  return url.toString();
 });
-const shareCardStats = computed(() => `${topic.value?.replyCount ?? 0} 条回复 · ${topic.value?.viewCount ?? 0} 浏览`);
 const displayContent = computed(() => {
   const content = topic.value?.content ?? "";
   if (!topic.value?.metadata?.sourceUrl) return content;
@@ -1096,17 +1064,6 @@ function goBackFromTopic() {
     return;
   }
   router.push({ name: "forum-latest" });
-}
-
-function renderLocalQrDataUrl(value: string, width: number) {
-  return QRCode.toDataURL(value, {
-    width,
-    margin: 1,
-    color: {
-      dark: "#172033",
-      light: "#ffffffff",
-    },
-  });
 }
 
 function updateMainPostAuthorMode() {
@@ -1152,18 +1109,12 @@ watch(replyAnonymousEnabled, (enabled) => {
   if (!enabled) replyAnonymous.value = false;
 }, { immediate: true });
 
-watch(shareLandingUrl, async (url) => {
-  const seq = ++shareCardQrSeq;
-  shareCardQrDataUrl.value = "";
+watch(shareCardServerUrl, () => {
+  shareCardRenderSeq += 1;
+  shareCardRenderPromise = null;
+  shareCardRendering.value = false;
   shareCardRenderedUrl.value = "";
-  if (!url) return;
-  try {
-    const dataUrl = await renderLocalQrDataUrl(url, 220);
-    if (seq === shareCardQrSeq) shareCardQrDataUrl.value = dataUrl;
-  } catch (error) {
-    console.warn("[topic] failed to render share card QR code", error);
-    if (seq === shareCardQrSeq) shareCardQrDataUrl.value = "";
-  }
+  shareCardError.value = "";
 }, { immediate: true });
 
 watch(replyDialogOpen, (open) => {
@@ -2116,22 +2067,6 @@ function openTopicReviewImages(index: number) {
   })), index, { className: "cpu-forum-review-image-viewer" });
 }
 
-async function ensureShareCardQrCode() {
-  if (shareCardQrDataUrl.value) return shareCardQrDataUrl.value;
-  const url = shareLandingUrl.value;
-  if (!url) return "";
-  const seq = ++shareCardQrSeq;
-  try {
-    const dataUrl = await renderLocalQrDataUrl(url, 220);
-    if (seq !== shareCardQrSeq || url !== shareLandingUrl.value) return "";
-    shareCardQrDataUrl.value = dataUrl;
-    return dataUrl;
-  } catch (error) {
-    console.warn("[topic] failed to render share card QR code", error);
-    return "";
-  }
-}
-
 async function saveShareCardAsPng() {
   const dataUrl = await ensureShareCardRendered();
   if (!dataUrl) return;
@@ -2160,35 +2095,54 @@ async function saveShareCardAsPng() {
 }
 
 async function ensureShareCardRendered() {
-  const exportNode = shareCardExportRef.value;
-  if (!exportNode) return "";
+  if (shareCardRenderedUrl.value) return shareCardRenderedUrl.value;
+  if (shareCardRenderPromise) return shareCardRenderPromise;
+  const sourceUrl = shareCardServerUrl.value;
+  if (!sourceUrl) return "";
+  const sequence = ++shareCardRenderSeq;
+  const task = loadShareCardDataUrl(sourceUrl, 12_000);
+  shareCardRenderPromise = task;
   shareCardRendering.value = true;
+  shareCardError.value = "";
   try {
-    const qrDataUrl = await ensureShareCardQrCode();
-    if (!qrDataUrl) {
-      ElMessage.error("生成分享二维码失败，请稍后重试");
-      return "";
-    }
-    await nextTick();
-    const width = 720;
-    const height = Math.ceil(exportNode.scrollHeight);
-    const dataUrl = await toPng(exportNode, {
-      cacheBust: true,
-      pixelRatio: 2,
-      backgroundColor: "#ffffff",
-      canvasWidth: width,
-      canvasHeight: height,
-      width,
-      height,
-    });
+    const dataUrl = await task;
+    if (sequence !== shareCardRenderSeq || sourceUrl !== shareCardServerUrl.value) return "";
     shareCardRenderedUrl.value = dataUrl;
     return dataUrl;
-  } catch {
-    ElMessage.error("生成分享卡片失败，请稍后重试");
+  } catch (error) {
+    console.warn("[topic] failed to load server-rendered share card", error);
+    if (sequence === shareCardRenderSeq) {
+      shareCardError.value = "分享卡片加载失败，请检查网络后重试";
+      ElMessage.error(shareCardError.value);
+    }
     return "";
   } finally {
-    shareCardRendering.value = false;
+    if (shareCardRenderPromise === task) shareCardRenderPromise = null;
+    if (sequence === shareCardRenderSeq) shareCardRendering.value = false;
   }
+}
+
+async function loadShareCardDataUrl(url: string, timeoutMs: number) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { credentials: "same-origin", signal: controller.signal });
+    if (!response.ok) throw new Error(`share card request failed: ${response.status}`);
+    const blob = await response.blob();
+    if (!blob.type.startsWith("image/")) throw new Error(`unexpected share card content type: ${blob.type || "unknown"}`);
+    return await blobToDataUrl(blob);
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
+function blobToDataUrl(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error || new Error("share card file read failed"));
+    reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("share card data URL missing"));
+    reader.readAsDataURL(blob);
+  });
 }
 
 function stripCrawlerSourceHeader(content: string) {
@@ -2205,17 +2159,6 @@ function isIosDevice() {
     || ua.includes("ipad")
     || ua.includes("ipod")
     || (ua.includes("macintosh") && navigator.maxTouchPoints > 1);
-}
-
-function hexToRgba(hex: string, alpha: number) {
-  const normalized = hex.trim();
-  if (!/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(normalized)) return `rgba(22, 135, 118, ${alpha})`;
-  const raw = normalized.slice(1);
-  const full = raw.length === 3 ? raw.split("").map((ch) => ch + ch).join("") : raw;
-  const r = parseInt(full.slice(0, 2), 16);
-  const g = parseInt(full.slice(2, 4), 16);
-  const b = parseInt(full.slice(4, 6), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
 function onEdit() {

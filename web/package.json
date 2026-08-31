@@ -19,7 +19,6 @@
     "dompurify": "^3.4.3",
     "echarts": "^5.5.1",
     "element-plus": "^2.8.7",
-    "html-to-image": "^1.11.13",
     "jszip": "^3.10.1",
     "katex": "^0.16.47",
     "marked": "^14.1.4",

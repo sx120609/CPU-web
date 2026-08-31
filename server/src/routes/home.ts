@@ -10,11 +10,15 @@ import { buildUserTrustSnapshot } from "../services/userTrust";
 import { visibleBoardSlugFilter } from "../services/retiredBoards";
 import { FORUM_SELF_VISIBLE_REVIEW_STATUSES, forumContentVisibilityWhere } from "../services/forumSubmission";
 import { compactTopicAuthors, publicAvatarValue } from "../utils/publicAvatar";
+import { parseHomeFeedStream, selectHomeFeedBoardTypes, type HomeFeedStream } from "../services/homeFeed";
 
 export const homeRouter = Router();
 const HOME_HIDDEN_SERVICE_CODES = ["DORM_REPAIR"];
 const HOT_TOPIC_DEFAULT_SIZE = 10;
 const LATEST_FEED_DEFAULT_SIZE = 20;
+function homeFeedBoardTypes(stream: HomeFeedStream) {
+  return selectHomeFeedBoardTypes(enabledBoardTypes(), stream);
+}
 
 /**
  * 首页摘要：热榜 + 最新聚合 + 学校公告 + 服务卡片 + 个人未读
@@ -34,19 +38,18 @@ homeRouter.get("/summary", async (req, res, next) => {
     ]);
     const forumAccessEnabled = await resolveForumAccess(userId, role);
     const trust = user ? buildUserTrustSnapshot(user) : null;
-    const readableBoardTypes = enabledBoardTypes();
-    const contentBoardTypes = readableBoardTypes.filter((type) => type !== "announce");
+    const forumBoardTypes = homeFeedBoardTypes("forum");
     const globalPinnedIds = getGlobalPinnedTopicIds();
     const publicSummary = await withCache(
       "home",
-      ["summary-v3", forumAccessEnabled ? "forum-enabled" : "announce-only"],
+      ["summary-v4", forumAccessEnabled ? "forum-enabled" : "announce-only"],
       60_000,
       async () => {
         const [pinnedTopics, hotTopics, latestTopics, announce, services] = await Promise.all([
-          forumAccessEnabled ? listGlobalPinnedTopics(globalPinnedIds, contentBoardTypes, 6) : Promise.resolve([]),
-          forumAccessEnabled ? listHotTopics(6, contentBoardTypes) : Promise.resolve([]),
+          forumAccessEnabled ? listGlobalPinnedTopics(globalPinnedIds, forumBoardTypes, 6) : Promise.resolve([]),
+          forumAccessEnabled ? listHotTopics(6, forumBoardTypes) : Promise.resolve([]),
           forumAccessEnabled ? prisma.topic.findMany({
-            where: { hidden: false, board: { type: { in: contentBoardTypes }, ...visibleBoardSlugFilter() } },
+            where: { hidden: false, board: { type: { in: forumBoardTypes }, ...visibleBoardSlugFilter() } },
             orderBy: { createdAt: "desc" },
             take: 10,
             include: {
@@ -76,7 +79,7 @@ homeRouter.get("/summary", async (req, res, next) => {
         authorId: userId,
         aiReviewStatus: { in: [...FORUM_SELF_VISIBLE_REVIEW_STATUSES] },
         id: { notIn: globalPinnedIds },
-        board: { type: { in: contentBoardTypes }, ...visibleBoardSlugFilter() },
+        board: { type: { in: forumBoardTypes }, ...visibleBoardSlugFilter() },
       },
       orderBy: { createdAt: "desc" },
       take: 10,
@@ -126,8 +129,9 @@ homeRouter.get("/hot-ranking", async (_req, res, next) => {
     const role = _req.user?.role ?? null;
     const forumAccessEnabled = await resolveForumAccess(userId, role);
     if (!forumAccessEnabled) return ok(res, []);
-    const contentBoardTypes = enabledBoardTypes().filter((type) => type !== "announce");
-    const list = await withCache("home", ["hot-ranking-v2"], 60_000, async () => listHotTopics(HOT_TOPIC_DEFAULT_SIZE, contentBoardTypes));
+    const stream = parseHomeFeedStream(_req.query.stream);
+    const contentBoardTypes = homeFeedBoardTypes(stream);
+    const list = await withCache("home", ["hot-ranking-v3", stream], 60_000, async () => listHotTopics(HOT_TOPIC_DEFAULT_SIZE, contentBoardTypes));
     const presented = await decodeTopicsForViewerForList(list, _req.user);
     ok(res, presented.map((item, index) => ({
       rank: index + 1,
@@ -145,13 +149,14 @@ homeRouter.get("/latest-feed", async (req, res, next) => {
     if (!forumAccessEnabled) return ok(res, { page: 1, size: LATEST_FEED_DEFAULT_SIZE, total: 0, pins: [], list: [] });
     const page = Math.max(1, Number(req.query.page ?? 1));
     const size = Math.min(50, Math.max(10, Number(req.query.size ?? LATEST_FEED_DEFAULT_SIZE)));
-    const contentBoardTypes = enabledBoardTypes().filter((type) => type !== "announce");
+    const stream = parseHomeFeedStream(req.query.stream);
+    const contentBoardTypes = homeFeedBoardTypes(stream);
     const globalPinnedIds = getGlobalPinnedTopicIds();
     const where = {
       ...forumContentVisibilityWhere(userId),
       board: { type: { in: contentBoardTypes }, ...visibleBoardSlugFilter() },
     };
-    const cached = await withCache("home", ["latest-feed-v4", userId ? `viewer-${userId}` : "public", page, size], 60_000, async () => {
+    const cached = await withCache("home", ["latest-feed-v5", stream, userId ? `viewer-${userId}` : "public", page, size], 60_000, async () => {
       const [pins, list, total] = await Promise.all([
         listGlobalPinnedTopics(globalPinnedIds, contentBoardTypes, 20),
         prisma.topic.findMany({

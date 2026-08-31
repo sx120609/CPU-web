@@ -206,7 +206,7 @@ async function loadFeed() {
   total.value = 0;
 
   if (channel.id === "latest") {
-    const cached = readForumLatestFeed(cacheScope.value);
+    const cached = readForumLatestFeed(cacheScope.value, "forum");
     if (cached) {
       pinnedList.value = cached.pins;
       feedItems.value = cached.list.slice(0, page.value * pageSize);
@@ -223,7 +223,7 @@ async function loadFeed() {
 
   try {
     if (channel.id === "hot") {
-      const list = await homeApi.hotRanking({ suppressErrorMessage: true });
+      const list = await homeApi.hotRanking({ stream: "forum" }, { suppressErrorMessage: true });
       if (disposed || sequence !== loadSequence) return;
       feedItems.value = list;
       total.value = list.length;
@@ -231,7 +231,7 @@ async function loadFeed() {
     } else if (channel.id === "latest") {
       const pages = await Promise.all(
         Array.from({ length: page.value }, (_, index) => homeApi.latestFeed(
-          { page: index + 1, size: pageSize },
+          { page: index + 1, size: pageSize, stream: "forum" },
           { suppressErrorMessage: true },
         )),
       );
@@ -239,7 +239,7 @@ async function loadFeed() {
       pinnedList.value = pages[0]?.pins || [];
       feedItems.value = dedupeTopics(pages.flatMap((result) => result.list));
       total.value = pages[0]?.total || feedItems.value.length;
-      writeForumLatestFeed(cacheScope.value, { pins: pinnedList.value, list: feedItems.value, total: total.value, page: page.value });
+      writeForumLatestFeed(cacheScope.value, { pins: pinnedList.value, list: feedItems.value, total: total.value, page: page.value }, "forum");
     } else {
       const pages = await Promise.all(
         Array.from({ length: page.value }, (_, index) => topicApi.list(
@@ -287,13 +287,13 @@ async function loadMore() {
   loadObserver?.disconnect();
   try {
     if (channel.id === "latest") {
-      const result = await homeApi.latestFeed({ page: nextPage, size: pageSize }, { suppressErrorMessage: true });
+      const result = await homeApi.latestFeed({ page: nextPage, size: pageSize, stream: "forum" }, { suppressErrorMessage: true });
       if (disposed || sequence !== loadSequence) return;
       page.value = nextPage;
       feedItems.value = dedupeTopics([...feedItems.value, ...result.list]);
       total.value = result.total;
       pinnedList.value = result.pins || pinnedList.value;
-      writeForumLatestFeed(cacheScope.value, { pins: pinnedList.value, list: feedItems.value, total: total.value, page: page.value });
+      writeForumLatestFeed(cacheScope.value, { pins: pinnedList.value, list: feedItems.value, total: total.value, page: page.value }, "forum");
     } else {
       const result = await topicApi.list({ board: channel.board, page: nextPage, size: pageSize, sort: "new", pinned: "exclude" }, { suppressErrorMessage: true });
       if (disposed || sequence !== loadSequence) return;
