@@ -40,6 +40,9 @@ export function preloadEducationViews() {
 }
 
 const CACHE_FIRST_EDUCATION_ROUTES = new Set(["jwxt", "schedule"]);
+// MainLayout 的 out-in 页面淡出为 150ms。等旧页面退出后再改变滚动位置，
+// 避免旧页面在切换到二级路由前先闪现回到顶部。
+const ROUTE_LEAVE_SCROLL_DELAY_MS = 170;
 
 /**
  * 受功能开关控制的路由名 → feature key。
@@ -82,12 +85,18 @@ function mobileMarketBoardRedirect(to: Parameters<NavigationGuard>[0]) {
 export const router = createRouter({
   history: createWebHistory(),
   scrollBehavior(to, from, savedPosition) {
-    // 浏览器前进/后退：恢复历史滚动位置
-    if (savedPosition) return savedPosition;
-    // 锚点
-    if (to.hash) return { el: to.hash, behavior: "smooth" };
-    // 其他情况：回顶
-    return { top: 0 };
+    const position = savedPosition
+      ? savedPosition
+      : to.hash
+        ? { el: to.hash, behavior: "smooth" as const }
+        : { top: 0 };
+
+    // 首次加载没有正在淡出的旧页面，可以立即定位。
+    if (!from.name) return position;
+
+    return new Promise((resolve) => {
+      window.setTimeout(() => resolve(position), ROUTE_LEAVE_SCROLL_DELAY_MS);
+    });
   },
   routes: [
     { path: "/login", name: "login", component: () => import("@/views/Login.vue"), meta: { public: true, title: "登录" } },

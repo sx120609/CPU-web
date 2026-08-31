@@ -20,6 +20,7 @@ struct WebViewContainer: UIViewRepresentable {
         let bridge = CPUIOSBridge(presenter: context.coordinator)
         context.coordinator.bridge = bridge
         configuration.userContentController.add(bridge, name: CPUIOSBridge.handlerName)
+        configuration.userContentController.addUserScript(bridge.webLaunchScreenSuppressionScript)
         configuration.userContentController.addUserScript(bridge.bridgeScript)
 
         let webView = WKWebView(frame: .zero, configuration: configuration)

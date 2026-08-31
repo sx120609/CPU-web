@@ -21,6 +21,30 @@ final class CPUIOSBridge: NSObject, WKScriptMessageHandler {
         self.presenter = presenter
     }
 
+    var webLaunchScreenSuppressionScript: WKUserScript {
+        let source = """
+        (() => {
+          if (location.hostname.toLowerCase() !== \(Self.javascriptString(AppConfiguration.appHost))) return;
+          const install = () => {
+            const root = document.head || document.documentElement;
+            if (!root) return false;
+            if (document.getElementById('cpu-ios-native-boot-suppression')) return true;
+            const style = document.createElement('style');
+            style.id = 'cpu-ios-native-boot-suppression';
+            style.textContent = '.app-launch-screen,#boot-screen{display:none!important;visibility:hidden!important}';
+            root.appendChild(style);
+            return true;
+          };
+          if (install()) return;
+          const observer = new MutationObserver(() => {
+            if (install()) observer.disconnect();
+          });
+          observer.observe(document, { childList: true, subtree: true });
+        })();
+        """
+        return WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: true)
+    }
+
     var bridgeScript: WKUserScript {
         let source = """
         (() => {
