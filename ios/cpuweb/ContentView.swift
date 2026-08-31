@@ -32,6 +32,7 @@ struct ContentView: View {
             }
         }
         .animation(.easeOut(duration: 0.18), value: model.phase)
+        .onOpenURL(perform: model.open)
         .preferredColorScheme(.light)
     }
 }

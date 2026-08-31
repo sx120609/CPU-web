@@ -12,6 +12,7 @@ export type NativeAppBridge = {
   saveImage?: (dataUrl: string, fileName?: string) => boolean | Promise<boolean>;
   saveImageUrl?: (url: string, fileName?: string) => boolean | Promise<boolean>;
   installScheduleWidget?: (payload: string) => void;
+  setScheduleWidgetTheme?: (theme: string) => void;
 };
 
 export type NativeImagePreviewItem = {

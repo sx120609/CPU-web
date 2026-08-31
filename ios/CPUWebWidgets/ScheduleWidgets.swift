@@ -55,12 +55,24 @@ private struct TwoDayScheduleWidget: Widget {
     }
 }
 
+private struct ScheduleWidgetThemeEnvironmentKey: EnvironmentKey {
+    static let defaultValue = ScheduleWidgetTheme.colorGlass
+}
+
+private extension EnvironmentValues {
+    var scheduleWidgetTheme: ScheduleWidgetTheme {
+        get { self[ScheduleWidgetThemeEnvironmentKey.self] }
+        set { self[ScheduleWidgetThemeEnvironmentKey.self] = newValue }
+    }
+}
+
 private struct ScheduleWidgetRoot<Content: View>: View {
     let entry: ScheduleEntry
     @ViewBuilder let content: (SchedulePayload) -> Content
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
+        let theme = AppWidgetConfiguration.scheduleTheme
         Group {
             switch entry.state {
             case .loaded(let payload):
@@ -79,6 +91,7 @@ private struct ScheduleWidgetRoot<Content: View>: View {
                 )
             }
         }
+        .environment(\.scheduleWidgetTheme, theme)
         .widgetURL(AppWidgetConfiguration.appURL)
         .containerBackground(for: .widget) {
             WidgetPalette.background(for: colorScheme)
@@ -90,12 +103,13 @@ private struct WidgetMessageView: View {
     let symbol: String
     let title: String
     let detail: String
+    @Environment(\.scheduleWidgetTheme) private var theme
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Image(systemName: symbol)
                 .font(.system(size: 24, weight: .semibold))
-                .foregroundStyle(.indigo)
+                .foregroundStyle(WidgetPalette.accent(for: theme))
             Text(title)
                 .font(.system(size: 15, weight: .bold))
                 .foregroundStyle(WidgetPalette.primary)
@@ -165,11 +179,12 @@ private struct UpcomingColumn: View {
 private struct CourseSummary: View {
     let course: ScheduleCourse
     let roomy: Bool
+    @Environment(\.scheduleWidgetTheme) private var theme
 
     var body: some View {
         HStack(alignment: .top, spacing: roomy ? 9 : 7) {
             RoundedRectangle(cornerRadius: 3)
-                .fill(WidgetPalette.accent(for: course))
+                .fill(WidgetPalette.accent(for: course, theme: theme))
                 .frame(width: 5, height: roomy ? 58 : 62)
             VStack(alignment: .leading, spacing: roomy ? 3 : 2) {
                 Text(course.displayName)
@@ -193,11 +208,12 @@ private struct CourseSummary: View {
 
 private struct CompactNextCourse: View {
     let course: ScheduleCourse
+    @Environment(\.scheduleWidgetTheme) private var theme
 
     var body: some View {
         HStack(spacing: 8) {
             RoundedRectangle(cornerRadius: 3)
-                .fill(WidgetPalette.accent(for: course))
+                .fill(WidgetPalette.accent(for: course, theme: theme))
                 .frame(width: 5, height: 27)
             VStack(alignment: .leading, spacing: 1) {
                 Text(course.displayName)
@@ -248,12 +264,13 @@ private struct TodayCourseRow: View {
     let large: Bool
     let timeOnSeparateLine: Bool
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.scheduleWidgetTheme) private var theme
     @Environment(\.widgetRenderingMode) private var renderingMode
 
     var body: some View {
         HStack(spacing: large ? 9 : 6) {
             RoundedRectangle(cornerRadius: 3)
-                .fill(WidgetPalette.accent(for: course))
+                .fill(WidgetPalette.accent(for: course, theme: theme))
                 .frame(width: 5, height: large ? 40 : (timeOnSeparateLine ? 39 : 29))
             VStack(alignment: .leading, spacing: 2) {
                 Text(course.displayName)
@@ -280,7 +297,7 @@ private struct TodayCourseRow: View {
             RoundedRectangle(cornerRadius: large ? 11 : 8)
                 .fill(
                     renderingMode == .fullColor
-                        ? WidgetPalette.tint(for: course, colorScheme: colorScheme)
+                        ? WidgetPalette.tint(for: course, colorScheme: colorScheme, theme: theme)
                         : Color.white
                 )
                 // Clear and tinted Home Screen appearances render widgets in
@@ -335,6 +352,7 @@ private struct DayColumn: View {
 
 private struct WidgetDateHeader: View {
     let day: ScheduleDay
+    @Environment(\.scheduleWidgetTheme) private var theme
 
     var body: some View {
         HStack(spacing: 6) {
@@ -343,7 +361,11 @@ private struct WidgetDateHeader: View {
                 .foregroundStyle(WidgetPalette.primary)
             Text(day.displayLabel)
                 .font(.system(size: 16, weight: .bold))
-                .foregroundStyle(day.displayLabel == "周六" || day.displayLabel == "周日" ? .pink : .teal)
+                .foregroundStyle(
+                    day.displayLabel == "周六" || day.displayLabel == "周日"
+                        ? Color.pink
+                        : WidgetPalette.accent(for: theme)
+                )
             Spacer(minLength: 0)
             if let week = day.week, week > 0 {
                 Text("第 \(week) 周")
@@ -369,7 +391,7 @@ private enum WidgetPalette {
     static let primary = Color.primary
     static let secondary = Color.secondary
     static let muted = Color.secondary.opacity(0.72)
-    private static let accents: [Color] = [
+    private static let colorGlassAccents: [Color] = [
         Color(red: 232 / 255, green: 91 / 255, blue: 75 / 255),
         Color(red: 74 / 255, green: 120 / 255, blue: 242 / 255),
         Color(red: 139 / 255, green: 92 / 255, blue: 246 / 255),
@@ -377,7 +399,7 @@ private enum WidgetPalette {
         Color(red: 224 / 255, green: 162 / 255, blue: 36 / 255),
         Color(red: 236 / 255, green: 112 / 255, blue: 161 / 255),
     ]
-    private static let tints: [Color] = [
+    private static let colorGlassTints: [Color] = [
         Color(red: 253 / 255, green: 236 / 255, blue: 233 / 255),
         Color(red: 234 / 255, green: 240 / 255, blue: 1),
         Color(red: 242 / 255, green: 236 / 255, blue: 1),
@@ -386,8 +408,31 @@ private enum WidgetPalette {
         Color(red: 253 / 255, green: 235 / 255, blue: 244 / 255),
     ]
 
-    static func accent(for course: ScheduleCourse) -> Color {
-        accents[index(for: course)]
+    static func accent(for theme: ScheduleWidgetTheme) -> Color {
+        switch theme {
+        case .green:
+            Color(red: 22 / 255, green: 135 / 255, blue: 118 / 255)
+        case .blue:
+            Color(red: 37 / 255, green: 99 / 255, blue: 235 / 255)
+        case .teal:
+            Color(red: 8 / 255, green: 145 / 255, blue: 178 / 255)
+        case .indigo:
+            Color(red: 219 / 255, green: 39 / 255, blue: 119 / 255)
+        case .violet:
+            Color(red: 124 / 255, green: 58 / 255, blue: 237 / 255)
+        case .orange:
+            Color(red: 234 / 255, green: 88 / 255, blue: 12 / 255)
+        case .rose:
+            Color(red: 225 / 255, green: 29 / 255, blue: 72 / 255)
+        case .slate:
+            Color(red: 71 / 255, green: 85 / 255, blue: 105 / 255)
+        case .colorGlass:
+            Color(red: 109 / 255, green: 93 / 255, blue: 252 / 255)
+        }
+    }
+
+    static func accent(for course: ScheduleCourse, theme: ScheduleWidgetTheme) -> Color {
+        theme == .colorGlass ? colorGlassAccents[index(for: course)] : accent(for: theme)
     }
 
     static func background(for colorScheme: ColorScheme) -> Color {
@@ -396,16 +441,46 @@ private enum WidgetPalette {
             : Color(red: 248 / 255, green: 251 / 255, blue: 1)
     }
 
-    static func tint(for course: ScheduleCourse, colorScheme: ColorScheme) -> Color {
+    static func tint(
+        for course: ScheduleCourse,
+        colorScheme: ColorScheme,
+        theme: ScheduleWidgetTheme
+    ) -> Color {
         let index = index(for: course)
-        return colorScheme == .dark ? accents[index].opacity(0.2) : tints[index]
+        let courseAccent = accent(for: course, theme: theme)
+        if colorScheme == .dark {
+            return courseAccent.opacity(0.2)
+        }
+        guard theme != .colorGlass else {
+            return colorGlassTints[index]
+        }
+        switch theme {
+        case .green:
+            return Color(red: 244 / 255, green: 251 / 255, blue: 248 / 255)
+        case .blue:
+            return Color(red: 243 / 255, green: 248 / 255, blue: 1)
+        case .teal:
+            return Color(red: 240 / 255, green: 251 / 255, blue: 1)
+        case .indigo:
+            return Color(red: 1, green: 245 / 255, blue: 250 / 255)
+        case .violet:
+            return Color(red: 250 / 255, green: 247 / 255, blue: 1)
+        case .orange:
+            return Color(red: 1, green: 247 / 255, blue: 241 / 255)
+        case .rose:
+            return Color(red: 1, green: 245 / 255, blue: 247 / 255)
+        case .slate:
+            return Color(red: 248 / 255, green: 250 / 255, blue: 252 / 255)
+        case .colorGlass:
+            return colorGlassTints[index]
+        }
     }
 
     private static func index(for course: ScheduleCourse) -> Int {
         let hash = course.displayName.unicodeScalars.reduce(0) { partial, scalar in
             (partial &* 31 &+ Int(scalar.value)) & 0x7fff_ffff
         }
-        return hash % accents.count
+        return hash % colorGlassAccents.count
     }
 }
 

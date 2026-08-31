@@ -5,7 +5,25 @@ enum AppWidgetConfiguration {
     static let appGroup = "group.cn.lizmt.cpuweb"
     static let endpointKey = "scheduleWidgetEndpoint"
     static let endpointFileName = "schedule-widget-endpoint.txt"
+    static let themeKey = "scheduleWidgetTheme"
     static let appURL = URL(string: "cpuweb://schedule")!
+
+    static var scheduleTheme: ScheduleWidgetTheme {
+        let value = UserDefaults(suiteName: appGroup)?.string(forKey: themeKey)
+        return ScheduleWidgetTheme(rawValue: value ?? "") ?? .colorGlass
+    }
+}
+
+enum ScheduleWidgetTheme: String {
+    case green
+    case blue
+    case teal
+    case indigo
+    case violet
+    case orange
+    case rose
+    case slate
+    case colorGlass = "color-glass"
 }
 
 struct ScheduleCourse: Decodable, Identifiable {

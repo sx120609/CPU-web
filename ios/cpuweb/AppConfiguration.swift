@@ -4,6 +4,7 @@ enum AppConfiguration {
     static let appGroup = "group.cn.lizmt.cpuweb"
     static let widgetEndpointKey = "scheduleWidgetEndpoint"
     static let widgetEndpointFileName = "schedule-widget-endpoint.txt"
+    static let widgetThemeKey = "scheduleWidgetTheme"
     static let versionCode = 1
     static let versionName = "1.0.0"
 
@@ -17,6 +18,30 @@ enum AppConfiguration {
 
     static var appHost: String {
         appURL.host?.lowercased() ?? "cputime.cn"
+    }
+
+    static func destinationURL(for deepLink: URL) -> URL? {
+        guard deepLink.scheme?.lowercased() == "cpuweb" else { return nil }
+
+        let route = deepLink.host?.lowercased()
+            ?? deepLink.pathComponents.dropFirst().first?.lowercased()
+        guard route == "schedule",
+              var components = URLComponents(url: appURL, resolvingAgainstBaseURL: false) else {
+            return nil
+        }
+
+        components.path = "/schedule"
+        components.fragment = nil
+        return components.url
+    }
+
+    static func normalizedWidgetTheme(_ value: String?) -> String? {
+        guard let theme = value?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+              ["green", "blue", "teal", "indigo", "violet", "orange", "rose", "slate", "color-glass"]
+                .contains(theme) else {
+            return nil
+        }
+        return theme
     }
 
     private static func addingClientMarker(to url: URL) -> URL {

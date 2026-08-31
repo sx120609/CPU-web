@@ -12,9 +12,20 @@ final class WebViewModel: ObservableObject {
 
     @Published var phase: Phase = .loading
     weak var webView: WKWebView?
+    private var requestedURL = AppConfiguration.appURL
 
-    func attach(_ webView: WKWebView) {
+    func attach(_ webView: WKWebView) -> URL {
         self.webView = webView
+        return requestedURL
+    }
+
+    func open(_ deepLink: URL) {
+        guard let destination = AppConfiguration.destinationURL(for: deepLink) else { return }
+        requestedURL = destination
+        if phase == .failed {
+            phase = .loading
+        }
+        webView?.load(URLRequest(url: destination))
     }
 
     func showContent() {
@@ -27,6 +38,6 @@ final class WebViewModel: ObservableObject {
 
     func retry() {
         phase = .loading
-        webView?.load(URLRequest(url: AppConfiguration.appURL, cachePolicy: .reloadRevalidatingCacheData))
+        webView?.load(URLRequest(url: requestedURL, cachePolicy: .reloadRevalidatingCacheData))
     }
 }

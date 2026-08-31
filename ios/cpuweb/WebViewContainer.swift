@@ -40,8 +40,8 @@ struct WebViewContainer: UIViewRepresentable {
         }
 #endif
 
-        model.attach(webView)
-        webView.load(URLRequest(url: AppConfiguration.appURL))
+        let initialURL = model.attach(webView)
+        webView.load(URLRequest(url: initialURL))
         return webView
     }
 

@@ -43,7 +43,8 @@ final class CPUIOSBridge: NSObject, WKScriptMessageHandler {
             saveImageUrl: (url, fileName = 'image.png') => send('saveImageURL', {
               url: String(url ?? ''), fileName: String(fileName ?? 'image.png')
             }),
-            installScheduleWidget: (payload) => { send('installScheduleWidget', { payload: String(payload ?? '') }); }
+            installScheduleWidget: (payload) => { send('installScheduleWidget', { payload: String(payload ?? '') }); },
+            setScheduleWidgetTheme: (theme) => { send('setScheduleWidgetTheme', { theme: String(theme ?? '') }); }
           };
           Object.defineProperty(window, 'CPUIOS', { value: bridge, configurable: true });
         })();
@@ -73,6 +74,8 @@ final class CPUIOSBridge: NSObject, WKScriptMessageHandler {
             saveRemoteImage(body["url"] as? String)
         case "installScheduleWidget":
             installScheduleWidget(payload: body["payload"] as? String)
+        case "setScheduleWidgetTheme":
+            setScheduleWidgetTheme(body["theme"] as? String)
         default:
             break
         }
@@ -164,9 +167,13 @@ final class CPUIOSBridge: NSObject, WKScriptMessageHandler {
         }
 
         let normalizedEndpoint = Self.normalizeEndpoint(endpoint)
+        let theme = Self.widgetTheme(from: payload)
         let endpointFile = containerURL.appendingPathComponent(AppConfiguration.widgetEndpointFileName)
         do {
             defaults.set(normalizedEndpoint, forKey: AppConfiguration.widgetEndpointKey)
+            if let theme {
+                defaults.set(theme, forKey: AppConfiguration.widgetThemeKey)
+            }
             defaults.synchronize()
             try normalizedEndpoint.write(to: endpointFile, atomically: true, encoding: .utf8)
             try FileManager.default.setAttributes(
@@ -184,6 +191,16 @@ final class CPUIOSBridge: NSObject, WKScriptMessageHandler {
             title: "小组件配置已保存",
             message: "请长按主屏幕，点左上角“+”，搜索“药大拾间”并选择课表样式。"
         )
+    }
+
+    private func setScheduleWidgetTheme(_ value: String?) {
+        guard let theme = AppConfiguration.normalizedWidgetTheme(value),
+              let defaults = UserDefaults(suiteName: AppConfiguration.appGroup) else {
+            return
+        }
+        defaults.set(theme, forKey: AppConfiguration.widgetThemeKey)
+        defaults.synchronize()
+        WidgetCenter.shared.reloadAllTimelines()
     }
 
     private func showMessage(title: String, message: String) {
@@ -205,6 +222,15 @@ final class CPUIOSBridge: NSObject, WKScriptMessageHandler {
             return nil
         }
         return endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func widgetTheme(from payload: String?) -> String? {
+        guard let rawValue = payload?.trimmingCharacters(in: .whitespacesAndNewlines),
+              let data = rawValue.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+        return AppConfiguration.normalizedWidgetTheme(object["theme"] as? String)
     }
 
     private static func normalizeEndpoint(_ value: String) -> String {

@@ -111,7 +111,13 @@ import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import DesktopClientDownloadCard from "@/components/install/DesktopClientDownloadCard.vue";
 import { detectInAppBrowser } from "@/utils/inAppBrowser";
 import { USER_QQ_GROUP, openUserGroup } from "@/utils/userGroup";
-import { ANDROID_APP_DOWNLOAD_URL, isDesktopNativeApp, isFlutterNativeShell, isLikelyAndroidDevice } from "@/utils/clientInfo";
+import {
+  ANDROID_APP_DOWNLOAD_URL,
+  isDesktopNativeApp,
+  isFlutterNativeShell,
+  isIosNativeApp,
+  isLikelyAndroidDevice,
+} from "@/utils/clientInfo";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -171,18 +177,20 @@ function detectStandalone() {
  * 不再做 `; wv` / `Version/X Chrome/X` 这种宽松匹配 —— 那些模式把许多系统浏览器
  * （Chrome / 三星 / 华为等）误判为客户端。
  *
- * 客户端侧需要在 WebView 的 userAgent 里追加 `CPUWebScheduleApp` 或 `CPUWebHarmonyApp`。
- * 同时支持手动用 `?client=android-app` / `?client=harmony-app` 强制，便于开发期测试。
+ * 客户端侧需要在 WebView 的 userAgent 里追加 `CPUWebScheduleApp`、`CPUWebHarmonyApp`
+ * 或 `CPUWebIOSApp`。同时支持对应的 `?client=*-app` 参数，便于开发期测试。
  */
 function detectNativeApp() {
   const ua = navigator.userAgent.toLowerCase();
   const params = new URLSearchParams(window.location.search);
   isNativeApp.value = ua.includes("cpuwebscheduleapp")
     || ua.includes("cpuwebharmonyapp")
+    || isIosNativeApp()
     || isDesktopNativeApp()
     || isFlutterNativeShell()
     || params.get("client") === "android-app"
-    || params.get("client") === "harmony-app";
+    || params.get("client") === "harmony-app"
+    || params.get("client") === "ios-app";
 }
 
 function onBeforeInstall(e: Event) {

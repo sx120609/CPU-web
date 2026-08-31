@@ -992,6 +992,7 @@ interface AndroidWidgetBridge {
 interface IOSWidgetBridge {
   supportsScheduleWidget?: () => boolean;
   installScheduleWidget?: (payload: string) => void;
+  setScheduleWidgetTheme?: (theme: string) => void;
 }
 
 function scheduleStorageScope() {
@@ -1023,6 +1024,13 @@ function getAndroidWidgetBridge(): AndroidWidgetBridge | null {
 
 function getIOSWidgetBridge(): IOSWidgetBridge | null {
   return ((window as any).CPUIOS ?? null) as IOSWidgetBridge | null;
+}
+
+function syncIOSWidgetTheme(value = scheduleTheme.value) {
+  if (!isIosNativeApp()) return;
+  const bridge = getIOSWidgetBridge();
+  if (typeof bridge?.setScheduleWidgetTheme !== "function") return;
+  bridge.setScheduleWidgetTheme(normalizeScheduleTheme(value));
 }
 
 async function copyGradDebugGuide() {
@@ -1238,6 +1246,7 @@ async function installIOSWidget() {
     bridge.installScheduleWidget(JSON.stringify({
       endpoint: token.endpoint,
       title: "药大课表",
+      theme: scheduleTheme.value,
     }));
   } finally {
     widgetInstalling.value = false;
@@ -2581,6 +2590,7 @@ function restoreScheduleTheme() {
   } catch {
     /* ignore */
   }
+  syncIOSWidgetTheme();
 }
 
 function persistScheduleTheme(value = scheduleTheme.value) {
@@ -2590,6 +2600,7 @@ function persistScheduleTheme(value = scheduleTheme.value) {
   } catch {
     /* ignore */
   }
+  syncIOSWidgetTheme();
 }
 
 function courseBlockStyle(block: WeekCourseBlock) {
