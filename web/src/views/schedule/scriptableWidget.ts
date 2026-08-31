@@ -12,6 +12,7 @@ const DARK_TINTS = ["#42221f", "#1e2d52", "#32244f", "#153c38", "#403418", "#482
 async function loadSchedule() {
   const req = new Request(API_ENDPOINT);
   req.timeoutInterval = 20;
+  req.cachePolicy = "reloadIgnoringLocalCacheData";
   const body = await req.loadJSON();
   if (!body || body.code !== 0) throw new Error(body?.message || "课表读取失败");
   return body.data;

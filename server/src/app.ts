@@ -18,6 +18,7 @@ import { createWebStaticCosHandler, createWebStaticPublicCosHandler } from "./se
 import { startQqNotificationPoller } from "./services/qqbot";
 import { startSponsorOrderExpiryPoller } from "./services/sponsor";
 import { startForumSubmissionReviewPoller } from "./services/forumSubmissionReview";
+import { startDirectMessageSubmissionReviewPoller } from "./services/directMessageSubmissionReview";
 import { startRuntimeSync } from "./services/runtimeSync";
 import { fail } from "./utils/response";
 import { browserSessionMiddleware, requestOriginAndCsrfProtection } from "./middleware/browserSession";
@@ -88,6 +89,7 @@ export function createApp() {
   startForumImageModerationPoller();
   startForumVideoModerationPoller();
   startForumSubmissionReviewPoller();
+  startDirectMessageSubmissionReviewPoller();
   startQqNotificationPoller();
   startWechatNotificationPoller();
   startSponsorOrderExpiryPoller();

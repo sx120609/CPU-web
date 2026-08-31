@@ -1163,6 +1163,14 @@ model DirectMessage {
   conversationId Int
   senderId       Int
   content        String
+  hidden         Boolean   @default(false)
+  aiReviewStatus String    @default("auto_passed")
+  aiRiskLevel    String?
+  aiRiskScore    Int?
+  aiReviewReason String?
+  aiReviewDetail String?
+  aiModel        String?
+  aiReviewedAt   DateTime?
   readAt         DateTime?
   createdAt      DateTime  @default(now())
 
@@ -1172,6 +1180,7 @@ model DirectMessage {
   @@index([conversationId, id])
   @@index([conversationId, senderId, createdAt])
   @@index([conversationId, readAt])
+  @@index([aiReviewStatus, hidden, aiReviewedAt])
   @@index([senderId, createdAt])
 }
 

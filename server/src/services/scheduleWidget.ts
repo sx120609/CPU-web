@@ -1,6 +1,6 @@
 import { normalizeCalendarWeekDays } from "./jwxtParser";
 
-export const SCHEDULE_WIDGET_PAYLOAD_VERSION = 9;
+export const SCHEDULE_WIDGET_PAYLOAD_VERSION = 10;
 
 const SMALL_SLOTS = [
   { no: 1, start: "08:00", end: "08:45" },

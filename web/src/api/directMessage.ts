@@ -24,6 +24,12 @@ export interface DirectMessageItem {
   conversationId: number;
   senderId: number;
   content: string;
+  hidden: boolean;
+  aiReviewStatus: "checking" | "auto_passed" | "blocked_ai" | "review_failed" | string;
+  aiRiskLevel?: "low" | "medium" | "high" | null;
+  aiRiskScore?: number | null;
+  aiReviewReason?: string | null;
+  aiReviewedAt?: string | null;
   readAt?: string | null;
   createdAt: string;
 }

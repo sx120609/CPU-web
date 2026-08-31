@@ -20,6 +20,7 @@ import {
   renderWechatFollowSettingsTip,
   selectWechatGeneratedImageUrl,
   shouldDeliverWechatNotification,
+  wechatNotificationPriority,
   verifyWechatSignature,
 } from "../src/services/wechatService";
 import { normalizeAudioTranscriptionsUrl } from "../src/services/audioTranscription";
@@ -90,6 +91,17 @@ test("respects channel and category preferences", () => {
   assert.equal(shouldDeliverWechatNotification({ category: "reply" }, { wechatNotifyEnabled: true, subscribeReply: false }), false);
   assert.equal(shouldDeliverWechatNotification({ category: "system" }, { wechatNotifyEnabled: false, subscribeSystem: true }), false);
   assert.equal(shouldDeliverWechatNotification({ category: "system", targetClient: "ios" }, { wechatNotifyEnabled: true }), false);
+});
+
+test("prioritizes review outcomes over likes when customer-message quota is limited", () => {
+  const approved = wechatNotificationPriority({
+    category: "system",
+    payload: JSON.stringify({ type: "topic-submission-published" }),
+  });
+  const direct = wechatNotificationPriority({ category: "direct-message", payload: "{}" });
+  const like = wechatNotificationPriority({ category: "like", payload: "{}" });
+  assert.ok(approved > direct);
+  assert.ok(direct > like);
 });
 
 test("generates credentials accepted by the public-platform form", () => {

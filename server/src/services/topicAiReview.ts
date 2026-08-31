@@ -64,6 +64,15 @@ type DeepSeekReviewResponse = {
   categories?: Record<string, number>;
 };
 
+const POLITICAL_RISK_CATEGORIES = [
+  "political_extremism",
+  "political_mobilization",
+  "separatism",
+  "terrorism",
+  "political_rumor",
+  "national_symbol_abuse",
+] as const;
+
 type DeepSeekTagResponse = {
   tags?: string[];
 };
@@ -399,9 +408,7 @@ export async function reviewTopicContent(input: {
   } catch (error) {
     return buildAiReviewUnavailableResult(config, "topic", error, model);
   }
-  const riskScore = clampScore(parsed.risk_score);
-  const riskLevel = normalizeRiskLevel(parsed.risk_level, riskScore);
-  const decision = decideByThreshold(riskScore, config.aiReviewThreshold);
+  const { riskScore, riskLevel, decision, politicalRiskScore } = resolveTextReviewPolicy(parsed, config.aiReviewThreshold);
   return {
     status: decision === "auto_pass" ? "auto_passed" : "blocked_ai",
     riskLevel,
@@ -410,6 +417,7 @@ export async function reviewTopicContent(input: {
     detail: JSON.stringify({
       modelDecision: parsed.decision ?? "",
       decision,
+      politicalRiskScore,
       categories: parsed.categories ?? {},
       detail: String(parsed.detail || "").slice(0, 1000),
     }),
@@ -499,9 +507,7 @@ export async function reviewReplyContent(input: {
   } catch (error) {
     return buildAiReviewUnavailableResult(config, "reply", error, model);
   }
-  const riskScore = clampScore(parsed.risk_score);
-  const riskLevel = normalizeRiskLevel(parsed.risk_level, riskScore);
-  const decision = decideByThreshold(riskScore, config.aiReviewThreshold);
+  const { riskScore, riskLevel, decision, politicalRiskScore } = resolveTextReviewPolicy(parsed, config.aiReviewThreshold);
   return {
     status: decision === "auto_pass" ? "auto_passed" : "blocked_ai",
     riskLevel,
@@ -510,6 +516,7 @@ export async function reviewReplyContent(input: {
     detail: JSON.stringify({
       modelDecision: parsed.decision ?? "",
       decision,
+      politicalRiskScore,
       categories: parsed.categories ?? {},
       detail: String(parsed.detail || "").slice(0, 1000),
     }),
@@ -626,6 +633,30 @@ function normalizeRiskLevel(value: unknown, score: number): TopicAiRiskLevel {
 
 function decideByThreshold(score: number, threshold: number) {
   return score < threshold ? "auto_pass" : "block";
+}
+
+export function resolveTextReviewPolicy(parsed: DeepSeekReviewResponse, threshold: number) {
+  const safeThreshold = Math.max(1, Math.min(100, Math.round(Number(threshold) || 70)));
+  const categories = parsed.categories && typeof parsed.categories === "object" ? parsed.categories : {};
+  const politicalRiskScore = Math.max(0, ...POLITICAL_RISK_CATEGORIES.map((key) => clampScore(categories[key] ?? 0)));
+  const modelDecision = String(parsed.decision || "").trim().toLowerCase();
+  let riskScore = clampScore(parsed.risk_score);
+
+  // 政治风险有时只体现在分类分里，而模型给出的总分偏低；对明确的高风险分类做确定性兜底。
+  // 普通政策、历史、新闻和学术讨论只要分类分低，仍按原阈值正常放行。
+  if (politicalRiskScore >= 85) riskScore = Math.max(riskScore, 90, safeThreshold);
+  else if (politicalRiskScore >= 60) riskScore = Math.max(riskScore, safeThreshold);
+  if (modelDecision === "block" || modelDecision === "manual_review") {
+    riskScore = Math.max(riskScore, safeThreshold);
+  }
+
+  const riskLevel = normalizeRiskLevel(parsed.risk_level, riskScore);
+  return {
+    riskScore,
+    riskLevel,
+    decision: decideByThreshold(riskScore, safeThreshold),
+    politicalRiskScore,
+  };
 }
 
 function renderPromptTemplate(template: string, vars: Record<string, unknown>) {
@@ -992,9 +1023,7 @@ export async function reviewDirectMessageContent(input: {
   } catch (error) {
     return buildAiReviewUnavailableResult(config, "direct-message", error, model);
   }
-  const riskScore = clampScore(parsed.risk_score);
-  const riskLevel = normalizeRiskLevel(parsed.risk_level, riskScore);
-  const decision = decideByThreshold(riskScore, config.aiReviewThreshold);
+  const { riskScore, riskLevel, decision, politicalRiskScore } = resolveTextReviewPolicy(parsed, config.aiReviewThreshold);
   return {
     status: decision === "auto_pass" ? "auto_passed" : "blocked_ai",
     riskLevel,
@@ -1003,6 +1032,7 @@ export async function reviewDirectMessageContent(input: {
     detail: JSON.stringify({
       modelDecision: parsed.decision ?? "",
       decision,
+      politicalRiskScore,
       categories: parsed.categories ?? {},
       detail: String(parsed.detail || "").slice(0, 1000),
     }),

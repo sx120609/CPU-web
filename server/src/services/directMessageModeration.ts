@@ -1,6 +1,29 @@
 import { HttpError, Errors } from "../utils/response";
 import { reviewDirectMessageContent, type TopicAiReviewResult } from "./topicAiReview";
 
+export const DIRECT_MESSAGE_DELIVERED_STATUSES = ["auto_passed", "approved_manual"] as const;
+export const DIRECT_MESSAGE_PRE_REPLY_COUNT_STATUSES = ["checking", ...DIRECT_MESSAGE_DELIVERED_STATUSES] as const;
+
+export function directMessageVisibilityWhere(viewerId: number) {
+  return {
+    OR: [
+      { hidden: false },
+      { senderId: viewerId },
+    ],
+  };
+}
+
+export function directMessageCountsTowardPreReplyLimit(status: string) {
+  return (DIRECT_MESSAGE_PRE_REPLY_COUNT_STATUSES as readonly string[]).includes(status);
+}
+
+export function directMessageDeliveryState(status: string, hidden: boolean) {
+  if (!hidden && (DIRECT_MESSAGE_DELIVERED_STATUSES as readonly string[]).includes(status)) return "delivered" as const;
+  if (status === "checking") return "checking" as const;
+  if (status === "blocked_ai" || status === "blocked_force" || status === "rejected_manual") return "blocked" as const;
+  return "failed" as const;
+}
+
 export function isDirectMessageReviewUnavailable(result: TopicAiReviewResult) {
   try {
     return JSON.parse(result.detail || "{}").unavailable === true;

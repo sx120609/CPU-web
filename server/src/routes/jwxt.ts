@@ -562,6 +562,8 @@ jwxtRouter.post("/schedule-widget-tokens/refresh", authRequired, async (req: any
       data: {
         jwxtToken,
         expiresAt: new Date(Date.now() + WIDGET_TOKEN_TTL_MS),
+        cachedPayload: null,
+        cachedAt: null,
       },
     });
     await invalidateJwxtWidgetCaches();
@@ -619,7 +621,7 @@ jwxtRouter.get("/schedule-widget", async (req, res, next) => {
         where: { id: row.id },
         data: { lastUsedAt: new Date() },
       }).catch(() => undefined);
-      res.setHeader("Cache-Control", "private, max-age=120");
+      res.setHeader("Cache-Control", "private, no-store, max-age=0");
       ok(res, sharedCachedPayload);
       return;
     }
@@ -663,7 +665,7 @@ jwxtRouter.get("/schedule-widget", async (req, res, next) => {
         },
       });
       await setCachedJson(widgetCacheKey, payload, 120_000);
-      res.setHeader("Cache-Control", "private, max-age=120");
+      res.setHeader("Cache-Control", "private, no-store, max-age=0");
       ok(res, payload);
     } catch (e: any) {
       const cached = parseWidgetCache(row.cachedPayload);
@@ -672,7 +674,7 @@ jwxtRouter.get("/schedule-widget", async (req, res, next) => {
         where: { id: row.id },
         data: { lastUsedAt: new Date() },
       }).catch(() => undefined);
-      res.setHeader("Cache-Control", "private, max-age=60");
+      res.setHeader("Cache-Control", "private, no-store, max-age=0");
       ok(res, {
         ...cached,
         stale: true,
@@ -792,6 +794,13 @@ jwxtRouter.get("/schedule", async (req, res, next) => {
         JWXT_SCHEDULE_CACHE_TTL_MS,
         async () => assertUsableUndergraduateSchedule(await getSchedule(t, { semester, week })),
       ));
+    if (refresh) {
+      await prisma.scheduleWidgetToken.updateMany({
+        where: { jwxtToken: t, revokedAt: null },
+        data: { cachedPayload: null, cachedAt: null },
+      });
+      await invalidateJwxtWidgetCaches();
+    }
     res.setHeader("Cache-Control", refresh ? "private, no-store" : "private, max-age=300, stale-while-revalidate=86400");
     ok(res, { parsed, source: parsed.source });
   } catch (e) { next(e); }
@@ -813,6 +822,13 @@ jwxtRouter.get("/graduate-schedule", async (req, res, next) => {
         JWXT_SCHEDULE_CACHE_TTL_MS,
         async () => loadGraduateScheduleResponse(t, semester, termcode),
       );
+    if (refresh) {
+      await prisma.scheduleWidgetToken.updateMany({
+        where: { jwxtToken: t, revokedAt: null },
+        data: { cachedPayload: null, cachedAt: null },
+      });
+      await invalidateJwxtWidgetCaches();
+    }
     res.setHeader("Cache-Control", refresh ? "private, no-store" : "private, max-age=300, stale-while-revalidate=86400");
     ok(res, result);
   } catch (e) { next(e); }

@@ -43,7 +43,7 @@
               <small>{{ shortTime(conversation.lastMessageAt) }}</small>
             </span>
             <span class="conversation-preview">
-              {{ conversation.lastMessage?.senderId === auth.user?.id ? "我：" : "" }}{{ conversation.lastMessage?.content || "开始私聊" }}
+              {{ conversationPreview(conversation.lastMessage) }}
             </span>
           </span>
           <span v-if="conversation.unreadCount" class="unread-dot">{{ Math.min(conversation.unreadCount, 99) }}</span>
@@ -116,7 +116,7 @@
               <p>{{ message.content }}</p>
               <span>
                 {{ messageTime(message.createdAt) }}
-                <template v-if="message.senderId === auth.user?.id"> · {{ message.readAt ? "已读" : "未读" }}</template>
+                <template v-if="message.senderId === auth.user?.id"> · {{ messageDeliveryText(message) }}</template>
                 <button
                   v-else
                   type="button"
@@ -149,7 +149,7 @@
             />
             <el-button type="primary" :loading="sending" :disabled="!canSubmit" @click="sendMessage">发送</el-button>
           </div>
-          <span class="composer-hint">{{ composerHint }} · 发送前进行 AI 内容审核</span>
+          <span class="composer-hint">{{ composerHint }} · 发送后后台审核，通过后对方才会收到</span>
         </footer>
       </template>
     </section>
@@ -479,6 +479,7 @@ async function sendMessage() {
     activeConversation.value = result.conversation;
     mergeMessages([result.message]);
     upsertConversation({ ...result.conversation, lastMessage: result.message });
+    if (result.message.aiReviewStatus === "checking") ElMessage.info("消息已提交后台审核，通过后会自动发送给对方");
     await router.replace({
       query: {
         ...route.query,
@@ -648,6 +649,22 @@ function shortTime(value: string) {
 
 function messageTime(value: string) {
   return fmtDate(value, "MM-DD HH:mm");
+}
+
+function messageDeliveryText(message: DirectMessageItem) {
+  if (message.aiReviewStatus === "checking") return "审核中";
+  if (["blocked_ai", "blocked_force", "rejected_manual"].includes(message.aiReviewStatus)) return "未通过审核";
+  if (message.aiReviewStatus === "review_failed") return "审核未完成";
+  return message.readAt ? "已读" : "未读";
+}
+
+function conversationPreview(message?: DirectMessageItem | null) {
+  if (!message) return "开始私聊";
+  const mine = message.senderId === auth.user?.id ? "我：" : "";
+  if (message.aiReviewStatus === "checking") return `${mine}[审核中] ${message.content}`;
+  if (["blocked_ai", "blocked_force", "rejected_manual"].includes(message.aiReviewStatus)) return `${mine}[未通过审核] ${message.content}`;
+  if (message.aiReviewStatus === "review_failed") return `${mine}[审核未完成] ${message.content}`;
+  return `${mine}${message.content}`;
 }
 
 function errorMessage(error: unknown, fallback: string) {

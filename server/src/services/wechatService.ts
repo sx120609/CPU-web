@@ -21,6 +21,8 @@ import { renderWechatScheduleImage } from "./wechatScheduleImage";
 const CONFIG_ID = 1;
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 const CUSTOMER_MESSAGE_WINDOW_MS = 48 * 60 * 60 * 1000;
+const CUSTOMER_MESSAGE_LIMIT_PER_WINDOW = 5;
+const NOTIFICATION_LOOKBACK_MS = 6 * 60 * 60 * 1000;
 const WECHAT_API_TIMEOUT_MS = 12_000;
 const WECHAT_TEMP_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 const WECHAT_INBOUND_MEDIA_MAX_BYTES = 15 * 1024 * 1024;
@@ -980,16 +982,15 @@ export async function dispatchRecentWechatNotifications() {
   if (!config.enabled || !config.notificationEnabled) return { sent: 0, skipped: 0 };
   const categories = normalizeNotifyCategories(parseStringArray(config.notifyCategories));
   if (!categories.length) return { sent: 0, skipped: 0 };
-  const since = new Date(Date.now() - 10 * 60 * 1000);
-  const [notifications, bindings] = await Promise.all([
+  const since = new Date(Date.now() - NOTIFICATION_LOOKBACK_MS);
+  const [notifications, bindings, recentDeliveries] = await Promise.all([
     prisma.notification.findMany({
       where: {
         createdAt: { gte: since },
         category: { in: categories },
-        OR: [{ userId: { not: null }, readAt: null }, { userId: null }],
       },
-      orderBy: { createdAt: "asc" },
-      take: 50,
+      orderBy: { createdAt: "desc" },
+      take: 200,
     }),
     prisma.wechatBinding.findMany({
       where: { enabled: true, subscribed: true },
@@ -1009,8 +1010,27 @@ export async function dispatchRecentWechatNotifications() {
         },
       },
     }),
+    prisma.wechatMessageLog.findMany({
+      where: {
+        eventType: "notification",
+        status: "ok",
+        createdAt: { gte: new Date(Date.now() - CUSTOMER_MESSAGE_WINDOW_MS) },
+      },
+      select: { userId: true, result: true, createdAt: true },
+    }),
   ]);
+  notifications.sort((a, b) => (
+    wechatNotificationPriority(b) - wechatNotificationPriority(a)
+    || a.createdAt.getTime() - b.createdAt.getTime()
+  ));
   const bindingByUserId = new Map(bindings.map((binding) => [binding.userId, binding]));
+  const customerDeliveriesByUserId = new Map<number, number>();
+  recentDeliveries.forEach((delivery) => {
+    if (!delivery.userId || (delivery.result && delivery.result !== "customer")) return;
+    const binding = bindingByUserId.get(delivery.userId);
+    if (!binding?.lastInteractionAt || delivery.createdAt < binding.lastInteractionAt) return;
+    customerDeliveriesByUserId.set(delivery.userId, (customerDeliveriesByUserId.get(delivery.userId) || 0) + 1);
+  });
   let sent = 0;
   let skipped = 0;
   for (const notification of notifications) {
@@ -1033,17 +1053,28 @@ export async function dispatchRecentWechatNotifications() {
         const link = resolveNotificationLink(notification.link, notification.payload);
         const customerWindow = binding.lastInteractionType === "message" ? CUSTOMER_MESSAGE_WINDOW_MS : 60_000;
         const withinCustomerWindow = Boolean(binding.lastInteractionAt && Date.now() - binding.lastInteractionAt.getTime() <= customerWindow);
+        let deliveryChannel = "";
         if (withinCustomerWindow) {
+          const customerDeliveries = customerDeliveriesByUserId.get(binding.userId) || 0;
+          if (customerDeliveries >= CUSTOMER_MESSAGE_LIMIT_PER_WINDOW || wechatNotificationPriority(notification) < 60) {
+            skipped += 1;
+            continue;
+          }
           await sendWechatCustomerText(binding.openId, renderNotificationText(notification, link));
+          customerDeliveriesByUserId.set(binding.userId, customerDeliveries + 1);
+          deliveryChannel = "customer";
         } else if (canSendSubscriptionNotification(config)) {
           try {
             await sendWechatSubscriptionNotification(config, binding.openId, notification);
+            deliveryChannel = "subscription";
           } catch (error) {
             if (!canSendNotificationTemplate(config)) throw error;
             await sendWechatTemplateNotification(config, binding.openId, notification, link);
+            deliveryChannel = "template";
           }
         } else if (canSendNotificationTemplate(config)) {
           await sendWechatTemplateNotification(config, binding.openId, notification, link);
+          deliveryChannel = "template";
         } else {
           skipped += 1;
           continue;
@@ -1056,6 +1087,7 @@ export async function dispatchRecentWechatNotifications() {
           userId: binding.userId,
           notificationId: notification.id,
           content: notification.content,
+          result: deliveryChannel,
         });
         sent += 1;
       } catch (error) {
@@ -1073,6 +1105,23 @@ export async function dispatchRecentWechatNotifications() {
     }
   }
   return { sent, skipped };
+}
+
+export function wechatNotificationPriority(notification: { category?: string | null; payload?: string | null }) {
+  let payload: Record<string, unknown> = {};
+  try {
+    const parsed = JSON.parse(notification.payload || "{}");
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) payload = parsed;
+  } catch { /* invalid payload falls back to category priority */ }
+  const type = String(payload.type || "");
+  if (/submission-(?:published|blocked|review)|ai-(?:blocked|recovered)|review-(?:outage|failed)/.test(type)) return 100;
+  if (type === "direct-message" || notification.category === "direct-message") return 90;
+  if (/payment|sponsor|order/.test(type)) return 85;
+  if (notification.category === "reply" || notification.category === "mention" || notification.category === "lost-found") return 75;
+  if (notification.category === "system" || notification.category === "service-tool") return 65;
+  if (notification.category === "school-feed") return 40;
+  if (notification.category === "like") return 10;
+  return 30;
 }
 
 export function startWechatNotificationPoller() {

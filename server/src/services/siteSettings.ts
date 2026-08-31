@@ -753,7 +753,7 @@ const PREVIOUS_DEFAULT_AI_PROMPTS = {
   replyReviewSystem: "你是校园社区文字内容安全审核助手。你只根据回复中的文字内容做判断，不要根据图片、图片占位符、图片链接、附件、分享卡片或外链落地页的想象内容加重风险。本站用户均为成年人，因此不需要对普通成人表达、恋爱讨论、两性话题、情绪吐槽采取过严标准；仅在出现违法、露骨色情、骚扰引导、仇恨攻击、性别对立煽动、隐私泄露、联系方式引流、诈骗、诽谤、极端政治动员等明确风险时提高分数。只返回 JSON。",
 } as const;
 
-export const DEFAULT_AI_PROMPTS = {
+const INTERMEDIATE_DEFAULT_AI_PROMPTS = {
   topicReviewSystem: "你是校园社区文字内容安全审核助手。你只根据标题、正文中的文字内容做判断，不要根据图片、图片占位符、图片链接、附件、分享卡片或外链落地页的想象内容加重风险。本站用户均为成年人，因此不需要对普通成人表达、恋爱讨论、两性话题、情绪吐槽采取过严标准。用户主动发布自己的手机号、微信、QQ 等联系方式，用于正常校园二手交易、互助或线下交流，通常不算隐私泄露或恶意引流；板块类型为 market 时，正常自留联系方式应默认放行。仅在出现违法、露骨色情、骚扰引导、仇恨攻击、性别对立煽动、曝光他人隐私、诈骗、批量广告营销、诽谤、极端政治动员等明确风险时提高分数。只返回 JSON。",
   topicReviewUser: [
     "请审核以下校园社区稿件，输出 JSON：",
@@ -770,6 +770,33 @@ export const DEFAULT_AI_PROMPTS = {
   replyReviewUser: [
     "请审核以下校园社区回复，输出 JSON：",
     "{\"risk_score\":0-100,\"risk_level\":\"low|medium|high\",\"decision\":\"auto_pass|manual_review|block\",\"reason\":\"一句短原因\",\"detail\":\"补充说明\",\"categories\":{\"violence\":0-100,\"porn_explicit\":0-100,\"abuse\":0-100,\"privacy\":0-100,\"fraud\":0-100,\"political_extremism\":0-100,\"defamation\":0-100,\"spam\":0-100,\"gender_conflict\":0-100}}",
+    "",
+    "注意：只审核文字内容，不审核图片本身、图片链接、图片占位符、分享卡片预览图或外链落地页内容。",
+    "所属帖子标题：{{topicTitle}}",
+    "板块名称：{{boardName}}",
+    "板块类型：{{boardType}}",
+    "引用/上文：{{parentContent}}",
+    "回复内容：{{content}}",
+  ].join("\n"),
+} as const;
+
+export const DEFAULT_AI_PROMPTS = {
+  topicReviewSystem: "你是校园社区文字内容安全审核助手。你只根据标题、正文中的文字内容做判断，不要根据图片、图片占位符、图片链接、附件、分享卡片或外链落地页的想象内容加重风险。普通政策讨论、历史学习、新闻转述、学术研究和理性批评应保持低风险，不要因为出现国家、政府、领导人、政党或国际事件等词语就加重风险。对明确煽动颠覆国家政权、分裂国家、恐怖主义或极端主义，组织违法政治动员，编造传播可能造成现实恐慌的政治谣言，侮辱亵渎国旗国徽等国家象征的内容，要显著提高对应分类分和总风险分。本站用户均为成年人，因此不需要对普通成人表达、恋爱讨论、两性话题、情绪吐槽采取过严标准。用户主动发布自己的手机号、微信、QQ 等联系方式，用于正常校园二手交易、互助或线下交流，通常不算隐私泄露或恶意引流；板块类型为 market 时，正常自留联系方式应默认放行。仅在出现违法、露骨色情、骚扰引导、仇恨攻击、性别对立煽动、曝光他人隐私、诈骗、批量广告营销、诽谤或上述明确政治风险时提高分数。只返回 JSON。",
+  topicReviewUser: [
+    "请审核以下校园社区稿件，输出 JSON：",
+    "{\"risk_score\":0-100,\"risk_level\":\"low|medium|high\",\"decision\":\"auto_pass|manual_review|block\",\"reason\":\"一句短原因\",\"detail\":\"补充说明\",\"categories\":{\"violence\":0-100,\"porn_explicit\":0-100,\"abuse\":0-100,\"privacy\":0-100,\"fraud\":0-100,\"political_extremism\":0-100,\"political_mobilization\":0-100,\"separatism\":0-100,\"terrorism\":0-100,\"political_rumor\":0-100,\"national_symbol_abuse\":0-100,\"defamation\":0-100,\"spam\":0-100,\"gender_conflict\":0-100}}",
+    "",
+    "注意：只审核文字内容，不审核图片本身、图片链接、图片占位符、分享卡片预览图或外链落地页内容。",
+    "板块名称：{{boardName}}",
+    "板块类型：{{boardType}}",
+    "标题：{{title}}",
+    "正文：{{content}}",
+    "补充 metadata：{{metadataJson}}",
+  ].join("\n"),
+  replyReviewSystem: "你是校园社区文字内容安全审核助手。你只根据回复中的文字内容做判断，不要根据图片、图片占位符、图片链接、附件、分享卡片或外链落地页的想象内容加重风险。普通政策讨论、历史学习、新闻转述、学术研究和理性批评应保持低风险，不要因为出现国家、政府、领导人、政党或国际事件等词语就加重风险。对明确煽动颠覆国家政权、分裂国家、恐怖主义或极端主义，组织违法政治动员，编造传播可能造成现实恐慌的政治谣言，侮辱亵渎国旗国徽等国家象征的内容，要显著提高对应分类分和总风险分。本站用户均为成年人，因此不需要对普通成人表达、恋爱讨论、两性话题、情绪吐槽采取过严标准。用户主动留下自己的手机号、微信、QQ 等联系方式，用于正常校园二手交易、互助或线下交流，通常不算隐私泄露或恶意引流；板块类型为 market 时，简短的自留联系方式应默认放行。仅在出现违法、露骨色情、骚扰引导、仇恨攻击、性别对立煽动、曝光他人隐私、诈骗、批量广告营销、诽谤或上述明确政治风险时提高分数。只返回 JSON。",
+  replyReviewUser: [
+    "请审核以下校园社区回复，输出 JSON：",
+    "{\"risk_score\":0-100,\"risk_level\":\"low|medium|high\",\"decision\":\"auto_pass|manual_review|block\",\"reason\":\"一句短原因\",\"detail\":\"补充说明\",\"categories\":{\"violence\":0-100,\"porn_explicit\":0-100,\"abuse\":0-100,\"privacy\":0-100,\"fraud\":0-100,\"political_extremism\":0-100,\"political_mobilization\":0-100,\"separatism\":0-100,\"terrorism\":0-100,\"political_rumor\":0-100,\"national_symbol_abuse\":0-100,\"defamation\":0-100,\"spam\":0-100,\"gender_conflict\":0-100}}",
     "",
     "注意：只审核文字内容，不审核图片本身、图片链接、图片占位符、分享卡片预览图或外链落地页内容。",
     "所属帖子标题：{{topicTitle}}",
@@ -2178,20 +2205,34 @@ async function upgradeStoredDefaultTextReviewPrompts(rows: Array<{ key: string; 
   const prompts = [
     {
       key: AI_TOPIC_REVIEW_SYSTEM_PROMPT_KEY,
-      previous: PREVIOUS_DEFAULT_AI_PROMPTS.topicReviewSystem,
+      previous: [PREVIOUS_DEFAULT_AI_PROMPTS.topicReviewSystem, INTERMEDIATE_DEFAULT_AI_PROMPTS.topicReviewSystem],
       current: DEFAULT_AI_PROMPTS.topicReviewSystem,
       apply: () => { configCache.aiTopicReviewSystemPrompt = DEFAULT_AI_PROMPTS.topicReviewSystem; },
     },
     {
+      key: AI_TOPIC_REVIEW_USER_PROMPT_KEY,
+      previous: [INTERMEDIATE_DEFAULT_AI_PROMPTS.topicReviewUser],
+      current: DEFAULT_AI_PROMPTS.topicReviewUser,
+      apply: () => { configCache.aiTopicReviewUserPrompt = DEFAULT_AI_PROMPTS.topicReviewUser; },
+    },
+    {
       key: AI_REPLY_REVIEW_SYSTEM_PROMPT_KEY,
-      previous: PREVIOUS_DEFAULT_AI_PROMPTS.replyReviewSystem,
+      previous: [PREVIOUS_DEFAULT_AI_PROMPTS.replyReviewSystem, INTERMEDIATE_DEFAULT_AI_PROMPTS.replyReviewSystem],
       current: DEFAULT_AI_PROMPTS.replyReviewSystem,
       apply: () => { configCache.aiReplyReviewSystemPrompt = DEFAULT_AI_PROMPTS.replyReviewSystem; },
+    },
+    {
+      key: AI_REPLY_REVIEW_USER_PROMPT_KEY,
+      previous: [INTERMEDIATE_DEFAULT_AI_PROMPTS.replyReviewUser],
+      current: DEFAULT_AI_PROMPTS.replyReviewUser,
+      apply: () => { configCache.aiReplyReviewUserPrompt = DEFAULT_AI_PROMPTS.replyReviewUser; },
     },
   ];
   for (const prompt of prompts) {
     const stored = rows.find((row) => row.key === prompt.key);
-    if (!stored || normalizePromptTemplate(stored.value, "") !== normalizePromptTemplate(prompt.previous, "")) continue;
+    if (!stored || !prompt.previous.some((previous) => (
+      normalizePromptTemplate(stored.value, "") === normalizePromptTemplate(previous, "")
+    ))) continue;
     await prisma.siteSetting.update({ where: { key: prompt.key }, data: { value: prompt.current } });
     prompt.apply();
   }
