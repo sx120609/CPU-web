@@ -5,6 +5,7 @@ import {
   buildWechatDefaultMenu,
   buildWechatBoundMenu,
   buildWechatScheduleCommandMenu,
+  buildWechatTemplateNotificationPayload,
   buildWechatSubscriptionNotificationPayload,
   createWechatJsSdkSignature,
   decryptWechatPayload,
@@ -280,6 +281,27 @@ test("signs JS-SDK requests and builds one-time subscription payloads", () => {
   assert.equal(payload.template_id, "template-id");
   assert.equal(payload.data.thing1.value, "课程提醒");
   assert.equal(payload.data.thing2.value, "课程即将开始");
+});
+
+test("builds regular template payloads with a safe work-order number", () => {
+  const payload = buildWechatTemplateNotificationPayload({
+    notificationTemplateId: "template-id",
+    templateTitleField: "thing3",
+    templateContentField: "character_string11",
+    templateTimeField: "time18",
+    templateRemarkField: "",
+  }, "openid", {
+    id: 42,
+    title: "稿件审核通过",
+    content: "你的稿件已经通过审核并公开展示",
+    createdAt: new Date("2026-08-31T08:00:00Z"),
+  }, "https://cputime.cn/messages");
+  assert.equal(payload.touser, "openid");
+  assert.equal(payload.template_id, "template-id");
+  assert.equal(payload.url, "https://cputime.cn/messages");
+  assert.equal(payload.data.thing3.value, "稿件审核通过");
+  assert.equal(payload.data.character_string11.value, "SJ42");
+  assert.equal(payload.data.time18.value, "2026年08月31日 16:00");
 });
 
 test("renders a concise today-schedule image body", () => {

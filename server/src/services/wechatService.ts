@@ -1550,15 +1550,34 @@ async function getWechatJsapiTicket(config: WechatConfigRow) {
 }
 
 async function sendWechatTemplateNotification(config: WechatConfigRow, openId: string, notification: any, link: string) {
-  const data: Record<string, { value: string }> = {};
-  if (config.templateTitleField) data[config.templateTitleField] = { value: limitText(notification.title, 20) };
-  if (config.templateContentField) data[config.templateContentField] = { value: limitText(notification.content, 60) };
-  if (config.templateTimeField) data[config.templateTimeField] = { value: formatWechatTime(notification.createdAt) };
-  if (config.templateRemarkField) data[config.templateRemarkField] = { value: limitText(notification.source || "药大拾间", 20) };
   return callWechatApi("/cgi-bin/message/template/send", {
     method: "POST",
-    body: { touser: openId, template_id: config.notificationTemplateId, url: link || undefined, data },
+    body: buildWechatTemplateNotificationPayload(config, openId, notification, link),
   });
+}
+
+export function buildWechatTemplateNotificationPayload(
+  config: Pick<WechatConfigRow,
+    "notificationTemplateId"
+    | "templateTitleField"
+    | "templateContentField"
+    | "templateTimeField"
+    | "templateRemarkField">,
+  openId: string,
+  notification: any,
+  link: string,
+) {
+  const data: Record<string, { value: string }> = {};
+  if (config.templateTitleField) data[config.templateTitleField] = { value: limitText(notification.title, 20) };
+  if (config.templateContentField) {
+    const contentValue = /^character_string\d+$/i.test(config.templateContentField)
+      ? `SJ${Math.max(0, Number(notification.id) || 0)}`
+      : limitText(notification.content, 60);
+    data[config.templateContentField] = { value: contentValue };
+  }
+  if (config.templateTimeField) data[config.templateTimeField] = { value: formatWechatTime(notification.createdAt) };
+  if (config.templateRemarkField) data[config.templateRemarkField] = { value: limitText(notification.source || "药大拾间", 20) };
+  return { touser: openId, template_id: config.notificationTemplateId, url: link || undefined, data };
 }
 
 export function buildWechatSubscriptionNotificationPayload(
@@ -1859,7 +1878,7 @@ function splitWechatText(value: string) {
 }
 
 function formatWechatTime(value: Date | string) {
-  return new Intl.DateTimeFormat("zh-CN", {
+  const formatted = new Intl.DateTimeFormat("zh-CN", {
     timeZone: "Asia/Shanghai",
     year: "numeric",
     month: "2-digit",
@@ -1868,6 +1887,7 @@ function formatWechatTime(value: Date | string) {
     minute: "2-digit",
     hour12: false,
   }).format(new Date(value));
+  return formatted.replace(/^(\d{4})\/(\d{2})\/(\d{2})/, "$1年$2月$3日");
 }
 
 function limitText(value: unknown, length: number) {
