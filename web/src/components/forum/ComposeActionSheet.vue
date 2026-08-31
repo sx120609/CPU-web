@@ -123,7 +123,7 @@ function go(to: string) {
 .compose-divider::before, .compose-divider::after { height: 1px; flex: 1; background: var(--cpu-border-soft); content: ""; }
 .compose-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
 .compose-action { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 13px 12px; border: 1px solid var(--cpu-border-soft); border-radius: 12px; background: var(--cpu-surface-soft); color: var(--cpu-text); text-align: left; cursor: pointer; }
-.compose-action:last-child { grid-column: 1 / -1; }
+.compose-grid > .compose-action:last-child { grid-column: 1 / -1; }
 .compose-action:hover { border-color: var(--cpu-primary); background: color-mix(in srgb, var(--cpu-primary) 7%, var(--cpu-card)); }
 .compose-action:focus-visible { outline: 2px solid var(--cpu-primary); outline-offset: 2px; }
 .compose-icon { flex: 0 0 34px; height: 34px; display: grid; place-items: center; border-radius: 10px; background: var(--cpu-card); font-size: 19px; }

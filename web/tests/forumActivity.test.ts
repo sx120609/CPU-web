@@ -13,7 +13,7 @@ test("builds four scoped campaign compose actions", () => {
     "食堂测评",
     "周边店铺",
     "今日校园",
-    "日常趣事",
+    "日常分享",
   ]);
   const url = new URL(campusLifeActivityPostUrl(CAMPUS_LIFE_ACTIVITY_THEMES[0]), "https://cputime.cn");
   assert.equal(url.pathname, "/post");
@@ -26,6 +26,8 @@ test("accepts only known campaign themes and keeps the promised judging rules", 
   assert.equal(resolveCampusLifeActivityTheme(CAMPUS_LIFE_ACTIVITY_ID, "today")?.label, "今日校园");
   assert.equal(resolveCampusLifeActivityTheme("other", "today"), null);
   assert.equal(resolveCampusLifeActivityTheme(CAMPUS_LIFE_ACTIVITY_ID, "unknown"), null);
+  assert.match(resolveCampusLifeActivityTheme(CAMPUS_LIFE_ACTIVITY_ID, "fun")?.prompt || "", /哪一类也没关系/);
+  assert.match(resolveCampusLifeActivityTheme(CAMPUS_LIFE_ACTIVITY_ID, "fun")?.prompt || "", /参加评比/);
   assert.match(CAMPUS_LIFE_ACTIVITY.judging, /点赞数、回复数与内容质量/);
   assert.match(CAMPUS_LIFE_ACTIVITY.judging, /拾间大模型和论坛管理员/);
   assert.match(CAMPUS_LIFE_ACTIVITY.judging, /回复奖与投稿奖不可兼得/);

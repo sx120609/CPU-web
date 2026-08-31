@@ -79,16 +79,6 @@
           </button>
         </div>
 
-        <el-form-item v-if="currentBoard?.anonymousEnabled || activityTheme" label="匿名发布">
-          <div class="anonymous-box" :class="{ disabled: !anonymousEnabledForForm }">
-            <el-switch v-model="form.anonymous" :disabled="!anonymousEnabledForForm || !!editingId" />
-            <div class="anonymous-copy">
-              <b>{{ editingId ? "保持匿名状态" : activityTheme ? "匿名参加活动" : "使用匿名积分发帖" }}</b>
-              <p>{{ anonymousHint }}</p>
-            </div>
-          </div>
-        </el-form-item>
-
         <!-- 二手交流板块：保留必要的信息结构，不产生站内交易 -->
         <section v-if="isSecondHandPost" class="second-hand-form" aria-labelledby="second-hand-form-title">
           <div class="second-hand-form-head">
@@ -420,6 +410,20 @@
             >
               <AppIcon name="tools" />{{ mobileAdvancedToolsOpen ? "收起创作工具" : "更多创作工具" }}
             </button>
+          </div>
+        </el-form-item>
+
+        <el-form-item v-if="currentBoard?.anonymousEnabled || activityTheme" class="anonymous-form-item">
+          <div class="anonymous-box" :class="{ disabled: !anonymousEnabledForForm }">
+            <div class="anonymous-copy">
+              <b>{{ editingId ? "保持匿名" : activityTheme ? "匿名参加" : "匿名发布" }}</b>
+              <p>{{ anonymousHint }}</p>
+            </div>
+            <el-switch
+              v-model="form.anonymous"
+              :disabled="!anonymousEnabledForForm || !!editingId"
+              :aria-label="editingId ? '保持匿名状态' : '匿名发布'"
+            />
           </div>
         </el-form-item>
 
@@ -2266,30 +2270,43 @@ function notifyVideoReviewState(summary?: {
 .anonymous-box {
   width: 100%;
   display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 12px 14px;
-  border-radius: 12px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 11px;
+  border-radius: 10px;
   border: 1px solid var(--cpu-border-soft);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--cpu-card) 94%, #7c3aed), var(--cpu-card) 100%);
+  background: color-mix(in srgb, var(--cpu-card) 97%, #7c3aed);
+}
+
+.anonymous-form-item {
+  margin-bottom: 12px;
+}
+
+.anonymous-form-item :deep(.el-form-item__content) {
+  line-height: normal;
 }
 
 .anonymous-box.disabled {
   opacity: 0.78;
 }
 
+.anonymous-copy {
+  min-width: 0;
+}
+
 .anonymous-copy b {
   display: block;
-  font-size: 14px;
+  font-size: 12px;
   color: var(--cpu-primary);
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 
 .anonymous-copy p {
   margin: 0;
   color: var(--cpu-text-secondary);
-  font-size: 12px;
-  line-height: 1.6;
+  font-size: 10px;
+  line-height: 1.4;
 }
 .second-hand-form {
   margin: 0 0 24px;
@@ -2830,10 +2847,6 @@ function notifyVideoReviewState(summary?: {
 
   .markup-editor {
     min-height: 260px;
-    padding: 12px;
-  }
-
-  .anonymous-box {
     padding: 12px;
   }
 

@@ -37,7 +37,9 @@
       </button>
       <strong>{{ boardDisplayName || "帖子详情" }}</strong>
       <el-dropdown trigger="click" placement="bottom-end" @command="onMobileTopicCommand">
-        <button type="button" class="mobile-topic-more" aria-label="帖子操作">•••</button>
+        <button type="button" class="mobile-topic-more" aria-label="帖子操作">
+          <el-icon><MoreFilled /></el-icon>
+        </button>
         <template #dropdown>
           <el-dropdown-menu>
             <el-dropdown-item command="share" :disabled="topic.hidden">分享帖子</el-dropdown-item>
@@ -713,7 +715,7 @@
 import { ref, reactive, computed, nextTick, onBeforeUnmount, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { ArrowLeft, Star, ChatLineRound, Link, Picture, VideoCamera } from "@element-plus/icons-vue";
+import { ArrowLeft, Star, ChatLineRound, Link, MoreFilled, Picture, VideoCamera } from "@element-plus/icons-vue";
 import UserAvatar from "@/components/common/UserAvatar.vue";
 import UserModerationActions from "@/components/common/UserModerationActions.vue";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";

@@ -48,7 +48,19 @@
 
   .mobile-topic-more {
     justify-self: end;
-    letter-spacing: 1px;
+    line-height: 1;
+  }
+
+  .mobile-topic-more .el-icon {
+    width: 18px;
+    height: 18px;
+    font-size: 18px;
+  }
+
+  :global(html[data-cpu-platform="android"]) .mobile-topic-more .el-icon {
+    width: 16px;
+    height: 16px;
+    font-size: 16px;
   }
 
   .topic-skeleton-head {
