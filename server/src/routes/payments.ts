@@ -19,6 +19,7 @@ import {
 } from "../services/epay";
 import {
   calcSponsorOrderExpiresAt,
+  buildSponsorPaidUserUpdate,
   closeExpiredSponsorOrderIfNeeded,
   closeExpiredSponsorOrders,
   formatSponsorOrder,
@@ -360,7 +361,7 @@ paymentsRouter.all("/epay/notify", async (req, res, next) => {
       paidOrder = await tx.sponsorOrder.findUnique({ where: { id: order.id } });
       await tx.user.update({
         where: { id: order.userId },
-        data: { sponsorTotalCents: { increment: order.amountCents } },
+        data: buildSponsorPaidUserUpdate(order.amountCents),
       });
       awardedPoints = await awardSponsorAssistantPoints(tx, {
         orderId: order.id,

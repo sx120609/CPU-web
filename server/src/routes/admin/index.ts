@@ -59,6 +59,7 @@ import {
 import { decodeReplyForViewer, decodeTopicForViewer } from "../../services/forumPresentation";
 import {
   calcSponsorOrderExpiresAt,
+  buildSponsorPaidUserUpdate,
   closeExpiredSponsorOrders,
   formatSponsorOrder,
   getSponsorCategoriesWithStats,
@@ -1903,7 +1904,10 @@ adminRouter.patch("/sponsor-orders/:id", adminOnly, validate(sponsorOrderPatchSc
       const row = await tx.sponsorOrder.update({ where: { id }, data, include: { user: true } });
       if (req.body.status && req.body.status !== current.status) {
         if (current.status !== "paid" && req.body.status === "paid") {
-          await tx.user.update({ where: { id: current.userId }, data: { sponsorTotalCents: { increment: current.amountCents } } });
+          await tx.user.update({
+            where: { id: current.userId },
+            data: buildSponsorPaidUserUpdate(current.amountCents),
+          });
           awardedPoints = await awardSponsorAssistantPoints(tx, {
             orderId: current.id,
             userId: current.userId,

@@ -1,12 +1,20 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  buildSponsorPaidUserUpdate,
   buildSponsorCategoryStats,
   formatSponsorOrder,
   isSponsorCategoryAccepting,
   normalizeSponsorCategories,
   normalizeSponsorConfig,
 } from "../src/services/sponsor";
+
+test("paid sponsorship permanently enables VIP while adding its amount", () => {
+  assert.deepEqual(buildSponsorPaidUserUpdate(1250), {
+    isVip: true,
+    sponsorTotalCents: { increment: 1250 },
+  });
+});
 
 test("default sponsor config includes the featured App Store campaign", () => {
   const config = normalizeSponsorConfig({});

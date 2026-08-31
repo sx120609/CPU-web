@@ -256,6 +256,13 @@ export function calcSponsorOrderExpiresAt(base = new Date()) {
   return new Date(base.getTime() + SPONSOR_ORDER_EXPIRE_MS);
 }
 
+export function buildSponsorPaidUserUpdate(amountCents: number) {
+  return {
+    isVip: true,
+    sponsorTotalCents: { increment: amountCents },
+  } as const;
+}
+
 export function isSponsorOrderExpired(order: {
   status?: string | null;
   createdAt?: Date | null;
