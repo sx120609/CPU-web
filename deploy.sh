@@ -1254,6 +1254,29 @@ do_generate_prisma() {
     || err "Prisma Client generation failed"
 }
 
+server_prisma_client_available() {
+  [ -f "$ROOT_DIR/server/node_modules/@prisma/client/package.json" ] || return 1
+  (
+    cd "$ROOT_DIR/server"
+    node -e 'require("@prisma/client")'
+  ) >/dev/null 2>&1
+}
+
+ensure_server_runtime_dependencies() {
+  ensure_node
+  server_prisma_client_available && return 0
+
+  warn "Prisma Client is missing or invalid; restoring it before starting the main service"
+  if ! project_bin_available server prisma \
+    || [ ! -f "$ROOT_DIR/server/node_modules/@prisma/client/package.json" ]; then
+    do_install_server
+  fi
+  do_generate_prisma
+  server_prisma_client_available \
+    || err "Prisma Client is still unavailable after regeneration"
+  log "Prisma Client runtime restored"
+}
+
 do_build_server() {
   ensure_project_build_dependencies server tsc
   run_guarded_process "Building server TypeScript -> server/dist" \
@@ -1771,6 +1794,7 @@ do_redis_init() {
 do_start() {
   ensure_node
   ensure_pm2
+  ensure_server_runtime_dependencies
   log "通过 pm2 启动 $SERVICE_NAME（端口 $PORT）"
   # 用 ecosystem-less 模式：直接 start 命令
   cd server
@@ -1808,6 +1832,7 @@ do_start() {
 do_main_start() {
   ensure_node
   ensure_pm2
+  ensure_server_runtime_dependencies
   log "Starting $SERVICE_NAME on port $PORT"
   cd server
   if pm2 describe "$SERVICE_NAME" >/dev/null 2>&1; then
@@ -1829,6 +1854,7 @@ do_main_start() {
 do_main_restart() {
   ensure_node
   ensure_pm2
+  ensure_server_runtime_dependencies
   if pm2 describe "$SERVICE_NAME" >/dev/null 2>&1; then
     # 优先使用 PM2 的平滑 reload；旧版/单进程 PM2 不支持时再回退到 restart。
     if ! VOICEHUB_ORIGIN="http://127.0.0.1:$VOICEHUB_PORT" pm2 reload "$SERVICE_NAME" --update-env; then
@@ -1988,6 +2014,7 @@ do_stop() {
 do_restart() {
   ensure_node
   ensure_pm2
+  ensure_server_runtime_dependencies
   if pm2 describe "$SERVICE_NAME" >/dev/null 2>&1; then
     VOICEHUB_ORIGIN="http://127.0.0.1:$VOICEHUB_PORT" pm2 restart "$SERVICE_NAME" --update-env
   else
@@ -2126,10 +2153,14 @@ changed_files_match() {
 
 ensure_update_runtime_services() {
   ensure_pm2
+  ensure_server_runtime_dependencies
 
   if ! pm2 describe "$SERVICE_NAME" >/dev/null 2>&1; then
     warn "$SERVICE_NAME is missing from PM2; restoring it before finishing the update"
     do_main_start
+  elif ! curl -fsS --max-time 2 "http://127.0.0.1:$PORT/api/health" >/dev/null 2>&1; then
+    warn "$SERVICE_NAME is not healthy; restarting it before finishing the update"
+    do_main_restart
   fi
 
   if ! pm2 describe "$VOICEHUB_SERVICE_NAME" >/dev/null 2>&1; then
