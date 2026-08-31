@@ -16,13 +16,12 @@ import {
 } from "../services/topicAiReview";
 import {
   amountCentsToMoney,
-  buildEpayCheckoutErrorPage,
+  buildEpayCheckoutPage,
   buildEpaySubmitPayload,
   getEnabledEpayTypes,
   getEpayMerchantKey,
   moneyToAmountCents,
   resolvePaymentOrigin,
-  submitEpayCheckout,
   verifyEpayParams,
   type EpayPayType,
 } from "../services/epay";
@@ -857,23 +856,13 @@ marketRouter.get("/orders/:id/checkout", authRequired, async (req, res, next) =>
     if (order.expiresAt && order.expiresAt <= new Date()) throw Errors.badRequest("订单已超时关闭");
     const enabled = await getEnabledEpayTypes();
     if (!enabled.includes(order.payType as EpayPayType)) throw Errors.badRequest("该支付方式暂不可用");
-    const submission = await submitEpayCheckout(await buildMarketOrderPayment(order, req));
-    res.setHeader("Referrer-Policy", "no-referrer");
-    if (submission.ok) {
-      res.redirect(303, submission.redirectUrl);
-      return;
-    }
-    console.warn("[market:epay-submit]", {
-      orderId: order.id,
-      upstreamStatus: submission.upstreamStatus,
-      message: submission.message,
-    });
-    const page = buildEpayCheckoutErrorPage(submission.message, {
+    const page = buildEpayCheckoutPage(await buildMarketOrderPayment(order, req), {
       fallbackUrl: "/market/mine?tab=orders",
-      title: "暂时无法发起订单支付",
+      title: "正在前往订单支付",
     });
     res.setHeader("Content-Security-Policy", page.contentSecurityPolicy);
-    res.status(502).type("html").send(page.html);
+    res.setHeader("Referrer-Policy", "no-referrer");
+    res.status(200).type("html").send(page.html);
   } catch (error) {
     next(error);
   }

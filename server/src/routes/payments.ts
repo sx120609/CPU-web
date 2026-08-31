@@ -7,14 +7,13 @@ import { Errors, ok } from "../utils/response";
 import { isFeatureOn } from "../services/siteSettings";
 import {
   amountCentsToMoney,
-  buildEpayCheckoutErrorPage,
+  buildEpayCheckoutPage,
   buildEpayCallbackUrls,
   buildEpaySubmitPayload,
   getEnabledEpayTypes,
   getEpayMerchantKey,
   moneyToAmountCents,
   resolvePaymentOrigin,
-  submitEpayCheckout,
   verifyEpayParams,
   type EpayPayType,
 } from "../services/epay";
@@ -66,24 +65,15 @@ async function buildSponsorPayment(order: any, req: any) {
   });
 }
 
-async function sendSponsorCheckoutPage(res: any, epay: Awaited<ReturnType<typeof buildSponsorPayment>>) {
-  res.setHeader("Cache-Control", "private, no-store");
-  res.setHeader("Referrer-Policy", "no-referrer");
-  const submission = await submitEpayCheckout(epay);
-  if (submission.ok) {
-    res.redirect(303, submission.redirectUrl);
-    return;
-  }
-  console.warn("[payments:epay-submit]", {
-    upstreamStatus: submission.upstreamStatus,
-    message: submission.message,
-  });
-  const page = buildEpayCheckoutErrorPage(submission.message, {
+function sendSponsorCheckoutPage(res: any, epay: Awaited<ReturnType<typeof buildSponsorPayment>>) {
+  const page = buildEpayCheckoutPage(epay, {
     fallbackUrl: "/profile",
-    title: "暂时无法发起赞助支付",
+    title: "正在前往赞助支付",
   });
+  res.setHeader("Cache-Control", "private, no-store");
   res.setHeader("Content-Security-Policy", page.contentSecurityPolicy);
-  res.status(502).type("html").send(page.html);
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.status(200).type("html").send(page.html);
 }
 
 function normalizeParams(input: Record<string, unknown>) {
@@ -264,7 +254,7 @@ paymentsRouter.get("/sponsor/orders/:outTradeNo/checkout", authRequired, async (
       if (order.status === "closed") throw Errors.badRequest("订单已超时关闭，请重新发起赞助");
       throw Errors.badRequest("该订单不可继续支付");
     }
-    await sendSponsorCheckoutPage(res, await buildSponsorPayment(order, req));
+    sendSponsorCheckoutPage(res, await buildSponsorPayment(order, req));
   } catch (e) {
     next(e);
   }
