@@ -58,6 +58,7 @@ private struct TwoDayScheduleWidget: Widget {
 private struct ScheduleWidgetRoot<Content: View>: View {
     let entry: ScheduleEntry
     @ViewBuilder let content: (SchedulePayload) -> Content
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         Group {
@@ -80,7 +81,7 @@ private struct ScheduleWidgetRoot<Content: View>: View {
         }
         .widgetURL(AppWidgetConfiguration.appURL)
         .containerBackground(for: .widget) {
-            Color(red: 248 / 255, green: 251 / 255, blue: 1)
+            WidgetPalette.background(for: colorScheme)
         }
     }
 }
@@ -225,7 +226,11 @@ private struct TodayScheduleView: View {
                 EmptyCoursesView(message: "今天没有课程")
             } else {
                 ForEach(Array(today.courseList.prefix(limit).enumerated()), id: \.offset) { _, course in
-                    TodayCourseRow(course: course, large: family == .systemLarge)
+                    TodayCourseRow(
+                        course: course,
+                        large: family == .systemLarge,
+                        timeOnSeparateLine: false
+                    )
                 }
                 if today.courseList.count > limit {
                     Text("还有 \(today.courseList.count - limit) 门课程")
@@ -241,12 +246,15 @@ private struct TodayScheduleView: View {
 private struct TodayCourseRow: View {
     let course: ScheduleCourse
     let large: Bool
+    let timeOnSeparateLine: Bool
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.widgetRenderingMode) private var renderingMode
 
     var body: some View {
         HStack(spacing: large ? 9 : 6) {
             RoundedRectangle(cornerRadius: 3)
                 .fill(WidgetPalette.accent(for: course))
-                .frame(width: 5, height: large ? 40 : 29)
+                .frame(width: 5, height: large ? 40 : (timeOnSeparateLine ? 39 : 29))
             VStack(alignment: .leading, spacing: 2) {
                 Text(course.displayName)
                     .font(.system(size: large ? 13 : 11, weight: .bold))
@@ -256,17 +264,37 @@ private struct TodayCourseRow: View {
                     .font(.system(size: large ? 9 : 8))
                     .foregroundStyle(WidgetPalette.secondary)
                     .lineLimit(1)
+                if timeOnSeparateLine {
+                    timeLabel
+                }
             }
-            Spacer(minLength: 5)
-            Text(course.timeRange)
-                .font(.system(size: large ? 10 : 9, weight: .semibold))
-                .foregroundStyle(WidgetPalette.primary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            if !timeOnSeparateLine {
+                Spacer(minLength: 5)
+                timeLabel
+            }
         }
         .padding(.horizontal, large ? 9 : 7)
         .padding(.vertical, large ? 6 : 4)
-        .background(WidgetPalette.tint(for: course), in: RoundedRectangle(cornerRadius: large ? 11 : 8))
+        .background {
+            RoundedRectangle(cornerRadius: large ? 11 : 8)
+                .fill(
+                    renderingMode == .fullColor
+                        ? WidgetPalette.tint(for: course, colorScheme: colorScheme)
+                        : Color.white
+                )
+                // Clear and tinted Home Screen appearances render widgets in
+                // accented mode and remap opaque colors to solid white.
+                .opacity(renderingMode == .fullColor ? 1 : 0.14)
+        }
+    }
+
+    private var timeLabel: some View {
+        Text(course.timeRange)
+            .font(.system(size: large ? 10 : 9, weight: .semibold))
+            .foregroundStyle(WidgetPalette.primary)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
     }
 }
 
@@ -297,7 +325,7 @@ private struct DayColumn: View {
                 EmptyCoursesView(message: "没有课程")
             } else {
                 ForEach(Array(day.courseList.prefix(5).enumerated()), id: \.offset) { _, course in
-                    TodayCourseRow(course: course, large: false)
+                    TodayCourseRow(course: course, large: false, timeOnSeparateLine: true)
                 }
             }
         }
@@ -338,9 +366,9 @@ private struct EmptyCoursesView: View {
 }
 
 private enum WidgetPalette {
-    static let primary = Color(red: 23 / 255, green: 32 / 255, blue: 51 / 255)
-    static let secondary = Color(red: 82 / 255, green: 96 / 255, blue: 120 / 255)
-    static let muted = Color(red: 152 / 255, green: 162 / 255, blue: 179 / 255)
+    static let primary = Color.primary
+    static let secondary = Color.secondary
+    static let muted = Color.secondary.opacity(0.72)
     private static let accents: [Color] = [
         Color(red: 232 / 255, green: 91 / 255, blue: 75 / 255),
         Color(red: 74 / 255, green: 120 / 255, blue: 242 / 255),
@@ -362,8 +390,15 @@ private enum WidgetPalette {
         accents[index(for: course)]
     }
 
-    static func tint(for course: ScheduleCourse) -> Color {
-        tints[index(for: course)]
+    static func background(for colorScheme: ColorScheme) -> Color {
+        colorScheme == .dark
+            ? Color(red: 14 / 255, green: 20 / 255, blue: 32 / 255)
+            : Color(red: 248 / 255, green: 251 / 255, blue: 1)
+    }
+
+    static func tint(for course: ScheduleCourse, colorScheme: ColorScheme) -> Color {
+        let index = index(for: course)
+        return colorScheme == .dark ? accents[index].opacity(0.2) : tints[index]
     }
 
     private static func index(for course: ScheduleCourse) -> Int {
