@@ -18,6 +18,7 @@ struct ContentView: View {
                 .ignoresSafeArea()
 
             WebViewContainer(model: model)
+                .ignoresSafeArea(.container, edges: [.top, .bottom])
                 .opacity(model.phase == .content ? 1 : 0)
 
             switch model.phase {

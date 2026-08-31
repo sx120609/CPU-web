@@ -32,7 +32,16 @@ struct WebViewContainer: UIViewRepresentable {
         webView.backgroundColor = UIColor(red: 248 / 255, green: 250 / 255, blue: 252 / 255, alpha: 1)
         webView.scrollView.backgroundColor = webView.backgroundColor
         webView.scrollView.bounces = false
-        webView.scrollView.contentInsetAdjustmentBehavior = .automatic
+        // The web client already handles both safe areas with CSS env() insets.
+        // Letting UIKit adjust them again keeps the initial scroll position below
+        // the status bar and only reveals the edge-to-edge background while scrolling.
+        webView.scrollView.contentInsetAdjustmentBehavior = .never
+        if #available(iOS 26.0, *) {
+            // iOS 26 adds a scroll-dependent fade/blur at scroll-view edges. The
+            // web UI owns these bars, so keep their appearance stable at offset 0.
+            webView.scrollView.topEdgeEffect.isHidden = true
+            webView.scrollView.bottomEdgeEffect.isHidden = true
+        }
 
 #if DEBUG
         if #available(iOS 16.4, *) {
