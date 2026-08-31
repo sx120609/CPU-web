@@ -2,9 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   amountCentsToMoney,
-  buildEpayCheckoutPage,
+  buildEpayCheckoutErrorPage,
   moneyToAmountCents,
   signEpayParams,
+  submitEpayCheckout,
   verifyEpayParams,
 } from "../src/services/epay";
 import { calculateMarketOrderAmounts } from "../src/services/marketFinance";
@@ -47,29 +48,69 @@ test("market commission is locked in integer cents for each order", () => {
   assert.equal(calculateMarketOrderAmounts(10_000, 90_000).platformFeeCents, 5_000);
 });
 
-test("EasyPay checkout page only permits the configured gateway form target", () => {
-  const page = buildEpayCheckoutPage({
-    submitUrl: "https://pay.example.test/submit.php",
-    method: "POST",
-    params: {
-      pid: "10001",
-      out_trade_no: "SP-TEST-1",
-      message: "\"><script>alert(1)</script>",
+const epayFixture = {
+  submitUrl: "https://pay.example.test/submit.php",
+  method: "POST" as const,
+  params: {
+    pid: "10001",
+    out_trade_no: "SP-TEST-1",
+  },
+};
+
+test("EasyPay checkout is submitted by the server and returns a safe checkout redirect", async () => {
+  const result = await submitEpayCheckout(epayFixture, {
+    fetchImpl: async (_input, init) => {
+      assert.equal(init?.method, "POST");
+      assert.equal(String(init?.body), "pid=10001&out_trade_no=SP-TEST-1");
+      assert.equal(init?.redirect, "manual");
+      return new Response(null, {
+        status: 302,
+        headers: { Location: "https://checkout.example.test/session/123" },
+      });
     },
-  }, {
+  });
+  assert.deepEqual(result, {
+    ok: true,
+    redirectUrl: "https://checkout.example.test/session/123",
+  });
+});
+
+test("EasyPay checkout surfaces a bounded plain-text gateway failure", async () => {
+  const result = await submitEpayCheckout(epayFixture, {
+    fetchImpl: async () => new Response(
+      `创建订单失败：当前无可用支付通道\n${"x".repeat(500)}`,
+      { status: 400 },
+    ),
+  });
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.upstreamStatus, 400);
+  assert.match(result.message, /^创建订单失败：当前无可用支付通道 x+/);
+  assert.equal(result.message.length, 300);
+});
+
+test("EasyPay checkout rejects an insecure upstream redirect", async () => {
+  const result = await submitEpayCheckout(epayFixture, {
+    fetchImpl: async () => new Response(null, {
+      status: 302,
+      headers: { Location: "http://checkout.example.test/session/123" },
+    }),
+  });
+  assert.deepEqual(result, {
+    ok: false,
+    message: "支付平台返回了不安全的收银台地址",
+    upstreamStatus: 302,
+  });
+});
+
+test("EasyPay failure page escapes gateway messages and has no executable script", () => {
+  const page = buildEpayCheckoutErrorPage(`失败：\"><script>alert(1)</script>`, {
     fallbackUrl: "/profile",
-    title: "Checkout",
+    title: "支付失败",
   });
 
-  assert.equal(
-    page.contentSecurityPolicy.split("; ").find((item) => item.startsWith("form-action ")),
-    "form-action https://pay.example.test",
-  );
-  const nonce = page.contentSecurityPolicy.match(/script-src 'nonce-([^']+)'/)?.[1];
-  assert.ok(nonce);
-  assert.match(page.html, new RegExp(`<script nonce="${nonce}"`));
-  assert.match(page.html, /method="post" action="https:\/\/pay\.example\.test\/submit\.php"/);
-  assert.match(page.html, /name="out_trade_no" value="SP-TEST-1"/);
-  assert.ok(page.html.includes("&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;"));
-  assert.doesNotMatch(page.html, /value=""><script>alert/);
+  assert.match(page.contentSecurityPolicy, /default-src 'none'/);
+  assert.match(page.contentSecurityPolicy, /form-action 'none'/);
+  assert.ok(page.html.includes("失败：&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;"));
+  assert.doesNotMatch(page.html, /<script/);
 });

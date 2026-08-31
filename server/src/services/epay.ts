@@ -35,10 +35,14 @@ export type EpaySubmitPayload = {
   params: Record<string, string>;
 };
 
-export type EpayCheckoutPage = {
+export type EpayCheckoutErrorPage = {
   contentSecurityPolicy: string;
   html: string;
 };
+
+export type EpayCheckoutSubmission =
+  | { ok: true; redirectUrl: string }
+  | { ok: false; message: string; upstreamStatus: number | null };
 
 type EpayStoredConfig = Awaited<ReturnType<typeof getStoredEpayConfig>>;
 
@@ -50,27 +54,17 @@ function escapeHtmlAttribute(value: unknown) {
     .replace(/>/g, "&gt;");
 }
 
-export function buildEpayCheckoutPage(
-  epay: EpaySubmitPayload,
+export function buildEpayCheckoutErrorPage(
+  message: string,
   options: { fallbackUrl: string; title?: string },
-): EpayCheckoutPage {
-  const submitUrl = new URL(epay.submitUrl);
-  if (!["http:", "https:"].includes(submitUrl.protocol)) {
-    throw new Error("易支付网关地址格式不正确");
-  }
-  const nonce = crypto.randomBytes(18).toString("base64");
-  const inputs = Object.entries(epay.params)
-    .map(([key, value]) => (
-      `<input type="hidden" name="${escapeHtmlAttribute(key)}" value="${escapeHtmlAttribute(value)}">`
-    ))
-    .join("");
-  const title = escapeHtmlAttribute(options.title || "正在前往支付");
+): EpayCheckoutErrorPage {
+  const title = escapeHtmlAttribute(options.title || "暂时无法发起支付");
   const fallbackUrl = escapeHtmlAttribute(options.fallbackUrl || "/");
+  const safeMessage = escapeHtmlAttribute(message || "支付平台暂时不可用，请稍后重试。");
   const contentSecurityPolicy = [
     "default-src 'none'",
-    `script-src 'nonce-${nonce}'`,
     "style-src 'unsafe-inline'",
-    `form-action ${submitUrl.origin}`,
+    "form-action 'none'",
     "base-uri 'none'",
     "frame-ancestors 'none'",
   ].join("; ");
@@ -85,25 +79,82 @@ export function buildEpayCheckoutPage(
     body{min-height:100vh;margin:0;display:grid;place-items:center;background:#f4f8f7;color:#172033}
     main{width:min(88vw,360px);padding:28px;border:1px solid #dce6e2;border-radius:18px;background:#fff;text-align:center;box-shadow:0 18px 50px rgba(22,45,39,.12)}
     h1{margin:0 0 10px;font-size:20px}p{margin:0 0 20px;color:#667085;font-size:14px;line-height:1.65}
-    form{margin:0 0 14px}button{width:100%;min-height:46px;border:0;border-radius:12px;background:#168776;color:#fff;font:inherit;font-weight:700}
-    a{color:#168776;font-size:13px;text-decoration:none}
+    a{display:inline-grid;min-height:46px;padding:0 24px;place-items:center;border-radius:12px;background:#168776;color:#fff;font:inherit;font-weight:700;text-decoration:none}
     @media(prefers-color-scheme:dark){body{background:#101c19;color:#eef8f5}main{border-color:#314b44;background:#1a2925}p{color:#abc5be}}
   </style>
 </head>
 <body>
   <main>
     <h1>${title}</h1>
-    <p>正在安全转到支付页面。如果没有自动跳转，请点击下方按钮。</p>
-    <form id="epay-checkout" method="post" action="${escapeHtmlAttribute(epay.submitUrl)}">
-      ${inputs}
-      <button type="submit">继续前往支付</button>
-    </form>
+    <p>${safeMessage}</p>
     <a href="${fallbackUrl}">返回本站</a>
   </main>
-  <script nonce="${nonce}">document.getElementById("epay-checkout").submit();</script>
 </body>
 </html>`;
   return { contentSecurityPolicy, html };
+}
+
+function sanitizeGatewayMessage(value: string, status: number) {
+  const message = value
+    .replace(/[\u0000-\u001f\u007f]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 300);
+  return message || `支付平台拒绝了本次请求（HTTP ${status}）`;
+}
+
+export async function submitEpayCheckout(
+  epay: EpaySubmitPayload,
+  options: { fetchImpl?: typeof fetch; timeoutMs?: number } = {},
+): Promise<EpayCheckoutSubmission> {
+  const submitUrl = new URL(epay.submitUrl);
+  if (!["http:", "https:"].includes(submitUrl.protocol)) {
+    throw new Error("易支付网关地址格式不正确");
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? 12_000);
+  timeout.unref?.();
+  try {
+    const response = await (options.fetchImpl ?? fetch)(submitUrl, {
+      method: epay.method,
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+        Accept: "text/html,application/xhtml+xml,application/json;q=0.9,text/plain;q=0.8,*/*;q=0.5",
+      },
+      body: new URLSearchParams(epay.params),
+      redirect: "manual",
+      signal: controller.signal,
+    });
+
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get("location");
+      if (!location) {
+        return { ok: false, message: "支付平台没有返回收银台地址", upstreamStatus: response.status };
+      }
+      const redirectUrl = new URL(location, submitUrl);
+      if (redirectUrl.protocol !== "https:") {
+        return { ok: false, message: "支付平台返回了不安全的收银台地址", upstreamStatus: response.status };
+      }
+      return { ok: true, redirectUrl: redirectUrl.toString() };
+    }
+
+    const body = await response.text();
+    return {
+      ok: false,
+      message: sanitizeGatewayMessage(body, response.status),
+      upstreamStatus: response.status,
+    };
+  } catch (error) {
+    const timedOut = error instanceof Error && error.name === "AbortError";
+    return {
+      ok: false,
+      message: timedOut ? "连接支付平台超时，请稍后重试" : "暂时无法连接支付平台，请稍后重试",
+      upstreamStatus: null,
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function maskSecret(secret: string) {
