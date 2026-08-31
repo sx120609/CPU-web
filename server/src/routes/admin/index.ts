@@ -1694,7 +1694,8 @@ adminRouter.patch("/epay-config", adminOnly, validate(epayConfigPatchSchema), as
     ok(res, await updateEpayConfig(req.body, requestOrigin(req)));
   } catch (e: any) {
     if (
-      e?.message === "易支付网关地址格式不正确"
+      e?.message === "易支付网关地址格式不正确" ||
+      e?.message === "易支付网关必须使用 HTTPS"
     ) {
       next(Errors.badRequest(e.message));
       return;

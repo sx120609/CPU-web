@@ -65,11 +65,17 @@ export type SponsorOrderResult = {
   };
   epay: EpaySubmit;
   checkoutUrl: string;
+  paymentUrl?: string;
 };
 
-export function navigateToEpayCheckout(result: { checkoutUrl: string }) {
-  const target = new URL(result.checkoutUrl, window.location.origin);
-  if (target.origin !== window.location.origin || !target.pathname.startsWith("/api/")) {
+export function navigateToEpayCheckout(result: { checkoutUrl: string; paymentUrl?: string }) {
+  const directPaymentUrl = result.paymentUrl?.trim();
+  const target = new URL(directPaymentUrl || result.checkoutUrl, window.location.origin);
+  if (directPaymentUrl) {
+    if (target.protocol !== "https:") {
+      throw new Error("支付平台返回了不可信的收银台地址");
+    }
+  } else if (target.origin !== window.location.origin || !target.pathname.startsWith("/api/")) {
     throw new Error("支付跳转地址不正确");
   }
   window.location.assign(target.href);

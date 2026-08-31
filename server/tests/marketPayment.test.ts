@@ -2,9 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   amountCentsToMoney,
-  buildEpayCheckoutPage,
   moneyToAmountCents,
   signEpayParams,
+  submitEpayCheckout,
   verifyEpayParams,
 } from "../src/services/epay";
 import { calculateMarketOrderAmounts } from "../src/services/marketFinance";
@@ -47,29 +47,90 @@ test("market commission is locked in integer cents for each order", () => {
   assert.equal(calculateMarketOrderAmounts(10_000, 90_000).platformFeeCents, 5_000);
 });
 
-test("EasyPay checkout page only permits the configured gateway form target", () => {
-  const page = buildEpayCheckoutPage({
-    submitUrl: "https://pay.example.test/submit.php",
-    method: "POST",
-    params: {
-      pid: "10001",
-      out_trade_no: "SP-TEST-1",
-      message: "\"><script>alert(1)</script>",
+const checkoutPayload = {
+  submitUrl: "https://api.kaipay.cn/epay/submit.php",
+  method: "POST" as const,
+  params: {
+    pid: "10001",
+    out_trade_no: "SP-TEST-1",
+    money: "0.01",
+    sign: "signed",
+    sign_type: "MD5",
+  },
+};
+
+test("EasyPay server relay extracts a trusted checkout from an HTML response", async () => {
+  const result = await submitEpayCheckout(checkoutPayload, {
+    fetchImpl: async (_input, init) => {
+      assert.equal(init?.method, "POST");
+      assert.equal(init?.redirect, "manual");
+      assert.equal(String(init?.body), "pid=10001&out_trade_no=SP-TEST-1&money=0.01&sign=signed&sign_type=MD5");
+      return new Response(`<!doctype html><html><head>
+        <meta http-equiv="refresh" content="0;url=https://pay.kaipay.cn/checkout/cs_test?method=alipay">
+      </head></html>`, {
+        status: 200,
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
     },
-  }, {
-    fallbackUrl: "/profile",
-    title: "Checkout",
   });
 
-  assert.equal(
-    page.contentSecurityPolicy.split("; ").find((item) => item.startsWith("form-action ")),
-    "form-action https://pay.example.test",
-  );
-  const nonce = page.contentSecurityPolicy.match(/script-src 'nonce-([^']+)'/)?.[1];
-  assert.ok(nonce);
-  assert.ok(page.html.includes(`<script nonce="${nonce}"`));
-  assert.match(page.html, /method="post" action="https:\/\/pay\.example\.test\/submit\.php"/);
-  assert.match(page.html, /name="out_trade_no" value="SP-TEST-1"/);
-  assert.ok(page.html.includes("&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;"));
-  assert.doesNotMatch(page.html, /value=""><script>alert/);
+  assert.deepEqual(result, {
+    ok: true,
+    redirectUrl: "https://pay.kaipay.cn/checkout/cs_test?method=alipay",
+  });
+});
+
+test("EasyPay server relay accepts a trusted manual redirect", async () => {
+  const result = await submitEpayCheckout(checkoutPayload, {
+    fetchImpl: async () => new Response(null, {
+      status: 303,
+      headers: { location: "https://pay.kaipay.cn/checkout/cs_redirect" },
+    }),
+  });
+
+  assert.deepEqual(result, {
+    ok: true,
+    redirectUrl: "https://pay.kaipay.cn/checkout/cs_redirect",
+  });
+});
+
+test("EasyPay server relay rejects an untrusted checkout host", async () => {
+  const result = await submitEpayCheckout(checkoutPayload, {
+    fetchImpl: async () => new Response(`<!doctype html><script>
+      window.location.href="https://evil.example/collect";
+    </script>`, {
+      status: 200,
+      headers: { "content-type": "text/html" },
+    }),
+  });
+
+  assert.deepEqual(result, {
+    ok: false,
+    message: "支付平台返回了无法识别的收银台页面",
+    upstreamStatus: 200,
+  });
+});
+
+test("EasyPay server relay does not expose upstream markup in errors", async () => {
+  const result = await submitEpayCheckout(checkoutPayload, {
+    fetchImpl: async () => new Response(`<!doctype html><style>body{}</style>
+      <script>alert(1)</script><p>签名验证失败</p>`, {
+      status: 400,
+      headers: { "content-type": "text/html" },
+    }),
+  });
+
+  assert.deepEqual(result, {
+    ok: false,
+    message: "签名验证失败",
+    upstreamStatus: 400,
+  });
+});
+
+test("EasyPay server relay requires an HTTPS gateway", async () => {
+  await assert.rejects(() => submitEpayCheckout({
+    submitUrl: "http://pay.example.test/submit.php",
+    method: "POST",
+    params: {},
+  }), /必须使用 HTTPS/);
 });

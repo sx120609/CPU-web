@@ -7,13 +7,13 @@ import { Errors, ok } from "../utils/response";
 import { isFeatureOn } from "../services/siteSettings";
 import {
   amountCentsToMoney,
-  buildEpayCheckoutPage,
   buildEpayCallbackUrls,
   buildEpaySubmitPayload,
   getEnabledEpayTypes,
   getEpayMerchantKey,
   moneyToAmountCents,
   resolvePaymentOrigin,
+  submitEpayCheckout,
   verifyEpayParams,
   type EpayPayType,
 } from "../services/epay";
@@ -65,15 +65,18 @@ async function buildSponsorPayment(order: any, req: any) {
   });
 }
 
-function sendSponsorCheckoutPage(res: any, epay: Awaited<ReturnType<typeof buildSponsorPayment>>) {
-  const page = buildEpayCheckoutPage(epay, {
-    fallbackUrl: "/profile",
-    title: "正在前往赞助支付",
-  });
-  res.setHeader("Cache-Control", "private, no-store");
-  res.setHeader("Content-Security-Policy", page.contentSecurityPolicy);
-  res.setHeader("Referrer-Policy", "no-referrer");
-  res.status(200).type("html").send(page.html);
+async function resolveSponsorCheckout(order: any, req: any) {
+  const epay = await buildSponsorPayment(order, req);
+  const submission = await submitEpayCheckout(epay);
+  if (!submission.ok) {
+    console.warn("[payments:epay-submit]", {
+      outTradeNo: order.outTradeNo,
+      upstreamStatus: submission.upstreamStatus,
+      message: submission.message,
+    });
+    throw Errors.badGateway(submission.message);
+  }
+  return { epay, paymentUrl: submission.redirectUrl };
 }
 
 function normalizeParams(input: Record<string, unknown>) {
@@ -152,11 +155,12 @@ paymentsRouter.post("/sponsor/orders", authRequired, validate(sponsorCreateSchem
         expiresAt: calcSponsorOrderExpiresAt(),
       },
     });
-    const epay = await buildSponsorPayment(order, req);
+    const { epay, paymentUrl } = await resolveSponsorCheckout(order, req);
     ok(res, {
       order: formatSponsorOrder(order),
       epay,
       checkoutUrl: sponsorCheckoutUrl(order.outTradeNo),
+      paymentUrl,
     });
   } catch (e: any) {
     if (
@@ -164,6 +168,7 @@ paymentsRouter.post("/sponsor/orders", authRequired, validate(sponsorCreateSchem
       e?.message === "该支付方式未启用" ||
       e?.message === "易支付尚未启用" ||
       e?.message === "易支付网关地址未配置" ||
+      e?.message === "易支付网关必须使用 HTTPS" ||
       e?.message === "易支付商户 ID 未配置" ||
       e?.message === "易支付商户密钥未配置"
     ) {
@@ -220,17 +225,19 @@ paymentsRouter.post("/sponsor/orders/:outTradeNo/pay", authRequired, async (req,
       if (order.status === "closed") throw Errors.badRequest("订单已超时关闭，请重新发起赞助");
       throw Errors.badRequest("该订单不可继续支付");
     }
-    const epay = await buildSponsorPayment(order, req);
+    const { epay, paymentUrl } = await resolveSponsorCheckout(order, req);
     ok(res, {
       order: formatSponsorOrder(order),
       epay,
       checkoutUrl: sponsorCheckoutUrl(order.outTradeNo),
+      paymentUrl,
     });
   } catch (e: any) {
     if (
       e?.message === "该支付方式未启用" ||
       e?.message === "易支付尚未启用" ||
       e?.message === "易支付网关地址未配置" ||
+      e?.message === "易支付网关必须使用 HTTPS" ||
       e?.message === "易支付商户 ID 未配置" ||
       e?.message === "易支付商户密钥未配置"
     ) {
@@ -254,7 +261,9 @@ paymentsRouter.get("/sponsor/orders/:outTradeNo/checkout", authRequired, async (
       if (order.status === "closed") throw Errors.badRequest("订单已超时关闭，请重新发起赞助");
       throw Errors.badRequest("该订单不可继续支付");
     }
-    sendSponsorCheckoutPage(res, await buildSponsorPayment(order, req));
+    const { paymentUrl } = await resolveSponsorCheckout(order, req);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.redirect(303, paymentUrl);
   } catch (e) {
     next(e);
   }

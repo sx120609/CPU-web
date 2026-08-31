@@ -25,5 +25,6 @@ export const Errors = {
   notFound: (msg = "资源不存在") => new HttpError(404, 4004, msg),
   badRequest: (msg = "请求参数错误") => new HttpError(400, 4000, msg),
   conflict: (msg = "冲突") => new HttpError(409, 4009, msg),
+  badGateway: (msg = "上游服务暂时不可用") => new HttpError(502, 5002, msg),
   server: (msg = "服务器内部错误") => new HttpError(500, 5000, msg),
 };

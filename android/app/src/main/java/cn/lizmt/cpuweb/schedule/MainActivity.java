@@ -49,6 +49,8 @@ public final class MainActivity extends Activity {
     private FrameLayout contentHost;
     private String appHost;
     private boolean mainFrameLoadFailed;
+    private CpuAndroidBridge androidBridge;
+    private boolean androidBridgeAttached;
     private ValueCallback<Uri[]> filePathCallback;
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -139,7 +141,8 @@ public final class MainActivity extends Activity {
         settings.setUserAgentString(settings.getUserAgentString()
                 + " CPUWebScheduleApp/" + BuildConfig.VERSION_CODE
                 + " CPUWebScheduleAppVersion/" + BuildConfig.VERSION_NAME);
-        webView.addJavascriptInterface(new CpuAndroidBridge(this), "CPUAndroid");
+        androidBridge = new CpuAndroidBridge(this);
+        setAndroidBridgeAttached(true);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
@@ -234,6 +237,7 @@ public final class MainActivity extends Activity {
             @Override
             public void onPageStarted(WebView view, String url, Bitmap favicon) {
                 mainFrameLoadFailed = false;
+                updateAndroidBridgeForUrl(Uri.parse(url));
             }
 
             @Override
@@ -366,6 +370,11 @@ public final class MainActivity extends Activity {
             }
             String host = uri.getHost();
             if (host != null && host.equalsIgnoreCase(appHost)) {
+                setAndroidBridgeAttached(true);
+                return false;
+            }
+            if (host != null && host.equalsIgnoreCase("pay.kaipay.cn")) {
+                setAndroidBridgeAttached(false);
                 return false;
             }
             openExternal(uri);
@@ -378,6 +387,23 @@ public final class MainActivity extends Activity {
             openExternal(uri);
         }
         return true;
+    }
+
+    private void updateAndroidBridgeForUrl(Uri uri) {
+        String host = uri == null ? null : uri.getHost();
+        setAndroidBridgeAttached(host != null && host.equalsIgnoreCase(appHost));
+    }
+
+    private void setAndroidBridgeAttached(boolean attached) {
+        if (webView == null || androidBridge == null || androidBridgeAttached == attached) {
+            return;
+        }
+        if (attached) {
+            webView.addJavascriptInterface(androidBridge, "CPUAndroid");
+        } else {
+            webView.removeJavascriptInterface("CPUAndroid");
+        }
+        androidBridgeAttached = attached;
     }
 
     private boolean isApkDownload(Uri uri) {

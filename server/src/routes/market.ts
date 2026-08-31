@@ -16,12 +16,12 @@ import {
 } from "../services/topicAiReview";
 import {
   amountCentsToMoney,
-  buildEpayCheckoutPage,
   buildEpaySubmitPayload,
   getEnabledEpayTypes,
   getEpayMerchantKey,
   moneyToAmountCents,
   resolvePaymentOrigin,
+  submitEpayCheckout,
   verifyEpayParams,
   type EpayPayType,
 } from "../services/epay";
@@ -823,6 +823,20 @@ async function buildMarketOrderPayment(order: any, req: any) {
   });
 }
 
+async function resolveMarketCheckout(order: any, req: any) {
+  const epay = await buildMarketOrderPayment(order, req);
+  const submission = await submitEpayCheckout(epay);
+  if (!submission.ok) {
+    console.warn("[market:epay-submit]", {
+      orderId: order.id,
+      upstreamStatus: submission.upstreamStatus,
+      message: submission.message,
+    });
+    throw Errors.badGateway(submission.message);
+  }
+  return { epay, paymentUrl: submission.redirectUrl };
+}
+
 marketRouter.post("/orders/:id/pay", authRequired, validate(paySchema), async (req, res, next) => {
   try {
     await closeExpiredMarketOrders();
@@ -834,11 +848,12 @@ marketRouter.post("/orders/:id/pay", authRequired, validate(paySchema), async (r
     const enabled = await getEnabledEpayTypes();
     if (!enabled.includes(req.body.payType as EpayPayType)) throw Errors.badRequest("该支付方式暂不可用");
     const updated = await prisma.marketOrder.update({ where: { id }, data: { payType: req.body.payType } });
-    const epay = await buildMarketOrderPayment({ ...updated, item: order.item }, req);
+    const { epay, paymentUrl } = await resolveMarketCheckout({ ...updated, item: order.item }, req);
     ok(res, {
       order: serializeOrder(updated, req.user!.userId, req.user!.role),
       epay,
       checkoutUrl: marketCheckoutUrl(updated.id),
+      paymentUrl,
     });
   } catch (error: any) {
     if (/易支付|支付方式|商户|网关|回调|订单号|商品名称/.test(String(error?.message || ""))) return next(Errors.badRequest(error.message));
@@ -856,13 +871,8 @@ marketRouter.get("/orders/:id/checkout", authRequired, async (req, res, next) =>
     if (order.expiresAt && order.expiresAt <= new Date()) throw Errors.badRequest("订单已超时关闭");
     const enabled = await getEnabledEpayTypes();
     if (!enabled.includes(order.payType as EpayPayType)) throw Errors.badRequest("该支付方式暂不可用");
-    const page = buildEpayCheckoutPage(await buildMarketOrderPayment(order, req), {
-      fallbackUrl: "/market/mine?tab=orders",
-      title: "正在前往订单支付",
-    });
-    res.setHeader("Content-Security-Policy", page.contentSecurityPolicy);
-    res.setHeader("Referrer-Policy", "no-referrer");
-    res.status(200).type("html").send(page.html);
+    const { paymentUrl } = await resolveMarketCheckout(order, req);
+    res.redirect(303, paymentUrl);
   } catch (error) {
     next(error);
   }

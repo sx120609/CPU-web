@@ -56,6 +56,7 @@ struct WebViewContainer: UIViewRepresentable {
 
     @MainActor
     final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, NativePresentationProviding {
+        private static let inAppPaymentHosts: Set<String> = ["pay.kaipay.cn"]
         private let model: WebViewModel
         private var mainFrameLoadFailed = false
         var bridge: CPUIOSBridge?
@@ -111,7 +112,8 @@ struct WebViewContainer: UIViewRepresentable {
 
             let scheme = url.scheme?.lowercased() ?? ""
             if scheme == "http" || scheme == "https" {
-                if url.host?.lowercased() == AppConfiguration.appHost {
+                let host = url.host?.lowercased() ?? ""
+                if host == AppConfiguration.appHost || Self.inAppPaymentHosts.contains(host) {
                     decisionHandler(.allow)
                 } else {
                     openExternal(url)
