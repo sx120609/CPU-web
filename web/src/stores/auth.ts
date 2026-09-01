@@ -11,6 +11,7 @@ import {
   DEFAULT_ACADEMIC_IDENTITY,
   readAcademicIdentity,
   readAcademicIdentityUnavailable,
+  resolveDetectedAcademicIdentity,
   writeAcademicIdentity,
   writeAcademicIdentityUnavailable,
   type AcademicIdentity,
@@ -167,10 +168,18 @@ export const useAuthStore = defineStore("auth", {
         try {
           const result = await jwxtApi.identity({ silent: options?.silent ?? true });
           if (this.sessionVersion !== requestSessionVersion || !this.token) return fallback;
-          this.setAcademicIdentity(result.identity);
-          this.academicIdentityUnavailable = !result.capabilities.undergraduate && !result.capabilities.graduate;
+          const resolved = resolveDetectedAcademicIdentity({
+            detected: result.identity,
+            fallback,
+            capabilities: result.capabilities,
+          });
+          // 两个入口都暂时不可读时不能把服务端的探测兜底值当成真实身份。
+          // 保留上次成功身份，确保本科/研究生缓存仍落在原来的分区。
+          if (!resolved.unavailable) this.setAcademicIdentity(resolved.identity);
+          else this.academicIdentity = resolved.identity;
+          this.academicIdentityUnavailable = resolved.unavailable;
           writeAcademicIdentityUnavailable(this.user?.username, this.academicIdentityUnavailable);
-          return result.identity;
+          return resolved.identity;
         } catch (error) {
           if (this.sessionVersion !== requestSessionVersion || !this.token) return fallback;
           // Older deployed servers report an authenticated but empty academic

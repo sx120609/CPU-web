@@ -1,7 +1,8 @@
 type StorageLike = Pick<Storage, "getItem" | "setItem">;
 
 const SESSION_REPAIR_KEY_PREFIX = "cpu-jwxt-session-repair-modern-v3";
-const attemptedInMemory = new Set<string>();
+export const JWXT_SESSION_REPAIR_COOLDOWN_MS = 5 * 60 * 1000;
+const attemptedAtInMemory = new Map<string, number>();
 
 function repairKey(username: string) {
   const normalized = username.trim().toLowerCase();
@@ -19,25 +20,30 @@ function browserStorage(): StorageLike | null {
 export function hasAttemptedModernJwxtSessionRepair(
   username: string,
   storage: StorageLike | null = browserStorage(),
+  now = Date.now(),
+  cooldownMs = JWXT_SESSION_REPAIR_COOLDOWN_MS,
 ) {
   const key = repairKey(username);
   if (!key) return true;
-  if (attemptedInMemory.has(key)) return true;
+  const inMemoryAttemptedAt = attemptedAtInMemory.get(key) ?? 0;
   try {
-    return storage?.getItem(key) === "1";
+    const storedAttemptedAt = Number(storage?.getItem(key) || 0);
+    const attemptedAt = Math.max(inMemoryAttemptedAt, Number.isFinite(storedAttemptedAt) ? storedAttemptedAt : 0);
+    return attemptedAt > 0 && now - attemptedAt >= 0 && now - attemptedAt < cooldownMs;
   } catch {
-    return false;
+    return inMemoryAttemptedAt > 0 && now - inMemoryAttemptedAt >= 0 && now - inMemoryAttemptedAt < cooldownMs;
   }
 }
 
 export function markModernJwxtSessionRepairAttempted(
   username: string,
   storage: StorageLike | null = browserStorage(),
+  attemptedAt = Date.now(),
 ) {
   const key = repairKey(username);
   if (!key) return;
-  attemptedInMemory.add(key);
-  try { storage?.setItem(key, "1"); } catch { /* ignore */ }
+  attemptedAtInMemory.set(key, attemptedAt);
+  try { storage?.setItem(key, String(attemptedAt)); } catch { /* ignore */ }
 }
 
 export async function repairUnavailableJwxtSession(input: {
@@ -47,10 +53,13 @@ export async function repairUnavailableJwxtSession(input: {
   resetLocalState: () => void;
   hasSavedCredentials: () => boolean;
   autoLogin: () => Promise<boolean>;
+  now?: number;
+  cooldownMs?: number;
 }) {
   const storage = input.storage === undefined ? browserStorage() : input.storage;
-  if (hasAttemptedModernJwxtSessionRepair(input.username, storage)) return false;
-  markModernJwxtSessionRepairAttempted(input.username, storage);
+  const now = input.now ?? Date.now();
+  if (hasAttemptedModernJwxtSessionRepair(input.username, storage, now, input.cooldownMs)) return false;
+  markModernJwxtSessionRepairAttempted(input.username, storage, now);
   await input.disconnect().catch(() => undefined);
   input.resetLocalState();
   if (!input.hasSavedCredentials()) return false;

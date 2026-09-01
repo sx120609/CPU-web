@@ -25,6 +25,8 @@ import {
   parsePyfa,
   parseSchedule,
 } from "./jwxtParser";
+import { isRecognizableUndergraduateSchedule } from "./academicIdentityDetection";
+import { Errors } from "../utils/response";
 
 export type JwxtDataSource = "modern" | "legacy";
 
@@ -84,6 +86,14 @@ export async function getStatus(token: string | undefined | null) {
   return session ? { active: true, since: session.createdAt, username: session.username } : { active: false };
 }
 
+export function parseRecognizedSchedule(html: string) {
+  const parsed = parseSchedule(html);
+  if (!isRecognizableUndergraduateSchedule(parsed)) {
+    throw Errors.badGateway("学校教务暂时没有返回可识别的课表页面");
+  }
+  return parsed;
+}
+
 export async function getSchedule(token: string, args: { semester?: string; week?: string } = {}) {
   const semester = args.semester ?? "";
   const week = args.week ?? "";
@@ -92,8 +102,8 @@ export async function getSchedule(token: string, args: { semester?: string; week
   if (week) qs.set("zc", week);
   const path = `/jsxsd/xskb/xskb_list.do?${qs.toString()}`;
   return modernFirst(
-    async () => parseSchedule(await jwxtFetchModernHtml(token, path)),
-    async () => parseSchedule(await jwxtFetchHtml(token, `/zgykdx/xskb/xskb_list.do?${qs.toString()}`)),
+    async () => parseRecognizedSchedule(await jwxtFetchModernHtml(token, path)),
+    async () => parseRecognizedSchedule(await jwxtFetchHtml(token, `/zgykdx/xskb/xskb_list.do?${qs.toString()}`)),
   );
 }
 

@@ -45,7 +45,7 @@ test("没有保存凭据时只清理旧教务会话并回到教务登录框", as
   assert.deepEqual(steps, ["disconnect", "reset"]);
 });
 
-test("同一迁移版本每个账号只自动修复一次", async () => {
+test("短时间内只自动修复一次，冷却后允许再次恢复", async () => {
   const storage = memoryStorage();
   let disconnects = 0;
   const input = {
@@ -55,11 +55,15 @@ test("同一迁移版本每个账号只自动修复一次", async () => {
     resetLocalState: () => undefined,
     hasSavedCredentials: () => true,
     autoLogin: async () => false,
+    now: 1_000_000,
+    cooldownMs: 60_000,
   };
 
   assert.equal(await repairUnavailableJwxtSession(input), false);
   assert.equal(await repairUnavailableJwxtSession(input), false);
   assert.equal(disconnects, 1);
+  assert.equal(await repairUnavailableJwxtSession({ ...input, now: input.now + input.cooldownMs + 1 }), false);
+  assert.equal(disconnects, 2);
 });
 
 test("上一版修复标记不会阻止新版会话修复", async () => {

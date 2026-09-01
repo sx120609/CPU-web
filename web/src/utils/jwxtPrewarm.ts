@@ -109,7 +109,7 @@ async function prewarmJwxtData(options?: { force?: boolean }) {
     const ready = await jwxt.ensureSession({
       refresh: true,
       silent: true,
-      allowAutoLogin: false,
+      allowAutoLogin: true,
       repairUnavailableSession: true,
     }).catch(() => false);
     if (!ready || !auth.isLoggedIn) return false;

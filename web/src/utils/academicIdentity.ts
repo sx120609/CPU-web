@@ -29,6 +29,18 @@ export function normalizeAcademicIdentity(value: unknown): AcademicIdentity {
   return value === "graduate" ? "graduate" : DEFAULT_ACADEMIC_IDENTITY;
 }
 
+export function resolveDetectedAcademicIdentity(input: {
+  detected: AcademicIdentity;
+  fallback: AcademicIdentity;
+  capabilities: { undergraduate: boolean; graduate: boolean };
+}) {
+  const unavailable = !input.capabilities.undergraduate && !input.capabilities.graduate;
+  return {
+    identity: unavailable ? input.fallback : input.detected,
+    unavailable,
+  };
+}
+
 export function readAcademicIdentity(): AcademicIdentity | null {
   try {
     const stored = localStorage.getItem(ACADEMIC_IDENTITY_KEY);

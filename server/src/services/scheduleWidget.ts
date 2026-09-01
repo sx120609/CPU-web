@@ -8,6 +8,13 @@ export function isScheduleWidgetCredentialActive<T extends { revokedAt?: Date | 
   return Boolean(record && !record.revokedAt);
 }
 
+export function scheduleWidgetCredentialRefreshData(jwxtToken: string) {
+  return {
+    jwxtToken,
+    expiresAt: null,
+  };
+}
+
 const SMALL_SLOTS = [
   { no: 1, start: "08:00", end: "08:45" },
   { no: 2, start: "08:55", end: "09:40" },

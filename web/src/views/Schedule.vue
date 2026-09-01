@@ -785,6 +785,7 @@ import {
   buildScheduleCacheKey,
   isStale,
   readCache,
+  readLatestScheduleCache,
   readStoredLastScheduleCacheKey,
   readStoredLastState,
   scheduleCalendarCacheKey,
@@ -997,6 +998,7 @@ interface IOSWidgetBridge {
 
 function scheduleStorageScope() {
   if (scheduleSource.value === "graduate" || scheduleSource.value === "graduate-debug") return "graduate";
+  if (scheduleSource.value === "jwxt") return "undergraduate";
   return prefersGraduateIdentity.value ? "graduate" : "undergraduate";
 }
 async function openInstallPrompt() {
@@ -1425,7 +1427,7 @@ onMounted(() => {
     return;
   }
 
-  // 后台静默：只刷新现有会话并重新拉数据，不自动提交已保存凭据。
+  // 后台静默恢复：缓存保持可见，同时用本机加密保存的信息续回学校会话。
   void (async () => {
     try {
       if (!auth.ready) await auth.fetchMe({ probe: true }).catch(() => undefined);
@@ -1433,7 +1435,7 @@ onMounted(() => {
       const ready = await jwxt.ensureSession({
         refresh: true,
         silent: true,
-        allowAutoLogin: false,
+        allowAutoLogin: true,
         repairUnavailableSession: true,
       });
       if (disposed || !ready) return;
@@ -2687,7 +2689,16 @@ function saveLastState() {
 
 function restoreLastScheduleCache() {
   const key = readStoredLastScheduleCacheKey(lastScheduleCacheKey());
-  return key ? applyScheduleCache(key) : false;
+  if (key && applyScheduleCache(key)) return true;
+  const fallback = readLatestScheduleCache<ScheduleResult>([
+    scheduleStorageScope(),
+    "undergraduate",
+    "jwxt",
+    "graduate",
+  ]);
+  if (!fallback) return false;
+  scheduleSource.value = fallback.scope === "graduate" ? "graduate" : "jwxt";
+  return applyScheduleCache(fallback.key);
 }
 
 function restoreScheduleCache() {

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { modernFirst } from "../src/services/jwxtFacade";
+import { modernFirst, parseRecognizedSchedule } from "../src/services/jwxtFacade";
 import { HttpError } from "../src/utils/response";
 
 test("modern-first queries report the modern data source", async () => {
@@ -36,4 +36,21 @@ test("modern-first preserves the real authorization failure instead of hiding it
     (error: unknown) => error === expired,
   );
   assert.equal(legacyCalls, 0);
+});
+
+test("schedule facade accepts a recognized empty timetable for freshmen", () => {
+  const parsed = parseRecognizedSchedule(`
+    <html><head><title>个人课表信息</title></head><body>
+      <table id="kbtable"><tr><th>时间</th><th>星期一</th></tr></table>
+    </body></html>
+  `);
+  assert.equal(parsed.pageRecognized, true);
+  assert.deepEqual(parsed.cells, []);
+});
+
+test("schedule facade rejects an unrelated empty shell instead of overwriting cache", () => {
+  assert.throws(
+    () => parseRecognizedSchedule("<html><head><title>首页</title></head><body></body></html>"),
+    (error: unknown) => error instanceof HttpError && error.status === 502,
+  );
 });

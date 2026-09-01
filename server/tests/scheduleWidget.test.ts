@@ -7,6 +7,7 @@ import {
   parseScheduleWidgetWeeks,
   resolveScheduleWidgetCalendar,
   resolveScheduleWidgetPreviewWeeks,
+  scheduleWidgetCredentialRefreshData,
   SCHEDULE_WIDGET_PAYLOAD_VERSION,
 } from "../src/services/scheduleWidget";
 
@@ -16,6 +17,15 @@ test("schedule widget credentials remain active until explicitly revoked", () =>
   assert.equal(isScheduleWidgetCredentialActive({ revokedAt: null }), true);
   assert.equal(isScheduleWidgetCredentialActive({ revokedAt: new Date() }), false);
   assert.equal(isScheduleWidgetCredentialActive(null), false);
+});
+
+test("refreshing widget credentials preserves the last successful payload", () => {
+  assert.deepEqual(scheduleWidgetCredentialRefreshData("new-session-token"), {
+    jwxtToken: "new-session-token",
+    expiresAt: null,
+  });
+  assert.equal("cachedPayload" in scheduleWidgetCredentialRefreshData("new-session-token"), false);
+  assert.equal("cachedAt" in scheduleWidgetCredentialRefreshData("new-session-token"), false);
 });
 
 function calendarFor(week: number, days: string[]) {

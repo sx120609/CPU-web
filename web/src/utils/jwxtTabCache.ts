@@ -28,6 +28,22 @@ export function readJwxtTabCache<T = any>(tab: JwxtDataTab, identity: string): J
   }
 }
 
+export function readLatestJwxtTabCache<T = any>(tab: JwxtDataTab, identities: string[]) {
+  const seen = new Set<string>();
+  let latest: { identity: string; envelope: JwxtTabCacheEnvelope<T> } | null = null;
+  for (const identity of identities) {
+    const normalizedIdentity = String(identity || "").trim();
+    if (!normalizedIdentity || seen.has(normalizedIdentity)) continue;
+    seen.add(normalizedIdentity);
+    const envelope = readJwxtTabCache<T>(tab, normalizedIdentity);
+    if (!envelope?.data) continue;
+    if (!latest || envelope.savedAt > latest.envelope.savedAt) {
+      latest = { identity: normalizedIdentity, envelope };
+    }
+  }
+  return latest;
+}
+
 export function writeJwxtTabCache<T = any>(tab: JwxtDataTab, identity: string, data: T) {
   try {
     const key = jwxtTabCacheKey(tab, identity);

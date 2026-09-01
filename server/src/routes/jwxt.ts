@@ -18,6 +18,7 @@ import {
   buildScheduleWidgetPayload,
   inferScheduleWidgetSemester,
   isScheduleWidgetCredentialActive,
+  scheduleWidgetCredentialRefreshData,
   resolveScheduleWidgetCalendar,
   resolveScheduleWidgetPreviewWeeks,
   SCHEDULE_WIDGET_PAYLOAD_VERSION,
@@ -67,8 +68,8 @@ const JWXT_PROGRESS_CACHE_TTL_MS = 30 * 60_000;
 const JWXT_PYFA_CACHE_TTL_MS = 6 * 60 * 60_000;
 const JWXT_IAPPS_CACHE_TTL_MS = 60 * 60_000;
 const JWXT_IAPP_ICON_CACHE_TTL_MS = 7 * 24 * 60 * 60_000;
-const JWXT_SOURCE_CACHE_REVISION = "source-v2";
-const JWXT_IDENTITY_CACHE_REVISION = "probe-v3";
+const JWXT_SOURCE_CACHE_REVISION = "source-v3";
+const JWXT_IDENTITY_CACHE_REVISION = "probe-v4";
 const GRAD_SCHEDULE_DEBUG_BINDTERM_CANDIDATES = [
   path.resolve(process.cwd(), ".debug", "grad-bindterm.json"),
   path.resolve(process.cwd(), "server", ".debug", "grad-bindterm.json"),
@@ -522,12 +523,7 @@ jwxtRouter.post("/schedule-widget-tokens/refresh", authRequired, async (req: any
     if (!status?.active) throw Errors.unauthorized("教务会话已失效，请重新授权");
     const result = await prisma.scheduleWidgetToken.updateMany({
       where: { userId: req.user.userId, revokedAt: null },
-      data: {
-        jwxtToken,
-        expiresAt: null,
-        cachedPayload: null,
-        cachedAt: null,
-      },
+      data: scheduleWidgetCredentialRefreshData(jwxtToken),
     });
     await invalidateJwxtWidgetCaches();
     ok(res, { updated: result.count });
@@ -756,10 +752,6 @@ jwxtRouter.get("/schedule", async (req, res, next) => {
         async () => getSchedule(t, { semester, week }),
       );
     if (refresh) {
-      await prisma.scheduleWidgetToken.updateMany({
-        where: { jwxtToken: t, revokedAt: null },
-        data: { cachedPayload: null, cachedAt: null },
-      });
       await invalidateJwxtWidgetCaches();
     }
     res.setHeader("Cache-Control", refresh ? "private, no-store" : "private, max-age=300, stale-while-revalidate=86400");
@@ -784,10 +776,6 @@ jwxtRouter.get("/graduate-schedule", async (req, res, next) => {
         async () => loadGraduateScheduleResponse(t, semester, termcode),
       );
     if (refresh) {
-      await prisma.scheduleWidgetToken.updateMany({
-        where: { jwxtToken: t, revokedAt: null },
-        data: { cachedPayload: null, cachedAt: null },
-      });
       await invalidateJwxtWidgetCaches();
     }
     res.setHeader("Cache-Control", refresh ? "private, no-store" : "private, max-age=300, stale-while-revalidate=86400");
@@ -1013,10 +1001,6 @@ jwxtRouter.put(
         update: {
           payload: JSON.stringify(edits),
         },
-      });
-      await prisma.scheduleWidgetToken.updateMany({
-        where: { userId: req.user.userId, revokedAt: null },
-        data: { cachedPayload: null, cachedAt: null },
       });
       await invalidateJwxtWidgetCaches();
       ok(res, { semester, edits });

@@ -260,6 +260,7 @@ import { loadCreds } from "@/utils/credCrypto";
 import {
   isJwxtTabCacheStale,
   normalizeJwxtTabData,
+  readLatestJwxtTabCache,
   readJwxtTabCache,
   type JwxtDataTab,
   writeJwxtTabCache,
@@ -315,7 +316,7 @@ const snapResult = ref<{ saved: string[]; errors: string[] } | null>(null);
 const isDev = computed(() => import.meta.env.DEV);
 const showScheduleTab = computed(() => !isMobileViewport.value);
 const availableDataTabs = computed<DataTab[]>(() => {
-  if (isGraduateIdentity.value) {
+  if (isGraduateIdentity.value && !auth.academicIdentityUnavailable) {
     return showScheduleTab.value ? ["schedule"] : [];
   }
   return showScheduleTab.value
@@ -324,10 +325,13 @@ const availableDataTabs = computed<DataTab[]>(() => {
 });
 const hasJwxtTabs = computed(() => availableDataTabs.value.length > 0 || isDev.value);
 const hasCachedData = computed(() => availableDataTabs.value.some((item) => Boolean(getTabData(item))));
-const showDataShell = computed(() => !showLoginOverride.value && (jwxt.isLoggedIn || hasCachedData.value || academicDataUnavailable.value));
 const academicDataUnavailable = computed(() => Boolean(
-  jwxt.isLoggedIn && auth.user?.studentSso && auth.academicIdentityUnavailable,
+  jwxt.isLoggedIn
+  && auth.user?.studentSso
+  && auth.academicIdentityUnavailable
+  && !hasCachedData.value,
 ));
+const showDataShell = computed(() => !showLoginOverride.value && (jwxt.isLoggedIn || hasCachedData.value || academicDataUnavailable.value));
 const usingSavedCredentialRecovery = computed(() => (
   jwxt.rememberSaved && !manualCredentialOverride.value && !form.password
 ));
@@ -369,6 +373,9 @@ const sessionSubText = computed(() => {
     if (jwxt.needCaptcha) return "上次缓存仍可查看；补充验证码后会继续静默更新。";
     if (jwxt.rememberSaved) return "上次缓存仍可查看，系统正在后台恢复教务连接。";
     return "上次缓存仍可查看；需要时可重新授权更新数据。";
+  }
+  if (auth.academicIdentityUnavailable && hasCachedData.value) {
+    return "学校教务暂时未返回可用数据，已显示上次缓存，系统会在后台自动恢复。";
   }
   if (auth.academicIdentityDetecting && !auth.academicIdentityResolved) {
     return "正在识别当前账号可用的教务入口…";
@@ -422,7 +429,7 @@ async function initPage() {
   const ready = await jwxt.ensureSession({
     refresh: true,
     silent: true,
-    allowAutoLogin: false,
+    allowAutoLogin: true,
     repairUnavailableSession: true,
   });
   if (disposed || seq !== pageInitSeq || !ready) return;
@@ -496,7 +503,12 @@ function setTabData(t: DataTab, data: any) {
 }
 
 function restoreCachedTab(t: DataTab) {
-  const cached = readJwxtTabCache(t, auth.academicIdentity);
+  const direct = readJwxtTabCache(t, auth.academicIdentity);
+  const cached = direct ?? readLatestJwxtTabCache(t, [
+    auth.academicIdentity,
+    "undergraduate",
+    "graduate",
+  ])?.envelope ?? null;
   if (!cached?.data) return null;
   if (!getTabData(t)) setTabData(t, cached.data);
   return cached;

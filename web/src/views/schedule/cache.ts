@@ -9,6 +9,16 @@ const SCHEDULE_CACHE_BASE = "cpu-schedule-cache-v3";
 const CALENDAR_CACHE_BASE = "cpu-schedule-calendar-v2";
 const LAST_CACHE_BASE = "cpu-schedule-last-cache-key-v1";
 
+type ReadStorageLike = Pick<Storage, "getItem">;
+
+function browserReadStorage(): ReadStorageLike | null {
+  try {
+    return typeof localStorage === "undefined" ? null : localStorage;
+  } catch {
+    return null;
+  }
+}
+
 export function buildScheduleCacheKey(input: {
   scope: string;
   semester?: string | null;
@@ -37,10 +47,10 @@ export function scheduleLastCacheKey(scope: string) {
   return jwxtScopedStorageKey(LAST_CACHE_BASE, scope);
 }
 
-export function readCache<T>(key: string): CacheEnvelope<T> | null {
+export function readCache<T>(key: string, storage: ReadStorageLike | null = browserReadStorage()): CacheEnvelope<T> | null {
   if (!key) return null;
   try {
-    const raw = localStorage.getItem(key);
+    const raw = storage?.getItem(key);
     if (!raw) return null;
     const parsedValue = JSON.parse(raw);
     if (!parsedValue || typeof parsedValue.savedAt !== "number") return null;
@@ -84,13 +94,33 @@ export function writeStoredLastState(key: string, state: LastState) {
   }
 }
 
-export function readStoredLastScheduleCacheKey(key: string) {
+export function readStoredLastScheduleCacheKey(key: string, storage: ReadStorageLike | null = browserReadStorage()) {
   if (!key) return "";
   try {
-    return localStorage.getItem(key) || "";
+    return storage?.getItem(key) || "";
   } catch {
     return "";
   }
+}
+
+export function readLatestScheduleCache<T>(
+  scopes: string[],
+  storage: ReadStorageLike | null = browserReadStorage(),
+) {
+  const seen = new Set<string>();
+  let latest: { scope: string; key: string; envelope: CacheEnvelope<T> } | null = null;
+  for (const scope of scopes) {
+    const normalizedScope = String(scope || "").trim();
+    if (!normalizedScope || seen.has(normalizedScope)) continue;
+    seen.add(normalizedScope);
+    const key = readStoredLastScheduleCacheKey(scheduleLastCacheKey(normalizedScope), storage);
+    const envelope = readCache<T>(key, storage);
+    if (!key || !envelope?.data) continue;
+    if (!latest || envelope.savedAt > latest.envelope.savedAt) {
+      latest = { scope: normalizedScope, key, envelope };
+    }
+  }
+  return latest;
 }
 
 export function writeStoredLastScheduleCacheKey(key: string, value: string) {
