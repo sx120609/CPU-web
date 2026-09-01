@@ -18,6 +18,7 @@ import { scheduleJwxtDataPrewarm } from "./utils/jwxtPrewarm";
 import { installUnifiedImageLoading } from "./utils/imageLoading";
 import { authApi } from "./api/auth";
 import { hideWechatToolbarBestEffort, isWechatBrowser } from "./utils/wechatBridge";
+import { buildEntryModuleSignature } from "./utils/entryModuleSignature";
 
 import "element-plus/dist/index.css";
 import "element-plus/theme-chalk/dark/css-vars.css";
@@ -48,20 +49,11 @@ let desktopReleaseCheckInFlight = false;
 let desktopReleaseCheckLastAt = 0;
 
 function getEntryModuleSignature(root: ParentNode) {
-  return Array.from(root.querySelectorAll<HTMLScriptElement>('script[type="module"][src]'))
-    .map((script) => {
-      const src = script.getAttribute("src");
-      if (!src) return "";
-      try {
-        const url = new URL(src, window.location.origin);
-        return url.origin === window.location.origin ? url.pathname : "";
-      } catch {
-        return "";
-      }
-    })
-    .filter(Boolean)
-    .sort()
-    .join("|");
+  return buildEntryModuleSignature(
+    Array.from(root.querySelectorAll<HTMLScriptElement>('script[type="module"][src]'))
+      .map((script) => script.getAttribute("src") || ""),
+    window.location.origin,
+  );
 }
 
 function isEditingText() {

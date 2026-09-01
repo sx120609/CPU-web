@@ -1,5 +1,5 @@
 import COS from "cos-nodejs-sdk-v5";
-import { getMediaStorageRuntimeConfig } from "./storageConfig";
+import { getMediaStorageRuntimeConfig, loadStorageConfig } from "./storageConfig";
 
 const SIGNED_URL_EXPIRES_SECONDS = 15 * 60;
 const DIRECT_UPLOAD_EXPIRES_SECONDS = 3 * 60 * 60;
@@ -38,6 +38,7 @@ export async function isTencentCosConfigured() {
 }
 
 export async function validateTencentCosConfiguration() {
+  await loadStorageConfig();
   const { client, config } = await requireTencentCosClient();
   const result = await client.headBucket({ Bucket: config.bucket, Region: config.region });
   return {

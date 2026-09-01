@@ -364,7 +364,7 @@ export async function loadStorageConfig(): Promise<void> {
 }
 
 export async function getMediaStorageAdminConfig(): Promise<MediaStorageAdminConfig> {
-  await ensureLoaded();
+  await loadStorageConfig();
   const normalizedProvider = storageConfigCache.mediaStorageImageProvider === storageConfigCache.mediaStorageVideoProvider
     ? storageConfigCache.mediaStorageImageProvider
     : storageConfigCache.mediaStorageProvider;
@@ -372,11 +372,19 @@ export async function getMediaStorageAdminConfig(): Promise<MediaStorageAdminCon
   const legacyClientSecret = String(config.oneDriveChinaClientSecret || "").trim();
   const legacyDriveId = String(config.oneDriveChinaDriveId || "").trim();
   const legacyRootPath = normalizeRootPath(config.oneDriveChinaRootPath);
+  const cloned = cloneStorageConfig({
+    ...storageConfigCache,
+    mediaStorageProvider: normalizedProvider,
+  });
+  const {
+    oneDriveChinaClientSecret: _oneDriveChinaClientSecret,
+    oneDriveChinaRefreshToken: _oneDriveChinaRefreshToken,
+    tencentCosSecretKey: _tencentCosSecretKey,
+    aliyunOssAccessKeySecret: _aliyunOssAccessKeySecret,
+    ...safeConfig
+  } = cloned;
   return {
-    ...cloneStorageConfig({
-      ...storageConfigCache,
-      mediaStorageProvider: normalizedProvider,
-    }),
+    ...safeConfig,
     oneDriveChinaClientId: storageConfigCache.oneDriveChinaClientId || legacyClientId,
     oneDriveChinaDriveId: storageConfigCache.oneDriveChinaDriveId || legacyDriveId,
     oneDriveChinaDriveName: storageConfigCache.oneDriveChinaDriveName || legacyDriveId,
@@ -463,7 +471,7 @@ export async function updateMediaStorageAdminConfig(input: {
   aliyunOssRootPath?: string;
   aliyunOssPublicBaseUrl?: string;
 }): Promise<MediaStorageAdminConfig> {
-  await ensureLoaded();
+  await loadStorageConfig();
   const next = cloneStorageConfig(storageConfigCache);
   const legacyClientId = String(config.oneDriveChinaClientId || "").trim();
   const legacyClientSecret = String(config.oneDriveChinaClientSecret || "").trim();
@@ -549,7 +557,7 @@ export async function updateMediaStorageAdminConfig(input: {
 }
 
 export async function updateWebStaticProvider(provider: WebStaticProvider) {
-  await ensureLoaded();
+  await loadStorageConfig();
   const next = cloneStorageConfig(storageConfigCache);
   next.webStaticProvider = normalizeWebStaticProvider(provider, next.webStaticProvider);
   await persistStorageConfig(next);

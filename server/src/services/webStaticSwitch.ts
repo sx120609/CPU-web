@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import {
   getMediaStorageRuntimeConfig,
+  loadStorageConfig,
   updateWebStaticProvider,
   type MediaStorageRuntimeConfig,
   type WebStaticProvider,
@@ -83,6 +84,7 @@ export function assessWebStaticCoverage(expected: WebStaticExpectedFile[], store
 }
 
 export async function getWebStaticSwitchStatus(): Promise<WebStaticSwitchStatus> {
+  await loadStorageConfig();
   const runtime = await getMediaStorageRuntimeConfig();
   const expected = await collectExpectedWebStaticFiles(resolveWebStaticDistRoot());
   const [cos, oss] = await Promise.all([

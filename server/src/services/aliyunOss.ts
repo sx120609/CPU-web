@@ -1,5 +1,5 @@
 import OSS from "ali-oss";
-import { getMediaStorageRuntimeConfig } from "./storageConfig";
+import { getMediaStorageRuntimeConfig, loadStorageConfig } from "./storageConfig";
 
 const SIGNED_URL_EXPIRES_SECONDS = 15 * 60;
 const DIRECT_UPLOAD_EXPIRES_SECONDS = 3 * 60 * 60;
@@ -38,6 +38,7 @@ export async function isAliyunOssConfigured() {
 }
 
 export async function validateAliyunOssConfiguration() {
+  await loadStorageConfig();
   const { client, config } = await requireAliyunOssClient();
   const result = await client.getBucketInfo(config.bucket);
   return {
