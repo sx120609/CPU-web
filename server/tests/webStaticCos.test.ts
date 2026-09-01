@@ -66,7 +66,7 @@ test("static object-storage manifest accepts legacy COS and current provider-awa
 });
 
 test("index asset tags are rewritten to the current delivery origin without touching unrelated text", () => {
-  const html = '<script src="/assets/main.js"></script><link href="/assets/main.css"><script>const example = "/assets/local-only"</script>';
+  const html = '<script src="./assets/main.js"></script><link href="/assets/main.css"><script>const example = "/assets/local-only"</script>';
   assert.equal(
     rewriteWebStaticAssetUrls(html, "https://static.example/root/assets/"),
     '<script src="https://static.example/root/assets/main.js"></script><link href="https://static.example/root/assets/main.css"><script>const example = "/assets/local-only"</script>',
@@ -94,7 +94,7 @@ test("index handler emits entry modules on one direct CDN origin", async (t) => 
   t.after(() => rm(directory, { recursive: true, force: true }));
   await writeFile(
     path.join(directory, "index.html"),
-    '<script type="module" src="/assets/main.js"></script><link rel="modulepreload" href="/assets/vendor.js">',
+    '<script type="module" src="./assets/main.js"></script><link rel="modulepreload" href="./assets/vendor.js">',
   );
 
   let body = "";

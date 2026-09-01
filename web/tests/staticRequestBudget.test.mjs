@@ -75,8 +75,16 @@ test('service worker serves a cached static asset without refreshing it over the
 test('production output keeps CSS assets relative and the initial bundle request count bounded', () => {
   const distRoot = path.join(webRoot, 'dist')
   const indexHtml = readFileSync(path.join(distRoot, 'index.html'), 'utf8')
-  const initialAssets = [...indexHtml.matchAll(/<(?:script|link)\b[^>]*(?:src|href)="\/assets\//gu)]
-  assert.ok(initialAssets.length <= 10, `expected at most 10 initial /assets requests, found ${initialAssets.length}`)
+  const initialAssets = [...indexHtml.matchAll(/<(?:script|link)\b[^>]*(?:src|href)="\.\/assets\//gu)]
+  assert.ok(initialAssets.length <= 10, `expected at most 10 initial asset requests, found ${initialAssets.length}`)
+
+  for (const name of readdirSync(path.join(distRoot, 'assets')).filter((value) => value.endsWith('.js'))) {
+    assert.doesNotMatch(
+      readFileSync(path.join(distRoot, 'assets', name), 'utf8'),
+      /\b(?:from|import\()\s*["']\/assets\//u,
+      name,
+    )
+  }
 
   for (const name of readdirSync(path.join(distRoot, 'assets')).filter((value) => value.endsWith('.css'))) {
     assert.doesNotMatch(readFileSync(path.join(distRoot, 'assets', name), 'utf8'), /url\(\/?assets\//u, name)

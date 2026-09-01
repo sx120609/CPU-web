@@ -162,7 +162,7 @@ export function rewriteWebStaticAssetUrls(html: string, assetBaseUrl: string) {
     // the local-path rewrite as a defensive fallback for direct callers.
   }
   return rewritten.replace(
-    /\b(src|href)="\/assets\//gu,
+    /\b(src|href)="(?:\.\/|\/)assets\//gu,
     (_match, attribute: string) => `${attribute}="${baseUrl}/`,
   );
 }
