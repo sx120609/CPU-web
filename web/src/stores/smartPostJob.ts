@@ -5,6 +5,7 @@ import {
   type SmartPostComposePayload,
   type SmartPostJobSnapshot,
 } from "@/api/topic";
+import { smartPostRateLimitRetryMs } from "@/utils/smartPostPolling";
 
 type StoredSmartPostTask = {
   jobId: string;
@@ -16,7 +17,7 @@ type StoredSmartPostTask = {
 const STORAGE_KEY = "cpu-smart-post-job-v1";
 const POLL_INTERVAL_MS = 1_800;
 const POLL_RETRY_MS = 4_000;
-const DISCOVERY_INTERVAL_MS = 10_000;
+const DISCOVERY_INTERVAL_MS = 5 * 60_000;
 
 export const useSmartPostJobStore = defineStore("smart-post-job", () => {
   const task = ref<StoredSmartPostTask | null>(null);
@@ -128,7 +129,7 @@ export const useSmartPostJobStore = defineStore("smart-post-job", () => {
       }
       if (httpStatus === 401) return;
       pollWarning.value = "暂时无法刷新进度，后台任务仍会继续处理";
-      schedulePoll(POLL_RETRY_MS);
+      schedulePoll(httpStatus === 429 ? smartPostRateLimitRetryMs(error) : POLL_RETRY_MS);
     }
   }
 
@@ -149,6 +150,11 @@ export const useSmartPostJobStore = defineStore("smart-post-job", () => {
   async function discover(generation: number) {
     const userId = currentUserId;
     if (!userId || generation !== discoveryGeneration || (task.value && !terminal.value)) return;
+    if (document.visibilityState === "hidden") {
+      scheduleDiscovery(DISCOVERY_INTERVAL_MS);
+      return;
+    }
+    let nextDiscoveryDelay = DISCOVERY_INTERVAL_MS;
     try {
       const snapshot = await topicApi.currentSmartCompose();
       if (generation !== discoveryGeneration || currentUserId !== userId || (task.value && !terminal.value)) return;
@@ -169,9 +175,10 @@ export const useSmartPostJobStore = defineStore("smart-post-job", () => {
     } catch (error) {
       const httpStatus = Number((error as { response?: { status?: unknown } })?.response?.status || 0);
       if (httpStatus === 401) return;
+      if (httpStatus === 429) nextDiscoveryDelay = smartPostRateLimitRetryMs(error);
     }
     if (generation === discoveryGeneration && currentUserId === userId && (!task.value || terminal.value)) {
-      scheduleDiscovery(DISCOVERY_INTERVAL_MS);
+      scheduleDiscovery(nextDiscoveryDelay);
     }
   }
 

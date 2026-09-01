@@ -79,10 +79,16 @@ test('production output keeps CSS assets relative and the initial bundle request
   assert.ok(initialAssets.length <= 10, `expected at most 10 initial asset requests, found ${initialAssets.length}`)
 
   for (const name of readdirSync(path.join(distRoot, 'assets')).filter((value) => value.endsWith('.js'))) {
+    const source = readFileSync(path.join(distRoot, 'assets', name), 'utf8')
     assert.doesNotMatch(
-      readFileSync(path.join(distRoot, 'assets', name), 'utf8'),
+      source,
       /\b(?:from|import\()\s*["']\/assets\//u,
       name,
+    )
+    assert.doesNotMatch(
+      source,
+      /new URL\(["']\.\.\/favicon\.svg/u,
+      `${name} must keep the site logo on the main origin`,
     )
   }
 

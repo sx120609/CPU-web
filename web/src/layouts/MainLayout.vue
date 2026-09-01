@@ -17,10 +17,11 @@
         <router-link to="/home" class="brand">
           <img
             class="brand-logo"
-            src="/favicon.svg?v=20260830"
+            :src="'/favicon.svg?v=20260830'"
             alt=""
             aria-hidden="true"
             decoding="async"
+            data-image-eager="true"
           />
           <span class="brand-text">
             <span class="brand-name">药大拾间</span>
