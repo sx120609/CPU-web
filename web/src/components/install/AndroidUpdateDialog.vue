@@ -45,6 +45,10 @@ import {
   type AndroidUpdatePromptKind,
 } from "@/utils/androidUpdatePrompt";
 import {
+  ANDROID_APP_UPDATE_CHECK_ENABLED,
+  canOpenAndroidUpdatePrompt,
+} from "@/utils/androidUpdatePolicy";
+import {
   ANDROID_APP_DOWNLOAD_FILE_NAME,
   ANDROID_APP_DOWNLOAD_URL,
   ANDROID_APP_LATEST_VERSION_CODE,
@@ -89,7 +93,9 @@ const primaryButtonText = computed(() => {
 
 onMounted(() => {
   window.addEventListener(ANDROID_UPDATE_PROMPT_EVENT, onPromptEvent as EventListener);
-  autoPromptTimer = window.setTimeout(autoPromptIfNeeded, 1200);
+  if (ANDROID_APP_UPDATE_CHECK_ENABLED) {
+    autoPromptTimer = window.setTimeout(autoPromptIfNeeded, 1200);
+  }
 });
 
 onBeforeUnmount(() => {
@@ -116,6 +122,10 @@ function autoPromptIfNeeded() {
 
 function openPrompt(kind: AndroidUpdatePromptKind, auto = false) {
   if (kind !== "install" && !isAndroidNativeApp()) return;
+  if (!canOpenAndroidUpdatePrompt(kind)) {
+    if (!auto) ElMessage.info("安卓客户端更新检查暂时关闭");
+    return;
+  }
   if (kind === "app" && !isAndroidAppUpdateAvailable()) {
     if (!auto) ElMessage.success(`当前已是最新版 ${currentVersionLabel.value}`);
     return;

@@ -1,3 +1,8 @@
+import {
+  ANDROID_APP_UPDATE_CHECK_ENABLED,
+  isAndroidUpdateAvailable,
+} from "@/utils/androidUpdatePolicy";
+
 export type ClientPlatform = "ios" | "android" | "harmony" | "desktop" | "web" | "unknown";
 
 export const ANDROID_APP_LATEST_VERSION_CODE = 34;
@@ -184,7 +189,12 @@ export function getAndroidNativeVersionName(ua = navigator.userAgent) {
 }
 
 export function isAndroidAppUpdateAvailable(ua = navigator.userAgent) {
-  return isAndroidNativeApp(ua) && getAndroidNativeVersionCode(ua) < ANDROID_APP_LATEST_VERSION_CODE;
+  if (!ANDROID_APP_UPDATE_CHECK_ENABLED) return false;
+  return isAndroidUpdateAvailable(
+    isAndroidNativeApp(ua),
+    getAndroidNativeVersionCode(ua),
+    ANDROID_APP_LATEST_VERSION_CODE,
+  );
 }
 
 export function isAndroidLegacyMajorUpgrade(ua = navigator.userAgent) {
