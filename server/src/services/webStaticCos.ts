@@ -67,6 +67,24 @@ export function createWebStaticPublicCosHandler(distRoot: string): RequestHandle
   };
 }
 
+export function createWebStaticIndexHandler(
+  distRoot: string,
+  resolveAssetBaseUrl: () => Promise<string> = resolveWebStaticAssetBaseUrl,
+): RequestHandler {
+  const indexPath = path.resolve(distRoot, "index.html");
+  const indexHtml = readFileSync(indexPath, "utf8");
+
+  return async (_req, res) => {
+    res.setHeader("Cache-Control", "no-cache, must-revalidate");
+    try {
+      const assetBaseUrl = await resolveAssetBaseUrl();
+      res.type("html").send(rewriteWebStaticAssetUrls(indexHtml, assetBaseUrl));
+    } catch {
+      res.sendFile(indexPath);
+    }
+  };
+}
+
 export function loadWebStaticCosManifest(distRoot: string) {
   return loadWebStaticManifest(distRoot).assets;
 }
@@ -111,6 +129,11 @@ function emptyWebStaticManifest() {
 
 function resolveWebStaticDeliveryUrl(backend: WebStaticBackend, relativePath: string) {
   return backend === "oss" ? resolveAliyunOssDeliveryUrl(relativePath) : resolveTencentCosDeliveryUrl(relativePath);
+}
+
+async function resolveWebStaticAssetBaseUrl() {
+  const backend = resolveWebStaticBackend(getMediaStorageRuntimeConfigSync().webStaticProvider, "cos");
+  return resolveWebStaticDeliveryUrl(backend, WEB_STATIC_COS_PREFIX);
 }
 
 export function normalizeWebStaticAssetPath(value: string) {

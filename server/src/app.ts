@@ -14,7 +14,11 @@ import { filestoreHandler } from "./services/filestore";
 import { startForumImageModerationPoller } from "./services/imageModeration";
 import { startForumVideoModerationPoller } from "./services/videoModeration";
 import { uploadAssetHandler } from "./services/mediaStorage";
-import { createWebStaticCosHandler, createWebStaticPublicCosHandler } from "./services/webStaticCos";
+import {
+  createWebStaticCosHandler,
+  createWebStaticIndexHandler,
+  createWebStaticPublicCosHandler,
+} from "./services/webStaticCos";
 import { startQqNotificationPoller } from "./services/qqbot";
 import { startSponsorOrderExpiryPoller } from "./services/sponsor";
 import { startForumSubmissionReviewPoller } from "./services/forumSubmissionReview";
@@ -111,6 +115,8 @@ export function createApp() {
       console.log(`📦 静态资源目录: ${dist}`);
       app.use("/assets", createWebStaticCosHandler(dist));
       app.use(createWebStaticPublicCosHandler(dist));
+      const webStaticIndexHandler = createWebStaticIndexHandler(dist);
+      app.get(["/", "/index.html"], webStaticIndexHandler);
       app.use(express.static(dist, {
         index: false,
         maxAge: "1h",
@@ -126,11 +132,7 @@ export function createApp() {
         },
       }));
       // SPA fallback：非 /api 路径全部返回 index.html
-      app.get(/^\/(?!api).*/, (_req, res) => {
-        // Always revalidate the HTML shell; hashed JS/CSS above can stay immutable.
-        res.setHeader("Cache-Control", "no-cache, must-revalidate");
-        res.sendFile(path.join(dist, "index.html"));
-      });
+      app.get(/^\/(?!api).*/, webStaticIndexHandler);
     } else {
       console.warn("⚠️  未找到 web/dist，前端可能未构建");
     }

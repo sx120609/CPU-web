@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
+  createWebStaticIndexHandler,
   loadWebStaticCosManifest,
   loadWebStaticCosPublicManifest,
   normalizeWebStaticAssetPath,
@@ -85,5 +86,39 @@ test("index asset tags migrate from a previous remote origin to the current CDN"
       '<link href="https://static.cputime.cn/cpu-web-media/web-static/assets/dual-origin-v2/main.css">',
       '<img src="https://old-cos.example/cpu-web-media/forum/unrelated.png">',
     ].join(""),
+  );
+});
+
+test("index handler emits entry modules on one direct CDN origin", async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "cpu-web-static-index-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await writeFile(
+    path.join(directory, "index.html"),
+    '<script type="module" src="/assets/main.js"></script><link rel="modulepreload" href="/assets/vendor.js">',
+  );
+
+  let body = "";
+  const headers = new Map<string, string>();
+  const handler = createWebStaticIndexHandler(
+    directory,
+    async () => "https://static.example/cpu-web-media/web-static/assets/dual-origin-v2",
+  );
+  await handler({} as any, {
+    setHeader(name: string, value: string) {
+      headers.set(name, value);
+    },
+    type() {
+      return this;
+    },
+    send(value: string) {
+      body = value;
+      return this;
+    },
+  } as any, () => undefined);
+
+  assert.equal(headers.get("Cache-Control"), "no-cache, must-revalidate");
+  assert.equal(
+    body,
+    '<script type="module" src="https://static.example/cpu-web-media/web-static/assets/dual-origin-v2/main.js"></script><link rel="modulepreload" href="https://static.example/cpu-web-media/web-static/assets/dual-origin-v2/vendor.js">',
   );
 });
