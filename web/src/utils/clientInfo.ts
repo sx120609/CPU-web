@@ -1,8 +1,8 @@
 export type ClientPlatform = "ios" | "android" | "harmony" | "desktop" | "web" | "unknown";
 
-export const ANDROID_APP_LATEST_VERSION_CODE = 35;
-export const ANDROID_APP_LATEST_VERSION_NAME = "3.0.35";
-export const ANDROID_APP_DOWNLOAD_FILE_NAME = "CPU-Web-Android-V35.apk";
+export const ANDROID_APP_LATEST_VERSION_CODE = 34;
+export const ANDROID_APP_LATEST_VERSION_NAME = "3.0.34";
+export const ANDROID_APP_DOWNLOAD_FILE_NAME = "CPU-Web-Android-V34.apk";
 export const ANDROID_NEW_ARCH_MIN_VERSION_CODE = 21;
 export const HARMONY_APP_LATEST_VERSION_CODE = 17;
 export const HARMONY_APP_LATEST_VERSION_NAME = "2.0.8";
