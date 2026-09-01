@@ -5,7 +5,7 @@ import { withCache } from "../services/cache";
 import { normalizeServiceCard, visibleServiceWhere } from "../services/serviceCards";
 import { enabledBoardTypes, getGlobalPinnedTopicIds } from "../services/siteSettings";
 import { resolveForumAccess } from "../services/forumAccess";
-import { decodeTopicForViewer, decodeTopicsForViewerForList } from "../services/forumPresentation";
+import { decodeTopicForViewer, decodeTopicsForViewerForList, forumReplyPreviewInclude } from "../services/forumPresentation";
 import { buildUserTrustSnapshot } from "../services/userTrust";
 import { visibleBoardSlugFilter } from "../services/retiredBoards";
 import { FORUM_SELF_VISIBLE_REVIEW_STATUSES, forumContentVisibilityWhere } from "../services/forumSubmission";
@@ -42,7 +42,7 @@ homeRouter.get("/summary", async (req, res, next) => {
     const globalPinnedIds = getGlobalPinnedTopicIds();
     const publicSummary = await withCache(
       "home",
-      ["summary-v4", forumAccessEnabled ? "forum-enabled" : "announce-only"],
+      ["summary-v5", forumAccessEnabled ? "forum-enabled" : "announce-only"],
       60_000,
       async () => {
         const [pinnedTopics, hotTopics, latestTopics, announce, services] = await Promise.all([
@@ -56,6 +56,7 @@ homeRouter.get("/summary", async (req, res, next) => {
               board: { select: { slug: true, name: true, color: true, type: true } },
               author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true } },
               tags: { include: { tag: true } },
+              replies: forumReplyPreviewInclude,
             },
           }).then(compactTopicAuthors) : Promise.resolve([]),
           prisma.topic.findMany({
@@ -131,7 +132,7 @@ homeRouter.get("/hot-ranking", async (_req, res, next) => {
     if (!forumAccessEnabled) return ok(res, []);
     const stream = parseHomeFeedStream(_req.query.stream);
     const contentBoardTypes = homeFeedBoardTypes(stream);
-    const list = await withCache("home", ["hot-ranking-v3", stream], 60_000, async () => listHotTopics(HOT_TOPIC_DEFAULT_SIZE, contentBoardTypes));
+    const list = await withCache("home", ["hot-ranking-v4", stream], 60_000, async () => listHotTopics(HOT_TOPIC_DEFAULT_SIZE, contentBoardTypes));
     const presented = await decodeTopicsForViewerForList(list, _req.user);
     ok(res, presented.map((item, index) => ({
       rank: index + 1,
@@ -156,7 +157,7 @@ homeRouter.get("/latest-feed", async (req, res, next) => {
       ...forumContentVisibilityWhere(userId),
       board: { type: { in: contentBoardTypes }, ...visibleBoardSlugFilter() },
     };
-    const cached = await withCache("home", ["latest-feed-v5", stream, userId ? `viewer-${userId}` : "public", page, size], 60_000, async () => {
+    const cached = await withCache("home", ["latest-feed-v6", stream, userId ? `viewer-${userId}` : "public", page, size], 60_000, async () => {
       const [pins, list, total] = await Promise.all([
         listGlobalPinnedTopics(globalPinnedIds, contentBoardTypes, 20),
         prisma.topic.findMany({
@@ -168,6 +169,7 @@ homeRouter.get("/latest-feed", async (req, res, next) => {
             board: { select: { slug: true, name: true, color: true, type: true } },
             author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true } },
             tags: { include: { tag: true } },
+            replies: forumReplyPreviewInclude,
           },
         }).then(compactTopicAuthors),
         prisma.topic.count({ where }),
@@ -214,6 +216,7 @@ async function listHotTopics(size: number, boardTypes: string[]) {
     board: { select: { slug: true, name: true, color: true, type: true } },
     author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true } },
     tags: { include: { tag: true } },
+    replies: forumReplyPreviewInclude,
   } as const;
   const [recent, older] = await Promise.all([
     prisma.topic.findMany({

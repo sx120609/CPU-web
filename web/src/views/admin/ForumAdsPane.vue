@@ -151,7 +151,7 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { adminApi, type ForumAdAdmin } from "@/api/admin";
 
 const placementOptions = [
-  { value: "home-mobile-top" as const, label: "移动端首页 · 快捷入口下方" },
+  { value: "home-mobile-top" as const, label: "移动端首页 · 帖子流置顶" },
   { value: "compose-mobile-campaign" as const, label: "移动端发布 · 限时活动入口" },
   { value: "forum-index-top" as const, label: "论坛首页 · 顶部（桌面 / 移动）" },
   { value: "forum-home-pinned" as const, label: "首页 · 全局置顶下方" },

@@ -12,6 +12,25 @@ type Viewer = {
   lostFoundRole?: string | null;
 } | null | undefined;
 
+export const forumReplyPreviewInclude = {
+  where: { hidden: false },
+  orderBy: { createdAt: "desc" },
+  take: 2,
+  select: {
+    id: true,
+    topicId: true,
+    authorId: true,
+    content: true,
+    isAnonymous: true,
+    anonymousAlias: true,
+    parentReplyId: true,
+    floor: true,
+    likeCount: true,
+    createdAt: true,
+    author: { select: { id: true, nickname: true, role: true } },
+  },
+} as const;
+
 function safeJson(s: string | null | undefined) {
   if (!s) return {};
   try { return JSON.parse(s); } catch { return {}; }
@@ -42,7 +61,7 @@ function normalizeTags(tags: any) {
 
 export function decodeTopicForViewer(topic: any, viewer?: Viewer) {
   const privacySafeTopic = sanitizeLostFoundTopicFields(topic, viewer);
-  const { submissionId: _submissionId, ...publicTopic } = privacySafeTopic;
+  const { submissionId: _submissionId, replies: rawPreviewReplies, ...publicTopic } = privacySafeTopic;
   const rawMetadata = safeJson(privacySafeTopic.metadata);
   const baseMetadata = rawMetadata && typeof rawMetadata === "object" ? rawMetadata : {};
   const metadata = privacySafeTopic.board?.type === "question"
@@ -60,6 +79,9 @@ export function decodeTopicForViewer(topic: any, viewer?: Viewer) {
     anonymousAlias: anonymous ? presentAnonymousAlias(privacySafeTopic.anonymousAlias) : null,
     author: anonymous ? buildAnonymousAuthor(privacySafeTopic.anonymousAlias) : buildUserPreview(privacySafeTopic.author, viewer),
     realAuthor: anonymous && reveal ? buildUserPreview(privacySafeTopic.author, viewer) : undefined,
+    ...(Array.isArray(rawPreviewReplies)
+      ? { previewReplies: rawPreviewReplies.map((reply) => decodeReplyForViewer(reply, viewer)) }
+      : {}),
   };
 }
 

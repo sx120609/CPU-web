@@ -23,7 +23,7 @@
         <AppIcon v-else name="promotion" class="ad-placeholder-icon" />
       </div>
       <div class="ad-copy">
-        <div class="ad-kicker"><AppIcon name="promotion" />推广</div>
+        <div class="ad-kicker"><span v-if="pinned" class="ad-pinned">置顶</span><AppIcon name="promotion" />推广</div>
         <h3>{{ ad.title }}</h3>
         <p v-if="ad.description">{{ ad.description }}</p>
       </div>
@@ -38,7 +38,7 @@ import { forumAdsApi, type ForumAd } from "@/api/forumAds";
 import AppIcon from "@/components/common/AppIcon.vue";
 import { cdnImageSrcset, cdnImageUrl } from "@/utils/cdnMedia";
 
-const props = withDefaults(defineProps<{ ad: ForumAd; compact?: boolean }>(), { compact: false });
+const props = withDefaults(defineProps<{ ad: ForumAd; compact?: boolean; pinned?: boolean }>(), { compact: false, pinned: false });
 const isExternal = computed(() => /^https?:\/\//i.test(props.ad.linkUrl));
 const adImage = computed(() => cdnImageUrl(props.ad.imageUrl, { width: 480, quality: 82 }));
 const adImageSrcset = computed(() => cdnImageSrcset(props.ad.imageUrl, [180, 320, 480, 720], 82));
@@ -147,6 +147,7 @@ function trackClick() {
   font-weight: 600;
 }
 .ad-kicker :deep(.el-icon) { font-size: 12px; }
+.ad-pinned { padding: 1px 5px; border-radius: 4px; background: color-mix(in srgb, var(--cpu-primary) 86%, #fff); color: #fff; font-size: 9px; font-weight: 800; line-height: 1.45; }
 .ad-copy h3 { margin: 0; overflow: hidden; color: var(--cpu-text); font-size: 15px; font-weight: 700; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
 .ad-copy p { margin: 4px 0 0; overflow: hidden; color: var(--cpu-text-secondary); font-size: 12px; line-height: 1.45; text-overflow: ellipsis; white-space: nowrap; }
 .ad-action {

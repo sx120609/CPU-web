@@ -10,30 +10,14 @@
       </nav>
     </section>
 
-    <ForumAdCard v-if="mobileHomeAd" :ad="mobileHomeAd" compact />
-
-    <section class="hot-strip announcement-strip" aria-label="校园公告" v-loading="loading && !summary">
-      <header><b><el-icon><Notification /></el-icon>校园公告</b><router-link to="/announcements">查看全部 →</router-link></header>
-      <button v-for="(topic, index) in announcements" :key="topic.id" type="button" @click="openTopic(topic.id)">
-        <span :class="{ top: index === 0 }">{{ index + 1 }}</span>
-        <b>{{ topic.title }}</b>
-        <small>{{ topic.board?.name || "公告" }} · {{ fmtRelative(topic.createdAt) }}</small>
-      </button>
-      <p v-if="!loading && !announcements.length" class="strip-empty">暂无校园公告</p>
-    </section>
-
-    <section v-if="showForumContent && hotPreview.length" class="hot-strip" aria-label="今日热议">
-      <header><b>今日热议</b><router-link to="/forum?channel=hot">查看全部 →</router-link></header>
+    <section v-if="showForumContent && hotPreview.length" class="hot-strip" aria-label="热榜">
+      <header><b>热榜</b><router-link to="/forum?channel=hot">查看全部 →</router-link></header>
       <button v-for="(topic, index) in hotPreview" :key="topic.id" type="button" @click="openTopic(topic.id)">
         <span :class="{ top: index < 3 }">{{ index + 1 }}</span>
         <b>{{ topic.title }}</b>
         <small>{{ topic.board?.name }}</small>
       </button>
     </section>
-
-    <PinnedTopicStrip v-if="showForumContent" :topics="pinnedTopics" />
-    <ForumAdCard v-if="pinnedAd" :ad="pinnedAd" compact />
-    <ForumAdCard v-if="hotAd" :ad="hotAd" compact />
 
     <section v-if="homeError && !summary" class="home-state">
       <el-empty :description="homeError"><el-button type="primary" @click="loadSummary()">重试</el-button></el-empty>
@@ -56,6 +40,7 @@
         <el-empty :description="activeFeed.error"><el-button type="primary" @click="loadFeedPages(activeFeedStream)">重试</el-button></el-empty>
       </div>
       <div v-else class="home-feed-list" v-loading="activeFeed.loading && !latestTopics.length">
+        <ForumAdCard v-if="mobileHomeAd" :ad="mobileHomeAd" compact pinned />
         <ForumFeedCard v-for="topic in latestTopics" :key="topic.id" :topic="topic" time-mode="published" />
         <el-empty v-if="!activeFeed.loading && !latestTopics.length" :description="activeFeedEmptyText" />
       </div>
@@ -79,11 +64,9 @@ import { homeApi, type HomeFeedStream, type HomeSummary } from "@/api/home";
 import { forumAdsApi, type ForumAd } from "@/api/forumAds";
 import ForumAdCard from "@/components/forum/ForumAdCard.vue";
 import ForumFeedCard from "@/components/forum/ForumFeedCard.vue";
-import PinnedTopicStrip from "@/components/forum/PinnedTopicStrip.vue";
 import SiteSearchBar from "@/components/search/SiteSearchBar.vue";
 import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
-import { fmtRelative } from "@/utils/format";
 import { forumCacheScope, readForumLatestFeed, writeForumLatestFeed } from "@/utils/forumCache";
 import { clearForumListRestoreState, readForumListRestoreState, writeForumListRestoreState } from "@/utils/forumListRestore";
 import { readHomeSummaryCache, writeHomeSummaryCache } from "@/utils/homeCache";
@@ -121,8 +104,6 @@ const summary = ref<HomeSummary | null>(null);
 const loading = ref(false);
 const homeError = ref("");
 const mobileHomeAd = ref<ForumAd | null>(null);
-const pinnedAd = ref<ForumAd | null>(null);
-const hotAd = ref<ForumAd | null>(null);
 const activeFeedStream = ref<MobileHomeFeedStream>("forum");
 const feedStates = reactive<Record<MobileHomeFeedStream, HomeFeedState>>({
   forum: createFeedState(),
@@ -133,10 +114,8 @@ const loadMoreSentinelRef = ref<HTMLElement | null>(null);
 const showForumContent = computed(() => site.features.forum && auth.canAccessForum);
 const marketFeedEnabled = computed(() => site.features.market && auth.canAccessForum);
 const hotPreview = computed(() => (summary.value?.hotTopics || []).slice(0, 3) as Topic[]);
-const pinnedTopics = computed(() => (summary.value?.pinnedTopics || []) as Topic[]);
 const activeFeed = computed(() => feedStates[activeFeedStream.value]);
 const latestTopics = computed(() => activeFeed.value.list);
-const announcements = computed(() => (summary.value?.announce || []).slice(0, 3) as Topic[]);
 const canLoadMore = computed(() => showForumContent.value && latestTopics.value.length < activeFeed.value.total);
 const activeFeedDescription = computed(() => activeFeedStream.value === "market" ? "闲置转让、求购与二手交流" : "最近发布的讨论与校园内容");
 const activeFeedEmptyText = computed(() => activeFeedStream.value === "market" ? "暂时还没有二手信息" : "校园里暂时还没有新动态");
@@ -238,20 +217,12 @@ async function loadHomeScope() {
 async function loadAds() {
   const sequence = ++adSequence;
   try {
-    const [mobileHome, pinned, hot] = await Promise.all([
-      forumAdsApi.list("home-mobile-top").catch(() => []),
-      forumAdsApi.list("forum-home-pinned").catch(() => []),
-      forumAdsApi.list("forum-home-hot").catch(() => []),
-    ]);
+    const mobileHome = await forumAdsApi.list("home-mobile-top").catch(() => []);
     if (sequence !== adSequence) return;
     mobileHomeAd.value = mobileHome[0] || null;
-    pinnedAd.value = pinned[0] || null;
-    hotAd.value = hot[0] || null;
   } catch {
     if (sequence !== adSequence) return;
     mobileHomeAd.value = null;
-    pinnedAd.value = null;
-    hotAd.value = null;
   }
 }
 
@@ -414,9 +385,6 @@ function requestMessage(requestError: unknown) {
 .hot-strip header, .section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .hot-strip header { margin-bottom: 4px; }
 .hot-strip header b { display: inline-flex; align-items: center; gap: 5px; color: var(--cpu-text); font-size: 13px; }
-.announcement-strip { border-color: color-mix(in srgb, var(--cpu-primary) 20%, var(--cpu-border-soft)); box-shadow: var(--cpu-shadow-sm); }
-.announcement-strip header .el-icon { color: var(--cpu-primary); font-size: 15px; }
-.strip-empty { margin: 8px 0 2px; color: var(--cpu-text-muted); font-size: 11px; text-align: center; }
 .hot-strip a, .section-head a { color: var(--cpu-primary); font-size: 11px; text-decoration: none; }
 .hot-strip button { display: grid; width: 100%; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; gap: 7px; padding: 6px 1px; border: 0; border-top: 1px dashed var(--cpu-border-soft); background: transparent; color: inherit; text-align: left; cursor: pointer; }
 .hot-strip button > span { color: var(--cpu-text-muted); font-size: 10px; font-weight: 800; text-align: center; }

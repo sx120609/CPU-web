@@ -30,6 +30,7 @@ export interface Topic {
   createdAt: string;
   updatedAt: string;
   author?: ForumAuthor;
+  previewReplies?: Reply[];
   realAuthor?: ForumAuthor & { reputation?: number; reputationLevel?: { level: number; name: string; minReputation: number } };
   board?: { id?: number; slug: string; name: string; color?: string; icon?: string; type?: string; readOnly?: boolean; anonymousEnabled?: boolean };
   imageReview?: {

@@ -59,6 +59,13 @@
       </div>
     </div>
 
+    <div v-if="replyPreviews.length" class="reply-previews" aria-label="评论预览">
+      <p v-for="reply in replyPreviews" :key="reply.id">
+        <strong>{{ reply.authorName }}：</strong><span>{{ reply.excerpt }}</span>
+      </p>
+      <span v-if="remainingReplyCount" class="reply-more">查看剩余 {{ remainingReplyCount }} 条评论 <b aria-hidden="true">›</b></span>
+    </div>
+
     <footer class="feed-card-foot">
       <span v-if="reviewLabel" class="review-state">{{ reviewLabel }}</span>
       <span v-else class="feed-hint">{{ topic.board?.type === "market" ? "校内交流" : "校园分享" }}</span>
@@ -138,6 +145,15 @@ const marketFacts = computed(() => {
   ].filter(Boolean);
   return facts.slice(0, 2);
 });
+const replyPreviews = computed(() => (props.topic.previewReplies || [])
+  .map((reply) => ({
+    id: reply.id,
+    authorName: reply.author?.nickname || reply.anonymousAlias || "匿名同学",
+    excerpt: forumContentExcerpt(reply.content, 96),
+  }))
+  .filter((reply) => reply.excerpt)
+  .slice(0, 2));
+const remainingReplyCount = computed(() => Math.max(0, Number(props.topic.replyCount || 0) - replyPreviews.value.length));
 const reviewLabel = computed(() => {
   if (!props.topic.hidden) return "";
   const status = String(props.topic.aiReviewStatus || "");
@@ -226,13 +242,19 @@ function openTopic() {
 .media-count { position: absolute; right: 7px; bottom: 7px; padding: 3px 7px; border-radius: 999px; background: rgba(15, 23, 42, .7); color: #fff; font-size: 10px; }
 .market-facts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
 .market-facts span { padding: 3px 7px; border-radius: 999px; background: var(--cpu-surface-subtle); color: var(--cpu-text-secondary); font-size: 10px; }
+.reply-previews { display: grid; gap: 4px; margin: 10px 0 0 48px; padding: 8px 10px; border-radius: 8px; background: var(--cpu-surface-soft); }
+.reply-previews p { display: flex; min-width: 0; gap: 2px; margin: 0; color: var(--cpu-text-secondary); font-size: 11px; line-height: 1.45; }
+.reply-previews strong { flex: 0 0 auto; max-width: 34%; overflow: hidden; color: var(--cpu-text); font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.reply-previews span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reply-previews .reply-more { justify-self: start; margin-top: 1px; color: var(--cpu-primary); font-size: 11px; font-weight: 650; }
+.reply-more b { font-size: 15px; line-height: 10px; vertical-align: -1px; }
 .feed-card-foot { justify-content: flex-end; gap: 16px; margin: 11px 0 0 48px; color: var(--cpu-text-muted); font-size: 12px; }
 .feed-hint, .review-state { margin-right: auto; }
 .review-state { color: #b45309; font-weight: 600; }
 .feed-stat { gap: 4px; }
 @media (max-width: 768px) {
   .feed-card { padding: 13px 12px 10px; border-radius: 11px; box-shadow: none; }
-  .feed-card-body, .feed-card-foot { margin-left: 0; }
+  .feed-card-body, .reply-previews, .feed-card-foot { margin-left: 0; }
   .feed-card-body { margin-top: 10px; }
   .feed-card-foot { margin-top: 10px; }
   .feed-media-cell { display: block; min-width: 0; aspect-ratio: 1; overflow: hidden; border-radius: 8px; background: var(--cpu-surface-subtle); }

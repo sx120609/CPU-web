@@ -43,7 +43,7 @@ import { ensureCanReadBoardType, ensureForumAccessEnabled, resolveForumAccess } 
 import { ensureUserCanSpeak, releaseExpiredMutes } from "../services/userModeration";
 import { consumeAnonymousCredit, createAnonymousAlias } from "../services/userTrust";
 import { allowsCampusLifeCampaignAnonymousPost } from "../services/forumAds";
-import { decodeReplyForViewer, decodeReplyForViewerWithImages, decodeTopicForViewer, decodeTopicForViewerWithImages, decodeTopicsForViewerForList } from "../services/forumPresentation";
+import { decodeReplyForViewer, decodeReplyForViewerWithImages, decodeTopicForViewer, decodeTopicForViewerWithImages, decodeTopicsForViewerForList, forumReplyPreviewInclude } from "../services/forumPresentation";
 import { ensureForumImageAssetsForContent, summarizeForumImageModerationForContent } from "../services/imageModeration";
 import { ensureForumVideoAssetsForContent, summarizeForumVideoModerationForContent } from "../services/videoModeration";
 import { invalidateCourseCaches, invalidateForumCaches } from "../services/cacheInvalidation";
@@ -247,7 +247,7 @@ topicRouter.get("/", async (req, res, next) => {
     const cached = await withCache(
       "forum-list",
       [
-        "topic-list-v5",
+        "topic-list-v6",
         requesterId ? `viewer-${requesterId}` : "public",
         boardSlug || "all",
         page,
@@ -271,6 +271,7 @@ topicRouter.get("/", async (req, res, next) => {
               author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true } },
               board: { select: { id: true, slug: true, name: true, color: true, type: true } },
               tags: { include: { tag: true } },
+              replies: forumReplyPreviewInclude,
             },
           }),
           prisma.topic.count({ where }),
