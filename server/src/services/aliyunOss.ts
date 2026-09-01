@@ -17,6 +17,15 @@ export type AliyunOssUploadSession = {
   strategy: "single-put";
 };
 
+export type AliyunOssBucketStats = {
+  bucket: string;
+  storageBytes: number;
+  objectCount: number;
+  standardStorageBytes: number;
+  standardObjectCount: number;
+  measuredAt: string;
+};
+
 type ResolvedAliyunOssConfig = {
   accessKeyId: string;
   accessKeySecret: string;
@@ -49,6 +58,23 @@ export async function validateAliyunOssConfiguration() {
     publicBaseUrl: config.publicBaseUrl,
     statusCode: result.res.status || 200,
     endpoint: defaultAliyunOssOrigin(config),
+  };
+}
+
+export async function getAliyunOssBucketStats(): Promise<AliyunOssBucketStats> {
+  await loadStorageConfig();
+  const { client, config } = await requireAliyunOssClient();
+  const result = await (client as OSS & {
+    getBucketStat(name: string, options: Record<string, never>): Promise<{ stat: Record<string, string | undefined> }>;
+  }).getBucketStat(config.bucket, {});
+  const measuredAtSeconds = finiteNumber(result.stat.LastModifiedTime);
+  return {
+    bucket: config.bucket,
+    storageBytes: finiteNumber(result.stat.Storage) ?? 0,
+    objectCount: finiteNumber(result.stat.ObjectCount) ?? 0,
+    standardStorageBytes: finiteNumber(result.stat.StandardStorage) ?? 0,
+    standardObjectCount: finiteNumber(result.stat.StandardObjectCount) ?? 0,
+    measuredAt: measuredAtSeconds === null ? "" : new Date(measuredAtSeconds * 1000).toISOString(),
   };
 }
 

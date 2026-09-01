@@ -45,6 +45,7 @@
   },
   "dependencies": {
     "@alicloud/bssopenapi20171214": "^4.1.1",
+    "@alicloud/cms20190101": "^4.0.10",
     "@alicloud/esa20240910": "^3.14.0",
     "@discordapp/twemoji": "16.0.1",
     "@prisma/client": "^5.22.0",

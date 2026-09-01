@@ -6,7 +6,9 @@ import EsaClient, {
   ListUserRatePlanInstancesRequest,
 } from "@alicloud/esa20240910";
 import BssClient, { QueryResourcePackageInstancesRequest } from "@alicloud/bssopenapi20171214";
+import CmsClient, { DescribeMetricListRequest } from "@alicloud/cms20190101";
 import { getMediaStorageRuntimeConfig, loadStorageConfig } from "./storageConfig";
+import { getAliyunOssBucketStats } from "./aliyunOss";
 
 export type CloudUsageRange = "today" | "7d" | "30d";
 
@@ -38,7 +40,24 @@ export type CloudRatePlan = {
   expiresAt: string;
   sites: string[];
   includedTrafficGb: number | null;
+  usedTrafficGb: number | null;
+  remainingTrafficGb: number | null;
+  trafficUsageStartAt: string;
+  trafficUsageEndAt: string;
   includedRequests: number | null;
+};
+
+export type CloudStorageUsage = {
+  bucket: string;
+  storageBytes: number;
+  objectCount: number;
+  standardStorageBytes: number;
+  standardObjectCount: number;
+  monthlyGetRequests: number | null;
+  monthlyPutRequests: number | null;
+  monthlyInternetEgressBytes: number | null;
+  meteringMeasuredAt: string;
+  measuredAt: string;
 };
 
 export type CloudProviderUsage = {
@@ -55,6 +74,7 @@ export type CloudProviderUsage = {
   points: CloudUsagePoint[];
   packages: CloudResourcePackage[];
   plans: CloudRatePlan[];
+  storage: CloudStorageUsage | null;
   warnings: string[];
 };
 
@@ -101,6 +121,54 @@ export function resolveCloudUsageWindow(range: CloudUsageRange, now = new Date()
     end,
     tencentInterval: range === "7d" ? "hour" : "day",
     aliyunInterval: range === "7d" ? "3600" : "86400",
+  };
+}
+
+export function resolveAliyunBillingMonthWindow(now = new Date()) {
+  const end = new Date(now);
+  const local = new Date(end.getTime() + 8 * 60 * 60 * 1000);
+  local.setUTCDate(1);
+  local.setUTCHours(0, 0, 0, 0);
+  return {
+    start: new Date(local.getTime() - 8 * 60 * 60 * 1000),
+    end,
+  };
+}
+
+export function calculateAliyunPlanTraffic(includedTrafficGb: unknown, usedTrafficBytes: unknown) {
+  const included = nullableNumber(includedTrafficGb);
+  const usedBytes = nullableNumber(usedTrafficBytes);
+  const used = usedBytes === null ? null : Math.max(0, usedBytes) / 1_000_000_000;
+  return {
+    includedTrafficGb: included,
+    usedTrafficGb: used,
+    remainingTrafficGb: included === null || used === null ? null : Math.max(0, included - used),
+  };
+}
+
+export function summarizeAliyunCmsDatapoints(raw: unknown) {
+  let datapoints: unknown[] = [];
+  try {
+    const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+    if (Array.isArray(parsed)) datapoints = parsed;
+  } catch {
+    return { total: 0, measuredAt: "" };
+  }
+  let total = 0;
+  let latestTimestamp = 0;
+  for (const datapoint of datapoints) {
+    if (!datapoint || typeof datapoint !== "object") continue;
+    const row = datapoint as Record<string, unknown>;
+    const value = [row.Value, row.value, row.Sum, row.sum, row.Average, row.average]
+      .map(nullableNumber)
+      .find((candidate) => candidate !== null);
+    if (value !== undefined) total += value;
+    const timestamp = finiteNumber(row.timestamp ?? row.Timestamp);
+    if (timestamp > latestTimestamp) latestTimestamp = timestamp;
+  }
+  return {
+    total,
+    measuredAt: latestTimestamp > 0 ? new Date(latestTimestamp).toISOString() : "",
   };
 }
 
@@ -311,10 +379,22 @@ async function collectAliyunUsage(runtime: Awaited<ReturnType<typeof getMediaSto
   } as any;
   const esaClient = new EsaClient(clientConfig);
   const bssClient = new BssClient({ ...clientConfig, endpoint: "business.aliyuncs.com" } as any);
-  const [sites, plans, packages] = await Promise.allSettled([
+  const ossBucket = runtime.aliyunOssBucket.trim() || runtime.legacyAliyunOssBucket.trim();
+  const ossRegion = (runtime.aliyunOssRegion.trim() || runtime.legacyAliyunOssRegion.trim() || "oss-cn-hangzhou").replace(/^oss-/u, "");
+  const cmsClient = new CmsClient({
+    ...clientConfig,
+    regionId: ossRegion,
+    endpoint: `metrics.${ossRegion}.aliyuncs.com`,
+  } as any);
+  const billingWindow = resolveAliyunBillingMonthWindow(window.end);
+  const [sites, plans, packages, storage, ossGetRequests, ossPutRequests, ossInternetEgress] = await Promise.allSettled([
     esaClient.listSites(new ListSitesRequest({ pageNumber: 1, pageSize: 500 })),
     esaClient.listUserRatePlanInstances(new ListUserRatePlanInstancesRequest({ pageNumber: 1, pageSize: 500, sortBy: "ExpireTime", sortOrder: "asc" })),
     bssClient.queryResourcePackageInstances(new QueryResourcePackageInstancesRequest({ pageNum: 1, pageSize: 300, includePartner: true })),
+    getAliyunOssBucketStats(),
+    queryAliyunOssMonthlyMetric(cmsClient, ossBucket, ossRegion, "MeteringGetRequest", billingWindow),
+    queryAliyunOssMonthlyMetric(cmsClient, ossBucket, ossRegion, "MeteringPutRequest", billingWindow),
+    queryAliyunOssMonthlyMetric(cmsClient, ossBucket, ossRegion, "MeteringInternetTX", billingWindow),
   ]);
 
   const siteList = sites.status === "fulfilled" ? sites.value.body?.sites || [] : [];
@@ -348,19 +428,70 @@ async function collectAliyunUsage(runtime: Awaited<ReturnType<typeof getMediaSto
   } else result.warnings.push(providerError("阿里 ESA 流量分析", metrics[0].reason));
 
   if (plans.status === "fulfilled") {
-    result.plans = (plans.value.body?.instanceInfo || []).map((plan) => ({
-      id: String(plan.instanceId || ""),
-      name: String(plan.planName || plan.subscribeType || "ESA 套餐"),
-      status: String(plan.status || "unknown"),
-      billingMode: String(plan.billingMode || ""),
-      coverage: String(plan.coverages || ""),
-      expiresAt: normalizeTimestamp(plan.expireTime),
-      sites: (plan.sites || []).map((site) => String(site.siteName || "")).filter(Boolean),
-      includedTrafficGb: nullableNumber(plan.planTraffic),
-      includedRequests: nullableNumber(plan.staticRequest) === null ? null : finiteNumber(plan.staticRequest) * 10_000,
+    const planInfos = plans.value.body?.instanceInfo || [];
+    const siteIds = [...new Set(planInfos.flatMap((plan) => (plan.sites || []).map((site) => finiteNumber(site.siteId)).filter((siteId) => siteId > 0)))];
+    const monthlyUsage = await Promise.allSettled(siteIds.map(async (siteId) => {
+      const response = await esaClient.describeSiteTimeSeriesData(new DescribeSiteTimeSeriesDataRequest({
+        siteId,
+        startTime: billingWindow.start.toISOString(),
+        endTime: billingWindow.end.toISOString(),
+        interval: "86400",
+        fields: ["Traffic", "RequestTraffic"].map((fieldName) => new DescribeSiteTimeSeriesDataRequestFields({ fieldName, dimension: ["ALL"] })),
+      }));
+      const summarized = response.body?.summarizedData;
+      return {
+        siteId,
+        trafficBytes: aliyunMetricSummary(summarized, "Traffic") + aliyunMetricSummary(summarized, "RequestTraffic"),
+      };
     }));
+    const monthlyUsageBySite = new Map<number, number>();
+    for (const usage of monthlyUsage) {
+      if (usage.status === "fulfilled") monthlyUsageBySite.set(usage.value.siteId, usage.value.trafficBytes);
+    }
+    const rejectedUsage = monthlyUsage.find((usage) => usage.status === "rejected");
+    if (rejectedUsage?.status === "rejected") result.warnings.push(providerError("阿里 ESA 本月套餐流量", rejectedUsage.reason));
+    result.plans = planInfos.map((plan) => {
+      const planSiteIds = (plan.sites || []).map((site) => finiteNumber(site.siteId)).filter((siteId) => siteId > 0);
+      const hasUsage = planSiteIds.length > 0 && planSiteIds.every((siteId) => monthlyUsageBySite.has(siteId));
+      const usedTrafficBytes = hasUsage
+        ? planSiteIds.reduce((total, siteId) => total + (monthlyUsageBySite.get(siteId) || 0), 0)
+        : null;
+      const traffic = calculateAliyunPlanTraffic(plan.planTraffic, usedTrafficBytes);
+      return {
+        id: String(plan.instanceId || ""),
+        name: String(plan.planName || plan.subscribeType || "ESA 套餐"),
+        status: String(plan.status || "unknown"),
+        billingMode: String(plan.billingMode || ""),
+        coverage: String(plan.coverages || ""),
+        expiresAt: normalizeTimestamp(plan.expireTime),
+        sites: (plan.sites || []).map((site) => String(site.siteName || "")).filter(Boolean),
+        ...traffic,
+        trafficUsageStartAt: billingWindow.start.toISOString(),
+        trafficUsageEndAt: billingWindow.end.toISOString(),
+        includedRequests: nullableNumber(plan.staticRequest) === null ? null : finiteNumber(plan.staticRequest) * 10_000,
+      };
+    });
     result.available = true;
   } else result.warnings.push(providerError("阿里 ESA 套餐", plans.reason));
+
+  if (storage.status === "fulfilled") {
+    const meteringResults = [ossGetRequests, ossPutRequests, ossInternetEgress]
+      .filter((metric): metric is PromiseFulfilledResult<{ total: number; measuredAt: string }> => metric.status === "fulfilled")
+      .map((metric) => metric.value.measuredAt)
+      .filter(Boolean)
+      .sort();
+    result.storage = {
+      ...storage.value,
+      monthlyGetRequests: ossGetRequests.status === "fulfilled" ? ossGetRequests.value.total : null,
+      monthlyPutRequests: ossPutRequests.status === "fulfilled" ? ossPutRequests.value.total : null,
+      monthlyInternetEgressBytes: ossInternetEgress.status === "fulfilled" ? ossInternetEgress.value.total : null,
+      meteringMeasuredAt: meteringResults.at(-1) || "",
+    };
+    result.available = true;
+  } else result.warnings.push(providerError("阿里 OSS 存储用量", storage.reason));
+  if (ossGetRequests.status === "rejected") result.warnings.push(providerError("阿里 OSS 本月读请求", ossGetRequests.reason));
+  if (ossPutRequests.status === "rejected") result.warnings.push(providerError("阿里 OSS 本月写请求", ossPutRequests.reason));
+  if (ossInternetEgress.status === "rejected") result.warnings.push(providerError("阿里 OSS 本月公网流出", ossInternetEgress.reason));
 
   if (packages.status === "fulfilled") {
     const list = packages.value.body?.data?.instances?.instance || [];
@@ -391,6 +522,28 @@ async function collectAliyunUsage(runtime: Awaited<ReturnType<typeof getMediaSto
   return result;
 }
 
+async function queryAliyunOssMonthlyMetric(
+  client: CmsClient,
+  bucket: string,
+  regionId: string,
+  metricName: "MeteringGetRequest" | "MeteringPutRequest" | "MeteringInternetTX",
+  window: Pick<UsageWindow, "start" | "end">,
+) {
+  if (!bucket) throw new Error("OSS 存储桶尚未配置");
+  const response = await client.describeMetricList(new DescribeMetricListRequest({
+    namespace: "acs_oss_dashboard",
+    metricName,
+    period: "3600",
+    startTime: String(window.start.getTime()),
+    endTime: String(window.end.getTime()),
+    dimensions: JSON.stringify([{ BucketName: bucket }]),
+    length: "1000",
+    regionId,
+  }));
+  if (response.body?.success === false) throw new Error(response.body.message || "云监控查询失败");
+  return summarizeAliyunCmsDatapoints(response.body?.datapoints);
+}
+
 function emptyProvider(provider: CloudProviderUsage["provider"], configured: boolean, target: string): CloudProviderUsage {
   return {
     provider,
@@ -406,6 +559,7 @@ function emptyProvider(provider: CloudProviderUsage["provider"], configured: boo
     points: [],
     packages: [],
     plans: [],
+    storage: null,
     warnings: [],
   };
 }

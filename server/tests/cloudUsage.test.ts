@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  calculateAliyunPlanTraffic,
   mergeUsageSeries,
   normalizeCloudResourcePackage,
+  resolveAliyunBillingMonthWindow,
   resolveCloudUsageWindow,
+  summarizeAliyunCmsDatapoints,
 } from "../src/services/cloudUsage";
 
 test("today usage window starts at China Standard Time midnight", () => {
@@ -22,6 +25,37 @@ test("seven and thirty day windows choose bounded aggregation intervals", () => 
   assert.equal(sevenDays.tencentInterval, "hour");
   assert.equal(thirtyDays.start.toISOString(), "2026-08-03T03:30:00.000Z");
   assert.equal(thirtyDays.aliyunInterval, "86400");
+});
+
+test("Aliyun billing month starts at China Standard Time month boundary", () => {
+  const window = resolveAliyunBillingMonthWindow(new Date("2026-09-02T03:30:00.000Z"));
+  assert.equal(window.start.toISOString(), "2026-08-31T16:00:00.000Z");
+  assert.equal(window.end.toISOString(), "2026-09-02T03:30:00.000Z");
+});
+
+test("Aliyun plan usage converts billable bytes with decimal GB units", () => {
+  assert.deepEqual(calculateAliyunPlanTraffic("50", 596_700_000), {
+    includedTrafficGb: 50,
+    usedTrafficGb: 0.5967,
+    remainingTrafficGb: 49.4033,
+  });
+  assert.deepEqual(calculateAliyunPlanTraffic(null, null), {
+    includedTrafficGb: null,
+    usedTrafficGb: null,
+    remainingTrafficGb: null,
+  });
+});
+
+test("Aliyun OSS hourly metering datapoints are added for the billing month", () => {
+  assert.deepEqual(summarizeAliyunCmsDatapoints(JSON.stringify([
+    { timestamp: 1_788_256_800_000, Value: 16, storageType: "standard" },
+    { timestamp: 1_788_260_400_000, Value: "62450", storageType: "standard" },
+    { timestamp: 1_788_264_000_000, Sum: 44, storageType: "standard" },
+  ])), {
+    total: 62_510,
+    measuredAt: "2026-09-01T12:00:00.000Z",
+  });
+  assert.deepEqual(summarizeAliyunCmsDatapoints("not-json"), { total: 0, measuredAt: "" });
 });
 
 test("traffic and request samples merge by normalized timestamp", () => {

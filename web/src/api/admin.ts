@@ -264,7 +264,24 @@ export type CloudRatePlan = {
   expiresAt: string;
   sites: string[];
   includedTrafficGb: number | null;
+  usedTrafficGb: number | null;
+  remainingTrafficGb: number | null;
+  trafficUsageStartAt: string;
+  trafficUsageEndAt: string;
   includedRequests: number | null;
+};
+
+export type CloudStorageUsage = {
+  bucket: string;
+  storageBytes: number;
+  objectCount: number;
+  standardStorageBytes: number;
+  standardObjectCount: number;
+  monthlyGetRequests: number | null;
+  monthlyPutRequests: number | null;
+  monthlyInternetEgressBytes: number | null;
+  meteringMeasuredAt: string;
+  measuredAt: string;
 };
 
 export type CloudProviderUsage = {
@@ -281,6 +298,7 @@ export type CloudProviderUsage = {
   points: CloudUsagePoint[];
   packages: CloudResourcePackage[];
   plans: CloudRatePlan[];
+  storage: CloudStorageUsage | null;
   warnings: string[];
 };
 

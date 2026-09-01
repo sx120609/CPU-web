@@ -52,6 +52,11 @@
               <span>{{ provider.provider === "aliyun" ? "ESA 响应流量" : "CDN 流量" }}</span>
               <strong>{{ formatBytes(provider.trafficBytes) }}</strong>
             </div>
+            <div v-if="provider.provider === 'aliyun'" class="metric">
+              <span>ESA 计费总流量</span>
+              <strong>{{ formatBytes(provider.trafficBytes + provider.requestTrafficBytes) }}</strong>
+              <small>请求流量 + 响应流量</small>
+            </div>
             <div class="metric">
               <span>请求数</span>
               <strong>{{ formatCount(provider.requests) }}</strong>
@@ -68,11 +73,32 @@
               <span>请求报文流量</span>
               <strong>{{ formatBytes(provider.requestTrafficBytes) }}</strong>
             </div>
+            <div v-if="provider.provider === 'aliyun' && provider.storage" class="metric">
+              <span>OSS 实际存储量</span>
+              <strong>{{ formatBytes(provider.storage.storageBytes) }}</strong>
+              <small>{{ formatCount(provider.storage.objectCount) }} 个对象 · {{ provider.storage.bucket }}</small>
+            </div>
+            <div v-if="provider.provider === 'aliyun' && provider.storage" class="metric">
+              <span>OSS 本月读请求</span>
+              <strong>{{ formatNullableCount(provider.storage.monthlyGetRequests) }}</strong>
+            </div>
+            <div v-if="provider.provider === 'aliyun' && provider.storage" class="metric">
+              <span>OSS 本月写请求</span>
+              <strong>{{ formatNullableCount(provider.storage.monthlyPutRequests) }}</strong>
+            </div>
+            <div v-if="provider.provider === 'aliyun' && provider.storage" class="metric">
+              <span>OSS 本月公网流出</span>
+              <strong>{{ formatNullableBytes(provider.storage.monthlyInternetEgressBytes) }}</strong>
+            </div>
             <div v-if="provider.provider === 'aliyun'" class="metric">
               <span>采样率</span>
               <strong>{{ formatPercent(provider.samplingRate) }}</strong>
             </div>
           </div>
+
+          <p v-if="provider.provider === 'aliyun' && provider.storage" class="storage-freshness">
+            OSS 容量统计：{{ formatDateTime(provider.storage.measuredAt) }}；月度请求/流出统计：{{ formatDateTime(provider.storage.meteringMeasuredAt) }}。云厂商统计可能延迟一小时以上。
+          </p>
 
           <el-alert
             v-for="warning in provider.warnings"
@@ -99,7 +125,7 @@
 
       <section v-if="summary" class="package-section">
         <div class="section-head">
-          <div><h3>资源包余额</h3><p>仅展示云厂商 API 返回的精确余额；没有余额字段的 ESA 套餐单独列在下方。</p></div>
+          <div><h3>资源包余额</h3><p>费用中心返回资源包余额；OSS 实际存储量已在上方单独显示，避免把延迟结算的资源包扣减量当成实时存储量。</p></div>
           <el-tag effect="plain">{{ packageRows.length }} 个资源包</el-tag>
         </div>
         <el-table v-if="packageRows.length" :data="packageRows" stripe class="package-table">
@@ -125,10 +151,17 @@
             <div class="plan-title"><strong>{{ plan.name }}</strong><el-tag size="small" effect="plain">{{ statusLabel(plan.status) }}</el-tag></div>
             <dl>
               <div><dt>包含流量</dt><dd>{{ plan.includedTrafficGb === null ? "—" : `${formatNumber(plan.includedTrafficGb)} GB` }}</dd></div>
+              <div><dt>本月已用流量</dt><dd>{{ formatPlanTraffic(plan.usedTrafficGb) }}</dd></div>
+              <div><dt>本月剩余流量</dt><dd>{{ formatPlanTraffic(plan.remainingTrafficGb) }}</dd></div>
               <div><dt>静态请求</dt><dd>{{ plan.includedRequests === null ? "—" : formatCount(plan.includedRequests) }}</dd></div>
               <div><dt>计费模式</dt><dd>{{ plan.billingMode || "—" }}</dd></div>
               <div><dt>有效期至</dt><dd>{{ formatDate(plan.expiresAt) }}</dd></div>
             </dl>
+            <div v-if="planTrafficPercent(plan) !== null" class="plan-traffic-progress">
+              <div><span>自然月套餐消耗</span><strong>{{ formatNumber(planTrafficPercent(plan)!, 2) }}%</strong></div>
+              <el-progress :percentage="planTrafficPercent(plan)!" :stroke-width="8" :show-text="false" />
+              <p>{{ formatDate(plan.trafficUsageStartAt) }} 起，按 ESA 请求流量与响应流量之和计算。</p>
+            </div>
             <p v-if="plan.sites.length" class="plan-sites">站点：{{ plan.sites.join("、") }}</p>
           </article>
         </div>
@@ -239,6 +272,14 @@ function formatCount(value: number | null | undefined) {
   return Number.isFinite(amount) ? new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 0 }).format(amount) : "—";
 }
 
+function formatNullableCount(value: number | null | undefined) {
+  return value === null || value === undefined ? "—" : formatCount(value);
+}
+
+function formatNullableBytes(value: number | null | undefined) {
+  return value === null || value === undefined ? "—" : formatBytes(value);
+}
+
 function compactCount(value: number) {
   return new Intl.NumberFormat("zh-CN", { notation: "compact", maximumFractionDigits: 1 }).format(value);
 }
@@ -256,6 +297,16 @@ function formatPackageAmount(value: number | null, unit: string) {
   if (value === null) return "—";
   if (unit.trim().toUpperCase() === "B") return formatBytes(value);
   return `${formatNumber(value)}${unit ? ` ${unit}` : ""}`;
+}
+
+function formatPlanTraffic(value: number | null) {
+  if (value === null) return "—";
+  return `${formatNumber(value, value > 0 && value < 0.01 ? 4 : 2)} GB`;
+}
+
+function planTrafficPercent(plan: CloudRatePlan) {
+  if (plan.includedTrafficGb === null || plan.usedTrafficGb === null || plan.includedTrafficGb <= 0) return null;
+  return Math.max(0, Math.min(100, Math.round((plan.usedTrafficGb / plan.includedTrafficGb) * 10_000) / 100));
 }
 
 function packagePercent(row: CloudResourcePackage) {
@@ -313,6 +364,8 @@ function requestMessage(cause: unknown) {
 .metric { padding: 12px; border-radius: 10px; background: linear-gradient(145deg, var(--cpu-surface-subtle), rgba(20,143,123,.055)); min-width: 0; }
 .metric span { display: block; color: var(--cpu-text-secondary); font-size: 12px; }
 .metric strong { display: block; margin-top: 5px; font-size: 20px; color: var(--cpu-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.metric small { display: block; margin-top: 4px; color: var(--cpu-text-secondary); font-size: 11px; overflow-wrap: anywhere; }
+.storage-freshness { margin: 11px 0 0; color: var(--cpu-text-secondary); font-size: 11px; line-height: 1.55; }
 .provider-warning { margin-top: 10px; }
 .provider-warning :deep(.el-alert__title) { overflow-wrap: anywhere; line-height: 1.55; }
 .chart-section, .package-section, .plan-section { padding: 17px; }
@@ -330,6 +383,10 @@ function requestMessage(cause: unknown) {
 .plan-card dl div { min-width: 0; }
 .plan-card dt { color: var(--cpu-text-secondary); font-size: 12px; }
 .plan-card dd { margin: 3px 0 0; font-weight: 600; overflow-wrap: anywhere; }
+.plan-traffic-progress { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--cpu-border-soft); }
+.plan-traffic-progress > div { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 7px; color: var(--cpu-text-secondary); font-size: 12px; }
+.plan-traffic-progress > div strong { color: var(--cpu-primary); }
+.plan-traffic-progress p { margin: 7px 0 0; color: var(--cpu-text-secondary); font-size: 11px; line-height: 1.5; }
 .plan-sites { margin: 12px 0 0; color: var(--cpu-text-secondary); font-size: 12px; overflow-wrap: anywhere; }
 
 @media (max-width: 860px) {
