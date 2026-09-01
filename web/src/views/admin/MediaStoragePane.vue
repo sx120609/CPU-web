@@ -5,7 +5,7 @@
         仅管理员可见
       </template>
       <div class="banner-copy">
-        这里统一管理腾讯云 COS、世纪互联 OneDrive / SharePoint 与本地媒体，并查看当前站点通过 <code>/uploads</code> 管理的文件清单。
+        这里统一管理阿里云 OSS、腾讯云 COS、世纪互联 OneDrive / SharePoint 与本地媒体，并查看当前站点通过 <code>/uploads</code> 管理的文件清单。
       </div>
     </el-alert>
 
@@ -13,7 +13,7 @@
       <div class="section-head">
         <div>
           <h3 class="section-title">媒体存储配置</h3>
-          <p class="section-desc">图片和视频可分别选择后端；腾讯云 COS 适合站内图片与视频，世纪互联继续保留给网盘与文件收集。</p>
+          <p class="section-desc">图片和视频可分别选择后端；阿里云 OSS 可通过 ESA 分发站内静态资源，腾讯云 COS 与世纪互联仍可作为迁移回退源。</p>
         </div>
         <div class="summary-row">
           <el-tag :type="mediaStorageImageProvider === 'local' ? 'info' : 'success'" round>
@@ -63,6 +63,7 @@
                 <el-option label="本地磁盘" value="local" />
                 <el-option label="世纪互联 OneDrive / SharePoint" value="onedrive-cn" />
                 <el-option label="腾讯云 COS" value="cos" />
+                <el-option label="阿里云 OSS" value="oss" />
               </el-select>
             </div>
             <div class="storage-field">
@@ -71,6 +72,7 @@
                 <el-option label="本地磁盘" value="local" />
                 <el-option label="世纪互联 OneDrive / SharePoint" value="onedrive-cn" />
                 <el-option label="腾讯云 COS" value="cos" />
+                <el-option label="阿里云 OSS" value="oss" />
               </el-select>
             </div>
             <div class="storage-field">
@@ -162,13 +164,53 @@
           <el-button :loading="validatingTencentCos" :disabled="validatingTencentCos || Boolean(configLoadError)" @click="validateTencentCos">连接测试</el-button>
         </div>
       </div>
+
+      <div class="cos-config-card">
+        <div class="section-head compact-head">
+          <div>
+            <h4 class="card-title">阿里云 OSS + ESA</h4>
+            <p class="section-desc">OSS 桶保持私有；ESA 使用临时凭证回源，站点只通过静态资源域名访问。</p>
+          </div>
+          <span class="summary-pill">{{ aliyunOssAccessKeySecretConfigured ? "已保存密钥" : "未保存密钥" }}</span>
+        </div>
+        <div class="storage-grid">
+          <div class="storage-field">
+            <span class="field-label">AccessKey ID</span>
+            <el-input v-model="aliyunOssAccessKeyId" maxlength="160" placeholder="LTAI..." />
+          </div>
+          <div class="storage-field">
+            <span class="field-label">AccessKey Secret</span>
+            <el-input v-model="aliyunOssAccessKeySecretInput" maxlength="240" show-password :placeholder="aliyunOssAccessKeySecretConfigured ? '留空表示继续使用已保存密钥' : 'AccessKey Secret'" />
+          </div>
+          <div class="storage-field">
+            <span class="field-label">存储桶</span>
+            <el-input v-model="aliyunOssBucket" maxlength="100" placeholder="cputime-static-20260901" />
+          </div>
+          <div class="storage-field">
+            <span class="field-label">地域</span>
+            <el-input v-model="aliyunOssRegion" maxlength="80" placeholder="oss-cn-shanghai" />
+          </div>
+          <div class="storage-field">
+            <span class="field-label">对象根目录</span>
+            <el-input v-model="aliyunOssRootPath" maxlength="240" placeholder="cpu-web-media" />
+          </div>
+          <div class="storage-field">
+            <span class="field-label">ESA 静态资源域名</span>
+            <el-input v-model="aliyunOssPublicBaseUrl" maxlength="500" placeholder="https://static.cputime.cn" />
+          </div>
+        </div>
+        <div class="storage-actions">
+          <el-button type="primary" :loading="savingMediaStorage" :disabled="savingMediaStorage || Boolean(configLoadError)" @click="saveMediaStorageConfig">保存 OSS 配置</el-button>
+          <el-button :loading="validatingAliyunOss" :disabled="validatingAliyunOss || Boolean(configLoadError)" @click="validateAliyunOss">连接测试</el-button>
+        </div>
+      </div>
     </section>
 
     <section class="settings-card" v-loading="loadingInventory">
       <div class="section-head">
         <div>
           <h3 class="section-title">站点文件总览</h3>
-          <p class="section-desc">展示当前由 <code>/uploads</code> 管理的文件，并分别标出本地、缓存、世纪互联与腾讯云 COS 副本。</p>
+          <p class="section-desc">展示当前由 <code>/uploads</code> 管理的文件，并分别标出本地、缓存、世纪互联、腾讯云 COS 与阿里云 OSS 副本。</p>
         </div>
         <div class="inventory-actions">
           <el-button :loading="loadingInventory" :disabled="loadingInventory" @click="reloadInventory">刷新列表</el-button>
@@ -212,6 +254,7 @@
         <span class="summary-pill">缓存 {{ inventory.summary.cacheCount }}</span>
         <span class="summary-pill">远端 {{ inventory.summary.remoteCount }}</span>
         <span class="summary-pill">COS {{ inventory.summary.cosCount }}</span>
+        <span class="summary-pill">OSS {{ inventory.summary.ossCount }}</span>
         <span class="summary-pill">世纪互联 {{ inventory.summary.oneDriveCount }}</span>
         <span class="summary-pill" v-if="inventory.summary.legacyAvatarCount">待转存头像 {{ inventory.summary.legacyAvatarCount }}</span>
         <span class="summary-pill">待同步 {{ inventory.summary.eligibleMigrationCount }}</span>
@@ -332,6 +375,7 @@
                 <el-tag size="small" :type="row.cacheExists ? 'warning' : 'info'">缓存{{ row.cacheExists ? ` ${formatBytes(row.cacheSizeBytes)}` : " -" }}</el-tag>
                 <el-tag size="small" :type="row.oneDriveExists ? 'primary' : 'info'">世纪互联{{ row.oneDriveExists ? ` ${formatBytes(row.oneDriveSizeBytes)}` : " -" }}</el-tag>
                 <el-tag size="small" :type="row.cosExists ? 'success' : 'info'">COS{{ row.cosExists ? ` ${formatBytes(row.cosSizeBytes)}` : " -" }}</el-tag>
+                <el-tag size="small" :type="row.ossExists ? 'success' : 'info'">OSS{{ row.ossExists ? ` ${formatBytes(row.ossSizeBytes)}` : " -" }}</el-tag>
               </div>
             </template>
           </el-table-column>
@@ -394,6 +438,7 @@ const savingMediaStorage = ref(false);
 const authorizingOneDriveChina = ref(false);
 const validatingOneDriveChinaClient = ref(false);
 const validatingTencentCos = ref(false);
+const validatingAliyunOss = ref(false);
 const loadingOneDriveChinaDrives = ref(false);
 const savingOneDriveChinaDrive = ref(false);
 const clearingOneDriveChinaAuth = ref(false);
@@ -431,6 +476,13 @@ const tencentCosBucket = ref("");
 const tencentCosRegion = ref("");
 const tencentCosRootPath = ref("");
 const tencentCosPublicBaseUrl = ref("");
+const aliyunOssAccessKeyId = ref("");
+const aliyunOssAccessKeySecretInput = ref("");
+const aliyunOssAccessKeySecretConfigured = ref(false);
+const aliyunOssBucket = ref("");
+const aliyunOssRegion = ref("");
+const aliyunOssRootPath = ref("");
+const aliyunOssPublicBaseUrl = ref("");
 
 const inventory = ref<MediaStorageAdminInventory | null>(null);
 const lastMigrationResult = ref<MediaStorageMigrationResult | null>(null);
@@ -450,16 +502,19 @@ const oneDriveMigrationReady = computed(() => (
   || Boolean(inventory.value?.oneDriveConfigured && inventory.value?.oneDriveReachable)
 ));
 const cosMigrationReady = computed(() => tencentCosSecretKeyConfigured.value);
+const ossMigrationReady = computed(() => aliyunOssAccessKeySecretConfigured.value);
 const migrationHasReadyCandidate = computed(() => (
   migrationCandidates.value.some((row) => (
     row.configuredBackend === "local"
     || (row.configuredBackend === "cos" && cosMigrationReady.value)
+    || (row.configuredBackend === "oss" && ossMigrationReady.value)
     || (row.configuredBackend === "onedrive-cn" && oneDriveMigrationReady.value)
   ))
   || Boolean(
     inventory.value?.summary.legacyAvatarCount
     && (mediaStorageImageProvider.value === "local"
       || (mediaStorageImageProvider.value === "cos" && cosMigrationReady.value)
+      || (mediaStorageImageProvider.value === "oss" && ossMigrationReady.value)
       || (mediaStorageImageProvider.value === "onedrive-cn" && oneDriveMigrationReady.value)),
   )
 ));
@@ -471,12 +526,14 @@ const migrationDisabled = computed(() =>
 const cleanupCandidates = computed(() => (inventory.value?.list ?? []).filter((row) => hasRedundantCopies(row)));
 const cleanupNeedsOneDrive = computed(() => cleanupCandidates.value.some((row) => row.oneDriveExists));
 const cleanupNeedsCos = computed(() => cleanupCandidates.value.some((row) => row.cosExists));
+const cleanupNeedsOss = computed(() => cleanupCandidates.value.some((row) => row.ossExists));
 const cleanupEligibleCount = computed(() => cleanupCandidates.value.length);
 const cleanupDisabled = computed(() =>
   cleaningLocalFiles.value
   || !cleanupEligibleCount.value
   || (cleanupNeedsOneDrive.value && (!oneDriveChinaRefreshTokenConfigured.value || !oneDriveChinaDriveId.value))
   || (cleanupNeedsCos.value && !tencentCosSecretKeyConfigured.value)
+  || (cleanupNeedsOss.value && !aliyunOssAccessKeySecretConfigured.value)
 );
 const failedMigrationItems = computed(() => (lastMigrationResult.value?.list ?? []).filter((item) => item.status === "failed"));
 const failedCleanupItems = computed(() => (lastCleanupResult.value?.list ?? []).filter((item) => item.status === "failed"));
@@ -553,6 +610,13 @@ function applyMediaStorageConfig(config: MediaStorageConfig) {
   tencentCosRegion.value = config.tencentCosRegion;
   tencentCosRootPath.value = config.tencentCosRootPath;
   tencentCosPublicBaseUrl.value = config.tencentCosPublicBaseUrl;
+  aliyunOssAccessKeyId.value = config.aliyunOssAccessKeyId;
+  aliyunOssAccessKeySecretInput.value = "";
+  aliyunOssAccessKeySecretConfigured.value = config.aliyunOssAccessKeySecretConfigured;
+  aliyunOssBucket.value = config.aliyunOssBucket;
+  aliyunOssRegion.value = config.aliyunOssRegion;
+  aliyunOssRootPath.value = config.aliyunOssRootPath;
+  aliyunOssPublicBaseUrl.value = config.aliyunOssPublicBaseUrl;
 }
 
 async function persistMediaStorageConfig(silent = false) {
@@ -576,6 +640,12 @@ async function persistMediaStorageConfig(silent = false) {
       tencentCosRegion: tencentCosRegion.value,
       tencentCosRootPath: tencentCosRootPath.value,
       tencentCosPublicBaseUrl: tencentCosPublicBaseUrl.value,
+      aliyunOssAccessKeyId: aliyunOssAccessKeyId.value,
+      aliyunOssAccessKeySecret: aliyunOssAccessKeySecretInput.value || undefined,
+      aliyunOssBucket: aliyunOssBucket.value,
+      aliyunOssRegion: aliyunOssRegion.value,
+      aliyunOssRootPath: aliyunOssRootPath.value,
+      aliyunOssPublicBaseUrl: aliyunOssPublicBaseUrl.value,
     });
     const nextConfig = await adminApi.mediaStorageConfig({ suppressErrorMessage: true });
     applyMediaStorageConfig(nextConfig);
@@ -629,6 +699,20 @@ async function validateTencentCos() {
     await reloadInventory();
   } finally {
     validatingTencentCos.value = false;
+  }
+}
+
+async function validateAliyunOss() {
+  if (validatingAliyunOss.value || configLoadError.value) return;
+  validatingAliyunOss.value = true;
+  try {
+    const saved = await persistMediaStorageConfig(true);
+    if (!saved) return;
+    const result = await adminApi.validateAliyunOss();
+    ElMessage.success(result.message);
+    await reloadInventory();
+  } finally {
+    validatingAliyunOss.value = false;
   }
 }
 
@@ -875,32 +959,40 @@ function matchesFilter(row: MediaStorageAdminFileEntry, filter: FileFilterKey) {
 
 function needsMigration(row: MediaStorageAdminFileEntry) {
   if (row.configuredBackend === "cos") {
-    return row.inRemotePrefix && !row.cosExists && (row.localExists || row.cacheExists || row.oneDriveExists);
+    return row.inRemotePrefix && !row.cosExists && (row.localExists || row.cacheExists || row.oneDriveExists || row.ossExists);
+  }
+  if (row.configuredBackend === "oss") {
+    return row.inRemotePrefix && !row.ossExists && (row.localExists || row.cacheExists || row.oneDriveExists || row.cosExists);
   }
   if (row.configuredBackend === "onedrive-cn") {
-    return row.inRemotePrefix && !row.oneDriveExists && (row.localExists || row.cacheExists || row.cosExists);
+    return row.inRemotePrefix && !row.oneDriveExists && (row.localExists || row.cacheExists || row.cosExists || row.ossExists);
   }
-  return !row.localExists && (row.cacheExists || row.oneDriveExists || row.cosExists);
+  return !row.localExists && (row.cacheExists || row.oneDriveExists || row.cosExists || row.ossExists);
 }
 
 function hasRedundantCopies(row: MediaStorageAdminFileEntry) {
   if (row.configuredBackend === "cos") {
-    return row.cosExists && (row.localExists || row.cacheExists || row.oneDriveExists);
+    return row.cosExists && (row.localExists || row.cacheExists || row.oneDriveExists || row.ossExists);
+  }
+  if (row.configuredBackend === "oss") {
+    return row.ossExists && (row.localExists || row.cacheExists || row.oneDriveExists || row.cosExists);
   }
   if (row.configuredBackend === "onedrive-cn") {
-    return row.oneDriveExists && (row.localExists || row.cacheExists || row.cosExists);
+    return row.oneDriveExists && (row.localExists || row.cacheExists || row.cosExists || row.ossExists);
   }
-  return row.localExists && (row.cacheExists || row.oneDriveExists || row.cosExists);
+  return row.localExists && (row.cacheExists || row.oneDriveExists || row.cosExists || row.ossExists);
 }
 
 function resolveState(rowInput: unknown) {
   const row = rowInput as MediaStorageAdminFileEntry;
   const currentExists = row.configuredBackend === "cos"
     ? row.cosExists
+    : row.configuredBackend === "oss"
+      ? row.ossExists
     : row.configuredBackend === "onedrive-cn"
       ? row.oneDriveExists
       : row.localExists;
-  const copyCount = Number(row.localExists) + Number(row.cacheExists) + Number(row.oneDriveExists) + Number(row.cosExists);
+  const copyCount = Number(row.localExists) + Number(row.cacheExists) + Number(row.oneDriveExists) + Number(row.cosExists) + Number(row.ossExists);
   if (currentExists && copyCount > 1) {
     return {
       key: "synced" as const,
@@ -956,6 +1048,7 @@ function formatTime(value: string) {
 
 function backendLabel(value: MediaStorageBackend) {
   if (value === "cos") return "腾讯云 COS";
+  if (value === "oss") return "阿里云 OSS";
   if (value === "onedrive-cn") return "世纪互联 OneDrive";
   return "本地磁盘";
 }

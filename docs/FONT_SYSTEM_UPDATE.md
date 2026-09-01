@@ -14,7 +14,7 @@
   - 按 HarmonyOS Sans Fonts License Agreement 使用并原样分发
   - 字形设计现代、清晰
   - 支持 3 个字重：Regular (400)、Medium (500)、Bold (700)
-  - CDN 来源：腾讯云 COS + `img.cputime.cn`
+  - CDN 来源：阿里云私有 OSS + ESA `static.cputime.cn`
 
 #### 等宽字体
 - **JetBrains Mono** - 专业编程字体，替代 Roboto Mono
@@ -50,7 +50,7 @@
 
 1. **自有 CDN 加载**
    - HarmonyOS Sans SC 作为 Vite 构建资源输出到版本化路径
-   - 生产发布时由现有静态资源同步流程上传到腾讯云 COS，并通过 `img.cputime.cn` 分发
+   - 生产发布时由现有静态资源同步流程上传到所选对象存储；阿里云 OSS 通过 `static.cputime.cn` 分发
    - VoiceHub 复用同一套自有 CDN 字体资源
    - 使用 `font-display: swap` 避免文字闪烁
 
@@ -105,7 +105,7 @@ npm run dev --prefix web
 
 1. 打开浏览器开发者工具 Network 面板
 2. 筛选 Font 类型
-3. 确认 HarmonyOS Sans 请求来自 `img.cputime.cn` 且返回 200
+3. 确认 HarmonyOS Sans 请求来自 `static.cputime.cn` 且返回 200
 4. 检查页面中英文混排显示效果
 
 ## 回滚

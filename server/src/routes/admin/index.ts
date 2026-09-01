@@ -104,6 +104,7 @@ import {
   migrateLocalMediaAssetsToRemote,
 } from "../../services/mediaStorage";
 import { validateTencentCosConfiguration } from "../../services/tencentCos";
+import { validateAliyunOssConfiguration } from "../../services/aliyunOss";
 import { migrateLegacyDataAvatars } from "../../services/userAvatarStorage";
 import { qqBotAdminRouter } from "./qqbot";
 import { backfillAdminDailyLoginsFromLastLogin, getChinaDayRange, listAdminDailyLoginSeries } from "../../services/adminStats";
@@ -2134,9 +2135,9 @@ adminRouter.patch("/filestore-settings", adminOnly, validate(filestoreSettingsPa
 });
 
 const mediaStoragePatchSchema = z.object({
-  mediaStorageProvider: z.enum(["local", "onedrive-cn", "cos"]).optional(),
-  mediaStorageImageProvider: z.enum(["local", "onedrive-cn", "cos"]).optional(),
-  mediaStorageVideoProvider: z.enum(["local", "onedrive-cn", "cos"]).optional(),
+  mediaStorageProvider: z.enum(["local", "onedrive-cn", "cos", "oss"]).optional(),
+  mediaStorageImageProvider: z.enum(["local", "onedrive-cn", "cos", "oss"]).optional(),
+  mediaStorageVideoProvider: z.enum(["local", "onedrive-cn", "cos", "oss"]).optional(),
   mediaStorageRemotePrefixes: z.union([z.string().trim().max(200), z.array(z.string().trim().min(1).max(80)).max(10)]).optional(),
   oneDriveChinaClientId: z.string().trim().max(120).optional(),
   oneDriveChinaClientSecret: z.string().trim().max(240).optional(),
@@ -2150,6 +2151,13 @@ const mediaStoragePatchSchema = z.object({
   tencentCosRegion: z.string().trim().max(80).optional(),
   tencentCosRootPath: z.string().trim().max(240).optional(),
   tencentCosPublicBaseUrl: z.string().trim().max(500).optional(),
+  aliyunOssAccessKeyId: z.string().trim().max(160).optional(),
+  aliyunOssAccessKeySecret: z.string().trim().max(240).optional(),
+  clearAliyunOssAccessKeySecret: z.boolean().optional(),
+  aliyunOssBucket: z.string().trim().max(100).optional(),
+  aliyunOssRegion: z.string().trim().max(80).optional(),
+  aliyunOssRootPath: z.string().trim().max(240).optional(),
+  aliyunOssPublicBaseUrl: z.string().trim().max(500).optional(),
 });
 
 adminRouter.patch("/media-storage", adminOnly, validate(mediaStoragePatchSchema), async (req, res, next) => {
@@ -2199,6 +2207,29 @@ adminRouter.post("/media-storage/cos/validate", adminOnly, async (_req, res, nex
     if (
       message.includes("尚未配置")
       || message.includes("Access Denied")
+      || message.includes("AccessDenied")
+      || message.includes("InvalidAccessKeyId")
+      || message.includes("SignatureDoesNotMatch")
+      || message.includes("NoSuchBucket")
+    ) {
+      next(Errors.badRequest(message));
+      return;
+    }
+    next(e);
+  }
+});
+
+adminRouter.post("/media-storage/oss/validate", adminOnly, async (_req, res, next) => {
+  try {
+    const result = await validateAliyunOssConfiguration();
+    ok(res, {
+      ...result,
+      message: `已连接阿里云 OSS：${result.bucket}（${result.region}）`,
+    });
+  } catch (e: any) {
+    const message = String(e?.message || "阿里云 OSS 校验失败").slice(0, 500);
+    if (
+      message.includes("尚未配置")
       || message.includes("AccessDenied")
       || message.includes("InvalidAccessKeyId")
       || message.includes("SignatureDoesNotMatch")

@@ -27,12 +27,23 @@ import {
   resolveTencentCosPublicUrl,
   uploadTencentCosFile,
 } from "./tencentCos";
+import {
+  createAliyunOssUploadSession,
+  deleteAliyunOssFile,
+  downloadAliyunOssFileBuffer,
+  fetchAliyunOssFile,
+  headAliyunOssFile,
+  isAliyunOssConfigured,
+  listAliyunOssFiles,
+  resolveAliyunOssPublicUrl,
+  uploadAliyunOssFile,
+} from "./aliyunOss";
 
 const CACHE_CONTROL_VALUE = "public, max-age=2592000, immutable";
 const REMOTE_PUBLIC_URL_CACHE_TTL_MS = 10 * 60 * 1000;
-const WEB_STATIC_COS_PREFIX = "web-static/";
+const WEB_STATIC_PREFIX = "web-static/";
 
-export type MediaStorageBackend = "local" | "onedrive-cn" | "cos";
+export type MediaStorageBackend = "local" | "onedrive-cn" | "cos" | "oss";
 
 export type SaveMediaAssetInput = {
   relativePath: string;
@@ -74,6 +85,9 @@ export type MediaStorageAdminFileEntry = {
   cosExists: boolean;
   cosSizeBytes: number | null;
   cosUpdatedAt: string;
+  ossExists: boolean;
+  ossSizeBytes: number | null;
+  ossUpdatedAt: string;
 };
 
 export type MediaStorageAdminInventory = {
@@ -91,6 +105,9 @@ export type MediaStorageAdminInventory = {
   cosConfigured: boolean;
   cosReachable: boolean;
   cosError: string;
+  ossConfigured: boolean;
+  ossReachable: boolean;
+  ossError: string;
   summary: {
     total: number;
     localCount: number;
@@ -98,6 +115,7 @@ export type MediaStorageAdminInventory = {
     remoteCount: number;
     oneDriveCount: number;
     cosCount: number;
+    ossCount: number;
     legacyAvatarCount: number;
     eligibleMigrationCount: number;
     syncedCount: number;
@@ -200,7 +218,7 @@ function resolveConfiguredBackendForInventoryRow(
 }
 
 function remoteStorageConfigured(runtime: Awaited<ReturnType<typeof getMediaStorageRuntimeConfigSync>>) {
-  return oneDriveStorageConfigured(runtime) || cosStorageConfigured(runtime);
+  return oneDriveStorageConfigured(runtime) || cosStorageConfigured(runtime) || ossStorageConfigured(runtime);
 }
 
 function oneDriveStorageConfigured(runtime: Awaited<ReturnType<typeof getMediaStorageRuntimeConfigSync>>) {
@@ -213,6 +231,15 @@ function cosStorageConfigured(runtime: Awaited<ReturnType<typeof getMediaStorage
     && (runtime.tencentCosSecretKey.trim() || runtime.legacyTencentCosSecretKey.trim())
     && (runtime.tencentCosBucket.trim() || runtime.legacyTencentCosBucket.trim())
     && (runtime.tencentCosRegion.trim() || runtime.legacyTencentCosRegion.trim()),
+  );
+}
+
+function ossStorageConfigured(runtime: Awaited<ReturnType<typeof getMediaStorageRuntimeConfigSync>>) {
+  return Boolean(
+    (runtime.aliyunOssAccessKeyId.trim() || runtime.legacyAliyunOssAccessKeyId.trim())
+    && (runtime.aliyunOssAccessKeySecret.trim() || runtime.legacyAliyunOssAccessKeySecret.trim())
+    && (runtime.aliyunOssBucket.trim() || runtime.legacyAliyunOssBucket.trim())
+    && (runtime.aliyunOssRegion.trim() || runtime.legacyAliyunOssRegion.trim()),
   );
 }
 
@@ -252,7 +279,9 @@ export async function resolveMediaPublicUrl(url: string) {
 
   const remoteDriveKey = configuredBackend === "cos"
     ? runtime.tencentCosBucket.trim() || runtime.legacyTencentCosBucket.trim() || "default"
-    : runtime.oneDriveChinaDriveId.trim() || runtime.legacyDriveId.trim() || "default";
+    : configuredBackend === "oss"
+      ? runtime.aliyunOssBucket.trim() || runtime.legacyAliyunOssBucket.trim() || "default"
+      : runtime.oneDriveChinaDriveId.trim() || runtime.legacyDriveId.trim() || "default";
   const sharedCacheKey = buildRedisKey("media-public-url", configuredBackend, remoteDriveKey, relativePath);
   const sharedCachedUrl = await getCachedJson<string>(sharedCacheKey);
   if (sharedCachedUrl) {
@@ -270,7 +299,9 @@ export async function resolveMediaPublicUrl(url: string) {
     try {
       const directUrl = configuredBackend === "cos"
         ? await resolveTencentCosPublicUrl(relativePath)
-        : await resolveOneDriveChinaDirectDownloadUrl(relativePath);
+        : configuredBackend === "oss"
+          ? await resolveAliyunOssPublicUrl(relativePath)
+          : await resolveOneDriveChinaDirectDownloadUrl(relativePath);
       const resolved = directUrl || buildUploadUrl(relativePath);
       if (directUrl) {
         remotePublicUrlCache.set(relativePath, {
@@ -304,6 +335,7 @@ export async function createRemoteMediaUploadSession(input: {
   const relativePath = normalizeUploadRelativePath(input.relativePath);
   const backend = await preferredRemoteMediaStorageBackend(relativePath, input.mediaKind ?? undefined, input.sizeBytes ?? undefined);
   if (backend === "cos") return createTencentCosUploadSession(relativePath, input.contentType);
+  if (backend === "oss") return createAliyunOssUploadSession(relativePath, input.contentType);
   if (backend === "onedrive-cn") {
     const session = await createOneDriveChinaUploadSession(relativePath, input.contentType);
     return { ...session, strategy: "chunked" as const };
@@ -356,6 +388,8 @@ export async function saveMediaAsset(input: SaveMediaAssetInput): Promise<SaveMe
   await writeFile(cachePath, input.buffer);
   if (backend === "cos") {
     await uploadTencentCosFile(relativePath, input.buffer, input.contentType || "application/octet-stream");
+  } else if (backend === "oss") {
+    await uploadAliyunOssFile(relativePath, input.buffer, input.contentType || "application/octet-stream");
   } else {
     await uploadOneDriveChinaFile(relativePath, input.buffer, input.contentType || "application/octet-stream");
   }
@@ -391,6 +425,7 @@ export async function deleteMediaAsset(relativePathInput: string) {
         })
         : Promise.resolve(false),
       cosStorageConfigured(runtime) ? deleteTencentCosFile(relativePath) : Promise.resolve(false),
+      ossStorageConfigured(runtime) ? deleteAliyunOssFile(relativePath) : Promise.resolve(false),
     ]);
   }
 }
@@ -404,12 +439,16 @@ export async function listMediaStorageAdminInventory(): Promise<MediaStorageAdmi
   ]);
   const oneDriveConfigured = oneDriveStorageConfigured(runtime);
   const cosConfigured = cosStorageConfigured(runtime) && await isTencentCosConfigured();
+  const ossConfigured = ossStorageConfigured(runtime) && await isAliyunOssConfigured();
   let oneDriveReachable = false;
   let oneDriveError = "";
   let cosReachable = false;
   let cosError = "";
+  let ossReachable = false;
+  let ossError = "";
   let oneDriveFiles = new Map<string, { sizeBytes: number | null; updatedAt: string }>();
   let cosFiles = new Map<string, { sizeBytes: number | null; updatedAt: string }>();
+  let ossFiles = new Map<string, { sizeBytes: number | null; updatedAt: string }>();
 
   if (oneDriveConfigured) {
     try {
@@ -431,7 +470,7 @@ export async function listMediaStorageAdminInventory(): Promise<MediaStorageAdmi
     try {
       cosFiles = new Map(
         (await listTencentCosFiles())
-          .filter((item) => !normalizeUploadRelativePath(item.relativePath).startsWith(WEB_STATIC_COS_PREFIX))
+          .filter((item) => !normalizeUploadRelativePath(item.relativePath).startsWith(WEB_STATIC_PREFIX))
           .map((item) => [
             normalizeUploadRelativePath(item.relativePath),
             { sizeBytes: item.size, updatedAt: String(item.lastModifiedAt || "").trim() },
@@ -442,16 +481,35 @@ export async function listMediaStorageAdminInventory(): Promise<MediaStorageAdmi
       cosError = String((error as any)?.message || error || "读取腾讯云 COS 文件列表失败").slice(0, 500);
     }
   }
+  if (ossConfigured) {
+    try {
+      ossFiles = new Map(
+        (await listAliyunOssFiles())
+          .filter((item) => !normalizeUploadRelativePath(item.relativePath).startsWith(WEB_STATIC_PREFIX))
+          .map((item) => [
+            normalizeUploadRelativePath(item.relativePath),
+            { sizeBytes: item.size, updatedAt: String(item.lastModifiedAt || "").trim() },
+          ]),
+      );
+      ossReachable = true;
+    } catch (error) {
+      ossError = String((error as any)?.message || error || "读取阿里云 OSS 文件列表失败").slice(0, 500);
+    }
+  }
 
-  const remoteConfigured = oneDriveConfigured || cosConfigured;
-  const remoteReachable = (!oneDriveConfigured || oneDriveReachable) && (!cosConfigured || cosReachable) && remoteConfigured;
-  const remoteError = [oneDriveError, cosError].filter(Boolean).join("；");
+  const remoteConfigured = oneDriveConfigured || cosConfigured || ossConfigured;
+  const remoteReachable = (!oneDriveConfigured || oneDriveReachable)
+    && (!cosConfigured || cosReachable)
+    && (!ossConfigured || ossReachable)
+    && remoteConfigured;
+  const remoteError = [oneDriveError, cosError, ossError].filter(Boolean).join("；");
 
   const allPaths = new Set<string>([
     ...localFiles.keys(),
     ...cacheFiles.keys(),
     ...oneDriveFiles.keys(),
     ...cosFiles.keys(),
+    ...ossFiles.keys(),
   ]);
   const list = Array.from(allPaths)
     .sort((a, b) => a.localeCompare(b, "zh-Hans-CN"))
@@ -460,12 +518,19 @@ export async function listMediaStorageAdminInventory(): Promise<MediaStorageAdmi
       const cache = cacheFiles.get(relativePath);
       const oneDrive = oneDriveFiles.get(relativePath);
       const cos = cosFiles.get(relativePath);
+      const oss = ossFiles.get(relativePath);
       const mediaKind = resolveMediaKindForRelativePath(relativePath);
-      const sizeBytes = local?.sizeBytes ?? cache?.sizeBytes ?? cos?.sizeBytes ?? oneDrive?.sizeBytes ?? null;
+      const sizeBytes = local?.sizeBytes ?? cache?.sizeBytes ?? oss?.sizeBytes ?? cos?.sizeBytes ?? oneDrive?.sizeBytes ?? null;
       const configuredBackend = resolveConfiguredBackendForInventoryRow(relativePath, runtime, sizeBytes);
       const eligibleForRemote = configuredBackend !== "local" && pathMatchesPrefixes(relativePath, runtime.effectiveRemotePrefixes);
-      const configuredRemote = configuredBackend === "cos" ? cos : configuredBackend === "onedrive-cn" ? oneDrive : undefined;
-      const anyRemote = configuredRemote || cos || oneDrive;
+      const configuredRemote = configuredBackend === "cos"
+        ? cos
+        : configuredBackend === "oss"
+          ? oss
+          : configuredBackend === "onedrive-cn"
+            ? oneDrive
+            : undefined;
+      const anyRemote = configuredRemote || oss || cos || oneDrive;
       return {
         relativePath,
         url: buildUploadUrl(relativePath),
@@ -487,6 +552,9 @@ export async function listMediaStorageAdminInventory(): Promise<MediaStorageAdmi
         cosExists: Boolean(cos),
         cosSizeBytes: cos?.sizeBytes ?? null,
         cosUpdatedAt: cos?.updatedAt ?? "",
+        ossExists: Boolean(oss),
+        ossSizeBytes: oss?.sizeBytes ?? null,
+        ossUpdatedAt: oss?.updatedAt ?? "",
       } satisfies MediaStorageAdminFileEntry;
     });
 
@@ -505,6 +573,9 @@ export async function listMediaStorageAdminInventory(): Promise<MediaStorageAdmi
     cosConfigured,
     cosReachable,
     cosError,
+    ossConfigured,
+    ossReachable,
+    ossError,
     summary: {
       total: list.length,
       localCount: list.filter((item) => item.localExists).length,
@@ -512,6 +583,7 @@ export async function listMediaStorageAdminInventory(): Promise<MediaStorageAdmi
       remoteCount: list.filter((item) => item.remoteExists).length,
       oneDriveCount: list.filter((item) => item.oneDriveExists).length,
       cosCount: list.filter((item) => item.cosExists).length,
+      ossCount: list.filter((item) => item.ossExists).length,
       legacyAvatarCount,
       eligibleMigrationCount: list.filter((item) => needsMigrationToConfiguredBackend(item)).length + legacyAvatarCount,
       syncedCount: list.filter((item) => hasRedundantCopiesForConfiguredBackend(item)).length,
@@ -556,6 +628,12 @@ export async function migrateLocalMediaAssetsToRemote(input: {
           if (!verified.exists || (verified.size !== null && verified.size !== sourceBuffer.length)) {
             throw new Error("COS 上传后的文件大小校验失败");
           }
+        } else if (targetBackend === "oss") {
+          await uploadAliyunOssFile(relativePath, sourceBuffer, guessContentType(relativePath));
+          const verified = await headAliyunOssFile(relativePath);
+          if (!verified.exists || (verified.size !== null && verified.size !== sourceBuffer.length)) {
+            throw new Error("OSS 上传后的文件大小校验失败");
+          }
         } else {
           await uploadOneDriveChinaFile(relativePath, sourceBuffer, guessContentType(relativePath));
         }
@@ -565,7 +643,11 @@ export async function migrateLocalMediaAssetsToRemote(input: {
         results.push({
           relativePath,
           status: "migrated",
-          message: targetBackend === "cos" ? "已迁移到腾讯云 COS 并完成大小校验" : "已迁移到世纪互联并同步当前后端",
+          message: targetBackend === "cos"
+            ? "已迁移到腾讯云 COS 并完成大小校验"
+            : targetBackend === "oss"
+              ? "已迁移到阿里云 OSS 并完成大小校验"
+              : "已迁移到世纪互联并同步当前后端",
         });
         continue;
       }
@@ -634,8 +716,20 @@ export async function cleanupMigratedLocalMediaAssets(): Promise<MediaStorageCle
         if (row.configuredBackend === "cos" && row.oneDriveExists) {
           removedAny = await deleteOneDriveChinaFile(relativePath) || removedAny;
         }
+        if (row.configuredBackend === "cos" && row.ossExists) {
+          removedAny = await deleteAliyunOssFile(relativePath) || removedAny;
+        }
+        if (row.configuredBackend === "oss" && row.oneDriveExists) {
+          removedAny = await deleteOneDriveChinaFile(relativePath) || removedAny;
+        }
+        if (row.configuredBackend === "oss" && row.cosExists) {
+          removedAny = await deleteTencentCosFile(relativePath) || removedAny;
+        }
         if (row.configuredBackend === "onedrive-cn" && row.cosExists) {
           removedAny = await deleteTencentCosFile(relativePath) || removedAny;
+        }
+        if (row.configuredBackend === "onedrive-cn" && row.ossExists) {
+          removedAny = await deleteAliyunOssFile(relativePath) || removedAny;
         }
         await syncMediaAssetLocalPath(relativePath, "");
       } else {
@@ -648,6 +742,7 @@ export async function cleanupMigratedLocalMediaAssets(): Promise<MediaStorageCle
         removedAny = removedAny || cacheRemoved;
         if (row.oneDriveExists) removedAny = await deleteOneDriveChinaFile(relativePath) || removedAny;
         if (row.cosExists) removedAny = await deleteTencentCosFile(relativePath) || removedAny;
+        if (row.ossExists) removedAny = await deleteAliyunOssFile(relativePath) || removedAny;
       }
       results.push({
         relativePath,
@@ -697,6 +792,10 @@ export const uploadAssetHandler: RequestHandler = async (req, res) => {
       const configuredBackend = resolveConfiguredBackendForRelativePath(relativePath, runtime);
       if (configuredBackend === "cos" && pathMatchesPrefixes(relativePath, runtime.effectiveRemotePrefixes)) {
         res.redirect(302, await resolveTencentCosPublicUrl(relativePath));
+        return;
+      }
+      if (configuredBackend === "oss" && pathMatchesPrefixes(relativePath, runtime.effectiveRemotePrefixes)) {
+        res.redirect(302, await resolveAliyunOssPublicUrl(relativePath));
         return;
       }
       const remote = await fetchConfiguredRemoteMedia(relativePath, req.headers.range, req.headers["if-none-match"]);
@@ -830,13 +929,15 @@ async function downloadRemoteFileBuffer(relativePath: string) {
 async function downloadConfiguredRemoteFileBuffer(relativePath: string) {
   const runtime = await getMediaStorageRuntimeConfig();
   const configuredBackend = resolveConfiguredBackendForRelativePath(relativePath, runtime);
-  const providers: Array<Exclude<MediaStorageBackend, "local">> = configuredBackend === "cos"
-    ? ["cos", "onedrive-cn"]
-    : ["onedrive-cn", "cos"];
+  const providers = orderedRemoteProviders(configuredBackend);
   for (const provider of providers) {
     try {
       if (provider === "cos" && cosStorageConfigured(runtime)) {
         const buffer = await downloadTencentCosFileBuffer(relativePath);
+        if (buffer.length) return buffer;
+      }
+      if (provider === "oss" && ossStorageConfigured(runtime)) {
+        const buffer = await downloadAliyunOssFileBuffer(relativePath);
         if (buffer.length) return buffer;
       }
       if (provider === "onedrive-cn" && oneDriveStorageConfigured(runtime)) {
@@ -853,12 +954,14 @@ async function downloadConfiguredRemoteFileBuffer(relativePath: string) {
 async function fetchConfiguredRemoteMedia(relativePath: string, range?: string | string[], ifNoneMatch?: string | string[]) {
   const runtime = await getMediaStorageRuntimeConfig();
   const configuredBackend = resolveConfiguredBackendForRelativePath(relativePath, runtime);
-  const providers: Array<Exclude<MediaStorageBackend, "local">> = configuredBackend === "cos"
-    ? ["cos", "onedrive-cn"]
-    : ["onedrive-cn", "cos"];
+  const providers = orderedRemoteProviders(configuredBackend);
   for (const provider of providers) {
     if (provider === "cos" && cosStorageConfigured(runtime)) {
       const response = await fetchTencentCosFile(relativePath, range, ifNoneMatch);
+      if (response.status !== 404) return response;
+    }
+    if (provider === "oss" && ossStorageConfigured(runtime)) {
+      const response = await fetchAliyunOssFile(relativePath, range, ifNoneMatch);
       if (response.status !== 404) return response;
     }
     if (provider === "onedrive-cn" && oneDriveStorageConfigured(runtime)) {
@@ -882,6 +985,10 @@ async function readMigrationSourceBuffer(row: MediaStorageAdminFileEntry, localP
     const buffer = await downloadTencentCosFileBuffer(row.relativePath);
     if (buffer.length) return buffer;
   }
+  if (row.ossExists) {
+    const buffer = await downloadAliyunOssFileBuffer(row.relativePath);
+    if (buffer.length) return buffer;
+  }
   if (row.oneDriveExists) {
     const response = await fetchOneDriveChinaFile(row.relativePath);
     if (response.ok) return Buffer.from(await response.arrayBuffer());
@@ -903,26 +1010,33 @@ async function syncMediaAssetLocalPath(relativePath: string, nextLocalPath: stri
 
 function needsMigrationToConfiguredBackend(row: MediaStorageAdminFileEntry) {
   if (row.configuredBackend === "cos") {
-    return row.inRemotePrefix && !row.cosExists && (row.localExists || row.cacheExists || row.oneDriveExists);
+    return row.inRemotePrefix && !row.cosExists && (row.localExists || row.cacheExists || row.oneDriveExists || row.ossExists);
+  }
+  if (row.configuredBackend === "oss") {
+    return row.inRemotePrefix && !row.ossExists && (row.localExists || row.cacheExists || row.oneDriveExists || row.cosExists);
   }
   if (row.configuredBackend === "onedrive-cn") {
-    return row.inRemotePrefix && !row.oneDriveExists && (row.localExists || row.cacheExists || row.cosExists);
+    return row.inRemotePrefix && !row.oneDriveExists && (row.localExists || row.cacheExists || row.cosExists || row.ossExists);
   }
-  return !row.localExists && (row.cacheExists || row.oneDriveExists || row.cosExists);
+  return !row.localExists && (row.cacheExists || row.oneDriveExists || row.cosExists || row.ossExists);
 }
 
 function hasRedundantCopiesForConfiguredBackend(row: MediaStorageAdminFileEntry) {
   if (row.configuredBackend === "cos") {
-    return row.cosExists && (row.localExists || row.cacheExists || row.oneDriveExists);
+    return row.cosExists && (row.localExists || row.cacheExists || row.oneDriveExists || row.ossExists);
+  }
+  if (row.configuredBackend === "oss") {
+    return row.ossExists && (row.localExists || row.cacheExists || row.oneDriveExists || row.cosExists);
   }
   if (row.configuredBackend === "onedrive-cn") {
-    return row.oneDriveExists && (row.localExists || row.cacheExists || row.cosExists);
+    return row.oneDriveExists && (row.localExists || row.cacheExists || row.cosExists || row.ossExists);
   }
-  return row.localExists && (row.cacheExists || row.oneDriveExists || row.cosExists);
+  return row.localExists && (row.cacheExists || row.oneDriveExists || row.cosExists || row.ossExists);
 }
 
 function isStoredOnConfiguredBackend(row: MediaStorageAdminFileEntry) {
   if (row.configuredBackend === "cos") return row.cosExists;
+  if (row.configuredBackend === "oss") return row.ossExists;
   if (row.configuredBackend === "onedrive-cn") return row.oneDriveExists;
   return row.localExists;
 }
@@ -1044,4 +1158,14 @@ function writeRemoteResponseHeaders(res: Parameters<RequestHandler>[1], headers:
     if (value) res.setHeader(name, value);
   }
   res.setHeader("Cache-Control", headers.get("cache-control") || CACHE_CONTROL_VALUE);
+}
+
+function orderedRemoteProviders(configuredBackend: MediaStorageBackend): Array<Exclude<MediaStorageBackend, "local">> {
+  const preferred = configuredBackend === "local" ? [] : [configuredBackend];
+  return [...new Set<Exclude<MediaStorageBackend, "local">>([
+    ...preferred,
+    "oss",
+    "cos",
+    "onedrive-cn",
+  ])];
 }

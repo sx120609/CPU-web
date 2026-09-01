@@ -19,7 +19,7 @@ test("static asset paths reject traversal and normalize separators", () => {
   assert.equal(normalizeWebStaticAssetPath("chunks/./main.js"), "");
 });
 
-test("static COS manifest is accepted only for the expected version and prefix", async (t) => {
+test("static object-storage manifest accepts legacy COS and current provider-aware versions", async (t) => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "cpu-web-static-cos-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
 
@@ -42,10 +42,19 @@ test("static COS manifest is accepted only for the expected version and prefix",
   await writeFile(path.join(directory, WEB_STATIC_COS_MANIFEST), JSON.stringify({
     version: 2,
     remotePrefix: WEB_STATIC_COS_PREFIX,
+    backend: "oss",
+    assets: ["main.abc123.js"],
+    publicAssets: ["downloads/app.apk"],
+  }));
+  assert.deepEqual(Array.from(loadWebStaticCosManifest(directory)), ["main.abc123.js"]);
+  assert.deepEqual(Array.from(loadWebStaticCosPublicManifest(directory)), ["downloads/app.apk"]);
+
+  await writeFile(path.join(directory, WEB_STATIC_COS_MANIFEST), JSON.stringify({
+    version: 3,
+    remotePrefix: WEB_STATIC_COS_PREFIX,
     assets: ["main.abc123.js"],
   }));
   assert.equal(loadWebStaticCosManifest(directory).size, 0);
-  assert.equal(loadWebStaticCosPublicManifest(directory).size, 0);
 });
 
 test("index asset tags are rewritten to the current delivery origin without touching unrelated text", () => {
@@ -63,10 +72,10 @@ test("index asset tags migrate from a previous remote origin to the current CDN"
     '<img src="https://old-cos.example/cpu-web-media/forum/unrelated.png">',
   ].join("");
   assert.equal(
-    rewriteWebStaticAssetUrls(html, "https://img.cputime.cn/cpu-web-media/web-static/assets/dual-origin-v2"),
+    rewriteWebStaticAssetUrls(html, "https://static.cputime.cn/cpu-web-media/web-static/assets/dual-origin-v2"),
     [
-      '<script src="https://img.cputime.cn/cpu-web-media/web-static/assets/dual-origin-v2/main.js"></script>',
-      '<link href="https://img.cputime.cn/cpu-web-media/web-static/assets/dual-origin-v2/main.css">',
+      '<script src="https://static.cputime.cn/cpu-web-media/web-static/assets/dual-origin-v2/main.js"></script>',
+      '<link href="https://static.cputime.cn/cpu-web-media/web-static/assets/dual-origin-v2/main.css">',
       '<img src="https://old-cos.example/cpu-web-media/forum/unrelated.png">',
     ].join(""),
   );

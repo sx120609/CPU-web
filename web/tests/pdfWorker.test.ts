@@ -5,7 +5,7 @@ import { resolvePdfWorkerUrl } from "../src/utils/pdfWorker";
 test("PDF worker uses the page origin when Vite emits a root-relative asset URL", () => {
   assert.equal(
     resolvePdfWorkerUrl(
-      "https://img.cputime.cn/assets/pdf.worker-BgryrOlp.mjs",
+      "https://static.cputime.cn/assets/pdf.worker-BgryrOlp.mjs",
       "https://cputime.cn",
     ),
     "https://cputime.cn/assets/pdf.worker-BgryrOlp.mjs",

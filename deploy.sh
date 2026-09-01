@@ -1321,16 +1321,16 @@ do_sync_web_static_assets() {
   local sync_script="$ROOT_DIR/server/dist/scripts/syncWebStaticAssets.js"
   local live_dist="$ROOT_DIR/web/dist"
   if [ ! -f "$sync_script" ]; then
-    warn "COS static sync script is unavailable; keeping local static delivery"
+    warn "Object-storage static sync script is unavailable; keeping local static delivery"
     return 0
   fi
   if [ ! -d "$live_dist/assets" ]; then
     warn "web/dist/assets is unavailable; keeping local static delivery"
     return 0
   fi
-  log "Syncing hashed web assets to Tencent COS"
+  log "Syncing hashed web assets to the configured object storage"
   if ! NODE_ENV=production node "$sync_script" "$live_dist"; then
-    warn "Tencent COS static sync failed; deployment will continue with local static delivery"
+    warn "Object-storage static sync failed; deployment will continue with local static delivery"
   fi
 }
 

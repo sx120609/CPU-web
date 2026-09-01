@@ -19,30 +19,52 @@ async function main() {
   const uploadFiles = [...files, ...publicFiles];
   const totalBytes = uploadFiles.reduce((sum, item) => sum + item.size, 0);
   if (dryRun) {
-    console.log(`[static-cos] dry-run: ${files.length} build assets + ${publicFiles.length} public assets, ${formatBytes(totalBytes)}, selection=${selection.source}`);
+    console.log(`[static-object] dry-run: ${files.length} build assets + ${publicFiles.length} public assets, ${formatBytes(totalBytes)}, selection=${selection.source}`);
     return;
   }
   if (!uploadFiles.length) {
-    console.warn(`[static-cos] no files found in ${distRoot}; keeping local static delivery`);
+    console.warn(`[static-object] no files found in ${distRoot}; keeping local static delivery`);
     return;
   }
 
-  const [{ loadStorageConfig }, cos, { prisma }, manifest] = await Promise.all([
+  const [{ loadStorageConfig, getMediaStorageRuntimeConfig }, cos, oss, { prisma }, manifest] = await Promise.all([
     import("../services/storageConfig"),
     import("../services/tencentCos"),
+    import("../services/aliyunOss"),
     import("../prisma"),
     import("../services/webStaticCos"),
   ]);
 
   try {
     await loadStorageConfig();
-    if (!(await cos.isTencentCosConfigured())) {
-      console.warn("[static-cos] Tencent COS is not configured; keeping local static delivery");
+    const runtime = await getMediaStorageRuntimeConfig();
+    const backend = runtime.effectiveImageProvider;
+    if (backend !== "cos" && backend !== "oss") {
+      console.warn(`[static-object] image backend is ${backend}; keeping local static delivery`);
+      return;
+    }
+    const storage = backend === "oss"
+      ? {
+          isConfigured: oss.isAliyunOssConfigured,
+          listFiles: oss.listAliyunOssFiles,
+          uploadFile: oss.uploadAliyunOssFile,
+          headFile: oss.headAliyunOssFile,
+          resolveDeliveryUrl: oss.resolveAliyunOssDeliveryUrl,
+        }
+      : {
+          isConfigured: cos.isTencentCosConfigured,
+          listFiles: cos.listTencentCosFiles,
+          uploadFile: cos.uploadTencentCosFile,
+          headFile: cos.headTencentCosFile,
+          resolveDeliveryUrl: cos.resolveTencentCosDeliveryUrl,
+        };
+    if (!(await storage.isConfigured())) {
+      console.warn(`[static-${backend}] backend is not configured; keeping local static delivery`);
       return;
     }
 
     const remoteFiles = new Map(
-      (await cos.listTencentCosFiles())
+      (await storage.listFiles())
         .filter((item) => item.relativePath.startsWith(`${manifest.WEB_STATIC_COS_PREFIX}/`))
         .map((item) => [item.relativePath, item]),
     );
@@ -57,8 +79,8 @@ async function main() {
       const remotePath = `${manifest.WEB_STATIC_COS_PREFIX}/${file.relativePath}`;
       try {
         const buffer = await readFile(file.absolutePath);
-        await cos.uploadTencentCosFile(remotePath, buffer, contentTypeFor(file.relativePath));
-        const verified = await cos.headTencentCosFile(remotePath);
+        await storage.uploadFile(remotePath, buffer, contentTypeFor(file.relativePath));
+        const verified = await storage.headFile(remotePath);
         if (!verified.exists || verified.size !== file.size) throw new Error("上传后大小校验失败");
         uploaded += 1;
       } catch (error) {
@@ -70,24 +92,25 @@ async function main() {
     });
 
     if (failures.length) {
-      console.warn(`[static-cos] ${failures.length} files failed; keeping the previous manifest and local fallback`);
+      console.warn(`[static-${backend}] ${failures.length} files failed; keeping the previous manifest and local fallback`);
       for (const failure of failures.slice(0, 10)) {
-        console.warn(`[static-cos] ${failure.relativePath}: ${failure.message}`);
+        console.warn(`[static-${backend}] ${failure.relativePath}: ${failure.message}`);
       }
       process.exitCode = 2;
       return;
     }
 
-    const remoteAssetBaseUrl = await cos.resolveTencentCosDeliveryUrl(manifest.WEB_STATIC_COS_PREFIX);
+    const remoteAssetBaseUrl = await storage.resolveDeliveryUrl(manifest.WEB_STATIC_COS_PREFIX);
     await rewriteIndexHtml(distRoot, remoteAssetBaseUrl, manifest.rewriteWebStaticAssetUrls);
     await writeManifest(distRoot, manifest.WEB_STATIC_COS_MANIFEST, {
-      version: 1,
+      version: 2,
       generatedAt: new Date().toISOString(),
       remotePrefix: manifest.WEB_STATIC_COS_PREFIX,
+      backend,
       assets: files.map((file) => file.relativePath).sort((a, b) => a.localeCompare(b, "en")),
       publicAssets: publicFiles.map((file) => file.relativePath).sort((a, b) => a.localeCompare(b, "en")),
     });
-    console.log(`[static-cos] ready: ${uploadFiles.length} files (${formatBytes(totalBytes)}), uploaded=${uploaded}, reused=${uploadFiles.length - uploaded}`);
+    console.log(`[static-${backend}] ready: ${uploadFiles.length} files (${formatBytes(totalBytes)}), uploaded=${uploaded}, reused=${uploadFiles.length - uploaded}`);
   } finally {
     await prisma.$disconnect();
   }
@@ -130,7 +153,7 @@ async function selectCurrentBuildFiles(root: string, files: CollectedFile[]) {
     }
     return { files: selectedFiles, source: "vite-manifest" as const };
   } catch (error) {
-    console.warn(`[static-cos] current Vite manifest unavailable (${String(error instanceof Error ? error.message : error)}); scanning all hashed assets`);
+    console.warn(`[static-object] current Vite manifest unavailable (${String(error instanceof Error ? error.message : error)}); scanning all hashed assets`);
     return { files, source: "asset-directory" as const };
   }
 }
@@ -214,6 +237,6 @@ function formatBytes(value: number) {
 }
 
 main().catch((error) => {
-  console.error(`[static-cos] ${error instanceof Error ? error.message : String(error)}`);
+  console.error(`[static-object] ${error instanceof Error ? error.message : String(error)}`);
   process.exitCode = 1;
 });

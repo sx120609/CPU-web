@@ -3,7 +3,9 @@ import { isDev } from "../config";
 
 export const WEB_STATIC_COS_ORIGIN = "https://cputime-1462084442.cos.ap-shanghai.myqcloud.com";
 export const WEB_STATIC_CDN_ORIGIN = "https://img.cputime.cn";
-const WEB_STATIC_ORIGINS = `${WEB_STATIC_CDN_ORIGIN} ${WEB_STATIC_COS_ORIGIN}`;
+export const WEB_STATIC_OSS_ORIGIN = "https://cputime-static-20260901.oss-cn-shanghai.aliyuncs.com";
+export const WEB_STATIC_ESA_ORIGIN = "https://static.cputime.cn";
+const WEB_STATIC_ORIGINS = `${WEB_STATIC_ESA_ORIGIN} ${WEB_STATIC_OSS_ORIGIN} ${WEB_STATIC_CDN_ORIGIN} ${WEB_STATIC_COS_ORIGIN}`;
 
 const CSP_DIRECTIVES = [
   "default-src 'self'",

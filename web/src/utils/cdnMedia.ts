@@ -1,4 +1,4 @@
-const MEDIA_CDN_BASE = "https://img.cputime.cn/cpu-web-media";
+const MEDIA_CDN_BASE = "https://static.cputime.cn/cpu-web-media";
 const RESIZABLE_IMAGE_RE = /\.(?:avif|jpe?g|png|webp)$/i;
 
 export function directMediaUrl(value: unknown) {
@@ -18,7 +18,7 @@ export function cdnImageUrl(value: unknown, options: { width?: number; quality?:
   const [pathname, query = ""] = source.split("?", 2);
   if (query || !RESIZABLE_IMAGE_RE.test(pathname)) return source;
   const quality = Math.min(92, Math.max(55, Math.round(Number(options.quality) || 80)));
-  return `${source}?imageMogr2/auto-orient/thumbnail/${width}x/quality/${quality}/format/webp`;
+  return `${source}?x-oss-process=image/auto-orient,1/resize,w_${width}/quality,q_${quality}/format,webp`;
 }
 
 export function cdnImageSrcset(value: unknown, widths: number[], quality = 80) {

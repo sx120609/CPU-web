@@ -2,6 +2,7 @@ import type { RequestHandler } from "express";
 import path from "node:path";
 import { readFileSync } from "node:fs";
 import { resolveTencentCosDeliveryUrl } from "./tencentCos";
+import { resolveAliyunOssDeliveryUrl } from "./aliyunOss";
 
 // Keep the whole ES module graph under one versioned URL prefix. Query-string
 // cache busting would give the entry module a different identity from chunks
@@ -9,18 +10,22 @@ import { resolveTencentCosDeliveryUrl } from "./tencentCos";
 export const WEB_STATIC_COS_PREFIX = "web-static/assets/dual-origin-v2";
 export const WEB_STATIC_COS_MANIFEST = "cos-static-assets.json";
 
+type WebStaticBackend = "cos" | "oss";
+
 type WebStaticCosManifest = {
-  version: 1;
+  version: 1 | 2;
   generatedAt: string;
   remotePrefix: string;
+  backend?: WebStaticBackend;
   assets: string[];
   publicAssets?: string[];
 };
 
 export function createWebStaticCosHandler(distRoot: string): RequestHandler {
-  const assets = loadWebStaticCosManifest(distRoot);
+  const manifest = loadWebStaticManifest(distRoot);
+  const assets = manifest.assets;
   if (!assets.size) return (_req, _res, next) => next();
-  console.log(`[static-cos] redirect manifest active: ${assets.size} assets`);
+  console.log(`[static-${manifest.backend}] redirect manifest active: ${assets.size} assets`);
 
   return async (req, res, next) => {
     if (req.method !== "GET" && req.method !== "HEAD") return next();
@@ -28,10 +33,10 @@ export function createWebStaticCosHandler(distRoot: string): RequestHandler {
     if (!assetPath || !assets.has(assetPath)) return next();
 
     try {
-      const remoteUrl = await resolveTencentCosDeliveryUrl(`${WEB_STATIC_COS_PREFIX}/${assetPath}`);
-      // Vite 文件名带内容哈希，重定向地址和 COS 对象都可以长期缓存。
+      const remoteUrl = await resolveWebStaticDeliveryUrl(manifest.backend, `${WEB_STATIC_COS_PREFIX}/${assetPath}`);
+      // Vite 文件名带内容哈希，重定向地址和对象都可以长期缓存。
       res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
-      res.setHeader("X-Static-Asset-Backend", "cos");
+      res.setHeader("X-Static-Asset-Backend", manifest.backend);
       res.redirect(302, remoteUrl);
     } catch {
       next();
@@ -40,18 +45,19 @@ export function createWebStaticCosHandler(distRoot: string): RequestHandler {
 }
 
 export function createWebStaticPublicCosHandler(distRoot: string): RequestHandler {
-  const assets = loadWebStaticCosPublicManifest(distRoot);
+  const manifest = loadWebStaticManifest(distRoot);
+  const assets = manifest.publicAssets;
   if (!assets.size) return (_req, _res, next) => next();
-  console.log(`[static-cos] public redirect manifest active: ${assets.size} assets`);
+  console.log(`[static-${manifest.backend}] public redirect manifest active: ${assets.size} assets`);
 
   return async (req, res, next) => {
     if (req.method !== "GET" && req.method !== "HEAD") return next();
     const assetPath = normalizeWebStaticAssetPath(decodeRequestPathname(req.path));
     if (!assetPath || !assets.has(assetPath)) return next();
     try {
-      const remoteUrl = await resolveTencentCosDeliveryUrl(`${WEB_STATIC_COS_PREFIX}/${assetPath}`);
+      const remoteUrl = await resolveWebStaticDeliveryUrl(manifest.backend, `${WEB_STATIC_COS_PREFIX}/${assetPath}`);
       res.setHeader("Cache-Control", "public, max-age=3600, stale-while-revalidate=86400");
-      res.setHeader("X-Static-Asset-Backend", "cos");
+      res.setHeader("X-Static-Asset-Backend", manifest.backend);
       res.redirect(302, remoteUrl);
     } catch {
       next();
@@ -60,29 +66,36 @@ export function createWebStaticPublicCosHandler(distRoot: string): RequestHandle
 }
 
 export function loadWebStaticCosManifest(distRoot: string) {
-  try {
-    const manifestPath = path.resolve(distRoot, WEB_STATIC_COS_MANIFEST);
-    const parsed = JSON.parse(readFileSync(manifestPath, "utf8")) as Partial<WebStaticCosManifest>;
-    if (parsed.version !== 1 || parsed.remotePrefix !== WEB_STATIC_COS_PREFIX || !Array.isArray(parsed.assets)) {
-      return new Set<string>();
-    }
-    return new Set(parsed.assets.map(normalizeWebStaticAssetPath).filter(Boolean));
-  } catch {
-    return new Set<string>();
-  }
+  return loadWebStaticManifest(distRoot).assets;
 }
 
 export function loadWebStaticCosPublicManifest(distRoot: string) {
+  return loadWebStaticManifest(distRoot).publicAssets;
+}
+
+function loadWebStaticManifest(distRoot: string) {
   try {
     const manifestPath = path.resolve(distRoot, WEB_STATIC_COS_MANIFEST);
     const parsed = JSON.parse(readFileSync(manifestPath, "utf8")) as Partial<WebStaticCosManifest>;
-    if (parsed.version !== 1 || parsed.remotePrefix !== WEB_STATIC_COS_PREFIX || !Array.isArray(parsed.publicAssets)) {
-      return new Set<string>();
+    if (![1, 2].includes(Number(parsed.version)) || parsed.remotePrefix !== WEB_STATIC_COS_PREFIX || !Array.isArray(parsed.assets)) {
+      return emptyWebStaticManifest();
     }
-    return new Set(parsed.publicAssets.map(normalizeWebStaticAssetPath).filter(Boolean));
+    return {
+      backend: parsed.backend === "oss" ? "oss" as const : "cos" as const,
+      assets: new Set(parsed.assets.map(normalizeWebStaticAssetPath).filter(Boolean)),
+      publicAssets: new Set((parsed.publicAssets || []).map(normalizeWebStaticAssetPath).filter(Boolean)),
+    };
   } catch {
-    return new Set<string>();
+    return emptyWebStaticManifest();
   }
+}
+
+function emptyWebStaticManifest() {
+  return { backend: "cos" as const, assets: new Set<string>(), publicAssets: new Set<string>() };
+}
+
+function resolveWebStaticDeliveryUrl(backend: WebStaticBackend, relativePath: string) {
+  return backend === "oss" ? resolveAliyunOssDeliveryUrl(relativePath) : resolveTencentCosDeliveryUrl(relativePath);
 }
 
 export function normalizeWebStaticAssetPath(value: string) {

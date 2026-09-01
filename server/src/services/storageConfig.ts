@@ -2,7 +2,7 @@ import { prisma } from "../prisma";
 import { config } from "../config";
 import { broadcastStorageConfigReload } from "./runtimeBroadcast";
 
-export type MediaStorageProvider = "local" | "onedrive-cn" | "cos";
+export type MediaStorageProvider = "local" | "onedrive-cn" | "cos" | "oss";
 export type MediaStorageKind = "image" | "video";
 
 export type MediaStorageStoredConfig = {
@@ -31,12 +31,19 @@ export type MediaStorageStoredConfig = {
   tencentCosRegion: string;
   tencentCosRootPath: string;
   tencentCosPublicBaseUrl: string;
+  aliyunOssAccessKeyId: string;
+  aliyunOssAccessKeySecret: string;
+  aliyunOssBucket: string;
+  aliyunOssRegion: string;
+  aliyunOssRootPath: string;
+  aliyunOssPublicBaseUrl: string;
 };
 
-export type MediaStorageAdminConfig = Omit<MediaStorageStoredConfig, "oneDriveChinaClientSecret" | "oneDriveChinaRefreshToken" | "tencentCosSecretKey"> & {
+export type MediaStorageAdminConfig = Omit<MediaStorageStoredConfig, "oneDriveChinaClientSecret" | "oneDriveChinaRefreshToken" | "tencentCosSecretKey" | "aliyunOssAccessKeySecret"> & {
   oneDriveChinaClientSecretConfigured: boolean;
   oneDriveChinaRefreshTokenConfigured: boolean;
   tencentCosSecretKeyConfigured: boolean;
+  aliyunOssAccessKeySecretConfigured: boolean;
 };
 
 export type MediaStorageRuntimeConfig = MediaStorageStoredConfig & {
@@ -55,6 +62,12 @@ export type MediaStorageRuntimeConfig = MediaStorageStoredConfig & {
   legacyTencentCosRegion: string;
   legacyTencentCosRootPath: string;
   legacyTencentCosPublicBaseUrl: string;
+  legacyAliyunOssAccessKeyId: string;
+  legacyAliyunOssAccessKeySecret: string;
+  legacyAliyunOssBucket: string;
+  legacyAliyunOssRegion: string;
+  legacyAliyunOssRootPath: string;
+  legacyAliyunOssPublicBaseUrl: string;
 };
 
 const MEDIA_STORAGE_PROVIDER_KEY = "storage.media.provider";
@@ -82,6 +95,12 @@ const TENCENT_COS_BUCKET_KEY = "storage.tencentCos.bucket";
 const TENCENT_COS_REGION_KEY = "storage.tencentCos.region";
 const TENCENT_COS_ROOT_PATH_KEY = "storage.tencentCos.rootPath";
 const TENCENT_COS_PUBLIC_BASE_URL_KEY = "storage.tencentCos.publicBaseUrl";
+const ALIYUN_OSS_ACCESS_KEY_ID_KEY = "storage.aliyunOss.accessKeyId";
+const ALIYUN_OSS_ACCESS_KEY_SECRET_KEY = "storage.aliyunOss.accessKeySecret";
+const ALIYUN_OSS_BUCKET_KEY = "storage.aliyunOss.bucket";
+const ALIYUN_OSS_REGION_KEY = "storage.aliyunOss.region";
+const ALIYUN_OSS_ROOT_PATH_KEY = "storage.aliyunOss.rootPath";
+const ALIYUN_OSS_PUBLIC_BASE_URL_KEY = "storage.aliyunOss.publicBaseUrl";
 
 const STORAGE_KEYS = [
   MEDIA_STORAGE_PROVIDER_KEY,
@@ -109,6 +128,12 @@ const STORAGE_KEYS = [
   TENCENT_COS_REGION_KEY,
   TENCENT_COS_ROOT_PATH_KEY,
   TENCENT_COS_PUBLIC_BASE_URL_KEY,
+  ALIYUN_OSS_ACCESS_KEY_ID_KEY,
+  ALIYUN_OSS_ACCESS_KEY_SECRET_KEY,
+  ALIYUN_OSS_BUCKET_KEY,
+  ALIYUN_OSS_REGION_KEY,
+  ALIYUN_OSS_ROOT_PATH_KEY,
+  ALIYUN_OSS_PUBLIC_BASE_URL_KEY,
 ] as const;
 
 let loaded = false;
@@ -145,6 +170,12 @@ const storageConfigCache: MediaStorageStoredConfig = {
   tencentCosRegion: "",
   tencentCosRootPath: "",
   tencentCosPublicBaseUrl: "",
+  aliyunOssAccessKeyId: "",
+  aliyunOssAccessKeySecret: "",
+  aliyunOssBucket: "",
+  aliyunOssRegion: "",
+  aliyunOssRootPath: "",
+  aliyunOssPublicBaseUrl: "",
 };
 
 export async function loadStorageConfig(): Promise<void> {
@@ -180,6 +211,12 @@ export async function loadStorageConfig(): Promise<void> {
     tencentCosRegion: "",
     tencentCosRootPath: "",
     tencentCosPublicBaseUrl: "",
+    aliyunOssAccessKeyId: "",
+    aliyunOssAccessKeySecret: "",
+    aliyunOssBucket: "",
+    aliyunOssRegion: "",
+    aliyunOssRootPath: "",
+    aliyunOssPublicBaseUrl: "",
   });
   const rows = await prisma.siteSetting.findMany({
     where: {
@@ -285,6 +322,30 @@ export async function loadStorageConfig(): Promise<void> {
     }
     if (row.key === TENCENT_COS_PUBLIC_BASE_URL_KEY) {
       next.tencentCosPublicBaseUrl = normalizePublicBaseUrl(row.value);
+      continue;
+    }
+    if (row.key === ALIYUN_OSS_ACCESS_KEY_ID_KEY) {
+      next.aliyunOssAccessKeyId = String(row.value || "").trim();
+      continue;
+    }
+    if (row.key === ALIYUN_OSS_ACCESS_KEY_SECRET_KEY) {
+      next.aliyunOssAccessKeySecret = String(row.value || "").trim();
+      continue;
+    }
+    if (row.key === ALIYUN_OSS_BUCKET_KEY) {
+      next.aliyunOssBucket = normalizeOssBucket(row.value);
+      continue;
+    }
+    if (row.key === ALIYUN_OSS_REGION_KEY) {
+      next.aliyunOssRegion = normalizeOssRegion(row.value);
+      continue;
+    }
+    if (row.key === ALIYUN_OSS_ROOT_PATH_KEY) {
+      next.aliyunOssRootPath = normalizeRootPath(row.value);
+      continue;
+    }
+    if (row.key === ALIYUN_OSS_PUBLIC_BASE_URL_KEY) {
+      next.aliyunOssPublicBaseUrl = normalizePublicBaseUrl(row.value);
     }
   }
   sanitizeStorageConfig(next);
@@ -315,9 +376,15 @@ export async function getMediaStorageAdminConfig(): Promise<MediaStorageAdminCon
     tencentCosRegion: storageConfigCache.tencentCosRegion || normalizeCosRegion(config.tencentCosRegion),
     tencentCosRootPath: storageConfigCache.tencentCosRootPath || normalizeRootPath(config.tencentCosRootPath),
     tencentCosPublicBaseUrl: storageConfigCache.tencentCosPublicBaseUrl || normalizePublicBaseUrl(config.tencentCosPublicBaseUrl),
+    aliyunOssAccessKeyId: storageConfigCache.aliyunOssAccessKeyId || String(config.aliyunOssAccessKeyId || "").trim(),
+    aliyunOssBucket: storageConfigCache.aliyunOssBucket || normalizeOssBucket(config.aliyunOssBucket),
+    aliyunOssRegion: storageConfigCache.aliyunOssRegion || normalizeOssRegion(config.aliyunOssRegion),
+    aliyunOssRootPath: storageConfigCache.aliyunOssRootPath || normalizeRootPath(config.aliyunOssRootPath),
+    aliyunOssPublicBaseUrl: storageConfigCache.aliyunOssPublicBaseUrl || normalizePublicBaseUrl(config.aliyunOssPublicBaseUrl),
     oneDriveChinaClientSecretConfigured: Boolean(storageConfigCache.oneDriveChinaClientSecret || legacyClientSecret),
     oneDriveChinaRefreshTokenConfigured: Boolean(storageConfigCache.oneDriveChinaRefreshToken),
     tencentCosSecretKeyConfigured: Boolean(storageConfigCache.tencentCosSecretKey || String(config.tencentCosSecretKey || "").trim()),
+    aliyunOssAccessKeySecretConfigured: Boolean(storageConfigCache.aliyunOssAccessKeySecret || String(config.aliyunOssAccessKeySecret || "").trim()),
   };
 }
 
@@ -352,6 +419,12 @@ export function getMediaStorageRuntimeConfigSync(): MediaStorageRuntimeConfig {
     legacyTencentCosRegion: normalizeCosRegion(config.tencentCosRegion),
     legacyTencentCosRootPath: normalizeRootPath(config.tencentCosRootPath),
     legacyTencentCosPublicBaseUrl: normalizePublicBaseUrl(config.tencentCosPublicBaseUrl),
+    legacyAliyunOssAccessKeyId: String(config.aliyunOssAccessKeyId || "").trim(),
+    legacyAliyunOssAccessKeySecret: String(config.aliyunOssAccessKeySecret || "").trim(),
+    legacyAliyunOssBucket: normalizeOssBucket(config.aliyunOssBucket),
+    legacyAliyunOssRegion: normalizeOssRegion(config.aliyunOssRegion),
+    legacyAliyunOssRootPath: normalizeRootPath(config.aliyunOssRootPath),
+    legacyAliyunOssPublicBaseUrl: normalizePublicBaseUrl(config.aliyunOssPublicBaseUrl),
   };
 }
 
@@ -372,6 +445,13 @@ export async function updateMediaStorageAdminConfig(input: {
   tencentCosRegion?: string;
   tencentCosRootPath?: string;
   tencentCosPublicBaseUrl?: string;
+  aliyunOssAccessKeyId?: string;
+  aliyunOssAccessKeySecret?: string;
+  clearAliyunOssAccessKeySecret?: boolean;
+  aliyunOssBucket?: string;
+  aliyunOssRegion?: string;
+  aliyunOssRootPath?: string;
+  aliyunOssPublicBaseUrl?: string;
 }): Promise<MediaStorageAdminConfig> {
   await ensureLoaded();
   const next = cloneStorageConfig(storageConfigCache);
@@ -424,6 +504,17 @@ export async function updateMediaStorageAdminConfig(input: {
   if (input.tencentCosRegion !== undefined) next.tencentCosRegion = normalizeCosRegion(input.tencentCosRegion);
   if (input.tencentCosRootPath !== undefined) next.tencentCosRootPath = normalizeRootPath(input.tencentCosRootPath);
   if (input.tencentCosPublicBaseUrl !== undefined) next.tencentCosPublicBaseUrl = normalizePublicBaseUrl(input.tencentCosPublicBaseUrl);
+  if (input.aliyunOssAccessKeyId !== undefined) next.aliyunOssAccessKeyId = String(input.aliyunOssAccessKeyId || "").trim();
+  if (input.clearAliyunOssAccessKeySecret) {
+    next.aliyunOssAccessKeySecret = "";
+  } else if (input.aliyunOssAccessKeySecret !== undefined) {
+    const raw = String(input.aliyunOssAccessKeySecret || "").trim();
+    if (raw) next.aliyunOssAccessKeySecret = raw;
+  }
+  if (input.aliyunOssBucket !== undefined) next.aliyunOssBucket = normalizeOssBucket(input.aliyunOssBucket);
+  if (input.aliyunOssRegion !== undefined) next.aliyunOssRegion = normalizeOssRegion(input.aliyunOssRegion);
+  if (input.aliyunOssRootPath !== undefined) next.aliyunOssRootPath = normalizeRootPath(input.aliyunOssRootPath);
+  if (input.aliyunOssPublicBaseUrl !== undefined) next.aliyunOssPublicBaseUrl = normalizePublicBaseUrl(input.aliyunOssPublicBaseUrl);
 
   const nextClientId = next.oneDriveChinaClientId || legacyClientId;
   const nextClientSecret = next.oneDriveChinaClientSecret || legacyClientSecret;
@@ -596,6 +687,12 @@ function sanitizeStorageConfig(target: MediaStorageStoredConfig) {
   target.tencentCosRegion = normalizeCosRegion(target.tencentCosRegion);
   target.tencentCosRootPath = normalizeRootPath(target.tencentCosRootPath);
   target.tencentCosPublicBaseUrl = normalizePublicBaseUrl(target.tencentCosPublicBaseUrl);
+  target.aliyunOssAccessKeyId = String(target.aliyunOssAccessKeyId || "").trim();
+  target.aliyunOssAccessKeySecret = String(target.aliyunOssAccessKeySecret || "").trim();
+  target.aliyunOssBucket = normalizeOssBucket(target.aliyunOssBucket);
+  target.aliyunOssRegion = normalizeOssRegion(target.aliyunOssRegion);
+  target.aliyunOssRootPath = normalizeRootPath(target.aliyunOssRootPath);
+  target.aliyunOssPublicBaseUrl = normalizePublicBaseUrl(target.aliyunOssPublicBaseUrl);
 }
 
 function clearResolvedSharePointState(target: MediaStorageStoredConfig) {
@@ -634,6 +731,12 @@ async function persistStorageConfig(next: MediaStorageStoredConfig) {
     [TENCENT_COS_REGION_KEY, next.tencentCosRegion],
     [TENCENT_COS_ROOT_PATH_KEY, next.tencentCosRootPath],
     [TENCENT_COS_PUBLIC_BASE_URL_KEY, next.tencentCosPublicBaseUrl],
+    [ALIYUN_OSS_ACCESS_KEY_ID_KEY, next.aliyunOssAccessKeyId],
+    [ALIYUN_OSS_ACCESS_KEY_SECRET_KEY, next.aliyunOssAccessKeySecret],
+    [ALIYUN_OSS_BUCKET_KEY, next.aliyunOssBucket],
+    [ALIYUN_OSS_REGION_KEY, next.aliyunOssRegion],
+    [ALIYUN_OSS_ROOT_PATH_KEY, next.aliyunOssRootPath],
+    [ALIYUN_OSS_PUBLIC_BASE_URL_KEY, next.aliyunOssPublicBaseUrl],
   ];
   await prisma.$transaction(entries.map(([key, value]) => prisma.siteSetting.upsert({
     where: { key },
@@ -655,12 +758,16 @@ async function resetStorageRuntimeCachesLocally() {
     import("./tencentCos")
       .then((module) => module.resetTencentCosClientCache())
       .catch(() => undefined),
+    import("./aliyunOss")
+      .then((module) => module.resetAliyunOssClientCache())
+      .catch(() => undefined),
   ]);
 }
 
 function normalizeMediaStorageProvider(input: unknown, fallback: MediaStorageProvider): MediaStorageProvider {
   const raw = String(input || "").trim().toLowerCase();
   if (raw === "cos") return "cos";
+  if (raw === "oss") return "oss";
   if (raw === "onedrive-cn") return "onedrive-cn";
   if (raw === "local") return "local";
   return fallback;
@@ -679,6 +786,22 @@ function normalizeCosRegion(input: unknown) {
   const raw = String(input || "").trim().toLowerCase();
   if (!raw) return "";
   if (!/^[a-z][a-z0-9-]{1,40}$/u.test(raw)) throw new Error("COS 地域格式不正确");
+  return raw;
+}
+
+function normalizeOssBucket(input: unknown) {
+  const raw = String(input || "").trim().toLowerCase();
+  if (!raw) return "";
+  if (!/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/u.test(raw)) {
+    throw new Error("OSS 存储桶名称格式不正确");
+  }
+  return raw;
+}
+
+function normalizeOssRegion(input: unknown) {
+  const raw = String(input || "").trim().toLowerCase();
+  if (!raw) return "";
+  if (!/^oss-[a-z][a-z0-9-]{1,40}$/u.test(raw)) throw new Error("OSS 地域格式不正确");
   return raw;
 }
 

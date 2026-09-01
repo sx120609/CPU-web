@@ -176,7 +176,7 @@ export type AssistantPointLedgerParams = {
   size?: number;
 };
 
-export type MediaStorageBackend = "local" | "onedrive-cn" | "cos";
+export type MediaStorageBackend = "local" | "onedrive-cn" | "cos" | "oss";
 
 export type MediaStorageConfig = {
   mediaStorageProvider: MediaStorageBackend;
@@ -202,6 +202,12 @@ export type MediaStorageConfig = {
   tencentCosRegion: string;
   tencentCosRootPath: string;
   tencentCosPublicBaseUrl: string;
+  aliyunOssAccessKeyId: string;
+  aliyunOssAccessKeySecretConfigured: boolean;
+  aliyunOssBucket: string;
+  aliyunOssRegion: string;
+  aliyunOssRootPath: string;
+  aliyunOssPublicBaseUrl: string;
 };
 
 export type FilestoreStorageConfig = {
@@ -250,6 +256,9 @@ export type MediaStorageAdminFileEntry = {
   cosExists: boolean;
   cosSizeBytes: number | null;
   cosUpdatedAt: string;
+  ossExists: boolean;
+  ossSizeBytes: number | null;
+  ossUpdatedAt: string;
 };
 
 export type MediaStorageAdminInventory = {
@@ -267,6 +276,9 @@ export type MediaStorageAdminInventory = {
   cosConfigured: boolean;
   cosReachable: boolean;
   cosError: string;
+  ossConfigured: boolean;
+  ossReachable: boolean;
+  ossError: string;
   summary: {
     total: number;
     localCount: number;
@@ -274,6 +286,7 @@ export type MediaStorageAdminInventory = {
     remoteCount: number;
     oneDriveCount: number;
     cosCount: number;
+    ossCount: number;
     legacyAvatarCount: number;
     eligibleMigrationCount: number;
     syncedCount: number;
@@ -938,6 +951,13 @@ export const adminApi = {
     tencentCosRegion?: string;
     tencentCosRootPath?: string;
     tencentCosPublicBaseUrl?: string;
+    aliyunOssAccessKeyId?: string;
+    aliyunOssAccessKeySecret?: string;
+    clearAliyunOssAccessKeySecret?: boolean;
+    aliyunOssBucket?: string;
+    aliyunOssRegion?: string;
+    aliyunOssRootPath?: string;
+    aliyunOssPublicBaseUrl?: string;
   }) => request.patch<MediaStorageConfig>("/admin/media-storage", patch),
   validateTencentCos: () =>
     request.post<{
@@ -948,6 +968,15 @@ export const adminApi = {
       rootPath: string;
       endpoint: string;
     }>("/admin/media-storage/cos/validate", {}),
+  validateAliyunOss: () =>
+    request.post<{
+      ok: true;
+      message: string;
+      bucket: string;
+      region: string;
+      rootPath: string;
+      endpoint: string;
+    }>("/admin/media-storage/oss/validate", {}),
   beginOneDriveChinaAuth: () =>
     request.post<{ callbackUrl: string; authorizeUrl: string }>("/admin/media-storage/onedrive-cn/authorize", {}),
   validateOneDriveChinaClient: () =>
