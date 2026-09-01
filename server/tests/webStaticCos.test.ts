@@ -7,6 +7,7 @@ import {
   loadWebStaticCosManifest,
   loadWebStaticCosPublicManifest,
   normalizeWebStaticAssetPath,
+  resolveWebStaticBackend,
   rewriteWebStaticAssetUrls,
   WEB_STATIC_COS_MANIFEST,
   WEB_STATIC_COS_PREFIX,
@@ -17,6 +18,12 @@ test("static asset paths reject traversal and normalize separators", () => {
   assert.equal(normalizeWebStaticAssetPath("fonts\\app.woff2"), "fonts/app.woff2");
   assert.equal(normalizeWebStaticAssetPath("../secret.js"), "");
   assert.equal(normalizeWebStaticAssetPath("chunks/./main.js"), "");
+});
+
+test("runtime static provider overrides the deployment manifest with a safe fallback", () => {
+  assert.equal(resolveWebStaticBackend("oss", "cos"), "oss");
+  assert.equal(resolveWebStaticBackend("cos", "oss"), "cos");
+  assert.equal(resolveWebStaticBackend("local", "cos"), "cos");
 });
 
 test("static object-storage manifest accepts legacy COS and current provider-aware versions", async (t) => {

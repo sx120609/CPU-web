@@ -38,70 +38,56 @@ async function main() {
   try {
     await loadStorageConfig();
     const runtime = await getMediaStorageRuntimeConfig();
-    const backend = runtime.effectiveImageProvider;
-    if (backend !== "cos" && backend !== "oss") {
-      console.warn(`[static-object] image backend is ${backend}; keeping local static delivery`);
+    const backend = runtime.webStaticProvider;
+    const storages: Record<"cos" | "oss", StaticStorage> = {
+      cos: {
+        isConfigured: cos.isTencentCosConfigured,
+        listFiles: cos.listTencentCosFiles,
+        uploadFile: cos.uploadTencentCosFile,
+        headFile: cos.headTencentCosFile,
+      },
+      oss: {
+        isConfigured: oss.isAliyunOssConfigured,
+        listFiles: oss.listAliyunOssFiles,
+        uploadFile: (relativePath, buffer, contentType) => oss.uploadAliyunOssFile(
+          relativePath,
+          buffer,
+          contentType,
+          { forbidOverwrite: true },
+        ),
+        headFile: oss.headAliyunOssFile,
+      },
+    };
+    const activeStorage = storages[backend];
+    if (!(await activeStorage.isConfigured())) {
+      console.warn(`[static-${backend}] active backend is not configured; keeping local static delivery`);
       return;
     }
-    const storage = backend === "oss"
-      ? {
-          isConfigured: oss.isAliyunOssConfigured,
-          listFiles: oss.listAliyunOssFiles,
-          uploadFile: oss.uploadAliyunOssFile,
-          headFile: oss.headAliyunOssFile,
-          resolveDeliveryUrl: oss.resolveAliyunOssDeliveryUrl,
-        }
-      : {
-          isConfigured: cos.isTencentCosConfigured,
-          listFiles: cos.listTencentCosFiles,
-          uploadFile: cos.uploadTencentCosFile,
-          headFile: cos.headTencentCosFile,
-          resolveDeliveryUrl: cos.resolveTencentCosDeliveryUrl,
-        };
-    if (!(await storage.isConfigured())) {
-      console.warn(`[static-${backend}] backend is not configured; keeping local static delivery`);
-      return;
-    }
 
-    const remoteFiles = new Map(
-      (await storage.listFiles())
-        .filter((item) => item.relativePath.startsWith(`${manifest.WEB_STATIC_COS_PREFIX}/`))
-        .map((item) => [item.relativePath, item]),
-    );
-    const pending = uploadFiles.filter((file) => {
-      const remotePath = `${manifest.WEB_STATIC_COS_PREFIX}/${file.relativePath}`;
-      return remoteFiles.get(remotePath)?.size !== file.size;
-    });
-
-    let uploaded = 0;
-    const failures: Array<{ relativePath: string; message: string }> = [];
-    await runInBatches(pending, concurrency, async (file) => {
-      const remotePath = `${manifest.WEB_STATIC_COS_PREFIX}/${file.relativePath}`;
-      try {
-        const buffer = await readFile(file.absolutePath);
-        await storage.uploadFile(remotePath, buffer, contentTypeFor(file.relativePath));
-        const verified = await storage.headFile(remotePath);
-        if (!verified.exists || verified.size !== file.size) throw new Error("上传后大小校验失败");
-        uploaded += 1;
-      } catch (error) {
-        failures.push({
-          relativePath: file.relativePath,
-          message: String(error instanceof Error ? error.message : error || "上传失败").slice(0, 300),
-        });
-      }
-    });
-
-    if (failures.length) {
-      console.warn(`[static-${backend}] ${failures.length} files failed; keeping the previous manifest and local fallback`);
-      for (const failure of failures.slice(0, 10)) {
-        console.warn(`[static-${backend}] ${failure.relativePath}: ${failure.message}`);
-      }
+    const activeResult = await syncBackend(backend, activeStorage, uploadFiles, manifest.WEB_STATIC_COS_PREFIX);
+    if (activeResult.failures.length) {
+      reportFailures(backend, activeResult.failures, "keeping the previous manifest and local fallback");
       process.exitCode = 2;
       return;
     }
 
-    const remoteAssetBaseUrl = await storage.resolveDeliveryUrl(manifest.WEB_STATIC_COS_PREFIX);
-    await rewriteIndexHtml(distRoot, remoteAssetBaseUrl, manifest.rewriteWebStaticAssetUrls);
+    const standbyBackend = backend === "cos" ? "oss" : "cos";
+    const standbyStorage = storages[standbyBackend];
+    try {
+      if (await standbyStorage.isConfigured()) {
+        const standbyResult = await syncBackend(standbyBackend, standbyStorage, uploadFiles, manifest.WEB_STATIC_COS_PREFIX);
+        if (standbyResult.failures.length) {
+          reportFailures(standbyBackend, standbyResult.failures, "active static delivery remains unchanged");
+        } else {
+          console.log(`[static-${standbyBackend}] standby ready: uploaded=${standbyResult.uploaded}, reused=${uploadFiles.length - standbyResult.uploaded}`);
+        }
+      } else {
+        console.warn(`[static-${standbyBackend}] standby backend is not configured; active static delivery remains unchanged`);
+      }
+    } catch (error) {
+      console.warn(`[static-${standbyBackend}] standby sync failed (${String(error instanceof Error ? error.message : error)}); active static delivery remains unchanged`);
+    }
+
     await writeManifest(distRoot, manifest.WEB_STATIC_COS_MANIFEST, {
       version: 2,
       generatedAt: new Date().toISOString(),
@@ -110,21 +96,59 @@ async function main() {
       assets: files.map((file) => file.relativePath).sort((a, b) => a.localeCompare(b, "en")),
       publicAssets: publicFiles.map((file) => file.relativePath).sort((a, b) => a.localeCompare(b, "en")),
     });
-    console.log(`[static-${backend}] ready: ${uploadFiles.length} files (${formatBytes(totalBytes)}), uploaded=${uploaded}, reused=${uploadFiles.length - uploaded}`);
+    console.log(`[static-${backend}] active ready: ${uploadFiles.length} files (${formatBytes(totalBytes)}), uploaded=${activeResult.uploaded}, reused=${uploadFiles.length - activeResult.uploaded}`);
   } finally {
     await prisma.$disconnect();
   }
 }
 
-async function rewriteIndexHtml(root: string, remoteAssetBaseUrl: string, rewrite: (html: string, baseUrl: string) => string) {
-  const target = path.join(root, "index.html");
-  const current = await readFile(target, "utf8");
-  const rewritten = rewrite(current, remoteAssetBaseUrl);
-  if (rewritten === current) return;
-  await writeTextAtomically(target, rewritten);
+type CollectedFile = { absolutePath: string; relativePath: string; size: number };
+
+type StaticStorage = {
+  isConfigured: () => Promise<boolean>;
+  listFiles: () => Promise<Array<{ relativePath: string; size: number | null }>>;
+  uploadFile: (relativePath: string, buffer: Buffer, contentType: string) => Promise<unknown>;
+  headFile: (relativePath: string) => Promise<{ exists: boolean; size: number | null }>;
+};
+
+async function syncBackend(backend: "cos" | "oss", storage: StaticStorage, files: CollectedFile[], remotePrefix: string) {
+  const remoteFiles = new Map(
+    (await storage.listFiles())
+      .filter((item) => item.relativePath.startsWith(`${remotePrefix}/`))
+      .map((item) => [item.relativePath, item]),
+  );
+  const pending = files.filter((file) => !remoteFiles.has(`${remotePrefix}/${file.relativePath}`));
+  let uploaded = 0;
+  const failures: Array<{ relativePath: string; message: string }> = files
+    .filter((file) => {
+      const remote = remoteFiles.get(`${remotePrefix}/${file.relativePath}`);
+      return Boolean(remote && remote.size !== null && remote.size !== file.size);
+    })
+    .map((file) => ({ relativePath: file.relativePath, message: "目标对象大小冲突，已保留原对象" }));
+  await runInBatches(pending, concurrency, async (file) => {
+    const remotePath = `${remotePrefix}/${file.relativePath}`;
+    try {
+      const buffer = await readFile(file.absolutePath);
+      await storage.uploadFile(remotePath, buffer, contentTypeFor(file.relativePath));
+      const verified = await storage.headFile(remotePath);
+      if (!verified.exists || verified.size !== file.size) throw new Error("上传后大小校验失败");
+      uploaded += 1;
+    } catch (error) {
+      failures.push({
+        relativePath: file.relativePath,
+        message: String(error instanceof Error ? error.message : error || "上传失败").slice(0, 300),
+      });
+    }
+  });
+  return { backend, uploaded, failures };
 }
 
-type CollectedFile = { absolutePath: string; relativePath: string; size: number };
+function reportFailures(backend: "cos" | "oss", failures: Array<{ relativePath: string; message: string }>, consequence: string) {
+  console.warn(`[static-${backend}] ${failures.length} files failed; ${consequence}`);
+  for (const failure of failures.slice(0, 10)) {
+    console.warn(`[static-${backend}] ${failure.relativePath}: ${failure.message}`);
+  }
+}
 
 async function selectCurrentBuildFiles(root: string, files: CollectedFile[]) {
   const viteManifestPath = path.join(root, ".vite", "manifest.json");

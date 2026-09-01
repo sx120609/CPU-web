@@ -105,6 +105,11 @@ import {
 } from "../../services/mediaStorage";
 import { validateTencentCosConfiguration } from "../../services/tencentCos";
 import { validateAliyunOssConfiguration } from "../../services/aliyunOss";
+import {
+  getWebStaticSwitchStatus,
+  switchWebStaticProvider,
+  WebStaticProviderNotReadyError,
+} from "../../services/webStaticSwitch";
 import { migrateLegacyDataAvatars } from "../../services/userAvatarStorage";
 import { qqBotAdminRouter } from "./qqbot";
 import { backfillAdminDailyLoginsFromLastLogin, getChinaDayRange, listAdminDailyLoginSeries } from "../../services/adminStats";
@@ -2188,6 +2193,28 @@ adminRouter.post("/media-storage/onedrive-cn/authorize", adminOnly, async (req, 
       e?.message === "请先填写 SharePoint 站点地址" ||
       e?.message === "当前请求缺少可用站点域名，无法生成回调地址"
     ) {
+      next(Errors.badRequest(e.message));
+      return;
+    }
+    next(e);
+  }
+});
+
+adminRouter.get("/media-storage/web-static", adminOnly, async (_req, res, next) => {
+  try {
+    ok(res, await getWebStaticSwitchStatus());
+  } catch (e) { next(e); }
+});
+
+const webStaticSwitchSchema = z.object({
+  provider: z.enum(["cos", "oss"]),
+});
+
+adminRouter.post("/media-storage/web-static/switch", adminOnly, validate(webStaticSwitchSchema), async (req, res, next) => {
+  try {
+    ok(res, await switchWebStaticProvider(req.body.provider));
+  } catch (e) {
+    if (e instanceof WebStaticProviderNotReadyError) {
       next(Errors.badRequest(e.message));
       return;
     }

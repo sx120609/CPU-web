@@ -177,11 +177,13 @@ export type AssistantPointLedgerParams = {
 };
 
 export type MediaStorageBackend = "local" | "onedrive-cn" | "cos" | "oss";
+export type WebStaticProvider = "cos" | "oss";
 
 export type MediaStorageConfig = {
   mediaStorageProvider: MediaStorageBackend;
   mediaStorageImageProvider: MediaStorageBackend;
   mediaStorageVideoProvider: MediaStorageBackend;
+  webStaticProvider: WebStaticProvider;
   mediaStorageRemotePrefixes: string[];
   oneDriveChinaClientId: string;
   oneDriveChinaClientSecretConfigured: boolean;
@@ -208,6 +210,28 @@ export type MediaStorageConfig = {
   aliyunOssRegion: string;
   aliyunOssRootPath: string;
   aliyunOssPublicBaseUrl: string;
+};
+
+export type WebStaticBackendStatus = {
+  provider: WebStaticProvider;
+  configured: boolean;
+  publicBaseUrl: string;
+  expectedCount: number;
+  presentCount: number;
+  missingCount: number;
+  mismatchedCount: number;
+  missingExamples: string[];
+  mismatchedExamples: string[];
+  deliveryReachable: boolean;
+  ready: boolean;
+  error: string;
+};
+
+export type WebStaticSwitchStatus = {
+  generatedAt: string;
+  activeProvider: WebStaticProvider;
+  expectedCount: number;
+  backends: Record<WebStaticProvider, WebStaticBackendStatus>;
 };
 
 export type FilestoreStorageConfig = {
@@ -934,6 +958,10 @@ export const adminApi = {
   updateFilestoreStorageConfig: (patch: { enabled?: boolean; minSizeMb?: number }) =>
     request.patch<FilestoreStorageConfig>("/admin/filestore-settings", patch),
   mediaStorageConfig: (options?: RequestOptions) => request.get<MediaStorageConfig>("/admin/media-storage", undefined, options),
+  webStaticStatus: (options?: RequestOptions) =>
+    request.get<WebStaticSwitchStatus>("/admin/media-storage/web-static", undefined, { timeout: 120000, ...options }),
+  switchWebStaticProvider: (provider: WebStaticProvider) =>
+    request.post<WebStaticSwitchStatus>("/admin/media-storage/web-static/switch", { provider }, { timeout: 120000 }),
   updateMediaStorageConfig: (patch: {
     mediaStorageProvider?: MediaStorageBackend;
     mediaStorageImageProvider?: MediaStorageBackend;

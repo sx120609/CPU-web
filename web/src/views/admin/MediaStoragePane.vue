@@ -9,6 +9,63 @@
       </div>
     </el-alert>
 
+    <section class="settings-card" v-loading="loadingWebStaticStatus">
+      <div class="section-head">
+        <div>
+          <h3 class="section-title">Web 静态资源入口</h3>
+          <p class="section-desc">只切换网页 JS、CSS、字体和公开构建资源；不会改变论坛图片、视频等媒体存储。切换前会检查当前版本资源完整性和公网访问。</p>
+        </div>
+        <div class="summary-row">
+          <el-tag type="success" round>当前：{{ webStaticProviderLabel(activeWebStaticProvider) }}</el-tag>
+          <el-button :loading="loadingWebStaticStatus" @click="reloadWebStaticStatus">重新检测</el-button>
+        </div>
+      </div>
+      <el-alert
+        v-if="webStaticStatusError"
+        type="error"
+        :closable="false"
+        show-icon
+        :title="webStaticStatusError"
+      />
+      <div v-if="webStaticStatus" class="static-provider-grid">
+        <div
+          v-for="provider in webStaticProviders"
+          :key="provider"
+          class="static-provider-card"
+          :class="{ 'is-active': activeWebStaticProvider === provider }"
+        >
+          <div class="static-provider-head">
+            <div>
+              <h4 class="card-title">{{ webStaticProviderLabel(provider) }}</h4>
+              <div class="storage-hint">{{ webStaticStatus.backends[provider].publicBaseUrl || "未配置静态资源域名" }}</div>
+            </div>
+            <el-tag :type="webStaticStatus.backends[provider].ready ? 'success' : 'warning'" round>
+              {{ webStaticStatus.backends[provider].ready ? "可切换" : "未就绪" }}
+            </el-tag>
+          </div>
+          <div class="summary-row">
+            <span class="summary-pill">当前版本 {{ webStaticStatus.backends[provider].presentCount }}/{{ webStaticStatus.backends[provider].expectedCount }}</span>
+            <span class="summary-pill">缺少 {{ webStaticStatus.backends[provider].missingCount }}</span>
+            <span class="summary-pill">冲突 {{ webStaticStatus.backends[provider].mismatchedCount }}</span>
+            <span class="summary-pill">公网 {{ webStaticStatus.backends[provider].deliveryReachable ? "正常" : "未通过" }}</span>
+          </div>
+          <div v-if="webStaticStatus.backends[provider].error" class="storage-error">
+            {{ webStaticStatus.backends[provider].error }}
+          </div>
+          <el-button
+            type="primary"
+            :plain="activeWebStaticProvider !== provider"
+            :disabled="activeWebStaticProvider === provider || !webStaticStatus.backends[provider].ready || Boolean(switchingWebStaticProvider)"
+            :loading="switchingWebStaticProvider === provider"
+            @click="switchWebStatic(provider)"
+          >
+            {{ activeWebStaticProvider === provider ? "当前使用" : `切换到${webStaticProviderShortLabel(provider)}` }}
+          </el-button>
+        </div>
+      </div>
+      <div class="storage-hint">切换会立即影响新打开或刷新的页面；已加载页面继续使用原有内容哈希资源。每次部署仍会同时补齐 COS 与 OSS，保留回切能力。</div>
+    </section>
+
     <section class="settings-card" :class="{ 'is-config-disabled': Boolean(configLoadError) }" v-loading="loadingConfig">
       <div class="section-head">
         <div>
@@ -417,6 +474,8 @@ import {
   type MediaStorageBackend,
   type MediaStorageMigrationResult,
   type OneDriveChinaDriveOption,
+  type WebStaticProvider,
+  type WebStaticSwitchStatus,
 } from "@/api/admin";
 
 type FileFilterKey =
@@ -434,6 +493,7 @@ const router = useRouter();
 
 const loadingConfig = ref(false);
 const loadingInventory = ref(false);
+const loadingWebStaticStatus = ref(false);
 const savingMediaStorage = ref(false);
 const authorizingOneDriveChina = ref(false);
 const validatingOneDriveChinaClient = ref(false);
@@ -444,8 +504,10 @@ const savingOneDriveChinaDrive = ref(false);
 const clearingOneDriveChinaAuth = ref(false);
 const migratingFiles = ref(false);
 const cleaningLocalFiles = ref(false);
+const switchingWebStaticProvider = ref<WebStaticProvider | "">("");
 const configLoadError = ref("");
 const inventoryLoadError = ref("");
+const webStaticStatusError = ref("");
 let configLoadSeq = 0;
 let inventoryLoadSeq = 0;
 
@@ -453,6 +515,9 @@ const siteOrigin = ref("");
 const mediaStorageProvider = ref<MediaStorageBackend>("local");
 const mediaStorageImageProvider = ref<MediaStorageBackend>("local");
 const mediaStorageVideoProvider = ref<MediaStorageBackend>("local");
+const activeWebStaticProvider = ref<WebStaticProvider>("cos");
+const webStaticStatus = ref<WebStaticSwitchStatus | null>(null);
+const webStaticProviders: WebStaticProvider[] = ["cos", "oss"];
 const mediaStorageRemotePrefixesInput = ref("forum");
 const oneDriveChinaClientId = ref("");
 const oneDriveChinaClientSecretInput = ref("");
@@ -559,7 +624,7 @@ watch([fileQuery, fileFilter, filePageSize], () => {
 onMounted(reload);
 
 async function reload() {
-  await Promise.all([reloadConfig(), reloadInventory()]);
+  await Promise.all([reloadConfig(), reloadInventory(), reloadWebStaticStatus()]);
   await handleStorageAuthQuery();
 }
 
@@ -588,6 +653,7 @@ function applyMediaStorageConfig(config: MediaStorageConfig) {
   mediaStorageProvider.value = config.mediaStorageProvider;
   mediaStorageImageProvider.value = config.mediaStorageImageProvider;
   mediaStorageVideoProvider.value = config.mediaStorageVideoProvider;
+  activeWebStaticProvider.value = config.webStaticProvider;
   mediaStorageRemotePrefixesInput.value = (config.mediaStorageRemotePrefixes ?? []).join(", ");
   oneDriveChinaClientId.value = config.oneDriveChinaClientId;
   oneDriveChinaClientSecretInput.value = "";
@@ -660,6 +726,48 @@ async function persistMediaStorageConfig(silent = false) {
 
 async function saveMediaStorageConfig() {
   await persistMediaStorageConfig(false);
+}
+
+async function reloadWebStaticStatus() {
+  if (loadingWebStaticStatus.value) return;
+  loadingWebStaticStatus.value = true;
+  webStaticStatusError.value = "";
+  try {
+    const result = await adminApi.webStaticStatus({ suppressErrorMessage: true });
+    webStaticStatus.value = result;
+    activeWebStaticProvider.value = result.activeProvider;
+  } catch (error) {
+    webStaticStatusError.value = requestMessage(error) || "静态资源状态检测失败，请稍后重试";
+  } finally {
+    loadingWebStaticStatus.value = false;
+  }
+}
+
+async function switchWebStatic(provider: WebStaticProvider) {
+  if (switchingWebStaticProvider.value || activeWebStaticProvider.value === provider) return;
+  const target = webStaticStatus.value?.backends[provider];
+  if (!target?.ready) {
+    ElMessage.warning("目标静态资源尚未通过就绪检查");
+    return;
+  }
+  try {
+    await ElMessageBox.confirm(
+      `确认把 Web 静态资源切换到${webStaticProviderLabel(provider)}？论坛图片和视频存储不会改变。`,
+      "切换静态资源入口",
+      { confirmButtonText: "确认切换", cancelButtonText: "取消", type: "warning" },
+    );
+  } catch {
+    return;
+  }
+  switchingWebStaticProvider.value = provider;
+  try {
+    const result = await adminApi.switchWebStaticProvider(provider);
+    webStaticStatus.value = result;
+    activeWebStaticProvider.value = result.activeProvider;
+    ElMessage.success(`已切换到${webStaticProviderLabel(provider)}，刷新页面后生效`);
+  } finally {
+    switchingWebStaticProvider.value = "";
+  }
 }
 
 async function startOneDriveChinaAuth() {
@@ -1052,6 +1160,14 @@ function backendLabel(value: MediaStorageBackend) {
   if (value === "onedrive-cn") return "世纪互联 OneDrive";
   return "本地磁盘";
 }
+
+function webStaticProviderLabel(value: WebStaticProvider) {
+  return value === "oss" ? "阿里云 OSS + ESA" : "腾讯云 COS + CDN";
+}
+
+function webStaticProviderShortLabel(value: WebStaticProvider) {
+  return value === "oss" ? "阿里云" : "腾讯云";
+}
 </script>
 
 <style scoped>
@@ -1160,6 +1276,34 @@ function backendLabel(value: MediaStorageBackend) {
   border: 1px solid #cce8e1;
   border-radius: 14px;
   background: linear-gradient(135deg, #f3fbf9 0%, #ffffff 70%);
+}
+
+.static-provider-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.static-provider-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.static-provider-card.is-active {
+  border-color: #20a98c;
+  box-shadow: 0 0 0 2px rgba(32, 169, 140, 0.1);
+}
+
+.static-provider-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .compact-head {
@@ -1353,6 +1497,10 @@ function backendLabel(value: MediaStorageBackend) {
   }
 
   .storage-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .static-provider-grid {
     grid-template-columns: 1fr;
   }
 

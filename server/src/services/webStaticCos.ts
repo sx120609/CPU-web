@@ -3,6 +3,7 @@ import path from "node:path";
 import { readFileSync } from "node:fs";
 import { resolveTencentCosDeliveryUrl } from "./tencentCos";
 import { resolveAliyunOssDeliveryUrl } from "./aliyunOss";
+import { getMediaStorageRuntimeConfigSync, type WebStaticProvider } from "./storageConfig";
 
 // Keep the whole ES module graph under one versioned URL prefix. Query-string
 // cache busting would give the entry module a different identity from chunks
@@ -10,7 +11,7 @@ import { resolveAliyunOssDeliveryUrl } from "./aliyunOss";
 export const WEB_STATIC_COS_PREFIX = "web-static/assets/dual-origin-v2";
 export const WEB_STATIC_COS_MANIFEST = "cos-static-assets.json";
 
-type WebStaticBackend = "cos" | "oss";
+type WebStaticBackend = WebStaticProvider;
 
 type WebStaticCosManifest = {
   version: 1 | 2;
@@ -25,7 +26,7 @@ export function createWebStaticCosHandler(distRoot: string): RequestHandler {
   const manifest = loadWebStaticManifest(distRoot);
   const assets = manifest.assets;
   if (!assets.size) return (_req, _res, next) => next();
-  console.log(`[static-${manifest.backend}] redirect manifest active: ${assets.size} assets`);
+  console.log(`[static-object] redirect manifest active: ${assets.size} assets`);
 
   return async (req, res, next) => {
     if (req.method !== "GET" && req.method !== "HEAD") return next();
@@ -33,10 +34,10 @@ export function createWebStaticCosHandler(distRoot: string): RequestHandler {
     if (!assetPath || !assets.has(assetPath)) return next();
 
     try {
-      const remoteUrl = await resolveWebStaticDeliveryUrl(manifest.backend, `${WEB_STATIC_COS_PREFIX}/${assetPath}`);
-      // Vite 文件名带内容哈希，重定向地址和对象都可以长期缓存。
-      res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
-      res.setHeader("X-Static-Asset-Backend", manifest.backend);
+      const backend = resolveWebStaticBackend(getMediaStorageRuntimeConfigSync().webStaticProvider, manifest.backend);
+      const remoteUrl = await resolveWebStaticDeliveryUrl(backend, `${WEB_STATIC_COS_PREFIX}/${assetPath}`);
+      res.setHeader("Cache-Control", "no-store");
+      res.setHeader("X-Static-Asset-Backend", backend);
       res.redirect(302, remoteUrl);
     } catch {
       next();
@@ -55,9 +56,10 @@ export function createWebStaticPublicCosHandler(distRoot: string): RequestHandle
     const assetPath = normalizeWebStaticAssetPath(decodeRequestPathname(req.path));
     if (!assetPath || !assets.has(assetPath)) return next();
     try {
-      const remoteUrl = await resolveWebStaticDeliveryUrl(manifest.backend, `${WEB_STATIC_COS_PREFIX}/${assetPath}`);
-      res.setHeader("Cache-Control", "public, max-age=3600, stale-while-revalidate=86400");
-      res.setHeader("X-Static-Asset-Backend", manifest.backend);
+      const backend = resolveWebStaticBackend(getMediaStorageRuntimeConfigSync().webStaticProvider, manifest.backend);
+      const remoteUrl = await resolveWebStaticDeliveryUrl(backend, `${WEB_STATIC_COS_PREFIX}/${assetPath}`);
+      res.setHeader("Cache-Control", "no-store");
+      res.setHeader("X-Static-Asset-Backend", backend);
       res.redirect(302, remoteUrl);
     } catch {
       next();
@@ -71,6 +73,19 @@ export function loadWebStaticCosManifest(distRoot: string) {
 
 export function loadWebStaticCosPublicManifest(distRoot: string) {
   return loadWebStaticManifest(distRoot).publicAssets;
+}
+
+export function loadWebStaticManifestSnapshot(distRoot: string) {
+  const manifest = loadWebStaticManifest(distRoot);
+  return {
+    backend: manifest.backend,
+    assets: [...manifest.assets],
+    publicAssets: [...manifest.publicAssets],
+  };
+}
+
+export function resolveWebStaticBackend(configured: unknown, fallback: WebStaticBackend): WebStaticBackend {
+  return configured === "oss" || configured === "cos" ? configured : fallback;
 }
 
 function loadWebStaticManifest(distRoot: string) {

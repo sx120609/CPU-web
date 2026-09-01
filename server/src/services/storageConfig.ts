@@ -4,11 +4,13 @@ import { broadcastStorageConfigReload } from "./runtimeBroadcast";
 
 export type MediaStorageProvider = "local" | "onedrive-cn" | "cos" | "oss";
 export type MediaStorageKind = "image" | "video";
+export type WebStaticProvider = "cos" | "oss";
 
 export type MediaStorageStoredConfig = {
   mediaStorageProvider: MediaStorageProvider;
   mediaStorageImageProvider: MediaStorageProvider;
   mediaStorageVideoProvider: MediaStorageProvider;
+  webStaticProvider: WebStaticProvider;
   mediaStorageRemotePrefixes: string[];
   filestoreRemoteStorageEnabled: boolean;
   filestoreRemoteMinSizeMb: number;
@@ -73,6 +75,7 @@ export type MediaStorageRuntimeConfig = MediaStorageStoredConfig & {
 const MEDIA_STORAGE_PROVIDER_KEY = "storage.media.provider";
 const MEDIA_STORAGE_IMAGE_PROVIDER_KEY = "storage.media.imageProvider";
 const MEDIA_STORAGE_VIDEO_PROVIDER_KEY = "storage.media.videoProvider";
+const WEB_STATIC_PROVIDER_KEY = "storage.webStatic.provider";
 const MEDIA_STORAGE_REMOTE_PREFIXES_KEY = "storage.media.remotePrefixes";
 const FILESTORE_REMOTE_STORAGE_ENABLED_KEY = "filestore.remoteStorageEnabled";
 const FILESTORE_REMOTE_MIN_SIZE_MB_KEY = "filestore.remoteMinSizeMb";
@@ -106,6 +109,7 @@ const STORAGE_KEYS = [
   MEDIA_STORAGE_PROVIDER_KEY,
   MEDIA_STORAGE_IMAGE_PROVIDER_KEY,
   MEDIA_STORAGE_VIDEO_PROVIDER_KEY,
+  WEB_STATIC_PROVIDER_KEY,
   MEDIA_STORAGE_REMOTE_PREFIXES_KEY,
   FILESTORE_REMOTE_STORAGE_ENABLED_KEY,
   FILESTORE_REMOTE_MIN_SIZE_MB_KEY,
@@ -148,6 +152,7 @@ const storageConfigCache: MediaStorageStoredConfig = {
     config.mediaStorageVideoProvider,
     normalizeMediaStorageProvider(config.mediaStorageProvider, "local"),
   ),
+  webStaticProvider: defaultWebStaticProvider(),
   mediaStorageRemotePrefixes: normalizeRemotePrefixes(config.mediaStorageRemotePrefixes, ["forum"]),
   filestoreRemoteStorageEnabled: false,
   filestoreRemoteMinSizeMb: 0,
@@ -189,6 +194,7 @@ export async function loadStorageConfig(): Promise<void> {
       config.mediaStorageVideoProvider,
       normalizeMediaStorageProvider(config.mediaStorageProvider, "local"),
     ),
+    webStaticProvider: defaultWebStaticProvider(),
     mediaStorageRemotePrefixes: normalizeRemotePrefixes(config.mediaStorageRemotePrefixes, ["forum"]),
     filestoreRemoteStorageEnabled: false,
     filestoreRemoteMinSizeMb: 0,
@@ -234,6 +240,10 @@ export async function loadStorageConfig(): Promise<void> {
     }
     if (row.key === MEDIA_STORAGE_VIDEO_PROVIDER_KEY) {
       next.mediaStorageVideoProvider = normalizeMediaStorageProvider(row.value, next.mediaStorageProvider);
+      continue;
+    }
+    if (row.key === WEB_STATIC_PROVIDER_KEY) {
+      next.webStaticProvider = normalizeWebStaticProvider(row.value, next.webStaticProvider);
       continue;
     }
     if (row.key === MEDIA_STORAGE_REMOTE_PREFIXES_KEY) {
@@ -538,6 +548,15 @@ export async function updateMediaStorageAdminConfig(input: {
   return getMediaStorageAdminConfig();
 }
 
+export async function updateWebStaticProvider(provider: WebStaticProvider) {
+  await ensureLoaded();
+  const next = cloneStorageConfig(storageConfigCache);
+  next.webStaticProvider = normalizeWebStaticProvider(provider, next.webStaticProvider);
+  await persistStorageConfig(next);
+  Object.assign(storageConfigCache, next);
+  return next.webStaticProvider;
+}
+
 export async function getFilestoreStorageAdminConfig() {
   await ensureLoaded();
   const runtime = getMediaStorageRuntimeConfigSync();
@@ -672,6 +691,7 @@ function sanitizeStorageConfig(target: MediaStorageStoredConfig) {
   target.mediaStorageProvider = normalizeMediaStorageProvider(target.mediaStorageProvider, "local");
   target.mediaStorageImageProvider = normalizeMediaStorageProvider(target.mediaStorageImageProvider, target.mediaStorageProvider);
   target.mediaStorageVideoProvider = normalizeMediaStorageProvider(target.mediaStorageVideoProvider, target.mediaStorageProvider);
+  target.webStaticProvider = normalizeWebStaticProvider(target.webStaticProvider, "cos");
   target.mediaStorageRemotePrefixes = normalizeRemotePrefixes(target.mediaStorageRemotePrefixes, ["forum"]);
   target.filestoreRemoteStorageEnabled = Boolean(target.filestoreRemoteStorageEnabled);
   target.filestoreRemoteMinSizeMb = normalizeFileSizeThresholdMb(target.filestoreRemoteMinSizeMb, 0);
@@ -709,6 +729,7 @@ async function persistStorageConfig(next: MediaStorageStoredConfig) {
     [MEDIA_STORAGE_PROVIDER_KEY, next.mediaStorageProvider],
     [MEDIA_STORAGE_IMAGE_PROVIDER_KEY, next.mediaStorageImageProvider],
     [MEDIA_STORAGE_VIDEO_PROVIDER_KEY, next.mediaStorageVideoProvider],
+    [WEB_STATIC_PROVIDER_KEY, next.webStaticProvider],
     [MEDIA_STORAGE_REMOTE_PREFIXES_KEY, next.mediaStorageRemotePrefixes.join(",")],
     [FILESTORE_REMOTE_STORAGE_ENABLED_KEY, next.filestoreRemoteStorageEnabled ? "on" : "off"],
     [FILESTORE_REMOTE_MIN_SIZE_MB_KEY, String(next.filestoreRemoteMinSizeMb)],
@@ -771,6 +792,22 @@ function normalizeMediaStorageProvider(input: unknown, fallback: MediaStoragePro
   if (raw === "onedrive-cn") return "onedrive-cn";
   if (raw === "local") return "local";
   return fallback;
+}
+
+function normalizeWebStaticProvider(input: unknown, fallback: WebStaticProvider): WebStaticProvider {
+  return String(input || "").trim().toLowerCase() === "oss"
+    ? "oss"
+    : String(input || "").trim().toLowerCase() === "cos"
+      ? "cos"
+      : fallback;
+}
+
+function defaultWebStaticProvider(): WebStaticProvider {
+  const imageProvider = normalizeMediaStorageProvider(
+    config.mediaStorageImageProvider,
+    normalizeMediaStorageProvider(config.mediaStorageProvider, "local"),
+  );
+  return normalizeWebStaticProvider(config.webStaticProvider, imageProvider === "oss" ? "oss" : "cos");
 }
 
 function normalizeCosBucket(input: unknown) {
