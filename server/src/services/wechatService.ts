@@ -1224,11 +1224,13 @@ export async function dispatchRecentWechatNotifications() {
       let attemptedChannel = "";
       try {
         const link = resolveNotificationLink(notification.link, notification.payload);
+        const sponsorTemplateOnly = isWechatSponsorTemplateNotification(notification);
         const customerPolicy = wechatCustomerMessagePolicy(binding.lastInteractionType);
         const interactionAge = binding.lastInteractionAt ? Date.now() - binding.lastInteractionAt.getTime() : Number.POSITIVE_INFINITY;
         const withinCustomerWindow = interactionAge >= 0 && interactionAge <= customerPolicy.windowMs;
         const customerDeliveries = customerDeliveriesByUserId.get(binding.userId) || 0;
-        const canTryCustomer = withinCustomerWindow
+        const canTryCustomer = !sponsorTemplateOnly
+          && withinCustomerWindow
           && customerDeliveries < customerPolicy.limit
           && failedCustomerAttempts < 3
           && wechatNotificationPriority(notification) >= 60
@@ -1249,10 +1251,18 @@ export async function dispatchRecentWechatNotifications() {
           }
         }
         if (!deliveryChannel && !persistentRetryBlocked) {
-          attemptedChannel = canSendSubscriptionNotification(config) ? "subscription" : canSendNotificationTemplate(config) ? "template" : attemptedChannel;
-          const persistentDelivery = await sendWechatPersistentNotification(config, binding.openId, notification, link);
-          deliveryChannel = persistentDelivery?.channel || "";
-          deliveryResponse = persistentDelivery?.response || null;
+          if (sponsorTemplateOnly) {
+            attemptedChannel = "template";
+            if (canSendNotificationTemplate(config)) {
+              deliveryResponse = await sendWechatTemplateNotification(config, binding.openId, notification, link);
+              deliveryChannel = "template";
+            }
+          } else {
+            attemptedChannel = canSendSubscriptionNotification(config) ? "subscription" : canSendNotificationTemplate(config) ? "template" : attemptedChannel;
+            const persistentDelivery = await sendWechatPersistentNotification(config, binding.openId, notification, link);
+            deliveryChannel = persistentDelivery?.channel || "";
+            deliveryResponse = persistentDelivery?.response || null;
+          }
         }
         if (!deliveryChannel && customerError) throw customerError;
         if (!deliveryChannel) {
@@ -1424,6 +1434,11 @@ function parseNotificationPayload(value?: string | null) {
 function isWechatPaymentSuccessNotification(notification: { payload?: string | null }) {
   const type = String(parseNotificationPayload(notification.payload).type || "");
   return /^(?:sponsor-paid|sponsor-admin|market-paid|market-paid-seller|payment-success|order-paid)$/.test(type);
+}
+
+export function isWechatSponsorTemplateNotification(notification: { payload?: string | null }) {
+  const type = String(parseNotificationPayload(notification.payload).type || "");
+  return type === "sponsor-paid" || type === "sponsor-admin";
 }
 
 function wechatWorkOrderType(notification: { category?: string | null; payload?: string | null }) {

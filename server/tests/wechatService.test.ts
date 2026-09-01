@@ -32,6 +32,7 @@ import {
   wechatNotificationAttemptSince,
   wechatNotificationAudienceWhere,
   wechatNotificationPriority,
+  isWechatSponsorTemplateNotification,
   wechatTemplateDeliveryResult,
   wechatTemplateOutboundMessageId,
   verifyWechatSignature,
@@ -131,6 +132,13 @@ test("prioritizes review outcomes over likes when customer-message quota is limi
   const like = wechatNotificationPriority({ category: "like", payload: "{}" });
   assert.ok(approved > direct);
   assert.ok(direct > like);
+});
+
+test("routes sponsor callback notifications directly through template messages", () => {
+  assert.equal(isWechatSponsorTemplateNotification({ payload: JSON.stringify({ type: "sponsor-paid" }) }), true);
+  assert.equal(isWechatSponsorTemplateNotification({ payload: JSON.stringify({ type: "sponsor-admin" }) }), true);
+  assert.equal(isWechatSponsorTemplateNotification({ payload: JSON.stringify({ type: "market-paid" }) }), false);
+  assert.equal(isWechatSponsorTemplateNotification({ payload: JSON.stringify({ type: "direct-message" }) }), false);
 });
 
 test("limits notification scans to bound users while retaining global notices", () => {
