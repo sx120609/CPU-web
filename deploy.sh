@@ -1349,10 +1349,20 @@ do_mirror_cos_to_oss() {
     warn "COS to OSS shadow mirror script is unavailable; Tencent delivery remains unchanged"
     return 0
   fi
-  log "Mirroring missing COS objects to the standby OSS bucket"
-  if ! NODE_ENV=production node "$mirror_script"; then
-    warn "COS to OSS shadow mirror failed; Tencent delivery and deployment will continue unchanged"
-  fi
+
+  local mirror_state_dir="$ROOT_DIR/.git/cpu-web-storage-mirror"
+  local mirror_lock="$mirror_state_dir/cos-to-oss.lock"
+  local mirror_log="$mirror_state_dir/cos-to-oss.log"
+  mkdir -p "$mirror_state_dir"
+  nohup bash -c '
+    lock_path="$1"
+    script_path="$2"
+    exec 9>"$lock_path"
+    flock -n 9 || exit 0
+    NODE_ENV=production exec node "$script_path"
+  ' cpu-web-cos-to-oss "$mirror_lock" "$mirror_script" >>"$mirror_log" 2>&1 </dev/null &
+  local mirror_pid=$!
+  log "COS to OSS shadow mirror scheduled in background (pid $mirror_pid); log: $mirror_log"
 }
 
 do_sync_storage_assets() {
