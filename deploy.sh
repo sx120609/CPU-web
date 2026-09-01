@@ -1334,6 +1334,32 @@ do_sync_web_static_assets() {
   fi
 }
 
+do_mirror_cos_to_oss() {
+  local mirror_setting="${COS_TO_OSS_SHADOW_MIRROR:-}"
+  [ -n "$mirror_setting" ] || mirror_setting="$(env_get COS_TO_OSS_SHADOW_MIRROR)"
+  case "${mirror_setting,,}" in
+    0|false|no|off)
+      log "COS to OSS shadow mirror is disabled"
+      return 0
+      ;;
+  esac
+
+  local mirror_script="$ROOT_DIR/server/dist/scripts/copyTencentCosToAliyunOss.js"
+  if [ ! -f "$mirror_script" ]; then
+    warn "COS to OSS shadow mirror script is unavailable; Tencent delivery remains unchanged"
+    return 0
+  fi
+  log "Mirroring missing COS objects to the standby OSS bucket"
+  if ! NODE_ENV=production node "$mirror_script"; then
+    warn "COS to OSS shadow mirror failed; Tencent delivery and deployment will continue unchanged"
+  fi
+}
+
+do_sync_storage_assets() {
+  do_sync_web_static_assets
+  do_mirror_cos_to_oss
+}
+
 do_build_voicehub() {
   ensure_project_build_dependencies voicehub nuxt
   run_guarded_process "Building VoiceHub Nuxt/Nitro -> voicehub/.output" \
@@ -1345,6 +1371,7 @@ do_build_all() {
   do_build_web
   do_sync_web_static_assets
   do_build_voicehub
+  do_mirror_cos_to_oss
 }
 
 validate_bundle_archive() {
@@ -2188,15 +2215,15 @@ do_update() {
   changed_files_match '^server/prisma/' && prisma_changed=1
 
   if [ -z "$DEPLOY_CHANGED_FILES" ] && [ "$DEPLOY_FORCE_ALL" != "1" ]; then
-    log "No application changes detected; retrying COS static sync and checking runtime services"
-    do_sync_web_static_assets
+    log "No application changes detected; retrying static storage sync and checking runtime services"
+    do_sync_storage_assets
     ensure_update_runtime_services
     return
   fi
 
   if [ "$server_changed" = "0" ] && [ "$web_changed" = "0" ] && [ "$voicehub_changed" = "0" ]; then
-    log "No deployable application changes detected; retrying COS static sync before recording the new deployment baseline"
-    do_sync_web_static_assets
+    log "No deployable application changes detected; retrying static storage sync before recording the new deployment baseline"
+    do_sync_storage_assets
     ensure_update_runtime_services
     record_successful_deployment
     return
@@ -2247,6 +2274,7 @@ do_update() {
     pm2 save >/dev/null
   fi
 
+  do_mirror_cos_to_oss
   ensure_update_runtime_services
   commit_ci_artifact_publish
   record_successful_deployment

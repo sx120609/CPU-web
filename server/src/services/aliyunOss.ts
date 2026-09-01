@@ -80,11 +80,19 @@ export async function listAliyunOssFiles(): Promise<AliyunOssStoredFile[]> {
   return files;
 }
 
-export async function uploadAliyunOssFile(relativePath: string, buffer: Buffer, contentType: string) {
+export async function uploadAliyunOssFile(
+  relativePath: string,
+  buffer: Buffer,
+  contentType: string,
+  options: { forbidOverwrite?: boolean } = {},
+) {
   const { client, config } = await requireAliyunOssClient();
   const result = await client.put(buildAliyunOssObjectKey(relativePath, config.rootPath), buffer, {
     mime: contentType || "application/octet-stream",
-    headers: { "Cache-Control": "public, max-age=31536000, immutable" },
+    headers: {
+      "Cache-Control": "public, max-age=31536000, immutable",
+      ...(options.forbidOverwrite ? { "x-oss-forbid-overwrite": "true" } : {}),
+    },
   });
   return {
     etag: String((result.res.headers as Record<string, unknown> | undefined)?.etag || "").replace(/^"|"$/gu, ""),
