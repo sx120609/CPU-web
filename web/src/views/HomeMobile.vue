@@ -10,6 +10,8 @@
       </nav>
     </section>
 
+    <ForumAdCard v-if="mobileHomeAd" :ad="mobileHomeAd" compact />
+
     <section v-if="showForumContent && hotPreview.length" class="hot-strip" aria-label="热榜">
       <header><b>热榜</b><router-link to="/forum?channel=hot">查看全部 →</router-link></header>
       <button v-for="(topic, index) in hotPreview" :key="topic.id" type="button" @click="openTopic(topic.id)">
@@ -40,7 +42,6 @@
         <el-empty :description="activeFeed.error"><el-button type="primary" @click="loadFeedPages(activeFeedStream)">重试</el-button></el-empty>
       </div>
       <div v-else class="home-feed-list" v-loading="activeFeed.loading && !latestTopics.length">
-        <ForumAdCard v-if="mobileHomeAd" :ad="mobileHomeAd" compact pinned />
         <ForumFeedCard v-for="topic in latestTopics" :key="topic.id" :topic="topic" time-mode="published" />
         <el-empty v-if="!activeFeed.loading && !latestTopics.length" :description="activeFeedEmptyText" />
       </div>
