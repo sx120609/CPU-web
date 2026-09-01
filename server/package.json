@@ -35,7 +35,7 @@
     "test:market": "node --import tsx --test tests/marketPayment.test.ts",
     "test:forum": "node --import tsx --test tests/forumImageCompression.test.ts tests/forumSubmission.test.ts tests/forumSubmissionReview.test.ts tests/questionBounty.test.ts",
     "test:cache": "node --import tsx --test tests/cache.test.ts tests/publicAvatar.test.ts",
-    "test:deployment": "node --import tsx --test tests/deployment.test.ts tests/cosToOssMirror.test.ts tests/webStaticCos.test.ts tests/webStaticSwitch.test.ts",
+    "test:deployment": "node --import tsx --test tests/deployment.test.ts tests/cosToOssMirror.test.ts tests/webStaticCos.test.ts tests/webStaticSwitch.test.ts tests/cloudUsage.test.ts",
     "test:sponsor": "node --import tsx --test tests/sponsorCategories.test.ts",
     "test:direct-messages": "node --import tsx --test tests/directMessagePolicy.test.ts tests/directMessageModeration.test.ts tests/forumReportPolicy.test.ts tests/forumReportLock.test.ts tests/textReviewPolicy.test.ts",
     "test:wechat": "node --import tsx --test tests/wechatService.test.ts"
@@ -44,6 +44,8 @@
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@alicloud/bssopenapi20171214": "^4.1.1",
+    "@alicloud/esa20240910": "^3.14.0",
     "@discordapp/twemoji": "16.0.1",
     "@prisma/client": "^5.22.0",
     "@resvg/resvg-js": "^2.6.2",
@@ -72,6 +74,7 @@
     "pdf-parse": "^2.4.5",
     "qrcode": "^1.5.4",
     "sharp": "^0.35.3",
+    "tencentcloud-sdk-nodejs-cdn": "^4.1.288",
     "turndown": "^7.2.4",
     "ws": "^8.21.0",
     "zod": "^3.23.8"

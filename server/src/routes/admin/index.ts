@@ -110,6 +110,7 @@ import {
   switchWebStaticProvider,
   WebStaticProviderNotReadyError,
 } from "../../services/webStaticSwitch";
+import { getCloudUsageSummary, type CloudUsageRange } from "../../services/cloudUsage";
 import { migrateLegacyDataAvatars } from "../../services/userAvatarStorage";
 import { qqBotAdminRouter } from "./qqbot";
 import { backfillAdminDailyLoginsFromLastLogin, getChinaDayRange, listAdminDailyLoginSeries } from "../../services/adminStats";
@@ -2196,6 +2197,17 @@ adminRouter.post("/media-storage/onedrive-cn/authorize", adminOnly, async (req, 
       next(Errors.badRequest(e.message));
       return;
     }
+    next(e);
+  }
+});
+
+adminRouter.get("/cloud-usage", adminOnly, async (req, res, next) => {
+  try {
+    const rawRange = String(req.query.range || "today");
+    const range: CloudUsageRange = rawRange === "7d" || rawRange === "30d" ? rawRange : "today";
+    const forceRefresh = req.query.refresh === "1" || req.query.refresh === "true";
+    ok(res, await getCloudUsageSummary(range, forceRefresh));
+  } catch (e) {
     next(e);
   }
 });

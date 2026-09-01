@@ -234,6 +234,67 @@ export type WebStaticSwitchStatus = {
   backends: Record<WebStaticProvider, WebStaticBackendStatus>;
 };
 
+export type CloudUsageRange = "today" | "7d" | "30d";
+
+export type CloudUsagePoint = {
+  timestamp: string;
+  trafficBytes: number;
+  requests: number;
+};
+
+export type CloudResourcePackage = {
+  id: string;
+  name: string;
+  kind: "traffic" | "requests" | "storage" | "other";
+  status: string;
+  total: number | null;
+  used: number | null;
+  remaining: number | null;
+  unit: string;
+  effectiveAt: string;
+  expiresAt: string;
+};
+
+export type CloudRatePlan = {
+  id: string;
+  name: string;
+  status: string;
+  billingMode: string;
+  coverage: string;
+  expiresAt: string;
+  sites: string[];
+  includedTrafficGb: number | null;
+  includedRequests: number | null;
+};
+
+export type CloudProviderUsage = {
+  provider: "tencent" | "aliyun";
+  configured: boolean;
+  available: boolean;
+  target: string;
+  trafficBytes: number;
+  requestTrafficBytes: number;
+  requests: number;
+  trafficHitRate: number | null;
+  requestHitRate: number | null;
+  samplingRate: number | null;
+  points: CloudUsagePoint[];
+  packages: CloudResourcePackage[];
+  plans: CloudRatePlan[];
+  warnings: string[];
+};
+
+export type CloudUsageSummary = {
+  range: CloudUsageRange;
+  startTime: string;
+  endTime: string;
+  generatedAt: string;
+  expiresAt: string;
+  cacheTtlSeconds: number;
+  cached: boolean;
+  providers: Record<"tencent" | "aliyun", CloudProviderUsage>;
+};
+
 export type FilestoreStorageConfig = {
   enabled: boolean;
   minSizeMb: number;
@@ -962,6 +1023,8 @@ export const adminApi = {
     request.get<WebStaticSwitchStatus>("/admin/media-storage/web-static", undefined, { timeout: 120000, ...options }),
   switchWebStaticProvider: (provider: WebStaticProvider) =>
     request.post<WebStaticSwitchStatus>("/admin/media-storage/web-static/switch", { provider }, { timeout: 120000 }),
+  cloudUsage: (range: CloudUsageRange, refresh = false, options?: RequestOptions) =>
+    request.get<CloudUsageSummary>("/admin/cloud-usage", { range, refresh: refresh ? "1" : "0" }, { timeout: 120000, cacheTtlMs: 0, ...options }),
   updateMediaStorageConfig: (patch: {
     mediaStorageProvider?: MediaStorageBackend;
     mediaStorageImageProvider?: MediaStorageBackend;
