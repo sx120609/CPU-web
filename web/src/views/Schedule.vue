@@ -759,7 +759,6 @@ import {
   supportsAndroidScheduleWidget,
 } from "@/utils/clientInfo";
 import { requestAndroidUpdatePrompt } from "@/utils/androidUpdatePrompt";
-import { ANDROID_APP_UPDATE_CHECK_ENABLED } from "@/utils/androidUpdatePolicy";
 import { USER_QQ_GROUP, copyText, openUserGroup } from "@/utils/userGroup";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
 import AcademicDataSourceBadge from "@/components/jwxt/AcademicDataSourceBadge.vue";
@@ -1201,16 +1200,12 @@ const widgetMenuPlatform = computed<WidgetMenuPlatform | null>(() => {
 const widgetMenuLabel = computed(() => {
   if (widgetMenuPlatform.value === "ios-native") return "添加 iOS 小组件";
   if (widgetMenuPlatform.value === "android") return "添加安卓小组件";
-  if (widgetMenuPlatform.value === "android-old") {
-    return ANDROID_APP_UPDATE_CHECK_ENABLED ? "更新安卓客户端" : "安卓小组件暂不可用";
-  }
+  if (widgetMenuPlatform.value === "android-old") return "更新安卓客户端";
   return "导入 iOS 小组件";
 });
 const androidAppUpdateAvailable = computed(() => isAndroidAppUpdateAvailable());
 const androidUpdateMenuLabel = computed(() => (
-  ANDROID_APP_UPDATE_CHECK_ENABLED
-    ? (androidAppUpdateAvailable.value ? "更新安卓客户端" : "检查客户端更新")
-    : "客户端更新检查已暂停"
+  androidAppUpdateAvailable.value ? "更新安卓客户端" : "检查客户端更新"
 ));
 const canShowAndroidClientDownload = computed(() => {
   if (isAndroidNativeApp() || isFlutterNativeShell()) return false;

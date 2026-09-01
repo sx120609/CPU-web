@@ -1,5 +1,4 @@
 import {
-  ANDROID_APP_UPDATE_CHECK_ENABLED,
   isAndroidUpdateAvailable,
 } from "@/utils/androidUpdatePolicy";
 
@@ -189,7 +188,6 @@ export function getAndroidNativeVersionName(ua = navigator.userAgent) {
 }
 
 export function isAndroidAppUpdateAvailable(ua = navigator.userAgent) {
-  if (!ANDROID_APP_UPDATE_CHECK_ENABLED) return false;
   return isAndroidUpdateAvailable(
     isAndroidNativeApp(ua),
     getAndroidNativeVersionCode(ua),
