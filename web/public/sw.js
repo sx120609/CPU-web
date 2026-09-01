@@ -1,4 +1,4 @@
-const SW_VERSION = "cpu-schedule-offline-20260830-v4";
+const SW_VERSION = "cpu-schedule-offline-20260901-v5";
 const APP_SHELL_CACHE = `${SW_VERSION}:shell`;
 const ASSET_CACHE = `${SW_VERSION}:assets`;
 const SCHEDULE_PATH = "/schedule";
@@ -39,7 +39,7 @@ function shouldCacheAssetRequest(request) {
 }
 
 async function putResponse(cacheName, key, response) {
-  if (!response || !response.ok) return response;
+  if (!response || (!response.ok && response.type !== "opaque")) return response;
   const cache = await caches.open(cacheName);
   await cache.put(key, response.clone());
   return response;
@@ -429,21 +429,10 @@ async function handleScheduleNavigation(request) {
   }
 }
 
-async function refreshAssetInBackground(request) {
-  try {
-    await fetchAndCache(request, ASSET_CACHE);
-  } catch {
-    // Keep using the cached copy until the next successful refresh.
-  }
-}
-
 async function handleAssetRequest(request) {
   const cache = await caches.open(ASSET_CACHE);
   const cached = await cache.match(request);
-  if (cached) {
-    void refreshAssetInBackground(request);
-    return cached;
-  }
+  if (cached) return cached;
   return fetchAndCache(request, ASSET_CACHE);
 }
 

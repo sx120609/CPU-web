@@ -36,25 +36,60 @@ export default defineConfig(({ command }) => ({
           return "assets/[name]-[hash][extname]";
         },
         manualChunks(id) {
-          if (!id.includes("node_modules")) return undefined;
-          if (id.includes("/echarts/") || id.includes("/vue-echarts/")) {
+          const normalized = id.replace(/\\/gu, "/");
+          if (!normalized.includes("node_modules")) {
+            const deferredModule = /\/src\/(?:views\/admin\/|views\/services\/(?:ToolManage|ToolDetail|FileStore|FileStoreSubmit|FileStoreStatus|QuestionnaireFill|GradeCheckLookup|Tools|VoiceHubLaunch)\.vue|views\/search\/(?:Result|SiteSearch)\.vue|components\/common\/(?:DesktopToolsPanel|DownloadSafetyGuideDialog)\.vue|components\/forum\/ComposeActionSheet\.vue)/u.test(normalized);
+            if (deferredModule) return undefined;
+            if (
+              normalized.includes("/src/layouts/MainLayout.vue")
+              || normalized.includes("/src/views/Home.vue")
+              || normalized.includes("/src/views/Schedule.vue")
+              || normalized.includes("/src/views/jwxt/Index.vue")
+              || normalized.includes("/src/views/services/Index.vue")
+              || normalized.includes("/src/views/profile/Index.vue")
+              || normalized.includes("/src/views/forum/")
+              || normalized.includes("/src/components/forum/")
+              || normalized.includes("/src/api/")
+              || normalized.includes("/src/stores/")
+              || normalized.includes("/src/utils/")
+              || normalized.includes("/src/components/common/")
+            ) {
+              return "app-shell";
+            }
+            return undefined;
+          }
+          if (normalized.includes("/echarts/") || normalized.includes("/vue-echarts/")) {
             return "charts";
           }
-          if (id.includes("/zrender/")) {
+          if (normalized.includes("/zrender/")) {
             return "zrender";
           }
-          if (id.includes("/viewerjs/") || id.includes("/artplayer/") || id.includes("/qrcode/")) {
+          if (normalized.includes("/viewerjs/") || normalized.includes("/artplayer/") || normalized.includes("/qrcode/")) {
             return "media-tools";
           }
-          if (id.includes("/xlsx/")) {
+          if (normalized.includes("/xlsx/")) {
             return "xlsx-tools";
           }
-          if (id.includes("/marked/") || id.includes("/dompurify/")) {
-            return "markdown-tools";
+          if (
+            normalized.includes("/marked/")
+            || normalized.includes("/dompurify/")
+            || normalized.includes("/katex/")
+            || normalized.includes("/element-plus/")
+            || normalized.includes("/@element-plus/")
+            || normalized.includes("/lodash-es/")
+            || /\/node_modules\/(?:vue|vue-router|pinia|@vue\/)/u.test(normalized)
+          ) {
+            return "core-vendor";
           }
           return undefined;
         },
       },
+    },
+  },
+  experimental: {
+    renderBuiltUrl(_filename, { hostType, type }) {
+      if (hostType === "css" && type === "asset") return { relative: true };
+      return undefined;
     },
   },
   css: {

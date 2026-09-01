@@ -194,11 +194,12 @@
     </transition>
 
     <DownloadSafetyGuideDialog
+      v-if="downloadSafetyGuideVisible"
       v-model="downloadSafetyGuideVisible"
       platform="windows"
     />
 
-    <ComposeActionSheet v-if="useMobileForumLayout" v-model="composeMenuOpen" />
+    <ComposeActionSheet v-if="useMobileForumLayout && composeMenuOpen" v-model="composeMenuOpen" />
 
     <button
       v-if="showForumPostFab"
@@ -358,7 +359,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onBeforeUnmount, onMounted, watch } from "vue";
+import { ref, computed, defineAsyncComponent, onBeforeUnmount, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import {
@@ -389,16 +390,17 @@ import {
 } from "@element-plus/icons-vue";
 import type { TopNavigationIcon, TopNavigationItem } from "@/api/site";
 import UserAvatar from "@/components/common/UserAvatar.vue";
-import ShijianAssistant from "@/views/search/Result.vue";
-import DesktopToolsPanel from "@/components/common/DesktopToolsPanel.vue";
-import DownloadSafetyGuideDialog from "@/components/common/DownloadSafetyGuideDialog.vue";
 import AppIcon from "@/components/common/AppIcon.vue";
-import ComposeActionSheet from "@/components/forum/ComposeActionSheet.vue";
 import { useAuthStore } from "@/stores/auth";
 import { useMessageStore } from "@/stores/message";
 import { useSiteStore } from "@/stores/site";
 import { useAppearanceStore, type AppearanceMode } from "@/stores/appearance";
 import { isDesktopNativeApp, isFlutterNativeShell } from "@/utils/clientInfo";
+
+const ShijianAssistant = defineAsyncComponent(() => import("@/views/search/Result.vue"));
+const DesktopToolsPanel = defineAsyncComponent(() => import("@/components/common/DesktopToolsPanel.vue"));
+const DownloadSafetyGuideDialog = defineAsyncComponent(() => import("@/components/common/DownloadSafetyGuideDialog.vue"));
+const ComposeActionSheet = defineAsyncComponent(() => import("@/components/forum/ComposeActionSheet.vue"));
 
 const auth = useAuthStore();
 const msg = useMessageStore();

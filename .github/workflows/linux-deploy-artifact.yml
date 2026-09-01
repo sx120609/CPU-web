@@ -66,6 +66,7 @@ jobs:
           node --test \
             ops/deploy/artifact-manifest.test.mjs \
             ops/nginx/nginx-http-redirect.test.mjs \
+            web/tests/staticRequestBudget.test.mjs \
             web/tests/transportBootstrap.test.mjs
           bash -n deploy.sh
           tar -C deploy-bundle -czf cpu-web-linux-deploy.tar.gz \

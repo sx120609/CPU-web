@@ -15,5 +15,5 @@ export async function acquireForumReportTargetLock(
   targetType: ForumReportTargetType,
   targetId: number,
 ) {
-  await transaction.$executeRaw`SELECT pg_advisory_xact_lock(${LOCK_NAMESPACES[targetType]}, ${targetId})`;
+  await transaction.$executeRaw`SELECT pg_advisory_xact_lock(${LOCK_NAMESPACES[targetType]}::int, ${targetId}::int)`;
 }
