@@ -79,7 +79,7 @@
         <div class="section-head">
           <div>
             <h3>消息能力</h3>
-            <p>客服消息优先用于最近主动交互的用户；超出窗口后优先使用用户主动同意的一次性订阅通知，再回退到模板消息。</p>
+            <p>所有站内通知统一使用模板消息；客服消息仅用于用户在公众号内主动发起的即时交互。</p>
           </div>
         </div>
         <el-alert
@@ -88,7 +88,7 @@
           :closable="false"
           show-icon
           title="尚未配置全时段微信推送通道"
-          description="当前只能使用客服消息：用户主动发送消息后 48 小时内最多 5 条，点击菜单、关注或扫码后仅 1 分钟内最多 3 条。请配置模板消息或一次性订阅通知，超出互动窗口后才能继续推送。"
+          description="当前没有可用的模板消息，站内通知将不会发送；客服消息只用于公众号内的即时交互，不会作为站内通知的回退通道。"
         />
         <div class="switch-grid">
           <label><span><b>站内通知转发</b><small>按用户订阅偏好发送微信提醒</small></span><el-switch v-model="form.notificationEnabled" /></label>
@@ -104,7 +104,7 @@
         <el-form label-position="top">
           <div class="template-grid">
             <el-form-item label="工单已生成通知 · 模板 ID">
-              <el-input v-model="form.workOrderTemplateId" placeholder="论坛、私信、审核和系统通知" />
+              <el-input v-model="form.workOrderTemplateId" placeholder="论坛、私聊、审核和系统通知" />
             </el-form-item>
             <el-form-item label="订单支付成功通知 · 模板 ID">
               <el-input v-model="form.paymentSuccessTemplateId" placeholder="赞助与校园商城支付成功" />
@@ -123,7 +123,7 @@
         <div class="section-head compact-head">
           <div>
             <h4>一次性订阅通知</h4>
-            <p>需在微信后台配置订阅通知模板与 JS 接口安全域名；用户在微信内主动同意后，每次同意可发送一条通知。</p>
+            <p>保留用户主动授权能力；站内通知自动转发固定使用上方模板消息，不使用此通道。</p>
           </div>
           <el-switch v-model="form.subscriptionEnabled" />
         </div>
@@ -261,8 +261,7 @@ const form = reactive({
 const persistentNotificationReady = computed(() => Boolean(
   form.workOrderTemplateId
   || form.paymentSuccessTemplateId
-  || (form.notificationTemplateId && form.templateTitleField && form.templateContentField)
-  || (form.subscriptionEnabled && form.subscriptionTemplateId && form.subscriptionTitleField && form.subscriptionContentField),
+  || (form.notificationTemplateId && form.templateTitleField && form.templateContentField),
 ));
 
 onMounted(loadAll);

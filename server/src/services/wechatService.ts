@@ -69,11 +69,6 @@ export type WechatInboundMessage = {
   thumbMediaId: string;
 };
 
-type WechatPersistentDelivery = {
-  channel: "subscription" | "template";
-  response: Record<string, any>;
-};
-
 let accessTokenCache: { fingerprint: string; token: string; expiresAt: number } | null = null;
 let jsapiTicketCache: { fingerprint: string; ticket: string; expiresAt: number } | null = null;
 let notificationPollerStarted = false;
@@ -344,7 +339,7 @@ export async function getUserWechatProfile(userId: number, jwxtToken?: string | 
     wechatId: config.wechatId,
     notificationEnabled: config.notificationEnabled,
     assistantEnabled: config.assistantEnabled,
-    persistentNotificationAvailable: canSendNotificationTemplate(config) || canSendSubscriptionNotification(config),
+    persistentNotificationAvailable: canSendNotificationTemplate(config),
     subscriptionAvailable: Boolean(
       config.enabled
       && config.subscriptionEnabled
@@ -1156,27 +1151,15 @@ export async function dispatchRecentWechatNotifications() {
   if (!notifications.length) return { sent: 0, skipped: 0 };
 
   const notificationIds = notifications.map((notification) => notification.id);
-  const [deliveryLogs, recentCustomerDeliveries] = await Promise.all([
-    prisma.wechatMessageLog.findMany({
-      where: {
-        eventType: "notification",
-        userId: { in: bindingUserIds },
-        notificationId: { in: notificationIds },
-        createdAt: { gte: since },
-      },
-      select: { userId: true, notificationId: true, status: true, result: true, createdAt: true },
-    }),
-    prisma.wechatMessageLog.findMany({
-      where: {
-        eventType: "notification",
-        status: "ok",
-        result: "customer",
-        userId: { in: bindingUserIds },
-        createdAt: { gte: new Date(Date.now() - CUSTOMER_MESSAGE_WINDOW_MS) },
-      },
-      select: { userId: true, createdAt: true },
-    }),
-  ]);
+  const deliveryLogs = await prisma.wechatMessageLog.findMany({
+    where: {
+      eventType: "notification",
+      userId: { in: bindingUserIds },
+      notificationId: { in: notificationIds },
+      createdAt: { gte: since },
+    },
+    select: { userId: true, notificationId: true, status: true, result: true, createdAt: true },
+  });
   notifications.sort((a, b) => (
     wechatNotificationPriority(b) - wechatNotificationPriority(a)
     || a.createdAt.getTime() - b.createdAt.getTime()
@@ -1196,14 +1179,6 @@ export async function dispatchRecentWechatNotifications() {
       failedLogsByKey.set(key, current);
     }
   });
-  const customerDeliveriesByUserId = new Map<number, number>();
-  recentCustomerDeliveries.forEach((delivery) => {
-    if (!delivery.userId) return;
-    const binding = bindingByUserId.get(delivery.userId);
-    if (!binding?.lastInteractionAt || delivery.createdAt < binding.lastInteractionAt) return;
-    customerDeliveriesByUserId.set(delivery.userId, (customerDeliveriesByUserId.get(delivery.userId) || 0) + 1);
-  });
-  const unavailableCustomerWindows = new Set<number>();
   let sent = 0;
   let skipped = 0;
   for (const notification of notifications) {
@@ -1212,59 +1187,22 @@ export async function dispatchRecentWechatNotifications() {
       if (!binding || !shouldDeliverWechatNotification(notification, binding.user.messageSetting)) continue;
       const deliveryKey = wechatNotificationDeliveryKey(notification.id, binding.userId);
       if (deliveredKeys.has(deliveryKey)) continue;
-      const attemptSince = wechatNotificationAttemptSince(notification.createdAt, binding.lastInteractionAt);
-      const failedCustomerAttempts = (failedLogsByKey.get(deliveryKey) || []).filter((entry) => (
-        entry.createdAt >= attemptSince && isWechatCustomerDeliveryFailure(entry.result)
-      )).length;
-      const persistentFailures = (failedLogsByKey.get(deliveryKey) || []).filter((entry) => (
-        isWechatPersistentDeliveryFailure(entry.result)
+      const templateFailures = (failedLogsByKey.get(deliveryKey) || []).filter((entry) => (
+        String(entry.result || "").startsWith("template:")
       ));
-      const persistentRetryBlocked = persistentFailures.length >= 3
-        || persistentFailures.some((entry) => isWechatPermanentPersistentDeliveryFailure(entry.result));
+      const templateRetryBlocked = templateFailures.length >= 3
+        || templateFailures.some((entry) => isWechatPermanentPersistentDeliveryFailure(entry.result));
       let attemptedChannel = "";
       try {
         const link = resolveNotificationLink(notification.link, notification.payload);
-        const sponsorTemplateOnly = isWechatSponsorTemplateNotification(notification);
-        const customerPolicy = wechatCustomerMessagePolicy(binding.lastInteractionType);
-        const interactionAge = binding.lastInteractionAt ? Date.now() - binding.lastInteractionAt.getTime() : Number.POSITIVE_INFINITY;
-        const withinCustomerWindow = interactionAge >= 0 && interactionAge <= customerPolicy.windowMs;
-        const customerDeliveries = customerDeliveriesByUserId.get(binding.userId) || 0;
-        const canTryCustomer = !sponsorTemplateOnly
-          && withinCustomerWindow
-          && customerDeliveries < customerPolicy.limit
-          && failedCustomerAttempts < 3
-          && wechatNotificationPriority(notification) >= 60
-          && !unavailableCustomerWindows.has(binding.userId);
+        const automaticChannel = wechatNotificationDeliveryChannel(notification);
         let deliveryChannel = "";
         let deliveryResponse: Record<string, any> | null = null;
-        let customerError: unknown = null;
-        if (canTryCustomer) {
-          attemptedChannel = "customer";
-          try {
-            deliveryResponse = await sendWechatCustomerText(binding.openId, renderNotificationText(notification, link));
-            customerDeliveriesByUserId.set(binding.userId, customerDeliveries + 1);
-            deliveryChannel = "customer";
-          } catch (error) {
-            customerError = error;
-            if (!isWechatCustomerWindowError(error)) throw error;
-            unavailableCustomerWindows.add(binding.userId);
-          }
+        if (!templateRetryBlocked && automaticChannel === "template" && canSendNotificationTemplate(config)) {
+          attemptedChannel = automaticChannel;
+          deliveryResponse = await sendWechatTemplateNotification(config, binding.openId, notification, link);
+          deliveryChannel = automaticChannel;
         }
-        if (!deliveryChannel && !persistentRetryBlocked) {
-          if (sponsorTemplateOnly) {
-            attemptedChannel = "template";
-            if (canSendNotificationTemplate(config)) {
-              deliveryResponse = await sendWechatTemplateNotification(config, binding.openId, notification, link);
-              deliveryChannel = "template";
-            }
-          } else {
-            attemptedChannel = canSendSubscriptionNotification(config) ? "subscription" : canSendNotificationTemplate(config) ? "template" : attemptedChannel;
-            const persistentDelivery = await sendWechatPersistentNotification(config, binding.openId, notification, link);
-            deliveryChannel = persistentDelivery?.channel || "";
-            deliveryResponse = persistentDelivery?.response || null;
-          }
-        }
-        if (!deliveryChannel && customerError) throw customerError;
         if (!deliveryChannel) {
           skipped += 1;
           if (!skippedKeys.has(deliveryKey)) {
@@ -1276,15 +1214,9 @@ export async function dispatchRecentWechatNotifications() {
               userId: binding.userId,
               notificationId: notification.id,
               content: notification.content,
-              result: wechatNotificationSkipReason({
-                withinCustomerWindow,
-                customerDeliveries,
-                customerLimit: customerPolicy.limit,
-                failedCustomerAttempts,
-                priority: wechatNotificationPriority(notification),
-                customerWindowUnavailable: unavailableCustomerWindows.has(binding.userId),
-                persistentRetryBlocked,
-              }),
+              result: templateRetryBlocked
+                ? "template-delivery-retry-limit-reached"
+                : "no-template-delivery-channel",
             });
             skippedKeys.add(deliveryKey);
           }
@@ -1293,12 +1225,10 @@ export async function dispatchRecentWechatNotifications() {
         await logWechatMessage({
           direction: "outbound",
           eventType: "notification",
-          status: deliveryChannel === "template" ? "accepted" : "ok",
+          status: "accepted",
           openId: binding.openId,
           userId: binding.userId,
-          messageId: deliveryChannel === "template"
-            ? wechatTemplateOutboundMessageId(deliveryResponse?.msgid)
-            : undefined,
+          messageId: wechatTemplateOutboundMessageId(deliveryResponse?.msgid),
           notificationId: notification.id,
           content: notification.content,
           result: deliveryChannel,
@@ -1371,45 +1301,6 @@ function wechatNotificationDeliveryKey(notificationId: number, userId: number) {
   return `${notificationId}:${userId}`;
 }
 
-function wechatNotificationSkipReason(input: {
-  withinCustomerWindow: boolean;
-  customerDeliveries: number;
-  customerLimit: number;
-  failedCustomerAttempts: number;
-  priority: number;
-  customerWindowUnavailable: boolean;
-  persistentRetryBlocked: boolean;
-}) {
-  if (input.persistentRetryBlocked) return "persistent-delivery-retry-limit-reached";
-  if (!input.withinCustomerWindow) return "no-persistent-delivery-channel";
-  if (input.customerWindowUnavailable) return "customer-window-unavailable";
-  if (input.customerDeliveries >= input.customerLimit) return "customer-message-quota-exhausted";
-  if (input.failedCustomerAttempts >= 3) return "customer-window-retry-limit-reached";
-  if (input.priority < 60) return "customer-quota-reserved-for-important-notifications";
-  return "no-available-delivery-channel";
-}
-
-async function sendWechatPersistentNotification(
-  config: WechatConfigRow,
-  openId: string,
-  notification: any,
-  link: string,
-): Promise<WechatPersistentDelivery | null> {
-  if (canSendSubscriptionNotification(config)) {
-    try {
-      const response = await sendWechatSubscriptionNotification(config, openId, notification);
-      return { channel: "subscription", response };
-    } catch (error) {
-      if (!canSendNotificationTemplate(config)) throw error;
-    }
-  }
-  if (canSendNotificationTemplate(config)) {
-    const response = await sendWechatTemplateNotification(config, openId, notification, link);
-    return { channel: "template", response };
-  }
-  return null;
-}
-
 export function wechatNotificationPriority(notification: { category?: string | null; payload?: string | null }) {
   const payload = parseNotificationPayload(notification.payload);
   const type = String(payload.type || "");
@@ -1436,6 +1327,10 @@ function isWechatPaymentSuccessNotification(notification: { payload?: string | n
   return /^(?:sponsor-paid|sponsor-admin|market-paid|market-paid-seller|payment-success|order-paid)$/.test(type);
 }
 
+export function wechatNotificationDeliveryChannel(_notification: { category?: string | null; payload?: string | null }) {
+  return "template" as const;
+}
+
 export function isWechatSponsorTemplateNotification(notification: { payload?: string | null }) {
   const type = String(parseNotificationPayload(notification.payload).type || "");
   return type === "sponsor-paid" || type === "sponsor-admin";
@@ -1444,7 +1339,7 @@ export function isWechatSponsorTemplateNotification(notification: { payload?: st
 function wechatWorkOrderType(notification: { category?: string | null; payload?: string | null }) {
   const type = String(parseNotificationPayload(notification.payload).type || "");
   if (type.includes("submission") || type.includes("review") || type.includes("ai-blocked") || type.includes("ai-recovered")) return "内容审核";
-  if (notification.category === "direct-message") return "私信通知";
+  if (notification.category === "direct-message") return "私聊通知";
   if (notification.category === "reply") return "回复通知";
   if (notification.category === "mention") return "提及通知";
   if (notification.category === "like") return "点赞通知";

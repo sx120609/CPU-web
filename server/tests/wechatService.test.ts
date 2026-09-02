@@ -32,6 +32,7 @@ import {
   wechatCustomerMessagePolicy,
   wechatNotificationAttemptSince,
   wechatNotificationAudienceWhere,
+  wechatNotificationDeliveryChannel,
   wechatNotificationPriority,
   isWechatSponsorTemplateNotification,
   wechatTemplateDeliveryResult,
@@ -124,7 +125,7 @@ test("respects channel and category preferences", () => {
   assert.equal(shouldDeliverWechatNotification({ category: "system", targetClient: "ios" }, { wechatNotifyEnabled: true }), false);
 });
 
-test("prioritizes review outcomes over likes when customer-message quota is limited", () => {
+test("prioritizes review outcomes and direct messages ahead of likes", () => {
   const approved = wechatNotificationPriority({
     category: "system",
     payload: JSON.stringify({ type: "topic-submission-published" }),
@@ -133,6 +134,13 @@ test("prioritizes review outcomes over likes when customer-message quota is limi
   const like = wechatNotificationPriority({ category: "like", payload: "{}" });
   assert.ok(approved > direct);
   assert.ok(direct > like);
+});
+
+test("routes every automatic station notification through template messages", () => {
+  const categories = ["reply", "mention", "direct-message", "like", "system", "forum-report", "service-tool", "lost-found", "market", "school-feed"];
+  categories.forEach((category) => {
+    assert.equal(wechatNotificationDeliveryChannel({ category, payload: JSON.stringify({ type: category }) }), "template");
+  });
 });
 
 test("routes sponsor callback notifications directly through template messages", () => {
@@ -367,6 +375,18 @@ test("routes community and payment notifications to verified category templates"
   assert.equal(reply?.data.thing3.value, "回复通知");
   assert.equal(reply?.data.thing4.value, "有人回复了你的评论");
   assert.equal(reply?.data.character_string5.value, "SJ42");
+
+  const directMessage = buildWechatRoutedTemplateNotificationPayload(config, "openid", {
+    id: 45,
+    category: "direct-message",
+    title: "小药丸 发来私聊",
+    content: "有一条新私聊消息，进入站内私聊查看。",
+    createdAt: new Date("2026-08-31T08:00:00Z"),
+    payload: JSON.stringify({ type: "direct-message", conversationId: 9 }),
+  }, "https://cputime.cn/messages?tab=private&conversation=9");
+  assert.equal(directMessage?.template_id, "work-order-template");
+  assert.equal(directMessage?.data.thing3.value, "私聊通知");
+  assert.equal(directMessage?.data.thing4.value, "小药丸 发来私聊");
 
   const report = buildWechatRoutedTemplateNotificationPayload(config, "openid", {
     id: 44,
