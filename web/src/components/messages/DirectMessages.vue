@@ -65,6 +65,7 @@
         <header class="chat-head">
           <button type="button" class="mobile-back" aria-label="返回会话列表" title="返回会话列表" @click="backToList">
             <el-icon><ArrowLeft /></el-icon>
+            <span>返回</span>
           </button>
           <UserAvatar
             :size="40"
@@ -394,7 +395,7 @@ async function applyRouteTarget() {
 }
 
 function openConversation(conversationId: number) {
-  router.replace({
+  router.push({
     query: {
       ...route.query,
       tab: "private",
@@ -712,7 +713,8 @@ function errorMessage(error: unknown, fallback: string) {
 .chat-title b { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-title b :deep(.display-nickname) { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-title span { color: var(--cpu-text-secondary); font-size: 12px; }
-.mobile-back { display: none; width: 38px; height: 38px; flex: 0 0 38px; place-items: center; padding: 0; border: 0; border-radius: 12px; background: var(--cpu-surface-soft); color: var(--cpu-primary); font-size: 20px; cursor: pointer; touch-action: manipulation; }
+.mobile-back { display: none; min-width: 38px; height: 38px; flex: 0 0 auto; place-items: center; padding: 0; border: 0; border-radius: 12px; background: var(--cpu-surface-soft); color: var(--cpu-primary); font-size: 20px; cursor: pointer; touch-action: manipulation; }
+.mobile-back span { font-size: 12px; font-weight: 700; }
 .mobile-back:focus-visible { outline: 2px solid var(--cpu-primary); outline-offset: 2px; }
 .message-scroller { width: 100%; min-width: 0; min-height: 0; padding: 18px; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; scroll-behavior: smooth; background: linear-gradient(180deg, var(--cpu-surface-soft), var(--cpu-card)); box-sizing: border-box; }
 .message-row { display: flex; margin: 8px 0; justify-content: flex-start; }
@@ -735,18 +737,18 @@ function errorMessage(error: unknown, fallback: string) {
 .message-report-button:hover { text-decoration: underline; }
 
 @media (max-width: 720px) {
-  .direct-messages { display: block; width: 100%; max-width: 100%; height: 100%; min-height: 0; border: 0; border-radius: 0; background: color-mix(in srgb, var(--cpu-surface-soft) 58%, var(--cpu-card)); box-sizing: border-box; }
+  .direct-messages { display: block; width: 100%; max-width: 100%; height: 100%; min-height: 0; border: 0; border-radius: 13px; background: color-mix(in srgb, var(--cpu-surface-soft) 58%, var(--cpu-card)); box-sizing: border-box; }
   .conversation-sidebar { height: 100%; border-right: 0; background: transparent; }
   .chat-pane { display: none; height: 100%; min-height: 0; }
   .direct-messages.has-active .conversation-sidebar { display: none; }
   .direct-messages.has-active .chat-pane { display: grid; }
-  .mobile-back { display: grid; }
-  .sidebar-head { min-height: 68px; padding: 11px 14px; border-bottom: 1px solid var(--cpu-border-soft); background: var(--cpu-card); }
+  .mobile-back { display: inline-flex; align-items: center; justify-content: center; gap: 2px; padding: 0 9px 0 7px; }
+  .sidebar-head { min-height: 62px; padding: 9px 12px; border-bottom: 1px solid var(--cpu-border-soft); background: var(--cpu-card); }
   .sidebar-copy b { font-size: 16px; }
   .sidebar-copy span { font-size: 10px; }
   .notice-link { display: inline-flex; }
-  .conversation-list { gap: 8px; padding: 10px; scrollbar-gutter: auto; }
-  .conversation-row { min-height: 70px; padding: 12px; border: 1px solid var(--cpu-border-soft); border-radius: 11px; background: var(--cpu-card); box-shadow: var(--cpu-shadow-sm); }
+  .conversation-list { gap: 7px; padding: 8px; scrollbar-gutter: auto; }
+  .conversation-row { min-height: 68px; padding: 11px; border: 1px solid var(--cpu-border-soft); border-radius: 11px; background: var(--cpu-card); box-shadow: var(--cpu-shadow-sm); }
   .conversation-row:hover,
   .conversation-row.active { background: var(--cpu-card); box-shadow: var(--cpu-shadow-sm); }
   .conversation-row.active { border-color: color-mix(in srgb, var(--cpu-primary) 30%, var(--cpu-border-soft)); }
@@ -754,15 +756,21 @@ function errorMessage(error: unknown, fallback: string) {
   .conversation-preview { font-size: 11px; }
   .sidebar-state,
   .conversation-sidebar :deep(.el-empty) { margin: 10px; border: 1px solid var(--cpu-border-soft); border-radius: 11px; background: var(--cpu-card); }
-  .message-scroller { padding: 14px 12px 18px; }
-  .message-row { margin: 7px 0; }
-  .message-bubble { max-width: 88%; padding: 9px 11px 7px; }
-  .chat-head { min-height: 62px; padding: 8px 10px; gap: 8px; background: var(--cpu-card); }
+  .message-scroller { padding: 12px 10px 18px; background: color-mix(in srgb, var(--cpu-surface-soft) 72%, var(--cpu-card)); }
+  .message-row { margin: 6px 0; }
+  .message-bubble { max-width: 86%; padding: 9px 11px 7px; border-radius: 6px 15px 15px 15px; }
+  .mine .message-bubble { border-radius: 15px 6px 15px 15px; }
+  .chat-head { position: sticky; top: 0; z-index: 3; min-height: 58px; padding: 7px 9px; gap: 7px; background: color-mix(in srgb, var(--cpu-card) 96%, transparent); box-shadow: 0 5px 18px rgba(15, 23, 42, .05); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+  .chat-head :deep(.user-avatar) { width: 36px !important; height: 36px !important; }
+  .chat-title b { font-size: 14px; }
+  .chat-title span { font-size: 10px; }
   .chat-title span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .profile-link { flex: 0 0 auto; min-width: 44px; margin-left: 0 !important; padding-left: 5px !important; padding-right: 5px !important; font-size: 12px; }
-  .composer { padding: 10px 10px max(10px, env(safe-area-inset-bottom)); gap: 8px; }
-  .composer-row { gap: 8px; }
-  .composer-row :deep(.el-button) { min-width: 64px; min-height: 42px; padding-inline: 14px; }
+  .composer { padding: 8px 9px max(9px, env(safe-area-inset-bottom)); gap: 6px; border-top-color: color-mix(in srgb, var(--cpu-primary) 12%, var(--cpu-border-soft)); }
+  .composer-row { gap: 7px; }
+  .composer :deep(.el-textarea__inner) { min-height: 40px !important; padding: 9px 11px; border-radius: 11px; }
+  .composer-row :deep(.el-button) { min-width: 62px; min-height: 40px; padding-inline: 13px; border-radius: 11px; }
+  .composer-hint { padding-inline: 2px; }
   .new-chat-tip { min-height: 100%; padding: 24px 22px; }
 }
 

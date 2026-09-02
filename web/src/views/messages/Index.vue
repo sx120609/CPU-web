@@ -5,22 +5,28 @@
         <h2 class="page-title">消息中心</h2>
         <span v-if="tab !== 'settings' && tab !== 'private'" class="page-sub">{{ unreadCount ? `${unreadCount} 条未读` : "当前全部已读" }}</span>
         <span v-else-if="tab === 'settings'" class="page-sub settings-page-sub">管理通知渠道与订阅偏好</span>
+        <span v-else class="page-sub private-page-sub">查看会话与站内私信</span>
       </div>
       <div v-if="tab !== 'settings' && tab !== 'private' && unreadCount" class="page-head-actions">
         <el-button text :loading="markingAll" :disabled="markingAll" @click="readAll">全部标为已读</el-button>
       </div>
-      <nav v-if="tab !== 'private'" class="mobile-message-modes" aria-label="消息中心主要功能">
-        <button type="button" @click="tab = 'private'">
+      <nav class="mobile-message-modes" aria-label="消息中心主要功能">
+        <button
+          type="button"
+          :class="{ active: tab === 'private' }"
+          :aria-current="tab === 'private' ? 'page' : undefined"
+          @click="selectMobileMessageMode('private')"
+        >
           <span class="mode-icon"><el-icon><ChatDotRound /></el-icon></span>
           <span class="mode-copy"><b>私聊</b><small>会话消息</small></span>
           <span v-if="msg.directUnreadCount" class="mode-count">{{ Math.min(msg.directUnreadCount, 99) }}</span>
         </button>
-        <button type="button" :class="{ active: tab !== 'settings' }" :aria-current="tab !== 'settings' ? 'page' : undefined" @click="tab = 'all'">
+        <button type="button" :class="{ active: tab !== 'settings' && tab !== 'private' }" :aria-current="tab !== 'settings' && tab !== 'private' ? 'page' : undefined" @click="selectMobileMessageMode('all')">
           <span class="mode-icon"><el-icon><Bell /></el-icon></span>
           <span class="mode-copy"><b>通知</b><small>{{ unreadCount ? `${unreadCount} 条未读` : "全部已读" }}</small></span>
           <span v-if="unreadCount" class="mode-count">{{ Math.min(unreadCount, 99) }}</span>
         </button>
-        <button type="button" :class="{ active: tab === 'settings' }" :aria-current="tab === 'settings' ? 'page' : undefined" @click="tab = 'settings'">
+        <button type="button" :class="{ active: tab === 'settings' }" :aria-current="tab === 'settings' ? 'page' : undefined" @click="selectMobileMessageMode('settings')">
           <span class="mode-icon"><el-icon><Setting /></el-icon></span>
           <span class="mode-copy"><b>设置</b><small>通知渠道</small></span>
         </button>
@@ -539,10 +545,33 @@ watch(() => route.query.tab, (value) => {
 }, { immediate: true });
 
 watch(tab, (value) => {
-  const nextQuery = { ...route.query, tab: value === "all" ? undefined : value };
+  const nextQuery = {
+    ...route.query,
+    tab: value === "all" ? undefined : value,
+    ...(value === "private" ? {} : directMessageQueryReset()),
+  };
   if ((route.query.tab || "all") === (nextQuery.tab || "all")) return;
   router.replace({ query: nextQuery }).catch(() => null);
 });
+
+function selectMobileMessageMode(value: "private" | "all" | "settings") {
+  tab.value = value;
+  const nextQuery = {
+    ...route.query,
+    tab: value === "all" ? undefined : value,
+    ...directMessageQueryReset(),
+  };
+  router.replace({ query: nextQuery }).catch(() => null);
+}
+
+function directMessageQueryReset() {
+  return {
+    conversation: undefined,
+    user: undefined,
+    forumKind: undefined,
+    forumId: undefined,
+  };
+}
 
 watch(qqBotAddFriendUrl, async (value) => {
   const seq = ++qqBotAddFriendQrSeq;
@@ -1771,12 +1800,24 @@ function normalizeMessageSettings(value: any) {
   .msg-page.is-private {
     height: calc(100dvh - 160px - env(safe-area-inset-bottom));
     min-height: 360px;
-    gap: 0;
+    gap: 8px;
     overflow: hidden;
   }
 
   .msg-page.is-private .page-head {
+    display: flex;
+    flex: 0 0 auto;
+    padding: 8px;
+    border-radius: 13px;
+  }
+
+  .msg-page.is-private .page-head-main,
+  .msg-page.is-private .page-head-actions {
     display: none;
+  }
+
+  .msg-page.is-private .mobile-message-modes {
+    margin-top: 0;
   }
 
   .messages-tabs.is-private {
