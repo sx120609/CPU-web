@@ -879,15 +879,41 @@ const editingWeekValue = ref("");
 const courseEditAction = ref<CourseEditAction>("");
 const courseEditBusy = computed(() => courseEditAction.value !== "");
 const widgetCurrentWeekIntentPending = ref(false);
+let scheduleMounted = false;
+let widgetCurrentCalendarPromise: Promise<void> | null = null;
+
+function refreshWidgetCurrentCalendar() {
+  if (
+    !scheduleMounted
+    || !widgetCurrentWeekIntentPending.value
+    || offlineMode.value
+    || scheduleStorageScope() === "graduate"
+  ) return Promise.resolve();
+  if (widgetCurrentCalendarPromise) return widgetCurrentCalendarPromise;
+
+  widgetCurrentCalendarPromise = loadCalendar("")
+    .then(() => { applyWidgetCurrentWeekIntent(); })
+    .finally(() => { widgetCurrentCalendarPromise = null; });
+  return widgetCurrentCalendarPromise;
+}
 
 function applyWidgetCurrentWeekIntent() {
   if (!widgetCurrentWeekIntentPending.value) return false;
   // 本科课表响应里的 currentWeek 是课表下拉框当前选中的周，并不一定是
   // 校历当前周。必须等校历可用后再消费小组件意图，否则会原地切回旧周。
   const current = Number(calendar.value?.currentWeek || 0);
-  if (!Number.isFinite(current) || current <= 0) return false;
+  if (!Number.isFinite(current) || current <= 0) {
+    void refreshWidgetCurrentCalendar();
+    return false;
+  }
 
   widgetCurrentWeekIntentPending.value = false;
+  const currentSemester = String(calendar.value?.currentSemester || "").trim();
+  if (currentSemester && currentSemester !== semester.value) {
+    semester.value = currentSemester;
+    // 即使两个学期恰好都是同一周次，也必须继续加载当前学期的课表。
+    week.value = "";
+  }
   const nextQuery = { ...route.query };
   delete nextQuery.source;
   delete nextQuery.week;
@@ -1436,12 +1462,17 @@ onMounted(() => {
   document.body.classList.add("schedule-scroll-lock");
   jwxt.hydrate();
   scheduleSource.value = prefersGraduateIdentity.value ? "graduate" : "jwxt";
+  scheduleMounted = true;
   syncNetworkStatus();
   restoreScheduleTheme();
 
   // 缓存恢复必须发生在图片、会话和网络工作之前，保证课表首帧不被任何异步步骤阻塞。
   restoreLastState();
-  restoreCachedCalendar();
+  if (widgetCurrentWeekIntentPending.value && scheduleStorageScope() !== "graduate") {
+    restoreCachedCalendar("");
+  } else {
+    restoreCachedCalendar();
+  }
   restoreLastScheduleCache();
   applyWidgetCurrentWeekIntent();
   loadScheduleEdits();
@@ -1479,6 +1510,8 @@ onMounted(() => {
         const background = Boolean(parsed.value);
         if (prefersGraduateIdentity.value) {
           await loadGraduateSchedule(undefined, { background });
+        } else if (widgetCurrentWeekIntentPending.value) {
+          await refreshWidgetCurrentCalendar();
         } else {
           await Promise.all([
             loadCalendar(),
@@ -1496,6 +1529,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   disposed = true;
+  scheduleMounted = false;
   scheduleRequestSeq += 1;
   foregroundScheduleRequestSeq = scheduleRequestSeq;
   loading.value = false;
@@ -1706,6 +1740,7 @@ async function loadCalendar(targetSemester = semester.value || parsed.value?.cur
     if (requestedSemester && nextCalendar?.currentSemester && nextCalendar.currentSemester !== requestedSemester) return;
     calendar.value = nextCalendar;
     writeCache(calendarCacheKey(nextCalendar?.currentSemester || requestedSemester), calendar.value);
+    if (!requestedSemester) writeCache(calendarCacheKey(""), calendar.value);
     if (!week.value) week.value = currentWeekValue();
   } catch { /* calendar is best effort */ }
 }
