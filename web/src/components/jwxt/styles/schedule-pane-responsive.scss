@@ -1,4 +1,8 @@
 @media (max-width: 760px) {
+  :deep(.academic-data-source-badge.is-modern) {
+    display: none;
+  }
+
   .summary { display: none; }
 
   .top {

@@ -4,6 +4,10 @@
 }
 
 @media (max-width: 760px) {
+  :deep(.academic-data-source-badge.is-modern) {
+    display: none;
+  }
+
   /* toolbar 旧的双选择器已经从模板移除，但保险起见仍 hide 类 */
   .toolbar { display: none; }
   .schedule-page {
