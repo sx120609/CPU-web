@@ -6,7 +6,7 @@ enum AppWidgetConfiguration {
     static let endpointKey = "scheduleWidgetEndpoint"
     static let endpointFileName = "schedule-widget-endpoint.txt"
     static let themeKey = "scheduleWidgetTheme"
-    static let appURL = URL(string: "cpuweb://schedule")!
+    static let appURL = URL(string: "cpuweb://schedule?source=widget&week=current")!
 
     static var scheduleTheme: ScheduleWidgetTheme {
         let value = UserDefaults(suiteName: appGroup)?.string(forKey: themeKey)
@@ -42,6 +42,7 @@ struct ScheduleCourse: Decodable, Identifiable {
     }
 
     var displayName: String { normalized(name) ?? "课程" }
+    var startLabel: String { normalized(startTime) ?? "--:--" }
 
     var metadata: String {
         let values = [normalized(location), normalized(teacher), normalized(note) ?? normalized(slotNote)]
@@ -93,6 +94,7 @@ struct ScheduleDay: Decodable, Identifiable {
     var id: String { date ?? "day-\(day ?? 0)" }
     var courseList: [ScheduleCourse] { courses ?? [] }
     var displayLabel: String { label?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "" }
+    var shortLabel: String { displayLabel.isEmpty ? compactDate : displayLabel }
 
     var compactDate: String {
         guard let date, date.count >= 10 else { return "课表" }

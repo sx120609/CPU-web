@@ -20,8 +20,14 @@ private struct UpcomingScheduleWidget: Widget {
             }
         }
         .configurationDisplayName("临近课程")
-        .description("显示当前课程和接下来一节课。")
-        .supportedFamilies([.systemSmall, .systemMedium])
+        .description("在桌面或锁屏显示当前课程和接下来一节课。")
+        .supportedFamilies([
+            .systemSmall,
+            .systemMedium,
+            .accessoryInline,
+            .accessoryCircular,
+            .accessoryRectangular,
+        ])
     }
 }
 
@@ -70,6 +76,7 @@ private struct ScheduleWidgetRoot<Content: View>: View {
     let entry: ScheduleEntry
     @ViewBuilder let content: (SchedulePayload) -> Content
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.widgetFamily) private var family
 
     var body: some View {
         let theme = AppWidgetConfiguration.scheduleTheme
@@ -94,8 +101,18 @@ private struct ScheduleWidgetRoot<Content: View>: View {
         .environment(\.scheduleWidgetTheme, theme)
         .widgetURL(AppWidgetConfiguration.appURL)
         .containerBackground(for: .widget) {
-            WidgetPalette.background(for: colorScheme)
+            if family.isAccessory {
+                Color.clear
+            } else {
+                WidgetPalette.background(for: colorScheme)
+            }
         }
+    }
+}
+
+private extension WidgetFamily {
+    var isAccessory: Bool {
+        self == .accessoryInline || self == .accessoryCircular || self == .accessoryRectangular
     }
 }
 
@@ -104,22 +121,50 @@ private struct WidgetMessageView: View {
     let title: String
     let detail: String
     @Environment(\.scheduleWidgetTheme) private var theme
+    @Environment(\.widgetFamily) private var family
 
+    @ViewBuilder
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Image(systemName: symbol)
-                .font(.system(size: 24, weight: .semibold))
-                .foregroundStyle(WidgetPalette.accent(for: theme))
-            Text(title)
-                .font(.system(size: 15, weight: .bold))
-                .foregroundStyle(WidgetPalette.primary)
-            Text(detail)
-                .font(.system(size: 11))
-                .foregroundStyle(WidgetPalette.secondary)
-                .lineLimit(3)
+        switch family {
+        case .accessoryInline:
+            Label(title, systemImage: symbol)
+        case .accessoryCircular:
+            ZStack {
+                AccessoryWidgetBackground()
+                Image(systemName: symbol)
+                    .font(.system(size: 20, weight: .semibold))
+                    .widgetAccentable()
+            }
+        case .accessoryRectangular:
+            HStack(spacing: 8) {
+                Image(systemName: symbol)
+                    .font(.system(size: 19, weight: .semibold))
+                    .widgetAccentable()
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.system(size: 13, weight: .bold))
+                    Text(detail)
+                        .font(.system(size: 10))
+                        .lineLimit(2)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        default:
+            VStack(alignment: .leading, spacing: 8) {
+                Image(systemName: symbol)
+                    .font(.system(size: 24, weight: .semibold))
+                    .foregroundStyle(WidgetPalette.accent(for: theme))
+                Text(title)
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(WidgetPalette.primary)
+                Text(detail)
+                    .font(.system(size: 11))
+                    .foregroundStyle(WidgetPalette.secondary)
+                    .lineLimit(3)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .padding(2)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .padding(2)
     }
 }
 
@@ -127,31 +172,130 @@ private struct UpcomingScheduleView: View {
     let payload: SchedulePayload
     @Environment(\.widgetFamily) private var family
 
+    @ViewBuilder
     var body: some View {
         let selection = payload.upcoming()
-        VStack(alignment: .leading, spacing: 0) {
-            WidgetDateHeader(day: selection.0)
-            Spacer(minLength: 8)
+        if family.isAccessory {
+            LockScreenScheduleView(day: selection.0, courses: selection.1)
+        } else {
+            VStack(alignment: .leading, spacing: 0) {
+                WidgetDateHeader(day: selection.0)
+                Spacer(minLength: 8)
 
-            if selection.1.isEmpty {
-                EmptyCoursesView(message: "近期没有课程")
-            } else if family == .systemMedium {
-                HStack(alignment: .top, spacing: 14) {
-                    UpcomingColumn(label: "当前", course: selection.1.first)
-                    Divider()
-                    UpcomingColumn(label: "接下来", course: selection.1.count > 1 ? selection.1[1] : nil)
-                }
-            } else if let course = selection.1.first {
-                CourseSummary(course: course, roomy: true)
-                if selection.1.count > 1 {
-                    Spacer(minLength: 7)
-                    Text("接下来")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(WidgetPalette.muted)
-                    CompactNextCourse(course: selection.1[1])
+                if selection.1.isEmpty {
+                    EmptyCoursesView(message: "近期没有课程")
+                } else if family == .systemMedium {
+                    HStack(alignment: .top, spacing: 14) {
+                        UpcomingColumn(label: "当前", course: selection.1.first)
+                        Divider()
+                        UpcomingColumn(label: "接下来", course: selection.1.count > 1 ? selection.1[1] : nil)
+                    }
+                } else if let course = selection.1.first {
+                    CourseSummary(course: course, roomy: true)
+                    if selection.1.count > 1 {
+                        Spacer(minLength: 7)
+                        Text("接下来")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(WidgetPalette.muted)
+                        CompactNextCourse(course: selection.1[1])
+                    }
                 }
             }
         }
+    }
+}
+
+private struct LockScreenScheduleView: View {
+    let day: ScheduleDay
+    let courses: [ScheduleCourse]
+    @Environment(\.widgetFamily) private var family
+
+    @ViewBuilder
+    var body: some View {
+        switch family {
+        case .accessoryInline:
+            inlineView
+        case .accessoryCircular:
+            circularView
+        default:
+            rectangularView
+        }
+    }
+
+    private var inlineView: some View {
+        Label {
+            if let course = courses.first {
+                Text("\(day.shortLabel) \(course.startLabel) \(course.displayName)")
+            } else {
+                Text("\(day.shortLabel) 近期无课")
+            }
+        } icon: {
+            Image(systemName: courses.isEmpty ? "calendar.badge.checkmark" : "book.closed.fill")
+        }
+        .lineLimit(1)
+    }
+
+    private var circularView: some View {
+        ZStack {
+            AccessoryWidgetBackground()
+            if let course = courses.first {
+                VStack(spacing: 0) {
+                    Image(systemName: "book.closed.fill")
+                        .font(.system(size: 10, weight: .semibold))
+                        .widgetAccentable()
+                    Text(course.startLabel)
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .minimumScaleFactor(0.72)
+                    Text(course.displayName)
+                        .font(.system(size: 8, weight: .semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.55)
+                }
+                .padding(5)
+            } else {
+                VStack(spacing: 1) {
+                    Image(systemName: "calendar.badge.checkmark")
+                        .font(.system(size: 15, weight: .semibold))
+                        .widgetAccentable()
+                    Text("无课")
+                        .font(.system(size: 9, weight: .bold))
+                }
+            }
+        }
+    }
+
+    private var rectangularView: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 4) {
+                Image(systemName: courses.isEmpty ? "calendar.badge.checkmark" : "book.closed.fill")
+                    .font(.system(size: 10, weight: .semibold))
+                    .widgetAccentable()
+                Text("\(day.compactDate) \(day.displayLabel)")
+                    .font(.system(size: 10, weight: .semibold))
+                Spacer(minLength: 2)
+                if courses.count > 1 {
+                    Text("下一节 \(courses[1].startLabel)")
+                        .font(.system(size: 9, weight: .medium))
+                        .lineLimit(1)
+                }
+            }
+            if let course = courses.first {
+                Text(course.displayName)
+                    .font(.system(size: 14, weight: .bold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+                Text("\(course.timeRange) · \(course.metadata)")
+                    .font(.system(size: 10, weight: .medium))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+            } else {
+                Text("近期没有课程")
+                    .font(.system(size: 14, weight: .bold))
+                Text("打开课表查看本周安排")
+                    .font(.system(size: 10, weight: .medium))
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
     }
 }
 
@@ -511,6 +655,24 @@ private enum WidgetPalette {
 
 #Preview(as: .systemMedium) {
     TodayScheduleWidget()
+} timeline: {
+    ScheduleEntry.placeholder
+}
+
+#Preview(as: .accessoryInline) {
+    UpcomingScheduleWidget()
+} timeline: {
+    ScheduleEntry.placeholder
+}
+
+#Preview(as: .accessoryCircular) {
+    UpcomingScheduleWidget()
+} timeline: {
+    ScheduleEntry.placeholder
+}
+
+#Preview(as: .accessoryRectangular) {
+    UpcomingScheduleWidget()
 } timeline: {
     ScheduleEntry.placeholder
 }

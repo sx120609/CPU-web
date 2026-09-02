@@ -742,6 +742,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { Aim, ArrowLeft, ArrowRight, Download, InfoFilled, Iphone, Lock, Moon, MoreFilled, Picture, QuestionFilled, Refresh, Tools } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
@@ -840,6 +841,8 @@ import type {
 const auth = useAuthStore();
 const appearance = useAppearanceStore();
 const jwxt = useJwxtStore();
+const route = useRoute();
+const router = useRouter();
 const sessionChecking = ref(!auth.academicIdentityUnavailable);
 const parsed = ref<ScheduleResult | null>(null);
 const calendar = ref<CalendarResult | null>(null);
@@ -875,6 +878,33 @@ const editingCourseKey = ref("");
 const editingWeekValue = ref("");
 const courseEditAction = ref<CourseEditAction>("");
 const courseEditBusy = computed(() => courseEditAction.value !== "");
+const widgetCurrentWeekIntentPending = ref(
+  route.query.source === "widget" && route.query.week === "current",
+);
+
+function applyWidgetCurrentWeekIntent() {
+  if (!widgetCurrentWeekIntentPending.value) return false;
+  const current = Number(calendar.value?.currentWeek || parsed.value?.currentWeek || 0);
+  if (!Number.isFinite(current) || current <= 0) return false;
+
+  widgetCurrentWeekIntentPending.value = false;
+  const nextQuery = { ...route.query };
+  delete nextQuery.source;
+  delete nextQuery.week;
+  void router.replace({ path: route.path, query: nextQuery, hash: route.hash }).catch(() => undefined);
+  week.value = String(current);
+  const key = scheduleCacheKey(semester.value || parsed.value?.currentSemester, week.value);
+  const cached = scheduleCacheStore.get(key) ?? readCache<ScheduleResult>(key);
+  if (cached?.data) applyScheduleCache(key);
+  activeDay.value = dayOfWeek();
+  saveLastState();
+  return true;
+}
+
+watch(
+  [() => calendar.value?.currentWeek, () => parsed.value?.currentWeek],
+  () => { applyWidgetCurrentWeekIntent(); },
+);
 
 // 周次选择弹窗
 const weekDialogOpen = ref(false);
@@ -1408,6 +1438,7 @@ onMounted(() => {
   restoreLastState();
   restoreCachedCalendar();
   restoreLastScheduleCache();
+  applyWidgetCurrentWeekIntent();
   loadScheduleEdits();
   void restoreScheduleBackground();
 
