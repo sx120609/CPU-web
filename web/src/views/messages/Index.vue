@@ -4,11 +4,41 @@
       <div class="page-head-main">
         <h2 class="page-title">消息中心</h2>
         <span v-if="tab !== 'settings' && tab !== 'private'" class="page-sub">{{ unreadCount ? `${unreadCount} 条未读` : "当前全部已读" }}</span>
+        <span v-else-if="tab === 'settings'" class="page-sub settings-page-sub">管理通知渠道与订阅偏好</span>
       </div>
       <div v-if="tab !== 'settings' && tab !== 'private' && unreadCount" class="page-head-actions">
         <el-button text :loading="markingAll" :disabled="markingAll" @click="readAll">全部标为已读</el-button>
       </div>
+      <nav v-if="tab !== 'private'" class="mobile-message-modes" aria-label="消息中心主要功能">
+        <button type="button" @click="tab = 'private'">
+          <span class="mode-icon"><el-icon><ChatDotRound /></el-icon></span>
+          <span class="mode-copy"><b>私聊</b><small>会话消息</small></span>
+          <span v-if="msg.directUnreadCount" class="mode-count">{{ Math.min(msg.directUnreadCount, 99) }}</span>
+        </button>
+        <button type="button" :class="{ active: tab !== 'settings' }" :aria-current="tab !== 'settings' ? 'page' : undefined" @click="tab = 'all'">
+          <span class="mode-icon"><el-icon><Bell /></el-icon></span>
+          <span class="mode-copy"><b>通知</b><small>{{ unreadCount ? `${unreadCount} 条未读` : "全部已读" }}</small></span>
+          <span v-if="unreadCount" class="mode-count">{{ Math.min(unreadCount, 99) }}</span>
+        </button>
+        <button type="button" :class="{ active: tab === 'settings' }" :aria-current="tab === 'settings' ? 'page' : undefined" @click="tab = 'settings'">
+          <span class="mode-icon"><el-icon><Setting /></el-icon></span>
+          <span class="mode-copy"><b>设置</b><small>通知渠道</small></span>
+        </button>
+      </nav>
     </div>
+    <nav v-if="tab !== 'private' && tab !== 'settings'" class="mobile-notice-filters" aria-label="通知分类">
+      <button
+        v-for="item in mobileNoticeTabs"
+        :key="item.name"
+        type="button"
+        :class="{ active: tab === item.name }"
+        :aria-current="tab === item.name ? 'page' : undefined"
+        @click="tab = item.name"
+      >
+        <span>{{ item.label }}</span>
+        <small v-if="unreadForTab(item.name)">{{ Math.min(unreadForTab(item.name), 99) }}</small>
+      </button>
+    </nav>
     <div v-if="pageError && tab !== 'private'" class="cpu-card page-error">
       <el-empty :description="pageError">
         <el-button type="primary" @click="loadPage">重试</el-button>
@@ -354,7 +384,7 @@
 import { ref, computed, onMounted, onBeforeUnmount, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { ArrowRight, Bell } from "@element-plus/icons-vue";
+import { ArrowRight, Bell, ChatDotRound, Setting } from "@element-plus/icons-vue";
 import MessageList from "@/components/messages/MessageList.vue";
 import DirectMessages from "@/components/messages/DirectMessages.vue";
 import { messageApi } from "@/api/message";
@@ -377,6 +407,15 @@ const msg = useMessageStore();
 const auth = useAuthStore();
 
 const messageTabs = new Set(["all", "private", "reply", "like", "system", "service-tool", "lost-found", "settings"]);
+type NoticeTab = "all" | "reply" | "like" | "system" | "service-tool" | "lost-found";
+const mobileNoticeTabs: Array<{ name: NoticeTab; label: string }> = [
+  { name: "all", label: "全部" },
+  { name: "reply", label: "回复" },
+  { name: "like", label: "点赞" },
+  { name: "system", label: "系统" },
+  { name: "service-tool", label: "小工具" },
+  { name: "lost-found", label: "失物招领" },
+];
 const tab = ref(normalizeMessageTab(route.query.tab));
 const list = ref<any[]>([]);
 const settings = ref<any>(null);
@@ -547,6 +586,11 @@ async function refreshNoticeStateAfterAction() {
 function filteredMessages(cat: string) {
   if (!cat) return list.value;
   return list.value.filter((n) => n.category === cat);
+}
+
+function unreadForTab(name: NoticeTab) {
+  if (name === "all") return unreadCount.value;
+  return list.value.filter((notice) => notice.category === name && !notice.readAt).length;
 }
 
 async function onRead(id: number) {
@@ -1065,11 +1109,16 @@ function normalizeMessageSettings(value: any) {
   color: var(--cpu-text-secondary);
   font-size: 13px;
 }
+.settings-page-sub { display: none; }
 .page-head-actions {
   display: flex;
   align-items: center;
   justify-content: flex-end;
   flex-shrink: 0;
+}
+.mobile-message-modes,
+.mobile-notice-filters {
+  display: none;
 }
 .cpu-card {
   background: var(--cpu-card);
@@ -1399,18 +1448,30 @@ function normalizeMessageSettings(value: any) {
   }
 
   .msg-page {
-    gap: 12px;
+    width: 100%;
+    max-width: 860px;
+    margin: 0 auto;
+    gap: 13px;
   }
 
   .page-head {
     align-items: center;
     flex-direction: row;
+    flex-wrap: wrap;
     gap: 12px;
+    padding: 14px;
+    border: 1px solid var(--cpu-border-soft);
+    border-radius: 15px;
+    background: var(--cpu-card);
+    box-shadow: var(--cpu-shadow-sm);
   }
 
   .page-title {
-    font-size: 20px;
+    font-size: 18px;
+    line-height: 1.25;
   }
+
+  .settings-page-sub { display: inline; }
 
   .page-head-main {
     min-width: 0;
@@ -1425,78 +1486,182 @@ function normalizeMessageSettings(value: any) {
   .page-head-actions .el-button {
     width: auto;
     margin-left: 0;
-    padding-inline: 6px;
+    padding-inline: 4px;
+    font-size: 12px;
   }
 
   .cpu-card {
-    border-radius: 10px;
-    padding: 12px;
+    border-radius: 15px;
+    padding: 14px;
   }
 
   .messages-tabs {
-    margin: 0 -4px;
-    padding: 8px 0 12px;
+    margin: 0;
+    padding: 10px;
     min-width: 0;
     overflow: hidden;
+    background: color-mix(in srgb, var(--cpu-surface-soft) 58%, var(--cpu-card));
   }
 
   .messages-tabs :deep(.el-tabs__header) {
-    min-width: 0;
-    margin-bottom: 10px;
-    overflow: hidden;
+    display: none;
   }
 
-  .messages-tabs :deep(.el-tabs__nav-wrap) {
-    padding: 0;
-    overflow: hidden;
-  }
-
-  .messages-tabs :deep(.el-tabs__nav-scroll) {
+  .mobile-message-modes {
+    display: grid;
     width: 100%;
-    max-width: 100%;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 5px;
+    margin-top: 2px;
+    padding: 4px;
+    border: 1px solid var(--cpu-border-soft);
+    border-radius: 11px;
+    background: var(--cpu-surface-soft);
+  }
+
+  .mobile-message-modes button {
+    position: relative;
+    display: grid;
     min-width: 0;
-    padding: 0 10px 4px;
+    min-height: 52px;
+    grid-template-columns: 24px minmax(0, 1fr);
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    border: 0;
+    border-radius: 8px;
+    background: var(--cpu-card);
+    color: var(--cpu-text-secondary);
+    text-align: left;
+    cursor: pointer;
+    box-shadow: 0 2px 7px rgba(15, 23, 42, .03);
+    touch-action: manipulation;
+  }
+
+  .mobile-message-modes button.active {
+    background: var(--cpu-primary);
+    color: #fff;
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--cpu-primary) 20%, transparent);
+  }
+
+  .mobile-message-modes button:focus-visible,
+  .mobile-notice-filters button:focus-visible {
+    outline: 2px solid var(--cpu-primary);
+    outline-offset: 2px;
+  }
+
+  .mode-icon {
+    display: grid;
+    width: 24px;
+    height: 24px;
+    place-items: center;
+    font-size: 18px;
+  }
+
+  .mode-copy {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  .mode-copy b {
+    color: inherit;
+    font-size: 12px;
+    line-height: 1.3;
+  }
+
+  .mode-copy small {
+    overflow: hidden;
+    color: inherit;
+    font-size: 9px;
+    line-height: 1.35;
+    opacity: .72;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mode-count {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    min-width: 17px;
+    height: 17px;
+    padding: 0 4px;
+    display: grid;
+    place-items: center;
+    border: 2px solid var(--cpu-card);
+    border-radius: 999px;
+    background: #ef4444;
+    color: #fff;
+    font-size: 9px;
+    font-weight: 750;
+    line-height: 1;
+    box-sizing: border-box;
+  }
+
+  .mobile-message-modes button.active .mode-count {
+    border-color: var(--cpu-primary);
+  }
+
+  .mobile-notice-filters {
+    display: flex;
+    min-width: 0;
+    gap: 5px;
+    padding: 4px;
+    border: 1px solid var(--cpu-border-soft);
+    border-radius: 11px;
+    background: var(--cpu-card);
     overflow-x: auto;
     overscroll-behavior-inline: contain;
     scrollbar-width: none;
     scroll-snap-type: inline proximity;
   }
 
-  .messages-tabs :deep(.el-tabs__nav-wrap::after),
-  .messages-tabs :deep(.el-tabs__active-bar) {
+  .mobile-notice-filters::-webkit-scrollbar {
     display: none;
   }
 
-  .messages-tabs :deep(.el-tabs__nav-scroll::-webkit-scrollbar) {
-    display: none;
-  }
-
-  .messages-tabs :deep(.el-tabs__nav) {
-    display: flex;
-    flex-wrap: nowrap;
-    float: none;
-    width: 100%;
-    min-width: 0;
-    gap: 6px;
-    padding: 0;
-  }
-
-  .messages-tabs :deep(.el-tabs__item) {
-    flex: 0 0 auto;
-    height: 32px;
-    padding: 0 11px;
-    border: 1px solid transparent;
-    font-size: 12px;
-    border-radius: 999px;
+  .mobile-notice-filters button {
+    display: inline-flex;
+    min-width: max-content;
+    min-height: 36px;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 8px;
     background: transparent;
     color: var(--cpu-text-secondary);
+    font-size: 12px;
+    font-weight: 650;
+    cursor: pointer;
     scroll-snap-align: start;
+    touch-action: manipulation;
   }
 
-  .messages-tabs :deep(.el-tabs__item.is-active) {
-    border-color: color-mix(in srgb, var(--cpu-primary) 25%, transparent);
-    background: color-mix(in srgb, var(--cpu-primary) 10%, var(--cpu-card));
+  .mobile-notice-filters button.active {
+    background: var(--cpu-primary);
+    color: #fff;
+  }
+
+  .mobile-notice-filters small {
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    display: grid;
+    place-items: center;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--cpu-primary) 13%, var(--cpu-card));
     color: var(--cpu-primary);
+    font-size: 9px;
+    line-height: 1;
+  }
+
+  .mobile-notice-filters button.active small {
+    background: rgba(255, 255, 255, .2);
+    color: #fff;
   }
 
   .messages-tabs :deep(.el-tabs__content) {
@@ -1508,8 +1673,7 @@ function normalizeMessageSettings(value: any) {
   }
 
   .qq-channel-head {
-    align-items: stretch;
-    flex-direction: column;
+    align-items: flex-start;
   }
 
   .qq-channel-grid {
@@ -1519,9 +1683,33 @@ function normalizeMessageSettings(value: any) {
   .channel-qr-box { align-items: flex-start; }
 
   .settings-action-row {
-    align-items: flex-start;
     min-height: 0;
     padding: 12px;
+  }
+
+  .settings {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .settings h4 {
+    margin: 6px 2px 9px;
+    font-size: 16px;
+  }
+
+  .settings :deep(.el-divider) {
+    margin: 16px 0 10px;
+  }
+
+  .qq-channel-card,
+  .switch-item,
+  .settings-action-row {
+    border-radius: 11px;
+  }
+
+  .qq-channel-card {
+    background: var(--cpu-card);
+    box-shadow: var(--cpu-shadow-sm);
   }
 
   .settings .el-button {
@@ -1628,9 +1816,18 @@ function normalizeMessageSettings(value: any) {
 }
 
 @media (max-width: 420px) {
+  .page-head {
+    padding: 12px;
+  }
+
+  .mobile-message-modes button {
+    grid-template-columns: 22px minmax(0, 1fr);
+    gap: 4px;
+    padding-inline: 6px;
+  }
+
   .qq-channel-toggle,
   .switch-item,
-  .settings-action-row,
   .qq-channel-actions {
     align-items: flex-start;
     flex-direction: column;

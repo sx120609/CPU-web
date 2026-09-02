@@ -9,6 +9,9 @@
       :class="{ unread: !n.readAt }"
       @click="onClick(n)"
     >
+      <span class="message-icon" :class="`message-icon-${n.category || 'default'}`" aria-hidden="true">
+        <el-icon><component :is="categoryIcon(n.category)" /></el-icon>
+      </span>
       <div class="info">
         <div class="top-line">
           <div class="tags">
@@ -30,7 +33,16 @@
 </template>
 
 <script setup lang="ts">
-import { ArrowRight } from "@element-plus/icons-vue";
+import {
+  ArrowRight,
+  Bell,
+  ChatDotRound,
+  Location,
+  Message,
+  Notification,
+  Star,
+  Tools,
+} from "@element-plus/icons-vue";
 import { fmtRelative } from "@/utils/format";
 import { forumContentExcerpt } from "@/utils/forumContent";
 
@@ -84,6 +96,17 @@ function categoryLabel(category?: string | null) {
   if (category === "direct-message") return "私聊";
   return category || "消息";
 }
+
+function categoryIcon(category?: string | null) {
+  if (category === "reply") return ChatDotRound;
+  if (category === "like") return Star;
+  if (category === "system") return Bell;
+  if (category === "school" || category === "school-feed") return Notification;
+  if (category === "service-tool") return Tools;
+  if (category === "lost-found") return Location;
+  if (category === "direct-message") return Message;
+  return Bell;
+}
 </script>
 
 <style scoped>
@@ -96,6 +119,7 @@ function categoryLabel(category?: string | null) {
 .empty-state {
   padding: 18px 0;
 }
+.message-icon { display: none; }
 .row {
   display: flex;
   align-items: center;
@@ -217,48 +241,104 @@ function categoryLabel(category?: string | null) {
 }
 
 @media (max-width: 768px) {
+  .message-list {
+    gap: 8px;
+  }
+
   .row {
-    align-items: flex-start;
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr) auto;
+    align-items: start;
     gap: 10px;
-    padding: 14px 14px 15px;
-    border-radius: 12px;
+    padding: 13px 12px 12px;
+    border-radius: 11px;
+    box-shadow: none;
+  }
+
+  .row:hover {
+    transform: none;
+    box-shadow: none;
+  }
+
+  .message-icon {
+    display: grid;
+    width: 40px;
+    height: 40px;
+    place-items: center;
+    border-radius: 11px;
+    background: color-mix(in srgb, var(--cpu-primary) 11%, var(--cpu-card));
+    color: var(--cpu-primary);
+    font-size: 19px;
+  }
+
+  .message-icon-like { background: color-mix(in srgb, #ef4444 10%, var(--cpu-card)); color: #ef4444; }
+  .message-icon-system { background: color-mix(in srgb, #8b5cf6 11%, var(--cpu-card)); color: #8b5cf6; }
+  .message-icon-school,
+  .message-icon-school-feed { background: color-mix(in srgb, #22c55e 10%, var(--cpu-card)); color: #16a34a; }
+  .message-icon-service-tool { background: color-mix(in srgb, #0ea5e9 10%, var(--cpu-card)); color: #0284c7; }
+  .message-icon-lost-found,
+  .message-icon-direct-message { background: color-mix(in srgb, #14b8a6 11%, var(--cpu-card)); color: #0f9f8f; }
+
+  .info {
+    padding-top: 1px;
   }
 
   .content {
-    -webkit-line-clamp: 3;
+    -webkit-line-clamp: 2;
     line-height: 1.5;
   }
 
   .arrow {
-    margin-top: 30px;
+    align-self: center;
+    margin-top: 0;
   }
 
   .top-line {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 8px;
+    align-items: center;
+    flex-direction: row;
+    gap: 6px;
   }
 
   .time {
-    font-size: 12px;
+    margin-left: auto;
+    font-size: 10px;
+  }
+
+  .tag {
+    min-width: 0;
+    height: 20px;
+    padding: 0 6px;
+    font-size: 10px;
+    line-height: 20px;
+  }
+
+  .title {
+    margin-top: 6px;
+    font-size: 14px;
+    font-weight: 620;
+  }
+
+  .meta {
+    margin-top: 5px;
   }
 }
 
 @media (max-width: 420px) {
   .row {
-    padding: 13px 12px 14px;
+    grid-template-columns: 36px minmax(0, 1fr) auto;
+    padding: 12px 10px 11px;
   }
 
-  .tag {
-    min-width: 0;
+  .message-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    font-size: 17px;
   }
 
   .title {
     margin-top: 6px;
   }
 
-  .arrow {
-    margin-top: 28px;
-  }
 }
 </style>
