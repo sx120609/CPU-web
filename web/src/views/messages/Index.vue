@@ -454,6 +454,7 @@ let disposed = false;
 let wechatQrPollTimer: ReturnType<typeof setTimeout> | null = null;
 let wechatQrPollSeq = 0;
 let disposeWechatSubscribeButton: (() => void) | null = null;
+let privateViewportQuery: MediaQueryList | null = null;
 
 const unreadCount = computed(() => list.value.filter((item) => !item.readAt).length);
 const isWechatBrowser = detectWechatBrowser();
@@ -503,6 +504,9 @@ const qqBotAddFriendUrl = computed(() => {
 });
 onMounted(() => {
   disposed = false;
+  privateViewportQuery = window.matchMedia("(max-width: 720px)");
+  privateViewportQuery.addEventListener("change", syncPrivateScrollLock);
+  syncPrivateScrollLock();
   void loadPage();
   void loadQqBotProfile({ silent: true });
   void loadWechatProfile({ silent: true });
@@ -533,6 +537,9 @@ onBeforeUnmount(() => {
   stopWechatQrPolling();
   disposeWechatSubscribeButton?.();
   disposeWechatSubscribeButton = null;
+  privateViewportQuery?.removeEventListener("change", syncPrivateScrollLock);
+  privateViewportQuery = null;
+  setPrivateScrollLock(false);
 });
 
 watch(() => route.query.tab, (value) => {
@@ -545,6 +552,7 @@ watch(() => route.query.tab, (value) => {
 }, { immediate: true });
 
 watch(tab, (value) => {
+  syncPrivateScrollLock();
   const nextQuery = {
     ...route.query,
     tab: value === "all" ? undefined : value,
@@ -571,6 +579,15 @@ function directMessageQueryReset() {
     forumKind: undefined,
     forumId: undefined,
   };
+}
+
+function syncPrivateScrollLock() {
+  setPrivateScrollLock(tab.value === "private" && Boolean(privateViewportQuery?.matches));
+}
+
+function setPrivateScrollLock(active: boolean) {
+  document.documentElement.classList.toggle("messages-private-scroll-lock", active);
+  document.body.classList.toggle("messages-private-scroll-lock", active);
 }
 
 watch(qqBotAddFriendUrl, async (value) => {
@@ -1121,6 +1138,12 @@ function normalizeMessageSettings(value: any) {
 </script>
 
 <style scoped>
+:global(html.messages-private-scroll-lock),
+:global(body.messages-private-scroll-lock) {
+  overflow: hidden !important;
+  overscroll-behavior: none;
+}
+
 .msg-page { display: flex; flex-direction: column; gap: 10px; }
 .page-head {
   display: flex;

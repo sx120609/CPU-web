@@ -3,8 +3,8 @@
     <aside class="conversation-sidebar">
       <div class="sidebar-head">
         <div class="sidebar-copy">
-          <b>私信</b>
-          <span>{{ totalUnread ? `${totalUnread} 条未读消息` : "消息记录仅会显示给会话双方" }}</span>
+          <b>私聊</b>
+          <span>{{ totalUnread ? `${totalUnread} 条未读消息` : "消息仅会显示给会话双方" }}</span>
         </div>
         <div class="sidebar-actions">
           <el-badge :value="totalUnread" :hidden="!totalUnread" :max="99" />
@@ -391,7 +391,7 @@ async function applyRouteTarget() {
     return;
   }
 
-  if (!activeConversation.value && !pendingTarget.value) messages.value = [];
+  clearActiveTarget();
 }
 
 function openConversation(conversationId: number) {
@@ -597,10 +597,7 @@ async function scrollToBottom() {
 }
 
 function backToList() {
-  activeConversation.value = null;
-  pendingTarget.value = null;
-  pendingForumTarget.value = null;
-  messages.value = [];
+  clearActiveTarget();
   router.replace({
     query: {
       ...route.query,
@@ -611,6 +608,17 @@ function backToList() {
       forumId: undefined,
     },
   }).catch(() => null);
+}
+
+function clearActiveTarget() {
+  messageSeq += 1;
+  activeConversation.value = null;
+  pendingTarget.value = null;
+  pendingForumTarget.value = null;
+  messages.value = [];
+  nextCursor.value = null;
+  messageLoading.value = false;
+  messageError.value = "";
 }
 
 function openProfile() {
