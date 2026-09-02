@@ -19,6 +19,10 @@ test("广告轮播仅在同一广告位有多条内容时启用", () => {
   assert.match(carousel, /v-for="ad in slides"/u);
   assert.match(carousel, /:autoplay="false"/u);
   assert.match(carousel, /:loop="false"/u);
+  assert.match(carousel, /arrow="never"/u);
+  assert.match(carousel, /indicator-position="none"/u);
+  assert.doesNotMatch(carousel, /el-carousel__button/u);
+  assert.doesNotMatch(carousel, /el-carousel__indicators/u);
   assert.match(carousel, /const rotationInterval = 6000/u);
   assert.match(carousel, /setActiveItem\(\(activeIndex\.value \+ 1\) % slides\.value\.length\)/u);
   assert.match(carousel, /new Map\(props\.ads\.map/u);

@@ -16,9 +16,8 @@
       :interval="rotationInterval"
       :autoplay="false"
       :loop="false"
-      arrow="hover"
-      indicator-position="outside"
-      trigger="click"
+      arrow="never"
+      indicator-position="none"
       aria-label="推广内容"
       @change="activeIndex = $event"
     >
@@ -90,22 +89,7 @@ function handleVisibilityChange() {
 .has-multiple :deep(.el-carousel__item) { overflow: hidden; border-radius: 16px; }
 .has-multiple :deep(.forum-ad-card),
 .has-multiple :deep(.forum-ad-link) { box-sizing: border-box; height: 100%; }
-.has-multiple :deep(.el-carousel__arrow) {
-  width: 30px;
-  height: 30px;
-  color: var(--cpu-primary);
-  background: color-mix(in srgb, var(--cpu-card) 90%, transparent);
-  box-shadow: 0 3px 12px rgba(15, 23, 42, .12);
-}
-.has-multiple :deep(.el-carousel__button) {
-  width: 18px;
-  height: 3px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--cpu-primary) 65%, var(--cpu-border-soft));
-}
-.has-multiple :deep(.el-carousel__indicators--outside) { margin-top: 2px; }
 @media (max-width: 600px) {
   .has-multiple :deep(.el-carousel__container) { height: 92px !important; }
-  .has-multiple :deep(.el-carousel__arrow) { display: none; }
 }
 </style>
