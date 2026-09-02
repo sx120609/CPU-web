@@ -207,6 +207,7 @@ const categoryOptions = [
   { value: "direct-message", label: "私信" },
   { value: "like", label: "点赞" },
   { value: "system", label: "系统 / 站务" },
+  { value: "forum-report", label: "内容举报" },
   { value: "service-tool", label: "小工具" },
   { value: "lost-found", label: "失物招领" },
   { value: "market", label: "校园商城" },

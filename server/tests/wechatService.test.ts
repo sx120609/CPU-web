@@ -20,6 +20,7 @@ import {
   isWechatPersistentDeliveryFailure,
   isWechatTemplateDeliveryEvent,
   markWechatServiceClientUrl,
+  normalizeNotifyCategories,
   parseWechatXml,
   parseWechatApiResponseText,
   renderWechatAssistantReplyImage,
@@ -139,6 +140,10 @@ test("routes sponsor callback notifications directly through template messages",
   assert.equal(isWechatSponsorTemplateNotification({ payload: JSON.stringify({ type: "sponsor-admin" }) }), true);
   assert.equal(isWechatSponsorTemplateNotification({ payload: JSON.stringify({ type: "market-paid" }) }), false);
   assert.equal(isWechatSponsorTemplateNotification({ payload: JSON.stringify({ type: "direct-message" }) }), false);
+});
+
+test("accepts content report notifications for WeChat forwarding", () => {
+  assert.deepEqual(normalizeNotifyCategories(["reply", "forum-report", "unknown", "forum-report"]), ["reply", "forum-report"]);
 });
 
 test("limits notification scans to bound users while retaining global notices", () => {
@@ -362,6 +367,18 @@ test("routes community and payment notifications to verified category templates"
   assert.equal(reply?.data.thing3.value, "回复通知");
   assert.equal(reply?.data.thing4.value, "有人回复了你的评论");
   assert.equal(reply?.data.character_string5.value, "SJ42");
+
+  const report = buildWechatRoutedTemplateNotificationPayload(config, "openid", {
+    id: 44,
+    category: "forum-report",
+    title: "收到新的内容举报",
+    content: "评论：虚假或误导信息",
+    createdAt: new Date("2026-08-31T08:00:00Z"),
+    payload: JSON.stringify({ type: "forum-report", reportId: 7 }),
+  }, "https://cputime.cn/admin?tab=forum-reports");
+  assert.equal(report?.template_id, "work-order-template");
+  assert.equal(report?.data.thing3.value, "内容举报");
+  assert.equal(report?.data.thing4.value, "收到新的内容举报");
 
   const payment = buildWechatRoutedTemplateNotificationPayload(config, "openid", {
     id: 43,

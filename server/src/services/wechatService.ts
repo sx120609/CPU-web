@@ -44,7 +44,7 @@ const WECHAT_SCHEDULE_QUICK_COMMANDS = [
   { id: "SHIJIAN_QUERY_NEXT_WEEK", content: "下周课表" },
   { id: "SHIJIAN_QUERY_WEEK_AFTER_NEXT", content: "下下周课表" },
 ];
-const DEFAULT_NOTIFY_CATEGORIES = ["reply", "mention", "direct-message", "like", "system", "service-tool", "lost-found", "market", "school-feed"];
+const DEFAULT_NOTIFY_CATEGORIES = ["reply", "mention", "direct-message", "like", "system", "forum-report", "service-tool", "lost-found", "market", "school-feed"];
 const NOTIFY_CATEGORY_OPTIONS = new Set(DEFAULT_NOTIFY_CATEGORIES);
 const MAX_WECHAT_TEXT_LENGTH = 1800;
 const WECHAT_AES_KEY_CHARACTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -1448,6 +1448,7 @@ function wechatWorkOrderType(notification: { category?: string | null; payload?:
   if (notification.category === "reply") return "回复通知";
   if (notification.category === "mention") return "提及通知";
   if (notification.category === "like") return "点赞通知";
+  if (notification.category === "forum-report") return "内容举报";
   if (notification.category === "lost-found") return "失物招领";
   if (notification.category === "service-tool") return "校园服务";
   if (notification.category === "market") return "校园商城";
@@ -2057,7 +2058,7 @@ function ensureWechatApiReady(config: WechatConfigRow) {
   if (!config.appId || !config.appSecret) throw Errors.badRequest("微信服务号 AppID 或 AppSecret 未配置");
 }
 
-function normalizeNotifyCategories(values: readonly string[]) {
+export function normalizeNotifyCategories(values: readonly string[]) {
   return Array.from(new Set(values.map((value) => String(value).trim()).filter((value) => NOTIFY_CATEGORY_OPTIONS.has(value))));
 }
 

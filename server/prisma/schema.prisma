@@ -1479,7 +1479,7 @@ model WechatServiceConfig {
   messageMode           String   @default("safe")
   notificationEnabled   Boolean  @default(true)
   assistantEnabled      Boolean  @default(true)
-  notifyCategories      String   @default("[\"reply\",\"mention\",\"direct-message\",\"like\",\"system\",\"service-tool\",\"lost-found\",\"market\",\"school-feed\"]")
+  notifyCategories      String   @default("[\"reply\",\"mention\",\"direct-message\",\"like\",\"system\",\"forum-report\",\"service-tool\",\"lost-found\",\"market\",\"school-feed\"]")
   notificationTemplateId String  @default("")
   workOrderTemplateId    String  @default("")
   paymentSuccessTemplateId String @default("")
