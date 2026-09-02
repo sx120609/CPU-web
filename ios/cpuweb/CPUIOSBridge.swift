@@ -11,14 +11,21 @@ protocol NativePresentationProviding: AnyObject {
 }
 
 @MainActor
+protocol NativeWebHistoryObserving: AnyObject {
+    func webHistoryDidChange(position: Int, phase: String, kind: String)
+}
+
+@MainActor
 final class CPUIOSBridge: NSObject, WKScriptMessageHandler {
     static let handlerName = "cpuIOS"
 
     weak var presenter: NativePresentationProviding?
+    weak var historyObserver: NativeWebHistoryObserving?
     weak var webView: WKWebView?
 
-    init(presenter: NativePresentationProviding) {
+    init(presenter: NativePresentationProviding, historyObserver: NativeWebHistoryObserving) {
         self.presenter = presenter
+        self.historyObserver = historyObserver
     }
 
     var webLaunchScreenSuppressionScript: WKUserScript {
@@ -76,6 +83,73 @@ final class CPUIOSBridge: NSObject, WKScriptMessageHandler {
         return WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: true)
     }
 
+    var webHistoryObservationScript: WKUserScript {
+        let source = """
+        (() => {
+          if (location.hostname.toLowerCase() !== \(Self.javascriptString(AppConfiguration.appHost))) return;
+
+          const handler = window.webkit?.messageHandlers?.\(Self.handlerName);
+          if (!handler || window.__cpuIOSHistoryObserverInstalled) return;
+          window.__cpuIOSHistoryObserverInstalled = true;
+
+          const currentPosition = () => {
+            const value = history.state?.position;
+            return Number.isFinite(value) ? Number(value) : null;
+          };
+          const post = (phase, kind, position = currentPosition()) => {
+            if (position == null) return;
+            try { handler.postMessage({ action: 'webHistory', phase, kind, position }); }
+            catch (_) {}
+          };
+
+          let settleTimer = 0;
+          let lateSettleTimer = 0;
+          let snapshotTimer = 0;
+          const scheduleSettled = (kind) => {
+            clearTimeout(settleTimer);
+            clearTimeout(lateSettleTimer);
+            requestAnimationFrame(() => requestAnimationFrame(() => {
+              settleTimer = setTimeout(() => post('settled', kind), 80);
+              lateSettleTimer = setTimeout(() => post('settled', kind), 420);
+            }));
+          };
+          const didChange = (kind) => {
+            post('changed', kind);
+            scheduleSettled(kind);
+          };
+          const requestSnapshot = (kind) => {
+            clearTimeout(snapshotTimer);
+            snapshotTimer = setTimeout(() => post('snapshot', kind), 90);
+          };
+
+          for (const method of ['pushState', 'replaceState']) {
+            const original = history[method];
+            history[method] = function (...args) {
+              post('snapshot', `before-${method}`);
+              const result = original.apply(this, args);
+              didChange(method);
+              return result;
+            };
+          }
+
+          addEventListener('popstate', () => didChange('popstate'));
+          addEventListener('pageshow', () => didChange('pageshow'));
+          addEventListener('scroll', () => requestSnapshot('scroll'), { passive: true, capture: true });
+          addEventListener('pointerdown', (event) => {
+            const target = event.target instanceof Element ? event.target.closest('a,button,[role="button"]') : null;
+            if (target) post('snapshot', 'interaction');
+          }, { passive: true, capture: true });
+
+          if (document.readyState === 'loading') {
+            addEventListener('DOMContentLoaded', () => didChange('initial'), { once: true });
+          } else {
+            didChange('initial');
+          }
+        })();
+        """
+        return WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: true)
+    }
+
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard message.name == Self.handlerName,
               message.frameInfo.isMainFrame,
@@ -100,6 +174,13 @@ final class CPUIOSBridge: NSObject, WKScriptMessageHandler {
             installScheduleWidget(payload: body["payload"] as? String)
         case "setScheduleWidgetTheme":
             setScheduleWidgetTheme(body["theme"] as? String)
+        case "webHistory":
+            guard let position = (body["position"] as? NSNumber)?.intValue,
+                  let phase = body["phase"] as? String,
+                  let kind = body["kind"] as? String else {
+                return
+            }
+            historyObserver?.webHistoryDidChange(position: position, phase: phase, kind: kind)
         default:
             break
         }

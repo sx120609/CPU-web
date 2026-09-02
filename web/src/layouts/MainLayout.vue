@@ -163,7 +163,8 @@
       }"
     >
       <router-view v-slot="{ Component }">
-        <transition name="fade" mode="out-in">
+        <component v-if="useInstantNativeRouteSwitch" :is="Component" />
+        <transition v-else name="fade" mode="out-in">
           <component :is="Component" />
         </transition>
       </router-view>
@@ -396,7 +397,7 @@ import { useAuthStore } from "@/stores/auth";
 import { useMessageStore } from "@/stores/message";
 import { useSiteStore } from "@/stores/site";
 import { useAppearanceStore, type AppearanceMode } from "@/stores/appearance";
-import { isDesktopNativeApp, isFlutterNativeShell } from "@/utils/clientInfo";
+import { isDesktopNativeApp, isFlutterNativeShell, isIosNativeApp } from "@/utils/clientInfo";
 
 const ShijianAssistant = defineAsyncComponent(() => import("@/views/search/Result.vue"));
 const DesktopToolsPanel = defineAsyncComponent(() => import("@/components/common/DesktopToolsPanel.vue"));
@@ -459,6 +460,7 @@ const hideChrome = computed(() => Boolean(route.meta?.hideChrome));
 const fullWidthContent = computed(() => Boolean(route.meta?.fullWidthContent));
 const fullHeightContent = computed(() => Boolean(route.meta?.fullHeightContent));
 const useNativeShell = computed(() => isFlutterNativeShell());
+const useInstantNativeRouteSwitch = isIosNativeApp();
 // 两个悬浮球共用同一套显示条件
 const showFloatingActions = computed(() => (
   !hideChrome.value

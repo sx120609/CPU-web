@@ -44,6 +44,10 @@ const CACHE_FIRST_EDUCATION_ROUTES = new Set(["jwxt", "schedule"]);
 // 避免旧页面在切换到二级路由前先闪现回到顶部。
 const ROUTE_LEAVE_SCROLL_DELAY_MS = 170;
 
+function usesInstantNativeRouteSwitch() {
+  return typeof navigator !== "undefined" && navigator.userAgent.toLowerCase().includes("cpuwebiosapp");
+}
+
 /**
  * 受功能开关控制的路由名 → feature key。
  * 动态板块 / 帖子详情由服务端根据所属板块类型继续拦截，避免直接输入 URL 绕过。
@@ -92,7 +96,9 @@ export const router = createRouter({
         : { top: 0 };
 
     // 首次加载没有正在淡出的旧页面，可以立即定位。
-    if (!from.name) return position;
+    // iOS 原生壳不对路由组件执行 out-in 淡出，立即滚动可确保新页面
+    // 首帧就在正确位置，也不会牵动仍在离场的旧页面。
+    if (!from.name || usesInstantNativeRouteSwitch()) return position;
 
     return new Promise((resolve) => {
       window.setTimeout(() => resolve(position), ROUTE_LEAVE_SCROLL_DELAY_MS);
