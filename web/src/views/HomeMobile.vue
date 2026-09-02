@@ -10,7 +10,7 @@
       </nav>
     </section>
 
-    <ForumAdCard v-if="mobileHomeAd" :ad="mobileHomeAd" compact />
+    <ForumAdCarousel v-if="mobileHomeAds.length" :ads="mobileHomeAds" compact />
 
     <section v-if="showForumContent && hotPreview.length" class="hot-strip" aria-label="热榜">
       <header><b>热榜</b><router-link to="/forum?channel=hot">查看全部 →</router-link></header>
@@ -63,7 +63,7 @@ import { onBeforeRouteLeave, useRoute, useRouter } from "vue-router";
 import type { Topic } from "@/api/topic";
 import { homeApi, type HomeFeedStream, type HomeSummary } from "@/api/home";
 import { forumAdsApi, type ForumAd } from "@/api/forumAds";
-import ForumAdCard from "@/components/forum/ForumAdCard.vue";
+import ForumAdCarousel from "@/components/forum/ForumAdCarousel.vue";
 import ForumFeedCard from "@/components/forum/ForumFeedCard.vue";
 import SiteSearchBar from "@/components/search/SiteSearchBar.vue";
 import { useAuthStore } from "@/stores/auth";
@@ -104,7 +104,7 @@ const router = useRouter();
 const summary = ref<HomeSummary | null>(null);
 const loading = ref(false);
 const homeError = ref("");
-const mobileHomeAd = ref<ForumAd | null>(null);
+const mobileHomeAds = ref<ForumAd[]>([]);
 const activeFeedStream = ref<MobileHomeFeedStream>("forum");
 const feedStates = reactive<Record<MobileHomeFeedStream, HomeFeedState>>({
   forum: createFeedState(),
@@ -220,10 +220,10 @@ async function loadAds() {
   try {
     const mobileHome = await forumAdsApi.list("home-mobile-top").catch(() => []);
     if (sequence !== adSequence) return;
-    mobileHomeAd.value = mobileHome[0] || null;
+    mobileHomeAds.value = mobileHome;
   } catch {
     if (sequence !== adSequence) return;
-    mobileHomeAd.value = null;
+    mobileHomeAds.value = [];
   }
 }
 

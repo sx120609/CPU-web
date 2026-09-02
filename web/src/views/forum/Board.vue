@@ -25,7 +25,7 @@
       </div>
     </div>
 
-    <ForumAdCard v-if="forumAd" :ad="forumAd" />
+    <ForumAdCarousel v-if="forumAds.length" :ads="forumAds" />
 
     <div v-if="error && !loading" class="topic-list cpu-card board-error">
       <el-empty :description="error">
@@ -74,7 +74,7 @@ import { ref, computed, nextTick, watch } from "vue";
 import { onBeforeRouteLeave, useRoute, useRouter } from "vue-router";
 import { Edit } from "@element-plus/icons-vue";
 import TopicListItem from "@/components/forum/TopicListItem.vue";
-import ForumAdCard from "@/components/forum/ForumAdCard.vue";
+import ForumAdCarousel from "@/components/forum/ForumAdCarousel.vue";
 import AppIcon from "@/components/common/AppIcon.vue";
 import { boardApi, type Board } from "@/api/board";
 import { forumAdsApi, type ForumAd } from "@/api/forumAds";
@@ -98,7 +98,7 @@ const board = ref<Board | null>(null);
 const pinnedList = ref<any[]>([]);
 const list = ref<any[]>([]);
 const total = ref(0);
-const forumAd = ref<ForumAd | null>(null);
+const forumAds = ref<ForumAd[]>([]);
 const page = ref(1);
 const size = ref(20);
 const sort = ref<"new" | "hot">("new");
@@ -183,9 +183,9 @@ async function reload(options: { scrollToTop?: boolean } = {}) {
 
 async function loadAd() {
   try {
-    forumAd.value = (await forumAdsApi.list("forum-board-top"))[0] ?? null;
+    forumAds.value = await forumAdsApi.list("forum-board-top");
   } catch {
-    forumAd.value = null;
+    forumAds.value = [];
   }
 }
 

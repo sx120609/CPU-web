@@ -25,7 +25,7 @@
     </nav>
 
     <PinnedTopicStrip v-if="selectedChannel === 'latest'" :topics="pinnedList" />
-    <ForumAdCard v-if="topAd" :ad="topAd" compact />
+    <ForumAdCarousel v-if="topAds.length" :ads="topAds" compact />
 
     <section class="feed-panel" :aria-busy="loading">
       <div class="feed-panel-head">
@@ -45,9 +45,9 @@
             :topic="topic"
             :rank="selectedChannel === 'hot' ? Number((topic as any).rank || 0) : 0"
           />
-          <ForumAdCard v-if="inlineAd && index === 2" :ad="inlineAd" compact />
+          <ForumAdCarousel v-if="inlineAds.length && index === 2" :ads="inlineAds" compact />
         </template>
-        <ForumAdCard v-if="inlineAd && feedItems.length > 0 && feedItems.length < 3" :ad="inlineAd" compact />
+        <ForumAdCarousel v-if="inlineAds.length && feedItems.length > 0 && feedItems.length < 3" :ads="inlineAds" compact />
         <el-empty v-if="!loading && !feedItems.length" description="这个分类暂时还没有内容" />
       </div>
 
@@ -86,7 +86,7 @@ import { boardApi, type Board } from "@/api/board";
 import { homeApi } from "@/api/home";
 import { topicApi, type Topic } from "@/api/topic";
 import { forumAdsApi, type ForumAd } from "@/api/forumAds";
-import ForumAdCard from "@/components/forum/ForumAdCard.vue";
+import ForumAdCarousel from "@/components/forum/ForumAdCarousel.vue";
 import ForumFeedCard from "@/components/forum/ForumFeedCard.vue";
 import PinnedTopicStrip from "@/components/forum/PinnedTopicStrip.vue";
 import SiteSearchBar from "@/components/search/SiteSearchBar.vue";
@@ -144,8 +144,8 @@ const loading = ref(false);
 const loadingMore = ref(false);
 const error = ref("");
 const loadMoreError = ref("");
-const topAd = ref<ForumAd | null>(null);
-const inlineAd = ref<ForumAd | null>(null);
+const topAds = ref<ForumAd[]>([]);
+const inlineAds = ref<ForumAd[]>([]);
 const loadMoreSentinelRef = ref<HTMLElement | null>(null);
 const canLoadMore = computed(() => selectedChannel.value !== "hot" && feedItems.value.length < total.value);
 let loadObserver: IntersectionObserver | null = null;
@@ -344,11 +344,11 @@ async function loadAd() {
       forumAdsApi.list("forum-index-top").catch(() => []),
       forumAdsApi.list("forum-feed-inline").catch(() => []),
     ]);
-    topAd.value = top[0] || null;
-    inlineAd.value = inline[0] || null;
+    topAds.value = top;
+    inlineAds.value = inline;
   } catch {
-    topAd.value = null;
-    inlineAd.value = null;
+    topAds.value = [];
+    inlineAds.value = [];
   }
 }
 

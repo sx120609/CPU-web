@@ -55,7 +55,7 @@
             <h3><AppIcon name="pin" /> 全局置顶</h3>
             <span class="cpu-muted">重要内容</span>
           </div>
-          <ForumAdCard v-if="pinnedAd" :ad="pinnedAd" compact />
+          <ForumAdCarousel v-if="pinnedAds.length" :ads="pinnedAds" compact />
           <TopicListItem v-for="t in summary.pinnedTopics" :key="'pin-' + t.id" :topic="t" />
         </section>
 
@@ -67,7 +67,7 @@
             </div>
             <router-link to="/forum/hot" class="more">查看前十 →</router-link>
           </div>
-          <ForumAdCard v-if="hotAd" :ad="hotAd" compact />
+          <ForumAdCarousel v-if="hotAds.length" :ads="hotAds" compact />
           <TopicListItem
             v-for="t in hotPreview"
             :key="'hot-' + t.id"
@@ -195,7 +195,7 @@ import { useRouter } from "vue-router";
 import { ChatLineRound, ChatDotRound, Edit, Bell } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import TopicListItem from "@/components/forum/TopicListItem.vue";
-import ForumAdCard from "@/components/forum/ForumAdCard.vue";
+import ForumAdCarousel from "@/components/forum/ForumAdCarousel.vue";
 import SiteSearchBar from "@/components/search/SiteSearchBar.vue";
 import AppIcon from "@/components/common/AppIcon.vue";
 import DormElectricDialog from "@/components/services/DormElectricDialog.vue";
@@ -216,8 +216,8 @@ const summary = ref<HomeSummary | null>(null);
 const loading = ref(false);
 const homeError = ref("");
 const electricOpen = ref(false);
-const pinnedAd = ref<ForumAd | null>(null);
-const hotAd = ref<ForumAd | null>(null);
+const pinnedAds = ref<ForumAd[]>([]);
+const hotAds = ref<ForumAd[]>([]);
 const hotPreview = computed(() => (summary.value?.hotTopics ?? []).slice(0, 3));
 const visibleServices = computed(() => summary.value?.services ?? []);
 const showElectricEntry = computed(() => auth.isLoggedIn && site.features.electric);
@@ -280,12 +280,12 @@ async function loadAds() {
       forumAdsApi.list("forum-home-hot"),
     ]);
     if (seq !== adsLoadSeq) return;
-    pinnedAd.value = pinned[0] ?? null;
-    hotAd.value = hot[0] ?? null;
+    pinnedAds.value = pinned;
+    hotAds.value = hot;
   } catch {
     if (seq !== adsLoadSeq) return;
-    pinnedAd.value = null;
-    hotAd.value = null;
+    pinnedAds.value = [];
+    hotAds.value = [];
   }
 }
 
