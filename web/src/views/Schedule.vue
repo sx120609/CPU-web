@@ -878,13 +878,13 @@ const editingCourseKey = ref("");
 const editingWeekValue = ref("");
 const courseEditAction = ref<CourseEditAction>("");
 const courseEditBusy = computed(() => courseEditAction.value !== "");
-const widgetCurrentWeekIntentPending = ref(
-  route.query.source === "widget" && route.query.week === "current",
-);
+const widgetCurrentWeekIntentPending = ref(false);
 
 function applyWidgetCurrentWeekIntent() {
   if (!widgetCurrentWeekIntentPending.value) return false;
-  const current = Number(calendar.value?.currentWeek || parsed.value?.currentWeek || 0);
+  // 本科课表响应里的 currentWeek 是课表下拉框当前选中的周，并不一定是
+  // 校历当前周。必须等校历可用后再消费小组件意图，否则会原地切回旧周。
+  const current = Number(calendar.value?.currentWeek || 0);
   if (!Number.isFinite(current) || current <= 0) return false;
 
   widgetCurrentWeekIntentPending.value = false;
@@ -892,17 +892,22 @@ function applyWidgetCurrentWeekIntent() {
   delete nextQuery.source;
   delete nextQuery.week;
   void router.replace({ path: route.path, query: nextQuery, hash: route.hash }).catch(() => undefined);
-  week.value = String(current);
-  const key = scheduleCacheKey(semester.value || parsed.value?.currentSemester, week.value);
-  const cached = scheduleCacheStore.get(key) ?? readCache<ScheduleResult>(key);
-  if (cached?.data) applyScheduleCache(key);
-  activeDay.value = dayOfWeek();
-  saveLastState();
+  void jumpToCurrentWeek().catch(() => undefined);
   return true;
 }
 
 watch(
-  [() => calendar.value?.currentWeek, () => parsed.value?.currentWeek],
+  [() => route.query.source, () => route.query.week],
+  ([source, targetWeek]) => {
+    if (source !== "widget" || targetWeek !== "current") return;
+    widgetCurrentWeekIntentPending.value = true;
+    applyWidgetCurrentWeekIntent();
+  },
+  { immediate: true },
+);
+
+watch(
+  () => calendar.value?.currentWeek,
   () => { applyWidgetCurrentWeekIntent(); },
 );
 
