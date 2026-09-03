@@ -341,7 +341,7 @@ function handleViewportChange(event: { matches: boolean }) {
 
 function syncMobileViewport() {
   if (typeof window === "undefined") return;
-  isMobileViewport.value = window.matchMedia?.(MOBILE_BREAKPOINT).matches ?? window.innerWidth <= 700;
+  isMobileViewport.value = window.matchMedia?.(MOBILE_BREAKPOINT).matches ?? window.innerWidth <= 768;
 }
 
 function handleLayoutResize() {
