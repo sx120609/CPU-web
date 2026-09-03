@@ -1,9 +1,10 @@
 import { app, BrowserWindow, ipcMain, shell } from "electron";
 import { spawn } from "node:child_process";
-import { copyFile, mkdir, readdir, rename, rm, stat } from "node:fs/promises";
+import { mkdir, readdir, rm, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { branding } from "./config";
+import { acquireInstallLock, InstallEntry, placeInstallFile } from "./install-files";
 
 // 自装：不用 NSIS 画界面。发出去的 exe 是 electron-builder 的 portable 目标 ——
 // 它是个静默解压壳（无任何窗口），把应用解到临时目录后运行我们，
@@ -28,9 +29,7 @@ const sourceDir = (): string => path.dirname(app.getPath("exe"));
 
 const exeName = (): string => path.basename(app.getPath("exe"));
 
-type Entry = { from: string; to: string; size: number };
-
-const collect = async (from: string, to: string, out: Entry[]): Promise<void> => {
+const collect = async (from: string, to: string, out: InstallEntry[]): Promise<void> => {
   for (const item of await readdir(from, { withFileTypes: true })) {
     const source = path.join(from, item.name);
     const target = path.join(to, item.name);
@@ -41,24 +40,6 @@ const collect = async (from: string, to: string, out: Entry[]): Promise<void> =>
     }
     // 符号链接等一律跳过：Windows 上的 Electron 包里不该有，出现了也不该跟着复制
   }
-};
-
-// 覆盖安装时旧版可能正开着。Windows 允许改名正在运行的文件，但不允许删除 ——
-// 所以覆盖失败就把旧文件改名让路，残留的 .old- 由下次正常启动清理。
-//
-// 不按错误码筛：被内存映射的文件（icudtl.dat、*.dll 这些）复制失败时
-// Windows 给的是 UNKNOWN，按 EBUSY/EPERM 判断会直接漏掉，正是这个兜底最该
-// 生效的场合。所以只要目标已存在就一律试一次改名，改名再失败才算真失败。
-const placeFile = async (entry: Entry): Promise<void> => {
-  try {
-    await copyFile(entry.from, entry.to);
-    return;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") throw error;
-  }
-  const parked = `${entry.to}.old-${Date.now().toString(36)}`;
-  await rename(entry.to, parked);
-  await copyFile(entry.from, entry.to);
 };
 
 const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
@@ -112,7 +93,7 @@ export const sweepReplacedFiles = async (): Promise<void> => {
   try {
     for (const base of [dir, path.join(dir, "resources")]) {
       for (const item of await readdir(base, { withFileTypes: true }).catch(() => [])) {
-        if (item.isFile() && /\.old-[a-z0-9]+$/.test(item.name)) {
+        if (item.isFile() && /\.old-[a-z0-9-]+$/.test(item.name)) {
           await rm(path.join(base, item.name), { force: true }).catch(() => undefined);
         }
       }
@@ -225,7 +206,7 @@ type InstallResult = { ok: true; bytes?: number } | { ok: false; message: string
 
 const copyTree = async (from: string, to: string, report: (p: Progress) => void): Promise<InstallResult> => {
   report({ percent: 1, text: "正在清点文件" });
-  const entries: Entry[] = [];
+  const entries: InstallEntry[] = [];
   await collect(from, to, entries);
   const total = entries.reduce((sum, entry) => sum + entry.size, 0);
   if (total === 0) {
@@ -241,11 +222,13 @@ const copyTree = async (from: string, to: string, report: (p: Progress) => void)
   let lastTick = 0;
   for (const entry of entries) {
     try {
-      await placeFile(entry);
+      await placeInstallFile(entry);
     } catch (error) {
+      const code = (error as NodeJS.ErrnoException)?.code;
+      const blocked = code === "EACCES" || code === "EPERM" || code === "EBUSY" || code === "UNKNOWN";
       return {
         ok: false,
-        message: "有文件正在被占用，写不进去。",
+        message: blocked ? "文件暂时无法写入。" : "安装文件写入失败。",
         detail: `${path.basename(entry.to)} · ${error instanceof Error ? error.message : String(error)}`
       };
     }
@@ -267,38 +250,55 @@ const runInstall = async (report: (p: Progress) => void): Promise<InstallResult>
   const exePath = path.join(to, exeName());
 
   report({ percent: 0, text: "正在准备" });
-  if (!(await closeRunning(exePath))) {
+  let installLock;
+  try {
+    installLock = await acquireInstallLock(to);
+  } catch (error) {
     return {
       ok: false,
-      message: "旧版本仍在运行，暂时无法安全更新。",
-      detail: "请从托盘菜单完全退出药大拾间，再重新运行安装包。"
+      message: "无法准备安装目录。",
+      detail: error instanceof Error ? error.message : String(error)
+    };
+  }
+  if (!installLock) {
+    return {
+      ok: false,
+      message: "另一个安装或更新正在进行。",
+      detail: "请只保留一个安装窗口；若此前异常退出，请稍等几秒后重试。"
     };
   }
 
-  // 整个复制过程必须关掉 asar 补丁。Electron 给 fs 打过补丁：路径里只要含
-  // ".asar" 就被当成"压缩包内的路径"去解析，于是 resources/app.asar 这个文件
-  // 本身既复制不了（补丁跑去包内找一个空路径，必然 ENOENT），readdir 还会
-  // 把它当目录递归进去。noAsar 期间 fs 恢复成普通行为。
-  //
-  // 只包住复制：安装页自己是从 app.asar 里加载的，长期关掉会影响别处。
-  process.noAsar = true;
-  let result: InstallResult;
   try {
-    result = await copyTree(from, to, report);
+    if (!(await closeRunning(exePath))) {
+      return {
+        ok: false,
+        message: "旧版本仍在运行，暂时无法安全更新。",
+        detail: "请从托盘菜单完全退出药大拾间，再重新运行安装包。"
+      };
+    }
+
+    // Electron 会把路径中的 app.asar 当包内路径，复制文件本体时必须暂时关闭补丁。
+    process.noAsar = true;
+    let result: InstallResult;
+    try {
+      result = await copyTree(from, to, report);
+    } finally {
+      process.noAsar = false;
+    }
+    if (!result.ok) return result;
+
+    report({ percent: 92, text: "正在创建快捷方式" });
+    await writeShortcuts(exePath);
+
+    report({ percent: 96, text: "正在注册卸载信息" });
+    await writeUninstallEntry(exePath, to, result.bytes ?? 0);
+
+    report({ percent: 100, text: "安装完成" });
+    launchInstalled(exePath);
+    return { ok: true };
   } finally {
-    process.noAsar = false;
+    await installLock.release();
   }
-  if (!result.ok) return result;
-
-  report({ percent: 92, text: "正在创建快捷方式" });
-  await writeShortcuts(exePath);
-
-  report({ percent: 96, text: "正在注册卸载信息" });
-  await writeUninstallEntry(exePath, to, result.bytes ?? 0);
-
-  report({ percent: 100, text: "安装完成" });
-  launchInstalled(exePath);
-  return { ok: true };
 };
 
 /* ------------------------------------------------------------------ 卸载 */
@@ -348,6 +348,8 @@ export const openInstallerWindow = async (): Promise<void> => {
     if (!window.isDestroyed()) window.webContents.send("install:progress", payload);
   };
 
+  let installPromise: Promise<InstallResult> | null = null;
+
   ipcMain.handle("install:info", async () => {
     const exePath = path.join(targetDir(), exeName());
     let upgrade = false;
@@ -361,13 +363,16 @@ export const openInstallerWindow = async (): Promise<void> => {
     return { targetLabel: targetDir(), upgrade, running };
   });
 
-  ipcMain.handle("install:run", async () => {
-    const result = await runInstall(send);
-    if (result.ok) {
-      // 让"安装完成"那一屏留一下再退，直接消失像是崩了
-      setTimeout(() => app.exit(0), 1400);
+  ipcMain.handle("install:run", () => {
+    if (!installPromise) {
+      installPromise = runInstall(send).then((result) => {
+        if (result.ok) setTimeout(() => app.exit(0), 1400);
+        return result;
+      }).finally(() => {
+        installPromise = null;
+      });
     }
-    return result;
+    return installPromise;
   });
 
   ipcMain.handle("install:close", () => app.exit(0));

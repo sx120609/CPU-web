@@ -9,6 +9,7 @@ const packageJson = JSON.parse(fs.readFileSync(path.join(root, "package.json"), 
 const script = fs.readFileSync(path.join(root, "build", "portable-preheat.nsi"), "utf8");
 const prepare = fs.readFileSync(path.join(root, "scripts", "prepare-nsis.cjs"), "utf8");
 const selfInstall = fs.readFileSync(path.join(root, "electron", "self-install.ts"), "utf8");
+const installerRenderer = fs.readFileSync(path.join(root, "src", "installer", "renderer.js"), "utf8");
 
 assert.deepEqual(packageJson.build.win.target, ["portable"], "Windows 仍应使用 portable 自解压包");
 assert.equal(packageJson.build.portable.splashImage, undefined, "预热阶段不应再加载低 DPI 位图");
@@ -24,6 +25,10 @@ assert.match(
   "覆盖更新必须重复确认旧版进程已经全部退出"
 );
 assert.match(selfInstall, /旧版本仍在运行，暂时无法安全更新/, "旧版无法退出时必须中止覆盖并明确提示");
+assert.match(selfInstall, /acquireInstallLock\(to\)/, "安装前必须取得跨进程目录锁");
+assert.match(selfInstall, /if \(!installPromise\)/, "同一安装窗口内的重复触发必须复用进行中的任务");
+assert.match(installerRenderer, /if \(installInFlight\) return/, "渲染侧必须忽略重复安装点击");
+assert.match(selfInstall, /\\\.old-\[a-z0-9-\]\+\$/, "下次启动必须识别并清理新版安装器留下的旧文件");
 
 assert.match(
   selfInstall,

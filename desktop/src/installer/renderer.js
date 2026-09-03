@@ -2,6 +2,7 @@
 // 这里只负责画状态 —— 渲染进程不碰文件系统。
 
 const bridge = window.cpuInstaller;
+let installInFlight = false;
 
 const el = (id) => document.querySelector(`#${id}`);
 
@@ -27,6 +28,8 @@ const fail = (message, detail) => {
 };
 
 const install = async () => {
+  if (installInFlight) return;
+  installInFlight = true;
   el("go").disabled = true;
   show("busy");
   renderProgress({ percent: 0, text: "正在准备" });
@@ -41,6 +44,8 @@ const install = async () => {
   } catch (error) {
     // 走到这里说明 IPC 本身炸了，不是安装逻辑返回的失败
     fail("安装程序出错了。", error instanceof Error ? error.message : String(error));
+  } finally {
+    installInFlight = false;
   }
 };
 
