@@ -1,5 +1,4 @@
 export const VENUE_RESERVATION_URL = "https://cgtst.cpu.edu.cn/wap";
-export const WECHAT_LAUNCH_URL = "weixin://";
 
 export type VenueLaunchMode = "wechat" | "mobile" | "desktop";
 

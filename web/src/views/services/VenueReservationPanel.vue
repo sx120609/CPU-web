@@ -11,7 +11,7 @@
           点击下方按钮调出系统分享面板，选择微信并发送到任意聊天即可使用。
         </template>
         <template v-else>
-          点击下方按钮会先复制预约链接，再尝试打开微信。进入微信后，将链接发送到任意聊天并点击即可使用。
+          点击下方按钮复制预约链接，然后手动打开微信，将链接发送到任意聊天并点击即可使用。
         </template>
       </p>
       <p v-else>
@@ -32,10 +32,10 @@
           v-else-if="launchMode === 'mobile'"
           type="primary"
           size="large"
-          @click="tryOpenWechat"
+          @click="prepareVenueLink"
         >
-          <el-icon><Promotion /></el-icon>
-          尝试打开微信
+          <el-icon><CopyDocument /></el-icon>
+          复制链接，去微信发送
         </el-button>
         <el-button
           v-else-if="launchMode === 'wechat'"
@@ -51,9 +51,9 @@
         </el-button>
       </div>
 
-      <div v-if="launchAttempted" class="launch-tip" role="status">
+      <div v-if="linkPrepared" class="launch-tip" role="status">
         <el-icon><InfoFilled /></el-icon>
-        <span>如果微信没有自动打开，请打开微信，把已复制的链接发送到任意聊天后点击。</span>
+        <span>链接已复制。请手动打开微信，把链接发送到任意聊天后点击。</span>
       </div>
 
       <div class="venue-link-row">
@@ -75,7 +75,7 @@
 </template>
 
 <script setup lang="ts">
-import { CopyDocument, InfoFilled, Loading, Promotion, Share } from "@element-plus/icons-vue";
+import { CopyDocument, InfoFilled, Loading, Share } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 import QRCode from "qrcode";
 import { onMounted, ref } from "vue";
@@ -87,7 +87,6 @@ import {
   detectVenueLaunchMode,
   isVenueIosDevice,
   VENUE_RESERVATION_URL,
-  WECHAT_LAUNCH_URL,
 } from "@/utils/venueReservation";
 
 const venueUrl = VENUE_RESERVATION_URL;
@@ -100,7 +99,7 @@ const launchMode = detectVenueLaunchMode(launchEnvironment);
 const isIosDevice = isVenueIosDevice(launchEnvironment);
 const qrImage = ref("");
 const qrLoading = ref(launchMode !== "wechat");
-const launchAttempted = ref(false);
+const linkPrepared = ref(false);
 
 onMounted(async () => {
   if (launchMode === "wechat") return;
@@ -140,19 +139,11 @@ async function copyVenueLinkWithFeedback(showSuccess: boolean) {
   }
 }
 
-async function tryOpenWechat() {
+async function prepareVenueLink() {
   const copied = await copyVenueLinkWithFeedback(false);
-  launchAttempted.value = true;
-  ElMessage.info(copied
-    ? "预约链接已复制，正在尝试打开微信"
-    : "正在尝试打开微信；如未打开，请手动复制预约链接");
-
-  const bridge = getNativeBridge();
-  if (typeof bridge?.openExternalUrl === "function") {
-    bridge.openExternalUrl(WECHAT_LAUNCH_URL);
-    return;
-  }
-  window.location.href = WECHAT_LAUNCH_URL;
+  linkPrepared.value = true;
+  if (copied) ElMessage.success("预约链接已复制，请手动打开微信发送");
+  else ElMessage.warning("复制失败，请长按下方链接复制后发送到微信");
 }
 
 async function shareVenueLink() {
@@ -166,7 +157,7 @@ async function shareVenueLink() {
       if ((error as { name?: string })?.name === "AbortError") return;
     }
   }
-  await tryOpenWechat();
+  await prepareVenueLink();
 }
 </script>
 

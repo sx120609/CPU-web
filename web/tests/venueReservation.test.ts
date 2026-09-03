@@ -6,7 +6,6 @@ import {
   detectVenueLaunchMode,
   isVenueIosDevice,
   VENUE_RESERVATION_URL,
-  WECHAT_LAUNCH_URL,
 } from "../src/utils/venueReservation";
 
 test("微信内直接进入场馆预约", () => {
@@ -66,9 +65,8 @@ test("桌面浏览器显示微信扫码入口", () => {
   }), "desktop");
 });
 
-test("预约地址和微信唤起协议保持固定", () => {
+test("预约地址保持固定", () => {
   assert.equal(VENUE_RESERVATION_URL, "https://cgtst.cpu.edu.cn/wap");
-  assert.equal(WECHAT_LAUNCH_URL, "weixin://");
 });
 
 test("微信直达链接不发送来源页", () => {
