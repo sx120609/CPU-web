@@ -42,8 +42,8 @@
           <span class="tool-entry-body">
             <span class="tool-entry-title">
               <span>{{ tool.name }}</span>
-              <em :class="{ login: isLoginRequired(tool.slug) }">
-                {{ isLoginRequired(tool.slug) ? "需登录" : "免登录" }}
+              <em :class="{ login: isLoginRequired(tool.slug), external: Boolean(tool.badge) }">
+                {{ tool.badge ?? (isLoginRequired(tool.slug) ? "需登录" : "免登录") }}
               </em>
             </span>
             <span class="tool-entry-sub">{{ tool.summary }}</span>
@@ -387,6 +387,11 @@ function normalizeToolsError(error: unknown) {
   border-color: rgba(245, 158, 11, 0.38);
   background: rgba(245, 158, 11, 0.12);
   color: #d46b08;
+}
+.tool-entry-title em.external {
+  border-color: rgba(2, 132, 199, 0.38);
+  background: rgba(2, 132, 199, 0.1);
+  color: #0284c7;
 }
 .tool-entry-sub {
   color: var(--cpu-text-secondary);

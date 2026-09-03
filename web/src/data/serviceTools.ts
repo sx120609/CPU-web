@@ -1,4 +1,4 @@
-import { Calendar, ChatDotRound, Compass, DataLine, Document, DocumentChecked, FolderOpened, Microphone, Tools } from "@element-plus/icons-vue";
+import { Calendar, ChatDotRound, Compass, DataLine, Document, DocumentChecked, FolderOpened, Microphone, OfficeBuilding, Tools } from "@element-plus/icons-vue";
 import type { Component } from "vue";
 
 export type ServiceToolStatus = "ready" | "planned";
@@ -12,9 +12,11 @@ export interface ServiceTool {
   status: ServiceToolStatus;
   category: string;
   routeName: string;
-  componentKey: "feedback" | "questionnaire" | "grade_check" | "file_collect" | "pdf_tools" | "school_calendar" | "lost_found" | "voicehub";
+  componentKey: "feedback" | "questionnaire" | "grade_check" | "file_collect" | "pdf_tools" | "school_calendar" | "venue_reservation" | "lost_found" | "voicehub";
   accent: string;
   iconComponent: Component;
+  badge?: string;
+  badgeType?: "primary" | "success" | "warning" | "info";
 }
 
 export const serviceTools: ServiceTool[] = [
@@ -95,6 +97,21 @@ export const serviceTools: ServiceTool[] = [
     componentKey: "school_calendar",
     accent: "#7c3aed",
     iconComponent: Calendar,
+  },
+  {
+    slug: "venue_reservation",
+    name: "场馆预约",
+    summary: "微信内直接进入，其他设备扫码或复制链接",
+    description: "打开中国药科大学智慧场馆系统。微信内可直接进入，电脑和普通手机可扫码或复制链接后在微信中打开。",
+    icon: "venue",
+    status: "ready",
+    category: "校园场馆",
+    routeName: "service-tool-detail",
+    componentKey: "venue_reservation",
+    accent: "#0284c7",
+    iconComponent: OfficeBuilding,
+    badge: "微信打开",
+    badgeType: "primary",
   },
   {
     slug: "lost_found",

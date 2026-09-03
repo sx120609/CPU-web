@@ -13,8 +13,8 @@
           <div class="head-copy">
             <div class="head-title-row">
               <h2>{{ tool.name }}</h2>
-              <el-tag size="small" :type="currentRequireLogin ? 'warning' : 'success'" effect="plain" round>
-                {{ currentRequireLogin ? "需登录" : "免登录" }}
+              <el-tag size="small" :type="tool.badgeType ?? (currentRequireLogin ? 'warning' : 'success')" effect="plain" round>
+                {{ tool.badge ?? (currentRequireLogin ? "需登录" : "免登录") }}
               </el-tag>
             </div>
             <p>{{ tool.description }}</p>
@@ -31,6 +31,7 @@
       <GradeCheckPanel v-else-if="tool.componentKey === 'grade_check'" />
       <PdfToolPanel v-else-if="tool.componentKey === 'pdf_tools'" :require-login="currentRequireLogin" />
       <SchoolCalendarPanel v-else-if="tool.componentKey === 'school_calendar'" />
+      <VenueReservationPanel v-else-if="tool.componentKey === 'venue_reservation'" />
       <FileCollectPanel v-else />
     </section>
 
@@ -54,6 +55,7 @@ import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
 
 const PdfToolPanel = defineAsyncComponent(() => import("./PdfToolPanel.vue"));
 const SchoolCalendarPanel = defineAsyncComponent(() => import("./SchoolCalendarPanel.vue"));
+const VenueReservationPanel = defineAsyncComponent(() => import("./VenueReservationPanel.vue"));
 
 const route = useRoute();
 const router = useRouter();

@@ -44,11 +44,11 @@
               <span class="tool-title">{{ tool.name }}</span>
               <el-tag
                 size="small"
-                :type="isLoginRequired(tool.slug) ? 'warning' : 'success'"
+                :type="tool.badgeType ?? (isLoginRequired(tool.slug) ? 'warning' : 'success')"
                 effect="plain"
                 round
               >
-                {{ isLoginRequired(tool.slug) ? "需登录" : "免登录" }}
+                {{ tool.badge ?? (isLoginRequired(tool.slug) ? "需登录" : "免登录") }}
               </el-tag>
             </span>
             <span class="tool-summary">{{ tool.summary }}</span>
