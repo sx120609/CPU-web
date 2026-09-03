@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   configureVenueReservationLink,
+  createVenueReservationShareData,
   detectVenueLaunchMode,
   isVenueIosDevice,
   VENUE_RESERVATION_URL,
@@ -78,5 +79,11 @@ test("微信直达链接不发送来源页", () => {
     target: "_self",
     rel: "noreferrer",
     referrerPolicy: "no-referrer",
+  });
+});
+
+test("iOS 系统分享只发送可点击的纯文本链接", () => {
+  assert.deepEqual(createVenueReservationShareData(), {
+    text: VENUE_RESERVATION_URL,
   });
 });

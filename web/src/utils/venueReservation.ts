@@ -45,3 +45,7 @@ export function openVenueReservationWithoutReferrer() {
   link.click();
   link.remove();
 }
+
+export function createVenueReservationShareData() {
+  return { text: VENUE_RESERVATION_URL };
+}

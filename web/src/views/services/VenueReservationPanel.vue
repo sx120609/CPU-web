@@ -82,6 +82,7 @@ import { onMounted, ref } from "vue";
 import { getNativeBridge } from "@/utils/nativeBridge";
 import { copyText } from "@/utils/userGroup";
 import {
+  createVenueReservationShareData,
   openVenueReservationWithoutReferrer,
   detectVenueLaunchMode,
   isVenueIosDevice,
@@ -158,9 +159,7 @@ async function shareVenueLink() {
   if (typeof navigator.share === "function") {
     try {
       await navigator.share({
-        title: "场馆预约",
-        text: "中国药科大学智慧场馆系统",
-        url: venueUrl,
+        ...createVenueReservationShareData(),
       });
       return;
     } catch (error) {
