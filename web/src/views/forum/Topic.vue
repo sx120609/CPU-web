@@ -440,10 +440,11 @@
     <el-dialog
       v-if="canReply"
       v-model="replyDialogOpen"
-      title="回复"
+      :title="replyDialogTitle"
       width="min(720px, calc(100dvw - 24px))"
+      :fullscreen="isMobileLayout"
       append-to-body
-      align-center
+      :align-center="!isMobileLayout"
       class="reply-dialog"
     >
       <div v-if="replyParentPreview && !editingReplyId" class="reply-target-bar">
@@ -451,7 +452,7 @@
         <el-button text size="small" @click="clearReplyParent">取消</el-button>
       </div>
       <div v-if="topic?.board?.anonymousEnabled" class="reply-anonymous-box" :class="{ disabled: !replyAnonymousEnabled }">
-        <el-switch v-model="replyAnonymous" :disabled="!replyAnonymousEnabled" />
+        <el-switch v-model="replyAnonymous" :disabled="!replyAnonymousEnabled" aria-label="匿名回复" />
         <div class="reply-anonymous-copy">
           <b>匿名回复</b>
           <p>{{ replyAnonymousHint }}</p>
@@ -466,10 +467,11 @@
         :max-length="REPLY_MAX"
         :draft-key="replyDraftKey"
         toolbar-mode="static"
+        :simple-mobile="isMobileLayout"
         @draft-restored="replyText = $event"
       />
       <div class="reply-form-actions reply-dialog-actions">
-        <span class="cpu-muted">{{ replying ? replySubmissionProgress : "离开页面后会保留未发送的内容。" }}</span>
+        <span class="cpu-muted">{{ replying ? replySubmissionProgress : "草稿自动保存" }}</span>
         <div class="reply-submit-actions">
           <el-button v-if="editingReplyId" :disabled="replying" @click="cancelReplyEdit">取消编辑</el-button>
           <el-button type="primary" :loading="replying" :disabled="replying" @click="submitReply">
@@ -745,6 +747,7 @@ import type { ForumReportTargetType } from "@/api/forumReport";
 import { isAndroidNativeApp, isHarmonyNativeApp } from "@/utils/clientInfo";
 import { getNativeBridge, hasNativeImageSaveBridge } from "@/utils/nativeBridge";
 import { openImageGallery } from "@/utils/imageViewer";
+import { useMobileLayout } from "@/utils/mobileLayout";
 import {
   createForumSubmissionId,
   getForumRequestMessage,
@@ -757,6 +760,7 @@ import {
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
+const isMobileLayout = useMobileLayout();
 
 const topic = ref<Topic | null>(null);
 const replies = ref<Reply[]>([]);
@@ -886,6 +890,11 @@ const canReply = computed(() =>
   auth.isLoggedIn && !topic.value?.hidden && !topic.value?.locked && auth.user?.status !== "muted"
 );
 const replyParentPreview = computed(() => replies.value.find((item) => item.id === replyParentId.value) ?? null);
+const replyDialogTitle = computed(() => {
+  if (editingReplyId.value) return "编辑回复";
+  if (replyParentPreview.value) return `回复 ${replyParentPreview.value.author?.nickname || "同学"}`;
+  return "写回复";
+});
 const ownHiddenReplyCount = computed(() => replies.value.filter((item) => item.hidden).length);
 const displayReplies = computed(() => {
   const byId = new Map(replies.value.map((item) => [item.id, item] as const));

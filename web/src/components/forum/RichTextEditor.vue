@@ -160,7 +160,7 @@ type Alignment = "left" | "center" | "right";
 type MobileToolbarKey = "heading" | "format" | "tools" | "align" | "image";
 
 const EDITABLE_BLOCK_SELECTOR = "p,div,h1,h2,h3,h4,h5,h6,blockquote,li";
-const MOBILE_BREAKPOINT = "(max-width: 700px)";
+const MOBILE_BREAKPOINT = "(max-width: 768px)";
 const DEFAULT_PLACEHOLDER = "写点什么，也可以直接插入图片；一次选多张图片会自动排成相册。";
 const MOBILE_PLACEHOLDER = "写点什么，也可以用工具栏插入图片；多图会自动排成相册。";
 const DEFAULT_FOOTER = "支持排版、图片、相册和草稿保存。";
