@@ -3,7 +3,7 @@ import { jwxtScopedStorageKey } from "@/utils/jwxtCache";
 export type JwxtDataTab = "schedule" | "grades" | "midterm" | "progress" | "pyfa";
 
 export const JWXT_TAB_CACHE_TTL = 12 * 60 * 60 * 1000;
-export const JWXT_TAB_CACHE_PREFIX = "cpu-jwxt-tab-cache-v7";
+export const JWXT_TAB_CACHE_PREFIX = "cpu-jwxt-tab-cache-v8";
 
 export interface JwxtTabCacheEnvelope<T = any> {
   savedAt: number;

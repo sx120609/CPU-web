@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import iconv from "iconv-lite";
 import { isLegacyJwxtLoginPage } from "../src/services/legacyJwxtSso";
 import {
   exportSessionSnapshot,
@@ -126,12 +125,13 @@ test("legacy JWXT silently renews an expired same-host session through unified a
   }
 });
 
-test("all undergraduate academic data except schedule is routed to legacy JWXT", async () => {
-  const token = "legacy-routing-test-token";
+test("undergraduate academic data prefers modern JWXT", async () => {
+  const token = "modern-routing-test-token";
   const now = Date.now();
   await importSessionSnapshot(token, {
     version: 1,
     jar: {
+      "jwxt.cpu.edu.cn": { JSESSIONID: "modern-valid" },
       "jsxsd.cpu.edu.cn": { JSESSIONID: "legacy-valid" },
       "id.cpu.edu.cn": { SESSION: "unified-session" },
     },
@@ -140,49 +140,58 @@ test("all undergraduate academic data except schedule is routed to legacy JWXT",
     lastSeenAt: now,
   });
 
-  const gradeHtml = `
-    <table>
-      <tr><th>开课学期</th><th>课程编号</th><th>课程名称</th><th>平时成绩</th><th>期中成绩</th><th>期末成绩</th><th>总成绩</th><th>学分</th></tr>
-      <tr><td>2025-2026-2</td><td>C001</td><td>药理学</td><td>97</td><td>100</td><td>50.5</td><td>70</td><td>3</td></tr>
-    </table>
-  `;
-  const midtermHtml = `
-    <table>
-      <tr><th>开课学期</th><th>课程编号</th><th>课程名称</th><th>平时成绩</th><th>期中成绩</th></tr>
-      <tr><td>2025-2026-2</td><td>C001</td><td>药理学</td><td>97</td><td>100</td></tr>
-    </table>
-  `;
-  const examHtml = `
-    <table>
-      <tr><th>学期</th><th>课程编号</th><th>课程名称</th><th>考试时间</th><th>考试地点</th></tr>
-      <tr><td>2025-2026-2</td><td>C001</td><td>药理学</td><td>2026-06-20</td><td>教学楼101</td></tr>
-    </table>
-  `;
-
   const originalFetch = globalThis.fetch;
-  const requestedHosts: string[] = [];
+  const requestedPaths: string[] = [];
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(typeof input === "string" || input instanceof URL ? input : input.url);
-    requestedHosts.push(url.hostname);
-    assert.equal(url.hostname, "jsxsd.cpu.edu.cn");
-    assert.match(new Headers(init?.headers).get("cookie") || "", /JSESSIONID=legacy-valid/);
+    requestedPaths.push(`${url.hostname}${url.pathname}`);
 
-    if (url.pathname === "/zgykdx/kscj/cjcx_query" || url.pathname === "/zgykdx/kscj/qzcjcx_query") {
+    if (url.hostname === "jwxt.cpu.edu.cn" && url.pathname === "/jsxsd/kscj/cjcx_frm") {
       return new Response('<select name="kksj"><option value="2025-2026-2" selected>2025-2026-2</option></select>', { status: 200 });
     }
-    if (url.pathname === "/zgykdx/kscj/cjcx_list") {
-      return new Response(iconv.encode(gradeHtml, "gbk"), {
-        status: 200,
-        headers: { "content-type": "text/html;charset=GBK" },
-      });
+    if (url.hostname === "jwxt.cpu.edu.cn" && url.pathname === "/jsxsd/kscj/cjcx_list") {
+      return new Response(JSON.stringify({
+        code: 0,
+        count: 1,
+        data: [{
+          xnxqid: "2025-2026-2",
+          kch: "C001",
+          kc_mc: "药理学",
+          zcj: 70,
+          zcjstr: "70",
+          xf: 3,
+          zxs: 51,
+          jd: 2,
+          kcsx: "必修",
+          ksxz: "正常考试",
+        }],
+      }), { status: 200 });
     }
-    if (url.pathname === "/zgykdx/kscj/qzcjcx_list") return new Response(midtermHtml, { status: 200 });
-    if (url.pathname === "/zgykdx/xsks/xsksap_list") return new Response(examHtml, { status: 200 });
-    if ([
-      "/zgykdx/jxzl/jxzl_query",
-      "/zgykdx/xywcqk/cxxywcqk",
-      "/zgykdx/pyfa/pyfa_query",
-    ].includes(url.pathname)) return new Response("<html><body><div>authenticated legacy data</div></body></html>", { status: 200 });
+    if (url.hostname === "jwxt.cpu.edu.cn" && url.pathname === "/jsxsd/xsks/xsksap_query") {
+      return new Response('<select id="xnxqid"><option value="2025-2026-2" selected>2025-2026-2</option></select>', { status: 200 });
+    }
+    if (url.hostname === "jwxt.cpu.edu.cn" && url.pathname === "/jsxsd/xsks/xsksap_list") {
+      return new Response(JSON.stringify({
+        code: 0,
+        count: 1,
+        data: [{
+          xnxqid: "2025-2026-2",
+          kch: "C001",
+          kskcmc: "药理学",
+          kssj: "2026-06-20 09:00-11:00",
+          js_mc: "教学楼101",
+        }],
+      }), { status: 200 });
+    }
+    if (url.hostname === "jwxt.cpu.edu.cn" && url.pathname === "/jsxsd/jxzl/jxzl_query") {
+      return new Response('<select id="xnxq01id"><option value="2025-2026-2" selected>2025-2026-2</option></select>', { status: 200 });
+    }
+    if (url.hostname === "jwxt.cpu.edu.cn" && url.pathname === "/jsxsd/xxwcqk/xxwcqkOnkclb.do") {
+      return new Response('<div class="mod-total-area"><div class="total-list"></div></div>', { status: 200 });
+    }
+    if (url.hostname === "jwxt.cpu.edu.cn" && url.pathname === "/jsxsd/pyfa/pyfa_query") {
+      return new Response(JSON.stringify({ code: 0, count: 0, data: [] }), { status: 200 });
+    }
 
     throw new Error(`unexpected request: ${url.toString()}`);
   }) as typeof fetch;
@@ -197,15 +206,13 @@ test("all undergraduate academic data except schedule is routed to legacy JWXT",
 
     assert.deepEqual(
       [grades.source, midterm.source, exams.source, calendar.source, progress.source, pyfa.source],
-      ["legacy", "legacy", "legacy", "legacy", "legacy", "legacy"],
+      ["modern", "modern", "modern", "modern", "modern", "modern"],
     );
-    assert.deepEqual(
-      { usual: grades.list[0]?.usual, midterm: grades.list[0]?.midterm, final: grades.list[0]?.final },
-      { usual: "97", midterm: "100", final: "50.5" },
-    );
-    assert.equal(midterm.list[0]?.midterm, "100");
+    assert.equal(grades.list[0]?.score, "70");
+    assert.equal(midterm.list[0]?.score, "70");
     assert.equal(exams.list[0]?.courseName, "药理学");
-    assert.equal(requestedHosts.includes("jwxt.cpu.edu.cn"), false);
+    assert.equal(requestedPaths.includes("jwxt.cpu.edu.cn/jsxsd/kscj/cjcx_list"), true);
+    assert.equal(requestedPaths.includes("jsxsd.cpu.edu.cn/zgykdx/kscj/cjcx_list"), false);
   } finally {
     globalThis.fetch = originalFetch;
     await logout(token);
