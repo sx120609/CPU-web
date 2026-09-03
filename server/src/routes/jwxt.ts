@@ -70,7 +70,7 @@ const JWXT_PROGRESS_CACHE_TTL_MS = 30 * 60_000;
 const JWXT_PYFA_CACHE_TTL_MS = 6 * 60 * 60_000;
 const JWXT_IAPPS_CACHE_TTL_MS = 60 * 60_000;
 const JWXT_IAPP_ICON_CACHE_TTL_MS = 7 * 24 * 60 * 60_000;
-const JWXT_SOURCE_CACHE_REVISION = "source-v3";
+const JWXT_SOURCE_CACHE_REVISION = "source-v4";
 const JWXT_IDENTITY_CACHE_REVISION = "probe-v4";
 const GRAD_SCHEDULE_DEBUG_BINDTERM_CANDIDATES = [
   path.resolve(process.cwd(), ".debug", "grad-bindterm.json"),

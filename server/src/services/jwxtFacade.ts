@@ -48,28 +48,6 @@ export async function modernFirst<T extends object>(modern: () => Promise<T>, le
   }
 }
 
-async function fetchModernPagedList(
-  token: string,
-  path: string,
-  params: Record<string, string>,
-  pageSize = 500,
-) {
-  const fetchPage = async (pageNum: number) => {
-    const query = new URLSearchParams({ pageNum: String(pageNum), pageSize: String(pageSize), ...params });
-    return jwxtFetchModernHtml(token, `${path}?${query.toString()}`);
-  };
-  const firstText = await fetchPage(1);
-  const first = JSON.parse(firstText) as { count?: number; data?: unknown[] } & Record<string, unknown>;
-  if (!Array.isArray(first.data)) return firstText;
-  const count = Math.max(0, Number(first.count) || first.data.length);
-  const pages = Math.ceil(count / pageSize);
-  for (let page = 2; page <= pages; page++) {
-    const next = JSON.parse(await fetchPage(page)) as { data?: unknown[] };
-    if (Array.isArray(next.data)) first.data.push(...next.data);
-  }
-  return JSON.stringify(first);
-}
-
 export { beginLogin, submitLogin, submitLoginForHandoff, consumeLoginHandoff, exportSessionSnapshot, importSessionSnapshot };
 export type { LoginSessionHandoff, LoginHandoffAttempt, JwxtSessionSnapshot } from "./jwxtClient";
 
@@ -108,35 +86,22 @@ export async function getSchedule(token: string, args: { semester?: string; week
 }
 
 export async function getGrades(token: string, args: { semester?: string } = {}) {
-  return modernFirst(async () => {
-    const [queryHtml, listText] = await Promise.all([
-      jwxtFetchModernHtml(token, "/jsxsd/kscj/cjcx_frm"),
-      fetchModernPagedList(token, "/jsxsd/kscj/cjcx_list", {
-        kksj: args.semester ?? "",
-        kcxz: "",
-        kcsx: "",
-        kcmc: "",
-        xsfs: "all",
-        sfxsbcxq: "1",
-      }),
-    ]);
-    const semesters = parseGrades(queryHtml).semesters;
-    const parsed = parseGrades(listText);
-    return parsed.semesters.length ? parsed : { ...parsed, semesters };
-  }, async () => {
-    let semesters = [] as ReturnType<typeof parseGrades>["semesters"];
-    try {
-      semesters = parseGrades(
-        await jwxtFetchHtml(token, "/zgykdx/kscj/cjcx_query?Ves632DSdyV=NEW_XSD_CJGL"),
-      ).semesters;
-    } catch { /* list data remains usable without the filter options */ }
-    const parsed = parseGrades(await jwxtPostForm(token, "/zgykdx/kscj/cjcx_list", {
-      kksj: args.semester ?? "",
-      kcxz: "",
-      kcmc: "",
-    }));
-    return parsed.semesters.length ? parsed : { ...parsed, semesters };
-  });
+  let semesters = [] as ReturnType<typeof parseGrades>["semesters"];
+  try {
+    semesters = parseGrades(
+      await jwxtFetchHtml(token, "/zgykdx/kscj/cjcx_query?Ves632DSdyV=NEW_XSD_CJGL"),
+    ).semesters;
+  } catch (error) {
+    if (isUnauthorizedUpstreamError(error)) throw error;
+    // 列表数据不依赖查询页的筛选选项，查询页临时异常时仍可继续。
+  }
+  const parsed = parseGrades(await jwxtPostForm(token, "/zgykdx/kscj/cjcx_list", {
+    kksj: args.semester ?? "",
+    kcxz: "",
+    kcmc: "",
+  }));
+  const result = parsed.semesters.length ? parsed : { ...parsed, semesters };
+  return { ...result, source: "legacy" as const };
 }
 
 export async function getMidtermGrades(token: string, args: { semester?: string } = {}) {
@@ -145,7 +110,8 @@ export async function getMidtermGrades(token: string, args: { semester?: string 
     semesters = parseGrades(
       await jwxtFetchHtml(token, "/zgykdx/kscj/qzcjcx_query?Ves632DSdyV=NEW_XSD_CJGL")
     ).semesters;
-  } catch {
+  } catch (error) {
+    if (isUnauthorizedUpstreamError(error)) throw error;
     // 查询页失败时继续用列表结果兜底。
   }
 
@@ -160,75 +126,56 @@ export async function getMidtermGrades(token: string, args: { semester?: string 
 }
 
 export async function getExams(token: string, args: { semester?: string; type?: string } = {}) {
-  return modernFirst(async () => {
-    const queryHtml = await jwxtFetchModernHtml(token, "/jsxsd/xsks/xsksap_query");
-    const semesters = parseExams(queryHtml).semesters;
-    const semester = args.semester || semesters.find((item) => item.current)?.value || semesters[0]?.value || "";
-    if (!semester) return { semesters, list: [], needSemester: true };
-    const parsed = parseExams(await fetchModernPagedList(token, "/jsxsd/xsks/xsksap_list", {
-      xnxqid: semester,
-      xqlb: args.type ?? "",
-    }));
-    return { ...parsed, semesters: parsed.semesters.length ? parsed.semesters : semesters, currentSemester: semester };
-  }, async () => {
-    let semester = args.semester ?? "";
-    const type = args.type ?? "";
+  let semester = args.semester ?? "";
+  const type = args.type ?? "";
+  let semesters: ReturnType<typeof parseExams>["semesters"] = [];
 
-    // xsksap_list 的学期必填；未传时先读 query 页，取最新学期兜底。
-    if (!semester) {
-      try {
-        const queryHtml = await jwxtFetchHtml(token, "/zgykdx/xsks/xsksap_query?Ves632DSdyV=NEW_XSD_KSBM");
-        const options = Array.from(queryHtml.matchAll(/<option[^>]*value="([^"]+)"/g))
-          .map((x) => x[1])
-          .filter(Boolean)
-          .sort()
-          .reverse();
-        semester = options[0] ?? "";
-      } catch {
-        // 返回 needSemester，让前端能继续显示一个可恢复的空态。
-      }
+  if (!semester) {
+    try {
+      const queryHtml = await jwxtFetchHtml(token, "/zgykdx/xsks/xsksap_query?Ves632DSdyV=NEW_XSD_KSBM");
+      semesters = parseExams(queryHtml).semesters;
+      semester = semesters.find((item) => item.current)?.value || semesters[0]?.value || "";
+    } catch (error) {
+      if (isUnauthorizedUpstreamError(error)) throw error;
+      // 返回 needSemester，让前端能继续显示一个可恢复的空态。
     }
+  }
 
-    if (!semester) return { semesters: [], list: [], needSemester: true };
+  if (!semester) return { semesters, list: [], needSemester: true, source: "legacy" as const };
 
-    const parsed = parseExams(await jwxtPostForm(token, "/zgykdx/xsks/xsksap_list", {
-      xnxqid: semester,
-      xqlb: type,
-    }));
-    return { ...parsed, currentSemester: semester };
-  });
+  const parsed = parseExams(await jwxtPostForm(token, "/zgykdx/xsks/xsksap_list", {
+    xnxqid: semester,
+    xqlb: type,
+  }));
+  return {
+    ...parsed,
+    semesters: parsed.semesters.length ? parsed.semesters : semesters,
+    currentSemester: semester,
+    source: "legacy" as const,
+  };
 }
 
 export async function getCalendar(token: string, args: { semester?: string } = {}) {
   const semester = String(args.semester ?? "").trim();
-  return modernFirst(async () => {
-    const query = semester ? `?${new URLSearchParams({ xnxq01id: semester }).toString()}` : "";
-    return parseCalendar(await jwxtFetchModernHtml(token, `/jsxsd/jxzl/jxzl_query${query}`));
-  }, async () => {
-    const path = "/zgykdx/jxzl/jxzl_query?Ves632DSdyV=NEW_XSD_WDZM";
-    const html = semester
-      ? await jwxtPostForm(token, path, { xnxq01id: semester })
-      : await jwxtFetchHtml(token, path);
-    return parseCalendar(html);
-  });
+  const path = "/zgykdx/jxzl/jxzl_query?Ves632DSdyV=NEW_XSD_WDZM";
+  const html = semester
+    ? await jwxtPostForm(token, path, { xnxq01id: semester })
+    : await jwxtFetchHtml(token, path);
+  return { ...parseCalendar(html), source: "legacy" as const };
 }
 
 export async function getProgress(token: string) {
-  return modernFirst(
-    async () => parseProgress(await jwxtFetchModernHtml(token, "/jsxsd/xxwcqk/xxwcqkOnkclb.do?isdb=0")),
-    async () => parseProgress(await jwxtFetchHtml(token, "/zgykdx/xywcqk/cxxywcqk?Ves632DSdyV=NEW-XSD-XYWCQK")),
-  );
+  return {
+    ...parseProgress(await jwxtFetchHtml(token, "/zgykdx/xywcqk/cxxywcqk?Ves632DSdyV=NEW-XSD-XYWCQK")),
+    source: "legacy" as const,
+  };
 }
 
 export async function getPyfa(token: string) {
-  return modernFirst(
-    async () => parsePyfa(await fetchModernPagedList(token, "/jsxsd/pyfa/pyfa_query", {
-      islist: "1",
-      kkxq: "",
-      kcxx: "",
-    })),
-    async () => parsePyfa(await jwxtFetchHtml(token, "/zgykdx/pyfa/pyfa_query?Ves632DSdyV=NEW_XSD_PYGL")),
-  );
+  return {
+    ...parsePyfa(await jwxtFetchHtml(token, "/zgykdx/pyfa/pyfa_query?Ves632DSdyV=NEW_XSD_PYGL")),
+    source: "legacy" as const,
+  };
 }
 
 export async function getIApps(token: string) {

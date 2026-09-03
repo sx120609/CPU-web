@@ -6,7 +6,7 @@
  *  2) 服务端保留统一认证 Cookie；访问新版课表时自动请求 jwxt 的 sso.jsp
  *  3) id.cpu.edu.cn 使用既有统一认证会话向 jwxt 签发一次性 service ticket
  *  4) 同一个 CookieJar 最终持有 id、jsxsd 与 jwxt 三个域的会话
- *  5) 新版优先提供课表、成绩、考试、日历和培养数据，旧版保留兼容回退
+ *  5) 新版优先提供课表；成绩、考试、日历和培养数据使用字段更完整的旧版
  *
  * 安全约定：
  *  - 用户名密码绝不写入磁盘 / 数据库 / 日志
@@ -17,6 +17,7 @@ import * as cheerio from "cheerio";
 import crypto from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import iconv from "iconv-lite";
 import {
   countEphemeralKeys,
   deleteEphemeralValue,
@@ -34,6 +35,7 @@ import { config, isDev } from "../config";
 import { Errors, HttpError } from "../utils/response";
 import { decryptJwxtSensitiveJson, encryptJwxtSensitiveJson } from "./jwxtSessionCrypto";
 import { extractModernJwxtSsoRedirect, isModernJwxtLoginPage } from "./modernJwxtSso";
+import { isLegacyJwxtLoginPage } from "./legacyJwxtSso";
 import {
   buildCpuSsoSubmitBody,
   buildCpuSsoSubmitHeaders,
@@ -47,6 +49,8 @@ const ENTRY_URL = "http://jsxsd.cpu.edu.cn/zgykdx/tyrz.jsp";
 const JWXT_HOST = "jsxsd.cpu.edu.cn";
 const CPU_ID_SSO_HOST = "id.cpu.edu.cn";
 const MODERN_JWXT_HOST = "jwxt.cpu.edu.cn";
+const LEGACY_JWXT_ORIGIN = `http://${JWXT_HOST}`;
+const LEGACY_MAIN_ENTRY_URL = `${LEGACY_JWXT_ORIGIN}/zgykdx/framework/xsMain.jsp`;
 const MODERN_JWXT_ORIGIN = `https://${MODERN_JWXT_HOST}`;
 const MODERN_SSO_ENTRY_URL = `${MODERN_JWXT_ORIGIN}/jsxsd/sso.jsp`;
 const MODERN_SCHEDULE_ENTRY_URL = `${MODERN_JWXT_ORIGIN}/jsxsd/xskb/xskb_list.do?viweType=0`;
@@ -868,18 +872,153 @@ export async function getSession(token: string | undefined | null): Promise<Acti
   return getActiveSession(token);
 }
 
-/** 用一个 session 访问任意 jsxsd 路径，返回 HTML 文本 */
-export async function jwxtFetchHtml(token: string, path: string): Promise<string> {
-  const sess = await getSession(token);
+function assertTrustedLegacySsoHop(rawUrl: string) {
+  const url = new URL(rawUrl);
+  const host = url.hostname.toLowerCase();
+  const trustedPath = host === CPU_ID_SSO_HOST
+    ? url.pathname.startsWith("/sso/")
+    : host === JWXT_HOST && url.pathname.startsWith("/zgykdx/");
+  if (
+    !["http:", "https:"].includes(url.protocol)
+    || !trustedPath
+    || url.username
+    || url.password
+    || url.hash
+  ) throw Errors.badRequest("旧版教务统一认证跳转地址不受信任");
+  return url;
+}
+
+function buildLegacyJwxtTarget(path: string) {
+  const target = assertTrustedLegacySsoHop(new URL(path, LEGACY_JWXT_ORIGIN).toString());
+  if (target.hostname.toLowerCase() !== JWXT_HOST) {
+    throw Errors.badRequest("旧版教务请求地址不受信任");
+  }
+  return target;
+}
+
+async function followLegacySsoRedirects(
+  jar: CookieJar,
+  url: string,
+  init: RequestInit = {},
+  maxHops = 15,
+) {
+  let current = assertTrustedLegacySsoHop(url).toString();
+  let opts = init;
+  const hops: string[] = [];
+  for (let index = 0; index < maxHops; index++) {
+    hops.push(current);
+    const res = await fetchWithJar(jar, current, opts);
+    if (res.status < 300 || res.status >= 400) return { res, finalUrl: current, hops };
+    const location = res.headers.get("location");
+    if (!location) return { res, finalUrl: current, hops };
+    const referer = current;
+    current = assertTrustedLegacySsoHop(new URL(location, current).toString()).toString();
+    if (res.status !== 307 && res.status !== 308) {
+      const headers = new Headers(init.headers);
+      headers.set("Referer", referer);
+      opts = { headers };
+    }
+  }
+  throw new Error("Too many legacy JWXT SSO redirects");
+}
+
+async function decodeLegacyHtmlResponse(res: Response) {
+  const buffer = Buffer.from(await res.arrayBuffer());
+  const contentType = res.headers.get("content-type") || "";
+  const head = buffer.subarray(0, 2048).toString("latin1");
+  const charset = (
+    /charset\s*=\s*["']?([\w-]+)/i.exec(contentType)?.[1]
+    || /charset\s*=\s*["']?([\w-]+)/i.exec(head)?.[1]
+    || "utf-8"
+  ).toLowerCase();
+  if (charset !== "utf-8" && charset !== "utf8" && iconv.encodingExists(charset)) {
+    return iconv.decode(buffer, charset);
+  }
+  return buffer.toString("utf8");
+}
+
+async function fetchLegacyPage(session: ActiveSession, target: URL, init: RequestInit = {}) {
+  const result = await followLegacySsoRedirects(session.jar, target.toString(), init);
+  return {
+    result,
+    finalHost: new URL(result.finalUrl).hostname.toLowerCase(),
+    html: await decodeLegacyHtmlResponse(result.res),
+  };
+}
+
+function legacyPageNeedsLogin(page: Awaited<ReturnType<typeof fetchLegacyPage>>) {
+  return page.result.res.status === 401
+    || page.finalHost !== JWXT_HOST
+    || isLegacyJwxtLoginPage(page.html);
+}
+
+function legacyPageNeedsRetry(page: Awaited<ReturnType<typeof fetchLegacyPage>>) {
+  return legacyPageNeedsLogin(page)
+    || page.result.hops.some((hop) => new URL(hop).hostname.toLowerCase() === CPU_ID_SSO_HOST);
+}
+
+async function establishLegacyJwxtSession(jar: CookieJar) {
+  const entry = await followLegacySsoRedirects(jar, ENTRY_URL);
+  throwForLoginUpstreamStatus(entry.res);
+  await entry.res.arrayBuffer();
+  if (new URL(entry.finalUrl).hostname.toLowerCase() === CPU_ID_SSO_HOST) return false;
+
+  const probe = await followLegacySsoRedirects(jar, LEGACY_MAIN_ENTRY_URL);
+  throwForLoginUpstreamStatus(probe.res);
+  const probeHtml = await decodeLegacyHtmlResponse(probe.res);
+  return probe.res.ok
+    && new URL(probe.finalUrl).hostname.toLowerCase() === JWXT_HOST
+    && !isLegacyJwxtLoginPage(probeHtml);
+}
+
+async function renewLegacyJwxtSession(token: string) {
+  const lockId = crypto.createHash("sha256").update(token).digest("hex");
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const locked = await runWithDistributedLock(`jwxt-legacy-session:${lockId}`, 30_000, async () => {
+      const current = await getSession(token);
+      if (!current) return false;
+      const latest = await fetchLegacyPage(current, new URL(LEGACY_MAIN_ENTRY_URL));
+      if (latest.result.res.ok && !legacyPageNeedsLogin(latest)) {
+        await persistActiveSession(token, current);
+        return true;
+      }
+      current.jar.clearHost(JWXT_HOST);
+      const established = await establishLegacyJwxtSession(current.jar);
+      await persistActiveSession(token, current);
+      return established;
+    });
+    if (locked.acquired) return Boolean(locked.result);
+    await new Promise<void>((resolve) => setTimeout(resolve, 50));
+  }
+  throw Errors.conflict("旧版教务会话正在恢复，请稍后重试");
+}
+
+async function requestLegacyJwxtHtml(token: string, path: string, init: RequestInit = {}) {
+  let sess = await getSession(token);
   if (!sess) throw Errors.unauthorized("教务会话已失效，请重新登录");
-  const url = new URL(path, "http://jsxsd.cpu.edu.cn").toString();
-  const { res, finalUrl } = await followRedirects(sess.jar, url);
-  if (new URL(finalUrl).host !== "jsxsd.cpu.edu.cn") {
-    await deleteActiveSession(token);
-    throw Errors.unauthorized("教务会话已失效（被学校 SSO 踢出），请重新登录");
+  const target = buildLegacyJwxtTarget(path);
+  let page = await fetchLegacyPage(sess, target, init);
+  if (legacyPageNeedsRetry(page)) {
+    const established = await renewLegacyJwxtSession(token);
+    if (established) {
+      sess = await getSession(token);
+      if (!sess) throw Errors.unauthorized("教务会话已失效，请重新登录");
+      page = await fetchLegacyPage(sess, target, init);
+    }
+  }
+  if (legacyPageNeedsRetry(page)) {
+    throw Errors.unauthorized("统一认证会话已失效，请重新登录");
+  }
+  if (!page.result.res.ok) {
+    throw new HttpError(page.result.res.status, 5400 + Math.min(199, Math.max(0, page.result.res.status - 400)), `旧版教务请求失败 (${page.result.res.status})`);
   }
   await persistActiveSession(token, sess);
-  return res.text();
+  return page.html;
+}
+
+/** 用一个 session 访问旧版 jsxsd 路径；过期时复用统一认证 Cookie 自动换票。 */
+export async function jwxtFetchHtml(token: string, path: string): Promise<string> {
+  return requestLegacyJwxtHtml(token, path);
 }
 
 function assertTrustedModernSsoHop(rawUrl: string) {
@@ -1196,24 +1335,15 @@ export async function fetchIServiceApps(token: string): Promise<IServiceApp[]> {
 
 /** POST form 到 jsxsd 路径，返回 HTML */
 export async function jwxtPostForm(token: string, path: string, fields: Record<string, string>): Promise<string> {
-  const sess = await getSession(token);
-  if (!sess) throw Errors.unauthorized("教务会话已失效，请重新登录");
-  const url = new URL(path, "http://jsxsd.cpu.edu.cn").toString();
-  const body = new URLSearchParams(fields);
-  const { res, finalUrl } = await followRedirects(sess.jar, url, {
+  const target = buildLegacyJwxtTarget(path);
+  return requestLegacyJwxtHtml(token, target.toString(), {
     method: "POST",
-    body,
+    body: new URLSearchParams(fields).toString(),
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
-      Referer: url,
+      Referer: target.toString(),
     },
   });
-  if (new URL(finalUrl).host !== "jsxsd.cpu.edu.cn") {
-    await deleteActiveSession(token);
-    throw Errors.unauthorized("教务会话已失效，请重新登录");
-  }
-  await persistActiveSession(token, sess);
-  return res.text();
 }
 
 /** 调试：把响应 HTML 落盘 */
