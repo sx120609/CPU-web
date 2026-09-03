@@ -8,6 +8,22 @@ enum AppWidgetConfiguration {
     static let themeKey = "scheduleWidgetTheme"
     static let appURL = URL(string: "cpuweb://schedule?source=widget&week=current")!
 
+    static func appURL(semester: String?, currentWeek: Int?) -> URL {
+        guard var components = URLComponents(url: appURL, resolvingAgainstBaseURL: false) else {
+            return appURL
+        }
+        var query = components.queryItems ?? []
+        if let semester = semester?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !semester.isEmpty {
+            query.append(URLQueryItem(name: "widgetSemester", value: semester))
+        }
+        if let currentWeek, (1...64).contains(currentWeek) {
+            query.append(URLQueryItem(name: "widgetWeek", value: String(currentWeek)))
+        }
+        components.queryItems = query
+        return components.url ?? appURL
+    }
+
     static var scheduleTheme: ScheduleWidgetTheme {
         let value = UserDefaults(suiteName: appGroup)?.string(forKey: themeKey)
         return ScheduleWidgetTheme(rawValue: value ?? "") ?? .colorGlass
@@ -130,7 +146,9 @@ struct SchedulePayload: Decodable {
     let title: String?
     let generatedAt: String?
     let cachedAt: String?
+    let semester: String?
     let week: Int?
+    let currentWeek: Int?
     let displayWeek: Int?
     let strictDate: Bool?
     let stale: Bool?
@@ -324,6 +342,14 @@ struct ScheduleEntry: TimelineEntry {
     let date: Date
     let state: ScheduleEntryState
 
+    var appURL: URL {
+        guard case .loaded(let payload) = state else { return AppWidgetConfiguration.appURL }
+        return AppWidgetConfiguration.appURL(
+            semester: payload.semester,
+            currentWeek: payload.currentWeek
+        )
+    }
+
     static let placeholder = ScheduleEntry(
         date: .now,
         state: .loaded(
@@ -331,7 +357,9 @@ struct ScheduleEntry: TimelineEntry {
                 title: "药大课表",
                 generatedAt: nil,
                 cachedAt: nil,
+                semester: "2026-2027-1",
                 week: 1,
+                currentWeek: 1,
                 displayWeek: 1,
                 strictDate: true,
                 stale: false,

@@ -99,7 +99,7 @@ private struct ScheduleWidgetRoot<Content: View>: View {
             }
         }
         .environment(\.scheduleWidgetTheme, theme)
-        .widgetURL(AppWidgetConfiguration.appURL)
+        .widgetURL(entry.appURL)
         .containerBackground(for: .widget) {
             if family.isAccessory {
                 Color.clear

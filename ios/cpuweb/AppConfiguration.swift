@@ -33,15 +33,20 @@ enum AppConfiguration {
         components.path = "/schedule"
         components.fragment = nil
         let deepLinkQuery = URLComponents(url: deepLink, resolvingAgainstBaseURL: false)?.queryItems ?? []
-        let isWidgetOpen = deepLinkQuery.contains { $0.name == "source" && $0.value == "widget" }
-            && deepLinkQuery.contains { $0.name == "week" && $0.value == "current" }
-        if isWidgetOpen {
-            var query = components.queryItems ?? []
-            query.removeAll { $0.name == "source" || $0.name == "week" }
-            query.append(URLQueryItem(name: "source", value: "widget"))
-            query.append(URLQueryItem(name: "week", value: "current"))
-            components.queryItems = query
+        var query = components.queryItems ?? []
+        query.removeAll {
+            ["source", "week", "widgetSemester", "widgetWeek"].contains($0.name)
         }
+        query.append(URLQueryItem(name: "source", value: "widget"))
+        query.append(URLQueryItem(name: "week", value: "current"))
+        for name in ["widgetSemester", "widgetWeek"] {
+            if let item = deepLinkQuery.first(where: { $0.name == name }),
+               let value = item.value?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !value.isEmpty {
+                query.append(URLQueryItem(name: name, value: value))
+            }
+        }
+        components.queryItems = query
         return components.url
     }
 

@@ -901,24 +901,27 @@ function applyWidgetCurrentWeekIntent() {
   if (!widgetCurrentWeekIntentPending.value) return false;
   // 本科课表响应里的 currentWeek 是课表下拉框当前选中的周，并不一定是
   // 校历当前周。必须等校历可用后再消费小组件意图，否则会原地切回旧周。
-  const current = Number(calendar.value?.currentWeek || 0);
+  const widgetWeek = Number(route.query.widgetWeek || 0);
+  const current = Number.isInteger(widgetWeek) && widgetWeek >= 1 && widgetWeek <= 64
+    ? widgetWeek
+    : Number(calendar.value?.currentWeek || 0);
   if (!Number.isFinite(current) || current <= 0) {
     void refreshWidgetCurrentCalendar();
     return false;
   }
 
   widgetCurrentWeekIntentPending.value = false;
-  const currentSemester = String(calendar.value?.currentSemester || "").trim();
-  if (currentSemester && currentSemester !== semester.value) {
-    semester.value = currentSemester;
-    // 即使两个学期恰好都是同一周次，也必须继续加载当前学期的课表。
-    week.value = "";
-  }
+  const widgetSemester = Array.isArray(route.query.widgetSemester)
+    ? route.query.widgetSemester[0]
+    : route.query.widgetSemester;
+  const currentSemester = String(widgetSemester || calendar.value?.currentSemester || "").trim();
   const nextQuery = { ...route.query };
   delete nextQuery.source;
   delete nextQuery.week;
+  delete nextQuery.widgetSemester;
+  delete nextQuery.widgetWeek;
   void router.replace({ path: route.path, query: nextQuery, hash: route.hash }).catch(() => undefined);
-  void jumpToCurrentWeek().catch(() => undefined);
+  void jumpToScheduleWeek(current, currentSemester).catch(() => undefined);
   return true;
 }
 
@@ -1890,8 +1893,18 @@ async function jumpToToday() {
 async function jumpToCurrentWeek() {
   const cur = calendar.value?.currentWeek;
   if (!cur) return;
+  await jumpToScheduleWeek(cur, String(calendar.value?.currentSemester || "").trim());
+}
+
+async function jumpToScheduleWeek(cur: number, targetSemester = semester.value) {
+  const semesterChanged = Boolean(targetSemester && targetSemester !== semester.value);
+  if (semesterChanged) {
+    semester.value = targetSemester;
+    // 即使两个学期恰好都是同一周次，也必须继续加载目标学期的课表。
+    week.value = "";
+  }
   const today = dayOfWeek();
-  if (String(cur) === week.value) {
+  if (!semesterChanged && String(cur) === week.value) {
     slideDirection.value = today >= activeDay.value ? "next" : "prev";
     activeDay.value = today;
     saveLastState();
