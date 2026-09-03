@@ -107,7 +107,7 @@
               <el-input v-model="form.workOrderTemplateId" placeholder="论坛、私聊、审核和系统通知" />
             </el-form-item>
             <el-form-item label="订单支付成功通知 · 模板 ID">
-              <el-input v-model="form.paymentSuccessTemplateId" placeholder="赞助与校园商城支付成功" />
+              <el-input v-model="form.paymentSuccessTemplateId" placeholder="校园商城等支付成功（赞助改走工单）" />
             </el-form-item>
           </div>
           <el-form-item label="通用回退模板 ID"><el-input v-model="form.notificationTemplateId" /></el-form-item>

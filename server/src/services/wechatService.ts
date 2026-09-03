@@ -1339,6 +1339,7 @@ export function isWechatSponsorTemplateNotification(notification: { payload?: st
 function wechatWorkOrderType(notification: { category?: string | null; payload?: string | null }) {
   const type = String(parseNotificationPayload(notification.payload).type || "");
   if (type.includes("submission") || type.includes("review") || type.includes("ai-blocked") || type.includes("ai-recovered")) return "内容审核";
+  if (type === "sponsor-paid" || type === "sponsor-admin") return "赞助通知";
   if (notification.category === "direct-message") return "私聊通知";
   if (notification.category === "reply") return "回复通知";
   if (notification.category === "mention") return "提及通知";
@@ -1651,6 +1652,21 @@ export function buildWechatRoutedTemplateNotificationPayload(
   notification: any,
   link: string,
 ) {
+  const buildWorkOrderPayload = () => ({
+    touser: openId,
+    template_id: config.workOrderTemplateId,
+    url: link || undefined,
+    data: {
+      thing2: { value: "药大拾间" },
+      thing3: { value: wechatWorkOrderType(notification) },
+      thing4: { value: limitText(notification.title || "站内通知", 20) },
+      character_string5: { value: `SJ${Math.max(0, Number(notification.id) || 0)}` },
+      time6: { value: formatWechatTime(notification.createdAt) },
+    },
+  });
+  if (config.workOrderTemplateId && isWechatSponsorTemplateNotification(notification)) {
+    return buildWorkOrderPayload();
+  }
   if (config.paymentSuccessTemplateId && isWechatPaymentSuccessNotification(notification)) {
     const payload = parseNotificationPayload(notification.payload);
     const type = String(payload.type || "");
@@ -1671,18 +1687,7 @@ export function buildWechatRoutedTemplateNotificationPayload(
     };
   }
   if (config.workOrderTemplateId) {
-    return {
-      touser: openId,
-      template_id: config.workOrderTemplateId,
-      url: link || undefined,
-      data: {
-        thing2: { value: "药大拾间" },
-        thing3: { value: wechatWorkOrderType(notification) },
-        thing4: { value: limitText(notification.title || "站内通知", 20) },
-        character_string5: { value: `SJ${Math.max(0, Number(notification.id) || 0)}` },
-        time6: { value: formatWechatTime(notification.createdAt) },
-      },
-    };
+    return buildWorkOrderPayload();
   }
   if (config.notificationTemplateId && config.templateTitleField && config.templateContentField) {
     return buildWechatTemplateNotificationPayload(config, openId, notification, link);

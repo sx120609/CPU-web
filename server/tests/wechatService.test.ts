@@ -352,7 +352,7 @@ test("builds regular template payloads with a safe work-order number", () => {
   assert.equal(payload.data.time18.value, "2026年08月31日 16:00");
 });
 
-test("routes community and payment notifications to verified category templates", () => {
+test("routes sponsor notifications back through the verified work-order template", () => {
   const config = {
     workOrderTemplateId: "work-order-template",
     paymentSuccessTemplateId: "payment-template",
@@ -408,10 +408,21 @@ test("routes community and payment notifications to verified category templates"
     createdAt: new Date("2026-08-31T08:00:00Z"),
     payload: JSON.stringify({ type: "sponsor-paid", amount: "6.00", categoryTitle: "服务器费用" }),
   }, "https://cputime.cn/profile");
-  assert.equal(payment?.template_id, "payment-template");
-  assert.equal(payment?.data.thing10.value, "赞助订单");
-  assert.equal(payment?.data.thing11.value, "服务器费用 ¥6.00");
-  assert.equal(payment?.data.thing12.value, "赞助支付成功");
+  assert.equal(payment?.template_id, "work-order-template");
+  assert.equal(payment?.data.thing3.value, "赞助通知");
+  assert.equal(payment?.data.thing4.value, "赞助支付成功");
+
+  const marketPayment = buildWechatRoutedTemplateNotificationPayload(config, "openid", {
+    id: 46,
+    category: "market",
+    title: "订单支付成功",
+    content: "校园商城订单已支付",
+    createdAt: new Date("2026-08-31T08:00:00Z"),
+    payload: JSON.stringify({ type: "market-paid", amount: "12.00", itemTitle: "有机化学教材" }),
+  }, "https://cputime.cn/market/orders");
+  assert.equal(marketPayment?.template_id, "payment-template");
+  assert.equal(marketPayment?.data.thing10.value, "校园商城订单");
+  assert.equal(marketPayment?.data.thing11.value, "有机化学教材 ¥12.00");
 });
 
 test("renders a concise today-schedule image body", () => {
