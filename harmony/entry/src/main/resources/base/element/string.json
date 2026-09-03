@@ -19,6 +19,30 @@
     {
       "name": "schedule_widget_description",
       "value": "查看当前课程、今日课表与今明两日课表"
+    },
+    {
+      "name": "schedule_widget_lock_inline_name",
+      "value": "临近课程横条"
+    },
+    {
+      "name": "schedule_widget_lock_inline_description",
+      "value": "在锁屏横条显示临近课程"
+    },
+    {
+      "name": "schedule_widget_lock_circular_name",
+      "value": "临近课程圆形"
+    },
+    {
+      "name": "schedule_widget_lock_circular_description",
+      "value": "在锁屏圆形卡片显示上课时间"
+    },
+    {
+      "name": "schedule_widget_lock_rectangular_name",
+      "value": "临近课程矩形"
+    },
+    {
+      "name": "schedule_widget_lock_rectangular_description",
+      "value": "在锁屏矩形卡片显示课程详情"
     }
   ]
 }

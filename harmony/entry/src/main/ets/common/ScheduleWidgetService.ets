@@ -55,10 +55,12 @@ interface ScheduleResponse {
 interface FormRecord {
   id: string;
   dimension: number;
+  formName?: string;
 }
 
 interface WidgetCourseRow {
   name: string;
+  start: string;
   time: string;
   meta: string;
   ended: boolean;
@@ -84,6 +86,7 @@ export interface ScheduleWidgetBinding {
   primaryRemaining: number;
   secondaryRemaining: number;
   dimension: number;
+  variant: string;
 }
 
 interface LoadedSchedule {
@@ -170,6 +173,11 @@ function endpointCandidates(endpoint: string): string[] {
 }
 
 async function widgetPreferences(context: common.Context): Promise<preferences.Preferences> {
+  try {
+    await preferences.removePreferencesFromCache(context, PREFERENCES_NAME);
+  } catch (_) {
+    // The store may not have been cached in this process yet.
+  }
   return preferences.getPreferences(context, PREFERENCES_NAME);
 }
 
@@ -192,21 +200,17 @@ async function saveFormRecords(context: common.Context, records: FormRecord[]): 
 export async function registerScheduleForm(
   context: common.Context,
   formId: string,
-  dimension: number
+  dimension: number,
+  formName: string
 ): Promise<void> {
   const records = (await formRecords(context)).filter((record: FormRecord) => record.id !== formId);
-  records.push({ id: formId, dimension });
+  records.push({ id: formId, dimension, formName });
   await saveFormRecords(context, records);
 }
 
 export async function removeScheduleForm(context: common.Context, formId: string): Promise<void> {
   const records = (await formRecords(context)).filter((record: FormRecord) => record.id !== formId);
   await saveFormRecords(context, records);
-}
-
-export async function scheduleFormDimension(context: common.Context, formId: string): Promise<number> {
-  const record = (await formRecords(context)).find((item: FormRecord) => item.id === formId);
-  return record?.dimension ?? 2;
 }
 
 export async function saveScheduleWidgetConfiguration(
@@ -236,7 +240,18 @@ export async function saveScheduleWidgetTheme(context: common.Context, value: st
   await prefs.flush();
 }
 
-function loadingBinding(dimension: number, theme: string = 'color-glass'): ScheduleWidgetBinding {
+function formVariant(formName: string): string {
+  if (formName === 'schedule_lock_inline') return 'lock-inline';
+  if (formName === 'schedule_lock_circular') return 'lock-circular';
+  if (formName === 'schedule_lock_rectangular') return 'lock-rectangular';
+  return 'desktop';
+}
+
+function loadingBinding(
+  dimension: number,
+  theme: string = 'color-glass',
+  formName: string = 'schedule'
+): ScheduleWidgetBinding {
   return {
     state: 'loading',
     title: '药大课表',
@@ -254,16 +269,24 @@ function loadingBinding(dimension: number, theme: string = 'color-glass'): Sched
     secondaryWeek: 0,
     primaryRemaining: 0,
     secondaryRemaining: 0,
-    dimension
+    dimension,
+    variant: formVariant(formName)
   };
 }
 
-export function initialScheduleWidgetBinding(dimension: number): ScheduleWidgetBinding {
-  return loadingBinding(dimension);
+export function initialScheduleWidgetBinding(dimension: number, formName: string = 'schedule'): ScheduleWidgetBinding {
+  return loadingBinding(dimension, 'color-glass', formName);
 }
 
-function messageBinding(dimension: number, theme: string, state: string, subtitle: string, footer: string): ScheduleWidgetBinding {
-  const binding = loadingBinding(dimension, theme);
+function messageBinding(
+  dimension: number,
+  theme: string,
+  formName: string,
+  state: string,
+  subtitle: string,
+  footer: string
+): ScheduleWidgetBinding {
+  const binding = loadingBinding(dimension, theme, formName);
   binding.state = state;
   binding.subtitle = subtitle;
   binding.footer = footer;
@@ -370,6 +393,7 @@ function courseRows(source: ScheduleCourse[], current: number, theme: string): W
     const colorIndex = courseColorIndex(name);
     return {
       name,
+      start,
       time: end ? `${start} - ${end}` : start,
       meta: metadata || '地点待确认',
       ended: current >= 0 && courseEnd(course) >= 0 && courseEnd(course) < current,
@@ -413,15 +437,23 @@ function dayTitle(day: ScheduleDay): string {
   return date ? `${date} ${label}` : label;
 }
 
-function readyBinding(payload: SchedulePayload, dimension: number, theme: string, stale: boolean): ScheduleWidgetBinding {
+function readyBinding(
+  payload: SchedulePayload,
+  dimension: number,
+  theme: string,
+  stale: boolean,
+  formName: string
+): ScheduleWidgetBinding {
   const current = nowMinutes();
   const today = resolveDay(payload, 0, true);
   const tomorrow = resolveDay(payload, 1, true);
   const upcomingSelection = upcoming(payload);
-  const selected = dimension === 2 ? upcomingSelection.day : today;
+  const variant = formVariant(formName);
+  const useUpcoming = dimension === 2 || variant !== 'desktop';
+  const selected = useUpcoming ? upcomingSelection.day : today;
   const todayWindow = courseWindow(courses(today), dimension === 3 ? 2 : 5, current);
   const tomorrowWindow = courseWindow(courses(tomorrow), 5, -1);
-  const primaryWindow: CourseWindow = dimension === 2
+  const primaryWindow: CourseWindow = useUpcoming
     ? { courses: upcomingSelection.courses, remainingCount: 0 }
     : todayWindow;
   const week = weekOf(payload, selected);
@@ -442,7 +474,8 @@ function readyBinding(payload: SchedulePayload, dimension: number, theme: string
     secondaryWeek: weekOf(payload, tomorrow),
     primaryRemaining: primaryWindow.remainingCount,
     secondaryRemaining: tomorrowWindow.remainingCount,
-    dimension
+    dimension,
+    variant
   };
 }
 
@@ -497,36 +530,43 @@ async function loadSchedule(context: common.Context): Promise<LoadedSchedule> {
   }
 }
 
-async function bindingFor(context: common.Context, dimension: number): Promise<ScheduleWidgetBinding> {
+async function bindingFor(context: common.Context, dimension: number, formName: string): Promise<ScheduleWidgetBinding> {
   const prefs = await widgetPreferences(context);
   const theme = normalizedTheme(String(await prefs.get(THEME_KEY, 'color-glass')));
   try {
     const loaded = await loadSchedule(context);
-    return readyBinding(loaded.payload, dimension, theme, loaded.stale);
+    return readyBinding(loaded.payload, dimension, theme, loaded.stale, formName);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (message === 'unconfigured') {
-      return messageBinding(dimension, theme, 'unconfigured', '尚未配置课表', '打开药大拾间，在课表菜单中添加小组件');
+      return messageBinding(dimension, theme, formName, 'unconfigured', '尚未配置课表', '打开药大拾间，在课表菜单中添加小组件');
     }
     if (message === 'unauthorized') {
-      return messageBinding(dimension, theme, 'unauthorized', '教务授权已失效', '打开药大拾间重新登录教务');
+      return messageBinding(dimension, theme, formName, 'unauthorized', '教务授权已失效', '打开药大拾间重新登录教务');
     }
-    return messageBinding(dimension, theme, 'failed', '暂时无法刷新', '请检查网络，卡片会自动重试');
+    return messageBinding(dimension, theme, formName, 'failed', '暂时无法刷新', '请检查网络，卡片会自动重试');
   }
 }
 
 export async function refreshScheduleForm(
   context: common.Context,
   formId: string,
-  dimension: number
+  dimension: number,
+  formName: string = 'schedule'
 ): Promise<void> {
-  const binding = await bindingFor(context, dimension);
+  const binding = await bindingFor(context, dimension, formName);
   await formProvider.updateForm(formId, formBindingData.createFormBindingData(binding));
 }
 
-export async function refreshAllScheduleForms(context: common.Context): Promise<void> {
+export async function refreshRegisteredScheduleForm(context: common.Context, formId: string): Promise<void> {
+  const record = (await formRecords(context)).find((item: FormRecord) => item.id === formId);
+  await refreshScheduleForm(context, formId, record?.dimension ?? 2, record?.formName ?? 'schedule');
+}
+
+export async function refreshAllScheduleForms(context: common.UIAbilityContext): Promise<void> {
   const records = await formRecords(context);
   await Promise.all(records.map((record: FormRecord) => {
-    return refreshScheduleForm(context, record.id, record.dimension).catch(() => undefined);
+    return refreshScheduleForm(context, record.id, record.dimension, record.formName ?? 'schedule')
+      .catch(() => undefined);
   }));
 }

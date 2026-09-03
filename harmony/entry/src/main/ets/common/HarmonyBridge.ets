@@ -19,6 +19,12 @@ export interface NativePreviewImage {
   fileName: string;
 }
 
+let activeHarmonyBridge: HarmonyBridge | undefined;
+
+export function setActiveHarmonyBridge(bridge: HarmonyBridge): void {
+  activeHarmonyBridge = bridge;
+}
+
 interface NativePreviewPayload {
   images?: NativePreviewImage[];
   index?: number;
@@ -344,5 +350,55 @@ export class HarmonyBridge {
       message,
       duration: 1800
     });
+  }
+}
+
+export class HarmonyJavaScriptProxy {
+  getVersionCode(): number {
+    return activeHarmonyBridge?.getVersionCode() ?? VERSION_CODE;
+  }
+
+  getVersionName(): string {
+    return activeHarmonyBridge?.getVersionName() ?? VERSION_NAME;
+  }
+
+  supportsScheduleWidget(): boolean {
+    return activeHarmonyBridge?.supportsScheduleWidget() ?? true;
+  }
+
+  supportsInAppApkDownload(): boolean {
+    return activeHarmonyBridge?.supportsInAppApkDownload() ?? false;
+  }
+
+  copyText(text: string): boolean {
+    return activeHarmonyBridge?.copyText(text) ?? false;
+  }
+
+  openExternalUrl(url: string): void {
+    activeHarmonyBridge?.openExternalUrl(url);
+  }
+
+  downloadAndInstallApk(url: string, fileName: string): boolean {
+    return activeHarmonyBridge?.downloadAndInstallApk(url, fileName) ?? false;
+  }
+
+  previewImages(payload: string): boolean {
+    return activeHarmonyBridge?.previewImages(payload) ?? false;
+  }
+
+  saveImage(dataUrl: string, fileName: string): boolean {
+    return activeHarmonyBridge?.saveImage(dataUrl, fileName) ?? false;
+  }
+
+  saveImageUrl(url: string, fileName: string): boolean {
+    return activeHarmonyBridge?.saveImageUrl(url, fileName) ?? false;
+  }
+
+  installScheduleWidget(payload: string): void {
+    activeHarmonyBridge?.installScheduleWidget(payload);
+  }
+
+  setScheduleWidgetTheme(theme: string): void {
+    activeHarmonyBridge?.setScheduleWidgetTheme(theme);
   }
 }

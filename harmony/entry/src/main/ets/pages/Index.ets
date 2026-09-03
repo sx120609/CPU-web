@@ -5,13 +5,19 @@ import photoAccessHelper from '@ohos.file.photoAccessHelper';
 import picker from '@ohos.file.picker';
 import abilityAccessCtrl, { Permissions } from '@ohos.abilityAccessCtrl';
 import { APP_NAME, APP_URL, USER_AGENT_SUFFIX, isAppOrigin, isHttpUrl, isInternalUrl } from '../common/AppConfig';
-import { HarmonyBridge, NativePreviewImage } from '../common/HarmonyBridge';
+import {
+  HarmonyBridge,
+  HarmonyJavaScriptProxy,
+  NativePreviewImage,
+  setActiveHarmonyBridge
+} from '../common/HarmonyBridge';
 
 @Entry
 @Component
 struct Index {
   private controller: webview.WebviewController = new webview.WebviewController();
   private bridge: HarmonyBridge = new HarmonyBridge();
+  private webProxy: HarmonyJavaScriptProxy = new HarmonyJavaScriptProxy();
   @StorageLink('launchUrl') private launchUrl: string = APP_URL;
   @State private loading: boolean = true;
   @State private failed: boolean = false;
@@ -31,6 +37,7 @@ struct Index {
   private previewBaseOffsetY: number = 0;
 
   aboutToAppear(): void {
+    setActiveHarmonyBridge(this.bridge);
     const context = AppStorage.get<common.UIAbilityContext>('abilityContext');
     if (context) {
       this.bridge.attachContext(context);
@@ -73,11 +80,25 @@ struct Index {
 
   private chooseFiles(event?: OnShowFileSelectorEvent): boolean {
     if (!event) return false;
-    const accepted = event.fileSelector.getAcceptType();
-    const imageOnly = accepted.length > 0 && accepted.every((value: string) => {
-      const normalized = value.trim().toLowerCase();
-      return normalized.startsWith('image/') || /\.(png|jpe?g|webp|gif|heic)$/.test(normalized);
+    let mimeTypes: string[] = [];
+    try {
+      mimeTypes = event.fileSelector.getMimeTypes();
+    } catch (_) {
+      mimeTypes = [];
+    }
+    const accepted = [...mimeTypes, ...event.fileSelector.getAcceptType()]
+      .flatMap((value: string) => value.split(/[,;\s]+/))
+      .map((value: string) => value.trim().toLowerCase())
+      .filter((value: string) => value.length > 0);
+    const imageExtension = /\.(apng|avif|bmp|dng|gif|heic|heif|ico|jfif|jpe|jpeg|jpg|png|raw|svg|tif|tiff|webp)$/;
+    const nonImageExtension = /\.(7z|apk|csv|doc|docx|epub|gz|json|md|mov|mp3|mp4|pdf|ppt|pptx|rar|tar|txt|wav|xls|xlsx|xml|zip)$/;
+    const hasImageType = accepted.some((value: string) => value.startsWith('image/') || imageExtension.test(value));
+    const hasNonImageType = accepted.some((value: string) => {
+      if (value === '*' || value === '*/*') return false;
+      if (value.startsWith('image/') || imageExtension.test(value)) return false;
+      return value.includes('/') || nonImageExtension.test(value);
     });
+    const imageOnly = hasImageType && !hasNonImageType;
     if (!imageOnly) {
       const context = AppStorage.get<common.UIAbilityContext>('abilityContext');
       if (!context) return false;
@@ -93,7 +114,7 @@ struct Index {
     const photoPicker = new photoAccessHelper.PhotoViewPicker();
     const options = new photoAccessHelper.PhotoSelectOptions();
     options.MIMEType = photoAccessHelper.PhotoViewMIMETypes.IMAGE_TYPE;
-    options.maxSelectNumber = 20;
+    options.maxSelectNumber = event.fileSelector.getMode() === FileSelectorMode.FileOpenMultipleMode ? 20 : 1;
     options.isPhotoTakingSupported = true;
     photoPicker.select(options)
       .then((result: photoAccessHelper.PhotoSelectResult) => {
@@ -161,8 +182,8 @@ struct Index {
           }
         })
         .javaScriptProxy({
-          object: this.bridge,
-          name: 'CPUAndroid',
+          object: this.webProxy,
+          name: 'CPUHarmony',
           methodList: this.bridgeMethods(),
           controller: this.controller
         })
@@ -172,8 +193,6 @@ struct Index {
         })
         .onPageEnd(() => {
           this.loading = false;
-          void this.controller.runJavaScript('window.CPUHarmony = window.CPUAndroid; true;')
-            .catch(() => undefined);
         })
         .onErrorReceive((event) => {
           if (!event.request.isMainFrame()) return;

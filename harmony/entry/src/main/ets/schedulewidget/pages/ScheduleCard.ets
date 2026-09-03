@@ -1,5 +1,6 @@
 interface WidgetCourseRow {
   name: string;
+  start: string;
   time: string;
   meta: string;
   ended: boolean;
@@ -29,6 +30,7 @@ struct ScheduleCard {
   @LocalStorageProp('primaryRemaining') private primaryRemaining: number = 0;
   @LocalStorageProp('secondaryRemaining') private secondaryRemaining: number = 0;
   @LocalStorageProp('dimension') private dimension: number = 2;
+  @LocalStorageProp('variant') private variant: string = 'desktop';
 
   private rows(value: string): WidgetCourseRow[] {
     try {
@@ -43,6 +45,14 @@ struct ScheduleCard {
     if (this.semester) url += `&widgetSemester=${encodeURIComponent(this.semester)}`;
     if (this.currentWeek >= 1 && this.currentWeek <= 64) url += `&widgetWeek=${this.currentWeek}`;
     return url;
+  }
+
+  private isLockScreen(): boolean {
+    return this.variant.startsWith('lock-');
+  }
+
+  private firstCourse(): WidgetCourseRow | undefined {
+    return this.rows(this.primaryCourses)[0];
   }
 
   @Builder
@@ -303,9 +313,187 @@ struct ScheduleCard {
     .alignItems(HorizontalAlign.Center)
   }
 
+  @Builder
+  private lockInlineView() {
+    Row({ space: 7 }) {
+      Text(this.firstCourse() ? '▮' : '✓')
+        .fontSize(10)
+        .fontWeight(FontWeight.Bold)
+        .fontColor('#FFFFFFFF')
+      if (this.firstCourse()) {
+        Text(`${this.leftTitle} ${this.firstCourse()?.start ?? '--:--'} ${this.firstCourse()?.name ?? '课程'}`)
+          .fontSize(12)
+          .fontWeight(FontWeight.Medium)
+          .fontColor('#FFFFFFFF')
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+      } else {
+        Text(`${this.leftTitle} 近期无课`)
+          .fontSize(12)
+          .fontWeight(FontWeight.Medium)
+          .fontColor('#FFFFFFFF')
+          .maxLines(1)
+      }
+    }
+    .width('100%')
+    .height('100%')
+    .padding({ left: 14, right: 14 })
+    .alignItems(VerticalAlign.Center)
+  }
+
+  @Builder
+  private lockCircularView() {
+    Column({ space: 1 }) {
+      Text(this.firstCourse() ? '课' : '✓')
+        .fontSize(this.firstCourse() ? 11 : 16)
+        .fontWeight(FontWeight.Bold)
+        .fontColor('#FFFFFFFF')
+      if (this.firstCourse()) {
+        Text(this.firstCourse()?.start ?? '--:--')
+          .fontSize(15)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#FFFFFFFF')
+          .maxLines(1)
+        Text(this.firstCourse()?.name ?? '课程')
+          .fontSize(9)
+          .fontWeight(FontWeight.Medium)
+          .fontColor('#FFFFFFFF')
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+      } else {
+        Text('无课')
+          .fontSize(11)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#FFFFFFFF')
+      }
+    }
+    .width('100%')
+    .height('100%')
+    .padding(7)
+    .justifyContent(FlexAlign.Center)
+    .alignItems(HorizontalAlign.Center)
+  }
+
+  @Builder
+  private lockRectangularView() {
+    Column({ space: 3 }) {
+      Row({ space: 5 }) {
+        Text(this.firstCourse() ? '▮' : '✓')
+          .fontSize(9)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#FFFFFFFF')
+        Text(this.leftTitle)
+          .fontSize(10)
+          .fontWeight(FontWeight.Medium)
+          .fontColor('#FFFFFFFF')
+          .maxLines(1)
+        Blank()
+        if (this.rows(this.primaryCourses).length > 1) {
+          Text(`下一节 ${this.rows(this.primaryCourses)[1].start}`)
+            .fontSize(9)
+            .fontColor('#CCFFFFFF')
+            .maxLines(1)
+        }
+      }
+      .width('100%')
+      if (this.firstCourse()) {
+        Text(this.firstCourse()?.name ?? '课程')
+          .width('100%')
+          .fontSize(15)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#FFFFFFFF')
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+        Text(`${this.firstCourse()?.time ?? ''} · ${this.firstCourse()?.meta ?? ''}`)
+          .width('100%')
+          .fontSize(10)
+          .fontColor('#E6FFFFFF')
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+      } else {
+        Text('近期没有课程')
+          .width('100%')
+          .fontSize(15)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#FFFFFFFF')
+        Text('打开课表查看本周安排')
+          .width('100%')
+          .fontSize(10)
+          .fontColor('#E6FFFFFF')
+      }
+    }
+    .width('100%')
+    .height('100%')
+    .padding({ left: 14, right: 14, top: 11, bottom: 11 })
+    .justifyContent(FlexAlign.Center)
+    .alignItems(HorizontalAlign.Start)
+  }
+
+  @Builder
+  private lockStatusView() {
+    if (this.variant === 'lock-circular') {
+      Column({ space: 2 }) {
+        Text(this.state === 'loading' ? '↻' : '!')
+          .fontSize(18)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#FFFFFFFF')
+        Text(this.state === 'loading' ? '同步中' : '打开 App')
+          .fontSize(9)
+          .fontWeight(FontWeight.Medium)
+          .fontColor('#FFFFFFFF')
+          .maxLines(1)
+      }
+      .width('100%')
+      .height('100%')
+      .justifyContent(FlexAlign.Center)
+      .alignItems(HorizontalAlign.Center)
+    } else if (this.variant === 'lock-inline') {
+      Row({ space: 7 }) {
+        Text(this.state === 'loading' ? '↻' : '!')
+          .fontSize(11)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#FFFFFFFF')
+        Text(this.state === 'loading' ? '正在同步课程' : this.subtitle)
+          .fontSize(12)
+          .fontWeight(FontWeight.Medium)
+          .fontColor('#FFFFFFFF')
+          .maxLines(1)
+      }
+      .width('100%')
+      .height('100%')
+      .padding({ left: 14, right: 14 })
+      .alignItems(VerticalAlign.Center)
+    } else {
+      Column({ space: 3 }) {
+        Text(this.state === 'loading' ? '正在同步课程' : this.subtitle)
+          .fontSize(14)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#FFFFFFFF')
+          .maxLines(1)
+        Text(this.footer)
+          .fontSize(10)
+          .fontColor('#E6FFFFFF')
+          .maxLines(2)
+      }
+      .width('100%')
+      .height('100%')
+      .padding({ left: 14, right: 14 })
+      .justifyContent(FlexAlign.Center)
+      .alignItems(HorizontalAlign.Start)
+    }
+  }
+
   build() {
     Column() {
-      if (this.state !== 'ready') {
+      if (this.isLockScreen() && this.state !== 'ready') {
+        this.lockStatusView()
+      } else if (this.variant === 'lock-inline') {
+        this.lockInlineView()
+      } else if (this.variant === 'lock-circular') {
+        this.lockCircularView()
+      } else if (this.variant === 'lock-rectangular') {
+        this.lockRectangularView()
+      } else if (this.state !== 'ready') {
         this.statusView()
       } else if (this.dimension === 2) {
         this.upcomingView()
@@ -317,9 +505,9 @@ struct ScheduleCard {
     }
     .width('100%')
     .height('100%')
-    .padding(this.dimension === 2 ? 14 : 16)
-    .backgroundColor('#F8FBFF')
-    .borderRadius(22)
+    .padding(this.isLockScreen() ? 0 : (this.dimension === 2 ? 14 : 16))
+    .backgroundColor(this.isLockScreen() ? Color.Transparent : '#F8FBFF')
+    .borderRadius(this.isLockScreen() ? 0 : 22)
     .onClick(() => {
       postCardAction(this, {
         action: 'router',

@@ -22,6 +22,81 @@
         "2*4",
         "4*4"
       ]
+    },
+    {
+      "name": "schedule_lock_inline",
+      "displayName": "$string:schedule_widget_lock_inline_name",
+      "description": "$string:schedule_widget_lock_inline_description",
+      "src": "./ets/schedulewidget/pages/ScheduleCard.ets",
+      "uiSyntax": "arkts",
+      "window": {
+        "designWidth": 720,
+        "autoDesignWidth": true
+      },
+      "colorMode": "auto",
+      "isDynamic": true,
+      "isDefault": false,
+      "updateEnabled": true,
+      "scheduledUpdateTime": "08:00",
+      "updateDuration": 1,
+      "defaultDimension": "1*2",
+      "supportDimensions": [
+        "1*2"
+      ],
+      "supportShapes": [
+        "rect"
+      ],
+      "renderingMode": "singleColor"
+    },
+    {
+      "name": "schedule_lock_circular",
+      "displayName": "$string:schedule_widget_lock_circular_name",
+      "description": "$string:schedule_widget_lock_circular_description",
+      "src": "./ets/schedulewidget/pages/ScheduleCard.ets",
+      "uiSyntax": "arkts",
+      "window": {
+        "designWidth": 720,
+        "autoDesignWidth": true
+      },
+      "colorMode": "auto",
+      "isDynamic": true,
+      "isDefault": false,
+      "updateEnabled": true,
+      "scheduledUpdateTime": "08:00",
+      "updateDuration": 1,
+      "defaultDimension": "1*1",
+      "supportDimensions": [
+        "1*1"
+      ],
+      "supportShapes": [
+        "circle"
+      ],
+      "renderingMode": "singleColor"
+    },
+    {
+      "name": "schedule_lock_rectangular",
+      "displayName": "$string:schedule_widget_lock_rectangular_name",
+      "description": "$string:schedule_widget_lock_rectangular_description",
+      "src": "./ets/schedulewidget/pages/ScheduleCard.ets",
+      "uiSyntax": "arkts",
+      "window": {
+        "designWidth": 720,
+        "autoDesignWidth": true
+      },
+      "colorMode": "auto",
+      "isDynamic": true,
+      "isDefault": false,
+      "updateEnabled": true,
+      "scheduledUpdateTime": "08:00",
+      "updateDuration": 1,
+      "defaultDimension": "1*2",
+      "supportDimensions": [
+        "1*2"
+      ],
+      "supportShapes": [
+        "rect"
+      ],
+      "renderingMode": "singleColor"
     }
   ]
 }
