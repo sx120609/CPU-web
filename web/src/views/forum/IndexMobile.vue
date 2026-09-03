@@ -44,6 +44,7 @@
           <ForumFeedCard
             :topic="topic"
             :rank="selectedChannel === 'hot' ? Number((topic as any).rank || 0) : 0"
+            :time-mode="selectedChannel === 'hot' ? 'published' : 'activity'"
           />
           <ForumAdCarousel v-if="inlineAds.length && index === 2" :ads="inlineAds" compact />
         </template>
@@ -119,7 +120,7 @@ const site = useSiteStore();
 const cacheScope = computed(() => forumCacheScope(auth.user));
 const baseChannels: Channel[] = [
   { id: "latest", label: "最新", icon: "new", description: "直接看看校园里刚刚发生了什么。", feedTitle: "最新内容", feedHint: "按发布时间排列" },
-  { id: "hot", label: "热榜", icon: "hot", description: "近 24 小时大家正在讨论的内容。", feedTitle: "热榜", feedHint: "综合回复、点赞和浏览" },
+  { id: "hot", label: "热榜", icon: "hot", description: "近 24 小时新发布且互动活跃的内容。", feedTitle: "热榜", feedHint: "新帖优先，综合互动热度" },
   { id: "question", label: "求助", icon: "question", description: "提问、咨询和同学互助。", feedTitle: "求助答疑", feedHint: "来自提问广场", board: "question" },
   { id: "market", label: "二手", icon: "market", description: "闲置、求购和二手经验交流。", feedTitle: "二手交流", feedHint: "仅提供信息发布与公开交流", board: "market" },
   { id: "freshman", label: "新生", icon: "school", description: "入学攻略和新生常见问题。", feedTitle: "新生入学", feedHint: "学长学姐经验分享", board: "freshman" },

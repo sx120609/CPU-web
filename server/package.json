@@ -33,7 +33,7 @@
     "test:assistant": "node --import tsx --test tests/campusAssistant.test.ts tests/userTrust.test.ts",
     "test:pds": "node --import tsx --test tests/pdsShare.test.ts",
     "test:market": "node --import tsx --test tests/marketPayment.test.ts",
-    "test:forum": "node --import tsx --test tests/forumImageCompression.test.ts tests/forumSubmission.test.ts tests/forumSubmissionReview.test.ts tests/questionBounty.test.ts",
+    "test:forum": "node --import tsx --test tests/forumHotRanking.test.ts tests/forumImageCompression.test.ts tests/forumSubmission.test.ts tests/forumSubmissionReview.test.ts tests/questionBounty.test.ts",
     "test:cache": "node --import tsx --test tests/cache.test.ts tests/publicAvatar.test.ts",
     "test:deployment": "node --import tsx --test tests/deployment.test.ts tests/cosToOssMirror.test.ts tests/webStaticCos.test.ts tests/webStaticSwitch.test.ts tests/cloudUsage.test.ts",
     "test:sponsor": "node --import tsx --test tests/sponsorCategories.test.ts",

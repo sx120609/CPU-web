@@ -11,6 +11,11 @@ import { visibleBoardSlugFilter } from "../services/retiredBoards";
 import { FORUM_SELF_VISIBLE_REVIEW_STATUSES, forumContentVisibilityWhere } from "../services/forumSubmission";
 import { compactTopicAuthors, publicAvatarValue } from "../utils/publicAvatar";
 import { parseHomeFeedStream, selectHomeFeedBoardTypes, type HomeFeedStream } from "../services/homeFeed";
+import {
+  computeHotScore,
+  HOT_TOPIC_FALLBACK_WINDOW_MS,
+  rankHotTopics,
+} from "../services/forumHotRanking";
 
 export const homeRouter = Router();
 const HOME_HIDDEN_SERVICE_CODES = ["DORM_REPAIR"];
@@ -42,7 +47,7 @@ homeRouter.get("/summary", async (req, res, next) => {
     const globalPinnedIds = getGlobalPinnedTopicIds();
     const publicSummary = await withCache(
       "home",
-      ["summary-v5", forumAccessEnabled ? "forum-enabled" : "announce-only"],
+      ["summary-v6", forumAccessEnabled ? "forum-enabled" : "announce-only"],
       60_000,
       async () => {
         const [pinnedTopics, hotTopics, latestTopics, announce, services] = await Promise.all([
@@ -112,7 +117,7 @@ homeRouter.get("/summary", async (req, res, next) => {
       pinnedTopics: forumAccessEnabled ? publicSummary.pinnedTopics.map((item: any) => decodeTopicForViewer(item, req.user)) : [],
       hotTopics: forumAccessEnabled ? publicSummary.hotTopics.map((item: any, index: number) => ({
         rank: index + 1,
-        hotScore: computeHotScore(item, isRecentTopic(item)),
+        hotScore: computeHotScore(item),
         ...decodeTopicForViewer(item, req.user),
       })) : [],
       latestTopics: forumAccessEnabled ? await decodeTopicsForViewerForList(latestTopics, req.user) : [],
@@ -132,11 +137,11 @@ homeRouter.get("/hot-ranking", async (_req, res, next) => {
     if (!forumAccessEnabled) return ok(res, []);
     const stream = parseHomeFeedStream(_req.query.stream);
     const contentBoardTypes = homeFeedBoardTypes(stream);
-    const list = await withCache("home", ["hot-ranking-v4", stream], 60_000, async () => listHotTopics(HOT_TOPIC_DEFAULT_SIZE, contentBoardTypes));
+    const list = await withCache("home", ["hot-ranking-v5", stream], 60_000, async () => listHotTopics(HOT_TOPIC_DEFAULT_SIZE, contentBoardTypes));
     const presented = await decodeTopicsForViewerForList(list, _req.user);
     ok(res, presented.map((item, index) => ({
       rank: index + 1,
-      hotScore: computeHotScore(list[index], isRecentTopic(list[index])),
+      hotScore: computeHotScore(list[index]),
       ...item,
     })));
   } catch (e) { next(e); }
@@ -211,51 +216,23 @@ async function listGlobalPinnedTopics(ids: number[], boardTypes: string[], limit
 }
 
 async function listHotTopics(size: number, boardTypes: string[]) {
-  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const nowMs = Date.now();
+  const cutoff = new Date(nowMs - HOT_TOPIC_FALLBACK_WINDOW_MS);
   const include = {
     board: { select: { slug: true, name: true, color: true, type: true } },
     author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true } },
     tags: { include: { tag: true } },
     replies: forumReplyPreviewInclude,
   } as const;
-  const [recent, older] = await Promise.all([
-    prisma.topic.findMany({
-      where: {
-        hidden: false,
-        board: { type: { in: boardTypes }, ...visibleBoardSlugFilter() },
-        lastReplyAt: { gte: cutoff },
-      },
-      orderBy: [{ likeCount: "desc" }, { replyCount: "desc" }, { viewCount: "desc" }],
-      take: 60,
-      include,
-    }),
-    prisma.topic.findMany({
-      where: {
-        hidden: false,
-        board: { type: { in: boardTypes }, ...visibleBoardSlugFilter() },
-        OR: [{ lastReplyAt: null }, { lastReplyAt: { lt: cutoff } }],
-      },
-      orderBy: [{ likeCount: "desc" }, { replyCount: "desc" }, { viewCount: "desc" }],
-      take: 60,
-      include,
-    }),
-  ]);
-
-  const recentSorted = [...recent].sort((a, b) => computeHotScore(b, true) - computeHotScore(a, true));
-  const olderSorted = [...older].sort((a, b) => computeHotScore(b, false) - computeHotScore(a, false));
-  const merged = recentSorted.slice(0, size);
-  if (merged.length < size) {
-    merged.push(...olderSorted.slice(0, size - merged.length));
-  }
-  return compactTopicAuthors(merged);
-}
-
-function computeHotScore(topic: any, recent: boolean) {
-  const raw = (topic.likeCount ?? 0) * 5 + (topic.replyCount ?? 0) * 3 + (topic.viewCount ?? 0) * 0.03;
-  return recent ? raw : raw * 0.72;
-}
-
-function isRecentTopic(topic: any) {
-  const last = topic.lastReplyAt ? new Date(topic.lastReplyAt).getTime() : 0;
-  return last >= Date.now() - 24 * 60 * 60 * 1000;
+  const candidates = await prisma.topic.findMany({
+    where: {
+      hidden: false,
+      board: { type: { in: boardTypes }, ...visibleBoardSlugFilter() },
+      createdAt: { gte: cutoff },
+    },
+    orderBy: { createdAt: "desc" },
+    take: Math.max(100, size * 20),
+    include,
+  });
+  return compactTopicAuthors(rankHotTopics(candidates, size, nowMs));
 }

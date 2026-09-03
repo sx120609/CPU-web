@@ -75,9 +75,10 @@
             :rank="t.rank"
             :score="t.hotScore"
             variant="simple"
+            time-mode="published"
           />
           <div v-if="hotPreview.length" class="hot-foot">
-            <span class="cpu-muted">按回复、点赞与浏览综合排序</span>
+            <span class="cpu-muted">新帖优先 · 综合互动热度</span>
             <router-link to="/forum/hot" class="more more-strong">进入热榜 Top 10 →</router-link>
           </div>
           <el-empty v-if="!hotPreview.length" description="暂无内容" />

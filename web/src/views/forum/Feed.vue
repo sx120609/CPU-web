@@ -4,7 +4,7 @@
       <div>
         <h2 class="title">{{ isHot ? "热榜 Top 10" : "最新内容" }}</h2>
         <p class="desc">
-          {{ isHot ? "这里展示近 24 小时讨论最活跃的内容。" : "这里按照发布时间查看近期更新。" }}
+          {{ isHot ? "这里优先展示近 24 小时新发布且互动活跃的内容。" : "这里按照发布时间查看近期更新。" }}
         </p>
       </div>
     </div>
@@ -36,7 +36,7 @@
               <span>{{ item.board?.name }}</span>
               <span>{{ item.replyCount }} 回</span>
               <span>{{ item.likeCount }} 赞</span>
-              <span>{{ fmtRelative(item.lastReplyAt || item.createdAt) }}</span>
+              <span>{{ fmtRelative(item.createdAt) }}</span>
             </div>
           </div>
           <div class="rank-score">{{ Math.round(item.hotScore || 0) }}</div>
