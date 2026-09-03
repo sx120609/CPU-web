@@ -162,12 +162,6 @@ struct Index {
         })
         .javaScriptProxy({
           object: this.bridge,
-          name: 'CPUHarmony',
-          methodList: this.bridgeMethods(),
-          controller: this.controller
-        })
-        .javaScriptProxy({
-          object: this.bridge,
           name: 'CPUAndroid',
           methodList: this.bridgeMethods(),
           controller: this.controller
@@ -178,6 +172,8 @@ struct Index {
         })
         .onPageEnd(() => {
           this.loading = false;
+          void this.controller.runJavaScript('window.CPUHarmony = window.CPUAndroid; true;')
+            .catch(() => undefined);
         })
         .onErrorReceive((event) => {
           if (!event.request.isMainFrame()) return;

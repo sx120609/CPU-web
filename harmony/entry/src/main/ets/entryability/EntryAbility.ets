@@ -3,6 +3,7 @@ import AbilityConstant from '@ohos.app.ability.AbilityConstant';
 import Want from '@ohos.app.ability.Want';
 import window from '@ohos.window';
 import { APP_URL, destinationUrlForDeepLink } from '../common/AppConfig';
+import { refreshAllScheduleForms } from '../common/ScheduleWidgetService';
 
 export default class EntryAbility extends UIAbility {
   private applyWant(want: Want, initial: boolean): void {
@@ -15,6 +16,7 @@ export default class EntryAbility extends UIAbility {
   onCreate(want: Want, _launchParam: AbilityConstant.LaunchParam): void {
     AppStorage.setOrCreate('abilityContext', this.context);
     this.applyWant(want, true);
+    void refreshAllScheduleForms(this.context).catch(() => undefined);
   }
 
   onNewWant(want: Want, _launchParam: AbilityConstant.LaunchParam): void {

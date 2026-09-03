@@ -62,6 +62,8 @@ interface WidgetCourseRow {
   time: string;
   meta: string;
   ended: boolean;
+  accent: string;
+  tint: string;
 }
 
 export interface ScheduleWidgetBinding {
@@ -74,8 +76,13 @@ export interface ScheduleWidgetBinding {
   secondaryCourses: string;
   footer: string;
   theme: string;
+  accent: string;
   semester: string;
   currentWeek: number;
+  primaryWeek: number;
+  secondaryWeek: number;
+  primaryRemaining: number;
+  secondaryRemaining: number;
   dimension: number;
 }
 
@@ -89,10 +96,54 @@ interface UpcomingSelection {
   courses: ScheduleCourse[];
 }
 
+interface CourseWindow {
+  courses: ScheduleCourse[];
+  remainingCount: number;
+}
+
+const COLOR_GLASS_ACCENTS: string[] = [
+  '#E85B4B', '#4A78F2', '#8B5CF6', '#17A69A', '#E0A224', '#EC70A1'
+];
+const COLOR_GLASS_TINTS: string[] = [
+  '#FDECE9', '#EAF0FF', '#F2ECFF', '#E5F8F5', '#FFF7E0', '#FDEBF4'
+];
+
 function normalizedTheme(value?: string): string {
   const supported = ['green', 'blue', 'teal', 'indigo', 'violet', 'orange', 'rose', 'slate', 'color-glass'];
   const theme = (value ?? '').trim().toLowerCase();
   return supported.includes(theme) ? theme : 'color-glass';
+}
+
+function themeAccent(theme: string): string {
+  if (theme === 'green') return '#168776';
+  if (theme === 'blue') return '#2563EB';
+  if (theme === 'teal') return '#0891B2';
+  if (theme === 'indigo') return '#DB2777';
+  if (theme === 'violet') return '#7C3AED';
+  if (theme === 'orange') return '#EA580C';
+  if (theme === 'rose') return '#E11D48';
+  if (theme === 'slate') return '#475569';
+  return '#6D5DFC';
+}
+
+function themeTint(theme: string): string {
+  if (theme === 'green') return '#F4FBF8';
+  if (theme === 'blue') return '#F3F8FF';
+  if (theme === 'teal') return '#F0FBFF';
+  if (theme === 'indigo') return '#FFF5FA';
+  if (theme === 'violet') return '#FAF7FF';
+  if (theme === 'orange') return '#FFF7F1';
+  if (theme === 'rose') return '#FFF5F7';
+  if (theme === 'slate') return '#F8FAFC';
+  return '#F2ECFF';
+}
+
+function courseColorIndex(name: string): number {
+  let hash = 0;
+  for (let index = 0; index < name.length; index += 1) {
+    hash = (hash * 31 + name.charCodeAt(index)) & 0x7FFFFFFF;
+  }
+  return hash % COLOR_GLASS_ACCENTS.length;
 }
 
 function normalizedEndpoint(value?: string): string {
@@ -196,8 +247,13 @@ function loadingBinding(dimension: number, theme: string = 'color-glass'): Sched
     secondaryCourses: '[]',
     footer: '打开药大拾间完成教务授权',
     theme,
+    accent: themeAccent(theme),
     semester: '',
     currentWeek: 0,
+    primaryWeek: 0,
+    secondaryWeek: 0,
+    primaryRemaining: 0,
+    secondaryRemaining: 0,
     dimension
   };
 }
@@ -302,7 +358,7 @@ function normalizedText(value?: string): string {
   return (value ?? '').trim();
 }
 
-function courseRows(source: ScheduleCourse[], current: number): WidgetCourseRow[] {
+function courseRows(source: ScheduleCourse[], current: number, theme: string): WidgetCourseRow[] {
   return source.map((course: ScheduleCourse): WidgetCourseRow => {
     const start = normalizedText(course.startTime) || '--:--';
     const end = normalizedText(course.endTime);
@@ -310,13 +366,36 @@ function courseRows(source: ScheduleCourse[], current: number): WidgetCourseRow[
       .map((value: string | undefined) => normalizedText(value))
       .filter((value: string) => value.length > 0)
       .join(' · ');
+    const name = normalizedText(course.name) || '课程';
+    const colorIndex = courseColorIndex(name);
     return {
-      name: normalizedText(course.name) || '课程',
+      name,
       time: end ? `${start} - ${end}` : start,
       meta: metadata || '地点待确认',
-      ended: courseEnd(course) >= 0 && courseEnd(course) < current
+      ended: current >= 0 && courseEnd(course) >= 0 && courseEnd(course) < current,
+      accent: theme === 'color-glass' ? COLOR_GLASS_ACCENTS[colorIndex] : themeAccent(theme),
+      tint: theme === 'color-glass' ? COLOR_GLASS_TINTS[colorIndex] : themeTint(theme)
     };
   });
+}
+
+function courseWindow(source: ScheduleCourse[], limit: number, current: number): CourseWindow {
+  const safeLimit = Math.max(0, limit);
+  const overflow = Math.max(0, source.length - safeLimit);
+  let completedPrefix = 0;
+  if (current >= 0) {
+    for (const course of source) {
+      const end = courseEnd(course);
+      if (end < 0 || end >= current) break;
+      completedPrefix += 1;
+    }
+  }
+  const skipped = Math.min(overflow, completedPrefix);
+  const visible = source.slice(skipped, skipped + safeLimit);
+  return {
+    courses: visible,
+    remainingCount: Math.max(0, source.length - skipped - visible.length)
+  };
 }
 
 function compactDate(value?: string): string {
@@ -331,28 +410,38 @@ function weekOf(payload: SchedulePayload, day: ScheduleDay): number {
 function dayTitle(day: ScheduleDay): string {
   const label = normalizedText(day.label) || '课表';
   const date = compactDate(day.date);
-  return date ? `${label} ${date}` : label;
+  return date ? `${date} ${label}` : label;
 }
 
 function readyBinding(payload: SchedulePayload, dimension: number, theme: string, stale: boolean): ScheduleWidgetBinding {
   const current = nowMinutes();
   const today = resolveDay(payload, 0, true);
   const tomorrow = resolveDay(payload, 1, true);
-  const selected = dimension === 2 ? upcoming(payload).day : today;
-  const selectedCourses = dimension === 2 ? upcoming(payload).courses : courses(today).slice(0, dimension === 3 ? 3 : 4);
+  const upcomingSelection = upcoming(payload);
+  const selected = dimension === 2 ? upcomingSelection.day : today;
+  const todayWindow = courseWindow(courses(today), dimension === 3 ? 2 : 5, current);
+  const tomorrowWindow = courseWindow(courses(tomorrow), 5, -1);
+  const primaryWindow: CourseWindow = dimension === 2
+    ? { courses: upcomingSelection.courses, remainingCount: 0 }
+    : todayWindow;
   const week = weekOf(payload, selected);
   return {
     state: 'ready',
     title: normalizedText(payload.title) || '药大课表',
-    subtitle: `第 ${week > 0 ? week : '--'} 周 · ${dayTitle(selected)}`,
-    leftTitle: dayTitle(today),
+    subtitle: '',
+    leftTitle: dayTitle(selected),
     rightTitle: dayTitle(tomorrow),
-    primaryCourses: JSON.stringify(courseRows(selectedCourses, current)),
-    secondaryCourses: JSON.stringify(courseRows(courses(tomorrow).slice(0, 4), -1)),
-    footer: stale || payload.stale === true ? '缓存课表 · 打开 App 可刷新' : '每 30 分钟自动刷新',
+    primaryCourses: JSON.stringify(courseRows(primaryWindow.courses, current, theme)),
+    secondaryCourses: JSON.stringify(courseRows(tomorrowWindow.courses, -1, theme)),
+    footer: stale || payload.stale === true ? '打开 App 可刷新' : '',
     theme,
+    accent: themeAccent(theme),
     semester: normalizedText(payload.semester),
     currentWeek: payload.currentWeek ?? week,
+    primaryWeek: week,
+    secondaryWeek: weekOf(payload, tomorrow),
+    primaryRemaining: primaryWindow.remainingCount,
+    secondaryRemaining: tomorrowWindow.remainingCount,
     dimension
   };
 }
