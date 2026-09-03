@@ -941,11 +941,18 @@ function applyWidgetCurrentWeekIntent() {
 }
 
 watch(
-  [() => route.query.source, () => route.query.week],
+  [
+    () => route.query.source,
+    () => route.query.week,
+    () => route.query.widgetSemester,
+    () => route.query.widgetWeek,
+  ],
   ([source, targetWeek]) => {
     if (source !== "widget" || targetWeek !== "current") return;
     widgetCurrentWeekIntentPending.value = true;
-    applyWidgetCurrentWeekIntent();
+    // immediate watcher 会在 setup 尚未执行完时触发；此时切周依赖的
+    // slideDirection 等状态仍处于 TDZ，必须等 onMounted 完成初始化。
+    if (scheduleMounted) applyWidgetCurrentWeekIntent();
   },
   { immediate: true },
 );
