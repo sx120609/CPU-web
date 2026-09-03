@@ -2,7 +2,9 @@ import common from '@ohos.app.ability.common';
 import webview from '@ohos.web.webview';
 import promptAction from '@ohos.promptAction';
 import photoAccessHelper from '@ohos.file.photoAccessHelper';
-import { APP_NAME, APP_URL, USER_AGENT_TOKEN, isHttpUrl, isInternalUrl } from '../common/AppConfig';
+import picker from '@ohos.file.picker';
+import abilityAccessCtrl, { Permissions } from '@ohos.abilityAccessCtrl';
+import { APP_NAME, APP_URL, USER_AGENT_SUFFIX, isAppOrigin, isHttpUrl, isInternalUrl } from '../common/AppConfig';
 import { HarmonyBridge, NativePreviewImage } from '../common/HarmonyBridge';
 
 @Entry
@@ -10,6 +12,7 @@ import { HarmonyBridge, NativePreviewImage } from '../common/HarmonyBridge';
 struct Index {
   private controller: webview.WebviewController = new webview.WebviewController();
   private bridge: HarmonyBridge = new HarmonyBridge();
+  @StorageLink('launchUrl') private launchUrl: string = APP_URL;
   @State private loading: boolean = true;
   @State private failed: boolean = false;
   @State private savePanelVisible: boolean = false;
@@ -54,7 +57,9 @@ struct Index {
       'downloadAndInstallApk',
       'previewImages',
       'saveImage',
-      'installScheduleWidget'
+      'saveImageUrl',
+      'installScheduleWidget',
+      'setScheduleWidgetTheme'
     ];
   }
 
@@ -67,6 +72,24 @@ struct Index {
   }
 
   private chooseFiles(event?: OnShowFileSelectorEvent): boolean {
+    if (!event) return false;
+    const accepted = event.fileSelector.getAcceptType();
+    const imageOnly = accepted.length > 0 && accepted.every((value: string) => {
+      const normalized = value.trim().toLowerCase();
+      return normalized.startsWith('image/') || /\.(png|jpe?g|webp|gif|heic)$/.test(normalized);
+    });
+    if (!imageOnly) {
+      const context = AppStorage.get<common.UIAbilityContext>('abilityContext');
+      if (!context) return false;
+      const documentPicker = new picker.DocumentViewPicker(context);
+      const options = new picker.DocumentSelectOptions();
+      options.maxSelectNumber = event.fileSelector.getMode() === FileSelectorMode.FileOpenMultipleMode ? 20 : 1;
+      documentPicker.select(options)
+        .then((uris: string[]) => event.result.handleFileList(uris))
+        .catch(() => event.result.handleFileList([]));
+      return true;
+    }
+
     const photoPicker = new photoAccessHelper.PhotoViewPicker();
     const options = new photoAccessHelper.PhotoSelectOptions();
     options.MIMEType = photoAccessHelper.PhotoViewMIMETypes.IMAGE_TYPE;
@@ -74,18 +97,46 @@ struct Index {
     options.isPhotoTakingSupported = true;
     photoPicker.select(options)
       .then((result: photoAccessHelper.PhotoSelectResult) => {
-        event?.result.handleFileList(result.photoUris);
+        event.result.handleFileList(result.photoUris);
       })
       .catch(() => {
-        event?.result.handleFileList([]);
+        event.result.handleFileList([]);
       });
     return true;
+  }
+
+  private async handleWebPermission(event: OnPermissionRequestEvent): Promise<void> {
+    const origin = event.request.getOrigin();
+    if (!isAppOrigin(origin)) {
+      event.request.deny();
+      return;
+    }
+    const resources = event.request.getAccessibleResource();
+    const permissions: Permissions[] = [];
+    if (resources.includes('TYPE_VIDEO_CAPTURE')) permissions.push('ohos.permission.CAMERA');
+    if (resources.includes('TYPE_AUDIO_CAPTURE')) permissions.push('ohos.permission.MICROPHONE');
+    if (permissions.length === 0) {
+      event.request.grant(resources);
+      return;
+    }
+    const context = AppStorage.get<common.UIAbilityContext>('abilityContext');
+    if (!context) {
+      event.request.deny();
+      return;
+    }
+    try {
+      const result = await abilityAccessCtrl.createAtManager().requestPermissionsFromUser(context, permissions);
+      if (result.authResults.every((value: number) => value === 0)) event.request.grant(resources);
+      else event.request.deny();
+    } catch (_) {
+      event.request.deny();
+    }
   }
 
   build() {
     Stack() {
       Web({
-        src: APP_URL,
+        src: this.launchUrl,
         controller: this.controller
       })
         .width('100%')
@@ -99,7 +150,16 @@ struct Index {
         .metaViewport(true)
         .initialScale(100)
         .textZoomRatio(100)
-        .userAgent(USER_AGENT_TOKEN)
+        .onControllerAttached(() => {
+          try {
+            const current = this.controller.getUserAgent();
+            if (!current.includes('CPUWebHarmonyApp/')) {
+              this.controller.setCustomUserAgent(`${current} ${USER_AGENT_SUFFIX}`);
+            }
+          } catch (_) {
+            // Keep the system user agent if the controller is not ready yet.
+          }
+        })
         .javaScriptProxy({
           object: this.bridge,
           name: 'CPUHarmony',
@@ -119,7 +179,8 @@ struct Index {
         .onPageEnd(() => {
           this.loading = false;
         })
-        .onErrorReceive(() => {
+        .onErrorReceive((event) => {
+          if (!event.request.isMainFrame()) return;
           this.loading = false;
           this.failed = true;
         })
@@ -131,6 +192,8 @@ struct Index {
           }
           return false;
         })
+        .onPermissionRequest((event) => void this.handleWebPermission(event))
+        .onDownloadStart((event) => this.bridge.openExternalUrl(event.url))
         .onShowFileSelector((event) => this.chooseFiles(event))
 
       if (this.loading) {

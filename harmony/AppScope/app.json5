@@ -1,6 +1,6 @@
 {
   "app": {
-    "bundleName": "com.cpu.yaodashijian",
+    "bundleName": "cn.lizmt.cpuweb",
     "vendor": "lizmt",
     "versionCode": 17,
     "versionName": "2.0.8",

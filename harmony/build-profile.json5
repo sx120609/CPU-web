@@ -1,24 +1,8 @@
 {
   "app": {
-    "signingConfigs": [
-      {
-        "name": "releasenew",
-        "type": "HarmonyOS",
-        "material": {
-          "storeFile": "D:/OneDrive/Desktop/yaodashijian-release-20260530.p12",
-          "storePassword": "0000001DF48922758A1615398FEEE5B0A887DE5709F970E9121AB3446C1FEC2AF77AC06AC7EE0FDD770B489971",
-          "keyAlias": "com.cpu.yaodashijian",
-          "keyPassword": "0000001DE7767F1EA3F7DB049A569C33388DB997202D8D76AF59DCCBD321DF8C7B2C89C3C99AE55DE884371B85",
-          "signAlg": "SHA256withECDSA",
-          "profile": "D:/OneDrive/Desktop/药大拾间Release (2).p7b",
-          "certpath": "D:/OneDrive/Desktop/release.cer"
-        }
-      }
-    ],
     "products": [
       {
         "name": "default",
-        "signingConfig": "releasenew",
         "compatibleSdkVersion": "5.0.0(12)",
         "targetSdkVersion": "5.0.0(12)",
         "runtimeOS": "HarmonyOS"

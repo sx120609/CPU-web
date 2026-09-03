@@ -3,7 +3,8 @@ export const APP_URL = 'https://cputime.cn/schedule?client=harmony-app&appVersio
 export const APP_HOST = 'cputime.cn';
 export const VERSION_CODE = 17;
 export const VERSION_NAME = '2.0.8';
-export const USER_AGENT_TOKEN = `Mozilla/5.0 (Linux; HarmonyOS; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Mobile Safari/537.36 CPUWebHarmonyApp/${VERSION_CODE} CPUWebHarmonyAppVersion/${VERSION_NAME}`;
+export const USER_AGENT_SUFFIX = `CPUWebHarmonyApp/${VERSION_CODE} CPUWebHarmonyAppVersion/${VERSION_NAME}`;
+const PAYMENT_HOST = 'pay.kaipay.cn';
 
 function protocolOf(input: string): string {
   const trimmed = input.trim().toLowerCase();
@@ -29,10 +30,63 @@ function hostOf(input: string): string {
 }
 
 export function isInternalUrl(url: string): boolean {
+  const host = hostOf(url);
+  return protocolOf(url) === 'https:' && (host === APP_HOST || host === PAYMENT_HOST);
+}
+
+export function isAppOrigin(url: string): boolean {
   return protocolOf(url) === 'https:' && hostOf(url) === APP_HOST;
 }
 
 export function isHttpUrl(url: string): boolean {
   const protocol = protocolOf(url);
   return protocol === 'http:' || protocol === 'https:';
+}
+
+export function isSupportedExternalUrl(url: string): boolean {
+  if (isHttpUrl(url)) return true;
+  const normalized = (url ?? '').trim().toLowerCase();
+  return normalized.startsWith('tel:') || normalized.startsWith('mailto:') || normalized.startsWith('sms:');
+}
+
+function queryValue(input: string, name: string): string {
+  const question = input.indexOf('?');
+  if (question < 0) return '';
+  const hash = input.indexOf('#', question);
+  const query = input.substring(question + 1, hash >= 0 ? hash : input.length);
+  const pairs = query.split('&');
+  for (let index = 0; index < pairs.length; index += 1) {
+    const pair = pairs[index];
+    const equals = pair.indexOf('=');
+    let key = '';
+    try {
+      key = decodeURIComponent(equals >= 0 ? pair.substring(0, equals) : pair);
+    } catch (_) {
+      continue;
+    }
+    if (key !== name) continue;
+    try {
+      return decodeURIComponent(equals >= 0 ? pair.substring(equals + 1) : '');
+    } catch (_) {
+      return '';
+    }
+  }
+  return '';
+}
+
+export function destinationUrlForDeepLink(uri?: string): string {
+  const raw = (uri ?? '').trim();
+  if (protocolOf(raw) !== 'cpuweb:' || hostOf(raw) !== 'schedule') return '';
+
+  let target = APP_URL;
+  target += '&source=widget&week=current';
+  const semester = queryValue(raw, 'widgetSemester').trim();
+  if (/^\d{4}-\d{4}-[12]$/.test(semester)) {
+    target += `&widgetSemester=${encodeURIComponent(semester)}`;
+  }
+  const week = Number(queryValue(raw, 'widgetWeek'));
+  if (Number.isInteger(week) && week >= 1 && week <= 64) {
+    target += `&widgetWeek=${week}`;
+  }
+  return target;
 }

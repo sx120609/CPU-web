@@ -755,6 +755,7 @@ import {
   isAndroidAppUpdateAvailable,
   isAndroidNativeApp,
   isFlutterNativeShell,
+  isHarmonyNativeApp,
   isIosNativeApp,
   isIosStandalone,
   supportsAndroidScheduleWidget,
@@ -1042,7 +1043,7 @@ const academicDataUnavailable = computed(() => Boolean(
 const scheduleLoginScopeText = computed(() => (
   "登录后会自动识别你当前可用的教务入口。本科生默认显示本科课表，研究生当前显示研究生课表。"
 ));
-type WidgetMenuPlatform = "ios" | "ios-native" | "android" | "android-old";
+type WidgetMenuPlatform = "ios" | "ios-native" | "harmony" | "android" | "android-old";
 interface AndroidWidgetBridge {
   getVersionCode?: () => number;
   getVersionName?: () => string;
@@ -1059,6 +1060,8 @@ interface IOSWidgetBridge {
   installScheduleWidget?: (payload: string) => void;
   setScheduleWidgetTheme?: (theme: string) => void;
 }
+
+type HarmonyWidgetBridge = IOSWidgetBridge;
 
 function scheduleStorageScope() {
   if (scheduleSource.value === "graduate" || scheduleSource.value === "graduate-debug") return "graduate";
@@ -1092,11 +1095,14 @@ function getIOSWidgetBridge(): IOSWidgetBridge | null {
   return ((window as any).CPUIOS ?? null) as IOSWidgetBridge | null;
 }
 
-function syncIOSWidgetTheme(value = scheduleTheme.value) {
-  if (!isIosNativeApp()) return;
-  const bridge = getIOSWidgetBridge();
-  if (typeof bridge?.setScheduleWidgetTheme !== "function") return;
-  bridge.setScheduleWidgetTheme(normalizeScheduleTheme(value));
+function getHarmonyWidgetBridge(): HarmonyWidgetBridge | null {
+  return ((window as any).CPUHarmony ?? null) as HarmonyWidgetBridge | null;
+}
+
+function syncNativeWidgetTheme(value = scheduleTheme.value) {
+  const theme = normalizeScheduleTheme(value);
+  if (isIosNativeApp()) getIOSWidgetBridge()?.setScheduleWidgetTheme?.(theme);
+  if (isHarmonyNativeApp()) getHarmonyWidgetBridge()?.setScheduleWidgetTheme?.(theme);
 }
 
 async function copyGradDebugGuide() {
@@ -1256,6 +1262,10 @@ const widgetMenuPlatform = computed<WidgetMenuPlatform | null>(() => {
     && typeof iosBridge?.installScheduleWidget === "function"
     && iosBridge.supportsScheduleWidget?.() !== false) return "ios-native";
   if (isIosStandalone()) return "ios";
+  const harmonyBridge = getHarmonyWidgetBridge();
+  if (isHarmonyNativeApp()
+    && typeof harmonyBridge?.installScheduleWidget === "function"
+    && harmonyBridge.supportsScheduleWidget?.() !== false) return "harmony";
   if (isFlutterNativeShell()) return null;
   if (!isAndroidNativeApp()) return null;
   return supportsAndroidScheduleWidget() ? "android" : "android-old";
@@ -1263,6 +1273,7 @@ const widgetMenuPlatform = computed<WidgetMenuPlatform | null>(() => {
 
 const widgetMenuLabel = computed(() => {
   if (widgetMenuPlatform.value === "ios-native") return "添加 iOS 小组件";
+  if (widgetMenuPlatform.value === "harmony") return "添加鸿蒙小组件";
   if (widgetMenuPlatform.value === "android") return "添加安卓小组件";
   if (widgetMenuPlatform.value === "android-old") return "更新安卓客户端";
   return "导入 iOS 小组件";
@@ -1287,6 +1298,10 @@ function handleWidgetMenuAction() {
     openWidgetDialog();
     return;
   }
+  if (widgetMenuPlatform.value === "harmony") {
+    void installHarmonyWidget();
+    return;
+  }
   if (widgetMenuPlatform.value === "android") {
     void installAndroidWidget();
     return;
@@ -1309,6 +1324,31 @@ async function installIOSWidget() {
   widgetInstalling.value = true;
   try {
     const token = await jwxtApi.createScheduleWidgetToken({ name: "iOS 小组件" });
+    bridge.installScheduleWidget(JSON.stringify({
+      endpoint: token.endpoint,
+      title: "药大课表",
+      theme: scheduleTheme.value,
+    }));
+  } finally {
+    widgetInstalling.value = false;
+  }
+}
+
+async function installHarmonyWidget() {
+  moreMenuOpen.value = false;
+  const bridge = getHarmonyWidgetBridge();
+  if (typeof bridge?.installScheduleWidget !== "function") {
+    ElMessage.warning("当前鸿蒙客户端暂不支持原生小组件");
+    return;
+  }
+  if (!jwxt.isLoggedIn) {
+    ElMessage.warning("请先完成教务授权，再添加鸿蒙小组件");
+    return;
+  }
+
+  widgetInstalling.value = true;
+  try {
+    const token = await jwxtApi.createScheduleWidgetToken({ name: "鸿蒙小组件" });
     bridge.installScheduleWidget(JSON.stringify({
       endpoint: token.endpoint,
       title: "药大课表",
@@ -2676,7 +2716,7 @@ function restoreScheduleTheme() {
   } catch {
     /* ignore */
   }
-  syncIOSWidgetTheme();
+  syncNativeWidgetTheme();
 }
 
 function persistScheduleTheme(value = scheduleTheme.value) {
@@ -2686,7 +2726,7 @@ function persistScheduleTheme(value = scheduleTheme.value) {
   } catch {
     /* ignore */
   }
-  syncIOSWidgetTheme();
+  syncNativeWidgetTheme();
 }
 
 function courseBlockStyle(block: WeekCourseBlock) {

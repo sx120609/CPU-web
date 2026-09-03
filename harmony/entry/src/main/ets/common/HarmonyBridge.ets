@@ -6,7 +6,12 @@ import fileUri from '@ohos.file.fileuri';
 import photoAccessHelper from '@ohos.file.photoAccessHelper';
 import http from '@ohos.net.http';
 import util from '@ohos.util';
-import { VERSION_CODE, VERSION_NAME, isHttpUrl } from './AppConfig';
+import { VERSION_CODE, VERSION_NAME, isHttpUrl, isSupportedExternalUrl } from './AppConfig';
+import {
+  refreshAllScheduleForms,
+  saveScheduleWidgetConfiguration,
+  saveScheduleWidgetTheme
+} from './ScheduleWidgetService';
 
 export interface NativePreviewImage {
   url: string;
@@ -46,7 +51,7 @@ export class HarmonyBridge {
   }
 
   supportsScheduleWidget(): boolean {
-    return false;
+    return true;
   }
 
   supportsInAppApkDownload(): boolean {
@@ -66,7 +71,7 @@ export class HarmonyBridge {
 
   openExternalUrl(url: string): void {
     const target = (url ?? '').trim();
-    if (!target || !this.context) {
+    if (!isSupportedExternalUrl(target) || !this.context) {
       this.toast('无法打开链接');
       return;
     }
@@ -113,6 +118,17 @@ export class HarmonyBridge {
       return true;
     }
     void this.saveImageWithDialogAsync(dataUrl, fileName);
+    return true;
+  }
+
+  saveImageUrl(url: string, fileName: string): boolean {
+    if (!isHttpUrl(url) || !this.previewRequestHandler) return false;
+    const safeName = this.sanitizeImageName(fileName);
+    this.previewRequestHandler([{
+      url,
+      title: this.stripExtension(safeName),
+      fileName: safeName
+    }], 0);
     return true;
   }
 
@@ -221,8 +237,28 @@ export class HarmonyBridge {
     }
   }
 
-  installScheduleWidget(_payload: string): void {
-    this.toast('鸿蒙小组件将在后续版本支持');
+  installScheduleWidget(payload: string): void {
+    if (!this.context) {
+      this.toast('小组件配置失败');
+      return;
+    }
+    void saveScheduleWidgetConfiguration(this.context, payload)
+      .then((saved: boolean) => {
+        if (!saved) {
+          this.toast('小组件配置无效，请重新添加');
+          return;
+        }
+        return refreshAllScheduleForms(this.context as common.UIAbilityContext)
+          .then(() => this.toast('配置已保存，请长按桌面并添加“药大课表”卡片'));
+      })
+      .catch(() => this.toast('小组件配置失败，请稍后重试'));
+  }
+
+  setScheduleWidgetTheme(theme: string): void {
+    if (!this.context) return;
+    void saveScheduleWidgetTheme(this.context, theme)
+      .then(() => refreshAllScheduleForms(this.context as common.UIAbilityContext))
+      .catch(() => undefined);
   }
 
   private async saveImageWithDialogAsync(dataUrl: string, fileName: string): Promise<boolean> {
