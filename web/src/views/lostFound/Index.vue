@@ -1,5 +1,93 @@
 <template>
   <div class="lost-found-page">
+    <template v-if="isMobileLayout">
+      <section class="mobile-lost-intro">
+        <div class="mobile-lost-heading">
+          <span class="mobile-lost-kicker">校园互助</span>
+          <h1>失物招领</h1>
+          <p>公开信息，私下核验。联系方式只在认领流程或私聊中发送。</p>
+        </div>
+        <div class="mobile-lost-actions">
+          <button type="button" @click="openPublish('found')">
+            <span class="mobile-action-icon"><el-icon><Plus /></el-icon></span>
+            <span><b>发布招领</b><small>我捡到了</small></span>
+          </button>
+          <button type="button" @click="openPublish('lost')">
+            <span class="mobile-action-icon is-lost"><el-icon><Search /></el-icon></span>
+            <span><b>发布寻物</b><small>我丢了东西</small></span>
+          </button>
+          <button v-if="auth.isLoggedIn" type="button" class="mobile-mine-action" @click="mineOpen = true; loadMine()">
+            我的发布与认领 <el-icon><ArrowRight /></el-icon>
+          </button>
+        </div>
+      </section>
+
+      <section class="mobile-lost-search" aria-label="筛选失物招领信息">
+        <form class="mobile-search-row" @submit.prevent="applyFilters">
+          <el-input v-model="filters.q" clearable placeholder="搜索物品、地点或描述" @clear="applyFilters">
+            <template #prefix><el-icon><Search /></el-icon></template>
+          </el-input>
+          <button type="button" class="mobile-filter-button" aria-label="更多筛选" @click="mobileFiltersOpen = true">
+            <el-icon><Filter /></el-icon>
+            <span v-if="mobileFilterCount">{{ mobileFilterCount }}</span>
+          </button>
+        </form>
+        <nav class="mobile-kind-tabs" aria-label="信息类型">
+          <button type="button" :class="{ active: !filters.kind }" @click="filters.kind = ''; applyFilters()">全部</button>
+          <button type="button" :class="{ active: filters.kind === 'found' }" @click="filters.kind = 'found'; applyFilters()">捡到物品</button>
+          <button type="button" :class="{ active: filters.kind === 'lost' }" @click="filters.kind = 'lost'; applyFilters()">寻找物品</button>
+        </nav>
+      </section>
+
+      <section class="mobile-lost-feed">
+        <header class="mobile-list-head">
+          <div><h2>最新信息</h2><p>{{ total }} 条公开记录</p></div>
+          <button type="button" :disabled="loading" @click="loadItems">{{ loading ? '刷新中' : '刷新' }}</button>
+        </header>
+        <div v-loading="loading" class="mobile-item-list">
+          <article
+            v-for="item in items"
+            :key="item.id"
+            class="mobile-item-card"
+            :class="{ claimed: item.status === 'claimed', pinned: item.pinned }"
+            tabindex="0"
+            role="button"
+            @click="openDetail(item)"
+            @keydown.enter.prevent="openDetail(item)"
+            @keydown.space.prevent="openDetail(item)"
+            @pointerenter="prefetchDetail(item.id)"
+          >
+            <header class="mobile-item-author">
+              <UserAvatar :size="36" :src="item.publisher.avatar" :name="item.publisher.nickname" :seed="item.publisher.id" alt="发布者头像" />
+              <span class="mobile-item-author-copy"><b>{{ item.publisherDepartment || item.publisher.nickname }}</b><small>{{ formatDate(item.publishedAt || item.createdAt) }}</small></span>
+              <em :class="item.kind">{{ item.kind === 'found' ? '捡到物品' : '寻找物品' }}</em>
+            </header>
+            <div class="mobile-item-content" :class="{ 'has-cover': item.cover }">
+              <div class="mobile-item-copy">
+                <h3>{{ item.itemName }}</h3>
+                <p v-if="item.description">{{ item.description }}</p>
+                <div class="mobile-item-facts">
+                  <span><el-icon><Location /></el-icon>{{ item.campus || '校区待补充' }} · {{ item.location || '地点待补充' }}</span>
+                  <span><el-icon><Clock /></el-icon>{{ formatDate(item.happenedAt) }}</span>
+                </div>
+              </div>
+              <img v-if="item.cover" :src="item.cover" :alt="item.itemName" loading="lazy" decoding="async" />
+            </div>
+            <footer>
+              <span v-if="item.pinned" class="mobile-pin">置顶</span>
+              <span :class="['mobile-status', item.status]">{{ statusText(item.status) }}</span>
+              <span class="mobile-item-stats">{{ item.topic.replyCount }} 条讨论 · {{ item.claimCount }} 次认领</span>
+              <el-icon><ArrowRight /></el-icon>
+            </footer>
+          </article>
+          <el-empty v-if="!loading && !items.length" description="暂时没有符合条件的信息">
+            <el-button type="primary" @click="openPublish('lost')">发布一条寻物信息</el-button>
+          </el-empty>
+        </div>
+      </section>
+    </template>
+
+    <template v-else>
     <section class="hero">
       <div class="hero-copy">
         <span class="eyebrow">校园互助 · 信息公开 · 私下核验</span>
@@ -73,7 +161,18 @@
         <el-button type="primary" @click="openPublish('lost')">发布一条信息</el-button>
       </el-empty>
     </section>
+    </template>
     <el-pagination v-if="total > pageSize" v-model:current-page="page" :page-size="pageSize" :total="total" layout="prev, pager, next" @current-change="loadItems" />
+
+    <el-drawer v-model="mobileFiltersOpen" direction="btt" size="min(70vh, 520px)" title="筛选失物信息" class="mobile-filter-drawer">
+      <el-form label-position="top" class="mobile-filter-form">
+        <el-form-item label="校区"><el-select v-model="filters.campus" clearable placeholder="全部校区"><el-option v-for="campus in campuses" :key="campus" :label="campus" :value="campus" /></el-select></el-form-item>
+        <el-form-item label="地点"><el-input v-model="filters.location" clearable placeholder="教学楼、宿舍、食堂等" /></el-form-item>
+        <el-form-item label="时间范围"><el-date-picker v-model="filters.dates" type="daterange" value-format="YYYY-MM-DD" start-placeholder="开始日期" end-placeholder="结束日期" /></el-form-item>
+        <el-form-item label="认领状态"><el-select v-model="filters.status" clearable placeholder="全部状态"><el-option label="等待认领" value="active" /><el-option label="已认领" value="claimed" /></el-select></el-form-item>
+      </el-form>
+      <div class="mobile-filter-actions"><el-button @click="resetMobileFilters">重置</el-button><el-button type="primary" @click="mobileFiltersOpen = false; applyFilters()">查看结果</el-button></div>
+    </el-drawer>
 
     <el-dialog v-model="publishOpen" width="min(720px, 94vw)" :title="publishForm.kind === 'found' ? '发布：我捡到了' : '发布：我丢了'" destroy-on-close>
       <el-form label-position="top" class="publish-form">
@@ -137,6 +236,7 @@
         <div v-else-if="detail.contact" class="private-contact"><small>仅发布者和失物招领管理员可见的原始联系方式</small><strong>{{ detail.contact }}</strong></div>
         <div class="detail-actions">
           <el-button v-if="detail.status === 'active' && !detail.mine" type="primary" @click="openClaim">{{ detail.kind === 'found' ? '这是我的，提交认领' : '我找到了，联系失主' }}</el-button>
+          <el-button v-if="canDirectMessageDetail" plain @click="openDirectChat">私聊发布者</el-button>
           <el-button v-if="detail.mine && detail.status === 'active'" type="success" plain @click="setItemStatus('claimed')">标记已认领</el-button>
           <el-button v-if="detail.mine && detail.status === 'active'" plain @click="setItemStatus('closed')">关闭信息</el-button>
           <el-button v-if="detail.mine && detail.status !== 'active'" plain @click="setItemStatus('active')">重新开放</el-button>
@@ -165,24 +265,28 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { Clock, Loading, Location, Plus, Search } from "@element-plus/icons-vue";
+import { ArrowRight, Clock, Filter, Loading, Location, Plus, Search } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import dayjs from "dayjs";
 import { lostFoundApi, type LostFoundClaim, type LostFoundClaimStatus, type LostFoundItem, type LostFoundKind, type LostFoundStatus } from "@/api/lostFound";
 import { uploadApi } from "@/api/topic";
+import UserAvatar from "@/components/common/UserAvatar.vue";
 import { useAuthStore } from "@/stores/auth";
 import { normalizeImageUploadError, prepareForumImageUpload } from "@/utils/imageUpload";
 import { openImageGallery } from "@/utils/imageViewer";
+import { useMobileLayout } from "@/utils/mobileLayout";
 
 const auth = useAuthStore();
 const route = useRoute();
 const router = useRouter();
+const isMobileLayout = useMobileLayout();
 const items = ref<LostFoundItem[]>([]);
 const campuses = ref<string[]>([]);
 const loading = ref(false);
 const page = ref(1);
 const pageSize = 18;
 const total = ref(0);
+const mobileFiltersOpen = ref(false);
 const campusOptions = ["江宁校区", "玄武门校区"] as const;
 type CampusOption = typeof campusOptions[number];
 const filters = reactive<{ q: string; kind: string; campus: string; location: string; dates: string[]; status: string }>({ q: "", kind: "", campus: "", location: "", dates: [], status: "" });
@@ -195,6 +299,17 @@ const detailOpen = ref(false);
 const detailLoading = ref(false);
 const detail = ref<LostFoundItem | null>(null);
 const canViewRawDetail = computed(() => Boolean(detail.value && (detail.value.mine || auth.isLostFoundAdmin)));
+const canDirectMessageDetail = computed(() => Boolean(
+  detail.value
+  && !detail.value.mine
+  && detail.value.publisher.role !== "bot",
+));
+const mobileFilterCount = computed(() => [
+  filters.campus,
+  filters.location,
+  filters.status,
+  filters.dates.length ? "dates" : "",
+].filter(Boolean).length);
 const detailCache = new Map<number, LostFoundItem>();
 const detailPrefetching = new Set<number>();
 let detailRequestVersion = 0;
@@ -208,12 +323,16 @@ const mine = reactive<{ published: LostFoundItem[]; claims: LostFoundClaim[] }>(
 onMounted(async () => {
   await Promise.all([loadItems(), loadMeta()]);
   const itemId = Number(route.query.item || 0);
-  if (itemId) await openDetail(itemId);
+  if (itemId) {
+    await openDetail(itemId);
+    if (route.query.action === "claim" && detail.value?.status === "active" && !detail.value.mine) openClaim();
+  }
 });
 
 async function loadMeta() { try { campuses.value = (await lostFoundApi.meta({ suppressErrorMessage: true })).campuses; } catch { campuses.value = []; } }
 async function loadItems() { loading.value = true; try { const result = await lostFoundApi.items({ q: filters.q || undefined, kind: filters.kind || undefined, campus: filters.campus || undefined, location: filters.location || undefined, status: filters.status || undefined, from: filters.dates?.[0], to: filters.dates?.[1] ? `${filters.dates[1]}T23:59:59` : undefined, page: page.value, size: pageSize }, { suppressErrorMessage: true }); items.value = result.list; total.value = result.total; } catch { items.value = []; total.value = 0; } finally { loading.value = false; } }
 function applyFilters() { page.value = 1; void loadItems(); }
+function resetMobileFilters() { Object.assign(filters, { campus: "", location: "", dates: [], status: "" }); mobileFiltersOpen.value = false; applyFilters(); }
 function ensureLogin() { if (auth.isLoggedIn) return true; router.push({ name: "login", query: { redirect: route.fullPath } }); return false; }
 function openPublish(kind: LostFoundKind) { if (!ensureLogin()) return; const campus = campusOptions.includes(filters.campus as CampusOption) ? filters.campus as CampusOption : "江宁校区"; Object.assign(publishForm, { kind, itemName: "", description: "", campus, location: "", storageLocation: "", happenedAt: dayjs().format("YYYY-MM-DDTHH:mm:ss"), contact: "", images: [] }); publishOpen.value = true; }
 function openPublishImages(index: number) { openImageGallery(publishForm.images.map((src, imageIndex) => ({ src, title: `物品图片 ${imageIndex + 1}` })), index, { className: "cpu-lost-found-image-viewer" }); }
@@ -252,6 +371,15 @@ async function openDetail(source: LostFoundItem | number) {
   }
 }
 function openClaim() { if (!ensureLogin()) return; Object.assign(claimForm, { message: "", evidence: "", contact: "" }); claimOpen.value = true; }
+function openDirectChat() {
+  if (!detail.value) return;
+  const target = `/messages?tab=private&forumKind=topic&forumId=${detail.value.topicId}`;
+  if (!auth.isLoggedIn) {
+    router.push({ name: "login", query: { redirect: target } });
+    return;
+  }
+  router.push(target);
+}
 async function submitClaim() { if (!detail.value || claimSubmitting.value) return; if (claimForm.message.trim().length < 5) return ElMessage.warning("请至少填写 5 个字的认领说明"); if (claimForm.contact.trim().length < 2) return ElMessage.warning("请填写联系方式"); claimSubmitting.value = true; try { await lostFoundApi.claim(detail.value.id, { ...claimForm }); claimOpen.value = false; ElMessage.success("认领信息已私下提交给发布者"); await openDetail(detail.value.id); } finally { claimSubmitting.value = false; } }
 async function setItemStatus(status: "active" | "claimed" | "closed") { if (!detail.value) return; const label = status === "claimed" ? "标记为已认领" : status === "closed" ? "关闭" : "重新开放"; await ElMessageBox.confirm(`确认${label}这条信息？`, "更新状态", { type: "warning" }); await lostFoundApi.updateStatus(detail.value.id, status); ElMessage.success("状态已更新"); await Promise.all([openDetail(detail.value.id), loadItems()]); }
 async function resolveClaim(id: number, status: "accepted" | "rejected") { if (!detail.value) return; if (status === "accepted") await ElMessageBox.confirm("通过后该信息会自动标记为已认领，其他待处理申请将关闭。请确认已核对关键特征。", "确认认领", { type: "warning" }); await lostFoundApi.updateClaim(id, status); ElMessage.success(status === "accepted" ? "已通过认领" : "已标记为不匹配"); await Promise.all([openDetail(detail.value.id), loadItems()]); }
@@ -272,4 +400,470 @@ function claimTagType(status: LostFoundClaimStatus) { return status === "accepte
 .import-details{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:14px}.import-details div{display:flex;flex-direction:column;gap:4px;padding:10px 12px;border-radius:8px;background:var(--cpu-surface-subtle)}.import-details small{color:var(--cpu-text-muted);font-size:10px}.import-details strong{font-size:12px;line-height:1.5;white-space:pre-wrap}
 @media(max-width:600px){.import-details{grid-template-columns:1fr}}
 .image-cell img,.detail :deep(.el-carousel__item img){cursor:zoom-in}
+</style>
+
+<style scoped>
+.mobile-lost-intro,
+.mobile-lost-search,
+.mobile-lost-feed {
+  border: 1px solid var(--cpu-border-soft);
+  background: var(--cpu-card);
+}
+
+.mobile-lost-intro {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+  gap: 18px;
+  padding: 18px;
+  border-radius: 15px;
+  box-shadow: var(--cpu-shadow-sm);
+}
+
+.mobile-lost-heading {
+  align-self: center;
+}
+
+.mobile-lost-kicker {
+  color: var(--cpu-primary);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .12em;
+}
+
+.mobile-lost-heading h1 {
+  margin: 4px 0 5px;
+  color: var(--cpu-text);
+  font-size: 25px;
+  letter-spacing: -.03em;
+}
+
+.mobile-lost-heading p {
+  max-width: 500px;
+  margin: 0;
+  color: var(--cpu-text-secondary);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.mobile-lost-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mobile-lost-actions > button {
+  display: flex;
+  min-width: 0;
+  min-height: 64px;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 10px;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 11px;
+  background: var(--cpu-surface-soft);
+  color: var(--cpu-text);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.mobile-lost-actions > button:hover,
+.mobile-lost-actions > button:focus-visible {
+  border-color: color-mix(in srgb, var(--cpu-primary) 42%, var(--cpu-border-soft));
+  outline: 0;
+}
+
+.mobile-action-icon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--cpu-primary) 13%, var(--cpu-card));
+  color: var(--cpu-primary);
+  font-size: 18px;
+}
+
+.mobile-action-icon.is-lost {
+  background: color-mix(in srgb, #f59e0b 13%, var(--cpu-card));
+  color: #b45309;
+}
+
+.mobile-lost-actions b,
+.mobile-lost-actions small {
+  display: block;
+}
+
+.mobile-lost-actions b {
+  font-size: 13px;
+}
+
+.mobile-lost-actions small {
+  margin-top: 2px;
+  color: var(--cpu-text-muted);
+  font-size: 10px;
+}
+
+.mobile-lost-actions > .mobile-mine-action {
+  grid-column: 1 / -1;
+  min-height: 36px;
+  justify-content: center;
+  padding: 7px 10px;
+  background: transparent;
+  color: var(--cpu-primary);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.mobile-lost-search {
+  padding: 11px;
+  border-radius: 14px;
+  box-shadow: var(--cpu-shadow-sm);
+}
+
+.mobile-search-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 42px;
+  gap: 7px;
+}
+
+.mobile-search-row :deep(.el-input__wrapper) {
+  min-height: 42px;
+  border-radius: 10px;
+  background: var(--cpu-surface-soft);
+  box-shadow: 0 0 0 1px var(--cpu-border-soft) inset;
+}
+
+.mobile-filter-button {
+  position: relative;
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 10px;
+  background: var(--cpu-surface-soft);
+  color: var(--cpu-primary);
+  cursor: pointer;
+  font-size: 17px;
+}
+
+.mobile-filter-button span {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  display: grid;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  place-items: center;
+  border: 2px solid var(--cpu-card);
+  border-radius: 999px;
+  background: var(--cpu-primary);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.mobile-kind-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  margin-top: 8px;
+  padding: 4px;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 11px;
+  background: var(--cpu-surface-soft);
+}
+
+.mobile-kind-tabs button {
+  min-height: 34px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--cpu-text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.mobile-kind-tabs button.active {
+  background: var(--cpu-primary);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--cpu-primary) 20%, transparent);
+  color: #fff;
+}
+
+.mobile-lost-feed {
+  padding: 13px;
+  border-radius: 15px;
+  background: color-mix(in srgb, var(--cpu-surface-soft) 58%, var(--cpu-card));
+}
+
+.mobile-list-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 2px 10px;
+}
+
+.mobile-list-head h2 {
+  margin: 0;
+  color: var(--cpu-text);
+  font-size: 18px;
+}
+
+.mobile-list-head p {
+  margin: 3px 0 0;
+  color: var(--cpu-text-muted);
+  font-size: 10px;
+}
+
+.mobile-list-head > button {
+  padding: 5px 2px;
+  border: 0;
+  background: transparent;
+  color: var(--cpu-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+}
+
+.mobile-list-head > button:disabled {
+  opacity: .55;
+}
+
+.mobile-item-list {
+  display: flex;
+  min-height: 180px;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mobile-item-card {
+  padding: 13px 12px 10px;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 11px;
+  background: var(--cpu-card);
+  color: var(--cpu-text);
+  cursor: pointer;
+}
+
+.mobile-item-card:focus-visible {
+  border-color: var(--cpu-primary);
+  outline: 2px solid color-mix(in srgb, var(--cpu-primary) 32%, transparent);
+  outline-offset: 1px;
+}
+
+.mobile-item-card.claimed {
+  opacity: .72;
+}
+
+.mobile-item-card.pinned {
+  border-color: color-mix(in srgb, #ef4444 28%, var(--cpu-border-soft));
+}
+
+.mobile-item-author {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.mobile-item-author-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.mobile-item-author b,
+.mobile-item-author small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-item-author b {
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.mobile-item-author small {
+  margin-top: 2px;
+  color: var(--cpu-text-muted);
+  font-size: 10px;
+}
+
+.mobile-item-author em {
+  flex: 0 0 auto;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--cpu-primary) 11%, var(--cpu-card));
+  color: var(--cpu-primary);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 750;
+}
+
+.mobile-item-author em.lost {
+  background: color-mix(in srgb, #f59e0b 12%, var(--cpu-card));
+  color: #b45309;
+}
+
+.mobile-item-content {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+  margin-top: 11px;
+}
+
+.mobile-item-content.has-cover {
+  grid-template-columns: minmax(0, 1fr) 82px;
+}
+
+.mobile-item-copy {
+  min-width: 0;
+}
+
+.mobile-item-copy h3 {
+  margin: 0;
+  color: var(--cpu-text);
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+.mobile-item-copy > p {
+  display: -webkit-box;
+  margin: 5px 0 0;
+  overflow: hidden;
+  color: var(--cpu-text-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.mobile-item-content > img {
+  width: 82px;
+  height: 82px;
+  border-radius: 9px;
+  background: var(--cpu-surface-subtle);
+  object-fit: cover;
+}
+
+.mobile-item-facts {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+  color: var(--cpu-text-muted);
+  font-size: 10px;
+}
+
+.mobile-item-facts span {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-item-card footer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--cpu-border-soft);
+  color: var(--cpu-text-muted);
+  font-size: 10px;
+}
+
+.mobile-item-card footer > .el-icon {
+  flex: 0 0 auto;
+}
+
+.mobile-pin,
+.mobile-status {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-weight: 700;
+}
+
+.mobile-pin {
+  background: color-mix(in srgb, #ef4444 10%, var(--cpu-card));
+  color: #dc2626;
+}
+
+.mobile-status {
+  background: color-mix(in srgb, var(--cpu-primary) 10%, var(--cpu-card));
+  color: var(--cpu-primary);
+}
+
+.mobile-status.claimed,
+.mobile-status.closed,
+.mobile-status.hidden {
+  background: var(--cpu-surface-soft);
+  color: var(--cpu-text-muted);
+}
+
+.mobile-item-stats {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-filter-form :deep(.el-select),
+.mobile-filter-form :deep(.el-date-editor) {
+  width: 100%;
+}
+
+.mobile-filter-actions {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 8px;
+}
+
+.mobile-filter-actions :deep(.el-button) {
+  width: 100%;
+  margin: 0;
+}
+
+@media (max-width: 768px) {
+  .lost-found-page {
+    max-width: 860px;
+    gap: 10px;
+  }
+
+  .mobile-lost-intro {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    padding: 13px;
+    border-radius: 13px;
+  }
+
+  .mobile-lost-heading h1 {
+    font-size: 22px;
+  }
+
+  .mobile-lost-search {
+    padding: 9px;
+    border-radius: 13px;
+  }
+
+  .mobile-lost-feed {
+    margin-inline: -4px;
+    padding: 10px 8px;
+    border-radius: 12px;
+  }
+}
 </style>

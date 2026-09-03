@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { anonymousTiersPatchSchema } from "../src/routes/admin/siteConfigValidation.js";
 import { buildAnonymousPolicyUpgrade } from "../src/services/siteSettings.js";
 import { computeAnonymousWeeklyQuota, computeUserReputationBreakdown, createAnonymousAlias, presentAnonymousAlias } from "../src/services/userTrust.js";
 
@@ -92,4 +93,17 @@ test("旧默认匿名策略升级到新的渐进式额度", () => {
     { reputation: 90, quota: 4 },
     { reputation: 120, quota: 5 },
   ]);
+});
+
+test("后台允许保存五档匿名额度规则", () => {
+  const fiveTiers = [
+    { reputation: 0, quota: 2 },
+    { reputation: 20, quota: 5 },
+    { reputation: 60, quota: 8 },
+    { reputation: 90, quota: 12 },
+    { reputation: 120, quota: 16 },
+  ];
+
+  assert.equal(anonymousTiersPatchSchema.safeParse(fiveTiers).success, true);
+  assert.equal(anonymousTiersPatchSchema.safeParse(fiveTiers.slice(1)).success, false);
 });

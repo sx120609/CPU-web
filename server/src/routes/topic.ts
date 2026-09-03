@@ -458,6 +458,7 @@ topicRouter.get("/:id", async (req, res, next) => {
         author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, bio: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true } },
         board: { select: { id: true, slug: true, name: true, type: true, readOnly: true, anonymousEnabled: true } },
         tags: { include: { tag: true } },
+        lostFoundItem: { select: { id: true, kind: true, status: true } },
       },
     });
     if (!topic) throw Errors.notFound();

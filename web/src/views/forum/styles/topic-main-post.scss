@@ -243,6 +243,68 @@
   .second-hand-facts dt { color: var(--cpu-text-muted); font-size: 11px; }
   .second-hand-facts dd { margin: 3px 0 0; color: var(--cpu-text); font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
 
+  .lost-found-topic-entry {
+    display: grid;
+    grid-template-columns: 38px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 11px;
+    margin-bottom: 16px;
+    padding: 11px 12px;
+    border: 1px solid color-mix(in srgb, var(--cpu-primary) 24%, var(--cpu-border-soft));
+    border-radius: 11px;
+    background: color-mix(in srgb, var(--cpu-primary) 6%, var(--cpu-card));
+  }
+
+  .lost-found-topic-icon {
+    display: grid;
+    width: 38px;
+    height: 38px;
+    place-items: center;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--cpu-primary) 13%, var(--cpu-card));
+    color: var(--cpu-primary);
+    font-size: 19px;
+  }
+
+  .lost-found-topic-copy {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .lost-found-topic-copy b {
+    color: var(--cpu-text);
+    font-size: 13px;
+  }
+
+  .lost-found-topic-copy span {
+    color: var(--cpu-text-secondary);
+    font-size: 11px;
+    line-height: 1.5;
+  }
+
+  .lost-found-topic-entry > button {
+    display: inline-flex;
+    min-height: 34px;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 7px 11px;
+    border: 0;
+    border-radius: 8px;
+    background: var(--cpu-primary);
+    color: #fff;
+    cursor: pointer;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .lost-found-topic-entry > button:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--cpu-primary) 45%, transparent);
+    outline-offset: 2px;
+  }
+
   .source-bar {
     background: linear-gradient(135deg, color-mix(in srgb, #f59e0b 14%, var(--cpu-card)) 0%, color-mix(in srgb, #f59e0b 22%, var(--cpu-card)) 100%);
     border-left: 4px solid #d97706;

@@ -184,6 +184,7 @@
     .source-bar,
     .extra-bar,
     .second-hand-summary,
+    .lost-found-topic-entry,
     .image-review-tip,
     .topic-review-tip,
     .topic-admin-review-tip,
@@ -229,6 +230,30 @@
 
     .second-hand-facts dt { font-size: 9px; }
     .second-hand-facts dd { margin: 0; font-size: 11px; font-weight: 500; }
+
+    .lost-found-topic-entry {
+      grid-template-columns: 34px minmax(0, 1fr);
+      gap: 8px 10px;
+      margin-bottom: 10px;
+      padding: 10px;
+      border-radius: 9px;
+    }
+
+    .lost-found-topic-icon {
+      width: 34px;
+      height: 34px;
+      border-radius: 9px;
+      font-size: 17px;
+    }
+
+    .lost-found-topic-copy b { font-size: 12px; }
+    .lost-found-topic-copy span { font-size: 10px; }
+
+    .lost-found-topic-entry > button {
+      grid-column: 1 / -1;
+      width: 100%;
+    }
+
     .post-body { min-height: 90px; padding: 4px 0 12px; font-size: 16px; line-height: 1.8; }
 
     .image-review-tip {

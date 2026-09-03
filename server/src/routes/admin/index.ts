@@ -8,6 +8,7 @@ import path from "node:path";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import type { Prisma } from "@prisma/client";
+import { anonymousTiersPatchSchema } from "./siteConfigValidation";
 import { prisma } from "../../prisma";
 import { Errors, ok } from "../../utils/response";
 import { adminOnly, modOrAbove, userDirectoryAccess } from "../../middleware/admin";
@@ -2514,10 +2515,7 @@ const siteConfigPatchSchema = z.object({
   replyPointsPerReply: z.number().int().min(0).max(999).optional(),
   replyPointsCap: z.number().int().min(0).max(9999).optional(),
   forumEnabledBonus: z.number().int().min(0).max(9999).optional(),
-  anonymousTiers: z.array(z.object({
-    reputation: z.number().int().min(0).max(9999),
-    quota: z.number().int().min(0).max(999),
-  })).length(4).optional(),
+  anonymousTiers: anonymousTiersPatchSchema.optional(),
   reputationLevels: z.array(z.object({
     level: z.number().int().min(1).max(5),
     name: z.string().trim().min(1).max(20),

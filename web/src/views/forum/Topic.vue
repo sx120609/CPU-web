@@ -199,6 +199,16 @@
           <div v-if="topic.metadata?.location"><dt>地点</dt><dd>{{ topic.metadata.location }}</dd></div>
         </dl>
       </section>
+      <section v-if="topic.lostFoundItem" class="lost-found-topic-entry">
+        <span class="lost-found-topic-icon" aria-hidden="true"><el-icon><Compass /></el-icon></span>
+        <div class="lost-found-topic-copy">
+          <b>{{ topic.lostFoundItem.kind === 'found' ? '这是一条招领信息' : '这是一条寻物信息' }}</b>
+          <span>前往对应失物招领详情，可提交认领说明、提供线索或私聊发布者。</span>
+        </div>
+        <button type="button" @click="openLinkedLostFoundItem">
+          {{ lostFoundActionLabel }} <el-icon><ArrowRight /></el-icon>
+        </button>
+      </section>
 
       <div v-if="topic.imageReview?.pendingCount" class="image-review-tip image-review-tip-pending">
         <div class="review-tip-message">
@@ -715,7 +725,7 @@
 import { ref, reactive, computed, nextTick, onBeforeUnmount, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { ArrowLeft, Star, ChatLineRound, Link, MoreFilled, Picture, VideoCamera } from "@element-plus/icons-vue";
+import { ArrowLeft, ArrowRight, ChatLineRound, Compass, Link, MoreFilled, Picture, Star, VideoCamera } from "@element-plus/icons-vue";
 import UserAvatar from "@/components/common/UserAvatar.vue";
 import UserModerationActions from "@/components/common/UserModerationActions.vue";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
@@ -861,6 +871,12 @@ const questionRewardPaid = computed(() => Boolean(
   && questionAcceptedReplyId.value > 0
   && Number(topic.value?.metadata?.awardedAiPoints || 0) === questionBountyPoints.value
 ));
+const lostFoundActionLabel = computed(() => {
+  if (!topic.value?.lostFoundItem) return "打开详情";
+  if (topic.value.authorId === auth.user?.id) return "管理这条信息";
+  if (topic.value.lostFoundItem.status !== "active") return "查看详情";
+  return topic.value.lostFoundItem.kind === "found" ? "填写认领信息" : "提供找到线索";
+});
 const topicModerationUser = computed(() => {
   if (topic.value?.realAuthor) return topic.value.realAuthor as any;
   if (topic.value?.author?.id) return topic.value.author as any;
@@ -1367,6 +1383,18 @@ function openPrivateChat(kind: "topic" | "reply", postId: number) {
   router.push({
     name: "messages",
     query: { tab: "private", forumKind: kind, forumId: String(postId) },
+  });
+}
+
+function openLinkedLostFoundItem() {
+  if (!topic.value?.lostFoundItem) return;
+  const shouldClaim = topic.value.lostFoundItem.status === "active" && topic.value.authorId !== auth.user?.id;
+  router.push({
+    name: "lost-found",
+    query: {
+      item: String(topic.value.lostFoundItem.id),
+      ...(shouldClaim ? { action: "claim" } : {}),
+    },
   });
 }
 

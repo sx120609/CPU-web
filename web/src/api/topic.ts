@@ -33,6 +33,7 @@ export interface Topic {
   previewReplies?: Reply[];
   realAuthor?: ForumAuthor & { reputation?: number; reputationLevel?: { level: number; name: string; minReputation: number } };
   board?: { id?: number; slug: string; name: string; color?: string; icon?: string; type?: string; readOnly?: boolean; anonymousEnabled?: boolean };
+  lostFoundItem?: { id: number; kind: "found" | "lost"; status: "reviewing" | "active" | "claimed" | "closed" | "hidden" } | null;
   imageReview?: {
     enabled: boolean;
     totalCount: number;
