@@ -15,6 +15,24 @@ export function scheduleWidgetCredentialRefreshData(jwxtToken: string) {
   };
 }
 
+export function parseScheduleWidgetCache(payload?: string | null) {
+  if (!payload) return null;
+  try {
+    const parsed = JSON.parse(payload);
+    if (!parsed || typeof parsed !== "object") return null;
+    if ((parsed as any).strictDate !== true) return null;
+    if ((parsed as any).payloadVersion !== SCHEDULE_WIDGET_PAYLOAD_VERSION) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export function scheduleWidgetImmediateCachedPayload(payload?: string | null, requestedWeek = "") {
+  if (String(requestedWeek || "").trim()) return null;
+  return parseScheduleWidgetCache(payload);
+}
+
 const SMALL_SLOTS = [
   { no: 1, start: "08:00", end: "08:45" },
   { no: 2, start: "08:55", end: "09:40" },

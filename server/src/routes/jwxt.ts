@@ -9,7 +9,7 @@ import { validate } from "../middleware/validate";
 import { authRequired } from "../middleware/auth";
 import { securityRateLimit } from "../middleware/securityRateLimit";
 import { prisma } from "../prisma";
-import { getCacheVersion, getCachedJson, setCachedJson, withCache } from "../services/cache";
+import { getCacheVersion, getCachedJson, runWithDistributedLock, setCachedJson, withCache } from "../services/cache";
 import { detectLoginClient } from "../utils/loginClient";
 import { invalidateJwxtWidgetCaches } from "../services/cacheInvalidation";
 import { buildRedisKey } from "../services/redis";
@@ -18,7 +18,9 @@ import {
   buildScheduleWidgetPayload,
   inferScheduleWidgetSemester,
   isScheduleWidgetCredentialActive,
+  parseScheduleWidgetCache,
   scheduleWidgetCredentialRefreshData,
+  scheduleWidgetImmediateCachedPayload,
   resolveScheduleWidgetCalendar,
   resolveScheduleWidgetPreviewWeeks,
   SCHEDULE_WIDGET_PAYLOAD_VERSION,
@@ -380,19 +382,6 @@ function absoluteWidgetEndpoint(req: any, token: string) {
   return `${base}/api/jwxt/schedule-widget?token=${encodeURIComponent(token)}`;
 }
 
-function parseWidgetCache(payload?: string | null) {
-  if (!payload) return null;
-  try {
-    const parsed = JSON.parse(payload);
-    if (!parsed || typeof parsed !== "object") return null;
-    if ((parsed as any).strictDate !== true) return null;
-    if ((parsed as any).payloadVersion !== SCHEDULE_WIDGET_PAYLOAD_VERSION) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-
 function normalizeKeyPart(value?: string) {
   return String(value ?? "").trim().replace(/\s+/g, " ");
 }
@@ -457,6 +446,82 @@ async function readScheduleEditsForWidget(userId: number, semester: string) {
   } catch {
     return emptyScheduleEdits();
   }
+}
+
+type ScheduleWidgetPayloadRow = {
+  id: number;
+  userId: number;
+  jwxtToken: string;
+};
+
+const scheduleWidgetBackgroundRefreshes = new Map<string, Promise<void>>();
+
+async function refreshScheduleWidgetPayload(
+  row: ScheduleWidgetPayloadRow,
+  requestedWeek: string,
+  widgetCacheKey: string,
+) {
+  const now = new Date();
+  const inferredSemester = inferScheduleWidgetSemester(now);
+  const [calendar, parsed] = await Promise.all([
+    getCalendar(row.jwxtToken).catch(() => null),
+    getSchedule(row.jwxtToken, { semester: inferredSemester, week: requestedWeek }),
+  ]);
+  const scheduleSemester = parsed.currentSemester || inferredSemester;
+  const widgetCalendar = resolveScheduleWidgetCalendar(calendar, parsed, now);
+  const previewWeeks = resolveScheduleWidgetPreviewWeeks(widgetCalendar, requestedWeek, now);
+  const [edits, previewEntries] = await Promise.all([
+    readScheduleEditsForWidget(row.userId, scheduleSemester || "current"),
+    Promise.all(previewWeeks.map(async (week) => [
+      week,
+      await getSchedule(row.jwxtToken, { semester: scheduleSemester, week: String(week) }),
+    ] as const)),
+  ]);
+  const applyEdits = (schedule: any) => ({
+    ...schedule,
+    cells: applyScheduleEditsToCells(schedule.cells ?? [], edits),
+  });
+  const schedulesByWeek = Object.fromEntries(
+    previewEntries.map(([week, schedule]) => [week, applyEdits(schedule)]),
+  );
+  const payload = buildScheduleWidgetPayload(
+    applyEdits(parsed),
+    widgetCalendar,
+    requestedWeek,
+    now,
+    schedulesByWeek,
+  );
+  await prisma.scheduleWidgetToken.updateMany({
+    where: { id: row.id, revokedAt: null, jwxtToken: row.jwxtToken },
+    data: {
+      lastUsedAt: new Date(),
+      expiresAt: null,
+      cachedPayload: JSON.stringify(payload),
+      cachedAt: new Date(),
+    },
+  });
+  await setCachedJson(widgetCacheKey, payload, 120_000);
+  return payload;
+}
+
+function refreshScheduleWidgetPayloadInBackground(
+  row: ScheduleWidgetPayloadRow,
+  requestedWeek: string,
+  widgetCacheKey: string,
+) {
+  if (scheduleWidgetBackgroundRefreshes.has(widgetCacheKey)) return;
+  const lockName = `schedule-widget-refresh:${crypto.createHash("sha256").update(widgetCacheKey).digest("hex")}`;
+  const refresh = runWithDistributedLock(lockName, 120_000, async () => {
+    await refreshScheduleWidgetPayload(row, requestedWeek, widgetCacheKey);
+  }).then(() => undefined);
+  scheduleWidgetBackgroundRefreshes.set(widgetCacheKey, refresh);
+  const cleanup = () => {
+    if (scheduleWidgetBackgroundRefreshes.get(widgetCacheKey) === refresh) {
+      scheduleWidgetBackgroundRefreshes.delete(widgetCacheKey);
+    }
+  };
+  void refresh.then(cleanup, cleanup);
+  void refresh.catch(() => undefined);
 }
 
 jwxtRouter.get("/schedule-widget-tokens", authRequired, async (req: any, res, next) => {
@@ -581,51 +646,28 @@ jwxtRouter.get("/schedule-widget", async (req, res, next) => {
       ok(res, sharedCachedPayload);
       return;
     }
-    try {
-      const now = new Date();
-      const inferredSemester = inferScheduleWidgetSemester(now);
-      const [calendar, parsed] = await Promise.all([
-        getCalendar(row.jwxtToken).catch(() => null),
-        getSchedule(row.jwxtToken, { semester: inferredSemester, week: requestedWeek }),
-      ]);
-      const scheduleSemester = parsed.currentSemester || inferredSemester;
-      const widgetCalendar = resolveScheduleWidgetCalendar(calendar, parsed, now);
-      const previewWeeks = resolveScheduleWidgetPreviewWeeks(widgetCalendar, requestedWeek, now);
-      const [edits, previewEntries] = await Promise.all([
-        readScheduleEditsForWidget(row.userId, scheduleSemester || "current"),
-        Promise.all(previewWeeks.map(async (week) => [
-          week,
-          await getSchedule(row.jwxtToken, { semester: scheduleSemester, week: String(week) }),
-        ] as const)),
-      ]);
-      const applyEdits = (schedule: any) => ({
-        ...schedule,
-        cells: applyScheduleEditsToCells(schedule.cells ?? [], edits),
-      });
-      const schedulesByWeek = Object.fromEntries(
-        previewEntries.map(([week, schedule]) => [week, applyEdits(schedule)]),
-      );
-      const payload = buildScheduleWidgetPayload(
-        applyEdits(parsed),
-        widgetCalendar,
-        requestedWeek,
-        now,
-        schedulesByWeek,
-      );
+    const immediateCachedPayload = scheduleWidgetImmediateCachedPayload(row.cachedPayload, requestedWeek);
+    if (immediateCachedPayload) {
       await prisma.scheduleWidgetToken.update({
         where: { id: row.id },
-        data: {
-          lastUsedAt: new Date(),
-          expiresAt: null,
-          cachedPayload: JSON.stringify(payload),
-          cachedAt: new Date(),
-        },
+        data: { lastUsedAt: new Date(), expiresAt: null },
+      }).catch(() => undefined);
+      refreshScheduleWidgetPayloadInBackground(row, requestedWeek, widgetCacheKey);
+      res.setHeader("Cache-Control", "private, no-store, max-age=0");
+      ok(res, {
+        ...immediateCachedPayload,
+        stale: true,
+        cachedAt: row.cachedAt?.toISOString() ?? immediateCachedPayload.generatedAt,
+        errorMessage: "已立即显示上次成功课表，服务端正在后台刷新。",
       });
-      await setCachedJson(widgetCacheKey, payload, 120_000);
+      return;
+    }
+    try {
+      const payload = await refreshScheduleWidgetPayload(row, requestedWeek, widgetCacheKey);
       res.setHeader("Cache-Control", "private, no-store, max-age=0");
       ok(res, payload);
     } catch (e: any) {
-      const cached = parseWidgetCache(row.cachedPayload);
+      const cached = parseScheduleWidgetCache(row.cachedPayload);
       if (!cached) throw e;
       await prisma.scheduleWidgetToken.update({
         where: { id: row.id },

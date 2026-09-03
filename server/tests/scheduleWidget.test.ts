@@ -4,10 +4,12 @@ import {
   buildScheduleWidgetPayload,
   inferScheduleWidgetSemester,
   isScheduleWidgetCredentialActive,
+  parseScheduleWidgetCache,
   parseScheduleWidgetWeeks,
   resolveScheduleWidgetCalendar,
   resolveScheduleWidgetPreviewWeeks,
   scheduleWidgetCredentialRefreshData,
+  scheduleWidgetImmediateCachedPayload,
   SCHEDULE_WIDGET_PAYLOAD_VERSION,
 } from "../src/services/scheduleWidget";
 
@@ -26,6 +28,30 @@ test("refreshing widget credentials preserves the last successful payload", () =
   });
   assert.equal("cachedPayload" in scheduleWidgetCredentialRefreshData("new-session-token"), false);
   assert.equal("cachedAt" in scheduleWidgetCredentialRefreshData("new-session-token"), false);
+});
+
+test("the current widget can return its persistent payload before a slow refresh", () => {
+  const cached = JSON.stringify({
+    payloadVersion: SCHEDULE_WIDGET_PAYLOAD_VERSION,
+    strictDate: true,
+    generatedAt: "2026-09-02T23:44:53.448Z",
+    days: [],
+  });
+
+  assert.deepEqual(scheduleWidgetImmediateCachedPayload(cached), JSON.parse(cached));
+  assert.equal(scheduleWidgetImmediateCachedPayload(cached, "2"), null);
+});
+
+test("the immediate widget fallback rejects malformed or incompatible payloads", () => {
+  assert.equal(parseScheduleWidgetCache("not-json"), null);
+  assert.equal(parseScheduleWidgetCache(JSON.stringify({
+    payloadVersion: SCHEDULE_WIDGET_PAYLOAD_VERSION - 1,
+    strictDate: true,
+  })), null);
+  assert.equal(parseScheduleWidgetCache(JSON.stringify({
+    payloadVersion: SCHEDULE_WIDGET_PAYLOAD_VERSION,
+    strictDate: false,
+  })), null);
 });
 
 function calendarFor(week: number, days: string[]) {
