@@ -34,7 +34,7 @@ struct WebViewContainer: UIViewRepresentable {
         // Vue Router uses same-document history entries. WebKit can navigate
         // those entries, but it does not consistently keep a usable visual
         // snapshot for the system gesture, so the previous page can be blank.
-        // The host view below owns an interactive edge gesture backed by the
+        // The host view below owns an interactive back gesture backed by the
         // snapshots captured after each settled route instead.
         webView.allowsBackForwardNavigationGestures = false
         webView.allowsLinkPreview = false
@@ -86,7 +86,7 @@ struct WebViewContainer: UIViewRepresentable {
         private var mainFrameLoadFailed = false
         private weak var hostView: WebViewHostView?
         private weak var webView: WKWebView?
-        private var edgePanGesture: UIScreenEdgePanGestureRecognizer?
+        private var historyPanGesture: UIPanGestureRecognizer?
         private var currentHistoryPosition: Int?
         private var interactiveBackSourcePosition: Int?
         private var interactiveBackFallback: DispatchWorkItem?
@@ -105,23 +105,37 @@ struct WebViewContainer: UIViewRepresentable {
             self.hostView = hostView
             self.webView = webView
 
-            let edgePanGesture = UIScreenEdgePanGestureRecognizer(
-                target: self,
-                action: #selector(handleEdgePan(_:))
-            )
-            edgePanGesture.edges = .left
-            edgePanGesture.delegate = self
-            hostView.addGestureRecognizer(edgePanGesture)
-            self.edgePanGesture = edgePanGesture
+            let historyPanGesture: UIPanGestureRecognizer
+            if #available(iOS 26.0, *) {
+                // iOS 26 navigation supports a leading-to-trailing pop gesture
+                // across the whole content area. SPA routes do not live in a
+                // UINavigationController stack, so mirror that interaction with
+                // the existing history snapshot transition.
+                historyPanGesture = UIPanGestureRecognizer(
+                    target: self,
+                    action: #selector(handleHistoryPan(_:))
+                )
+            } else {
+                let edgePanGesture = UIScreenEdgePanGestureRecognizer(
+                    target: self,
+                    action: #selector(handleHistoryPan(_:))
+                )
+                edgePanGesture.edges = .left
+                historyPanGesture = edgePanGesture
+            }
+            historyPanGesture.maximumNumberOfTouches = 1
+            historyPanGesture.delegate = self
+            hostView.addGestureRecognizer(historyPanGesture)
+            self.historyPanGesture = historyPanGesture
         }
 
         func detach() {
             interactiveBackFallback?.cancel()
             interactiveBackFallback = nil
-            if let edgePanGesture {
-                hostView?.removeGestureRecognizer(edgePanGesture)
+            if let historyPanGesture {
+                hostView?.removeGestureRecognizer(historyPanGesture)
             }
-            edgePanGesture = nil
+            historyPanGesture = nil
             hostView?.hideHistorySnapshot()
             hostView = nil
             webView = nil
@@ -282,7 +296,7 @@ struct WebViewContainer: UIViewRepresentable {
         }
 
         func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-            guard gestureRecognizer === edgePanGesture,
+            guard gestureRecognizer === historyPanGesture,
                   customHistoryGestureEnabled,
                   interactiveBackSourcePosition == nil,
                   let webView,
@@ -297,8 +311,20 @@ struct WebViewContainer: UIViewRepresentable {
             return velocity.x > 0 && abs(velocity.x) > abs(velocity.y)
         }
 
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+        ) -> Bool {
+            guard #available(iOS 26.0, *),
+                  gestureRecognizer === historyPanGesture || otherGestureRecognizer === historyPanGesture,
+                  let webScrollPanGesture = webView?.scrollView.panGestureRecognizer else {
+                return false
+            }
+            return gestureRecognizer === webScrollPanGesture || otherGestureRecognizer === webScrollPanGesture
+        }
+
         @objc
-        private func handleEdgePan(_ gesture: UIScreenEdgePanGestureRecognizer) {
+        private func handleHistoryPan(_ gesture: UIPanGestureRecognizer) {
             guard let hostView, let webView else { return }
             let width = max(hostView.bounds.width, 1)
             let translation = max(0, min(width, gesture.translation(in: hostView).x))

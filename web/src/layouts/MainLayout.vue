@@ -163,7 +163,9 @@
       }"
     >
       <router-view v-slot="{ Component }">
-        <component v-if="useInstantNativeRouteSwitch" :is="Component" />
+        <transition v-if="useIosRouteTransition" name="ios-route" :css="iosRouteTransitionEnabled">
+          <component :is="Component" />
+        </transition>
         <transition v-else name="fade" mode="out-in">
           <component :is="Component" />
         </transition>
@@ -397,7 +399,8 @@ import { useAuthStore } from "@/stores/auth";
 import { useMessageStore } from "@/stores/message";
 import { useSiteStore } from "@/stores/site";
 import { useAppearanceStore, type AppearanceMode } from "@/stores/appearance";
-import { isDesktopNativeApp, isFlutterNativeShell, isIosNativeApp } from "@/utils/clientInfo";
+import { iosRouteTransitionEnabled } from "@/router";
+import { isDesktopNativeApp, isFlutterNativeShell, isLikelyIosDevice } from "@/utils/clientInfo";
 
 const ShijianAssistant = defineAsyncComponent(() => import("@/views/search/Result.vue"));
 const DesktopToolsPanel = defineAsyncComponent(() => import("@/components/common/DesktopToolsPanel.vue"));
@@ -460,7 +463,7 @@ const hideChrome = computed(() => Boolean(route.meta?.hideChrome));
 const fullWidthContent = computed(() => Boolean(route.meta?.fullWidthContent));
 const fullHeightContent = computed(() => Boolean(route.meta?.fullHeightContent));
 const useNativeShell = computed(() => isFlutterNativeShell());
-const useInstantNativeRouteSwitch = isIosNativeApp();
+const useIosRouteTransition = isLikelyIosDevice();
 // 两个悬浮球共用同一套显示条件
 const showFloatingActions = computed(() => (
   !hideChrome.value
@@ -1377,6 +1380,7 @@ function setAppearanceMode(command: string | number | object) {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .ios-route-enter-active { transition: none; }
   .message-entry.has-direct :deep(.el-badge__content) { animation: none; }
 }
 
@@ -1754,6 +1758,14 @@ function setAppearanceMode(command: string | number | object) {
   color: var(--cpu-primary);
   background: rgba(20, 143, 123, 0.1);
 }
+
+.ios-route-enter-active {
+  transition: opacity 0.14s ease-out;
+  will-change: opacity;
+}
+.ios-route-enter-from { opacity: 0; }
+// iOS Safari 的旧页面必须立即退出，不能在滚动位置改变时继续参与淡出。
+.ios-route-leave-active { display: none; }
 
 .fade-enter-active, .fade-leave-active { transition: opacity 0.15s; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }

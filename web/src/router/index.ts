@@ -1,9 +1,11 @@
+import { ref } from "vue";
 import { createRouter, createWebHistory } from "vue-router";
 import type { NavigationGuard } from "vue-router";
 import { ElMessage } from "element-plus";
 import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
 import type { FeatureKey } from "@/api/site";
+import { isLikelyIosDevice } from "@/utils/clientInfo";
 import { preloadScheduleBackgroundAsset } from "@/utils/scheduleBackgroundStorage";
 
 const MainLayout = () => import("@/layouts/MainLayout.vue");
@@ -44,8 +46,18 @@ const CACHE_FIRST_EDUCATION_ROUTES = new Set(["jwxt", "schedule"]);
 // 避免旧页面在切换到二级路由前先闪现回到顶部。
 const ROUTE_LEAVE_SCROLL_DELAY_MS = 170;
 
-function usesInstantNativeRouteSwitch() {
-  return typeof navigator !== "undefined" && navigator.userAgent.toLowerCase().includes("cpuwebiosapp");
+function usesImmediateIosScroll() {
+  return typeof navigator !== "undefined" && isLikelyIosDevice();
+}
+
+// iOS 的浏览器/原生壳已经为历史遍历提供手势反馈。只在站内向前导航时
+// 播放网页入场动画，返回时让系统动画直接交接到最终页面。
+export const iosRouteTransitionEnabled = ref(true);
+let iosHistoryTraversalPending = false;
+if (typeof window !== "undefined" && usesImmediateIosScroll()) {
+  window.addEventListener("popstate", () => {
+    iosHistoryTraversalPending = true;
+  }, { capture: true });
 }
 
 /**
@@ -96,9 +108,9 @@ export const router = createRouter({
         : { top: 0 };
 
     // 首次加载没有正在淡出的旧页面，可以立即定位。
-    // iOS 原生壳不对路由组件执行 out-in 淡出，立即滚动可确保新页面
-    // 首帧就在正确位置，也不会牵动仍在离场的旧页面。
-    if (!from.name || usesInstantNativeRouteSwitch()) return position;
+    // iOS WebKit（Safari、主屏幕网页和原生壳）不对路由组件执行 out-in 淡出。
+    // 立即滚动可确保新页面首帧就在正确位置，也不会牵动仍在离场的旧页面。
+    if (!from.name || usesImmediateIosScroll()) return position;
 
     return new Promise((resolve) => {
       window.setTimeout(() => resolve(position), ROUTE_LEAVE_SCROLL_DELAY_MS);
@@ -178,6 +190,10 @@ export const router = createRouter({
 });
 
 router.beforeEach(async (to) => {
+  if (usesImmediateIosScroll()) {
+    iosRouteTransitionEnabled.value = !iosHistoryTraversalPending;
+    iosHistoryTraversalPending = false;
+  }
   const auth = useAuthStore();
   const site = useSiteStore();
   if (to.meta.title) document.title = `${to.meta.title} · 药大拾间`;
