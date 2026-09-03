@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  configureVenueReservationLink,
   detectVenueLaunchMode,
   isVenueIosDevice,
   VENUE_RESERVATION_URL,
@@ -67,4 +68,15 @@ test("桌面浏览器显示微信扫码入口", () => {
 test("预约地址和微信唤起协议保持固定", () => {
   assert.equal(VENUE_RESERVATION_URL, "https://cgtst.cpu.edu.cn/wap");
   assert.equal(WECHAT_LAUNCH_URL, "weixin://");
+});
+
+test("微信直达链接不发送来源页", () => {
+  const link = { href: "", target: "", rel: "", referrerPolicy: "" };
+  configureVenueReservationLink(link);
+  assert.deepEqual(link, {
+    href: VENUE_RESERVATION_URL,
+    target: "_self",
+    rel: "noreferrer",
+    referrerPolicy: "no-referrer",
+  });
 });

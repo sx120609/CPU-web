@@ -82,6 +82,7 @@ import { onMounted, ref } from "vue";
 import { getNativeBridge } from "@/utils/nativeBridge";
 import { copyText } from "@/utils/userGroup";
 import {
+  openVenueReservationWithoutReferrer,
   detectVenueLaunchMode,
   isVenueIosDevice,
   VENUE_RESERVATION_URL,
@@ -101,10 +102,7 @@ const qrLoading = ref(launchMode !== "wechat");
 const launchAttempted = ref(false);
 
 onMounted(async () => {
-  if (launchMode === "wechat") {
-    window.location.replace(venueUrl);
-    return;
-  }
+  if (launchMode === "wechat") return;
 
   try {
     qrImage.value = await QRCode.toDataURL(venueUrl, {
@@ -120,7 +118,7 @@ onMounted(async () => {
 });
 
 function openVenue() {
-  window.location.assign(venueUrl);
+  openVenueReservationWithoutReferrer();
 }
 
 async function copyVenueLink() {

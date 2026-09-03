@@ -68,6 +68,7 @@ import { useRouter } from "vue-router";
 import { getToken } from "@/api/request";
 import { toolsApi, type ServiceToolCode, type ToolMeta } from "@/api/tools";
 import { serviceTools, toolHubIntro, type ServiceTool } from "@/data/serviceTools";
+import { detectVenueLaunchMode, openVenueReservationWithoutReferrer } from "@/utils/venueReservation";
 
 const router = useRouter();
 const manageable = ref<ServiceToolCode[]>([]);
@@ -101,6 +102,14 @@ function isLoginRequired(slug: string) {
 }
 
 function openTool(tool: ServiceTool) {
+  if (tool.slug === "venue_reservation" && detectVenueLaunchMode({
+    userAgent: navigator.userAgent,
+    maxTouchPoints: navigator.maxTouchPoints,
+    viewportWidth: window.innerWidth,
+  }) === "wechat") {
+    openVenueReservationWithoutReferrer();
+    return;
+  }
   router.push(tool.routeName === "service-tool-detail"
     ? { name: tool.routeName, params: { slug: tool.slug } }
     : { name: tool.routeName });

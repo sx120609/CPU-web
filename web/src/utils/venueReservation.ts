@@ -9,6 +9,8 @@ export type VenueLaunchEnvironment = {
   viewportWidth?: number;
 };
 
+type VenueReservationLink = Pick<HTMLAnchorElement, "href" | "target" | "rel" | "referrerPolicy">;
+
 export function isVenueIosDevice(environment: VenueLaunchEnvironment) {
   const userAgent = String(environment.userAgent || "");
   return /iPhone|iPad|iPod/iu.test(userAgent)
@@ -26,4 +28,20 @@ export function detectVenueLaunchMode(environment: VenueLaunchEnvironment): Venu
     && Number(environment.viewportWidth) <= 900;
 
   return mobileUserAgent || touchMac || compactTouchDevice ? "mobile" : "desktop";
+}
+
+export function configureVenueReservationLink<T extends VenueReservationLink>(link: T): T {
+  link.href = VENUE_RESERVATION_URL;
+  link.target = "_self";
+  link.rel = "noreferrer";
+  link.referrerPolicy = "no-referrer";
+  return link;
+}
+
+export function openVenueReservationWithoutReferrer() {
+  const link = configureVenueReservationLink(document.createElement("a"));
+  link.style.display = "none";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
 }

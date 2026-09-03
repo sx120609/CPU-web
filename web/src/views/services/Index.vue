@@ -134,6 +134,7 @@ import IServicePane from "@/components/jwxt/IServicePane.vue";
 import DormElectricDialog from "@/components/services/DormElectricDialog.vue";
 import AppIcon from "@/components/common/AppIcon.vue";
 import { serviceTools, type ServiceTool } from "@/data/serviceTools";
+import { detectVenueLaunchMode, openVenueReservationWithoutReferrer } from "@/utils/venueReservation";
 import { toolsApi, type ToolMeta } from "@/api/tools";
 
 const jwxt = useJwxtStore();
@@ -220,6 +221,14 @@ function isLoginRequired(slug: string) {
 }
 
 function openTool(tool: ServiceTool) {
+  if (tool.slug === "venue_reservation" && detectVenueLaunchMode({
+    userAgent: navigator.userAgent,
+    maxTouchPoints: navigator.maxTouchPoints,
+    viewportWidth: window.innerWidth,
+  }) === "wechat") {
+    openVenueReservationWithoutReferrer();
+    return;
+  }
   router.push(tool.routeName === "service-tool-detail"
     ? { name: tool.routeName, params: { slug: tool.slug } }
     : { name: tool.routeName });
