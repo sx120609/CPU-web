@@ -12,40 +12,44 @@ import {
   YAODA_FLIGHT_START_LIMIT_PER_10_MIN,
 } from "../src/services/yaodaFlightPolicy";
 import {
-  flightDifficulty,
-  flightPipeGeometry,
-  flightSpeed,
+  NJU_FLIGHT_PHYSICS,
+  njuCircleIntersectsRect,
+  njuFlightPipeGeometry,
 } from "../../web/src/views/services/yaodaFlightDifficulty";
 
-test("药大人能飞采用缓和后的递进难度曲线", () => {
-  assert.deepEqual(flightDifficulty(0), { speed: 116, gapSize: 210, spacing: 242, gravity: 930 });
-  assert.deepEqual(flightDifficulty(6), { speed: 138, gapSize: 182, spacing: 216, gravity: 1035 });
-  assert.deepEqual(flightDifficulty(7), { speed: 150, gapSize: 168, spacing: 210, gravity: 1060 });
-  assert.deepEqual(flightDifficulty(15), { speed: 164, gapSize: 154, spacing: 198, gravity: 1120 });
-
-  const stages = Array.from({ length: 31 }, (_, score) => flightDifficulty(score));
-  for (let index = 1; index < stages.length; index += 1) {
-    assert.ok(stages[index].speed >= stages[index - 1].speed);
-    assert.ok(stages[index].gapSize <= stages[index - 1].gapSize);
-    assert.ok(stages[index].spacing <= stages[index - 1].spacing);
-    assert.ok(stages[index].gravity >= stages[index - 1].gravity);
-  }
+test("药大人能飞对齐南大人能飞原站物理常量", () => {
+  assert.deepEqual(NJU_FLIGHT_PHYSICS, {
+    worldWidth: 420,
+    worldHeight: 680,
+    groundY: 610,
+    playerX: 90,
+    playerRadius: 24,
+    gravity: 980,
+    flapImpulse: -370,
+    pipeSpeed: 180,
+    pipeSpawnX: 430,
+    pipeSpawnIntervalSeconds: 1.7,
+    pipeWidth: 68,
+    pipeGapMin: 150,
+    pipeGapRange: 30,
+    pipeVerticalPadding: 60,
+    scoreLineX: 66,
+  });
+  const firstScoreSeconds = NJU_FLIGHT_PHYSICS.pipeSpawnIntervalSeconds
+    + (NJU_FLIGHT_PHYSICS.pipeSpawnX + NJU_FLIGHT_PHYSICS.pipeWidth - NJU_FLIGHT_PHYSICS.scoreLineX)
+      / NJU_FLIGHT_PHYSICS.pipeSpeed;
+  assert.equal(firstScoreSeconds, 4.1);
 });
 
-test("飞行速度平滑波动且不会回到旧版极限速度", () => {
-  const speeds = Array.from({ length: 241 }, (_, index) => flightSpeed(30, index / 10));
-  assert.ok(new Set(speeds.map((speed) => speed.toFixed(2))).size > 100);
-  assert.ok(Math.max(...speeds) < 172);
-  assert.ok(Math.min(...speeds) > 158);
+test("南大原站规则生成 150 至 180 的随机开口", () => {
+  assert.deepEqual(njuFlightPipeGeometry(0, 0), { gapY: 135, gapSize: 150 });
+  assert.deepEqual(njuFlightPipeGeometry(1, 1), { gapY: 460, gapSize: 180 });
+  assert.deepEqual(njuFlightPipeGeometry(-1, 2), { gapY: 475, gapSize: 150 });
 });
 
-test("每根管道的开口和间距会变化且保留安全下限", () => {
-  const geometries = Array.from({ length: 32 }, (_, index) => flightPipeGeometry(30, index));
-  assert.ok(new Set(geometries.map((item) => item.gapSize)).size > 3);
-  assert.ok(new Set(geometries.map((item) => item.spacing)).size > 3);
-  assert.ok(geometries.every((item) => item.gapSize >= 150));
-  assert.ok(geometries.every((item) => item.spacing >= 194));
-  assert.ok(geometries.every((item) => item.gapSize > 150 || item.spacing >= 204));
+test("管道碰撞使用南大原站的圆形判据", () => {
+  assert.equal(njuCircleIntersectsRect(90, 100, 24, 108, 0, 68, 90), true);
+  assert.equal(njuCircleIntersectsRect(90, 100, 24, 109, 0, 68, 90), false);
 });
 
 test("药大人能飞的最低用时随分数递增", () => {

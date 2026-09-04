@@ -171,11 +171,15 @@ import {
 } from "@/api/yaodaFlight";
 import UserAvatar from "@/components/common/UserAvatar.vue";
 import cpuEmblem from "@/assets/yaoda-can-fly/cpu-emblem.png";
-import { flightDifficulty, flightPipeGeometry, flightSpeed } from "./yaodaFlightDifficulty";
+import {
+  NJU_FLIGHT_PHYSICS,
+  njuCircleIntersectsRect,
+  njuFlightPipeGeometry,
+} from "./yaodaFlightDifficulty";
 
 type Screen = "menu" | "game" | "ranking" | "achievements" | "history" | "settings";
 type GamePhase = "ready" | "playing" | "paused" | "over";
-type Pipe = { x: number; gapY: number; gapSize: number; spacingAfter: number; passed: boolean };
+type Pipe = { x: number; gapY: number; gapSize: number; passed: boolean };
 type HistoryItem = { score: number; playedAt: string };
 
 const router = useRouter();
@@ -200,19 +204,21 @@ const cloudSubmitState = ref<"idle" | "syncing" | "success" | "error" | "guest">
 const cloudSubmitDetail = ref("");
 const recoveryNotice = ref("");
 
-const WORLD_WIDTH = 390;
-const GROUND_HEIGHT = 70;
-const PLAYER_X = 92;
-const PLAYER_RADIUS = 18;
-const PIPE_WIDTH = 64;
+const WORLD_WIDTH = NJU_FLIGHT_PHYSICS.worldWidth;
+const WORLD_HEIGHT = NJU_FLIGHT_PHYSICS.worldHeight;
+const GROUND_HEIGHT = WORLD_HEIGHT - NJU_FLIGHT_PHYSICS.groundY;
+const PLAYER_X = NJU_FLIGHT_PHYSICS.playerX;
+const PLAYER_RADIUS = NJU_FLIGHT_PHYSICS.playerRadius;
+const PIPE_WIDTH = NJU_FLIGHT_PHYSICS.pipeWidth;
 const STORAGE_PREFIX = "cpu-web:yaoda-can-fly:v2";
 const GAME_RELEASE = "20260904-v3" as const;
 
-let worldHeight = 720;
-let playerY = 320;
+const worldHeight = WORLD_HEIGHT;
+let playerY = 300;
 let velocityY = 0;
 let pipes: Pipe[] = [];
 let elapsed = 0;
+let timeSinceLastPipe = 0;
 let lastFrameAt = 0;
 let animationFrame = 0;
 let resizeObserver: ResizeObserver | null = null;
@@ -221,7 +227,6 @@ let audioContext: AudioContext | null = null;
 let cloudAttemptPromise: Promise<number | null> = Promise.resolve(null);
 let cloudSettlementPromise: Promise<void> = Promise.resolve();
 let gameGeneration = 0;
-let nextPipeIndex = 0;
 const emblemImage = new Image();
 
 const isLoggedIn = computed(() => Boolean(getToken()));
@@ -285,11 +290,11 @@ function startGame() {
   newlyUnlocked.value = [];
   cloudSubmitState.value = isLoggedIn.value ? "idle" : "guest";
   cloudSubmitDetail.value = "";
-  playerY = worldHeight * 0.47;
+  playerY = 300;
   velocityY = 0;
   pipes = [];
-  nextPipeIndex = 0;
   elapsed = 0;
+  timeSinceLastPipe = 0;
   nextTick(() => {
     resizeCanvas();
     drawScene();
@@ -302,13 +307,10 @@ function beginFlight() {
   gameGeneration += 1;
   const generation = gameGeneration;
   gamePhase.value = "playing";
-  velocityY = -335;
+  velocityY = NJU_FLIGHT_PHYSICS.flapImpulse;
   elapsed = 0;
-  const firstPipe = createPipe(WORLD_WIDTH + 80, nextPipeIndex, 0);
-  nextPipeIndex += 1;
-  const secondPipe = createPipe(firstPipe.x + firstPipe.spacingAfter, nextPipeIndex, 1);
-  nextPipeIndex += 1;
-  pipes = [firstPipe, secondPipe];
+  timeSinceLastPipe = 0;
+  pipes = [];
   cloudAttemptPromise = cloudSettlementPromise.then(() => beginCloudAttempt(generation));
   lastFrameAt = performance.now();
   ensureAudio();
@@ -341,7 +343,7 @@ function togglePause() {
 
 function flap() {
   if (gamePhase.value !== "playing") return;
-  velocityY = -345;
+  velocityY = NJU_FLIGHT_PHYSICS.flapImpulse;
   playTone(680, 0.04, 0.025);
 }
 
@@ -379,7 +381,7 @@ function handleVisibilityChange() {
 
 function gameLoop(now: number) {
   if (gamePhase.value !== "playing") return;
-  const delta = Math.min((now - lastFrameAt) / 1000, 0.034);
+  const delta = Math.min((now - lastFrameAt) / 1000, 0.05);
   lastFrameAt = now;
   updateGame(delta);
   drawScene();
@@ -388,42 +390,59 @@ function gameLoop(now: number) {
 
 function updateGame(delta: number) {
   elapsed += delta;
-  const difficulty = flightDifficulty(score.value);
-  const movementSpeed = flightSpeed(score.value, elapsed);
-  velocityY += difficulty.gravity * delta;
+  velocityY += NJU_FLIGHT_PHYSICS.gravity * delta;
   playerY += velocityY * delta;
 
-  for (const pipe of pipes) {
-    pipe.x -= movementSpeed * delta;
-    if (!pipe.passed && pipe.x + PIPE_WIDTH < PLAYER_X) {
-      pipe.passed = true;
-      score.value += 1;
-      playTone(890, 0.07, 0.04);
-    }
+  if (playerY - PLAYER_RADIUS <= 0) {
+    playerY = PLAYER_RADIUS;
+    velocityY = 0;
   }
-
-  const lastPipe = pipes[pipes.length - 1];
-  if (lastPipe && lastPipe.x < WORLD_WIDTH - lastPipe.spacingAfter) {
-    const anticipatedScore = score.value + pipes.filter((pipe) => !pipe.passed).length;
-    pipes.push(createPipe(lastPipe.x + lastPipe.spacingAfter, nextPipeIndex, anticipatedScore));
-    nextPipeIndex += 1;
-  }
-  pipes = pipes.filter((pipe) => pipe.x > -PIPE_WIDTH - 16);
-
-  if (playerY - PLAYER_RADIUS <= 0 || playerY + PLAYER_RADIUS >= worldHeight - GROUND_HEIGHT) {
+  if (playerY + PLAYER_RADIUS >= NJU_FLIGHT_PHYSICS.groundY) {
+    playerY = NJU_FLIGHT_PHYSICS.groundY - PLAYER_RADIUS;
+    velocityY = 0;
     finishGame();
     return;
   }
 
+  timeSinceLastPipe += delta;
+  if (timeSinceLastPipe >= NJU_FLIGHT_PHYSICS.pipeSpawnIntervalSeconds) {
+    pipes.push(createPipe());
+    timeSinceLastPipe = 0;
+  }
+
   for (const pipe of pipes) {
-    const overlapsX = PLAYER_X + PLAYER_RADIUS - 3 > pipe.x && PLAYER_X - PLAYER_RADIUS + 3 < pipe.x + PIPE_WIDTH;
-    const overlapsY = playerY - PLAYER_RADIUS + 3 < pipe.gapY - pipe.gapSize / 2
-      || playerY + PLAYER_RADIUS - 3 > pipe.gapY + pipe.gapSize / 2;
-    if (overlapsX && overlapsY) {
+    pipe.x -= NJU_FLIGHT_PHYSICS.pipeSpeed * delta;
+    if (!pipe.passed && pipe.x + PIPE_WIDTH < NJU_FLIGHT_PHYSICS.scoreLineX) {
+      pipe.passed = true;
+      score.value += 1;
+      playTone(890, 0.07, 0.04);
+    }
+    const topHeight = pipe.gapY - pipe.gapSize / 2;
+    const bottomY = pipe.gapY + pipe.gapSize / 2;
+    const hitTop = njuCircleIntersectsRect(
+      PLAYER_X,
+      playerY,
+      PLAYER_RADIUS,
+      pipe.x,
+      0,
+      PIPE_WIDTH,
+      topHeight,
+    );
+    const hitBottom = njuCircleIntersectsRect(
+      PLAYER_X,
+      playerY,
+      PLAYER_RADIUS,
+      pipe.x,
+      bottomY,
+      PIPE_WIDTH,
+      NJU_FLIGHT_PHYSICS.groundY - bottomY,
+    );
+    if (hitTop || hitBottom) {
       finishGame();
       return;
     }
   }
+  pipes = pipes.filter((pipe) => pipe.x + PIPE_WIDTH >= -50);
 }
 
 function finishGame() {
@@ -445,16 +464,12 @@ function finishGame() {
   window.setTimeout(() => playTone(130, 0.2, 0.045), 110);
 }
 
-function createPipe(x: number, seed: number, anticipatedScore: number): Pipe {
-  const geometry = flightPipeGeometry(anticipatedScore, seed);
-  const min = 160;
-  const max = worldHeight - GROUND_HEIGHT - 170;
-  const wave = (Math.sin(seed * 2.17 + performance.now() / 1900) + 1) / 2;
+function createPipe(): Pipe {
+  const geometry = njuFlightPipeGeometry(Math.random(), Math.random());
   return {
-    x,
-    gapY: min + wave * (max - min),
+    x: NJU_FLIGHT_PHYSICS.pipeSpawnX,
+    gapY: geometry.gapY,
     gapSize: geometry.gapSize,
-    spacingAfter: geometry.spacing,
     passed: false,
   };
 }
@@ -462,15 +477,12 @@ function createPipe(x: number, seed: number, anticipatedScore: number): Pipe {
 function resizeCanvas() {
   const canvas = canvasEl.value;
   if (!canvas) return;
-  const width = Math.max(1, canvas.clientWidth);
-  const height = Math.max(1, canvas.clientHeight);
-  worldHeight = WORLD_WIDTH * (height / width);
   const ratio = Math.min(window.devicePixelRatio || 1, 2);
   canvas.width = Math.round(WORLD_WIDTH * ratio);
-  canvas.height = Math.round(worldHeight * ratio);
+  canvas.height = Math.round(WORLD_HEIGHT * ratio);
   canvasContext = canvas.getContext("2d");
   canvasContext?.setTransform(ratio, 0, 0, ratio, 0, 0);
-  if (screen.value === "game" && gamePhase.value === "ready") playerY = worldHeight * 0.47;
+  if (screen.value === "game" && gamePhase.value === "ready") playerY = 300;
   drawScene();
 }
 
