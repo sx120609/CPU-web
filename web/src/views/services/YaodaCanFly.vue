@@ -140,7 +140,7 @@
           <div v-else class="empty-panel">暂无历史战绩，快去飞一次吧！</div>
         </div>
 
-        <div v-else class="panel-scroll settings-panel">
+        <div v-else class="panel-scroll flight-settings-panel">
           <img :src="cpuEmblem" alt="中国药科大学校标" />
           <div class="setting-row">
             <span><b>游戏音效</b><small>起飞、得分与碰撞提示音</small></span>
@@ -415,13 +415,35 @@ function updateGame(delta: number) {
 }
 
 function flightDifficulty(currentScore: number) {
-  const progress = Math.min(Math.max(currentScore, 0), 25) / 25;
-  return {
-    speed: 108 + 54 * progress,
-    gapSize: 220 - 64 * progress,
-    spacing: 248 - 38 * progress,
-    gravity: 900 + 120 * progress,
-  };
+  const stageScore = Math.max(0, currentScore);
+  if (stageScore <= 2) {
+    const progress = stageScore / 2;
+    return {
+      speed: 118 + 8 * progress,
+      gapSize: 206 - 12 * progress,
+      spacing: 238 - 10 * progress,
+      gravity: 950 + 40 * progress,
+    };
+  }
+  if (stageScore <= 6) {
+    const progress = (stageScore - 3) / 3;
+    return {
+      speed: 132 + 12 * progress,
+      gapSize: 186 - 12 * progress,
+      spacing: 220 - 10 * progress,
+      gravity: 1020 + 40 * progress,
+    };
+  }
+  if (stageScore <= 14) {
+    const progress = (stageScore - 7) / 7;
+    return {
+      speed: 162 + 10 * progress,
+      gapSize: 150 - 8 * progress,
+      spacing: 198 - 8 * progress,
+      gravity: 1120 + 30 * progress,
+    };
+  }
+  return { speed: 180, gapSize: 134, spacing: 184, gravity: 1180 };
 }
 
 function finishGame() {
@@ -1214,8 +1236,18 @@ function writeStorage(key: string, value: string) {
 .history-list li > small { color: #6c7779; font-size: 9px; }
 .history-list li > em { color: var(--school-blue); font-size: 9px; font-style: normal; font-weight: 850; }
 
-.settings-panel { display: flex; flex-direction: column; gap: 12px; }
-.settings-panel > img { width: 116px; height: 116px; align-self: center; margin: 8px 0 4px; object-fit: contain; }
+.flight-settings-panel { display: flex; flex-direction: column; gap: 12px; }
+.flight-settings-panel > img {
+  width: 116px;
+  height: 116px;
+  align-self: center;
+  margin: 8px 0 4px;
+  padding: 7px;
+  border: 2px solid rgba(18, 63, 145, .24);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .76);
+  object-fit: contain;
+}
 
 .setting-row {
   min-height: 66px;
@@ -1248,7 +1280,7 @@ function writeStorage(key: string, value: string) {
 
 .setting-row button.active { background: var(--blue); }
 .cloud-online { color: #167242; }
-.settings-panel > p { margin: 0; color: #536467; font-size: 10px; line-height: 1.7; text-align: center; }
+.flight-settings-panel > p { margin: 0; color: #536467; font-size: 10px; line-height: 1.7; text-align: center; }
 
 @media (max-width: 600px) {
   .flight-shell { place-items: stretch; background: #160812; }
