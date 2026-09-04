@@ -68,6 +68,14 @@ test("云端开局接口不再按游玩次数限频", () => {
   assert.doesNotMatch(startRoute, /recentCount|十分钟内开局次数|START_LIMIT/u);
 });
 
+test("历史补传事务锁使用 PostgreSQL 双 int 参数", () => {
+  const routeSource = readFileSync(new URL("../src/routes/yaodaFlight.ts", import.meta.url), "utf8");
+  assert.match(
+    routeSource,
+    /pg_advisory_xact_lock\(\$\{20260904\}::int, \$\{userId\}::int\)/u,
+  );
+});
+
 test("正常飞行成绩通过服务端校验", () => {
   assert.equal(validateYaodaFlightResult({ score: 12, durationMs: 18_000, serverElapsedMs: 19_200 }), null);
   assert.equal(validateYaodaFlightResult({ score: 0, durationMs: 430, serverElapsedMs: 650 }), null);

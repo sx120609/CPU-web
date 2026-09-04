@@ -177,7 +177,7 @@ yaodaFlightRouter.post("/recover-history", authRequired, validate(recoverHistory
     })).values()].sort((left, right) => left.playedAt.getTime() - right.playedAt.getTime());
 
     const recovered = await prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(${20260904}, ${userId})`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${20260904}::int, ${userId}::int)`;
       const attempts = await tx.yaodaFlightAttempt.findMany({
         where: {
           userId,
