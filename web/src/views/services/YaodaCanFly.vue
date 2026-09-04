@@ -171,6 +171,7 @@ import {
 } from "@/api/yaodaFlight";
 import UserAvatar from "@/components/common/UserAvatar.vue";
 import cpuEmblem from "@/assets/yaoda-can-fly/cpu-emblem.png";
+import { flightDifficulty } from "./yaodaFlightDifficulty";
 
 type Screen = "menu" | "game" | "ranking" | "achievements" | "history" | "settings";
 type GamePhase = "ready" | "playing" | "paused" | "over";
@@ -418,38 +419,6 @@ function updateGame(delta: number) {
       return;
     }
   }
-}
-
-function flightDifficulty(currentScore: number) {
-  const stageScore = Math.max(0, currentScore);
-  if (stageScore <= 2) {
-    const progress = stageScore / 2;
-    return {
-      speed: 118 + 8 * progress,
-      gapSize: 206 - 12 * progress,
-      spacing: 238 - 10 * progress,
-      gravity: 950 + 40 * progress,
-    };
-  }
-  if (stageScore <= 6) {
-    const progress = (stageScore - 3) / 3;
-    return {
-      speed: 132 + 12 * progress,
-      gapSize: 186 - 12 * progress,
-      spacing: 220 - 10 * progress,
-      gravity: 1020 + 40 * progress,
-    };
-  }
-  if (stageScore <= 14) {
-    const progress = (stageScore - 7) / 7;
-    return {
-      speed: 162 + 10 * progress,
-      gapSize: 150 - 8 * progress,
-      spacing: 198 - 8 * progress,
-      gravity: 1120 + 30 * progress,
-    };
-  }
-  return { speed: 180, gapSize: 134, spacing: 184, gravity: 1180 };
 }
 
 function finishGame() {

@@ -11,6 +11,22 @@ import {
   YAODA_FLIGHT_RECOVERY_STARTED_AT_MS,
   YAODA_FLIGHT_START_LIMIT_PER_10_MIN,
 } from "../src/services/yaodaFlightPolicy";
+import { flightDifficulty } from "../../web/src/views/services/yaodaFlightDifficulty";
+
+test("药大人能飞采用缓和后的递进难度曲线", () => {
+  assert.deepEqual(flightDifficulty(0), { speed: 116, gapSize: 210, spacing: 242, gravity: 930 });
+  assert.deepEqual(flightDifficulty(6), { speed: 138, gapSize: 182, spacing: 216, gravity: 1035 });
+  assert.deepEqual(flightDifficulty(7), { speed: 152, gapSize: 164, spacing: 207, gravity: 1070 });
+  assert.deepEqual(flightDifficulty(15), { speed: 172, gapSize: 146, spacing: 190, gravity: 1140 });
+
+  const stages = Array.from({ length: 31 }, (_, score) => flightDifficulty(score));
+  for (let index = 1; index < stages.length; index += 1) {
+    assert.ok(stages[index].speed >= stages[index - 1].speed);
+    assert.ok(stages[index].gapSize <= stages[index - 1].gapSize);
+    assert.ok(stages[index].spacing <= stages[index - 1].spacing);
+    assert.ok(stages[index].gravity >= stages[index - 1].gravity);
+  }
+});
 
 test("药大人能飞的最低用时随分数递增", () => {
   assert.equal(minimumDurationForFlightScore(0), 0);
