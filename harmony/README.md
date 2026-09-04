@@ -19,7 +19,7 @@
 
 - 应用名：药大拾间
 - 包名：`cn.lizmt.cpuweb`
-- 版本：`2.0.8 (17)`
+- 版本：`2.0.9 (18)`
 - 默认入口：`https://cputime.cn/schedule`
 
 ## 构建

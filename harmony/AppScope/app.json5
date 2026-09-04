@@ -2,8 +2,8 @@
   "app": {
     "bundleName": "cn.lizmt.cpuweb",
     "vendor": "lizmt",
-    "versionCode": 17,
-    "versionName": "2.0.8",
+    "versionCode": 18,
+    "versionName": "2.0.9",
     "icon": "$media:app_icon_layered",
     "label": "$string:app_name"
   }

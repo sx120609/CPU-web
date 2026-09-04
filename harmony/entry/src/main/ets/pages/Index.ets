@@ -154,6 +154,26 @@ struct Index {
     }
   }
 
+  private applyHarmonyUxPolicy(): void {
+    const script = `
+      (() => {
+        document.documentElement.dataset.cpuPlatform = 'harmony';
+        const styleId = 'cpu-harmony-route-transition';
+        let style = document.getElementById(styleId);
+        if (!style) {
+          style = document.createElement('style');
+          style.id = styleId;
+          document.head.appendChild(style);
+        }
+        style.textContent = [
+          '.fade-enter-active, .fade-leave-active { transition-duration: 300ms !important; }',
+          '@media (prefers-reduced-motion: reduce) { .fade-enter-active, .fade-leave-active { transition: none !important; } }'
+        ].join('\\n');
+      })();
+    `;
+    void this.controller.runJavaScript(script).catch(() => undefined);
+  }
+
   build() {
     Stack() {
       Web({
@@ -193,6 +213,7 @@ struct Index {
         })
         .onPageEnd(() => {
           this.loading = false;
+          this.applyHarmonyUxPolicy();
         })
         .onErrorReceive((event) => {
           if (!event.request.isMainFrame()) return;
