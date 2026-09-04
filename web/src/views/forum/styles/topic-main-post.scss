@@ -136,6 +136,7 @@
       cursor: pointer;
     }
     .post-private-chat-button:hover { text-decoration: underline; }
+    .post-remark-button { color: var(--cpu-text-secondary); }
     .real-author-line {
       font-size: 12px;
       color: color-mix(in srgb, var(--cpu-gold) 78%, var(--cpu-text));

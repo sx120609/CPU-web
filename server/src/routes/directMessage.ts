@@ -47,6 +47,18 @@ const sendSchema = z.object({
   content: z.string().trim().min(1, "消息不能为空").max(2000, "单条消息不能超过 2000 字"),
 });
 
+const remarkSchema = z.object({
+  remark: z.string()
+    .trim()
+    .max(24, "备注最多 24 个字")
+    .refine((value) => !/[\r\n]/u.test(value), "备注不能换行")
+    .nullable(),
+});
+
+const remarkListQuerySchema = z.object({
+  userIds: z.string().trim().max(1200).optional().default(""),
+});
+
 const pageQuerySchema = z.object({
   before: z.coerce.number().int().positive().optional(),
   limit: z.coerce.number().int().min(1).max(100).optional().default(50),
@@ -108,7 +120,9 @@ function serializeConversation(
   viewerId: number,
   initiatorMessageCount: number,
   unreadCount = 0,
+  counterpartRemark: string | null = null,
 ) {
+  const counterpart = directCounterpart(conversation, viewerId);
   return {
     id: conversation.id,
     initiatedById: presentDirectParticipantId(conversation, viewerId, conversation.initiatedById),
@@ -116,7 +130,8 @@ function serializeConversation(
     lastMessageAt: conversation.lastMessageAt,
     createdAt: conversation.createdAt,
     updatedAt: conversation.updatedAt,
-    counterpart: directCounterpart(conversation, viewerId),
+    counterpart,
+    counterpartRemark: counterpart.anonymous ? null : counterpartRemark,
     unreadCount,
     sendState: resolveDirectMessageSendState({
       viewerIsInitiator: conversation.initiatedById === viewerId,
@@ -124,6 +139,16 @@ function serializeConversation(
       initiatorMessageCount,
     }),
   };
+}
+
+async function loadDirectMessageRemarks(ownerId: number, targetUserIds: number[]) {
+  const ids = [...new Set(targetUserIds.filter((id) => Number.isInteger(id) && id > 0 && id !== ownerId))].slice(0, 100);
+  if (!ids.length) return new Map<number, string>();
+  const rows = await prisma.directMessageRemark.findMany({
+    where: { ownerId, targetUserId: { in: ids } },
+    select: { targetUserId: true, remark: true },
+  });
+  return new Map(rows.map((row) => [row.targetUserId, row.remark]));
 }
 
 async function requireDirectMessageTarget(senderId: number, recipientId: number) {
@@ -329,20 +354,57 @@ async function sendDirectMessage(
     include: directConversationInclude,
   });
   if (!conversation) throw Errors.server("私聊会话读取失败");
-  const initiatorMessageCount = conversation.initiatedById === senderId
-    ? await prisma.directMessage.count({
-      where: {
-        conversationId: conversation.id,
-        senderId,
-        aiReviewStatus: { in: [...DIRECT_MESSAGE_PRE_REPLY_COUNT_STATUSES] },
-      },
-    })
-    : 0;
+  const counterpartId = directCounterpartId(conversation, senderId);
+  const [initiatorMessageCount, remarkByUserId] = await Promise.all([
+    conversation.initiatedById === senderId
+      ? prisma.directMessage.count({
+        where: {
+          conversationId: conversation.id,
+          senderId,
+          aiReviewStatus: { in: [...DIRECT_MESSAGE_PRE_REPLY_COUNT_STATUSES] },
+        },
+      })
+      : Promise.resolve(0),
+    loadDirectMessageRemarks(senderId, [counterpartId]),
+  ]);
   return {
-    conversation: serializeConversation(conversation, senderId, initiatorMessageCount),
+    conversation: serializeConversation(conversation, senderId, initiatorMessageCount, 0, remarkByUserId.get(counterpartId) || null),
     message: serializeDirectMessage(result.message, conversation, senderId),
   };
 }
+
+directMessageRouter.get("/remarks", validate(remarkListQuerySchema, "query"), async (req, res, next) => {
+  try {
+    const ownerId = req.user!.userId;
+    const targetUserIds = String(req.query.userIds || "")
+      .split(",")
+      .map((value) => Number(value))
+      .filter((value) => Number.isInteger(value) && value > 0 && value !== ownerId);
+    const remarkByUserId = await loadDirectMessageRemarks(ownerId, targetUserIds);
+    ok(res, { remarks: Object.fromEntries(remarkByUserId) });
+  } catch (error) { next(error); }
+});
+
+directMessageRouter.patch("/remarks/:userId", validate(remarkSchema), async (req, res, next) => {
+  try {
+    const ownerId = req.user!.userId;
+    const targetUserId = parsePositiveId(req.params.userId, "用户");
+    if (targetUserId === ownerId) throw Errors.badRequest("不能给自己设置备注");
+    const target = await prisma.user.findUnique({ where: { id: targetUserId }, select: { id: true } });
+    if (!target) throw Errors.notFound("用户不存在");
+    const remark = req.body.remark || null;
+    if (remark) {
+      await prisma.directMessageRemark.upsert({
+        where: { ownerId_targetUserId: { ownerId, targetUserId } },
+        create: { ownerId, targetUserId, remark },
+        update: { remark },
+      });
+    } else {
+      await prisma.directMessageRemark.deleteMany({ where: { ownerId, targetUserId } });
+    }
+    ok(res, { targetUserId, remark });
+  } catch (error) { next(error); }
+});
 
 directMessageRouter.get("/conversations", async (req, res, next) => {
   try {
@@ -382,12 +444,17 @@ directMessageRouter.get("/conversations", async (req, res, next) => {
       : [[], []];
     const sentByConversation = new Map(sentCounts.map((item) => [item.conversationId, item._count._all]));
     const unreadByConversation = new Map(unreadCounts.map((item) => [item.conversationId, item._count._all]));
+    const remarkByUserId = await loadDirectMessageRemarks(
+      userId,
+      list.map((conversation) => directCounterpartId(conversation, userId)),
+    );
     const conversations = list.map((conversation) => ({
       ...serializeConversation(
         conversation,
         userId,
         sentByConversation.get(conversation.id) || 0,
         unreadByConversation.get(conversation.id) || 0,
+        remarkByUserId.get(directCounterpartId(conversation, userId)) || null,
       ),
       lastMessageAt: conversation.messages[0]?.createdAt || conversation.lastMessageAt,
       lastMessage: serializeDirectMessage(conversation.messages[0], conversation, userId),
@@ -407,15 +474,18 @@ directMessageRouter.get("/with/:userId", async (req, res, next) => {
     const counterpart = await prisma.user.findUnique({ where: { id: counterpartId }, select: directUserSelect });
     if (!counterpart || counterpart.status === "banned") throw Errors.notFound("用户不存在或暂时无法接收私聊");
     if (counterpart.role === "bot") throw Errors.badRequest("不能向系统账号发起私聊");
+    const remarkByUserId = await loadDirectMessageRemarks(userId, [counterpartId]);
+    const counterpartRemark = remarkByUserId.get(counterpartId) || null;
     const conversation = await findConversationForUsers(userId, counterpartId);
-    if (!conversation) return ok(res, { counterpart: buildUserPreview(counterpart), conversation: null });
+    if (!conversation) return ok(res, { counterpart: buildUserPreview(counterpart), counterpartRemark, conversation: null });
     const [sentCount, unreadCount] = await Promise.all([
       prisma.directMessage.count({ where: { conversationId: conversation.id, senderId: userId, aiReviewStatus: { in: [...DIRECT_MESSAGE_PRE_REPLY_COUNT_STATUSES] } } }),
       prisma.directMessage.count({ where: { conversationId: conversation.id, senderId: { not: userId }, hidden: false, readAt: null } }),
     ]);
     ok(res, {
       counterpart: buildUserPreview(counterpart),
-      conversation: serializeConversation(conversation, userId, sentCount, unreadCount),
+      counterpartRemark,
+      conversation: serializeConversation(conversation, userId, sentCount, unreadCount, counterpartRemark),
     });
   } catch (error) { next(error); }
 });
@@ -439,14 +509,19 @@ directMessageRouter.get("/forum/:kind/:postId", async (req, res, next) => {
     const counterpart = target.recipientAlias
       ? anonymousDirectUser(target.recipientAlias)
       : buildUserPreview(target.recipient);
-    if (!conversation) return ok(res, { counterpart, conversation: null });
+    const remarkByUserId = target.recipientAlias
+      ? new Map<number, string>()
+      : await loadDirectMessageRemarks(userId, [target.recipientId]);
+    const counterpartRemark = target.recipientAlias ? null : remarkByUserId.get(target.recipientId) || null;
+    if (!conversation) return ok(res, { counterpart, counterpartRemark, conversation: null });
     const [sentCount, unreadCount] = await Promise.all([
       prisma.directMessage.count({ where: { conversationId: conversation.id, senderId: userId, aiReviewStatus: { in: [...DIRECT_MESSAGE_PRE_REPLY_COUNT_STATUSES] } } }),
       prisma.directMessage.count({ where: { conversationId: conversation.id, senderId: { not: userId }, hidden: false, readAt: null } }),
     ]);
     ok(res, {
       counterpart,
-      conversation: serializeConversation(conversation, userId, sentCount, unreadCount),
+      counterpartRemark,
+      conversation: serializeConversation(conversation, userId, sentCount, unreadCount, counterpartRemark),
     });
   } catch (error) { next(error); }
 });
@@ -506,11 +581,15 @@ directMessageRouter.get("/conversations/:id/messages", validate(pageQuerySchema,
         data: { readAt: now },
       }),
     ]);
-    const initiatorMessageCount = conversation.initiatedById === userId
-      ? await prisma.directMessage.count({ where: { conversationId, senderId: userId, aiReviewStatus: { in: [...DIRECT_MESSAGE_PRE_REPLY_COUNT_STATUSES] } } })
-      : 0;
+    const counterpartId = directCounterpartId(conversation, userId);
+    const [initiatorMessageCount, remarkByUserId] = await Promise.all([
+      conversation.initiatedById === userId
+        ? prisma.directMessage.count({ where: { conversationId, senderId: userId, aiReviewStatus: { in: [...DIRECT_MESSAGE_PRE_REPLY_COUNT_STATUSES] } } })
+        : Promise.resolve(0),
+      loadDirectMessageRemarks(userId, [counterpartId]),
+    ]);
     ok(res, {
-      conversation: serializeConversation(conversation, userId, initiatorMessageCount, 0),
+      conversation: serializeConversation(conversation, userId, initiatorMessageCount, 0, remarkByUserId.get(counterpartId) || null),
       messages: pageRows.map((message) => serializeDirectMessage({
         ...message,
         readAt: message.senderId !== userId && !message.readAt ? now : message.readAt,

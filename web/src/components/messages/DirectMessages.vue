@@ -26,7 +26,7 @@
           class="conversation-row"
           :class="{ active: activeConversation?.id === conversation.id }"
           :aria-current="activeConversation?.id === conversation.id ? 'true' : undefined"
-          :aria-label="`打开与 ${conversation.counterpart.nickname} 的私聊${conversation.unreadCount ? `，${conversation.unreadCount} 条未读` : ''}`"
+          :aria-label="`打开与 ${conversationDisplayName(conversation)} 的私聊${conversation.unreadCount ? `，${conversation.unreadCount} 条未读` : ''}`"
           @click="openConversation(conversation.id)"
         >
           <UserAvatar
@@ -39,7 +39,10 @@
           />
           <span class="conversation-copy">
             <span class="conversation-line">
-              <b><DisplayNickname :name="conversation.counterpart.nickname" /></b>
+              <b :title="conversation.counterpartRemark ? `原昵称：${conversation.counterpart.nickname}` : undefined">
+                <span v-if="conversation.counterpartRemark" class="remark-name">{{ conversation.counterpartRemark }}</span>
+                <DisplayNickname v-else :name="conversation.counterpart.nickname" />
+              </b>
               <small>{{ shortTime(conversation.lastMessageAt) }}</small>
             </span>
             <span class="conversation-preview">
@@ -76,14 +79,18 @@
             alt="私聊对象头像"
           />
           <div class="chat-title">
-            <b><DisplayNickname :name="activeCounterpart.nickname" /></b>
-            <span v-if="activeConversation?.sendState.limitedUntilReply">
-              对方回复前还可发送 {{ activeConversation.sendState.remainingBeforeReply }} 条
-            </span>
-            <span v-else-if="!activeConversation">新私聊 · 对方回复前最多发送两条</span>
-            <span v-else>站内私聊</span>
+            <b :title="activeRemark ? `原昵称：${activeCounterpart.nickname}` : undefined">
+              <span v-if="activeRemark" class="remark-name">{{ activeRemark }}</span>
+              <DisplayNickname v-else :name="activeCounterpart.nickname" />
+            </b>
+            <span>{{ activeChatSubtitle }}</span>
           </div>
-          <el-button v-if="!activeCounterpart.anonymous" class="profile-link" text type="primary" @click="openProfile">查看资料</el-button>
+          <div class="chat-actions">
+            <el-button v-if="!activeCounterpart.anonymous && activeCounterpart.id > 0" class="remark-link" text type="primary" @click="editCounterpartRemark">
+              {{ activeRemark ? "改备注" : "备注" }}
+            </el-button>
+            <el-button v-if="!activeCounterpart.anonymous" class="profile-link" text type="primary" @click="openProfile">查看资料</el-button>
+          </div>
         </header>
 
         <div ref="messageScroller" class="message-scroller" aria-live="polite" aria-label="私聊消息记录">
@@ -159,7 +166,7 @@
       v-model="reportDialogOpen"
       target-type="direct_message"
       :target-id="reportMessage.id"
-      :target-label="`与 ${activeCounterpart?.nickname || '对方'} 的私聊消息`"
+      :target-label="`与 ${activeDisplayName} 的私聊消息`"
     />
   </div>
 </template>
@@ -181,6 +188,7 @@ import {
 } from "@/api/directMessage";
 import { useAuthStore } from "@/stores/auth";
 import { fmtDate } from "@/utils/format";
+import { promptDirectMessageRemark } from "@/utils/directMessageRemark";
 
 const emit = defineEmits<{ (event: "notices-read", conversationId: number): void }>();
 const route = useRoute();
@@ -191,6 +199,7 @@ const conversations = ref<DirectConversation[]>([]);
 const totalUnread = ref(0);
 const activeConversation = ref<DirectConversation | null>(null);
 const pendingTarget = ref<DirectMessageUser | null>(null);
+const pendingTargetRemark = ref<string | null>(null);
 const pendingForumTarget = ref<{ kind: ForumDirectMessageKind; postId: number } | null>(null);
 const messages = ref<DirectMessageItem[]>([]);
 const nextCursor = ref<number | null>(null);
@@ -212,6 +221,19 @@ let routeSeq = 0;
 let messageSeq = 0;
 
 const activeCounterpart = computed(() => activeConversation.value?.counterpart || pendingTarget.value);
+const activeRemark = computed(() => activeConversation.value?.counterpartRemark || pendingTargetRemark.value || null);
+const activeDisplayName = computed(() => activeRemark.value || activeCounterpart.value?.nickname || "对方");
+const activeChatSubtitle = computed(() => {
+  const conversation = activeConversation.value;
+  const status = conversation?.sendState.limitedUntilReply
+    ? `对方回复前还可发送 ${conversation.sendState.remainingBeforeReply} 条`
+    : conversation
+      ? "站内私聊"
+      : "新私聊 · 对方回复前最多发送两条";
+  return activeRemark.value && activeCounterpart.value?.nickname
+    ? `原昵称：${activeCounterpart.value.nickname} · ${status}`
+    : status;
+});
 const sendBlocked = computed(() => Boolean(activeConversation.value && !activeConversation.value.sendState.canSend));
 const canSubmit = computed(() => Boolean(draft.value.trim()) && !sendBlocked.value && !sending.value);
 const composerDraftKey = computed(() => {
@@ -314,12 +336,14 @@ async function applyRouteTarget() {
     if (!conversation) {
       activeConversation.value = null;
       pendingTarget.value = null;
+      pendingTargetRemark.value = null;
       pendingForumTarget.value = null;
       messages.value = [];
       targetError.value = "会话不存在或已不可访问";
       return;
     }
     pendingTarget.value = null;
+    pendingTargetRemark.value = null;
     pendingForumTarget.value = null;
     activeConversation.value = conversation;
     await loadMessages(true);
@@ -338,11 +362,13 @@ async function applyRouteTarget() {
         upsertConversation(result.conversation);
         activeConversation.value = result.conversation;
         pendingTarget.value = null;
+        pendingTargetRemark.value = null;
         pendingForumTarget.value = null;
         await loadMessages(true);
       } else {
         activeConversation.value = null;
         pendingTarget.value = result.counterpart;
+        pendingTargetRemark.value = result.counterpartRemark;
         pendingForumTarget.value = { kind: forumKind, postId: forumId };
         messages.value = [];
         nextCursor.value = null;
@@ -351,6 +377,7 @@ async function applyRouteTarget() {
       if (disposed || seq !== routeSeq) return;
       activeConversation.value = null;
       pendingTarget.value = null;
+      pendingTargetRemark.value = null;
       pendingForumTarget.value = null;
       messages.value = [];
       targetError.value = errorMessage(error, "私聊对象加载失败");
@@ -369,11 +396,13 @@ async function applyRouteTarget() {
         upsertConversation(result.conversation);
         activeConversation.value = result.conversation;
         pendingTarget.value = null;
+        pendingTargetRemark.value = null;
         pendingForumTarget.value = null;
         await loadMessages(true);
       } else {
         activeConversation.value = null;
         pendingTarget.value = result.counterpart;
+        pendingTargetRemark.value = result.counterpartRemark;
         pendingForumTarget.value = null;
         messages.value = [];
         nextCursor.value = null;
@@ -382,6 +411,7 @@ async function applyRouteTarget() {
       if (disposed || seq !== routeSeq) return;
       activeConversation.value = null;
       pendingTarget.value = null;
+      pendingTargetRemark.value = null;
       pendingForumTarget.value = null;
       messages.value = [];
       targetError.value = errorMessage(error, "私聊对象加载失败");
@@ -476,6 +506,7 @@ async function sendMessage() {
     clearComposerDraft(composerDraftKey.value);
     draft.value = "";
     pendingTarget.value = null;
+    pendingTargetRemark.value = null;
     pendingForumTarget.value = null;
     activeConversation.value = result.conversation;
     mergeMessages([result.message]);
@@ -590,6 +621,10 @@ function upsertConversation(conversation: DirectConversation) {
   conversations.value.sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime());
 }
 
+function conversationDisplayName(conversation: DirectConversation) {
+  return conversation.counterpartRemark || conversation.counterpart.nickname || "对方";
+}
+
 async function scrollToBottom() {
   await nextTick();
   const el = messageScroller.value;
@@ -614,6 +649,7 @@ function clearActiveTarget() {
   messageSeq += 1;
   activeConversation.value = null;
   pendingTarget.value = null;
+  pendingTargetRemark.value = null;
   pendingForumTarget.value = null;
   messages.value = [];
   nextCursor.value = null;
@@ -624,6 +660,24 @@ function clearActiveTarget() {
 function openProfile() {
   if (activeCounterpart.value && !activeCounterpart.value.anonymous && activeCounterpart.value.id > 0) {
     router.push(`/u/${activeCounterpart.value.id}`);
+  }
+}
+
+async function editCounterpartRemark() {
+  const counterpart = activeCounterpart.value;
+  if (!counterpart || counterpart.anonymous || counterpart.id <= 0) return;
+  const result = await promptDirectMessageRemark({
+    userId: counterpart.id,
+    nickname: counterpart.nickname,
+    currentRemark: activeRemark.value,
+  });
+  if (!result.changed) return;
+  if (activeConversation.value) {
+    const updated = { ...activeConversation.value, counterpartRemark: result.remark };
+    activeConversation.value = updated;
+    upsertConversation(updated);
+  } else {
+    pendingTargetRemark.value = result.remark;
   }
 }
 
@@ -709,6 +763,7 @@ function errorMessage(error: unknown, fallback: string) {
 .conversation-copy { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 5px; }
 .conversation-line { min-width: 0; display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
 .conversation-line b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+.remark-name { color: var(--cpu-text); font: inherit; }
 .conversation-line small { flex-shrink: 0; color: var(--cpu-text-muted); font-size: 10px; }
 .conversation-preview { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--cpu-text-secondary); font-size: 12px; }
 .unread-dot { min-width: 20px; height: 20px; padding: 0 5px; display: grid; place-items: center; border-radius: 999px; background: #ef4444; color: white; font-size: 10px; }
@@ -721,6 +776,10 @@ function errorMessage(error: unknown, fallback: string) {
 .chat-title b { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-title b :deep(.display-nickname) { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-title span { color: var(--cpu-text-secondary); font-size: 12px; }
+.chat-title .remark-name { color: var(--cpu-text); }
+.chat-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 2px; }
+.chat-actions :deep(.el-button) { margin-left: 0; }
+.remark-link { flex: 0 0 auto; padding-inline: 7px !important; }
 .mobile-back { display: none; min-width: 38px; height: 38px; flex: 0 0 auto; place-items: center; padding: 0; border: 0; border-radius: 12px; background: var(--cpu-surface-soft); color: var(--cpu-primary); font-size: 20px; cursor: pointer; touch-action: manipulation; }
 .mobile-back span { font-size: 12px; font-weight: 700; }
 .mobile-back:focus-visible { outline: 2px solid var(--cpu-primary); outline-offset: 2px; }

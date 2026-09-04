@@ -76,6 +76,7 @@
     cursor: pointer;
   }
   .post-private-chat-button:hover { text-decoration: underline; }
+  .post-remark-button { color: var(--cpu-text-secondary); }
   .reply-author-badges { display: flex; justify-content: center; flex-wrap: wrap; gap: 5px; }
   .real-author-inline {
     color: color-mix(in srgb, var(--cpu-gold) 78%, var(--cpu-text));

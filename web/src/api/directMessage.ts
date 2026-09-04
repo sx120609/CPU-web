@@ -42,6 +42,7 @@ export interface DirectConversation {
   createdAt: string;
   updatedAt: string;
   counterpart: DirectMessageUser;
+  counterpartRemark?: string | null;
   unreadCount: number;
   sendState: DirectMessageSendState;
   lastMessage?: DirectMessageItem | null;
@@ -50,6 +51,10 @@ export interface DirectConversation {
 export interface DirectConversationList {
   conversations: DirectConversation[];
   totalUnread: number;
+}
+
+export interface DirectMessageRemarks {
+  remarks: Record<string, string>;
 }
 
 export interface DirectMessagePage {
@@ -63,23 +68,41 @@ export interface DirectMessageSendResult {
   message: DirectMessageItem;
 }
 
+export interface DirectMessageTarget {
+  counterpart: DirectMessageUser;
+  counterpartRemark: string | null;
+  conversation: DirectConversation | null;
+}
+
 export const directMessageApi = {
   conversations: (options?: RequestOptions) =>
     request.get<DirectConversationList>("/direct-messages/conversations", undefined, options),
   withUser: (userId: number, options?: RequestOptions) =>
-    request.get<{ counterpart: DirectMessageUser; conversation: DirectConversation | null }>(
+    request.get<DirectMessageTarget>(
       `/direct-messages/with/${userId}`,
       undefined,
       options,
     ),
   withForumPost: (kind: ForumDirectMessageKind, postId: number, options?: RequestOptions) =>
-    request.get<{ counterpart: DirectMessageUser; conversation: DirectConversation | null }>(
+    request.get<DirectMessageTarget>(
       `/direct-messages/forum/${kind}/${postId}`,
       undefined,
       options,
     ),
   messages: (conversationId: number, params?: { before?: number; limit?: number }, options?: RequestOptions) =>
     request.get<DirectMessagePage>(`/direct-messages/conversations/${conversationId}/messages`, params, options),
+  remarks: (userIds: number[], options?: RequestOptions) =>
+    request.get<DirectMessageRemarks>(
+      "/direct-messages/remarks",
+      { userIds: [...new Set(userIds.filter((id) => Number.isInteger(id) && id > 0))].slice(0, 100).join(",") },
+      options,
+    ),
+  setRemark: (userId: number, remark: string | null, options?: RequestOptions) =>
+    request.patch<{ targetUserId: number; remark: string | null }>(
+      `/direct-messages/remarks/${userId}`,
+      { remark },
+      options,
+    ),
   send: (conversationId: number, content: string, options?: RequestOptions) =>
     request.post<DirectMessageSendResult>(`/direct-messages/conversations/${conversationId}/messages`, { content }, options),
   sendToUser: (userId: number, content: string, options?: RequestOptions) =>

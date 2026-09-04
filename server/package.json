@@ -37,7 +37,7 @@
     "test:cache": "node --import tsx --test tests/cache.test.ts tests/publicAvatar.test.ts",
     "test:deployment": "node --import tsx --test tests/deployment.test.ts tests/cosToOssMirror.test.ts tests/webStaticCos.test.ts tests/webStaticSwitch.test.ts tests/cloudUsage.test.ts",
     "test:sponsor": "node --import tsx --test tests/sponsorCategories.test.ts",
-    "test:direct-messages": "node --import tsx --test tests/directMessagePolicy.test.ts tests/directMessageModeration.test.ts tests/forumReportPolicy.test.ts tests/forumReportLock.test.ts tests/textReviewPolicy.test.ts",
+    "test:direct-messages": "node --import tsx --test tests/directMessagePolicy.test.ts tests/directMessageModeration.test.ts tests/directMessageRemark.test.ts tests/forumReportPolicy.test.ts tests/forumReportLock.test.ts tests/textReviewPolicy.test.ts",
     "test:wechat": "node --import tsx --test tests/wechatService.test.ts"
   },
   "prisma": {

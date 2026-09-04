@@ -116,6 +116,8 @@ model User {
   directConversationsAsUpper   DirectConversation[]          @relation("DirectConversationUpperParticipant")
   initiatedDirectConversations DirectConversation[]          @relation("DirectConversationInitiator")
   directMessages               DirectMessage[]               @relation("DirectMessageSender")
+  directMessageRemarksOwned    DirectMessageRemark[]         @relation("DirectMessageRemarkOwner")
+  directMessageRemarksReceived DirectMessageRemark[]         @relation("DirectMessageRemarkTarget")
   forumReportsSubmitted        ForumReport[]                  @relation("ForumReportReporter")
   forumReportsReceived         ForumReport[]                  @relation("ForumReportTargetAuthor")
   forumReportsHandled          ForumReport[]                  @relation("ForumReportHandler")
@@ -1218,6 +1220,21 @@ model DirectMessage {
   @@index([conversationId, readAt])
   @@index([aiReviewStatus, hidden, aiReviewedAt])
   @@index([senderId, createdAt])
+}
+
+model DirectMessageRemark {
+  id           Int      @id @default(autoincrement())
+  ownerId      Int
+  targetUserId Int
+  remark       String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  owner      User @relation("DirectMessageRemarkOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  targetUser User @relation("DirectMessageRemarkTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
+
+  @@unique([ownerId, targetUserId])
+  @@index([targetUserId])
 }
 
 model ForumReport {

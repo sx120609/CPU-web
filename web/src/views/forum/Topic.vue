@@ -84,10 +84,20 @@
           <div class="meta-author">
             <div class="name">
               <span v-if="topic.author?.vipActive" class="vip-badge">VIP</span>
-              <router-link v-if="topic.author?.id" :to="`/u/${topic.author.id}`">{{ topic.author?.nickname }}</router-link>
-              <span v-else>{{ topic.author?.nickname }}</span>
+              <router-link
+                v-if="topic.author?.id"
+                :to="`/u/${topic.author.id}`"
+                :title="userRemarkForPost(topic) ? `原昵称：${topic.author?.nickname}` : undefined"
+              >{{ displayAuthorName(topic) }}</router-link>
+              <span v-else>{{ displayAuthorName(topic) }}</span>
               <UserVerificationBadge :verification="topic.author?.verification" />
               <UserReputationBadge :level="topic.author?.reputationLevel" />
+              <button
+                v-if="canRemarkPost(topic)"
+                type="button"
+                class="post-private-chat-button post-remark-button"
+                @click="editPostAuthorRemark(topic)"
+              >{{ userRemarkForPost(topic) ? "改备注" : "备注" }}</button>
               <button
                 v-if="canPrivateChatPost(topic)"
                 type="button"
@@ -361,9 +371,20 @@
           <aside class="reply-author-panel">
             <UserAvatar :size="48" class="avatar" :src="entry.item.author?.avatar" :name="entry.item.author?.nickname" :seed="entry.item.author?.id ?? entry.item.anonymousAlias ?? entry.item.id" :profile-frame="entry.item.author?.profileFrame" alt="回复头像" />
             <div class="reply-author-line">
-              <router-link v-if="entry.item.author?.id" :to="`/u/${entry.item.author.id}`" class="author">{{ entry.item.author?.nickname }}</router-link>
-              <span v-else class="author">{{ entry.item.author?.nickname }}</span>
+              <router-link
+                v-if="entry.item.author?.id"
+                :to="`/u/${entry.item.author.id}`"
+                class="author"
+                :title="userRemarkForPost(entry.item) ? `原昵称：${entry.item.author?.nickname}` : undefined"
+              >{{ displayAuthorName(entry.item) }}</router-link>
+              <span v-else class="author">{{ displayAuthorName(entry.item) }}</span>
               <UserVerificationBadge :verification="entry.item.author?.verification" />
+              <button
+                v-if="canRemarkPost(entry.item)"
+                type="button"
+                class="post-private-chat-button post-remark-button"
+                @click="editPostAuthorRemark(entry.item)"
+              >{{ userRemarkForPost(entry.item) ? "改备注" : "备注" }}</button>
               <button
                 v-if="canPrivateChatPost(entry.item)"
                 type="button"
@@ -746,6 +767,7 @@ import MarkdownView from "@/components/forum/MarkdownView.vue";
 import RichTextEditor from "@/components/forum/RichTextEditor.vue";
 import ManualReviewConfirmDialog from "@/components/forum/ManualReviewConfirmDialog.vue";
 import { topicApi, replyApi, likeApi, type Topic, type Reply, type ReplySubmissionResponse } from "@/api/topic";
+import { directMessageApi } from "@/api/directMessage";
 import { adminApi, type ForumImageReviewAsset, type ForumVideoReviewAsset } from "@/api/admin";
 import { useAuthStore } from "@/stores/auth";
 import { fmtDate, fmtRelative } from "@/utils/format";
@@ -758,6 +780,7 @@ import { isAndroidNativeApp, isHarmonyNativeApp } from "@/utils/clientInfo";
 import { getNativeBridge, hasNativeImageSaveBridge } from "@/utils/nativeBridge";
 import { openImageGallery } from "@/utils/imageViewer";
 import { useMobileLayout } from "@/utils/mobileLayout";
+import { promptDirectMessageRemark } from "@/utils/directMessageRemark";
 import {
   createForumSubmissionId,
   getForumRequestMessage,
@@ -774,6 +797,7 @@ const isMobileLayout = useMobileLayout();
 
 const topic = ref<Topic | null>(null);
 const replies = ref<Reply[]>([]);
+const userRemarks = ref<Record<number, string>>({});
 const loading = ref(false);
 const repliesLoading = ref(false);
 const loadError = ref("");
@@ -823,6 +847,7 @@ const blockedReplyInfo = reactive<{ reason: string; riskScore: number | null }>(
 });
 const liked = ref(false);
 let loadSeq = 0;
+let remarkLoadSeq = 0;
 let shareCardRenderSeq = 0;
 let shareCardRenderPromise: Promise<string> | null = null;
 let topicReviewPollSeq = 0;
@@ -1137,6 +1162,7 @@ watch(() => route.params.id, () => {
 onBeforeUnmount(() => {
   pendingReplyMonitorSeq += 1;
   topicReviewPollSeq += 1;
+  remarkLoadSeq += 1;
   clearTopicReviewPollTimer();
   mainFloorResizeObserver?.disconnect();
   if (typeof window !== "undefined") window.removeEventListener("resize", updateMainPostAuthorMode);
@@ -1214,6 +1240,8 @@ function scheduleTopicReviewPoll() {
 
 async function load() {
   const seq = ++loadSeq;
+  remarkLoadSeq += 1;
+  userRemarks.value = {};
   const id = Number(route.params.id);
   loadError.value = "";
   liked.value = false;
@@ -1229,6 +1257,7 @@ async function load() {
   const cached = readForumTopic(scope, id);
   topic.value = cached?.topic ?? null;
   replies.value = cached?.replies ?? [];
+  if (cached?.topic) void loadVisibleUserRemarks(cached.topic, cached.replies ?? []);
   loading.value = !cached;
   repliesLoading.value = !cached;
   try {
@@ -1245,6 +1274,7 @@ async function load() {
     topic.value = nextTopic;
     rememberTopicViewCount(nextTopic.id, nextTopic.viewCount);
     replies.value = nextReplies;
+    void loadVisibleUserRemarks(nextTopic, nextReplies);
     scheduleTopicReviewPoll();
     restorePendingReplySubmission();
     if (pendingReplySubmission.value) void monitorPendingReplySubmission(pendingReplySubmission.value.submissionId);
@@ -1375,6 +1405,64 @@ function editReply(reply: Reply) {
 
 function replyOwnerId(reply: Reply) {
   return Number(reply.realAuthor?.id ?? reply.authorId ?? reply.author?.id ?? 0);
+}
+
+function remarkableUserId(post: Topic | Reply) {
+  if (!auth.isLoggedIn || post.isAnonymous || post.author?.role === "bot") return 0;
+  const userId = Number(post.author?.id ?? post.authorId ?? 0);
+  return userId > 0 && userId !== auth.user?.id ? userId : 0;
+}
+
+function userRemarkForPost(post: Topic | Reply) {
+  const userId = remarkableUserId(post);
+  return userId ? userRemarks.value[userId] || "" : "";
+}
+
+function displayAuthorName(post: Topic | Reply) {
+  return userRemarkForPost(post) || post.author?.nickname || "同学";
+}
+
+function canRemarkPost(post: Topic | Reply) {
+  return remarkableUserId(post) > 0;
+}
+
+async function loadVisibleUserRemarks(currentTopic: Topic, currentReplies: Reply[]) {
+  const seq = ++remarkLoadSeq;
+  if (!auth.isLoggedIn) {
+    userRemarks.value = {};
+    return;
+  }
+  const userIds = [currentTopic, ...currentReplies]
+    .map(remarkableUserId)
+    .filter((id) => id > 0);
+  if (!userIds.length) {
+    userRemarks.value = {};
+    return;
+  }
+  try {
+    const result = await directMessageApi.remarks(userIds, { cacheTtlMs: 0, suppressErrorMessage: true });
+    if (seq !== remarkLoadSeq) return;
+    userRemarks.value = Object.fromEntries(
+      Object.entries(result.remarks).map(([userId, remark]) => [Number(userId), remark]),
+    );
+  } catch {
+    if (seq === remarkLoadSeq) userRemarks.value = {};
+  }
+}
+
+async function editPostAuthorRemark(post: Topic | Reply) {
+  const userId = remarkableUserId(post);
+  if (!userId) return;
+  const result = await promptDirectMessageRemark({
+    userId,
+    nickname: post.author?.nickname || "同学",
+    currentRemark: userRemarks.value[userId],
+  });
+  if (!result.changed) return;
+  const nextRemarks = { ...userRemarks.value };
+  if (result.remark) nextRemarks[userId] = result.remark;
+  else delete nextRemarks[userId];
+  userRemarks.value = nextRemarks;
 }
 
 function canPrivateChatPost(post: Topic | Reply) {

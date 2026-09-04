@@ -31,6 +31,7 @@
             Lv.{{ user.reputationLevel.level }} {{ user.reputationLevel.name }}
           </el-tag>
         </h2>
+        <p v-if="userRemark" class="user-remark"><span>我的备注</span><b>{{ userRemark }}</b></p>
         <p v-if="user.verification" class="verification-copy"><b>拾间认证</b>{{ user.verification.label }}</p>
         <p class="bio">{{ user.bio || "这个人还没写简介" }}</p>
         <div class="meta">
@@ -46,6 +47,7 @@
             <el-icon><Message /></el-icon>
             站内私聊
           </el-button>
+          <el-button plain @click="editUserRemark">{{ userRemark ? "修改备注" : "添加备注" }}</el-button>
         </div>
         <div v-if="auth.isMod" class="staff-panel">
           <UserModerationActions :user="user" display="inline" plain @updated="applyModerationUpdate" />
@@ -87,8 +89,10 @@ import DisplayNickname from "@/components/common/DisplayNickname.vue";
 import UserVerificationBadge from "@/components/common/UserVerificationBadge.vue";
 import UserModerationActions from "@/components/common/UserModerationActions.vue";
 import { request } from "@/api/request";
+import { directMessageApi, type DirectMessageRemarks } from "@/api/directMessage";
 import { useAuthStore } from "@/stores/auth";
 import { fmtDate, fmtRelative } from "@/utils/format";
+import { promptDirectMessageRemark } from "@/utils/directMessageRemark";
 
 const route = useRoute();
 const router = useRouter();
@@ -97,6 +101,7 @@ const user = ref<any>(null);
 const topics = ref<any[]>([]);
 const loading = ref(false);
 const error = ref("");
+const userRemark = ref("");
 let loadSeq = 0;
 const profileThemeClass = computed(() => user.value?.profileTheme ? `profile-theme-${user.value.profileTheme}` : "");
 const profileFrameClass = computed(() => user.value?.profileFrame ? `profile-frame-${user.value.profileFrame}` : "");
@@ -118,14 +123,19 @@ async function load() {
   error.value = "";
   user.value = null;
   topics.value = [];
+  userRemark.value = "";
   try {
-    const [nextUser, nextTopics] = await Promise.all([
+    const [nextUser, nextTopics, nextRemarks] = await Promise.all([
       request.get<any>(`/user/${id}`, undefined, { suppressErrorMessage: true }),
       request.get<any[]>(`/user/${id}/topics`, undefined, { suppressErrorMessage: true }),
+      auth.isLoggedIn && id !== auth.user?.id
+        ? directMessageApi.remarks([id], { cacheTtlMs: 0, suppressErrorMessage: true }).catch((): DirectMessageRemarks => ({ remarks: {} }))
+        : Promise.resolve<DirectMessageRemarks>({ remarks: {} }),
     ]);
     if (seq !== loadSeq) return;
     user.value = nextUser;
     topics.value = nextTopics;
+    userRemark.value = nextRemarks.remarks[String(id)] || "";
   } catch (loadError) {
     if (seq !== loadSeq) return;
     user.value = null;
@@ -165,6 +175,20 @@ function startDirectMessage() {
     return;
   }
   router.push({ path: "/messages", query: { tab: "private", user: String(user.value.id) } });
+}
+
+async function editUserRemark() {
+  if (!user.value) return;
+  if (!auth.isLoggedIn) {
+    router.push({ name: "login", query: { redirect: route.fullPath } });
+    return;
+  }
+  const result = await promptDirectMessageRemark({
+    userId: user.value.id,
+    nickname: user.value.nickname,
+    currentRemark: userRemark.value,
+  });
+  if (result.changed) userRemark.value = result.remark || "";
 }
 
 function normalizeUserLoadError(loadError: unknown) {
@@ -217,6 +241,9 @@ function normalizeUserLoadError(loadError: unknown) {
 .vip-tag { letter-spacing: .08em; font-weight: 800; }
 .verification-copy { display: flex; align-items: center; gap: 7px; margin: 5px 0 8px; color: #0969da; font-size: 12px; }
 .verification-copy b { padding: 2px 6px; border-radius: 999px; background: color-mix(in srgb, #1d9bf0 10%, var(--cpu-card)); font-size: 10px; }
+.user-remark { display: flex; align-items: center; gap: 7px; margin: 6px 0; color: var(--cpu-text-secondary); font-size: 12px; }
+.user-remark span { padding: 2px 6px; border-radius: 999px; background: color-mix(in srgb, var(--cpu-primary) 10%, var(--cpu-card)); color: var(--cpu-primary); font-size: 10px; }
+.user-remark b { color: var(--cpu-text); font-size: 13px; }
 .bio { font-size: 13px; color: var(--cpu-text-secondary); margin: 0 0 8px; }
 .meta { display: flex; gap: 12px; font-size: 12px; color: var(--cpu-text-secondary); flex-wrap: wrap; }
 .profile-actions { margin-top: 12px; }
