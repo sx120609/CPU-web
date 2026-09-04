@@ -142,6 +142,7 @@ test("undergraduate academic data prefers modern JWXT", async () => {
 
   const originalFetch = globalThis.fetch;
   const requestedPaths: string[] = [];
+  let gradeDetailRequests = 0;
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(typeof input === "string" || input instanceof URL ? input : input.url);
     requestedPaths.push(`${url.hostname}${url.pathname}`);
@@ -152,7 +153,7 @@ test("undergraduate academic data prefers modern JWXT", async () => {
     if (url.hostname === "jwxt.cpu.edu.cn" && url.pathname === "/jsxsd/kscj/cjcx_list") {
       return new Response(JSON.stringify({
         code: 0,
-        count: 1,
+        count: 2,
         data: [{
           xnxqid: "2025-2026-2",
           kch: "C001",
@@ -164,8 +165,38 @@ test("undergraduate academic data prefers modern JWXT", async () => {
           jd: 2,
           kcsx: "必修",
           ksxz: "正常考试",
+          xs0101id: "2020240444",
+          jx0404id: "202520261000001",
+          cj0708id: "GRADE-001",
+        }, {
+          xnxqid: "2025-2026-2",
+          kch: "C002",
+          kc_mc: "生物化学",
+          zcj: 60,
+          zcjstr: "60",
+          xf: 2,
+          xs0101id: "2020240444",
+          jx0404id: "202520261000002",
+          cj0708id: "GRADE-002",
         }],
       }), { status: 200 });
+    }
+    if (url.hostname === "jwxt.cpu.edu.cn" && url.pathname === "/jsxsd/kscj/pscj_list.do") {
+      gradeDetailRequests += 1;
+      assert.equal(url.searchParams.get("xs0101id"), "2020240444");
+      if (url.searchParams.get("cj0708id") === "GRADE-002") {
+        assert.equal(url.searchParams.get("jx0404id"), "202520261000002");
+        assert.equal(url.searchParams.get("zcj"), "60");
+        return new Response("detail temporarily unavailable", { status: 500 });
+      }
+      assert.equal(url.searchParams.get("jx0404id"), "202520261000001");
+      assert.equal(url.searchParams.get("cj0708id"), "GRADE-001");
+      assert.equal(url.searchParams.get("zcj"), "70");
+      return new Response(`
+        <script>
+          let arr = [{"cjxm1":68,"zcj":"70","cjxm3":80,"cjxm2":65,"cjxm3bl":"30%","cjxm2bl":"20%","cjxm1bl":"50%"}];
+        </script>
+      `, { status: 200 });
     }
     if (url.hostname === "jwxt.cpu.edu.cn" && url.pathname === "/jsxsd/xsks/xsksap_query") {
       return new Response('<select id="xnxqid"><option value="2025-2026-2" selected>2025-2026-2</option></select>', { status: 200 });
@@ -210,6 +241,29 @@ test("undergraduate academic data prefers modern JWXT", async () => {
     );
     assert.equal(grades.list[0]?.score, "70");
     assert.equal(midterm.list[0]?.score, "70");
+    assert.deepEqual(
+      {
+        usual: grades.list[0]?.usual,
+        midterm: grades.list[0]?.midterm,
+        final: grades.list[0]?.final,
+        usualWeight: grades.list[0]?.usualWeight,
+        midtermWeight: grades.list[0]?.midtermWeight,
+        finalWeight: grades.list[0]?.finalWeight,
+      },
+      {
+        usual: "80",
+        midterm: "65",
+        final: "68",
+        usualWeight: "30%",
+        midtermWeight: "20%",
+        finalWeight: "50%",
+      },
+    );
+    assert.equal(midterm.list[0]?.midterm, "65");
+    assert.equal(gradeDetailRequests, 2);
+    assert.equal(grades.list[1]?.score, "60");
+    assert.equal(grades.list[1]?.usual, undefined);
+    assert.equal("xs0101id" in (grades.list[0] as unknown as Record<string, unknown>), false);
     assert.equal(exams.list[0]?.courseName, "药理学");
     assert.equal(requestedPaths.includes("jwxt.cpu.edu.cn/jsxsd/kscj/cjcx_list"), true);
     assert.equal(requestedPaths.includes("jsxsd.cpu.edu.cn/zgykdx/kscj/cjcx_list"), false);

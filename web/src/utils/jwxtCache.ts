@@ -10,6 +10,7 @@ const DATA_CACHE_PREFIXES = [
   "cpu-jwxt-tab-cache-v7:",
   "cpu-jwxt-tab-cache-v8:",
   "cpu-jwxt-tab-cache-v9:",
+  "cpu-jwxt-tab-cache-v10:",
   "cpu-jwxt-data-prewarm-v1:",
   "cpu-schedule-cache-v1:",
   "cpu-schedule-cache-v2:",

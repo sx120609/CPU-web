@@ -4,6 +4,7 @@ import {
   normalizeCalendarWeekDays,
   parseCalendar,
   parseExams,
+  parseGradeBreakdown,
   parseGrades,
   parseProgress,
   parsePyfa,
@@ -210,6 +211,27 @@ test("parseGrades maps the modern paged JSON response", () => {
     examType: "正常考试",
     remark: undefined,
   });
+});
+
+test("parseGradeBreakdown reads the structured payload embedded by modern JWXT", () => {
+  const result = parseGradeBreakdown(`
+    <script>
+      layui.use(['table'], function () {
+        let arr = [{"cjxm1":82,"zcj":"84","cjxm3":93,"cjxm2":74,"cjxm3bl":"30%","cjxm2bl":"20%","cjxm1bl":"50%"}];
+        window.initQzTable({ data: arr });
+      });
+    </script>
+  `);
+
+  assert.deepEqual(result, {
+    usual: "93",
+    midterm: "74",
+    final: "82",
+    usualWeight: "30%",
+    midtermWeight: "20%",
+    finalWeight: "50%",
+  });
+  assert.equal(parseGradeBreakdown("<script>window.qzAlert('warning', '数据有误！')</script>"), null);
 });
 
 test("parseExams maps the modern paged JSON response", () => {

@@ -71,12 +71,12 @@
                   总评 {{ row.score || "—" }}
                 </span>
                 <span class="score-pill" :style="{ color: midtermColor(midtermNum(row.midterm)), fontWeight: 600 }">
-                  期中 {{ row.midterm || "—" }}
+                  期中 {{ componentScore(row.midterm, row.midtermWeight) }}
                 </span>
               </div>
               <div class="grade-detail">
-                <span>平时 {{ row.usual || "—" }}</span>
-                <span>期末 {{ row.final || "—" }}</span>
+                <span>平时 {{ componentScore(row.usual, row.usualWeight) }}</span>
+                <span>期末 {{ componentScore(row.final, row.finalWeight) }}</span>
                 <span>性质 {{ row.courseAttr || "—" }}</span>
               </div>
             </article>
@@ -91,17 +91,17 @@
                   <span :style="{ color: totalColor(row.scoreNum), fontWeight: 600 }">{{ row.score || "—" }}</span>
                 </template>
               </el-table-column>
-              <el-table-column label="期中" width="80" align="right">
+              <el-table-column label="期中" width="104" align="right">
                 <template #default="{ row }">
-                  <span :style="{ color: midtermColor(midtermNum(row.midterm)), fontWeight: 600 }">{{ row.midterm || "—" }}</span>
+                  <span :style="{ color: midtermColor(midtermNum(row.midterm)), fontWeight: 600 }">{{ componentScore(row.midterm, row.midtermWeight) }}</span>
                 </template>
               </el-table-column>
               <el-table-column v-if="!isMobile" prop="credits" label="学分" width="70" align="right" />
-              <el-table-column label="平时" width="60" align="right">
-                <template #default="{ row }">{{ row.usual || "—" }}</template>
+              <el-table-column label="平时" width="94" align="right">
+                <template #default="{ row }">{{ componentScore(row.usual, row.usualWeight) }}</template>
               </el-table-column>
-              <el-table-column label="期末" width="60" align="right">
-                <template #default="{ row }">{{ row.final || "—" }}</template>
+              <el-table-column label="期末" width="94" align="right">
+                <template #default="{ row }">{{ componentScore(row.final, row.finalWeight) }}</template>
               </el-table-column>
               <el-table-column prop="courseAttr" label="性质" width="90" />
               <el-table-column prop="examType" label="考试" width="100" />
@@ -130,6 +130,9 @@ interface GradeRow {
   usual?: string;
   midterm?: string;
   final?: string;
+  usualWeight?: string;
+  midtermWeight?: string;
+  finalWeight?: string;
   credits?: number;
   hours?: number;
   courseAttr?: string;
@@ -225,6 +228,13 @@ const totalCredits = computed(() =>
 
 function hasPublishedMidterm(row: GradeRow) {
   return Boolean(String(row.midterm ?? "").trim());
+}
+
+function componentScore(score?: string, weight?: string) {
+  const value = String(score ?? "").trim();
+  const ratio = String(weight ?? "").trim();
+  if (!value) return "—";
+  return ratio ? `${value} · ${ratio}` : value;
 }
 
 function hasPublishedTotal(row: GradeRow) {

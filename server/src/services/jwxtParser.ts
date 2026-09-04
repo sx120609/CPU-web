@@ -434,6 +434,9 @@ export interface GradeRow {
   usual?: string;     // 平时成绩
   midterm?: string;   // 期中成绩
   final?: string;     // 期末成绩
+  usualWeight?: string;
+  midtermWeight?: string;
+  finalWeight?: string;
   credits?: number;
   hours?: number;
   /** 学校列表不返回绩点，由总成绩计算（5.0 制） */
@@ -455,6 +458,11 @@ type ModernListEnvelope = {
   data?: unknown[];
 };
 
+export type GradeBreakdown = Pick<
+  GradeRow,
+  "usual" | "midterm" | "final" | "usualWeight" | "midtermWeight" | "finalWeight"
+>;
+
 function parseModernListEnvelope(input: string): ModernListEnvelope | null {
   const text = String(input || "").trim();
   if (!text.startsWith("{")) return null;
@@ -473,6 +481,64 @@ function textValue(value: unknown) {
 function numberValue(value: unknown) {
   const parsed = typeof value === "number" ? value : Number.parseFloat(textValue(value));
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function optionalTextValue(value: unknown) {
+  const text = textValue(value);
+  return text || undefined;
+}
+
+function gradeBreakdownFromRecord(row: Record<string, unknown>): GradeBreakdown | null {
+  const breakdown: GradeBreakdown = {
+    usual: optionalTextValue(row.cjxm3 ?? row.usual),
+    midterm: optionalTextValue(row.cjxm2 ?? row.midterm),
+    final: optionalTextValue(row.cjxm1 ?? row.final),
+    usualWeight: optionalTextValue(row.cjxm3bl ?? row.usualWeight),
+    midtermWeight: optionalTextValue(row.cjxm2bl ?? row.midtermWeight),
+    finalWeight: optionalTextValue(row.cjxm1bl ?? row.finalWeight),
+  };
+  return Object.values(breakdown).some((value) => value !== undefined) ? breakdown : null;
+}
+
+function parseInlineGradeArray(script: string) {
+  const assignment = /\b(?:let|var|const)\s+arr\s*=\s*/u.exec(script);
+  if (!assignment) return null;
+  const start = script.indexOf("[", assignment.index + assignment[0].length);
+  if (start < 0) return null;
+
+  let depth = 0;
+  let quoted = false;
+  let escaped = false;
+  for (let index = start; index < script.length; index += 1) {
+    const char = script[index];
+    if (quoted) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === '"') quoted = false;
+      continue;
+    }
+    if (char === '"') {
+      quoted = true;
+      continue;
+    }
+    if (char === "[") depth += 1;
+    if (char !== "]") continue;
+    depth -= 1;
+    if (depth !== 0) continue;
+    try {
+      const parsed = JSON.parse(script.slice(start, index + 1));
+      return Array.isArray(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+export function parseGradeBreakdown(html: string): GradeBreakdown | null {
+  const rows = parseInlineGradeArray(html);
+  const first = rows?.find((value) => value && typeof value === "object" && !Array.isArray(value));
+  return first ? gradeBreakdownFromRecord(first as Record<string, unknown>) : null;
 }
 
 function semesterOptionsFromValues(values: string[]): SemesterOption[] {
@@ -533,12 +599,14 @@ export function parseGrades(html: string): GradesResult {
       if (!courseName) return [];
       const score = textValue(row.zcjstr ?? row.zcj);
       const scoreNum = Number.parseFloat(score);
+      const breakdown = gradeBreakdownFromRecord(row);
       return [{
         semester: textValue(row.xnxqid ?? row.kksj),
         courseCode: textValue(row.kch) || undefined,
         courseName,
         score,
         scoreNum: Number.isFinite(scoreNum) ? scoreNum : null,
+        ...(breakdown ?? {}),
         credits: numberValue(row.xf),
         hours: numberValue(row.zxs),
         gpa: numberValue(row.jd) ?? scoreToGpa(score),
@@ -574,6 +642,9 @@ export function parseGrades(html: string): GradesResult {
     const idxUsual  = find("平时成绩", "平时");
     const idxMid    = find("期中成绩", "期中");
     const idxFinal  = find("期末成绩", "期末");
+    const idxUsualWeight = find("平时成绩比例");
+    const idxMidWeight = find("期中成绩比例");
+    const idxFinalWeight = find("期末成绩比例");
     const idxCredit = find("学分");
     const idxHours  = find("总学时", "学时");
     const idxAttr   = find("课程属性", "课程性质");
@@ -597,6 +668,9 @@ export function parseGrades(html: string): GradesResult {
         usual: idxUsual >= 0 ? cells[idxUsual] : undefined,
         midterm: idxMid >= 0 ? cells[idxMid] : undefined,
         final: idxFinal >= 0 ? cells[idxFinal] : undefined,
+        usualWeight: idxUsualWeight >= 0 ? cells[idxUsualWeight] : undefined,
+        midtermWeight: idxMidWeight >= 0 ? cells[idxMidWeight] : undefined,
+        finalWeight: idxFinalWeight >= 0 ? cells[idxFinalWeight] : undefined,
         credits: Number.isFinite(credits) ? credits : undefined,
         hours: idxHours >= 0 ? (parseFloat(cells[idxHours]) || undefined) : undefined,
         gpa: scoreToGpa(score),
@@ -640,6 +714,9 @@ export function parseMidtermGrades(html: string): GradesResult {
     const idxUsual = find("平时成绩", "平时");
     const idxMid = find("期中成绩", /^期中$/);
     const idxFinal = find("期末成绩", "期末");
+    const idxUsualWeight = find("平时成绩比例");
+    const idxMidWeight = find("期中成绩比例");
+    const idxFinalWeight = find("期末成绩比例");
     const idxCredit = find("学分");
     const idxHours = find("总学时", "学时");
     const idxAttr = find("课程属性", "课程性质");
@@ -663,6 +740,9 @@ export function parseMidtermGrades(html: string): GradesResult {
         usual: idxUsual >= 0 ? cells[idxUsual] : undefined,
         midterm: idxMid >= 0 ? cells[idxMid] : undefined,
         final: idxFinal >= 0 ? cells[idxFinal] : undefined,
+        usualWeight: idxUsualWeight >= 0 ? cells[idxUsualWeight] : undefined,
+        midtermWeight: idxMidWeight >= 0 ? cells[idxMidWeight] : undefined,
+        finalWeight: idxFinalWeight >= 0 ? cells[idxFinalWeight] : undefined,
         credits: Number.isFinite(credits) ? credits : undefined,
         hours: idxHours >= 0 ? (parseFloat(cells[idxHours]) || undefined) : undefined,
         gpa: score ? scoreToGpa(score) : undefined,

@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import {
   beginLogin,
   submitLogin,
@@ -19,16 +20,24 @@ import { getGraduateSchedule as getGraduateScheduleLive } from "./graduateSchedu
 import {
   parseCalendar,
   parseExams,
+  parseGradeBreakdown,
   parseGrades,
   parseMidtermGrades,
   parseProgress,
   parsePyfa,
   parseSchedule,
+  type GradeBreakdown,
+  type GradesResult,
 } from "./jwxtParser";
 import { isRecognizableUndergraduateSchedule } from "./academicIdentityDetection";
 import { Errors } from "../utils/response";
 
 export type JwxtDataSource = "modern" | "legacy";
+
+const MODERN_GRADES_CACHE_TTL_MS = 30 * 60_000;
+const MODERN_GRADES_CACHE_MAX_ENTRIES = 128;
+const MODERN_GRADE_DETAIL_CONCURRENCY = 8;
+const modernGradesCache = new Map<string, { expiresAt: number; promise: Promise<GradesResult> }>();
 
 function isUnauthorizedUpstreamError(error: unknown) {
   const candidate = error as { status?: unknown; code?: unknown } | null | undefined;
@@ -46,6 +55,124 @@ export async function modernFirst<T extends object>(modern: () => Promise<T>, le
       throw modernError;
     }
   }
+}
+
+function modernGradesCachePrefix(token: string) {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+function modernGradesCacheKey(token: string, semester: string) {
+  return `${modernGradesCachePrefix(token)}:${semester || "_"}`;
+}
+
+function pruneModernGradesCache() {
+  const now = Date.now();
+  for (const [key, entry] of modernGradesCache) {
+    if (entry.expiresAt <= now) modernGradesCache.delete(key);
+  }
+  while (modernGradesCache.size >= MODERN_GRADES_CACHE_MAX_ENTRIES) {
+    const oldest = modernGradesCache.keys().next().value;
+    if (!oldest) break;
+    modernGradesCache.delete(oldest);
+  }
+}
+
+async function mapWithConcurrency<T, R>(items: T[], limit: number, worker: (item: T) => Promise<R>) {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await worker(items[index]);
+    }
+  }));
+  return results;
+}
+
+function modernGradeDetailPath(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "";
+  const row = value as Record<string, unknown>;
+  const params = new URLSearchParams();
+  for (const key of ["xs0101id", "jx0404id", "cj0708id"] as const) {
+    const text = String(row[key] ?? "").trim();
+    if (!text) return "";
+    params.set(key, text);
+  }
+  const total = String(row.zcjstr ?? row.zcj ?? "").trim();
+  if (!total) return "";
+  params.set("zcj", total);
+  return `/jsxsd/kscj/pscj_list.do?${params.toString()}`;
+}
+
+async function enrichModernGradeBreakdowns(token: string, listText: string) {
+  let envelope: Record<string, unknown> & { data: unknown[] };
+  try {
+    const parsed = JSON.parse(listText) as Record<string, unknown> & { data?: unknown[] };
+    if (!Array.isArray(parsed.data)) return listText;
+    envelope = { ...parsed, data: parsed.data };
+  } catch {
+    return listText;
+  }
+
+  // Detail IDs come only from the authenticated student's own grade list and never leave the server.
+  const paths = Array.from(new Set(envelope.data.map(modernGradeDetailPath).filter(Boolean)));
+  let failureCount = 0;
+  const details = await mapWithConcurrency(paths, MODERN_GRADE_DETAIL_CONCURRENCY, async (path) => {
+    try {
+      const html = await jwxtFetchModernHtml(token, path, { persistSession: false });
+      return [path, parseGradeBreakdown(html)] as const;
+    } catch (error) {
+      if (isUnauthorizedUpstreamError(error)) throw error;
+      failureCount += 1;
+      return [path, null] as const;
+    }
+  });
+  if (failureCount) {
+    console.warn(`[jwxt] ${failureCount}/${paths.length} grade breakdown request(s) failed; totals were preserved`);
+  }
+
+  const byPath = new Map<string, GradeBreakdown | null>(details);
+  return JSON.stringify({
+    ...envelope,
+    data: envelope.data.map((value) => {
+      const detail = byPath.get(modernGradeDetailPath(value));
+      return detail && value && typeof value === "object" && !Array.isArray(value)
+        ? { ...value, ...detail }
+        : value;
+    }),
+  });
+}
+
+async function loadModernGrades(token: string, semester: string) {
+  const [queryHtml, listText] = await Promise.all([
+    jwxtFetchModernHtml(token, "/jsxsd/kscj/cjcx_frm"),
+    fetchModernPagedList(token, "/jsxsd/kscj/cjcx_list", {
+      kksj: semester,
+      kcxz: "",
+      kcsx: "",
+      kcmc: "",
+      xsfs: "all",
+      sfxsbcxq: "1",
+    }),
+  ]);
+  const semesters = parseGrades(queryHtml).semesters;
+  const parsed = parseGrades(await enrichModernGradeBreakdowns(token, listText));
+  return parsed.semesters.length ? parsed : { ...parsed, semesters };
+}
+
+function getCachedModernGrades(token: string, semester: string) {
+  const key = modernGradesCacheKey(token, semester);
+  const cached = modernGradesCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.promise;
+
+  pruneModernGradesCache();
+  const promise = loadModernGrades(token, semester);
+  modernGradesCache.set(key, { expiresAt: Date.now() + MODERN_GRADES_CACHE_TTL_MS, promise });
+  void promise.catch(() => {
+    if (modernGradesCache.get(key)?.promise === promise) modernGradesCache.delete(key);
+  });
+  return promise;
 }
 
 async function fetchModernPagedList(
@@ -74,6 +201,10 @@ export { beginLogin, submitLogin, submitLoginForHandoff, consumeLoginHandoff, ex
 export type { LoginSessionHandoff, LoginHandoffAttempt, JwxtSessionSnapshot } from "./jwxtClient";
 
 export async function logout(token: string) {
+  const prefix = `${modernGradesCachePrefix(token)}:`;
+  for (const key of modernGradesCache.keys()) {
+    if (key.startsWith(prefix)) modernGradesCache.delete(key);
+  }
   return clientLogout(token);
 }
 
@@ -108,22 +239,7 @@ export async function getSchedule(token: string, args: { semester?: string; week
 }
 
 export async function getGrades(token: string, args: { semester?: string } = {}) {
-  return modernFirst(async () => {
-    const [queryHtml, listText] = await Promise.all([
-      jwxtFetchModernHtml(token, "/jsxsd/kscj/cjcx_frm"),
-      fetchModernPagedList(token, "/jsxsd/kscj/cjcx_list", {
-        kksj: args.semester ?? "",
-        kcxz: "",
-        kcsx: "",
-        kcmc: "",
-        xsfs: "all",
-        sfxsbcxq: "1",
-      }),
-    ]);
-    const semesters = parseGrades(queryHtml).semesters;
-    const parsed = parseGrades(listText);
-    return parsed.semesters.length ? parsed : { ...parsed, semesters };
-  }, async () => {
+  return modernFirst(() => getCachedModernGrades(token, args.semester ?? ""), async () => {
     let semesters = [] as ReturnType<typeof parseGrades>["semesters"];
     try {
       semesters = parseGrades(
@@ -142,22 +258,7 @@ export async function getGrades(token: string, args: { semester?: string } = {})
 }
 
 export async function getMidtermGrades(token: string, args: { semester?: string } = {}) {
-  return modernFirst(async () => {
-    const [queryHtml, listText] = await Promise.all([
-      jwxtFetchModernHtml(token, "/jsxsd/kscj/cjcx_frm"),
-      fetchModernPagedList(token, "/jsxsd/kscj/cjcx_list", {
-        kksj: args.semester ?? "",
-        kcxz: "",
-        kcsx: "",
-        kcmc: "",
-        xsfs: "all",
-        sfxsbcxq: "1",
-      }),
-    ]);
-    const semesters = parseGrades(queryHtml).semesters;
-    const parsed = parseGrades(listText);
-    return parsed.semesters.length ? parsed : { ...parsed, semesters };
-  }, async () => {
+  return modernFirst(() => getCachedModernGrades(token, args.semester ?? ""), async () => {
     let semesters = [] as ReturnType<typeof parseGrades>["semesters"];
     try {
       semesters = parseGrades(

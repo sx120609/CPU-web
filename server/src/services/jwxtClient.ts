@@ -1124,7 +1124,11 @@ async function renewModernJwxtSession(token: string, target: URL) {
 }
 
 /** 使用同一个统一认证会话自动换票后访问新版 /jsxsd/ 教务页面。 */
-export async function jwxtFetchModernHtml(token: string, path: string): Promise<string> {
+export async function jwxtFetchModernHtml(
+  token: string,
+  path: string,
+  options: { persistSession?: boolean } = {},
+): Promise<string> {
   let sess = await getSession(token);
   if (!sess) throw Errors.unauthorized("教务会话已失效，请重新登录");
   const target = new URL(path, MODERN_JWXT_ORIGIN);
@@ -1151,7 +1155,7 @@ export async function jwxtFetchModernHtml(token: string, path: string): Promise<
   if (!page.result.res.ok) {
     throw new HttpError(page.result.res.status, 5400 + Math.min(199, Math.max(0, page.result.res.status - 400)), `新版教务请求失败 (${page.result.res.status})`);
   }
-  await persistActiveSession(token, sess);
+  if (options.persistSession !== false) await persistActiveSession(token, sess);
   return page.html;
 }
 
