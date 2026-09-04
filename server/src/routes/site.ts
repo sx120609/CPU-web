@@ -7,10 +7,13 @@ import { withCache } from "../services/cache";
 import { getFeatures, getLearningPlatformAvailability, getSiteConfig, getSiteFilingNumber, getSiteOrigin, getTopNavigation } from "../services/siteSettings";
 import {
   hasCampusMapPdsShare,
+  hasAssessmentToolPdsShare,
   hasPdsShare,
   parseDesktopVersionFromFileName,
+  parseAssessmentToolVersionFromFileName,
   hasAndroidPdsShare,
   resolveAndroidDownload,
+  resolveAssessmentToolDownload,
   resolveCampusMapDownload,
   resolveCampusMapView,
   resolveDesktopDownload,
@@ -314,6 +317,50 @@ siteRouter.get("/downloads/desktop-app", async (_req, res) => {
     return;
   }
   res.redirect(302, url);
+});
+
+/** 综测填表工具公开版本信息；本地程序也通过此接口静默检查更新。 */
+siteRouter.get("/downloads/assessment-form", async (req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  if (!hasAssessmentToolPdsShare()) {
+    ok(res, { available: false, url: "", version: "", password: "", direct: false });
+    return;
+  }
+  try {
+    const file = await resolveAssessmentToolDownload();
+    const origin = getSiteOrigin() || `${req.protocol}://${req.get("host") ?? ""}`;
+    ok(res, {
+      available: true,
+      url: new URL("/api/site/downloads/assessment-form-app", origin).toString(),
+      version: parseAssessmentToolVersionFromFileName(file.name),
+      password: "",
+      direct: true,
+      fileName: file.name,
+      size: file.size,
+      contentHash: file.contentHash,
+      contentHashName: file.contentHashName,
+      platform: "windows",
+    });
+  } catch (error) {
+    console.error("PDS 综测填表工具解析失败", error);
+    ok(res, { available: false, url: "", version: "", password: "", direct: false });
+  }
+});
+
+/** 稳定下载入口；每次点击时换取新的企业盘临时地址。 */
+siteRouter.get("/downloads/assessment-form-app", async (_req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  if (!hasAssessmentToolPdsShare()) {
+    res.status(404).json({ code: 404, message: "综测填表工具尚未发布" });
+    return;
+  }
+  try {
+    const file = await resolveAssessmentToolDownload();
+    res.redirect(302, file.url);
+  } catch (error) {
+    console.error("PDS 综测填表工具下载解析失败", error);
+    res.status(502).json({ code: 502, message: "综测填表工具下载暂时不可用，请稍后重试" });
+  }
 });
 
 /** macOS DMG 的稳定跳转入口；临时 PDS 地址只在请求时生成。 */

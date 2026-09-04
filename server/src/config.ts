@@ -345,9 +345,35 @@ export function resolveAndroidPdsShareSettings(
   };
 }
 
+export function resolveAssessmentToolPdsShareSettings(
+  assessmentShareUrl: string | undefined,
+  assessmentSharePassword: string | undefined,
+  fallbackShareUrl: string,
+  fallbackSharePassword: string,
+) {
+  const dedicatedUrl = String(assessmentShareUrl ?? "").trim();
+  if (dedicatedUrl) {
+    return {
+      url: dedicatedUrl,
+      password: String(assessmentSharePassword ?? "").trim(),
+    };
+  }
+  return {
+    url: fallbackShareUrl.trim(),
+    password: fallbackSharePassword.trim(),
+  };
+}
+
 const androidPdsShareSettings = resolveAndroidPdsShareSettings(
   process.env.ANDROID_APP_PDS_SHARE_URL,
   process.env.ANDROID_APP_PDS_SHARE_PASSWORD,
+  desktopPdsShareUrl,
+  desktopPdsSharePassword,
+);
+
+const assessmentToolPdsShareSettings = resolveAssessmentToolPdsShareSettings(
+  process.env.ASSESSMENT_TOOL_PDS_SHARE_URL,
+  process.env.ASSESSMENT_TOOL_PDS_SHARE_PASSWORD,
   desktopPdsShareUrl,
   desktopPdsSharePassword,
 );
@@ -432,6 +458,9 @@ export const config = {
   desktopPdsShareUrl,
   desktopPdsSharePassword,
   desktopAppVersion: (process.env.DESKTOP_APP_VERSION ?? "").trim(),
+  // 综测填表工具默认和桌面端共用企业盘发布目录，也允许以后迁移到独立分享。
+  assessmentToolPdsShareUrl: assessmentToolPdsShareSettings.url,
+  assessmentToolPdsSharePassword: assessmentToolPdsShareSettings.password,
   // 校园地图的查看与下载都由服务端解析 PDS 分享并跳转到短期直链，
   // 避免在仓库和前端包内保存图片，也不占用本站传输带宽。
   campusMapPdsShareUrl: (

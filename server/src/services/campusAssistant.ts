@@ -605,7 +605,7 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
   {
     id: "service-tools-overview",
     relatedActionIds: ["services", "service-tools"],
-    fact: "校园小工具：当前包括需求反馈、在线问卷、成绩表核对、文件收集、PDF 工具、校历与地图、失物招领和药苑之声；工具是否需要登录以入口上显示的状态为准。",
+    fact: "校园小工具：当前包括综测填表工具、需求反馈、在线问卷、成绩表核对、文件收集、PDF 工具、校历与地图、失物招领和药苑之声。综测填表工具仅支持 Windows 10/11，下载后在本机整理材料并生成 Word；工具是否需要登录以入口上显示的状态为准。",
   },
   {
     id: "desktop-client-install-safety",
@@ -796,7 +796,7 @@ const CAMPUS_ASSISTANT_KNOWLEDGE: CampusAssistantKnowledge[] = [
   {
     id: "service-tool-login-status-2026-08",
     relatedActionIds: ["services", "service-tools"],
-    fact: "校园小工具入口：打开“校园服务”可进入服务总览，打开“校园小工具”可查看反馈、问卷、成绩表核对、文件收集、PDF 工具、校历与地图、失物招领和药苑之声。每个工具卡片会显示“需登录”或“免登录”，这是当前配置的准确信号；如果入口加载失败，先按页面提供的“重试”操作，不要把暂时的网络错误判断成工具下线。",
+    fact: "校园小工具入口：打开“校园服务”可进入服务总览，打开“校园小工具”可查看综测填表工具、反馈、问卷、成绩表核对、文件收集、PDF 工具、校历与地图、失物招领和药苑之声。综测填表工具需下载到 Windows 10/11 电脑使用；其余工具以卡片显示的“需登录”或“免登录”为准。如果入口加载失败，先按页面提供的“重试”操作，不要把暂时的网络错误判断成工具下线。",
     source: "药大拾间校园服务与小工具页面",
     sourceRef: "CPU-web",
     verifiedAt: "2026-08-28",

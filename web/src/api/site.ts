@@ -41,6 +41,9 @@ export type DesktopDownloadInfo = {
   version: string;
   /** 网盘分享页的提取码；直链时为空 */
   password: string;
+  fileName?: string;
+  size?: number;
+  platform?: "windows" | "macos";
 };
 
 export const siteApi = {
@@ -49,6 +52,7 @@ export const siteApi = {
   navigation: () => request.get<TopNavigationItem[]>("/site/navigation", undefined, { suppressErrorMessage: true }),
   desktopDownload: () => request.get<DesktopDownloadInfo>("/site/downloads/desktop", undefined, { suppressErrorMessage: true }),
   macDesktopDownload: () => request.get<DesktopDownloadInfo>("/site/downloads/desktop-mac", undefined, { suppressErrorMessage: true }),
+  assessmentFormDownload: () => request.get<DesktopDownloadInfo>("/site/downloads/assessment-form", undefined, { suppressErrorMessage: true }),
 };
 
 /** 桌面端安装包信息。尚未发布时 available 为 false，调用方据此显示"正在打包中"。 */
@@ -56,6 +60,16 @@ export async function getDesktopDownload(): Promise<DesktopDownloadInfo> {
   const empty: DesktopDownloadInfo = { available: false, url: "", version: "", password: "" };
   try {
     const info = await siteApi.desktopDownload();
+    return info.available ? info : empty;
+  } catch {
+    return empty;
+  }
+}
+
+export async function getAssessmentFormDownload(): Promise<DesktopDownloadInfo> {
+  const empty: DesktopDownloadInfo = { available: false, url: "", version: "", password: "" };
+  try {
+    const info = await siteApi.assessmentFormDownload();
     return info.available ? info : empty;
   } catch {
     return empty;

@@ -135,6 +135,11 @@ export function parseDesktopVersionFromFileName(fileName: string): string {
   return /-([0-9]+(?:\.[0-9]+){1,3})-(?:win|mac(?:os)?)(?:-|_)/i.exec(fileName)?.[1] ?? "";
 }
 
+/** 综测填表工具的发布包只认固定命名，避免把分享目录里的其他 ZIP 当成更新。 */
+export function parseAssessmentToolVersionFromFileName(fileName: string): string {
+  return /^(?:药大拾间-)?综测填表工具-v([0-9]+(?:\.[0-9]+)*)\.zip$/i.exec(fileName)?.[1] ?? "";
+}
+
 const compareDesktopVersions = (left: string, right: string): number => {
   const a = left.split(".").map((part) => Number.parseInt(part, 10) || 0);
   const b = right.split(".").map((part) => Number.parseInt(part, 10) || 0);
@@ -322,6 +327,20 @@ export const pickAndroidInstaller = (files: PdsFile[]): PdsFile | null => {
   return candidates.sort(compareAndroidInstallerCandidates)[0];
 };
 
+export const pickAssessmentToolPackage = (files: PdsFile[]): PdsFile | null => {
+  const candidates = files.filter((file) => Boolean(parseAssessmentToolVersionFromFileName(file.name)));
+  if (candidates.length === 0) return null;
+  return candidates.sort((left, right) => {
+    const versionDiff = compareDesktopVersions(
+      parseAssessmentToolVersionFromFileName(right.name),
+      parseAssessmentToolVersionFromFileName(left.name),
+    );
+    if (versionDiff !== 0) return versionDiff;
+    const updatedDiff = (right.updatedAt || "").localeCompare(left.updatedAt || "");
+    return updatedDiff || left.name.localeCompare(right.name);
+  })[0];
+};
+
 /**
  * 校园地图分享可能同时包含压缩预览与原图；按体积选择最大的常见图片文件，
  * 避免把缩略图误当作“下载原图”。
@@ -338,7 +357,7 @@ export const pickCampusMapOriginal = (files: PdsFile[]): PdsFile | null => {
 
 // 解析结果整体缓存一小段时间：下载页与下载跳转是连着点的，没必要为同一次
 // 用户操作把三个 PDS 接口各打一遍。缓存必须短于地址本身的有效期。
-type DownloadTarget = "windows" | "mac" | "android" | "campus-map" | "campus-map-view";
+type DownloadTarget = "windows" | "mac" | "android" | "assessment-form" | "campus-map" | "campus-map-view";
 const downloadCache = new Map<DownloadTarget, { value: PdsDownload; expiresAt: number }>();
 const inFlight = new Map<DownloadTarget, Promise<PdsDownload>>();
 
@@ -351,6 +370,13 @@ const getShareSettings = (target: DownloadTarget) => {
       shareUrl: config.androidAppPdsShareUrl,
       password: config.androidAppPdsSharePassword,
       pickInstaller: pickAndroidInstaller,
+    };
+  }
+  if (target === "assessment-form") {
+    return {
+      shareUrl: config.assessmentToolPdsShareUrl,
+      password: config.assessmentToolPdsSharePassword,
+      pickInstaller: pickAssessmentToolPackage,
     };
   }
   if (target === "campus-map" || target === "campus-map-view") {
@@ -427,9 +453,11 @@ const resolveTargetDownload = async (target: DownloadTarget): Promise<PdsDownloa
 export const resolveDesktopDownload = (): Promise<PdsDownload> => resolveTargetDownload("windows");
 export const resolveMacDesktopDownload = (): Promise<PdsDownload> => resolveTargetDownload("mac");
 export const resolveAndroidDownload = (): Promise<PdsDownload> => resolveTargetDownload("android");
+export const resolveAssessmentToolDownload = (): Promise<PdsDownload> => resolveTargetDownload("assessment-form");
 export const resolveCampusMapDownload = (): Promise<PdsDownload> => resolveTargetDownload("campus-map");
 export const resolveCampusMapView = (): Promise<PdsDownload> => resolveTargetDownload("campus-map-view");
 
 export const hasPdsShare = (): boolean => parseShareUrl(config.desktopPdsShareUrl) !== null;
 export const hasAndroidPdsShare = (): boolean => parseShareUrl(config.androidAppPdsShareUrl) !== null;
+export const hasAssessmentToolPdsShare = (): boolean => parseShareUrl(config.assessmentToolPdsShareUrl) !== null;
 export const hasCampusMapPdsShare = (): boolean => parseShareUrl(config.campusMapPdsShareUrl) !== null;

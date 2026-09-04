@@ -489,6 +489,8 @@ Content-Type: application/json
 | `DESKTOP_PDS_SHARE_PASSWORD` | 空 | PDS 分享提取码；无提取码时留空 |
 | `ANDROID_APP_PDS_SHARE_URL` | 复用桌面端 PDS 分享 | 可选的安卓专用 PDS 文件夹分享链接；未配置时复用 `DESKTOP_PDS_SHARE_URL`，并自动选择版本号最高的 `CPU-Web-Android-V*.apk` |
 | `ANDROID_APP_PDS_SHARE_PASSWORD` | 复用桌面端 PDS 提取码 | 安卓专用 PDS 分享提取码；仅在配置安卓专用分享链接时使用 |
+| `ASSESSMENT_TOOL_PDS_SHARE_URL` | 复用桌面端 PDS 分享 | 综测填表工具的可选独立分享链接；默认在桌面端分享中选择版本号最高的 `药大拾间-综测填表工具-v*.zip` |
+| `ASSESSMENT_TOOL_PDS_SHARE_PASSWORD` | 复用桌面端 PDS 提取码 | 综测填表工具独立分享的提取码；仅在配置独立分享链接时使用 |
 | `DESKTOP_APP_VERSION` | 空 | 桌面端安装包版本号的可选显式覆盖；Windows 与 macOS 的 PDS 标准文件名会自动提取版本 |
 | `CAMPUS_MAP_PDS_SHARE_URL` | 校园地图原图固定分享 | 校园地图原图的阿里云盘企业版分享链接；服务端选择其中体积最大的图片，为页面查看与“下载原图”分别换取内联/附件直链并 302 跳转，原图不进入前端包，也不经过本站带宽 |
 | `CAMPUS_MAP_PDS_SHARE_PASSWORD` | 空 | 校园地图原图 PDS 分享提取码；无提取码时留空 |

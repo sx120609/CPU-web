@@ -1,16 +1,25 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { resolveAndroidPdsShareSettings } from "../src/config";
+import { resolveAndroidPdsShareSettings, resolveAssessmentToolPdsShareSettings } from "../src/config";
 import {
   parseDesktopVersionFromFileName,
+  parseAssessmentToolVersionFromFileName,
   parseShareUrl,
   pickAndroidInstaller,
+  pickAssessmentToolPackage,
   pickCampusMapOriginal,
   pickInstaller,
   pickMacInstaller,
   PdsEntry,
   walkShareTree,
 } from "../src/services/pdsShare";
+
+test("综测工具 PDS 未单独配置时复用桌面端分享", () => {
+  assert.deepEqual(
+    resolveAssessmentToolPdsShareSettings("", "ignored", "https://pds.example/shared", "desktop-password"),
+    { url: "https://pds.example/shared", password: "desktop-password" },
+  );
+});
 
 test("安卓 PDS 未单独配置时复用桌面端分享与提取码", () => {
   assert.deepEqual(
@@ -113,6 +122,17 @@ test("PDS Android APK prefers Android", () => {
 
   assert.equal(pickAndroidInstaller(files)?.fileId, "android-new");
   assert.equal(pickAndroidInstaller(files)?.viewUrl, "https://pds.example/android-v7");
+});
+
+test("综测工具只选择固定命名且优先最高版本", () => {
+  const files = [
+    { fileId: "other", name: "其他材料-v99.zip", size: 1, updatedAt: "2026-09-05T03:00:00Z" },
+    { fileId: "old", name: "药大拾间-综测填表工具-v8.zip", size: 42, updatedAt: "2026-09-05T02:00:00Z" },
+    { fileId: "new", name: "药大拾间-综测填表工具-v9.zip", size: 43, updatedAt: "2026-09-05T01:00:00Z" },
+  ];
+  assert.equal(parseAssessmentToolVersionFromFileName(files[2].name), "9");
+  assert.equal(parseAssessmentToolVersionFromFileName(files[0].name), "");
+  assert.equal(pickAssessmentToolPackage(files)?.fileId, "new");
 });
 
 test("校园地图原图选择最大图片而不是压缩预览", () => {

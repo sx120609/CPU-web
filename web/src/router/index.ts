@@ -145,6 +145,7 @@ export const router = createRouter({
         { path: "coursereview/:id", name: "course", component: () => import("@/views/coursereview/Course.vue"), meta: { title: "课程", public: true } },
         { path: "services", name: "services", component: loadServicesView, meta: { title: "校园服务", public: true } },
         { path: "services/tools", name: "service-tools", component: () => import("@/views/services/Tools.vue"), meta: { title: "校园小工具", public: true } },
+        { path: "services/tools/assessment-form", name: "service-assessment-form", component: () => import("@/views/services/AssessmentFormTool.vue"), meta: { title: "综测填表工具", public: true } },
         { path: "services/tools/yaoda-can-fly", name: "service-yaoda-can-fly", component: () => import("@/views/services/YaodaCanFly.vue"), meta: { title: "药大人能飞", public: true, fullWidthContent: true } },
         { path: "services/tools/voicehub", name: "service-voicehub", component: () => import("@/views/services/VoiceHubLaunch.vue"), meta: { title: "药苑之声", public: true, fullWidthContent: true } },
         { path: "services/tools/manage", name: "service-tools-manage", component: () => import("@/views/services/ToolManage.vue"), meta: { title: "小工具管理" } },
