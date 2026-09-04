@@ -2030,13 +2030,17 @@ function writeScheduleCache(key: string, data: ScheduleResult) {
 function notifyOfficialScheduleChange(previous: ScheduleResult | undefined, next: ScheduleResult) {
   const change = detectOfficialScheduleChange(previous, next);
   if (!change || !claimOfficialScheduleChangeNotice(change)) return;
-  ElMessage({
-    type: "warning",
-    message: "检测到教务课表已更新，请核对课程时间、周次和地点。",
-    duration: 10_000,
-    showClose: true,
-    offset: 96,
-  });
+  void ElMessageBox.alert(
+    "检测到教务课表内容发生变化，请核对课程时间、周次和地点。",
+    "教务课表已更新",
+    {
+      type: "warning",
+      confirmButtonText: "我知道了",
+      showClose: false,
+      closeOnClickModal: false,
+      closeOnPressEscape: false,
+    },
+  ).catch(() => undefined);
 }
 
 function rememberScheduleCache(key: string, envelope: CacheEnvelope<ScheduleResult>) {
