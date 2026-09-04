@@ -22,6 +22,7 @@
         <div class="feed-author-line">
           <span class="feed-author-name">{{ topic.author?.nickname || "匿名同学" }}</span>
           <UserVerificationBadge :verification="topic.author?.verification" />
+          <UserReputationBadge :level="topic.author?.reputationLevel" />
           <span v-if="topic.author?.vipActive" class="vip-badge">VIP</span>
           <span v-if="topic.isAnonymous" class="anonymous-badge">匿名</span>
         </div>
@@ -84,6 +85,7 @@ import { ChatLineRound, Star, View } from "@element-plus/icons-vue";
 import type { Topic } from "@/api/topic";
 import UserAvatar from "@/components/common/UserAvatar.vue";
 import UserVerificationBadge from "@/components/common/UserVerificationBadge.vue";
+import UserReputationBadge from "@/components/common/UserReputationBadge.vue";
 import { fmtRelative } from "@/utils/format";
 import { forumContentExcerpt, forumContentImages } from "@/utils/forumContent";
 import { cdnImageSrcset, cdnImageUrl } from "@/utils/cdnMedia";

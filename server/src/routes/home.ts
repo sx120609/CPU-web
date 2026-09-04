@@ -5,7 +5,7 @@ import { withCache } from "../services/cache";
 import { normalizeServiceCard, visibleServiceWhere } from "../services/serviceCards";
 import { enabledBoardTypes, getGlobalPinnedTopicIds } from "../services/siteSettings";
 import { resolveForumAccess } from "../services/forumAccess";
-import { decodeTopicForViewer, decodeTopicsForViewerForList, forumReplyPreviewInclude } from "../services/forumPresentation";
+import { decodeTopicForViewer, decodeTopicsForViewerForList, forumAuthorReputationSelect, forumReplyPreviewInclude } from "../services/forumPresentation";
 import { buildUserTrustSnapshot } from "../services/userTrust";
 import { visibleBoardSlugFilter } from "../services/retiredBoards";
 import { FORUM_SELF_VISIBLE_REVIEW_STATUSES, forumContentVisibilityWhere } from "../services/forumSubmission";
@@ -47,7 +47,7 @@ homeRouter.get("/summary", async (req, res, next) => {
     const globalPinnedIds = getGlobalPinnedTopicIds();
     const publicSummary = await withCache(
       "home",
-      ["summary-v6", forumAccessEnabled ? "forum-enabled" : "announce-only"],
+      ["summary-v7", forumAccessEnabled ? "forum-enabled" : "announce-only"],
       60_000,
       async () => {
         const [pinnedTopics, hotTopics, latestTopics, announce, services] = await Promise.all([
@@ -59,7 +59,7 @@ homeRouter.get("/summary", async (req, res, next) => {
             take: 10,
             include: {
               board: { select: { slug: true, name: true, color: true, type: true } },
-              author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true, verificationType: true, verificationLabel: true, verificationVerifiedAt: true, verificationExpiresAt: true } },
+              author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true, verificationType: true, verificationLabel: true, verificationVerifiedAt: true, verificationExpiresAt: true, ...forumAuthorReputationSelect } },
               tags: { include: { tag: true } },
               replies: forumReplyPreviewInclude,
             },
@@ -91,7 +91,7 @@ homeRouter.get("/summary", async (req, res, next) => {
       take: 10,
       include: {
         board: { select: { slug: true, name: true, color: true, type: true } },
-        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true, verificationType: true, verificationLabel: true, verificationVerifiedAt: true, verificationExpiresAt: true } },
+        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true, verificationType: true, verificationLabel: true, verificationVerifiedAt: true, verificationExpiresAt: true, ...forumAuthorReputationSelect } },
         tags: { include: { tag: true } },
       },
     }) : [];
@@ -137,7 +137,7 @@ homeRouter.get("/hot-ranking", async (_req, res, next) => {
     if (!forumAccessEnabled) return ok(res, []);
     const stream = parseHomeFeedStream(_req.query.stream);
     const contentBoardTypes = homeFeedBoardTypes(stream);
-    const list = await withCache("home", ["hot-ranking-v5", stream], 60_000, async () => listHotTopics(HOT_TOPIC_DEFAULT_SIZE, contentBoardTypes));
+    const list = await withCache("home", ["hot-ranking-v6", stream], 60_000, async () => listHotTopics(HOT_TOPIC_DEFAULT_SIZE, contentBoardTypes));
     const presented = await decodeTopicsForViewerForList(list, _req.user);
     ok(res, presented.map((item, index) => ({
       rank: index + 1,
@@ -162,7 +162,7 @@ homeRouter.get("/latest-feed", async (req, res, next) => {
       ...forumContentVisibilityWhere(userId),
       board: { type: { in: contentBoardTypes }, ...visibleBoardSlugFilter() },
     };
-    const cached = await withCache("home", ["latest-feed-v6", stream, userId ? `viewer-${userId}` : "public", page, size], 60_000, async () => {
+    const cached = await withCache("home", ["latest-feed-v7", stream, userId ? `viewer-${userId}` : "public", page, size], 60_000, async () => {
       const [pins, list, total] = await Promise.all([
         listGlobalPinnedTopics(globalPinnedIds, contentBoardTypes, 20),
         prisma.topic.findMany({
@@ -172,7 +172,7 @@ homeRouter.get("/latest-feed", async (req, res, next) => {
           take: size,
           include: {
             board: { select: { slug: true, name: true, color: true, type: true } },
-            author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true, verificationType: true, verificationLabel: true, verificationVerifiedAt: true, verificationExpiresAt: true } },
+            author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true, verificationType: true, verificationLabel: true, verificationVerifiedAt: true, verificationExpiresAt: true, ...forumAuthorReputationSelect } },
             tags: { include: { tag: true } },
             replies: forumReplyPreviewInclude,
           },
@@ -200,7 +200,7 @@ async function listGlobalPinnedTopics(ids: number[], boardTypes: string[], limit
   if (!orderedIds.length) return [];
   const include = {
     board: { select: { slug: true, name: true, color: true, type: true } },
-    author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true, verificationType: true, verificationLabel: true, verificationVerifiedAt: true, verificationExpiresAt: true } },
+    author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true, verificationType: true, verificationLabel: true, verificationVerifiedAt: true, verificationExpiresAt: true, ...forumAuthorReputationSelect } },
     tags: { include: { tag: true } },
   } as const;
   const rows = compactTopicAuthors(await prisma.topic.findMany({
@@ -220,7 +220,7 @@ async function listHotTopics(size: number, boardTypes: string[]) {
   const cutoff = new Date(nowMs - HOT_TOPIC_FALLBACK_WINDOW_MS);
   const include = {
     board: { select: { slug: true, name: true, color: true, type: true } },
-    author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true, verificationType: true, verificationLabel: true, verificationVerifiedAt: true, verificationExpiresAt: true } },
+    author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true, verificationType: true, verificationLabel: true, verificationVerifiedAt: true, verificationExpiresAt: true, ...forumAuthorReputationSelect } },
     tags: { include: { tag: true } },
     replies: forumReplyPreviewInclude,
   } as const;

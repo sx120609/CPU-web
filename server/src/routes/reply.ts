@@ -11,7 +11,7 @@ import { ensureUserCanSpeak } from "../services/userModeration";
 import { refreshUserReplyCount } from "../services/forumStats";
 import { consumeAnonymousCredit, createAnonymousAlias, refreshAnonymousCreditsIfNeeded } from "../services/userTrust";
 import { invalidateForumCaches } from "../services/cacheInvalidation";
-import { decodeReplyForViewer, decodeReplyForViewerWithImages } from "../services/forumPresentation";
+import { decodeReplyForViewer, decodeReplyForViewerWithImages, forumAuthorReputationSelect } from "../services/forumPresentation";
 import { ensureForumImageAssetsForContent, summarizeForumImageModerationForContent } from "../services/imageModeration";
 import { ensureForumVideoAssetsForContent, summarizeForumVideoModerationForContent } from "../services/videoModeration";
 import { isRetiredBoardSlug } from "../services/retiredBoards";
@@ -26,7 +26,7 @@ import { parseQuestionMetadata } from "../services/questionBounty";
 export const replyRouter = Router();
 
 const replySubmissionInclude = {
-  author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true, verificationType: true, verificationLabel: true, verificationVerifiedAt: true, verificationExpiresAt: true } },
+  author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true, verificationType: true, verificationLabel: true, verificationVerifiedAt: true, verificationExpiresAt: true, ...forumAuthorReputationSelect } },
 } as const;
 
 async function findReplySubmission(userId: number, submissionId: string) {
@@ -341,7 +341,7 @@ replyRouter.patch("/:id", authRequired, validate(updateSchema), async (req, res,
             board: { select: { slug: true, type: true } },
           },
         },
-        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true, verificationType: true, verificationLabel: true, verificationVerifiedAt: true, verificationExpiresAt: true } },
+        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true, verificationType: true, verificationLabel: true, verificationVerifiedAt: true, verificationExpiresAt: true, ...forumAuthorReputationSelect } },
       },
     });
     if (!reply || !reply.topic || reply.hidden || reply.topic.hidden) throw Errors.notFound("回复不存在");
@@ -363,7 +363,7 @@ replyRouter.patch("/:id", authRequired, validate(updateSchema), async (req, res,
       where: { id },
       data: { content: req.body.content },
       include: {
-        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true, verificationType: true, verificationLabel: true, verificationVerifiedAt: true, verificationExpiresAt: true } },
+        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true, verificationType: true, verificationLabel: true, verificationVerifiedAt: true, verificationExpiresAt: true, ...forumAuthorReputationSelect } },
       },
     });
     await Promise.all([

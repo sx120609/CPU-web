@@ -33,6 +33,7 @@
             <span v-if="topic.author?.vipActive" class="vip-badge" title="VIP 用户">VIP</span>
             <span class="simple-author">{{ topic.author?.nickname ?? '—' }}</span>
             <UserVerificationBadge :verification="topic.author?.verification" />
+            <UserReputationBadge :level="topic.author?.reputationLevel" />
             <span class="simple-time">{{ fmtRelative(displayedTime) }}</span>
             <span v-if="topic.editCount && topic.editCount > 0" class="simple-edited">已编辑 {{ topic.editCount }} 次</span>
           </div>
@@ -63,6 +64,7 @@
           <UserAvatar :size="28" class="avatar" :src="topic.author?.avatar" :name="topic.author?.nickname" :seed="topic.author?.id ?? topic.anonymousAlias ?? topic.id" :profile-frame="topic.author?.profileFrame" alt="作者头像" />
           <span class="market-card-author">{{ topic.author?.nickname ?? "—" }}</span>
           <UserVerificationBadge :verification="topic.author?.verification" />
+          <UserReputationBadge :level="topic.author?.reputationLevel" />
           <span>{{ fmtRelative(displayedTime) }}</span>
           <span class="market-card-stat"><el-icon><ChatLineRound /></el-icon>{{ topic.replyCount }}</span>
           <span class="market-card-stat"><el-icon><View /></el-icon>{{ displayedViewCount }}</span>
@@ -108,6 +110,7 @@
           <span v-if="topic.author?.vipActive" class="vip-badge" title="VIP 用户">VIP</span>
           <span class="author">{{ topic.author?.nickname ?? "—" }}</span>
           <UserVerificationBadge :verification="topic.author?.verification" />
+          <UserReputationBadge :level="topic.author?.reputationLevel" />
           <span v-if="topic.isAnonymous" class="anon">匿名</span>
           <span v-if="topic.author?.role === 'bot'" class="bot"><AppIcon name="bot" /> 公告同步</span>
           <span class="meta-separator">·</span>
@@ -135,6 +138,7 @@ import { useRoute, useRouter } from "vue-router";
 import { View, ChatLineRound, Star } from "@element-plus/icons-vue";
 import UserAvatar from "@/components/common/UserAvatar.vue";
 import UserVerificationBadge from "@/components/common/UserVerificationBadge.vue";
+import UserReputationBadge from "@/components/common/UserReputationBadge.vue";
 import AppIcon from "@/components/common/AppIcon.vue";
 import { fmtRelative } from "@/utils/format";
 import { forumContentExcerpt } from "@/utils/forumContent";
@@ -503,7 +507,7 @@ function openTopic() {
   white-space: nowrap;
 }
 .simple-byline { gap: 7px; overflow: hidden; }
-.simple-byline > span + span:not(.simple-edited):not(.account-verification-badge)::before { content: "·"; margin-right: 7px; color: var(--cpu-border); }
+.simple-byline > span + span:not(.simple-edited):not(.account-verification-badge):not(.reputation-badge)::before { content: "·"; margin-right: 7px; color: var(--cpu-border); }
 .simple-byline > .vip-badge + .simple-author::before { content: none; }
 .simple-author {
   min-width: 24px;

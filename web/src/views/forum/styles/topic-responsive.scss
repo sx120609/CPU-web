@@ -447,20 +447,19 @@
   }
 
   .reply-form-actions {
-    align-items: stretch;
-    flex-direction: column;
-    gap: 7px;
+    align-items: center;
+    flex-direction: row;
+    gap: 10px;
   }
 
   .reply-submit-actions {
-    display: grid;
-    grid-template-columns: 1fr;
+    display: flex;
     gap: 7px;
   }
 
   .reply-form-actions .el-button,
   .reply-submit-actions .el-button {
-    width: 100%;
+    width: auto;
   }
 
   .share-actions {
@@ -505,55 +504,88 @@
     line-height: 1.4;
   }
 
-  :global(.el-overlay-dialog .reply-dialog.is-fullscreen) {
-    display: flex;
-    height: 100dvh;
-    width: 100dvw !important;
-    max-width: none;
-    max-height: 100dvh;
-    margin: 0 !important;
-    padding: 0;
-    flex-direction: column;
-    overflow: hidden;
-    border-radius: 0;
+  :global(.reply-dialog-overlay) {
+    background: rgba(15, 23, 42, .16);
   }
 
-  :global(.reply-dialog.is-fullscreen .el-dialog__header) {
+  :global(.reply-dialog-overlay .el-overlay-dialog) {
+    display: flex;
+    align-items: flex-end;
+    padding: 8px 8px max(8px, env(safe-area-inset-bottom));
+  }
+
+  :global(.reply-dialog-overlay .reply-dialog) {
+    display: flex;
+    width: calc(100dvw - 16px) !important;
+    max-width: 720px;
+    max-height: min(68dvh, 560px);
+    margin: 0 auto !important;
+    flex-direction: column;
+    overflow: hidden;
+    border-radius: 18px;
+    box-shadow: 0 -8px 36px rgba(15, 23, 42, .2);
+  }
+
+  :global(.reply-dialog-overlay .reply-dialog .el-dialog__header) {
     flex: 0 0 auto;
     margin: 0;
-    padding: max(14px, env(safe-area-inset-top)) 48px 13px 16px;
+    padding: 12px 46px 10px 14px;
     border-bottom: 1px solid var(--cpu-border-soft);
   }
 
-  :global(.reply-dialog.is-fullscreen .el-dialog__title) {
+  :global(.reply-dialog-overlay .reply-dialog .el-dialog__title) {
     color: var(--cpu-text);
-    font-size: 17px;
+    font-size: 15px;
     font-weight: 700;
   }
 
-  :global(.reply-dialog.is-fullscreen .el-dialog__headerbtn) {
-    top: max(8px, env(safe-area-inset-top));
-    right: 8px;
+  :global(.reply-dialog-overlay .reply-dialog .el-dialog__headerbtn) {
+    top: 5px;
+    right: 5px;
   }
 
-  :global(.reply-dialog.is-fullscreen .el-dialog__body) {
+  :global(.reply-dialog-overlay .reply-dialog .el-dialog__body) {
     display: flex;
     min-height: 0;
-    padding: 12px 12px max(12px, env(safe-area-inset-bottom));
+    padding: 9px 10px 10px;
     flex: 1 1 auto;
     flex-direction: column;
     overflow-y: auto;
   }
 
+  .reply-original-peek {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    width: 100%;
+    margin-bottom: 8px;
+    padding: 6px 9px;
+    border: 0;
+    border-radius: 8px;
+    background: var(--cpu-surface-soft);
+    color: var(--cpu-text-muted);
+    font: inherit;
+    font-size: 10px;
+    text-align: left;
+  }
+
+  .reply-original-peek b {
+    flex: 0 0 auto;
+    color: var(--cpu-primary);
+    font-size: 11px;
+  }
+
   :global(.reply-dialog .rich-editor.toolbar-static.simple-mobile) {
-    flex: 1 1 auto;
+    flex: 0 1 auto;
     border-radius: 12px;
     box-shadow: none;
   }
 
   :global(.reply-dialog .rich-editor.toolbar-static.simple-mobile .editor-surface) {
-    min-height: min(42dvh, 340px);
-    max-height: none;
+    min-height: 118px;
+    max-height: min(28dvh, 240px);
   }
 
   .reply-dialog-actions {
@@ -563,8 +595,9 @@
   }
 
   .reply-dialog-actions > .cpu-muted {
-    min-height: 17px;
-    text-align: center;
+    min-width: 0;
+    font-size: 10px;
+    text-align: left;
   }
 
   .reply-submit-actions :deep(.el-button--primary) {
@@ -573,7 +606,4 @@
     font-weight: 700;
   }
 
-  :global(.reply-dialog:not(.is-fullscreen)) {
-    width: calc(100dvw - 16px) !important;
-  }
 }

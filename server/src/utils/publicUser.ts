@@ -115,8 +115,14 @@ export function buildUserPreview(u: any, viewer?: Viewer) {
     verification: buildAccountVerification(u),
   };
 
-  if ("reputation" in u) result.reputation = u.reputation;
-  if ("reputationLevel" in u) result.reputationLevel = u.reputationLevel;
+  if ("createdAt" in u && "postCount" in u && "replyCount" in u) {
+    const trust = buildUserTrustSnapshot(u);
+    result.reputation = trust.reputation;
+    result.reputationLevel = trust.reputationLevel;
+  } else {
+    if ("reputation" in u) result.reputation = u.reputation;
+    if ("reputationLevel" in u) result.reputationLevel = u.reputationLevel;
+  }
 
   if ("bio" in u) result.bio = u.bio;
   if (canSeeUsername(viewer, u.id)) result.username = u.username;

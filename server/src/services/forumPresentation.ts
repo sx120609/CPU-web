@@ -12,6 +12,12 @@ type Viewer = {
   lostFoundRole?: string | null;
 } | null | undefined;
 
+export const forumAuthorReputationSelect = {
+  createdAt: true,
+  postCount: true,
+  replyCount: true,
+} as const;
+
 export const forumReplyPreviewInclude = {
   where: { hidden: false },
   orderBy: { createdAt: "desc" },
@@ -27,7 +33,7 @@ export const forumReplyPreviewInclude = {
     floor: true,
     likeCount: true,
     createdAt: true,
-    author: { select: { id: true, nickname: true, role: true, verificationType: true, verificationLabel: true, verificationVerifiedAt: true, verificationExpiresAt: true } },
+    author: { select: { id: true, nickname: true, role: true, verificationType: true, verificationLabel: true, verificationVerifiedAt: true, verificationExpiresAt: true, ...forumAuthorReputationSelect } },
   },
 } as const;
 

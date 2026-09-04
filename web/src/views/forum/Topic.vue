@@ -87,6 +87,7 @@
               <router-link v-if="topic.author?.id" :to="`/u/${topic.author.id}`">{{ topic.author?.nickname }}</router-link>
               <span v-else>{{ topic.author?.nickname }}</span>
               <UserVerificationBadge :verification="topic.author?.verification" />
+              <UserReputationBadge :level="topic.author?.reputationLevel" />
               <button
                 v-if="canPrivateChatPost(topic)"
                 type="button"
@@ -371,6 +372,7 @@
               >私聊</button>
             </div>
             <div class="reply-author-badges">
+              <UserReputationBadge :level="entry.item.author?.reputationLevel" />
               <el-tag v-if="entry.item.isAnonymous" size="small" type="warning" effect="plain">匿名</el-tag>
               <el-tag v-if="replyReviewLabel(entry.item)" size="small" type="warning" effect="plain">{{ replyReviewLabel(entry.item) }}</el-tag>
             </div>
@@ -444,11 +446,15 @@
       v-model="replyDialogOpen"
       :title="replyDialogTitle"
       width="min(720px, calc(100dvw - 24px))"
-      :fullscreen="isMobileLayout"
       append-to-body
       :align-center="!isMobileLayout"
       class="reply-dialog"
+      modal-class="reply-dialog-overlay"
     >
+      <button v-if="isMobileLayout" type="button" class="reply-original-peek" @click="peekOriginalPost">
+        <span>需要回看帖子？草稿会自动保留</span>
+        <b>收起并回看</b>
+      </button>
       <div v-if="replyParentPreview && !editingReplyId" class="reply-target-bar">
         <span>正在回复 {{ replyParentPreview.author?.nickname || "同学" }} 的 #{{ replyParentPreview.floor }} 楼</span>
         <el-button text size="small" @click="clearReplyParent">取消</el-button>
@@ -732,6 +738,7 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { ArrowLeft, ArrowRight, ChatLineRound, Compass, Link, MoreFilled, Picture, Star, VideoCamera } from "@element-plus/icons-vue";
 import UserAvatar from "@/components/common/UserAvatar.vue";
 import UserVerificationBadge from "@/components/common/UserVerificationBadge.vue";
+import UserReputationBadge from "@/components/common/UserReputationBadge.vue";
 import UserModerationActions from "@/components/common/UserModerationActions.vue";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
 import AppIcon from "@/components/common/AppIcon.vue";
@@ -1472,6 +1479,12 @@ function openReplyDialog(parentId: number | null = null) {
   if (editingReplyId.value || replyParentId.value !== parentId) switchReplyContext({ parentId });
   replyDialogOpen.value = true;
   return true;
+}
+
+function peekOriginalPost() {
+  replyEditorRef.value?.flushDraftSave();
+  replyDialogOpen.value = false;
+  nextTick(() => mainFloorRef.value?.scrollIntoView({ behavior: "smooth", block: "start" }));
 }
 
 function replyDraftBaseKey() {

@@ -101,6 +101,12 @@ export interface ForumAuthor {
   profileTheme?: string | null;
   profileFrame?: string | null;
   verification?: AccountVerification | null;
+  reputation?: number;
+  reputationLevel?: {
+    level: number;
+    name: string;
+    minReputation: number;
+  };
 }
 
 export type ImageReviewSummary = {
