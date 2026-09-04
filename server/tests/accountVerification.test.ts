@@ -10,10 +10,12 @@ import {
   buildAccountVerification,
   normalizedVerificationExpiry,
 } from "../src/services/accountVerification";
+import { accountVerificationApplicationIssue } from "../../web/src/utils/accountVerificationForm";
 
 const routeSource = readFileSync(new URL("../src/routes/accountVerification.ts", import.meta.url), "utf8");
 const adminPaneSource = readFileSync(new URL("../../web/src/views/admin/AccountVerificationsPane.vue", import.meta.url), "utf8");
 const profileSource = readFileSync(new URL("../../web/src/views/profile/Index.vue", import.meta.url), "utf8");
+const verificationPageSource = readFileSync(new URL("../../web/src/views/profile/Verification.vue", import.meta.url), "utf8");
 
 test("personal and organization accounts can use the verification workflow", () => {
   assert.deepEqual(ACCOUNT_VERIFICATION_TYPES, ["individual", "campus_organization"]);
@@ -112,4 +114,22 @@ test("requires an optional expiry to be in the future", () => {
   assert.throws(() => normalizedVerificationExpiry("invalid", now), /格式不正确/);
   assert.throws(() => normalizedVerificationExpiry("2027-02-31", now), /格式不正确/);
   assert.throws(() => normalizedVerificationExpiry("2026-09-03T00:00:00.000Z", now), /晚于当前时间/);
+});
+
+test("explains why an incomplete verification application cannot be submitted", () => {
+  const validDraft = {
+    requestedLabel: "药大拾间开发者",
+    identityDescription: "负责药大拾间产品开发与日常维护",
+    evidence: "管理员可通过站内账号记录和项目仓库核验",
+    acknowledged: true,
+  };
+  assert.equal(accountVerificationApplicationIssue(validDraft), "");
+  assert.equal(accountVerificationApplicationIssue({ ...validDraft, requestedLabel: "药" }), "认证名称至少填写 2 个字");
+  assert.equal(accountVerificationApplicationIssue({ ...validDraft, identityDescription: "开发者" }), "身份说明至少填写 10 个字");
+  assert.match(accountVerificationApplicationIssue({ ...validDraft, evidence: "没有" }), /可核验信息至少填写 10 个字/);
+  assert.equal(accountVerificationApplicationIssue({ ...validDraft, acknowledged: false }), "请先勾选真实性确认");
+  assert.match(verificationPageSource, /:disabled="submitDisabled"/);
+  assert.doesNotMatch(verificationPageSource, /:disabled="!canSubmit"/);
+  assert.match(verificationPageSource, /class="submit-feedback" role="alert"/);
+  assert.match(verificationPageSource, /ElMessage\.warning\(issue\)/);
 });

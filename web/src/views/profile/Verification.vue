@@ -104,7 +104,7 @@
             show-word-limit
             :placeholder="form.type === 'individual' ? '例如：校园摄影创作者' : '例如：中国药科大学轮滑协会'"
           />
-          <p class="field-help">审核通过后，昵称旁显示蓝色认证标记；这段完整说明会显示在悬停提示和个人主页，管理员可按核验结果校正。</p>
+          <p class="field-help">至少填写 2 个字。审核通过后，昵称旁显示蓝色认证标记；这段完整说明会显示在悬停提示和个人主页，管理员可按核验结果校正。</p>
         </el-form-item>
         <el-form-item :label="form.type === 'individual' ? '个人身份说明' : '组织与账号的关系'" required>
           <el-input
@@ -115,6 +115,7 @@
             show-word-limit
             :placeholder="form.type === 'individual' ? '说明需要认证的个人身份、校园角色或公开经历' : '说明组织性质、你的运营职责，以及为什么由这个账号代表该组织'"
           />
+          <p class="field-help">至少填写 10 个字。</p>
         </el-form-item>
         <el-form-item label="可核验信息" required>
           <el-input
@@ -125,6 +126,7 @@
             show-word-limit
             :placeholder="form.type === 'individual' ? '可填写公开主页、作品、任职公示、活动报道或其他核验方式' : '可填写官方公众号文章、组织公示页面、指导老师或上级组织的核验方式等'"
           />
+          <p class="field-help">至少填写 10 个字；如暂无公开资料，请说明管理员可以通过什么方式核验。</p>
           <p class="field-help is-important">请勿提交身份证、学生证照片、密码或其他敏感证件。确需进一步核验时，管理员会另行联系。</p>
         </el-form-item>
         <el-form-item label="核验联系方式（选填）">
@@ -134,7 +136,16 @@
           <input v-model="form.acknowledged" type="checkbox" />
           <span>我确认所填个人身份或组织关系真实，并同意平台在必要时联系核验。冒用身份可能导致认证撤销和账号处罚。</span>
         </label>
-        <el-button class="submit-button" type="primary" size="large" :loading="submitting" :disabled="!canSubmit" @click="submitApplication">
+        <p v-if="submitFeedback" id="verification-submit-feedback" class="submit-feedback" role="alert">{{ submitFeedback }}</p>
+        <el-button
+          class="submit-button"
+          type="primary"
+          size="large"
+          :loading="submitting"
+          :disabled="submitDisabled"
+          aria-describedby="verification-submit-feedback"
+          @click="submitApplication"
+        >
           提交认证申请
         </el-button>
       </el-form>
@@ -160,7 +171,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ArrowLeft } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
@@ -176,6 +187,7 @@ import {
   type AccountVerificationType,
 } from "@/api/accountVerification";
 import { useAuthStore } from "@/stores/auth";
+import { accountVerificationApplicationIssue } from "@/utils/accountVerificationForm";
 import { fmtDate } from "@/utils/format";
 
 const auth = useAuthStore();
@@ -186,6 +198,7 @@ const loadError = ref("");
 const submitting = ref(false);
 const removing = ref(false);
 const showForm = ref(false);
+const submitError = ref("");
 const snapshot = ref<AccountVerificationMe | null>(null);
 const form = reactive({
   type: "individual" as AccountVerificationType,
@@ -202,14 +215,21 @@ const latestApplication = computed(() => history.value[0] || null);
 const canShowForm = computed(() => Boolean(snapshot.value)
   && !snapshot.value!.submission.hasPending
   && (!snapshot.value!.verification || showForm.value || latestApplication.value?.status !== "approved"));
-const canSubmit = computed(() => form.requestedLabel.trim().length >= 2
-  && form.identityDescription.trim().length >= 10
-  && form.evidence.trim().length >= 10
-  && form.acknowledged
-  && (snapshot.value?.submission.remaining ?? 0) > 0
-  && !snapshot.value?.submission.hasPending);
+const submitUnavailableReason = computed(() => {
+  if (!snapshot.value) return "认证信息尚未加载完成";
+  if (snapshot.value.submission.hasPending) return "已有认证申请正在审核，请勿重复提交";
+  if (snapshot.value.submission.remaining <= 0) return "30 天内最多提交 3 次认证申请";
+  return "";
+});
+const submitDisabled = computed(() => submitting.value || Boolean(submitUnavailableReason.value));
+const submitFeedback = computed(() => submitError.value || submitUnavailableReason.value);
 
 onMounted(load);
+
+watch(
+  () => [form.requestedLabel, form.identityDescription, form.evidence, form.acknowledged],
+  () => { submitError.value = ""; },
+);
 
 async function load() {
   if (previewMode) {
@@ -232,7 +252,14 @@ async function load() {
 }
 
 async function submitApplication() {
-  if (!canSubmit.value || submitting.value) return;
+  if (submitting.value) return;
+  const issue = submitUnavailableReason.value || accountVerificationApplicationIssue(form);
+  if (issue) {
+    submitError.value = issue;
+    ElMessage.warning(issue);
+    return;
+  }
+  submitError.value = "";
   submitting.value = true;
   try {
     await accountVerificationApi.apply({
@@ -251,6 +278,8 @@ async function submitApplication() {
     form.acknowledged = false;
     showForm.value = false;
     await load();
+  } catch (error) {
+    submitError.value = requestMessage(error) || "认证申请提交失败，请稍后重试";
   } finally {
     submitting.value = false;
   }
@@ -347,6 +376,7 @@ function requestMessage(error: unknown) {
 .field-help.is-important { color: #b45309; }
 .truth-check { display: flex; align-items: flex-start; gap: 9px; margin: 3px 0 18px; color: var(--cpu-text-secondary); font-size: 12px; line-height: 1.6; cursor: pointer; }
 .truth-check input { width: 17px; height: 17px; flex: 0 0 auto; margin-top: 1px; accent-color: var(--cpu-primary); }
+.submit-feedback { margin: -7px 0 10px; color: var(--el-color-danger); font-size: 12px; line-height: 1.5; }
 .submit-button { min-width: 180px; border-radius: 9px; }
 .process-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 0; padding: 0; list-style: none; }
 .process-list li { display: flex; gap: 9px; padding: 12px; border-radius: 11px; background: var(--cpu-surface-soft); }
