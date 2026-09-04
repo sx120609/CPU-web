@@ -223,7 +223,7 @@ const PLAYER_X = NJU_FLIGHT_PHYSICS.playerX;
 const PLAYER_RADIUS = NJU_FLIGHT_PHYSICS.playerRadius;
 const PIPE_WIDTH = NJU_FLIGHT_PHYSICS.pipeWidth;
 const STORAGE_PREFIX = "cpu-web:yaoda-can-fly:v2";
-const GAME_RELEASE = "20260904-v4" as const;
+const GAME_RELEASE = "20260905-v5" as const;
 
 const worldHeight = WORLD_HEIGHT;
 let playerY = 300;

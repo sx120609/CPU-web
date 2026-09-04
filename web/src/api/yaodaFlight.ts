@@ -41,7 +41,7 @@ export const yaodaFlightApi = {
     undefined,
     { cacheTtlMs: 15_000, suppressErrorMessage: true, ...options },
   ),
-  recoverHistory: (payload: { release: "20260904-v3" | "20260904-v4"; history: Array<{ score: number; playedAt: string }> }, options?: RequestOptions) =>
+  recoverHistory: (payload: { release: "20260904-v3" | "20260904-v4" | "20260905-v5"; history: Array<{ score: number; playedAt: string }> }, options?: RequestOptions) =>
     request.post<YaodaFlightRecoveryResult>("/tools/yaoda-can-fly/recover-history", payload, options),
   startAttempt: (options?: RequestOptions) => request.post<{ id: number; startedAt: string }>(
     "/tools/yaoda-can-fly/attempts",

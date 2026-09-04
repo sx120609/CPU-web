@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import {
   earnedYaodaFlightAchievementCodes,
   isRecoverableYaodaFlightHistoryItem,
+  isRecoverableYaodaFlightLegacyMaxHistoryItem,
   minimumDurationForFlightScore,
   publicFlightName,
   validateYaodaFlightResult,
@@ -78,7 +79,14 @@ test("历史补传事务锁使用 PostgreSQL 双 int 参数", () => {
 
 test("正常飞行成绩通过服务端校验", () => {
   assert.equal(validateYaodaFlightResult({ score: 12, durationMs: 18_000, serverElapsedMs: 19_200 }), null);
+  assert.equal(validateYaodaFlightResult({ score: 201, durationMs: 223_000, serverElapsedMs: 224_000 }), null);
   assert.equal(validateYaodaFlightResult({ score: 0, durationMs: 430, serverElapsedMs: 650 }), null);
+  assert.equal(YAODA_FLIGHT_MAX_SCORE, 2453);
+  assert.equal(validateYaodaFlightResult({
+    score: YAODA_FLIGHT_MAX_SCORE,
+    durationMs: minimumDurationForFlightScore(YAODA_FLIGHT_MAX_SCORE),
+    serverElapsedMs: minimumDurationForFlightScore(YAODA_FLIGHT_MAX_SCORE),
+  }), null);
 });
 
 test("历史补传只接收限流缺陷影响时段内的本机成绩", () => {
@@ -101,6 +109,29 @@ test("历史补传只接收限流缺陷影响时段内的本机成绩", () => {
     playedAtMs: YAODA_FLIGHT_RECOVERY_STARTED_AT_MS - 1,
     nowMs: playedAtMs + 1_000,
     attemptStartedAtMs,
+  }), false);
+});
+
+test("旧版 200 分上限造成的成绩可按真实对局时长补传", () => {
+  const playedAtMs = YAODA_FLIGHT_RECOVERY_STARTED_AT_MS + 10 * 60 * 1000;
+  const validAttemptStartedAtMs = playedAtMs - minimumDurationForFlightScore(201) - 1_000;
+  assert.equal(isRecoverableYaodaFlightLegacyMaxHistoryItem({
+    score: 201,
+    playedAtMs,
+    nowMs: playedAtMs + 1_000,
+    attemptStartedAtMs: validAttemptStartedAtMs,
+  }), true);
+  assert.equal(isRecoverableYaodaFlightLegacyMaxHistoryItem({
+    score: 200,
+    playedAtMs,
+    nowMs: playedAtMs + 1_000,
+    attemptStartedAtMs: validAttemptStartedAtMs,
+  }), false);
+  assert.equal(isRecoverableYaodaFlightLegacyMaxHistoryItem({
+    score: 201,
+    playedAtMs,
+    nowMs: playedAtMs + 1_000,
+    attemptStartedAtMs: playedAtMs - 10_000,
   }), false);
 });
 

@@ -1,5 +1,6 @@
-export const YAODA_FLIGHT_MAX_SCORE = 200;
 export const YAODA_FLIGHT_MAX_ATTEMPT_MS = 45 * 60 * 1000;
+export const YAODA_FLIGHT_MAX_SCORE = Math.floor((YAODA_FLIGHT_MAX_ATTEMPT_MS - 2_800) / 1_100) + 1;
+export const YAODA_FLIGHT_LEGACY_MAX_SCORE = 200;
 export const YAODA_FLIGHT_BUGGY_START_LIMIT_PER_10_MIN = 12;
 export const YAODA_FLIGHT_RECOVERY_STARTED_AT_MS = Date.parse("2026-09-04T11:00:00.000Z");
 export const YAODA_FLIGHT_RECOVERY_DEADLINE_MS = Date.parse("2026-09-18T16:00:00.000Z");
@@ -63,6 +64,28 @@ export function isRecoverableYaodaFlightHistoryItem(input: {
     startedAtMs >= recentWindowStartedAtMs && startedAtMs <= input.playedAtMs
   )).length;
   return recentAttempts >= YAODA_FLIGHT_BUGGY_START_LIMIT_PER_10_MIN;
+}
+
+export function isRecoverableYaodaFlightLegacyMaxHistoryItem(input: {
+  score: number;
+  playedAtMs: number;
+  nowMs: number;
+  attemptStartedAtMs: number;
+  attemptCompletedAtMs?: number | null;
+}) {
+  if (
+    input.score <= YAODA_FLIGHT_LEGACY_MAX_SCORE
+    || input.score > YAODA_FLIGHT_MAX_SCORE
+    || input.nowMs > YAODA_FLIGHT_RECOVERY_DEADLINE_MS
+    || input.playedAtMs < YAODA_FLIGHT_RECOVERY_STARTED_AT_MS
+    || input.playedAtMs > input.nowMs + 5 * 60 * 1000
+  ) {
+    return false;
+  }
+  const elapsedMs = input.playedAtMs - input.attemptStartedAtMs;
+  if (elapsedMs < 0 || elapsedMs > YAODA_FLIGHT_MAX_ATTEMPT_MS) return false;
+  if (input.attemptCompletedAtMs != null && input.attemptCompletedAtMs < input.playedAtMs - 90_000) return false;
+  return elapsedMs + 1_500 >= minimumDurationForFlightScore(input.score);
 }
 
 export function validateYaodaFlightResult(input: {

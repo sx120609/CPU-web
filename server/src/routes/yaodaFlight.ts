@@ -7,6 +7,7 @@ import { Errors, ok } from "../utils/response";
 import {
   earnedYaodaFlightAchievementCodes,
   isRecoverableYaodaFlightHistoryItem,
+  isRecoverableYaodaFlightLegacyMaxHistoryItem,
   minimumDurationForFlightScore,
   publicFlightName,
   validateYaodaFlightResult,
@@ -26,7 +27,7 @@ const finishAttemptSchema = z.object({
 });
 
 const recoverHistorySchema = z.object({
-  release: z.enum(["20260904-v3", "20260904-v4"]),
+  release: z.enum(["20260904-v3", "20260904-v4", "20260905-v5"]),
   history: z.array(z.object({
     score: z.number().int().min(0).max(YAODA_FLIGHT_MAX_SCORE),
     playedAt: z.string().datetime({ offset: true }),
@@ -188,6 +189,8 @@ yaodaFlightRouter.post("/recover-history", authRequired, validate(recoverHistory
       const attemptStartedAtMs = attempts.map((attempt) => attempt.startedAt.getTime());
       const completed = attempts.filter((attempt) => attempt.status === "completed" && attempt.completedAt && attempt.score !== null);
       const matchedAttemptIds = new Set<number>();
+      const legacyCandidates = attempts.filter((attempt) => attempt.status !== "completed");
+      const matchedLegacyAttemptIds = new Set<number>();
       const missing = history.filter((item) => {
         let closest: (typeof completed)[number] | null = null;
         let closestDistance = Number.POSITIVE_INFINITY;
@@ -202,6 +205,27 @@ yaodaFlightRouter.post("/recover-history", authRequired, validate(recoverHistory
         if (closest) {
           matchedAttemptIds.add(closest.id);
           return false;
+        }
+        let closestLegacy: (typeof legacyCandidates)[number] | null = null;
+        let closestLegacyDistance = Number.POSITIVE_INFINITY;
+        for (const attempt of legacyCandidates) {
+          if (matchedLegacyAttemptIds.has(attempt.id)) continue;
+          if (!isRecoverableYaodaFlightLegacyMaxHistoryItem({
+            score: item.score,
+            playedAtMs: item.playedAt.getTime(),
+            nowMs: now.getTime(),
+            attemptStartedAtMs: attempt.startedAt.getTime(),
+            attemptCompletedAtMs: attempt.completedAt?.getTime(),
+          })) continue;
+          const distance = Math.abs(item.playedAt.getTime() - attempt.startedAt.getTime());
+          if (distance < closestLegacyDistance) {
+            closestLegacy = attempt;
+            closestLegacyDistance = distance;
+          }
+        }
+        if (closestLegacy) {
+          matchedLegacyAttemptIds.add(closestLegacy.id);
+          return true;
         }
         return isRecoverableYaodaFlightHistoryItem({
           score: item.score,
