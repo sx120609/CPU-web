@@ -1,6 +1,6 @@
 import { request, type RequestOptions } from "./request";
 
-export type AccountVerificationType = "campus_organization";
+export type AccountVerificationType = "individual" | "campus_organization";
 
 export type AccountVerificationStatus =
   | "pending"
@@ -15,6 +15,7 @@ export type AccountVerificationSource = "user_application" | "admin_grant";
 export interface AccountVerification {
   type: AccountVerificationType;
   typeLabel: string;
+  categoryLabel?: string;
   label: string;
   verifiedAt: string;
   expiresAt?: string | null;
@@ -97,7 +98,7 @@ export const accountVerificationApi = {
   }>("/admin/account-verifications", params, options),
   adminCandidates: (q: string, options?: RequestOptions) =>
     request.get<AccountVerificationCandidate[]>("/admin/account-verifications/candidates", { q }, options),
-  grant: (payload: { userId: number; approvedLabel: string; reviewNote: string; expiresAt?: string | null }) =>
+  grant: (payload: { userId: number; type: AccountVerificationType; approvedLabel: string; reviewNote: string; expiresAt?: string | null }) =>
     request.post<AccountVerificationApplication>("/admin/account-verifications/grant", payload),
   review: (id: number, payload:
     | { action: "approve"; approvedLabel?: string; reviewNote?: string; expiresAt?: string | null }

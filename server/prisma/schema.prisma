@@ -135,7 +135,7 @@ model User {
   reviewedVerifications        UserVerificationApplication[] @relation("VerificationReviewer")
 }
 
-// ============ 账号组织认证 ============
+// ============ 拾间认证 ============
 
 model UserVerificationApplication {
   id                  Int       @id @default(autoincrement())

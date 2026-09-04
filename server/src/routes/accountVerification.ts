@@ -57,6 +57,7 @@ const candidateSearchSchema = z.object({
 
 const grantSchema = z.object({
   userId: z.coerce.number().int().positive(),
+  type: z.enum(ACCOUNT_VERIFICATION_TYPES).optional().default("campus_organization"),
   approvedLabel: z.string().trim().min(2, "认证说明至少 2 个字").max(30, "认证说明最多 30 个字"),
   reviewNote: z.string().trim().min(2, "请填写核验依据").max(500),
   expiresAt: z.string().trim().max(64).nullable().optional(),
@@ -116,7 +117,7 @@ async function notifyUser(userId: number, title: string, content: string) {
       title,
       content,
       link: "/profile/verification",
-      source: "账号认证",
+      source: "拾间认证",
       payload: JSON.stringify({ type: "account-verification" }),
     },
   }).catch(() => null);
@@ -133,10 +134,10 @@ async function notifyReviewers(applicationId: number, nickname: string, label: s
       userId: reviewer.id,
       category: "system",
       level: "normal",
-      title: "收到新的账号认证申请",
+      title: "收到新的拾间认证申请",
       content: `${nickname} 申请认证“${label}”，请核验后处理。`,
       link: `/admin?tab=account-verifications&application=${applicationId}`,
-      source: "账号认证",
+      source: "拾间认证",
       payload: JSON.stringify({ type: "account-verification-review", applicationId }),
     })),
   }).catch(() => null);
@@ -357,7 +358,7 @@ accountVerificationAdminRouter.post(
           data: {
             status: "superseded",
             reviewerId,
-            reviewNote: "管理员已主动完成组织认证",
+            reviewNote: "管理员已主动完成拾间认证",
             reviewedAt: now,
           },
         });
@@ -365,9 +366,9 @@ accountVerificationAdminRouter.post(
           data: {
             userId,
             source: "admin_grant",
-            type: "campus_organization",
+            type: req.body.type,
             requestedLabel: req.body.approvedLabel,
-            identityDescription: "由站点管理员主动授予组织认证",
+            identityDescription: "由站点管理员主动授予拾间认证",
             evidence: req.body.reviewNote,
             status: "approved",
             approvedLabel: req.body.approvedLabel,
@@ -380,7 +381,7 @@ accountVerificationAdminRouter.post(
         await tx.user.update({
           where: { id: userId },
           data: {
-            verificationType: "campus_organization",
+            verificationType: req.body.type,
             verificationLabel: req.body.approvedLabel,
             verificationVerifiedAt: now,
             verificationExpiresAt: expiresAt,
@@ -392,8 +393,8 @@ accountVerificationAdminRouter.post(
       await invalidateForumCaches();
       await notifyUser(
         userId,
-        "管理员已添加组织认证",
-        `你的账号已认证为“${req.body.approvedLabel}”。如认证信息有误，可在组织认证页面解除并联系管理员。`,
+        "管理员已添加拾间认证",
+        `你的账号已认证为“${req.body.approvedLabel}”。如认证信息有误，可在拾间认证页面解除并联系管理员。`,
       );
       ok(res, serializeApplication(application));
     } catch (error) { next(error); }
@@ -422,7 +423,7 @@ accountVerificationAdminRouter.patch("/:id/review", validate(reviewSchema), asyn
         },
       });
       if (changed.count !== 1) throw Errors.conflict("该认证申请已经处理，请刷新列表");
-      await notifyUser(application.userId, "账号认证未通过", `认证“${application.requestedLabel}”暂未通过：${req.body.reviewNote}`);
+      await notifyUser(application.userId, "拾间认证未通过", `认证“${application.requestedLabel}”暂未通过：${req.body.reviewNote}`);
       ok(res, { id, status: "rejected" });
       return;
     }
@@ -463,7 +464,7 @@ accountVerificationAdminRouter.patch("/:id/review", validate(reviewSchema), asyn
       });
     });
     await invalidateForumCaches();
-    await notifyUser(application.userId, "账号认证已通过", `你的账号已认证为“${approvedLabel}”，认证标识现在会展示在论坛和个人主页。`);
+    await notifyUser(application.userId, "拾间认证已通过", `你的账号已认证为“${approvedLabel}”，认证标识现在会展示在论坛和个人主页。`);
     ok(res, { id, status: "approved", approvedLabel, expiresAt });
   } catch (error) { next(error); }
 });
@@ -504,7 +505,7 @@ accountVerificationAdminRouter.post("/:id/revoke", validate(revokeSchema), async
       }),
     ]);
     await invalidateForumCaches();
-    await notifyUser(application.userId, "账号认证已撤销", `认证“${user.verificationLabel || application.approvedLabel || application.requestedLabel}”已撤销：${req.body.reason}`);
+    await notifyUser(application.userId, "拾间认证已撤销", `认证“${user.verificationLabel || application.approvedLabel || application.requestedLabel}”已撤销：${req.body.reason}`);
     ok(res, { id, status: "revoked" });
   } catch (error) { next(error); }
 });

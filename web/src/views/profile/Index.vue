@@ -13,17 +13,21 @@
         <el-button v-if="user?.avatar" size="small" text :loading="avatarSaving" :disabled="avatarSaving" @click="removeAvatar">移除头像</el-button>
       </div>
       <h3 class="name">
-        <el-tag v-if="user?.vipActive" class="vip-tag" type="warning" effect="dark">VIP</el-tag>
-        <DisplayNickname :name="user?.nickname" />
-        <UserVerificationBadge :verification="user?.verification" />
-        <el-tag v-if="user?.role === 'admin'" size="small" type="danger">管理员</el-tag>
-        <el-tag v-else-if="user?.role === 'mod'" size="small">论坛管理员</el-tag>
-        <el-tag v-if="user?.reputationLevel" size="small" type="warning" effect="plain">
-          Lv.{{ user.reputationLevel.level }} {{ user.reputationLevel.name }}
-        </el-tag>
+        <span class="name-primary">
+          <DisplayNickname :name="user?.nickname" />
+          <UserVerificationBadge :verification="user?.verification" />
+        </span>
+        <span class="identity-tags">
+          <el-tag v-if="user?.vipActive" class="vip-tag" type="warning" effect="dark">VIP</el-tag>
+          <el-tag v-if="user?.role === 'admin'" size="small" type="danger">管理员</el-tag>
+          <el-tag v-else-if="user?.role === 'mod'" size="small">论坛管理员</el-tag>
+          <el-tag v-if="user?.reputationLevel" size="small" type="warning" effect="plain">
+            Lv.{{ user.reputationLevel.level }} {{ user.reputationLevel.name }}
+          </el-tag>
+        </span>
       </h3>
       <p class="account-note">{{ user?.studentSso ? "学号仅用于登录和身份校验，不会公开展示" : "登录账号仅自己可见，不会公开展示" }}</p>
-      <p v-if="user?.verification" class="verification-copy">组织认证：{{ user.verification.label }}</p>
+      <p v-if="user?.verification" class="verification-copy">拾间认证：{{ user.verification.label }}</p>
       <p class="bio">{{ user?.bio || "这个人很懒，什么都没写" }}</p>
       <ul class="kv">
         <li><span>院系</span><span>{{ user?.college || "—" }}</span></li>
@@ -35,7 +39,7 @@
       </ul>
       <div class="profile-actions">
         <el-button type="primary" plain :disabled="saving || logoutBusy" @click="editing = true">编辑资料</el-button>
-        <el-button plain :disabled="saving || logoutBusy" @click="router.push('/profile/verification')">组织认证</el-button>
+        <el-button plain :disabled="saving || logoutBusy" @click="router.push('/profile/verification')">拾间认证</el-button>
         <el-button type="warning" plain :disabled="saving || logoutBusy" @click="router.push('/vip')">VIP 中心</el-button>
         <el-button v-if="!user?.studentSso" plain :disabled="savingPw || logoutBusy" @click="passwordDialog = true">修改密码</el-button>
         <el-button type="danger" plain :loading="logoutBusy" :disabled="logoutBusy" @click="onLogout">退出登录</el-button>
@@ -1030,8 +1034,17 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
   justify-content: center;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
-.name :deep(.display-nickname) { min-width: 0; overflow-wrap: anywhere; }
+.name-primary,
+.identity-tags {
+  min-width: 0;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+}
+.name-primary :deep(.display-nickname) { min-width: 0; overflow-wrap: anywhere; }
 .vip-tag { letter-spacing: .08em; font-weight: 800; }
 .account-note { font-size: 12px; color: var(--cpu-text-muted); margin: 0 0 8px; }
 .verification-copy { margin: -2px 0 8px; color: #0969da; font-size: 12px; font-weight: 650; }
@@ -1797,6 +1810,28 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
 
   .avatar-actions {
     gap: 6px;
+  }
+
+  .name {
+    width: 100%;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .name-primary {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .name-primary :deep(.display-nickname) {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .identity-tags {
+    max-width: 100%;
+    flex-wrap: wrap;
+    gap: 5px;
   }
 
   .trust-card {

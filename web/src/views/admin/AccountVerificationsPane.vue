@@ -2,8 +2,8 @@
   <section class="verification-admin">
     <header class="pane-head">
       <div>
-        <h2>组织认证</h2>
-        <p>核验账号与校内组织的实际关系。认证仅说明账号归属，不代表学校官方立场。</p>
+        <h2>拾间认证</h2>
+        <p>核验个人身份或账号与校内组织的实际关系。认证仅说明身份归属，不代表学校官方立场。</p>
       </div>
       <div class="pane-actions">
         <span v-if="pendingCount" class="pending-count">{{ pendingCount }} 条待审核</span>
@@ -38,9 +38,10 @@
         </header>
 
         <dl class="application-detail">
+          <div><dt>认证类型</dt><dd>{{ verificationTypeLabel(item.type) }}</dd></div>
           <div><dt>{{ item.source === "admin_grant" ? "认证说明" : "申请认证" }}</dt><dd><strong>{{ item.requestedLabel }}</strong></dd></div>
           <template v-if="item.source !== 'admin_grant'">
-            <div><dt>组织与账号关系</dt><dd>{{ item.identityDescription }}</dd></div>
+            <div><dt>{{ item.type === "individual" ? "个人身份说明" : "组织与账号关系" }}</dt><dd>{{ item.identityDescription }}</dd></div>
             <div><dt>可核验信息</dt><dd class="preserve-lines">{{ item.evidence }}</dd></div>
             <div v-if="item.contact"><dt>联系方式</dt><dd>{{ item.contact }}</dd></div>
           </template>
@@ -72,6 +73,9 @@
 
     <el-dialog v-model="approveOpen" title="核验通过" width="520" :close-on-click-modal="false">
       <el-form v-if="approvingItem" label-position="top">
+        <el-form-item label="认证类型">
+          <el-tag type="primary" effect="plain">{{ verificationTypeLabel(approvingItem.type) }}</el-tag>
+        </el-form-item>
         <el-form-item label="公开认证说明" required>
           <el-input v-model="approveForm.approvedLabel" maxlength="30" show-word-limit />
           <p class="dialog-help">论坛昵称旁显示蓝色认证标记，完整说明在悬停提示和用户主页中展示。</p>
@@ -89,7 +93,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="grantOpen" title="主动添加组织认证" width="min(560px, calc(100vw - 24px))" :close-on-click-modal="false">
+    <el-dialog v-model="grantOpen" title="主动添加拾间认证" width="min(560px, calc(100vw - 24px))" :close-on-click-modal="false">
       <el-alert type="info" :closable="false" show-icon title="无需用户先申请；仅站点管理员可操作，授予过程会写入审核记录并通知用户。" />
       <div class="candidate-search">
         <el-input v-model="candidateQuery" clearable placeholder="搜索账号/学号、昵称或用户 ID" @keyup.enter="searchCandidates">
@@ -116,12 +120,18 @@
       <el-empty v-else-if="candidateSearched && !candidateSearching" :image-size="54" description="没有找到可认证的账号" />
 
       <el-form class="grant-form" label-position="top">
+        <el-form-item label="认证类型" required>
+          <el-radio-group v-model="grantForm.type">
+            <el-radio-button value="individual">个人认证</el-radio-button>
+            <el-radio-button value="campus_organization">组织账号</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
         <el-form-item label="公开认证说明" required>
-          <el-input v-model="grantForm.approvedLabel" maxlength="30" show-word-limit placeholder="例如：中国药科大学轮滑协会" />
+          <el-input v-model="grantForm.approvedLabel" maxlength="30" show-word-limit :placeholder="grantForm.type === 'individual' ? '例如：校园摄影创作者' : '例如：中国药科大学轮滑协会'" />
           <p class="dialog-help">昵称旁显示 X 式蓝色认证勾，完整说明显示在悬停提示和个人主页。</p>
         </el-form-item>
         <el-form-item label="核验依据（用户可见）" required>
-          <el-input v-model="grantForm.reviewNote" type="textarea" :rows="3" maxlength="500" show-word-limit placeholder="记录为什么确认该账号属于这个组织" />
+          <el-input v-model="grantForm.reviewNote" type="textarea" :rows="3" maxlength="500" show-word-limit placeholder="记录核验该个人身份或组织关系的依据" />
         </el-form-item>
         <el-form-item label="有效期（选填）">
           <el-date-picker v-model="grantForm.expiresAt" type="date" value-format="YYYY-MM-DD" placeholder="长期有效" :disabled-date="disablePastDate" />
@@ -146,6 +156,7 @@ import {
   type AccountVerificationApplication,
   type AccountVerificationCandidate,
   type AccountVerificationStatus,
+  type AccountVerificationType,
 } from "@/api/accountVerification";
 import { fmtDate } from "@/utils/format";
 
@@ -178,7 +189,7 @@ const candidateSearching = ref(false);
 const candidateSearched = ref(false);
 const candidates = ref<AccountVerificationCandidate[]>([]);
 const selectedCandidate = ref<AccountVerificationCandidate | null>(null);
-const grantForm = reactive({ approvedLabel: "", reviewNote: "", expiresAt: "" });
+const grantForm = reactive({ type: "individual" as AccountVerificationType, approvedLabel: "", reviewNote: "", expiresAt: "" });
 const canGrant = computed(() => Boolean(selectedCandidate.value)
   && grantForm.approvedLabel.trim().length >= 2
   && grantForm.reviewNote.trim().length >= 2
@@ -219,6 +230,7 @@ function openGrant() {
   candidateSearched.value = false;
   candidates.value = [];
   selectedCandidate.value = null;
+  grantForm.type = "individual";
   grantForm.approvedLabel = "";
   grantForm.reviewNote = "";
   grantForm.expiresAt = "";
@@ -243,6 +255,7 @@ async function searchCandidates() {
 
 function selectCandidate(candidate: AccountVerificationCandidate) {
   if (selectedCandidate.value?.id !== candidate.id) {
+    grantForm.type = candidate.currentVerification?.type || "individual";
     grantForm.approvedLabel = candidate.currentVerification?.label || "";
   }
   selectedCandidate.value = candidate;
@@ -254,6 +267,7 @@ async function grantDirectly() {
   try {
     await accountVerificationApi.grant({
       userId: selectedCandidate.value.id,
+      type: grantForm.type,
       approvedLabel: grantForm.approvedLabel.trim(),
       reviewNote: grantForm.reviewNote.trim(),
       expiresAt: grantForm.expiresAt || null,
@@ -261,7 +275,7 @@ async function grantDirectly() {
     grantOpen.value = false;
     status.value = "approved";
     page.value = 1;
-    ElMessage.success(`已为 ${selectedCandidate.value.nickname} 添加组织认证并发送通知`);
+    ElMessage.success(`已为 ${selectedCandidate.value.nickname} 添加拾间认证并发送通知`);
     await load();
   } finally {
     grantBusy.value = false;
@@ -281,7 +295,7 @@ async function approve() {
       expiresAt: approveForm.expiresAt || null,
     });
     approveOpen.value = false;
-    ElMessage.success("组织认证已生效");
+    ElMessage.success("拾间认证已生效");
     await load();
   } finally {
     busyId.value = null;
@@ -294,7 +308,7 @@ async function reject(item: AccountVerificationApplication) {
     confirmButtonText: "确认并通知用户",
     cancelButtonText: "取消",
     inputType: "textarea",
-    inputPlaceholder: "例如：暂未找到能够证明账号由该组织授权运营的公开信息",
+    inputPlaceholder: "例如：暂未找到能够核验该个人身份或组织关系的公开信息",
     inputValidator: (value) => value.trim().length >= 2 || "请填写未通过原因",
   }).catch(() => null);
   const reviewNote = result?.value?.trim();
@@ -311,12 +325,12 @@ async function reject(item: AccountVerificationApplication) {
 
 async function revoke(item: AccountVerificationApplication) {
   if (busyId.value !== null) return;
-  const result = await ElMessageBox.prompt("撤销后蓝色认证标记会立即消失。请填写撤销原因，用户会收到通知。", "撤销组织认证", {
+  const result = await ElMessageBox.prompt("撤销后蓝色认证标记会立即消失。请填写撤销原因，用户会收到通知。", "撤销拾间认证", {
     confirmButtonText: "确认撤销",
     cancelButtonText: "取消",
     type: "warning",
     inputType: "textarea",
-    inputPlaceholder: "例如：账号已不再由该组织授权运营",
+    inputPlaceholder: "例如：该身份或组织关系已失效",
     inputValidator: (value) => value.trim().length >= 2 || "请填写撤销原因",
   }).catch(() => null);
   const reason = result?.value?.trim();
@@ -341,6 +355,10 @@ function disablePastDate(date: Date) {
 
 function statusLabel(value: AccountVerificationStatus) {
   return ({ pending: "待审核", approved: "已通过", rejected: "未通过", withdrawn: "用户解除", revoked: "已撤销", superseded: "已更新" } satisfies Record<AccountVerificationStatus, string>)[value];
+}
+
+function verificationTypeLabel(value: AccountVerificationType) {
+  return value === "campus_organization" ? "组织账号" : "个人认证";
 }
 
 function requestMessage(error: unknown) {

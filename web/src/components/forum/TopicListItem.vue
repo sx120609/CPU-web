@@ -503,7 +503,7 @@ function openTopic() {
   white-space: nowrap;
 }
 .simple-byline { gap: 7px; overflow: hidden; }
-.simple-byline > span + span:not(.simple-edited)::before { content: "·"; margin-right: 7px; color: var(--cpu-border); }
+.simple-byline > span + span:not(.simple-edited):not(.account-verification-badge)::before { content: "·"; margin-right: 7px; color: var(--cpu-border); }
 .simple-byline > .vip-badge + .simple-author::before { content: none; }
 .simple-author {
   min-width: 24px;

@@ -249,7 +249,7 @@ function openTopic() {
 .reply-previews p { display: flex; min-width: 0; gap: 2px; margin: 0; color: var(--cpu-text-secondary); font-size: 11px; line-height: 1.45; }
 .reply-previews .reply-author { display: inline-flex; max-width: 38%; flex: 0 0 auto; align-items: center; overflow: visible; }
 .reply-previews strong { min-width: 0; overflow: hidden; color: var(--cpu-text); font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
-.reply-previews .reply-author :deep(.account-verification-badge) { width: 13px; height: 13px; flex-basis: 13px; margin-left: 2px; }
+.reply-previews .reply-author :deep(.account-verification-badge) { width: 15px; height: 15px; flex-basis: 15px; margin-left: 2px; }
 .reply-previews .reply-author b { flex: 0 0 auto; font-weight: 650; }
 .reply-previews span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .reply-previews .reply-more { justify-self: start; margin-top: 1px; color: var(--cpu-primary); font-size: 11px; font-weight: 650; }

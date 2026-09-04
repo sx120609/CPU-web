@@ -4,7 +4,7 @@
       <button type="button" class="back-link" @click="router.push('/profile')">
         <el-icon><ArrowLeft /></el-icon><span>个人中心</span>
       </button>
-      <span>组织认证</span>
+      <span>拾间认证</span>
       <span class="bar-placeholder" aria-hidden="true"></span>
     </header>
 
@@ -16,9 +16,9 @@
         </svg>
       </div>
       <div>
-        <p class="eyebrow">药大拾间组织认证</p>
-        <h1>让同学确认这是组织本人</h1>
-        <p>面向校内社团、学生组织、学院或部门运营账号。通过后，账号昵称旁会展示蓝色认证标记，具体说明可在个人主页查看。</p>
+        <p class="eyebrow">药大拾间 · 拾间认证</p>
+        <h1>让同学确认账号背后的真实身份</h1>
+        <p>面向具有可核验身份的个人，以及校内社团、学生组织、学院或部门账号。通过后，昵称旁会展示蓝色认证标记，完整说明可在个人主页查看。</p>
       </div>
     </section>
 
@@ -36,7 +36,7 @@
       <div class="card-heading">
         <div>
           <span class="section-kicker">当前认证</span>
-          <h2>组织认证已生效</h2>
+          <h2>拾间认证已生效</h2>
         </div>
         <span class="status-pill is-approved">已认证</span>
       </div>
@@ -47,11 +47,11 @@
             <strong>{{ auth.user?.nickname }}</strong>
             <UserVerificationBadge :verification="snapshot.verification" />
           </div>
-          <strong class="verified-label">{{ snapshot.verification.label }}</strong>
+          <strong class="verified-label">{{ snapshot.verification.categoryLabel || verificationTypeLabel(snapshot.verification.type) }} · {{ snapshot.verification.label }}</strong>
           <p>认证于 {{ fmtDate(snapshot.verification.verifiedAt, "YYYY-MM-DD") }}<template v-if="snapshot.verification.expiresAt"> · 有效至 {{ fmtDate(snapshot.verification.expiresAt, "YYYY-MM-DD") }}</template></p>
         </div>
       </div>
-      <p class="trust-note">认证标记仅表示该账号与所标注组织的关系已经平台核验，不代表学校官方立场，也不代表平台为其发布内容背书。</p>
+      <p class="trust-note">认证标记仅表示该账号与所标注个人身份或组织关系已经平台核验，不代表学校官方立场，也不代表平台为其发布内容背书。</p>
       <div class="card-actions">
         <el-button type="primary" plain :disabled="snapshot.submission.hasPending" @click="showForm = true">申请更新说明</el-button>
         <el-button type="danger" text :loading="removing" @click="removeVerification">解除认证</el-button>
@@ -67,6 +67,7 @@
         <span class="status-pill" :class="`is-${latestApplication.status}`">{{ statusLabel(latestApplication.status) }}</span>
       </div>
       <dl class="application-summary">
+        <div><dt>认证类型</dt><dd>{{ verificationTypeLabel(latestApplication.type) }}</dd></div>
         <div><dt>{{ latestApplication.source === "admin_grant" ? "认证说明" : "申请认证" }}</dt><dd>{{ latestApplication.requestedLabel }}</dd></div>
         <div><dt>{{ latestApplication.source === "admin_grant" ? "授予时间" : "提交时间" }}</dt><dd>{{ fmtDate(latestApplication.createdAt) }}</dd></div>
         <div v-if="latestApplication.reviewNote"><dt>审核说明</dt><dd>{{ latestApplication.reviewNote }}</dd></div>
@@ -79,34 +80,40 @@
       <div class="card-heading">
         <div>
           <span class="section-kicker">提交申请</span>
-          <h2>{{ snapshot?.verification ? "更新组织认证" : "申请组织认证" }}</h2>
+          <h2>{{ snapshot?.verification ? "更新拾间认证" : "申请拾间认证" }}</h2>
         </div>
         <span class="quota">30 天内还可提交 {{ snapshot?.submission.remaining ?? 3 }} 次</span>
       </div>
 
       <div class="form-intro">
         <span class="form-intro-icon"><AppIcon name="school" /></span>
-        <div><b>仅限组织账号</b><p>校内社团、学生组织、学院或部门等均可申请；个人身份、个人荣誉和职业资格不在认证范围内。</p></div>
+        <div><b>个人与组织账号均可申请</b><p>支持可核验的个人身份、校园角色或创作者身份，也支持校内社团、学生组织、学院及部门账号。</p></div>
       </div>
 
       <el-form label-position="top" class="verification-form" @submit.prevent>
+        <el-form-item label="认证类型" required>
+          <el-radio-group v-model="form.type">
+            <el-radio-button value="individual">个人认证</el-radio-button>
+            <el-radio-button value="campus_organization">组织账号</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
         <el-form-item label="认证名称" required>
           <el-input
             v-model="form.requestedLabel"
             maxlength="30"
             show-word-limit
-            placeholder="例如：中国药科大学轮滑协会"
+            :placeholder="form.type === 'individual' ? '例如：校园摄影创作者' : '例如：中国药科大学轮滑协会'"
           />
           <p class="field-help">审核通过后，昵称旁显示蓝色认证标记；这段完整说明会显示在悬停提示和个人主页，管理员可按核验结果校正。</p>
         </el-form-item>
-        <el-form-item label="组织与账号的关系" required>
+        <el-form-item :label="form.type === 'individual' ? '个人身份说明' : '组织与账号的关系'" required>
           <el-input
             v-model="form.identityDescription"
             type="textarea"
             :rows="4"
             maxlength="500"
             show-word-limit
-            placeholder="说明组织性质、你的运营职责，以及为什么由这个账号代表该组织"
+            :placeholder="form.type === 'individual' ? '说明需要认证的个人身份、校园角色或公开经历' : '说明组织性质、你的运营职责，以及为什么由这个账号代表该组织'"
           />
         </el-form-item>
         <el-form-item label="可核验信息" required>
@@ -116,16 +123,16 @@
             :rows="5"
             maxlength="1200"
             show-word-limit
-            placeholder="可填写官方公众号文章、组织公示页面、指导老师或上级组织的核验方式等"
+            :placeholder="form.type === 'individual' ? '可填写公开主页、作品、任职公示、活动报道或其他核验方式' : '可填写官方公众号文章、组织公示页面、指导老师或上级组织的核验方式等'"
           />
           <p class="field-help is-important">请勿提交身份证、学生证照片、密码或其他敏感证件。确需进一步核验时，管理员会另行联系。</p>
         </el-form-item>
         <el-form-item label="核验联系方式（选填）">
-          <el-input v-model="form.contact" maxlength="120" placeholder="例如：组织邮箱、QQ 或微信；仅管理员可见" />
+          <el-input v-model="form.contact" maxlength="120" placeholder="例如：邮箱、QQ 或微信；仅管理员可见" />
         </el-form-item>
         <label class="truth-check">
           <input v-model="form.acknowledged" type="checkbox" />
-          <span>我确认所填信息真实、当前账号由该组织授权运营，并同意平台在必要时联系核验。冒用组织身份可能导致认证撤销和账号处罚。</span>
+          <span>我确认所填个人身份或组织关系真实，并同意平台在必要时联系核验。冒用身份可能导致认证撤销和账号处罚。</span>
         </label>
         <el-button class="submit-button" type="primary" size="large" :loading="submitting" :disabled="!canSubmit" @click="submitApplication">
           提交认证申请
@@ -137,7 +144,7 @@
       <div class="card-heading"><div><span class="section-kicker">认证流程</span><h2>三步完成核验</h2></div></div>
       <ol class="process-list">
         <li><span>1</span><div><b>填写公开说明</b><p>认证名称由申请人填写，最终以审核通过内容为准。</p></div></li>
-        <li><span>2</span><div><b>管理员核验</b><p>结合公开资料、组织渠道或联系人确认账号归属。</p></div></li>
+        <li><span>2</span><div><b>管理员核验</b><p>结合公开资料、作品、组织渠道或联系人确认账号身份。</p></div></li>
         <li><span>3</span><div><b>展示认证标记</b><p>结果通过站内通知送达，论坛和个人主页同步显示。</p></div></li>
       </ol>
     </section>
@@ -166,6 +173,7 @@ import {
   type AccountVerificationSource,
   type AccountVerificationMe,
   type AccountVerificationStatus,
+  type AccountVerificationType,
 } from "@/api/accountVerification";
 import { useAuthStore } from "@/stores/auth";
 import { fmtDate } from "@/utils/format";
@@ -180,6 +188,7 @@ const removing = ref(false);
 const showForm = ref(false);
 const snapshot = ref<AccountVerificationMe | null>(null);
 const form = reactive({
+  type: "individual" as AccountVerificationType,
   requestedLabel: "",
   identityDescription: "",
   evidence: "",
@@ -227,7 +236,7 @@ async function submitApplication() {
   submitting.value = true;
   try {
     await accountVerificationApi.apply({
-      type: "campus_organization",
+      type: form.type,
       requestedLabel: form.requestedLabel.trim(),
       identityDescription: form.identityDescription.trim(),
       evidence: form.evidence.trim(),
@@ -250,8 +259,8 @@ async function submitApplication() {
 async function removeVerification() {
   if (!snapshot.value?.verification || removing.value) return;
   const confirmed = await ElMessageBox.confirm(
-    "解除后，论坛和个人主页将立即不再显示认证标记。之后仍可重新申请，确认解除当前组织认证？",
-    "解除组织认证",
+    "解除后，论坛和个人主页将立即不再显示认证标记。之后仍可重新申请，确认解除当前拾间认证？",
+    "解除拾间认证",
     { confirmButtonText: "确认解除", cancelButtonText: "取消", type: "warning" },
   ).then(() => true).catch(() => false);
   if (!confirmed) return;
@@ -260,7 +269,7 @@ async function removeVerification() {
     await accountVerificationApi.remove();
     await auth.fetchMe();
     await load();
-    ElMessage.success("组织认证已解除");
+    ElMessage.success("拾间认证已解除");
   } finally {
     removing.value = false;
   }
@@ -278,13 +287,17 @@ function statusLabel(status: AccountVerificationStatus) {
 }
 
 function statusTitle(status: AccountVerificationStatus, source: AccountVerificationSource = "user_application") {
-  if (source === "admin_grant" && status === "approved") return "管理员已授予组织认证";
+  if (source === "admin_grant" && status === "approved") return "管理员已授予拾间认证";
   if (status === "pending") return "申请正在核验";
   if (status === "approved") return "认证申请已通过";
   if (status === "rejected") return "申请暂未通过";
   if (status === "revoked") return "认证已被撤销";
   if (status === "superseded") return "认证说明已更新";
   return "认证已解除";
+}
+
+function verificationTypeLabel(value: AccountVerificationType) {
+  return value === "campus_organization" ? "组织账号" : "个人认证";
 }
 
 function requestMessage(error: unknown) {

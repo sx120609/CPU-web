@@ -178,7 +178,7 @@ export const router = createRouter({
         { path: "messages", name: "messages", component: () => import("@/views/messages/Index.vue"), meta: { title: "消息中心" } },
         { path: "messages/qqbot-reminders", name: "message-qqbot-reminders", component: () => import("@/views/services/QqBotReminders.vue"), meta: { title: "小工具提醒规则" } },
         { path: "profile", name: "profile", component: loadProfileView, meta: { title: "我的" } },
-        { path: "profile/verification", name: "profile-verification", component: () => import("@/views/profile/Verification.vue"), meta: { title: "组织认证" } },
+        { path: "profile/verification", name: "profile-verification", component: () => import("@/views/profile/Verification.vue"), meta: { title: "拾间认证" } },
         { path: "vip", name: "vip", component: () => import("@/views/profile/Vip.vue"), meta: { title: "VIP 中心" } },
         { path: "sponsor", name: "sponsor", component: () => import("@/views/profile/SponsorWall.vue"), meta: { title: "支持药大拾间", public: true } },
         { path: "sponsor-wall", redirect: "/sponsor" },

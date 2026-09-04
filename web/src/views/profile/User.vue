@@ -31,7 +31,7 @@
             Lv.{{ user.reputationLevel.level }} {{ user.reputationLevel.name }}
           </el-tag>
         </h2>
-        <p v-if="user.verification" class="verification-copy"><b>组织认证</b>{{ user.verification.label }}</p>
+        <p v-if="user.verification" class="verification-copy"><b>拾间认证</b>{{ user.verification.label }}</p>
         <p class="bio">{{ user.bio || "这个人还没写简介" }}</p>
         <div class="meta">
           <span v-if="user.college">{{ user.college }}</span>

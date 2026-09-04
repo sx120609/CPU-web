@@ -1,4 +1,5 @@
 export const ACCOUNT_VERIFICATION_TYPES = [
+  "individual",
   "campus_organization",
 ] as const;
 
@@ -12,7 +13,13 @@ export const ACCOUNT_VERIFICATION_SOURCES = [
 export type AccountVerificationSourceType = typeof ACCOUNT_VERIFICATION_SOURCES[number];
 
 export const ACCOUNT_VERIFICATION_TYPE_LABELS: Record<AccountVerificationType, string> = {
-  campus_organization: "组织认证",
+  individual: "拾间认证",
+  campus_organization: "拾间认证",
+};
+
+export const ACCOUNT_VERIFICATION_CATEGORY_LABELS: Record<AccountVerificationType, string> = {
+  individual: "个人认证",
+  campus_organization: "组织账号",
 };
 
 export const ACCOUNT_VERIFICATION_STATUSES = [
@@ -44,6 +51,7 @@ export function buildAccountVerification(source: AccountVerificationSource | nul
   return {
     type,
     typeLabel: ACCOUNT_VERIFICATION_TYPE_LABELS[type],
+    categoryLabel: ACCOUNT_VERIFICATION_CATEGORY_LABELS[type],
     label,
     verifiedAt: verifiedAt.toISOString(),
     expiresAt: expiresAt?.toISOString() ?? null,

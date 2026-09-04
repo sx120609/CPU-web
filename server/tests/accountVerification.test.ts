@@ -13,22 +13,38 @@ import {
 
 const routeSource = readFileSync(new URL("../src/routes/accountVerification.ts", import.meta.url), "utf8");
 const adminPaneSource = readFileSync(new URL("../../web/src/views/admin/AccountVerificationsPane.vue", import.meta.url), "utf8");
+const profileSource = readFileSync(new URL("../../web/src/views/profile/Index.vue", import.meta.url), "utf8");
 
-test("only organization accounts can use the verification workflow", () => {
-  assert.deepEqual(ACCOUNT_VERIFICATION_TYPES, ["campus_organization"]);
+test("personal and organization accounts can use the verification workflow", () => {
+  assert.deepEqual(ACCOUNT_VERIFICATION_TYPES, ["individual", "campus_organization"]);
   assert.deepEqual(ACCOUNT_VERIFICATION_SOURCES, ["user_application", "admin_grant"]);
 });
 
-test("direct organization grants stay admin-only and auditable while allowing self-grants", () => {
+test("direct grants stay admin-only and auditable while allowing self-grants", () => {
   assert.match(routeSource, /accountVerificationAdminRouter\.post\(\s*"\/grant",\s*adminOnly,/);
   assert.match(routeSource, /source:\s*"admin_grant"/);
+  assert.match(routeSource, /type:\s*req\.body\.type/);
   assert.doesNotMatch(routeSource, /不能为自己的账号主动添加认证/);
   assert.match(adminPaneSource, /candidates\.value = result;/);
   assert.doesNotMatch(adminPaneSource, /result\.filter\(\(candidate\) => candidate\.id !== auth\.user\?\.id\)/);
   assert.match(routeSource, /source:\s*"user_application",\s*createdAt/);
 });
 
-test("builds an active public organization verification", () => {
+test("builds active public personal and organization verifications", () => {
+  const personalVerification = buildAccountVerification({
+    verificationType: "individual",
+    verificationLabel: "校园摄影创作者",
+    verificationVerifiedAt: "2026-09-02T00:00:00.000Z",
+  }, new Date("2026-09-04T00:00:00.000Z"));
+  assert.deepEqual(personalVerification, {
+    type: "individual",
+    typeLabel: "拾间认证",
+    categoryLabel: "个人认证",
+    label: "校园摄影创作者",
+    verifiedAt: "2026-09-02T00:00:00.000Z",
+    expiresAt: null,
+  });
+
   const verification = buildAccountVerification({
     verificationType: "campus_organization",
     verificationLabel: "中国药科大学轮滑协会",
@@ -36,11 +52,18 @@ test("builds an active public organization verification", () => {
   }, new Date("2026-09-04T00:00:00.000Z"));
   assert.deepEqual(verification, {
     type: "campus_organization",
-    typeLabel: "组织认证",
+    typeLabel: "拾间认证",
+    categoryLabel: "组织账号",
     label: "中国药科大学轮滑协会",
     verifiedAt: "2026-09-01T00:00:00.000Z",
     expiresAt: null,
   });
+});
+
+test("mobile profile keeps the nickname and verification mark separate from secondary tags", () => {
+  assert.match(profileSource, /<span class="name-primary">\s*<DisplayNickname[\s\S]*?<UserVerificationBadge/);
+  assert.match(profileSource, /<span class="identity-tags">[\s\S]*?vip-tag[\s\S]*?管理员[\s\S]*?reputationLevel/);
+  assert.match(profileSource, /@media \(max-width: 640px\)[\s\S]*?\.name\s*{[\s\S]*?flex-direction:\s*column/);
 });
 
 test("hides incomplete, unsupported, or expired verification data", () => {
