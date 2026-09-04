@@ -193,9 +193,10 @@ function unwrapGraduateTermArray(value: unknown): RawGraduateTermOption[] {
   return unwrapGraduateTermCandidate(value);
 }
 
+// 不设置 allowSso：若最终停在 id 登录页，应返回 401 交给前端共享恢复流程；
+// fetchAnyCpuText 不会因此删除仍可用的本科会话。
 async function warmupGraduateScheduleSession(token: string) {
   await fetchAnyCpuText(token, GRAD_OAUTH_ENTRY_URL, {
-    allowSso: true,
     expectedHost: GRAD_HOST,
     headers: {
       Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -206,7 +207,6 @@ async function warmupGraduateScheduleSession(token: string) {
 
 async function fetchGraduateTermsOnce(token: string) {
   const response = await fetchAnyCpuText(token, GRAD_BINDTERM_URL, {
-    allowSso: true,
     expectedHost: GRAD_HOST,
     headers: defaultGraduateRequestHeaders(),
   });
@@ -234,7 +234,6 @@ async function fetchGraduateSchedulePayload(token: string, termcode: string) {
     termcode,
   });
   const response = await fetchAnyCpuText(token, GRAD_SCHEDULE_URL, {
-    allowSso: true,
     expectedHost: GRAD_HOST,
     method: "POST",
     headers: {

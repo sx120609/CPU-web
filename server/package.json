@@ -28,7 +28,7 @@
     "db:studio": "prisma studio",
     "prisma:generate": "prisma generate",
     "test:login-pool": "node --import tsx --test tests/ssoLoginPool.integration.test.ts tests/jwxtAgent.integration.test.ts tests/browserSecurity.integration.test.ts",
-    "test:parser": "node --import tsx --test tests/jwxtParser.test.ts tests/jwxtModernSso.test.ts tests/jwxtLegacySso.test.ts tests/jwxtFacadeSource.test.ts tests/cpuSsoForm.test.ts tests/scheduleWidget.test.ts tests/academicIdentityDetection.test.ts",
+    "test:parser": "node --import tsx --test tests/jwxtParser.test.ts tests/jwxtModernSso.test.ts tests/jwxtLegacySso.test.ts tests/jwxtFacadeSource.test.ts tests/cpuSsoForm.test.ts tests/scheduleWidget.test.ts tests/academicIdentityDetection.test.ts tests/graduateScheduleSso.test.ts",
     "test:lost-found": "node --import tsx --test tests/lostFoundPrivacy.test.ts",
     "test:assistant": "node --import tsx --test tests/campusAssistant.test.ts tests/userTrust.test.ts",
     "test:pds": "node --import tsx --test tests/pdsShare.test.ts",

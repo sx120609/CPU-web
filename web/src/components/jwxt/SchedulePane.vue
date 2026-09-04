@@ -777,7 +777,7 @@ async function loadSchedule(force = false, background = false) {
       const raw = await jwxt.withSessionRetry(() => jwxtApi.graduateSchedule({
         semester: semester.value || undefined,
         refresh: force || background || hadCache ? "1" : undefined,
-      }));
+      }, { silent: background || hadCache }));
       if (!isCurrentScheduleLoad(requestSeq, requestedSemester, requestedWeek)) return;
       if (disposed) return;
       const normalized = normalizeIncomingScheduleData(raw, "graduate");
@@ -800,7 +800,7 @@ async function loadSchedule(force = false, background = false) {
       semester: semester.value,
       week: week.value,
       refresh: force || background || hadCache ? "1" : undefined,
-    }));
+    }, { silent: background || hadCache }));
     if (disposed) return;
     if (!isCurrentScheduleLoad(requestSeq, requestedSemester, requestedWeek)) {
       if (r?.parsed) writeScheduleCache(scheduleCacheKey(r.parsed.currentSemester || requestedSemester, requestedWeek), r.parsed);

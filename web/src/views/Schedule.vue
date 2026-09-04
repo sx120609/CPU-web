@@ -1136,7 +1136,7 @@ async function loadGraduateSchedule(
     const result = await jwxt.withSessionRetry(() => jwxtApi.graduateSchedule({
       semester: requestedSemester,
       refresh: options?.force ? "1" : undefined,
-    }));
+    }, { silent: background }));
     if (!isCurrentScheduleRequest(requestSeq, requestedSemester || "")) return;
     if (disposed) return;
     const fallbackCalendar = buildGraduateFallbackCalendar(result.parsed);
