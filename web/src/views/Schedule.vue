@@ -804,6 +804,7 @@ import {
   deleteCourseEdit,
   fillFormForExistingCourse,
   fillFormForNewCourse,
+  isOriginalCourseEditUnchanged,
   restoreHiddenCourseEdit,
   restoreOriginalCourseEdit,
   saveCustomCourseEdit,
@@ -821,6 +822,10 @@ import {
 } from "@/views/schedule/calendar";
 import { buildScriptableWidgetScript } from "@/views/schedule/scriptableWidget";
 import { resolveSwipeIntent, type SwipeIntent } from "@/views/schedule/swipeGesture";
+import {
+  claimOfficialScheduleChangeNotice,
+  detectOfficialScheduleChange,
+} from "@/views/schedule/scheduleChanges";
 import {
   MAX_SMALL_SLOT,
   smallSlots,
@@ -2560,8 +2565,14 @@ function saveCourseEdit() {
       existing,
       editingCourseKey: editingCourseKey.value,
     });
+    const editingBlock = editingCourseBlock.value;
+    if (editingBlock && isOriginalCourseEditUnchanged(editingBlock, item, weekNumberOptions.value)) {
+      editDialogOpen.value = false;
+      showEditorMessage("success", "课程没有变化，无需保存");
+      return;
+    }
     scheduleEdits.value = saveCustomCourseEdit(scheduleEdits.value, item, {
-      editingBlock: editingCourseBlock.value,
+      editingBlock,
       editingCourseKey: editingCourseKey.value,
       courseFamilyKey,
       courseFamilySourceKeys,
@@ -2764,8 +2775,24 @@ function scheduleCacheKey(sem = semester.value, wk = week.value) {
 }
 
 function writeScheduleCache(key: string, data: ScheduleResult) {
+  if (scheduleStorageScope() === "undergraduate") {
+    const previous = scheduleCacheStore.get(key) ?? readCache<ScheduleResult>(key);
+    notifyOfficialScheduleChange(previous?.data, data);
+  }
   const envelope = writeCache(key, data);
   if (envelope) rememberScheduleCache(key, envelope);
+}
+
+function notifyOfficialScheduleChange(previous: ScheduleResult | undefined, next: ScheduleResult) {
+  const change = detectOfficialScheduleChange(previous, next);
+  if (!change || !claimOfficialScheduleChangeNotice(change)) return;
+  ElMessage({
+    type: "warning",
+    message: "检测到教务课表已更新，请核对课程时间、周次和地点。",
+    duration: 10_000,
+    showClose: true,
+    offset: 96,
+  });
 }
 
 function rememberScheduleCache(key: string, envelope: CacheEnvelope<ScheduleResult>) {

@@ -366,6 +366,11 @@ import {
   type ScheduleEditState,
 } from "@/utils/scheduleEdits";
 import { courseMatchesWeek, normalizedCourseWeekList } from "@/utils/scheduleWeeks";
+import { isOriginalCourseEditUnchanged } from "@/views/schedule/courseEditor";
+import {
+  claimOfficialScheduleChangeNotice,
+  detectOfficialScheduleChange,
+} from "@/views/schedule/scheduleChanges";
 import {
   buildScheduleCacheKey,
   isStale,
@@ -1697,6 +1702,11 @@ function saveCourseEdit() {
       },
     };
     const editingBlock = editingCourseBlock.value;
+    if (editingBlock && isOriginalCourseEditUnchanged(editingBlock, item, weekNumberOptions.value)) {
+      editDialogOpen.value = false;
+      showEditorMessage("success", "课程没有变化，无需保存");
+      return;
+    }
     const editingFamilyKey = editingBlock ? courseFamilyKey(editingBlock.day, editingBlock.bigSlot, editingBlock.course) : "";
     const hiddenSourceKeys = new Set<string>();
     if (editingBlock && !editingBlock.course.customId) {
@@ -2009,8 +2019,24 @@ function scheduleCacheKey(sem = semester.value, wk = week.value) {
 }
 
 function writeScheduleCache(key: string, data: ScheduleResult) {
+  if (!isGraduateSource.value) {
+    const previous = scheduleCacheStore.get(key) ?? readCache<ScheduleResult>(key);
+    notifyOfficialScheduleChange(previous?.data, data);
+  }
   const envelope = writeCache(key, data);
   if (envelope) rememberScheduleCache(key, envelope);
+}
+
+function notifyOfficialScheduleChange(previous: ScheduleResult | undefined, next: ScheduleResult) {
+  const change = detectOfficialScheduleChange(previous, next);
+  if (!change || !claimOfficialScheduleChangeNotice(change)) return;
+  ElMessage({
+    type: "warning",
+    message: "检测到教务课表已更新，请核对课程时间、周次和地点。",
+    duration: 10_000,
+    showClose: true,
+    offset: 96,
+  });
 }
 
 function rememberScheduleCache(key: string, envelope: CacheEnvelope<ScheduleResult>) {

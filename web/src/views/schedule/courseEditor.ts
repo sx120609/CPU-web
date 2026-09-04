@@ -141,6 +141,28 @@ export function buildCustomCourseItem(
   return { item, startSlot, endSlot };
 }
 
+export function isOriginalCourseEditUnchanged(
+  block: WeekCourseBlock,
+  item: CustomScheduleItem,
+  weekNumberOptions: number[],
+) {
+  if (block.course.customId) return false;
+  const originalWeeks = normalizedCourseWeekList(block.course);
+  const expectedWeeks = originalWeeks.length
+    ? originalWeeks
+    : normalizeWeekList(weekNumberOptions);
+  const editedWeeks = normalizedCourseWeekList(item.course);
+  return item.day === block.day
+    && item.bigSlot === block.bigSlot
+    && (item.course.startSlot ?? block.startSlot) === block.startSlot
+    && (item.course.endSlot ?? block.endSlot) === block.endSlot
+    && normalizeComparableText(item.course.name) === normalizeComparableText(block.course.name)
+    && normalizeComparableText(item.course.teacher) === normalizeComparableText(block.course.teacher)
+    && normalizeComparableText(item.course.location) === normalizeComparableText(block.course.location)
+    && normalizeComparableText(noteFromCourse(item.course)) === normalizeComparableText(noteFromCourse(block.course))
+    && numberListsEqual(editedWeeks, expectedWeeks);
+}
+
 export function saveCustomCourseEdit(
   edits: ScheduleEditState,
   item: CustomScheduleItem,
@@ -272,4 +294,17 @@ function setFormWeeksFromCourse(
   form.weekMode = "custom";
   form.weekList = list;
   form.weekText = customCourseWeeksText(list);
+}
+
+function normalizeWeekList(input: number[]) {
+  return [...new Set(input.map(Number).filter((week) => Number.isFinite(week) && week > 0))]
+    .sort((a, b) => a - b);
+}
+
+function numberListsEqual(left: number[], right: number[]) {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function normalizeComparableText(value?: string) {
+  return String(value ?? "").trim().replace(/\s+/g, " ");
 }
