@@ -1399,7 +1399,7 @@ function canEditReply(reply: Reply) {
 
 function editReply(reply: Reply) {
   if (!canEditReply(reply)) return;
-  switchReplyContext({ editingId: reply.id, initialContent: reply.content });
+  switchReplyContext({ editingId: reply.id, initialContent: reply.editableContent ?? reply.content });
   replyDialogOpen.value = true;
 }
 

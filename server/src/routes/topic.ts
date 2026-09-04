@@ -41,6 +41,7 @@ import {
 } from "../services/topicSmartPostJob";
 import { ensureCanReadBoardType, ensureForumAccessEnabled, resolveForumAccess } from "../services/forumAccess";
 import { ensureUserCanSpeak, releaseExpiredMutes } from "../services/userModeration";
+import { containsForumModerationPlaceholder } from "../services/forumContentEditing";
 import { consumeAnonymousCredit, createAnonymousAlias } from "../services/userTrust";
 import { allowsCampusLifeCampaignAnonymousPost } from "../services/forumAds";
 import { decodeReplyForViewer, decodeReplyForViewerWithImages, decodeTopicForViewer, decodeTopicForViewerWithImages, decodeTopicsForViewerForList, forumAuthorReputationSelect, forumReplyPreviewInclude } from "../services/forumPresentation";
@@ -527,6 +528,9 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
         return ok(res, await presentTopicSubmission(existing, req.user, true));
       }
     }
+    if (containsForumModerationPlaceholder(content)) {
+      throw Errors.badRequest("正文包含审核占位符，请刷新页面后重新编辑，原始媒体不会被覆盖");
+    }
     await ensureUserCanSubmitTopic(userId);
     const board = await prisma.board.findUnique({ where: { slug: boardSlug } });
     if (!board) throw Errors.notFound("板块不存在");
@@ -769,6 +773,9 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
     if (isOwner) await ensureForumAccessEnabled(req.user!.userId, req.user!.role);
 
     const body = req.body as any;
+    if (typeof body.content === "string" && containsForumModerationPlaceholder(body.content)) {
+      throw Errors.badRequest("正文包含审核占位符，请刷新页面后重新编辑，原始媒体不会被覆盖");
+    }
     const data: any = {};
     let aiTagInput: Parameters<typeof generateTopicAiTags>[0] | null = null;
     let queuedForReview = false;

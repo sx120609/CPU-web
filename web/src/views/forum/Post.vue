@@ -1039,13 +1039,13 @@ async function loadInitial() {
       form.boardSlug = t.board?.slug ?? "";
       boardPickerExpanded.value = false;
       form.title = t.title;
-      form.content = t.content;
+      form.content = t.editableContent ?? t.content;
       form.anonymous = Boolean(t.isAnonymous);
       if (t.metadata) Object.assign(meta, t.metadata);
       publishMode.value = t.metadata?._postMode === "say" ? "say" : "post";
       publishModeTouched.value = true;
       if (t.board?.type === "market") normalizeExistingMarketMeta(t.metadata || {});
-      editorMode.value = resolveInitialEditorMode(t.content, t.metadata);
+      editorMode.value = resolveInitialEditorMode(form.content, t.metadata);
       if (editorMode.value === "markup") mobileAdvancedToolsOpen.value = true;
       normalizeSelectedBoard();
     } else {

@@ -8,6 +8,7 @@ import { featureClosedMessage, isBoardTypeEnabled } from "../services/siteSettin
 import { ensureCanReadBoardType, ensureForumAccessEnabled } from "../services/forumAccess";
 import { requestManualReplyReview, shouldBypassAiReviewForUser, shouldRunAiReview } from "../services/topicAiReview";
 import { ensureUserCanSpeak } from "../services/userModeration";
+import { containsForumModerationPlaceholder } from "../services/forumContentEditing";
 import { refreshUserReplyCount } from "../services/forumStats";
 import { consumeAnonymousCredit, createAnonymousAlias, refreshAnonymousCreditsIfNeeded } from "../services/userTrust";
 import { invalidateForumCaches } from "../services/cacheInvalidation";
@@ -114,6 +115,9 @@ replyRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
         }
         return ok(res, await presentReplySubmission(existing, req.user, true));
       }
+    }
+    if (containsForumModerationPlaceholder(content)) {
+      throw Errors.badRequest("回复包含审核占位符，请刷新页面后重新编辑，原始媒体不会被覆盖");
     }
     const topic = await prisma.topic.findUnique({
       where: { id: topicId },
@@ -358,6 +362,9 @@ replyRouter.patch("/:id", authRequired, validate(updateSchema), async (req, res,
     if (isOwner) {
       await ensureForumAccessEnabled(req.user!.userId, req.user!.role);
       await ensureUserCanSpeak(req.user!.userId);
+    }
+    if (containsForumModerationPlaceholder(req.body.content)) {
+      throw Errors.badRequest("回复包含审核占位符，请刷新页面后重新编辑，原始媒体不会被覆盖");
     }
     const updated = await prisma.reply.update({
       where: { id },

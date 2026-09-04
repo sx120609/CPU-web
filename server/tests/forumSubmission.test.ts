@@ -13,6 +13,25 @@ import {
   isAutomaticManualReviewRetry,
   resetForumReviewRetryDetail,
 } from "../src/services/forumSubmission";
+import {
+  containsForumModerationPlaceholder,
+  editableForumContentForViewer,
+} from "../src/services/forumContentEditing";
+
+test("帖子和回复只向可编辑者返回未替换的原始正文", () => {
+  const raw = '<p><img src="/uploads/forum/a.webp"></p>';
+  assert.equal(editableForumContentForViewer(raw, 42, { userId: 42, role: "user" }), raw);
+  assert.equal(editableForumContentForViewer(raw, 42, { userId: 7, role: "admin" }), raw);
+  assert.equal(editableForumContentForViewer(raw, 42, { userId: 8, role: "mod" }), raw);
+  assert.equal(editableForumContentForViewer(raw, 42, { userId: 9, role: "user" }), undefined);
+  assert.equal(editableForumContentForViewer(raw, 42, null), undefined);
+});
+
+test("服务端拒绝把图片或视频审核占位符写回正文", () => {
+  assert.equal(containsForumModerationPlaceholder('<span data-image-review-state="pending">审核中</span>'), true);
+  assert.equal(containsForumModerationPlaceholder('<span class="video-review-placeholder-error">审核异常</span>'), true);
+  assert.equal(containsForumModerationPlaceholder('<img src="/uploads/forum/a.webp">'), false);
+});
 
 test("论坛列表只向作者本人补充审核生命周期中的隐藏内容", () => {
   assert.deepEqual(forumContentVisibilityWhere(null), { hidden: false });

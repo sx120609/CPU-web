@@ -9,6 +9,7 @@ export interface Topic {
   submissionId?: string | null;
   title: string;
   content: string;
+  editableContent?: string;
   metadata: Record<string, any>;
   isAnonymous?: boolean;
   anonymousAlias?: string | null;
@@ -58,6 +59,7 @@ export interface Reply {
   authorId: number | null;
   submissionId?: string | null;
   content: string;
+  editableContent?: string;
   isAnonymous?: boolean;
   anonymousAlias?: string | null;
   parentReplyId?: number | null;

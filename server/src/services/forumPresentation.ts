@@ -1,4 +1,5 @@
 import { buildUserPreview } from "../utils/publicUser";
+import { editableForumContentForViewer } from "./forumContentEditing";
 import { renderModeratedContent, renderModeratedContents, summarizeForumImageModerationForContent } from "./imageModeration";
 import { sanitizeLostFoundTopicFields } from "./lostFoundPrivacy";
 import { isGlobalPinnedTopic } from "./siteSettings";
@@ -108,6 +109,7 @@ export function decodeReplyForViewer(reply: any, viewer?: Viewer) {
 export async function decodeTopicForViewerWithImages(topic: any, viewer?: Viewer) {
   const decoded = decodeTopicForViewer(topic, viewer);
   const sourceContent = String(decoded.content || "");
+  const editableContent = editableForumContentForViewer(sourceContent, topic.authorId, viewer);
   const [imageReview, videoReview, videoRenderedContent] = await Promise.all([
     summarizeForumImageModerationForContent(sourceContent),
     summarizeForumVideoModerationForContent(sourceContent),
@@ -119,6 +121,7 @@ export async function decodeTopicForViewerWithImages(topic: any, viewer?: Viewer
     imageReview,
     videoReview,
     content,
+    ...(editableContent !== undefined ? { editableContent } : {}),
   };
 }
 
@@ -132,6 +135,7 @@ export async function decodeTopicsForViewerForList(topics: any[], viewer?: Viewe
 export async function decodeReplyForViewerWithImages(reply: any, viewer?: Viewer) {
   const decoded = decodeReplyForViewer(reply, viewer);
   const sourceContent = String(decoded.content || "");
+  const editableContent = editableForumContentForViewer(sourceContent, reply.authorId, viewer);
   const [imageReview, videoReview, videoRenderedContent] = await Promise.all([
     summarizeForumImageModerationForContent(sourceContent),
     summarizeForumVideoModerationForContent(sourceContent),
@@ -143,5 +147,6 @@ export async function decodeReplyForViewerWithImages(reply: any, viewer?: Viewer
     imageReview,
     videoReview,
     content,
+    ...(editableContent !== undefined ? { editableContent } : {}),
   };
 }
