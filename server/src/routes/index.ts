@@ -30,6 +30,7 @@ import { userAvatarRouter } from "./userAvatar";
 import { directMessageRouter } from "./directMessage";
 import { forumReportRouter } from "./forumReport";
 import { accountVerificationRouter } from "./accountVerification";
+import { yaodaFlightRouter } from "./yaodaFlight";
 
 export const router = Router();
 
@@ -47,6 +48,7 @@ router.use("/site", siteRouter);
 router.use("/forum-ads", forumAdsRouter);
 router.use("/vip", vipRouter);
 router.use("/storage", storageRouter);
+router.use("/tools/yaoda-can-fly", yaodaFlightRouter);
 router.use("/tools", toolsRouter);
 router.use("/payments", paymentsRouter);
 router.use("/qqbot", qqBotRouter);

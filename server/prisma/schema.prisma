@@ -135,6 +135,8 @@ model User {
   forumReactions               ForumReaction[]
   verificationApplications     UserVerificationApplication[] @relation("VerificationApplicant")
   reviewedVerifications        UserVerificationApplication[] @relation("VerificationReviewer")
+  yaodaFlightAttempts          YaodaFlightAttempt[]
+  yaodaFlightAchievements      YaodaFlightAchievement[]
 }
 
 // ============ 拾间认证 ============
@@ -897,6 +899,35 @@ model FileCollectFile {
   submission FileCollectSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
 
   @@index([submissionId])
+}
+
+model YaodaFlightAttempt {
+  id          Int       @id @default(autoincrement())
+  userId      Int
+  score       Int?
+  durationMs  Int?
+  status      String    @default("active")
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, score])
+  @@index([status, completedAt])
+  @@index([userId, startedAt])
+}
+
+model YaodaFlightAchievement {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  code       String
+  unlockedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, code])
+  @@index([userId, unlockedAt])
+  @@index([code, unlockedAt])
 }
 
 // ============ 支付对接：易支付 ============
@@ -1993,7 +2024,6 @@ model OAuthAuthorizationCode {
   @@index([userId, expiresAt])
   @@index([clientId, expiresAt])
 }
-
 model OAuthAccessToken {
   id         String    @id @default(cuid())
   tokenHash  String    @unique

@@ -1,4 +1,4 @@
-import { Calendar, ChatDotRound, Compass, DataLine, Document, DocumentChecked, FolderOpened, Microphone, OfficeBuilding, Tools } from "@element-plus/icons-vue";
+import { Calendar, ChatDotRound, Compass, DataLine, Document, DocumentChecked, FolderOpened, Microphone, OfficeBuilding, Promotion, Tools } from "@element-plus/icons-vue";
 import type { Component } from "vue";
 
 export type ServiceToolStatus = "ready" | "planned";
@@ -12,7 +12,7 @@ export interface ServiceTool {
   status: ServiceToolStatus;
   category: string;
   routeName: string;
-  componentKey: "feedback" | "questionnaire" | "grade_check" | "file_collect" | "pdf_tools" | "school_calendar" | "venue_reservation" | "lost_found" | "voicehub";
+  componentKey: "feedback" | "questionnaire" | "grade_check" | "file_collect" | "pdf_tools" | "school_calendar" | "venue_reservation" | "lost_found" | "voicehub" | "yaoda_can_fly";
   accent: string;
   iconComponent: Component;
   badge?: string;
@@ -138,6 +138,21 @@ export const serviceTools: ServiceTool[] = [
     componentKey: "voicehub",
     accent: "#dc2626",
     iconComponent: Microphone,
+  },
+  {
+    slug: "yaoda_can_fly",
+    name: "药大人能飞",
+    summary: "操控飞行胶囊，穿过一座座药学实验装置",
+    description: "一款药大主题的轻量飞行小游戏。点击、触摸或按空格起飞，挑战更高分数。",
+    icon: "fly",
+    status: "ready",
+    category: "校园游戏",
+    routeName: "service-yaoda-can-fly",
+    componentKey: "yaoda_can_fly",
+    accent: "#0f8f7b",
+    iconComponent: Promotion,
+    badge: "即点即玩",
+    badgeType: "success",
   },
 ];
 

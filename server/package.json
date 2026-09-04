@@ -21,7 +21,7 @@
     "storage:copy-cos-to-oss": "tsx src/scripts/copyTencentCosToAliyunOss.ts",
     "market:check-db": "tsx scripts/check-market-db.ts",
     "market:smoke": "tsx scripts/smoke-market.ts",
-    "db:migrate": "prisma db execute --file prisma/migrations/20260830210000_add_anonymous_direct_message_scopes/migration.sql --schema prisma/schema.prisma && prisma db execute --file prisma/migrations/20260830233000_add_forum_reports/migration.sql --schema prisma/schema.prisma && prisma db execute --file prisma/migrations/20260831090000_add_direct_message_async_review/migration.sql --schema prisma/schema.prisma && prisma db execute --file prisma/migrations/20260831120000_make_schedule_widget_tokens_revocation_only/migration.sql --schema prisma/schema.prisma && prisma db execute --file prisma/migrations/20260904093000_add_user_verification/migration.sql --schema prisma/schema.prisma && prisma db execute --file prisma/migrations/20260904133000_add_verification_application_source/migration.sql --schema prisma/schema.prisma && prisma db push --skip-generate && node scripts/backfill-permanent-vip.mjs && node scripts/backfill-sponsor-vip.mjs && node scripts/restore-wechat-assistant.mjs",
+    "db:migrate": "prisma db execute --file prisma/migrations/20260830210000_add_anonymous_direct_message_scopes/migration.sql --schema prisma/schema.prisma && prisma db execute --file prisma/migrations/20260830233000_add_forum_reports/migration.sql --schema prisma/schema.prisma && prisma db execute --file prisma/migrations/20260831090000_add_direct_message_async_review/migration.sql --schema prisma/schema.prisma && prisma db execute --file prisma/migrations/20260831120000_make_schedule_widget_tokens_revocation_only/migration.sql --schema prisma/schema.prisma && prisma db execute --file prisma/migrations/20260904093000_add_user_verification/migration.sql --schema prisma/schema.prisma && prisma db execute --file prisma/migrations/20260904133000_add_verification_application_source/migration.sql --schema prisma/schema.prisma && prisma db execute --file prisma/migrations/20260904190000_add_yaoda_flight_attempts/migration.sql --schema prisma/schema.prisma && prisma db push --skip-generate && node scripts/backfill-permanent-vip.mjs && node scripts/backfill-sponsor-vip.mjs && node scripts/restore-wechat-assistant.mjs",
     "db:cleanup-retired-boards": "tsx prisma/cleanup-retired-boards.ts",
     "db:seed": "tsx prisma/seed.ts",
     "db:reset": "prisma db push --force-reset --skip-generate && npm run db:seed",
@@ -38,7 +38,8 @@
     "test:deployment": "node --import tsx --test tests/deployment.test.ts tests/cosToOssMirror.test.ts tests/webStaticCos.test.ts tests/webStaticSwitch.test.ts tests/cloudUsage.test.ts",
     "test:sponsor": "node --import tsx --test tests/sponsorCategories.test.ts",
     "test:direct-messages": "node --import tsx --test tests/directMessagePolicy.test.ts tests/directMessageModeration.test.ts tests/directMessageRemark.test.ts tests/forumReportPolicy.test.ts tests/forumReportLock.test.ts tests/textReviewPolicy.test.ts",
-    "test:wechat": "node --import tsx --test tests/wechatService.test.ts"
+    "test:wechat": "node --import tsx --test tests/wechatService.test.ts",
+    "test:yaoda-flight": "node --import tsx --test tests/yaodaFlight.test.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
