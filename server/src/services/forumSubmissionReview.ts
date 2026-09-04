@@ -292,13 +292,6 @@ async function processTopicSubmissionReview(topicId: number) {
       runNonCriticalSideEffect(`topic ${topic.id} media registration`, () => registerTopicMedia(topic.content, topic.authorId)),
       runNonCriticalSideEffect(`topic ${topic.id} AI tags`, () => generateAndSyncTopicTags(topic)),
       runNonCriticalSideEffect(`topic ${topic.id} course rating`, () => createCourseRatingIfNeeded(topic, metadata)),
-      notifySubmissionResult({
-        userId: topic.authorId,
-        title: "你的帖子已通过审核并发布",
-        content: topic.title,
-        link: `/forum/topic/${topic.id}`,
-        payload: { type: "topic-submission-published", topicId: topic.id, submissionId: topic.submissionId },
-      }),
     ]);
     await invalidateForumCaches({ includeCourses: topic.board.type === "coursereview" }).catch(() => undefined);
   } catch (error) {
@@ -414,13 +407,6 @@ async function processReplySubmissionReview(replyId: number) {
   await Promise.all([
     runNonCriticalSideEffect(`reply ${reply.id} media registration`, () => registerReplyMedia(reply.content, reply.authorId)),
     runNonCriticalSideEffect(`reply ${reply.id} notifications`, () => createReplyNotifications(reply, floor)),
-    notifySubmissionResult({
-      userId: reply.authorId,
-      title: "你的回复已通过审核并发布",
-      content: reply.content.slice(0, 80),
-      link: `/forum/topic/${reply.topicId}#reply-${reply.id}`,
-      payload: { type: "reply-submission-published", replyId: reply.id, topicId: reply.topicId, submissionId: reply.submissionId },
-    }),
   ]);
   await invalidateForumCaches().catch(() => undefined);
 }

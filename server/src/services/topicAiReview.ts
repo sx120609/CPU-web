@@ -1123,12 +1123,13 @@ export async function notifyManualReviewDecision(input: {
   title: string;
   note?: string | null;
 }) {
+  if (input.approved) return;
   await prisma.notification.create({
     data: {
       userId: input.userId,
       category: "system",
-      level: input.approved ? "normal" : "warning",
-      title: input.approved ? "你的稿件已通过人工审核" : "你的稿件未通过人工审核",
+      level: "warning",
+      title: "你的稿件未通过人工审核",
       content: input.note?.trim() || input.title,
       source: "站务审核",
       link: `/forum/topic/${input.topicId}`,
@@ -1151,12 +1152,13 @@ export async function notifyManualReplyReviewDecision(input: {
   content: string;
   note?: string | null;
 }) {
+  if (input.approved) return;
   await prisma.notification.create({
     data: {
       userId: input.userId,
       category: "system",
-      level: input.approved ? "normal" : "warning",
-      title: input.approved ? "你的回复已通过人工审核" : "你的回复未通过人工审核",
+      level: "warning",
+      title: "你的回复未通过人工审核",
       content: input.note?.trim() || input.content.slice(0, 80),
       source: "站务审核",
       link: `/forum/topic/${input.topicId}`,
