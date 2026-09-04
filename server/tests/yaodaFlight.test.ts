@@ -11,13 +11,17 @@ import {
   YAODA_FLIGHT_RECOVERY_STARTED_AT_MS,
   YAODA_FLIGHT_START_LIMIT_PER_10_MIN,
 } from "../src/services/yaodaFlightPolicy";
-import { flightDifficulty } from "../../web/src/views/services/yaodaFlightDifficulty";
+import {
+  flightDifficulty,
+  flightPipeGeometry,
+  flightSpeed,
+} from "../../web/src/views/services/yaodaFlightDifficulty";
 
 test("药大人能飞采用缓和后的递进难度曲线", () => {
   assert.deepEqual(flightDifficulty(0), { speed: 116, gapSize: 210, spacing: 242, gravity: 930 });
   assert.deepEqual(flightDifficulty(6), { speed: 138, gapSize: 182, spacing: 216, gravity: 1035 });
-  assert.deepEqual(flightDifficulty(7), { speed: 152, gapSize: 164, spacing: 207, gravity: 1070 });
-  assert.deepEqual(flightDifficulty(15), { speed: 172, gapSize: 146, spacing: 190, gravity: 1140 });
+  assert.deepEqual(flightDifficulty(7), { speed: 150, gapSize: 168, spacing: 210, gravity: 1060 });
+  assert.deepEqual(flightDifficulty(15), { speed: 164, gapSize: 154, spacing: 198, gravity: 1120 });
 
   const stages = Array.from({ length: 31 }, (_, score) => flightDifficulty(score));
   for (let index = 1; index < stages.length; index += 1) {
@@ -26,6 +30,22 @@ test("药大人能飞采用缓和后的递进难度曲线", () => {
     assert.ok(stages[index].spacing <= stages[index - 1].spacing);
     assert.ok(stages[index].gravity >= stages[index - 1].gravity);
   }
+});
+
+test("飞行速度平滑波动且不会回到旧版极限速度", () => {
+  const speeds = Array.from({ length: 241 }, (_, index) => flightSpeed(30, index / 10));
+  assert.ok(new Set(speeds.map((speed) => speed.toFixed(2))).size > 100);
+  assert.ok(Math.max(...speeds) < 172);
+  assert.ok(Math.min(...speeds) > 158);
+});
+
+test("每根管道的开口和间距会变化且保留安全下限", () => {
+  const geometries = Array.from({ length: 32 }, (_, index) => flightPipeGeometry(30, index));
+  assert.ok(new Set(geometries.map((item) => item.gapSize)).size > 3);
+  assert.ok(new Set(geometries.map((item) => item.spacing)).size > 3);
+  assert.ok(geometries.every((item) => item.gapSize >= 150));
+  assert.ok(geometries.every((item) => item.spacing >= 194));
+  assert.ok(geometries.every((item) => item.gapSize > 150 || item.spacing >= 204));
 });
 
 test("药大人能飞的最低用时随分数递增", () => {

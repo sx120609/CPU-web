@@ -171,11 +171,11 @@ import {
 } from "@/api/yaodaFlight";
 import UserAvatar from "@/components/common/UserAvatar.vue";
 import cpuEmblem from "@/assets/yaoda-can-fly/cpu-emblem.png";
-import { flightDifficulty } from "./yaodaFlightDifficulty";
+import { flightDifficulty, flightPipeGeometry, flightSpeed } from "./yaodaFlightDifficulty";
 
 type Screen = "menu" | "game" | "ranking" | "achievements" | "history" | "settings";
 type GamePhase = "ready" | "playing" | "paused" | "over";
-type Pipe = { x: number; gapY: number; passed: boolean };
+type Pipe = { x: number; gapY: number; gapSize: number; spacingAfter: number; passed: boolean };
 type HistoryItem = { score: number; playedAt: string };
 
 const router = useRouter();
@@ -221,6 +221,7 @@ let audioContext: AudioContext | null = null;
 let cloudAttemptPromise: Promise<number | null> = Promise.resolve(null);
 let cloudSettlementPromise: Promise<void> = Promise.resolve();
 let gameGeneration = 0;
+let nextPipeIndex = 0;
 const emblemImage = new Image();
 
 const isLoggedIn = computed(() => Boolean(getToken()));
@@ -287,6 +288,7 @@ function startGame() {
   playerY = worldHeight * 0.47;
   velocityY = 0;
   pipes = [];
+  nextPipeIndex = 0;
   elapsed = 0;
   nextTick(() => {
     resizeCanvas();
@@ -302,11 +304,11 @@ function beginFlight() {
   gamePhase.value = "playing";
   velocityY = -335;
   elapsed = 0;
-  const opening = flightDifficulty(0);
-  pipes = [
-    createPipe(WORLD_WIDTH + 80, 0),
-    createPipe(WORLD_WIDTH + 80 + opening.spacing, 1),
-  ];
+  const firstPipe = createPipe(WORLD_WIDTH + 80, nextPipeIndex, 0);
+  nextPipeIndex += 1;
+  const secondPipe = createPipe(firstPipe.x + firstPipe.spacingAfter, nextPipeIndex, 1);
+  nextPipeIndex += 1;
+  pipes = [firstPipe, secondPipe];
   cloudAttemptPromise = cloudSettlementPromise.then(() => beginCloudAttempt(generation));
   lastFrameAt = performance.now();
   ensureAudio();
@@ -387,11 +389,12 @@ function gameLoop(now: number) {
 function updateGame(delta: number) {
   elapsed += delta;
   const difficulty = flightDifficulty(score.value);
+  const movementSpeed = flightSpeed(score.value, elapsed);
   velocityY += difficulty.gravity * delta;
   playerY += velocityY * delta;
 
   for (const pipe of pipes) {
-    pipe.x -= difficulty.speed * delta;
+    pipe.x -= movementSpeed * delta;
     if (!pipe.passed && pipe.x + PIPE_WIDTH < PLAYER_X) {
       pipe.passed = true;
       score.value += 1;
@@ -400,8 +403,10 @@ function updateGame(delta: number) {
   }
 
   const lastPipe = pipes[pipes.length - 1];
-  if (lastPipe && lastPipe.x < WORLD_WIDTH - difficulty.spacing) {
-    pipes.push(createPipe(lastPipe.x + difficulty.spacing, pipes.length));
+  if (lastPipe && lastPipe.x < WORLD_WIDTH - lastPipe.spacingAfter) {
+    const anticipatedScore = score.value + pipes.filter((pipe) => !pipe.passed).length;
+    pipes.push(createPipe(lastPipe.x + lastPipe.spacingAfter, nextPipeIndex, anticipatedScore));
+    nextPipeIndex += 1;
   }
   pipes = pipes.filter((pipe) => pipe.x > -PIPE_WIDTH - 16);
 
@@ -412,8 +417,8 @@ function updateGame(delta: number) {
 
   for (const pipe of pipes) {
     const overlapsX = PLAYER_X + PLAYER_RADIUS - 3 > pipe.x && PLAYER_X - PLAYER_RADIUS + 3 < pipe.x + PIPE_WIDTH;
-    const overlapsY = playerY - PLAYER_RADIUS + 3 < pipe.gapY - difficulty.gapSize / 2
-      || playerY + PLAYER_RADIUS - 3 > pipe.gapY + difficulty.gapSize / 2;
+    const overlapsY = playerY - PLAYER_RADIUS + 3 < pipe.gapY - pipe.gapSize / 2
+      || playerY + PLAYER_RADIUS - 3 > pipe.gapY + pipe.gapSize / 2;
     if (overlapsX && overlapsY) {
       finishGame();
       return;
@@ -440,11 +445,18 @@ function finishGame() {
   window.setTimeout(() => playTone(130, 0.2, 0.045), 110);
 }
 
-function createPipe(x: number, seed: number): Pipe {
+function createPipe(x: number, seed: number, anticipatedScore: number): Pipe {
+  const geometry = flightPipeGeometry(anticipatedScore, seed);
   const min = 160;
   const max = worldHeight - GROUND_HEIGHT - 170;
   const wave = (Math.sin(seed * 2.17 + performance.now() / 1900) + 1) / 2;
-  return { x, gapY: min + wave * (max - min), passed: false };
+  return {
+    x,
+    gapY: min + wave * (max - min),
+    gapSize: geometry.gapSize,
+    spacingAfter: geometry.spacing,
+    passed: false,
+  };
 }
 
 function resizeCanvas() {
@@ -499,9 +511,8 @@ function drawCloud(context: CanvasRenderingContext2D, x: number, y: number, scal
 }
 
 function drawPipe(context: CanvasRenderingContext2D, pipe: Pipe) {
-  const gapSize = flightDifficulty(score.value).gapSize;
-  const topHeight = pipe.gapY - gapSize / 2;
-  const bottomY = pipe.gapY + gapSize / 2;
+  const topHeight = pipe.gapY - pipe.gapSize / 2;
+  const bottomY = pipe.gapY + pipe.gapSize / 2;
   drawPipeBody(context, pipe.x, -8, topHeight + 8, false);
   drawPipeBody(context, pipe.x, bottomY, worldHeight - GROUND_HEIGHT - bottomY + 8, true);
 }
