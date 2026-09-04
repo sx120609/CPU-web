@@ -92,7 +92,7 @@
     <el-dialog v-model="grantOpen" title="主动添加组织认证" width="min(560px, calc(100vw - 24px))" :close-on-click-modal="false">
       <el-alert type="info" :closable="false" show-icon title="无需用户先申请；仅站点管理员可操作，授予过程会写入审核记录并通知用户。" />
       <div class="candidate-search">
-        <el-input v-model="candidateQuery" clearable placeholder="搜索账号、昵称或用户 ID" @keyup.enter="searchCandidates">
+        <el-input v-model="candidateQuery" clearable placeholder="搜索账号/学号、昵称或用户 ID" @keyup.enter="searchCandidates">
           <template #append><el-button :loading="candidateSearching" @click="searchCandidates">搜索</el-button></template>
         </el-input>
       </div>
@@ -232,7 +232,7 @@ async function searchCandidates() {
   selectedCandidate.value = null;
   try {
     const result = await accountVerificationApi.adminCandidates(query, { suppressErrorMessage: true });
-    candidates.value = result.filter((candidate) => candidate.id !== auth.user?.id);
+    candidates.value = result;
   } catch (error) {
     candidates.value = [];
     ElMessage.error(requestMessage(error) || "用户搜索失败");

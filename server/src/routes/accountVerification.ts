@@ -52,7 +52,7 @@ const revokeSchema = z.object({
 });
 
 const candidateSearchSchema = z.object({
-  q: z.string().trim().min(1, "请输入账号、昵称或用户 ID").max(60),
+  q: z.string().trim().min(1, "请输入账号/学号、昵称或用户 ID").max(60),
 });
 
 const grantSchema = z.object({
@@ -332,7 +332,6 @@ accountVerificationAdminRouter.post(
     try {
       const reviewerId = req.user!.userId;
       const userId = req.body.userId;
-      if (userId === reviewerId) throw Errors.forbidden("不能为自己的账号主动添加认证");
       const user = await prisma.user.findUnique({
         where: { id: userId },
         select: { id: true, nickname: true, status: true },
