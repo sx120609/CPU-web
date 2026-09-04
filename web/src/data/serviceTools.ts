@@ -123,7 +123,7 @@ export const serviceTools: ServiceTool[] = [
     category: "校园互助",
     routeName: "lost-found",
     componentKey: "lost_found",
-    accent: "#0f8f7b",
+    accent: "#123f91",
     iconComponent: Compass,
   },
   {

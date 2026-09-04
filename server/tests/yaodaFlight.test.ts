@@ -26,9 +26,10 @@ test("异常高分和伪造时长会被拒绝", () => {
   assert.match(validateYaodaFlightResult({ score: 1, durationMs: 20_000, serverElapsedMs: 2_000 }) || "", /客户端/);
 });
 
-test("排行榜昵称会去掉控制字符并提供匿名回退", () => {
+test("排行榜只展示昵称并保留数字昵称，不回退到账号或学号", () => {
   assert.equal(publicFlightName("  药大\u0000同学  "), "药大同学");
   assert.equal(publicFlightName(""), "药大同学");
+  assert.equal(publicFlightName("20261234567"), "20261234567");
   assert.equal(publicFlightName("一二三四五六七八九十一二三四五六七八九十一二三四五六"), "一二三四五六七八九十一二三四五六七八九十一二三四");
 });
 
