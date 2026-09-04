@@ -7,6 +7,12 @@ export interface OfficialScheduleChange {
   beforeFingerprint: string;
   afterFingerprint: string;
   changedCount: number;
+  details: OfficialScheduleChangeDetail[];
+}
+
+export interface OfficialScheduleChangeDetail {
+  type: "changed" | "added" | "removed";
+  text: string;
 }
 
 const NOTICE_KEY_PREFIX = "cpu-jwxt-schedule-update-notice-v1";
@@ -20,66 +26,96 @@ export function detectOfficialScheduleChange(
   const nextSemester = normalizeText(next.currentSemester);
   if (previousSemester && nextSemester && previousSemester !== nextSemester) return null;
 
-  const beforeEntries = canonicalScheduleEntries(previous);
-  const afterEntries = canonicalScheduleEntries(next);
-  const beforeFingerprint = fingerprintEntries(beforeEntries);
-  const afterFingerprint = fingerprintEntries(afterEntries);
+  const beforeEntries = scheduleEntries(previous);
+  const afterEntries = scheduleEntries(next);
+  const beforeFingerprint = fingerprintEntries(beforeEntries.map((entry) => entry.key));
+  const afterFingerprint = fingerprintEntries(afterEntries.map((entry) => entry.key));
   if (beforeFingerprint === afterFingerprint) return null;
-
-  const beforeCounts = entryCounts(beforeEntries);
-  const afterCounts = entryCounts(afterEntries);
-  let added = 0;
-  let removed = 0;
-  for (const [entry, count] of afterCounts) {
-    added += Math.max(0, count - (beforeCounts.get(entry) ?? 0));
-  }
-  for (const [entry, count] of beforeCounts) {
-    removed += Math.max(0, count - (afterCounts.get(entry) ?? 0));
-  }
+  const details = describeScheduleChanges(beforeEntries, afterEntries);
 
   return {
     semester: nextSemester || previousSemester || "current",
     beforeFingerprint,
     afterFingerprint,
-    changedCount: Math.max(added, removed),
+    changedCount: details.length,
+    details,
   };
 }
 
 export function claimOfficialScheduleChangeNotice(change: OfficialScheduleChange) {
   if (typeof localStorage === "undefined") return true;
   const key = `${NOTICE_KEY_PREFIX}:${change.semester}`;
-  const transition = `${change.beforeFingerprint}>${change.afterFingerprint}`;
   try {
-    if (localStorage.getItem(key) === transition) return false;
-    localStorage.setItem(key, transition);
+    const seen = localStorage.getItem(key) || "";
+    if (seen === change.afterFingerprint || seen.endsWith(`>${change.afterFingerprint}`)) return false;
+    localStorage.setItem(key, change.afterFingerprint);
   } catch {
     return true;
   }
   return true;
 }
 
-function canonicalScheduleEntries(schedule: ScheduleResult) {
+interface ScheduleEntry {
+  key: string;
+  name: string;
+  nameKey: string;
+  teacher: string;
+  teacherKey: string;
+  location: string;
+  locationKey: string;
+  weeks: string;
+  weeksKey: string;
+  note: string;
+  noteKey: string;
+  day: number;
+  startSlot: number;
+  endSlot: number;
+}
+
+function scheduleEntries(schedule: ScheduleResult) {
   const allWeeks = schedule.weeks
     .map((item) => Number(item.value))
     .filter((week) => Number.isFinite(week) && week > 0)
     .sort((a, b) => a - b);
-  const entries: string[] = [];
+  const entries: ScheduleEntry[] = [];
   for (const cell of schedule.cells ?? []) {
     for (const course of cell.courses ?? []) {
       const range = normalizeSlotRange(cell.bigSlot, course);
-      entries.push(JSON.stringify([
-        cell.day,
-        range.start,
-        range.end,
-        normalizeText(course.name),
-        normalizeText(course.teacher),
-        normalizeText(course.location),
-        canonicalWeeks(course, allWeeks),
-        canonicalNote(course.slotNote),
-      ]));
+      const name = normalizeText(course.name);
+      const teacher = normalizeText(course.teacher);
+      const location = normalizeText(course.location);
+      const weeksKey = canonicalWeeks(course, allWeeks);
+      const note = canonicalNote(course.slotNote);
+      const entry: ScheduleEntry = {
+        key: "",
+        name,
+        nameKey: normalizeKeyText(name),
+        teacher,
+        teacherKey: normalizeKeyText(teacher),
+        location,
+        locationKey: normalizeKeyText(location),
+        weeks: displayWeeks(course, weeksKey),
+        weeksKey,
+        note,
+        noteKey: normalizeKeyText(note),
+        day: cell.day,
+        startSlot: range.start,
+        endSlot: range.end,
+      };
+      entry.key = JSON.stringify([
+        entry.day,
+        entry.startSlot,
+        entry.endSlot,
+        entry.nameKey,
+        entry.teacherKey,
+        entry.locationKey,
+        entry.weeksKey,
+        entry.noteKey,
+      ]);
+      entries.push(entry);
     }
   }
-  return entries.sort();
+  return entries.sort((left, right) => left.key.localeCompare(right.key));
 }
 
 function canonicalWeeks(course: ScheduleCourse, allWeeks: number[]) {
@@ -94,10 +130,85 @@ function canonicalNote(value?: string) {
   return /^(?:第\s*)?\d+\s*(?:-\s*\d+)?\s*节$/u.test(note) ? "" : note;
 }
 
-function entryCounts(entries: string[]) {
-  const counts = new Map<string, number>();
-  for (const entry of entries) counts.set(entry, (counts.get(entry) ?? 0) + 1);
-  return counts;
+function displayWeeks(course: ScheduleCourse, weeksKey: string) {
+  const label = normalizeText(course.weeks);
+  if (label) return label;
+  return weeksKey === "all" ? "全部周" : `第 ${weeksKey.replace(/,/g, "、")} 周`;
+}
+
+function describeScheduleChanges(before: ScheduleEntry[], after: ScheduleEntry[]) {
+  const remainingAfter = [...after];
+  const remainingBefore: ScheduleEntry[] = [];
+  for (const entry of before) {
+    const exactIndex = remainingAfter.findIndex((candidate) => candidate.key === entry.key);
+    if (exactIndex >= 0) remainingAfter.splice(exactIndex, 1);
+    else remainingBefore.push(entry);
+  }
+
+  const details: OfficialScheduleChangeDetail[] = [];
+  const removed: ScheduleEntry[] = [];
+  for (const entry of remainingBefore) {
+    const matchIndex = closestSameCourseIndex(entry, remainingAfter);
+    if (matchIndex < 0) {
+      removed.push(entry);
+      continue;
+    }
+    const replacement = remainingAfter.splice(matchIndex, 1)[0];
+    details.push({ type: "changed", text: describeChangedCourse(entry, replacement) });
+  }
+  for (const entry of remainingAfter) {
+    details.push({ type: "added", text: `新增：${describeCourse(entry)}` });
+  }
+  for (const entry of removed) {
+    details.push({ type: "removed", text: `移除：${describeCourse(entry)}` });
+  }
+  return details;
+}
+
+function closestSameCourseIndex(target: ScheduleEntry, candidates: ScheduleEntry[]) {
+  let bestIndex = -1;
+  let bestScore = Number.POSITIVE_INFINITY;
+  candidates.forEach((candidate, index) => {
+    if (candidate.nameKey !== target.nameKey) return;
+    const score = Number(candidate.day !== target.day)
+      + Number(candidate.startSlot !== target.startSlot || candidate.endSlot !== target.endSlot)
+      + Number(candidate.teacherKey !== target.teacherKey)
+      + Number(candidate.locationKey !== target.locationKey)
+      + Number(candidate.weeksKey !== target.weeksKey)
+      + Number(candidate.noteKey !== target.noteKey);
+    if (score < bestScore) {
+      bestIndex = index;
+      bestScore = score;
+    }
+  });
+  return bestIndex;
+}
+
+function describeChangedCourse(before: ScheduleEntry, after: ScheduleEntry) {
+  const fields: string[] = [];
+  if (before.day !== after.day || before.startSlot !== after.startSlot || before.endSlot !== after.endSlot) {
+    fields.push(`时间 ${displayTime(before)} → ${displayTime(after)}`);
+  }
+  if (before.weeksKey !== after.weeksKey) fields.push(`周次 ${before.weeks} → ${after.weeks}`);
+  if (before.locationKey !== after.locationKey) fields.push(`地点 ${before.location || "未标注"} → ${after.location || "未标注"}`);
+  if (before.teacherKey !== after.teacherKey) fields.push(`教师 ${before.teacher || "未标注"} → ${after.teacher || "未标注"}`);
+  if (before.noteKey !== after.noteKey) fields.push(`备注 ${before.note || "无"} → ${after.note || "无"}`);
+  return `调整：${after.name}：${fields.join("；")}`;
+}
+
+function describeCourse(entry: ScheduleEntry) {
+  const parts = [displayTime(entry), entry.weeks];
+  if (entry.location) parts.push(entry.location);
+  if (entry.teacher) parts.push(entry.teacher);
+  return `${entry.name}（${parts.join("，")}）`;
+}
+
+function displayTime(entry: ScheduleEntry) {
+  return `${dayLabel(entry.day)} ${entry.startSlot}-${entry.endSlot}节`;
+}
+
+function dayLabel(day: number) {
+  return ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][day - 1] ?? `周${day}`;
 }
 
 function fingerprintEntries(entries: string[]) {
@@ -112,4 +223,8 @@ function fingerprintEntries(entries: string[]) {
 
 function normalizeText(value?: string) {
   return String(value ?? "").trim().replace(/\s+/g, " ");
+}
+
+function normalizeKeyText(value?: string) {
+  return normalizeText(value).toLocaleLowerCase();
 }

@@ -741,7 +741,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
+import { computed, h, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { Aim, ArrowLeft, ArrowRight, Download, InfoFilled, Iphone, Lock, Moon, MoreFilled, Picture, QuestionFilled, Refresh, Tools } from "@element-plus/icons-vue";
@@ -2775,10 +2775,6 @@ function scheduleCacheKey(sem = semester.value, wk = week.value) {
 }
 
 function writeScheduleCache(key: string, data: ScheduleResult) {
-  if (scheduleStorageScope() === "undergraduate") {
-    const previous = scheduleCacheStore.get(key) ?? readCache<ScheduleResult>(key);
-    notifyOfficialScheduleChange(previous?.data, data);
-  }
   const envelope = writeCache(key, data);
   if (envelope) rememberScheduleCache(key, envelope);
 }
@@ -2786,8 +2782,17 @@ function writeScheduleCache(key: string, data: ScheduleResult) {
 function notifyOfficialScheduleChange(previous: ScheduleResult | undefined, next: ScheduleResult) {
   const change = detectOfficialScheduleChange(previous, next);
   if (!change || !claimOfficialScheduleChangeNotice(change)) return;
+  const visibleDetails = change.details.slice(0, 6);
+  const remaining = change.details.length - visibleDetails.length;
   void ElMessageBox.alert(
-    "检测到教务课表内容发生变化，请核对课程时间、周次和地点。",
+    h("div", { style: { textAlign: "left", lineHeight: "1.55" } }, [
+      h("p", { style: { margin: "0 0 10px" } }, "检测到教务原始课表有以下变化："),
+      h("div", { style: { maxHeight: "38vh", overflowY: "auto" } }, [
+        ...visibleDetails.map((detail) => h("p", { style: { margin: "7px 0" } }, detail.text)),
+        ...(remaining > 0 ? [h("p", { style: { margin: "7px 0" } }, `另有 ${remaining} 项变化，请在课表中核对。`)] : []),
+      ]),
+      h("p", { style: { margin: "12px 0 0", color: "var(--el-text-color-secondary)" } }, "如果你编辑过上述课程，请重新核对自定义内容，必要时恢复原始课程。"),
+    ]),
     "教务课表已更新",
     {
       type: "warning",
@@ -2890,6 +2895,10 @@ function applyScheduleCache(key: string) {
 function saveScheduleCache() {
   if (!parsed.value) return;
   const key = scheduleCacheKey(parsed.value.currentSemester || semester.value, week.value || parsed.value.currentWeek);
+  if (scheduleStorageScope() === "undergraduate") {
+    const previous = scheduleCacheStore.get(key) ?? readCache<ScheduleResult>(key);
+    notifyOfficialScheduleChange(previous?.data, parsed.value);
+  }
   writeScheduleCache(key, parsed.value);
   const lastKey = lastScheduleCacheKey();
   writeStoredLastScheduleCacheKey(lastKey, key);

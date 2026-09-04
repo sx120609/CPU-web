@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { detectOfficialScheduleChange } from "../src/views/schedule/scheduleChanges";
+import {
+  claimOfficialScheduleChangeNotice,
+  detectOfficialScheduleChange,
+} from "../src/views/schedule/scheduleChanges";
 import type { ScheduleResult } from "../src/views/schedule/types";
 
 function schedule(): ScheduleResult {
@@ -45,10 +48,15 @@ test("detects an official odd-week to even-week change", () => {
   const next = structuredClone(previous);
   next.cells[0].courses[0].weeks = "2-24周(双)";
   next.cells[0].courses[0].weekList = Array.from({ length: 12 }, (_, index) => index * 2 + 2);
+  next.cells[0].courses[0].location = "B203";
   const change = detectOfficialScheduleChange(previous, next);
   assert.ok(change);
   assert.equal(change.changedCount, 1);
   assert.notEqual(change.beforeFingerprint, change.afterFingerprint);
+  assert.deepEqual(change.details, [{
+    type: "changed",
+    text: "调整：马克思主义基本原理：周次 1-23周(单) → 2-24周(双)；地点 B301 → B203",
+  }]);
 });
 
 test("detects teacher, location and time changes", () => {
@@ -82,4 +90,56 @@ test("treats an implicit all-week course and an explicit all-week course as equi
   next.cells[0].courses[0].weeks = "1-24周";
   next.cells[0].courses[0].weekList = Array.from({ length: 24 }, (_, index) => index + 1);
   assert.equal(detectOfficialScheduleChange(previous, next), null);
+});
+
+test("lists added and removed courses separately", () => {
+  const previous = schedule();
+  const next = structuredClone(previous);
+  next.cells = [{
+    day: 2,
+    bigSlot: 3,
+    courses: [{
+      name: "仪器分析实验",
+      teacher: "陈德英",
+      location: "E302",
+      weeks: "1-23周(单)",
+      weekList: Array.from({ length: 12 }, (_, index) => index * 2 + 1),
+      startSlot: 5,
+      endSlot: 6,
+    }],
+  }];
+  const change = detectOfficialScheduleChange(previous, next);
+  assert.ok(change);
+  assert.deepEqual(change.details, [
+    { type: "added", text: "新增：仪器分析实验（周二 5-6节，1-23周(单)，E302，陈德英）" },
+    { type: "removed", text: "移除：马克思主义基本原理（周五 1-2节，1-23周(单)，B301，张云婷）" },
+  ]);
+});
+
+test("shows one notice per new timetable fingerprint across different old caches", () => {
+  const values = new Map<string, string>();
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: {
+      getItem(key: string) { return values.get(key) ?? null; },
+      setItem(key: string, value: string) { values.set(key, value); },
+    },
+  });
+  try {
+    const base = {
+      semester: "2026-2027-1",
+      afterFingerprint: "new-version",
+      changedCount: 1,
+      details: [{ type: "changed" as const, text: "调整：测试课程" }],
+    };
+    assert.equal(claimOfficialScheduleChangeNotice({ ...base, beforeFingerprint: "old-a" }), true);
+    assert.equal(claimOfficialScheduleChangeNotice({ ...base, beforeFingerprint: "old-b" }), false);
+    assert.equal(claimOfficialScheduleChangeNotice({
+      ...base,
+      beforeFingerprint: "new-version",
+      afterFingerprint: "newer-version",
+    }), true);
+  } finally {
+    Reflect.deleteProperty(globalThis, "localStorage");
+  }
 });
