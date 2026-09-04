@@ -409,7 +409,9 @@ accountVerificationAdminRouter.patch("/:id/review", validate(reviewSchema), asyn
       include: { user: true },
     });
     if (!application) throw Errors.notFound("认证申请不存在");
-    if (application.userId === req.user!.userId) throw Errors.forbidden("不能审核自己的认证申请");
+    if (application.userId === req.user!.userId && req.user!.role !== "admin") {
+      throw Errors.forbidden("论坛管理员不能审核自己的认证申请");
+    }
     if (application.status !== "pending") throw Errors.conflict("该认证申请已经处理，请刷新列表");
     const now = new Date();
     if (req.body.action === "reject") {
@@ -474,7 +476,9 @@ accountVerificationAdminRouter.post("/:id/revoke", validate(revokeSchema), async
     const id = parseId(req.params.id);
     const application = await prisma.userVerificationApplication.findUnique({ where: { id } });
     if (!application) throw Errors.notFound("认证申请不存在");
-    if (application.userId === req.user!.userId) throw Errors.forbidden("不能处理自己的认证");
+    if (application.userId === req.user!.userId && req.user!.role !== "admin") {
+      throw Errors.forbidden("论坛管理员不能处理自己的认证");
+    }
     const user = await prisma.user.findUnique({
       where: { id: application.userId },
       select: { verificationApplicationId: true, verificationLabel: true },

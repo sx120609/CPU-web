@@ -30,6 +30,14 @@ test("direct grants stay admin-only and auditable while allowing self-grants", (
   assert.match(routeSource, /source:\s*"user_application",\s*createdAt/);
 });
 
+test("site admins can review and revoke their own verification", () => {
+  const selfManagementGuards = routeSource.match(
+    /application\.userId === req\.user!\.userId && req\.user!\.role !== "admin"/g,
+  ) || [];
+  assert.equal(selfManagementGuards.length, 2);
+  assert.doesNotMatch(routeSource, /if \(application\.userId === req\.user!\.userId\) throw Errors\.forbidden/);
+});
+
 test("builds active public personal and organization verifications", () => {
   const personalVerification = buildAccountVerification({
     verificationType: "individual",
