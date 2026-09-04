@@ -24,9 +24,11 @@ function executeAppearance({ userAgent, platform = '', maxTouchPoints = 0, match
   return links
 }
 
-test('startup images are omitted from HTML and only the matching iOS image is requested', () => {
+test('startup logo is route-independent and only the matching iOS image is requested', () => {
   const indexHtml = readFileSync(path.join(webRoot, 'index.html'), 'utf8')
   assert.doesNotMatch(indexHtml, /apple-touch-startup-image/u)
+  assert.match(indexHtml, /<svg\b[^>]*class="app-launch-logo"/u)
+  assert.doesNotMatch(indexHtml, /<img\b[^>]*class="app-launch-logo"/u)
   assert.deepEqual(executeAppearance({ userAgent: 'Mozilla/5.0 Chrome/140.0' }), [])
 
   const media = '(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)'
