@@ -8,6 +8,13 @@ export interface UserInfo {
   id: number;
   username: string;
   nickname: string;
+  nicknameReview?: {
+    status: "none" | "checking" | "approved" | "rejected" | "review_failed" | string;
+    pendingNickname?: string | null;
+    reason?: string | null;
+    requestedAt?: string | null;
+    reviewedAt?: string | null;
+  };
   avatar?: string | null;
   bio?: string | null;
   college?: string | null;

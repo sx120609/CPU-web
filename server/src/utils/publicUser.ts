@@ -31,6 +31,13 @@ export function buildSelfUser(u: any) {
     id: u.id,
     username: u.username,
     nickname: u.nickname,
+    nicknameReview: {
+      status: u.nicknameReviewStatus ?? "none",
+      pendingNickname: u.pendingNickname ?? null,
+      reason: u.nicknameReviewReason ?? null,
+      requestedAt: u.nicknameReviewRequestedAt ?? null,
+      reviewedAt: u.nicknameReviewedAt ?? null,
+    },
     avatar: publicAvatarValue(u),
     bio: u.bio,
     college: u.college,

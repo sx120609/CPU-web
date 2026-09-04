@@ -124,7 +124,7 @@ export function shouldRunAiReview() {
 }
 
 type AiReviewLogContext = {
-  kind: "topic" | "reply" | "direct-message" | "topic-edit" | "smart-post";
+  kind: "topic" | "reply" | "direct-message" | "nickname" | "topic-edit" | "smart-post";
   targetId?: number | null;
   targetLabel?: string | null;
   createdById?: number | null;
@@ -659,6 +659,33 @@ export function resolveTextReviewPolicy(parsed: DeepSeekReviewResponse, threshol
   };
 }
 
+export function resolveNicknameReviewPolicy(parsed: DeepSeekReviewResponse, threshold: number) {
+  const modelDecision = String(parsed.decision || "").trim().toLowerCase();
+  if (!Number.isFinite(Number(parsed.risk_score)) || !["auto_pass", "block", "manual_review"].includes(modelDecision)) {
+    throw Errors.server("AI 昵称审核返回缺少有效判定");
+  }
+  const base = resolveTextReviewPolicy(parsed, threshold);
+  const categories = parsed.categories && typeof parsed.categories === "object" ? parsed.categories : {};
+  const nicknameRiskScore = Math.max(0, ...[
+    "official_impersonation",
+    "personal_information",
+    "advertising",
+    "sexual",
+    "hate_or_abuse",
+    "illegal",
+  ].map((key) => clampScore(categories[key] ?? 0)));
+  if (nicknameRiskScore < 70) return { ...base, nicknameRiskScore };
+  const safeThreshold = Math.max(1, Math.min(100, Math.round(Number(threshold) || 70)));
+  const riskScore = Math.max(base.riskScore, nicknameRiskScore, safeThreshold);
+  return {
+    ...base,
+    riskScore,
+    riskLevel: riskScore >= 70 ? "high" as const : "medium" as const,
+    decision: "block" as const,
+    nicknameRiskScore,
+  };
+}
+
 function renderPromptTemplate(template: string, vars: Record<string, unknown>) {
   return template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key) => stringifyPromptValue(vars[key]));
 }
@@ -1037,6 +1064,58 @@ export async function reviewDirectMessageContent(input: {
       detail: String(parsed.detail || "").slice(0, 1000),
     }),
     model,
+  };
+}
+
+export async function reviewNicknameContent(input: {
+  nickname: string;
+  createdById: number;
+}): Promise<TopicAiReviewResult> {
+  const config = getSiteConfig();
+  if (!shouldRunAiReview()) {
+    throw Errors.server("AI 审核未开启或文本审核服务未配置");
+  }
+
+  const nickname = String(input.nickname || "").trim();
+  const result = await requestAiJson([
+    {
+      role: "system",
+      content: [
+        "你是校园社区的公开昵称审核员，只审核给出的昵称，不推测用户未提供的背景。",
+        "拦截：冒充学校、学院、老师、社团或站务官方身份；学号、手机号等敏感个人信息；广告导流或联系方式；色情低俗、仇恨歧视、人身攻击、违法犯罪、极端政治或恐怖主义内容。",
+        "正常姓名、网名、缩写、表情、校园元素和善意玩笑应放行；仅包含学校简称或专业名，不等同于冒充官方。",
+        "只返回 JSON：{\"risk_score\":0-100,\"risk_level\":\"low|medium|high\",\"decision\":\"auto_pass|block\",\"reason\":\"简短中文原因\",\"detail\":\"判断依据\",\"categories\":{\"official_impersonation\":0-100,\"personal_information\":0-100,\"advertising\":0-100,\"sexual\":0-100,\"hate_or_abuse\":0-100,\"illegal\":0-100,\"political_extremism\":0-100,\"terrorism\":0-100}}",
+      ].join("\n"),
+    },
+    {
+      role: "user",
+      content: `待审核昵称：${JSON.stringify(nickname)}`,
+    },
+  ], {
+    ...INTERACTIVE_TEXT_REVIEW_OPTIONS,
+    logContext: {
+      kind: "nickname",
+      targetLabel: nickname,
+      createdById: input.createdById,
+    },
+    promptCacheScope: "nickname-review",
+  });
+  const parsed = parseReviewJson(result.content);
+  const { riskScore, riskLevel, decision, politicalRiskScore, nicknameRiskScore } = resolveNicknameReviewPolicy(parsed, config.aiReviewThreshold);
+  return {
+    status: decision === "auto_pass" ? "auto_passed" : "blocked_ai",
+    riskLevel,
+    riskScore,
+    reason: String(parsed.reason || fallbackReason(riskLevel)).slice(0, 120),
+    detail: JSON.stringify({
+      modelDecision: parsed.decision ?? "",
+      decision,
+      politicalRiskScore,
+      nicknameRiskScore,
+      categories: parsed.categories ?? {},
+      detail: String(parsed.detail || "").slice(0, 1000),
+    }),
+    model: result.model,
   };
 }
 

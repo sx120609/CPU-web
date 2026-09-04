@@ -102,7 +102,9 @@ export const useAuthStore = defineStore("auth", {
       || s.user?.voiceHubRole === "super_admin"
       || !!s.user?.lostFoundRole,
     canAccessForum: () => true,
-    needSetupNickname: (s) => !!s.user && (!s.user.nickname || s.user.nickname.trim() === ""),
+    needSetupNickname: (s) => !!s.user
+      && (!s.user.nickname || s.user.nickname.trim() === "")
+      && !(s.user.nicknameReview?.status === "checking" && s.user.nicknameReview.pendingNickname?.trim()),
     needDataAuthAgreement: (s) => !!s.user?.studentSso && !s.dataAuthAgreed,
     isGraduateIdentity: (s) => s.academicIdentity === "graduate",
     academicIdentityLabel: (s) => academicIdentityLabel(s.academicIdentity),
@@ -451,6 +453,24 @@ export const useAuthStore = defineStore("auth", {
         : confirmed;
       this.user = next;
       return next;
+    },
+
+    async refreshSelfSilently() {
+      const requestSessionVersion = this.sessionVersion;
+      const userId = this.user?.id;
+      if (!this.token || !userId) return null;
+      const user = await authApi.me({
+        cacheTtlMs: 0,
+        cacheStaleTtlMs: 0,
+        suppressAuthRedirect: true,
+        suppressAuthMessage: true,
+        suppressErrorMessage: true,
+      }).catch(() => null);
+      if (user && this.sessionVersion === requestSessionVersion && this.user?.id === userId) {
+        this.user = user;
+        this.syncDataAuthAgreement(user);
+      }
+      return user;
     },
 
     async logout() {

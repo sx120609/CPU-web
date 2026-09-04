@@ -15,6 +15,7 @@ import { forumContentVisibilityWhere } from "../services/forumSubmission";
 import { isVipActive, VIP_PROFILE_FRAMES, VIP_PROFILE_THEMES } from "../services/vip";
 import { deleteManagedUserAvatar, storeUserAvatarDataUrl } from "../services/userAvatarStorage";
 import { invalidateForumCaches } from "../services/cacheInvalidation";
+import { normalizeNicknameSubmission, scheduleNicknameReview } from "../services/nicknameReview";
 
 export const userRouter = Router();
 
@@ -31,12 +32,44 @@ userRouter.patch("/me", authRequired, async (req, res, next) => {
   try {
     const body = req.body as Record<string, unknown>;
     const allowed: Record<string, unknown> = {};
-    for (const k of ["nickname", "bio", "college", "enrollYear"]) {
+    for (const k of ["bio", "college", "enrollYear"]) {
       if (body[k] !== undefined) allowed[k] = body[k];
     }
-    const previous = body.avatar !== undefined
-      ? await prisma.user.findUnique({ where: { id: req.user!.userId }, select: { avatar: true } })
+    const previous = body.avatar !== undefined || body.nickname !== undefined
+      ? await prisma.user.findUnique({
+          where: { id: req.user!.userId },
+          select: { avatar: true, nickname: true, pendingNickname: true, nicknameReviewStatus: true },
+        })
       : null;
+    if ((body.avatar !== undefined || body.nickname !== undefined) && !previous) throw Errors.notFound("用户不存在");
+    let nicknameQueued = false;
+    if (body.nickname !== undefined) {
+      const nickname = normalizeNicknameSubmission(body.nickname);
+      if (nickname === previous!.nickname.trim()) {
+        if (previous!.pendingNickname) {
+          Object.assign(allowed, {
+            pendingNickname: null,
+            nicknameReviewStatus: "none",
+            nicknameReviewReason: null,
+            nicknameReviewDetail: null,
+            nicknameReviewModel: null,
+            nicknameReviewRequestedAt: null,
+            nicknameReviewedAt: null,
+          });
+        }
+      } else if (!(previous!.nicknameReviewStatus === "checking" && previous!.pendingNickname === nickname)) {
+        Object.assign(allowed, {
+          pendingNickname: nickname,
+          nicknameReviewStatus: "checking",
+          nicknameReviewReason: "昵称已提交，正在后台审核",
+          nicknameReviewDetail: "",
+          nicknameReviewModel: null,
+          nicknameReviewRequestedAt: new Date(),
+          nicknameReviewedAt: null,
+        });
+        nicknameQueued = true;
+      }
+    }
     if (body.avatar !== undefined) {
       if (body.avatar === null || body.avatar === "") {
         allowed.avatar = null;
@@ -75,6 +108,7 @@ userRouter.patch("/me", authRequired, async (req, res, next) => {
       allowed.dataAuthAgreedAt = new Date();
     }
     const u = await prisma.user.update({ where: { id: req.user!.userId }, data: allowed });
+    if (nicknameQueued) scheduleNicknameReview(u.id);
     if (body.avatar !== undefined && previous?.avatar !== u.avatar) {
       if (previous?.avatar) await deleteManagedUserAvatar(previous.avatar).catch(() => false);
       await invalidateForumCaches();

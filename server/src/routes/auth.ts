@@ -12,6 +12,7 @@ import { detectLoginClient } from "../utils/loginClient";
 import { buildSelfUser } from "../utils/publicUser";
 import { recordAdminDailyLogin } from "../services/adminStats";
 import { isCookieAuthRequest, issueBrowserSession, revokeBrowserSession } from "../services/browserSession";
+import { nicknameSetupRequired, normalizeNicknameSubmission, scheduleNicknameReview } from "../services/nicknameReview";
 
 export const authRouter = Router();
 
@@ -23,7 +24,7 @@ const loginSchema = z.object({
 const registerSchema = z.object({
   username: z.string().min(3, "用户名至少 3 位").max(20).regex(/^[a-zA-Z0-9_]+$/, "用户名仅允许英文/数字/下划线"),
   password: z.string().min(6, "密码至少 6 位").max(64),
-  nickname: z.string().min(1, "请填写昵称").max(20),
+  nickname: z.string().trim().min(2, "昵称至少 2 个字符").max(20),
   college: z.string().max(40).optional(),
   enrollYear: z.number().int().min(2000).max(2100).optional(),
 });
@@ -89,6 +90,7 @@ authRouter.post("/register", validate(registerSchema), async (req, res, next) =>
   try {
     if (!isDev) throw Errors.forbidden("仅支持学校账号登录");
     const { username, password, nickname, college, enrollYear } = req.body;
+    const pendingNickname = normalizeNicknameSubmission(nickname);
     const exists = await prisma.user.findUnique({ where: { username } });
     if (exists) throw Errors.conflict("该用户名已被占用");
     const passwordHash = await hashPassword(password);
@@ -97,7 +99,11 @@ authRouter.post("/register", validate(registerSchema), async (req, res, next) =>
       data: {
         username,
         passwordHash,
-        nickname,
+        nickname: "",
+        pendingNickname,
+        nicknameReviewStatus: "checking",
+        nicknameReviewReason: "昵称已提交，正在后台审核",
+        nicknameReviewRequestedAt: new Date(),
         college,
         enrollYear,
         lastSeenAt: new Date(),
@@ -118,6 +124,7 @@ authRouter.post("/register", validate(registerSchema), async (req, res, next) =>
       voiceHubRole: user.voiceHubRole,
       lostFoundRole: user.lostFoundRole,
     });
+    scheduleNicknameReview(user.id);
     await recordAdminDailyLogin(user.id, user.lastLoginAt ?? new Date(), client.client).catch((error) => {
       console.warn("[admin-stats] failed to record register login", error);
     });
@@ -246,7 +253,7 @@ authRouter.post(
           sessionAuthenticated: true,
           jwxtAuthenticated: true,
           user: buildSelfUser(user),
-          needNickname: !user.nickname || user.nickname.trim() === "",
+          needNickname: nicknameSetupRequired(user),
         });
       } else {
         ok(res, {
@@ -254,7 +261,7 @@ authRouter.post(
           siteToken,
           jwxtToken: r.token,
           user: buildSelfUser(user),
-          needNickname: !user.nickname || user.nickname.trim() === "",
+          needNickname: nicknameSetupRequired(user),
         });
       }
     } catch (e) { next(e); }

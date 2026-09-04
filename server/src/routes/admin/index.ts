@@ -520,7 +520,18 @@ adminRouter.patch("/users/:id", modOrAbove, validate(userPatchSchema), async (re
     }
     if (req.body.voiceHubRole !== undefined) data.voiceHubRole = req.body.voiceHubRole;
     if (req.body.lostFoundRole !== undefined) data.lostFoundRole = req.body.lostFoundRole;
-    if (req.body.nickname !== undefined) data.nickname = req.body.nickname;
+    if (req.body.nickname !== undefined) {
+      Object.assign(data, {
+        nickname: req.body.nickname,
+        pendingNickname: null,
+        nicknameReviewStatus: "none",
+        nicknameReviewReason: null,
+        nicknameReviewDetail: null,
+        nicknameReviewModel: null,
+        nicknameReviewRequestedAt: null,
+        nicknameReviewedAt: null,
+      });
+    }
     if (req.body.aiReviewWhitelisted !== undefined) data.aiReviewWhitelisted = req.body.aiReviewWhitelisted;
     if (req.body.anonymousCredits !== undefined) {
       data.anonymousCredits = req.body.anonymousCredits;
@@ -558,6 +569,7 @@ adminRouter.patch("/users/:id", modOrAbove, validate(userPatchSchema), async (re
     }
 
     const u = await prisma.user.update({ where: { id }, data });
+    if (req.body.nickname !== undefined) await invalidateForumCaches();
     const trust = buildUserTrustSnapshot(u as any);
     ok(res, {
       id: u.id,

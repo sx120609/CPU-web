@@ -23,6 +23,7 @@ import { startQqNotificationPoller } from "./services/qqbot";
 import { startSponsorOrderExpiryPoller } from "./services/sponsor";
 import { startForumSubmissionReviewPoller } from "./services/forumSubmissionReview";
 import { startDirectMessageSubmissionReviewPoller } from "./services/directMessageSubmissionReview";
+import { startNicknameReviewPoller } from "./services/nicknameReview";
 import { startRuntimeSync } from "./services/runtimeSync";
 import { fail } from "./utils/response";
 import { browserSessionMiddleware, requestOriginAndCsrfProtection } from "./middleware/browserSession";
@@ -94,6 +95,7 @@ export function createApp() {
   startForumVideoModerationPoller();
   startForumSubmissionReviewPoller();
   startDirectMessageSubmissionReviewPoller();
+  startNicknameReviewPoller();
   startQqNotificationPoller();
   startWechatNotificationPoller();
   startSponsorOrderExpiryPoller();

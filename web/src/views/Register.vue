@@ -148,7 +148,7 @@ async function submit() {
       college: form.college || undefined,
       enrollYear: form.enrollYear,
     });
-    ElMessage.success(`欢迎，${auth.user?.nickname}！注册成功`);
+    ElMessage.success("注册成功，昵称已进入后台审核");
     router.replace(redirectTarget());
   } catch { /* 拦截器已提示 */ }
   finally { loading.value = false; }

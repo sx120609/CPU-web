@@ -14,7 +14,7 @@
       </div>
       <h3 class="name">
         <span class="name-primary">
-          <DisplayNickname :name="user?.nickname" />
+          <DisplayNickname :name="user?.nickname || '药大同学'" />
           <UserVerificationBadge :verification="user?.verification" />
         </span>
         <span class="identity-tags">
@@ -27,6 +27,7 @@
         </span>
       </h3>
       <p class="account-note">{{ user?.studentSso ? "学号仅用于登录和身份校验，不会公开展示" : "登录账号仅自己可见，不会公开展示" }}</p>
+      <p v-if="nicknameReviewText" class="nickname-review-note" :class="`is-${user?.nicknameReview?.status}`">{{ nicknameReviewText }}</p>
       <p v-if="user?.verification" class="verification-copy">拾间认证：{{ user.verification.label }}</p>
       <p class="bio">{{ user?.bio || "这个人很懒，什么都没写" }}</p>
       <ul class="kv">
@@ -416,8 +417,9 @@
 
     <el-dialog v-model="editing" title="编辑资料" width="420" :close-on-click-modal="!saving" :close-on-press-escape="!saving" :show-close="!saving">
       <el-form label-position="top" :model="editForm">
-        <el-form-item label="昵称">
+        <el-form-item label="昵称（AI 异步审核）">
           <el-input v-model="editForm.nickname" maxlength="20" show-word-limit :disabled="saving" />
+          <p class="field-help">修改后旧昵称继续显示，AI 审核通过后自动生效。</p>
         </el-form-item>
         <el-form-item label="一句话签名">
           <el-input v-model="editForm.bio" type="textarea" :rows="3" maxlength="120" show-word-limit :disabled="saving" />
@@ -594,6 +596,14 @@ const appearanceOptions: Array<{ value: AppearanceMode; label: string; icon: unk
 ];
 const profileThemeClass = computed(() => user.value?.profileTheme ? `profile-theme-${user.value.profileTheme}` : "");
 const profileFrameClass = computed(() => user.value?.profileFrame ? `profile-frame-${user.value.profileFrame}` : "");
+const nicknameReviewText = computed(() => {
+  const review = user.value?.nicknameReview;
+  if (!review || review.status === "none") return "";
+  if (review.status === "checking") return `昵称“${review.pendingNickname || ""}”正在后台审核，当前昵称暂不改变。`;
+  if (review.status === "rejected") return `昵称“${review.pendingNickname || ""}”未通过审核：${review.reason || "请换一个昵称后重试"}`;
+  if (review.status === "review_failed") return review.reason || "昵称审核暂未完成，请重新提交。";
+  return "";
+});
 const wechatBindingStateText = computed(() => {
   if (wechatProfileLoading.value && !wechatProfile.value) return "正在查询绑定状态";
   if (wechatProfileError.value && !wechatProfile.value) return "绑定状态暂不可用";
@@ -619,7 +629,7 @@ watch(() => route.query.sponsorCategory, () => {
 
 watch(editing, (v) => {
   if (v && user.value) {
-    editForm.nickname = user.value.nickname;
+    editForm.nickname = user.value.nicknameReview?.pendingNickname || user.value.nickname;
     editForm.bio = user.value.bio || "";
     editForm.college = user.value.college || "";
     editForm.enrollYear = user.value.enrollYear ?? undefined;
@@ -701,7 +711,7 @@ async function saveEdit() {
       college: editForm.college.trim(),
     } as any);
     auth.user = u;
-    ElMessage.success("已保存");
+    ElMessage.success(u.nicknameReview?.status === "checking" ? "资料已保存，昵称审核通过后生效" : "已保存");
     editing.value = false;
   } finally { saving.value = false; }
 }
@@ -1047,6 +1057,9 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
 .name-primary :deep(.display-nickname) { min-width: 0; overflow-wrap: anywhere; }
 .vip-tag { letter-spacing: .08em; font-weight: 800; }
 .account-note { font-size: 12px; color: var(--cpu-text-muted); margin: 0 0 8px; }
+.nickname-review-note { max-width: 560px; margin: -2px auto 8px; color: var(--cpu-primary); font-size: 12px; line-height: 1.55; }
+.nickname-review-note.is-rejected, .nickname-review-note.is-review_failed { color: var(--el-color-danger); }
+.field-help { width: 100%; margin: 6px 0 0; color: var(--cpu-text-muted); font-size: 12px; line-height: 1.5; }
 .verification-copy { margin: -2px 0 8px; color: #0969da; font-size: 12px; font-weight: 650; }
 .bio { font-size: 13px; color: var(--cpu-text-secondary); margin: 0 0 16px; }
 

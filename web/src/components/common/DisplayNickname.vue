@@ -14,7 +14,7 @@ const props = withDefaults(defineProps<{ name?: string | null }>(), {
   name: "",
 });
 
-const resolvedName = computed(() => String(props.name || ""));
+const resolvedName = computed(() => String(props.name || "").trim() || "药大同学");
 const parts = computed(() => resolvedName.value
   .split(/([♂♀⚧]\uFE0F?)/u)
   .filter(Boolean)

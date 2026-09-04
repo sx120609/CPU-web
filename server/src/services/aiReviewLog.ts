@@ -1,7 +1,7 @@
 import { prisma } from "../prisma";
 
 export type AiReviewLogInput = {
-  kind: "topic" | "reply" | "direct-message" | "topic-edit" | "smart-post" | "image" | "video" | "qqbot-group-ad" | "campus-assistant" | "learning-answer";
+  kind: "topic" | "reply" | "direct-message" | "nickname" | "topic-edit" | "smart-post" | "image" | "video" | "qqbot-group-ad" | "campus-assistant" | "learning-answer";
   targetId?: number | null;
   targetLabel?: string | null;
   targetUrl?: string | null;

@@ -343,8 +343,9 @@
         欢迎来到药大拾间，先设置一个公开显示的昵称
       </p>
       <p class="dlg-hint">
-        {{ nicknameHint }}，<b>不会展示你的学号</b>。
+        {{ nicknameHint }}，<b>不会展示你的学号</b>。提交后由 AI 在后台异步审核，通过后才会公开显示。
       </p>
+      <p v-if="nicknameReviewProblem" class="dlg-review-problem">{{ nicknameReviewProblem }}</p>
       <el-input
         v-model="newNickname"
         size="large"
@@ -438,6 +439,7 @@ let viewportBaselineOrientation = "";
 let focusOutTimer = 0;
 let focusKeyboardGraceTimer = 0;
 let keyboardGeometryCloseTimer = 0;
+let nicknameReviewPollTimer = 0;
 let focusKeyboardGraceUntil = 0;
 let disposed = false;
 
@@ -622,12 +624,18 @@ function isExternalNav(to: string) {
   return /^(?:https?:\/\/|mailto:|#)/i.test(to);
 }
 
-const displayName = computed(() => auth.user?.nickname?.trim() || auth.user?.username?.trim() || "已登录");
+const displayName = computed(() => auth.user?.nickname?.trim() || "药大同学");
 
 // 首次登录设昵称
 const showNicknameDialog = ref(false);
 const newNickname = ref("");
 const savingNickname = ref(false);
+const nicknameReviewProblem = computed(() => {
+  const review = auth.user?.nicknameReview;
+  if (review?.status === "rejected") return review.reason || "上次提交的昵称未通过审核，请换一个昵称。";
+  if (review?.status === "review_failed") return review.reason || "上次昵称审核暂未完成，请重新提交。";
+  return "";
+});
 
 const shouldAskNickname = computed(() => auth.isLoggedIn && auth.needSetupNickname && !auth.needDataAuthAgreement);
 watch(shouldAskNickname, (v) => {
@@ -642,11 +650,21 @@ async function saveNickname() {
   savingNickname.value = true;
   try {
     await auth.updateProfile({ nickname: nick });
-    ElMessage.success(`欢迎，${nick}`);
+    ElMessage.success("昵称已提交审核，通过后将公开显示");
     showNicknameDialog.value = false;
     newNickname.value = "";
   } finally { savingNickname.value = false; }
 }
+
+watch(() => auth.user?.nicknameReview?.status, (status) => {
+  window.clearInterval(nicknameReviewPollTimer);
+  nicknameReviewPollTimer = 0;
+  if (status === "checking") {
+    nicknameReviewPollTimer = window.setInterval(() => {
+      void auth.refreshSelfSilently();
+    }, 5_000);
+  }
+}, { immediate: true });
 
 onMounted(async () => {
   disposed = false;
@@ -669,6 +687,7 @@ onBeforeUnmount(() => {
   window.clearTimeout(focusOutTimer);
   window.clearTimeout(focusKeyboardGraceTimer);
   window.clearTimeout(keyboardGeometryCloseTimer);
+  window.clearInterval(nicknameReviewPollTimer);
   if (typeof window !== "undefined") {
     window.removeEventListener("resize", handleViewportMetricsChange);
     window.visualViewport?.removeEventListener("resize", handleViewportMetricsChange);
@@ -1774,6 +1793,7 @@ function setAppearanceMode(command: string | number | object) {
 .dlg-tip b { color: var(--cpu-primary); }
 .dlg-hint { font-size: 13px; color: var(--cpu-text-secondary); margin: 0 0 14px; }
 .dlg-hint b { color: #b45309; }
+.dlg-review-problem { margin: 0 0 12px; color: var(--el-color-danger); font-size: 13px; line-height: 1.55; }
 
 @media (max-width: 1120px) {
   .topbar-inner {

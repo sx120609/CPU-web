@@ -18,6 +18,13 @@ model User {
   username               String    @unique // 登录名（学校账号登录时即为学号）
   passwordHash           String
   nickname               String // 显示名（学校账号首次登录时为空，强制设置）
+  pendingNickname        String?
+  nicknameReviewStatus   String    @default("none") // none / checking / approved / rejected / review_failed
+  nicknameReviewReason   String?
+  nicknameReviewDetail   String?
+  nicknameReviewModel    String?
+  nicknameReviewRequestedAt DateTime?
+  nicknameReviewedAt     DateTime?
   email                  String?   @unique
   avatar                 String?
   bio                    String? // 自我介绍
@@ -137,6 +144,8 @@ model User {
   reviewedVerifications        UserVerificationApplication[] @relation("VerificationReviewer")
   yaodaFlightAttempts          YaodaFlightAttempt[]
   yaodaFlightAchievements      YaodaFlightAchievement[]
+
+  @@index([nicknameReviewStatus, nicknameReviewedAt])
 }
 
 // ============ 拾间认证 ============
