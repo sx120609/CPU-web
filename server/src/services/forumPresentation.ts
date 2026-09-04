@@ -27,7 +27,7 @@ export const forumReplyPreviewInclude = {
     floor: true,
     likeCount: true,
     createdAt: true,
-    author: { select: { id: true, nickname: true, role: true } },
+    author: { select: { id: true, nickname: true, role: true, verificationType: true, verificationLabel: true, verificationVerifiedAt: true, verificationExpiresAt: true } },
   },
 } as const;
 

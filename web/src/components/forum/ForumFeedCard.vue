@@ -21,6 +21,7 @@
       <div class="feed-author">
         <div class="feed-author-line">
           <span class="feed-author-name">{{ topic.author?.nickname || "匿名同学" }}</span>
+          <UserVerificationBadge :verification="topic.author?.verification" />
           <span v-if="topic.author?.vipActive" class="vip-badge">VIP</span>
           <span v-if="topic.isAnonymous" class="anonymous-badge">匿名</span>
         </div>
@@ -61,7 +62,7 @@
 
     <div v-if="replyPreviews.length" class="reply-previews" aria-label="评论预览">
       <p v-for="reply in replyPreviews" :key="reply.id">
-        <strong>{{ reply.authorName }}：</strong><span>{{ reply.excerpt }}</span>
+        <span class="reply-author"><strong>{{ reply.authorName }}</strong><UserVerificationBadge :verification="reply.verification" /><b>：</b></span><span>{{ reply.excerpt }}</span>
       </p>
       <span v-if="remainingReplyCount" class="reply-more">查看剩余 {{ remainingReplyCount }} 条评论 <b aria-hidden="true">›</b></span>
     </div>
@@ -82,6 +83,7 @@ import { useRoute, useRouter } from "vue-router";
 import { ChatLineRound, Star, View } from "@element-plus/icons-vue";
 import type { Topic } from "@/api/topic";
 import UserAvatar from "@/components/common/UserAvatar.vue";
+import UserVerificationBadge from "@/components/common/UserVerificationBadge.vue";
 import { fmtRelative } from "@/utils/format";
 import { forumContentExcerpt, forumContentImages } from "@/utils/forumContent";
 import { cdnImageSrcset, cdnImageUrl } from "@/utils/cdnMedia";
@@ -149,6 +151,7 @@ const replyPreviews = computed(() => (props.topic.previewReplies || [])
   .map((reply) => ({
     id: reply.id,
     authorName: reply.author?.nickname || reply.anonymousAlias || "匿名同学",
+    verification: reply.author?.verification,
     excerpt: forumContentExcerpt(reply.content, 96),
   }))
   .filter((reply) => reply.excerpt)
@@ -244,7 +247,10 @@ function openTopic() {
 .market-facts span { padding: 3px 7px; border-radius: 999px; background: var(--cpu-surface-subtle); color: var(--cpu-text-secondary); font-size: 10px; }
 .reply-previews { display: grid; gap: 4px; margin: 10px 0 0 48px; padding: 8px 10px; border-radius: 8px; background: var(--cpu-surface-soft); }
 .reply-previews p { display: flex; min-width: 0; gap: 2px; margin: 0; color: var(--cpu-text-secondary); font-size: 11px; line-height: 1.45; }
-.reply-previews strong { flex: 0 0 auto; max-width: 34%; overflow: hidden; color: var(--cpu-text); font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.reply-previews .reply-author { display: inline-flex; max-width: 38%; flex: 0 0 auto; align-items: center; overflow: visible; }
+.reply-previews strong { min-width: 0; overflow: hidden; color: var(--cpu-text); font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.reply-previews .reply-author :deep(.account-verification-badge) { width: 13px; height: 13px; flex-basis: 13px; margin-left: 2px; }
+.reply-previews .reply-author b { flex: 0 0 auto; font-weight: 650; }
 .reply-previews span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .reply-previews .reply-more { justify-self: start; margin-top: 1px; color: var(--cpu-primary); font-size: 11px; font-weight: 650; }
 .reply-more b { font-size: 15px; line-height: 10px; vertical-align: -1px; }

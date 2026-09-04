@@ -59,7 +59,7 @@ homeRouter.get("/summary", async (req, res, next) => {
             take: 10,
             include: {
               board: { select: { slug: true, name: true, color: true, type: true } },
-              author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true } },
+              author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true, verificationType: true, verificationLabel: true, verificationVerifiedAt: true, verificationExpiresAt: true } },
               tags: { include: { tag: true } },
               replies: forumReplyPreviewInclude,
             },
@@ -91,7 +91,7 @@ homeRouter.get("/summary", async (req, res, next) => {
       take: 10,
       include: {
         board: { select: { slug: true, name: true, color: true, type: true } },
-        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true } },
+        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true, verificationType: true, verificationLabel: true, verificationVerifiedAt: true, verificationExpiresAt: true } },
         tags: { include: { tag: true } },
       },
     }) : [];
@@ -172,7 +172,7 @@ homeRouter.get("/latest-feed", async (req, res, next) => {
           take: size,
           include: {
             board: { select: { slug: true, name: true, color: true, type: true } },
-            author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true } },
+            author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true, verificationType: true, verificationLabel: true, verificationVerifiedAt: true, verificationExpiresAt: true } },
             tags: { include: { tag: true } },
             replies: forumReplyPreviewInclude,
           },
@@ -200,7 +200,7 @@ async function listGlobalPinnedTopics(ids: number[], boardTypes: string[], limit
   if (!orderedIds.length) return [];
   const include = {
     board: { select: { slug: true, name: true, color: true, type: true } },
-    author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true } },
+    author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true, verificationType: true, verificationLabel: true, verificationVerifiedAt: true, verificationExpiresAt: true } },
     tags: { include: { tag: true } },
   } as const;
   const rows = compactTopicAuthors(await prisma.topic.findMany({
@@ -220,7 +220,7 @@ async function listHotTopics(size: number, boardTypes: string[]) {
   const cutoff = new Date(nowMs - HOT_TOPIC_FALLBACK_WINDOW_MS);
   const include = {
     board: { select: { slug: true, name: true, color: true, type: true } },
-    author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true } },
+    author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true, verificationType: true, verificationLabel: true, verificationVerifiedAt: true, verificationExpiresAt: true } },
     tags: { include: { tag: true } },
     replies: forumReplyPreviewInclude,
   } as const;

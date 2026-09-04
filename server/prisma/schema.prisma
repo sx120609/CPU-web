@@ -56,6 +56,11 @@ model User {
   vipExpiresAt           DateTime?
   profileTheme           String?
   profileFrame           String?
+  verificationType      String?
+  verificationLabel     String?
+  verificationVerifiedAt DateTime?
+  verificationExpiresAt DateTime?
+  verificationApplicationId Int?   @unique
   assistantPoints        Float     @default(0)
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
@@ -126,6 +131,35 @@ model User {
   oauthAuthorizationCodes      OAuthAuthorizationCode[]
   oauthAccessTokens            OAuthAccessToken[]
   forumReactions               ForumReaction[]
+  verificationApplications     UserVerificationApplication[] @relation("VerificationApplicant")
+  reviewedVerifications        UserVerificationApplication[] @relation("VerificationReviewer")
+}
+
+// ============ 账号组织认证 ============
+
+model UserVerificationApplication {
+  id                  Int       @id @default(autoincrement())
+  userId              Int
+  type                String
+  requestedLabel      String
+  identityDescription String
+  evidence             String
+  contact              String    @default("")
+  status               String    @default("pending") // pending / approved / rejected / withdrawn / revoked / superseded
+  approvedLabel        String?
+  reviewerId           Int?
+  reviewNote           String    @default("")
+  reviewedAt           DateTime?
+  expiresAt            DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  user     User  @relation("VerificationApplicant", fields: [userId], references: [id], onDelete: Cascade)
+  reviewer User? @relation("VerificationReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@index([reviewerId, reviewedAt])
 }
 
 // 加密运行时会话。Redis 可用时作为跨进程热存储，同时写入此表作为部署/重启后的持久兜底；

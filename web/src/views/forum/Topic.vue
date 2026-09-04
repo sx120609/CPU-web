@@ -86,6 +86,7 @@
               <span v-if="topic.author?.vipActive" class="vip-badge">VIP</span>
               <router-link v-if="topic.author?.id" :to="`/u/${topic.author.id}`">{{ topic.author?.nickname }}</router-link>
               <span v-else>{{ topic.author?.nickname }}</span>
+              <UserVerificationBadge :verification="topic.author?.verification" />
               <button
                 v-if="canPrivateChatPost(topic)"
                 type="button"
@@ -361,6 +362,7 @@
             <div class="reply-author-line">
               <router-link v-if="entry.item.author?.id" :to="`/u/${entry.item.author.id}`" class="author">{{ entry.item.author?.nickname }}</router-link>
               <span v-else class="author">{{ entry.item.author?.nickname }}</span>
+              <UserVerificationBadge :verification="entry.item.author?.verification" />
               <button
                 v-if="canPrivateChatPost(entry.item)"
                 type="button"
@@ -729,6 +731,7 @@ import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { ArrowLeft, ArrowRight, ChatLineRound, Compass, Link, MoreFilled, Picture, Star, VideoCamera } from "@element-plus/icons-vue";
 import UserAvatar from "@/components/common/UserAvatar.vue";
+import UserVerificationBadge from "@/components/common/UserVerificationBadge.vue";
 import UserModerationActions from "@/components/common/UserModerationActions.vue";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
 import AppIcon from "@/components/common/AppIcon.vue";

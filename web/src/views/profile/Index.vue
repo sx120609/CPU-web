@@ -15,6 +15,7 @@
       <h3 class="name">
         <el-tag v-if="user?.vipActive" class="vip-tag" type="warning" effect="dark">VIP</el-tag>
         <DisplayNickname :name="user?.nickname" />
+        <UserVerificationBadge :verification="user?.verification" />
         <el-tag v-if="user?.role === 'admin'" size="small" type="danger">管理员</el-tag>
         <el-tag v-else-if="user?.role === 'mod'" size="small">论坛管理员</el-tag>
         <el-tag v-if="user?.reputationLevel" size="small" type="warning" effect="plain">
@@ -22,6 +23,7 @@
         </el-tag>
       </h3>
       <p class="account-note">{{ user?.studentSso ? "学号仅用于登录和身份校验，不会公开展示" : "登录账号仅自己可见，不会公开展示" }}</p>
+      <p v-if="user?.verification" class="verification-copy">组织认证：{{ user.verification.label }}</p>
       <p class="bio">{{ user?.bio || "这个人很懒，什么都没写" }}</p>
       <ul class="kv">
         <li><span>院系</span><span>{{ user?.college || "—" }}</span></li>
@@ -33,6 +35,7 @@
       </ul>
       <div class="profile-actions">
         <el-button type="primary" plain :disabled="saving || logoutBusy" @click="editing = true">编辑资料</el-button>
+        <el-button plain :disabled="saving || logoutBusy" @click="router.push('/profile/verification')">组织认证</el-button>
         <el-button type="warning" plain :disabled="saving || logoutBusy" @click="router.push('/vip')">VIP 中心</el-button>
         <el-button v-if="!user?.studentSso" plain :disabled="savingPw || logoutBusy" @click="passwordDialog = true">修改密码</el-button>
         <el-button type="danger" plain :loading="logoutBusy" :disabled="logoutBusy" @click="onLogout">退出登录</el-button>
@@ -473,6 +476,7 @@ import { searchApi, type CampusAssistantQuota } from "@/api/search";
 import UserAvatar from "@/components/common/UserAvatar.vue";
 import AppIcon from "@/components/common/AppIcon.vue";
 import DisplayNickname from "@/components/common/DisplayNickname.vue";
+import UserVerificationBadge from "@/components/common/UserVerificationBadge.vue";
 import { fmtDate, fmtRelative } from "@/utils/format";
 import { compressImageFile, normalizeImageUploadError } from "@/utils/imageUpload";
 import { readViewCache, writeViewCache } from "@/utils/viewCache";
@@ -1030,6 +1034,7 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
 .name :deep(.display-nickname) { min-width: 0; overflow-wrap: anywhere; }
 .vip-tag { letter-spacing: .08em; font-weight: 800; }
 .account-note { font-size: 12px; color: var(--cpu-text-muted); margin: 0 0 8px; }
+.verification-copy { margin: -2px 0 8px; color: #0969da; font-size: 12px; font-weight: 650; }
 .bio { font-size: 13px; color: var(--cpu-text-secondary); margin: 0 0 16px; }
 
 .kv {

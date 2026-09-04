@@ -133,6 +133,7 @@ import { forumAdsAdminRouter } from "./forumAds";
 import { vipGiftCodesAdminRouter } from "./vipGiftCodes";
 import { wechatAdminRouter } from "./wechat";
 import { forumReportAdminRouter } from "../forumReport";
+import { accountVerificationAdminRouter } from "../accountVerification";
 import {
   DeploymentAlreadyRunningError,
   DeploymentUnavailableError,
@@ -144,6 +145,7 @@ export const adminRouter = Router();
 adminRouter.use("/forum-ads", forumAdsAdminRouter);
 adminRouter.use("/vip-gift-codes", vipGiftCodesAdminRouter);
 adminRouter.use("/forum-reports", modOrAbove, forumReportAdminRouter);
+adminRouter.use("/account-verifications", modOrAbove, accountVerificationAdminRouter);
 const deploymentUpdateSchema = z.object({
   confirmation: z.literal("UPDATE_AND_DEPLOY"),
 });

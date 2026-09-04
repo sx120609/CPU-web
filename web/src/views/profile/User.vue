@@ -23,6 +23,7 @@
         <h2 class="name">
           <el-tag v-if="user.vipActive" class="vip-tag" type="warning" effect="dark">VIP</el-tag>
           <DisplayNickname :name="user.nickname" />
+          <UserVerificationBadge :verification="user.verification" />
           <el-tag v-if="user.role === 'admin'" size="small" type="danger">管理员</el-tag>
           <el-tag v-else-if="user.role === 'mod'" size="small" type="warning">论坛管理员</el-tag>
           <el-tag v-else-if="user.role === 'bot'" size="small" type="warning">系统账号</el-tag>
@@ -30,6 +31,7 @@
             Lv.{{ user.reputationLevel.level }} {{ user.reputationLevel.name }}
           </el-tag>
         </h2>
+        <p v-if="user.verification" class="verification-copy"><b>组织认证</b>{{ user.verification.label }}</p>
         <p class="bio">{{ user.bio || "这个人还没写简介" }}</p>
         <div class="meta">
           <span v-if="user.college">{{ user.college }}</span>
@@ -82,6 +84,7 @@ import { useRoute, useRouter } from "vue-router";
 import { ArrowLeft, Message } from "@element-plus/icons-vue";
 import UserAvatar from "@/components/common/UserAvatar.vue";
 import DisplayNickname from "@/components/common/DisplayNickname.vue";
+import UserVerificationBadge from "@/components/common/UserVerificationBadge.vue";
 import UserModerationActions from "@/components/common/UserModerationActions.vue";
 import { request } from "@/api/request";
 import { useAuthStore } from "@/stores/auth";
@@ -212,6 +215,8 @@ function normalizeUserLoadError(loadError: unknown) {
 .name { min-width: 0; margin: 0; font-size: 20px; display: flex; align-items: center; gap: 8px; }
 .name :deep(.display-nickname) { min-width: 0; overflow-wrap: anywhere; }
 .vip-tag { letter-spacing: .08em; font-weight: 800; }
+.verification-copy { display: flex; align-items: center; gap: 7px; margin: 5px 0 8px; color: #0969da; font-size: 12px; }
+.verification-copy b { padding: 2px 6px; border-radius: 999px; background: color-mix(in srgb, #1d9bf0 10%, var(--cpu-card)); font-size: 10px; }
 .bio { font-size: 13px; color: var(--cpu-text-secondary); margin: 0 0 8px; }
 .meta { display: flex; gap: 12px; font-size: 12px; color: var(--cpu-text-secondary); flex-wrap: wrap; }
 .profile-actions { margin-top: 12px; }

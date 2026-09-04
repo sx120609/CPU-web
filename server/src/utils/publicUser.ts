@@ -1,5 +1,6 @@
 import { buildUserTrustSnapshot } from "../services/userTrust";
 import { publicAvatarValue } from "./publicAvatar";
+import { buildAccountVerification } from "../services/accountVerification";
 
 type Viewer = {
   userId?: number | null;
@@ -61,6 +62,7 @@ export function buildSelfUser(u: any) {
     vipActive: vipActive(u),
     profileTheme: u.profileTheme ?? null,
     profileFrame: u.profileFrame ?? null,
+    verification: buildAccountVerification(u),
     status: u.status,
     mutedUntil: u.mutedUntil,
     createdAt: u.createdAt,
@@ -86,6 +88,7 @@ export function buildPublicUser(u: any, viewer?: Viewer) {
     vipActive: vipActive(u),
     profileTheme: u.profileTheme ?? null,
     profileFrame: u.profileFrame ?? null,
+    verification: buildAccountVerification(u),
     createdAt: u.createdAt,
   };
 
@@ -109,6 +112,7 @@ export function buildUserPreview(u: any, viewer?: Viewer) {
     vipActive: vipActive(u),
     profileTheme: u.profileTheme ?? null,
     profileFrame: u.profileFrame ?? null,
+    verification: buildAccountVerification(u),
   };
 
   if ("reputation" in u) result.reputation = u.reputation;

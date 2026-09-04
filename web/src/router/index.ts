@@ -178,6 +178,7 @@ export const router = createRouter({
         { path: "messages", name: "messages", component: () => import("@/views/messages/Index.vue"), meta: { title: "消息中心" } },
         { path: "messages/qqbot-reminders", name: "message-qqbot-reminders", component: () => import("@/views/services/QqBotReminders.vue"), meta: { title: "小工具提醒规则" } },
         { path: "profile", name: "profile", component: loadProfileView, meta: { title: "我的" } },
+        { path: "profile/verification", name: "profile-verification", component: () => import("@/views/profile/Verification.vue"), meta: { title: "组织认证" } },
         { path: "vip", name: "vip", component: () => import("@/views/profile/Vip.vue"), meta: { title: "VIP 中心" } },
         { path: "sponsor", name: "sponsor", component: () => import("@/views/profile/SponsorWall.vue"), meta: { title: "支持药大拾间", public: true } },
         { path: "sponsor-wall", redirect: "/sponsor" },
@@ -197,6 +198,9 @@ router.beforeEach(async (to) => {
   const auth = useAuthStore();
   const site = useSiteStore();
   if (to.meta.title) document.title = `${to.meta.title} · 药大拾间`;
+  if (import.meta.env.DEV && to.name === "profile-verification" && to.query.preview === "organization-verification") {
+    return true;
+  }
   // 课表和教务页必须先渲染本地缓存；站内会话探测放到后台，不能阻塞路由首屏。
   if (to.name && CACHE_FIRST_EDUCATION_ROUTES.has(String(to.name))) {
     if (!auth.ready) void auth.fetchMe({ probe: true });

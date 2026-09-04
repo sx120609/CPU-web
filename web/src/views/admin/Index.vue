@@ -77,6 +77,7 @@
       <el-tab-pane name="boards" v-if="auth.isAdmin"><template #label><AppIcon name="board" /> 板块</template><BoardsPane v-if="tab === 'boards'" /></el-tab-pane>
       <el-tab-pane v-if="isCoreStaff" name="topics"><template #label><AppIcon name="document" /> 帖子</template><TopicsPane v-if="tab === 'topics'" /></el-tab-pane>
       <el-tab-pane v-if="isCoreStaff" name="forum-reports"><template #label><AppIcon name="shield" /> 举报</template><ForumReportsPane v-if="tab === 'forum-reports'" /></el-tab-pane>
+      <el-tab-pane v-if="isCoreStaff" name="account-verifications"><template #label><AppIcon name="check" /> 组织认证</template><AccountVerificationsPane v-if="tab === 'account-verifications'" /></el-tab-pane>
       <el-tab-pane v-if="isCoreStaff" name="manual-reviews"><template #label><AppIcon name="shield" /> 人工审核</template><ManualReviewsPane v-if="tab === 'manual-reviews'" /></el-tab-pane>
       <el-tab-pane v-if="canManageLostFound" name="lost-found"><template #label><AppIcon name="service" /> 失物招领</template><LostFoundPane v-if="tab === 'lost-found'" /></el-tab-pane>
       <el-tab-pane name="navigation" v-if="auth.isAdmin"><template #label><AppIcon name="menu" /> 顶部导航</template><NavigationPane v-if="tab === 'navigation'" /></el-tab-pane>
@@ -113,6 +114,7 @@ const UsersPane = defineAsyncComponent(() => import("./UsersPane.vue"));
 const BoardsPane = defineAsyncComponent(() => import("./BoardsPane.vue"));
 const TopicsPane = defineAsyncComponent(() => import("./TopicsPane.vue"));
 const ForumReportsPane = defineAsyncComponent(() => import("./ForumReportsPane.vue"));
+const AccountVerificationsPane = defineAsyncComponent(() => import("./AccountVerificationsPane.vue"));
 const ManualReviewsPane = defineAsyncComponent(() => import("./ManualReviewsPane.vue"));
 const LostFoundPane = defineAsyncComponent(() => import("./LostFoundPane.vue"));
 const NavigationPane = defineAsyncComponent(() => import("./NavigationPane.vue"));

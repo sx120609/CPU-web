@@ -29,6 +29,7 @@ import { wechatRouter } from "./wechat";
 import { userAvatarRouter } from "./userAvatar";
 import { directMessageRouter } from "./directMessage";
 import { forumReportRouter } from "./forumReport";
+import { accountVerificationRouter } from "./accountVerification";
 
 export const router = Router();
 
@@ -64,6 +65,7 @@ router.use("/likes", authRequired, likeRouter);
 router.use("/messages", authRequired, messageRouter);
 router.use("/direct-messages", authRequired, directMessageRouter);
 router.use("/forum-reports", authRequired, forumReportRouter);
+router.use("/account-verification", authRequired, accountVerificationRouter);
 router.use("/uploads", uploadRouter);
 
 // 管理后台：需登录 + 内部按 role 分级

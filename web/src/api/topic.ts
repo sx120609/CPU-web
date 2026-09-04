@@ -1,5 +1,6 @@
 import axios from "axios";
 import { request, type RequestOptions } from "./request";
+import type { AccountVerification } from "./accountVerification";
 
 export interface Topic {
   id: number;
@@ -99,6 +100,7 @@ export interface ForumAuthor {
   vipActive?: boolean;
   profileTheme?: string | null;
   profileFrame?: string | null;
+  verification?: AccountVerification | null;
 }
 
 export type ImageReviewSummary = {

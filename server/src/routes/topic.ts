@@ -115,7 +115,7 @@ const smartPostEstimateSchema = z.object({
 
 const topicSubmissionInclude = {
   board: { select: { id: true, slug: true, name: true, type: true, color: true } },
-  author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true } },
+  author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true, verificationType: true, verificationLabel: true, verificationVerifiedAt: true, verificationExpiresAt: true } },
   tags: { include: { tag: true } },
 } as const;
 
@@ -268,7 +268,7 @@ topicRouter.get("/", async (req, res, next) => {
             skip: (page - 1) * size,
             take: size,
             include: {
-              author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true } },
+              author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true, verificationType: true, verificationLabel: true, verificationVerifiedAt: true, verificationExpiresAt: true } },
               board: { select: { id: true, slug: true, name: true, color: true, type: true } },
               tags: { include: { tag: true } },
               replies: forumReplyPreviewInclude,
@@ -455,7 +455,7 @@ topicRouter.get("/:id", async (req, res, next) => {
     const topic = await prisma.topic.findUnique({
       where: { id },
       include: {
-        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, bio: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true } },
+        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, bio: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true, verificationType: true, verificationLabel: true, verificationVerifiedAt: true, verificationExpiresAt: true } },
         board: { select: { id: true, slug: true, name: true, type: true, readOnly: true, anonymousEnabled: true } },
         tags: { include: { tag: true } },
         lostFoundItem: { select: { id: true, kind: true, status: true } },
@@ -896,7 +896,7 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
     const topicWithTags = await prisma.topic.findUnique({
       where: { id: u.id },
       include: {
-        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true } },
+        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true, verificationType: true, verificationLabel: true, verificationVerifiedAt: true, verificationExpiresAt: true } },
         board: { select: { id: true, slug: true, name: true, color: true, type: true } },
         tags: { include: { tag: true } },
       },
@@ -962,7 +962,7 @@ topicRouter.get("/:id/replies", async (req, res, next) => {
       where: { topicId: id, ...forumContentVisibilityWhere(requesterId) },
       orderBy: { floor: "asc" },
       include: {
-        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true } },
+        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true, verificationType: true, verificationLabel: true, verificationVerifiedAt: true, verificationExpiresAt: true } },
       },
     });
     ok(res, await Promise.all(list.map((item) => decodeReplyForViewerWithImages(item, req.user))));

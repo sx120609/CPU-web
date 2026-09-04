@@ -151,7 +151,7 @@ userRouter.get("/:id/topics", async (req, res, next) => {
       take: 30,
       include: {
         board: { select: { slug: true, name: true, color: true, type: true } },
-        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true } },
+        author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true, verificationType: true, verificationLabel: true, verificationVerifiedAt: true, verificationExpiresAt: true } },
         tags: { include: { tag: true } },
       },
     });

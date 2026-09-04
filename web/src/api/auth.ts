@@ -1,5 +1,6 @@
 import { request, type RequestOptions } from "./request";
 import type { AgentEncryptedLoginCredentials } from "@/utils/agentCredentialCrypto";
+import type { AccountVerification } from "@/api/accountVerification";
 
 export interface LoginPayload { username: string; password: string }
 export interface RegisterPayload { username: string; password: string; nickname: string; college?: string; enrollYear?: number }
@@ -28,6 +29,7 @@ export interface UserInfo {
   vipActive?: boolean;
   profileTheme?: string | null;
   profileFrame?: string | null;
+  verification?: AccountVerification | null;
   reputationLevel?: {
     level: number;
     name: string;
