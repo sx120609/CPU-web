@@ -140,6 +140,7 @@ model User {
 model UserVerificationApplication {
   id                  Int       @id @default(autoincrement())
   userId              Int
+  source              String    @default("user_application") // user_application / admin_grant
   type                String
   requestedLabel      String
   identityDescription String
@@ -160,6 +161,7 @@ model UserVerificationApplication {
   @@index([userId, createdAt])
   @@index([status, createdAt])
   @@index([reviewerId, reviewedAt])
+  @@index([source, createdAt])
 }
 
 // 加密运行时会话。Redis 可用时作为跨进程热存储，同时写入此表作为部署/重启后的持久兜底；

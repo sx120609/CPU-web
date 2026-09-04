@@ -61,14 +61,14 @@
     <section v-if="latestApplication" class="home-card application-state">
       <div class="card-heading">
         <div>
-          <span class="section-kicker">最近申请</span>
-          <h2>{{ statusTitle(latestApplication.status) }}</h2>
+          <span class="section-kicker">{{ latestApplication.source === "admin_grant" ? "认证记录" : "最近申请" }}</span>
+          <h2>{{ statusTitle(latestApplication.status, latestApplication.source) }}</h2>
         </div>
         <span class="status-pill" :class="`is-${latestApplication.status}`">{{ statusLabel(latestApplication.status) }}</span>
       </div>
       <dl class="application-summary">
-        <div><dt>申请认证</dt><dd>{{ latestApplication.requestedLabel }}</dd></div>
-        <div><dt>提交时间</dt><dd>{{ fmtDate(latestApplication.createdAt) }}</dd></div>
+        <div><dt>{{ latestApplication.source === "admin_grant" ? "认证说明" : "申请认证" }}</dt><dd>{{ latestApplication.requestedLabel }}</dd></div>
+        <div><dt>{{ latestApplication.source === "admin_grant" ? "授予时间" : "提交时间" }}</dt><dd>{{ fmtDate(latestApplication.createdAt) }}</dd></div>
         <div v-if="latestApplication.reviewNote"><dt>审核说明</dt><dd>{{ latestApplication.reviewNote }}</dd></div>
       </dl>
       <p v-if="latestApplication.status === 'pending'" class="state-tip">审核结果会通过站内通知送达。需要补充信息时，管理员会按照你留下的联系方式核验。</p>
@@ -145,7 +145,7 @@
     <section v-if="history.length > 1" class="home-card history-card">
       <div class="card-heading"><div><span class="section-kicker">申请记录</span><h2>历史记录</h2></div></div>
       <div v-for="item in history.slice(1)" :key="item.id" class="history-row">
-        <div><b>{{ item.requestedLabel }}</b><span>{{ fmtDate(item.createdAt) }}</span></div>
+        <div><b>{{ item.requestedLabel }}</b><span>{{ item.source === "admin_grant" ? "管理员授予 · " : "" }}{{ fmtDate(item.createdAt) }}</span></div>
         <span class="status-pill" :class="`is-${item.status}`">{{ statusLabel(item.status) }}</span>
       </div>
     </section>
@@ -163,6 +163,7 @@ import UserVerificationBadge from "@/components/common/UserVerificationBadge.vue
 import {
   accountVerificationApi,
   type AccountVerificationApplication,
+  type AccountVerificationSource,
   type AccountVerificationMe,
   type AccountVerificationStatus,
 } from "@/api/accountVerification";
@@ -276,7 +277,8 @@ function statusLabel(status: AccountVerificationStatus) {
   } satisfies Record<AccountVerificationStatus, string>)[status];
 }
 
-function statusTitle(status: AccountVerificationStatus) {
+function statusTitle(status: AccountVerificationStatus, source: AccountVerificationSource = "user_application") {
+  if (source === "admin_grant" && status === "approved") return "管理员已授予组织认证";
   if (status === "pending") return "申请正在核验";
   if (status === "approved") return "认证申请已通过";
   if (status === "rejected") return "申请暂未通过";

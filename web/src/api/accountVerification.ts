@@ -10,6 +10,8 @@ export type AccountVerificationStatus =
   | "revoked"
   | "superseded";
 
+export type AccountVerificationSource = "user_application" | "admin_grant";
+
 export interface AccountVerification {
   type: AccountVerificationType;
   typeLabel: string;
@@ -21,6 +23,7 @@ export interface AccountVerification {
 export interface AccountVerificationApplication {
   id: number;
   userId: number;
+  source: AccountVerificationSource;
   type: AccountVerificationType;
   requestedLabel: string;
   identityDescription: string;
@@ -58,6 +61,18 @@ export interface AccountVerificationMe {
   };
 }
 
+export interface AccountVerificationCandidate {
+  id: number;
+  username: string;
+  nickname: string;
+  avatar?: string | null;
+  college?: string | null;
+  enrollYear?: number | null;
+  studentSso: boolean;
+  role: string;
+  currentVerification?: AccountVerification | null;
+}
+
 export const accountVerificationApi = {
   me: (options?: RequestOptions) =>
     request.get<AccountVerificationMe>("/account-verification/me", undefined, options),
@@ -80,6 +95,10 @@ export const accountVerificationApi = {
     pending: number;
     list: AccountVerificationApplication[];
   }>("/admin/account-verifications", params, options),
+  adminCandidates: (q: string, options?: RequestOptions) =>
+    request.get<AccountVerificationCandidate[]>("/admin/account-verifications/candidates", { q }, options),
+  grant: (payload: { userId: number; approvedLabel: string; reviewNote: string; expiresAt?: string | null }) =>
+    request.post<AccountVerificationApplication>("/admin/account-verifications/grant", payload),
   review: (id: number, payload:
     | { action: "approve"; approvedLabel?: string; reviewNote?: string; expiresAt?: string | null }
     | { action: "reject"; reviewNote: string }) =>

@@ -4,6 +4,13 @@ export const ACCOUNT_VERIFICATION_TYPES = [
 
 export type AccountVerificationType = typeof ACCOUNT_VERIFICATION_TYPES[number];
 
+export const ACCOUNT_VERIFICATION_SOURCES = [
+  "user_application",
+  "admin_grant",
+] as const;
+
+export type AccountVerificationSourceType = typeof ACCOUNT_VERIFICATION_SOURCES[number];
+
 export const ACCOUNT_VERIFICATION_TYPE_LABELS: Record<AccountVerificationType, string> = {
   campus_organization: "组织认证",
 };

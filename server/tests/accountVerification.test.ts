@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   ACCOUNT_VERIFICATION_SUBMISSION_LIMIT,
+  ACCOUNT_VERIFICATION_SOURCES,
   ACCOUNT_VERIFICATION_TYPES,
   accountVerificationSubmissionBlock,
   accountVerificationWindowStart,
@@ -9,8 +11,18 @@ import {
   normalizedVerificationExpiry,
 } from "../src/services/accountVerification";
 
+const routeSource = readFileSync(new URL("../src/routes/accountVerification.ts", import.meta.url), "utf8");
+
 test("only organization accounts can use the verification workflow", () => {
   assert.deepEqual(ACCOUNT_VERIFICATION_TYPES, ["campus_organization"]);
+  assert.deepEqual(ACCOUNT_VERIFICATION_SOURCES, ["user_application", "admin_grant"]);
+});
+
+test("direct organization grants stay admin-only and auditable", () => {
+  assert.match(routeSource, /accountVerificationAdminRouter\.post\(\s*"\/grant",\s*adminOnly,/);
+  assert.match(routeSource, /source:\s*"admin_grant"/);
+  assert.match(routeSource, /不能为自己的账号主动添加认证/);
+  assert.match(routeSource, /source:\s*"user_application",\s*createdAt/);
 });
 
 test("builds an active public organization verification", () => {

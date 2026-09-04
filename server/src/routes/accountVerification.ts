@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../prisma";
 import { validate } from "../middleware/validate";
 import { securityRateLimit } from "../middleware/securityRateLimit";
+import { adminOnly } from "../middleware/admin";
 import { Errors, ok } from "../utils/response";
 import { publicAvatarValue } from "../utils/publicAvatar";
 import { invalidateForumCaches } from "../services/cacheInvalidation";
@@ -50,6 +51,17 @@ const revokeSchema = z.object({
   confirmation: z.literal("REVOKE_VERIFICATION"),
 });
 
+const candidateSearchSchema = z.object({
+  q: z.string().trim().min(1, "请输入账号、昵称或用户 ID").max(60),
+});
+
+const grantSchema = z.object({
+  userId: z.coerce.number().int().positive(),
+  approvedLabel: z.string().trim().min(2, "认证说明至少 2 个字").max(30, "认证说明最多 30 个字"),
+  reviewNote: z.string().trim().min(2, "请填写核验依据").max(500),
+  expiresAt: z.string().trim().max(64).nullable().optional(),
+});
+
 function parseId(raw: string) {
   const id = Number(raw);
   if (!Number.isInteger(id) || id <= 0) throw Errors.badRequest("认证申请 ID 不正确");
@@ -60,6 +72,7 @@ function serializeApplication(application: any) {
   return {
     id: application.id,
     userId: application.userId,
+    source: application.source || "user_application",
     type: application.type,
     requestedLabel: application.requestedLabel,
     identityDescription: application.identityDescription,
@@ -140,7 +153,7 @@ accountVerificationRouter.get("/me", async (req, res, next) => {
         include: { reviewer: { select: { id: true, nickname: true } } },
       }),
       prisma.userVerificationApplication.count({
-        where: { userId: req.user!.userId, createdAt: { gte: accountVerificationWindowStart() } },
+        where: { userId: req.user!.userId, source: "user_application", createdAt: { gte: accountVerificationWindowStart() } },
       }),
     ]);
     if (!user) throw Errors.notFound("用户不存在");
@@ -168,7 +181,7 @@ accountVerificationRouter.post(
         prisma.user.findUnique({ where: { id: userId }, select: { id: true, nickname: true, status: true } }),
         prisma.userVerificationApplication.findFirst({ where: { userId, status: "pending" }, select: { id: true } }),
         prisma.userVerificationApplication.count({
-          where: { userId, createdAt: { gte: accountVerificationWindowStart() } },
+          where: { userId, source: "user_application", createdAt: { gte: accountVerificationWindowStart() } },
         }),
       ]);
       if (!user) throw Errors.notFound("用户不存在");
@@ -181,6 +194,7 @@ accountVerificationRouter.post(
       const application = await prisma.userVerificationApplication.create({
         data: {
           userId,
+          source: "user_application",
           type: req.body.type,
           requestedLabel: req.body.requestedLabel,
           identityDescription: req.body.identityDescription,
@@ -260,6 +274,132 @@ accountVerificationAdminRouter.get("/", async (req, res, next) => {
     ok(res, { page, size, total, pending, list: list.map(serializeApplication) });
   } catch (error) { next(error); }
 });
+
+accountVerificationAdminRouter.get(
+  "/candidates",
+  adminOnly,
+  validate(candidateSearchSchema, "query"),
+  async (req, res, next) => {
+    try {
+      const q = req.query.q as string;
+      const numericId = Number(q);
+      const users = await prisma.user.findMany({
+        where: {
+          status: { not: "banned" },
+          OR: [
+            ...(Number.isInteger(numericId) && numericId > 0 ? [{ id: numericId }] : []),
+            { username: { contains: q, mode: "insensitive" } },
+            { nickname: { contains: q, mode: "insensitive" } },
+          ],
+        },
+        orderBy: [{ lastSeenAt: "desc" }, { id: "desc" }],
+        take: 20,
+        select: {
+          id: true,
+          username: true,
+          nickname: true,
+          avatar: true,
+          college: true,
+          enrollYear: true,
+          studentSso: true,
+          role: true,
+          verificationType: true,
+          verificationLabel: true,
+          verificationVerifiedAt: true,
+          verificationExpiresAt: true,
+        },
+      });
+      ok(res, users.map((user) => ({
+        id: user.id,
+        username: user.username,
+        nickname: user.nickname,
+        avatar: publicAvatarValue(user),
+        college: user.college,
+        enrollYear: user.enrollYear,
+        studentSso: user.studentSso,
+        role: user.role,
+        currentVerification: buildAccountVerification(user),
+      })));
+    } catch (error) { next(error); }
+  },
+);
+
+accountVerificationAdminRouter.post(
+  "/grant",
+  adminOnly,
+  validate(grantSchema),
+  async (req, res, next) => {
+    try {
+      const reviewerId = req.user!.userId;
+      const userId = req.body.userId;
+      if (userId === reviewerId) throw Errors.forbidden("不能为自己的账号主动添加认证");
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, nickname: true, status: true },
+      });
+      if (!user) throw Errors.notFound("用户不存在");
+      if (user.status === "banned") throw Errors.forbidden("不能为已封禁账号添加认证");
+
+      const now = new Date();
+      let expiresAt: Date | null;
+      try {
+        expiresAt = normalizedVerificationExpiry(req.body.expiresAt, now);
+      } catch (error) {
+        throw Errors.badRequest(String((error as Error)?.message || "认证有效期不正确"));
+      }
+
+      const application = await prisma.$transaction(async (tx) => {
+        await tx.userVerificationApplication.updateMany({
+          where: { userId, status: "approved" },
+          data: { status: "superseded" },
+        });
+        await tx.userVerificationApplication.updateMany({
+          where: { userId, status: "pending" },
+          data: {
+            status: "superseded",
+            reviewerId,
+            reviewNote: "管理员已主动完成组织认证",
+            reviewedAt: now,
+          },
+        });
+        const created = await tx.userVerificationApplication.create({
+          data: {
+            userId,
+            source: "admin_grant",
+            type: "campus_organization",
+            requestedLabel: req.body.approvedLabel,
+            identityDescription: "由站点管理员主动授予组织认证",
+            evidence: req.body.reviewNote,
+            status: "approved",
+            approvedLabel: req.body.approvedLabel,
+            reviewerId,
+            reviewNote: req.body.reviewNote,
+            reviewedAt: now,
+            expiresAt,
+          },
+        });
+        await tx.user.update({
+          where: { id: userId },
+          data: {
+            verificationType: "campus_organization",
+            verificationLabel: req.body.approvedLabel,
+            verificationVerifiedAt: now,
+            verificationExpiresAt: expiresAt,
+            verificationApplicationId: created.id,
+          },
+        });
+        return created;
+      });
+      await invalidateForumCaches();
+      await notifyUser(
+        userId,
+        "管理员已添加组织认证",
+        `你的账号已认证为“${req.body.approvedLabel}”。如认证信息有误，可在组织认证页面解除并联系管理员。`,
+      );
+      ok(res, serializeApplication(application));
+    } catch (error) { next(error); }
+  },
+);
 
 accountVerificationAdminRouter.patch("/:id/review", validate(reviewSchema), async (req, res, next) => {
   try {

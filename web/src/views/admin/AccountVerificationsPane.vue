@@ -5,7 +5,10 @@
         <h2>组织认证</h2>
         <p>核验账号与校内组织的实际关系。认证仅说明账号归属，不代表学校官方立场。</p>
       </div>
-      <span v-if="pendingCount" class="pending-count">{{ pendingCount }} 条待审核</span>
+      <div class="pane-actions">
+        <span v-if="pendingCount" class="pending-count">{{ pendingCount }} 条待审核</span>
+        <el-button v-if="auth.isAdmin" type="primary" @click="openGrant">主动认证</el-button>
+      </div>
     </header>
 
     <div class="toolbar">
@@ -28,17 +31,21 @@
             </div>
           </div>
           <div class="head-status">
+            <el-tag v-if="item.source === 'admin_grant'" size="small" type="primary" effect="dark">管理员授予</el-tag>
             <el-tag v-if="item.user?.studentSso" size="small" type="primary" effect="plain">统一认证账号</el-tag>
             <span class="status-pill" :class="`is-${item.status}`">{{ statusLabel(item.status) }}</span>
           </div>
         </header>
 
         <dl class="application-detail">
-          <div><dt>申请认证</dt><dd><strong>{{ item.requestedLabel }}</strong></dd></div>
-          <div><dt>组织与账号关系</dt><dd>{{ item.identityDescription }}</dd></div>
-          <div><dt>可核验信息</dt><dd class="preserve-lines">{{ item.evidence }}</dd></div>
-          <div v-if="item.contact"><dt>联系方式</dt><dd>{{ item.contact }}</dd></div>
-          <div><dt>提交时间</dt><dd>{{ fmtDate(item.createdAt) }}</dd></div>
+          <div><dt>{{ item.source === "admin_grant" ? "认证说明" : "申请认证" }}</dt><dd><strong>{{ item.requestedLabel }}</strong></dd></div>
+          <template v-if="item.source !== 'admin_grant'">
+            <div><dt>组织与账号关系</dt><dd>{{ item.identityDescription }}</dd></div>
+            <div><dt>可核验信息</dt><dd class="preserve-lines">{{ item.evidence }}</dd></div>
+            <div v-if="item.contact"><dt>联系方式</dt><dd>{{ item.contact }}</dd></div>
+          </template>
+          <div v-else><dt>授予方式</dt><dd>站点管理员主动认证，无需用户先提交申请</dd></div>
+          <div><dt>{{ item.source === "admin_grant" ? "授予时间" : "提交时间" }}</dt><dd>{{ fmtDate(item.createdAt) }}</dd></div>
           <div v-if="item.approvedLabel"><dt>生效说明</dt><dd>{{ item.approvedLabel }}</dd></div>
           <div v-if="item.reviewNote"><dt>审核记录</dt><dd>{{ item.reviewNote }}<span v-if="item.reviewer"> · {{ item.reviewer.nickname }}</span></dd></div>
         </dl>
@@ -72,7 +79,7 @@
         <el-form-item label="有效期（选填）">
           <el-date-picker v-model="approveForm.expiresAt" type="date" value-format="YYYY-MM-DD" placeholder="长期有效" :disabled-date="disablePastDate" />
         </el-form-item>
-        <el-form-item label="内部审核备注（选填）">
+        <el-form-item label="审核备注（用户可见，选填）">
           <el-input v-model="approveForm.reviewNote" type="textarea" :rows="3" maxlength="500" show-word-limit placeholder="记录核验渠道或依据" />
         </el-form-item>
       </el-form>
@@ -81,23 +88,70 @@
         <el-button type="primary" :loading="busyId !== null" :disabled="approveForm.approvedLabel.trim().length < 2" @click="approve">确认并展示认证</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="grantOpen" title="主动添加组织认证" width="min(560px, calc(100vw - 24px))" :close-on-click-modal="false">
+      <el-alert type="info" :closable="false" show-icon title="无需用户先申请；仅站点管理员可操作，授予过程会写入审核记录并通知用户。" />
+      <div class="candidate-search">
+        <el-input v-model="candidateQuery" clearable placeholder="搜索账号、昵称或用户 ID" @keyup.enter="searchCandidates">
+          <template #append><el-button :loading="candidateSearching" @click="searchCandidates">搜索</el-button></template>
+        </el-input>
+      </div>
+      <div v-if="candidates.length" class="candidate-list">
+        <button
+          v-for="candidate in candidates"
+          :key="candidate.id"
+          type="button"
+          class="candidate-row"
+          :class="{ selected: selectedCandidate?.id === candidate.id }"
+          @click="selectCandidate(candidate)"
+        >
+          <UserAvatar :size="38" :src="candidate.avatar" :name="candidate.nickname" :seed="candidate.id" alt="用户头像" />
+          <span class="candidate-copy">
+            <b>{{ candidate.nickname }}</b>
+            <small>@{{ candidate.username }} · 用户 #{{ candidate.id }}<template v-if="candidate.college"> · {{ candidate.college }}</template></small>
+          </span>
+          <span v-if="candidate.currentVerification" class="candidate-current">已认证</span>
+        </button>
+      </div>
+      <el-empty v-else-if="candidateSearched && !candidateSearching" :image-size="54" description="没有找到可认证的账号" />
+
+      <el-form class="grant-form" label-position="top">
+        <el-form-item label="公开认证说明" required>
+          <el-input v-model="grantForm.approvedLabel" maxlength="30" show-word-limit placeholder="例如：中国药科大学轮滑协会" />
+          <p class="dialog-help">昵称旁显示 X 式蓝色认证勾，完整说明显示在悬停提示和个人主页。</p>
+        </el-form-item>
+        <el-form-item label="核验依据（用户可见）" required>
+          <el-input v-model="grantForm.reviewNote" type="textarea" :rows="3" maxlength="500" show-word-limit placeholder="记录为什么确认该账号属于这个组织" />
+        </el-form-item>
+        <el-form-item label="有效期（选填）">
+          <el-date-picker v-model="grantForm.expiresAt" type="date" value-format="YYYY-MM-DD" placeholder="长期有效" :disabled-date="disablePastDate" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button :disabled="grantBusy" @click="grantOpen = false">取消</el-button>
+        <el-button type="primary" :loading="grantBusy" :disabled="!canGrant" @click="grantDirectly">确认主动认证</el-button>
+      </template>
+    </el-dialog>
   </section>
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import UserAvatar from "@/components/common/UserAvatar.vue";
+import { useAuthStore } from "@/stores/auth";
 import {
   accountVerificationApi,
   type AccountVerificationApplication,
+  type AccountVerificationCandidate,
   type AccountVerificationStatus,
 } from "@/api/accountVerification";
 import { fmtDate } from "@/utils/format";
 
 const route = useRoute();
 const router = useRouter();
+const auth = useAuthStore();
 const statusOptions = [
   { label: "待审核", value: "pending" },
   { label: "已通过", value: "approved" },
@@ -117,6 +171,18 @@ const highlightedId = Number(route.query.application || 0);
 const approveOpen = ref(false);
 const approvingItem = ref<AccountVerificationApplication | null>(null);
 const approveForm = reactive({ approvedLabel: "", reviewNote: "", expiresAt: "" });
+const grantOpen = ref(false);
+const grantBusy = ref(false);
+const candidateQuery = ref("");
+const candidateSearching = ref(false);
+const candidateSearched = ref(false);
+const candidates = ref<AccountVerificationCandidate[]>([]);
+const selectedCandidate = ref<AccountVerificationCandidate | null>(null);
+const grantForm = reactive({ approvedLabel: "", reviewNote: "", expiresAt: "" });
+const canGrant = computed(() => Boolean(selectedCandidate.value)
+  && grantForm.approvedLabel.trim().length >= 2
+  && grantForm.reviewNote.trim().length >= 2
+  && !grantBusy.value);
 
 onMounted(load);
 
@@ -145,6 +211,61 @@ function openApprove(item: AccountVerificationApplication) {
   approveForm.reviewNote = "";
   approveForm.expiresAt = "";
   approveOpen.value = true;
+}
+
+function openGrant() {
+  grantOpen.value = true;
+  candidateQuery.value = "";
+  candidateSearched.value = false;
+  candidates.value = [];
+  selectedCandidate.value = null;
+  grantForm.approvedLabel = "";
+  grantForm.reviewNote = "";
+  grantForm.expiresAt = "";
+}
+
+async function searchCandidates() {
+  const query = candidateQuery.value.trim();
+  if (!query || candidateSearching.value) return;
+  candidateSearching.value = true;
+  candidateSearched.value = true;
+  selectedCandidate.value = null;
+  try {
+    const result = await accountVerificationApi.adminCandidates(query, { suppressErrorMessage: true });
+    candidates.value = result.filter((candidate) => candidate.id !== auth.user?.id);
+  } catch (error) {
+    candidates.value = [];
+    ElMessage.error(requestMessage(error) || "用户搜索失败");
+  } finally {
+    candidateSearching.value = false;
+  }
+}
+
+function selectCandidate(candidate: AccountVerificationCandidate) {
+  if (selectedCandidate.value?.id !== candidate.id) {
+    grantForm.approvedLabel = candidate.currentVerification?.label || "";
+  }
+  selectedCandidate.value = candidate;
+}
+
+async function grantDirectly() {
+  if (!selectedCandidate.value || !canGrant.value) return;
+  grantBusy.value = true;
+  try {
+    await accountVerificationApi.grant({
+      userId: selectedCandidate.value.id,
+      approvedLabel: grantForm.approvedLabel.trim(),
+      reviewNote: grantForm.reviewNote.trim(),
+      expiresAt: grantForm.expiresAt || null,
+    });
+    grantOpen.value = false;
+    status.value = "approved";
+    page.value = 1;
+    ElMessage.success(`已为 ${selectedCandidate.value.nickname} 添加组织认证并发送通知`);
+    await load();
+  } finally {
+    grantBusy.value = false;
+  }
 }
 
 async function approve() {
@@ -233,6 +354,7 @@ function requestMessage(error: unknown) {
 .pane-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .pane-head h2 { margin: 0; color: var(--cpu-text); font-size: 20px; }
 .pane-head p { margin: 5px 0 0; color: var(--cpu-text-secondary); font-size: 12px; }
+.pane-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; }
 .pending-count { flex: 0 0 auto; padding: 5px 10px; border-radius: 999px; background: color-mix(in srgb, #f59e0b 12%, var(--cpu-card)); color: #b45309; font-size: 11px; font-weight: 700; }
 .toolbar { display: grid; grid-template-columns: auto minmax(240px, 440px) auto; align-items: center; gap: 10px; }
 .application-list { display: grid; gap: 11px; min-height: 120px; }
@@ -256,9 +378,22 @@ function requestMessage(error: unknown) {
 .application-actions { display: flex; justify-content: flex-end; gap: 7px; margin-top: 12px; }
 .application-actions :deep(.el-button + .el-button) { margin-left: 0; }
 .dialog-help { width: 100%; margin: 5px 0 0; color: var(--cpu-text-muted); font-size: 11px; line-height: 1.5; }
+.candidate-search { margin-top: 14px; }
+.candidate-list { display: grid; max-height: 230px; gap: 7px; margin-top: 10px; overflow-y: auto; }
+.candidate-row { display: flex; width: 100%; align-items: center; gap: 10px; padding: 9px 10px; border: 1px solid var(--cpu-border-soft); border-radius: 10px; background: var(--cpu-card); color: inherit; text-align: left; cursor: pointer; }
+.candidate-row:hover, .candidate-row.selected { border-color: #1d9bf0; background: color-mix(in srgb, #1d9bf0 6%, var(--cpu-card)); }
+.candidate-row.selected { box-shadow: 0 0 0 2px rgba(29, 155, 240, .1); }
+.candidate-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 3px; }
+.candidate-copy b, .candidate-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.candidate-copy b { color: var(--cpu-text); font-size: 13px; }
+.candidate-copy small { color: var(--cpu-text-muted); font-size: 10px; }
+.candidate-current { flex: 0 0 auto; color: #1d9bf0; font-size: 10px; font-weight: 700; }
+.grant-form { margin-top: 15px; }
+.grant-form :deep(.el-date-editor) { width: 100%; }
 
 @media (max-width: 720px) {
   .pane-head { flex-direction: column; gap: 8px; }
+  .pane-actions { width: 100%; justify-content: space-between; }
   .toolbar { grid-template-columns: 1fr auto; }
   .toolbar :deep(.el-segmented) { grid-column: 1 / -1; max-width: 100%; overflow-x: auto; }
   .application-card { padding: 12px 10px; }
