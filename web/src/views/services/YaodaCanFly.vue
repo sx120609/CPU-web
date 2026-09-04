@@ -27,7 +27,7 @@
           <button type="button" class="game-button game-button--secondary" @click="openScreen('history')">📜 历史战绩</button>
           <button type="button" class="game-button game-button--secondary" @click="openScreen('settings')">⚙ 设置</button>
         </div>
-        <p class="menu-footnote">{{ isLoggedIn ? "云端排行与成就已开启" : "本机记录 · 登录后同步云端" }}</p>
+        <p class="menu-footnote">{{ recoveryNotice || (isLoggedIn ? "云端排行与成就已开启" : "本机记录 · 登录后同步云端") }}</p>
       </section>
 
       <section v-else-if="screen === 'game'" class="game-layer">
@@ -162,6 +162,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { getToken } from "@/api/request";
+import { useAuthStore } from "@/stores/auth";
 import {
   yaodaFlightApi,
   type YaodaFlightAchievement,
@@ -177,6 +178,7 @@ type Pipe = { x: number; gapY: number; passed: boolean };
 type HistoryItem = { score: number; playedAt: string };
 
 const router = useRouter();
+const auth = useAuthStore();
 const phoneEl = ref<HTMLElement | null>(null);
 const canvasEl = ref<HTMLCanvasElement | null>(null);
 const screen = ref<Screen>("menu");
@@ -194,6 +196,8 @@ const leaderboardError = ref("");
 const achievements = ref<YaodaFlightAchievement[]>([]);
 const newlyUnlocked = ref<YaodaFlightLeaderboard["newlyUnlocked"]>([]);
 const cloudSubmitState = ref<"idle" | "syncing" | "success" | "error" | "guest">("idle");
+const cloudSubmitDetail = ref("");
+const recoveryNotice = ref("");
 
 const WORLD_WIDTH = 390;
 const GROUND_HEIGHT = 70;
@@ -201,6 +205,7 @@ const PLAYER_X = 92;
 const PLAYER_RADIUS = 18;
 const PIPE_WIDTH = 64;
 const STORAGE_PREFIX = "cpu-web:yaoda-can-fly:v2";
+const GAME_RELEASE = "20260904-v3" as const;
 
 let worldHeight = 720;
 let playerY = 320;
@@ -231,7 +236,7 @@ const panelTitle = computed(() => {
 const cloudResultMessage = computed(() => {
   if (cloudSubmitState.value === "syncing") return "正在校验并同步云端战绩...";
   if (cloudSubmitState.value === "success") return "已计入全校榜" + (cloudMe.value ? " · 当前第 " + cloudMe.value.rank + " 名" : "");
-  if (cloudSubmitState.value === "error") return "本局已保存在本机，云端同步未完成";
+  if (cloudSubmitState.value === "error") return cloudSubmitDetail.value || "本局已保存在本机，云端同步失败";
   if (cloudSubmitState.value === "guest") return "登录后，下一局可加入全校榜并解锁成就";
   return "";
 });
@@ -247,7 +252,7 @@ onMounted(() => {
   document.addEventListener("visibilitychange", handleVisibilityChange);
   resizeObserver = new ResizeObserver(resizeCanvas);
   if (phoneEl.value) resizeObserver.observe(phoneEl.value);
-  void loadLeaderboard();
+  void initializeCloud();
   nextTick(resizeCanvas);
 });
 
@@ -277,6 +282,7 @@ function startGame() {
   isNewRecord.value = false;
   newlyUnlocked.value = [];
   cloudSubmitState.value = isLoggedIn.value ? "idle" : "guest";
+  cloudSubmitDetail.value = "";
   playerY = worldHeight * 0.47;
   velocityY = 0;
   pipes = [];
@@ -556,12 +562,6 @@ function drawPlayer(context: CanvasRenderingContext2D) {
   context.save();
   context.translate(PLAYER_X, playerY + idleBob);
   context.rotate(angle);
-  context.fillStyle = "rgba(0,0,0,.2)";
-  context.beginPath();
-  context.ellipse(1, 28, 23, 6, 0, 0, Math.PI * 2);
-  context.fill();
-  context.shadowColor = "rgba(0,0,0,.24)";
-  context.shadowBlur = 5;
   context.fillStyle = "#fff";
   context.strokeStyle = "#3c3937";
   context.lineWidth = 2.5;
@@ -569,7 +569,6 @@ function drawPlayer(context: CanvasRenderingContext2D) {
   context.arc(0, 0, 25, 0, Math.PI * 2);
   context.fill();
   context.stroke();
-  context.shadowColor = "transparent";
   if (emblemImage.complete && emblemImage.naturalWidth) {
     context.drawImage(emblemImage, -22, -22, 44, 44);
   } else {
@@ -648,6 +647,34 @@ async function loadLeaderboard(force = false) {
   }
 }
 
+async function initializeCloud() {
+  if (!auth.ready) await auth.fetchMe({ probe: true }).catch(() => undefined);
+  await loadLeaderboard();
+  await recoverAffectedHistory();
+}
+
+async function recoverAffectedHistory() {
+  const userId = auth.user?.id;
+  if (!userId || !history.value.length) return;
+  const recoveryKey = `${STORAGE_PREFIX}:recovery:${GAME_RELEASE}:user-${userId}`;
+  if (localStorage.getItem(recoveryKey) === "1") return;
+  try {
+    const result = await yaodaFlightApi.recoverHistory({
+      release: GAME_RELEASE,
+      history: history.value,
+    }, {
+      suppressAuthRedirect: true,
+      suppressAuthMessage: true,
+      suppressErrorMessage: true,
+    });
+    applyLeaderboard(result);
+    writeStorage(recoveryKey, "1");
+    if (result.recoveredCount > 0) recoveryNotice.value = `已补传 ${result.recoveredCount} 局受影响战绩`;
+  } catch {
+    // A later visit retries without interrupting the game.
+  }
+}
+
 async function beginCloudAttempt(generation: number) {
   if (!isLoggedIn.value) return null;
   try {
@@ -657,8 +684,11 @@ async function beginCloudAttempt(generation: number) {
       suppressErrorMessage: true,
     });
     return attempt.id;
-  } catch {
-    if (generation === gameGeneration) cloudSubmitState.value = "error";
+  } catch (error) {
+    if (generation === gameGeneration) {
+      cloudSubmitState.value = "error";
+      cloudSubmitDetail.value = cloudFailureMessage(error, "云端未能创建本局记录，本局仅保存在本机");
+    }
     return null;
   }
 }
@@ -690,7 +720,10 @@ async function finishCloudAttempt(
   if (generation === gameGeneration) cloudSubmitState.value = "syncing";
   const attemptId = await attemptPromise;
   if (!attemptId) {
-    if (generation === gameGeneration) cloudSubmitState.value = "error";
+    if (generation === gameGeneration) {
+      cloudSubmitState.value = "error";
+      if (!cloudSubmitDetail.value) cloudSubmitDetail.value = "云端未能创建本局记录，本局仅保存在本机";
+    }
     return;
   }
   try {
@@ -701,9 +734,25 @@ async function finishCloudAttempt(
     });
     applyLeaderboard(result);
     if (generation === gameGeneration) cloudSubmitState.value = "success";
-  } catch {
-    if (generation === gameGeneration) cloudSubmitState.value = "error";
+  } catch (error) {
+    if (generation === gameGeneration) {
+      cloudSubmitState.value = "error";
+      cloudSubmitDetail.value = cloudFailureMessage(error, "成绩校验未完成，本局仅保存在本机");
+    }
   }
+}
+
+function cloudFailureMessage(error: unknown, fallback: string) {
+  const failure = error as {
+    response?: { status?: number; data?: { message?: unknown } };
+  };
+  const status = failure?.response?.status;
+  const message = typeof failure?.response?.data?.message === "string"
+    ? failure.response.data.message.trim()
+    : "";
+  if (status === 401) return "登录已过期，本局仅保存在本机";
+  if (status === 429) return message || "操作太频繁，请稍后再开一局";
+  return message || fallback;
 }
 
 function applyLeaderboard(value: YaodaFlightLeaderboard) {

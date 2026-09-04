@@ -1,6 +1,6 @@
 <template>
   <el-avatar :size="size" class="user-avatar" :class="frameClass" :style="avatarStyle" :aria-label="alt || `${name || '用户'}的头像`">
-    <img v-if="resolvedSrc" :src="resolvedSrc" :alt="alt" loading="lazy" decoding="async" fetchpriority="low" @error="onImageError" />
+    <img v-if="resolvedSrc" :key="resolvedSrc" :src="resolvedSrc" :alt="alt" loading="lazy" decoding="async" fetchpriority="low" @error="onImageError" />
     <svg v-else class="generated-avatar" viewBox="0 0 64 64" aria-hidden="true">
       <rect width="64" height="64" rx="14" :fill="generated.background" />
       <g v-if="generated.backgroundPattern === 0">

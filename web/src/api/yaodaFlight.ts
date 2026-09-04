@@ -31,12 +31,18 @@ export interface YaodaFlightLeaderboard {
   newlyUnlocked: Array<{ code: string; title: string; icon: string }>;
 }
 
+export interface YaodaFlightRecoveryResult extends YaodaFlightLeaderboard {
+  recoveredCount: number;
+}
+
 export const yaodaFlightApi = {
   leaderboard: (options?: RequestOptions) => request.get<YaodaFlightLeaderboard>(
     "/tools/yaoda-can-fly/leaderboard",
     undefined,
     { cacheTtlMs: 15_000, suppressErrorMessage: true, ...options },
   ),
+  recoverHistory: (payload: { release: "20260904-v3"; history: Array<{ score: number; playedAt: string }> }, options?: RequestOptions) =>
+    request.post<YaodaFlightRecoveryResult>("/tools/yaoda-can-fly/recover-history", payload, options),
   startAttempt: (options?: RequestOptions) => request.post<{ id: number; startedAt: string }>(
     "/tools/yaoda-can-fly/attempts",
     {},

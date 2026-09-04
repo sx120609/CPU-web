@@ -1,8 +1,10 @@
-const SW_VERSION = "cpu-schedule-offline-20260901-v5";
+const SW_VERSION = "cpu-schedule-offline-20260904-v6";
 const APP_SHELL_CACHE = `${SW_VERSION}:shell`;
 const ASSET_CACHE = `${SW_VERSION}:assets`;
 const SCHEDULE_PATH = "/schedule";
 const WARMUP_MESSAGE = "cpu-schedule-offline-warmup";
+const YAODA_GAME_PATH = "/services/tools/yaoda-can-fly";
+const YAODA_GAME_RELEASE = "20260904-v3";
 const STATIC_PREFIXES = ["/assets/", "/brand/", "/splash/"];
 const PRECACHE_URLS = [
   SCHEDULE_PATH,
@@ -23,6 +25,16 @@ function isSameOrigin(url) {
 
 function isSchedulePath(pathname) {
   return pathname === SCHEDULE_PATH || pathname.startsWith(`${SCHEDULE_PATH}/`);
+}
+
+async function refreshYaodaGameClients() {
+  const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+  await Promise.all(windows.map(async (client) => {
+    const url = toUrl(client.url);
+    if (url.pathname !== YAODA_GAME_PATH || url.searchParams.get("game_release") === YAODA_GAME_RELEASE) return;
+    url.searchParams.set("game_release", YAODA_GAME_RELEASE);
+    await client.navigate(url.toString()).catch(() => undefined);
+  }));
 }
 
 function isStaticAssetPath(pathname) {
@@ -410,6 +422,7 @@ self.addEventListener("activate", (event) => {
       .filter((key) => key.startsWith("cpu-schedule-offline-") && ![APP_SHELL_CACHE, ASSET_CACHE].includes(key))
       .map((key) => caches.delete(key)));
     await self.clients.claim();
+    await refreshYaodaGameClients();
   })());
 });
 

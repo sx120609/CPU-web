@@ -4,6 +4,7 @@ import { clearToken, COOKIE_SESSION_MARKER, getToken, hasAuthPresence, setToken 
 import { jwxtApi, getJwxtToken, setJwxtToken, clearJwxtToken, JWXT_COOKIE_SESSION_MARKER } from "@/api/jwxt";
 import { clearCreds, saveCreds } from "@/utils/credCrypto";
 import { encryptAgentLoginCredentials } from "@/utils/agentCredentialCrypto";
+import { withMediaRevision } from "@/utils/cdnMedia";
 import { clearJwxtDataCaches, purgeLegacySensitiveJwxtCaches } from "@/utils/jwxtCache";
 import {
   academicIdentityLabel,
@@ -436,8 +437,20 @@ export const useAuthStore = defineStore("auth", {
 
     async updateProfile(patch: Partial<UserInfo>) {
       const u = await authApi.updateMe(patch);
-      this.user = u;
-      return u;
+      if (patch.avatar === undefined) {
+        this.user = u;
+        return u;
+      }
+      const confirmed = await authApi.me({
+        cacheTtlMs: 0,
+        cacheStaleTtlMs: 0,
+        suppressErrorMessage: true,
+      }).catch(() => u);
+      const next = confirmed.avatar
+        ? { ...confirmed, avatar: withMediaRevision(confirmed.avatar, Date.now()) }
+        : confirmed;
+      this.user = next;
+      return next;
     },
 
     async logout() {

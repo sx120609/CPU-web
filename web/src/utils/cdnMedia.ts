@@ -11,6 +11,13 @@ export function directMediaUrl(value: unknown) {
   return source;
 }
 
+export function withMediaRevision(value: unknown, revision: string | number) {
+  const source = String(value || "").trim();
+  if (!source) return "";
+  const separator = source.includes("?") ? "&" : "?";
+  return `${source}${separator}media_rev=${encodeURIComponent(String(revision))}`;
+}
+
 export function cdnImageUrl(value: unknown, options: { width?: number; quality?: number } = {}) {
   const source = directMediaUrl(value);
   const width = Math.max(0, Math.round(Number(options.width) || 0));

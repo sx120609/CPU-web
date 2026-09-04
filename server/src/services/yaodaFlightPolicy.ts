@@ -1,5 +1,9 @@
 export const YAODA_FLIGHT_MAX_SCORE = 200;
 export const YAODA_FLIGHT_MAX_ATTEMPT_MS = 45 * 60 * 1000;
+export const YAODA_FLIGHT_START_LIMIT_PER_10_MIN = 60;
+export const YAODA_FLIGHT_BUGGY_START_LIMIT_PER_10_MIN = 12;
+export const YAODA_FLIGHT_RECOVERY_STARTED_AT_MS = Date.parse("2026-09-04T11:00:00.000Z");
+export const YAODA_FLIGHT_RECOVERY_DEADLINE_MS = Date.parse("2026-09-18T16:00:00.000Z");
 
 export type YaodaFlightAchievementMetric = "games" | "bestScore" | "totalScore" | "exactScore";
 
@@ -39,6 +43,27 @@ export const YAODA_FLIGHT_ACHIEVEMENTS: readonly YaodaFlightAchievementDefinitio
 export function minimumDurationForFlightScore(score: number) {
   if (score <= 0) return 0;
   return 2_800 + (score - 1) * 1_100;
+}
+
+export function isRecoverableYaodaFlightHistoryItem(input: {
+  score: number;
+  playedAtMs: number;
+  nowMs: number;
+  attemptStartedAtMs: number[];
+}) {
+  if (
+    input.nowMs > YAODA_FLIGHT_RECOVERY_DEADLINE_MS
+    || input.playedAtMs < YAODA_FLIGHT_RECOVERY_STARTED_AT_MS
+    || input.playedAtMs > input.nowMs + 5 * 60 * 1000
+  ) {
+    return false;
+  }
+  const estimatedStartedAtMs = input.playedAtMs - minimumDurationForFlightScore(input.score);
+  const recentWindowStartedAtMs = estimatedStartedAtMs - 10 * 60 * 1000;
+  const recentAttempts = input.attemptStartedAtMs.filter((startedAtMs) => (
+    startedAtMs >= recentWindowStartedAtMs && startedAtMs <= input.playedAtMs
+  )).length;
+  return recentAttempts >= YAODA_FLIGHT_BUGGY_START_LIMIT_PER_10_MIN;
 }
 
 export function validateYaodaFlightResult(input: {

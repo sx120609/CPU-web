@@ -6,19 +6,32 @@ import { validate } from "../middleware/validate";
 import { Errors, HttpError, ok } from "../utils/response";
 import {
   earnedYaodaFlightAchievementCodes,
+  isRecoverableYaodaFlightHistoryItem,
+  minimumDurationForFlightScore,
   publicFlightName,
   validateYaodaFlightResult,
   yaodaFlightAchievementProgress,
   YAODA_FLIGHT_ACHIEVEMENTS,
   YAODA_FLIGHT_MAX_ATTEMPT_MS,
   YAODA_FLIGHT_MAX_SCORE,
+  YAODA_FLIGHT_RECOVERY_STARTED_AT_MS,
+  YAODA_FLIGHT_START_LIMIT_PER_10_MIN,
 } from "../services/yaodaFlightPolicy";
+import { publicAvatarValue } from "../utils/publicAvatar";
 
 export const yaodaFlightRouter = Router();
 
 const finishAttemptSchema = z.object({
   score: z.number().int().min(0).max(YAODA_FLIGHT_MAX_SCORE),
   durationMs: z.number().int().min(0).max(YAODA_FLIGHT_MAX_ATTEMPT_MS),
+});
+
+const recoverHistorySchema = z.object({
+  release: z.literal("20260904-v3"),
+  history: z.array(z.object({
+    score: z.number().int().min(0).max(YAODA_FLIGHT_MAX_SCORE),
+    playedAt: z.string().datetime({ offset: true }),
+  })).max(30),
 });
 
 async function loadLeaderboard(currentUserId?: number, newlyUnlockedCodes: string[] = []) {
@@ -74,7 +87,7 @@ async function loadLeaderboard(currentUserId?: number, newlyUnlockedCodes: strin
       rank: lastRank,
       userId: row.userId,
       name: publicFlightName(user.nickname),
-      avatar: user.avatar,
+      avatar: publicAvatarValue(user),
       bestScore: row.bestScore,
       games: row.games,
       totalScore: row.totalScore,
@@ -112,9 +125,117 @@ async function loadLeaderboard(currentUserId?: number, newlyUnlockedCodes: strin
   };
 }
 
+async function unlockAchievementsForUser(userId: number, currentScores: number[], unlockedAt: Date) {
+  const stats = await prisma.yaodaFlightAttempt.aggregate({
+    where: { userId, status: "completed", score: { not: null } },
+    _max: { score: true },
+    _sum: { score: true },
+    _count: { _all: true },
+  });
+  const baseStats = {
+    games: stats._count._all,
+    bestScore: stats._max.score ?? 0,
+    totalScore: stats._sum.score ?? 0,
+  };
+  const earnedCodes = new Set(earnedYaodaFlightAchievementCodes(baseStats));
+  for (const currentScore of currentScores) {
+    for (const code of earnedYaodaFlightAchievementCodes({ ...baseStats, currentScore })) earnedCodes.add(code);
+  }
+  const codes = [...earnedCodes];
+  const existingAchievements = codes.length
+    ? await prisma.yaodaFlightAchievement.findMany({
+      where: { userId, code: { in: codes } },
+      select: { code: true },
+    })
+    : [];
+  const existingCodes = new Set(existingAchievements.map((achievement) => achievement.code));
+  const newlyUnlockedCodes = codes.filter((code) => !existingCodes.has(code));
+  if (newlyUnlockedCodes.length) {
+    await prisma.yaodaFlightAchievement.createMany({
+      data: newlyUnlockedCodes.map((code) => ({ userId, code, unlockedAt })),
+      skipDuplicates: true,
+    });
+  }
+  return newlyUnlockedCodes;
+}
+
 yaodaFlightRouter.get("/leaderboard", authOptional, async (req, res, next) => {
   try {
     ok(res, await loadLeaderboard(req.user?.userId));
+  } catch (error) {
+    next(error);
+  }
+});
+
+yaodaFlightRouter.post("/recover-history", authRequired, validate(recoverHistorySchema), async (req, res, next) => {
+  try {
+    const userId = req.user!.userId;
+    const input = req.body as z.infer<typeof recoverHistorySchema>;
+    const now = new Date();
+    const history = [...new Map(input.history.map((item) => {
+      const playedAt = new Date(item.playedAt);
+      return [`${item.score}:${playedAt.toISOString()}`, { score: item.score, playedAt }] as const;
+    })).values()].sort((left, right) => left.playedAt.getTime() - right.playedAt.getTime());
+
+    const recovered = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(${20260904}, ${userId})`;
+      const attempts = await tx.yaodaFlightAttempt.findMany({
+        where: {
+          userId,
+          startedAt: { gte: new Date(YAODA_FLIGHT_RECOVERY_STARTED_AT_MS - 10 * 60 * 1000) },
+        },
+        select: { id: true, score: true, status: true, startedAt: true, completedAt: true },
+      });
+      const attemptStartedAtMs = attempts.map((attempt) => attempt.startedAt.getTime());
+      const completed = attempts.filter((attempt) => attempt.status === "completed" && attempt.completedAt && attempt.score !== null);
+      const matchedAttemptIds = new Set<number>();
+      const missing = history.filter((item) => {
+        let closest: (typeof completed)[number] | null = null;
+        let closestDistance = Number.POSITIVE_INFINITY;
+        for (const attempt of completed) {
+          if (matchedAttemptIds.has(attempt.id) || attempt.score !== item.score || !attempt.completedAt) continue;
+          const distance = Math.abs(attempt.completedAt.getTime() - item.playedAt.getTime());
+          if (distance <= 90_000 && distance < closestDistance) {
+            closest = attempt;
+            closestDistance = distance;
+          }
+        }
+        if (closest) {
+          matchedAttemptIds.add(closest.id);
+          return false;
+        }
+        return isRecoverableYaodaFlightHistoryItem({
+          score: item.score,
+          playedAtMs: item.playedAt.getTime(),
+          nowMs: now.getTime(),
+          attemptStartedAtMs,
+        });
+      });
+      if (missing.length) {
+        await tx.yaodaFlightAttempt.createMany({
+          data: missing.map((item) => {
+            const durationMs = minimumDurationForFlightScore(item.score);
+            return {
+              userId,
+              score: item.score,
+              durationMs,
+              status: "completed",
+              startedAt: new Date(item.playedAt.getTime() - durationMs),
+              completedAt: item.playedAt,
+            };
+          }),
+        });
+      }
+      return missing;
+    });
+
+    const newlyUnlockedCodes = recovered.length
+      ? await unlockAchievementsForUser(userId, recovered.map((item) => item.score), now)
+      : [];
+    ok(res, {
+      ...await loadLeaderboard(userId, newlyUnlockedCodes),
+      recoveredCount: recovered.length,
+    }, recovered.length ? `已补传 ${recovered.length} 局本机战绩` : "本机战绩已核对");
   } catch (error) {
     next(error);
   }
@@ -126,7 +247,9 @@ yaodaFlightRouter.post("/attempts", authRequired, async (req, res, next) => {
     const recentCount = await prisma.yaodaFlightAttempt.count({
       where: { userId, startedAt: { gte: new Date(Date.now() - 10 * 60 * 1000) } },
     });
-    if (recentCount >= 12) throw new HttpError(429, 4029, "开局过于频繁，请稍后再试");
+    if (recentCount >= YAODA_FLIGHT_START_LIMIT_PER_10_MIN) {
+      throw new HttpError(429, 4029, "十分钟内开局次数过多，请稍后再试");
+    }
     const now = new Date();
     const attempt = await prisma.$transaction(async (tx) => {
       await tx.yaodaFlightAttempt.updateMany({
@@ -182,30 +305,7 @@ yaodaFlightRouter.post("/attempts/:id/finish", authRequired, validate(finishAtte
       data: { status: "completed", score: input.score, durationMs: input.durationMs, completedAt },
     });
     if (updated.count !== 1) throw Errors.conflict("本局成绩已经处理");
-    const stats = await prisma.yaodaFlightAttempt.aggregate({
-      where: { userId: req.user!.userId, status: "completed", score: { not: null } },
-      _max: { score: true },
-      _sum: { score: true },
-      _count: { _all: true },
-    });
-    const earnedCodes = earnedYaodaFlightAchievementCodes({
-      games: stats._count._all,
-      bestScore: stats._max.score ?? 0,
-      totalScore: stats._sum.score ?? 0,
-      currentScore: input.score,
-    });
-    const existingAchievements = await prisma.yaodaFlightAchievement.findMany({
-      where: { userId: req.user!.userId, code: { in: earnedCodes } },
-      select: { code: true },
-    });
-    const existingCodes = new Set(existingAchievements.map((achievement) => achievement.code));
-    const newlyUnlockedCodes = earnedCodes.filter((code) => !existingCodes.has(code));
-    if (newlyUnlockedCodes.length) {
-      await prisma.yaodaFlightAchievement.createMany({
-        data: newlyUnlockedCodes.map((code) => ({ userId: req.user!.userId, code, unlockedAt: completedAt })),
-        skipDuplicates: true,
-      });
-    }
+    const newlyUnlockedCodes = await unlockAchievementsForUser(req.user!.userId, [input.score], completedAt);
     ok(res, await loadLeaderboard(req.user!.userId, newlyUnlockedCodes), "成绩与成就已同步");
   } catch (error) {
     next(error);
