@@ -42,7 +42,7 @@
           <span class="tool-entry-body">
             <span class="tool-entry-title">
               <span>{{ tool.name }}</span>
-              <em :class="{ login: isLoginRequired(tool.slug), external: Boolean(tool.badge) }">
+              <em v-if="!tool.hideBadge" :class="{ login: isLoginRequired(tool.slug), external: Boolean(tool.badge) }">
                 {{ tool.badge ?? (isLoginRequired(tool.slug) ? "需登录" : "免登录") }}
               </em>
             </span>

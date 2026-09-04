@@ -43,6 +43,7 @@
             <span class="tool-title-row">
               <span class="tool-title">{{ tool.name }}</span>
               <el-tag
+                v-if="!tool.hideBadge"
                 size="small"
                 :type="tool.badgeType ?? (isLoginRequired(tool.slug) ? 'warning' : 'success')"
                 effect="plain"

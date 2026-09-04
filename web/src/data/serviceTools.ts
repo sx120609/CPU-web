@@ -17,24 +17,10 @@ export interface ServiceTool {
   iconComponent: Component;
   badge?: string;
   badgeType?: "primary" | "success" | "warning" | "info";
+  hideBadge?: boolean;
 }
 
 export const serviceTools: ServiceTool[] = [
-  {
-    slug: "assessment-form",
-    name: "综测填表工具",
-    summary: "本机填写项目和附件，一键生成排版完成的 Word",
-    description: "面向中国药科大学本科生综合素质测评材料整理的本地工具。支持宿舍分自动查询、项目排序、附件排版和草稿保存。仅支持 Windows 10/11 电脑。",
-    icon: "desktop",
-    status: "ready",
-    category: "Windows 工具",
-    routeName: "service-assessment-form",
-    componentKey: "assessment_form",
-    accent: "#0b8b78",
-    iconComponent: Monitor,
-    badge: "仅限 Windows",
-    badgeType: "info",
-  },
   {
     slug: "feedback",
     name: "需求反馈",
@@ -168,6 +154,20 @@ export const serviceTools: ServiceTool[] = [
     iconComponent: Promotion,
     badge: "即点即玩",
     badgeType: "success",
+  },
+  {
+    slug: "assessment-form",
+    name: "综测填表工具",
+    summary: "本机填写项目和附件，一键生成排版完成的 Word",
+    description: "面向中国药科大学本科生综合素质测评材料整理的本地工具。支持宿舍分自动查询、项目排序、附件排版和草稿保存。仅支持 Windows 10/11 电脑。",
+    icon: "desktop",
+    status: "ready",
+    category: "Windows 工具",
+    routeName: "service-assessment-form",
+    componentKey: "assessment_form",
+    accent: "#0b8b78",
+    iconComponent: Monitor,
+    hideBadge: true,
   },
 ];
 
