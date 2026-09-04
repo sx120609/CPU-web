@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   earnedYaodaFlightAchievementCodes,
   isRecoverableYaodaFlightHistoryItem,
@@ -9,7 +10,6 @@ import {
   YAODA_FLIGHT_ACHIEVEMENTS,
   YAODA_FLIGHT_MAX_SCORE,
   YAODA_FLIGHT_RECOVERY_STARTED_AT_MS,
-  YAODA_FLIGHT_START_LIMIT_PER_10_MIN,
 } from "../src/services/yaodaFlightPolicy";
 import {
   NJU_FLIGHT_PHYSICS,
@@ -56,7 +56,16 @@ test("药大人能飞的最低用时随分数递增", () => {
   assert.equal(minimumDurationForFlightScore(0), 0);
   assert.equal(minimumDurationForFlightScore(1), 2_800);
   assert.equal(minimumDurationForFlightScore(10), 12_700);
-  assert.equal(YAODA_FLIGHT_START_LIMIT_PER_10_MIN, 60);
+});
+
+test("云端开局接口不再按游玩次数限频", () => {
+  const routeSource = readFileSync(new URL("../src/routes/yaodaFlight.ts", import.meta.url), "utf8");
+  const startRoute = routeSource.slice(
+    routeSource.indexOf('yaodaFlightRouter.post("/attempts"'),
+    routeSource.indexOf('yaodaFlightRouter.post("/attempts/:id/abandon"'),
+  );
+  assert.ok(startRoute.length > 0);
+  assert.doesNotMatch(startRoute, /recentCount|十分钟内开局次数|START_LIMIT/u);
 });
 
 test("正常飞行成绩通过服务端校验", () => {

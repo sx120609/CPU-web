@@ -94,7 +94,17 @@
             <button type="button" :disabled="leaderboardLoading" @click="loadLeaderboard(true)">
               {{ leaderboardLoading ? "刷新中..." : "刷新榜单" }}
             </button>
+            <button
+              v-if="isLoggedIn"
+              type="button"
+              class="manual-sync-button"
+              :disabled="historySyncing || !history.length"
+              @click="syncLocalHistory(true)"
+            >
+              {{ historySyncing ? "更新中..." : "手动更新成绩" }}
+            </button>
           </div>
+          <p v-if="historySyncMessage" class="history-sync-message">{{ historySyncMessage }}</p>
           <ol v-if="leaderboard.length" class="ranking-list">
             <li v-for="entry in leaderboard" :key="entry.userId" :class="{ me: cloudMe?.userId === entry.userId }">
               <span class="rank-number">{{ entry.rank }}</span>
@@ -198,6 +208,8 @@ const cloudMe = ref<YaodaFlightRankingEntry | null>(null);
 const totalPlayers = ref(0);
 const leaderboardLoading = ref(false);
 const leaderboardError = ref("");
+const historySyncing = ref(false);
+const historySyncMessage = ref("");
 const achievements = ref<YaodaFlightAchievement[]>([]);
 const newlyUnlocked = ref<YaodaFlightLeaderboard["newlyUnlocked"]>([]);
 const cloudSubmitState = ref<"idle" | "syncing" | "success" | "error" | "guest">("idle");
@@ -211,7 +223,7 @@ const PLAYER_X = NJU_FLIGHT_PHYSICS.playerX;
 const PLAYER_RADIUS = NJU_FLIGHT_PHYSICS.playerRadius;
 const PIPE_WIDTH = NJU_FLIGHT_PHYSICS.pipeWidth;
 const STORAGE_PREFIX = "cpu-web:yaoda-can-fly:v2";
-const GAME_RELEASE = "20260904-v3" as const;
+const GAME_RELEASE = "20260904-v4" as const;
 
 const worldHeight = WORLD_HEIGHT;
 let playerY = 300;
@@ -642,14 +654,19 @@ async function loadLeaderboard(force = false) {
 async function initializeCloud() {
   if (!auth.ready) await auth.fetchMe({ probe: true }).catch(() => undefined);
   await loadLeaderboard();
-  await recoverAffectedHistory();
+  await syncLocalHistory(false);
 }
 
-async function recoverAffectedHistory() {
+async function syncLocalHistory(manual: boolean) {
   const userId = auth.user?.id;
-  if (!userId || !history.value.length) return;
+  if (!userId || !history.value.length || historySyncing.value) {
+    if (manual && !history.value.length) historySyncMessage.value = "本机还没有可同步的战绩";
+    return;
+  }
   const recoveryKey = `${STORAGE_PREFIX}:recovery:${GAME_RELEASE}:user-${userId}`;
-  if (localStorage.getItem(recoveryKey) === "1") return;
+  if (!manual && localStorage.getItem(recoveryKey) === "1") return;
+  historySyncing.value = true;
+  if (manual) historySyncMessage.value = "";
   try {
     const result = await yaodaFlightApi.recoverHistory({
       release: GAME_RELEASE,
@@ -661,9 +678,20 @@ async function recoverAffectedHistory() {
     });
     applyLeaderboard(result);
     writeStorage(recoveryKey, "1");
-    if (result.recoveredCount > 0) recoveryNotice.value = `已补传 ${result.recoveredCount} 局受影响战绩`;
-  } catch {
-    // A later visit retries without interrupting the game.
+    const localBest = Math.max(...history.value.map((item) => item.score));
+    if (result.recoveredCount > 0) {
+      const message = `已补传 ${result.recoveredCount} 局本机战绩`;
+      recoveryNotice.value = message;
+      if (manual) historySyncMessage.value = message;
+    } else if (manual && (result.me?.bestScore ?? 0) >= localBest) {
+      historySyncMessage.value = "云端成绩已是最新";
+    } else if (manual) {
+      historySyncMessage.value = "未找到可校验的遗漏对局";
+    }
+  } catch (error) {
+    if (manual) historySyncMessage.value = cloudFailureMessage(error, "本机战绩同步失败，请稍后重试");
+  } finally {
+    historySyncing.value = false;
   }
 }
 
@@ -1172,6 +1200,16 @@ function writeStorage(key: string, value: string) {
   font: inherit;
   font-size: 11px;
   font-weight: 850;
+}
+
+.ranking-summary .manual-sync-button { background: #167242; }
+.ranking-summary button:disabled { cursor: wait; opacity: .62; }
+.history-sync-message {
+  margin: -2px 0 10px;
+  color: #285b3d;
+  font-size: 10px;
+  font-weight: 800;
+  text-align: center;
 }
 
 .ranking-list,

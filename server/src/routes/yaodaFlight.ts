@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "../prisma";
 import { authOptional, authRequired } from "../middleware/auth";
 import { validate } from "../middleware/validate";
-import { Errors, HttpError, ok } from "../utils/response";
+import { Errors, ok } from "../utils/response";
 import {
   earnedYaodaFlightAchievementCodes,
   isRecoverableYaodaFlightHistoryItem,
@@ -15,7 +15,6 @@ import {
   YAODA_FLIGHT_MAX_ATTEMPT_MS,
   YAODA_FLIGHT_MAX_SCORE,
   YAODA_FLIGHT_RECOVERY_STARTED_AT_MS,
-  YAODA_FLIGHT_START_LIMIT_PER_10_MIN,
 } from "../services/yaodaFlightPolicy";
 import { publicAvatarValue } from "../utils/publicAvatar";
 
@@ -27,7 +26,7 @@ const finishAttemptSchema = z.object({
 });
 
 const recoverHistorySchema = z.object({
-  release: z.literal("20260904-v3"),
+  release: z.enum(["20260904-v3", "20260904-v4"]),
   history: z.array(z.object({
     score: z.number().int().min(0).max(YAODA_FLIGHT_MAX_SCORE),
     playedAt: z.string().datetime({ offset: true }),
@@ -244,12 +243,6 @@ yaodaFlightRouter.post("/recover-history", authRequired, validate(recoverHistory
 yaodaFlightRouter.post("/attempts", authRequired, async (req, res, next) => {
   try {
     const userId = req.user!.userId;
-    const recentCount = await prisma.yaodaFlightAttempt.count({
-      where: { userId, startedAt: { gte: new Date(Date.now() - 10 * 60 * 1000) } },
-    });
-    if (recentCount >= YAODA_FLIGHT_START_LIMIT_PER_10_MIN) {
-      throw new HttpError(429, 4029, "十分钟内开局次数过多，请稍后再试");
-    }
     const now = new Date();
     const attempt = await prisma.$transaction(async (tx) => {
       await tx.yaodaFlightAttempt.updateMany({
