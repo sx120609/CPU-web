@@ -10,6 +10,7 @@ export interface EditableScheduleCourse {
   sourceKey?: string;
   customId?: string;
   custom?: boolean;
+  orphaned?: boolean;
 }
 
 export interface EditableScheduleCell {
@@ -55,7 +56,7 @@ export function normalizeScheduleEditsState(input: ScheduleEditState | null | un
       .map((item) => ({
         ...item,
         id: String(item.id).trim(),
-        sourceKey: item.sourceKey?.trim() || undefined,
+        sourceKey: officialCourseSourceKey(item.sourceKey),
         course: {
           ...item.course,
           name: String(item.course.name || "").trim(),
@@ -146,24 +147,29 @@ export function courseEditKey(day: number, bigSlot: number, course: EditableSche
 }
 
 export function applyScheduleEditsToCells<T extends EditableScheduleCell>(
-  cells: T[],
+  cells: T[] | null,
   edits: ScheduleEditState,
 ) {
   const hidden = new Set(edits.hidden);
+  const sourceKeys = new Set((cells ?? []).flatMap((cell) => (
+    cell.courses.map((course) => courseEditKey(cell.day, cell.bigSlot, course))
+  )));
   const byCell = new Map<string, EditableScheduleCourse[]>();
   for (const item of edits.custom) {
+    const sourceKey = officialCourseSourceKey(item.sourceKey);
     const key = cellKey(item.day, item.bigSlot);
     const list = byCell.get(key) ?? [];
     list.push({
       ...item.course,
-      sourceKey: item.sourceKey,
+      sourceKey,
       custom: true,
       customId: item.id,
+      orphaned: sourceKey && cells !== null ? !sourceKeys.has(sourceKey) : undefined,
     });
     byCell.set(key, list);
   }
 
-  const merged = cells.map((cell) => {
+  const merged = (cells ?? []).map((cell) => {
     const courses = cell.courses.filter((course) => !hidden.has(courseEditKey(cell.day, cell.bigSlot, course)));
     const custom = byCell.get(cellKey(cell.day, cell.bigSlot)) ?? [];
     return { ...cell, courses: [...courses, ...custom] };
@@ -177,6 +183,30 @@ export function applyScheduleEditsToCells<T extends EditableScheduleCell>(
   }
 
   return merged.filter((cell) => cell.courses.length);
+}
+
+export function officialCourseSourceKey(key?: string) {
+  const value = key?.trim();
+  return value && !value.startsWith("custom:") ? value : undefined;
+}
+
+export function keepScheduleCourseAsCustom(edits: ScheduleEditState, customId: string): ScheduleEditState {
+  const target = edits.custom.find((item) => item.id === customId);
+  if (!target) return edits;
+  return {
+    hidden: edits.hidden.filter((key) => key !== target.sourceKey),
+    custom: edits.custom.map((item) => item.id === customId ? {
+      ...item,
+      sourceKey: undefined,
+      course: { ...item.course, sourceKey: undefined, orphaned: undefined },
+    } : item),
+  };
+}
+
+export function scheduleCourseEditLabel(course: EditableScheduleCourse) {
+  if (!course.customId && !course.custom) return "";
+  if (course.orphaned) return "来源失效";
+  return officialCourseSourceKey(course.sourceKey) ? "已编辑" : "自定义";
 }
 
 export function createCustomCourseId() {

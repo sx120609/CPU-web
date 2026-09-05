@@ -10,6 +10,7 @@ export interface ScheduleCourse {
   sourceKey?: string;
   customId?: string;
   custom?: boolean;
+  orphaned?: boolean;
 }
 
 export interface ScheduleCell {

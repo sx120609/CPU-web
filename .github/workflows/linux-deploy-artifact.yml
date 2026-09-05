@@ -49,6 +49,11 @@ jobs:
             server/tests/androidDownload.test.ts server/tests/pdsShare.test.ts server/tests/webStaticCos.test.ts \
             web/tests/cdnMedia.test.ts web/tests/avatarPreview.test.ts web/tests/androidUpdateState.test.ts web/tests/androidUpdatePolicy.test.ts
 
+      - name: Test schedule edit source recovery
+        env:
+          TSX_TSCONFIG_PATH: web/tsconfig.json
+        run: node --import ./server/node_modules/tsx/dist/loader.mjs --test web/tests/scheduleEdits.test.ts web/tests/scheduleChanges.test.ts
+
       - name: Verify published Android package and enterprise delivery
         env:
           GH_TOKEN: ${{ github.token }}

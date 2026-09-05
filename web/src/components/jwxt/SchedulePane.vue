@@ -156,7 +156,8 @@
                   :title="courseTitle(block.course)"
                   @click.stop="onCourseBlockClick($event, block, page.weekValue)"
                 >
-                  <strong>{{ block.course.name }}</strong>
+                    <ScheduleCourseStatus :course="block.course" />
+                    <strong>{{ block.course.name }}</strong>
                   <span v-if="block.course.location">@{{ block.course.location }}</span>
                   <em>{{ block.course.slotNote || block.course.weeks }}</em>
                 </article>
@@ -186,7 +187,8 @@
                     :title="courseTitle(block.course)"
                     @click.stop="onCourseBlockClick($event, block, page.weekValue)"
                   >
-                    <div class="day-course-name">{{ block.course.name }}</div>
+                      <ScheduleCourseStatus :course="block.course" />
+                      <div class="day-course-name">{{ block.course.name }}</div>
                     <div class="day-course-meta">
                       <span v-if="block.course.location">@{{ block.course.location }}</span>
                       <span v-if="block.course.teacher">{{ block.course.teacher }}</span>
@@ -243,12 +245,17 @@
             <header class="course-editor-nav">
               <button type="button" :disabled="courseEditBusy" @click="closeCourseEditor">取消</button>
               <h2>{{ editingCourseBlock ? "修改课程" : "添加课程" }}</h2>
-              <button type="button" class="primary" :disabled="courseEditBusy" @click="saveCourseEdit">
+              <button type="button" class="primary" :disabled="courseEditBusy" @click="saveCourseEdit()">
                 {{ courseEditAction === "save" ? "保存中" : "保存" }}
               </button>
             </header>
 
             <div class="course-editor-scroll">
+              <ScheduleCourseStatus v-if="editingCourseBlock" :course="editingCourseBlock.course" detail>
+                <button v-if="editingCourseBlock.course.orphaned" type="button" :disabled="courseEditBusy" @click="saveCourseEdit(true)">
+                  保留为自定义课程
+                </button>
+              </ScheduleCourseStatus>
               <section class="editor-card">
                 <label class="editor-row">
                   <span>课程</span>
@@ -272,7 +279,7 @@
                 <span>时间段</span>
                 <div class="editor-actions">
                   <button v-if="canRestoreOriginalCourse" type="button" :disabled="courseEditBusy" @click="restoreOriginalCourse">
-                    {{ courseEditAction === "restore" ? "恢复中" : "恢复原始" }}
+                    {{ courseEditAction === "restore" ? "恢复中" : editingCourseBlock?.course.orphaned ? "恢复教务课表" : "恢复原始" }}
                   </button>
                   <button v-if="editingCourseBlock" type="button" class="danger" :disabled="courseEditBusy" @click="deleteEditingCourse">
                     {{ courseEditAction === "delete" ? "删除中" : "删除" }}
@@ -338,6 +345,7 @@
 </template>
 
 <script setup lang="ts">
+import ScheduleCourseStatus from "@/components/jwxt/ScheduleCourseStatus.vue";
 import { computed, h, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { Aim, ArrowLeft, ArrowRight, Moon, Refresh } from "@element-plus/icons-vue";
@@ -361,6 +369,9 @@ import {
   customCourseWeeksText,
   emptyScheduleEdits,
   normalizeScheduleEditsState,
+  keepScheduleCourseAsCustom,
+  officialCourseSourceKey,
+  scheduleCourseEditLabel,
   noteFromCourse,
   type CustomScheduleItem,
   type ScheduleEditState,
@@ -1407,7 +1418,7 @@ function cachedScheduleEnvelopeForWeek(weekValue: string | number) {
 }
 
 function cellsForWeek(wk: number, source: ScheduleResult | null = parsed.value) {
-  return applyScheduleEditsToCells((source?.cells ?? []), scheduleEdits.value)
+  return applyScheduleEditsToCells(source?.cells ?? null, scheduleEdits.value)
     .map((cell) => ({
       ...cell,
       courses: wk ? cell.courses.filter((course) => courseMatchesWeek(course, wk)) : cell.courses,
@@ -1431,6 +1442,7 @@ function weekCourseBlocksFor(wk: number, source: ScheduleResult | null = parsed.
       const range = normalizeSlotRangeForTablePosition(cell.bigSlot, course);
       const key = [
         cell.day,
+        course.customId ?? "",
         normalizeKeyPart(course.name),
         normalizeKeyPart(course.teacher),
         normalizeKeyPart(course.location),
@@ -1534,6 +1546,7 @@ function nextWeekValueFrom(current: string, delta: number) {
 function courseTitle(course: ScheduleCourse) {
   return [
     course.name,
+    scheduleCourseEditLabel(course),
     course.teacher ? `教师：${course.teacher}` : "",
     course.location ? `地点：${course.location}` : "",
     course.weeks,
@@ -1666,7 +1679,7 @@ async function openCourseEditor(block: WeekCourseBlock, targetWeek = currentWeek
   editDialogOpen.value = true;
 }
 
-function saveCourseEdit() {
+function saveCourseEdit(keepAsCustom = false) {
   if (courseEditBusy.value) return;
   const name = customCourseForm.name.trim();
   if (!name) {
@@ -1687,7 +1700,7 @@ function saveCourseEdit() {
       : null;
     const item: CustomScheduleItem = {
       id: existing?.id || createCustomCourseId(),
-      sourceKey: existing?.sourceKey || editingCourseKey.value || undefined,
+      sourceKey: officialCourseSourceKey(existing ? existing.sourceKey : editingCourseKey.value),
       day: customCourseForm.day,
       bigSlot: Math.ceil(startSlot / 2),
       course: {
@@ -1724,9 +1737,10 @@ function saveCourseEdit() {
     });
     const hidden = [...new Set([...scheduleEdits.value.hidden, ...hiddenSourceKeys])];
     scheduleEdits.value = { hidden, custom: [...custom, item] };
+    if (keepAsCustom) scheduleEdits.value = keepScheduleCourseAsCustom(scheduleEdits.value, item.id);
     persistScheduleEdits();
     editDialogOpen.value = false;
-    showEditorMessage("success", editingCourseBlock.value ? "已保存课程" : "已添加到课表");
+    showEditorMessage("success", keepAsCustom ? "已保留为自定义课程" : editingCourseBlock.value ? "已保存课程" : "已添加到课表");
   } finally {
     if (courseEditAction.value === "save") courseEditAction.value = "";
   }
@@ -1782,7 +1796,11 @@ async function restoreOriginalCourse() {
     const sourceKey = block?.course.sourceKey;
     const customId = block?.course.customId;
     if (!sourceKey) return;
-    const confirmed = await ElMessageBox.confirm("确定恢复原始课程吗？当前自定义修改会被移除。", "恢复原始课程", {
+    const confirmed = await ElMessageBox.confirm(
+      block.course.orphaned
+        ? "将移除这份编辑，以最新教务课表为准。已从教务移除的课程不会重新出现。"
+        : "确定恢复原始课程吗？当前自定义修改会被移除，以最新教务课表为准。",
+      block.course.orphaned ? "恢复教务课表" : "恢复原始课程", {
       confirmButtonText: "恢复",
       cancelButtonText: "取消",
       type: "warning",
@@ -1801,7 +1819,7 @@ async function restoreOriginalCourse() {
     };
     persistScheduleEdits();
     editDialogOpen.value = false;
-    showEditorMessage("success", "已恢复原始课程");
+    showEditorMessage("success", "已移除编辑，恢复到教务课表");
   } finally {
     if (courseEditAction.value === "restore") courseEditAction.value = "";
   }

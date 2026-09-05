@@ -1,4 +1,4 @@
-import { applyScheduleEditsToCells, courseEditKey, type ScheduleEditState } from "@/utils/scheduleEdits";
+import { applyScheduleEditsToCells, courseEditKey, scheduleCourseEditLabel, type ScheduleEditState } from "@/utils/scheduleEdits";
 import { courseMatchesWeek } from "@/utils/scheduleWeeks";
 import {
   buildGraduateFallbackCalendar,
@@ -61,7 +61,7 @@ export function createScheduleViewModelHelpers(context: ScheduleViewModelContext
   }
 
   function cellsForWeek(wk: number, source: ScheduleResult | null = context.parsed()) {
-    return applyScheduleEditsToCells((source?.cells ?? []), context.scheduleEdits())
+    return applyScheduleEditsToCells(source?.cells ?? null, context.scheduleEdits())
       .map((cell) => ({
         ...cell,
         courses: wk ? cell.courses.filter((course) => courseMatchesWeek(course, wk)) : cell.courses,
@@ -85,6 +85,7 @@ export function createScheduleViewModelHelpers(context: ScheduleViewModelContext
         const range = normalizeSlotRangeForTablePosition(cell.bigSlot, course);
         const key = [
           cell.day,
+          course.customId ?? "",
           normalizeScheduleKeyPart(course.name),
           normalizeScheduleKeyPart(course.teacher),
           normalizeScheduleKeyPart(course.location),
@@ -199,6 +200,7 @@ export function createScheduleViewModelHelpers(context: ScheduleViewModelContext
 export function courseTitle(course: ScheduleCourse) {
   return [
     course.name,
+    scheduleCourseEditLabel(course),
     course.teacher ? `教师：${course.teacher}` : "",
     course.location ? `地点：${course.location}` : "",
     course.weeks,

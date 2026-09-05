@@ -4,6 +4,7 @@ import {
   customCourseWeeksLabel,
   customCourseWeeksText,
   noteFromCourse,
+  officialCourseSourceKey,
   type CustomScheduleItem,
   type ScheduleEditState,
 } from "@/utils/scheduleEdits";
@@ -124,7 +125,7 @@ export function buildCustomCourseItem(
   const endSlot = Math.max(startSlot, clampSlot(form.endSlot));
   const item: CustomScheduleItem = {
     id: input.existing?.id || createCustomCourseId(),
-    sourceKey: input.existing?.sourceKey || input.editingCourseKey || undefined,
+    sourceKey: officialCourseSourceKey(input.existing ? input.existing.sourceKey : input.editingCourseKey),
     day: form.day,
     bigSlot: Math.ceil(startSlot / 2),
     course: {
