@@ -33,7 +33,7 @@
   --cpu-dialog-max-width: 560px;
   --cpu-dialog-side-gap: 16px;
   --cpu-dialog-viewport-width: calc(100dvw - 32px);
-  --cpu-dialog-max-height: calc(100dvh - 48px);
+  --cpu-dialog-max-height: calc(var(--cpu-overlay-viewport-height, 100dvh) - 48px);
   --cpu-safe-area-inset-top: 0px;
   --el-color-primary: #{$cpu-primary};
   --el-color-primary-light-3: #{color.adjust($cpu-primary, $lightness: 8%)};
@@ -275,6 +275,10 @@ canvas {
 
 .el-overlay-dialog,
 .el-overlay-message-box {
+  top: var(--cpu-overlay-viewport-top, 0px);
+  bottom: auto;
+  height: var(--cpu-overlay-viewport-height, 100dvh);
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -295,7 +299,7 @@ canvas {
 .el-overlay-dialog .el-dialog {
   width: min(var(--el-dialog-width, var(--cpu-dialog-width)), var(--cpu-dialog-viewport-width)) !important;
   max-width: min(var(--cpu-dialog-max-width), var(--cpu-dialog-viewport-width));
-  max-height: var(--cpu-dialog-max-height);
+  max-height: min(var(--cpu-dialog-max-height), 100%);
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -305,7 +309,7 @@ canvas {
 .el-overlay-message-box .el-message-box {
   width: min(var(--el-messagebox-width, var(--cpu-dialog-width)), var(--cpu-dialog-viewport-width)) !important;
   max-width: min(var(--cpu-dialog-max-width), var(--cpu-dialog-viewport-width));
-  max-height: var(--cpu-dialog-max-height);
+  max-height: min(var(--cpu-dialog-max-height), 100%);
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -1110,7 +1114,7 @@ html[data-theme="dark"] {
     --cpu-dialog-radius: 10px;
     --cpu-dialog-side-gap: 12px;
     --cpu-dialog-viewport-width: calc(100dvw - 24px);
-    --cpu-dialog-max-height: calc(100dvh - 24px);
+    --cpu-dialog-max-height: calc(var(--cpu-overlay-viewport-height, 100dvh) - 24px);
   }
 
   .el-overlay-dialog,

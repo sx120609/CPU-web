@@ -16,6 +16,7 @@ import {
 } from "./utils/clientInfo";
 import { scheduleJwxtDataPrewarm } from "./utils/jwxtPrewarm";
 import { installUnifiedImageLoading } from "./utils/imageLoading";
+import { installOverlayViewport } from "./utils/overlayViewport";
 import { authApi } from "./api/auth";
 import { hideWechatToolbarBestEffort, isWechatBrowser } from "./utils/wechatBridge";
 import { buildEntryModuleSignature } from "./utils/entryModuleSignature";
@@ -398,6 +399,8 @@ function installJwxtDataPrewarmTriggers() {
 installTouchGuards();
 installFeedbackLayerGuard();
 installUnifiedImageLoading();
+const disposeOverlayViewport = installOverlayViewport();
+if (import.meta.hot) import.meta.hot.dispose(disposeOverlayViewport);
 installIosNativeImageBridge();
 installNativeAppMarker();
 installDesktopWebReleaseRefresh();

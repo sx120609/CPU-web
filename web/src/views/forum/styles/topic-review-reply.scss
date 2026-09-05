@@ -251,7 +251,8 @@
 }
 
 .reply-dialog-actions {
-  margin-top: 16px;
+  width: 100%;
+  margin-top: 0;
 }
 
 :deep(.reply-dialog .el-dialog__body) {

@@ -26,7 +26,7 @@ jobs:
       - name: Verify update handoff and build release APK
         working-directory: android
         run: |
-          bash gradlew :app:testDebugUnitTest --tests '*Apk*Test' --tests '*AppConfigTest' :app:lintDebug :app:assembleRelease --no-daemon
+          bash gradlew :app:testDebugUnitTest --tests '*Apk*Test' --tests '*AppConfigTest' --tests '*WebViewInsetsTest' :app:lintDebug :app:assembleRelease --no-daemon
       - name: Upload commit-bound unsigned APK
         uses: actions/upload-artifact@v4
         with:

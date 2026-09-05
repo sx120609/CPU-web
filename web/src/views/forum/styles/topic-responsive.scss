@@ -518,7 +518,7 @@
     display: flex;
     width: calc(100dvw - 16px) !important;
     max-width: 720px;
-    max-height: min(68dvh, 560px);
+    max-height: min(560px, calc(var(--cpu-overlay-viewport-height, 100dvh) - 16px - env(safe-area-inset-bottom)));
     margin: 0 auto !important;
     flex-direction: column;
     overflow: hidden;
@@ -578,7 +578,7 @@
   }
 
   :global(.reply-dialog .rich-editor.toolbar-static.simple-mobile) {
-    flex: 0 1 auto;
+    flex: 0 0 auto;
     border-radius: 12px;
     box-shadow: none;
   }
@@ -588,10 +588,8 @@
     max-height: min(28dvh, 240px);
   }
 
-  .reply-dialog-actions {
-    flex: 0 0 auto;
-    margin-top: 10px;
-    padding-bottom: env(safe-area-inset-bottom);
+  :global(.reply-dialog-overlay .reply-dialog .el-dialog__footer) {
+    padding: 8px 10px;
   }
 
   .reply-dialog-actions > .cpu-muted {

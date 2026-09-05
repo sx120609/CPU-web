@@ -32,10 +32,7 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-import androidx.core.graphics.Insets;
-import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
-import androidx.core.view.WindowInsetsCompat;
 
 import java.util.ArrayList;
 
@@ -86,7 +83,7 @@ public final class MainActivity extends Activity {
         ));
 
         setContentView(root);
-        bindSystemBarInsets(contentHost);
+        WebViewInsets.install(contentHost);
         configureWebView();
         webView.loadUrl(BuildConfig.APP_URL);
     }
@@ -103,18 +100,6 @@ public final class MainActivity extends Activity {
             }
             window.getDecorView().setSystemUiVisibility(flags);
         }
-    }
-
-    private void bindSystemBarInsets(View target) {
-        ViewCompat.setOnApplyWindowInsetsListener(target, (view, insets) -> {
-            int mask = WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout();
-            Insets bars = insets.getInsets(mask);
-            view.setPadding(bars.left, bars.top, bars.right, bars.bottom);
-            return new WindowInsetsCompat.Builder(insets)
-                    .setInsets(mask, Insets.NONE)
-                    .build();
-        });
-        ViewCompat.requestApplyInsets(target);
     }
 
     @SuppressLint("SetJavaScriptEnabled")
