@@ -5,6 +5,8 @@ export function directMediaUrl(value: unknown) {
   const source = String(value || "").trim();
   if (!source) return "";
   if (source.startsWith("/uploads/")) {
+    // New avatars may exist only in the active storage provider, before the static mirror syncs.
+    if (source.startsWith("/uploads/avatars/")) return source;
     if (typeof window !== "undefined" && /^(?:127\.0\.0\.1|localhost)$/u.test(window.location.hostname)) return source;
     return `${MEDIA_CDN_BASE}/${source.slice("/uploads/".length)}`;
   }

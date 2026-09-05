@@ -1,6 +1,20 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { cdnImageUrl, directMediaUrl } from "../src/utils/cdnMedia";
+import { cdnImageUrl, directMediaUrl, withMediaRevision } from "../src/utils/cdnMedia";
+
+test("avatars use the server storage resolver instead of the static mirror", () => {
+  const avatar = "/uploads/avatars/7/new-avatar.jpg";
+  assert.equal(directMediaUrl(avatar), avatar);
+  assert.equal(cdnImageUrl(avatar, { width: 240, quality: 84 }), avatar);
+});
+
+test("a newly saved avatar keeps its revision on the server storage URL", () => {
+  const avatar = withMediaRevision("/uploads/avatars/7/new-avatar.jpg", 12345);
+  assert.equal(
+    cdnImageUrl(avatar, { width: 96 }),
+    "/uploads/avatars/7/new-avatar.jpg?media_rev=12345",
+  );
+});
 
 test("managed uploads resolve to the ESA static resource domain", () => {
   assert.equal(
