@@ -116,7 +116,7 @@ function loadWebStaticManifest(distRoot: string) {
     return {
       backend: parsed.backend === "oss" ? "oss" as const : "cos" as const,
       assets: new Set(parsed.assets.map(normalizeWebStaticAssetPath).filter(Boolean)),
-      publicAssets: new Set((parsed.publicAssets || []).map(normalizeWebStaticAssetPath).filter(Boolean)),
+      publicAssets: new Set((parsed.publicAssets || []).map(normalizeWebStaticAssetPath).filter((asset) => asset && !/\.apk$/iu.test(asset))),
     };
   } catch {
     return emptyWebStaticManifest();

@@ -440,10 +440,6 @@ export const config = {
   // 固定执行 deploy.sh update，且只允许站点超级管理员触发。生产默认开启，
   // 紧急情况下可通过环境变量显式关闭，而无需修改代码。
   adminDeployEnabled: parseBooleanEnv(process.env.ADMIN_DEPLOY_ENABLED, nodeEnv === "production"),
-  androidAppDownloadUrl: (
-    process.env.ANDROID_APP_DOWNLOAD_URL
-    ?? ""
-  ).trim(),
   androidAppPdsShareUrl: androidPdsShareSettings.url,
   androidAppPdsSharePassword: androidPdsShareSettings.password,
   // 桌面端安装包。留空表示尚未发布，前端会显示"正在打包中"而不是给一个死链接。

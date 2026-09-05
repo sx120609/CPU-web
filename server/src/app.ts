@@ -6,6 +6,7 @@ import { existsSync } from "node:fs";
 import { errorHandler } from "./middleware/error";
 import { router } from "./routes";
 import { shareRouter } from "./routes/share";
+import { androidDownloadHandler, LEGACY_ANDROID_DOWNLOAD_PATH } from "./routes/androidDownload";
 import { qqBotAdReportRouter } from "./routes/qqbotAdReport";
 import { qqBotAiReplyRouter } from "./routes/qqbotAiReply";
 import { isDev } from "./config";
@@ -76,6 +77,7 @@ export function createApp() {
   if (isDev) app.use(morgan("dev"));
 
   app.use("/uploads", uploadAssetHandler);
+  app.get(LEGACY_ANDROID_DOWNLOAD_PATH, androidDownloadHandler);
 
   app.get("/api/health", (_req, res) => {
     res.json({ code: 0, data: { ok: true, ts: Date.now() }, message: "" });

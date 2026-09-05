@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { isPublicCdnAsset } from "../src/utils/webStaticAssets";
 import {
   createWebStaticIndexHandler,
   loadWebStaticCosManifest,
@@ -27,6 +28,13 @@ test("runtime static provider overrides the deployment manifest with a safe fall
   assert.equal(resolveWebStaticBackend("local", "cos"), "cos");
 });
 
+test("static sync excludes Android packages while retaining webpage images", () => {
+  assert.equal(isPublicCdnAsset("downloads/CPU-Web-Android-V37.apk"), false);
+  assert.equal(isPublicCdnAsset("downloads\\CPU-Web-Android-V37.APK"), false);
+  assert.equal(isPublicCdnAsset("downloads/tutorial.png"), true);
+  assert.equal(isPublicCdnAsset("brand/logo.svg"), true);
+});
+
 test("static object-storage manifest accepts legacy COS and current provider-aware versions", async (t) => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "cpu-web-static-cos-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
@@ -44,7 +52,7 @@ test("static object-storage manifest accepts legacy COS and current provider-awa
   );
   assert.deepEqual(
     Array.from(loadWebStaticCosPublicManifest(directory)).sort(),
-    ["downloads/app.apk", "splash/launch.png"],
+    ["splash/launch.png"],
   );
 
   await writeFile(path.join(directory, WEB_STATIC_COS_MANIFEST), JSON.stringify({
@@ -55,7 +63,7 @@ test("static object-storage manifest accepts legacy COS and current provider-awa
     publicAssets: ["downloads/app.apk"],
   }));
   assert.deepEqual(Array.from(loadWebStaticCosManifest(directory)), ["main.abc123.js"]);
-  assert.deepEqual(Array.from(loadWebStaticCosPublicManifest(directory)), ["downloads/app.apk"]);
+  assert.deepEqual(Array.from(loadWebStaticCosPublicManifest(directory)), []);
 
   await writeFile(path.join(directory, WEB_STATIC_COS_MANIFEST), JSON.stringify({
     version: 3,

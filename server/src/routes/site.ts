@@ -1,6 +1,4 @@
 import { Router, type Request, type Response } from "express";
-import { existsSync, readdirSync } from "node:fs";
-import path from "node:path";
 import { config } from "../config";
 import { Errors, ok } from "../utils/response";
 import { withCache } from "../services/cache";
@@ -11,8 +9,6 @@ import {
   hasPdsShare,
   parseDesktopVersionFromFileName,
   parseAssessmentToolVersionFromFileName,
-  hasAndroidPdsShare,
-  resolveAndroidDownload,
   resolveAssessmentToolDownload,
   resolveCampusMapDownload,
   resolveCampusMapView,
@@ -23,6 +19,7 @@ import { getAiQuotaRules } from "../services/aiQuotaRules";
 import { readDesktopUserScriptRelease } from "../services/desktopUserScript";
 import type { DesktopUserScriptKind } from "../services/desktopUserScript";
 import { securityRateLimit } from "../middleware/securityRateLimit";
+import { androidDownloadHandler } from "./androidDownload";
 import {
   learningAssistantAiBodySchema,
   learningAssistantAiResponse,
@@ -148,34 +145,7 @@ siteRouter.get("/userscripts/weban-helper/source", async (req, res, next) => {
   }
 });
 
-siteRouter.get("/downloads/android-app", async (_req, res) => {
-  const configuredUrl = normalizeAndroidDownloadUrl(config.androidAppDownloadUrl);
-  if (configuredUrl) {
-    res.redirect(302, configuredUrl);
-    return;
-  }
-
-  // A bundled APK is commit-bound and can be checked alongside the web release.
-  // Prefer it over a shared folder that may still expose the previous version.
-  const bundledFileName = resolveLatestAndroidApkFileName();
-  if (bundledFileName) {
-    res.redirect(302, `/downloads/${encodeURIComponent(bundledFileName)}`);
-    return;
-  }
-
-  if (hasAndroidPdsShare()) {
-    try {
-      const file = await resolveAndroidDownload();
-      res.setHeader("Cache-Control", "no-store");
-      res.redirect(302, file.url);
-      return;
-    } catch (error) {
-      console.error("PDS Android 分享解析失败，回退到直链或本地文件", error);
-    }
-  }
-
-  res.redirect(302, "/downloads/CPU-Web-Android-V37.apk");
-});
+siteRouter.get("/downloads/android-app", androidDownloadHandler);
 
 /** 校园地图原图的稳定下载入口；实际文件由 PDS 临时直链提供，不经过本站传输。 */
 siteRouter.get("/downloads/campus-map-original", async (_req, res) => {
@@ -453,10 +423,6 @@ siteRouter.get("/navigation", async (_req, res, next) => {
   } catch (e) { next(e); }
 });
 
-function normalizeAndroidDownloadUrl(value: string) {
-  return normalizeHttpsUrl(value);
-}
-
 function normalizeHttpsUrl(value: string) {
   const raw = value.trim();
   if (!raw) return "";
@@ -467,30 +433,4 @@ function normalizeHttpsUrl(value: string) {
   } catch {
     return "";
   }
-}
-
-function resolveLatestAndroidApkFileName() {
-  const dirs = [
-    path.resolve(process.cwd(), "../web/public/downloads"),
-    path.resolve(process.cwd(), "web/public/downloads"),
-  ];
-  for (const dir of dirs) {
-    if (!existsSync(dir)) continue;
-    const names = readdirSync(dir);
-    const latestAndroidClient = latestApkByPattern(names, /^CPU-Web-Android-V(\d+)\.apk$/i);
-    if (latestAndroidClient) return latestAndroidClient;
-    const latestLegacyClient = latestApkByPattern(names, /^CPU-Web-V(\d+)\.apk$/i);
-    if (latestLegacyClient) return latestLegacyClient;
-  }
-  return "";
-}
-
-function latestApkByPattern(names: string[], pattern: RegExp) {
-  return names
-    .map((name) => {
-      const match = pattern.exec(name);
-      return match ? { name, version: Number(match[1]) } : null;
-    })
-    .filter((item): item is { name: string; version: number } => Boolean(item))
-    .sort((a, b) => b.version - a.version)[0]?.name ?? "";
 }
