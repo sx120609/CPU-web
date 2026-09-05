@@ -30,7 +30,7 @@
             :href="recommendedCard.downloadUrl"
             target="_blank"
             rel="noopener noreferrer"
-            @click="openDownloadGuide(recommendedCard.key)"
+            @click="openDownloadGuide(recommendedCard.key, $event)"
           >
               {{ recommendedCard.actionLabel }}
               <AppIcon name="download" />
@@ -98,7 +98,7 @@
               :href="card.downloadUrl"
               target="_blank"
               rel="noopener noreferrer"
-              @click="openDownloadGuide(card.key)"
+              @click="openDownloadGuide(card.key, $event)"
             >
               {{ card.actionLabel }}
                 <AppIcon name="download" />
@@ -164,7 +164,7 @@
           :href="recommendedCard.downloadUrl"
           target="_blank"
           rel="noopener noreferrer"
-          @click="openDownloadGuide(recommendedCard.key)"
+          @click="openDownloadGuide(recommendedCard.key, $event)"
         >
           {{ recommendedCard.actionLabel }}
           <AppIcon name="download" />
@@ -203,7 +203,7 @@
                 :href="card.downloadUrl"
                 target="_blank"
                 rel="noopener noreferrer"
-                @click="openDownloadGuide(card.key)"
+                @click="openDownloadGuide(card.key, $event)"
               >{{ card.actionLabel }}<AppIcon name="download" /></a>
               <router-link v-else-if="card.route" class="mobile-secondary-action" :to="card.route">{{ card.actionLabel }}<AppIcon name="arrow-right" /></router-link>
               <button v-else type="button" class="mobile-secondary-action unavailable" disabled>{{ card.loading ? "正在获取下载信息" : "安装包暂时不可用" }}</button>
@@ -244,7 +244,10 @@ import {
   ANDROID_APP_LATEST_VERSION_NAME,
   isLikelyAndroidDevice,
   isLikelyIosDevice,
+  isAndroidNativeApp,
+  supportsAndroidInAppApkDownload,
 } from "@/utils/clientInfo";
+import { requestAndroidUpdatePrompt } from "@/utils/androidUpdatePrompt";
 import DownloadSafetyGuideDialog from "@/components/common/DownloadSafetyGuideDialog.vue";
 import AppIcon from "@/components/common/AppIcon.vue";
 
@@ -400,7 +403,12 @@ type DownloadGuidePlatform = "android" | "windows";
 const downloadGuideVisible = ref(false);
 const downloadGuidePlatform = ref<DownloadGuidePlatform>("windows");
 
-function openDownloadGuide(platform: DownloadPlatform) {
+function openDownloadGuide(platform: DownloadPlatform, event: MouseEvent) {
+  if (platform === "android" && isAndroidNativeApp() && !supportsAndroidInAppApkDownload()) {
+    event.preventDefault();
+    requestAndroidUpdatePrompt({ kind: "install" });
+    return;
+  }
   if (platform !== "android" && platform !== "windows") return;
   downloadGuidePlatform.value = platform;
   downloadGuideVisible.value = true;

@@ -1,12 +1,13 @@
 import {
   isAndroidUpdateAvailable,
+  canUseStagedAndroidUpdate,
 } from "@/utils/androidUpdatePolicy";
 
 export type ClientPlatform = "ios" | "android" | "harmony" | "desktop" | "web" | "unknown";
 
-export const ANDROID_APP_LATEST_VERSION_CODE = 36;
-export const ANDROID_APP_LATEST_VERSION_NAME = "3.0.36";
-export const ANDROID_APP_DOWNLOAD_FILE_NAME = "CPU-Web-Android-V36.apk";
+export const ANDROID_APP_LATEST_VERSION_CODE = 37;
+export const ANDROID_APP_LATEST_VERSION_NAME = "3.0.37";
+export const ANDROID_APP_DOWNLOAD_FILE_NAME = "CPU-Web-Android-V37.apk";
 export const ANDROID_NEW_ARCH_MIN_VERSION_CODE = 21;
 export const HARMONY_APP_LATEST_VERSION_CODE = 18;
 export const HARMONY_APP_LATEST_VERSION_NAME = "2.0.9";
@@ -215,8 +216,14 @@ export function supportsAndroidScheduleWidget(ua = navigator.userAgent) {
 export function supportsAndroidInAppApkDownload(ua = navigator.userAgent) {
   if (!isAndroidNativeApp(ua)) return false;
   const bridge = (window as any).CPUAndroid;
-  return getAndroidNativeVersionCode(ua) >= ANDROID_IN_APP_UPDATE_MIN_VERSION_CODE
-    && typeof bridge?.downloadAndInstallApk === "function";
+  try {
+    return canUseStagedAndroidUpdate(
+      getAndroidNativeVersionCode(ua),
+      typeof bridge?.supportsStagedApkInstall === "function" && bridge.supportsStagedApkInstall() === true,
+    ) && typeof bridge?.downloadAndInstallApk === "function";
+  } catch {
+    return false;
+  }
 }
 
 export function clientPlatformLabel(platform: ClientPlatform) {

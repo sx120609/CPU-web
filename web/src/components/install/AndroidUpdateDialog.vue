@@ -25,10 +25,16 @@
       <p v-else-if="promptKind !== 'install'" class="muted">
         3.x 客户端可直接覆盖更新。
       </p>
+      <p v-if="needsBrowserUpdate" class="muted">
+        旧版应用内更新可能提示“解析软件包时出现问题”。请在系统浏览器下载新版，下载完成后打开 APK 安装，无需卸载当前 3.x 客户端。
+      </p>
+      <p v-if="needsBrowserUpdate" class="muted">如果浏览器没有打开，请复制下载链接，粘贴到系统浏览器中打开。</p>
     </div>
 
     <template #footer>
       <el-button @click="open = false">稍后</el-button>
+      <el-button v-if="isAndroidNativeApp()" @click="copyBrowserDownload">复制下载链接</el-button>
+      <el-button v-if="canInAppUpdate" @click="openBrowserDownload">浏览器下载</el-button>
       <el-button type="primary" @click="downloadAndroidUpdate">
         {{ primaryButtonText }}
       </el-button>
@@ -46,6 +52,8 @@ import {
 } from "@/utils/androidUpdatePrompt";
 import {
   ANDROID_APP_AUTO_UPDATE_PROMPT_ENABLED,
+  ANDROID_BROWSER_DOWNLOAD_PAGE,
+  shouldPromptAndroidInstallRepair,
 } from "@/utils/androidUpdatePolicy";
 import {
   ANDROID_APP_DOWNLOAD_FILE_NAME,
@@ -82,17 +90,19 @@ const currentVersionLabel = computed(() => {
 });
 const latestVersionLabel = computed(() => `${ANDROID_APP_LATEST_VERSION_NAME} (${ANDROID_APP_LATEST_VERSION_CODE})`);
 const canInAppUpdate = computed(() => supportsAndroidInAppApkDownload());
+const needsBrowserUpdate = computed(() => isAndroidNativeApp() && !canInAppUpdate.value);
 const showLegacyMigrationNote = computed(() => (
-  promptKind.value === "install" || isAndroidLegacyMajorUpgrade()
+  (promptKind.value === "install" && !isAndroidNativeApp()) || isAndroidLegacyMajorUpgrade()
 ));
 const primaryButtonText = computed(() => {
+  if (needsBrowserUpdate.value) return "在浏览器下载";
   if (promptKind.value === "install") return "下载客户端";
-  return canInAppUpdate.value ? "下载更新" : "复制下载链接";
+  return canInAppUpdate.value ? "下载更新" : "在浏览器下载";
 });
 
 onMounted(() => {
   window.addEventListener(ANDROID_UPDATE_PROMPT_EVENT, onPromptEvent as EventListener);
-  if (ANDROID_APP_AUTO_UPDATE_PROMPT_ENABLED) {
+  if (ANDROID_APP_AUTO_UPDATE_PROMPT_ENABLED || shouldPromptAndroidInstallRepair(isAndroidNativeApp(), currentVersionCode.value)) {
     autoPromptTimer = window.setTimeout(autoPromptIfNeeded, 1200);
   }
 });
@@ -116,6 +126,13 @@ function autoPromptIfNeeded() {
     isAndroidLegacyMajorUpgrade(),
   )) return;
   autoPrompted = true;
+  if (!ANDROID_APP_AUTO_UPDATE_PROMPT_ENABLED) {
+    const key = `cpu-android-install-repair-${ANDROID_APP_LATEST_VERSION_CODE}`;
+    try {
+      if (localStorage.getItem(key)) return;
+      localStorage.setItem(key, "1");
+    } catch { /* storage may be unavailable */ }
+  }
   openPrompt("app", true);
 }
 
@@ -130,6 +147,10 @@ function openPrompt(kind: AndroidUpdatePromptKind, auto = false) {
 }
 
 async function downloadAndroidUpdate() {
+  if (needsBrowserUpdate.value) {
+    openBrowserDownload();
+    return;
+  }
   const absoluteUrl = new URL(ANDROID_APP_DOWNLOAD_URL, window.location.origin).toString();
   if (promptKind.value === "install") {
     openExternalDownload(absoluteUrl);
@@ -139,20 +160,34 @@ async function downloadAndroidUpdate() {
 
   const bridge = getAndroidBridge();
   if (canInAppUpdate.value && typeof bridge?.downloadAndInstallApk === "function") {
-    const started = bridge.downloadAndInstallApk(absoluteUrl, ANDROID_APP_DOWNLOAD_FILE_NAME);
-    if (started !== false) {
-      open.value = false;
-      ElMessage.success("已开始下载更新");
-      return;
-    }
+    try {
+      const started = bridge.downloadAndInstallApk(absoluteUrl, ANDROID_APP_DOWNLOAD_FILE_NAME);
+      if (started !== false) {
+        open.value = false;
+        ElMessage.success("已开始下载更新");
+        return;
+      }
+    } catch { /* keep the browser fallback available */ }
   }
 
-  if (await copyDownloadUrl(absoluteUrl, bridge)) {
-    open.value = false;
-    ElMessage.success("下载链接已复制，请到系统浏览器打开");
-    return;
+  openBrowserDownload();
+}
+
+function openBrowserDownload() {
+  try {
+    openExternalDownload(ANDROID_BROWSER_DOWNLOAD_PAGE);
+    ElMessage.info("请在浏览器下载并安装；未打开时可复制下载链接");
+  } catch {
+    ElMessage.warning("无法打开浏览器，请复制下载链接后手动打开");
   }
-  ElMessage.warning("复制失败，请稍后重试");
+}
+
+async function copyBrowserDownload() {
+  if (await copyDownloadUrl(ANDROID_BROWSER_DOWNLOAD_PAGE, getAndroidBridge())) {
+    ElMessage.success("下载链接已复制，请到系统浏览器打开");
+  } else {
+    ElMessage.warning("复制失败，请在浏览器打开 cputime.cn/download");
+  }
 }
 
 function getAndroidBridge(): AndroidBridge | null {

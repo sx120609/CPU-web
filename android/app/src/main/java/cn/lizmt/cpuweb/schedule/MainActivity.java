@@ -301,6 +301,12 @@ public final class MainActivity extends Activity {
     }
 
     @Override
+    protected void onResume() {
+        super.onResume();
+        if (androidBridge != null) androidBridge.resumePendingInstall();
+    }
+
+    @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode != REQUEST_FILE_CHOOSER) return;
@@ -416,7 +422,7 @@ public final class MainActivity extends Activity {
 
     private void openExternal(Uri uri) {
         if (isApkDownload(uri)) {
-            boolean started = new CpuAndroidBridge(this).downloadAndInstallApk(uri.toString(), "");
+            boolean started = androidBridge.downloadAndInstallApk(uri.toString(), "");
             if (started) {
                 return;
             }

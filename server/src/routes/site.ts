@@ -174,7 +174,7 @@ siteRouter.get("/downloads/android-app", async (_req, res) => {
     }
   }
 
-  res.redirect(302, "/downloads/CPU-Web-Android-V36.apk");
+  res.redirect(302, "/downloads/CPU-Web-Android-V37.apk");
 });
 
 /** 校园地图原图的稳定下载入口；实际文件由 PDS 临时直链提供，不经过本站传输。 */
