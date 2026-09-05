@@ -74,6 +74,7 @@ export const useAuthStore = defineStore("auth", {
     ready: false,
     dataAuthAgreed: false,
     sessionVersion: 0,
+    profileRevision: 0,
     /** SSO 登录流程的临时状态 */
     ssoPendingId: "",
     ssoPendingIssuedAt: 0,
@@ -409,6 +410,7 @@ export const useAuthStore = defineStore("auth", {
       if (!this.token && !options?.probe) return;
       if (this._pendingFetchMe) return this._pendingFetchMe;
       const requestSessionVersion = this.sessionVersion;
+      const requestProfileRevision = this.profileRevision;
       const task = (async () => {
         try {
           const user = await authApi.me(options?.probe ? {
@@ -418,11 +420,11 @@ export const useAuthStore = defineStore("auth", {
           } : undefined);
           // A logout may finish while the probe is in flight. Do not let the
           // stale response restore the session that the user just revoked.
-          if (this.sessionVersion === requestSessionVersion && this.token) {
+          if (this.sessionVersion === requestSessionVersion && this.profileRevision === requestProfileRevision && this.token) {
             this.applyAuthenticatedSession(COOKIE_SESSION_MARKER, user);
           }
         } catch {
-          if (this.sessionVersion !== requestSessionVersion) return;
+          if (this.sessionVersion !== requestSessionVersion || this.profileRevision !== requestProfileRevision) return;
           const wasLoggedIn = this.isLoggedIn;
           this.user = null;
           if (wasLoggedIn) this.sessionVersion += 1;
@@ -438,25 +440,21 @@ export const useAuthStore = defineStore("auth", {
     },
 
     async updateProfile(patch: Partial<UserInfo>) {
+      const requestSessionVersion = this.sessionVersion;
+      const userId = this.user?.id;
       const u = await authApi.updateMe(patch);
-      if (patch.avatar === undefined) {
-        this.user = u;
-        return u;
-      }
-      const confirmed = await authApi.me({
-        cacheTtlMs: 0,
-        cacheStaleTtlMs: 0,
-        suppressErrorMessage: true,
-      }).catch(() => u);
-      const next = confirmed.avatar
-        ? { ...confirmed, avatar: withMediaRevision(confirmed.avatar, Date.now()) }
-        : confirmed;
+      if (this.sessionVersion !== requestSessionVersion || this.user?.id !== userId) return u;
+      this.profileRevision += 1;
+      const next = patch.avatar !== undefined && u.avatar
+        ? { ...u, avatar: withMediaRevision(u.avatar, Date.now()) }
+        : u;
       this.user = next;
       return next;
     },
 
     async refreshSelfSilently() {
       const requestSessionVersion = this.sessionVersion;
+      const requestProfileRevision = this.profileRevision;
       const userId = this.user?.id;
       if (!this.token || !userId) return null;
       const user = await authApi.me({
@@ -466,7 +464,7 @@ export const useAuthStore = defineStore("auth", {
         suppressAuthMessage: true,
         suppressErrorMessage: true,
       }).catch(() => null);
-      if (user && this.sessionVersion === requestSessionVersion && this.user?.id === userId) {
+      if (user && this.sessionVersion === requestSessionVersion && this.profileRevision === requestProfileRevision && this.user?.id === userId) {
         this.user = user;
         this.syncDataAuthAgreement(user);
       }

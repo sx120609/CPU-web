@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { Readable } from "node:stream";
+import { mediaImageDeliveryUrl } from "../utils/mediaImageUrl";
 import { prisma } from "../prisma";
 import {
   createOneDriveChinaUploadSession,
@@ -791,11 +792,13 @@ export const uploadAssetHandler: RequestHandler = async (req, res) => {
       const runtime = await getMediaStorageRuntimeConfig();
       const configuredBackend = resolveConfiguredBackendForRelativePath(relativePath, runtime);
       if (configuredBackend === "cos" && pathMatchesPrefixes(relativePath, runtime.effectiveRemotePrefixes)) {
-        res.redirect(302, await resolveTencentCosPublicUrl(relativePath));
+        res.setHeader("Cache-Control", "no-cache");
+        res.redirect(302, mediaImageDeliveryUrl(await resolveTencentCosPublicUrl(relativePath), "cos", relativePath, req.query));
         return;
       }
       if (configuredBackend === "oss" && pathMatchesPrefixes(relativePath, runtime.effectiveRemotePrefixes)) {
-        res.redirect(302, await resolveAliyunOssPublicUrl(relativePath));
+        res.setHeader("Cache-Control", "no-cache");
+        res.redirect(302, mediaImageDeliveryUrl(await resolveAliyunOssPublicUrl(relativePath), "oss", relativePath, req.query));
         return;
       }
       const remote = await fetchConfiguredRemoteMedia(relativePath, req.headers.range, req.headers["if-none-match"]);

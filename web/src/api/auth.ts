@@ -172,7 +172,7 @@ export const authApi = {
     suppressErrorMessage: true,
     ...options,
   }),
-  me: (options?: RequestOptions) => request.get<UserInfo>("/user/me", undefined, options),
+  me: (options?: RequestOptions) => request.get<UserInfo>("/user/me", undefined, { cacheTtlMs: 0, cacheStaleTtlMs: 0, ...options }),
   updateMe: (payload: Partial<UserInfo>) => request.patch<UserInfo>("/user/me", payload),
   changePassword: (oldPassword: string, newPassword: string) =>
     request.patch<{ ok: true }>("/user/password", { oldPassword, newPassword }),

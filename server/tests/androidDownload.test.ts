@@ -4,11 +4,12 @@ import type { AddressInfo } from "node:net";
 import test from "node:test";
 import express from "express";
 import { createAndroidDownloadHandler, LEGACY_ANDROID_DOWNLOAD_PATH } from "../src/routes/androidDownload";
+import { publishedAndroidRelease } from "../src/services/androidRelease";
 
 const enterpriseFile = {
   url: "https://data.aliyunfile.com/share/v37.apk?signature=temporary",
-  name: "CPU-Web-Android-V37.apk",
-  size: 2065835,
+  name: publishedAndroidRelease.fileName,
+  size: publishedAndroidRelease.size,
   expiresAt: Date.now() + 3600000,
   contentHash: "",
   contentHashName: "",

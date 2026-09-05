@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 concurrency:
   group: linux-deployment-artifact
@@ -40,6 +41,18 @@ jobs:
           npm ci --prefix server --include=dev --no-audit --no-fund
           npm ci --prefix web --include=dev --no-audit --no-fund
           npm ci --prefix voicehub --include=dev --no-audit --no-fund
+
+      - name: Test media and Android release policies
+        run: |
+          node --import ./server/node_modules/tsx/dist/loader.mjs --test \
+            server/tests/mediaImageUrl.test.ts server/tests/androidRelease.test.ts \
+            server/tests/androidDownload.test.ts server/tests/pdsShare.test.ts server/tests/webStaticCos.test.ts \
+            web/tests/cdnMedia.test.ts web/tests/avatarPreview.test.ts web/tests/androidUpdateState.test.ts web/tests/androidUpdatePolicy.test.ts
+
+      - name: Verify published Android package and enterprise delivery
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node --import ./server/node_modules/tsx/dist/loader.mjs server/src/scripts/verifyAndroidRelease.ts --receipt=android-release-verification.json
 
       - name: Build server, web, and VoiceHub
         shell: bash
@@ -80,6 +93,7 @@ jobs:
           path: |
             cpu-web-linux-deploy.tar.gz
             cpu-web-linux-deploy.tar.gz.sha256
+            android-release-verification.json
           compression-level: 0
           retention-days: 14
           if-no-files-found: error

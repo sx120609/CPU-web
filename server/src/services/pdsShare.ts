@@ -358,8 +358,8 @@ export const pickCampusMapOriginal = (files: PdsFile[]): PdsFile | null => {
 // 解析结果整体缓存一小段时间：下载页与下载跳转是连着点的，没必要为同一次
 // 用户操作把三个 PDS 接口各打一遍。缓存必须短于地址本身的有效期。
 type DownloadTarget = "windows" | "mac" | "android" | "assessment-form" | "campus-map" | "campus-map-view";
-const downloadCache = new Map<DownloadTarget, { value: PdsDownload; expiresAt: number }>();
-const inFlight = new Map<DownloadTarget, Promise<PdsDownload>>();
+const downloadCache = new Map<string, { value: PdsDownload; expiresAt: number }>();
+const inFlight = new Map<string, Promise<PdsDownload>>();
 
 // 安装包上传后应尽快被旧客户端发现。这里只做短暂的并发削峰；
 // 临时下载地址本身仍有一小时有效期，无需为了它把“最新版文件”缓存十分钟。
@@ -398,10 +398,11 @@ const getShareSettings = (target: DownloadTarget) => {
  * 取对应下载目标的当前地址。失败时抛错，调用方决定怎么降级。
  * 并发请求共用同一次解析（inFlight），避免下载高峰把 PDS 打满。
  */
-const resolveTargetDownload = async (target: DownloadTarget): Promise<PdsDownload> => {
-  const cached = downloadCache.get(target);
+const resolveTargetDownload = async (target: DownloadTarget, fileName?: string): Promise<PdsDownload> => {
+  const cacheKey = `${target}:${fileName || "latest"}`;
+  const cached = downloadCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.value;
-  const pending = inFlight.get(target);
+  const pending = inFlight.get(cacheKey);
   if (pending) return pending;
 
   const { shareUrl, password, pickInstaller } = getShareSettings(target);
@@ -410,7 +411,9 @@ const resolveTargetDownload = async (target: DownloadTarget): Promise<PdsDownloa
 
   const task = (async () => {
     const files = await listShareFiles(ref, password);
-    const installer = pickInstaller(files);
+    const matching = fileName ? files.filter((file) => file.name === fileName) : [];
+    if (fileName && matching.length !== 1) throw new Error("企业盘发布文件缺失或重名");
+    const installer = fileName ? matching[0] : pickInstaller(files);
     if (!installer) {
       throw new Error(target === "android"
         ? "PDS share missing APK"
@@ -435,24 +438,24 @@ const resolveTargetDownload = async (target: DownloadTarget): Promise<PdsDownloa
         contentHashName: "",
       }
       : await getDownloadUrl(ref, password, installer);
-    downloadCache.set(target, {
+    downloadCache.set(cacheKey, {
       value: download,
       expiresAt: Math.min(Date.now() + CACHE_MS, download.expiresAt - 60_000),
     });
     return download;
   })();
-  inFlight.set(target, task);
+  inFlight.set(cacheKey, task);
 
   try {
     return await task;
   } finally {
-    if (inFlight.get(target) === task) inFlight.delete(target);
+    if (inFlight.get(cacheKey) === task) inFlight.delete(cacheKey);
   }
 };
 
 export const resolveDesktopDownload = (): Promise<PdsDownload> => resolveTargetDownload("windows");
 export const resolveMacDesktopDownload = (): Promise<PdsDownload> => resolveTargetDownload("mac");
-export const resolveAndroidDownload = (): Promise<PdsDownload> => resolveTargetDownload("android");
+export const resolveAndroidDownload = (fileName?: string): Promise<PdsDownload> => resolveTargetDownload("android", fileName);
 export const resolveAssessmentToolDownload = (): Promise<PdsDownload> => resolveTargetDownload("assessment-form");
 export const resolveCampusMapDownload = (): Promise<PdsDownload> => resolveTargetDownload("campus-map");
 export const resolveCampusMapView = (): Promise<PdsDownload> => resolveTargetDownload("campus-map-view");

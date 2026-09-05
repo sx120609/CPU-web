@@ -106,7 +106,7 @@ try {
 
   const child = spawn(bashPath, [deployScript, "update"], {
     cwd: root,
-    env: { ...process.env, CPU_WEB_ADMIN_DEPLOY: "1" },
+    env: { ...process.env, CPU_WEB_ADMIN_DEPLOY: "1", DEPLOY_BUILD_MODE: "ci" },
     stdio: ["ignore", logFd, logFd],
   });
   child.once("error", (error) => finish("failed", 1, `部署命令启动失败：${error.message}`));

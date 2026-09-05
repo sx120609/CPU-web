@@ -307,6 +307,12 @@ public final class MainActivity extends Activity {
     }
 
     @Override
+    protected void onPause() {
+        if (androidBridge != null) androidBridge.pauseUpdateTracking();
+        super.onPause();
+    }
+
+    @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode != REQUEST_FILE_CHOOSER) return;

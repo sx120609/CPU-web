@@ -2218,6 +2218,7 @@ do_update() {
   changed_files_match '^server/' && server_changed=1
   changed_files_match '^desktop/assets/userscripts/' && server_changed=1
   changed_files_match '^web/' && web_changed=1
+  changed_files_match '^server/src/releases/android\.json$' && web_changed=1
   changed_files_match '^voicehub/' && voicehub_changed=1
   changed_files_match '^server/(package(-lock)?\.json|npm-shrinkwrap\.json)$' && server_dependencies_changed=1
   changed_files_match '^web/(package(-lock)?\.json|npm-shrinkwrap\.json)$' && web_dependencies_changed=1
@@ -2286,6 +2287,8 @@ do_update() {
 
   do_mirror_cos_to_oss
   ensure_update_runtime_services
+  (cd "$ROOT_DIR/server" && node dist/scripts/verifyAndroidRelease.js --public-only --site=https://cputime.cn) \
+    || err "安卓发布入口或企业盘校验失败，部署尚未完成"
   commit_ci_artifact_publish
   record_successful_deployment
 }

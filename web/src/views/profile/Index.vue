@@ -7,11 +7,13 @@
     </div>
 
     <div class="cpu-card profile-card" :class="[profileThemeClass, profileFrameClass]">
-      <UserAvatar :size="80" class="avatar" :src="user?.avatar" :name="user?.nickname" :seed="user?.id" :profile-frame="user?.profileFrame" alt="用户头像" />
+      <UserAvatar :size="80" class="avatar" :src="avatarDisplayUrl" :name="user?.nickname" :seed="user?.id" :profile-frame="user?.profileFrame" alt="用户头像" />
       <div class="avatar-actions">
         <el-button size="small" plain :loading="avatarSaving" :disabled="avatarSaving" @click="pickAvatar">上传头像</el-button>
         <el-button v-if="user?.avatar" size="small" text :loading="avatarSaving" :disabled="avatarSaving" @click="removeAvatar">移除头像</el-button>
+        <el-button v-if="avatarPreviewFailed" size="small" plain :loading="avatarSaving" @click="retryAvatarPreview">重新加载头像</el-button>
       </div>
+      <p v-if="avatarPreviewFailed" class="avatar-preview-note">头像已保存，预览暂时加载失败，无需重新上传。</p>
       <h3 class="name">
         <span class="name-primary">
           <DisplayNickname :name="user?.nickname || '药大同学'" />
@@ -485,6 +487,8 @@ import DisplayNickname from "@/components/common/DisplayNickname.vue";
 import UserVerificationBadge from "@/components/common/UserVerificationBadge.vue";
 import { fmtDate, fmtRelative } from "@/utils/format";
 import { compressImageFile, normalizeImageUploadError } from "@/utils/imageUpload";
+import { preloadAvatar } from "@/utils/avatarPreview";
+import { withMediaRevision } from "@/utils/cdnMedia";
 import { readViewCache, writeViewCache } from "@/utils/viewCache";
 
 interface ProfileViewCache {
@@ -505,6 +509,11 @@ const editing = ref(false);
 const saving = ref(false);
 const logoutBusy = ref(false);
 const avatarSaving = ref(false);
+const avatarPreviewFailed = ref(false);
+const avatarPreviewRevision = ref(0);
+const avatarDisplayUrl = computed(() => user.value?.avatar && avatarPreviewRevision.value
+  ? withMediaRevision(user.value.avatar, avatarPreviewRevision.value)
+  : user.value?.avatar);
 const vipStyleSaving = ref(false);
 const avatarInputRef = ref<HTMLInputElement | null>(null);
 const trustDetailsOpen = ref(false);
@@ -960,8 +969,11 @@ async function onAvatarChange(event: Event) {
       mimeType: "image/jpeg",
       maxBytes: 140 * 1024,
     });
-    await auth.updateProfile({ avatar });
-    ElMessage.success("头像已更新");
+    const saved = await auth.updateProfile({ avatar });
+    avatarPreviewRevision.value = Date.now();
+    avatarPreviewFailed.value = !(await preloadAvatar(avatarDisplayUrl.value || saved.avatar));
+    if (avatarPreviewFailed.value) ElMessage.warning("头像已保存，预览暂时加载失败，可点击重新加载");
+    else ElMessage.success("头像已更新");
   } catch (error) {
     ElMessage.error(normalizeImageUploadError(error, "头像上传失败，请稍后重试"));
   } finally {
@@ -975,6 +987,8 @@ async function removeAvatar() {
   avatarSaving.value = true;
   try {
     await auth.updateProfile({ avatar: null });
+    avatarPreviewFailed.value = false;
+    avatarPreviewRevision.value = 0;
     ElMessage.success("头像已移除");
   } finally {
     avatarSaving.value = false;
@@ -983,6 +997,19 @@ async function removeAvatar() {
 
 function openMyTopic(id: number) {
   router.push(`/forum/topic/${id}`);
+}
+
+async function retryAvatarPreview() {
+  if (avatarSaving.value || !user.value?.avatar) return;
+  avatarSaving.value = true;
+  try {
+    avatarPreviewRevision.value = Date.now();
+    avatarPreviewFailed.value = !(await preloadAvatar(avatarDisplayUrl.value));
+    if (!avatarPreviewFailed.value) ElMessage.success("头像已加载");
+    else ElMessage.warning("预览暂时不可用，头像已保存，请稍后重试");
+  } finally {
+    avatarSaving.value = false;
+  }
 }
 
 function topicReviewLabel(topic: any) {
@@ -1028,6 +1055,7 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
   padding: 18px;
 }
 .avatar { font-size: 28px; font-weight: 600; }
+.avatar-preview-note { color: var(--cpu-text-secondary); font-size: 12px; }
 .avatar-actions {
   margin-top: 10px;
   display: flex;

@@ -44,6 +44,8 @@ gradle :app:assembleRelease
 
 V37 将下载包复制到独立缓存并验证包名、版本和签名，通过 FileProvider 授予安装器读取权限。Web 仅对 V37 及声明 `supportsStagedApkInstall` 的客户端启用应用内更新；旧版打开普通 `/download` 页面交给系统浏览器，避免旧壳拦截 APK 链接。3.x 旧版会收到一次修复引导，手动更新入口始终可用。
 
+V38 支持保存下载任务和待安装文件，重开应用后恢复进度、继续安装或重试。正式版本由 `server/src/releases/android.json` 管理，发布门禁与真机验收步骤见 `docs/android-release.md`。
+
 ## 可配置参数
 
 | 参数 | 默认值 | 说明 |

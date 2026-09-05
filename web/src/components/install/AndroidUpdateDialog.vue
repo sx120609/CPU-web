@@ -9,7 +9,12 @@
     :close-on-click-modal="true"
   >
     <div class="android-update-panel">
-      <p v-if="promptKind === 'install'">
+      <div v-if="hasPendingUpdate" class="update-status" aria-live="polite">
+        <p>{{ nativeUpdate.message || '正在读取更新状态' }}</p>
+        <p class="muted">{{ nativeUpdate.fileName }}</p>
+        <el-progress v-if="nativeUpdate.phase !== 'failed'" :percentage="nativeUpdate.progress" :indeterminate="nativeUpdate.totalBytes <= 0 && updateBusy" />
+      </div>
+      <p v-else-if="promptKind === 'install'">
         下载 <b>药大拾间</b> Android 客户端 {{ latestVersionLabel }}。
       </p>
       <p v-else-if="promptKind === 'widget'">
@@ -35,7 +40,7 @@
       <el-button @click="open = false">稍后</el-button>
       <el-button v-if="isAndroidNativeApp()" @click="copyBrowserDownload">复制下载链接</el-button>
       <el-button v-if="canInAppUpdate" @click="openBrowserDownload">浏览器下载</el-button>
-      <el-button type="primary" @click="downloadAndroidUpdate">
+      <el-button type="primary" :disabled="updateBusy" @click="downloadAndroidUpdate">
         {{ primaryButtonText }}
       </el-button>
     </template>
@@ -44,6 +49,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { parseAndroidUpdateState } from "@/utils/androidUpdateState";
 import { ElMessage } from "element-plus";
 import {
   ANDROID_UPDATE_PROMPT_EVENT,
@@ -73,12 +79,20 @@ interface AndroidBridge {
   copyText?: (text: string) => boolean;
   downloadAndInstallApk?: (url: string, fileName: string) => boolean;
   openExternalUrl?: (url: string) => void;
+  supportsPersistentApkUpdate?: () => boolean;
+  getApkUpdateState?: () => string;
+  continueApkInstall?: () => boolean;
+  retryApkUpdate?: () => boolean;
 }
 
 const open = ref(false);
 const promptKind = ref<AndroidUpdatePromptKind>("app");
 let autoPrompted = false;
 let autoPromptTimer = 0;
+let updatePollTimer = 0;
+const nativeUpdate = ref(parseAndroidUpdateState("{}"));
+const hasPendingUpdate = computed(() => nativeUpdate.value.phase !== "idle");
+const updateBusy = computed(() => ["downloading", "paused", "validating", "installing"].includes(nativeUpdate.value.phase));
 
 const currentVersionCode = computed(() => getAndroidNativeVersionCode());
 const currentVersionName = computed(() => getAndroidNativeVersionName());
@@ -95,6 +109,9 @@ const showLegacyMigrationNote = computed(() => (
   (promptKind.value === "install" && !isAndroidNativeApp()) || isAndroidLegacyMajorUpgrade()
 ));
 const primaryButtonText = computed(() => {
+  if (["ready", "permission"].includes(nativeUpdate.value.phase)) return "继续安装";
+  if (nativeUpdate.value.phase === "failed") return "重试下载";
+  if (updateBusy.value) return nativeUpdate.value.phase === "paused" ? "等待网络" : "更新进行中";
   if (needsBrowserUpdate.value) return "在浏览器下载";
   if (promptKind.value === "install") return "下载客户端";
   return canInAppUpdate.value ? "下载更新" : "在浏览器下载";
@@ -102,6 +119,8 @@ const primaryButtonText = computed(() => {
 
 onMounted(() => {
   window.addEventListener(ANDROID_UPDATE_PROMPT_EVENT, onPromptEvent as EventListener);
+  document.addEventListener("visibilitychange", resumeUpdateStatus);
+  resumeUpdateStatus();
   if (ANDROID_APP_AUTO_UPDATE_PROMPT_ENABLED || shouldPromptAndroidInstallRepair(isAndroidNativeApp(), currentVersionCode.value)) {
     autoPromptTimer = window.setTimeout(autoPromptIfNeeded, 1200);
   }
@@ -110,7 +129,37 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener(ANDROID_UPDATE_PROMPT_EVENT, onPromptEvent as EventListener);
   if (autoPromptTimer) window.clearTimeout(autoPromptTimer);
+  if (updatePollTimer) window.clearInterval(updatePollTimer);
+  document.removeEventListener("visibilitychange", resumeUpdateStatus);
 });
+
+function readUpdateStatus() {
+  const bridge = getAndroidBridge();
+  try {
+    if (bridge?.supportsPersistentApkUpdate?.() !== true || typeof bridge.getApkUpdateState !== "function") return false;
+    nativeUpdate.value = parseAndroidUpdateState(bridge.getApkUpdateState());
+    return true;
+  } catch { return false; }
+}
+
+function pollUpdateStatus() {
+  if (updatePollTimer) return;
+  updatePollTimer = window.setInterval(() => {
+    if (document.hidden) return;
+    if (!readUpdateStatus() || (!open.value && !hasPendingUpdate.value)) {
+      window.clearInterval(updatePollTimer);
+      updatePollTimer = 0;
+    }
+  }, 1500);
+}
+
+function resumeUpdateStatus() {
+  if (document.hidden || !readUpdateStatus()) return;
+  if (hasPendingUpdate.value) {
+    if (nativeUpdate.value.phase !== "failed") open.value = true;
+    pollUpdateStatus();
+  }
+}
 
 function onPromptEvent(event: CustomEvent<AndroidUpdatePromptDetail>) {
   const detail = event.detail ?? {};
@@ -138,15 +187,34 @@ function autoPromptIfNeeded() {
 
 function openPrompt(kind: AndroidUpdatePromptKind, auto = false) {
   if (kind !== "install" && !isAndroidNativeApp()) return;
-  if (kind === "app" && !isAndroidAppUpdateAvailable()) {
+  readUpdateStatus();
+  if (kind === "app" && !isAndroidAppUpdateAvailable() && !hasPendingUpdate.value) {
     if (!auto) ElMessage.success(`当前已是最新版 ${currentVersionLabel.value}`);
     return;
   }
   promptKind.value = kind;
   open.value = true;
+  if (hasPendingUpdate.value) pollUpdateStatus();
 }
 
 async function downloadAndroidUpdate() {
+  const currentBridge = getAndroidBridge();
+  if (["ready", "permission"].includes(nativeUpdate.value.phase)) {
+    try {
+      if (currentBridge?.continueApkInstall?.() !== true) ElMessage.warning("无法继续安装，请重试或使用浏览器下载");
+    } catch { ElMessage.warning("无法继续安装，请重试或使用浏览器下载"); }
+    readUpdateStatus();
+    pollUpdateStatus();
+    return;
+  }
+  if (nativeUpdate.value.phase === "failed") {
+    try {
+      if (currentBridge?.retryApkUpdate?.() !== true) ElMessage.warning("重试未能开始，请使用浏览器下载");
+    } catch { ElMessage.warning("重试未能开始，请使用浏览器下载"); }
+    readUpdateStatus();
+    pollUpdateStatus();
+    return;
+  }
   if (needsBrowserUpdate.value) {
     openBrowserDownload();
     return;
@@ -163,7 +231,8 @@ async function downloadAndroidUpdate() {
     try {
       const started = bridge.downloadAndInstallApk(absoluteUrl, ANDROID_APP_DOWNLOAD_FILE_NAME);
       if (started !== false) {
-        open.value = false;
+        if (readUpdateStatus()) pollUpdateStatus();
+        else open.value = false;
         ElMessage.success("已开始下载更新");
         return;
       }

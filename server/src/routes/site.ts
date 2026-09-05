@@ -19,7 +19,7 @@ import { getAiQuotaRules } from "../services/aiQuotaRules";
 import { readDesktopUserScriptRelease } from "../services/desktopUserScript";
 import type { DesktopUserScriptKind } from "../services/desktopUserScript";
 import { securityRateLimit } from "../middleware/securityRateLimit";
-import { androidDownloadHandler } from "./androidDownload";
+import { androidDownloadHandler, androidReleaseHandler } from "./androidDownload";
 import {
   learningAssistantAiBodySchema,
   learningAssistantAiResponse,
@@ -146,6 +146,7 @@ siteRouter.get("/userscripts/weban-helper/source", async (req, res, next) => {
 });
 
 siteRouter.get("/downloads/android-app", androidDownloadHandler);
+siteRouter.get("/downloads/android", androidReleaseHandler);
 
 /** 校园地图原图的稳定下载入口；实际文件由 PDS 临时直链提供，不经过本站传输。 */
 siteRouter.get("/downloads/campus-map-original", async (_req, res) => {

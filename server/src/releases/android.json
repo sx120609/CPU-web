@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "versionCode": 37,
+  "versionName": "3.0.37",
+  "packageName": "cn.lizmt.cpuweb",
+  "fileName": "CPU-Web-Android-V37.apk",
+  "size": 2065835,
+  "sha256": "491c395145190a1ddbd70b55cba00e9f15d8afd78d2d25b62f3698c32baa1342",
+  "certificateSha256": "c18b7adc4fc870f75fe3c6c33d643fa4233af54c254c96edf48fcca6743df744",
+  "sourceCommit": "39ce6a3336570f8fc5c9e7feb092fa9fadbe586a",
+  "buildRun": 33947341121
+}
