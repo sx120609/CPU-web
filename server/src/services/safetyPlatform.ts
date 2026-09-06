@@ -1,3 +1,4 @@
+import { setTimeout as sleep } from "node:timers/promises";
 import tiku from "./safetyPlatformTiku.json";
 
 const SAFETY_PLATFORM_HOST = "wap.xiaoyuananquantong.com";
@@ -6,6 +7,9 @@ const SAFETY_PLATFORM_ORIGIN = `http://${SAFETY_PLATFORM_HOST}`;
 export const SAFETY_PLATFORM_COLLEGE_ID = "1224316225859555329";
 const SAFETY_REQUEST_TIMEOUT_MS = 20_000;
 const SAFETY_MAX_REDIRECTS = 5;
+const SAFETY_MIN_ACTION_DELAY_MS = 5_000;
+const SAFETY_SHORT_DURATION_RETRY_DELAY_MS = 10_000;
+const SAFETY_SHORT_DURATION_MAX_RETRIES = 6;
 const SAFETY_USER_AGENT =
   "Mozilla/5.0 (Linux; Android 16; wv) AppleWebKit/537.36 (KHTML, like Gecko) " +
   "Version/4.0 Chrome/146.0.7680.178 Mobile Safari/537.36 MicroMessenger/8.0.71";
@@ -25,6 +29,7 @@ type SafetyCourse = {
 
 type SafetyArticle = {
   id?: string | number;
+  isFinsh?: boolean;
 };
 
 type SafetyQuestion = {
@@ -53,6 +58,11 @@ type SafetyPlatformSession = {
   jar: SafetyCookieJar;
   userId: string;
   collegeId: string;
+};
+
+export type SafetyPlatformRunOptions = {
+  minimumActionDelayMs?: number;
+  shortDurationRetryDelayMs?: number;
 };
 
 /**
@@ -102,7 +112,7 @@ function splitSetCookieHeader(raw: string) {
 
 function getSafetyErrorMessage(payload: SafetyApiResponse, fallback: string) {
   const message = String(payload?.message || "").trim();
-  return message || fallback;
+  return message && !/^(?:请求)?成功[！!。.]?$/.test(message) ? message : fallback;
 }
 
 function isSuccessfulSafetyResponse(payload: SafetyApiResponse) {
@@ -151,7 +161,13 @@ async function safetyRequest(jar: SafetyCookieJar, url: string, init: RequestIni
   throw new Error("江苏省大学生安全教育平台重定向次数过多。");
 }
 
-async function readSafetyJson(jar: SafetyCookieJar, path: string, init: RequestInit, fallback: string) {
+async function readSafetyJson(
+  jar: SafetyCookieJar,
+  path: string,
+  init: RequestInit,
+  fallback: string,
+  acceptedFailureCodes: number[] = [],
+) {
   const response = await safetyRequest(jar, `${SAFETY_PLATFORM_BASE}${path}`, init);
   if (!response.ok) {
     throw new Error(`江苏省大学生安全教育平台请求失败（${response.status}）：${path}`);
@@ -162,7 +178,7 @@ async function readSafetyJson(jar: SafetyCookieJar, path: string, init: RequestI
   } catch {
     throw new Error(`江苏省大学生安全教育平台返回了无法解析的数据：${path}`);
   }
-  if (!isSuccessfulSafetyResponse(payload)) {
+  if (!isSuccessfulSafetyResponse(payload) && !acceptedFailureCodes.includes(Number(payload.code))) {
     throw new Error(getSafetyErrorMessage(payload, fallback));
   }
   return payload;
@@ -174,6 +190,7 @@ async function safetyPostForm(
   fields: Array<[string, string]>,
   fallback: string,
   referer?: string,
+  acceptedFailureCodes?: number[],
 ) {
   const body = new URLSearchParams(fields);
   return readSafetyJson(
@@ -188,6 +205,7 @@ async function safetyPostForm(
       body,
     },
     fallback,
+    acceptedFailureCodes,
   );
 }
 
@@ -328,8 +346,7 @@ async function getSafetyArticles(session: SafetyPlatformSession, courseId: strin
   );
   const chapters = Array.isArray(payload.data) ? payload.data : [];
   return chapters.flatMap((chapter: { list?: SafetyArticle[] }) => Array.isArray(chapter?.list) ? chapter.list : [])
-    .map((article) => String(article.id || "").trim())
-    .filter(Boolean);
+    .filter((article) => !article.isFinsh && String(article.id || "").trim());
 }
 
 async function getSafetyArticleQuestions(session: SafetyPlatformSession, articleId: string) {
@@ -373,17 +390,45 @@ function buildUnitAnswers(
   return { answers, missing };
 }
 
-async function completeSafetyArticle(session: SafetyPlatformSession, courseName: string, articleId: string) {
+async function createSafetyUnitAttempt(session: SafetyPlatformSession, articleId: string) {
+  const payload = await safetyPostForm(
+    session.jar,
+    "/wap/unitTest/create",
+    [
+      ["userId", session.userId],
+      ["articleId", articleId],
+    ],
+    "创建课程答题会话失败，请稍后重试。",
+  );
+  const logId = String(payload.data?.logId || "").trim();
+  const token = String(payload.data?.token || "").trim();
+  if (!logId || !token) throw new Error("平台没有返回课程提交凭证，请稍后重试。");
+  return { logId, token, createdAt: Date.now() };
+}
+
+async function waitForMinimumActionDelay(createdAt: number, delayMs: number) {
+  const remainingMs = Math.max(0, delayMs - (Date.now() - createdAt));
+  if (remainingMs > 0) await sleep(remainingMs);
+}
+
+async function completeSafetyArticle(
+  session: SafetyPlatformSession,
+  courseName: string,
+  articleId: string,
+  options: Required<SafetyPlatformRunOptions>,
+) {
   const questions = await getSafetyArticleQuestions(session, articleId);
   if (!questions.length) return;
   const { answers, missing } = buildUnitAnswers(session.userId, courseName, articleId, questions);
   if (missing.length) {
     throw new Error(`课程“${courseName}”有 ${missing.length} 道题不在当前题库中，已停止提交，题目：${missing.join("、")}`);
   }
+  const attempt = await createSafetyUnitAttempt(session, articleId);
+  await waitForMinimumActionDelay(attempt.createdAt, options.minimumActionDelayMs);
   const payload = await safetyPostForm(
     session.jar,
     "/wap/unitTest",
-    answers,
+    [...answers, ["logId", attempt.logId], ["token", attempt.token]],
     `课程“${courseName}”提交失败，请稍后重试。`,
   );
   if (!payload.data?.isSuccess) {
@@ -391,7 +436,11 @@ async function completeSafetyArticle(session: SafetyPlatformSession, courseName:
   }
 }
 
-async function completeSafetyCourses(session: SafetyPlatformSession, emit: (message: string) => Promise<void>) {
+async function completeSafetyCourses(
+  session: SafetyPlatformSession,
+  emit: (message: string) => Promise<void>,
+  options: Required<SafetyPlatformRunOptions>,
+) {
   const courseGroups = await Promise.all([
     getSafetyCourseList(session, "2"),
     getSafetyCourseList(session, "1"),
@@ -405,8 +454,8 @@ async function completeSafetyCourses(session: SafetyPlatformSession, emit: (mess
       const courseId = String(course.id || "").trim();
       if (!courseId) throw new Error(`课程“${courseName}”缺少课程编号。`);
       const articles = await getSafetyArticles(session, courseId);
-      for (const articleId of articles) {
-        await completeSafetyArticle(session, courseName, articleId);
+      for (const article of articles) {
+        await completeSafetyArticle(session, courseName, String(article.id), options);
       }
       await emit(`已处理课程：${courseName}`);
     }
@@ -454,8 +503,9 @@ async function createSafetyExam(session: SafetyPlatformSession, examId: string) 
     "创建考试失败，请确认必修课程已经完成。",
   );
   const logId = String(payload.data?.logId || "").trim();
-  if (!logId) throw new Error(getSafetyErrorMessage(payload, "创建考试失败，请稍后重试。"));
-  return logId;
+  const token = String(payload.data?.token || "").trim();
+  if (!logId || !token) throw new Error(getSafetyErrorMessage(payload, "平台没有返回考试提交凭证，请稍后重试。"));
+  return { logId, token, createdAt: Date.now() };
 }
 
 async function getSafetyExamQuestions(session: SafetyPlatformSession, logId: string, examId: string) {
@@ -475,7 +525,10 @@ async function submitSafetyExam(
   session: SafetyPlatformSession,
   examId: string,
   logId: string,
+  token: string,
   rows: SafetyExamRow[],
+  createdAt: number,
+  options: Required<SafetyPlatformRunOptions>,
 ) {
   const fields: Array<[string, string]> = [
     ["examId", examId],
@@ -484,6 +537,7 @@ async function submitSafetyExam(
     ["logId", logId],
     ["userId", session.userId],
     ["ah", ""],
+    ["token", token],
   ];
   const missing: string[] = [];
   for (const row of rows) {
@@ -503,13 +557,24 @@ async function submitSafetyExam(
   if (missing.length) {
     throw new Error(`考试题库缺少 ${missing.length} 道题，已停止交卷，题目：${missing.join("、")}`);
   }
-  const payload = await safetyPostForm(
-    session.jar,
-    "/wap/imitateTest",
-    fields,
-    "考试提交失败，请稍后重试。",
-    `${SAFETY_PLATFORM_BASE}/wap/newStudentssimulate?examId=${encodeURIComponent(examId)}&examType=2&userId=${encodeURIComponent(session.userId)}&ah`,
-  );
+  await waitForMinimumActionDelay(createdAt, options.minimumActionDelayMs);
+  let payload: SafetyApiResponse | undefined;
+  for (let attempt = 0; attempt <= SAFETY_SHORT_DURATION_MAX_RETRIES; attempt += 1) {
+    payload = await safetyPostForm(
+      session.jar,
+      "/wap/imitateTest",
+      fields,
+      "考试提交失败，请稍后重试。",
+      `${SAFETY_PLATFORM_BASE}/wap/newStudentssimulate?examId=${encodeURIComponent(examId)}&examType=2&userId=${encodeURIComponent(session.userId)}&ah`,
+      [1006],
+    );
+    if (Number(payload.code) !== 1006) break;
+    if (attempt === SAFETY_SHORT_DURATION_MAX_RETRIES) {
+      throw new Error("平台持续提示答题时间过短，请稍后重新发送“刷课”重试。");
+    }
+    await sleep(options.shortDurationRetryDelayMs);
+  }
+  if (!payload) throw new Error("考试提交失败，请稍后重试。");
   if (!payload.data?.isSuccess) throw new Error(getSafetyErrorMessage(payload, "考试未通过，请稍后重试。"));
   const score = Number(payload.data?.count);
   if (!Number.isFinite(score)) throw new Error("考试提交成功，但平台没有返回有效分数。");
@@ -532,18 +597,23 @@ export type SafetyPlatformRunResult = {
 export async function runSafetyPlatform(
   credentials: SafetyPlatformCredentials,
   onProgress?: SafetyPlatformProgress,
+  runOptions: SafetyPlatformRunOptions = {},
 ): Promise<SafetyPlatformRunResult> {
+  const options: Required<SafetyPlatformRunOptions> = {
+    minimumActionDelayMs: Math.max(0, runOptions.minimumActionDelayMs ?? SAFETY_MIN_ACTION_DELAY_MS),
+    shortDurationRetryDelayMs: Math.max(0, runOptions.shortDurationRetryDelayMs ?? SAFETY_SHORT_DURATION_RETRY_DELAY_MS),
+  };
   const session = await loginSafetyPlatform(credentials);
   const emit = async (message: string) => {
     if (onProgress) await onProgress(message);
   };
-  const completedCourses = await completeSafetyCourses(session, emit);
+  const completedCourses = await completeSafetyCourses(session, emit, options);
   await emit("必修课程已完成，正在准备考试。");
   const examId = await getSafetyExamId(session);
-  const logId = await createSafetyExam(session, examId);
-  const rows = await getSafetyExamQuestions(session, logId, examId);
+  const exam = await createSafetyExam(session, examId);
+  const rows = await getSafetyExamQuestions(session, exam.logId, examId);
   await emit(`已获取 ${rows.length} 道考试题目，正在提交答案。`);
-  const score = await submitSafetyExam(session, examId, logId, rows);
+  const score = await submitSafetyExam(session, examId, exam.logId, exam.token, rows, exam.createdAt, options);
   return {
     score,
     certificateUrl: buildSafetyCertificateUrl(session.userId),
