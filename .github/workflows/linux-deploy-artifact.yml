@@ -55,6 +55,9 @@ jobs:
           TSX_TSCONFIG_PATH: web/tsconfig.json
         run: node --import ./server/node_modules/tsx/dist/loader.mjs --test web/tests/scheduleEdits.test.ts web/tests/scheduleChanges.test.ts
 
+      - name: Test file submission authentication
+        run: node --import ./server/node_modules/tsx/dist/loader.mjs --test web/tests/filestoreUpload.test.ts server/tests/browserSecurity.integration.test.ts
+
       - name: Verify published Android package and enterprise delivery
         env:
           GH_TOKEN: ${{ github.token }}

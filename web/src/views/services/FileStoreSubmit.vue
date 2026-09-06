@@ -221,7 +221,7 @@ import { computed, onBeforeUnmount, reactive, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import {
   filestoreApi,
-  filestoreUrl,
+  filestoreUpload,
   type FilestoreDuplicatePayload,
   type FilestorePreparedLocalFile,
   type FilestorePreparedRemoteFile,
@@ -670,7 +670,7 @@ async function submitRemote(files: File[], overwrite: boolean) {
     form.append("localFileIds", JSON.stringify(localEntries.map((entry) => entry.preparedFile.id)));
     form.append("overwrite", overwrite ? "true" : "false");
     localEntries.forEach((entry) => form.append("files", entry.file, entry.file.name));
-    return xhrJson<FilestoreSubmitResult>(filestoreUrl(`/api/submit/${slug.value}/complete-remote`), form, (loaded) => {
+    return filestoreUpload<FilestoreSubmitResult>(`/api/submit/${encodeURIComponent(slug.value)}/complete-remote`, form, (loaded) => {
       localUploadedBytes = loaded;
       progress.value = totalBytes ? Math.min(99, Math.round(((uploadedBytes + localUploadedBytes) / totalBytes) * 100)) : 0;
     });
@@ -712,25 +712,8 @@ function submitMultipart(files: File[], overwrite: boolean) {
   form.append("overwrite", overwrite ? "true" : "false");
   files.forEach((file) => form.append("files", file, file.name));
   message("正在上传...");
-  return xhrJson<FilestoreSubmitResult>(filestoreUrl(`/api/submit/${slug.value}`), form, (loaded, total) => {
-    progress.value = total ? Math.round((loaded / total) * 100) : 0;
-  });
-}
-
-function xhrJson<T>(url: string, form: FormData, onProgress: (loaded: number, total: number) => void) {
-  return new Promise<T>((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.upload.addEventListener("progress", (event) => {
-      if (event.lengthComputable) onProgress(event.loaded, event.total);
-    });
-    xhr.addEventListener("load", () => {
-      const payload = JSON.parse(xhr.responseText || "{}");
-      if (xhr.status >= 200 && xhr.status < 300) resolve(payload as T);
-      else reject(new Error(payload.error || payload.message || "提交失败"));
-    });
-    xhr.addEventListener("error", () => reject(new Error("网络错误，提交失败")));
-    xhr.open("POST", url);
-    xhr.send(form);
+  return filestoreUpload<FilestoreSubmitResult>(`/api/submit/${encodeURIComponent(slug.value)}`, form, (loaded, total) => {
+    progress.value = total ? Math.min(99, Math.round((loaded / total) * 100)) : 0;
   });
 }
 

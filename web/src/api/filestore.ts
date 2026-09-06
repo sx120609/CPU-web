@@ -325,6 +325,31 @@ export async function filestoreFetch<T>(path: string, init: JsonRequestInit = {}
   return payload as T;
 }
 
+export function filestoreUpload<T>(path: string, form: FormData, onProgress: (loaded: number, total: number) => void) {
+  return new Promise<T>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.upload.addEventListener("progress", (event) => {
+      if (event.lengthComputable) onProgress(event.loaded, event.total);
+    });
+    xhr.addEventListener("load", () => {
+      let payload: Record<string, unknown>;
+      try {
+        payload = JSON.parse(xhr.responseText || "{}");
+        if (!payload || typeof payload !== "object") throw new Error("Invalid payload");
+      } catch {
+        reject(new FilestoreApiError(xhr.status, "上传响应格式异常，请稍后重试"));
+        return;
+      }
+      if (xhr.status >= 200 && xhr.status < 300) resolve(payload as T);
+      else reject(new FilestoreApiError(xhr.status, String(payload.error || payload.message || "提交失败"), payload));
+    });
+    xhr.addEventListener("error", () => reject(new FilestoreApiError(0, "网络错误，提交失败")));
+    xhr.open("POST", filestoreUrl(path));
+    headers().forEach((value, name) => xhr.setRequestHeader(name, value));
+    xhr.send(form);
+  });
+}
+
 export async function filestoreBlob(path: string, init: RequestInit = {}) {
   const response = await fetch(filestoreUrl(path), {
     ...init,

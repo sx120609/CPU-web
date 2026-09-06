@@ -110,8 +110,14 @@ test("browser auth uses encrypted HttpOnly session and enforces CSRF", async (t)
   const contentSecurityPolicy = accepted.headers.get("content-security-policy") || "";
   assert.match(contentSecurityPolicy, /require-trusted-types-for 'script'/);
   assert.match(contentSecurityPolicy, /trusted-types default dompurify vue/);
-  assert.match(contentSecurityPolicy, /script-src 'self' https:\/\/img\.cputime\.cn https:\/\/cputime-1462084442\.cos\.ap-shanghai\.myqcloud\.com/);
-  assert.match(contentSecurityPolicy, /font-src 'self' data: https:\/\/img\.cputime\.cn https:\/\/cputime-1462084442\.cos\.ap-shanghai\.myqcloud\.com/);
+  for (const name of ["script-src", "font-src"]) {
+    const sources = contentSecurityPolicy.split(";").map((directive) => directive.trim().split(/\s+/))
+      .find(([directive]) => directive === name) || [];
+    for (const expected of ["'self'", "https://img.cputime.cn", "https://cputime-1462084442.cos.ap-shanghai.myqcloud.com"]) {
+      assert.ok(sources.includes(expected), `${name} must allow ${expected}`);
+    }
+    if (name === "font-src") assert.ok(sources.includes("data:"));
+  }
 
   const nonPersistentLogin = await fetch(`${origin}/session-login`, {
     method: "POST",
