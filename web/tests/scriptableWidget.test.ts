@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import vm from "node:vm";
 import { buildScriptableWidgetScript } from "../src/views/schedule/scriptableWidget";
+import { buildScheduleWidgetPayload } from "../../server/src/services/scheduleWidget";
 
 type Course = {
   name: string;
@@ -54,6 +55,7 @@ async function runWidget(input: {
   fixedNow: string;
   family: "small" | "medium" | "large";
   parameter?: string;
+  response?: Record<string, unknown>;
 }) {
   const fixedNow = new Date(input.fixedNow).getTime();
   let rendered: WidgetResult | undefined;
@@ -74,7 +76,7 @@ async function runWidget(input: {
     timeoutInterval = 0;
     constructor(_endpoint: string) {}
     async loadJSON() {
-      return { code: 0, data: input.payload };
+      return input.response ?? { code: 0, data: input.payload };
     }
   }
 
@@ -127,6 +129,31 @@ async function runWidget(input: {
 function course(name: string, startTime: string, endTime: string, startSlot?: number, endSlot?: number): Course {
   return { name, location: "B201", teacher: "老师", startTime, endTime, startSlot, endSlot };
 }
+
+test("the existing copied script renders Monday from the shared server payload without changes", async () => {
+  const fixedNow = "2026-09-06T04:00:00Z";
+  const semester = "2026-2027-1";
+  const calendar = { currentSemester: semester, weeks: [
+    { week: 1, days: ["2026-08-31", "2026-09-01", "2026-09-02", "2026-09-03", "2026-09-04", "2026-09-05", "2026-09-06"] },
+    { week: 2, days: ["2026-09-07", "2026-09-08", "2026-09-09", "2026-09-10", "2026-09-11", "2026-09-12", "2026-09-13"] },
+  ] };
+  const nextWeek = { currentSemester: semester, cells: [{ day: 1, bigSlot: 1, courses: [{
+    name: "共享接口的周一课程", weeks: "2周", startSlot: 1, endSlot: 2,
+  }] }] };
+  const payload = buildScheduleWidgetPayload({ currentSemester: semester, cells: [] }, calendar, "", new Date(fixedNow), { 2: nextWeek });
+  const rendered = await runWidget({ payload, fixedNow, family: "large", parameter: "twoday" });
+  assert.ok(rendered.texts.includes("共享接口的周一课程"));
+  assert.ok(rendered.texts.includes("9.7"));
+});
+
+test("the existing copied script reports an API failure instead of claiming no classes", async () => {
+  const rendered = await runWidget({
+    payload: {}, fixedNow: "2026-09-06T04:00:00Z", family: "large", parameter: "twoday",
+    response: { code: 5002, data: null, message: "暂时无法获取课表" },
+  });
+  assert.ok(rendered.texts.includes("课表读取失败"));
+  assert.ok(!rendered.texts.includes("没有课程"));
+});
 
 test("Scriptable widget keeps tomorrow's date monotonic at a Sunday boundary", async () => {
   const days = Array.from({ length: 7 }, (_, index) => ({

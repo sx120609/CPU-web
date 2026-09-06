@@ -1,6 +1,8 @@
 import { normalizeCalendarWeekDays } from "./jwxtParser";
+import { courseMatchesWeek, normalizedCourseWeekList } from "../shared/scheduleWeeks";
+export { parseWeekText as parseScheduleWidgetWeeks } from "../shared/scheduleWeeks";
 
-export const SCHEDULE_WIDGET_PAYLOAD_VERSION = 10;
+export const SCHEDULE_WIDGET_PAYLOAD_VERSION = 11;
 
 export function isScheduleWidgetCredentialActive<T extends { revokedAt?: Date | null }>(
   record: T | null | undefined,
@@ -28,9 +30,19 @@ export function parseScheduleWidgetCache(payload?: string | null) {
   }
 }
 
-export function scheduleWidgetImmediateCachedPayload(payload?: string | null, requestedWeek = "") {
-  if (String(requestedWeek || "").trim()) return null;
-  return parseScheduleWidgetCache(payload);
+export function scheduleWidgetFallbackPayload(payload?: string | null, requestedWeek = "", now = new Date()) {
+  const parsed = parseScheduleWidgetCache(payload);
+  if (!parsed || String(parsed.requestedWeek || "") !== String(requestedWeek || "").trim()) return null;
+  const candidates = [...(Array.isArray(parsed.weekDays) ? parsed.weekDays : []), ...(Array.isArray(parsed.days) ? parsed.days : [])];
+  if (requestedWeek) {
+    return Array.from({ length: 7 }, (_, index) => index + 1).every((day) => candidates.some((item) => (
+      item?.day === day && Number(item.week) === Number(requestedWeek) && Array.isArray(item.courses)
+    ))) ? parsed : null;
+  }
+  const today = chinaDateParts(now).ymd;
+  return Array.from({ length: 8 }, (_, offset) => addDaysToYmd(today, offset)).every((date) => candidates.some((item) => (
+    item?.date === date && Array.isArray(item.courses)
+  ))) ? parsed : null;
 }
 
 const SMALL_SLOTS = [
@@ -75,63 +87,6 @@ function normalizeSlotRange(bigSlot: number, course: any) {
 
 function normalizeKeyPart(value?: string) {
   return String(value ?? "").trim().replace(/\s+/g, " ");
-}
-
-function normalizeWeekText(text?: string | null) {
-  return String(text ?? "")
-    .replace(/[０-９]/g, (char) => String(char.charCodeAt(0) - 0xff10))
-    .replace(/[（]/g, "(")
-    .replace(/[）]/g, ")")
-    .replace(/[－–—~～]/g, "-")
-    .replace(/第/g, "")
-    .replace(/\s+/g, "");
-}
-
-function parseWeekKind(text: string): "all" | "odd" | "even" {
-  if (/单双周/.test(text)) return "all";
-  if (/单周|\(单\)|[^双]单/.test(text)) return "odd";
-  if (/双周|\(双\)|双/.test(text)) return "even";
-  return "all";
-}
-
-export function parseScheduleWidgetWeeks(text?: string | null) {
-  const source = normalizeWeekText(text);
-  if (!source) return [] as number[];
-  const out = new Set<number>();
-  const clauses = source.split(/[,，、;；]+/).map((item) => item.trim()).filter(Boolean);
-
-  for (const clause of clauses.length ? clauses : [source]) {
-    const kind = parseWeekKind(clause);
-    const matches = [...clause.matchAll(/(\d{1,2})\s*(?:[-~至到]\s*(\d{1,2}))?/g)];
-    for (const match of matches) {
-      const start = Number(match[1]);
-      const end = Number(match[2] || match[1]);
-      if (!Number.isFinite(start) || !Number.isFinite(end)) continue;
-      const min = Math.max(1, Math.min(start, end));
-      const max = Math.min(64, Math.max(start, end));
-      for (let week = min; week <= max; week += 1) {
-        if (kind === "odd" && week % 2 === 0) continue;
-        if (kind === "even" && week % 2 === 1) continue;
-        out.add(week);
-      }
-    }
-  }
-  return [...out].sort((a, b) => a - b);
-}
-
-function normalizedCourseWeekList(course: any) {
-  const parsed = parseScheduleWidgetWeeks(course?.weeks);
-  if (parsed.length) return parsed;
-  return Array.isArray(course?.weekList)
-    ? [...new Set<number>(course.weekList.map(Number).filter((week: number) => Number.isFinite(week) && week > 0))]
-      .sort((a, b) => a - b)
-    : [];
-}
-
-function courseMatchesWeek(course: any, week: number) {
-  if (!week) return false;
-  const list = normalizedCourseWeekList(course);
-  return list.length ? list.includes(week) : true;
 }
 
 function chinaDateParts(date = new Date()) {
@@ -181,63 +136,10 @@ function calendarWeekForDate(calendar: any | null, ymd: string) {
   return { week: 0, day: 0, days: [] as string[] };
 }
 
-function semesterAnchorMonday(semester: string) {
-  const match = String(semester || "").match(/^(\d{4})-(\d{4})-(1|2)$/);
-  if (!match) return "";
-  const anchor = match[3] === "1"
-    ? `${match[1]}-09-01`
-    : `${match[2]}-03-01`;
-  const day = dayOfWeekForYmd(anchor);
-  return day ? addDaysToYmd(anchor, 1 - day) : "";
-}
-
-export function inferScheduleWidgetSemester(now = new Date(), previewDays = 2) {
-  const target = addDaysToYmd(chinaDateParts(now).ymd, Math.max(0, previewDays));
-  const year = Number(target.slice(0, 4));
-  if (!Number.isFinite(year)) return "";
-  const fallSemester = `${year}-${year + 1}-1`;
-  if (target >= semesterAnchorMonday(fallSemester)) return fallSemester;
-  const springSemester = `${year - 1}-${year}-2`;
-  if (target >= semesterAnchorMonday(springSemester)) return springSemester;
-  return `${year - 1}-${year}-1`;
-}
-
-function scheduleWeekCount(parsed: any) {
-  const optionMax = Math.max(0, ...(parsed?.weeks ?? []).map((item: any) => Number(item?.value) || 0));
-  const courseMax = Math.max(0, ...(parsed?.cells ?? [])
-    .flatMap((cell: any) => (cell?.courses ?? []).flatMap((course: any) => normalizedCourseWeekList(course))));
-  return Math.max(20, optionMax, courseMax);
-}
-
-export function resolveScheduleWidgetCalendar(calendar: any | null, parsed: any, now = new Date()) {
-  const semester = String(parsed?.currentSemester || "").trim();
-  const anchorMonday = semesterAnchorMonday(semester);
-  const today = chinaDateParts(now).ymd;
-  const calendarWeekOne = normalizeCalendarWeekDays(
-    (calendar?.weeks ?? []).find((item: any) => Number(item?.week) === 1)?.days ?? [],
-  )[0] || "";
-  const sameSemester = semester && String(calendar?.currentSemester || "").trim() === semester;
-  const containsToday = (calendar?.weeks ?? []).some((item: any) => (
-    normalizeCalendarWeekDays(item?.days ?? []).includes(today)
-  ));
-  if (calendar?.weeks?.length && (sameSemester || containsToday || (anchorMonday && calendarWeekOne === anchorMonday))) {
-    return calendar;
-  }
-  if (!anchorMonday) return calendar;
-
-  const weeks = Array.from({ length: scheduleWeekCount(parsed) }, (_, index) => {
-    const monday = addDaysToYmd(anchorMonday, index * 7);
-    const days = Array.from({ length: 7 }, (_, offset) => addDaysToYmd(monday, offset));
-    return { week: index + 1, days, monday, sunday: days[6] };
-  });
-  return {
-    currentSemester: semester,
-    semesterStart: anchorMonday,
-    semesterEnd: weeks[weeks.length - 1]?.sunday || anchorMonday,
-    currentWeek: weeks.find((item) => item.days.includes(today))?.week ?? 0,
-    today,
-    weeks,
-  };
+export function resolveScheduleWidgetCalendar(calendar: any | null, parsed: any) {
+  if (!calendar?.weeks?.length) return null;
+  if (calendar.currentSemester && parsed?.currentSemester && calendar.currentSemester !== parsed.currentSemester) return null;
+  return calendar;
 }
 
 export function resolveScheduleWidgetPreviewWeeks(calendar: any | null, queryWeek = "", now = new Date()) {
@@ -325,7 +227,7 @@ export function buildScheduleWidgetPayload(
 ) {
   const today = chinaDateParts(now);
   const todayDay = chinaDayOfWeek(today);
-  const effectiveCalendar = resolveScheduleWidgetCalendar(calendar, parsed, now);
+  const effectiveCalendar = resolveScheduleWidgetCalendar(calendar, parsed);
   const calendarToday = calendarWeekForDate(effectiveCalendar, today.ymd);
   const requestedWeek = Number(queryWeek || 0);
   const explicitWeek = Number.isFinite(requestedWeek) && requestedWeek > 0;

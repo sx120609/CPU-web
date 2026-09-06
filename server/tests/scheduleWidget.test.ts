@@ -2,14 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildScheduleWidgetPayload,
-  inferScheduleWidgetSemester,
   isScheduleWidgetCredentialActive,
   parseScheduleWidgetCache,
   parseScheduleWidgetWeeks,
   resolveScheduleWidgetCalendar,
   resolveScheduleWidgetPreviewWeeks,
   scheduleWidgetCredentialRefreshData,
-  scheduleWidgetImmediateCachedPayload,
+  scheduleWidgetFallbackPayload,
   SCHEDULE_WIDGET_PAYLOAD_VERSION,
 } from "../src/services/scheduleWidget";
 
@@ -30,7 +29,7 @@ test("refreshing widget credentials preserves the last successful payload", () =
   assert.equal("cachedAt" in scheduleWidgetCredentialRefreshData("new-session-token"), false);
 });
 
-test("the current widget can return its persistent payload before a slow refresh", () => {
+test("fallback requires the complete widget date window, not merely a valid payload version", () => {
   const cached = JSON.stringify({
     payloadVersion: SCHEDULE_WIDGET_PAYLOAD_VERSION,
     strictDate: true,
@@ -38,8 +37,14 @@ test("the current widget can return its persistent payload before a slow refresh
     days: [],
   });
 
-  assert.deepEqual(scheduleWidgetImmediateCachedPayload(cached), JSON.parse(cached));
-  assert.equal(scheduleWidgetImmediateCachedPayload(cached, "2"), null);
+  assert.equal(scheduleWidgetFallbackPayload(cached), null);
+  const now = new Date("2026-09-06T04:00:00Z");
+  const valid = JSON.stringify({ ...JSON.parse(cached), days: Array.from({ length: 8 }, (_, offset) => ({
+    date: `2026-09-${String(6 + offset).padStart(2, "0")}`, courses: [],
+  })) });
+  assert.deepEqual(scheduleWidgetFallbackPayload(valid, "", now), JSON.parse(valid));
+  assert.equal(scheduleWidgetFallbackPayload(valid, "2", now), null);
+  assert.equal(scheduleWidgetFallbackPayload(valid, "", new Date("2026-09-07T04:00:00Z")), null);
 });
 
 test("the immediate widget fallback rejects malformed or incompatible payloads", () => {
@@ -203,52 +208,11 @@ test("schedule widget includes the next seven days so an empty day can advance t
   assert.equal(payload.days.find((day) => day.date === "2026-07-29")?.courses[0]?.name, "下周课程");
 });
 
-test("schedule widget loads real Monday courses when the default calendar belongs to the old semester", () => {
-  const calendar = {
-    currentSemester: "2025-2026-2",
-    currentWeek: 0,
-    weeks: [calendarFor(1, [
-      "2026-03-02", "2026-03-03", "2026-03-04", "2026-03-05",
-      "2026-03-06", "2026-03-07", "2026-03-08",
-    ]).weeks[0]],
-  };
-  const now = new Date("2026-08-30T04:39:00.000Z");
-  assert.equal(inferScheduleWidgetSemester(now), "2026-2027-1");
-  const nextWeekSchedule = {
-    currentSemester: "2026-2027-1",
-    cells: [
-      { day: 1, bigSlot: 1, courses: [course("药物设计学", "1-9周", "邹毅", 1, 2)] },
-      { day: 1, bigSlot: 2, courses: [course("药剂学", "1-4周", "苏志桂", 3, 4)] },
-      { day: 1, bigSlot: 5, courses: [course("医学免疫学", "1周", "李恩涛", 9, 10)] },
-    ],
-  };
-  const currentSchedule = {
-    currentSemester: "2026-2027-1",
-    weeks: Array.from({ length: 20 }, (_, index) => ({ value: String(index + 1) })),
-    cells: [],
-  };
-
-  const resolvedCalendar = resolveScheduleWidgetCalendar(calendar, currentSchedule, now);
-  assert.equal(resolvedCalendar.currentSemester, "2026-2027-1");
-  assert.equal(resolvedCalendar.weeks[0].days[0], "2026-08-31");
-  assert.deepEqual(resolveScheduleWidgetPreviewWeeks(resolvedCalendar, "", now), [1]);
-  const payload = buildScheduleWidgetPayload(
-    currentSchedule,
-    calendar,
-    "",
-    now,
-    { 1: nextWeekSchedule },
-  );
-
-  const tomorrow = payload.days.find((day) => day.date === "2026-08-31");
-  assert.equal(payload.today.date, "2026-08-30");
-  assert.equal(payload.displayWeek, 1);
-  assert.equal(payload.weekDays.length, 7);
-  assert.equal(payload.weekDays[0].date, "2026-08-31");
-  assert.equal(payload.weekDays[6].date, "2026-09-06");
-  assert.deepEqual(payload.weekDays[0].courses.map((item) => item.name), ["药物设计学", "药剂学", "医学免疫学"]);
-  assert.equal(tomorrow?.label, "周一");
-  assert.equal(tomorrow?.week, 1);
-  assert.deepEqual(tomorrow?.courses.map((item) => item.name), ["药物设计学", "药剂学", "医学免疫学"]);
-  assert.notEqual(tomorrow?.date, "2026-08-24");
+test("widget dates require the matching school calendar and never infer the first teaching week", () => {
+  const parsed = { currentSemester: "2026-2027-1", cells: [] };
+  assert.equal(resolveScheduleWidgetCalendar(null, parsed), null);
+  const oldCalendar = { ...calendarFor(1, ["2026-03-02"]), currentSemester: "2025-2026-2" };
+  assert.equal(resolveScheduleWidgetCalendar(oldCalendar, parsed), null);
+  const matching = { ...calendarFor(1, ["2026-09-07"]), currentSemester: "2026-2027-1" };
+  assert.equal(resolveScheduleWidgetCalendar(matching, parsed), matching);
 });

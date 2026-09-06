@@ -258,9 +258,13 @@ export async function withCache<T>(
   parts: Array<string | number | boolean | null | undefined>,
   ttlMs: number,
   loader: () => Promise<T>,
+  options: { refresh?: boolean } = {},
 ) {
   const version = await getCacheVersion(domain);
   const key = cacheEntryKey(domain, version, parts);
+  if (options.refresh) {
+    return decodeCachePayload<T>(await startCacheLoad(key, ttlMs, loader)).data;
+  }
   const local = readLocalValue(key);
   if (local !== null) {
     const cached = decodeCachePayload<T>(local);

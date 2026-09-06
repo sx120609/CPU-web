@@ -1885,10 +1885,14 @@ async function loadSchedule(force = false, background = false) {
     scheduleSource.value = "jwxt";
     graduateSourceMeta.value = null;
     parsed.value = r.parsed;
+    if (r.calendar) {
+      calendar.value = hydrateCalendar(r.calendar);
+      writeCache(calendarCacheKey(r.parsed.currentSemester), calendar.value);
+    }
     if (!semester.value) semester.value = parsed.value?.currentSemester ?? "";
     if (!week.value) week.value = currentWeekValue();
     loadScheduleEdits();
-    scheduleSavedAt.value = Date.now();
+    scheduleSavedAt.value = Date.parse(r.syncedAt || "") || Date.now();
     saveScheduleCache();
     saveLastState();
     prewarmAdjacentWeekCaches();

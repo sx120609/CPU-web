@@ -33,3 +33,13 @@ test("cache version invalidation never serves the stale value from an older vers
   await bumpCacheVersion(domain);
   assert.equal(await withCache(domain, ["one"], 60_000, async () => value), 2);
 });
+
+test("explicit refresh replaces the value used by subsequent readers", async () => {
+  const { withCache } = await import("../src/services/cache");
+  let value = 1;
+  const read = (refresh = false) => withCache("test-forced-refresh", ["one"], 60_000, async () => value, { refresh });
+  assert.equal(await read(), 1);
+  value = 2;
+  assert.equal(await read(true), 2);
+  assert.equal(await read(), 2);
+});

@@ -1,10 +1,5 @@
 import { prisma } from "../prisma";
-import { getCalendar, getSchedule } from "./jwxtTransport";
-import {
-  buildScheduleWidgetPayload,
-  inferScheduleWidgetSemester,
-  resolveScheduleWidgetCalendar,
-} from "./scheduleWidget";
+import { loadScheduleWidgetData } from "./scheduleWidgetData";
 
 export type WechatScheduleQuery = {
   scope: "day" | "week";
@@ -43,16 +38,17 @@ export async function loadWechatSchedule(
   if (jwxtToken) {
     try {
       const now = new Date();
-      const semester = inferScheduleWidgetSemester(now);
-      const [calendar, parsed] = await Promise.all([
-        getCalendar(jwxtToken).catch(() => null),
-        getSchedule(jwxtToken, { semester }),
-      ]);
-      const resolvedCalendar = resolveScheduleWidgetCalendar(calendar, parsed, now);
-      const currentPayload = buildScheduleWidgetPayload(parsed, resolvedCalendar, "", now);
+      const prepare = async () => (schedule: any) => schedule;
+      const currentPayload = await loadScheduleWidgetData(jwxtToken, "", prepare, { now });
+      const targetWeek = query.scope === "week" || query.weekday
+        ? Number(query.weekNumber || currentPayload.currentWeek + Number(query.weekOffset || 0))
+        : currentPayload.displayWeek;
+      const selectedPayload = targetWeek > 0 && targetWeek !== currentPayload.displayWeek
+        ? await loadScheduleWidgetData(jwxtToken, String(targetWeek), prepare, { now })
+        : currentPayload;
       return selectWechatSchedule(currentPayload, query, {
-        cached: false,
-        buildWeek: (week) => buildScheduleWidgetPayload(parsed, resolvedCalendar, String(week), now),
+        cached: currentPayload.stale || selectedPayload.stale,
+        buildWeek: (week) => week === selectedPayload.displayWeek ? selectedPayload : null,
         now,
       });
     } catch (error) {

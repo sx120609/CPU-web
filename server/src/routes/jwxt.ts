@@ -9,22 +9,18 @@ import { validate } from "../middleware/validate";
 import { authRequired } from "../middleware/auth";
 import { securityRateLimit } from "../middleware/securityRateLimit";
 import { prisma } from "../prisma";
-import { getCacheVersion, getCachedJson, runWithDistributedLock, setCachedJson, withCache } from "../services/cache";
+import { getCacheVersion, withCache } from "../services/cache";
 import { detectLoginClient } from "../utils/loginClient";
 import { invalidateJwxtWidgetCaches } from "../services/cacheInvalidation";
-import { buildRedisKey } from "../services/redis";
 import { getSiteOrigin } from "../services/siteSettings";
 import {
-  buildScheduleWidgetPayload,
-  inferScheduleWidgetSemester,
   isScheduleWidgetCredentialActive,
-  parseScheduleWidgetCache,
   scheduleWidgetCredentialRefreshData,
-  scheduleWidgetImmediateCachedPayload,
-  resolveScheduleWidgetCalendar,
-  resolveScheduleWidgetPreviewWeeks,
-  SCHEDULE_WIDGET_PAYLOAD_VERSION,
+  scheduleWidgetFallbackPayload,
 } from "../services/scheduleWidget";
+import { applyScheduleEditsToCells, normalizeScheduleEditsState } from "../shared/scheduleEdits";
+import { scheduleData } from "../services/scheduleData";
+import { loadScheduleWidgetData } from "../services/scheduleWidgetData";
 import {
   parseGraduateSchedule,
   parseGraduateSchedulePayload,
@@ -46,7 +42,6 @@ import {
   getGrades,
   getMidtermGrades,
   getExams,
-  getCalendar,
   getProgress,
   getPyfa,
   getIApps,
@@ -65,13 +60,12 @@ const JWXT_SCHEDULE_CACHE_TTL_MS = 5 * 60_000;
 const JWXT_GRADES_CACHE_TTL_MS = 30 * 60_000;
 const JWXT_MIDTERM_CACHE_TTL_MS = 30 * 60_000;
 const JWXT_EXAMS_CACHE_TTL_MS = 30 * 60_000;
-const JWXT_CALENDAR_CACHE_TTL_MS = 24 * 60 * 60_000;
 const JWXT_PROGRESS_CACHE_TTL_MS = 30 * 60_000;
 const JWXT_PYFA_CACHE_TTL_MS = 6 * 60 * 60_000;
 const JWXT_IAPPS_CACHE_TTL_MS = 60 * 60_000;
 const JWXT_IAPP_ICON_CACHE_TTL_MS = 7 * 24 * 60 * 60_000;
-const JWXT_SOURCE_CACHE_REVISION = "source-v8";
 const JWXT_IDENTITY_CACHE_REVISION = "probe-v4";
+const JWXT_SOURCE_CACHE_REVISION = "source-v8";
 const GRAD_SCHEDULE_DEBUG_BINDTERM_CANDIDATES = [
   path.resolve(process.cwd(), ".debug", "grad-bindterm.json"),
   path.resolve(process.cwd(), "server", ".debug", "grad-bindterm.json"),
@@ -342,20 +336,7 @@ function emptyScheduleEdits() {
 }
 
 function normalizeScheduleEdits(input: unknown) {
-  const parsed = scheduleEditStateSchema.parse(input);
-  const hidden = Array.from(new Set(parsed.hidden.map((item) => item.trim()).filter(Boolean)));
-  const custom = parsed.custom.map((item) => ({
-    ...item,
-    sourceKey: item.sourceKey?.trim() || undefined,
-    course: {
-      ...item.course,
-      weekList: Array.from(new Set(item.course.weekList)).sort((a, b) => a - b),
-      teacher: item.course.teacher?.trim() || undefined,
-      location: item.course.location?.trim() || undefined,
-      slotNote: item.course.slotNote?.trim() || undefined,
-    },
-  }));
-  return { hidden, custom };
+  return normalizeScheduleEditsState(scheduleEditStateSchema.parse(input));
 }
 
 function ensureEditClient(req: any) {
@@ -382,146 +363,17 @@ function absoluteWidgetEndpoint(req: any, token: string) {
   return `${base}/api/jwxt/schedule-widget?token=${encodeURIComponent(token)}`;
 }
 
-function normalizeKeyPart(value?: string) {
-  return String(value ?? "").trim().replace(/\s+/g, " ");
-}
-
-function courseEditKey(day: number, bigSlot: number, course: any) {
-  if (course?.customId) return `custom:${course.customId}`;
-  return [
-    "jwxt",
-    day,
-    bigSlot,
-    course?.startSlot ?? "",
-    course?.endSlot ?? "",
-    normalizeKeyPart(course?.name),
-    normalizeKeyPart(course?.teacher),
-    normalizeKeyPart(course?.location),
-    normalizeKeyPart(course?.weeks),
-  ].join("|");
-}
-
-function applyScheduleEditsToCells(cells: any[], edits: z.infer<typeof scheduleEditStateSchema>) {
-  const hidden = new Set(edits.hidden);
-  const byCell = new Map<string, any[]>();
-  for (const item of edits.custom) {
-    const key = `${item.day}:${item.bigSlot}`;
-    const list = byCell.get(key) ?? [];
-    list.push({
-      ...item.course,
-      sourceKey: item.sourceKey,
-      custom: true,
-      customId: item.id,
-    });
-    byCell.set(key, list);
-  }
-
-  const merged = (cells ?? []).map((cell) => {
-    const courses = (cell.courses ?? []).filter((course: any) => !hidden.has(courseEditKey(cell.day, cell.bigSlot, course)));
-    const custom = byCell.get(`${cell.day}:${cell.bigSlot}`) ?? [];
-    return { ...cell, courses: [...courses, ...custom] };
-  });
-
-  for (const [key, courses] of byCell.entries()) {
-    const exists = merged.some((cell) => `${cell.day}:${cell.bigSlot}` === key);
-    if (exists) continue;
-    const [day, bigSlot] = key.split(":").map(Number);
-    merged.push({ day, bigSlot, courses });
-  }
-
-  return merged.filter((cell) => cell.courses.length);
-}
-
 async function readScheduleEditsForWidget(userId: number, semester: string) {
   const row = await prisma.userScheduleEdit.findUnique({
     where: { userId_semester: { userId, semester: semester || "current" } },
     select: { payload: true },
   });
-  if (!row?.payload && semester !== "current") {
-    return readScheduleEditsForWidget(userId, "current");
-  }
   if (!row?.payload) return emptyScheduleEdits();
   try {
     return normalizeScheduleEdits(JSON.parse(row.payload));
   } catch {
     return emptyScheduleEdits();
   }
-}
-
-type ScheduleWidgetPayloadRow = {
-  id: number;
-  userId: number;
-  jwxtToken: string;
-};
-
-const scheduleWidgetBackgroundRefreshes = new Map<string, Promise<void>>();
-
-async function refreshScheduleWidgetPayload(
-  row: ScheduleWidgetPayloadRow,
-  requestedWeek: string,
-  widgetCacheKey: string,
-) {
-  const now = new Date();
-  const inferredSemester = inferScheduleWidgetSemester(now);
-  const [calendar, parsed] = await Promise.all([
-    getCalendar(row.jwxtToken).catch(() => null),
-    getSchedule(row.jwxtToken, { semester: inferredSemester, week: requestedWeek }),
-  ]);
-  const scheduleSemester = parsed.currentSemester || inferredSemester;
-  const widgetCalendar = resolveScheduleWidgetCalendar(calendar, parsed, now);
-  const previewWeeks = resolveScheduleWidgetPreviewWeeks(widgetCalendar, requestedWeek, now);
-  const [edits, previewEntries] = await Promise.all([
-    readScheduleEditsForWidget(row.userId, scheduleSemester || "current"),
-    Promise.all(previewWeeks.map(async (week) => [
-      week,
-      await getSchedule(row.jwxtToken, { semester: scheduleSemester, week: String(week) }),
-    ] as const)),
-  ]);
-  const applyEdits = (schedule: any) => ({
-    ...schedule,
-    cells: applyScheduleEditsToCells(schedule.cells ?? [], edits),
-  });
-  const schedulesByWeek = Object.fromEntries(
-    previewEntries.map(([week, schedule]) => [week, applyEdits(schedule)]),
-  );
-  const payload = buildScheduleWidgetPayload(
-    applyEdits(parsed),
-    widgetCalendar,
-    requestedWeek,
-    now,
-    schedulesByWeek,
-  );
-  await prisma.scheduleWidgetToken.updateMany({
-    where: { id: row.id, revokedAt: null, jwxtToken: row.jwxtToken },
-    data: {
-      lastUsedAt: new Date(),
-      expiresAt: null,
-      cachedPayload: JSON.stringify(payload),
-      cachedAt: new Date(),
-    },
-  });
-  await setCachedJson(widgetCacheKey, payload, 120_000);
-  return payload;
-}
-
-function refreshScheduleWidgetPayloadInBackground(
-  row: ScheduleWidgetPayloadRow,
-  requestedWeek: string,
-  widgetCacheKey: string,
-) {
-  if (scheduleWidgetBackgroundRefreshes.has(widgetCacheKey)) return;
-  const lockName = `schedule-widget-refresh:${crypto.createHash("sha256").update(widgetCacheKey).digest("hex")}`;
-  const refresh = runWithDistributedLock(lockName, 120_000, async () => {
-    await refreshScheduleWidgetPayload(row, requestedWeek, widgetCacheKey);
-  }).then(() => undefined);
-  scheduleWidgetBackgroundRefreshes.set(widgetCacheKey, refresh);
-  const cleanup = () => {
-    if (scheduleWidgetBackgroundRefreshes.get(widgetCacheKey) === refresh) {
-      scheduleWidgetBackgroundRefreshes.delete(widgetCacheKey);
-    }
-  };
-  void refresh.then(cleanup, cleanup);
-  void refresh.catch(() => undefined);
 }
 
 jwxtRouter.get("/schedule-widget-tokens", authRequired, async (req: any, res, next) => {
@@ -626,61 +478,42 @@ jwxtRouter.get("/schedule-widget", async (req, res, next) => {
     });
     if (!isScheduleWidgetCredentialActive(row)) throw Errors.unauthorized("小组件 token 已失效");
 
-    const requestedWeek = req.query.week ? String(req.query.week) : "";
-    const widgetCacheVersion = await getCacheVersion("jwxt-widget");
-    const widgetCacheKey = buildRedisKey(
-      "jwxt-widget",
-      "payload",
-      `v${widgetCacheVersion}`,
-      `p${SCHEDULE_WIDGET_PAYLOAD_VERSION}`,
-      hashWidgetToken(token),
-      requestedWeek || "current",
-    );
-    const sharedCachedPayload = await getCachedJson<any>(widgetCacheKey);
-    if (sharedCachedPayload) {
-      await prisma.scheduleWidgetToken.update({
-        where: { id: row.id },
-        data: { lastUsedAt: new Date(), expiresAt: null },
-      }).catch(() => undefined);
-      res.setHeader("Cache-Control", "private, no-store, max-age=0");
-      ok(res, sharedCachedPayload);
-      return;
+    const requestedWeek = String(req.query.week || "").trim();
+    if (requestedWeek && (!/^\d{1,2}$/.test(requestedWeek) || Number(requestedWeek) < 1 || Number(requestedWeek) > 64)) {
+      throw Errors.badRequest("无效的课表周次");
     }
-    const immediateCachedPayload = scheduleWidgetImmediateCachedPayload(row.cachedPayload, requestedWeek);
-    if (immediateCachedPayload) {
-      await prisma.scheduleWidgetToken.update({
-        where: { id: row.id },
-        data: { lastUsedAt: new Date(), expiresAt: null },
-      }).catch(() => undefined);
-      refreshScheduleWidgetPayloadInBackground(row, requestedWeek, widgetCacheKey);
-      res.setHeader("Cache-Control", "private, no-store, max-age=0");
-      ok(res, {
-        ...immediateCachedPayload,
-        stale: true,
-        cachedAt: row.cachedAt?.toISOString() ?? immediateCachedPayload.generatedAt,
-        errorMessage: "已立即显示上次成功课表，服务端正在后台刷新。",
-      });
-      return;
-    }
+    const cacheVersion = await getCacheVersion("jwxt-widget");
+    let payload;
+    let fallback = false;
     try {
-      const payload = await refreshScheduleWidgetPayload(row, requestedWeek, widgetCacheKey);
-      res.setHeader("Cache-Control", "private, no-store, max-age=0");
-      ok(res, payload);
-    } catch (e: any) {
-      const cached = parseScheduleWidgetCache(row.cachedPayload);
-      if (!cached) throw e;
-      await prisma.scheduleWidgetToken.update({
-        where: { id: row.id },
-        data: { lastUsedAt: new Date(), expiresAt: null },
-      }).catch(() => undefined);
-      res.setHeader("Cache-Control", "private, no-store, max-age=0");
-      ok(res, {
+      payload = {
+        ...await loadScheduleWidgetData(row.jwxtToken, requestedWeek, async (semester) => {
+          const edits = await readScheduleEditsForWidget(row.userId, semester);
+          return (schedule) => ({ ...schedule, cells: applyScheduleEditsToCells(schedule.cells ?? [], edits) });
+        }),
+        cacheVersion,
+      };
+    } catch (error) {
+      const cached = scheduleWidgetFallbackPayload(row.cachedPayload, requestedWeek);
+      if (!cached || cached.cacheVersion !== cacheVersion) throw error;
+      fallback = true;
+      payload = {
         ...cached,
         stale: true,
-        cachedAt: row.cachedAt?.toISOString() ?? cached.generatedAt,
-        errorMessage: "教务会话暂时失效，已显示上次成功缓存。回到本站完成授权后会自动恢复更新。",
-      });
+        errorMessage: "暂时无法更新，正在显示上次成功课表。",
+      };
     }
+    const saved = await prisma.scheduleWidgetToken.updateMany({
+      where: { id: row.id, revokedAt: null, jwxtToken: row.jwxtToken },
+      data: {
+        lastUsedAt: new Date(),
+        expiresAt: null,
+        ...(!fallback ? { cachedPayload: JSON.stringify(payload), cachedAt: new Date(payload.syncedAt) } : {}),
+      },
+    });
+    if (!saved.count) throw Errors.unauthorized("小组件授权已变化，请重试");
+    res.setHeader("Cache-Control", "private, no-store, max-age=0");
+    ok(res, payload);
   } catch (e) { next(e); }
 });
 
@@ -784,20 +617,10 @@ jwxtRouter.get("/schedule", async (req, res, next) => {
     const semester = req.query.semester ? String(req.query.semester) : "";
     const week = req.query.week ? String(req.query.week) : "";
     const refresh = req.query.refresh === "1" || req.query.refresh === "true";
-    const cacheId = jwxtTokenCacheId(t);
-    const parsed = refresh
-      ? await getSchedule(t, { semester, week })
-      : await withCache(
-        "jwxt-schedule",
-        [JWXT_SOURCE_CACHE_REVISION, cacheId, semester || "_", week || "_"],
-        JWXT_SCHEDULE_CACHE_TTL_MS,
-        async () => getSchedule(t, { semester, week }),
-      );
-    if (refresh) {
-      await invalidateJwxtWidgetCaches();
-    }
-    res.setHeader("Cache-Control", refresh ? "private, no-store" : "private, max-age=300, stale-while-revalidate=86400");
-    ok(res, { parsed, source: parsed.source });
+    const data = await scheduleData.readSchedule(t, { semester, week, refresh });
+    if (refresh) await invalidateJwxtWidgetCaches();
+    res.setHeader("Cache-Control", "private, no-store");
+    ok(res, { ...data, source: data.parsed.source });
   } catch (e) { next(e); }
 });
 
@@ -922,16 +745,10 @@ jwxtRouter.get("/calendar", async (req, res, next) => {
   try {
     const t = getToken(req);
     if (!t) throw Errors.unauthorized("请先登录教务系统");
-    const cacheId = jwxtTokenCacheId(t);
     const semester = String(req.query.semester ?? "").trim();
-    const parsed = await withCache(
-      "jwxt-calendar",
-      [JWXT_SOURCE_CACHE_REVISION, cacheId, semester || "_"],
-      JWXT_CALENDAR_CACHE_TTL_MS,
-      async () => getCalendar(t, { semester }),
-    );
-    res.setHeader("Cache-Control", "private, max-age=86400, stale-while-revalidate=604800");
-    ok(res, { parsed, source: parsed.source });
+    const data = await scheduleData.readCalendar(t, { semester });
+    res.setHeader("Cache-Control", "private, no-store");
+    ok(res, { ...data, source: data.parsed.source });
   } catch (e) { next(e); }
 });
 
