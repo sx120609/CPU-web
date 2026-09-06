@@ -279,7 +279,7 @@
                 <span>时间段</span>
                 <div class="editor-actions">
                   <button v-if="canRestoreOriginalCourse" type="button" :disabled="courseEditBusy" @click="restoreOriginalCourse">
-                    {{ courseEditAction === "restore" ? "恢复中" : editingCourseBlock?.course.orphaned ? "恢复教务课表" : "恢复原始" }}
+                    {{ courseEditAction === "restore" ? "处理中" : "使用教务安排" }}
                   </button>
                   <button v-if="editingCourseBlock" type="button" class="danger" :disabled="courseEditBusy" @click="deleteEditingCourse">
                     {{ courseEditAction === "delete" ? "删除中" : "删除" }}
@@ -1797,11 +1797,9 @@ async function restoreOriginalCourse() {
     const customId = block?.course.customId;
     if (!sourceKey) return;
     const confirmed = await ElMessageBox.confirm(
-      block.course.orphaned
-        ? "将移除这份编辑，以最新教务课表为准。已从教务移除的课程不会重新出现。"
-        : "确定恢复原始课程吗？当前自定义修改会被移除，以最新教务课表为准。",
-      block.course.orphaned ? "恢复教务课表" : "恢复原始课程", {
-      confirmButtonText: "恢复",
+      "将移除这份个人编辑，显示当前教务课表中的安排。如果当前教务课表没有这门课，个人副本也会从课表移除。",
+      "使用教务安排", {
+      confirmButtonText: "使用教务安排",
       cancelButtonText: "取消",
       type: "warning",
     }).then(() => true).catch(() => false);
@@ -1819,7 +1817,7 @@ async function restoreOriginalCourse() {
     };
     persistScheduleEdits();
     editDialogOpen.value = false;
-    showEditorMessage("success", "已移除编辑，恢复到教务课表");
+    showEditorMessage("success", "已移除个人编辑，使用教务安排");
   } finally {
     if (courseEditAction.value === "restore") courseEditAction.value = "";
   }

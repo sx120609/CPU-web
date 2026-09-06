@@ -1,3 +1,5 @@
+import { normalizedCourseWeekList } from "./scheduleWeeks";
+
 export interface EditableScheduleCourse {
   name: string;
   teacher?: string;
@@ -151,12 +153,18 @@ export function applyScheduleEditsToCells<T extends EditableScheduleCell>(
   edits: ScheduleEditState,
 ) {
   const hidden = new Set(edits.hidden);
-  const sourceKeys = new Set((cells ?? []).flatMap((cell) => (
-    cell.courses.map((course) => courseEditKey(cell.day, cell.bigSlot, course))
-  )));
+  const sources = (cells ?? []).flatMap((cell) => cell.courses.map((course) => ({
+    key: courseEditKey(cell.day, cell.bigSlot, course),
+    day: cell.day,
+    range: courseSourceRange(cell.bigSlot, course),
+    identity: courseSourceIdentity(course),
+  })));
   const byCell = new Map<string, EditableScheduleCourse[]>();
   for (const item of edits.custom) {
     const sourceKey = officialCourseSourceKey(item.sourceKey);
+    const matches = sourceKey ? equivalentSourceKeys(sourceKey, sources) : [];
+    // Equivalent formatting and split table cells must hide the same original as the saved key.
+    if (sourceKey && hidden.has(sourceKey)) matches.forEach((key) => hidden.add(key));
     const key = cellKey(item.day, item.bigSlot);
     const list = byCell.get(key) ?? [];
     list.push({
@@ -164,7 +172,7 @@ export function applyScheduleEditsToCells<T extends EditableScheduleCell>(
       sourceKey,
       custom: true,
       customId: item.id,
-      orphaned: sourceKey && cells !== null ? !sourceKeys.has(sourceKey) : undefined,
+      orphaned: sourceKey && cells !== null ? matches.length === 0 : undefined,
     });
     byCell.set(key, list);
   }
@@ -205,8 +213,49 @@ export function keepScheduleCourseAsCustom(edits: ScheduleEditState, customId: s
 
 export function scheduleCourseEditLabel(course: EditableScheduleCourse) {
   if (!course.customId && !course.custom) return "";
-  if (course.orphaned) return "来源失效";
+  if (course.orphaned) return "待核对";
   return officialCourseSourceKey(course.sourceKey) ? "已编辑" : "自定义";
+}
+
+function courseSourceIdentity(course: EditableScheduleCourse) {
+  const text = (value?: string) => String(value ?? "").normalize("NFKC").replace(/\s+/g, "");
+  return JSON.stringify([
+    text(course.name), text(course.teacher), text(course.location), normalizedCourseWeekList(course),
+  ]);
+}
+
+function courseSourceRange(bigSlot: number, course: Pick<EditableScheduleCourse, "startSlot" | "endSlot">) {
+  const start = course.startSlot ?? bigSlot * 2 - 1;
+  return { start, end: course.endSlot ?? bigSlot * 2 };
+}
+
+function equivalentSourceKeys(
+  key: string,
+  sources: Array<{ key: string; day: number; range: { start: number; end: number }; identity: string }>,
+) {
+  const exact = sources.filter((source) => source.key === key);
+  if (exact.length) return exact.map((source) => source.key);
+  const parts = key.split("|");
+  if (parts.length !== 9 || parts[0] !== "jwxt") return [];
+  const [, day, bigSlot, start, end, name, teacher, location, weeks] = parts;
+  const original = {
+    name, teacher, location, weeks, weekList: [],
+    startSlot: start ? Number(start) : undefined,
+    endSlot: end ? Number(end) : undefined,
+  };
+  const range = courseSourceRange(Number(bigSlot), original);
+  if (!Number.isInteger(range.start) || !Number.isInteger(range.end) || range.start < 1 || range.end < range.start) return [];
+  const identity = courseSourceIdentity(original);
+  const candidates = sources.filter((source) => (
+    source.day === Number(day) && source.identity === identity
+    && source.range.start >= range.start && source.range.end <= range.end
+  )).sort((a, b) => a.range.start - b.range.start);
+  let coveredEnd = range.start - 1;
+  for (const source of candidates) {
+    if (source.range.start > coveredEnd + 1) return [];
+    coveredEnd = Math.max(coveredEnd, source.range.end);
+  }
+  return coveredEnd === range.end ? candidates.map((source) => source.key) : [];
 }
 
 export function createCustomCourseId() {

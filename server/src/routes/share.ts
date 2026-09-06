@@ -1,6 +1,8 @@
 import { Router, type Request } from "express";
 import QRCode from "qrcode";
 import { Resvg } from "@resvg/resvg-js";
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
 import { prisma } from "../prisma";
 import { getSiteOrigin, isBoardTypeEnabled } from "../services/siteSettings";
 import { sanitizeLostFoundTopicFields } from "../services/lostFoundPrivacy";
@@ -207,9 +209,8 @@ function renderTopicSharePage(input: {
 </html>`;
 }
 
-async function renderTopicCardSvg(topic: any, origin: string) {
+export async function renderTopicCardSvg(topic: any, origin: string) {
   const boardName = topic.board?.name || "药大拾间";
-  const boardIcon = topic.board?.icon || "💬";
   const boardColor = topic.board?.color || "#168776";
   const authorName = topic.isAnonymous ? presentAnonymousAlias(topic.anonymousAlias) : (topic.author?.nickname || "同学");
   const subtitle = `${boardName} · ${authorName}`;
@@ -231,10 +232,6 @@ async function renderTopicCardSvg(topic: any, origin: string) {
       <stop offset="0%" stop-color="#f6f8fb" />
       <stop offset="100%" stop-color="#edf2f7" />
     </linearGradient>
-    <linearGradient id="iconGrad" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="${escapeXml(boardColor)}" />
-      <stop offset="100%" stop-color="#1f4d73" />
-    </linearGradient>
     <filter id="cardShadow" x="-10%" y="-10%" width="120%" height="120%">
       <feDropShadow dx="0" dy="20" stdDeviation="28" flood-color="#0f172a" flood-opacity="0.10" />
     </filter>
@@ -244,8 +241,7 @@ async function renderTopicCardSvg(topic: any, origin: string) {
   <circle cx="674" cy="58" r="58" fill="${escapeXml(withOpacity(boardColor, 0.08))}" />
   <rect x="52" y="48" width="616" height="884" rx="38" fill="#ffffff" filter="url(#cardShadow)" />
 
-  <rect x="92" y="108" width="88" height="88" rx="24" fill="url(#iconGrad)" />
-  <text x="136" y="164" text-anchor="middle" font-size="42" fill="#ffffff">${escapeXml(boardIcon)}</text>
+  <image x="92" y="108" width="88" height="88" href="${siteLogoDataUrl()}" />
 
   <text x="208" y="138" font-size="19" font-weight="700" fill="#101828">${escapeXml(boardName)}</text>
   <text x="208" y="166" font-size="16" fill="#667085">${escapeXml(subtitle)}</text>
@@ -279,7 +275,7 @@ function renderFallbackCardSvg(title: string, description: string) {
 </svg>`;
 }
 
-function renderSvgToPng(svg: string) {
+export function renderSvgToPng(svg: string) {
   const resvg = new Resvg(svg, {
     fitTo: {
       mode: "width",
@@ -292,6 +288,18 @@ function renderSvgToPng(svg: string) {
     },
   });
   return resvg.render().asPng();
+}
+
+let cachedSiteLogoDataUrl = "";
+
+function siteLogoDataUrl() {
+  if (!cachedSiteLogoDataUrl) {
+    // Embed the same vector logo used by the site header, independent of fonts and network access.
+    const bundledLogo = path.resolve(__dirname, "../assets/site/favicon.svg");
+    const logo = readFileSync(existsSync(bundledLogo) ? bundledLogo : path.resolve(__dirname, "../../../web/public/favicon.svg"));
+    cachedSiteLogoDataUrl = `data:image/svg+xml;base64,${logo.toString("base64")}`;
+  }
+  return cachedSiteLogoDataUrl;
 }
 
 function renderNotFoundPage(origin: string, targetPath: string) {

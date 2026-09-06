@@ -62,7 +62,7 @@ test("issue 9: refreshing a deleted official course retains the edit with an orp
   for (let refresh = 0; refresh < 2; refresh++) {
     const merged = applyScheduleEditsToCells([], edits);
     assert.equal(merged[0].courses[0].orphaned, true);
-    assert.equal(scheduleCourseEditLabel(merged[0].courses[0]), "来源失效");
+    assert.equal(scheduleCourseEditLabel(merged[0].courses[0]), "待核对");
     assert.equal(merged[0].courses[0].name, before.custom[0].course.name);
   }
   assert.deepEqual(edits, before);
@@ -76,6 +76,78 @@ test("a changed source key is flagged without hiding the latest official course"
   assert.equal(courses[0].teacher, "新教师");
   assert.equal(scheduleCourseEditLabel(courses[0]), "");
   assert.equal(courses[1].orphaned, true);
+});
+
+test("equivalent week labels and full-width punctuation do not trigger a review or duplicate the source", () => {
+  const { source, edits } = fixture();
+  source.cells[0].courses[0].name = "化学III: 有机化学实验(A)";
+  source.cells[0].courses[0].weeks = "1～16周";
+  const before = structuredClone(edits);
+  const courses = applyScheduleEditsToCells(source.cells, edits)[0].courses;
+  assert.equal(courses.length, 1);
+  assert.equal(courses[0].orphaned, false);
+  assert.equal(courses[0].location, "用户编辑的地点");
+  assert.deepEqual(edits, before);
+});
+
+test("the same official course split across adjacent cells still matches its saved merged source", () => {
+  const { source, course, edits } = fixture();
+  source.cells = [
+    { day: 4, bigSlot: 3, courses: [{ ...course, startSlot: 5, endSlot: 6 }] },
+    { day: 4, bigSlot: 4, courses: [{ ...course, startSlot: 7, endSlot: 8 }] },
+  ];
+  const merged = applyScheduleEditsToCells(source.cells, edits);
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0].courses.length, 1);
+  assert.equal(merged[0].courses[0].orphaned, false);
+});
+
+test("a partially removed time range still needs review and is not silently rebound", () => {
+  const { source, edits } = fixture();
+  source.cells[0].courses[0].endSlot = 6;
+  const courses = applyScheduleEditsToCells(source.cells, edits)[0].courses;
+  assert.equal(courses.length, 2);
+  assert.equal(courses[1].orphaned, true);
+});
+
+test("a same-name course on another day or with different teacher, location or weeks is not an equivalent source", () => {
+  for (const change of [
+    (source: ScheduleResult) => { source.cells[0].day = 5; },
+    (source: ScheduleResult) => { source.cells[0].courses[0].teacher = "其他教师"; },
+    (source: ScheduleResult) => { source.cells[0].courses[0].location = "另一教室"; },
+    (source: ScheduleResult) => { source.cells[0].courses[0].weeks = "2-16周(双)"; },
+  ]) {
+    const { source, edits } = fixture();
+    change(source);
+    const courses = applyScheduleEditsToCells(source.cells, edits).flatMap((cell) => cell.courses);
+    assert.equal(courses.filter((course) => !course.customId).length, 1);
+    assert.equal(courses.find((course) => course.customId)?.orphaned, true);
+  }
+});
+
+test("a missing slot range is equivalent to the original table position", () => {
+  const { source, edits, item } = fixture();
+  source.cells[0].courses[0].endSlot = 6;
+  const originalKey = courseEditKey(4, 3, source.cells[0].courses[0]);
+  item.sourceKey = originalKey;
+  edits.hidden = [originalKey];
+  source.cells[0].courses[0].startSlot = undefined as any;
+  source.cells[0].courses[0].endSlot = undefined as any;
+  const courses = applyScheduleEditsToCells(source.cells, edits)[0].courses;
+  assert.equal(courses.length, 1);
+  assert.equal(courses[0].orphaned, false);
+});
+
+test("restoring a format-equivalent source shows the current official data after refresh", () => {
+  const { source, edits, item, sourceKey, helpers, resolvers } = fixture();
+  source.cells[0].courses[0].weeks = "1-16周";
+  const block = helpers.weekCourseBlocksFor(1)[0];
+  assert.equal(block.course.orphaned, false);
+  const restored = restoreOriginalCourseEdit(edits, block, { ...resolvers, sourceKey, customId: item.id });
+  const courses = applyScheduleEditsToCells(source.cells, restored)[0].courses;
+  assert.equal(courses.length, 1);
+  assert.equal(courses[0].customId, undefined);
+  assert.equal(courses[0].weeks, "1-16周");
 });
 
 test("an unavailable schedule does not claim that an official course was removed", () => {

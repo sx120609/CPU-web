@@ -10,6 +10,7 @@ const files = ["monkey.js", "multiplatform.js", "weban.js"];
 const fontSourceDirectory = path.join(serverRoot, "assets", "fonts");
 const fontTargetDirectory = path.join(serverRoot, "dist", "assets", "fonts");
 const fontAssets = ["HarmonyOS_Sans_SC_Regular.ttf", "HarmonyOS_Sans_SC_Bold.ttf", "HarmonyOS-Sans-LICENSE.txt"];
+const siteAssetDirectory = path.join(serverRoot, "dist", "assets", "site");
 
 await mkdir(targetDirectory, { recursive: true });
 for (const file of files) {
@@ -21,4 +22,7 @@ for (const file of fontAssets) {
   await copyFile(path.join(fontSourceDirectory, file), path.join(fontTargetDirectory, file));
 }
 
-console.log(`Copied ${files.length} desktop userscripts and ${fontAssets.length} schedule font assets into server/dist/assets`);
+await mkdir(siteAssetDirectory, { recursive: true });
+await copyFile(path.join(repositoryRoot, "web", "public", "favicon.svg"), path.join(siteAssetDirectory, "favicon.svg"));
+
+console.log(`Copied ${files.length} desktop userscripts, ${fontAssets.length} schedule font assets and the site logo into server/dist/assets`);
