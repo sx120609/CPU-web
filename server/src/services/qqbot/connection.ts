@@ -11,6 +11,7 @@ const { WebSocket, WebSocketServer } = require("ws") as {
 export type QqBotConnectionMode = "outbound" | "inbound";
 export type QqBotConnectionStatus = "disabled" | "http" | "inbound" | "idle" | "connecting" | "connected" | "error";
 export const QQBOT_INBOUND_WS_PATH = "/api/qqbot/napcat";
+export const QQBOT_PRIVATE_MESSAGES_DISABLED_REASON = "QQBot 私聊及群临时消息已停用";
 
 export interface QqBotConnectionConfig {
   enabled: boolean;
@@ -67,6 +68,12 @@ export function isWebSocketUrl(value: string) {
 
 export function normalizeQqBotConnectionMode(value: unknown): QqBotConnectionMode {
   return String(value || "").trim().toLowerCase() === "inbound" ? "inbound" : "outbound";
+}
+
+export function assertQqBotMessageActionAllowed(action: string) {
+  if (action === "send_private_msg") {
+    throw Errors.badRequest(QQBOT_PRIVATE_MESSAGES_DISABLED_REASON);
+  }
 }
 
 export function getQqBotConnectionStatus(config: QqBotConnectionConfig): QqBotConnectionStatus {
@@ -163,6 +170,7 @@ export function resetQqBotWebSocket() {
 }
 
 export async function callQqBotAction(action: string, params: Record<string, unknown>) {
+  assertQqBotMessageActionAllowed(action);
   const deps = requireConnectionDeps();
   const config = await deps.getConfig();
   const connectionMode = normalizeQqBotConnectionMode(config.connectionMode);
@@ -209,6 +217,7 @@ export async function sendQqMessageByWebSocket(
   target: { qqId?: string; groupId?: string; tempGroupId?: string },
   message: string,
 ) {
+  assertQqBotMessageActionAllowed(action);
   const deps = requireConnectionDeps();
   const config = await deps.getConfig();
   const socket = await getActionSocket(config);

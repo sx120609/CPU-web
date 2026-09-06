@@ -11,6 +11,7 @@ import { ensureUserCanSpeak } from "./userModeration";
 import { ensureForumVideoAssetsForContent } from "./videoModeration";
 import { visibleBoardSlugFilter } from "./retiredBoards";
 import {
+  assertQqBotMessageActionAllowed,
   callQqBotAction,
   configureQqBotConnection,
   connectQqBotWebSocket,
@@ -2535,12 +2536,13 @@ function isSingleQqImageMessage(value: string) {
 }
 
 async function sendSingleQqMessage(target: QqMessageTarget, message: string) {
+  const endpoint = target.groupId ? "send_group_msg" : "send_private_msg";
+  assertQqBotMessageActionAllowed(endpoint);
   const config = await getQqBotConfigRaw();
   const connectionMode = normalizeQqBotConnectionMode(config.connectionMode);
   if (!config.enabled || (connectionMode === "outbound" && !config.napcatBaseUrl)) {
     throw Errors.badRequest("QQBot 未启用或 NapCat 连接未配置");
   }
-  const endpoint = target.groupId ? "send_group_msg" : "send_private_msg";
   const body = target.groupId
     ? { group_id: Number(target.groupId) || target.groupId, message }
     : {
