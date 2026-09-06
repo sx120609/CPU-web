@@ -5,6 +5,8 @@ import { ElMessage } from "element-plus";
 import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
 import type { FeatureKey } from "@/api/site";
+import { boardApi } from "@/api/board";
+import { topicApi } from "@/api/topic";
 import { isLikelyIosDevice } from "@/utils/clientInfo";
 import { preloadScheduleBackgroundAsset } from "@/utils/scheduleBackgroundStorage";
 
@@ -242,6 +244,23 @@ router.beforeEach(async (to) => {
     if (!isStaff) {
       ElMessage.info("该功能当前不可用");
       return { name: "home" };
+    }
+  }
+
+  if (/^\/(?:forum|market|coursereview)(?:\/|$)/.test(to.path)) {
+    if (!site.loaded) await site.fetch();
+    if (!auth.canAccessForum) {
+      let publicAnnouncement = false;
+      try {
+        if (to.name === "board") {
+          publicAnnouncement = (await boardApi.detail(String(to.params.slug), { suppressErrorMessage: true })).type === "announce";
+        } else if (to.name === "topic") {
+          publicAnnouncement = (await topicApi.detail(Number(to.params.id), { suppressErrorMessage: true })).board?.type === "announce";
+        }
+      } catch {
+        publicAnnouncement = false;
+      }
+      if (!publicAnnouncement) return { name: "login", query: { redirect: to.fullPath } };
     }
   }
 

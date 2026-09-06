@@ -147,7 +147,7 @@
         <el-button text type="primary" :loading="assistantQuotaLoading" @click="loadAssistantQuota">重试</el-button>
       </div>
 
-      <el-button class="assistant-quota-open" text type="primary" aria-label="打开拾间 AI" @click="router.push('/search')">
+      <el-button v-if="site.features.assistantEntry" class="assistant-quota-open" text type="primary" aria-label="打开拾间 AI" @click="router.push('/search')">
         <span class="assistant-quota-open-label">打开</span>
         <el-icon><ArrowRight /></el-icon>
       </el-button>

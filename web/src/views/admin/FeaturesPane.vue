@@ -184,7 +184,7 @@
               @change="(v: boolean | string | number) => toggle(f.key, Boolean(v))"
             />
           </div>
-          <div class="paths">影响入口：<code>{{ f.paths.join(" · ") }}</code></div>
+          <div v-if="f.paths.length" class="paths">影响入口：<code>{{ f.paths.join(" · ") }}</code></div>
         </div>
       </div>
     </section>
@@ -230,7 +230,7 @@ import { adminApi, type LearningPlatformAvailability } from "@/api/admin";
 import { useSiteStore } from "@/stores/site";
 import AppIcon from "@/components/common/AppIcon.vue";
 
-type FKey = "forum" | "market" | "coursereview" | "electric" | "sponsor";
+type FKey = "forum" | "market" | "coursereview" | "electric" | "sponsor" | "forumLoginRequired" | "assistantEntry";
 type LearningPlatformKey = keyof LearningPlatformAvailability;
 
 const site = useSiteStore();
@@ -285,8 +285,8 @@ const reputationLevels = ref([
   { level: 4, name: "资深成员", minReputation: 90 },
   { level: 5, name: "校园传说", minReputation: 120 },
 ]);
-const features = reactive<{ forum: boolean; market: boolean; coursereview: boolean; electric: boolean; sponsor: boolean }>({
-  forum: true, market: true, coursereview: true, electric: true, sponsor: true,
+const features = reactive<{ forumLoginRequired: boolean; assistantEntry: boolean; forum: boolean; market: boolean; coursereview: boolean; electric: boolean; sponsor: boolean }>({
+  forumLoginRequired: false, assistantEntry: true, forum: true, market: true, coursereview: true, electric: true, sponsor: true,
 });
 const learningPlatforms = reactive<LearningPlatformAvailability>({
   chaoxing: true,
@@ -302,6 +302,8 @@ const enabledLearningPlatformCount = computed(() => learningPlatformMeta.filter(
 let featureLoadSeq = 0;
 
 const featureMeta: { key: FKey; icon: string; title: string; desc: string; paths: string[] }[] = [
+  { key: "forumLoginRequired", icon: "forum", title: "论坛登录后可见", desc: "开启后，向游客隐藏整个论坛功能及内容，登录后才显示。二手交流与课评同步隐藏。", paths: [] },
+  { key: "assistantEntry", icon: "search", title: "拾间 AI 入口", desc: "显示或隐藏首页、导航、个人中心和悬浮窗中的拾间 AI 入口。", paths: [] },
   {
     key: "forum", icon: "forum", title: "论坛（通用板块 + 发帖）",
     desc: "灌水广场 / 校园生活 / 新生入学 / 提问广场等通用板块的可见与发帖。",
@@ -511,7 +513,7 @@ async function toggle(key: FKey, on: boolean) {
     return;
   }
   pendingKey.value = key;
-  if (!on) {
+  if (!on && key !== "forumLoginRequired" && key !== "assistantEntry") {
     const confirmed = await ElMessageBox.confirm(
       `确认关闭「${featureMeta.find((m) => m.key === key)?.title || key}」？\n` +
         `普通用户立刻看不到对应入口，无法发新内容。已发布内容会保留。`,

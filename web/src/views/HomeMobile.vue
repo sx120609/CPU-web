@@ -1,7 +1,7 @@
 <template>
   <div class="home-stream">
     <section class="home-entry" aria-label="首页快捷入口">
-      <SiteSearchBar placeholder="搜索帖子或校园服务" />
+      <SiteSearchBar :placeholder="auth.canAccessForum ? '搜索帖子或校园服务' : '搜索校园服务'" />
       <nav class="quick-grid">
         <button v-for="entry in quickEntries" :key="entry.label" type="button" @click="openQuickEntry(entry.to)">
           <span class="quick-icon" aria-hidden="true"><el-icon><component :is="entry.icon" /></el-icon></span>
@@ -10,7 +10,7 @@
       </nav>
     </section>
 
-    <ForumAdCarousel v-if="mobileHomeAds.length" :ads="mobileHomeAds" compact />
+    <ForumAdCarousel v-if="showForumContent && mobileHomeAds.length" :ads="mobileHomeAds" compact />
 
     <section v-if="showForumContent && hotPreview.length" class="hot-strip" aria-label="热榜">
       <header><b>热榜</b><router-link to="/forum?channel=hot">查看全部 →</router-link></header>
@@ -127,7 +127,7 @@ const quickEntries = computed(() => [
   { icon: Notification, label: "公告", to: "/announcements" },
   site.features.market && auth.canAccessForum ? { icon: Sell, label: "二手", to: "/forum?channel=market" } : null,
   { icon: Service, label: "服务", to: "/services" },
-  { icon: MagicStick, label: "拾间AI", to: "/search" },
+  site.features.assistantEntry ? { icon: MagicStick, label: "拾间AI", to: "/search" } : null,
 ].filter(Boolean) as Array<{ icon: Component; label: string; to: string }>);
 const homeCacheScope = computed(() => {
   const identity = auth.user?.id ? `user-${auth.user.id}` : "guest";

@@ -240,7 +240,7 @@
           <el-button v-if="detail.mine && detail.status === 'active'" type="success" plain @click="setItemStatus('claimed')">标记已认领</el-button>
           <el-button v-if="detail.mine && detail.status === 'active'" plain @click="setItemStatus('closed')">关闭信息</el-button>
           <el-button v-if="detail.mine && detail.status !== 'active'" plain @click="setItemStatus('active')">重新开放</el-button>
-          <el-button @click="router.push(`/forum/topic/${detail.topicId}`)">去论坛讨论（{{ detail.topic.replyCount }}）</el-button>
+          <el-button v-if="auth.canAccessForum" @click="router.push(`/forum/topic/${detail.topicId}`)">去论坛讨论（{{ detail.topic.replyCount }}）</el-button>
         </div>
         <section v-if="detail.myClaim" class="my-claim"><h3>我的认领申请</h3><el-tag :type="claimTagType(detail.myClaim.status)">{{ claimStatusText(detail.myClaim.status) }}</el-tag><p>{{ detail.myClaim.message }}</p><el-button v-if="detail.myClaim.status === 'pending'" text type="danger" @click="withdrawClaim(detail.myClaim.id)">撤回申请</el-button></section>
         <section v-if="canViewRawDetail && detail.claims?.length" class="claims"><h3>认领申请</h3><article v-for="claim in detail.claims" :key="claim.id"><div><strong>{{ claim.claimant?.nickname || '认领同学' }}</strong><el-tag size="small" :type="claimTagType(claim.status)">{{ claimStatusText(claim.status) }}</el-tag></div><p>{{ claim.message }}</p><p v-if="claim.evidence"><b>核验线索：</b>{{ claim.evidence }}</p><p class="claim-contact"><b>联系方式：</b>{{ claim.contact }}</p><footer v-if="claim.status === 'pending'"><el-button size="small" type="success" @click="resolveClaim(claim.id, 'accepted')">核验通过</el-button><el-button size="small" @click="resolveClaim(claim.id, 'rejected')">不匹配</el-button></footer></article></section>

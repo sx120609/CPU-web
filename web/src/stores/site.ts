@@ -7,7 +7,7 @@ import { DEFAULT_TOP_NAVIGATION, siteApi, type FeatureMap, type PublicSiteConfig
  */
 export const useSiteStore = defineStore("site", {
   state: () => ({
-    features: { forum: false, market: false, coursereview: false, electric: false, sponsor: false } as FeatureMap,
+    features: { forumLoginRequired: true, assistantEntry: false, forum: false, market: false, coursereview: false, electric: false, sponsor: false } as FeatureMap,
     siteOrigin: "",
     siteFilingNumber: "",
     topNavigation: DEFAULT_TOP_NAVIGATION.map((item) => ({ ...item })) as TopNavigationItem[],

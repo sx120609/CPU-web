@@ -1,6 +1,6 @@
 import { request } from "./request";
 
-export type FeatureKey = "forum" | "market" | "coursereview" | "electric" | "sponsor";
+export type FeatureKey = "forum" | "market" | "coursereview" | "electric" | "sponsor" | "forumLoginRequired" | "assistantEntry";
 export type FeatureMap = Record<FeatureKey, boolean>;
 export type TopNavigationAudience = "all" | "guest" | "logged-in" | "staff";
 export type TopNavigationIcon = "home" | "forum" | "lost-found" | "announcement" | "academic" | "schedule" | "service" | "course" | "market" | "search" | "link";

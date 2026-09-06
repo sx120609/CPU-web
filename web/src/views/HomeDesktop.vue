@@ -6,7 +6,7 @@
         <h1>药大拾间</h1>
         <p>{{ heroIntro }}</p>
         <div class="hero-actions">
-          <el-button v-if="site.features.forum" type="primary" size="large" @click="$router.push('/forum')">
+          <el-button v-if="showForumContent" type="primary" size="large" @click="$router.push('/forum')">
             <el-icon><ChatLineRound /></el-icon>
             <span class="action-label-full">{{ forumActionLabel }}</span>
             <span class="action-label-short">论坛</span>
@@ -30,7 +30,7 @@
             <span class="action-label-full">发布内容</span>
             <span class="action-label-short">发布</span>
           </el-button>
-          <el-button size="large" @click="$router.push('/search')">
+          <el-button v-if="site.features.assistantEntry" size="large" @click="$router.push('/search')">
             <el-icon><ChatDotRound /></el-icon> 拾间AI
           </el-button>
         </div>

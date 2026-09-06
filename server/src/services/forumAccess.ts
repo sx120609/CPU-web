@@ -1,3 +1,6 @@
+import { isFeatureOn } from "./siteSettings";
+import { Errors } from "../utils/response";
+
 export const FORUM_CONFIRM_TEXT = "我知道了";
 
 export function isForumStaffRole(role?: string | null) {
@@ -11,11 +14,11 @@ export function forumAccessErrorMessage(isLoggedIn: boolean) {
 }
 
 export async function resolveForumAccess(_userId?: number | null, _role?: string | null) {
-  return true;
+  return !isFeatureOn("forumLoginRequired") || !!_userId;
 }
 
 export async function ensureForumAccessEnabled(_userId: number, _role?: string | null) {
-  return;
+  if (!await resolveForumAccess(_userId, _role)) throw Errors.forbidden(forumAccessErrorMessage(false));
 }
 
 export async function ensureCanReadBoardType(
@@ -23,5 +26,6 @@ export async function ensureCanReadBoardType(
   _userId?: number | null,
   _role?: string | null,
 ) {
-  return;
+  if (_boardType === "announce") return;
+  if (!await resolveForumAccess(_userId, _role)) throw Errors.forbidden(forumAccessErrorMessage(false));
 }

@@ -174,7 +174,7 @@
 
     <transition name="assistant-widget">
       <aside
-        v-if="assistantWidgetOpen && showFloatingActions"
+        v-if="assistantWidgetOpen && showFloatingActions && site.features.assistantEntry"
         class="assistant-widget"
         role="dialog"
         aria-label="拾间AI"
@@ -232,7 +232,7 @@
     </button>
 
     <button
-      v-if="showFloatingActions"
+      v-if="showFloatingActions && site.features.assistantEntry"
       type="button"
       class="assistant-fab"
       aria-label="打开拾间AI"
@@ -487,6 +487,7 @@ const showForumPostFab = computed(() => (
   && !useNativeShell.value
   && !mobileTopicChrome.value
   && site.features.forum
+  && auth.canAccessForum
   && (useMobileForumLayout.value
     ? auth.canAccessForum && mobileForumRouteNames.has(String(route.name || ""))
     : desktopForumRouteNames.has(String(route.name || "")))
@@ -563,7 +564,7 @@ const navigationIconMap: Record<TopNavigationIcon, unknown> = {
 
 const nicknameHint = computed(() => {
   const actions: string[] = [];
-  if (site.features.forum) actions.push("发帖、回复");
+  if (site.features.forum && auth.canAccessForum) actions.push("发帖、回复");
   if (site.features.coursereview) actions.push("课程点评");
   if (!actions.length) return "后续使用站内功能时会显示昵称";
   return `后续${actions.join("和")}都会显示昵称`;
@@ -606,12 +607,14 @@ const drawerItems = computed(() => {
   for (const item of site.topNavigation.filter((candidate) => candidate.to !== "/download" && candidate.showInDrawer && navigationItemVisible(candidate))) {
     items.push({ id: `configured-${item.id}`, to: item.to, label: item.fullLabel || item.label, icon: navigationIconMap[item.icon], openInNewTab: item.openInNewTab });
   }
-  if (!items.some((item) => item.to === "/search")) items.push({ id: "system-search", to: "/search", label: "拾间AI", icon: Search });
+  if (site.features.assistantEntry && !items.some((item) => item.to === "/search")) items.push({ id: "system-search", to: "/search", label: "拾间AI", icon: Search });
   return items;
 });
 
 function navigationItemVisible(item: TopNavigationItem) {
   if (!item.enabled) return false;
+  if (/^\/search(?:[?#]|$)/.test(item.to) && !site.features.assistantEntry) return false;
+  if (/^\/(?:forum|market|coursereview)(?:[/?#]|$)/.test(item.to) && !auth.canAccessForum) return false;
   if (item.feature && !site.features[item.feature]) return false;
   if (item.requireForumAccess && !auth.canAccessForum) return false;
   if (item.audience === "guest" && auth.isLoggedIn) return false;

@@ -1223,9 +1223,9 @@ export const adminApi = {
   sweepForumVideos: () =>
     request.post<ForumVideoSweepResult>("/admin/ai-review/videos/sweep", {}, { timeout: 120000 }),
   features: (options?: RequestOptions) =>
-    request.get<{ forum: boolean; market: boolean; coursereview: boolean; electric: boolean; sponsor: boolean }>("/admin/features", undefined, options),
-  updateFeatures: (patch: { forum?: boolean; market?: boolean; coursereview?: boolean; electric?: boolean; sponsor?: boolean }) =>
-    request.patch<{ forum: boolean; market: boolean; coursereview: boolean; electric: boolean; sponsor: boolean }>("/admin/features", patch),
+    request.get<{ forumLoginRequired: boolean; assistantEntry: boolean; forum: boolean; market: boolean; coursereview: boolean; electric: boolean; sponsor: boolean }>("/admin/features", undefined, options),
+  updateFeatures: (patch: { forumLoginRequired?: boolean; assistantEntry?: boolean; forum?: boolean; market?: boolean; coursereview?: boolean; electric?: boolean; sponsor?: boolean }) =>
+    request.patch<{ forumLoginRequired: boolean; assistantEntry: boolean; forum: boolean; market: boolean; coursereview: boolean; electric: boolean; sponsor: boolean }>("/admin/features", patch),
   // 易支付
   epayConfig: (options?: RequestOptions) => request.get<EpayConfig>("/admin/epay-config", undefined, options),
   updateEpayConfig: (patch: Partial<{

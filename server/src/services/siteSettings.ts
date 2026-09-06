@@ -10,7 +10,7 @@ import { prisma } from "../prisma";
 import { broadcastSiteSettingsReload } from "./runtimeBroadcast";
 import { normalizeFallbackModelList } from "./modelFallback";
 
-export type FeatureKey = "forum" | "market" | "coursereview" | "electric" | "sponsor";
+export type FeatureKey = "forum" | "market" | "coursereview" | "electric" | "sponsor" | "forumLoginRequired" | "assistantEntry";
 export type TopNavigationAudience = "all" | "guest" | "logged-in" | "staff";
 export type TopNavigationIcon = "home" | "forum" | "lost-found" | "announcement" | "academic" | "schedule" | "service" | "course" | "market" | "search" | "link";
 export type TopNavigationItem = {
@@ -607,7 +607,7 @@ export type SitePromptDefaults = Pick<
   | "aiEditSimilarityUserPrompt"
 >;
 
-export const ALL_FEATURES: FeatureKey[] = ["forum", "market", "coursereview", "electric", "sponsor"];
+export const ALL_FEATURES: FeatureKey[] = ["forum", "market", "coursereview", "electric", "sponsor", "forumLoginRequired", "assistantEntry"];
 export const DEFAULT_TOP_NAVIGATION: TopNavigationItem[] = [
   { id: "home", label: "首页", fullLabel: "首页", to: "/home", icon: "home", enabled: true, primary: true, showInDrawer: false, audience: "all", feature: "", requireForumAccess: false, openInNewTab: false },
   { id: "forum", label: "论坛", fullLabel: "校园论坛", to: "/forum", icon: "forum", enabled: true, primary: true, showInDrawer: true, audience: "all", feature: "forum", requireForumAccess: false, openInNewTab: false },
@@ -975,6 +975,8 @@ const LEGACY_DEFAULT_IMAGE_REVIEW_PROMPTS = {
 } as const;
 
 const cache: Record<FeatureKey, boolean> = {
+  forumLoginRequired: false,
+  assistantEntry: true,
   forum: true,
   market: true,
   coursereview: true,

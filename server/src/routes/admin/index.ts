@@ -3066,6 +3066,8 @@ adminRouter.get("/features", adminOnly, (_req, res) => {
 });
 
 const featurePatchSchema = z.object({
+  forumLoginRequired: z.boolean().optional(),
+  assistantEntry: z.boolean().optional(),
   forum: z.boolean().optional(),
   market: z.boolean().optional(),
   coursereview: z.boolean().optional(),

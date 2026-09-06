@@ -1,4 +1,5 @@
 import { defineStore } from "pinia";
+import { useSiteStore } from "./site";
 import { authApi, type UserInfo, type RegisterPayload } from "@/api/auth";
 import { clearToken, COOKIE_SESSION_MARKER, getToken, hasAuthPresence, setToken } from "@/api/request";
 import { jwxtApi, getJwxtToken, setJwxtToken, clearJwxtToken, JWXT_COOKIE_SESSION_MARKER } from "@/api/jwxt";
@@ -102,7 +103,7 @@ export const useAuthStore = defineStore("auth", {
       || s.user?.role === "mod"
       || s.user?.voiceHubRole === "super_admin"
       || !!s.user?.lostFoundRole,
-    canAccessForum: () => true,
+    canAccessForum: (state) => !useSiteStore().features.forumLoginRequired || !!state.user,
     needSetupNickname: (s) => !!s.user
       && (!s.user.nickname || s.user.nickname.trim() === "")
       && !(s.user.nicknameReview?.status === "checking" && s.user.nicknameReview.pendingNickname?.trim()),

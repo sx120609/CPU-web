@@ -204,7 +204,7 @@ topicRouter.get("/", async (req, res, next) => {
 
     if (!boardId) {
       const forumAccessEnabled = await resolveForumAccess(requesterId, requesterRole);
-      if (!forumAccessEnabled) throw Errors.forbidden(requesterId ? "请先开启论坛功能并确认使用须知" : "请先登录并开启论坛功能");
+      if (!forumAccessEnabled) throw Errors.forbidden("请先登录后浏览论坛");
     }
 
     const where: any = { ...forumContentVisibilityWhere(requesterId) };
