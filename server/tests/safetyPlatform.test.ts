@@ -153,6 +153,11 @@ test("新版流程为课程和考试创建会话并携带防作弊 token", async
     assert.equal(examSubmitAttempts, 2);
     assert.ok(requests.some((request) => request.path.endsWith("/wap/unitTest/create")));
     assert.ok(requests.some((request) => request.path.endsWith("/wap/test/create")));
+    assert.ok(
+      requests.findIndex((request) => request.path.endsWith("/wap/unitTest/create"))
+        < requests.findIndex((request) => request.path.endsWith("/wap/question/list")),
+      "课程会话必须在读取题目前创建",
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }

@@ -417,13 +417,15 @@ async function completeSafetyArticle(
   articleId: string,
   options: Required<SafetyPlatformRunOptions>,
 ) {
+  // 新版平台会在 create 时签发与当前章节、开始时间绑定的提交凭证。
+  // 必须先创建会话，再读取题目并补足最短答题时长；顺序与平台页面及上游脚本保持一致。
+  const attempt = await createSafetyUnitAttempt(session, articleId);
   const questions = await getSafetyArticleQuestions(session, articleId);
   if (!questions.length) return;
   const { answers, missing } = buildUnitAnswers(session.userId, courseName, articleId, questions);
   if (missing.length) {
     throw new Error(`课程“${courseName}”有 ${missing.length} 道题不在当前题库中，已停止提交，题目：${missing.join("、")}`);
   }
-  const attempt = await createSafetyUnitAttempt(session, articleId);
   await waitForMinimumActionDelay(attempt.createdAt, options.minimumActionDelayMs);
   const payload = await safetyPostForm(
     session.jar,
