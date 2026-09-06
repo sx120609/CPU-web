@@ -215,7 +215,9 @@ test("undergraduate academic data prefers modern JWXT", async () => {
       }), { status: 200 });
     }
     if (url.hostname === "jwxt.cpu.edu.cn" && url.pathname === "/jsxsd/jxzl/jxzl_query") {
-      return new Response('<select id="xnxq01id"><option value="2025-2026-2" selected>2025-2026-2</option></select>', { status: 200 });
+      return new Response(`<select id="xnxq01id"><option value="2025-2026-2" selected>2025-2026-2</option></select>
+        <table><tr><th>周次</th><th>星期一</th><th>星期二</th><th>星期三</th><th>星期四</th><th>星期五</th><th>星期六</th><th>星期日</th></tr>
+        <tr><td>1</td><td>03月02日</td><td>03</td><td>04</td><td>05</td><td>06</td><td>07</td><td>08</td></tr></table>`, { status: 200 });
     }
     if (url.hostname === "jwxt.cpu.edu.cn" && url.pathname === "/jsxsd/xxwcqk/xxwcqkOnkclb.do") {
       return new Response('<div class="mod-total-area"><div class="total-list"></div></div>', { status: 200 });

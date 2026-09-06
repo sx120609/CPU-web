@@ -110,7 +110,7 @@ test("missing calendars leave the page readable but never guess dates for a widg
   const page = await f.service.readSchedule(f.token);
   assert.equal(page.parsed.cells[0].courses[0].name, "周一课程");
   assert.equal(page.calendar, null);
-  await assert.rejects(f.widget(), /暂时无法确定课表日期/);
+  await assert.rejects(f.widget(), /暂未返回可用的课表日期/);
 });
 
 test("different credentials do not share a student's cached schedule", async () => {

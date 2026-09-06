@@ -12,7 +12,7 @@ export async function loadScheduleWidgetData(
   const now = options.now ?? new Date();
   const current = await service.readSchedule(token, { week: requestedWeek });
   if (!current.calendar) {
-    throw Errors.badGateway("暂时无法确定课表日期，请打开课表刷新校历");
+    throw Errors.badGateway("学校暂未返回可用的课表日期，请稍后重试");
   }
   if (requestedWeek && !current.calendar.weeks.some((item) => Number(item.week) === Number(requestedWeek))) {
     throw Errors.badGateway("校历中缺少所选周次的日期");

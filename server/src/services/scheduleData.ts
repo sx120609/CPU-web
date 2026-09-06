@@ -4,7 +4,7 @@ import * as transport from "./jwxtTransport";
 import { normalizeCalendarWeekDays } from "./jwxtParser";
 import { Errors } from "../utils/response";
 
-const SCHEDULE_DATA_CACHE_REVISION = "schedule-data-v1";
+const SCHEDULE_DATA_CACHE_REVISION = "schedule-data-v2";
 const SCHEDULE_TTL_MS = 5 * 60_000;
 const CALENDAR_TTL_MS = 24 * 60 * 60_000;
 

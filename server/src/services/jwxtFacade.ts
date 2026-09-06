@@ -31,6 +31,7 @@ import {
 } from "./jwxtParser";
 import { isRecognizableUndergraduateSchedule } from "./academicIdentityDetection";
 import { Errors } from "../utils/response";
+import { loadModernScheduleCalendar } from "./scheduleCalendarSource";
 
 export type JwxtDataSource = "modern" | "legacy";
 
@@ -320,8 +321,7 @@ export async function getExams(token: string, args: { semester?: string; type?: 
 export async function getCalendar(token: string, args: { semester?: string } = {}) {
   const semester = String(args.semester ?? "").trim();
   return modernFirst(async () => {
-    const query = semester ? `?${new URLSearchParams({ xnxq01id: semester }).toString()}` : "";
-    return parseCalendar(await jwxtFetchModernHtml(token, `/jsxsd/jxzl/jxzl_query${query}`));
+    return loadModernScheduleCalendar(semester, (path) => jwxtFetchModernHtml(token, path));
   }, async () => {
     const path = "/zgykdx/jxzl/jxzl_query?Ves632DSdyV=NEW_XSD_WDZM";
     const html = semester

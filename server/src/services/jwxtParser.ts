@@ -850,6 +850,7 @@ export interface CalendarWeek {
 }
 
 export interface CalendarResult {
+  calendarSource?: "teaching-calendar" | "schedule-dates";
   semesters: SemesterOption[];
   currentSemester: string;
   semesterStart: string;
