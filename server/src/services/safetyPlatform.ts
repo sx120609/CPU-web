@@ -10,6 +10,19 @@ const SAFETY_MAX_REDIRECTS = 5;
 const SAFETY_MIN_ACTION_DELAY_MS = 5_000;
 const SAFETY_SHORT_DURATION_RETRY_DELAY_MS = 10_000;
 const SAFETY_SHORT_DURATION_MAX_RETRIES = 6;
+const SAFETY_UNIT_ARTICLE_IDS: Record<string, string> = {
+  "题库学习": "2080135073788600321",
+  "入学安全": "2079132357549375490",
+  "国家安全": "2079133938168643585",
+  "财物安全": "2079139032318623745",
+  "心理健康": "2079140991327027201",
+  "消防安全": "2079142411614830593",
+  "人身安全": "2079143452481699842",
+  "交通安全": "2079144978977669121",
+  "禁毒防艾": "2079146093836255234",
+  "应急救护": "2079146628521934850",
+  "防灾减灾": "2079147344531570690",
+};
 const SAFETY_USER_AGENT =
   "Mozilla/5.0 (Linux; Android 16; wv) AppleWebKit/537.36 (KHTML, like Gecko) " +
   "Version/4.0 Chrome/146.0.7680.178 Mobile Safari/537.36 MicroMessenger/8.0.71";
@@ -113,6 +126,14 @@ function splitSetCookieHeader(raw: string) {
 function getSafetyErrorMessage(payload: SafetyApiResponse, fallback: string) {
   const message = String(payload?.message || "").trim();
   return message && !/^(?:请求)?成功[！!。.]?$/.test(message) ? message : fallback;
+}
+
+function describeMissingCredential(payload: SafetyApiResponse, fallback: string) {
+  const code = payload.code === undefined ? "未知" : String(payload.code);
+  const dataFields = payload.data && typeof payload.data === "object" && !Array.isArray(payload.data)
+    ? Object.keys(payload.data).filter((key) => !/token|auth|password|cookie/i.test(key)).slice(0, 8).join("、") || "无"
+    : `非对象（${typeof payload.data}）`;
+  return `${getSafetyErrorMessage(payload, fallback)}（平台 code=${code}，data 字段：${dataFields}）`;
 }
 
 function isSuccessfulSafetyResponse(payload: SafetyApiResponse) {
@@ -402,7 +423,9 @@ async function createSafetyUnitAttempt(session: SafetyPlatformSession, articleId
   );
   const logId = String(payload.data?.logId || "").trim();
   const token = String(payload.data?.token || "").trim();
-  if (!logId || !token) throw new Error("平台没有返回课程提交凭证，请稍后重试。");
+  if (!logId || !token) {
+    throw new Error(describeMissingCredential(payload, "平台没有返回课程提交凭证，请稍后重试。"));
+  }
   return { logId, token, createdAt: Date.now() };
 }
 
@@ -455,7 +478,10 @@ async function completeSafetyCourses(
       const courseName = String(course.name || "未命名课程");
       const courseId = String(course.id || "").trim();
       if (!courseId) throw new Error(`课程“${courseName}”缺少课程编号。`);
-      const articles = await getSafetyArticles(session, courseId);
+      // 2026 新版只会为每门课的固定结课测验章节签发 token；目录中的普通内容章节
+      // 即使 question/list 有数据，也可能从 unitTest/create 得到 code=200 但无凭证。
+      const fixedArticleId = SAFETY_UNIT_ARTICLE_IDS[courseName.trim()];
+      const articles = fixedArticleId ? [{ id: fixedArticleId }] : await getSafetyArticles(session, courseId);
       for (const article of articles) {
         await completeSafetyArticle(session, courseName, String(article.id), options);
       }
@@ -506,7 +532,9 @@ async function createSafetyExam(session: SafetyPlatformSession, examId: string) 
   );
   const logId = String(payload.data?.logId || "").trim();
   const token = String(payload.data?.token || "").trim();
-  if (!logId || !token) throw new Error(getSafetyErrorMessage(payload, "平台没有返回考试提交凭证，请稍后重试。"));
+  if (!logId || !token) {
+    throw new Error(describeMissingCredential(payload, "平台没有返回考试提交凭证，请稍后重试。"));
+  }
   return { logId, token, createdAt: Date.now() };
 }
 

@@ -112,6 +112,7 @@ test("新版流程为课程和考试创建会话并携带防作弊 token", async
         data: { list: [{ id: "2080136617019842561", quesType: "3" }] },
       };
     } else if (url.pathname.endsWith("/wap/unitTest/create")) {
+      assert.equal(body.get("articleId"), "2079132357549375490");
       payload = { code: 200, success: true, data: { logId: "unit-log", token: "unit-token" } };
     } else if (url.pathname.endsWith("/wap/unitTest")) {
       assert.equal(body.get("logId"), "unit-log");
@@ -153,6 +154,7 @@ test("新版流程为课程和考试创建会话并携带防作弊 token", async
     assert.equal(examSubmitAttempts, 2);
     assert.ok(requests.some((request) => request.path.endsWith("/wap/unitTest/create")));
     assert.ok(requests.some((request) => request.path.endsWith("/wap/test/create")));
+    assert.ok(!requests.some((request) => request.path.endsWith("/wap/directory/list")));
     assert.ok(
       requests.findIndex((request) => request.path.endsWith("/wap/unitTest/create"))
         < requests.findIndex((request) => request.path.endsWith("/wap/question/list")),
