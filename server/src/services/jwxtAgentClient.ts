@@ -27,6 +27,7 @@ export type JwxtAgentClientOptions = {
   dispatch?: (action: JwxtAgentAction, payload: unknown) => Promise<unknown>;
   log?: (message: string) => void;
   replicaIdentity?: AgentReplicaIdentity;
+  buildCommit?: string;
 };
 
 export type JwxtAgentClient = {
@@ -124,6 +125,8 @@ export function startJwxtAgentClient(options: JwxtAgentClientOptions): JwxtAgent
         type: "ready",
         protocolVersion: JWXT_AGENT_PROTOCOL_VERSION,
         replicaPublicKey: replicaIdentity.publicKey,
+        buildCommit: options.buildCommit,
+        platform: process.platform,
       }));
       log(`[jwxt-agent] 已注册上线: ${String(message.agent?.name || options.agentId)}`);
       resolveReadyWaiters();

@@ -41,6 +41,8 @@ type AgentSession = {
   lastPongAt: number;
   pending: Map<string, PendingAgentRequest>;
   replicaPublicKey: string;
+  buildCommit?: string;
+  platform?: string;
 };
 
 const sessions = new Map<string, AgentSession>();
@@ -141,6 +143,8 @@ export function getJwxtAgentState(agentId: string) {
     maxConcurrent: agent?.maxConcurrent ?? 0,
     connectedAt: session?.connectedAt ?? null,
     lastPongAt: session?.lastPongAt ?? null,
+    buildCommit: session?.buildCommit ?? "",
+    platform: session?.platform ?? "",
     jwxtEnabled: Boolean(agent?.enabled && agent.jwxtEnabled),
     crawlEnabled: Boolean(agent?.enabled && agent.crawlEnabled),
   };
@@ -290,6 +294,9 @@ async function handleAgentMessage(session: AgentSession, text: string) {
     }
     if (!session.ready) console.log(`[jwxt-agent] ${session.config.name} 已上线`);
     session.replicaPublicKey = message.replicaPublicKey;
+    session.buildCommit = typeof message.buildCommit === "string" && /^[a-f0-9]{40}$/.test(message.buildCommit)
+      ? message.buildCommit : "";
+    session.platform = ["linux", "win32", "darwin"].includes(message.platform) ? message.platform : "";
     session.ready = true;
     broadcastReplicaTargets();
     return;

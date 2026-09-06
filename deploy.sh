@@ -106,7 +106,7 @@ rollback_ci_artifact_publish() {
     rm -rf "$ROOT_DIR/server/dist.failed-ci"
     mv "$ROOT_DIR/server/dist" "$ROOT_DIR/server/dist.failed-ci" 2>/dev/null || true
     mv "$ROOT_DIR/server/dist.previous-ci" "$ROOT_DIR/server/dist" 2>/dev/null || true
-    pm2 restart "$SERVICE_NAME" >/dev/null 2>&1 || true
+    pm2 restart "${DEPLOY_CI_SERVER_SERVICE:-$SERVICE_NAME}" >/dev/null 2>&1 || true
   fi
   if [ "$DEPLOY_CI_WEB_SWAPPED" = "1" ] && [ -f "$ROOT_DIR/web/dist/index.previous-ci.html" ]; then
     warn "CI 部署失败，恢复上一版 web/index.html"
@@ -2325,9 +2325,16 @@ do_agent_update() {
     warn "非 git 仓库，跳过 git pull"
   fi
   ensure_agent_env
+  DEPLOY_TARGET_COMMIT="$(git rev-parse HEAD)"
+  download_ci_artifact "$DEPLOY_TARGET_COMMIT" \
+    || err "未取得与 ${DEPLOY_TARGET_COMMIT:0:12} 完全匹配的 CI 制品，已禁止 Agent 本机编译"
   do_install_server
-  do_build_agent
+  do_generate_prisma
+  DEPLOY_CI_SERVER_SERVICE="$AGENT_SERVICE_NAME"
+  publish_ci_server_artifact
   do_agent_restart || do_agent_start
+  commit_ci_artifact_publish
+  log "Agent 已部署 GitHub 制品：$DEPLOY_TARGET_COMMIT"
 }
 
 # ---------- 主入口 ----------

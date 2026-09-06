@@ -61,6 +61,11 @@ jobs:
       - name: Test file submission authentication
         run: node --import ./server/node_modules/tsx/dist/loader.mjs --test web/tests/filestoreUpload.test.ts server/tests/browserSecurity.integration.test.ts
 
+      - name: Test Agent deployment and version reporting
+        run: |
+          node --import ./server/node_modules/tsx/dist/loader.mjs --test server/tests/jwxtAgent.integration.test.ts
+          node --test ops/deploy/agent-update.test.mjs
+
       - name: Verify published Android package and enterprise delivery
         env:
           GH_TOKEN: ${{ github.token }}
@@ -74,6 +79,7 @@ jobs:
           set -euo pipefail
           npm run prisma:generate --prefix server
           npm run build:compile --prefix server
+          printf '%s\n' "$GITHUB_SHA" > server/dist/deployment-commit.txt
           npm run build --prefix web
           npm run build:cpu --prefix voicehub
 

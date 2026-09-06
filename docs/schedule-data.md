@@ -1,5 +1,7 @@
 # 课表与小组件的共用数据链路
 
+上线时主服务和承担查询的 Agent 都需更新。Linux Agent 的后台更新直接校验并使用 GitHub 制品；旧 Windows 更新器的 `npm build` 入口也会在生产 Agent 环境中转为制品安装。Agent 上报制品内的提交标记，后台的 `connection.buildCommit` 可用于核对实际运行版本；缺失标记的旧 Agent 返回空值。
+
 `server/src/services/scheduleData.ts` 是本科课表页面、原生小组件、Scriptable 和微信课表查询的公共取数入口。它调用原有 `jwxtTransport`，沿用 Agent 路由、加密会话保存和 SSO 自动换票，不保存学校密码。
 
 ## 数据与缓存

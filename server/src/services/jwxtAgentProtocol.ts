@@ -121,6 +121,8 @@ export type JwxtAgentReadyMessage = {
   type: "ready";
   protocolVersion: number;
   replicaPublicKey: string;
+  buildCommit?: string;
+  platform?: string;
 };
 
 export type JwxtAgentReplicaTargetsMessage = {

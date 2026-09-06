@@ -6,7 +6,7 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "prisma generate && tsc -p tsconfig.json && node scripts/copy-desktop-userscripts.mjs",
+    "build": "node scripts/build-server.mjs",
     "build:compile": "tsc -p tsconfig.json && node scripts/copy-desktop-userscripts.mjs",
     "tiku:dump": "node scripts/dump-safety-tiku.mjs",
     "start": "node dist/index.js",

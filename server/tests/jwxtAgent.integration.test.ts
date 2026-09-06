@@ -87,6 +87,7 @@ test("outbound JWXT Agent handles login, queries, dorm electricity, and crawler 
     serverUrl: `ws://127.0.0.1:${address.port}/api/internal/jwxt-agent/connect`,
     agentId: "campus-agent-a",
     token,
+    buildCommit: "a".repeat(40),
     reconnectMs: 500,
     log: () => undefined,
     dispatch: async (action, payload) => {
@@ -197,6 +198,9 @@ test("outbound JWXT Agent handles login, queries, dorm electricity, and crawler 
   await Promise.all([client.waitUntilReady(), clientB.waitUntilReady()]);
   await waitFor(() => gateway.getJwxtAgentState("campus-agent-a").ready && gateway.getJwxtAgentState("campus-agent-b").ready);
   assert.equal(gateway.getJwxtAgentState("campus-agent-a").ready, true);
+  assert.equal(gateway.getJwxtAgentState("campus-agent-a").buildCommit, "a".repeat(40));
+  assert.equal(gateway.getJwxtAgentState("campus-agent-a").platform, process.platform);
+  assert.equal(gateway.getJwxtAgentState("campus-agent-b").buildCommit, "");
 
   const duplicateLogs: string[] = [];
   const duplicate = startJwxtAgentClient({
