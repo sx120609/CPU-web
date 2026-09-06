@@ -3905,16 +3905,6 @@ async function maybeHandleQqGroupAdFilter(input: {
       qqId,
       hitCount: strike.hitCount,
     });
-    await sendQqMessage(
-      { qqId, tempGroupId: groupId },
-      renderQqGroupAdFilterPrivateNotice({
-        groupName: group.name || groupId,
-        review,
-        verificationPrompt: verification?.prompt,
-        whitelistRestriction,
-        penaltyUserNotice: penalty.userNotice,
-      }),
-    ).catch(() => undefined);
     if (group.adFilterGroupNoticeEnabled !== false) {
       await sendQqMessage(
         { groupId },
@@ -3996,30 +3986,6 @@ async function deleteQqBotMessageWithRetry(messageId: string) {
     }
   }
   throw lastError instanceof Error ? lastError : new Error("NapCat 撤回消息失败");
-}
-
-export function renderQqGroupAdFilterPrivateNotice(input: {
-  groupName: string;
-  review: Awaited<ReturnType<typeof reviewQqGroupMessageForAd>>;
-  verificationPrompt?: string;
-  whitelistRestriction?: string;
-  penaltyUserNotice?: string;
-}) {
-  const guidance = input.whitelistRestriction
-    ? [
-        `你的广告过滤白名单仍然有效，但本群设置为白名单用户也不能发送${input.whitelistRestriction}。`,
-        "无需重复申请白名单；如需发送，请联系群管理员调整限制。",
-      ]
-    : [
-        `误判或需申请 30 天白名单？请在 10 分钟内完成验证：${input.verificationPrompt || ""}`,
-        "验证成功后，你将在本群获得 30 天广告过滤白名单。",
-      ];
-  return [
-    `你在群 ${input.groupName} 的消息已被广告过滤撤回。`,
-    `原因：${input.review.reason}`,
-    ...guidance,
-    ...(input.penaltyUserNotice ? [input.penaltyUserNotice] : []),
-  ].join("\n");
 }
 
 function renderQqGroupAdFilterGroupNotice(
@@ -4373,7 +4339,6 @@ async function applyQqGroupAdPenalty(input: {
 }) {
   void input;
   return {
-    userNotice: "",
     logSummary: "",
   };
 }

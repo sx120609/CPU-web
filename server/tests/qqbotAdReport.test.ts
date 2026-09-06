@@ -11,7 +11,6 @@ import {
   describeQqGroupWhitelistPolicy,
   extractQqGroupAdVerificationCode,
   renderQqGroupAdVerificationPrompt,
-  renderQqGroupAdFilterPrivateNotice,
   resolveQqGroupWhitelistReviewPlan,
 } from "../src/services/qqbot";
 
@@ -75,17 +74,6 @@ test("sends unbound administrators to the QQ binding page and preserves the repo
 test("does not preserve unrelated return paths in the QQ binding guide", () => {
   const target = new URL(buildQqBotBindingGuideUrl("//example.com/steal"), "https://cputime.cn");
   assert.equal(target.searchParams.get("returnTo"), "/home");
-});
-
-test("explains whitelist hard restrictions without asking the user to apply again", () => {
-  const notice = renderQqGroupAdFilterPrivateNotice({
-    groupName: "测试群",
-    review: { reason: "二维码", detail: "二维码", action: "block", riskScore: 100 } as any,
-    whitelistRestriction: "二维码",
-  });
-  assert.match(notice, /白名单仍然有效/);
-  assert.match(notice, /无需重复申请/);
-  assert.doesNotMatch(notice, /完成验证/);
 });
 
 test("describes whitelist rules per group instead of implying a global whitelist", () => {
