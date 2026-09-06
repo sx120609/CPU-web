@@ -68,6 +68,19 @@ async function runWidget(input: {
     static now() {
       return fixedNow;
     }
+
+    // Match the simulated device's Asia/Shanghai DateFormatter on UTC CI runners.
+    getHours() {
+      return new Date(this.getTime() + 8 * 60 * 60 * 1000).getUTCHours();
+    }
+
+    getMinutes() {
+      return this.getUTCMinutes();
+    }
+
+    getDay() {
+      return new Date(this.getTime() + 8 * 60 * 60 * 1000).getUTCDay();
+    }
   }
 
   class ListWidget extends TextContainer {}
