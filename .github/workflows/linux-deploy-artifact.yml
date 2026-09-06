@@ -53,7 +53,7 @@ jobs:
       - name: Test schedule edit source recovery
         env:
           TSX_TSCONFIG_PATH: web/tsconfig.json
-        run: node --import ./server/node_modules/tsx/dist/loader.mjs --test web/tests/scheduleEdits.test.ts web/tests/scheduleChanges.test.ts
+        run: node --import ./server/node_modules/tsx/dist/loader.mjs --test web/tests/scheduleEdits.test.ts web/tests/scheduleChanges.test.ts web/tests/scheduleCalendar.test.ts
 
       - name: Test file submission authentication
         run: node --import ./server/node_modules/tsx/dist/loader.mjs --test web/tests/filestoreUpload.test.ts server/tests/browserSecurity.integration.test.ts

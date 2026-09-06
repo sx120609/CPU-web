@@ -828,6 +828,7 @@ import {
   hydrateCalendar,
   resolveGraduateActiveDay,
   resolveGraduateInitialWeek,
+  resolveScheduleCurrentWeek,
 } from "@/views/schedule/calendar";
 import { buildScriptableWidgetScript } from "@/views/schedule/scriptableWidget";
 import { resolveSwipeIntent, type SwipeIntent } from "@/views/schedule/swipeGesture";
@@ -1626,7 +1627,7 @@ const currentThemePreview = computed(() => (
   scheduleThemeOptions.find((item) => item.key === scheduleTheme.value)?.preview ?? scheduleThemeOptions[0]?.preview ?? "#22c55e"
 ));
 const isViewingToday = computed(() => {
-  const cur = calendar.value?.currentWeek;
+  const cur = resolveScheduleCurrentWeek(calendar.value, parsed.value);
   if (!cur || String(cur) !== currentWeekValue()) return false;
   return viewMode.value === "week" || activeDay.value === dayOfWeek();
 });
@@ -1932,7 +1933,7 @@ async function changeWeek(delta: number) {
 }
 
 const canJumpToCurrentWeek = computed(() => {
-  const cur = calendar.value?.currentWeek;
+  const cur = resolveScheduleCurrentWeek(calendar.value, parsed.value);
   return Boolean(cur && String(cur) !== week.value);
 });
 
@@ -1942,7 +1943,7 @@ async function jumpToToday() {
     return;
   }
   viewMode.value = "day";
-  if (!calendar.value?.currentWeek) {
+  if (!resolveScheduleCurrentWeek(calendar.value, parsed.value)) {
     slideDirection.value = dayOfWeek() >= activeDay.value ? "next" : "prev";
     activeDay.value = dayOfWeek();
     saveLastState();
@@ -1952,7 +1953,7 @@ async function jumpToToday() {
 }
 
 async function jumpToCurrentWeek() {
-  const cur = calendar.value?.currentWeek;
+  const cur = resolveScheduleCurrentWeek(calendar.value, parsed.value);
   if (!cur) return;
   await jumpToScheduleWeek(cur, String(calendar.value?.currentSemester || "").trim());
 }

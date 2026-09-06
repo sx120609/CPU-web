@@ -407,6 +407,7 @@ import {
   officialGraduateSemesterCalendarFor,
   resolveGraduateActiveDay,
   resolveGraduateInitialWeek,
+  resolveScheduleCurrentWeek,
   shortDate,
   todayKey,
 } from "@/views/schedule/calendar";
@@ -655,7 +656,7 @@ const activeWeekNumber = computed(() => {
   return Number.isFinite(value) && value > 0 ? value : 0;
 });
 const isViewingToday = computed(() => {
-  const cur = calendar.value?.currentWeek;
+  const cur = resolveScheduleCurrentWeek(calendar.value, parsed.value);
   if (!cur || String(cur) !== currentWeekValue()) return false;
   return viewMode.value === "week" || activeDay.value === dayOfWeek();
 });
@@ -732,7 +733,7 @@ watch(activePageScrollKey, (value, previousValue) => {
   void nextTick(() => resetActiveScheduleBodyScroll());
 });
 const canJumpToCurrentWeek = computed(() => {
-  const cur = calendar.value?.currentWeek;
+  const cur = resolveScheduleCurrentWeek(calendar.value, parsed.value);
   return Boolean(cur && String(cur) !== week.value);
 });
 
@@ -906,7 +907,7 @@ async function jumpToToday() {
     return;
   }
   viewMode.value = "day";
-  if (!calendar.value?.currentWeek) {
+  if (!resolveScheduleCurrentWeek(calendar.value, parsed.value)) {
     slideDirection.value = dayOfWeek() >= activeDay.value ? "next" : "prev";
     activeDay.value = dayOfWeek();
     saveLastState();
@@ -916,7 +917,7 @@ async function jumpToToday() {
 }
 
 async function jumpToCurrentWeek() {
-  const cur = calendar.value?.currentWeek;
+  const cur = resolveScheduleCurrentWeek(calendar.value, parsed.value);
   if (!cur) return;
   const today = dayOfWeek();
   if (String(cur) === week.value) {

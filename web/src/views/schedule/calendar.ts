@@ -197,7 +197,10 @@ export function extendScheduleWeeksToCalendar(data: ScheduleResult | null, sourc
   };
 }
 
-export function buildGraduateFallbackCalendar(data: ScheduleResult | null): CalendarResult | null {
+export function buildGraduateFallbackCalendar(
+  data: ScheduleResult | null,
+  currentDate = todayKey(),
+): CalendarResult | null {
   if (!data) return null;
   const officialCalendar = officialGraduateSemesterCalendarFor(data.currentSemester);
   const descriptor = parseSemesterDescriptor(data.currentSemester) ?? inferSemesterDescriptorFromToday();
@@ -213,14 +216,28 @@ export function buildGraduateFallbackCalendar(data: ScheduleResult | null): Cale
       sunday: days[6] || monday,
     };
   });
-  const today = todayKey();
-  const currentWeekByDate = weeks.find((item) => item.days.includes(today))?.week ?? 0;
+  const currentWeekByDate = weeks.find((item) => item.days.includes(currentDate))?.week ?? 0;
   return {
     currentWeek: currentWeekByDate || 0,
     semesterStart,
     semesterEnd: officialCalendar?.end || weeks[weeks.length - 1]?.sunday || semesterStart,
     weeks,
   };
+}
+
+export function resolveScheduleCurrentWeek(
+  source: CalendarResult | null | undefined,
+  data: ScheduleResult | null,
+  currentDate = todayKey(),
+) {
+  const sourceWeek = source?.weeks
+    ?.find((item) => normalizeCalendarWeekDays(item.days).includes(currentDate))
+    ?.week;
+  if (sourceWeek) return sourceWeek;
+
+  const fallback = buildGraduateFallbackCalendar(data, currentDate);
+  const fallbackWeek = fallback?.weeks.find((item) => item.days.includes(currentDate))?.week;
+  return fallbackWeek || Number(source?.currentWeek || fallback?.currentWeek || 0);
 }
 
 export function resolveCalendarCurrentWeek(source: CalendarResult | null | undefined) {
