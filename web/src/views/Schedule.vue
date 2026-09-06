@@ -378,7 +378,6 @@
                     :title="courseTitle(block.course)"
                     @click.stop="onCourseBlockClick($event, block, page.weekValue)"
                   >
-                    <ScheduleCourseStatus :course="block.course" />
                     <strong>{{ block.course.name }}</strong>
                     <span v-if="block.course.location">@{{ block.course.location }}</span>
                     <em>{{ block.course.slotNote || block.course.weeks }}</em>
@@ -409,7 +408,6 @@
                       :title="courseTitle(block.course)"
                       @click.stop="onCourseBlockClick($event, block, page.weekValue)"
                     >
-                      <ScheduleCourseStatus :course="block.course" />
                       <div class="day-course-name">{{ block.course.name }}</div>
                       <div class="day-course-meta">
                         <span v-if="block.course.location">@{{ block.course.location }}</span>
