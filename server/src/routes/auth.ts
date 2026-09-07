@@ -12,6 +12,7 @@ import { detectLoginClient } from "../utils/loginClient";
 import { buildSelfUser } from "../utils/publicUser";
 import { recordAdminDailyLogin } from "../services/adminStats";
 import { isCookieAuthRequest, issueBrowserSession, revokeBrowserSession } from "../services/browserSession";
+import { scheduleWidgetSessions } from "../services/scheduleWidgetSession";
 import { nicknameSetupRequired, normalizeNicknameSubmission, scheduleNicknameReview } from "../services/nicknameReview";
 
 export const authRouter = Router();
@@ -245,6 +246,9 @@ authRouter.post(
       });
       await recordAdminDailyLogin(user.id, user.lastLoginAt ?? new Date(), client.client).catch((error) => {
         console.warn("[admin-stats] failed to record sso login", error);
+      });
+      await scheduleWidgetSessions.recordLogin(user.id, studentId, r.token).catch(() => {
+        console.warn("[schedule-widget] 登录成功，小组件会话同步暂时失败");
       });
       if (isCookieAuthRequest(req)) {
         await issueBrowserSession(res, { siteToken, jwxtToken: r.token, persistent: remember });

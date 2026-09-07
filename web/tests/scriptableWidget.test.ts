@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import vm from "node:vm";
 import { buildScriptableWidgetScript } from "../src/views/schedule/scriptableWidget";
-import { buildScheduleWidgetPayload } from "../../server/src/services/scheduleWidget";
+import { buildScheduleWidgetPayload, scheduleWidgetFallbackPayload } from "../../server/src/services/scheduleWidget";
 
 type Course = {
   name: string;
@@ -280,4 +280,27 @@ test("Scriptable medium defaults to the compact full-day timeline", async () => 
   assert.ok(rendered.texts.includes("医学免疫学 · B201"));
   assert.ok(!rendered.texts.includes("当前"));
   assert.ok(!rendered.texts.includes("接下来"));
+});
+
+test("already imported Scriptable variants render Monday's cached courses after an overnight login expiry", async () => {
+  const calendar = { currentSemester: "2026-2027-1", currentWeek: 1, weeks: [
+    { week: 1, days: ["2026-08-31", "2026-09-01", "2026-09-02", "2026-09-03", "2026-09-04", "2026-09-05", "2026-09-06"] },
+    { week: 2, days: ["2026-09-07", "2026-09-08", "2026-09-09", "2026-09-10", "2026-09-11", "2026-09-12", "2026-09-13"] },
+  ] };
+  const nextWeek = { currentSemester: "2026-2027-1", cells: [
+    { day: 1, bigSlot: 1, courses: [{ ...course("药物设计学", "08:00", "09:40", 1, 2), weeks: "2周", weekList: [2] }] },
+    { day: 2, bigSlot: 1, courses: [{ ...course("周二课程", "08:00", "09:40", 1, 2), weeks: "2周", weekList: [2] }] },
+  ] };
+  const original = buildScheduleWidgetPayload({ currentSemester: "2026-2027-1", cells: [] }, calendar, "", new Date("2026-09-06T15:30:00Z"), { 2: nextWeek });
+  const fixedNow = "2026-09-06T23:33:00Z";
+  const payload = scheduleWidgetFallbackPayload(JSON.stringify(original), "", new Date(fixedNow));
+  assert.ok(payload);
+  for (const [family, parameter] of [["small", "upcoming"], ["medium", "today"], ["medium", "split"], ["large", "twoday"]] as const) {
+    const rendered = await runWidget({ payload, fixedNow, family, parameter });
+    assert.ok(rendered.texts.some(text => text.includes("药物设计学")));
+    assert.ok(rendered.texts.some(text => text.includes("缓存")));
+    assert.ok(!rendered.texts.includes("课表读取失败"));
+    assert.ok(!rendered.texts.includes("近期没有课程"));
+    if (family === "large") assert.ok(rendered.texts.includes("周二课程"));
+  }
 });

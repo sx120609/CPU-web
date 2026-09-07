@@ -34,15 +34,53 @@ export function scheduleWidgetFallbackPayload(payload?: string | null, requested
   const parsed = parseScheduleWidgetCache(payload);
   if (!parsed || String(parsed.requestedWeek || "") !== String(requestedWeek || "").trim()) return null;
   const candidates = [...(Array.isArray(parsed.weekDays) ? parsed.weekDays : []), ...(Array.isArray(parsed.days) ? parsed.days : [])];
+  const known = new Map<string, any>();
+  for (const item of candidates) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(item?.date || "") || !Array.isArray(item?.courses)) continue;
+    const day = dayOfWeekForYmd(item.date);
+    if (!day || addDaysToYmd(item.date, 0) !== item.date || (item.day && item.day !== day)) continue;
+    if (item.courses.some((course: any) => course?.date && course.date !== item.date)) continue;
+    if (!known.has(item.date)) known.set(item.date, { ...item, day, label: `${dayLabel(day)}·缓存`, isToday: false });
+  }
   if (requestedWeek) {
-    return Array.from({ length: 7 }, (_, index) => index + 1).every((day) => candidates.some((item) => (
-      item?.day === day && Number(item.week) === Number(requestedWeek) && Array.isArray(item.courses)
-    ))) ? parsed : null;
+    const weekDays = [...known.values()].filter((item) => Number(item.week) === Number(requestedWeek)).sort((a, b) => a.date.localeCompare(b.date));
+    if (weekDays.length !== 7 || weekDays.some((item, index) => item.day !== index + 1 || item.date !== addDaysToYmd(weekDays[0].date, index))) return null;
+    return { ...parsed, days: weekDays, weekDays, today: weekDays[0], upcoming: weekDays[0].courses.slice(0, 6), stale: true };
   }
   const today = chinaDateParts(now).ymd;
-  return Array.from({ length: 8 }, (_, offset) => addDaysToYmd(today, offset)).every((date) => candidates.some((item) => (
-    item?.date === date && Array.isArray(item.courses)
-  ))) ? parsed : null;
+  const current = known.get(today);
+  if (!current) return null;
+  const remaining = (item: any) => item.courses.filter((course: WidgetCourse) => !course.endTime || courseEndMinutes(course) >= chinaMinutes(now));
+  let selectedDate = remaining(current).length ? today : "";
+  let completeWindow = true;
+  for (let offset = 1; offset <= 7; offset++) {
+    const date = addDaysToYmd(today, offset);
+    const item = known.get(date);
+    if (!item) { completeWindow = false; break; }
+    if (!selectedDate && item.courses.length) selectedDate = date;
+  }
+  // 旧版两日组件会展示所选课程日和次日；未知日期不能冒充“没有课程”。
+  if (!selectedDate && !completeWindow) return null;
+  if (!known.has(addDaysToYmd(selectedDate || today, 1))) return null;
+  const monday = addDaysToYmd(today, 1 - current.day);
+  const weekDays = [...known.values()].filter((item) => item.date >= monday && item.date <= addDaysToYmd(monday, 6)).sort((a, b) => a.date.localeCompare(b.date));
+  weekDays.forEach((item) => { item.isToday = item.date === today; });
+  const days = [...known.values()].sort((a, b) => a.date.localeCompare(b.date)).map((item) => ({
+    ...item, isToday: item.date === today, courses: item.date === today ? remaining(item) : item.courses,
+  }));
+  const active = days.find((item) => item.date === today)!;
+  return {
+    ...parsed,
+    week: Number(current.week) || 0,
+    currentWeek: Number(current.week) || 0,
+    displayWeek: Number(current.week) || 0,
+    teachingWeekActive: Number(current.week) > 0,
+    today: active,
+    upcoming: active.courses.slice(0, 6),
+    days,
+    weekDays,
+    stale: true,
+  };
 }
 
 const SMALL_SLOTS = [
@@ -284,6 +322,19 @@ export function buildScheduleWidgetPayload(
         week: targetWeek,
         isToday: false,
         courses: targetCourses,
+      });
+    }
+    // 预览周已经整周取回，保留这些真实日期，供跨午夜或离线时重新选日。
+    for (const [previewWeek, previewSchedule] of Object.entries(schedulesByWeek)) {
+      const weekNumber = Number(previewWeek);
+      const dates = normalizeCalendarWeekDays((effectiveCalendar?.weeks ?? []).find((item: any) => Number(item.week) === weekNumber)?.days ?? []);
+      if (dates.length !== 7 || dates.some((date) => !date)) continue;
+      const courses = coursesForWeek(previewSchedule, weekNumber, dates);
+      dates.forEach((date, index) => {
+        if (!days.some((day) => day.date === date)) days.push({
+          day: index + 1, label: dayLabel(index + 1), date, week: weekNumber, isToday: false,
+          courses: courses.filter((course) => course.date === date),
+        });
       });
     }
   }

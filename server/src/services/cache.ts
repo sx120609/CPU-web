@@ -52,6 +52,7 @@ const DURABLE_EPHEMERAL_PREFIXES = [
   buildRedisKey("auth", "browser-session") + ":",
   buildRedisKey("jwxt", "session") + ":",
   buildRedisKey("jwxt", "agent-session-replica") + ":",
+  buildRedisKey("jwxt", "user-session") + ":",
 ];
 let durableStoreUnavailableLogged = false;
 

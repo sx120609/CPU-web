@@ -29,7 +29,7 @@ test("refreshing widget credentials preserves the last successful payload", () =
   assert.equal("cachedAt" in scheduleWidgetCredentialRefreshData("new-session-token"), false);
 });
 
-test("fallback requires the complete widget date window, not merely a valid payload version", () => {
+test("fallback requires known display dates and never manufactures empty days", () => {
   const cached = JSON.stringify({
     payloadVersion: SCHEDULE_WIDGET_PAYLOAD_VERSION,
     strictDate: true,
@@ -42,9 +42,50 @@ test("fallback requires the complete widget date window, not merely a valid payl
   const valid = JSON.stringify({ ...JSON.parse(cached), days: Array.from({ length: 8 }, (_, offset) => ({
     date: `2026-09-${String(6 + offset).padStart(2, "0")}`, courses: [],
   })) });
-  assert.deepEqual(scheduleWidgetFallbackPayload(valid, "", now), JSON.parse(valid));
+  assert.equal(scheduleWidgetFallbackPayload(valid, "", now)?.stale, true);
+  assert.equal(scheduleWidgetFallbackPayload(valid, "", now)?.today.date, "2026-09-06");
   assert.equal(scheduleWidgetFallbackPayload(valid, "2", now), null);
   assert.equal(scheduleWidgetFallbackPayload(valid, "", new Date("2026-09-07T04:00:00Z")), null);
+});
+
+test("an overnight cache keeps today's courses when only the farthest preview date is missing", () => {
+  const payload = {
+    payloadVersion: SCHEDULE_WIDGET_PAYLOAD_VERSION, strictDate: true, requestedWeek: "", semester: "2026-2027-1",
+    generatedAt: "2026-09-06T15:30:00Z", syncedAt: "2026-09-06T15:29:00Z", currentWeek: 1,
+    today: { date: "2026-09-06", courses: [] },
+    days: Array.from({ length: 8 }, (_, offset) => ({
+      date: `2026-09-${String(6 + offset).padStart(2, "0")}`, week: offset ? 2 : 1,
+      courses: offset === 1 ? [{ name: "周一课程", startTime: "08:00", endTime: "09:40" }] : [],
+    })),
+  };
+  const restored = scheduleWidgetFallbackPayload(JSON.stringify(payload), "", new Date("2026-09-06T23:33:00Z"));
+  assert.ok(restored);
+  assert.equal(restored.currentWeek, 2);
+  assert.equal(restored.today.date, "2026-09-07");
+  assert.equal(restored.today.courses[0].name, "周一课程");
+  assert.equal(restored.today.label, "周一·缓存");
+  assert.equal(restored.syncedAt, payload.syncedAt);
+  assert.equal(restored.days.some((day: any) => day.date === "2026-09-14"), false);
+  assert.equal(scheduleWidgetFallbackPayload(JSON.stringify(payload), "", new Date("2026-09-07T03:00:00Z")), null);
+});
+
+test("offline payloads advance across weeks and recalculate completed courses from the full saved week", () => {
+  const calendar = { currentSemester: "2026-2027-1", currentWeek: 1, weeks: [
+    { week: 1, days: ["2026-08-31", "2026-09-01", "2026-09-02", "2026-09-03", "2026-09-04", "2026-09-05", "2026-09-06"] },
+    { week: 2, days: ["2026-09-07", "2026-09-08", "2026-09-09", "2026-09-10", "2026-09-11", "2026-09-12", "2026-09-13"] },
+  ] };
+  const next = { currentSemester: "2026-2027-1", cells: [
+    { day: 1, bigSlot: 1, courses: [course("上午课", "2周", "甲", 1, 2)] },
+    { day: 1, bigSlot: 5, courses: [course("晚间课", "2周", "乙", 9, 10)] },
+  ] };
+  const cached = buildScheduleWidgetPayload({ currentSemester: "2026-2027-1", cells: [] }, calendar, "", new Date("2026-09-06T15:30:00Z"), { 2: next });
+  assert.equal(cached.days.find((day) => day.date === "2026-09-13")?.week, 2);
+  const restored = scheduleWidgetFallbackPayload(JSON.stringify(cached), "", new Date("2026-09-07T05:00:00Z"));
+  assert.equal(restored.today.date, "2026-09-07");
+  assert.deepEqual(restored.today.courses.map((item: any) => item.name), ["晚间课"]);
+  assert.deepEqual(restored.weekDays[0].courses.map((item: any) => item.name), ["上午课", "晚间课"]);
+  assert.equal(restored.currentWeek, 2);
+  assert.equal(restored.generatedAt, cached.generatedAt);
 });
 
 test("the immediate widget fallback rejects malformed or incompatible payloads", () => {

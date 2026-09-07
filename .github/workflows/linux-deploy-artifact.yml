@@ -56,7 +56,7 @@ jobs:
         run: node --import ./server/node_modules/tsx/dist/loader.mjs --test web/tests/scheduleEdits.test.ts web/tests/scheduleChanges.test.ts web/tests/scheduleCalendar.test.ts
 
       - name: Test shared schedule data and widget date coverage
-        run: node --import ./server/node_modules/tsx/dist/loader.mjs --test server/tests/scheduleCalendarSource.test.ts server/tests/scheduleData.test.ts server/tests/scheduleWidget.test.ts server/tests/scheduleWidgetRoute.test.ts server/tests/cache.test.ts web/tests/scriptableWidget.test.ts
+        run: node --import ./server/node_modules/tsx/dist/loader.mjs --test server/tests/scheduleCalendarSource.test.ts server/tests/scheduleData.test.ts server/tests/scheduleWidget.test.ts server/tests/scheduleWidgetSession.test.ts server/tests/scheduleWidgetRefresh.test.ts server/tests/scheduleWidgetRoute.test.ts server/tests/cache.test.ts web/tests/scriptableWidget.test.ts
 
       - name: Test file submission authentication
         run: node --import ./server/node_modules/tsx/dist/loader.mjs --test web/tests/filestoreUpload.test.ts server/tests/browserSecurity.integration.test.ts
