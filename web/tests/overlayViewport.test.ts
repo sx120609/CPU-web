@@ -14,6 +14,24 @@ test("viewport panning keeps the dialog above the keyboard", () => {
   assert.deepEqual(getOverlayViewport({ layoutHeight: 800, visualHeight: 420, offsetTop: 60 }), { top: 60, height: 420 });
 });
 
+test("a resized innerHeight does not clip a panned visual viewport again", () => {
+  for (const layoutHeight of [440, 600, 800]) {
+    for (const offsetTop of [0, 120, 300, 480]) {
+      assert.deepEqual(
+        getOverlayViewport({ layoutHeight, visualHeight: 440, offsetTop }),
+        { top: offsetTop, height: 440 },
+      );
+    }
+  }
+});
+
+test("an overlay keyboard clips a panned viewport in layout coordinates", () => {
+  assert.deepEqual(
+    getOverlayViewport({ layoutHeight: 440, visualHeight: 440, offsetTop: 120, keyboardTop: 500, keyboardHeight: 300 }),
+    { top: 120, height: 380 },
+  );
+});
+
 test("overlay keyboards clip at their top edge without adding their height twice", () => {
   const keyboard = { keyboardTop: 440, keyboardHeight: 360 };
   assert.deepEqual(getOverlayViewport({ layoutHeight: 800, visualHeight: 800, ...keyboard }), { top: 0, height: 440 });

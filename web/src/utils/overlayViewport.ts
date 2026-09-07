@@ -8,7 +8,8 @@ type ViewportMetrics = {
 
 export function getOverlayViewport(metrics: ViewportMetrics) {
   const top = Math.max(0, metrics.offsetTop ?? 0);
-  let bottom = Math.min(metrics.layoutHeight, top + (metrics.visualHeight ?? metrics.layoutHeight));
+  // WebKit can report an already-resized innerHeight while the visual viewport is panned.
+  let bottom = top + (metrics.visualHeight ?? metrics.layoutHeight);
   if ((metrics.keyboardHeight ?? 0) > 0 && (metrics.keyboardTop ?? 0) > top) {
     bottom = Math.min(bottom, metrics.keyboardTop!);
   }
