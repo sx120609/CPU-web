@@ -139,7 +139,7 @@
             <h3>{{ semKey }}</h3>
             <span class="sem-sum">{{ semCount(rows) }} 门 · {{ semCredits(rows).toFixed(1) }} 学分 · 加权 GPA {{ semGpa(rows).toFixed(2) }}</span>
           </div>
-          <div class="mobile-grade-list">
+          <div v-if="isMobile" class="mobile-grade-list">
             <article v-for="row in rows" :key="`${row.semester}-${row.courseCode || row.courseName}`" class="grade-card">
               <div class="grade-card-top">
                 <el-checkbox :model-value="isCourseSelected(row)" @change="(checked) => toggleCourse(row, checked)">
@@ -169,7 +169,7 @@
               </div>
             </article>
           </div>
-          <div class="table-scroll">
+          <div v-else class="table-scroll">
             <el-table :data="rows" stripe size="default">
               <el-table-column label="选择" width="64" align="center" fixed>
                 <template #default="{ row }">
@@ -270,7 +270,7 @@ const loadError = ref("");
 let loadSeq = 0;
 let disposed = false;
 
-const isMobile = ref(false);
+const isMobile = ref(typeof window !== "undefined" && window.matchMedia("(max-width: 760px)").matches);
 let mql: MediaQueryList | null = null;
 function onMqlChange(e: MediaQueryListEvent) {
   isMobile.value = e.matches;

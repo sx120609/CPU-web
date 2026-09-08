@@ -197,23 +197,23 @@
       </div>
 
       <el-tabs v-if="!academicDataUnavailable && hasJwxtTabs" v-model="tab" class="cpu-card jwxt-tabs" @tab-change="onTabChange">
-        <el-tab-pane v-if="showScheduleTab" name="schedule">
+        <el-tab-pane v-if="showScheduleTab" name="schedule" lazy>
           <template #label><AppIcon v-if="!isMobileViewport" name="calendar" /> 课表</template>
           <SchedulePane :data="schedule" :loading="tabLoading" :source="isGraduateIdentity ? 'graduate' : 'jwxt'" />
         </el-tab-pane>
-        <el-tab-pane v-if="!isGraduateIdentity" name="grades">
+        <el-tab-pane v-if="!isGraduateIdentity" name="grades" lazy>
           <template #label><AppIcon v-if="!isMobileViewport" name="chart" /> 成绩</template>
           <GradesPane :data="grades" :loading="tabLoading" />
         </el-tab-pane>
-        <el-tab-pane v-if="!isGraduateIdentity" name="midterm">
+        <el-tab-pane v-if="!isGraduateIdentity" name="midterm" lazy>
           <template #label><AppIcon v-if="!isMobileViewport" name="document" /> {{ isMobileViewport ? "期中" : "期中成绩" }}</template>
           <MidtermGradesPane :data="midtermGrades" :loading="tabLoading" />
         </el-tab-pane>
-        <el-tab-pane v-if="!isGraduateIdentity" name="progress">
+        <el-tab-pane v-if="!isGraduateIdentity" name="progress" lazy>
           <template #label><AppIcon v-if="!isMobileViewport" name="school" /> {{ isMobileViewport ? "学业" : "学业完成情况" }}</template>
           <ProgressPane :data="progress" :loading="tabLoading" />
         </el-tab-pane>
-        <el-tab-pane v-if="!isGraduateIdentity" name="pyfa">
+        <el-tab-pane v-if="!isGraduateIdentity" name="pyfa" lazy>
           <template #label><AppIcon v-if="!isMobileViewport" name="course" /> {{ isMobileViewport ? "培养" : "培养方案" }}</template>
           <PyfaPane :data="pyfa" :loading="tabLoading" />
         </el-tab-pane>
@@ -249,7 +249,7 @@
 
 <script setup lang="ts">
 import AppIcon from "@/components/common/AppIcon.vue";
-import { ref, reactive, onMounted, onBeforeUnmount, computed, watch } from "vue";
+import { ref, reactive, onMounted, onBeforeUnmount, computed, watch, defineAsyncComponent } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from "element-plus";
 import { Lock, User, Refresh, CircleCheckFilled, CircleClose, InfoFilled } from "@element-plus/icons-vue";
@@ -266,11 +266,11 @@ import {
   writeJwxtTabCache,
 } from "@/utils/jwxtTabCache";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
-import SchedulePane from "@/components/jwxt/SchedulePane.vue";
-import GradesPane from "@/components/jwxt/GradesPane.vue";
-import MidtermGradesPane from "@/components/jwxt/MidtermGradesPane.vue";
-import ProgressPane from "@/components/jwxt/ProgressPane.vue";
-import PyfaPane from "@/components/jwxt/PyfaPane.vue";
+const SchedulePane = defineAsyncComponent(() => import("@/components/jwxt/SchedulePane.vue"));
+const GradesPane = defineAsyncComponent(() => import("@/components/jwxt/GradesPane.vue"));
+const MidtermGradesPane = defineAsyncComponent(() => import("@/components/jwxt/MidtermGradesPane.vue"));
+const ProgressPane = defineAsyncComponent(() => import("@/components/jwxt/ProgressPane.vue"));
+const PyfaPane = defineAsyncComponent(() => import("@/components/jwxt/PyfaPane.vue"));
 
 const jwxt = useJwxtStore();
 const auth = useAuthStore();
