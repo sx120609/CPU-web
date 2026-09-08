@@ -7,7 +7,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { atomicWrite, cutover, probe, replaceConfig, replaceUpstream, runtimeEnvironment } from './blue-green-core.mjs'
-import { findProxyConfig, publishWebAssets, verifyWeb } from './blue-green.mjs'
+import { configSnapshots, restoreConfigs, findProxyConfig, publishWebAssets, verifyWeb } from './blue-green.mjs'
 
 const listen = server => new Promise(resolve => server.listen(0, '127.0.0.1', () => resolve(server.address().port)))
 const close = server => new Promise(resolve => server.close(resolve))
@@ -102,6 +102,30 @@ test('proxy discovery refuses ambiguity and respects an explicit include', async
     await writeFile(site, `include ${include};\nproxy_pass http://127.0.0.1:23333;`)
     await assert.rejects(findProxyConfig(site, 23333), /found 2/)
   }
+})
+
+test('multi-file routing restores partial switches and refuses external edits before rollback', async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'cpu-proxy-set-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const configs = []
+  for (const name of ['main', 'qqbot']) {
+    const nginxConfig = path.join(root, `${name}.conf`), configBackup = path.join(root, `${name}.bak`)
+    const text = `location /${name} { proxy_pass http://127.0.0.1:23333; }`
+    await writeFile(nginxConfig, text)
+    await writeFile(configBackup, text)
+    configs.push({ nginxConfig, configBackup })
+  }
+  const snapshots = await configSnapshots({ configs }, 23333, 23433)
+  await replaceConfig(snapshots[0].file, snapshots[0].before, snapshots[0].after)
+  await restoreConfigs(snapshots)
+  for (const item of snapshots) assert.equal(await readFile(item.file, 'utf8'), item.before)
+  await writeFile(snapshots[0].file, snapshots[0].after)
+  await writeFile(snapshots[1].file, 'external configuration')
+  await assert.rejects(restoreConfigs(snapshots), /changed during deployment/)
+  assert.equal(await readFile(snapshots[0].file, 'utf8'), snapshots[0].after)
+  assert.equal(await readFile(snapshots[1].file, 'utf8'), 'external configuration')
+  const legacy = await configSnapshots(configs[0], 23333, 23433)
+  assert.deepEqual(legacy, [snapshots[0]])
 })
 
 test('HTTP 200 SPA fallbacks cannot masquerade as working JS assets or the new page entry', async t => {

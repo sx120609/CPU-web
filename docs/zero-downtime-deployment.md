@@ -23,6 +23,7 @@
 | `NGINX_SITE_CONFIG` | `/www/server/panel/vhost/nginx/cpu.lizmt.cn.conf` |
 | `NGINX_BIN` | `/www/server/nginx/sbin/nginx` |
 | `DEPLOY_NGINX_CONFIG` | 可选。指定实际包含主站 `proxy_pass http://127.0.0.1:<当前端口>` 的文件 |
+| `DEPLOY_NGINX_CONFIGS` | 可选。已核对的多个代理文件绝对路径组成的 JSON 数组；用于主站和 QQBot 等独立 location 分散在不同文件时，统一备份、切换及回滚 |
 | `DEPLOY_BLUE_PORT` / `DEPLOY_GREEN_PORT` | `PORT + 100` / `PORT + 101`，默认 23433 / 23434 |
 | `DEPLOY_VOICE_BLUE_PORT` / `DEPLOY_VOICE_GREEN_PORT` | `PORT + 200` / `PORT + 201`，默认 23533 / 23534 |
 | `DEPLOY_VERIFY_URL` | `https://cputime.cn`，用于验证公网切换 |
@@ -30,6 +31,8 @@
 | `DEPLOY_DRAIN_SECONDS` | 每阶段默认等 120 秒；超时保留实例，而非强制关闭连接 |
 
 默认在站点配置和其所在目录下的绝对路径 include 中寻找唯一的主站代理文件。间接 upstream、多个匹配文件、外部配置或不明确的匹配会停止更新，需明确指定 `DEPLOY_NGINX_CONFIG`。检测到配置被其他操作修改时不覆盖。不要同时通过宝塔或另一个工具修改同一代理配置。
+
+若同一旧端口服务于多个文件中的 location，应使用 `DEPLOY_NGINX_CONFIGS` 列出所有相关文件，不能只选择首页所在的代理。所有配置写入完成并通过 `nginx -t` 后才 reload；中断或写入失败时可恢复部分已切换文件。回滚前先检查整组配置，发现外部编辑则保留实例、停止恢复，避免覆盖未知修改。
 
 Nginx 不能配置非零 `worker_shutdown_timeout` 强制终止旧连接；检测到该设置时更新会停止。保留 Nginx 默认的优雅退出行为。
 

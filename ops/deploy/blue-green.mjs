@@ -108,6 +108,26 @@ export async function findProxyConfig(site, port, explicit) {
   return matches[0]
 }
 
+export async function configSnapshots(candidate, from, to) {
+  const files = candidate.configs || [{ nginxConfig: candidate.nginxConfig, configBackup: candidate.configBackup }]
+  return Promise.all(files.map(async item => {
+    const before = await readFile(item.configBackup, 'utf8')
+    return { file: item.nginxConfig, before, after: replaceUpstream(before, from, to) }
+  }))
+}
+
+export async function restoreConfigs(configs) {
+  // Validate the entire set before touching it. A partially applied cutover is
+  // recoverable, but an external edit must never be overwritten.
+  for (const item of configs) {
+    const current = await readFile(item.file, 'utf8')
+    if (current !== item.before && current !== item.after) throw new Error('Nginx configuration changed during deployment; refusing to overwrite it')
+  }
+  for (const item of configs) {
+    if (await readFile(item.file, 'utf8') !== item.before) await replaceConfig(item.file, item.after, item.before)
+  }
+}
+
 export async function verifyWeb(base, html, { entry = false } = {}) {
   const paths = [...html.matchAll(/(?:src|href)=["']([^"']*\/assets\/[^"']+\.(?:js|css))["']/g)].map(match => match[1])
   if (!paths.length) throw new Error('The web artifact has no entry JS/CSS')
@@ -184,9 +204,10 @@ export async function deploy() {
       log('Old nginx workers still have connections. Both releases are retained; run update again after they drain.')
       return false
     }
-    const original = await readFile(candidate.configBackup, 'utf8')
-    if (await readFile(candidate.nginxConfig, 'utf8') !== replaceUpstream(original, previous.port, candidate.port)) {
-      throw new Error('Nginx configuration changed while draining; retaining the previous instance')
+    for (const item of await configSnapshots(candidate, previous.port, candidate.port)) {
+      if (await readFile(item.file, 'utf8') !== item.after) {
+        throw new Error('Nginx configuration changed while draining; retaining the previous instance')
+      }
     }
     await probe(`${candidate.verifyUrl}/api/ready?drain=${Date.now()}`, { commit: candidate.commit })
     await atomicWrite(candidate.trafficMarker, candidate.id)
@@ -217,11 +238,8 @@ export async function deploy() {
     } else {
       const { previous, candidate } = state
       await probe(`http://127.0.0.1:${previous.port}/api/health`)
-      const original = await readFile(candidate.configBackup, 'utf8')
-      const attempted = replaceUpstream(original, previous.port, candidate.port)
-      const current = await readFile(candidate.nginxConfig, 'utf8')
       const workers = await nginxWorkers(nginx)
-      if (current !== original) await replaceConfig(candidate.nginxConfig, attempted, original)
+      await restoreConfigs(await configSnapshots(candidate, previous.port, candidate.port))
       await run(nginx, ['-t'])
       await atomicWrite(path.join(root, 'web/dist/index.html'), await readFile(path.join(candidate.release, 'previous-index.html')), 0o644)
       await run(nginx, ['-s', 'reload'])
@@ -246,7 +264,15 @@ export async function deploy() {
   } else await probe(`http://127.0.0.1:${previous.port}/api/${previous.commit ? 'ready' : 'health'}`, { commit: previous.commit })
   const serverChanged = !previous.id || touches(/^(server\/|desktop\/assets\/userscripts\/|ops\/deploy\/|deploy\.sh$)/)
   const voiceChanged = !previous.id || touches(/^voicehub\//)
-  const nginxConfig = serverChanged || voiceChanged ? await findProxyConfig(siteConfig, previous.port, process.env.DEPLOY_NGINX_CONFIG) : null
+  let nginxConfigs = []
+  if (serverChanged || voiceChanged) {
+    if (process.env.DEPLOY_NGINX_CONFIGS) {
+      const selected = JSON.parse(process.env.DEPLOY_NGINX_CONFIGS)
+      if (!Array.isArray(selected) || !selected.length || selected.some(file => typeof file !== 'string' || !path.isAbsolute(file))) throw new Error('DEPLOY_NGINX_CONFIGS must be a nonempty JSON array of absolute paths')
+      nginxConfigs = await Promise.all(selected.map(file => findProxyConfig(siteConfig, previous.port, file)))
+      if (new Set(nginxConfigs).size !== nginxConfigs.length) throw new Error('Duplicate nginx configuration paths')
+    } else nginxConfigs = [await findProxyConfig(siteConfig, previous.port, process.env.DEPLOY_NGINX_CONFIG)]
+  }
   const schemaChanged = [...changed].some(file => /^(server\/prisma\/|voicehub\/(drizzle\/|drizzle\.config|server\/database\/))/.test(file))
   if ((schemaChanged || force) && process.env.DEPLOY_ALLOW_SCHEMA_EXPAND !== '1') {
     throw new Error('Schema/full update requires reviewed backward-compatible migrations: set DEPLOY_ALLOW_SCHEMA_EXPAND=1. No running process was changed')
@@ -331,10 +357,12 @@ export async function deploy() {
   if (voiceChanged) await portAvailable(voicePort)
   const name = `cpu-web-${id}`
   const voiceName = voiceChanged ? `cpu-voicehub-${id}` : previous.voiceName
-  const configBefore = await readFile(nginxConfig, 'utf8')
-  const configAfter = replaceUpstream(configBefore, previous.port, port)
-  const configBackup = path.join(release, 'nginx-before.conf')
-  await atomicWrite(configBackup, configBefore)
+  const configs = []
+  for (const [index, nginxConfig] of nginxConfigs.entries()) {
+    const configBackup = path.join(release, `nginx-before-${index}.conf`)
+    await atomicWrite(configBackup, await readFile(nginxConfig, 'utf8'))
+    configs.push({ nginxConfig, configBackup })
+  }
   await run(nginx, ['-t'])
   const nginxDump = await run(nginx, ['-T'])
   for (const line of nginxDump.split('\n')) {
@@ -342,7 +370,8 @@ export async function deploy() {
     if (timeout && !/^0(?:ms|s|m|h|d)?$/.test(timeout)) throw new Error('Nginx worker_shutdown_timeout would force-close old connections; remove it or set it to 0 before online deployment')
   }
   const verifyUrl = (process.env.DEPLOY_VERIFY_URL || 'https://cputime.cn').replace(/\/$/, '')
-  const candidate = { id, commit, name, port, voiceName, voicePort, release, trafficMarker, nginxConfig, configBackup, verifyUrl }
+  const candidate = { id, commit, name, port, voiceName, voicePort, release, trafficMarker, configs, verifyUrl }
+  const snapshots = await configSnapshots(candidate, previous.port, port)
   let switching = false
   let mainStarted = false
   let voiceStarted = false
@@ -364,7 +393,7 @@ export async function deploy() {
       CPU_WEB_DEPLOY_BASE_PORT: String(basePort), CPU_WEB_DEPLOY_VOICE_PORT: process.env.VOICEHUB_PORT || '23335',
       DEPLOY_BLUE_PORT: String(ports[0]), DEPLOY_GREEN_PORT: String(ports[1]),
       DEPLOY_VOICE_BLUE_PORT: String(voicePorts[0]), DEPLOY_VOICE_GREEN_PORT: String(voicePorts[1]),
-      DEPLOY_NGINX_CONFIG: nginxConfig, DEPLOY_VERIFY_URL: verifyUrl,
+      DEPLOY_NGINX_CONFIGS: JSON.stringify(nginxConfigs), DEPLOY_VERIFY_URL: verifyUrl,
       DEPLOY_INTERNAL_ORIGIN: process.env.DEPLOY_INTERNAL_ORIGIN || 'https://cputime.cn',
       DEPLOY_DRAIN_SECONDS: String(drainSeconds),
       CPU_WEB_RELEASE_SHA: commit, CPU_WEB_RELEASE_ID: id, CPU_WEB_BACKGROUND_MARKER: marker,
@@ -382,7 +411,7 @@ export async function deploy() {
       },
       persist: async value => { switching = true; await save(value) },
       switchRoute: async () => {
-        await replaceConfig(nginxConfig, configBefore, configAfter)
+        for (const item of snapshots) await replaceConfig(item.file, item.before, item.after)
         await run(nginx, ['-t'])
         await publishIndex()
         candidate.oldWorkers = await nginxWorkers(nginx)
@@ -394,8 +423,7 @@ export async function deploy() {
         await verifyWeb(verifyUrl, newIndex, { entry: true })
       },
       rollbackRoute: async () => {
-        const current = await readFile(nginxConfig, 'utf8')
-        if (current !== configBefore) await replaceConfig(nginxConfig, configAfter, configBefore)
+        await restoreConfigs(snapshots)
         await run(nginx, ['-t'])
         await atomicWrite(path.join(liveWeb, 'index.html'), oldIndex, 0o644)
         await atomicWrite(trafficMarker, '')
