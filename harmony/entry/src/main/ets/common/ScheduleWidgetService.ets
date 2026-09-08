@@ -8,7 +8,10 @@ const ENDPOINT_KEY = 'endpoint';
 const THEME_KEY = 'theme';
 const FORMS_KEY = 'forms';
 const CACHE_KEY = 'cached_payload';
+const CACHE_ENDPOINT_KEY = 'cached_endpoint';
+const CACHE_TIME_KEY = 'cached_at';
 const DEVICE_CLOCK = new Date();
+let formRecordWrite: Promise<void> = Promise.resolve();
 
 interface WidgetInstallPayload {
   endpoint?: string;
@@ -74,6 +77,7 @@ interface WidgetCourseRow {
 }
 
 export interface ScheduleWidgetBinding {
+  layout: string;
   state: string;
   title: string;
   subtitle: string;
@@ -149,7 +153,7 @@ function themeTint(theme: string): string {
 function courseColorIndex(name: string): number {
   let hash = 0;
   for (let index = 0; index < name.length; index += 1) {
-    hash = (hash * 31 + name.charCodeAt(index)) & 0x7FFFFFFF;
+    hash = (hash * 33 + name.charCodeAt(index)) >>> 0;
   }
   return hash % COLOR_GLASS_ACCENTS.length;
 }
@@ -208,14 +212,22 @@ export async function registerScheduleForm(
   dimension: number,
   formName: string
 ): Promise<void> {
-  const records = (await formRecords(context)).filter((record: FormRecord) => record.id !== formId);
-  records.push({ id: formId, dimension, formName });
-  await saveFormRecords(context, records);
+  const write = formRecordWrite.then(async () => {
+    const records = (await formRecords(context)).filter((record: FormRecord) => record.id !== formId);
+    records.push({ id: formId, dimension, formName });
+    await saveFormRecords(context, records);
+  });
+  formRecordWrite = write.catch(() => undefined);
+  await write;
 }
 
 export async function removeScheduleForm(context: common.Context, formId: string): Promise<void> {
-  const records = (await formRecords(context)).filter((record: FormRecord) => record.id !== formId);
-  await saveFormRecords(context, records);
+  const write = formRecordWrite.then(async () => {
+    const records = (await formRecords(context)).filter((record: FormRecord) => record.id !== formId);
+    await saveFormRecords(context, records);
+  });
+  formRecordWrite = write.catch(() => undefined);
+  await write;
 }
 
 export async function saveScheduleWidgetConfiguration(
@@ -233,6 +245,11 @@ export async function saveScheduleWidgetConfiguration(
   if (!endpoint) return false;
 
   const prefs = await widgetPreferences(context);
+  if (String(await prefs.get(ENDPOINT_KEY, '')) !== endpoint) {
+    await prefs.delete(CACHE_KEY);
+    await prefs.delete(CACHE_ENDPOINT_KEY);
+    await prefs.delete(CACHE_TIME_KEY);
+  }
   await prefs.put(ENDPOINT_KEY, endpoint);
   await prefs.put(THEME_KEY, normalizedTheme(payload.theme));
   await prefs.flush();
@@ -252,11 +269,28 @@ export async function readScheduleWidgetSettings(context: common.Context): Promi
   return { configured: normalizedEndpoint(endpoint).length > 0, theme };
 }
 
+export async function clearScheduleWidgetAccount(context: common.UIAbilityContext): Promise<void> {
+  const prefs = await widgetPreferences(context);
+  await prefs.delete(ENDPOINT_KEY);
+  await prefs.delete(CACHE_KEY);
+  await prefs.delete(CACHE_ENDPOINT_KEY);
+  await prefs.delete(CACHE_TIME_KEY);
+  await prefs.flush();
+  await refreshAllScheduleForms(context);
+}
+
 function formVariant(formName: string): string {
   if (formName === 'schedule_lock_inline') return 'lock-inline';
   if (formName === 'schedule_lock_circular') return 'lock-circular';
   if (formName === 'schedule_lock_rectangular') return 'lock-rectangular';
   return 'desktop';
+}
+
+function formLayout(formName: string, dimension: number): string {
+  if (formName === 'schedule_upcoming' || formName.startsWith('schedule_lock_')) return 'upcoming';
+  if (formName === 'schedule_today') return 'today';
+  if (formName === 'schedule_two_day') return 'two-day';
+  return dimension === 2 ? 'upcoming' : dimension === 3 ? 'today' : 'two-day';
 }
 
 function loadingBinding(
@@ -265,6 +299,7 @@ function loadingBinding(
   formName: string = 'schedule'
 ): ScheduleWidgetBinding {
   return {
+    layout: formLayout(formName, dimension),
     state: 'loading',
     title: '药大课表',
     subtitle: '正在同步课程',
@@ -353,7 +388,9 @@ function resolveDay(payload: SchedulePayload, offset: number, fullDay: boolean):
 function minutes(value?: string): number {
   const match = /^(\d{1,2}):(\d{2})/.exec((value ?? '').trim());
   if (!match) return -1;
-  return Number(match[1]) * 60 + Number(match[2]);
+  const hours = Number(match[1]);
+  const minute = Number(match[2]);
+  return hours < 24 && minute < 60 ? hours * 60 + minute : -1;
 }
 
 function courseEnd(course: ScheduleCourse): number {
@@ -369,7 +406,11 @@ function nowMinutes(): number {
 }
 
 function courses(day: ScheduleDay): ScheduleCourse[] {
-  return day.courses ?? [];
+  return (day.courses ?? []).slice().sort((left: ScheduleCourse, right: ScheduleCourse) => {
+    const first = minutes(left.startTime);
+    const second = minutes(right.startTime);
+    return (first < 0 ? 1440 : first) - (second < 0 ? 1440 : second);
+  });
 }
 
 function upcoming(payload: SchedulePayload): UpcomingSelection {
@@ -461,21 +502,24 @@ function readyBinding(
   const tomorrow = resolveDay(payload, 1, true);
   const upcomingSelection = upcoming(payload);
   const variant = formVariant(formName);
-  const useUpcoming = dimension === 2 || variant !== 'desktop';
+  const layout = formLayout(formName, dimension);
+  const useUpcoming = layout === 'upcoming';
   const selected = useUpcoming ? upcomingSelection.day : today;
-  const todayWindow = courseWindow(courses(today), dimension === 3 ? 2 : 5, current);
+  const todayCurrent = today.date === dateKey(dateOffset(0)) ? current : -1;
+  const todayWindow = courseWindow(courses(today), dimension === 3 ? 2 : layout === 'today' ? 7 : 5, todayCurrent);
   const tomorrowWindow = courseWindow(courses(tomorrow), 5, -1);
   const primaryWindow: CourseWindow = useUpcoming
     ? { courses: upcomingSelection.courses, remainingCount: 0 }
     : todayWindow;
   const week = weekOf(payload, selected);
   return {
+    layout,
     state: 'ready',
     title: normalizedText(payload.title) || '药大课表',
     subtitle: '',
     leftTitle: dayTitle(selected),
     rightTitle: dayTitle(tomorrow),
-    primaryCourses: JSON.stringify(courseRows(primaryWindow.courses, current, theme)),
+    primaryCourses: JSON.stringify(courseRows(primaryWindow.courses, selected.date === dateKey(dateOffset(0)) ? current : -1, theme)),
     secondaryCourses: JSON.stringify(courseRows(tomorrowWindow.courses, -1, theme)),
     footer: stale || payload.stale === true ? '打开 App 可刷新' : '',
     theme,
@@ -508,9 +552,10 @@ async function fetchEndpoint(endpoint: string): Promise<SchedulePayload> {
         }
       });
       const status = Number(response.responseCode);
+      if (status === 401 || status === 403) throw new Error('unauthorized');
       const body = typeof response.result === 'string' ? response.result : JSON.stringify(response.result);
       const wrapper = JSON.parse(body) as ScheduleResponse;
-      if (status === 401 || status === 403 || wrapper.code === 401) throw new Error('unauthorized');
+      if (wrapper.code === 401 || wrapper.code === 403) throw new Error('unauthorized');
       if (status >= 200 && status < 300 && wrapper.code === 0 && wrapper.data) return wrapper.data;
       lastMessage = normalizedText(wrapper.message) || 'server';
     } catch (error) {
@@ -530,14 +575,27 @@ async function loadSchedule(context: common.Context): Promise<LoadedSchedule> {
   if (!endpoint) throw new Error('unconfigured');
   try {
     const payload = await fetchEndpoint(endpoint);
+    if (String(await prefs.get(ENDPOINT_KEY, '')) !== endpoint) throw new Error('unconfigured');
     await prefs.put(CACHE_KEY, JSON.stringify(payload));
+    await prefs.put(CACHE_ENDPOINT_KEY, endpoint);
+    await prefs.put(CACHE_TIME_KEY, Date.now());
     await prefs.flush();
     return { payload, stale: false };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (message === 'unauthorized') throw new Error('unauthorized');
+    if (String(await prefs.get(ENDPOINT_KEY, '')) !== endpoint) throw new Error('unconfigured');
+    if (message === 'unauthorized') {
+      await prefs.delete(CACHE_KEY);
+      await prefs.delete(CACHE_ENDPOINT_KEY);
+      await prefs.flush();
+      throw new Error('unauthorized');
+    }
     const cached = String(await prefs.get(CACHE_KEY, '')).trim();
-    if (cached) return { payload: JSON.parse(cached) as SchedulePayload, stale: true };
+    const cachedEndpoint = String(await prefs.get(CACHE_ENDPOINT_KEY, ''));
+    const cachedAt = Number(await prefs.get(CACHE_TIME_KEY, 0));
+    if (cached && cachedEndpoint === endpoint && Date.now() - cachedAt < 12 * 60 * 60 * 1000) {
+      return { payload: JSON.parse(cached) as SchedulePayload, stale: true };
+    }
     throw new Error(message || 'network');
   }
 }
@@ -560,13 +618,32 @@ async function bindingFor(context: common.Context, dimension: number, formName: 
   }
 }
 
+export async function readScheduleWidgetPreview(context: common.Context, dimension: number, formName: string): Promise<ScheduleWidgetBinding> {
+  const prefs = await widgetPreferences(context);
+  const endpoint = String(await prefs.get(ENDPOINT_KEY, ''));
+  const cachedAt = Number(await prefs.get(CACHE_TIME_KEY, 0));
+  const cachedEndpoint = String(await prefs.get(CACHE_ENDPOINT_KEY, ''));
+  const cached = String(await prefs.get(CACHE_KEY, ''));
+  if (endpoint && cachedEndpoint === endpoint && cached && Date.now() - cachedAt >= 0 && Date.now() - cachedAt < 60000) {
+    try {
+      return readyBinding(JSON.parse(cached) as SchedulePayload, dimension,
+        normalizedTheme(String(await prefs.get(THEME_KEY, 'color-glass'))), false, formName);
+    } catch (_) {}
+  }
+  return bindingFor(context, dimension, formName);
+}
+
 export async function refreshScheduleForm(
   context: common.Context,
   formId: string,
   dimension: number,
   formName: string = 'schedule'
 ): Promise<void> {
+  const prefs = await widgetPreferences(context);
+  const endpoint = String(await prefs.get(ENDPOINT_KEY, ''));
+  const theme = String(await prefs.get(THEME_KEY, ''));
   const binding = await bindingFor(context, dimension, formName);
+  if (endpoint !== String(await prefs.get(ENDPOINT_KEY, '')) || theme !== String(await prefs.get(THEME_KEY, ''))) return;
   await formProvider.updateForm(formId, formBindingData.createFormBindingData(binding));
 }
 

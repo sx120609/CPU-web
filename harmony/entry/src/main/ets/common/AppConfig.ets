@@ -3,7 +3,7 @@ export const APP_URL = 'https://cputime.cn/home?client=harmony-app&appVersionCod
 export const APP_HOST = 'cputime.cn';
 export const VERSION_CODE = 19;
 export const VERSION_NAME = '2.1.0';
-export const USER_AGENT_SUFFIX = `CPUWebHarmonyApp/${VERSION_CODE} CPUWebHarmonyAppVersion/${VERSION_NAME} CPUTimeNative/1`;
+export const USER_AGENT_SUFFIX = `CPUWebHarmonyApp/${VERSION_CODE} CPUWebHarmonyAppVersion/${VERSION_NAME}`;
 const PAYMENT_HOST = 'pay.kaipay.cn';
 
 function protocolOf(input: string): string {
@@ -25,8 +25,10 @@ function hostOf(input: string): string {
   if (query >= 0 && query < end) end = query;
   if (hash >= 0 && hash < end) end = hash;
   const authority = rest.substring(0, end);
-  const colon = authority.indexOf(':');
-  return (colon >= 0 ? authority.substring(0, colon) : authority).toLowerCase();
+  if (authority.includes('@')) return '';
+  const parts = authority.split(':');
+  if (parts.length > 2 || (parts.length === 2 && parts[1] !== '443')) return '';
+  return parts[0].toLowerCase();
 }
 
 export function isInternalUrl(url: string): boolean {

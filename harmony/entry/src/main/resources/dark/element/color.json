@@ -1,40 +1,75 @@
 {
   "color": [
+    { "name": "widget_top", "value": "#2C303C" },
+    { "name": "widget_bottom", "value": "#1D202A" },
+    { "name": "widget_text", "value": "#F7F8FC" },
+    { "name": "widget_secondary", "value": "#AFB4C2" },
+    { "name": "widget_weekday", "value": "#31D4E3" },
+    { "name": "widget_fill_red", "value": "#48313A" },
+    { "name": "widget_fill_blue", "value": "#2C3959" },
+    { "name": "widget_fill_violet", "value": "#3C3153" },
+    { "name": "widget_fill_teal", "value": "#23454C" },
+    { "name": "widget_fill_gold", "value": "#4A422D" },
+    { "name": "widget_fill_pink", "value": "#4C3349" },
+    { "name": "widget_fill_slate", "value": "#333C49" },
+    { "name": "widget_accent_red", "value": "#F38074" },
+    { "name": "widget_accent_blue", "value": "#7899FF" },
+    { "name": "widget_accent_violet", "value": "#B094FF" },
+    { "name": "widget_accent_teal", "value": "#34CDC1" },
+    { "name": "widget_accent_gold", "value": "#F0C250" },
+    { "name": "widget_accent_pink", "value": "#EF93BA" },
+    { "name": "widget_accent_slate", "value": "#A5B3C8" },
     {
       "name": "start_window_background",
-      "value": "#11151B"
+      "value": "#151A17"
     },
     {
       "name": "app_background",
-      "value": "#11151B"
+      "value": "#151A17"
     },
     {
       "name": "app_surface",
-      "value": "#20252D"
+      "value": "#222724"
     },
     {
       "name": "app_navigation",
-      "value": "#171B22"
+      "value": "#222724"
     },
     {
       "name": "app_control",
-      "value": "#2B3038"
+      "value": "#2D332F"
     },
     {
       "name": "app_divider",
-      "value": "#343B46"
+      "value": "#333C35"
     },
     {
       "name": "app_text_primary",
-      "value": "#F5F7FA"
+      "value": "#F3F5F7"
     },
     {
       "name": "app_text_secondary",
-      "value": "#B4BCC8"
+      "value": "#ADB5AF"
     },
     {
       "name": "app_text_tertiary",
-      "value": "#8B95A5"
+      "value": "#99A49C"
+    },
+    {
+      "name": "app_accent",
+      "value": "#91D4B2"
+    },
+    {
+      "name": "app_accent_surface",
+      "value": "#253D30"
+    },
+    {
+      "name": "widget_background",
+      "value": "#222724"
+    },
+    {
+      "name": "app_on_accent",
+      "value": "#173D28"
     }
   ]
 }

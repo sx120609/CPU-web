@@ -46,6 +46,31 @@ test('normal browser never installs native data access', () => {
   ctx.bridge.installIosNextScheduleBridge();
   assert.equal(ctx.window.CPUTimeNativeScheduleFetch, undefined);
 });
+
+test('Harmony refresh starts current-week and metadata reads together without a redundant status probe', async () => {
+  const ctx = setup(); ctx.bridge.installIosNextScheduleBridge(undefined, { fastRefresh:true });
+  const requested = []; let finishSchedule;
+  ctx.jwxt.ensureSession = async options => { assert.equal(options.refresh,false); return true; };
+  ctx.api.schedule = params => { requested.push(['schedule',params.week,params.refresh]);
+    return new Promise(resolve=>finishSchedule=()=>resolve({parsed:sample()})); };
+  ctx.api.calendar = async () => { requested.push(['calendar']);return {parsed:null}; };
+  ctx.api.getScheduleEdits = async () => { requested.push(['edits']);return {edits:{hidden:[],custom:[]}}; };
+  const pending=ctx.window.CPUTimeNativeScheduleFetch('2025-2026-2','1',true);
+  await new Promise(setImmediate);
+  assert.equal(requested.length,3);assert.deepEqual(requested.find(r=>r[0]==='schedule'),['schedule','1','1']);
+  finishSchedule();const result=await pending;
+  assert.equal(result.error,undefined);assert.equal(result.data.currentWeek,'1');
+});
+
+test('parallel refresh does not hide a saved-edit error or accept a switched account', async () => {
+  const ctx=setup();ctx.bridge.installIosNextScheduleBridge(undefined,{fastRefresh:true});
+  ctx.api.getScheduleEdits=async()=>{throw new Error('修改记录不可用');};
+  const failed=await ctx.window.CPUTimeNativeScheduleFetch('2025-2026-2','1',true);
+  assert.equal(failed.error,'修改记录不可用');assert.equal(failed.data,undefined);
+  ctx.api.getScheduleEdits=async()=>{ctx.auth.user.id=2;ctx.changed();return {edits:{hidden:[],custom:[]}};};
+  const switched=await ctx.window.CPUTimeNativeScheduleFetch('2025-2026-2','1',true);
+  assert.equal(switched.auth.authenticated,false);assert.equal(switched.data,undefined);
+});
 test('native payload uses real schedule, custom courses and normalized odd weeks', async () => {
   const ctx = setup();
   ctx.api.getScheduleEdits = async () => ({ edits: { hidden: [], custom: [{ id: 'extra', day: 2, bigSlot: 3,

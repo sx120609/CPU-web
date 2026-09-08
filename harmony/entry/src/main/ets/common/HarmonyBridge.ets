@@ -22,7 +22,7 @@ export interface NativePreviewImage {
 
 let activeHarmonyBridge: HarmonyBridge | undefined;
 
-export function setActiveHarmonyBridge(bridge: HarmonyBridge): void {
+export function setActiveHarmonyBridge(bridge?: HarmonyBridge): void {
   activeHarmonyBridge = bridge;
 }
 
@@ -421,8 +421,23 @@ export class HarmonyJavaScriptProxy {
     this.nativeScheduleHost.ready();
   }
 
-  authChanged(): void {
-    this.nativeScheduleHost.authChanged();
+  appearanceChanged(mode: string): void {
+    this.nativeScheduleHost.appearanceChanged(mode);
+  }
+
+  webOverlayChanged(visible: boolean): void {
+    this.nativeScheduleHost.webOverlayChanged(visible);
+  }
+
+  editorResult(id: string, payload: string): void {
+    this.nativeScheduleHost.editorResult(id, payload);
+  }
+
+  navigationReady(revision: number): void { this.nativeScheduleHost.navigationReady(revision); }
+  headerChanged(payload: string): void { this.nativeScheduleHost.headerChanged(payload); }
+
+  authChanged(scope: string = ''): void {
+    this.nativeScheduleHost.authChanged(scope);
   }
 
   navigate(path: string): void {

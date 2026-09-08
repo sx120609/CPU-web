@@ -1,22 +1,29 @@
-import {
-  NativeCourseBlock,
-  NativeScheduleCourse,
-  NativeScheduleSemester,
-  NativeScheduleStore,
-  NativeScheduleWeek
-} from './NativeScheduleStore';
+import { NativeCourseBlock, NativeScheduleSemester, NativeScheduleStore, NativeScheduleWeek } from './NativeScheduleStore';
+import { NativeScheduleBody } from './NativeScheduleBody';
+import { scheduleCardTone } from './ScheduleVisuals';
 
 const DAYS: string[] = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+const SLOTS: number[] = [1,2,3,4,5,6,7,8,9,10,11];
 const SLOT_STARTS: string[] = ['08:00', '08:55', '09:55', '10:50', '13:30', '14:25', '15:25', '16:20', '18:30', '19:25', '20:20'];
 const SLOT_ENDS: string[] = ['08:45', '09:40', '10:40', '11:35', '14:15', '15:10', '16:10', '17:05', '19:15', '20:10', '21:05'];
-const COURSE_COLORS: string[] = ['#376FD6', '#168776', '#7056C7', '#D97706', '#DB2777', '#2F855A', '#7C3AED', '#0F766E'];
 
 @Component
 export struct NativeSchedulePage {
   @ObjectLink store: NativeScheduleStore;
+  @Prop bottomSafeInset: number = 0;
   onLogin: () => void = () => undefined;
   onWidgets: () => void = () => undefined;
-  @State private detailVisible: boolean = false;
+  onTools: () => void = () => undefined;
+  onEdit: (block: NativeCourseBlock) => void = () => undefined;
+  onAddSlot: (day: number, slot: number) => void = () => undefined;
+  onStyle: () => void = () => undefined;
+  onAppearance: () => void = () => undefined;
+  onShare: () => void = () => undefined;
+  onExport: () => void = () => undefined;
+  @State private contentHeight: number = 540;
+  @State private pageWidth: number = 360;
+  @State private pageHeight: number = 700;
+  @State private pullRefreshing: boolean = false;
   @State private detailName: string = '';
   @State private detailTeacher: string = '';
   @State private detailLocation: string = '';
@@ -25,425 +32,186 @@ export struct NativeSchedulePage {
   @State private detailDay: number = 1;
   @State private detailStartSlot: number = 1;
   @State private detailEndSlot: number = 2;
+  private detailBlock?: NativeCourseBlock;
+  @State private overlappingBlocks: NativeCourseBlock[] = [];
+  private weekController: SwiperController = new SwiperController();
 
   build() {
     Stack() {
+      Column().width('100%').height('100%')
+        .backgroundColor(this.store.dark ? '#000000' : '#F3F3F9')
+      if (this.store.backgroundPath) {
+        Image(this.store.backgroundPath).width('100%').height('100%').objectFit(ImageFit.Cover).opacity(this.store.backgroundOpacity)
+      }
       Column() {
-        this.header()
-
-        Refresh({
-          refreshing: this.store.status === 'loading' && this.store.result !== undefined,
-          promptText: '下拉刷新课表'
-        }) {
-          Scroll() {
-            Column({ space: 14 }) {
-              this.controls()
-
-              if (this.store.errorMessage) {
-                this.messageBanner(this.store.errorMessage, '#FFF4E8', '#A65300')
-              }
-
-              if (this.store.status === 'loading' && this.store.result !== undefined) {
-                this.messageBanner('正在更新课表，当前内容仍可使用', '#EDF4FF', '#376FD6')
-              }
-
-              if (this.store.status === 'unauthorized') {
-                this.stateCard('教务授权已失效', '请重新登录并完成教务授权后读取课表', '去登录', () => this.onLogin())
-              } else if ((this.store.status === 'idle' || this.store.status === 'loading') && !this.store.result) {
-                this.loadingCard()
-              } else if (this.store.status === 'failed' && !this.store.result) {
-                this.stateCard('课表暂时无法加载', this.store.errorMessage || '请检查网络连接后重试', '重新加载', () => this.store.load(true))
-              } else if (this.store.result) {
-                this.summary()
-                if (this.store.visibleCells().length === 0) {
-                  this.stateCard('本周没有课程', '可以切换其他周次，或下拉刷新最新课表', '返回本周', () => this.store.returnToCurrentWeek())
-                } else if (this.store.viewMode === 'day') {
-                  this.daySchedule()
-                } else {
-                  this.weekSchedule()
-                }
-              }
-            }
-            .width('100%')
-            .padding({ left: 14, right: 14, top: 12, bottom: 28 })
+        if (this.store.weekOptions().length) {
+          this.scheduleToolbar()
+          this.weekSwitcher()
+        }
+        if (this.store.errorMessage) this.messageBanner(this.store.errorMessage, this.surfaceColor(), this.textColor())
+        Refresh({ refreshing: this.pullRefreshing && this.store.status === 'loading' }) {
+          if (this.store.weekOptions().length) {
+            Swiper(this.weekController) {
+              ForEach(this.store.weekOptions(), (week: NativeScheduleWeek, index: number) => {
+                Column() {
+                  if (Math.abs(index - this.store.selectedWeekIndex()) <= 1) {
+                    NativeScheduleBody({ store: this.store, view: this.store.previewWeek(week.value),
+                      contentHeight: this.contentHeight, pageWidth: this.pageWidth,
+                      onLogin: this.onLogin, onAddSlot: this.onAddSlot,
+                      onCourse: (block: NativeCourseBlock) => this.openCourseAt(block) })
+                  }
+                }.width('100%').height('100%')
+              }, (week: NativeScheduleWeek) => this.store.selectedSemester + ':' + week.value)
+            }.width('100%').height('100%').index(this.store.selectedWeekIndex())
+              .loop(false).indicator(false).duration(260).curve(Curve.EaseOut)
+              .onChange((index: number) => {
+                const week = this.store.weekOptions()[index];
+                if (week) this.store.selectWeek(week.value);
+              })
+          } else {
+            NativeScheduleBody({ store: this.store, view: this.store,
+              contentHeight: this.contentHeight, pageWidth: this.pageWidth,
+              onLogin: this.onLogin, onAddSlot: this.onAddSlot,
+              onCourse: (block: NativeCourseBlock) => this.openCourseAt(block) })
           }
-          .width('100%')
-          .height('100%')
-          .scrollBar(BarState.Off)
-        }
-        .layoutWeight(1)
-        .onRefreshing(() => this.store.load(true))
-      }
-      .width('100%')
-      .height('100%')
-      .backgroundColor($r('app.color.app_background'))
-
-      if (this.detailVisible) {
-        this.courseDetail()
-      }
-    }
-    .width('100%')
-    .height('100%')
+        }.layoutWeight(1).width('100%').margin({ bottom: 54 + this.bottomSafeInset })
+          .onRefreshing(() => { this.pullRefreshing = true; this.store.load(true); })
+          .onStateChange((state: RefreshStatus) => {
+            if (state === RefreshStatus.Inactive || state === RefreshStatus.Done) this.pullRefreshing = false;
+          })
+          .onAreaChange((_old: Area, next: Area) => this.contentHeight = Number(next.height))
+      }.width('100%').height('100%').padding({ left: 12, right: 12, top: 12 })
+    }.width('100%').height('100%')
+      .onAreaChange((_old: Area, next: Area) => { this.pageWidth = Number(next.width); this.pageHeight = Number(next.height); })
+      .bindSheet(this.store.detailVisible || this.store.weekPickerVisible, this.scheduleSheet(), {
+        height: SheetSize.FIT_CONTENT, showClose: true, dragBar: true,
+        onDisappear: () => { this.store.detailVisible = false; this.store.weekPickerVisible = false; this.overlappingBlocks = []; }
+      })
   }
 
   @Builder
-  private header() {
-    Row() {
-      Column({ space: 2 }) {
-        Text('课表')
-          .fontSize(24)
-          .fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.app_text_primary'))
-        Text('原生课表 · 登录状态与网站同步')
-          .fontSize(12)
-          .fontColor($r('app.color.app_text_secondary'))
-      }
-      .alignItems(HorizontalAlign.Start)
-      .layoutWeight(1)
-
-      Button('小组件')
-        .type(ButtonType.Capsule)
-        .height(36)
-        .fontSize(13)
-        .fontColor('#2459AF')
-        .backgroundColor('#E7F0FF')
-        .onClick(() => this.onWidgets())
-    }
-    .width('100%')
-    .height(68)
-    .padding({ left: 18, right: 18, top: 8 })
-    .alignItems(VerticalAlign.Center)
-    .backgroundColor($r('app.color.app_surface'))
-  }
-
-  @Builder
-  private controls() {
-    Column({ space: 12 }) {
-      Row({ space: 10 }) {
-        if (this.store.semesterOptions().length > 0) {
-          Select(this.semesterSelectOptions())
-            .selected(this.store.selectedSemesterIndex())
-            .value(this.semesterLabel())
-            .font({ size: 13 })
-            .fontColor($r('app.color.app_text_primary'))
-            .backgroundColor($r('app.color.app_control'))
-            .borderRadius(10)
-            .layoutWeight(1)
-            .onSelect((index: number) => {
-              const option = this.store.semesterOptions()[index];
-              if (option) this.store.selectSemester(option.value);
-            })
+  private scheduleToolbar() {
+    Row({ space: 6 }) {
+      Select(this.semesterSelectOptions())
+        .selected(this.store.selectedSemesterIndex()).value(this.store.selectedSemester)
+        .font({ size: 16, weight: FontWeight.Bold }).fontColor(this.store.dark ? '#8DADFF' : '#3668D3')
+        .backgroundColor(this.surfaceColor()).borderRadius(22).layoutWeight(1).height(42).padding({ left: 12, right: 6 })
+        .accessibilityText('选择学期')
+        .onSelect((index: number) => { const option = this.store.semesterOptions()[index]; if (option) this.store.selectSemester(option.value); })
+      Row({ space: 2 }) {
+        this.modeButton('周', 'week')
+        this.modeButton('日', 'day')
+      }.width(78).height(40).padding(3).backgroundColor(this.softSurfaceColor()).borderRadius(22)
+      Button() { SymbolGlyph($r('sys.symbol.scope')).fontSize(23).fontColor([this.store.dark ? '#8DADFF' : '#3668D3']) }
+        .type(ButtonType.Normal).width(40).height(40).padding(0).backgroundColor(this.surfaceColor()).borderRadius(22)
+        .responseRegion({ x: -2, y: -2, width: 44, height: 44 })
+        .accessibilityText('回到本周今日')
+        .onClick(() => { this.store.returnToCurrentWeek(); this.store.selectDay(new Date().getDay() || 7); })
+      Button() {
+        if (this.store.status === 'loading') {
+          LoadingProgress().width(19).height(19).color(this.store.dark ? '#8DADFF' : '#3668D3')
+        } else {
+          Row({ space: 3 }) {
+            ForEach([1,2,3], () => { Circle().width(3).height(3).fill(this.textColor()) })
+          }
         }
-
-        if (this.store.weekOptions().length > 0) {
-          Select(this.weekSelectOptions())
-            .selected(this.store.selectedWeekIndex())
-            .value(this.weekLabel())
-            .font({ size: 13 })
-            .fontColor($r('app.color.app_text_primary'))
-            .backgroundColor($r('app.color.app_control'))
-            .borderRadius(10)
-            .layoutWeight(1)
-            .onSelect((index: number) => {
-              const option = this.store.weekOptions()[index];
-              if (option) this.store.selectWeek(option.value);
-            })
-        }
-
-        Button('本周')
-          .type(ButtonType.Capsule)
-          .height(36)
-          .fontSize(13)
-          .fontColor('#FFFFFF')
-          .backgroundColor('#376FD6')
-          .onClick(() => this.store.returnToCurrentWeek())
-      }
-      .width('100%')
-
-      Row() {
-        this.modeButton('周视图', 'week')
-        this.modeButton('日视图', 'day')
-      }
-      .width('100%')
-      .height(38)
-      .padding(3)
-      .backgroundColor($r('app.color.app_control'))
-      .borderRadius(12)
-    }
-    .width('100%')
-    .padding(14)
-    .backgroundColor($r('app.color.app_surface'))
-    .borderRadius(16)
+      }.type(ButtonType.Normal).width(32).height(40).padding(0).backgroundColor(Color.Transparent).borderRadius(20)
+        .responseRegion({ x: -4, y: -2, width: 40, height: 44 })
+        .accessibilityText('更多课表操作')
+        .bindMenu([
+          { value: '刷新课表', enabled: this.store.status !== 'loading', action: () => this.store.load(true) },
+          { value: '课表配色与背景', action: () => this.onStyle() },
+          { value: '添加与恢复课程', enabled: this.store.source !== 'graduate', action: () => this.onTools() },
+          { value: '桌面与锁屏服务卡片', action: () => this.onWidgets() },
+          { value: '分享所选周课表', action: () => this.onShare() },
+          { value: '导出所选周日历', action: () => this.onExport() },
+          { value: '应用外观', action: () => this.onAppearance() }
+        ])
+    }.width('100%').height(46).margin({ bottom: 12 })
   }
 
   @Builder
   private modeButton(label: string, mode: string) {
-    Button(label)
-      .type(ButtonType.Normal)
-      .height('100%')
-      .layoutWeight(1)
-      .fontSize(13)
-      .fontWeight(this.store.viewMode === mode ? FontWeight.Medium : FontWeight.Regular)
-      .fontColor(this.store.viewMode === mode ? '#2459AF' : $r('app.color.app_text_secondary'))
-      .backgroundColor(this.store.viewMode === mode ? $r('app.color.app_surface') : 'transparent')
-      .borderRadius(9)
+    Button(label).type(ButtonType.Normal).layoutWeight(1).height(34).padding(0).fontSize(14)
+      .fontWeight(this.store.viewMode === mode ? FontWeight.Bold : FontWeight.Medium)
+      .fontColor(this.store.viewMode === mode ? this.textColor() : this.secondaryColor())
+      .backgroundColor(this.store.viewMode === mode ? this.surfaceColor() : Color.Transparent).borderRadius(19)
+      .responseRegion({ x: 0, y: -7, width: '100%', height: 44 })
+      .accessibilityText(label + '视图').accessibilitySelected(this.store.viewMode === mode)
       .onClick(() => this.store.setViewMode(mode))
   }
 
   @Builder
-  private summary() {
-    Row() {
-      Column({ space: 3 }) {
-        Text(this.weekLabel())
-          .fontSize(16)
-          .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.app_text_primary'))
-        Text(this.store.viewMode === 'week' ? '整周安排' : `${DAYS[this.store.selectedDay - 1]}的课程`)
-          .fontSize(12)
-          .fontColor($r('app.color.app_text_secondary'))
-      }
-      .alignItems(HorizontalAlign.Start)
-      .layoutWeight(1)
-
-      Text(`${this.courseCount()} 门课`)
-        .fontSize(12)
-        .fontColor($r('app.color.app_text_secondary'))
-    }
-    .width('100%')
-    .padding({ left: 4, right: 4 })
+  private weekSwitcher() {
+    Row({ space: 8 }) {
+      Button() {
+        SymbolGlyph($r('sys.symbol.chevron_left')).fontSize(23).fontWeight(FontWeight.Bold).fontColor([this.textColor()])
+      }.type(ButtonType.Normal).width(44).height(48).padding(0).backgroundColor(Color.Transparent).borderRadius(22)
+        .enabled(this.store.canMoveWeek(-1)).accessibilityText('上一周').onClick(() => this.weekController.showPrevious())
+      Button() {
+        Column({ space: 4 }) {
+          Text(this.weekLabel()).fontSize(16).fontWeight(FontWeight.Bold).fontColor(this.textColor())
+          Text(this.weekRange()).fontSize(12).fontColor(this.secondaryColor()).maxLines(1)
+        }.width('100%').alignItems(HorizontalAlign.Center)
+      }.type(ButtonType.Normal).layoutWeight(1).height(48).padding(0).backgroundColor(Color.Transparent).borderRadius(18)
+        .accessibilityText('选择周次，' + this.weekLabel() + '，' + this.weekRange())
+        .onClick(() => this.store.weekPickerVisible = true)
+      Button() {
+        SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(23).fontWeight(FontWeight.Bold).fontColor([this.textColor()])
+      }.type(ButtonType.Normal).width(44).height(48).padding(0).backgroundColor(Color.Transparent).borderRadius(22)
+        .enabled(this.store.canMoveWeek(1)).accessibilityText('下一周').onClick(() => this.weekController.showNext())
+    }.width('100%').height(48).margin({ bottom: 12 })
   }
 
   @Builder
-  private daySchedule() {
-    Column({ space: 12 }) {
-      Scroll() {
-        Row({ space: 8 }) {
-          ForEach([1, 2, 3, 4, 5, 6, 7], (day: number) => {
-            Button() {
-              Column({ space: 3 }) {
-                Text(DAYS[day - 1])
-                  .fontSize(12)
-                  .fontWeight(FontWeight.Medium)
-                Text(this.store.dayDate(day) || '--')
-                  .fontSize(10)
-                  .fontColor(this.store.selectedDay === day ? '#DCE8FF' : $r('app.color.app_text_secondary'))
-              }
-            }
-            .type(ButtonType.Normal)
-            .width(62)
-            .height(48)
-            .fontColor(this.store.selectedDay === day ? '#FFFFFF' : $r('app.color.app_text_primary'))
-            .backgroundColor(this.store.selectedDay === day ? '#376FD6' : $r('app.color.app_surface'))
-            .borderRadius(12)
-            .onClick(() => this.store.selectDay(day))
-          })
-        }
-      }
-      .width('100%')
-      .scrollable(ScrollDirection.Horizontal)
-      .scrollBar(BarState.Off)
-
-      if (this.store.blocksForDay(this.store.selectedDay).length === 0) {
-        this.stateCard('当天没有课程', '选择其他日期查看课程安排', '', () => undefined)
-      } else {
-        Column({ space: 10 }) {
-          ForEach(this.store.blocksForDay(this.store.selectedDay), (block: NativeCourseBlock) => {
-            this.courseRow(block)
-          })
-        }
-        .width('100%')
-      }
-    }
-    .width('100%')
-  }
-
-  @Builder
-  private weekSchedule() {
+  private scheduleSheet() {
     Scroll() {
-      Row({ space: 10 }) {
-        ForEach([1, 2, 3, 4, 5, 6, 7], (day: number) => {
-          Column({ space: 8 }) {
-            Column({ space: 2 }) {
-              Row({ space: 5 }) {
-                Text(DAYS[day - 1])
-                  .fontSize(13)
-                  .fontWeight(FontWeight.Medium)
-                  .fontColor($r('app.color.app_text_primary'))
-                if (this.store.isToday(day)) {
-                  Circle()
-                    .width(6)
-                    .height(6)
-                    .fill('#376FD6')
-                }
-              }
-              Text(this.store.dayDate(day) || '--')
-                .fontSize(10)
-                .fontColor($r('app.color.app_text_secondary'))
+    if (this.store.weekPickerVisible) {
+      Column({ space: 16 }) {
+        Text('选择周次').width('100%').fontSize(20).fontWeight(FontWeight.Bold).fontColor(this.textColor())
+        Grid() {
+          ForEach(this.store.weekOptions(), (week: NativeScheduleWeek) => {
+            GridItem() {
+              Button(week.value).height(44).width('100%').type(ButtonType.Normal).borderRadius(10)
+                .fontColor(week.value === this.store.selectedWeek ? $r('app.color.app_on_accent') : this.textColor())
+                .backgroundColor(week.value === this.store.selectedWeek ? $r('app.color.app_accent') : this.softSurfaceColor())
+                .accessibilityText('第' + week.value + '周').onClick(() => { this.store.weekPickerVisible = false; this.store.selectWeek(week.value); })
             }
-            .width('100%')
-            .height(48)
-            .justifyContent(FlexAlign.Center)
-            .backgroundColor(this.store.isToday(day) ? '#E7F0FF' : '#F2F5F9')
-            .borderRadius(12)
-
-            if (this.store.blocksForDay(day).length === 0) {
-              Text('无课')
-                .width('100%')
-                .height(82)
-                .fontSize(12)
-                .fontColor($r('app.color.app_text_tertiary'))
-                .textAlign(TextAlign.Center)
-                .backgroundColor($r('app.color.app_surface'))
-                .borderRadius(12)
-            } else {
-              ForEach(this.store.blocksForDay(day), (block: NativeCourseBlock) => {
-                this.compactCourseCard(block)
-              })
-            }
-          }
-          .width(142)
-          .alignItems(HorizontalAlign.Start)
+          })
+        }.columnsTemplate('1fr 1fr 1fr 1fr 1fr 1fr').columnsGap(6).rowsGap(6)
+          .height(Math.min(350, Math.ceil(this.store.weekOptions().length / 6) * 50)).scrollBar(BarState.Off)
+        Button('回到本周').height(44).fontColor($r('app.color.app_on_accent')).backgroundColor($r('app.color.app_accent'))
+          .onClick(() => { this.store.weekPickerVisible = false; this.store.returnToCurrentWeek(); })
+      }.width('100%').padding({ left: 18, right: 18, top: 28, bottom: 24 }).backgroundColor(this.surfaceColor())
+    } else if (this.overlappingBlocks.length) {
+      Column({ space: 12 }) {
+        Text('同一时段的课程').fontSize(20).fontWeight(FontWeight.Bold).fontColor(this.textColor()).width('100%')
+        ForEach(this.overlappingBlocks, (block: NativeCourseBlock) => {
+          Button(block.course.name + ' · ' + (block.course.location || '地点待定')).width('100%').height(48)
+            .fontColor(this.toneText(block.course.name)).backgroundColor(this.softSurfaceColor())
+            .onClick(() => { this.overlappingBlocks = []; this.openDetail(block); })
         })
-      }
-      .alignItems(VerticalAlign.Top)
-    }
-    .width('100%')
-    .scrollable(ScrollDirection.Horizontal)
-    .scrollBar(BarState.Off)
+      }.width('100%').padding({ left: 18, right: 18, top: 28, bottom: 24 }).backgroundColor(this.surfaceColor())
+    } else this.courseDetail()
+    }.width('100%').constraintSize({ maxHeight: Math.max(260, this.pageHeight - 60) })
+      .scrollBar(BarState.Off).backgroundColor(this.surfaceColor())
   }
 
-  @Builder
-  private courseRow(block: NativeCourseBlock) {
-    Row({ space: 12 }) {
-      Column({ space: 2 }) {
-        Text(block.startSlot === block.endSlot ? `${block.startSlot}` : `${block.startSlot}-${block.endSlot}`)
-          .fontSize(16)
-          .fontWeight(FontWeight.Bold)
-          .fontColor('#2459AF')
-        Text(this.timeRange(block.startSlot, block.endSlot))
-          .fontSize(9)
-          .fontColor($r('app.color.app_text_secondary'))
-          .textAlign(TextAlign.Center)
-      }
-      .width(54)
-      .alignItems(HorizontalAlign.Center)
-
-      Rect()
-        .width(4)
-        .height(62)
-        .fill(this.courseColor(block.course.name))
-        .borderRadius(2)
-
-      Column({ space: 5 }) {
-        Text(block.course.name || '课程')
-          .fontSize(15)
-          .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.app_text_primary'))
-          .maxLines(2)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
-        if (block.course.location) {
-          Text(`地点 · ${block.course.location}`)
-            .fontSize(12)
-            .fontColor($r('app.color.app_text_secondary'))
-            .maxLines(1)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
-        }
-        if (block.course.teacher) {
-          Text(`教师 · ${block.course.teacher}`)
-            .fontSize(12)
-            .fontColor($r('app.color.app_text_secondary'))
-            .maxLines(1)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
-        }
-      }
-      .alignItems(HorizontalAlign.Start)
-      .layoutWeight(1)
-    }
-    .width('100%')
-    .padding(14)
-    .backgroundColor($r('app.color.app_surface'))
-    .borderRadius(14)
-    .onClick(() => this.openDetail(block))
+  private openCourseAt(block: NativeCourseBlock): void {
+    const matches = this.store.blocksForDay(block.day).filter((item: NativeCourseBlock) => item.startSlot <= block.endSlot && item.endSlot >= block.startSlot);
+    if (matches.length <= 1) { this.openDetail(block); return; }
+    this.overlappingBlocks = matches;
+    this.store.detailVisible = true;
   }
-
-  @Builder
-  private compactCourseCard(block: NativeCourseBlock) {
-    Column({ space: 5 }) {
-      Text(block.course.name || '课程')
-        .width('100%')
-        .fontSize(13)
-        .fontWeight(FontWeight.Medium)
-        .fontColor($r('app.color.app_text_primary'))
-        .maxLines(3)
-        .textOverflow({ overflow: TextOverflow.Ellipsis })
-      Text(`${block.startSlot}-${block.endSlot} 节${block.course.location ? ` · ${block.course.location}` : ''}`)
-        .width('100%')
-        .fontSize(10)
-        .fontColor($r('app.color.app_text_secondary'))
-        .maxLines(2)
-        .textOverflow({ overflow: TextOverflow.Ellipsis })
-    }
-    .width('100%')
-    .padding(10)
-    .backgroundColor(this.courseColor(block.course.name, 0.12))
-    .border({ width: 1, color: this.courseColor(block.course.name, 0.28) })
-    .borderRadius(12)
-    .onClick(() => this.openDetail(block))
-  }
-
-  @Builder
-  private loadingCard() {
-    Column({ space: 14 }) {
-      LoadingProgress()
-        .width(34)
-        .height(34)
-        .color('#376FD6')
-      Text('正在加载课表')
-        .fontSize(17)
-        .fontWeight(FontWeight.Medium)
-        .fontColor($r('app.color.app_text_primary'))
-      Text(this.store.bridgeReady ? '正在从教务服务读取最新安排' : '正在恢复登录状态与课表服务')
-        .fontSize(13)
-        .fontColor($r('app.color.app_text_secondary'))
-        .textAlign(TextAlign.Center)
-    }
-    .width('100%')
-    .height(260)
-    .justifyContent(FlexAlign.Center)
-    .padding(24)
-    .backgroundColor($r('app.color.app_surface'))
-    .borderRadius(16)
-  }
-
-  @Builder
-  private stateCard(title: string, message: string, action: string, callback: () => void) {
-    Column({ space: 12 }) {
-      Text(title)
-        .fontSize(17)
-        .fontWeight(FontWeight.Medium)
-        .fontColor($r('app.color.app_text_primary'))
-      Text(message)
-        .fontSize(13)
-        .fontColor($r('app.color.app_text_secondary'))
-        .textAlign(TextAlign.Center)
-      if (action) {
-        Button(action)
-          .type(ButtonType.Capsule)
-          .height(38)
-          .fontSize(13)
-          .fontColor('#FFFFFF')
-          .backgroundColor('#376FD6')
-          .onClick(() => callback())
-      }
-    }
-    .width('100%')
-    .height(220)
-    .justifyContent(FlexAlign.Center)
-    .padding(24)
-    .backgroundColor($r('app.color.app_surface'))
-    .borderRadius(16)
-  }
-
+  private textColor(): string { return this.store.dark ? '#F5F5F7' : '#151518'; }
+  private secondaryColor(): string { return this.store.dark ? '#A6A6B0' : '#72727D'; }
+  private surfaceColor(): string { return this.store.dark ? '#303139' : '#FFFFFF'; }
+  private softSurfaceColor(): string { return this.store.dark ? '#25252B' : '#E7E7ED'; }
+  private cellColor(): string { return this.store.dark ? '#202023' : '#FFFFFF'; }
+  private toneBorder(name: string): string { return scheduleCardTone(name, this.store.palette, this.store.dark).border; }
+  private toneText(name: string): string { return scheduleCardTone(name, this.store.palette, this.store.dark).text; }
+  private toneAccent(name: string): string { return this.toneText(name); }
+  private toneFill(name: string): string { return scheduleCardTone(name, this.store.palette, this.store.dark).top; }
   @Builder
   private messageBanner(message: string, background: string, foreground: string) {
     Row({ space: 8 }) {
@@ -471,25 +239,13 @@ export struct NativeSchedulePage {
   @Builder
   private courseDetail() {
     Column() {
-      Blank()
-        .layoutWeight(1)
-        .width('100%')
-        .onClick(() => this.detailVisible = false)
-
       Column({ space: 14 }) {
         Row() {
           Text('课程详情')
             .fontSize(20)
             .fontWeight(FontWeight.Bold)
-            .fontColor($r('app.color.app_text_primary'))
+            .fontColor(this.textColor())
             .layoutWeight(1)
-          Button('完成')
-            .type(ButtonType.Normal)
-            .height(34)
-            .fontSize(14)
-            .fontColor('#2459AF')
-            .backgroundColor('#E7F0FF')
-            .onClick(() => this.detailVisible = false)
         }
         .width('100%')
 
@@ -497,7 +253,7 @@ export struct NativeSchedulePage {
           .width('100%')
           .fontSize(18)
           .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.app_text_primary'))
+          .fontColor(this.textColor())
 
         this.detailRow('星期', DAYS[this.detailDay - 1])
         this.detailRow('节次', this.detailSlotNote || `第 ${this.detailStartSlot}-${this.detailEndSlot} 节`)
@@ -505,15 +261,19 @@ export struct NativeSchedulePage {
         this.detailRow('周次', this.detailWeeks)
         if (this.detailTeacher) this.detailRow('教师', this.detailTeacher)
         if (this.detailLocation) this.detailRow('地点', this.detailLocation)
+        if (this.store.source !== 'graduate') {
+          Button('编辑个人课程').height(44).width('100%').fontSize(14)
+            .fontColor($r('app.color.app_accent')).backgroundColor($r('app.color.app_accent_surface'))
+            .onClick(() => { if (this.detailBlock) this.onEdit(this.detailBlock); })
+        }
       }
       .width('100%')
       .padding({ left: 20, right: 20, top: 20, bottom: 28 })
-      .backgroundColor($r('app.color.app_surface'))
+      .backgroundColor(this.surfaceColor())
       .borderRadius({ topLeft: 24, topRight: 24 })
     }
     .width('100%')
-    .height('100%')
-    .backgroundColor('rgba(15, 23, 42, 0.36)')
+    .backgroundColor(this.surfaceColor())
   }
 
   @Builder
@@ -522,16 +282,17 @@ export struct NativeSchedulePage {
       Text(label)
         .width(58)
         .fontSize(13)
-        .fontColor($r('app.color.app_text_secondary'))
+        .fontColor(this.secondaryColor())
       Text(value || '—')
         .fontSize(13)
-        .fontColor($r('app.color.app_text_primary'))
+        .fontColor(this.textColor())
         .layoutWeight(1)
     }
     .width('100%')
   }
 
   private openDetail(block: NativeCourseBlock): void {
+    this.detailBlock = block;
     this.detailName = block.course.name || '课程';
     this.detailTeacher = block.course.teacher ?? '';
     this.detailLocation = block.course.location ?? '';
@@ -540,11 +301,7 @@ export struct NativeSchedulePage {
     this.detailDay = block.day;
     this.detailStartSlot = block.startSlot;
     this.detailEndSlot = block.endSlot;
-    this.detailVisible = true;
-  }
-
-  private semesterLabel(): string {
-    return this.store.semesterOptions()[this.store.selectedSemesterIndex()]?.label || this.store.selectedSemester || '选择学期';
+    this.store.detailVisible = true;
   }
 
   private semesterSelectOptions(): SelectOption[] {
@@ -560,12 +317,19 @@ export struct NativeSchedulePage {
   }
 
   private weekLabel(): string {
-    return this.store.weekOptions()[this.store.selectedWeekIndex()]?.label ||
-      (this.store.selectedWeek ? `第 ${this.store.selectedWeek} 周` : '选择周次');
+    const week = this.store.weekOptions()[this.store.selectedWeekIndex()];
+    const value = week?.value || this.store.selectedWeek;
+    return value ? `第${value}周` : '选择周次';
+  }
+
+  private weekRange(): string {
+    const start = this.store.dayDate(1);
+    const end = this.store.dayDate(7);
+    return start && end ? `${start.replace('-', '.')} - ${end.replace('-', '.')}` : '校历暂无日期';
   }
 
   private courseCount(): number {
-    return this.store.visibleCells().reduce((sum: number, cell) => sum + cell.courses.length, 0);
+    return (this.store.viewMode === 'day' ? this.store.visibleCells().filter(cell => cell.day === this.store.selectedDay) : this.store.visibleCells()).reduce((sum: number, cell) => sum + cell.courses.length, 0);
   }
 
   private timeRange(startSlot: number, endSlot: number): string {
@@ -574,12 +338,4 @@ export struct NativeSchedulePage {
     return start && end ? `${start}-${end}` : '';
   }
 
-  private courseColor(name: string, opacity: number = 1): string {
-    let hash = 0;
-    for (let index = 0; index < name.length; index += 1) hash = (hash * 31 + name.charCodeAt(index)) >>> 0;
-    const color = COURSE_COLORS[hash % COURSE_COLORS.length];
-    if (opacity >= 1) return color;
-    const alpha = Math.round(Math.max(0, Math.min(1, opacity)) * 255).toString(16).padStart(2, '0');
-    return `${color}${alpha}`;
-  }
 }

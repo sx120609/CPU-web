@@ -26,7 +26,7 @@ const CACHE_LIFETIME = 12 * 60 * 60 * 1000;
 
 /** HTML parsing and authentication stay on the server. The client caches and
  * merges parsed courses, applies saved edits and supplies native week filtering. */
-export function installIosNextScheduleBridge(router?: Router) {
+export function installIosNextScheduleBridge(router?: Router, options: { fastRefresh?: boolean } = {}) {
   if (!isNativeScheduleShell()) return;
   const host = window as any;
   const auth = useAuthStore();
@@ -142,7 +142,7 @@ export function installIosNextScheduleBridge(router?: Router) {
       if (!auth.ready) await auth.fetchMe({ probe: true });
       jwxt.hydrate();
       const ready = await jwxt.ensureSession({
-        refresh: force, silent: true, allowAutoLogin: true, repairUnavailableSession: true,
+        refresh: force && !options.fastRefresh, silent: true, allowAutoLogin: true, repairUnavailableSession: true,
       });
       if (!ready) return unauthorized();
       const epoch = generation;
@@ -174,6 +174,17 @@ export function installIosNextScheduleBridge(router?: Router) {
         entry = undefined;
       }
       if (!entry) {
+        const loadMetadata = (resolved: string) => Promise.all([
+          jwxt.withSessionRetry(() => jwxtApi.calendar({ semester: resolved }, { silent: true }))
+            .then((result: { parsed: unknown }) => hydrateCalendar(result.parsed as CalendarResult)).catch(() => null),
+          auth.isLoggedIn ? jwxtApi.getScheduleEdits(resolved, { silent: true })
+            .then(result => normalizeScheduleEditsState(result.edits)) : Promise.resolve(normalizeScheduleEditsState(null)),
+        ] as const);
+        // A known semester lets independent reads share the same network wait.
+        // Retain edit errors until the timetable finishes; never show unedited data.
+        const metadata = options.fastRefresh && semester
+          ? loadMetadata(semester).then(value => ({ value, error: null as unknown }), error => ({ value: null, error }))
+          : undefined;
         let requestedDataWeek: string | undefined;
         const loadInitial = async (requested?: string) => {
           requestedDataWeek = requested === "all" ? undefined : requested;
@@ -182,7 +193,9 @@ export function installIosNextScheduleBridge(router?: Router) {
           }, { silent: true })));
         };
         let data: ScheduleResult;
-        if (supportsScope === false) {
+        if (options.fastRefresh && force && week) {
+          data = await loadInitial(week);
+        } else if (supportsScope === false) {
           data = await loadInitial(week || undefined);
         } else {
           try {
@@ -204,12 +217,9 @@ export function installIosNextScheduleBridge(router?: Router) {
         if (generation !== epoch || !jwxt.isLoggedIn) return unauthorized();
         if (semester && data.currentSemester && data.currentSemester !== semester) throw new Error("教务系统返回了其他学期的课表");
         const resolved = semester || data.currentSemester;
-        const [calendar, edits] = await Promise.all([
-          jwxt.withSessionRetry(() => jwxtApi.calendar({ semester: resolved }, { silent: true }))
-            .then((result: { parsed: unknown }) => hydrateCalendar(result.parsed as CalendarResult)).catch(() => null),
-          auth.isLoggedIn ? jwxtApi.getScheduleEdits(resolved, { silent: true })
-            .then(result => normalizeScheduleEditsState(result.edits)) : Promise.resolve(normalizeScheduleEditsState(null)),
-        ]);
+        const prepared = await metadata;
+        if (prepared?.error) throw prepared.error;
+        const [calendar, edits] = prepared?.value ?? await loadMetadata(resolved);
         if (generation !== epoch || !jwxt.isLoggedIn) return unauthorized();
         data = extendScheduleWeeksToCalendar(data, calendar) ?? data;
         // Only advertised/calendar weeks establish completeness. Course ranges

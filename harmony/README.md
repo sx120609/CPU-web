@@ -1,24 +1,30 @@
 # 药大拾间 HarmonyOS App
 
-这是与新版 iOS 客户端采用同一结构的 HarmonyOS Stage 模型应用：ArkUI 原生五栏外壳与原生课表负责高频交互，其他校园模块继续使用同一个 ArkWeb 实例加载现有站点。最低兼容 HarmonyOS 5.0.0（API 12），目标 HarmonyOS 5.1.0（API 18）。
+这是与新版 iOS 客户端采用同一结构的 HarmonyOS Stage 模型应用：ArkUI 原生五栏外壳与原生课表负责高频交互，其他校园模块继续使用同一个 ArkWeb 实例加载现有站点。课表外观按网页版重绘，数据与缓存沿用 `ios_next` 的共享课表桥。最低 HarmonyOS 6.0（API 20），目标 HarmonyOS 6.1.1（API 24）。
 
 ## 原生应用能力
 
-- ArkUI 原生底部导航：首页、教务、课表、服务、我的。
-- 原生课表支持学期与周次切换、返回本周、日／周视图、课程详情、下拉刷新、空数据、授权失效与失败状态。
+- ArkUI 原生底部导航：首页、教务、课表、服务、我的；统一使用紧凑胶囊、独立选中底块和鸿蒙系统 Symbol，浅深模式保持清晰的文字与图标对比。
+- 原生课表沿用网页版与 iOS 的两排工具栏、日期条及 11 节时间轴；按网页移动端对齐紧凑周次标题、圆角日期栏、浅色空格和课程边框。原生 Swiper 提供跟手切周、短滑回弹及箭头过渡，首尾周不循环；只渲染当前周及相邻页面，未缓存周显示加载状态。
+- 保留网页的九套主题选择，课表按网页课程名映射同一色系，卡片保留课程优先布局与细彩色标记。浅深模式文字对比度有回归检查。支持学期／周次选择、返回本周今日、日／周视图、详情、下拉刷新及加载／授权／失败状态；连续节次合并，同一时段重叠课程可逐个查看。
 - 首页、教务、服务、我的及其子页面共用一个 ArkWeb 会话，保留 Cookie、DOM 存储、站内路由和侧滑返回。
 - 课表使用现有 HttpOnly 登录会话及教务自动恢复，不在鸿蒙端保存学校密码。
 - 优先复用网页侧整学期课表桥；确认整学期后在 ArkUI 本地按周筛选。旧服务端只返回单周时，网页桥按当前周附近顺序后台预取，并把完成周次直接推入原生缓存。
 - 原生缓存有效期 12 小时、最多保留 4 个学期，仅在当前进程内保存。账号或教务身份变化时清空缓存并作废旧请求，不提供跨账号离线数据。
 - 安装包内带有兼容读取逻辑；线上网页尚未提供新版课表桥时，仍可利用现有 Pinia 登录状态、同源 Cookie 和教务恢复流程读取已解析课表。
-- ArkWeb 页面隐藏重复的网页顶栏、移动底栏和页脚，保留原页面内容边距；原生界面颜色跟随系统深浅模式。
+- 个人课程支持原生添加、修改、隐藏、删除和恢复；使用现有同源课程修改接口与 CSRF。提交前核对账号和服务器修改基线，避免覆盖已发现的并发编辑。研究生编辑沿用网站限制。
+- 原生相册选择课表背景、可见度调节、系统文本分享、按所选周导出 ICS 日历。分享与导出不包含订阅地址或登录信息。
+- ArkUI 原生顶栏保留应用 Logo、刷新、消息和更多入口，同步网页登录、未读数和路由标题；有独立导航的页面保留自己的顶栏。原生底栏高度为 48vp，投稿按钮和页面留白使用同一避让距离，网页弹层及帖子详情收起原生底栏。网页入场恢复 220ms 淡入，课表切换使用原生淡入和轻移，保持同一个 ArkWeb 实例。
+- 手动刷新直接请求选中周，校历与个人修改并行读取；失败保留已有周缓存，重复刷新合并。会话失效仍使用现有重试恢复流程，实际等待时间取决于教务响应。
 
 ## 服务卡片与系统桥
 
 - 支持 2×2、2×4、4×4 桌面课表卡片，以及 1×2 横条、1×1 圆形、1×2 矩形三种锁屏课表卡片。
+- 桌面卡片可选临近课程、今日课表、两日课表；使用日期层次、浅深模式彩色底块和课程色条。2×2 卡片展示一门课及下一节时间，较大卡片按可用高度截取并标注剩余课程数。应用内预览与系统卡片共用渲染组件，原有卡片配置继续兼容。
 - 首次成功加载原生课表后会为尚未配置的用户自动建立专用课表订阅；原生课表内可选择九种主题并手动重新配置。
 - 卡片只保存专用订阅地址，不复制登录 Cookie；支持 30 分钟刷新请求、离线缓存、主题同步和带当前周语义的深链回跳。实际刷新由 HarmonyOS 调度。
 - `CPUHarmony` 桥继续提供复制文本、外链打开、图片预览与保存、图片／文档选择上传、相机及麦克风按需授权。
+- 图片预览使用 ArkUI 图片和原生保存按钮，工具栏及标题避开系统安全区；支持缩放、横向切图、下滑关闭和系统返回。网页通用相册在鸿蒙优先调用原生桥，自定义回调与不支持的图片地址保留原来的网页处理。
 - `cpuweb://schedule` 从桌面或锁屏卡片进入原生课表并重新读取当前学期／本周。
 
 ## 基础信息
@@ -26,11 +32,20 @@
 - 应用名：药大拾间
 - 包名：`cn.lizmt.cpuweb`
 - 版本：`2.1.0 (19)`
-- 默认入口：`https://cputime.cn/home`
+- 默认打开原生课表；后台会话入口：`https://cputime.cn/home`
 
 ## 构建
 
 本机需要 DevEco Studio / HarmonyOS SDK。项目不包含开发者账号的签名路径或凭据；首次打开后请使用当前“药大拾间”开发者账号配置自动签名或导入该账号签发的发布证书。
+
+先安装 `web` 的依赖，在仓库根目录生成共享桥和主题资源：
+
+```sh
+npm ci --prefix web
+node harmony/scripts/build-web-bridge.mjs
+node harmony/scripts/build-native-theme.mjs
+node --test harmony/tests/*.test.mjs ios_next/tests/web-schedule-bridge.test.mjs
+```
 
 1. 用 DevEco Studio 打开 `harmony` 目录。
 2. 登录当前“药大拾间”开发者账号，并为 `cn.lizmt.cpuweb` 配置签名证书。
@@ -40,11 +55,13 @@
 当前开发机命令行构建：
 
 ```powershell
-$env:DEVECO_SDK_HOME = 'D:\DevTools\Huawei\DevEcoStudio-6.0.2.670\sdk'
-$env:NODE_HOME = 'D:\DevTools\Huawei\DevEcoStudio-6.0.2.670\tools\node'
+$env:DEVECO_SDK_HOME = 'D:\DevTools\Huawei\DevEcoStudio-6.1.1.300\sdk'
+$env:NODE_HOME = 'D:\DevTools\Huawei\DevEcoStudio-6.1.1.300\tools\node'
 $env:Path = "$env:NODE_HOME;$env:Path"
-& 'D:\DevTools\Huawei\DevEcoStudio-6.0.2.670\tools\hvigor\bin\hvigorw.bat' `
-  --mode project -p product=default -p buildMode=debug assembleApp --no-daemon
+& 'D:\DevTools\Huawei\DevEcoStudio-6.1.1.300\tools\hvigor\bin\hvigorw.bat' `
+  --mode module -p product=default -p module=entry@default -p buildMode=debug assembleHap --no-daemon
 ```
 
 无签名构建只能证明 ArkTS、资源和打包流程可编译，不能证明真机登录、服务卡片权限、后台刷新或上架签名可用。真机验收需覆盖登录恢复、本科／研究生课表、快速切周、账号切换、断网恢复、所有桌面／锁屏卡片尺寸、深浅模式及冷／热启动深链。
+
+本次源码与模拟器验证的范围、证据及未验证项见 [独立核查记录](docs/independent-audit-20260908.md)。GitHub Actions 会检查随包桥／主题资源未过期，并执行课表回归测试；Linux 部署产物不等同于已签名的 HarmonyOS 发布包。

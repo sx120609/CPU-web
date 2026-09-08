@@ -84,6 +84,19 @@ export function openImageGallery(
     .filter((item) => item.src);
   if (!normalized.length) return false;
 
+  const harmony = (window as any).CPUHarmony;
+  if (typeof harmony?.previewImages === 'function' && !options.onDownload && !options.onHidden && !options.onViewed) {
+    try {
+      const images = normalized.map(item => ({
+        url: new URL(item.src, window.location.href).href,
+        title: item.title, fileName: item.fileName || fileNameFromImageUrl(item.src),
+      }));
+      if (images.every(item => /^https?:\/\//i.test(item.url))) {
+        if (harmony.previewImages(JSON.stringify({ images, index: startIndex })) !== false) return true;
+      }
+    } catch { /* Retain web preview when a URL or native request is unsupported. */ }
+  }
+
   const sequence = ++openSequence;
   activeViewer?.close();
   void prepareSlides(normalized).then((slides) => {
