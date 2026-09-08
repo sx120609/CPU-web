@@ -969,7 +969,7 @@ function setAppearanceMode(command: string | number | object) {
 
 <style scoped lang="scss">
 .layout-root {
-  --liquid-tabbar-bottom: max(36px, calc(8px + env(safe-area-inset-bottom)));
+  --liquid-tabbar-bottom: max(8px, calc(env(safe-area-inset-bottom) - 14px));
   --liquid-tabbar-reserve: calc(64px + var(--liquid-tabbar-bottom));
   --layout-mobile-tabbar-reserve: 0px;
   min-height: 100dvh;

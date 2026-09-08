@@ -303,10 +303,10 @@ onBeforeUnmount(() => {
 .glass-base { position: absolute; inset: 0; border-radius: 999px; background: linear-gradient(165deg, #ffffff94, #ffffff7a 45%, #ffffff87); -webkit-backdrop-filter: blur(2.5px) saturate(1.08); backdrop-filter: blur(2.5px) saturate(1.08); box-shadow: 0 3px 12px #152b3c12, inset 0 1px .5px #ffffff99, inset 1px 0 .5px #ffffff4d, inset 0 -1px .5px #152b3c26; pointer-events: none; will-change: transform; }
 .glass-tabs { position: relative; display: grid; grid-template-columns: repeat(var(--count), minmax(0, 1fr)); height: 56px; }
 .glass-tab { min-width: 0; height: 56px; display: flex; justify-content: center; align-items: center; color: var(--glass-ink); text-decoration: none; border-radius: 999px; touch-action: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
-.glass-tab-content { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; color: color-mix(in srgb, #3482ff var(--selection, 0%), var(--glass-ink)); will-change: transform; }
+.glass-tab-content { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; color: color-mix(in srgb, var(--cpu-primary, #148f7b) var(--selection, 0%), var(--glass-ink)); will-change: transform; }
 .glass-tab .el-icon { font-size: 22px; filter: drop-shadow(0 1px .7px #ffffffa6); }
 .glass-tab-content > span { font-size: 11px; font-weight: 400; line-height: 15px; white-space: nowrap; text-shadow: 0 1px 1px #ffffffb3; }
-.glass-tab:focus-visible { outline: 2px solid #3482ff; outline-offset: -3px; }
+.glass-tab:focus-visible { outline: 2px solid var(--cpu-primary, #148f7b); outline-offset: -3px; }
 .glass-lens { position: absolute; top: 4px; left: 4px; width: 0; height: 56px; opacity: 0; border-radius: 999px; pointer-events: none; background: linear-gradient(145deg, #ffffff24, #15355108 50%, #ffffff14); box-shadow: inset 0 1px .5px #ffffffb3, inset 0 -1px .5px #1535511f, 0 2px 5px #1535510d; will-change: transform; }
 .glass-highlight { position: absolute; inset: 0; border-radius: inherit; opacity: 0; background: linear-gradient(135deg, #ffffff99, #ffffff1a 6%, #ffffff00 18% 78%, #ffffff40); box-shadow: inset 1px 1px 1px #ffffffa6, inset -1px -1px 1px #ffffff59, inset -2px 0 2px #15355126, 0 3px 9px #15355114; will-change: opacity; }
 html[data-theme="dark"] .glass-bar { --glass-ink: #fff; }
