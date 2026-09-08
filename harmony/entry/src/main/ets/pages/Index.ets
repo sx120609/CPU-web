@@ -509,7 +509,7 @@ struct Index {
           Web({
             src: this.launchUrl,
             controller: this.controller,
-            renderMode: RenderMode.SYNC_RENDER
+            renderMode: RenderMode.ASYNC_RENDER
           })
         .width('100%')
         .height('100%')
