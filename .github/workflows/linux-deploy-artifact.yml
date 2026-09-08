@@ -48,7 +48,7 @@ jobs:
             server/tests/mediaImageUrl.test.ts server/tests/androidRelease.test.ts \
             server/tests/androidDownload.test.ts server/tests/pdsShare.test.ts server/tests/webStaticCos.test.ts \
             web/tests/cdnMedia.test.ts web/tests/avatarPreview.test.ts web/tests/androidUpdateState.test.ts web/tests/androidUpdatePolicy.test.ts \
-            web/tests/overlayViewport.test.ts
+            web/tests/overlayViewport.test.ts web/tests/liquidGlass.test.ts
 
       - name: Test schedule edit source recovery
         env:

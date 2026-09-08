@@ -1,0 +1,21 @@
+Miuix Liquid Glass navigation adaptation
+
+Copyright 2026, compose-miuix-ui contributors
+Licensed under the Apache License, Version 2.0 (see LICENSE.txt).
+
+Source: https://github.com/compose-miuix-ui/miuix
+Revision: afedba04ab8855cdd207be81d5282de5d604325c
+Upstream files:
+  example/shared/src/commonMain/kotlin/component/liquid/LiquidGlassNavigationBar.kt
+  example/shared/src/commonMain/kotlin/component/liquid/Lens.kt
+  example/shared/src/commonMain/kotlin/component/animation/DampedDragAnimation.kt
+  example/shared/src/commonMain/kotlin/component/animation/InteractiveHighlight.kt
+
+Upstream notes that these components were adapted from Kyant0/AndroidLiquidGlass
+(https://github.com/Kyant0/AndroidLiquidGlass), also licensed under Apache-2.0.
+
+CPU-web modifications: ported navigation geometry, spring parameters, content
+magnification and rounded-rectangle refraction equations to Vue/TypeScript;
+replaced Compose rendering with DOM/SVG backdrop filters and CSS highlights;
+retained existing site routes and keyboard handling; adjusted Android spacing
+for the WebView host's already-consumed navigation insets.

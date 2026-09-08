@@ -9,6 +9,7 @@
       'layout-root--native-shell': useFlutterShell,
       'layout-root--ios-next': useIosNextShell,
       'layout-root--tabbar-fallback': useTabbarFallback,
+      'layout-root--android-insets': isAndroidNativeApp(),
     }"
     :style="layoutStyle"
   >
@@ -396,7 +397,7 @@ import { useMessageStore } from "@/stores/message";
 import { useSiteStore } from "@/stores/site";
 import { useAppearanceStore, type AppearanceMode } from "@/stores/appearance";
 import { iosRouteTransitionEnabled } from "@/router";
-import { isDesktopNativeApp, isFlutterNativeShell, isIosNextNativeShell, isLikelyIosDevice, isIosNativeApp } from "@/utils/clientInfo";
+import { isAndroidNativeApp, isDesktopNativeApp, isFlutterNativeShell, isIosNextNativeShell, isLikelyIosDevice, isIosNativeApp } from "@/utils/clientInfo";
 
 const ShijianAssistant = defineAsyncComponent(() => import("@/views/search/Result.vue"));
 const DesktopToolsPanel = defineAsyncComponent(() => import("@/components/common/DesktopToolsPanel.vue"));
@@ -969,6 +970,8 @@ function setAppearanceMode(command: string | number | object) {
 
 <style scoped lang="scss">
 .layout-root {
+  --liquid-tabbar-bottom: max(36px, calc(8px + env(safe-area-inset-bottom)));
+  --liquid-tabbar-reserve: calc(64px + var(--liquid-tabbar-bottom));
   --layout-mobile-tabbar-reserve: 0px;
   min-height: 100dvh;
   min-height: var(--layout-viewport-height, 100dvh);
@@ -1156,16 +1159,16 @@ function setAppearanceMode(command: string | number | object) {
   padding: 2px;
   border: 1px solid color-mix(in srgb, var(--cpu-border-soft) 50%, transparent);
   border-radius: 999px;
-  background: color-mix(in srgb, var(--cpu-surface, #fff) 48%, transparent);
-  -webkit-backdrop-filter: blur(8px) saturate(1.65);
-  backdrop-filter: blur(8px) saturate(1.65);
-  box-shadow: 0 3px 12px #0000000a, inset 0 1px 1px #ffffffa6, inset 0 -1px 1px #ffffff40;
+  background: #ffffff66;
+  -webkit-backdrop-filter: blur(4px) saturate(1.5);
+  backdrop-filter: blur(4px) saturate(1.5);
+  box-shadow: 0 0 10px #0000001a, inset 0 1px 1px #ffffff66;
   flex-wrap: nowrap;
 }
 
-:global(html[data-theme="dark"]) .mobile-actions {
-  background: #20292580;
-  box-shadow: 0 3px 12px #0000001f, inset 0 1px 1px #ffffff59, inset 0 -1px 1px #ffffff1f;
+html[data-theme="dark"] .mobile-actions {
+  background: #24242466;
+  box-shadow: 0 0 10px #0003, inset 0 1px 1px #ffffff40;
 }
 
 .touch-icon-btn {
@@ -1431,7 +1434,7 @@ function setAppearanceMode(command: string | number | object) {
 .forum-post-fab:hover { background: var(--cpu-primary-dark); transform: translateY(-1px); }
 .forum-post-fab:focus-visible { outline: 3px solid color-mix(in srgb, var(--cpu-primary) 28%, transparent); outline-offset: 3px; }
 
-:global(html[data-theme="dark"]) .assistant-widget {
+html[data-theme="dark"] .assistant-widget {
   border-color: color-mix(in srgb, var(--cpu-primary) 34%, var(--cpu-border-soft));
   background:
     linear-gradient(155deg, color-mix(in srgb, var(--cpu-primary) 9%, var(--cpu-card)) 0%, var(--cpu-card) 38%);
@@ -1571,7 +1574,28 @@ function setAppearanceMode(command: string | number | object) {
 }
 
 .mobile-tabbar {
+  position: fixed;
+  left: max(24px, env(safe-area-inset-left));
+  right: max(24px, env(safe-area-inset-right));
+  bottom: var(--liquid-tabbar-bottom);
+  z-index: 1100;
   display: none;
+  height: 64px;
+  pointer-events: auto;
+  transition: opacity 160ms, transform 200ms, visibility 200ms;
+}
+.mobile-tabbar.is-hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(calc(100% + var(--liquid-tabbar-bottom)));
+}
+.layout-root--android-insets {
+  /* The Android host has already removed system navigation insets from the WebView. */
+  --liquid-tabbar-bottom: 8px;
+}
+.layout-root--tabbar-fallback {
+  --layout-mobile-tabbar-reserve: var(--liquid-tabbar-reserve);
 }
 
 .layout-root--tabbar-fallback.keyboard-open .main {
@@ -1584,11 +1608,11 @@ function setAppearanceMode(command: string | number | object) {
 }
 
 .layout-root--tabbar-fallback .main {
-  padding-bottom: calc(88px + env(safe-area-inset-bottom));
+  padding-bottom: calc(var(--liquid-tabbar-reserve) + 20px);
 }
 
 .layout-root--tabbar-fallback .main--bare {
-  padding-bottom: calc(88px + env(safe-area-inset-bottom)) !important;
+  padding-bottom: calc(var(--liquid-tabbar-reserve) + 20px) !important;
 }
 
 .layout-root--tabbar-fallback .main--full-width {
@@ -1596,32 +1620,10 @@ function setAppearanceMode(command: string | number | object) {
 }
 
 .layout-root--tabbar-fallback .footer {
-  padding-bottom: calc(12px + 68px + env(safe-area-inset-bottom));
+  padding-bottom: calc(var(--liquid-tabbar-reserve) + 12px);
 }
 
-.layout-root--tabbar-fallback .mobile-tabbar {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 1100;
-  display: grid;
-  padding: 6px 12px calc(6px + env(safe-area-inset-bottom));
-  border-top: 1px solid var(--cpu-border-soft);
-  background: var(--cpu-glass-bg);
-  backdrop-filter: var(--cpu-glass-blur);
-  -webkit-backdrop-filter: var(--cpu-glass-blur);
-  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.06);
-  pointer-events: auto;
-  transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.16s ease, visibility 0.2s linear;
-}
-
-.layout-root--tabbar-fallback .mobile-tabbar.is-hidden {
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
-  transform: translateY(calc(100% + env(safe-area-inset-bottom)));
-}
+.layout-root--tabbar-fallback .mobile-tabbar { display: block; }
 
 .drawer-grid {
   display: grid;
@@ -1823,7 +1825,7 @@ function setAppearanceMode(command: string | number | object) {
 
 @media (max-width: 768px) {
   .layout-root:not(.layout-root--native-shell):not(.layout-root--ios-next) {
-    --layout-mobile-tabbar-reserve: calc(68px + env(safe-area-inset-bottom));
+    --layout-mobile-tabbar-reserve: var(--liquid-tabbar-reserve);
   }
 
   .layout-root.keyboard-open .main {
@@ -1912,7 +1914,7 @@ function setAppearanceMode(command: string | number | object) {
   }
 
   .main {
-    padding: 14px 12px calc(88px + env(safe-area-inset-bottom));
+    padding: 14px 12px calc(var(--liquid-tabbar-reserve) + 20px);
     max-width: none;
   }
 
@@ -1923,11 +1925,11 @@ function setAppearanceMode(command: string | number | object) {
   }
 
   .layout-root--full-height .main--full-height {
-    padding-bottom: calc(68px + env(safe-area-inset-bottom));
+    padding-bottom: var(--liquid-tabbar-reserve);
   }
 
   .layout-root--full-height.keyboard-open .main--full-height {
-    padding-bottom: calc(68px + env(safe-area-inset-bottom));
+    padding-bottom: var(--liquid-tabbar-reserve);
   }
 
   .main--full-width {
@@ -1937,11 +1939,11 @@ function setAppearanceMode(command: string | number | object) {
 
   /* 移动端裸壳模式：去掉 top/side padding，仅保留 tabbar 底部空间，让子组件自己管 */
   .main--bare {
-    padding: 0 0 calc(88px + env(safe-area-inset-bottom)) !important;
+    padding: 0 0 calc(var(--liquid-tabbar-reserve) + 20px) !important;
   }
 
   .footer {
-    padding: 12px 12px calc(12px + 68px + env(safe-area-inset-bottom));
+    padding: 12px 12px calc(var(--liquid-tabbar-reserve) + 12px);
     gap: 6px 12px;
     font-size: 11px;
   }
@@ -1959,36 +1961,13 @@ function setAppearanceMode(command: string | number | object) {
     padding-bottom: 12px;
   }
 
-  .mobile-tabbar {
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 1100;
-    display: grid;
-    /* 列数由 inline style 提供（mobileNavItems.length），保证关闭某项后剩余项仍均匀分布 */
-    padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
-    border-top: 1px solid var(--cpu-border-soft);
-    background: var(--cpu-glass-bg);
-    backdrop-filter: var(--cpu-glass-blur);
-    -webkit-backdrop-filter: var(--cpu-glass-blur);
-    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.06);
-    pointer-events: auto;
-    transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.16s ease, visibility 0.2s linear;
-  }
+  .mobile-tabbar { display: block; }
 
   :deep(.mobile-drawer) {
     border-radius: 18px 18px 0 0;
     height: auto !important;
     max-height: min(92dvh, 640px);
     padding-bottom: env(safe-area-inset-bottom);
-  }
-
-  .mobile-tabbar.is-hidden {
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-    transform: translateY(calc(100% + env(safe-area-inset-bottom)));
   }
 
   :deep(.mobile-drawer .el-drawer__header) {
@@ -2010,11 +1989,11 @@ function setAppearanceMode(command: string | number | object) {
 @media (min-width: 769px) and (max-width: 1366px) and (orientation: portrait) and (pointer: coarse),
        (min-width: 769px) and (max-width: 1366px) and (orientation: portrait) and (hover: none) {
   .main {
-    padding-bottom: calc(88px + env(safe-area-inset-bottom));
+    padding-bottom: calc(var(--liquid-tabbar-reserve) + 20px);
   }
 
   .main--bare {
-    padding-bottom: calc(88px + env(safe-area-inset-bottom)) !important;
+    padding-bottom: calc(var(--liquid-tabbar-reserve) + 20px) !important;
   }
 
   .main--full-width {
@@ -2022,7 +2001,7 @@ function setAppearanceMode(command: string | number | object) {
   }
 
   .footer {
-    padding-bottom: calc(12px + 68px + env(safe-area-inset-bottom));
+    padding-bottom: calc(var(--liquid-tabbar-reserve) + 12px);
   }
 
   .layout-root--native-shell .main {
@@ -2038,29 +2017,7 @@ function setAppearanceMode(command: string | number | object) {
     padding-bottom: 16px;
   }
 
-  .mobile-tabbar {
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 1100;
-    display: grid;
-    padding: 6px 12px calc(6px + env(safe-area-inset-bottom));
-    border-top: 1px solid var(--cpu-border-soft);
-    background: var(--cpu-glass-bg);
-    backdrop-filter: var(--cpu-glass-blur);
-    -webkit-backdrop-filter: var(--cpu-glass-blur);
-    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.06);
-    pointer-events: auto;
-    transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.16s ease, visibility 0.2s linear;
-  }
-
-  .mobile-tabbar.is-hidden {
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-    transform: translateY(calc(100% + env(safe-area-inset-bottom)));
-  }
+  .mobile-tabbar { display: block; }
 
 }
 
@@ -2111,20 +2068,7 @@ function setAppearanceMode(command: string | number | object) {
     flex-basis: 21px;
   }
 }
-.mobile-tabbar.mobile-tabbar {
-  left: max(12px, env(safe-area-inset-left));
-  right: max(12px, env(safe-area-inset-right));
-  bottom: calc(6px + env(safe-area-inset-bottom));
-  width: auto;
-  max-width: 520px;
-  margin-inline: auto;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-  box-shadow: none;
-}
+
 @media (prefers-reduced-motion: reduce) {
   .mobile-tabbar.mobile-tabbar { transition: none; }
 }
