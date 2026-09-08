@@ -16,6 +16,7 @@ Upstream notes that these components were adapted from Kyant0/AndroidLiquidGlass
 
 CPU-web modifications: ported navigation geometry, spring parameters, content
 magnification and rounded-rectangle refraction equations to Vue/TypeScript;
-replaced Compose rendering with DOM/SVG backdrop filters and CSS highlights;
+replaced Compose rendering with CSS backdrop blur and highlights, with transform-only
+geometry animation and a single glyph layer for mobile browser performance;
 retained existing site routes and keyboard handling; adjusted Android spacing
 for the WebView host's already-consumed navigation insets.
