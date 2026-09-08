@@ -12,8 +12,16 @@
 
 2026-09-09：95 项鸿蒙与共享桥回归通过，DevEco SDK 6.1.1（API 24）release `assembleApp` 成功。使用既有发布证书签名，华为 `verify-app` 的代码签名与摘要验证通过。最终 APP 中的 `entry-default.hap` 与 `pack.info` 模块名称一致；包内版本为 3.0.0 / 20。
 
-最终包：`D:/DevTools/Huawei/AppGallery/cn.lizmt.cpuweb/packages/cpuweb-harmony-3.0.0-v20-release-r2.app`。
+最终包：`D:/DevTools/Huawei/AppGallery/cn.lizmt.cpuweb/packages/cpuweb-harmony-3.0.0-v20-release-r3.app`（265082 字节）。内层 HAP 与外层 APP 均已独立签名并通过验签。
 
-SHA-256：`3aa7f9b0f908a0c877bddc36e49039c898677309e9bad218728b3b2d645ae6ae`。
+SHA-256：`0f18212f67ea3a8759c589437e5fd2e12908702eadd665a15eb6dc25f03dc7d2`。
 
-历史包与本次中间打包尝试保留，私钥、密码和正式包不提交至 Git。本机打包／验签通过不代表应用市场审核或发布完成。AppGallery Connect 上传、平台校验和审核状态待平台回读；锁屏卡片能力仍须按 README 在平台确认。
+历史包与本次中间打包尝试保留，私钥、密码和正式包不提交至 Git。r2 因缺少外层 APP 签名收到平台错误 991；补签生成 r3 后上传和合法性校验通过，未覆盖失败记录。锁屏卡片能力仍须按 README 在平台确认。
+
+## AppGallery Connect 提交
+
+2026-09-09：r3 上传时间为 02:39:26，平台识别版本为 3.0.0（20），包名为 `cn.lizmt.cpuweb`，合法性状态为“已达标”。已启动云自检，补充隐私标签，选择此包并提交审核；独立回读版本状态为“预审中”，上架方式为“审核通过立即上架”。预审通过后平台自动转正式审核，目前不代表已审核通过或已上架。
+
+平台提示“备案信息-证件号”校验不通过，可能涉及主体证件或鸿蒙包名备案；按平台提供的“继续提交”完成送审，未修改原备案资料。审核账号随提交保留，不在发布记录中保存凭据。
+
+包体源提交：`73fa4ada42320f38a422f2f8f49ca266e6182744`；对应 Linux deployment artifact 工作流 `34262158248` 成功，提交绑定制品 `10070436377` 已核验。
