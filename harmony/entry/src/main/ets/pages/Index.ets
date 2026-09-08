@@ -706,7 +706,7 @@ struct Index {
         this.bottomNavigation()
       }.width('100%').height(48 + this.bottomBarInset()).align(Alignment.Bottom)
         .visibility(this.nativeScheduleVisible || this.pendingWebNavigation > 0 || (this.startupFinished && this.webHeader.visible && !this.webOverlayVisible) ? Visibility.Visible : Visibility.Hidden)
-        .hitTestBehavior(HitTestMode.Transparent)
+        .hitTestBehavior(HitTestMode.Default)
 
       if (this.imagePreviewVisible && this.previewImages.length > 0) {
         Column() {

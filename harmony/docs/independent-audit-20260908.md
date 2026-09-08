@@ -125,3 +125,11 @@ GitHub Actions 的 `Linux deployment artifact` 对精确提交 SHA 执行共享�
 HDC / ArkWeb 实际验证：冷启动显示原生课表；课表切首页后滑动位置从 0 到 362，个人页从 358 到 720，服务和教务页面也接收滑动。真实帖子链路回读为 `/forum/topic/26557?from=/forum` → 页面返回 `/forum` → 再返回来源 `/profile`，没有回到帖子。截图 `nav-default.jpeg` 与本机测试、构建日志位于上述 output 目录。静态截图不证明所有切换帧均无闪烁。
 
 最终调试 HAP 编译成功并安装至模拟器，SHA-256：`1c66702851c405f40596af1e50f6ace1a179e864c46364b6a7d2fb3619feab10`。本轮没有部署网站或生成已签名上架包。
+
+## 底栏触摸穿透修复（2026-09-09）
+
+底栏外层的 `HitTestMode.Transparent` 允许触摸同时命中后方 Web，现改为 `Default`：保留底栏子按钮响应并阻止后方节点命中。没有使用会阻断子按钮的 `Block`。
+
+通过 HDC 实际点击配合网页捕获监听复现：旧版一次底栏点击使后方网页收到 pointerdown、pointerup、click 共 3 个事件；修复后点击当前“我的”、切换“服务／首页／教务”以及底栏外侧边缘，网页记录均为 0，原生切页成功。底栏上方的内容仍可滑动。验证监听会阻止后方按钮执行，并已在检查结束后移除。
+
+`touch-fix-build.log` 记录最终 ArkTS/HAP 编译成功，新版已安装至模拟器；`touch-fixed-receipt.json` 记录零穿透事件。未执行网站生产部署。
