@@ -44,9 +44,6 @@ export function preloadEducationViews() {
 }
 
 const CACHE_FIRST_EDUCATION_ROUTES = new Set(["jwxt", "schedule"]);
-// MainLayout 的 out-in 页面淡出为 150ms。等旧页面退出后再改变滚动位置，
-// 避免旧页面在切换到二级路由前先闪现回到顶部。
-const ROUTE_LEAVE_SCROLL_DELAY_MS = 170;
 
 function usesImmediateIosScroll() {
   return typeof navigator !== "undefined" && isLikelyIosDevice();
@@ -109,14 +106,8 @@ export const router = createRouter({
         ? { el: to.hash, behavior: "smooth" as const }
         : { top: 0 };
 
-    // 首次加载没有正在淡出的旧页面，可以立即定位。
-    // iOS WebKit（Safari、主屏幕网页和原生壳）不对路由组件执行 out-in 淡出。
-    // 立即滚动可确保新页面首帧就在正确位置，也不会牵动仍在离场的旧页面。
-    if (!from.name || usesImmediateIosScroll()) return position;
-
-    return new Promise((resolve) => {
-      window.setTimeout(() => resolve(position), ROUTE_LEAVE_SCROLL_DELAY_MS);
-    });
+    // The outgoing page is fixed to its viewport position during the crossfade.
+    return position;
   },
   routes: [
     { path: "/login", name: "login", component: () => import("@/views/Login.vue"), meta: { public: true, title: "登录" } },

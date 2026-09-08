@@ -165,10 +165,8 @@
       }"
     >
       <router-view v-slot="{ Component }">
-        <transition v-if="useIosRouteTransition" name="ios-route" :css="iosRouteTransitionEnabled">
-          <component :is="Component" />
-        </transition>
-        <transition v-else name="fade" mode="out-in">
+        <transition name="page-route" :css="!useIosRouteTransition || iosRouteTransitionEnabled"
+          @before-leave="freezeLeavingPage" @after-leave="releaseLeavingPage" @leave-cancelled="releaseLeavingPage">
           <component :is="Component" />
         </transition>
       </router-view>
@@ -397,6 +395,7 @@ import { useMessageStore } from "@/stores/message";
 import { useSiteStore } from "@/stores/site";
 import { useAppearanceStore, type AppearanceMode } from "@/stores/appearance";
 import { iosRouteTransitionEnabled } from "@/router";
+import { freezeLeavingPage, releaseLeavingPage } from "@/utils/routeTransition";
 import { isAndroidNativeApp, isDesktopNativeApp, isFlutterNativeShell, isIosNextNativeShell, isLikelyIosDevice, isIosNativeApp } from "@/utils/clientInfo";
 
 const ShijianAssistant = defineAsyncComponent(() => import("@/views/search/Result.vue"));
@@ -1405,7 +1404,7 @@ html[data-theme="dark"] .mobile-actions {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ios-route-enter-active { transition: none; }
+  .page-route-enter-active, .page-route-leave-active { transition: none; }
   .message-entry.has-direct :deep(.el-badge__content) { animation: none; }
 }
 
@@ -1754,16 +1753,15 @@ html[data-theme="dark"] .assistant-widget {
   background: rgba(20, 143, 123, 0.1);
 }
 
-.ios-route-enter-active {
-  transition: opacity 0.14s ease-out;
+.page-route-enter-active, .page-route-leave-active {
+  transition: opacity 0.22s ease-out;
   will-change: opacity;
 }
-.ios-route-enter-from { opacity: 0; }
-// iOS Safari 的旧页面必须立即退出，不能在滚动位置改变时继续参与淡出。
-.ios-route-leave-active { display: none; }
-
-.fade-enter-active, .fade-leave-active { transition: opacity 0.15s; }
-.fade-enter-from, .fade-leave-to { opacity: 0; }
+.page-route-enter-from { opacity: .55; }
+.page-route-leave-to { opacity: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .page-route-enter-active, .page-route-leave-active { transition: none; }
+}
 
 .dlg-tip { font-size: 15px; color: var(--cpu-text); margin: 0 0 6px; }
 .dlg-tip b { color: var(--cpu-primary); }

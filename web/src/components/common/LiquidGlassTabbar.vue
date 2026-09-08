@@ -7,7 +7,7 @@
       <div ref="lens" class="glass-lens" aria-hidden="true"><span ref="highlight" class="glass-highlight" /></div>
       <div ref="tabs" class="glass-tabs glass-tab-targets">
         <RouterLink v-for="(item, index) in items" :key="item.label" :to="item.to" class="glass-tab"
-          :aria-current="index === activeIndex ? 'page' : undefined" draggable="false" @click="activate(index)">
+          :aria-current="index === activeIndex ? 'page' : undefined" :data-tab-index="index" draggable="false">
           <span class="glass-tab-content"><el-icon><component :is="item.icon" /></el-icon><span>{{ item.label }}</span></span>
         </RouterLink>
       </div>
@@ -52,6 +52,9 @@ let dragged = false;
 let suppressClickUntil = 0;
 let observer: ResizeObserver | undefined;
 let motionPreference: MediaQueryList | undefined;
+let settling: Animation[] = [];
+let navigationFrame = 0;
+let navigationVersion = 0;
 
 // Keep the animation outside Vue's render loop; only transforms and small glyph colors change.
 function paint() {
@@ -95,13 +98,100 @@ function tick(now: number) {
   } else lastFrame = 0;
 }
 function wake() { if (!animation) animation = requestAnimationFrame(tick); }
+function stopSettlement() {
+  if (!settling.length || !lens.value) return;
+  const matrix = new DOMMatrixReadOnly(getComputedStyle(lens.value).transform);
+  position = { value: tabWidth ? matrix.m41 / tabWidth : target, velocity: 0 };
+  scaleX = { value: matrix.m11, velocity: 0 };
+  scaleY = { value: matrix.m22, velocity: 0 };
+  progress = { value: Number(highlight.value && getComputedStyle(highlight.value).opacity) || 0, velocity: 0 };
+  settling.forEach(item => item.cancel());
+  settling = [];
+}
+
+// Precompute the spring once so route rendering cannot stall each animation frame.
+function settle() {
+  if (animation) cancelAnimationFrame(animation);
+  animation = 0;
+  lastFrame = 0;
+  const lensFrames: Keyframe[] = [];
+  const baseFrames: Keyframe[] = [];
+  const lightFrames: Keyframe[] = [];
+  const glyphFrames: Keyframe[][] = glyphs.map(() => []);
+  if (!motionPreference?.matches) {
+    for (let frame = 0; frame <= 42; frame++) {
+      const press = Math.max(0, Math.min(1, progress.value));
+      const velocity = position.velocity / Math.max(1, props.items.length - 1) / 10;
+      const sx = scaleX.value / (1 - Math.max(-0.2, Math.min(0.2, velocity * 0.75)));
+      const sy = scaleY.value * (1 - Math.max(-0.2, Math.min(0.2, velocity * 0.25)));
+      lensFrames.push({ transform: `translate3d(${position.value * tabWidth}px,0,0) scale(${sx},${sy})` });
+      baseFrames.push({ transform: `scale(${1 + 16 / Math.max(1, width) * press})` });
+      lightFrames.push({ opacity: press });
+      glyphFrames.forEach((frames, index) => {
+        const proximity = Math.max(0, 1 - Math.abs(index - position.value));
+        frames.push({ transform: `translate3d(0,${-2 * press * proximity}px,0) scale(${1 + .2 * press * proximity})` });
+      });
+      position = stepSpring(position, target, 1 / 60, 1000, 1);
+      const held = Math.abs(position.value - target) > .025;
+      progress = stepSpring(progress, held ? 1 : 0, 1 / 60, 1000, 1);
+      scaleX = stepSpring(scaleX, held ? 78 / 56 : 1, 1 / 60, 250, .6);
+      scaleY = stepSpring(scaleY, held ? 78 / 56 : 1, 1 / 60, 250, .7);
+    }
+  }
+  position = { value: target, velocity: 0 };
+  progress = { value: 0, velocity: 0 };
+  scaleX = scaleY = { value: 1, velocity: 0 };
+  releasePending = false;
+  paint();
+  if (!lensFrames.length) return;
+  lensFrames[42] = { transform: lens.value!.style.transform };
+  baseFrames[42] = { transform: base.value!.style.transform };
+  lightFrames[42] = { opacity: 0 };
+  glyphFrames.forEach((frames, index) => { frames[42] = { transform: glyphs[index].style.transform }; });
+  const play = (element: HTMLElement | undefined, frames: Keyframe[]) => {
+    if (element) settling.push(element.animate(frames, { duration: 700, easing: 'linear' }));
+  };
+  play(lens.value, lensFrames);
+  play(base.value, baseFrames);
+  play(highlight.value, lightFrames);
+  glyphs.forEach((glyph, index) => play(glyph, glyphFrames[index]));
+  const current = settling;
+  void Promise.all(current.map(item => item.finished)).then(() => {
+    if (settling === current) settling = [];
+  }).catch(() => undefined);
+}
+function cancelNavigation() {
+  navigationVersion++;
+  if (navigationFrame) cancelAnimationFrame(navigationFrame);
+  navigationFrame = 0;
+}
+function navigate(index: number) {
+  cancelNavigation();
+  const item = props.items[index];
+  if (!item) return;
+  const version = navigationVersion;
+  const commit = () => {
+    navigationFrame = 0;
+    if (version !== navigationVersion) return;
+    const reconcile = () => {
+      if (version === navigationVersion && !pressed && target !== Math.max(0, props.activeIndex)) syncSelection();
+    };
+    void router.push(item.to).then(reconcile, reconcile);
+  };
+  // Present the indicator before the incoming page starts its synchronous mount work.
+  if (motionPreference?.matches) commit();
+  else navigationFrame = requestAnimationFrame(() => { navigationFrame = requestAnimationFrame(commit); });
+}
 function activate(index: number) {
+  stopSettlement();
   target = index;
-  releasePending = true;
-  wake();
+  settle();
+  navigate(index);
 }
 function start(event: PointerEvent) {
   if (pointer !== null || !event.isPrimary || event.button !== 0 || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || props.hidden || !tabWidth) return;
+  cancelNavigation();
+  stopSettlement();
   pointer = event.pointerId;
   downX = event.clientX;
   rectLeft = bar.value!.getBoundingClientRect().left;
@@ -130,10 +220,9 @@ function finish(event: PointerEvent) {
   target = Math.round(target);
   releasePending = true;
   suppressClickUntil = performance.now() + 400;
-  const item = props.items[target];
   releaseCapture();
-  if (item) void router.push(item.to);
-  wake();
+  settle();
+  navigate(target);
 }
 function cancel() {
   if (pointer === null) return;
@@ -147,24 +236,47 @@ function guardClick(event: MouseEvent) {
   if (event.detail && performance.now() < suppressClickUntil) {
     event.preventDefault();
     event.stopPropagation();
+    return;
   }
+  if (event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+  const link = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-tab-index]') : null;
+  if (!link) return;
+  event.preventDefault();
+  event.stopPropagation();
+  activate(Number(link.dataset.tabIndex));
 }
-watch(() => props.activeIndex, index => { if (!pressed) { target = Math.max(0, index); wake(); } });
+function syncSelection() {
+  if (pressed) return;
+  const next = Math.max(0, props.activeIndex);
+  if (next === target && settling.length) return;
+  stopSettlement();
+  target = next;
+  settle();
+}
+watch(() => props.activeIndex, syncSelection);
 watch(() => props.hidden, () => cancel());
 watch(() => props.items.length, async () => { cancel(); await nextTick(); resize(); });
 
 function resize() {
   const nextWidth = bar.value?.clientWidth || 0;
   if (!nextWidth) return;
+  const wasSettling = settling.length > 0;
+  stopSettlement();
   width = nextWidth;
   tabWidth = Math.max(0, width - 8) / Math.max(1, props.items.length);
   glyphs = Array.from(tabs.value?.querySelectorAll<HTMLElement>('.glass-tab-content') || []);
   if (lens.value) lens.value.style.width = `${tabWidth}px`;
-  paint();
+  if (wasSettling && !pressed) settle();
+  else paint();
+}
+function syncMotionPreference() {
+  stopSettlement();
+  if (pressed) wake();
+  else settle();
 }
 onMounted(() => {
   motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');
-  motionPreference.addEventListener('change', wake);
+  motionPreference.addEventListener('change', syncMotionPreference);
   observer = new ResizeObserver(resize);
   if (bar.value) observer.observe(bar.value);
   resize();
@@ -173,10 +285,13 @@ onMounted(() => {
   window.addEventListener('blur', cancel);
 });
 onBeforeUnmount(() => {
+  cancelNavigation();
+  settling.forEach(item => item.cancel());
+  settling = [];
   releaseCapture();
   if (animation) cancelAnimationFrame(animation);
   observer?.disconnect();
-  motionPreference?.removeEventListener('change', wake);
+  motionPreference?.removeEventListener('change', syncMotionPreference);
   window.removeEventListener('pointerup', finish);
   window.removeEventListener('pointercancel', cancel);
   window.removeEventListener('blur', cancel);
