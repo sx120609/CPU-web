@@ -80,6 +80,9 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y nginx
+          export DEPLOY_TEST_PLAYWRIGHT_ROOT="$RUNNER_TEMP/cpu-deploy-browser"
+          npm install --prefix "$DEPLOY_TEST_PLAYWRIGHT_ROOT" --no-audit --no-fund playwright@1.62.1
+          "$DEPLOY_TEST_PLAYWRIGHT_ROOT/node_modules/.bin/playwright" install --with-deps chromium
           bash -n deploy.sh
           node --test ops/deploy/blue-green.test.mjs
           REQUIRE_NGINX_TEST=1 node --test ops/deploy/blue-green-nginx.test.mjs

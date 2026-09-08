@@ -6,6 +6,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
+import { createRequire } from 'node:module'
 import { cutover, probe, replaceConfig, replaceUpstream } from './blue-green-core.mjs'
 
 const exec = promisify(execFile)
@@ -18,12 +19,22 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 test('real nginx reload keeps concurrent requests and an old streaming response alive', { skip: !available }, async t => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'cpu-nginx-cutover-'))
   const sha = 'c'.repeat(40)
+  const writes = new Map()
+  const writeResponse = (req, res, version) => {
+    if (req.method !== 'POST' || req.url !== '/write') return false
+    let body = ''
+    req.on('data', chunk => { body += chunk })
+    req.on('end', () => { writes.set(body, (writes.get(body) || 0) + 1); res.end(version) })
+    return true
+  }
   let finishStream
   const old = createServer((req, res) => {
+    if (writeResponse(req, res, 'old')) return
     if (req.url === '/stream') { res.write('before:'); finishStream = () => res.end('after') }
     else res.end('old')
   })
   const next = createServer((req, res) => {
+    if (writeResponse(req, res, 'new')) return
     if (req.url === '/api/ready') res.end(JSON.stringify({ data: { ready: true, commit: sha } }))
     else res.end('new')
   })
@@ -36,7 +47,11 @@ test('real nginx reload keeps concurrent requests and an old streaming response 
   await writeFile(config, before)
   const command = args => exec(nginx, ['-p', `${root}/`, '-c', config, ...args])
   await command([])
+  const require = createRequire(import.meta.url)
+  const { chromium } = require(path.join(process.env.DEPLOY_TEST_PLAYWRIGHT_ROOT, 'node_modules/playwright'))
+  const browser = await chromium.launch({ headless: true })
   t.after(async () => {
+    await browser.close()
     finishStream?.()
     await command(['-s', 'quit']).catch(() => {})
     await sleep(150)
@@ -48,10 +63,24 @@ test('real nginx reload keeps concurrent requests and an old streaming response 
   const streamResponse = await fetch(`${origin}/stream`)
   const stream = streamResponse.text()
   const results = []
-  let reading = true
-  const collector = Promise.all(Array.from({ length: 3 }, async () => {
-    while (reading) { const r = await fetch(origin); results.push([r.status, await r.text()]); await sleep(2) }
-  }))
+  const page = await browser.newPage()
+  await page.goto(origin)
+  await page.evaluate(() => {
+    window.results = []; window.reading = true
+    window.collector = Promise.all(Array.from({ length: 3 }, async (_, worker) => {
+      let sequence = 0
+      while (window.reading) {
+        const id = `${worker}-${sequence++}`
+        try {
+          const response = await fetch('/write', { method: 'POST', body: id, cache: 'no-store' })
+          window.results.push([response.status, await response.text(), id])
+          const read = await fetch('/', { cache: 'no-store' })
+          window.results.push([read.status, await read.text()])
+        } catch (error) { window.results.push([0, String(error), id]) }
+        await new Promise(resolve => setTimeout(resolve, 2))
+      }
+    }))
+  })
   await sleep(80)
   const phases = []
   await cutover({
@@ -80,11 +109,11 @@ test('real nginx reload keeps concurrent requests and an old streaming response 
     results.push(result)
   }
   await sleep(80)
-  reading = false
-  await collector
+  results.push(...await page.evaluate(async () => { window.reading = false; await window.collector; return window.results }))
   assert.ok(results.length > 10)
   assert.ok(results.some(([, body]) => body === 'old'))
   assert.ok(results.some(([, body]) => body === 'new'))
   assert.ok(results.every(([status, body]) => status === 200 && ['old', 'new'].includes(body)))
+  for (const [, , id] of results) if (id) assert.equal(writes.get(id), 1, `POST ${id} must be processed exactly once`)
   assert.deepEqual(phases, ['switching', 'draining', 'active'])
 })
