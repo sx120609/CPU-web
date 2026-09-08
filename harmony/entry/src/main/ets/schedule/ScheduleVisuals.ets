@@ -54,3 +54,11 @@ export function scheduleCourseTone(name: string, key: string, dark: boolean): Sc
     border: hsla(hue, Math.min(82, saturation + 8), 48 + ((hash >>> 20) % 10), 0.48),
     text: hsla(hue, Math.min(76, saturation + 4), 25 + ((hash >>> 24) % 8)) };
 }
+
+export function scheduleCardTone(name: string, key: string, dark: boolean): ScheduleCourseTone {
+  const tone = scheduleCourseTone(name, key, dark);
+  const fill = dark ? tone.bottom : tone.top;
+  const text = tone.text.length === 9 ? '#' + tone.text.substring(3) : tone.text;
+  return { top: fill, bottom: fill, border: tone.border,
+    text: dark ? '#F3F5F7' : key === 'color-glass' ? mixScheduleColor(text, '#000000', 0.85) : text };
+}

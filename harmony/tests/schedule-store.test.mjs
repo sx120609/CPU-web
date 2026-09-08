@@ -57,6 +57,47 @@ test('a failed different week never shows previous-week courses', () => {
   h.store.selectWeek('3'); h.accept({ version: 1, auth: { authenticated: true }, error: 'offline' });
   assert.equal(h.store.status, 'failed'); assert.equal(h.store.visibleCells().length, 0);
 });
+
+test('swipe previews use matching cache without navigating or requesting', () => {
+  const h = harness(); h.store.markBridgeReady(); h.accept(h.snapshot('fall', '2', true));
+  const requests = h.requests.length;
+  const outgoing = h.store.previewWeek('2');
+  assert.notEqual(outgoing, h.store);
+  assert.equal(outgoing.visibleCells().length, 1);
+  assert.equal(h.store.previewWeek('3').visibleCells().length, 0);
+  assert.equal(h.store.previewWeek('1').selectedWeek, '1');
+  assert.equal(h.store.selectedWeek, '2');
+  assert.equal(h.requests.length, requests);
+  h.store.selectWeek('3');
+  assert.equal(outgoing.selectedWeek, '2');
+  assert.equal(outgoing.visibleCells().length, 1);
+});
+
+test('uncached swipe pages show loading, preserve navigation, and never borrow current courses', () => {
+  const h = harness(); h.store.markBridgeReady(); h.accept(h.snapshot());
+  const preview = h.store.previewWeek('3');
+  assert.equal(preview.status, 'loading');
+  assert.equal(preview.result, undefined);
+  assert.equal(preview.visibleCells().length, 0);
+  h.store.selectWeek('3');
+  assert.equal(h.store.weekOptions().length, 3);
+  assert.equal(h.store.selectedWeekIndex(), 2);
+  assert.equal(h.store.canMoveWeek(1), false);
+  h.store.moveWeek(-1);
+  assert.equal(h.store.selectedWeek, '2');
+  assert.equal(h.store.visibleCells().length, 1);
+});
+
+test('auth changes and semester changes discard page navigation and preview data', () => {
+  const h = harness(); h.store.markBridgeReady(); h.accept(h.snapshot('fall', '2', true));
+  h.store.selectSemester('spring');
+  assert.equal(h.store.weekOptions().length, 0);
+  assert.equal(h.store.previewWeek('2').result, undefined);
+  h.accept(h.snapshot('spring', '2', true));
+  h.store.handleAuthChanged();
+  assert.equal(h.store.weekOptions().length, 0);
+  assert.equal(h.store.previewWeek('2').result, undefined);
+});
 test('failed manual refresh retains visible data and exposes retry message', () => {
   const h = harness(); h.store.markBridgeReady(); h.accept(h.snapshot());
   h.store.load(true); h.accept({ version: 1, auth: { authenticated: true }, error: 'offline' });

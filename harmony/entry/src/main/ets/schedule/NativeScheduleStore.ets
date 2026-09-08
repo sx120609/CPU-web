@@ -119,10 +119,12 @@ export class NativeScheduleStore {
   lastUpdatedAt: number = 0;
   source: string = '';
   bridgeReady: boolean = false;
+  dataRevision: number = 0;
 
   private requester?: NativeScheduleRequester;
   private listener?: NativeScheduleChangeListener;
   private cache: Map<string, NativeScheduleCacheEntry> = new Map<string, NativeScheduleCacheEntry>();
+  private navigationWeeks: NativeScheduleWeek[] = [];
   private activeRequestId: string = '';
   private requestGeneration: number = 0;
   private pendingKey: string = '';
@@ -198,6 +200,7 @@ export class NativeScheduleStore {
     const semester = value.trim();
     if (!semester || semester === this.selectedSemester) return;
     this.selectedSemester = semester;
+    this.navigationWeeks = [];
     this.selectedWeek = '';
     this.result = undefined;
     this.calendar = undefined;
@@ -235,6 +238,7 @@ export class NativeScheduleStore {
   returnToCurrentWeek(): void {
     this.cancelRequest();
     this.selectedSemester = '';
+    this.navigationWeeks = [];
     this.selectedWeek = '';
     this.selectedDay = new Date().getDay() || 7;
     this.result = undefined;
@@ -258,6 +262,7 @@ export class NativeScheduleStore {
       this.weekPickerVisible = false;
       this.refreshBarrier = Date.now();
       this.status = 'unauthorized';
+      this.navigationWeeks = [];
       this.errorMessage = '';
       this.result = undefined;
       this.calendar = undefined;
@@ -311,6 +316,7 @@ export class NativeScheduleStore {
     this.refreshBarrier = Date.now();
     this.cache.clear();
     this.result = undefined;
+    this.navigationWeeks = [];
     this.calendar = undefined;
     this.detailVisible = false;
     this.weekPickerVisible = false;
@@ -394,7 +400,23 @@ export class NativeScheduleStore {
   }
 
   weekOptions(): NativeScheduleWeek[] {
-    return this.result?.weeks ?? [];
+    return this.result?.weeks ?? this.navigationWeeks;
+  }
+
+  previewWeek(week: string): NativeScheduleStore {
+    const preview = new NativeScheduleStore();
+    preview.selectedSemester = this.selectedSemester;
+    preview.selectedWeek = week;
+    preview.selectedDay = this.selectedDay;
+    preview.viewMode = this.viewMode;
+    preview.calendar = this.calendar;
+    preview.source = this.source;
+    // Adjacent pages may only display a matching cached week or a complete term.
+    const cached = this.freshCache(this.selectedSemester, week);
+    preview.result = week === this.selectedWeek ? this.result : cached?.snapshot.data;
+    preview.status = week === this.selectedWeek ? this.status : preview.result ? 'loaded' : 'loading';
+    preview.errorMessage = week === this.selectedWeek ? this.errorMessage : '';
+    return preview;
   }
 
   selectedSemesterIndex(): number {
@@ -440,6 +462,7 @@ export class NativeScheduleStore {
   private applySnapshot(snapshot: NativeScheduleSnapshot, fromCache: boolean): void {
     if (!snapshot.data) return;
     this.result = snapshot.data;
+    this.navigationWeeks = snapshot.data.weeks;
     this.calendar = snapshot.calendar;
     if (!this.selectedSemester) this.selectedSemester = snapshot.data.currentSemester;
     if (!this.selectedWeek) {
@@ -475,6 +498,7 @@ export class NativeScheduleStore {
       this.cache.set(`${semester}|${week}`, entry);
     }
     this.trimCache();
+    this.dataRevision += 1;
   }
 
   private freshCache(semester: string, week: string): NativeScheduleCacheEntry | undefined {

@@ -28,7 +28,7 @@ function contrast(first, second) {
   return (values[0] + 0.05) / (values[1] + 0.05);
 }
 
-test('Harmony course names and location text remain readable in every theme and appearance', () => {
+test('Harmony widget names and location text remain readable in every theme and appearance', () => {
   for (const { key } of palettes.SCHEDULE_PALETTES) {
     for (const dark of [false, true]) {
       for (let index = 0; index < 48; index++) {
@@ -36,6 +36,27 @@ test('Harmony course names and location text remain readable in every theme and 
         for (const role of ['text', 'accent']) {
           assert.ok(contrast(tone[role], tone.fill) >= 4.5, `${key} ${dark} ${role}: ${JSON.stringify(tone)}`);
         }
+      }
+    }
+  }
+});
+
+function composite(hex, base) {
+  if (hex.length === 7) return hex;
+  const alpha = parseInt(hex.slice(1, 3), 16) / 255;
+  const fg = hex.slice(3).match(/../g).map(v => parseInt(v, 16));
+  const bg = base.slice(1).match(/../g).map(v => parseInt(v, 16));
+  return '#' + fg.map((v, i) => Math.round(v * alpha + bg[i] * (1 - alpha)).toString(16).padStart(2, '0')).join('');
+}
+
+test('flat native timetable cards preserve text contrast over the underlying cells', () => {
+  for (const { key } of palettes.SCHEDULE_PALETTES) {
+    for (const dark of [false, true]) {
+      for (const name of ['药物设计学', '药物化学', '药物分析', '天然药物化学实验', '人工智能药学', '药剂学',
+        ...Array.from({ length: 360 }, (_, index) => `课程${index}`)]) {
+        const tone = native.scheduleCardTone(name, key, dark);
+        const background = composite(dark ? tone.bottom : tone.top, dark ? '#18211E' : '#F1F6F3');
+        assert.ok(contrast(composite(tone.text, background), background) >= 4.5, `${key} ${dark}: ${JSON.stringify(tone)}`);
       }
     }
   }

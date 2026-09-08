@@ -77,3 +77,20 @@ GitHub Actions 的 `Linux deployment artifact` 对精确提交 SHA 执行共享�
 本机新增证据：`bar-bug.jpeg` 与 `bar-web-return.jpeg` 保留失败状态，`chrome-drawer-open.jpeg`、`chrome-drawer-return.jpeg`、`chrome-bar-dark.jpeg` 为修复后的网页弹层和返回状态；`chrome-schedule.jpeg` 为无顶栏课表；`chrome-editor.jpeg`、`chrome-editor-dark.jpeg` 为新按钮布局。模拟器点击输入框未出现软键盘，不能以 `chrome-keyboard.jpeg` 作为软键盘避让通过的证据。未保存测试课程。
 
 `chrome-tests.log` 的 68 项测试通过，`chrome-final-build.log` 打包通过并安装。此版本无签名 HAP SHA-256：`f14e9f683641762651facec1f9df2ae7b08566e4f541560efad4e43e0509355d`。
+
+## 跟手切周与网页布局对齐（后续反馈）
+
+根据“主要是外观、布局和动画”的反馈，本轮对照同一模拟器的实际网页移动课表调整原生页面。保留无品牌顶栏和底部保存按钮，缩小周次标题、统一两排圆角工具栏、日期栏、38 vp 时间列、浅色空格与课程边框。课程按网页同名哈希映射色系；深色平面卡片取渐变深端，浅色课程文字稍加深，并独立验证九套主题、两种外观、366 个课程名组合的文字对比度至少 4.5:1。
+
+原先只有 `PanGesture.onActionEnd` 直接换周，现改为原生 `Swiper`，提供拖动预览、回弹和 260 ms 箭头切换。仅当前周及相邻页构建完整课表，周次不循环。页面使用独立周快照，避免出场页随选中周改变；视图、日期、加载状态和缓存版本变化会更新快照，避免日视图切换后仍显示周表。未缓存周显示加载状态，保留周次导航，不借用其他周课程。
+
+本机证据位于同一 `output/harmony-independent-qa-20260908/`，真实账号截图与回执未提交到 Git：
+
+- `alignment-web-actual.jpeg`：当前线上网页移动端基线。
+- `alignment-approved-week.jpeg`、`alignment-approved-dark.jpeg`：最终包浅深色周课表；`alignment-approved-motion.jpeg` 为真实慢拖中间帧，左右日期分别属于第 2、3 周。
+- `alignment-day-final.jpeg`、`alignment-day-monday.jpeg`：日视图及切换日期；`alignment-short-swipe.jpeg` 为短滑后保持第 2 周。
+- `alignment-paging-receipt.json`：实际回读 2→3→4→3→2→1、首周继续右滑保持第 1 周、箭头回第 2 周；`alignment-boundary-30.jpeg` 为末周继续左滑后保持第 30 周。远周跳转与返回本周也实际检查，校历无对应日期时显示缺省日期。
+- `alignment-live-readback.json`：本科真实会话、第 2 周、12 个课程单元及 HTTP 200 回读；没有写入测试课程。
+- `alignment-tests.log`：72 项回归通过；`alignment-build-6.log`：最终 ArkTS、资源与无签名 HAP 打包通过，并安装至 API 24 模拟器。
+
+此版本无签名 HAP SHA-256：`14e09bb1f64541d5bc973bb109878a7baa64016250c26b029f8af5cbf231ec9b`。本轮未修改服务卡片及个人课程写入逻辑；模拟器验证不代表已签名真机发布包。本轮没有执行生产部署。
