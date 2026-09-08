@@ -153,7 +153,7 @@ function themeTint(theme: string): string {
 function courseColorIndex(name: string): number {
   let hash = 0;
   for (let index = 0; index < name.length; index += 1) {
-    hash = (hash * 31 + name.charCodeAt(index)) & 0x7FFFFFFF;
+    hash = (hash * 33 + name.charCodeAt(index)) >>> 0;
   }
   return hash % COLOR_GLASS_ACCENTS.length;
 }

@@ -9,6 +9,7 @@ export interface NativeScheduleHostCallbacks {
   onAppearanceChanged: (mode: string) => void;
   onEditorResult: (id: string, payload: string) => void;
   onWebOverlayChanged: (visible: boolean) => void;
+  onHeaderChanged: (payload: string) => void;
 }
 
 let activeCallbacks: NativeScheduleHostCallbacks | undefined;
@@ -32,6 +33,7 @@ export function requestNativeScheduleOpen(): void {
 }
 
 export class NativeScheduleHost {
+  headerChanged(payload: string): void { activeCallbacks?.onHeaderChanged(payload); }
   navigationReady(revision: number): void { activeCallbacks?.onNavigationReady(revision); }
   webOverlayChanged(visible: boolean): void { activeCallbacks?.onWebOverlayChanged(visible); }
   editorResult(id: string, payload: string): void { activeCallbacks?.onEditorResult(id, payload); }

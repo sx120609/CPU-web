@@ -2,6 +2,7 @@ import { installIosNextScheduleBridge } from "../../web/src/utils/iosNextSchedul
 import { isNativeScheduleShell, liveApp, useAuthStore, useJwxtStore } from "./adapters";
 import { installHarmonyEditor } from './editor';
 import { installHarmonyShellObserver } from './shell';
+import { installHarmonyHeader } from './header';
 
 if (isNativeScheduleShell() && (window as any).CPUTimeNative) {
   installHarmonyShellObserver();
@@ -9,13 +10,14 @@ if (isNativeScheduleShell() && (window as any).CPUTimeNative) {
   let attempts = 0;
   const install = () => {
     const host = window as any;
+    installHarmonyHeader();
     if (typeof host.CPUTimeNativeScheduleFetch === "function") {
       host.CPUTimeNative.ready?.();
       return;
     }
     if (useAuthStore()) {
       if (useJwxtStore()) {
-        installIosNextScheduleBridge(liveApp().config.globalProperties.$router);
+        installIosNextScheduleBridge(liveApp().config.globalProperties.$router, { fastRefresh: true });
       } else {
         // Guest home pages may never instantiate the academic store. They must
         // show the login state, not fail while waiting for a nonexistent store.
@@ -26,7 +28,7 @@ if (isNativeScheduleShell() && (window as any).CPUTimeNative) {
           }
           if (!useJwxtStore()) return { version: 1, auth: { authenticated: false } };
           unsubscribe?.();
-          installIosNextScheduleBridge(liveApp().config.globalProperties.$router);
+          installIosNextScheduleBridge(liveApp().config.globalProperties.$router, { fastRefresh: true });
           return host.CPUTimeNativeScheduleFetch(semester, week, force);
         };
         host.CPUTimeNative.openWebRoute = (path: string) => liveApp().config.globalProperties.$router.push(path);

@@ -104,6 +104,16 @@ test('failed manual refresh retains visible data and exposes retry message', () 
   assert.equal(h.store.status, 'loaded'); assert.equal(h.store.errorMessage, 'offline');
   assert.equal(h.store.visibleCells().length, 1);
 });
+
+test('repeated manual refresh joins one request and failure retains other cached weeks', () => {
+  const h = harness(); h.store.markBridgeReady(); h.accept(h.snapshot('fall','2',true));
+  h.advance(100); h.store.load(true); const request = h.requests.at(-1);
+  h.store.load(true); assert.equal(h.requests.at(-1), request);
+  assert.ok(h.store.previewWeek('3').result);
+  h.accept({ version:1, auth:{authenticated:true}, error:'offline' });
+  h.store.selectWeek('3'); assert.equal(h.store.status, 'loaded');
+  assert.ok(h.store.result); assert.equal(h.requests.filter(r=>r.id).length, 2);
+});
 test('authorization failure clears cached schedules and detail', () => {
   const h = harness(); h.store.markBridgeReady(); h.accept(h.snapshot());
   h.store.load(true); h.accept({ version: 1, auth: { authenticated: false } });

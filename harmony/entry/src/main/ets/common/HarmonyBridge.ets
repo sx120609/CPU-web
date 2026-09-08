@@ -434,6 +434,7 @@ export class HarmonyJavaScriptProxy {
   }
 
   navigationReady(revision: number): void { this.nativeScheduleHost.navigationReady(revision); }
+  headerChanged(payload: string): void { this.nativeScheduleHost.headerChanged(payload); }
 
   authChanged(scope: string = ''): void {
     this.nativeScheduleHost.authChanged(scope);

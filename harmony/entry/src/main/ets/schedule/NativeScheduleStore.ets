@@ -138,6 +138,7 @@ export class NativeScheduleStore {
   private activeRequestId: string = '';
   private requestGeneration: number = 0;
   private pendingKey: string = '';
+  private pendingForce: boolean = false;
   private refreshBarrier: number = 0;
   private requestTimer: number = -1;
   private accountScope: string = '';
@@ -198,6 +199,7 @@ export class NativeScheduleStore {
   private cancelRequest(): void {
     this.activeRequestId = '';
     this.pendingKey = '';
+    this.pendingForce = false;
     clearTimeout(this.requestTimer);
   }
 
@@ -212,11 +214,10 @@ export class NativeScheduleStore {
       }
     }
     const key = `${this.selectedSemester}|${this.selectedWeek}`;
-    if (!force && this.activeRequestId && this.pendingKey === key) return;
+    if (this.activeRequestId && this.pendingKey === key && (!force || this.pendingForce)) return;
     this.cancelRequest();
     if (force) {
       this.refreshBarrier = Date.now();
-      this.cache.clear();
     }
     if (!this.bridgeReady || !this.requester) {
       if (!this.result) this.status = 'loading';
@@ -226,6 +227,7 @@ export class NativeScheduleStore {
     this.requestGeneration += 1;
     this.activeRequestId = `schedule-${Date.now()}-${this.requestGeneration}`;
     this.pendingKey = key;
+    this.pendingForce = force;
     const requestId = this.activeRequestId;
     this.requestTimer = setTimeout(() => {
       if (this.activeRequestId !== requestId) return;
@@ -295,6 +297,7 @@ export class NativeScheduleStore {
 
   acceptResult(id: string, raw: string): void {
     if (!id || id !== this.activeRequestId) return;
+    const refreshed = this.pendingForce;
     this.cancelRequest();
     let snapshot: NativeScheduleSnapshot;
     try {
@@ -327,6 +330,13 @@ export class NativeScheduleStore {
     if (this.selectedSemester && snapshot.data.currentSemester !== this.selectedSemester) {
       this.fail('教务系统返回了其他学期的课表，请重新选择');
       return;
+    }
+    if (refreshed) {
+      const obsolete: string[] = [];
+      this.cache.forEach((_entry: NativeScheduleCacheEntry, key: string) => {
+        if (key.startsWith(snapshot.data!.currentSemester + '|')) obsolete.push(key);
+      });
+      obsolete.forEach((key: string) => this.cache.delete(key));
     }
     this.remember(snapshot);
     this.applySnapshot(snapshot, false);

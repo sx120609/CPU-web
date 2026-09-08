@@ -23,6 +23,7 @@ export struct NativeSchedulePage {
   @State private contentHeight: number = 540;
   @State private pageWidth: number = 360;
   @State private pageHeight: number = 700;
+  @State private pullRefreshing: boolean = false;
   @State private detailName: string = '';
   @State private detailTeacher: string = '';
   @State private detailLocation: string = '';
@@ -38,7 +39,7 @@ export struct NativeSchedulePage {
   build() {
     Stack() {
       Column().width('100%').height('100%')
-        .backgroundColor($r('app.color.app_background'))
+        .backgroundColor(this.store.dark ? '#000000' : '#F3F3F9')
       if (this.store.backgroundPath) {
         Image(this.store.backgroundPath).width('100%').height('100%').objectFit(ImageFit.Cover).opacity(this.store.backgroundOpacity)
       }
@@ -48,7 +49,7 @@ export struct NativeSchedulePage {
           this.weekSwitcher()
         }
         if (this.store.errorMessage) this.messageBanner(this.store.errorMessage, this.surfaceColor(), this.textColor())
-        Refresh({ refreshing: this.store.status === 'loading' && this.store.result !== undefined }) {
+        Refresh({ refreshing: this.pullRefreshing && this.store.status === 'loading' }) {
           if (this.store.weekOptions().length) {
             Swiper(this.weekController) {
               ForEach(this.store.weekOptions(), (week: NativeScheduleWeek, index: number) => {
@@ -73,10 +74,13 @@ export struct NativeSchedulePage {
               onLogin: this.onLogin, onAddSlot: this.onAddSlot,
               onCourse: (block: NativeCourseBlock) => this.openCourseAt(block) })
           }
-        }.layoutWeight(1).width('100%').margin({ bottom: 76 + this.bottomSafeInset })
-          .onRefreshing(() => this.store.load(true))
+        }.layoutWeight(1).width('100%').margin({ bottom: 54 + this.bottomSafeInset })
+          .onRefreshing(() => { this.pullRefreshing = true; this.store.load(true); })
+          .onStateChange((state: RefreshStatus) => {
+            if (state === RefreshStatus.Inactive || state === RefreshStatus.Done) this.pullRefreshing = false;
+          })
           .onAreaChange((_old: Area, next: Area) => this.contentHeight = Number(next.height))
-      }.width('100%').height('100%').padding({ left: 8, right: 8, top: 8 })
+      }.width('100%').height('100%').padding({ left: 12, right: 12, top: 12 })
     }.width('100%').height('100%')
       .onAreaChange((_old: Area, next: Area) => { this.pageWidth = Number(next.width); this.pageHeight = Number(next.height); })
       .bindSheet(this.store.detailVisible || this.store.weekPickerVisible, this.scheduleSheet(), {
@@ -87,28 +91,35 @@ export struct NativeSchedulePage {
 
   @Builder
   private scheduleToolbar() {
-    Row({ space: 4 }) {
+    Row({ space: 6 }) {
       Select(this.semesterSelectOptions())
         .selected(this.store.selectedSemesterIndex()).value(this.store.selectedSemester)
-        .font({ size: 13, weight: FontWeight.Medium }).fontColor(this.textColor())
-        .backgroundColor(this.surfaceColor()).borderRadius(18).layoutWeight(1).height(38).padding({ left: 10, right: 6 })
+        .font({ size: 16, weight: FontWeight.Bold }).fontColor(this.store.dark ? '#8DADFF' : '#3668D3')
+        .backgroundColor(this.surfaceColor()).borderRadius(22).layoutWeight(1).height(42).padding({ left: 12, right: 6 })
         .accessibilityText('选择学期')
         .onSelect((index: number) => { const option = this.store.semesterOptions()[index]; if (option) this.store.selectSemester(option.value); })
       Row({ space: 2 }) {
-        this.modeButton('日', 'day')
         this.modeButton('周', 'week')
-      }.width(64).height(38).padding(3).backgroundColor(this.softSurfaceColor()).border({ width: 0.5, color: $r('app.color.app_divider'), radius: 12 })
-      Button() { SymbolGlyph($r('sys.symbol.scope')).fontSize(19).fontColor([$r('app.color.app_accent')]) }
-        .type(ButtonType.Normal).width(34).height(38).padding(0).backgroundColor(this.surfaceColor()).border({ width: 0.5, color: $r('app.color.app_divider'), radius: 12 })
+        this.modeButton('日', 'day')
+      }.width(78).height(40).padding(3).backgroundColor(this.softSurfaceColor()).borderRadius(22)
+      Button() { SymbolGlyph($r('sys.symbol.scope')).fontSize(23).fontColor([this.store.dark ? '#8DADFF' : '#3668D3']) }
+        .type(ButtonType.Normal).width(40).height(40).padding(0).backgroundColor(this.surfaceColor()).borderRadius(22)
+        .responseRegion({ x: -2, y: -2, width: 44, height: 44 })
         .accessibilityText('回到本周今日')
         .onClick(() => { this.store.returnToCurrentWeek(); this.store.selectDay(new Date().getDay() || 7); })
       Button() {
-        Row({ space: 3 }) {
-          ForEach([1,2,3], () => { Circle().width(3).height(3).fill(this.textColor()) })
+        if (this.store.status === 'loading') {
+          LoadingProgress().width(19).height(19).color(this.store.dark ? '#8DADFF' : '#3668D3')
+        } else {
+          Row({ space: 3 }) {
+            ForEach([1,2,3], () => { Circle().width(3).height(3).fill(this.textColor()) })
+          }
         }
-      }.type(ButtonType.Normal).width(34).height(38).padding(0).backgroundColor(this.surfaceColor()).border({ width: 0.5, color: $r('app.color.app_divider'), radius: 12 })
+      }.type(ButtonType.Normal).width(32).height(40).padding(0).backgroundColor(Color.Transparent).borderRadius(20)
+        .responseRegion({ x: -4, y: -2, width: 40, height: 44 })
         .accessibilityText('更多课表操作')
         .bindMenu([
+          { value: '刷新课表', enabled: this.store.status !== 'loading', action: () => this.store.load(true) },
           { value: '课表配色与背景', action: () => this.onStyle() },
           { value: '添加与恢复课程', enabled: this.store.source !== 'graduate', action: () => this.onTools() },
           { value: '桌面与锁屏服务卡片', action: () => this.onWidgets() },
@@ -116,24 +127,15 @@ export struct NativeSchedulePage {
           { value: '导出所选周日历', action: () => this.onExport() },
           { value: '应用外观', action: () => this.onAppearance() }
         ])
-      Button() {
-        if (this.store.status === 'loading') {
-          LoadingProgress().width(19).height(19).color($r('app.color.app_accent'))
-        } else {
-          SymbolGlyph($r('sys.symbol.arrow_clockwise')).fontSize(19).fontColor([this.textColor()])
-        }
-      }
-        .type(ButtonType.Normal).width(34).height(38).padding(0).backgroundColor(this.surfaceColor()).border({ width: 0.5, color: $r('app.color.app_divider'), radius: 12 })
-        .enabled(this.store.status !== 'loading').accessibilityText('刷新课表').onClick(() => this.store.load(true))
-    }.width('100%').height(44).margin({ bottom: 8 })
+    }.width('100%').height(46).margin({ bottom: 12 })
   }
 
   @Builder
   private modeButton(label: string, mode: string) {
-    Button(label).type(ButtonType.Normal).layoutWeight(1).height(30).padding(0).fontSize(12)
-      .fontWeight(this.store.viewMode === mode ? FontWeight.Medium : FontWeight.Regular)
+    Button(label).type(ButtonType.Normal).layoutWeight(1).height(34).padding(0).fontSize(14)
+      .fontWeight(this.store.viewMode === mode ? FontWeight.Bold : FontWeight.Medium)
       .fontColor(this.store.viewMode === mode ? this.textColor() : this.secondaryColor())
-      .backgroundColor(this.store.viewMode === mode ? this.surfaceColor() : Color.Transparent).borderRadius(9)
+      .backgroundColor(this.store.viewMode === mode ? this.surfaceColor() : Color.Transparent).borderRadius(19)
       .responseRegion({ x: 0, y: -7, width: '100%', height: 44 })
       .accessibilityText(label + '视图').accessibilitySelected(this.store.viewMode === mode)
       .onClick(() => this.store.setViewMode(mode))
@@ -143,31 +145,22 @@ export struct NativeSchedulePage {
   private weekSwitcher() {
     Row({ space: 8 }) {
       Button() {
-        Row({ space: 4 }) {
-          SymbolGlyph($r('sys.symbol.chevron_left')).fontSize(12).fontColor([this.secondaryColor()])
-          Text('上一周').fontSize(11).fontColor(this.secondaryColor())
-        }
-      }.type(ButtonType.Normal).width(76).height(42).padding(0).backgroundColor(this.surfaceColor()).border({ width: 0.5, color: $r('app.color.app_divider'), radius: 13 })
+        SymbolGlyph($r('sys.symbol.chevron_left')).fontSize(23).fontWeight(FontWeight.Bold).fontColor([this.textColor()])
+      }.type(ButtonType.Normal).width(44).height(48).padding(0).backgroundColor(Color.Transparent).borderRadius(22)
         .enabled(this.store.canMoveWeek(-1)).accessibilityText('上一周').onClick(() => this.weekController.showPrevious())
       Button() {
-        Column({ space: 3 }) {
-          Row({ space: 6 }) {
-            Text(this.weekLabel()).fontSize(15).fontWeight(FontWeight.Bold).fontColor(this.textColor())
-            SymbolGlyph($r('sys.symbol.chevron_down')).fontSize(10).fontColor([this.secondaryColor()])
-          }
-          Text(this.weekRange()).fontSize(11).fontColor(this.secondaryColor()).maxLines(1)
+        Column({ space: 4 }) {
+          Text(this.weekLabel()).fontSize(16).fontWeight(FontWeight.Bold).fontColor(this.textColor())
+          Text(this.weekRange()).fontSize(12).fontColor(this.secondaryColor()).maxLines(1)
         }.width('100%').alignItems(HorizontalAlign.Center)
-      }.type(ButtonType.Normal).layoutWeight(1).height(42).padding(0).backgroundColor($r('app.color.app_accent_surface')).borderRadius(13)
+      }.type(ButtonType.Normal).layoutWeight(1).height(48).padding(0).backgroundColor(Color.Transparent).borderRadius(18)
         .accessibilityText('选择周次，' + this.weekLabel() + '，' + this.weekRange())
         .onClick(() => this.store.weekPickerVisible = true)
       Button() {
-        Row({ space: 4 }) {
-          Text('下一周').fontSize(11).fontColor(this.secondaryColor())
-          SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(12).fontColor([this.secondaryColor()])
-        }
-      }.type(ButtonType.Normal).width(76).height(42).padding(0).backgroundColor(this.surfaceColor()).border({ width: 0.5, color: $r('app.color.app_divider'), radius: 13 })
+        SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(23).fontWeight(FontWeight.Bold).fontColor([this.textColor()])
+      }.type(ButtonType.Normal).width(44).height(48).padding(0).backgroundColor(Color.Transparent).borderRadius(22)
         .enabled(this.store.canMoveWeek(1)).accessibilityText('下一周').onClick(() => this.weekController.showNext())
-    }.width('100%').height(42).margin({ bottom: 12 })
+    }.width('100%').height(48).margin({ bottom: 12 })
   }
 
   @Builder
@@ -210,11 +203,11 @@ export struct NativeSchedulePage {
     this.overlappingBlocks = matches;
     this.store.detailVisible = true;
   }
-  private textColor(): string { return this.store.dark ? '#F3F5F7' : '#202722'; }
-  private secondaryColor(): string { return this.store.dark ? '#ADB5AF' : '#6A746E'; }
-  private surfaceColor(): string { return this.store.dark ? '#222724' : '#FFFFFF'; }
-  private softSurfaceColor(): string { return this.store.dark ? '#2D332F' : '#F1F3F1'; }
-  private cellColor(): string { return this.store.dark ? '#18211E' : '#F1F6F3'; }
+  private textColor(): string { return this.store.dark ? '#F5F5F7' : '#151518'; }
+  private secondaryColor(): string { return this.store.dark ? '#A6A6B0' : '#72727D'; }
+  private surfaceColor(): string { return this.store.dark ? '#303139' : '#FFFFFF'; }
+  private softSurfaceColor(): string { return this.store.dark ? '#25252B' : '#E7E7ED'; }
+  private cellColor(): string { return this.store.dark ? '#202023' : '#FFFFFF'; }
   private toneBorder(name: string): string { return scheduleCardTone(name, this.store.palette, this.store.dark).border; }
   private toneText(name: string): string { return scheduleCardTone(name, this.store.palette, this.store.dark).text; }
   private toneAccent(name: string): string { return this.toneText(name); }
@@ -324,14 +317,15 @@ export struct NativeSchedulePage {
   }
 
   private weekLabel(): string {
-    return this.store.weekOptions()[this.store.selectedWeekIndex()]?.label ||
-      (this.store.selectedWeek ? `第 ${this.store.selectedWeek} 周` : '选择周次');
+    const week = this.store.weekOptions()[this.store.selectedWeekIndex()];
+    const value = week?.value || this.store.selectedWeek;
+    return value ? `第${value}周` : '选择周次';
   }
 
   private weekRange(): string {
     const start = this.store.dayDate(1);
     const end = this.store.dayDate(7);
-    return start && end ? `${start.replace('-', '/')} - ${end.replace('-', '/')}` : '校历暂无日期';
+    return start && end ? `${start.replace('-', '.')} - ${end.replace('-', '.')}` : '校历暂无日期';
   }
 
   private courseCount(): number {

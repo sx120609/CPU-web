@@ -1,7 +1,7 @@
 import util from '@ohos.util';
-import deviceInfo from '@ohos.deviceInfo';
-import { SymbolGlyphModifier } from '@kit.ArkUI';
-import { HdsTabs, hdsMaterial } from '@kit.UIDesignKit';
+
+
+import { NativeTabBar } from '../common/NativeTabBar';
 import BuildProfile from 'BuildProfile';
 import ConfigurationConstant from '@ohos.app.ability.ConfigurationConstant';
 import preferences from '@ohos.data.preferences';
@@ -24,6 +24,7 @@ import {
   setActiveHarmonyBridge
 } from '../common/HarmonyBridge';
 import { restoreNativeScheduleCache } from '../schedule/NativeScheduleCache';
+import { NativeWebHeader, NativeWebHeaderState } from '../common/NativeWebHeader';
 import { NativeSchedulePage } from '../schedule/NativeSchedulePage';
 import { NativeCourseBlock, NativeScheduleRequest, NativeScheduleStore } from '../schedule/NativeScheduleStore';
 import { CourseEditorRequest, NativeCourseEditor, NativeCourseEditorModel } from '../schedule/NativeCourseEditor';
@@ -54,6 +55,7 @@ struct Index {
   @State private loading: boolean = true;
   @State private failed: boolean = false;
   @State private webOverlayVisible: boolean = false;
+  @State private webHeader: NativeWebHeaderState = new NativeWebHeaderState();
   @State private widgetPanelVisible: boolean = false;
   @State private widgetPreview: ScheduleWidgetBinding = initialScheduleWidgetBinding(2, 'schedule_upcoming');
   @State private lockPreview: ScheduleWidgetBinding = initialScheduleWidgetBinding(2, 'schedule_upcoming');
@@ -174,6 +176,9 @@ struct Index {
       onNavigate: (path: string) => this.handleNativeNavigation(path),
       onNavigationReady: (revision: number) => this.finishWebNavigation(revision),
       onWebOverlayChanged: (visible: boolean) => this.webOverlayVisible = visible,
+      onHeaderChanged: (payload: string) => {
+        try { this.webHeader = JSON.parse(payload) as NativeWebHeaderState; } catch (_) {}
+      },
       onResult: (id: string, payload: string) => this.scheduleStore.acceptResult(id, payload),
       onPrefetched: (payload: string) => this.scheduleStore.acceptPrefetched(payload),
       onWidgetSetupFailed: (message: string) => {
@@ -203,6 +208,7 @@ struct Index {
       'authChanged',
       'navigate',
       'navigationReady',
+      'headerChanged',
       'scheduleResult',
       'schedulePrefetched',
       'scheduleWeekPrefetched',
@@ -310,14 +316,19 @@ struct Index {
           document.head.appendChild(style);
         }
         style.textContent = [
-          'html[data-cpu-harmony-native] { --cpu-harmony-bottom-clearance: ${100 + this.getUIContext().px2vp(this.systemBottomInsetPx)}px; --cpu-safe-area-inset-top: 0px; }',
+          'html[data-cpu-harmony-native] { --cpu-harmony-bottom-clearance: ${54 + this.bottomBarInset()}px; --cpu-safe-area-inset-top: 0px; }',
           'html[data-cpu-harmony-native] .layout-root > .mobile-tabbar,',
+          'html[data-cpu-harmony-native] .layout-root > .topbar,',
           'html[data-cpu-harmony-native] .layout-root > .footer { display: none !important; }',
           'html[data-cpu-harmony-native] .layout-root { padding-bottom: 0 !important; }',
+          'html[data-cpu-harmony-native] .layout-root { --layout-mobile-tabbar-reserve: var(--cpu-harmony-bottom-clearance); --liquid-tabbar-reserve: var(--cpu-harmony-bottom-clearance); }',
+          'html[data-cpu-harmony-native] .forum-post-fab { bottom: calc(var(--cpu-harmony-bottom-clearance) + 8px) !important; }',
           'html[data-cpu-harmony-native] .layout-root > .main { padding-bottom: var(--cpu-harmony-bottom-clearance) !important; }',
-          'html[data-cpu-harmony-native] .page-route-enter-active, html[data-cpu-harmony-native] .page-route-leave-active { transition: none !important; animation: none !important; }',
-          'html[data-cpu-harmony-native] .page-route-enter-from, html[data-cpu-harmony-native] .page-route-enter-to { opacity: 1 !important; transform: none !important; filter: none !important; }',
-          'html[data-cpu-harmony-native] .page-route-leave-active { display: none !important; }'
+          'html[data-cpu-harmony-native] .page-route-enter-active { transition: opacity 220ms ease-out !important; transform: none !important; filter: none !important; }',
+          'html[data-cpu-harmony-native] .page-route-enter-from { opacity: .55 !important; }',
+          'html[data-cpu-harmony-native] .page-route-enter-to { opacity: 1 !important; }',
+          'html[data-cpu-harmony-native] .page-route-leave-active { display: none !important; }',
+          '@media (prefers-reduced-motion: reduce) { html[data-cpu-harmony-native] .page-route-enter-active { transition: none !important; } }'
         ].join('\\n');
 
         const host = window.CPUHarmony;
@@ -506,13 +517,17 @@ struct Index {
         .hitTestBehavior(HitTestMode.None)
       Column() {
         Stack() {
+          Column() {
+          NativeWebHeader({ state: this.webHeader, blocked: this.webOverlayVisible || this.loading,
+            onAction: (action: string) => this.handleHeaderAction(action) })
+            .visibility(this.webHeader.visible ? Visibility.Visible : Visibility.None)
           Web({
             src: this.launchUrl,
             controller: this.controller,
             renderMode: RenderMode.ASYNC_RENDER
           })
         .width('100%')
-        .height('100%')
+        .layoutWeight(1)
         .accessibilityLevel(this.nativeScheduleVisible ? 'no-hide-descendants' : 'auto')
         .hitTestBehavior(this.nativeScheduleVisible ? HitTestMode.None : HitTestMode.Default)
         .javaScriptAccess(true)
@@ -572,11 +587,12 @@ struct Index {
         .onPermissionRequest((event) => void this.handleWebPermission(event))
         .onDownloadStart((event) => this.bridge.openExternalUrl(event.url))
         .onShowFileSelector((event) => this.chooseFiles(event))
+          }.width('100%').height('100%')
 
           if (this.scheduleMounted) {
             NativeSchedulePage({
               store: this.scheduleStore,
-              bottomSafeInset: this.getUIContext().px2vp(this.systemBottomInsetPx),
+              bottomSafeInset: this.bottomBarInset(),
               onLogin: () => {
                 this.selectTab(1);
                 const script = `window.CPUTimeNative?.openWebRoute?.('/jwxt?reauthorize=1&redirect=/schedule');`;
@@ -590,7 +606,10 @@ struct Index {
               onAppearance: () => this.chooseAppearance(),
               onShare: () => this.shareSchedule(),
               onExport: () => { void this.exportSchedule(); }
-            }).visibility(this.nativeScheduleVisible ? Visibility.Visible : Visibility.Hidden)
+            }).opacity(this.nativeScheduleVisible ? 1 : 0)
+              .translate({ y: this.nativeScheduleVisible ? 0 : 8 })
+              .animation({ duration: 220, curve: Curve.EaseOut })
+              .accessibilityLevel(this.nativeScheduleVisible ? 'auto' : 'no-hide-descendants')
               .hitTestBehavior(this.selectedTab === 2 ? HitTestMode.Default : HitTestMode.None)
           }
 
@@ -653,8 +672,8 @@ struct Index {
 
       Column() {
         this.bottomNavigation()
-      }.width('100%').height(84 + this.getUIContext().px2vp(this.systemBottomInsetPx)).align(Alignment.Bottom)
-        .visibility(this.selectedTab === 2 || !this.webOverlayVisible ? Visibility.Visible : Visibility.Hidden)
+      }.width('100%').height(48 + this.bottomBarInset()).align(Alignment.Bottom)
+        .visibility(this.selectedTab === 2 || (this.webHeader.visible && !this.webOverlayVisible) ? Visibility.Visible : Visibility.Hidden)
         .hitTestBehavior(HitTestMode.Transparent)
 
       if (this.imagePreviewVisible && this.previewImages.length > 0) {
@@ -662,6 +681,8 @@ struct Index {
           Row() {
             Button('关闭')
               .type(ButtonType.Normal)
+              .width(64).height(40).borderRadius(20)
+              .accessibilityText('关闭图片预览')
               .fontSize(14)
               .fontColor('#FFFFFF')
               .backgroundColor('rgba(255, 255, 255, 0.16)')
@@ -709,7 +730,7 @@ struct Index {
           .padding({
             left: 14,
             right: 14,
-            top: 12,
+            top: 10 + this.getUIContext().px2vp(this.systemTopInsetPx),
             bottom: 8
           })
           .alignItems(VerticalAlign.Center)
@@ -783,7 +804,7 @@ struct Index {
 
           Text(this.currentPreviewImage().title)
             .width('100%')
-            .padding({ left: 20, right: 20, top: 8, bottom: 18 })
+            .padding({ left: 20, right: 20, top: 8, bottom: 12 + this.getUIContext().px2vp(this.systemBottomInsetPx) })
             .fontSize(13)
             .fontColor('rgba(255, 255, 255, 0.76)')
             .textAlign(TextAlign.Center)
@@ -939,7 +960,12 @@ struct Index {
               Stack() {
                 Circle().width(32).height(32).fill(Color.Transparent)
                   .stroke(selected === theme ? $r('app.color.app_accent') : Color.Transparent).strokeWidth(1.5)
-                Circle().width(24).height(24).fill(this.widgetThemeColor(theme))
+                if (theme === 'color-glass') {
+                  Column().width(24).height(24).borderRadius(12)
+                    .linearGradient({ angle: 135, colors: [['#78C9AF', 0], ['#74A5F5', 0.35], ['#B696E9', 0.65], ['#EC9BB7', 1]] })
+                } else {
+                  Circle().width(24).height(24).fill(this.widgetThemeColor(theme))
+                }
               }.width(36).height(36)
               Text(this.widgetThemeLabel(theme)).fontSize(10)
                 .fontColor(selected === theme ? $r('app.color.app_text_primary') : $r('app.color.app_text_secondary'))
@@ -1044,6 +1070,17 @@ struct Index {
       .catch(() => undefined);
   }
 
+  private handleHeaderAction(action: string): void {
+    const roots: string[] = ['/home', '/jwxt', '/schedule', '/services', '/profile'];
+    if (action === 'home') { this.selectTab(0); return; }
+    if (action === 'refresh') {
+      this.controller.refresh();
+      return;
+    }
+    const script = `window.CPUHarmonyHeaderAction?.(${JSON.stringify(action)}, ${JSON.stringify(roots[this.selectedTab] || '/home')});`;
+    void this.controller.runJavaScript(script).catch(() => promptAction.showToast({ message: '页面尚未就绪，请重试' }));
+  }
+
   private applyAppearance(value: string, updateWeb: boolean): void {
     const mode = value === 'dark' || value === 'light' ? value : 'system';
     const context = AppStorage.get<common.UIAbilityContext>('abilityContext');
@@ -1056,10 +1093,7 @@ struct Index {
     }
     const dark = mode === 'dark' || (mode === 'system' && context.config.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK);
     this.scheduleStore.dark = dark;
-    void window.getLastWindow(context).then((mainWindow) => mainWindow.setWindowSystemBarProperties({
-      statusBarColor: dark ? '#151A17' : '#F7F8F6', statusBarContentColor: dark ? '#FFFFFF' : '#202722',
-      navigationBarColor: '#00000000', navigationBarContentColor: dark ? '#FFFFFF' : '#172033'
-    })).catch(() => undefined);
+    this.updateSystemBars();
     void preferences.getPreferences(context, { name: 'native_appearance' }).then(async (prefs) => {
       await prefs.put('mode', mode);
       await prefs.flush();
@@ -1109,64 +1143,15 @@ struct Index {
   }
 
   @Builder
-  private tabItems() {
-    TabContent() { Column() {} }
-      .tabBar(new BottomTabBarStyle({
-        normal: new SymbolGlyphModifier($r('sys.symbol.house')).fontSize(20).fontColor([$r('app.color.app_text_secondary')]),
-        selected: new SymbolGlyphModifier($r('sys.symbol.house_fill')).fontSize(20).fontColor([$r('app.color.app_accent')])
-      }, '首页')
-        .labelStyle({ font: { size: 10, weight: FontWeight.Medium }, selectedColor: $r('app.color.app_accent'), unselectedColor: $r('app.color.app_text_secondary') })
-        .iconStyle({ selectedColor: $r('app.color.app_accent'), unselectedColor: $r('app.color.app_text_secondary') }))
-    TabContent() { Column() {} }
-      .tabBar(new BottomTabBarStyle({
-        normal: new SymbolGlyphModifier($r('sys.symbol.book_pages')).fontSize(20).fontColor([$r('app.color.app_text_secondary')]),
-        selected: new SymbolGlyphModifier($r('sys.symbol.book_pages_fill')).fontSize(20).fontColor([$r('app.color.app_accent')])
-      }, '教务')
-        .labelStyle({ font: { size: 10, weight: FontWeight.Medium }, selectedColor: $r('app.color.app_accent'), unselectedColor: $r('app.color.app_text_secondary') })
-        .iconStyle({ selectedColor: $r('app.color.app_accent'), unselectedColor: $r('app.color.app_text_secondary') }))
-    TabContent() { Column() {} }
-      .tabBar(new BottomTabBarStyle({
-        normal: new SymbolGlyphModifier($r('sys.symbol.calendar')).fontSize(20).fontColor([$r('app.color.app_text_secondary')]),
-        selected: new SymbolGlyphModifier($r('sys.symbol.calendar')).fontSize(20).fontColor([$r('app.color.app_accent')])
-      }, '课表')
-        .labelStyle({ font: { size: 10, weight: FontWeight.Medium }, selectedColor: $r('app.color.app_accent'), unselectedColor: $r('app.color.app_text_secondary') })
-        .iconStyle({ selectedColor: $r('app.color.app_accent'), unselectedColor: $r('app.color.app_text_secondary') }))
-    TabContent() { Column() {} }
-      .tabBar(new BottomTabBarStyle({
-        normal: new SymbolGlyphModifier($r('sys.symbol.square_grid_2x2')).fontSize(20).fontColor([$r('app.color.app_text_secondary')]),
-        selected: new SymbolGlyphModifier($r('sys.symbol.square_grid_2x2')).fontSize(20).fontColor([$r('app.color.app_accent')])
-      }, '服务')
-        .labelStyle({ font: { size: 10, weight: FontWeight.Medium }, selectedColor: $r('app.color.app_accent'), unselectedColor: $r('app.color.app_text_secondary') })
-        .iconStyle({ selectedColor: $r('app.color.app_accent'), unselectedColor: $r('app.color.app_text_secondary') }))
-    TabContent() { Column() {} }
-      .tabBar(new BottomTabBarStyle({
-        normal: new SymbolGlyphModifier($r('sys.symbol.person')).fontSize(20).fontColor([$r('app.color.app_text_secondary')]),
-        selected: new SymbolGlyphModifier($r('sys.symbol.person_fill')).fontSize(20).fontColor([$r('app.color.app_accent')])
-      }, '我的')
-        .labelStyle({ font: { size: 10, weight: FontWeight.Medium }, selectedColor: $r('app.color.app_accent'), unselectedColor: $r('app.color.app_text_secondary') })
-        .iconStyle({ selectedColor: $r('app.color.app_accent'), unselectedColor: $r('app.color.app_text_secondary') }))
-  }
-
-  @Builder
   private bottomNavigation() {
-    if (deviceInfo.sdkApiVersion >= 23) {
-      HdsTabs({ barPosition: BarPosition.End, index: this.selectedTab }) {
-        this.tabItems()
-      }
-      .width('100%').height(76 + this.getUIContext().px2vp(this.systemBottomInsetPx)).barHeight(56)
-      .barBackgroundColor($r('app.color.app_surface'))
-      .barFloatingStyle({ barSideMargin: 20, barBottomMargin: 8 + this.getUIContext().px2vp(this.systemBottomInsetPx),
-        gradientMask: { maskColor: Color.Transparent, maskHeight: 0 },
-        systemMaterialEffect: { materialType: hdsMaterial.MaterialType.ADAPTIVE, materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE } })
-      .barOverlap(true).scrollable(false).animationDuration(0)
-      .onTabBarClick((index: number) => this.selectTab(index))
-    } else {
-      Tabs({ barPosition: BarPosition.End, index: this.selectedTab }) { this.tabItems() }
-        .width('100%').height(76).barHeight(56).scrollable(false).animationDuration(0)
-        .margin({ bottom: this.getUIContext().px2vp(this.systemBottomInsetPx) })
-        .barBackgroundBlurStyle(BlurStyle.COMPONENT_THICK)
-        .onTabBarClick((index: number) => this.selectTab(index))
-    }
+    Row() {
+      NativeTabBar({ selected: this.selectedTab, dark: this.scheduleStore.dark,
+        onSelect: (index: number) => this.selectTab(index) })
+    }.width('100%').padding({ left: 16, right: 16 })
+      .margin({ bottom: 4 + this.bottomBarInset() })
+  }
+  private bottomBarInset(): number {
+    return Math.min(8, this.getUIContext().px2vp(this.systemBottomInsetPx));
   }
 
   private async loadWidgetPreview(): Promise<void> {
@@ -1299,6 +1284,7 @@ struct Index {
     this.previewIndex = Math.max(0, Math.min(index, images.length - 1));
     this.resetPreviewTransform();
     this.imagePreviewVisible = true;
+    this.updateSystemBars();
   }
 
   private closeImagePreview(): void {
@@ -1307,6 +1293,18 @@ struct Index {
     this.previewIndex = 0;
     this.previewSaveBusy = false;
     this.resetPreviewTransform();
+    this.updateSystemBars();
+  }
+
+  private updateSystemBars(): void {
+    const context = AppStorage.get<common.UIAbilityContext>('abilityContext');
+    if (!context) return;
+    const dark = this.scheduleStore.dark || this.imagePreviewVisible;
+    void window.getLastWindow(context).then((mainWindow) => mainWindow.setWindowSystemBarProperties({
+      statusBarColor: this.imagePreviewVisible ? '#05070A' : dark ? '#151A17' : '#F7F8F6',
+      statusBarContentColor: dark ? '#FFFFFF' : '#202722',
+      navigationBarColor: '#00000000', navigationBarContentColor: dark ? '#FFFFFF' : '#172033'
+    })).catch(() => undefined);
   }
 
   private currentPreviewImage(): NativePreviewImage {
@@ -1341,7 +1339,8 @@ struct Index {
 
   private onPreviewPanEnd(event: GestureEvent): void {
     if (this.previewScale > 1.02) return;
-    if (event.offsetX <= -72) this.changePreviewImage(1);
+    if (event.offsetY > 100 && Math.abs(event.offsetY) > Math.abs(event.offsetX) * 1.4) this.closeImagePreview();
+    else if (event.offsetX <= -72) this.changePreviewImage(1);
     else if (event.offsetX >= 72) this.changePreviewImage(-1);
   }
 

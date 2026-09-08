@@ -56,6 +56,16 @@ export function scheduleCourseTone(name: string, key: string, dark: boolean): Sc
 }
 
 export function scheduleCardTone(name: string, key: string, dark: boolean): ScheduleCourseTone {
+  if (key === 'color-glass') {
+    const hues: number[] = [220, 185, 245, 25, 330, 105, 280, 160];
+    let hash = 0;
+    const seed = name.trim().replace(/\s+/g, ' ');
+    for (let index = 0; index < seed.length; index += 1) hash = (hash * 31 + seed.charCodeAt(index)) >>> 0;
+    const hue = hues[hash % hues.length];
+    const fill = hsla(hue, dark ? 22 : 65, dark ? 22 : 96);
+    const ink = hsla(hue, dark ? 58 : 44, dark ? 78 : 33);
+    return { top: fill, bottom: fill, border: ink, text: ink };
+  }
   const tone = scheduleCourseTone(name, key, dark);
   const fill = dark ? tone.bottom : tone.top;
   const text = tone.text.length === 9 ? '#' + tone.text.substring(3) : tone.text;

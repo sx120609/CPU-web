@@ -154,3 +154,14 @@ test('form declarations expose all iOS desktop layout and size combinations',()=
     assert.deepEqual(forms.find(form=>form.name===name).supportDimensions,sizes);
   }
 });
+
+test('multicolor distinguishes the lecture and lab while repeated courses retain their color', async () => {
+  const h = await calendarHarness(); h.setNow(new Date(2026,8,8,7).getTime());
+  h.payload.today.courses = ['天然药物化学实验', '天然药物化学', '天然药物化学实验']
+    .map((name, index) => ({name, startTime:`${8 + index}:00`, endTime:`${9 + index}:00`}));
+  await h.service.refreshScheduleForm({}, 'card', 4, 'schedule_today');
+  const rows = JSON.parse(h.updates.at(-1).primaryCourses);
+  assert.notEqual(rows[0].accent, rows[1].accent);
+  assert.equal(rows[0].accent, rows[2].accent);
+  assert.notEqual(rows[0].tint, rows[1].tint);
+});
