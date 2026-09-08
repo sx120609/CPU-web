@@ -36,6 +36,9 @@ import { ScheduleWidgetBinding, initialScheduleWidgetBinding, readScheduleWidget
 struct Index {
   private compatibilityScript: string = '';
   private navigationRevision: number = 0;
+  private pendingWebNavigation: number = 0;
+  @State private scheduleMounted: boolean = false;
+  @State private nativeScheduleVisible: boolean = false;
   private appearanceMode: string = 'system';
   private appliedAppearanceMode: string = '';
   private controller: webview.WebviewController = new webview.WebviewController();
@@ -77,6 +80,8 @@ struct Index {
   private previewBaseOffsetY: number = 0;
 
   aboutToAppear(): void {
+    this.scheduleMounted = this.selectedTab === 2;
+    this.nativeScheduleVisible = this.selectedTab === 2;
     webview.WebviewController.setWebDebuggingAccess(BuildProfile.DEBUG);
     const contextForResources = AppStorage.get<common.UIAbilityContext>('abilityContext');
     if (contextForResources) {
@@ -167,6 +172,7 @@ struct Index {
         }
       },
       onNavigate: (path: string) => this.handleNativeNavigation(path),
+      onNavigationReady: (revision: number) => this.finishWebNavigation(revision),
       onWebOverlayChanged: (visible: boolean) => this.webOverlayVisible = visible,
       onResult: (id: string, payload: string) => this.scheduleStore.acceptResult(id, payload),
       onPrefetched: (payload: string) => this.scheduleStore.acceptPrefetched(payload),
@@ -196,6 +202,7 @@ struct Index {
       'ready',
       'authChanged',
       'navigate',
+      'navigationReady',
       'scheduleResult',
       'schedulePrefetched',
       'scheduleWeekPrefetched',
@@ -308,8 +315,9 @@ struct Index {
           'html[data-cpu-harmony-native] .layout-root > .footer { display: none !important; }',
           'html[data-cpu-harmony-native] .layout-root { padding-bottom: 0 !important; }',
           'html[data-cpu-harmony-native] .layout-root > .main { padding-bottom: var(--cpu-harmony-bottom-clearance) !important; }',
-          '.fade-enter-active, .fade-leave-active { transition-duration: 300ms !important; }',
-          '@media (prefers-reduced-motion: reduce) { .fade-enter-active, .fade-leave-active { transition: none !important; } }'
+          'html[data-cpu-harmony-native] .page-route-enter-active, html[data-cpu-harmony-native] .page-route-leave-active { transition: none !important; animation: none !important; }',
+          'html[data-cpu-harmony-native] .page-route-enter-from, html[data-cpu-harmony-native] .page-route-enter-to { opacity: 1 !important; transform: none !important; filter: none !important; }',
+          'html[data-cpu-harmony-native] .page-route-leave-active { display: none !important; }'
         ].join('\\n');
 
         const host = window.CPUHarmony;
@@ -356,6 +364,10 @@ struct Index {
 
   private handleNativeNavigation(path: string): void {
     if (path === '/schedule' || path.startsWith('/schedule?')) {
+      this.navigationRevision += 1;
+      this.pendingWebNavigation = 0;
+      this.scheduleMounted = true;
+      this.nativeScheduleVisible = true;
       this.selectedTab = 2;
       if (path.includes('refresh=1')) {
         this.scheduleStore.selectedSemester = '';
@@ -415,12 +427,17 @@ struct Index {
 
   private selectTab(index: number, destination?: string): void {
     if (index < 0 || index > 4) return;
+    if (index === this.selectedTab && !destination) return;
     const revision = ++this.navigationRevision;
     this.selectedTab = index;
     if (index === 2) {
+      this.pendingWebNavigation = 0;
+      this.scheduleMounted = true;
+      this.nativeScheduleVisible = true;
       this.scheduleStore.load(false);
       return;
     }
+    this.pendingWebNavigation = revision;
     const routes: string[] = ['/home', '/jwxt', '/schedule', '/services', '/profile'];
     const path = destination ?? routes[index];
     const route = JSON.stringify(path);
@@ -428,13 +445,26 @@ struct Index {
       (() => {
         const path = ${route};
         const openRoute = window.CPUTimeNative?.openWebRoute;
-        if (typeof openRoute === 'function') return openRoute(path);
-        if (location.pathname !== path) location.assign(path);
+        if (typeof openRoute === 'function') {
+          Promise.resolve(openRoute(path)).then(() => {
+            requestAnimationFrame(() => requestAnimationFrame(() => window.CPUHarmony.navigationReady(${revision})));
+          }).catch(() => window.CPUHarmony.navigationReady(${revision}));
+        } else if (location.pathname !== path) {
+          location.assign(path);
+        } else {
+          requestAnimationFrame(() => window.CPUHarmony.navigationReady(${revision}));
+        }
       })();
     `;
     void this.controller.runJavaScript(script).catch(() => {
       if (revision === this.navigationRevision) this.controller.loadUrl(`https://cputime.cn${path}`);
     });
+  }
+
+  private finishWebNavigation(revision: number): void {
+    if (revision !== this.pendingWebNavigation || revision !== this.navigationRevision || this.selectedTab === 2) return;
+    this.pendingWebNavigation = 0;
+    this.nativeScheduleVisible = false;
   }
 
   private configureScheduleWidget(): void {
@@ -483,7 +513,8 @@ struct Index {
           })
         .width('100%')
         .height('100%')
-        .accessibilityLevel(this.selectedTab === 2 ? 'no-hide-descendants' : 'auto')
+        .accessibilityLevel(this.nativeScheduleVisible ? 'no-hide-descendants' : 'auto')
+        .hitTestBehavior(this.nativeScheduleVisible ? HitTestMode.None : HitTestMode.Default)
         .javaScriptAccess(true)
         .domStorageAccess(true)
         .databaseAccess(true)
@@ -518,12 +549,17 @@ struct Index {
         .onPageEnd(() => {
           this.loading = false;
           this.applyHarmonyUxPolicy();
+          if (this.pendingWebNavigation) {
+            const revision = this.pendingWebNavigation;
+            void this.controller.runJavaScript(`requestAnimationFrame(() => requestAnimationFrame(() => window.CPUHarmony.navigationReady(${revision})));`);
+          }
         })
         .onErrorReceive((event) => {
           if (!event.request.isMainFrame()) return;
           this.loading = false;
           this.failed = true;
           this.scheduleStore.markBridgeUnavailable('网络连接失败，请重新打开页面');
+          this.finishWebNavigation(this.pendingWebNavigation);
         })
         .onLoadIntercept((event) => {
           const url = event?.data?.getRequestUrl?.() ?? '';
@@ -537,7 +573,7 @@ struct Index {
         .onDownloadStart((event) => this.bridge.openExternalUrl(event.url))
         .onShowFileSelector((event) => this.chooseFiles(event))
 
-          if (this.selectedTab === 2) {
+          if (this.scheduleMounted) {
             NativeSchedulePage({
               store: this.scheduleStore,
               bottomSafeInset: this.getUIContext().px2vp(this.systemBottomInsetPx),
@@ -554,10 +590,11 @@ struct Index {
               onAppearance: () => this.chooseAppearance(),
               onShare: () => this.shareSchedule(),
               onExport: () => { void this.exportSchedule(); }
-            })
+            }).visibility(this.nativeScheduleVisible ? Visibility.Visible : Visibility.Hidden)
+              .hitTestBehavior(this.selectedTab === 2 ? HitTestMode.Default : HitTestMode.None)
           }
 
-      if (this.loading && this.selectedTab !== 2) {
+      if (this.loading && !this.nativeScheduleVisible) {
         Column({ space: 16 }) {
           Image($r('app.media.app_icon'))
             .width(84)
@@ -580,7 +617,7 @@ struct Index {
         .backgroundColor('#EDF4FF')
       }
 
-      if (this.failed && this.selectedTab !== 2) {
+      if (this.failed && !this.nativeScheduleVisible) {
         Column({ space: 16 }) {
           Text('页面暂时无法打开')
             .fontSize(20)

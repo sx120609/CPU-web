@@ -70,3 +70,25 @@ test('web proxy preserves account scope through the native host for cache isolat
   proxy.authChanged('user-1:undergraduate'); proxy.authChanged('user-2:graduate'); proxy.authChanged();
   assert.deepEqual(received, ['user-1:undergraduate', 'user-2:graduate', '']);
 });
+
+test('tab handoff keeps the schedule visible until the destination paints and ignores stale completions', async () => {
+  const source = readFileSync(new URL('../entry/src/main/ets/pages/Index.ets', import.meta.url), 'utf8');
+  const methods = source.slice(source.indexOf('  private selectTab('), source.indexOf('  private configureScheduleWidget('));
+  const ctx = vm.createContext({module:{exports:{}}});
+  vm.runInContext(transformSync('export class Navigation {' + methods + '}', {loader:'ts',format:'cjs'}).code, ctx);
+  const nav = new ctx.module.exports.Navigation();
+  const frames = []; const routes = []; const navigations = [];
+  Object.assign(nav, {navigationRevision:0,pendingWebNavigation:0,selectedTab:2,nativeScheduleVisible:true,scheduleMounted:true,
+    scheduleStore:{load(){}},controller:{runJavaScript:async script => {
+      vm.runInNewContext(script, {window:{CPUTimeNative:{openWebRoute:path=>{routes.push(path);return new Promise(resolve=>navigations.push(resolve));}},CPUHarmony:{navigationReady:revision=>nav.finishWebNavigation(revision)}},
+        requestAnimationFrame:callback=>frames.push(callback)});
+    }}});
+  nav.selectTab(0); assert.equal(nav.nativeScheduleVisible, true); assert.deepEqual(routes, ['/home']);
+  navigations.shift()(); await new Promise(setImmediate);
+  frames.shift()(); assert.equal(nav.nativeScheduleVisible, true);
+  frames.shift()(); assert.equal(nav.nativeScheduleVisible, false);
+  nav.selectTab(2); assert.equal(nav.nativeScheduleVisible, true);
+  nav.selectTab(1); nav.selectTab(2);
+  navigations.shift()(); await new Promise(setImmediate); frames.shift()(); frames.shift()();
+  assert.equal(nav.selectedTab, 2); assert.equal(nav.nativeScheduleVisible, true);
+});

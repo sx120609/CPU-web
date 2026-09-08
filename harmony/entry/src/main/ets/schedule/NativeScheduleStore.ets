@@ -205,6 +205,7 @@ export class NativeScheduleStore {
     if (!force) {
       const cached = this.freshCache(this.selectedSemester, this.selectedWeek);
       if (cached) {
+        if (this.status === 'loaded' && this.result === cached.snapshot.data && !this.errorMessage) return;
         this.cancelRequest();
         this.applySnapshot(cached.snapshot, true);
         return;

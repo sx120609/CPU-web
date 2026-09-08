@@ -2,6 +2,7 @@ export interface NativeScheduleHostCallbacks {
   onReady: () => void;
   onAuthChanged: (scope: string) => void;
   onNavigate: (path: string) => void;
+  onNavigationReady: (revision: number) => void;
   onResult: (id: string, payload: string) => void;
   onPrefetched: (payload: string) => void;
   onWidgetSetupFailed: (message: string) => void;
@@ -31,6 +32,7 @@ export function requestNativeScheduleOpen(): void {
 }
 
 export class NativeScheduleHost {
+  navigationReady(revision: number): void { activeCallbacks?.onNavigationReady(revision); }
   webOverlayChanged(visible: boolean): void { activeCallbacks?.onWebOverlayChanged(visible); }
   editorResult(id: string, payload: string): void { activeCallbacks?.onEditorResult(id, payload); }
   appearanceChanged(mode: string): void {
