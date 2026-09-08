@@ -99,6 +99,7 @@ export type NativeScheduleChangeListener = () => void;
 const CACHE_LIFETIME_MS: number = 12 * 60 * 60 * 1000;
 const MAX_SEMESTERS: number = 4;
 
+@Observed
 export class NativeScheduleStore {
   status: NativeScheduleStatus = 'idle';
   result?: NativeScheduleResult;
@@ -254,6 +255,10 @@ export class NativeScheduleStore {
     this.errorMessage = '';
     this.lastUpdatedAt = 0;
     this.status = 'idle';
+    if (this.bridgeReady && this.requester) {
+      this.load(false);
+      return;
+    }
     this.notify();
   }
 

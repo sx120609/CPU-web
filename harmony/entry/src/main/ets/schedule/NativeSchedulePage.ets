@@ -13,8 +13,7 @@ const COURSE_COLORS: string[] = ['#376FD6', '#168776', '#7056C7', '#D97706', '#D
 
 @Component
 export struct NativeSchedulePage {
-  store: NativeScheduleStore = new NativeScheduleStore();
-  @Prop revision: number = 0;
+  @ObjectLink store: NativeScheduleStore;
   onLogin: () => void = () => undefined;
   onWidgets: () => void = () => undefined;
   @State private detailVisible: boolean = false;

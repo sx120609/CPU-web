@@ -13,10 +13,7 @@ import {
 } from '../common/HarmonyBridge';
 import { NativeSchedulePage } from '../schedule/NativeSchedulePage';
 import { NativeScheduleRequest, NativeScheduleStore } from '../schedule/NativeScheduleStore';
-import {
-  NativeScheduleHost,
-  setNativeScheduleHostCallbacks
-} from '../schedule/NativeScheduleHost';
+import { setNativeScheduleHostCallbacks } from '../schedule/NativeScheduleHost';
 import { readScheduleWidgetSettings } from '../common/ScheduleWidgetService';
 
 @Entry
@@ -25,13 +22,11 @@ struct Index {
   private controller: webview.WebviewController = new webview.WebviewController();
   private bridge: HarmonyBridge = new HarmonyBridge();
   private webProxy: HarmonyJavaScriptProxy = new HarmonyJavaScriptProxy();
-  private nativeScheduleHost: NativeScheduleHost = new NativeScheduleHost();
-  private scheduleStore: NativeScheduleStore = new NativeScheduleStore();
+  @State private scheduleStore: NativeScheduleStore = new NativeScheduleStore();
   @StorageLink('launchUrl') private launchUrl: string = APP_URL;
   @StorageLink('nativeTab') private selectedTab: number = 0;
   @State private loading: boolean = true;
   @State private failed: boolean = false;
-  @State private scheduleRevision: number = 0;
   @State private widgetPanelVisible: boolean = false;
   @State private widgetTheme: string = 'color-glass';
   @State private widgetConfigured: boolean = false;
@@ -86,7 +81,6 @@ struct Index {
     this.scheduleStore.attach(
       (request: NativeScheduleRequest) => this.requestSchedule(request),
       () => {
-        this.scheduleRevision += 1;
         if (this.scheduleStore.result && this.widgetSettingsLoaded && !this.widgetConfigured && !this.widgetAutoSetupAttempted) {
           this.widgetAutoSetupAttempted = true;
           this.configureScheduleWidget();
@@ -122,7 +116,14 @@ struct Index {
       'saveImage',
       'saveImageUrl',
       'installScheduleWidget',
-      'setScheduleWidgetTheme'
+      'setScheduleWidgetTheme',
+      'ready',
+      'authChanged',
+      'navigate',
+      'scheduleResult',
+      'schedulePrefetched',
+      'scheduleWeekPrefetched',
+      'widgetSetupFailed'
     ];
   }
 
@@ -182,18 +183,6 @@ struct Index {
     return true;
   }
 
-  private nativeScheduleHostMethods(): string[] {
-    return [
-      'ready',
-      'authChanged',
-      'navigate',
-      'scheduleResult',
-      'schedulePrefetched',
-      'scheduleWeekPrefetched',
-      'widgetSetupFailed'
-    ];
-  }
-
   private async handleWebPermission(event: OnPermissionRequestEvent): Promise<void> {
     const origin = event.request.getOrigin();
     if (!isAppOrigin(origin)) {
@@ -246,7 +235,7 @@ struct Index {
           '@media (prefers-reduced-motion: reduce) { .fade-enter-active, .fade-leave-active { transition: none !important; } }'
         ].join('\\n');
 
-        const host = window.CPUTimeNativeHost;
+        const host = window.CPUHarmony;
         if (host) {
           const bridge = window.CPUTimeNative || {};
           bridge.ready = () => host.ready();
@@ -374,7 +363,7 @@ struct Index {
         const id = ${id};
         const fetchSchedule = window.CPUTimeNativeScheduleFetch || window.CPUTimeNative?.loadSchedule;
         if (typeof fetchSchedule !== 'function') {
-          window.CPUTimeNativeHost.scheduleResult(id, JSON.stringify({
+          window.CPUHarmony.scheduleResult(id, JSON.stringify({
             version: 1, auth: { authenticated: true }, error: '课表桥尚未准备好'
           }));
           return;
@@ -383,9 +372,9 @@ struct Index {
           ? window.CPUTimeNativeScheduleFetch(${semester}, ${week}, ${force})
           : fetchSchedule({ semester: ${semester}, week: ${week}, force: ${force} });
         Promise.resolve(task).then(value => {
-          window.CPUTimeNativeHost.scheduleResult(id, JSON.stringify(value));
+          window.CPUHarmony.scheduleResult(id, JSON.stringify(value));
         }).catch(error => {
-          window.CPUTimeNativeHost.scheduleResult(id, JSON.stringify({
+          window.CPUHarmony.scheduleResult(id, JSON.stringify({
             version: 1,
             auth: { authenticated: true },
             error: error?.message || '课表暂时无法加载，请重试'
@@ -444,7 +433,7 @@ struct Index {
           if (!response.ok || body.code !== 0) throw new Error(body.message || '配置失败，请先完成教务授权');
           window.CPUHarmony.installScheduleWidget(JSON.stringify({ endpoint: body.data.endpoint, theme: ${theme} }));
         } catch (error) {
-          window.CPUTimeNativeHost.widgetSetupFailed(error?.message || '卡片配置失败');
+          window.CPUHarmony.widgetSetupFailed(error?.message || '卡片配置失败');
         }
       })();
     `;
@@ -459,7 +448,8 @@ struct Index {
         Stack() {
           Web({
             src: this.launchUrl,
-            controller: this.controller
+            controller: this.controller,
+            renderMode: RenderMode.SYNC_RENDER
           })
         .width('100%')
         .height('100%')
@@ -486,12 +476,6 @@ struct Index {
           object: this.webProxy,
           name: 'CPUHarmony',
           methodList: this.bridgeMethods(),
-          controller: this.controller
-        })
-        .javaScriptProxy({
-          object: this.nativeScheduleHost,
-          name: 'CPUTimeNativeHost',
-          methodList: this.nativeScheduleHostMethods(),
           controller: this.controller
         })
         .onPageBegin(() => {
@@ -522,7 +506,6 @@ struct Index {
           if (this.selectedTab === 2) {
             NativeSchedulePage({
               store: this.scheduleStore,
-              revision: this.scheduleRevision,
               onLogin: () => {
                 this.selectTab(4);
                 const script = `window.CPUTimeNative?.openWebRoute?.('/login');`;

@@ -12,6 +12,7 @@ import {
   saveScheduleWidgetConfiguration,
   saveScheduleWidgetTheme
 } from './ScheduleWidgetService';
+import { NativeScheduleHost } from '../schedule/NativeScheduleHost';
 
 export interface NativePreviewImage {
   url: string;
@@ -366,6 +367,8 @@ export class HarmonyBridge {
 }
 
 export class HarmonyJavaScriptProxy {
+  private nativeScheduleHost: NativeScheduleHost = new NativeScheduleHost();
+
   getVersionCode(): number {
     return activeHarmonyBridge?.getVersionCode() ?? VERSION_CODE;
   }
@@ -412,5 +415,33 @@ export class HarmonyJavaScriptProxy {
 
   setScheduleWidgetTheme(theme: string): void {
     activeHarmonyBridge?.setScheduleWidgetTheme(theme);
+  }
+
+  ready(): void {
+    this.nativeScheduleHost.ready();
+  }
+
+  authChanged(): void {
+    this.nativeScheduleHost.authChanged();
+  }
+
+  navigate(path: string): void {
+    this.nativeScheduleHost.navigate(path);
+  }
+
+  scheduleResult(id: string, payload: string): void {
+    this.nativeScheduleHost.scheduleResult(id, payload);
+  }
+
+  schedulePrefetched(payload: string): void {
+    this.nativeScheduleHost.schedulePrefetched(payload);
+  }
+
+  scheduleWeekPrefetched(payload: string): void {
+    this.nativeScheduleHost.scheduleWeekPrefetched(payload);
+  }
+
+  widgetSetupFailed(message: string): void {
+    this.nativeScheduleHost.widgetSetupFailed(message);
   }
 }
