@@ -300,7 +300,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .glass-bar { --glass-ink: #080808; position: relative; isolation: isolate; width: 100%; height: 64px; padding: 4px; box-sizing: border-box; touch-action: none; user-select: none; -webkit-user-select: none; }
-.glass-base { position: absolute; inset: 0; border-radius: 999px; background: linear-gradient(165deg, #ffffff38, #ffffff14 45%, #ffffff24); -webkit-backdrop-filter: blur(.65px) saturate(1.08); backdrop-filter: blur(.65px) saturate(1.08); box-shadow: 0 3px 12px #152b3c12, inset 0 1px .5px #ffffffd9, inset 1px 0 .5px #ffffff80, inset 0 -1px .5px #152b3c26; pointer-events: none; will-change: transform; }
+.glass-base { position: absolute; inset: 0; border-radius: 999px; background: linear-gradient(165deg, #ffffff94, #ffffff7a 45%, #ffffff87); -webkit-backdrop-filter: blur(2.5px) saturate(1.08); backdrop-filter: blur(2.5px) saturate(1.08); box-shadow: 0 3px 12px #152b3c12, inset 0 1px .5px #ffffff99, inset 1px 0 .5px #ffffff4d, inset 0 -1px .5px #152b3c26; pointer-events: none; will-change: transform; }
 .glass-tabs { position: relative; display: grid; grid-template-columns: repeat(var(--count), minmax(0, 1fr)); height: 56px; }
 .glass-tab { min-width: 0; height: 56px; display: flex; justify-content: center; align-items: center; color: var(--glass-ink); text-decoration: none; border-radius: 999px; touch-action: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
 .glass-tab-content { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; color: color-mix(in srgb, #3482ff var(--selection, 0%), var(--glass-ink)); will-change: transform; }
@@ -308,9 +308,9 @@ onBeforeUnmount(() => {
 .glass-tab-content > span { font-size: 11px; font-weight: 400; line-height: 15px; white-space: nowrap; text-shadow: 0 1px 1px #ffffffb3; }
 .glass-tab:focus-visible { outline: 2px solid #3482ff; outline-offset: -3px; }
 .glass-lens { position: absolute; top: 4px; left: 4px; width: 0; height: 56px; opacity: 0; border-radius: 999px; pointer-events: none; background: linear-gradient(145deg, #ffffff24, #15355108 50%, #ffffff14); box-shadow: inset 0 1px .5px #ffffffb3, inset 0 -1px .5px #1535511f, 0 2px 5px #1535510d; will-change: transform; }
-.glass-highlight { position: absolute; inset: 0; border-radius: inherit; opacity: 0; background: linear-gradient(135deg, #ffffffe6, #ffffff33 6%, #ffffff00 18% 78%, #ffffff66); box-shadow: inset 1px 1px 1px #ffffffe6, inset -1px -1px 1px #ffffff80, inset -2px 0 2px #15355126, 0 3px 9px #15355114; will-change: opacity; }
+.glass-highlight { position: absolute; inset: 0; border-radius: inherit; opacity: 0; background: linear-gradient(135deg, #ffffff99, #ffffff1a 6%, #ffffff00 18% 78%, #ffffff40); box-shadow: inset 1px 1px 1px #ffffffa6, inset -1px -1px 1px #ffffff59, inset -2px 0 2px #15355126, 0 3px 9px #15355114; will-change: opacity; }
 html[data-theme="dark"] .glass-bar { --glass-ink: #fff; }
-html[data-theme="dark"] .glass-base { background: linear-gradient(165deg, #ffffff14, #11182724 45%, #ffffff0a); box-shadow: 0 3px 12px #0003, inset 0 1px .5px #ffffff73, inset 1px 0 .5px #ffffff26, inset 0 -1px .5px #0006; }
+html[data-theme="dark"] .glass-base { background: linear-gradient(165deg, #202733a6, #1118278c 45%, #20273399); box-shadow: 0 3px 12px #0003, inset 0 1px .5px #ffffff73, inset 1px 0 .5px #ffffff26, inset 0 -1px .5px #0006; }
 html[data-theme="dark"] .glass-lens { background: linear-gradient(145deg, #ffffff1f, #ffffff03 50%, #ffffff0d); box-shadow: inset 0 1px .5px #ffffff66, inset 0 -1px .5px #0005, 0 2px 5px #0002; }
 html[data-theme="dark"] .glass-highlight { background: linear-gradient(135deg, #ffffff99, #ffffff1a 6%, #ffffff00 18% 78%, #ffffff40); }
 html[data-theme="dark"] .glass-tab .el-icon { filter: drop-shadow(0 1px .7px #000a); }
