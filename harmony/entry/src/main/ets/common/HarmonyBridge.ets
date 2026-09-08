@@ -22,7 +22,7 @@ export interface NativePreviewImage {
 
 let activeHarmonyBridge: HarmonyBridge | undefined;
 
-export function setActiveHarmonyBridge(bridge: HarmonyBridge): void {
+export function setActiveHarmonyBridge(bridge?: HarmonyBridge): void {
   activeHarmonyBridge = bridge;
 }
 
@@ -419,6 +419,14 @@ export class HarmonyJavaScriptProxy {
 
   ready(): void {
     this.nativeScheduleHost.ready();
+  }
+
+  appearanceChanged(mode: string): void {
+    this.nativeScheduleHost.appearanceChanged(mode);
+  }
+
+  editorResult(id: string, payload: string): void {
+    this.nativeScheduleHost.editorResult(id, payload);
   }
 
   authChanged(): void {

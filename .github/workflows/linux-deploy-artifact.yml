@@ -55,6 +55,13 @@ jobs:
           TSX_TSCONFIG_PATH: web/tsconfig.json
         run: node --import ./server/node_modules/tsx/dist/loader.mjs --test web/tests/scheduleEdits.test.ts web/tests/scheduleChanges.test.ts web/tests/scheduleCalendar.test.ts
 
+      - name: Verify HarmonyOS schedule bridges and shared visual tokens
+        run: |
+          node harmony/scripts/build-web-bridge.mjs
+          node harmony/scripts/build-native-theme.mjs
+          git diff --exit-code -- harmony/entry/src/main/resources/rawfile/NativeWebCompatibility.js harmony/entry/src/main/ets/schedule/SchedulePalettes.ets
+          node --test harmony/tests/*.test.mjs ios_next/tests/web-schedule-bridge.test.mjs
+
       - name: Test shared schedule data and widget date coverage
         run: node --import ./server/node_modules/tsx/dist/loader.mjs --test server/tests/scheduleCalendarSource.test.ts server/tests/scheduleData.test.ts server/tests/scheduleWidget.test.ts server/tests/scheduleWidgetSession.test.ts server/tests/scheduleWidgetRefresh.test.ts server/tests/scheduleWidgetRoute.test.ts server/tests/cache.test.ts web/tests/scriptableWidget.test.ts
 

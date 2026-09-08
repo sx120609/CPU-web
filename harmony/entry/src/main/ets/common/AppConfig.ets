@@ -25,8 +25,10 @@ function hostOf(input: string): string {
   if (query >= 0 && query < end) end = query;
   if (hash >= 0 && hash < end) end = hash;
   const authority = rest.substring(0, end);
-  const colon = authority.indexOf(':');
-  return (colon >= 0 ? authority.substring(0, colon) : authority).toLowerCase();
+  if (authority.includes('@')) return '';
+  const parts = authority.split(':');
+  if (parts.length > 2 || (parts.length === 2 && parts[1] !== '443')) return '';
+  return parts[0].toLowerCase();
 }
 
 export function isInternalUrl(url: string): boolean {

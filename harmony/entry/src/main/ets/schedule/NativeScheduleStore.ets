@@ -82,6 +82,7 @@ export interface NativeScheduleRequest {
 
 export interface NativeCourseBlock {
   day: number;
+  bigSlot: number;
   startSlot: number;
   endSlot: number;
   course: NativeScheduleCourse;
@@ -106,7 +107,13 @@ export class NativeScheduleStore {
   calendar?: NativeScheduleCalendar;
   selectedSemester: string = '';
   selectedWeek: string = '';
-  selectedDay: number = 1;
+  selectedDay: number = (new Date().getDay() || 7);
+  detailVisible: boolean = false;
+  weekPickerVisible: boolean = false;
+  palette: string = 'color-glass';
+  dark: boolean = false;
+  backgroundPath: string = '';
+  backgroundOpacity: number = 0.18;
   viewMode: string = 'week';
   errorMessage: string = '';
   lastUpdatedAt: number = 0;
@@ -118,6 +125,9 @@ export class NativeScheduleStore {
   private cache: Map<string, NativeScheduleCacheEntry> = new Map<string, NativeScheduleCacheEntry>();
   private activeRequestId: string = '';
   private requestGeneration: number = 0;
+  private pendingKey: string = '';
+  private refreshBarrier: number = 0;
+  private requestTimer: number = -1;
 
   attach(requester: NativeScheduleRequester, listener: NativeScheduleChangeListener): void {
     this.requester = requester;
@@ -127,16 +137,37 @@ export class NativeScheduleStore {
   markBridgeReady(): void {
     this.bridgeReady = true;
     this.notify();
-    if (this.status === 'idle' || this.status === 'failed') this.load(false);
+    if (this.status === 'idle' || this.status === 'failed' ||
+      (this.status === 'loading' && !this.activeRequestId)) this.load(false);
+  }
+
+  markBridgeUnavailable(message: string = ''): void {
+    this.bridgeReady = false;
+    this.cancelRequest();
+    if (message) this.fail(message);
+  }
+
+  private cancelRequest(): void {
+    this.activeRequestId = '';
+    this.pendingKey = '';
+    clearTimeout(this.requestTimer);
   }
 
   load(force: boolean): void {
     if (!force) {
       const cached = this.freshCache(this.selectedSemester, this.selectedWeek);
       if (cached) {
+        this.cancelRequest();
         this.applySnapshot(cached.snapshot, true);
         return;
       }
+    }
+    const key = `${this.selectedSemester}|${this.selectedWeek}`;
+    if (!force && this.activeRequestId && this.pendingKey === key) return;
+    this.cancelRequest();
+    if (force) {
+      this.refreshBarrier = Date.now();
+      this.cache.clear();
     }
     if (!this.bridgeReady || !this.requester) {
       if (!this.result) this.status = 'loading';
@@ -145,6 +176,13 @@ export class NativeScheduleStore {
     }
     this.requestGeneration += 1;
     this.activeRequestId = `schedule-${Date.now()}-${this.requestGeneration}`;
+    this.pendingKey = key;
+    const requestId = this.activeRequestId;
+    this.requestTimer = setTimeout(() => {
+      if (this.activeRequestId !== requestId) return;
+      this.cancelRequest();
+      this.fail('请求超时，请检查网络后重试');
+    }, 60000);
     this.status = 'loading';
     this.errorMessage = '';
     this.notify();
@@ -160,8 +198,9 @@ export class NativeScheduleStore {
     const semester = value.trim();
     if (!semester || semester === this.selectedSemester) return;
     this.selectedSemester = semester;
-    const current = this.currentWeekValue();
-    this.selectedWeek = current;
+    this.selectedWeek = '';
+    this.result = undefined;
+    this.calendar = undefined;
     this.load(false);
   }
 
@@ -169,12 +208,14 @@ export class NativeScheduleStore {
     const week = value.trim();
     if (!week || week === this.selectedWeek) return;
     this.selectedWeek = week;
+    this.cancelRequest();
     const cached = this.freshCache(this.selectedSemester, week);
     if (cached) {
       this.applySnapshot(cached.snapshot, true);
       this.notifyPriority();
       return;
     }
+    this.result = undefined;
     this.load(false);
   }
 
@@ -192,17 +233,18 @@ export class NativeScheduleStore {
   }
 
   returnToCurrentWeek(): void {
-    const current = this.currentWeekValue();
-    if (!current) return;
-    if (current === this.selectedWeek) {
-      this.notifyPriority();
-      return;
-    }
-    this.selectWeek(current);
+    this.cancelRequest();
+    this.selectedSemester = '';
+    this.selectedWeek = '';
+    this.selectedDay = new Date().getDay() || 7;
+    this.result = undefined;
+    this.calendar = undefined;
+    this.load(false);
   }
 
   acceptResult(id: string, raw: string): void {
-    if (id !== this.activeRequestId) return;
+    if (!id || id !== this.activeRequestId) return;
+    this.cancelRequest();
     let snapshot: NativeScheduleSnapshot;
     try {
       snapshot = JSON.parse(raw) as NativeScheduleSnapshot;
@@ -211,6 +253,10 @@ export class NativeScheduleStore {
       return;
     }
     if (!snapshot.auth?.authenticated) {
+      this.cache.clear();
+      this.detailVisible = false;
+      this.weekPickerVisible = false;
+      this.refreshBarrier = Date.now();
       this.status = 'unauthorized';
       this.errorMessage = '';
       this.result = undefined;
@@ -222,8 +268,12 @@ export class NativeScheduleStore {
       this.fail(snapshot.error);
       return;
     }
-    if (!snapshot.data || !Array.isArray(snapshot.data.cells)) {
+    if (snapshot.version !== 1 || !snapshot.data || !Array.isArray(snapshot.data.cells)) {
       this.fail('教务系统未返回有效课表');
+      return;
+    }
+    if (this.selectedSemester && snapshot.data.currentSemester !== this.selectedSemester) {
+      this.fail('教务系统返回了其他学期的课表，请重新选择');
       return;
     }
     this.remember(snapshot);
@@ -237,19 +287,33 @@ export class NativeScheduleStore {
     } catch (_) {
       return;
     }
-    if (!snapshot.auth?.authenticated || !snapshot.data || snapshot.error) return;
+    if (snapshot.version !== 1 || !snapshot.auth?.authenticated || !snapshot.data || snapshot.error) return;
+    const time = this.snapshotTime(snapshot);
+    if (time < this.refreshBarrier || Date.now() - time > CACHE_LIFETIME_MS) return;
+    let known = false;
+    let newer = false;
+    this.cache.forEach((entry: NativeScheduleCacheEntry) => {
+      if (entry.snapshot.data?.currentSemester === snapshot.data?.currentSemester) {
+        known = true;
+        if (entry.savedAt > time) newer = true;
+      }
+    });
+    if (!known || newer) return;
     this.remember(snapshot);
-    if (snapshot.data.currentSemester === this.selectedSemester && snapshot.data.currentWeek === this.selectedWeek) {
+    if (snapshot.completeSemester && !this.activeRequestId && snapshot.data.currentSemester === this.selectedSemester) {
       this.applySnapshot(snapshot, false);
     }
   }
 
   handleAuthChanged(): void {
     this.requestGeneration += 1;
-    this.activeRequestId = '';
+    this.cancelRequest();
+    this.refreshBarrier = Date.now();
     this.cache.clear();
     this.result = undefined;
     this.calendar = undefined;
+    this.detailVisible = false;
+    this.weekPickerVisible = false;
     this.selectedSemester = '';
     this.selectedWeek = '';
     this.errorMessage = '';
@@ -276,18 +340,52 @@ export class NativeScheduleStore {
   }
 
   blocksForDay(day: number): NativeCourseBlock[] {
-    const blocks: NativeCourseBlock[] = [];
+    const groups: Map<string, NativeCourseBlock[]> = new Map<string, NativeCourseBlock[]>();
     this.visibleCells().filter((cell: NativeScheduleCell) => cell.day === day).forEach((cell: NativeScheduleCell) => {
       cell.courses.forEach((course: NativeScheduleCourse) => {
-        blocks.push({
-          day,
-          startSlot: course.startSlot ?? Math.max(1, cell.bigSlot * 2 - 1),
-          endSlot: course.endSlot ?? Math.max(1, cell.bigSlot * 2),
-          course
-        });
+        const fallbackStart = Math.max(1, Math.min(11, cell.bigSlot * 2 - 1));
+        const fallbackEnd = Math.max(fallbackStart, Math.min(11, cell.bigSlot * 2));
+        let startSlot = Math.max(1, Math.min(11, Number(course.startSlot) || fallbackStart));
+        let endSlot = Math.max(startSlot, Math.min(11, Number(course.endSlot) || fallbackEnd));
+        if (endSlot < fallbackStart || startSlot > fallbackEnd) {
+          startSlot = fallbackStart;
+          endSlot = fallbackEnd;
+        }
+        const key = [course.customId ?? '', course.name, course.teacher ?? '', course.location ?? '', course.weeks]
+          .map((value: string) => value.trim().replace(/\s+/g, ' ')).join('|');
+        const list = groups.get(key) ?? [];
+        list.push({ day, bigSlot: cell.bigSlot, startSlot, endSlot, course });
+        groups.set(key, list);
       });
     });
+    const blocks: NativeCourseBlock[] = [];
+    groups.forEach((list: NativeCourseBlock[]) => {
+      const merged: NativeCourseBlock[] = [];
+      list.sort((left: NativeCourseBlock, right: NativeCourseBlock) => left.startSlot - right.startSlot || left.endSlot - right.endSlot);
+      list.forEach((block: NativeCourseBlock) => {
+        const previous = merged[merged.length - 1];
+        if (previous && block.startSlot <= previous.endSlot + 1) {
+          previous.endSlot = Math.max(previous.endSlot, block.endSlot);
+          previous.course = this.courseWithRange(previous.course, previous.startSlot, previous.endSlot);
+        } else {
+          merged.push({ day: block.day, bigSlot: Math.ceil(block.startSlot / 2), startSlot: block.startSlot,
+            endSlot: block.endSlot, course: this.courseWithRange(block.course, block.startSlot, block.endSlot) });
+        }
+      });
+      merged.forEach((block: NativeCourseBlock) => blocks.push(block));
+    });
     return blocks.sort((left: NativeCourseBlock, right: NativeCourseBlock) => left.startSlot - right.startSlot);
+  }
+
+  private slotLabel(start: number, end: number): string {
+    const first = String(start).padStart(2, '0');
+    return start === end ? `${first}节` : `${first}-${String(end).padStart(2, '0')}节`;
+  }
+
+  private courseWithRange(course: NativeScheduleCourse, startSlot: number, endSlot: number): NativeScheduleCourse {
+    return { name: course.name, teacher: course.teacher, weeks: course.weeks, weekList: course.weekList,
+      location: course.location, slotNote: this.slotLabel(startSlot, endSlot), startSlot, endSlot,
+      sourceKey: course.sourceKey, customId: course.customId, custom: course.custom, orphaned: course.orphaned };
   }
 
   semesterOptions(): NativeScheduleSemester[] {
@@ -307,6 +405,16 @@ export class NativeScheduleStore {
     return Math.max(0, this.weekOptions().findIndex((item: NativeScheduleWeek) => item.value === this.selectedWeek));
   }
 
+  canMoveWeek(delta: number): boolean {
+    const index = this.weekOptions().findIndex((item: NativeScheduleWeek) => item.value === this.selectedWeek);
+    return index >= 0 && index + delta >= 0 && index + delta < this.weekOptions().length;
+  }
+
+  moveWeek(delta: number): void {
+    if (!this.canMoveWeek(delta)) return;
+    this.selectWeek(this.weekOptions()[this.selectedWeekIndex() + delta].value);
+  }
+
   dayDate(day: number): string {
     const week = Number(this.selectedWeek || this.result?.currentWeek || 0);
     const calendarWeek = this.calendar?.weeks?.find((item: NativeCalendarWeek) => item.week === week);
@@ -315,10 +423,11 @@ export class NativeScheduleStore {
   }
 
   isToday(day: number): boolean {
-    const value = this.dayDate(day);
+    const week = Number(this.selectedWeek || this.result?.currentWeek || 0);
+    const value = this.calendar?.weeks?.find((item: NativeCalendarWeek) => item.week === week)?.days?.[day - 1];
     if (!value) return false;
     const now = new Date();
-    const today = `${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     return value === today;
   }
 
@@ -354,7 +463,7 @@ export class NativeScheduleStore {
     if (!snapshot.data) return;
     const semester = snapshot.data.currentSemester;
     const week = snapshot.data.currentWeek;
-    const entry: NativeScheduleCacheEntry = { snapshot, savedAt: Date.now() };
+    const entry: NativeScheduleCacheEntry = { snapshot, savedAt: this.snapshotTime(snapshot) };
     if (snapshot.completeSemester) {
       const obsoleteKeys: string[] = [];
       this.cache.forEach((_value: NativeScheduleCacheEntry, key: string) => {

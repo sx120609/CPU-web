@@ -8,6 +8,8 @@ const ENDPOINT_KEY = 'endpoint';
 const THEME_KEY = 'theme';
 const FORMS_KEY = 'forms';
 const CACHE_KEY = 'cached_payload';
+const CACHE_ENDPOINT_KEY = 'cached_endpoint';
+const CACHE_TIME_KEY = 'cached_at';
 const DEVICE_CLOCK = new Date();
 
 interface WidgetInstallPayload {
@@ -233,6 +235,11 @@ export async function saveScheduleWidgetConfiguration(
   if (!endpoint) return false;
 
   const prefs = await widgetPreferences(context);
+  if (String(await prefs.get(ENDPOINT_KEY, '')) !== endpoint) {
+    await prefs.delete(CACHE_KEY);
+    await prefs.delete(CACHE_ENDPOINT_KEY);
+    await prefs.delete(CACHE_TIME_KEY);
+  }
   await prefs.put(ENDPOINT_KEY, endpoint);
   await prefs.put(THEME_KEY, normalizedTheme(payload.theme));
   await prefs.flush();
@@ -250,6 +257,16 @@ export async function readScheduleWidgetSettings(context: common.Context): Promi
   const endpoint = String(await prefs.get(ENDPOINT_KEY, '')).trim();
   const theme = normalizedTheme(String(await prefs.get(THEME_KEY, 'color-glass')));
   return { configured: normalizedEndpoint(endpoint).length > 0, theme };
+}
+
+export async function clearScheduleWidgetAccount(context: common.UIAbilityContext): Promise<void> {
+  const prefs = await widgetPreferences(context);
+  await prefs.delete(ENDPOINT_KEY);
+  await prefs.delete(CACHE_KEY);
+  await prefs.delete(CACHE_ENDPOINT_KEY);
+  await prefs.delete(CACHE_TIME_KEY);
+  await prefs.flush();
+  await refreshAllScheduleForms(context);
 }
 
 function formVariant(formName: string): string {
@@ -530,14 +547,27 @@ async function loadSchedule(context: common.Context): Promise<LoadedSchedule> {
   if (!endpoint) throw new Error('unconfigured');
   try {
     const payload = await fetchEndpoint(endpoint);
+    if (String(await prefs.get(ENDPOINT_KEY, '')) !== endpoint) throw new Error('unconfigured');
     await prefs.put(CACHE_KEY, JSON.stringify(payload));
+    await prefs.put(CACHE_ENDPOINT_KEY, endpoint);
+    await prefs.put(CACHE_TIME_KEY, Date.now());
     await prefs.flush();
     return { payload, stale: false };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (message === 'unauthorized') throw new Error('unauthorized');
+    if (String(await prefs.get(ENDPOINT_KEY, '')) !== endpoint) throw new Error('unconfigured');
+    if (message === 'unauthorized') {
+      await prefs.delete(CACHE_KEY);
+      await prefs.delete(CACHE_ENDPOINT_KEY);
+      await prefs.flush();
+      throw new Error('unauthorized');
+    }
     const cached = String(await prefs.get(CACHE_KEY, '')).trim();
-    if (cached) return { payload: JSON.parse(cached) as SchedulePayload, stale: true };
+    const cachedEndpoint = String(await prefs.get(CACHE_ENDPOINT_KEY, ''));
+    const cachedAt = Number(await prefs.get(CACHE_TIME_KEY, 0));
+    if (cached && cachedEndpoint === endpoint && Date.now() - cachedAt < 12 * 60 * 60 * 1000) {
+      return { payload: JSON.parse(cached) as SchedulePayload, stale: true };
+    }
     throw new Error(message || 'network');
   }
 }
@@ -566,7 +596,11 @@ export async function refreshScheduleForm(
   dimension: number,
   formName: string = 'schedule'
 ): Promise<void> {
+  const prefs = await widgetPreferences(context);
+  const endpoint = String(await prefs.get(ENDPOINT_KEY, ''));
+  const theme = String(await prefs.get(THEME_KEY, ''));
   const binding = await bindingFor(context, dimension, formName);
+  if (endpoint !== String(await prefs.get(ENDPOINT_KEY, '')) || theme !== String(await prefs.get(THEME_KEY, ''))) return;
   await formProvider.updateForm(formId, formBindingData.createFormBindingData(binding));
 }
 

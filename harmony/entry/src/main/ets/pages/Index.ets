@@ -1,3 +1,15 @@
+import util from '@ohos.util';
+import deviceInfo from '@ohos.deviceInfo';
+import { SymbolGlyphModifier } from '@kit.ArkUI';
+import { HdsTabs, hdsMaterial } from '@kit.UIDesignKit';
+import BuildProfile from 'BuildProfile';
+import ConfigurationConstant from '@ohos.app.ability.ConfigurationConstant';
+import preferences from '@ohos.data.preferences';
+import window from '@ohos.window';
+import fs from '@ohos.file.fs';
+import { systemShare } from '@kit.ShareKit';
+import { scheduleText, scheduleCalendar } from '../schedule/ScheduleExport';
+import { schedulePalette } from '../schedule/ScheduleVisuals';
 import common from '@ohos.app.ability.common';
 import webview from '@ohos.web.webview';
 import promptAction from '@ohos.promptAction';
@@ -12,17 +24,24 @@ import {
   setActiveHarmonyBridge
 } from '../common/HarmonyBridge';
 import { NativeSchedulePage } from '../schedule/NativeSchedulePage';
-import { NativeScheduleRequest, NativeScheduleStore } from '../schedule/NativeScheduleStore';
-import { setNativeScheduleHostCallbacks } from '../schedule/NativeScheduleHost';
-import { readScheduleWidgetSettings } from '../common/ScheduleWidgetService';
+import { NativeCourseBlock, NativeScheduleRequest, NativeScheduleStore } from '../schedule/NativeScheduleStore';
+import { CourseEditorRequest, NativeCourseEditor, NativeCourseEditorModel } from '../schedule/NativeCourseEditor';
+import { setNativeScheduleHostCallbacks, clearNativeScheduleHostCallbacks } from '../schedule/NativeScheduleHost';
+import { clearScheduleWidgetAccount, readScheduleWidgetSettings } from '../common/ScheduleWidgetService';
 
 @Entry
 @Component
 struct Index {
+  private compatibilityScript: string = '';
+  private navigationRevision: number = 0;
+  private appearanceMode: string = 'system';
+  private appliedAppearanceMode: string = '';
   private controller: webview.WebviewController = new webview.WebviewController();
   private bridge: HarmonyBridge = new HarmonyBridge();
   private webProxy: HarmonyJavaScriptProxy = new HarmonyJavaScriptProxy();
   @State private scheduleStore: NativeScheduleStore = new NativeScheduleStore();
+  @State private editorModel: NativeCourseEditorModel = new NativeCourseEditorModel();
+  @State private scheduleStyleVisible: boolean = false;
   @StorageLink('launchUrl') private launchUrl: string = APP_URL;
   @StorageLink('nativeTab') private selectedTab: number = 0;
   @State private loading: boolean = true;
@@ -48,10 +67,20 @@ struct Index {
   private previewBaseOffsetY: number = 0;
 
   aboutToAppear(): void {
+    webview.WebviewController.setWebDebuggingAccess(BuildProfile.DEBUG);
+    const contextForResources = AppStorage.get<common.UIAbilityContext>('abilityContext');
+    if (contextForResources) {
+      this.compatibilityScript = new util.TextDecoder('utf-8').decodeWithStream(
+        contextForResources.resourceManager.getRawFileContentSync('NativeWebCompatibility.js'));
+    }
     setActiveHarmonyBridge(this.bridge);
     const context = AppStorage.get<common.UIAbilityContext>('abilityContext');
     if (context) {
       this.bridge.attachContext(context);
+      void preferences.getPreferences(context, { name: 'native_appearance' }).then(async (prefs) => {
+        this.appearanceMode = String(await prefs.get('mode', 'system'));
+        this.applyAppearance(this.appearanceMode, false);
+      });
     }
     this.bridge.setSaveRequestHandler((dataUrl: string, fileName: string) => {
       this.pendingImageDataUrl = dataUrl;
@@ -87,10 +116,38 @@ struct Index {
         }
       }
     );
+    this.editorModel.attach((id: string, payload: CourseEditorRequest) => {
+      const requestId = JSON.stringify(id);
+      const request = JSON.stringify(payload);
+      void this.controller.runJavaScript(`
+        Promise.resolve(window.CPUHarmonyEditor?.(${request}) || { error: '课程编辑器尚未就绪，请重试' })
+          .then(value => window.CPUHarmony.editorResult(${requestId}, JSON.stringify(value)))
+          .catch(() => window.CPUHarmony.editorResult(${requestId}, JSON.stringify({error:'课程操作失败，请重试'})));
+      `).catch(() => this.editorModel.accept(id, '{"error":"网页会话尚未就绪"}'));
+    }, () => this.scheduleStore.load(true));
+    if (context) {
+      void preferences.getPreferences(context, { name: 'native_schedule_style' }).then(async (prefs) => {
+        this.scheduleStore.palette = String(await prefs.get('palette', 'color-glass'));
+        this.scheduleStore.backgroundPath = String(await prefs.get('background', ''));
+        this.scheduleStore.backgroundOpacity = Number(await prefs.get('opacity', 0.18));
+      }).catch(() => undefined);
+    }
     setNativeScheduleHostCallbacks({
       onReady: () => this.scheduleStore.markBridgeReady(),
       onAuthChanged: () => {
+        this.editorModel.cancel();
         this.widgetAutoSetupAttempted = false;
+        this.widgetConfigured = false;
+        this.widgetSettingsLoaded = false;
+        if (context) {
+          void clearScheduleWidgetAccount(context).finally(() => {
+            this.widgetSettingsLoaded = true;
+            if (this.scheduleStore.result && !this.widgetAutoSetupAttempted) {
+              this.widgetAutoSetupAttempted = true;
+              this.configureScheduleWidget();
+            }
+          });
+        }
         this.scheduleStore.handleAuthChanged();
       },
       onNavigate: (path: string) => this.handleNativeNavigation(path),
@@ -99,7 +156,9 @@ struct Index {
       onWidgetSetupFailed: (message: string) => {
         this.widgetConfigured = false;
         promptAction.showToast({ message: message || '卡片配置失败' });
-      }
+      },
+      onAppearanceChanged: (mode: string) => this.applyAppearance(mode, false),
+      onEditorResult: (id: string, payload: string) => this.editorModel.accept(id, payload)
     });
   }
 
@@ -123,14 +182,16 @@ struct Index {
       'scheduleResult',
       'schedulePrefetched',
       'scheduleWeekPrefetched',
-      'widgetSetupFailed'
+      'widgetSetupFailed',
+      'appearanceChanged',
+      'editorResult'
     ];
   }
 
   private shouldOpenExternal(url: string): boolean {
     if (!url) return true;
     if (isHttpUrl(url)) {
-      return !isInternalUrl(url);
+      return !isAppOrigin(url);
     }
     return url.startsWith('tel:') || url.startsWith('mailto:') || url.startsWith('sms:');
   }
@@ -224,7 +285,7 @@ struct Index {
           document.head.appendChild(style);
         }
         style.textContent = [
-          'html[data-cpu-harmony-native] { --cpu-harmony-bottom-clearance: 92px; }',
+          'html[data-cpu-harmony-native] { --cpu-harmony-bottom-clearance: 100px; }',
           'html[data-cpu-harmony-native] .layout-root > .topbar,',
           'html[data-cpu-harmony-native] .layout-root > .mobile-tabbar,',
           'html[data-cpu-harmony-native] .layout-root > .footer { display: none !important; }',
@@ -252,85 +313,19 @@ struct Index {
             return router?.push ? router.push(path) : undefined;
           };
           window.CPUTimeNative = bridge;
-
-          if (typeof window.CPUTimeNativeScheduleFetch !== 'function') {
-            const store = name => document.getElementById('app')?.__vue_app__
-              ?.config?.globalProperties?.$pinia?._s?.get(name);
-            const api = async (path, params, auth, jwxt) => {
-              const url = new URL('/api/jwxt/' + path, location.origin);
-              Object.entries(params || {}).forEach(([key, value]) => {
-                if (value !== undefined && value !== null && value !== '') url.searchParams.set(key, String(value));
-              });
-              const headers = { 'X-CPU-Auth-Mode': 'cookie', 'X-CPU-Client': 'harmony-app' };
-              if (jwxt.token && jwxt.token !== '__cpu_jwxt_cookie_session__') headers['X-Jwxt-Token'] = jwxt.token;
-              if (auth.token && auth.token !== '__cpu_cookie_session__') headers.Authorization = 'Bearer ' + auth.token;
-              const response = await fetch(url, { credentials: 'same-origin', headers });
-              const body = await response.json();
-              if (!response.ok || (typeof body.code === 'number' && body.code !== 0)) {
-                throw new Error(body.message || '课表服务暂时不可用');
-              }
-              return typeof body.code === 'number' ? body.data : body;
-            };
-            window.CPUTimeNativeScheduleFetch = async (semester, week, force) => {
-              const auth = store('auth');
-              const jwxt = store('jwxt');
-              if (!auth || !jwxt) return { version: 1, auth: { authenticated: false } };
-              try {
-                if (!auth.ready) await auth.fetchMe({ probe: true });
-                jwxt.hydrate();
-                const ready = await jwxt.ensureSession({
-                  refresh: Boolean(force), silent: true, allowAutoLogin: true, repairUnavailableSession: true
-                });
-                if (!ready) return { version: 1, auth: { authenticated: false } };
-                const graduate = auth.academicIdentity === 'graduate';
-                let response;
-                if (graduate) {
-                  response = await jwxt.withSessionRetry(() => api('graduate-schedule', {
-                    semester: semester || undefined, refresh: force ? '1' : undefined
-                  }, auth, jwxt), { silent: true });
-                } else {
-                  try {
-                    response = await jwxt.withSessionRetry(() => api('schedule', {
-                      semester: semester || undefined, week: 'all', refresh: force ? '1' : undefined
-                    }, auth, jwxt), { silent: true });
-                  } catch (_) {
-                    response = await jwxt.withSessionRetry(() => api('schedule', {
-                      semester: semester || undefined, week: week || undefined, refresh: force ? '1' : undefined
-                    }, auth, jwxt), { silent: true });
-                  }
-                }
-                const data = response?.parsed;
-                if (!data || !Array.isArray(data.cells)) throw new Error('教务系统未返回有效课表');
-                let calendar = null;
-                try {
-                  const calendarResponse = await jwxt.withSessionRetry(() => api('calendar', {
-                    semester: semester || data.currentSemester
-                  }, auth, jwxt), { silent: true });
-                  calendar = calendarResponse?.parsed || null;
-                } catch (_) {}
-                return {
-                  version: 1,
-                  source: graduate ? 'graduate' : 'jwxt',
-                  completeSemester: graduate || data.scope === 'semester',
-                  fetchedAt: Date.now(),
-                  data: { ...data, currentWeek: week || String(calendar?.currentWeek || data.currentWeek || '') },
-                  calendar,
-                  auth: { authenticated: true, identity: graduate ? 'graduate' : 'undergraduate' }
-                };
-              } catch (error) {
-                return {
-                  version: 1,
-                  auth: { authenticated: Boolean(store('jwxt')?.isLoggedIn) },
-                  error: error?.message || '课表暂时无法加载，请重试'
-                };
-              }
-            };
+          if (!window.__cpuHarmonyAppearanceObserver) {
+            const update = () => host.appearanceChanged(document.documentElement.dataset.appearanceMode || 'system');
+            window.__cpuHarmonyAppearanceObserver = new MutationObserver(update);
+            window.__cpuHarmonyAppearanceObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-appearance-mode', 'data-theme'] });
+            update();
           }
-          bridge.ready();
+
+          ${this.compatibilityScript}
+
         }
       })();
     `;
-    void this.controller.runJavaScript(script).catch(() => undefined);
+    void this.controller.runJavaScript(script).catch(() => this.scheduleStore.markBridgeUnavailable('课表服务尚未就绪，请重试'));
   }
 
   private handleNativeNavigation(path: string): void {
@@ -339,6 +334,8 @@ struct Index {
       if (path.includes('refresh=1')) {
         this.scheduleStore.selectedSemester = '';
         this.scheduleStore.selectedWeek = '';
+        this.scheduleStore.result = undefined;
+        this.scheduleStore.calendar = undefined;
         this.scheduleStore.load(true);
       } else {
         this.scheduleStore.load(false);
@@ -392,6 +389,7 @@ struct Index {
 
   private selectTab(index: number): void {
     if (index < 0 || index > 4) return;
+    const revision = ++this.navigationRevision;
     this.selectedTab = index;
     if (index === 2) {
       this.scheduleStore.load(false);
@@ -407,7 +405,9 @@ struct Index {
         if (location.pathname !== path) location.assign(path);
       })();
     `;
-    void this.controller.runJavaScript(script).catch(() => this.controller.loadUrl(`https://cputime.cn${routes[index]}`));
+    void this.controller.runJavaScript(script).catch(() => {
+      if (revision === this.navigationRevision) this.controller.loadUrl(`https://cputime.cn${routes[index]}`);
+    });
   }
 
   private configureScheduleWidget(): void {
@@ -443,7 +443,7 @@ struct Index {
   }
 
   build() {
-    Stack() {
+    Stack({ alignContent: Alignment.Bottom }) {
       Column() {
         Stack() {
           Web({
@@ -453,12 +453,13 @@ struct Index {
           })
         .width('100%')
         .height('100%')
+        .accessibilityLevel(this.selectedTab === 2 ? 'no-hide-descendants' : 'auto')
         .javaScriptAccess(true)
         .domStorageAccess(true)
         .databaseAccess(true)
         .fileAccess(true)
         .onlineImageAccess(true)
-        .mixedMode(MixedMode.All)
+        .mixedMode(MixedMode.None)
         .metaViewport(true)
         .initialScale(100)
         .textZoomRatio(100)
@@ -481,6 +482,7 @@ struct Index {
         .onPageBegin(() => {
           this.loading = true;
           this.failed = false;
+          this.scheduleStore.markBridgeUnavailable();
         })
         .onPageEnd(() => {
           this.loading = false;
@@ -490,6 +492,7 @@ struct Index {
           if (!event.request.isMainFrame()) return;
           this.loading = false;
           this.failed = true;
+          this.scheduleStore.markBridgeUnavailable('网络连接失败，请重新打开页面');
         })
         .onLoadIntercept((event) => {
           const url = event?.data?.getRequestUrl?.() ?? '';
@@ -507,11 +510,18 @@ struct Index {
             NativeSchedulePage({
               store: this.scheduleStore,
               onLogin: () => {
-                this.selectTab(4);
-                const script = `window.CPUTimeNative?.openWebRoute?.('/login');`;
+                this.selectTab(1);
+                const script = `window.CPUTimeNative?.openWebRoute?.('/jwxt?reauthorize=1&redirect=/schedule');`;
                 void this.controller.runJavaScript(script).catch(() => this.controller.loadUrl('https://cputime.cn/login'));
               },
-              onWidgets: () => this.widgetPanelVisible = true
+              onWidgets: () => this.widgetPanelVisible = true,
+              onTools: () => this.openCourseEditor(),
+              onEdit: (block: NativeCourseBlock) => this.openCourseEditor(block),
+              onAddSlot: (day: number, slot: number) => this.openCourseEditor(undefined, day, slot),
+              onStyle: () => this.scheduleStyleVisible = true,
+              onAppearance: () => this.chooseAppearance(),
+              onShare: () => this.shareSchedule(),
+              onExport: () => { void this.exportSchedule(); }
             })
           }
 
@@ -567,10 +577,13 @@ struct Index {
         .width('100%')
         .layoutWeight(1)
 
-        this.bottomNavigation()
       }
       .width('100%')
       .height('100%')
+
+      Column() {
+        this.bottomNavigation()
+      }.width('100%').height(84).align(Alignment.Bottom).hitTestBehavior(HitTestMode.Transparent)
 
       if (this.imagePreviewVisible && this.previewImages.length > 0) {
         Column() {
@@ -810,48 +823,254 @@ struct Index {
     }
     .width('100%')
     .height('100%')
+    .bindSheet(this.editorModel.visible || this.scheduleStyleVisible, this.nativePanelSheet(), {
+      height: SheetSize.LARGE, showClose: true, dragBar: true,
+      onWillDismiss: (action: DismissSheetAction) => { if (!this.editorModel.busy) action.dismiss(); },
+      onDisappear: () => { this.editorModel.cancel(); this.scheduleStyleVisible = false; }
+    })
+  }
+
+  private openCourseEditor(block?: NativeCourseBlock, day?: number, slot?: number): void {
+    if (!this.scheduleStore.result || this.scheduleStore.source === 'graduate') {
+      promptAction.showToast({ message: '请先加载本科课表，研究生课表暂不支持个人修改' });
+      return;
+    }
+    this.scheduleStore.detailVisible = false;
+    const snapshot = this.scheduleStore.result;
+    const revision = this.navigationRevision;
+    setTimeout(() => {
+      if (this.selectedTab !== 2 || revision !== this.navigationRevision || this.scheduleStore.result !== snapshot) return;
+      this.editorModel.open(this.scheduleStore, block);
+      if (day !== undefined && slot !== undefined) {
+        this.editorModel.day = day;
+        this.editorModel.startSlot = slot;
+        this.editorModel.endSlot = Math.min(11, slot + 1);
+      }
+    }, 250);
+  }
+
+  @Builder
+  private nativePanelSheet() {
+    if (this.editorModel.visible) {
+      NativeCourseEditor({ model: this.editorModel })
+    } else {
+      this.scheduleStyleSheet()
+    }
+  }
+
+  @Builder
+  private scheduleStyleSheet() {
+    Column({ space: 18 }) {
+      Text('课表样式').fontSize(22).fontWeight(FontWeight.Bold).fontColor($r('app.color.app_text_primary')).width('100%')
+      Text('课程配色').fontSize(16).fontColor($r('app.color.app_text_secondary')).width('100%')
+      Grid() {
+        ForEach(['color-glass','green','blue','teal','indigo','violet','orange','rose','slate'], (theme: string) => {
+          GridItem() {
+            Button(schedulePalette(theme).label).height(48).width('100%')
+              .fontColor(this.scheduleStore.palette === theme ? Color.White : $r('app.color.app_text_primary'))
+              .backgroundColor(this.scheduleStore.palette === theme ? schedulePalette(theme).accent : $r('app.color.app_control'))
+              .onClick(() => { this.scheduleStore.palette = theme; this.saveScheduleStyle(); })
+          }
+        })
+      }.columnsTemplate('1fr 1fr 1fr').columnsGap(8).rowsGap(8).height(160)
+      Text('课表背景').fontSize(16).fontColor($r('app.color.app_text_secondary')).width('100%')
+      Button('从相册选择图片').height(48).width('100%')
+        .fontColor($r('app.color.app_accent')).backgroundColor($r('app.color.app_accent_surface'))
+        .onClick(() => { void this.chooseScheduleBackground(); })
+      if (this.scheduleStore.backgroundPath) {
+        Text('背景可见度').fontSize(14).fontColor($r('app.color.app_text_primary')).width('100%')
+        Slider({ value: this.scheduleStore.backgroundOpacity * 100, min: 5, max: 35, step: 1 })
+          .onChange((value: number) => { this.scheduleStore.backgroundOpacity = value / 100; this.saveScheduleStyle(); })
+        Button('移除背景图片').height(48).width('100%')
+          .fontColor($r('app.color.app_accent')).backgroundColor($r('app.color.app_control'))
+          .onClick(() => this.removeScheduleBackground())
+      }
+      Blank().layoutWeight(1)
+    }.height('100%').width('100%').padding({ left: 20, right: 20, top: 32, bottom: 24 })
+      .backgroundColor($r('app.color.app_surface'))
+  }
+
+  private saveScheduleStyle(): void {
+    const context = AppStorage.get<common.UIAbilityContext>('abilityContext');
+    if (!context) return;
+    void preferences.getPreferences(context, { name: 'native_schedule_style' }).then(async (prefs) => {
+      await prefs.put('palette', this.scheduleStore.palette);
+      await prefs.put('background', this.scheduleStore.backgroundPath);
+      await prefs.put('opacity', this.scheduleStore.backgroundOpacity);
+      await prefs.flush();
+    }).catch(() => promptAction.showToast({ message: '样式保存失败，请重试' }));
+  }
+
+  private removeScheduleBackground(): void {
+    const previous = this.scheduleStore.backgroundPath;
+    this.scheduleStore.backgroundPath = '';
+    this.saveScheduleStyle();
+    const context = AppStorage.get<common.UIAbilityContext>('abilityContext');
+    if (!context) return;
+    const prefix = `file://${context.filesDir}/schedule-background-`;
+    if (previous.startsWith(prefix) && /^\d+\.jpg$/.test(previous.substring(prefix.length))) {
+      try { fs.unlinkSync(previous.substring(7)); } catch (_) {}
+    }
+  }
+
+  private async chooseScheduleBackground(): Promise<void> {
+    const context = AppStorage.get<common.UIAbilityContext>('abilityContext');
+    if (!context) return;
+    try {
+      const photoPicker = new photoAccessHelper.PhotoViewPicker();
+      const options = new photoAccessHelper.PhotoSelectOptions();
+      options.MIMEType = photoAccessHelper.PhotoViewMIMETypes.IMAGE_TYPE;
+      options.maxSelectNumber = 1;
+      const selected = await photoPicker.select(options);
+      if (!selected.photoUris.length) return;
+      const source = fs.openSync(selected.photoUris[0], fs.OpenMode.READ_ONLY);
+      const target = `${context.filesDir}/schedule-background-${Date.now()}.jpg`;
+      try {
+        if (fs.statSync(source.fd).size > 15 * 1024 * 1024) throw new Error('请选择小于 15 MB 的背景图片');
+        fs.copyFileSync(source.fd, target);
+      } finally { fs.closeSync(source); }
+      const previous = this.scheduleStore.backgroundPath;
+      this.scheduleStore.backgroundPath = `file://${target}`;
+      this.saveScheduleStyle();
+      if (previous.startsWith(`file://${context.filesDir}/schedule-background-`)) {
+        try { fs.unlinkSync(previous.substring(7)); } catch (_) {}
+      }
+    } catch (error) {
+      promptAction.showToast({ message: error instanceof Error ? error.message : '图片读取失败' });
+    }
+  }
+
+  private chooseAppearance(): void {
+    void promptAction.showActionMenu({
+      title: '应用外观', buttons: [
+        { text: '跟随系统', color: '#168776' },
+        { text: '浅色', color: '#168776' },
+        { text: '深色', color: '#168776' }
+      ]
+    }).then((result) => this.applyAppearance(['system', 'light', 'dark'][result.index], true))
+      .catch(() => undefined);
+  }
+
+  private applyAppearance(value: string, updateWeb: boolean): void {
+    const mode = value === 'dark' || value === 'light' ? value : 'system';
+    const context = AppStorage.get<common.UIAbilityContext>('abilityContext');
+    if (!context) return;
+    this.appearanceMode = mode;
+    if (this.appliedAppearanceMode !== mode) {
+      this.appliedAppearanceMode = mode;
+      context.getApplicationContext().setColorMode(mode === 'dark' ? ConfigurationConstant.ColorMode.COLOR_MODE_DARK :
+        mode === 'light' ? ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT : ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
+    }
+    const dark = mode === 'dark' || (mode === 'system' && context.config.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK);
+    this.scheduleStore.dark = dark;
+    void window.getLastWindow(context).then((mainWindow) => mainWindow.setWindowSystemBarProperties({
+      statusBarColor: dark ? '#11151B' : '#F6F8FB', statusBarContentColor: dark ? '#FFFFFF' : '#172033',
+      navigationBarColor: dark ? '#171B22' : '#FDFEFF', navigationBarContentColor: dark ? '#FFFFFF' : '#172033'
+    })).catch(() => undefined);
+    void preferences.getPreferences(context, { name: 'native_appearance' }).then(async (prefs) => {
+      await prefs.put('mode', mode);
+      await prefs.flush();
+    }).catch(() => undefined);
+    if (updateWeb) {
+      const encodedMode = JSON.stringify(mode);
+      void this.controller.runJavaScript(`document.getElementById('app')?.__vue_app__?.config?.globalProperties?.$pinia?._s?.get('appearance')?.setMode(${encodedMode});`)
+        .catch(() => undefined);
+    }
+  }
+
+  private shareSchedule(): void {
+    const context = AppStorage.get<common.UIAbilityContext>('abilityContext');
+    if (!context || !this.scheduleStore.result) {
+      promptAction.showToast({ message: '请先加载课表' });
+      return;
+    }
+    try {
+      const data = new systemShare.SharedData({ utd: 'general.plain-text', content: scheduleText(this.scheduleStore) });
+      const controller = new systemShare.ShareController(data);
+      void controller.show(context, { selectionMode: systemShare.SelectionMode.SINGLE })
+        .catch(() => promptAction.showToast({ message: '分享面板暂时不可用' }));
+    } catch (_) {
+      promptAction.showToast({ message: '分享面板暂时不可用' });
+    }
+  }
+
+  private async exportSchedule(): Promise<void> {
+    const context = AppStorage.get<common.UIAbilityContext>('abilityContext');
+    if (!context || !this.scheduleStore.result) {
+      promptAction.showToast({ message: '请先加载课表' });
+      return;
+    }
+    try {
+      const calendar = scheduleCalendar(this.scheduleStore);
+      const viewPicker = new picker.DocumentViewPicker(context);
+      const options = new picker.DocumentSaveOptions();
+      options.newFileNames = [`课表-${this.scheduleStore.selectedSemester}-第${this.scheduleStore.selectedWeek}周.ics`];
+      const uris = await viewPicker.save(options);
+      if (!uris.length) return;
+      const file = fs.openSync(uris[0], fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC);
+      try { fs.writeSync(file.fd, calendar); } finally { fs.closeSync(file); }
+      promptAction.showToast({ message: '日历文件已保存' });
+    } catch (error) {
+      promptAction.showToast({ message: error instanceof Error ? error.message : '日历导出失败' });
+    }
+  }
+
+  @Builder
+  private tabItems() {
+    TabContent() { Column() {} }
+      .tabBar(new BottomTabBarStyle({
+        normal: new SymbolGlyphModifier($r('sys.symbol.house')).fontColor([$r('app.color.app_text_secondary')]),
+        selected: new SymbolGlyphModifier($r('sys.symbol.house_fill')).fontColor([$r('app.color.app_accent')])
+      }, '首页')
+        .labelStyle({ selectedColor: $r('app.color.app_accent'), unselectedColor: $r('app.color.app_text_secondary') })
+        .iconStyle({ selectedColor: $r('app.color.app_accent'), unselectedColor: $r('app.color.app_text_secondary') }))
+    TabContent() { Column() {} }
+      .tabBar(new BottomTabBarStyle({
+        normal: new SymbolGlyphModifier($r('sys.symbol.book_pages')).fontColor([$r('app.color.app_text_secondary')]),
+        selected: new SymbolGlyphModifier($r('sys.symbol.book_pages_fill')).fontColor([$r('app.color.app_accent')])
+      }, '教务')
+        .labelStyle({ selectedColor: $r('app.color.app_accent'), unselectedColor: $r('app.color.app_text_secondary') })
+        .iconStyle({ selectedColor: $r('app.color.app_accent'), unselectedColor: $r('app.color.app_text_secondary') }))
+    TabContent() { Column() {} }
+      .tabBar(new BottomTabBarStyle({
+        normal: new SymbolGlyphModifier($r('sys.symbol.calendar')).fontColor([$r('app.color.app_text_secondary')]),
+        selected: new SymbolGlyphModifier($r('sys.symbol.calendar')).fontColor([$r('app.color.app_accent')])
+      }, '课表')
+        .labelStyle({ selectedColor: $r('app.color.app_accent'), unselectedColor: $r('app.color.app_text_secondary') })
+        .iconStyle({ selectedColor: $r('app.color.app_accent'), unselectedColor: $r('app.color.app_text_secondary') }))
+    TabContent() { Column() {} }
+      .tabBar(new BottomTabBarStyle({
+        normal: new SymbolGlyphModifier($r('sys.symbol.square_grid_2x2')).fontColor([$r('app.color.app_text_secondary')]),
+        selected: new SymbolGlyphModifier($r('sys.symbol.square_grid_2x2')).fontColor([$r('app.color.app_accent')])
+      }, '服务')
+        .labelStyle({ selectedColor: $r('app.color.app_accent'), unselectedColor: $r('app.color.app_text_secondary') })
+        .iconStyle({ selectedColor: $r('app.color.app_accent'), unselectedColor: $r('app.color.app_text_secondary') }))
+    TabContent() { Column() {} }
+      .tabBar(new BottomTabBarStyle({
+        normal: new SymbolGlyphModifier($r('sys.symbol.person')).fontColor([$r('app.color.app_text_secondary')]),
+        selected: new SymbolGlyphModifier($r('sys.symbol.person_fill')).fontColor([$r('app.color.app_accent')])
+      }, '我的')
+        .labelStyle({ selectedColor: $r('app.color.app_accent'), unselectedColor: $r('app.color.app_text_secondary') })
+        .iconStyle({ selectedColor: $r('app.color.app_accent'), unselectedColor: $r('app.color.app_text_secondary') }))
   }
 
   @Builder
   private bottomNavigation() {
-    Row() {
-      this.tabButton(0, '⌂', '首页')
-      this.tabButton(1, '▤', '教务')
-      this.tabButton(2, '日', '课表')
-      this.tabButton(3, '◇', '服务')
-      this.tabButton(4, '○', '我的')
-    }
-    .width('100%')
-    .height(66)
-    .padding({ left: 6, right: 6, top: 4, bottom: 6 })
-    .alignItems(VerticalAlign.Center)
-    .backgroundColor($r('app.color.app_navigation'))
-    .border({ width: { top: 1 }, color: $r('app.color.app_divider') })
-  }
-
-  @Builder
-  private tabButton(index: number, icon: string, label: string) {
-    Button() {
-      Column({ space: 1 }) {
-        Text(icon)
-          .fontSize(index === 2 ? 17 : 20)
-          .fontWeight(this.selectedTab === index ? FontWeight.Bold : FontWeight.Regular)
-          .fontColor(this.selectedTab === index ? '#2459AF' : $r('app.color.app_text_secondary'))
-        Text(label)
-          .fontSize(10)
-          .fontWeight(this.selectedTab === index ? FontWeight.Medium : FontWeight.Regular)
-          .fontColor(this.selectedTab === index ? '#2459AF' : $r('app.color.app_text_secondary'))
+    if (deviceInfo.sdkApiVersion >= 23) {
+      HdsTabs({ barPosition: BarPosition.End, index: this.selectedTab }) {
+        this.tabItems()
       }
-      .width('100%')
-      .height('100%')
-      .justifyContent(FlexAlign.Center)
+      .width('100%').height(84).barHeight(64)
+      .barFloatingStyle({ barSideMargin: 16, barBottomMargin: 8,
+        systemMaterialEffect: { materialType: hdsMaterial.MaterialType.ADAPTIVE, materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE } })
+      .barOverlap(true).scrollable(false).animationDuration(0)
+      .onTabBarClick((index: number) => this.selectTab(index))
+    } else {
+      Tabs({ barPosition: BarPosition.End, index: this.selectedTab }) { this.tabItems() }
+        .width('100%').height(84).barHeight(64).scrollable(false).animationDuration(0)
+        .barBackgroundBlurStyle(BlurStyle.COMPONENT_THICK)
+        .onTabBarClick((index: number) => this.selectTab(index))
     }
-    .type(ButtonType.Normal)
-    .height(54)
-    .layoutWeight(1)
-    .backgroundColor(this.selectedTab === index ? '#EDF4FF' : 'transparent')
-    .borderRadius(14)
-    .onClick(() => this.selectTab(index))
   }
 
   @Builder
@@ -1038,6 +1257,12 @@ struct Index {
   }
 
   onBackPress(): boolean {
+    if (this.editorModel.visible || this.scheduleStyleVisible) {
+      if (this.editorModel.busy) return true;
+      this.editorModel.cancel();
+      this.scheduleStyleVisible = false;
+      return true;
+    }
     if (this.widgetPanelVisible) {
       this.widgetPanelVisible = false;
       return true;
@@ -1048,6 +1273,11 @@ struct Index {
     }
     if (this.savePanelVisible) {
       this.closeSavePanel();
+      return true;
+    }
+    if (this.scheduleStore.detailVisible || this.scheduleStore.weekPickerVisible) {
+      this.scheduleStore.detailVisible = false;
+      this.scheduleStore.weekPickerVisible = false;
       return true;
     }
     if (this.selectedTab === 2) {
@@ -1063,5 +1293,11 @@ struct Index {
       promptAction.showToast({ message: '已经是第一页' });
     }
     return false;
+  }
+
+  aboutToDisappear(): void {
+    this.scheduleStore.markBridgeUnavailable();
+    clearNativeScheduleHostCallbacks();
+    setActiveHarmonyBridge(undefined);
   }
 }

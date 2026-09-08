@@ -5,19 +5,35 @@ export interface NativeScheduleHostCallbacks {
   onResult: (id: string, payload: string) => void;
   onPrefetched: (payload: string) => void;
   onWidgetSetupFailed: (message: string) => void;
+  onAppearanceChanged: (mode: string) => void;
+  onEditorResult: (id: string, payload: string) => void;
 }
 
 let activeCallbacks: NativeScheduleHostCallbacks | undefined;
+let pendingScheduleOpen: boolean = false;
 
 export function setNativeScheduleHostCallbacks(callbacks: NativeScheduleHostCallbacks): void {
   activeCallbacks = callbacks;
+  if (pendingScheduleOpen) {
+    pendingScheduleOpen = false;
+    callbacks.onNavigate('/schedule?source=deeplink&refresh=1');
+  }
+}
+
+export function clearNativeScheduleHostCallbacks(): void {
+  activeCallbacks = undefined;
 }
 
 export function requestNativeScheduleOpen(): void {
-  activeCallbacks?.onNavigate('/schedule?source=deeplink&refresh=1');
+  if (activeCallbacks) activeCallbacks.onNavigate('/schedule?source=deeplink&refresh=1');
+  else pendingScheduleOpen = true;
 }
 
 export class NativeScheduleHost {
+  editorResult(id: string, payload: string): void { activeCallbacks?.onEditorResult(id, payload); }
+  appearanceChanged(mode: string): void {
+    activeCallbacks?.onAppearanceChanged(mode);
+  }
   ready(): void {
     activeCallbacks?.onReady();
   }

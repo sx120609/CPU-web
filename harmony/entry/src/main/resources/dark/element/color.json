@@ -35,6 +35,14 @@
     {
       "name": "app_text_tertiary",
       "value": "#8B95A5"
+    },
+    {
+      "name": "app_accent",
+      "value": "#79D7C5"
+    },
+    {
+      "name": "app_accent_surface",
+      "value": "#203C36"
     }
   ]
 }
