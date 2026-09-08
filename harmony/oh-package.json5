@@ -1,8 +1,8 @@
 {
   "modelVersion": "6.0.2",
   "name": "yaodashijian-harmony",
-  "version": "2.0.9",
-  "description": "药大拾间 HarmonyOS WebView shell",
+  "version": "2.1.0",
+  "description": "药大拾间 HarmonyOS 原生课表与混合应用",
   "main": "",
   "author": "CPU Web",
   "license": "UNLICENSED",

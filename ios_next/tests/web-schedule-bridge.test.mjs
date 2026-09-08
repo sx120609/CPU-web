@@ -10,7 +10,7 @@ const mocks = {
   '@/api/jwxt': 'export const jwxtApi = globalThis.api;',
   '@/stores/auth': 'export const useAuthStore = () => globalThis.auth;',
   '@/stores/jwxt': 'export const useJwxtStore = () => globalThis.jwxt;',
-  './clientInfo': 'export const isIosNextNativeShell = () => globalThis.native;',
+  './clientInfo': 'export const isNativeScheduleShell = () => globalThis.native; export const isIosNextNativeShell = isNativeScheduleShell;',
 };
 const bundle = await build({
   entryPoints: [`${webRoot}/utils/iosNextScheduleBridge.ts`], bundle: true, write: false,

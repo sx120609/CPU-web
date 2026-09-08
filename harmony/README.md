@@ -1,44 +1,50 @@
 # 药大拾间 HarmonyOS App
 
-这是和 Android WebView 壳保持同一规格的 HarmonyOS Stage 模型工程。
+这是与新版 iOS 客户端采用同一结构的 HarmonyOS Stage 模型应用：ArkUI 原生五栏外壳与原生课表负责高频交互，其他校园模块继续使用同一个 ArkWeb 实例加载现有站点。最低兼容 HarmonyOS 5.0.0（API 12），目标 HarmonyOS 5.1.0（API 18）。
 
-## 能力
+## 原生应用能力
 
-- ArkUI `Web` 组件加载站点页面。
-- 注入 `CPUHarmony` JavaScript Bridge。
-- 通过仅暴露方法的 `CPUHarmony` 原生代理与网页通信，兼容 ArkWeb 的 JavaScript Proxy 约束。
-- 支持版本号、复制文本、外链打开、图片保存到相册、图片/文档选择上传。
-- 支持相机、麦克风按需授权，权限请求仅允许来自 `cputime.cn`。
+- ArkUI 原生底部导航：首页、教务、课表、服务、我的。
+- 原生课表支持学期与周次切换、返回本周、日／周视图、课程详情、下拉刷新、空数据、授权失效与失败状态。
+- 首页、教务、服务、我的及其子页面共用一个 ArkWeb 会话，保留 Cookie、DOM 存储、站内路由和侧滑返回。
+- 课表使用现有 HttpOnly 登录会话及教务自动恢复，不在鸿蒙端保存学校密码。
+- 优先复用网页侧整学期课表桥；确认整学期后在 ArkUI 本地按周筛选。旧服务端只返回单周时，网页桥按当前周附近顺序后台预取，并把完成周次直接推入原生缓存。
+- 原生缓存有效期 12 小时、最多保留 4 个学期，仅在当前进程内保存。账号或教务身份变化时清空缓存并作废旧请求，不提供跨账号离线数据。
+- 安装包内带有兼容读取逻辑；线上网页尚未提供新版课表桥时，仍可利用现有 Pinia 登录状态、同源 Cookie 和教务恢复流程读取已解析课表。
+- ArkWeb 页面隐藏重复的网页顶栏、移动底栏和页脚，保留原页面内容边距；原生界面颜色跟随系统深浅模式。
+
+## 服务卡片与系统桥
+
 - 支持 2×2、2×4、4×4 桌面课表卡片，以及 1×2 横条、1×1 圆形、1×2 矩形三种锁屏课表卡片。
-- 课表卡片支持 30 分钟刷新、离线缓存、主题同步和带学期/周次的深链回跳。
-- 网页图片选择走系统图库 Photo Picker，普通附件继续走系统文件选择器。
-- 支持 `cpuweb://schedule` 深链，从服务卡片恢复当前学期与周次。
-- 使用现有站点 logo，未重绘图标。
+- 首次成功加载原生课表后会为尚未配置的用户自动建立专用课表订阅；原生课表内可选择九种主题并手动重新配置。
+- 卡片只保存专用订阅地址，不复制登录 Cookie；支持 30 分钟刷新请求、离线缓存、主题同步和带当前周语义的深链回跳。实际刷新由 HarmonyOS 调度。
+- `CPUHarmony` 桥继续提供复制文本、外链打开、图片预览与保存、图片／文档选择上传、相机及麦克风按需授权。
+- `cpuweb://schedule` 从桌面或锁屏卡片进入原生课表并重新读取当前学期／本周。
 
 ## 基础信息
 
 - 应用名：药大拾间
 - 包名：`cn.lizmt.cpuweb`
-- 版本：`2.0.9 (18)`
-- 默认入口：`https://cputime.cn/schedule`
+- 版本：`2.1.0 (19)`
+- 默认入口：`https://cputime.cn/home`
 
 ## 构建
 
-本机需要安装 DevEco Studio / HarmonyOS SDK。项目不再包含旧开发者账号的签名路径或凭据，首次打开后请使用当前“药大拾间”开发者账号配置自动签名或导入该账号签发的发布证书。
+本机需要 DevEco Studio / HarmonyOS SDK。项目不包含开发者账号的签名路径或凭据；首次打开后请使用当前“药大拾间”开发者账号配置自动签名或导入该账号签发的发布证书。
 
 1. 用 DevEco Studio 打开 `harmony` 目录。
-2. 登录当前“药大拾间”开发者账号，并在 Project Structure 中为 `cn.lizmt.cpuweb` 配置签名证书。
-3. 锁屏卡片需先在 AppGallery Connect 的“开放能力接入”申请并开启“锁屏卡片”，然后重新生成包含该能力的发布 Profile。
+2. 登录当前“药大拾间”开发者账号，并为 `cn.lizmt.cpuweb` 配置签名证书。
+3. 锁屏卡片需在 AppGallery Connect 的“开放能力接入”开启“锁屏卡片”，并重新生成包含该能力的发布 Profile。
 4. 执行 `Build Hap(s) / APP(s)`。
 
-命令行环境可用时，也可以在 `harmony` 目录执行：
+当前开发机命令行构建：
 
-```bash
-hvigorw --mode module -p product=default -p module=entry@default -p buildMode=debug assembleHap
+```powershell
+$env:DEVECO_SDK_HOME = 'D:\DevTools\Huawei\DevEcoStudio-6.0.2.670\sdk'
+$env:NODE_HOME = 'D:\DevTools\Huawei\DevEcoStudio-6.0.2.670\tools\node'
+$env:Path = "$env:NODE_HOME;$env:Path"
+& 'D:\DevTools\Huawei\DevEcoStudio-6.0.2.670\tools\hvigor\bin\hvigorw.bat' `
+  --mode project -p product=default -p buildMode=debug assembleApp --no-daemon
 ```
 
-## 发布注意
-
-如果后续要上架应用市场，应用图标请使用仓库现有 logo：`web/public/icon-512-v2.png` 或按平台要求导出的 1024 PNG。
-
-发布签名必须使用当前开发者账号为 `cn.lizmt.cpuweb` 签发的 `.cer` 和发布 Profile（`.p7b`）；本地 `.p12`、CSR 和密码不进入仓库。
+无签名构建只能证明 ArkTS、资源和打包流程可编译，不能证明真机登录、服务卡片权限、后台刷新或上架签名可用。真机验收需覆盖登录恢复、本科／研究生课表、快速切周、账号切换、断网恢复、所有桌面／锁屏卡片尺寸、深浅模式及冷／热启动深链。

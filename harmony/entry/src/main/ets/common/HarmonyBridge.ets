@@ -34,6 +34,7 @@ export class HarmonyBridge {
   private context?: common.UIAbilityContext;
   private saveRequestHandler?: (dataUrl: string, fileName: string) => void;
   private previewRequestHandler?: (images: NativePreviewImage[], index: number) => void;
+  private widgetConfigurationHandler?: (configured: boolean) => void;
   private readonly imageSaveTimeoutMs: number = 15000;
 
   attachContext(context: common.UIAbilityContext): void {
@@ -46,6 +47,10 @@ export class HarmonyBridge {
 
   setPreviewRequestHandler(handler: (images: NativePreviewImage[], index: number) => void): void {
     this.previewRequestHandler = handler;
+  }
+
+  setWidgetConfigurationHandler(handler: (configured: boolean) => void): void {
+    this.widgetConfigurationHandler = handler;
   }
 
   getVersionCode(): number {
@@ -251,13 +256,20 @@ export class HarmonyBridge {
     void saveScheduleWidgetConfiguration(this.context, payload)
       .then((saved: boolean) => {
         if (!saved) {
+          this.widgetConfigurationHandler?.(false);
           this.toast('小组件配置无效，请重新添加');
           return;
         }
         return refreshAllScheduleForms(this.context as common.UIAbilityContext)
-          .then(() => this.toast('配置已保存，请长按桌面并添加“药大课表”卡片'));
+          .then(() => {
+            this.widgetConfigurationHandler?.(true);
+            this.toast('配置已保存，请长按桌面并添加“药大课表”卡片');
+          });
       })
-      .catch(() => this.toast('小组件配置失败，请稍后重试'));
+      .catch(() => {
+        this.widgetConfigurationHandler?.(false);
+        this.toast('小组件配置失败，请稍后重试');
+      });
   }
 
   setScheduleWidgetTheme(theme: string): void {

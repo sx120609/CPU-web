@@ -77,9 +77,13 @@ export function isIosNativeApp(ua = navigator.userAgent) {
     || (typeof bridge?.supportsScheduleWidget === "function" && bridge.supportsScheduleWidget() === true);
 }
 
-/** Only the incremental SwiftUI client owns native navigation; the legacy iOS wrapper does not. */
-export function isIosNextNativeShell(ua = navigator.userAgent) {
+/** Native schedule shells own top-level navigation; legacy platform wrappers do not. */
+export function isNativeScheduleShell(ua = navigator.userAgent) {
   return /CPUTimeNative\//i.test(ua);
+}
+
+export function isIosNextNativeShell(ua = navigator.userAgent) {
+  return isNativeScheduleShell(ua);
 }
 
 export function isHarmonyNativeApp(ua = navigator.userAgent) {

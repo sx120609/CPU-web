@@ -3,7 +3,7 @@ import { jwxtApi } from "@/api/jwxt";
 import { useAuthStore } from "@/stores/auth";
 import { useJwxtStore } from "@/stores/jwxt";
 import type { Router } from "vue-router";
-import { isIosNextNativeShell } from "./clientInfo";
+import { isNativeScheduleShell } from "./clientInfo";
 import { applyScheduleEditsToCells, normalizeScheduleEditsState } from "./scheduleEdits";
 import { normalizedCourseWeekList } from "./scheduleWeeks";
 import { buildGraduateFallbackCalendar, extendScheduleWeeksToCalendar, hydrateCalendar } from "@/views/schedule/calendar";
@@ -27,7 +27,7 @@ const CACHE_LIFETIME = 12 * 60 * 60 * 1000;
 /** HTML parsing and authentication stay on the server. The client caches and
  * merges parsed courses, applies saved edits and supplies native week filtering. */
 export function installIosNextScheduleBridge(router?: Router) {
-  if (!isIosNextNativeShell()) return;
+  if (!isNativeScheduleShell()) return;
   const host = window as any;
   const auth = useAuthStore();
   const jwxt = useJwxtStore();

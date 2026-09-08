@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
 
-const swift = await readFile(new URL('../CpuTime/CpuTime/HybridWebView.swift', import.meta.url), 'utf8');
+const swift = (await readFile(new URL('../CpuTime/CpuTime/HybridWebView.swift', import.meta.url), 'utf8'))
+  .replace(/\r\n/g, '\n');
 const script = swift.split('let script = """\n        const cookie')[1].split('"""')[0];
 const run = new (Object.getPrototypeOf(async function () {}).constructor)('document', 'fetch', 'theme', 'const cookie' + script);
 

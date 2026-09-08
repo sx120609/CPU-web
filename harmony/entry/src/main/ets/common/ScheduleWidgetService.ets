@@ -15,6 +15,11 @@ interface WidgetInstallPayload {
   theme?: string;
 }
 
+export interface ScheduleWidgetSettings {
+  configured: boolean;
+  theme: string;
+}
+
 interface ScheduleCourse {
   name?: string;
   teacher?: string;
@@ -238,6 +243,13 @@ export async function saveScheduleWidgetTheme(context: common.Context, value: st
   const prefs = await widgetPreferences(context);
   await prefs.put(THEME_KEY, normalizedTheme(value));
   await prefs.flush();
+}
+
+export async function readScheduleWidgetSettings(context: common.Context): Promise<ScheduleWidgetSettings> {
+  const prefs = await widgetPreferences(context);
+  const endpoint = String(await prefs.get(ENDPOINT_KEY, '')).trim();
+  const theme = normalizedTheme(String(await prefs.get(THEME_KEY, 'color-glass')));
+  return { configured: normalizedEndpoint(endpoint).length > 0, theme };
 }
 
 function formVariant(formName: string): string {

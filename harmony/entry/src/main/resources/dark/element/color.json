@@ -2,39 +2,39 @@
   "color": [
     {
       "name": "start_window_background",
-      "value": "#EDF4FF"
+      "value": "#11151B"
     },
     {
       "name": "app_background",
-      "value": "#F6F8FB"
+      "value": "#11151B"
     },
     {
       "name": "app_surface",
-      "value": "#FFFFFF"
+      "value": "#20252D"
     },
     {
       "name": "app_navigation",
-      "value": "#FDFEFF"
+      "value": "#171B22"
     },
     {
       "name": "app_control",
-      "value": "#F2F5F9"
+      "value": "#2B3038"
     },
     {
       "name": "app_divider",
-      "value": "#E7EAF0"
+      "value": "#343B46"
     },
     {
       "name": "app_text_primary",
-      "value": "#172033"
+      "value": "#F5F7FA"
     },
     {
       "name": "app_text_secondary",
-      "value": "#667085"
+      "value": "#B4BCC8"
     },
     {
       "name": "app_text_tertiary",
-      "value": "#98A2B3"
+      "value": "#8B95A5"
     }
   ]
 }
