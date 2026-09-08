@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { createServer } from 'node:http'
+import { createServer, get } from 'node:http'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -65,6 +65,20 @@ test('real nginx reload keeps concurrent requests and an old streaming response 
     retire: async () => { finishStream(); assert.equal(await stream, 'before:after'); return true },
     activate: async () => {},
   })
+  // Existing keep-alive connections are allowed to keep using the old worker.
+  // Verify the new generation through fresh TCP connections as well.
+  for (let index = 0; index < 10; index++) {
+    const result = await new Promise((resolve, reject) => {
+      get(origin, { agent: false }, response => {
+        let body = ''
+        response.setEncoding('utf8')
+        response.on('data', chunk => { body += chunk })
+        response.on('end', () => resolve([response.statusCode, body]))
+        response.on('error', reject)
+      }).on('error', reject)
+    })
+    results.push(result)
+  }
   await sleep(80)
   reading = false
   await collector
