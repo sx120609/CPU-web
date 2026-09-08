@@ -21,7 +21,7 @@ export default class EntryAbility extends UIAbility {
     const deepLinkUrl = destinationUrlForDeepLink(want.uri || routedUrl);
     if (initial) {
       AppStorage.setOrCreate('launchUrl', APP_URL);
-      AppStorage.setOrCreate('nativeTab', 0);
+      AppStorage.setOrCreate('nativeTab', 2);
     }
     if (deepLinkUrl) {
       AppStorage.set('nativeTab', 2);

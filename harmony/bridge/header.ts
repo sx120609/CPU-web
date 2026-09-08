@@ -11,6 +11,7 @@ export function readHeaderState(router: any, stores: Map<string, any>, doc: Docu
   const messages = stores.get('message');
   return {
     path, title: ROOT_TITLES[path] || String(route.meta?.title || '药大拾间'),
+    contentReady: doc.body?.dataset?.cpuAppReady === '1',
     visible: Boolean(doc.querySelector('.layout-root > .topbar')),
     back: !Object.prototype.hasOwnProperty.call(ROOT_TITLES, path), authenticated,
     unread: authenticated ? Math.max(0, Number(messages?.unreadCount) || 0) : 0,
@@ -20,6 +21,7 @@ export function readHeaderState(router: any, stores: Map<string, any>, doc: Docu
 
 export function runHeaderAction(action: string, root: string, router: any, stores: Map<string, any>) {
   if (action === 'back') {
+    if (typeof (window as any).CPUHarmonyBack === 'function') return (window as any).CPUHarmonyBack(root);
     const back = window.history.state?.back;
     if (typeof back === 'string' && back.startsWith('/') && !back.startsWith('//')) router.back();
     else return router.push(root);
@@ -67,6 +69,7 @@ export function installHarmonyHeader(): void {
   host.CPUHarmonyHeaderAction = (action: string, root: string) => runHeaderAction(action, root, router, stores);
   router.afterEach(schedule);
   const observer = new MutationObserver(schedule);
-  observer.observe(document.body, { subtree: true, childList: true });
+  observer.observe(document.body, { subtree: true, childList: true,
+    attributes: true, attributeFilter: ['data-cpu-app-ready'] });
   update();
 }

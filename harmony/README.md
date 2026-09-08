@@ -32,7 +32,7 @@
 - 应用名：药大拾间
 - 包名：`cn.lizmt.cpuweb`
 - 版本：`2.1.0 (19)`
-- 默认入口：`https://cputime.cn/home`
+- 默认打开原生课表；后台会话入口：`https://cputime.cn/home`
 
 ## 构建
 

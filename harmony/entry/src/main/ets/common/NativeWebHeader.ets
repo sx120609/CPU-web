@@ -2,6 +2,7 @@ export class NativeWebHeaderState {
   path: string = '/home';
   title: string = '药大拾间';
   visible: boolean = true;
+  contentReady: boolean = false;
   back: boolean = false;
   authenticated: boolean = false;
   unread: number = 0;

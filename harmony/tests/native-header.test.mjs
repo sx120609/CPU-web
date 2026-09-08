@@ -47,3 +47,11 @@ test('native actions use live message state, route history and existing configur
   act('more');assert.equal(h.more(),1);
   h.stores.get('auth').isLoggedIn=false;act('messages');assert.equal(h.routes.at(-1),'/login');
 });
+
+test('startup readiness follows the painted app marker, including pages with their own header', () => {
+  const h = setup(); h.api.installHarmonyHeader();
+  assert.equal(h.notifications.at(-1).contentReady, false);
+  h.doc.body.dataset = { cpuAppReady: '1' }; h.hide(); h.mutate(); h.flush();
+  assert.equal(h.notifications.at(-1).contentReady, true);
+  assert.equal(h.notifications.at(-1).visible, false);
+});

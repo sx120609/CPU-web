@@ -3,6 +3,7 @@ import { isNativeScheduleShell, liveApp, useAuthStore, useJwxtStore } from "./ad
 import { installHarmonyEditor } from './editor';
 import { installHarmonyShellObserver } from './shell';
 import { installHarmonyHeader } from './header';
+import { installHarmonyNavigation } from './navigation';
 
 if (isNativeScheduleShell() && (window as any).CPUTimeNative) {
   installHarmonyShellObserver();
@@ -10,6 +11,7 @@ if (isNativeScheduleShell() && (window as any).CPUTimeNative) {
   let attempts = 0;
   const install = () => {
     const host = window as any;
+    installHarmonyNavigation();
     installHarmonyHeader();
     if (typeof host.CPUTimeNativeScheduleFetch === "function") {
       host.CPUTimeNative.ready?.();

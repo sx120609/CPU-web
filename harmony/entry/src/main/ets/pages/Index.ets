@@ -16,7 +16,8 @@ import promptAction from '@ohos.promptAction';
 import photoAccessHelper from '@ohos.file.photoAccessHelper';
 import picker from '@ohos.file.picker';
 import abilityAccessCtrl, { Permissions } from '@ohos.abilityAccessCtrl';
-import { APP_NAME, APP_URL, USER_AGENT_SUFFIX, isAppOrigin, isHttpUrl, isInternalUrl } from '../common/AppConfig';
+import { APP_URL, USER_AGENT_SUFFIX, isAppOrigin, isHttpUrl, isInternalUrl } from '../common/AppConfig';
+import { NATIVE_STARTUP_POLICY } from '../common/NativeStartupPolicy';
 import {
   HarmonyBridge,
   HarmonyJavaScriptProxy,
@@ -40,6 +41,8 @@ struct Index {
   private pendingWebNavigation: number = 0;
   @State private scheduleMounted: boolean = false;
   @State private nativeScheduleVisible: boolean = false;
+  @State private scheduleLayerVisible: boolean = false;
+  private scheduleRetireTimer: number = -1;
   private appearanceMode: string = 'system';
   private appliedAppearanceMode: string = '';
   private controller: webview.WebviewController = new webview.WebviewController();
@@ -49,10 +52,12 @@ struct Index {
   @State private editorModel: NativeCourseEditorModel = new NativeCourseEditorModel();
   @State private scheduleStyleVisible: boolean = false;
   @StorageLink('launchUrl') private launchUrl: string = APP_URL;
-  @StorageLink('nativeTab') private selectedTab: number = 0;
+  @StorageLink('nativeTab') private selectedTab: number = 2;
   @StorageProp('systemTopInsetPx') private systemTopInsetPx: number = 0;
   @StorageProp('systemBottomInsetPx') private systemBottomInsetPx: number = 0;
   @State private loading: boolean = true;
+  @State private startupFinished: boolean = false;
+  private startupTimer: number = -1;
   @State private failed: boolean = false;
   @State private webOverlayVisible: boolean = false;
   @State private webHeader: NativeWebHeaderState = new NativeWebHeaderState();
@@ -84,6 +89,7 @@ struct Index {
   aboutToAppear(): void {
     this.scheduleMounted = this.selectedTab === 2;
     this.nativeScheduleVisible = this.selectedTab === 2;
+    this.scheduleLayerVisible = this.nativeScheduleVisible;
     webview.WebviewController.setWebDebuggingAccess(BuildProfile.DEBUG);
     const contextForResources = AppStorage.get<common.UIAbilityContext>('abilityContext');
     if (contextForResources) {
@@ -177,7 +183,14 @@ struct Index {
       onNavigationReady: (revision: number) => this.finishWebNavigation(revision),
       onWebOverlayChanged: (visible: boolean) => this.webOverlayVisible = visible,
       onHeaderChanged: (payload: string) => {
-        try { this.webHeader = JSON.parse(payload) as NativeWebHeaderState; } catch (_) {}
+        try {
+          this.webHeader = JSON.parse(payload) as NativeWebHeaderState;
+          if (this.webHeader.contentReady) this.finishStartup();
+          if (!this.nativeScheduleVisible && !this.pendingWebNavigation) {
+            const rootIndex = ['/home', '/jwxt', '/schedule', '/services', '/profile'].indexOf(this.webHeader.path);
+            if (rootIndex >= 0 && rootIndex !== 2) this.selectedTab = rootIndex;
+          }
+        } catch (_) {}
       },
       onResult: (id: string, payload: string) => this.scheduleStore.acceptResult(id, payload),
       onPrefetched: (payload: string) => this.scheduleStore.acceptPrefetched(payload),
@@ -321,6 +334,7 @@ struct Index {
           'html[data-cpu-harmony-native] .layout-root > .topbar,',
           'html[data-cpu-harmony-native] .layout-root > .footer { display: none !important; }',
           'html[data-cpu-harmony-native] .layout-root { padding-bottom: 0 !important; }',
+          'html[data-cpu-harmony-native] #boot-screen { display: none !important; }',
           'html[data-cpu-harmony-native] .layout-root { --layout-mobile-tabbar-reserve: var(--cpu-harmony-bottom-clearance); --liquid-tabbar-reserve: var(--cpu-harmony-bottom-clearance); }',
           'html[data-cpu-harmony-native] .forum-post-fab { bottom: calc(var(--cpu-harmony-bottom-clearance) + 8px) !important; }',
           'html[data-cpu-harmony-native] .layout-root > .main { padding-bottom: var(--cpu-harmony-bottom-clearance) !important; }',
@@ -379,6 +393,8 @@ struct Index {
       this.pendingWebNavigation = 0;
       this.scheduleMounted = true;
       this.nativeScheduleVisible = true;
+      clearTimeout(this.scheduleRetireTimer);
+      this.scheduleLayerVisible = true;
       this.selectedTab = 2;
       if (path.includes('refresh=1')) {
         this.scheduleStore.selectedSemester = '';
@@ -438,24 +454,26 @@ struct Index {
 
   private selectTab(index: number, destination?: string): void {
     if (index < 0 || index > 4) return;
-    if (index === this.selectedTab && !destination) return;
+    const routes: string[] = ['/home', '/jwxt', '/schedule', '/services', '/profile'];
+    if (index === this.selectedTab && !destination && (index === 2 || this.webHeader?.path === routes[index])) return;
     const revision = ++this.navigationRevision;
     this.selectedTab = index;
     if (index === 2) {
       this.pendingWebNavigation = 0;
       this.scheduleMounted = true;
       this.nativeScheduleVisible = true;
+      clearTimeout(this.scheduleRetireTimer);
+      this.scheduleLayerVisible = true;
       this.scheduleStore.load(false);
       return;
     }
     this.pendingWebNavigation = revision;
-    const routes: string[] = ['/home', '/jwxt', '/schedule', '/services', '/profile'];
     const path = destination ?? routes[index];
     const route = JSON.stringify(path);
     const script = `
       (() => {
         const path = ${route};
-        const openRoute = window.CPUTimeNative?.openWebRoute;
+        const openRoute = window.CPUHarmonyOpenTab || window.CPUTimeNative?.openWebRoute;
         if (typeof openRoute === 'function') {
           Promise.resolve(openRoute(path)).then(() => {
             requestAnimationFrame(() => requestAnimationFrame(() => window.CPUHarmony.navigationReady(${revision})));
@@ -476,6 +494,25 @@ struct Index {
     if (revision !== this.pendingWebNavigation || revision !== this.navigationRevision || this.selectedTab === 2) return;
     this.pendingWebNavigation = 0;
     this.nativeScheduleVisible = false;
+    clearTimeout(this.scheduleRetireTimer);
+    this.scheduleRetireTimer = setTimeout(() => {
+      if (!this.nativeScheduleVisible) this.scheduleLayerVisible = false;
+    }, 240);
+  }
+
+  private beginStartupWait(): void {
+    if (this.startupFinished) return;
+    clearTimeout(this.startupTimer);
+    this.startupTimer = setTimeout(() => {
+      if (!this.startupFinished) { this.failed = true; this.loading = false; }
+    }, 20000);
+  }
+
+  private finishStartup(): void {
+    if (this.startupFinished) return;
+    clearTimeout(this.startupTimer);
+    this.startupFinished = true;
+    this.failed = false;
   }
 
   private configureScheduleWidget(): void {
@@ -531,6 +568,7 @@ struct Index {
         .accessibilityLevel(this.nativeScheduleVisible ? 'no-hide-descendants' : 'auto')
         .hitTestBehavior(this.nativeScheduleVisible ? HitTestMode.None : HitTestMode.Default)
         .javaScriptAccess(true)
+        .javaScriptOnDocumentStart([{ script: NATIVE_STARTUP_POLICY, scriptRules: ['*'] }])
         .domStorageAccess(true)
         .databaseAccess(true)
         .fileAccess(true)
@@ -557,6 +595,7 @@ struct Index {
         })
         .onPageBegin(() => {
           this.loading = true;
+          this.beginStartupWait();
           this.failed = false;
           this.webOverlayVisible = false;
           this.scheduleStore.markBridgeUnavailable();
@@ -609,31 +648,24 @@ struct Index {
             }).opacity(this.nativeScheduleVisible ? 1 : 0)
               .translate({ y: this.nativeScheduleVisible ? 0 : 8 })
               .animation({ duration: 220, curve: Curve.EaseOut })
+              .visibility(this.scheduleLayerVisible ? Visibility.Visible : Visibility.Hidden)
+              .enabled(this.nativeScheduleVisible)
               .accessibilityLevel(this.nativeScheduleVisible ? 'auto' : 'no-hide-descendants')
-              .hitTestBehavior(this.selectedTab === 2 ? HitTestMode.Default : HitTestMode.None)
+              .hitTestBehavior(this.nativeScheduleVisible ? HitTestMode.Default : HitTestMode.None)
           }
 
-      if (this.loading && !this.nativeScheduleVisible) {
+      if (!this.startupFinished && !this.failed && !this.nativeScheduleVisible) {
         Column({ space: 16 }) {
-          Image($r('app.media.app_icon'))
-            .width(84)
-            .height(84)
-            .borderRadius(24)
-
-          Text(APP_NAME)
-            .fontSize(28)
-            .fontWeight(FontWeight.Bold)
-            .fontColor($r('app.color.app_text_primary'))
-
-          Text('正在打开你的校园服务')
-            .fontSize(15)
+          LoadingProgress().width(28).height(28).color($r('app.color.app_accent'))
+          Text('正在打开校园服务')
+            .fontSize(14)
             .fontColor($r('app.color.app_text_secondary'))
         }
         .width('100%')
         .height('100%')
         .justifyContent(FlexAlign.Center)
         .alignItems(HorizontalAlign.Center)
-        .backgroundColor('#EDF4FF')
+        .backgroundColor($r('app.color.start_window_background'))
       }
 
       if (this.failed && !this.nativeScheduleVisible) {
@@ -673,7 +705,7 @@ struct Index {
       Column() {
         this.bottomNavigation()
       }.width('100%').height(48 + this.bottomBarInset()).align(Alignment.Bottom)
-        .visibility(this.selectedTab === 2 || (this.webHeader.visible && !this.webOverlayVisible) ? Visibility.Visible : Visibility.Hidden)
+        .visibility(this.nativeScheduleVisible || this.pendingWebNavigation > 0 || (this.startupFinished && this.webHeader.visible && !this.webOverlayVisible) ? Visibility.Visible : Visibility.Hidden)
         .hitTestBehavior(HitTestMode.Transparent)
 
       if (this.imagePreviewVisible && this.previewImages.length > 0) {
@@ -1395,26 +1427,22 @@ struct Index {
       return true;
     }
     if (this.selectedTab === 2) {
-      this.selectTab(0);
-      return true;
+      return false;
     }
     if (this.webOverlayVisible) {
       void this.controller.runJavaScript(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }));`)
         .catch(() => undefined);
       return true;
     }
-    try {
-      if (this.controller.accessBackward()) {
-        this.controller.backward();
-        return true;
-      }
-    } catch (_) {
-      promptAction.showToast({ message: '已经是第一页' });
-    }
-    return false;
+    void this.controller.runJavaScript(`Promise.resolve(window.CPUHarmonyBack?.()).then(handled => {
+      if (handled === false || handled === undefined) window.CPUHarmony.navigate('/schedule');
+    });`).catch(() => this.selectTab(2));
+    return true;
   }
 
   aboutToDisappear(): void {
+    clearTimeout(this.scheduleRetireTimer);
+    clearTimeout(this.startupTimer);
     this.scheduleStore.markBridgeUnavailable();
     clearNativeScheduleHostCallbacks();
     setActiveHarmonyBridge(undefined);

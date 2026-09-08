@@ -74,7 +74,8 @@ test('web proxy preserves account scope through the native host for cache isolat
 test('tab handoff keeps the schedule visible until the destination paints and ignores stale completions', async () => {
   const source = readFileSync(new URL('../entry/src/main/ets/pages/Index.ets', import.meta.url), 'utf8');
   const methods = source.slice(source.indexOf('  private selectTab('), source.indexOf('  private configureScheduleWidget('));
-  const ctx = vm.createContext({module:{exports:{}}});
+  const timers = new Map(); let timerId = 0;
+  const ctx = vm.createContext({module:{exports:{}}, setTimeout: fn => { timers.set(++timerId, fn); return timerId; }, clearTimeout: id => timers.delete(id)});
   vm.runInContext(transformSync('export class Navigation {' + methods + '}', {loader:'ts',format:'cjs'}).code, ctx);
   const nav = new ctx.module.exports.Navigation();
   const frames = []; const routes = []; const navigations = [];
@@ -87,8 +88,13 @@ test('tab handoff keeps the schedule visible until the destination paints and ig
   navigations.shift()(); await new Promise(setImmediate);
   frames.shift()(); assert.equal(nav.nativeScheduleVisible, true);
   frames.shift()(); assert.equal(nav.nativeScheduleVisible, false);
+  [...timers.values()].forEach(fn => fn());
+  assert.equal(nav.scheduleLayerVisible, false);
   nav.selectTab(2); assert.equal(nav.nativeScheduleVisible, true);
+  assert.equal(nav.scheduleLayerVisible, true);
   nav.selectTab(1); nav.selectTab(2);
   navigations.shift()(); await new Promise(setImmediate); frames.shift()(); frames.shift()();
   assert.equal(nav.selectedTab, 2); assert.equal(nav.nativeScheduleVisible, true);
+  [...timers.values()].forEach(fn => fn());
+  assert.equal(nav.scheduleLayerVisible, true);
 });
