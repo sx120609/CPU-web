@@ -7,6 +7,7 @@ export interface NativeScheduleHostCallbacks {
   onWidgetSetupFailed: (message: string) => void;
   onAppearanceChanged: (mode: string) => void;
   onEditorResult: (id: string, payload: string) => void;
+  onWebOverlayChanged: (visible: boolean) => void;
 }
 
 let activeCallbacks: NativeScheduleHostCallbacks | undefined;
@@ -30,6 +31,7 @@ export function requestNativeScheduleOpen(): void {
 }
 
 export class NativeScheduleHost {
+  webOverlayChanged(visible: boolean): void { activeCallbacks?.onWebOverlayChanged(visible); }
   editorResult(id: string, payload: string): void { activeCallbacks?.onEditorResult(id, payload); }
   appearanceChanged(mode: string): void {
     activeCallbacks?.onAppearanceChanged(mode);

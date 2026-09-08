@@ -16,6 +16,30 @@ function compile(path, dependencies = {}) {
 const web = compile('../../web/src/components/jwxt/scheduleTheme.ts');
 const palettes = compile('../entry/src/main/ets/schedule/SchedulePalettes.ets');
 const native = compile('../entry/src/main/ets/schedule/ScheduleVisuals.ets', { './SchedulePalettes': palettes });
+const design = compile('../entry/src/main/ets/schedule/ScheduleDesign.ets', { './ScheduleVisuals': native });
+
+function contrast(first, second) {
+  const luminance = hex => {
+    const values = hex.slice(1).match(/../g).map(value => parseInt(value, 16) / 255)
+      .map(value => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
+    return values[0] * 0.2126 + values[1] * 0.7152 + values[2] * 0.0722;
+  };
+  const values = [luminance(first), luminance(second)].sort((a,b) => b-a);
+  return (values[0] + 0.05) / (values[1] + 0.05);
+}
+
+test('Harmony course names and location text remain readable in every theme and appearance', () => {
+  for (const { key } of palettes.SCHEDULE_PALETTES) {
+    for (const dark of [false, true]) {
+      for (let index = 0; index < 48; index++) {
+        const tone = design.harmonyCourseColor(`课程${index}`, key, dark);
+        for (const role of ['text', 'accent']) {
+          assert.ok(contrast(tone[role], tone.fill) >= 4.5, `${key} ${dark} ${role}: ${JSON.stringify(tone)}`);
+        }
+      }
+    }
+  }
+});
 
 // Resolve web HSL using chroma/sector conversion, independently of the native channel function.
 function color(css) {

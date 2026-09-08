@@ -16,7 +16,7 @@ function legacyPage() {
   let notifications = 0;
   const window = { CPUTimeNative: { ready() {}, authChanged() { notifications++; } }, dispatchEvent() {} };
   const context = vm.createContext({ window, Error, URL, AbortController, setTimeout, clearTimeout,
-    navigator: { userAgent: 'CPUWebHarmonyApp/19 CPUTimeNative/1' }, location: { origin: 'https://cputime.cn' },
+    navigator: { userAgent: 'CPUWebHarmonyApp/19 CPUWebHarmonyAppVersion/2.1.0' }, location: { origin: 'https://cputime.cn' },
     document: { getElementById: () => ({ __vue_app__: { config: { globalProperties: {
       $pinia: { _s: stores }, $router: { push: path => routes.push(path) },
     } } } }) },

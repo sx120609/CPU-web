@@ -425,6 +425,10 @@ export class HarmonyJavaScriptProxy {
     this.nativeScheduleHost.appearanceChanged(mode);
   }
 
+  webOverlayChanged(visible: boolean): void {
+    this.nativeScheduleHost.webOverlayChanged(visible);
+  }
+
   editorResult(id: string, payload: string): void {
     this.nativeScheduleHost.editorResult(id, payload);
   }

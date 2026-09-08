@@ -3,7 +3,7 @@ export const APP_URL = 'https://cputime.cn/home?client=harmony-app&appVersionCod
 export const APP_HOST = 'cputime.cn';
 export const VERSION_CODE = 19;
 export const VERSION_NAME = '2.1.0';
-export const USER_AGENT_SUFFIX = `CPUWebHarmonyApp/${VERSION_CODE} CPUWebHarmonyAppVersion/${VERSION_NAME} CPUTimeNative/1`;
+export const USER_AGENT_SUFFIX = `CPUWebHarmonyApp/${VERSION_CODE} CPUWebHarmonyAppVersion/${VERSION_NAME}`;
 const PAYMENT_HOST = 'pay.kaipay.cn';
 
 function protocolOf(input: string): string {

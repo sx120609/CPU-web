@@ -27,7 +27,8 @@ import { NativeSchedulePage } from '../schedule/NativeSchedulePage';
 import { NativeCourseBlock, NativeScheduleRequest, NativeScheduleStore } from '../schedule/NativeScheduleStore';
 import { CourseEditorRequest, NativeCourseEditor, NativeCourseEditorModel } from '../schedule/NativeCourseEditor';
 import { setNativeScheduleHostCallbacks, clearNativeScheduleHostCallbacks } from '../schedule/NativeScheduleHost';
-import { clearScheduleWidgetAccount, readScheduleWidgetSettings } from '../common/ScheduleWidgetService';
+import { ScheduleCardView } from '../schedulewidget/ScheduleCardView';
+import { ScheduleWidgetBinding, initialScheduleWidgetBinding, readScheduleWidgetPreview, saveScheduleWidgetTheme, refreshAllScheduleForms, clearScheduleWidgetAccount, readScheduleWidgetSettings } from '../common/ScheduleWidgetService';
 
 @Entry
 @Component
@@ -44,9 +45,17 @@ struct Index {
   @State private scheduleStyleVisible: boolean = false;
   @StorageLink('launchUrl') private launchUrl: string = APP_URL;
   @StorageLink('nativeTab') private selectedTab: number = 0;
+  @StorageProp('systemTopInsetPx') private systemTopInsetPx: number = 0;
+  @StorageProp('systemBottomInsetPx') private systemBottomInsetPx: number = 0;
   @State private loading: boolean = true;
   @State private failed: boolean = false;
+  @State private webOverlayVisible: boolean = false;
   @State private widgetPanelVisible: boolean = false;
+  @State private widgetPreview: ScheduleWidgetBinding = initialScheduleWidgetBinding(2, 'schedule_upcoming');
+  @State private lockPreview: ScheduleWidgetBinding = initialScheduleWidgetBinding(2, 'schedule_upcoming');
+  @State private widgetFormName: string = 'schedule_upcoming';
+  @State private widgetDimension: number = 2;
+  private widgetPreviewRevision: number = 0;
   @State private widgetTheme: string = 'color-glass';
   @State private widgetConfigured: boolean = false;
   @State private widgetSettingsLoaded: boolean = false;
@@ -93,6 +102,7 @@ struct Index {
     });
     this.bridge.setWidgetConfigurationHandler((configured: boolean) => {
       this.widgetConfigured = configured;
+      if (this.widgetPanelVisible) void this.loadWidgetPreview();
     });
     if (context) {
       void readScheduleWidgetSettings(context).then((settings) => {
@@ -136,6 +146,10 @@ struct Index {
       onReady: () => this.scheduleStore.markBridgeReady(),
       onAuthChanged: () => {
         this.editorModel.cancel();
+        this.widgetPreviewRevision += 1;
+        this.widgetPreview = initialScheduleWidgetBinding(this.widgetDimension, this.widgetFormName);
+        this.lockPreview = initialScheduleWidgetBinding(2, 'schedule_upcoming');
+        this.widgetPanelVisible = false;
         this.widgetAutoSetupAttempted = false;
         this.widgetConfigured = false;
         this.widgetSettingsLoaded = false;
@@ -151,6 +165,7 @@ struct Index {
         this.scheduleStore.handleAuthChanged();
       },
       onNavigate: (path: string) => this.handleNativeNavigation(path),
+      onWebOverlayChanged: (visible: boolean) => this.webOverlayVisible = visible,
       onResult: (id: string, payload: string) => this.scheduleStore.acceptResult(id, payload),
       onPrefetched: (payload: string) => this.scheduleStore.acceptPrefetched(payload),
       onWidgetSetupFailed: (message: string) => {
@@ -184,6 +199,7 @@ struct Index {
       'scheduleWeekPrefetched',
       'widgetSetupFailed',
       'appearanceChanged',
+      'webOverlayChanged',
       'editorResult'
     ];
   }
@@ -285,13 +301,11 @@ struct Index {
           document.head.appendChild(style);
         }
         style.textContent = [
-          'html[data-cpu-harmony-native] { --cpu-harmony-bottom-clearance: 100px; }',
-          'html[data-cpu-harmony-native] .layout-root > .topbar,',
+          'html[data-cpu-harmony-native] { --cpu-harmony-bottom-clearance: ${100 + this.getUIContext().px2vp(this.systemBottomInsetPx)}px; --cpu-safe-area-inset-top: 0px; }',
           'html[data-cpu-harmony-native] .layout-root > .mobile-tabbar,',
           'html[data-cpu-harmony-native] .layout-root > .footer { display: none !important; }',
-          'html[data-cpu-harmony-native] .layout-root { min-height: 100vh; padding-top: env(safe-area-inset-top, 0px) !important; padding-bottom: 0 !important; }',
-          'html[data-cpu-harmony-native] .layout-root > .main { min-height: calc(100vh - env(safe-area-inset-top, 0px)) !important; padding-bottom: var(--cpu-harmony-bottom-clearance) !important; }',
-          'html[data-cpu-harmony-native] .home-entry { padding-top: max(12px, env(safe-area-inset-top, 0px)) !important; }',
+          'html[data-cpu-harmony-native] .layout-root { padding-bottom: 0 !important; }',
+          'html[data-cpu-harmony-native] .layout-root > .main { padding-bottom: var(--cpu-harmony-bottom-clearance) !important; }',
           '.fade-enter-active, .fade-leave-active { transition-duration: 300ms !important; }',
           '@media (prefers-reduced-motion: reduce) { .fade-enter-active, .fade-leave-active { transition: none !important; } }'
         ].join('\\n');
@@ -387,7 +401,7 @@ struct Index {
     });
   }
 
-  private selectTab(index: number): void {
+  private selectTab(index: number, destination?: string): void {
     if (index < 0 || index > 4) return;
     const revision = ++this.navigationRevision;
     this.selectedTab = index;
@@ -396,7 +410,8 @@ struct Index {
       return;
     }
     const routes: string[] = ['/home', '/jwxt', '/schedule', '/services', '/profile'];
-    const route = JSON.stringify(routes[index]);
+    const path = destination ?? routes[index];
+    const route = JSON.stringify(path);
     const script = `
       (() => {
         const path = ${route};
@@ -406,7 +421,7 @@ struct Index {
       })();
     `;
     void this.controller.runJavaScript(script).catch(() => {
-      if (revision === this.navigationRevision) this.controller.loadUrl(`https://cputime.cn${routes[index]}`);
+      if (revision === this.navigationRevision) this.controller.loadUrl(`https://cputime.cn${path}`);
     });
   }
 
@@ -444,6 +459,9 @@ struct Index {
 
   build() {
     Stack({ alignContent: Alignment.Bottom }) {
+      Column().width('100%').height('100%')
+        .backgroundColor($r('app.color.app_background'))
+        .hitTestBehavior(HitTestMode.None)
       Column() {
         Stack() {
           Web({
@@ -465,10 +483,10 @@ struct Index {
         .textZoomRatio(100)
         .onControllerAttached(() => {
           try {
-            const current = this.controller.getUserAgent();
-            if (!current.includes('CPUWebHarmonyApp/')) {
-              this.controller.setCustomUserAgent(`${current} ${USER_AGENT_SUFFIX}`);
-            }
+            const current = this.controller.getUserAgent()
+              .replace(/\sCPUTimeNative\/[^\s]+/g, '')
+              .replace(/\sCPUWebHarmonyApp(?:Version)?\/[^\s]+/g, '');
+            this.controller.setCustomUserAgent(`${current} ${USER_AGENT_SUFFIX}`);
           } catch (_) {
             // Keep the system user agent if the controller is not ready yet.
           }
@@ -482,6 +500,7 @@ struct Index {
         .onPageBegin(() => {
           this.loading = true;
           this.failed = false;
+          this.webOverlayVisible = false;
           this.scheduleStore.markBridgeUnavailable();
         })
         .onPageEnd(() => {
@@ -509,12 +528,16 @@ struct Index {
           if (this.selectedTab === 2) {
             NativeSchedulePage({
               store: this.scheduleStore,
+              bottomSafeInset: this.getUIContext().px2vp(this.systemBottomInsetPx),
+              onHome: () => this.selectTab(0),
+              onMessages: () => this.selectTab(4, '/messages'),
+              onProfile: () => this.selectTab(4),
               onLogin: () => {
                 this.selectTab(1);
                 const script = `window.CPUTimeNative?.openWebRoute?.('/jwxt?reauthorize=1&redirect=/schedule');`;
                 void this.controller.runJavaScript(script).catch(() => this.controller.loadUrl('https://cputime.cn/login'));
               },
-              onWidgets: () => this.widgetPanelVisible = true,
+              onWidgets: () => { this.widgetPanelVisible = true; void this.loadWidgetPreview(); },
               onTools: () => this.openCourseEditor(),
               onEdit: (block: NativeCourseBlock) => this.openCourseEditor(block),
               onAddSlot: (day: number, slot: number) => this.openCourseEditor(undefined, day, slot),
@@ -580,10 +603,14 @@ struct Index {
       }
       .width('100%')
       .height('100%')
+      .padding({ top: this.getUIContext().px2vp(this.systemTopInsetPx) })
 
+      if (this.selectedTab === 2 || !this.webOverlayVisible) {
       Column() {
         this.bottomNavigation()
-      }.width('100%').height(84).align(Alignment.Bottom).hitTestBehavior(HitTestMode.Transparent)
+      }.width('100%').height(84 + this.getUIContext().px2vp(this.systemBottomInsetPx)).align(Alignment.Bottom)
+        .hitTestBehavior(HitTestMode.Transparent)
+      }
 
       if (this.imagePreviewVisible && this.previewImages.length > 0) {
         Column() {
@@ -817,16 +844,13 @@ struct Index {
         .backgroundColor('rgba(15, 23, 42, 0.36)')
       }
 
-      if (this.widgetPanelVisible) {
-        this.widgetSettingsPanel()
-      }
     }
     .width('100%')
     .height('100%')
-    .bindSheet(this.editorModel.visible || this.scheduleStyleVisible, this.nativePanelSheet(), {
+    .bindSheet(this.editorModel.visible || this.scheduleStyleVisible || this.widgetPanelVisible, this.nativePanelSheet(), {
       height: SheetSize.LARGE, showClose: true, dragBar: true,
       onWillDismiss: (action: DismissSheetAction) => { if (!this.editorModel.busy) action.dismiss(); },
-      onDisappear: () => { this.editorModel.cancel(); this.scheduleStyleVisible = false; }
+      onDisappear: () => { this.editorModel.cancel(); this.scheduleStyleVisible = false; this.widgetPanelVisible = false; this.widgetPreviewRevision += 1; }
     })
   }
 
@@ -851,7 +875,9 @@ struct Index {
 
   @Builder
   private nativePanelSheet() {
-    if (this.editorModel.visible) {
+    if (this.widgetPanelVisible) {
+      this.widgetSettingsPanel()
+    } else if (this.editorModel.visible) {
       NativeCourseEditor({ model: this.editorModel })
     } else {
       this.scheduleStyleSheet()
@@ -859,35 +885,57 @@ struct Index {
   }
 
   @Builder
-  private scheduleStyleSheet() {
-    Column({ space: 18 }) {
-      Text('课表样式').fontSize(22).fontWeight(FontWeight.Bold).fontColor($r('app.color.app_text_primary')).width('100%')
-      Text('课程配色').fontSize(16).fontColor($r('app.color.app_text_secondary')).width('100%')
-      Grid() {
+  private paletteChoices(selected: string, widget: boolean) {
+    Scroll() {
+      Row({ space: 4 }) {
         ForEach(['color-glass','green','blue','teal','indigo','violet','orange','rose','slate'], (theme: string) => {
-          GridItem() {
-            Button(schedulePalette(theme).label).height(48).width('100%')
-              .fontColor(this.scheduleStore.palette === theme ? Color.White : $r('app.color.app_text_primary'))
-              .backgroundColor(this.scheduleStore.palette === theme ? schedulePalette(theme).accent : $r('app.color.app_control'))
-              .onClick(() => { this.scheduleStore.palette = theme; this.saveScheduleStyle(); })
-          }
+          Button() {
+            Column({ space: 6 }) {
+              Stack() {
+                Circle().width(32).height(32).fill(Color.Transparent)
+                  .stroke(selected === theme ? $r('app.color.app_accent') : Color.Transparent).strokeWidth(1.5)
+                Circle().width(24).height(24).fill(this.widgetThemeColor(theme))
+              }.width(36).height(36)
+              Text(this.widgetThemeLabel(theme)).fontSize(10)
+                .fontColor(selected === theme ? $r('app.color.app_text_primary') : $r('app.color.app_text_secondary'))
+            }
+          }.type(ButtonType.Normal).width(48).height(64).padding(0).backgroundColor(Color.Transparent)
+            .accessibilityText(this.widgetThemeLabel(theme) + '配色').accessibilitySelected(selected === theme)
+            .onClick(() => {
+              if (widget) { void this.updateWidgetTheme(theme); }
+              else { this.scheduleStore.palette = theme; this.saveScheduleStyle(); }
+            })
         })
-      }.columnsTemplate('1fr 1fr 1fr').columnsGap(8).rowsGap(8).height(160)
-      Text('课表背景').fontSize(16).fontColor($r('app.color.app_text_secondary')).width('100%')
-      Button('从相册选择图片').height(48).width('100%')
-        .fontColor($r('app.color.app_accent')).backgroundColor($r('app.color.app_accent_surface'))
-        .onClick(() => { void this.chooseScheduleBackground(); })
-      if (this.scheduleStore.backgroundPath) {
-        Text('背景可见度').fontSize(14).fontColor($r('app.color.app_text_primary')).width('100%')
-        Slider({ value: this.scheduleStore.backgroundOpacity * 100, min: 5, max: 35, step: 1 })
-          .onChange((value: number) => { this.scheduleStore.backgroundOpacity = value / 100; this.saveScheduleStyle(); })
-        Button('移除背景图片').height(48).width('100%')
-          .fontColor($r('app.color.app_accent')).backgroundColor($r('app.color.app_control'))
-          .onClick(() => this.removeScheduleBackground())
-      }
-      Blank().layoutWeight(1)
-    }.height('100%').width('100%').padding({ left: 20, right: 20, top: 32, bottom: 24 })
-      .backgroundColor($r('app.color.app_surface'))
+      }.padding({ left: 2, right: 2 })
+    }.width('100%').height(70).scrollable(ScrollDirection.Horizontal).scrollBar(BarState.Off)
+  }
+
+  @Builder
+  private scheduleStyleSheet() {
+    Scroll() {
+      Column({ space: 20 }) {
+        Text('课表样式').fontSize(22).fontWeight(FontWeight.Bold).fontColor($r('app.color.app_text_primary')).width('100%')
+        Column({ space: 8 }) {
+          Text('课程配色').fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.app_text_primary')).width('100%')
+          this.paletteChoices(this.scheduleStore.palette, false)
+        }.width('100%')
+        Column({ space: 12 }) {
+          Text('背景图片').fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.app_text_primary')).width('100%')
+          Button('从相册选择').type(ButtonType.Normal).height(48).width('100%').borderRadius(14).fontSize(14)
+            .fontColor($r('app.color.app_accent')).backgroundColor($r('app.color.app_control'))
+            .onClick(() => { void this.chooseScheduleBackground(); })
+          if (this.scheduleStore.backgroundPath) {
+            Text('背景可见度').fontSize(13).fontColor($r('app.color.app_text_secondary')).width('100%')
+            Slider({ value: this.scheduleStore.backgroundOpacity * 100, min: 5, max: 35, step: 1 })
+              .selectedColor($r('app.color.app_accent'))
+              .onChange((value: number) => { this.scheduleStore.backgroundOpacity = value / 100; this.saveScheduleStyle(); })
+            Button('移除背景图片').height(44).width('100%').fontSize(13)
+              .fontColor($r('app.color.app_text_secondary')).backgroundColor(Color.Transparent)
+              .onClick(() => this.removeScheduleBackground())
+          }
+        }.width('100%')
+      }.width('100%').padding({ left: 20, right: 20, top: 32, bottom: 40 })
+    }.height('100%').width('100%').scrollBar(BarState.Off).backgroundColor($r('app.color.app_surface'))
   }
 
   private saveScheduleStyle(): void {
@@ -964,8 +1012,8 @@ struct Index {
     const dark = mode === 'dark' || (mode === 'system' && context.config.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK);
     this.scheduleStore.dark = dark;
     void window.getLastWindow(context).then((mainWindow) => mainWindow.setWindowSystemBarProperties({
-      statusBarColor: dark ? '#11151B' : '#F6F8FB', statusBarContentColor: dark ? '#FFFFFF' : '#172033',
-      navigationBarColor: dark ? '#171B22' : '#FDFEFF', navigationBarContentColor: dark ? '#FFFFFF' : '#172033'
+      statusBarColor: dark ? '#151A17' : '#F7F8F6', statusBarContentColor: dark ? '#FFFFFF' : '#202722',
+      navigationBarColor: '#00000000', navigationBarContentColor: dark ? '#FFFFFF' : '#172033'
     })).catch(() => undefined);
     void preferences.getPreferences(context, { name: 'native_appearance' }).then(async (prefs) => {
       await prefs.put('mode', mode);
@@ -1019,38 +1067,38 @@ struct Index {
   private tabItems() {
     TabContent() { Column() {} }
       .tabBar(new BottomTabBarStyle({
-        normal: new SymbolGlyphModifier($r('sys.symbol.house')).fontColor([$r('app.color.app_text_secondary')]),
-        selected: new SymbolGlyphModifier($r('sys.symbol.house_fill')).fontColor([$r('app.color.app_accent')])
+        normal: new SymbolGlyphModifier($r('sys.symbol.house')).fontSize(20).fontColor([$r('app.color.app_text_secondary')]),
+        selected: new SymbolGlyphModifier($r('sys.symbol.house_fill')).fontSize(20).fontColor([$r('app.color.app_accent')])
       }, '首页')
-        .labelStyle({ selectedColor: $r('app.color.app_accent'), unselectedColor: $r('app.color.app_text_secondary') })
+        .labelStyle({ font: { size: 10, weight: FontWeight.Medium }, selectedColor: $r('app.color.app_accent'), unselectedColor: $r('app.color.app_text_secondary') })
         .iconStyle({ selectedColor: $r('app.color.app_accent'), unselectedColor: $r('app.color.app_text_secondary') }))
     TabContent() { Column() {} }
       .tabBar(new BottomTabBarStyle({
-        normal: new SymbolGlyphModifier($r('sys.symbol.book_pages')).fontColor([$r('app.color.app_text_secondary')]),
-        selected: new SymbolGlyphModifier($r('sys.symbol.book_pages_fill')).fontColor([$r('app.color.app_accent')])
+        normal: new SymbolGlyphModifier($r('sys.symbol.book_pages')).fontSize(20).fontColor([$r('app.color.app_text_secondary')]),
+        selected: new SymbolGlyphModifier($r('sys.symbol.book_pages_fill')).fontSize(20).fontColor([$r('app.color.app_accent')])
       }, '教务')
-        .labelStyle({ selectedColor: $r('app.color.app_accent'), unselectedColor: $r('app.color.app_text_secondary') })
+        .labelStyle({ font: { size: 10, weight: FontWeight.Medium }, selectedColor: $r('app.color.app_accent'), unselectedColor: $r('app.color.app_text_secondary') })
         .iconStyle({ selectedColor: $r('app.color.app_accent'), unselectedColor: $r('app.color.app_text_secondary') }))
     TabContent() { Column() {} }
       .tabBar(new BottomTabBarStyle({
-        normal: new SymbolGlyphModifier($r('sys.symbol.calendar')).fontColor([$r('app.color.app_text_secondary')]),
-        selected: new SymbolGlyphModifier($r('sys.symbol.calendar')).fontColor([$r('app.color.app_accent')])
+        normal: new SymbolGlyphModifier($r('sys.symbol.calendar')).fontSize(20).fontColor([$r('app.color.app_text_secondary')]),
+        selected: new SymbolGlyphModifier($r('sys.symbol.calendar')).fontSize(20).fontColor([$r('app.color.app_accent')])
       }, '课表')
-        .labelStyle({ selectedColor: $r('app.color.app_accent'), unselectedColor: $r('app.color.app_text_secondary') })
+        .labelStyle({ font: { size: 10, weight: FontWeight.Medium }, selectedColor: $r('app.color.app_accent'), unselectedColor: $r('app.color.app_text_secondary') })
         .iconStyle({ selectedColor: $r('app.color.app_accent'), unselectedColor: $r('app.color.app_text_secondary') }))
     TabContent() { Column() {} }
       .tabBar(new BottomTabBarStyle({
-        normal: new SymbolGlyphModifier($r('sys.symbol.square_grid_2x2')).fontColor([$r('app.color.app_text_secondary')]),
-        selected: new SymbolGlyphModifier($r('sys.symbol.square_grid_2x2')).fontColor([$r('app.color.app_accent')])
+        normal: new SymbolGlyphModifier($r('sys.symbol.square_grid_2x2')).fontSize(20).fontColor([$r('app.color.app_text_secondary')]),
+        selected: new SymbolGlyphModifier($r('sys.symbol.square_grid_2x2')).fontSize(20).fontColor([$r('app.color.app_accent')])
       }, '服务')
-        .labelStyle({ selectedColor: $r('app.color.app_accent'), unselectedColor: $r('app.color.app_text_secondary') })
+        .labelStyle({ font: { size: 10, weight: FontWeight.Medium }, selectedColor: $r('app.color.app_accent'), unselectedColor: $r('app.color.app_text_secondary') })
         .iconStyle({ selectedColor: $r('app.color.app_accent'), unselectedColor: $r('app.color.app_text_secondary') }))
     TabContent() { Column() {} }
       .tabBar(new BottomTabBarStyle({
-        normal: new SymbolGlyphModifier($r('sys.symbol.person')).fontColor([$r('app.color.app_text_secondary')]),
-        selected: new SymbolGlyphModifier($r('sys.symbol.person_fill')).fontColor([$r('app.color.app_accent')])
+        normal: new SymbolGlyphModifier($r('sys.symbol.person')).fontSize(20).fontColor([$r('app.color.app_text_secondary')]),
+        selected: new SymbolGlyphModifier($r('sys.symbol.person_fill')).fontSize(20).fontColor([$r('app.color.app_accent')])
       }, '我的')
-        .labelStyle({ selectedColor: $r('app.color.app_accent'), unselectedColor: $r('app.color.app_text_secondary') })
+        .labelStyle({ font: { size: 10, weight: FontWeight.Medium }, selectedColor: $r('app.color.app_accent'), unselectedColor: $r('app.color.app_text_secondary') })
         .iconStyle({ selectedColor: $r('app.color.app_accent'), unselectedColor: $r('app.color.app_text_secondary') }))
   }
 
@@ -1060,106 +1108,126 @@ struct Index {
       HdsTabs({ barPosition: BarPosition.End, index: this.selectedTab }) {
         this.tabItems()
       }
-      .width('100%').height(84).barHeight(64)
-      .barFloatingStyle({ barSideMargin: 16, barBottomMargin: 8,
+      .width('100%').height(76 + this.getUIContext().px2vp(this.systemBottomInsetPx)).barHeight(56)
+      .barFloatingStyle({ barSideMargin: 20, barBottomMargin: 8 + this.getUIContext().px2vp(this.systemBottomInsetPx),
+        gradientMask: { maskColor: Color.Transparent, maskHeight: 0 },
         systemMaterialEffect: { materialType: hdsMaterial.MaterialType.ADAPTIVE, materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE } })
       .barOverlap(true).scrollable(false).animationDuration(0)
       .onTabBarClick((index: number) => this.selectTab(index))
     } else {
       Tabs({ barPosition: BarPosition.End, index: this.selectedTab }) { this.tabItems() }
-        .width('100%').height(84).barHeight(64).scrollable(false).animationDuration(0)
+        .width('100%').height(76).barHeight(56).scrollable(false).animationDuration(0)
+        .margin({ bottom: this.getUIContext().px2vp(this.systemBottomInsetPx) })
         .barBackgroundBlurStyle(BlurStyle.COMPONENT_THICK)
         .onTabBarClick((index: number) => this.selectTab(index))
     }
   }
 
+  private async loadWidgetPreview(): Promise<void> {
+    const revision = ++this.widgetPreviewRevision;
+    const context = AppStorage.get<common.UIAbilityContext>('abilityContext');
+    if (!context) return;
+    this.widgetPreview = initialScheduleWidgetBinding(this.widgetDimension, this.widgetFormName);
+    const preview = await readScheduleWidgetPreview(context, this.widgetDimension, this.widgetFormName);
+    if (revision !== this.widgetPreviewRevision || !this.widgetPanelVisible) return;
+    this.widgetPreview = preview;
+    const lockPreview = await readScheduleWidgetPreview(context, 2, 'schedule_upcoming');
+    if (revision === this.widgetPreviewRevision && this.widgetPanelVisible) this.lockPreview = lockPreview;
+  }
+
+  private selectWidgetLayout(name: string): void {
+    this.widgetFormName = name;
+    this.widgetDimension = name === 'schedule_upcoming' ? 2 : name === 'schedule_today' ? 3 : 4;
+    void this.loadWidgetPreview();
+  }
+
+  private async updateWidgetTheme(theme: string): Promise<void> {
+    this.widgetTheme = theme;
+    const context = AppStorage.get<common.UIAbilityContext>('abilityContext');
+    if (!context) return;
+    await saveScheduleWidgetTheme(context, theme);
+    void refreshAllScheduleForms(context);
+    void this.loadWidgetPreview();
+  }
+
   @Builder
   private widgetSettingsPanel() {
-    Column() {
-      Blank()
-        .layoutWeight(1)
-        .width('100%')
-        .onClick(() => this.widgetPanelVisible = false)
-
-      Column({ space: 16 }) {
+    Scroll() {
+      Column({ space: 20 }) {
+        Text('课表卡片').fontSize(22).fontWeight(FontWeight.Bold)
+          .fontColor($r('app.color.app_text_primary')).width('100%')
+        Text(this.widgetConfigured ? '使用教务课表，点击卡片查看课程' : '连接教务课表后即可使用')
+          .fontSize(13).fontColor($r('app.color.app_text_secondary')).width('100%')
+        Row({ space: 6 }) {
+          ForEach(['schedule_upcoming', 'schedule_today', 'schedule_two_day'], (name: string) => {
+            Button(name === 'schedule_upcoming' ? '临近课程' : name === 'schedule_today' ? '今日课表' : '两日课表')
+              .type(ButtonType.Normal).height(34).layoutWeight(1).fontSize(12).padding(0).borderRadius(17)
+              .fontColor(this.widgetFormName === name ? $r('app.color.app_text_primary') : $r('app.color.app_text_secondary'))
+              .backgroundColor(this.widgetFormName === name ? $r('app.color.app_surface') : Color.Transparent)
+              .accessibilitySelected(this.widgetFormName === name).onClick(() => this.selectWidgetLayout(name))
+          })
+        }.width('100%').padding(3).backgroundColor($r('app.color.app_control')).borderRadius(20)
+        if (this.widgetFormName !== 'schedule_two_day') {
+          Row({ space: 8 }) {
+            ForEach(this.widgetFormName === 'schedule_upcoming' ? [2,3] : [3,4], (dimension: number) => {
+              Button(dimension === 2 ? '小号' : dimension === 3 ? '中号' : '大号').height(32).fontSize(12)
+                .fontColor($r('app.color.app_accent'))
+                .backgroundColor(this.widgetDimension === dimension ? $r('app.color.app_accent_surface') : Color.Transparent)
+                .onClick(() => { this.widgetDimension = dimension; void this.loadWidgetPreview(); })
+            })
+          }.width('100%').justifyContent(FlexAlign.Center)
+        }
         Row() {
-          Column({ space: 3 }) {
-            Text('课表服务卡片')
-              .fontSize(20)
-              .fontWeight(FontWeight.Bold)
-              .fontColor($r('app.color.app_text_primary'))
-            Text(this.widgetConfigured ? '订阅已配置，可从桌面或锁屏添加' : '加载课表后将自动配置，也可以手动重试')
-              .fontSize(12)
-              .fontColor($r('app.color.app_text_secondary'))
-          }
-          .alignItems(HorizontalAlign.Start)
-          .layoutWeight(1)
+          ScheduleCardView({
+            state: this.widgetPreview.state, title: this.widgetPreview.title, subtitle: this.widgetPreview.subtitle,
+            leftTitle: this.widgetPreview.leftTitle, rightTitle: this.widgetPreview.rightTitle,
+            primaryCourses: this.widgetPreview.primaryCourses, secondaryCourses: this.widgetPreview.secondaryCourses,
+            footer: this.widgetPreview.footer, theme: this.widgetPreview.theme, accent: this.widgetPreview.accent,
+            semester: this.widgetPreview.semester, currentWeek: this.widgetPreview.currentWeek,
+            primaryWeek: this.widgetPreview.primaryWeek, secondaryWeek: this.widgetPreview.secondaryWeek,
+            primaryRemaining: this.widgetPreview.primaryRemaining, secondaryRemaining: this.widgetPreview.secondaryRemaining,
+            dimension: this.widgetDimension, variant: this.widgetPreview.variant, layout: this.widgetPreview.layout
+          }).width(this.widgetDimension === 2 ? 150 : '100%').height(this.widgetDimension === 4 ? 348 : 150)
+            .clip(true).borderRadius(22).border({ width: 0.5, color: $r('app.color.app_divider') })
+        }.width('100%').justifyContent(FlexAlign.Center)
+        Column({ space: 8 }) {
+          Text('课程配色').fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.app_text_primary')).width('100%')
+          this.paletteChoices(this.widgetTheme, true)
+        }.width('100%')
+        Button(this.widgetConfigured ? '刷新卡片' : '连接教务课表').width('100%').height(44).fontSize(14)
+          .fontColor($r('app.color.app_on_accent')).backgroundColor($r('app.color.app_accent'))
+          .onClick(() => { this.widgetAutoSetupAttempted = true; this.configureScheduleWidget(); })
+        Text('添加到桌面').fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.app_text_primary')).width('100%')
+        Text('长按桌面的药大拾间图标，选择「卡片」，挑选样式后添加。')
+          .fontSize(13).fontColor($r('app.color.app_text_secondary')).width('100%')
+        Text('锁屏卡片').fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.app_text_primary')).width('100%')
+        Text('在支持的设备上，通过系统锁屏编辑页添加。')
+          .fontSize(13).fontColor($r('app.color.app_text_secondary')).width('100%')
+        Column({ space: 12 }) {
+          Row({ space: 12 }) {
+            Column() { this.lockCardPreview('lock-circular') }
+              .width(72).height(72).backgroundColor('#35443C').borderRadius(36)
+            Column() { this.lockCardPreview('lock-rectangular') }
+              .layoutWeight(1).height(86).backgroundColor('#35443C').borderRadius(18)
+          }.width('100%')
+          Column() { this.lockCardPreview('lock-inline') }
+            .width('100%').height(42).backgroundColor('#35443C').borderRadius(14)
+        }.width('100%')
+      }.width('100%').padding({left: 20, right: 20, top: 32, bottom: 40})
+    }.width('100%').height('100%').scrollBar(BarState.Off).backgroundColor($r('app.color.app_surface'))
+  }
 
-          Button('完成')
-            .type(ButtonType.Normal)
-            .height(34)
-            .fontSize(14)
-            .fontColor('#2459AF')
-            .backgroundColor('#E7F0FF')
-            .onClick(() => this.widgetPanelVisible = false)
-        }
-        .width('100%')
-
-        Text('主题')
-          .width('100%')
-          .fontSize(14)
-          .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.app_text_primary'))
-
-        Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.Start }) {
-          ForEach([
-            'color-glass', 'green', 'blue', 'teal', 'indigo', 'violet', 'orange', 'rose', 'slate'
-          ], (theme: string) => {
-            Button(this.widgetThemeLabel(theme))
-              .type(ButtonType.Capsule)
-              .height(34)
-              .fontSize(12)
-              .fontColor(this.widgetTheme === theme ? '#FFFFFF' : $r('app.color.app_text_secondary'))
-              .backgroundColor(this.widgetTheme === theme ? this.widgetThemeColor(theme) : $r('app.color.app_control'))
-              .margin({ right: 8, bottom: 8 })
-              .onClick(() => {
-                this.widgetTheme = theme;
-                this.bridge.setScheduleWidgetTheme(theme);
-              })
-          })
-        }
-        .width('100%')
-
-        Button(this.widgetConfigured ? '重新配置并刷新卡片' : '立即配置卡片')
-          .type(ButtonType.Capsule)
-          .width('100%')
-          .height(46)
-          .fontSize(15)
-          .fontColor('#FFFFFF')
-          .backgroundColor('#376FD6')
-          .onClick(() => {
-            this.widgetAutoSetupAttempted = true;
-            this.configureScheduleWidget();
-          })
-
-        Text('支持 2×2、2×4、4×4 桌面卡片，以及横条、圆形、矩形锁屏卡片。系统实际刷新时间由 HarmonyOS 调度。')
-          .width('100%')
-          .fontSize(12)
-          .fontColor($r('app.color.app_text_secondary'))
-      }
-      .width('100%')
-      .padding({ left: 20, right: 20, top: 20, bottom: 28 })
-      .backgroundColor($r('app.color.app_surface'))
-      .borderRadius({ topLeft: 24, topRight: 24 })
-    }
-    .width('100%')
-    .height('100%')
-    .backgroundColor('rgba(15, 23, 42, 0.36)')
+  @Builder
+  private lockCardPreview(variant: string) {
+    ScheduleCardView({ state: this.lockPreview.state, subtitle: this.lockPreview.subtitle,
+      leftTitle: this.lockPreview.leftTitle, primaryCourses: this.lockPreview.primaryCourses,
+      primaryWeek: this.lockPreview.primaryWeek, footer: this.lockPreview.footer,
+      variant, dimension: 2, layout: 'upcoming' })
   }
 
   private widgetThemeLabel(theme: string): string {
     const labels: Map<string, string> = new Map<string, string>([
-      ['color-glass', '彩色玻璃'], ['green', '青绿'], ['blue', '蓝色'], ['teal', '湖蓝'], ['indigo', '靛粉'],
+      ['color-glass', '多彩'], ['green', '青绿'], ['blue', '蓝色'], ['teal', '湖蓝'], ['indigo', '靛粉'],
       ['violet', '紫色'], ['orange', '橙色'], ['rose', '玫红'], ['slate', '石墨']
     ]);
     return labels.get(theme) ?? theme;
@@ -1167,7 +1235,7 @@ struct Index {
 
   private widgetThemeColor(theme: string): string {
     const colors: Map<string, string> = new Map<string, string>([
-      ['color-glass', '#6D5DFC'], ['green', '#168776'], ['blue', '#2563EB'], ['teal', '#0891B2'],
+      ['color-glass', '#799989'], ['green', '#168776'], ['blue', '#2563EB'], ['teal', '#0891B2'],
       ['indigo', '#DB2777'], ['violet', '#7C3AED'], ['orange', '#EA580C'], ['rose', '#E11D48'], ['slate', '#475569']
     ]);
     return colors.get(theme) ?? '#376FD6';
@@ -1265,6 +1333,7 @@ struct Index {
     }
     if (this.widgetPanelVisible) {
       this.widgetPanelVisible = false;
+      this.widgetPreviewRevision += 1;
       return true;
     }
     if (this.imagePreviewVisible) {
@@ -1282,6 +1351,11 @@ struct Index {
     }
     if (this.selectedTab === 2) {
       this.selectTab(0);
+      return true;
+    }
+    if (this.webOverlayVisible) {
+      void this.controller.runJavaScript(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }));`)
+        .catch(() => undefined);
       return true;
     }
     try {

@@ -9,7 +9,7 @@ function page() {
   const jwxt={isLoggedIn:true,token:'__cpu_jwxt_cookie_session__',$subscribe(){}};
   const window={CPUTimeNative:{ready(){}},CPUTimeNativeScheduleFetch(){}};
   const ctx=vm.createContext({window,URL,AbortController,setTimeout,clearTimeout,
-    navigator:{userAgent:'CPUWebHarmonyApp/19 CPUTimeNative/1'},
+    navigator:{userAgent:'CPUWebHarmonyApp/19 CPUWebHarmonyAppVersion/2.1.0'},
     document:{cookie:'__Host-cpu-csrf=test-csrf',getElementById:()=>({__vue_app__:{config:{globalProperties:{$pinia:{_s:new Map([['auth',auth],['jwxt',jwxt]])}}}}})},
     fetch:async(url,options)=>{
       assert.match(String(url),/^\/api\/jwxt\/schedule-edits/);

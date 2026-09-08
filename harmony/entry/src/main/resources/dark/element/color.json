@@ -2,47 +2,55 @@
   "color": [
     {
       "name": "start_window_background",
-      "value": "#11151B"
+      "value": "#151A17"
     },
     {
       "name": "app_background",
-      "value": "#11151B"
+      "value": "#151A17"
     },
     {
       "name": "app_surface",
-      "value": "#20252D"
+      "value": "#222724"
     },
     {
       "name": "app_navigation",
-      "value": "#171B22"
+      "value": "#222724"
     },
     {
       "name": "app_control",
-      "value": "#2B3038"
+      "value": "#2D332F"
     },
     {
       "name": "app_divider",
-      "value": "#343B46"
+      "value": "#333C35"
     },
     {
       "name": "app_text_primary",
-      "value": "#F5F7FA"
+      "value": "#F3F5F7"
     },
     {
       "name": "app_text_secondary",
-      "value": "#B4BCC8"
+      "value": "#ADB5AF"
     },
     {
       "name": "app_text_tertiary",
-      "value": "#8B95A5"
+      "value": "#99A49C"
     },
     {
       "name": "app_accent",
-      "value": "#79D7C5"
+      "value": "#91D4B2"
     },
     {
       "name": "app_accent_surface",
-      "value": "#203C36"
+      "value": "#253D30"
+    },
+    {
+      "name": "widget_background",
+      "value": "#222724"
+    },
+    {
+      "name": "app_on_accent",
+      "value": "#173D28"
     }
   ]
 }
