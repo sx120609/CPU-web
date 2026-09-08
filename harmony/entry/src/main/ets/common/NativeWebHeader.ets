@@ -29,17 +29,7 @@ export struct NativeWebHeader {
         .margin({ left: 2, right: 6 })
       this.iconButton($r('sys.symbol.arrow_clockwise'), '刷新页面', 'refresh')
       if (this.state.authenticated) {
-        Button() {
-          Stack({ alignContent: Alignment.TopEnd }) {
-            SymbolGlyph($r('sys.symbol.bell')).fontSize(21).fontColor([$r('app.color.app_text_primary')])
-            if (this.state.unread > 0) {
-              Circle().width(7).height(7).fill($r('app.color.app_accent'))
-            }
-          }.width(24).height(24)
-        }.type(ButtonType.Normal).width(44).height(44).padding(0).borderRadius(22)
-          .backgroundColor(Color.Transparent).enabled(!this.blocked)
-          .accessibilityText(this.state.unread > 0 ? `消息，${this.state.unread}条未读` : '消息')
-          .onClick(() => this.onAction('messages'))
+        this.iconButton($r('sys.symbol.bell'), this.state.unread > 0 ? `消息，${this.state.unread}条未读` : '消息', 'messages')
       } else {
         Button('登录').type(ButtonType.Normal).height(44).padding({ left: 8, right: 8 })
           .fontSize(14).fontColor($r('app.color.app_accent')).borderRadius(22)
@@ -52,7 +42,14 @@ export struct NativeWebHeader {
 
   @Builder
   private iconButton(symbol: Resource, label: string, action: string) {
-    Button() { SymbolGlyph(symbol).fontSize(21).fontColor([$r('app.color.app_text_primary')]) }
+    Button() {
+      Stack({ alignContent: Alignment.Center }) {
+        SymbolGlyph(symbol).fontSize(21).fontColor([$r('app.color.app_text_primary')])
+        if (action === 'messages' && this.state.unread > 0) {
+          Circle().width(7).height(7).fill($r('app.color.app_accent')).position({ x: 19, y: 0 })
+        }
+      }.width(26).height(26)
+    }
       .type(ButtonType.Normal).width(44).height(44).padding(0).borderRadius(22)
       .backgroundColor(Color.Transparent).enabled(!this.blocked).accessibilityText(label)
       .onClick(() => this.onAction(action))
