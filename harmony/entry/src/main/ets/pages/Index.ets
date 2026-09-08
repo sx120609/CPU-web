@@ -23,6 +23,7 @@ import {
   NativePreviewImage,
   setActiveHarmonyBridge
 } from '../common/HarmonyBridge';
+import { restoreNativeScheduleCache } from '../schedule/NativeScheduleCache';
 import { NativeSchedulePage } from '../schedule/NativeSchedulePage';
 import { NativeCourseBlock, NativeScheduleRequest, NativeScheduleStore } from '../schedule/NativeScheduleStore';
 import { CourseEditorRequest, NativeCourseEditor, NativeCourseEditorModel } from '../schedule/NativeCourseEditor';
@@ -126,6 +127,7 @@ struct Index {
         }
       }
     );
+    if (context) restoreNativeScheduleCache(context, this.scheduleStore);
     this.editorModel.attach((id: string, payload: CourseEditorRequest) => {
       const requestId = JSON.stringify(id);
       const request = JSON.stringify(payload);
@@ -144,7 +146,8 @@ struct Index {
     }
     setNativeScheduleHostCallbacks({
       onReady: () => this.scheduleStore.markBridgeReady(),
-      onAuthChanged: () => {
+      onAuthChanged: (scope: string) => {
+        if (!this.scheduleStore.handleAuthChanged(scope)) return;
         this.editorModel.cancel();
         this.widgetPreviewRevision += 1;
         this.widgetPreview = initialScheduleWidgetBinding(this.widgetDimension, this.widgetFormName);
@@ -162,7 +165,6 @@ struct Index {
             }
           });
         }
-        this.scheduleStore.handleAuthChanged();
       },
       onNavigate: (path: string) => this.handleNativeNavigation(path),
       onWebOverlayChanged: (visible: boolean) => this.webOverlayVisible = visible,
@@ -314,7 +316,16 @@ struct Index {
         if (host) {
           const bridge = window.CPUTimeNative || {};
           bridge.ready = () => host.ready();
-          bridge.authChanged = () => host.authChanged();
+          bridge.authChanged = () => {
+            let scope = '';
+            try {
+              const account = sessionStorage.getItem('cpu-auth-cache-scope');
+              if (localStorage.getItem('cpu-authenticated') === '1' && account?.startsWith('user-')) {
+                scope = account + ':' + (localStorage.getItem('cpu-academic-identity-v1') || 'undergraduate');
+              }
+            } catch (_) {}
+            host.authChanged(scope);
+          };
           bridge.navigate = path => host.navigate(String(path || ''));
           bridge.schedulePrefetched = value => host.schedulePrefetched(JSON.stringify(value));
           bridge.scheduleWeekPrefetched = value => host.scheduleWeekPrefetched(JSON.stringify(value));
@@ -327,6 +338,7 @@ struct Index {
             return router?.push ? router.push(path) : undefined;
           };
           window.CPUTimeNative = bridge;
+          try { if (sessionStorage.getItem('cpu-auth-cache-scope')?.startsWith('user-')) bridge.authChanged(); } catch (_) {}
           if (!window.__cpuHarmonyAppearanceObserver) {
             const update = () => host.appearanceChanged(document.documentElement.dataset.appearanceMode || 'system');
             window.__cpuHarmonyAppearanceObserver = new MutationObserver(update);

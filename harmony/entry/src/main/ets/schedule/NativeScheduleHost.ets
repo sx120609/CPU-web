@@ -1,6 +1,6 @@
 export interface NativeScheduleHostCallbacks {
   onReady: () => void;
-  onAuthChanged: () => void;
+  onAuthChanged: (scope: string) => void;
   onNavigate: (path: string) => void;
   onResult: (id: string, payload: string) => void;
   onPrefetched: (payload: string) => void;
@@ -17,7 +17,7 @@ export function setNativeScheduleHostCallbacks(callbacks: NativeScheduleHostCall
   activeCallbacks = callbacks;
   if (pendingScheduleOpen) {
     pendingScheduleOpen = false;
-    callbacks.onNavigate('/schedule?source=deeplink&refresh=1');
+    callbacks.onNavigate('/schedule?source=deeplink');
   }
 }
 
@@ -26,7 +26,7 @@ export function clearNativeScheduleHostCallbacks(): void {
 }
 
 export function requestNativeScheduleOpen(): void {
-  if (activeCallbacks) activeCallbacks.onNavigate('/schedule?source=deeplink&refresh=1');
+  if (activeCallbacks) activeCallbacks.onNavigate('/schedule?source=deeplink');
   else pendingScheduleOpen = true;
 }
 
@@ -40,8 +40,8 @@ export class NativeScheduleHost {
     activeCallbacks?.onReady();
   }
 
-  authChanged(): void {
-    activeCallbacks?.onAuthChanged();
+  authChanged(scope: string = ''): void {
+    activeCallbacks?.onAuthChanged(scope);
   }
 
   navigate(path: string): void {

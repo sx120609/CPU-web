@@ -53,8 +53,20 @@ test('cold deep links queue until the native host exists; cleared hosts never re
   const host=compile('../entry/src/main/ets/schedule/NativeScheduleHost.ets'); const routes=[];
   const callbacks={onNavigate:path=>routes.push(path)};
   host.requestNativeScheduleOpen(); assert.equal(routes.length,0);
-  host.setNativeScheduleHostCallbacks(callbacks); assert.equal(routes.length,1); assert.match(routes[0],/refresh=1/);
+  host.setNativeScheduleHostCallbacks(callbacks); assert.equal(routes.length,1); assert.equal(routes[0],'/schedule?source=deeplink');
   host.requestNativeScheduleOpen(); assert.equal(routes.length,2);
   host.clearNativeScheduleHostCallbacks(); host.requestNativeScheduleOpen(); assert.equal(routes.length,2);
   host.setNativeScheduleHostCallbacks(callbacks); assert.equal(routes.length,3);
+});
+
+test('web proxy preserves account scope through the native host for cache isolation', () => {
+  const host = compile('../entry/src/main/ets/schedule/NativeScheduleHost.ets');
+  const received = [];
+  host.setNativeScheduleHostCallbacks({ onAuthChanged: scope => received.push(scope) });
+  const bridge = compile('../entry/src/main/ets/common/HarmonyBridge.ets', {
+    require: id => id.endsWith('NativeScheduleHost') ? host : {},
+  });
+  const proxy = new bridge.HarmonyJavaScriptProxy();
+  proxy.authChanged('user-1:undergraduate'); proxy.authChanged('user-2:graduate'); proxy.authChanged();
+  assert.deepEqual(received, ['user-1:undergraduate', 'user-2:graduate', '']);
 });

@@ -433,8 +433,8 @@ export class HarmonyJavaScriptProxy {
     this.nativeScheduleHost.editorResult(id, payload);
   }
 
-  authChanged(): void {
-    this.nativeScheduleHost.authChanged();
+  authChanged(scope: string = ''): void {
+    this.nativeScheduleHost.authChanged(scope);
   }
 
   navigate(path: string): void {

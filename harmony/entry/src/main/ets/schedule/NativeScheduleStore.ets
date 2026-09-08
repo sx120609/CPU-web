@@ -93,6 +93,16 @@ interface NativeScheduleCacheEntry {
   savedAt: number;
 }
 
+interface PersistedScheduleCache {
+  version: number;
+  accountScope: string;
+  semester: string;
+  week: string;
+  day: number;
+  viewMode: string;
+  snapshots: NativeScheduleSnapshot[];
+}
+
 export type NativeScheduleStatus = 'idle' | 'loading' | 'loaded' | 'unauthorized' | 'failed';
 export type NativeScheduleRequester = (request: NativeScheduleRequest) => void;
 export type NativeScheduleChangeListener = () => void;
@@ -130,6 +140,42 @@ export class NativeScheduleStore {
   private pendingKey: string = '';
   private refreshBarrier: number = 0;
   private requestTimer: number = -1;
+  private accountScope: string = '';
+  private persistence?: (raw: string) => void;
+
+  attachPersistence(writer: (raw: string) => void): void { this.persistence = writer; }
+
+  restoreCache(raw: string): void {
+    if (this.result || this.accountScope || !raw) return;
+    try {
+      const saved = JSON.parse(raw) as PersistedScheduleCache;
+      if (saved.version !== 1 || !saved.accountScope || !Array.isArray(saved.snapshots)) return;
+      saved.snapshots.forEach((snapshot: NativeScheduleSnapshot) => {
+        const time = this.snapshotTime(snapshot);
+        if (snapshot.version === 1 && snapshot.auth?.authenticated && !snapshot.error &&
+          snapshot.data && Array.isArray(snapshot.data.cells) && snapshot.fetchedAt &&
+          Number.isFinite(time) && time <= Date.now() && Date.now() - time <= CACHE_LIFETIME_MS) this.remember(snapshot);
+      });
+      const entry = this.freshCache(saved.semester, saved.week);
+      if (!entry) { this.cache.clear(); return; }
+      this.accountScope = saved.accountScope;
+      this.selectedSemester = saved.semester;
+      this.selectedWeek = saved.week;
+      this.selectedDay = saved.day >= 1 && saved.day <= 7 ? saved.day : (new Date().getDay() || 7);
+      this.viewMode = saved.viewMode === 'day' ? 'day' : 'week';
+      this.applySnapshot(entry.snapshot, true);
+    } catch (_) { this.cache.clear(); }
+  }
+
+  private persistCache(): void {
+    if (!this.persistence) return;
+    const snapshots: NativeScheduleSnapshot[] = [];
+    this.cache.forEach((entry: NativeScheduleCacheEntry) => snapshots.push(entry.snapshot));
+    const saved: PersistedScheduleCache = { version: 1, accountScope: this.accountScope,
+      semester: this.selectedSemester, week: this.selectedWeek, day: this.selectedDay,
+      viewMode: this.viewMode, snapshots };
+    this.persistence(this.accountScope && snapshots.length ? JSON.stringify(saved) : '');
+  }
 
   attach(requester: NativeScheduleRequester, listener: NativeScheduleChangeListener): void {
     this.requester = requester;
@@ -310,7 +356,9 @@ export class NativeScheduleStore {
     }
   }
 
-  handleAuthChanged(): void {
+  handleAuthChanged(scope: string = ''): boolean {
+    if (scope && scope === this.accountScope) return false;
+    this.accountScope = scope;
     this.requestGeneration += 1;
     this.cancelRequest();
     this.refreshBarrier = Date.now();
@@ -325,11 +373,13 @@ export class NativeScheduleStore {
     this.errorMessage = '';
     this.lastUpdatedAt = 0;
     this.status = 'idle';
+    this.persistCache();
     if (this.bridgeReady && this.requester) {
       this.load(false);
-      return;
+      return true;
     }
     this.notify();
+    return true;
   }
 
   visibleCells(): NativeScheduleCell[] {
@@ -405,6 +455,7 @@ export class NativeScheduleStore {
 
   previewWeek(week: string): NativeScheduleStore {
     const preview = new NativeScheduleStore();
+    preview.dataRevision = this.dataRevision;
     preview.selectedSemester = this.selectedSemester;
     preview.selectedWeek = week;
     preview.selectedDay = this.selectedDay;
@@ -499,6 +550,7 @@ export class NativeScheduleStore {
     }
     this.trimCache();
     this.dataRevision += 1;
+    this.persistCache();
   }
 
   private freshCache(semester: string, week: string): NativeScheduleCacheEntry | undefined {
@@ -550,6 +602,7 @@ export class NativeScheduleStore {
   }
 
   private notify(): void {
+    this.persistCache();
     this.listener?.();
   }
 }

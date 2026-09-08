@@ -178,3 +178,44 @@ test('previous and next week follow available options and stop at both boundarie
   h.store.moveWeek(-1); assert.equal(h.store.selectedWeek,'1');
   h.store.moveWeek(1); h.store.moveWeek(1); assert.equal(h.store.selectedWeek,'3'); assert.equal(h.store.canMoveWeek(1),false);
 });
+
+
+test('cold restart restores fresh account-scoped courses and navigation without requesting', () => {
+  const h = harness(); let saved = '';
+  h.store.attachPersistence(raw => saved = raw);
+  h.store.handleAuthChanged('user-1:undergraduate');
+  h.store.markBridgeReady(); h.accept(h.snapshot('fall', '2', true));
+  h.store.selectDay(4); h.store.setViewMode('day');
+  const restarted = harness(); restarted.store.restoreCache(saved);
+  assert.equal(restarted.store.status, 'loaded');
+  assert.equal(restarted.store.selectedDay, 4); assert.equal(restarted.store.viewMode, 'day');
+  assert.equal(restarted.store.visibleCells().length, 1);
+  assert.equal(restarted.store.handleAuthChanged('user-1:undergraduate'), false);
+  restarted.store.markBridgeReady(); restarted.store.load(false);
+  assert.equal(restarted.requests.filter(request => request.id).length, 0);
+  restarted.store.load(true);
+  assert.equal(restarted.requests.filter(request => request.id).length, 1);
+});
+
+test('cold caches expire at their original fetch time and reject malformed data', () => {
+  const h = harness(); let saved = '';
+  h.store.attachPersistence(raw => saved = raw); h.store.handleAuthChanged('user-1:undergraduate');
+  h.store.markBridgeReady(); h.accept(h.snapshot('fall', '2', true));
+  const expired = harness(); expired.advance(13 * 60 * 60 * 1000); expired.store.restoreCache(saved);
+  assert.equal(expired.store.result, undefined);
+  for (const raw of ['{', '{}', JSON.stringify({...JSON.parse(saved), accountScope: ''})]) {
+    const broken = harness(); broken.store.restoreCache(raw); assert.equal(broken.store.result, undefined);
+  }
+});
+
+test('logout, account switch and identity switch delete the restored disk cache', () => {
+  const h = harness(); let saved = '';
+  h.store.attachPersistence(raw => saved = raw); h.store.handleAuthChanged('user-1:undergraduate');
+  h.store.markBridgeReady(); h.accept(h.snapshot('fall', '2', true));
+  for (const scope of ['', 'user-2:undergraduate', 'user-1:graduate']) {
+    const next = harness(); next.store.restoreCache(saved); let write;
+    next.store.attachPersistence(raw => write = raw);
+    assert.equal(next.store.handleAuthChanged(scope), true);
+    assert.equal(next.store.result, undefined); assert.equal(write, '');
+  }
+});
