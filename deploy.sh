@@ -2209,7 +2209,35 @@ ensure_update_runtime_services() {
 }
 
 do_update() {
+  if [ "${CPU_WEB_UPDATE_LOCKED:-0}" != "1" ] || [ ! -e "/proc/$$/fd/9" ]; then
+    command -v flock >/dev/null 2>&1 || err "在线更新需要 flock；请先安装 util-linux"
+    exec 9>"$(git rev-parse --git-path cpu-web-update.lock)"
+    flock -n 9 || err "另一项更新正在运行，本次未修改服务"
+    export CPU_WEB_UPDATE_LOCKED=1
+  fi
   collect_update_changes
+
+  case "${DEPLOY_UPDATE_MODE:-blue-green}" in
+    blue-green)
+      [ "${DEPLOY_PAUSE_FOR_DB_MIGRATION:-0}" = "0" ] || err "蓝绿更新不允许停机迁移；请单独安排维护窗口"
+      [ "$DEPLOY_BUILD_MODE" != "local" ] || err "蓝绿更新仅接受经过校验的 GitHub 制品"
+      DEPLOY_BUILD_MODE=ci
+      select_deploy_build_source
+      [ "$DEPLOY_ARTIFACT_READY" = "1" ] || err "缺少精确 SHA 的 GitHub 制品，保留旧版本"
+      CPU_WEB_DEPLOY_ROOT="$ROOT_DIR" DEPLOY_TARGET_COMMIT="$DEPLOY_TARGET_COMMIT" \
+        DEPLOY_ARTIFACT_DIR="$DEPLOY_ARTIFACT_DIR" DEPLOY_CHANGED_FILES="$DEPLOY_CHANGED_FILES" \
+        DEPLOY_FORCE_ALL="$DEPLOY_FORCE_ALL" PORT="$PORT" VOICEHUB_PORT="$VOICEHUB_PORT" \
+        NGINX_BIN="$NGINX_BIN" NGINX_SITE_CONFIG="$NGINX_SITE_CONFIG" \
+        node "$ROOT_DIR/ops/deploy/blue-green.mjs"
+      record_successful_deployment
+      return
+      ;;
+    maintenance)
+      [ ! -f "$ROOT_DIR/.deploy/blue-green/state.json" ] || err "已有蓝绿实例；不能用旧式维护更新覆盖其运行目录"
+      warn "显式启用维护更新：服务可能重启并短暂中断"
+      ;;
+    *) err "DEPLOY_UPDATE_MODE 仅支持 blue-green 或 maintenance" ;;
+  esac
 
   local server_changed=0 web_changed=0 voicehub_changed=0
   local server_dependencies_changed=0 web_dependencies_changed=0 voicehub_dependencies_changed=0
@@ -2338,10 +2366,40 @@ do_agent_update() {
 }
 
 # ---------- 主入口 ----------
+require_update_runtime() {
+  if [ "${DEPLOY_UPDATE_MODE:-blue-green}" = "maintenance" ]; then
+    ensure_node
+    return
+  fi
+  command -v node >/dev/null 2>&1 && [ "$(node -p 'process.versions.node.split(".")[0]')" = "24" ] \
+    || err "在线更新要求已安装 Node.js 24；不会在服务运行期间升级 Node 或停止 PM2"
+  command -v pm2 >/dev/null 2>&1 || err "在线更新要求已安装 PM2"
+}
+
 main() {
   local CMD="${1:-init}"
   case "$CMD" in
+    logs|voicehub-logs|stop|start|restart)
+      local managed_target
+      managed_target=""
+      if [ -f "$ROOT_DIR/.deploy/blue-green/state.json" ]; then
+        managed_target="$(node "$ROOT_DIR/ops/deploy/runtime-target.mjs" "$ROOT_DIR")" || err "无法确定当前运行实例"
+      fi
+      if [ -n "$managed_target" ]; then
+        read -r SERVICE_NAME PORT VOICEHUB_SERVICE_NAME VOICEHUB_PORT <<< "$managed_target"
+        if [ "$CMD" = "restart" ] || [ "$CMD" = "start" ]; then
+          pm2 restart "$SERVICE_NAME" "$VOICEHUB_SERVICE_NAME"
+          wait_for_main_health
+          wait_for_voicehub_health
+          pm2 save >/dev/null
+          return
+        fi
+      fi
+      ;;
+  esac
+  case "$CMD" in
   init|"")
+    [ ! -f "$ROOT_DIR/.deploy/blue-green/state.json" ] || err "已有蓝绿部署状态；请使用 update，不要重新 init"
     log "=== 首次部署模式 ==="
     ensure_node
     if runtime_is_agent && ! runtime_uses_postgres; then
@@ -2368,7 +2426,7 @@ main() {
     ;;
   update)
     log "=== 更新部署 ==="
-    ensure_node
+    require_update_runtime
     if runtime_is_agent && ! runtime_uses_postgres; then
       log "检测到出站教务 Agent 环境，切换为 Agent 更新部署"
       do_agent_update
@@ -2381,7 +2439,7 @@ main() {
     ;;
   update-all)
     log "=== Full update deployment ==="
-    ensure_node
+    require_update_runtime
     ensure_ffmpeg
     ensure_env
     runtime_uses_postgres || err "PostgreSQL must be configured before updating"
@@ -2477,7 +2535,13 @@ main() {
   agent-autostart) do_autostart_enable agent ;;
   agent-autostart-off) do_autostart_disable agent ;;
   agent-autostart-status) do_autostart_status agent ;;
-  _autostart-main-run) SKIP_VOICEHUB_MIGRATE=1 do_start ;;
+  _autostart-main-run)
+    if [ -f "$ROOT_DIR/.deploy/blue-green/state.json" ]; then
+      pm2 resurrect
+    else
+      SKIP_VOICEHUB_MIGRATE=1 do_start
+    fi
+    ;;
   _autostart-agent-run) do_agent_start ;;
   reset-db)     do_db_reset && do_restart ;;
   help|-h|--help)

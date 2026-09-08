@@ -5,6 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
 import { config } from "../config";
+import { deploymentChildEnvironment } from "../utils/deploymentEnvironment";
 
 const execFileAsync = promisify(execFile);
 const DEPLOY_CONFIRMATION = "UPDATE_AND_DEPLOY";
@@ -418,7 +419,7 @@ export async function startAdminDeploymentUpdate(input: { operatorId: number; co
       detached: true,
       stdio: "ignore",
       windowsHide: true,
-      env: { ...process.env, CPU_WEB_ADMIN_DEPLOY: "1" },
+      env: deploymentChildEnvironment(process.env),
     });
     await new Promise<void>((resolve, reject) => {
       child.once("spawn", resolve);

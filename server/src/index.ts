@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
-import { createApp } from "./app";
+import { createApp, startAppWorkers } from "./app";
+import { waitForBackgroundOwnership } from "./utils/deploymentWorkers";
 import { config } from "./config";
 import { ensureBuiltinBoards } from "./services/defaultBoards";
 import { startScheduler } from "./services/schoolCrawler";
@@ -12,10 +13,13 @@ import { attachQqBotWebSocketGateway } from "./services/qqbot/connection";
 import { startAccountDeletionWorker } from "./services/accountDeletion";
 
 async function start() {
+  const managedRelease = Boolean(process.env.CPU_WEB_RELEASE_SHA);
   await loadJwxtAgentRuntimeConfig().catch((error) => {
+    if (managedRelease) throw error;
     console.warn("[jwxt-agent] 加载后台配置失败，暂时使用环境变量配置", error);
   });
   const createdBoards = await ensureBuiltinBoards().catch((e) => {
+    if (managedRelease) throw e;
     console.warn("ensureBuiltinBoards failed:", e?.message);
     return [];
   });
@@ -24,10 +28,16 @@ async function start() {
   }
   // 首页摘要依赖功能开关和全局置顶的内存快照。必须在开始接收请求前完成加载，
   // 否则重启后的首个请求会把空置顶列表写进共享首页缓存。
-  await loadFeatures().catch((e) => console.warn("loadFeatures failed:", e?.message));
-  await loadStorageConfig().catch((e) => console.warn("loadStorageConfig failed:", e?.message));
+  await loadFeatures().catch((e) => {
+    if (managedRelease) throw e;
+    console.warn("loadFeatures failed:", e?.message);
+  });
+  await loadStorageConfig().catch((e) => {
+    if (managedRelease) throw e;
+    console.warn("loadStorageConfig failed:", e?.message);
+  });
 
-  const app = createApp();
+  const app = createApp({ workers: false });
   const server = createServer(app);
   attachJwxtAgentGateway(server);
   attachQqBotWebSocketGateway(server);
@@ -41,7 +51,7 @@ async function start() {
     const forceExit = setTimeout(() => {
       console.error("[lifecycle] 优雅退出超时，强制结束进程");
       process.exit(1);
-    }, 10_000);
+    }, 120_000);
     forceExit.unref();
     server.close((error) => {
       clearTimeout(forceExit);
@@ -56,13 +66,16 @@ async function start() {
   process.once("SIGTERM", () => shutdown("SIGTERM"));
   process.once("SIGINT", () => shutdown("SIGINT"));
 
-  server.listen(config.port, () => {
+  server.listen(config.port, process.env.CPU_WEB_LISTEN_HOST || "0.0.0.0", () => {
     console.log(`🚀 CPU-web 后端已启动:  http://localhost:${config.port}`);
     console.log(`   健康检查:           http://localhost:${config.port}/api/health`);
     console.log(`   药苑之声:           http://localhost:${config.port}${voiceHubProxyConfig.path}`);
     console.log("   宿舍电费查询:       远程校园 Agent");
-    startScheduler();
-    startAccountDeletionWorker();
+    waitForBackgroundOwnership(() => {
+      startAppWorkers();
+      startScheduler();
+      startAccountDeletionWorker();
+    });
   });
 }
 

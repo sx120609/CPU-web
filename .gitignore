@@ -69,6 +69,7 @@ __pycache__/
 *.pyc
 
 # Misc
+.deploy/
 coverage/
 .nyc_output/
 desktop/release/药大刷课助手 Setup 0.1.0.exe

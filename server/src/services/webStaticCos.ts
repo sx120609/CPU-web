@@ -1,6 +1,6 @@
 import type { RequestHandler } from "express";
 import path from "node:path";
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { resolveTencentCosDeliveryUrl } from "./tencentCos";
 import { resolveAliyunOssDeliveryUrl } from "./aliyunOss";
 import { getMediaStorageRuntimeConfigSync, type WebStaticProvider } from "./storageConfig";
@@ -13,6 +13,25 @@ export const WEB_STATIC_COS_MANIFEST = "cos-static-assets.json";
 
 type WebStaticBackend = WebStaticProvider;
 
+function watchPublishedFile<T>(file: string, load: () => T): () => T {
+  let signature = "";
+  let cached: T;
+  return () => {
+    let nextSignature = "missing";
+    try {
+      const fileStat = statSync(file);
+      nextSignature = `${fileStat.ino}:${fileStat.mtimeMs}:${fileStat.size}`;
+    } catch { /* A manifest is optional while local delivery is active. */ }
+    if (nextSignature !== signature) {
+      const next = load();
+      cached = next;
+      signature = nextSignature;
+    }
+    return cached!;
+  };
+}
+
+
 type WebStaticCosManifest = {
   version: 1 | 2;
   generatedAt: string;
@@ -23,13 +42,12 @@ type WebStaticCosManifest = {
 };
 
 export function createWebStaticCosHandler(distRoot: string): RequestHandler {
-  const manifest = loadWebStaticManifest(distRoot);
-  const assets = manifest.assets;
-  if (!assets.size) return (_req, _res, next) => next();
-  console.log(`[static-object] redirect manifest active: ${assets.size} assets`);
+  const readManifest = watchPublishedFile(path.join(distRoot, WEB_STATIC_COS_MANIFEST), () => loadWebStaticManifest(distRoot));
 
   return async (req, res, next) => {
     if (req.method !== "GET" && req.method !== "HEAD") return next();
+    const manifest = readManifest();
+    const assets = manifest.assets;
     const assetPath = normalizeWebStaticAssetPath(decodeRequestPathname(req.path));
     if (!assetPath || !assets.has(assetPath)) return next();
 
@@ -46,13 +64,12 @@ export function createWebStaticCosHandler(distRoot: string): RequestHandler {
 }
 
 export function createWebStaticPublicCosHandler(distRoot: string): RequestHandler {
-  const manifest = loadWebStaticManifest(distRoot);
-  const assets = manifest.publicAssets;
-  if (!assets.size) return (_req, _res, next) => next();
-  console.log(`[static-${manifest.backend}] public redirect manifest active: ${assets.size} assets`);
+  const readManifest = watchPublishedFile(path.join(distRoot, WEB_STATIC_COS_MANIFEST), () => loadWebStaticManifest(distRoot));
 
   return async (req, res, next) => {
     if (req.method !== "GET" && req.method !== "HEAD") return next();
+    const manifest = readManifest();
+    const assets = manifest.publicAssets;
     const assetPath = normalizeWebStaticAssetPath(decodeRequestPathname(req.path));
     if (!assetPath || !assets.has(assetPath)) return next();
     try {
@@ -72,13 +89,13 @@ export function createWebStaticIndexHandler(
   resolveAssetBaseUrl: () => Promise<string> = resolveWebStaticAssetBaseUrl,
 ): RequestHandler {
   const indexPath = path.resolve(distRoot, "index.html");
-  const indexHtml = readFileSync(indexPath, "utf8");
+  const readIndex = watchPublishedFile(indexPath, () => readFileSync(indexPath, "utf8"));
 
   return async (_req, res) => {
     res.setHeader("Cache-Control", "no-cache, must-revalidate");
     try {
       const assetBaseUrl = await resolveAssetBaseUrl();
-      res.type("html").send(rewriteWebStaticAssetUrls(indexHtml, assetBaseUrl));
+      res.type("html").send(rewriteWebStaticAssetUrls(readIndex(), assetBaseUrl));
     } catch {
       res.sendFile(indexPath);
     }

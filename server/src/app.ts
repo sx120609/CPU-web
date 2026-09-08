@@ -33,9 +33,26 @@ import { authOptional } from "./middleware/auth";
 import { receiveCspReport, securityHeaders } from "./middleware/securityHeaders";
 import { voiceHubProxyMiddleware } from "./services/voiceHubProxy";
 import { startWechatNotificationPoller } from "./services/wechatService";
+import { prisma } from "./prisma";
+import { isRedisConfigured, readRedisString } from "./services/redis";
+import { createDeploymentRelay } from "./utils/deploymentRelay";
 
-export function createApp() {
+export function startAppWorkers() {
+  startForumImageModerationPoller();
+  startForumVideoModerationPoller();
+  startForumSubmissionReviewPoller();
+  startDirectMessageSubmissionReviewPoller();
+  startNicknameReviewPoller();
+  startProfileReviewPoller();
+  startQqNotificationPoller();
+  startWechatNotificationPoller();
+  startSponsorOrderExpiryPoller();
+}
+
+export function createApp(options: { workers?: boolean } = {}) {
   const app = express();
+  const deploymentRelay = createDeploymentRelay();
+  app.use(deploymentRelay.middleware);
 
   // VoiceHub 需要保留原始请求体（音乐导入、上传等），因此必须在 JSON 解析器之前转发。
   app.use(voiceHubProxyMiddleware);
@@ -84,6 +101,19 @@ export function createApp() {
     res.json({ code: 0, data: { ok: true, ts: Date.now() }, message: "" });
   });
 
+  app.get("/api/ready", async (_req, res) => {
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      if (isRedisConfigured() && !(await readRedisString("deployment-readiness")).available) {
+        throw new Error("Redis unavailable");
+      }
+      res.setHeader("Cache-Control", "no-store");
+      res.json({ code: 0, data: { ready: true, commit: process.env.CPU_WEB_RELEASE_SHA || "", relayInFlight: deploymentRelay.inFlight() }, message: "" });
+    } catch {
+      res.status(503).json({ code: 5030, data: { ready: false }, message: "Service is not ready" });
+    }
+  });
+
   app.get("/10b0f912e73a202f7040913a82166673.txt", (_req, res) => {
     res.type("text/plain; charset=utf-8");
     res.send("9abfb616e9ac54f49df77561d1d73d364e38f9a4");
@@ -94,15 +124,7 @@ export function createApp() {
   app.use("/qqbot/ai-reply", qqBotAiReplyRouter);
   app.use("/api", router);
   startRuntimeSync();
-  startForumImageModerationPoller();
-  startForumVideoModerationPoller();
-  startForumSubmissionReviewPoller();
-  startDirectMessageSubmissionReviewPoller();
-  startNicknameReviewPoller();
-  startProfileReviewPoller();
-  startQqNotificationPoller();
-  startWechatNotificationPoller();
-  startSponsorOrderExpiryPoller();
+  if (options.workers !== false) startAppWorkers();
 
   app.use("/api/*", (_req, res) => {
     res.status(404).json({ code: 4004, data: null, message: "接口不存在" });
@@ -112,6 +134,7 @@ export function createApp() {
   if (!isDev) {
     // 候选 dist 路径（兼容从 server/ 或项目根启动）
     const candidates = [
+      ...(process.env.CPU_WEB_DIST ? [path.resolve(process.env.CPU_WEB_DIST)] : []),
       path.resolve(process.cwd(), "../web/dist"),
       path.resolve(process.cwd(), "web/dist"),
       path.resolve(__dirname, "../../web/dist"),

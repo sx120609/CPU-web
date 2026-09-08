@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -129,4 +129,24 @@ test("index handler emits entry modules on one direct CDN origin", async (t) => 
     body,
     '<script type="module" src="https://static.example/cpu-web-media/web-static/assets/dual-origin-v2/main.js"></script><link rel="modulepreload" href="https://static.example/cpu-web-media/web-static/assets/dual-origin-v2/vendor.js">',
   );
+});
+
+test("an existing index handler observes atomic frontend updates and rollback without a process restart", async t => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "cpu-hot-index-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const index = path.join(directory, "index.html");
+  await writeFile(index, '<script src="./assets/old.js"></script>');
+  const handler = createWebStaticIndexHandler(directory, async () => "https://static.example/assets");
+  let body = "";
+  const response = { setHeader() {}, type() { return this; }, send(value: string) { body = value; return this; } };
+  await handler({} as any, response as any, () => {});
+  assert.match(body, /old\.js/);
+  await writeFile(`${index}.next`, '<script src="./assets/new.js"></script>');
+  await rename(`${index}.next`, index);
+  await handler({} as any, response as any, () => {});
+  assert.match(body, /new\.js/);
+  await writeFile(`${index}.next`, '<script src="./assets/old.js"></script>');
+  await rename(`${index}.next`, index);
+  await handler({} as any, response as any, () => {});
+  assert.match(body, /old\.js/);
 });
