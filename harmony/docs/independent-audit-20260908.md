@@ -69,3 +69,11 @@ GitHub Actions 的 `Linux deployment artifact` 对精确提交 SHA 执行共享�
 - `final-tests.log`：68 项测试全部通过；`redesign-build-5.log`：最终 ArkTS、资源和 HAP 打包通过。
 
 最终无签名调试 HAP SHA-256：`4763bd581a7c45a5e9d89c114c5d972021f638c84c954887cab11c11283db9e5`，已安装至同一 API 24 模拟器。锁屏仍仅验证共用组件预览与配置，不代表真实锁屏宿主、发布签名或后台刷新验收。没有执行生产部署。
+
+## 底栏重建与表单按钮修正（后续反馈）
+
+实际复现了“首页打开快捷入口菜单，再返回”后 HDS 胶囊背景消失、图标覆盖帖子的问题。仅设置底色仍可复现；改为保留底栏组件、用 `Visibility.Hidden` 隐藏网页弹层下的导航后，浅深模式返回均恢复正常。继续关闭额外渐变蒙版。另按用户要求移除原生课表的品牌／消息／菜单顶栏，将高度交给课表；课程编辑的保存改为底部 48 vp 主按钮，周次批量操作为等宽 44 vp 按钮，选中配色使用语义资源。
+
+本机新增证据：`bar-bug.jpeg` 与 `bar-web-return.jpeg` 保留失败状态，`chrome-drawer-open.jpeg`、`chrome-drawer-return.jpeg`、`chrome-bar-dark.jpeg` 为修复后的网页弹层和返回状态；`chrome-schedule.jpeg` 为无顶栏课表；`chrome-editor.jpeg`、`chrome-editor-dark.jpeg` 为新按钮布局。模拟器点击输入框未出现软键盘，不能以 `chrome-keyboard.jpeg` 作为软键盘避让通过的证据。未保存测试课程。
+
+`chrome-tests.log` 的 68 项测试通过，`chrome-final-build.log` 打包通过并安装。此版本无签名 HAP SHA-256：`f14e9f683641762651facec1f9df2ae7b08566e4f541560efad4e43e0509355d`。

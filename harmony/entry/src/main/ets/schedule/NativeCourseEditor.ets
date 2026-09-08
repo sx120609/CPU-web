@@ -130,11 +130,7 @@ export struct NativeCourseEditor {
       Row() {
         Text(this.model.original ? '编辑课程' : '添加课程').fontSize(22).fontWeight(FontWeight.Bold)
           .fontColor($r('app.color.app_text_primary')).layoutWeight(1)
-        Button(this.model.busy ? '处理中' : '保存').height(44).fontSize(14)
-          .backgroundColor('#166F63').fontColor(Color.White)
-          .enabled(!this.model.busy && this.model.session.length > 0)
-          .onClick(() => this.model.submit('save'))
-      }.width('100%').padding({ right: 42 })
+      }.width('100%').height(44).padding({ right: 42 })
       if (this.model.error) {
         Text(this.model.error).fontSize(14).fontColor($r('app.color.app_text_primary')).width('100%')
       }
@@ -163,16 +159,19 @@ export struct NativeCourseEditor {
             .accessibilityText('课程备注').onChange(value => this.model.note = value)
           Row() {
             Text('教学周').fontSize(16).fontWeight(FontWeight.Medium).fontColor($r('app.color.app_text_primary')).layoutWeight(1)
-            Button('全部').height(44).fontSize(13).padding({ left: 10, right: 10 }).backgroundColor(Color.Transparent).fontColor($r('app.color.app_accent')).onClick(() => this.model.weeks = [...this.model.options])
-            Button('单周').height(44).fontSize(13).padding({ left: 10, right: 10 }).backgroundColor(Color.Transparent).fontColor($r('app.color.app_accent')).onClick(() => this.model.weeks = this.model.options.filter(value => value % 2 === 1))
-            Button('双周').height(44).fontSize(13).padding({ left: 10, right: 10 }).backgroundColor(Color.Transparent).fontColor($r('app.color.app_accent')).onClick(() => this.model.weeks = this.model.options.filter(value => value % 2 === 0))
+            Text(`已选 ${this.model.weeks.length} 周`).fontSize(12).fontColor($r('app.color.app_text_secondary'))
+          }.width('100%')
+          Row({ space: 8 }) {
+            Button('全部').height(44).layoutWeight(1).fontSize(14).backgroundColor($r('app.color.app_control')).fontColor($r('app.color.app_accent')).onClick(() => this.model.weeks = [...this.model.options])
+            Button('单周').height(44).layoutWeight(1).fontSize(14).backgroundColor($r('app.color.app_control')).fontColor($r('app.color.app_accent')).onClick(() => this.model.weeks = this.model.options.filter(value => value % 2 === 1))
+            Button('双周').height(44).layoutWeight(1).fontSize(14).backgroundColor($r('app.color.app_control')).fontColor($r('app.color.app_accent')).onClick(() => this.model.weeks = this.model.options.filter(value => value % 2 === 0))
           }.width('100%')
           Grid() {
             ForEach(this.model.options, (week: number) => {
               GridItem() {
                 Button(String(week)).height(44).width('100%').type(ButtonType.Normal).borderRadius(10)
-                  .fontColor(this.model.weeks.includes(week) ? Color.White : $r('app.color.app_text_primary'))
-                  .backgroundColor(this.model.weeks.includes(week) ? '#166F63' : $r('app.color.app_control'))
+                  .fontColor(this.model.weeks.includes(week) ? $r('app.color.app_on_accent') : $r('app.color.app_text_primary'))
+                  .backgroundColor(this.model.weeks.includes(week) ? $r('app.color.app_accent') : $r('app.color.app_control'))
                   .accessibilityText(`第${week}周，${this.model.weeks.includes(week) ? '已选' : '未选'}`)
                   .onClick(() => this.model.toggleWeek(week))
               }
@@ -196,9 +195,13 @@ export struct NativeCourseEditor {
                 .onClick(() => this.model.submit('restoreHidden', item.key))
             })
           }
-        }.width('100%').padding({ bottom: 56 }).enabled(!this.model.busy)
+        }.width('100%').padding({ bottom: 12 }).enabled(!this.model.busy)
       }.layoutWeight(1).width('100%').scrollBar(BarState.Off)
-    }.width('100%').height('100%').padding({ left: 16, right: 16, top: 24 })
+      Button(this.model.busy ? '处理中' : '保存课程').height(48).width('100%').fontSize(16)
+        .backgroundColor($r('app.color.app_accent')).fontColor($r('app.color.app_on_accent'))
+        .enabled(!this.model.busy && this.model.session.length > 0)
+        .onClick(() => this.model.submit('save'))
+    }.width('100%').height('100%').padding({ left: 16, right: 16, top: 24, bottom: 28 })
       .backgroundColor($r('app.color.app_surface'))
   }
   private slotOptions(): SelectOption[] {

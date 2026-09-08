@@ -529,9 +529,6 @@ struct Index {
             NativeSchedulePage({
               store: this.scheduleStore,
               bottomSafeInset: this.getUIContext().px2vp(this.systemBottomInsetPx),
-              onHome: () => this.selectTab(0),
-              onMessages: () => this.selectTab(4, '/messages'),
-              onProfile: () => this.selectTab(4),
               onLogin: () => {
                 this.selectTab(1);
                 const script = `window.CPUTimeNative?.openWebRoute?.('/jwxt?reauthorize=1&redirect=/schedule');`;
@@ -605,12 +602,11 @@ struct Index {
       .height('100%')
       .padding({ top: this.getUIContext().px2vp(this.systemTopInsetPx) })
 
-      if (this.selectedTab === 2 || !this.webOverlayVisible) {
       Column() {
         this.bottomNavigation()
       }.width('100%').height(84 + this.getUIContext().px2vp(this.systemBottomInsetPx)).align(Alignment.Bottom)
+        .visibility(this.selectedTab === 2 || !this.webOverlayVisible ? Visibility.Visible : Visibility.Hidden)
         .hitTestBehavior(HitTestMode.Transparent)
-      }
 
       if (this.imagePreviewVisible && this.previewImages.length > 0) {
         Column() {
@@ -1109,6 +1105,7 @@ struct Index {
         this.tabItems()
       }
       .width('100%').height(76 + this.getUIContext().px2vp(this.systemBottomInsetPx)).barHeight(56)
+      .barBackgroundColor($r('app.color.app_surface'))
       .barFloatingStyle({ barSideMargin: 20, barBottomMargin: 8 + this.getUIContext().px2vp(this.systemBottomInsetPx),
         gradientMask: { maskColor: Color.Transparent, maskHeight: 0 },
         systemMaterialEffect: { materialType: hdsMaterial.MaterialType.ADAPTIVE, materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE } })

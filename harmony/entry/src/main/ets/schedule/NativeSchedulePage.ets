@@ -10,9 +10,6 @@ const SLOT_ENDS: string[] = ['08:45', '09:40', '10:40', '11:35', '14:15', '15:10
 export struct NativeSchedulePage {
   @ObjectLink store: NativeScheduleStore;
   @Prop bottomSafeInset: number = 0;
-  onHome: () => void = () => undefined;
-  onMessages: () => void = () => undefined;
-  onProfile: () => void = () => undefined;
   onLogin: () => void = () => undefined;
   onWidgets: () => void = () => undefined;
   onTools: () => void = () => undefined;
@@ -44,7 +41,6 @@ export struct NativeSchedulePage {
         Image(this.store.backgroundPath).width('100%').height('100%').objectFit(ImageFit.Cover).opacity(this.store.backgroundOpacity)
       }
       Column() {
-        this.appTopBar()
         if (this.store.result) {
           this.scheduleToolbar()
           this.weekSwitcher()
@@ -85,34 +81,6 @@ export struct NativeSchedulePage {
         height: SheetSize.FIT_CONTENT, showClose: true, dragBar: true,
         onDisappear: () => { this.store.detailVisible = false; this.store.weekPickerVisible = false; this.overlappingBlocks = []; }
       })
-  }
-
-  @Builder
-  private appTopBar() {
-    Row({ space: 4 }) {
-      Button() {
-        Row({ space: 7 }) {
-          Image($r('app.media.app_icon')).width(22).height(22).borderRadius(7)
-          Text('药大拾间').fontSize(14).fontWeight(FontWeight.Medium).fontColor(this.secondaryColor())
-        }
-      }.type(ButtonType.Normal).height(44).padding(0).backgroundColor(Color.Transparent)
-        .accessibilityText('药大拾间，回到首页').onClick(() => this.onHome())
-      Blank()
-      Button() { SymbolGlyph($r('sys.symbol.bell')).fontSize(20).fontColor([this.textColor()]) }
-        .type(ButtonType.Normal).width(44).height(44).padding(0).backgroundColor(Color.Transparent)
-        .accessibilityText('消息中心').onClick(() => this.onMessages())
-      Button() {
-        Column({ space: 4 }) {
-          ForEach([1,2,3], () => { Rect().width(17).height(1.5).fill(this.textColor()).radius(1) })
-        }
-      }.type(ButtonType.Normal).width(44).height(44).padding(0).backgroundColor(Color.Transparent)
-        .accessibilityText('应用菜单').bindMenu([
-          { value: '个人中心', action: () => this.onProfile() },
-          { value: '消息中心', action: () => this.onMessages() },
-          { value: '应用外观', action: () => this.onAppearance() },
-          { value: '返回首页', action: () => this.onHome() }
-        ])
-    }.height(44).width('100%').padding({ left: 4 }).margin({ bottom: 4 })
   }
 
   @Builder
