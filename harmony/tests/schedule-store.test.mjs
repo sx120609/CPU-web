@@ -130,7 +130,7 @@ test('prefetch warms a known semester without changing visible selection', () =>
 });
 test('TTL uses fetch time, not arrival time', () => {
   const h = harness(); h.store.markBridgeReady(); const old = h.snapshot();
-  h.advance(13 * 60 * 60 * 1000); h.accept(old); h.store.load(false);
+  h.advance(31 * 24 * 60 * 60 * 1000); h.accept(old); h.store.load(false);
   assert.equal(h.store.status, 'loading'); assert.equal(h.requests.length, 2);
 });
 test('return to this week discards historical semester parameters', () => {
@@ -201,7 +201,11 @@ test('cold caches expire at their original fetch time and reject malformed data'
   const h = harness(); let saved = '';
   h.store.attachPersistence(raw => saved = raw); h.store.handleAuthChanged('user-1:undergraduate');
   h.store.markBridgeReady(); h.accept(h.snapshot('fall', '2', true));
-  const expired = harness(); expired.advance(13 * 60 * 60 * 1000); expired.store.restoreCache(saved);
+  const retained = harness(); retained.advance(29 * 24 * 60 * 60 * 1000); retained.store.restoreCache(saved);
+  assert.equal(retained.store.visibleCells().length, 1);
+  retained.store.markBridgeReady(); retained.store.load(false);
+  assert.equal(retained.requests.filter(request => request.id).length, 0);
+  const expired = harness(); expired.advance(31 * 24 * 60 * 60 * 1000); expired.store.restoreCache(saved);
   assert.equal(expired.store.result, undefined);
   for (const raw of ['{', '{}', JSON.stringify({...JSON.parse(saved), accountScope: ''})]) {
     const broken = harness(); broken.store.restoreCache(raw); assert.equal(broken.store.result, undefined);

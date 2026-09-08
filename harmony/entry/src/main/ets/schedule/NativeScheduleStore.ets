@@ -107,7 +107,7 @@ export type NativeScheduleStatus = 'idle' | 'loading' | 'loaded' | 'unauthorized
 export type NativeScheduleRequester = (request: NativeScheduleRequest) => void;
 export type NativeScheduleChangeListener = () => void;
 
-const CACHE_LIFETIME_MS: number = 12 * 60 * 60 * 1000;
+const CACHE_LIFETIME_MS: number = 30 * 24 * 60 * 60 * 1000;
 const MAX_SEMESTERS: number = 4;
 
 @Observed
