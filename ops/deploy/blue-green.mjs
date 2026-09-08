@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { randomUUID } from 'node:crypto'
 import { createServer } from 'node:net'
-import { access, glob, mkdir, readFile, readdir, realpath, rm, symlink } from 'node:fs/promises'
+import { access, glob, mkdir, readFile, readdir, realpath, rename, rm, symlink } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { assertCommit, readArtifactManifest, verifyArtifactManifest } from './artifact-manifest.mjs'
@@ -126,6 +126,14 @@ export async function restoreConfigs(configs) {
   for (const item of configs) {
     if (await readFile(item.file, 'utf8') !== item.before) await replaceConfig(item.file, item.after, item.before)
   }
+}
+
+export async function linkSharedDirectory(source, target) {
+  await mkdir(source, { recursive: true })
+  // Source archives can contain historical sample uploads. Keep those within
+  // this isolated release; the existing live directory remains authoritative.
+  if (await exists(target)) await rename(target, `${target}.packaged`)
+  await symlink(source, target, 'dir')
 }
 
 export async function verifyWeb(base, html, { entry = false } = {}) {
@@ -297,13 +305,11 @@ export async function deploy() {
     if (voiceChanged) await run('tar', ['-xzf', path.join(artifact, 'voicehub-output.tar.gz'), '-C', voiceDir])
     await symlink(path.join(root, 'server', '.env'), path.join(serverDir, '.env'))
     for (const directory of ['uploads', 'runtime']) {
-      await mkdir(path.join(root, 'server', directory), { recursive: true })
-      await symlink(path.join(root, 'server', directory), path.join(serverDir, directory))
+      await linkSharedDirectory(path.join(root, 'server', directory), path.join(serverDir, directory))
     }
     if (voiceChanged) {
       for (const directory of ['backups', 'storage', 'logs']) {
-        await mkdir(path.join(root, 'voicehub', directory), { recursive: true })
-        await symlink(path.join(root, 'voicehub', directory), path.join(voiceDir, directory))
+        await linkSharedDirectory(path.join(root, 'voicehub', directory), path.join(voiceDir, directory))
       }
       // Keep legacy avatar fallback directories readable in the isolated release.
       for (const relative of ['public/uploads', '.output/public/uploads']) {

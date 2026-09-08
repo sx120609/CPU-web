@@ -7,7 +7,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { atomicWrite, cutover, probe, replaceConfig, replaceUpstream, runtimeEnvironment } from './blue-green-core.mjs'
-import { configSnapshots, restoreConfigs, findProxyConfig, publishWebAssets, verifyWeb } from './blue-green.mjs'
+import { linkSharedDirectory, configSnapshots, restoreConfigs, findProxyConfig, publishWebAssets, verifyWeb } from './blue-green.mjs'
 
 const listen = server => new Promise(resolve => server.listen(0, '127.0.0.1', () => resolve(server.address().port)))
 const close = server => new Promise(resolve => server.close(resolve))
@@ -102,6 +102,21 @@ test('proxy discovery refuses ambiguity and respects an explicit include', async
     await writeFile(site, `include ${include};\nproxy_pass http://127.0.0.1:23333;`)
     await assert.rejects(findProxyConfig(site, 23333), /found 2/)
   }
+})
+
+test('shared uploads preserve archived samples and live contents', { skip: process.platform === 'win32' }, async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'cpu-shared-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const source = path.join(root, 'live'), target = path.join(root, 'release')
+  await mkdir(source)
+  await mkdir(target)
+  await writeFile(path.join(source, 'user.txt'), 'live user content')
+  await writeFile(path.join(target, 'sample.txt'), 'archived sample')
+  await linkSharedDirectory(source, target)
+  assert.equal(await readFile(path.join(target, 'user.txt'), 'utf8'), 'live user content')
+  assert.equal(await readFile(path.join(`${target}.packaged`, 'sample.txt'), 'utf8'), 'archived sample')
+  await writeFile(path.join(target, 'new.txt'), 'new upload')
+  assert.equal(await readFile(path.join(source, 'new.txt'), 'utf8'), 'new upload')
 })
 
 test('multi-file routing restores partial switches and refuses external edits before rollback', async t => {
