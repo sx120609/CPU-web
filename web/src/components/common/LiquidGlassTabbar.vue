@@ -16,11 +16,16 @@
         </defs>
       </svg>
       <div class="glass-base" aria-hidden="true" />
-      <div class="glass-tabs" :style="{ maskImage: contentMask }">
+      <div class="glass-tabs glass-tab-targets">
         <RouterLink v-for="(item, index) in items" :key="item.label" :to="item.to" class="glass-tab"
           :aria-current="index === activeIndex ? 'page' : undefined" draggable="false" @click="activate(index)">
           <span class="glass-tab-content"><el-icon><component :is="item.icon" /></el-icon><span>{{ item.label }}</span></span>
         </RouterLink>
+      </div>
+      <div class="glass-tabs glass-tab-glyphs" :style="{ clipPath: contentClip }" aria-hidden="true">
+        <span v-for="item in items" :key="item.label" class="glass-tab">
+          <span class="glass-tab-content"><el-icon><component :is="item.icon" /></el-icon><span>{{ item.label }}</span></span>
+        </span>
       </div>
       <div v-show="activeIndex >= 0 || pressed" class="glass-lens" :style="lensStyle" aria-hidden="true">
         <div class="glass-lens-content" :style="magnifiedStyle">
@@ -94,15 +99,17 @@ const magnifiedStyle = computed(() => ({
   transformOrigin: `${(frame.value.position + 0.5) * tabWidth.value}px 50%`,
   transform: `scale(${1 / frame.value.scaleX},${1 / frame.value.scaleY})`,
 }));
-// Cut the unselected glyphs out under the lens so magnified text never doubles up.
-const contentMask = computed(() => {
-  if (props.activeIndex < 0 && !pressed.value) return 'none';
+// Clip directly: replacing a data-URL mask every frame can blank the glyph layer in WebKit.
+const contentClip = computed(() => {
+  if (!width.value || (props.activeIndex < 0 && !pressed.value)) return 'none';
   const w = tabWidth.value * frame.value.scaleX;
   const h = 56 * frame.value.scaleY;
   const x = (frame.value.position + 0.5) * tabWidth.value - w / 2;
   const y = (56 - h) / 2;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width.value - 8}" height="56"><rect width="100%" height="100%" fill="white"/><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${28 * frame.value.scaleX}" ry="${28 * frame.value.scaleY}" fill="black"/></svg>`;
-  return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+  const rx = Math.min(w / 2, 28 * frame.value.scaleX);
+  const ry = h / 2;
+  const hole = `M ${x + rx} ${y} H ${x + w - rx} A ${rx} ${ry} 0 0 1 ${x + w} ${y + ry} A ${rx} ${ry} 0 0 1 ${x + w - rx} ${y + h} H ${x + rx} A ${rx} ${ry} 0 0 1 ${x} ${y + ry} A ${rx} ${ry} 0 0 1 ${x + rx} ${y} Z`;
+  return `path(evenodd, "M 0 0 H ${width.value - 8} V 56 H 0 Z ${hole}")`;
 });
 
 function tick(now: number) {
@@ -234,7 +241,9 @@ onBeforeUnmount(() => {
 .glass-base::after, .glass-lens::after { content: ''; position: absolute; inset: 0; border-radius: inherit; padding: 1px; background: conic-gradient(from -45deg, #ffffffb3, #ffffff08 20%, #ffffff05 35%, #ffffff80 50%, #ffffff05 70%, #ffffff08 85%, #ffffffb3); -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none; }
 .glass-base::after { opacity: .75; }
 .glass-tabs, .glass-lens-content { display: grid; grid-template-columns: repeat(var(--count), minmax(0, 1fr)); height: 56px; }
-.glass-tabs { position: relative; transform: translateX(var(--panel)); mask-mode: luminance; }
+.glass-tabs { position: relative; transform: translateX(var(--panel)); }
+.glass-tab-targets .glass-tab-content { opacity: 0; }
+.glass-tab-glyphs { position: absolute; inset: 4px; pointer-events: none; }
 .glass-tab { min-width: 0; height: 56px; display: flex; justify-content: center; align-items: center; color: #080808; text-decoration: none; border-radius: 999px; -webkit-tap-highlight-color: transparent; }
 .glass-tab-content { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; }
 .glass-tab .el-icon { font-size: 22px; }
