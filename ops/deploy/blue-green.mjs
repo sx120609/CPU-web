@@ -70,9 +70,9 @@ async function pm2Present(name) {
   return processes.some(item => item.name === name && item.pm2_env?.status === 'online')
 }
 
-async function startProcess(script, name, cwd, env, memory, args = []) {
+async function startProcess(script, name, cwd, env, memory, args = [], killTimeout = 125000) {
   await run('pm2', ['start', script, '--name', name, '--cwd', cwd,
-    '--interpreter', process.execPath, '--time', '--kill-timeout', '125000',
+    '--interpreter', process.execPath, '--time', '--kill-timeout', String(killTimeout),
     '--max-memory-restart', memory, '--merge-logs', ...args], { cwd, env: { ...runtimeEnvironment(process.env), ...env } })
 }
 
@@ -405,7 +405,9 @@ export async function deploy() {
       CPU_WEB_RELEASE_SHA: commit, CPU_WEB_RELEASE_ID: id, CPU_WEB_BACKGROUND_MARKER: marker,
       CPU_WEB_PREVIOUS_PORT: String(previous.port), CPU_WEB_TRAFFIC_MARKER: trafficMarker,
       VOICEHUB_ORIGIN: `http://127.0.0.1:${voicePort}`,
-    }, '600M')
+    // Nginx draining precedes retirement; PM2's own memory restart has no standby.
+    // Keep that restart bounded instead of waiting two minutes on agent sockets.
+    }, '1536M', [], 5000)
     mainStarted = true
     await run('pm2', ['save'])
     const complete = await cutover({

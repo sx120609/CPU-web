@@ -1841,7 +1841,7 @@ do_start() {
     NODE_ENV=production PORT=$PORT VOICEHUB_ORIGIN="http://127.0.0.1:$VOICEHUB_PORT" pm2 start "node dist/index.js" \
       --name "$SERVICE_NAME" \
       --time \
-      --max-memory-restart 600M \
+      --max-memory-restart 1536M --kill-timeout 5000 \
       --log-date-format "YYYY-MM-DD HH:mm:ss" \
       --merge-logs
   fi
@@ -1878,7 +1878,7 @@ do_main_start() {
     NODE_ENV=production PORT=$PORT VOICEHUB_ORIGIN="http://127.0.0.1:$VOICEHUB_PORT" pm2 start "node dist/index.js" \
       --name "$SERVICE_NAME" \
       --time \
-      --max-memory-restart 600M \
+      --max-memory-restart 1536M --kill-timeout 5000 \
       --log-date-format "YYYY-MM-DD HH:mm:ss" \
       --merge-logs
   fi
