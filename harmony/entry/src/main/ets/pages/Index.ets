@@ -2,6 +2,7 @@ import util from '@ohos.util';
 
 
 import { NativeTabBar } from '../common/NativeTabBar';
+import { NATIVE_TAB_BAR_HEIGHT, nativeNavigationBottomInset, nativeNavigationClearance } from '../common/NativeNavigationLayout';
 import BuildProfile from 'BuildProfile';
 import ConfigurationConstant from '@ohos.app.ability.ConfigurationConstant';
 import preferences from '@ohos.data.preferences';
@@ -54,7 +55,7 @@ struct Index {
   @StorageLink('launchUrl') private launchUrl: string = APP_URL;
   @StorageLink('nativeTab') private selectedTab: number = 2;
   @StorageProp('systemTopInsetPx') private systemTopInsetPx: number = 0;
-  @StorageProp('systemBottomInsetPx') private systemBottomInsetPx: number = 0;
+  @StorageProp('systemBottomInsetPx') @Watch('updateWebNavigationClearance') private systemBottomInsetPx: number = 0;
   @State private loading: boolean = true;
   @State private startupFinished: boolean = false;
   private startupTimer: number = -1;
@@ -329,7 +330,7 @@ struct Index {
           document.head.appendChild(style);
         }
         style.textContent = [
-          'html[data-cpu-harmony-native] { --cpu-harmony-bottom-clearance: ${54 + this.bottomBarInset()}px; --cpu-safe-area-inset-top: 0px; }',
+          'html[data-cpu-harmony-native] { --cpu-harmony-bottom-clearance: ${this.bottomContentClearance()}px; --cpu-safe-area-inset-top: 0px; }',
           'html[data-cpu-harmony-native] .layout-root > .mobile-tabbar,',
           'html[data-cpu-harmony-native] .layout-root > .topbar,',
           'html[data-cpu-harmony-native] .layout-root > .footer { display: none !important; }',
@@ -631,7 +632,7 @@ struct Index {
           if (this.scheduleMounted) {
             NativeSchedulePage({
               store: this.scheduleStore,
-              bottomSafeInset: this.bottomBarInset(),
+              bottomClearance: this.bottomContentClearance(),
               onLogin: () => {
                 this.selectTab(1);
                 const script = `window.CPUTimeNative?.openWebRoute?.('/jwxt?reauthorize=1&redirect=/schedule');`;
@@ -704,7 +705,8 @@ struct Index {
 
       Column() {
         this.bottomNavigation()
-      }.width('100%').height(48 + this.bottomBarInset()).align(Alignment.Bottom)
+      }.width('100%').height(NATIVE_TAB_BAR_HEIGHT + this.bottomBarInset()).align(Alignment.Bottom)
+        .padding({ bottom: this.bottomBarInset() })
         .visibility(this.nativeScheduleVisible || this.pendingWebNavigation > 0 || (this.startupFinished && this.webHeader.visible && !this.webOverlayVisible) ? Visibility.Visible : Visibility.Hidden)
         .hitTestBehavior(HitTestMode.Default)
 
@@ -1179,11 +1181,19 @@ struct Index {
     Row() {
       NativeTabBar({ selected: this.selectedTab, dark: this.scheduleStore.dark,
         onSelect: (index: number) => this.selectTab(index) })
-    }.width('100%').padding({ left: 16, right: 16 })
-      .margin({ bottom: 4 + this.bottomBarInset() })
+        .constraintSize({ maxWidth: 640 })
+    }.width('100%').padding({ left: 16, right: 16 }).justifyContent(FlexAlign.Center)
   }
   private bottomBarInset(): number {
-    return Math.min(8, this.getUIContext().px2vp(this.systemBottomInsetPx));
+    return nativeNavigationBottomInset(this.getUIContext().px2vp(this.systemBottomInsetPx));
+  }
+
+  private bottomContentClearance(): number {
+    return nativeNavigationClearance(this.getUIContext().px2vp(this.systemBottomInsetPx));
+  }
+
+  private updateWebNavigationClearance(): void {
+    void this.controller.runJavaScript(`document.documentElement.style.setProperty('--cpu-harmony-bottom-clearance', '${this.bottomContentClearance()}px')`).catch(() => undefined);
   }
 
   private async loadWidgetPreview(): Promise<void> {

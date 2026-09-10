@@ -10,7 +10,7 @@ const SLOT_ENDS: string[] = ['08:45', '09:40', '10:40', '11:35', '14:15', '15:10
 @Component
 export struct NativeSchedulePage {
   @ObjectLink store: NativeScheduleStore;
-  @Prop bottomSafeInset: number = 0;
+  @Prop bottomClearance: number = 100;
   onLogin: () => void = () => undefined;
   onWidgets: () => void = () => undefined;
   onTools: () => void = () => undefined;
@@ -74,7 +74,7 @@ export struct NativeSchedulePage {
               onLogin: this.onLogin, onAddSlot: this.onAddSlot,
               onCourse: (block: NativeCourseBlock) => this.openCourseAt(block) })
           }
-        }.layoutWeight(1).width('100%').margin({ bottom: 54 + this.bottomSafeInset })
+        }.layoutWeight(1).width('100%').margin({ bottom: this.bottomClearance })
           .onRefreshing(() => { this.pullRefreshing = true; this.store.load(true); })
           .onStateChange((state: RefreshStatus) => {
             if (state === RefreshStatus.Inactive || state === RefreshStatus.Done) this.pullRefreshing = false;

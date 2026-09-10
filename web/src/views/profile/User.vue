@@ -40,7 +40,7 @@
           <span>发帖 {{ user.postCount }}</span>
           <span>回复 {{ user.replyCount }}</span>
           <span>声望 {{ user.reputation }}</span>
-          <span v-if="!isIosNativeApp() && user.sponsorAmount > 0" class="sponsor-badge">已赞助 ¥{{ formatMoney(user.sponsorAmount) }}</span>
+          <span v-if="!hidesNativeCommerce() && user.sponsorAmount > 0" class="sponsor-badge">已赞助 ¥{{ formatMoney(user.sponsorAmount) }}</span>
         </div>
         <div v-if="user.id !== auth.user?.id && user.role !== 'bot'" class="profile-actions cpu-button-row">
           <el-button type="primary" plain @click="startDirectMessage">
@@ -97,7 +97,7 @@ import { useAuthStore } from "@/stores/auth";
 import { fmtDate, fmtRelative } from "@/utils/format";
 import ContentReportDialog from "@/components/forum/ContentReportDialog.vue";
 import { blockUser } from "@/utils/userBlock";
-import { isIosNativeApp } from "@/utils/clientInfo";
+import { hidesNativeCommerce } from "@/utils/clientInfo";
 import { promptDirectMessageRemark } from "@/utils/directMessageRemark";
 
 const reportOpen = ref(false);

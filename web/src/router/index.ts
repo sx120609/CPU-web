@@ -7,7 +7,7 @@ import { useSiteStore } from "@/stores/site";
 import type { FeatureKey } from "@/api/site";
 import { boardApi } from "@/api/board";
 import { topicApi } from "@/api/topic";
-import { isNativeScheduleShell, isLikelyIosDevice, isIosNativeApp } from "@/utils/clientInfo";
+import { isNativeScheduleShell, isLikelyIosDevice, hidesNativeCommerce } from "@/utils/clientInfo";
 import { preloadScheduleBackgroundAsset } from "@/utils/scheduleBackgroundStorage";
 
 const MainLayout = () => import("@/layouts/MainLayout.vue");
@@ -187,7 +187,7 @@ export const router = createRouter({
 });
 
 router.beforeEach(async (to) => {
-  if (isIosNativeApp() && /^\/(vip|sponsor|sponsor-wall)(\/|$)/.test(to.path)) {
+  if (hidesNativeCommerce() && /^\/(vip|sponsor|sponsor-wall)(\/|$)/.test(to.path)) {
     return { path: "/profile", replace: true };
   }
   const nativeShell = (window as any).CPUTimeNative;

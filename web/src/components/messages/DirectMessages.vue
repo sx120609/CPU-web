@@ -86,6 +86,7 @@
             <span>{{ activeChatSubtitle }}</span>
           </div>
           <div class="chat-actions cpu-button-row">
+            <el-button text type="danger" @click="reportOverviewOpen = true">举报</el-button>
             <el-button text type="danger" @click="blockCounterpart">屏蔽</el-button>
             <el-button v-if="!activeCounterpart.anonymous && activeCounterpart.id > 0" class="remark-link" text type="primary" @click="editCounterpartRemark">
               {{ activeRemark ? "改备注" : "备注" }}
@@ -162,12 +163,24 @@
         </footer>
       </template>
     </section>
+    <el-dialog v-model="reportOverviewOpen" title="举报与投诉" width="min(460px, calc(100vw - 32px))" append-to-body destroy-on-close>
+      <p>请选择需要举报的消息，举报将提交给管理员处理。</p>
+      <div class="report-message-options">
+        <el-button v-for="message in reportableMessages" :key="message.id" class="report-message-option" @click="openMessageReport(message)">
+          {{ messageTime(message.createdAt) }} · {{ message.content }}
+        </el-button>
+      </div>
+      <p v-if="!reportableMessages.length">当前没有可举报的对方消息。</p>
+      <el-button v-if="activeCounterpart && !activeCounterpart.anonymous && activeCounterpart.id > 0" @click="openCounterpartReport">举报用户资料</el-button>
+      <p>其他投诉或无法选择消息时，可联系 <a href="mailto:admin@lizmt.cn">admin@lizmt.cn</a>，说明会话时间及问题；请勿提供密码或验证码。</p>
+      <template #footer><el-button @click="reportOverviewOpen = false">关闭</el-button></template>
+    </el-dialog>
     <ContentReportDialog
-      v-if="reportMessage"
+      v-if="reportTarget"
       v-model="reportDialogOpen"
-      target-type="direct_message"
-      :target-id="reportMessage.id"
-      :target-label="`与 ${activeDisplayName} 的私聊消息`"
+      :target-type="reportTarget.type"
+      :target-id="reportTarget.id"
+      :target-label="reportTarget.label"
     />
   </div>
 </template>
@@ -216,7 +229,9 @@ const targetError = ref("");
 const messageError = ref("");
 const messageScroller = ref<HTMLElement | null>(null);
 const reportDialogOpen = ref(false);
-const reportMessage = ref<DirectMessageItem | null>(null);
+const reportOverviewOpen = ref(false);
+const reportTarget = ref<{ type: "direct_message" | "user"; id: number; label: string } | null>(null);
+const reportableMessages = computed(() => messages.value.filter(message => message.senderId !== auth.user?.id));
 let disposed = false;
 let refreshTimer = 0;
 let routeSeq = 0;
@@ -554,7 +569,16 @@ async function sendMessage() {
 
 function openMessageReport(message: DirectMessageItem) {
   if (message.senderId === auth.user?.id) return;
-  reportMessage.value = message;
+  reportOverviewOpen.value = false;
+  reportTarget.value = { type: "direct_message", id: message.id, label: `${messageTime(message.createdAt)} · ${message.content.slice(0, 80)}` };
+  reportDialogOpen.value = true;
+}
+
+function openCounterpartReport() {
+  const user = activeCounterpart.value;
+  if (!user || user.anonymous || user.id <= 0) return;
+  reportOverviewOpen.value = false;
+  reportTarget.value = { type: "user", id: user.id, label: `${activeDisplayName.value} 的用户资料` };
   reportDialogOpen.value = true;
 }
 
@@ -813,6 +837,8 @@ function errorMessage(error: unknown, fallback: string) {
 .composer :deep(.el-textarea__inner) { min-height: 42px !important; padding: 10px 12px; line-height: 1.5; border-radius: 12px; }
 .composer-row :deep(.el-button) { min-width: 76px; min-height: 42px; margin-left: 0; }
 .composer-hint { min-width: 0; color: var(--cpu-text-secondary); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.report-message-options { display: grid; gap: 8px; max-height: 280px; overflow: auto; }
+.report-message-option { min-height: 44px; height: auto; margin: 0; padding: 10px; white-space: normal; text-align: left; overflow-wrap: anywhere; }
 .message-report-button { margin-left: 6px; padding: 0; border: 0; background: transparent; color: var(--el-color-danger); font: inherit; cursor: pointer; }
 .message-report-button:hover { text-decoration: underline; }
 

@@ -117,7 +117,7 @@
               <template #dropdown>
                 <el-dropdown-menu>
                   <el-dropdown-item command="profile">个人中心</el-dropdown-item>
-                  <el-dropdown-item v-if="!isIosNativeApp()" command="vip">VIP 中心</el-dropdown-item>
+                  <el-dropdown-item v-if="!hidesNativeCommerce()" command="vip">VIP 中心</el-dropdown-item>
                   <el-dropdown-item command="settings">消息设置</el-dropdown-item>
                   <el-dropdown-item v-if="auth.canAccessModuleAdmin" command="admin" divided><AppIcon name="tools" /> 管理后台</el-dropdown-item>
                   <el-dropdown-item command="logout" :divided="!auth.canAccessModuleAdmin" :disabled="logoutPending">退出登录</el-dropdown-item>
@@ -396,7 +396,7 @@ import { useSiteStore } from "@/stores/site";
 import { useAppearanceStore, type AppearanceMode } from "@/stores/appearance";
 import { iosRouteTransitionEnabled } from "@/router";
 import { freezeLeavingPage, releaseLeavingPage } from "@/utils/routeTransition";
-import { isAndroidNativeApp, isDesktopNativeApp, isFlutterNativeShell, isIosNextNativeShell, isLikelyIosDevice, isIosNativeApp } from "@/utils/clientInfo";
+import { isAndroidNativeApp, isDesktopNativeApp, isFlutterNativeShell, isIosNextNativeShell, isLikelyIosDevice, hidesNativeCommerce } from "@/utils/clientInfo";
 
 const ShijianAssistant = defineAsyncComponent(() => import("@/views/search/Result.vue"));
 const DesktopToolsPanel = defineAsyncComponent(() => import("@/components/common/DesktopToolsPanel.vue"));
@@ -593,7 +593,7 @@ const drawerItems = computed(() => {
   const items: DrawerNavItem[] = [];
   if (auth.canAccessForum && site.features.forum) items.push({ id: "system-post", to: "/post", label: "发帖", icon: Edit });
   items.push({ id: "system-messages", to: "/messages", label: "消息", icon: Message });
-  if (auth.isLoggedIn && !isIosNativeApp()) items.push({ id: "system-vip", to: "/vip", label: "VIP 中心", icon: StarFilled });
+  if (auth.isLoggedIn && !hidesNativeCommerce()) items.push({ id: "system-vip", to: "/vip", label: "VIP 中心", icon: StarFilled });
   if (auth.canAccessModuleAdmin) items.push({ id: "system-admin", to: "/admin", label: "管理后台", icon: Tools });
   if (!items.some((item) => item.to === "/download")) items.push({ id: "system-download", to: "/download", label: "客户端下载", icon: Download });
   for (const item of site.topNavigation.filter((candidate) => candidate.to !== "/download" && candidate.showInDrawer && navigationItemVisible(candidate))) {

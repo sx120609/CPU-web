@@ -12,7 +12,7 @@
         <div class="brand-logo">药</div>
         <div>
           <h1>药大拾间</h1>
-          <p>中国药科大学 · 校园互助与服务平台</p>
+          <p>面向药大师生的独立校园工具 · 非学校官方应用</p>
         </div>
       </div>
 
@@ -65,14 +65,13 @@
         <el-form-item>
           <el-checkbox v-model="remember">保持登录状态并保存到本浏览器</el-checkbox>
         </el-form-item>
+        <PrivacyConsent v-model="privacyAccepted" :disabled="auth.ssoLoading" />
         <el-form-item>
-          <el-button type="primary" native-type="submit" class="btn-submit" :loading="auth.ssoLoading" :disabled="captchaRefreshing">
+          <el-button type="primary" native-type="submit" class="btn-submit" :loading="auth.ssoLoading" :disabled="captchaRefreshing || !privacyAccepted">
             登 录
           </el-button>
         </el-form-item>
       </el-form>
-
-      <PrivacyPolicyNotice />
 
       <!-- 站内独立账号：新生 / 毕业生 / 站务 / 管理员 -->
       <details class="dev-fallback">
@@ -83,7 +82,8 @@
         <el-form size="default" class="dev-form" autocomplete="on" @submit.prevent="onDevSubmit">
           <el-input v-model="dev.username" name="username" autocomplete="username" placeholder="用户名" :disabled="dev.loading" />
           <el-input v-model="dev.password" name="password" type="password" show-password autocomplete="current-password" placeholder="密码" :disabled="dev.loading" />
-          <el-button native-type="submit" :loading="dev.loading" :disabled="dev.loading">登录</el-button>
+          <PrivacyConsent v-model="privacyAccepted" :disabled="dev.loading" />
+          <el-button native-type="submit" :loading="dev.loading" :disabled="dev.loading || !privacyAccepted">登录</el-button>
         </el-form>
         <div v-if="isDev" class="dev-accounts cpu-button-row">
           <button data-cpu-button="action" type="button" @click="fillDev('alice', '123456')">alice / 123456</button>
@@ -112,7 +112,7 @@ import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
 import { loadCreds } from "@/utils/credCrypto";
 import { isOAuthAuthorizationRedirect, isServerHandledRedirect, resolveLoginRedirect } from "@/utils/redirect";
-import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
+import PrivacyConsent from "@/components/common/PrivacyConsent.vue";
 import AppIcon from "@/components/common/AppIcon.vue";
 
 const router = useRouter();
@@ -120,7 +120,8 @@ const route = useRoute();
 const auth = useAuthStore();
 const site = useSiteStore();
 const formRef = ref<FormInstance>();
-const remember = ref(true);
+const privacyAccepted = ref(false);
+const remember = ref(false);
 const isDev = computed(() => import.meta.env.DEV);
 const captchaRefreshing = ref(false);
 
@@ -208,6 +209,10 @@ function goHome() {
 }
 
 async function onSubmit() {
+  if (!privacyAccepted.value) {
+    ElMessage.warning("请先阅读并主动勾选同意隐私政策和用户协议");
+    return;
+  }
   if (auth.ssoLoading || captchaRefreshing.value) return;
   try { await formRef.value?.validate(); } catch { return; }
   if (auth.ssoNeedCaptcha && !form.captcha) {
@@ -241,6 +246,10 @@ function fillDev(u: string, p: string) {
 }
 
 async function onDevSubmit() {
+  if (!privacyAccepted.value) {
+    ElMessage.warning("请先阅读并主动勾选同意隐私政策和用户协议");
+    return;
+  }
   if (dev.loading) return;
   if (!dev.username || !dev.password) {
     ElMessage.warning("请填写账号和密码");

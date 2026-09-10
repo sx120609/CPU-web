@@ -39,13 +39,13 @@
         <li><span>发帖</span><span>{{ user?.postCount }}</span></li>
         <li><span>回复</span><span>{{ user?.replyCount }}</span></li>
         <li><span>声望</span><span>{{ user?.reputation }}</span></li>
-        <li v-if="!iosCommerceHidden && (user?.sponsorAmount ?? 0) > 0"><span>赞助</span><span class="sponsor-total">¥{{ formatMoney(user?.sponsorAmount) }}</span></li>
+        <li v-if="!commerceHidden && (user?.sponsorAmount ?? 0) > 0"><span>赞助</span><span class="sponsor-total">¥{{ formatMoney(user?.sponsorAmount) }}</span></li>
       </ul>
       <div class="profile-actions cpu-button-row">
         <el-button type="primary" plain :disabled="saving || logoutBusy" @click="editing = true">编辑资料</el-button>
         <el-button plain @click="router.push('/profile/privacy')">账号与隐私</el-button>
         <el-button plain :disabled="saving || logoutBusy" @click="router.push('/profile/verification')">拾间认证</el-button>
-        <el-button v-if="!iosCommerceHidden" type="warning" plain :disabled="saving || logoutBusy" @click="router.push('/vip')">VIP 中心</el-button>
+        <el-button v-if="!commerceHidden" type="warning" plain :disabled="saving || logoutBusy" @click="router.push('/vip')">VIP 中心</el-button>
         <el-button v-if="!user?.studentSso" plain :disabled="savingPw || logoutBusy" @click="passwordDialog = true">修改密码</el-button>
         <el-button type="danger" plain :loading="logoutBusy" :disabled="logoutBusy" @click="onLogout">退出登录</el-button>
       </div>
@@ -156,7 +156,7 @@
       </el-button>
     </div>
 
-    <div id="sponsor" v-if="!iosCommerceHidden && (site.features.sponsor || (user?.sponsorAmount ?? 0) > 0)" class="cpu-card sponsor-card">
+    <div id="sponsor" v-if="!commerceHidden && (site.features.sponsor || (user?.sponsorAmount ?? 0) > 0)" class="cpu-card sponsor-card">
       <div class="sponsor-main">
         <div class="sponsor-copy">
           <h3 class="cpu-section-title">{{ sponsorOptions.title || "赞助本站" }}</h3>
@@ -493,9 +493,9 @@ import { compressImageFile, normalizeImageUploadError } from "@/utils/imageUploa
 import { preloadAvatar } from "@/utils/avatarPreview";
 import { withMediaRevision } from "@/utils/cdnMedia";
 import { readViewCache, writeViewCache } from "@/utils/viewCache";
-import { isIosNativeApp } from "@/utils/clientInfo";
+import { hidesNativeCommerce } from "@/utils/clientInfo";
 
-const iosCommerceHidden = isIosNativeApp();
+const commerceHidden = hidesNativeCommerce();
 
 interface ProfileViewCache {
   topics: any[];
@@ -743,7 +743,7 @@ async function saveVipDecoration(field: "profileTheme" | "profileFrame", value: 
 }
 
 async function loadSponsorOptions() {
-  if (iosCommerceHidden) return;
+  if (commerceHidden) return;
   try {
     Object.assign(sponsorOptions, await paymentsApi.sponsorOptions({ suppressErrorMessage: true }));
     sponsorOptionsCached.value = true;
@@ -756,7 +756,7 @@ async function loadSponsorOptions() {
 }
 
 async function loadSponsorOrders() {
-  if (iosCommerceHidden) return;
+  if (commerceHidden) return;
   try {
     sponsorOrders.value = (await paymentsApi.sponsorOrders({ page: 1, size: 10, status: "paid" }, { suppressErrorMessage: true })).list;
   } catch {
@@ -814,7 +814,7 @@ function writeProfileCache() {
 }
 
 async function handleSponsorReturnFromQuery() {
-  if (iosCommerceHidden) return;
+  if (commerceHidden) return;
   const sponsorQuery = String(route.query.sponsor ?? "");
   if (sponsorQuery !== "success") return;
   const key = String(route.query.outTradeNo ?? "__no_trade_no");
@@ -850,6 +850,7 @@ function validateSponsorAmount() {
 }
 
 function openSponsorConfirm() {
+  if (commerceHidden) return;
   if (sponsorSubmitting.value) return;
   if (!validateSponsorAmount()) return;
   if (!enabledPayTypes.value.length) {
@@ -860,7 +861,7 @@ function openSponsorConfirm() {
 }
 
 async function submitSponsor() {
-  if (iosCommerceHidden) return;
+  if (commerceHidden) return;
   if (sponsorSubmitting.value) return;
   if (!validateSponsorAmount()) return;
   if (!enabledPayTypes.value.length) {

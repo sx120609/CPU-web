@@ -77,6 +77,10 @@ export function isIosNativeApp(ua = navigator.userAgent) {
     || (typeof bridge?.supportsScheduleWidget === "function" && bridge.supportsScheduleWidget() === true);
 }
 
+export function hidesNativeCommerce(ua = navigator.userAgent) {
+  return isIosNativeApp(ua) || isHarmonyNativeApp(ua);
+}
+
 /** Native schedule shells own top-level navigation; legacy platform wrappers do not. */
 export function isNativeScheduleShell(ua = navigator.userAgent) {
   return /CPUTimeNative\//i.test(ua);

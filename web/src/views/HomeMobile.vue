@@ -1,5 +1,6 @@
 <template>
   <div class="home-stream">
+    <p class="independent-service-note">独立校园工具，非中国药科大学官方应用；学校名称仅用于说明适用用户和数据来源。</p>
     <section class="home-entry" aria-label="首页快捷入口">
       <SiteSearchBar :placeholder="auth.canAccessForum ? '搜索帖子或校园服务' : '搜索校园服务'" />
       <nav class="quick-grid">
@@ -374,6 +375,8 @@ function requestMessage(requestError: unknown) {
 </script>
 
 <style scoped>
+.independent-service-note { margin: 0 0 12px; color: var(--cpu-text-secondary); font-size: 12px; line-height: 1.6; }
+
 .home-stream { display: flex; max-width: 860px; margin: 0 auto; flex-direction: column; gap: 13px; }
 .home-entry { padding: 12px; border: 1px solid var(--cpu-border-soft); border-radius: 15px; background: var(--cpu-card); box-shadow: var(--cpu-shadow-sm); }
 .quick-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 7px; margin-top: 10px; }

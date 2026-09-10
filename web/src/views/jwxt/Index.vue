@@ -45,6 +45,7 @@
         <div>
           <h3>授权读取教务数据</h3>
           <p>{{ loginCardHintText }}</p>
+          <p>本应用独立运营，非学校官方应用；教务数据以学校原站为准。</p>
         </div>
       </div>
 
@@ -127,14 +128,13 @@
           <el-alert :title="jwxt.error" type="error" :closable="false" show-icon />
         </el-form-item>
 
+        <PrivacyConsent v-model="privacyAccepted" :disabled="jwxt.loading" />
         <el-form-item>
-          <el-button type="primary" native-type="submit" :loading="jwxt.loading" :disabled="jwxt.loading || captchaLoading" class="btn-submit">
+          <el-button type="primary" native-type="submit" :loading="jwxt.loading" :disabled="jwxt.loading || captchaLoading || !privacyAccepted" class="btn-submit">
             {{ usingSavedCredentialRecovery ? (jwxt.needCaptcha ? "验证并恢复" : "使用已保存信息恢复") : "登录并查看" }}
           </el-button>
         </el-form-item>
       </el-form>
-
-      <PrivacyPolicyNotice />
 
       <div class="alt-link">
         暂不授权？也可以 <a :href="schoolSystemLink" target="_blank" rel="noopener noreferrer">{{ schoolSystemLabel }}</a>
@@ -265,7 +265,7 @@ import {
   type JwxtDataTab,
   writeJwxtTabCache,
 } from "@/utils/jwxtTabCache";
-import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
+import PrivacyConsent from "@/components/common/PrivacyConsent.vue";
 const SchedulePane = defineAsyncComponent(() => import("@/components/jwxt/SchedulePane.vue"));
 const GradesPane = defineAsyncComponent(() => import("@/components/jwxt/GradesPane.vue"));
 const MidtermGradesPane = defineAsyncComponent(() => import("@/components/jwxt/MidtermGradesPane.vue"));
@@ -278,7 +278,8 @@ const route = useRoute();
 const router = useRouter();
 const formRef = ref<FormInstance>();
 const form = reactive({ username: "", password: "", captcha: "" });
-const remember = ref(true); // 默认勾选"记住"
+const privacyAccepted = ref(false);
+const remember = ref(false);
 const rules: FormRules = {
   username: [{ required: true, message: "请输入学号或工号" }],
   password: [{ required: true, message: "请输入密码" }],
@@ -608,6 +609,10 @@ async function reloadCaptcha() {
 }
 
 async function onSubmit() {
+  if (!privacyAccepted.value) {
+    ElMessage.warning("请先阅读并主动勾选同意隐私政策和用户协议");
+    return;
+  }
   if (jwxt.loading || captchaLoading.value) return;
   if (!usingSavedCredentialRecovery.value) {
     try { await formRef.value?.validate(); } catch { return; }
