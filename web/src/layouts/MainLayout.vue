@@ -1579,7 +1579,6 @@ html[data-theme="dark"] .assistant-widget {
 .footer-company {
   flex-basis: 100%;
   width: 100%;
-  max-width: 800px;
   margin: 0 auto 12px;
   color: var(--cpu-text);
   font-size: 16px;
@@ -1587,14 +1586,19 @@ html[data-theme="dark"] .assistant-widget {
   overflow-wrap: anywhere;
 }
 
+.footer-company > * {
+  max-width: 800px;
+  margin-inline: auto;
+}
+
 .footer-company h2 {
-  margin: 0 0 8px;
+  margin-block: 0 8px;
   font-size: 16px;
   font-weight: 600;
 }
 
 .footer-company p {
-  margin: 0 0 8px;
+  margin-block: 0 8px;
 }
 
 .footer-company address {
