@@ -24,7 +24,7 @@
 			<key>CFBundleTypeRole</key>
 			<string>Viewer</string>
 			<key>CFBundleURLName</key>
-			<string>cn.lizmt.cpuweb</string>
+			<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>cpuweb</string>
@@ -33,6 +33,8 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>CPUAppGroupIdentifier</key>
+	<string>$(CPU_APP_GROUP_IDENTIFIER)</string>
 	<key>CPUAppURL</key>
 	<string>$(CPU_APP_URL)</string>
 	<key>LSApplicationCategoryType</key>

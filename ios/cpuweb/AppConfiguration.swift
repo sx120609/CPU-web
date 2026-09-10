@@ -1,7 +1,7 @@
 import Foundation
 
 enum AppConfiguration {
-    static let appGroup = "group.cn.lizmt.cpuweb"
+    static var appGroup: String { AppGroupIdentifier.resolved() }
     static let widgetEndpointKey = "scheduleWidgetEndpoint"
     static let widgetEndpointFileName = "schedule-widget-endpoint.txt"
     static let widgetThemeKey = "scheduleWidgetTheme"

@@ -2,7 +2,7 @@ import Foundation
 import WidgetKit
 
 enum AppWidgetConfiguration {
-    static let appGroup = "group.cn.lizmt.cpuweb"
+    static var appGroup: String { AppGroupIdentifier.resolved() }
     static let endpointKey = "scheduleWidgetEndpoint"
     static let endpointFileName = "schedule-widget-endpoint.txt"
     static let themeKey = "scheduleWidgetTheme"

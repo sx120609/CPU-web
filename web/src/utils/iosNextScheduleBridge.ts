@@ -26,9 +26,15 @@ const CACHE_LIFETIME = 12 * 60 * 60 * 1000;
 
 /** HTML parsing and authentication stay on the server. The client caches and
  * merges parsed courses, applies saved edits and supplies native week filtering. */
-export function installIosNextScheduleBridge(router?: Router, options: { fastRefresh?: boolean } = {}) {
-  if (!isNativeScheduleShell()) return;
-  const host = window as any;
+export function installIosNextScheduleBridge(
+  router?: Router,
+  options: { fastRefresh?: boolean } = {},
+  nativeHost?: Record<string, any>,
+) {
+  // A separate host lets the legacy iOS Watch companion reuse data loading
+  // without enabling the ios_next navigation shell or changing its global bridge.
+  if (!nativeHost && !isNativeScheduleShell()) return;
+  const host = nativeHost ?? window as any;
   const auth = useAuthStore();
   const jwxt = useJwxtStore();
   let generation = 0;

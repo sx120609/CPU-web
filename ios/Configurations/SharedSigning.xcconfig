@@ -1,0 +1,7 @@
+// Public defaults keep unsigned and simulator builds reproducible.
+// A git-ignored Signing.local.xcconfig may override these values for real devices.
+CPU_DEVELOPMENT_TEAM =
+CPU_APP_BUNDLE_IDENTIFIER = cn.lizmt.cpuweb
+CPU_APP_GROUP_IDENTIFIER = group.cn.lizmt.cpuweb
+
+#include? "Signing.local.xcconfig"

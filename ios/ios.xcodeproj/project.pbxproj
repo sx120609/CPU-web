@@ -8,6 +8,8 @@
 
 /* Begin PBXBuildFile section */
 		000000000000000000000151 /* CPUWebWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 000000000000000000000121 /* CPUWebWidgets.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		A10000000000000000000001 /* CPUWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = A10000000000000000000002 /* CPUWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		B10000000000000000000001 /* CPUWatchWidgets.appex in Embed Watch Extensions */ = {isa = PBXBuildFile; fileRef = B10000000000000000000002 /* CPUWatchWidgets.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -17,6 +19,20 @@
 			proxyType = 1;
 			remoteGlobalIDString = 000000000000000200000000;
 			remoteInfo = CPUWebWidgets;
+		};
+		A10000000000000000000003 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 000000000000000000000000 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A10000000000000000000010;
+			remoteInfo = CPUWatch;
+		};
+		B10000000000000000000003 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 000000000000000000000000 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B10000000000000000000010;
+			remoteInfo = CPUWatchWidgets;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -30,11 +46,33 @@
 			);
 			name = "Embed Foundation Extensions";
 		};
+		A10000000000000000000004 /* Embed Watch Content */ = {
+			isa = PBXCopyFilesBuildPhase;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
+			dstSubfolder = Product;
+			files = (
+				A10000000000000000000001 /* CPUWatch.app in Embed Watch Content */,
+			);
+			name = "Embed Watch Content";
+		};
+		B10000000000000000000004 /* Embed Watch Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			dstPath = "";
+			dstSubfolder = PlugIns;
+			files = (
+				B10000000000000000000001 /* CPUWatchWidgets.appex in Embed Watch Extensions */,
+			);
+			name = "Embed Watch Extensions";
+		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		000000000000000000000120 /* cpuweb.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = cpuweb.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		000000000000000000000121 /* CPUWebWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = CPUWebWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		A10000000000000000000002 /* CPUWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CPUWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B10000000000000000000002 /* CPUWatchWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = CPUWatchWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		D10000000000000000000001 /* SharedSigning.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = SharedSigning.xcconfig; sourceTree = "<group>"; };
+		D10000000000000000000002 /* Signing.local.xcconfig.example */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.local.xcconfig.example; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -51,6 +89,29 @@
 				Info.plist,
 			);
 			target = 000000000000000100000000 /* cpuweb */;
+		};
+		A10000000000000000000008 /* Exceptions for "CPUWatch" folder in "CPUWatch" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = A10000000000000000000010 /* CPUWatch */;
+		};
+		B10000000000000000000006 /* Exceptions for "CPUWatchWidgets" folder in "CPUWatchWidgets" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = B10000000000000000000010 /* CPUWatchWidgets */;
+		};
+		B10000000000000000000007 /* Exceptions for "SharedSchedule" folder in "CPUWatchWidgets" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				CourseRepository.swift,
+				ScheduleSyncCoordinator.swift,
+				WatchSessionTransport.swift,
+			);
+			target = B10000000000000000000010 /* CPUWatchWidgets */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -71,6 +132,35 @@
 			path = CPUWebWidgets;
 			sourceTree = "<group>";
 		};
+		A10000000000000000000005 /* SharedSchedule */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				B10000000000000000000007 /* Exceptions for "SharedSchedule" folder in "CPUWatchWidgets" target */,
+			);
+			path = SharedSchedule;
+			sourceTree = "<group>";
+		};
+		A10000000000000000000006 /* CPUWatch */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				A10000000000000000000008 /* Exceptions for "CPUWatch" folder in "CPUWatch" target */,
+			);
+			path = CPUWatch;
+			sourceTree = "<group>";
+		};
+		B10000000000000000000005 /* CPUWatchWidgets */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				B10000000000000000000006 /* Exceptions for "CPUWatchWidgets" folder in "CPUWatchWidgets" target */,
+			);
+			path = CPUWatchWidgets;
+			sourceTree = "<group>";
+		};
+		C10000000000000000000005 /* SharedConfiguration */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = SharedConfiguration;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -84,14 +174,29 @@
 			files = (
 			);
 		};
+		A10000000000000000000013 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
+		B10000000000000000000013 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		000000000000000000000001 = {
 			isa = PBXGroup;
 			children = (
+				D10000000000000000000003 /* Configurations */,
 				000000000000000000000010 /* cpuweb */,
 				000000000000000000000011 /* CPUWebWidgets */,
+				C10000000000000000000005 /* SharedConfiguration */,
+				A10000000000000000000005 /* SharedSchedule */,
+				A10000000000000000000006 /* CPUWatch */,
+				B10000000000000000000005 /* CPUWatchWidgets */,
 				000000000000000000000020 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -101,8 +206,19 @@
 			children = (
 				000000000000000000000120 /* cpuweb.app */,
 				000000000000000000000121 /* CPUWebWidgets.appex */,
+				A10000000000000000000002 /* CPUWatch.app */,
+				B10000000000000000000002 /* CPUWatchWidgets.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		D10000000000000000000003 /* Configurations */ = {
+			isa = PBXGroup;
+			children = (
+				D10000000000000000000001 /* SharedSigning.xcconfig */,
+				D10000000000000000000002 /* Signing.local.xcconfig.example */,
+			);
+			path = Configurations;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -116,14 +232,18 @@
 				000000000000000130000000 /* Frameworks */,
 				000000000000000140000000 /* Resources */,
 				000000000000000150000000 /* Embed Foundation Extensions */,
+				A10000000000000000000004 /* Embed Watch Content */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 				000000000000000000000160 /* PBXTargetDependency */,
+				A10000000000000000000007 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				000000000000000000000010 /* cpuweb */,
+				A10000000000000000000005 /* SharedSchedule */,
+				C10000000000000000000005 /* SharedConfiguration */,
 			);
 			name = cpuweb;
 			productName = MyApp;
@@ -142,10 +262,55 @@
 			);
 			fileSystemSynchronizedGroups = (
 				000000000000000000000011 /* CPUWebWidgets */,
+				C10000000000000000000005 /* SharedConfiguration */,
 			);
 			name = CPUWebWidgets;
 			productName = CPUWebWidgets;
 			productReference = 000000000000000000000121 /* CPUWebWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		A10000000000000000000010 /* CPUWatch */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A10000000000000000000011 /* Build configuration list for PBXNativeTarget "CPUWatch" */;
+			buildPhases = (
+				A10000000000000000000012 /* Sources */,
+				A10000000000000000000013 /* Frameworks */,
+				A10000000000000000000014 /* Resources */,
+				B10000000000000000000004 /* Embed Watch Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				B10000000000000000000017 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				A10000000000000000000005 /* SharedSchedule */,
+				A10000000000000000000006 /* CPUWatch */,
+				C10000000000000000000005 /* SharedConfiguration */,
+			);
+			name = CPUWatch;
+			productName = CPUWatch;
+			productReference = A10000000000000000000002 /* CPUWatch.app */;
+			productType = "com.apple.product-type.application";
+		};
+		B10000000000000000000010 /* CPUWatchWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B10000000000000000000011 /* Build configuration list for PBXNativeTarget "CPUWatchWidgets" */;
+			buildPhases = (
+				B10000000000000000000012 /* Sources */,
+				B10000000000000000000013 /* Frameworks */,
+				B10000000000000000000014 /* Resources */,
+			);
+			buildRules = (
+			);
+			fileSystemSynchronizedGroups = (
+				A10000000000000000000005 /* SharedSchedule */,
+				B10000000000000000000005 /* CPUWatchWidgets */,
+				C10000000000000000000005 /* SharedConfiguration */,
+			);
+			name = CPUWatchWidgets;
+			productName = CPUWatchWidgets;
+			productReference = B10000000000000000000002 /* CPUWatchWidgets.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
@@ -164,6 +329,12 @@
 					000000000000000200000000 = {
 						CreatedOnToolsVersion = 26.3;
 					};
+					A10000000000000000000010 = {
+						CreatedOnToolsVersion = 26.6;
+					};
+					B10000000000000000000010 = {
+						CreatedOnToolsVersion = 26.6;
+					};
 				};
 			};
 			buildConfigurationList = 000000000000000010000000 /* Build configuration list for PBXProject "ios" */;
@@ -180,6 +351,8 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
+				A10000000000000000000010 /* CPUWatch */,
+				B10000000000000000000010 /* CPUWatchWidgets */,
 				000000000000000100000000 /* cpuweb */,
 				000000000000000200000000 /* CPUWebWidgets */,
 			);
@@ -197,6 +370,16 @@
 			files = (
 			);
 		};
+		A10000000000000000000014 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+		B10000000000000000000014 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -210,6 +393,16 @@
 			files = (
 			);
 		};
+		A10000000000000000000012 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+		B10000000000000000000012 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -218,11 +411,22 @@
 			target = 000000000000000200000000 /* CPUWebWidgets */;
 			targetProxy = 000000000000000000000161 /* PBXContainerItemProxy */;
 		};
+		A10000000000000000000007 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A10000000000000000000010 /* CPUWatch */;
+			targetProxy = A10000000000000000000003 /* PBXContainerItemProxy */;
+		};
+		B10000000000000000000017 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B10000000000000000000010 /* CPUWatchWidgets */;
+			targetProxy = B10000000000000000000003 /* PBXContainerItemProxy */;
+		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		000000000000000011000000 /* Debug configuration for PBXProject "ios" */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = D10000000000000000000001 /* SharedSigning.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				APPLETVOS_DEPLOYMENT_TARGET = 27.0;
@@ -294,6 +498,7 @@
 		};
 		000000000000000012000000 /* Release configuration for PBXProject "ios" */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = D10000000000000000000001 /* SharedSigning.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				APPLETVOS_DEPLOYMENT_TARGET = 27.0;
@@ -364,7 +569,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CPU_APP_URL = "https://cputime.cn";
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = VF6KYPSB9R;
+				DEVELOPMENT_TEAM = "$(CPU_DEVELOPMENT_TEAM)";
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_INCOMING_NETWORK_CONNECTIONS = NO;
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
@@ -401,7 +606,7 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = "$(RECOMMENDED_MACOSX_DEPLOYMENT_TARGET)";
 				MARKETING_VERSION = 1.0.0;
-				PRODUCT_BUNDLE_IDENTIFIER = cn.lizmt.cpuweb;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(CPU_APP_BUNDLE_IDENTIFIER)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				REGISTER_APP_GROUPS = YES;
@@ -427,7 +632,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CPU_APP_URL = "https://cputime.cn";
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = VF6KYPSB9R;
+				DEVELOPMENT_TEAM = "$(CPU_DEVELOPMENT_TEAM)";
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_INCOMING_NETWORK_CONNECTIONS = NO;
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
@@ -464,7 +669,7 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = "$(RECOMMENDED_MACOSX_DEPLOYMENT_TARGET)";
 				MARKETING_VERSION = 1.0.0;
-				PRODUCT_BUNDLE_IDENTIFIER = cn.lizmt.cpuweb;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(CPU_APP_BUNDLE_IDENTIFIER)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				REGISTER_APP_GROUPS = YES;
@@ -489,7 +694,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = VF6KYPSB9R;
+				DEVELOPMENT_TEAM = "$(CPU_DEVELOPMENT_TEAM)";
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = CPUWebWidgets/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
@@ -499,7 +704,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 1.0.0;
-				PRODUCT_BUNDLE_IDENTIFIER = cn.lizmt.cpuweb.widgets;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(CPU_APP_BUNDLE_IDENTIFIER).widgets";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = iphoneos;
@@ -524,7 +729,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = VF6KYPSB9R;
+				DEVELOPMENT_TEAM = "$(CPU_DEVELOPMENT_TEAM)";
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = CPUWebWidgets/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
@@ -534,7 +739,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 1.0.0;
-				PRODUCT_BUNDLE_IDENTIFIER = cn.lizmt.cpuweb.widgets;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(CPU_APP_BUNDLE_IDENTIFIER).widgets";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = iphoneos;
@@ -547,6 +752,123 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		A10000000000000000000015 /* Debug configuration for PBXNativeTarget "CPUWatch" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = CPUWatch/CPUWatch.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "$(CPU_DEVELOPMENT_TEAM)";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = CPUWatch/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(CPU_APP_BUNDLE_IDENTIFIER).watchkitapp";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "watchos watchsimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+			};
+			name = Debug;
+		};
+		A10000000000000000000016 /* Release configuration for PBXNativeTarget "CPUWatch" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = CPUWatch/CPUWatch.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "$(CPU_DEVELOPMENT_TEAM)";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = CPUWatch/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(CPU_APP_BUNDLE_IDENTIFIER).watchkitapp";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "watchos watchsimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+			};
+			name = Release;
+		};
+		B10000000000000000000015 /* Debug configuration for PBXNativeTarget "CPUWatchWidgets" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = CPUWatchWidgets/CPUWatchWidgets.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "$(CPU_DEVELOPMENT_TEAM)";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = CPUWatchWidgets/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(CPU_APP_BUNDLE_IDENTIFIER).watchkitapp.widgets";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "watchos watchsimulator";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+			};
+			name = Debug;
+		};
+		B10000000000000000000016 /* Release configuration for PBXNativeTarget "CPUWatchWidgets" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = CPUWatchWidgets/CPUWatchWidgets.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "$(CPU_DEVELOPMENT_TEAM)";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = CPUWatchWidgets/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(CPU_APP_BUNDLE_IDENTIFIER).watchkitapp.widgets";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "watchos watchsimulator";
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
 			};
 			name = Release;
 		};
@@ -574,6 +896,22 @@
 			buildConfigurations = (
 				000000000000000211000000 /* Debug configuration for PBXNativeTarget "CPUWebWidgets" */,
 				000000000000000212000000 /* Release configuration for PBXNativeTarget "CPUWebWidgets" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		A10000000000000000000011 /* Build configuration list for PBXNativeTarget "CPUWatch" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A10000000000000000000015 /* Debug configuration for PBXNativeTarget "CPUWatch" */,
+				A10000000000000000000016 /* Release configuration for PBXNativeTarget "CPUWatch" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		B10000000000000000000011 /* Build configuration list for PBXNativeTarget "CPUWatchWidgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B10000000000000000000015 /* Debug configuration for PBXNativeTarget "CPUWatchWidgets" */,
+				B10000000000000000000016 /* Release configuration for PBXNativeTarget "CPUWatchWidgets" */,
 			);
 			defaultConfigurationName = Release;
 		};

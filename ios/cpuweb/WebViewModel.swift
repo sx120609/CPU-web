@@ -11,6 +11,7 @@ final class WebViewModel: ObservableObject {
     }
 
     @Published var phase: Phase = .loading
+    @Published var isWatchSyncStatusPresented = false
     weak var webView: WKWebView?
     private var requestedURL = AppConfiguration.appURL
 
@@ -34,6 +35,10 @@ final class WebViewModel: ObservableObject {
 
     func showError() {
         phase = .failed
+    }
+
+    func showWatchSyncStatus() {
+        isWatchSyncStatusPresented = true
     }
 
     func retry() {

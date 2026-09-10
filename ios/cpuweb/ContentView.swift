@@ -11,6 +11,8 @@ struct CPUWebApp: App {
 
 struct ContentView: View {
     @StateObject private var model = WebViewModel()
+    @ObservedObject private var schedule = PhoneScheduleStore.shared
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         ZStack {
@@ -33,6 +35,13 @@ struct ContentView: View {
             }
         }
         .animation(.easeOut(duration: 0.18), value: model.phase)
+        .sheet(isPresented: $model.isWatchSyncStatusPresented) {
+            WatchSyncStatusView(store: schedule)
+        }
+        .task { schedule.coordinator.start() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { schedule.coordinator.foreground() }
+        }
         .onOpenURL(perform: model.open)
         .preferredColorScheme(.light)
     }

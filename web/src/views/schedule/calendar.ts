@@ -7,6 +7,8 @@ import type {
   SemesterDescriptor,
 } from "./types";
 
+export const CAMPUS_TIME_ZONE = "Asia/Shanghai";
+
 const OFFICIAL_GRADUATE_SEMESTER_CALENDARS: Record<string, OfficialSemesterCalendar> = {
   "2025-2026学年一学期": { start: "2025-09-01", end: "2026-01-18", weeks: 20 },
   "2025-2026学年二学期": { start: "2026-03-02", end: "2026-07-05", weeks: 18 },
@@ -18,7 +20,7 @@ const OFFICIAL_GRADUATE_SEMESTER_CALENDARS: Record<string, OfficialSemesterCalen
 
 export function chinaTodayParts() {
   const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Shanghai",
+    timeZone: CAMPUS_TIME_ZONE,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",

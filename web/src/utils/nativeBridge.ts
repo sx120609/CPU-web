@@ -4,6 +4,7 @@ export type NativeAppBridge = {
   getVersionCode?: () => number;
   getVersionName?: () => string;
   supportsScheduleWidget?: () => boolean;
+  supportsWatchSchedule?: () => boolean;
   supportsInAppApkDownload?: () => boolean;
   previewImages?: (payload: string) => boolean;
   copyText?: (text: string) => boolean;
@@ -13,6 +14,7 @@ export type NativeAppBridge = {
   saveImageUrl?: (url: string, fileName?: string) => boolean | Promise<boolean>;
   installScheduleWidget?: (payload: string) => void;
   setScheduleWidgetTheme?: (theme: string) => void;
+  openWatchSyncStatus?: () => boolean;
 };
 
 export type NativeImagePreviewItem = {

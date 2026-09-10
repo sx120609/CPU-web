@@ -19,7 +19,8 @@ struct WebViewContainer: UIViewRepresentable {
 
         let bridge = CPUIOSBridge(
             presenter: context.coordinator,
-            historyObserver: context.coordinator
+            historyObserver: context.coordinator,
+            watchSyncPresenter: context.coordinator
         )
         context.coordinator.bridge = bridge
         configuration.userContentController.add(bridge, name: CPUIOSBridge.handlerName)
@@ -27,7 +28,11 @@ struct WebViewContainer: UIViewRepresentable {
         configuration.userContentController.addUserScript(bridge.bridgeScript)
         configuration.userContentController.addUserScript(bridge.webHistoryObservationScript)
 
+        if let script = PhoneScheduleStore.shared.provider.script {
+            configuration.userContentController.addUserScript(script)
+        }
         let webView = WKWebView(frame: .zero, configuration: configuration)
+        PhoneScheduleStore.shared.provider.webView = webView
         bridge.webView = webView
         webView.navigationDelegate = context.coordinator
         webView.uiDelegate = context.coordinator
@@ -80,7 +85,7 @@ struct WebViewContainer: UIViewRepresentable {
 
     @MainActor
     final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, UIGestureRecognizerDelegate,
-        NativePresentationProviding, NativeWebHistoryObserving {
+        NativePresentationProviding, NativeWebHistoryObserving, NativeWatchSyncPresenting {
         private let model: WebViewModel
         private var mainFrameLoadFailed = false
         private weak var hostView: WebViewHostView?
@@ -139,6 +144,10 @@ struct WebViewContainer: UIViewRepresentable {
             hostView = nil
             webView = nil
             bridge = nil
+        }
+
+        func presentWatchSyncStatus() {
+            model.showWatchSyncStatus()
         }
 
         func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {

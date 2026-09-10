@@ -16,16 +16,27 @@ protocol NativeWebHistoryObserving: AnyObject {
 }
 
 @MainActor
+protocol NativeWatchSyncPresenting: AnyObject {
+    func presentWatchSyncStatus()
+}
+
+@MainActor
 final class CPUIOSBridge: NSObject, WKScriptMessageHandler {
     static let handlerName = "cpuIOS"
 
     weak var presenter: NativePresentationProviding?
     weak var historyObserver: NativeWebHistoryObserving?
+    weak var watchSyncPresenter: NativeWatchSyncPresenting?
     weak var webView: WKWebView?
 
-    init(presenter: NativePresentationProviding, historyObserver: NativeWebHistoryObserving) {
+    init(
+        presenter: NativePresentationProviding,
+        historyObserver: NativeWebHistoryObserving,
+        watchSyncPresenter: NativeWatchSyncPresenting
+    ) {
         self.presenter = presenter
         self.historyObserver = historyObserver
+        self.watchSyncPresenter = watchSyncPresenter
     }
 
     var webLaunchScreenSuppressionScript: WKUserScript {
@@ -64,6 +75,7 @@ final class CPUIOSBridge: NSObject, WKScriptMessageHandler {
             getVersionCode: () => \(AppConfiguration.versionCode),
             getVersionName: () => \(Self.javascriptString(AppConfiguration.versionName)),
             supportsScheduleWidget: () => true,
+            supportsWatchSchedule: () => true,
             supportsInAppApkDownload: () => false,
             copyText: (text) => send('copyText', { text: String(text ?? '') }),
             openExternalUrl: (url) => { send('openExternalUrl', { url: String(url ?? '') }); },
@@ -76,7 +88,8 @@ final class CPUIOSBridge: NSObject, WKScriptMessageHandler {
             }),
             installScheduleWidget: (payload) => { send('installScheduleWidget', { payload: String(payload ?? '') }); },
             clearScheduleWidget: () => { send('clearScheduleWidget', {}); },
-            setScheduleWidgetTheme: (theme) => { send('setScheduleWidgetTheme', { theme: String(theme ?? '') }); }
+            setScheduleWidgetTheme: (theme) => { send('setScheduleWidgetTheme', { theme: String(theme ?? '') }); },
+            openWatchSyncStatus: () => send('openWatchSyncStatus', {})
           };
           Object.defineProperty(window, 'CPUIOS', { value: bridge, configurable: true });
         })();
@@ -162,6 +175,10 @@ final class CPUIOSBridge: NSObject, WKScriptMessageHandler {
         }
 
         switch action {
+        case "openWatchSyncStatus":
+            watchSyncPresenter?.presentWatchSyncStatus()
+        case "watchSchedule":
+            PhoneScheduleStore.shared.provider.receive(body)
         case "copyText":
             UIPasteboard.general.string = body["text"] as? String ?? ""
         case "openExternalUrl":

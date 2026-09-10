@@ -110,6 +110,20 @@
       </div>
     </div>
 
+    <div v-if="iosWatchSyncAvailable" class="cpu-card watch-sync-card">
+      <div class="watch-sync-copy">
+        <span class="watch-sync-icon" aria-hidden="true"><el-icon><WatchIcon /></el-icon></span>
+        <div>
+          <h3 class="cpu-section-title">Apple Watch 课表</h3>
+          <p>查看连接状态、缓存课程并手动同步到手表。</p>
+        </div>
+      </div>
+      <el-button type="primary" plain @click="openWatchSyncStatus">
+        管理同步
+        <el-icon><ArrowRight /></el-icon>
+      </el-button>
+    </div>
+
     <div class="cpu-card wechat-bind-card">
       <div>
         <h3 class="cpu-section-title">绑定微信服务号</h3>
@@ -475,7 +489,7 @@
 import { ref, reactive, computed, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { ArrowRight, Bell, Monitor, Moon, Sunny } from "@element-plus/icons-vue";
+import { ArrowRight, Bell, Monitor, Moon, Sunny, Watch as WatchIcon } from "@element-plus/icons-vue";
 import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
 import { useAppearanceStore, type AppearanceMode } from "@/stores/appearance";
@@ -493,9 +507,11 @@ import { compressImageFile, normalizeImageUploadError } from "@/utils/imageUploa
 import { preloadAvatar } from "@/utils/avatarPreview";
 import { withMediaRevision } from "@/utils/cdnMedia";
 import { readViewCache, writeViewCache } from "@/utils/viewCache";
-import { hidesNativeCommerce } from "@/utils/clientInfo";
+import { hidesNativeCommerce, isIosNativeApp } from "@/utils/clientInfo";
 
 const commerceHidden = hidesNativeCommerce();
+const iosWatchSyncAvailable = isIosNativeApp()
+  && typeof (window as any).CPUIOS?.openWatchSyncStatus === "function";
 
 interface ProfileViewCache {
   topics: any[];
@@ -609,6 +625,13 @@ const appearanceOptions: Array<{ value: AppearanceMode; label: string; icon: unk
   { value: "light", label: "浅色", icon: Sunny },
   { value: "dark", label: "深色", icon: Moon },
 ];
+
+function openWatchSyncStatus() {
+  const bridge = (window as any).CPUIOS;
+  if (typeof bridge?.openWatchSyncStatus !== "function" || bridge.openWatchSyncStatus() === false) {
+    ElMessage.warning("Apple Watch 同步功能暂时不可用，请重新打开 App 后重试");
+  }
+}
 const profileThemeClass = computed(() => user.value?.profileTheme ? `profile-theme-${user.value.profileTheme}` : "");
 const profileFrameClass = computed(() => user.value?.profileFrame ? `profile-frame-${user.value.profileFrame}` : "");
 const nicknameReviewText = computed(() => {
@@ -1274,6 +1297,41 @@ function normalizeProfileLoadError(error: unknown, fallback = "个人中心加�
   color: #05201c;
   background: var(--cpu-primary);
   box-shadow: 0 6px 18px rgba(20, 143, 123, 0.18);
+}
+
+.watch-sync-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.watch-sync-copy {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+}
+.watch-sync-copy p {
+  margin: 4px 0 0;
+  color: var(--cpu-text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.watch-sync-icon {
+  display: inline-flex;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--cpu-primary) 16%, var(--cpu-surface));
+  color: var(--cpu-primary);
+  font-size: 22px;
+}
+.watch-sync-card > .el-button {
+  flex-shrink: 0;
+  margin-left: 0 !important;
 }
 .appearance-options button:not(.active):hover {
   color: var(--cpu-primary);
