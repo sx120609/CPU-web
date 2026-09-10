@@ -245,27 +245,31 @@
     </button>
 
     <footer v-if="!hideChrome && !useNativeShell && !fullHeightContent && !mobileTopicChrome" class="footer">
-      <div class="footer-company">
-        <p>球谐信息技术（深圳）有限公司<span aria-hidden="true"> · </span><a href="/about.html">关于我们</a></p>
-        <address>
-          <span>办公地址：深圳市南山区高新南九道51号航空航天大厦1号楼2302</span>
-          <span>联系电话：<a href="tel:19984839722">19984839722</a></span>
-          <a href="mailto:admin@lizmt.cn">admin@lizmt.cn</a>
-        </address>
+      <div class="footer-inner">
+        <div class="footer-main">
+          <div class="footer-company">
+            <router-link class="footer-brand" to="/home">药大拾间</router-link>
+            <p>球谐信息技术（深圳）有限公司</p>
+            <a class="footer-about" href="/about.html">了解我们 <span aria-hidden="true">↗</span></a>
+          </div>
+          <address class="footer-contact">
+            <p class="footer-contact-label">联系与地址</p>
+            <p class="footer-address">深圳市南山区高新南九道51号航空航天大厦1号楼2302</p>
+            <div class="footer-contact-links">
+              <a href="tel:19984839722" aria-label="联系电话 19984839722">19984839722</a>
+              <a href="mailto:admin@lizmt.cn">admin@lizmt.cn</a>
+            </div>
+          </address>
+        </div>
+        <div class="footer-bottom">
+          <span>© 2026 药大拾间<span class="footer-separator" aria-hidden="true"> · </span>非学校官方站点</span>
+          <nav class="footer-links" aria-label="网站信息">
+            <router-link to="/download">客户端下载</router-link>
+            <a href="https://github.com/sx120609/CPU-web" target="_blank" rel="noopener noreferrer">GitHub</a>
+            <a v-if="site.siteFilingNumber" href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">{{ site.siteFilingNumber }}</a>
+          </nav>
+        </div>
       </div>
-      <span class="footer-item">© 2026 药大拾间 · 校园互助与服务平台</span>
-      <router-link class="footer-item" to="/download">客户端下载</router-link>
-      <a class="footer-item" href="https://github.com/sx120609/CPU-web" target="_blank" rel="noopener noreferrer">GitHub</a>
-      <span class="footer-item">非学校官方站点</span>
-      <a
-        v-if="site.siteFilingNumber"
-        class="footer-item"
-        href="https://beian.miit.gov.cn/"
-        target="_blank"
-        rel="noopener noreferrer"
-      >
-        {{ site.siteFilingNumber }}
-      </a>
     </footer>
 
     <LiquidGlassTabbar
@@ -1560,51 +1564,119 @@ html[data-theme="dark"] .assistant-widget {
 .footer {
   background: var(--cpu-surface);
   border-top: 1px solid var(--cpu-border-soft);
-  padding: 16px 20px;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 8px 14px;
+  padding: 28px 20px 18px;
   font-size: 12px;
-  color: var(--cpu-text-muted);
+  line-height: 1.7;
+  color: var(--cpu-text-secondary);
 }
 
-.footer-item {
+.footer-inner {
+  max-width: 1240px;
+  margin: 0 auto;
+}
+
+.footer a {
   color: inherit;
-  line-height: 1.6;
+  text-decoration: none;
+}
+
+.footer a:hover {
+  color: var(--cpu-primary);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.footer a:focus-visible {
+  outline: 2px solid var(--cpu-primary);
+  outline-offset: 4px;
+  border-radius: 2px;
+}
+
+.footer-main {
+  display: grid;
+  grid-template-columns: 1fr minmax(0, 1fr);
+  gap: 24px 48px;
+  align-items: start;
+  padding-bottom: 22px;
 }
 
 .footer-company {
-  flex-basis: 100%;
-  width: 100%;
-  color: var(--cpu-text-secondary);
   font-size: 13px;
-  line-height: 1.8;
-  text-align: center;
-  overflow-wrap: anywhere;
+}
+
+.footer a.footer-brand {
+  color: var(--cpu-text);
+  font-size: 17px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
 }
 
 .footer-company p {
-  margin: 0 0 4px;
+  margin: 6px 0 8px;
 }
 
-.footer-company address {
+.footer-about span {
+  margin-left: 4px;
+}
+
+.footer-contact {
+  font-style: normal;
+  font-size: 13px;
+}
+
+.footer-contact p {
+  margin: 0;
+}
+
+.footer-contact-label {
+  color: var(--cpu-text);
+  font-weight: 500;
+}
+
+.footer-contact .footer-address {
+  margin-top: 8px;
+  overflow-wrap: anywhere;
+}
+
+.footer-contact-links {
   display: flex;
   flex-wrap: wrap;
-  justify-content: center;
-  gap: 4px 16px;
-  font-style: normal;
+  gap: 8px 24px;
+  margin-top: 6px;
+  font-variant-numeric: tabular-nums;
 }
 
-.footer-company a {
-  color: var(--cpu-primary);
-  text-underline-offset: 3px;
+.footer-bottom {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 24px;
+  padding-top: 14px;
+  border-top: 1px solid var(--cpu-border-soft);
 }
 
-.footer a.footer-item {
-  color: var(--cpu-primary);
-  text-decoration: none;
+.footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+}
+
+@media (max-width: 600px) {
+  .footer {
+    padding: 24px 20px 18px;
+  }
+
+  .footer-main {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+
+  .footer-bottom {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
 }
 
 .mobile-tabbar {

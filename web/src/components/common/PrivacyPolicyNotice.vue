@@ -1,14 +1,24 @@
 <template>
   <p :class="['privacy-policy-notice', `align-${align}`, `tone-${tone}`, { compact }]">
     <span v-if="prefix">{{ prefix }}</span>
-    <a href="/privacy.html">《隐私政策》</a>
+    <button type="button" class="policy-link" @click="openPolicy('privacy')">《隐私政策》</button>
     <span>及</span>
-    <a href="/terms.html">《用户协议》</a>
+    <button type="button" class="policy-link" @click="openPolicy('terms')">《用户协议》</button>
     <span v-if="suffix">{{ suffix }}</span>
   </p>
+  <PolicyDocumentDialog v-model="policyOpen" :document="policyDocument" />
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue';
+import PolicyDocumentDialog from './PolicyDocumentDialog.vue';
+
+const policyOpen = ref(false);
+const policyDocument = ref<'privacy' | 'terms'>('privacy');
+function openPolicy(document: 'privacy' | 'terms') {
+  policyDocument.value = document;
+  policyOpen.value = true;
+}
 withDefaults(defineProps<{
   prefix?: string;
   suffix?: string;
@@ -40,11 +50,11 @@ withDefaults(defineProps<{
 }
 
 .privacy-policy-notice.tone-muted {
-  color: #6b7280;
+  color: var(--cpu-text-secondary);
 }
 
 .privacy-policy-notice.tone-accent {
-  color: #4b5563;
+  color: var(--cpu-text-secondary);
 }
 
 .privacy-policy-notice.compact {
@@ -52,12 +62,25 @@ withDefaults(defineProps<{
   font-size: 11px;
 }
 
-.privacy-policy-notice a {
+.privacy-policy-notice .policy-link {
+  appearance: none;
+  display: inline;
+  border: 0;
+  background: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
   color: var(--cpu-primary);
   text-decoration: none;
+  cursor: pointer;
 }
 
-.privacy-policy-notice a:hover {
+.privacy-policy-notice .policy-link:hover {
   text-decoration: underline;
+}
+
+.privacy-policy-notice .policy-link:focus-visible {
+  outline: 2px solid var(--cpu-primary);
+  outline-offset: 3px;
 }
 </style>
