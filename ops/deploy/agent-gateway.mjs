@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 
-export async function readGateway(directory, fetcher = fetch) {
+export async function readGateway(directory, fetcher = fetch, { requireReady = true } = {}) {
   const settings = JSON.parse(await readFile(`${directory}/agent-gateway.json`, 'utf8'))
   if (!Number.isInteger(settings.port) || settings.port < 1024 || settings.port > 65535
     || !Array.isArray(settings.requiredAgents) || !settings.requiredAgents.length
@@ -22,12 +22,25 @@ export async function readGateway(directory, fetcher = fetch) {
   const snapshot = await response.json()
   if (!response.ok || snapshot.protocol !== 1 || !snapshot.instance) throw new Error('Persistent Agent gateway is unavailable')
   for (const id of settings.requiredAgents) {
+    if (!Object.hasOwn(snapshot.agents || {}, id)) throw new Error(`Required Agent ${id} is not configured on the gateway`)
+    if (!requireReady) continue
     if (!snapshot.agents?.[id]?.ready || !snapshot.agents[id].jwxtEnabled
       || !snapshot.recipients?.some(item => item.agentId === id && item.publicKey)) {
       throw new Error(`Agent ${id} is not ready on the persistent gateway; active service is retained`)
     }
   }
   return { port: settings.port, secretFile, instance: snapshot.instance, requiredAgents: settings.requiredAgents }
+}
+
+export async function awaitGatewayMigration(directory, expected, { timeoutMs = 300000, read = readGateway, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now } = {}) {
+  const deadline = now() + timeoutMs
+  let lastError
+  do {
+    try { assertSameGateway(expected, await read(directory)); return }
+    catch (error) { lastError = error }
+    await sleep(1000)
+  } while (now() < deadline)
+  throw new Error(`Initial Agent migration is not ready; no API cutover occurred: ${lastError?.message}`)
 }
 
 export function assertSameGateway(before, after) {

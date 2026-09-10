@@ -7,7 +7,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { assertCommit, readArtifactManifest, verifyArtifactManifest } from './artifact-manifest.mjs'
 import { atomicWrite, cutover, probe, replaceConfig, replaceUpstream, runtimeEnvironment } from './blue-green-core.mjs'
-import { readGateway, assertSameGateway, waitForUpstreamIdle } from './agent-gateway.mjs'
+import { readGateway, assertSameGateway, waitForUpstreamIdle, awaitGatewayMigration } from './agent-gateway.mjs'
 
 const exec = promisify(execFile)
 const log = message => console.log(`[blue-green] ${message}`)
@@ -282,9 +282,11 @@ export async function deploy() {
   } else await probe(`http://127.0.0.1:${previous.port}/api/${previous.commit ? 'ready' : 'health'}`, { commit: previous.commit })
   const serverChanged = !previous.id || touches(/^(server\/|desktop\/assets\/userscripts\/|ops\/deploy\/|deploy\.sh$)/)
   const voiceChanged = !previous.id || touches(/^voicehub\//)
+  const initialGatewayMigration = process.env.DEPLOY_AGENT_GATEWAY_BOOTSTRAP === '1'
+  if (initialGatewayMigration && previous.gateway) throw new Error('Gateway bootstrap is only allowed for the initial legacy migration')
   // Legacy in-process Agent sockets cannot be transferred to another process.
   // Require a completed gateway migration before creating a new API owner.
-  const gateway = serverChanged || voiceChanged ? await readGateway(stateDir).catch(error => {
+  const gateway = serverChanged || voiceChanged ? await readGateway(stateDir, fetch, { requireReady: !initialGatewayMigration }).catch(error => {
     throw new Error(`Agent gateway migration/readiness is required before backend deployment: ${error.message}. No running process was changed.`)
   }) : null
   let nginxConfigs = []
@@ -431,9 +433,13 @@ export async function deploy() {
       previous, candidate,
       prepare: async () => { candidate.oldWorkers = await nginxWorkers(nginx) },
       ready: async () => {
-        assertSameGateway(gateway, await readGateway(stateDir))
         await probe(`http://127.0.0.1:${port}/api/ready`, { commit })
         await verifyWeb(`http://127.0.0.1:${port}`, newIndex)
+        if (initialGatewayMigration) {
+          log('Candidate is ready. Waiting for the approved initial Agent connection migration; public API still uses the old release.')
+          await awaitGatewayMigration(stateDir, gateway)
+        }
+        assertSameGateway(gateway, await readGateway(stateDir))
       },
       persist: async value => { switching = true; await save(value) },
       switchRoute: async () => {

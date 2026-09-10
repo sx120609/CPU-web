@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { assertSameGateway, waitForUpstreamIdle, readGateway } from './agent-gateway.mjs'
+import { assertSameGateway, waitForUpstreamIdle, readGateway, awaitGatewayMigration } from './agent-gateway.mjs'
 import { mkdtemp, writeFile, rm } from 'node:fs/promises'
 import path from 'node:path'
 import os from 'node:os'
@@ -15,10 +15,24 @@ test('migration gate requires both configured Agents, their keys, and a direct n
   const snapshot = { protocol: 1, instance: 'stable', agents: { a: { ready: true, jwxtEnabled: true }, b: { ready: false, jwxtEnabled: true } }, recipients: [{ agentId: 'a', publicKey: 'key-a' }, { agentId: 'b', publicKey: 'key-b' }] }
   const fetcher = async () => ({ ok: true, json: async () => snapshot })
   await assert.rejects(readGateway(directory, fetcher), /Agent b is not ready/)
+  assert.equal((await readGateway(directory, fetcher, { requireReady: false })).instance, 'stable')
   snapshot.agents.b.ready = true
   assert.equal((await readGateway(directory, fetcher)).instance, 'stable')
   await writeFile(nginx, '# location = /agent { proxy_pass http://127.0.0.1:23633; }')
   await assert.rejects(readGateway(directory, fetcher), /route directly/)
+})
+
+test('approved initial migration waits for the same complete gateway before API cutover', async () => {
+  let time = 0
+  const gateway = { instance: 'one', port: 23633, requiredAgents: ['a', 'b'] }
+  const options = { timeoutMs: 5000, now: () => time, sleep: async ms => { time += ms }, read: async () => {
+    if (time < 2000) throw new Error('b is offline')
+    return gateway
+  } }
+  await awaitGatewayMigration('/unused', gateway, options)
+  assert.equal(time, 2000)
+  time = 0
+  await assert.rejects(awaitGatewayMigration('/unused', gateway, { ...options, read: async () => ({ ...gateway, instance: 'changed' }) }), /no API cutover occurred/)
 })
 
 test('gateway replacement or baseline edits prevent cutover', () => {
