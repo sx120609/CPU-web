@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { remoteGateway } from "./jwxtGatewayTransport";
 import type { IncomingMessage, Server as HttpServer } from "node:http";
 import type { Duplex } from "node:stream";
 import { config, type JwxtAgentConfig } from "../config";
@@ -58,6 +59,7 @@ export function getLocalAgentReplicaIdentity() {
 }
 
 export function getJwxtAgentReplicaRecipients(): AgentReplicaRecipient[] {
+  if (remoteGateway) return remoteGateway.current()?.recipients || [];
   const recipients: AgentReplicaRecipient[] = [];
   if (getJwxtAgentRuntimeConfig().localJwxtEnabled) {
     recipients.push({ agentId: "local", publicKey: getLocalAgentReplicaIdentity().publicKey });
@@ -72,11 +74,13 @@ export function getJwxtAgentCredentialPublicKey(agentId: string) {
   if (agentId === "local" && getJwxtAgentRuntimeConfig().localJwxtEnabled) {
     return getLocalAgentReplicaIdentity().publicKey;
   }
+  if (remoteGateway) return remoteGateway.current()?.recipients.find(item => item.agentId === agentId)?.publicKey || "";
   const session = sessions.get(agentId);
   return session?.ready ? session.replicaPublicKey : "";
 }
 
 export function attachJwxtAgentGateway(server: HttpServer) {
+  if (remoteGateway) return;
   if (attachedServer) {
     if (attachedServer !== server) throw new Error("JWXT Agent gateway has already been attached to another server");
     return;
@@ -132,6 +136,8 @@ export function attachJwxtAgentGateway(server: HttpServer) {
 }
 
 export function getJwxtAgentState(agentId: string) {
+  const remote = remoteGateway?.current()?.agents[agentId];
+  if (remote) return remote;
   const agent = getJwxtAgentRuntimeConfig().agents.find((item) => item.id === agentId);
   const session = sessions.get(agentId);
   const online = Boolean(session && session.socket.readyState === WebSocket.OPEN);
@@ -163,6 +169,7 @@ export async function requestJwxtAgent<A extends JwxtAgentAction>(
   payload: JwxtAgentInput<A>,
   timeoutMs = config.proxyTimeoutMs,
 ): Promise<JwxtAgentOutput<A>> {
+  if (remoteGateway) return remoteGateway.request(agentId, action, payload, timeoutMs);
   const agent = getJwxtAgentRuntimeConfig().agents.find((item) => item.id === agentId);
   if (!agent || !agent.enabled) throw new HttpError(503, 5000, `教务 Agent ${agentId} 未配置或已禁用`);
   const capability = action === "school-feed.crawl" ? "crawl" : "jwxt";

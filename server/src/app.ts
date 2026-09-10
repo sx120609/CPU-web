@@ -36,6 +36,7 @@ import { startWechatNotificationPoller } from "./services/wechatService";
 import { prisma } from "./prisma";
 import { isRedisConfigured, readRedisString } from "./services/redis";
 import { createDeploymentRelay } from "./utils/deploymentRelay";
+import { remoteGateway } from "./services/jwxtGatewayTransport";
 
 export function startAppWorkers() {
   startForumImageModerationPoller();
@@ -103,6 +104,7 @@ export function createApp(options: { workers?: boolean } = {}) {
 
   app.get("/api/ready", async (_req, res) => {
     try {
+      if (remoteGateway) await remoteGateway.refresh();
       await prisma.$queryRaw`SELECT 1`;
       if (isRedisConfigured() && !(await readRedisString("deployment-readiness")).available) {
         throw new Error("Redis unavailable");

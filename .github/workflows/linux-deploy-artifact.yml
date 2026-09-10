@@ -73,7 +73,7 @@ jobs:
 
       - name: Test Agent deployment and version reporting
         run: |
-          node --import ./server/node_modules/tsx/dist/loader.mjs --test server/tests/jwxtAgent.integration.test.ts
+          node --import ./server/node_modules/tsx/dist/loader.mjs --test server/tests/jwxtAgent.integration.test.ts server/tests/jwxtGatewayTransport.test.ts
           node --test ops/deploy/agent-update.test.mjs
 
       - name: Verify blue-green deployment and nginx draining
@@ -84,7 +84,7 @@ jobs:
           npm install --prefix "$DEPLOY_TEST_PLAYWRIGHT_ROOT" --no-audit --no-fund playwright@1.62.1
           "$DEPLOY_TEST_PLAYWRIGHT_ROOT/node_modules/.bin/playwright" install --with-deps chromium
           bash -n deploy.sh
-          node --test ops/deploy/blue-green.test.mjs
+          node --test ops/deploy/blue-green.test.mjs ops/deploy/agent-gateway.test.mjs
           REQUIRE_NGINX_TEST=1 node --test ops/deploy/blue-green-nginx.test.mjs
           node --import ./server/node_modules/tsx/dist/loader.mjs --test server/tests/deploymentWorkers.test.ts server/tests/deploymentRelay.test.ts server/tests/webStaticCos.test.ts
 

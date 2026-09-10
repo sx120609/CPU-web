@@ -7,6 +7,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { assertCommit, readArtifactManifest, verifyArtifactManifest } from './artifact-manifest.mjs'
 import { atomicWrite, cutover, probe, replaceConfig, replaceUpstream, runtimeEnvironment } from './blue-green-core.mjs'
+import { readGateway, assertSameGateway, waitForUpstreamIdle } from './agent-gateway.mjs'
 
 const exec = promisify(execFile)
 const log = message => console.log(`[blue-green] ${message}`)
@@ -207,9 +208,16 @@ export async function deploy() {
     await atomicWrite(marker, candidate.id)
     await run('pm2', ['save'])
   }
+  const waitForUpstream = port => waitForUpstreamIdle(port, drainSeconds, {
+    connections: async target => Boolean(await run('ss', ['-Hnt', 'state', 'established', `( sport = :${target} or dport = :${target} )`])),
+  })
   const retire = async (previous, candidate, workers) => {
-    if (!await waitForWorkers(workers, drainSeconds)) {
-      log('Old nginx workers still have connections. Both releases are retained; run update again after they drain.')
+    if (candidate.gateway) assertSameGateway(candidate.gateway, await readGateway(stateDir))
+    const drainedUpstream = candidate.gateway
+      ? await waitForUpstream(previous.port)
+      : await waitForWorkers(workers, drainSeconds)
+    if (!drainedUpstream) {
+      log('Old upstream connections have not drained. Both releases are retained; run update again after they drain.')
       return false
     }
     for (const item of await configSnapshots(candidate, previous.port, candidate.port)) {
@@ -229,6 +237,7 @@ export async function deploy() {
       await sleep(1000)
     } while (Date.now() < deadline)
     if (!drained) { log('Relayed requests are still active; retaining the previous release'); return false }
+    if (candidate.gateway) assertSameGateway(candidate.gateway, await readGateway(stateDir))
     if (previous?.name) await removeProcess(previous.name)
     if (previous?.voiceName && previous.voiceName !== candidate.voiceName) await removeProcess(previous.voiceName)
     return true
@@ -251,7 +260,8 @@ export async function deploy() {
       await run(nginx, ['-t'])
       await atomicWrite(path.join(root, 'web/dist/index.html'), await readFile(path.join(candidate.release, 'previous-index.html')), 0o644)
       await run(nginx, ['-s', 'reload'])
-      if (!await waitForWorkers(workers, drainSeconds)) throw new Error('Rollback traffic restored; candidate still draining. Rerun update to finish recovery.')
+      const rollbackDrained = candidate.gateway ? await waitForUpstream(candidate.port) : await waitForWorkers(workers, drainSeconds)
+      if (!rollbackDrained) throw new Error('Rollback traffic restored; candidate still draining. Rerun update to finish recovery.')
       await removeProcess(candidate.name)
       if (candidate.voiceName !== previous.voiceName) await removeProcess(candidate.voiceName)
       if (previous.id) await activate(previous)
@@ -272,6 +282,11 @@ export async function deploy() {
   } else await probe(`http://127.0.0.1:${previous.port}/api/${previous.commit ? 'ready' : 'health'}`, { commit: previous.commit })
   const serverChanged = !previous.id || touches(/^(server\/|desktop\/assets\/userscripts\/|ops\/deploy\/|deploy\.sh$)/)
   const voiceChanged = !previous.id || touches(/^voicehub\//)
+  // Legacy in-process Agent sockets cannot be transferred to another process.
+  // Require a completed gateway migration before creating a new API owner.
+  const gateway = serverChanged || voiceChanged ? await readGateway(stateDir).catch(error => {
+    throw new Error(`Agent gateway migration/readiness is required before backend deployment: ${error.message}. No running process was changed.`)
+  }) : null
   let nginxConfigs = []
   if (serverChanged || voiceChanged) {
     if (process.env.DEPLOY_NGINX_CONFIGS) {
@@ -376,7 +391,7 @@ export async function deploy() {
     if (timeout && !/^0(?:ms|s|m|h|d)?$/.test(timeout)) throw new Error('Nginx worker_shutdown_timeout would force-close old connections; remove it or set it to 0 before online deployment')
   }
   const verifyUrl = (process.env.DEPLOY_VERIFY_URL || 'https://cputime.cn').replace(/\/$/, '')
-  const candidate = { id, commit, name, port, voiceName, voicePort, release, trafficMarker, configs, verifyUrl }
+  const candidate = { id, commit, name, port, voiceName, voicePort, release, trafficMarker, configs, verifyUrl, gateway }
   const snapshots = await configSnapshots(candidate, previous.port, port)
   let switching = false
   let mainStarted = false
@@ -403,7 +418,9 @@ export async function deploy() {
       DEPLOY_INTERNAL_ORIGIN: process.env.DEPLOY_INTERNAL_ORIGIN || 'https://cputime.cn',
       DEPLOY_DRAIN_SECONDS: String(drainSeconds),
       CPU_WEB_RELEASE_SHA: commit, CPU_WEB_RELEASE_ID: id, CPU_WEB_BACKGROUND_MARKER: marker,
-      CPU_WEB_PREVIOUS_PORT: String(previous.port), CPU_WEB_TRAFFIC_MARKER: trafficMarker,
+      CPU_WEB_PREVIOUS_PORT: '', CPU_WEB_TRAFFIC_MARKER: trafficMarker,
+      CPU_WEB_AGENT_GATEWAY_ROLE: 'client', CPU_WEB_AGENT_GATEWAY_PORT: String(gateway.port),
+      CPU_WEB_AGENT_GATEWAY_SECRET_FILE: gateway.secretFile,
       VOICEHUB_ORIGIN: `http://127.0.0.1:${voicePort}`,
     // Nginx draining precedes retirement; PM2's own memory restart has no standby.
     // Keep that restart bounded instead of waiting two minutes on agent sockets.
@@ -414,6 +431,7 @@ export async function deploy() {
       previous, candidate,
       prepare: async () => { candidate.oldWorkers = await nginxWorkers(nginx) },
       ready: async () => {
+        assertSameGateway(gateway, await readGateway(stateDir))
         await probe(`http://127.0.0.1:${port}/api/ready`, { commit })
         await verifyWeb(`http://127.0.0.1:${port}`, newIndex)
       },
@@ -427,6 +445,7 @@ export async function deploy() {
         await run(nginx, ['-s', 'reload'])
       },
       verify: async () => {
+        assertSameGateway(gateway, await readGateway(stateDir))
         await probe(`${verifyUrl}/api/ready?deploy=${id}`, { commit, attempts: 10 })
         await verifyWeb(verifyUrl, newIndex, { entry: true })
       },

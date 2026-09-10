@@ -1,5 +1,7 @@
 # 在线更新与蓝绿切换
 
+教务 Agent 已改为独立网关。首次后端发布前必须完成 [独立网关迁移](jwxt-gateway-deployment.md)；没有迁移或任一基线节点未就绪时，发布在启动候选前停止。使用独立网关时，排空以旧网站 upstream 的连接为准，不再等待承载网关长连接的全部 nginx worker 退出。下面涉及 HTTP 回源与全局 worker 排空的步骤仅用于旧版中断发布恢复。
+
 `bash deploy.sh update` 默认使用蓝绿更新。只接受当前完整 SHA 的 GitHub Linux 制品；不在运行目录安装依赖、覆盖后端代码或执行 `pm2 restart`。推送和 CI 不会自动执行生产部署。
 
 ## 正常流程

@@ -8,6 +8,7 @@ import path from 'node:path'
 import test from 'node:test'
 import { createRequire } from 'node:module'
 import { cutover, probe, replaceConfig, replaceUpstream } from './blue-green-core.mjs'
+import { waitForUpstreamIdle } from './agent-gateway.mjs'
 
 const exec = promisify(execFile)
 const nginx = process.env.TEST_NGINX_BIN || '/usr/sbin/nginx'
@@ -15,6 +16,45 @@ const available = process.platform === 'linux' && await exec(nginx, ['-v']).then
 if (process.env.REQUIRE_NGINX_TEST === '1' && !available) throw new Error('nginx is required for the deployment CI gate')
 const listen = server => new Promise(resolve => server.listen(0, '127.0.0.1', () => resolve(server.address().port)))
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
+
+test('persistent Agent WebSocket survives a real nginx reload without blocking API retirement', { skip: !available }, async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'cpu-nginx-agent-'))
+  const require = createRequire(import.meta.url)
+  const { WebSocketServer } = require('../../server/node_modules/ws')
+  const owner = createServer()
+  const wss = new WebSocketServer({ server: owner })
+  let agentConnections = 0
+  wss.on('connection', socket => { agentConnections++; socket.on('message', message => socket.send(message)) })
+  const old = createServer((_req, res) => res.end('old'))
+  const next = createServer((_req, res) => res.end('new'))
+  const sockets = new Set()
+  old.on('connection', socket => { sockets.add(socket); socket.on('close', () => sockets.delete(socket)) })
+  const ownerPort = await listen(owner), oldPort = await listen(old), nextPort = await listen(next)
+  const reserve = createServer(), proxyPort = await listen(reserve)
+  await new Promise(resolve => reserve.close(resolve))
+  const config = path.join(root, 'nginx.conf')
+  const before = `pid ${root}/nginx.pid; error_log ${root}/error.log; events {} http { access_log off; server { listen 127.0.0.1:${proxyPort}; location = /agent { proxy_pass http://127.0.0.1:${ownerPort}; proxy_http_version 1.1; proxy_set_header Upgrade $http_upgrade; proxy_set_header Connection upgrade; } location / { proxy_pass http://127.0.0.1:${oldPort}; } } }`
+  await writeFile(config, before)
+  const command = args => exec(nginx, ['-p', `${root}/`, '-c', config, ...args])
+  await command([])
+  const socket = new WebSocket(`ws://127.0.0.1:${proxyPort}/agent`)
+  t.after(async () => {
+    socket.close(); for (const client of wss.clients) client.terminate()
+    await command(['-s', 'quit']).catch(() => {})
+    for (const server of [owner, old, next]) { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)) }
+    await sleep(100); await rm(root, { recursive: true, force: true })
+  })
+  await new Promise((resolve, reject) => { socket.onopen = resolve; socket.onerror = reject })
+  assert.equal(await (await fetch(`http://127.0.0.1:${proxyPort}/`)).text(), 'old')
+  await writeFile(config, replaceUpstream(before, oldPort, nextPort))
+  await command(['-t']); await command(['-s', 'reload']); await sleep(200)
+  assert.equal(await (await fetch(`http://127.0.0.1:${proxyPort}/`)).text(), 'new')
+  assert.equal(await waitForUpstreamIdle(oldPort, 10, { connections: async () => sockets.size > 0 }), true)
+  const echo = new Promise(resolve => { socket.onmessage = event => resolve(event.data) })
+  socket.send('login-still-available')
+  assert.equal(await echo, 'login-still-available')
+  assert.equal(agentConnections, 1)
+})
 
 test('real nginx reload keeps concurrent requests and an old streaming response alive', { skip: !available }, async t => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'cpu-nginx-cutover-'))

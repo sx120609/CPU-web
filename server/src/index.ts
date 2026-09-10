@@ -7,6 +7,7 @@ import { startScheduler } from "./services/schoolCrawler";
 import { loadFeatures } from "./services/siteSettings";
 import { loadStorageConfig } from "./services/storageConfig";
 import { attachJwxtAgentGateway } from "./services/jwxtAgentGateway";
+import { remoteGateway } from "./services/jwxtGatewayTransport";
 import { loadJwxtAgentRuntimeConfig } from "./services/jwxtAgentConfig";
 import { attachVoiceHubGateway, voiceHubProxyConfig } from "./services/voiceHubProxy";
 import { attachQqBotWebSocketGateway } from "./services/qqbot/connection";
@@ -38,6 +39,7 @@ async function start() {
   });
 
   const app = createApp({ workers: false });
+  if (remoteGateway) await remoteGateway.start();
   const server = createServer(app);
   attachJwxtAgentGateway(server);
   attachQqBotWebSocketGateway(server);
