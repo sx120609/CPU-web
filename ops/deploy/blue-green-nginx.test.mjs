@@ -24,7 +24,7 @@ test('persistent Agent WebSocket survives a real nginx reload without blocking A
   const owner = createServer()
   const wss = new WebSocketServer({ server: owner })
   let agentConnections = 0
-  wss.on('connection', socket => { agentConnections++; socket.on('message', message => socket.send(message)) })
+  wss.on('connection', socket => { agentConnections++; socket.on('message', message => socket.send(message.toString())) })
   const old = createServer((_req, res) => res.end('old'))
   const next = createServer((_req, res) => res.end('new'))
   const sockets = new Set()
