@@ -5,7 +5,6 @@
       <div class="hero-text">
         <h1>药大拾间</h1>
         <p>{{ heroIntro }}</p>
-        <p class="independent-service-note">独立校园工具，非中国药科大学官方应用；学校名称仅用于说明适用用户和数据来源。</p>
         <div class="hero-actions cpu-button-row">
           <el-button v-if="showForumContent" type="primary" size="large" @click="$router.push('/forum')">
             <el-icon><ChatLineRound /></el-icon>
@@ -37,6 +36,8 @@
         </div>
       </div>
     </section>
+
+    <p class="independent-service-note">独立校园工具，非中国药科大学官方应用；学校名称仅用于说明适用用户和数据来源。</p>
 
     <section v-if="showForumContent" class="home-search-top" aria-label="站内搜索">
       <SiteSearchBar placeholder="搜索帖子或校园服务" />
@@ -366,7 +367,12 @@ function normalizeHomeError(error: unknown) {
 </script>
 
 <style scoped lang="scss">
-.independent-service-note { margin: 0 0 12px; color: var(--cpu-text-secondary); font-size: 12px; line-height: 1.6; }
+.independent-service-note {
+  margin: -12px 4px 0;
+  color: var(--cpu-text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
 
 .home {
   display: flex;

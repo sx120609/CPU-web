@@ -245,15 +245,14 @@
     </button>
 
     <footer v-if="!hideChrome && !useNativeShell && !fullHeightContent && !mobileTopicChrome" class="footer">
-      <section class="footer-company" aria-labelledby="footer-company-title">
-        <h2 id="footer-company-title">球谐信息技术（深圳）有限公司</h2>
-        <p>公司独立开发、运营药大拾间，围绕校园学习与生活提供软件开发和信息服务，包括课表与教务授权查询、校园信息整理及社区交流服务。</p>
+      <div class="footer-company">
+        <p>球谐信息技术（深圳）有限公司<span aria-hidden="true"> · </span><a href="/about.html">关于我们</a></p>
         <address>
-          <span>深圳实际办公地址：深圳市南山区高新南九道51号航空航天大厦1号楼2302</span>
+          <span>办公地址：深圳市南山区高新南九道51号航空航天大厦1号楼2302</span>
           <span>联系电话：<a href="tel:19984839722">19984839722</a></span>
-          <span>联系邮箱：<a href="mailto:admin@lizmt.cn">admin@lizmt.cn</a></span>
+          <a href="mailto:admin@lizmt.cn">admin@lizmt.cn</a>
         </address>
-      </section>
+      </div>
       <span class="footer-item">© 2026 药大拾间 · 校园互助与服务平台</span>
       <router-link class="footer-item" to="/download">客户端下载</router-link>
       <a class="footer-item" href="https://github.com/sx120609/CPU-web" target="_blank" rel="noopener noreferrer">GitHub</a>
@@ -1579,37 +1578,26 @@ html[data-theme="dark"] .assistant-widget {
 .footer-company {
   flex-basis: 100%;
   width: 100%;
-  margin: 0 auto 12px;
-  color: var(--cpu-text);
-  font-size: 16px;
+  color: var(--cpu-text-secondary);
+  font-size: 13px;
   line-height: 1.8;
+  text-align: center;
   overflow-wrap: anywhere;
 }
 
-.footer-company > * {
-  max-width: 800px;
-  margin-inline: auto;
-}
-
-.footer-company h2 {
-  margin-block: 0 8px;
-  font-size: 16px;
-  font-weight: 600;
-}
-
 .footer-company p {
-  margin-block: 0 8px;
+  margin: 0 0 4px;
 }
 
 .footer-company address {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 16px;
   font-style: normal;
 }
 
 .footer-company a {
-  display: inline-block;
-  padding: 6px 0;
   color: var(--cpu-primary);
   text-underline-offset: 3px;
 }
