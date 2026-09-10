@@ -2,6 +2,7 @@ import type { IncomingMessage, Server as HttpServer } from "node:http";
 import type { Duplex } from "node:stream";
 import crypto from "node:crypto";
 import { Errors } from "../../utils/response";
+import { createQqBotDeploymentDrain, qqBotDrainRequested } from "../../utils/qqbotDeploymentDrain";
 
 const { WebSocket, WebSocketServer } = require("ws") as {
   WebSocket: { OPEN: number };
@@ -47,6 +48,7 @@ type QqBotConnectionDeps = {
   getConfig: () => Promise<QqBotConnectionConfig>;
   handleWebhook: (payload: any, secret?: string | null) => Promise<unknown>;
   logMessage: (input: QqBotConnectionLogInput) => Promise<unknown>;
+  pendingWork?: () => number;
 };
 
 let connectionDeps: QqBotConnectionDeps | null = null;
@@ -57,6 +59,24 @@ let wsReconnectTimer: NodeJS.Timeout | null = null;
 let wsLastError = "";
 const wsPendingActions = new Map<string, PendingWebSocketAction>();
 let attachedInboundServer: HttpServer | null = null;
+let activePayloads = 0;
+const deploymentDrain = createQqBotDeploymentDrain({
+  requested: qqBotDrainRequested,
+  pending: () => activePayloads + wsPendingActions.size + (connectionDeps?.pendingWork?.() || 0),
+  connected: () => inboundSocket?.readyState === WebSocket.OPEN,
+  close: () => inboundSocket.close(1012, "网站更新，请重新连接"),
+});
+
+export async function getQqBotDeploymentStatus() {
+  const config = await requireConnectionDeps().getConfig();
+  return {
+    protocol: 1,
+    inboundConfigured: config.enabled && normalizeQqBotConnectionMode(config.connectionMode) === "inbound",
+    connected: Boolean(inboundSocket?.readyState === WebSocket.OPEN),
+    pending: activePayloads + wsPendingActions.size + (connectionDeps?.pendingWork?.() || 0),
+    closing: deploymentDrain.closing(),
+  };
+}
 
 export function configureQqBotConnection(deps: QqBotConnectionDeps) {
   connectionDeps = deps;
@@ -273,10 +293,13 @@ export function attachQqBotWebSocketGateway(server: HttpServer) {
     return;
   }
   attachedInboundServer = server;
+  const drainTimer = setInterval(() => deploymentDrain.tick(), 250);
+  drainTimer.unref();
   const wss = new WebSocketServer({ noServer: true, maxPayload: 2 * 1024 * 1024, perMessageDeflate: false });
 
   server.on("upgrade", (request: IncomingMessage, socket: Duplex, head: Buffer) => {
     if (safePathname(request.url) !== QQBOT_INBOUND_WS_PATH) return;
+    if (deploymentDrain.closing()) { rejectUpgrade(socket, 503, "Service Restart"); return; }
     void (async () => {
       const deps = requireConnectionDeps();
       const config = await deps.getConfig();
@@ -296,6 +319,7 @@ export function attachQqBotWebSocketGateway(server: HttpServer) {
 
   wss.on("connection", (socket: any) => registerInboundSocket(socket));
   server.once("close", () => {
+    clearInterval(drainTimer);
     if (inboundSocket) {
       try { inboundSocket.close(1012, "主服务停止"); } catch { /* disconnected */ }
     }
@@ -450,6 +474,13 @@ function scheduleWebSocketReconnect() {
 }
 
 async function handleWebSocketPayload(text: string, socket: any) {
+  activePayloads++;
+  deploymentDrain.activity();
+  try { await processWebSocketPayload(text, socket); }
+  finally { activePayloads--; deploymentDrain.activity(); }
+}
+
+async function processWebSocketPayload(text: string, socket: any) {
   const deps = requireConnectionDeps();
   let payload: any;
   try {

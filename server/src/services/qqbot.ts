@@ -334,6 +334,8 @@ configureQqBotConnection({
   getConfig: getQqBotConfigRaw,
   handleWebhook: handleQqBotWebhook,
   logMessage: logQqBotMessage,
+  pendingWork: () => qqBotDailyAssistantBatches.size
+    + [...safetyPlatformTasks.values()].filter(task => task.status === "running" || task.expiresAt > Date.now()).length,
 });
 
 export async function getQqBotConfigRaw() {

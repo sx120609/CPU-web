@@ -37,6 +37,7 @@ import { prisma } from "./prisma";
 import { isRedisConfigured, readRedisString } from "./services/redis";
 import { createDeploymentRelay } from "./utils/deploymentRelay";
 import { remoteGateway } from "./services/jwxtGatewayTransport";
+import { getQqBotDeploymentStatus } from "./services/qqbot/connection";
 
 export function startAppWorkers() {
   startForumImageModerationPoller();
@@ -110,7 +111,7 @@ export function createApp(options: { workers?: boolean } = {}) {
         throw new Error("Redis unavailable");
       }
       res.setHeader("Cache-Control", "no-store");
-      res.json({ code: 0, data: { ready: true, commit: process.env.CPU_WEB_RELEASE_SHA || "", relayInFlight: deploymentRelay.inFlight() }, message: "" });
+      res.json({ code: 0, data: { ready: true, commit: process.env.CPU_WEB_RELEASE_SHA || "", relayInFlight: deploymentRelay.inFlight(), qqbot: await getQqBotDeploymentStatus() }, message: "" });
     } catch {
       res.status(503).json({ code: 5030, data: { ready: false }, message: "Service is not ready" });
     }

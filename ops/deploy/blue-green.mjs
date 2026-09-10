@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url'
 import { assertCommit, readArtifactManifest, verifyArtifactManifest } from './artifact-manifest.mjs'
 import { atomicWrite, cutover, probe, replaceConfig, replaceUpstream, runtimeEnvironment } from './blue-green-core.mjs'
 import { readGateway, assertSameGateway, waitForUpstreamIdle, awaitGatewayMigration } from './agent-gateway.mjs'
+import { prepareQqBotHandoff, verifyQqBotHandoff } from './qqbot-handoff.mjs'
 
 const exec = promisify(execFile)
 const log = message => console.log(`[blue-green] ${message}`)
@@ -213,6 +214,13 @@ export async function deploy() {
   })
   const retire = async (previous, candidate, workers) => {
     if (candidate.gateway) assertSameGateway(candidate.gateway, await readGateway(stateDir))
+    for (const item of await configSnapshots(candidate, previous.port, candidate.port)) {
+      if (await readFile(item.file, 'utf8') !== item.after) {
+        throw new Error('Nginx configuration changed while draining; retaining the previous instance')
+      }
+    }
+    const qqbotHandoff = await prepareQqBotHandoff(previous, candidate)
+    if (qqbotHandoff?.required) log('Waiting for QQBot to finish pending work and reconnect to the new release')
     const drainedUpstream = candidate.gateway
       ? await waitForUpstream(previous.port)
       : await waitForWorkers(workers, drainSeconds)
@@ -238,6 +246,8 @@ export async function deploy() {
     } while (Date.now() < deadline)
     if (!drained) { log('Relayed requests are still active; retaining the previous release'); return false }
     if (candidate.gateway) assertSameGateway(candidate.gateway, await readGateway(stateDir))
+    await verifyQqBotHandoff(qqbotHandoff, candidate, drainSeconds)
+    if (qqbotHandoff?.required) log('QQBot reconnection verified; retiring the drained release')
     if (previous?.name) await removeProcess(previous.name)
     if (previous?.voiceName && previous.voiceName !== candidate.voiceName) await removeProcess(previous.voiceName)
     return true
@@ -393,7 +403,8 @@ export async function deploy() {
     if (timeout && !/^0(?:ms|s|m|h|d)?$/.test(timeout)) throw new Error('Nginx worker_shutdown_timeout would force-close old connections; remove it or set it to 0 before online deployment')
   }
   const verifyUrl = (process.env.DEPLOY_VERIFY_URL || 'https://cputime.cn').replace(/\/$/, '')
-  const candidate = { id, commit, name, port, voiceName, voicePort, release, trafficMarker, configs, verifyUrl, gateway }
+  const qqbotDrainFile = path.join(release, 'qqbot-drain.json')
+  const candidate = { id, commit, name, port, voiceName, voicePort, release, trafficMarker, configs, verifyUrl, gateway, qqbotDrainFile }
   const snapshots = await configSnapshots(candidate, previous.port, port)
   let switching = false
   let mainStarted = false
@@ -421,6 +432,7 @@ export async function deploy() {
       DEPLOY_DRAIN_SECONDS: String(drainSeconds),
       CPU_WEB_RELEASE_SHA: commit, CPU_WEB_RELEASE_ID: id, CPU_WEB_BACKGROUND_MARKER: marker,
       CPU_WEB_PREVIOUS_PORT: '', CPU_WEB_TRAFFIC_MARKER: trafficMarker,
+      CPU_WEB_QQBOT_DRAIN_FILE: qqbotDrainFile,
       CPU_WEB_AGENT_GATEWAY_ROLE: 'client', CPU_WEB_AGENT_GATEWAY_PORT: String(gateway.port),
       CPU_WEB_AGENT_GATEWAY_SECRET_FILE: gateway.secretFile,
       VOICEHUB_ORIGIN: `http://127.0.0.1:${voicePort}`,
