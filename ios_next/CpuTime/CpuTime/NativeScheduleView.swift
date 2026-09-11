@@ -30,13 +30,7 @@ struct NativeScheduleView: View {
                         scheduleHeader(result)
                         Button(action: onWidgets) { Label("小组件", systemImage: "square.grid.2x2") }
 
-                        if isStale {
-                            cacheBanner
-                        }
-
-                        if isLoading {
-                            loadingBanner
-                        } else if let message = errorMessage {
+                        if !isLoading, let message = errorMessage {
                             errorBanner(message)
                         }
 
@@ -104,10 +98,6 @@ struct NativeScheduleView: View {
         store.state == .unauthorized
     }
 
-    private var isStale: Bool {
-        store.state == .stale
-    }
-
     private var errorMessage: String? {
         let value = store.errorMessage?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return value.isEmpty ? nil : value
@@ -119,6 +109,12 @@ struct NativeScheduleView: View {
                 semesterMenu(result)
 
                 Spacer(minLength: 8)
+
+                if isLoading {
+                    ProgressView()
+                        .controlSize(.small)
+                        .accessibilityLabel("正在更新课表")
+                }
 
                 Button {
                     jumpToCurrentWeek(result)

@@ -582,7 +582,7 @@ function fetchTab(t: DataTab, identity: string = auth.academicIdentity, options?
   return request;
 }
 
-async function refreshTabInBackground(t: DataTab, identity: string) {
+async function refreshTabInBackground(t: DataTab, identity: string, seq: number) {
   try {
     const data = await fetchTab(t, identity, { silent: true });
     writeJwxtTabCache(t, identity, data);
@@ -591,6 +591,10 @@ async function refreshTabInBackground(t: DataTab, identity: string) {
     }
   } catch {
     /* Keep cached data visible when background refresh fails. */
+  } finally {
+    if (!disposed && seq === tabLoadSeq && identity === auth.academicIdentity && tab.value === t) {
+      tabLoading.value = false;
+    }
   }
 }
 
@@ -714,11 +718,13 @@ async function loadCurrentTab(force = false) {
   const identity = auth.academicIdentity;
   const cached = restoreCachedTab(current);
   if (cached && !force && !isJwxtTabCacheStale(cached.savedAt)) {
-    void refreshTabInBackground(current, identity);
+    const seq = ++tabLoadSeq;
+    tabLoading.value = true;
+    void refreshTabInBackground(current, identity, seq);
     return;
   }
   const seq = ++tabLoadSeq;
-  tabLoading.value = force || !getTabData(current);
+  tabLoading.value = force || Boolean(cached) || !getTabData(current);
   try {
     const data = await fetchTab(current, identity);
     if (disposed || identity !== auth.academicIdentity || current !== tab.value) return;

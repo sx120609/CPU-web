@@ -63,7 +63,7 @@ test("an overnight cache keeps today's courses when only the farthest preview da
   assert.equal(restored.currentWeek, 2);
   assert.equal(restored.today.date, "2026-09-07");
   assert.equal(restored.today.courses[0].name, "周一课程");
-  assert.equal(restored.today.label, "周一·缓存");
+  assert.equal(restored.today.label, "周一");
   assert.equal(restored.syncedAt, payload.syncedAt);
   assert.equal(restored.days.some((day: any) => day.date === "2026-09-14"), false);
   assert.equal(scheduleWidgetFallbackPayload(JSON.stringify(payload), "", new Date("2026-09-07T03:00:00Z")), null);

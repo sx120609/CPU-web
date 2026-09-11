@@ -298,7 +298,7 @@ test("already imported Scriptable variants render Monday's cached courses after 
   for (const [family, parameter] of [["small", "upcoming"], ["medium", "today"], ["medium", "split"], ["large", "twoday"]] as const) {
     const rendered = await runWidget({ payload, fixedNow, family, parameter });
     assert.ok(rendered.texts.some(text => text.includes("药物设计学")));
-    assert.ok(rendered.texts.some(text => text.includes("缓存")));
+    assert.ok(!rendered.texts.some(text => text.includes("缓存")));
     assert.ok(!rendered.texts.includes("课表读取失败"));
     assert.ok(!rendered.texts.includes("近期没有课程"));
     if (family === "large") assert.ok(rendered.texts.includes("周二课程"));

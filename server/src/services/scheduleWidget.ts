@@ -40,7 +40,7 @@ export function scheduleWidgetFallbackPayload(payload?: string | null, requested
     const day = dayOfWeekForYmd(item.date);
     if (!day || addDaysToYmd(item.date, 0) !== item.date || (item.day && item.day !== day)) continue;
     if (item.courses.some((course: any) => course?.date && course.date !== item.date)) continue;
-    if (!known.has(item.date)) known.set(item.date, { ...item, day, label: `${dayLabel(day)}·缓存`, isToday: false });
+    if (!known.has(item.date)) known.set(item.date, { ...item, day, label: dayLabel(day), isToday: false });
   }
   if (requestedWeek) {
     const weekDays = [...known.values()].filter((item) => Number(item.week) === Number(requestedWeek)).sort((a, b) => a.date.localeCompare(b.date));

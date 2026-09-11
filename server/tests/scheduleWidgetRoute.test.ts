@@ -105,7 +105,7 @@ test("existing widget URLs keep their response contract and never receive uncove
     const cached = await fetch(url).then((result) => result.json()) as any;
     assert.equal(cached.code, 0);
     assert.equal(cached.data.stale, true);
-    assert.match(cached.data.today.label, /缓存/);
+    assert.doesNotMatch(cached.data.today.label, /缓存/);
     assert.equal(row.cachedPayload, goodCache);
 
     upstreamFails = false;

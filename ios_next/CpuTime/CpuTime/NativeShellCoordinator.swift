@@ -33,7 +33,7 @@ final class NativeShellCoordinator: ObservableObject {
         }
         webSession.onBridgeReady = { [weak self] in
             guard let self, self.selectedTab == .schedule else { return }
-            self.requestScheduleLoad(force: false)
+            self.requestScheduleLoad(force: false, refreshCached: true)
         }
         webSession.onFailure = { [weak scheduleStore] message in
             scheduleStore?.reportBridgeFailure(message)
@@ -76,9 +76,10 @@ final class NativeShellCoordinator: ObservableObject {
 
     }
 
-    private func requestScheduleLoad(force: Bool) {
+    private func requestScheduleLoad(force: Bool, refreshCached: Bool = false) {
         guard let scheduleStore else { return }
-        if !force, scheduleStore.restoreCachedSelection() {
+        let restoredCache = !force && scheduleStore.restoreCachedSelection()
+        if restoredCache, !refreshCached {
             scheduleTask?.cancel()
             return
         }
@@ -93,7 +94,7 @@ final class NativeShellCoordinator: ObservableObject {
             // Wait for that burst to settle before starting the next request.
             try? await Task.sleep(for: .milliseconds(100))
             guard !Task.isCancelled else { return }
-            await scheduleStore.load(force: force)
+            await scheduleStore.load(force: force || restoredCache)
         }
     }
 }

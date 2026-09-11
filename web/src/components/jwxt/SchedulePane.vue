@@ -646,7 +646,6 @@ const cacheText = computed(() => {
     parts.push(officialGraduateSemesterCalendarFor(semester.value || parsed.value?.currentSemester || "") ? "日期来自官方校历" : "日期为推算");
     if (graduateSourceMeta.value?.fetchedAt) parts.push(`实时同步 ${formatCacheTime(Date.parse(graduateSourceMeta.value.fetchedAt))}`);
   }
-  if (scheduleSavedAt.value) parts.push(`本地缓存 ${formatCacheTime(scheduleSavedAt.value)}`);
   return parts.join(" · ");
 });
 const activeWeekNumber = computed(() => {
@@ -772,6 +771,7 @@ async function loadSchedule(force = false, background = false) {
   if (disposed) return;
   if (loading.value && !background) return;
   const hadCache = !force && restoreScheduleCache();
+  if (background) loading.value = true;
   if (hadCache) {
     saveLastState();
   }
@@ -829,7 +829,9 @@ async function loadSchedule(force = false, background = false) {
     saveLastState();
     prewarmAdjacentWeekCaches();
   } finally {
-    if (!disposed && !background && requestSeq === foregroundScheduleLoadSeq) loading.value = false;
+    if (!disposed && requestSeq === scheduleLoadSeq && (background || requestSeq === foregroundScheduleLoadSeq)) {
+      loading.value = false;
+    }
   }
 }
 

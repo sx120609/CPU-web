@@ -568,8 +568,7 @@ public class ScheduleWidgetProvider extends AppWidgetProvider {
     }
 
     private static void setFooter(RemoteViews views, JSONObject data) {
-        String prefix = data.optBoolean("stale", false) ? "缓存 " : "更新 ";
-        views.setTextViewText(R.id.widget_footer, prefix + formatTime(
+        views.setTextViewText(R.id.widget_footer, "更新 " + formatTime(
                 data.optString("cachedAt", data.optString("generatedAt", ""))
         ));
     }

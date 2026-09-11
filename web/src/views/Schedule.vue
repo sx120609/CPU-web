@@ -1136,9 +1136,13 @@ async function loadGraduateSchedule(
 ) {
   if (disposed) return;
   const background = Boolean(options?.background);
+  if (background) loading.value = true;
   if (!jwxt.isLoggedIn) {
     const ready = await jwxt.ensureSession();
-    if (!ready || disposed) return;
+    if (!ready || disposed) {
+      if (!disposed && background) loading.value = false;
+      return;
+    }
   }
   const requestSeq = ++scheduleRequestSeq;
   if (!background) {
@@ -1173,7 +1177,9 @@ async function loadGraduateSchedule(
     saveScheduleCache();
     saveLastState();
   } finally {
-    if (!disposed && !background && requestSeq === foregroundScheduleRequestSeq) loading.value = false;
+    if (!disposed && requestSeq === scheduleRequestSeq && (background || requestSeq === foregroundScheduleRequestSeq)) {
+      loading.value = false;
+    }
   }
 }
 
@@ -1554,10 +1560,13 @@ onMounted(() => {
 
   if (offlineMode.value) {
     sessionChecking.value = false;
+    loading.value = false;
     return;
   }
 
   // 后台静默恢复：缓存保持可见，同时用本机加密保存的信息续回学校会话。
+  const hadInitialSchedule = Boolean(parsed.value);
+  if (hadInitialSchedule) loading.value = true;
   void (async () => {
     try {
       if (!auth.ready) await auth.fetchMe({ probe: true }).catch(() => undefined);
@@ -1585,7 +1594,10 @@ onMounted(() => {
     } catch {
       /* Keep visible cache when background sync fails. */
     } finally {
-      if (!disposed) sessionChecking.value = false;
+      if (!disposed) {
+        sessionChecking.value = false;
+        if (hadInitialSchedule) loading.value = false;
+      }
     }
   })();
 });
@@ -1853,6 +1865,7 @@ async function loadSchedule(force = false, background = false) {
   if (disposed) return;
   if (loading.value && !background) return;
   const hadCache = !force && restoreScheduleCache();
+  if (background) loading.value = true;
   const canFallbackToVisibleSchedule = Boolean(parsed.value) && (
     !semester.value
     || !parsed.value?.currentSemester
@@ -1863,7 +1876,10 @@ async function loadSchedule(force = false, background = false) {
   }
   if (!jwxt.isLoggedIn) {
     const ready = await jwxt.ensureSession();
-    if (!ready || disposed) return;
+    if (!ready || disposed) {
+      if (!disposed && background) loading.value = false;
+      return;
+    }
   }
   const requestSeq = ++scheduleRequestSeq;
   const requestedSemester = semester.value || parsed.value?.currentSemester || "";
@@ -1900,7 +1916,9 @@ async function loadSchedule(force = false, background = false) {
     if (!isCurrentScheduleRequest(requestSeq, requestedSemester, requestedWeek)) return;
     if (!hadCache && !canFallbackToVisibleSchedule) throw error;
   } finally {
-    if (!disposed && !background && requestSeq === foregroundScheduleRequestSeq) loading.value = false;
+    if (!disposed && requestSeq === scheduleRequestSeq && (background || requestSeq === foregroundScheduleRequestSeq)) {
+      loading.value = false;
+    }
   }
 }
 
