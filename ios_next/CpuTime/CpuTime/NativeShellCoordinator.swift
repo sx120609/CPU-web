@@ -14,10 +14,18 @@ final class NativeShellCoordinator: ObservableObject {
     /// The Web login page the gate always lands on.
     static let loginGatePath = "/login?redirect=/home"
 
+    /// How long a still-present session cookie may defer an empty account report
+    /// before the gate takes over. Overridable so checks stay fast.
+    var sessionRestoreWindow: Duration = .seconds(4)
+    /// How long the shell waits for the account report that follows an empty one
+    /// before believing the session ended. Overridable so checks stay fast.
+    var signOutGrace: Duration = .milliseconds(400)
+
     private weak var webSession: HybridWebViewStore?
     private var scheduleStore: NativeScheduleStore?
     private var isConnected = false
     private var scheduleTask: Task<Void, Never>?
+    private var pendingGateTask: Task<Void, Never>?
     /// The last non-empty account fingerprint the Web reported, cleared the
     /// moment the session ends.
     private var accountKey = ""
@@ -91,11 +99,18 @@ final class NativeShellCoordinator: ObservableObject {
     /// string once the session is gone.
     func handleAuthChanged(_ account: String) {
         let normalized = account.trimmingCharacters(in: .whitespacesAndNewlines)
-        accountKey = normalized
         if normalized.isEmpty {
-            applyLoginGate(navigateToLogin: true)
+            accountKey = ""
+            // An empty report is not proof on its own: the Web app emits one
+            // while it is still restoring a session, right before the matching
+            // account report. Gating instantly there tore the shell down and
+            // sent the signed-in login page into a redirect loop with the gate.
+            scheduleLoginGate()
             return
         }
+        pendingGateTask?.cancel()
+        pendingGateTask = nil
+        accountKey = normalized
         // Only a login that follows the gate moves the shell to the home tab.
         // The launch report must keep the existing default tab (the timetable).
         applyAuthenticated(navigateToHome: requiresLogin)
@@ -160,10 +175,37 @@ final class NativeShellCoordinator: ObservableObject {
 
     }
 
+    /// Waits for the account report that normally follows an empty one, then
+    /// lets the shared cookie jar settle it: a cookie that is gone means the
+    /// session really ended, a cookie that is still there only buys the bounded
+    /// restore window. Either way the gate eventually takes over on its own.
+    private func scheduleLoginGate() {
+        // Already gated: only a non-empty account report can open it again.
+        guard !requiresLogin else {
+            pendingGateTask?.cancel()
+            pendingGateTask = nil
+            return
+        }
+        guard pendingGateTask == nil else { return }
+        let grace = signOutGrace
+        let window = sessionRestoreWindow
+        pendingGateTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: grace)
+            guard let self, !Task.isCancelled else { return }
+            if await self.webSession?.hasSessionCookie() == true {
+                try? await Task.sleep(for: window)
+                guard !Task.isCancelled else { return }
+            }
+            self.applyLoginGate(navigateToLogin: true)
+        }
+    }
+
     /// Hides the native shell behind a full-screen Web login page. The tab bar
     /// is not rendered at all (the root view swaps), so there is no tab to
     /// leave through and no back gesture to dismiss it.
     private func applyLoginGate(navigateToLogin: Bool) {
+        pendingGateTask?.cancel()
+        pendingGateTask = nil
         requiresLogin = true
         isAuthResolved = true
         guard isConnected else { return }

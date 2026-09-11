@@ -134,7 +134,12 @@ struct NativeTabSelectionChecks {
         precondition(store.loads == [false], "Cached schedule must survive a tab switch while the bridge reloads")
 
         // Signing out or losing the session drops straight back into the gate.
+        // The empty report is deferred only long enough for a restore report to
+        // cancel it; with the cookie gone the gate follows right after.
+        shell.signOutGrace = .milliseconds(30)
+        shell.sessionRestoreWindow = .milliseconds(30)
         web.onAuthChanged?("")
+        try? await Task.sleep(for: .milliseconds(250))
         precondition(shell.requiresLogin && shell.selectedTab == .profile)
         precondition(web.blocksInternalNavigation && !web.backForwardNavigationGesturesEnabled)
 
@@ -149,6 +154,40 @@ struct NativeTabSelectionChecks {
         precondition(authedShell.isAuthResolved && !authedShell.requiresLogin)
         precondition(authedShell.selectedTab == .schedule, "A restored session keeps the default timetable tab")
         precondition(!authedWeb.blocksInternalNavigation && authedWeb.backForwardNavigationGesturesEnabled)
+
+        // The Web app reports "no account" for a moment while its profile
+        // request is still running. That report alone must not gate; the
+        // matching account report cancels the wait.
+        let restoreWeb = HybridWebViewStore()
+        restoreWeb.sessionCookie = true
+        let restoreShell = NativeShellCoordinator()
+        restoreShell.signOutGrace = .milliseconds(40)
+        restoreShell.sessionRestoreWindow = .milliseconds(120)
+        restoreShell.connect(webSession: restoreWeb, scheduleStore: NativeScheduleStore())
+        await restoreShell.resolveInitialAuth(webSession: restoreWeb)
+        restoreWeb.onAuthChanged?("")
+        precondition(!restoreShell.requiresLogin, "An empty report must not gate on its own")
+        restoreWeb.onAuthChanged?("acct-restore")
+        try? await Task.sleep(for: .milliseconds(400))
+        precondition(!restoreShell.requiresLogin && restoreShell.hasAuthenticatedSession,
+                     "The restored account must cancel the pending gate")
+        precondition(restoreShell.selectedTab == .schedule, "Restoring a session keeps the default tab")
+
+        // A stored session that never restores still ends up gated once the
+        // bounded window expires, so a stale cookie cannot keep the shell open.
+        let staleWeb = HybridWebViewStore()
+        staleWeb.sessionCookie = true
+        let staleShell = NativeShellCoordinator()
+        staleShell.signOutGrace = .milliseconds(40)
+        staleShell.sessionRestoreWindow = .milliseconds(120)
+        staleShell.connect(webSession: staleWeb, scheduleStore: NativeScheduleStore())
+        await staleShell.resolveInitialAuth(webSession: staleWeb)
+        staleWeb.onAuthChanged?("")
+        precondition(!staleShell.requiresLogin, "The gate waits out the grace first")
+        try? await Task.sleep(for: .milliseconds(500))
+        precondition(staleShell.requiresLogin && staleShell.selectedTab == .profile,
+                     "A stored session that never restores must still be gated")
+        precondition(staleWeb.blocksInternalNavigation && !staleWeb.backForwardNavigationGesturesEnabled)
 
         // Cold start without one lands on the full-screen login gate.
         let guestWeb = HybridWebViewStore()
