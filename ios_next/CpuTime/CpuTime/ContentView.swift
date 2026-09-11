@@ -178,8 +178,20 @@ struct NativeShellView: View {
                 .preferredColorScheme(webSession.pageColorScheme)
         }
         .tint(Color(red: 54 / 255, green: 104 / 255, blue: 211 / 255))
-        // The Web top bar owns the light/dark switch, so its choice drives the
-        // whole shell, including the native timetable and the tab bar.
+        .safeAreaInset(edge: .top, spacing: 0) {
+            NativeTopBar(
+                selectedTab: shell.selectedTab,
+                session: webSession,
+                onHome: { shell.userSelected(.home) },
+                onRefresh: { webSession.retry() },
+                onProfile: {
+                    shell.openWeb(path: webSession.isLoggedIn ? "/profile" : "/login", tab: .profile)
+                },
+                onMenu: { webSession.openWebMenu() }
+            )
+        }
+        // The native top bar owns the appearance control, so its choice drives
+        // the whole shell, including the native timetable and the tab bar.
         .preferredColorScheme(webSession.pageColorScheme)
     }
 
@@ -191,6 +203,74 @@ struct NativeShellView: View {
     }
 }
 
+private struct NativeTopBar: View {
+    let selectedTab: ShellTab
+    @ObservedObject var session: HybridWebViewStore
+    let onHome: () -> Void
+    let onRefresh: () -> Void
+    let onProfile: () -> Void
+    let onMenu: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Button(action: onHome) {
+                Image(systemName: "house")
+                    .font(.system(size: 16, weight: .semibold))
+                    .frame(width: 36, height: 36)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(selectedTab == .home ? Color.accentColor : .primary)
+            .accessibilityLabel("首页")
+
+            Text(selectedTab.label)
+                .font(.headline)
+                .lineLimit(1)
+
+            Spacer(minLength: 8)
+
+            Button(action: onRefresh) {
+                Image(systemName: "arrow.clockwise")
+                    .font(.system(size: 16, weight: .semibold))
+                    .frame(width: 36, height: 36)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("刷新页面")
+
+            Button {
+                session.cycleAppearanceMode()
+            } label: {
+                Image(systemName: session.appearanceIconName)
+                    .font(.system(size: 16, weight: .semibold))
+                    .frame(width: 36, height: 36)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("外观：\(session.appearanceModeLabel)")
+
+            Button(action: onProfile) {
+                Image(systemName: session.isLoggedIn ? "person.crop.circle.fill" : "person.crop.circle")
+                    .font(.system(size: 17, weight: .semibold))
+                    .frame(width: 36, height: 36)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(session.isLoggedIn ? "我的" : "登录")
+
+            Button(action: onMenu) {
+                Image(systemName: "ellipsis.circle")
+                    .font(.system(size: 17, weight: .semibold))
+                    .frame(width: 36, height: 36)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("更多")
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 52)
+        .background(.bar)
+        .overlay(alignment: .bottom) {
+            Divider()
+        }
+    }
+}
+
 private struct WebTabScreen: View {
     @ObservedObject var session: HybridWebViewStore
     let tab: ShellTab
@@ -199,7 +279,7 @@ private struct WebTabScreen: View {
     var body: some View {
         ZStack {
             HybridWebView(session: session, tab: tab, isActive: isActive)
-                .ignoresSafeArea(.container, edges: [.top, .bottom])
+                .ignoresSafeArea(.container, edges: [.bottom])
             if let message = session.errorMessage {
                 ContentUnavailableView {
                     Label("页面无法打开", systemImage: "wifi.exclamationmark")

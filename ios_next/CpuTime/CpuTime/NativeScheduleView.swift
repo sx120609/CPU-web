@@ -28,9 +28,8 @@ struct NativeScheduleView: View {
     }
 
     var body: some View {
-        GeometryReader { geometry in
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 16) {
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 16) {
                     // A timetable already on screen is never replaced by a
                     // state card. Authorization and refresh problems appear as
                     // a banner above it instead.
@@ -63,13 +62,11 @@ struct NativeScheduleView: View {
                     }
                 }
                 .padding(.horizontal, Self.contentInset)
-                .padding(.top, geometry.safeAreaInsets.top + 8)
+                .padding(.top, 8)
                 // Floating tab bars can overlay the scroll view without reporting
                 // their full height as a safe-area inset. Keep scrollable clearance.
-                .padding(.bottom, max(96, geometry.safeAreaInsets.bottom) + 20)
-            }
-            .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
-            .ignoresSafeArea(.container, edges: [.top, .bottom])
+                .padding(.bottom, 116)
+            .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea(.container, edges: [.horizontal, .bottom]))
         }
         .task {
             adoptSelectionIfNeeded()
