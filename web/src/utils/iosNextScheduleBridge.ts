@@ -24,6 +24,20 @@ type SemesterEntry = {
 };
 const CACHE_LIFETIME = 12 * 60 * 60 * 1000;
 
+/** A stable, non-reversible account fingerprint. The native shell keeps the last
+ * timetable on disk under this key and drops it as soon as the key changes, so a
+ * relaunch can show that timetable immediately without ever crossing accounts. */
+export function nativeScheduleAccountKey() {
+  const auth = useAuthStore();
+  const id = auth?.user?.id;
+  if (!id || !auth.isLoggedIn) return "";
+  let hash = 0x811c9dc5;
+  for (const character of `${id}:${auth.academicIdentity}`) {
+    hash = Math.imul(hash ^ character.codePointAt(0)!, 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, "0");
+}
+
 /** HTML parsing and authentication stay on the server. The client caches and
  * merges parsed courses, applies saved edits and supplies native week filtering. */
 export function installIosNextScheduleBridge(router?: Router, options: { fastRefresh?: boolean } = {}) {
@@ -37,7 +51,8 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
   let supportsScope: boolean | undefined;
   const semesters = new Map<string, SemesterEntry>();
   const foreground = new Map<string, Promise<unknown>>();
-  const unauthorized = () => ({ version: 1, auth: { authenticated: false } });
+  const accountKey = nativeScheduleAccountKey;
+  const unauthorized = () => ({ version: 1, auth: { authenticated: false, account: accountKey() } });
 
   watch(() => [auth.user?.id, auth.academicIdentity, jwxt.isLoggedIn], () => {
     generation += 1;
@@ -45,7 +60,7 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
     semesters.clear();
     foreground.clear();
     activeSemester = "";
-    host.CPUTimeNative?.authChanged?.();
+    host.CPUTimeNative?.authChanged?.(accountKey());
   }, { flush: "sync" });
 
   const valid = (entry: SemesterEntry, epoch: number) => generation === epoch
@@ -70,7 +85,7 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
     version: 1, source: "jwxt", completeSemester: Boolean(entry.complete), fetchedAt: entry.createdAt,
     data: { ...edited(entry, entry.complete ?? data), currentWeek: week || (entry.calendar?.currentWeek
       ? String(entry.calendar.currentWeek) : data.currentWeek) },
-    calendar: entry.calendar, auth: { authenticated: true, identity: "undergraduate" },
+    calendar: entry.calendar, auth: { authenticated: true, identity: "undergraduate", account: accountKey() },
   });
   const loadWeek = (entry: SemesterEntry, week: string, epoch: number): Promise<ScheduleResult> => {
     const cached = entry.schedules.get(week);
@@ -158,7 +173,7 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
           data: { ...expanded, currentWeek: week || (calendar?.currentWeek ? String(calendar.currentWeek) : data.currentWeek),
             cells: expanded.cells.map(cell => ({ ...cell, courses: cell.courses.map(course => ({
               ...course, weekList: normalizedCourseWeekList(course),
-            })) })) }, calendar, auth: { authenticated: true, identity: "graduate" } };
+            })) })) }, calendar, auth: { authenticated: true, identity: "graduate", account: accountKey() } };
       }
       if (selection === selectionRevision) activeSemester = semester || "";
       let entry = semester ? semesters.get(semester) : undefined;

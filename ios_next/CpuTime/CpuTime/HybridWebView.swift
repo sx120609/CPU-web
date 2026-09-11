@@ -71,14 +71,14 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
     var onSchedulePrefetched: ((NativeScheduleSnapshot) -> Void)?
     var onNavigate: ((String, String) -> Void)?
     var onRoute: ((String, String) -> Void)?
-    var onAuthChanged: (() -> Void)?
+    var onAuthChanged: ((String) -> Void)?
     var onBridgeReady: (() -> Void)?
     var onFailure: ((String) -> Void)?
 
     private var webView: WKWebView?
     private var coordinator: HybridWebViewCoordinator?
     private weak var mountedHost: UIView?
-    private var activeTab: ShellTab = .home
+    private var activeTab: ShellTab = .schedule
     private var automaticWidgetSetupAttempted = false
     private var widgetConfigurationInFlight = false
     private var widgetAuthGeneration = 0
@@ -298,7 +298,9 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
         case "authChanged":
             automaticWidgetSetupAttempted = false
             widgetAuthGeneration += 1
-            onAuthChanged?()
+            // An account fingerprint lets the timetable keep its cached view
+            // when the session merely finished restoring the same account.
+            onAuthChanged?((body["account"] as? String) ?? "")
         default:
             break
         }
@@ -396,7 +398,7 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
           bridge.ready = () => post({ type: 'ready' });
           bridge.schedulePrefetched = (snapshot) => post({type: 'schedulePrefetched', snapshot});
           bridge.scheduleWeekPrefetched = bridge.schedulePrefetched;
-          bridge.authChanged = () => post({ type: 'authChanged' });
+          bridge.authChanged = (account) => post({ type: 'authChanged', account: String(account ?? '') });
           window.CPUTimeNative = bridge;
           window.CPUIOS = {
             ...(window.CPUIOS || {}),

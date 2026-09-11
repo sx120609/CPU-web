@@ -9,27 +9,31 @@ final class HybridWebViewStore {
     var onSchedulePrefetched: ((NativeScheduleSnapshot) -> Void)?
     var onNavigate: ((String, String) -> Void)?
     var onRoute: ((String, String) -> Void)?
-    var onAuthChanged: (() -> Void)?
+    var onAuthChanged: ((String) -> Void)?
     var onBridgeReady: (() -> Void)?
     var onFailure: ((String) -> Void)?
     var bridgeReady = true
     var errorMessage: String?
     var destinations: [String] = []
     var activeTab: ShellTab = .home
+    var webViewCreations = 0
     func activate(tab: ShellTab) { activeTab = tab }
     func navigate(path: String) { destinations.append(path) }
-    func makeWebView() -> Int { 0 }
+    func makeWebView() -> Int { webViewCreations += 1; return 0 }
 }
 @MainActor
 final class NativeScheduleStore {
     var cached = false
+    var archived = false
     var loads: [Bool] = []
+    var waitingForBridge = false
     func restoreCachedSelection() -> Bool { cached }
     func attach(webView: Int) {}
     func receivePrefetchedSnapshot(_ snapshot: NativeScheduleSnapshot) {}
-    func handleAuthChanged() {}
+    func handleAuthChanged(account: String) {}
     func reportBridgeFailure(_ message: String) {}
-    func waitForBridge() {}
+    func waitForBridge() { waitingForBridge = true }
+    func restoreArchivedSelection() async -> Bool { archived }
     func load(force: Bool) async { loads.append(force); cached = true }
 }
 
@@ -37,6 +41,22 @@ final class NativeScheduleStore {
 struct NativeTabSelectionChecks {
     @MainActor
     static func main() async {
+        let startupWeb = HybridWebViewStore()
+        startupWeb.bridgeReady = false
+        let startupShell = NativeShellCoordinator()
+        let startupStore = NativeScheduleStore()
+        precondition(startupShell.selectedTab == .schedule)
+        startupShell.connect(webSession: startupWeb, scheduleStore: startupStore)
+        precondition(startupWeb.activeTab == .schedule && startupWeb.webViewCreations == 1)
+        try? await Task.sleep(for: .milliseconds(50))
+        precondition(startupWeb.destinations.isEmpty && startupStore.waitingForBridge)
+        startupWeb.onNavigate?("/login", "schedule")
+        precondition(startupShell.selectedTab == .schedule)
+        startupWeb.bridgeReady = true
+        startupWeb.onBridgeReady?()
+        try? await Task.sleep(for: .milliseconds(200))
+        precondition(startupStore.loads == [false], "Startup must load the timetable when the background bridge is ready")
+
         let web = HybridWebViewStore()
         let shell = NativeShellCoordinator()
         let store = NativeScheduleStore()

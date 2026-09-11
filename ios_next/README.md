@@ -5,6 +5,8 @@
 ## 本阶段范围
 
 - SwiftUI 系统底部导航：首页、教务、课表、服务、我的。
+- 启动默认进入原生课表，同一个 WKWebView 在后台预热首页与登录数据桥；首次等待显示课表网格和页内同步提示，数据就绪后原位填入。切回课表优先复用内存缓存，后台网页跳转不会抢走课表标签。
+- 冷启动先显示上次的课表：最近一次成功的快照写入 App 的 Application Support（排除备份），并带上会话 Cookie 指纹；重启后先核对当前 `__Host-cpu-session` 的指纹，一致才渲染，随后右上角显示小菊花静默刷新。退出登录、换账号或快照超过缓存时限都会直接删除该文件，指纹核对在渲染之前完成，不会闪出别人的课表。网页若额外下发账号指纹（`auth.account`），则以它为准，指纹变化立即清空。刷新过程中学期、周次与视图切换保持可用。已经显示出来的课表不会被状态页替换：教务授权失效、桥接失败或刷新出错都以顶部横幅呈现，只有在没有任何课表可显示时才整页提示；只有会话 Cookie 确实消失或换了账号才会清空，并立刻重新拉取。
 - 课表使用 SwiftUI：学期和周次切换、返回本周、日／周视图、课程详情、刷新、加载／空／授权失效／失败状态。
 - 首页、教务、服务、我的及其子页面继续由 WKWebView 加载现有网站。
 - 沿用 Web 的 HttpOnly 会话、教务自动恢复、本科／研究生识别、校历、单双周解析及本科课程修改记录。原生不保存学校密码。
@@ -23,7 +25,7 @@ await window.CPUTimeNativeScheduleFetch(semester, week, force)
 // { version: 1, source, fetchedAt, data, calendar, auth, error? }
 ```
 
-`data.cells` 已应用课程修改并规范化 `weekList`。Swift 通过 `WKWebView.callAsyncJavaScript` 等待返回值，不复制 Cookie 到另一套网络客户端。网页课表路由通过 `CPUTimeNative.navigate('/schedule')` 切换原生标签；`authChanged()` 通知原生清理账号数据。
+`data.cells` 已应用课程修改并规范化 `weekList`。Swift 通过 `WKWebView.callAsyncJavaScript` 等待返回值，不复制 Cookie 到另一套网络客户端。网页课表路由通过 `CPUTimeNative.navigate('/schedule')` 切换原生标签；`authChanged(account)` 携带账号指纹：指纹不变表示同一账号的会话恢复完成，原生保留已显示的课表；指纹变化或为空则清空内存与磁盘上的账号数据。
 
 客户端已随包携带 `NativeWebCompatibility.js`：当线上网页尚未提供数据桥时，使用现有网页的 Pinia 登录状态和同源 Cookie API 安装兼容桥；已提供数据桥的新版网页优先使用网页实现。无需为了首次原生课表读取而先部署 Web。未登录显示授权入口，页面启动期间等待桥就绪后再请求。
 

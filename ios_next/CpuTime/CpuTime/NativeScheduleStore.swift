@@ -74,10 +74,14 @@ public enum NativeScheduleSource: String, Codable, Sendable {
 public struct NativeScheduleAuth: Codable, Equatable, Sendable {
     public var authenticated: Bool
     public var identity: String?
+    /// A non-reversible account fingerprint supplied by the web bridge. It
+    /// scopes the on-disk timetable so a cold start never crosses accounts.
+    public var account: String?
 
-    public init(authenticated: Bool = false, identity: String? = nil) {
+    public init(authenticated: Bool = false, identity: String? = nil, account: String? = nil) {
         self.authenticated = authenticated
         self.identity = identity
+        self.account = account?.trimmedNonEmpty
     }
 }
 
@@ -351,6 +355,80 @@ public struct NativeScheduleSnapshot: Codable, Equatable, Sendable {
     }
 }
 
+// MARK: - Cold-start archive
+
+/// The last displayed timetable, kept so a relaunch can show it before the web
+/// session finishes restoring. Always scoped to one account fingerprint.
+public struct NativeScheduleArchivedSchedule: Codable, Equatable, Sendable {
+    /// The web account fingerprint, empty on web builds that do not send one.
+    public let account: String
+    /// A fingerprint of the web session cookie. The archive is only ever shown
+    /// again while the same signed-in session is still present, so this is the
+    /// check that keeps one account's timetable away from another's.
+    public let session: String
+    public let semester: String
+    public let week: String
+    public let savedAt: Date
+    public let snapshot: NativeScheduleSnapshot
+
+    public init(account: String, session: String, semester: String, week: String,
+                savedAt: Date, snapshot: NativeScheduleSnapshot) {
+        self.account = account
+        self.session = session
+        self.semester = semester
+        self.week = week
+        self.savedAt = savedAt
+        self.snapshot = snapshot
+    }
+}
+
+public protocol NativeScheduleArchive: AnyObject {
+    func read() -> NativeScheduleArchivedSchedule?
+    func write(_ record: NativeScheduleArchivedSchedule)
+    func removeAll()
+}
+
+/// File-backed archive in Application Support. iOS protects the file until the
+/// device is first unlocked, and it is excluded from backups because it only
+/// mirrors data the schedule service can return again.
+public final class NativeScheduleFileArchive: NativeScheduleArchive {
+    private let url: URL?
+
+    public init(fileName: String = "native-schedule-latest.json") {
+        // A tool or test process has no bundle identifier; stay memory-only.
+        guard let bundleIdentifier = Bundle.main.bundleIdentifier,
+              let base = try? FileManager.default.url(
+                  for: .applicationSupportDirectory, in: .userDomainMask,
+                  appropriateFor: nil, create: true) else {
+            url = nil
+            return
+        }
+        var directory = base.appendingPathComponent(bundleIdentifier, isDirectory: true)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        var resourceValues = URLResourceValues()
+        resourceValues.isExcludedFromBackup = true
+        try? directory.setResourceValues(resourceValues)
+        url = directory.appendingPathComponent(fileName, isDirectory: false)
+    }
+
+    public func read() -> NativeScheduleArchivedSchedule? {
+        guard let url, let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder.nativeScheduleDecoder.decode(NativeScheduleArchivedSchedule.self, from: data)
+    }
+
+    public func write(_ record: NativeScheduleArchivedSchedule) {
+        // ISO8601 on both sides; the flexible decoder cannot read the
+        // encoder's default reference-date doubles as fetch timestamps.
+        guard let url, let data = try? JSONEncoder.nativeScheduleEncoder.encode(record) else { return }
+        try? data.write(to: url, options: .atomic)
+    }
+
+    public func removeAll() {
+        guard let url else { return }
+        try? FileManager.default.removeItem(at: url)
+    }
+}
+
 // MARK: - Store state
 
 public enum NativeScheduleState: Equatable, Sendable {
@@ -381,10 +459,22 @@ public final class NativeScheduleStore: ObservableObject {
     private var refreshStartedAt: [String: Date] = [:]
     private var requestGeneration = 0
     private var displayedKey: CacheKey?
+    private let archive: NativeScheduleArchive?
+    private var accountKey = ""
+    private var sessionKey = ""
+    private var didReadArchive = false
+    /// Reads a fingerprint of the signed-in web session. Supplied by `attach`
+    /// from the shared WKWebView cookie store; injectable for checks.
+    public var sessionFingerprint: (@MainActor () async -> String?)?
 
-    public init(loader: NativeScheduleLoader? = nil, cacheLifetime: TimeInterval = 12 * 60 * 60) {
+    public init(
+        loader: NativeScheduleLoader? = nil,
+        cacheLifetime: TimeInterval = 12 * 60 * 60,
+        archive: NativeScheduleArchive? = NativeScheduleFileArchive()
+    ) {
         self.loader = loader
         self.cacheLifetime = max(0, cacheLifetime)
+        self.archive = archive
     }
 
     /// Connects the store to the shell's authenticated WKWebView. Keeping the
@@ -396,6 +486,13 @@ public final class NativeScheduleStore: ObservableObject {
         loader = { request in
             try await bridge.load(request)
         }
+        sessionFingerprint = { await bridge.sessionFingerprint() }
+        // Learn the session early so an auth notification never has to guess.
+        Task { @MainActor [weak self] in
+            guard let self, self.sessionKey.isEmpty,
+                  let session = await self.sessionFingerprint?() else { return }
+            if self.sessionKey.isEmpty { self.sessionKey = session }
+        }
     }
 
     public func detach() {
@@ -405,10 +502,27 @@ public final class NativeScheduleStore: ObservableObject {
     }
 
     /// Called by the shell when the web account or JWXT identity changes.
-    /// This invalidates an in-flight request and removes all account-scoped
-    /// memory before the next load.
-    public func handleAuthChanged() {
+    /// A session that finished restoring the same account keeps the timetable
+    /// on screen; any other change drops every account-scoped byte, on disk
+    /// included, before the next load.
+    public func handleAuthChanged(account: String = "") {
+        let next = account.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !next.isEmpty, next == accountKey {
+            requestGeneration += 1
+            return
+        }
+        if next.isEmpty {
+            // An older web build sends no fingerprint, and its very first
+            // notification is only the session finishing its restore. Keep the
+            // timetable on screen and drop it solely once the session cookie
+            // proves this is a different account, or none at all.
+            requestGeneration += 1
+            discardIfSessionChanged()
+            return
+        }
+        archive?.removeAll()
         reset()
+        accountKey = next
     }
 
     public func waitForBridge() {
@@ -509,6 +623,7 @@ public final class NativeScheduleStore: ObservableObject {
             apply(snapshot, state: .loaded, requestedSemester: selectedSemester,
                   requestedWeek: selectedWeek,
                   key: CacheKey(semester: selectedSemester, week: selectedWeek))
+            archiveDisplayed(snapshot)
         }
     }
 
@@ -520,6 +635,65 @@ public final class NativeScheduleStore: ObservableObject {
         apply(entry.snapshot, state: entry.snapshot.source == .cache ? .stale : .loaded,
               requestedSemester: selectedSemester, requestedWeek: selectedWeek, key: key)
         return true
+    }
+
+    /// Cold start: show the last timetable before the web bridge has booted.
+    /// The live session cookie is checked first, so a record is only ever shown
+    /// to the session that wrote it — no other account, and nobody signed out.
+    public func restoreArchivedSelection() async -> Bool {
+        guard !didReadArchive, result == nil, let archive else { return false }
+        didReadArchive = true
+        guard let record = archive.read(), !record.session.isEmpty,
+              record.snapshot.auth.authenticated, let data = record.snapshot.data else { return false }
+        let entry = CacheEntry(snapshot: record.snapshot, storedAt: record.savedAt)
+        guard entry.isFresh(at: .now, lifetime: cacheLifetime) else {
+            archive.removeAll()
+            return false
+        }
+        guard let session = await sessionFingerprint?(), session == record.session,
+              accountKey.isEmpty || record.account.isEmpty || accountKey == record.account,
+              result == nil else {
+            archive.removeAll()
+            return false
+        }
+        if !record.account.isEmpty { accountKey = record.account }
+        sessionKey = record.session
+        selectedSemester = record.semester
+        selectedWeek = record.week
+        let key = CacheKey(semester: record.semester, week: record.week)
+        cache[key] = entry
+        if record.snapshot.completeSemester, !data.currentSemester.isEmpty {
+            cache[CacheKey(semester: data.currentSemester, week: "*")] = entry
+        }
+        requestGeneration += 1
+        webViewLoader?.prioritize(semester: selectedSemester, week: selectedWeek)
+        apply(record.snapshot, state: .stale, requestedSemester: record.semester.trimmedNonEmpty,
+              requestedWeek: record.week.trimmedNonEmpty, key: key)
+        return true
+    }
+
+    /// Keeps the displayed timetable for the next cold start. The session
+    /// fingerprint comes from the cookie store, so this works with web builds
+    /// that do not send an account fingerprint of their own.
+    private func archiveDisplayed(_ snapshot: NativeScheduleSnapshot) {
+        guard archive != nil, snapshot.auth.authenticated, snapshot.source != .cache,
+              snapshot.data != nil else { return }
+        let account = snapshot.auth.account?.trimmedNonEmpty ?? ""
+        if !account.isEmpty { accountKey = account }
+        let semester = selectedSemester
+        let week = selectedWeek
+        Task { @MainActor [weak self] in
+            guard let self, let session = await self.sessionFingerprint?(), !session.isEmpty else { return }
+            self.sessionKey = session
+            self.archive?.write(NativeScheduleArchivedSchedule(
+                account: account,
+                session: session,
+                semester: semester,
+                week: week,
+                savedAt: snapshot.fetchedAt ?? .now,
+                snapshot: snapshot
+            ))
+        }
     }
 
     public func refresh() async {
@@ -543,6 +717,8 @@ public final class NativeScheduleStore: ObservableObject {
         requestGeneration += 1
         cache.removeAll(keepingCapacity: false)
         refreshStartedAt.removeAll()
+        accountKey = ""
+        sessionKey = ""
         result = nil
         calendar = nil
         source = nil
@@ -565,7 +741,7 @@ public final class NativeScheduleStore: ObservableObject {
         }
         if !snapshot.auth.authenticated {
             let message = snapshot.error ?? NativeScheduleStoreError.unauthorized("").localizedDescription
-            clearLoadedData()
+            discardUnauthorizedData()
             errorMessage = message
             state = .unauthorized
             throw NativeScheduleStoreError.unauthorized(message)
@@ -616,6 +792,7 @@ public final class NativeScheduleStore: ObservableObject {
         errorMessage = snapshot.error?.trimmedNonEmpty
         state = snapshot.source == .cache ? .stale : .loaded
         displayedKey = key
+        archiveDisplayed(snapshot)
     }
 
     private func apply(
@@ -643,7 +820,7 @@ public final class NativeScheduleStore: ObservableObject {
     private func handle(_ error: Error, for key: CacheKey) {
         let storeError = normalize(error)
         if case .unauthorized(let message) = storeError {
-            clearLoadedData()
+            discardUnauthorizedData()
             errorMessage = message
             state = .unauthorized
             return
@@ -662,6 +839,41 @@ public final class NativeScheduleStore: ObservableObject {
         clearDisplayedData()
         errorMessage = storeError.localizedDescription
         state = .failed
+    }
+
+    /// An expired 教务 authorization is not a sign-out: while the same web
+    /// session is still signed in, the timetable stays visible under a banner.
+    /// Anything else clears it, the archive included.
+    private func discardUnauthorizedData() {
+        guard result != nil, !sessionKey.isEmpty, sessionFingerprint != nil else {
+            archive?.removeAll()
+            clearLoadedData()
+            return
+        }
+        discardIfSessionChanged()
+    }
+
+    /// Clears every account-scoped byte unless the signed-in web session is
+    /// still the one the displayed timetable was loaded for.
+    private func discardIfSessionChanged() {
+        // Without a way to read the session there is nothing to prove, so the
+        // conservative path wins and every account-scoped byte goes.
+        guard let sessionFingerprint else {
+            archive?.removeAll()
+            reset()
+            return
+        }
+        let expected = sessionKey
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let session = await sessionFingerprint() ?? ""
+            guard expected.isEmpty || session.isEmpty || session != expected else { return }
+            self.archive?.removeAll()
+            self.reset()
+            // Resetting supersedes whatever the shell just started, so the
+            // timetable must never be left empty with nothing in flight.
+            if self.loader != nil { await self.load(force: true) }
+        }
     }
 
     private func clearLoadedData() {
@@ -694,7 +906,12 @@ public final class NativeScheduleStore: ObservableObject {
 
     private struct CacheEntry {
         let snapshot: NativeScheduleSnapshot
-        let storedAt: Date = .now
+        let storedAt: Date
+
+        init(snapshot: NativeScheduleSnapshot, storedAt: Date = .now) {
+            self.snapshot = snapshot
+            self.storedAt = storedAt
+        }
 
         func isFresh(at date: Date, lifetime: TimeInterval) -> Bool {
             guard lifetime > 0 else { return false }
@@ -714,6 +931,22 @@ public final class NativeScheduleWebViewLoader {
 
     public init(webView: WKWebView) {
         self.webView = webView
+    }
+
+    /// A non-reversible fingerprint of the signed-in web session cookie. It
+    /// changes on sign-out and on a different account's sign-in, and the raw
+    /// value never leaves the cookie store.
+    public func sessionFingerprint() async -> String? {
+        guard let webView else { return nil }
+        let cookies = await webView.configuration.websiteDataStore.httpCookieStore.allCookies()
+        guard let value = cookies.first(where: {
+            $0.name == "__Host-cpu-session" || $0.name == "cpu-session"
+        })?.value, value.count >= 16 else { return nil }
+        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        for byte in Array(value.utf8) {
+            hash = (hash ^ UInt64(byte)) &* 0x0000_0100_0000_01b3
+        }
+        return "s" + String(hash, radix: 16)
     }
 
     public func prioritize(semester: String, week: String) {
@@ -808,5 +1041,13 @@ private extension JSONDecoder {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return decoder
+    }
+}
+
+private extension JSONEncoder {
+    static var nativeScheduleEncoder: JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        return encoder
     }
 }

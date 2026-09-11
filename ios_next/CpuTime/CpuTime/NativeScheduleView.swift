@@ -24,13 +24,15 @@ struct NativeScheduleView: View {
         GeometryReader { geometry in
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 16) {
-                    if isUnauthorized {
-                        authorizationState
-                    } else if let result = store.result {
+                    // A timetable already on screen is never replaced by a
+                    // state card. Authorization and refresh problems appear as
+                    // a banner above it instead.
+                    if let result = store.result {
                         scheduleHeader(result)
-                        Button(action: onWidgets) { Label("小组件", systemImage: "square.grid.2x2") }
 
-                        if !isLoading, let message = errorMessage {
+                        if isUnauthorized {
+                            authorizationBanner
+                        } else if !isLoading, let message = errorMessage {
                             errorBanner(message)
                         }
 
@@ -38,26 +40,26 @@ struct NativeScheduleView: View {
                             dayPicker(result)
                         }
 
-                        if hasCourses(in: result) {
-                            if viewMode == .week {
-                                weekGrid(result)
-                            } else {
-                                dayGrid(result)
-                            }
+                        if viewMode == .week {
+                            weekGrid(result)
                         } else {
-                            emptySchedule
+                            dayGrid(result)
                         }
+                    } else if isUnauthorized {
+                        authorizationState
                     } else if isLoading {
                         loadingState
                     } else if let message = errorMessage {
                         errorState(message)
                     } else {
-                        initialState
+                        loadingState
                     }
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, geometry.safeAreaInsets.top + 8)
-                .padding(.bottom, 28)
+                // Floating tab bars can overlay the scroll view without reporting
+                // their full height as a safe-area inset. Keep scrollable clearance.
+                .padding(.bottom, max(96, geometry.safeAreaInsets.bottom) + 20)
             }
             .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
             .ignoresSafeArea(.container, edges: [.top, .bottom])
@@ -116,18 +118,31 @@ struct NativeScheduleView: View {
                         .accessibilityLabel("正在更新课表")
                 }
 
+                Picker("课表视图", selection: $viewMode) {
+                    Text("周").tag(ScheduleViewMode.week)
+                    Text("日").tag(ScheduleViewMode.day)
+                }
+                .pickerStyle(.segmented)
+                .controlSize(.small)
+                .labelsHidden()
+                .frame(width: 88)
+                .accessibilityLabel("切换课表视图")
+
                 Button {
                     jumpToCurrentWeek(result)
                 } label: {
                     Image(systemName: isViewingCurrentWeek(result) ? "scope" : "location.north.line")
                         .font(.system(size: 16, weight: .semibold))
                         .frame(width: 34, height: 34)
-                        .background(Color(uiColor: .secondarySystemGroupedBackground))
+                        .modifier(ScheduleGlassControl(cornerRadius: 17))
                         .clipShape(Circle())
                 }
+                .buttonStyle(.plain)
                 .foregroundStyle(isViewingCurrentWeek(result) ? Color.accentColor : .primary)
                 .accessibilityLabel("回到本周")
-                .disabled(isLoading || isViewingCurrentWeek(result))
+                // A background refresh keeps the cached timetable usable, so
+                // only the meaningless jump is disabled.
+                .disabled(isViewingCurrentWeek(result))
             }
 
             HStack(spacing: 8) {
@@ -168,12 +183,6 @@ struct NativeScheduleView: View {
                 }
             }
 
-            Picker("课表视图", selection: $viewMode) {
-                Text("周视图").tag(ScheduleViewMode.week)
-                Text("日视图").tag(ScheduleViewMode.day)
-            }
-            .pickerStyle(.segmented)
-            .accessibilityLabel("切换课表视图")
         }
     }
 
@@ -190,17 +199,22 @@ struct NativeScheduleView: View {
                     }
                 }
             }
+            Divider()
+            Button(action: onWidgets) {
+                Label("课表小组件", systemImage: "square.grid.2x2")
+            }
         } label: {
-            Label(semesterTitle(result), systemImage: "graduationcap")
+            Text(semesterTitle(result))
                 .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
                 .foregroundStyle(.primary)
                 .padding(.horizontal, 12)
                 .frame(minHeight: 34)
-                .background(Color(uiColor: .secondarySystemGroupedBackground))
+                .modifier(ScheduleGlassControl(cornerRadius: 17))
                 .clipShape(Capsule())
         }
         .accessibilityLabel("选择学期")
-        .disabled(isLoading || result.semesters.isEmpty)
     }
 
     private func weekStepButton(
@@ -213,11 +227,11 @@ struct NativeScheduleView: View {
             Image(systemName: systemName)
                 .font(.system(size: 15, weight: .bold))
                 .frame(width: 44, height: 42)
-                .background(Color(uiColor: .secondarySystemGroupedBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
         .foregroundStyle(enabled ? .primary : .tertiary)
-        .disabled(!enabled || isLoading)
+        .disabled(!enabled)
         .accessibilityLabel(label)
     }
 
@@ -233,11 +247,14 @@ struct NativeScheduleView: View {
                                 .font(.caption.weight(.semibold))
                             Text(dayDate(day, result: result) ?? "--")
                                 .font(.caption2)
-                                .foregroundStyle(selectedDay == day ? .white.opacity(0.82) : .secondary)
+                                .foregroundStyle(selectedDay == day ? Color.accentColor : .secondary)
                         }
                         .frame(width: 58, height: 48)
-                        .background(selectedDay == day ? Color.accentColor : Color(uiColor: .secondarySystemGroupedBackground))
-                        .foregroundStyle(selectedDay == day ? .white : .primary)
+                        .modifier(ScheduleGlassControl(
+                            cornerRadius: 11,
+                            tint: selectedDay == day ? Color.accentColor.opacity(0.12) : nil
+                        ))
+                        .foregroundStyle(selectedDay == day ? Color.accentColor : .primary)
                         .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
                     }
                     .buttonStyle(.plain)
@@ -249,8 +266,6 @@ struct NativeScheduleView: View {
 
     private func weekGrid(_ result: NativeScheduleResult) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            scheduleSummary(result)
-
             GeometryReader { proxy in
                 let columnWidth = max(24, (proxy.size.width - 46) / 7)
                 scheduleRows(result: result, days: Array(1...7), columnWidth: columnWidth)
@@ -262,13 +277,9 @@ struct NativeScheduleView: View {
 
     private func dayGrid(_ result: NativeScheduleResult) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            scheduleSummary(result)
-
             GeometryReader { proxy in
                 let columnWidth = max(220, proxy.size.width - 46)
-                ScrollView(.horizontal, showsIndicators: false) {
-                    scheduleRows(result: result, days: [selectedDay], columnWidth: columnWidth)
-                }
+                scheduleRows(result: result, days: [selectedDay], columnWidth: columnWidth)
             }
             .frame(minHeight: 618)
         }
@@ -297,6 +308,22 @@ struct NativeScheduleView: View {
             }
         }
         .padding(.bottom, 4)
+        .contentShape(Rectangle())
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 24)
+                .onEnded { value in
+                    guard selectedCourse == nil else { return }
+                    let horizontal = value.translation.width
+                    let vertical = value.translation.height
+                    // Require a deliberate sideways swipe, not a tap or a
+                    // diagonal movement during vertical scrolling.
+                    guard abs(horizontal) >= 56,
+                          abs(horizontal) > abs(vertical) * 1.5 else { return }
+                    let offset = horizontal < 0 ? 1 : -1
+                    guard canMoveWeek(offset, result: result) else { return }
+                    moveWeek(offset, result: result)
+                }
+        )
     }
 
     private var slotAxis: some View {
@@ -326,53 +353,7 @@ struct NativeScheduleView: View {
                     }
                 }
             }
-            .background(Color(uiColor: .secondarySystemGroupedBackground).opacity(0.72))
         }
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-    }
-
-    private func scheduleSummary(_ result: NativeScheduleResult) -> some View {
-        HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(weekTitle(result))
-                    .font(.subheadline.weight(.semibold))
-                Text(viewMode == .week ? "整周安排" : "\(dayLabel(selectedDay))的课程")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            Text("\(courseCount(result)) 节课")
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    private var cacheBanner: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "clock.arrow.circlepath")
-            Text("显示的是最近一次缓存，正在等待最新课表")
-                .font(.caption)
-            Spacer(minLength: 0)
-        }
-        .foregroundStyle(.secondary)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
-        .background(Color(uiColor: .secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-    }
-
-    private var loadingBanner: some View {
-        HStack(spacing: 8) {
-            ProgressView()
-                .controlSize(.small)
-            Text("正在更新课表")
-                .font(.caption)
-            Spacer(minLength: 0)
-        }
-        .foregroundStyle(.secondary)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
-        .background(Color(uiColor: .secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
@@ -393,25 +374,58 @@ struct NativeScheduleView: View {
     }
 
     private var loadingState: some View {
-        StateCard(
-            systemImage: "calendar",
-            title: "正在加载课表",
-            message: "正在从教务服务读取最新安排",
-            actionTitle: nil,
-            action: nil,
-            showsProgress: true
-        )
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("课表").font(.title2.bold())
+                Spacer()
+                ProgressView().controlSize(.small)
+                Text("正在同步课表").font(.caption).foregroundStyle(.secondary)
+            }
+            .frame(minHeight: 34)
+
+            Text("课程安排加载后会显示在这里")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, minHeight: 42)
+
+            GeometryReader { proxy in
+                HStack(alignment: .top, spacing: 0) {
+                    slotAxis
+                    ForEach(1...7, id: \.self) { day in
+                        NativeScheduleDayColumn(
+                            day: day,
+                            dateText: nil,
+                            isToday: day == Self.chinaWeekday,
+                            columnWidth: max(1, (proxy.size.width - 46) / 7),
+                            blocks: [],
+                            onCourseSelected: { _ in }
+                        )
+                    }
+                }
+            }
+            .frame(height: 52 + CGFloat(ScheduleSlot.all.count) * NativeScheduleDayColumn.slotHeight)
+            .accessibilityHidden(true)
+        }
     }
 
-    private var initialState: some View {
-        StateCard(
-            systemImage: "calendar",
-            title: "准备加载课表",
-            message: "课表会显示在这里",
-            actionTitle: "加载课表",
-            action: { requestLoad() },
-            showsProgress: false
-        )
+    private var authorizationBanner: some View {
+        HStack(alignment: .center, spacing: 8) {
+            Image(systemName: "lock")
+                .foregroundStyle(.orange)
+            Text(errorMessage ?? "教务授权已失效，课表可能不是最新的")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+            Spacer(minLength: 8)
+            Button("去登录", action: onLogin)
+                .font(.caption.weight(.semibold))
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.accentColor)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .background(Color.orange.opacity(0.1))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private var authorizationState: some View {
@@ -432,17 +446,6 @@ struct NativeScheduleView: View {
             message: message,
             actionTitle: "重试",
             action: refresh,
-            showsProgress: false
-        )
-    }
-
-    private var emptySchedule: some View {
-        StateCard(
-            systemImage: "calendar.badge.checkmark",
-            title: viewMode == .day ? "这一天没有课程" : "本周没有课程",
-            message: "可以切换其他周次查看安排",
-            actionTitle: nil,
-            action: nil,
             showsProgress: false
         )
     }
@@ -629,17 +632,6 @@ struct NativeScheduleView: View {
             : "周\(day)"
     }
 
-    private func courseCount(_ result: NativeScheduleResult) -> Int {
-        if viewMode == .day {
-            return blocks(for: selectedDay, result: result).count
-        }
-        return (1...7).reduce(0) { total, day in total + blocks(for: day, result: result).count }
-    }
-
-    private func hasCourses(in result: NativeScheduleResult) -> Bool {
-        courseCount(result) > 0
-    }
-
     private func blocks(for day: Int, result: NativeScheduleResult) -> [NativeScheduleCourseBlock] {
         let rawBlocks = result.cells
             .filter { $0.day == day }
@@ -788,34 +780,51 @@ private struct NativeScheduleDayColumn: View {
     var body: some View {
         VStack(spacing: 0) {
             VStack(spacing: 2) {
-                HStack(spacing: 4) {
-                    Text(dayLabel)
-                        .font(.caption.weight(.semibold))
-                    if isToday {
-                        Circle()
-                            .fill(Color.accentColor)
-                            .frame(width: 5, height: 5)
-                    }
-                }
+                Text(dayLabel)
+                    .font(.caption.weight(.semibold))
                 Text(dateText ?? "--")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
             .frame(width: columnWidth, height: 52)
-            .background(isToday ? Color.accentColor.opacity(0.12) : Color.clear)
+            .background {
+                if isToday {
+                    ScheduleGlassBackground(
+                        cornerRadius: 12,
+                        colors: [
+                            Color(hue: 0.43, saturation: 0.22, brightness: 0.92).opacity(0.12),
+                            Color(hue: 0.59, saturation: 0.20, brightness: 0.96).opacity(0.10),
+                            Color(hue: 0.89, saturation: 0.18, brightness: 0.96).opacity(0.12),
+                        ],
+                        border: Color.accentColor.opacity(0.22)
+                    )
+                        .padding(.horizontal, 2)
+                        .padding(.vertical, 3)
+                }
+            }
 
             ZStack(alignment: .topLeading) {
                 VStack(spacing: 0) {
-                    ForEach(ScheduleSlot.all, id: \.number) { _ in
-                        Rectangle()
-                            .fill(Color(uiColor: .tertiarySystemGroupedBackground))
-                            .frame(width: columnWidth, height: Self.slotHeight)
-                            .overlay {
-                                Rectangle()
-                                    .stroke(Color(uiColor: .separator).opacity(0.22), lineWidth: 0.5)
+                    ForEach(ScheduleSlot.all, id: \.number) { slot in
+                        HStack(spacing: 0) {
+                            ForEach(0..<laneCount, id: \.self) { lane in
+                                let occupied = blocks.contains {
+                                    $0.lane == lane && ($0.startSlot...$0.endSlot).contains(slot.number)
+                                }
+                                Group {
+                                    if occupied {
+                                        Color.clear
+                                    } else {
+                                        ScheduleGlassBackground(cornerRadius: 8)
+                                    }
+                                }
+                                    .frame(width: max(12, columnWidth / CGFloat(laneCount) - 4), height: Self.slotHeight - 6)
+                                    .frame(width: columnWidth / CGFloat(laneCount), height: Self.slotHeight)
                             }
+                        }
                     }
                 }
+                .accessibilityHidden(true)
 
                 ForEach(blocks) { block in
                     Button {
@@ -841,62 +850,150 @@ private struct NativeScheduleDayColumn: View {
     }
 }
 
+/// Native Liquid Glass is confined to controls. Course grids retain lightweight
+/// gradients so scrolling does not create dozens of live blur surfaces.
+private struct ScheduleGlassControl: ViewModifier {
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let cornerRadius: CGFloat
+    var tint: Color? = nil
+    var interactive = true
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if reduceTransparency {
+            content.background {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                            .strokeBorder(Color(uiColor: .separator).opacity(0.22), lineWidth: 0.7)
+                    }
+            }
+        } else {
+#if compiler(>=6.2)
+            if #available(iOS 26.0, *) {
+                content.glassEffect(
+                    .regular.tint(tint).interactive(interactive && isEnabled && !reduceMotion),
+                    in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                )
+            } else {
+                legacyMaterial(content)
+            }
+#else
+            legacyMaterial(content)
+#endif
+        }
+    }
+
+    private func legacyMaterial(_ content: Content) -> some View {
+        content.background {
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(.thinMaterial)
+                .overlay {
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .fill(tint ?? .clear)
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .strokeBorder(LinearGradient(
+                            colors: [.white.opacity(0.35), Color(uiColor: .separator).opacity(0.15)],
+                            startPoint: .topLeading, endPoint: .bottomTrailing
+                        ), lineWidth: 0.7)
+                }
+        }
+    }
+}
+
+private struct ScheduleGlassBackground: View {
+    @Environment(\.colorScheme) private var colorScheme
+    let cornerRadius: CGFloat
+    var colors: [Color] = [.clear, .clear]
+    var border: Color = Color(uiColor: .separator).opacity(0.12)
+    var lineWidth: CGFloat = 0.7
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        shape
+            .fill(Color(uiColor: .secondarySystemGroupedBackground).opacity(0.86))
+            .overlay {
+                shape.fill(LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing))
+            }
+            .overlay {
+                shape.fill(LinearGradient(
+                    stops: [
+                        .init(color: .white.opacity(colorScheme == .dark ? 0.08 : 0.32), location: 0),
+                        .init(color: .white.opacity(0.02), location: 0.45),
+                        .init(color: .clear, location: 1),
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ))
+            }
+            .overlay { shape.strokeBorder(border, lineWidth: lineWidth) }
+            .allowsHitTesting(false)
+    }
+}
+
 private struct NativeScheduleCourseCard: View {
+    @Environment(\.colorScheme) private var colorScheme
     let course: NativeScheduleCourse
     var compact = false
 
     var body: some View {
-        HStack(alignment: .top, spacing: 5) {
-            if !compact {
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(accent)
-                    .frame(width: 3)
-            }
+        GeometryReader { geometry in
+            let shortCard = geometry.size.height < 64
+            let location = clean(course.location)
 
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(spacing: compact ? 3 : 5) {
                 Text(course.name)
-                    .font(.system(size: compact ? 10 : 12, weight: .semibold))
-                    .lineLimit(compact ? 6 : 2)
-                    .multilineTextAlignment(.leading)
+                    .font(.system(size: compact ? 11 : 14, weight: .semibold))
+                    .lineLimit(shortCard ? 1 : (compact ? 3 : 2))
+                    .minimumScaleFactor(0.85)
+                    .frame(maxWidth: .infinity)
+                    .layoutPriority(1)
 
-                if !compact, let location = clean(course.location) {
-                    Label(location, systemImage: "mappin.and.ellipse")
-                        .font(.system(size: 9))
-                        .lineLimit(1)
-                }
-
-                if !compact, let teacher = clean(course.teacher) {
-                    Text(teacher)
-                        .font(.system(size: 9))
-                        .lineLimit(1)
-                }
-
-                if !compact, let note = clean(course.slotNote) ?? clean(course.weeks) {
-                    Text(note)
-                        .font(.system(size: 9))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                if let location {
+                    Text("@" + location.trimmingCharacters(in: CharacterSet(charactersIn: "@＠")))
+                        .font(.system(size: compact ? 10 : 12, weight: .medium))
+                        .lineLimit(shortCard ? 1 : 2)
+                        .minimumScaleFactor(0.85)
+                        .frame(maxWidth: .infinity)
+                        .layoutPriority(2)
                 }
             }
-            .foregroundStyle(.primary)
-
-            Spacer(minLength: 0)
+            .multilineTextAlignment(.center)
+            .foregroundStyle(accent)
+            .padding(.horizontal, compact ? 3 : 10)
+            .padding(.vertical, shortCard ? 4 : 7)
+            .frame(width: geometry.size.width, height: geometry.size.height, alignment: .center)
         }
-        .padding(.horizontal, compact ? 2 : 6)
-        .padding(.vertical, 6)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(accent.opacity(0.14))
+        .background {
+            ScheduleGlassBackground(
+                cornerRadius: 8,
+                colors: [
+                    Color(hue: hue, saturation: 0.58, brightness: 0.96).opacity(colorScheme == .dark ? 0.25 : 0.22),
+                    Color(hue: (hue + 0.04).truncatingRemainder(dividingBy: 1), saturation: 0.44, brightness: 1)
+                        .opacity(colorScheme == .dark ? 0.16 : 0.12),
+                ],
+                border: accent,
+                lineWidth: 1
+            )
+        }
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(accent.opacity(0.35), lineWidth: 0.8)
-        }
+        .accessibilityElement(children: .combine)
     }
 
     private var accent: Color {
-        let palette: [Color] = [
-            .blue, .teal, .indigo, .orange, .pink, .green, .purple, .mint
-        ]
+        Color(hue: hue, saturation: colorScheme == .dark ? 0.38 : 0.68,
+              brightness: colorScheme == .dark ? 0.96 : 0.52)
+    }
+
+    private var hue: Double {
+        // Keep one stable color per course, with a broader range of soft fills.
+        let palette: [Double] = [0.01, 0.055, 0.105, 0.145, 0.21, 0.30, 0.39, 0.45,
+                                 0.50, 0.55, 0.60, 0.65, 0.70, 0.76, 0.83, 0.92]
         let hash = course.name.unicodeScalars.reduce(UInt64(0)) { ($0 &* 31) &+ UInt64($1.value) }
         return palette[Int(hash % UInt64(palette.count))]
     }

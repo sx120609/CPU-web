@@ -1,4 +1,4 @@
-import { installIosNextScheduleBridge } from "../../web/src/utils/iosNextScheduleBridge";
+import { installIosNextScheduleBridge, nativeScheduleAccountKey } from "../../web/src/utils/iosNextScheduleBridge";
 import { isIosNextNativeShell, liveApp, useAuthStore, useJwxtStore } from "./adapters";
 
 if (isIosNextNativeShell() && (window as any).CPUTimeNative) {
@@ -15,7 +15,8 @@ if (isIosNextNativeShell() && (window as any).CPUTimeNative) {
       } else {
         // Guest home pages may never instantiate the academic store. They must
         // show the login state, not fail while waiting for a nonexistent store.
-        const unsubscribe = useAuthStore().$subscribe(() => host.CPUTimeNative.authChanged?.(), { detached: true });
+        const unsubscribe = useAuthStore().$subscribe(
+          () => host.CPUTimeNative.authChanged?.(nativeScheduleAccountKey()), { detached: true });
         host.CPUTimeNativeScheduleFetch = async (semester?: string, week?: string, force?: boolean) => {
           for (let n = 0; n < 12 && useAuthStore().isLoggedIn && !useJwxtStore(); n++) {
             await new Promise(resolve => setTimeout(resolve, 250));

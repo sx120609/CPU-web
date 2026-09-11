@@ -5,7 +5,8 @@ export function liveApp(): any {
 }
 export function useAuthStore(): any { return liveApp()?.config.globalProperties.$pinia?._s.get("auth"); }
 export function useJwxtStore(): any { return liveApp()?.config.globalProperties.$pinia?._s.get("jwxt"); }
-export function isIosNextNativeShell() { return /CPUTimeNative\//i.test(navigator.userAgent); }
+export function isNativeScheduleShell() { return /CPUTimeNative\//i.test(navigator.userAgent); }
+export function isIosNextNativeShell() { return isNativeScheduleShell(); }
 
 export function watch(getter: () => unknown, callback: () => void) {
   let previous = JSON.stringify(getter());

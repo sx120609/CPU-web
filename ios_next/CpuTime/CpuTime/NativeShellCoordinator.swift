@@ -3,7 +3,7 @@ import Foundation
 
 @MainActor
 final class NativeShellCoordinator: ObservableObject {
-    @Published private(set) var selectedTab: ShellTab = .home
+    @Published private(set) var selectedTab: ShellTab = .schedule
 
     private weak var webSession: HybridWebViewStore?
     private var scheduleStore: NativeScheduleStore?
@@ -23,8 +23,8 @@ final class NativeShellCoordinator: ObservableObject {
         }
         // History notifications describe Web content, not a new tab selection.
         // A delayed /home or /login redirect must never undo the user's tap.
-        webSession.onAuthChanged = { [weak self, weak scheduleStore] in
-            scheduleStore?.handleAuthChanged()
+        webSession.onAuthChanged = { [weak self, weak scheduleStore] account in
+            scheduleStore?.handleAuthChanged(account: account)
             guard let self, self.selectedTab == .schedule else { return }
             self.requestScheduleLoad(force: true)
         }
@@ -39,7 +39,13 @@ final class NativeShellCoordinator: ObservableObject {
             scheduleStore?.reportBridgeFailure(message)
         }
         isConnected = true
+        webSession.activate(tab: selectedTab)
+        // Prewarm the shared WebView without presenting a Web tab. The native
+        // timetable stays visible while its authenticated bridge starts up.
         scheduleStore.attach(webView: webSession.makeWebView())
+        if selectedTab == .schedule {
+            requestScheduleLoad(force: false, refreshCached: true)
+        }
     }
 
     func userSelected(_ tab: ShellTab) {
@@ -83,18 +89,25 @@ final class NativeShellCoordinator: ObservableObject {
             scheduleTask?.cancel()
             return
         }
-        guard webSession?.bridgeReady == true else {
-            if let message = webSession?.errorMessage { scheduleStore.reportBridgeFailure(message) }
-            else { scheduleStore.waitForBridge() }
-            return
-        }
         scheduleTask?.cancel()
         scheduleTask = Task { @MainActor in
+            // A relaunch shows the archived timetable before the web bridge has
+            // booted, then refreshes it in place.
+            var restoredArchive = false
+            if !force, !restoredCache {
+                restoredArchive = await scheduleStore.restoreArchivedSelection()
+            }
+            guard !Task.isCancelled else { return }
+            guard self.webSession?.bridgeReady == true else {
+                if let message = self.webSession?.errorMessage { scheduleStore.reportBridgeFailure(message) }
+                else { scheduleStore.waitForBridge() }
+                return
+            }
             // Login can update account and JWXT state in consecutive messages.
             // Wait for that burst to settle before starting the next request.
             try? await Task.sleep(for: .milliseconds(100))
             guard !Task.isCancelled else { return }
-            await scheduleStore.load(force: force || restoredCache)
+            await scheduleStore.load(force: force || restoredCache || restoredArchive)
         }
     }
 }
