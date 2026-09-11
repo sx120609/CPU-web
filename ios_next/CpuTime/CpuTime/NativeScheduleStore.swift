@@ -711,6 +711,19 @@ public final class NativeScheduleStore: ObservableObject {
         await load(semester: selectedSemester, week: selectedWeek, force: false)
     }
 
+    /// Switches the displayed week synchronously so a view can swap the page
+    /// and reset its slide offset inside one transaction. The matching refresh
+    /// keeps running in the background, exactly like `selectWeek`.
+    public func commitWeekSelection(_ week: String) {
+        let value = week.trimmedNonEmpty ?? ""
+        guard value != selectedWeek else { return }
+        selectedWeek = value
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.load(semester: self.selectedSemester, week: self.selectedWeek, force: false)
+        }
+    }
+
     /// Clears all in-memory data when the web session changes or the user logs
     /// out. The next request starts in the idle state.
     public func reset() {

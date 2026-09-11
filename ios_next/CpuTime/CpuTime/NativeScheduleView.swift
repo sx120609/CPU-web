@@ -13,6 +13,13 @@ struct NativeScheduleView: View {
     @State private var viewMode: ScheduleViewMode = .week
     @State private var selectedCourse: SelectedCourse?
     @State private var weekPickerPresented = false
+    // Horizontal week paging state. The track holds the previous, current and
+    // next week so a swipe drags the neighbouring timetable into view instead
+    // of replacing the grid in place.
+    @State private var weekDragOffset: CGFloat = 0
+    @State private var weekDragAxis: ScheduleSwipeAxis = .pending
+    @State private var weekSliding = false
+    @State private var weekPageWidth: CGFloat = 0
 
     init(store: NativeScheduleStore, onLogin: @escaping () -> Void = {}, onWidgets: @escaping () -> Void = {}) {
         _store = ObservedObject(wrappedValue: store)
@@ -55,7 +62,7 @@ struct NativeScheduleView: View {
                         loadingState
                     }
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, Self.contentInset)
                 .padding(.top, geometry.safeAreaInsets.top + 8)
                 // Floating tab bars can overlay the scroll view without reporting
                 // their full height as a safe-area inset. Keep scrollable clearance.
@@ -268,8 +275,15 @@ struct NativeScheduleView: View {
         VStack(alignment: .leading, spacing: 8) {
             GeometryReader { proxy in
                 let columnWidth = max(24, (proxy.size.width - 46) / 7)
-                scheduleRows(result: result, days: Array(1...7), columnWidth: columnWidth)
-                    .frame(minWidth: proxy.size.width, alignment: .leading)
+                // The track is widened back over the page margin so a swipe
+                // carries the timetable to the screen edge instead of stopping
+                // short at the content inset.
+                weekPager(result: result, width: proxy.size.width + Self.contentInset * 2) { week in
+                    scheduleRows(result: result, week: week, days: Array(1...7), columnWidth: columnWidth)
+                        .frame(minWidth: proxy.size.width, alignment: .leading)
+                        .padding(.horizontal, Self.contentInset)
+                }
+                .padding(.horizontal, -Self.contentInset)
             }
             .frame(minHeight: 610)
         }
@@ -279,23 +293,147 @@ struct NativeScheduleView: View {
         VStack(alignment: .leading, spacing: 8) {
             GeometryReader { proxy in
                 let columnWidth = max(220, proxy.size.width - 46)
-                scheduleRows(result: result, days: [selectedDay], columnWidth: columnWidth)
+                weekPager(result: result, width: proxy.size.width + Self.contentInset * 2) { week in
+                    scheduleRows(result: result, week: week, days: [selectedDay], columnWidth: columnWidth)
+                        .frame(minWidth: proxy.size.width, alignment: .leading)
+                        .padding(.horizontal, Self.contentInset)
+                }
+                .padding(.horizontal, -Self.contentInset)
             }
             .frame(minHeight: 618)
         }
     }
 
-    private func scheduleRows(result: NativeScheduleResult, days: [Int], columnWidth: CGFloat) -> some View {
+    /// Lays the previous / current / next week side by side and moves the whole
+    /// track with the finger. Neighbouring pages are only built while the track
+    /// is off centre, so a resting timetable still renders a single week.
+    private func weekPager<Page: View>(
+        result: NativeScheduleResult,
+        width: CGFloat,
+        @ViewBuilder page: @escaping (Int?) -> Page
+    ) -> some View {
+        let showsNeighbours = weekDragOffset != 0 || weekSliding
+        return HStack(spacing: 0) {
+            neighbourPage(offset: -1, result: result, width: width, visible: showsNeighbours, page: page)
+            page(weekNumber(store.selectedWeek))
+                .frame(width: width, alignment: .leading)
+            neighbourPage(offset: 1, result: result, width: width, visible: showsNeighbours, page: page)
+        }
+        .offset(x: -width + weekDragOffset)
+        .frame(width: width, alignment: .leading)
+        .clipped()
+        .contentShape(Rectangle())
+        .onAppear { weekPageWidth = width }
+        .onChange(of: width) { _, value in weekPageWidth = value }
+        .simultaneousGesture(weekSwipeGesture(result: result, width: width))
+    }
+
+    @ViewBuilder
+    private func neighbourPage<Page: View>(
+        offset: Int,
+        result: NativeScheduleResult,
+        width: CGFloat,
+        visible: Bool,
+        @ViewBuilder page: @escaping (Int?) -> Page
+    ) -> some View {
+        if visible, let value = adjacentWeekValue(offset, result: result) {
+            page(weekNumber(value))
+                .frame(width: width, alignment: .leading)
+        } else {
+            // A placeholder keeps the track three pages wide without claiming
+            // the height of a real timetable.
+            Color.clear.frame(width: width, height: 0)
+        }
+    }
+
+    private func weekSwipeGesture(result: NativeScheduleResult, width: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 10)
+            .onChanged { value in
+                guard selectedCourse == nil, !weekSliding else { return }
+                let horizontal = value.translation.width
+                let vertical = value.translation.height
+                weekDragAxis = resolveWeekSwipeAxis(horizontal, vertical, weekDragAxis)
+                guard weekDragAxis == .horizontal else { return }
+                let direction = horizontal < 0 ? 1 : -1
+                // Pull against a missing neighbour instead of exposing a blank
+                // page at the first or last week of the semester.
+                let resistance = canMoveWeek(direction, result: result) ? 1.0 : 0.3
+                weekDragOffset = horizontal * resistance
+            }
+            .onEnded { value in
+                let axis = weekDragAxis
+                weekDragAxis = .pending
+                guard axis == .horizontal, !weekSliding else {
+                    // A gesture abandoned mid-drag must never leave the track
+                    // parked off centre.
+                    if weekDragOffset != 0, !weekSliding {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.9)) {
+                            weekDragOffset = 0
+                        }
+                    }
+                    return
+                }
+                finishWeekSwipe(
+                    result: result,
+                    width: max(width, 1),
+                    translation: value.translation.width,
+                    predicted: value.predictedEndTranslation.width
+                )
+            }
+    }
+
+    private func finishWeekSwipe(
+        result: NativeScheduleResult,
+        width: CGFloat,
+        translation: CGFloat,
+        predicted: CGFloat
+    ) {
+        let direction = translation < 0 ? 1 : -1
+        let threshold = max(52, width * 0.2)
+        let flick = abs(predicted) >= width * 0.55 && abs(translation) >= 18
+        guard abs(translation) >= threshold || flick,
+              let target = adjacentWeekValue(direction, result: result) else {
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.9)) {
+                weekDragOffset = 0
+            }
+            return
+        }
+        slideToWeek(target, direction: direction, width: width)
+    }
+
+    /// Runs the page off screen, then swaps the week and recentres the track in
+    /// a single unanimated transaction so the new timetable never flashes.
+    private func slideToWeek(_ week: String, direction: Int, width: CGFloat) {
+        weekSliding = true
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.88)) {
+            weekDragOffset = direction > 0 ? -width : width
+        } completion: {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                store.commitWeekSelection(week)
+                weekDragOffset = 0
+                weekSliding = false
+            }
+        }
+    }
+
+    private func scheduleRows(
+        result: NativeScheduleResult,
+        week: Int?,
+        days: [Int],
+        columnWidth: CGFloat
+    ) -> some View {
         HStack(alignment: .top, spacing: 0) {
             slotAxis
 
             ForEach(days, id: \.self) { day in
                 NativeScheduleDayColumn(
                     day: day,
-                    dateText: dayDate(day, result: result),
-                    isToday: dayIsToday(day, result: result),
+                    dateText: dayDate(day, week: week, result: result),
+                    isToday: dayIsToday(day, week: week, result: result),
                     columnWidth: columnWidth,
-                    blocks: blocks(for: day, result: result),
+                    blocks: blocks(for: day, week: week, result: result),
                     onCourseSelected: { block in
                         selectedCourse = SelectedCourse(
                             course: block.course,
@@ -308,22 +446,6 @@ struct NativeScheduleView: View {
             }
         }
         .padding(.bottom, 4)
-        .contentShape(Rectangle())
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 24)
-                .onEnded { value in
-                    guard selectedCourse == nil else { return }
-                    let horizontal = value.translation.width
-                    let vertical = value.translation.height
-                    // Require a deliberate sideways swipe, not a tap or a
-                    // diagonal movement during vertical scrolling.
-                    guard abs(horizontal) >= 56,
-                          abs(horizontal) > abs(vertical) * 1.5 else { return }
-                    let offset = horizontal < 0 ? 1 : -1
-                    guard canMoveWeek(offset, result: result) else { return }
-                    moveWeek(offset, result: result)
-                }
-        )
     }
 
     private var slotAxis: some View {
@@ -521,12 +643,23 @@ struct NativeScheduleView: View {
     }
 
     private func moveWeek(_ offset: Int, result: NativeScheduleResult) {
-        guard let currentIndex = result.weeks.firstIndex(where: { $0.value == store.selectedWeek }) else {
+        guard !weekSliding, let target = adjacentWeekValue(offset, result: result) else { return }
+        // The stepper buttons ride the same track as a swipe so both paths read
+        // as one gesture. Without a measured page width, switch outright.
+        guard weekPageWidth > 1 else {
+            Task { await store.selectWeek(target) }
             return
         }
+        slideToWeek(target, direction: offset, width: weekPageWidth)
+    }
+
+    private func adjacentWeekValue(_ offset: Int, result: NativeScheduleResult) -> String? {
+        guard let currentIndex = result.weeks.firstIndex(where: { $0.value == store.selectedWeek }) else {
+            return nil
+        }
         let targetIndex = currentIndex + offset
-        guard result.weeks.indices.contains(targetIndex) else { return }
-        Task { await store.selectWeek(result.weeks[targetIndex].value) }
+        guard result.weeks.indices.contains(targetIndex) else { return nil }
+        return result.weeks[targetIndex].value
     }
 
     private func jumpToCurrentWeek(_ result: NativeScheduleResult) {
@@ -549,6 +682,22 @@ struct NativeScheduleView: View {
         Task {
             await store.load(semester: semester, week: String(calendar.currentWeek), force: false)
         }
+    }
+
+    /// Mirrors the Web timetable's swipe lock: a sideways drag wins early
+    /// because real thumbs never swipe perfectly straight, while a clear
+    /// vertical drag is handed to the enclosing scroll view for good.
+    private func resolveWeekSwipeAxis(
+        _ horizontal: CGFloat,
+        _ vertical: CGFloat,
+        _ current: ScheduleSwipeAxis
+    ) -> ScheduleSwipeAxis {
+        if current != .pending { return current }
+        let absH = abs(horizontal)
+        let absV = abs(vertical)
+        if absH >= 8, absH >= absV * 0.9 { return .horizontal }
+        if absV >= 14, absV > absH * 1.6 { return .vertical }
+        return .pending
     }
 
     private func canMoveWeek(_ offset: Int, result: NativeScheduleResult) -> Bool {
@@ -596,28 +745,36 @@ struct NativeScheduleView: View {
     }
 
     private func dayDate(_ day: Int, result: NativeScheduleResult) -> String? {
-        guard let weekNumber = Int(store.selectedWeek), let calendar = store.calendar,
-              let item = calendar.weeks.first(where: { $0.week == weekNumber }),
-              item.days.indices.contains(day - 1) else {
-            return nil
-        }
-        return shortDate(item.days[day - 1])
+        dayDate(day, week: weekNumber(store.selectedWeek), result: result)
+    }
+
+    private func dayDate(_ day: Int, week: Int?, result: NativeScheduleResult) -> String? {
+        guard let value = rawDayDate(day, week: week, result: result) else { return nil }
+        return shortDate(value)
     }
 
     private func dayIsToday(_ day: Int, result: NativeScheduleResult) -> Bool {
-        guard let value = rawDayDate(day, result: result), let today = Self.todayDate else {
+        dayIsToday(day, week: weekNumber(store.selectedWeek), result: result)
+    }
+
+    private func dayIsToday(_ day: Int, week: Int?, result: NativeScheduleResult) -> Bool {
+        guard let value = rawDayDate(day, week: week, result: result), let today = Self.todayDate else {
             return false
         }
         return value == today
     }
 
-    private func rawDayDate(_ day: Int, result: NativeScheduleResult) -> String? {
-        guard let weekNumber = Int(store.selectedWeek), let calendar = store.calendar,
+    private func rawDayDate(_ day: Int, week: Int?, result: NativeScheduleResult) -> String? {
+        guard let weekNumber = week, let calendar = store.calendar,
               let item = calendar.weeks.first(where: { $0.week == weekNumber }),
               item.days.indices.contains(day - 1) else {
             return nil
         }
         return item.days[day - 1]
+    }
+
+    private func weekNumber(_ value: String) -> Int? {
+        Int(value.trimmingCharacters(in: .whitespaces))
     }
 
     private func shortDate(_ value: String) -> String {
@@ -632,12 +789,12 @@ struct NativeScheduleView: View {
             : "周\(day)"
     }
 
-    private func blocks(for day: Int, result: NativeScheduleResult) -> [NativeScheduleCourseBlock] {
+    private func blocks(for day: Int, week: Int?, result: NativeScheduleResult) -> [NativeScheduleCourseBlock] {
         let rawBlocks = result.cells
             .filter { $0.day == day }
             .flatMap { cell in
                 cell.courses.enumerated().compactMap { index, course -> NativeScheduleCourseBlock? in
-                    if let week = Int(store.selectedWeek), !course.weekList.isEmpty, !course.weekList.contains(week) {
+                    if let week, !course.weekList.isEmpty, !course.weekList.contains(week) {
                         return nil
                     }
                     let fallbackStart = cell.bigSlot * 2 - 1
@@ -651,7 +808,7 @@ struct NativeScheduleView: View {
                         end = min(max(fallbackEnd, start), ScheduleSlot.all.count)
                     }
                     return NativeScheduleCourseBlock(
-                        id: "\(day)-\(cell.bigSlot)-\(index)-\(course.name)",
+                        id: "\(week.map(String.init) ?? "-")-\(day)-\(cell.bigSlot)-\(index)-\(course.name)",
                         course: course,
                         startSlot: start,
                         endSlot: end
@@ -693,6 +850,9 @@ struct NativeScheduleView: View {
         }
     }
 
+    /// Horizontal page margin of the scrolling content.
+    private static let contentInset: CGFloat = 16
+
     private static var todayDate: String? {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
@@ -708,6 +868,12 @@ struct NativeScheduleView: View {
         let weekday = calendar.component(.weekday, from: .now)
         return weekday == 1 ? 7 : weekday - 1
     }
+}
+
+private enum ScheduleSwipeAxis {
+    case pending
+    case horizontal
+    case vertical
 }
 
 private enum ScheduleViewMode: String, Hashable {

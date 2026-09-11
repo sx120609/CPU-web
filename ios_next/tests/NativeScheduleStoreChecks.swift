@@ -234,6 +234,19 @@ struct NativeScheduleStoreChecks {
         precondition(!expiredRestored && expiredArchive.data == nil,
                      "A stale archive is dropped, not shown")
 
-        print("Native schedule checks passed: decoding, selection, cache, auth, races, failed-week isolation, cold start")
+        // The animated week pager swaps the page and recentres its track in one
+        // transaction, so the selection has to land without awaiting the fetch.
+        var pagerCalls = 0
+        let pager = NativeScheduleStore(loader: { _ in pagerCalls += 1; return snapshot() })
+        await pager.load(semester: "fall", week: "3")
+        let callsBeforeCommit = pagerCalls
+        pager.commitWeekSelection("4")
+        precondition(pager.selectedWeek == "4", "Committing a week is visible before the refresh runs")
+        pager.commitWeekSelection("4")
+        await settle()
+        precondition(pagerCalls == callsBeforeCommit + 1,
+                     "Re-committing the displayed week must not fetch again")
+
+        print("Native schedule checks passed: decoding, selection, cache, auth, races, failed-week isolation, cold start, week paging")
     }
 }
