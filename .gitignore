@@ -79,3 +79,7 @@ desktop/release/win-unpacked/药大刷课助手.exe
 # 保证打包不依赖能不能跑起离屏渲染器。
 desktop/build/.installer-assets.tmp.html
 desktop/build/.header.tmp.html
+
+# Xcode 个人配置（窗口状态、scheme 选择），跟代码无关
+**/xcuserdata/
+*.xcuserstate

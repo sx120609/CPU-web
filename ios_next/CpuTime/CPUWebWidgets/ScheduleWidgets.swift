@@ -11,7 +11,7 @@ struct CPUWebWidgetBundle: WidgetBundle {
 }
 
 private struct UpcomingScheduleWidget: Widget {
-    let kind = "cn.cputime.ios.next.widget.upcoming"
+    let kind = "cn.cputime.mobile.widget.upcoming"
 
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: ScheduleTimelineProvider()) { entry in
@@ -32,7 +32,7 @@ private struct UpcomingScheduleWidget: Widget {
 }
 
 private struct TodayScheduleWidget: Widget {
-    let kind = "cn.cputime.ios.next.widget.today"
+    let kind = "cn.cputime.mobile.widget.today"
 
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: ScheduleTimelineProvider()) { entry in
@@ -47,7 +47,7 @@ private struct TodayScheduleWidget: Widget {
 }
 
 private struct TwoDayScheduleWidget: Widget {
-    let kind = "cn.cputime.ios.next.widget.twoday"
+    let kind = "cn.cputime.mobile.widget.twoday"
 
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: ScheduleTimelineProvider()) { entry in

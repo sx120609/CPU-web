@@ -2,7 +2,7 @@ import Foundation
 import WidgetKit
 
 enum AppWidgetConfiguration {
-    static let appGroup = "group.cn.cputime.ios.next"
+    static let appGroup = "group.cn.cputime.mobile"
     static let endpointKey = "scheduleWidgetEndpoint"
     static let endpointFileName = "schedule-widget-endpoint.txt"
     static let themeKey = "scheduleWidgetTheme"
