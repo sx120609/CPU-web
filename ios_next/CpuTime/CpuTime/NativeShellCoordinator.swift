@@ -4,11 +4,27 @@ import Foundation
 @MainActor
 final class NativeShellCoordinator: ObservableObject {
     @Published private(set) var selectedTab: ShellTab = .schedule
+    /// False until the launch session probe has decided where to start. The
+    /// root view shows a neutral waiting surface instead, so the native tab bar
+    /// never flashes before a guest is sent to the login gate.
+    @Published private(set) var isAuthResolved = false
+    /// True while the full-screen login gate replaces the native shell.
+    @Published private(set) var requiresLogin = false
+
+    /// The Web login page the gate always lands on.
+    static let loginGatePath = "/login?redirect=/home"
 
     private weak var webSession: HybridWebViewStore?
     private var scheduleStore: NativeScheduleStore?
     private var isConnected = false
     private var scheduleTask: Task<Void, Never>?
+    /// The last non-empty account fingerprint the Web reported, cleared the
+    /// moment the session ends.
+    private var accountKey = ""
+
+    /// True once the Web has proved a real signed-in account. This is stronger
+    /// than a session cookie, which can outlive an expired server session.
+    var hasAuthenticatedSession: Bool { !accountKey.isEmpty }
 
     func connect(webSession: HybridWebViewStore, scheduleStore: NativeScheduleStore) {
         guard !isConnected else { return }
@@ -23,9 +39,16 @@ final class NativeShellCoordinator: ObservableObject {
         }
         // History notifications describe Web content, not a new tab selection.
         // A delayed /home or /login redirect must never undo the user's tap.
+        // While the gate is up they also police SPA routing: a guest who lands
+        // on /home in-page is pulled straight back to the login page.
+        webSession.onRoute = { [weak self] path, source in
+            self?.handleRouteChanged(path: path, source: source)
+        }
         webSession.onAuthChanged = { [weak self, weak scheduleStore] account in
             scheduleStore?.handleAuthChanged(account: account)
-            guard let self, self.selectedTab == .schedule else { return }
+            guard let self else { return }
+            self.handleAuthChanged(account)
+            guard self.selectedTab == .schedule else { return }
             self.requestScheduleLoad(force: true)
         }
         webSession.onSchedulePrefetched = { [weak scheduleStore] snapshot in
@@ -48,7 +71,38 @@ final class NativeShellCoordinator: ObservableObject {
         }
     }
 
+    /// Decides where a cold start lands before anything is shown. A stored
+    /// session cookie keeps the existing native shell; otherwise the login gate
+    /// takes over. The live `authChanged` report can settle the question first.
+    func resolveInitialAuth(webSession: HybridWebViewStore) async {
+        guard !isAuthResolved else { return }
+        let hasCookie = await webSession.hasSessionCookie()
+        // The bridge may have reported the real session while the cookie store
+        // was being read; that live answer wins over the pre-flight guess.
+        guard !isAuthResolved else { return }
+        if hasCookie {
+            applyAuthenticated(navigateToHome: false)
+        } else {
+            applyLoginGate(navigateToLogin: true)
+        }
+    }
+
+    /// The Web app reports the signed-in account fingerprint, or an empty
+    /// string once the session is gone.
+    func handleAuthChanged(_ account: String) {
+        let normalized = account.trimmingCharacters(in: .whitespacesAndNewlines)
+        accountKey = normalized
+        if normalized.isEmpty {
+            applyLoginGate(navigateToLogin: true)
+            return
+        }
+        // Only a login that follows the gate moves the shell to the home tab.
+        // The launch report must keep the existing default tab (the timetable).
+        applyAuthenticated(navigateToHome: requiresLogin)
+    }
+
     func userSelected(_ tab: ShellTab) {
+        guard !requiresLogin else { return }
         guard tab != selectedTab else { return }
         selectedTab = tab
         guard isConnected else { return }
@@ -61,13 +115,37 @@ final class NativeShellCoordinator: ObservableObject {
     }
 
     func openWeb(path: String, tab: ShellTab = .profile) {
+        // Opening the Web login or register page is a gate entry, not a tab
+        // switch: the native tab bar stays hidden until the session exists.
+        if ShellTab.isLoginPath(path) {
+            applyLoginGate(navigateToLogin: true)
+            return
+        }
+        // The gate is the only screen while it is up; nothing may open a tab.
+        guard !requiresLogin else { return }
         guard tab != .schedule else { return }
         selectedTab = tab
         webSession?.activate(tab: tab)
         webSession?.navigate(path: path)
     }
 
+    private func handleRouteChanged(path: String, source: String) {
+        guard requiresLogin else { return }
+        guard !ShellTab.isAuthPath(path) else { return }
+        // A session the Web already proved is signed in is not an escape
+        // attempt: the login page redirects signed-in visitors straight home on
+        // its own. Follow it and lift the gate instead of fighting its router.
+        if hasAuthenticatedSession {
+            applyAuthenticated(navigateToHome: true)
+            return
+        }
+        // The Web page reached somewhere the gate forbids (a "back to home"
+        // link, a redirect, an in-page router push): put it back on login.
+        applyLoginGate(navigateToLogin: true)
+    }
+
     private func handleNavigate(path: String, source: String, webSession: HybridWebViewStore?) {
+        guard !requiresLogin else { return }
         guard selectedTab != .schedule, source == selectedTab.rawValue else { return }
         if let destination = ShellTab.from(path: path) {
             selectedTab = destination
@@ -80,6 +158,35 @@ final class NativeShellCoordinator: ObservableObject {
             return
         }
 
+    }
+
+    /// Hides the native shell behind a full-screen Web login page. The tab bar
+    /// is not rendered at all (the root view swaps), so there is no tab to
+    /// leave through and no back gesture to dismiss it.
+    private func applyLoginGate(navigateToLogin: Bool) {
+        requiresLogin = true
+        isAuthResolved = true
+        guard isConnected else { return }
+        webSession?.blocksInternalNavigation = true
+        webSession?.setBackForwardNavigationGesturesEnabled(false)
+        if selectedTab != .profile { selectedTab = .profile }
+        webSession?.activate(tab: .profile)
+        if navigateToLogin, webSession?.isShowingAuthPage != true {
+            webSession?.navigate(path: Self.loginGatePath)
+        }
+    }
+
+    /// Lifts the gate, restoring the native tab bar and the normal back gesture.
+    private func applyAuthenticated(navigateToHome: Bool) {
+        requiresLogin = false
+        isAuthResolved = true
+        guard isConnected else { return }
+        webSession?.blocksInternalNavigation = false
+        webSession?.setBackForwardNavigationGesturesEnabled(true)
+        guard navigateToHome else { return }
+        selectedTab = .home
+        webSession?.activate(tab: .home)
+        webSession?.navigate(path: ShellTab.home.defaultPath)
     }
 
     private func requestScheduleLoad(force: Bool, refreshCached: Bool = false) {

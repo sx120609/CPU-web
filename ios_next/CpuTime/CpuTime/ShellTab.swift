@@ -42,6 +42,27 @@ enum ShellTab: String, CaseIterable, Hashable {
         return normalized == "/schedule" || normalized.hasPrefix("/schedule/")
     }
 
+    /// Pages the Web login/register flow owns. They are the only destinations
+    /// the login gate is allowed to show.
+    static func isLoginPath(_ path: String) -> Bool {
+        let pathname = pathname(of: path)
+        return pathname == "/login" || pathname.hasPrefix("/login/")
+            || pathname == "/register" || pathname.hasPrefix("/register/")
+    }
+
+    /// Paths that stay reachable while the native login gate is up: the login
+    /// and registration pages plus the authentication API. Anything else is
+    /// bounced back to the gate.
+    static func isAuthPath(_ path: String) -> Bool {
+        let pathname = pathname(of: path)
+        return isLoginPath(pathname) || pathname == "/api" || pathname.hasPrefix("/api/")
+    }
+
+    private static func pathname(of path: String) -> String {
+        let withoutQuery = path.split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? path
+        return withoutQuery.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? withoutQuery
+    }
+
     static func from(path: String) -> ShellTab? {
         if isSchedulePath(path) { return .schedule }
         let pathname = path.split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? path

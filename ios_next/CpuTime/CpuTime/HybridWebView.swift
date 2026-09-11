@@ -69,6 +69,16 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
     /// is cached: a cold start must not flash the wrong scheme first.
     @Published private(set) var pageColorScheme: ColorScheme? = HybridWebViewStore.storedAppearanceScheme()
 
+    /// While the native login gate is up, only authentication pages may load.
+    /// A main-frame navigation anywhere else is cancelled instead of being
+    /// allowed to replace the login page.
+    var blocksInternalNavigation = false
+    /// The path the shared WebView last settled on, used to avoid re-issuing
+    /// the same gate navigation.
+    private(set) var currentPath = ""
+
+    var isShowingAuthPage: Bool { ShellTab.isAuthPath(currentPath) }
+
     nonisolated private static let appearanceModeKey = "CPUWebAppearanceMode"
 
     nonisolated static func storedAppearanceScheme() -> ColorScheme? {
@@ -164,6 +174,21 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
         navigationGeneration += 1
         navigationTask?.cancel()
         activeTab = tab
+    }
+
+    /// A session cookie is the only pre-flight signal the shell has before the
+    /// Web app boots. Its presence means "probably signed in": the gate stays
+    /// down and the live `authChanged` report is the final word.
+    func hasSessionCookie() async -> Bool {
+        let cookies = await WKWebsiteDataStore.default().httpCookieStore.allCookies()
+        return cookies.contains {
+            ($0.name == "__Host-cpu-session" || $0.name == "cpu-session") && !$0.value.isEmpty
+        }
+    }
+
+    /// The login gate is a one-way door: the page must not be swiped away.
+    func setBackForwardNavigationGesturesEnabled(_ enabled: Bool) {
+        makeWebView().allowsBackForwardNavigationGestures = enabled
     }
 
     func mount(tab: ShellTab, in host: UIView) {
@@ -270,6 +295,40 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
         }
     }
 
+#if DEBUG
+    func debugDump(_ label: String) async {
+        guard let webView else { return }
+        let script = #"""
+        const root = document.querySelector('.layout-root');
+        const main = document.querySelector('.layout-root > .main');
+        const page = main?.firstElementChild;
+        const cs = (el) => el ? getComputedStyle(el) : null;
+        const box = (el) => { if (!el) return null; const r = el.getBoundingClientRect(); return [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)]; };
+        return JSON.stringify({
+          url: location.pathname,
+          inner: [innerWidth, innerHeight],
+          vv: [Math.round(visualViewport.width), Math.round(visualViewport.height)],
+          docScroll: [document.scrollingElement.scrollTop, document.scrollingElement.scrollHeight],
+          rootStyle: root ? root.getAttribute('style') : null,
+          rootClass: root ? root.className : null,
+          rootBox: box(root),
+          rootMinH: cs(root) ? cs(root).minHeight : null,
+          mainBox: box(main),
+          mainPad: cs(main) ? [cs(main).paddingTop, cs(main).paddingBottom, cs(main).paddingLeft] : null,
+          pageClass: page ? page.className : null,
+          pageBox: box(page),
+          pagePad: cs(page) ? [cs(page).paddingTop, cs(page).paddingBottom] : null,
+          statusEl: (document.querySelector('[data-cpu-ios-status-content]') || {}).className || null,
+          statusBox: box(document.querySelector('[data-cpu-ios-status-content]')),
+          pageChildren: page ? [...page.children].map(e => e.tagName + '.' + e.className + ' ' + JSON.stringify(box(e))) : null
+        });
+        """#
+        let value = try? await webView.callAsyncJavaScript(script, arguments: [:], in: nil, contentWorld: .page)
+        NSLog("CPUDEBUG[%@] %@", label, (value as? String) ?? "nil")
+        NSLog("CPUDEBUG[%@] native bounds=%@ safeArea=%@ window=%@", label, NSCoder.string(for: webView.bounds), NSCoder.string(for: CGRect(x: webView.safeAreaInsets.left, y: webView.safeAreaInsets.top, width: webView.safeAreaInsets.right, height: webView.safeAreaInsets.bottom)), webView.window == nil ? "nil" : "set")
+    }
+#endif
+
     func goBack() { webView?.goBack() }
 
     func retry() {
@@ -322,6 +381,7 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
             onNavigate?(path, source)
         case "route":
             guard let path = body["path"] as? String else { return }
+            currentPath = path
             onRoute?(path, source)
         case "authChanged":
             automaticWidgetSetupAttempted = false
@@ -336,6 +396,7 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
 
     fileprivate func didFinish(url: URL?) {
         guard let url, let path = Self.path(for: url) else { return }
+        currentPath = path
         onRoute?(path, activeTab.rawValue)
     }
 
@@ -618,6 +679,14 @@ private final class HybridWebViewCoordinator: NSObject, WKNavigationDelegate, WK
         }
 
         if IOSNextWebConfiguration.isTrusted(url) {
+            // The login gate owns navigation: a link, a server redirect or a
+            // restored history entry must not replace the login page.
+            if store?.blocksInternalNavigation == true,
+               navigationAction.targetFrame?.isMainFrame != false,
+               !ShellTab.isAuthPath(url.path) {
+                decisionHandler(.cancel)
+                return
+            }
             if navigationAction.targetFrame?.isMainFrame != false && ShellTab.isSchedulePath(url.path) {
                 if navigationAction.navigationType == .linkActivated {
                     store?.openNativeRoute(url.path + (url.query.map { "?\($0)" } ?? ""))
@@ -659,6 +728,9 @@ private final class HybridWebViewCoordinator: NSObject, WKNavigationDelegate, WK
     ) -> WKWebView? {
         if let url = navigationAction.request.url {
             if IOSNextWebConfiguration.isTrusted(url) {
+                // A popup to a non-auth page would leave the gate through a
+                // second route, so it is dropped while the gate is up.
+                if store?.blocksInternalNavigation == true, !ShellTab.isAuthPath(url.path) { return nil }
                 store?.navigate(path: url.path + (url.query.map { "?\($0)" } ?? ""))
             } else {
                 store?.openExternal(url)

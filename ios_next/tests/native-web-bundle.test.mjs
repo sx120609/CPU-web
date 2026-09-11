@@ -44,9 +44,11 @@ test('bundled bridge works on a legacy page without a deployed native bridge', a
   assert.equal(page.requests[0].options.headers['X-Jwxt-Token'], undefined);
   page.window.CPUTimeNative.openWebRoute('/profile');
   assert.deepEqual(page.routes, ['/profile']);
+  // Installing the bridge reports the launch state once, before any change.
+  assert.equal(page.notifications(), 1);
   page.auth.user = null;
   page.subscribers.forEach(fn => fn());
-  assert.equal(page.notifications(), 1);
+  assert.equal(page.notifications(), 2);
 });
 test('bundled bridge preserves a newer Web implementation', () => {
   const page = legacyPage();
@@ -72,4 +74,6 @@ test('guest without an academic store sees login state instead of a read failure
   assert.equal(result.auth.authenticated, false);
   assert.equal(result.error, undefined);
   assert.equal(page.requests.length, 0);
+  // A guest reports an empty account on install so the shell can gate.
+  assert.equal(page.notifications(), 1);
 });

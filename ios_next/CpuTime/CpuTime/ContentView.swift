@@ -16,26 +16,111 @@ struct ContentView: View {
     @StateObject private var shell = NativeShellCoordinator()
 
     var body: some View {
-        NativeShellView(
-            webSession: webSession,
-            scheduleStore: scheduleStore,
-            shell: shell
-        )
-        .task(id: scheduleStore.lastUpdatedAt) {
-            guard scheduleStore.result != nil else { return }
-            await webSession.ensureScheduleWidgetConfigured()
+        rootView
+            .task(id: scheduleStore.lastUpdatedAt) {
+                guard scheduleStore.result != nil else { return }
+                await webSession.ensureScheduleWidgetConfigured()
+            }
+            .onOpenURL { url in
+                shell.connect(webSession: webSession, scheduleStore: scheduleStore)
+                guard url.scheme == "cputime-next", url.host == "schedule" else { return }
+                guard !shell.requiresLogin else { return }
+                scheduleStore.selectedSemester = ""
+                scheduleStore.selectedWeek = ""
+                shell.userSelected(.schedule)
+                if webSession.bridgeReady { Task { await scheduleStore.load(semester: "", week: "", force: true) } }
+            }
+            .onAppear {
+                shell.connect(webSession: webSession, scheduleStore: scheduleStore)
+                Task { await shell.resolveInitialAuth(webSession: webSession) }
+#if DEBUG
+                let env = ProcessInfo.processInfo.environment
+                if let raw = env["CPU_DEBUG_TAB"], let tab = ShellTab(rawValue: raw) {
+                    let delay = Double(env["CPU_DEBUG_TAB_DELAY"] ?? "") ?? 0
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .seconds(delay))
+                        await webSession.debugDump("before")
+                        shell.userSelected(tab)
+                        try? await Task.sleep(for: .milliseconds(120))
+                        await webSession.debugDump("t+120ms")
+                        try? await Task.sleep(for: .seconds(3))
+                        await webSession.debugDump("settled")
+                    }
+                }
+                if let list = env["CPU_DEBUG_TAB_CYCLE"] {
+                    let tabs = list.split(separator: ",").compactMap { ShellTab(rawValue: String($0)) }
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .seconds(8))
+                        for tab in tabs {
+                            shell.userSelected(tab)
+                            for step in [16, 34, 50, 120, 400] {
+                                try? await Task.sleep(for: .milliseconds(step))
+                                await webSession.debugDump("\(tab.rawValue)+\(step)")
+                            }
+                            try? await Task.sleep(for: .seconds(3))
+                            await webSession.debugDump("\(tab.rawValue) settled")
+                        }
+                    }
+                }
+#endif
+            }
+    }
+
+    /// The login gate is a root-view swap, not a hidden tab bar: while it is
+    /// up the native TabView is never built, so there is no tab to escape
+    /// through. Until the launch session probe answers, a neutral waiting
+    /// surface keeps the tab bar from flashing first.
+    @ViewBuilder
+    private var rootView: some View {
+        if shell.requiresLogin {
+            LoginGateView(webSession: webSession)
+        } else if !shell.isAuthResolved {
+            LaunchWaitingView()
+        } else {
+            NativeShellView(
+                webSession: webSession,
+                scheduleStore: scheduleStore,
+                shell: shell
+            )
         }
-        .onOpenURL { url in
-            shell.connect(webSession: webSession, scheduleStore: scheduleStore)
-            guard url.scheme == "cputime-next", url.host == "schedule" else { return }
-            scheduleStore.selectedSemester = ""
-            scheduleStore.selectedWeek = ""
-            shell.userSelected(.schedule)
-            if webSession.bridgeReady { Task { await scheduleStore.load(semester: "", week: "", force: true) } }
+    }
+}
+
+/// Shown for the instant between the first frame and the session decision.
+private struct LaunchWaitingView: View {
+    var body: some View {
+        ZStack {
+            Color(uiColor: .systemBackground).ignoresSafeArea()
+            ProgressView()
         }
-        .onAppear {
-            shell.connect(webSession: webSession, scheduleStore: scheduleStore)
+    }
+}
+
+/// Full-screen Web login gate. It reuses the shared WKWebView (same cookie
+/// jar) and is not wrapped in the native TabView.
+private struct LoginGateView: View {
+    @ObservedObject var webSession: HybridWebViewStore
+
+    var body: some View {
+        ZStack {
+            HybridWebView(session: webSession, tab: .profile, isActive: true)
+                .ignoresSafeArea(.container, edges: [.top, .bottom])
+            if let message = webSession.errorMessage {
+                ContentUnavailableView {
+                    Label("页面无法打开", systemImage: "wifi.exclamationmark")
+                } description: {
+                    Text(message)
+                } actions: {
+                    Button("重试", action: webSession.retry).buttonStyle(.borderedProminent)
+                }
+                .background(Color(uiColor: .systemBackground))
+            }
         }
+        .background(Color(uiColor: .systemBackground).ignoresSafeArea())
+        .overlay(alignment: .top) {
+            if webSession.isLoading { ProgressView().padding(8) }
+        }
+        .preferredColorScheme(webSession.pageColorScheme)
     }
 }
 
