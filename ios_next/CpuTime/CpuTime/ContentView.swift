@@ -88,8 +88,14 @@ struct NativeShellView: View {
                 }
                 .tag(ShellTab.profile)
         }
-        .sheet(isPresented: $widgetsPresented) { NativeWidgetSetupView(session: webSession) }
+        .sheet(isPresented: $widgetsPresented) {
+            NativeWidgetSetupView(session: webSession)
+                .preferredColorScheme(webSession.pageColorScheme)
+        }
         .tint(Color(red: 54 / 255, green: 104 / 255, blue: 211 / 255))
+        // The Web top bar owns the light/dark switch, so its choice drives the
+        // whole shell, including the native timetable and the tab bar.
+        .preferredColorScheme(webSession.pageColorScheme)
     }
 
     private var selection: Binding<ShellTab> {
@@ -121,7 +127,6 @@ private struct WebTabScreen: View {
             }
         }
         .background(Color(uiColor: .systemBackground).ignoresSafeArea())
-        .preferredColorScheme(session.pageColorScheme)
         .overlay(alignment: .top) {
             if session.isLoading { ProgressView().padding(8) }
         }

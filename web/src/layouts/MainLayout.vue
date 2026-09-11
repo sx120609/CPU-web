@@ -13,8 +13,8 @@
     }"
     :style="layoutStyle"
   >
-    <!-- 顶栏 -->
-    <header v-if="!hideChrome && !useNativeShell && !mobileTopicChrome" class="topbar">
+    <!-- 顶栏。新版 iOS 原生壳只有底部标签栏，网页顶栏保留；Flutter 壳自带顶栏，不重复。 -->
+    <header v-if="!hideChrome && !useFlutterShell && !mobileTopicChrome" class="topbar">
       <div class="topbar-inner">
         <router-link to="/home" class="brand">
           <img

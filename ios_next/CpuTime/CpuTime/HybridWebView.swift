@@ -64,7 +64,20 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
     @Published private(set) var isLoading = true
     @Published private(set) var canGoBack = false
     @Published private(set) var errorMessage: String?
-    @Published private(set) var pageColorScheme: ColorScheme?
+    /// The Web top bar owns the appearance switch and the native timetable is
+    /// on screen before the WebView finishes loading, so the last reported mode
+    /// is cached: a cold start must not flash the wrong scheme first.
+    @Published private(set) var pageColorScheme: ColorScheme? = HybridWebViewStore.storedAppearanceScheme()
+
+    nonisolated private static let appearanceModeKey = "CPUWebAppearanceMode"
+
+    nonisolated static func storedAppearanceScheme() -> ColorScheme? {
+        switch UserDefaults.standard.string(forKey: appearanceModeKey) {
+        case "dark": return .dark
+        case "light": return .light
+        default: return nil
+        }
+    }
 
     let widgetSettings = NativeWidgetSettings()
 
@@ -191,9 +204,22 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
                 let script = """
                 const bridge = window.CPUTimeNative;
                 if (!bridge || typeof bridge.openWebRoute !== 'function') return false;
+                const root = document.documentElement;
+                const switchToken = String(Date.now()) + ':' + Math.random();
                 bridge.nativeNavigationDepth = (bridge.nativeNavigationDepth || 0) + 1;
+                // A native tab tap is a tab change, not an in-page forward
+                // navigation. Mark it so the page swaps tabs without the
+                // crossfade, then release the marker once that transition
+                // would have finished.
+                bridge.cpuTabSwitchToken = switchToken;
+                root.dataset.cpuIosTabSwitch = '1';
                 try { await bridge.openWebRoute(path); return true; }
-                finally { bridge.nativeNavigationDepth -= 1; }
+                finally {
+                  bridge.nativeNavigationDepth -= 1;
+                  setTimeout(() => {
+                    if (bridge.cpuTabSwitchToken === switchToken) delete root.dataset.cpuIosTabSwitch;
+                  }, 400);
+                }
                 """
                 let value = try? await webView.callAsyncJavaScript(script, arguments: ["path": path], in: nil, contentWorld: .page)
                 guard !Task.isCancelled, generation == self.navigationGeneration else { return }
@@ -284,7 +310,9 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
             widgetSettings.setScheduleWidgetTheme(body["theme"] as? String)
         case "appearance":
             guard let dark = body["dark"] as? Bool else { return }
-            let scheme: ColorScheme? = (body["mode"] as? String) == "system" ? nil : (dark ? .dark : .light)
+            let mode = (body["mode"] as? String) ?? "system"
+            UserDefaults.standard.set(mode, forKey: Self.appearanceModeKey)
+            let scheme: ColorScheme? = mode == "system" ? nil : (dark ? .dark : .light)
             if pageColorScheme != scheme { pageColorScheme = scheme }
         case "ready":
             bridgeReady = true
@@ -342,7 +370,9 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
           const style = document.createElement('style');
           style.textContent = `
             html[data-cpu-ios-next] { --cpu-ios-bottom-clearance: 96px; }
-            html[data-cpu-ios-next] .layout-root > .topbar,
+            /* The native shell supplies the bottom tab bar, so the Web tab bar
+               and the desktop footer stay hidden. The Web top bar is kept: it
+               is the only place with the brand, account and menu entries. */
             html[data-cpu-ios-next] .layout-root > .mobile-tabbar,
             html[data-cpu-ios-next] .layout-root > .footer { display: none !important; }
             html[data-cpu-ios-next] .layout-root {
@@ -362,15 +392,25 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
             html[data-cpu-ios-next] .layout-root:not(.layout-root--full-width) > .main:not(.main--bare):not(.main--full-width):not(.main--mobile-topic) {
               padding-inline: var(--cpu-ios-inline-inset) !important;
             }
+            /* Pages that already reserve the notch inside their own padding
+               (login, register) must not stack a second inset on top of it. */
             html[data-cpu-ios-next] [data-cpu-ios-status-content] {
-              padding-top: calc(var(--cpu-ios-original-top, 0px) + env(safe-area-inset-top, 0px)) !important;
+              padding-top: max(var(--cpu-ios-original-top, 0px), env(safe-area-inset-top, 0px)) !important;
             }
-            html[data-cpu-ios-next] .home-entry[data-cpu-ios-status-content] {
+            /* The home search panel is an edge-to-edge sheet only while it is
+               the first thing on the page. Anything above it keeps the notch
+               clearance, so it can no longer hide under the status bar. */
+            html[data-cpu-ios-next] .home-entry[data-cpu-ios-hero] {
               border-top-left-radius: 0; border-top-right-radius: 0; border-top: 0;
               margin-inline: calc(-1 * var(--cpu-ios-inline-inset, 0px));
               padding-left: calc(var(--cpu-ios-original-left, 0px) + var(--cpu-ios-inline-inset, 0px));
               padding-right: calc(var(--cpu-ios-original-right, 0px) + var(--cpu-ios-inline-inset, 0px));
             }
+            /* A native tab tap is a tab change, not an in-page forward
+               navigation: swapping instantly keeps the frozen outgoing page
+               from showing through the incoming one. */
+            html[data-cpu-ios-next][data-cpu-ios-tab-switch] .page-route-enter-active,
+            html[data-cpu-ios-next][data-cpu-ios-tab-switch] .page-route-leave-active { transition: none !important; }
           `;
           const installChrome = () => {
             if (!document.documentElement) return;
@@ -407,21 +447,49 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
             setScheduleWidgetTheme: (theme) => post({type: 'setScheduleWidgetTheme', theme: String(theme ?? '')})
           };
 
-          // Put the top inset inside the page's own background, rather than a
-          // separate native white strip. Reapply to newly mounted route views.
+          // Put the notch clearance inside whatever element sits at the top of
+          // the page, rather than in a separate native white strip. Reapply to
+          // newly mounted route views and to the Web top bar appearing.
           let statusFrame = 0;
+          let statusTarget = null;
           const updateStatusContent = () => {
             statusFrame = 0;
             const main = document.querySelector('.layout-root > .main');
-            const page = main?.firstElementChild || document.querySelector('#app > :first-child:not(.layout-root)');
-            const content = page?.matches('.home-stream') ? page.querySelector('.home-entry') : page;
-            if (content && !content.hasAttribute('data-cpu-ios-status-content')) {
-              const computed = getComputedStyle(content);
-              content.style.setProperty('--cpu-ios-original-top', computed.paddingTop);
-              content.style.setProperty('--cpu-ios-original-left', computed.paddingLeft);
-              content.style.setProperty('--cpu-ios-original-right', computed.paddingRight);
-              content.style.setProperty('--cpu-ios-original-bottom', computed.paddingBottom);
-              content.setAttribute('data-cpu-ios-status-content', '');
+            const mounted = main ? [...main.children] : [];
+            // During a route transition the outgoing page is frozen in place
+            // while the incoming one is already mounted. The notch clearance
+            // belongs to the incoming page; applying it only after the old page
+            // leaves made the new content flash under the status bar and then
+            // jump down.
+            const page = mounted.find(el => !String(el.className).includes('page-route-leave'))
+              || mounted[mounted.length - 1]
+              || document.querySelector('#app > :first-child:not(.layout-root)');
+            // With the Web top bar on screen it already sits above the page, so
+            // the clearance belongs to the bar; only a page without the bar
+            // carries the inset itself. Tracking the current owner keeps a
+            // stale inset from stacking when the bar appears or disappears.
+            const topbar = document.querySelector('.layout-root > .topbar');
+            const content = topbar && getComputedStyle(topbar).display !== 'none' ? topbar : page;
+            if (content !== statusTarget) {
+              if (statusTarget) statusTarget.removeAttribute('data-cpu-ios-status-content');
+              statusTarget = content;
+              if (content) {
+                const computed = getComputedStyle(content);
+                content.style.setProperty('--cpu-ios-original-top', computed.paddingTop);
+                content.style.setProperty('--cpu-ios-original-left', computed.paddingLeft);
+                content.style.setProperty('--cpu-ios-original-right', computed.paddingRight);
+                content.style.setProperty('--cpu-ios-original-bottom', computed.paddingBottom);
+                content.setAttribute('data-cpu-ios-status-content', '');
+              }
+            }
+            const hero = page && page.matches('.home-stream') && page.firstElementChild
+              && page.firstElementChild.classList.contains('home-entry')
+              ? page.firstElementChild : null;
+            if (hero && !hero.hasAttribute('data-cpu-ios-hero')) {
+              const heroStyle = getComputedStyle(hero);
+              hero.style.setProperty('--cpu-ios-original-left', heroStyle.paddingLeft);
+              hero.style.setProperty('--cpu-ios-original-right', heroStyle.paddingRight);
+              hero.setAttribute('data-cpu-ios-hero', '');
             }
           };
           const scheduleStatusContent = () => {

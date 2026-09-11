@@ -49,6 +49,17 @@ function usesImmediateIosScroll() {
   return typeof navigator !== "undefined" && isLikelyIosDevice();
 }
 
+/**
+ * 原生壳切换底部标签时会在 openWebRoute 外层设置 nativeNavigationDepth。
+ * 标签切换是整页替换，不是站内向前导航：交叉淡入会把冻结在原滚动位置的
+ * 旧页面和新页面叠在一起，看起来像两层内容同时闪动。
+ */
+function isNativeTabNavigation() {
+  if (typeof window === "undefined") return false;
+  const depth = Number((window as any).CPUTimeNative?.nativeNavigationDepth ?? 0);
+  return Number.isFinite(depth) && depth > 0;
+}
+
 // iOS 的浏览器/原生壳已经为历史遍历提供手势反馈。只在站内向前导航时
 // 播放网页入场动画，返回时让系统动画直接交接到最终页面。
 export const iosRouteTransitionEnabled = ref(true);
@@ -196,7 +207,7 @@ router.beforeEach(async (to) => {
     return false;
   }
   if (usesImmediateIosScroll()) {
-    iosRouteTransitionEnabled.value = !iosHistoryTraversalPending;
+    iosRouteTransitionEnabled.value = !iosHistoryTraversalPending && !isNativeTabNavigation();
     iosHistoryTraversalPending = false;
   }
   const auth = useAuthStore();
