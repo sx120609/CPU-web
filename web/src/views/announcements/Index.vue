@@ -161,12 +161,19 @@ function normalizeAnnouncementsError(error_: unknown) {
 .arrow { color: var(--cpu-text-muted); flex-shrink: 0; font-size: 16px; }
 
 @media (max-width: 640px) {
-  .announce-page { gap: 14px; }
-  .title { font-size: 20px; }
+  .announce-page { gap: 12px; margin: -4px -2px 0; }
+  .page-head { padding: 4px 2px 2px; }
+  .title { font-size: 19px; }
+  .sub { font-size: 11px; }
+  .cluster { gap: 8px; }
   .board-card {
-    padding: 12px 14px;
-    border-radius: 10px;
+    padding: 12px;
+    border-radius: 12px;
+    background: var(--cpu-card);
+    box-shadow: 0 2px 8px rgba(20, 50, 70, 0.05);
   }
   .icon { width: 40px; height: 40px; font-size: 20px; border-radius: 10px; }
+  .name { font-size: 14px; }
+  .desc { font-size: 11px; }
 }
 </style>
