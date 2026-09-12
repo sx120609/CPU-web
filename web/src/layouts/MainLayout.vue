@@ -248,12 +248,15 @@
       <div class="footer-inner">
         <div class="footer-main">
           <div class="footer-company">
-            <router-link class="footer-brand" to="/home">药大拾间</router-link>
+            <div class="footer-brand-row">
+              <span class="footer-brand-mark" aria-hidden="true">药</span>
+              <router-link class="footer-brand" to="/home">药大拾间</router-link>
+            </div>
             <p>球谐信息技术（深圳）有限公司</p>
             <a class="footer-about" href="/about.html">了解我们 <span aria-hidden="true">↗</span></a>
           </div>
           <address class="footer-contact">
-            <p class="footer-contact-label">联系与地址</p>
+            <p class="footer-contact-label"><span class="footer-label-line" aria-hidden="true"></span>联系与地址</p>
             <p class="footer-address">深圳市南山区高新南九道51号航空航天大厦1号楼2302</p>
             <div class="footer-contact-links">
               <a href="tel:19984839722" aria-label="联系电话 19984839722">19984839722</a>
@@ -1562,12 +1565,35 @@ html[data-theme="dark"] .assistant-widget {
 }
 
 .footer {
-  background: var(--cpu-surface);
+  position: relative;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--cpu-surface) 94%, var(--cpu-bg));
   border-top: 1px solid var(--cpu-border-soft);
-  padding: 28px 20px 18px;
-  font-size: 12px;
-  line-height: 1.7;
+  padding: clamp(28px, 4vw, 46px) 20px 20px;
+  font-size: 13px;
+  line-height: 1.65;
   color: var(--cpu-text-secondary);
+}
+
+.footer::before {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--cpu-primary) 75%, transparent) 24%, color-mix(in srgb, var(--cpu-gold) 70%, transparent) 76%, transparent);
+  content: "";
+  opacity: 0.75;
+}
+
+.footer::after {
+  position: absolute;
+  top: -140px;
+  right: 8%;
+  width: 360px;
+  height: 260px;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--cpu-primary) 9%, transparent), transparent 68%);
+  content: "";
+  pointer-events: none;
 }
 
 .footer-inner {
@@ -1594,29 +1620,63 @@ html[data-theme="dark"] .assistant-widget {
 
 .footer-main {
   display: grid;
-  grid-template-columns: 1fr minmax(0, 1fr);
-  gap: 24px 48px;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  gap: clamp(18px, 5vw, 72px);
   align-items: start;
-  padding-bottom: 22px;
+  padding-bottom: clamp(24px, 3vw, 34px);
+}
+
+.footer-company,
+.footer-contact {
+  min-width: 0;
+  padding: 20px 22px;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--cpu-surface-soft) 54%, transparent);
 }
 
 .footer-company {
   font-size: 13px;
 }
 
+.footer-brand-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .footer a.footer-brand {
   color: var(--cpu-text);
-  font-size: 17px;
-  font-weight: 650;
-  letter-spacing: 0.02em;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.footer-brand-mark {
+  display: inline-grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--cpu-primary) 42%, var(--cpu-border-soft));
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--cpu-primary) 16%, transparent);
+  color: var(--cpu-primary);
+  font-size: 15px;
+  font-weight: 750;
 }
 
 .footer-company p {
-  margin: 6px 0 8px;
+  margin: 12px 0 10px;
+  color: var(--cpu-text-secondary);
 }
 
-.footer-about span {
-  margin-left: 4px;
+.footer-about {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  gap: 6px;
+  color: var(--cpu-primary) !important;
+  font-weight: 600;
 }
 
 .footer-contact {
@@ -1629,21 +1689,49 @@ html[data-theme="dark"] .assistant-widget {
 }
 
 .footer-contact-label {
+  display: flex;
+  align-items: center;
+  gap: 9px;
   color: var(--cpu-text);
-  font-weight: 500;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.footer-label-line {
+  width: 18px;
+  height: 3px;
+  border-radius: 99px;
+  background: linear-gradient(90deg, var(--cpu-primary), var(--cpu-gold));
 }
 
 .footer-contact .footer-address {
-  margin-top: 8px;
+  margin-top: 12px;
   overflow-wrap: anywhere;
 }
 
 .footer-contact-links {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 24px;
-  margin-top: 6px;
+  gap: 8px;
+  margin-top: 12px;
   font-variant-numeric: tabular-nums;
+}
+
+.footer-contact-links a {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  padding: 4px 11px;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--cpu-surface) 72%, transparent);
+  transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease;
+}
+
+.footer-contact-links a:hover {
+  border-color: color-mix(in srgb, var(--cpu-primary) 50%, var(--cpu-border-soft));
+  background: color-mix(in srgb, var(--cpu-primary) 10%, var(--cpu-surface));
+  text-decoration: none;
 }
 
 .footer-bottom {
@@ -1651,31 +1739,73 @@ html[data-theme="dark"] .assistant-widget {
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 8px 24px;
-  padding-top: 14px;
+  gap: 12px 24px;
+  padding-top: 18px;
   border-top: 1px solid var(--cpu-border-soft);
 }
 
 .footer-links {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 20px;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.footer-links a {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 9px;
+  color: var(--cpu-text-secondary);
+  transition: background-color 160ms ease, color 160ms ease;
+}
+
+.footer-links a:hover {
+  background: color-mix(in srgb, var(--cpu-primary) 10%, transparent);
+  text-decoration: none;
 }
 
 @media (max-width: 600px) {
   .footer {
-    padding: 24px 20px 18px;
+    padding: 28px max(16px, env(safe-area-inset-right, 0px)) calc(var(--liquid-tabbar-reserve) + 20px) max(16px, env(safe-area-inset-left, 0px));
   }
 
   .footer-main {
     grid-template-columns: 1fr;
-    gap: 20px;
+    gap: 12px;
+    padding-bottom: 22px;
+  }
+
+  .footer-company,
+  .footer-contact {
+    padding: 18px;
+    border-radius: 14px;
   }
 
   .footer-bottom {
     align-items: flex-start;
     flex-direction: column;
-    gap: 10px;
+    gap: 12px;
+  }
+
+  .footer-links {
+    width: 100%;
+    justify-content: stretch;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .footer-links a {
+    min-height: 40px;
+    justify-content: center;
+    border: 1px solid var(--cpu-border-soft);
+    background: color-mix(in srgb, var(--cpu-surface) 64%, transparent);
+    text-align: center;
+  }
+
+  .footer-contact-links a {
+    min-height: 40px;
   }
 }
 
@@ -2048,9 +2178,8 @@ html[data-theme="dark"] .assistant-widget {
   }
 
   .footer {
-    padding: 12px 12px calc(var(--liquid-tabbar-reserve) + 12px);
-    gap: 6px 12px;
-    font-size: 11px;
+    padding: 28px max(16px, env(safe-area-inset-right, 0px)) calc(var(--liquid-tabbar-reserve) + 20px) max(16px, env(safe-area-inset-left, 0px));
+    font-size: 12px;
   }
 
   .layout-root--native-shell .main {
