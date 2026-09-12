@@ -1658,7 +1658,7 @@ html[data-theme="dark"] .assistant-widget {
   overflow: hidden;
   background: color-mix(in srgb, var(--cpu-surface) 94%, var(--cpu-bg));
   border-top: 1px solid var(--cpu-border-soft);
-  padding: clamp(28px, 4vw, 46px) 20px 20px;
+  padding: clamp(22px, 3vw, 32px) 20px 16px;
   font-size: 13px;
   line-height: 1.65;
   color: var(--cpu-text-secondary);
@@ -1710,18 +1710,14 @@ html[data-theme="dark"] .assistant-widget {
 .footer-main {
   display: grid;
   grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
-  gap: clamp(18px, 5vw, 72px);
+  gap: clamp(18px, 4vw, 56px);
   align-items: start;
-  padding-bottom: clamp(24px, 3vw, 34px);
+  padding-bottom: clamp(18px, 2.4vw, 24px);
 }
 
 .footer-company,
 .footer-contact {
   min-width: 0;
-  padding: 20px 22px;
-  border: 1px solid var(--cpu-border-soft);
-  border-radius: 16px;
-  background: color-mix(in srgb, var(--cpu-surface-soft) 54%, transparent);
 }
 
 .footer-company {
@@ -1755,7 +1751,7 @@ html[data-theme="dark"] .assistant-widget {
 }
 
 .footer-company p {
-  margin: 12px 0 10px;
+  margin: 8px 0 6px;
   color: var(--cpu-text-secondary);
 }
 
@@ -1794,7 +1790,7 @@ html[data-theme="dark"] .assistant-widget {
 }
 
 .footer-contact .footer-address {
-  margin-top: 12px;
+  margin-top: 8px;
   overflow-wrap: anywhere;
 }
 
@@ -1802,24 +1798,19 @@ html[data-theme="dark"] .assistant-widget {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 12px;
+  margin-top: 8px;
   font-variant-numeric: tabular-nums;
 }
 
 .footer-contact-links a {
   display: inline-flex;
-  min-height: 34px;
+  min-height: 30px;
   align-items: center;
-  padding: 4px 11px;
-  border: 1px solid var(--cpu-border-soft);
-  border-radius: 9px;
-  background: color-mix(in srgb, var(--cpu-surface) 72%, transparent);
+  padding: 2px 0;
   transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease;
 }
 
 .footer-contact-links a:hover {
-  border-color: color-mix(in srgb, var(--cpu-primary) 50%, var(--cpu-border-soft));
-  background: color-mix(in srgb, var(--cpu-primary) 10%, var(--cpu-surface));
   text-decoration: none;
 }
 
@@ -1828,8 +1819,8 @@ html[data-theme="dark"] .assistant-widget {
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 12px 24px;
-  padding-top: 18px;
+  gap: 8px 24px;
+  padding-top: 12px;
   border-top: 1px solid var(--cpu-border-soft);
 }
 
@@ -1842,10 +1833,10 @@ html[data-theme="dark"] .assistant-widget {
 
 .footer-links a {
   display: inline-flex;
-  min-height: 34px;
+  min-height: 30px;
   align-items: center;
-  padding: 4px 10px;
-  border-radius: 9px;
+  padding: 2px 8px;
+  border-radius: 7px;
   color: var(--cpu-text-secondary);
   transition: background-color 160ms ease, color 160ms ease;
 }
@@ -1857,25 +1848,24 @@ html[data-theme="dark"] .assistant-widget {
 
 @media (max-width: 600px) {
   .footer {
-    padding: 28px max(16px, env(safe-area-inset-right, 0px)) calc(var(--liquid-tabbar-reserve) + 20px) max(16px, env(safe-area-inset-left, 0px));
+    padding: 20px max(16px, env(safe-area-inset-right, 0px)) calc(var(--liquid-tabbar-reserve) + 14px) max(16px, env(safe-area-inset-left, 0px));
   }
 
   .footer-main {
     grid-template-columns: 1fr;
-    gap: 12px;
-    padding-bottom: 22px;
+    gap: 10px;
+    padding-bottom: 16px;
   }
 
   .footer-company,
   .footer-contact {
-    padding: 18px;
-    border-radius: 14px;
+    padding: 0;
   }
 
   .footer-bottom {
     align-items: flex-start;
     flex-direction: column;
-    gap: 12px;
+    gap: 8px;
   }
 
   .footer-links {
@@ -1886,15 +1876,15 @@ html[data-theme="dark"] .assistant-widget {
   }
 
   .footer-links a {
-    min-height: 40px;
+    min-height: 34px;
     justify-content: center;
     border: 1px solid var(--cpu-border-soft);
-    background: color-mix(in srgb, var(--cpu-surface) 64%, transparent);
+    background: color-mix(in srgb, var(--cpu-surface) 44%, transparent);
     text-align: center;
   }
 
   .footer-contact-links a {
-    min-height: 40px;
+    min-height: 30px;
   }
 }
 
@@ -2267,7 +2257,7 @@ html[data-theme="dark"] .assistant-widget {
   }
 
   .footer {
-    padding: 28px max(16px, env(safe-area-inset-right, 0px)) calc(var(--liquid-tabbar-reserve) + 20px) max(16px, env(safe-area-inset-left, 0px));
+    padding: 20px max(16px, env(safe-area-inset-right, 0px)) calc(var(--liquid-tabbar-reserve) + 14px) max(16px, env(safe-area-inset-left, 0px));
     font-size: 12px;
   }
 
