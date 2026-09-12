@@ -631,6 +631,30 @@ html, body, #app {
 }
 
 /*
+ * The iOS native shell mounts this document inside a scrollable WKWebView.
+ * A fixed 100% height on #app makes the flex layout stop at the WebView
+ * viewport, leaving profile sections and the site footer outside the page's
+ * scroll range. Keep full-height tools fixed by their own route class, while
+ * ordinary native-shell pages grow with their content.
+ */
+html[data-cpu-ios-next] {
+  height: 100%;
+  overflow: hidden;
+}
+
+html[data-cpu-ios-next] body {
+  height: 100%;
+  overflow: hidden;
+}
+
+html[data-cpu-ios-next] #app {
+  height: 100%;
+  min-height: 100%;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/*
  * Element Plus locks page scrolling for dialogs, drawers, image previews and
  * message boxes by subtracting its measured scrollbar width from <body>.
  * Android WebView uses overlay scrollbars, so that desktop compensation makes

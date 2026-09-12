@@ -372,7 +372,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, defineAsyncComponent, onBeforeUnmount, onMounted, watch } from "vue";
+import { ref, computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import LiquidGlassTabbar from "../components/common/LiquidGlassTabbar.vue";
 import { ElMessage } from "element-plus";
@@ -721,6 +721,19 @@ watch(() => route.fullPath, () => {
   editableFocused.value = false;
   editorFocused.value = false;
   syncViewportMetrics();
+  if (useIosNextShell.value) {
+    // The shared WKWebView keeps its document scroll position between native
+    // tab switches. Start each ordinary Web route at its own top edge so a
+    // previous page cannot leave the first card clipped beneath the shell bar.
+    resetIosNativeScroll();
+    void nextTick(() => {
+      resetIosNativeScroll();
+      requestAnimationFrame(() => {
+        resetIosNativeScroll();
+        window.setTimeout(resetIosNativeScroll, 48);
+      });
+    });
+  }
 });
 
 function handleViewportMetricsChange() {
@@ -992,6 +1005,14 @@ function freezeRoutePage(element: Element) {
 function releaseRoutePage(element: Element) {
   if (useIosNextShell.value) return;
   releaseLeavingPage(element);
+}
+
+function resetIosNativeScroll() {
+  const behavior = "auto" as ScrollBehavior;
+  const app = document.getElementById("app");
+  app?.scrollTo({ top: 0, left: 0, behavior });
+  document.scrollingElement?.scrollTo({ top: 0, left: 0, behavior });
+  window.scrollTo({ top: 0, left: 0, behavior });
 }
 </script>
 
@@ -1592,6 +1613,11 @@ html[data-theme="dark"] .assistant-widget {
      above the first card. Login/register pages stay outside this layout and
      continue to use the browser safe area. */
   --cpu-safe-area-inset-top: 0px;
+}
+
+.layout-root--ios-next:not(.layout-root--full-height) {
+  min-height: 100%;
+  height: auto;
 }
 
 .layout-root--ios-next .footer {

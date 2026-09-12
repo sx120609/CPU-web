@@ -500,6 +500,25 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
               --cpu-safe-area-inset-top: 0px !important;
               --cpu-ios-inline-inset: 20px;
             }
+            /* Keep the shared WKWebView itself fixed to the native content
+               viewport and make the Web app the only vertical scroller. A
+               number of deployed Web bundles still leave body scrolling
+               enabled, which lets the old scroll offset cut into the first
+               card after a native tab switch. */
+            html[data-cpu-ios-next],
+            html[data-cpu-ios-next] body {
+              height: 100%;
+              overflow: hidden;
+            }
+            html[data-cpu-ios-next] #app {
+              height: 100%;
+              min-height: 0;
+              max-height: 100%;
+              overflow-x: hidden;
+              overflow-y: auto;
+              -webkit-overflow-scrolling: touch;
+              overscroll-behavior-y: contain;
+            }
             @media (max-width: 768px) {
               html[data-cpu-ios-next] .layout-root { --cpu-ios-inline-inset: 12px; }
             }
@@ -609,7 +628,14 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
 
           if (window.__cpuTimeNativeRouteBridge) return;
           window.__cpuTimeNativeRouteBridge = true;
+          const resetScroll = () => {
+            const app = document.getElementById('app');
+            app?.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+            document.scrollingElement?.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+            window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+          };
           const notifyRoute = () => {
+            resetScroll();
             const path = `${location.pathname || '/'}${location.search || ''}${location.hash || ''}`;
             post({ type: 'route', path });
           };
