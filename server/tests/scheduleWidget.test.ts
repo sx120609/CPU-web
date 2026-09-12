@@ -247,6 +247,7 @@ test("schedule widget includes the next seven days so an empty day can advance t
   assert.deepEqual(resolveScheduleWidgetPreviewWeeks(calendar, "", WEDNESDAY_1302_CHINA), [4]);
   const payload = buildScheduleWidgetPayload(currentSchedule, calendar, "", WEDNESDAY_1302_CHINA, { 4: nextWeekSchedule });
   assert.equal(payload.days.find((day) => day.date === "2026-07-29")?.courses[0]?.name, "下周课程");
+  assert.deepEqual(payload.upcoming.map((item) => item.name), ["下周课程"]);
 });
 
 test("widget dates require the matching school calendar and never infer the first teaching week", () => {

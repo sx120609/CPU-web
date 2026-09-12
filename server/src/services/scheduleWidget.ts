@@ -69,6 +69,9 @@ export function scheduleWidgetFallbackPayload(payload?: string | null, requested
     ...item, isToday: item.date === today, courses: item.date === today ? remaining(item) : item.courses,
   }));
   const active = days.find((item) => item.date === today)!;
+  const nextWorkday = days
+    .filter((item) => item.date > today && item.courses.length)
+    .sort((a, b) => a.date.localeCompare(b.date))[0];
   return {
     ...parsed,
     week: Number(current.week) || 0,
@@ -76,7 +79,7 @@ export function scheduleWidgetFallbackPayload(payload?: string | null, requested
     displayWeek: Number(current.week) || 0,
     teachingWeekActive: Number(current.week) > 0,
     today: active,
-    upcoming: active.courses.slice(0, 6),
+    upcoming: (active.courses.length ? active.courses : (nextWorkday?.courses ?? [])).slice(0, 6),
     days,
     weekDays,
     stale: true,
@@ -361,7 +364,12 @@ export function buildScheduleWidgetPayload(
       courses: displayCourses.filter((course) => course.day === day),
     };
   });
-  const upcoming = visibleCourses.filter((course) => course.day === activeDay);
+  const activeUpcoming = visibleCourses.filter((course) => course.day === activeDay);
+  const upcoming = explicitWeek || activeUpcoming.length
+    ? activeUpcoming
+    : days
+      .filter((day) => day.date > today.ymd && day.courses.length)
+      .sort((a, b) => a.date.localeCompare(b.date))[0]?.courses ?? [];
 
   return {
     title: "药大课表",

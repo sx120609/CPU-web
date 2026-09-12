@@ -5,7 +5,7 @@ import { preloadEducationViews, preloadPrimaryViews, router } from "./router";
 import { useAuthStore } from "./stores/auth";
 import { useJwxtStore } from "./stores/jwxt";
 import { useSiteStore } from "./stores/site";
-import { applyInitialAppearance, useAppearanceStore } from "./stores/appearance";
+import { applyInitialAppearance, installNativeAppearanceBridge, useAppearanceStore } from "./stores/appearance";
 import { installIosNativeImageBridge } from "./utils/nativeBridge";
 import { installIosNextScheduleBridge } from "./utils/iosNextScheduleBridge";
 import {
@@ -429,7 +429,9 @@ if ("serviceWorker" in navigator) {
 
 const app = createApp(App);
 app.use(createPinia());
-useAppearanceStore().hydrate();
+const appearanceStore = useAppearanceStore();
+appearanceStore.hydrate();
+installNativeAppearanceBridge(appearanceStore);
 useAuthStore().hydrate();
 installIosNextScheduleBridge(router);
 installJwxtDataPrewarmTriggers();

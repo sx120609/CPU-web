@@ -6,8 +6,8 @@ import WebKit
 
 
 enum IOSNextWebConfiguration {
-    static let versionCode = 1
-    static let versionName = "1.0.0"
+    static let versionCode = 2
+    static let versionName = "2.0.0"
 
     static var appURL: URL {
         let configured = Bundle.main.object(forInfoDictionaryKey: "CPUAppURL") as? String
@@ -362,6 +362,9 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
         let script = """
         (() => {
           const mode = \(modeLiteral);
+          // Keep Vue's reactive store in sync with the native shell. The DOM
+          // fallback below is still needed while an older web bundle boots.
+          try { window.__cpuSetAppearanceMode?.(mode); } catch (_) {}
           try { localStorage.setItem('cpu-appearance-mode-v1', mode); } catch (_) {}
           const prefersDark = mode === 'dark' || (mode === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
           const root = document.documentElement;
@@ -490,18 +493,61 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
             /* The native shell supplies both bars. The Web top bar stays in the
                DOM so its drawer and account actions remain reusable. */
             html[data-cpu-ios-next] .layout-root > .topbar,
-            html[data-cpu-ios-next] .layout-root > .mobile-tabbar,
-            html[data-cpu-ios-next] .layout-root > .footer { display: none !important; }
+            html[data-cpu-ios-next] .layout-root > .mobile-tabbar { display: none !important; }
+            html[data-cpu-ios-next] .independent-service-note { display: none !important; }
             html[data-cpu-ios-next] .layout-root {
               --layout-mobile-tabbar-reserve: 0px !important;
+              --cpu-safe-area-inset-top: 0px !important;
               --cpu-ios-inline-inset: 20px;
             }
             @media (max-width: 768px) {
               html[data-cpu-ios-next] .layout-root { --cpu-ios-inline-inset: 12px; }
             }
             html[data-cpu-ios-next] .layout-root .main {
-              padding-top: 0 !important;
+              /* The native top bar sits outside the WebView. Keep the Web
+                 page's normal breathing room below it; only the status-bar
+                 inset is consumed by SwiftUI. */
               padding-bottom: var(--cpu-ios-bottom-clearance) !important;
+            }
+            html[data-cpu-ios-next] .layout-root .main:not(.main--bare):not(.main--full-width):not(.main--mobile-topic) {
+              padding-top: 14px !important;
+            }
+            html[data-cpu-ios-next] .layout-root .main.main--bare,
+            html[data-cpu-ios-next] .layout-root .main.main--full-width,
+            html[data-cpu-ios-next] .layout-root .main.main--mobile-topic {
+              padding-top: 0 !important;
+            }
+            /* Older Web bundles hid the footer whenever they detected a
+               native shell. If that node exists, the current shell owns only
+               the native tab bar and should leave the Web footer reachable. */
+            html[data-cpu-ios-next] .layout-root > .footer {
+              display: block !important;
+            }
+            /* Web drawers and course editor dialogs must sit above the native
+               floating tab bar and keep their last controls reachable. */
+            html[data-cpu-ios-next] .mobile-drawer,
+            html[data-cpu-ios-next] .el-drawer.direction-btt {
+              bottom: var(--cpu-ios-bottom-clearance) !important;
+              max-height: calc(92dvh - var(--cpu-ios-bottom-clearance)) !important;
+              border-radius: 18px 18px 0 0;
+            }
+            html[data-cpu-ios-next] .mobile-drawer .el-drawer__body,
+            html[data-cpu-ios-next] .el-drawer.direction-btt .el-drawer__body {
+              padding-bottom: 16px !important;
+              overflow-y: auto !important;
+              overscroll-behavior: contain;
+            }
+            html[data-cpu-ios-next] .course-editor-overlay {
+              padding-bottom: calc(8px + var(--cpu-ios-bottom-clearance)) !important;
+            }
+            html[data-cpu-ios-next] .course-editor-panel {
+              max-height: calc(92dvh - var(--cpu-ios-bottom-clearance)) !important;
+            }
+            html[data-cpu-ios-next] .course-editor-scroll {
+              padding-bottom: calc(12px + env(safe-area-inset-bottom) + var(--cpu-ios-bottom-clearance)) !important;
+            }
+            html[data-cpu-ios-next] .el-overlay {
+              padding-bottom: var(--cpu-ios-bottom-clearance);
             }
             html[data-cpu-ios-next] .layout-root:not(.layout-root--full-width) > .main:not(.main--bare):not(.main--full-width):not(.main--mobile-topic) {
               padding-inline: var(--cpu-ios-inline-inset) !important;
@@ -509,6 +555,8 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
             /* A native tab tap is a tab change, not an in-page forward
                navigation: swapping instantly keeps the frozen outgoing page
                from showing through the incoming one. */
+            html[data-cpu-ios-next] .page-route-enter-active,
+            html[data-cpu-ios-next] .page-route-leave-active { transition: none !important; }
             html[data-cpu-ios-next][data-cpu-ios-tab-switch] .page-route-enter-active,
             html[data-cpu-ios-next][data-cpu-ios-tab-switch] .page-route-leave-active { transition: none !important; }
           `;

@@ -187,6 +187,35 @@ public struct NativeScheduleCourse: Codable, Identifiable, Equatable, Sendable {
     }
 }
 
+/// The same edit payload used by the Web timetable. Keeping this contract in
+/// the native target lets the iOS editor persist through the authenticated Web
+/// session instead of maintaining a second, incompatible edit store.
+public struct NativeScheduleCustomItem: Codable, Equatable, Sendable {
+    public var id: String
+    public var sourceKey: String?
+    public var day: Int
+    public var bigSlot: Int
+    public var course: NativeScheduleCourse
+
+    public init(id: String, sourceKey: String? = nil, day: Int, bigSlot: Int, course: NativeScheduleCourse) {
+        self.id = id
+        self.sourceKey = sourceKey
+        self.day = day
+        self.bigSlot = bigSlot
+        self.course = course
+    }
+}
+
+public struct NativeScheduleEditState: Codable, Equatable, Sendable {
+    public var hidden: [String]
+    public var custom: [NativeScheduleCustomItem]
+
+    public init(hidden: [String] = [], custom: [NativeScheduleCustomItem] = []) {
+        self.hidden = hidden
+        self.custom = custom
+    }
+}
+
 public struct NativeScheduleCell: Codable, Identifiable, Equatable, Sendable {
     public let day: Int
     public let bigSlot: Int
@@ -594,6 +623,23 @@ public final class NativeScheduleStore: ObservableObject {
             guard generation == requestGeneration else { return }
             handle(error, for: key)
         }
+    }
+
+    public func loadScheduleEdits() async throws -> NativeScheduleEditState {
+        guard let webViewLoader else { throw NativeScheduleStoreError.webViewUnavailable }
+        let semester = selectedSemester.trimmedNonEmpty ?? result?.currentSemester.trimmedNonEmpty ?? ""
+        guard !semester.isEmpty else { return NativeScheduleEditState() }
+        return try await webViewLoader.loadEdits(semester: semester)
+    }
+
+    public func saveScheduleEdits(_ edits: NativeScheduleEditState) async throws {
+        guard let webViewLoader else { throw NativeScheduleStoreError.webViewUnavailable }
+        let semester = selectedSemester.trimmedNonEmpty ?? result?.currentSemester.trimmedNonEmpty ?? ""
+        guard !semester.isEmpty else { throw NativeScheduleStoreError.invalidResponse }
+        let week = selectedWeek.trimmedNonEmpty ?? result?.currentWeek ?? ""
+        let snapshot = try await webViewLoader.saveEdits(edits, semester: semester, week: week)
+        let key = CacheKey(semester: semester, week: week)
+        try accept(snapshot, for: key, requestedSemester: semester, requestedWeek: week)
     }
 
     /// A trusted bridge pushes each prefetched week, then the complete semester.
@@ -1009,6 +1055,47 @@ public final class NativeScheduleWebViewLoader {
         }
     }
 
+    public func loadEdits(semester: String) async throws -> NativeScheduleEditState {
+        guard let webView else { throw NativeScheduleStoreError.webViewUnavailable }
+        let raw = try await webView.callAsyncJavaScript("""
+        const cookie = (name) => document.cookie.split(';').map(v => v.trim()).find(v => v.startsWith(name + '='))?.slice(name.length + 1) || '';
+        const response = await fetch('/api/jwxt/schedule-edits?semester=' + encodeURIComponent(semester), {
+          credentials: 'same-origin', headers: {
+            'X-CPU-Auth-Mode': 'cookie', 'X-CPU-Client': 'ios-app',
+            'X-CSRF-Token': cookie('__Host-cpu-csrf') || cookie('cpu-csrf')
+          }
+        });
+        if (!response.ok) throw new Error('课表编辑读取失败');
+        return JSON.stringify((await response.json()).edits || {hidden: [], custom: []});
+        """, arguments: ["semester": semester], in: nil, contentWorld: .page)
+        guard let value = raw as? String, let data = value.data(using: .utf8) else {
+            throw NativeScheduleStoreError.invalidResponse
+        }
+        return try JSONDecoder.nativeScheduleDecoder.decode(NativeScheduleEditState.self, from: data)
+    }
+
+    public func saveEdits(_ edits: NativeScheduleEditState, semester: String, week: String) async throws -> NativeScheduleSnapshot {
+        guard let webView else { throw NativeScheduleStoreError.webViewUnavailable }
+        let data = try JSONEncoder().encode(edits)
+        guard let payload = String(data: data, encoding: .utf8) else { throw NativeScheduleStoreError.invalidResponse }
+        let raw = try await webView.callAsyncJavaScript("""
+        const cookie = (name) => document.cookie.split(';').map(v => v.trim()).find(v => v.startsWith(name + '='))?.slice(name.length + 1) || '';
+        const response = await fetch('/api/jwxt/schedule-edits', {
+          method: 'PUT', credentials: 'same-origin',
+          headers: {'Content-Type': 'application/json', 'X-CPU-Auth-Mode': 'cookie',
+            'X-CPU-Client': 'ios-app', 'X-CSRF-Token': cookie('__Host-cpu-csrf') || cookie('cpu-csrf')},
+          body: JSON.stringify({semester, edits: JSON.parse(editsJSON)})
+        });
+        if (!response.ok) throw new Error('课表编辑保存失败');
+        const fetchSchedule = window.CPUTimeNativeScheduleFetch;
+        const value = await fetchSchedule(semester || null, week || null, true);
+        return typeof value === 'string' ? value : JSON.stringify(value);
+        """, arguments: ["semester": semester, "week": week, "editsJSON": payload], in: nil, contentWorld: .page)
+        guard let value = raw as? String, let data = value.data(using: .utf8) else {
+            throw NativeScheduleStoreError.invalidResponse
+        }
+        return try JSONDecoder.nativeScheduleDecoder.decode(NativeScheduleSnapshot.self, from: data)
+    }
 }
 
 // MARK: - Codable compatibility helpers

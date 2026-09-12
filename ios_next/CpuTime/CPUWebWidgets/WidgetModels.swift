@@ -179,23 +179,27 @@ struct SchedulePayload: Decodable {
         let minutes = Calendar.current.component(.hour, from: now) * 60
             + Calendar.current.component(.minute, from: now)
         let today = day(for: Self.dateString(now), fallbackOffset: 0)
-        let hasRemaining = today.courseList.contains {
+        let remainingToday = today.courseList.filter {
             $0.endMinutes >= minutes || (!$0.hasUsableStartTime && $0.endMinutes <= 0)
         }
-        let useTomorrow = minutes >= 22 * 60 || (!today.courseList.isEmpty && !hasRemaining)
-        let selected = useTomorrow
-            ? day(for: Self.dateString(Calendar.current.date(byAdding: .day, value: 1, to: now) ?? now), fallbackOffset: 1)
-            : today
-        let courses = useTomorrow
-            ? Array(selected.courseList.prefix(2))
-            : Array(selected.courseList.filter {
-                $0.endMinutes >= minutes || (!$0.hasUsableStartTime && $0.endMinutes <= 0)
-            }.prefix(2))
-        if !courses.isEmpty || useTomorrow { return (selected, courses) }
-        let tomorrow = day(
-            for: Self.dateString(Calendar.current.date(byAdding: .day, value: 1, to: now) ?? now),
-            fallbackOffset: 1
-        )
+        if !remainingToday.isEmpty {
+            return (today, Array(remainingToday.prefix(2)))
+        }
+
+        // Match the Web/Scriptable widget behavior: when today is empty or
+        // already finished, walk the published seven-day window and show the
+        // next day that actually has courses. This avoids an empty "tomorrow"
+        // card on weekends and holidays.
+        for offset in 1...7 {
+            let date = Calendar.current.date(byAdding: .day, value: offset, to: now) ?? now
+            let candidate = day(for: Self.dateString(date), fallbackOffset: offset)
+            if !candidate.courseList.isEmpty {
+                return (candidate, Array(candidate.courseList.prefix(2)))
+            }
+        }
+
+        let tomorrowDate = Calendar.current.date(byAdding: .day, value: 1, to: now) ?? now
+        let tomorrow = day(for: Self.dateString(tomorrowDate), fallbackOffset: 1)
         return (tomorrow, Array(tomorrow.courseList.prefix(2)))
     }
 

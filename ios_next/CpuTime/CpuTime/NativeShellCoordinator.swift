@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import SwiftUI
 
 @MainActor
 final class NativeShellCoordinator: ObservableObject {
@@ -119,7 +120,7 @@ final class NativeShellCoordinator: ObservableObject {
     func userSelected(_ tab: ShellTab) {
         guard !requiresLogin else { return }
         guard tab != selectedTab else { return }
-        selectedTab = tab
+        setSelectedTab(tab)
         guard isConnected else { return }
         webSession?.activate(tab: tab)
         if tab == .schedule {
@@ -139,7 +140,7 @@ final class NativeShellCoordinator: ObservableObject {
         // The gate is the only screen while it is up; nothing may open a tab.
         guard !requiresLogin else { return }
         guard tab != .schedule else { return }
-        selectedTab = tab
+        setSelectedTab(tab)
         webSession?.activate(tab: tab)
         webSession?.navigate(path: path)
     }
@@ -163,7 +164,7 @@ final class NativeShellCoordinator: ObservableObject {
         guard !requiresLogin else { return }
         guard selectedTab != .schedule, source == selectedTab.rawValue else { return }
         if let destination = ShellTab.from(path: path) {
-            selectedTab = destination
+            setSelectedTab(destination)
             webSession?.activate(tab: destination)
             if destination == .schedule {
                 requestScheduleLoad(force: false)
@@ -211,7 +212,7 @@ final class NativeShellCoordinator: ObservableObject {
         guard isConnected else { return }
         webSession?.blocksInternalNavigation = true
         webSession?.setBackForwardNavigationGesturesEnabled(false)
-        if selectedTab != .profile { selectedTab = .profile }
+        if selectedTab != .profile { setSelectedTab(.profile) }
         webSession?.activate(tab: .profile)
         if navigateToLogin, webSession?.isShowingAuthPage != true {
             webSession?.navigate(path: Self.loginGatePath)
@@ -226,7 +227,7 @@ final class NativeShellCoordinator: ObservableObject {
         webSession?.blocksInternalNavigation = false
         webSession?.setBackForwardNavigationGesturesEnabled(true)
         guard navigateToHome else { return }
-        selectedTab = .home
+        setSelectedTab(.home)
         webSession?.activate(tab: .home)
         webSession?.navigate(path: ShellTab.home.defaultPath)
     }
@@ -258,5 +259,15 @@ final class NativeShellCoordinator: ObservableObject {
             guard !Task.isCancelled else { return }
             await scheduleStore.load(force: force || restoredCache || restoredArchive)
         }
+    }
+
+    private func setSelectedTab(_ tab: ShellTab) {
+        guard selectedTab != tab else { return }
+        // TabView provides the system tab selection handoff. Animating the
+        // state here also animates the shared WKWebView host, which briefly
+        // exposes its old page during a route load.
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) { selectedTab = tab }
     }
 }

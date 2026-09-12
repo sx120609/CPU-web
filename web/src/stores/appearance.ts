@@ -102,3 +102,19 @@ export const useAppearanceStore = defineStore("appearance", {
 export function applyInitialAppearance() {
   applyAppearance(readStoredMode());
 }
+
+/**
+ * Exposes the same reactive setter to the native iOS shell. The shell can
+ * arrive before a route component is mounted, so keeping this bridge on the
+ * store instance avoids a DOM-only theme update that leaves Vue components
+ * rendered with the previous palette.
+ */
+export function installNativeAppearanceBridge(store: ReturnType<typeof useAppearanceStore>) {
+  if (typeof window === "undefined") return;
+  const host = window as Window & {
+    __cpuSetAppearanceMode?: (mode: unknown) => void;
+  };
+  host.__cpuSetAppearanceMode = (mode) => {
+    store.setMode(normalizeMode(mode));
+  };
+}

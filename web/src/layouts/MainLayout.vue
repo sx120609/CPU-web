@@ -165,8 +165,8 @@
       }"
     >
       <router-view v-slot="{ Component }">
-        <transition name="page-route" :css="!useIosRouteTransition || iosRouteTransitionEnabled"
-          @before-leave="freezeLeavingPage" @after-leave="releaseLeavingPage" @leave-cancelled="releaseLeavingPage">
+        <transition name="page-route" :css="!useIosRouteTransition || (iosRouteTransitionEnabled && !useIosNextShell)"
+          @before-leave="freezeRoutePage" @after-leave="releaseRoutePage" @leave-cancelled="releaseRoutePage">
           <component :is="Component" />
         </transition>
       </router-view>
@@ -244,7 +244,7 @@
       </el-icon>
     </button>
 
-    <footer v-if="!hideChrome && !useNativeShell && !fullHeightContent && !mobileTopicChrome" class="footer">
+    <footer v-if="!hideChrome && !useFlutterShell && !fullHeightContent && !mobileTopicChrome" class="footer">
       <div class="footer-inner">
         <div class="footer-main">
           <div class="footer-company">
@@ -980,6 +980,19 @@ function setAppearanceMode(command: string | number | object) {
   const mode = String(command);
   if (mode === "system" || mode === "light" || mode === "dark") appearance.setMode(mode);
 }
+
+function freezeRoutePage(element: Element) {
+  // The native iOS shell keeps the shared WKWebView mounted while its native
+  // tab selection changes. Freezing a Web page here would briefly pin the old
+  // scroll position over the new route and produce a white flash.
+  if (useIosNextShell.value) return;
+  freezeLeavingPage(element);
+}
+
+function releaseRoutePage(element: Element) {
+  if (useIosNextShell.value) return;
+  releaseLeavingPage(element);
+}
 </script>
 
 <style scoped lang="scss">
@@ -1560,8 +1573,58 @@ html[data-theme="dark"] .assistant-widget {
 /* Keep the existing horizontal layout. Scrollable bottom clearance lets the
    last item move above SwiftUI's floating tab bar without an opaque safe area. */
 .layout-root--ios-next .main {
-  padding-top: 0 !important;
+  /* The native top bar is outside the WebView, so the Web page still needs
+     its normal breathing room below that bar. The safe-area inset itself is
+     already consumed by SwiftUI and is kept at zero on this shell. */
   padding-bottom: var(--cpu-ios-bottom-clearance, 96px) !important;
+}
+.layout-root--ios-next .main:not(.main--bare):not(.main--full-width):not(.main--mobile-topic) {
+  padding-top: 14px !important;
+}
+.layout-root--ios-next .main--bare,
+.layout-root--ios-next .main--full-width,
+.layout-root--ios-next .main--mobile-topic {
+  padding-top: 0 !important;
+}
+.layout-root--ios-next {
+  /* SwiftUI positions the WebView below the native chrome. Letting mobile
+     pages reserve the iOS status inset a second time leaves a clipped strip
+     above the first card. Login/register pages stay outside this layout and
+     continue to use the browser safe area. */
+  --cpu-safe-area-inset-top: 0px;
+}
+
+.layout-root--ios-next .footer {
+  /* The native tab bar floats over the WebView edge, so the footer itself
+     needs enough scrollable tail to remain reachable. */
+  padding-bottom: calc(18px + var(--cpu-ios-bottom-clearance, 96px));
+}
+/* The standalone notice is already covered by the native app's legal pages.
+   Keeping it out of the compact iOS shell prevents a wrapped line from
+   pushing the first mobile card below the fold. */
+:global(html[data-cpu-ios-next] .independent-service-note) {
+  display: none !important;
+}
+
+:global(html[data-cpu-ios-next] .mobile-drawer),
+:global(html[data-cpu-ios-next] .el-drawer.direction-btt) {
+  bottom: var(--cpu-ios-bottom-clearance, 96px) !important;
+  max-height: calc(92dvh - var(--cpu-ios-bottom-clearance, 96px)) !important;
+}
+:global(html[data-cpu-ios-next] .mobile-drawer .el-drawer__body),
+:global(html[data-cpu-ios-next] .el-drawer.direction-btt .el-drawer__body) {
+  padding-bottom: 16px !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+}
+:global(html[data-cpu-ios-next] .course-editor-overlay) {
+  padding-bottom: calc(8px + var(--cpu-ios-bottom-clearance, 96px)) !important;
+}
+:global(html[data-cpu-ios-next] .course-editor-panel) {
+  max-height: calc(92dvh - var(--cpu-ios-bottom-clearance, 96px)) !important;
+}
+:global(html[data-cpu-ios-next] .course-editor-scroll) {
+  padding-bottom: calc(12px + env(safe-area-inset-bottom) + var(--cpu-ios-bottom-clearance, 96px)) !important;
 }
 
 .footer {

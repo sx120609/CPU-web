@@ -5,6 +5,17 @@ if (isIosNextNativeShell() && (window as any).CPUTimeNative) {
   const host = window as any;
   let attempts = 0;
 
+  const installAppearanceBridge = () => {
+    if (typeof host.__cpuSetAppearanceMode === "function") return true;
+    const app = liveApp();
+    const store = app?.config?.globalProperties?.$pinia?._s?.get("appearance");
+    if (!store || typeof store.setMode !== "function") return false;
+    host.__cpuSetAppearanceMode = (mode: unknown) => {
+      if (mode === "light" || mode === "dark" || mode === "system") store.setMode(mode);
+    };
+    return true;
+  };
+
   // The native shell needs the launch state once, not only on the next store
   // change: a session restored before this bundle installed would otherwise
   // never reach the native login gate. Waiting for the auth store's restore to
@@ -19,6 +30,7 @@ if (isIosNextNativeShell() && (window as any).CPUTimeNative) {
   };
 
   const install = () => {
+    installAppearanceBridge();
     if (typeof host.CPUTimeNativeScheduleFetch === "function") {
       host.CPUTimeNative.ready?.();
       return;
