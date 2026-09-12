@@ -8,6 +8,7 @@ import { applyScheduleEditsToCells, normalizeScheduleEditsState } from "./schedu
 import { normalizedCourseWeekList } from "./scheduleWeeks";
 import { buildGraduateFallbackCalendar, extendScheduleWeeksToCalendar, hydrateCalendar } from "@/views/schedule/calendar";
 import type { CalendarResult, ScheduleResult } from "@/views/schedule/types";
+import { normalizeSlotRange, smallSlots } from "@/views/schedule/slots";
 
 type ScheduleEdits = ReturnType<typeof normalizeScheduleEditsState>;
 type SemesterEntry = {
@@ -77,12 +78,24 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
     return value;
   };
   const edited = (entry: SemesterEntry, data: ScheduleResult) => ({
-    ...data, cells: applyScheduleEditsToCells(data.cells, entry.edits).map(cell => ({
-      ...cell, courses: cell.courses.map(course => ({ ...course, weekList: normalizedCourseWeekList(course) })),
-    })),
+    ...data, cells: nativeCells(entry.semester, applyScheduleEditsToCells(data.cells, entry.edits)),
   });
+  const nativeCells = (semester: string, cells: ScheduleResult["cells"]) => cells.map(cell => ({
+    ...cell,
+    courses: cell.courses.map(course => {
+      const range = normalizeSlotRange(cell.bigSlot, course);
+      const fallback = ["official", semester, cell.day, range.start, course.name.trim().replace(/\s+/g, " ")].join("|");
+      return {
+        ...course,
+        nativeId: course.customId ? `custom:${course.customId}` : course.sourceKey ? `source:${course.sourceKey}` : fallback,
+        weekList: normalizedCourseWeekList(course),
+      };
+    }),
+  }));
+  const periods = smallSlots.map(slot => ({ number: slot.no, startTime: slot.start, endTime: slot.end }));
   const snapshot = (entry: SemesterEntry, data: ScheduleResult, week?: string) => ({
     version: 1, source: "jwxt", completeSemester: Boolean(entry.complete), fetchedAt: entry.createdAt,
+    periods,
     data: { ...edited(entry, entry.complete ?? data), currentWeek: week || (entry.calendar?.currentWeek
       ? String(entry.calendar.currentWeek) : data.currentWeek) },
     calendar: entry.calendar, auth: { authenticated: true, identity: "undergraduate", account: accountKey() },
@@ -169,11 +182,10 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
         if (generation !== epoch || !jwxt.isLoggedIn) return unauthorized();
         const calendar = buildGraduateFallbackCalendar(data);
         const expanded = extendScheduleWeeksToCalendar(data, calendar) ?? data;
-        return { version: 1, source: "graduate", completeSemester: true, fetchedAt: Date.now(),
+        return { version: 1, source: "graduate", completeSemester: true, fetchedAt: Date.now(), periods,
           data: { ...expanded, currentWeek: week || (calendar?.currentWeek ? String(calendar.currentWeek) : data.currentWeek),
-            cells: expanded.cells.map(cell => ({ ...cell, courses: cell.courses.map(course => ({
-              ...course, weekList: normalizedCourseWeekList(course),
-            })) })) }, calendar, auth: { authenticated: true, identity: "graduate", account: accountKey() } };
+            cells: nativeCells(data.currentSemester, expanded.cells) }, calendar,
+          auth: { authenticated: true, identity: "graduate", account: accountKey() } };
       }
       if (selection === selectionRevision) activeSemester = semester || "";
       let entry = semester ? semesters.get(semester) : undefined;

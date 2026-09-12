@@ -2,7 +2,11 @@ import Foundation
 import WidgetKit
 
 enum AppWidgetConfiguration {
-    static let appGroup = "group.cn.cputime.mobile"
+    static var appGroup: String {
+        let configured = Bundle.main.object(forInfoDictionaryKey: "CPUAppGroupIdentifier") as? String
+        let value = configured?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return value.isEmpty ? "group.cn.cputime.mobile" : value
+    }
     static let endpointKey = "scheduleWidgetEndpoint"
     static let endpointFileName = "schedule-widget-endpoint.txt"
     static let themeKey = "scheduleWidgetTheme"

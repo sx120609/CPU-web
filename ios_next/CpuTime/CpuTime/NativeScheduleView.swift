@@ -7,6 +7,8 @@ struct NativeScheduleView: View {
     @ObservedObject private var store: NativeScheduleStore
     private let onWidgets: () -> Void
     private let onLogin: () -> Void
+    private let showsWatch: Bool
+    private let onWatch: () -> Void
 
     @State private var selectedDay = 1
     @State private var didInitializeDay = false
@@ -14,10 +16,18 @@ struct NativeScheduleView: View {
     @State private var selectedCourse: SelectedCourse?
     @State private var weekPickerPresented = false
 
-    init(store: NativeScheduleStore, onLogin: @escaping () -> Void = {}, onWidgets: @escaping () -> Void = {}) {
+    init(
+        store: NativeScheduleStore,
+        onLogin: @escaping () -> Void = {},
+        onWidgets: @escaping () -> Void = {},
+        showsWatch: Bool = false,
+        onWatch: @escaping () -> Void = {}
+    ) {
         _store = ObservedObject(wrappedValue: store)
         self.onWidgets = onWidgets
         self.onLogin = onLogin
+        self.showsWatch = showsWatch
+        self.onWatch = onWatch
     }
 
     var body: some View {
@@ -116,6 +126,19 @@ struct NativeScheduleView: View {
                     ProgressView()
                         .controlSize(.small)
                         .accessibilityLabel("正在更新课表")
+                }
+
+                if showsWatch {
+                    Button(action: onWatch) {
+                        Image(systemName: "applewatch")
+                            .font(.system(size: 16, weight: .semibold))
+                            .frame(width: 34, height: 34)
+                            .modifier(ScheduleGlassControl(cornerRadius: 17))
+                            .clipShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.primary)
+                    .accessibilityLabel("Apple Watch 课表同步")
                 }
 
                 Picker("课表视图", selection: $viewMode) {

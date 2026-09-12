@@ -14,12 +14,15 @@ struct ContentView: View {
     @StateObject private var webSession = HybridWebViewStore()
     @StateObject private var scheduleStore = NativeScheduleStore()
     @StateObject private var shell = NativeShellCoordinator()
+    @StateObject private var watchSchedule = PhoneWatchScheduleStore()
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         NativeShellView(
             webSession: webSession,
             scheduleStore: scheduleStore,
-            shell: shell
+            shell: shell,
+            watchSchedule: watchSchedule
         )
         .task(id: scheduleStore.lastUpdatedAt) {
             guard scheduleStore.result != nil else { return }
@@ -35,6 +38,10 @@ struct ContentView: View {
         }
         .onAppear {
             shell.connect(webSession: webSession, scheduleStore: scheduleStore)
+            watchSchedule.connect(to: scheduleStore)
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { watchSchedule.foreground() }
         }
     }
 }
@@ -44,7 +51,9 @@ struct NativeShellView: View {
     @ObservedObject var webSession: HybridWebViewStore
     @ObservedObject var scheduleStore: NativeScheduleStore
     @ObservedObject var shell: NativeShellCoordinator
+    @ObservedObject var watchSchedule: PhoneWatchScheduleStore
     @State private var widgetsPresented = false
+    @State private var watchStatusPresented = false
 
     var body: some View {
         TabView(selection: selection) {
@@ -69,7 +78,9 @@ struct NativeShellView: View {
                 onLogin: {
                     shell.openWeb(path: "/login", tab: .profile)
                 },
-                onWidgets: { widgetsPresented = true }
+                onWidgets: { widgetsPresented = true },
+                showsWatch: watchSchedule.showsStatusEntry,
+                onWatch: { watchStatusPresented = true }
             )
             .tabItem {
                 Label(ShellTab.schedule.label, systemImage: ShellTab.schedule.systemImage)
@@ -90,6 +101,10 @@ struct NativeShellView: View {
         }
         .sheet(isPresented: $widgetsPresented) {
             NativeWidgetSetupView(session: webSession)
+                .preferredColorScheme(webSession.pageColorScheme)
+        }
+        .sheet(isPresented: $watchStatusPresented) {
+            WatchSyncStatusView(store: watchSchedule)
                 .preferredColorScheme(webSession.pageColorScheme)
         }
         .tint(Color(red: 54 / 255, green: 104 / 255, blue: 211 / 255))

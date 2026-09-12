@@ -1,0 +1,5 @@
+CPU_DEVELOPMENT_TEAM = 34T668D87P
+CPU_APP_BUNDLE_IDENTIFIER = cn.cputime.mobile
+CPU_APP_GROUP_IDENTIFIER = group.cn.cputime.mobile
+
+#include? "Signing.local.xcconfig"

@@ -149,10 +149,14 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
         self.webView = webView
         observations = [
             webView.observe(\.canGoBack, options: [.initial, .new]) { [weak self] view, _ in
-                Task { @MainActor in self?.canGoBack = view.canGoBack }
+                guard let store = self else { return }
+                let canGoBack = view.canGoBack
+                Task { @MainActor in store.canGoBack = canGoBack }
             },
             webView.observe(\.isLoading, options: [.initial, .new]) { [weak self] view, _ in
-                Task { @MainActor in self?.isLoading = view.isLoading }
+                guard let store = self else { return }
+                let isLoading = view.isLoading
+                Task { @MainActor in store.isLoading = isLoading }
             },
         ]
         webView.load(URLRequest(url: IOSNextWebConfiguration.appURLFor(tab: .home)))

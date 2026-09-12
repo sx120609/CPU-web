@@ -1,0 +1,4 @@
+// Copy to Signing.local.xcconfig and use identifiers owned by your Apple team.
+CPU_DEVELOPMENT_TEAM = YOUR_TEAM_ID
+CPU_APP_BUNDLE_IDENTIFIER = com.example.cputime
+CPU_APP_GROUP_IDENTIFIER = group.com.example.cputime

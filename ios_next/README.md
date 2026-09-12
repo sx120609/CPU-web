@@ -1,16 +1,18 @@
-# iOS 原生客户端：第一阶段
+# iOS 原生客户端（当前新版）
 
-在 `CpuTime/CpuTime.xcodeproj` 打开 `CpuTime` scheme。最低系统版本 iOS 17。
+在 `CpuTime/CpuTime.xcodeproj` 打开 `CpuTime` scheme。最低系统版本 iOS 17，Apple Watch 最低为 watchOS 10。旧的 `ios/` 是独立保留的 WebView 客户端，新功能和 Watch 集成应在 `ios_next/` 开发。
 
-## 本阶段范围
+## 当前范围
 
 - SwiftUI 系统底部导航：首页、教务、课表、服务、我的。
 - 启动默认进入原生课表，同一个 WKWebView 在后台预热首页与登录数据桥；首次等待显示课表网格和页内同步提示，数据就绪后原位填入。切回课表优先复用内存缓存，后台网页跳转不会抢走课表标签。
 - 冷启动先显示上次的课表：最近一次成功的快照写入 App 的 Application Support（排除备份），并带上会话 Cookie 指纹；重启后先核对当前 `__Host-cpu-session` 的指纹，一致才渲染，随后右上角显示小菊花静默刷新。退出登录、换账号或快照超过缓存时限都会直接删除该文件，指纹核对在渲染之前完成，不会闪出别人的课表。网页若额外下发账号指纹（`auth.account`），则以它为准，指纹变化立即清空。刷新过程中学期、周次与视图切换保持可用。已经显示出来的课表不会被状态页替换：教务授权失效、桥接失败或刷新出错都以顶部横幅呈现，只有在没有任何课表可显示时才整页提示；只有会话 Cookie 确实消失或换了账号才会清空，并立刻重新拉取。
 - 课表使用 SwiftUI：学期和周次切换、返回本周、日／周视图、课程详情、刷新、加载／空／授权失效／失败状态。
+- Apple Watch 客户端以日历式竖向课程时间轴显示当日课表，左右滑动切换日期；Watch 小组件显示下一节课。
+- iPhone 与 Watch 通过 WatchConnectivity 的应用上下文和回执同步经过验证的课表快照；不同步 Cookie、Token、密码或验证码。未安装 Watch App 时，iPhone 课表页不显示 Watch 入口。
 - 首页、教务、服务、我的及其子页面继续由 WKWebView 加载现有网站。
 - 沿用 Web 的 HttpOnly 会话、教务自动恢复、本科／研究生识别、校历、单双周解析及本科课程修改记录。原生不保存学校密码。
-- 课表缓存仅在内存中；账号或教务身份变化会清除缓存并作废旧请求。没有新增跨启动离线缓存。
+- 课表在内存中保留 12 小时，并可将最近成功快照写入 Application Support 以支持冷启动；磁盘快照同时校验站点会话指纹和账号指纹。退出、换号或过期时立即清除。
 
 本阶段未迁移课程编辑器、课表背景／主题、分享与导出等扩展功能。原有 `ios/` 包装客户端独立保留。
 
@@ -22,10 +24,10 @@
 
 ```javascript
 await window.CPUTimeNativeScheduleFetch(semester, week, force)
-// { version: 1, source, fetchedAt, data, calendar, auth, error? }
+// { version: 1, source, fetchedAt, periods, data, calendar, auth, error? }
 ```
 
-`data.cells` 已应用课程修改并规范化 `weekList`。Swift 通过 `WKWebView.callAsyncJavaScript` 等待返回值，不复制 Cookie 到另一套网络客户端。网页课表路由通过 `CPUTimeNative.navigate('/schedule')` 切换原生标签；`authChanged(account)` 携带账号指纹：指纹不变表示同一账号的会话恢复完成，原生保留已显示的课表；指纹变化或为空则清空内存与磁盘上的账号数据。
+`data.cells` 已应用课程修改并规范化 `weekList`；`periods` 是学校小节次的权威时间表，每门课同时携带不受教师或教室变化影响的 `nativeId`。Swift 通过 `WKWebView.callAsyncJavaScript` 等待返回值，不复制 Cookie 到另一套网络客户端。网页课表路由通过 `CPUTimeNative.navigate('/schedule')` 切换原生标签；`authChanged(account)` 携带账号指纹：指纹不变表示同一账号的会话恢复完成，原生保留已显示的课表；指纹变化或为空则清空内存与磁盘上的账号数据。
 
 客户端已随包携带 `NativeWebCompatibility.js`：当线上网页尚未提供数据桥时，使用现有网页的 Pinia 登录状态和同源 Cookie API 安装兼容桥；已提供数据桥的新版网页优先使用网页实现。无需为了首次原生课表读取而先部署 Web。未登录显示授权入口，页面启动期间等待桥就绪后再请求。
 
@@ -45,12 +47,14 @@ await window.CPUTimeNativeScheduleFetch(semester, week, force)
 npm run dev --prefix web
 npm run type-check --prefix web
 node ios_next/scripts/build-web-bridge.mjs
-node --test ios_next/tests/web-schedule-bridge.test.mjs ios_next/tests/native-web-bundle.test.mjs
+node --test ios_next/tests/*.test.mjs
+swift test --package-path ios_next
 swiftc ios_next/CpuTime/CpuTime/NativeScheduleStore.swift ios_next/tests/NativeScheduleStoreChecks.swift -o /tmp/cpu-next-store-checks
 /tmp/cpu-next-store-checks
 swiftc ios_next/CpuTime/CpuTime/ShellTab.swift ios_next/CpuTime/CpuTime/NativeShellCoordinator.swift ios_next/tests/NativeTabSelectionChecks.swift -o /tmp/cpu-next-tab-checks
 /tmp/cpu-next-tab-checks
-xcodebuild -project ios_next/CpuTime/CpuTime.xcodeproj -scheme CpuTime -sdk iphonesimulator -configuration Debug CODE_SIGNING_ALLOWED=NO build
+xcodebuild -project ios_next/CpuTime/CpuTime.xcodeproj -scheme CpuTime -destination 'generic/platform=iOS' -configuration Debug CODE_SIGNING_ALLOWED=NO build
+xcodebuild -project ios_next/CpuTime/CpuTime.xcodeproj -scheme CPUWatch -destination 'generic/platform=watchOS' -configuration Debug CODE_SIGNING_ALLOWED=NO build
 ```
 
 修改共享课表桥或 `ios_next/bridge` 后重新运行 `build-web-bridge.mjs`，将更新后的 JS 资源随 iOS 包一起构建。
@@ -67,7 +71,9 @@ xcodebuild -project ios_next/CpuTime/CpuTime.xcodeproj -scheme CpuTime -sdk ipho
 
 登录并完成教务授权后，首次成功加载原生课表会自动配置尚未设置的小组件（每次启动／账号变化后最多自动尝试一次，失败可手动重试）。在原生课表点击“小组件”可查看配置结果、选择主题或手动重新配置，再通过系统主屏幕／锁屏编辑界面添加。配置请求沿用 WKWebView 的同源 Cookie 与 CSRF 校验；扩展只保存专用课表订阅地址，不复制登录 Cookie。旧网页的 `CPUIOS` 小组件配置及主题接口也已接通。
 
-工程包含 `CPUWebWidgets` target、嵌入阶段和共享调试 scheme。App 与扩展均需在 Apple Developer 中启用 `group.cn.cputime.ios.next` App Group；扩展 Bundle ID 为 `cn.cputime.ios.next.widgets`。使用独立共享容器，不读取旧版客户端的订阅配置，首次使用由新版自动建立配置。点击小组件通过 `cputime-next://schedule` 打开原生课表并重新加载当前学期／本周，避免沿用旧的浏览周次。
+工程包含 `CPUWebWidgets`、`CPUWatch` 和 `CPUWatchWidgets` targets，并将 Watch App 嵌入 iPhone App、Watch 小组件嵌入 Watch App。四个 target 共用 `Configurations/SharedSigning.xcconfig` 中的 Bundle ID 前缀和 App Group。其他开发者可将 `Signing.local.xcconfig.example` 复制为被 Git 忽略的 `Signing.local.xcconfig`，改成自己的 Team ID、Bundle ID 前缀和已注册 App Group，然后使用 Xcode 自动签名。iPhone App、两个小组件和 Watch App 必须使用同一 App Group。
+
+点击 iPhone 小组件通过 `cputime-next://schedule` 打开原生课表并重新加载当前学期／本周，避免沿用旧的浏览周次。
 
 真机验收：完成签名后检查配置保存、全部桌面／锁屏尺寸、主题切换、冷启动与热启动跳转、授权失效、断网和恢复。无签名模拟器构建不能验证 App Group provisioning 或系统后台刷新。
 

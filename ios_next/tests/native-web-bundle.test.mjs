@@ -38,6 +38,11 @@ test('bundled bridge works on a legacy page without a deployed native bridge', a
   const result = await page.window.CPUTimeNativeScheduleFetch('fall', '3', true);
   assert.equal(result.auth.authenticated, true);
   assert.equal(result.data.currentWeek, '3');
+  assert.equal(result.periods.length, 11);
+  assert.equal(result.periods[0].number, 1);
+  assert.equal(result.periods[0].startTime, '08:00');
+  assert.equal(result.periods[0].endTime, '08:45');
+  assert.match(result.data.cells[0].courses[0].nativeId, /^official\|fall\|1\|1\|/);
   assert.deepEqual(Array.from(result.data.cells[0].courses[0].weekList), [1, 3, 5, 7]);
   assert.equal(page.requests[0].options.credentials, 'same-origin');
   assert.equal(page.requests[0].options.headers['X-CPU-Client'], 'ios');

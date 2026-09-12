@@ -83,3 +83,7 @@ desktop/build/.header.tmp.html
 # Xcode 个人配置（窗口状态、scheme 选择），跟代码无关
 **/xcuserdata/
 *.xcuserstate
+
+# Developer-local Apple signing overrides. Never commit team/account values.
+ios/Configurations/Signing.local.xcconfig
+ios_next/CpuTime/Configurations/Signing.local.xcconfig
