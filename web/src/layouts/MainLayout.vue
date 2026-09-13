@@ -251,7 +251,7 @@
             <div class="footer-brand-row">
               <img
                 class="footer-brand-mark"
-                src="/favicon.svg?v=20260830"
+                :src="'/favicon.svg?v=20260830'"
                 alt=""
                 aria-hidden="true"
                 decoding="async"
