@@ -179,10 +179,14 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
         self.webView = webView
         observations = [
             webView.observe(\.canGoBack, options: [.initial, .new]) { [weak self] view, _ in
-                Task { @MainActor in self?.canGoBack = view.canGoBack }
+                guard let store = self else { return }
+                let canGoBack = view.canGoBack
+                Task { @MainActor in store.canGoBack = canGoBack }
             },
             webView.observe(\.isLoading, options: [.initial, .new]) { [weak self] view, _ in
-                Task { @MainActor in self?.isLoading = view.isLoading }
+                guard let store = self else { return }
+                let isLoading = view.isLoading
+                Task { @MainActor in store.isLoading = isLoading }
             },
         ]
         webView.load(URLRequest(url: IOSNextWebConfiguration.appURLFor(tab: .home)))
@@ -354,6 +358,40 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
     func openWebMenu() {
         let script = "document.querySelector('.topbar .mobile-actions button[aria-label=\"更多\"]')?.click(); true;"
         webView?.evaluateJavaScript(script)
+    }
+
+    /// Ask the live Web stores for the latest account capability immediately
+    /// before presenting the native quick menu. This matters after a cookie
+    /// restore, when the menu can otherwise be opened before authChanged has
+    /// reached SwiftUI.
+    func refreshAuthCapability() async {
+        let script = """
+        (async () => {
+          for (let attempt = 0; attempt < 20; attempt += 1) {
+            const refresh = window.CPUTimeNative?.refreshAuth;
+            if (typeof refresh === 'function') {
+              await refresh();
+              return true;
+            }
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+          return false;
+        })();
+        """
+        guard let webView else { return }
+        let result = try? await webView.callAsyncJavaScript(
+            script,
+            arguments: [:],
+            in: nil,
+            contentWorld: .page
+        )
+        // The postMessage report is still sent by the Web bridge. Applying the
+        // returned value here closes the race where the sheet is presented
+        // before that message reaches SwiftUI.
+        guard let payload = result as? [String: Any],
+              let account = payload["account"] as? String else { return }
+        isLoggedIn = !account.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        canAccessAdmin = payload["canAccessAdmin"] as? Bool ?? false
     }
 
     func setAppearanceMode(_ mode: String) {

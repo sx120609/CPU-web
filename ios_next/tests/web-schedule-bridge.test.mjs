@@ -77,8 +77,33 @@ test('native payload uses real schedule, custom courses and normalized odd weeks
     course: { name: '自习', weeks: '全部周', weekList: [] } }] } });
   const result = await ctx.window.CPUTimeNativeScheduleFetch('2025-2026-2', '1', false);
   assert.equal(result.auth.authenticated, true);
+  assert.equal(result.periods.length, 11);
+  assert.equal(result.periods[0].number, 1);
+  assert.equal(result.periods[0].startTime, '08:00');
+  assert.equal(result.periods[0].endTime, '08:45');
   assert.deepEqual(Array.from(result.data.cells[0].courses[0].weekList), [1, 3, 5, 7]);
+  assert.match(result.data.cells[0].courses[0].nativeId, /^official\|2025-2026-2\|1\|1\|/);
   assert.equal(result.data.cells[1].courses[0].name, '自习');
+  assert.equal(result.data.cells[1].courses[0].nativeId, 'custom:extra');
+});
+
+test('native course identity stays stable when teacher or room changes', async () => {
+  const first = setup();
+  const firstResult = await first.window.CPUTimeNativeScheduleFetch('2025-2026-2', '1', false);
+
+  const second = setup();
+  second.api.schedule = async () => {
+    const changed = sample();
+    changed.cells[0].courses[0].teacher = '李老师';
+    changed.cells[0].courses[0].location = '教学楼 201';
+    return { parsed: changed };
+  };
+  const secondResult = await second.window.CPUTimeNativeScheduleFetch('2025-2026-2', '1', false);
+
+  assert.equal(
+    firstResult.data.cells[0].courses[0].nativeId,
+    secondResult.data.cells[0].courses[0].nativeId,
+  );
 });
 test('unauthenticated sessions never request academic records', async () => {
   const ctx = setup();

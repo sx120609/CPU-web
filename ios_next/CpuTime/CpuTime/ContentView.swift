@@ -20,6 +20,8 @@ struct ContentView: View {
     @StateObject private var webSession = HybridWebViewStore()
     @StateObject private var scheduleStore = NativeScheduleStore()
     @StateObject private var shell = NativeShellCoordinator()
+    @StateObject private var watchSchedule = PhoneWatchScheduleStore()
+    @Environment(\.scenePhase) private var scenePhase
     @AppStorage("CPUHasSeenWelcomeV3") private var hasSeenWelcome = false
 
     var body: some View {
@@ -29,16 +31,24 @@ struct ContentView: View {
                 await webSession.ensureScheduleWidgetConfigured()
             }
             .onOpenURL { url in
-                shell.connect(webSession: webSession, scheduleStore: scheduleStore)
-                guard url.scheme == "cputime-next", url.host == "schedule" else { return }
-                guard !shell.requiresLogin else { return }
-                scheduleStore.selectedSemester = ""
-                scheduleStore.selectedWeek = ""
-                shell.userSelected(.schedule)
-                if webSession.bridgeReady { Task { await scheduleStore.load(semester: "", week: "", force: true) } }
+                // A deep link can arrive before the first SwiftUI frame. Keep
+                // WebKit startup on the next run-loop turn so it cannot block
+                // the launch surface, then replay the link against the shared
+                // session once it exists.
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 50_000_000)
+                    guard !Task.isCancelled else { return }
+                    shell.connect(webSession: webSession, scheduleStore: scheduleStore)
+                    watchSchedule.connect(to: scheduleStore)
+                    guard url.scheme == "cputime-next", url.host == "schedule" else { return }
+                    guard !shell.requiresLogin else { return }
+                    scheduleStore.selectedSemester = ""
+                    scheduleStore.selectedWeek = ""
+                    shell.userSelected(.schedule)
+                    if webSession.bridgeReady { await scheduleStore.load(semester: "", week: "", force: true) }
+                }
             }
             .onAppear {
-                shell.connect(webSession: webSession, scheduleStore: scheduleStore)
 #if DEBUG
                 let env = ProcessInfo.processInfo.environment
                 if let raw = env["CPU_DEBUG_TAB"], let tab = ShellTab(rawValue: raw) {
@@ -72,7 +82,17 @@ struct ContentView: View {
             }
             .task(id: hasSeenWelcome) {
                 guard hasSeenWelcome else { return }
+                // Let SwiftUI commit the waiting page before constructing
+                // WKWebView. Creating a WebKit process is synchronous on the
+                // main actor and can otherwise leave a cold launch blank.
+                try? await Task.sleep(nanoseconds: 50_000_000)
+                guard !Task.isCancelled else { return }
+                shell.connect(webSession: webSession, scheduleStore: scheduleStore)
+                watchSchedule.connect(to: scheduleStore)
                 await shell.resolveInitialAuth(webSession: webSession)
+            }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { watchSchedule.foreground() }
             }
     }
 
@@ -96,7 +116,8 @@ struct ContentView: View {
             NativeShellView(
                 webSession: webSession,
                 scheduleStore: scheduleStore,
-                shell: shell
+                shell: shell,
+                watchSchedule: watchSchedule
             )
         }
     }
@@ -228,8 +249,11 @@ struct NativeShellView: View {
     @ObservedObject var webSession: HybridWebViewStore
     @ObservedObject var scheduleStore: NativeScheduleStore
     @ObservedObject var shell: NativeShellCoordinator
+    @ObservedObject var watchSchedule: PhoneWatchScheduleStore
     @State private var widgetsPresented = false
+    @State private var watchStatusPresented = false
     @State private var quickEntryPresented = false
+    @State private var quickEntryOpening = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -238,7 +262,15 @@ struct NativeShellView: View {
                     session: webSession,
                     onHome: { shell.userSelected(.home) },
                     onRefresh: { webSession.retry() },
-                    onMenu: { quickEntryPresented = true }
+                    onMenu: {
+                        guard !quickEntryOpening else { return }
+                        quickEntryOpening = true
+                        Task { @MainActor in
+                            await webSession.refreshAuthCapability()
+                            quickEntryOpening = false
+                            quickEntryPresented = true
+                        }
+                    }
                 )
             }
             TabView(selection: selection) {
@@ -261,7 +293,9 @@ struct NativeShellView: View {
             NativeScheduleView(
                 store: scheduleStore,
                 onLogin: { shell.openWeb(path: "/login", tab: .profile) },
-                onWidgets: { widgetsPresented = true }
+                onWidgets: { widgetsPresented = true },
+                showsWatch: watchSchedule.showsStatusEntry,
+                onWatch: { watchStatusPresented = true }
             )
             .tabItem {
                 Label(ShellTab.schedule.label, systemImage: ShellTab.schedule.systemImage)
@@ -283,6 +317,10 @@ struct NativeShellView: View {
         }
         .sheet(isPresented: $widgetsPresented) {
             NativeWidgetSetupView(session: webSession)
+                .preferredColorScheme(webSession.pageColorScheme)
+        }
+        .sheet(isPresented: $watchStatusPresented) {
+            WatchSyncStatusView(store: watchSchedule)
                 .preferredColorScheme(webSession.pageColorScheme)
         }
         .sheet(isPresented: $quickEntryPresented) {
@@ -334,7 +372,10 @@ private struct NativeQuickEntryView: View {
             ("bag", "二手交流", "/market", .home), ("sparkles", "拾间AI", "/search", .home)
         ]
         if session.canAccessAdmin {
-            values.append(("lock.shield", "管理后台", "/admin", .profile))
+            // Keep the management entry in the first row, matching the Web
+            // drawer's early account actions and keeping it visible on compact
+            // sheet detents.
+            values.insert(("lock.shield", "管理后台", "/admin", .profile), at: 2)
         }
         values.append(("arrow.clockwise", "刷新页面", nil, nil))
         return values

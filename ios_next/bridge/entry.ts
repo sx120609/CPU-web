@@ -5,6 +5,29 @@ if (isIosNextNativeShell() && (window as any).CPUTimeNative) {
   const host = window as any;
   let attempts = 0;
 
+  // The native menu can be opened while an older deployed Web bundle is still
+  // restoring its Pinia stores. Install the refresh hook before checking for
+  // an existing schedule bridge so those bundles receive the same role update
+  // path as the current Web client.
+  const refreshNativeAuth = async () => {
+    const auth = useAuthStore();
+    const initial = nativeScheduleAuthInfo();
+    host.CPUTimeNative.authChanged?.(initial.account, initial.canAccessAdmin);
+    try {
+      if (auth?.isLoggedIn && typeof auth.refreshSelfSilently === "function") {
+        await auth.refreshSelfSilently();
+      } else if (typeof auth?.fetchMe === "function") {
+        await auth.fetchMe({ probe: true });
+      }
+    } catch {
+      // Keep the last known capability on a transient profile failure.
+    }
+    const info = nativeScheduleAuthInfo();
+    host.CPUTimeNative.authChanged?.(info.account, info.canAccessAdmin);
+    return info;
+  };
+  host.CPUTimeNative.refreshAuth = refreshNativeAuth;
+
   const installAppearanceBridge = () => {
     if (typeof host.__cpuSetAppearanceMode === "function") return true;
     const app = liveApp();
@@ -39,7 +62,6 @@ if (isIosNextNativeShell() && (window as any).CPUTimeNative) {
     if (useAuthStore()) {
       if (useJwxtStore()) {
         installIosNextScheduleBridge(liveApp().config.globalProperties.$router);
-        reportInitialAuth();
       } else {
         // Guest home pages may never instantiate the academic store. They must
         // show the login state, not fail while waiting for a nonexistent store.

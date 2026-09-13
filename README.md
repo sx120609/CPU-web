@@ -73,6 +73,8 @@
 CPU-web/
 ├── android/                 # Android WebView 壳 + 课表桌面小组件
 ├── harmony/                 # HarmonyOS Stage 工程 + JS Bridge
+├── ios/                     # 旧版 iOS WebView 客户端（独立保留）
+├── ios_next/                # 当前 SwiftUI iOS 客户端 + Apple Watch + WidgetKit
 ├── desktop/                 # Electron 桌面端（不参与主站部署链路，单独构建）
 ├── server/
 │   ├── prisma/              # Prisma schema、迁移、种子数据
