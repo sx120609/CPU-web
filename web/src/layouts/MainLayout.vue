@@ -249,7 +249,13 @@
         <div class="footer-main">
           <div class="footer-company">
             <div class="footer-brand-row">
-              <span class="footer-brand-mark" aria-hidden="true">药</span>
+              <img
+                class="footer-brand-mark"
+                src="/favicon.svg?v=20260830"
+                alt=""
+                aria-hidden="true"
+                decoding="async"
+              />
               <router-link class="footer-brand" to="/home">药大拾间</router-link>
             </div>
             <p>球谐信息技术（深圳）有限公司</p>
@@ -1738,16 +1744,12 @@ html[data-theme="dark"] .assistant-widget {
 }
 
 .footer-brand-mark {
-  display: inline-grid;
-  width: 30px;
-  height: 30px;
-  place-items: center;
-  border: 1px solid color-mix(in srgb, var(--cpu-primary) 42%, var(--cpu-border-soft));
+  display: block;
+  width: 32px;
+  height: 32px;
   border-radius: 9px;
-  background: color-mix(in srgb, var(--cpu-primary) 16%, transparent);
-  color: var(--cpu-primary);
-  font-size: 15px;
-  font-weight: 750;
+  object-fit: contain;
+  flex: 0 0 32px;
 }
 
 .footer-company p {
