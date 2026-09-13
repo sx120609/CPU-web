@@ -14,7 +14,17 @@ function legacyPage() {
   const routes = [];
   const requests = [];
   let notifications = 0;
-  const window = { CPUTimeNative: { ready() {}, authChanged() { notifications++; } }, dispatchEvent() {} };
+  const authReports = [];
+  const window = {
+    CPUTimeNative: {
+      ready() {},
+      authChanged(account, canAccessAdmin) {
+        notifications++;
+        authReports.push({ account, canAccessAdmin });
+      },
+    },
+    dispatchEvent() {},
+  };
   const context = vm.createContext({ window, Error, URL, AbortController, setTimeout, clearTimeout,
     navigator: { userAgent: 'CPUWebIOSApp/1 CPUTimeNative/1' }, location: { origin: 'https://cputime.cn' },
     document: { getElementById: () => ({ __vue_app__: { config: { globalProperties: {
@@ -30,7 +40,7 @@ function legacyPage() {
       return { ok: true, status: 200, json: async () => ({ code: 0, data }) };
     },
   });
-  return { context, window, auth, stores, subscribers, requests, routes, notifications: () => notifications };
+  return { context, window, auth, stores, subscribers, requests, routes, authReports, notifications: () => notifications };
 }
 test('bundled bridge works on a legacy page without a deployed native bridge', async () => {
   const page = legacyPage();
@@ -76,4 +86,18 @@ test('guest without an academic store sees login state instead of a read failure
   assert.equal(page.requests.length, 0);
   // A guest reports an empty account on install so the shell can gate.
   assert.equal(page.notifications(), 1);
+});
+
+test('native auth reports carry the Web module-admin capability and react to role changes', () => {
+  const page = legacyPage();
+  Object.defineProperty(page.auth, 'canAccessModuleAdmin', {
+    configurable: true,
+    get: () => page.auth.user?.role === 'admin',
+  });
+  vm.runInContext(script, page.context);
+  assert.equal(page.authReports.at(-1).canAccessAdmin, false);
+
+  page.auth.user.role = 'admin';
+  page.subscribers.forEach(fn => fn());
+  assert.equal(page.authReports.at(-1).canAccessAdmin, true);
 });

@@ -38,6 +38,15 @@ export function nativeScheduleAccountKey() {
   return hash.toString(16).padStart(8, "0");
 }
 
+/** The native shell uses the same module-admin capability as the Web router. */
+export function nativeScheduleAuthInfo() {
+  const auth = useAuthStore();
+  return {
+    account: nativeScheduleAccountKey(),
+    canAccessAdmin: Boolean(auth?.canAccessModuleAdmin),
+  };
+}
+
 /** HTML parsing and authentication stay on the server. The client caches and
  * merges parsed courses, applies saved edits and supplies native week filtering. */
 export function installIosNextScheduleBridge(router?: Router, options: { fastRefresh?: boolean } = {}) {
@@ -52,15 +61,26 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
   const semesters = new Map<string, SemesterEntry>();
   const foreground = new Map<string, Promise<unknown>>();
   const accountKey = nativeScheduleAccountKey;
+  const notifyNativeAuth = () => {
+    const info = nativeScheduleAuthInfo();
+    host.CPUTimeNative?.authChanged?.(info.account, info.canAccessAdmin);
+  };
   const unauthorized = () => ({ version: 1, auth: { authenticated: false, account: accountKey() } });
 
-  watch(() => [auth.user?.id, auth.academicIdentity, jwxt.isLoggedIn], () => {
+  watch(() => [
+    auth.user?.id,
+    auth.user?.role,
+    auth.user?.voiceHubRole,
+    auth.user?.lostFoundRole,
+    auth.academicIdentity,
+    jwxt.isLoggedIn,
+  ], () => {
     generation += 1;
     selectionRevision += 1;
     semesters.clear();
     foreground.clear();
     activeSemester = "";
-    host.CPUTimeNative?.authChanged?.(accountKey());
+    notifyNativeAuth();
   }, { flush: "sync" });
 
   const valid = (entry: SemesterEntry, epoch: number) => generation === epoch

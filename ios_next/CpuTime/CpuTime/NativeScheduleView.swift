@@ -116,6 +116,11 @@ struct NativeScheduleView: View {
             weekPicker
                 .presentationDetents([.medium, .large])
         }
+        .alert("教务课表已更新", isPresented: scheduleChangeNoticePresented) {
+            Button("我知道了") { store.dismissScheduleChangeNotice() }
+        } message: {
+            Text(scheduleChangeNoticeMessage)
+        }
     }
 
     private var isLoading: Bool {
@@ -129,6 +134,18 @@ struct NativeScheduleView: View {
     private var errorMessage: String? {
         let value = store.errorMessage?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return value.isEmpty ? nil : value
+    }
+
+    private var scheduleChangeNoticePresented: Binding<Bool> {
+        Binding(
+            get: { store.scheduleChangeNotice != nil },
+            set: { if !$0 { store.dismissScheduleChangeNotice() } }
+        )
+    }
+
+    private var scheduleChangeNoticeMessage: String {
+        store.scheduleChangeNotice?.details.joined(separator: "\n")
+            ?? "教务原始课表发生了变化，请重新核对课程安排。"
     }
 
     private func scheduleHeader(_ result: NativeScheduleResult) -> some View {
@@ -177,7 +194,7 @@ struct NativeScheduleView: View {
                         .clipShape(Circle())
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(isViewingCurrentWeek(result) ? Color.accentColor : .primary)
+                .foregroundStyle(isViewingCurrentWeek(result) ? Color.cpuBrand : .primary)
                 .accessibilityLabel("回到本周")
                 // A background refresh keeps the cached timetable usable, so
                 // only the meaningless jump is disabled.
@@ -304,22 +321,22 @@ struct NativeScheduleView: View {
                             .minimumScaleFactor(0.75)
                         Text(dayDate(day, result: result) ?? "--")
                             .font(.caption2)
-                            .foregroundStyle(selectedDay == day ? Color.accentColor : .secondary)
+                            .foregroundStyle(selectedDay == day ? Color.cpuBrand : .secondary)
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
                     }
                     .frame(maxWidth: .infinity, minHeight: 36)
                     .background {
                         RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(selectedDay == day ? Color.accentColor.opacity(0.14) : .clear)
+                            .fill(selectedDay == day ? Color.cpuBrand.opacity(0.14) : .clear)
                             .overlay {
                                 if dayIsToday(day, result: result) && selectedDay != day {
                                     RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                        .strokeBorder(Color.accentColor.opacity(0.42), lineWidth: 0.8)
+                                        .strokeBorder(Color.cpuBrand.opacity(0.42), lineWidth: 0.8)
                                 }
                             }
                     }
-                    .foregroundStyle(selectedDay == day ? Color.accentColor : .primary)
+                    .foregroundStyle(selectedDay == day ? Color.cpuBrand : .primary)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -384,7 +401,9 @@ struct NativeScheduleView: View {
         width: CGFloat,
         @ViewBuilder page: @escaping (NativeScheduleDayPage) -> Page
     ) -> some View {
-        let showsNeighbours = dayDragOffset != 0 || daySliding
+        // Keep neighbouring pages mounted before the first touch. Building
+        // seven columns during the first drag caused the visible hitch.
+        let showsNeighbours = true
         let current = NativeScheduleDayPage(week: store.selectedWeek.nilIfEmpty, day: selectedDay)
         return HStack(spacing: 0) {
             dayNeighbourPage(offset: -1, result: result, width: width, visible: showsNeighbours, page: page)
@@ -396,6 +415,7 @@ struct NativeScheduleView: View {
         .frame(width: width, alignment: .leading)
         .clipped()
         .contentShape(Rectangle())
+        .compositingGroup()
         .onAppear { dayPageWidth = width }
         .onChange(of: width) { _, value in dayPageWidth = value }
         .highPriorityGesture(daySwipeGesture(result: result, width: width))
@@ -418,14 +438,16 @@ struct NativeScheduleView: View {
     }
 
     /// Lays the previous / current / next week side by side and moves the whole
-    /// track with the finger. Neighbouring pages are only built while the track
-    /// is off centre, so a resting timetable still renders a single week.
+    /// track with the finger. Keeping adjacent pages mounted avoids a hitch at
+    /// the beginning of the first swipe.
     private func weekPager<Page: View>(
         result: NativeScheduleResult,
         width: CGFloat,
         @ViewBuilder page: @escaping (Int?) -> Page
     ) -> some View {
-        let showsNeighbours = weekDragOffset != 0 || weekSliding
+        // Keep neighbouring pages mounted before the first touch. Building
+        // seven columns during the first drag caused the visible hitch.
+        let showsNeighbours = true
         return HStack(spacing: 0) {
             neighbourPage(offset: -1, result: result, width: width, visible: showsNeighbours, page: page)
             page(weekNumber(store.selectedWeek))
@@ -436,11 +458,12 @@ struct NativeScheduleView: View {
         .frame(width: width, alignment: .leading)
         .clipped()
         .contentShape(Rectangle())
+        .compositingGroup()
         .onAppear { weekPageWidth = width }
         .onChange(of: width) { _, value in weekPageWidth = value }
         // High priority keeps a horizontal swipe from being consumed by an
-        // individual course/empty-slot tap target. DragGesture itself only
-        // wins after the 18pt threshold, so ordinary taps remain untouched.
+        // individual course/empty-slot tap target. The axis lock still leaves
+        // ordinary taps untouched.
         .highPriorityGesture(weekSwipeGesture(result: result, width: width))
     }
 
@@ -463,7 +486,7 @@ struct NativeScheduleView: View {
     }
 
     private func weekSwipeGesture(result: NativeScheduleResult, width: CGFloat) -> some Gesture {
-        DragGesture(minimumDistance: 18, coordinateSpace: .local)
+        DragGesture(minimumDistance: 3, coordinateSpace: .local)
             .onChanged { value in
                 guard selectedCourse == nil, !weekSliding else { return }
                 let horizontal = value.translation.width
@@ -499,7 +522,7 @@ struct NativeScheduleView: View {
     }
 
     private func daySwipeGesture(result: NativeScheduleResult, width: CGFloat) -> some Gesture {
-        DragGesture(minimumDistance: 18, coordinateSpace: .local)
+        DragGesture(minimumDistance: 3, coordinateSpace: .local)
             .onChanged { value in
                 guard selectedCourse == nil, !weekSliding, !daySliding else { return }
                 let horizontal = value.translation.width
@@ -746,7 +769,7 @@ struct NativeScheduleView: View {
             Button("去登录", action: onLogin)
                 .font(.caption.weight(.semibold))
                 .buttonStyle(.plain)
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(Color.cpuBrand)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
@@ -794,14 +817,14 @@ struct NativeScheduleView: View {
                                 Text(week.value)
                                     .font(.subheadline.weight(.medium))
                                     .frame(maxWidth: .infinity, minHeight: 40)
-                                    .foregroundStyle(isSelected ? Color.white : (isCurrent ? Color.accentColor : .primary))
+                                .foregroundStyle(isSelected ? Color.white : (isCurrent ? Color.cpuBrand : .primary))
                                     .background {
                                         RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                            .fill(isSelected ? Color.accentColor : Color(uiColor: .secondarySystemGroupedBackground))
+                                            .fill(isSelected ? Color.cpuBrand : Color(uiColor: .secondarySystemGroupedBackground))
                                     }
                                     .overlay {
                                         RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                            .stroke(isCurrent && !isSelected ? Color.accentColor : Color(uiColor: .separator).opacity(0.35), lineWidth: 1)
+                                            .stroke(isCurrent && !isSelected ? Color.cpuBrand : Color(uiColor: .separator).opacity(0.35), lineWidth: 1)
                                     }
                             }
                             .buttonStyle(.plain)
@@ -956,8 +979,11 @@ struct NativeScheduleView: View {
         // Match the Web timetable's intent lock. A horizontal swipe must have
         // a clear lead before it takes over, which stops the common accidental
         // diagonal/vertical scroll from paging the week.
-        if absH >= 12, absH > absV * 1.25 { return .horizontal }
-        if absV >= 12, absV > absH * 1.15 { return .vertical }
+        // Match the Web gesture lock: a small sideways lead should begin
+        // tracking immediately, while only a clearly vertical movement is
+        // treated as a vertical gesture.
+        if absH >= 3, absH >= absV * 0.5 { return .horizontal }
+        if absV >= 8, absV > absH * 1.8 { return .vertical }
         return .pending
     }
 
@@ -1288,7 +1314,7 @@ private struct NativeScheduleDayColumn: View {
                                 Color(hue: 0.59, saturation: 0.20, brightness: 0.96).opacity(0.10),
                                 Color(hue: 0.89, saturation: 0.18, brightness: 0.96).opacity(0.12),
                             ],
-                            border: Color.accentColor.opacity(0.22)
+                            border: Color.cpuBrand.opacity(0.22)
                         )
                             .padding(.horizontal, 2)
                             .padding(.vertical, 3)
@@ -1699,7 +1725,7 @@ private struct NativeCourseEditorSheet: View {
                         if canRestoreOriginalCourse, let sourceKey = selection?.course.sourceKey {
                             Button("使用教务安排") { restoreOriginal(sourceKey: sourceKey) }
                                 .font(.caption.weight(.semibold))
-                                .foregroundStyle(Color.accentColor)
+                                .foregroundStyle(Color.cpuBrand)
                                 .disabled(saving)
                         }
                         if selection != nil {
@@ -2056,14 +2082,14 @@ private struct NativeCourseEditorSheet: View {
                             Text("\(week)")
                                 .font(.caption.weight(.medium))
                                 .frame(maxWidth: .infinity, minHeight: 30)
-                                .foregroundStyle(selectedWeeks.contains(week) ? Color.accentColor : .secondary)
+                                .foregroundStyle(selectedWeeks.contains(week) ? Color.cpuBrand : .secondary)
                                 .background {
                                     RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                        .fill(selectedWeeks.contains(week) ? Color.accentColor.opacity(0.14) : Color(uiColor: .secondarySystemGroupedBackground))
+                                        .fill(selectedWeeks.contains(week) ? Color.cpuBrand.opacity(0.14) : Color(uiColor: .secondarySystemGroupedBackground))
                                 }
                                 .overlay {
                                     RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                        .stroke(selectedWeeks.contains(week) ? Color.accentColor : Color(uiColor: .separator).opacity(0.45), lineWidth: 1)
+                                        .stroke(selectedWeeks.contains(week) ? Color.cpuBrand : Color(uiColor: .separator).opacity(0.45), lineWidth: 1)
                                 }
                         }
                         .buttonStyle(.plain)
@@ -2156,7 +2182,7 @@ private struct StateCard: View {
             } else {
                 Image(systemName: systemImage)
                     .font(.system(size: 28, weight: .medium))
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(Color.cpuBrand)
             }
 
             Text(title)

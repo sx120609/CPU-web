@@ -6,8 +6,8 @@ import WebKit
 
 
 enum IOSNextWebConfiguration {
-    static let versionCode = 2
-    static let versionName = "2.0.0"
+    static let versionCode = 3
+    static let versionName = "3.0.0"
 
     static var appURL: URL {
         let configured = Bundle.main.object(forInfoDictionaryKey: "CPUAppURL") as? String
@@ -69,6 +69,9 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
     @Published private(set) var pageColorScheme: ColorScheme? = HybridWebViewStore.storedAppearanceScheme()
     @Published private(set) var appearanceMode: String = UserDefaults.standard.string(forKey: HybridWebViewStore.appearanceModeKey) ?? "system"
     @Published private(set) var isLoggedIn = false
+    /// Mirrors Web's `canAccessModuleAdmin` getter so the native quick menu
+    /// exposes the same management entry points as the browser shell.
+    @Published private(set) var canAccessAdmin = false
 
     /// While the native login gate is up, only authentication pages may load.
     /// A main-frame navigation anywhere else is cancelled instead of being
@@ -445,6 +448,7 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
             automaticWidgetSetupAttempted = false
             widgetAuthGeneration += 1
             isLoggedIn = !(body["account"] as? String ?? "").isEmpty
+            canAccessAdmin = body["canAccessAdmin"] as? Bool ?? false
             // An account fingerprint lets the timetable keep its cached view
             // when the session merely finished restoring the same account.
             onAuthChanged?((body["account"] as? String) ?? "")
@@ -605,7 +609,9 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
           bridge.ready = () => post({ type: 'ready' });
           bridge.schedulePrefetched = (snapshot) => post({type: 'schedulePrefetched', snapshot});
           bridge.scheduleWeekPrefetched = bridge.schedulePrefetched;
-          bridge.authChanged = (account) => post({ type: 'authChanged', account: String(account ?? '') });
+          bridge.authChanged = (account, canAccessAdmin = false) => post({
+            type: 'authChanged', account: String(account ?? ''), canAccessAdmin: Boolean(canAccessAdmin)
+          });
           window.CPUTimeNative = bridge;
           window.CPUIOS = {
             ...(window.CPUIOS || {}),

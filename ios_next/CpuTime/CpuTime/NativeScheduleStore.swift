@@ -469,6 +469,23 @@ public enum NativeScheduleState: Equatable, Sendable {
     case failed
 }
 
+/// A lightweight native equivalent of Web's official timetable change notice.
+/// The detailed edit state remains owned by the Web bridge; this value only
+/// carries enough information for the native surface to prompt a re-check.
+public struct NativeScheduleChangeNotice: Identifiable, Equatable, Sendable {
+    public let id: String
+    public let semester: String
+    public let changedCount: Int
+    public let details: [String]
+
+    public init(id: String, semester: String, changedCount: Int, details: [String]) {
+        self.id = id
+        self.semester = semester
+        self.changedCount = changedCount
+        self.details = details
+    }
+}
+
 @MainActor
 public final class NativeScheduleStore: ObservableObject {
     @Published public private(set) var state: NativeScheduleState = .idle
@@ -479,12 +496,15 @@ public final class NativeScheduleStore: ObservableObject {
     @Published public private(set) var errorMessage: String?
     @Published public private(set) var lastUpdatedAt: Date?
     @Published public private(set) var source: NativeScheduleSource?
+    @Published public private(set) var scheduleChangeNotice: NativeScheduleChangeNotice?
 
     public let cacheLifetime: TimeInterval
 
     private var loader: NativeScheduleLoader?
     private var webViewLoader: NativeScheduleWebViewLoader?
     private var cache: [CacheKey: CacheEntry] = [:]
+    private var backgroundRefreshTasks: [CacheKey: Task<Void, Never>] = [:]
+    private var lastBackgroundRefreshAt: [CacheKey: Date] = [:]
     private var refreshStartedAt: [String: Date] = [:]
     private var requestGeneration = 0
     private var displayedKey: CacheKey?
@@ -571,9 +591,16 @@ public final class NativeScheduleStore: ObservableObject {
     }
 
     /// Loads the requested semester/week. A fresh in-memory entry is used for
-    /// repeated renders; `force` is used by pull-to-refresh and web session
-    /// recovery. No disk cache is used, avoiding cross-account data leakage.
-    public func load(semester: String? = nil, week: String? = nil, force: Bool = false) async {
+    /// repeated renders; a cache hit is painted first and then refreshed in a
+    /// separate task so a timetable never disappears behind a spinner. `force`
+    /// is used by pull-to-refresh and the background refresh task. No disk
+    /// cache is used here, avoiding cross-account data leakage.
+    public func load(
+        semester: String? = nil,
+        week: String? = nil,
+        force: Bool = false,
+        background: Bool = false
+    ) async {
         let requestedSemester = (semester ?? selectedSemester).trimmedNonEmpty
         let requestedWeek = (week ?? selectedWeek).trimmedNonEmpty
         if let requestedSemester { selectedSemester = requestedSemester }
@@ -592,10 +619,11 @@ public final class NativeScheduleStore: ObservableObject {
                 requestedWeek: requestedWeek,
                 key: key
             )
+            if !background { refreshInBackground(semester: requestedSemester, week: requestedWeek) }
             return
         }
 
-        if displayedKey != nil, displayedKey != key {
+        if !background, displayedKey != nil, displayedKey != key {
             clearDisplayedData()
         }
 
@@ -605,8 +633,10 @@ public final class NativeScheduleStore: ObservableObject {
             return
         }
 
-        state = .loading
-        errorMessage = nil
+        if !background || result == nil {
+            state = .loading
+            errorMessage = nil
+        }
 
         do {
             let snapshot = try await loader(NativeScheduleRequest(
@@ -639,7 +669,7 @@ public final class NativeScheduleStore: ObservableObject {
         let week = selectedWeek.trimmedNonEmpty ?? result?.currentWeek ?? ""
         let snapshot = try await webViewLoader.saveEdits(edits, semester: semester, week: week)
         let key = CacheKey(semester: semester, week: week)
-        try accept(snapshot, for: key, requestedSemester: semester, requestedWeek: week)
+        try accept(snapshot, for: key, requestedSemester: semester, requestedWeek: week, notifyChange: false)
     }
 
     /// A trusted bridge pushes each prefetched week, then the complete semester.
@@ -746,6 +776,39 @@ public final class NativeScheduleStore: ObservableObject {
         await load(semester: selectedSemester, week: selectedWeek, force: true)
     }
 
+    /// Revalidates the visible selection without changing the rendered state.
+    /// The Web timetable follows the same stale-while-revalidate contract: a
+    /// cached schedule remains interactive while the server is checked quietly.
+    public func refreshInBackground() {
+        refreshInBackground(semester: selectedSemester, week: selectedWeek)
+    }
+
+    public func dismissScheduleChangeNotice() {
+        scheduleChangeNotice = nil
+    }
+
+    private func refreshInBackground(semester: String?, week: String?) {
+        guard loader != nil else { return }
+        let key = CacheKey(semester: semester?.trimmedNonEmpty ?? "", week: week?.trimmedNonEmpty ?? "")
+        guard result != nil, backgroundRefreshTasks[key] == nil else { return }
+        let now = Date.now
+        if let previous = lastBackgroundRefreshAt[key], now.timeIntervalSince(previous) < 30 {
+            return
+        }
+        lastBackgroundRefreshAt[key] = now
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.backgroundRefreshTasks[key] = nil }
+            await self.load(
+                semester: semester,
+                week: week,
+                force: true,
+                background: true
+            )
+        }
+        backgroundRefreshTasks[key] = task
+    }
+
     public func selectSemester(_ semester: String) async {
         selectedSemester = semester.trimmedNonEmpty ?? ""
         selectedWeek = ""
@@ -774,6 +837,9 @@ public final class NativeScheduleStore: ObservableObject {
     /// out. The next request starts in the idle state.
     public func reset() {
         requestGeneration += 1
+        backgroundRefreshTasks.values.forEach { $0.cancel() }
+        backgroundRefreshTasks.removeAll(keepingCapacity: false)
+        lastBackgroundRefreshAt.removeAll(keepingCapacity: false)
         cache.removeAll(keepingCapacity: false)
         refreshStartedAt.removeAll()
         accountKey = ""
@@ -781,6 +847,7 @@ public final class NativeScheduleStore: ObservableObject {
         result = nil
         calendar = nil
         source = nil
+        scheduleChangeNotice = nil
         errorMessage = nil
         lastUpdatedAt = nil
         displayedKey = nil
@@ -793,7 +860,8 @@ public final class NativeScheduleStore: ObservableObject {
         _ snapshot: NativeScheduleSnapshot,
         for key: CacheKey,
         requestedSemester: String?,
-        requestedWeek: String?
+        requestedWeek: String?,
+        notifyChange: Bool = true
     ) throws {
         guard snapshot.version == 1 else {
             throw NativeScheduleStoreError.invalidResponse
@@ -818,8 +886,18 @@ public final class NativeScheduleStore: ObservableObject {
         if !snapshot.completeSemester,
            let complete = cache[CacheKey(semester: data.currentSemester, week: "*")],
            (complete.snapshot.fetchedAt ?? .distantPast) >= (snapshot.fetchedAt ?? .distantPast) {
-            try accept(complete.snapshot, for: key, requestedSemester: requestedSemester, requestedWeek: requestedWeek)
+            try accept(complete.snapshot, for: key, requestedSemester: requestedSemester, requestedWeek: requestedWeek, notifyChange: notifyChange)
             return
+        }
+        let previousSnapshot = cache[key]?.snapshot ?? cache[CacheKey(semester: data.currentSemester, week: "*")]?.snapshot
+        if notifyChange,
+           snapshot.source == .jwxt,
+           previousSnapshot?.source == .jwxt,
+           let previousSnapshot,
+           (previousSnapshot.fetchedAt ?? .distantPast) < (snapshot.fetchedAt ?? .distantPast),
+           isVisibleSelection(key: key, data: data),
+           let notice = makeScheduleChangeNotice(previous: previousSnapshot, next: snapshot) {
+            scheduleChangeNotice = notice
         }
         let entry = CacheEntry(snapshot: snapshot)
         if !snapshot.completeSemester {
@@ -852,6 +930,51 @@ public final class NativeScheduleStore: ObservableObject {
         state = snapshot.source == .cache ? .stale : .loaded
         displayedKey = key
         archiveDisplayed(snapshot)
+    }
+
+    private func isVisibleSelection(key: CacheKey, data: NativeScheduleResult) -> Bool {
+        guard let displayedKey else { return key.semester == selectedSemester }
+        return displayedKey == key || (
+            key.semester == selectedSemester &&
+            (key.week == selectedWeek || key.week.isEmpty || data.currentWeek == selectedWeek)
+        )
+    }
+
+    private func makeScheduleChangeNotice(
+        previous: NativeScheduleSnapshot,
+        next: NativeScheduleSnapshot
+    ) -> NativeScheduleChangeNotice? {
+        guard let before = previous.data, let after = next.data else { return nil }
+        let beforeKeys = Set(scheduleCourseSignatures(before))
+        let afterKeys = Set(scheduleCourseSignatures(after))
+        let added = afterKeys.subtracting(beforeKeys).count
+        let removed = beforeKeys.subtracting(afterKeys).count
+        guard added > 0 || removed > 0 else { return nil }
+        var details: [String] = []
+        if added > 0 { details.append("新增 \(added) 项课程安排") }
+        if removed > 0 { details.append("移除 \(removed) 项课程安排") }
+        details.append("请核对已编辑课程的时间、周次、老师和地点")
+        let fingerprint = details.joined(separator: "|")
+        return NativeScheduleChangeNotice(
+            id: "\(after.currentSemester)-\(fingerprint)",
+            semester: after.currentSemester,
+            changedCount: added + removed,
+            details: details
+        )
+    }
+
+    private func scheduleCourseSignatures(_ result: NativeScheduleResult) -> [String] {
+        result.cells.flatMap { cell in
+            cell.courses.map { course in
+                let weeks = course.weekList.sorted().map(String.init).joined(separator: ",")
+                return [
+                    String(cell.day), String(cell.bigSlot),
+                    course.startSlot.map(String.init) ?? "", course.endSlot.map(String.init) ?? "",
+                    course.name, course.teacher ?? "", course.location ?? "", course.weeks,
+                    weeks, course.slotNote ?? ""
+                ].joined(separator: "\u{1F}")
+            }
+        }
     }
 
     private func apply(

@@ -1,6 +1,12 @@
 import Combine
 import SwiftUI
 
+extension Color {
+    /// Keep native controls aligned with the Web brand instead of relying on
+    /// the system blue accent that a presented sheet may inherit.
+    static var cpuBrand: Color { Color(red: 15 / 255, green: 143 / 255, blue: 127 / 255) }
+}
+
 @main
 struct CpuTimeApp: App {
     var body: some Scene {
@@ -14,6 +20,7 @@ struct ContentView: View {
     @StateObject private var webSession = HybridWebViewStore()
     @StateObject private var scheduleStore = NativeScheduleStore()
     @StateObject private var shell = NativeShellCoordinator()
+    @AppStorage("CPUHasSeenWelcomeV3") private var hasSeenWelcome = false
 
     var body: some View {
         rootView
@@ -32,7 +39,6 @@ struct ContentView: View {
             }
             .onAppear {
                 shell.connect(webSession: webSession, scheduleStore: scheduleStore)
-                Task { await shell.resolveInitialAuth(webSession: webSession) }
 #if DEBUG
                 let env = ProcessInfo.processInfo.environment
                 if let raw = env["CPU_DEBUG_TAB"], let tab = ShellTab(rawValue: raw) {
@@ -64,6 +70,10 @@ struct ContentView: View {
                 }
 #endif
             }
+            .task(id: hasSeenWelcome) {
+                guard hasSeenWelcome else { return }
+                await shell.resolveInitialAuth(webSession: webSession)
+            }
     }
 
     /// The login gate is a root-view swap, not a hidden tab bar: while it is
@@ -72,7 +82,13 @@ struct ContentView: View {
     /// surface keeps the tab bar from flashing first.
     @ViewBuilder
     private var rootView: some View {
-        if shell.requiresLogin {
+        if !hasSeenWelcome {
+            WelcomeView {
+                withAnimation(.easeInOut(duration: 0.28)) {
+                    hasSeenWelcome = true
+                }
+            }
+        } else if shell.requiresLogin {
             LoginGateView(webSession: webSession)
         } else if !shell.isAuthResolved {
             LaunchWaitingView()
@@ -82,6 +98,62 @@ struct ContentView: View {
                 scheduleStore: scheduleStore,
                 shell: shell
             )
+        }
+    }
+}
+
+/// A one-time first-run surface that gives the user a clear entry point before
+/// the shared web session decides whether login is required.
+private struct WelcomeView: View {
+    let onContinue: () -> Void
+    @State private var appeared = false
+
+    var body: some View {
+        ZStack {
+            Color(uiColor: .systemGroupedBackground).ignoresSafeArea()
+            VStack(spacing: 0) {
+                Spacer(minLength: 48)
+                Image("CPULogo")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 112, height: 112)
+                    .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+                    .shadow(color: .black.opacity(0.14), radius: 24, y: 12)
+                    .scaleEffect(appeared ? 1 : 0.86)
+                    .opacity(appeared ? 1 : 0)
+                VStack(spacing: 9) {
+                    Text("药大拾间")
+                        .font(.system(size: 32, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color.cpuBrand)
+                    Text("你的校园信息助手")
+                        .font(.title3.weight(.medium))
+                        .foregroundStyle(.primary)
+                    Text("登录后即可同步课表、成绩和校园服务")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+                .padding(.top, 24)
+                .opacity(appeared ? 1 : 0)
+                Spacer()
+                Button(action: onContinue) {
+                    Text("开始使用")
+                        .font(.headline.weight(.semibold))
+                        .frame(maxWidth: .infinity, minHeight: 52)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.cpuBrand)
+                .padding(.horizontal, 28)
+                .padding(.bottom, 12)
+                Text("CPU · 药大拾间")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .padding(.bottom, 16)
+                    .opacity(appeared ? 1 : 0)
+            }
+        }
+        .task {
+            withAnimation(.easeOut(duration: 0.45)) { appeared = true }
         }
     }
 }
@@ -216,7 +288,7 @@ struct NativeShellView: View {
         .sheet(isPresented: $quickEntryPresented) {
             quickEntrySheetContent()
         }
-        .tint(Color(red: 15 / 255, green: 143 / 255, blue: 127 / 255))
+        .tint(.cpuBrand)
         // The native top bar owns the appearance control, so its choice drives
         // the whole shell, including the native timetable and the tab bar.
         .preferredColorScheme(webSession.pageColorScheme)
@@ -245,6 +317,7 @@ struct NativeShellView: View {
         quickEntry
             .presentationDetents([.height(webSession.isLoggedIn ? 460 : 400)])
             .presentationDragIndicator(.visible)
+            .tint(.cpuBrand)
             .preferredColorScheme(webSession.pageColorScheme)
     }
 }
@@ -252,13 +325,20 @@ struct NativeShellView: View {
 private struct NativeQuickEntryView: View {
     @ObservedObject var session: HybridWebViewStore
     let onOpen: (String?, ShellTab?) -> Void
-    private let entries: [(String, String, String?, ShellTab?)] = [
-        ("square.and.pencil", "发帖", "/post", .home), ("envelope", "消息", "/messages", .profile),
-        ("arrow.down.circle", "客户端下载", "/download", .services), ("bubble.left.and.bubble.right", "校园论坛", "/forum", .home),
-        ("bell", "校园公告", "/announcements", .home), ("book.closed", "教务数据", "/jwxt", .academic),
-        ("calendar", "课表", nil, .schedule), ("wrench.and.screwdriver", "校园服务", "/services", .services),
-        ("bag", "二手交流", "/market", .home), ("sparkles", "拾间AI", "/search", .home), ("arrow.clockwise", "刷新页面", nil, nil)
-    ]
+    private var entries: [(String, String, String?, ShellTab?)] {
+        var values: [(String, String, String?, ShellTab?)] = [
+            ("square.and.pencil", "发帖", "/post", .home), ("envelope", "消息", "/messages", .profile),
+            ("arrow.down.circle", "客户端下载", "/download", .services), ("bubble.left.and.bubble.right", "校园论坛", "/forum", .home),
+            ("bell", "校园公告", "/announcements", .home), ("book.closed", "教务数据", "/jwxt", .academic),
+            ("calendar", "课表", nil, .schedule), ("wrench.and.screwdriver", "校园服务", "/services", .services),
+            ("bag", "二手交流", "/market", .home), ("sparkles", "拾间AI", "/search", .home)
+        ]
+        if session.canAccessAdmin {
+            values.append(("lock.shield", "管理后台", "/admin", .profile))
+        }
+        values.append(("arrow.clockwise", "刷新页面", nil, nil))
+        return values
+    }
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -274,17 +354,20 @@ private struct NativeQuickEntryView: View {
                                 Button { session.setAppearanceMode(item.2) } label: {
                                     Label(item.0, systemImage: item.1).font(.caption.weight(.medium)).lineLimit(1)
                                         .minimumScaleFactor(0.7).frame(maxWidth: .infinity, minHeight: 34)
-                                        .background(session.appearanceMode == item.2 ? Color.accentColor.opacity(0.18) : Color.primary.opacity(0.05)).clipShape(Capsule())
-                                }.buttonStyle(.plain).foregroundStyle(session.appearanceMode == item.2 ? Color.accentColor : .secondary)
+                                        .background(session.appearanceMode == item.2 ? Color.cpuBrand.opacity(0.18) : Color.primary.opacity(0.05)).clipShape(Capsule())
+                                }.buttonStyle(.plain).foregroundStyle(session.appearanceMode == item.2 ? Color.cpuBrand : .secondary)
                             }
                         }
                     }
                     if session.isLoggedIn {
                         HStack(spacing: 12) {
-                            Image(systemName: "person.crop.circle.fill").font(.system(size: 30)).foregroundStyle(Color.accentColor)
+                            Image(systemName: "person.crop.circle.fill").font(.system(size: 30)).foregroundStyle(Color.cpuBrand)
                             VStack(alignment: .leading, spacing: 2) { Text("个人中心").font(.subheadline.weight(.semibold)); Text("管理账号与资料").font(.caption).foregroundStyle(.secondary) }
                             Spacer()
-                            Button("进入") { onOpen("/profile", .profile) }.font(.caption.weight(.semibold)).buttonStyle(.borderedProminent)
+                            Button("进入") { onOpen("/profile", .profile) }
+                                .font(.caption.weight(.semibold))
+                                .buttonStyle(.borderedProminent)
+                                .tint(.cpuBrand)
                         }.padding(12).background(Color.primary.opacity(0.045)).clipShape(RoundedRectangle(cornerRadius: 14))
                     }
                 }.padding(18)
@@ -321,7 +404,7 @@ private struct NativeQuickEntryView: View {
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.72)
                         }
-                        .foregroundStyle(Color.accentColor)
+                        .foregroundStyle(Color.cpuBrand)
                         .frame(maxWidth: .infinity, minHeight: 62)
                         .background(Color(uiColor: .systemBackground))
                         .overlay {

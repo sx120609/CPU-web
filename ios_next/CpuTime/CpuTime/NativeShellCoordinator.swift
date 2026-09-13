@@ -90,7 +90,22 @@ final class NativeShellCoordinator: ObservableObject {
         // was being read; that live answer wins over the pre-flight guess.
         guard !isAuthResolved else { return }
         if hasCookie {
-            applyAuthenticated(navigateToHome: false)
+            // A cookie can survive an expired server session. Keep the launch
+            // surface neutral while the Web bridge restores the account instead
+            // of briefly rendering an empty timetable behind a stale cookie.
+            // Wait for the complete restore window; the previous fixed 0.8 s
+            // window was shorter than a cold WebView on a slow connection.
+            try? await Task.sleep(for: sessionRestoreWindow)
+            guard !isAuthResolved else { return }
+            // A guest can still carry an old cookie. If the WebView has landed
+            // on an authentication route (or the cookie disappeared), gate it
+            // before the native shell is ever built.
+            let cookieStillPresent = await webSession.hasSessionCookie()
+            if webSession.isShowingAuthPage || !cookieStillPresent {
+                applyLoginGate(navigateToLogin: !webSession.isShowingAuthPage)
+            } else {
+                applyAuthenticated(navigateToHome: false)
+            }
         } else {
             applyLoginGate(navigateToLogin: true)
         }
@@ -146,6 +161,13 @@ final class NativeShellCoordinator: ObservableObject {
     }
 
     private func handleRouteChanged(path: String, source: String) {
+        // A stale session may navigate the shared WebView to the login page
+        // before its account probe reports back. Gate immediately on that
+        // route, so the native timetable is never shown to a guest.
+        if isAuthResolved, !hasAuthenticatedSession, !requiresLogin {
+            applyLoginGate(navigateToLogin: false)
+            return
+        }
         guard requiresLogin else { return }
         guard !ShellTab.isAuthPath(path) else { return }
         // A session the Web already proved is signed in is not an escape
@@ -257,7 +279,16 @@ final class NativeShellCoordinator: ObservableObject {
             // Wait for that burst to settle before starting the next request.
             try? await Task.sleep(for: .milliseconds(100))
             guard !Task.isCancelled else { return }
-            await scheduleStore.load(force: force || restoredCache || restoredArchive)
+            if restoredCache || restoredArchive {
+                // Calling the normal non-forced load lets the store paint the
+                // restored snapshot immediately and schedule its own
+                // stale-while-revalidate request. Keeping this path on the
+                // existing load contract also keeps lightweight coordinator
+                // test doubles source-compatible.
+                if refreshCached { await scheduleStore.load(force: false) }
+                return
+            }
+            await scheduleStore.load(force: force)
         }
     }
 
