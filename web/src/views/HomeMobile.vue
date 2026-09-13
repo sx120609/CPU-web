@@ -177,7 +177,7 @@ onBeforeUnmount(() => {
 onBeforeRouteLeave((to) => {
   if (to.name !== "topic" || !latestTopics.value.length) return;
   writeForumListRestoreState<HomeFeedRestoreState>(route.fullPath, {
-    scrollY: window.scrollY,
+    scrollY: readPageScrollY(),
     page: activeFeed.value.page,
     stream: activeFeedStream.value,
     forumPage: feedStates.forum.page,
@@ -339,13 +339,44 @@ async function restoreScrollIfNeeded() {
   if (!pendingRestoreState) return;
   const scrollY = Math.max(0, Number(pendingRestoreState.scrollY || 0));
   await new Promise<void>((resolve) => {
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      window.scrollTo({ top: scrollY, behavior: "auto" });
-      resolve();
-    }));
+    let attempts = 0;
+    const restore = () => {
+      scrollPageTo(scrollY);
+      const availableHeight = getPageScrollHeight();
+      if (scrollY <= availableHeight + 8 || attempts >= 24) {
+        resolve();
+        return;
+      }
+      attempts += 1;
+      requestAnimationFrame(restore);
+    };
+    requestAnimationFrame(restore);
   });
   clearForumListRestoreState(route.fullPath);
   pendingRestoreState = null;
+}
+
+function readPageScrollY() {
+  const app = document.getElementById("app");
+  const documentScrollY = document.scrollingElement?.scrollTop || 0;
+  return Math.max(window.scrollY || 0, documentScrollY, app?.scrollTop || 0);
+}
+
+function scrollPageTo(top: number) {
+  const options: ScrollToOptions = { top, left: 0, behavior: "auto" };
+  document.getElementById("app")?.scrollTo(options);
+  document.scrollingElement?.scrollTo(options);
+  window.scrollTo(options);
+}
+
+function getPageScrollHeight() {
+  const app = document.getElementById("app");
+  const documentScroller = document.scrollingElement;
+  return Math.max(
+    0,
+    (app?.scrollHeight || 0) - (app?.clientHeight || 0),
+    (documentScroller?.scrollHeight || 0) - (documentScroller?.clientHeight || 0),
+  );
 }
 
 function dedupeTopics(items: Topic[]) {
