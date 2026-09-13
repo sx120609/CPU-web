@@ -114,6 +114,9 @@ public struct NativeScheduleWeek: Codable, Identifiable, Equatable, Sendable {
 }
 
 public struct NativeScheduleCourse: Codable, Identifiable, Equatable, Sendable {
+    /// Stable occurrence identity supplied by the trusted schedule bridge. It
+    /// excludes mutable presentation fields such as room and teacher.
+    public let nativeId: String?
     public let name: String
     public let teacher: String?
     public let weeks: String
@@ -136,6 +139,7 @@ public struct NativeScheduleCourse: Codable, Identifiable, Equatable, Sendable {
     }
 
     public init(
+        nativeId: String? = nil,
         name: String,
         teacher: String? = nil,
         weeks: String = "",
@@ -149,6 +153,7 @@ public struct NativeScheduleCourse: Codable, Identifiable, Equatable, Sendable {
         custom: Bool = false,
         orphaned: Bool = false
     ) {
+        self.nativeId = nativeId?.trimmedNonEmpty
         self.name = name
         self.teacher = teacher?.trimmedNonEmpty
         self.weeks = weeks
@@ -164,13 +169,14 @@ public struct NativeScheduleCourse: Codable, Identifiable, Equatable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case name, teacher, weeks, weekList, location, slotNote, startSlot, endSlot
+        case nativeId, name, teacher, weeks, weekList, location, slotNote, startSlot, endSlot
         case sourceKey, customId, custom, orphaned
     }
 
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         self.init(
+            nativeId: try values.decodeIfPresent(String.self, forKey: .nativeId),
             name: try values.decodeIfPresent(String.self, forKey: .name) ?? "课程",
             teacher: try values.decodeIfPresent(String.self, forKey: .teacher),
             weeks: try values.decodeIfPresent(String.self, forKey: .weeks) ?? "",
@@ -184,6 +190,52 @@ public struct NativeScheduleCourse: Codable, Identifiable, Equatable, Sendable {
             custom: try values.decodeIfPresent(Bool.self, forKey: .custom) ?? false,
             orphaned: try values.decodeIfPresent(Bool.self, forKey: .orphaned) ?? false
         )
+    }
+}
+
+public struct NativeSchedulePeriod: Codable, Equatable, Sendable {
+    public let number: Int
+    public let startTime: String
+    public let endTime: String
+
+    /// Compatibility table for a deployed web bridge that predates the
+    /// `periods` field. Keep this aligned with the web schedule slots.
+    public static let bundledTimetable = [
+        NativeSchedulePeriod(number: 1, startTime: "08:00", endTime: "08:45"),
+        NativeSchedulePeriod(number: 2, startTime: "08:55", endTime: "09:40"),
+        NativeSchedulePeriod(number: 3, startTime: "09:55", endTime: "10:40"),
+        NativeSchedulePeriod(number: 4, startTime: "10:50", endTime: "11:35"),
+        NativeSchedulePeriod(number: 5, startTime: "13:30", endTime: "14:15"),
+        NativeSchedulePeriod(number: 6, startTime: "14:25", endTime: "15:10"),
+        NativeSchedulePeriod(number: 7, startTime: "15:25", endTime: "16:10"),
+        NativeSchedulePeriod(number: 8, startTime: "16:20", endTime: "17:05"),
+        NativeSchedulePeriod(number: 9, startTime: "18:30", endTime: "19:15"),
+        NativeSchedulePeriod(number: 10, startTime: "19:25", endTime: "20:10"),
+        NativeSchedulePeriod(number: 11, startTime: "20:20", endTime: "21:05")
+    ]
+
+    /// Older bridges may report the former twelfth-slot marker. Clamp it to
+    /// the last real period before native or Watch code looks up times.
+    static func normalizedRange(
+        bigSlot: Int,
+        startSlot: Int?,
+        endSlot: Int?,
+        periods: [NativeSchedulePeriod]
+    ) -> (start: Int, end: Int) {
+        let available = periods.map(\.number)
+        let minimum = available.min() ?? 1
+        let maximum = available.max() ?? minimum
+        let fallbackStart = min(max(bigSlot * 2 - 1, minimum), maximum)
+        let fallbackEnd = min(max(bigSlot * 2, fallbackStart), maximum)
+        let start = min(max(startSlot ?? fallbackStart, minimum), maximum)
+        let end = min(max(endSlot ?? fallbackEnd, start), maximum)
+        return (start, end)
+    }
+
+    public init(number: Int, startTime: String, endTime: String) {
+        self.number = number
+        self.startTime = startTime
+        self.endTime = endTime
     }
 }
 
@@ -340,6 +392,7 @@ public struct NativeScheduleSnapshot: Codable, Equatable, Sendable {
     public let completeSemester: Bool
     public let source: NativeScheduleSource
     public let fetchedAt: Date?
+    public let periods: [NativeSchedulePeriod]
     public let data: NativeScheduleResult?
     public let calendar: NativeScheduleCalendar?
     public let auth: NativeScheduleAuth
@@ -350,6 +403,7 @@ public struct NativeScheduleSnapshot: Codable, Equatable, Sendable {
         completeSemester: Bool = false,
         source: NativeScheduleSource = .unknown,
         fetchedAt: Date? = nil,
+        periods: [NativeSchedulePeriod] = [],
         data: NativeScheduleResult? = nil,
         calendar: NativeScheduleCalendar? = nil,
         auth: NativeScheduleAuth = NativeScheduleAuth(),
@@ -359,6 +413,7 @@ public struct NativeScheduleSnapshot: Codable, Equatable, Sendable {
         self.completeSemester = completeSemester
         self.source = source
         self.fetchedAt = fetchedAt
+        self.periods = periods.isEmpty ? NativeSchedulePeriod.bundledTimetable : periods
         self.data = data
         self.calendar = calendar
         self.auth = auth
@@ -366,7 +421,7 @@ public struct NativeScheduleSnapshot: Codable, Equatable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case version, completeSemester, source, fetchedAt, data, calendar, auth, error
+        case version, completeSemester, source, fetchedAt, periods, data, calendar, auth, error
     }
 
     public init(from decoder: Decoder) throws {
@@ -376,6 +431,7 @@ public struct NativeScheduleSnapshot: Codable, Equatable, Sendable {
             completeSemester: try values.decodeIfPresent(Bool.self, forKey: .completeSemester) ?? false,
             source: try values.decodeIfPresent(NativeScheduleSource.self, forKey: .source) ?? .unknown,
             fetchedAt: try values.decodeFlexibleDate(forKey: .fetchedAt),
+            periods: try values.decodeIfPresent([NativeSchedulePeriod].self, forKey: .periods) ?? [],
             data: try values.decodeIfPresent(NativeScheduleResult.self, forKey: .data),
             calendar: try values.decodeIfPresent(NativeScheduleCalendar.self, forKey: .calendar),
             auth: try values.decodeIfPresent(NativeScheduleAuth.self, forKey: .auth) ?? NativeScheduleAuth(),
@@ -497,6 +553,11 @@ public final class NativeScheduleStore: ObservableObject {
     @Published public private(set) var lastUpdatedAt: Date?
     @Published public private(set) var source: NativeScheduleSource?
     @Published public private(set) var scheduleChangeNotice: NativeScheduleChangeNotice?
+    /// The most recent authenticated snapshot, including prefetched weeks,
+    /// published to the phone-to-Watch transport.
+    public private(set) var latestSnapshot: NativeScheduleSnapshot?
+    public var onWatchSnapshot: ((NativeScheduleSnapshot) -> Void)?
+    public var onWatchReset: (() -> Void)?
 
     public let cacheLifetime: TimeInterval
 
@@ -693,6 +754,8 @@ public final class NativeScheduleStore: ObservableObject {
             guard let week = Int(data.currentWeek), (1...64).contains(week),
                   cache[CacheKey(semester: data.currentSemester, week: "*")] == nil else { return }
             cache[CacheKey(semester: data.currentSemester, week: data.currentWeek)] = entry
+            latestSnapshot = snapshot
+            onWatchSnapshot?(snapshot)
             return // Prewarming must never change the visible week's state or selection.
         }
         if selectedSemester == data.currentSemester, state == .loaded || state == .stale {
@@ -700,6 +763,9 @@ public final class NativeScheduleStore: ObservableObject {
                   requestedWeek: selectedWeek,
                   key: CacheKey(semester: selectedSemester, week: selectedWeek))
             archiveDisplayed(snapshot)
+        } else {
+            latestSnapshot = snapshot
+            onWatchSnapshot?(snapshot)
         }
     }
 
@@ -848,12 +914,14 @@ public final class NativeScheduleStore: ObservableObject {
         calendar = nil
         source = nil
         scheduleChangeNotice = nil
+        latestSnapshot = nil
         errorMessage = nil
         lastUpdatedAt = nil
         displayedKey = nil
         selectedSemester = ""
         selectedWeek = ""
         state = .idle
+        onWatchReset?()
     }
 
     private func accept(
@@ -929,6 +997,8 @@ public final class NativeScheduleStore: ObservableObject {
         errorMessage = snapshot.error?.trimmedNonEmpty
         state = snapshot.source == .cache ? .stale : .loaded
         displayedKey = key
+        latestSnapshot = snapshot
+        onWatchSnapshot?(snapshot)
         archiveDisplayed(snapshot)
     }
 
@@ -994,6 +1064,8 @@ public final class NativeScheduleStore: ObservableObject {
             else if !data.currentWeek.isEmpty { selectedWeek = data.currentWeek }
             lastUpdatedAt = snapshot.fetchedAt
             displayedKey = key
+            latestSnapshot = snapshot
+            onWatchSnapshot?(snapshot)
         }
         self.state = state
         errorMessage = snapshot.error?.trimmedNonEmpty
@@ -1030,6 +1102,7 @@ public final class NativeScheduleStore: ObservableObject {
         guard result != nil, !sessionKey.isEmpty, sessionFingerprint != nil else {
             archive?.removeAll()
             clearLoadedData()
+            onWatchReset?()
             return
         }
         discardIfSessionChanged()
@@ -1223,7 +1296,7 @@ public final class NativeScheduleWebViewLoader {
 
 // MARK: - Codable compatibility helpers
 
-private extension String {
+extension String {
     var trimmedNonEmpty: String? {
         let value = trimmingCharacters(in: .whitespacesAndNewlines)
         return value.isEmpty ? nil : value

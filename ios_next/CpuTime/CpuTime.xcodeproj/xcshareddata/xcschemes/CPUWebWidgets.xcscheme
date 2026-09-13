@@ -18,6 +18,7 @@
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "000000000000000200000000"
                BuildableName = "CPUWebWidgets.appex"
+               BlueprintName = "CPUWebWidgets"
                ReferencedContainer = "container:CpuTime.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
@@ -64,6 +65,7 @@
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "000000000000000200000000"
             BuildableName = "CPUWebWidgets.appex"
+            BlueprintName = "CPUWebWidgets"
             ReferencedContainer = "container:CpuTime.xcodeproj">
          </BuildableReference>
       </RemoteRunnable>

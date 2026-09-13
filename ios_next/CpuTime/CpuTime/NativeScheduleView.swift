@@ -7,6 +7,8 @@ struct NativeScheduleView: View {
     @ObservedObject private var store: NativeScheduleStore
     private let onWidgets: () -> Void
     private let onLogin: () -> Void
+    private let showsWatch: Bool
+    private let onWatch: () -> Void
 
     @State private var selectedDay = 1
     @State private var didInitializeDay = false
@@ -26,10 +28,18 @@ struct NativeScheduleView: View {
     @State private var daySliding = false
     @State private var dayPageWidth: CGFloat = 0
 
-    init(store: NativeScheduleStore, onLogin: @escaping () -> Void = {}, onWidgets: @escaping () -> Void = {}) {
+    init(
+        store: NativeScheduleStore,
+        onLogin: @escaping () -> Void = {},
+        onWidgets: @escaping () -> Void = {},
+        showsWatch: Bool = false,
+        onWatch: @escaping () -> Void = {}
+    ) {
         _store = ObservedObject(wrappedValue: store)
         self.onWidgets = onWidgets
         self.onLogin = onLogin
+        self.showsWatch = showsWatch
+        self.onWatch = onWatch
     }
 
     var body: some View {
@@ -161,6 +171,19 @@ struct NativeScheduleView: View {
                         .accessibilityLabel("正在更新课表")
                 }
 
+                if showsWatch {
+                    Button(action: onWatch) {
+                        Image(systemName: "applewatch")
+                            .font(.system(size: 16, weight: .semibold))
+                            .frame(width: 34, height: 34)
+                            .modifier(ScheduleGlassControl(cornerRadius: 17))
+                            .clipShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.primary)
+                    .accessibilityLabel("Apple Watch 课表同步")
+                }
+
                 Picker("课表视图", selection: $viewMode) {
                     // Keep the same order as Web's view switch: 日 / 周.
                     Text("日").tag(ScheduleViewMode.day)
@@ -185,20 +208,25 @@ struct NativeScheduleView: View {
                 .disabled(isLoading)
 
                 Button {
-                    jumpToCurrentWeek(result)
+                    if viewMode == .day {
+                        jumpToCurrentDay(result)
+                    } else {
+                        jumpToCurrentWeek(result)
+                    }
                 } label: {
-                    Image(systemName: isViewingCurrentWeek(result) ? "scope" : "location.north.line")
+                    let viewingToday = viewMode == .day ? isViewingCurrentDay(result) : isViewingCurrentWeek(result)
+                    Image(systemName: viewingToday ? "scope" : "location.north.line")
                         .font(.system(size: 16, weight: .semibold))
                         .frame(width: 34, height: 34)
                         .modifier(ScheduleGlassControl(cornerRadius: 17))
                         .clipShape(Circle())
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(isViewingCurrentWeek(result) ? Color.cpuBrand : .primary)
-                .accessibilityLabel("回到本周")
+                .foregroundStyle((viewMode == .day ? isViewingCurrentDay(result) : isViewingCurrentWeek(result)) ? Color.cpuBrand : .primary)
+                .accessibilityLabel(viewMode == .day ? "跳转到今日" : "回到本周")
                 // A background refresh keeps the cached timetable usable, so
                 // only the meaningless jump is disabled.
-                .disabled(isViewingCurrentWeek(result))
+                .disabled(viewMode == .day ? isViewingCurrentDay(result) : isViewingCurrentWeek(result))
             }
 
             HStack(spacing: 6) {
@@ -965,6 +993,45 @@ struct NativeScheduleView: View {
         }
     }
 
+    /// Daily mode has two independent selections: the teaching week and the
+    /// weekday page. Returning to the current week alone left the selected
+    /// weekday untouched, so the button became a no-op whenever another day
+    /// in the same week was open.
+    private func jumpToCurrentDay(_ result: NativeScheduleResult) {
+        guard let calendar = store.calendar,
+              calendar.currentWeek > 0,
+              let semester = calendar.currentSemester.nilIfEmpty,
+              let week = calendar.weeks.first(where: { $0.week == calendar.currentWeek }),
+              let today = Self.todayDate else {
+            selectedDay = Self.chinaWeekday
+            didInitializeDay = true
+            store.selectedSemester = ""
+            store.selectedWeek = ""
+            Task { await store.load(semester: nil, week: nil, force: true) }
+            return
+        }
+
+        let targetDay = week.days.firstIndex(of: today).map { $0 + 1 } ?? Self.chinaWeekday
+        let targetWeek = String(calendar.currentWeek)
+        let sameWeek = store.selectedSemester == semester && store.selectedWeek == targetWeek
+
+        guard sameWeek else {
+            selectedDay = targetDay
+            didInitializeDay = true
+            Task { await store.load(semester: semester, week: targetWeek, force: false) }
+            return
+        }
+
+        guard selectedDay != targetDay else { return }
+        didInitializeDay = true
+        if dayPageWidth > 1 {
+            let direction = targetDay > selectedDay ? 1 : -1
+            slideToDay(NativeScheduleDayPage(week: targetWeek, day: targetDay), direction: direction, width: dayPageWidth)
+        } else {
+            selectedDay = targetDay
+        }
+    }
+
     /// Mirrors the Web timetable's swipe lock: a sideways drag wins early
     /// because real thumbs never swipe perfectly straight, while a clear
     /// vertical drag is handed to the enclosing scroll view for good.
@@ -1004,6 +1071,11 @@ struct NativeScheduleView: View {
             return false
         }
         return store.selectedSemester == currentSemester && store.selectedWeek == String(calendar.currentWeek)
+    }
+
+    private func isViewingCurrentDay(_ result: NativeScheduleResult) -> Bool {
+        guard isViewingCurrentWeek(result), dayIsToday(selectedDay, result: result) else { return false }
+        return true
     }
 
     private func semesterTitle(_ result: NativeScheduleResult) -> String {

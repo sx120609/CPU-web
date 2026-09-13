@@ -8,6 +8,7 @@ import { applyScheduleEditsToCells, normalizeScheduleEditsState } from "./schedu
 import { normalizedCourseWeekList } from "./scheduleWeeks";
 import { buildGraduateFallbackCalendar, extendScheduleWeeksToCalendar, hydrateCalendar } from "@/views/schedule/calendar";
 import type { CalendarResult, ScheduleResult } from "@/views/schedule/types";
+import { normalizeSlotRange, smallSlots } from "@/views/schedule/slots";
 
 type ScheduleEdits = ReturnType<typeof normalizeScheduleEditsState>;
 type SemesterEntry = {
@@ -41,9 +42,19 @@ export function nativeScheduleAccountKey() {
 /** The native shell uses the same module-admin capability as the Web router. */
 export function nativeScheduleAuthInfo() {
   const auth = useAuthStore();
+  const user = auth?.user;
+  // Keep the native shell compatible with an older Web bundle that may not
+  // expose the Pinia getter yet. The router uses these same raw role fields
+  // when deciding whether /admin is reachable.
+  const role = String(user?.role ?? "").trim().toLowerCase();
+  const canAccessAdmin = Boolean(auth?.canAccessModuleAdmin)
+    || role === "admin"
+    || role === "mod"
+    || user?.voiceHubRole === "super_admin"
+    || Boolean(user?.lostFoundRole);
   return {
     account: nativeScheduleAccountKey(),
-    canAccessAdmin: Boolean(auth?.canAccessModuleAdmin),
+    canAccessAdmin,
   };
 }
 
@@ -65,6 +76,26 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
     const info = nativeScheduleAuthInfo();
     host.CPUTimeNative?.authChanged?.(info.account, info.canAccessAdmin);
   };
+  // Native opens the quick menu independently of the Web router. Refresh the
+  // account from /user/me before reporting the capability so a role granted
+  // after launch is reflected without requiring an app restart. The immediate
+  // report keeps the menu responsive while the request is in flight.
+  const refreshNativeAuth = async () => {
+    notifyNativeAuth();
+    try {
+      if (auth.isLoggedIn && typeof auth.refreshSelfSilently === "function") {
+        await auth.refreshSelfSilently();
+      } else if (typeof auth.fetchMe === "function") {
+        await auth.fetchMe({ probe: true });
+      }
+    } catch {
+      // A transient profile failure must not hide a capability already known
+      // locally; the next auth/store update will report the eventual state.
+    }
+    notifyNativeAuth();
+    return nativeScheduleAuthInfo();
+  };
+  host.CPUTimeNative && (host.CPUTimeNative.refreshAuth = refreshNativeAuth);
   const unauthorized = () => ({ version: 1, auth: { authenticated: false, account: accountKey() } });
 
   watch(() => [
@@ -83,6 +114,13 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
     notifyNativeAuth();
   }, { flush: "sync" });
 
+  // The iOS shell may open its quick menu before any auth store field changes
+  // after startup. Report the current capability immediately so a restored
+  // administrator account does not remain stuck at Swift's default `false`
+  // value. Harmony owns its own header/auth reporting and passes fastRefresh,
+  // so an extra initial event there would be redundant.
+  if (!options.fastRefresh) notifyNativeAuth();
+
   const valid = (entry: SemesterEntry, epoch: number) => generation === epoch
     && jwxt.isLoggedIn && semesters.get(entry.semester) === entry;
   const remember = (entry: SemesterEntry) => {
@@ -97,12 +135,24 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
     return value;
   };
   const edited = (entry: SemesterEntry, data: ScheduleResult) => ({
-    ...data, cells: applyScheduleEditsToCells(data.cells, entry.edits).map(cell => ({
-      ...cell, courses: cell.courses.map(course => ({ ...course, weekList: normalizedCourseWeekList(course) })),
-    })),
+    ...data, cells: nativeCells(entry.semester, applyScheduleEditsToCells(data.cells, entry.edits)),
   });
+  const nativeCells = (semester: string, cells: ScheduleResult["cells"]) => cells.map(cell => ({
+    ...cell,
+    courses: cell.courses.map(course => {
+      const range = normalizeSlotRange(cell.bigSlot, course);
+      const fallback = ["official", semester, cell.day, range.start, course.name.trim().replace(/\s+/g, " ")].join("|");
+      return {
+        ...course,
+        nativeId: course.customId ? `custom:${course.customId}` : course.sourceKey ? `source:${course.sourceKey}` : fallback,
+        weekList: normalizedCourseWeekList(course),
+      };
+    }),
+  }));
+  const periods = smallSlots.map(slot => ({ number: slot.no, startTime: slot.start, endTime: slot.end }));
   const snapshot = (entry: SemesterEntry, data: ScheduleResult, week?: string) => ({
     version: 1, source: "jwxt", completeSemester: Boolean(entry.complete), fetchedAt: entry.createdAt,
+    periods,
     data: { ...edited(entry, entry.complete ?? data), currentWeek: week || (entry.calendar?.currentWeek
       ? String(entry.calendar.currentWeek) : data.currentWeek) },
     calendar: entry.calendar, auth: { authenticated: true, identity: "undergraduate", account: accountKey() },
@@ -189,11 +239,10 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
         if (generation !== epoch || !jwxt.isLoggedIn) return unauthorized();
         const calendar = buildGraduateFallbackCalendar(data);
         const expanded = extendScheduleWeeksToCalendar(data, calendar) ?? data;
-        return { version: 1, source: "graduate", completeSemester: true, fetchedAt: Date.now(),
+        return { version: 1, source: "graduate", completeSemester: true, fetchedAt: Date.now(), periods,
           data: { ...expanded, currentWeek: week || (calendar?.currentWeek ? String(calendar.currentWeek) : data.currentWeek),
-            cells: expanded.cells.map(cell => ({ ...cell, courses: cell.courses.map(course => ({
-              ...course, weekList: normalizedCourseWeekList(course),
-            })) })) }, calendar, auth: { authenticated: true, identity: "graduate", account: accountKey() } };
+            cells: nativeCells(data.currentSemester, expanded.cells) }, calendar,
+          auth: { authenticated: true, identity: "graduate", account: accountKey() } };
       }
       if (selection === selectionRevision) activeSemester = semester || "";
       let entry = semester ? semesters.get(semester) : undefined;

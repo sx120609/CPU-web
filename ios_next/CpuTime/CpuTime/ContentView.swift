@@ -20,6 +20,8 @@ struct ContentView: View {
     @StateObject private var webSession = HybridWebViewStore()
     @StateObject private var scheduleStore = NativeScheduleStore()
     @StateObject private var shell = NativeShellCoordinator()
+    @StateObject private var watchSchedule = PhoneWatchScheduleStore()
+    @Environment(\.scenePhase) private var scenePhase
     @AppStorage("CPUHasSeenWelcomeV3") private var hasSeenWelcome = false
 
     var body: some View {
@@ -39,6 +41,7 @@ struct ContentView: View {
             }
             .onAppear {
                 shell.connect(webSession: webSession, scheduleStore: scheduleStore)
+                watchSchedule.connect(to: scheduleStore)
 #if DEBUG
                 let env = ProcessInfo.processInfo.environment
                 if let raw = env["CPU_DEBUG_TAB"], let tab = ShellTab(rawValue: raw) {
@@ -74,6 +77,9 @@ struct ContentView: View {
                 guard hasSeenWelcome else { return }
                 await shell.resolveInitialAuth(webSession: webSession)
             }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { watchSchedule.foreground() }
+            }
     }
 
     /// The login gate is a root-view swap, not a hidden tab bar: while it is
@@ -96,7 +102,8 @@ struct ContentView: View {
             NativeShellView(
                 webSession: webSession,
                 scheduleStore: scheduleStore,
-                shell: shell
+                shell: shell,
+                watchSchedule: watchSchedule
             )
         }
     }
@@ -228,7 +235,9 @@ struct NativeShellView: View {
     @ObservedObject var webSession: HybridWebViewStore
     @ObservedObject var scheduleStore: NativeScheduleStore
     @ObservedObject var shell: NativeShellCoordinator
+    @ObservedObject var watchSchedule: PhoneWatchScheduleStore
     @State private var widgetsPresented = false
+    @State private var watchStatusPresented = false
     @State private var quickEntryPresented = false
 
     var body: some View {
@@ -238,7 +247,10 @@ struct NativeShellView: View {
                     session: webSession,
                     onHome: { shell.userSelected(.home) },
                     onRefresh: { webSession.retry() },
-                    onMenu: { quickEntryPresented = true }
+                    onMenu: {
+                        webSession.refreshAuthCapability()
+                        quickEntryPresented = true
+                    }
                 )
             }
             TabView(selection: selection) {
@@ -261,7 +273,9 @@ struct NativeShellView: View {
             NativeScheduleView(
                 store: scheduleStore,
                 onLogin: { shell.openWeb(path: "/login", tab: .profile) },
-                onWidgets: { widgetsPresented = true }
+                onWidgets: { widgetsPresented = true },
+                showsWatch: watchSchedule.showsStatusEntry,
+                onWatch: { watchStatusPresented = true }
             )
             .tabItem {
                 Label(ShellTab.schedule.label, systemImage: ShellTab.schedule.systemImage)
@@ -283,6 +297,10 @@ struct NativeShellView: View {
         }
         .sheet(isPresented: $widgetsPresented) {
             NativeWidgetSetupView(session: webSession)
+                .preferredColorScheme(webSession.pageColorScheme)
+        }
+        .sheet(isPresented: $watchStatusPresented) {
+            WatchSyncStatusView(store: watchSchedule)
                 .preferredColorScheme(webSession.pageColorScheme)
         }
         .sheet(isPresented: $quickEntryPresented) {

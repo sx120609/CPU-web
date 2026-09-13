@@ -48,6 +48,11 @@ test('bundled bridge works on a legacy page without a deployed native bridge', a
   const result = await page.window.CPUTimeNativeScheduleFetch('fall', '3', true);
   assert.equal(result.auth.authenticated, true);
   assert.equal(result.data.currentWeek, '3');
+  assert.equal(result.periods.length, 11);
+  assert.equal(result.periods[0].number, 1);
+  assert.equal(result.periods[0].startTime, '08:00');
+  assert.equal(result.periods[0].endTime, '08:45');
+  assert.match(result.data.cells[0].courses[0].nativeId, /^official\|fall\|1\|1\|/);
   assert.deepEqual(Array.from(result.data.cells[0].courses[0].weekList), [1, 3, 5, 7]);
   assert.equal(page.requests[0].options.credentials, 'same-origin');
   assert.equal(page.requests[0].options.headers['X-CPU-Client'], 'ios');
@@ -67,6 +72,15 @@ test('bundled bridge preserves a newer Web implementation', () => {
   vm.runInContext(script, page.context);
   assert.equal(page.window.CPUTimeNativeScheduleFetch, modern);
   assert.equal(page.subscribers.length, 0);
+});
+
+test('auth refresh remains available when an older schedule bridge already exists', async () => {
+  const page = legacyPage();
+  page.window.CPUTimeNativeScheduleFetch = () => Promise.resolve({ version: 1 });
+  page.auth.refreshSelfSilently = async () => { page.auth.user.role = 'mod'; };
+  vm.runInContext(script, page.context);
+  await page.window.CPUTimeNative.refreshAuth();
+  assert.equal(page.authReports.at(-1).canAccessAdmin, true);
 });
 test('ordinary browser UA does not install a native bridge', () => {
   const page = legacyPage();
@@ -99,5 +113,26 @@ test('native auth reports carry the Web module-admin capability and react to rol
 
   page.auth.user.role = 'admin';
   page.subscribers.forEach(fn => fn());
+  assert.equal(page.authReports.at(-1).canAccessAdmin, true);
+});
+
+test('native auth reports fall back to raw administrator roles on older Web bundles', () => {
+  const page = legacyPage();
+  page.auth.user.role = 'admin';
+  vm.runInContext(script, page.context);
+  assert.equal(page.authReports.at(-1).canAccessAdmin, true);
+});
+
+test('native quick menu refresh re-reads the current account capability', async () => {
+  const page = legacyPage();
+  let refreshes = 0;
+  page.auth.refreshSelfSilently = async () => {
+    refreshes += 1;
+    page.auth.user.role = 'admin';
+  };
+  vm.runInContext(script, page.context);
+  assert.equal(typeof page.window.CPUTimeNative.refreshAuth, 'function');
+  await page.window.CPUTimeNative.refreshAuth();
+  assert.equal(refreshes, 1);
   assert.equal(page.authReports.at(-1).canAccessAdmin, true);
 });
