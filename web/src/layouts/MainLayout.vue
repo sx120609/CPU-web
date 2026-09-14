@@ -241,7 +241,13 @@
         <div class="footer-main">
           <div class="footer-company">
             <div class="footer-brand-row">
-              <span class="footer-brand-mark" aria-hidden="true">药</span>
+              <img
+                class="footer-brand-mark"
+                :src="'/favicon.svg?v=20260830'"
+                alt=""
+                aria-hidden="true"
+                decoding="async"
+              />
               <router-link class="footer-brand" to="/home">药大拾间</router-link>
             </div>
             <p>球谐信息技术（深圳）有限公司</p>
@@ -257,7 +263,7 @@
           </address>
         </div>
         <div class="footer-bottom">
-          <span>© 2026 药大拾间<span class="footer-separator" aria-hidden="true"> · </span>非学校官方站点</span>
+          <span>© 2026 药大拾间<span class="footer-separator footer-disclaimer" aria-hidden="true"> · </span><span class="footer-disclaimer">非学校官方站点</span></span>
           <nav class="footer-links" aria-label="网站信息">
             <router-link to="/download">客户端下载</router-link>
             <a href="https://github.com/sx120609/CPU-web" target="_blank" rel="noopener noreferrer">GitHub</a>
@@ -1701,16 +1707,12 @@ html[data-theme="dark"] .assistant-widget {
 }
 
 .footer-brand-mark {
-  display: inline-grid;
-  width: 30px;
-  height: 30px;
-  place-items: center;
-  border: 1px solid color-mix(in srgb, var(--cpu-primary) 42%, var(--cpu-border-soft));
+  display: block;
+  width: 32px;
+  height: 32px;
   border-radius: 9px;
-  background: color-mix(in srgb, var(--cpu-primary) 16%, transparent);
-  color: var(--cpu-primary);
-  font-size: 15px;
-  font-weight: 750;
+  object-fit: contain;
+  flex: 0 0 32px;
 }
 
 .footer-company p {
@@ -1807,48 +1809,6 @@ html[data-theme="dark"] .assistant-widget {
 .footer-links a:hover {
   background: color-mix(in srgb, var(--cpu-primary) 10%, transparent);
   text-decoration: none;
-}
-
-@media (max-width: 600px) {
-  .footer {
-    padding: 20px max(16px, env(safe-area-inset-right, 0px)) calc(var(--liquid-tabbar-reserve) + 14px) max(16px, env(safe-area-inset-left, 0px));
-  }
-
-  .footer-main {
-    grid-template-columns: 1fr;
-    gap: 10px;
-    padding-bottom: 16px;
-  }
-
-  .footer-company,
-  .footer-contact {
-    padding: 0;
-  }
-
-  .footer-bottom {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .footer-links {
-    width: 100%;
-    justify-content: stretch;
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .footer-links a {
-    min-height: 34px;
-    justify-content: center;
-    border: 1px solid var(--cpu-border-soft);
-    background: color-mix(in srgb, var(--cpu-surface) 44%, transparent);
-    text-align: center;
-  }
-
-  .footer-contact-links a {
-    min-height: 30px;
-  }
 }
 
 .mobile-tabbar {
@@ -2347,5 +2307,98 @@ html[data-theme="dark"] .assistant-widget {
 
 @media (prefers-reduced-motion: reduce) {
   .mobile-tabbar.mobile-tabbar { transition: none; }
+}
+
+/* 移动端只保留品牌、联系方式和版权信息。 */
+@media (max-width: 768px) {
+  .footer {
+    padding: 14px max(16px, env(safe-area-inset-right, 0px)) calc(var(--liquid-tabbar-reserve) + 10px) max(16px, env(safe-area-inset-left, 0px));
+  }
+
+  .footer::after {
+    display: none;
+  }
+
+  .footer-main {
+    display: block;
+    padding-bottom: 9px;
+  }
+
+  .footer-company {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .footer-brand-row {
+    gap: 6px;
+  }
+
+  .footer-brand-mark {
+    width: 26px;
+    height: 26px;
+    flex-basis: 26px;
+    border-radius: 7px;
+  }
+
+  .footer a.footer-brand {
+    font-size: 16px;
+  }
+
+  .footer-company p {
+    display: none;
+  }
+
+  .footer-about {
+    min-height: 24px;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  .footer-contact {
+    display: block;
+    margin-top: 8px;
+  }
+
+  .footer-contact-label {
+    display: none;
+  }
+
+  .footer-contact .footer-address {
+    display: none;
+  }
+
+  .footer-contact-links {
+    gap: 14px;
+    margin-top: 0;
+  }
+
+  .footer-contact-links a {
+    min-height: 23px;
+    font-size: 11px;
+  }
+
+  .footer-bottom {
+    display: block;
+    align-items: center;
+    padding-top: 8px;
+  }
+
+  .footer-bottom > span {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .footer-links {
+    display: none;
+  }
+
+  .footer-disclaimer {
+    display: none;
+  }
 }
 </style>

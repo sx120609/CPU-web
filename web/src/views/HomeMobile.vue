@@ -139,12 +139,12 @@ let adSequence = 0;
 let mounted = false;
 let disposed = false;
 let loadObserver: IntersectionObserver | null = null;
-let pendingRestoreState: HomeFeedRestoreState | null = null;
+let pendingRestoreState: HomeFeedRestoreState | null = readForumListRestoreState<HomeFeedRestoreState>(route.fullPath);
+
+if (pendingRestoreState?.stream === "market" && marketFeedEnabled.value) activeFeedStream.value = "market";
 
 onMounted(() => {
   mounted = true;
-  pendingRestoreState = readForumListRestoreState<HomeFeedRestoreState>(route.fullPath);
-  if (pendingRestoreState?.stream === "market" && marketFeedEnabled.value) activeFeedStream.value = "market";
   loadObserver = typeof IntersectionObserver === "undefined" ? null : new IntersectionObserver(([entry]) => {
     if (entry?.isIntersecting && canLoadMore.value && !activeFeed.value.loading && !activeFeed.value.loadingMore && !activeFeed.value.loadMoreError) void loadMore();
   }, { rootMargin: "220px 0px 320px", threshold: .01 });
@@ -177,7 +177,7 @@ onBeforeUnmount(() => {
 onBeforeRouteLeave((to) => {
   if (to.name !== "topic" || !latestTopics.value.length) return;
   writeForumListRestoreState<HomeFeedRestoreState>(route.fullPath, {
-    scrollY: window.scrollY,
+    scrollY: readPageScrollY(),
     page: activeFeed.value.page,
     stream: activeFeedStream.value,
     forumPage: feedStates.forum.page,
@@ -209,10 +209,26 @@ async function loadHomeScope() {
       .slice(0, feedPageSize);
     feedStates.forum.total = feedStates.forum.list.length;
   }
+  // Cached rows are available synchronously. Put the page back before the
+  // network refresh can cause a visible top-of-page frame.
+  if (pendingRestoreState) {
+    await nextTick();
+    const scrollY = Math.max(0, Number(pendingRestoreState.scrollY || 0));
+    if (scrollY <= getPageScrollHeight() + 8) scrollPageTo(scrollY);
+  }
   homeError.value = "";
-  void loadSummary({ scope, fallback: cached });
-  void loadFeedPages(activeFeedStream.value);
-  void loadAds();
+  await Promise.all([
+    loadSummary({ scope, fallback: cached }),
+    loadFeedPages(activeFeedStream.value),
+    loadAds(),
+  ]);
+  // Restore only after the summary, feed and ad slots have settled. Each of
+  // them can insert content above the saved position and otherwise shifts the
+  // user back to a different height after the first successful scroll.
+  if (pendingRestoreState && !disposed) {
+    await nextTick();
+    await restoreScrollIfNeeded();
+  }
 }
 
 async function loadAds() {
@@ -286,7 +302,6 @@ async function loadFeedPages(stream: MobileHomeFeedStream) {
       state.loading = false;
       await nextTick();
       if (stream === activeFeedStream.value) {
-        await restoreScrollIfNeeded();
         observeLoadMore();
       }
     }
@@ -339,13 +354,44 @@ async function restoreScrollIfNeeded() {
   if (!pendingRestoreState) return;
   const scrollY = Math.max(0, Number(pendingRestoreState.scrollY || 0));
   await new Promise<void>((resolve) => {
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      window.scrollTo({ top: scrollY, behavior: "auto" });
-      resolve();
-    }));
+    let attempts = 0;
+    const restore = () => {
+      scrollPageTo(scrollY);
+      const availableHeight = getPageScrollHeight();
+      if (scrollY <= availableHeight + 8 || attempts >= 24) {
+        resolve();
+        return;
+      }
+      attempts += 1;
+      requestAnimationFrame(restore);
+    };
+    requestAnimationFrame(restore);
   });
   clearForumListRestoreState(route.fullPath);
   pendingRestoreState = null;
+}
+
+function readPageScrollY() {
+  const app = document.getElementById("app");
+  const documentScrollY = document.scrollingElement?.scrollTop || 0;
+  return Math.max(window.scrollY || 0, documentScrollY, app?.scrollTop || 0);
+}
+
+function scrollPageTo(top: number) {
+  const options: ScrollToOptions = { top, left: 0, behavior: "auto" };
+  document.getElementById("app")?.scrollTo(options);
+  document.scrollingElement?.scrollTo(options);
+  window.scrollTo(options);
+}
+
+function getPageScrollHeight() {
+  const app = document.getElementById("app");
+  const documentScroller = document.scrollingElement;
+  return Math.max(
+    0,
+    (app?.scrollHeight || 0) - (app?.clientHeight || 0),
+    (documentScroller?.scrollHeight || 0) - (documentScroller?.clientHeight || 0),
+  );
 }
 
 function dedupeTopics(items: Topic[]) {
