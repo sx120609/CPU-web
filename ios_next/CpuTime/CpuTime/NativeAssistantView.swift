@@ -1,33 +1,264 @@
 import SwiftUI
 import UIKit
+import Combine
+
+@MainActor
+final class NativeAssistantModel: ObservableObject {
+    @Published var input = ""
+    @Published var messages: [NativeAssistantMessage] = []
+    @Published var isLoading = false
+    @Published var errorMessage = ""
+    @Published private(set) var conversations: [NativeAssistantConversation] = []
+    @Published private(set) var historyLoaded = false
+
+    private(set) var activeConversationID = ""
+    private var requestGeneration = 0
+    private var messageSequence = 0
+    private var streamTask: Task<Void, Never>?
+
+    deinit {
+        streamTask?.cancel()
+    }
+
+    func send(_ value: String, using session: HybridWebViewStore) {
+        let text = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, !isLoading else { return }
+
+        input = ""
+        let history = messages.suffix(60).map {
+            [
+                "role": $0.role.rawValue,
+                "content": String($0.content.prefix(4000)),
+            ]
+        }
+        ensureConversation(title: text)
+        messages.append(NativeAssistantMessage(id: nextMessageID(), role: .user, content: text))
+        persistActiveConversation(using: session, syncCloud: false)
+
+        let assistantID = nextMessageID()
+        messages.append(NativeAssistantMessage(id: assistantID, role: .assistant, content: "", streaming: true))
+        isLoading = true
+        errorMessage = ""
+        requestGeneration += 1
+        let generation = requestGeneration
+
+        streamTask = Task { @MainActor [weak self, weak session] in
+            guard let self, let session else { return }
+            do {
+                let reply = try await session.nativeAssistantStream(
+                    message: text,
+                    history: history,
+                    onDelta: { [weak self] delta in
+                        Task { @MainActor [weak self] in
+                            guard let self, generation == self.requestGeneration,
+                                  let index = self.messages.firstIndex(where: { $0.id == assistantID }) else { return }
+                            self.messages[index].content += delta
+                            self.messages[index].streaming = true
+                            self.messages[index].streamStatus = "正在生成回答…"
+                        }
+                    },
+                    onStatus: { [weak self] status in
+                        Task { @MainActor [weak self] in
+                            guard let self, generation == self.requestGeneration,
+                                  let index = self.messages.firstIndex(where: { $0.id == assistantID }) else { return }
+                            self.messages[index].streamStatus = status
+                        }
+                    }
+                )
+                guard generation == self.requestGeneration,
+                      let index = self.messages.firstIndex(where: { $0.id == assistantID }) else { return }
+                self.messages[index].content = reply.answer
+                self.messages[index].actions = reply.actions
+                self.messages[index].suggestions = reply.suggestions
+                self.messages[index].images = reply.images
+                self.messages[index].sources = reply.sources
+                self.messages[index].streaming = false
+                self.messages[index].streamStatus = ""
+                self.persistActiveConversation(using: session, syncCloud: true)
+            } catch is CancellationError {
+                guard generation == self.requestGeneration else { return }
+                self.messages.removeAll { $0.id == assistantID }
+                self.persistActiveConversation(using: session, syncCloud: false)
+            } catch {
+                guard generation == self.requestGeneration else { return }
+                self.messages.removeAll { $0.id == assistantID }
+                self.persistActiveConversation(using: session, syncCloud: false)
+                self.errorMessage = (error as? LocalizedError)?.errorDescription ?? "拾间 AI 暂时不可用，请重试。"
+            }
+            if generation == self.requestGeneration {
+                self.isLoading = false
+                self.streamTask = nil
+            }
+        }
+    }
+
+    func startNewConversation(using session: HybridWebViewStore) {
+        cancelStream(using: session)
+        messages.removeAll()
+        input = ""
+        errorMessage = ""
+        activeConversationID = ""
+    }
+
+    func openConversation(_ conversation: NativeAssistantConversation, using session: HybridWebViewStore) {
+        cancelStream(using: session)
+        activeConversationID = conversation.id
+        messages = conversation.messages.map(NativeAssistantMessage.init)
+        messageSequence = messages.map(\.id).max() ?? 0
+        input = ""
+        errorMessage = ""
+    }
+
+    func deleteConversation(_ conversation: NativeAssistantConversation, using session: HybridWebViewStore) {
+        conversations.removeAll { $0.id == conversation.id }
+        saveLocalHistory(using: session)
+        if activeConversationID == conversation.id {
+            startNewConversation(using: session)
+        }
+        guard session.isLoggedIn else { return }
+        Task { @MainActor in
+            try? await session.deleteNativeAssistantConversation(id: conversation.id)
+        }
+    }
+
+    func accountDidChange(using session: HybridWebViewStore) {
+        cancelStream(using: session)
+        messages.removeAll()
+        conversations.removeAll()
+        activeConversationID = ""
+        messageSequence = 0
+        historyLoaded = false
+        Task { @MainActor [weak self, weak session] in
+            guard let self, let session else { return }
+            await self.loadHistory(using: session)
+        }
+    }
+
+    func loadHistory(using session: HybridWebViewStore) async {
+        guard !historyLoaded else { return }
+        historyLoaded = true
+        let local = loadLocalHistory(using: session)
+        conversations = local
+        if let active = local.first {
+            activeConversationID = active.id
+            messages = active.messages.map(NativeAssistantMessage.init)
+            messageSequence = messages.map(\.id).max() ?? 0
+        }
+        guard session.isLoggedIn else { return }
+        do {
+            let cloud = try await session.listNativeAssistantConversations()
+            let merged = mergeConversations(local: conversations, cloud: cloud)
+            conversations = merged
+            saveLocalHistory(using: session)
+            if let active = merged.first(where: { $0.id == activeConversationID }) {
+                messages = active.messages.map(NativeAssistantMessage.init)
+                messageSequence = messages.map(\.id).max() ?? 0
+            } else if messages.isEmpty, let active = merged.first {
+                openConversation(active, using: session)
+            }
+        } catch {
+            // Keep local history available while offline and retry next time.
+            historyLoaded = false
+        }
+    }
+
+    private func cancelStream(using session: HybridWebViewStore) {
+        requestGeneration += 1
+        isLoading = false
+        streamTask?.cancel()
+        streamTask = nil
+        session.cancelNativeAssistantStreams()
+    }
+
+    private func ensureConversation(title: String) {
+        guard !conversations.contains(where: { $0.id == activeConversationID }) else { return }
+        let conversation = NativeAssistantConversation(
+            id: UUID().uuidString.lowercased(),
+            title: String(title.prefix(80)),
+            messages: []
+        )
+        activeConversationID = conversation.id
+        conversations.insert(conversation, at: 0)
+    }
+
+    private func nextMessageID() -> Int {
+        messageSequence += 1
+        return messageSequence
+    }
+
+    private func persistActiveConversation(using session: HybridWebViewStore, syncCloud: Bool) {
+        guard let index = conversations.firstIndex(where: { $0.id == activeConversationID }) else { return }
+        let stored = messages
+            .filter { !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !$0.streaming }
+            .suffix(60)
+            .map(\.stored)
+        guard !stored.isEmpty else { return }
+        conversations[index].messages = Array(stored)
+        conversations[index].updatedAt = Int(Date().timeIntervalSince1970 * 1000)
+        if let firstUser = stored.first(where: { $0.role == .user }) {
+            conversations[index].title = String(firstUser.content.prefix(80))
+        }
+        conversations.sort { $0.updatedAt > $1.updatedAt }
+        saveLocalHistory(using: session)
+        guard syncCloud, session.isLoggedIn,
+              let conversation = conversations.first(where: { $0.id == activeConversationID }) else { return }
+        Task { @MainActor in
+            _ = try? await session.saveNativeAssistantConversation(conversation)
+        }
+    }
+
+    private func historyStorageKey(using session: HybridWebViewStore) -> String {
+        let account = session.authState.account.trimmingCharacters(in: .whitespacesAndNewlines)
+        return "native-assistant-history:v1:\(account.isEmpty ? "default" : account)"
+    }
+
+    private func loadLocalHistory(using session: HybridWebViewStore) -> [NativeAssistantConversation] {
+        guard let data = UserDefaults.standard.data(forKey: historyStorageKey(using: session)),
+              let decoded = try? JSONDecoder().decode([NativeAssistantConversation].self, from: data) else { return [] }
+        return decoded.filter { !$0.messages.isEmpty }.sorted { $0.updatedAt > $1.updatedAt }.prefix(20).map { $0 }
+    }
+
+    private func saveLocalHistory(using session: HybridWebViewStore) {
+        guard let data = try? JSONEncoder().encode(conversations) else { return }
+        UserDefaults.standard.set(data, forKey: historyStorageKey(using: session))
+    }
+
+    private func mergeConversations(local: [NativeAssistantConversation], cloud: [NativeAssistantConversation]) -> [NativeAssistantConversation] {
+        var merged: [String: NativeAssistantConversation] = [:]
+        let deletedIDs = Set(cloud.filter { $0.deletedAt != nil }.map(\.id))
+        for conversation in local + cloud where conversation.deletedAt == nil && !deletedIDs.contains(conversation.id) && !conversation.messages.isEmpty {
+            if let current = merged[conversation.id], current.updatedAt >= conversation.updatedAt { continue }
+            merged[conversation.id] = conversation
+        }
+        return merged.values.sorted { $0.updatedAt > $1.updatedAt }.prefix(20).map { $0 }
+    }
+}
 
 /// Native conversation surface for the iOS shell. The Web session remains the
 /// transport owner, while SwiftUI owns the keyboard, composer and scroll
 /// geometry so the page above never gets pushed out of view.
 struct NativeAssistantView: View {
     @ObservedObject var session: HybridWebViewStore
+    @ObservedObject private var assistant: NativeAssistantModel
     let onOpen: (String) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var composerFocused = false
     @State private var composerHeight: CGFloat = 42
-    @State private var input = ""
-    @State private var messages: [NativeAssistantMessage] = []
-    @State private var isLoading = false
-    @State private var errorMessage = ""
-    @State private var requestGeneration = 0
-    @State private var conversations: [NativeAssistantConversation] = []
-    @State private var activeConversationID = ""
-    @State private var messageSequence = 0
     @State private var historyPresented = false
-    @State private var historyLoaded = false
 
     private let suggestions = ["宿舍电费在哪里查？", "怎么打开药苑之声？", "AI 额度怎么计算？"]
+
+    init(session: HybridWebViewStore, onOpen: @escaping (String) -> Void) {
+        self.session = session
+        self.onOpen = onOpen
+        _assistant = ObservedObject(wrappedValue: session.assistantModel)
+    }
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                if messages.isEmpty {
+                if assistant.messages.isEmpty {
                     welcome
                 } else {
                     conversation
@@ -49,11 +280,11 @@ struct NativeAssistantView: View {
                     }
                     .accessibilityLabel("历史对话")
                     Button {
-                        startNewConversation()
+                        assistant.startNewConversation(using: session)
                     } label: {
                         Image(systemName: "plus")
                     }
-                    .disabled(messages.isEmpty && input.isEmpty)
+                    .disabled(assistant.messages.isEmpty && assistant.input.isEmpty)
                     .accessibilityLabel("新建对话")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
@@ -62,9 +293,9 @@ struct NativeAssistantView: View {
             }
             .tint(.cpuBrand)
             .alert("拾间 AI", isPresented: errorAlertBinding) {
-                Button("知道了", role: .cancel) { errorMessage = "" }
+                Button("知道了", role: .cancel) { assistant.errorMessage = "" }
             } message: {
-                Text(errorMessage)
+                Text(assistant.errorMessage)
             }
             .sheet(isPresented: $historyPresented) {
                 historySheet
@@ -73,12 +304,10 @@ struct NativeAssistantView: View {
         }
         .preferredColorScheme(session.pageColorScheme)
         .task {
-            await loadHistory()
+            await assistant.loadHistory(using: session)
         }
         .onChange(of: session.authState.account) { _, _ in
-            guard !isLoading else { return }
-            historyLoaded = false
-            Task { await loadHistory() }
+            assistant.accountDidChange(using: session)
         }
     }
 
@@ -104,7 +333,7 @@ struct NativeAssistantView: View {
                     .padding(.top, 3)
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
                     ForEach(suggestions, id: \.self) { suggestion in
-                        Button { send(suggestion) } label: {
+                        Button { assistant.send(suggestion, using: session) } label: {
                             Text(suggestion)
                                 .font(.caption.weight(.medium))
                                 .multilineTextAlignment(.leading)
@@ -135,7 +364,7 @@ struct NativeAssistantView: View {
     private var historySheet: some View {
         NavigationStack {
             Group {
-                if conversations.isEmpty {
+                if assistant.conversations.isEmpty {
                     ContentUnavailableView(
                         "暂无历史对话",
                         systemImage: "clock.arrow.circlepath",
@@ -143,9 +372,10 @@ struct NativeAssistantView: View {
                     )
                 } else {
                     List {
-                        ForEach(conversations) { conversation in
+                        ForEach(assistant.conversations) { conversation in
                             Button {
-                                openConversation(conversation)
+                                assistant.openConversation(conversation, using: session)
+                                historyPresented = false
                             } label: {
                                 VStack(alignment: .leading, spacing: 5) {
                                     Text(conversation.title)
@@ -166,7 +396,7 @@ struct NativeAssistantView: View {
                             .buttonStyle(.plain)
                             .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                                 Button(role: .destructive) {
-                                    deleteConversation(conversation)
+                                    assistant.deleteConversation(conversation, using: session)
                                 } label: {
                                     Label("删除", systemImage: "trash")
                                 }
@@ -180,7 +410,7 @@ struct NativeAssistantView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("新建") { startNewConversation(); historyPresented = false }
+                    Button("新建") { assistant.startNewConversation(using: session); historyPresented = false }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("完成") { historyPresented = false }
@@ -193,11 +423,11 @@ struct NativeAssistantView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 18) {
-                    ForEach(messages) { message in
+                    ForEach(assistant.messages) { message in
                         messageView(message)
                             .id(message.id)
                     }
-                    if isLoading {
+                    if assistant.isLoading {
                         HStack(spacing: 7) {
                             ProgressView().controlSize(.small).tint(.cpuBrand)
                             Text("正在生成回答…")
@@ -213,16 +443,16 @@ struct NativeAssistantView: View {
                 .padding(.vertical, 16)
             }
             .scrollDismissesKeyboard(.interactively)
-            .onChange(of: messages.count) { _, _ in
+            .onChange(of: assistant.messages.count) { _, _ in
                 withAnimation(.easeOut(duration: 0.22)) {
-                    if let last = messages.last { proxy.scrollTo(last.id, anchor: .bottom) }
+                    if let last = assistant.messages.last { proxy.scrollTo(last.id, anchor: .bottom) }
                 }
             }
-            .onChange(of: messages.last?.content) { _, _ in
-                guard isLoading, let last = messages.last else { return }
+            .onChange(of: assistant.messages.last?.content) { _, _ in
+                guard assistant.isLoading, let last = assistant.messages.last else { return }
                 withAnimation(.easeOut(duration: 0.12)) { proxy.scrollTo(last.id, anchor: .bottom) }
             }
-            .onChange(of: isLoading) { _, loading in
+            .onChange(of: assistant.isLoading) { _, loading in
                 guard loading else { return }
                 withAnimation(.easeOut(duration: 0.22)) { proxy.scrollTo("loading", anchor: .bottom) }
             }
@@ -344,7 +574,7 @@ struct NativeAssistantView: View {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 7) {
                             ForEach(message.suggestions, id: \.self) { suggestion in
-                                Button(suggestion) { send(suggestion) }
+                                Button(suggestion) { assistant.send(suggestion, using: session) }
                                     .font(.caption.weight(.medium))
                                     .padding(.horizontal, 10)
                                     .padding(.vertical, 7)
@@ -365,9 +595,9 @@ struct NativeAssistantView: View {
         HStack(alignment: .bottom, spacing: 8) {
             ZStack(alignment: .topLeading) {
                 NativeAssistantTextEditor(
-                    text: $input,
+                    text: $assistant.input,
                     isFocused: $composerFocused,
-                    onSubmit: { send(input) },
+                    onSubmit: { assistant.send(assistant.input, using: session) },
                     onHeightChange: { height in
                         guard abs(composerHeight - height) > 0.5 else { return }
                         composerHeight = height
@@ -375,7 +605,7 @@ struct NativeAssistantView: View {
                 )
                 .frame(maxWidth: .infinity)
                 .frame(height: composerHeight, alignment: .topLeading)
-                if input.isEmpty {
+                if assistant.input.isEmpty {
                     Text("给拾间 AI 发消息")
                         .font(.body)
                         .foregroundStyle(.tertiary)
@@ -395,8 +625,8 @@ struct NativeAssistantView: View {
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .animation(.easeOut(duration: 0.14), value: composerHeight)
 
-            Button { send(input) } label: {
-                Image(systemName: isLoading ? "hourglass" : "arrow.up")
+            Button { assistant.send(assistant.input, using: session) } label: {
+                Image(systemName: assistant.isLoading ? "hourglass" : "arrow.up")
                     .font(.system(size: 16, weight: .bold))
                     .frame(width: 42, height: 42)
                     .foregroundStyle(.white)
@@ -404,8 +634,8 @@ struct NativeAssistantView: View {
                     .clipShape(Circle())
             }
             .buttonStyle(.plain)
-            .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isLoading)
-            .opacity(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isLoading ? 0.45 : 1)
+            .disabled(assistant.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || assistant.isLoading)
+            .opacity(assistant.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || assistant.isLoading ? 0.45 : 1)
             .accessibilityLabel("发送")
         }
         .padding(.horizontal, 14)
@@ -417,193 +647,9 @@ struct NativeAssistantView: View {
 
     private var errorAlertBinding: Binding<Bool> {
         Binding(
-            get: { !errorMessage.isEmpty },
-            set: { if !$0 { errorMessage = "" } }
+            get: { !assistant.errorMessage.isEmpty },
+            set: { if !$0 { assistant.errorMessage = "" } }
         )
-    }
-
-    private func send(_ value: String) {
-        let text = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !isLoading else { return }
-        input = ""
-        composerHeight = 42
-        let history = messages.suffix(60).map {
-            [
-                "role": $0.role.rawValue,
-                "content": String($0.content.prefix(4000)),
-            ]
-        }
-        ensureConversation(title: text)
-        messages.append(NativeAssistantMessage(id: nextMessageID(), role: .user, content: text))
-        persistActiveConversation(syncCloud: false)
-        let assistantID = nextMessageID()
-        messages.append(NativeAssistantMessage(id: assistantID, role: .assistant, content: "", streaming: true))
-        isLoading = true
-        errorMessage = ""
-        requestGeneration += 1
-        let generation = requestGeneration
-        Task { @MainActor in
-            do {
-                let reply = try await session.nativeAssistantStream(
-                    message: text,
-                    history: history,
-                    onDelta: { delta in
-                        guard generation == requestGeneration,
-                              let index = messages.firstIndex(where: { $0.id == assistantID }) else { return }
-                        messages[index].content += delta
-                        messages[index].streaming = true
-                        messages[index].streamStatus = "正在生成回答…"
-                    },
-                    onStatus: { status in
-                        guard generation == requestGeneration,
-                              let index = messages.firstIndex(where: { $0.id == assistantID }) else { return }
-                        messages[index].streamStatus = status
-                    }
-                )
-                guard generation == requestGeneration else { return }
-                guard let index = messages.firstIndex(where: { $0.id == assistantID }) else { return }
-                messages[index].content = reply.answer
-                messages[index].actions = reply.actions
-                messages[index].suggestions = reply.suggestions
-                messages[index].images = reply.images
-                messages[index].sources = reply.sources
-                messages[index].streaming = false
-                messages[index].streamStatus = ""
-                persistActiveConversation(syncCloud: true)
-            } catch {
-                guard generation == requestGeneration else { return }
-                messages.removeAll { $0.id == assistantID }
-                persistActiveConversation(syncCloud: false)
-                errorMessage = (error as? LocalizedError)?.errorDescription ?? "拾间 AI 暂时不可用，请重试。"
-            }
-            if generation == requestGeneration { isLoading = false }
-        }
-    }
-
-    private func startNewConversation() {
-        session.cancelNativeAssistantStreams()
-        requestGeneration += 1
-        isLoading = false
-        composerFocused = false
-        messages.removeAll()
-        input = ""
-        errorMessage = ""
-        activeConversationID = ""
-    }
-
-    private func ensureConversation(title: String) {
-        guard !conversations.contains(where: { $0.id == activeConversationID }) else { return }
-        let conversation = NativeAssistantConversation(
-            id: UUID().uuidString.lowercased(),
-            title: String(title.prefix(80)),
-            messages: []
-        )
-        activeConversationID = conversation.id
-        conversations.insert(conversation, at: 0)
-    }
-
-    private func nextMessageID() -> Int {
-        messageSequence += 1
-        return messageSequence
-    }
-
-    private func persistActiveConversation(syncCloud: Bool) {
-        guard let index = conversations.firstIndex(where: { $0.id == activeConversationID }) else { return }
-        let stored = messages
-            .filter { !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !$0.streaming }
-            .suffix(60)
-            .map(\.stored)
-        guard !stored.isEmpty else { return }
-        conversations[index].messages = Array(stored)
-        conversations[index].updatedAt = Int(Date().timeIntervalSince1970 * 1000)
-        if let firstUser = stored.first(where: { $0.role == .user }) {
-            conversations[index].title = String(firstUser.content.prefix(80))
-        }
-        conversations.sort { $0.updatedAt > $1.updatedAt }
-        saveLocalHistory()
-        guard syncCloud, session.isLoggedIn else { return }
-        let conversation = conversations.first(where: { $0.id == activeConversationID })
-        guard let conversation else { return }
-        Task { @MainActor in
-            _ = try? await session.saveNativeAssistantConversation(conversation)
-        }
-    }
-
-    private func openConversation(_ conversation: NativeAssistantConversation) {
-        session.cancelNativeAssistantStreams()
-        requestGeneration += 1
-        isLoading = false
-        activeConversationID = conversation.id
-        messages = conversation.messages.map(NativeAssistantMessage.init)
-        messageSequence = messages.map(\.id).max() ?? 0
-        input = ""
-        errorMessage = ""
-        historyPresented = false
-    }
-
-    private func deleteConversation(_ conversation: NativeAssistantConversation) {
-        conversations.removeAll { $0.id == conversation.id }
-        saveLocalHistory()
-        if activeConversationID == conversation.id { startNewConversation() }
-        guard session.isLoggedIn else { return }
-        Task { @MainActor in
-            try? await session.deleteNativeAssistantConversation(id: conversation.id)
-        }
-    }
-
-    private func loadHistory() async {
-        guard !historyLoaded else { return }
-        historyLoaded = true
-        let local = loadLocalHistory()
-        conversations = local
-        if let active = local.first {
-            activeConversationID = active.id
-            messages = active.messages.map(NativeAssistantMessage.init)
-            messageSequence = messages.map(\.id).max() ?? 0
-        }
-        guard session.isLoggedIn else { return }
-        do {
-            let cloud = try await session.listNativeAssistantConversations()
-            let merged = mergeConversations(local: conversations, cloud: cloud)
-            conversations = merged
-            saveLocalHistory()
-            if let active = merged.first(where: { $0.id == activeConversationID }) {
-                messages = active.messages.map(NativeAssistantMessage.init)
-                messageSequence = messages.map(\.id).max() ?? 0
-            } else if messages.isEmpty, let active = merged.first {
-                openConversation(active)
-            }
-        } catch {
-            // Local history is still useful when the account is offline. The
-            // next open silently retries the cloud merge.
-            historyLoaded = false
-        }
-    }
-
-    private func mergeConversations(local: [NativeAssistantConversation], cloud: [NativeAssistantConversation]) -> [NativeAssistantConversation] {
-        var merged: [String: NativeAssistantConversation] = [:]
-        let deletedIDs = Set(cloud.filter { $0.deletedAt != nil }.map(\.id))
-        for conversation in local + cloud where conversation.deletedAt == nil && !deletedIDs.contains(conversation.id) && !conversation.messages.isEmpty {
-            if let current = merged[conversation.id], current.updatedAt >= conversation.updatedAt { continue }
-            merged[conversation.id] = conversation
-        }
-        return merged.values.sorted { $0.updatedAt > $1.updatedAt }.prefix(20).map { $0 }
-    }
-
-    private func historyStorageKey() -> String {
-        let account = session.authState.account.trimmingCharacters(in: .whitespacesAndNewlines)
-        return "native-assistant-history:v1:\(account.isEmpty ? "default" : account)"
-    }
-
-    private func loadLocalHistory() -> [NativeAssistantConversation] {
-        guard let data = UserDefaults.standard.data(forKey: historyStorageKey()),
-              let decoded = try? JSONDecoder().decode([NativeAssistantConversation].self, from: data) else { return [] }
-        return decoded.filter { !$0.messages.isEmpty }.sorted { $0.updatedAt > $1.updatedAt }.prefix(20).map { $0 }
-    }
-
-    private func saveLocalHistory() {
-        guard let data = try? JSONEncoder().encode(conversations) else { return }
-        UserDefaults.standard.set(data, forKey: historyStorageKey())
     }
 
     private func conversationPreview(_ conversation: NativeAssistantConversation) -> String {
@@ -766,7 +812,7 @@ private struct NativeAssistantTextEditor: UIViewRepresentable {
     }
 }
 
-private struct NativeAssistantMessage: Identifiable {
+struct NativeAssistantMessage: Identifiable {
     enum Role: String { case user, assistant }
 
     let id: Int

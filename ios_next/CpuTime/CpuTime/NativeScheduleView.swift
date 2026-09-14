@@ -50,7 +50,7 @@ struct NativeScheduleView: View {
                     .padding(.horizontal, Self.contentInset)
                     .padding(.top, 8)
                     .padding(.bottom, 8)
-                    .background(Color(uiColor: .systemGroupedBackground))
+                    .background(Color(uiColor: .systemGroupedBackground).opacity(preferences.backgroundImage == nil ? 1 : 0.86))
                     .overlay(alignment: .bottom) { Divider() }
             }
 
@@ -85,25 +85,31 @@ struct NativeScheduleView: View {
                 .padding(.top, 8)
                 .padding(.bottom, 8)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
-                .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea(.container, edges: [.horizontal, .bottom]))
-                // The representable must live inside the scroll content so
-                // its superview walk reaches this ScrollView on iOS 17.
-                .background {
-                    NativeScheduleRefreshControl {
-                        await store.refresh()
-                    }
-                    // A non-zero anchor survives SwiftUI's view elision and
-                    // still contributes no visible content to the grid.
-                    .frame(width: 1, height: 1)
-                    .opacity(0.01)
-                }
+                .background(Color(uiColor: .systemGroupedBackground).opacity(preferences.backgroundImage == nil ? 1 : 0.86).ignoresSafeArea(.container, edges: [.horizontal, .bottom]))
             }
-            // SwiftUI's `.refreshable` is not consistently attached to this
-            // nested schedule scroll view on iOS 17. The representable above
-            // installs a real UIRefreshControl on the actual UIKit container.
+            // This is attached to the actual vertical timetable scroll view,
+            // so the native pull gesture cannot be mistaken for week paging.
+            // `.scrollBounceBehavior` keeps the gesture available even when
+            // all eleven rows fit on screen.
+            .refreshable {
+                await store.refresh()
+            }
             .scrollBounceBehavior(.always, axes: .vertical)
         }
-        .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
+        .background {
+            ZStack {
+                Color(uiColor: .systemGroupedBackground)
+                if let image = preferences.backgroundImage {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .opacity(preferences.backgroundOpacity)
+                        .ignoresSafeArea()
+                        .allowsHitTesting(false)
+                }
+            }
+            .ignoresSafeArea()
+        }
         .task {
             viewMode = preferences.defaultView == "day" ? .day : .week
             adoptSelectionIfNeeded()
@@ -376,13 +382,20 @@ struct NativeScheduleView: View {
                 // carries the timetable to the screen edge instead of stopping
                 // short at the content inset.
                 weekPager(result: result, width: proxy.size.width + Self.contentInset * 2) { week in
-                    scheduleRows(result: result, week: week, days: Array(1...7), columnWidth: columnWidth, compactCards: true)
+                    scheduleRows(
+                        result: result,
+                        week: week,
+                        days: Array(1...7),
+                        columnWidth: columnWidth,
+                        compactCards: preferences.density == "compact",
+                        rowHeight: weekRowHeight
+                    )
                         .frame(minWidth: proxy.size.width, alignment: .leading)
                         .padding(.horizontal, Self.contentInset)
                 }
                 .padding(.horizontal, -Self.contentInset)
             }
-            .frame(height: Self.scheduleGridHeight())
+            .frame(height: Self.scheduleGridHeight(rowHeight: weekRowHeight))
         }
     }
 
@@ -396,18 +409,26 @@ struct NativeScheduleView: View {
                         week: page.week.flatMap(Int.init),
                         days: [page.day],
                         columnWidth: columnWidth,
-                        compactCards: false,
-                        rowHeight: NativeScheduleDayColumn.daySlotHeight,
+                        compactCards: preferences.density == "compact",
+                        rowHeight: dayRowHeight,
                         showsDateHeader: false
                     )
                     .frame(width: proxy.size.width, alignment: .leading)
                 }
             }
             .frame(height: Self.scheduleGridHeight(
-                rowHeight: NativeScheduleDayColumn.daySlotHeight,
+                rowHeight: dayRowHeight,
                 includesDateHeader: false
             ))
         }
+    }
+
+    private var weekRowHeight: CGFloat {
+        preferences.density == "compact" ? 40 : NativeScheduleDayColumn.slotHeight
+    }
+
+    private var dayRowHeight: CGFloat {
+        preferences.density == "compact" ? 37 : NativeScheduleDayColumn.daySlotHeight
     }
 
     /// Daily mode uses the same three-page track and spring settling as the
@@ -2629,121 +2650,6 @@ private struct StateCard: View {
         .padding(24)
         .background(Color(uiColor: .secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-    }
-}
-
-/// Bridges the native pull gesture to the enclosing `UIScrollView`. Keeping
-/// the control outside the schedule grid avoids changing the grid's measured
-/// height and leaves horizontal week/day paging untouched.
-private struct NativeScheduleRefreshControl: UIViewRepresentable {
-    let action: @MainActor () async -> Void
-
-    private final class AnchorView: UIView {
-        var hierarchyChanged: (() -> Void)?
-
-        override func didMoveToSuperview() {
-            super.didMoveToSuperview()
-            hierarchyChanged?()
-        }
-
-        override func didMoveToWindow() {
-            super.didMoveToWindow()
-            hierarchyChanged?()
-        }
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(action: action)
-    }
-
-    func makeUIView(context: Context) -> UIView {
-        let view = AnchorView(frame: .zero)
-        view.isUserInteractionEnabled = false
-        view.hierarchyChanged = { [weak coordinator = context.coordinator, weak view] in
-            guard let view else { return }
-            coordinator?.attach(to: view)
-        }
-        return view
-    }
-
-    func updateUIView(_ uiView: UIView, context: Context) {
-        context.coordinator.action = action
-        context.coordinator.attach(to: uiView)
-    }
-
-    private static func enclosingScrollView(from view: UIView) -> UIScrollView? {
-        var candidate = view.superview
-        var fallback: UIScrollView?
-        while let current = candidate {
-            if let scrollView = current as? UIScrollView {
-                // Nested horizontal pagers can appear between the anchor and
-                // the schedule's vertical scroller. Prefer a container whose
-                // measured content is taller than its viewport, then keep the
-                // outermost scroll view as a fallback while SwiftUI is laying
-                // out the content for the first time.
-                if scrollView.contentSize.height > scrollView.bounds.height + 1
-                    || scrollView.alwaysBounceVertical {
-                    return scrollView
-                }
-                fallback = scrollView
-            }
-            candidate = current.superview
-        }
-        return fallback
-    }
-
-    @MainActor
-    final class Coordinator: NSObject {
-        var action: @MainActor () async -> Void
-        var control: UIRefreshControl?
-        weak var attachedScrollView: UIScrollView?
-        private var running = false
-        private var attachmentAttempts = 0
-
-        init(action: @escaping @MainActor () async -> Void) {
-            self.action = action
-        }
-
-        func attach(to anchor: UIView) {
-            guard let scrollView = NativeScheduleRefreshControl.enclosingScrollView(from: anchor) else {
-                // SwiftUI creates the hosting scroll view after the
-                // representable. Keep looking while the anchor is mounted;
-                // the first layout pass can take longer on a cold launch.
-                guard attachmentAttempts < 160 else { return }
-                attachmentAttempts += 1
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self, weak anchor] in
-                    guard let self, let anchor else { return }
-                    self.attach(to: anchor)
-                }
-                return
-            }
-            attachmentAttempts = 0
-            scrollView.alwaysBounceVertical = true
-            if attachedScrollView !== scrollView, let old = attachedScrollView, old.refreshControl === control {
-                old.refreshControl = nil
-            }
-            attachedScrollView = scrollView
-            if scrollView.refreshControl !== control {
-                control?.removeTarget(self, action: #selector(Coordinator.didPull(_:)), for: .valueChanged)
-                let refresh = control ?? UIRefreshControl()
-                refresh.tintColor = UIColor(red: 15 / 255, green: 143 / 255, blue: 127 / 255, alpha: 1)
-                refresh.accessibilityLabel = "下拉刷新课表"
-                refresh.addTarget(self, action: #selector(Coordinator.didPull(_:)), for: .valueChanged)
-                control = refresh
-                scrollView.refreshControl = refresh
-            }
-        }
-
-        @objc func didPull(_ sender: UIRefreshControl) {
-            guard !running else { return }
-            running = true
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                await action()
-                control?.endRefreshing()
-                running = false
-            }
-        }
     }
 }
 

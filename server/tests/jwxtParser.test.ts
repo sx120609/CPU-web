@@ -121,6 +121,28 @@ test("parseSchedule merges the same 2025-2026-2 course when JWXT repeats it with
   assert.deepEqual(courses[0].weekList, [1,2,3,4,5,6,7,8]);
 });
 
+test("parseSchedule keeps an explicitly listed week when JWXT parity text is contradictory", () => {
+  const result = parseSchedule(`
+    <html>
+      <head><title>个人课表信息</title></head>
+      <body>
+        <select id="xnxq01id"><option value="2025-2026-2" selected>2025-2026-2</option></select>
+        <table class="qz-weeklyTable">
+          <tr><th>周次</th><th>星期一</th><th>星期二</th><th>星期三</th><th>星期四</th><th>星期五</th><th>星期六</th><th>星期日</th></tr>
+          <tr>
+            <td name="timeTd"><div class="index-title">第一大节</div></td>
+            <td name="kbDataTd"></td><td name="kbDataTd"></td>
+            <td name="kbDataTd"><ul class="courselists"><li class="courselists-item"><div class="qz-hasCourse-title">第十八周课程</div><p><span class="qz-hasCourse-abbrinfo">老师:张老师;时间:18单周[1-2节];地点:A101</span></p></li></ul></td>
+            <td name="kbDataTd"></td><td name="kbDataTd"></td><td name="kbDataTd"></td><td name="kbDataTd"></td>
+          </tr>
+        </table>
+      </body>
+    </html>
+  `);
+  const course = result.cells.find((cell) => cell.day === 3)?.courses[0];
+  assert.deepEqual(course?.weekList, [18]);
+});
+
 test("parseSchedule parses the modern qz weekly table and restores rowspan columns", () => {
   const course = (name: string, detail: string) => `
     <ul class="courselists">

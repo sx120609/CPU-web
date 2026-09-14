@@ -1,6 +1,7 @@
 import SwiftUI
 import EventKit
 import ActivityKit
+import PhotosUI
 
 /// One native settings surface for the two companion experiences. Keeping the
 /// Watch status and iPhone widget controls together makes the schedule header
@@ -60,6 +61,9 @@ private struct ScheduleSettingsSection: View {
 private struct NativeScheduleSettingsView: View {
     @ObservedObject var preferences: NativeSchedulePreferences
     @Environment(\.dismiss) private var dismiss
+    @State private var selectedBackground: PhotosPickerItem?
+    @State private var backgroundBusy = false
+    @State private var backgroundError = ""
 
     private let palettes = [
         ("color-glass", "彩色玻璃"), ("green", "绿意"), ("blue", "晴蓝"),
@@ -85,13 +89,71 @@ private struct NativeScheduleSettingsView: View {
                     Text("周课表").tag("week")
                     Text("日课表").tag("day")
                 }
-                Picker("课程配色", selection: $preferences.palette) {
-                    ForEach(palettes, id: \.0) { value, label in
-                        Text(label).tag(value)
+                Picker("排版密度", selection: $preferences.density) {
+                    Text("舒适").tag("comfortable")
+                    Text("紧凑").tag("compact")
+                }
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("课程配色")
+                        .font(.subheadline.weight(.medium))
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 72), spacing: 10)], spacing: 10) {
+                        ForEach(palettes, id: \.0) { value, label in
+                            Button {
+                                preferences.palette = value
+                            } label: {
+                                VStack(spacing: 5) {
+                                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                        .fill(paletteColor(value))
+                                        .frame(height: 30)
+                                        .overlay {
+                                            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                                .stroke(preferences.palette == value ? Color.cpuBrand : Color.clear, lineWidth: 2)
+                                        }
+                                    Text(label)
+                                        .font(.caption2)
+                                        .foregroundStyle(preferences.palette == value ? Color.cpuBrand : .secondary)
+                                        .lineLimit(1)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("选择\(label)配色")
+                        }
                     }
                 }
             } header: {
                 Text("课表外观")
+            }
+
+            Section {
+                PhotosPicker(selection: $selectedBackground, matching: .images) {
+                    Label(backgroundBusy ? "正在读取背景" : "从照片选择背景", systemImage: "photo.on.rectangle")
+                }
+                .disabled(backgroundBusy)
+
+                if let image = preferences.backgroundImage {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 92)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    HStack {
+                        Text("背景强度")
+                        Slider(value: $preferences.backgroundOpacity, in: 0.05...0.5, step: 0.01)
+                        Text("\(Int(preferences.backgroundOpacity * 100))%")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                            .frame(width: 38, alignment: .trailing)
+                    }
+                    Button("移除背景图片", role: .destructive) {
+                        try? preferences.setBackgroundData(nil)
+                    }
+                    .disabled(backgroundBusy)
+                }
+            } header: {
+                Text("课表背景")
+            } footer: {
+                Text("背景只保存在本机，不会上传。")
             }
 
             Section {
@@ -107,7 +169,47 @@ private struct NativeScheduleSettingsView: View {
                 Button("完成") { dismiss() }
             }
         }
+        .onChange(of: selectedBackground) { _, item in
+            guard let item else { return }
+            backgroundBusy = true
+            Task {
+                do {
+                    guard let data = try await item.loadTransferable(type: Data.self) else { throw BackgroundError.invalidData }
+                    try preferences.setBackgroundData(data)
+                } catch {
+                    backgroundError = "背景读取失败，请换一张图片重试。"
+                }
+                backgroundBusy = false
+                selectedBackground = nil
+            }
+        }
+        .alert("课表背景", isPresented: Binding(
+            get: { !backgroundError.isEmpty },
+            set: { if !$0 { backgroundError = "" } }
+        )) {
+            Button("知道了", role: .cancel) { backgroundError = "" }
+        } message: {
+            Text(backgroundError)
+        }
     }
+
+    private func paletteColor(_ value: String) -> LinearGradient {
+        let colors: [Color]
+        switch value {
+        case "green": colors = [Color(red: 0.73, green: 0.93, blue: 0.78), Color(red: 0.35, green: 0.70, blue: 0.52)]
+        case "blue": colors = [Color(red: 0.73, green: 0.86, blue: 1), Color(red: 0.35, green: 0.54, blue: 0.91)]
+        case "teal": colors = [Color(red: 0.65, green: 0.91, blue: 0.88), Color(red: 0.25, green: 0.67, blue: 0.67)]
+        case "indigo": colors = [Color(red: 0.77, green: 0.78, blue: 1), Color(red: 0.41, green: 0.43, blue: 0.82)]
+        case "violet": colors = [Color(red: 0.88, green: 0.78, blue: 1), Color(red: 0.66, green: 0.43, blue: 0.85)]
+        case "orange": colors = [Color(red: 1, green: 0.86, blue: 0.63), Color(red: 0.92, green: 0.53, blue: 0.22)]
+        case "rose": colors = [Color(red: 1, green: 0.78, blue: 0.85), Color(red: 0.88, green: 0.38, blue: 0.58)]
+        case "slate": colors = [Color(red: 0.83, green: 0.86, blue: 0.91), Color(red: 0.36, green: 0.42, blue: 0.51)]
+        default: colors = [Color(red: 0.47, green: 0.79, blue: 0.69), Color(red: 0.46, green: 0.65, blue: 0.95), Color(red: 0.72, green: 0.59, blue: 0.87)]
+        }
+        return LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing)
+    }
+
+    private enum BackgroundError: Error { case invalidData }
 }
 
 @available(iOS 16.1, *)

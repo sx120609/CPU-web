@@ -12,6 +12,7 @@ export function parseWeekText(text?: string | null): number[] {
   for (const clause of clauses.length ? clauses : [source]) {
     const kind = parseWeekKind(clause);
     const matches = [...clause.matchAll(/(\d{1,2})\s*(?:[-~至到]\s*(\d{1,2}))?/g)];
+    let clauseAdded = false;
     for (const match of matches) {
       const start = Number(match[1]);
       const end = Number(match[2] || match[1]);
@@ -22,6 +23,20 @@ export function parseWeekText(text?: string | null): number[] {
         if (kind === "odd" && i % 2 === 0) continue;
         if (kind === "even" && i % 2 === 1) continue;
         out.add(i);
+        clauseAdded = true;
+      }
+    }
+    // A few JWXT pages contain parity text that contradicts the concrete
+    // week number, such as "18单周". Keep the listed weeks instead of
+    // returning [] (which callers correctly interpret as "all weeks").
+    if (!clauseAdded && (kind === "odd" || kind === "even")) {
+      for (const match of matches) {
+        const start = Number(match[1]);
+        const end = Number(match[2] || match[1]);
+        if (!Number.isFinite(start) || !Number.isFinite(end)) continue;
+        const min = Math.max(1, Math.min(start, end));
+        const max = Math.min(64, Math.max(start, end));
+        for (let i = min; i <= max; i++) out.add(i);
       }
     }
   }

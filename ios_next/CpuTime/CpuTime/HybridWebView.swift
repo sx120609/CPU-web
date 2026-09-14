@@ -7,8 +7,8 @@ import WebKit
 
 
 enum IOSNextWebConfiguration {
-    static let versionCode = 21
-    static let versionName = "3.7.0"
+    static let versionCode = 22
+    static let versionName = "3.8.0"
 
     static var appURL: URL {
         let configured = Bundle.main.object(forInfoDictionaryKey: "CPUAppURL") as? String
@@ -296,6 +296,9 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
     }
 
     let widgetSettings = NativeWidgetSettings()
+    /// Shared across sheet presentations so a dismissed AI surface keeps its
+    /// conversation and any in-flight stream alive.
+    let assistantModel = NativeAssistantModel()
 
     var onSchedulePrefetched: ((NativeScheduleSnapshot) -> Void)?
     var onNavigate: ((String, String) -> Void)?
