@@ -570,6 +570,161 @@ public struct NativeScheduleSnapshot: Codable, Equatable, Sendable {
     }
 }
 
+/// A platform-neutral timetable block used by the native schedule renderer.
+/// Keeping the merge step in the shared target lets the iOS view and its
+/// regression checks use exactly the same course identity rules.
+public struct NativeScheduleCourseBlockRecord: Equatable, Sendable {
+    public let id: String
+    public let course: NativeScheduleCourse
+    public let bigSlot: Int
+    public let startSlot: Int
+    public let endSlot: Int
+
+    public init(
+        id: String,
+        course: NativeScheduleCourse,
+        bigSlot: Int,
+        startSlot: Int,
+        endSlot: Int
+    ) {
+        self.id = id
+        self.course = course
+        self.bigSlot = bigSlot
+        self.startSlot = startSlot
+        self.endSlot = endSlot
+    }
+}
+
+public enum NativeScheduleCourseBlockMerger {
+    /// Merge repeated records for the same timetable position while retaining
+    /// distinct teachers/rooms as separate courses. Week text is occurrence
+    /// metadata, so a different week range alone must not create a second card.
+    public static func merge(_ blocks: [NativeScheduleCourseBlockRecord]) -> [NativeScheduleCourseBlockRecord] {
+        let families = Dictionary(grouping: blocks, by: identityKey)
+        var merged: [NativeScheduleCourseBlockRecord] = []
+
+        for family in families.values {
+            var current: NativeScheduleCourseBlockRecord?
+            for block in family.sorted(by: { ($0.startSlot, $0.endSlot, $0.id) < ($1.startSlot, $1.endSlot, $1.id) }) {
+                if let previous = current, block.startSlot <= previous.endSlot + 1 {
+                    let start = min(previous.startSlot, block.startSlot)
+                    let end = max(previous.endSlot, block.endSlot)
+                    current = NativeScheduleCourseBlockRecord(
+                        id: previous.id,
+                        course: courseWithRange(
+                            previous.course,
+                            merging: block.course,
+                            startSlot: start,
+                            endSlot: end
+                        ),
+                        bigSlot: max(1, Int(ceil(Double(start) / 2))),
+                        startSlot: start,
+                        endSlot: end
+                    )
+                } else {
+                    if let current { merged.append(current) }
+                    current = NativeScheduleCourseBlockRecord(
+                        id: block.id,
+                        course: courseWithRange(
+                            block.course,
+                            merging: nil,
+                            startSlot: block.startSlot,
+                            endSlot: block.endSlot
+                        ),
+                        bigSlot: max(1, Int(ceil(Double(block.startSlot) / 2))),
+                        startSlot: block.startSlot,
+                        endSlot: block.endSlot
+                    )
+                }
+            }
+            if let current { merged.append(current) }
+        }
+        return merged.sorted { ($0.startSlot, $0.endSlot, $0.id) < ($1.startSlot, $1.endSlot, $1.id) }
+    }
+
+    private static func identityKey(_ block: NativeScheduleCourseBlockRecord) -> String {
+        let course = block.course
+        if let customId = course.customId?.trimmedNonEmpty {
+            return "custom:\(keyPart(customId))"
+        }
+        let stableFields = [
+            keyPart(course.name),
+            keyPart(course.teacher),
+            keyPart(course.location)
+        ].joined(separator: "\u{1F}")
+        // The bridge's official fallback ID contains the slot range and is
+        // intentionally ignored here; two copies with different ranges still
+        // describe one course. Explicit source IDs remain useful context but
+        // never collapse different teacher/room variants.
+        if let sourceKey = course.sourceKey?.trimmedNonEmpty {
+            return "source:\(keyPart(sourceKey))\u{1F}\(stableFields)"
+        }
+        if let nativeId = course.nativeId?.trimmedNonEmpty,
+           !nativeId.hasPrefix("official|") {
+            return "native:\(keyPart(nativeId))\u{1F}\(stableFields)"
+        }
+        return stableFields
+    }
+
+    private static func courseWithRange(
+        _ course: NativeScheduleCourse,
+        merging next: NativeScheduleCourse?,
+        startSlot: Int,
+        endSlot: Int
+    ) -> NativeScheduleCourse {
+        let weekList = Set((course.weekList + (next?.weekList ?? [])).filter { $0 > 0 }).sorted()
+        let weeks: String
+        if let next, keyPart(course.weeks) != keyPart(next.weeks), !weekList.isEmpty {
+            weeks = formatWeeks(weekList)
+        } else {
+            weeks = course.weeks.trimmedNonEmpty ?? next?.weeks.trimmedNonEmpty ?? ""
+        }
+        let slotNote = startSlot == endSlot
+            ? "\(String(format: "%02d", startSlot))节"
+            : "\(String(format: "%02d", startSlot))-\(String(format: "%02d", endSlot))节"
+        return NativeScheduleCourse(
+            nativeId: course.nativeId,
+            name: course.name,
+            teacher: course.teacher,
+            weeks: weeks,
+            weekList: weekList,
+            location: course.location,
+            slotNote: slotNote,
+            startSlot: startSlot,
+            endSlot: endSlot,
+            sourceKey: course.sourceKey,
+            customId: course.customId,
+            custom: course.custom,
+            orphaned: course.orphaned
+        )
+    }
+
+    private static func formatWeeks(_ values: [Int]) -> String {
+        guard let first = values.first else { return "" }
+        var ranges: [String] = []
+        var start = first
+        var end = first
+        for value in values.dropFirst() {
+            if value == end + 1 {
+                end = value
+            } else {
+                ranges.append(start == end ? "\(start)" : "\(start)-\(end)")
+                start = value
+                end = value
+            }
+        }
+        ranges.append(start == end ? "\(start)" : "\(start)-\(end)")
+        return "\(ranges.joined(separator: "、"))周"
+    }
+
+    private static func keyPart(_ value: String?) -> String {
+        (value ?? "")
+            .precomposedStringWithCompatibilityMapping
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+    }
+}
+
 // MARK: - Cold-start archive
 
 /// The last displayed timetable, kept so a relaunch can show it before the web

@@ -54,7 +54,9 @@ struct NativeScheduleView: View {
                     .overlay(alignment: .bottom) { Divider() }
             }
 
-            ScrollView(.vertical, showsIndicators: false) {
+            NativeScheduleRefreshScrollView(onRefresh: {
+                await store.refresh()
+            }) {
                 VStack(alignment: .leading, spacing: 16) {
                     // A timetable already on screen is never replaced by a
                     // state card. Authorization and refresh problems appear as
@@ -87,14 +89,7 @@ struct NativeScheduleView: View {
                 .frame(maxWidth: .infinity, alignment: .topLeading)
                 .background(Color(uiColor: .systemGroupedBackground).opacity(preferences.backgroundImage == nil ? 1 : 0.86).ignoresSafeArea(.container, edges: [.horizontal, .bottom]))
             }
-            // This is attached to the actual vertical timetable scroll view,
-            // so the native pull gesture cannot be mistaken for week paging.
-            // `.scrollBounceBehavior` keeps the gesture available even when
-            // all eleven rows fit on screen.
-            .refreshable {
-                await store.refresh()
-            }
-            .scrollBounceBehavior(.always, axes: .vertical)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background {
             ZStack {
@@ -1213,7 +1208,7 @@ struct NativeScheduleView: View {
         let rawBlocks = result.cells
             .filter { $0.day == day }
             .flatMap { cell in
-                cell.courses.enumerated().compactMap { index, course -> NativeScheduleCourseBlock? in
+                cell.courses.enumerated().compactMap { index, course -> NativeScheduleCourseBlockRecord? in
                     let courseWeeks = nativeCourseWeekList(course)
                     if let week, !courseWeeks.isEmpty, !courseWeeks.contains(week) {
                         return nil
@@ -1228,7 +1223,7 @@ struct NativeScheduleView: View {
                         start = min(max(fallbackStart, 1), ScheduleSlot.all.count)
                         end = min(max(fallbackEnd, start), ScheduleSlot.all.count)
                     }
-                    return NativeScheduleCourseBlock(
+                    return NativeScheduleCourseBlockRecord(
                         id: "\(week.map(String.init) ?? "-")-\(day)-\(cell.bigSlot)-\(index)-\(course.name)",
                         course: course,
                         bigSlot: cell.bigSlot,
@@ -1242,45 +1237,14 @@ struct NativeScheduleView: View {
                 return lhs.endSlot < rhs.endSlot
             }
 
-        let families = Dictionary(grouping: rawBlocks) { block in
-            // Week text is occurrence metadata, not course identity. The same
-            // JWXT record can arrive once for an all-week range and again for
-            // an odd/even subset; grouping by weeks rendered both records.
-            if let customId = block.course.customId?.trimmedNonEmpty {
-                return "custom:\(customId)"
-            }
-            if let sourceKey = block.course.sourceKey?.trimmedNonEmpty {
-                return "source:\(sourceKey)"
-            }
-            return [nativeScheduleKeyPart(block.course.name),
-                    nativeScheduleKeyPart(block.course.teacher),
-                    nativeScheduleKeyPart(block.course.location)].joined(separator: "\u{1F}")
-        }
-        var merged: [NativeScheduleCourseBlock] = []
-        for family in families.values {
-            var current: NativeScheduleCourseBlock?
-            for block in family.sorted(by: { $0.startSlot < $1.startSlot }) {
-                if let previous = current, block.startSlot <= previous.endSlot + 1 {
-                    let endSlot = max(previous.endSlot, block.endSlot)
-                    current = NativeScheduleCourseBlock(
-                        id: previous.id,
-                        course: nativeCourseForBlock(previous.course, startSlot: previous.startSlot, endSlot: endSlot),
-                        bigSlot: max(1, Int(ceil(Double(previous.startSlot) / 2))),
-                        startSlot: previous.startSlot,
-                        endSlot: endSlot
-                    )
-                } else {
-                    if let current { merged.append(current) }
-                    current = NativeScheduleCourseBlock(
-                        id: block.id,
-                        course: nativeCourseForBlock(block.course, startSlot: block.startSlot, endSlot: block.endSlot),
-                        bigSlot: max(1, Int(ceil(Double(block.startSlot) / 2))),
-                        startSlot: block.startSlot,
-                        endSlot: block.endSlot
-                    )
-                }
-            }
-            if let current { merged.append(current) }
+        let merged = NativeScheduleCourseBlockMerger.merge(rawBlocks).map { block in
+            NativeScheduleCourseBlock(
+                id: block.id,
+                course: block.course,
+                bigSlot: block.bigSlot,
+                startSlot: block.startSlot,
+                endSlot: block.endSlot
+            )
         }
         var laneEnds: [Int] = []
         return merged.sorted(by: { ($0.startSlot, $0.endSlot, $0.id) < ($1.startSlot, $1.endSlot, $1.id) }).map { block in
@@ -1350,36 +1314,6 @@ struct NativeScheduleView: View {
         return values.isEmpty
             ? Array(Set(course.weekList.filter { $0 > 0 })).sorted()
             : values.sorted()
-    }
-
-    private func nativeCourseForBlock(
-        _ course: NativeScheduleCourse,
-        startSlot: Int,
-        endSlot: Int
-    ) -> NativeScheduleCourse {
-        NativeScheduleCourse(
-            nativeId: course.nativeId,
-            name: course.name,
-            teacher: course.teacher,
-            weeks: course.weeks,
-            weekList: course.weekList,
-            location: course.location,
-            slotNote: startSlot == endSlot
-                ? "\(String(format: "%02d", startSlot))节"
-                : "\(String(format: "%02d", startSlot))-\(String(format: "%02d", endSlot))节",
-            startSlot: startSlot,
-            endSlot: endSlot,
-            sourceKey: course.sourceKey,
-            customId: course.customId,
-            custom: course.custom,
-            orphaned: course.orphaned
-        )
-    }
-
-    private func nativeScheduleKeyPart(_ value: String?) -> String {
-        (value ?? "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
     }
 
     /// Horizontal page margin of the scrolling content.
@@ -2650,6 +2584,105 @@ private struct StateCard: View {
         .padding(24)
         .background(Color(uiColor: .secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+}
+
+/// SwiftUI's `.refreshable` is not reliably installed on nested scroll views
+/// on iOS 17. Hosting the schedule in one explicit UIKit scroll view gives the
+/// pull gesture a stable owner and keeps horizontal week/day paging separate.
+private struct NativeScheduleRefreshScrollView<Content: View>: UIViewControllerRepresentable {
+    typealias RefreshAction = @MainActor () async -> Void
+
+    let content: Content
+    let onRefresh: RefreshAction
+
+    init(
+        onRefresh: @escaping RefreshAction,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.content = content()
+        self.onRefresh = onRefresh
+    }
+
+    func makeUIViewController(context: Context) -> Controller {
+        Controller(rootView: content, action: onRefresh)
+    }
+
+    func updateUIViewController(_ controller: Controller, context: Context) {
+        controller.update(rootView: content, action: onRefresh)
+    }
+
+    @MainActor
+    final class Controller: UIViewController {
+        private let scrollView = UIScrollView()
+        private let refreshControl = UIRefreshControl()
+        private var hostController: UIHostingController<Content>
+        private var refreshTask: Task<Void, Never>?
+        private var action: RefreshAction
+
+        init(rootView: Content, action: @escaping RefreshAction) {
+            self.hostController = UIHostingController(rootView: rootView)
+            self.action = action
+            super.init(nibName: nil, bundle: nil)
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) {
+            fatalError("NativeScheduleRefreshScrollView cannot be decoded")
+        }
+
+        override func viewDidLoad() {
+            super.viewDidLoad()
+            view.backgroundColor = .clear
+            scrollView.backgroundColor = .clear
+            scrollView.alwaysBounceVertical = true
+            scrollView.showsVerticalScrollIndicator = false
+            scrollView.showsHorizontalScrollIndicator = false
+            scrollView.keyboardDismissMode = .interactive
+            refreshControl.tintColor = UIColor(red: 15 / 255, green: 143 / 255, blue: 127 / 255, alpha: 1)
+            refreshControl.accessibilityLabel = "下拉刷新课表"
+            refreshControl.addTarget(self, action: #selector(didPull(_:)), for: .valueChanged)
+            scrollView.refreshControl = refreshControl
+
+            addChild(hostController)
+            hostController.view.translatesAutoresizingMaskIntoConstraints = false
+            hostController.view.backgroundColor = .clear
+            scrollView.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(scrollView)
+            scrollView.addSubview(hostController.view)
+            NSLayoutConstraint.activate([
+                scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                scrollView.topAnchor.constraint(equalTo: view.topAnchor),
+                scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+                hostController.view.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor),
+                hostController.view.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor),
+                hostController.view.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
+                hostController.view.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
+                hostController.view.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor)
+            ])
+            hostController.didMove(toParent: self)
+        }
+
+        func update(rootView: Content, action: @escaping RefreshAction) {
+            hostController.rootView = rootView
+            self.action = action
+        }
+
+        @objc private func didPull(_ sender: UIRefreshControl) {
+            guard refreshTask == nil else { return }
+            let action = self.action
+            refreshTask = Task { @MainActor [weak self] in
+                await action()
+                guard let self, !Task.isCancelled else { return }
+                self.refreshControl.endRefreshing()
+                self.refreshTask = nil
+            }
+        }
+
+        deinit {
+            refreshTask?.cancel()
+        }
     }
 }
 

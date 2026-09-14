@@ -15,6 +15,10 @@ final class NativeAssistantModel: ObservableObject {
     private var requestGeneration = 0
     private var messageSequence = 0
     private var streamTask: Task<Void, Never>?
+    /// WebKit reports a few empty account states while restoring its cookie
+    /// session. Keep the last confirmed identity so those bootstrap events do
+    /// not cancel an otherwise healthy streaming answer.
+    private var confirmedAccount = ""
 
     deinit {
         streamTask?.cancel()
@@ -122,6 +126,22 @@ final class NativeAssistantModel: ObservableObject {
     }
 
     func accountDidChange(using session: HybridWebViewStore) {
+        guard session.authState.ready else { return }
+        let nextAccount = session.authState.account.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard nextAccount != confirmedAccount else { return }
+        let hadConfirmedAccount = !confirmedAccount.isEmpty
+        confirmedAccount = nextAccount
+        // The first non-empty report after launch only establishes the account
+        // used for local history. A real switch or a confirmed logout clears a
+        // live stream and all account-scoped messages.
+        guard hadConfirmedAccount || nextAccount.isEmpty else {
+            historyLoaded = false
+            Task { @MainActor [weak self, weak session] in
+                guard let self, let session else { return }
+                await self.loadHistory(using: session)
+            }
+            return
+        }
         cancelStream(using: session)
         messages.removeAll()
         conversations.removeAll()
@@ -136,6 +156,9 @@ final class NativeAssistantModel: ObservableObject {
 
     func loadHistory(using session: HybridWebViewStore) async {
         guard !historyLoaded else { return }
+        if session.authState.ready, !session.authState.account.isEmpty {
+            confirmedAccount = session.authState.account.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
         historyLoaded = true
         let local = loadLocalHistory(using: session)
         conversations = local
@@ -467,6 +490,7 @@ struct NativeAssistantView: View {
                     .font(.body)
                     .foregroundStyle(.white)
                     .multilineTextAlignment(.leading)
+                    .frame(maxWidth: 320, alignment: .leading)
                     .padding(.horizontal, 13)
                     .padding(.vertical, 10)
                     .background(Color.cpuBrand)
@@ -476,7 +500,7 @@ struct NativeAssistantView: View {
                     Text(markdown(message.content))
                         .font(.body)
                         .foregroundStyle(.primary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(maxWidth: 620, alignment: .leading)
                         .textSelection(.enabled)
                     if message.streaming {
                         Text("▌")

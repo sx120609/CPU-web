@@ -34,6 +34,45 @@ struct NativeScheduleStoreChecks {
         precondition(legacyDecoded.calendar?.currentWeek == 1,
                      "Legacy calendars without a current week must fall back to their first week")
 
+        let duplicateCourse = NativeScheduleCourse(
+            nativeId: "official|2025-2026-2|3|3|药理学实验",
+            name: "药理学实验",
+            teacher: "张老师",
+            weeks: "1-8周",
+            weekList: Array(1...8),
+            location: "实验楼 201",
+            startSlot: 3,
+            endSlot: 4
+        )
+        let duplicateSubset = NativeScheduleCourse(
+            nativeId: "official|2025-2026-2|3|3|药理学实验",
+            name: "药理学实验",
+            teacher: "张老师",
+            weeks: "2、4、6、8周",
+            weekList: [2, 4, 6, 8],
+            location: "实验楼 201",
+            startSlot: 3,
+            endSlot: 3
+        )
+        let distinctTeacher = NativeScheduleCourse(
+            name: "药理学实验",
+            teacher: "李老师",
+            weeks: "1-8周",
+            weekList: Array(1...8),
+            location: "实验楼 201",
+            startSlot: 3,
+            endSlot: 4
+        )
+        let mergedCourses = NativeScheduleCourseBlockMerger.merge([
+            NativeScheduleCourseBlockRecord(id: "a", course: duplicateCourse, bigSlot: 2, startSlot: 3, endSlot: 4),
+            NativeScheduleCourseBlockRecord(id: "b", course: duplicateSubset, bigSlot: 2, startSlot: 3, endSlot: 3),
+            NativeScheduleCourseBlockRecord(id: "c", course: distinctTeacher, bigSlot: 2, startSlot: 3, endSlot: 4),
+        ])
+        precondition(mergedCourses.count == 2,
+                     "Repeated records in one timetable position must collapse without hiding another teacher")
+        precondition(mergedCourses.first(where: { $0.course.teacher == "张老师" })?.course.weekList == Array(1...8),
+                     "Merging duplicate records must retain the complete week list")
+
         let cancelledStore = NativeScheduleStore(
             loader: { _ in NativeScheduleSnapshot(cancelled: true) },
             archive: nil
