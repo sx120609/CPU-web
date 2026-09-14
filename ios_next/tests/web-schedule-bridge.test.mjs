@@ -341,6 +341,22 @@ test('2025-2026-2 collapses duplicate records in one timetable position without 
   assert.equal(courses.some(course => course.teacher === '李老师'), true);
 });
 
+test('2025-2026-2 collapses the same occurrence when bad source rows use different big slots', async () => {
+  const ctx = setup();
+  ctx.api.schedule = async () => ({ parsed: {
+    ...sample(),
+    currentSemester: '2025-2026-2',
+    cells: [
+      { day: 3, bigSlot: 1, courses: [{ name: '实验课', teacher: '张老师', location: '实验楼(201)', weeks: '1-8周', weekList: [1,2,3,4,5,6,7,8], startSlot: 3, endSlot: 4 }] },
+      { day: 3, bigSlot: 2, courses: [{ name: '实验课', teacher: '张', location: '201', weeks: '2、4、6、8周', weekList: [2,4,6,8], startSlot: 3, endSlot: 4 }] },
+    ],
+  } });
+  const result = await ctx.window.CPUTimeNativeScheduleFetch('2025-2026-2', '1');
+  const courses = result.data.cells.flatMap(cell => cell.day === 3 ? cell.courses : []);
+  assert.equal(courses.length, 1);
+  assert.deepEqual(Array.from(courses[0].weekList), [1,2,3,4,5,6,7,8]);
+});
+
 test('failed background work preserves the first week and retries only missing weeks', async () => {
   const ctx = setup();
   let fail = true;

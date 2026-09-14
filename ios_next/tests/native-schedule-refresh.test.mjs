@@ -11,6 +11,9 @@ test('native schedule owns a UIKit pull-to-refresh scroll view', async () => {
   assert.match(source, /private let scrollView = UIScrollView\(\)/);
   assert.match(source, /private let refreshControl = UIRefreshControl\(\)/);
   assert.match(source, /scrollView\.alwaysBounceVertical = true/);
+  assert.match(source, /scrollView\.delegate = self/);
+  assert.match(source, /scrollViewDidEndDragging\(_ scrollView: UIScrollView/);
+  assert.match(source, /refreshControl\.beginRefreshing\(\)/);
   assert.match(source, /scrollView\.refreshControl = refreshControl/);
   assert.match(source, /refreshControl\.addTarget\(self, action: #selector\(didPull\(_:\)\), for: \.valueChanged\)/);
   assert.match(source, /refreshControl\.endRefreshing\(\)/);

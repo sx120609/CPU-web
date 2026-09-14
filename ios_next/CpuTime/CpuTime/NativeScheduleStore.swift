@@ -671,9 +671,17 @@ public enum NativeScheduleCourseBlockMerger {
     }
 
     private static func compatibleTeacher(_ left: String?, _ right: String?) -> Bool {
-        let a = teacherIdentity(left)
-        let b = teacherIdentity(right)
-        return a.isEmpty || b.isEmpty || a == b
+        let a = teacherTokens(left)
+        let b = teacherTokens(right)
+        return a.isEmpty || b.isEmpty || a.contains(where: { b.contains($0) })
+    }
+
+    private static func teacherTokens(_ value: String?) -> [String] {
+        keyPart(value)
+            .lowercased()
+            .split { "、,，;；/&+和".contains($0) }
+            .map { teacherIdentity(String($0)) }
+            .filter { !$0.isEmpty }
     }
 
     private static func locationCompatible(_ left: String?, _ right: String?) -> Bool {

@@ -7,8 +7,8 @@ import WebKit
 
 
 enum IOSNextWebConfiguration {
-    static let versionCode = 32
-    static let versionName = "3.15.0"
+    static let versionCode = 33
+    static let versionName = "3.16.0"
 
     static var appURL: URL {
         let configured = Bundle.main.object(forInfoDictionaryKey: "CPUAppURL") as? String
@@ -390,6 +390,7 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
         refreshControl.tintColor = UIColor(red: 15 / 255, green: 143 / 255, blue: 127 / 255, alpha: 1)
         refreshControl.addTarget(refreshController, action: #selector(WebViewRefreshController.didPull(_:)), for: .valueChanged)
         webView.scrollView.refreshControl = refreshControl
+        webView.scrollView.delegate = refreshController
         self.refreshController = refreshController
         self.refreshControl = refreshControl
 #if DEBUG
@@ -1880,15 +1881,35 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
 }
 
 @MainActor
-private final class WebViewRefreshController: NSObject {
+private final class WebViewRefreshController: NSObject, UIScrollViewDelegate {
     private weak var store: HybridWebViewStore?
+    private var pullThresholdReached = false
 
     init(store: HybridWebViewStore) {
         self.store = store
     }
 
     @objc func didPull(_ sender: UIRefreshControl) {
+        pullThresholdReached = false
         store?.handlePullToRefresh(sender)
+    }
+
+    func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+        pullThresholdReached = false
+    }
+
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        guard scrollView.isDragging else { return }
+        pullThresholdReached = scrollView.contentOffset.y <= -(scrollView.adjustedContentInset.top + 58)
+    }
+
+    func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+        guard pullThresholdReached,
+              let refreshControl = scrollView.refreshControl,
+              !refreshControl.isRefreshing else { return }
+        pullThresholdReached = false
+        refreshControl.beginRefreshing()
+        didPull(refreshControl)
     }
 }
 

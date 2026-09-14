@@ -179,6 +179,8 @@ struct NativeScheduleView: View {
                         .accessibilityLabel("正在更新课表")
                 }
 
+                scheduleToolsMenu(result)
+
                 Button(action: onDeviceSettings) {
                     Image(systemName: "applewatch")
                         .font(.system(size: 16, weight: .semibold))
@@ -296,6 +298,54 @@ struct NativeScheduleView: View {
                 .clipShape(Capsule())
         }
         .accessibilityLabel("选择学期")
+    }
+
+    /// Harmony's schedule surface keeps refresh, editing and presentation
+    /// choices in one overflow menu. The iOS header now exposes the same
+    /// groups without making the companion-device entry carry unrelated work.
+    private func scheduleToolsMenu(_ result: NativeScheduleResult) -> some View {
+        Menu {
+            Section("课表") {
+                Button("刷新课表", systemImage: "arrow.clockwise") { refresh() }
+                    .disabled(isLoading)
+                Button("选择周次", systemImage: "calendar") { weekPickerPresented = true }
+                if result.source != .graduate {
+                    Button("添加课程", systemImage: "plus") {
+                        presentAddCourse(
+                            day: selectedDay,
+                            week: Int(store.selectedWeek),
+                            startSlot: 1
+                        )
+                    }
+                }
+            }
+            Section("显示") {
+                Toggle("显示教室", isOn: $preferences.showLocation)
+                Toggle("显示教师", isOn: $preferences.showTeacher)
+                Toggle("显示节次", isOn: $preferences.showPeriod)
+                Toggle("显示周次", isOn: $preferences.showWeeks)
+                Picker("默认视图", selection: $preferences.defaultView) {
+                    Text("周课表").tag("week")
+                    Text("日课表").tag("day")
+                }
+                Picker("排版密度", selection: $preferences.density) {
+                    Text("舒适").tag("comfortable")
+                    Text("紧凑").tag("compact")
+                }
+            }
+            Section("更多") {
+                Button("课表设置与背景", systemImage: "slider.horizontal.3", action: onDeviceSettings)
+            }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+                .font(.system(size: 17, weight: .semibold))
+                .frame(width: 34, height: 34)
+                .modifier(ScheduleGlassControl(cornerRadius: 17))
+                .clipShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.primary)
+        .accessibilityLabel("更多课表操作")
     }
 
     private func weekStepButton(
@@ -2614,12 +2664,13 @@ private struct NativeScheduleRefreshScrollView<Content: View>: UIViewControllerR
     }
 
     @MainActor
-    final class Controller: UIViewController {
+    final class Controller: UIViewController, UIScrollViewDelegate {
         private let scrollView = UIScrollView()
         private let refreshControl = UIRefreshControl()
         private var hostController: UIHostingController<Content>
         private var refreshTask: Task<Void, Never>?
         private var action: RefreshAction
+        private var pullThresholdReached = false
 
         init(rootView: Content, action: @escaping RefreshAction) {
             hostController = UIHostingController(rootView: rootView)
@@ -2644,6 +2695,8 @@ private struct NativeScheduleRefreshScrollView<Content: View>: UIViewControllerR
             scrollView.keyboardDismissMode = .interactive
             scrollView.delaysContentTouches = false
             scrollView.panGestureRecognizer.cancelsTouchesInView = false
+            scrollView.contentInsetAdjustmentBehavior = .never
+            scrollView.delegate = self
             refreshControl.tintColor = UIColor(red: 15 / 255, green: 143 / 255, blue: 127 / 255, alpha: 1)
             refreshControl.accessibilityLabel = "下拉刷新课表"
             refreshControl.addTarget(self, action: #selector(didPull(_:)), for: .valueChanged)
@@ -2677,6 +2730,7 @@ private struct NativeScheduleRefreshScrollView<Content: View>: UIViewControllerR
 
         @objc private func didPull(_ sender: UIRefreshControl) {
             guard refreshTask == nil else { return }
+            pullThresholdReached = false
             let action = self.action
             refreshTask = Task { @MainActor [weak self] in
                 defer {
@@ -2687,6 +2741,28 @@ private struct NativeScheduleRefreshScrollView<Content: View>: UIViewControllerR
                 }
                 await action()
             }
+        }
+
+        // UIRefreshControl normally sends valueChanged by itself. SwiftUI's
+        // horizontal DragGesture can occasionally win the same pan on older
+        // iOS releases, so keep a small UIKit fallback that recognizes the
+        // same pull at the end of the drag and routes it through the exact
+        // same action. The guard above prevents duplicate requests.
+        func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+            pullThresholdReached = false
+        }
+
+        func scrollViewDidScroll(_ scrollView: UIScrollView) {
+            guard refreshTask == nil, scrollView.isDragging else { return }
+            let threshold = -(scrollView.adjustedContentInset.top + 58)
+            pullThresholdReached = scrollView.contentOffset.y <= threshold
+        }
+
+        func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+            guard pullThresholdReached, refreshTask == nil, !refreshControl.isRefreshing else { return }
+            pullThresholdReached = false
+            refreshControl.beginRefreshing()
+            didPull(refreshControl)
         }
 
         deinit {

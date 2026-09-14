@@ -121,6 +121,18 @@ final class NativeAssistantModel: ObservableObject {
         activeConversationID = ""
     }
 
+    /// Cancellation is an explicit user action. Dismissing the native sheet
+    /// must leave the shared stream alive so it can finish in the background.
+    func stop(using session: HybridWebViewStore) {
+        cancelStream(using: session)
+        if let index = messages.lastIndex(where: { $0.role == .assistant }),
+           !messages[index].content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            messages[index].streaming = false
+            messages[index].streamStatus = "已停止生成，可重新提问"
+            persistActiveConversation(using: session, syncCloud: false)
+        }
+    }
+
     func openConversation(_ conversation: NativeAssistantConversation, using session: HybridWebViewStore) {
         cancelStream(using: session)
         activeConversationID = conversation.id
@@ -148,7 +160,12 @@ final class NativeAssistantModel: ObservableObject {
         // while restoring cookies after a route change. Confirm the state after
         // a short quiet period before clearing a conversation or its stream.
         accountChangeTask = Task { @MainActor [weak self, weak session] in
-            try? await Task.sleep(nanoseconds: 450_000_000)
+            // Logout/account probes can briefly publish an empty state while
+            // WebKit restores cookies after a sheet or route transition. Give
+            // an active answer a longer quiet window before treating that as
+            // a real account change.
+            let delay: UInt64 = self?.streamTask == nil ? 450_000_000 : 1_200_000_000
+            try? await Task.sleep(nanoseconds: delay)
             guard let self, let session, !Task.isCancelled else { return }
             self.applyConfirmedAccountChange(using: session)
         }
@@ -679,18 +696,27 @@ struct NativeAssistantView: View {
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .animation(.easeOut(duration: 0.14), value: composerHeight)
 
-            Button { assistant.send(assistant.input, using: session) } label: {
-                Image(systemName: assistant.isLoading ? "hourglass" : "arrow.up")
+            Button {
+                if assistant.isLoading {
+                    assistant.stop(using: session)
+                } else {
+                    assistant.send(assistant.input, using: session)
+                }
+            } label: {
+                Image(systemName: assistant.isLoading ? "stop.fill" : "arrow.up")
                     .font(.system(size: 16, weight: .bold))
                     .frame(width: 42, height: 42)
-                    .foregroundStyle(.white)
-                    .background(Color.cpuBrand)
+                    .foregroundStyle(assistant.isLoading ? Color.cpuBrand : .white)
+                    .background(assistant.isLoading ? Color.cpuBrand.opacity(0.12) : Color.cpuBrand)
+                    .overlay {
+                        Circle().stroke(Color.cpuBrand.opacity(assistant.isLoading ? 0.45 : 0), lineWidth: 1)
+                    }
                     .clipShape(Circle())
             }
             .buttonStyle(.plain)
-            .disabled(assistant.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || assistant.isLoading)
-            .opacity(assistant.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || assistant.isLoading ? 0.45 : 1)
-            .accessibilityLabel("发送")
+            .disabled(!assistant.isLoading && assistant.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .opacity(!assistant.isLoading && assistant.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.45 : 1)
+            .accessibilityLabel(assistant.isLoading ? "停止生成" : "发送")
         }
         .padding(.horizontal, 14)
         .padding(.top, 9)

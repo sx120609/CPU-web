@@ -702,6 +702,8 @@ struct NativeShellView: View {
                 }
                 .presentationDetents([.large])
                 .presentationDragIndicator(.hidden)
+                .presentationCornerRadius(28)
+                .presentationBackground(.regularMaterial)
                 .tint(.cpuBrand)
                 .preferredColorScheme(webSession.pageColorScheme)
             }

@@ -304,11 +304,11 @@ function normalizeScheduleCells(cells: ScheduleCell[]): ScheduleCell[] {
         endSlot: range.endSlot,
         slotNote: formatSlotRange(range.startSlot, range.endSlot),
       };
-      const key = [
-        cell.day,
-        normalizeIdentityKey(normalized.name),
-        normalizeTeacherKey(normalized.teacher),
-      ].join("|");
+      // Group by the course title first. JWXT has emitted the same occurrence
+      // with a slightly different teacher string (for example "张老师" and
+      // "张") in different cells. Teacher identity is checked while merging,
+      // so genuinely parallel sections with different teachers remain apart.
+      const key = [cell.day, normalizeIdentityKey(normalized.name)].join("|");
       const list = groups.get(key) ?? [];
       list.push({ day: cell.day, bigSlot: cell.bigSlot, course: normalized });
       groups.set(key, list);
@@ -331,7 +331,8 @@ function normalizeScheduleCells(cells: ScheduleCell[]): ScheduleCell[] {
       const matchIndex = merged.findIndex((candidate) => {
         const candidateStart = candidate.course.startSlot ?? (candidate.bigSlot * 2 - 1);
         const candidateEnd = candidate.course.endSlot ?? candidateStart;
-        return locationsCompatible(candidate.course.location, entry.course.location)
+        return teachersCompatible(candidate.course.teacher, entry.course.teacher)
+          && locationsCompatible(candidate.course.location, entry.course.location)
           && start <= candidateEnd + 1
           && candidateStart <= end + 1;
       });
@@ -388,8 +389,15 @@ function slotRangeForTablePosition(course: ScheduleCourse, bigSlot: number) {
   if (Number.isFinite(parsedStart) && Number.isFinite(parsedEnd)) {
     const start = Number(parsedStart);
     const end = Number(parsedEnd);
-    const overlapsCurrentBigSlot = end >= fallbackStart && start <= fallbackEnd;
-    if (overlapsCurrentBigSlot) return { startSlot: start, endSlot: end };
+    // The explicit section range comes from the course detail and is more
+    // reliable than the physical table row. Legacy/modern JWXT pages can put
+    // a course in a repeated row whose big-slot label does not overlap that
+    // range (for example a 03-04 course rendered under row 1). Only fall back
+    // when the parsed range itself is unusable.
+    if (Number.isInteger(start) && Number.isInteger(end)
+      && start >= 1 && end >= start && end <= 64) {
+      return { startSlot: start, endSlot: end };
+    }
   }
   return { startSlot: fallbackStart, endSlot: fallbackEnd };
 }
@@ -416,6 +424,19 @@ function normalizeTeacherKey(value?: string) {
     /(?:其他正高级|其他副高级|正高级|副高级|主任医师|副主任医师|高级实验师|副研究员|实验师|研究员|副教授|教授|讲师|助教|未评级)$/u,
     "",
   ).replace(/老师$/u, "");
+}
+
+function teacherTokens(value?: string) {
+  return normalizeIdentityKey(value)
+    .split(/[、,，;；/&+和]+/u)
+    .map((token) => normalizeTeacherKey(token))
+    .filter(Boolean);
+}
+
+function teachersCompatible(left?: string, right?: string) {
+  const a = teacherTokens(left);
+  const b = teacherTokens(right);
+  return !a.length || !b.length || a.some((token) => b.includes(token));
 }
 
 function normalizeLocationKey(value?: string) {

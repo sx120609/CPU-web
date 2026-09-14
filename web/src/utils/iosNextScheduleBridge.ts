@@ -521,6 +521,10 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
   const normalizeTeacherIdentity = (value: unknown) => normalizeIdentityText(value)
     .replace(/(?:其他正高级|其他副高级|正高级|副高级|主任医师|副主任医师|高级实验师|副研究员|实验师|研究员|副教授|教授|讲师|助教|未评级)$/u, "")
     .replace(/老师$/u, "");
+  const teacherTokens = (value: unknown) => normalizeIdentityText(value)
+    .split(/[、,，;；/&+和]+/u)
+    .map(token => normalizeTeacherIdentity(token))
+    .filter(Boolean);
   const normalizeLocationIdentity = (value: unknown) => {
     const compact = normalizeIdentityText(value).replace(/[.,，。:：;；/\\()[\]{}【】_—–~～-]+/g, "");
     const match = compact.match(/(?:^|[^a-z0-9])([a-z]?\d{2,4}[a-z]?)$/i);
@@ -533,9 +537,9 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
   ) => left.start <= right.end && right.start <= left.end
     || allowAdjacent && (left.end + 1 === right.start || right.end + 1 === left.start);
   const fieldsCompatible = (left: unknown, right: unknown) => {
-    const a = normalizeTeacherIdentity(left);
-    const b = normalizeTeacherIdentity(right);
-    return !a || !b || a === b;
+    const a = teacherTokens(left);
+    const b = teacherTokens(right);
+    return !a.length || !b.length || a.some(token => b.includes(token));
   };
   const locationsCompatible = (left: unknown, right: unknown) => {
     const a = normalizeLocationIdentity(left);
@@ -576,10 +580,19 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
     return `${ranges.join("、")}周`;
   };
   const nativeCells = (semester: string, cells: ScheduleResult["cells"]) => {
-    const merged = new Map<string, ScheduleResult["cells"][number]>();
+    type NativeEntry = {
+      day: number;
+      bigSlot: number;
+      course: ScheduleResult["cells"][number]["courses"][number];
+      range: { start: number; end: number };
+    };
+    // Do not trust the source table's big-slot grouping. A legacy/modern JWXT
+    // response can repeat one occurrence in two physical rows while its
+    // explicit section range still says 03-04. Flatten first, then merge by
+    // the actual day and section range; this also keeps native and Web cards
+    // identical when the upstream table has a bad rowspan.
+    const entries: NativeEntry[] = [];
     for (const cell of cells) {
-      const cellKey = `${cell.day}:${cell.bigSlot}`;
-      const target = merged.get(cellKey) ?? { ...cell, courses: [] };
       for (const course of cell.courses) {
         const range = normalizeSlotRange(cell.bigSlot, course);
         const fallback = ["official", semester, cell.day, range.start, normalizeText(course.name)].join("|");
@@ -588,28 +601,46 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
           nativeId: course.customId ? `custom:${course.customId}` : course.sourceKey ? `source:${course.sourceKey}` : fallback,
           weekList: normalizedCourseWeekList(course),
         };
-        const previous = target.courses.find(item => {
-          return coursesCanMerge(item, normalized, normalizeSlotRange(cell.bigSlot, item), range);
-        });
-        if (!previous) {
-          target.courses.push(normalized);
-          continue;
-        }
-        const weekList = previous.weekList.length && normalized.weekList.length
-          ? [...new Set([...previous.weekList, ...normalized.weekList])].sort((a, b) => a - b)
-          : [];
-        previous.weekList = weekList;
-        previous.weeks = mergeWeeksText(previous, normalized, weekList);
-        const previousRange = normalizeSlotRange(cell.bigSlot, previous);
-        previous.startSlot = Math.min(previousRange.start, range.start);
-        previous.endSlot = Math.max(previousRange.end, range.end);
-        previous.slotNote = previous.startSlot === previous.endSlot
-          ? `${String(previous.startSlot).padStart(2, "0")}节`
-          : `${String(previous.startSlot).padStart(2, "0")}-${String(previous.endSlot).padStart(2, "0")}节`;
+        entries.push({ day: cell.day, bigSlot: cell.bigSlot, course: normalized, range });
       }
-      merged.set(cellKey, target);
     }
-    return [...merged.values()];
+
+    const merged: NativeEntry[] = [];
+    for (const entry of entries.sort((left, right) =>
+      left.day - right.day || left.range.start - right.range.start || left.range.end - right.range.end)) {
+      const matchIndex = merged.findIndex(previous => previous.day === entry.day
+        && coursesCanMerge(previous.course, entry.course, previous.range, entry.range));
+      const previous = matchIndex >= 0 ? merged[matchIndex] : undefined;
+      if (!previous) {
+        merged.push(entry);
+        continue;
+      }
+      {
+        const weekList = previous.course.weekList.length && entry.course.weekList.length
+          ? [...new Set([...previous.course.weekList, ...entry.course.weekList])].sort((a, b) => a - b)
+          : [];
+        const start = Math.min(previous.range.start, entry.range.start);
+        const end = Math.max(previous.range.end, entry.range.end);
+        previous.course.weekList = weekList;
+        previous.course.weeks = mergeWeeksText(previous.course, entry.course, weekList);
+        previous.course.startSlot = start;
+        previous.course.endSlot = end;
+        previous.course.slotNote = start === end
+          ? `${String(start).padStart(2, "0")}节`
+          : `${String(start).padStart(2, "0")}-${String(end).padStart(2, "0")}节`;
+        previous.range = { start, end };
+        previous.bigSlot = Math.max(1, Math.ceil(start / 2));
+      }
+    }
+
+    const grouped = new Map<string, ScheduleResult["cells"][number]>();
+    for (const entry of merged) {
+      const key = `${entry.day}:${entry.bigSlot}`;
+      const target = grouped.get(key) ?? { day: entry.day, bigSlot: entry.bigSlot, courses: [] };
+      target.courses.push(entry.course);
+      grouped.set(key, target);
+    }
+    return [...grouped.values()].sort((left, right) => left.bigSlot - right.bigSlot || left.day - right.day);
   };
   const periods = smallSlots.map(slot => ({ number: slot.no, startTime: slot.start, endTime: slot.end }));
   const snapshot = (entry: SemesterEntry, data: ScheduleResult, week?: string) => ({
