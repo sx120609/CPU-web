@@ -2387,4 +2387,129 @@ html[data-theme="dark"] .assistant-widget {
 @media (prefers-reduced-motion: reduce) {
   .mobile-tabbar.mobile-tabbar { transition: none; }
 }
+
+/* 移动端页脚只保留三行必要信息，避免把内容区压成一整块。 */
+@media (max-width: 600px) {
+  .footer {
+    padding: 14px max(16px, env(safe-area-inset-right, 0px)) calc(var(--liquid-tabbar-reserve) + 10px) max(16px, env(safe-area-inset-left, 0px));
+  }
+
+  .footer::after {
+    display: none;
+  }
+
+  .footer-main {
+    gap: 7px;
+    padding-bottom: 9px;
+  }
+
+  .footer-company {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 7px;
+  }
+
+  .footer-brand-row {
+    gap: 6px;
+  }
+
+  .footer-brand-mark {
+    width: 26px;
+    height: 26px;
+    flex-basis: 26px;
+    border-radius: 7px;
+  }
+
+  .footer a.footer-brand {
+    font-size: 16px;
+  }
+
+  .footer-company p {
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    font-size: 11px;
+    line-height: 1.35;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .footer-about {
+    min-height: 24px;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  .footer-contact {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: 8px;
+    align-items: start;
+  }
+
+  .footer-contact-label {
+    gap: 5px;
+    font-size: 12px;
+    line-height: 1.5;
+    white-space: nowrap;
+  }
+
+  .footer-label-line {
+    width: 13px;
+    height: 2px;
+  }
+
+  .footer-contact .footer-address {
+    display: -webkit-box;
+    margin: 0;
+    overflow: hidden;
+    font-size: 11px;
+    line-height: 1.45;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .footer-contact-links {
+    grid-column: 2;
+    gap: 10px;
+    margin-top: 1px;
+  }
+
+  .footer-contact-links a {
+    min-height: 23px;
+    font-size: 11px;
+  }
+
+  .footer-bottom {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 6px 8px;
+    padding-top: 8px;
+  }
+
+  .footer-bottom > span {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .footer-links {
+    width: auto;
+    display: flex;
+    gap: 4px;
+  }
+
+  .footer-links a {
+    min-height: 24px;
+    padding: 0 2px;
+    border: 0;
+    background: transparent;
+    font-size: 10px;
+    white-space: nowrap;
+  }
+}
 </style>
