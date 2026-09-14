@@ -117,13 +117,17 @@ export const useJwxtStore = defineStore("jwxt", {
     async refreshStatus() {
       if (jwxtStatusRefreshInFlight) return jwxtStatusRefreshInFlight;
       const task = (async () => {
-        if (!this.token) {
+        const auth = useAuthStore();
+        // The JWXT marker is deliberately cleared after an education session
+        // expires. A signed-in site account can still restore the HttpOnly
+        // school cookie, so status must be probed even when the marker is
+        // missing. Independent site accounts have no school session to probe.
+        if (auth.token && !auth.user) await auth.fetchMe({ probe: true });
+        if (!auth.isLoggedIn || auth.user?.studentSso === false) {
           this.active = false;
           return;
         }
         try {
-          const auth = useAuthStore();
-          if (auth.token && !auth.user) await auth.fetchMe({ probe: true });
           const r = await jwxtApi.status({ silent: true });
           const currentUsername = auth.user?.username;
           if (r.username && currentUsername && r.username !== currentUsername) {
@@ -152,15 +156,18 @@ export const useJwxtStore = defineStore("jwxt", {
             void this.refreshWidgetTokens();
           }
         } catch (error) {
-          if (isJwxtAuthExpired(error) || !getJwxtToken()) {
+          if (isJwxtAuthExpired(error)) {
             this.active = false;
             this.token = "";
             this.authorizationExpired = true;
             useAuthStore().clearAcademicIdentityUnavailable();
           } else {
-            // 网络抖动时继续乐观使用现有会话；真实查询若返回 401 会触发自动恢复。
-            this.token = getJwxtToken();
-            this.active = Boolean(this.token);
+            // A status probe failing because of a network outage is not proof
+            // that the education session expired. Keep a known marker and do
+            // not turn a transient outage into the native login state.
+            const marker = getJwxtToken();
+            this.token = marker;
+            this.active = Boolean(marker) || this.active;
           }
         }
       })();
@@ -242,7 +249,7 @@ export const useJwxtStore = defineStore("jwxt", {
         const allowAutoLogin = options?.allowAutoLogin !== false;
         // 普通页面初始化只探测现有会话；但学校明确返回“会话过期”时，
         // 应兑现保持登录，用本机加密保存的凭据自动恢复。
-        if (options?.refresh && this.token) {
+        if ((options?.refresh || this.authorizationExpired) && auth.isLoggedIn) {
           await this.refreshStatus().catch(() => undefined);
         }
         if (auth.academicIdentityUnavailable && auth.user?.studentSso && !options?.forceLogin) {

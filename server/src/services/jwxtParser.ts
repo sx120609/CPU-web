@@ -12,18 +12,36 @@ export interface SemesterOption {
 }
 
 function parseSelectOptions($: cheerio.CheerioAPI, selectId: string): SemesterOption[] {
-  const opts: SemesterOption[] = [];
+  const opts = new Map<string, SemesterOption>();
   $(`#${selectId} option`).each((_, el) => {
     const $o = $(el);
     const value = $o.attr("value") ?? "";
     if (!value) return;
-    opts.push({
+    const option = {
       value,
       label: $o.text().trim(),
       current: $o.attr("selected") !== undefined,
-    });
+    };
+    const previous = opts.get(value);
+    // Some JWXT pages contain the same selector in a visible form and a
+    // hidden compatibility form. Keep the first order/label and merge the
+    // selected marker instead of returning duplicate terms to the client.
+    opts.set(value, previous
+      ? { ...previous, current: previous.current || option.current }
+      : option);
   });
-  return opts;
+  return [...opts.values()];
+}
+
+function mergeSemesterOptions(...groups: SemesterOption[][]): SemesterOption[] {
+  const merged = new Map<string, SemesterOption>();
+  for (const option of groups.flat()) {
+    const previous = merged.get(option.value);
+    merged.set(option.value, previous
+      ? { ...previous, current: previous.current || option.current }
+      : option);
+  }
+  return [...merged.values()];
 }
 
 // ============ 课表（学期理论课表）============
@@ -288,7 +306,6 @@ function normalizeScheduleCells(cells: ScheduleCell[]): ScheduleCell[] {
         normalizeKeyPart(normalized.name),
         normalizeKeyPart(normalized.teacher),
         normalizeKeyPart(normalized.location),
-        normalizeKeyPart(normalized.weeks),
       ].join("|");
       const list = groups.get(key) ?? [];
       list.push({ day: cell.day, bigSlot: cell.bigSlot, course: normalized });
@@ -320,6 +337,7 @@ function normalizeScheduleCells(cells: ScheduleCell[]): ScheduleCell[] {
           endSlot: nextEnd,
           slotNote: formatSlotRange(nextStart, nextEnd),
           weekList: mergeNumberLists(prev.course.weekList, entry.course.weekList),
+          weeks: mergeWeeksText(prev.course, entry.course),
         };
       } else {
         merged.push({
@@ -376,6 +394,26 @@ function normalizeKeyPart(value?: string) {
 
 function mergeNumberLists(a: number[] = [], b: number[] = []) {
   return [...new Set([...a, ...b])].sort((x, y) => x - y);
+}
+
+function mergeWeeksText(previous: ScheduleCourse, next: ScheduleCourse) {
+  if (normalizeKeyPart(previous.weeks) === normalizeKeyPart(next.weeks)) return previous.weeks;
+  const weeks = mergeNumberLists(previous.weekList, next.weekList);
+  if (!weeks.length) return previous.weeks || next.weeks || "全部周";
+  const ranges: string[] = [];
+  let start = weeks[0];
+  let end = weeks[0];
+  for (const value of weeks.slice(1)) {
+    if (value === end + 1) {
+      end = value;
+      continue;
+    }
+    ranges.push(start === end ? String(start) : `${start}-${end}`);
+    start = value;
+    end = value;
+  }
+  ranges.push(start === end ? String(start) : `${start}-${end}`);
+  return `${ranges.join("、")}周`;
 }
 
 /** 解析教务周次文本：1-17(周)、1-17(单周)、1-8周,10-12周、1、3、5周 等。 */
@@ -913,9 +951,11 @@ export function normalizeCalendarWeekDays(days: string[]) {
 
 export function parseCalendar(html: string): CalendarResult {
   const $ = cheerio.load(html);
-  const semesters = parseSelectOptions($, "xnxqid")
-    .concat(parseSelectOptions($, "xnxq01id"))
-    .concat(parseSelectOptions($, "xqdm"));
+  const semesters = mergeSemesterOptions(
+    parseSelectOptions($, "xnxqid"),
+    parseSelectOptions($, "xnxq01id"),
+    parseSelectOptions($, "xqdm"),
+  );
   const currentSemester = semesters.find((s) => s.current)?.value ?? "";
 
   // 推算学期基准年份

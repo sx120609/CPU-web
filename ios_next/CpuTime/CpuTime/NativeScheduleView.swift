@@ -1,11 +1,13 @@
 import SwiftUI
 import Foundation
+import UIKit
 
 /// The native timetable surface. Data loading and authentication stay in
 /// NativeScheduleStore so the SwiftUI surface can also be embedded beside the
 /// existing web routes.
 struct NativeScheduleView: View {
     @ObservedObject private var store: NativeScheduleStore
+    @ObservedObject private var preferences = NativeSchedulePreferences.shared
     private let onDeviceSettings: () -> Void
     private let onLogin: () -> Void
 
@@ -84,19 +86,27 @@ struct NativeScheduleView: View {
                 .padding(.bottom, 8)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
                 .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea(.container, edges: [.horizontal, .bottom]))
+                // The representable must live inside the scroll content so
+                // its superview walk reaches this ScrollView on iOS 17.
+                .background {
+                    NativeScheduleRefreshControl {
+                        await store.refresh()
+                    }
+                    // A non-zero anchor survives SwiftUI's view elision and
+                    // still contributes no visible content to the grid.
+                    .frame(width: 1, height: 1)
+                    .opacity(0.01)
+                }
             }
-            // Keep the native pull gesture enabled. The content has a stable
-            // grid height, so there is no arbitrary empty tail to scroll into;
-            // horizontal paging still wins through the axis-locked gestures.
-            .refreshable {
-                await store.refresh()
-            }
+            // SwiftUI's `.refreshable` is not consistently attached to this
+            // nested schedule scroll view on iOS 17. The representable above
+            // installs a real UIRefreshControl on the actual UIKit container.
             .scrollBounceBehavior(.always, axes: .vertical)
         }
         .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
         .task {
+            viewMode = preferences.defaultView == "day" ? .day : .week
             adoptSelectionIfNeeded()
-
         }
         .onChange(of: store.result?.currentSemester) { _, _ in
             adoptSelectionIfNeeded()
@@ -663,6 +673,11 @@ struct NativeScheduleView: View {
                     compactCards: compactCards,
                     showsDateHeader: showsDateHeader,
                     blocks: blocks(for: day, week: week, result: result),
+                    palette: preferences.palette,
+                    showLocation: preferences.showLocation,
+                    showTeacher: preferences.showTeacher,
+                    showPeriod: preferences.showPeriod,
+                    showWeeks: preferences.showWeeks,
                     onCourseSelected: { block in
                         // A cell tap can arrive in the same run loop as a
                         // neighbouring empty-slot gesture. Clear the add
@@ -887,10 +902,22 @@ struct NativeScheduleView: View {
         if store.selectedSemester.isEmpty {
             store.selectedSemester = store.calendar?.currentSemester.nilIfEmpty ?? result.currentSemester
         }
-        if store.selectedWeek.isEmpty {
-            let currentWeek = store.calendar.map { $0.currentWeek }.flatMap { $0 > 0 ? String($0) : nil }
+        let availableWeeks = Set(result.weeks.map(\.value))
+        if store.selectedWeek.isEmpty || (!availableWeeks.isEmpty && !availableWeeks.contains(store.selectedWeek)) {
+            // Legacy payloads can carry the calendar's real current week even
+            // when their data only advertises an older range. Prefer a week
+            // that is actually present, which makes old schedules open on the
+            // first week without an extra manual picker tap.
+            let currentWeek = store.calendar
+                .map { $0.currentWeek }
+                .flatMap { value in
+                    let candidate = value > 0 ? String(value) : ""
+                    return availableWeeks.isEmpty || availableWeeks.contains(candidate) ? candidate.nilIfEmpty : nil
+                }
             store.selectedWeek = currentWeek
-                ?? result.currentWeek.trimmedNonEmpty
+                ?? result.currentWeek.trimmedNonEmpty.flatMap { value in
+                    availableWeeks.isEmpty || availableWeeks.contains(value) ? value : nil
+                }
                 ?? result.weeks.first(where: { $0.current })?.value
                 ?? result.weeks.first?.value
                 ?? ""
@@ -1195,9 +1222,18 @@ struct NativeScheduleView: View {
             }
 
         let families = Dictionary(grouping: rawBlocks) { block in
-            [block.course.customId ?? "", nativeScheduleKeyPart(block.course.name),
-             nativeScheduleKeyPart(block.course.teacher), nativeScheduleKeyPart(block.course.location),
-             nativeScheduleKeyPart(block.course.weeks)].joined(separator: "\u{1F}")
+            // Week text is occurrence metadata, not course identity. The same
+            // JWXT record can arrive once for an all-week range and again for
+            // an odd/even subset; grouping by weeks rendered both records.
+            if let customId = block.course.customId?.trimmedNonEmpty {
+                return "custom:\(customId)"
+            }
+            if let sourceKey = block.course.sourceKey?.trimmedNonEmpty {
+                return "source:\(sourceKey)"
+            }
+            return [nativeScheduleKeyPart(block.course.name),
+                    nativeScheduleKeyPart(block.course.teacher),
+                    nativeScheduleKeyPart(block.course.location)].joined(separator: "\u{1F}")
         }
         var merged: [NativeScheduleCourseBlock] = []
         for family in families.values {
@@ -1491,8 +1527,47 @@ private struct NativeScheduleDayColumn: View {
     let compactCards: Bool
     let showsDateHeader: Bool
     let blocks: [NativeScheduleCourseBlock]
+    let palette: String
+    let showLocation: Bool
+    let showTeacher: Bool
+    let showPeriod: Bool
+    let showWeeks: Bool
     let onCourseSelected: (NativeScheduleCourseBlock) -> Void
     let onEmptySlot: (Int) -> Void
+
+    init(
+        day: Int,
+        dateText: String?,
+        isToday: Bool,
+        columnWidth: CGFloat,
+        rowHeight: CGFloat,
+        compactCards: Bool,
+        showsDateHeader: Bool,
+        blocks: [NativeScheduleCourseBlock],
+        palette: String = "color-glass",
+        showLocation: Bool = true,
+        showTeacher: Bool = true,
+        showPeriod: Bool = true,
+        showWeeks: Bool = true,
+        onCourseSelected: @escaping (NativeScheduleCourseBlock) -> Void,
+        onEmptySlot: @escaping (Int) -> Void
+    ) {
+        self.day = day
+        self.dateText = dateText
+        self.isToday = isToday
+        self.columnWidth = columnWidth
+        self.rowHeight = rowHeight
+        self.compactCards = compactCards
+        self.showsDateHeader = showsDateHeader
+        self.blocks = blocks
+        self.palette = palette
+        self.showLocation = showLocation
+        self.showTeacher = showTeacher
+        self.showPeriod = showPeriod
+        self.showWeeks = showWeeks
+        self.onCourseSelected = onCourseSelected
+        self.onEmptySlot = onEmptySlot
+    }
 
     private var laneCount: Int {
         max(1, (blocks.map(\.lane).max() ?? 0) + 1)
@@ -1547,7 +1622,15 @@ private struct NativeScheduleDayColumn: View {
                     Button {
                         onCourseSelected(block)
                     } label: {
-                        NativeScheduleCourseCard(course: block.course, compact: compactCards || columnWidth < 70)
+                        NativeScheduleCourseCard(
+                            course: block.course,
+                            palette: palette,
+                            showLocation: showLocation,
+                            showTeacher: showTeacher,
+                            showPeriod: showPeriod,
+                            showWeeks: showWeeks,
+                            compact: compactCards || columnWidth < 70
+                        )
                             .frame(width: cardWidth, height: cardHeight)
                     }
                     .buttonStyle(.plain)
@@ -1733,14 +1816,23 @@ private struct ScheduleGlassBackground: View {
 private struct NativeScheduleCourseCard: View {
     @Environment(\.colorScheme) private var colorScheme
     let course: NativeScheduleCourse
+    let palette: String
+    let showLocation: Bool
+    let showTeacher: Bool
+    let showPeriod: Bool
+    let showWeeks: Bool
     var compact = false
 
     var body: some View {
         GeometryReader { geometry in
             let shortCard = geometry.size.height < 64
-            let location = clean(course.location)
-            let teacher = clean(course.teacher)
-            let note = clean(course.slotNote) ?? clean(course.weeks)
+            let location = showLocation ? clean(course.location) : nil
+            let teacher = showTeacher ? clean(course.teacher) : nil
+            let details = [
+                showPeriod ? clean(course.slotNote) : nil,
+                showWeeks ? clean(course.weeks) : nil,
+            ].compactMap { $0 }
+            let note = details.isEmpty ? nil : details.joined(separator: " · ")
             let metadata: String? = {
                 let values: [String] = compact
                     ? [location.map { "@\($0.trimmingCharacters(in: CharacterSet(charactersIn: "@＠")))" }].compactMap { $0 }
@@ -1844,11 +1936,29 @@ private struct NativeScheduleCourseCard: View {
 
     private var hue: Double {
         let hash = course.name.unicodeScalars.reduce(UInt64(0)) { ($0 &* 31) &+ UInt64($1.value) }
+        if let base = paletteHue {
+            return (base + Double(hash % 23) / 360).truncatingRemainder(dividingBy: 1)
+        }
         return Double(hash % 360) / 360
+    }
+
+    private var paletteHue: Double? {
+        switch palette {
+        case "green": return 0.42
+        case "blue": return 0.58
+        case "teal": return 0.50
+        case "indigo": return 0.66
+        case "violet": return 0.75
+        case "orange": return 0.08
+        case "rose": return 0.93
+        case "slate": return 0.58
+        default: return nil
+        }
     }
 
     private var saturation: Double {
         let hash = course.name.unicodeScalars.reduce(UInt64(0)) { ($0 &* 31) &+ UInt64($1.value) }
+        if palette == "slate" { return 0.20 + Double((hash >> 8) % 8) / 100 }
         return 0.58 + Double((hash >> 8) % 18) / 100
     }
 
@@ -2519,6 +2629,121 @@ private struct StateCard: View {
         .padding(24)
         .background(Color(uiColor: .secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+}
+
+/// Bridges the native pull gesture to the enclosing `UIScrollView`. Keeping
+/// the control outside the schedule grid avoids changing the grid's measured
+/// height and leaves horizontal week/day paging untouched.
+private struct NativeScheduleRefreshControl: UIViewRepresentable {
+    let action: @MainActor () async -> Void
+
+    private final class AnchorView: UIView {
+        var hierarchyChanged: (() -> Void)?
+
+        override func didMoveToSuperview() {
+            super.didMoveToSuperview()
+            hierarchyChanged?()
+        }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            hierarchyChanged?()
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(action: action)
+    }
+
+    func makeUIView(context: Context) -> UIView {
+        let view = AnchorView(frame: .zero)
+        view.isUserInteractionEnabled = false
+        view.hierarchyChanged = { [weak coordinator = context.coordinator, weak view] in
+            guard let view else { return }
+            coordinator?.attach(to: view)
+        }
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        context.coordinator.action = action
+        context.coordinator.attach(to: uiView)
+    }
+
+    private static func enclosingScrollView(from view: UIView) -> UIScrollView? {
+        var candidate = view.superview
+        var fallback: UIScrollView?
+        while let current = candidate {
+            if let scrollView = current as? UIScrollView {
+                // Nested horizontal pagers can appear between the anchor and
+                // the schedule's vertical scroller. Prefer a container whose
+                // measured content is taller than its viewport, then keep the
+                // outermost scroll view as a fallback while SwiftUI is laying
+                // out the content for the first time.
+                if scrollView.contentSize.height > scrollView.bounds.height + 1
+                    || scrollView.alwaysBounceVertical {
+                    return scrollView
+                }
+                fallback = scrollView
+            }
+            candidate = current.superview
+        }
+        return fallback
+    }
+
+    @MainActor
+    final class Coordinator: NSObject {
+        var action: @MainActor () async -> Void
+        var control: UIRefreshControl?
+        weak var attachedScrollView: UIScrollView?
+        private var running = false
+        private var attachmentAttempts = 0
+
+        init(action: @escaping @MainActor () async -> Void) {
+            self.action = action
+        }
+
+        func attach(to anchor: UIView) {
+            guard let scrollView = NativeScheduleRefreshControl.enclosingScrollView(from: anchor) else {
+                // SwiftUI creates the hosting scroll view after the
+                // representable. Keep looking while the anchor is mounted;
+                // the first layout pass can take longer on a cold launch.
+                guard attachmentAttempts < 160 else { return }
+                attachmentAttempts += 1
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self, weak anchor] in
+                    guard let self, let anchor else { return }
+                    self.attach(to: anchor)
+                }
+                return
+            }
+            attachmentAttempts = 0
+            scrollView.alwaysBounceVertical = true
+            if attachedScrollView !== scrollView, let old = attachedScrollView, old.refreshControl === control {
+                old.refreshControl = nil
+            }
+            attachedScrollView = scrollView
+            if scrollView.refreshControl !== control {
+                control?.removeTarget(self, action: #selector(Coordinator.didPull(_:)), for: .valueChanged)
+                let refresh = control ?? UIRefreshControl()
+                refresh.tintColor = UIColor(red: 15 / 255, green: 143 / 255, blue: 127 / 255, alpha: 1)
+                refresh.accessibilityLabel = "下拉刷新课表"
+                refresh.addTarget(self, action: #selector(Coordinator.didPull(_:)), for: .valueChanged)
+                control = refresh
+                scrollView.refreshControl = refresh
+            }
+        }
+
+        @objc func didPull(_ sender: UIRefreshControl) {
+            guard !running else { return }
+            running = true
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                await action()
+                control?.endRefreshing()
+                running = false
+            }
+        }
     }
 }
 

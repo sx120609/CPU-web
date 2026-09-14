@@ -7,8 +7,8 @@ import WebKit
 
 
 enum IOSNextWebConfiguration {
-    static let versionCode = 18
-    static let versionName = "3.5.0"
+    static let versionCode = 21
+    static let versionName = "3.7.0"
 
     static var appURL: URL {
         let configured = Bundle.main.object(forInfoDictionaryKey: "CPUAppURL") as? String
@@ -91,6 +91,81 @@ struct NativeAssistantSource: Codable, Sendable, Identifiable {
     let url: String
 
     var id: String { url }
+}
+
+/// The persisted message shape mirrors the Web assistant history contract.
+/// Keeping the wire model separate from the SwiftUI streaming state means an
+/// interrupted response can never be written as a permanently streaming one.
+struct NativeAssistantStoredMessage: Codable, Sendable, Identifiable {
+    enum Role: String, Codable, Sendable {
+        case user
+        case assistant
+    }
+
+    let id: Int
+    let role: Role
+    var content: String
+    var actions: [NativeAssistantAction]
+    var suggestions: [String]
+    var images: [NativeAssistantGeneratedImage]
+    var sources: [NativeAssistantSource]
+
+    init(
+        id: Int,
+        role: Role,
+        content: String,
+        actions: [NativeAssistantAction] = [],
+        suggestions: [String] = [],
+        images: [NativeAssistantGeneratedImage] = [],
+        sources: [NativeAssistantSource] = []
+    ) {
+        self.id = id
+        self.role = role
+        self.content = content
+        self.actions = actions
+        self.suggestions = suggestions
+        self.images = images
+        self.sources = sources
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, role, content, actions, suggestions, images, sources
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            id: try values.decode(Int.self, forKey: .id),
+            role: try values.decode(Role.self, forKey: .role),
+            content: try values.decode(String.self, forKey: .content),
+            actions: try values.decodeIfPresent([NativeAssistantAction].self, forKey: .actions) ?? [],
+            suggestions: try values.decodeIfPresent([String].self, forKey: .suggestions) ?? [],
+            images: try values.decodeIfPresent([NativeAssistantGeneratedImage].self, forKey: .images) ?? [],
+            sources: try values.decodeIfPresent([NativeAssistantSource].self, forKey: .sources) ?? []
+        )
+    }
+}
+
+struct NativeAssistantConversation: Codable, Sendable, Identifiable {
+    let id: String
+    var title: String
+    var updatedAt: Int
+    var messages: [NativeAssistantStoredMessage]
+    var deletedAt: Int?
+
+    init(
+        id: String,
+        title: String,
+        updatedAt: Int = Int(Date().timeIntervalSince1970 * 1000),
+        messages: [NativeAssistantStoredMessage],
+        deletedAt: Int? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.updatedAt = updatedAt
+        self.messages = messages
+        self.deletedAt = deletedAt
+    }
 }
 
 struct NativeAssistantReply: Codable, Sendable {
@@ -250,6 +325,9 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
     private var refreshController: WebViewRefreshController?
     private var refreshTimeoutTask: Task<Void, Never>?
     private var isPullRefreshing = false
+    private var assistantStreamContinuations: [String: CheckedContinuation<NativeAssistantReply, Error>] = [:]
+    private var assistantStreamDeltaHandlers: [String: (String) -> Void] = [:]
+    private var assistantStreamStatusHandlers: [String: (String) -> Void] = [:]
     private let pathMonitor = NWPathMonitor()
     private let pathMonitorQueue = DispatchQueue(label: "cn.cputime.ios.network-monitor")
 
@@ -673,6 +751,176 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
         return payload
     }
 
+    /// Starts the Web SSE endpoint and forwards each event through the native
+    /// script-message bridge. The request itself remains inside WKWebView so
+    /// HttpOnly session and CSRF cookies are handled exactly like the Web app.
+    func nativeAssistantStream(
+        message: String,
+        history: [[String: String]],
+        onDelta: @escaping (String) -> Void,
+        onStatus: @escaping (String) -> Void
+    ) async throws -> NativeAssistantReply {
+        guard let webView else { throw NativeAssistantError.unavailable }
+        let requestID = UUID().uuidString
+        let historyData = try JSONSerialization.data(withJSONObject: history, options: [])
+        let historyJSON = String(data: historyData, encoding: .utf8) ?? "[]"
+        let requestJSON = IOSNextWebConfiguration.javascriptString(requestID)
+        let messageJSON = IOSNextWebConfiguration.javascriptString(message)
+
+        return try await withTaskCancellationHandler(operation: {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<NativeAssistantReply, Error>) in
+                assistantStreamContinuations[requestID] = continuation
+                assistantStreamDeltaHandlers[requestID] = onDelta
+                assistantStreamStatusHandlers[requestID] = onStatus
+                let script = """
+                (() => {
+                  const bridge = window.CPUTimeNative;
+                  if (!bridge || typeof bridge.nativeAssistantStream !== 'function') {
+                    try { window.webkit.messageHandlers.\(Self.handlerName).postMessage({type:'assistantStream', requestId:\(requestJSON), event:'error', payload:{message:'拾间 AI 尚未准备好，请稍后重试。'}}); } catch (_) {}
+                    return true;
+                  }
+                  try {
+                    void bridge.nativeAssistantStream(\(requestJSON), \(messageJSON), \(historyJSON));
+                  } catch (_) {
+                    try { window.webkit.messageHandlers.\(Self.handlerName).postMessage({type:'assistantStream', requestId:\(requestJSON), event:'error', payload:{message:'拾间 AI 暂时不可用，请重试。'}}); } catch (_) {}
+                  }
+                  return true;
+                })()
+                """
+                webView.evaluateJavaScript(script) { [weak self] _, error in
+                    guard let error else { return }
+                    Task { @MainActor [weak self] in
+                        self?.finishAssistantStream(requestID, error: NativeAssistantError.requestFailed(error.localizedDescription))
+                    }
+                }
+            }
+        }, onCancel: { [weak self] in
+            Task { @MainActor [weak self] in
+                self?.cancelAssistantStream(requestID)
+            }
+        })
+    }
+
+    func listNativeAssistantConversations() async throws -> [NativeAssistantConversation] {
+        let data = try await nativeAssistantAPIRequest(
+            path: "/api/search/assistant/conversations",
+            method: "GET",
+            body: nil
+        )
+        return try JSONDecoder().decode([NativeAssistantConversation].self, from: data)
+    }
+
+    @discardableResult
+    func saveNativeAssistantConversation(_ conversation: NativeAssistantConversation) async throws -> NativeAssistantConversation {
+        let body = try JSONEncoder().encode([
+            "title": conversation.title,
+            "updatedAt": String(conversation.updatedAt),
+        ])
+        var object = (try JSONSerialization.jsonObject(with: body) as? [String: Any]) ?? [:]
+        object["updatedAt"] = conversation.updatedAt
+        object["messages"] = try JSONSerialization.jsonObject(with: JSONEncoder().encode(conversation.messages))
+        let payload = try await nativeAssistantAPIRequest(
+            path: "/api/search/assistant/conversations/\(conversation.id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? conversation.id)",
+            method: "PATCH",
+            body: object
+        )
+        return try JSONDecoder().decode(NativeAssistantConversation.self, from: payload)
+    }
+
+    func deleteNativeAssistantConversation(id: String) async throws {
+        _ = try await nativeAssistantAPIRequest(
+            path: "/api/search/assistant/conversations/\(id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id)",
+            method: "DELETE",
+            body: nil
+        )
+    }
+
+    func cancelNativeAssistantStreams() {
+        let requestIDs = Array(assistantStreamContinuations.keys)
+        for requestID in requestIDs {
+            cancelAssistantStream(requestID)
+        }
+    }
+
+    private func nativeAssistantAPIRequest(path: String, method: String, body: [String: Any]?) async throws -> Data {
+        guard let webView else { throw NativeAssistantError.unavailable }
+        let bodyJSON: String
+        if let body, JSONSerialization.isValidJSONObject(body),
+           let encoded = try? JSONSerialization.data(withJSONObject: body),
+           let string = String(data: encoded, encoding: .utf8) {
+            bodyJSON = string
+        } else {
+            bodyJSON = ""
+        }
+        let script = """
+        return await (async () => {
+          const csrfCookie = document.cookie.match(/(?:^|;\\s*)(?:__Host-cpu-csrf|cpu-csrf)=([^;]+)/i);
+          const headers = {'Accept': 'application/json', 'X-CPU-Auth-Mode': 'cookie'};
+          if (\(methodJSONHeader(method))) headers['Content-Type'] = 'application/json';
+          if (csrfCookie?.[1]) headers['X-CSRF-Token'] = decodeURIComponent(csrfCookie[1]);
+          try {
+            const response = await fetch(\(IOSNextWebConfiguration.javascriptString(path)), {
+              method: \(IOSNextWebConfiguration.javascriptString(method)),
+              credentials: 'include',
+              headers,
+              body: \(method == "GET" ? "undefined" : IOSNextWebConfiguration.javascriptString(bodyJSON)),
+            });
+            const raw = await response.text();
+            let payload = null;
+            try { payload = raw ? JSON.parse(raw) : null; } catch (_) {}
+            const apiOk = response.ok && (!payload || typeof payload.code !== 'number' || payload.code === 0);
+            return JSON.stringify({
+              ok: apiOk,
+              status: response.status,
+              message: payload?.message || '',
+              payload: payload?.code === 0 && payload?.data !== undefined ? payload.data : payload,
+            });
+          } catch (_) {
+            return JSON.stringify({ok: false, status: 0, message: '请检查网络连接后重试。'});
+          }
+        })();
+        """
+        let result = try await webView.callAsyncJavaScript(script, arguments: [:], in: nil, contentWorld: .page)
+        guard let raw = result as? String, let data = raw.data(using: .utf8),
+              let envelope = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              envelope["ok"] as? Bool == true else {
+            if let data = (result as? String)?.data(using: .utf8),
+               let envelope = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let message = envelope["message"] as? String, !message.isEmpty {
+                throw NativeAssistantError.requestFailed(message)
+            }
+            throw NativeAssistantError.requestFailed("拾间 AI 历史记录暂时不可用，请重试。")
+        }
+        guard let payload = envelope["payload"], JSONSerialization.isValidJSONObject(payload) else {
+            throw NativeAssistantError.invalidResponse
+        }
+        return try JSONSerialization.data(withJSONObject: payload)
+    }
+
+    private func methodJSONHeader(_ method: String) -> String {
+        method == "GET" ? "false" : "true"
+    }
+
+    private func cancelAssistantStream(_ requestID: String) {
+        guard assistantStreamContinuations[requestID] != nil else { return }
+        webView?.evaluateJavaScript("window.CPUTimeNative?.cancelAssistantStream && window.CPUTimeNative.cancelAssistantStream(\(IOSNextWebConfiguration.javascriptString(requestID))); true;")
+        finishAssistantStream(requestID, error: CancellationError())
+    }
+
+    private func finishAssistantStream(_ requestID: String, error: Error) {
+        guard let continuation = assistantStreamContinuations.removeValue(forKey: requestID) else { return }
+        assistantStreamDeltaHandlers.removeValue(forKey: requestID)
+        assistantStreamStatusHandlers.removeValue(forKey: requestID)
+        continuation.resume(throwing: error)
+    }
+
+    private func finishAssistantStream(_ requestID: String, reply: NativeAssistantReply) {
+        guard let continuation = assistantStreamContinuations.removeValue(forKey: requestID) else { return }
+        assistantStreamDeltaHandlers.removeValue(forKey: requestID)
+        assistantStreamStatusHandlers.removeValue(forKey: requestID)
+        continuation.resume(returning: reply)
+    }
+
     func retry() {
         errorMessage = nil
         serviceUnavailableMessage = nil
@@ -924,6 +1172,8 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
             onNavigate?(path, source)
         case "assistant":
             onAssistantRequested?()
+        case "assistantStream":
+            handleAssistantStreamMessage(body)
         case "route":
             guard let path = body["path"] as? String else { return }
             currentPath = path
@@ -959,6 +1209,37 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
             finishPullRefresh()
         case "networkError":
             serviceUnavailableMessage = "服务暂时不可用，请检查网络连接或切换流量后重试。"
+        default:
+            break
+        }
+    }
+
+    private func handleAssistantStreamMessage(_ body: [String: Any]) {
+        guard let requestID = body["requestId"] as? String,
+              let event = body["event"] as? String else { return }
+        let payload = body["payload"] as? [String: Any] ?? [:]
+        switch event {
+        case "delta":
+            if let delta = payload["delta"] as? String {
+                assistantStreamDeltaHandlers[requestID]?(delta)
+            }
+        case "status", "heartbeat":
+            let elapsed = (payload["elapsedMs"] as? NSNumber)?.intValue ?? 0
+            let seconds = elapsed / 1000
+            assistantStreamStatusHandlers[requestID]?(seconds >= 5 ? "仍在生成，已等待 \(seconds) 秒…" : "正在生成回答…")
+        case "done":
+            guard JSONSerialization.isValidJSONObject(payload),
+                  let data = try? JSONSerialization.data(withJSONObject: payload),
+                  let reply = try? JSONDecoder().decode(NativeAssistantReply.self, from: data) else {
+                finishAssistantStream(requestID, error: NativeAssistantError.invalidResponse)
+                return
+            }
+            finishAssistantStream(requestID, reply: reply)
+        case "error":
+            finishAssistantStream(
+                requestID,
+                error: NativeAssistantError.requestFailed((payload["message"] as? String) ?? "拾间 AI 暂时不可用，请重试。")
+            )
         default:
             break
         }
@@ -1146,6 +1427,83 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
             return post({ type: 'navigate', path: String(path ?? '') });
           };
           bridge.openAssistant = () => post({type: 'assistant'});
+          // Native SwiftUI consumes the same SSE protocol as the Web assistant.
+          // Each delta is posted immediately so the native bubble can render
+          // the answer while the model is still generating it.
+          bridge.__cpuAssistantStreamControllers = bridge.__cpuAssistantStreamControllers || new Map();
+          bridge.cancelAssistantStream = (requestId) => {
+            const controller = bridge.__cpuAssistantStreamControllers.get(String(requestId));
+            if (controller) controller.abort();
+          };
+          bridge.nativeAssistantStream = async (requestId, message, history) => {
+            const id = String(requestId || '');
+            const emit = (event, payload) => post({type: 'assistantStream', requestId: id, event, payload});
+            const controller = new AbortController();
+            bridge.__cpuAssistantStreamControllers.set(id, controller);
+            try {
+              const csrfCookie = document.cookie.match(/(?:^|;\\s*)(?:__Host-cpu-csrf|cpu-csrf)=([^;]+)/i);
+              const headers = {
+                'Content-Type': 'application/json',
+                'Accept': 'text/event-stream',
+                'X-CPU-Auth-Mode': 'cookie',
+                'X-CPU-Client': 'ios'
+              };
+              if (csrfCookie?.[1]) headers['X-CSRF-Token'] = decodeURIComponent(csrfCookie[1]);
+              const response = await fetch('/api/search/assistant/stream', {
+                method: 'POST',
+                credentials: 'include',
+                headers,
+                body: JSON.stringify({message: String(message || ''), history: Array.isArray(history) ? history : []}),
+                signal: controller.signal
+              });
+              if (!response.ok) {
+                let errorMessage = `请求失败（${response.status}）`;
+                try {
+                  const payload = await response.json();
+                  errorMessage = String(payload?.message || payload?.data?.message || errorMessage);
+                } catch (_) {}
+                emit('error', {message: errorMessage});
+                return;
+              }
+              if (!response.body) {
+                emit('error', {message: '拾间 AI 流式响应不可用，请重试。'});
+                return;
+              }
+              const reader = response.body.getReader();
+              const decoder = new TextDecoder();
+              let buffer = '';
+              const consume = (block) => {
+                if (!block.trim() || block.trimStart().startsWith(':')) return;
+                let event = 'message';
+                const dataLines = [];
+                for (const line of block.split(/\\r?\\n/)) {
+                  if (line.startsWith('event:')) event = line.slice(6).trim();
+                  if (line.startsWith('data:')) dataLines.push(line.slice(5).trimStart());
+                }
+                if (!dataLines.length) return;
+                let payload;
+                try { payload = JSON.parse(dataLines.join('\\n')); }
+                catch (_) { emit('error', {message: '拾间 AI 响应格式异常，请重试。'}); return; }
+                emit(event, payload);
+              };
+              while (true) {
+                const chunk = await reader.read();
+                if (chunk.value) buffer += decoder.decode(chunk.value, {stream: !chunk.done});
+                const blocks = buffer.split(/\\r?\\n\\r?\\n/);
+                buffer = blocks.pop() || '';
+                for (const block of blocks) consume(block);
+                if (chunk.done) {
+                  buffer += decoder.decode();
+                  if (buffer.trim()) consume(buffer);
+                  break;
+                }
+              }
+            } catch (error) {
+              if (error?.name !== 'AbortError') emit('error', {message: '请检查网络连接后重试。'});
+            } finally {
+              bridge.__cpuAssistantStreamControllers.delete(id);
+            }
+          };
           bridge.ready = () => post({ type: 'ready' });
           bridge.schedulePrefetched = (snapshot) => post({type: 'schedulePrefetched', snapshot});
           bridge.scheduleWeekPrefetched = bridge.schedulePrefetched;

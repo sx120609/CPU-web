@@ -196,12 +196,24 @@ function normalizeLegacyCells(value: LegacyRecord) {
 }
 
 function normalizeLegacyOptions(value: unknown, kind: "semester" | "week") {
-  return legacyArray(value).map((item) => {
+  const options = legacyArray(value).map((item) => {
     const record = legacyRecord(item);
     const option = record ? legacyText(record.value, record.id, record.code, record.key) : legacyText(item);
     const label = record ? legacyText(record.label, record.name, record.text, option) : option;
     return { value: option, label: label || option, current: Boolean(record?.current ?? record?.selected) };
   }).filter((item) => item.value || kind === "week");
+  // Some legacy pages render the same selector in more than one hidden form.
+  // Keep the first visible order and merge the selected marker instead of
+  // exposing duplicate/history entries in the native semester menu.
+  const unique = new Map<string, (typeof options)[number]>();
+  for (const option of options) {
+    if (!option.value) continue;
+    const previous = unique.get(option.value);
+    unique.set(option.value, previous
+      ? { ...previous, current: previous.current || option.current }
+      : option);
+  }
+  return [...unique.values()];
 }
 
 function normalizeScheduleResponse(response: unknown): ScheduleResult {
@@ -351,9 +363,48 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
   let activeSemester = "";
   let selectionRevision = 0;
   let supportsScope: boolean | undefined;
+  // The first valid response is the authoritative selector for this signed-in
+  // session. Older JWXT pages can return a different hidden semester list when
+  // a historical term is requested; using that list would make the menu grow
+  // or lose the terms that were initially available.
+  let knownSemesterOptions: ScheduleResult["semesters"] = [];
+  let knownSemesterOwner = "";
   const semesters = new Map<string, SemesterEntry>();
   const foreground = new Map<string, Promise<unknown>>();
   const accountKey = nativeScheduleAccountKey;
+  const semesterOptionsStorageKey = (owner: string) => owner
+    ? `cpu-native-semester-options-v1:${owner}`
+    : "";
+  const readStoredSemesterOptions = (owner: string): ScheduleResult["semesters"] => {
+    const key = semesterOptionsStorageKey(owner);
+    if (!key) return [];
+    try {
+      const raw = sessionStorage.getItem(key);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed)
+        ? parsed.filter((item) => item && typeof item.value === "string" && item.value.trim())
+            .map((item) => ({
+              value: String(item.value).trim(),
+              label: String(item.label || item.value).trim(),
+              current: Boolean(item.current),
+            }))
+        : [];
+    } catch {
+      return [];
+    }
+  };
+  const storeSemesterOptions = (owner: string, options: ScheduleResult["semesters"]) => {
+    const key = semesterOptionsStorageKey(owner);
+    if (!key || !options.length) return;
+    try { sessionStorage.setItem(key, JSON.stringify(options)); } catch { /* storage is optional */ }
+  };
+  const syncKnownSemesterOwner = () => {
+    const owner = accountKey();
+    if (owner === knownSemesterOwner) return;
+    knownSemesterOwner = owner;
+    knownSemesterOptions = readStoredSemesterOptions(owner);
+  };
   // A superseded selection is an expected request outcome. Keep it distinct
   // from service/auth failures so the native shell can leave its current grid
   // untouched while the newer selection finishes.
@@ -410,6 +461,10 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
     semesters.clear();
     foreground.clear();
     activeSemester = "";
+    // Role/profile updates are common while the same account is being
+    // restored. Only an actual account/academic-identity change gets a new
+    // semester selector; a JWXT refresh must keep the original five terms.
+    syncKnownSemesterOwner();
     notifyNativeAuth();
   }, { flush: "sync" });
 
@@ -436,25 +491,96 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
   const remember = (entry: SemesterEntry) => {
     semesters.delete(entry.semester);
     semesters.set(entry.semester, entry);
-    // Bound retained client data, including semester switches.
-    while (semesters.size > 4) semesters.delete(semesters.keys().next().value!);
+    // Keep every term in the normal five-term selector, plus a few transient
+    // requests, so switching back does not evict the current semester cache.
+    while (semesters.size > 8) semesters.delete(semesters.keys().next().value!);
   };
-  const parsed = (response: { parsed?: unknown }): ScheduleResult => normalizeScheduleResponse(response);
+  const parsed = (response: { parsed?: unknown }): ScheduleResult => {
+    syncKnownSemesterOwner();
+    const data = normalizeScheduleResponse(response);
+    if (!knownSemesterOptions.length && data.semesters.length) {
+      knownSemesterOptions = data.semesters;
+      storeSemesterOptions(knownSemesterOwner, knownSemesterOptions);
+    }
+    return knownSemesterOptions.length && data.semesters !== knownSemesterOptions
+      ? { ...data, semesters: knownSemesterOptions }
+      : data;
+  };
   const edited = (entry: SemesterEntry, data: ScheduleResult) => ({
     ...data, cells: nativeCells(entry.semester, applyScheduleEditsToCells(data.cells, entry.edits)),
   });
-  const nativeCells = (semester: string, cells: ScheduleResult["cells"]) => cells.map(cell => ({
-    ...cell,
-    courses: cell.courses.map(course => {
-      const range = normalizeSlotRange(cell.bigSlot, course);
-      const fallback = ["official", semester, cell.day, range.start, course.name.trim().replace(/\s+/g, " ")].join("|");
-      return {
-        ...course,
-        nativeId: course.customId ? `custom:${course.customId}` : course.sourceKey ? `source:${course.sourceKey}` : fallback,
-        weekList: normalizedCourseWeekList(course),
-      };
-    }),
-  }));
+  const normalizeText = (value: unknown) => String(value ?? "").normalize("NFKC").replace(/\s+/g, " ").trim();
+  const nativeCourseKey = (
+    cell: ScheduleResult["cells"][number],
+    course: ScheduleResult["cells"][number]["courses"][number],
+  ) => {
+    if (course.customId) return `custom:${course.customId}`;
+    if (course.sourceKey) return `source:${course.sourceKey}`;
+    // Slot ranges describe one occurrence and are allowed to differ when the
+    // education system repeats the same record. Keep the course identity tied
+    // to its stable content, then use range overlap below before merging.
+    return [cell.day, normalizeText(course.name), normalizeText(course.teacher), normalizeText(course.location)]
+      .join("\u001f");
+  };
+  const rangesCanMerge = (left: { start: number; end: number }, right: { start: number; end: number }) =>
+    left.start <= right.end + 1 && right.start <= left.end + 1;
+  const mergeWeeksText = (
+    previous: { weeks: string; weekList: number[] },
+    next: { weeks: string; weekList: number[] },
+    weekList: number[],
+  ) => {
+    if (normalizeText(previous.weeks) === normalizeText(next.weeks)) return previous.weeks;
+    if (!weekList.length) return previous.weeks || next.weeks || "全部周";
+    const ranges: string[] = [];
+    let start = weekList[0];
+    let end = weekList[0];
+    for (const value of weekList.slice(1)) {
+      if (value === end + 1) { end = value; continue; }
+      ranges.push(start === end ? String(start) : `${start}-${end}`);
+      start = value;
+      end = value;
+    }
+    ranges.push(start === end ? String(start) : `${start}-${end}`);
+    return `${ranges.join("、")}周`;
+  };
+  const nativeCells = (semester: string, cells: ScheduleResult["cells"]) => {
+    const merged = new Map<string, ScheduleResult["cells"][number]>();
+    for (const cell of cells) {
+      const cellKey = `${cell.day}:${cell.bigSlot}`;
+      const target = merged.get(cellKey) ?? { ...cell, courses: [] };
+      for (const course of cell.courses) {
+        const range = normalizeSlotRange(cell.bigSlot, course);
+        const fallback = ["official", semester, cell.day, range.start, normalizeText(course.name)].join("|");
+        const normalized = {
+          ...course,
+          nativeId: course.customId ? `custom:${course.customId}` : course.sourceKey ? `source:${course.sourceKey}` : fallback,
+          weekList: normalizedCourseWeekList(course),
+        };
+        const key = nativeCourseKey(cell, normalized);
+        const previous = target.courses.find(item => {
+          if (nativeCourseKey(cell, item) !== key) return false;
+          return rangesCanMerge(normalizeSlotRange(cell.bigSlot, item), range);
+        });
+        if (!previous) {
+          target.courses.push(normalized);
+          continue;
+        }
+        const weekList = previous.weekList.length && normalized.weekList.length
+          ? [...new Set([...previous.weekList, ...normalized.weekList])].sort((a, b) => a - b)
+          : [];
+        previous.weekList = weekList;
+        previous.weeks = mergeWeeksText(previous, normalized, weekList);
+        const previousRange = normalizeSlotRange(cell.bigSlot, previous);
+        previous.startSlot = Math.min(previousRange.start, range.start);
+        previous.endSlot = Math.max(previousRange.end, range.end);
+        previous.slotNote = previous.startSlot === previous.endSlot
+          ? `${String(previous.startSlot).padStart(2, "0")}节`
+          : `${String(previous.startSlot).padStart(2, "0")}-${String(previous.endSlot).padStart(2, "0")}节`;
+      }
+      merged.set(cellKey, target);
+    }
+    return [...merged.values()];
+  };
   const periods = smallSlots.map(slot => ({ number: slot.no, startTime: slot.start, endTime: slot.end }));
   const snapshot = (entry: SemesterEntry, data: ScheduleResult, week?: string) => ({
     version: 1, source: "jwxt", completeSemester: Boolean(entry.complete), fetchedAt: entry.createdAt,
@@ -502,27 +628,18 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
       }
       if (!valid(entry, epoch) || activeSemester !== entry.semester) return;
       const cells = new Map<string, ScheduleResult["cells"][number]>();
-      const seen = new Map<string, ScheduleResult["cells"][number]["courses"][number]>();
       for (const week of entry.weeks) {
         for (const cell of entry.schedules.get(week)!.cells) {
           const cellKey = `${cell.day}:${cell.bigSlot}`;
           const target = cells.get(cellKey) ?? { ...cell, courses: [] };
           for (const course of cell.courses) {
             const weekList = normalizedCourseWeekList(course);
-            const key = JSON.stringify([cellKey, { ...course, weekList }]);
-            const previous = seen.get(key);
-            if (previous) {
-              if (!weekList.length && !previous.weekList.includes(Number(week))) previous.weekList.push(Number(week));
-            } else {
-              const normalized = { ...course, weekList: weekList.length ? weekList : [Number(week)] };
-              seen.set(key, normalized);
-              target.courses.push(normalized);
-            }
+            target.courses.push({ ...course, weekList: weekList.length ? weekList : [Number(week)] });
           }
           cells.set(cellKey, target);
         }
       }
-      entry.complete = { ...entry.schedules.values().next().value!, cells: [...cells.values()] };
+      entry.complete = { ...entry.schedules.values().next().value!, cells: nativeCells(entry.semester, [...cells.values()]) };
       entry.schedules.clear(); // Keep only the merged semester after completion.
       host.CPUTimeNative?.schedulePrefetched?.(snapshot(entry, entry.complete));
     })().catch(() => {
@@ -549,7 +666,10 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
       }
       jwxt.hydrate();
       const ready = await jwxt.ensureSession({
-        refresh: force && !options.fastRefresh,
+        // An expired marker is recoverable through the HttpOnly JWXT cookie.
+        // Probe that static session on the next request before considering any
+        // credential login; background refreshes remain non-interactive.
+        refresh: Boolean((force && !options.fastRefresh) || jwxt.authorizationExpired),
         silent: true,
         // A foreground pull is an explicit request and may use saved
         // credentials once. Background revalidation never does so.

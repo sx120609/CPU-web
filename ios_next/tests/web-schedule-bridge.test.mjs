@@ -203,6 +203,34 @@ test('legacy week options default to the first week when no current marker exist
   assert.equal(result.data.weeks[1].current, false);
 });
 
+test('historical semester responses cannot replace the session semester selector', async () => {
+  const ctx = setup();
+  const currentSemesters = [1, 2, 3, 4, 5].map((value) => ({
+    value: `term-${value}`, label: `第 ${value} 个学期`, current: value === 1,
+  }));
+  const historicalSemesters = [...currentSemesters,
+    { value: 'term-6', label: '历史学期 6', current: false },
+    { value: 'term-7', label: '历史学期 7', current: false },
+    { value: 'term-8', label: '历史学期 8', current: false },
+  ];
+  ctx.api.schedule = async (params) => ({ parsed: {
+    ...sample(),
+    semesters: params.semester === 'term-5' ? historicalSemesters : currentSemesters,
+    currentSemester: params.semester || 'term-1',
+  } });
+  const first = await ctx.window.CPUTimeNativeScheduleFetch('term-1', '1');
+  assert.equal(first.data.semesters.length, 5);
+
+  // A JWXT status recovery must not make the next response authoritative.
+  ctx.jwxt.isLoggedIn = false;
+  ctx.changed();
+  ctx.jwxt.isLoggedIn = true;
+  ctx.changed();
+  const historical = await ctx.window.CPUTimeNativeScheduleFetch('term-5', '1');
+  assert.deepEqual(Array.from(historical.data.semesters, (item) => item.value),
+    currentSemesters.map((item) => item.value));
+});
+
 test('legacy grid and flat course lists become native cells', async () => {
   const ctx = setup();
   ctx.api.schedule = async () => ({ parsed: {
@@ -285,6 +313,30 @@ test('undergraduate semester fetch includes future weeks and deduplicates repeat
   assert.equal(result.completeSemester, true);
   assert.deepEqual(requested, ['all', '2', '3']);
   assert.equal(result.data.cells[0].courses.length, 2);
+});
+
+test('2025-2026-2 collapses duplicate records in one timetable position without hiding distinct classes', async () => {
+  const ctx = setup();
+  ctx.api.schedule = async () => ({ parsed: {
+    ...sample(),
+    currentSemester: '2025-2026-2',
+    cells: [
+      { day: 3, bigSlot: 2, courses: [
+        { name: '药理学实验', teacher: '张老师', location: '实验楼 201', weeks: '1-8周', weekList: [1,2,3,4,5,6,7,8], startSlot: 3, endSlot: 4 },
+        { name: '药理学实验', teacher: '张老师', location: '实验楼 201', weeks: '2、4、6、8周', weekList: [2,4,6,8], startSlot: 3, endSlot: 4 },
+        { name: '药理学实验', teacher: '张老师', location: '实验楼 201', weeks: '1-8周', weekList: [1,2,3,4,5,6,7,8], startSlot: 3, endSlot: 3 },
+        { name: '药理学实验', teacher: '李老师', location: '实验楼 201', weeks: '1-8周', weekList: [1,2,3,4,5,6,7,8], startSlot: 3, endSlot: 4 },
+      ] },
+      { day: 3, bigSlot: 2, courses: [
+        { name: '药理学实验', teacher: '张老师', location: '实验楼 201', weeks: '1-8周', weekList: [1,2,3,4,5,6,7,8], startSlot: 3, endSlot: 4 },
+      ] },
+    ],
+  } });
+  const result = await ctx.window.CPUTimeNativeScheduleFetch('2025-2026-2', '1');
+  const courses = result.data.cells.find(cell => cell.day === 3 && cell.bigSlot === 2).courses;
+  assert.equal(courses.length, 2);
+  assert.deepEqual(Array.from(courses.find(course => course.teacher === '张老师').weekList), [1,2,3,4,5,6,7,8]);
+  assert.equal(courses.some(course => course.teacher === '李老师'), true);
 });
 
 test('failed background work preserves the first week and retries only missing weeks', async () => {

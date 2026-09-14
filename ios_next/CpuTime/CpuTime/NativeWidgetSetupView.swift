@@ -1,5 +1,6 @@
 import SwiftUI
 import EventKit
+import ActivityKit
 
 /// One native settings surface for the two companion experiences. Keeping the
 /// Watch status and iPhone widget controls together makes the schedule header
@@ -13,8 +14,10 @@ struct NativeDeviceSettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                ScheduleSettingsSection()
                 WidgetSettingsSection(session: session)
                 WatchSyncStatusSection(store: watchStore)
+                LiveActivitySettingsSection()
                 CalendarImportSection(store: scheduleStore)
             }
             .navigationTitle("设备与小组件")
@@ -29,11 +32,168 @@ struct NativeDeviceSettingsView: View {
     }
 }
 
+private struct ScheduleSettingsSection: View {
+    @ObservedObject private var preferences = NativeSchedulePreferences.shared
+
+    var body: some View {
+        Section {
+            NavigationLink {
+                NativeScheduleSettingsView(preferences: preferences)
+            } label: {
+                Label("课表设置", systemImage: "calendar.badge.clock")
+                Spacer(minLength: 8)
+                Text(summary)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        } header: {
+            Text("课表")
+        }
+    }
+
+    private var summary: String {
+        preferences.defaultView == "day" ? "日课表" : "周课表"
+    }
+}
+
+private struct NativeScheduleSettingsView: View {
+    @ObservedObject var preferences: NativeSchedulePreferences
+    @Environment(\.dismiss) private var dismiss
+
+    private let palettes = [
+        ("color-glass", "彩色玻璃"), ("green", "绿意"), ("blue", "晴蓝"),
+        ("teal", "青绿"), ("indigo", "靛青"), ("violet", "紫罗兰"),
+        ("orange", "暖橙"), ("rose", "玫瑰"), ("slate", "石墨")
+    ]
+
+    var body: some View {
+        Form {
+            Section {
+                Toggle("显示教室", isOn: $preferences.showLocation)
+                Toggle("显示教师", isOn: $preferences.showTeacher)
+                Toggle("显示节次", isOn: $preferences.showPeriod)
+                Toggle("显示周次", isOn: $preferences.showWeeks)
+            } header: {
+                Text("课程卡片")
+            } footer: {
+                Text("关闭不需要的信息后，课程卡片会自动重新排版。")
+            }
+
+            Section {
+                Picker("默认视图", selection: $preferences.defaultView) {
+                    Text("周课表").tag("week")
+                    Text("日课表").tag("day")
+                }
+                Picker("课程配色", selection: $preferences.palette) {
+                    ForEach(palettes, id: \.0) { value, label in
+                        Text(label).tag(value)
+                    }
+                }
+            } header: {
+                Text("课表外观")
+            }
+
+            Section {
+                Button("恢复默认设置", role: .destructive) {
+                    preferences.reset()
+                }
+            }
+        }
+        .navigationTitle("课表设置")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                Button("完成") { dismiss() }
+            }
+        }
+    }
+}
+
+@available(iOS 16.1, *)
+private struct LiveActivitySettingsSection: View {
+    @ObservedObject private var controller = NativeLiveActivityController.shared
+    @State private var enabled: Bool
+
+    init() {
+        let defaults = UserDefaults(suiteName: NextWidgetConfiguration.appGroup)
+        _enabled = State(initialValue: defaults?.object(forKey: NativeLiveActivityController.enabledKey) as? Bool ?? true)
+    }
+
+    var body: some View {
+        Section {
+            Toggle("灵动岛课程活动", isOn: Binding(
+                get: { enabled },
+                set: { value in
+                    enabled = value
+                    NativeLiveActivityController.shared.setEnabled(value)
+                }
+            ))
+            if enabled {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: statusSymbol)
+                        .foregroundStyle(statusColor)
+                        .frame(width: 20)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(controller.status.title)
+                            .font(.subheadline.weight(.medium))
+                        if let detail = controller.status.detail {
+                            Text(detail)
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        } else if controller.status == .active {
+                            Text("退出 App 或锁定屏幕后，在支持的 iPhone 上查看。")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+            if !ActivityAuthorizationInfo().areActivitiesEnabled {
+                Label("系统设置中未允许实时活动", systemImage: "exclamationmark.triangle")
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
+            }
+        } header: {
+            Label("灵动岛", systemImage: "rectangle.topthird.inset.filled")
+        } footer: {
+            Text("正在上课时立即显示；下一节课会在上课前 15 分钟出现。课程结束后自动收起，较早的课程由小组件展示。")
+        }
+    }
+
+    private var statusSymbol: String {
+        switch controller.status {
+        case .active: return "checkmark.circle.fill"
+        case .failed: return "exclamationmark.triangle.fill"
+        case .unavailable: return "minus.circle"
+        case .disabled: return "pause.circle"
+        case .waiting: return "clock"
+        }
+    }
+
+    private var statusColor: Color {
+        switch controller.status {
+        case .active: return .cpuBrand
+        case .failed, .unavailable: return .orange
+        case .disabled, .waiting: return .secondary
+        }
+    }
+}
+
 private struct CalendarImportSection: View {
     @ObservedObject var store: NativeScheduleStore
     @State private var importing = false
     @State private var preparing = false
+    @State private var clearing = false
+    @State private var remindersEnabled: Bool
+    @State private var showClearConfirmation = false
     @State private var message: String?
+
+    init(store: NativeScheduleStore) {
+        self.store = store
+        let defaults = UserDefaults(suiteName: NextWidgetConfiguration.appGroup)
+        _remindersEnabled = State(initialValue: defaults?.object(forKey: NativeScheduleCalendarImporter.remindersKey) as? Bool ?? false)
+    }
 
     var body: some View {
         Section {
@@ -47,6 +207,19 @@ private struct CalendarImportSection: View {
             }
             .disabled(importing || preparing || store.latestSnapshot == nil)
 
+            Toggle("课程提醒", isOn: Binding(
+                get: { remindersEnabled },
+                set: { value in
+                    remindersEnabled = value
+                    UserDefaults(suiteName: NextWidgetConfiguration.appGroup)?.set(value, forKey: NativeScheduleCalendarImporter.remindersKey)
+                }
+            ))
+
+            Button("清空已导入课程", systemImage: "trash", role: .destructive) {
+                showClearConfirmation = true
+            }
+            .disabled(importing || preparing || clearing || !hasImportedEvents)
+
             if let message {
                 Label(message, systemImage: message.contains("失败") ? "exclamationmark.triangle" : "checkmark.circle.fill")
                     .font(.footnote)
@@ -55,8 +228,23 @@ private struct CalendarImportSection: View {
         } header: {
             Label("Apple 日历", systemImage: "calendar")
         } footer: {
-            Text("按课表周次、日期和节次创建课程事件；再次导入会更新已有事件，不会重复添加。")
+            Text(remindersEnabled
+                 ? "按课表周次、日期和节次创建课程事件，并在上课前 15 分钟提醒；再次导入会更新已有事件。"
+                 : "按课表周次、日期和节次创建课程事件，默认不添加提醒；再次导入会更新已有事件。")
         }
+        .alert("清空已导入课程？", isPresented: $showClearConfirmation) {
+            Button("清空", role: .destructive) { clearImportedEvents() }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("只会删除由本应用导入并记录的课程事件，不会影响日历中的其他内容。")
+        }
+    }
+
+    private var hasImportedEvents: Bool {
+        UserDefaults(suiteName: NextWidgetConfiguration.appGroup)?
+            .dictionaryRepresentation()
+            .keys
+            .contains { $0.hasPrefix(NativeScheduleCalendarImporter.mapPrefix) } == true
     }
 
     private func importSchedule() {
@@ -74,7 +262,7 @@ private struct CalendarImportSection: View {
             }
             importing = true
             do {
-                let count = try await NativeScheduleCalendarImporter().importSnapshot(snapshot)
+                let count = try await NativeScheduleCalendarImporter().importSnapshot(snapshot, remindersEnabled: remindersEnabled)
                 message = snapshot.completeSemester
                     ? "已同步 \(count) 个课程事件"
                     : "已同步当前周 \(count) 个课程事件"
@@ -84,11 +272,25 @@ private struct CalendarImportSection: View {
             importing = false
         }
     }
+
+    private func clearImportedEvents() {
+        clearing = true
+        Task { @MainActor in
+            do {
+                let count = try await NativeScheduleCalendarImporter().clearImportedEvents()
+                message = count > 0 ? "已清空 \(count) 个课程事件" : "没有找到已导入的课程事件"
+            } catch {
+                message = "清空失败：\(error.localizedDescription)"
+            }
+            clearing = false
+        }
+    }
 }
 
 @MainActor
 private final class NativeScheduleCalendarImporter {
-    private static let mapPrefix = "scheduleAppleCalendarEventMap.v1."
+    fileprivate static let mapPrefix = "scheduleAppleCalendarEventMap.v1."
+    fileprivate static let remindersKey = "scheduleAppleCalendarRemindersEnabled"
     private static let appGroup = NextWidgetConfiguration.appGroup
 
     enum ImportError: LocalizedError {
@@ -105,7 +307,7 @@ private final class NativeScheduleCalendarImporter {
         }
     }
 
-    func importSnapshot(_ snapshot: NativeScheduleSnapshot) async throws -> Int {
+    func importSnapshot(_ snapshot: NativeScheduleSnapshot, remindersEnabled: Bool) async throws -> Int {
         guard let data = snapshot.data, let calendar = snapshot.calendar,
               !data.currentSemester.isEmpty, !calendar.weeks.isEmpty else {
             throw ImportError.invalidSchedule
@@ -154,6 +356,7 @@ private final class NativeScheduleCalendarImporter {
                     event.endDate = end
                     event.location = course.location?.trimmingCharacters(in: .whitespacesAndNewlines)
                     event.notes = notes(for: course, week: week.week, semester: data.currentSemester)
+                    event.alarms = remindersEnabled ? [EKAlarm(relativeOffset: -15 * 60)] : []
                     try eventStore.save(event, span: .thisEvent, commit: false)
                     eventMap[key] = event.eventIdentifier
                     count += 1
@@ -174,6 +377,36 @@ private final class NativeScheduleCalendarImporter {
         }
         try eventStore.commit()
         saveMap(eventMap, for: data.currentSemester)
+        return count
+    }
+
+    func clearImportedEvents() async throws -> Int {
+        let eventStore = EKEventStore()
+        let granted: Bool
+        if #available(iOS 17.0, *) {
+            granted = try await eventStore.requestFullAccessToEvents()
+        } else {
+            granted = try await eventStore.requestAccess(to: .event)
+        }
+        guard granted else { throw ImportError.permissionDenied }
+
+        guard let defaults = UserDefaults(suiteName: Self.appGroup) else { return 0 }
+        let keys = defaults.dictionaryRepresentation().keys.filter { $0.hasPrefix(Self.mapPrefix) }
+        var identifiers = Set<String>()
+        for key in keys {
+            guard let data = defaults.data(forKey: key),
+                  let map = try? JSONDecoder().decode([String: String].self, from: data) else { continue }
+            identifiers.formUnion(map.values)
+        }
+
+        var count = 0
+        for identifier in identifiers {
+            guard let event = eventStore.event(withIdentifier: identifier) else { continue }
+            try eventStore.remove(event, span: .thisEvent, commit: false)
+            count += 1
+        }
+        if !identifiers.isEmpty { try eventStore.commit() }
+        keys.forEach { defaults.removeObject(forKey: $0) }
         return count
     }
 

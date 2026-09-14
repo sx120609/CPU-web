@@ -288,6 +288,26 @@ function mergeNumberLists(a: number[] = [], b: number[] = []) {
   return [...new Set([...a, ...b])].sort((x, y) => x - y);
 }
 
+function mergeWeeksText(previous: ScheduleCourse, next: ScheduleCourse) {
+  if (normalizeKeyPart(previous.weeks) === normalizeKeyPart(next.weeks)) return previous.weeks;
+  const weeks = mergeNumberLists(previous.weekList, next.weekList);
+  if (!weeks.length) return previous.weeks || next.weeks || "全部周";
+  const ranges: string[] = [];
+  let start = weeks[0];
+  let end = weeks[0];
+  for (const value of weeks.slice(1)) {
+    if (value === end + 1) {
+      end = value;
+      continue;
+    }
+    ranges.push(start === end ? String(start) : `${start}-${end}`);
+    start = value;
+    end = value;
+  }
+  ranges.push(start === end ? String(start) : `${start}-${end}`);
+  return `${ranges.join("、")}周`;
+}
+
 function buildGraduateWeekOptions(cells: ScheduleCell[]) {
   const allWeeks = [...new Set(
     cells.flatMap((cell) => cell.courses.flatMap((course) => course.weekList ?? [])),
@@ -313,7 +333,6 @@ function normalizeGraduatePayloadCells(cells: ScheduleCell[]): ScheduleCell[] {
       const key = [
         cell.day,
         normalizeKeyPart(course.name),
-        normalizeKeyPart(course.weeks),
         normalizeKeyPart(course.teacher),
         normalizeKeyPart(course.location),
       ].join("|");
@@ -347,6 +366,7 @@ function normalizeGraduatePayloadCells(cells: ScheduleCell[]): ScheduleCell[] {
           endSlot: nextEnd,
           slotNote: formatSlotRange(nextStart, nextEnd),
           weekList: mergeNumberLists(prev.course.weekList, entry.course.weekList),
+          weeks: mergeWeeksText(prev.course, entry.course),
         };
       } else {
         merged.push({

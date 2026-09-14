@@ -153,6 +153,43 @@ struct NativeScheduleStoreChecks {
         fail = true
         await failedStore.selectWeek("9")
         precondition(failedStore.state == .failed && failedStore.result == nil, "Never show another week's courses under a failed week")
+
+        // A historical semester can be rejected by the upstream system with
+        // a response for the current semester. The visible timetable and its
+        // selector must survive that failure so another term can be chosen.
+        let semesterSwitchStore = NativeScheduleStore(loader: { request in
+            if request.semester == "old" {
+                return NativeScheduleSnapshot(
+                    auth: NativeScheduleAuth(authenticated: true),
+                    error: "教务系统返回了其他学期的课表"
+                )
+            }
+            let semester = request.semester ?? "fall"
+            return NativeScheduleSnapshot(
+                completeSemester: true,
+                source: .jwxt,
+                fetchedAt: .now,
+                data: NativeScheduleResult(
+                    currentSemester: semester,
+                    currentWeek: "1",
+                    cells: [NativeScheduleCell(day: 1, bigSlot: 1,
+                        courses: [NativeScheduleCourse(name: semester)])]
+                ),
+                auth: NativeScheduleAuth(authenticated: true)
+            )
+        })
+        await semesterSwitchStore.load(semester: "fall", week: "1")
+        await semesterSwitchStore.selectSemester("old")
+        precondition(semesterSwitchStore.result != nil
+                     && semesterSwitchStore.selectedSemester == "fall"
+                     && semesterSwitchStore.state == .stale,
+                     "A rejected semester must restore the visible selection")
+        await semesterSwitchStore.selectSemester("spring")
+        precondition(semesterSwitchStore.selectedSemester == "spring"
+                     && semesterSwitchStore.result?.currentSemester == "spring"
+                     && semesterSwitchStore.state == .loaded,
+                     "A later semester selection must still be accepted")
+
         // Cold start: the last timetable is shown again only while the same
         // signed-in web session is still present.
         final class MemoryArchive: NativeScheduleArchive {

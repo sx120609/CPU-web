@@ -203,9 +203,15 @@ final class NativeShellCoordinator: ObservableObject {
 
     private func handleRouteChanged(path: String, source: String) {
         // A stale session may navigate the shared WebView to the login page
-        // before its account probe reports back. Gate immediately on that
-        // route, so the native timetable is never shown to a guest.
-        if isAuthResolved, !hasAuthenticatedSession, !requiresLogin {
+        // before its account probe reports back. Do not gate on that route
+        // until the Web auth store has published a complete result: a JWXT
+        // expiry and a cookie-restore navigation are both allowed to pass
+        // through this callback while the site account is still signed in.
+        if isAuthResolved,
+           webSession?.authState.ready == true,
+           webSession?.authState.authenticated != true,
+           !hasAuthenticatedSession,
+           !requiresLogin {
             applyLoginGate(navigateToLogin: false)
             return
         }

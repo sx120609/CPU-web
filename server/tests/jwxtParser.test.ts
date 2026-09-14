@@ -81,6 +81,46 @@ test("parseSchedule keeps supporting the legacy kbtable layout", () => {
   }]);
 });
 
+test("parseSchedule deduplicates repeated semester selector options", () => {
+  const result = parseSchedule(`
+    <select id="xnxq01id">
+      <option value="2025-2026-2" selected>2025-2026-2</option>
+      <option value="2024-2025-2">2024-2025-2</option>
+      <option value="2025-2026-2">2025-2026-2</option>
+    </select>
+    <table id="kbtable"><tr><th>时间</th></tr></table>
+  `);
+
+  assert.deepEqual(result.semesters.map((item) => item.value), ["2025-2026-2", "2024-2025-2"]);
+  assert.equal(result.semesters.filter((item) => item.current).length, 1);
+});
+
+test("parseSchedule merges the same 2025-2026-2 course when JWXT repeats it with different week text", () => {
+  const result = parseSchedule(`
+    <html>
+      <head><title>个人课表信息</title></head>
+      <body>
+        <select id="xnxq01id"><option value="2025-2026-2" selected>2025-2026-2</option></select>
+        <table class="qz-weeklyTable">
+          <tr><th>周次</th><th>星期一</th><th>星期二</th><th>星期三</th><th>星期四</th><th>星期五</th><th>星期六</th><th>星期日</th></tr>
+          <tr>
+            <td name="timeTd"><div class="index-title">第二大节</div></td>
+            <td name="kbDataTd"></td><td name="kbDataTd"></td>
+            <td name="kbDataTd">
+              <ul class="courselists"><li class="courselists-item"><div class="qz-hasCourse-title">实验课</div><p><span class="qz-hasCourse-abbrinfo">老师:张老师;时间:1-8周[3-4节];地点:实验楼(201)</span></p></li></ul>
+              <ul class="courselists"><li class="courselists-item"><div class="qz-hasCourse-title">实验课</div><p><span class="qz-hasCourse-abbrinfo">老师:张老师;时间:2、4、6、8周[3-4节];地点:实验楼(201)</span></p></li></ul>
+            </td>
+            <td name="kbDataTd"></td><td name="kbDataTd"></td><td name="kbDataTd"></td><td name="kbDataTd"></td>
+          </tr>
+        </table>
+      </body>
+    </html>
+  `);
+  const courses = result.cells.find((cell) => cell.day === 3 && cell.bigSlot === 1)?.courses ?? [];
+  assert.equal(courses.length, 1);
+  assert.deepEqual(courses[0].weekList, [1,2,3,4,5,6,7,8]);
+});
+
 test("parseSchedule parses the modern qz weekly table and restores rowspan columns", () => {
   const course = (name: string, detail: string) => `
     <ul class="courselists">
@@ -264,6 +304,17 @@ test("parseCalendar accepts the modern 第N周 row label", () => {
   assert.equal(result.weeks[0].week, 1);
   assert.equal(result.weeks[0].monday, "2026-03-02");
   assert.equal(result.weeks[0].sunday, "2026-03-08");
+});
+
+test("parseCalendar merges semester selectors from legacy compatibility forms", () => {
+  const result = parseCalendar(`
+    <select id="xnxqid"><option value="2025-2026-2" selected>2025-2026-2</option></select>
+    <select id="xnxq01id"><option value="2025-2026-2">2025-2026-2</option><option value="2024-2025-2">2024-2025-2</option></select>
+    <select id="xqdm"><option value="2024-2025-2">2024-2025-2</option></select>
+  `);
+
+  assert.deepEqual(result.semesters.map((item) => item.value), ["2025-2026-2", "2024-2025-2"]);
+  assert.equal(result.semesters.find((item) => item.current)?.value, "2025-2026-2");
 });
 
 test("parseProgress maps the modern card-and-div layout", () => {

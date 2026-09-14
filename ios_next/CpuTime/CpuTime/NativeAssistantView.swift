@@ -16,6 +16,11 @@ struct NativeAssistantView: View {
     @State private var isLoading = false
     @State private var errorMessage = ""
     @State private var requestGeneration = 0
+    @State private var conversations: [NativeAssistantConversation] = []
+    @State private var activeConversationID = ""
+    @State private var messageSequence = 0
+    @State private var historyPresented = false
+    @State private var historyLoaded = false
 
     private let suggestions = ["宿舍电费在哪里查？", "怎么打开药苑之声？", "AI 额度怎么计算？"]
 
@@ -36,14 +41,15 @@ struct NativeAssistantView: View {
             .navigationTitle("拾间 AI")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItemGroup(placement: .topBarLeading) {
                     Button {
-                        requestGeneration += 1
-                        isLoading = false
-                        composerFocused = false
-                        messages.removeAll()
-                        input = ""
-                        errorMessage = ""
+                        historyPresented = true
+                    } label: {
+                        Image(systemName: "clock.arrow.circlepath")
+                    }
+                    .accessibilityLabel("历史对话")
+                    Button {
+                        startNewConversation()
                     } label: {
                         Image(systemName: "plus")
                     }
@@ -60,57 +66,127 @@ struct NativeAssistantView: View {
             } message: {
                 Text(errorMessage)
             }
+            .sheet(isPresented: $historyPresented) {
+                historySheet
+                    .preferredColorScheme(session.pageColorScheme)
+            }
         }
         .preferredColorScheme(session.pageColorScheme)
+        .task {
+            await loadHistory()
+        }
+        .onChange(of: session.authState.account) { _, _ in
+            guard !isLoading else { return }
+            historyLoaded = false
+            Task { await loadHistory() }
+        }
     }
 
     private var welcome: some View {
-        // The welcome state does not need to scroll. Keeping it as a fixed
-        // layout prevents UIKit from trying to reveal the focused text view by
-        // moving the whole page when the keyboard appears.
-        VStack(alignment: .leading, spacing: 12) {
-            Image(systemName: "sparkles")
-                .font(.system(size: 25, weight: .semibold))
-                .foregroundStyle(Color.cpuBrand)
-                .frame(width: 48, height: 48)
-                .background(Color.cpuBrand.opacity(0.12))
-                .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
-            Text("想做什么？直接告诉我。")
-                .font(.title3.weight(.bold))
-            Text("可以询问站内功能、校园服务和操作步骤，也可以直接聊天。")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            Text("拾间 AI 不会读取你的课表、成绩或其他个人数据；涉及本人数据时会引导你进入对应页面自行查看。")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 3)
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-                ForEach(suggestions, id: \.self) { suggestion in
-                    Button { send(suggestion) } label: {
-                        Text(suggestion)
-                            .font(.caption.weight(.medium))
-                            .multilineTextAlignment(.leading)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 11)
-                            .padding(.vertical, 10)
-                            .background(Color(uiColor: .secondarySystemGroupedBackground))
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .stroke(Color(uiColor: .separator).opacity(0.55), lineWidth: 1)
-                            }
-                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 12) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 25, weight: .semibold))
+                    .foregroundStyle(Color.cpuBrand)
+                    .frame(width: 48, height: 48)
+                    .background(Color.cpuBrand.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+                Text("想做什么？直接告诉我。")
+                    .font(.title3.weight(.bold))
+                Text("可以询问站内功能、校园服务和操作步骤，也可以直接聊天。")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("拾间 AI 不会读取你的课表、成绩或其他个人数据；涉及本人数据时会引导你进入对应页面自行查看。")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 3)
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                    ForEach(suggestions, id: \.self) { suggestion in
+                        Button { send(suggestion) } label: {
+                            Text(suggestion)
+                                .font(.caption.weight(.medium))
+                                .multilineTextAlignment(.leading)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 11)
+                                .padding(.vertical, 10)
+                                .background(Color(uiColor: .secondarySystemGroupedBackground))
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .stroke(Color(uiColor: .separator).opacity(0.55), lineWidth: 1)
+                                }
+                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.primary)
                     }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.primary)
+                }
+                .padding(.top, 6)
+            }
+            .frame(maxWidth: 620, alignment: .topLeading)
+            .padding(.horizontal, 20)
+            .padding(.top, 20)
+            .padding(.bottom, 24)
+        }
+        .scrollDismissesKeyboard(.interactively)
+    }
+
+    private var historySheet: some View {
+        NavigationStack {
+            Group {
+                if conversations.isEmpty {
+                    ContentUnavailableView(
+                        "暂无历史对话",
+                        systemImage: "clock.arrow.circlepath",
+                        description: Text("发送第一条消息后，对话会自动保存在这里。")
+                    )
+                } else {
+                    List {
+                        ForEach(conversations) { conversation in
+                            Button {
+                                openConversation(conversation)
+                            } label: {
+                                VStack(alignment: .leading, spacing: 5) {
+                                    Text(conversation.title)
+                                        .font(.body.weight(.medium))
+                                        .foregroundStyle(.primary)
+                                        .lineLimit(1)
+                                    Text(conversationPreview(conversation))
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(2)
+                                    Text(formatHistoryDate(conversation.updatedAt))
+                                        .font(.caption2)
+                                        .foregroundStyle(.tertiary)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button(role: .destructive) {
+                                    deleteConversation(conversation)
+                                } label: {
+                                    Label("删除", systemImage: "trash")
+                                }
+                            }
+                        }
+                    }
+                    .listStyle(.plain)
                 }
             }
-            .padding(.top, 6)
+            .navigationTitle("历史对话")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("新建") { startNewConversation(); historyPresented = false }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("完成") { historyPresented = false }
+                }
+            }
         }
-        .frame(maxWidth: 620, maxHeight: .infinity, alignment: .topLeading)
-        .padding(20)
-        .clipped()
     }
 
     private var conversation: some View {
@@ -142,6 +218,10 @@ struct NativeAssistantView: View {
                     if let last = messages.last { proxy.scrollTo(last.id, anchor: .bottom) }
                 }
             }
+            .onChange(of: messages.last?.content) { _, _ in
+                guard isLoading, let last = messages.last else { return }
+                withAnimation(.easeOut(duration: 0.12)) { proxy.scrollTo(last.id, anchor: .bottom) }
+            }
             .onChange(of: isLoading) { _, loading in
                 guard loading else { return }
                 withAnimation(.easeOut(duration: 0.22)) { proxy.scrollTo("loading", anchor: .bottom) }
@@ -162,11 +242,27 @@ struct NativeAssistantView: View {
                     .background(Color.cpuBrand)
                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             } else {
-                Text(markdown(message.content))
-                    .font(.body)
-                    .foregroundStyle(.primary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .textSelection(.enabled)
+                HStack(alignment: .bottom, spacing: 2) {
+                    Text(markdown(message.content))
+                        .font(.body)
+                        .foregroundStyle(.primary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.enabled)
+                    if message.streaming {
+                        Text("▌")
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(Color.cpuBrand)
+                            .transition(.opacity)
+                    }
+                }
+                if message.streaming {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.mini).tint(.cpuBrand)
+                        Text(message.streamStatus.isEmpty ? "正在生成回答…" : message.streamStatus)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
                 if !message.actions.isEmpty {
                     VStack(spacing: 8) {
                         ForEach(message.actions) { action in
@@ -337,29 +433,189 @@ struct NativeAssistantView: View {
                 "content": String($0.content.prefix(4000)),
             ]
         }
-        messages.append(NativeAssistantMessage(role: .user, content: text))
+        ensureConversation(title: text)
+        messages.append(NativeAssistantMessage(id: nextMessageID(), role: .user, content: text))
+        persistActiveConversation(syncCloud: false)
+        let assistantID = nextMessageID()
+        messages.append(NativeAssistantMessage(id: assistantID, role: .assistant, content: "", streaming: true))
         isLoading = true
         errorMessage = ""
         requestGeneration += 1
         let generation = requestGeneration
         Task { @MainActor in
             do {
-                let reply = try await session.nativeAssistant(message: text, history: history)
+                let reply = try await session.nativeAssistantStream(
+                    message: text,
+                    history: history,
+                    onDelta: { delta in
+                        guard generation == requestGeneration,
+                              let index = messages.firstIndex(where: { $0.id == assistantID }) else { return }
+                        messages[index].content += delta
+                        messages[index].streaming = true
+                        messages[index].streamStatus = "正在生成回答…"
+                    },
+                    onStatus: { status in
+                        guard generation == requestGeneration,
+                              let index = messages.firstIndex(where: { $0.id == assistantID }) else { return }
+                        messages[index].streamStatus = status
+                    }
+                )
                 guard generation == requestGeneration else { return }
-                messages.append(NativeAssistantMessage(
-                    role: .assistant,
-                    content: reply.answer,
-                    actions: reply.actions,
-                    suggestions: reply.suggestions,
-                    images: reply.images,
-                    sources: reply.sources
-                ))
+                guard let index = messages.firstIndex(where: { $0.id == assistantID }) else { return }
+                messages[index].content = reply.answer
+                messages[index].actions = reply.actions
+                messages[index].suggestions = reply.suggestions
+                messages[index].images = reply.images
+                messages[index].sources = reply.sources
+                messages[index].streaming = false
+                messages[index].streamStatus = ""
+                persistActiveConversation(syncCloud: true)
             } catch {
                 guard generation == requestGeneration else { return }
+                messages.removeAll { $0.id == assistantID }
+                persistActiveConversation(syncCloud: false)
                 errorMessage = (error as? LocalizedError)?.errorDescription ?? "拾间 AI 暂时不可用，请重试。"
             }
             if generation == requestGeneration { isLoading = false }
         }
+    }
+
+    private func startNewConversation() {
+        session.cancelNativeAssistantStreams()
+        requestGeneration += 1
+        isLoading = false
+        composerFocused = false
+        messages.removeAll()
+        input = ""
+        errorMessage = ""
+        activeConversationID = ""
+    }
+
+    private func ensureConversation(title: String) {
+        guard !conversations.contains(where: { $0.id == activeConversationID }) else { return }
+        let conversation = NativeAssistantConversation(
+            id: UUID().uuidString.lowercased(),
+            title: String(title.prefix(80)),
+            messages: []
+        )
+        activeConversationID = conversation.id
+        conversations.insert(conversation, at: 0)
+    }
+
+    private func nextMessageID() -> Int {
+        messageSequence += 1
+        return messageSequence
+    }
+
+    private func persistActiveConversation(syncCloud: Bool) {
+        guard let index = conversations.firstIndex(where: { $0.id == activeConversationID }) else { return }
+        let stored = messages
+            .filter { !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !$0.streaming }
+            .suffix(60)
+            .map(\.stored)
+        guard !stored.isEmpty else { return }
+        conversations[index].messages = Array(stored)
+        conversations[index].updatedAt = Int(Date().timeIntervalSince1970 * 1000)
+        if let firstUser = stored.first(where: { $0.role == .user }) {
+            conversations[index].title = String(firstUser.content.prefix(80))
+        }
+        conversations.sort { $0.updatedAt > $1.updatedAt }
+        saveLocalHistory()
+        guard syncCloud, session.isLoggedIn else { return }
+        let conversation = conversations.first(where: { $0.id == activeConversationID })
+        guard let conversation else { return }
+        Task { @MainActor in
+            _ = try? await session.saveNativeAssistantConversation(conversation)
+        }
+    }
+
+    private func openConversation(_ conversation: NativeAssistantConversation) {
+        session.cancelNativeAssistantStreams()
+        requestGeneration += 1
+        isLoading = false
+        activeConversationID = conversation.id
+        messages = conversation.messages.map(NativeAssistantMessage.init)
+        messageSequence = messages.map(\.id).max() ?? 0
+        input = ""
+        errorMessage = ""
+        historyPresented = false
+    }
+
+    private func deleteConversation(_ conversation: NativeAssistantConversation) {
+        conversations.removeAll { $0.id == conversation.id }
+        saveLocalHistory()
+        if activeConversationID == conversation.id { startNewConversation() }
+        guard session.isLoggedIn else { return }
+        Task { @MainActor in
+            try? await session.deleteNativeAssistantConversation(id: conversation.id)
+        }
+    }
+
+    private func loadHistory() async {
+        guard !historyLoaded else { return }
+        historyLoaded = true
+        let local = loadLocalHistory()
+        conversations = local
+        if let active = local.first {
+            activeConversationID = active.id
+            messages = active.messages.map(NativeAssistantMessage.init)
+            messageSequence = messages.map(\.id).max() ?? 0
+        }
+        guard session.isLoggedIn else { return }
+        do {
+            let cloud = try await session.listNativeAssistantConversations()
+            let merged = mergeConversations(local: conversations, cloud: cloud)
+            conversations = merged
+            saveLocalHistory()
+            if let active = merged.first(where: { $0.id == activeConversationID }) {
+                messages = active.messages.map(NativeAssistantMessage.init)
+                messageSequence = messages.map(\.id).max() ?? 0
+            } else if messages.isEmpty, let active = merged.first {
+                openConversation(active)
+            }
+        } catch {
+            // Local history is still useful when the account is offline. The
+            // next open silently retries the cloud merge.
+            historyLoaded = false
+        }
+    }
+
+    private func mergeConversations(local: [NativeAssistantConversation], cloud: [NativeAssistantConversation]) -> [NativeAssistantConversation] {
+        var merged: [String: NativeAssistantConversation] = [:]
+        let deletedIDs = Set(cloud.filter { $0.deletedAt != nil }.map(\.id))
+        for conversation in local + cloud where conversation.deletedAt == nil && !deletedIDs.contains(conversation.id) && !conversation.messages.isEmpty {
+            if let current = merged[conversation.id], current.updatedAt >= conversation.updatedAt { continue }
+            merged[conversation.id] = conversation
+        }
+        return merged.values.sorted { $0.updatedAt > $1.updatedAt }.prefix(20).map { $0 }
+    }
+
+    private func historyStorageKey() -> String {
+        let account = session.authState.account.trimmingCharacters(in: .whitespacesAndNewlines)
+        return "native-assistant-history:v1:\(account.isEmpty ? "default" : account)"
+    }
+
+    private func loadLocalHistory() -> [NativeAssistantConversation] {
+        guard let data = UserDefaults.standard.data(forKey: historyStorageKey()),
+              let decoded = try? JSONDecoder().decode([NativeAssistantConversation].self, from: data) else { return [] }
+        return decoded.filter { !$0.messages.isEmpty }.sorted { $0.updatedAt > $1.updatedAt }.prefix(20).map { $0 }
+    }
+
+    private func saveLocalHistory() {
+        guard let data = try? JSONEncoder().encode(conversations) else { return }
+        UserDefaults.standard.set(data, forKey: historyStorageKey())
+    }
+
+    private func conversationPreview(_ conversation: NativeAssistantConversation) -> String {
+        conversation.messages.last(where: { !$0.content.isEmpty })?.content ?? "空对话"
+    }
+
+    private func formatHistoryDate(_ value: Int) -> String {
+        let date = Date(timeIntervalSince1970: TimeInterval(value) / 1000)
+        if Calendar.current.isDateInToday(date) {
+            return date.formatted(date: .omitted, time: .shortened)
+        }
+        return date.formatted(.dateTime.month().day())
     }
 
     private func markdown(_ value: String) -> AttributedString {
@@ -513,11 +769,59 @@ private struct NativeAssistantTextEditor: UIViewRepresentable {
 private struct NativeAssistantMessage: Identifiable {
     enum Role: String { case user, assistant }
 
-    let id = UUID()
+    let id: Int
     let role: Role
-    let content: String
+    var content: String
     var actions: [NativeAssistantAction] = []
     var suggestions: [String] = []
     var images: [NativeAssistantGeneratedImage] = []
     var sources: [NativeAssistantSource] = []
+    var streaming = false
+    var streamStatus = ""
+
+    nonisolated init(
+        id: Int,
+        role: Role,
+        content: String,
+        actions: [NativeAssistantAction] = [],
+        suggestions: [String] = [],
+        images: [NativeAssistantGeneratedImage] = [],
+        sources: [NativeAssistantSource] = [],
+        streaming: Bool = false,
+        streamStatus: String = ""
+    ) {
+        self.id = id
+        self.role = role
+        self.content = content
+        self.actions = actions
+        self.suggestions = suggestions
+        self.images = images
+        self.sources = sources
+        self.streaming = streaming
+        self.streamStatus = streamStatus
+    }
+
+    nonisolated init(_ stored: NativeAssistantStoredMessage) {
+        self.init(
+            id: stored.id,
+            role: Role(rawValue: stored.role.rawValue) ?? .assistant,
+            content: stored.content,
+            actions: stored.actions,
+            suggestions: stored.suggestions,
+            images: stored.images,
+            sources: stored.sources
+        )
+    }
+
+    var stored: NativeAssistantStoredMessage {
+        NativeAssistantStoredMessage(
+            id: id,
+            role: NativeAssistantStoredMessage.Role(rawValue: role.rawValue) ?? .assistant,
+            content: content,
+            actions: actions,
+            suggestions: suggestions,
+            images: images,
+            sources: sources
+        )
+    }
 }

@@ -824,7 +824,12 @@ public final class NativeScheduleStore: ObservableObject {
         }
 
         if !background, displayedKey != nil, displayedKey != key {
-            clearDisplayedData()
+            // A missing week is a different grid and can still use the old
+            // behavior. A semester switch keeps the current grid visible until
+            // the new semester is accepted or rejected.
+            if displayedKey?.semester == key.semester {
+                clearDisplayedData()
+            }
         }
 
         guard let loader else {
@@ -1085,6 +1090,11 @@ public final class NativeScheduleStore: ObservableObject {
         selectedWeek = ""
         state = .idle
         onWatchReset?()
+        #if os(iOS) && canImport(ActivityKit)
+        if #available(iOS 16.1, *) {
+            NativeLiveActivityController.shared.end()
+        }
+        #endif
     }
 
     private func accept(
@@ -1200,6 +1210,11 @@ public final class NativeScheduleStore: ObservableObject {
         displayedKey = resolvedKey
         latestSnapshot = snapshot
         onWatchSnapshot?(snapshot)
+        #if os(iOS) && canImport(ActivityKit)
+        if #available(iOS 16.1, *) {
+            NativeLiveActivityController.shared.accept(snapshot)
+        }
+        #endif
         archiveDisplayed(snapshot)
     }
 
@@ -1519,6 +1534,11 @@ public final class NativeScheduleStore: ObservableObject {
             displayedKey = key
             latestSnapshot = snapshot
             onWatchSnapshot?(snapshot)
+            #if os(iOS) && canImport(ActivityKit)
+            if #available(iOS 16.1, *) {
+                NativeLiveActivityController.shared.accept(snapshot)
+            }
+            #endif
         }
         self.state = state
         errorMessage = snapshot.error?.trimmedNonEmpty
@@ -1549,6 +1569,28 @@ public final class NativeScheduleStore: ObservableObject {
                 key: key
             )
             errorMessage = storeError.localizedDescription
+            return
+        }
+        if let displayedKey,
+           displayedKey.semester != key.semester,
+           result != nil {
+            // The server can answer an old/unsupported semester with the
+            // current semester. Restore the visible selection and leave the
+            // timetable usable so the user can choose another term.
+            selectedSemester = displayedKey.semester
+            if !displayedKey.week.isEmpty, displayedKey.week != "*" {
+                selectedWeek = displayedKey.week
+            } else if let result {
+                selectedWeek = firstUsableWeek(in: result) ?? selectedWeek
+            }
+            let mismatchMessage = storeError.localizedDescription.contains("其他学期")
+                || storeError.localizedDescription.contains("学期与请求")
+                || storeError.localizedDescription.contains("不一致")
+            let message = mismatchMessage
+                ? "这个学期暂时没有可用课表，请重新选择其他学期。"
+                : storeError.localizedDescription
+            errorMessage = message
+            state = .stale
             return
         }
         clearDisplayedData()

@@ -8,6 +8,8 @@
 	<string>$(CPU_APP_GROUP_IDENTIFIER)</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>用于将课表课程同步到 Apple 日历。</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
