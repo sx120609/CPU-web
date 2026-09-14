@@ -25,6 +25,215 @@ type SemesterEntry = {
 };
 const CACHE_LIFETIME = 12 * 60 * 60 * 1000;
 
+type LegacyRecord = Record<string, unknown>;
+
+function legacyRecord(value: unknown): LegacyRecord | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as LegacyRecord : null;
+}
+
+function legacyText(...values: unknown[]) {
+  for (const value of values) {
+    if (value === undefined || value === null) continue;
+    const text = String(value).trim();
+    if (text) return text;
+  }
+  return "";
+}
+
+function legacyNumber(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value)) return Math.trunc(value);
+    if (typeof value === "string" && value.trim()) {
+      const match = value.trim().match(/-?\d+(?:\.\d+)?/);
+      if (match) {
+        const parsed = Number(match[0]);
+        if (Number.isFinite(parsed)) return Math.trunc(parsed);
+      }
+    }
+  }
+  return 0;
+}
+
+function legacyArray(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value;
+  if (value && typeof value === "object") return Object.values(value as LegacyRecord);
+  return value == null ? [] : [value];
+}
+
+function legacyWeekList(value: unknown, weeks: string) {
+  if (Array.isArray(value)) {
+    return [...new Set(value.map(Number).filter((item) => Number.isFinite(item) && item > 0))]
+      .sort((a, b) => a - b);
+  }
+  if (typeof value === "string" && value.trim()) {
+    return normalizedCourseWeekList({ weeks: value });
+  }
+  return normalizedCourseWeekList({ weeks });
+}
+
+function legacySlotRange(note: string, start: number, end: number) {
+  const parsed = (note.match(/\d{1,2}/g) ?? []).map(Number).filter((item) => item >= 1 && item <= 20);
+  const resolvedStart = start > 0 ? start : parsed[0] || 0;
+  const resolvedEnd = end > 0 ? end : parsed[parsed.length - 1] || resolvedStart;
+  return {
+    startSlot: resolvedStart > 0 ? resolvedStart : undefined,
+    endSlot: resolvedEnd > 0 ? Math.max(resolvedStart || resolvedEnd, resolvedEnd) : undefined,
+  };
+}
+
+function normalizeLegacyCourse(raw: unknown) {
+  const value = legacyRecord(raw) ?? {};
+  const name = legacyText(
+    value.name,
+    value.courseName,
+    value.kcmc,
+    value.kcmcName,
+    value.title,
+    value.course,
+    value.kc,
+  ) || "课程";
+  const teacher = legacyText(value.teacher, value.teacherName, value.jsmc, value.js, value.instructor) || undefined;
+  const location = legacyText(value.location, value.classroom, value.room, value.jxcd, value.dd, value.place) || undefined;
+  const weeks = legacyText(value.weeks, value.weekText, value.weeksText, value.zc, value.week, value.weekRange);
+  const slotNote = legacyText(value.slotNote, value.timeNote, value.sectionText, value.jc, value.timeRange) || undefined;
+  const slot = legacySlotRange(
+    slotNote || "",
+    legacyNumber(value.startSlot, value.start, value.slotStart, value.sectionStart),
+    legacyNumber(value.endSlot, value.end, value.slotEnd, value.sectionEnd),
+  );
+  return {
+    ...value,
+    name,
+    teacher,
+    location,
+    weeks,
+    weekList: legacyWeekList(value.weekList ?? value.weeksList ?? value.weekNumbers, weeks),
+    slotNote,
+    ...slot,
+    ...(typeof value.customId === "string" ? { customId: value.customId } : {}),
+    ...(typeof value.sourceKey === "string" ? { sourceKey: value.sourceKey } : {}),
+    ...(typeof value.custom === "boolean" ? { custom: value.custom } : {}),
+    ...(typeof value.orphaned === "boolean" ? { orphaned: value.orphaned } : {}),
+  };
+}
+
+function normalizeLegacyCell(raw: unknown, fallbackDay = 0, fallbackSlot = 0) {
+  const value = legacyRecord(raw) ?? {};
+  const day = legacyNumber(value.day, value.weekday, value.weekDay, value.dayOfWeek, value.x, fallbackDay);
+  const bigSlot = legacyNumber(
+    value.bigSlot,
+    value.slot,
+    value.section,
+    value.lesson,
+    value.period,
+    value.timeSlot,
+    value.y,
+    fallbackSlot,
+  );
+  const looksLikeCourse = ["name", "courseName", "kcmc", "kcmcName", "title", "kc"].some((key) => key in value);
+  const rawCourses = value.courses ?? value.courseList ?? value.items ?? value.list
+    ?? (value.course ? [value.course] : looksLikeCourse ? [value] : []);
+  return {
+    ...value,
+    day,
+    bigSlot,
+    courses: legacyArray(rawCourses).flatMap((course) => {
+      // A few legacy responses use a two-dimensional day/slot table. Preserve
+      // only actual course records; empty cells must not create native blocks.
+      if (Array.isArray(course)) return course.map(normalizeLegacyCourse);
+      return [normalizeLegacyCourse(course)];
+    }),
+  };
+}
+
+function normalizeLegacyCells(value: LegacyRecord) {
+  const cells: ReturnType<typeof normalizeLegacyCell>[] = [];
+  const rawCells = value.cells ?? value.scheduleCells ?? value.grid;
+  if (Array.isArray(rawCells)) {
+    rawCells.forEach((cell, index) => {
+      if (Array.isArray(cell)) {
+        cell.forEach((nested, slotIndex) => {
+          cells.push(normalizeLegacyCell(nested, index + 1, slotIndex + 1));
+        });
+      } else {
+        cells.push(normalizeLegacyCell(cell));
+      }
+    });
+  } else if (rawCells && typeof rawCells === "object") {
+    Object.entries(rawCells as LegacyRecord).forEach(([key, cell]) => {
+      const parts = key.match(/(\d+)[^\d]+(\d+)/);
+      cells.push(normalizeLegacyCell(cell, parts ? Number(parts[1]) : 0, parts ? Number(parts[2]) : 0));
+    });
+  }
+
+  // Older weekly responses sometimes returned a flat course list instead of
+  // cells. Group those records so the native grid sees the same shape as Web.
+  const flat = value.courses ?? value.courseList ?? value.items;
+  if (flat !== undefined && flat !== null) {
+    const grouped = new Map<string, ReturnType<typeof normalizeLegacyCell>>();
+    legacyArray(flat).forEach((course) => {
+      const record = legacyRecord(course) ?? {};
+      const normalized = normalizeLegacyCell({
+        day: record.day ?? record.weekday ?? record.weekDay ?? record.dayOfWeek,
+        bigSlot: record.bigSlot ?? record.slot ?? record.section ?? record.lesson,
+        courses: [course],
+      });
+      if (normalized.day < 1 || normalized.bigSlot < 1) return;
+      const key = `${normalized.day}:${normalized.bigSlot}`;
+      const current = grouped.get(key) ?? { day: normalized.day, bigSlot: normalized.bigSlot, courses: [] };
+      current.courses.push(...normalized.courses);
+      grouped.set(key, current);
+    });
+    grouped.forEach((group, key) => {
+      const existing = cells.find((cell) => `${cell.day}:${cell.bigSlot}` === key);
+      if (existing) existing.courses.push(...group.courses);
+      else cells.push(group);
+    });
+  }
+  return cells
+    .filter((cell) => cell.day >= 1 && cell.day <= 7 && cell.bigSlot >= 1 && cell.courses.length)
+    .map((cell) => ({ ...cell, courses: cell.courses.filter((course) => course.name.trim()) }));
+}
+
+function normalizeLegacyOptions(value: unknown, kind: "semester" | "week") {
+  return legacyArray(value).map((item) => {
+    const record = legacyRecord(item);
+    const option = record ? legacyText(record.value, record.id, record.code, record.key) : legacyText(item);
+    const label = record ? legacyText(record.label, record.name, record.text, option) : option;
+    return { value: option, label: label || option, current: Boolean(record?.current ?? record?.selected) };
+  }).filter((item) => item.value || kind === "week");
+}
+
+function normalizeScheduleResponse(response: unknown): ScheduleResult {
+  let value: unknown = response;
+  for (let index = 0; index < 4; index += 1) {
+    const record = legacyRecord(value);
+    if (!record) break;
+    if (record.parsed && typeof record.parsed === "object") value = record.parsed;
+    else if (record.data && typeof record.data === "object" && !Array.isArray(record.data)) value = record.data;
+    else if (record.schedule && typeof record.schedule === "object") value = record.schedule;
+    else break;
+  }
+  const data = legacyRecord(value);
+  if (!data) throw new Error("教务系统未返回有效课表，请稍后重试。");
+  const cells = normalizeLegacyCells(data);
+  if (!cells.length) throw new Error("教务系统未返回有效课表，请稍后重试。");
+  const semesters = normalizeLegacyOptions(data.semesters ?? data.semesterList ?? data.terms, "semester");
+  const weeks = normalizeLegacyOptions(data.weeks ?? data.weekList ?? data.weekOptions, "week");
+  const currentSemester = legacyText(data.currentSemester, data.semester, data.term, semesters.find((item) => item.current)?.value);
+  const currentWeek = legacyText(data.currentWeek, data.week, weeks.find((item) => item.current)?.value);
+  return {
+    ...data,
+    source: data.source === "modern" || data.source === "legacy" ? data.source : undefined,
+    scope: data.scope === "semester" || data.scope === "week" || data.scope === "unknown" ? data.scope : undefined,
+    semesters,
+    weeks,
+    currentSemester,
+    currentWeek,
+    cells,
+  } as ScheduleResult;
+}
+
 /** A stable, non-reversible account fingerprint. The native shell keeps the last
  * timetable on disk under this key and drops it as soon as the key changes, so a
  * relaunch can show that timetable immediately without ever crossing accounts. */
@@ -195,11 +404,7 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
     // Bound retained client data, including semester switches.
     while (semesters.size > 4) semesters.delete(semesters.keys().next().value!);
   };
-  const parsed = (response: { parsed?: unknown }): ScheduleResult => {
-    const value = response.parsed as ScheduleResult | null;
-    if (!value || !Array.isArray(value.cells)) throw new Error("教务系统未返回有效课表，请稍后重试。");
-    return value;
-  };
+  const parsed = (response: { parsed?: unknown }): ScheduleResult => normalizeScheduleResponse(response);
   const edited = (entry: SemesterEntry, data: ScheduleResult) => ({
     ...data, cells: nativeCells(entry.semester, applyScheduleEditsToCells(data.cells, entry.edits)),
   });

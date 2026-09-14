@@ -97,6 +97,28 @@ public struct NativeScheduleSemester: Codable, Identifiable, Equatable, Sendable
         self.label = label
         self.current = current
     }
+
+    private enum CodingKeys: String, CodingKey { case value, label, current }
+    private enum LegacyCodingKeys: String, CodingKey { case value, label, current, selected, name, text, id, code }
+
+    public init(from decoder: Decoder) throws {
+        if let values = try? decoder.container(keyedBy: LegacyCodingKeys.self) {
+            let value = try values.decodeFlexibleString(forKey: .value)
+                ?? values.decodeFlexibleString(forKey: .id)
+                ?? values.decodeFlexibleString(forKey: .code)
+                ?? ""
+            let label = try values.decodeFlexibleString(forKey: .label)
+                ?? values.decodeFlexibleString(forKey: .name)
+                ?? values.decodeFlexibleString(forKey: .text)
+                ?? value
+            self.init(value: value, label: label, current: values.decodeFlexibleBool(forKey: .current)
+                ?? values.decodeFlexibleBool(forKey: .selected) ?? false)
+            return
+        }
+        let single = try decoder.singleValueContainer()
+        let value = (try? single.decode(String.self)) ?? (try? String(single.decode(Int.self))) ?? ""
+        self.init(value: value, label: value)
+    }
 }
 
 public struct NativeScheduleWeek: Codable, Identifiable, Equatable, Sendable {
@@ -110,6 +132,28 @@ public struct NativeScheduleWeek: Codable, Identifiable, Equatable, Sendable {
         self.value = value
         self.label = label
         self.current = current
+    }
+
+    private enum CodingKeys: String, CodingKey { case value, label, current }
+    private enum LegacyCodingKeys: String, CodingKey { case value, label, current, selected, name, text, id, code }
+
+    public init(from decoder: Decoder) throws {
+        if let values = try? decoder.container(keyedBy: LegacyCodingKeys.self) {
+            let value = try values.decodeFlexibleString(forKey: .value)
+                ?? values.decodeFlexibleString(forKey: .id)
+                ?? values.decodeFlexibleString(forKey: .code)
+                ?? ""
+            let label = try values.decodeFlexibleString(forKey: .label)
+                ?? values.decodeFlexibleString(forKey: .name)
+                ?? values.decodeFlexibleString(forKey: .text)
+                ?? value
+            self.init(value: value, label: label, current: values.decodeFlexibleBool(forKey: .current)
+                ?? values.decodeFlexibleBool(forKey: .selected) ?? false)
+            return
+        }
+        let single = try decoder.singleValueContainer()
+        let value = (try? single.decode(String.self)) ?? (try? String(single.decode(Int.self))) ?? ""
+        self.init(value: value, label: value)
     }
 }
 
@@ -174,21 +218,25 @@ public struct NativeScheduleCourse: Codable, Identifiable, Equatable, Sendable {
     }
 
     public init(from decoder: Decoder) throws {
-        let values = try decoder.container(keyedBy: CodingKeys.self)
+        guard let values = try? decoder.container(keyedBy: CodingKeys.self) else {
+            let single = try decoder.singleValueContainer()
+            self.init(name: (try? single.decode(String.self)) ?? "课程")
+            return
+        }
         self.init(
-            nativeId: try values.decodeIfPresent(String.self, forKey: .nativeId),
-            name: try values.decodeIfPresent(String.self, forKey: .name) ?? "课程",
-            teacher: try values.decodeIfPresent(String.self, forKey: .teacher),
-            weeks: try values.decodeIfPresent(String.self, forKey: .weeks) ?? "",
-            weekList: try values.decodeIfPresent([Int].self, forKey: .weekList) ?? [],
-            location: try values.decodeIfPresent(String.self, forKey: .location),
-            slotNote: try values.decodeIfPresent(String.self, forKey: .slotNote),
-            startSlot: try values.decodeIfPresent(Int.self, forKey: .startSlot),
-            endSlot: try values.decodeIfPresent(Int.self, forKey: .endSlot),
-            sourceKey: try values.decodeIfPresent(String.self, forKey: .sourceKey),
-            customId: try values.decodeIfPresent(String.self, forKey: .customId),
-            custom: try values.decodeIfPresent(Bool.self, forKey: .custom) ?? false,
-            orphaned: try values.decodeIfPresent(Bool.self, forKey: .orphaned) ?? false
+            nativeId: try values.decodeFlexibleString(forKey: .nativeId),
+            name: try values.decodeFlexibleString(forKey: .name) ?? "课程",
+            teacher: try values.decodeFlexibleString(forKey: .teacher),
+            weeks: try values.decodeFlexibleString(forKey: .weeks) ?? "",
+            weekList: try values.decodeFlexibleIntArray(forKey: .weekList),
+            location: try values.decodeFlexibleString(forKey: .location),
+            slotNote: try values.decodeFlexibleString(forKey: .slotNote),
+            startSlot: try values.decodeFlexibleInt(forKey: .startSlot),
+            endSlot: try values.decodeFlexibleInt(forKey: .endSlot),
+            sourceKey: try values.decodeFlexibleString(forKey: .sourceKey),
+            customId: try values.decodeFlexibleString(forKey: .customId),
+            custom: values.decodeFlexibleBool(forKey: .custom) ?? false,
+            orphaned: values.decodeFlexibleBool(forKey: .orphaned) ?? false
         )
     }
 }
@@ -280,6 +328,33 @@ public struct NativeScheduleCell: Codable, Identifiable, Equatable, Sendable {
         self.bigSlot = bigSlot
         self.courses = courses
     }
+
+    private enum CodingKeys: String, CodingKey { case day, bigSlot, courses }
+    private enum LegacyCodingKeys: String, CodingKey { case day, weekday, weekDay, dayOfWeek, bigSlot, slot, section, lesson, period, courses, course, items }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: LegacyCodingKeys.self)
+        let day = try values.decodeFlexibleInt(forKey: .day)
+            ?? values.decodeFlexibleInt(forKey: .weekday)
+            ?? values.decodeFlexibleInt(forKey: .weekDay)
+            ?? values.decodeFlexibleInt(forKey: .dayOfWeek) ?? 0
+        let bigSlot = try values.decodeFlexibleInt(forKey: .bigSlot)
+            ?? values.decodeFlexibleInt(forKey: .slot)
+            ?? values.decodeFlexibleInt(forKey: .section)
+            ?? values.decodeFlexibleInt(forKey: .lesson)
+            ?? values.decodeFlexibleInt(forKey: .period) ?? 0
+        let courses: [NativeScheduleCourse]
+        if let decoded = try? values.decode([NativeScheduleCourse].self, forKey: .courses) {
+            courses = decoded
+        } else if let decoded = try? values.decode([NativeScheduleCourse].self, forKey: .items) {
+            courses = decoded
+        } else if let decoded = try? values.decode(NativeScheduleCourse.self, forKey: .course) {
+            courses = [decoded]
+        } else {
+            courses = []
+        }
+        self.init(day: day, bigSlot: bigSlot, courses: courses)
+    }
 }
 
 public struct NativeCalendarWeek: Codable, Identifiable, Equatable, Sendable {
@@ -295,6 +370,20 @@ public struct NativeCalendarWeek: Codable, Identifiable, Equatable, Sendable {
         self.days = days
         self.monday = monday
         self.sunday = sunday
+    }
+
+    private enum CodingKeys: String, CodingKey { case week, days, monday, sunday }
+    private enum LegacyCodingKeys: String, CodingKey { case week, days, monday, sunday, start, end }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: LegacyCodingKeys.self)
+        let week = try values.decodeFlexibleInt(forKey: .week) ?? 0
+        let days = (try? values.decode([String].self, forKey: .days)) ?? []
+        let monday = try values.decodeFlexibleString(forKey: .monday)
+            ?? values.decodeFlexibleString(forKey: .start) ?? days.first ?? ""
+        let sunday = try values.decodeFlexibleString(forKey: .sunday)
+            ?? values.decodeFlexibleString(forKey: .end) ?? days.last ?? ""
+        self.init(week: week, days: days, monday: monday, sunday: sunday)
     }
 }
 
@@ -375,11 +464,11 @@ public struct NativeScheduleResult: Codable, Equatable, Sendable {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         self.init(
             source: try values.decodeIfPresent(NativeScheduleSource.self, forKey: .source),
-            semesters: try values.decodeIfPresent([NativeScheduleSemester].self, forKey: .semesters) ?? [],
-            weeks: try values.decodeIfPresent([NativeScheduleWeek].self, forKey: .weeks) ?? [],
-            currentSemester: try values.decodeIfPresent(String.self, forKey: .currentSemester) ?? "",
+            semesters: (try? values.decodeIfPresent([NativeScheduleSemester].self, forKey: .semesters)) ?? [],
+            weeks: (try? values.decodeIfPresent([NativeScheduleWeek].self, forKey: .weeks)) ?? [],
+            currentSemester: try values.decodeFlexibleString(forKey: .currentSemester) ?? "",
             currentWeek: try values.decodeFlexibleString(forKey: .currentWeek) ?? "",
-            cells: try values.decodeIfPresent([NativeScheduleCell].self, forKey: .cells) ?? []
+            cells: (try? values.decodeIfPresent([NativeScheduleCell].self, forKey: .cells)) ?? []
         )
     }
 }
@@ -1577,6 +1666,32 @@ private extension KeyedDecodingContainer {
         if let value = try? decodeIfPresent(String.self, forKey: key) { return Int(value.trimmedNonEmpty ?? "") }
         if let value = try? decodeIfPresent(Double.self, forKey: key) { return Int(value) }
         return nil
+    }
+
+    func decodeFlexibleBool(forKey key: Key) -> Bool? {
+        if let value = try? decodeIfPresent(Bool.self, forKey: key) { return value }
+        if let value = try? decodeIfPresent(String.self, forKey: key) {
+            switch value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+            case "1", "true", "yes", "y", "是": return true
+            case "0", "false", "no", "n", "否": return false
+            default: return nil
+            }
+        }
+        if let value = try? decodeIfPresent(Int.self, forKey: key) { return value != 0 }
+        return nil
+    }
+
+    func decodeFlexibleIntArray(forKey key: Key) throws -> [Int] {
+        if let values = try? decodeIfPresent([Int].self, forKey: key) { return values }
+        if let values = try? decodeIfPresent([String].self, forKey: key) {
+            return values.compactMap { Int($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
+        }
+        if let value = try? decodeIfPresent(String.self, forKey: key) {
+            return value
+                .split { ",，、;； ".contains($0) }
+                .compactMap { Int($0) }
+        }
+        return []
     }
 
     func decodeFlexibleDate(forKey key: Key) throws -> Date? {

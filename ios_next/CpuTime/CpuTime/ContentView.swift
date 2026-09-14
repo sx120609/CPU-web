@@ -245,12 +245,13 @@ private struct LoginGateView: View {
     @ObservedObject var webSession: HybridWebViewStore
 
     @State private var mode: NativeLoginMode = .school
+    @State private var accountLoginUnlocked = false
     @State private var username = ""
     @State private var password = ""
     @State private var captcha = ""
     @State private var captchaImage = ""
     @State private var needCaptcha = false
-    @State private var remember = false
+    @State private var remember = true
     @State private var privacyAccepted = false
     @State private var isLoading = false
     @State private var isPreparing = true
@@ -272,7 +273,9 @@ private struct LoginGateView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     header
-                    modePicker
+                    if accountLoginUnlocked {
+                        modePicker
+                    }
                     form
                 }
                 .frame(maxWidth: 430)
@@ -302,6 +305,12 @@ private struct LoginGateView: View {
                 .frame(width: 58, height: 58)
                 .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
                 .shadow(color: .black.opacity(0.12), radius: 16, y: 8)
+                .contentShape(Rectangle())
+                .onLongPressGesture(minimumDuration: 1.0, maximumDistance: 24) {
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        accountLoginUnlocked = true
+                    }
+                }
 
             VStack(alignment: .leading, spacing: 7) {
                 Text("欢迎回来")

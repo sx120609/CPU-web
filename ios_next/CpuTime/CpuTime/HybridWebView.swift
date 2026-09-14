@@ -7,8 +7,8 @@ import WebKit
 
 
 enum IOSNextWebConfiguration {
-    static let versionCode = 11
-    static let versionName = "3.3.0"
+    static let versionCode = 12
+    static let versionName = "3.4.0"
 
     static var appURL: URL {
         let configured = Bundle.main.object(forInfoDictionaryKey: "CPUAppURL") as? String
@@ -677,6 +677,10 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
     fileprivate func didFail(_ error: Error) {
         guard (error as NSError).code != NSURLErrorCancelled else { return }
         isLoading = false
+        // A failed reload does not mean the already-rendered page disappeared.
+        // Keep the existing Web content usable and let its own request-level
+        // states describe any API problem instead of covering it with a gate.
+        if webView?.url != nil, currentPath.isEmpty == false { return }
         errorMessage = "页面暂时无法打开，请检查网络后重试。"
         serviceUnavailableMessage = "服务暂时不可用，请检查网络连接或稍后重试。"
         onFailure?(errorMessage!)
@@ -746,6 +750,10 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
     }
 
     fileprivate func didFinish(url: URL?) {
+        // A successful main-frame commit supersedes an earlier gateway or
+        // network report. API requests are handled by the Web page itself.
+        errorMessage = nil
+        serviceUnavailableMessage = nil
         guard let url, let path = Self.path(for: url) else { return }
         currentPath = path
         onRoute?(path, activeTab.rawValue)
@@ -892,38 +900,10 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
               return false;
             }
           };
-          const reportNetworkIssue = (status = 0) => {
-            const code = Number(status) || 0;
-            if (code === 0 || code >= 500) post({type: 'networkError', status: code});
-          };
-          if (!window.__cpuNativeNetworkMonitor) {
-            window.__cpuNativeNetworkMonitor = true;
-            const nativeFetch = window.fetch;
-            if (typeof nativeFetch === 'function') {
-              window.fetch = function(...args) {
-                let request;
-                try { request = nativeFetch.apply(this, args); }
-                catch (error) { reportNetworkIssue(0); throw error; }
-                return Promise.resolve(request).then(response => {
-                  reportNetworkIssue(response.status);
-                  return response;
-                }, error => {
-                  reportNetworkIssue(0);
-                  throw error;
-                });
-              };
-            }
-            const xhr = window.XMLHttpRequest;
-            if (xhr?.prototype) {
-              const nativeSend = xhr.prototype.send;
-              xhr.prototype.send = function(...args) {
-                this.addEventListener('load', () => reportNetworkIssue(this.status), {once: true});
-                this.addEventListener('error', () => reportNetworkIssue(0), {once: true});
-                this.addEventListener('timeout', () => reportNetworkIssue(0), {once: true});
-                return nativeSend.apply(this, args);
-              };
-            }
-          }
+          // Do not promote individual API fetch/XHR failures to a full-screen
+          // native outage. The Web app can still render cached content and its
+          // own request state; only the WKNavigationDelegate handles a main
+          // document failure.
           const bridge = window.CPUTimeNative || {};
           bridge.isNativeShell = true;
           bridge.platform = 'ios';
@@ -1082,7 +1062,7 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
               });
               const result = nativeResult({
                 ...data,
-                ok: Boolean(data?.user && (data?.sessionAuthenticated || data?.token))
+                ok: Boolean(data?.ok ?? (data?.user && (data?.sessionAuthenticated || data?.token)))
               });
               if (result.ok) await announceAuthenticated(data);
               return result;
@@ -1299,7 +1279,9 @@ private final class HybridWebViewCoordinator: NSObject, WKNavigationDelegate, WK
         if let response = navigationResponse.response as? HTTPURLResponse,
            let url = response.url,
            IOSNextWebConfiguration.isTrusted(url) {
-            store?.didReceiveHTTPStatus(response.statusCode)
+            if (navigationResponse.isForMainFrame) {
+                store?.didReceiveHTTPStatus(response.statusCode)
+            }
         }
         let disposition = (navigationResponse.response as? HTTPURLResponse)?
             .value(forHTTPHeaderField: "Content-Disposition")?

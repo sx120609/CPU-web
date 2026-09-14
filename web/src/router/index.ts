@@ -45,6 +45,7 @@ export function preloadEducationViews() {
 }
 
 const CACHE_FIRST_EDUCATION_ROUTES = new Set(["jwxt", "schedule"]);
+const FORUM_LIST_ROUTES = new Set(["forum", "forum-hot", "forum-latest", "market", "board"]);
 
 function usesImmediateIosScroll() {
   return typeof navigator !== "undefined" && isLikelyIosDevice();
@@ -116,6 +117,15 @@ export const router = createRouter({
     // during router navigation so the returning page never paints at scroll 0
     // before HomeMobile finishes loading its dynamic sections.
     if (to.name === "home" && !to.hash) {
+      const restore = readForumListRestoreState<{ scrollY: number; savedAt: number }>(to.fullPath);
+      const top = Number(restore?.scrollY);
+      if (Number.isFinite(top) && top > 0) return { top, left: 0, behavior: "auto" as const };
+    }
+
+    // The forum list components restore their data asynchronously. Returning
+    // the saved list position here prevents Vue Router's default `{ top: 0 }`
+    // from running after that restore and snapping the page back to the top.
+    if (FORUM_LIST_ROUTES.has(String(to.name)) && !to.hash) {
       const restore = readForumListRestoreState<{ scrollY: number; savedAt: number }>(to.fullPath);
       const top = Number(restore?.scrollY);
       if (Number.isFinite(top) && top > 0) return { top, left: 0, behavior: "auto" as const };

@@ -50,7 +50,8 @@ test('native shell turns gateway failures into a recoverable service page', asyn
   assert.match(content, /unavailableState == nil, showsNativePostButton/);
   assert.match(webView, /didReceiveHTTPStatus\(_ status: Int\)/);
   assert.match(webView, /response\.statusCode/);
-  assert.match(webView, /reportNetworkIssue\(0\)/);
+  assert.match(webView, /navigationResponse\.isForMainFrame/);
+  assert.doesNotMatch(webView, /reportNetworkIssue\(0\)/);
 });
 
 test('native quick menu refreshes admin capability before presenting', async () => {

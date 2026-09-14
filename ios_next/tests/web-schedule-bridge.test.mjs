@@ -144,6 +144,46 @@ test('native payload uses real schedule, custom courses and normalized odd weeks
   assert.equal(result.data.cells[1].courses[0].nativeId, 'custom:extra');
 });
 
+test('legacy nested schedule fields are normalized for the native shell', async () => {
+  const ctx = setup();
+  ctx.api.schedule = async () => ({ parsed: { data: {
+    semesterList: [{ id: '2024-2025-2', name: '春季学期', selected: '1' }],
+    weekOptions: [{ code: '7', text: '第 7 周', current: 1 }],
+    currentSemester: '2024-2025-2',
+    currentWeek: 7,
+    scheduleCells: [{ weekday: '2', section: '3', items: [{
+      courseName: '实验课', jsmc: '李老师', jxcd: '实验室 201', zc: '1-8周(单)', jc: '第5-6节',
+    }] }],
+  } } });
+  const result = await ctx.window.CPUTimeNativeScheduleFetch('2024-2025-2', '7');
+  const cell = result.data.cells[0];
+  const course = cell.courses[0];
+  assert.equal(cell.day, 2);
+  assert.equal(cell.bigSlot, 3);
+  assert.equal(course.name, '实验课');
+  assert.equal(course.teacher, '李老师');
+  assert.equal(course.location, '实验室 201');
+  assert.deepEqual(Array.from(course.weekList), [1, 3, 5, 7]);
+  assert.equal(course.startSlot, 5);
+  assert.equal(course.endSlot, 6);
+  assert.equal(result.data.semesters[0].current, true);
+  assert.equal(result.data.weeks[0].value, '7');
+});
+
+test('legacy grid and flat course lists become native cells', async () => {
+  const ctx = setup();
+  ctx.api.schedule = async () => ({ parsed: {
+    grid: [[null, { courseName: '高等数学', day: 1, bigSlot: 2, zc: '1-4周' }]],
+    courses: [{ courseName: '大学英语', weekday: '3', lesson: '4', weeks: '2-6周' }],
+    currentWeek: '2',
+  } });
+  const result = await ctx.window.CPUTimeNativeScheduleFetch('2024-2025-2', '2');
+  assert.deepEqual(
+    Array.from(result.data.cells, (cell) => [cell.day, cell.bigSlot, cell.courses[0].name]),
+    [[1, 2, '高等数学'], [3, 4, '大学英语']],
+  );
+});
+
 test('native course identity stays stable when teacher or room changes', async () => {
   const first = setup();
   const firstResult = await first.window.CPUTimeNativeScheduleFetch('2025-2026-2', '1', false);
