@@ -270,6 +270,10 @@ export function nativeScheduleAuthInfo() {
   return {
     account: nativeScheduleAccountKey(),
     canAccessAdmin,
+    // `ready` distinguishes the first empty Pinia state from a confirmed
+    // signed-out session. The native shell must not treat that bootstrap
+    // state as a logout while /user/me is still restoring the cookie session.
+    ready: auth?.ready === true,
   };
 }
 
@@ -353,8 +357,15 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
   // from service/auth failures so the native shell can leave its current grid
   // untouched while the newer selection finishes.
   const cancelled = () => ({ version: 1, auth: { authenticated: true }, cancelled: true });
+  let didReportNativeAuth = false;
   const notifyNativeAuth = () => {
     const info = nativeScheduleAuthInfo();
+    // Pinia starts with an empty user before its cookie probe completes. Do
+    // not send that intermediate value to Swift: it is neither a confirmed
+    // guest nor a site-account logout. Once a real account/guest state has
+    // been reported, later empty reports remain meaningful (for logout).
+    if (!info.ready && !info.account && !didReportNativeAuth) return;
+    didReportNativeAuth = true;
     host.CPUTimeNative?.authChanged?.(info.account, info.canAccessAdmin);
   };
   // Native opens the quick menu independently of the Web router. Refresh the
@@ -380,6 +391,7 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
   const unauthorized = () => ({ version: 1, auth: { authenticated: false, account: accountKey() } });
 
   watch(() => [
+    auth.ready,
     auth.user?.id,
     auth.user?.role,
     auth.user?.voiceHubRole,

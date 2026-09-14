@@ -888,7 +888,11 @@ struct NativeScheduleView: View {
         }
         if store.selectedWeek.isEmpty {
             let currentWeek = store.calendar.map { $0.currentWeek }.flatMap { $0 > 0 ? String($0) : nil }
-            store.selectedWeek = currentWeek ?? result.currentWeek
+            store.selectedWeek = currentWeek
+                ?? result.currentWeek.trimmedNonEmpty
+                ?? result.weeks.first(where: { $0.current })?.value
+                ?? result.weeks.first?.value
+                ?? ""
         }
         if !didInitializeDay {
             selectedDay = (1...7).first(where: { dayIsToday($0, result: result) }) ?? 1

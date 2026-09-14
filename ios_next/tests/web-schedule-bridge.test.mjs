@@ -26,16 +26,21 @@ const sample = () => ({
   weeks: [{ value: '1', label: '第 1 周', current: true }], currentSemester: '2025-2026-2', currentWeek: '1',
   cells: [{ day: 1, bigSlot: 1, courses: [{ name: '药理学', weeks: '1-8周(单)', weekList: [], teacher: '张老师' }] }],
 });
-function setup() {
+function setup({ ready = true, loggedIn = true } = {}) {
   const context = vm.createContext({ Error, setTimeout: (fn, ms) => setTimeout(fn, Math.min(ms, 5)), native: true, window: { CPUTimeNative: { authChanged() {} } },
-    auth: { ready: true, user: { id: 1 }, academicIdentity: 'undergraduate', isLoggedIn: true },
+    auth: { ready, user: loggedIn ? { id: 1 } : null, academicIdentity: 'undergraduate', isLoggedIn: loggedIn },
     jwxt: { isLoggedIn: true, hydrate() {}, async ensureSession() { return this.isLoggedIn; }, withSessionRetry: fn => fn() },
     api: { async schedule() { return { parsed: sample() }; }, async calendar() { return { parsed: null }; },
       async getScheduleEdits() { return { edits: { hidden: [], custom: [] } }; },
       async graduateSchedule() { return { parsed: sample() }; } },
   });
   vm.runInContext(bundle.outputFiles[0].text, context);
+  const authReports = [];
+  context.window.CPUTimeNative.authChanged = (account, canAccessAdmin) => {
+    authReports.push({ account, canAccessAdmin });
+  };
   context.bridge.installIosNextScheduleBridge();
+  context.authReports = authReports;
   return context;
 }
 
@@ -45,6 +50,18 @@ test('normal browser never installs native data access', () => {
   ctx.native = false;
   ctx.bridge.installIosNextScheduleBridge();
   assert.equal(ctx.window.CPUTimeNativeScheduleFetch, undefined);
+});
+
+test('native auth does not report a bootstrap guest before the Web session is ready', () => {
+  const ctx = setup({ ready: false, loggedIn: false });
+  assert.equal(ctx.authReports.length, 0);
+
+  ctx.auth.ready = true;
+  ctx.auth.user = { id: 1 };
+  ctx.auth.isLoggedIn = true;
+  ctx.changed();
+  assert.equal(ctx.authReports.length, 1);
+  assert.equal(ctx.authReports[0].account.length > 0, true);
 });
 
 test('Harmony refresh starts current-week and metadata reads together without a redundant status probe', async () => {

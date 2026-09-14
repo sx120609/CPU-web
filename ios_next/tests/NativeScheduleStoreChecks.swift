@@ -27,6 +27,13 @@ struct NativeScheduleStoreChecks {
         precondition(finalSlot.start == 11 && finalSlot.end == 11,
                      "An older bridge's twelfth slot must clamp to the last real period")
 
+        let legacyWeeks = #"{"version":1,"source":"jwxt","auth":{"authenticated":true},"data":{"currentSemester":"fall","weeks":[{"value":"1","label":"第 1 周"},{"value":"2","label":"第 2 周"}],"currentWeek":"","cells":[]},"calendar":{"currentWeek":0,"weeks":[{"week":1},{"week":2}]}}"#
+        let legacyDecoded = try JSONDecoder().decode(NativeScheduleSnapshot.self, from: Data(legacyWeeks.utf8))
+        precondition(legacyDecoded.data?.currentWeek == "1" && legacyDecoded.data?.weeks.first?.current == true,
+                     "Legacy schedules without a current marker must select the first week")
+        precondition(legacyDecoded.calendar?.currentWeek == 1,
+                     "Legacy calendars without a current week must fall back to their first week")
+
         let cancelledStore = NativeScheduleStore(
             loader: { _ in NativeScheduleSnapshot(cancelled: true) },
             archive: nil
@@ -117,7 +124,10 @@ struct NativeScheduleStoreChecks {
         await authStore.load()
         authorized = false
         await authStore.refresh()
-        precondition(authStore.state == .unauthorized && authStore.result == nil, "Expired auth must clear sensitive records")
+        precondition(authStore.state == .unauthorized && authStore.result != nil,
+                     "Expired education authorization keeps the last valid timetable visible")
+        authStore.handleAuthChanged()
+        precondition(authStore.result == nil, "A confirmed site-account logout still clears the timetable")
 
         var pending: CheckedContinuation<NativeScheduleSnapshot, Never>?
         let raceStore = NativeScheduleStore(loader: { request in

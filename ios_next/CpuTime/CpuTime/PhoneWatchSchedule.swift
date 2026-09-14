@@ -45,7 +45,7 @@ private final class NativeWatchScheduleProvider: ScheduleDataProvider {
                 // last valid timetable remain intact. Re-submit that snapshot
                 // so Watch keeps its offline data and the refresh operation
                 // settles without publishing a login-required status.
-                if store.result != nil, let snapshot = store.latestSnapshot {
+                if store.result != nil, let snapshot = store.snapshotForWatch() {
                     self.accept(snapshot)
                 } else {
                     self.onFailure?(.loginRequired)

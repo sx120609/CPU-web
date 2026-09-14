@@ -420,14 +420,22 @@ public struct NativeScheduleCalendar: Codable, Equatable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
+        let decodedWeeks = try values.decodeIfPresent([NativeCalendarWeek].self, forKey: .weeks) ?? []
+        let decodedCurrentWeek = try values.decodeFlexibleInt(forKey: .currentWeek) ?? 0
+        // Older schedule payloads did not mark a current week. Keep the
+        // calendar usable by selecting its first advertised week instead of
+        // leaving SwiftUI with week zero and an empty grid.
+        let currentWeek = decodedCurrentWeek > 0
+            ? decodedCurrentWeek
+            : decodedWeeks.first(where: { $0.week > 0 })?.week ?? 0
         self.init(
             source: try values.decodeIfPresent(NativeScheduleSource.self, forKey: .source),
             semesters: try values.decodeIfPresent([NativeScheduleSemester].self, forKey: .semesters) ?? [],
             currentSemester: try values.decodeIfPresent(String.self, forKey: .currentSemester) ?? "",
-            currentWeek: try values.decodeFlexibleInt(forKey: .currentWeek) ?? 0,
+            currentWeek: currentWeek,
             semesterStart: try values.decodeIfPresent(String.self, forKey: .semesterStart) ?? "",
             semesterEnd: try values.decodeIfPresent(String.self, forKey: .semesterEnd) ?? "",
-            weeks: try values.decodeIfPresent([NativeCalendarWeek].self, forKey: .weeks) ?? []
+            weeks: decodedWeeks
         )
     }
 }
@@ -462,12 +470,26 @@ public struct NativeScheduleResult: Codable, Equatable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
+        let decodedWeeks = (try? values.decodeIfPresent([NativeScheduleWeek].self, forKey: .weeks)) ?? []
+        let weeks = decodedWeeks.contains(where: { $0.current })
+            ? decodedWeeks
+            : decodedWeeks.enumerated().map { index, week in
+                NativeScheduleWeek(value: week.value, label: week.label, current: index == 0)
+            }
+        let decodedCurrentWeek = try values.decodeFlexibleString(forKey: .currentWeek) ?? ""
+        let usableCurrentWeek = decodedCurrentWeek.trimmedNonEmpty.flatMap { value in
+            guard let number = Int(value) else { return value }
+            return number > 0 ? value : nil
+        }
+        let currentWeek = usableCurrentWeek
+            ?? weeks.first(where: { $0.current })?.value
+            ?? weeks.first?.value
         self.init(
             source: try values.decodeIfPresent(NativeScheduleSource.self, forKey: .source),
             semesters: (try? values.decodeIfPresent([NativeScheduleSemester].self, forKey: .semesters)) ?? [],
-            weeks: (try? values.decodeIfPresent([NativeScheduleWeek].self, forKey: .weeks)) ?? [],
+            weeks: weeks,
             currentSemester: try values.decodeFlexibleString(forKey: .currentSemester) ?? "",
-            currentWeek: try values.decodeFlexibleString(forKey: .currentWeek) ?? "",
+            currentWeek: currentWeek ?? "",
             cells: (try? values.decodeIfPresent([NativeScheduleCell].self, forKey: .cells)) ?? []
         )
     }
@@ -667,6 +689,7 @@ public final class NativeScheduleStore: ObservableObject {
     private let archive: NativeScheduleArchive?
     private var accountKey = ""
     private var sessionKey = ""
+    private var sessionCheckGeneration = 0
     private var didReadArchive = false
     /// Reads a fingerprint of the signed-in web session. Supplied by `attach`
     /// from the shared WKWebView cookie store; injectable for checks.
@@ -713,6 +736,14 @@ public final class NativeScheduleStore: ObservableObject {
     public func handleAuthChanged(account: String = "") {
         let next = account.trimmingCharacters(in: .whitespacesAndNewlines)
         if !next.isEmpty, next == accountKey {
+            requestGeneration += 1
+            return
+        }
+        if !next.isEmpty, accountKey.isEmpty, result != nil {
+            // A legacy archive may not contain the Web account fingerprint.
+            // Adopt the first confirmed account after restoring it instead of
+            // throwing away the already-validated same-session timetable.
+            accountKey = next
             requestGeneration += 1
             return
         }
@@ -1003,6 +1034,7 @@ public final class NativeScheduleStore: ObservableObject {
     /// out. The next request starts in the idle state.
     public func reset() {
         requestGeneration += 1
+        sessionCheckGeneration += 1
         backgroundRefreshTasks.values.forEach { $0.cancel() }
         backgroundRefreshTasks.removeAll(keepingCapacity: false)
         lastBackgroundRefreshAt.removeAll(keepingCapacity: false)
@@ -1040,6 +1072,16 @@ public final class NativeScheduleStore: ObservableObject {
         if snapshot.cancelled { return }
         if !snapshot.auth.authenticated {
             let message = snapshot.error ?? NativeScheduleStoreError.unauthorized("").localizedDescription
+            if let incoming = snapshot.auth.account?.trimmedNonEmpty,
+               !accountKey.isEmpty, incoming != accountKey {
+                // A different site-account fingerprint is authoritative even
+                // when the cookie store has not finished rotating yet.
+                archive?.removeAll()
+                reset()
+                errorMessage = message
+                state = .unauthorized
+                throw NativeScheduleStoreError.unauthorized(message)
+            }
             if let account = snapshot.auth.account?.trimmedNonEmpty, accountKey.isEmpty {
                 accountKey = account
             }
@@ -1117,7 +1159,11 @@ public final class NativeScheduleStore: ObservableObject {
         lastUpdatedAt = snapshot.fetchedAt ?? .now
         errorMessage = snapshot.error?.trimmedNonEmpty
         state = snapshot.source == .cache ? .stale : .loaded
-        displayedKey = key
+        // `key` can be empty on the first request (the bridge resolves the
+        // semester/week). Record the resolved selection so a later refresh of
+        // that same visible timetable does not clear it before the response
+        // has a chance to report a recoverable JWXT expiry.
+        displayedKey = resolvedKey
         latestSnapshot = snapshot
         onWatchSnapshot?(snapshot)
         archiveDisplayed(snapshot)
@@ -1466,7 +1512,17 @@ public final class NativeScheduleStore: ObservableObject {
     /// session is still signed in, the timetable stays visible under a banner.
     /// Anything else clears it, the archive included.
     private func discardUnauthorizedData() {
-        guard result != nil, !sessionKey.isEmpty, sessionFingerprint != nil else {
+        guard result != nil else {
+            archive?.removeAll()
+            clearLoadedData()
+            onWatchReset?()
+            return
+        }
+        // A JWXT 401 is recoverable and the last successful timetable remains
+        // safe to display while the site session is intact. The explicit
+        // `authChanged("")` path below is reserved for a site-account logout.
+        ensureLatestSnapshot()
+        guard sessionFingerprint != nil else {
             archive?.removeAll()
             clearLoadedData()
             onWatchReset?()
@@ -1479,12 +1535,39 @@ public final class NativeScheduleStore: ObservableObject {
         guard result != nil else { return false }
         let incoming = snapshot.auth.account?.trimmedNonEmpty
         if let incoming {
-            return !incoming.isEmpty && !accountKey.isEmpty && incoming == accountKey
+            guard !incoming.isEmpty else { return false }
+            if accountKey.isEmpty { accountKey = incoming }
+            guard incoming == accountKey else { return false }
         }
-        // Compatibility with an older bridge that did not include account in
-        // an unauthorized payload. A readable session fingerprint is enough
-        // to defer the destructive decision to discardIfSessionChanged().
-        return !accountKey.isEmpty && sessionFingerprint != nil
+        // Compatibility with older bridges that omit the account fingerprint.
+        // Site-account changes are delivered through handleAuthChanged, so an
+        // education-only authorization failure can retain the visible result
+        // without waiting for the cookie fingerprint task to finish.
+        ensureLatestSnapshot()
+        if sessionFingerprint != nil { discardIfSessionChanged() }
+        return true
+    }
+
+    /// Makes the Watch handoff resilient to a fast JWXT expiry or a legacy
+    /// payload that populated `result` before `latestSnapshot` was introduced.
+    public func snapshotForWatch() -> NativeScheduleSnapshot? {
+        ensureLatestSnapshot()
+        return latestSnapshot
+    }
+
+    private func ensureLatestSnapshot() {
+        guard latestSnapshot == nil, let result else { return }
+        latestSnapshot = NativeScheduleSnapshot(
+            source: source ?? result.source ?? .cache,
+            fetchedAt: lastUpdatedAt ?? .now,
+            data: result,
+            calendar: calendar,
+            auth: NativeScheduleAuth(
+                authenticated: true,
+                identity: result.source == .graduate ? "graduate" : "undergraduate",
+                account: accountKey
+            )
+        )
     }
 
     /// Clears every account-scoped byte unless the signed-in web session is
@@ -1498,10 +1581,22 @@ public final class NativeScheduleStore: ObservableObject {
             return
         }
         let expected = sessionKey
+        sessionCheckGeneration += 1
+        let checkGeneration = sessionCheckGeneration
         Task { @MainActor [weak self] in
             guard let self else { return }
             let session = await sessionFingerprint() ?? ""
-            guard expected.isEmpty || session.isEmpty || session != expected else { return }
+            guard checkGeneration == self.sessionCheckGeneration else { return }
+            if !session.isEmpty {
+                if expected.isEmpty {
+                    // The cookie store can be populated a moment after the
+                    // initial empty auth report. Learn it and keep the cache;
+                    // a later account fingerprint still handles account swaps.
+                    self.sessionKey = session
+                    return
+                }
+                if session == expected { return }
+            }
             self.archive?.removeAll()
             self.reset()
             // Resetting supersedes whatever the shell just started, so the
