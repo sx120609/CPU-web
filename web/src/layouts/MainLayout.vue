@@ -6,6 +6,7 @@
       'keyboard-geometry-open': keyboardGeometryOpen,
       'layout-root--full-width': fullWidthContent && !hideChrome,
       'layout-root--full-height': fullHeightContent && !hideChrome,
+      'layout-root--assistant': route.name === 'search',
       'layout-root--native-shell': useFlutterShell,
       'layout-root--ios-next': useIosNextShell,
       'layout-root--tabbar-fallback': useTabbarFallback,
@@ -1514,6 +1515,13 @@ html[data-theme="dark"] .assistant-widget {
 
 .layout-root--full-height.keyboard-geometry-open {
   height: var(--layout-viewport-base-height, var(--layout-viewport-height, 100dvh));
+}
+
+/* The assistant owns its own composer and conversation viewport. Keep the
+   page tied to the visual viewport while the keyboard is open so WebKit does
+   not pan the entire document and leave the header above the visible area. */
+.layout-root--assistant.keyboard-geometry-open {
+  height: var(--layout-viewport-height, 100dvh);
 }
 
 .main--full-height > :deep(*) {

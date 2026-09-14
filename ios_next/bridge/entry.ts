@@ -16,7 +16,7 @@ if (isIosNextNativeShell() && (window as any).CPUTimeNative) {
   const refreshNativeAuth = async () => {
     const auth = useAuthStore();
     const initial = nativeScheduleAuthInfo();
-    host.CPUTimeNative.authChanged?.(initial.account, initial.canAccessAdmin);
+    host.CPUTimeNative.authChanged?.(initial);
     try {
       if (auth?.isLoggedIn && typeof auth.refreshSelfSilently === "function") {
         await auth.refreshSelfSilently();
@@ -27,7 +27,7 @@ if (isIosNextNativeShell() && (window as any).CPUTimeNative) {
       // Keep the last known capability on a transient profile failure.
     }
     const info = nativeScheduleAuthInfo();
-    host.CPUTimeNative.authChanged?.(info.account, info.canAccessAdmin);
+    host.CPUTimeNative.authChanged?.(info);
     return info;
   };
   host.CPUTimeNative.refreshAuth = refreshNativeAuth;
@@ -54,7 +54,7 @@ if (isIosNextNativeShell() && (window as any).CPUTimeNative) {
       return;
     }
     const info = nativeScheduleAuthInfo();
-    host.CPUTimeNative.authChanged?.(info.account, info.canAccessAdmin);
+    host.CPUTimeNative.authChanged?.(info);
   };
 
   const install = () => {
@@ -73,7 +73,7 @@ if (isIosNextNativeShell() && (window as any).CPUTimeNative) {
         const unsubscribe = useAuthStore().$subscribe(
           () => {
             const info = nativeScheduleAuthInfo();
-            host.CPUTimeNative.authChanged?.(info.account, info.canAccessAdmin);
+            host.CPUTimeNative.authChanged?.(info);
           }, { detached: true });
         host.CPUTimeNativeScheduleFetch = async (semester?: string, week?: string, force?: boolean) => {
           for (let n = 0; n < 12 && useAuthStore().isLoggedIn && !useJwxtStore(); n++) {

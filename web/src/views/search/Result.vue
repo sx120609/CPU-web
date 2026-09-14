@@ -2002,29 +2002,7 @@ onBeforeUnmount(() => {
     height: 0;
   }
   .assistant-shell.is-composer-focused .conversation {
-    padding-bottom: max(
-      70px,
-      calc(
-        var(--layout-keyboard-inset, 0px)
-        - var(--layout-mobile-tabbar-reserve, 0px)
-        + 70px
-      )
-    );
-  }
-  .assistant-shell.is-composer-focused .assistant-form {
-    position: absolute;
-    z-index: 8;
-    right: 0;
-    bottom: max(
-      8px,
-      calc(
-        var(--layout-keyboard-inset, 0px)
-        - var(--layout-mobile-tabbar-reserve, 0px)
-        + 8px
-      )
-    );
-    left: 0;
-    margin: 0;
+    padding-bottom: 12px;
   }
   .message {
     max-width: 82%;
@@ -2088,6 +2066,8 @@ onBeforeUnmount(() => {
     text-align: left;
   }
   .assistant-form {
+    position: relative;
+    z-index: 2;
     gap: 5px;
     flex: 0 0 auto;
     margin: auto 0 0;
@@ -2124,12 +2104,21 @@ onBeforeUnmount(() => {
     box-shadow: 0 0 0 3px rgba(20, 143, 123, 0.09);
   }
   .assistant-form :deep(.el-textarea__inner) {
+    display: block;
+    width: 100%;
     min-height: 38px !important;
     max-height: 104px;
     padding: 9px 0;
     border: 0;
     border-radius: 0;
     background: transparent;
+    color: var(--cpu-text);
+    font-size: 16px;
+    line-height: 20px;
+    outline: none;
+    resize: none;
+    -webkit-appearance: none;
+    -webkit-text-size-adjust: 100%;
   }
   .assistant-form :deep(.el-textarea__inner:focus) {
     border-color: transparent;

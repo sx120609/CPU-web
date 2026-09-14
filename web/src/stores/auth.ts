@@ -412,6 +412,7 @@ export const useAuthStore = defineStore("auth", {
       if (this._pendingFetchMe) return this._pendingFetchMe;
       const requestSessionVersion = this.sessionVersion;
       const requestProfileRevision = this.profileRevision;
+      let resolved = false;
       const task = (async () => {
         try {
           const user = await authApi.me(options?.probe ? {
@@ -433,15 +434,26 @@ export const useAuthStore = defineStore("auth", {
           ) {
             this.applyAuthenticatedSession(COOKIE_SESSION_MARKER, user);
           }
-        } catch {
+          resolved = true;
+        } catch (error) {
           if (this.sessionVersion !== requestSessionVersion || this.profileRevision !== requestProfileRevision) return;
-          const wasLoggedIn = this.isLoggedIn;
-          this.user = null;
-          if (wasLoggedIn) this.sessionVersion += 1;
+          const status = Number((error as { response?: { status?: unknown }; status?: unknown })?.response?.status
+            ?? (error as { status?: unknown })?.status ?? 0);
+          // A transport failure does not prove that the cookie session ended.
+          // Keep the current user and leave an initial probe unresolved so the
+          // native shell cannot turn a Wi-Fi hiccup into a login gate.
+          if (status === 401) {
+            const wasLoggedIn = this.isLoggedIn;
+            this.user = null;
+            if (wasLoggedIn) this.sessionVersion += 1;
+            resolved = true;
+          }
         }
         finally {
-          this.syncDataAuthAgreement(this.user);
-          this.ready = true;
+          if (resolved) {
+            this.syncDataAuthAgreement(this.user);
+            this.ready = true;
+          }
           this._pendingFetchMe = null;
         }
       })();

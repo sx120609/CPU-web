@@ -425,7 +425,9 @@ public struct NativeScheduleCalendar: Codable, Equatable, Sendable {
         // Older schedule payloads did not mark a current week. Keep the
         // calendar usable by selecting its first advertised week instead of
         // leaving SwiftUI with week zero and an empty grid.
+        let advertisedWeeks = Set(decodedWeeks.map(\.week).filter { $0 > 0 })
         let currentWeek = decodedCurrentWeek > 0
+            && (advertisedWeeks.isEmpty || advertisedWeeks.contains(decodedCurrentWeek))
             ? decodedCurrentWeek
             : decodedWeeks.first(where: { $0.week > 0 })?.week ?? 0
         self.init(
@@ -477,9 +479,11 @@ public struct NativeScheduleResult: Codable, Equatable, Sendable {
                 NativeScheduleWeek(value: week.value, label: week.label, current: index == 0)
             }
         let decodedCurrentWeek = try values.decodeFlexibleString(forKey: .currentWeek) ?? ""
+        let advertisedWeeks = Set(weeks.compactMap { Int($0.value) }.filter { $0 > 0 })
         let usableCurrentWeek = decodedCurrentWeek.trimmedNonEmpty.flatMap { value in
             guard let number = Int(value) else { return value }
-            return number > 0 ? value : nil
+            guard number > 0, advertisedWeeks.isEmpty || advertisedWeeks.contains(number) else { return nil }
+            return value
         }
         let currentWeek = usableCurrentWeek
             ?? weeks.first(where: { $0.current })?.value
@@ -1091,8 +1095,11 @@ public final class NativeScheduleStore: ObservableObject {
             // logout still arrives through authChanged and is checked against
             // the cookie fingerprint below.
             if retainVisibleSchedule(for: snapshot) {
-                errorMessage = message
-                state = .unauthorized
+                // JWXT expiry is recoverable. Do not replace the visible
+                // timetable with a login-required banner or clear Watch's
+                // last valid snapshot while the site account is intact.
+                errorMessage = nil
+                state = .stale
                 return
             }
             discardUnauthorizedData()

@@ -270,6 +270,7 @@ export function nativeScheduleAuthInfo() {
   return {
     account: nativeScheduleAccountKey(),
     canAccessAdmin,
+    authenticated: Boolean(auth?.isLoggedIn && user?.id),
     // `ready` distinguishes the first empty Pinia state from a confirmed
     // signed-out session. The native shell must not treat that bootstrap
     // state as a logout while /user/me is still restoring the cookie session.
@@ -366,7 +367,7 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
     // been reported, later empty reports remain meaningful (for logout).
     if (!info.ready && !info.account && !didReportNativeAuth) return;
     didReportNativeAuth = true;
-    host.CPUTimeNative?.authChanged?.(info.account, info.canAccessAdmin);
+    host.CPUTimeNative?.authChanged?.(info);
   };
   // Native opens the quick menu independently of the Web router. Refresh the
   // account from /user/me before reporting the capability so a role granted
@@ -388,7 +389,10 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
     return nativeScheduleAuthInfo();
   };
   host.CPUTimeNative && (host.CPUTimeNative.refreshAuth = refreshNativeAuth);
-  const unauthorized = () => ({ version: 1, auth: { authenticated: false, account: accountKey() } });
+  const unauthorized = () => ({
+    version: 1,
+    auth: { authenticated: false, account: accountKey() },
+  });
 
   watch(() => [
     auth.ready,
@@ -524,9 +528,20 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
     const initialGeneration = generation;
     try {
       if (!auth.ready) await auth.fetchMe({ probe: true });
+      // A failed profile probe is a transport problem, not proof that the
+      // site account disappeared. Let native keep its cached grid and render
+      // a recoverable service state until the next foreground retry.
+      if (!auth.ready) {
+        const info = nativeScheduleAuthInfo();
+        return {
+          version: 1,
+          auth: { authenticated: true, account: info.account },
+          error: "service-unavailable",
+        };
+      }
       jwxt.hydrate();
       const ready = await jwxt.ensureSession({
-        refresh: force && !options.fastRefresh, silent: true, allowAutoLogin: true, repairUnavailableSession: true,
+        refresh: force && !options.fastRefresh, silent: true, allowAutoLogin: true, repairUnavailableSession: false,
       });
       if (!ready) return unauthorized();
       const epoch = generation;

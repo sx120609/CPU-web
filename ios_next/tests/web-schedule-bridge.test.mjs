@@ -36,8 +36,8 @@ function setup({ ready = true, loggedIn = true } = {}) {
   });
   vm.runInContext(bundle.outputFiles[0].text, context);
   const authReports = [];
-  context.window.CPUTimeNative.authChanged = (account, canAccessAdmin) => {
-    authReports.push({ account, canAccessAdmin });
+  context.window.CPUTimeNative.authChanged = (value, canAccessAdmin) => {
+    authReports.push(typeof value === 'object' ? value : { account: value, canAccessAdmin });
   };
   context.bridge.installIosNextScheduleBridge();
   context.authReports = authReports;

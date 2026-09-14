@@ -18,9 +18,9 @@ function legacyPage() {
   const window = {
     CPUTimeNative: {
       ready() {},
-      authChanged(account, canAccessAdmin) {
+      authChanged(value, canAccessAdmin) {
         notifications++;
-        authReports.push({ account, canAccessAdmin });
+        authReports.push(typeof value === 'object' ? value : { account: value, canAccessAdmin });
       },
     },
     dispatchEvent() {},

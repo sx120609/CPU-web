@@ -7,7 +7,7 @@ import WebKit
 
 
 enum IOSNextWebConfiguration {
-    static let versionCode = 15
+    static let versionCode = 16
     static let versionName = "3.4.0"
 
     static var appURL: URL {
@@ -68,6 +68,101 @@ struct NativeLoginResponse: Sendable {
     let canAccessAdmin: Bool
 }
 
+struct NativeAssistantAction: Codable, Sendable, Identifiable {
+    let id: String
+    let label: String
+    let description: String
+    let url: String
+    let icon: String
+    let requireLogin: Bool
+
+    var identity: String { id }
+}
+
+struct NativeAssistantGeneratedImage: Codable, Sendable, Identifiable {
+    let url: String
+    let alt: String
+
+    var id: String { url }
+}
+
+struct NativeAssistantSource: Codable, Sendable, Identifiable {
+    let title: String
+    let url: String
+
+    var id: String { url }
+}
+
+struct NativeAssistantReply: Codable, Sendable {
+    let answer: String
+    let actions: [NativeAssistantAction]
+    let suggestions: [String]
+    let fallback: Bool
+    let images: [NativeAssistantGeneratedImage]
+    let sources: [NativeAssistantSource]
+
+    init(
+        answer: String,
+        actions: [NativeAssistantAction],
+        suggestions: [String],
+        fallback: Bool,
+        images: [NativeAssistantGeneratedImage] = [],
+        sources: [NativeAssistantSource] = []
+    ) {
+        self.answer = answer
+        self.actions = actions
+        self.suggestions = suggestions
+        self.fallback = fallback
+        self.images = images
+        self.sources = sources
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case answer, actions, suggestions, fallback, images, sources
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        answer = try container.decode(String.self, forKey: .answer)
+        actions = try container.decodeIfPresent([NativeAssistantAction].self, forKey: .actions) ?? []
+        suggestions = try container.decodeIfPresent([String].self, forKey: .suggestions) ?? []
+        fallback = try container.decodeIfPresent(Bool.self, forKey: .fallback) ?? false
+        images = try container.decodeIfPresent([NativeAssistantGeneratedImage].self, forKey: .images) ?? []
+        sources = try container.decodeIfPresent([NativeAssistantSource].self, forKey: .sources) ?? []
+    }
+}
+
+enum NativeAssistantError: LocalizedError, Sendable {
+    case unavailable
+    case requestFailed(String)
+    case invalidResponse
+
+    var errorDescription: String? {
+        switch self {
+        case .unavailable: return "拾间 AI 服务正在启动，请稍候再试。"
+        case .requestFailed(let message): return message
+        case .invalidResponse: return "拾间 AI 响应异常，请重试。"
+        }
+    }
+}
+
+/// Authentication reports from the Web bridge. `ready == false` means the
+/// Pinia cookie probe is still in flight; it must never be interpreted as a
+/// signed-out account by the native shell.
+struct NativeAuthState: Equatable, Sendable {
+    let account: String
+    let authenticated: Bool
+    let ready: Bool
+    let canAccessAdmin: Bool
+
+    init(account: String = "", authenticated: Bool = false, ready: Bool = false, canAccessAdmin: Bool = false) {
+        self.account = account.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.authenticated = authenticated
+        self.ready = ready
+        self.canAccessAdmin = canAccessAdmin
+    }
+}
+
 @MainActor
 final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandler {
     static let handlerName = "cpuTimeNative"
@@ -126,7 +221,9 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
     var onSchedulePrefetched: ((NativeScheduleSnapshot) -> Void)?
     var onNavigate: ((String, String) -> Void)?
     var onRoute: ((String, String) -> Void)?
+    /// Legacy account-only observer retained for older test/integration hosts.
     var onAuthChanged: ((String) -> Void)?
+    var onAuthStateChanged: ((NativeAuthState) -> Void)?
     var onBridgeReady: (() -> Void)?
     var onFailure: ((String) -> Void)?
 
@@ -479,6 +576,69 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
         setAppearanceMode(next)
     }
 
+    /// The native assistant uses the authenticated WKWebView cookie jar and
+    /// the same server endpoint as Web. Keeping the request in the page's
+    /// origin avoids duplicating token and CSRF handling in Swift.
+    func nativeAssistant(message: String, history: [[String: String]]) async throws -> NativeAssistantReply {
+        guard let webView else { throw NativeAssistantError.unavailable }
+        let script = """
+        return await (async () => {
+          const csrfCookie = document.cookie.match(/(?:^|;\\s*)(?:__Host-cpu-csrf|cpu-csrf)=([^;]+)/i);
+          const headers = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'X-CPU-Auth-Mode': 'cookie',
+          };
+          if (csrfCookie?.[1]) headers['X-CSRF-Token'] = decodeURIComponent(csrfCookie[1]);
+          try {
+            const response = await fetch('/api/search/assistant', {
+              method: 'POST',
+              credentials: 'include',
+              headers,
+              body: JSON.stringify({ message: String(message || ''), history }),
+            });
+            const raw = await response.text();
+            let payload = null;
+            try { payload = raw ? JSON.parse(raw) : null; } catch (_) {}
+            const apiOk = response.ok && (!payload || typeof payload.code !== 'number' || payload.code === 0);
+            return JSON.stringify({
+              ok: apiOk,
+              status: response.status,
+              message: payload?.message || '',
+              payload: payload?.code === 0 && payload?.data ? payload.data : payload,
+            });
+          } catch (_) {
+            return JSON.stringify({ ok: false, status: 0, message: '请检查网络连接后重试。' });
+          }
+        })();
+        """
+        let result = try await webView.callAsyncJavaScript(
+            script,
+            arguments: ["message": message, "history": history],
+            in: nil,
+            contentWorld: .page
+        )
+        guard let raw = result as? String,
+              let data = raw.data(using: .utf8) else { throw NativeAssistantError.invalidResponse }
+        struct Envelope: Decodable {
+            let ok: Bool
+            let status: Int
+            let message: String?
+            let payload: NativeAssistantReply?
+        }
+        let envelope: Envelope
+        do {
+            envelope = try JSONDecoder().decode(Envelope.self, from: data)
+        } catch {
+            throw NativeAssistantError.invalidResponse
+        }
+        guard envelope.ok, let payload = envelope.payload else {
+            if envelope.status == 0 { throw NativeAssistantError.requestFailed(envelope.message ?? "请检查网络连接后重试。") }
+            throw NativeAssistantError.requestFailed(envelope.message ?? "拾间 AI 暂时不可用，请重试。")
+        }
+        return payload
+    }
+
     func retry() {
         errorMessage = nil
         serviceUnavailableMessage = nil
@@ -735,11 +895,15 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
         case "authChanged":
             automaticWidgetSetupAttempted = false
             widgetAuthGeneration += 1
-            isLoggedIn = !(body["account"] as? String ?? "").isEmpty
-            canAccessAdmin = body["canAccessAdmin"] as? Bool ?? false
-            // An account fingerprint lets the timetable keep its cached view
-            // when the session merely finished restoring the same account.
-            onAuthChanged?((body["account"] as? String) ?? "")
+            let auth = Self.nativeAuthState(from: body)
+            isLoggedIn = auth.authenticated
+            canAccessAdmin = auth.canAccessAdmin
+            onAuthStateChanged?(auth)
+            // Only forward confirmed states to the compatibility observer. An
+            // empty account during cookie restoration is deliberately omitted.
+            if auth.ready || auth.authenticated {
+                onAuthChanged?(auth.authenticated ? auth.account : "")
+            }
         case "refreshFinished":
             finishPullRefresh()
         case "networkError":
@@ -776,6 +940,18 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
         if let query = url.query, !query.isEmpty { value += "?\(query)" }
         if let fragment = url.fragment, !fragment.isEmpty { value += "#\(fragment)" }
         return value
+    }
+
+    private static func nativeAuthState(from body: [String: Any]) -> NativeAuthState {
+        let account = (body["account"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let authenticated = body["authenticated"] as? Bool ?? !account.isEmpty
+        let ready = body["ready"] as? Bool ?? true
+        return NativeAuthState(
+            account: account,
+            authenticated: authenticated,
+            ready: ready,
+            canAccessAdmin: body["canAccessAdmin"] as? Bool ?? false
+        )
     }
 
     private static func bridgeScript() -> String {
@@ -915,9 +1091,19 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
           bridge.ready = () => post({ type: 'ready' });
           bridge.schedulePrefetched = (snapshot) => post({type: 'schedulePrefetched', snapshot});
           bridge.scheduleWeekPrefetched = bridge.schedulePrefetched;
-          bridge.authChanged = (account, canAccessAdmin = false) => post({
-            type: 'authChanged', account: String(account ?? ''), canAccessAdmin: Boolean(canAccessAdmin)
-          });
+          bridge.authChanged = (value, canAccessAdmin = false, ready = true, authenticated) => {
+            const info = value && typeof value === 'object' ? value : {
+              account: String(value ?? ''), canAccessAdmin, ready,
+              authenticated: authenticated === undefined ? Boolean(value) : Boolean(authenticated)
+            };
+            const account = String(info.account ?? '');
+            return post({
+              type: 'authChanged', account,
+              authenticated: info.authenticated === undefined ? Boolean(account) : Boolean(info.authenticated),
+              ready: info.ready === undefined ? true : Boolean(info.ready),
+              canAccessAdmin: Boolean(info.canAccessAdmin)
+            });
+          };
           bridge.refreshFinished = () => post({type: 'refreshFinished'});
           window.CPUTimeNative = bridge;
           // Keep native login usable while an older deployed Web bundle is

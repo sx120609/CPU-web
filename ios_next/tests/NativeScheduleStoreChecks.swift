@@ -124,7 +124,7 @@ struct NativeScheduleStoreChecks {
         await authStore.load()
         authorized = false
         await authStore.refresh()
-        precondition(authStore.state == .unauthorized && authStore.result != nil,
+        precondition(authStore.state == .stale && authStore.result != nil,
                      "Expired education authorization keeps the last valid timetable visible")
         authStore.handleAuthChanged()
         precondition(authStore.result == nil, "A confirmed site-account logout still clears the timetable")
@@ -252,8 +252,8 @@ struct NativeScheduleStoreChecks {
         jwxtAuthorized = false
         await expiry.refresh()
         await settle()
-        precondition(expiry.state == .unauthorized && expiry.result != nil,
-                     "A lost 教务 authorization keeps the timetable under a banner")
+        precondition(expiry.state == .stale && expiry.result != nil,
+                     "A lost 教务 authorization keeps the timetable without clearing it")
         // Signing out of the site clears it on the next unauthorized answer.
         liveSession = nil
         await expiry.refresh()

@@ -624,6 +624,7 @@ struct NativeShellView: View {
     @State private var deviceSettingsPresented = false
     @State private var quickEntryPresented = false
     @State private var quickEntryOpening = false
+    @State private var assistantPresented = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -685,8 +686,14 @@ struct NativeShellView: View {
             }
         }
         .sheet(isPresented: $deviceSettingsPresented) {
-            NativeDeviceSettingsView(session: webSession, watchStore: watchSchedule)
+            NativeDeviceSettingsView(session: webSession, watchStore: watchSchedule, scheduleStore: scheduleStore)
                 .preferredColorScheme(webSession.pageColorScheme)
+        }
+        .sheet(isPresented: $assistantPresented) {
+            NativeAssistantView(session: webSession) { path in
+                assistantPresented = false
+                shell.openWeb(path: path, tab: .home)
+            }
         }
         .sheet(isPresented: $quickEntryPresented) {
             quickEntrySheetContent()
@@ -708,6 +715,10 @@ struct NativeShellView: View {
     private func quickEntrySheetContent() -> some View {
         let quickEntry = NativeQuickEntryView(session: webSession) { path, tab in
             quickEntryPresented = false
+            if path == "/search" {
+                assistantPresented = true
+                return
+            }
             if let tab { shell.userSelected(tab) }
             if let path { shell.openWeb(path: path, tab: tab ?? .home) }
         }

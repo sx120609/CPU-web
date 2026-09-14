@@ -40,7 +40,7 @@ test('phone hides watch-only controls unless the companion app is installed', as
   const content = await read('ios_next/CpuTime/CpuTime/ContentView.swift');
   assert.match(phone, /return connection\.paired && connection\.installed/);
   assert.match(content, /onDeviceSettings: \{ deviceSettingsPresented = true \}/);
-  assert.match(content, /NativeDeviceSettingsView\(session: webSession, watchStore: watchSchedule\)/);
+  assert.match(content, /NativeDeviceSettingsView\(session: webSession, watchStore: watchSchedule, scheduleStore: scheduleStore\)/);
 });
 
 test('native shell turns gateway failures into a recoverable service page', async () => {

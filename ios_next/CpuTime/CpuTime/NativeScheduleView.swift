@@ -85,17 +85,18 @@ struct NativeScheduleView: View {
                 .frame(maxWidth: .infinity, alignment: .topLeading)
                 .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea(.container, edges: [.horizontal, .bottom]))
             }
-            // The timetable is sized to fit the tab surface. A vertical drag
-            // should never carry the user into an empty tail below the last slot.
-            .scrollDisabled(true)
+            // Keep the native pull gesture enabled. The content has a stable
+            // grid height, so there is no arbitrary empty tail to scroll into;
+            // horizontal paging still wins through the axis-locked gestures.
+            .refreshable {
+                await store.refresh()
+            }
+            .scrollBounceBehavior(.always, axes: .vertical)
         }
         .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
         .task {
             adoptSelectionIfNeeded()
 
-        }
-        .refreshable {
-            await store.refresh()
         }
         .onChange(of: store.result?.currentSemester) { _, _ in
             adoptSelectionIfNeeded()
