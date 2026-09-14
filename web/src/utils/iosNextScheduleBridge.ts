@@ -509,13 +509,18 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
   const edited = (entry: SemesterEntry, data: ScheduleResult) => ({
     ...data, cells: nativeCells(entry.semester, applyScheduleEditsToCells(data.cells, entry.edits)),
   });
-  const normalizeText = (value: unknown) => String(value ?? "").normalize("NFKC").replace(/\s+/g, " ").trim();
+  const normalizeText = (value: unknown) => String(value ?? "")
+    .normalize("NFKC")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
   // JWXT can describe one room as "实验楼(201)", "实验楼 201" or simply
   // "201". Keep the original text for display, but compare a stable identity
   // so duplicate rows from the 2025-2026-2 response collapse into one card.
   const normalizeIdentityText = (value: unknown) => normalizeText(value).toLocaleLowerCase().replace(/\s+/g, "");
   const normalizeTeacherIdentity = (value: unknown) => normalizeIdentityText(value)
-    .replace(/(?:其他正高级|其他副高级|正高级|副高级|主任医师|副主任医师|高级实验师|副研究员|实验师|研究员|副教授|教授|讲师|助教|未评级)$/u, "");
+    .replace(/(?:其他正高级|其他副高级|正高级|副高级|主任医师|副主任医师|高级实验师|副研究员|实验师|研究员|副教授|教授|讲师|助教|未评级)$/u, "")
+    .replace(/老师$/u, "");
   const normalizeLocationIdentity = (value: unknown) => {
     const compact = normalizeIdentityText(value).replace(/[.,，。:：;；/\\()[\]{}【】_—–~～-]+/g, "");
     const match = compact.match(/(?:^|[^a-z0-9])([a-z]?\d{2,4}[a-z]?)$/i);

@@ -400,7 +400,11 @@ function formatSlotRange(start: number, end: number) {
 }
 
 function normalizeKeyPart(value?: string) {
-  return String(value ?? "").normalize("NFKC").replace(/\s+/g, "").trim();
+  return String(value ?? "")
+    .normalize("NFKC")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/\s+/g, "")
+    .trim();
 }
 
 function normalizeIdentityKey(value?: string) {
@@ -411,7 +415,7 @@ function normalizeTeacherKey(value?: string) {
   return normalizeIdentityKey(value).replace(
     /(?:其他正高级|其他副高级|正高级|副高级|主任医师|副主任医师|高级实验师|副研究员|实验师|研究员|副教授|教授|讲师|助教|未评级)$/u,
     "",
-  );
+  ).replace(/老师$/u, "");
 }
 
 function normalizeLocationKey(value?: string) {

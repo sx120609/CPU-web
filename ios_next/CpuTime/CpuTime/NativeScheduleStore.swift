@@ -700,7 +700,7 @@ public enum NativeScheduleCourseBlockMerger {
             of: #"(?:其他正高级|其他副高级|正高级|副高级|主任医师|副主任医师|高级实验师|副研究员|实验师|研究员|副教授|教授|讲师|助教|未评级)$"#,
             with: "",
             options: .regularExpression
-        )
+        ).replacingOccurrences(of: "老师$", with: "", options: .regularExpression)
     }
 
     private static func locationIdentity(_ value: String?) -> String {
@@ -773,6 +773,7 @@ public enum NativeScheduleCourseBlockMerger {
     private static func keyPart(_ value: String?) -> String {
         (value ?? "")
             .precomposedStringWithCompatibilityMapping
+            .replacingOccurrences(of: "[\u{200B}-\u{200D}\u{FEFF}]", with: "", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
     }
@@ -817,7 +818,11 @@ public protocol NativeScheduleArchive: AnyObject {
 public final class NativeScheduleFileArchive: NativeScheduleArchive {
     private let url: URL?
 
-    public init(fileName: String = "native-schedule-latest.json") {
+    // The native timetable payload has had several normalization revisions.
+    // Keep a revisioned archive name so an upgrade cannot paint an old grid
+    // (including pre-deduplication course records) before the Web bridge has
+    // had a chance to fetch the current semester.
+    public init(fileName: String = "native-schedule-latest-v2.json") {
         // A tool or test process has no bundle identifier; stay memory-only.
         guard let bundleIdentifier = Bundle.main.bundleIdentifier,
               let base = try? FileManager.default.url(

@@ -323,7 +323,7 @@ test('2025-2026-2 collapses duplicate records in one timetable position without 
     cells: [
       { day: 3, bigSlot: 2, courses: [
         { name: '药理学实验', teacher: '张老师', location: '实验楼(201)', weeks: '1-8周', weekList: [1,2,3,4,5,6,7,8], startSlot: 3, endSlot: 4 },
-        { name: '药理学实验', teacher: '张老师', location: '201', weeks: '2、4、6、8周', weekList: [2,4,6,8], sourceKey: 'jwxt-record-b', startSlot: 3, endSlot: 4 },
+        { name: '药理学实验', teacher: '张', location: '201', weeks: '2、4、6、8周', weekList: [2,4,6,8], sourceKey: 'jwxt-record-b', startSlot: 3, endSlot: 4 },
         { name: '药理学实验', teacher: '张老师', location: '实验楼 201', weeks: '1-8周', weekList: [1,2,3,4,5,6,7,8], startSlot: 3, endSlot: 3 },
         { name: '药理学实验', teacher: '张 老师', location: '实验楼201', weeks: '2、4、6、8周', weekList: [2,4,6,8], sourceKey: 'jwxt-record-c', startSlot: 3, endSlot: 3 },
         { name: '药理学实验', teacher: '李老师', location: '实验楼 201', weeks: '1-8周', weekList: [1,2,3,4,5,6,7,8], startSlot: 3, endSlot: 4 },

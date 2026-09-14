@@ -108,7 +108,7 @@ test("parseSchedule merges the same 2025-2026-2 course when JWXT repeats it with
             <td name="kbDataTd"></td><td name="kbDataTd"></td>
             <td name="kbDataTd">
               <ul class="courselists"><li class="courselists-item"><div class="qz-hasCourse-title">实验课</div><p><span class="qz-hasCourse-abbrinfo">老师:张老师;时间:1-8周[3-4节];地点:实验楼(201)</span></p></li></ul>
-              <ul class="courselists"><li class="courselists-item"><div class="qz-hasCourse-title">实验课</div><p><span class="qz-hasCourse-abbrinfo">老师:张老师;时间:2、4、6、8周[3-4节];地点:201</span></p></li></ul>
+              <ul class="courselists"><li class="courselists-item"><div class="qz-hasCourse-title">实验课</div><p><span class="qz-hasCourse-abbrinfo">老师:张;时间:2、4、6、8周[3-4节];地点:201</span></p></li></ul>
             </td>
             <td name="kbDataTd"></td><td name="kbDataTd"></td><td name="kbDataTd"></td><td name="kbDataTd"></td>
           </tr>

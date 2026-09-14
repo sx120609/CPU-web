@@ -531,7 +531,10 @@ struct NativeScheduleView: View {
     }
 
     private func weekSwipeGesture(result: NativeScheduleResult, width: CGFloat) -> some Gesture {
-        DragGesture(minimumDistance: 3, coordinateSpace: .local)
+        // Let the enclosing vertical UIScrollView win the first few points of
+        // a diagonal drag. A three-point threshold made a normal pull gesture
+        // start paging the timetable before the user's intent was clear.
+        DragGesture(minimumDistance: 8, coordinateSpace: .local)
             .onChanged { value in
                 guard courseEditorPresentation == nil, !weekSliding else { return }
                 let horizontal = value.translation.width
@@ -567,7 +570,7 @@ struct NativeScheduleView: View {
     }
 
     private func daySwipeGesture(result: NativeScheduleResult, width: CGFloat) -> some Gesture {
-        DragGesture(minimumDistance: 3, coordinateSpace: .local)
+        DragGesture(minimumDistance: 8, coordinateSpace: .local)
             .onChanged { value in
                 guard courseEditorPresentation == nil, !weekSliding, !daySliding else { return }
                 let horizontal = value.translation.width
@@ -1092,9 +1095,9 @@ struct NativeScheduleView: View {
         }
     }
 
-    /// Mirrors the Web timetable's swipe lock: a sideways drag wins early
-    /// because real thumbs never swipe perfectly straight, while a clear
-    /// vertical drag is handed to the enclosing scroll view for good.
+    /// Mirrors the Web timetable's swipe lock while leaving vertical pulls to
+    /// the enclosing scroll view. A horizontal swipe must lead by a useful
+    /// margin before it takes ownership of the gesture.
     private func resolveWeekSwipeAxis(
         _ horizontal: CGFloat,
         _ vertical: CGFloat,
@@ -1103,14 +1106,8 @@ struct NativeScheduleView: View {
         if current != .pending { return current }
         let absH = abs(horizontal)
         let absV = abs(vertical)
-        // Match the Web timetable's intent lock. A horizontal swipe must have
-        // a clear lead before it takes over, which stops the common accidental
-        // diagonal/vertical scroll from paging the week.
-        // Match the Web gesture lock: a small sideways lead should begin
-        // tracking immediately, while only a clearly vertical movement is
-        // treated as a vertical gesture.
-        if absH >= 3, absH >= absV * 0.5 { return .horizontal }
-        if absV >= 8, absV > absH * 1.8 { return .vertical }
+        if absH >= 12, absH >= absV * 1.15 { return .horizontal }
+        if absV >= 12, absV >= absH * 1.15 { return .vertical }
         return .pending
     }
 
@@ -2639,11 +2636,13 @@ private struct NativeScheduleRefreshScrollView<Content: View>: UIViewControllerR
             super.viewDidLoad()
             view.backgroundColor = .clear
             scrollView.backgroundColor = .clear
+            scrollView.bounces = true
             scrollView.alwaysBounceVertical = true
             scrollView.isDirectionalLockEnabled = true
             scrollView.showsVerticalScrollIndicator = false
             scrollView.showsHorizontalScrollIndicator = false
             scrollView.keyboardDismissMode = .interactive
+            scrollView.delaysContentTouches = false
             scrollView.panGestureRecognizer.cancelsTouchesInView = false
             refreshControl.tintColor = UIColor(red: 15 / 255, green: 143 / 255, blue: 127 / 255, alpha: 1)
             refreshControl.accessibilityLabel = "下拉刷新课表"
@@ -2680,10 +2679,13 @@ private struct NativeScheduleRefreshScrollView<Content: View>: UIViewControllerR
             guard refreshTask == nil else { return }
             let action = self.action
             refreshTask = Task { @MainActor [weak self] in
+                defer {
+                    if let self {
+                        self.refreshControl.endRefreshing()
+                        self.refreshTask = nil
+                    }
+                }
                 await action()
-                guard let self, !Task.isCancelled else { return }
-                refreshControl.endRefreshing()
-                refreshTask = nil
             }
         }
 
