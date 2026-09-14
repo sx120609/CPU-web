@@ -1,5 +1,6 @@
 import Combine
 import SwiftUI
+import UIKit
 
 extension Color {
     /// Keep native controls aligned with the Web brand instead of relying on
@@ -31,17 +32,24 @@ struct ContentView: View {
                 await webSession.ensureScheduleWidgetConfigured()
             }
             .onOpenURL { url in
-                shell.connect(webSession: webSession, scheduleStore: scheduleStore)
-                guard url.scheme == "cputime-next", url.host == "schedule" else { return }
-                guard !shell.requiresLogin else { return }
-                scheduleStore.selectedSemester = ""
-                scheduleStore.selectedWeek = ""
-                shell.userSelected(.schedule)
-                if webSession.bridgeReady { Task { await scheduleStore.load(semester: "", week: "", force: true) } }
+                // A deep link can arrive before the first SwiftUI frame. Keep
+                // WebKit startup on the next run-loop turn so it cannot block
+                // the launch surface, then replay the link against the shared
+                // session once it exists.
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 50_000_000)
+                    guard !Task.isCancelled else { return }
+                    shell.connect(webSession: webSession, scheduleStore: scheduleStore)
+                    watchSchedule.connect(to: scheduleStore)
+                    guard url.scheme == "cputime-next", url.host == "schedule" else { return }
+                    guard !shell.requiresLogin else { return }
+                    scheduleStore.selectedSemester = ""
+                    scheduleStore.selectedWeek = ""
+                    shell.userSelected(.schedule)
+                    if webSession.bridgeReady { await scheduleStore.load(semester: "", week: "", force: true) }
+                }
             }
             .onAppear {
-                shell.connect(webSession: webSession, scheduleStore: scheduleStore)
-                watchSchedule.connect(to: scheduleStore)
 #if DEBUG
                 let env = ProcessInfo.processInfo.environment
                 if let raw = env["CPU_DEBUG_TAB"], let tab = ShellTab(rawValue: raw) {
@@ -75,6 +83,13 @@ struct ContentView: View {
             }
             .task(id: hasSeenWelcome) {
                 guard hasSeenWelcome else { return }
+                // Let SwiftUI commit the waiting page before constructing
+                // WKWebView. Creating a WebKit process is synchronous on the
+                // main actor and can otherwise leave a cold launch blank.
+                try? await Task.sleep(nanoseconds: 50_000_000)
+                guard !Task.isCancelled else { return }
+                shell.connect(webSession: webSession, scheduleStore: scheduleStore)
+                watchSchedule.connect(to: scheduleStore)
                 await shell.resolveInitialAuth(webSession: webSession)
             }
             .onChange(of: scenePhase) { _, phase in
@@ -144,13 +159,14 @@ private struct WelcomeView: View {
                 .opacity(appeared ? 1 : 0)
                 Spacer()
                 Button(action: onContinue) {
-                    Text("开始使用")
+                    Label("开始使用", systemImage: "arrow.right")
                         .font(.headline.weight(.semibold))
-                        .frame(maxWidth: .infinity, minHeight: 52)
+                        .padding(.horizontal, 22)
+                        .frame(minHeight: 46)
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.cpuBrand)
-                .padding(.horizontal, 28)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .padding(.bottom, 12)
                 Text("CPU · 药大拾间")
                     .font(.caption2)
@@ -202,31 +218,391 @@ private struct LaunchWaitingView: View {
     }
 }
 
-/// Full-screen Web login gate. It reuses the shared WKWebView (same cookie
-/// jar) and is not wrapped in the native TabView.
+private enum NativeLoginMode: String, CaseIterable, Identifiable {
+    case school
+    case account
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .school: return "统一认证"
+        case .account: return "站内账号"
+        }
+    }
+}
+
+private enum NativeLoginFieldKind: Hashable {
+    case username
+    case password
+    case captcha
+}
+
+/// A native login surface with no escape route. A one-pixel WebView remains
+/// mounted behind it so the existing Web auth store can perform the SSO
+/// handshake and set the shared HttpOnly session cookie.
 private struct LoginGateView: View {
     @ObservedObject var webSession: HybridWebViewStore
+
+    @State private var mode: NativeLoginMode = .school
+    @State private var username = ""
+    @State private var password = ""
+    @State private var captcha = ""
+    @State private var captchaImage = ""
+    @State private var needCaptcha = false
+    @State private var remember = false
+    @State private var privacyAccepted = false
+    @State private var isLoading = false
+    @State private var isPreparing = true
+    @State private var errorMessage = ""
+    @State private var statusMessage = ""
+    @FocusState private var focusedField: NativeLoginFieldKind?
 
     var body: some View {
         ZStack {
             HybridWebView(session: webSession, tab: .profile, isActive: true)
-                .ignoresSafeArea(.container, edges: [.top, .bottom])
-            if let message = webSession.errorMessage {
-                ContentUnavailableView {
-                    Label("页面无法打开", systemImage: "wifi.exclamationmark")
-                } description: {
-                    Text(message)
-                } actions: {
-                    Button("重试", action: webSession.retry).buttonStyle(.borderedProminent)
+                .frame(width: 1, height: 1)
+                .opacity(0)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+
+            Color(uiColor: .systemGroupedBackground)
+                .ignoresSafeArea()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    header
+                    modePicker
+                    form
                 }
-                .background(Color(uiColor: .systemBackground))
+                .frame(maxWidth: 430)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 28)
+                .frame(maxWidth: .infinity)
+            }
+            .scrollDismissesKeyboard(.interactively)
+        }
+        .task { await prepareSchoolLogin() }
+        .onChange(of: mode) { _, next in
+            errorMessage = ""
+            statusMessage = ""
+            isPreparing = next == .school && !webSession.bridgeReady
+            if next == .school && captchaImage.isEmpty && !isLoading {
+                Task { await prepareSchoolLogin() }
             }
         }
-        .background(Color(uiColor: .systemBackground).ignoresSafeArea())
-        .overlay(alignment: .top) {
-            if webSession.isLoading { ProgressView().padding(8) }
-        }
         .preferredColorScheme(webSession.pageColorScheme)
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Image("CPULogo")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 58, height: 58)
+                .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
+                .shadow(color: .black.opacity(0.12), radius: 16, y: 8)
+
+            VStack(alignment: .leading, spacing: 7) {
+                Text("欢迎回来")
+                    .font(.system(size: 32, weight: .bold, design: .rounded))
+                    .foregroundStyle(.primary)
+                Text("登录药大拾间，继续查看你的校园信息")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.bottom, 28)
+    }
+
+    private var modePicker: some View {
+        Picker("登录方式", selection: $mode) {
+            ForEach(NativeLoginMode.allCases) { option in
+                Text(option.title).tag(option)
+            }
+        }
+        .pickerStyle(.segmented)
+        .tint(.cpuBrand)
+        .padding(.bottom, 24)
+    }
+
+    private var form: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            NativeLoginField(
+                systemImage: "person",
+                placeholder: mode == .school ? "学号 / 工号" : "用户名",
+                text: $username,
+                isSecure: false,
+                focusedField: $focusedField,
+                field: .username,
+                disabled: isLoading
+            )
+
+            NativeLoginField(
+                systemImage: "lock",
+                placeholder: "密码",
+                text: $password,
+                isSecure: true,
+                focusedField: $focusedField,
+                field: .password,
+                disabled: isLoading
+            )
+
+            if mode == .school && needCaptcha {
+                HStack(spacing: 10) {
+                    NativeLoginField(
+                        systemImage: "number",
+                        placeholder: "验证码",
+                        text: $captcha,
+                        isSecure: false,
+                        focusedField: $focusedField,
+                        field: .captcha,
+                        disabled: isLoading
+                    )
+                    .frame(maxWidth: .infinity)
+
+                    Button {
+                        Task { await prepareSchoolLogin() }
+                    } label: {
+                        NativeCaptchaImage(source: captchaImage)
+                            .frame(width: 112, height: 48)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isLoading)
+                    .accessibilityLabel("刷新验证码")
+                }
+            }
+
+            Toggle(isOn: $remember) {
+                Text("保持登录状态")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            .tint(.cpuBrand)
+            .padding(.top, 2)
+
+            consent
+
+            Button(action: submit) {
+                HStack(spacing: 8) {
+                    if isLoading { ProgressView().tint(.white) }
+                    Text(isPreparing ? "准备登录…" : (mode == .school ? "登录并继续" : "登录"))
+                        .font(.headline.weight(.semibold))
+                }
+                .padding(.horizontal, 24)
+                .frame(minHeight: 46)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.cpuBrand)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .frame(maxWidth: .infinity)
+            .disabled(isLoading || isPreparing || !privacyAccepted)
+
+            if !errorMessage.isEmpty {
+                Label(errorMessage, systemImage: "exclamationmark.circle.fill")
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if !statusMessage.isEmpty {
+                Label(statusMessage, systemImage: "checkmark.circle.fill")
+                    .font(.footnote)
+                    .foregroundStyle(.green)
+            }
+        }
+    }
+
+    private var consent: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Button {
+                privacyAccepted.toggle()
+            } label: {
+                Image(systemName: privacyAccepted ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 19, weight: .semibold))
+                    .foregroundStyle(privacyAccepted ? Color.cpuBrand : .secondary)
+                    .frame(width: 24, height: 24)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(privacyAccepted ? "已同意隐私政策和用户协议" : "同意隐私政策和用户协议")
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 0) {
+                    Text("我已阅读并同意 ")
+                    policyLink("《隐私政策》", path: "/privacy.html")
+                    Text(" 和 ")
+                    policyLink("《用户协议》", path: "/terms.html")
+                }
+                .font(.footnote)
+                .fixedSize(horizontal: false, vertical: true)
+
+                Text("登录后，应用会根据你的授权同步课表和校园服务数据。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .foregroundStyle(.secondary)
+        .padding(.top, 4)
+    }
+
+    private func policyLink(_ title: String, path: String) -> some View {
+        Button(title) {
+            guard let url = IOSNextWebConfiguration.routeURL(path) else { return }
+            UIApplication.shared.open(url)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(Color.cpuBrand)
+        .underline()
+    }
+
+    private func prepareSchoolLogin() async {
+        guard mode == .school, !isLoading else { return }
+        isPreparing = true
+        errorMessage = ""
+        statusMessage = ""
+        // The login method probe below also waits for a cold WebView. The
+        // navigation-ready flag can be cleared by the /login route transition
+        // even though the injected auth methods are already available.
+        let response = await webSession.nativeLoginBegin()
+        guard mode == .school else { return }
+        needCaptcha = response.needCaptcha
+        captchaImage = response.captchaImage
+        if !response.ok && !response.error.isEmpty { errorMessage = response.error }
+        isPreparing = false
+    }
+
+    private func submit() {
+        guard !isLoading else { return }
+        let trimmedUsername = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedUsername.isEmpty else {
+            errorMessage = mode == .school ? "请输入学号或工号" : "请输入用户名"
+            focusedField = .username
+            return
+        }
+        guard !password.isEmpty else {
+            errorMessage = "请输入密码"
+            focusedField = .password
+            return
+        }
+        if mode == .school && needCaptcha && captcha.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            errorMessage = "请输入验证码"
+            focusedField = .captcha
+            return
+        }
+        errorMessage = ""
+        statusMessage = ""
+        isLoading = true
+        let submittedMode = mode
+        Task {
+            let response: NativeLoginResponse
+            if submittedMode == .school {
+                response = await webSession.nativeSsoLogin(
+                    username: trimmedUsername,
+                    password: password,
+                    captcha: captcha.trimmingCharacters(in: .whitespacesAndNewlines),
+                    remember: remember
+                )
+            } else {
+                response = await webSession.nativeAccountLogin(username: trimmedUsername, password: password)
+            }
+            guard submittedMode == mode else { return }
+            await MainActor.run {
+                isLoading = false
+                if response.ok {
+                    password = ""
+                    captcha = ""
+                    statusMessage = "登录成功，正在进入药大拾间…"
+                } else {
+                    needCaptcha = response.needCaptcha
+                    captchaImage = response.captchaImage
+                    errorMessage = response.error
+                }
+            }
+        }
+    }
+}
+
+private struct NativeLoginField: View {
+    let systemImage: String
+    let placeholder: String
+    @Binding var text: String
+    let isSecure: Bool
+    let focusedField: FocusState<NativeLoginFieldKind?>.Binding
+    let field: NativeLoginFieldKind
+    let disabled: Bool
+
+    var body: some View {
+        HStack(spacing: 11) {
+            Image(systemName: systemImage)
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 20)
+            if isSecure {
+                SecureField(placeholder, text: $text)
+                    .focused(focusedField, equals: field)
+                    .textContentType(.password)
+            } else {
+                TextField(placeholder, text: $text)
+                    .focused(focusedField, equals: field)
+                    .textContentType(field == .username ? .username : .oneTimeCode)
+                    .keyboardType(.default)
+            }
+        }
+        .font(.body)
+        .padding(.horizontal, 15)
+        .frame(minHeight: 52)
+        .background(Color(uiColor: .secondarySystemGroupedBackground))
+        .overlay {
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .stroke(focusedField.wrappedValue == field ? Color.cpuBrand : Color.clear, lineWidth: 1.5)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .opacity(disabled ? 0.65 : 1)
+        .textInputAutocapitalization(.never)
+        .autocorrectionDisabled()
+        .disabled(disabled)
+    }
+}
+
+private struct NativeCaptchaImage: View {
+    let source: String
+
+    var body: some View {
+        Group {
+            if let image = dataImage {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else if let url = URL(string: source), !source.isEmpty {
+                AsyncImage(url: url) { phase in
+                    if let image = phase.image { image.resizable().scaledToFill() }
+                    else { placeholder }
+                }
+            } else {
+                placeholder
+            }
+        }
+        .clipped()
+        .background(Color(uiColor: .tertiarySystemFill))
+        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .stroke(Color.primary.opacity(0.12), lineWidth: 1)
+        }
+    }
+
+    private var placeholder: some View {
+        Image(systemName: "arrow.clockwise")
+            .font(.system(size: 16, weight: .semibold))
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var dataImage: UIImage? {
+        guard source.hasPrefix("data:"), let comma = source.firstIndex(of: ",") else { return nil }
+        let payload = String(source[source.index(after: comma)...])
+        guard let data = Data(base64Encoded: payload, options: [.ignoreUnknownCharacters]) else { return nil }
+        return UIImage(data: data)
     }
 }
 
@@ -236,9 +612,9 @@ struct NativeShellView: View {
     @ObservedObject var scheduleStore: NativeScheduleStore
     @ObservedObject var shell: NativeShellCoordinator
     @ObservedObject var watchSchedule: PhoneWatchScheduleStore
-    @State private var widgetsPresented = false
-    @State private var watchStatusPresented = false
+    @State private var deviceSettingsPresented = false
     @State private var quickEntryPresented = false
+    @State private var quickEntryOpening = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -246,10 +622,14 @@ struct NativeShellView: View {
                 NativeTopBar(
                     session: webSession,
                     onHome: { shell.userSelected(.home) },
-                    onRefresh: { webSession.retry() },
                     onMenu: {
-                        webSession.refreshAuthCapability()
-                        quickEntryPresented = true
+                        guard !quickEntryOpening else { return }
+                        quickEntryOpening = true
+                        Task { @MainActor in
+                            await webSession.refreshAuthCapability()
+                            quickEntryOpening = false
+                            quickEntryPresented = true
+                        }
                     }
                 )
             }
@@ -257,7 +637,9 @@ struct NativeShellView: View {
             WebTabScreen(
                 session: webSession,
                 tab: .home,
-                isActive: shell.selectedTab == .home
+                isActive: shell.selectedTab == .home,
+                showsNativePostButton: true,
+                onNativePost: { shell.openWeb(path: "/post", tab: .home) }
             )
             .tabItem {
                 Label(ShellTab.home.label, systemImage: ShellTab.home.systemImage)
@@ -273,9 +655,7 @@ struct NativeShellView: View {
             NativeScheduleView(
                 store: scheduleStore,
                 onLogin: { shell.openWeb(path: "/login", tab: .profile) },
-                onWidgets: { widgetsPresented = true },
-                showsWatch: watchSchedule.showsStatusEntry,
-                onWatch: { watchStatusPresented = true }
+                onDeviceSettings: { deviceSettingsPresented = true }
             )
             .tabItem {
                 Label(ShellTab.schedule.label, systemImage: ShellTab.schedule.systemImage)
@@ -295,12 +675,8 @@ struct NativeShellView: View {
                 .tag(ShellTab.profile)
             }
         }
-        .sheet(isPresented: $widgetsPresented) {
-            NativeWidgetSetupView(session: webSession)
-                .preferredColorScheme(webSession.pageColorScheme)
-        }
-        .sheet(isPresented: $watchStatusPresented) {
-            WatchSyncStatusView(store: watchSchedule)
+        .sheet(isPresented: $deviceSettingsPresented) {
+            NativeDeviceSettingsView(session: webSession, watchStore: watchSchedule)
                 .preferredColorScheme(webSession.pageColorScheme)
         }
         .sheet(isPresented: $quickEntryPresented) {
@@ -352,9 +728,11 @@ private struct NativeQuickEntryView: View {
             ("bag", "二手交流", "/market", .home), ("sparkles", "拾间AI", "/search", .home)
         ]
         if session.canAccessAdmin {
-            values.append(("lock.shield", "管理后台", "/admin", .profile))
+            // Keep the management entry in the first row, matching the Web
+            // drawer's early account actions and keeping it visible on compact
+            // sheet detents.
+            values.insert(("lock.shield", "管理后台", "/admin", .profile), at: 2)
         }
-        values.append(("arrow.clockwise", "刷新页面", nil, nil))
         return values
     }
     var body: some View {
@@ -412,7 +790,7 @@ private struct NativeQuickEntryView: View {
         VStack(alignment: .leading, spacing: 8) {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
                 ForEach(Array(entries.enumerated()), id: \.offset) { _, entry in
-                    Button { entry.1 == "刷新页面" ? session.retry() : onOpen(entry.2, entry.3) } label: {
+                    Button { onOpen(entry.2, entry.3) } label: {
                         VStack(spacing: 4) {
                             Image(systemName: entry.0)
                                 .font(.system(size: 20, weight: .semibold))
@@ -440,7 +818,6 @@ private struct NativeQuickEntryView: View {
 private struct NativeTopBar: View {
     @ObservedObject var session: HybridWebViewStore
     let onHome: () -> Void
-    let onRefresh: () -> Void
     let onMenu: () -> Void
 
     var body: some View {
@@ -465,8 +842,6 @@ private struct NativeTopBar: View {
             .accessibilityLabel("首页")
 
             Spacer(minLength: 4)
-
-            topBarIconButton(systemName: "arrow.clockwise", label: "刷新页面", action: onRefresh)
 
             topBarIconButton(
                 systemName: session.appearanceIconName,
@@ -507,26 +882,86 @@ private struct WebTabScreen: View {
     @ObservedObject var session: HybridWebViewStore
     let tab: ShellTab
     let isActive: Bool
+    var showsNativePostButton = false
+    var onNativePost: (() -> Void)? = nil
 
     var body: some View {
-        ZStack {
+        ZStack(alignment: .bottomTrailing) {
             HybridWebView(session: session, tab: tab, isActive: isActive)
                 .ignoresSafeArea(.container, edges: [.bottom])
-            if let message = session.errorMessage {
-                ContentUnavailableView {
-                    Label("页面无法打开", systemImage: "wifi.exclamationmark")
-                } description: {
-                    Text(message)
-                } actions: {
-                    Button("重试", action: session.retry).buttonStyle(.borderedProminent)
+            if isActive, let unavailable = unavailableState {
+                NativeServiceUnavailableView(
+                    title: unavailable.title,
+                    message: unavailable.message,
+                    action: session.retry
+                )
+            }
+            if isActive, unavailableState == nil, showsNativePostButton, let onNativePost {
+                Button(action: onNativePost) {
+                    Label("投稿", systemImage: "square.and.pencil")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.cpuBrand)
+                        .padding(.horizontal, 16)
+                        .frame(minHeight: 44)
+                        .background(.ultraThinMaterial)
+                        .overlay {
+                            Capsule().stroke(Color.cpuBrand.opacity(0.35), lineWidth: 1)
+                        }
+                        .clipShape(Capsule())
+                        .shadow(color: .black.opacity(0.14), radius: 12, y: 5)
                 }
-                .background(Color(uiColor: .systemBackground))
+                .buttonStyle(.plain)
+                .padding(.trailing, 16)
+                .padding(.bottom, 16)
+                .transition(.opacity.combined(with: .scale(scale: 0.94)))
+                .accessibilityLabel("投稿")
             }
         }
         .background(Color(uiColor: .systemBackground).ignoresSafeArea())
         .overlay(alignment: .top) {
-            if session.isLoading { ProgressView().padding(8) }
+            if isActive, session.isLoading { ProgressView().padding(8) }
         }
+    }
+
+    private var unavailableState: (title: String, message: String)? {
+        if session.isNetworkUnavailable {
+            return ("当前没有网络连接", "请检查 Wi‑Fi 或切换蜂窝网络后重试。")
+        }
+        if let message = session.serviceUnavailableMessage, !message.isEmpty {
+            return ("服务暂时不可用", message)
+        }
+        if let message = session.errorMessage, !message.isEmpty {
+            return ("服务暂时不可用", message)
+        }
+        return nil
+    }
+}
+
+private struct NativeServiceUnavailableView: View {
+    let title: String
+    let message: String
+    let action: () -> Void
+
+    var body: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "wifi.exclamationmark")
+                .font(.system(size: 30, weight: .semibold))
+                .foregroundStyle(Color.cpuBrand)
+            Text(title)
+                .font(.title3.weight(.semibold))
+            Text(message)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            Button("重试", action: action)
+                .buttonStyle(.borderedProminent)
+                .tint(.cpuBrand)
+                .padding(.top, 2)
+        }
+        .padding(.horizontal, 28)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(uiColor: .systemBackground))
     }
 }
 

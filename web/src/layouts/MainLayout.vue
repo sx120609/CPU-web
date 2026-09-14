@@ -89,11 +89,6 @@
             </template>
           </el-dropdown>
           <template v-if="auth.isLoggedIn">
-            <el-tooltip content="刷新页面">
-              <el-button text @click="reloadPage">
-                <el-icon size="20"><Refresh /></el-icon>
-              </el-button>
-            </el-tooltip>
             <el-tooltip v-if="msg.directUnreadCount" :content="`${msg.directUnreadCount} 条未读私信`">
               <el-button class="direct-message-shortcut" text @click="$router.push('/messages?tab=private')">
                 <el-icon><Message /></el-icon>
@@ -131,9 +126,6 @@
         </div>
 
         <div class="mobile-actions cpu-button-row">
-          <el-button text class="touch-icon-btn" aria-label="刷新页面" @click="reloadPage">
-            <el-icon><Refresh /></el-icon>
-          </el-button>
           <el-button
             v-if="auth.isLoggedIn"
             text
@@ -301,10 +293,6 @@
           <el-icon><component :is="item.icon" /></el-icon>
           <span>{{ item.label }}</span>
         </button>
-        <button data-cpu-button="surface" type="button" class="drawer-link" @click="reloadPage">
-          <el-icon><Refresh /></el-icon>
-          <span>刷新页面</span>
-        </button>
       </div>
       <div class="drawer-appearance">
         <span>外观</span>
@@ -392,7 +380,6 @@ import {
   Goods,
   Service,
   Message,
-  Refresh,
   Tools,
   Sunny,
   Moon,
@@ -577,10 +564,6 @@ const nicknameHint = computed(() => {
   return `后续${actions.join("和")}都会显示昵称`;
 });
 
-function reloadPage() {
-  window.location.reload();
-}
-
 const desktopNavItems = computed(() => {
   return site.topNavigation.filter(navigationItemVisible);
 });
@@ -721,19 +704,6 @@ watch(() => route.fullPath, () => {
   editableFocused.value = false;
   editorFocused.value = false;
   syncViewportMetrics();
-  if (useIosNextShell.value) {
-    // The shared WKWebView keeps its document scroll position between native
-    // tab switches. Start each ordinary Web route at its own top edge so a
-    // previous page cannot leave the first card clipped beneath the shell bar.
-    resetIosNativeScroll();
-    void nextTick(() => {
-      resetIosNativeScroll();
-      requestAnimationFrame(() => {
-        resetIosNativeScroll();
-        window.setTimeout(resetIosNativeScroll, 48);
-      });
-    });
-  }
 });
 
 function handleViewportMetricsChange() {
@@ -1007,13 +977,6 @@ function releaseRoutePage(element: Element) {
   releaseLeavingPage(element);
 }
 
-function resetIosNativeScroll() {
-  const behavior = "auto" as ScrollBehavior;
-  const app = document.getElementById("app");
-  app?.scrollTo({ top: 0, left: 0, behavior });
-  document.scrollingElement?.scrollTo({ top: 0, left: 0, behavior });
-  window.scrollTo({ top: 0, left: 0, behavior });
-}
 </script>
 
 <style scoped lang="scss">

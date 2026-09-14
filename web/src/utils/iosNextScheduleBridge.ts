@@ -58,6 +58,67 @@ export function nativeScheduleAuthInfo() {
   };
 }
 
+/**
+ * Expose the Web auth state machine to the native login surface. Keeping the
+ * actual SSO and cookie work in the Web store means native login follows the
+ * same pending-session, captcha, credential-encryption, and session-cookie
+ * rules as the browser login page.
+ */
+export function installIosNativeAuthBridge(authStore?: any) {
+  if (!isNativeScheduleShell()) return;
+  const host = window as any;
+  if (!host.CPUTimeNative) return;
+  const auth = authStore ?? useAuthStore();
+  if (!auth) return;
+
+  const result = (ok: boolean, error = "") => {
+    const info = nativeScheduleAuthInfo();
+    return {
+      ok,
+      error: error || String(auth.ssoError || ""),
+      needCaptcha: Boolean(auth.ssoNeedCaptcha),
+      captchaImage: String(auth.ssoCaptchaImage || ""),
+      account: info.account,
+      canAccessAdmin: info.canAccessAdmin,
+    };
+  };
+
+  host.CPUTimeNative.nativeLoginBegin = async () => {
+    try {
+      await auth.ssoBegin({ silent: true });
+      return result(true);
+    } catch (error) {
+      return result(false, error instanceof Error ? error.message : "统一认证暂时不可用，请稍后再试。");
+    }
+  };
+  host.CPUTimeNative.nativeSsoLogin = async (
+    username: string,
+    password: string,
+    captcha: string,
+    remember: boolean,
+  ) => {
+    try {
+      const ok = await auth.ssoLogin(
+        String(username || ""),
+        String(password || ""),
+        String(captcha || "") || undefined,
+        Boolean(remember),
+      );
+      return result(ok);
+    } catch (error) {
+      return result(false, error instanceof Error ? error.message : "登录暂时失败，请稍后再试。");
+    }
+  };
+  host.CPUTimeNative.nativeAccountLogin = async (username: string, password: string) => {
+    try {
+      await auth.login(String(username || ""), String(password || ""));
+      return result(true);
+    } catch (error) {
+      return result(false, error instanceof Error ? error.message : "登录暂时失败，请稍后再试。");
+    }
+  };
+}
+
 /** HTML parsing and authentication stay on the server. The client caches and
  * merges parsed courses, applies saved edits and supplies native week filtering. */
 export function installIosNextScheduleBridge(router?: Router, options: { fastRefresh?: boolean } = {}) {
@@ -65,6 +126,7 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
   const host = window as any;
   const auth = useAuthStore();
   const jwxt = useJwxtStore();
+  installIosNativeAuthBridge(auth);
   let generation = 0;
   let activeSemester = "";
   let selectionRevision = 0;
@@ -72,6 +134,10 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
   const semesters = new Map<string, SemesterEntry>();
   const foreground = new Map<string, Promise<unknown>>();
   const accountKey = nativeScheduleAccountKey;
+  // A superseded selection is an expected request outcome. Keep it distinct
+  // from service/auth failures so the native shell can leave its current grid
+  // untouched while the newer selection finishes.
+  const cancelled = () => ({ version: 1, auth: { authenticated: true }, cancelled: true });
   const notifyNativeAuth = () => {
     const info = nativeScheduleAuthInfo();
     host.CPUTimeNative?.authChanged?.(info.account, info.canAccessAdmin);
@@ -313,7 +379,7 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
         entry = { semester: resolved, createdAt: Date.now(), calendar, edits, weeks, preferredWeek: week || data.currentWeek,
           schedules: new Map([[requestedDataWeek || data.currentWeek, data]]), pending: new Map(),
           complete: data.scope === "semester" ? data : undefined };
-        if (selection !== selectionRevision) return { version: 1, auth: { authenticated: true }, error: "课表请求已被新选择替代" };
+        if (selection !== selectionRevision) return cancelled();
         remember(entry);
       }
       if (selection === selectionRevision) activeSemester = entry.semester;
@@ -322,12 +388,16 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
       entry.preferredWeek = selected;
       const data = entry.complete ?? await loadWeek(entry, selected, epoch);
       if (generation !== epoch || !jwxt.isLoggedIn) return unauthorized();
-      if (!valid(entry, epoch)) throw new Error("课表请求已更新，请重试。");
+      if (selection !== selectionRevision) return cancelled();
+      if (!valid(entry, epoch)) return cancelled();
       const result = snapshot(entry, data, selected);
       prefetch(entry, epoch);
       return result;
     } catch (error) {
       if (initialGeneration !== generation || !jwxt.isLoggedIn) return unauthorized();
+      // A superseded selection can fail while its old network work is still
+      // unwinding. Keep that expected race out of the native error surface.
+      if (selection !== selectionRevision) return cancelled();
       return { version: 1, auth: { authenticated: true }, error: error instanceof Error ? error.message : "课表暂时无法加载，请重试。" };
     }
   };

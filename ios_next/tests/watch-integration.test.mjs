@@ -39,7 +39,36 @@ test('phone hides watch-only controls unless the companion app is installed', as
   const phone = await read('ios_next/CpuTime/CpuTime/PhoneWatchSchedule.swift');
   const content = await read('ios_next/CpuTime/CpuTime/ContentView.swift');
   assert.match(phone, /return connection\.paired && connection\.installed/);
-  assert.match(content, /showsWatch: watchSchedule\.showsStatusEntry/);
+  assert.match(content, /onDeviceSettings: \{ deviceSettingsPresented = true \}/);
+  assert.match(content, /NativeDeviceSettingsView\(session: webSession, watchStore: watchSchedule\)/);
+});
+
+test('native shell turns gateway failures into a recoverable service page', async () => {
+  const content = await read('ios_next/CpuTime/CpuTime/ContentView.swift');
+  const webView = await read('ios_next/CpuTime/CpuTime/HybridWebView.swift');
+  assert.match(content, /ZStack\(alignment: \.bottomTrailing\)/);
+  assert.match(content, /unavailableState == nil, showsNativePostButton/);
+  assert.match(webView, /didReceiveHTTPStatus\(_ status: Int\)/);
+  assert.match(webView, /response\.statusCode/);
+  assert.match(webView, /reportNetworkIssue\(0\)/);
+});
+
+test('native quick menu refreshes admin capability before presenting', async () => {
+  const content = await read('ios_next/CpuTime/CpuTime/ContentView.swift');
+  const webView = await read('ios_next/CpuTime/CpuTime/HybridWebView.swift');
+  assert.match(content, /await webSession\.refreshAuthCapability\(\)/);
+  assert.match(content, /values\.insert\(\(\"lock\.shield\", \"管理后台\"/);
+  assert.match(webView, /func refreshAuthCapability\(\) async/);
+  assert.match(webView, /payload\[\"canAccessAdmin\"\]/);
+});
+
+test('cold launch defers WebKit startup until after the launch surface', async () => {
+  const content = await read('ios_next/CpuTime/CpuTime/ContentView.swift');
+  assert.match(
+    content,
+    /\.task\(id: hasSeenWelcome\)[\s\S]*?Task\.sleep\(nanoseconds: 50_000_000\)[\s\S]*?shell\.connect\(webSession:/,
+  );
+  assert.doesNotMatch(content, /\.onAppear\s*\{\s*shell\.connect\(webSession:/);
 });
 
 test('watch sync is event driven and bounds background execution', async () => {
@@ -73,6 +102,9 @@ test('self signing values are configurable and local overrides stay ignored', as
   assert.match(debugConfig, /#include\? "Signing\.local\.xcconfig"/);
   assert.match(configuration(project, 'Debug configuration for PBXProject "CpuTime"'), /DebugSigning\.xcconfig/);
   assert.match(configuration(project, 'Release configuration for PBXProject "CpuTime"'), /SharedSigning\.xcconfig/);
+  assert.match(configuration(project, 'Debug configuration for PBXProject "CpuTime"'), /IPHONEOS_DEPLOYMENT_TARGET = 17\.0;/);
+  assert.match(configuration(project, 'Release configuration for PBXProject "CpuTime"'), /IPHONEOS_DEPLOYMENT_TARGET = 17\.0;/);
+  assert.doesNotMatch(project, /IPHONEOS_DEPLOYMENT_TARGET = 27\.0;/);
   assert.match(ignore, /ios_next\/CpuTime\/Configurations\/Signing\.local\.xcconfig/);
   assert.match(entitlement, /\$\(CPU_APP_GROUP_IDENTIFIER\)/);
 

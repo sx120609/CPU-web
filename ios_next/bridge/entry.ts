@@ -1,4 +1,8 @@
-import { installIosNextScheduleBridge, nativeScheduleAuthInfo } from "../../web/src/utils/iosNextScheduleBridge";
+import {
+  installIosNativeAuthBridge,
+  installIosNextScheduleBridge,
+  nativeScheduleAuthInfo,
+} from "../../web/src/utils/iosNextScheduleBridge";
 import { isIosNextNativeShell, liveApp, useAuthStore, useJwxtStore } from "./adapters";
 
 if (isIosNextNativeShell() && (window as any).CPUTimeNative) {
@@ -60,6 +64,7 @@ if (isIosNextNativeShell() && (window as any).CPUTimeNative) {
       return;
     }
     if (useAuthStore()) {
+      installIosNativeAuthBridge(useAuthStore());
       if (useJwxtStore()) {
         installIosNextScheduleBridge(liveApp().config.globalProperties.$router);
       } else {

@@ -24,7 +24,7 @@ private struct NextCourseWatchWidget: Widget {
                 }
         }
         .configurationDisplayName("下一节课")
-        .description("在智能叠放或表盘上查看下一节要上的课程。")
+        .description("在表盘或智能叠放中查看下一节课、教室和时间。显示内容可在 iPhone 的设备与小组件中调整。")
         .supportedFamilies([.accessoryRectangular, .accessoryCircular, .accessoryInline])
     }
 }
@@ -39,6 +39,7 @@ private struct NextCourseWidgetEntry: TimelineEntry {
     let date: Date
     let state: NextCourseWidgetState
     let timezone: String
+    let displayOptions: WatchWidgetDisplayOptions
 }
 
 private struct NextCourseTimelineProvider: TimelineProvider {
@@ -53,7 +54,12 @@ private struct NextCourseTimelineProvider: TimelineProvider {
     func getTimeline(in context: Context, completion: @escaping (Timeline<NextCourseWidgetEntry>) -> Void) {
         let now = Date.now
         guard let snapshot = loadSnapshot() else {
-            let entry = NextCourseWidgetEntry(date: now, state: .awaitingSync, timezone: TimeZone.current.identifier)
+            let entry = NextCourseWidgetEntry(
+                date: now,
+                state: .awaitingSync,
+                timezone: TimeZone.current.identifier,
+                displayOptions: .load()
+            )
             completion(Timeline(entries: [entry], policy: .after(now.addingTimeInterval(6 * 60 * 60))))
             return
         }
@@ -68,12 +74,27 @@ private struct NextCourseTimelineProvider: TimelineProvider {
 
     private func entry(at date: Date, snapshot: ScheduleEnvelope?) -> NextCourseWidgetEntry {
         guard let snapshot else {
-            return NextCourseWidgetEntry(date: date, state: .awaitingSync, timezone: TimeZone.current.identifier)
+            return NextCourseWidgetEntry(
+                date: date,
+                state: .awaitingSync,
+                timezone: TimeZone.current.identifier,
+                displayOptions: .load()
+            )
         }
         guard let occurrence = snapshot.nextCourseOccurrence(at: date) else {
-            return NextCourseWidgetEntry(date: date, state: .empty, timezone: snapshot.timezone)
+            return NextCourseWidgetEntry(
+                date: date,
+                state: .empty,
+                timezone: snapshot.timezone,
+                displayOptions: .load()
+            )
         }
-        return NextCourseWidgetEntry(date: date, state: .course(occurrence), timezone: snapshot.timezone)
+        return NextCourseWidgetEntry(
+            date: date,
+            state: .course(occurrence),
+            timezone: snapshot.timezone,
+            displayOptions: .load()
+        )
     }
 
     private func loadSnapshot() -> ScheduleEnvelope? {
@@ -106,7 +127,8 @@ private extension NextCourseWidgetEntry {
                 date: .now
             )
         ),
-        timezone: "Asia/Shanghai"
+        timezone: "Asia/Shanghai",
+        displayOptions: .default
     )
 }
 
@@ -130,10 +152,7 @@ private struct NextCourseWidgetView: View {
     private var inlineContent: some View {
         switch entry.state {
         case .course(let occurrence):
-            Label(
-                "\(occurrence.course.startTime) \(occurrence.course.name)\(roomSuffix(occurrence.course))",
-                systemImage: "book.closed.fill"
-            )
+            Label(inlineText(occurrence.course), systemImage: "book.closed.fill")
             .lineLimit(1)
         case .empty:
             Label("近期没有课程", systemImage: "calendar.badge.checkmark")
@@ -149,12 +168,16 @@ private struct NextCourseWidgetView: View {
             switch entry.state {
             case .course(let occurrence):
                 VStack(spacing: 0) {
-                    Text(occurrence.course.startTime)
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
-                    Text(occurrence.course.name)
-                        .font(.system(size: 8, weight: .semibold))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.55)
+                    if entry.displayOptions.showTime {
+                        Text(occurrence.course.startTime)
+                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                    }
+                    if let primary = entry.displayOptions.primaryValue(for: occurrence.course), primary != occurrence.course.startTime {
+                        Text(primary)
+                            .font(.system(size: 8, weight: .semibold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.55)
+                    }
                 }
                 .padding(5)
             case .empty:
@@ -187,25 +210,31 @@ private struct NextCourseWidgetView: View {
                         .font(.system(size: 9, weight: .medium))
                         .foregroundStyle(.secondary)
                 }
-                Text(occurrence.course.name)
-                    .font(.system(size: 15, weight: .bold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.68)
-                HStack(spacing: 5) {
-                    Label(occurrence.course.startTime, systemImage: "clock")
-                    if let room = occurrence.course.room, !room.isEmpty {
-                        Label(room, systemImage: "location")
-                            .lineLimit(1)
-                    }
+                if let primary = entry.displayOptions.primaryValue(for: occurrence.course) {
+                    Text(primary)
+                        .font(.system(size: 15, weight: .bold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.68)
                 }
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(.secondary)
+                if let metadata = entry.displayOptions.metadata(for: occurrence.course) {
+                    Text(metadata)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                if entry.displayOptions.showTime {
+                    HStack(spacing: 5) {
+                        Label("\(occurrence.course.startTime) - \(occurrence.course.endTime)", systemImage: "clock")
+                    }
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.secondary)
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         case .empty:
             messageView(symbol: "calendar.badge.checkmark", title: "近期没有课程", detail: "可以安心安排时间")
         case .awaitingSync:
-            messageView(symbol: "iphone.and.arrow.forward", title: "等待课表同步", detail: "请打开手表课表或 iPhone App")
+            messageView(symbol: "iphone.and.arrow.forward", title: "等待课表同步", detail: "请打开 iPhone App 的设备与小组件设置")
         }
     }
 
@@ -223,9 +252,14 @@ private struct NextCourseWidgetView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
     }
 
-    private func roomSuffix(_ course: WatchCourse) -> String {
-        guard let room = course.room, !room.isEmpty else { return "" }
-        return " · \(room)"
+    private func inlineText(_ course: WatchCourse) -> String {
+        [
+            entry.displayOptions.showTime ? course.startTime : nil,
+            entry.displayOptions.primaryValue(for: course),
+            entry.displayOptions.metadata(for: course)
+        ]
+        .compactMap { $0 }
+        .joined(separator: " ")
     }
 
     private func dayLabel(_ date: Date, relativeTo reference: Date) -> String {

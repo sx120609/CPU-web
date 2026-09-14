@@ -1,20 +1,21 @@
 import SwiftUI
+import Foundation
 
 /// The native timetable surface. Data loading and authentication stay in
 /// NativeScheduleStore so the SwiftUI surface can also be embedded beside the
 /// existing web routes.
 struct NativeScheduleView: View {
     @ObservedObject private var store: NativeScheduleStore
-    private let onWidgets: () -> Void
+    private let onDeviceSettings: () -> Void
     private let onLogin: () -> Void
-    private let showsWatch: Bool
-    private let onWatch: () -> Void
 
     @State private var selectedDay = 1
     @State private var didInitializeDay = false
     @State private var viewMode: ScheduleViewMode = .week
-    @State private var selectedCourse: SelectedCourse?
-    @State private var addCourseContext: AddCourseContext?
+    // Keep editing and adding in one presentation state. Two independent
+    // `.sheet(item:)` modifiers can race when a course card overlaps the slot
+    // grid, causing SwiftUI to show the add form for a real course.
+    @State private var courseEditorPresentation: CourseEditorPresentation?
     @State private var weekPickerPresented = false
     // Horizontal week paging state. The track holds the previous, current and
     // next week so a swipe drags the neighbouring timetable into view instead
@@ -31,15 +32,11 @@ struct NativeScheduleView: View {
     init(
         store: NativeScheduleStore,
         onLogin: @escaping () -> Void = {},
-        onWidgets: @escaping () -> Void = {},
-        showsWatch: Bool = false,
-        onWatch: @escaping () -> Void = {}
+        onDeviceSettings: @escaping () -> Void = {}
     ) {
         _store = ObservedObject(wrappedValue: store)
-        self.onWidgets = onWidgets
+        self.onDeviceSettings = onDeviceSettings
         self.onLogin = onLogin
-        self.showsWatch = showsWatch
-        self.onWatch = onWatch
     }
 
     var body: some View {
@@ -106,19 +103,21 @@ struct NativeScheduleView: View {
         .onChange(of: store.result?.currentWeek) { _, _ in
             adoptSelectionIfNeeded()
         }
-        .sheet(item: $selectedCourse) { selection in
-            NativeCourseEditorSheet(selection: selection, store: store)
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
-        }
-        .sheet(item: $addCourseContext) { context in
-            NativeCourseEditorSheet(
-                selection: nil,
-                store: store,
-                defaultDay: context.day,
-                defaultWeek: context.week,
-                defaultStartSlot: context.startSlot
-            )
+        .sheet(item: $courseEditorPresentation) { presentation in
+            Group {
+                switch presentation {
+                case .edit(let selection):
+                    NativeCourseEditorSheet(selection: selection, store: store)
+                case .add(let context):
+                    NativeCourseEditorSheet(
+                        selection: nil,
+                        store: store,
+                        defaultDay: context.day,
+                        defaultWeek: context.week,
+                        defaultStartSlot: context.startSlot
+                    )
+                }
+            }
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
         }
@@ -126,10 +125,12 @@ struct NativeScheduleView: View {
             weekPicker
                 .presentationDetents([.medium, .large])
         }
-        .alert("教务课表已更新", isPresented: scheduleChangeNoticePresented) {
-            Button("我知道了") { store.dismissScheduleChangeNotice() }
-        } message: {
-            Text(scheduleChangeNoticeMessage)
+        .sheet(item: scheduleChangeNoticeBinding) { notice in
+            NativeScheduleChangeNoticeSheet(notice: notice) {
+                store.dismissScheduleChangeNotice()
+            }
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
         }
     }
 
@@ -146,16 +147,11 @@ struct NativeScheduleView: View {
         return value.isEmpty ? nil : value
     }
 
-    private var scheduleChangeNoticePresented: Binding<Bool> {
+    private var scheduleChangeNoticeBinding: Binding<NativeScheduleChangeNotice?> {
         Binding(
-            get: { store.scheduleChangeNotice != nil },
-            set: { if !$0 { store.dismissScheduleChangeNotice() } }
+            get: { store.scheduleChangeNotice },
+            set: { if $0 == nil { store.dismissScheduleChangeNotice() } }
         )
-    }
-
-    private var scheduleChangeNoticeMessage: String {
-        store.scheduleChangeNotice?.details.joined(separator: "\n")
-            ?? "教务原始课表发生了变化，请重新核对课程安排。"
     }
 
     private func scheduleHeader(_ result: NativeScheduleResult) -> some View {
@@ -171,18 +167,16 @@ struct NativeScheduleView: View {
                         .accessibilityLabel("正在更新课表")
                 }
 
-                if showsWatch {
-                    Button(action: onWatch) {
-                        Image(systemName: "applewatch")
-                            .font(.system(size: 16, weight: .semibold))
-                            .frame(width: 34, height: 34)
-                            .modifier(ScheduleGlassControl(cornerRadius: 17))
-                            .clipShape(Circle())
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.primary)
-                    .accessibilityLabel("Apple Watch 课表同步")
+                Button(action: onDeviceSettings) {
+                    Image(systemName: "applewatch")
+                        .font(.system(size: 16, weight: .semibold))
+                        .frame(width: 34, height: 34)
+                        .modifier(ScheduleGlassControl(cornerRadius: 17))
+                        .clipShape(Circle())
                 }
+                .buttonStyle(.plain)
+                .foregroundStyle(.primary)
+                .accessibilityLabel("设备与小组件")
 
                 Picker("课表视图", selection: $viewMode) {
                     // Keep the same order as Web's view switch: 日 / 周.
@@ -194,18 +188,6 @@ struct NativeScheduleView: View {
                 .labelsHidden()
                 .frame(width: 88)
                 .accessibilityLabel("切换课表视图")
-
-                Button(action: refresh) {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 15, weight: .semibold))
-                        .frame(width: 34, height: 34)
-                        .modifier(ScheduleGlassControl(cornerRadius: 17))
-                        .clipShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.primary)
-                .accessibilityLabel("刷新课表")
-                .disabled(isLoading)
 
                 Button {
                     if viewMode == .day {
@@ -289,10 +271,6 @@ struct NativeScheduleView: View {
                         Text(semester.label)
                     }
                 }
-            }
-            Divider()
-            Button(action: onWidgets) {
-                Label("课表小组件", systemImage: "square.grid.2x2")
             }
         } label: {
             Text(semesterTitle(result))
@@ -460,6 +438,10 @@ struct NativeScheduleView: View {
         if visible, let value = adjacentDayPage(offset, result: result) {
             page(value)
                 .frame(width: width, alignment: .leading)
+                // Neighbouring pages are mounted for a smooth slide, but
+                // they must never compete with the visible page for taps.
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
         } else {
             Color.clear.frame(width: width, height: 0)
         }
@@ -506,6 +488,10 @@ struct NativeScheduleView: View {
         if visible, let value = adjacentWeekValue(offset, result: result) {
             page(weekNumber(value))
                 .frame(width: width, alignment: .leading)
+                // Clipping controls drawing, not necessarily hit testing on
+                // every iOS release. Keep the off-screen pages passive.
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
         } else {
             // A placeholder keeps the track three pages wide without claiming
             // the height of a real timetable.
@@ -516,7 +502,7 @@ struct NativeScheduleView: View {
     private func weekSwipeGesture(result: NativeScheduleResult, width: CGFloat) -> some Gesture {
         DragGesture(minimumDistance: 3, coordinateSpace: .local)
             .onChanged { value in
-                guard selectedCourse == nil, !weekSliding else { return }
+                guard courseEditorPresentation == nil, !weekSliding else { return }
                 let horizontal = value.translation.width
                 let vertical = value.translation.height
                 weekDragAxis = resolveWeekSwipeAxis(horizontal, vertical, weekDragAxis)
@@ -552,7 +538,7 @@ struct NativeScheduleView: View {
     private func daySwipeGesture(result: NativeScheduleResult, width: CGFloat) -> some Gesture {
         DragGesture(minimumDistance: 3, coordinateSpace: .local)
             .onChanged { value in
-                guard selectedCourse == nil, !weekSliding, !daySliding else { return }
+                guard courseEditorPresentation == nil, !weekSliding, !daySliding else { return }
                 let horizontal = value.translation.width
                 let vertical = value.translation.height
                 dayDragAxis = resolveWeekSwipeAxis(horizontal, vertical, dayDragAxis)
@@ -677,13 +663,18 @@ struct NativeScheduleView: View {
                     showsDateHeader: showsDateHeader,
                     blocks: blocks(for: day, week: week, result: result),
                     onCourseSelected: { block in
-                        selectedCourse = SelectedCourse(
+                        // A cell tap can arrive in the same run loop as a
+                        // neighbouring empty-slot gesture. Clear the add
+                        // context first so selecting a real course always
+                        // presents the editor for that course.
+                        courseEditorPresentation = .edit(SelectedCourse(
+                            id: block.id,
                             course: block.course,
                             day: day,
                             bigSlot: block.bigSlot,
                             startSlot: block.startSlot,
                             endSlot: block.endSlot
-                        )
+                        ))
                     },
                     onEmptySlot: { slot in
                         presentAddCourse(day: day, week: week, startSlot: slot)
@@ -924,11 +915,23 @@ struct NativeScheduleView: View {
     }
 
     private func presentAddCourse(day: Int, week: Int?, startSlot: Int) {
-        addCourseContext = AddCourseContext(
+        // A course card and the slot grid are siblings in the same ZStack. On
+        // older SwiftUI releases a delayed empty-slot callback can arrive
+        // after the course callback; never let it replace an editor that is
+        // already being presented.
+        guard courseEditorPresentation == nil else { return }
+        let context = AddCourseContext(
             day: min(max(day, 1), 7),
             week: week ?? Int(store.selectedWeek) ?? 1,
             startSlot: min(max(startSlot, 1), ScheduleSlot.all.count)
         )
+        // Give a real course tap in the same touch cycle a chance to win
+        // before committing the lower-priority add request.
+        Task { @MainActor in
+            await Task.yield()
+            guard courseEditorPresentation == nil else { return }
+            courseEditorPresentation = .add(context)
+        }
     }
 
     private func moveWeek(_ offset: Int, result: NativeScheduleResult) {
@@ -1024,11 +1027,16 @@ struct NativeScheduleView: View {
 
         guard selectedDay != targetDay else { return }
         didInitializeDay = true
-        if dayPageWidth > 1 {
-            let direction = targetDay > selectedDay ? 1 : -1
-            slideToDay(NativeScheduleDayPage(week: targetWeek, day: targetDay), direction: direction, width: dayPageWidth)
-        } else {
+        // "返回今日" is a position reset, not a day swipe. Reusing the swipe
+        // track here made a same-week jump animate in the wrong direction and
+        // briefly exposed the neighbouring day. Commit every related state in
+        // one animation-free transaction.
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
             selectedDay = targetDay
+            dayDragOffset = 0
+            daySliding = false
         }
     }
 
@@ -1153,7 +1161,8 @@ struct NativeScheduleView: View {
             .filter { $0.day == day }
             .flatMap { cell in
                 cell.courses.enumerated().compactMap { index, course -> NativeScheduleCourseBlock? in
-                    if let week, !course.weekList.isEmpty, !course.weekList.contains(week) {
+                    let courseWeeks = nativeCourseWeekList(course)
+                    if let week, !courseWeeks.isEmpty, !courseWeeks.contains(week) {
                         return nil
                     }
                     let fallbackStart = cell.bigSlot * 2 - 1
@@ -1181,20 +1190,32 @@ struct NativeScheduleView: View {
             }
 
         let families = Dictionary(grouping: rawBlocks) { block in
-            [block.course.customId ?? "", block.course.name, block.course.teacher ?? "",
-             block.course.location ?? "", block.course.weeks].joined(separator: "\u{1F}")
+            [block.course.customId ?? "", nativeScheduleKeyPart(block.course.name),
+             nativeScheduleKeyPart(block.course.teacher), nativeScheduleKeyPart(block.course.location),
+             nativeScheduleKeyPart(block.course.weeks)].joined(separator: "\u{1F}")
         }
         var merged: [NativeScheduleCourseBlock] = []
         for family in families.values {
             var current: NativeScheduleCourseBlock?
             for block in family.sorted(by: { $0.startSlot < $1.startSlot }) {
                 if let previous = current, block.startSlot <= previous.endSlot + 1 {
-                    current = NativeScheduleCourseBlock(id: previous.id, course: previous.course,
-                        bigSlot: previous.bigSlot,
-                        startSlot: previous.startSlot, endSlot: max(previous.endSlot, block.endSlot))
+                    let endSlot = max(previous.endSlot, block.endSlot)
+                    current = NativeScheduleCourseBlock(
+                        id: previous.id,
+                        course: nativeCourseForBlock(previous.course, startSlot: previous.startSlot, endSlot: endSlot),
+                        bigSlot: max(1, Int(ceil(Double(previous.startSlot) / 2))),
+                        startSlot: previous.startSlot,
+                        endSlot: endSlot
+                    )
                 } else {
                     if let current { merged.append(current) }
-                    current = block
+                    current = NativeScheduleCourseBlock(
+                        id: block.id,
+                        course: nativeCourseForBlock(block.course, startSlot: block.startSlot, endSlot: block.endSlot),
+                        bigSlot: max(1, Int(ceil(Double(block.startSlot) / 2))),
+                        startSlot: block.startSlot,
+                        endSlot: block.endSlot
+                    )
                 }
             }
             if let current { merged.append(current) }
@@ -1209,6 +1230,94 @@ struct NativeScheduleView: View {
             }
             return block.withLane(lane)
         }
+    }
+
+    /// The bridge normally sends `weekList`, but an older Web bundle may only
+    /// send the human-readable `weeks` field. Keep the native filter aligned
+    /// with Web's `courseMatchesWeek` so a course never disappears from (or
+    /// reappears in) a selected week just because the bridge was deployed
+    /// before the normalized list was added.
+    private func nativeCourseWeekList(_ course: NativeScheduleCourse) -> [Int] {
+        let text = course.weeks
+            .unicodeScalars
+            .map { scalar -> String in
+                if (0xFF10...0xFF19).contains(scalar.value) {
+                    return String(scalar.value - 0xFF10)
+                }
+                return String(scalar)
+            }
+            .joined()
+            .replacingOccurrences(of: "（", with: "(")
+            .replacingOccurrences(of: "）", with: ")")
+            .replacingOccurrences(of: "－", with: "-")
+            .replacingOccurrences(of: "–", with: "-")
+            .replacingOccurrences(of: "—", with: "-")
+            .replacingOccurrences(of: "～", with: "-")
+            .replacingOccurrences(of: "~", with: "-")
+            .replacingOccurrences(of: "第", with: "")
+            .replacingOccurrences(of: " ", with: "")
+        let clauses = text
+            .split(whereSeparator: { ",，、;；".contains($0) })
+            .map(String.init)
+            .filter { !$0.isEmpty }
+        let sourceClauses = clauses.isEmpty ? [text] : clauses
+        let expression = try? NSRegularExpression(pattern: #"(\d{1,2})\s*(?:[-至到]\s*(\d{1,2}))?"#)
+        var values = Set<Int>()
+        for clause in sourceClauses {
+            guard let expression else { continue }
+            let nsClause = clause as NSString
+            let range = NSRange(location: 0, length: nsClause.length)
+            let kind: WeekParity = clause.contains("单周") || clause.contains("(单)") ? .odd
+                : (clause.contains("双周") || clause.contains("(双)") ? .even : .all)
+            expression.enumerateMatches(in: clause, range: range) { match, _, _ in
+                guard let match else { return }
+                guard let start = Int(nsClause.substring(with: match.range(at: 1))) else { return }
+                let end = match.range(at: 2).location == NSNotFound
+                    ? start
+                    : (Int(nsClause.substring(with: match.range(at: 2))) ?? start)
+                let lower = max(1, min(start, end))
+                let upper = min(64, max(start, end))
+                guard lower <= upper else { return }
+                for value in lower...upper {
+                    if kind == .odd && value % 2 == 0 { continue }
+                    if kind == .even && value % 2 == 1 { continue }
+                    values.insert(value)
+                }
+            }
+        }
+        return values.isEmpty
+            ? Array(Set(course.weekList.filter { $0 > 0 })).sorted()
+            : values.sorted()
+    }
+
+    private func nativeCourseForBlock(
+        _ course: NativeScheduleCourse,
+        startSlot: Int,
+        endSlot: Int
+    ) -> NativeScheduleCourse {
+        NativeScheduleCourse(
+            nativeId: course.nativeId,
+            name: course.name,
+            teacher: course.teacher,
+            weeks: course.weeks,
+            weekList: course.weekList,
+            location: course.location,
+            slotNote: startSlot == endSlot
+                ? "\(String(format: "%02d", startSlot))节"
+                : "\(String(format: "%02d", startSlot))-\(String(format: "%02d", endSlot))节",
+            startSlot: startSlot,
+            endSlot: endSlot,
+            sourceKey: course.sourceKey,
+            customId: course.customId,
+            custom: course.custom,
+            orphaned: course.orphaned
+        )
+    }
+
+    private func nativeScheduleKeyPart(_ value: String?) -> String {
+        (value ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
     }
 
     /// Horizontal page margin of the scrolling content.
@@ -1248,6 +1357,12 @@ private enum ScheduleSwipeAxis {
     case pending
     case horizontal
     case vertical
+}
+
+private enum WeekParity {
+    case all
+    case odd
+    case even
 }
 
 private enum ScheduleViewMode: String, Hashable {
@@ -1297,7 +1412,7 @@ private func nativeCourseEditKey(day: Int, bigSlot: Int, course: NativeScheduleC
 }
 
 private struct SelectedCourse: Identifiable {
-    let id = UUID()
+    let id: String
     let course: NativeScheduleCourse
     let day: Int
     let bigSlot: Int
@@ -1310,6 +1425,18 @@ private struct AddCourseContext: Identifiable {
     let day: Int
     let week: Int
     let startSlot: Int
+}
+
+private enum CourseEditorPresentation: Identifiable {
+    case edit(SelectedCourse)
+    case add(AddCourseContext)
+
+    var id: String {
+        switch self {
+        case .edit(let selection): return selection.id
+        case .add(let context): return "add:\(context.id.uuidString)"
+        }
+    }
 }
 
 private struct NativeScheduleDayPage: Equatable {
@@ -1397,49 +1524,35 @@ private struct NativeScheduleDayColumn: View {
             ZStack(alignment: .topLeading) {
                 VStack(spacing: Self.slotGap) {
                     ForEach(ScheduleSlot.all, id: \.number) { slot in
-                        let occupied = blocks.contains { ($0.startSlot...$0.endSlot).contains(slot.number) }
-                        HStack(spacing: 0) {
-                            ForEach(0..<laneCount, id: \.self) { lane in
-                                let laneOccupied = blocks.contains {
-                                    $0.lane == lane && ($0.startSlot...$0.endSlot).contains(slot.number)
-                                }
-                                Group {
-                                    if laneOccupied {
-                                        Color.clear
-                                    } else {
-                                        ScheduleGlassBackground(cornerRadius: 8)
-                                    }
-                                }
-                                    .frame(width: max(12, columnWidth / CGFloat(laneCount) - 2), height: rowHeight - 2)
-                                    .frame(width: columnWidth / CGFloat(laneCount), height: rowHeight)
-                            }
-                        }
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            guard !occupied else { return }
-                            onEmptySlot(slot.number)
-                        }
-                        .allowsHitTesting(!occupied)
-                        .accessibilityLabel(Text(verbatim: "第 \(slot.number) 节，添加课程"))
-                        .accessibilityAddTraits(.isButton)
+                        // The grid-level spatial tap below owns the empty-cell
+                        // action. Keeping these cells visual-only means a
+                        // long course card can never lose its tap to a
+                        // transparent button from an occupied row.
+                        slotRow(slot)
                     }
                 }
                 ForEach(blocks) { block in
+                    let cardWidth = max(12, columnWidth / CGFloat(laneCount) - 2)
+                    let cardHeight = max(
+                        34,
+                        CGFloat(block.endSlot - block.startSlot + 1) * rowHeight
+                            + CGFloat(block.endSlot - block.startSlot) * Self.slotGap
+                            - 2
+                    )
                     Button {
                         onCourseSelected(block)
                     } label: {
                         NativeScheduleCourseCard(course: block.course, compact: compactCards || columnWidth < 70)
-                            .frame(
-                                width: max(12, columnWidth / CGFloat(laneCount) - 2),
-                                height: max(
-                                    34,
-                                    CGFloat(block.endSlot - block.startSlot + 1) * rowHeight
-                                        + CGFloat(block.endSlot - block.startSlot) * Self.slotGap
-                                        - 2
-                                )
-                            )
+                            .frame(width: cardWidth, height: cardHeight)
                     }
                     .buttonStyle(.plain)
+                    // Fix the button's layout and hit rectangle at the same
+                    // size as the visible card. This matters for long
+                    // rowspan courses whose GeometryReader otherwise leaves
+                    // the Button with an undersized intrinsic label.
+                    .frame(width: cardWidth, height: cardHeight)
+                    .contentShape(Rectangle())
+                    .zIndex(10)
                     .offset(
                         x: 1 + CGFloat(block.lane) * (columnWidth / CGFloat(laneCount)),
                         y: CGFloat(block.startSlot - 1) * (rowHeight + Self.slotGap) + 1
@@ -1451,8 +1564,72 @@ private struct NativeScheduleDayColumn: View {
                 height: CGFloat(ScheduleSlot.all.count) * rowHeight
                     + CGFloat(max(0, ScheduleSlot.all.count - 1)) * Self.slotGap
             )
+            // SwiftUI can deliver a tap to the underlying grid when a card is
+            // offset across several rows. Resolve the actual point here first
+            // so a course always wins; only a point outside every card creates
+            // a new course.
+            .highPriorityGesture(
+                SpatialTapGesture().onEnded { value in
+                    if let block = block(at: value.location) {
+                        onCourseSelected(block)
+                    } else if let slot = slot(at: value.location) {
+                        onEmptySlot(slot)
+                    }
+                }
+            )
         }
         .frame(width: columnWidth)
+    }
+
+    private func block(at point: CGPoint) -> NativeScheduleCourseBlock? {
+        let laneWidth = columnWidth / CGFloat(laneCount)
+        // Iterate from the last rendered block so the hit test follows the
+        // same topmost ordering SwiftUI uses for overlapping cards.
+        for block in blocks.reversed() {
+            let width = max(12, laneWidth - 2)
+            let height = max(
+                34,
+                CGFloat(block.endSlot - block.startSlot + 1) * rowHeight
+                    + CGFloat(block.endSlot - block.startSlot) * Self.slotGap
+                    - 2
+            )
+            let rect = CGRect(
+                x: 1 + CGFloat(block.lane) * laneWidth,
+                y: CGFloat(block.startSlot - 1) * (rowHeight + Self.slotGap) + 1,
+                width: width,
+                height: height
+            )
+            if rect.contains(point) { return block }
+        }
+        return nil
+    }
+
+    private func slot(at point: CGPoint) -> Int? {
+        guard point.y >= 0 else { return nil }
+        let stride = rowHeight + Self.slotGap
+        let value = Int(floor(point.y / stride)) + 1
+        guard ScheduleSlot.all.indices.contains(value - 1) else { return nil }
+        return value
+    }
+
+    private func slotRow(_ slot: ScheduleSlot) -> some View {
+        HStack(spacing: 0) {
+            ForEach(0..<laneCount, id: \.self) { lane in
+                let laneOccupied = blocks.contains {
+                    $0.lane == lane && ($0.startSlot...$0.endSlot).contains(slot.number)
+                }
+                Group {
+                    if laneOccupied {
+                        Color.clear
+                    } else {
+                        ScheduleGlassBackground(cornerRadius: 8)
+                    }
+                }
+                    .frame(width: max(12, columnWidth / CGFloat(laneCount) - 2), height: rowHeight - 2)
+                    .frame(width: columnWidth / CGFloat(laneCount), height: rowHeight)
+            }
+        }
+        .contentShape(Rectangle())
     }
 
     private var dayLabel: String {
@@ -2174,6 +2351,68 @@ private struct NativeCourseEditorSheet: View {
             }
             .frame(maxHeight: 132)
         }
+    }
+}
+
+private struct NativeScheduleChangeNoticeSheet: View {
+    let notice: NativeScheduleChangeNotice
+    let onDismiss: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Label("检测到教务原始课表有以下变化：", systemImage: "exclamationmark.triangle.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.orange)
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        ForEach(Array(notice.details.enumerated()), id: \.offset) { _, detail in
+                            HStack(alignment: .top, spacing: 10) {
+                                Image(systemName: icon(for: detail))
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(color(for: detail))
+                                    .frame(width: 20)
+                                Text(detail)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.primary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                    .padding(16)
+                    .background(Color(uiColor: .secondarySystemGroupedBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                    Text("如果你编辑过上述课程，请重新核对自定义内容，必要时恢复原始课程。")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 20)
+                .padding(.bottom, 28)
+            }
+            .navigationTitle("教务课表已更新")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("我知道了", action: onDismiss)
+                }
+            }
+        }
+    }
+
+    private func icon(for detail: String) -> String {
+        if detail.hasPrefix("新增") { return "plus.circle.fill" }
+        if detail.hasPrefix("移除") { return "minus.circle.fill" }
+        return "arrow.triangle.2.circlepath.circle.fill"
+    }
+
+    private func color(for detail: String) -> Color {
+        if detail.hasPrefix("新增") { return .green }
+        if detail.hasPrefix("移除") { return .red }
+        return .orange
     }
 }
 

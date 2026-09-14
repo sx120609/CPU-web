@@ -401,6 +401,7 @@ onMounted(() => {
   ensureVisibleTab();
   restoreAllTabCaches();
   if (jwxt.isLoggedIn || hasCachedData.value) void loadCurrentTab(false);
+  window.addEventListener("cpu-native-refresh", onNativeRefresh);
   setupMobileViewportWatcher();
   void initPage();
 });
@@ -410,10 +411,20 @@ onBeforeUnmount(() => {
   pageInitSeq += 1;
   tabLoadSeq += 1;
   activeRequests.clear();
+  window.removeEventListener("cpu-native-refresh", onNativeRefresh);
   cleanupMobileViewportWatcher?.();
   cleanupMobileViewportWatcher = null;
   mobileViewportMedia = null;
 });
+
+function onNativeRefresh() {
+  // The native shell marks the event before dispatching it. Setting the flag
+  // here makes the handler self-identifying for older bridge versions too.
+  (window as any).__cpuNativeRefreshHandled = true;
+  void loadCurrentTab(true).finally(() => {
+    (window as any).CPUTimeNative?.refreshFinished?.();
+  });
+}
 
 async function initPage() {
   const seq = ++pageInitSeq;

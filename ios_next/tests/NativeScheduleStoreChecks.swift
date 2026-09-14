@@ -27,6 +27,14 @@ struct NativeScheduleStoreChecks {
         precondition(finalSlot.start == 11 && finalSlot.end == 11,
                      "An older bridge's twelfth slot must clamp to the last real period")
 
+        let cancelledStore = NativeScheduleStore(
+            loader: { _ in NativeScheduleSnapshot(cancelled: true) },
+            archive: nil
+        )
+        await cancelledStore.load(semester: "fall", week: "1")
+        precondition(cancelledStore.state == .idle && cancelledStore.errorMessage == nil,
+                     "A superseded request must not become a visible loading error")
+
         func snapshot() -> NativeScheduleSnapshot {
             NativeScheduleSnapshot(source: .graduate, fetchedAt: .now,
                 data: NativeScheduleResult(currentSemester: "fall", currentWeek: "3",
@@ -267,6 +275,42 @@ struct NativeScheduleStoreChecks {
         await settle()
         precondition(pagerCalls == callsBeforeCommit + 1,
                      "Re-committing the displayed week must not fetch again")
+
+        // Official timetable changes are paired by course name and reported
+        // with the same field-level wording as Web's change notice.
+        var changeRefresh = 0
+        let changeStore = NativeScheduleStore(loader: { _ in
+            changeRefresh += 1
+            let changed = changeRefresh > 1
+            let course = NativeScheduleCourse(
+                name: "药理学",
+                teacher: changed ? "李老师" : "张老师",
+                weeks: changed ? "1-8周(双)" : "1-8周(单)",
+                location: changed ? "B 教室" : "A 教室",
+                slotNote: changed ? "实验" : nil
+            )
+            return NativeScheduleSnapshot(
+                source: .jwxt,
+                fetchedAt: Date(timeIntervalSince1970: Double(100 + changeRefresh)),
+                data: NativeScheduleResult(
+                    weeks: (1...8).map { NativeScheduleWeek(value: String($0), label: "第 \($0) 周") },
+                    currentSemester: "fall",
+                    currentWeek: "1",
+                    cells: [NativeScheduleCell(
+                        day: changed ? 2 : 1,
+                        bigSlot: changed ? 2 : 1,
+                        courses: [course]
+                    )]
+                ),
+                auth: NativeScheduleAuth(authenticated: true)
+            )
+        })
+        await changeStore.load(semester: "fall", week: "1")
+        await changeStore.refresh()
+        precondition(changeStore.scheduleChangeNotice?.changedCount == 1)
+        precondition(changeStore.scheduleChangeNotice?.details == [
+            "调整：药理学：时间 周一 1-2节 → 周二 3-4节；周次 1-8周(单) → 1-8周(双)；地点 A 教室 → B 教室；教师 张老师 → 李老师；备注 无 → 实验"
+        ], "Course changes must include the changed fields")
 
         print("Native schedule checks passed: decoding, selection, cache, auth, races, failed-week isolation, cold start, week paging")
     }

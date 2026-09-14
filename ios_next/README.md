@@ -24,7 +24,7 @@
 
 ```javascript
 await window.CPUTimeNativeScheduleFetch(semester, week, force)
-// { version: 1, source, fetchedAt, periods, data, calendar, auth, error? }
+// { version: 1, source, fetchedAt, periods, data, calendar, auth, cancelled?, error? }
 ```
 
 `data.cells` 已应用课程修改并规范化 `weekList`；`periods` 是学校小节次的权威时间表，每门课同时携带不受教师或教室变化影响的 `nativeId`。Swift 通过 `WKWebView.callAsyncJavaScript` 等待返回值，不复制 Cookie 到另一套网络客户端。网页课表路由通过 `CPUTimeNative.navigate('/schedule')` 切换原生标签；`authChanged(account)` 携带账号指纹：指纹不变表示同一账号的会话恢复完成，原生保留已显示的课表；指纹变化或为空则清空内存与磁盘上的账号数据。

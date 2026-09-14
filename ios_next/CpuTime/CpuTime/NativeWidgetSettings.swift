@@ -7,6 +7,7 @@ enum NextWidgetConfiguration {
     static let widgetEndpointKey = "scheduleWidgetEndpoint"
     static let widgetEndpointFileName = "schedule-widget-endpoint.txt"
     static let widgetThemeKey = "scheduleWidgetTheme"
+    static let widgetDisplayOptionsKey = "scheduleWidgetDisplayOptions"
     static func normalizedWidgetTheme(_ value: String?) -> String? {
         guard let theme = value?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
               ["green", "blue", "teal", "indigo", "violet", "orange", "rose", "slate", "color-glass"]
@@ -16,6 +17,31 @@ enum NextWidgetConfiguration {
         return theme
     }
 
+}
+
+/// The fields shown by both the iPhone and Apple Watch schedule widgets.
+/// Stored as a small JSON value so the two extensions can share it through the
+/// App Group without linking either extension into the app target.
+struct WidgetDisplayOptions: Codable, Equatable {
+    var showCourseName: Bool
+    var showRoom: Bool
+    var showTeacher: Bool
+    var showTime: Bool
+
+    static let `default` = WidgetDisplayOptions(
+        showCourseName: true,
+        showRoom: true,
+        showTeacher: true,
+        showTime: true
+    )
+
+    static func load(defaults: UserDefaults? = UserDefaults(suiteName: NextWidgetConfiguration.appGroup)) -> Self {
+        guard let data = defaults?.data(forKey: NextWidgetConfiguration.widgetDisplayOptionsKey),
+              let value = try? JSONDecoder().decode(Self.self, from: data) else {
+            return .default
+        }
+        return value
+    }
 }
 
 @MainActor
@@ -77,6 +103,14 @@ final class NativeWidgetSettings: ObservableObject {
             return
         }
         defaults.set(theme, forKey: NextWidgetConfiguration.widgetThemeKey)
+        defaults.synchronize()
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    func setScheduleWidgetDisplayOptions(_ value: WidgetDisplayOptions) {
+        guard let defaults = UserDefaults(suiteName: NextWidgetConfiguration.appGroup),
+              let data = try? JSONEncoder().encode(value) else { return }
+        defaults.set(data, forKey: NextWidgetConfiguration.widgetDisplayOptionsKey)
         defaults.synchronize()
         WidgetCenter.shared.reloadAllTimelines()
     }

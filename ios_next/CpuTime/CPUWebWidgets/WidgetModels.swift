@@ -10,6 +10,7 @@ enum AppWidgetConfiguration {
     static let endpointKey = "scheduleWidgetEndpoint"
     static let endpointFileName = "schedule-widget-endpoint.txt"
     static let themeKey = "scheduleWidgetTheme"
+    static let displayOptionsKey = "scheduleWidgetDisplayOptions"
     static let appURL = URL(string: "cputime-next://schedule?source=widget&week=current")!
 
     static func appURL(semester: String?, currentWeek: Int?) -> URL {
@@ -31,6 +32,52 @@ enum AppWidgetConfiguration {
     static var scheduleTheme: ScheduleWidgetTheme {
         let value = UserDefaults(suiteName: appGroup)?.string(forKey: themeKey)
         return ScheduleWidgetTheme(rawValue: value ?? "") ?? .colorGlass
+    }
+
+    static var displayOptions: ScheduleWidgetDisplayOptions {
+        ScheduleWidgetDisplayOptions.load(
+            defaults: UserDefaults(suiteName: appGroup)
+        )
+    }
+}
+
+/// User-selectable widget fields. The app writes this value to the shared App
+/// Group; all iOS widget families and the Watch complication read the same
+/// keys so their content stays consistent.
+struct ScheduleWidgetDisplayOptions: Codable, Equatable {
+    var showCourseName: Bool
+    var showRoom: Bool
+    var showTeacher: Bool
+    var showTime: Bool
+
+    static let `default` = ScheduleWidgetDisplayOptions(
+        showCourseName: true,
+        showRoom: true,
+        showTeacher: true,
+        showTime: true
+    )
+
+    static func load(defaults: UserDefaults?) -> Self {
+        guard let data = defaults?.data(forKey: AppWidgetConfiguration.displayOptionsKey),
+              let value = try? JSONDecoder().decode(Self.self, from: data) else {
+            return .default
+        }
+        return value
+    }
+
+    func metadata(for course: ScheduleCourse) -> String? {
+        let values = [showRoom ? course.normalizedLocation : nil,
+                      showTeacher ? course.normalizedTeacher : nil]
+            .compactMap { $0 }
+        return values.isEmpty ? nil : values.joined(separator: " · ")
+    }
+
+    func primaryValue(for course: ScheduleCourse) -> String? {
+        if showCourseName { return course.displayName }
+        if showRoom { return course.normalizedLocation }
+        if showTeacher { return course.normalizedTeacher }
+        if showTime { return course.timeRange }
+        return nil
     }
 }
 
@@ -63,6 +110,9 @@ struct ScheduleCourse: Decodable, Identifiable {
 
     var displayName: String { normalized(name) ?? "课程" }
     var startLabel: String { normalized(startTime) ?? "--:--" }
+
+    var normalizedLocation: String? { normalized(location) }
+    var normalizedTeacher: String? { normalized(teacher) }
 
     var metadata: String {
         let values = [normalized(location), normalized(teacher), normalized(note) ?? normalized(slotNote)]
@@ -179,32 +229,41 @@ struct SchedulePayload: Decodable {
         return day(for: date, fallbackOffset: fallbackOffset)
     }
 
-    func upcoming(now: Date = .now) -> (ScheduleDay, [ScheduleCourse]) {
-        let minutes = Calendar.current.component(.hour, from: now) * 60
-            + Calendar.current.component(.minute, from: now)
-        let today = day(for: Self.dateString(now), fallbackOffset: 0)
-        let remainingToday = today.courseList.filter {
-            $0.endMinutes >= minutes || (!$0.hasUsableStartTime && $0.endMinutes <= 0)
+    /// Mirrors the Web/Scriptable widget rule: keep today's remaining classes,
+    /// otherwise show the next day within the published window that has a
+    /// course. The offset is retained so the caller can choose whether to
+    /// dim completed courses and how to find the following day.
+    func preferredCourseDay(now: Date = .now) -> (day: ScheduleDay, offset: Int) {
+        let minutes = Self.minutesSinceMidnight(now)
+        let todayDate = Self.dateString(now)
+        let today = fullDay(for: todayDate, fallbackOffset: 0)
+        let hasRemaining = today.courseList.contains { course in
+            course.endMinutes >= minutes || (!course.hasUsableStartTime && course.endMinutes <= 0)
         }
-        if !remainingToday.isEmpty {
-            return (today, Array(remainingToday.prefix(2)))
-        }
+        if hasRemaining { return (today, 0) }
 
-        // Match the Web/Scriptable widget behavior: when today is empty or
-        // already finished, walk the published seven-day window and show the
-        // next day that actually has courses. This avoids an empty "tomorrow"
-        // card on weekends and holidays.
         for offset in 1...7 {
             let date = Calendar.current.date(byAdding: .day, value: offset, to: now) ?? now
-            let candidate = day(for: Self.dateString(date), fallbackOffset: offset)
-            if !candidate.courseList.isEmpty {
-                return (candidate, Array(candidate.courseList.prefix(2)))
-            }
+            let candidate = fullDay(for: Self.dateString(date), fallbackOffset: offset)
+            if !candidate.courseList.isEmpty { return (candidate, offset) }
         }
 
-        let tomorrowDate = Calendar.current.date(byAdding: .day, value: 1, to: now) ?? now
-        let tomorrow = day(for: Self.dateString(tomorrowDate), fallbackOffset: 1)
-        return (tomorrow, Array(tomorrow.courseList.prefix(2)))
+        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: now) ?? now
+        return (fullDay(for: Self.dateString(tomorrow), fallbackOffset: 1), 1)
+    }
+
+    func upcoming(now: Date = .now) -> (ScheduleDay, [ScheduleCourse]) {
+        let selected = preferredCourseDay(now: now)
+        let courses: [ScheduleCourse]
+        if selected.offset == 0 {
+            let minutes = Self.minutesSinceMidnight(now)
+            courses = selected.day.courseList.filter {
+                $0.endMinutes >= minutes || (!$0.hasUsableStartTime && $0.endMinutes <= 0)
+            }
+        } else {
+            courses = selected.day.courseList
+        }
+        return (selected.day, Array(courses.prefix(2)))
     }
 
     static func dateString(_ date: Date) -> String {

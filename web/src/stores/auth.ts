@@ -421,7 +421,16 @@ export const useAuthStore = defineStore("auth", {
           } : undefined);
           // A logout may finish while the probe is in flight. Do not let the
           // stale response restore the session that the user just revoked.
-          if (this.sessionVersion === requestSessionVersion && this.profileRevision === requestProfileRevision && this.token) {
+          // A probe is also the first authentication step after a native
+          // cookie login. In that case the browser may have the HttpOnly
+          // session cookie before the in-memory marker has been hydrated.
+          // Accepting the successful `/user/me` response here lets the probe
+          // establish the same Pinia session as a regular page refresh.
+          if (
+            this.sessionVersion === requestSessionVersion
+            && this.profileRevision === requestProfileRevision
+            && (this.token || options?.probe)
+          ) {
             this.applyAuthenticatedSession(COOKIE_SESSION_MARKER, user);
           }
         } catch {

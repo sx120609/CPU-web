@@ -4,6 +4,7 @@ nonisolated enum WatchScheduleWidgetConfiguration {
     static var appGroupIdentifier: String { AppGroupIdentifier.resolved() }
     static let cacheFileName = "watch-schedule-v1.json"
     static let kind = "cn.cputime.mobile.watch.widget.next"
+    static let displayOptionsKey = "scheduleWidgetDisplayOptions"
 
     static func sharedCacheURL(fileManager: FileManager = .default) -> URL? {
         fileManager.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier)?
@@ -62,5 +63,55 @@ nonisolated enum WatchScheduleWidgetConfiguration {
             cursor = transition
         }
         return dates
+    }
+}
+
+/// Mirrors the iPhone widget preferences stored in the shared App Group. This
+/// type intentionally lives in WatchShared so the Watch app and complication
+/// can read the same JSON without depending on the iOS widget extension.
+nonisolated struct WatchWidgetDisplayOptions: Codable, Equatable {
+    var showCourseName: Bool
+    var showRoom: Bool
+    var showTeacher: Bool
+    var showTime: Bool
+
+    static let `default` = WatchWidgetDisplayOptions(
+        showCourseName: true,
+        showRoom: true,
+        showTeacher: true,
+        showTime: true
+    )
+
+    static func load(defaults: UserDefaults? = UserDefaults(suiteName: WatchScheduleWidgetConfiguration.appGroupIdentifier)) -> Self {
+        guard let data = defaults?.data(forKey: WatchScheduleWidgetConfiguration.displayOptionsKey),
+              let value = try? JSONDecoder().decode(Self.self, from: data) else {
+            return .default
+        }
+        return value
+    }
+
+    func metadata(for course: WatchCourse) -> String? {
+        [showRoom ? course.room : nil, showTeacher ? course.teacher : nil]
+            .compactMap { value in
+                let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                return trimmed.isEmpty ? nil : trimmed
+            }
+            .joined(separator: " · ")
+            .nilIfEmpty
+    }
+
+    func primaryValue(for course: WatchCourse) -> String? {
+        if showCourseName { return course.name }
+        if showRoom { return course.room?.nilIfEmpty }
+        if showTeacher { return course.teacher?.nilIfEmpty }
+        if showTime { return "\(course.startTime) - \(course.endTime)" }
+        return nil
+    }
+}
+
+private extension String {
+    var nilIfEmpty: String? {
+        let value = trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? nil : value
     }
 }

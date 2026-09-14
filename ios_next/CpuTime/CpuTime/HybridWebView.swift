@@ -1,13 +1,14 @@
 import Foundation
 import Combine
+import Network
 import SwiftUI
 import UIKit
 import WebKit
 
 
 enum IOSNextWebConfiguration {
-    static let versionCode = 3
-    static let versionName = "3.0.0"
+    static let versionCode = 11
+    static let versionName = "3.3.0"
 
     static var appURL: URL {
         let configured = Bundle.main.object(forInfoDictionaryKey: "CPUAppURL") as? String
@@ -58,6 +59,15 @@ enum IOSNextWebConfiguration {
     }
 }
 
+struct NativeLoginResponse: Sendable {
+    let ok: Bool
+    let needCaptcha: Bool
+    let captchaImage: String
+    let error: String
+    let account: String
+    let canAccessAdmin: Bool
+}
+
 @MainActor
 final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandler {
     static let handlerName = "cpuTimeNative"
@@ -72,6 +82,8 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
     /// Mirrors Web's `canAccessModuleAdmin` getter so the native quick menu
     /// exposes the same management entry points as the browser shell.
     @Published private(set) var canAccessAdmin = false
+    @Published private(set) var isNetworkUnavailable = false
+    @Published private(set) var serviceUnavailableMessage: String?
 
     /// While the native login gate is up, only authentication pages may load.
     /// A main-frame navigation anywhere else is cancelled instead of being
@@ -129,6 +141,27 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
     private var navigationTask: Task<Void, Never>?
     private(set) var bridgeReady = false
     private var observations: [NSKeyValueObservation] = []
+    private var refreshControl: UIRefreshControl?
+    private var refreshController: WebViewRefreshController?
+    private var refreshTimeoutTask: Task<Void, Never>?
+    private var isPullRefreshing = false
+    private let pathMonitor = NWPathMonitor()
+    private let pathMonitorQueue = DispatchQueue(label: "cn.cputime.ios.network-monitor")
+
+    override init() {
+        super.init()
+        pathMonitor.pathUpdateHandler = { [weak self] path in
+            let unavailable = path.status != .satisfied
+            Task { @MainActor [weak self] in
+                self?.isNetworkUnavailable = unavailable
+            }
+        }
+        pathMonitor.start(queue: pathMonitorQueue)
+    }
+
+    deinit {
+        pathMonitor.cancel()
+    }
 
     func makeWebView() -> WKWebView {
         if let webView { return webView }
@@ -165,6 +198,14 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
         webView.scrollView.scrollIndicatorInsets = .zero
         webView.scrollView.automaticallyAdjustsScrollIndicatorInsets = false
         webView.scrollView.bounces = true
+        webView.scrollView.alwaysBounceVertical = true
+        let refreshController = WebViewRefreshController(store: self)
+        let refreshControl = UIRefreshControl()
+        refreshControl.tintColor = UIColor(red: 15 / 255, green: 143 / 255, blue: 127 / 255, alpha: 1)
+        refreshControl.addTarget(refreshController, action: #selector(WebViewRefreshController.didPull(_:)), for: .valueChanged)
+        webView.scrollView.refreshControl = refreshControl
+        self.refreshController = refreshController
+        self.refreshControl = refreshControl
 #if DEBUG
         if #available(iOS 16.4, *) {
             webView.isInspectable = true
@@ -330,6 +371,15 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
         const box = (el) => { if (!el) return null; const r = el.getBoundingClientRect(); return [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)]; };
         return JSON.stringify({
           url: location.pathname,
+          origin: location.origin,
+          readyState: document.readyState,
+          userAgent: navigator.userAgent,
+          nativeBridge: typeof window.CPUTimeNative,
+          nativeLoginBegin: typeof window.CPUTimeNative?.nativeLoginBegin,
+          nativeSsoLogin: typeof window.CPUTimeNative?.nativeSsoLogin,
+          nativeAuthFallback: Boolean(window.CPUTimeNative?.__cpuNativeAuthFallback),
+          nativeBridgeError: window.__cpuNativeBridgeError || null,
+          nativeIosMarker: document.documentElement?.dataset?.cpuIosNext || null,
           inner: [innerWidth, innerHeight],
           vv: [Math.round(visualViewport.width), Math.round(visualViewport.height)],
           docScroll: [document.scrollingElement.scrollTop, document.scrollingElement.scrollHeight],
@@ -364,9 +414,9 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
     /// before presenting the native quick menu. This matters after a cookie
     /// restore, when the menu can otherwise be opened before authChanged has
     /// reached SwiftUI.
-    func refreshAuthCapability() {
+    func refreshAuthCapability() async {
         let script = """
-        (async () => {
+        return await (async () => {
           for (let attempt = 0; attempt < 20; attempt += 1) {
             const refresh = window.CPUTimeNative?.refreshAuth;
             if (typeof refresh === 'function') {
@@ -378,7 +428,20 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
           return false;
         })();
         """
-        webView?.evaluateJavaScript(script)
+        guard let webView else { return }
+        let result = try? await webView.callAsyncJavaScript(
+            script,
+            arguments: [:],
+            in: nil,
+            contentWorld: .page
+        )
+        // The postMessage report is still sent by the Web bridge. Applying the
+        // returned value here closes the race where the sheet is presented
+        // before that message reaches SwiftUI.
+        guard let payload = result as? [String: Any],
+              let account = payload["account"] as? String else { return }
+        isLoggedIn = !account.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        canAccessAdmin = payload["canAccessAdmin"] as? Bool ?? false
     }
 
     func setAppearanceMode(_ mode: String) {
@@ -401,7 +464,7 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
           root.classList.toggle('dark', prefersDark);
           root.style.colorScheme = prefersDark ? 'dark' : 'light';
           return true;
-        })()
+        })();
         """
         webView?.evaluateJavaScript(script)
     }
@@ -418,21 +481,217 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
 
     func retry() {
         errorMessage = nil
+        serviceUnavailableMessage = nil
+        finishPullRefresh()
+        reloadCurrentPage()
+    }
+
+    /// Ask the already booted Web app to create the same SSO challenge used by
+    /// the browser login page. The native UI never handles school cookies or
+    /// credentials itself; those stay inside the Web auth store and WKWebView.
+    func nativeLoginBegin() async -> NativeLoginResponse {
+        await nativeLoginCall("""
+        return await (async () => {
+          const bridge = window.CPUTimeNative;
+          if (!bridge || typeof bridge.nativeLoginBegin !== 'function') {
+            return JSON.stringify({ok: false, error: '登录服务正在启动，请稍候再试。'});
+          }
+          try { return JSON.stringify(await bridge.nativeLoginBegin()); }
+          catch (_) { return JSON.stringify({ok: false, error: '统一认证暂时不可用，请稍后再试。'}); }
+        })();
+        """, arguments: [:])
+    }
+
+    /// Submit school SSO credentials through the Web store so the response's
+    /// HttpOnly session cookie and the native auth gate stay in sync.
+    func nativeSsoLogin(username: String, password: String, captcha: String, remember: Bool) async -> NativeLoginResponse {
+        await nativeLoginCall("""
+        return await (async () => {
+          const bridge = window.CPUTimeNative;
+          if (!bridge || typeof bridge.nativeSsoLogin !== 'function') {
+            return JSON.stringify({ok: false, error: '登录服务正在启动，请稍候再试。'});
+          }
+          try {
+            return JSON.stringify(await bridge.nativeSsoLogin(username, password, captcha, remember));
+          } catch (_) {
+            return JSON.stringify({ok: false, error: '登录暂时失败，请稍后再试。'});
+          }
+        })();
+        """, arguments: [
+            "username": username,
+            "password": password,
+            "captcha": captcha,
+            "remember": remember,
+        ])
+    }
+
+    /// The fallback account form is also routed through the Web auth store so
+    /// its token/cookie handling remains identical to the regular site login.
+    func nativeAccountLogin(username: String, password: String) async -> NativeLoginResponse {
+        await nativeLoginCall("""
+        return await (async () => {
+          const bridge = window.CPUTimeNative;
+          if (!bridge || typeof bridge.nativeAccountLogin !== 'function') {
+            return JSON.stringify({ok: false, error: '登录服务正在启动，请稍候再试。'});
+          }
+          try {
+            return JSON.stringify(await bridge.nativeAccountLogin(username, password));
+          } catch (_) {
+            return JSON.stringify({ok: false, error: '登录暂时失败，请稍后再试。'});
+          }
+        })();
+        """, arguments: ["username": username, "password": password])
+    }
+
+    private func nativeLoginCall(
+        _ script: String,
+        arguments: [String: Any]
+    ) async -> NativeLoginResponse {
         let view = makeWebView()
-        if view.url == nil { view.load(URLRequest(url: IOSNextWebConfiguration.appURLFor(tab: activeTab))) }
-        else { view.reload() }
+        // `ready` is emitted by the injected native chrome before Vue has
+        // mounted the Pinia auth store. Wait for the actual login method so a
+        // cold launch does not turn that short race into “服务不可用”.
+        var lastError: Error?
+        for attempt in 0..<80 {
+            do {
+                // Execute the call itself instead of probing through a second
+                // JavaScript invocation. On iOS 26 a page-route transition can
+                // make a variable-based `callAsyncJavaScript` probe report a
+                // false negative even while the bridge methods are callable.
+                let value = try await view.callAsyncJavaScript(
+                    script,
+                    arguments: arguments,
+                    in: nil,
+                    contentWorld: .page
+                )
+                let response = Self.decodeNativeLoginResponse(value)
+                if response.error != "登录服务正在启动，请稍候再试。" {
+                    // A route transition can reset the navigation flag after
+                    // the injected bridge has already survived in the page.
+                    bridgeReady = true
+                    return response
+                }
+            } catch {
+                lastError = error
+            }
+            if attempt < 79 {
+                try? await Task.sleep(for: .milliseconds(125))
+            }
+        }
+
+        let message: String
+        if isNetworkUnavailable {
+            message = "当前没有网络连接，请检查 Wi‑Fi 或切换蜂窝网络后重试。"
+        } else if let serviceUnavailableMessage, !serviceUnavailableMessage.isEmpty {
+            message = serviceUnavailableMessage
+        } else if lastError != nil {
+            message = "登录服务暂时未准备好，请稍后重试。"
+        } else {
+            message = "登录服务启动超时，请稍后重试。"
+        }
+        return NativeLoginResponse(
+            ok: false,
+            needCaptcha: false,
+            captchaImage: "",
+            error: message,
+            account: "",
+            canAccessAdmin: false
+        )
+    }
+
+    private static func decodeNativeLoginResponse(_ value: Any?) -> NativeLoginResponse {
+        var payload: [String: Any] = [:]
+        if let dictionary = value as? [String: Any] {
+            payload = dictionary
+        } else if let json = value as? String,
+                  let data = json.data(using: .utf8),
+                  let dictionary = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            payload = dictionary
+        }
+        return NativeLoginResponse(
+            ok: payload["ok"] as? Bool ?? false,
+            needCaptcha: payload["needCaptcha"] as? Bool ?? false,
+            captchaImage: payload["captchaImage"] as? String ?? "",
+            error: payload["error"] as? String ?? "登录暂时失败，请稍后再试。",
+            account: payload["account"] as? String ?? "",
+            canAccessAdmin: payload["canAccessAdmin"] as? Bool ?? false
+        )
+    }
+
+    private func reloadCurrentPage() {
+        let view = makeWebView()
+        if view.url == nil {
+            view.load(URLRequest(url: IOSNextWebConfiguration.appURLFor(tab: activeTab)))
+        } else {
+            view.reload()
+        }
+    }
+
+    fileprivate func handlePullToRefresh(_ sender: UIRefreshControl) {
+        guard !isPullRefreshing else { return }
+        isPullRefreshing = true
+        errorMessage = nil
+        let script = """
+        (() => {
+          window.__cpuNativeRefreshHandled = false;
+          try { window.dispatchEvent(new Event('cpu-native-refresh')); } catch (_) {}
+          return Boolean(window.__cpuNativeRefreshHandled);
+        })()
+        """
+        let view = makeWebView()
+        view.evaluateJavaScript(script) { [weak self] value, _ in
+            Task { @MainActor in
+                guard let self, self.isPullRefreshing else { return }
+                if (value as? Bool) == true {
+                    // Route-specific handlers finish through refreshFinished;
+                    // the timeout keeps the control recoverable if an older
+                    // deployed page does not send the completion message.
+                    self.refreshTimeoutTask?.cancel()
+                    self.refreshTimeoutTask = Task { @MainActor [weak self] in
+                        try? await Task.sleep(for: .seconds(15))
+                        guard let self, !Task.isCancelled else { return }
+                        self.finishPullRefresh()
+                    }
+                } else {
+                    self.reloadCurrentPage()
+                }
+            }
+        }
+        _ = sender
+    }
+
+    private func finishPullRefresh() {
+        refreshTimeoutTask?.cancel()
+        refreshTimeoutTask = nil
+        guard isPullRefreshing || refreshControl?.isRefreshing == true else { return }
+        isPullRefreshing = false
+        refreshControl?.endRefreshing()
     }
 
     fileprivate func didStart() {
         bridgeReady = false
         errorMessage = nil
+        serviceUnavailableMessage = nil
     }
 
     fileprivate func didFail(_ error: Error) {
         guard (error as NSError).code != NSURLErrorCancelled else { return }
         isLoading = false
         errorMessage = "页面暂时无法打开，请检查网络后重试。"
+        serviceUnavailableMessage = "服务暂时不可用，请检查网络连接或稍后重试。"
         onFailure?(errorMessage!)
+    }
+
+    /// A gateway failure can arrive as a successful WebKit navigation with an
+    /// HTML 5xx body. Treat it as an unavailable service before that body can
+    /// look like a blank or broken application page.
+    fileprivate func didReceiveHTTPStatus(_ status: Int) {
+        guard status >= 500 else { return }
+        isLoading = false
+        let message = "服务暂时不可用，请检查网络连接或切换流量后重试。"
+        serviceUnavailableMessage = message
+        errorMessage = message
+        onFailure?(message)
     }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
@@ -477,6 +736,10 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
             // An account fingerprint lets the timetable keep its cached view
             // when the session merely finished restoring the same account.
             onAuthChanged?((body["account"] as? String) ?? "")
+        case "refreshFinished":
+            finishPullRefresh()
+        case "networkError":
+            serviceUnavailableMessage = "服务暂时不可用，请检查网络连接或切换流量后重试。"
         default:
             break
         }
@@ -515,6 +778,14 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
         (() => {
           if (location.origin !== \(origin)) return;
           if (!/CPUTimeNative\\//i.test(navigator.userAgent)) return;
+          try {
+            addEventListener('error', event => {
+              window.__cpuNativeBridgeError = String(event?.error?.stack || event?.message || 'script error');
+            });
+            addEventListener('unhandledrejection', event => {
+              window.__cpuNativeBridgeError = String(event?.reason?.stack || event?.reason || 'unhandled rejection');
+            });
+          } catch (_) {}
           // Apply before Vue mounts, including on older deployed Web clients.
           const style = document.createElement('style');
           style.textContent = `
@@ -529,24 +800,22 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
               --cpu-safe-area-inset-top: 0px !important;
               --cpu-ios-inline-inset: 20px;
             }
-            /* Keep the shared WKWebView itself fixed to the native content
-               viewport and make the Web app the only vertical scroller. A
-               number of deployed Web bundles still leave body scrolling
-               enabled, which lets the old scroll offset cut into the first
-               card after a native tab switch. */
+            /* Let WKWebView own the document scroll. This makes its native
+               UIRefreshControl receive the same pull gesture as Safari and
+               keeps the existing Web pages' window.scrollY contract intact. */
             html[data-cpu-ios-next],
             html[data-cpu-ios-next] body {
-              height: 100%;
-              overflow: hidden;
+              height: auto !important;
+              min-height: 100%;
+              overflow-x: hidden !important;
+              overflow-y: auto !important;
             }
             html[data-cpu-ios-next] #app {
-              height: 100%;
-              min-height: 0;
-              max-height: 100%;
+              height: auto !important;
+              min-height: 100%;
+              max-height: none;
               overflow-x: hidden;
-              overflow-y: auto;
-              -webkit-overflow-scrolling: touch;
-              overscroll-behavior-y: contain;
+              overflow-y: visible !important;
             }
             @media (max-width: 768px) {
               html[data-cpu-ios-next] .layout-root { --cpu-ios-inline-inset: 12px; }
@@ -623,6 +892,38 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
               return false;
             }
           };
+          const reportNetworkIssue = (status = 0) => {
+            const code = Number(status) || 0;
+            if (code === 0 || code >= 500) post({type: 'networkError', status: code});
+          };
+          if (!window.__cpuNativeNetworkMonitor) {
+            window.__cpuNativeNetworkMonitor = true;
+            const nativeFetch = window.fetch;
+            if (typeof nativeFetch === 'function') {
+              window.fetch = function(...args) {
+                let request;
+                try { request = nativeFetch.apply(this, args); }
+                catch (error) { reportNetworkIssue(0); throw error; }
+                return Promise.resolve(request).then(response => {
+                  reportNetworkIssue(response.status);
+                  return response;
+                }, error => {
+                  reportNetworkIssue(0);
+                  throw error;
+                });
+              };
+            }
+            const xhr = window.XMLHttpRequest;
+            if (xhr?.prototype) {
+              const nativeSend = xhr.prototype.send;
+              xhr.prototype.send = function(...args) {
+                this.addEventListener('load', () => reportNetworkIssue(this.status), {once: true});
+                this.addEventListener('error', () => reportNetworkIssue(0), {once: true});
+                this.addEventListener('timeout', () => reportNetworkIssue(0), {once: true});
+                return nativeSend.apply(this, args);
+              };
+            }
+          }
           const bridge = window.CPUTimeNative || {};
           bridge.isNativeShell = true;
           bridge.platform = 'ios';
@@ -637,7 +938,156 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
           bridge.authChanged = (account, canAccessAdmin = false) => post({
             type: 'authChanged', account: String(account ?? ''), canAccessAdmin: Boolean(canAccessAdmin)
           });
+          bridge.refreshFinished = () => post({type: 'refreshFinished'});
           window.CPUTimeNative = bridge;
+          // Keep native login usable while an older deployed Web bundle is
+          // still being rolled out. Newer bundles replace these methods with
+          // the Pinia implementation; this fallback uses the same cookie
+          // endpoints and then reloads the shared page.
+          if (!bridge.__cpuNativeAuthFallback) {
+            bridge.__cpuNativeAuthFallback = true;
+            const cookieValue = (name) => {
+              const part = document.cookie.split(';').map(v => v.trim()).find(v => v.startsWith(name + '='));
+              if (!part) return '';
+              try { return decodeURIComponent(part.slice(name.length + 1)); } catch (_) { return part.slice(name.length + 1); }
+            };
+            const authHeaders = () => {
+              const headers = {
+                'Content-Type': 'application/json',
+                'X-CPU-Client': 'ios',
+                'X-CPU-Auth-Mode': 'cookie'
+              };
+              const csrf = cookieValue('__Host-cpu-csrf') || cookieValue('cpu-csrf');
+              if (csrf) headers['X-CSRF-Token'] = csrf;
+              return headers;
+            };
+            const loginState = { pendingId: '', credentialPublicKey: '' };
+            const postAuth = async (path, payload) => {
+              let response;
+              try {
+                response = await fetch(path, {
+                  method: 'POST',
+                  credentials: 'same-origin',
+                  headers: authHeaders(),
+                  body: JSON.stringify(payload ?? {})
+                });
+              } catch (_) {
+                return { ok: false, error: '网络连接失败，请检查网络后重试。' };
+              }
+              let envelope;
+              try { envelope = await response.json(); }
+              catch (_) { return { ok: false, error: '服务暂时不可用，请稍后重试。' }; }
+              const data = envelope?.data ?? envelope;
+              if (!response.ok || (typeof envelope?.code === 'number' && envelope.code !== 0)) {
+                return {
+                  ok: false,
+                  error: String(data?.error || envelope?.message || '服务暂时不可用，请稍后重试。')
+                };
+              }
+              return data;
+            };
+            const nativeResult = (data, fallback = '登录暂时失败，请稍后再试。') => {
+              const user = data?.user;
+              const canAccessAdmin = user?.role === 'admin'
+                || user?.role === 'mod'
+                || user?.voiceHubRole === 'super_admin'
+                || Boolean(user?.lostFoundRole);
+              return {
+                ok: Boolean(data?.ok),
+                error: String(data?.error || (data?.ok ? '' : fallback)),
+                needCaptcha: Boolean(data?.needCaptcha),
+                captchaImage: String(data?.captchaImage || data?.captcha?.image || ''),
+                account: user?.id ? String(user.id) : '',
+                canAccessAdmin
+              };
+            };
+            const hydratePiniaSession = (data) => {
+              const user = data?.user;
+              if (!user?.id) return false;
+              const authMarker = '__cpu_cookie_session__';
+              let hydrated = false;
+              try {
+                const pinia = document.getElementById('app')?.__vue_app__?.config?.globalProperties?.$pinia;
+                const auth = pinia?._s?.get('auth');
+                if (auth && typeof auth.applyAuthenticatedSession === 'function') {
+                  auth.applyAuthenticatedSession(authMarker, user);
+                  hydrated = true;
+                }
+                const jwxt = pinia?._s?.get('jwxt');
+                if (jwxt && data?.jwxtAuthenticated) {
+                  const jwxtMarker = '__cpu_jwxt_cookie_session__';
+                  try { sessionStorage.setItem('cpu-jwxt-token', jwxtMarker); } catch (_) {}
+                  jwxt.token = jwxtMarker;
+                  jwxt.active = true;
+                  jwxt.authorizationExpired = false;
+                }
+              } catch (_) {}
+              // Keep a reload/old-bundle fallback marker as well. It contains
+              // no credential and lets auth.hydrate() discover the cookie.
+              try {
+                localStorage.setItem('cpu-authenticated', '1');
+                localStorage.setItem('cpu-auth-cache-scope', 'user-' + String(user.id));
+              } catch (_) {}
+              return hydrated;
+            };
+            const announceAuthenticated = async (data) => {
+              const user = data?.user;
+              hydratePiniaSession(data);
+              if (user?.id) bridge.authChanged(String(user.id), Boolean(
+                user.role === 'admin'
+                  || user.role === 'mod'
+                  || user.voiceHubRole === 'super_admin'
+                  || user.lostFoundRole
+              ));
+              // The fallback request bypasses the Pinia action that normally
+              // hydrates the cookie session. Give WebKit time to persist the
+              // Set-Cookie response before the next document probes auth. A
+              // refreshAuth call here races that cookie write and can publish
+              // a transient empty account, reopening the gate.
+              setTimeout(() => {
+                try { location.replace('/home'); } catch (_) {}
+              }, 500);
+            };
+            bridge.nativeLoginBegin = bridge.nativeLoginBegin || (async () => {
+              const data = await postAuth('/api/auth/sso-begin', {});
+              if (!data?.pendingId) return nativeResult(data, '统一认证暂时不可用，请稍后再试。');
+              loginState.pendingId = String(data.pendingId);
+              loginState.credentialPublicKey = String(data.credentialPublicKey || '');
+              return {
+                ok: true,
+                error: '',
+                needCaptcha: Boolean(data.needCaptcha),
+                captchaImage: String(data.captchaImage || ''),
+                account: '',
+                canAccessAdmin: false
+              };
+            });
+            bridge.nativeSsoLogin = bridge.nativeSsoLogin || (async (username, password, captcha, remember) => {
+              const data = await postAuth('/api/auth/sso-login', {
+                pendingId: loginState.pendingId,
+                username: String(username || ''),
+                password: String(password || ''),
+                captcha: String(captcha || '') || undefined,
+                remember: Boolean(remember)
+              });
+              const result = nativeResult(data);
+              if (result.ok) await announceAuthenticated(data);
+              else if (data?.captcha?.pendingId) loginState.pendingId = String(data.captcha.pendingId);
+              return result;
+            });
+            bridge.nativeAccountLogin = bridge.nativeAccountLogin || (async (username, password) => {
+              const data = await postAuth('/api/auth/login', {
+                username: String(username || ''),
+                password: String(password || '')
+              });
+              const result = nativeResult({
+                ...data,
+                ok: Boolean(data?.user && (data?.sessionAuthenticated || data?.token))
+              });
+              if (result.ok) await announceAuthenticated(data);
+              return result;
+            });
+          }
           window.CPUIOS = {
             ...(window.CPUIOS || {}),
             supportsScheduleWidget: () => true,
@@ -659,31 +1109,76 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
 
           if (window.__cpuTimeNativeRouteBridge) return;
           window.__cpuTimeNativeRouteBridge = true;
-          const resetScroll = () => {
-            const app = document.getElementById('app');
-            app?.scrollTo({ top: 0, left: 0, behavior: 'auto' });
-            document.scrollingElement?.scrollTo({ top: 0, left: 0, behavior: 'auto' });
-            window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+          const routePath = () => `${location.pathname || '/'}${location.search || ''}${location.hash || ''}`;
+          const scrollTop = () => Math.max(0, Math.round(window.scrollY || document.scrollingElement?.scrollTop || 0));
+          const writeScroll = (top) => {
+            const value = Math.max(0, Number(top) || 0);
+            document.scrollingElement?.scrollTo({ top: value, left: 0, behavior: 'auto' });
+            window.scrollTo({ top: value, left: 0, behavior: 'auto' });
           };
-          const notifyRoute = () => {
-            resetScroll();
-            const path = `${location.pathname || '/'}${location.search || ''}${location.hash || ''}`;
+          const entryKey = (path) => {
+            const position = Number(history.state?.position);
+            return Number.isFinite(position) ? `history:${position}` : `path:${path}`;
+          };
+          const positions = new Map();
+          let lastPath = routePath();
+          let lastKey = entryKey(lastPath);
+          const saveScroll = () => {
+            const value = scrollTop();
+            positions.set(lastKey, value);
+            positions.set(`path:${lastPath}`, value);
+          };
+          const settleScroll = (path, key, top) => {
+            const saved = positions.has(key) ? positions.get(key) : positions.get(`path:${path}`);
+            const target = Number.isFinite(saved) ? saved : top;
+            const apply = () => {
+              if (routePath() !== path) return;
+              writeScroll(target);
+            };
+            requestAnimationFrame(() => requestAnimationFrame(apply));
+            setTimeout(apply, 80);
+          };
+          const notifyRoute = (kind = 'forward') => {
+            const path = routePath();
+            const key = entryKey(path);
             post({ type: 'route', path });
+            if (kind === 'history') settleScroll(path, key, 0);
+            else if (path !== lastPath) settleScroll(path, key, 0);
+            lastPath = path;
+            lastKey = key;
           };
           for (const method of ['pushState', 'replaceState']) {
             const original = history[method];
             if (typeof original !== 'function') continue;
             history[method] = function (...args) {
+              saveScroll();
+              const previousPath = lastPath;
               const result = original.apply(this, args);
-              notifyRoute();
+              notifyRoute(previousPath === routePath() ? 'same' : 'forward');
               return result;
             };
           }
-          addEventListener('popstate', notifyRoute);
-          addEventListener('hashchange', notifyRoute);
+          addEventListener('popstate', () => {
+            saveScroll();
+            notifyRoute('history');
+          });
+          addEventListener('hashchange', () => notifyRoute('forward'));
           notifyRoute();
         })();
         """
+    }
+}
+
+@MainActor
+private final class WebViewRefreshController: NSObject {
+    private weak var store: HybridWebViewStore?
+
+    init(store: HybridWebViewStore) {
+        self.store = store
+    }
+
+    @objc func didPull(_ sender: UIRefreshControl) {
+        store?.handlePullToRefresh(sender)
     }
 }
 
@@ -801,6 +1296,11 @@ private final class HybridWebViewCoordinator: NSObject, WKNavigationDelegate, WK
         decidePolicyFor navigationResponse: WKNavigationResponse,
         decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void
     ) {
+        if let response = navigationResponse.response as? HTTPURLResponse,
+           let url = response.url,
+           IOSNextWebConfiguration.isTrusted(url) {
+            store?.didReceiveHTTPStatus(response.statusCode)
+        }
         let disposition = (navigationResponse.response as? HTTPURLResponse)?
             .value(forHTTPHeaderField: "Content-Disposition")?
             .lowercased() ?? ""

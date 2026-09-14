@@ -19,6 +19,7 @@ private final class NativeWatchScheduleProvider: ScheduleDataProvider {
             onFailure?(.loginRequired)
             return
         }
+        if snapshot.cancelled { return }
         guard snapshot.error == nil else {
             onFailure?(.sourceUnavailable)
             return
@@ -101,30 +102,9 @@ struct WatchSyncStatusView: View {
 
     var body: some View {
         let sync = store.coordinator
-        let connection = sync.transport.connection
         NavigationStack {
             Form {
-                Section("Apple Watch") {
-                    LabeledContent("已配对", value: connection.paired ? "是" : "否")
-                    LabeledContent("Watch App 已安装", value: connection.installed ? "是" : "否")
-                    LabeledContent("当前可达", value: connection.reachable ? "是" : "否")
-                }
-                Section("课表同步") {
-                    LabeledContent("缓存课程", value: String(sync.repository.snapshot?.courses.count ?? 0))
-                    dateRow("课表更新时间", sync.repository.snapshot?.generatedAt)
-                    dateRow("已提交系统传输", sync.lastQueuedAt)
-                    dateRow("手表确认同步", sync.lastSyncedAt)
-                    if let error = sync.error {
-                        Text(error.localizedDescription).foregroundStyle(.orange)
-                    }
-                    Button(sync.refreshing ? "正在刷新课表…" : "立即同步") {
-                        sync.refresh()
-                    }
-                    .disabled(sync.refreshing)
-                    Text("只有手表保存成功后的回执才会更新确认时间；离线时由系统稍后传输。")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
+                WatchSyncStatusSection(store: store)
             }
             .navigationTitle("手表同步")
             .toolbar {
@@ -132,6 +112,44 @@ struct WatchSyncStatusView: View {
                     Button("完成") { dismiss() }
                 }
             }
+        }
+    }
+
+}
+
+struct WatchSyncStatusSection: View {
+    @ObservedObject var store: PhoneWatchScheduleStore
+
+    var body: some View {
+        let sync = store.coordinator
+        let connection = sync.transport.connection
+        Section {
+            LabeledContent("已配对", value: connection.paired ? "是" : "否")
+            LabeledContent("Watch App 已安装", value: connection.installed ? "是" : "否")
+            LabeledContent("当前可达", value: connection.reachable ? "是" : "否")
+        } header: {
+            Label("Apple Watch", systemImage: "applewatch")
+        } footer: {
+            Text("课表会自动同步到手表；离线时由系统稍后传输。")
+        }
+
+        Section {
+            LabeledContent("缓存课程", value: String(sync.repository.snapshot?.courses.count ?? 0))
+            dateRow("课表更新时间", sync.repository.snapshot?.generatedAt)
+            dateRow("已提交系统传输", sync.lastQueuedAt)
+            dateRow("手表确认同步", sync.lastSyncedAt)
+            if let error = sync.error {
+                Label(error.localizedDescription, systemImage: "exclamationmark.triangle")
+                    .foregroundStyle(.orange)
+            }
+            Button(sync.refreshing ? "正在同步…" : "立即同步", systemImage: "arrow.triangle.2.circlepath") {
+                sync.refresh()
+            }
+            .disabled(sync.refreshing)
+        } header: {
+            Label("同步状态", systemImage: "arrow.triangle.2.circlepath")
+        } footer: {
+            Text("只有手表保存成功后的回执才会更新确认时间。")
         }
     }
 

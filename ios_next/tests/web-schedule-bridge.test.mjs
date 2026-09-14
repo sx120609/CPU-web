@@ -71,6 +71,63 @@ test('parallel refresh does not hide a saved-edit error or accept a switched acc
   const switched=await ctx.window.CPUTimeNativeScheduleFetch('2025-2026-2','1',true);
   assert.equal(switched.auth.authenticated,false);assert.equal(switched.data,undefined);
 });
+
+test('superseded schedule selections resolve as cancellation, not a user-facing error', async () => {
+  const ctx = setup();
+  const allResolvers = [];
+  ctx.api.schedule = params => {
+    if (params.week === 'all') {
+      return new Promise(resolve => allResolvers.push(resolve));
+    }
+    return Promise.resolve({ parsed: sample() });
+  };
+  ctx.api.calendar = async () => ({ parsed: null });
+  ctx.api.getScheduleEdits = async () => ({ edits: { hidden: [], custom: [] } });
+  const first = ctx.window.CPUTimeNativeScheduleFetch('2025-2026-2', '1');
+  while (allResolvers.length < 1) await new Promise(setImmediate);
+  const second = ctx.window.CPUTimeNativeScheduleFetch('2025-2026-2', '2');
+  while (allResolvers.length < 2) await new Promise(setImmediate);
+
+  allResolvers[1]({ parsed: sample() });
+  const secondResult = await second;
+  assert.equal(secondResult.cancelled, undefined);
+  assert.equal(secondResult.error, undefined);
+  assert.ok(secondResult.data);
+
+  allResolvers[0]({ parsed: sample() });
+  const firstResult = await first;
+  assert.equal(firstResult.cancelled, true);
+  assert.equal(firstResult.error, undefined);
+});
+
+test('a superseded selection cannot publish after its week request finishes', async () => {
+  const ctx = setup();
+  let releaseWeekOne;
+  let weekOneStarted;
+  const started = new Promise(resolve => { weekOneStarted = resolve; });
+  ctx.api.schedule = params => {
+    if (params.week === 'all') return Promise.resolve({ parsed: { ...sample(), scope: 'week', currentWeek: '3' } });
+    if (params.week === '1') {
+      return new Promise(resolve => {
+        releaseWeekOne = () => resolve({ parsed: { ...sample(), currentWeek: '1' } });
+        weekOneStarted();
+      });
+    }
+    return Promise.resolve({ parsed: { ...sample(), currentWeek: params.week } });
+  };
+  const first = ctx.window.CPUTimeNativeScheduleFetch('2025-2026-2', '1');
+  await started;
+  const second = ctx.window.CPUTimeNativeScheduleFetch('2025-2026-2', '2');
+  const secondResult = await second;
+  assert.equal(secondResult.error, undefined);
+  assert.equal(secondResult.data.currentWeek, '2');
+
+  releaseWeekOne();
+  const firstResult = await first;
+  assert.equal(firstResult.cancelled, true);
+  assert.equal(firstResult.error, undefined);
+});
+
 test('native payload uses real schedule, custom courses and normalized odd weeks', async () => {
   const ctx = setup();
   ctx.api.getScheduleEdits = async () => ({ edits: { hidden: [], custom: [{ id: 'extra', day: 2, bigSlot: 3,

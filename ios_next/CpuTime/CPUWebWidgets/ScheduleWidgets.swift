@@ -70,6 +70,15 @@ private extension EnvironmentValues {
         get { self[ScheduleWidgetThemeEnvironmentKey.self] }
         set { self[ScheduleWidgetThemeEnvironmentKey.self] = newValue }
     }
+
+    var scheduleWidgetDisplayOptions: ScheduleWidgetDisplayOptions {
+        get { self[ScheduleWidgetDisplayOptionsEnvironmentKey.self] }
+        set { self[ScheduleWidgetDisplayOptionsEnvironmentKey.self] = newValue }
+    }
+}
+
+private struct ScheduleWidgetDisplayOptionsEnvironmentKey: EnvironmentKey {
+    static let defaultValue = ScheduleWidgetDisplayOptions.default
 }
 
 private struct ScheduleWidgetRoot<Content: View>: View {
@@ -80,6 +89,7 @@ private struct ScheduleWidgetRoot<Content: View>: View {
 
     var body: some View {
         let theme = AppWidgetConfiguration.scheduleTheme
+        let displayOptions = AppWidgetConfiguration.displayOptions
         Group {
             switch entry.state {
             case .loaded(let payload):
@@ -87,8 +97,8 @@ private struct ScheduleWidgetRoot<Content: View>: View {
             case .unconfigured:
                 WidgetMessageView(
                     symbol: "rectangle.stack.badge.plus",
-                    title: "尚未配置课表",
-                    detail: "打开 App，在课表“小组件”中添加 iOS 小组件"
+                    title: "等待课表同步",
+                    detail: "请打开 iPhone App 的设备与小组件设置"
                 )
             case .failed(let message):
                 WidgetMessageView(
@@ -99,6 +109,7 @@ private struct ScheduleWidgetRoot<Content: View>: View {
             }
         }
         .environment(\.scheduleWidgetTheme, theme)
+        .environment(\.scheduleWidgetDisplayOptions, displayOptions)
         .widgetURL(entry.appURL)
         .containerBackground(for: .widget) {
             if family.isAccessory {
@@ -209,6 +220,7 @@ private struct LockScreenScheduleView: View {
     let day: ScheduleDay
     let courses: [ScheduleCourse]
     @Environment(\.widgetFamily) private var family
+    @Environment(\.scheduleWidgetDisplayOptions) private var options
 
     @ViewBuilder
     var body: some View {
@@ -225,7 +237,7 @@ private struct LockScreenScheduleView: View {
     private var inlineView: some View {
         Label {
             if let course = courses.first {
-                Text("\(day.shortLabel) \(course.startLabel) \(course.displayName)")
+                Text(inlineText(course))
             } else {
                 Text("\(day.shortLabel) 近期无课")
             }
@@ -243,13 +255,17 @@ private struct LockScreenScheduleView: View {
                     Image(systemName: "book.closed.fill")
                         .font(.system(size: 10, weight: .semibold))
                         .widgetAccentable()
-                    Text(course.startLabel)
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
-                        .minimumScaleFactor(0.72)
-                    Text(course.displayName)
-                        .font(.system(size: 8, weight: .semibold))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.55)
+                    if options.showTime {
+                        Text(course.startLabel)
+                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                            .minimumScaleFactor(0.72)
+                    }
+                    if let primary = options.primaryValue(for: course), primary != course.timeRange {
+                        Text(primary)
+                            .font(.system(size: 8, weight: .semibold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.55)
+                    }
                 }
                 .padding(5)
             } else {
@@ -280,14 +296,24 @@ private struct LockScreenScheduleView: View {
                 }
             }
             if let course = courses.first {
-                Text(course.displayName)
-                    .font(.system(size: 14, weight: .bold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.72)
-                Text("\(course.timeRange) · \(course.metadata)")
-                    .font(.system(size: 10, weight: .medium))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.72)
+                if let primary = options.primaryValue(for: course) {
+                    Text(primary)
+                        .font(.system(size: 14, weight: .bold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+                }
+                if let metadata = options.metadata(for: course) {
+                    Text(metadata)
+                        .font(.system(size: 10, weight: .medium))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+                }
+                if options.showTime {
+                    Text(course.timeRange)
+                        .font(.system(size: 10, weight: .medium))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+                }
             } else {
                 Text("近期没有课程")
                     .font(.system(size: 14, weight: .bold))
@@ -296,6 +322,17 @@ private struct LockScreenScheduleView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+    }
+
+    private func inlineText(_ course: ScheduleCourse) -> String {
+        [
+            day.shortLabel,
+            options.showTime ? course.startLabel : nil,
+            options.primaryValue(for: course),
+            options.metadata(for: course)
+        ]
+        .compactMap { $0 }
+        .joined(separator: " ")
     }
 }
 
@@ -324,6 +361,7 @@ private struct CourseSummary: View {
     let course: ScheduleCourse
     let roomy: Bool
     @Environment(\.scheduleWidgetTheme) private var theme
+    @Environment(\.scheduleWidgetDisplayOptions) private var options
 
     var body: some View {
         HStack(alignment: .top, spacing: roomy ? 9 : 7) {
@@ -331,20 +369,26 @@ private struct CourseSummary: View {
                 .fill(WidgetPalette.accent(for: course, theme: theme))
                 .frame(width: 5, height: roomy ? 58 : 62)
             VStack(alignment: .leading, spacing: roomy ? 3 : 2) {
-                Text(course.displayName)
-                    .font(.system(size: roomy ? 15 : 13, weight: .bold))
-                    .foregroundStyle(WidgetPalette.primary)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.76)
-                Text(course.metadata)
-                    .font(.system(size: roomy ? 10 : 9))
-                    .foregroundStyle(WidgetPalette.secondary)
-                    .lineLimit(1)
-                Text(course.timeRange)
-                    .font(.system(size: roomy ? 11 : 10, weight: .semibold))
-                    .foregroundStyle(WidgetPalette.primary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
+                if let primary = options.primaryValue(for: course) {
+                    Text(primary)
+                        .font(.system(size: roomy ? 15 : 13, weight: .bold))
+                        .foregroundStyle(WidgetPalette.primary)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.76)
+                }
+                if let metadata = options.metadata(for: course) {
+                    Text(metadata)
+                        .font(.system(size: roomy ? 10 : 9))
+                        .foregroundStyle(WidgetPalette.secondary)
+                        .lineLimit(1)
+                }
+                if options.showTime {
+                    Text(course.timeRange)
+                        .font(.system(size: roomy ? 11 : 10, weight: .semibold))
+                        .foregroundStyle(WidgetPalette.primary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                }
             }
         }
     }
@@ -353,6 +397,7 @@ private struct CourseSummary: View {
 private struct CompactNextCourse: View {
     let course: ScheduleCourse
     @Environment(\.scheduleWidgetTheme) private var theme
+    @Environment(\.scheduleWidgetDisplayOptions) private var options
 
     var body: some View {
         HStack(spacing: 8) {
@@ -360,14 +405,18 @@ private struct CompactNextCourse: View {
                 .fill(WidgetPalette.accent(for: course, theme: theme))
                 .frame(width: 5, height: 27)
             VStack(alignment: .leading, spacing: 1) {
-                Text(course.displayName)
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(WidgetPalette.primary)
-                    .lineLimit(1)
-                Text(course.timeRange)
-                    .font(.system(size: 9))
-                    .foregroundStyle(WidgetPalette.secondary)
-                    .lineLimit(1)
+                if let primary = options.primaryValue(for: course) {
+                    Text(primary)
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(WidgetPalette.primary)
+                        .lineLimit(1)
+                }
+                if options.showTime {
+                    Text(course.timeRange)
+                        .font(.system(size: 9))
+                        .foregroundStyle(WidgetPalette.secondary)
+                        .lineLimit(1)
+                }
             }
         }
     }
@@ -379,15 +428,18 @@ private struct TodayScheduleView: View {
 
     var body: some View {
         let now = Date.now
+        let selected = payload.preferredCourseDay(now: now)
         let todayDate = SchedulePayload.dateString(now)
-        let today = payload.fullDay(for: todayDate, fallbackOffset: 0)
+        let today = selected.day
         let limit = family == .systemLarge ? 7 : 2
-        let nowMinutes = today.date == todayDate ? SchedulePayload.minutesSinceMidnight(now) : nil
+        let nowMinutes = selected.offset == 0 && today.date == todayDate
+            ? SchedulePayload.minutesSinceMidnight(now)
+            : nil
         let window = today.courseWindow(limit: limit, nowMinutes: nowMinutes)
         VStack(alignment: .leading, spacing: family == .systemLarge ? 8 : 7) {
             WidgetDateHeader(day: today)
             if today.courseList.isEmpty {
-                EmptyCoursesView(message: "今天没有课程")
+                EmptyCoursesView(message: selected.offset == 0 ? "今天没有课程" : "近期没有课程")
             } else {
                 ForEach(Array(window.courses.enumerated()), id: \.offset) { _, course in
                     TodayCourseRow(
@@ -416,6 +468,7 @@ private struct TodayCourseRow: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.scheduleWidgetTheme) private var theme
     @Environment(\.widgetRenderingMode) private var renderingMode
+    @Environment(\.scheduleWidgetDisplayOptions) private var options
 
     var body: some View {
         HStack(spacing: large ? 9 : 6) {
@@ -423,20 +476,24 @@ private struct TodayCourseRow: View {
                 .fill(WidgetPalette.accent(for: course, theme: theme))
                 .frame(width: 5, height: large ? 40 : (timeOnSeparateLine ? 39 : 29))
             VStack(alignment: .leading, spacing: 2) {
-                Text(course.displayName)
-                    .font(.system(size: large ? 13 : 11, weight: .bold))
-                    .foregroundStyle(WidgetPalette.primary)
-                    .lineLimit(1)
-                Text(course.metadata)
-                    .font(.system(size: large ? 9 : 8))
-                    .foregroundStyle(WidgetPalette.secondary)
-                    .lineLimit(1)
-                if timeOnSeparateLine {
+                if let primary = options.primaryValue(for: course) {
+                    Text(primary)
+                        .font(.system(size: large ? 13 : 11, weight: .bold))
+                        .foregroundStyle(WidgetPalette.primary)
+                        .lineLimit(1)
+                }
+                if let metadata = options.metadata(for: course) {
+                    Text(metadata)
+                        .font(.system(size: large ? 9 : 8))
+                        .foregroundStyle(WidgetPalette.secondary)
+                        .lineLimit(1)
+                }
+                if timeOnSeparateLine && options.showTime {
                     timeLabel
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            if !timeOnSeparateLine {
+            if !timeOnSeparateLine && options.showTime {
                 Spacer(minLength: 5)
                 timeLabel
             }
@@ -472,10 +529,13 @@ private struct TwoDayScheduleView: View {
 
     var body: some View {
         let now = Date.now
+        let selected = payload.preferredCourseDay(now: now)
         let todayDate = SchedulePayload.dateString(now)
-        let tomorrowDate = SchedulePayload.dateString(Calendar.current.date(byAdding: .day, value: 1, to: now) ?? now)
-        let today = payload.fullDay(for: todayDate, fallbackOffset: 0)
-        let tomorrow = payload.fullDay(for: tomorrowDate, fallbackOffset: 1)
+        let today = selected.day
+        let tomorrowDate = SchedulePayload.dateString(
+            Calendar.current.date(byAdding: .day, value: selected.offset + 1, to: now) ?? now
+        )
+        let tomorrow = payload.fullDay(for: tomorrowDate, fallbackOffset: selected.offset + 1)
 
         HStack(alignment: .top, spacing: 13) {
             DayColumn(

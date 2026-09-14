@@ -390,6 +390,9 @@ public struct NativeScheduleResult: Codable, Equatable, Sendable {
 public struct NativeScheduleSnapshot: Codable, Equatable, Sendable {
     public let version: Int
     public let completeSemester: Bool
+    /// True when a newer selection superseded this request before it could
+    /// produce a usable schedule. This is a normal race outcome, not an error.
+    public let cancelled: Bool
     public let source: NativeScheduleSource
     public let fetchedAt: Date?
     public let periods: [NativeSchedulePeriod]
@@ -401,6 +404,7 @@ public struct NativeScheduleSnapshot: Codable, Equatable, Sendable {
     public init(
         version: Int = 1,
         completeSemester: Bool = false,
+        cancelled: Bool = false,
         source: NativeScheduleSource = .unknown,
         fetchedAt: Date? = nil,
         periods: [NativeSchedulePeriod] = [],
@@ -411,6 +415,7 @@ public struct NativeScheduleSnapshot: Codable, Equatable, Sendable {
     ) {
         self.version = version
         self.completeSemester = completeSemester
+        self.cancelled = cancelled
         self.source = source
         self.fetchedAt = fetchedAt
         self.periods = periods.isEmpty ? NativeSchedulePeriod.bundledTimetable : periods
@@ -421,7 +426,7 @@ public struct NativeScheduleSnapshot: Codable, Equatable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case version, completeSemester, source, fetchedAt, periods, data, calendar, auth, error
+        case version, completeSemester, cancelled, source, fetchedAt, periods, data, calendar, auth, error
     }
 
     public init(from decoder: Decoder) throws {
@@ -429,6 +434,7 @@ public struct NativeScheduleSnapshot: Codable, Equatable, Sendable {
         self.init(
             version: try values.decodeIfPresent(Int.self, forKey: .version) ?? 1,
             completeSemester: try values.decodeIfPresent(Bool.self, forKey: .completeSemester) ?? false,
+            cancelled: try values.decodeIfPresent(Bool.self, forKey: .cancelled) ?? false,
             source: try values.decodeIfPresent(NativeScheduleSource.self, forKey: .source) ?? .unknown,
             fetchedAt: try values.decodeFlexibleDate(forKey: .fetchedAt),
             periods: try values.decodeIfPresent([NativeSchedulePeriod].self, forKey: .periods) ?? [],
@@ -706,6 +712,11 @@ public final class NativeScheduleStore: ObservableObject {
                 force: force
             ))
             guard generation == requestGeneration else { return }
+            if snapshot.cancelled {
+                state = result == nil ? .idle : .stale
+                errorMessage = nil
+                return
+            }
             try accept(snapshot, for: key, requestedSemester: requestedSemester, requestedWeek: requestedWeek)
         } catch is CancellationError {
             guard generation == requestGeneration else { return }
@@ -736,7 +747,7 @@ public final class NativeScheduleStore: ObservableObject {
     /// A trusted bridge pushes each prefetched week, then the complete semester.
     /// Cache it without changing a newer selection or a foreground loading state.
     public func receivePrefetchedSnapshot(_ snapshot: NativeScheduleSnapshot) {
-        guard snapshot.version == 1, snapshot.auth.authenticated,
+        guard snapshot.version == 1, !snapshot.cancelled, snapshot.auth.authenticated,
               snapshot.error == nil, let data = snapshot.data,
               !data.currentSemester.isEmpty, let fetchedAt = snapshot.fetchedAt else { return }
         guard cache.values.contains(where: { $0.snapshot.data?.currentSemester == data.currentSemester }),
@@ -934,6 +945,10 @@ public final class NativeScheduleStore: ObservableObject {
         guard snapshot.version == 1 else {
             throw NativeScheduleStoreError.invalidResponse
         }
+        // A newer week/semester selection owns the UI now. Leave the current
+        // timetable and state untouched; the newer request will publish its
+        // own snapshot when it completes.
+        if snapshot.cancelled { return }
         if !snapshot.auth.authenticated {
             let message = snapshot.error ?? NativeScheduleStoreError.unauthorized("").localizedDescription
             discardUnauthorizedData()
@@ -1015,36 +1030,282 @@ public final class NativeScheduleStore: ObservableObject {
         next: NativeScheduleSnapshot
     ) -> NativeScheduleChangeNotice? {
         guard let before = previous.data, let after = next.data else { return nil }
-        let beforeKeys = Set(scheduleCourseSignatures(before))
-        let afterKeys = Set(scheduleCourseSignatures(after))
-        let added = afterKeys.subtracting(beforeKeys).count
-        let removed = beforeKeys.subtracting(afterKeys).count
-        guard added > 0 || removed > 0 else { return nil }
-        var details: [String] = []
-        if added > 0 { details.append("新增 \(added) 项课程安排") }
-        if removed > 0 { details.append("移除 \(removed) 项课程安排") }
-        details.append("请核对已编辑课程的时间、周次、老师和地点")
-        let fingerprint = details.joined(separator: "|")
+        let beforeEntries = scheduleChangeEntries(before)
+        let afterEntries = scheduleChangeEntries(after)
+        let details = describeScheduleChanges(before: beforeEntries, after: afterEntries)
+        guard !details.isEmpty else { return nil }
+        let fingerprint = afterEntries.map(\.key).joined(separator: "\n")
         return NativeScheduleChangeNotice(
-            id: "\(after.currentSemester)-\(fingerprint)",
+            id: "\(after.currentSemester)-\(scheduleChangeFingerprint(fingerprint))",
             semester: after.currentSemester,
-            changedCount: added + removed,
+            changedCount: details.count,
             details: details
         )
     }
 
-    private func scheduleCourseSignatures(_ result: NativeScheduleResult) -> [String] {
-        result.cells.flatMap { cell in
+    /// This mirrors Web's scheduleChanges.ts. A full signature identifies an
+    /// unchanged occurrence; entries with the same course name are then paired
+    /// so a moved class is reported as one adjustment instead of add/remove.
+    private struct ScheduleChangeEntry {
+        let key: String
+        let name: String
+        let nameKey: String
+        let teacher: String
+        let teacherKey: String
+        let location: String
+        let locationKey: String
+        let weeks: String
+        let weeksKey: String
+        let note: String
+        let noteKey: String
+        let day: Int
+        let startSlot: Int
+        let endSlot: Int
+    }
+
+    private func scheduleChangeEntries(_ result: NativeScheduleResult) -> [ScheduleChangeEntry] {
+        let allWeeks = result.weeks.compactMap { Int($0.value) }
+            .filter { $0 > 0 }
+            .sorted()
+        return result.cells.flatMap { cell in
             cell.courses.map { course in
-                let weeks = course.weekList.sorted().map(String.init).joined(separator: ",")
-                return [
-                    String(cell.day), String(cell.bigSlot),
-                    course.startSlot.map(String.init) ?? "", course.endSlot.map(String.init) ?? "",
-                    course.name, course.teacher ?? "", course.location ?? "", course.weeks,
-                    weeks, course.slotNote ?? ""
+                let range = NativeSchedulePeriod.normalizedRange(
+                    bigSlot: cell.bigSlot,
+                    startSlot: course.startSlot,
+                    endSlot: course.endSlot,
+                    periods: NativeSchedulePeriod.bundledTimetable
+                )
+                let name = normalizedChangeText(course.name)
+                let teacher = normalizedChangeText(course.teacher)
+                let location = normalizedChangeText(course.location)
+                let weeksKey = canonicalChangeWeeks(course, allWeeks: allWeeks)
+                let note = canonicalChangeNote(course.slotNote)
+                let entry = ScheduleChangeEntry(
+                    key: "",
+                    name: name,
+                    nameKey: normalizedChangeKey(name),
+                    teacher: teacher,
+                    teacherKey: normalizedChangeKey(teacher),
+                    location: location,
+                    locationKey: normalizedChangeKey(location),
+                    weeks: displayChangeWeeks(course, weeksKey: weeksKey),
+                    weeksKey: weeksKey,
+                    note: note,
+                    noteKey: normalizedChangeKey(note),
+                    day: cell.day,
+                    startSlot: range.start,
+                    endSlot: range.end
+                )
+                let key = [
+                    String(entry.day), String(entry.startSlot), String(entry.endSlot),
+                    entry.nameKey, entry.teacherKey, entry.locationKey,
+                    entry.weeksKey, entry.noteKey
                 ].joined(separator: "\u{1F}")
+                return ScheduleChangeEntry(
+                    key: key,
+                    name: entry.name,
+                    nameKey: entry.nameKey,
+                    teacher: entry.teacher,
+                    teacherKey: entry.teacherKey,
+                    location: entry.location,
+                    locationKey: entry.locationKey,
+                    weeks: entry.weeks,
+                    weeksKey: entry.weeksKey,
+                    note: entry.note,
+                    noteKey: entry.noteKey,
+                    day: entry.day,
+                    startSlot: entry.startSlot,
+                    endSlot: entry.endSlot
+                )
+            }
+        }.sorted { $0.key < $1.key }
+    }
+
+    private func canonicalChangeWeeks(_ course: NativeScheduleCourse, allWeeks: [Int]) -> String {
+        let weeks = normalizedChangeWeekList(course)
+        guard !weeks.isEmpty else { return "all" }
+        return allWeeks == weeks ? "all" : weeks.map(String.init).joined(separator: ",")
+    }
+
+    private func normalizedChangeWeekList(_ course: NativeScheduleCourse) -> [Int] {
+        let parsed = parseChangeWeekText(course.weeks)
+        if !parsed.isEmpty { return parsed }
+        return Array(Set(course.weekList.filter { $0 > 0 })).sorted()
+    }
+
+    private func parseChangeWeekText(_ value: String) -> [Int] {
+        var source = value
+        let fullWidthDigits = ["０", "１", "２", "３", "４", "５", "６", "７", "８", "９"]
+        for (index, digit) in fullWidthDigits.enumerated() {
+            source = source.replacingOccurrences(of: digit, with: String(index))
+        }
+        source = source
+            .replacingOccurrences(of: "（", with: "(")
+            .replacingOccurrences(of: "）", with: ")")
+            .replacingOccurrences(of: "－", with: "-")
+            .replacingOccurrences(of: "–", with: "-")
+            .replacingOccurrences(of: "—", with: "-")
+            .replacingOccurrences(of: "~", with: "-")
+            .replacingOccurrences(of: "～", with: "-")
+            .replacingOccurrences(of: "第", with: "")
+            .components(separatedBy: .whitespacesAndNewlines).joined()
+        guard !source.isEmpty else { return [] }
+
+        let clauses = source.split { ",，、;；".contains($0) }.map(String.init)
+        let pattern = #"(\d{1,2})\s*(?:[-至到]\s*(\d{1,2}))?"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
+        var weeks = Set<Int>()
+        for clause in clauses.isEmpty ? [source] : clauses {
+            let kind: ChangeWeekKind
+            if clause.contains("单双周") {
+                kind = .all
+            } else if clause.contains("单周") || clause.contains("(单)") ||
+                        clause.range(of: #"[^双]单"#, options: .regularExpression) != nil {
+                kind = .odd
+            } else if clause.contains("双周") || clause.contains("(双)") || clause.contains("双") {
+                kind = .even
+            } else {
+                kind = .all
+            }
+            let range = NSRange(clause.startIndex..., in: clause)
+            for match in regex.matches(in: clause, range: range) {
+                guard let firstRange = Range(match.range(at: 1), in: clause),
+                      let start = Int(clause[firstRange]) else { continue }
+                let end: Int
+                if let secondRange = Range(match.range(at: 2), in: clause),
+                   let parsedEnd = Int(clause[secondRange]) {
+                    end = parsedEnd
+                } else {
+                    end = start
+                }
+                let lower = max(1, min(start, end))
+                let upper = min(64, max(start, end))
+                guard lower <= upper else { continue }
+                for week in lower...upper {
+                    if kind == .odd && week % 2 == 0 { continue }
+                    if kind == .even && week % 2 == 1 { continue }
+                    weeks.insert(week)
+                }
             }
         }
+        return weeks.sorted()
+    }
+
+    private enum ChangeWeekKind { case all, odd, even }
+
+    private func canonicalChangeNote(_ value: String?) -> String {
+        let note = normalizedChangeText(value)
+        return note.range(of: #"^(?:第\s*)?\d+\s*(?:-\s*\d+)?\s*节$"#, options: .regularExpression) == nil
+            ? note : ""
+    }
+
+    private func displayChangeWeeks(_ course: NativeScheduleCourse, weeksKey: String) -> String {
+        let label = normalizedChangeText(course.weeks)
+        if !label.isEmpty { return label }
+        return weeksKey == "all" ? "全部周" : "第 \(weeksKey.replacingOccurrences(of: ",", with: "、")) 周"
+    }
+
+    private func describeScheduleChanges(
+        before: [ScheduleChangeEntry],
+        after: [ScheduleChangeEntry]
+    ) -> [String] {
+        var remainingAfter = after
+        var remainingBefore: [ScheduleChangeEntry] = []
+        for entry in before {
+            if let exactIndex = remainingAfter.firstIndex(where: { $0.key == entry.key }) {
+                remainingAfter.remove(at: exactIndex)
+            } else {
+                remainingBefore.append(entry)
+            }
+        }
+
+        var details: [String] = []
+        var removed: [ScheduleChangeEntry] = []
+        for entry in remainingBefore {
+            guard let matchIndex = closestSameCourseIndex(entry, candidates: remainingAfter) else {
+                removed.append(entry)
+                continue
+            }
+            let replacement = remainingAfter.remove(at: matchIndex)
+            details.append(describeChangedCourse(before: entry, after: replacement))
+        }
+        details.append(contentsOf: remainingAfter.map { "新增：\(describeCourse($0))" })
+        details.append(contentsOf: removed.map { "移除：\(describeCourse($0))" })
+        return details
+    }
+
+    private func closestSameCourseIndex(
+        _ target: ScheduleChangeEntry,
+        candidates: [ScheduleChangeEntry]
+    ) -> Int? {
+        var bestIndex: Int?
+        var bestScore = Int.max
+        for (index, candidate) in candidates.enumerated() {
+            guard candidate.nameKey == target.nameKey else { continue }
+            var score = 0
+            if candidate.day != target.day { score += 1 }
+            if candidate.startSlot != target.startSlot || candidate.endSlot != target.endSlot { score += 1 }
+            if candidate.teacherKey != target.teacherKey { score += 1 }
+            if candidate.locationKey != target.locationKey { score += 1 }
+            if candidate.weeksKey != target.weeksKey { score += 1 }
+            if candidate.noteKey != target.noteKey { score += 1 }
+            if score < bestScore {
+                bestIndex = index
+                bestScore = score
+            }
+        }
+        return bestIndex
+    }
+
+    private func describeChangedCourse(before: ScheduleChangeEntry, after: ScheduleChangeEntry) -> String {
+        var fields: [String] = []
+        if before.day != after.day || before.startSlot != after.startSlot || before.endSlot != after.endSlot {
+            fields.append("时间 \(displayChangeTime(before)) → \(displayChangeTime(after))")
+        }
+        if before.weeksKey != after.weeksKey { fields.append("周次 \(before.weeks) → \(after.weeks)") }
+        if before.locationKey != after.locationKey {
+            fields.append("地点 \(before.location.isEmpty ? "未标注" : before.location) → \(after.location.isEmpty ? "未标注" : after.location)")
+        }
+        if before.teacherKey != after.teacherKey {
+            fields.append("教师 \(before.teacher.isEmpty ? "未标注" : before.teacher) → \(after.teacher.isEmpty ? "未标注" : after.teacher)")
+        }
+        if before.noteKey != after.noteKey {
+            fields.append("备注 \(before.note.isEmpty ? "无" : before.note) → \(after.note.isEmpty ? "无" : after.note)")
+        }
+        return "调整：\(after.name)：\(fields.joined(separator: "；"))"
+    }
+
+    private func describeCourse(_ entry: ScheduleChangeEntry) -> String {
+        var parts = [displayChangeTime(entry), entry.weeks]
+        if !entry.location.isEmpty { parts.append(entry.location) }
+        if !entry.teacher.isEmpty { parts.append(entry.teacher) }
+        return "\(entry.name)（\(parts.joined(separator: "，"))）"
+    }
+
+    private func displayChangeTime(_ entry: ScheduleChangeEntry) -> String {
+        "\(changeDayLabel(entry.day)) \(entry.startSlot)-\(entry.endSlot)节"
+    }
+
+    private func changeDayLabel(_ day: Int) -> String {
+        let labels = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+        return labels.indices.contains(day - 1) ? labels[day - 1] : "周\(day)"
+    }
+
+    private func normalizedChangeText(_ value: String?) -> String {
+        String(value ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            .components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }.joined(separator: " ")
+    }
+
+    private func normalizedChangeKey(_ value: String) -> String {
+        normalizedChangeText(value).lowercased()
+    }
+
+    private func scheduleChangeFingerprint(_ source: String) -> String {
+        var hash: UInt64 = 0xcbf29ce484222325
+        for byte in source.utf8 {
+            hash = (hash ^ UInt64(byte)) &* 0x100000001b3
+        }
+        return String(hash, radix: 16)
     }
 
     private func apply(

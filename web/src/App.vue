@@ -630,28 +630,27 @@ html, body, #app {
   margin: 0;
 }
 
-/*
- * The iOS native shell mounts this document inside a scrollable WKWebView.
- * A fixed 100% height on #app makes the flex layout stop at the WebView
- * viewport, leaving profile sections and the site footer outside the page's
- * scroll range. Keep full-height tools fixed by their own route class, while
- * ordinary native-shell pages grow with their content.
- */
+/* The iOS native shell uses WKWebView's document scroll so its system pull to
+ * refresh control receives the same gesture as Safari. Full-height tools still
+ * opt into their own fixed route container below. */
 html[data-cpu-ios-next] {
-  height: 100%;
-  overflow: hidden;
+  height: auto;
+  min-height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 html[data-cpu-ios-next] body {
-  height: 100%;
-  overflow: hidden;
+  height: auto;
+  min-height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 html[data-cpu-ios-next] #app {
-  height: 100%;
+  height: auto;
   min-height: 100%;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
+  overflow: visible;
 }
 
 /*
