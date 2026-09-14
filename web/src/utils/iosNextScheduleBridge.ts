@@ -510,23 +510,16 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
     ...data, cells: nativeCells(entry.semester, applyScheduleEditsToCells(data.cells, entry.edits)),
   });
   const normalizeText = (value: unknown) => String(value ?? "").normalize("NFKC").replace(/\s+/g, " ").trim();
-  // JWXT occasionally formats the same teacher or room with an extra space.
-  // Keep the display value intact, but compare a whitespace-free form when
-  // deciding whether two records are the same occurrence.
-  const normalizeIdentityText = (value: unknown) => normalizeText(value).replace(/\s+/g, "");
-  const nativeCourseKey = (
-    cell: ScheduleResult["cells"][number],
-    course: ScheduleResult["cells"][number]["courses"][number],
-  ) => {
-    if (course.customId) return `custom:${course.customId}`;
-    // The upstream system can assign a different source key to the same
-    // official course on different week queries. Stable content must therefore
-    // win whenever it is available; the source key is only a last-resort
-    // identity for malformed records that have no usable course fields.
-    const stable = [normalizeIdentityText(course.name), normalizeIdentityText(course.teacher), normalizeIdentityText(course.location)];
-    if (stable.some(Boolean)) return [cell.day, ...stable].join("\u001f");
-    if (course.sourceKey) return `source:${course.sourceKey}`;
-    return [cell.day, ...stable].join("\u001f");
+  // JWXT can describe one room as "实验楼(201)", "实验楼 201" or simply
+  // "201". Keep the original text for display, but compare a stable identity
+  // so duplicate rows from the 2025-2026-2 response collapse into one card.
+  const normalizeIdentityText = (value: unknown) => normalizeText(value).toLocaleLowerCase().replace(/\s+/g, "");
+  const normalizeTeacherIdentity = (value: unknown) => normalizeIdentityText(value)
+    .replace(/(?:其他正高级|其他副高级|正高级|副高级|主任医师|副主任医师|高级实验师|副研究员|实验师|研究员|副教授|教授|讲师|助教|未评级)$/u, "");
+  const normalizeLocationIdentity = (value: unknown) => {
+    const compact = normalizeIdentityText(value).replace(/[.,，。:：;；/\\()[\]{}【】_—–~～-]+/g, "");
+    const match = compact.match(/(?:^|[^a-z0-9])([a-z]?\d{2,4}[a-z]?)$/i);
+    return match?.[1] ?? compact;
   };
   const rangesCanMerge = (
     left: { start: number; end: number },
@@ -535,8 +528,13 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
   ) => left.start <= right.end && right.start <= left.end
     || allowAdjacent && (left.end + 1 === right.start || right.end + 1 === left.start);
   const fieldsCompatible = (left: unknown, right: unknown) => {
-    const a = normalizeIdentityText(left);
-    const b = normalizeIdentityText(right);
+    const a = normalizeTeacherIdentity(left);
+    const b = normalizeTeacherIdentity(right);
+    return !a || !b || a === b;
+  };
+  const locationsCompatible = (left: unknown, right: unknown) => {
+    const a = normalizeLocationIdentity(left);
+    const b = normalizeLocationIdentity(right);
     return !a || !b || a === b;
   };
   const coursesCanMerge = (
@@ -550,7 +548,7 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
     const sameName = normalizeIdentityText(left.name) === normalizeIdentityText(right.name);
     return sameName
       && fieldsCompatible(left.teacher, right.teacher)
-      && fieldsCompatible(left.location, right.location)
+      && locationsCompatible(left.location, right.location)
       && rangesCanMerge(leftRange, rightRange, sameSource);
   };
   const mergeWeeksText = (
@@ -585,9 +583,7 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
           nativeId: course.customId ? `custom:${course.customId}` : course.sourceKey ? `source:${course.sourceKey}` : fallback,
           weekList: normalizedCourseWeekList(course),
         };
-        const key = nativeCourseKey(cell, normalized);
         const previous = target.courses.find(item => {
-          if (nativeCourseKey(cell, item) !== key) return false;
           return coursesCanMerge(item, normalized, normalizeSlotRange(cell.bigSlot, item), range);
         });
         if (!previous) {

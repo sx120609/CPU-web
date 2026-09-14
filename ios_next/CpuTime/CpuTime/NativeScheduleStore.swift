@@ -648,8 +648,8 @@ public enum NativeScheduleCourseBlockMerger {
         }
         if a.customId != nil || b.customId != nil { return false }
         let sameName = identityPart(a.name) == identityPart(b.name)
-        let compatibleTeacher = compatibleField(a.teacher, b.teacher)
-        let compatibleLocation = compatibleField(a.location, b.location)
+        let compatibleTeacher = compatibleTeacher(a.teacher, b.teacher)
+        let compatibleLocation = locationCompatible(a.location, b.location)
         let sameSource = a.sourceKey?.trimmedNonEmpty != nil
             && a.sourceKey == b.sourceKey
         guard sameName, compatibleTeacher, compatibleLocation else { return false }
@@ -670,14 +670,53 @@ public enum NativeScheduleCourseBlockMerger {
         left.endSlot + 1 == right.startSlot || right.endSlot + 1 == left.startSlot
     }
 
-    private static func compatibleField(_ left: String?, _ right: String?) -> Bool {
-        let a = identityPart(left)
-        let b = identityPart(right)
+    private static func compatibleTeacher(_ left: String?, _ right: String?) -> Bool {
+        let a = teacherIdentity(left)
+        let b = teacherIdentity(right)
+        return a.isEmpty || b.isEmpty || a == b
+    }
+
+    private static func locationCompatible(_ left: String?, _ right: String?) -> Bool {
+        let a = locationIdentity(left)
+        let b = locationIdentity(right)
         return a.isEmpty || b.isEmpty || a == b
     }
 
     private static func identityPart(_ value: String?) -> String {
-        keyPart(value).replacingOccurrences(of: "\\s+", with: "", options: .regularExpression)
+        keyPart(value)
+            .lowercased()
+            .unicodeScalars
+            .filter { scalar in
+                !CharacterSet.whitespacesAndNewlines.contains(scalar)
+                    && !CharacterSet.punctuationCharacters.contains(scalar)
+                    && !CharacterSet.symbols.contains(scalar)
+            }
+            .map(String.init)
+            .joined()
+    }
+
+    private static func teacherIdentity(_ value: String?) -> String {
+        identityPart(value).replacingOccurrences(
+            of: #"(?:其他正高级|其他副高级|正高级|副高级|主任医师|副主任医师|高级实验师|副研究员|实验师|研究员|副教授|教授|讲师|助教|未评级)$"#,
+            with: "",
+            options: .regularExpression
+        )
+    }
+
+    private static func locationIdentity(_ value: String?) -> String {
+        let compact = identityPart(value)
+        guard !compact.isEmpty else { return "" }
+        if let range = compact.range(of: #"[a-z]?\d{2,4}[a-z]?$"#, options: .regularExpression) {
+            let token = String(compact[range])
+            let prefix = String(compact[..<range.lowerBound])
+            let boundary = prefix.unicodeScalars.last.map { scalar in
+                !((48...57).contains(scalar.value) || (97...122).contains(scalar.value))
+            } ?? true
+            if boundary {
+                return token
+            }
+        }
+        return compact
     }
 
     private static func courseWithRange(

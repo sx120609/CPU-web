@@ -168,6 +168,17 @@ test('contiguous duplicate course rows merge without modifying cached source cel
   assert.equal(blocks[0].course.slotNote,'01-04节'); assert.equal(blocks[1].startSlot,7);
   assert.equal(h.store.result.cells[0].courses[0].startSlot,undefined);
 });
+test('duplicate room formats and week text merge in one timetable position', () => {
+  const h = harness(); h.store.markBridgeReady(); const data = h.snapshot();
+  data.data.cells = [{ day: 3, bigSlot: 2, courses: [
+    { name: '药理学实验', teacher: '张老师', location: '实验楼(201)', weeks: '1-8周', weekList: [2], startSlot: 3, endSlot: 4 },
+    { name: '药理学实验', teacher: '张老师', location: '201', weeks: '2、4、6、8周', weekList: [2], startSlot: 3, endSlot: 4 }
+  ] }];
+  h.accept(data);
+  const blocks = h.store.blocksForDay(3);
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0].course.location, '实验楼(201)');
+});
 test('a distinct course or custom identity in the same slot is preserved', () => {
   const h=harness(); h.store.markBridgeReady(); const data=h.snapshot();
   data.data.cells=[{day:1,bigSlot:1,courses:[

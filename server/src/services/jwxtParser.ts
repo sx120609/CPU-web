@@ -290,6 +290,9 @@ function parsePositiveInt(value?: string) {
 
 function normalizeScheduleCells(cells: ScheduleCell[]): ScheduleCell[] {
   type CourseEntry = { day: number; bigSlot: number; course: ScheduleCourse };
+  // Group by the stable course/teacher identity first. Location text is not
+  // part of this key because JWXT alternates between a room-only value and a
+  // building-prefixed value for the same class.
   const groups = new Map<string, CourseEntry[]>();
 
   for (const cell of cells) {
@@ -303,9 +306,8 @@ function normalizeScheduleCells(cells: ScheduleCell[]): ScheduleCell[] {
       };
       const key = [
         cell.day,
-        normalizeKeyPart(normalized.name),
-        normalizeKeyPart(normalized.teacher),
-        normalizeKeyPart(normalized.location),
+        normalizeIdentityKey(normalized.name),
+        normalizeTeacherKey(normalized.teacher),
       ].join("|");
       const list = groups.get(key) ?? [];
       list.push({ day: cell.day, bigSlot: cell.bigSlot, course: normalized });
@@ -324,15 +326,24 @@ function normalizeScheduleCells(cells: ScheduleCell[]): ScheduleCell[] {
     const merged: CourseEntry[] = [];
 
     for (const entry of sorted) {
-      const prev = merged[merged.length - 1];
       const start = entry.course.startSlot ?? (entry.bigSlot * 2 - 1);
       const end = entry.course.endSlot ?? Math.max(start, entry.bigSlot * 2);
-      if (prev && start <= (prev.course.endSlot ?? start) + 1) {
+      const matchIndex = merged.findIndex((candidate) => {
+        const candidateStart = candidate.course.startSlot ?? (candidate.bigSlot * 2 - 1);
+        const candidateEnd = candidate.course.endSlot ?? candidateStart;
+        return locationsCompatible(candidate.course.location, entry.course.location)
+          && start <= candidateEnd + 1
+          && candidateStart <= end + 1;
+      });
+      const prev = matchIndex >= 0 ? merged[matchIndex] : undefined;
+      if (prev) {
         const nextStart = Math.min(prev.course.startSlot ?? start, start);
         const nextEnd = Math.max(prev.course.endSlot ?? end, end);
         prev.bigSlot = Math.max(1, Math.ceil(nextStart / 2));
         prev.course = {
           ...prev.course,
+          teacher: prev.course.teacher ?? entry.course.teacher,
+          location: prev.course.location ?? entry.course.location,
           startSlot: nextStart,
           endSlot: nextEnd,
           slotNote: formatSlotRange(nextStart, nextEnd),
@@ -389,7 +400,30 @@ function formatSlotRange(start: number, end: number) {
 }
 
 function normalizeKeyPart(value?: string) {
-  return String(value ?? "").replace(/\s+/g, "").trim();
+  return String(value ?? "").normalize("NFKC").replace(/\s+/g, "").trim();
+}
+
+function normalizeIdentityKey(value?: string) {
+  return normalizeKeyPart(value).toLocaleLowerCase();
+}
+
+function normalizeTeacherKey(value?: string) {
+  return normalizeIdentityKey(value).replace(
+    /(?:其他正高级|其他副高级|正高级|副高级|主任医师|副主任医师|高级实验师|副研究员|实验师|研究员|副教授|教授|讲师|助教|未评级)$/u,
+    "",
+  );
+}
+
+function normalizeLocationKey(value?: string) {
+  const compact = normalizeIdentityKey(value).replace(/[.,，。:：;；/\\()[\]{}【】_—–~～-]+/g, "");
+  const match = compact.match(/(?:^|[^a-z0-9])([a-z]?\d{2,4}[a-z]?)$/i);
+  return match?.[1] ?? compact;
+}
+
+function locationsCompatible(left?: string, right?: string) {
+  const a = normalizeLocationKey(left);
+  const b = normalizeLocationKey(right);
+  return !a || !b || a === b;
 }
 
 function mergeNumberLists(a: number[] = [], b: number[] = []) {

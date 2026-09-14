@@ -93,6 +93,7 @@ private struct NativeScheduleSettingsView: View {
                     Text("舒适").tag("comfortable")
                     Text("紧凑").tag("compact")
                 }
+                Toggle("显示日期栏", isOn: $preferences.showDateHeader)
                 VStack(alignment: .leading, spacing: 10) {
                     Text("课程配色")
                         .font(.subheadline.weight(.medium))

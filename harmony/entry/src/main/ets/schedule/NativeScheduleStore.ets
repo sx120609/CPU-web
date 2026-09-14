@@ -407,7 +407,7 @@ export class NativeScheduleStore {
   }
 
   blocksForDay(day: number): NativeCourseBlock[] {
-    const groups: Map<string, NativeCourseBlock[]> = new Map<string, NativeCourseBlock[]>();
+    const blocks: NativeCourseBlock[] = [];
     this.visibleCells().filter((cell: NativeScheduleCell) => cell.day === day).forEach((cell: NativeScheduleCell) => {
       cell.courses.forEach((course: NativeScheduleCourse) => {
         const fallbackStart = Math.max(1, Math.min(11, cell.bigSlot * 2 - 1));
@@ -418,30 +418,65 @@ export class NativeScheduleStore {
           startSlot = fallbackStart;
           endSlot = fallbackEnd;
         }
-        const key = [course.customId ?? '', course.name, course.teacher ?? '', course.location ?? '', course.weeks]
-          .map((value: string) => value.trim().replace(/\s+/g, ' ')).join('|');
-        const list = groups.get(key) ?? [];
-        list.push({ day, bigSlot: cell.bigSlot, startSlot, endSlot, course });
-        groups.set(key, list);
-      });
-    });
-    const blocks: NativeCourseBlock[] = [];
-    groups.forEach((list: NativeCourseBlock[]) => {
-      const merged: NativeCourseBlock[] = [];
-      list.sort((left: NativeCourseBlock, right: NativeCourseBlock) => left.startSlot - right.startSlot || left.endSlot - right.endSlot);
-      list.forEach((block: NativeCourseBlock) => {
-        const previous = merged[merged.length - 1];
-        if (previous && block.startSlot <= previous.endSlot + 1) {
-          previous.endSlot = Math.max(previous.endSlot, block.endSlot);
-          previous.course = this.courseWithRange(previous.course, previous.startSlot, previous.endSlot);
-        } else {
-          merged.push({ day: block.day, bigSlot: Math.ceil(block.startSlot / 2), startSlot: block.startSlot,
-            endSlot: block.endSlot, course: this.courseWithRange(block.course, block.startSlot, block.endSlot) });
+        const block: NativeCourseBlock = { day, bigSlot: cell.bigSlot, startSlot, endSlot, course };
+        const index = blocks.findIndex((candidate: NativeCourseBlock) => this.canMergeBlocks(candidate, block));
+        if (index < 0) {
+          blocks.push({ day, bigSlot: Math.ceil(startSlot / 2), startSlot, endSlot,
+            course: this.courseWithRange(course, startSlot, endSlot) });
+          return;
         }
+        const previous = blocks[index];
+        previous.endSlot = Math.max(previous.endSlot, endSlot);
+        previous.bigSlot = Math.ceil(previous.startSlot / 2);
+        previous.course = this.courseWithRange(previous.course, previous.startSlot, previous.endSlot, course);
       });
-      merged.forEach((block: NativeCourseBlock) => blocks.push(block));
     });
     return blocks.sort((left: NativeCourseBlock, right: NativeCourseBlock) => left.startSlot - right.startSlot);
+  }
+
+  private canMergeBlocks(left: NativeCourseBlock, right: NativeCourseBlock): boolean {
+    if (left.course.customId || right.course.customId) return left.course.customId === right.course.customId
+      && this.rangesOverlap(left, right);
+    const sameName = this.identityPart(left.course.name) === this.identityPart(right.course.name);
+    const sameTeacher = this.teachersCompatible(left.course.teacher, right.course.teacher);
+    const sameLocation = this.locationsCompatible(left.course.location, right.course.location);
+    const overlaps = this.rangesOverlap(left, right);
+    const adjacent = left.endSlot + 1 === right.startSlot || right.endSlot + 1 === left.startSlot;
+    return sameName && sameTeacher && sameLocation && (overlaps || adjacent);
+  }
+
+  private rangesOverlap(left: NativeCourseBlock, right: NativeCourseBlock): boolean {
+    return left.startSlot <= right.endSlot && right.startSlot <= left.endSlot;
+  }
+
+  private teachersCompatible(left?: string, right?: string): boolean {
+    const a = this.teacherIdentity(left);
+    const b = this.teacherIdentity(right);
+    return !a || !b || a === b;
+  }
+
+  private locationsCompatible(left?: string, right?: string): boolean {
+    const a = this.locationIdentity(left);
+    const b = this.locationIdentity(right);
+    return !a || !b || a === b;
+  }
+
+  private identityPart(value?: string): string {
+    return (value ?? '').normalize('NFKC').toLowerCase().replace(/\s+/g, '')
+      .replace(/[.,，。:：;；/\\()[\]{}【】_—–~～-]+/g, '');
+  }
+
+  private teacherIdentity(value?: string): string {
+    return this.identityPart(value).replace(/(?:其他正高级|其他副高级|正高级|副高级|主任医师|副主任医师|高级实验师|副研究员|实验师|研究员|副教授|教授|讲师|助教|未评级)$/u, '');
+  }
+
+  private locationIdentity(value?: string): string {
+    const compact = this.identityPart(value);
+    const match = compact.match(/[a-z]?\d{2,4}[a-z]?$/i);
+    if (!match) return compact;
+    const prefix = compact.slice(0, compact.length - match[0].length);
+    if (!prefix || !/[a-z0-9]$/i.test(prefix)) return match[0];
+    return compact;
   }
 
   private slotLabel(start: number, end: number): string {
@@ -449,10 +484,25 @@ export class NativeScheduleStore {
     return start === end ? `${first}节` : `${first}-${String(end).padStart(2, '0')}节`;
   }
 
-  private courseWithRange(course: NativeScheduleCourse, startSlot: number, endSlot: number): NativeScheduleCourse {
-    return { name: course.name, teacher: course.teacher, weeks: course.weeks, weekList: course.weekList,
-      location: course.location, slotNote: this.slotLabel(startSlot, endSlot), startSlot, endSlot,
+  private courseWithRange(course: NativeScheduleCourse, startSlot: number, endSlot: number, next?: NativeScheduleCourse): NativeScheduleCourse {
+    const weekList = [...new Set([...(course.weekList ?? []), ...(next?.weekList ?? [])])].sort((a: number, b: number) => a - b);
+    return { name: course.name, teacher: course.teacher ?? next?.teacher, weeks: weekList.length ? this.weekText(weekList) : (course.weeks || next?.weeks || ''), weekList,
+      location: course.location ?? next?.location, slotNote: this.slotLabel(startSlot, endSlot), startSlot, endSlot,
       sourceKey: course.sourceKey, customId: course.customId, custom: course.custom, orphaned: course.orphaned };
+  }
+
+  private weekText(values: number[]): string {
+    if (!values.length) return '';
+    const ranges: string[] = [];
+    let start = values[0];
+    let end = values[0];
+    values.slice(1).forEach((value: number) => {
+      if (value === end + 1) { end = value; return; }
+      ranges.push(start === end ? `${start}` : `${start}-${end}`);
+      start = value; end = value;
+    });
+    ranges.push(start === end ? `${start}` : `${start}-${end}`);
+    return `${ranges.join('、')}周`;
   }
 
   semesterOptions(): NativeScheduleSemester[] {

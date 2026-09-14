@@ -20,3 +20,20 @@ test('a partial native assistant answer is retained after stream failure', async
   assert.match(swift, /回答已中断，可重新提问/);
   assert.match(swift, /!self\.messages\[index\]\.content\.trimmingCharacters/);
 });
+
+test('assistant account changes are debounced and observe the complete auth state', async () => {
+  const view = await read('NativeAssistantView.swift');
+  assert.match(view, /private var accountChangeTask: Task<Void, Never>\?/);
+  assert.match(view, /try\? await Task\.sleep\(nanoseconds: 450_000_000\)/);
+  assert.match(view, /private func applyConfirmedAccountChange\(using session: HybridWebViewStore\)/);
+  assert.match(view, /\.onChange\(of: session\.authState\)/);
+  assert.match(view, /Task \{ @MainActor \[weak self, session\] in/);
+  assert.doesNotMatch(view, /\.onDisappear\s*\{[^}]*cancelStream/s);
+});
+
+test('assistant composer remeasures after its width changes', async () => {
+  const view = await read('NativeAssistantView.swift');
+  assert.match(view, /private final class NativeAssistantMeasuringTextView: UITextView/);
+  assert.match(view, /view\.onLayout = \{ \[weak coordinator = context\.coordinator\]/);
+  assert.match(view, /view\.textContainer\.size = CGSize\(width: availableWidth/);
+});

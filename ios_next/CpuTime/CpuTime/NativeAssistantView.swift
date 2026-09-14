@@ -15,6 +15,7 @@ final class NativeAssistantModel: ObservableObject {
     private var requestGeneration = 0
     private var messageSequence = 0
     private var streamTask: Task<Void, Never>?
+    private var accountChangeTask: Task<Void, Never>?
     /// WebKit reports a few empty account states while restoring its cookie
     /// session. Keep the last confirmed identity so those bootstrap events do
     /// not cancel an otherwise healthy streaming answer.
@@ -22,6 +23,7 @@ final class NativeAssistantModel: ObservableObject {
 
     deinit {
         streamTask?.cancel()
+        accountChangeTask?.cancel()
     }
 
     func send(_ value: String, using session: HybridWebViewStore) {
@@ -46,8 +48,11 @@ final class NativeAssistantModel: ObservableObject {
         requestGeneration += 1
         let generation = requestGeneration
 
-        streamTask = Task { @MainActor [weak self, weak session] in
-            guard let self, let session else { return }
+        // Keep the shared Web session alive while the sheet is dismissed. The
+        // model itself lives on HybridWebViewStore, so leaving the AI surface
+        // must not cancel or orphan this task.
+        streamTask = Task { @MainActor [weak self, session] in
+            guard let self else { return }
             do {
                 let reply = try await session.nativeAssistantStream(
                     message: text,
@@ -138,12 +143,20 @@ final class NativeAssistantModel: ObservableObject {
     }
 
     func accountDidChange(using session: HybridWebViewStore) {
+        accountChangeTask?.cancel()
+        // WKWebView can publish a transient empty or unauthenticated report
+        // while restoring cookies after a route change. Confirm the state after
+        // a short quiet period before clearing a conversation or its stream.
+        accountChangeTask = Task { @MainActor [weak self, weak session] in
+            try? await Task.sleep(nanoseconds: 450_000_000)
+            guard let self, let session, !Task.isCancelled else { return }
+            self.applyConfirmedAccountChange(using: session)
+        }
+    }
+
+    private func applyConfirmedAccountChange(using session: HybridWebViewStore) {
         guard session.authState.ready else { return }
         let nextAccount = session.authState.account.trimmingCharacters(in: .whitespacesAndNewlines)
-        // WebKit can publish an authenticated state with an empty account for
-        // one bootstrap tick while its cookie-backed profile is rehydrating.
-        // Treat that as a transient report so dismissing/reopening the native
-        // surface never cancels an answer that is still streaming.
         if nextAccount.isEmpty, session.authState.authenticated { return }
         guard nextAccount != confirmedAccount else { return }
         let hadConfirmedAccount = !confirmedAccount.isEmpty
@@ -346,7 +359,7 @@ struct NativeAssistantView: View {
         .task {
             await assistant.loadHistory(using: session)
         }
-        .onChange(of: session.authState.account) { _, _ in
+        .onChange(of: session.authState) { _, _ in
             assistant.accountDidChange(using: session)
         }
     }
@@ -517,7 +530,7 @@ struct NativeAssistantView: View {
                     Text(markdown(message.content))
                         .font(.body)
                         .foregroundStyle(.primary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(maxWidth: 620, alignment: .leading)
                         .textSelection(.enabled)
                     if message.streaming {
                         Text("▌")
@@ -553,7 +566,7 @@ struct NativeAssistantView: View {
                                         .font(.caption.weight(.semibold))
                                         .foregroundStyle(.tertiary)
                                 }
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .frame(maxWidth: 620, alignment: .leading)
                                 .padding(11)
                                 .background(Color(uiColor: .secondarySystemGroupedBackground))
                                 .overlay {
@@ -730,6 +743,21 @@ struct NativeAssistantView: View {
 /// multiline TextField reports the configured line limit as its ideal height
 /// on newer iOS versions, which makes the empty field jump to five lines as
 /// soon as it receives text.
+private final class NativeAssistantMeasuringTextView: UITextView {
+    var onLayout: ((UITextView) -> Void)?
+    private var lastSize: CGSize = .zero
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let size = bounds.size
+        guard abs(size.width - lastSize.width) > 0.5 || abs(size.height - lastSize.height) > 0.5 else {
+            return
+        }
+        lastSize = size
+        onLayout?(self)
+    }
+}
+
 private struct NativeAssistantTextEditor: UIViewRepresentable {
     @Binding var text: String
     @Binding var isFocused: Bool
@@ -744,7 +772,7 @@ private struct NativeAssistantTextEditor: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> UITextView {
-        let view = UITextView(frame: .zero)
+        let view = NativeAssistantMeasuringTextView(frame: .zero)
         view.delegate = context.coordinator
         view.backgroundColor = .clear
         view.font = UIFont.preferredFont(forTextStyle: .body)
@@ -770,6 +798,9 @@ private struct NativeAssistantTextEditor: UIViewRepresentable {
         view.accessibilityHint = "输入问题后按发送键"
         view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         view.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        view.onLayout = { [weak coordinator = context.coordinator] textView in
+            coordinator?.parent.updateHeight(for: textView)
+        }
         return view
     }
 

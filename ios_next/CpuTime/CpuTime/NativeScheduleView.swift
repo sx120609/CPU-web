@@ -383,7 +383,8 @@ struct NativeScheduleView: View {
                         days: Array(1...7),
                         columnWidth: columnWidth,
                         compactCards: preferences.density == "compact",
-                        rowHeight: weekRowHeight
+                        rowHeight: weekRowHeight,
+                        showsDateHeader: preferences.showDateHeader
                     )
                         .frame(minWidth: proxy.size.width, alignment: .leading)
                         .padding(.horizontal, Self.contentInset)
@@ -2591,10 +2592,10 @@ private struct StateCard: View {
     }
 }
 
-/// SwiftUI's `.refreshable` is not reliably installed on nested scroll views
-/// on iOS 17. Hosting the schedule in one explicit UIKit scroll view gives the
-/// pull gesture a stable owner and keeps horizontal week/day paging separate.
-private struct NativeScheduleRefreshScrollView<Content: View>: UIViewControllerRepresentable {
+/// The timetable owns one vertical SwiftUI scroll view. Its horizontal pager
+/// uses an axis-locked simultaneous drag, so vertical motion remains available
+/// to this scroll view and `.refreshable` receives the pull gesture reliably.
+private struct NativeScheduleRefreshScrollView<Content: View>: View {
     typealias RefreshAction = @MainActor () async -> Void
 
     let content: Content
@@ -2608,86 +2609,16 @@ private struct NativeScheduleRefreshScrollView<Content: View>: UIViewControllerR
         self.onRefresh = onRefresh
     }
 
-    func makeUIViewController(context: Context) -> Controller {
-        Controller(rootView: content, action: onRefresh)
-    }
-
-    func updateUIViewController(_ controller: Controller, context: Context) {
-        controller.update(rootView: content, action: onRefresh)
-    }
-
-    @MainActor
-    final class Controller: UIViewController {
-        private let scrollView = UIScrollView()
-        private let refreshControl = UIRefreshControl()
-        private var hostController: UIHostingController<Content>
-        private var refreshTask: Task<Void, Never>?
-        private var action: RefreshAction
-
-        init(rootView: Content, action: @escaping RefreshAction) {
-            self.hostController = UIHostingController(rootView: rootView)
-            self.action = action
-            super.init(nibName: nil, bundle: nil)
+    var body: some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            content
         }
-
-        @available(*, unavailable)
-        required init?(coder: NSCoder) {
-            fatalError("NativeScheduleRefreshScrollView cannot be decoded")
+        .scrollBounceBehavior(.always, axes: .vertical)
+        .scrollDismissesKeyboard(.interactively)
+        .refreshable {
+            await onRefresh()
         }
-
-        override func viewDidLoad() {
-            super.viewDidLoad()
-            view.backgroundColor = .clear
-            scrollView.backgroundColor = .clear
-            scrollView.alwaysBounceVertical = true
-            scrollView.showsVerticalScrollIndicator = false
-            scrollView.showsHorizontalScrollIndicator = false
-            scrollView.keyboardDismissMode = .interactive
-            refreshControl.tintColor = UIColor(red: 15 / 255, green: 143 / 255, blue: 127 / 255, alpha: 1)
-            refreshControl.accessibilityLabel = "下拉刷新课表"
-            refreshControl.addTarget(self, action: #selector(didPull(_:)), for: .valueChanged)
-            scrollView.refreshControl = refreshControl
-
-            addChild(hostController)
-            hostController.view.translatesAutoresizingMaskIntoConstraints = false
-            hostController.view.backgroundColor = .clear
-            scrollView.translatesAutoresizingMaskIntoConstraints = false
-            view.addSubview(scrollView)
-            scrollView.addSubview(hostController.view)
-            NSLayoutConstraint.activate([
-                scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-                scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-                scrollView.topAnchor.constraint(equalTo: view.topAnchor),
-                scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-                hostController.view.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor),
-                hostController.view.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor),
-                hostController.view.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
-                hostController.view.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
-                hostController.view.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor),
-                hostController.view.heightAnchor.constraint(greaterThanOrEqualTo: scrollView.frameLayoutGuide.heightAnchor)
-            ])
-            hostController.didMove(toParent: self)
-        }
-
-        func update(rootView: Content, action: @escaping RefreshAction) {
-            hostController.rootView = rootView
-            self.action = action
-        }
-
-        @objc private func didPull(_ sender: UIRefreshControl) {
-            guard refreshTask == nil else { return }
-            let action = self.action
-            refreshTask = Task { @MainActor [weak self] in
-                await action()
-                guard let self, !Task.isCancelled else { return }
-                self.refreshControl.endRefreshing()
-                self.refreshTask = nil
-            }
-        }
-
-        deinit {
-            refreshTask?.cancel()
-        }
+        .accessibilityLabel("课表，可下拉刷新")
     }
 }
 

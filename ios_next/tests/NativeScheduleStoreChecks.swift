@@ -40,7 +40,7 @@ struct NativeScheduleStoreChecks {
             teacher: "张老师",
             weeks: "1-8周",
             weekList: Array(1...8),
-            location: "实验楼 201",
+            location: "实验楼(201)",
             startSlot: 3,
             endSlot: 4
         )
@@ -50,7 +50,7 @@ struct NativeScheduleStoreChecks {
             teacher: "张老师",
             weeks: "2、4、6、8周",
             weekList: [2, 4, 6, 8],
-            location: "实验楼 201",
+            location: "201",
             startSlot: 3,
             endSlot: 3,
             sourceKey: "jwxt-record-b"
