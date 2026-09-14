@@ -271,7 +271,7 @@
           </address>
         </div>
         <div class="footer-bottom">
-          <span>© 2026 药大拾间<span class="footer-separator" aria-hidden="true"> · </span>非学校官方站点</span>
+          <span>© 2026 药大拾间<span class="footer-separator footer-disclaimer" aria-hidden="true"> · </span><span class="footer-disclaimer">非学校官方站点</span></span>
           <nav class="footer-links" aria-label="网站信息">
             <router-link to="/download">客户端下载</router-link>
             <a href="https://github.com/sx120609/CPU-web" target="_blank" rel="noopener noreferrer">GitHub</a>
@@ -1848,48 +1848,6 @@ html[data-theme="dark"] .assistant-widget {
   text-decoration: none;
 }
 
-@media (max-width: 600px) {
-  .footer {
-    padding: 20px max(16px, env(safe-area-inset-right, 0px)) calc(var(--liquid-tabbar-reserve) + 14px) max(16px, env(safe-area-inset-left, 0px));
-  }
-
-  .footer-main {
-    grid-template-columns: 1fr;
-    gap: 10px;
-    padding-bottom: 16px;
-  }
-
-  .footer-company,
-  .footer-contact {
-    padding: 0;
-  }
-
-  .footer-bottom {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .footer-links {
-    width: 100%;
-    justify-content: stretch;
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .footer-links a {
-    min-height: 34px;
-    justify-content: center;
-    border: 1px solid var(--cpu-border-soft);
-    background: color-mix(in srgb, var(--cpu-surface) 44%, transparent);
-    text-align: center;
-  }
-
-  .footer-contact-links a {
-    min-height: 30px;
-  }
-}
-
 .mobile-tabbar {
   position: fixed;
   left: max(24px, env(safe-area-inset-left));
@@ -2388,8 +2346,8 @@ html[data-theme="dark"] .assistant-widget {
   .mobile-tabbar.mobile-tabbar { transition: none; }
 }
 
-/* 移动端页脚只保留三行必要信息，避免把内容区压成一整块。 */
-@media (max-width: 600px) {
+/* 移动端只保留品牌、联系方式和版权信息。 */
+@media (max-width: 768px) {
   .footer {
     padding: 14px max(16px, env(safe-area-inset-right, 0px)) calc(var(--liquid-tabbar-reserve) + 10px) max(16px, env(safe-area-inset-left, 0px));
   }
@@ -2399,15 +2357,15 @@ html[data-theme="dark"] .assistant-widget {
   }
 
   .footer-main {
-    gap: 7px;
+    display: block;
     padding-bottom: 9px;
   }
 
   .footer-company {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
+    display: flex;
     align-items: center;
-    column-gap: 7px;
+    justify-content: space-between;
+    gap: 8px;
   }
 
   .footer-brand-row {
@@ -2426,13 +2384,7 @@ html[data-theme="dark"] .assistant-widget {
   }
 
   .footer-company p {
-    min-width: 0;
-    margin: 0;
-    overflow: hidden;
-    font-size: 11px;
-    line-height: 1.35;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    display: none;
   }
 
   .footer-about {
@@ -2442,38 +2394,21 @@ html[data-theme="dark"] .assistant-widget {
   }
 
   .footer-contact {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    column-gap: 8px;
-    align-items: start;
+    display: block;
+    margin-top: 8px;
   }
 
   .footer-contact-label {
-    gap: 5px;
-    font-size: 12px;
-    line-height: 1.5;
-    white-space: nowrap;
-  }
-
-  .footer-label-line {
-    width: 13px;
-    height: 2px;
+    display: none;
   }
 
   .footer-contact .footer-address {
-    display: -webkit-box;
-    margin: 0;
-    overflow: hidden;
-    font-size: 11px;
-    line-height: 1.45;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
+    display: none;
   }
 
   .footer-contact-links {
-    grid-column: 2;
-    gap: 10px;
-    margin-top: 1px;
+    gap: 14px;
+    margin-top: 0;
   }
 
   .footer-contact-links a {
@@ -2482,10 +2417,8 @@ html[data-theme="dark"] .assistant-widget {
   }
 
   .footer-bottom {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    display: block;
     align-items: center;
-    gap: 6px 8px;
     padding-top: 8px;
   }
 
@@ -2498,18 +2431,11 @@ html[data-theme="dark"] .assistant-widget {
   }
 
   .footer-links {
-    width: auto;
-    display: flex;
-    gap: 4px;
+    display: none;
   }
 
-  .footer-links a {
-    min-height: 24px;
-    padding: 0 2px;
-    border: 0;
-    background: transparent;
-    font-size: 10px;
-    white-space: nowrap;
+  .footer-disclaimer {
+    display: none;
   }
 }
 </style>

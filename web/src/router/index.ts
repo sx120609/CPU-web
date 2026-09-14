@@ -9,6 +9,7 @@ import { boardApi } from "@/api/board";
 import { topicApi } from "@/api/topic";
 import { isNativeScheduleShell, isLikelyIosDevice, hidesNativeCommerce } from "@/utils/clientInfo";
 import { preloadScheduleBackgroundAsset } from "@/utils/scheduleBackgroundStorage";
+import { readForumListRestoreState } from "@/utils/forumListRestore";
 
 const MainLayout = () => import("@/layouts/MainLayout.vue");
 export const loadHomeView = () => import("@/views/Home.vue");
@@ -111,6 +112,15 @@ function mobileMarketBoardRedirect(to: Parameters<NavigationGuard>[0]) {
 export const router = createRouter({
   history: createWebHistory(),
   scrollBehavior(to, from, savedPosition) {
+    // HomeMobile stores its position before opening a topic. Apply that value
+    // during router navigation so the returning page never paints at scroll 0
+    // before HomeMobile finishes loading its dynamic sections.
+    if (to.name === "home" && !to.hash) {
+      const restore = readForumListRestoreState<{ scrollY: number; savedAt: number }>(to.fullPath);
+      const top = Number(restore?.scrollY);
+      if (Number.isFinite(top) && top > 0) return { top, left: 0, behavior: "auto" as const };
+    }
+
     const position = savedPosition
       ? savedPosition
       : to.hash
