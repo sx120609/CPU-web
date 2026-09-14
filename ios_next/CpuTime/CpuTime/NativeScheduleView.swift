@@ -2663,7 +2663,8 @@ private struct NativeScheduleRefreshScrollView<Content: View>: UIViewControllerR
                 hostController.view.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor),
                 hostController.view.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
                 hostController.view.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
-                hostController.view.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor)
+                hostController.view.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor),
+                hostController.view.heightAnchor.constraint(greaterThanOrEqualTo: scrollView.frameLayoutGuide.heightAnchor)
             ])
             hostController.didMove(toParent: self)
         }

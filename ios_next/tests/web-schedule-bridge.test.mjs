@@ -325,7 +325,9 @@ test('2025-2026-2 collapses duplicate records in one timetable position without 
         { name: '药理学实验', teacher: '张老师', location: '实验楼 201', weeks: '1-8周', weekList: [1,2,3,4,5,6,7,8], startSlot: 3, endSlot: 4 },
         { name: '药理学实验', teacher: '张老师', location: '实验楼 201', weeks: '2、4、6、8周', weekList: [2,4,6,8], sourceKey: 'jwxt-record-b', startSlot: 3, endSlot: 4 },
         { name: '药理学实验', teacher: '张老师', location: '实验楼 201', weeks: '1-8周', weekList: [1,2,3,4,5,6,7,8], startSlot: 3, endSlot: 3 },
+        { name: '药理学实验', teacher: '张 老师', location: '实验楼201', weeks: '2、4、6、8周', weekList: [2,4,6,8], sourceKey: 'jwxt-record-c', startSlot: 3, endSlot: 3 },
         { name: '药理学实验', teacher: '李老师', location: '实验楼 201', weeks: '1-8周', weekList: [1,2,3,4,5,6,7,8], startSlot: 3, endSlot: 4 },
+        { name: '药理学实验', teacher: '张老师', location: '实验楼 201', weeks: '1-8周', weekList: [1,2,3,4,5,6,7,8], startSlot: 5, endSlot: 6 },
       ] },
       { day: 3, bigSlot: 2, courses: [
         { name: '药理学实验', teacher: '张老师', location: '实验楼 201', weeks: '1-8周', weekList: [1,2,3,4,5,6,7,8], startSlot: 3, endSlot: 4 },
@@ -334,7 +336,7 @@ test('2025-2026-2 collapses duplicate records in one timetable position without 
   } });
   const result = await ctx.window.CPUTimeNativeScheduleFetch('2025-2026-2', '1');
   const courses = result.data.cells.find(cell => cell.day === 3 && cell.bigSlot === 2).courses;
-  assert.equal(courses.length, 2);
+  assert.equal(courses.length, 3);
   assert.deepEqual(Array.from(courses.find(course => course.teacher === '张老师').weekList), [1,2,3,4,5,6,7,8]);
   assert.equal(courses.some(course => course.teacher === '李老师'), true);
 });

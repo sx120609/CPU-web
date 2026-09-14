@@ -81,11 +81,23 @@ final class NativeAssistantModel: ObservableObject {
                 self.persistActiveConversation(using: session, syncCloud: true)
             } catch is CancellationError {
                 guard generation == self.requestGeneration else { return }
-                self.messages.removeAll { $0.id == assistantID }
+                if let index = self.messages.firstIndex(where: { $0.id == assistantID }),
+                   !self.messages[index].content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    self.messages[index].streaming = false
+                    self.messages[index].streamStatus = "回答已中断，可重新提问"
+                } else {
+                    self.messages.removeAll { $0.id == assistantID }
+                }
                 self.persistActiveConversation(using: session, syncCloud: false)
             } catch {
                 guard generation == self.requestGeneration else { return }
-                self.messages.removeAll { $0.id == assistantID }
+                if let index = self.messages.firstIndex(where: { $0.id == assistantID }),
+                   !self.messages[index].content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    self.messages[index].streaming = false
+                    self.messages[index].streamStatus = "回答未完成，可重新提问"
+                } else {
+                    self.messages.removeAll { $0.id == assistantID }
+                }
                 self.persistActiveConversation(using: session, syncCloud: false)
                 self.errorMessage = (error as? LocalizedError)?.errorDescription ?? "拾间 AI 暂时不可用，请重试。"
             }

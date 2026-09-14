@@ -596,74 +596,88 @@ public struct NativeScheduleCourseBlockRecord: Equatable, Sendable {
 }
 
 public enum NativeScheduleCourseBlockMerger {
-    /// Merge repeated records for the same timetable position while retaining
-    /// distinct teachers/rooms as separate courses. Week text is occurrence
-    /// metadata, so a different week range alone must not create a second card.
+    /// Merge repeated records for the same occurrence while retaining distinct
+    /// teachers, rooms and adjacent classes as separate courses. Week text is
+    /// occurrence metadata, so a different week range alone must not create a
+    /// second card.
     public static func merge(_ blocks: [NativeScheduleCourseBlockRecord]) -> [NativeScheduleCourseBlockRecord] {
-        let families = Dictionary(grouping: blocks, by: identityKey)
         var merged: [NativeScheduleCourseBlockRecord] = []
-
-        for family in families.values {
-            var current: NativeScheduleCourseBlockRecord?
-            for block in family.sorted(by: { ($0.startSlot, $0.endSlot, $0.id) < ($1.startSlot, $1.endSlot, $1.id) }) {
-                if let previous = current, block.startSlot <= previous.endSlot + 1 {
-                    let start = min(previous.startSlot, block.startSlot)
-                    let end = max(previous.endSlot, block.endSlot)
-                    current = NativeScheduleCourseBlockRecord(
-                        id: previous.id,
-                        course: courseWithRange(
-                            previous.course,
-                            merging: block.course,
-                            startSlot: start,
-                            endSlot: end
-                        ),
-                        bigSlot: max(1, Int(ceil(Double(start) / 2))),
-                        startSlot: start,
-                        endSlot: end
-                    )
-                } else {
-                    if let current { merged.append(current) }
-                    current = NativeScheduleCourseBlockRecord(
-                        id: block.id,
-                        course: courseWithRange(
-                            block.course,
-                            merging: nil,
-                            startSlot: block.startSlot,
-                            endSlot: block.endSlot
-                        ),
-                        bigSlot: max(1, Int(ceil(Double(block.startSlot) / 2))),
+        for block in blocks.sorted(by: { ($0.startSlot, $0.endSlot, $0.id) < ($1.startSlot, $1.endSlot, $1.id) }) {
+            guard let index = merged.firstIndex(where: { canMerge($0, block) }) else {
+                merged.append(NativeScheduleCourseBlockRecord(
+                    id: block.id,
+                    course: courseWithRange(
+                        block.course,
+                        merging: nil,
                         startSlot: block.startSlot,
                         endSlot: block.endSlot
-                    )
-                }
+                    ),
+                    bigSlot: max(1, Int(ceil(Double(block.startSlot) / 2))),
+                    startSlot: block.startSlot,
+                    endSlot: block.endSlot
+                ))
+                continue
             }
-            if let current { merged.append(current) }
+            let previous = merged[index]
+            let start = min(previous.startSlot, block.startSlot)
+            let end = max(previous.endSlot, block.endSlot)
+            merged[index] = NativeScheduleCourseBlockRecord(
+                id: previous.id,
+                course: courseWithRange(
+                    previous.course,
+                    merging: block.course,
+                    startSlot: start,
+                    endSlot: end
+                ),
+                bigSlot: max(1, Int(ceil(Double(start) / 2))),
+                startSlot: start,
+                endSlot: end
+            )
         }
         return merged.sorted { ($0.startSlot, $0.endSlot, $0.id) < ($1.startSlot, $1.endSlot, $1.id) }
     }
 
-    private static func identityKey(_ block: NativeScheduleCourseBlockRecord) -> String {
-        let course = block.course
-        if let customId = course.customId?.trimmedNonEmpty {
-            return "custom:\(keyPart(customId))"
+    private static func canMerge(
+        _ left: NativeScheduleCourseBlockRecord,
+        _ right: NativeScheduleCourseBlockRecord
+    ) -> Bool {
+        let a = left.course
+        let b = right.course
+        if let aCustom = a.customId?.trimmedNonEmpty, let bCustom = b.customId?.trimmedNonEmpty {
+            return aCustom == bCustom && rangesOverlap(left, right)
         }
-        let stableFields = [
-            keyPart(course.name),
-            keyPart(course.teacher),
-            keyPart(course.location)
-        ].joined(separator: "\u{1F}")
-        // The upstream system can assign a different source key to the same
-        // official course on different week queries. Stable content therefore
-        // takes precedence; source IDs are only a fallback for empty records.
-        if !stableFields.isEmpty { return stableFields }
-        if let sourceKey = course.sourceKey?.trimmedNonEmpty {
-            return "source:\(keyPart(sourceKey))"
-        }
-        if let nativeId = course.nativeId?.trimmedNonEmpty,
-           !nativeId.hasPrefix("official|") {
-            return "native:\(keyPart(nativeId))\u{1F}\(stableFields)"
-        }
-        return stableFields
+        if a.customId != nil || b.customId != nil { return false }
+        let sameName = identityPart(a.name) == identityPart(b.name)
+        let compatibleTeacher = compatibleField(a.teacher, b.teacher)
+        let compatibleLocation = compatibleField(a.location, b.location)
+        let sameSource = a.sourceKey?.trimmedNonEmpty != nil
+            && a.sourceKey == b.sourceKey
+        guard sameName, compatibleTeacher, compatibleLocation else { return false }
+        return rangesOverlap(left, right) || sameSource && rangesAdjacent(left, right)
+    }
+
+    private static func rangesOverlap(
+        _ left: NativeScheduleCourseBlockRecord,
+        _ right: NativeScheduleCourseBlockRecord
+    ) -> Bool {
+        left.startSlot <= right.endSlot && right.startSlot <= left.endSlot
+    }
+
+    private static func rangesAdjacent(
+        _ left: NativeScheduleCourseBlockRecord,
+        _ right: NativeScheduleCourseBlockRecord
+    ) -> Bool {
+        left.endSlot + 1 == right.startSlot || right.endSlot + 1 == left.startSlot
+    }
+
+    private static func compatibleField(_ left: String?, _ right: String?) -> Bool {
+        let a = identityPart(left)
+        let b = identityPart(right)
+        return a.isEmpty || b.isEmpty || a == b
+    }
+
+    private static func identityPart(_ value: String?) -> String {
+        keyPart(value).replacingOccurrences(of: "\\s+", with: "", options: .regularExpression)
     }
 
     private static func courseWithRange(
@@ -685,10 +699,10 @@ public enum NativeScheduleCourseBlockMerger {
         return NativeScheduleCourse(
             nativeId: course.nativeId,
             name: course.name,
-            teacher: course.teacher,
+            teacher: course.teacher ?? next?.teacher,
             weeks: weeks,
             weekList: weekList,
-            location: course.location,
+            location: course.location ?? next?.location,
             slotNote: slotNote,
             startSlot: startSlot,
             endSlot: endSlot,

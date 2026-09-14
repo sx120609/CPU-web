@@ -7,8 +7,8 @@ import WebKit
 
 
 enum IOSNextWebConfiguration {
-    static let versionCode = 24
-    static let versionName = "3.10.0"
+    static let versionCode = 28
+    static let versionName = "3.11.0"
 
     static var appURL: URL {
         let configured = Bundle.main.object(forInfoDictionaryKey: "CPUAppURL") as? String
@@ -754,10 +754,135 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
         return payload
     }
 
-    /// Starts the Web SSE endpoint and forwards each event through the native
-    /// script-message bridge. The request itself remains inside WKWebView so
-    /// HttpOnly session and CSRF cookies are handled exactly like the Web app.
+    /// Starts the Web SSE endpoint. The preferred transport is a native
+    /// URLSession carrying the cookies from the shared WKWebView store, so a
+    /// route change or a dismissed sheet cannot tear down the stream's page.
+    /// Older environments fall back to the injected Web bridge.
     func nativeAssistantStream(
+        message: String,
+        history: [[String: String]],
+        onDelta: @escaping (String) -> Void,
+        onStatus: @escaping (String) -> Void
+    ) async throws -> NativeAssistantReply {
+        let cookies = await assistantCookies()
+        if !cookies.isEmpty {
+            return try await nativeAssistantStreamViaURLSession(
+                message: message,
+                history: history,
+                cookies: cookies,
+                onDelta: onDelta,
+                onStatus: onStatus
+            )
+        }
+        return try await nativeAssistantStreamViaWebView(
+            message: message,
+            history: history,
+            onDelta: onDelta,
+            onStatus: onStatus
+        )
+    }
+
+    private func assistantCookies() async -> [HTTPCookie] {
+        guard let webView else { return [] }
+        return await withCheckedContinuation { continuation in
+            webView.configuration.websiteDataStore.httpCookieStore.getAllCookies { cookies in
+                let filtered = cookies.filter { cookie in
+                    cookie.domain.lowercased().contains(IOSNextWebConfiguration.appHost)
+                }
+                continuation.resume(returning: filtered)
+            }
+        }
+    }
+
+    private func nativeAssistantStreamViaURLSession(
+        message: String,
+        history: [[String: String]],
+        cookies: [HTTPCookie],
+        onDelta: @escaping (String) -> Void,
+        onStatus: @escaping (String) -> Void
+    ) async throws -> NativeAssistantReply {
+        guard let url = IOSNextWebConfiguration.routeURL("/api/search/assistant/stream") else {
+            throw NativeAssistantError.unavailable
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.httpShouldHandleCookies = false
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        request.setValue("cookie", forHTTPHeaderField: "X-CPU-Auth-Mode")
+        request.setValue("ios", forHTTPHeaderField: "X-CPU-Client")
+        if let cookieHeader = HTTPCookie.requestHeaderFields(with: cookies)["Cookie"] {
+            request.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
+        }
+        if let csrf = cookies.first(where: { $0.name == "__Host-cpu-csrf" || $0.name == "cpu-csrf" })?.value,
+           let decoded = csrf.removingPercentEncoding,
+           !decoded.isEmpty {
+            request.setValue(decoded, forHTTPHeaderField: "X-CSRF-Token")
+        }
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "message": message,
+            "history": history,
+        ])
+
+        let (bytes, response) = try await URLSession.shared.bytes(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw NativeAssistantError.requestFailed("拾间 AI 服务暂时不可用，请重试。")
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            var body = ""
+            for try await line in bytes.lines { body += line }
+            if let data = body.data(using: .utf8),
+               let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let message = payload["message"] as? String, !message.isEmpty {
+                throw NativeAssistantError.requestFailed(message)
+            }
+            throw NativeAssistantError.requestFailed("拾间 AI 暂时不可用，请重试。")
+        }
+
+        var event = "message"
+        var dataLines: [String] = []
+        var completed: NativeAssistantReply?
+        func consumeEvent() throws {
+            guard !dataLines.isEmpty else {
+                event = "message"
+                return
+            }
+            let data = Data(dataLines.joined(separator: "\n").utf8)
+            guard let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                throw NativeAssistantError.invalidResponse
+            }
+            switch event {
+            case "delta":
+                if let delta = payload["delta"] as? String { onDelta(delta) }
+            case "status", "heartbeat":
+                let elapsed = (payload["elapsedMs"] as? NSNumber)?.intValue ?? 0
+                onStatus(elapsed >= 5_000 ? "仍在生成，已等待 \(elapsed / 1_000) 秒…" : "正在生成回答…")
+            case "done":
+                completed = try JSONDecoder().decode(NativeAssistantReply.self, from: data)
+            case "error":
+                throw NativeAssistantError.requestFailed(payload["message"] as? String ?? "拾间 AI 暂时不可用，请重试。")
+            default:
+                break
+            }
+            event = "message"
+            dataLines.removeAll(keepingCapacity: true)
+        }
+
+        for try await line in bytes.lines {
+            if line.isEmpty {
+                try consumeEvent()
+            } else if line.hasPrefix("event:") {
+                event = String(line.dropFirst(6)).trimmingCharacters(in: .whitespaces)
+            } else if line.hasPrefix("data:") {
+                dataLines.append(String(line.dropFirst(5)).trimmingCharacters(in: .whitespaces))
+            }
+        }
+        try consumeEvent()
+        guard let completed else { throw NativeAssistantError.invalidResponse }
+        return completed
+    }
+
+    private func nativeAssistantStreamViaWebView(
         message: String,
         history: [[String: String]],
         onDelta: @escaping (String) -> Void,
