@@ -1268,12 +1268,11 @@ struct NativeScheduleView: View {
                     let fallbackEnd = cell.bigSlot * 2
                     var start = min(max(course.startSlot ?? fallbackStart, 1), ScheduleSlot.all.count)
                     var end = min(max(course.endSlot ?? fallbackEnd, start), ScheduleSlot.all.count)
-                    // Match the Web timetable's handling of a course repeated
-                    // in several large-period cells by the school parser.
-                    if end < fallbackStart || start > fallbackEnd {
-                        start = min(max(fallbackStart, 1), ScheduleSlot.all.count)
-                        end = min(max(fallbackEnd, start), ScheduleSlot.all.count)
-                    }
+                    // The parser's explicit range comes from the course detail
+                    // and remains authoritative even when JWXT repeats the
+                    // same course under a neighbouring physical big-slot row.
+                    // Falling back to that row here splits one occurrence into
+                    // two adjacent cards and makes it look duplicated.
                     return NativeScheduleCourseBlockRecord(
                         id: "\(week.map(String.init) ?? "-")-\(day)-\(cell.bigSlot)-\(index)-\(course.name)",
                         course: course,
@@ -2694,8 +2693,15 @@ private struct NativeScheduleRefreshScrollView<Content: View>: UIViewControllerR
             scrollView.showsHorizontalScrollIndicator = false
             scrollView.keyboardDismissMode = .interactive
             scrollView.delaysContentTouches = false
-            scrollView.panGestureRecognizer.cancelsTouchesInView = false
-            scrollView.contentInsetAdjustmentBehavior = .never
+            // The enclosing scroll view must own vertical pulls. Horizontal
+            // paging is registered simultaneously by SwiftUI and still gets
+            // the same drag updates, while leaving cancellation disabled lets
+            // the child gesture swallow the refresh pull on some iOS builds.
+            scrollView.panGestureRecognizer.cancelsTouchesInView = true
+            // Keep UIKit's top inset in the calculation used by
+            // UIRefreshControl. With `.never`, the refresh threshold can sit
+            // underneath the native tab/safe-area chrome on compact devices.
+            scrollView.contentInsetAdjustmentBehavior = .automatic
             scrollView.delegate = self
             refreshControl.tintColor = UIColor(red: 15 / 255, green: 143 / 255, blue: 127 / 255, alpha: 1)
             refreshControl.accessibilityLabel = "下拉刷新课表"
@@ -2754,7 +2760,7 @@ private struct NativeScheduleRefreshScrollView<Content: View>: UIViewControllerR
 
         func scrollViewDidScroll(_ scrollView: UIScrollView) {
             guard refreshTask == nil, scrollView.isDragging else { return }
-            let threshold = -(scrollView.adjustedContentInset.top + 58)
+            let threshold = -(scrollView.adjustedContentInset.top + max(52, refreshControl.bounds.height * 0.9))
             pullThresholdReached = scrollView.contentOffset.y <= threshold
         }
 
@@ -2762,6 +2768,8 @@ private struct NativeScheduleRefreshScrollView<Content: View>: UIViewControllerR
             guard pullThresholdReached, refreshTask == nil, !refreshControl.isRefreshing else { return }
             pullThresholdReached = false
             refreshControl.beginRefreshing()
+            let top = -(scrollView.adjustedContentInset.top + max(52, refreshControl.bounds.height * 0.9))
+            scrollView.setContentOffset(CGPoint(x: scrollView.contentOffset.x, y: top), animated: true)
             didPull(refreshControl)
         }
 

@@ -28,7 +28,7 @@ test('assistant account changes are debounced and observe the complete auth stat
   assert.match(view, /try\? await Task\.sleep\(nanoseconds: delay\)/);
   assert.match(view, /private func applyConfirmedAccountChange\(using session: HybridWebViewStore\)/);
   assert.match(view, /\.onChange\(of: session\.authState\)/);
-  assert.match(view, /Task \{ @MainActor \[weak self, session\] in/);
+  assert.match(view, /Task \{ @MainActor \[(?:weak self|self), session\] in/);
   assert.doesNotMatch(view, /\.onDisappear\s*\{[^}]*cancelStream/s);
   assert.match(view, /func stop\(using session: HybridWebViewStore\)/);
   assert.match(view, /已停止生成，可重新提问/);

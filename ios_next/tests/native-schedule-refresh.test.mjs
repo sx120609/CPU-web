@@ -11,12 +11,15 @@ test('native schedule owns a UIKit pull-to-refresh scroll view', async () => {
   assert.match(source, /private let scrollView = UIScrollView\(\)/);
   assert.match(source, /private let refreshControl = UIRefreshControl\(\)/);
   assert.match(source, /scrollView\.alwaysBounceVertical = true/);
+  assert.match(source, /scrollView\.contentInsetAdjustmentBehavior = \.automatic/);
+  assert.match(source, /scrollView\.panGestureRecognizer\.cancelsTouchesInView = true/);
   assert.match(source, /scrollView\.delegate = self/);
   assert.match(source, /scrollViewDidEndDragging\(_ scrollView: UIScrollView/);
   assert.match(source, /refreshControl\.beginRefreshing\(\)/);
   assert.match(source, /scrollView\.refreshControl = refreshControl/);
   assert.match(source, /refreshControl\.addTarget\(self, action: #selector\(didPull\(_:\)\), for: \.valueChanged\)/);
   assert.match(source, /refreshControl\.endRefreshing\(\)/);
+  assert.match(source, /scrollView\.setContentOffset\(CGPoint\(x: scrollView\.contentOffset\.x, y: top\), animated: true\)/);
   assert.match(source, /NativeScheduleRefreshScrollView\(onRefresh:\s*\{\s*await store\.refresh\(\)/s);
   assert.match(storeSource, /public func refresh\(\) async \{\s*await load\(semester: selectedSemester, week: selectedWeek, force: true\)/s);
 });

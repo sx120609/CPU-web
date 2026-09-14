@@ -51,8 +51,10 @@ final class NativeAssistantModel: ObservableObject {
         // Keep the shared Web session alive while the sheet is dismissed. The
         // model itself lives on HybridWebViewStore, so leaving the AI surface
         // must not cancel or orphan this task.
-        streamTask = Task { @MainActor [weak self, session] in
-            guard let self else { return }
+        // Retain the model for the lifetime of the request. The assistant
+        // surface is a dismissible sheet, so its view can disappear while the
+        // shared Web session continues delivering the answer.
+        streamTask = Task { @MainActor [self, session] in
             do {
                 let reply = try await session.nativeAssistantStream(
                     message: text,

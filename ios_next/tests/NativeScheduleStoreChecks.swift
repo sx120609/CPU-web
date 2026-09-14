@@ -86,6 +86,10 @@ struct NativeScheduleStoreChecks {
         let mergedCourses = NativeScheduleCourseBlockMerger.merge([
             NativeScheduleCourseBlockRecord(id: "a", course: duplicateCourse, bigSlot: 2, startSlot: 3, endSlot: 4),
             NativeScheduleCourseBlockRecord(id: "b", course: duplicateSubset, bigSlot: 2, startSlot: 3, endSlot: 3),
+            // JWXT can repeat the same explicit 03-04 range under a physical
+            // neighbouring big-slot row. The renderer must keep that range
+            // intact so the records overlap and collapse into one card.
+            NativeScheduleCourseBlockRecord(id: "a-row-1", course: duplicateCourse, bigSlot: 1, startSlot: 3, endSlot: 4),
             NativeScheduleCourseBlockRecord(id: "c", course: distinctTeacher, bigSlot: 2, startSlot: 3, endSlot: 4),
             NativeScheduleCourseBlockRecord(id: "d", course: adjacentClass, bigSlot: 3, startSlot: 5, endSlot: 6),
             NativeScheduleCourseBlockRecord(id: "e", course: formattedDuplicate, bigSlot: 2, startSlot: 3, endSlot: 3),

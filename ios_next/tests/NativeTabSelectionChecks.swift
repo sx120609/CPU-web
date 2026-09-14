@@ -29,6 +29,7 @@ final class HybridWebViewStore {
     var onFailure: ((String) -> Void)?
     var bridgeReady = true
     var errorMessage: String?
+    var authState = NativeAuthState(ready: false)
     var destinations: [String] = []
     var activeTab: ShellTab = .home
     var webViewCreations = 0
@@ -37,12 +38,17 @@ final class HybridWebViewStore {
     var isShowingAuthPage = false
     var sessionCookie = false
     func reportAuth(_ account: String, ready: Bool = true) {
-        onAuthStateChanged?(NativeAuthState(account: account, ready: ready))
+        authState = NativeAuthState(account: account, ready: ready)
+        onAuthStateChanged?(authState)
     }
     func activate(tab: ShellTab) { activeTab = tab }
     func navigate(path: String) { destinations.append(path) }
     func makeWebView() -> Int { webViewCreations += 1; return 0 }
     func hasSessionCookie() async -> Bool { sessionCookie }
+    func waitForAuthState(timeout: Duration = .seconds(6)) async -> NativeAuthState? {
+        authState.ready ? authState : nil
+    }
+    func refreshAuthCapability() async -> NativeAuthState? { authState }
     func setBackForwardNavigationGesturesEnabled(_ enabled: Bool) { backForwardNavigationGesturesEnabled = enabled }
 }
 @MainActor
