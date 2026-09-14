@@ -335,6 +335,16 @@ struct NativeScheduleView: View {
             }
             Section("更多") {
                 Button("课表设置与背景", systemImage: "slider.horizontal.3", action: onDeviceSettings)
+                ShareLink(
+                    item: scheduleShareText(result),
+                    subject: Text("药大拾间课表"),
+                    message: Text("第 (store.selectedWeek) 周课表")
+                ) {
+                    Label("分享本周课表", systemImage: "square.and.arrow.up")
+                }
+                Button("导出本周日历", systemImage: "calendar.badge.plus") {
+                    exportCurrentWeek(result)
+                }
             }
         } label: {
             Image(systemName: "ellipsis.circle")
@@ -1017,6 +1027,41 @@ struct NativeScheduleView: View {
 
     private func refresh() {
         requestLoad(force: true)
+    }
+
+    private func scheduleShareText(_ result: NativeScheduleResult) -> String {
+        let week = store.selectedWeek.isEmpty ? result.currentWeek : store.selectedWeek
+        var lines = ["药大拾间 · (semesterTitle(result)) · 第 (week) 周"]
+        for day in 1...7 {
+            let courses = blocks(for: day, week: Int(week), result: result)
+            guard !courses.isEmpty else { continue }
+            lines.append("")
+            lines.append(dayLabel(day))
+            for block in courses {
+                let details = [
+                    block.course.name.trimmedNonEmpty,
+                    preferences.showLocation ? block.course.location?.trimmedNonEmpty : nil,
+                    preferences.showTeacher ? block.course.teacher?.trimmedNonEmpty : nil,
+                    "第 (block.startSlot)-(block.endSlot) 节",
+                ].compactMap { $0 }
+                lines.append("· " + details.joined(separator: " · "))
+            }
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    private func exportCurrentWeek(_ result: NativeScheduleResult) {
+        guard let week = Int(store.selectedWeek), let calendar = store.calendar,
+              let weekData = calendar.weeks.first(where: { $0.week == week }) else {
+            return
+        }
+        let fileName = "课表-(store.selectedSemester)-第(week)周.ics"
+        let ics = NativeScheduleICSExporter.make(
+            result: result,
+            week: weekData,
+            periods: NativeSchedulePeriod.bundledTimetable
+        )
+        NativeScheduleSharePresenter.presentTemporaryFile(contents: ics, fileName: fileName)
     }
 
     private func presentAddCourse(day: Int, week: Int?, startSlot: Int) {
@@ -2765,10 +2810,15 @@ private struct NativeScheduleRefreshScrollView<Content: View>: UIViewControllerR
         }
 
         func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
-            guard pullThresholdReached, refreshTask == nil, !refreshControl.isRefreshing else { return }
+            // On short timetable pages UIKit can bounce back one frame before
+            // `scrollViewDidScroll` records the threshold. Read the final
+            // offset as well so a real pull cannot be lost to that frame.
+            let threshold = -(scrollView.adjustedContentInset.top + max(44, refreshControl.bounds.height * 0.85))
+            let didPullPastThreshold = pullThresholdReached || scrollView.contentOffset.y <= threshold
+            guard didPullPastThreshold, refreshTask == nil, !refreshControl.isRefreshing else { return }
             pullThresholdReached = false
             refreshControl.beginRefreshing()
-            let top = -(scrollView.adjustedContentInset.top + max(52, refreshControl.bounds.height * 0.9))
+            let top = -(scrollView.adjustedContentInset.top + max(44, refreshControl.bounds.height * 0.85))
             scrollView.setContentOffset(CGPoint(x: scrollView.contentOffset.x, y: top), animated: true)
             didPull(refreshControl)
         }
@@ -2781,6 +2831,132 @@ private struct NativeScheduleRefreshScrollView<Content: View>: UIViewControllerR
 
 private extension String {
     var nilIfEmpty: String? { isEmpty ? nil : self }
+}
+
+@MainActor
+private enum NativeScheduleSharePresenter {
+    static func presentTemporaryFile(contents: String, fileName: String) {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
+        do {
+            try contents.write(to: url, atomically: true, encoding: .utf8)
+            present(items: [url])
+        } catch {
+            // The schedule menu is intentionally silent here; a failed share
+            // should never replace a visible timetable with an error page.
+        }
+    }
+
+    private static func present(items: [Any]) {
+        guard let scene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first(where: { $0.activationState == .foregroundActive }),
+              let window = scene.windows.first(where: \.isKeyWindow) ?? scene.windows.first,
+              let root = window.rootViewController else { return }
+        let presenter = topViewController(root)
+        let controller = UIActivityViewController(activityItems: items, applicationActivities: nil)
+        if let popover = controller.popoverPresentationController {
+            popover.sourceView = presenter.view
+            popover.sourceRect = CGRect(
+                x: presenter.view.bounds.midX,
+                y: presenter.view.bounds.maxY - 20,
+                width: 1,
+                height: 1
+            )
+        }
+        presenter.present(controller, animated: true)
+    }
+
+    private static func topViewController(_ controller: UIViewController) -> UIViewController {
+        if let presented = controller.presentedViewController { return topViewController(presented) }
+        if let navigation = controller as? UINavigationController, let visible = navigation.visibleViewController {
+            return topViewController(visible)
+        }
+        if let tab = controller as? UITabBarController, let selected = tab.selectedViewController {
+            return topViewController(selected)
+        }
+        return controller
+    }
+}
+
+private enum NativeScheduleICSExporter {
+    static func make(
+        result: NativeScheduleResult,
+        week: NativeCalendarWeek,
+        periods: [NativeSchedulePeriod]
+    ) -> String {
+        var lines = [
+            "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//CPUTime//Schedule//CN",
+            "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
+        ]
+        for cell in result.cells where (1...7).contains(cell.day) {
+            guard week.days.indices.contains(cell.day - 1),
+                  let day = parseDate(week.days[cell.day - 1]) else { continue }
+            for course in cell.courses {
+                let range = NativeSchedulePeriod.normalizedRange(
+                    bigSlot: cell.bigSlot,
+                    startSlot: course.startSlot,
+                    endSlot: course.endSlot,
+                    periods: periods
+                )
+                guard let startPeriod = periods.first(where: { $0.number == range.start }),
+                      let endPeriod = periods.first(where: { $0.number == range.end }),
+                      let start = date(day: day, time: startPeriod.startTime),
+                      let end = date(day: day, time: endPeriod.endTime), end > start else { continue }
+                let identity = course.nativeId ?? course.sourceKey ?? course.name
+                let uid = "(week.week)-(cell.day)-(range.start)-(range.end)-(identity)"
+                    .unicodeScalars.map { $0.value < 128 ? String($0) : String(format: "%02X", $0.value) }.joined()
+                lines.append("BEGIN:VEVENT")
+                lines.append("UID:\(escape(uid))@cputime")
+                lines.append("DTSTAMP:\(format(Date.now))")
+                lines.append("DTSTART;TZID=Asia/Shanghai:\(format(start))")
+                lines.append("DTEND;TZID=Asia/Shanghai:\(format(end))")
+                lines.append("SUMMARY:\(escape(course.name.trimmedNonEmpty ?? "课程"))")
+                if let location = course.location?.trimmedNonEmpty { lines.append("LOCATION:\(escape(location))") }
+                let details = [course.teacher?.trimmedNonEmpty, course.slotNote?.trimmedNonEmpty]
+                    .compactMap { $0 }.joined(separator: " · ")
+                if !details.isEmpty { lines.append("DESCRIPTION:\(escape(details))") }
+                lines.append("END:VEVENT")
+            }
+        }
+        lines.append("END:VCALENDAR")
+        return lines.joined(separator: "\r\n") + "\r\n"
+    }
+
+    private static func parseDate(_ value: String) -> Date? {
+        let parts = value.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3 else { return nil }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Shanghai")!
+        return calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
+    }
+
+    private static func date(day: Date, time: String) -> Date? {
+        let parts = time.split(separator: ":").compactMap { Int($0) }
+        guard parts.count >= 2 else { return nil }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Shanghai")!
+        var components = calendar.dateComponents([.year, .month, .day], from: day)
+        components.hour = parts[0]
+        components.minute = parts[1]
+        components.second = 0
+        return calendar.date(from: components)
+    }
+
+    private static func format(_ value: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "Asia/Shanghai")
+        formatter.dateFormat = "yyyyMMdd'T'HHmmss"
+        return formatter.string(from: value)
+    }
+
+    private static func escape(_ value: String) -> String {
+        value.replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: ";", with: "\\;")
+            .replacingOccurrences(of: ",", with: "\\,")
+            .replacingOccurrences(of: "\n", with: "\\n")
+    }
 }
 
 #Preview {

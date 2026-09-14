@@ -49,6 +49,8 @@ function mergeSemesterOptions(...groups: SemesterOption[][]): SemesterOption[] {
 export interface ScheduleCourse {
   /** 课程名 */
   name: string;
+  /** Stable identity when an upstream source exposes one. */
+  nativeId?: string;
   /** 任课教师 */
   teacher?: string;
   /** 1-17(周) / 1-17(单周) / 1-17(双周) 原始文本 */

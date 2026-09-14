@@ -12,6 +12,7 @@ export interface NativeScheduleWeek {
 
 export interface NativeScheduleCourse {
   name: string;
+  nativeId?: string;
   teacher?: string;
   weeks: string;
   weekList: number[];
@@ -414,10 +415,6 @@ export class NativeScheduleStore {
         const fallbackEnd = Math.max(fallbackStart, Math.min(11, cell.bigSlot * 2));
         let startSlot = Math.max(1, Math.min(11, Number(course.startSlot) || fallbackStart));
         let endSlot = Math.max(startSlot, Math.min(11, Number(course.endSlot) || fallbackEnd));
-        if (endSlot < fallbackStart || startSlot > fallbackEnd) {
-          startSlot = fallbackStart;
-          endSlot = fallbackEnd;
-        }
         const block: NativeCourseBlock = { day, bigSlot: cell.bigSlot, startSlot, endSlot, course };
         const index = blocks.findIndex((candidate: NativeCourseBlock) => this.canMergeBlocks(candidate, block));
         if (index < 0) {
@@ -442,6 +439,9 @@ export class NativeScheduleStore {
     const sameLocation = this.locationsCompatible(left.course.location, right.course.location);
     const overlaps = this.rangesOverlap(left, right);
     const adjacent = left.endSlot + 1 === right.startSlot || right.endSlot + 1 === left.startSlot;
+    const leftIdentity = this.explicitIdentity(left.course);
+    const rightIdentity = this.explicitIdentity(right.course);
+    if (leftIdentity && rightIdentity && leftIdentity !== rightIdentity) return false;
     return sameName && sameTeacher && sameLocation && (overlaps || adjacent);
   }
 
@@ -459,6 +459,14 @@ export class NativeScheduleStore {
     const a = this.locationIdentity(left);
     const b = this.locationIdentity(right);
     return !a || !b || a === b;
+  }
+
+  private explicitIdentity(course: NativeScheduleCourse): string {
+    if (course.sourceKey) return `source:${course.sourceKey}`;
+    if (course.nativeId && (course.nativeId.startsWith('source:') || course.nativeId.startsWith('custom:'))) {
+      return course.nativeId;
+    }
+    return '';
   }
 
   private identityPart(value?: string): string {
@@ -486,7 +494,7 @@ export class NativeScheduleStore {
 
   private courseWithRange(course: NativeScheduleCourse, startSlot: number, endSlot: number, next?: NativeScheduleCourse): NativeScheduleCourse {
     const weekList = [...new Set([...(course.weekList ?? []), ...(next?.weekList ?? [])])].sort((a: number, b: number) => a - b);
-    return { name: course.name, teacher: course.teacher ?? next?.teacher, weeks: weekList.length ? this.weekText(weekList) : (course.weeks || next?.weeks || ''), weekList,
+    return { name: course.name, nativeId: course.nativeId ?? next?.nativeId, teacher: course.teacher ?? next?.teacher, weeks: weekList.length ? this.weekText(weekList) : (course.weeks || next?.weeks || ''), weekList,
       location: course.location ?? next?.location, slotNote: this.slotLabel(startSlot, endSlot), startSlot, endSlot,
       sourceKey: course.sourceKey, customId: course.customId, custom: course.custom, orphaned: course.orphaned };
   }

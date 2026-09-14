@@ -1,5 +1,7 @@
 export interface ScheduleCourse {
   name: string;
+  /** Stable occurrence identity supplied by the native bridge when available. */
+  nativeId?: string;
   teacher?: string;
   weeks: string;
   weekList: number[];

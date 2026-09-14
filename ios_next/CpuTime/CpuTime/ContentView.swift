@@ -168,11 +168,18 @@ private struct WelcomeView: View {
                 .tint(.cpuBrand)
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .padding(.bottom, 12)
-                Text("CPU · 药大拾间")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .padding(.bottom, 16)
-                    .opacity(appeared ? 1 : 0)
+                HStack(spacing: 6) {
+                    Image("CPULogo")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 16, height: 16)
+                        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                    Text("药大拾间")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.bottom, 16)
+                .opacity(appeared ? 1 : 0)
             }
         }
         .task {
@@ -201,7 +208,7 @@ private struct LaunchWaitingView: View {
                     Text("药大拾间")
                         .font(.title3.weight(.bold))
                         .foregroundStyle(Color(red: 15 / 255, green: 143 / 255, blue: 127 / 255))
-                    Text("CPU 校园互助服务")
+                    Text("校园服务正在准备")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -703,7 +710,10 @@ struct NativeShellView: View {
                 .presentationDetents([.large])
                 .presentationDragIndicator(.hidden)
                 .presentationCornerRadius(28)
-                .presentationBackground(.regularMaterial)
+                // Keep the AI surface opaque while WebKit is restoring its
+                // route. A translucent sheet briefly revealed the underlying
+                // page during streaming and looked like a flash.
+                .presentationBackground(Color(uiColor: .systemBackground))
                 .tint(.cpuBrand)
                 .preferredColorScheme(webSession.pageColorScheme)
             }

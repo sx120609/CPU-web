@@ -187,11 +187,11 @@ test('a distinct course or custom identity in the same slot is preserved', () =>
     {name:'另一门课程',weeks:'2周',weekList:[2]}
   ]}]; h.accept(data); assert.equal(h.store.blocksForDay(1).length,3);
 });
-test('native grid uses the actual table position for an inconsistent school slot range', () => {
+test('native grid preserves an explicit school slot range even when the table row is inconsistent', () => {
   const h=harness(); h.store.markBridgeReady(); const data=h.snapshot();
   data.data.cells=[{day:1,bigSlot:3,courses:[{name:'实验',weeks:'2周',weekList:[2],startSlot:1,endSlot:2}]}];
   h.accept(data); const [block]=h.store.blocksForDay(1);
-  assert.equal(block.startSlot,5); assert.equal(block.endSlot,6); assert.equal(block.bigSlot,3);
+  assert.equal(block.startSlot,1); assert.equal(block.endSlot,2); assert.equal(block.bigSlot,1);
 });
 test('previous and next week follow available options and stop at both boundaries', () => {
   const h=harness(); h.store.markBridgeReady(); h.accept(h.snapshot('fall','2',true));

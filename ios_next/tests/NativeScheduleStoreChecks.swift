@@ -101,6 +101,33 @@ struct NativeScheduleStoreChecks {
         precondition(mergedCourses.contains(where: { $0.startSlot == 5 && $0.endSlot == 6 }),
                      "Adjacent classes with the same display text must remain separate")
 
+        let parallelA = NativeScheduleCourse(
+            nativeId: "custom:parallel-a",
+            name: "同名课程",
+            teacher: "同一教师",
+            weeks: "1-8周",
+            weekList: Array(1...8),
+            location: "同一教室",
+            startSlot: 1,
+            endSlot: 2
+        )
+        let parallelB = NativeScheduleCourse(
+            nativeId: "custom:parallel-b",
+            name: "同名课程",
+            teacher: "同一教师",
+            weeks: "1-8周",
+            weekList: Array(1...8),
+            location: "同一教室",
+            startSlot: 1,
+            endSlot: 2
+        )
+        let parallelCourses = NativeScheduleCourseBlockMerger.merge([
+            NativeScheduleCourseBlockRecord(id: "parallel-a", course: parallelA, bigSlot: 1, startSlot: 1, endSlot: 2),
+            NativeScheduleCourseBlockRecord(id: "parallel-b", course: parallelB, bigSlot: 1, startSlot: 1, endSlot: 2),
+        ])
+        precondition(parallelCourses.count == 2,
+                     "Parallel custom courses with identical visible fields must remain distinct")
+
         let cancelledStore = NativeScheduleStore(
             loader: { _ in NativeScheduleSnapshot(cancelled: true) },
             archive: nil

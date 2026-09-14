@@ -169,6 +169,11 @@ final class NativeAssistantModel: ObservableObject {
             let delay: UInt64 = self?.streamTask == nil ? 450_000_000 : 1_200_000_000
             try? await Task.sleep(nanoseconds: delay)
             guard let self, let session, !Task.isCancelled else { return }
+            // Re-read the Web session after the quiet period. WebKit can emit
+            // an empty auth report while the native sheet changes routes; only
+            // a confirmed probe may turn that transient value into a logout.
+            _ = await session.refreshAuthCapability()
+            guard !Task.isCancelled else { return }
             self.applyConfirmedAccountChange(using: session)
         }
     }

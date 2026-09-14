@@ -107,6 +107,7 @@ private struct ScheduleLiveActivityLogo: View {
     var body: some View {
         Image("CPULogo")
             .resizable()
+            .renderingMode(.original)
             .aspectRatio(contentMode: .fit)
             .frame(width: size, height: size)
             .clipShape(RoundedRectangle(cornerRadius: size * 0.22, style: .continuous))

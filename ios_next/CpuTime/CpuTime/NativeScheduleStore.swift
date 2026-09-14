@@ -653,7 +653,22 @@ public enum NativeScheduleCourseBlockMerger {
         let sameSource = a.sourceKey?.trimmedNonEmpty != nil
             && a.sourceKey == b.sourceKey
         guard sameName, compatibleTeacher, compatibleLocation else { return false }
+        // `sourceKey`/`nativeId` are the only stable identity supplied by the
+        // bridge for parallel sections that share all visible fields. Treat
+        // generated official ids as fallbacks because repeated physical rows
+        // intentionally reuse them and still need to collapse.
+        let leftIdentity = explicitIdentity(a)
+        let rightIdentity = explicitIdentity(b)
+        if let leftIdentity, let rightIdentity, leftIdentity != rightIdentity {
+            return false
+        }
         return rangesOverlap(left, right) || sameSource && rangesAdjacent(left, right)
+    }
+
+    private static func explicitIdentity(_ course: NativeScheduleCourse) -> String? {
+        guard let native = course.nativeId?.trimmedNonEmpty,
+              native.hasPrefix("source:") || native.hasPrefix("custom:") else { return nil }
+        return native
     }
 
     private static func rangesOverlap(
@@ -744,7 +759,7 @@ public enum NativeScheduleCourseBlockMerger {
             ? "\(String(format: "%02d", startSlot))节"
             : "\(String(format: "%02d", startSlot))-\(String(format: "%02d", endSlot))节"
         return NativeScheduleCourse(
-            nativeId: course.nativeId,
+            nativeId: course.nativeId ?? next?.nativeId,
             name: course.name,
             teacher: course.teacher ?? next?.teacher,
             weeks: weeks,

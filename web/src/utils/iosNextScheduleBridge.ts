@@ -553,6 +553,18 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
     rightRange: { start: number; end: number },
   ) => {
     if (left.customId || right.customId) return left.customId === right.customId;
+    // A source/native identity is the only reliable way to distinguish two
+    // parallel sections that happen to share the same title, room and slot.
+    // A generated `official|...` id is deliberately treated as a fallback: it
+    // is shared by repeated physical rows for one occurrence and must still
+    // collapse those rows.
+    const explicitIdentity = (course: typeof left) => {
+      const native = normalizeText(course.nativeId);
+      return native && /^(?:source:|custom:)/.test(native) ? native : "";
+    };
+    const leftIdentity = explicitIdentity(left);
+    const rightIdentity = explicitIdentity(right);
+    if (leftIdentity && rightIdentity && leftIdentity !== rightIdentity) return false;
     const sameSource = Boolean(left.sourceKey && right.sourceKey && left.sourceKey === right.sourceKey);
     const sameName = normalizeIdentityText(left.name) === normalizeIdentityText(right.name);
     return sameName
