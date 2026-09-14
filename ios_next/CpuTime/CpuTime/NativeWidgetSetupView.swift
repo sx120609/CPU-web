@@ -67,9 +67,9 @@ private struct CalendarImportSection: View {
         Task { @MainActor in
             do {
                 let count = try await NativeScheduleCalendarImporter().importSnapshot(snapshot)
-                message = "已同步 (count) 个课程事件"
+                message = "已同步 \(count) 个课程事件"
             } catch {
-                message = "导入失败：(error.localizedDescription)"
+                message = "导入失败：\(error.localizedDescription)"
             }
             importing = false
         }
@@ -206,9 +206,9 @@ private final class NativeScheduleCalendarImporter {
     }
 
     private func notes(for course: NativeScheduleCourse, week: Int, semester: String) -> String {
-        var lines = ["学期：(semester)", "周次：第 (week) 周"]
-        if let teacher = course.teacher?.trimmingCharacters(in: .whitespacesAndNewlines), !teacher.isEmpty { lines.append("老师：(teacher)") }
-        if let note = course.slotNote?.trimmingCharacters(in: .whitespacesAndNewlines), !note.isEmpty { lines.append("备注：(note)") }
+        var lines = ["学期：\(semester)", "周次：第 \(week) 周"]
+        if let teacher = course.teacher?.trimmingCharacters(in: .whitespacesAndNewlines), !teacher.isEmpty { lines.append("老师：\(teacher)") }
+        if let note = course.slotNote?.trimmingCharacters(in: .whitespacesAndNewlines), !note.isEmpty { lines.append("备注：\(note)") }
         return lines.joined(separator: "\n")
     }
 

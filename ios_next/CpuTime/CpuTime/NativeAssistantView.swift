@@ -27,6 +27,7 @@ struct NativeAssistantView: View {
                     conversation
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 composer
             }
@@ -53,6 +54,11 @@ struct NativeAssistantView: View {
                 }
             }
             .tint(.cpuBrand)
+            // Keep the assistant at one stable presentation height. Without a
+            // fixed large detent, iOS may promote a medium sheet when the
+            // keyboard appears, which makes the welcome copy jump upward.
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
             .alert("拾间 AI", isPresented: errorAlertBinding) {
                 Button("知道了", role: .cancel) { errorMessage = "" }
             } message: {
@@ -107,6 +113,7 @@ struct NativeAssistantView: View {
             .frame(maxWidth: 620, alignment: .leading)
             .padding(20)
         }
+        .scrollDismissesKeyboard(.interactively)
     }
 
     private var conversation: some View {
@@ -264,15 +271,16 @@ struct NativeAssistantView: View {
     private var composer: some View {
         HStack(alignment: .bottom, spacing: 8) {
             TextField("给拾间 AI 发消息", text: $input, axis: .vertical)
-                .lineLimit(1...4)
+                .lineLimit(1...5)
                 .focused($composerFocused)
                 .textInputAutocapitalization(.sentences)
                 .autocorrectionDisabled(false)
                 .font(.body)
                 .textFieldStyle(.plain)
+                .frame(minHeight: 42, maxHeight: 122, alignment: .topLeading)
                 .padding(.horizontal, 13)
                 .padding(.vertical, 10)
-                .background(Color(uiColor: .secondarySystemBackground))
+                .background(Color(uiColor: .tertiarySystemFill))
                 .overlay {
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
                         .stroke(composerFocused ? Color.cpuBrand : Color(uiColor: .separator).opacity(0.65), lineWidth: composerFocused ? 1.5 : 1)
@@ -295,8 +303,9 @@ struct NativeAssistantView: View {
             .accessibilityLabel("发送")
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 9)
-        .background(.ultraThinMaterial)
+        .padding(.top, 9)
+        .padding(.bottom, 8)
+        .background(.bar)
         .overlay(alignment: .top) { Divider() }
     }
 
@@ -311,7 +320,6 @@ struct NativeAssistantView: View {
         let text = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !isLoading else { return }
         input = ""
-        composerFocused = false
         let history = messages.suffix(60).map {
             [
                 "role": $0.role.rawValue,

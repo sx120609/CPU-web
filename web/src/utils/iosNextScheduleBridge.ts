@@ -392,6 +392,9 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
   const unauthorized = () => ({
     version: 1,
     auth: { authenticated: false, account: accountKey() },
+    error: jwxt.authorizationExpired
+      ? "教务授权已失效，已保留上次课表；完成教务授权后可继续更新。"
+      : "请先完成教务授权。",
   });
 
   watch(() => [
@@ -465,7 +468,10 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
     if (cached) return Promise.resolve(cached);
     const pending = entry.pending.get(week);
     if (pending) return pending;
-    const request = jwxt.withSessionRetry(() => jwxtApi.schedule({ semester: entry.semester, week }, { silent: true }))
+    // Native schedule entry is cache-first. A missing/expired JWXT session is
+    // reported to Swift as a recoverable authorization state; it must not
+    // silently start a full SSO recovery while the user is only browsing.
+    const request = jwxtApi.schedule({ semester: entry.semester, week }, { silent: true })
       .then((response: { parsed?: unknown }) => {
         const data = parsed(response);
         if (!valid(entry, epoch)) throw new Error("课表会话已变化");
@@ -523,7 +529,7 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
     }).finally(() => { entry.background = undefined; });
   };
 
-  const fetchSchedule = async (semester?: string, week?: string, force = false) => {
+  const fetchSchedule = async (semester?: string, week?: string, force = false, background = false) => {
     const selection = ++selectionRevision;
     const initialGeneration = generation;
     try {
@@ -541,15 +547,20 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
       }
       jwxt.hydrate();
       const ready = await jwxt.ensureSession({
-        refresh: force && !options.fastRefresh, silent: true, allowAutoLogin: true, repairUnavailableSession: false,
+        refresh: force && !options.fastRefresh,
+        silent: true,
+        // A foreground pull is an explicit request and may use saved
+        // credentials once. Background revalidation never does so.
+        allowAutoLogin: Boolean(force && !options.fastRefresh && !background),
+        repairUnavailableSession: false,
       });
       if (!ready) return unauthorized();
       const epoch = generation;
       const graduate = auth.academicIdentity === "graduate";
       if (graduate) {
-        const data = parsed(await jwxt.withSessionRetry(() => jwxtApi.graduateSchedule({
+        const data = parsed(await jwxtApi.graduateSchedule({
           semester: semester || undefined, refresh: force ? "1" : undefined,
-        }, { silent: true })));
+        }, { silent: true }));
         if (generation !== epoch || !jwxt.isLoggedIn) return unauthorized();
         const calendar = buildGraduateFallbackCalendar(data);
         const expanded = extendScheduleWeeksToCalendar(data, calendar) ?? data;
@@ -573,7 +584,7 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
       }
       if (!entry) {
         const loadMetadata = (resolved: string) => Promise.all([
-          jwxt.withSessionRetry(() => jwxtApi.calendar({ semester: resolved }, { silent: true }))
+          jwxtApi.calendar({ semester: resolved }, { silent: true })
             .then((result: { parsed: unknown }) => hydrateCalendar(result.parsed as CalendarResult)).catch(() => null),
           auth.isLoggedIn ? jwxtApi.getScheduleEdits(resolved, { silent: true })
             .then(result => normalizeScheduleEditsState(result.edits)) : Promise.resolve(normalizeScheduleEditsState(null)),
@@ -586,9 +597,9 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
         let requestedDataWeek: string | undefined;
         const loadInitial = async (requested?: string) => {
           requestedDataWeek = requested === "all" ? undefined : requested;
-          return parsed(await jwxt.withSessionRetry(() => jwxtApi.schedule({
+          return parsed(await jwxtApi.schedule({
             semester: semester || undefined, week: requested, refresh: force ? "1" : undefined,
-          }, { silent: true })));
+          }, { silent: true }));
         };
         let data: ScheduleResult;
         if (options.fastRefresh && force && week) {
@@ -657,19 +668,19 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
     entry.preferredWeek = week;
     prefetch(entry, generation);
   };
-  host.CPUTimeNativeScheduleFetch = (semester?: string, week?: string, force = false) => {
-    const key = JSON.stringify([generation, semester || "", week || "", force]);
+  host.CPUTimeNativeScheduleFetch = (semester?: string, week?: string, force = false, background = false) => {
+    const key = JSON.stringify([generation, semester || "", week || "", force, background]);
     const pending = foreground.get(key);
     if (pending) return pending;
-    const request = fetchSchedule(semester, week, force).finally(() => {
+    const request = fetchSchedule(semester, week, force, background).finally(() => {
       if (foreground.get(key) === request) foreground.delete(key);
     });
     foreground.set(key, request);
     return request;
   };
   if (host.CPUTimeNative) {
-    host.CPUTimeNative.loadSchedule = (options: { semester?: string; week?: string; force?: boolean } = {}) =>
-      host.CPUTimeNativeScheduleFetch(options.semester, options.week, options.force);
+    host.CPUTimeNative.loadSchedule = (options: { semester?: string; week?: string; force?: boolean; background?: boolean } = {}) =>
+      host.CPUTimeNativeScheduleFetch(options.semester, options.week, options.force, options.background);
     if (router) host.CPUTimeNative.openWebRoute = (path: string) => router.push(path);
     host.CPUTimeNative.ready?.();
   }

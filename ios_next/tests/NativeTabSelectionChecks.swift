@@ -4,12 +4,27 @@ import Foundation
 // compiled unchanged, so these checks exercise who owns the actual selection.
 struct NativeScheduleSnapshot {}
 
+struct NativeAuthState {
+    let account: String
+    let authenticated: Bool
+    let ready: Bool
+    let canAccessAdmin: Bool
+
+    init(account: String = "", authenticated: Bool? = nil, ready: Bool = true, canAccessAdmin: Bool = false) {
+        self.account = account
+        self.authenticated = authenticated ?? !account.isEmpty
+        self.ready = ready
+        self.canAccessAdmin = canAccessAdmin
+    }
+}
+
 @MainActor
 final class HybridWebViewStore {
     var onSchedulePrefetched: ((NativeScheduleSnapshot) -> Void)?
     var onNavigate: ((String, String) -> Void)?
     var onRoute: ((String, String) -> Void)?
     var onAuthChanged: ((String) -> Void)?
+    var onAuthStateChanged: ((NativeAuthState) -> Void)?
     var onBridgeReady: (() -> Void)?
     var onFailure: ((String) -> Void)?
     var bridgeReady = true
@@ -21,6 +36,9 @@ final class HybridWebViewStore {
     var backForwardNavigationGesturesEnabled = true
     var isShowingAuthPage = false
     var sessionCookie = false
+    func reportAuth(_ account: String, ready: Bool = true) {
+        onAuthStateChanged?(NativeAuthState(account: account, ready: ready))
+    }
     func activate(tab: ShellTab) { activeTab = tab }
     func navigate(path: String) { destinations.append(path) }
     func makeWebView() -> Int { webViewCreations += 1; return 0 }
@@ -116,7 +134,7 @@ struct NativeTabSelectionChecks {
         precondition(shell.selectedTab == .profile, "The gate must refuse opening another Web tab")
 
         // A non-empty account report is a completed login: back to the shell.
-        web.onAuthChanged?("acct-1")
+        web.reportAuth("acct-1")
         precondition(!shell.requiresLogin && shell.isAuthResolved)
         precondition(shell.selectedTab == .home)
         precondition(web.activeTab == .home)
@@ -138,7 +156,7 @@ struct NativeTabSelectionChecks {
         // cancel it; with the cookie gone the gate follows right after.
         shell.signOutGrace = .milliseconds(30)
         shell.sessionRestoreWindow = .milliseconds(30)
-        web.onAuthChanged?("")
+        web.reportAuth("")
         try? await Task.sleep(for: .milliseconds(250))
         precondition(shell.requiresLogin && shell.selectedTab == .profile)
         precondition(web.blocksInternalNavigation && !web.backForwardNavigationGesturesEnabled)
@@ -165,9 +183,9 @@ struct NativeTabSelectionChecks {
         restoreShell.sessionRestoreWindow = .milliseconds(120)
         restoreShell.connect(webSession: restoreWeb, scheduleStore: NativeScheduleStore())
         await restoreShell.resolveInitialAuth(webSession: restoreWeb)
-        restoreWeb.onAuthChanged?("")
+        restoreWeb.reportAuth("")
         precondition(!restoreShell.requiresLogin, "An empty report must not gate on its own")
-        restoreWeb.onAuthChanged?("acct-restore")
+        restoreWeb.reportAuth("acct-restore")
         try? await Task.sleep(for: .milliseconds(400))
         precondition(!restoreShell.requiresLogin && restoreShell.hasAuthenticatedSession,
                      "The restored account must cancel the pending gate")
@@ -182,7 +200,7 @@ struct NativeTabSelectionChecks {
         staleShell.sessionRestoreWindow = .milliseconds(120)
         staleShell.connect(webSession: staleWeb, scheduleStore: NativeScheduleStore())
         await staleShell.resolveInitialAuth(webSession: staleWeb)
-        staleWeb.onAuthChanged?("")
+        staleWeb.reportAuth("")
         precondition(!staleShell.requiresLogin, "The gate waits out the grace first")
         try? await Task.sleep(for: .milliseconds(500))
         precondition(staleShell.requiresLogin && staleShell.selectedTab == .profile,
@@ -214,7 +232,7 @@ struct NativeTabSelectionChecks {
         let liveShell = NativeShellCoordinator()
         liveShell.connect(webSession: liveWeb, scheduleStore: NativeScheduleStore())
         await liveShell.resolveInitialAuth(webSession: liveWeb)
-        liveWeb.onAuthChanged?("acct-live")
+        liveWeb.reportAuth("acct-live")
         precondition(liveShell.hasAuthenticatedSession && !liveShell.requiresLogin)
         liveShell.openWeb(path: "/login", tab: .profile)
         precondition(liveShell.requiresLogin, "Opening the Web login page raises the gate")
@@ -228,7 +246,7 @@ struct NativeTabSelectionChecks {
         raceWeb.sessionCookie = false
         let raceShell = NativeShellCoordinator()
         raceShell.connect(webSession: raceWeb, scheduleStore: NativeScheduleStore())
-        raceWeb.onAuthChanged?("acct-race")
+        raceWeb.reportAuth("acct-race")
         precondition(!raceShell.requiresLogin && raceShell.isAuthResolved,
                      "A live report resolves auth without waiting for the cookie probe")
         precondition(raceShell.selectedTab == .schedule, "The launch report keeps the default tab")

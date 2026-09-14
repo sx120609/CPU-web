@@ -226,6 +226,10 @@ router.beforeEach(async (to) => {
     nativeShell.navigate(to.fullPath);
     return false;
   }
+  if (to.path === "/search" && isNativeScheduleShell() && typeof nativeShell?.openAssistant === "function") {
+    nativeShell.openAssistant();
+    return false;
+  }
   if (usesImmediateIosScroll()) {
     iosRouteTransitionEnabled.value = !iosHistoryTraversalPending && !isNativeTabNavigation();
     iosHistoryTraversalPending = false;

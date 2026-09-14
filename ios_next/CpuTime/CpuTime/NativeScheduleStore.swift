@@ -9,11 +9,20 @@ public struct NativeScheduleRequest: Hashable, Sendable {
     public let semester: String?
     public let week: String?
     public let force: Bool
+    /// Background revalidation must never trigger a credential recovery flow.
+    /// The visible grid stays usable while the bridge checks for changes.
+    public let background: Bool
 
-    public init(semester: String? = nil, week: String? = nil, force: Bool = false) {
+    public init(
+        semester: String? = nil,
+        week: String? = nil,
+        force: Bool = false,
+        background: Bool = false
+    ) {
         self.semester = semester?.trimmedNonEmpty
         self.week = week?.trimmedNonEmpty
         self.force = force
+        self.background = background
     }
 }
 
@@ -833,7 +842,8 @@ public final class NativeScheduleStore: ObservableObject {
             let snapshot = try await loader(NativeScheduleRequest(
                 semester: requestedSemester,
                 week: requestedWeek,
-                force: force
+                force: force,
+                background: background
             ))
             guard generation == requestGeneration else { return }
             if snapshot.cancelled {
@@ -1705,8 +1715,8 @@ public final class NativeScheduleWebViewLoader {
           return JSON.stringify({version: 1, source: 'unknown', auth: {authenticated: true}, error: 'bridge-unavailable'});
         }
         const value = typeof fetchSchedule === 'function'
-          ? await fetchSchedule(semester || null, week || null, Boolean(force))
-          : await loadSchedule({semester: semester || null, week: week || null, force: Boolean(force)});
+          ? await fetchSchedule(semester || null, week || null, Boolean(force), Boolean(background))
+          : await loadSchedule({semester: semester || null, week: week || null, force: Boolean(force), background: Boolean(background)});
         return typeof value === 'string' ? value : JSON.stringify(value);
         """
         let rawValue = try await webView.callAsyncJavaScript(
@@ -1714,7 +1724,8 @@ public final class NativeScheduleWebViewLoader {
             arguments: [
                 "semester": request.semester ?? "",
                 "week": request.week ?? "",
-                "force": request.force
+                "force": request.force,
+                "background": request.background
             ],
             in: nil,
             contentWorld: .page

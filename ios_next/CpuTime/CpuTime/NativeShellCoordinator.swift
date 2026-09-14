@@ -53,15 +53,19 @@ final class NativeShellCoordinator: ObservableObject {
         webSession.onRoute = { [weak self] path, source in
             self?.handleRouteChanged(path: path, source: source)
         }
-        webSession.onAuthChanged = { [weak self, weak scheduleStore] account in
+        // Site authentication and 教务 authorization are separate sessions.
+        // Only the explicit, ready site-auth report may open or close the
+        // native login gate. JWXT expiry is handled by the schedule bridge and
+        // must leave the cached timetable and Watch snapshot intact.
+        webSession.onAuthStateChanged = { [weak self, weak scheduleStore] state in
+            guard state.ready else { return }
+            let account = state.authenticated
+                ? state.account.trimmingCharacters(in: .whitespacesAndNewlines)
+                : ""
             scheduleStore?.handleAuthChanged(account: account)
             guard let self else { return }
             self.handleAuthChanged(account)
-            guard self.selectedTab == .schedule else { return }
-            // An empty account is a sign-out candidate. The store checks the
-            // cookie fingerprint before clearing its retained timetable, so a
-            // JWXT-only expiry must not trigger a second forced load here.
-            guard !account.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+            guard state.authenticated, !account.isEmpty, self.selectedTab == .schedule else { return }
             self.requestScheduleLoad(force: true)
         }
         webSession.onSchedulePrefetched = { [weak scheduleStore] snapshot in

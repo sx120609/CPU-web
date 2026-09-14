@@ -691,9 +691,14 @@ struct NativeShellView: View {
         }
         .sheet(isPresented: $assistantPresented) {
             NativeAssistantView(session: webSession) { path in
+                if path == "/search" {
+                    return
+                }
                 assistantPresented = false
                 shell.openWeb(path: path, tab: .home)
             }
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $quickEntryPresented) {
             quickEntrySheetContent()
@@ -702,6 +707,12 @@ struct NativeShellView: View {
         // The native top bar owns the appearance control, so its choice drives
         // the whole shell, including the native timetable and the tab bar.
         .preferredColorScheme(webSession.pageColorScheme)
+        .onAppear {
+            webSession.onAssistantRequested = { assistantPresented = true }
+        }
+        .onDisappear {
+            webSession.onAssistantRequested = nil
+        }
     }
 
     private var selection: Binding<ShellTab> {

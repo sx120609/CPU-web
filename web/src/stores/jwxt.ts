@@ -98,7 +98,7 @@ export const useJwxtStore = defineStore("jwxt", {
       // 站内独立账号可能没有任何学校侧会话；不要为这类账号伪造 JWXT 标记，
       // 否则教务启动会把缺失的教务记录当成过期会话并不断重试。
       const auth = useAuthStore();
-      if (!this.token && auth.token && auth.user?.studentSso !== false) {
+      if (!this.authorizationExpired && !this.token && auth.token && auth.user?.studentSso !== false) {
         setJwxtToken(JWXT_COOKIE_SESSION_MARKER);
         this.token = JWXT_COOKIE_SESSION_MARKER;
       }

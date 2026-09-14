@@ -7,8 +7,8 @@ import WebKit
 
 
 enum IOSNextWebConfiguration {
-    static let versionCode = 16
-    static let versionName = "3.4.0"
+    static let versionCode = 17
+    static let versionName = "3.5.0"
 
     static var appURL: URL {
         let configured = Bundle.main.object(forInfoDictionaryKey: "CPUAppURL") as? String
@@ -221,6 +221,10 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
     var onSchedulePrefetched: ((NativeScheduleSnapshot) -> Void)?
     var onNavigate: ((String, String) -> Void)?
     var onRoute: ((String, String) -> Void)?
+    /// Native shell entry point for the assistant. The Web router calls this
+    /// when an iOS shell link targets /search, so every native entry uses the
+    /// same keyboard-safe SwiftUI surface.
+    var onAssistantRequested: (() -> Void)?
     /// Legacy account-only observer retained for older test/integration hosts.
     var onAuthChanged: ((String) -> Void)?
     var onAuthStateChanged: ((NativeAuthState) -> Void)?
@@ -888,6 +892,8 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
         case "navigate":
             guard let path = body["path"] as? String else { return }
             onNavigate?(path, source)
+        case "assistant":
+            onAssistantRequested?()
         case "route":
             guard let path = body["path"] as? String else { return }
             currentPath = path
@@ -1088,6 +1094,7 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
             if (bridge.nativeNavigationDepth > 0) return false;
             return post({ type: 'navigate', path: String(path ?? '') });
           };
+          bridge.openAssistant = () => post({type: 'assistant'});
           bridge.ready = () => post({ type: 'ready' });
           bridge.schedulePrefetched = (snapshot) => post({type: 'schedulePrefetched', snapshot});
           bridge.scheduleWeekPrefetched = bridge.schedulePrefetched;
