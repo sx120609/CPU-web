@@ -210,9 +210,18 @@ async function loadHomeScope() {
     feedStates.forum.total = feedStates.forum.list.length;
   }
   homeError.value = "";
-  void loadSummary({ scope, fallback: cached });
-  void loadFeedPages(activeFeedStream.value);
-  void loadAds();
+  await Promise.all([
+    loadSummary({ scope, fallback: cached }),
+    loadFeedPages(activeFeedStream.value),
+    loadAds(),
+  ]);
+  // Restore only after the summary, feed and ad slots have settled. Each of
+  // them can insert content above the saved position and otherwise shifts the
+  // user back to a different height after the first successful scroll.
+  if (pendingRestoreState && !disposed) {
+    await nextTick();
+    await restoreScrollIfNeeded();
+  }
 }
 
 async function loadAds() {
@@ -286,7 +295,6 @@ async function loadFeedPages(stream: MobileHomeFeedStream) {
       state.loading = false;
       await nextTick();
       if (stream === activeFeedStream.value) {
-        await restoreScrollIfNeeded();
         observeLoadMore();
       }
     }
