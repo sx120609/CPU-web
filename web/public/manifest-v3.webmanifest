@@ -2,7 +2,7 @@
   "id": "/schedule",
   "name": "药大拾间",
   "short_name": "药大拾间",
-  "description": "面向中国药科大学学生的校园公告、教务数据与校园服务入口",
+  "description": "面向CPUer的校园公告、教务数据与校园服务入口",
   "start_url": "/schedule?source=pwa-v3",
   "scope": "/",
   "display": "standalone",
