@@ -7,7 +7,7 @@ import WebKit
 
 
 enum IOSNextWebConfiguration {
-    static let versionCode = 17
+    static let versionCode = 18
     static let versionName = "3.5.0"
 
     static var appURL: URL {
@@ -174,6 +174,10 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
     @Published private(set) var pageColorScheme: ColorScheme? = HybridWebViewStore.storedAppearanceScheme()
     @Published private(set) var appearanceMode: String = UserDefaults.standard.string(forKey: HybridWebViewStore.appearanceModeKey) ?? "system"
     @Published private(set) var isLoggedIn = false
+    /// The Web auth store is the authority for the site session. Keep the
+    /// latest complete report so the native shell can distinguish a real site
+    /// logout from a JWXT-only expiry or an early Pinia bootstrap update.
+    @Published private(set) var authState = NativeAuthState()
     /// Mirrors Web's `canAccessModuleAdmin` getter so the native quick menu
     /// exposes the same management entry points as the browser shell.
     @Published private(set) var canAccessAdmin = false
@@ -352,6 +356,22 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
         }
     }
 
+    /// Wait for the Web auth store to finish its initial cookie probe. A
+    /// cookie-only decision is unsafe because an expired cookie can still be
+    /// present, while a missing cookie can be repopulated by a cold WebKit
+    /// restore. This bounded wait keeps the launch surface stable and avoids
+    /// presenting the native login layer for a transient JWXT change.
+    func waitForAuthState(timeout: Duration = .seconds(6)) async -> NativeAuthState? {
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: timeout)
+        while clock.now < deadline {
+            if authState.ready { return authState }
+            try? await Task.sleep(for: .milliseconds(80))
+            if Task.isCancelled { return nil }
+        }
+        return authState.ready ? authState : nil
+    }
+
     /// The login gate is a one-way door: the page must not be swiped away.
     func setBackForwardNavigationGesturesEnabled(_ enabled: Bool) {
         makeWebView().allowsBackForwardNavigationGestures = enabled
@@ -515,7 +535,8 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
     /// before presenting the native quick menu. This matters after a cookie
     /// restore, when the menu can otherwise be opened before authChanged has
     /// reached SwiftUI.
-    func refreshAuthCapability() async {
+    @discardableResult
+    func refreshAuthCapability() async -> NativeAuthState? {
         let script = """
         return await (async () => {
           for (let attempt = 0; attempt < 20; attempt += 1) {
@@ -529,7 +550,7 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
           return false;
         })();
         """
-        guard let webView else { return }
+        guard let webView else { return nil }
         let result = try? await webView.callAsyncJavaScript(
             script,
             arguments: [:],
@@ -539,10 +560,19 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
         // The postMessage report is still sent by the Web bridge. Applying the
         // returned value here closes the race where the sheet is presented
         // before that message reaches SwiftUI.
-        guard let payload = result as? [String: Any],
-              let account = payload["account"] as? String else { return }
-        isLoggedIn = !account.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        canAccessAdmin = payload["canAccessAdmin"] as? Bool ?? false
+        guard let payload = result as? [String: Any] else { return nil }
+        let account = payload["account"] as? String ?? ""
+        let state = NativeAuthState(
+            account: account,
+            authenticated: payload["authenticated"] as? Bool
+                ?? !account.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            ready: payload["ready"] as? Bool ?? true,
+            canAccessAdmin: payload["canAccessAdmin"] as? Bool ?? false
+        )
+        authState = state
+        isLoggedIn = state.authenticated
+        canAccessAdmin = state.canAccessAdmin
+        return state
     }
 
     func setAppearanceMode(_ mode: String) {
@@ -897,11 +927,26 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
         case "route":
             guard let path = body["path"] as? String else { return }
             currentPath = path
+            // Older deployed Web bundles do not have the iOS route guard yet
+            // and will finish navigating to /search instead of calling
+            // `CPUTimeNative.openAssistant`. Keep the native experience
+            // stable across that rollout boundary by treating the route report
+            // itself as the fallback handoff point. Restore the underlying Web
+            // tab immediately so dismissing the native screen never reveals a
+            // second assistant page.
+            if Self.isAssistantPath(path) {
+                onAssistantRequested?()
+                if activeTab != .schedule {
+                    navigate(path: activeTab.defaultPath)
+                }
+                return
+            }
             onRoute?(path, source)
         case "authChanged":
             automaticWidgetSetupAttempted = false
             widgetAuthGeneration += 1
             let auth = Self.nativeAuthState(from: body)
+            authState = auth
             isLoggedIn = auth.authenticated
             canAccessAdmin = auth.canAccessAdmin
             onAuthStateChanged?(auth)
@@ -958,6 +1003,12 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
             ready: ready,
             canAccessAdmin: body["canAccessAdmin"] as? Bool ?? false
         )
+    }
+
+    private static func isAssistantPath(_ path: String) -> Bool {
+        let pathname = path.split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false)
+            .first.map(String.init) ?? path
+        return pathname == "/search"
     }
 
     private static func bridgeScript() -> String {

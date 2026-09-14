@@ -53,7 +53,15 @@ private final class NativeWatchScheduleProvider: ScheduleDataProvider {
             case .failed:
                 self.onFailure?(.sourceUnavailable)
             case .stale:
-                if store.errorMessage != nil { self.onFailure?(.sourceUnavailable) }
+                // A stale state can mean JWXT expired while the native store
+                // still has a valid cached timetable. Always submit that
+                // snapshot so the Watch request settles instead of remaining
+                // stuck in its connecting state.
+                if let snapshot = store.snapshotForWatch() {
+                    self.accept(snapshot)
+                } else {
+                    self.onFailure?(.sourceUnavailable)
+                }
             default:
                 break
             }

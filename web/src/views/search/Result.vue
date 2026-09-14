@@ -2076,6 +2076,7 @@ onBeforeUnmount(() => {
     border-radius: 18px;
     background: var(--cpu-surface);
     transition: border-color 0.16s ease, box-shadow 0.16s ease;
+    overscroll-behavior: contain;
   }
   .assistant-disclaimer {
     height: 14px;

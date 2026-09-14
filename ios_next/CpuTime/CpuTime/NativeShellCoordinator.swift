@@ -59,14 +59,8 @@ final class NativeShellCoordinator: ObservableObject {
         // must leave the cached timetable and Watch snapshot intact.
         webSession.onAuthStateChanged = { [weak self, weak scheduleStore] state in
             guard state.ready else { return }
-            let account = state.authenticated
-                ? state.account.trimmingCharacters(in: .whitespacesAndNewlines)
-                : ""
-            scheduleStore?.handleAuthChanged(account: account)
             guard let self else { return }
-            self.handleAuthChanged(account)
-            guard state.authenticated, !account.isEmpty, self.selectedTab == .schedule else { return }
-            self.requestScheduleLoad(force: true)
+            self.handleAuthChanged(state, scheduleStore: scheduleStore)
         }
         webSession.onSchedulePrefetched = { [weak scheduleStore] snapshot in
             scheduleStore?.receivePrefetchedSnapshot(snapshot)
@@ -88,56 +82,95 @@ final class NativeShellCoordinator: ObservableObject {
         }
     }
 
-    /// Decides where a cold start lands before anything is shown. A stored
-    /// session cookie keeps the existing native shell; otherwise the login gate
-    /// takes over. The live `authChanged` report can settle the question first.
+    /// Decides where a cold start lands before anything is shown. The Web auth
+    /// store is authoritative; the cookie check remains only as a bounded
+    /// fallback for an older bundle that cannot report its store state.
     func resolveInitialAuth(webSession: HybridWebViewStore) async {
         guard !isAuthResolved else { return }
-        let hasCookie = await webSession.hasSessionCookie()
-        // The bridge may have reported the real session while the cookie store
-        // was being read; that live answer wins over the pre-flight guess.
-        guard !isAuthResolved else { return }
-        if hasCookie {
-            // A cookie can survive an expired server session. Keep the launch
-            // surface neutral while the Web bridge restores the account instead
-            // of briefly rendering an empty timetable behind a stale cookie.
-            // Wait for the complete restore window; the previous fixed 0.8 s
-            // window was shorter than a cold WebView on a slow connection.
-            try? await Task.sleep(for: sessionRestoreWindow)
+        if let state = await webSession.waitForAuthState(timeout: sessionRestoreWindow) {
             guard !isAuthResolved else { return }
-            // A guest can still carry an old cookie. If the WebView has landed
-            // on an authentication route (or the cookie disappeared), gate it
-            // before the native shell is ever built.
-            let cookieStillPresent = await webSession.hasSessionCookie()
-            if webSession.isShowingAuthPage || !cookieStillPresent {
-                applyLoginGate(navigateToLogin: !webSession.isShowingAuthPage)
-            } else {
+            if state.authenticated, !state.account.isEmpty {
                 applyAuthenticated(navigateToHome: false)
+            } else {
+                // Re-probe once before gating. A stale JWXT response must never
+                // be able to turn into the full native site-login layer.
+                let confirmed = await webSession.refreshAuthCapability()
+                guard !isAuthResolved else { return }
+                if confirmed?.authenticated == true, !(confirmed?.account.isEmpty ?? true) {
+                    applyAuthenticated(navigateToHome: false)
+                } else if confirmed == nil || confirmed?.ready == false {
+                    // A failed / incomplete profile probe is a transport or
+                    // WebKit restore problem, not proof of a signed-out user.
+                    // Keep the shell alive while the bounded gate task waits
+                    // for the session to settle.
+                    scheduleLoginGate()
+                } else {
+                    applyLoginGate(navigateToLogin: !webSession.isShowingAuthPage)
+                }
             }
+            return
+        }
+
+        guard !isAuthResolved else { return }
+        if await webSession.hasSessionCookie(), !webSession.isShowingAuthPage {
+            // An old Web bundle may not expose the auth report at all. A
+            // surviving cookie is enough to keep the shell usable while the
+            // page itself performs its normal session restore.
+            applyAuthenticated(navigateToHome: false)
         } else {
-            applyLoginGate(navigateToLogin: true)
+            applyLoginGate(navigateToLogin: !webSession.isShowingAuthPage)
         }
     }
 
-    /// The Web app reports the signed-in account fingerprint, or an empty
-    /// string once the session is gone.
-    func handleAuthChanged(_ account: String) {
-        let normalized = account.trimmingCharacters(in: .whitespacesAndNewlines)
-        if normalized.isEmpty {
-            accountKey = ""
-            // An empty report is not proof on its own: the Web app emits one
-            // while it is still restoring a session, right before the matching
-            // account report. Gating instantly there tore the shell down and
-            // sent the signed-in login page into a redirect loop with the gate.
-            scheduleLoginGate()
+    /// Applies a confirmed site-auth report. JWXT expiry does not call this
+    /// path because the Web bridge reports the site account independently.
+    private func handleAuthChanged(_ state: NativeAuthState, scheduleStore: NativeScheduleStore?) {
+        let normalized = state.authenticated
+            ? state.account.trimmingCharacters(in: .whitespacesAndNewlines)
+            : ""
+        guard !normalized.isEmpty else {
+            // Verify the site cookie through the live Web store before clearing
+            // the schedule or presenting login. This absorbs a transient empty
+            // report during WebKit restore and any JWXT-only expiry noise.
+            guard let webSession = self.webSession else { return }
+            guard pendingGateTask == nil else { return }
+            let verification = Task { @MainActor [weak self, weak scheduleStore, weak webSession] in
+                guard let self, let webSession else { return }
+                let confirmed = await webSession.refreshAuthCapability()
+                guard !Task.isCancelled else { return }
+                if let confirmed, confirmed.authenticated,
+                   !confirmed.account.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    self.handleAuthChanged(confirmed, scheduleStore: scheduleStore)
+                    self.pendingGateTask = nil
+                    return
+                }
+                self.pendingGateTask = nil
+                if confirmed == nil || confirmed?.ready == false {
+                    // Do not turn a temporary /user/me failure into a logout.
+                    // The next auth report or the bounded cookie check will
+                    // decide whether the account really ended.
+                    self.scheduleLoginGate()
+                } else {
+                    scheduleStore?.handleAuthChanged(account: "")
+                    self.accountKey = ""
+                    self.applyLoginGate(navigateToLogin: !webSession.isShowingAuthPage)
+                }
+            }
+            pendingGateTask = verification
             return
         }
+
         pendingGateTask?.cancel()
         pendingGateTask = nil
+        let accountChanged = accountKey != normalized
         accountKey = normalized
+        scheduleStore?.handleAuthChanged(account: normalized)
         // Only a login that follows the gate moves the shell to the home tab.
-        // The launch report must keep the existing default tab (the timetable).
+        // The launch report keeps the existing default tab (the timetable).
         applyAuthenticated(navigateToHome: requiresLogin)
+        if accountChanged, selectedTab == .schedule {
+            requestScheduleLoad(force: false, refreshCached: true)
+        }
     }
 
     func userSelected(_ tab: ShellTab) {

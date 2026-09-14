@@ -622,9 +622,9 @@ struct NativeShellView: View {
     @ObservedObject var shell: NativeShellCoordinator
     @ObservedObject var watchSchedule: PhoneWatchScheduleStore
     @State private var deviceSettingsPresented = false
-    @State private var quickEntryPresented = false
+    @State private var nativeOverlayPresented = false
+    @State private var nativeOverlayMode: NativeShellOverlay = .quickEntry
     @State private var quickEntryOpening = false
-    @State private var assistantPresented = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -638,7 +638,8 @@ struct NativeShellView: View {
                         Task { @MainActor in
                             await webSession.refreshAuthCapability()
                             quickEntryOpening = false
-                            quickEntryPresented = true
+                            nativeOverlayMode = .quickEntry
+                            nativeOverlayPresented = true
                         }
                     }
                 )
@@ -689,26 +690,31 @@ struct NativeShellView: View {
             NativeDeviceSettingsView(session: webSession, watchStore: watchSchedule, scheduleStore: scheduleStore)
                 .preferredColorScheme(webSession.pageColorScheme)
         }
-        .sheet(isPresented: $assistantPresented) {
-            NativeAssistantView(session: webSession) { path in
-                if path == "/search" {
-                    return
+        .sheet(isPresented: $nativeOverlayPresented) {
+            switch nativeOverlayMode {
+            case .quickEntry:
+                quickEntrySheetContent()
+            case .assistant:
+                NativeAssistantView(session: webSession) { path in
+                    nativeOverlayPresented = false
+                    guard path != "/search" else { return }
+                    shell.openWeb(path: path, tab: .home)
                 }
-                assistantPresented = false
-                shell.openWeb(path: path, tab: .home)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.hidden)
+                .tint(.cpuBrand)
+                .preferredColorScheme(webSession.pageColorScheme)
             }
-            .presentationDetents([.large])
-            .presentationDragIndicator(.visible)
-        }
-        .sheet(isPresented: $quickEntryPresented) {
-            quickEntrySheetContent()
         }
         .tint(.cpuBrand)
         // The native top bar owns the appearance control, so its choice drives
         // the whole shell, including the native timetable and the tab bar.
         .preferredColorScheme(webSession.pageColorScheme)
         .onAppear {
-            webSession.onAssistantRequested = { assistantPresented = true }
+            webSession.onAssistantRequested = {
+                nativeOverlayMode = .assistant
+                nativeOverlayPresented = true
+            }
         }
         .onDisappear {
             webSession.onAssistantRequested = nil
@@ -725,11 +731,14 @@ struct NativeShellView: View {
     @ViewBuilder
     private func quickEntrySheetContent() -> some View {
         let quickEntry = NativeQuickEntryView(session: webSession) { path, tab in
-            quickEntryPresented = false
             if path == "/search" {
-                assistantPresented = true
+                // Keep one presentation controller alive and swap its native
+                // content. Changing a sheet item's identity can make UIKit
+                // dismiss the menu instead of replacing its content.
+                nativeOverlayMode = .assistant
                 return
             }
+            nativeOverlayPresented = false
             if let tab { shell.userSelected(tab) }
             if let path { shell.openWeb(path: path, tab: tab ?? .home) }
         }
@@ -745,6 +754,13 @@ struct NativeShellView: View {
             .tint(.cpuBrand)
             .preferredColorScheme(webSession.pageColorScheme)
     }
+}
+
+private enum NativeShellOverlay: String, Identifiable {
+    case quickEntry
+    case assistant
+
+    var id: String { rawValue }
 }
 
 private struct NativeQuickEntryView: View {

@@ -9,7 +9,8 @@ struct NativeAssistantView: View {
     let onOpen: (String) -> Void
 
     @Environment(\.dismiss) private var dismiss
-    @FocusState private var composerFocused: Bool
+    @State private var composerFocused = false
+    @State private var composerHeight: CGFloat = 42
     @State private var input = ""
     @State private var messages: [NativeAssistantMessage] = []
     @State private var isLoading = false
@@ -27,7 +28,7 @@ struct NativeAssistantView: View {
                     conversation
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 composer
             }
@@ -54,11 +55,6 @@ struct NativeAssistantView: View {
                 }
             }
             .tint(.cpuBrand)
-            // Keep the assistant at one stable presentation height. Without a
-            // fixed large detent, iOS may promote a medium sheet when the
-            // keyboard appears, which makes the welcome copy jump upward.
-            .presentationDetents([.large])
-            .presentationDragIndicator(.visible)
             .alert("拾间 AI", isPresented: errorAlertBinding) {
                 Button("知道了", role: .cancel) { errorMessage = "" }
             } message: {
@@ -69,51 +65,52 @@ struct NativeAssistantView: View {
     }
 
     private var welcome: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                Image(systemName: "sparkles")
-                    .font(.system(size: 25, weight: .semibold))
-                    .foregroundStyle(Color.cpuBrand)
-                    .frame(width: 48, height: 48)
-                    .background(Color.cpuBrand.opacity(0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
-                Text("想做什么？直接告诉我。")
-                    .font(.title3.weight(.bold))
-                Text("可以询问站内功能、校园服务和操作步骤，也可以直接聊天。")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text("拾间 AI 不会读取你的课表、成绩或其他个人数据；涉及本人数据时会引导你进入对应页面自行查看。")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 3)
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-                    ForEach(suggestions, id: \.self) { suggestion in
-                        Button { send(suggestion) } label: {
-                            Text(suggestion)
-                                .font(.caption.weight(.medium))
-                                .multilineTextAlignment(.leading)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 11)
-                                .padding(.vertical, 10)
-                                .background(Color(uiColor: .secondarySystemGroupedBackground))
-                                .overlay {
-                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                        .stroke(Color(uiColor: .separator).opacity(0.55), lineWidth: 1)
-                                }
-                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.primary)
+        // The welcome state does not need to scroll. Keeping it as a fixed
+        // layout prevents UIKit from trying to reveal the focused text view by
+        // moving the whole page when the keyboard appears.
+        VStack(alignment: .leading, spacing: 12) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 25, weight: .semibold))
+                .foregroundStyle(Color.cpuBrand)
+                .frame(width: 48, height: 48)
+                .background(Color.cpuBrand.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+            Text("想做什么？直接告诉我。")
+                .font(.title3.weight(.bold))
+            Text("可以询问站内功能、校园服务和操作步骤，也可以直接聊天。")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("拾间 AI 不会读取你的课表、成绩或其他个人数据；涉及本人数据时会引导你进入对应页面自行查看。")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 3)
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                ForEach(suggestions, id: \.self) { suggestion in
+                    Button { send(suggestion) } label: {
+                        Text(suggestion)
+                            .font(.caption.weight(.medium))
+                            .multilineTextAlignment(.leading)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 11)
+                            .padding(.vertical, 10)
+                            .background(Color(uiColor: .secondarySystemGroupedBackground))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .stroke(Color(uiColor: .separator).opacity(0.55), lineWidth: 1)
+                            }
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.primary)
                 }
-                .padding(.top, 6)
             }
-            .frame(maxWidth: 620, alignment: .leading)
-            .padding(20)
+            .padding(.top, 6)
         }
-        .scrollDismissesKeyboard(.interactively)
+        .frame(maxWidth: 620, maxHeight: .infinity, alignment: .topLeading)
+        .padding(20)
+        .clipped()
     }
 
     private var conversation: some View {
@@ -270,24 +267,37 @@ struct NativeAssistantView: View {
 
     private var composer: some View {
         HStack(alignment: .bottom, spacing: 8) {
-            TextField("给拾间 AI 发消息", text: $input, axis: .vertical)
-                .lineLimit(1...5)
-                .focused($composerFocused)
-                .textInputAutocapitalization(.sentences)
-                .autocorrectionDisabled(false)
-                .font(.body)
-                .textFieldStyle(.plain)
-                .frame(minHeight: 42, maxHeight: 122, alignment: .topLeading)
-                .padding(.horizontal, 13)
-                .padding(.vertical, 10)
-                .background(Color(uiColor: .tertiarySystemFill))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(composerFocused ? Color.cpuBrand : Color(uiColor: .separator).opacity(0.65), lineWidth: composerFocused ? 1.5 : 1)
+            ZStack(alignment: .topLeading) {
+                NativeAssistantTextEditor(
+                    text: $input,
+                    isFocused: $composerFocused,
+                    onSubmit: { send(input) },
+                    onHeightChange: { height in
+                        guard abs(composerHeight - height) > 0.5 else { return }
+                        composerHeight = height
+                    }
+                )
+                .frame(maxWidth: .infinity)
+                .frame(height: composerHeight, alignment: .topLeading)
+                if input.isEmpty {
+                    Text("给拾间 AI 发消息")
+                        .font(.body)
+                        .foregroundStyle(.tertiary)
+                        .padding(.leading, 13)
+                        .padding(.top, 10)
+                        .allowsHitTesting(false)
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .submitLabel(.send)
-                .onSubmit { send(input) }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: composerHeight, alignment: .topLeading)
+            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .background(Color(uiColor: .tertiarySystemFill))
+            .overlay {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(composerFocused ? Color.cpuBrand : Color(uiColor: .separator).opacity(0.65), lineWidth: composerFocused ? 1.5 : 1)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .animation(.easeOut(duration: 0.14), value: composerHeight)
 
             Button { send(input) } label: {
                 Image(systemName: isLoading ? "hourglass" : "arrow.up")
@@ -320,6 +330,7 @@ struct NativeAssistantView: View {
         let text = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !isLoading else { return }
         input = ""
+        composerHeight = 42
         let history = messages.suffix(60).map {
             [
                 "role": $0.role.rawValue,
@@ -368,6 +379,133 @@ struct NativeAssistantView: View {
             onOpen(url)
         } else if let external = URL(string: url) {
             UIApplication.shared.open(external)
+        }
+    }
+}
+
+/// UITextView gives the composer a real intrinsic content height. SwiftUI's
+/// multiline TextField reports the configured line limit as its ideal height
+/// on newer iOS versions, which makes the empty field jump to five lines as
+/// soon as it receives text.
+private struct NativeAssistantTextEditor: UIViewRepresentable {
+    @Binding var text: String
+    @Binding var isFocused: Bool
+    let onSubmit: () -> Void
+    let onHeightChange: (CGFloat) -> Void
+
+    private let minHeight: CGFloat = 42
+    private let maxHeight: CGFloat = 122
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    func makeUIView(context: Context) -> UITextView {
+        let view = UITextView(frame: .zero)
+        view.delegate = context.coordinator
+        view.backgroundColor = .clear
+        view.font = UIFont.preferredFont(forTextStyle: .body)
+        view.adjustsFontForContentSizeCategory = true
+        view.textColor = .label
+        view.tintColor = UIColor(Color.cpuBrand)
+        view.isEditable = true
+        view.isSelectable = true
+        view.autocapitalizationType = .sentences
+        view.autocorrectionType = .yes
+        view.returnKeyType = .send
+        view.enablesReturnKeyAutomatically = false
+        view.textContainerInset = UIEdgeInsets(top: 9, left: 13, bottom: 9, right: 13)
+        view.textContainer.lineFragmentPadding = 0
+        // Character wrapping keeps Chinese text and long unbroken words from
+        // scrolling sideways inside the composer on narrow iPhone widths.
+        view.textContainer.lineBreakMode = .byCharWrapping
+        view.isScrollEnabled = false
+        view.showsVerticalScrollIndicator = false
+        view.showsHorizontalScrollIndicator = false
+        view.keyboardDismissMode = .interactive
+        view.accessibilityLabel = "给拾间 AI 发消息"
+        view.accessibilityHint = "输入问题后按发送键"
+        view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        view.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        return view
+    }
+
+    func updateUIView(_ view: UITextView, context: Context) {
+        context.coordinator.parent = self
+        if view.text != text {
+            view.text = text
+        }
+        view.accessibilityValue = text
+        if isFocused, !view.isFirstResponder {
+            view.becomeFirstResponder()
+        } else if !isFocused, view.isFirstResponder {
+            view.resignFirstResponder()
+        }
+        view.layoutIfNeeded()
+        updateHeight(for: view)
+    }
+
+    private func updateHeight(for view: UITextView) {
+        guard view.bounds.width > 0 else { return }
+        let expectedText = text
+        guard !text.isEmpty else {
+            view.isScrollEnabled = false
+            DispatchQueue.main.async {
+                // Ignore a queued measurement from text that was submitted in
+                // the meantime; otherwise the composer can grow again after
+                // send() has already reset it to one line.
+                guard view.text == expectedText else { return }
+                onHeightChange(minHeight)
+            }
+            return
+        }
+        view.isScrollEnabled = false
+        // Measure the laid-out glyphs instead of relying on sizeThatFits. A
+        // UITextView embedded in a flexible SwiftUI row can otherwise report
+        // its single-line width while its bounds are being negotiated, which
+        // clips long questions instead of growing the composer.
+        let insets = view.textContainerInset
+        let availableWidth = max(1, view.bounds.width - insets.left - insets.right)
+        view.textContainer.size = CGSize(width: availableWidth, height: .greatestFiniteMagnitude)
+        view.layoutManager.ensureLayout(for: view.textContainer)
+        let usedRect = view.layoutManager.usedRect(for: view.textContainer)
+        let fitting = ceil(usedRect.height + insets.top + insets.bottom)
+        let height = min(max(fitting, minHeight), maxHeight)
+        view.isScrollEnabled = fitting > maxHeight + 0.5
+        DispatchQueue.main.async {
+            guard view.text == expectedText else { return }
+            onHeightChange(height)
+        }
+    }
+
+    final class Coordinator: NSObject, UITextViewDelegate {
+        var parent: NativeAssistantTextEditor
+
+        init(parent: NativeAssistantTextEditor) {
+            self.parent = parent
+        }
+
+        func textViewDidChange(_ textView: UITextView) {
+            parent.text = textView.text
+            parent.updateHeight(for: textView)
+        }
+
+        func textViewDidBeginEditing(_ textView: UITextView) {
+            parent.isFocused = true
+        }
+
+        func textViewDidEndEditing(_ textView: UITextView) {
+            parent.isFocused = false
+        }
+
+        func textView(
+            _ textView: UITextView,
+            shouldChangeTextIn range: NSRange,
+            replacementText replacement: String
+        ) -> Bool {
+            guard replacement == "\n" else { return true }
+            parent.onSubmit()
+            return false
         }
     }
 }

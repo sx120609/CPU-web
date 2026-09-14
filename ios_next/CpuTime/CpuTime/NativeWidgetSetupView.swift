@@ -32,6 +32,7 @@ struct NativeDeviceSettingsView: View {
 private struct CalendarImportSection: View {
     @ObservedObject var store: NativeScheduleStore
     @State private var importing = false
+    @State private var preparing = false
     @State private var message: String?
 
     var body: some View {
@@ -40,11 +41,11 @@ private struct CalendarImportSection: View {
                 importSchedule()
             } label: {
                 Label(
-                    importing ? "正在写入日历…" : "导入到 Apple 日历",
-                    systemImage: importing ? "arrow.triangle.2.circlepath" : "calendar.badge.plus"
+                    importing ? "正在写入日历…" : preparing ? "正在读取完整课表…" : "导入到 Apple 日历",
+                    systemImage: importing || preparing ? "arrow.triangle.2.circlepath" : "calendar.badge.plus"
                 )
             }
-            .disabled(importing || store.latestSnapshot == nil)
+            .disabled(importing || preparing || store.latestSnapshot == nil)
 
             if let message {
                 Label(message, systemImage: message.contains("失败") ? "exclamationmark.triangle" : "checkmark.circle.fill")
@@ -59,15 +60,24 @@ private struct CalendarImportSection: View {
     }
 
     private func importSchedule() {
-        guard let snapshot = store.snapshotForWatch() else {
+        guard store.snapshotForWatch() != nil else {
             message = "暂无可导入的课表"
             return
         }
-        importing = true
+        preparing = true
         Task { @MainActor in
+            let snapshot = await store.snapshotForCalendarImport()
+            preparing = false
+            guard let snapshot else {
+                message = "暂无可导入的课表"
+                return
+            }
+            importing = true
             do {
                 let count = try await NativeScheduleCalendarImporter().importSnapshot(snapshot)
-                message = "已同步 \(count) 个课程事件"
+                message = snapshot.completeSemester
+                    ? "已同步 \(count) 个课程事件"
+                    : "已同步当前周 \(count) 个课程事件"
             } catch {
                 message = "导入失败：\(error.localizedDescription)"
             }

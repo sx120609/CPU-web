@@ -463,15 +463,17 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
       ? String(entry.calendar.currentWeek) : data.currentWeek) },
     calendar: entry.calendar, auth: { authenticated: true, identity: "undergraduate", account: accountKey() },
   });
-  const loadWeek = (entry: SemesterEntry, week: string, epoch: number): Promise<ScheduleResult> => {
+  const loadWeek = (entry: SemesterEntry, week: string, epoch: number, background = false): Promise<ScheduleResult> => {
     const cached = entry.schedules.get(week);
     if (cached) return Promise.resolve(cached);
     const pending = entry.pending.get(week);
     if (pending) return pending;
-    // Native schedule entry is cache-first. A missing/expired JWXT session is
-    // reported to Swift as a recoverable authorization state; it must not
-    // silently start a full SSO recovery while the user is only browsing.
-    const request = jwxtApi.schedule({ semester: entry.semester, week }, { silent: true })
+    // Native schedule entry is cache-first. Foreground requests may recover a
+    // stale JWXT session from the encrypted saved credentials; background
+    // prefetches remain read-only and must never start an interactive recovery.
+    const runSessionRequest = <T>(task: () => Promise<T>) =>
+      background ? task() : jwxt.withSessionRetry(task);
+    const request = runSessionRequest(() => jwxtApi.schedule({ semester: entry.semester, week }, { silent: true }))
       .then((response: { parsed?: unknown }) => {
         const data = parsed(response);
         if (!valid(entry, epoch)) throw new Error("课表会话已变化");
@@ -496,7 +498,7 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
           Math.abs(Number(a) - current) - Math.abs(Number(b) - current) || Number(b) - Number(a)
         )[0];
         if (!week) break;
-        await loadWeek(entry, week, epoch);
+        await loadWeek(entry, week, epoch, true);
       }
       if (!valid(entry, epoch) || activeSemester !== entry.semester) return;
       const cells = new Map<string, ScheduleResult["cells"][number]>();
@@ -551,16 +553,18 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
         silent: true,
         // A foreground pull is an explicit request and may use saved
         // credentials once. Background revalidation never does so.
-        allowAutoLogin: Boolean(force && !options.fastRefresh && !background),
+        allowAutoLogin: Boolean(!options.fastRefresh && !background),
         repairUnavailableSession: false,
       });
       if (!ready) return unauthorized();
       const epoch = generation;
+      const runSessionRequest = <T>(task: () => Promise<T>) =>
+        background ? task() : jwxt.withSessionRetry(task);
       const graduate = auth.academicIdentity === "graduate";
       if (graduate) {
-        const data = parsed(await jwxtApi.graduateSchedule({
+        const data = parsed(await runSessionRequest(() => jwxtApi.graduateSchedule({
           semester: semester || undefined, refresh: force ? "1" : undefined,
-        }, { silent: true }));
+        }, { silent: true })));
         if (generation !== epoch || !jwxt.isLoggedIn) return unauthorized();
         const calendar = buildGraduateFallbackCalendar(data);
         const expanded = extendScheduleWeeksToCalendar(data, calendar) ?? data;
@@ -584,9 +588,9 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
       }
       if (!entry) {
         const loadMetadata = (resolved: string) => Promise.all([
-          jwxtApi.calendar({ semester: resolved }, { silent: true })
+          runSessionRequest(() => jwxtApi.calendar({ semester: resolved }, { silent: true }))
             .then((result: { parsed: unknown }) => hydrateCalendar(result.parsed as CalendarResult)).catch(() => null),
-          auth.isLoggedIn ? jwxtApi.getScheduleEdits(resolved, { silent: true })
+          auth.isLoggedIn ? runSessionRequest(() => jwxtApi.getScheduleEdits(resolved, { silent: true }))
             .then(result => normalizeScheduleEditsState(result.edits)) : Promise.resolve(normalizeScheduleEditsState(null)),
         ] as const);
         // A known semester lets independent reads share the same network wait.
@@ -597,9 +601,9 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
         let requestedDataWeek: string | undefined;
         const loadInitial = async (requested?: string) => {
           requestedDataWeek = requested === "all" ? undefined : requested;
-          return parsed(await jwxtApi.schedule({
+          return parsed(await runSessionRequest(() => jwxtApi.schedule({
             semester: semester || undefined, week: requested, refresh: force ? "1" : undefined,
-          }, { silent: true }));
+          }, { silent: true })));
         };
         let data: ScheduleResult;
         if (options.fastRefresh && force && week) {
@@ -645,7 +649,7 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
       const selected = week || (entry.calendar?.currentWeek ? String(entry.calendar.currentWeek)
         : entry.schedules.values().next().value?.currentWeek || entry.complete?.currentWeek || "");
       entry.preferredWeek = selected;
-      const data = entry.complete ?? await loadWeek(entry, selected, epoch);
+      const data = entry.complete ?? await loadWeek(entry, selected, epoch, background);
       if (generation !== epoch || !jwxt.isLoggedIn) return unauthorized();
       if (selection !== selectionRevision) return cancelled();
       if (!valid(entry, epoch)) return cancelled();
@@ -653,7 +657,10 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
       prefetch(entry, epoch);
       return result;
     } catch (error) {
-      if (initialGeneration !== generation || !jwxt.isLoggedIn) return unauthorized();
+      // The education cookie can remain present after the upstream session has
+      // expired. Treat that state as unauthorized so native schedule storage
+      // keeps its visible cache instead of showing a generic load error.
+      if (initialGeneration !== generation || !jwxt.isLoggedIn || jwxt.authorizationExpired) return unauthorized();
       // A superseded selection can fail while its old network work is still
       // unwinding. Keep that expected race out of the native error surface.
       if (selection !== selectionRevision) return cancelled();

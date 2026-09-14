@@ -987,6 +987,23 @@ public final class NativeScheduleStore: ObservableObject {
         await load(semester: selectedSemester, week: selectedWeek, force: true)
     }
 
+    /// Returns a semester-wide snapshot for Apple Calendar. A weekly cache is
+    /// still useful for rendering, but calendar import should make one quiet
+    /// attempt to promote it to the complete semester before writing events.
+    /// If the education service is unavailable, the last valid weekly snapshot
+    /// is returned so the user can still import the visible week.
+    public func snapshotForCalendarImport() async -> NativeScheduleSnapshot? {
+        ensureLatestSnapshot()
+        if latestSnapshot?.completeSemester == true { return latestSnapshot }
+        guard loader != nil else { return latestSnapshot }
+        let semester = selectedSemester.trimmedNonEmpty
+            ?? result?.currentSemester.trimmedNonEmpty
+        let week = selectedWeek.trimmedNonEmpty
+            ?? result?.currentWeek.trimmedNonEmpty
+        await load(semester: semester, week: week, force: true)
+        return latestSnapshot
+    }
+
     /// Revalidates the visible selection without changing the rendered state.
     /// The Web timetable follows the same stale-while-revalidate contract: a
     /// cached schedule remains interactive while the server is checked quietly.
@@ -1169,7 +1186,7 @@ public final class NativeScheduleStore: ObservableObject {
         if let requestedSemester { selectedSemester = requestedSemester }
         else if !data.currentSemester.isEmpty { selectedSemester = data.currentSemester }
         if let requestedWeek { selectedWeek = requestedWeek }
-        else if !data.currentWeek.isEmpty { selectedWeek = data.currentWeek }
+        else if let resolvedWeek = firstUsableWeek(in: data) { selectedWeek = resolvedWeek }
         result = data
         calendar = snapshot.calendar
         source = snapshot.source == .unknown ? data.source : snapshot.source
@@ -1192,6 +1209,12 @@ public final class NativeScheduleStore: ObservableObject {
             key.semester == selectedSemester &&
             (key.week == selectedWeek || key.week.isEmpty || data.currentWeek == selectedWeek)
         )
+    }
+
+    private func firstUsableWeek(in data: NativeScheduleResult) -> String? {
+        data.currentWeek.trimmedNonEmpty
+            ?? data.weeks.first(where: { $0.current })?.value.trimmedNonEmpty
+            ?? data.weeks.first?.value.trimmedNonEmpty
     }
 
     private func makeScheduleChangeNotice(
@@ -1491,7 +1514,7 @@ public final class NativeScheduleStore: ObservableObject {
             if let requestedSemester { selectedSemester = requestedSemester }
             else if !data.currentSemester.isEmpty { selectedSemester = data.currentSemester }
             if let requestedWeek { selectedWeek = requestedWeek }
-            else if !data.currentWeek.isEmpty { selectedWeek = data.currentWeek }
+            else if let resolvedWeek = firstUsableWeek(in: data) { selectedWeek = resolvedWeek }
             lastUpdatedAt = snapshot.fetchedAt
             displayedKey = key
             latestSnapshot = snapshot
@@ -1505,8 +1528,16 @@ public final class NativeScheduleStore: ObservableObject {
         let storeError = normalize(error)
         if case .unauthorized(let message) = storeError {
             discardUnauthorizedData()
-            errorMessage = message
-            state = .unauthorized
+            if result != nil {
+                // Keep a usable cached grid while the education session is
+                // repaired. A banner can describe the stale state without
+                // replacing the grid with a login screen.
+                errorMessage = nil
+                state = .stale
+            } else {
+                errorMessage = message
+                state = .unauthorized
+            }
             return
         }
         if let cached = cachedEntry(for: key) {
@@ -1529,23 +1560,13 @@ public final class NativeScheduleStore: ObservableObject {
     /// session is still signed in, the timetable stays visible under a banner.
     /// Anything else clears it, the archive included.
     private func discardUnauthorizedData() {
-        guard result != nil else {
-            archive?.removeAll()
-            clearLoadedData()
-            onWatchReset?()
-            return
-        }
         // A JWXT 401 is recoverable and the last successful timetable remains
         // safe to display while the site session is intact. The explicit
-        // `authChanged("")` path below is reserved for a site-account logout.
+        // `handleAuthChanged(account: "")` path is reserved for a site-account
+        // logout; an education request must never delete the phone or Watch
+        // cache just because its authorization has expired.
         ensureLatestSnapshot()
-        guard sessionFingerprint != nil else {
-            archive?.removeAll()
-            clearLoadedData()
-            onWatchReset?()
-            return
-        }
-        discardIfSessionChanged()
+        if result != nil, sessionFingerprint != nil { discardIfSessionChanged() }
     }
 
     private func retainVisibleSchedule(for snapshot: NativeScheduleSnapshot) -> Bool {
@@ -1613,6 +1634,12 @@ public final class NativeScheduleStore: ObservableObject {
                     return
                 }
                 if session == expected { return }
+            } else if expected.isEmpty {
+                // Cookie storage can briefly report no value while WebKit is
+                // restoring the page. Without a previously known session we
+                // cannot prove a logout, so leave the visible/cache snapshot
+                // intact and let the next auth report settle it.
+                return
             }
             self.archive?.removeAll()
             self.reset()

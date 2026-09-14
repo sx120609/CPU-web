@@ -552,7 +552,7 @@
 				CODE_SIGN_ENTITLEMENTS = CpuTime/CpuTime.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 17;
+				CURRENT_PROJECT_VERSION = 18;
 				DEVELOPMENT_TEAM = "$(CPU_DEVELOPMENT_TEAM)";
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_PREVIEWS = YES;
@@ -603,7 +603,7 @@
 				CODE_SIGN_ENTITLEMENTS = CpuTime/CpuTime.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Distribution: Qiuxie Information Technology (Shenzhen) Co., Ltd (34T668D87P)";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 17;
+				CURRENT_PROJECT_VERSION = 18;
 				DEVELOPMENT_TEAM = 34T668D87P;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_PREVIEWS = YES;
@@ -654,7 +654,7 @@
 				CODE_SIGN_ENTITLEMENTS = CPUWebWidgets/CPUWebWidgets.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 17;
+				CURRENT_PROJECT_VERSION = 18;
 				DEVELOPMENT_TEAM = "$(CPU_DEVELOPMENT_TEAM)";
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = CPUWebWidgets/Info.plist;
@@ -689,7 +689,7 @@
 				CODE_SIGN_ENTITLEMENTS = CPUWebWidgets/CPUWebWidgets.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Distribution: Qiuxie Information Technology (Shenzhen) Co., Ltd (34T668D87P)";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 17;
+				CURRENT_PROJECT_VERSION = 18;
 				DEVELOPMENT_TEAM = 34T668D87P;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = CPUWebWidgets/Info.plist;
@@ -723,7 +723,7 @@
 				CODE_SIGN_ENTITLEMENTS = CPUWatch/CPUWatch.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 17;
+				CURRENT_PROJECT_VERSION = 18;
 				DEVELOPMENT_TEAM = "$(CPU_DEVELOPMENT_TEAM)";
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = CPUWatch/Info.plist;
@@ -753,7 +753,7 @@
 				CODE_SIGN_ENTITLEMENTS = CPUWatch/CPUWatch.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Distribution: Qiuxie Information Technology (Shenzhen) Co., Ltd (34T668D87P)";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 17;
+				CURRENT_PROJECT_VERSION = 18;
 				DEVELOPMENT_TEAM = "$(CPU_DEVELOPMENT_TEAM)";
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = CPUWatch/Info.plist;
@@ -785,7 +785,7 @@
 				CODE_SIGN_ENTITLEMENTS = CPUWatchWidgets/CPUWatchWidgets.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 17;
+				CURRENT_PROJECT_VERSION = 18;
 				DEVELOPMENT_TEAM = "$(CPU_DEVELOPMENT_TEAM)";
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = CPUWatchWidgets/Info.plist;
@@ -819,7 +819,7 @@
 				CODE_SIGN_ENTITLEMENTS = CPUWatchWidgets/CPUWatchWidgets.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Distribution: Qiuxie Information Technology (Shenzhen) Co., Ltd (34T668D87P)";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 17;
+				CURRENT_PROJECT_VERSION = 18;
 				DEVELOPMENT_TEAM = "$(CPU_DEVELOPMENT_TEAM)";
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = CPUWatchWidgets/Info.plist;

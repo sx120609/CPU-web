@@ -1521,7 +1521,11 @@ html[data-theme="dark"] .assistant-widget {
    page tied to the visual viewport while the keyboard is open so WebKit does
    not pan the entire document and leave the header above the visible area. */
 .layout-root--assistant.keyboard-geometry-open {
+  position: fixed;
+  inset: var(--layout-viewport-offset-top, 0px) 0 auto;
+  width: 100%;
   height: var(--layout-viewport-height, 100dvh);
+  overflow: hidden;
 }
 
 .main--full-height > :deep(*) {

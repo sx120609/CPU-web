@@ -229,16 +229,6 @@
             </template>
           </div>
         </el-popover>
-        <button
-          type="button"
-          class="icon-btn"
-          :class="{ spinning: loading }"
-          :disabled="loading"
-          aria-label="刷新课表"
-          @click="refreshCurrentSchedule"
-        >
-          <el-icon><Refresh /></el-icon>
-        </button>
       </div>
     </header>
 
@@ -750,7 +740,7 @@ import ScheduleCourseStatus from "@/components/jwxt/ScheduleCourseStatus.vue";
 import { computed, h, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { Aim, ArrowLeft, ArrowRight, Download, InfoFilled, Iphone, Lock, Moon, MoreFilled, Picture, QuestionFilled, Refresh, Tools } from "@element-plus/icons-vue";
+import { Aim, ArrowLeft, ArrowRight, Download, InfoFilled, Iphone, Lock, Moon, MoreFilled, Picture, QuestionFilled, Tools } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
 import { useAuthStore } from "@/stores/auth";
 import { useAppearanceStore } from "@/stores/appearance";
@@ -1551,6 +1541,7 @@ onMounted(() => {
   window.addEventListener("resize", updateViewportHeight);
   window.addEventListener("online", syncNetworkStatus);
   window.addEventListener("offline", syncNetworkStatus);
+  window.addEventListener("cpu-native-refresh", onNativeRefresh);
   window.visualViewport?.addEventListener("resize", updateViewportHeight);
   window.visualViewport?.addEventListener("scroll", updateViewportHeight);
 
@@ -1614,6 +1605,7 @@ onBeforeUnmount(() => {
   window.removeEventListener("resize", updateViewportHeight);
   window.removeEventListener("online", syncNetworkStatus);
   window.removeEventListener("offline", syncNetworkStatus);
+  window.removeEventListener("cpu-native-refresh", onNativeRefresh);
   window.visualViewport?.removeEventListener("resize", updateViewportHeight);
   window.visualViewport?.removeEventListener("scroll", updateViewportHeight);
   clearDragTimers();
@@ -1859,6 +1851,19 @@ async function refreshCurrentSchedule() {
   await loadCalendar(semester.value);
   if (disposed) return;
   await loadSchedule(true);
+}
+
+async function onNativeRefresh() {
+  // Set this synchronously: the native UIRefreshControl uses the flag to
+  // distinguish a route that supports pull-to-refresh from an old Web page.
+  (window as any).__cpuNativeRefreshHandled = true;
+  try {
+    await refreshCurrentSchedule();
+  } catch {
+    ElMessage.warning("课表刷新失败，请检查网络连接后重试。");
+  } finally {
+    (window as any).CPUTimeNative?.refreshFinished?.();
+  }
 }
 
 async function loadSchedule(force = false, background = false) {
