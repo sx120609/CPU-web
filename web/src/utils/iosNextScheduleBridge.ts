@@ -219,9 +219,15 @@ function normalizeScheduleResponse(response: unknown): ScheduleResult {
   const cells = normalizeLegacyCells(data);
   if (!cells.length) throw new Error("教务系统未返回有效课表，请稍后重试。");
   const semesters = normalizeLegacyOptions(data.semesters ?? data.semesterList ?? data.terms, "semester");
-  const weeks = normalizeLegacyOptions(data.weeks ?? data.weekList ?? data.weekOptions, "week");
+  const parsedWeeks = normalizeLegacyOptions(data.weeks ?? data.weekList ?? data.weekOptions, "week");
+  // Older agents returned week options without marking the selected week.
+  // Native selection must still have a deterministic starting point, so use
+  // the first advertised week when the response has no explicit marker.
+  const weeks = parsedWeeks.some((item) => item.current)
+    ? parsedWeeks
+    : parsedWeeks.map((item, index) => ({ ...item, current: index === 0 }));
   const currentSemester = legacyText(data.currentSemester, data.semester, data.term, semesters.find((item) => item.current)?.value);
-  const currentWeek = legacyText(data.currentWeek, data.week, weeks.find((item) => item.current)?.value);
+  const currentWeek = legacyText(data.currentWeek, data.week, weeks.find((item) => item.current)?.value, weeks[0]?.value);
   return {
     ...data,
     source: data.source === "modern" || data.source === "legacy" ? data.source : undefined,
@@ -379,7 +385,6 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
     auth.user?.voiceHubRole,
     auth.user?.lostFoundRole,
     auth.academicIdentity,
-    jwxt.isLoggedIn,
   ], () => {
     generation += 1;
     selectionRevision += 1;
@@ -387,6 +392,17 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
     foreground.clear();
     activeSemester = "";
     notifyNativeAuth();
+  }, { flush: "sync" });
+
+  // JWXT authorization is a separate, recoverable layer over the site
+  // account. Its expiry invalidates in-flight schedule requests, but must not
+  // tell Swift that the signed-in site account disappeared.
+  watch(() => jwxt.isLoggedIn, () => {
+    generation += 1;
+    selectionRevision += 1;
+    semesters.clear();
+    foreground.clear();
+    activeSemester = "";
   }, { flush: "sync" });
 
   // The iOS shell may open its quick menu before any auth store field changes

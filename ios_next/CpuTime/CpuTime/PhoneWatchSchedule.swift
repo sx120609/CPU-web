@@ -41,7 +41,15 @@ private final class NativeWatchScheduleProvider: ScheduleDataProvider {
             await store.refresh()
             switch store.state {
             case .unauthorized:
-                self.onFailure?(.loginRequired)
+                // JWXT authorization can expire while the site account and the
+                // last valid timetable remain intact. Re-submit that snapshot
+                // so Watch keeps its offline data and the refresh operation
+                // settles without publishing a login-required status.
+                if store.result != nil, let snapshot = store.latestSnapshot {
+                    self.accept(snapshot)
+                } else {
+                    self.onFailure?(.loginRequired)
+                }
             case .failed:
                 self.onFailure?(.sourceUnavailable)
             case .stale:

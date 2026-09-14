@@ -6,7 +6,7 @@ import { build } from '../../web/node_modules/esbuild/lib/main.js';
 
 const webRoot = fileURLToPath(new URL('../../web/src', import.meta.url));
 const mocks = {
-  vue: 'export const watch = (_, callback) => globalThis.changed = callback;',
+  vue: 'export const watch = (_, callback) => { const previous = globalThis.changed; globalThis.changed = () => { previous?.(); callback(); }; };',
   '@/api/jwxt': 'export const jwxtApi = globalThis.api;',
   '@/stores/auth': 'export const useAuthStore = () => globalThis.auth;',
   '@/stores/jwxt': 'export const useJwxtStore = () => globalThis.jwxt;',
@@ -168,6 +168,22 @@ test('legacy nested schedule fields are normalized for the native shell', async 
   assert.equal(course.endSlot, 6);
   assert.equal(result.data.semesters[0].current, true);
   assert.equal(result.data.weeks[0].value, '7');
+});
+
+test('legacy week options default to the first week when no current marker exists', async () => {
+  const ctx = setup();
+  ctx.api.schedule = async () => ({ parsed: { data: {
+    semesterList: [{ id: '2024-2025-2', name: '春季学期' }],
+    weekOptions: [
+      { code: '1', text: '第 1 周' },
+      { code: '2', text: '第 2 周' },
+    ],
+    scheduleCells: [{ weekday: '1', section: '1', items: [{ courseName: '线性代数' }] }],
+  } } });
+  const result = await ctx.window.CPUTimeNativeScheduleFetch('2024-2025-2');
+  assert.equal(result.data.currentWeek, '1');
+  assert.equal(result.data.weeks[0].current, true);
+  assert.equal(result.data.weeks[1].current, false);
 });
 
 test('legacy grid and flat course lists become native cells', async () => {

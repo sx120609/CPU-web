@@ -294,8 +294,12 @@ function shouldSkipJwxtSessionBootstrap() {
   }
 }
 
+function isEducationRoute(path = router.currentRoute.value.path || window.location.pathname) {
+  return path.startsWith("/schedule") || path.startsWith("/jwxt");
+}
+
 function scheduleJwxtSessionBootstrap(options?: { force?: boolean; immediate?: boolean }) {
-  if (shouldSkipJwxtSessionBootstrap() || jwxtSessionBootstrapScheduled || jwxtSessionBootstrapInFlight) return;
+  if (!isEducationRoute() || shouldSkipJwxtSessionBootstrap() || jwxtSessionBootstrapScheduled || jwxtSessionBootstrapInFlight) return;
   const now = Date.now();
   if (
     !options?.force &&
@@ -324,7 +328,7 @@ function scheduleJwxtSessionBootstrap(options?: { force?: boolean; immediate?: b
 }
 
 async function bootstrapJwxtSession() {
-  if (shouldSkipJwxtSessionBootstrap()) return;
+  if (!isEducationRoute() || shouldSkipJwxtSessionBootstrap()) return;
   if (jwxtSessionBootstrapInFlight) return;
   const auth = useAuthStore();
   const jwxt = useJwxtStore();
@@ -355,14 +359,13 @@ async function bootstrapJwxtSession() {
 
 function installJwxtSessionBootstrapTriggers() {
   router.afterEach((to) => {
-    const educationRoute = to.path.startsWith("/schedule") || to.path.startsWith("/jwxt");
-    scheduleJwxtSessionBootstrap({ immediate: educationRoute });
+    if (isEducationRoute(to.path)) scheduleJwxtSessionBootstrap({ immediate: true });
   });
   window.addEventListener("focus", () => {
-    scheduleJwxtSessionBootstrap();
+    if (isEducationRoute()) scheduleJwxtSessionBootstrap();
   });
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") {
+    if (document.visibilityState === "visible" && isEducationRoute()) {
       scheduleJwxtSessionBootstrap();
     }
   });
@@ -454,7 +457,7 @@ router.isReady().finally(() => {
   if (serviceWorkerReady) {
     void serviceWorkerReady.then((registration) => warmScheduleOfflineCache(registration));
   }
-  scheduleJwxtSessionBootstrap({ force: true, immediate: true });
+  if (isEducationRoute()) scheduleJwxtSessionBootstrap({ force: true, immediate: true });
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       document.body.dataset.cpuAppReady = "1";

@@ -58,6 +58,10 @@ final class NativeShellCoordinator: ObservableObject {
             guard let self else { return }
             self.handleAuthChanged(account)
             guard self.selectedTab == .schedule else { return }
+            // An empty account is a sign-out candidate. The store checks the
+            // cookie fingerprint before clearing its retained timetable, so a
+            // JWXT-only expiry must not trigger a second forced load here.
+            guard !account.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
             self.requestScheduleLoad(force: true)
         }
         webSession.onSchedulePrefetched = { [weak scheduleStore] snapshot in

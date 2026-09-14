@@ -7,7 +7,7 @@ import WebKit
 
 
 enum IOSNextWebConfiguration {
-    static let versionCode = 12
+    static let versionCode = 14
     static let versionName = "3.4.0"
 
     static var appURL: URL {

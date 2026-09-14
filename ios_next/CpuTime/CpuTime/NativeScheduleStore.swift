@@ -1040,6 +1040,19 @@ public final class NativeScheduleStore: ObservableObject {
         if snapshot.cancelled { return }
         if !snapshot.auth.authenticated {
             let message = snapshot.error ?? NativeScheduleStoreError.unauthorized("").localizedDescription
+            if let account = snapshot.auth.account?.trimmedNonEmpty, accountKey.isEmpty {
+                accountKey = account
+            }
+            // The Web bridge includes the site-account fingerprint on a JWXT
+            // authorization failure. Keep the last valid grid and its Watch
+            // snapshot when that fingerprint is unchanged; a real site
+            // logout still arrives through authChanged and is checked against
+            // the cookie fingerprint below.
+            if retainVisibleSchedule(for: snapshot) {
+                errorMessage = message
+                state = .unauthorized
+                return
+            }
             discardUnauthorizedData()
             errorMessage = message
             state = .unauthorized
@@ -1053,6 +1066,10 @@ public final class NativeScheduleStore: ObservableObject {
         }
         guard let data = snapshot.data else {
             throw NativeScheduleStoreError.invalidResponse
+        }
+
+        if let account = snapshot.auth.account?.trimmedNonEmpty, accountKey.isEmpty {
+            accountKey = account
         }
 
         if !snapshot.completeSemester,
@@ -1456,6 +1473,18 @@ public final class NativeScheduleStore: ObservableObject {
             return
         }
         discardIfSessionChanged()
+    }
+
+    private func retainVisibleSchedule(for snapshot: NativeScheduleSnapshot) -> Bool {
+        guard result != nil else { return false }
+        let incoming = snapshot.auth.account?.trimmedNonEmpty
+        if let incoming {
+            return !incoming.isEmpty && !accountKey.isEmpty && incoming == accountKey
+        }
+        // Compatibility with an older bridge that did not include account in
+        // an unauthorized payload. A readable session fingerprint is enough
+        // to defer the destructive decision to discardIfSessionChanged().
+        return !accountKey.isEmpty && sessionFingerprint != nil
     }
 
     /// Clears every account-scoped byte unless the signed-in web session is
