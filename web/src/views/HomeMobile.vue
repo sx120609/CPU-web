@@ -139,12 +139,12 @@ let adSequence = 0;
 let mounted = false;
 let disposed = false;
 let loadObserver: IntersectionObserver | null = null;
-let pendingRestoreState: HomeFeedRestoreState | null = null;
+let pendingRestoreState: HomeFeedRestoreState | null = readForumListRestoreState<HomeFeedRestoreState>(route.fullPath);
+
+if (pendingRestoreState?.stream === "market" && marketFeedEnabled.value) activeFeedStream.value = "market";
 
 onMounted(() => {
   mounted = true;
-  pendingRestoreState = readForumListRestoreState<HomeFeedRestoreState>(route.fullPath);
-  if (pendingRestoreState?.stream === "market" && marketFeedEnabled.value) activeFeedStream.value = "market";
   loadObserver = typeof IntersectionObserver === "undefined" ? null : new IntersectionObserver(([entry]) => {
     if (entry?.isIntersecting && canLoadMore.value && !activeFeed.value.loading && !activeFeed.value.loadingMore && !activeFeed.value.loadMoreError) void loadMore();
   }, { rootMargin: "220px 0px 320px", threshold: .01 });
@@ -208,6 +208,13 @@ async function loadHomeScope() {
       .filter((topic) => topic.board?.type !== "market")
       .slice(0, feedPageSize);
     feedStates.forum.total = feedStates.forum.list.length;
+  }
+  // Cached rows are available synchronously. Put the page back before the
+  // network refresh can cause a visible top-of-page frame.
+  if (pendingRestoreState) {
+    await nextTick();
+    const scrollY = Math.max(0, Number(pendingRestoreState.scrollY || 0));
+    if (scrollY <= getPageScrollHeight() + 8) scrollPageTo(scrollY);
   }
   homeError.value = "";
   await Promise.all([
