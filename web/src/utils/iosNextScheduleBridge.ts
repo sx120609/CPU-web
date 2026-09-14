@@ -515,12 +515,14 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
     course: ScheduleResult["cells"][number]["courses"][number],
   ) => {
     if (course.customId) return `custom:${course.customId}`;
+    // The upstream system can assign a different source key to the same
+    // official course on different week queries. Stable content must therefore
+    // win whenever it is available; the source key is only a last-resort
+    // identity for malformed records that have no usable course fields.
+    const stable = [normalizeText(course.name), normalizeText(course.teacher), normalizeText(course.location)];
+    if (stable.some(Boolean)) return [cell.day, ...stable].join("\u001f");
     if (course.sourceKey) return `source:${course.sourceKey}`;
-    // Slot ranges describe one occurrence and are allowed to differ when the
-    // education system repeats the same record. Keep the course identity tied
-    // to its stable content, then use range overlap below before merging.
-    return [cell.day, normalizeText(course.name), normalizeText(course.teacher), normalizeText(course.location)]
-      .join("\u001f");
+    return [cell.day, ...stable].join("\u001f");
   };
   const rangesCanMerge = (left: { start: number; end: number }, right: { start: number; end: number }) =>
     left.start <= right.end + 1 && right.start <= left.end + 1;

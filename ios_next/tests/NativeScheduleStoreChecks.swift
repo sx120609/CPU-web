@@ -52,7 +52,8 @@ struct NativeScheduleStoreChecks {
             weekList: [2, 4, 6, 8],
             location: "实验楼 201",
             startSlot: 3,
-            endSlot: 3
+            endSlot: 3,
+            sourceKey: "jwxt-record-b"
         )
         let distinctTeacher = NativeScheduleCourse(
             name: "药理学实验",

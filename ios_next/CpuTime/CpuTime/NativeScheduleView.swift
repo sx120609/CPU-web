@@ -451,7 +451,11 @@ struct NativeScheduleView: View {
         .compositingGroup()
         .onAppear { dayPageWidth = width }
         .onChange(of: width) { _, value in dayPageWidth = value }
-        .highPriorityGesture(daySwipeGesture(result: result, width: width))
+        // The schedule is hosted inside a UIKit scroll view that owns pull to
+        // refresh. Simultaneous recognition lets that scroll view receive
+        // vertical pans while this axis-locked gesture handles horizontal
+        // paging.
+        .simultaneousGesture(daySwipeGesture(result: result, width: width))
     }
 
     @ViewBuilder
@@ -498,10 +502,10 @@ struct NativeScheduleView: View {
         .compositingGroup()
         .onAppear { weekPageWidth = width }
         .onChange(of: width) { _, value in weekPageWidth = value }
-        // High priority keeps a horizontal swipe from being consumed by an
-        // individual course/empty-slot tap target. The axis lock still leaves
-        // ordinary taps untouched.
-        .highPriorityGesture(weekSwipeGesture(result: result, width: width))
+        // Keep horizontal paging and the outer pull-to-refresh scroll view
+        // active at the same time. The gesture itself is axis-locked, so
+        // vertical drags are left to UIKit.
+        .simultaneousGesture(weekSwipeGesture(result: result, width: width))
     }
 
     @ViewBuilder

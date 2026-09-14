@@ -652,12 +652,12 @@ public enum NativeScheduleCourseBlockMerger {
             keyPart(course.teacher),
             keyPart(course.location)
         ].joined(separator: "\u{1F}")
-        // The bridge's official fallback ID contains the slot range and is
-        // intentionally ignored here; two copies with different ranges still
-        // describe one course. Explicit source IDs remain useful context but
-        // never collapse different teacher/room variants.
+        // The upstream system can assign a different source key to the same
+        // official course on different week queries. Stable content therefore
+        // takes precedence; source IDs are only a fallback for empty records.
+        if !stableFields.isEmpty { return stableFields }
         if let sourceKey = course.sourceKey?.trimmedNonEmpty {
-            return "source:\(keyPart(sourceKey))\u{1F}\(stableFields)"
+            return "source:\(keyPart(sourceKey))"
         }
         if let nativeId = course.nativeId?.trimmedNonEmpty,
            !nativeId.hasPrefix("official|") {

@@ -128,6 +128,11 @@ final class NativeAssistantModel: ObservableObject {
     func accountDidChange(using session: HybridWebViewStore) {
         guard session.authState.ready else { return }
         let nextAccount = session.authState.account.trimmingCharacters(in: .whitespacesAndNewlines)
+        // WebKit can publish an authenticated state with an empty account for
+        // one bootstrap tick while its cookie-backed profile is rehydrating.
+        // Treat that as a transient report so dismissing/reopening the native
+        // surface never cancels an answer that is still streaming.
+        if nextAccount.isEmpty, session.authState.authenticated { return }
         guard nextAccount != confirmedAccount else { return }
         let hadConfirmedAccount = !confirmedAccount.isEmpty
         confirmedAccount = nextAccount
@@ -490,7 +495,7 @@ struct NativeAssistantView: View {
                     .font(.body)
                     .foregroundStyle(.white)
                     .multilineTextAlignment(.leading)
-                    .frame(maxWidth: 320, alignment: .leading)
+                    .frame(maxWidth: 340, alignment: .leading)
                     .padding(.horizontal, 13)
                     .padding(.vertical, 10)
                     .background(Color.cpuBrand)
@@ -500,7 +505,7 @@ struct NativeAssistantView: View {
                     Text(markdown(message.content))
                         .font(.body)
                         .foregroundStyle(.primary)
-                        .frame(maxWidth: 620, alignment: .leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .textSelection(.enabled)
                     if message.streaming {
                         Text("▌")
@@ -568,7 +573,7 @@ struct NativeAssistantView: View {
                                     .frame(maxWidth: .infinity, minHeight: 84)
                             }
                         }
-                        .frame(maxWidth: 700)
+                        .frame(maxWidth: .infinity)
                         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                         .accessibilityLabel(image.alt)
                     }
