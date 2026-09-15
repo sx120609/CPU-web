@@ -155,6 +155,33 @@ struct NativeScheduleStoreChecks {
         precondition(officialParallelCourses.count == 2,
                      "Parallel official sections with explicit bridge identities must remain distinct")
 
+        let repeatedRowA = NativeScheduleCourse(
+            nativeId: "source:jwxt:data-jxbid:row-a",
+            name: "重复行课程",
+            teacher: "张老师",
+            weeks: "1-8周",
+            weekList: Array(1...8),
+            location: "实验楼201",
+            startSlot: 3,
+            endSlot: 4
+        )
+        let repeatedRowB = NativeScheduleCourse(
+            nativeId: "source:jwxt:data-jxbid:row-b",
+            name: "重复行课程",
+            teacher: "张",
+            weeks: "2、4、6、8周",
+            weekList: [2, 4, 6, 8],
+            location: "201",
+            startSlot: 3,
+            endSlot: 4
+        )
+        let repeatedRows = NativeScheduleCourseBlockMerger.merge([
+            NativeScheduleCourseBlockRecord(id: "row-a", course: repeatedRowA, bigSlot: 2, startSlot: 3, endSlot: 4),
+            NativeScheduleCourseBlockRecord(id: "row-b", course: repeatedRowB, bigSlot: 2, startSlot: 3, endSlot: 4),
+        ])
+        precondition(repeatedRows.count == 1 && repeatedRows[0].course.weekList == Array(1...8),
+                     "Repeated rows with different explicit ids must collapse when one range is a subset")
+
         let cancelledStore = NativeScheduleStore(
             loader: { _ in NativeScheduleSnapshot(cancelled: true) },
             archive: nil

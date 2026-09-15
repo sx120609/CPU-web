@@ -653,6 +653,7 @@ public enum NativeScheduleCourseBlockMerger {
         let sameSource = a.sourceKey?.trimmedNonEmpty != nil
             && a.sourceKey == b.sourceKey
         guard sameName, compatibleTeacher, compatibleLocation else { return false }
+        guard rangesOverlap(left, right) || sameSource && rangesAdjacent(left, right) else { return false }
         // `sourceKey`/`nativeId` are the only stable identity supplied by the
         // bridge for parallel sections that share all visible fields. Treat
         // generated official ids as fallbacks because repeated physical rows
@@ -660,9 +661,23 @@ public enum NativeScheduleCourseBlockMerger {
         let leftIdentity = explicitIdentity(a)
         let rightIdentity = explicitIdentity(b)
         if let leftIdentity, let rightIdentity, leftIdentity != rightIdentity {
-            return false
+            // JWXT may assign a new id to a repeated physical row. A subset
+            // week range identifies that duplicate; equal or disjoint ranges
+            // remain independent teaching groups.
+            guard weekListsCanIndicateRepeatedRow(a, b) else { return false }
         }
-        return rangesOverlap(left, right) || sameSource && rangesAdjacent(left, right)
+        return true
+    }
+
+    private static func weekListsCanIndicateRepeatedRow(
+        _ left: NativeScheduleCourse,
+        _ right: NativeScheduleCourse
+    ) -> Bool {
+        let a = Set(left.weekList.filter { $0 > 0 })
+        let b = Set(right.weekList.filter { $0 > 0 })
+        if a.isEmpty || b.isEmpty { return true }
+        if a.count == b.count { return false }
+        return a.isSubset(of: b) || b.isSubset(of: a)
     }
 
     private static func explicitIdentity(_ course: NativeScheduleCourse) -> String? {
@@ -1047,7 +1062,11 @@ public final class NativeScheduleStore: ObservableObject {
         if force { refreshStartedAt[key.semester] = .now }
         requestGeneration += 1
         let generation = requestGeneration
-        if !force, let cached = cachedEntry(for: key), cached.isFresh(at: .now, lifetime: cacheLifetime) {
+        // Paint any account-scoped cache before asking the bridge for a fresh
+        // response. A stale entry is still the last known timetable and keeps
+        // the grid interactive while the quiet revalidation runs; only an
+        // explicit pull-to-refresh bypasses this first paint.
+        if !force, let cached = cachedEntry(for: key) {
             apply(
                 cached.snapshot,
                 state: cached.snapshot.source == .cache ? .stale : .loaded,

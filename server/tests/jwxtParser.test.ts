@@ -144,6 +144,27 @@ test("parseSchedule keeps parallel 2025-2026-2 sections with explicit JWXT ident
   assert.deepEqual(courses.map((course) => course.sourceKey), ["jwxt:data-jxbid:section-a", "jwxt:data-jxbid:section-b"]);
 });
 
+test("parseSchedule collapses repeated rows when explicit ids carry a subset week range", () => {
+  const result = parseSchedule(`
+    <select id="xnxq01id"><option value="2025-2026-2" selected>2025-2026-2</option></select>
+    <table class="qz-weeklyTable">
+      <tr><th>周次</th><th>星期一</th><th>星期二</th><th>星期三</th><th>星期四</th><th>星期五</th><th>星期六</th><th>星期日</th></tr>
+      <tr>
+        <td name="timeTd"><div class="index-title">第二大节</div></td>
+        <td name="kbDataTd"></td><td name="kbDataTd"></td>
+        <td name="kbDataTd">
+          <ul class="courselists"><li class="courselists-item" data-jxbid="row-a"><div class="qz-hasCourse-title">实验课</div><p><span class="qz-hasCourse-abbrinfo">老师:张老师;时间:1-8周[3-4节];地点:实验楼201</span></p></li></ul>
+          <ul class="courselists"><li class="courselists-item" data-jxbid="row-b"><div class="qz-hasCourse-title">实验课</div><p><span class="qz-hasCourse-abbrinfo">老师:张;时间:2、4、6、8周[3-4节];地点:201</span></p></li></ul>
+        </td>
+        <td name="kbDataTd"></td><td name="kbDataTd"></td><td name="kbDataTd"></td><td name="kbDataTd"></td>
+      </tr>
+    </table>
+  `);
+  const courses = result.cells.find((cell) => cell.day === 3)?.courses ?? [];
+  assert.equal(courses.length, 1);
+  assert.deepEqual(courses[0].weekList, [1,2,3,4,5,6,7,8]);
+});
+
 test("parseSchedule merges a repeated 2025-2026-2 occurrence split across table cells", () => {
   const result = parseSchedule(`
     <select id="xnxq01id"><option value="2025-2026-2" selected>2025-2026-2</option></select>

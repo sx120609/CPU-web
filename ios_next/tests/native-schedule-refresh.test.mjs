@@ -13,6 +13,7 @@ test('native schedule owns a UIKit pull-to-refresh scroll view', async () => {
   assert.match(source, /private var pullGesture: UIPanGestureRecognizer!/);
   assert.match(source, /UIPanGestureRecognizer\(target: self, action: #selector\(handlePullGesture\(_:\)\)\)/);
   assert.match(source, /pullGesture\.cancelsTouchesInView = false/);
+  assert.match(source, /scrollView\.panGestureRecognizer\.require\(toFail: pullGesture\)/);
   assert.match(source, /private func triggerRefresh\(\)/);
   assert.match(source, /gestureRecognizerShouldBegin\(_ gestureRecognizer: UIGestureRecognizer\)/);
   assert.match(source, /shouldRecognizeSimultaneouslyWith otherGestureRecognizer/);

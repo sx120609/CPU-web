@@ -369,13 +369,16 @@ function normalizeScheduleCells(cells: ScheduleCell[]): ScheduleCell[] {
         const candidateEnd = candidate.course.endSlot ?? candidateStart;
         const leftSource = candidate.course.sourceKey?.trim();
         const rightSource = entry.course.sourceKey?.trim();
-        // Two explicit JWXT identities are separate teaching groups even when
-        // their title, teacher, room and section range happen to match.
-        if (leftSource && rightSource && leftSource !== rightSource) return false;
-        return teachersCompatible(candidate.course.teacher, entry.course.teacher)
+        const sameVisibleIdentity = teachersCompatible(candidate.course.teacher, entry.course.teacher)
           && locationsCompatible(candidate.course.location, entry.course.location)
           && start <= candidateEnd + 1
           && candidateStart <= end + 1;
+        if (!sameVisibleIdentity) return false;
+        // Equal week ranges with different ids are parallel sections. A
+        // subset range is a repeated physical row of one occurrence.
+        if (leftSource && rightSource && leftSource !== rightSource
+          && !weekListsCanIndicateRepeatedRow(candidate.course, entry.course)) return false;
+        return true;
       });
       const prev = matchIndex >= 0 ? merged[matchIndex] : undefined;
       if (prev) {
@@ -490,6 +493,15 @@ function locationsCompatible(left?: string, right?: string) {
   const a = normalizeLocationKey(left);
   const b = normalizeLocationKey(right);
   return !a || !b || a === b;
+}
+
+/** JWXT may assign a different id to a repeated physical row. */
+function weekListsCanIndicateRepeatedRow(left: ScheduleCourse, right: ScheduleCourse) {
+  const a = new Set(left.weekList.filter((week) => week > 0));
+  const b = new Set(right.weekList.filter((week) => week > 0));
+  if (!a.size || !b.size) return true;
+  if (a.size === b.size) return false;
+  return [...a].every((week) => b.has(week)) || [...b].every((week) => a.has(week));
 }
 
 function mergeNumberLists(a: number[] = [], b: number[] = []) {

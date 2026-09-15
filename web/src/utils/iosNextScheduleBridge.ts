@@ -546,6 +546,16 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
     const b = normalizeLocationIdentity(right);
     return !a || !b || a === b;
   };
+  const weekListsCanIndicateRepeatedRow = (
+    left: { weekList?: number[] },
+    right: { weekList?: number[] },
+  ) => {
+    const a = new Set((left.weekList ?? []).filter(week => Number.isFinite(week) && week > 0));
+    const b = new Set((right.weekList ?? []).filter(week => Number.isFinite(week) && week > 0));
+    if (!a.size || !b.size) return true;
+    if (a.size === b.size) return false;
+    return [...a].every(week => b.has(week)) || [...b].every(week => a.has(week));
+  };
   const coursesCanMerge = (
     left: ScheduleResult["cells"][number]["courses"][number],
     right: ScheduleResult["cells"][number]["courses"][number],
@@ -564,13 +574,17 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
     };
     const leftIdentity = explicitIdentity(left);
     const rightIdentity = explicitIdentity(right);
-    if (leftIdentity && rightIdentity && leftIdentity !== rightIdentity) return false;
     const sameSource = Boolean(left.sourceKey && right.sourceKey && left.sourceKey === right.sourceKey);
     const sameName = normalizeIdentityText(left.name) === normalizeIdentityText(right.name);
-    return sameName
+    const sameVisibleIdentity = sameName
       && fieldsCompatible(left.teacher, right.teacher)
-      && locationsCompatible(left.location, right.location)
-      && rangesCanMerge(leftRange, rightRange, sameSource);
+      && locationsCompatible(left.location, right.location);
+    if (!sameVisibleIdentity || !rangesCanMerge(leftRange, rightRange, sameSource)) return false;
+    // Equal week ranges with different ids are parallel sections. A subset
+    // range is a repeated physical row of one occurrence.
+    if (leftIdentity && rightIdentity && leftIdentity !== rightIdentity
+      && !weekListsCanIndicateRepeatedRow(left, right)) return false;
+    return true;
   };
   const mergeWeeksText = (
     previous: { weeks: string; weekList: number[] },
