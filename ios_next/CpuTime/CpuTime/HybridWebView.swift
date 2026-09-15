@@ -7,8 +7,8 @@ import WebKit
 
 
 enum IOSNextWebConfiguration {
-    static let versionCode = 38
-    static let versionName = "3.21.0"
+    static let versionCode = 39
+    static let versionName = "3.22.0"
 
     static var appURL: URL {
         let configured = Bundle.main.object(forInfoDictionaryKey: "CPUAppURL") as? String
