@@ -338,7 +338,7 @@ struct NativeScheduleView: View {
                 ShareLink(
                     item: scheduleShareText(result),
                     subject: Text("药大拾间课表"),
-                    message: Text("第 (store.selectedWeek) 周课表")
+                    message: Text("第 \(store.selectedWeek) 周课表")
                 ) {
                     Label("分享本周课表", systemImage: "square.and.arrow.up")
                 }
@@ -1031,7 +1031,7 @@ struct NativeScheduleView: View {
 
     private func scheduleShareText(_ result: NativeScheduleResult) -> String {
         let week = store.selectedWeek.isEmpty ? result.currentWeek : store.selectedWeek
-        var lines = ["药大拾间 · (semesterTitle(result)) · 第 (week) 周"]
+        var lines = ["药大拾间 · \(semesterTitle(result)) · 第 \(week) 周"]
         for day in 1...7 {
             let courses = blocks(for: day, week: Int(week), result: result)
             guard !courses.isEmpty else { continue }
@@ -1042,7 +1042,7 @@ struct NativeScheduleView: View {
                     block.course.name.trimmedNonEmpty,
                     preferences.showLocation ? block.course.location?.trimmedNonEmpty : nil,
                     preferences.showTeacher ? block.course.teacher?.trimmedNonEmpty : nil,
-                    "第 (block.startSlot)-(block.endSlot) 节",
+                    "第 \(block.startSlot)-\(block.endSlot) 节",
                 ].compactMap { $0 }
                 lines.append("· " + details.joined(separator: " · "))
             }
@@ -1055,7 +1055,7 @@ struct NativeScheduleView: View {
               let weekData = calendar.weeks.first(where: { $0.week == week }) else {
             return
         }
-        let fileName = "课表-(store.selectedSemester)-第(week)周.ics"
+        let fileName = "课表-\(store.selectedSemester)-第\(week)周.ics"
         let ics = NativeScheduleICSExporter.make(
             result: result,
             week: weekData,
@@ -2708,13 +2708,16 @@ private struct NativeScheduleRefreshScrollView<Content: View>: UIViewControllerR
     }
 
     @MainActor
-    final class Controller: UIViewController, UIScrollViewDelegate {
+    final class Controller: UIViewController, UIScrollViewDelegate, UIGestureRecognizerDelegate {
         private let scrollView = UIScrollView()
         private let refreshControl = UIRefreshControl()
+        private var pullGesture: UIPanGestureRecognizer!
         private var hostController: UIHostingController<Content>
         private var refreshTask: Task<Void, Never>?
         private var action: RefreshAction
         private var pullThresholdReached = false
+        private var pullStartedAtTop = false
+        private var maximumPullDistance: CGFloat = 0
 
         init(rootView: Content, action: @escaping RefreshAction) {
             hostController = UIHostingController(rootView: rootView)
@@ -2753,6 +2756,17 @@ private struct NativeScheduleRefreshScrollView<Content: View>: UIViewControllerR
             refreshControl.addTarget(self, action: #selector(didPull(_:)), for: .valueChanged)
             scrollView.refreshControl = refreshControl
 
+            // A child SwiftUI horizontal pager can win the same pan gesture
+            // before UIRefreshControl reaches its valueChanged threshold.
+            // Keep a non-cancelling vertical observer on the outer scroll view
+            // and route a completed pull through the same refresh action.
+            let pullGesture = UIPanGestureRecognizer(target: self, action: #selector(handlePullGesture(_:)))
+            pullGesture.delegate = self
+            pullGesture.cancelsTouchesInView = false
+            pullGesture.delaysTouchesBegan = false
+            scrollView.addGestureRecognizer(pullGesture)
+            self.pullGesture = pullGesture
+
             addChild(hostController)
             hostController.view.translatesAutoresizingMaskIntoConstraints = false
             hostController.view.backgroundColor = .clear
@@ -2782,6 +2796,8 @@ private struct NativeScheduleRefreshScrollView<Content: View>: UIViewControllerR
         @objc private func didPull(_ sender: UIRefreshControl) {
             guard refreshTask == nil else { return }
             pullThresholdReached = false
+            pullStartedAtTop = false
+            maximumPullDistance = 0
             let action = self.action
             refreshTask = Task { @MainActor [weak self] in
                 defer {
@@ -2816,11 +2832,59 @@ private struct NativeScheduleRefreshScrollView<Content: View>: UIViewControllerR
             let threshold = -(scrollView.adjustedContentInset.top + max(44, refreshControl.bounds.height * 0.85))
             let didPullPastThreshold = pullThresholdReached || scrollView.contentOffset.y <= threshold
             guard didPullPastThreshold, refreshTask == nil, !refreshControl.isRefreshing else { return }
+            triggerRefresh()
+        }
+
+        @objc private func handlePullGesture(_ gesture: UIPanGestureRecognizer) {
+            switch gesture.state {
+            case .began:
+                pullStartedAtTop = isAtTop
+                maximumPullDistance = 0
+            case .changed:
+                guard pullStartedAtTop, refreshTask == nil, !refreshControl.isRefreshing else { return }
+                let translation = gesture.translation(in: scrollView)
+                maximumPullDistance = max(maximumPullDistance, translation.y)
+                let threshold = max(52, refreshControl.bounds.height * 0.9)
+                if maximumPullDistance >= threshold {
+                    pullThresholdReached = true
+                }
+            case .ended, .cancelled, .failed:
+                defer {
+                    pullStartedAtTop = false
+                    maximumPullDistance = 0
+                }
+                guard pullThresholdReached || maximumPullDistance >= max(52, refreshControl.bounds.height * 0.9) else { return }
+                triggerRefresh()
+            default:
+                break
+            }
+        }
+
+        private var isAtTop: Bool {
+            scrollView.contentOffset.y <= -scrollView.adjustedContentInset.top + 2
+        }
+
+        private func triggerRefresh() {
+            guard refreshTask == nil, !refreshControl.isRefreshing else { return }
             pullThresholdReached = false
             refreshControl.beginRefreshing()
             let top = -(scrollView.adjustedContentInset.top + max(44, refreshControl.bounds.height * 0.85))
             scrollView.setContentOffset(CGPoint(x: scrollView.contentOffset.x, y: top), animated: true)
             didPull(refreshControl)
+        }
+
+        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            guard gestureRecognizer === pullGesture else { return true }
+            guard isAtTop, let pan = gestureRecognizer as? UIPanGestureRecognizer else { return false }
+            let velocity = pan.velocity(in: scrollView)
+            return velocity.y > 0 && velocity.y > abs(velocity.x) * 1.05
+        }
+
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+        ) -> Bool {
+            gestureRecognizer === pullGesture || otherGestureRecognizer === pullGesture
         }
 
         deinit {
@@ -2903,7 +2967,7 @@ private enum NativeScheduleICSExporter {
                       let start = date(day: day, time: startPeriod.startTime),
                       let end = date(day: day, time: endPeriod.endTime), end > start else { continue }
                 let identity = course.nativeId ?? course.sourceKey ?? course.name
-                let uid = "(week.week)-(cell.day)-(range.start)-(range.end)-(identity)"
+                let uid = "\(week.week)-\(cell.day)-\(range.start)-\(range.end)-\(identity)"
                     .unicodeScalars.map { $0.value < 128 ? String($0) : String(format: "%02X", $0.value) }.joined()
                 lines.append("BEGIN:VEVENT")
                 lines.append("UID:\(escape(uid))@cputime")

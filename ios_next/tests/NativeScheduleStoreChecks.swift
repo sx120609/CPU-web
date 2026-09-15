@@ -128,6 +128,33 @@ struct NativeScheduleStoreChecks {
         precondition(parallelCourses.count == 2,
                      "Parallel custom courses with identical visible fields must remain distinct")
 
+        let officialParallelA = NativeScheduleCourse(
+            nativeId: "source:jwxt:data-jxbid:section-a",
+            name: "同名教务课程",
+            teacher: "同一教师",
+            weeks: "1-8周",
+            weekList: Array(1...8),
+            location: "同一教室",
+            startSlot: 1,
+            endSlot: 2
+        )
+        let officialParallelB = NativeScheduleCourse(
+            nativeId: "source:jwxt:data-jxbid:section-b",
+            name: "同名教务课程",
+            teacher: "同一教师",
+            weeks: "1-8周",
+            weekList: Array(1...8),
+            location: "同一教室",
+            startSlot: 1,
+            endSlot: 2
+        )
+        let officialParallelCourses = NativeScheduleCourseBlockMerger.merge([
+            NativeScheduleCourseBlockRecord(id: "official-a", course: officialParallelA, bigSlot: 1, startSlot: 1, endSlot: 2),
+            NativeScheduleCourseBlockRecord(id: "official-b", course: officialParallelB, bigSlot: 1, startSlot: 1, endSlot: 2),
+        ])
+        precondition(officialParallelCourses.count == 2,
+                     "Parallel official sections with explicit bridge identities must remain distinct")
+
         let cancelledStore = NativeScheduleStore(
             loader: { _ in NativeScheduleSnapshot(cancelled: true) },
             archive: nil

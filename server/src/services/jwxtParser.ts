@@ -51,6 +51,8 @@ export interface ScheduleCourse {
   name: string;
   /** Stable identity when an upstream source exposes one. */
   nativeId?: string;
+  /** Teaching-group identity when the upstream table exposes one. */
+  sourceKey?: string;
   /** 任课教师 */
   teacher?: string;
   /** 1-17(周) / 1-17(单周) / 1-17(双周) 原始文本 */
@@ -167,6 +169,7 @@ function parseLegacyScheduleCells($: cheerio.CheerioAPI): ScheduleCell[] {
           const weeksText = root.find('font[title="周次(节次)"]').text().trim();
           const location = root.find('font[title="教室"]').text().trim() || undefined;
           const slotNote = root.find('font[title="节次备注"]').text().trim() || undefined;
+          const sourceKey = readScheduleCourseSourceKey($(c));
           courses.push({
             name: courseName,
             teacher,
@@ -175,6 +178,7 @@ function parseLegacyScheduleCells($: cheerio.CheerioAPI): ScheduleCell[] {
             location,
             slotNote,
             ...parseSlotRange(slotNote),
+            ...(sourceKey ? { sourceKey } : {}),
           });
         }
       });
@@ -251,6 +255,7 @@ function parseModernScheduleCourses(
     const timeMatch = rawTime.match(/^(.*?)[\[【]([^\]】]+)[\]】]\s*$/);
     const weeksText = (timeMatch?.[1] ?? rawTime).trim();
     const slotNote = timeMatch?.[2]?.trim() || undefined;
+    const sourceKey = readScheduleCourseSourceKey($item);
 
     courses.push({
       name,
@@ -260,9 +265,38 @@ function parseModernScheduleCourses(
       location: normalizeModernLocation(rawLocation),
       slotNote,
       ...parseSlotRange(slotNote),
+      ...(sourceKey ? { sourceKey } : {}),
     });
   });
   return courses;
+}
+
+/**
+ * Newer JWXT pages sometimes include a class/teaching-group id on the course
+ * item. Preserve it so parallel sections that share every visible field do
+ * not get merged into one native card. The same id is repeated when the
+ * table uses multiple physical rows for one occurrence, so normalisation can
+ * still collapse those rows.
+ */
+function readScheduleCourseSourceKey(
+  item: cheerio.Cheerio<any>,
+): string | undefined {
+  const attributeNames = [
+    "data-course-id", "data-courseid", "data-course-key", "data-kcid", "data-jxbid",
+    "data-jxb-id", "data-class-id", "courseid", "kcid", "jxbid",
+  ];
+  const nodes = [item[0], ...item.find("*").toArray()];
+  for (const node of nodes) {
+    const attributes = (node as { attribs?: Record<string, string> } | undefined)?.attribs;
+    if (!attributes) continue;
+    for (const name of attributeNames) {
+      const value = String(attributes[name] ?? "").trim();
+      if (value && !/^course(?:lists)?[-_]?item$/i.test(value)) {
+        return `jwxt:${name}:${value}`;
+      }
+    }
+  }
+  return undefined;
 }
 
 function readModernScheduleDetail(detail: string, label: string) {
@@ -333,6 +367,11 @@ function normalizeScheduleCells(cells: ScheduleCell[]): ScheduleCell[] {
       const matchIndex = merged.findIndex((candidate) => {
         const candidateStart = candidate.course.startSlot ?? (candidate.bigSlot * 2 - 1);
         const candidateEnd = candidate.course.endSlot ?? candidateStart;
+        const leftSource = candidate.course.sourceKey?.trim();
+        const rightSource = entry.course.sourceKey?.trim();
+        // Two explicit JWXT identities are separate teaching groups even when
+        // their title, teacher, room and section range happen to match.
+        if (leftSource && rightSource && leftSource !== rightSource) return false;
         return teachersCompatible(candidate.course.teacher, entry.course.teacher)
           && locationsCompatible(candidate.course.location, entry.course.location)
           && start <= candidateEnd + 1
