@@ -775,8 +775,12 @@ struct NativeShellView: View {
         // guests keep the shorter variant. The scroll view remains available
         // for Dynamic Type and smaller devices.
         quickEntry
+            .frame(maxWidth: .infinity)
             .presentationDetents([.height(webSession.isLoggedIn ? 460 : 400)])
             .presentationDragIndicator(.visible)
+            .presentationCornerRadius(28)
+            .presentationBackground(.regularMaterial)
+            .presentationContentInteraction(.scrolls)
             .tint(.cpuBrand)
             .preferredColorScheme(webSession.pageColorScheme)
     }

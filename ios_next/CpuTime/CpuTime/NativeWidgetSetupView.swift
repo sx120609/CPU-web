@@ -3,9 +3,8 @@ import EventKit
 import ActivityKit
 import PhotosUI
 
-/// One native settings surface for the two companion experiences. Keeping the
-/// Watch status and iPhone widget controls together makes the schedule header
-/// a single, predictable entry point.
+/// Native companion settings are intentionally split by product surface. The
+/// entry page stays short; each destination owns the controls for one thing.
 struct NativeDeviceSettingsView: View {
     @ObservedObject var session: HybridWebViewStore
     @ObservedObject var watchStore: PhoneWatchScheduleStore
@@ -15,13 +14,51 @@ struct NativeDeviceSettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                ScheduleSettingsSection()
-                WidgetSettingsSection(session: session)
-                WatchSyncStatusSection(store: watchStore)
-                LiveActivitySettingsSection()
-                CalendarImportSection(store: scheduleStore)
+                Section {
+                    SettingsDestinationRow(
+                        title: "课表",
+                        detail: "显示内容、排版和背景",
+                        systemImage: "calendar"
+                    ) {
+                        NativeScheduleSettingsView(preferences: .shared)
+                    }
+                    SettingsDestinationRow(
+                        title: "iPhone 小组件",
+                        detail: session.widgetSettings.isConfigured ? "已配置，可在主屏幕添加" : "尚未配置",
+                        systemImage: "square.grid.2x2"
+                    ) {
+                        NativeWidgetSettingsPage(session: session)
+                    }
+                    SettingsDestinationRow(
+                        title: "Apple Watch",
+                        detail: watchStatus,
+                        systemImage: "applewatch"
+                    ) {
+                        NativeWatchSettingsPage(store: watchStore)
+                    }
+                    if #available(iOS 16.1, *) {
+                        SettingsDestinationRow(
+                            title: "实时活动",
+                            detail: liveActivityStatus,
+                            systemImage: "rectangle.topthird.inset.filled"
+                        ) {
+                            NativeLiveActivitySettingsPage()
+                        }
+                    }
+                    SettingsDestinationRow(
+                        title: "Apple 日历",
+                        detail: "导入课程和管理提醒",
+                        systemImage: "calendar.badge.plus"
+                    ) {
+                        NativeCalendarSettingsPage(store: scheduleStore)
+                    }
+                } header: {
+                    Text("设备与服务")
+                } footer: {
+                    Text("每项设置独立保存，调整后会立即同步到对应设备。")
+                }
             }
-            .navigationTitle("设备与小组件")
+            .navigationTitle("设备与设置")
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("完成") { dismiss() }
@@ -30,6 +67,88 @@ struct NativeDeviceSettingsView: View {
         }
         .tint(.cpuBrand)
         .preferredColorScheme(session.pageColorScheme)
+    }
+
+    private var watchStatus: String {
+        let connection = watchStore.coordinator.transport.connection
+        if connection.reachable { return "已连接" }
+        if connection.installed { return "等待连接" }
+        if connection.paired { return "未安装" }
+        return "未配对"
+    }
+
+    @available(iOS 16.1, *)
+    private var liveActivityStatus: String {
+        let enabled = UserDefaults(suiteName: NextWidgetConfiguration.appGroup)?
+            .object(forKey: NativeLiveActivityController.enabledKey) as? Bool ?? true
+        return enabled ? "已开启，临近课程自动显示" : "已关闭"
+    }
+}
+
+private struct SettingsDestinationRow<Destination: View>: View {
+    let title: String
+    let detail: String
+    let systemImage: String
+    @ViewBuilder let destination: () -> Destination
+
+    var body: some View {
+        NavigationLink(destination: destination) {
+            HStack(spacing: 12) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(Color.cpuBrand)
+                    .frame(width: 28, height: 28)
+                    .background(Color.cpuBrand.opacity(0.11), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.body.weight(.medium))
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            .padding(.vertical, 3)
+        }
+    }
+}
+
+private struct NativeWidgetSettingsPage: View {
+    @ObservedObject var session: HybridWebViewStore
+
+    var body: some View {
+        Form { WidgetSettingsSection(session: session) }
+            .navigationTitle("iPhone 小组件")
+            .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private struct NativeWatchSettingsPage: View {
+    @ObservedObject var store: PhoneWatchScheduleStore
+
+    var body: some View {
+        Form { WatchSyncStatusSection(store: store) }
+            .navigationTitle("Apple Watch")
+            .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+@available(iOS 16.1, *)
+private struct NativeLiveActivitySettingsPage: View {
+    var body: some View {
+        Form { LiveActivitySettingsSection() }
+            .navigationTitle("实时活动")
+            .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private struct NativeCalendarSettingsPage: View {
+    @ObservedObject var store: NativeScheduleStore
+
+    var body: some View {
+        Form { CalendarImportSection(store: store) }
+            .navigationTitle("Apple 日历")
+            .navigationBarTitleDisplayMode(.inline)
     }
 }
 

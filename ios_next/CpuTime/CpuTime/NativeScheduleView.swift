@@ -19,6 +19,7 @@ struct NativeScheduleView: View {
     // grid, causing SwiftUI to show the add form for a real course.
     @State private var courseEditorPresentation: CourseEditorPresentation?
     @State private var weekPickerPresented = false
+    @State private var scheduleToolsPresented = false
     // Native pagers own the horizontal pan and keep the current page under the
     // finger. The center page is restored after a transition commits the new
     // week/day to the store, so vertical scrolling never competes with a
@@ -149,6 +150,17 @@ struct NativeScheduleView: View {
             weekPicker
                 .presentationDetents([.medium, .large])
         }
+        .sheet(isPresented: $scheduleToolsPresented) {
+            Group {
+                if let result = store.result {
+                    scheduleToolsSheet(result)
+                }
+            }
+            .presentationDetents([.medium])
+            .presentationDragIndicator(.visible)
+            .presentationCornerRadius(28)
+            .presentationBackground(.regularMaterial)
+        }
         .sheet(item: scheduleChangeNoticeBinding) { notice in
             NativeScheduleChangeNoticeSheet(notice: notice) {
                 store.dismissScheduleChangeNotice()
@@ -194,7 +206,7 @@ struct NativeScheduleView: View {
                 // The schedule header has one overflow control. Device and
                 // widget settings live in its own menu section alongside the
                 // schedule actions instead of competing with a second icon.
-                scheduleToolsMenu(result)
+                scheduleToolsMenu()
 
                 Picker("课表视图", selection: $viewMode) {
                     // Keep the same order as Web's view switch: 日 / 周.
@@ -304,35 +316,12 @@ struct NativeScheduleView: View {
         .accessibilityLabel("选择学期")
     }
 
-    /// Harmony's schedule surface keeps refresh, editing and presentation
-    /// choices in one overflow menu. The iOS header now exposes the same
-    /// groups without making the companion-device entry carry unrelated work.
-    private func scheduleToolsMenu(_ result: NativeScheduleResult) -> some View {
-        Menu {
-            Section("课表") {
-                Button("刷新课表", systemImage: "arrow.clockwise") { refresh() }
-                    .disabled(isLoading)
-                if result.source != .graduate {
-                    Button("添加课程", systemImage: "plus") {
-                        presentAddCourse(
-                            day: selectedDay,
-                            week: Int(store.selectedWeek),
-                            startSlot: 1
-                        )
-                    }
-                }
-            }
-            Section("设置") {
-                Button("课表与设备设置", systemImage: "slider.horizontal.3", action: onDeviceSettings)
-            }
-            Section("分享") {
-                Button("分享当前课表", systemImage: "square.and.arrow.up") {
-                    exportScheduleImage(result)
-                }
-                Button("导出本周日历", systemImage: "calendar.badge.plus") {
-                    exportCurrentWeek(result)
-                }
-            }
+    /// Keep this as a single icon in the header, but present the actions in a
+    /// bottom sheet. SwiftUI's `Menu` is allowed to flip to a left popover near
+    /// the trailing edge, which made the same control appear in two places.
+    private func scheduleToolsMenu() -> some View {
+        Button {
+            scheduleToolsPresented = true
         } label: {
             Image(systemName: "ellipsis.circle")
                 .font(.system(size: 17, weight: .semibold))
@@ -343,6 +332,58 @@ struct NativeScheduleView: View {
         .buttonStyle(.plain)
         .foregroundStyle(.primary)
         .accessibilityLabel("更多课表操作")
+    }
+
+    private func scheduleToolsSheet(_ result: NativeScheduleResult) -> some View {
+        NavigationStack {
+            List {
+                Section("课表") {
+                    Button("刷新课表", systemImage: "arrow.clockwise") {
+                        scheduleToolsPresented = false
+                        refresh()
+                    }
+                    .disabled(isLoading)
+
+                    if result.source != .graduate {
+                        Button("添加课程", systemImage: "plus") {
+                            scheduleToolsPresented = false
+                            presentAddCourse(
+                                day: selectedDay,
+                                week: Int(store.selectedWeek),
+                                startSlot: 1
+                            )
+                        }
+                    }
+                }
+
+                Section("设备与设置") {
+                    Button("课表、设备与小组件", systemImage: "slider.horizontal.3") {
+                        scheduleToolsPresented = false
+                        DispatchQueue.main.async { onDeviceSettings() }
+                    }
+                }
+
+                Section("分享") {
+                    Button("分享当前课表", systemImage: "square.and.arrow.up") {
+                        scheduleToolsPresented = false
+                        DispatchQueue.main.async { exportScheduleImage(result) }
+                    }
+                    Button("导出本周日历", systemImage: "calendar.badge.plus") {
+                        scheduleToolsPresented = false
+                        DispatchQueue.main.async { exportCurrentWeek(result) }
+                    }
+                }
+            }
+            .listStyle(.insetGrouped)
+            .navigationTitle("更多")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("完成") { scheduleToolsPresented = false }
+                }
+            }
+        }
+        .tint(.cpuBrand)
     }
 
     private func weekStepButton(

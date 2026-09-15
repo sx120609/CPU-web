@@ -24,7 +24,15 @@ private struct ScheduleLiveActivityWidget: Widget {
                     ScheduleLiveActivityLogo(size: 22)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    ScheduleLiveActivityTimerBlock(state: context.state)
+                    VStack(alignment: .trailing, spacing: 1) {
+                        Text(context.state.phase == .inProgress ? "剩余" : "开始")
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(ScheduleLiveActivityPalette.secondaryText)
+                        ScheduleLiveActivityTimer(state: context.state)
+                            .font(.headline.monospacedDigit().weight(.bold))
+                            .foregroundStyle(ScheduleLiveActivityPalette.primaryText)
+                            .minimumScaleFactor(0.72)
+                    }
                 }
                 DynamicIslandExpandedRegion(.center) {
                     VStack(alignment: .leading, spacing: 2) {
@@ -39,7 +47,7 @@ private struct ScheduleLiveActivityWidget: Widget {
                     }
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    VStack(alignment: .leading, spacing: 6) {
+                    VStack(alignment: .leading, spacing: 7) {
                         HStack(spacing: 7) {
                             ScheduleLiveActivityMetadata(state: context.state)
                             Spacer(minLength: 4)
@@ -73,33 +81,30 @@ private struct ScheduleLiveActivityLockScreen: View {
     let state: ScheduleLiveActivityAttributes.ContentState
 
     var body: some View {
-        HStack(alignment: .top, spacing: 11) {
-            RoundedRectangle(cornerRadius: 2.5, style: .continuous)
-                .fill(ScheduleLiveActivityPalette.courseAccent(for: state.courseName))
-                .frame(width: 4)
-
-            VStack(alignment: .leading, spacing: 9) {
-                HStack(alignment: .center, spacing: 8) {
-                    ScheduleLiveActivityLogo(size: 25)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center, spacing: 9) {
+                ScheduleLiveActivityLogo(size: 27)
+                VStack(alignment: .leading, spacing: 1) {
                     Text(state.phase == .inProgress ? "正在上课" : "下一节课")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(ScheduleLiveActivityPalette.secondaryText)
-                    Spacer(minLength: 8)
-                    ScheduleLiveActivityTimer(state: state)
-                        .font(.subheadline.monospacedDigit().weight(.bold))
-                        .foregroundStyle(ScheduleLiveActivityPalette.primaryText)
-                        .minimumScaleFactor(0.72)
+                    ScheduleLiveActivityMetadata(state: state)
                 }
-
-                Text(state.courseName)
-                    .font(.title3.weight(.bold))
+                Spacer(minLength: 8)
+                ScheduleLiveActivityTimer(state: state)
+                    .font(.headline.monospacedDigit().weight(.bold))
                     .foregroundStyle(ScheduleLiveActivityPalette.primaryText)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.8)
-
-                ScheduleLiveActivityMetadata(state: state)
-                ScheduleLiveActivityProgress(state: state)
+                    .minimumScaleFactor(0.72)
             }
+
+            Text(state.courseName)
+                .font(.title3.weight(.bold))
+                .foregroundStyle(ScheduleLiveActivityPalette.primaryText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.78)
+
+            ScheduleLiveActivityProgress(state: state)
+            ScheduleLiveActivityNextLine(state: state)
         }
         .foregroundStyle(ScheduleLiveActivityPalette.primaryText)
         .padding(.vertical, 2)
@@ -117,23 +122,6 @@ private struct ScheduleLiveActivityLogo: View {
             .aspectRatio(contentMode: .fit)
             .frame(width: size, height: size)
             .clipShape(RoundedRectangle(cornerRadius: size * 0.22, style: .continuous))
-    }
-}
-
-@available(iOS 16.1, *)
-private struct ScheduleLiveActivityTimerBlock: View {
-    let state: ScheduleLiveActivityAttributes.ContentState
-
-    var body: some View {
-        VStack(alignment: .trailing, spacing: 1) {
-            Text(state.phase == .inProgress ? "剩余" : "开始")
-                .font(.caption2.weight(.medium))
-                .foregroundStyle(ScheduleLiveActivityPalette.secondaryText)
-            ScheduleLiveActivityTimer(state: state)
-                .font(.headline.monospacedDigit().weight(.bold))
-                .foregroundStyle(ScheduleLiveActivityPalette.primaryText)
-                .minimumScaleFactor(0.7)
-        }
     }
 }
 
@@ -190,6 +178,33 @@ private struct ScheduleLiveActivityMetadata: View {
 }
 
 @available(iOS 16.1, *)
+private struct ScheduleLiveActivityNextLine: View {
+    let state: ScheduleLiveActivityAttributes.ContentState
+
+    @ViewBuilder
+    var body: some View {
+        if let name = state.nextCourseName,
+           !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           let start = state.nextCourseStart {
+            HStack(spacing: 6) {
+                Text("下一节")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(ScheduleLiveActivityPalette.secondaryText)
+                Text(name)
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(ScheduleLiveActivityPalette.primaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                Spacer(minLength: 4)
+                Text(start, style: .time)
+                    .font(.caption2.monospacedDigit().weight(.medium))
+                    .foregroundStyle(ScheduleLiveActivityPalette.secondaryText)
+            }
+        }
+    }
+}
+
+@available(iOS 16.1, *)
 private struct ScheduleLiveActivityProgress: View {
     let state: ScheduleLiveActivityAttributes.ContentState
 
@@ -218,25 +233,11 @@ private struct ScheduleLiveActivityTimer: View {
 
 private enum ScheduleLiveActivityPalette {
     static let brand = Color(red: 15 / 255, green: 143 / 255, blue: 127 / 255)
-    static let surface = Color(red: 20 / 255, green: 27 / 255, blue: 28 / 255)
+    static let surface = Color.black.opacity(0.94)
     static let primaryText = Color.white
     static let secondaryText = Color.white.opacity(0.68)
 
-    private static let courseAccents: [Color] = [
-        Color(red: 232 / 255, green: 91 / 255, blue: 75 / 255),
-        Color(red: 74 / 255, green: 120 / 255, blue: 242 / 255),
-        Color(red: 139 / 255, green: 92 / 255, blue: 246 / 255),
-        Color(red: 23 / 255, green: 166 / 255, blue: 154 / 255),
-        Color(red: 224 / 255, green: 162 / 255, blue: 36 / 255),
-        Color(red: 236 / 255, green: 112 / 255, blue: 161 / 255),
-    ]
-
-    static func courseAccent(for name: String) -> Color {
-        let hash = name.unicodeScalars.reduce(0) { partial, scalar in
-            (partial &* 31 &+ Int(scalar.value)) & 0x7fff_ffff
-        }
-        return courseAccents[hash % courseAccents.count]
-    }
+    static func courseAccent(for _: String) -> Color { brand }
 }
 
 private struct UpcomingScheduleWidget: Widget {
@@ -866,7 +867,6 @@ private enum WidgetPalette {
         Color(red: 1, green: 247 / 255, blue: 224 / 255),
         Color(red: 253 / 255, green: 235 / 255, blue: 244 / 255),
     ]
-
     static func accent(for theme: ScheduleWidgetTheme) -> Color {
         switch theme {
         case .green:
@@ -886,7 +886,7 @@ private enum WidgetPalette {
         case .slate:
             Color(red: 71 / 255, green: 85 / 255, blue: 105 / 255)
         case .colorGlass:
-            Color(red: 109 / 255, green: 93 / 255, blue: 252 / 255)
+            Color(red: 15 / 255, green: 143 / 255, blue: 127 / 255)
         }
     }
 
@@ -907,12 +907,8 @@ private enum WidgetPalette {
     ) -> Color {
         let index = index(for: course)
         let courseAccent = accent(for: course, theme: theme)
-        if colorScheme == .dark {
-            return courseAccent.opacity(0.2)
-        }
-        guard theme != .colorGlass else {
-            return colorGlassTints[index]
-        }
+        if colorScheme == .dark { return courseAccent.opacity(0.18) }
+        guard theme != .colorGlass else { return colorGlassTints[index] }
         switch theme {
         case .green:
             return Color(red: 244 / 255, green: 251 / 255, blue: 248 / 255)
@@ -941,6 +937,7 @@ private enum WidgetPalette {
         }
         return hash % colorGlassAccents.count
     }
+
 }
 
 #Preview(as: .systemSmall) {

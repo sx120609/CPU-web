@@ -16,11 +16,10 @@ private struct NextCourseWatchWidget: Widget {
         ) { entry in
             NextCourseWidgetView(entry: entry)
                 .containerBackground(for: .widget) {
-                    LinearGradient(
-                        colors: [Color.green.opacity(0.32), Color.black.opacity(0.18)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
+                    // Accessory families already provide the system watch
+                    // surface. A custom gradient makes the text look muddy
+                    // and breaks the monochrome watch face treatments.
+                    Color.clear
                 }
         }
         .configurationDisplayName("下一节课")
@@ -200,7 +199,7 @@ private struct NextCourseWidgetView: View {
                 HStack(spacing: 4) {
                     Image(systemName: "book.closed.fill")
                         .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(.green)
+                        .foregroundStyle(Color(red: 15 / 255, green: 143 / 255, blue: 127 / 255))
                         .widgetAccentable()
                     Text("下一节")
                         .font(.system(size: 10, weight: .semibold))
@@ -242,7 +241,7 @@ private struct NextCourseWidgetView: View {
         HStack(spacing: 8) {
             Image(systemName: symbol)
                 .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(.green)
+                .foregroundStyle(Color(red: 15 / 255, green: 143 / 255, blue: 127 / 255))
                 .widgetAccentable()
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.system(size: 13, weight: .bold))
