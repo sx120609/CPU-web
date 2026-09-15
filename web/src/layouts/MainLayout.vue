@@ -237,7 +237,11 @@
       </el-icon>
     </button>
 
-    <footer v-if="!hideChrome && !useFlutterShell && !fullHeightContent && !mobileTopicChrome" class="footer">
+    <footer
+      v-if="!hideChrome && !fullHeightContent && !mobileTopicChrome && (!useFlutterShell || showAppFiling)"
+      class="footer"
+      :class="{ 'footer--app': showAppFiling, 'footer--compact': useFlutterShell }"
+    >
       <div class="footer-inner">
         <div class="footer-main">
           <div class="footer-company">
@@ -270,6 +274,9 @@
             <a href="https://github.com/sx120609/CPU-web" target="_blank" rel="noopener noreferrer">GitHub</a>
             <a v-if="site.siteFilingNumber" href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">{{ site.siteFilingNumber }}</a>
           </nav>
+        </div>
+        <div v-if="showAppFiling" class="footer-app-filing">
+          <a :href="APP_FILING_URL" target="_blank" rel="noopener noreferrer">APP 备案号：{{ APP_FILING_NUMBER }}</a>
         </div>
       </div>
     </footer>
@@ -406,6 +413,7 @@ import { useAppearanceStore, type AppearanceMode } from "@/stores/appearance";
 import { iosRouteTransitionEnabled } from "@/router";
 import { freezeLeavingPage, releaseLeavingPage } from "@/utils/routeTransition";
 import { isAndroidNativeApp, isDesktopNativeApp, isFlutterNativeShell, isIosNextNativeShell, isLikelyIosDevice, hidesNativeCommerce } from "@/utils/clientInfo";
+import { APP_FILING_NUMBER, APP_FILING_URL, isRegisteredMobileApp } from "../../../shared/appFiling";
 
 const ShijianAssistant = defineAsyncComponent(() => import("@/views/search/Result.vue"));
 const DesktopToolsPanel = defineAsyncComponent(() => import("@/components/common/DesktopToolsPanel.vue"));
@@ -469,6 +477,7 @@ const fullHeightContent = computed(() => Boolean(route.meta?.fullHeightContent))
 const useFlutterShell = computed(() => isFlutterNativeShell());
 const useIosNextShell = computed(() => isIosNextNativeShell());
 const useNativeShell = computed(() => useFlutterShell.value || useIosNextShell.value);
+const showAppFiling = isRegisteredMobileApp(navigator.userAgent);
 const useIosRouteTransition = isLikelyIosDevice();
 // 两个悬浮球共用同一套显示条件
 const showFloatingActions = computed(() => (
@@ -1821,6 +1830,34 @@ html[data-theme="dark"] .assistant-widget {
 .footer-links a:hover {
   background: color-mix(in srgb, var(--cpu-primary) 10%, transparent);
   text-decoration: none;
+}
+
+.footer-app-filing {
+  margin-top: 8px;
+  font-size: 12px;
+  text-align: center;
+}
+
+.footer-app-filing a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.footer--compact .footer-main,
+.footer--compact .footer-bottom,
+:global(html[data-cpu-harmony-native] .footer--app .footer-main),
+:global(html[data-cpu-harmony-native] .footer--app .footer-bottom) {
+  display: none;
+}
+
+/* Installed Harmony shells hide the old footer; keep the app filing reachable. */
+:global(html[data-cpu-harmony-native] .layout-root > .footer.footer--app) {
+  display: block !important;
+  padding-bottom: calc(16px + var(--cpu-harmony-bottom-clearance, 96px));
 }
 
 .mobile-tabbar {

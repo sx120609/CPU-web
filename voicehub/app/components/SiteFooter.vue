@@ -11,6 +11,11 @@
           {{ icpNumber }}
         </a>
       </span>
+      <span v-if="showAppFiling" class="footer-item footer-app-filing">
+        <a :href="APP_FILING_URL" class="icp-link" rel="noopener noreferrer" target="_blank">
+          APP 备案号：{{ APP_FILING_NUMBER }}
+        </a>
+      </span>
       <span v-if="gonganNumber" class="footer-item">
         <a
           :href="gonganLink || 'https://beian.mps.gov.cn/'"
@@ -50,6 +55,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { getCopyrightOwner, getSystemName, getRepoUrl } from '@/utils/core/security'
 import packageJson from '~~/package.json'
+import { APP_FILING_NUMBER, APP_FILING_URL, isRegisteredMobileApp } from '../../../shared/appFiling'
 
 // 使用 useSiteConfig composable 获取配置
 const { siteTitle, icp: icpNumber, gonganNumber } = useSiteConfig()
@@ -74,8 +80,10 @@ const systemVersion = packageJson.version
 const currentYear = new Date().getFullYear()
 
 const responseTime = ref(0)
+const showAppFiling = ref(false)
 
 onMounted(() => {
+  showAppFiling.value = isRegisteredMobileApp(navigator.userAgent)
   if (typeof window !== 'undefined' && window.performance) {
     // 使用 requestAnimationFrame 确保在渲染后计算
     requestAnimationFrame(() => {
@@ -123,6 +131,12 @@ onMounted(() => {
 
 .footer-item a:hover {
   color: #1f2a1f;
+}
+
+.footer-app-filing a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 48px;
 }
 
 .icp-link,
