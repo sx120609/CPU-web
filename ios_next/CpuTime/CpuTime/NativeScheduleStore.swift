@@ -1063,7 +1063,7 @@ public final class NativeScheduleStore: ObservableObject {
     /// Loads the requested semester/week. A fresh in-memory entry is used for
     /// repeated renders; a cache hit is painted first and then refreshed in a
     /// separate task so a timetable never disappears behind a spinner. `force`
-    /// is used by pull-to-refresh and the background refresh task. No disk
+    /// is used by an explicit refresh action and the background refresh task. No disk
     /// cache is used here, avoiding cross-account data leakage.
     public func load(
         semester: String? = nil,

@@ -21,7 +21,7 @@ private struct ScheduleLiveActivityWidget: Widget {
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    ScheduleLiveActivityLogo(size: 26)
+                    ScheduleLiveActivityLogo(size: 22)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
                     ScheduleLiveActivityTimerBlock(state: context.state)
@@ -29,18 +29,24 @@ private struct ScheduleLiveActivityWidget: Widget {
                 DynamicIslandExpandedRegion(.center) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(context.state.phase == .inProgress ? "正在上课" : "下一节课")
-                            .font(.caption2.weight(.semibold))
+                            .font(.caption2.weight(.medium))
                             .foregroundStyle(ScheduleLiveActivityPalette.secondaryText)
                         Text(context.state.courseName)
-                            .font(.headline.weight(.bold))
+                            .font(.subheadline.weight(.bold))
                             .foregroundStyle(ScheduleLiveActivityPalette.primaryText)
                             .lineLimit(1)
-                            .minimumScaleFactor(0.7)
+                            .minimumScaleFactor(0.68)
                     }
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    VStack(alignment: .leading, spacing: 7) {
-                        ScheduleLiveActivityMetadata(state: context.state)
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: 7) {
+                            ScheduleLiveActivityMetadata(state: context.state)
+                            Spacer(minLength: 4)
+                            Text(context.state.startDate, style: .time)
+                                .font(.caption2.monospacedDigit().weight(.medium))
+                                .foregroundStyle(ScheduleLiveActivityPalette.secondaryText)
+                        }
                         ScheduleLiveActivityProgress(state: context.state)
                     }
                 }
@@ -56,7 +62,7 @@ private struct ScheduleLiveActivityWidget: Widget {
                 ScheduleLiveActivityLogo(size: 20)
                     .accessibilityLabel("课表")
             }
-            .widgetURL(URL(string: "cputime-next://schedule"))
+            .widgetURL(context.attributes.deepLinkURL)
             .keylineTint(ScheduleLiveActivityPalette.brand)
         }
     }
@@ -701,13 +707,13 @@ private struct TodayCourseRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 if let primary = options.primaryValue(for: course) {
                     Text(primary)
-                        .font(.system(size: large ? 13 : 11, weight: .bold))
+                        .font(.system(size: large ? 14 : 12, weight: .bold))
                         .foregroundStyle(WidgetPalette.primary)
                         .lineLimit(1)
                 }
                 if let metadata = options.metadata(for: course) {
                     Text(metadata)
-                        .font(.system(size: large ? 9 : 8))
+                        .font(.system(size: large ? 10 : 9, weight: .medium))
                         .foregroundStyle(WidgetPalette.secondary)
                         .lineLimit(1)
                 }
@@ -801,21 +807,28 @@ private struct WidgetDateHeader: View {
     @Environment(\.scheduleWidgetTheme) private var theme
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(alignment: .firstTextBaseline, spacing: 7) {
             Text(day.compactDate)
-                .font(.system(size: 16, weight: .bold))
+                .font(.system(size: 19, weight: .bold, design: .rounded))
                 .foregroundStyle(WidgetPalette.primary)
-            Text(day.displayLabel)
-                .font(.system(size: 16, weight: .bold))
-                .foregroundStyle(
-                    day.displayLabel == "周六" || day.displayLabel == "周日"
-                        ? Color.pink
-                        : WidgetPalette.accent(for: theme)
-                )
+            VStack(alignment: .leading, spacing: 0) {
+                Text(day.displayLabel.isEmpty ? "课表" : day.displayLabel)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(
+                        day.displayLabel == "周六" || day.displayLabel == "周日"
+                            ? Color.pink
+                            : WidgetPalette.accent(for: theme)
+                    )
+                if day.isToday == true {
+                    Text("今天")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(WidgetPalette.secondary)
+                }
+            }
             Spacer(minLength: 0)
             if let week = day.week, week > 0 {
                 Text("第 \(week) 周")
-                    .font(.system(size: 9, weight: .semibold))
+                    .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(WidgetPalette.secondary)
             }
         }
@@ -962,7 +975,7 @@ private enum WidgetPalette {
 
 private extension ScheduleLiveActivityAttributes {
     static var preview: Self {
-        Self(semester: "2026 秋", dateKey: "2026-09-15")
+        Self(semester: "2026 秋", dateKey: "2026-09-15", week: 3)
     }
 }
 

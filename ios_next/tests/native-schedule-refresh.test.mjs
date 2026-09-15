@@ -4,30 +4,14 @@ import { readFile } from 'node:fs/promises';
 
 const sourceURL = new URL('../CpuTime/CpuTime/NativeScheduleView.swift', import.meta.url);
 
-test('native schedule owns a UIKit pull-to-refresh scroll view', async () => {
+test('native schedule keeps vertical scrolling native and exposes refresh in the overflow menu', async () => {
   const source = await readFile(sourceURL, 'utf8');
   const storeSource = await readFile(new URL('../CpuTime/CpuTime/NativeScheduleStore.swift', import.meta.url), 'utf8');
-  assert.match(source, /private struct NativeScheduleRefreshScrollView<Content: View>: UIViewControllerRepresentable/);
-  assert.match(source, /private let scrollView = UIScrollView\(\)/);
-  assert.match(source, /private let refreshControl = UIRefreshControl\(\)/);
-  assert.match(source, /private var pullGesture: UIPanGestureRecognizer!/);
-  assert.match(source, /UIPanGestureRecognizer\(target: self, action: #selector\(handlePullGesture\(_:\)\)\)/);
-  assert.match(source, /pullGesture\.cancelsTouchesInView = false/);
-  assert.match(source, /Do not make the scroll view wait for the observer to finish/);
-  assert.doesNotMatch(source, /scrollView\.panGestureRecognizer\.require\(toFail: pullGesture\)/);
-  assert.match(source, /private func triggerRefresh\(\)/);
-  assert.match(source, /gestureRecognizerShouldBegin\(_ gestureRecognizer: UIGestureRecognizer\)/);
-  assert.match(source, /shouldRecognizeSimultaneouslyWith otherGestureRecognizer/);
-  assert.match(source, /scrollView\.alwaysBounceVertical = true/);
-  assert.match(source, /scrollView\.contentInsetAdjustmentBehavior = \.automatic/);
-  assert.match(source, /scrollView\.panGestureRecognizer\.cancelsTouchesInView = true/);
-  assert.match(source, /scrollView\.delegate = self/);
-  assert.match(source, /scrollViewDidEndDragging\(_ scrollView: UIScrollView/);
-  assert.match(source, /refreshControl\.beginRefreshing\(\)/);
-  assert.match(source, /scrollView\.refreshControl = refreshControl/);
-  assert.match(source, /refreshControl\.addTarget\(self, action: #selector\(didPull\(_:\)\), for: \.valueChanged\)/);
-  assert.match(source, /refreshControl\.endRefreshing\(\)/);
-  assert.match(source, /scrollView\.setContentOffset\(CGPoint\(x: scrollView\.contentOffset\.x, y: top\), animated: true\)/);
-  assert.match(source, /NativeScheduleRefreshScrollView\(onRefresh:\s*\{\s*await store\.refresh\(\)/s);
+  assert.match(source, /ScrollView\(\.vertical\)/);
+  assert.match(source, /\.scrollBounceBehavior\(\.basedOnSize, axes: \.vertical\)/);
+  assert.match(source, /Button\("刷新课表", systemImage: "arrow\.clockwise"\)/);
+  assert.match(source, /TabView\(selection: \$weekPageSelection\)/);
+  assert.match(source, /TabView\(selection: \$dayPageSelection\)/);
+  assert.doesNotMatch(source, /NativeScheduleRefreshScrollView\(onRefresh:/);
   assert.match(storeSource, /public func refresh\(\) async \{\s*await load\(semester: selectedSemester, week: selectedWeek, force: true\)/s);
 });

@@ -7,8 +7,8 @@ import WebKit
 
 
 enum IOSNextWebConfiguration {
-    static let versionCode = 39
-    static let versionName = "3.22.0"
+    static let versionCode = 40
+    static let versionName = "4.0.0"
 
     static var appURL: URL {
         let configured = Bundle.main.object(forInfoDictionaryKey: "CPUAppURL") as? String
@@ -1531,6 +1531,9 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
             }
             html[data-cpu-ios-next] .el-overlay {
               padding-bottom: var(--cpu-ios-bottom-clearance);
+            }
+            html[data-cpu-ios-next] .mobile-reply-composer {
+              bottom: calc(var(--cpu-ios-bottom-clearance) + max(8px, env(safe-area-inset-bottom))) !important;
             }
             html[data-cpu-ios-next] .layout-root:not(.layout-root--full-width) > .main:not(.main--bare):not(.main--full-width):not(.main--mobile-topic) {
               padding-inline: var(--cpu-ios-inline-inset) !important;

@@ -43,10 +43,24 @@ struct ContentView: View {
                     watchSchedule.connect(to: scheduleStore)
                     guard url.scheme == "cputime-next", url.host == "schedule" else { return }
                     guard !shell.requiresLogin else { return }
-                    scheduleStore.selectedSemester = ""
-                    scheduleStore.selectedWeek = ""
                     shell.userSelected(.schedule)
-                    if webSession.bridgeReady { await scheduleStore.load(semester: "", week: "", force: true) }
+                    let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+                    var values: [String: String] = [:]
+                    for item in query {
+                        if let value = item.value { values[item.name] = value }
+                    }
+                    let semester = (values["semester"] ?? values["widgetSemester"])
+                        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                        .flatMap { $0.isEmpty ? nil : $0 }
+                    let rawWeek = (values["week"] ?? values["widgetWeek"])
+                        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    let week: String? = {
+                        guard let rawWeek, rawWeek != "current", !rawWeek.isEmpty else { return nil }
+                        return rawWeek
+                    }()
+                    if webSession.bridgeReady {
+                        await scheduleStore.load(semester: semester, week: week, force: false)
+                    }
                 }
             }
             .onAppear {

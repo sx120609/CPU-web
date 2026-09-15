@@ -19,17 +19,16 @@ struct NativeScheduleView: View {
     // grid, causing SwiftUI to show the add form for a real course.
     @State private var courseEditorPresentation: CourseEditorPresentation?
     @State private var weekPickerPresented = false
-    // Horizontal week paging state. The track holds the previous, current and
-    // next week so a swipe drags the neighbouring timetable into view instead
-    // of replacing the grid in place.
-    @State private var weekDragOffset: CGFloat = 0
-    @State private var weekDragAxis: ScheduleSwipeAxis = .pending
-    @State private var weekSliding = false
-    @State private var weekPageWidth: CGFloat = 0
-    @State private var dayDragOffset: CGFloat = 0
-    @State private var dayDragAxis: ScheduleSwipeAxis = .pending
-    @State private var daySliding = false
-    @State private var dayPageWidth: CGFloat = 0
+    // Native pagers own the horizontal pan and keep the current page under the
+    // finger. The center page is restored after a transition commits the new
+    // week/day to the store, so vertical scrolling never competes with a
+    // hand-written DragGesture.
+    @State private var weekPageSelection = 1
+    @State private var dayPageSelection = 1
+    @State private var weekPaging = false
+    @State private var dayPaging = false
+    @State private var weekTransitionToken = 0
+    @State private var dayTransitionToken = 0
 
     init(
         store: NativeScheduleStore,
@@ -54,9 +53,7 @@ struct NativeScheduleView: View {
                     .overlay(alignment: .bottom) { Divider() }
             }
 
-            NativeScheduleRefreshScrollView(onRefresh: {
-                await store.refresh()
-            }) {
+            ScrollView(.vertical) {
                 VStack(alignment: .leading, spacing: 16) {
                     // A timetable already on screen is never replaced by a
                     // state card. Authorization and refresh problems appear as
@@ -89,6 +86,8 @@ struct NativeScheduleView: View {
                 .frame(maxWidth: .infinity, alignment: .topLeading)
                 .background(Color(uiColor: .systemGroupedBackground).opacity(preferences.backgroundImage == nil ? 1 : 0.86).ignoresSafeArea(.container, edges: [.horizontal, .bottom]))
             }
+            .scrollIndicators(.hidden)
+            .scrollBounceBehavior(.basedOnSize, axes: .vertical)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background {
@@ -114,6 +113,19 @@ struct NativeScheduleView: View {
         }
         .onChange(of: store.result?.currentWeek) { _, _ in
             adoptSelectionIfNeeded()
+        }
+        .onChange(of: store.selectedWeek) { _, _ in
+            guard !weekPaging, !dayPaging else { return }
+            resetPagerSelections()
+        }
+        .onChange(of: viewMode) { _, _ in
+            resetPagerSelections()
+        }
+        .onDisappear {
+            weekTransitionToken &+= 1
+            dayTransitionToken &+= 1
+            weekPaging = false
+            dayPaging = false
         }
         .sheet(item: $courseEditorPresentation) { presentation in
             Group {
@@ -179,18 +191,10 @@ struct NativeScheduleView: View {
                         .accessibilityLabel("正在更新课表")
                 }
 
+                // The schedule header has one overflow control. Device and
+                // widget settings live in its own menu section alongside the
+                // schedule actions instead of competing with a second icon.
                 scheduleToolsMenu(result)
-
-                Button(action: onDeviceSettings) {
-                    Image(systemName: "applewatch")
-                        .font(.system(size: 16, weight: .semibold))
-                        .frame(width: 34, height: 34)
-                        .modifier(ScheduleGlassControl(cornerRadius: 17))
-                        .clipShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.primary)
-                .accessibilityLabel("设备与小组件")
 
                 Picker("课表视图", selection: $viewMode) {
                     // Keep the same order as Web's view switch: 日 / 周.
@@ -308,7 +312,6 @@ struct NativeScheduleView: View {
             Section("课表") {
                 Button("刷新课表", systemImage: "arrow.clockwise") { refresh() }
                     .disabled(isLoading)
-                Button("选择周次", systemImage: "calendar") { weekPickerPresented = true }
                 if result.source != .graduate {
                     Button("添加课程", systemImage: "plus") {
                         presentAddCourse(
@@ -319,28 +322,12 @@ struct NativeScheduleView: View {
                     }
                 }
             }
-            Section("显示") {
-                Toggle("显示教室", isOn: $preferences.showLocation)
-                Toggle("显示教师", isOn: $preferences.showTeacher)
-                Toggle("显示节次", isOn: $preferences.showPeriod)
-                Toggle("显示周次", isOn: $preferences.showWeeks)
-                Picker("默认视图", selection: $preferences.defaultView) {
-                    Text("周课表").tag("week")
-                    Text("日课表").tag("day")
-                }
-                Picker("排版密度", selection: $preferences.density) {
-                    Text("舒适").tag("comfortable")
-                    Text("紧凑").tag("compact")
-                }
+            Section("设置") {
+                Button("课表与设备设置", systemImage: "slider.horizontal.3", action: onDeviceSettings)
             }
-            Section("更多") {
-                Button("课表设置与背景", systemImage: "slider.horizontal.3", action: onDeviceSettings)
-                ShareLink(
-                    item: scheduleShareText(result),
-                    subject: Text("药大拾间课表"),
-                    message: Text("第 \(store.selectedWeek) 周课表")
-                ) {
-                    Label("分享本周课表", systemImage: "square.and.arrow.up")
+            Section("分享") {
+                Button("分享当前课表", systemImage: "square.and.arrow.up") {
+                    exportScheduleImage(result)
                 }
                 Button("导出本周日历", systemImage: "calendar.badge.plus") {
                     exportCurrentWeek(result)
@@ -433,10 +420,7 @@ struct NativeScheduleView: View {
                     24,
                     (proxy.size.width - Self.slotAxisWidth - CGFloat(6) * Self.columnGap) / 7
                 )
-                // The track is widened back over the page margin so a swipe
-                // carries the timetable to the screen edge instead of stopping
-                // short at the content inset.
-                weekPager(result: result, width: proxy.size.width + Self.contentInset * 2) { week in
+                weekPager(result: result, width: proxy.size.width) { week in
                     scheduleRows(
                         result: result,
                         week: week,
@@ -447,9 +431,7 @@ struct NativeScheduleView: View {
                         showsDateHeader: preferences.showDateHeader
                     )
                         .frame(minWidth: proxy.size.width, alignment: .leading)
-                        .padding(.horizontal, Self.contentInset)
                 }
-                .padding(.horizontal, -Self.contentInset)
             }
             .frame(height: Self.scheduleGridHeight(rowHeight: weekRowHeight))
         }
@@ -487,250 +469,151 @@ struct NativeScheduleView: View {
         preferences.density == "compact" ? 37 : NativeScheduleDayColumn.daySlotHeight
     }
 
-    /// Daily mode uses the same three-page track and spring settling as the
-    /// weekly pager. A page is one day; crossing Sunday/Monday also commits
-    /// the adjacent week after the slide has completed.
+    /// Daily mode uses the same native page controller as the weekly pager. A
+    /// page is one day; crossing Sunday/Monday commits the adjacent week after
+    /// the system animation has carried the page off screen.
     private func dayPager<Page: View>(
         result: NativeScheduleResult,
         width: CGFloat,
         @ViewBuilder page: @escaping (NativeScheduleDayPage) -> Page
     ) -> some View {
-        // Keep neighbouring pages mounted before the first touch. Building
-        // seven columns during the first drag caused the visible hitch.
-        let showsNeighbours = true
+        let previous = adjacentDayPage(-1, result: result)
         let current = NativeScheduleDayPage(week: store.selectedWeek.nilIfEmpty, day: selectedDay)
-        return HStack(spacing: 0) {
-            dayNeighbourPage(offset: -1, result: result, width: width, visible: showsNeighbours, page: page)
-            page(current)
-                .frame(width: width, alignment: .leading)
-            dayNeighbourPage(offset: 1, result: result, width: width, visible: showsNeighbours, page: page)
+        let next = adjacentDayPage(1, result: result)
+        return TabView(selection: $dayPageSelection) {
+            dayPagerPage(id: 0, value: previous, width: width, page: page)
+            dayPagerPage(id: 1, value: current, width: width, page: page)
+            dayPagerPage(id: 2, value: next, width: width, page: page)
         }
-        .offset(x: -width + dayDragOffset)
+        .tabViewStyle(.page(indexDisplayMode: .never))
         .frame(width: width, alignment: .leading)
         .clipped()
-        .contentShape(Rectangle())
-        .compositingGroup()
-        .onAppear { dayPageWidth = width }
-        .onChange(of: width) { _, value in dayPageWidth = value }
-        // Simultaneous recognition lets the outer UIKit scroll view receive
-        // vertical pans while this axis-locked gesture handles horizontal
-        // paging.
-        .simultaneousGesture(daySwipeGesture(result: result, width: width))
+        .onAppear { dayPageSelection = 1 }
+        .onChange(of: dayPageSelection) { _, selection in
+            handleDayPageSelection(selection, result: result)
+        }
     }
 
     @ViewBuilder
-    private func dayNeighbourPage<Page: View>(
-        offset: Int,
-        result: NativeScheduleResult,
+    private func dayPagerPage<Page: View>(
+        id: Int,
+        value: NativeScheduleDayPage?,
         width: CGFloat,
-        visible: Bool,
         @ViewBuilder page: @escaping (NativeScheduleDayPage) -> Page
     ) -> some View {
-        if visible, let value = adjacentDayPage(offset, result: result) {
-            page(value)
-                .frame(width: width, alignment: .leading)
-                // Neighbouring pages are mounted for a smooth slide, but
-                // they must never compete with the visible page for taps.
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
-        } else {
-            Color.clear.frame(width: width, height: 0)
+        Group {
+            if let value {
+                page(value)
+                    .frame(width: width, alignment: .leading)
+            } else {
+                Color.clear
+                    .frame(width: width, height: Self.scheduleGridHeight(rowHeight: dayRowHeight, includesDateHeader: false))
+            }
         }
+        .tag(id)
+        .accessibilityHidden(id != 1)
     }
 
-    /// Lays the previous / current / next week side by side and moves the whole
-    /// track with the finger. Keeping adjacent pages mounted avoids a hitch at
-    /// the beginning of the first swipe.
+    /// The system page style owns the horizontal pan, rubber-banding and
+    /// velocity curve. Only the semantic selection is committed here, after a
+    /// short delay that lets the native page finish its visible transition.
     private func weekPager<Page: View>(
         result: NativeScheduleResult,
         width: CGFloat,
         @ViewBuilder page: @escaping (Int?) -> Page
     ) -> some View {
-        // Keep neighbouring pages mounted before the first touch. Building
-        // seven columns during the first drag caused the visible hitch.
-        let showsNeighbours = true
-        return HStack(spacing: 0) {
-            neighbourPage(offset: -1, result: result, width: width, visible: showsNeighbours, page: page)
-            page(weekNumber(store.selectedWeek))
-                .frame(width: width, alignment: .leading)
-            neighbourPage(offset: 1, result: result, width: width, visible: showsNeighbours, page: page)
+        let previous = adjacentWeekValue(-1, result: result).flatMap(weekNumber)
+        let current = weekNumber(store.selectedWeek)
+        let next = adjacentWeekValue(1, result: result).flatMap(weekNumber)
+        return TabView(selection: $weekPageSelection) {
+            weekPagerPage(id: 0, value: previous, width: width, page: page)
+            weekPagerPage(id: 1, value: current, width: width, page: page)
+            weekPagerPage(id: 2, value: next, width: width, page: page)
         }
-        .offset(x: -width + weekDragOffset)
+        .tabViewStyle(.page(indexDisplayMode: .never))
         .frame(width: width, alignment: .leading)
         .clipped()
-        .contentShape(Rectangle())
-        .compositingGroup()
-        .onAppear { weekPageWidth = width }
-        .onChange(of: width) { _, value in weekPageWidth = value }
-        // Keep horizontal paging and the outer pull-to-refresh scroll view
-        // active at the same time. The gesture itself is axis-locked, so
-        // vertical drags are left to UIKit.
-        .simultaneousGesture(weekSwipeGesture(result: result, width: width))
+        .onAppear { weekPageSelection = 1 }
+        .onChange(of: weekPageSelection) { _, selection in
+            handleWeekPageSelection(selection, result: result)
+        }
     }
 
     @ViewBuilder
-    private func neighbourPage<Page: View>(
-        offset: Int,
-        result: NativeScheduleResult,
+    private func weekPagerPage<Page: View>(
+        id: Int,
+        value: Int?,
         width: CGFloat,
-        visible: Bool,
         @ViewBuilder page: @escaping (Int?) -> Page
     ) -> some View {
-        if visible, let value = adjacentWeekValue(offset, result: result) {
-            page(weekNumber(value))
-                .frame(width: width, alignment: .leading)
-                // Clipping controls drawing, not necessarily hit testing on
-                // every iOS release. Keep the off-screen pages passive.
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
-        } else {
-            // A placeholder keeps the track three pages wide without claiming
-            // the height of a real timetable.
-            Color.clear.frame(width: width, height: 0)
+        Group {
+            if let value {
+                page(value)
+                    .frame(width: width, alignment: .leading)
+            } else {
+                Color.clear
+                    .frame(width: width, height: Self.scheduleGridHeight(rowHeight: weekRowHeight))
+            }
         }
+        .tag(id)
+        .accessibilityHidden(id != 1)
     }
 
-    private func weekSwipeGesture(result: NativeScheduleResult, width: CGFloat) -> some Gesture {
-        // Let the enclosing vertical UIScrollView win the first few points of
-        // a diagonal drag. A three-point threshold made a normal pull gesture
-        // start paging the timetable before the user's intent was clear.
-        DragGesture(minimumDistance: 8, coordinateSpace: .local)
-            .onChanged { value in
-                guard courseEditorPresentation == nil, !weekSliding else { return }
-                let horizontal = value.translation.width
-                let vertical = value.translation.height
-                weekDragAxis = resolveWeekSwipeAxis(horizontal, vertical, weekDragAxis)
-                guard weekDragAxis == .horizontal else { return }
-                let direction = horizontal < 0 ? 1 : -1
-                // Pull against a missing neighbour instead of exposing a blank
-                // page at the first or last week of the semester.
-                let resistance = canMoveWeek(direction, result: result) ? 1.0 : 0.3
-                weekDragOffset = horizontal * resistance
-            }
-            .onEnded { value in
-                let axis = weekDragAxis
-                weekDragAxis = .pending
-                guard axis == .horizontal, !weekSliding else {
-                    // A gesture abandoned mid-drag must never leave the track
-                    // parked off centre.
-                    if weekDragOffset != 0, !weekSliding {
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.9)) {
-                            weekDragOffset = 0
-                        }
-                    }
-                    return
-                }
-                finishWeekSwipe(
-                    result: result,
-                    width: max(width, 1),
-                    translation: value.translation.width,
-                    predicted: value.predictedEndTranslation.width
-                )
-            }
-    }
-
-    private func daySwipeGesture(result: NativeScheduleResult, width: CGFloat) -> some Gesture {
-        DragGesture(minimumDistance: 8, coordinateSpace: .local)
-            .onChanged { value in
-                guard courseEditorPresentation == nil, !weekSliding, !daySliding else { return }
-                let horizontal = value.translation.width
-                let vertical = value.translation.height
-                dayDragAxis = resolveWeekSwipeAxis(horizontal, vertical, dayDragAxis)
-                guard dayDragAxis == .horizontal else { return }
-                let direction = horizontal < 0 ? 1 : -1
-                let resistance = adjacentDayPage(direction, result: result) == nil ? 0.3 : 1.0
-                dayDragOffset = horizontal * resistance
-            }
-            .onEnded { value in
-                let axis = dayDragAxis
-                dayDragAxis = .pending
-                guard axis == .horizontal, !weekSliding, !daySliding else {
-                    if dayDragOffset != 0, !daySliding {
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.9)) {
-                            dayDragOffset = 0
-                        }
-                    }
-                    return
-                }
-                finishDaySwipe(
-                    result: result,
-                    width: max(width, 1),
-                    translation: value.translation.width,
-                    predicted: value.predictedEndTranslation.width
-                )
-            }
-    }
-
-    private func finishDaySwipe(
-        result: NativeScheduleResult,
-        width: CGFloat,
-        translation: CGFloat,
-        predicted: CGFloat
-    ) {
-        let direction = translation < 0 ? 1 : -1
-        let threshold = max(52, width * 0.2)
-        let flick = abs(predicted) >= width * 0.55 && abs(translation) >= 18
-        guard abs(translation) >= threshold || flick,
-              let target = adjacentDayPage(direction, result: result) else {
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.9)) {
-                dayDragOffset = 0
-            }
+    private func handleWeekPageSelection(_ selection: Int, result: NativeScheduleResult) {
+        guard selection != 1, !weekPaging, courseEditorPresentation == nil else { return }
+        let direction = selection == 2 ? 1 : -1
+        guard let target = adjacentWeekValue(direction, result: result) else {
+            resetPagerSelections()
             return
         }
-        slideToDay(target, direction: direction, width: width)
-    }
-
-    private func slideToDay(_ target: NativeScheduleDayPage, direction: Int, width: CGFloat) {
-        daySliding = true
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.88)) {
-            dayDragOffset = direction > 0 ? -width : width
-        } completion: {
+        weekPaging = true
+        weekTransitionToken &+= 1
+        let token = weekTransitionToken
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            guard !Task.isCancelled, token == weekTransitionToken else { return }
+            store.commitWeekSelection(target)
             var transaction = Transaction()
             transaction.disablesAnimations = true
             withTransaction(transaction) {
-                if let week = target.week, week != store.selectedWeek {
-                    store.commitWeekSelection(week)
-                }
-                selectedDay = target.day
-                dayDragOffset = 0
-                daySliding = false
+                weekPageSelection = 1
+                weekPaging = false
             }
         }
     }
 
-    private func finishWeekSwipe(
-        result: NativeScheduleResult,
-        width: CGFloat,
-        translation: CGFloat,
-        predicted: CGFloat
-    ) {
-        let direction = translation < 0 ? 1 : -1
-        let threshold = max(52, width * 0.2)
-        let flick = abs(predicted) >= width * 0.55 && abs(translation) >= 18
-        guard abs(translation) >= threshold || flick,
-              let target = adjacentWeekValue(direction, result: result) else {
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.9)) {
-                weekDragOffset = 0
-            }
+    private func handleDayPageSelection(_ selection: Int, result: NativeScheduleResult) {
+        guard selection != 1, !dayPaging, courseEditorPresentation == nil else { return }
+        let direction = selection == 2 ? 1 : -1
+        guard let target = adjacentDayPage(direction, result: result) else {
+            resetPagerSelections()
             return
         }
-        slideToWeek(target, direction: direction, width: width)
-    }
-
-    /// Runs the page off screen, then swaps the week and recentres the track in
-    /// a single unanimated transaction so the new timetable never flashes.
-    private func slideToWeek(_ week: String, direction: Int, width: CGFloat) {
-        weekSliding = true
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.88)) {
-            weekDragOffset = direction > 0 ? -width : width
-        } completion: {
-            var transaction = Transaction()
-            transaction.disablesAnimations = true
-            withTransaction(transaction) {
+        dayPaging = true
+        dayTransitionToken &+= 1
+        let token = dayTransitionToken
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            guard !Task.isCancelled, token == dayTransitionToken else { return }
+            if let week = target.week, week != store.selectedWeek {
                 store.commitWeekSelection(week)
-                weekDragOffset = 0
-                weekSliding = false
             }
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                selectedDay = target.day
+                dayPageSelection = 1
+                dayPaging = false
+            }
+        }
+    }
+
+    private func resetPagerSelections() {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            weekPageSelection = 1
+            dayPageSelection = 1
         }
     }
 
@@ -1029,25 +912,74 @@ struct NativeScheduleView: View {
         requestLoad(force: true)
     }
 
-    private func scheduleShareText(_ result: NativeScheduleResult) -> String {
-        let week = store.selectedWeek.isEmpty ? result.currentWeek : store.selectedWeek
-        var lines = ["药大拾间 · \(semesterTitle(result)) · 第 \(week) 周"]
-        for day in 1...7 {
-            let courses = blocks(for: day, week: Int(week), result: result)
-            guard !courses.isEmpty else { continue }
-            lines.append("")
-            lines.append(dayLabel(day))
-            for block in courses {
-                let details = [
-                    block.course.name.trimmedNonEmpty,
-                    preferences.showLocation ? block.course.location?.trimmedNonEmpty : nil,
-                    preferences.showTeacher ? block.course.teacher?.trimmedNonEmpty : nil,
-                    "第 \(block.startSlot)-\(block.endSlot) 节",
-                ].compactMap { $0 }
-                lines.append("· " + details.joined(separator: " · "))
-            }
+    @MainActor
+    private func exportScheduleImage(_ result: NativeScheduleResult) {
+        let week = Int(store.selectedWeek) ?? Int(result.currentWeek) ?? 1
+        let isDayView = viewMode == .day
+        let canvasWidth: CGFloat = isDayView ? 620 : 980
+        let gridWidth = canvasWidth - 48
+        let columnWidth = isDayView
+            ? max(220, gridWidth - Self.slotAxisWidth - Self.columnGap)
+            : max(72, (gridWidth - Self.slotAxisWidth - CGFloat(6) * Self.columnGap) / 7)
+        let grid: AnyView
+        if isDayView {
+            grid = AnyView(
+                scheduleRows(
+                    result: result,
+                    week: week,
+                    days: [selectedDay],
+                    columnWidth: columnWidth,
+                    compactCards: false,
+                    rowHeight: dayRowHeight,
+                    showsDateHeader: false
+                )
+            )
+        } else {
+            grid = AnyView(
+                scheduleRows(
+                    result: result,
+                    week: week,
+                    days: Array(1...7),
+                    columnWidth: columnWidth,
+                    compactCards: false,
+                    rowHeight: weekRowHeight,
+                    showsDateHeader: preferences.showDateHeader
+                )
+            )
         }
-        return lines.joined(separator: "\n")
+
+        let content = VStack(alignment: .leading, spacing: 18) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("药大拾间")
+                        .font(.system(size: 28, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color.cpuBrand)
+                    Text("\(semesterTitle(result)) · 第 \(week) 周")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                if isDayView {
+                    Text("\(dayLabel(selectedDay)) · \(dayDate(selectedDay, week: week, result: result) ?? "")")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                } else if let range = weekRange(result), !range.isEmpty {
+                    Text(range)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            grid
+        }
+        .padding(24)
+        .frame(width: canvasWidth, alignment: .leading)
+        .background(Color(uiColor: .systemGroupedBackground))
+
+        let renderer = ImageRenderer(content: content)
+        renderer.scale = UIScreen.main.scale
+        guard let image = renderer.uiImage else { return }
+        let suffix = isDayView ? "日课表" : "周课表"
+        NativeScheduleSharePresenter.presentImage(image, fileName: "药大拾间-第\(week)周-\(suffix).png")
     }
 
     private func exportCurrentWeek(_ result: NativeScheduleResult) {
@@ -1085,23 +1017,24 @@ struct NativeScheduleView: View {
     }
 
     private func moveWeek(_ offset: Int, result: NativeScheduleResult) {
-        guard !weekSliding, let target = adjacentWeekValue(offset, result: result) else { return }
+        guard !weekPaging, let target = adjacentWeekValue(offset, result: result) else { return }
         guard viewMode == .week else {
             Task { await store.selectWeek(target) }
             return
         }
-        // The stepper buttons ride the same track as a swipe so both paths read
-        // as one gesture. Without a measured page width, switch outright.
-        guard weekPageWidth > 1 else {
-            Task { await store.selectWeek(target) }
-            return
+        guard let currentIndex = result.weeks.firstIndex(where: { $0.value == store.selectedWeek }),
+              let targetIndex = result.weeks.firstIndex(where: { $0.value == target }) else { return }
+        let selection = targetIndex > currentIndex ? 2 : 0
+        withAnimation(.easeInOut(duration: 0.3)) {
+            weekPageSelection = selection
         }
-        slideToWeek(target, direction: offset, width: weekPageWidth)
     }
 
     private func moveDay(_ offset: Int, result: NativeScheduleResult) {
-        guard offset != 0, let target = adjacentDayPage(offset, result: result), dayPageWidth > 1 else { return }
-        slideToDay(target, direction: offset > 0 ? 1 : -1, width: dayPageWidth)
+        guard offset != 0, adjacentDayPage(offset, result: result) != nil, !dayPaging else { return }
+        withAnimation(.easeInOut(duration: 0.3)) {
+            dayPageSelection = offset > 0 ? 2 : 0
+        }
     }
 
     private func adjacentDayPage(_ offset: Int, result: NativeScheduleResult) -> NativeScheduleDayPage? {
@@ -1185,25 +1118,8 @@ struct NativeScheduleView: View {
         transaction.disablesAnimations = true
         withTransaction(transaction) {
             selectedDay = targetDay
-            dayDragOffset = 0
-            daySliding = false
+            dayPageSelection = 1
         }
-    }
-
-    /// Mirrors the Web timetable's swipe lock while leaving vertical pulls to
-    /// the enclosing scroll view. A horizontal swipe must lead by a useful
-    /// margin before it takes ownership of the gesture.
-    private func resolveWeekSwipeAxis(
-        _ horizontal: CGFloat,
-        _ vertical: CGFloat,
-        _ current: ScheduleSwipeAxis
-    ) -> ScheduleSwipeAxis {
-        if current != .pending { return current }
-        let absH = abs(horizontal)
-        let absV = abs(vertical)
-        if absH >= 12, absH >= absV * 1.15 { return .horizontal }
-        if absV >= 12, absV >= absH * 1.15 { return .vertical }
-        return .pending
     }
 
     private func canMoveWeek(_ offset: Int, result: NativeScheduleResult) -> Bool {
@@ -1442,12 +1358,6 @@ struct NativeScheduleView: View {
         let weekday = calendar.component(.weekday, from: .now)
         return weekday == 1 ? 7 : weekday - 1
     }
-}
-
-private enum ScheduleSwipeAxis {
-    case pending
-    case horizontal
-    case vertical
 }
 
 private enum WeekParity {
@@ -2682,228 +2592,23 @@ private struct StateCard: View {
     }
 }
 
-/// Own the pull gesture in UIKit. SwiftUI's `.refreshable` can lose the pan
-/// when a child view also owns a horizontal DragGesture, so the refresh control
-/// lives on the same UIScrollView that receives the vertical drag.
-private struct NativeScheduleRefreshScrollView<Content: View>: UIViewControllerRepresentable {
-    typealias RefreshAction = @MainActor () async -> Void
-
-    let content: Content
-    let onRefresh: RefreshAction
-
-    init(
-        onRefresh: @escaping RefreshAction,
-        @ViewBuilder content: () -> Content
-    ) {
-        self.content = content()
-        self.onRefresh = onRefresh
-    }
-
-    func makeUIViewController(context: Context) -> Controller {
-        Controller(rootView: content, action: onRefresh)
-    }
-
-    func updateUIViewController(_ controller: Controller, context: Context) {
-        controller.update(rootView: content, action: onRefresh)
-    }
-
-    @MainActor
-    final class Controller: UIViewController, UIScrollViewDelegate, UIGestureRecognizerDelegate {
-        private let scrollView = UIScrollView()
-        private let refreshControl = UIRefreshControl()
-        private var pullGesture: UIPanGestureRecognizer!
-        private var hostController: UIHostingController<Content>
-        private var refreshTask: Task<Void, Never>?
-        private var action: RefreshAction
-        private var pullThresholdReached = false
-        private var pullStartedAtTop = false
-        private var maximumPullDistance: CGFloat = 0
-
-        init(rootView: Content, action: @escaping RefreshAction) {
-            hostController = UIHostingController(rootView: rootView)
-            self.action = action
-            super.init(nibName: nil, bundle: nil)
-        }
-
-        @available(*, unavailable)
-        required init?(coder: NSCoder) {
-            fatalError("NativeScheduleRefreshScrollView cannot be decoded")
-        }
-
-        override func viewDidLoad() {
-            super.viewDidLoad()
-            view.backgroundColor = .clear
-            scrollView.backgroundColor = .clear
-            scrollView.bounces = true
-            scrollView.alwaysBounceVertical = true
-            scrollView.isDirectionalLockEnabled = true
-            scrollView.showsVerticalScrollIndicator = false
-            scrollView.showsHorizontalScrollIndicator = false
-            scrollView.keyboardDismissMode = .interactive
-            scrollView.delaysContentTouches = false
-            // The enclosing scroll view must own vertical pulls. Horizontal
-            // paging is registered simultaneously by SwiftUI and still gets
-            // the same drag updates, while leaving cancellation disabled lets
-            // the child gesture swallow the refresh pull on some iOS builds.
-            scrollView.panGestureRecognizer.cancelsTouchesInView = true
-            // Keep UIKit's top inset in the calculation used by
-            // UIRefreshControl. With `.never`, the refresh threshold can sit
-            // underneath the native tab/safe-area chrome on compact devices.
-            scrollView.contentInsetAdjustmentBehavior = .automatic
-            scrollView.delegate = self
-            refreshControl.tintColor = UIColor(red: 15 / 255, green: 143 / 255, blue: 127 / 255, alpha: 1)
-            refreshControl.accessibilityLabel = "下拉刷新课表"
-            refreshControl.addTarget(self, action: #selector(didPull(_:)), for: .valueChanged)
-            scrollView.refreshControl = refreshControl
-
-            // A child SwiftUI horizontal pager can win the same pan gesture
-            // before UIRefreshControl reaches its valueChanged threshold.
-            // Keep a non-cancelling vertical observer on the outer scroll view
-            // and route a completed pull through the same refresh action.
-            let pullGesture = UIPanGestureRecognizer(target: self, action: #selector(handlePullGesture(_:)))
-            pullGesture.delegate = self
-            pullGesture.cancelsTouchesInView = false
-            pullGesture.delaysTouchesBegan = false
-            scrollView.addGestureRecognizer(pullGesture)
-            self.pullGesture = pullGesture
-            // Do not make the scroll view wait for the observer to finish.
-            // That ordering leaves a vertical pull without a live scroll pan
-            // until the finger is lifted, which is why refresh felt inert on
-            // short timetables. The two recognizers are simultaneous and the
-            // delegate below only accepts a downward pull at the top.
-
-            addChild(hostController)
-            hostController.view.translatesAutoresizingMaskIntoConstraints = false
-            hostController.view.backgroundColor = .clear
-            scrollView.translatesAutoresizingMaskIntoConstraints = false
-            view.addSubview(scrollView)
-            scrollView.addSubview(hostController.view)
-            NSLayoutConstraint.activate([
-                scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-                scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-                scrollView.topAnchor.constraint(equalTo: view.topAnchor),
-                scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-                hostController.view.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor),
-                hostController.view.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor),
-                hostController.view.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
-                hostController.view.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
-                hostController.view.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor),
-                hostController.view.heightAnchor.constraint(greaterThanOrEqualTo: scrollView.frameLayoutGuide.heightAnchor)
-            ])
-            hostController.didMove(toParent: self)
-        }
-
-        func update(rootView: Content, action: @escaping RefreshAction) {
-            hostController.rootView = rootView
-            self.action = action
-        }
-
-        @objc private func didPull(_ sender: UIRefreshControl) {
-            guard refreshTask == nil else { return }
-            pullThresholdReached = false
-            pullStartedAtTop = false
-            maximumPullDistance = 0
-            let action = self.action
-            refreshTask = Task { @MainActor [weak self] in
-                defer {
-                    if let self {
-                        self.refreshControl.endRefreshing()
-                        self.refreshTask = nil
-                    }
-                }
-                await action()
-            }
-        }
-
-        // UIRefreshControl normally sends valueChanged by itself. SwiftUI's
-        // horizontal DragGesture can occasionally win the same pan on older
-        // iOS releases, so keep a small UIKit fallback that recognizes the
-        // same pull at the end of the drag and routes it through the exact
-        // same action. The guard above prevents duplicate requests.
-        func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
-            pullThresholdReached = false
-        }
-
-        func scrollViewDidScroll(_ scrollView: UIScrollView) {
-            guard refreshTask == nil, scrollView.isDragging else { return }
-            let threshold = -(scrollView.adjustedContentInset.top + max(52, refreshControl.bounds.height * 0.9))
-            pullThresholdReached = scrollView.contentOffset.y <= threshold
-        }
-
-        func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
-            // On short timetable pages UIKit can bounce back one frame before
-            // `scrollViewDidScroll` records the threshold. Read the final
-            // offset as well so a real pull cannot be lost to that frame.
-            let threshold = -(scrollView.adjustedContentInset.top + max(44, refreshControl.bounds.height * 0.85))
-            let didPullPastThreshold = pullThresholdReached || scrollView.contentOffset.y <= threshold
-            guard didPullPastThreshold, refreshTask == nil, !refreshControl.isRefreshing else { return }
-            triggerRefresh()
-        }
-
-        @objc private func handlePullGesture(_ gesture: UIPanGestureRecognizer) {
-            switch gesture.state {
-            case .began:
-                pullStartedAtTop = isAtTop
-                maximumPullDistance = 0
-            case .changed:
-                guard pullStartedAtTop, refreshTask == nil, !refreshControl.isRefreshing else { return }
-                let translation = gesture.translation(in: scrollView)
-                maximumPullDistance = max(maximumPullDistance, translation.y)
-                let threshold = max(52, refreshControl.bounds.height * 0.9)
-                if maximumPullDistance >= threshold {
-                    pullThresholdReached = true
-                }
-            case .ended, .cancelled, .failed:
-                defer {
-                    pullStartedAtTop = false
-                    maximumPullDistance = 0
-                }
-                guard pullThresholdReached || maximumPullDistance >= max(52, refreshControl.bounds.height * 0.9) else { return }
-                triggerRefresh()
-            default:
-                break
-            }
-        }
-
-        private var isAtTop: Bool {
-            scrollView.contentOffset.y <= -scrollView.adjustedContentInset.top + 2
-        }
-
-        private func triggerRefresh() {
-            guard refreshTask == nil, !refreshControl.isRefreshing else { return }
-            pullThresholdReached = false
-            refreshControl.beginRefreshing()
-            let top = -(scrollView.adjustedContentInset.top + max(44, refreshControl.bounds.height * 0.85))
-            scrollView.setContentOffset(CGPoint(x: scrollView.contentOffset.x, y: top), animated: true)
-            didPull(refreshControl)
-        }
-
-        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-            guard gestureRecognizer === pullGesture else { return true }
-            guard isAtTop, let pan = gestureRecognizer as? UIPanGestureRecognizer else { return false }
-            let velocity = pan.velocity(in: scrollView)
-            return velocity.y > 0 && velocity.y > abs(velocity.x) * 1.05
-        }
-
-        func gestureRecognizer(
-            _ gestureRecognizer: UIGestureRecognizer,
-            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
-        ) -> Bool {
-            gestureRecognizer === pullGesture || otherGestureRecognizer === pullGesture
-        }
-
-        deinit {
-            refreshTask?.cancel()
-        }
-    }
-}
-
 private extension String {
     var nilIfEmpty: String? { isEmpty ? nil : self }
 }
 
 @MainActor
 private enum NativeScheduleSharePresenter {
+    static func presentImage(_ image: UIImage, fileName: String) {
+        guard let data = image.pngData() else { return }
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
+        do {
+            try data.write(to: url, options: .atomic)
+            present(items: [url])
+        } catch {
+            // Keep the timetable visible if the temporary share file cannot be written.
+        }
+    }
+
     static func presentTemporaryFile(contents: String, fileName: String) {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
         do {

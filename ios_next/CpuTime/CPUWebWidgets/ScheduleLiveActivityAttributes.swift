@@ -45,9 +45,26 @@ public struct ScheduleLiveActivityAttributes: ActivityAttributes, Equatable {
 
     public let semester: String
     public let dateKey: String
+    public let week: Int
 
-    public init(semester: String, dateKey: String) {
+    public init(semester: String, dateKey: String, week: Int = 0) {
         self.semester = semester
         self.dateKey = dateKey
+        self.week = week
+    }
+
+    /// The activity should open the exact timetable context represented by the
+    /// island. Keeping the query in the shared model means the app and widget
+    /// extension cannot drift apart when a user taps the activity.
+    public var deepLinkURL: URL {
+        var components = URLComponents()
+        components.scheme = "cputime-next"
+        components.host = "schedule"
+        components.queryItems = [
+            URLQueryItem(name: "source", value: "live-activity"),
+            URLQueryItem(name: "semester", value: semester.isEmpty ? nil : semester),
+            URLQueryItem(name: "week", value: week > 0 ? String(week) : nil),
+        ].filter { $0.value != nil }
+        return components.url ?? URL(string: "cputime-next://schedule")!
     }
 }

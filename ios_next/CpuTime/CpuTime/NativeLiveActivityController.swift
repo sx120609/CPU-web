@@ -136,7 +136,8 @@ final class NativeLiveActivityController: ObservableObject {
 
         let attributes = ScheduleLiveActivityAttributes(
             semester: snapshot.data?.currentSemester ?? "",
-            dateKey: occurrence.dateKey
+            dateKey: occurrence.dateKey,
+            week: occurrence.week
         )
         let state = ScheduleLiveActivityAttributes.ContentState(
             phase: occurrence.isInProgress ? .inProgress : .upcoming,
@@ -190,6 +191,7 @@ final class NativeLiveActivityController: ObservableObject {
         let start: Date
         let end: Date
         let dateKey: String
+        let week: Int
         let isInProgress: Bool
         let next: NextCourse?
     }
@@ -228,6 +230,7 @@ final class NativeLiveActivityController: ObservableObject {
                                 start: start,
                                 end: end,
                                 dateKey: day,
+                                week: week.week,
                                 isInProgress: false,
                                 next: nil
                             )
@@ -248,6 +251,7 @@ final class NativeLiveActivityController: ObservableObject {
                 start: current.start,
                 end: current.end,
                 dateKey: current.dateKey,
+                week: current.week,
                 isInProgress: true,
                 next: events.dropFirst(index + 1).first.map { Occurrence.NextCourse(name: $0.name, start: $0.start) }
             )
@@ -261,6 +265,7 @@ final class NativeLiveActivityController: ObservableObject {
             start: upcoming.start,
             end: upcoming.end,
             dateKey: upcoming.dateKey,
+            week: upcoming.week,
             isInProgress: false,
             next: next
         )
