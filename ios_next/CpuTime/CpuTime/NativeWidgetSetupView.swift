@@ -36,25 +36,47 @@ struct NativeDeviceSettingsView: View {
 private struct ScheduleSettingsSection: View {
     @ObservedObject private var preferences = NativeSchedulePreferences.shared
 
+    @ViewBuilder
     var body: some View {
+        Section {
+            Toggle("显示教室", isOn: $preferences.showLocation)
+            Toggle("显示教师", isOn: $preferences.showTeacher)
+            Toggle("显示节次", isOn: $preferences.showPeriod)
+            Toggle("显示周次", isOn: $preferences.showWeeks)
+        } header: {
+            Label("课表显示内容", systemImage: "text.badge.checkmark")
+        } footer: {
+            Text("课程卡片会按屏幕宽度自动排版，关闭不需要的信息可以保留更多空间。")
+        }
+
+        Section {
+            Picker("默认视图", selection: $preferences.defaultView) {
+                Text("周课表").tag("week")
+                Text("日课表").tag("day")
+            }
+            Picker("排版密度", selection: $preferences.density) {
+                Text("舒适").tag("comfortable")
+                Text("紧凑").tag("compact")
+            }
+            Toggle("显示日期栏", isOn: $preferences.showDateHeader)
+        } header: {
+            Label("视图与排版", systemImage: "rectangle.grid.1x2")
+        }
+
         Section {
             NavigationLink {
                 NativeScheduleSettingsView(preferences: preferences)
             } label: {
-                Label("课表设置", systemImage: "calendar.badge.clock")
+                Label("配色与背景", systemImage: "paintpalette")
                 Spacer(minLength: 8)
-                Text(summary)
+                Text(preferences.palette == "color-glass" ? "彩色玻璃" : "已设置")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
         } header: {
-            Text("课表")
+            Label("配色与背景", systemImage: "photo.on.rectangle")
         }
-    }
-
-    private var summary: String {
-        preferences.defaultView == "day" ? "日课表" : "周课表"
     }
 }
 

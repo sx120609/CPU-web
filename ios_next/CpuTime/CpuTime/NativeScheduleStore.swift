@@ -654,6 +654,10 @@ public enum NativeScheduleCourseBlockMerger {
             && a.sourceKey == b.sourceKey
         guard sameName, compatibleTeacher, compatibleLocation else { return false }
         guard rangesOverlap(left, right) || sameSource && rangesAdjacent(left, right) else { return false }
+        if left.startSlot == right.startSlot, left.endSlot == right.endSlot,
+           sameVisibleOccurrence(a, b) {
+            return true
+        }
         // `sourceKey`/`nativeId` are the only stable identity supplied by the
         // bridge for parallel sections that share all visible fields. Treat
         // generated official ids as fallbacks because repeated physical rows
@@ -667,6 +671,21 @@ public enum NativeScheduleCourseBlockMerger {
             guard weekListsCanIndicateRepeatedRow(a, b) else { return false }
         }
         return true
+    }
+
+    private static func sameVisibleOccurrence(
+        _ left: NativeScheduleCourse,
+        _ right: NativeScheduleCourse
+    ) -> Bool {
+        let a = left.weekList.filter { $0 > 0 }
+        let b = right.weekList.filter { $0 > 0 }
+        let sameWeeks = !a.isEmpty && !b.isEmpty
+            ? a == b
+            : keyPart(left.weeks) == keyPart(right.weeks)
+        return identityPart(left.name) == identityPart(right.name)
+            && compatibleTeacher(left.teacher, right.teacher)
+            && locationCompatible(left.location, right.location)
+            && sameWeeks
     }
 
     private static func weekListsCanIndicateRepeatedRow(

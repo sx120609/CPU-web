@@ -374,6 +374,8 @@ function normalizeScheduleCells(cells: ScheduleCell[]): ScheduleCell[] {
           && start <= candidateEnd + 1
           && candidateStart <= end + 1;
         if (!sameVisibleIdentity) return false;
+        if (candidateStart === start && candidateEnd === end
+          && sameVisibleOccurrence(candidate.course, entry.course)) return true;
         // Equal week ranges with different ids are parallel sections. A
         // subset range is a repeated physical row of one occurrence.
         if (leftSource && rightSource && leftSource !== rightSource
@@ -493,6 +495,22 @@ function locationsCompatible(left?: string, right?: string) {
   const a = normalizeLocationKey(left);
   const b = normalizeLocationKey(right);
   return !a || !b || a === b;
+}
+
+/** Collapse an exact visible occurrence before treating upstream ids as a
+ * teaching-group boundary. JWXT can assign a fresh id to a repeated DOM row. */
+function sameVisibleOccurrence(left: ScheduleCourse, right: ScheduleCourse) {
+  const a = left.weekList.filter((week) => week > 0);
+  const b = right.weekList.filter((week) => week > 0);
+  const sameWeeks = a.length && b.length
+    ? a.length === b.length && a.every((week, index) => week === b[index])
+    : normalizeKeyPart(left.weeks) === normalizeKeyPart(right.weeks);
+  return normalizeIdentityKey(left.name) === normalizeIdentityKey(right.name)
+    && teachersCompatible(left.teacher, right.teacher)
+    && locationsCompatible(left.location, right.location)
+    && left.startSlot === right.startSlot
+    && left.endSlot === right.endSlot
+    && Boolean(sameWeeks);
 }
 
 /** JWXT may assign a different id to a repeated physical row. */

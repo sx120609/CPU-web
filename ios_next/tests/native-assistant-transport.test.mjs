@@ -12,6 +12,9 @@ test('native assistant stream is independent of the navigated Web route', async 
   assert.match(swift, /\/api\/search\/assistant\/stream/);
   assert.match(swift, /nativeAssistantStreamViaWebView/);
   assert.match(swift, /X-CSRF-Token/);
+  assert.match(swift, /private var assistantKeepAliveTask: Task<NativeAssistantReply, Error>\?/);
+  assert.match(swift, /if let existing = assistantKeepAliveTask/);
+  assert.match(swift, /assistantKeepAliveTask\?\.cancel\(\)/);
 });
 
 test('a partial native assistant answer is retained after stream failure', async () => {

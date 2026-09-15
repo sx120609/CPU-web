@@ -125,8 +125,8 @@ struct NativeScheduleStoreChecks {
             NativeScheduleCourseBlockRecord(id: "parallel-a", course: parallelA, bigSlot: 1, startSlot: 1, endSlot: 2),
             NativeScheduleCourseBlockRecord(id: "parallel-b", course: parallelB, bigSlot: 1, startSlot: 1, endSlot: 2),
         ])
-        precondition(parallelCourses.count == 2,
-                     "Parallel custom courses with identical visible fields must remain distinct")
+        precondition(parallelCourses.count == 1,
+                     "Indistinguishable custom rows must collapse even when ids differ")
 
         let officialParallelA = NativeScheduleCourse(
             nativeId: "source:jwxt:data-jxbid:section-a",
@@ -152,8 +152,8 @@ struct NativeScheduleStoreChecks {
             NativeScheduleCourseBlockRecord(id: "official-a", course: officialParallelA, bigSlot: 1, startSlot: 1, endSlot: 2),
             NativeScheduleCourseBlockRecord(id: "official-b", course: officialParallelB, bigSlot: 1, startSlot: 1, endSlot: 2),
         ])
-        precondition(officialParallelCourses.count == 2,
-                     "Parallel official sections with explicit bridge identities must remain distinct")
+        precondition(officialParallelCourses.count == 1,
+                     "Indistinguishable official rows must collapse even when ids differ")
 
         let repeatedRowA = NativeScheduleCourse(
             nativeId: "source:jwxt:data-jxbid:row-a",

@@ -7,8 +7,8 @@ import WebKit
 
 
 enum IOSNextWebConfiguration {
-    static let versionCode = 37
-    static let versionName = "3.20.0"
+    static let versionCode = 38
+    static let versionName = "3.21.0"
 
     static var appURL: URL {
         let configured = Bundle.main.object(forInfoDictionaryKey: "CPUAppURL") as? String
@@ -331,6 +331,10 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
     private var assistantStreamContinuations: [String: CheckedContinuation<NativeAssistantReply, Error>] = [:]
     private var assistantStreamDeltaHandlers: [String: (String) -> Void] = [:]
     private var assistantStreamStatusHandlers: [String: (String) -> Void] = [:]
+    /// The stream belongs to the shared Web session rather than the sheet that
+    /// happens to render it. Keeping the transport task here prevents a route
+    /// transition or SwiftUI sheet rebuild from tearing down an answer.
+    private var assistantKeepAliveTask: Task<NativeAssistantReply, Error>?
     private let pathMonitor = NWPathMonitor()
     private let pathMonitorQueue = DispatchQueue(label: "cn.cputime.ios.network-monitor")
 
@@ -765,22 +769,31 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
         onDelta: @escaping (String) -> Void,
         onStatus: @escaping (String) -> Void
     ) async throws -> NativeAssistantReply {
-        let cookies = await assistantCookies()
-        if !cookies.isEmpty {
-            return try await nativeAssistantStreamViaURLSession(
+        if let existing = assistantKeepAliveTask {
+            return try await existing.value
+        }
+        let task = Task { @MainActor [weak self] in
+            guard let self else { throw NativeAssistantError.unavailable }
+            let cookies = await self.assistantCookies()
+            if !cookies.isEmpty {
+                return try await self.nativeAssistantStreamViaURLSession(
+                    message: message,
+                    history: history,
+                    cookies: cookies,
+                    onDelta: onDelta,
+                    onStatus: onStatus
+                )
+            }
+            return try await self.nativeAssistantStreamViaWebView(
                 message: message,
                 history: history,
-                cookies: cookies,
                 onDelta: onDelta,
                 onStatus: onStatus
             )
         }
-        return try await nativeAssistantStreamViaWebView(
-            message: message,
-            history: history,
-            onDelta: onDelta,
-            onStatus: onStatus
-        )
+        assistantKeepAliveTask = task
+        defer { assistantKeepAliveTask = nil }
+        return try await task.value
     }
 
     private func assistantCookies() async -> [HTTPCookie] {
@@ -965,6 +978,8 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
     }
 
     func cancelNativeAssistantStreams() {
+        assistantKeepAliveTask?.cancel()
+        assistantKeepAliveTask = nil
         let requestIDs = Array(assistantStreamContinuations.keys)
         for requestID in requestIDs {
             cancelAssistantStream(requestID)

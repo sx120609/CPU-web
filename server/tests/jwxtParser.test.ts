@@ -123,7 +123,7 @@ test("parseSchedule merges the same 2025-2026-2 course when JWXT repeats it with
   assert.equal(courses[0].endSlot, 4);
 });
 
-test("parseSchedule keeps parallel 2025-2026-2 sections with explicit JWXT identities", () => {
+test("parseSchedule collapses indistinguishable 2025-2026-2 rows even with different JWXT ids", () => {
   const result = parseSchedule(`
     <select id="xnxq01id"><option value="2025-2026-2" selected>2025-2026-2</option></select>
     <table class="qz-weeklyTable">
@@ -140,8 +140,8 @@ test("parseSchedule keeps parallel 2025-2026-2 sections with explicit JWXT ident
     </table>
   `);
   const courses = result.cells.find((cell) => cell.day === 3)?.courses ?? [];
-  assert.equal(courses.length, 2);
-  assert.deepEqual(courses.map((course) => course.sourceKey), ["jwxt:data-jxbid:section-a", "jwxt:data-jxbid:section-b"]);
+  assert.equal(courses.length, 1);
+  assert.equal(courses[0].sourceKey, "jwxt:data-jxbid:section-a");
 });
 
 test("parseSchedule collapses repeated rows when explicit ids carry a subset week range", () => {

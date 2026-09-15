@@ -556,6 +556,24 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
     if (a.size === b.size) return false;
     return [...a].every(week => b.has(week)) || [...b].every(week => a.has(week));
   };
+  const sameVisibleOccurrence = (
+    left: ScheduleResult["cells"][number]["courses"][number],
+    right: ScheduleResult["cells"][number]["courses"][number],
+    leftRange: { start: number; end: number },
+    rightRange: { start: number; end: number },
+  ) => {
+    const a = (left.weekList ?? []).filter(week => Number.isFinite(week) && week > 0);
+    const b = (right.weekList ?? []).filter(week => Number.isFinite(week) && week > 0);
+    const sameWeeks = a.length && b.length
+      ? a.length === b.length && a.every((week, index) => week === b[index])
+      : normalizeText(left.weeks) === normalizeText(right.weeks);
+    return normalizeIdentityText(left.name) === normalizeIdentityText(right.name)
+      && fieldsCompatible(left.teacher, right.teacher)
+      && locationsCompatible(left.location, right.location)
+      && leftRange.start === rightRange.start
+      && leftRange.end === rightRange.end
+      && Boolean(sameWeeks);
+  };
   const coursesCanMerge = (
     left: ScheduleResult["cells"][number]["courses"][number],
     right: ScheduleResult["cells"][number]["courses"][number],
@@ -580,6 +598,8 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
       && fieldsCompatible(left.teacher, right.teacher)
       && locationsCompatible(left.location, right.location);
     if (!sameVisibleIdentity || !rangesCanMerge(leftRange, rightRange, sameSource)) return false;
+    if (leftRange.start === rightRange.start && leftRange.end === rightRange.end
+      && sameVisibleOccurrence(left, right, leftRange, rightRange)) return true;
     // Equal week ranges with different ids are parallel sections. A subset
     // range is a repeated physical row of one occurrence.
     if (leftIdentity && rightIdentity && leftIdentity !== rightIdentity

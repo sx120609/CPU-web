@@ -2766,11 +2766,11 @@ private struct NativeScheduleRefreshScrollView<Content: View>: UIViewControllerR
             pullGesture.delaysTouchesBegan = false
             scrollView.addGestureRecognizer(pullGesture)
             self.pullGesture = pullGesture
-            // Let the axis-locked observer decide first. At the top of the
-            // timetable a downward drag is therefore a refresh; horizontal
-            // swipes and upward scrolling fail this recognizer immediately
-            // and keep the pager responsive.
-            scrollView.panGestureRecognizer.require(toFail: pullGesture)
+            // Do not make the scroll view wait for the observer to finish.
+            // That ordering leaves a vertical pull without a live scroll pan
+            // until the finger is lifted, which is why refresh felt inert on
+            // short timetables. The two recognizers are simultaneous and the
+            // delegate below only accepts a downward pull at the top.
 
             addChild(hostController)
             hostController.view.translatesAutoresizingMaskIntoConstraints = false
