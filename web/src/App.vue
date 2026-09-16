@@ -630,9 +630,9 @@ html, body, #app {
   margin: 0;
 }
 
-/* The iOS native shell uses WKWebView's document scroll so its system pull to
- * refresh control receives the same gesture as Safari. Full-height tools still
- * opt into their own fixed route container below. */
+/* The iOS native shell uses WKWebView's document scroll for ordinary pages.
+ * Full-height tools still opt into their own fixed route container below;
+ * refresh is an explicit native or page-header action. */
 html[data-cpu-ios-next] {
   height: auto;
   min-height: 100%;

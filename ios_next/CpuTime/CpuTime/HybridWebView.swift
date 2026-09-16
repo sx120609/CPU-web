@@ -324,10 +324,6 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
     private var navigationTask: Task<Void, Never>?
     private(set) var bridgeReady = false
     private var observations: [NSKeyValueObservation] = []
-    private var refreshControl: UIRefreshControl?
-    private var refreshController: WebViewRefreshController?
-    private var refreshTimeoutTask: Task<Void, Never>?
-    private var isPullRefreshing = false
     private var assistantStreamContinuations: [String: CheckedContinuation<NativeAssistantReply, Error>] = [:]
     private var assistantStreamDeltaHandlers: [String: (String) -> Void] = [:]
     private var assistantStreamStatusHandlers: [String: (String) -> Void] = [:]
@@ -388,15 +384,9 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
         webView.scrollView.scrollIndicatorInsets = .zero
         webView.scrollView.automaticallyAdjustsScrollIndicatorInsets = false
         webView.scrollView.bounces = true
-        webView.scrollView.alwaysBounceVertical = true
-        let refreshController = WebViewRefreshController(store: self)
-        let refreshControl = UIRefreshControl()
-        refreshControl.tintColor = UIColor(red: 15 / 255, green: 143 / 255, blue: 127 / 255, alpha: 1)
-        refreshControl.addTarget(refreshController, action: #selector(WebViewRefreshController.didPull(_:)), for: .valueChanged)
-        webView.scrollView.refreshControl = refreshControl
-        webView.scrollView.delegate = refreshController
-        self.refreshController = refreshController
-        self.refreshControl = refreshControl
+        // Refresh is an explicit top-bar action. Do not let an edge pull turn
+        // into an accidental full-page reload on content-heavy routes.
+        webView.scrollView.alwaysBounceVertical = false
 #if DEBUG
         if #available(iOS 16.4, *) {
             webView.isInspectable = true
@@ -1085,8 +1075,7 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
     func retry() {
         errorMessage = nil
         serviceUnavailableMessage = nil
-        finishPullRefresh()
-        reloadCurrentPage()
+        refreshCurrentPage()
     }
 
     /// Ask the already booted Web app to create the same SSO challenge used by
@@ -1221,19 +1210,14 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
         )
     }
 
-    private func reloadCurrentPage() {
+    func refreshCurrentPage() {
         let view = makeWebView()
-        if view.url == nil {
-            view.load(URLRequest(url: IOSNextWebConfiguration.appURLFor(tab: activeTab)))
-        } else {
-            view.reload()
-        }
-    }
-
-    fileprivate func handlePullToRefresh(_ sender: UIRefreshControl) {
-        guard !isPullRefreshing else { return }
-        isPullRefreshing = true
         errorMessage = nil
+        serviceUnavailableMessage = nil
+        guard view.url != nil else {
+            view.load(URLRequest(url: IOSNextWebConfiguration.appURLFor(tab: activeTab)))
+            return
+        }
         let script = """
         (() => {
           window.__cpuNativeRefreshHandled = false;
@@ -1241,34 +1225,10 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
           return Boolean(window.__cpuNativeRefreshHandled);
         })()
         """
-        let view = makeWebView()
         view.evaluateJavaScript(script) { [weak self] value, _ in
-            Task { @MainActor in
-                guard let self, self.isPullRefreshing else { return }
-                if (value as? Bool) == true {
-                    // Route-specific handlers finish through refreshFinished;
-                    // the timeout keeps the control recoverable if an older
-                    // deployed page does not send the completion message.
-                    self.refreshTimeoutTask?.cancel()
-                    self.refreshTimeoutTask = Task { @MainActor [weak self] in
-                        try? await Task.sleep(for: .seconds(15))
-                        guard let self, !Task.isCancelled else { return }
-                        self.finishPullRefresh()
-                    }
-                } else {
-                    self.reloadCurrentPage()
-                }
-            }
+            guard let self, (value as? Bool) != true else { return }
+            Task { @MainActor in self.webView?.reload() }
         }
-        _ = sender
-    }
-
-    private func finishPullRefresh() {
-        refreshTimeoutTask?.cancel()
-        refreshTimeoutTask = nil
-        guard isPullRefreshing || refreshControl?.isRefreshing == true else { return }
-        isPullRefreshing = false
-        refreshControl?.endRefreshing()
     }
 
     fileprivate func didStart() {
@@ -1366,8 +1326,6 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
             if auth.ready || auth.authenticated {
                 onAuthChanged?(auth.authenticated ? auth.account : "")
             }
-        case "refreshFinished":
-            finishPullRefresh()
         case "networkError":
             serviceUnavailableMessage = "服务暂时不可用，请检查网络连接或切换流量后重试。"
         default:
@@ -1484,9 +1442,8 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
               --cpu-safe-area-inset-top: 0px !important;
               --cpu-ios-inline-inset: 20px;
             }
-            /* Let WKWebView own the document scroll. This makes its native
-               UIRefreshControl receive the same pull gesture as Safari and
-               keeps the existing Web pages' window.scrollY contract intact. */
+            /* Let WKWebView own the document scroll. Refresh is provided by
+               the native top bar so a pull only scrolls the page. */
             html[data-cpu-ios-next],
             html[data-cpu-ios-next] body {
               height: auto !important;
@@ -1705,7 +1662,6 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
               canAccessAdmin: Boolean(info.canAccessAdmin)
             });
           };
-          bridge.refreshFinished = () => post({type: 'refreshFinished'});
           window.CPUTimeNative = bridge;
           // Keep native login usable while an older deployed Web bundle is
           // still being rolled out. Newer bundles replace these methods with
@@ -1941,39 +1897,6 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
           notifyRoute();
         })();
         """
-    }
-}
-
-@MainActor
-private final class WebViewRefreshController: NSObject, UIScrollViewDelegate {
-    private weak var store: HybridWebViewStore?
-    private var pullThresholdReached = false
-
-    init(store: HybridWebViewStore) {
-        self.store = store
-    }
-
-    @objc func didPull(_ sender: UIRefreshControl) {
-        pullThresholdReached = false
-        store?.handlePullToRefresh(sender)
-    }
-
-    func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
-        pullThresholdReached = false
-    }
-
-    func scrollViewDidScroll(_ scrollView: UIScrollView) {
-        guard scrollView.isDragging else { return }
-        pullThresholdReached = scrollView.contentOffset.y <= -(scrollView.adjustedContentInset.top + 58)
-    }
-
-    func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
-        guard pullThresholdReached,
-              let refreshControl = scrollView.refreshControl,
-              !refreshControl.isRefreshing else { return }
-        pullThresholdReached = false
-        refreshControl.beginRefreshing()
-        didPull(refreshControl)
     }
 }
 

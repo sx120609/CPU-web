@@ -209,6 +209,18 @@ struct NativeScheduleView: View {
                         .accessibilityLabel("正在更新课表")
                 }
 
+                Button(action: refresh) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 16, weight: .semibold))
+                        .frame(width: 34, height: 34)
+                        .modifier(ScheduleGlassControl(cornerRadius: 17))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.primary)
+                .disabled(isLoading)
+                .accessibilityLabel("刷新课表")
+
                 // The schedule header has one overflow control. Device and
                 // widget settings live in its own menu section alongside the
                 // schedule actions instead of competing with a second icon.
@@ -345,12 +357,7 @@ struct NativeScheduleView: View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 14) {
                 scheduleToolsSection("课表") {
-                    scheduleToolRow("刷新课表", systemImage: "arrow.clockwise", disabled: isLoading) {
-                        scheduleToolsPresented = false
-                        refresh()
-                    }
                     if result.source != .graduate {
-                        Divider().padding(.leading, 48)
                         scheduleToolRow("添加课程", systemImage: "plus") {
                             scheduleToolsPresented = false
                             presentAddCourse(

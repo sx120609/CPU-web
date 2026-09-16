@@ -485,9 +485,10 @@ function weekOf(payload: SchedulePayload, day: ScheduleDay): number {
 }
 
 function dayTitle(day: ScheduleDay): string {
-  const label = normalizedText(day.label) || '课表';
+  const label = normalizedText(day.label).replace(/今天/g, '').trim();
   const date = compactDate(day.date);
-  return date ? `${date} ${label}` : label;
+  if (date && label) return `${date} ${label}`;
+  return date || label || '课表';
 }
 
 function readyBinding(

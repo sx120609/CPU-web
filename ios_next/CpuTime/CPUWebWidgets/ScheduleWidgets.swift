@@ -60,13 +60,13 @@ private struct ScheduleLiveActivityWidget: Widget {
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
                     }
-                    .frame(width: 72, height: 40, alignment: .center)
-                    .frame(maxWidth: .infinity, alignment: .center)
+                    .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
+                    .padding(.leading, 4)
                 }
                 DynamicIslandExpandedRegion(.trailing, priority: 1) {
                     ScheduleLiveActivityCountdown(state: context.state, compact: true, centered: true)
-                        .frame(width: 72, height: 40, alignment: .center)
-                        .frame(maxWidth: .infinity, alignment: .center)
+                        .frame(maxWidth: .infinity, minHeight: 40, alignment: .trailing)
+                        .padding(.trailing, 4)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     ScheduleLiveActivityExpandedDetails(state: context.state)
@@ -87,7 +87,7 @@ private struct ScheduleLiveActivityWidget: Widget {
             // ActivityKit negotiates the island's actual width on each device.
             // One symmetric inset applies to all regions, with equal-sized
             // upper columns centred on either side of the camera cutout.
-            .contentMargins(.horizontal, 14, for: .expanded)
+            .contentMargins(.horizontal, 18, for: .expanded)
             .contentMargins(.top, 8, for: .expanded)
             .contentMargins(.bottom, 10, for: .expanded)
             .widgetURL(context.attributes.deepLinkURL)
@@ -339,13 +339,18 @@ private struct ScheduleLiveActivityLogo: View {
     let size: CGFloat
 
     var body: some View {
-        Image("CPUActivityLogo")
-            .resizable()
-            .renderingMode(.original)
-            .aspectRatio(contentMode: .fit)
-            .frame(width: size, height: size)
-            .clipShape(RoundedRectangle(cornerRadius: size * 18 / 84, style: .continuous))
-            .accessibilityHidden(true)
+        let shape = RoundedRectangle(cornerRadius: size * 18 / 84, style: .continuous)
+        ZStack {
+            Color(red: 15 / 255, green: 143 / 255, blue: 127 / 255)
+                .clipShape(shape)
+            Image("CPUActivityLogo")
+                .resizable()
+                .renderingMode(.original)
+                .aspectRatio(contentMode: .fit)
+        }
+        .frame(width: size, height: size)
+        .clipShape(shape)
+        .accessibilityHidden(true)
     }
 }
 
@@ -723,7 +728,9 @@ private struct LockScreenScheduleView: View {
                 Image(systemName: courses.isEmpty ? "calendar.badge.checkmark" : "book.closed.fill")
                     .font(.system(size: 10, weight: .semibold))
                     .widgetAccentable()
-                Text("\(day.compactDate) \(day.displayLabel)")
+                Text([day.compactDate, day.displayLabel]
+                    .filter { !$0.isEmpty }
+                    .joined(separator: " "))
                     .font(.system(size: 10, weight: .semibold))
                 Spacer(minLength: 2)
                 if courses.count > 1 {
@@ -1019,13 +1026,15 @@ private struct WidgetDateHeader: View {
             Text(day.compactDate)
                 .font(.system(size: 19, weight: .bold, design: .rounded))
                 .foregroundStyle(WidgetPalette.primary)
-            Text(day.displayLabel.isEmpty ? "课表" : day.displayLabel)
-                .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(
-                    day.displayLabel == "周六" || day.displayLabel == "周日"
-                        ? Color.pink
-                        : WidgetPalette.accent(for: theme)
-                )
+            if !day.displayLabel.isEmpty {
+                Text(day.displayLabel)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(
+                        day.displayLabel == "周六" || day.displayLabel == "周日"
+                            ? Color.pink
+                            : WidgetPalette.accent(for: theme)
+                    )
+            }
             Spacer(minLength: 0)
             if let week = day.week, week > 0 {
                 Text("第 \(week) 周")

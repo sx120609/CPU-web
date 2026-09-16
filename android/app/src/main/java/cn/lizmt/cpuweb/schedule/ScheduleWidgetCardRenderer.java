@@ -138,7 +138,7 @@ final class ScheduleWidgetCardRenderer {
         canvas.drawRoundRect(panel, 26f, 26f, paint);
 
         String date = compactDate(day == null ? "" : day.optString("date", ""));
-        String label = day == null ? "" : day.optString("label", "");
+        String label = cleanDayLabel(day == null ? "" : day.optString("label", ""));
         paint.setStyle(Paint.Style.FILL);
         paint.setTextAlign(Paint.Align.LEFT);
         paint.setColor(PRIMARY_TEXT);
@@ -448,7 +448,7 @@ final class ScheduleWidgetCardRenderer {
 
     private static void drawDate(Canvas canvas, Paint paint, JSONObject day, float x, float y, float size) {
         String date = compactDate(day == null ? "" : day.optString("date", ""));
-        String label = day == null ? "" : day.optString("label", "").replace("周", "周");
+        String label = cleanDayLabel(day == null ? "" : day.optString("label", ""));
         paint.setTextSize(size);
         paint.setFakeBoldText(true);
         paint.setColor(PRIMARY_TEXT);
@@ -497,6 +497,10 @@ final class ScheduleWidgetCardRenderer {
         } catch (Exception ignored) {
             return value.substring(5).replace("-", ".");
         }
+    }
+
+    private static String cleanDayLabel(String value) {
+        return value == null ? "" : value.replace("今天", "").trim();
     }
 
     private static String courseMeta(JSONObject course) {

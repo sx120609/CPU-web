@@ -109,7 +109,11 @@ struct ScheduleDay: Decodable, Identifiable {
 
     var id: String { date ?? "day-\(day ?? 0)" }
     var courseList: [ScheduleCourse] { courses ?? [] }
-    var displayLabel: String { label?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "" }
+    var displayLabel: String {
+        (label?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "")
+            .replacingOccurrences(of: "今天", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
     var shortLabel: String { displayLabel.isEmpty ? compactDate : displayLabel }
 
     var compactDate: String {

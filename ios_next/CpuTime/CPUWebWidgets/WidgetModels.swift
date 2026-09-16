@@ -163,7 +163,13 @@ struct ScheduleDay: Decodable, Identifiable {
 
     var id: String { date ?? "day-\(day ?? 0)" }
     var courseList: [ScheduleCourse] { courses ?? [] }
-    var displayLabel: String { label?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "" }
+    var displayLabel: String {
+        // Older widget payloads used "今天" as the day label. It is a
+        // status marker, not a second date heading, so keep it out of the UI.
+        (label?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "")
+            .replacingOccurrences(of: "今天", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
     var shortLabel: String { displayLabel.isEmpty ? compactDate : displayLabel }
 
     var compactDate: String {

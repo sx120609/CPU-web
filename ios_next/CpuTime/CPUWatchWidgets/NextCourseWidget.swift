@@ -294,11 +294,18 @@ private struct WatchBrandLogo: View {
     let size: CGFloat
 
     var body: some View {
-        Image("CPUActivityLogo")
-            .resizable()
-            .renderingMode(.original)
-            .scaledToFit()
-            .frame(width: size, height: size)
-            .clipShape(RoundedRectangle(cornerRadius: size * 0.2, style: .continuous))
+        let shape = RoundedRectangle(cornerRadius: size * 18 / 84, style: .continuous)
+        ZStack {
+            // Use a full-bleed Watch asset. Transparent padding is composited
+            // as black by some watchOS complication families.
+            Color(red: 15 / 255, green: 143 / 255, blue: 127 / 255)
+                .clipShape(shape)
+            Image("CPUWatchLogo")
+                .resizable()
+                .renderingMode(.original)
+                .scaledToFit()
+        }
+        .frame(width: size, height: size)
+        .clipShape(shape)
     }
 }

@@ -522,13 +522,15 @@ private struct WidgetDateHeader: View {
             Text(day.compactDate)
                 .font(.system(size: 16, weight: .bold))
                 .foregroundStyle(WidgetPalette.primary)
-            Text(day.displayLabel)
-                .font(.system(size: 16, weight: .bold))
-                .foregroundStyle(
-                    day.displayLabel == "周六" || day.displayLabel == "周日"
-                        ? Color.pink
-                        : WidgetPalette.accent(for: theme)
-                )
+                if !day.displayLabel.isEmpty {
+                    Text(day.displayLabel)
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(
+                            day.displayLabel == "周六" || day.displayLabel == "周日"
+                                ? Color.pink
+                                : WidgetPalette.accent(for: theme)
+                        )
+                }
             Spacer(minLength: 0)
             if let week = day.week, week > 0 {
                 Text("第 \(week) 周")

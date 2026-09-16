@@ -4,12 +4,15 @@ import { readFile } from 'node:fs/promises';
 
 const sourceURL = new URL('../CpuTime/CpuTime/NativeScheduleView.swift', import.meta.url);
 
-test('native schedule keeps vertical scrolling native and exposes refresh in the overflow menu', async () => {
+test('native schedule keeps vertical scrolling native and exposes refresh in the top bar', async () => {
   const source = await readFile(sourceURL, 'utf8');
   const storeSource = await readFile(new URL('../CpuTime/CpuTime/NativeScheduleStore.swift', import.meta.url), 'utf8');
+  const webSource = await readFile(new URL('../CpuTime/CpuTime/HybridWebView.swift', import.meta.url), 'utf8');
   assert.match(source, /ScrollView\(\.vertical\)/);
   assert.match(source, /\.scrollBounceBehavior\(\.basedOnSize, axes: \.vertical\)/);
-  assert.match(source, /scheduleToolRow\("刷新课表", systemImage: "arrow\.clockwise"/);
+  assert.match(source, /Button\(action: refresh\)/);
+  assert.doesNotMatch(webSource, /UIRefreshControl|WebViewRefreshController/);
+  assert.match(webSource, /func refreshCurrentPage\(\)/);
   assert.match(source, /TabView\(selection: \$weekPageSelection\)/);
   assert.match(source, /TabView\(selection: \$dayPageSelection\)/);
   assert.doesNotMatch(source, /NativeScheduleRefreshScrollView\(onRefresh:/);

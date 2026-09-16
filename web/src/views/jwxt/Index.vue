@@ -421,9 +421,7 @@ function onNativeRefresh() {
   // The native shell marks the event before dispatching it. Setting the flag
   // here makes the handler self-identifying for older bridge versions too.
   (window as any).__cpuNativeRefreshHandled = true;
-  void loadCurrentTab(true).finally(() => {
-    (window as any).CPUTimeNative?.refreshFinished?.();
-  });
+  void loadCurrentTab(true);
 }
 
 async function initPage() {

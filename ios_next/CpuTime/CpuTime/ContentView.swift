@@ -794,6 +794,7 @@ struct NativeShellView: View {
                 NativeTopBar(
                     session: webSession,
                     onHome: { shell.userSelected(.home) },
+                    onRefresh: { webSession.refreshCurrentPage() },
                     onNotifications: { shell.openWeb(path: "/messages", tab: .profile) },
                     onMenu: {
                         guard !quickEntryOpening else { return }
@@ -1056,6 +1057,7 @@ private struct NativeQuickEntryHeightKey: PreferenceKey {
 private struct NativeTopBar: View {
     @ObservedObject var session: HybridWebViewStore
     let onHome: () -> Void
+    let onRefresh: () -> Void
     let onNotifications: () -> Void
     let onMenu: () -> Void
 
@@ -1088,6 +1090,8 @@ private struct NativeTopBar: View {
             ) {
                 session.cycleAppearanceMode()
             }
+
+            topBarIconButton(systemName: "arrow.clockwise", label: "刷新页面", action: onRefresh)
 
             topBarIconButton(systemName: "bell", label: "通知中心", action: onNotifications)
 
