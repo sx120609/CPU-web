@@ -209,23 +209,6 @@ struct NativeScheduleView: View {
                         .accessibilityLabel("正在更新课表")
                 }
 
-                Button(action: refresh) {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 16, weight: .semibold))
-                        .frame(width: 34, height: 34)
-                        .modifier(ScheduleGlassControl(cornerRadius: 17))
-                        .clipShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.primary)
-                .disabled(isLoading)
-                .accessibilityLabel("刷新课表")
-
-                // The schedule header has one overflow control. Device and
-                // widget settings live in its own menu section alongside the
-                // schedule actions instead of competing with a second icon.
-                scheduleToolsMenu()
-
                 Picker("课表视图", selection: $viewMode) {
                     // Keep the same order as Web's view switch: 日 / 周.
                     Text("日").tag(ScheduleViewMode.day)
@@ -257,6 +240,11 @@ struct NativeScheduleView: View {
                 // A background refresh keeps the cached timetable usable, so
                 // only the meaningless jump is disabled.
                 .disabled(viewMode == .day ? isViewingCurrentDay(result) : isViewingCurrentWeek(result))
+
+                // Keep the overflow action at the trailing edge, matching the
+                // Web header and leaving refresh/additional actions in one
+                // predictable place.
+                scheduleToolsMenu()
             }
 
             HStack(spacing: 6) {
@@ -357,6 +345,10 @@ struct NativeScheduleView: View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 14) {
                 scheduleToolsSection("课表") {
+                    scheduleToolRow("刷新课表", systemImage: "arrow.clockwise", disabled: isLoading) {
+                        scheduleToolsPresented = false
+                        refresh()
+                    }
                     if result.source != .graduate {
                         scheduleToolRow("添加课程", systemImage: "plus") {
                             scheduleToolsPresented = false

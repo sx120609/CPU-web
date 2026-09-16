@@ -47,6 +47,10 @@ final class NativeLiveActivityController: ObservableObject {
     private var refreshTask: Task<Void, Never>?
     private var previewEndTask: Task<Void, Never>?
     private var lastSnapshot: NativeScheduleSnapshot?
+    /// ActivityKit can apply a future state update/end timestamp while the app
+    /// is suspended. Keep the last scheduled boundary so the sync loop does
+    /// not submit the same future operation on every poll.
+    private var scheduledLifecycleKey: String?
     private var currentActivity: Activity<ScheduleLiveActivityAttributes>? {
         Activity<ScheduleLiveActivityAttributes>.activities.first
     }
@@ -194,6 +198,7 @@ final class NativeLiveActivityController: ObservableObject {
         previewEndTask?.cancel()
         previewEndTask = nil
         isPreviewActive = false
+        scheduledLifecycleKey = nil
         if !isEnabled { status = .disabled }
         let activities = Activity<ScheduleLiveActivityAttributes>.activities
         guard !activities.isEmpty else { return }
@@ -236,43 +241,36 @@ final class NativeLiveActivityController: ObservableObject {
             dateKey: occurrence.dateKey,
             week: occurrence.week
         )
-        let state = ScheduleLiveActivityAttributes.ContentState(
-            phase: occurrence.isInProgress ? .inProgress : .upcoming,
-            courseName: occurrence.name,
-            teacher: occurrence.teacher,
-            location: occurrence.location,
-            periodLabel: occurrence.periodLabel,
-            dateLabel: occurrence.dateLabel,
-            weekRangeLabel: occurrence.weekRangeLabel,
-            startDate: occurrence.start,
-            endDate: occurrence.end,
-            nextCourseName: occurrence.next?.name,
-            nextCoursePeriod: occurrence.next?.periodLabel,
-            nextCourseDateLabel: occurrence.next?.dateLabel,
-            nextCourseWeekRangeLabel: occurrence.next?.weekRangeLabel,
-            nextCourseTeacher: occurrence.next?.teacher,
-            nextCourseLocation: occurrence.next?.location,
-            nextCourseStart: occurrence.next?.start,
-            nextCourseEnd: occurrence.next?.end,
-            updatedAt: .now
-        )
+        let state = contentState(for: occurrence, phase: occurrence.isInProgress ? .inProgress : .upcoming)
+        let inProgressState = contentState(for: occurrence, phase: .inProgress)
         // The system should consider the activity stale as soon as this
         // occurrence ends. The controller wakes at the same boundary and
         // either advances to a nearby class or dismisses the activity.
         let content = ActivityContent(state: state, staleDate: occurrence.end)
+        let inProgressContent = ActivityContent(state: inProgressState, staleDate: occurrence.end)
 
         if let activity = currentActivity,
            activity.attributes == attributes {
             await activity.update(content)
+            await scheduleLifecycle(
+                for: activity,
+                occurrence: occurrence,
+                inProgressContent: inProgressContent
+            )
             status = .active
             return refreshDelay(for: occurrence)
         }
         await endActivities()
         do {
-            _ = try Activity<ScheduleLiveActivityAttributes>.request(
+            let activity = try Activity<ScheduleLiveActivityAttributes>.request(
                 attributes: attributes,
                 content: content,
                 pushType: nil
+            )
+            await scheduleLifecycle(
+                for: activity,
+                occurrence: occurrence,
+                inProgressContent: inProgressContent
             )
             status = .active
             return refreshDelay(for: occurrence)
@@ -300,9 +298,63 @@ final class NativeLiveActivityController: ObservableObject {
     }
 
     private func endActivities() async {
+        scheduledLifecycleKey = nil
         for activity in Activity<ScheduleLiveActivityAttributes>.activities {
             await activity.end(nil, dismissalPolicy: .immediate)
         }
+    }
+
+    /// Schedule the two boundaries with ActivityKit when the OS supports
+    /// timestamped updates. This keeps the phase transition and dismissal
+    /// working while the app is backgrounded or the device is locked. The
+    /// controller's short foreground loop remains as a fallback for iOS 17.0
+    /// and 17.1, where timestamped local updates are unavailable.
+    private func scheduleLifecycle(
+        for activity: Activity<ScheduleLiveActivityAttributes>,
+        occurrence: Occurrence,
+        inProgressContent: ActivityContent<ScheduleLiveActivityAttributes.ContentState>
+    ) async {
+        let now = Date.now
+        let lifecycleKey = "\(activity.id)|\(occurrence.start.timeIntervalSince1970)|\(occurrence.end.timeIntervalSince1970)"
+        guard scheduledLifecycleKey != lifecycleKey else { return }
+        scheduledLifecycleKey = lifecycleKey
+
+        guard #available(iOS 17.2, *) else { return }
+        if occurrence.start > now {
+            // The system applies this state at the exact class start, even if
+            // the app has been suspended in the meantime.
+            await activity.update(inProgressContent, timestamp: occurrence.start)
+        }
+        // A future timestamp makes the activity disappear at the class end;
+        // using immediate dismissal avoids leaving a stale card on the lock
+        // screen after the final second.
+        await activity.end(nil, dismissalPolicy: .immediate, timestamp: occurrence.end)
+    }
+
+    private func contentState(
+        for occurrence: Occurrence,
+        phase: ScheduleLiveActivityAttributes.ContentState.Phase
+    ) -> ScheduleLiveActivityAttributes.ContentState {
+        ScheduleLiveActivityAttributes.ContentState(
+            phase: phase,
+            courseName: occurrence.name,
+            teacher: occurrence.teacher,
+            location: occurrence.location,
+            periodLabel: occurrence.periodLabel,
+            dateLabel: occurrence.dateLabel,
+            weekRangeLabel: occurrence.weekRangeLabel,
+            startDate: occurrence.start,
+            endDate: occurrence.end,
+            nextCourseName: occurrence.next?.name,
+            nextCoursePeriod: occurrence.next?.periodLabel,
+            nextCourseDateLabel: occurrence.next?.dateLabel,
+            nextCourseWeekRangeLabel: occurrence.next?.weekRangeLabel,
+            nextCourseTeacher: occurrence.next?.teacher,
+            nextCourseLocation: occurrence.next?.location,
+            nextCourseStart: occurrence.next?.start,
+            nextCourseEnd: occurrence.next?.end,
+            updatedAt: phase == .inProgress ? occurrence.start : .now
+        )
     }
 
     private struct Occurrence {

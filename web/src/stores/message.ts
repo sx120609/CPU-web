@@ -36,6 +36,14 @@ export const useMessageStore = defineStore("message", {
       this.unreadCount = unread.length;
       this.directUnreadCount = directUnread.length;
       this.latestDirectNotice = directUnread[0] || null;
+      // The iOS native shell hides the Web top bar. Mirror the same unread
+      // totals through its bridge so its bell still exposes new messages.
+      if (typeof window !== "undefined") {
+        (window as any).CPUTimeNative?.notificationsChanged?.(
+          this.unreadCount,
+          this.directUnreadCount,
+        );
+      }
     },
   },
 });

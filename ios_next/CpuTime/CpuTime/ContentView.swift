@@ -1093,7 +1093,12 @@ private struct NativeTopBar: View {
 
             topBarIconButton(systemName: "arrow.clockwise", label: "刷新页面", action: onRefresh)
 
-            topBarIconButton(systemName: "bell", label: "通知中心", action: onNotifications)
+            topBarIconButton(
+                systemName: "bell",
+                label: session.notificationButtonLabel,
+                badge: session.unreadNotificationCount,
+                action: onNotifications
+            )
 
             topBarIconButton(systemName: "ellipsis.circle", label: "更多", action: onMenu)
         }
@@ -1109,13 +1114,30 @@ private struct NativeTopBar: View {
     private func topBarIconButton(
         systemName: String,
         label: String,
+        badge: Int = 0,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            Image(systemName: systemName)
-                .font(.system(size: 17, weight: .semibold))
-                .frame(width: 36, height: 36)
-                .contentShape(Rectangle())
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: systemName)
+                    .font(.system(size: 17, weight: .semibold))
+                    .frame(width: 36, height: 36)
+                if badge > 0 {
+                    Text(badge > 99 ? "99+" : String(badge))
+                        .font(.system(size: 9, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .padding(.horizontal, badge > 9 ? 3 : 0)
+                        .frame(minWidth: 15, minHeight: 15)
+                        .background(Color.red, in: Capsule())
+                        .overlay(Capsule().stroke(Color(uiColor: .systemBackground), lineWidth: 1.5))
+                        .offset(x: 5, y: -3)
+                        .allowsHitTesting(false)
+                }
+            }
+            .frame(width: 36, height: 36)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .foregroundStyle(.primary)

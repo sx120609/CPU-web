@@ -256,6 +256,10 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
     /// Mirrors Web's `canAccessModuleAdmin` getter so the native quick menu
     /// exposes the same management entry points as the browser shell.
     @Published private(set) var canAccessAdmin = false
+    /// The Web message store reports this count so the native shell can keep
+    /// its notification button in sync even though the Web top bar is hidden.
+    @Published private(set) var unreadNotificationCount = 0
+    @Published private(set) var directUnreadNotificationCount = 0
     @Published private(set) var isNetworkUnavailable = false
     @Published private(set) var serviceUnavailableMessage: String?
 
@@ -268,6 +272,12 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
     @Published private(set) var currentPath = ""
 
     var isShowingAuthPage: Bool { ShellTab.isAuthPath(currentPath) }
+
+    var notificationButtonLabel: String {
+        unreadNotificationCount > 0
+            ? "通知中心，\(unreadNotificationCount) 条未读"
+            : "通知中心"
+    }
 
     nonisolated private static let appearanceModeKey = "CPUWebAppearanceMode"
 
@@ -1320,12 +1330,19 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
             authState = auth
             isLoggedIn = auth.authenticated
             canAccessAdmin = auth.canAccessAdmin
+            if auth.ready && !auth.authenticated {
+                unreadNotificationCount = 0
+                directUnreadNotificationCount = 0
+            }
             onAuthStateChanged?(auth)
             // Only forward confirmed states to the compatibility observer. An
             // empty account during cookie restoration is deliberately omitted.
             if auth.ready || auth.authenticated {
                 onAuthChanged?(auth.authenticated ? auth.account : "")
             }
+        case "notificationsChanged":
+            unreadNotificationCount = Self.nonNegativeInt(body["unreadCount"])
+            directUnreadNotificationCount = Self.nonNegativeInt(body["directUnreadCount"])
         case "networkError":
             serviceUnavailableMessage = "服务暂时不可用，请检查网络连接或切换流量后重试。"
         default:
@@ -1391,6 +1408,14 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
         if let query = url.query, !query.isEmpty { value += "?\(query)" }
         if let fragment = url.fragment, !fragment.isEmpty { value += "#\(fragment)" }
         return value
+    }
+
+    private static func nonNegativeInt(_ value: Any?) -> Int {
+        if let number = value as? NSNumber { return max(0, number.intValue) }
+        if let string = value as? String, let number = Int(string.trimmingCharacters(in: .whitespacesAndNewlines)) {
+            return max(0, number)
+        }
+        return 0
     }
 
     private static func nativeAuthState(from body: [String: Any]) -> NativeAuthState {
@@ -1662,6 +1687,11 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
               canAccessAdmin: Boolean(info.canAccessAdmin)
             });
           };
+          bridge.notificationsChanged = (unreadCount = 0, directUnreadCount = 0) => post({
+            type: 'notificationsChanged',
+            unreadCount: Math.max(0, Number(unreadCount) || 0),
+            directUnreadCount: Math.max(0, Number(directUnreadCount) || 0)
+          });
           window.CPUTimeNative = bridge;
           // Keep native login usable while an older deployed Web bundle is
           // still being rolled out. Newer bundles replace these methods with

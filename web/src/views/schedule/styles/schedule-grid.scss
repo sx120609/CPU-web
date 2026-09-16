@@ -100,14 +100,14 @@
   gap: 4px;
 }
 .week-grid-head {
-  position: sticky;
-  top: 0;
-  z-index: 3;
+  /* Keep the date row in the same scroll flow as the grid. A sticky row can
+     cover the first lesson when a short viewport has only a small scroll range. */
+  position: static;
+  top: auto;
+  z-index: auto;
   margin-bottom: 6px;
   padding: 3px 0;
   background: var(--schedule-surface-bg);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
 }
 :global(body[data-cpu-native-app="1"]) .schedule-page .week-grid-head {
   position: static;
