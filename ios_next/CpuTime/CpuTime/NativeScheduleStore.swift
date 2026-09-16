@@ -1362,8 +1362,8 @@ public final class NativeScheduleStore: ObservableObject {
         state = .idle
         onWatchReset?()
         #if os(iOS) && canImport(ActivityKit)
-        if #available(iOS 16.1, *) {
-            NativeLiveActivityController.shared.end()
+        if #available(iOS 17.0, *) {
+            NativeLiveActivityController.shared.reset()
         }
         #endif
     }
@@ -1482,7 +1482,7 @@ public final class NativeScheduleStore: ObservableObject {
         latestSnapshot = snapshot
         onWatchSnapshot?(snapshot)
         #if os(iOS) && canImport(ActivityKit)
-        if #available(iOS 16.1, *) {
+        if #available(iOS 17.0, *) {
             NativeLiveActivityController.shared.accept(snapshot)
         }
         #endif
@@ -1809,7 +1809,7 @@ public final class NativeScheduleStore: ObservableObject {
             latestSnapshot = snapshot
             onWatchSnapshot?(snapshot)
             #if os(iOS) && canImport(ActivityKit)
-            if #available(iOS 16.1, *) {
+            if #available(iOS 17.0, *) {
                 NativeLiveActivityController.shared.accept(snapshot)
             }
             #endif

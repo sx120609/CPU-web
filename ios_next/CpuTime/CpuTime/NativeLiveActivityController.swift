@@ -6,7 +6,7 @@ import Foundation
 /// timetable. The widget renders the countdown locally, while this controller
 /// only needs to refresh when the course crosses a boundary or the schedule
 /// changes.
-@available(iOS 16.1, *)
+@available(iOS 17.0, *)
 @MainActor
 final class NativeLiveActivityController: ObservableObject {
     enum Status: Equatable {
@@ -47,16 +47,18 @@ final class NativeLiveActivityController: ObservableObject {
     private var refreshTask: Task<Void, Never>?
     private var previewEndTask: Task<Void, Never>?
     private var lastSnapshot: NativeScheduleSnapshot?
-    /// ActivityKit can apply a future state update/end timestamp while the app
-    /// is suspended. Keep the last scheduled boundary so the sync loop does
-    /// not submit the same future operation on every poll.
-    private var scheduledLifecycleKey: String?
+    private let now: () -> Date
     private var currentActivity: Activity<ScheduleLiveActivityAttributes>? {
-        Activity<ScheduleLiveActivityAttributes>.activities.first
+        Activity<ScheduleLiveActivityAttributes>.activities.first {
+            $0.activityState == .active || $0.activityState == .stale
+        }
     }
 
-    private init() {
-        if !ActivityAuthorizationInfo().areActivitiesEnabled {
+    init(now: @escaping () -> Date = { .now }) {
+        self.now = now
+        if !isEnabled {
+            status = .disabled
+        } else if !ActivityAuthorizationInfo().areActivitiesEnabled {
             status = .unavailable("请在系统设置中允许“实时活动”。")
         } else if currentActivity != nil {
             status = .active
@@ -90,7 +92,7 @@ final class NativeLiveActivityController: ObservableObject {
             end()
             return
         }
-        status = .waiting
+        status = currentActivity == nil ? .waiting : .active
         refreshTask = Task { @MainActor [weak self] in
             guard let self else { return }
             while !Task.isCancelled {
@@ -102,6 +104,25 @@ final class NativeLiveActivityController: ObservableObject {
                 }
             }
         }
+    }
+
+    /// App suspension pauses the local boundary task. Reconcile immediately
+    /// on return, including after the user changes Live Activity permission.
+    func foreground() {
+        if isPreviewActive {
+            if (currentActivity?.content.state.endDate ?? .distantPast) <= now() {
+                endPreview()
+            }
+        } else if let lastSnapshot {
+            accept(lastSnapshot)
+        }
+    }
+
+    /// A logged-out account must not recreate its last activity on resume.
+    func reset() {
+        lastSnapshot = nil
+        end()
+        status = isEnabled ? .waiting : .disabled
     }
 
     /// Starts a local, self-contained activity so users can inspect the lock
@@ -123,8 +144,8 @@ final class NativeLiveActivityController: ObservableObject {
         isPreviewActive = true
         status = .waiting
 
-        let start = Date.now.addingTimeInterval(-20 * 60)
-        let end = Date.now.addingTimeInterval(55 * 60)
+        let start = now().addingTimeInterval(-20 * 60)
+        let end = now().addingTimeInterval(55 * 60)
         let state = ScheduleLiveActivityAttributes.ContentState(
             phase: .inProgress,
             courseName: "药理学实验",
@@ -155,6 +176,7 @@ final class NativeLiveActivityController: ObservableObject {
         Task { @MainActor [weak self] in
             guard let self else { return }
             await endActivities()
+            guard isPreviewActive, isEnabled else { return }
             do {
                 _ = try Activity<ScheduleLiveActivityAttributes>.request(
                     attributes: attributes,
@@ -198,7 +220,6 @@ final class NativeLiveActivityController: ObservableObject {
         previewEndTask?.cancel()
         previewEndTask = nil
         isPreviewActive = false
-        scheduledLifecycleKey = nil
         if !isEnabled { status = .disabled }
         let activities = Activity<ScheduleLiveActivityAttributes>.activities
         guard !activities.isEmpty else { return }
@@ -210,6 +231,7 @@ final class NativeLiveActivityController: ObservableObject {
     }
 
     private func synchronize(_ snapshot: NativeScheduleSnapshot) async -> TimeInterval? {
+        guard !Task.isCancelled, !isPreviewActive else { return nil }
         guard ActivityAuthorizationInfo().areActivitiesEnabled else {
             status = .unavailable("请在系统设置中允许“实时活动”。")
             await endActivities()
@@ -220,7 +242,8 @@ final class NativeLiveActivityController: ObservableObject {
             await endActivities()
             return nil
         }
-        guard let occurrence = nextOccurrence(in: snapshot) else {
+        let currentDate = now()
+        guard let occurrence = nextOccurrence(in: snapshot, at: currentDate) else {
             status = .unavailable("今天和接下来没有可显示的课程。")
             await endActivities()
             return nil
@@ -230,7 +253,7 @@ final class NativeLiveActivityController: ObservableObject {
         // refresh loop stays alive so it can start automatically as the class
         // enters the lead window.
         if !occurrence.isInProgress,
-           occurrence.start.timeIntervalSinceNow > Self.leadTime {
+           occurrence.start.timeIntervalSince(currentDate) > Self.leadTime {
             status = .waiting
             await endActivities()
             return refreshDelay(for: occurrence)
@@ -242,41 +265,38 @@ final class NativeLiveActivityController: ObservableObject {
             week: occurrence.week
         )
         let state = contentState(for: occurrence, phase: occurrence.isInProgress ? .inProgress : .upcoming)
-        let inProgressState = contentState(for: occurrence, phase: .inProgress)
         // The system should consider the activity stale as soon as this
         // occurrence ends. The controller wakes at the same boundary and
         // either advances to a nearby class or dismisses the activity.
         let content = ActivityContent(state: state, staleDate: occurrence.end)
-        let inProgressContent = ActivityContent(state: inProgressState, staleDate: occurrence.end)
+        // ActivityKit's timestamp is an event ordering timestamp, NOT a
+        // scheduled execution date. In particular, calling end with a future
+        // timestamp ends the activity immediately. Only reconcile boundaries
+        // that have actually passed; foreground() also does this on resume.
 
         if let activity = currentActivity,
            activity.attributes == attributes {
             await activity.update(content)
-            await scheduleLifecycle(
-                for: activity,
-                occurrence: occurrence,
-                inProgressContent: inProgressContent
-            )
+            guard !Task.isCancelled else { return nil }
             status = .active
             return refreshDelay(for: occurrence)
         }
         await endActivities()
+        // A newer snapshot, logout or preview may take over across the await.
+        guard !Task.isCancelled, isEnabled, !isPreviewActive else { return nil }
         do {
-            let activity = try Activity<ScheduleLiveActivityAttributes>.request(
+            _ = try Activity<ScheduleLiveActivityAttributes>.request(
                 attributes: attributes,
                 content: content,
                 pushType: nil
-            )
-            await scheduleLifecycle(
-                for: activity,
-                occurrence: occurrence,
-                inProgressContent: inProgressContent
             )
             status = .active
             return refreshDelay(for: occurrence)
         } catch {
             status = .failed(error.localizedDescription)
-            return nil
+            // A background request or transient ActivityKit failure must not
+            // permanently stop automatic activities until another fetch.
+            return 30
         }
     }
 
@@ -285,7 +305,7 @@ final class NativeLiveActivityController: ObservableObject {
     /// while still starting the activity as the next class enters the lead
     /// window.
     private func refreshDelay(for occurrence: Occurrence) -> TimeInterval {
-        let now = Date.now
+        let now = now()
         if occurrence.isInProgress {
             return max(1, min(15, occurrence.end.timeIntervalSince(now)))
         }
@@ -298,37 +318,9 @@ final class NativeLiveActivityController: ObservableObject {
     }
 
     private func endActivities() async {
-        scheduledLifecycleKey = nil
         for activity in Activity<ScheduleLiveActivityAttributes>.activities {
             await activity.end(nil, dismissalPolicy: .immediate)
         }
-    }
-
-    /// Schedule the two boundaries with ActivityKit when the OS supports
-    /// timestamped updates. This keeps the phase transition and dismissal
-    /// working while the app is backgrounded or the device is locked. The
-    /// controller's short foreground loop remains as a fallback for iOS 17.0
-    /// and 17.1, where timestamped local updates are unavailable.
-    private func scheduleLifecycle(
-        for activity: Activity<ScheduleLiveActivityAttributes>,
-        occurrence: Occurrence,
-        inProgressContent: ActivityContent<ScheduleLiveActivityAttributes.ContentState>
-    ) async {
-        let now = Date.now
-        let lifecycleKey = "\(activity.id)|\(occurrence.start.timeIntervalSince1970)|\(occurrence.end.timeIntervalSince1970)"
-        guard scheduledLifecycleKey != lifecycleKey else { return }
-        scheduledLifecycleKey = lifecycleKey
-
-        guard #available(iOS 17.2, *) else { return }
-        if occurrence.start > now {
-            // The system applies this state at the exact class start, even if
-            // the app has been suspended in the meantime.
-            await activity.update(inProgressContent, timestamp: occurrence.start)
-        }
-        // A future timestamp makes the activity disappear at the class end;
-        // using immediate dismissal avoids leaving a stale card on the lock
-        // screen after the final second.
-        await activity.end(nil, dismissalPolicy: .immediate, timestamp: occurrence.end)
     }
 
     private func contentState(
@@ -353,7 +345,7 @@ final class NativeLiveActivityController: ObservableObject {
             nextCourseLocation: occurrence.next?.location,
             nextCourseStart: occurrence.next?.start,
             nextCourseEnd: occurrence.next?.end,
-            updatedAt: phase == .inProgress ? occurrence.start : .now
+            updatedAt: phase == .inProgress ? occurrence.start : now()
         )
     }
 
@@ -383,11 +375,10 @@ final class NativeLiveActivityController: ObservableObject {
         let weekRangeLabel: String
     }
 
-    private func nextOccurrence(in snapshot: NativeScheduleSnapshot) -> Occurrence? {
+    private func nextOccurrence(in snapshot: NativeScheduleSnapshot, at now: Date) -> Occurrence? {
         guard let data = snapshot.data, let calendar = snapshot.calendar else { return nil }
         var dateCalendar = Calendar(identifier: .gregorian)
         dateCalendar.timeZone = TimeZone(identifier: "Asia/Shanghai")!
-        let now = Date()
         let periods = snapshot.periods.isEmpty ? NativeSchedulePeriod.bundledTimetable : snapshot.periods
         let periodByNumber = Dictionary(uniqueKeysWithValues: periods.map { ($0.number, $0) })
         // The timetable payload can contain the whole semester while the
@@ -506,7 +497,7 @@ final class NativeLiveActivityController: ObservableObject {
         let date = calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
         let weekday = date.map { calendar.component(.weekday, from: $0) }
         let labels = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"]
-        let dayLabel = weekday.flatMap { labels.indices.contains($0) ? labels[$0] : nil }
+        let dayLabel = weekday.flatMap { labels.indices.contains($0 - 1) ? labels[$0 - 1] : nil }
         if let dayLabel, week > 0 { return dayLabel + " · 第 " + String(week) + " 周" }
         return dayLabel ?? (week > 0 ? "第 " + String(week) + " 周" : "")
     }

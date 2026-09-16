@@ -151,12 +151,8 @@ private struct NextCourseWidgetView: View {
     private var inlineContent: some View {
         switch entry.state {
         case .course(let occurrence):
-            Label {
-                Text(inlineText(occurrence.course))
-            } icon: {
-                WatchBrandLogo(size: 14)
-            }
-            .lineLimit(1)
+            Text(inlineText(occurrence.course))
+                .lineLimit(1)
         case .empty:
             Label("近期没有课程", systemImage: "calendar.badge.checkmark")
         case .awaitingSync:
@@ -170,15 +166,14 @@ private struct NextCourseWidgetView: View {
             AccessoryWidgetBackground()
             switch entry.state {
             case .course(let occurrence):
-                VStack(spacing: 0) {
-                    WatchBrandLogo(size: 15)
+                VStack(spacing: 2) {
                     if entry.displayOptions.showTime {
                         Text(occurrence.course.startTime)
-                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                            .font(.system(size: 14, weight: .bold, design: .rounded))
                     }
                     if let primary = entry.displayOptions.primaryValue(for: occurrence.course), primary != occurrence.course.startTime {
                         Text(primary)
-                            .font(.system(size: 8, weight: .semibold))
+                            .font(.system(size: 10, weight: .semibold))
                             .lineLimit(1)
                             .minimumScaleFactor(0.55)
                     }
@@ -202,7 +197,6 @@ private struct NextCourseWidgetView: View {
         case .course(let occurrence):
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
-                    WatchBrandLogo(size: 16)
                     Text("下一节")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(.secondary)
@@ -287,25 +281,5 @@ private struct NextCourseWidgetView: View {
             formatter.dateFormat = "M月d日"
             return formatter.string(from: date)
         }
-    }
-}
-
-private struct WatchBrandLogo: View {
-    let size: CGFloat
-
-    var body: some View {
-        let shape = RoundedRectangle(cornerRadius: size * 18 / 84, style: .continuous)
-        ZStack {
-            // Use a full-bleed Watch asset. Transparent padding is composited
-            // as black by some watchOS complication families.
-            Color(red: 15 / 255, green: 143 / 255, blue: 127 / 255)
-                .clipShape(shape)
-            Image("CPUWatchLogo")
-                .resizable()
-                .renderingMode(.original)
-                .scaledToFit()
-        }
-        .frame(width: size, height: size)
-        .clipShape(shape)
     }
 }

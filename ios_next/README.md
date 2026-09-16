@@ -48,6 +48,7 @@ npm run dev --prefix web
 npm run type-check --prefix web
 node ios_next/scripts/build-web-bridge.mjs
 node --test ios_next/tests/*.test.mjs
+bash ios_next/scripts/check-live-activity.sh
 swift test --package-path ios_next
 swiftc ios_next/CpuTime/CpuTime/NativeScheduleStore.swift ios_next/tests/NativeScheduleStoreChecks.swift -o /tmp/cpu-next-store-checks
 /tmp/cpu-next-store-checks
@@ -64,6 +65,8 @@ xcodebuild -project ios_next/CpuTime/CpuTime.xcodeproj -scheme CPUWatch -destina
 回归重点：登录后从 Web 返回原生课表、退出／切换账号、历史学期返回本周、快速切周、重叠课程详情、无课周、断网刷新、网页中的课表链接、其他栏目的子页面返回。真实学校账号与服务可用性仍需在联调环境验证。
 
 以上本地检查只验证开发改动，不是生产部署产物；生产发布仍遵循 `docs/production-requirements.md`。
+
+实时活动回归脚本在 macOS 编译并执行实际控制器，以内存 ActivityKit 边界验证创建、课程开始/结束、缓存重复到达、权限变化、重试与退出登录，不依赖 XCTest 或学校账号。模拟器通过 `CPU_DEBUG_MOCK_SCHEDULE=1` 启动 Debug App 可生成一节当前正在进行的课程，用于检查系统实际呈现。当前实时活动采用本地 ActivityKit 更新：前台在课程边界更新，回到前台立即补同步。App 被系统挂起后的准时远程更新/结束需要 APNs 服务端支持；`Activity.update/end` 的 `timestamp` 只用于事件排序，不能用来预约未来执行。
 
 ## iOS 小组件
 

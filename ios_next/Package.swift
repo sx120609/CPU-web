@@ -52,6 +52,8 @@ let package = Package(
             exclude: [
                 "NativeScheduleStoreChecks.swift",
                 "NativeTabSelectionChecks.swift",
+                "NativeLiveActivityChecks.swift",
+                "fixtures",
                 "native-web-bundle.test.mjs",
                 "watch-integration.test.mjs",
                 "web-schedule-bridge.test.mjs",

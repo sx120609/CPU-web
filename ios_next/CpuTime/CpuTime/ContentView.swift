@@ -126,7 +126,10 @@ struct ContentView: View {
                 await shell.resolveInitialAuth(webSession: webSession)
             }
             .onChange(of: scenePhase) { _, phase in
-                if phase == .active { watchSchedule.foreground() }
+                if phase == .active {
+                    watchSchedule.foreground()
+                    NativeLiveActivityController.shared.foreground()
+                }
             }
     }
 
