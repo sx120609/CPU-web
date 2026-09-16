@@ -88,7 +88,10 @@ export default defineConfig(({ command }) => ({
     },
   },
   experimental: {
-    renderBuiltUrl(_filename, { hostType, type }) {
+    renderBuiltUrl(filename, { hostType, type }) {
+      // Public files are served from the page origin. Relative URLs would walk
+      // out of the versioned asset prefix when a JS chunk is served by the CDN.
+      if (type === "public") return `/${filename}`;
       if (hostType === "css" && type === "asset") return { relative: true };
       return undefined;
     },

@@ -1,11 +1,66 @@
 import assert from 'node:assert/strict'
 import { readFileSync, readdirSync } from 'node:fs'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { runInNewContext } from 'node:vm'
 
 const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+
+test('public image URLs stay on the page origin when built modules move to a CDN', async (t) => {
+  const { build, loadConfigFromFile } = await import('vite')
+  const { config } = await loadConfigFromFile(
+    { command: 'build', mode: 'production' },
+    path.join(webRoot, 'vite.config.ts'),
+  )
+  const fixtureRoot = await mkdtemp(path.join(os.tmpdir(), 'cpu-public-assets-'))
+  t.after(() => rm(fixtureRoot, { recursive: true, force: true }))
+  await writeFile(path.join(fixtureRoot, 'entry.js'), [
+    'export { default as qr } from "/wechat-service-qrcode.png";',
+    'export { default as bundled } from "./bundled.svg";',
+  ].join('\n'))
+  await writeFile(path.join(fixtureRoot, 'bundled.svg'), '<svg xmlns="http://www.w3.org/2000/svg"/>')
+  const result = await build({
+    configFile: false,
+    root: fixtureRoot,
+    publicDir: path.join(webRoot, 'public'),
+    base: config.base,
+    experimental: config.experimental,
+    logLevel: 'silent',
+    build: {
+      write: false,
+      copyPublicDir: false,
+      assetsInlineLimit: 0,
+      minify: false,
+      rollupOptions: {
+        input: path.join(fixtureRoot, 'entry.js'),
+        preserveEntrySignatures: 'strict',
+        output: { entryFileNames: 'assets/entry.js' },
+      },
+    },
+  })
+  const entry = result.output.find((item) => item.type === 'chunk' && item.isEntry)
+  const bundled = result.output.find((item) => item.type === 'asset' && item.fileName.endsWith('.svg'))
+  assert.ok(entry)
+  assert.ok(bundled)
+  const pageUrl = 'https://cputime.cn/messages?tab=settings'
+  for (const moduleUrl of [
+    'https://cputime.cn/assets/entry.js',
+    'https://static.cputime.cn/cpu-web-media/web-static/assets/dual-origin-v2/entry.js',
+    'https://img.cputime.cn/cpu-web-media/web-static/assets/dual-origin-v2/entry.js',
+  ]) {
+    // Execute Vite's generated module with the URL it has after deployment.
+    const code = entry.code.replaceAll('import.meta.url', JSON.stringify(moduleUrl))
+    const exports = await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`)
+    assert.equal(new URL(exports.qr, pageUrl).href, 'https://cputime.cn/wechat-service-qrcode.png')
+    assert.equal(
+      exports.bundled,
+      new URL(path.posix.relative(path.posix.dirname(entry.fileName), bundled.fileName), moduleUrl).href,
+    )
+  }
+})
 
 function executeAppearance({ userAgent, platform = '', maxTouchPoints = 0, matchedMedia = '' }) {
   const links = []
