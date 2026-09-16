@@ -125,12 +125,14 @@
                   <span>在微信中打开授权页后会立即确认；二维码有效期至 {{ formatNoticeTime(wechatQr.expiresAt) }}</span>
                 </div>
               </div>
-              <div v-else-if="!wechatProfile?.binding" class="channel-qr-box">
+              <div v-else class="channel-qr-box">
                 <img src="/wechat-service-qrcode.png" :alt="`${wechatProfile?.accountName || '拾小间'}服务号二维码`" />
                 <div>
-                  <b>扫码关注 {{ wechatProfile?.accountName || "拾小间" }}</b>
+                  <b>{{ wechatProfile?.binding?.subscribed ? "微信扫码打开" : "扫码关注" }} {{ wechatProfile?.accountName || "拾小间" }}</b>
                   <span v-if="wechatProfile?.wechatId">微信号：{{ wechatProfile.wechatId }}</span>
-                  <span>关注后可在微信内打开本页授权绑定；也可点击下方“扫码绑定”生成专属二维码。</span>
+                  <span v-if="wechatProfile?.binding?.subscribed">使用微信扫码进入服务号，查看通知或使用菜单功能。</span>
+                  <span v-else-if="wechatProfile?.binding">重新关注后即可继续通过服务号接收已开启的通知，无需解绑。</span>
+                  <span v-else>关注后可在微信内打开本页授权绑定；也可点击下方“扫码绑定”生成专属二维码。</span>
                 </div>
               </div>
               <p class="qq-channel-hint">
