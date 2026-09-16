@@ -373,6 +373,20 @@ private struct LiveActivitySettingsSection: View {
                     NativeLiveActivityController.shared.setEnabled(value)
                 }
             ))
+            if enabled, ActivityAuthorizationInfo().areActivitiesEnabled {
+                Button {
+                    if controller.isPreviewActive {
+                        controller.endPreview()
+                    } else {
+                        controller.startPreview()
+                    }
+                } label: {
+                    Label(
+                        controller.isPreviewActive ? "结束实时活动测试" : "查看实时活动测试",
+                        systemImage: controller.isPreviewActive ? "stop.circle" : "play.circle"
+                    )
+                }
+            }
             if enabled {
                 HStack(alignment: .top, spacing: 10) {
                     Image(systemName: statusSymbol)
@@ -383,6 +397,10 @@ private struct LiveActivitySettingsSection: View {
                             .font(.subheadline.weight(.medium))
                         if let detail = controller.status.detail {
                             Text(detail)
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        } else if controller.isPreviewActive {
+                            Text("正在显示演示课程，锁定屏幕后可查看完整布局。")
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                         } else if controller.status == .active {
@@ -401,7 +419,7 @@ private struct LiveActivitySettingsSection: View {
         } header: {
             Label("灵动岛", systemImage: "rectangle.topthird.inset.filled")
         } footer: {
-            Text("正在上课时立即显示；下一节课会在上课前 15 分钟出现。课程结束后自动收起，较早的课程由小组件展示。")
+            Text("正在上课时立即显示；下一节课会在上课前 15 分钟出现。课程结束后自动收起，较早的课程由小组件展示。测试按钮只显示本地演示课程，不会修改课表。")
         }
     }
 

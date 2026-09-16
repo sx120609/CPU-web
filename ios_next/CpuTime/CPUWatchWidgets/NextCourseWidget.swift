@@ -151,7 +151,11 @@ private struct NextCourseWidgetView: View {
     private var inlineContent: some View {
         switch entry.state {
         case .course(let occurrence):
-            Label(inlineText(occurrence.course), systemImage: "book.closed.fill")
+            Label {
+                Text(inlineText(occurrence.course))
+            } icon: {
+                WatchBrandLogo(size: 14)
+            }
             .lineLimit(1)
         case .empty:
             Label("近期没有课程", systemImage: "calendar.badge.checkmark")
@@ -167,6 +171,7 @@ private struct NextCourseWidgetView: View {
             switch entry.state {
             case .course(let occurrence):
                 VStack(spacing: 0) {
+                    WatchBrandLogo(size: 15)
                     if entry.displayOptions.showTime {
                         Text(occurrence.course.startTime)
                             .font(.system(size: 12, weight: .bold, design: .rounded))
@@ -197,10 +202,7 @@ private struct NextCourseWidgetView: View {
         case .course(let occurrence):
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
-                    Image(systemName: "book.closed.fill")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(Color(red: 15 / 255, green: 143 / 255, blue: 127 / 255))
-                        .widgetAccentable()
+                    WatchBrandLogo(size: 16)
                     Text("下一节")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(.secondary)
@@ -217,17 +219,21 @@ private struct NextCourseWidgetView: View {
                 }
                 if let metadata = entry.displayOptions.metadata(for: occurrence.course) {
                     Text(metadata)
-                        .font(.system(size: 10, weight: .medium))
+                        .font(.system(size: 9, weight: .medium))
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.76)
                 }
-                if entry.displayOptions.showTime {
-                    HStack(spacing: 5) {
+                HStack(spacing: 6) {
+                    if entry.displayOptions.showTime {
                         Label("\(occurrence.course.startTime) - \(occurrence.course.endTime)", systemImage: "clock")
                     }
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.secondary)
+                    Text(periodLabel(for: occurrence.course))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
                 }
+                .font(.system(size: 9, weight: .medium))
+                .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         case .empty:
@@ -261,6 +267,12 @@ private struct NextCourseWidgetView: View {
         .joined(separator: " ")
     }
 
+    private func periodLabel(for course: WatchCourse) -> String {
+        course.startPeriod == course.endPeriod
+            ? "第 \(course.startPeriod) 节"
+            : "第 \(course.startPeriod)-\(course.endPeriod) 节"
+    }
+
     private func dayLabel(_ date: Date, relativeTo reference: Date) -> String {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: entry.timezone) ?? .current
@@ -275,5 +287,18 @@ private struct NextCourseWidgetView: View {
             formatter.dateFormat = "M月d日"
             return formatter.string(from: date)
         }
+    }
+}
+
+private struct WatchBrandLogo: View {
+    let size: CGFloat
+
+    var body: some View {
+        Image("CPUActivityLogo")
+            .resizable()
+            .renderingMode(.original)
+            .scaledToFit()
+            .frame(width: size, height: size)
+            .clipShape(RoundedRectangle(cornerRadius: size * 0.2, style: .continuous))
     }
 }

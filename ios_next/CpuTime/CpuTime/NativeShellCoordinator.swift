@@ -26,6 +26,7 @@ final class NativeShellCoordinator: ObservableObject {
     private var scheduleStore: NativeScheduleStore?
     private var isConnected = false
     private var scheduleTask: Task<Void, Never>?
+    private var archiveRestoreTask: Task<Bool, Never>?
     private var pendingGateTask: Task<Void, Never>?
     /// The last non-empty account fingerprint the Web reported, cleared the
     /// moment the session ends.
@@ -77,6 +78,9 @@ final class NativeShellCoordinator: ObservableObject {
         // Prewarm the shared WebView without presenting a Web tab. The native
         // timetable stays visible while its authenticated bridge starts up.
         scheduleStore.attach(webView: webSession.makeWebView())
+        // Archive restoration must survive bridge/auth notifications that
+        // supersede a network load while the cookie store is still answering.
+        archiveRestoreTask = Task { await scheduleStore.restoreArchivedSelection() }
         if selectedTab == .schedule {
             requestScheduleLoad(force: false, refreshCached: true)
         }
@@ -266,7 +270,14 @@ final class NativeShellCoordinator: ObservableObject {
                 try? await Task.sleep(for: window)
                 guard !Task.isCancelled else { return }
             }
-            self.applyLoginGate(navigateToLogin: true)
+            // No complete auth report means a transport/restore failure. A
+            // still-present session may continue using its verified cache;
+            // only a confirmed guest report closes that session.
+            if await self.webSession?.hasSessionCookie() == true {
+                self.applyAuthenticated(navigateToHome: false)
+            } else {
+                self.applyLoginGate(navigateToLogin: true)
+            }
         }
     }
 
@@ -314,7 +325,7 @@ final class NativeShellCoordinator: ObservableObject {
             // booted, then refreshes it in place.
             var restoredArchive = false
             if !force, !restoredCache {
-                restoredArchive = await scheduleStore.restoreArchivedSelection()
+                restoredArchive = await self.archiveRestoreTask?.value ?? false
             }
             guard !Task.isCancelled else { return }
             guard self.webSession?.bridgeReady == true else {
@@ -325,6 +336,8 @@ final class NativeShellCoordinator: ObservableObject {
             // Login can update account and JWXT state in consecutive messages.
             // Wait for that burst to settle before starting the next request.
             try? await Task.sleep(for: .milliseconds(100))
+            guard !Task.isCancelled else { return }
+            await self.webSession?.restoreAcademicSession()
             guard !Task.isCancelled else { return }
             if restoredCache || restoredArchive {
                 // Calling the normal non-forced load lets the store paint the

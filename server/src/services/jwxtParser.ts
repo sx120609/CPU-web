@@ -592,17 +592,17 @@ function parseWeeks(text: string): number[] {
 function normalizeWeekText(text: string) {
   return String(text ?? "")
     .replace(/[０-９]/g, (char) => String(char.charCodeAt(0) - 0xff10))
-    .replace(/[（]/g, "(")
-    .replace(/[）]/g, ")")
+    .replace(/[（［【]/g, "(")
+    .replace(/[）］】]/g, ")")
     .replace(/[－–—~～]/g, "-")
     .replace(/第/g, "")
     .replace(/\s+/g, "");
 }
 
 function parseWeekKind(text: string): "all" | "odd" | "even" {
-  if (/单双周/.test(text)) return "all";
-  if (/单周|\(单\)|[^双]单/.test(text)) return "odd";
-  if (/双周|\(双\)|双/.test(text)) return "even";
+  if (/单双/.test(text)) return "all";
+  if (/(?:单周|单数周|\(单\)|单)/.test(text)) return "odd";
+  if (/(?:双周|双数周|\(双\)|双)/.test(text)) return "even";
   return "all";
 }
 

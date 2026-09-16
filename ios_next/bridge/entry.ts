@@ -32,6 +32,32 @@ if (isIosNextNativeShell() && (window as any).CPUTimeNative) {
   };
   host.CPUTimeNative.refreshAuth = refreshNativeAuth;
 
+  // Restoring a cached native timetable is independent of fetching its data.
+  // Reuse the existing Web cookie/remember-login machinery once per account
+  // before native starts its otherwise non-interactive background refresh.
+  let academicRestore: { account: string; task: Promise<boolean> } | undefined;
+  host.CPUTimeNative.restoreAcademicSession = async () => {
+    const auth = useAuthStore();
+    if (!auth) return false;
+    if (!auth.ready) await auth.fetchMe?.({ probe: true }).catch(() => undefined);
+    if (!auth.ready || !auth.isLoggedIn) return false;
+    const jwxt = useJwxtStore();
+    if (!jwxt) return false;
+    const account = nativeScheduleAuthInfo().account;
+    if (academicRestore?.account === account) return academicRestore.task;
+    const task = (async () => {
+      jwxt.hydrate();
+      return Boolean(await jwxt.ensureSession({
+        refresh: true, silent: true, allowAutoLogin: true,
+        repairUnavailableSession: false,
+      }));
+    })().catch(() => false);
+    academicRestore = { account, task };
+    const restored = await task;
+    if (!restored && academicRestore?.task === task) academicRestore = undefined;
+    return restored;
+  };
+
   const installAppearanceBridge = () => {
     if (typeof host.__cpuSetAppearanceMode === "function") return true;
     const app = liveApp();

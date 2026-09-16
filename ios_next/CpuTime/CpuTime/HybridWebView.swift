@@ -265,7 +265,7 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
     var blocksInternalNavigation = false
     /// The path the shared WebView last settled on, used to avoid re-issuing
     /// the same gate navigation.
-    private(set) var currentPath = ""
+    @Published private(set) var currentPath = ""
 
     var isShowingAuthPage: Bool { ShellTab.isAuthPath(currentPath) }
 
@@ -628,8 +628,10 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
           for (let attempt = 0; attempt < 20; attempt += 1) {
             const refresh = window.CPUTimeNative?.refreshAuth;
             if (typeof refresh === 'function') {
-              await refresh();
-              return true;
+              return await Promise.race([
+                refresh(),
+                new Promise(resolve => setTimeout(() => resolve(null), 6000))
+              ]);
             }
             await new Promise(resolve => setTimeout(resolve, 100));
           }
@@ -659,6 +661,21 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
         isLoggedIn = state.authenticated
         canAccessAdmin = state.canAccessAdmin
         return state
+    }
+
+    /// Recover the education session before a cached timetable revalidation.
+    /// This uses the Web store's existing cookie/remember-login flow and never
+    /// blocks the native cached grid or brings up a login page.
+    func restoreAcademicSession() async {
+        guard let webView else { return }
+        _ = try? await webView.callAsyncJavaScript("""
+        const restore = window.CPUTimeNative?.restoreAcademicSession;
+        if (typeof restore !== 'function') return false;
+        return await Promise.race([
+          restore(),
+          new Promise(resolve => setTimeout(() => resolve(false), 8000))
+        ]);
+        """, arguments: [:], in: nil, contentWorld: .page)
     }
 
     func setAppearanceMode(_ mode: String) {
@@ -1456,6 +1473,7 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
           const style = document.createElement('style');
           style.textContent = `
             html[data-cpu-ios-next] { --cpu-ios-bottom-clearance: 96px; }
+            html[data-cpu-ios-next][data-cpu-page-navigation] { --cpu-ios-bottom-clearance: 0px; }
             /* The native shell supplies both bars. The Web top bar stays in the
                DOM so its drawer and account actions remain reusable. */
             html[data-cpu-ios-next] .layout-root > .topbar,
@@ -1506,6 +1524,12 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
             html[data-cpu-ios-next] .layout-root > .footer {
               display: block !important;
             }
+            html[data-cpu-ios-next][data-cpu-page-navigation] .layout-root > .footer {
+              display: none !important;
+            }
+            html[data-cpu-ios-next][data-cpu-page-navigation] .layout-root .main {
+              padding-bottom: max(12px, env(safe-area-inset-bottom)) !important;
+            }
             /* Web drawers and course editor dialogs must sit above the native
                floating tab bar and keep their last controls reachable. */
             html[data-cpu-ios-next] .mobile-drawer,
@@ -1531,6 +1555,20 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
             }
             html[data-cpu-ios-next] .el-overlay {
               padding-bottom: var(--cpu-ios-bottom-clearance);
+            }
+            /* Element Plus positions the reply sheet through its inner
+               overlay dialog. The outer overlay clearance alone leaves the
+               editor footer underneath the native tab bar, so reserve the
+               tab-bar space on the actual flex container and size the sheet
+               against the reduced viewport. */
+            html[data-cpu-ios-next] .reply-dialog-overlay {
+              padding-bottom: 0 !important;
+            }
+            html[data-cpu-ios-next] .reply-dialog-overlay .el-overlay-dialog {
+              padding-bottom: calc(8px + max(8px, env(safe-area-inset-bottom)) + var(--cpu-ios-bottom-clearance)) !important;
+            }
+            html[data-cpu-ios-next] .reply-dialog-overlay .reply-dialog {
+              max-height: min(560px, calc(var(--cpu-overlay-viewport-height, 100dvh) - 16px - max(8px, env(safe-area-inset-bottom)) - var(--cpu-ios-bottom-clearance))) !important;
             }
             html[data-cpu-ios-next] .mobile-reply-composer {
               bottom: calc(var(--cpu-ios-bottom-clearance) + max(8px, env(safe-area-inset-bottom))) !important;
@@ -1839,6 +1877,13 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
           if (window.__cpuTimeNativeRouteBridge) return;
           window.__cpuTimeNativeRouteBridge = true;
           const routePath = () => `${location.pathname || '/'}${location.search || ''}${location.hash || ''}`;
+          const pageRoutePrefixes = [\(NativePageChrome.pageRoutePrefixes.map(IOSNextWebConfiguration.javascriptString).joined(separator: ", "))];
+          const updatePageChrome = () => {
+            const path = location.pathname;
+            const ownsNavigation = pageRoutePrefixes.some(prefix => path === prefix || path.startsWith(prefix + '/'));
+            document.documentElement.toggleAttribute('data-cpu-page-navigation', ownsNavigation);
+          };
+          updatePageChrome();
           const scrollTop = () => Math.max(0, Math.round(window.scrollY || document.scrollingElement?.scrollTop || 0));
           const writeScroll = (top) => {
             const value = Math.max(0, Number(top) || 0);
@@ -1870,6 +1915,7 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
           const notifyRoute = (kind = 'forward') => {
             const path = routePath();
             const key = entryKey(path);
+            updatePageChrome();
             post({ type: 'route', path });
             if (kind === 'history') settleScroll(path, key, 0);
             else if (path !== lastPath) settleScroll(path, key, 0);

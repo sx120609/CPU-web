@@ -455,8 +455,8 @@ struct NativeScheduleStoreChecks {
                                           cacheLifetime: 0, archive: expiredArchive)
         expired.sessionFingerprint = { "s1111" }
         let expiredRestored = await expired.restoreArchivedSelection()
-        precondition(!expiredRestored && expiredArchive.data == nil,
-                     "A stale archive is dropped, not shown")
+        precondition(expiredRestored && expiredArchive.data != nil && expired.state == .stale,
+                     "A stale same-session archive remains visible for offline launch while revalidation runs")
 
         // The animated week pager swaps the page and recentres its track in one
         // transaction, so the selection has to land without awaiting the fetch.

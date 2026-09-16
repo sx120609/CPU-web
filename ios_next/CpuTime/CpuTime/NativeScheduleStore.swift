@@ -1019,15 +1019,13 @@ public final class NativeScheduleStore: ObservableObject {
     public func handleAuthChanged(account: String = "") {
         let next = account.trimmingCharacters(in: .whitespacesAndNewlines)
         if !next.isEmpty, next == accountKey {
-            requestGeneration += 1
             return
         }
-        if !next.isEmpty, accountKey.isEmpty, result != nil {
+        if !next.isEmpty, accountKey.isEmpty {
             // A legacy archive may not contain the Web account fingerprint.
             // Adopt the first confirmed account after restoring it instead of
             // throwing away the already-validated same-session timetable.
             accountKey = next
-            requestGeneration += 1
             return
         }
         if next.isEmpty {
@@ -1196,9 +1194,10 @@ public final class NativeScheduleStore: ObservableObject {
     public func restoreCachedSelection() -> Bool {
         webViewLoader?.prioritize(semester: selectedSemester, week: selectedWeek)
         let key = CacheKey(semester: selectedSemester, week: selectedWeek)
-        guard let entry = cachedEntry(for: key), entry.isFresh(at: .now, lifetime: cacheLifetime) else { return false }
+        guard let entry = cachedEntry(for: key) else { return false }
+        if displayedKey == key, result != nil { return true }
         requestGeneration += 1
-        apply(entry.snapshot, state: entry.snapshot.source == .cache ? .stale : .loaded,
+        apply(entry.snapshot, state: entry.snapshot.source == .cache || !entry.isFresh(at: .now, lifetime: cacheLifetime) ? .stale : .loaded,
               requestedSemester: selectedSemester, requestedWeek: selectedWeek, key: key)
         return true
     }
@@ -1212,10 +1211,8 @@ public final class NativeScheduleStore: ObservableObject {
         guard let record = archive.read(), !record.session.isEmpty,
               record.snapshot.auth.authenticated, let data = record.snapshot.data else { return false }
         let entry = CacheEntry(snapshot: record.snapshot, storedAt: record.savedAt)
-        guard entry.isFresh(at: .now, lifetime: cacheLifetime) else {
-            archive.removeAll()
-            return false
-        }
+        // Age triggers quiet revalidation, not deletion of the only offline
+        // timetable. Session/account validation still runs before first paint.
         guard let session = await sessionFingerprint?(), session == record.session,
               accountKey.isEmpty || record.account.isEmpty || accountKey == record.account,
               result == nil else {
@@ -1623,6 +1620,10 @@ public final class NativeScheduleStore: ObservableObject {
         source = source
             .replacingOccurrences(of: "（", with: "(")
             .replacingOccurrences(of: "）", with: ")")
+            .replacingOccurrences(of: "［", with: "(")
+            .replacingOccurrences(of: "］", with: ")")
+            .replacingOccurrences(of: "【", with: "(")
+            .replacingOccurrences(of: "】", with: ")")
             .replacingOccurrences(of: "－", with: "-")
             .replacingOccurrences(of: "–", with: "-")
             .replacingOccurrences(of: "—", with: "-")
@@ -1638,12 +1639,11 @@ public final class NativeScheduleStore: ObservableObject {
         var weeks = Set<Int>()
         for clause in clauses.isEmpty ? [source] : clauses {
             let kind: ChangeWeekKind
-            if clause.contains("单双周") {
+            if clause.contains("单双") {
                 kind = .all
-            } else if clause.contains("单周") || clause.contains("(单)") ||
-                        clause.range(of: #"[^双]单"#, options: .regularExpression) != nil {
+            } else if clause.contains("单周") || clause.contains("单数周") || clause.contains("(单)") || clause.contains("单") {
                 kind = .odd
-            } else if clause.contains("双周") || clause.contains("(双)") || clause.contains("双") {
+            } else if clause.contains("双周") || clause.contains("双数周") || clause.contains("(双)") || clause.contains("双") {
                 kind = .even
             } else {
                 kind = .all
@@ -2089,43 +2089,91 @@ public final class NativeScheduleWebViewLoader {
     public func loadEdits(semester: String) async throws -> NativeScheduleEditState {
         guard let webView else { throw NativeScheduleStoreError.webViewUnavailable }
         let raw = try await webView.callAsyncJavaScript("""
-        const cookie = (name) => document.cookie.split(';').map(v => v.trim()).find(v => v.startsWith(name + '='))?.slice(name.length + 1) || '';
-        const response = await fetch('/api/jwxt/schedule-edits?semester=' + encodeURIComponent(semester), {
-          credentials: 'same-origin', headers: {
-            'X-CPU-Auth-Mode': 'cookie', 'X-CPU-Client': 'ios-app',
+        try {
+          const cookie = (name) => {
+            const part = document.cookie.split(';').map(v => v.trim()).find(v => v.startsWith(name + '='));
+            return part ? decodeURIComponent(part.slice(name.length + 1)) : '';
+          };
+          const stores = document.getElementById('app')?.__vue_app__?.config?.globalProperties?.$pinia?._s;
+          const auth = stores?.get('auth');
+          const jwxt = stores?.get('jwxt');
+          const headers = {
+            'X-CPU-Auth-Mode': 'cookie', 'X-CPU-Client': 'ios',
             'X-CSRF-Token': cookie('__Host-cpu-csrf') || cookie('cpu-csrf')
+          };
+          if (jwxt?.token && jwxt.token !== '__cpu_jwxt_cookie_session__') headers['X-Jwxt-Token'] = String(jwxt.token);
+          if (auth?.token && auth.token !== '__cpu_cookie_session__') headers.Authorization = 'Bearer ' + String(auth.token);
+          const response = await fetch('/api/jwxt/schedule-edits?semester=' + encodeURIComponent(semester), {
+            credentials: 'same-origin', headers
+          });
+          const body = await response.json().catch(() => ({}));
+          if (!response.ok || (typeof body.code === 'number' && body.code !== 0)) {
+            return JSON.stringify({__cpuError: body.message || '课表编辑读取失败'});
           }
-        });
-        if (!response.ok) throw new Error('课表编辑读取失败');
-        return JSON.stringify((await response.json()).edits || {hidden: [], custom: []});
-        """, arguments: ["semester": semester], in: nil, contentWorld: .page)
-        guard let value = raw as? String, let data = value.data(using: .utf8) else {
-            throw NativeScheduleStoreError.invalidResponse
+          const payload = typeof body.code === 'number' ? body.data : body;
+          return JSON.stringify(payload?.edits || {hidden: [], custom: []});
+        } catch (error) {
+          return JSON.stringify({__cpuError: error?.message || '课表编辑读取失败'});
         }
+        """, arguments: ["semester": semester], in: nil, contentWorld: .page)
+        let data = try bridgeData(from: raw)
         return try JSONDecoder.nativeScheduleDecoder.decode(NativeScheduleEditState.self, from: data)
     }
 
     public func saveEdits(_ edits: NativeScheduleEditState, semester: String, week: String) async throws -> NativeScheduleSnapshot {
         guard let webView else { throw NativeScheduleStoreError.webViewUnavailable }
-        let data = try JSONEncoder().encode(edits)
-        guard let payload = String(data: data, encoding: .utf8) else { throw NativeScheduleStoreError.invalidResponse }
+        let editsData = try JSONEncoder().encode(edits)
+        guard let payload = String(data: editsData, encoding: .utf8) else { throw NativeScheduleStoreError.invalidResponse }
         let raw = try await webView.callAsyncJavaScript("""
-        const cookie = (name) => document.cookie.split(';').map(v => v.trim()).find(v => v.startsWith(name + '='))?.slice(name.length + 1) || '';
-        const response = await fetch('/api/jwxt/schedule-edits', {
-          method: 'PUT', credentials: 'same-origin',
-          headers: {'Content-Type': 'application/json', 'X-CPU-Auth-Mode': 'cookie',
-            'X-CPU-Client': 'ios-app', 'X-CSRF-Token': cookie('__Host-cpu-csrf') || cookie('cpu-csrf')},
-          body: JSON.stringify({semester, edits: JSON.parse(editsJSON)})
-        });
-        if (!response.ok) throw new Error('课表编辑保存失败');
-        const fetchSchedule = window.CPUTimeNativeScheduleFetch;
-        const value = await fetchSchedule(semester || null, week || null, true);
-        return typeof value === 'string' ? value : JSON.stringify(value);
+        try {
+          const cookie = (name) => {
+            const part = document.cookie.split(';').map(v => v.trim()).find(v => v.startsWith(name + '='));
+            return part ? decodeURIComponent(part.slice(name.length + 1)) : '';
+          };
+          const stores = document.getElementById('app')?.__vue_app__?.config?.globalProperties?.$pinia?._s;
+          const auth = stores?.get('auth');
+          const jwxt = stores?.get('jwxt');
+          const headers = {
+            'Content-Type': 'application/json', 'X-CPU-Auth-Mode': 'cookie',
+            'X-CPU-Client': 'ios',
+            'X-CSRF-Token': cookie('__Host-cpu-csrf') || cookie('cpu-csrf')
+          };
+          if (jwxt?.token && jwxt.token !== '__cpu_jwxt_cookie_session__') headers['X-Jwxt-Token'] = String(jwxt.token);
+          if (auth?.token && auth.token !== '__cpu_cookie_session__') headers.Authorization = 'Bearer ' + String(auth.token);
+          const response = await fetch('/api/jwxt/schedule-edits', {
+            method: 'PUT', credentials: 'same-origin', headers,
+            body: JSON.stringify({semester, edits: JSON.parse(editsJSON)})
+          });
+          const body = await response.json().catch(() => ({}));
+          if (!response.ok || (typeof body.code === 'number' && body.code !== 0)) {
+            return JSON.stringify({__cpuError: body.message || '课表编辑保存失败'});
+          }
+          const fetchSchedule = window.CPUTimeNativeScheduleFetch || window.CPUTimeNative?.loadSchedule;
+          if (typeof fetchSchedule !== 'function') {
+            return JSON.stringify({__cpuError: '课表刷新桥接尚未准备好，请稍后重试'});
+          }
+          const value = window.CPUTimeNativeScheduleFetch
+            ? await fetchSchedule(semester || null, week || null, true)
+            : await fetchSchedule({semester: semester || null, week: week || null, force: true});
+          return typeof value === 'string' ? value : JSON.stringify(value);
+        } catch (error) {
+          return JSON.stringify({__cpuError: error?.message || '课表编辑保存失败'});
+        }
         """, arguments: ["semester": semester, "week": week, "editsJSON": payload], in: nil, contentWorld: .page)
-        guard let value = raw as? String, let data = value.data(using: .utf8) else {
+        let snapshotData = try bridgeData(from: raw)
+        return try JSONDecoder.nativeScheduleDecoder.decode(NativeScheduleSnapshot.self, from: snapshotData)
+    }
+
+    private func bridgeData(from rawValue: Any?) throws -> Data {
+        guard let raw = rawValue as? String, let data = raw.data(using: .utf8) else {
             throw NativeScheduleStoreError.invalidResponse
         }
-        return try JSONDecoder.nativeScheduleDecoder.decode(NativeScheduleSnapshot.self, from: data)
+        if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let message = object["__cpuError"] as? String,
+           let trimmed = message.trimmedNonEmpty {
+            throw NativeScheduleStoreError.server(trimmed)
+        }
+        return data
     }
 }
 

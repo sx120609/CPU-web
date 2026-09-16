@@ -49,6 +49,7 @@ final class HybridWebViewStore {
         authState.ready ? authState : nil
     }
     func refreshAuthCapability() async -> NativeAuthState? { authState }
+    func restoreAcademicSession() async {}
     func setBackForwardNavigationGesturesEnabled(_ enabled: Bool) { backForwardNavigationGesturesEnabled = enabled }
 }
 @MainActor
@@ -72,6 +73,17 @@ final class NativeScheduleStore {
 struct NativeTabSelectionChecks {
     @MainActor
     static func main() async {
+        for path in ["/forum/topic/42", "/post?board=general", "/post/42/edit", "/services/tools/yaoda-can-fly", "/services/tools/voicehub", "/voicehub/songs"] {
+            precondition(NativePageChrome.usesPageNavigation(path), "Detail/immersive routes must own both bars: \(path)")
+            precondition(!NativePageChrome.showsPostButton(path), "Detail routes must not carry a floating compose button")
+        }
+        for path in ["/forum", "/forum/hot", "/forum/latest", "/forum/b/general", "/services", "/profile"] {
+            precondition(!NativePageChrome.usesPageNavigation(path), "Primary pages retain shell navigation")
+            precondition(!NativePageChrome.showsPostButton(path), "Compose is exclusive to the home page")
+        }
+        precondition(NativePageChrome.showsPostButton("/home?channel=all"))
+        precondition(NativePageChrome.showsPostButton("/"))
+
         let startupWeb = HybridWebViewStore()
         startupWeb.bridgeReady = false
         let startupShell = NativeShellCoordinator()

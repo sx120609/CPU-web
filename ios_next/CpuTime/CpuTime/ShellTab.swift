@@ -1,5 +1,24 @@
 import Foundation
 
+/// Pages with their own navigation or immersive controls own the full surface.
+/// The injected Web CSS uses these same prefixes, including on older bundles.
+enum NativePageChrome {
+    static let pageRoutePrefixes = [
+        "/forum/topic", "/post", "/services/tools/yaoda-can-fly",
+        "/services/tools/voicehub", "/voicehub",
+    ]
+
+    static func usesPageNavigation(_ path: String) -> Bool {
+        let pathname = path.components(separatedBy: CharacterSet(charactersIn: "?#")).first ?? path
+        return pageRoutePrefixes.contains { pathname == $0 || pathname.hasPrefix($0 + "/") }
+    }
+
+    static func showsPostButton(_ path: String) -> Bool {
+        let pathname = path.components(separatedBy: CharacterSet(charactersIn: "?#")).first ?? path
+        return pathname == "/home" || pathname == "/"
+    }
+}
+
 enum ShellTab: String, CaseIterable, Hashable {
     case home
     case academic

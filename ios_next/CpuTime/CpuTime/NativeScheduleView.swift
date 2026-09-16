@@ -20,6 +20,8 @@ struct NativeScheduleView: View {
     @State private var courseEditorPresentation: CourseEditorPresentation?
     @State private var weekPickerPresented = false
     @State private var scheduleToolsPresented = false
+    @State private var scheduleToolsContentHeight: CGFloat = 0
+    @State private var sharePayload: NativeScheduleSharePayload?
     // Native pagers own the horizontal pan and keep the current page under the
     // finger. The center page is restored after a transition commits the new
     // week/day to the store, so vertical scrolling never competes with a
@@ -156,7 +158,7 @@ struct NativeScheduleView: View {
                     scheduleToolsSheet(result)
                 }
             }
-            .presentationDetents([.medium])
+            .presentationDetents([.height(scheduleToolsDetentHeight), .large])
             .presentationDragIndicator(.visible)
             .presentationCornerRadius(28)
             .presentationBackground(.regularMaterial)
@@ -167,6 +169,10 @@ struct NativeScheduleView: View {
             }
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
+        }
+        .sheet(item: $sharePayload) { payload in
+            NativeActivityView(activityItems: payload.items)
+                .ignoresSafeArea()
         }
     }
 
@@ -321,6 +327,7 @@ struct NativeScheduleView: View {
     /// the trailing edge, which made the same control appear in two places.
     private func scheduleToolsMenu() -> some View {
         Button {
+            scheduleToolsContentHeight = 0
             scheduleToolsPresented = true
         } label: {
             Image(systemName: "ellipsis.circle")
@@ -336,16 +343,15 @@ struct NativeScheduleView: View {
 
     private func scheduleToolsSheet(_ result: NativeScheduleResult) -> some View {
         NavigationStack {
-            List {
-                Section("课表") {
-                    Button("刷新课表", systemImage: "arrow.clockwise") {
+            VStack(alignment: .leading, spacing: 14) {
+                scheduleToolsSection("课表") {
+                    scheduleToolRow("刷新课表", systemImage: "arrow.clockwise", disabled: isLoading) {
                         scheduleToolsPresented = false
                         refresh()
                     }
-                    .disabled(isLoading)
-
                     if result.source != .graduate {
-                        Button("添加课程", systemImage: "plus") {
+                        Divider().padding(.leading, 48)
+                        scheduleToolRow("添加课程", systemImage: "plus") {
                             scheduleToolsPresented = false
                             presentAddCourse(
                                 day: selectedDay,
@@ -356,25 +362,31 @@ struct NativeScheduleView: View {
                     }
                 }
 
-                Section("设备与设置") {
-                    Button("课表、设备与小组件", systemImage: "slider.horizontal.3") {
+                scheduleToolsSection("设备与设置") {
+                    scheduleToolRow("课表、设备与小组件", systemImage: "slider.horizontal.3") {
                         scheduleToolsPresented = false
                         DispatchQueue.main.async { onDeviceSettings() }
                     }
                 }
 
-                Section("分享") {
-                    Button("分享当前课表", systemImage: "square.and.arrow.up") {
+                scheduleToolsSection("分享") {
+                    scheduleToolRow("分享本周课表", systemImage: "square.and.arrow.up") {
                         scheduleToolsPresented = false
-                        DispatchQueue.main.async { exportScheduleImage(result) }
-                    }
-                    Button("导出本周日历", systemImage: "calendar.badge.plus") {
-                        scheduleToolsPresented = false
-                        DispatchQueue.main.async { exportCurrentWeek(result) }
+                        exportScheduleImage(result)
                     }
                 }
             }
-            .listStyle(.insetGrouped)
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 18)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .background(GeometryReader { proxy in
+                Color.clear.preference(key: NativeScheduleToolsHeightKey.self, value: proxy.size.height)
+            })
+            .onPreferenceChange(NativeScheduleToolsHeightKey.self) { value in
+                guard value > 0 else { return }
+                scheduleToolsContentHeight = value
+            }
             .navigationTitle("更多")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -384,6 +396,54 @@ struct NativeScheduleView: View {
             }
         }
         .tint(.cpuBrand)
+    }
+
+    private func scheduleToolsSection<Content: View>(
+        _ title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.leading, 4)
+            VStack(spacing: 0, content: content)
+                .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+    }
+
+    private func scheduleToolRow(
+        _ title: String,
+        systemImage: String,
+        disabled: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(disabled ? Color(uiColor: .tertiaryLabel) : Color.cpuBrand)
+                    .frame(width: 24)
+                Text(title)
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(disabled ? Color(uiColor: .tertiaryLabel) : Color.primary)
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 14)
+            .frame(minHeight: 48)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled)
+    }
+
+    private var scheduleToolsDetentHeight: CGFloat {
+        let measured = scheduleToolsContentHeight > 0 ? scheduleToolsContentHeight + 54 : 420
+        return min(max(measured, 330), UIScreen.main.bounds.height * 0.82)
     }
 
     private func weekStepButton(
@@ -492,12 +552,18 @@ struct NativeScheduleView: View {
                         rowHeight: dayRowHeight,
                         showsDateHeader: false
                     )
+                    // TabView's page container can clip content that starts
+                    // exactly on its top edge during the native page
+                    // transition. Keep a small, day-only breathing room so
+                    // the first course card is never cut by that edge.
+                    .padding(.top, Self.dayGridTopInset)
                     .frame(width: proxy.size.width, alignment: .leading)
                 }
             }
             .frame(height: Self.scheduleGridHeight(
                 rowHeight: dayRowHeight,
-                includesDateHeader: false
+                includesDateHeader: false,
+                topInset: Self.dayGridTopInset
             ))
         }
     }
@@ -548,7 +614,14 @@ struct NativeScheduleView: View {
                     .frame(width: width, alignment: .leading)
             } else {
                 Color.clear
-                    .frame(width: width, height: Self.scheduleGridHeight(rowHeight: dayRowHeight, includesDateHeader: false))
+                    .frame(
+                        width: width,
+                        height: Self.scheduleGridHeight(
+                            rowHeight: dayRowHeight,
+                            includesDateHeader: false,
+                            topInset: Self.dayGridTopInset
+                        )
+                    )
             }
         }
         .tag(id)
@@ -956,38 +1029,24 @@ struct NativeScheduleView: View {
     @MainActor
     private func exportScheduleImage(_ result: NativeScheduleResult) {
         let week = Int(store.selectedWeek) ?? Int(result.currentWeek) ?? 1
-        let isDayView = viewMode == .day
-        let canvasWidth: CGFloat = isDayView ? 620 : 980
+        let isDayView = false
+        // Sharing always exports the complete week, even when the user is
+        // currently looking at the compact day view. This matches the Web
+        // action and produces a useful image instead of a one-column crop.
+        let canvasWidth: CGFloat = 980
         let gridWidth = canvasWidth - 48
-        let columnWidth = isDayView
-            ? max(220, gridWidth - Self.slotAxisWidth - Self.columnGap)
-            : max(72, (gridWidth - Self.slotAxisWidth - CGFloat(6) * Self.columnGap) / 7)
-        let grid: AnyView
-        if isDayView {
-            grid = AnyView(
-                scheduleRows(
-                    result: result,
-                    week: week,
-                    days: [selectedDay],
-                    columnWidth: columnWidth,
-                    compactCards: false,
-                    rowHeight: dayRowHeight,
-                    showsDateHeader: false
-                )
+        let columnWidth = max(72, (gridWidth - Self.slotAxisWidth - CGFloat(6) * Self.columnGap) / 7)
+        let grid = AnyView(
+            scheduleRows(
+                result: result,
+                week: week,
+                days: Array(1...7),
+                columnWidth: columnWidth,
+                compactCards: false,
+                rowHeight: weekRowHeight,
+                showsDateHeader: preferences.showDateHeader
             )
-        } else {
-            grid = AnyView(
-                scheduleRows(
-                    result: result,
-                    week: week,
-                    days: Array(1...7),
-                    columnWidth: columnWidth,
-                    compactCards: false,
-                    rowHeight: weekRowHeight,
-                    showsDateHeader: preferences.showDateHeader
-                )
-            )
-        }
+        )
 
         let content = VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .firstTextBaseline) {
@@ -1019,22 +1078,13 @@ struct NativeScheduleView: View {
         let renderer = ImageRenderer(content: content)
         renderer.scale = UIScreen.main.scale
         guard let image = renderer.uiImage else { return }
-        let suffix = isDayView ? "日课表" : "周课表"
-        NativeScheduleSharePresenter.presentImage(image, fileName: "药大拾间-第\(week)周-\(suffix).png")
-    }
-
-    private func exportCurrentWeek(_ result: NativeScheduleResult) {
-        guard let week = Int(store.selectedWeek), let calendar = store.calendar,
-              let weekData = calendar.weeks.first(where: { $0.week == week }) else {
-            return
+        guard let url = NativeScheduleSharePresenter.writeImage(image, fileName: "药大拾间-第\(week)周-周课表.png") else { return }
+        Task { @MainActor in
+            // Let the More sheet finish its dismissal before asking SwiftUI
+            // to present the system share controller.
+            try? await Task.sleep(for: .milliseconds(350))
+            sharePayload = NativeScheduleSharePayload(items: [url])
         }
-        let fileName = "课表-\(store.selectedSemester)-第\(week)周.ics"
-        let ics = NativeScheduleICSExporter.make(
-            result: result,
-            week: weekData,
-            periods: NativeSchedulePeriod.bundledTimetable
-        )
-        NativeScheduleSharePresenter.presentTemporaryFile(contents: ics, fileName: fileName)
     }
 
     private func presentAddCourse(day: Int, week: Int?, startSlot: Int) {
@@ -1327,6 +1377,10 @@ struct NativeScheduleView: View {
             .joined()
             .replacingOccurrences(of: "（", with: "(")
             .replacingOccurrences(of: "）", with: ")")
+            .replacingOccurrences(of: "［", with: "(")
+            .replacingOccurrences(of: "］", with: ")")
+            .replacingOccurrences(of: "【", with: "(")
+            .replacingOccurrences(of: "】", with: ")")
             .replacingOccurrences(of: "－", with: "-")
             .replacingOccurrences(of: "–", with: "-")
             .replacingOccurrences(of: "—", with: "-")
@@ -1345,8 +1399,16 @@ struct NativeScheduleView: View {
             guard let expression else { continue }
             let nsClause = clause as NSString
             let range = NSRange(location: 0, length: nsClause.length)
-            let kind: WeekParity = clause.contains("单周") || clause.contains("(单)") ? .odd
-                : (clause.contains("双周") || clause.contains("(双)") ? .even : .all)
+            let kind: WeekParity
+            if clause.contains("单双") {
+                kind = .all
+            } else if clause.contains("单周") || clause.contains("单数周") || clause.contains("(单)") || clause.contains("单") {
+                kind = .odd
+            } else if clause.contains("双周") || clause.contains("双数周") || clause.contains("(双)") || clause.contains("双") {
+                kind = .even
+            } else {
+                kind = .all
+            }
             expression.enumerateMatches(in: clause, range: range) { match, _, _ in
                 guard let match else { return }
                 guard let start = Int(nsClause.substring(with: match.range(at: 1))) else { return }
@@ -1375,11 +1437,15 @@ struct NativeScheduleView: View {
 
     /// Eleven teaching slots plus the date header, sized to keep a complete
     /// day visible above the native tab bar on an iPhone-sized surface.
+    private static let dayGridTopInset: CGFloat = 6
+
     private static func scheduleGridHeight(
         rowHeight: CGFloat = NativeScheduleDayColumn.slotHeight,
-        includesDateHeader: Bool = true
+        includesDateHeader: Bool = true,
+        topInset: CGFloat = 0
     ) -> CGFloat {
-        (includesDateHeader ? NativeScheduleDayColumn.dateHeaderHeight : 0)
+        topInset
+            + (includesDateHeader ? NativeScheduleDayColumn.dateHeaderHeight : 0)
             + CGFloat(ScheduleSlot.all.count) * rowHeight
             + CGFloat(max(0, ScheduleSlot.all.count - 1)) * NativeScheduleDayColumn.slotGap
     }
@@ -1570,8 +1636,21 @@ private struct NativeScheduleDayColumn: View {
         self.onEmptySlot = onEmptySlot
     }
 
-    private var laneCount: Int {
-        max(1, (blocks.map(\.lane).max() ?? 0) + 1)
+    /// A lane is only needed while course intervals overlap. The old grid
+    /// used the maximum lane count for the entire day, which made every
+    /// unrelated row render as a half-width empty column when one slot had a
+    /// parallel class.
+    private func laneCount(for block: NativeScheduleCourseBlock) -> Int {
+        let overlapping = blocks.filter {
+            $0.startSlot <= block.endSlot && block.startSlot <= $0.endSlot
+        }
+        return max(1, (overlapping.map(\.lane).max() ?? 0) + 1)
+    }
+
+    private func laneCount(forSlot slot: Int) -> Int {
+        let active = blocks.filter { ($0.startSlot...$0.endSlot).contains(slot) }
+        guard !active.isEmpty else { return 1 }
+        return max(1, active.map { laneCount(for: $0) }.max() ?? 1)
     }
 
     var body: some View {
@@ -1613,7 +1692,9 @@ private struct NativeScheduleDayColumn: View {
                     }
                 }
                 ForEach(blocks) { block in
-                    let cardWidth = max(12, columnWidth / CGFloat(laneCount) - 2)
+                    let blockLaneCount = laneCount(for: block)
+                    let laneWidth = columnWidth / CGFloat(blockLaneCount)
+                    let cardWidth = max(12, laneWidth - 2)
                     let cardHeight = max(
                         34,
                         CGFloat(block.endSlot - block.startSlot + 1) * rowHeight
@@ -1643,7 +1724,7 @@ private struct NativeScheduleDayColumn: View {
                     .contentShape(Rectangle())
                     .zIndex(10)
                     .offset(
-                        x: 1 + CGFloat(block.lane) * (columnWidth / CGFloat(laneCount)),
+                        x: 1 + CGFloat(block.lane) * laneWidth,
                         y: CGFloat(block.startSlot - 1) * (rowHeight + Self.slotGap) + 1
                     )
                 }
@@ -1671,10 +1752,11 @@ private struct NativeScheduleDayColumn: View {
     }
 
     private func block(at point: CGPoint) -> NativeScheduleCourseBlock? {
-        let laneWidth = columnWidth / CGFloat(laneCount)
         // Iterate from the last rendered block so the hit test follows the
         // same topmost ordering SwiftUI uses for overlapping cards.
         for block in blocks.reversed() {
+            let blockLaneCount = laneCount(for: block)
+            let laneWidth = columnWidth / CGFloat(blockLaneCount)
             let width = max(12, laneWidth - 2)
             let height = max(
                 34,
@@ -1702,8 +1784,9 @@ private struct NativeScheduleDayColumn: View {
     }
 
     private func slotRow(_ slot: ScheduleSlot) -> some View {
-        HStack(spacing: 0) {
-            ForEach(0..<laneCount, id: \.self) { lane in
+        let rowLaneCount = laneCount(forSlot: slot.number)
+        return HStack(spacing: 0) {
+            ForEach(0..<rowLaneCount, id: \.self) { lane in
                 let laneOccupied = blocks.contains {
                     $0.lane == lane && ($0.startSlot...$0.endSlot).contains(slot.number)
                 }
@@ -1714,8 +1797,8 @@ private struct NativeScheduleDayColumn: View {
                         ScheduleGlassBackground(cornerRadius: 8)
                     }
                 }
-                    .frame(width: max(12, columnWidth / CGFloat(laneCount) - 2), height: rowHeight - 2)
-                    .frame(width: columnWidth / CGFloat(laneCount), height: rowHeight)
+                    .frame(width: max(12, columnWidth / CGFloat(rowLaneCount) - 2), height: rowHeight - 2)
+                    .frame(width: columnWidth / CGFloat(rowLaneCount), height: rowHeight)
             }
         }
         .contentShape(Rectangle())
@@ -2637,60 +2720,41 @@ private extension String {
     var nilIfEmpty: String? { isEmpty ? nil : self }
 }
 
+private struct NativeScheduleToolsHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 @MainActor
 private enum NativeScheduleSharePresenter {
-    static func presentImage(_ image: UIImage, fileName: String) {
-        guard let data = image.pngData() else { return }
+    static func writeImage(_ image: UIImage, fileName: String) -> URL? {
+        guard let data = image.pngData() else { return nil }
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
         do {
             try data.write(to: url, options: .atomic)
-            present(items: [url])
+            return url
         } catch {
-            // Keep the timetable visible if the temporary share file cannot be written.
+            return nil
         }
+    }
+}
+
+private struct NativeScheduleSharePayload: Identifiable {
+    let id = UUID()
+    let items: [Any]
+}
+
+private struct NativeActivityView: UIViewControllerRepresentable {
+    let activityItems: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
     }
 
-    static func presentTemporaryFile(contents: String, fileName: String) {
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
-        do {
-            try contents.write(to: url, atomically: true, encoding: .utf8)
-            present(items: [url])
-        } catch {
-            // The schedule menu is intentionally silent here; a failed share
-            // should never replace a visible timetable with an error page.
-        }
-    }
-
-    private static func present(items: [Any]) {
-        guard let scene = UIApplication.shared.connectedScenes
-            .compactMap({ $0 as? UIWindowScene })
-            .first(where: { $0.activationState == .foregroundActive }),
-              let window = scene.windows.first(where: \.isKeyWindow) ?? scene.windows.first,
-              let root = window.rootViewController else { return }
-        let presenter = topViewController(root)
-        let controller = UIActivityViewController(activityItems: items, applicationActivities: nil)
-        if let popover = controller.popoverPresentationController {
-            popover.sourceView = presenter.view
-            popover.sourceRect = CGRect(
-                x: presenter.view.bounds.midX,
-                y: presenter.view.bounds.maxY - 20,
-                width: 1,
-                height: 1
-            )
-        }
-        presenter.present(controller, animated: true)
-    }
-
-    private static func topViewController(_ controller: UIViewController) -> UIViewController {
-        if let presented = controller.presentedViewController { return topViewController(presented) }
-        if let navigation = controller as? UINavigationController, let visible = navigation.visibleViewController {
-            return topViewController(visible)
-        }
-        if let tab = controller as? UITabBarController, let selected = tab.selectedViewController {
-            return topViewController(selected)
-        }
-        return controller
-    }
+    func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
 }
 
 private enum NativeScheduleICSExporter {

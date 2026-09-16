@@ -7,7 +7,29 @@ struct CPUWebWidgetBundle: WidgetBundle {
         UpcomingScheduleWidget()
         TodayScheduleWidget()
         TwoDayScheduleWidget()
-        ScheduleLiveActivityWidget()
+        liveActivity
+    }
+
+    private var liveActivity: some Widget {
+        // WidgetBundleBuilder supports availability without an else branch.
+        // Its public availability wrapper keeps one activity configuration
+        // registered on both iOS 17 and versions with Watch family support.
+        if #available(iOS 18.0, *) {
+            return WidgetBundleBuilder.buildOptional(
+                WidgetBundleBuilder.buildLimitedAvailability(ScheduleLiveActivityModernWidget())
+            )
+        }
+        return WidgetBundleBuilder.buildOptional(
+            WidgetBundleBuilder.buildLimitedAvailability(ScheduleLiveActivityWidget())
+        )
+    }
+}
+
+@available(iOS 18.0, *)
+private struct ScheduleLiveActivityModernWidget: Widget {
+    var body: some WidgetConfiguration {
+        ScheduleLiveActivityWidget().body
+            .supplementalActivityFamilies([.small, .medium])
     }
 }
 
@@ -15,63 +37,78 @@ struct CPUWebWidgetBundle: WidgetBundle {
 private struct ScheduleLiveActivityWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: ScheduleLiveActivityAttributes.self) { context in
-            ScheduleLiveActivityLockScreen(state: context.state)
-                .activityBackgroundTint(ScheduleLiveActivityPalette.surface)
-                .activitySystemActionForegroundColor(.white)
+            Group {
+                if #available(iOS 18.0, *) {
+                    ScheduleLiveActivityAdaptiveContent(state: context.state)
+                } else {
+                    ScheduleLiveActivityLockScreen(state: context.state)
+                }
+            }
+            .activityBackgroundTint(ScheduleLiveActivityPalette.surface)
+            .activitySystemActionForegroundColor(.white)
         } dynamicIsland: { context in
             DynamicIsland {
-                DynamicIslandExpandedRegion(.leading) {
-                    ScheduleLiveActivityLogo(size: 22)
-                }
-                DynamicIslandExpandedRegion(.trailing) {
-                    VStack(alignment: .trailing, spacing: 1) {
-                        Text(context.state.phase == .inProgress ? "剩余" : "开始")
-                            .font(.caption2.weight(.medium))
-                            .foregroundStyle(ScheduleLiveActivityPalette.secondaryText)
-                        ScheduleLiveActivityTimer(state: context.state)
-                            .font(.headline.monospacedDigit().weight(.bold))
-                            .foregroundStyle(ScheduleLiveActivityPalette.primaryText)
-                            .minimumScaleFactor(0.72)
-                    }
-                }
-                DynamicIslandExpandedRegion(.center) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(context.state.phase == .inProgress ? "正在上课" : "下一节课")
-                            .font(.caption2.weight(.medium))
-                            .foregroundStyle(ScheduleLiveActivityPalette.secondaryText)
-                        Text(context.state.courseName)
-                            .font(.subheadline.weight(.bold))
-                            .foregroundStyle(ScheduleLiveActivityPalette.primaryText)
+                // The camera owns the centre of the expanded island. Put the
+                // title in the full-width bottom region rather than squeezing
+                // it between the logo, camera and a growing timer.
+                DynamicIslandExpandedRegion(.leading, priority: 1) {
+                    HStack(spacing: 5) {
+                        ScheduleLiveActivityLogo(size: 24)
+                        Text(context.state.phaseTitle)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(ScheduleLiveActivityPalette.accent)
                             .lineLimit(1)
-                            .minimumScaleFactor(0.68)
+                            .minimumScaleFactor(0.8)
                     }
+                    .frame(width: 72, height: 40, alignment: .center)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                }
+                DynamicIslandExpandedRegion(.trailing, priority: 1) {
+                    ScheduleLiveActivityCountdown(state: context.state, compact: true, centered: true)
+                        .frame(width: 72, height: 40, alignment: .center)
+                        .frame(maxWidth: .infinity, alignment: .center)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    VStack(alignment: .leading, spacing: 7) {
-                        HStack(spacing: 7) {
-                            ScheduleLiveActivityMetadata(state: context.state)
-                            Spacer(minLength: 4)
-                            Text(context.state.startDate, style: .time)
-                                .font(.caption2.monospacedDigit().weight(.medium))
-                                .foregroundStyle(ScheduleLiveActivityPalette.secondaryText)
-                        }
-                        ScheduleLiveActivityProgress(state: context.state)
-                    }
+                    ScheduleLiveActivityExpandedDetails(state: context.state)
+                        .padding(.top, 5)
                 }
             } compactLeading: {
-                ScheduleLiveActivityLogo(size: 16)
-                    .accessibilityLabel(context.state.phase == .inProgress ? "正在上课" : "下一节课")
+                ScheduleLiveActivityLogo(size: 21)
+                    .accessibilityLabel("药大拾间课表")
             } compactTrailing: {
                 ScheduleLiveActivityTimer(state: context.state)
-                    .font(.caption2.monospacedDigit().weight(.bold))
-                    .foregroundStyle(ScheduleLiveActivityPalette.primaryText)
-                    .minimumScaleFactor(0.72)
+                    .font(.system(size: 14, weight: .semibold, design: .rounded).monospacedDigit())
+                    .foregroundStyle(ScheduleLiveActivityPalette.accent)
+                    .frame(width: 46, alignment: .trailing)
             } minimal: {
-                ScheduleLiveActivityLogo(size: 20)
-                    .accessibilityLabel("课表")
+                ScheduleLiveActivityLogo(size: 21)
+                    .accessibilityLabel("药大拾间课表")
             }
+            // ActivityKit negotiates the island's actual width on each device.
+            // One symmetric inset applies to all regions, with equal-sized
+            // upper columns centred on either side of the camera cutout.
+            .contentMargins(.horizontal, 14, for: .expanded)
+            .contentMargins(.top, 8, for: .expanded)
+            .contentMargins(.bottom, 10, for: .expanded)
             .widgetURL(context.attributes.deepLinkURL)
             .keylineTint(ScheduleLiveActivityPalette.brand)
+        }
+    }
+}
+
+@available(iOS 18.0, *)
+private struct ScheduleLiveActivityAdaptiveContent: View {
+    let state: ScheduleLiveActivityAttributes.ContentState
+    @Environment(\.activityFamily) private var family
+
+    var body: some View {
+        switch family {
+        case .small:
+            ScheduleLiveActivityWatchCard(state: state)
+        case .medium:
+            ScheduleLiveActivityLockScreen(state: state)
+        @unknown default:
+            ScheduleLiveActivityLockScreen(state: state)
         }
     }
 }
@@ -81,33 +118,219 @@ private struct ScheduleLiveActivityLockScreen: View {
     let state: ScheduleLiveActivityAttributes.ContentState
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .center, spacing: 9) {
-                ScheduleLiveActivityLogo(size: 27)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(state.phase == .inProgress ? "正在上课" : "下一节课")
-                        .font(.caption.weight(.semibold))
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: 10) {
+                ScheduleLiveActivityLogo(size: 34)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(state.courseName)
+                        .font(.system(size: 19, weight: .bold))
+                        .foregroundStyle(ScheduleLiveActivityPalette.primaryText)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Text(ScheduleLiveActivityFormatting.timeRange(start: state.startDate, end: state.endDate))
+                        .font(.system(size: 12, weight: .medium, design: .rounded).monospacedDigit())
                         .foregroundStyle(ScheduleLiveActivityPalette.secondaryText)
-                    ScheduleLiveActivityMetadata(state: state)
                 }
-                Spacer(minLength: 8)
-                ScheduleLiveActivityTimer(state: state)
-                    .font(.headline.monospacedDigit().weight(.bold))
-                    .foregroundStyle(ScheduleLiveActivityPalette.primaryText)
-                    .minimumScaleFactor(0.72)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                ScheduleLiveActivityCountdown(state: state)
             }
 
-            Text(state.courseName)
-                .font(.title3.weight(.bold))
-                .foregroundStyle(ScheduleLiveActivityPalette.primaryText)
-                .lineLimit(1)
-                .minimumScaleFactor(0.78)
-
+            ScheduleLiveActivityCourseDetails(state: state)
             ScheduleLiveActivityProgress(state: state)
-            ScheduleLiveActivityNextLine(state: state)
+
+            if state.hasNextCourse {
+                ScheduleLiveActivityNextCourse(state: state)
+                    .padding(.top, 1)
+            }
         }
-        .foregroundStyle(ScheduleLiveActivityPalette.primaryText)
-        .padding(.vertical, 2)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        // ActivityKit supplies the rounded background, not content insets.
+        // Keep every baseline clear of its corners, including the next row.
+        .padding(.horizontal, 21)
+        .padding(.vertical, 14)
+        .background {
+            LinearGradient(
+                colors: [ScheduleLiveActivityPalette.brand.opacity(0.2), .clear],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
+    }
+}
+
+@available(iOS 16.1, *)
+private struct ScheduleLiveActivityExpandedDetails: View {
+    let state: ScheduleLiveActivityAttributes.ContentState
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(state.courseName)
+                    .font(.system(size: 19, weight: .bold))
+                    .foregroundStyle(ScheduleLiveActivityPalette.primaryText)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Text(ScheduleLiveActivityFormatting.timeRange(start: state.startDate, end: state.endDate))
+                    .font(.system(size: 11, weight: .medium, design: .rounded).monospacedDigit())
+                    .foregroundStyle(ScheduleLiveActivityPalette.secondaryText)
+                    .fixedSize()
+            }
+            ScheduleLiveActivityCourseDetails(state: state)
+            ScheduleLiveActivityProgress(state: state)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        // The bottom region is clipped by Dynamic Island's own capsule. Keep
+        // the progress track and the metadata away from its lower corners.
+        .padding(.bottom, 2)
+    }
+}
+
+@available(iOS 16.1, *)
+private struct ScheduleLiveActivityCourseDetails: View {
+    let state: ScheduleLiveActivityAttributes.ContentState
+
+    var body: some View {
+        HStack(spacing: 10) {
+            if !state.location.isEmpty {
+                Text(state.location)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(ScheduleLiveActivityPalette.primaryText)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .minimumScaleFactor(0.78)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            HStack(spacing: 6) {
+                if !state.teacher.isEmpty {
+                    Text(state.teacher)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .minimumScaleFactor(0.72)
+                }
+                if let period = state.periodLabel, !period.isEmpty {
+                    Text(period)
+                        .fixedSize()
+                }
+            }
+            .font(.system(size: 12, weight: .medium))
+            .foregroundStyle(ScheduleLiveActivityPalette.secondaryText)
+            .frame(maxWidth: .infinity, alignment: state.location.isEmpty ? .leading : .trailing)
+        }
+    }
+}
+
+@available(iOS 16.1, *)
+private struct ScheduleLiveActivityCountdown: View {
+    let state: ScheduleLiveActivityAttributes.ContentState
+    var compact = false
+    var centered = false
+
+    var body: some View {
+        VStack(alignment: centered ? .center : .trailing, spacing: compact ? 1 : 3) {
+            Text(state.phase == .inProgress ? "距下课" : "距上课")
+                .font(.system(size: compact ? 10 : 11, weight: .medium))
+                .foregroundStyle(ScheduleLiveActivityPalette.accent)
+            ScheduleLiveActivityTimer(state: state)
+                .font(.system(size: compact ? 19 : 25, weight: .semibold, design: .rounded).monospacedDigit())
+                .foregroundStyle(ScheduleLiveActivityPalette.accent)
+        }
+        // A timer Text intentionally consumes flexible width. Constraining
+        // its column prevents it from stealing the title's width or centring
+        // the digits in an unrelated part of the activity.
+        .multilineTextAlignment(centered ? .center : .trailing)
+        .frame(width: compact ? 69 : 88, alignment: centered ? .center : .trailing)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+@available(iOS 16.1, *)
+private struct ScheduleLiveActivityNextCourse: View {
+    let state: ScheduleLiveActivityAttributes.ContentState
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Divider()
+                .overlay(ScheduleLiveActivityPalette.divider)
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text("下一节")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(ScheduleLiveActivityPalette.tertiaryText)
+                    .fixedSize()
+                Text([state.nextCourseName, state.nextCourseContext].compactMap { $0 }.joined(separator: "  "))
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(ScheduleLiveActivityPalette.secondaryText)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if let start = state.nextCourseStart {
+                    Text(ScheduleLiveActivityFormatting.timeRange(start: start, end: state.nextCourseEnd))
+                        .font(.system(size: 10, weight: .medium, design: .rounded).monospacedDigit())
+                        .foregroundStyle(ScheduleLiveActivityPalette.tertiaryText)
+                        .lineLimit(1)
+                        .frame(width: 80, alignment: .trailing)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, 1)
+    }
+}
+
+@available(iOS 16.1, *)
+private struct ScheduleLiveActivityWatchCard: View {
+    let state: ScheduleLiveActivityAttributes.ContentState
+
+    var body: some View {
+        // Smart Stack's mirrored small activity has a much shorter proposal
+        // than the phone lock screen. Fit within it instead of overflowing a
+        // six-row stack and losing the logo/top baseline to the system clip.
+        ViewThatFits(in: .vertical) {
+            content(showsTimeRange: true)
+            content(showsTimeRange: false)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+    }
+
+    private func content(showsTimeRange: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 5) {
+                ScheduleLiveActivityLogo(size: 16)
+                Text(state.courseName)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(ScheduleLiveActivityPalette.primaryText)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            HStack(spacing: 4) {
+                Text(state.phaseTitle)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(ScheduleLiveActivityPalette.accent)
+                    .lineLimit(1)
+                Spacer(minLength: 2)
+                ScheduleLiveActivityTimer(state: state)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded).monospacedDigit())
+                    .foregroundStyle(ScheduleLiveActivityPalette.primaryText)
+                    .frame(width: 46, alignment: .trailing)
+            }
+            Text([state.location.isEmpty ? state.teacher : state.location, state.periodLabel ?? ""]
+                .filter { !$0.isEmpty }.joined(separator: " · "))
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(ScheduleLiveActivityPalette.secondaryText)
+                .lineLimit(1)
+            if showsTimeRange {
+                Text(ScheduleLiveActivityFormatting.timeRange(start: state.startDate, end: state.endDate))
+                    .font(.system(size: 10, weight: .medium, design: .rounded))
+                    .foregroundStyle(ScheduleLiveActivityPalette.secondaryText)
+                    .lineLimit(1)
+            }
+            ScheduleLiveActivityProgress(state: state)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -116,91 +339,13 @@ private struct ScheduleLiveActivityLogo: View {
     let size: CGFloat
 
     var body: some View {
-        Image("CPULogo")
+        Image("CPUActivityLogo")
             .resizable()
             .renderingMode(.original)
             .aspectRatio(contentMode: .fit)
             .frame(width: size, height: size)
-            .clipShape(RoundedRectangle(cornerRadius: size * 0.22, style: .continuous))
-    }
-}
-
-@available(iOS 16.1, *)
-private struct ScheduleLiveActivityMetadata: View {
-    let state: ScheduleLiveActivityAttributes.ContentState
-
-    var body: some View {
-        ViewThatFits(in: .horizontal) {
-            metadata(showLocation: true)
-            metadata(showTeacher: true)
-            timeOnly
-        }
-        .font(.caption2)
-        .foregroundStyle(ScheduleLiveActivityPalette.secondaryText)
-        .lineLimit(1)
-        .minimumScaleFactor(0.75)
-    }
-
-    private var timeOnly: some View {
-        timeItem
-            .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    @ViewBuilder
-    private func metadata(showLocation: Bool = false, showTeacher: Bool = false) -> some View {
-        HStack(spacing: 9) {
-            timeItem
-            if showLocation, !state.location.isEmpty {
-                metadataItem(icon: "mappin.and.ellipse", text: state.location)
-            }
-            if showTeacher, !state.teacher.isEmpty {
-                metadataItem(icon: "person", text: state.teacher)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var timeItem: some View {
-        HStack(spacing: 4) {
-            Image(systemName: "clock")
-            Text(state.startDate, style: .time)
-            Text("–")
-            Text(state.endDate, style: .time)
-        }
-        .fixedSize(horizontal: true, vertical: false)
-    }
-
-    private func metadataItem(icon: String, text: String) -> some View {
-        Label(text, systemImage: icon)
-            .lineLimit(1)
-            .truncationMode(.tail)
-    }
-}
-
-@available(iOS 16.1, *)
-private struct ScheduleLiveActivityNextLine: View {
-    let state: ScheduleLiveActivityAttributes.ContentState
-
-    @ViewBuilder
-    var body: some View {
-        if let name = state.nextCourseName,
-           !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-           let start = state.nextCourseStart {
-            HStack(spacing: 6) {
-                Text("下一节")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(ScheduleLiveActivityPalette.secondaryText)
-                Text(name)
-                    .font(.caption2.weight(.medium))
-                    .foregroundStyle(ScheduleLiveActivityPalette.primaryText)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
-                Spacer(minLength: 4)
-                Text(start, style: .time)
-                    .font(.caption2.monospacedDigit().weight(.medium))
-                    .foregroundStyle(ScheduleLiveActivityPalette.secondaryText)
-            }
-        }
+            .clipShape(RoundedRectangle(cornerRadius: size * 18 / 84, style: .continuous))
+            .accessibilityHidden(true)
     }
 }
 
@@ -209,11 +354,18 @@ private struct ScheduleLiveActivityProgress: View {
     let state: ScheduleLiveActivityAttributes.ContentState
 
     var body: some View {
-        if state.phase == .inProgress {
-            ProgressView(timerInterval: state.startDate...state.endDate, countsDown: false)
-                .progressViewStyle(.linear)
-                .tint(ScheduleLiveActivityPalette.courseAccent(for: state.courseName))
-                .frame(height: 4)
+        if state.phase == .inProgress, state.endDate > state.startDate {
+            ProgressView(timerInterval: state.startDate...state.endDate, countsDown: false) {
+                EmptyView()
+            } currentValueLabel: {
+                // The default timer progress label draws another clock below
+                // the track even when its frame is only a few points tall.
+                EmptyView()
+            }
+            .progressViewStyle(.linear)
+            .tint(ScheduleLiveActivityPalette.accent)
+            .frame(height: 4)
+            .accessibilityLabel("本节课程进度")
         }
     }
 }
@@ -223,21 +375,76 @@ private struct ScheduleLiveActivityTimer: View {
     let state: ScheduleLiveActivityAttributes.ContentState
 
     var body: some View {
-        if state.phase == .inProgress {
-            Text(timerInterval: Date()...state.endDate, countsDown: true)
-        } else {
-            Text(timerInterval: Date()...state.startDate, countsDown: true)
-        }
+        let end = state.phase == .inProgress ? state.endDate : state.startDate
+        // Use the content's stable origin, not Date.now. A stale render must
+        // never create a reversed ClosedRange after the deadline has passed.
+        Text(timerInterval: min(state.updatedAt, end)...end, countsDown: true, showsHours: false)
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+            .multilineTextAlignment(.trailing)
     }
 }
 
 private enum ScheduleLiveActivityPalette {
     static let brand = Color(red: 15 / 255, green: 143 / 255, blue: 127 / 255)
-    static let surface = Color.black.opacity(0.94)
+    static let accent = Color(red: 70 / 255, green: 216 / 255, blue: 187 / 255)
+    static let surface = Color(red: 18 / 255, green: 23 / 255, blue: 24 / 255)
     static let primaryText = Color.white
-    static let secondaryText = Color.white.opacity(0.68)
+    static let secondaryText = Color(red: 171 / 255, green: 183 / 255, blue: 184 / 255)
+    static let tertiaryText = Color(red: 128 / 255, green: 143 / 255, blue: 144 / 255)
+    static let divider = Color.white.opacity(0.16)
+}
 
-    static func courseAccent(for _: String) -> Color { brand }
+private enum ScheduleLiveActivityFormatting {
+    private static let clock: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.timeZone = TimeZone(identifier: "Asia/Shanghai")
+        formatter.dateFormat = "HH:mm"
+        return formatter
+    }()
+
+    private static let day: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.timeZone = TimeZone(identifier: "Asia/Shanghai")
+        formatter.dateFormat = "M月d日"
+        return formatter
+    }()
+
+    static func timeRange(start: Date, end: Date?) -> String {
+        guard let end else { return clock.string(from: start) }
+        return "\(clock.string(from: start))–\(clock.string(from: end))"
+    }
+
+    static func dayContext(for date: Date, relativeTo reference: Date) -> String? {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Shanghai")!
+        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: reference), to: calendar.startOfDay(for: date)).day
+        if days == 0 { return nil }
+        if days == 1 { return "明天" }
+        return day.string(from: date)
+    }
+}
+
+private extension ScheduleLiveActivityAttributes.ContentState {
+    var phaseTitle: String { phase == .inProgress ? "正在上课" : "即将上课" }
+
+    var hasNextCourse: Bool {
+        !(nextCourseName?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+            && nextCourseStart != nil
+    }
+
+    var nextCourseContext: String? {
+        guard let start = nextCourseStart else { return nil }
+        let value = [
+            ScheduleLiveActivityFormatting.dayContext(for: start, relativeTo: startDate),
+            nextCourseLocation,
+        ].compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " · ")
+        return value.isEmpty ? nil : value
+    }
 }
 
 private struct UpcomingScheduleWidget: Widget {
@@ -812,20 +1019,13 @@ private struct WidgetDateHeader: View {
             Text(day.compactDate)
                 .font(.system(size: 19, weight: .bold, design: .rounded))
                 .foregroundStyle(WidgetPalette.primary)
-            VStack(alignment: .leading, spacing: 0) {
-                Text(day.displayLabel.isEmpty ? "课表" : day.displayLabel)
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(
-                        day.displayLabel == "周六" || day.displayLabel == "周日"
-                            ? Color.pink
-                            : WidgetPalette.accent(for: theme)
-                    )
-                if day.isToday == true {
-                    Text("今天")
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundStyle(WidgetPalette.secondary)
-                }
-            }
+            Text(day.displayLabel.isEmpty ? "课表" : day.displayLabel)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(
+                    day.displayLabel == "周六" || day.displayLabel == "周日"
+                        ? Color.pink
+                        : WidgetPalette.accent(for: theme)
+                )
             Spacer(minLength: 0)
             if let week = day.week, week > 0 {
                 Text("第 \(week) 周")

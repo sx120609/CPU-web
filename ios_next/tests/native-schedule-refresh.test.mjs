@@ -9,7 +9,7 @@ test('native schedule keeps vertical scrolling native and exposes refresh in the
   const storeSource = await readFile(new URL('../CpuTime/CpuTime/NativeScheduleStore.swift', import.meta.url), 'utf8');
   assert.match(source, /ScrollView\(\.vertical\)/);
   assert.match(source, /\.scrollBounceBehavior\(\.basedOnSize, axes: \.vertical\)/);
-  assert.match(source, /Button\("刷新课表", systemImage: "arrow\.clockwise"\)/);
+  assert.match(source, /scheduleToolRow\("刷新课表", systemImage: "arrow\.clockwise"/);
   assert.match(source, /TabView\(selection: \$weekPageSelection\)/);
   assert.match(source, /TabView\(selection: \$dayPageSelection\)/);
   assert.doesNotMatch(source, /NativeScheduleRefreshScrollView\(onRefresh:/);

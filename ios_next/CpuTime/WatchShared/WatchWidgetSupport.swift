@@ -91,7 +91,7 @@ nonisolated struct WatchWidgetDisplayOptions: Codable, Equatable {
     }
 
     func metadata(for course: WatchCourse) -> String? {
-        [showRoom ? course.room : nil, showTeacher ? course.teacher : nil]
+        [showRoom ? course.room : nil, showTeacher ? course.teacher : nil, course.campus]
             .compactMap { value in
                 let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 return trimmed.isEmpty ? nil : trimmed

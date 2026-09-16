@@ -19,11 +19,30 @@ struct CpuTimeApp: App {
 
 struct ContentView: View {
     @StateObject private var webSession = HybridWebViewStore()
-    @StateObject private var scheduleStore = NativeScheduleStore()
+    @StateObject private var scheduleStore: NativeScheduleStore
     @StateObject private var shell = NativeShellCoordinator()
     @StateObject private var watchSchedule = PhoneWatchScheduleStore()
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage("CPUHasSeenWelcomeV3") private var hasSeenWelcome = false
+    private let debugMockSchedule: Bool
+
+    init() {
+#if DEBUG
+        let useMockSchedule = ProcessInfo.processInfo.environment["CPU_DEBUG_MOCK_SCHEDULE"] == "1"
+        self.debugMockSchedule = useMockSchedule
+        if useMockSchedule {
+            _scheduleStore = StateObject(wrappedValue: NativeScheduleStore(
+                loader: { _ in NativeScheduleDebugFixture.snapshot },
+                archive: nil
+            ))
+        } else {
+            _scheduleStore = StateObject(wrappedValue: NativeScheduleStore())
+        }
+#else
+        self.debugMockSchedule = false
+        _scheduleStore = StateObject(wrappedValue: NativeScheduleStore())
+#endif
+    }
 
     var body: some View {
         rootView
@@ -117,7 +136,13 @@ struct ContentView: View {
     /// surface keeps the tab bar from flashing first.
     @ViewBuilder
     private var rootView: some View {
-        if !hasSeenWelcome {
+        if debugMockSchedule {
+            NativeScheduleView(store: scheduleStore)
+                .task {
+                    guard scheduleStore.result == nil else { return }
+                    await scheduleStore.load(semester: "2026-2027-1", week: "1")
+                }
+        } else if !hasSeenWelcome {
             WelcomeView {
                 withAnimation(.easeInOut(duration: 0.28)) {
                     hasSeenWelcome = true
@@ -125,7 +150,7 @@ struct ContentView: View {
             }
         } else if shell.requiresLogin {
             LoginGateView(webSession: webSession)
-        } else if !shell.isAuthResolved {
+        } else if !shell.isAuthResolved && scheduleStore.result == nil {
             LaunchWaitingView()
         } else {
             NativeShellView(
@@ -137,6 +162,121 @@ struct ContentView: View {
         }
     }
 }
+
+#if DEBUG
+/// A local, authenticated fixture used only with the `CPU_DEBUG_MOCK_SCHEDULE=1`
+/// launch argument. It lets the simulator exercise empty cells, long room names
+/// and the Live Activity layout without depending on a live education session.
+private enum NativeScheduleDebugFixture {
+    static let semester = "2026-2027-1"
+
+    static var snapshot: NativeScheduleSnapshot {
+        let semesters = [NativeScheduleSemester(value: semester, label: "2026-2027 学年第一学期", current: true)]
+        let weeks = [NativeScheduleWeek(value: "1", label: "第 1 周", current: true)]
+        var calendarValue = Calendar(identifier: .gregorian)
+        calendarValue.timeZone = TimeZone(identifier: "Asia/Shanghai")!
+        calendarValue.firstWeekday = 2
+        let today = calendarValue.startOfDay(for: .now)
+        let weekday = calendarValue.component(.weekday, from: today)
+        let mondayOffset = weekday == 1 ? -6 : 2 - weekday
+        let monday = calendarValue.date(byAdding: .day, value: mondayOffset, to: today) ?? today
+        let dateFormatter = DateFormatter()
+        dateFormatter.calendar = calendarValue
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dateFormatter.timeZone = calendarValue.timeZone
+        dateFormatter.dateFormat = "yyyy-MM-dd"
+        let days = (0..<7).compactMap { offset in
+            calendarValue.date(byAdding: .day, value: offset, to: monday).map(dateFormatter.string(from:))
+        }
+        let now = Date.now
+        let liveStart = now.addingTimeInterval(-15 * 60)
+        let liveEnd = now.addingTimeInterval(45 * 60)
+        let nextStart = now.addingTimeInterval(70 * 60)
+        let nextEnd = now.addingTimeInterval(130 * 60)
+        let timeFormatter = DateFormatter()
+        timeFormatter.calendar = calendarValue
+        timeFormatter.locale = Locale(identifier: "en_US_POSIX")
+        timeFormatter.timeZone = calendarValue.timeZone
+        timeFormatter.dateFormat = "HH:mm"
+        let periods = NativeSchedulePeriod.bundledTimetable.enumerated().map { index, period in
+            switch index {
+            case 0: return NativeSchedulePeriod(number: period.number, startTime: timeFormatter.string(from: liveStart), endTime: timeFormatter.string(from: liveEnd))
+            case 1: return NativeSchedulePeriod(number: period.number, startTime: timeFormatter.string(from: liveEnd), endTime: timeFormatter.string(from: liveEnd))
+            case 2: return NativeSchedulePeriod(number: period.number, startTime: timeFormatter.string(from: nextStart), endTime: timeFormatter.string(from: nextEnd))
+            default: return period
+            }
+        }
+        let todayColumn = max(1, weekday == 1 ? 7 : weekday - 1)
+        let calendar = NativeScheduleCalendar(
+            source: .jwxt,
+            semesters: semesters,
+            currentSemester: semester,
+            currentWeek: 1,
+            semesterStart: days[0],
+            semesterEnd: days[6],
+            weeks: [NativeCalendarWeek(week: 1, days: days, monday: days[0], sunday: days[6])]
+        )
+        let cells = [
+            NativeScheduleCell(day: todayColumn, bigSlot: 1, courses: [
+                NativeScheduleCourse(
+                    nativeId: "source:debug-english",
+                    name: "英语 III",
+                    teacher: "李老师",
+                    weeks: "第 1 周",
+                    weekList: [1],
+                    location: "艺术固定教室 YS403",
+                    startSlot: 1,
+                    endSlot: 2,
+                    sourceKey: "jwxt|2|1|2|英语III|李老师|艺术固定教室YS403|第1周"
+                ),
+            ]),
+            NativeScheduleCell(day: todayColumn, bigSlot: 2, courses: [
+                NativeScheduleCourse(
+                    nativeId: "source:debug-next",
+                    name: "药理学实验与实践",
+                    teacher: "王老师",
+                    weeks: "第 1 周",
+                    weekList: [1],
+                    location: "药学楼 302",
+                    startSlot: 3,
+                    endSlot: 3,
+                    sourceKey: "jwxt|2|3|3|药理学实验与实践|王老师|药学楼302|第1周"
+                ),
+            ]),
+            NativeScheduleCell(day: 4, bigSlot: 3, courses: [
+                NativeScheduleCourse(
+                    nativeId: "source:debug-lab",
+                    name: "药理学实验与实践",
+                    teacher: "王老师",
+                    weeks: "第 1 周",
+                    weekList: [1],
+                    location: "药学楼 302",
+                    startSlot: 5,
+                    endSlot: 6,
+                    sourceKey: "jwxt|4|5|6|药理学实验与实践|王老师|药学楼302|第1周"
+                ),
+            ]),
+        ]
+        let result = NativeScheduleResult(
+            source: .jwxt,
+            semesters: semesters,
+            weeks: weeks,
+            currentSemester: semester,
+            currentWeek: "1",
+            cells: cells
+        )
+        return NativeScheduleSnapshot(
+            completeSemester: true,
+            source: .jwxt,
+            fetchedAt: .now,
+            periods: periods,
+            data: result,
+            calendar: calendar,
+            auth: NativeScheduleAuth(authenticated: true, identity: "debug", account: "debug")
+        )
+    }
+}
+#endif
 
 /// A one-time first-run surface that gives the user a clear entry point before
 /// the shared web session decides whether login is required.
@@ -646,19 +786,22 @@ struct NativeShellView: View {
     @State private var nativeOverlayPresented = false
     @State private var nativeOverlayMode: NativeShellOverlay = .quickEntry
     @State private var quickEntryOpening = false
+    @State private var quickEntryContentHeight: CGFloat = 0
 
     var body: some View {
         VStack(spacing: 0) {
-            if shell.selectedTab != .schedule {
+            if shell.selectedTab != .schedule && !NativePageChrome.usesPageNavigation(webSession.currentPath) {
                 NativeTopBar(
                     session: webSession,
                     onHome: { shell.userSelected(.home) },
+                    onNotifications: { shell.openWeb(path: "/messages", tab: .profile) },
                     onMenu: {
                         guard !quickEntryOpening else { return }
                         quickEntryOpening = true
                         Task { @MainActor in
                             await webSession.refreshAuthCapability()
                             quickEntryOpening = false
+                            quickEntryContentHeight = 0
                             nativeOverlayMode = .quickEntry
                             nativeOverlayPresented = true
                         }
@@ -670,7 +813,7 @@ struct NativeShellView: View {
                 session: webSession,
                 tab: .home,
                 isActive: shell.selectedTab == .home,
-                showsNativePostButton: true,
+                showsNativePostButton: NativePageChrome.showsPostButton(webSession.currentPath),
                 onNativePost: { shell.openWeb(path: "/post", tab: .home) }
             )
             .tabItem {
@@ -769,20 +912,28 @@ struct NativeShellView: View {
             if let path { shell.openWeb(path: path, tab: tab ?? .home) }
         }
 
-        // A ScrollView has no useful intrinsic height for a fitted sheet, so
-        // explicitly size the native drawer from the amount of content it
-        // actually contains. Logged-in users get room for the account row;
-        // guests keep the shorter variant. The scroll view remains available
-        // for Dynamic Type and smaller devices.
+        // Measure the actual drawer content so the system sheet opens at the
+        // right height instead of clipping the last row behind a scroll view.
+        // The large detent remains available as an accessibility escape hatch
+        // for very large Dynamic Type settings.
         quickEntry
             .frame(maxWidth: .infinity)
-            .presentationDetents([.height(webSession.isLoggedIn ? 460 : 400)])
+            .onPreferenceChange(NativeQuickEntryHeightKey.self) { value in
+                guard value > 0 else { return }
+                quickEntryContentHeight = value
+            }
+            .presentationDetents([.height(quickEntryDetentHeight), .large])
             .presentationDragIndicator(.visible)
             .presentationCornerRadius(28)
             .presentationBackground(.regularMaterial)
-            .presentationContentInteraction(.scrolls)
             .tint(.cpuBrand)
             .preferredColorScheme(webSession.pageColorScheme)
+    }
+
+    private var quickEntryDetentHeight: CGFloat {
+        let fallback: CGFloat = webSession.isLoggedIn ? 520 : 440
+        let measured = quickEntryContentHeight > 0 ? quickEntryContentHeight + 68 : fallback
+        return min(max(measured, 360), UIScreen.main.bounds.height * 0.86)
     }
 }
 
@@ -814,38 +965,40 @@ private struct NativeQuickEntryView: View {
     }
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    // Web's bottom drawer uses one compact grid. Keeping the
-                    // same grouping avoids three redundant section headers and
-                    // lets the sheet size itself to the actual content.
-                    quickGrid(entries: entries[...])
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("外观").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
-                        HStack(spacing: 6) {
-                            ForEach([("跟随系统", "circle.lefthalf.filled", "system"), ("浅色", "sun.max", "light"), ("深色", "moon", "dark")], id: \.2) { item in
-                                Button { session.setAppearanceMode(item.2) } label: {
-                                    Label(item.0, systemImage: item.1).font(.caption.weight(.medium)).lineLimit(1)
-                                        .minimumScaleFactor(0.7).frame(maxWidth: .infinity, minHeight: 34)
-                                        .background(session.appearanceMode == item.2 ? Color.cpuBrand.opacity(0.18) : Color.primary.opacity(0.05)).clipShape(Capsule())
-                                }.buttonStyle(.plain).foregroundStyle(session.appearanceMode == item.2 ? Color.cpuBrand : .secondary)
-                            }
+            VStack(alignment: .leading, spacing: 14) {
+                // Web's bottom drawer uses one compact grid. Keeping the
+                // same grouping avoids redundant section headers and lets the
+                // system sheet fit the full menu without a second scroll view.
+                quickGrid(entries: entries[...])
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("外观").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                    HStack(spacing: 6) {
+                        ForEach([("跟随系统", "circle.lefthalf.filled", "system"), ("浅色", "sun.max", "light"), ("深色", "moon", "dark")], id: \.2) { item in
+                            Button { session.setAppearanceMode(item.2) } label: {
+                                Label(item.0, systemImage: item.1).font(.caption.weight(.medium)).lineLimit(1)
+                                    .minimumScaleFactor(0.7).frame(maxWidth: .infinity, minHeight: 34)
+                                    .background(session.appearanceMode == item.2 ? Color.cpuBrand.opacity(0.18) : Color.primary.opacity(0.05)).clipShape(Capsule())
+                            }.buttonStyle(.plain).foregroundStyle(session.appearanceMode == item.2 ? Color.cpuBrand : .secondary)
                         }
                     }
-                    if session.isLoggedIn {
-                        HStack(spacing: 12) {
-                            Image(systemName: "person.crop.circle.fill").font(.system(size: 30)).foregroundStyle(Color.cpuBrand)
-                            VStack(alignment: .leading, spacing: 2) { Text("个人中心").font(.subheadline.weight(.semibold)); Text("管理账号与资料").font(.caption).foregroundStyle(.secondary) }
-                            Spacer()
-                            Button("进入") { onOpen("/profile", .profile) }
-                                .font(.caption.weight(.semibold))
-                                .buttonStyle(.borderedProminent)
-                                .tint(.cpuBrand)
-                        }.padding(12).background(Color.primary.opacity(0.045)).clipShape(RoundedRectangle(cornerRadius: 14))
-                    }
-                }.padding(18)
+                }
+                if session.isLoggedIn {
+                    HStack(spacing: 12) {
+                        Image(systemName: "person.crop.circle.fill").font(.system(size: 30)).foregroundStyle(Color.cpuBrand)
+                        VStack(alignment: .leading, spacing: 2) { Text("个人中心").font(.subheadline.weight(.semibold)); Text("管理账号与资料").font(.caption).foregroundStyle(.secondary) }
+                        Spacer()
+                        Button("进入") { onOpen("/profile", .profile) }
+                            .font(.caption.weight(.semibold))
+                            .buttonStyle(.borderedProminent)
+                            .tint(.cpuBrand)
+                    }.padding(12).background(Color.primary.opacity(0.045)).clipShape(RoundedRectangle(cornerRadius: 14))
+                }
             }
-            .scrollIndicators(.hidden)
+            .padding(18)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .background(GeometryReader { proxy in
+                Color.clear.preference(key: NativeQuickEntryHeightKey.self, value: proxy.size.height)
+            })
             .navigationTitle("快捷入口")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -892,9 +1045,18 @@ private struct NativeQuickEntryView: View {
     }
 }
 
+private struct NativeQuickEntryHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 private struct NativeTopBar: View {
     @ObservedObject var session: HybridWebViewStore
     let onHome: () -> Void
+    let onNotifications: () -> Void
     let onMenu: () -> Void
 
     var body: some View {
@@ -926,6 +1088,8 @@ private struct NativeTopBar: View {
             ) {
                 session.cycleAppearanceMode()
             }
+
+            topBarIconButton(systemName: "bell", label: "通知中心", action: onNotifications)
 
             topBarIconButton(systemName: "ellipsis.circle", label: "更多", action: onMenu)
         }
@@ -973,7 +1137,7 @@ private struct WebTabScreen: View {
                     action: session.retry
                 )
             }
-            if isActive, unavailableState == nil, showsNativePostButton, let onNativePost {
+            if isActive, tab == .home, unavailableState == nil, showsNativePostButton, let onNativePost {
                 Button(action: onNativePost) {
                     Label("投稿", systemImage: "square.and.pencil")
                         .font(.subheadline.weight(.semibold))
@@ -998,6 +1162,7 @@ private struct WebTabScreen: View {
         .overlay(alignment: .top) {
             if isActive, session.isLoading { ProgressView().padding(8) }
         }
+        .toolbar(NativePageChrome.usesPageNavigation(session.currentPath) ? .hidden : .visible, for: .tabBar)
     }
 
     private var unavailableState: (title: String, message: String)? {

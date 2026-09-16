@@ -213,6 +213,28 @@ test("parseSchedule keeps an explicitly listed week when JWXT parity text is con
   assert.deepEqual(course?.weekList, [18]);
 });
 
+test("parseSchedule preserves odd/even/all week markers in bracketed JWXT text", () => {
+  const result = parseSchedule(`
+    <select id="xnxq01id"><option value="2025-2026-2" selected>2025-2026-2</option></select>
+    <table class="qz-weeklyTable">
+      <tr><th>周次</th><th>星期一</th><th>星期二</th><th>星期三</th><th>星期四</th><th>星期五</th><th>星期六</th><th>星期日</th></tr>
+      <tr>
+        <td name="timeTd"><div class="index-title">第一大节</div></td>
+        <td name="kbDataTd">
+          <ul class="courselists"><li class="courselists-item"><div class="qz-hasCourse-title">单周课</div><p><span class="qz-hasCourse-abbrinfo">老师:甲;时间:1-8周[单][1-2节];地点:A101</span></p></li></ul>
+          <ul class="courselists"><li class="courselists-item"><div class="qz-hasCourse-title">双周课</div><p><span class="qz-hasCourse-abbrinfo">老师:乙;时间:1-8周【双】【1-2节】;地点:A102</span></p></li></ul>
+          <ul class="courselists"><li class="courselists-item"><div class="qz-hasCourse-title">单双课</div><p><span class="qz-hasCourse-abbrinfo">老师:丙;时间:1-8周单双[1-2节];地点:A103</span></p></li></ul>
+        </td>
+        <td name="kbDataTd"></td><td name="kbDataTd"></td><td name="kbDataTd"></td><td name="kbDataTd"></td><td name="kbDataTd"></td><td name="kbDataTd"></td>
+      </tr>
+    </table>
+  `);
+  const courses = result.cells.find((cell) => cell.day === 1)?.courses ?? [];
+  assert.deepEqual(courses.find((course) => course.name === "单周课")?.weekList, [1, 3, 5, 7]);
+  assert.deepEqual(courses.find((course) => course.name === "双周课")?.weekList, [2, 4, 6, 8]);
+  assert.deepEqual(courses.find((course) => course.name === "单双课")?.weekList, [1, 2, 3, 4, 5, 6, 7, 8]);
+});
+
 test("parseSchedule parses the modern qz weekly table and restores rowspan columns", () => {
   const course = (name: string, detail: string) => `
     <ul class="courselists">

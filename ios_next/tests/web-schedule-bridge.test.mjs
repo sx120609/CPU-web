@@ -161,6 +161,24 @@ test('native payload uses real schedule, custom courses and normalized odd weeks
   assert.equal(result.data.cells[1].courses[0].nativeId, 'custom:extra');
 });
 
+test('native payload keeps bracketed parity markers separate for week filtering', async () => {
+  const ctx = setup();
+  ctx.api.schedule = async () => ({ parsed: {
+    ...sample(),
+    currentWeek: '2',
+    cells: [{ day: 3, bigSlot: 1, courses: [
+      { name: '单周课', weeks: '1-8周[单]', weekList: [] },
+      { name: '双周课', weeks: '1-8周【双】', weekList: [] },
+      { name: '单双课', weeks: '1-8周单双', weekList: [] },
+    ] }],
+  } });
+  const result = await ctx.window.CPUTimeNativeScheduleFetch('2025-2026-2', '2');
+  const courses = result.data.cells[0].courses;
+  assert.deepEqual(Array.from(courses.find(course => course.name === '单周课').weekList), [1, 3, 5, 7]);
+  assert.deepEqual(Array.from(courses.find(course => course.name === '双周课').weekList), [2, 4, 6, 8]);
+  assert.deepEqual(Array.from(courses.find(course => course.name === '单双课').weekList), [1, 2, 3, 4, 5, 6, 7, 8]);
+});
+
 test('legacy nested schedule fields are normalized for the native shell', async () => {
   const ctx = setup();
   ctx.api.schedule = async () => ({ parsed: { data: {

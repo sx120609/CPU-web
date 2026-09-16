@@ -14,8 +14,8 @@
     }"
     :style="layoutStyle"
   >
-    <!-- 顶栏。新版 iOS 原生壳只有底部标签栏，网页顶栏保留；Flutter 壳自带顶栏，不重复。 -->
-    <header v-if="!hideChrome && !useFlutterShell && !mobileTopicChrome" class="topbar">
+    <!-- Native shells supply their own navigation; detail pages own theirs. -->
+    <header v-if="!hideChrome && !useNativeShell && !mobileTopicChrome" class="topbar">
       <div class="topbar-inner">
         <router-link to="/home" class="brand">
           <img
@@ -471,7 +471,8 @@ const messageAriaLabel = computed(() => {
 });
 
 /** 某些路由（如 /schedule）希望"裸壳"渲染，没有顶栏/免责声明/footer */
-const hideChrome = computed(() => Boolean(route.meta?.hideChrome));
+const hideChrome = computed(() => Boolean(route.meta?.hideChrome)
+  || (useIosNextShell.value && route.meta?.nativeChrome === "page"));
 const fullWidthContent = computed(() => Boolean(route.meta?.fullWidthContent));
 const fullHeightContent = computed(() => Boolean(route.meta?.fullHeightContent));
 const useFlutterShell = computed(() => isFlutterNativeShell());
@@ -1588,6 +1589,9 @@ html[data-theme="dark"] .assistant-widget {
      its normal breathing room below that bar. The safe-area inset itself is
      already consumed by SwiftUI and is kept at zero on this shell. */
   padding-bottom: var(--cpu-ios-bottom-clearance, 96px) !important;
+}
+.layout-root--ios-next:has(.main--bare) .main--bare {
+  padding-bottom: max(12px, env(safe-area-inset-bottom)) !important;
 }
 .layout-root--ios-next .main:not(.main--bare):not(.main--full-width):not(.main--mobile-topic) {
   padding-top: 14px !important;
