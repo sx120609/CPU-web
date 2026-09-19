@@ -43,6 +43,7 @@ model User {
   lastSeenAt             DateTime  @default(now())
   lastLoginAt            DateTime?
   lastLoginClient        String?
+  iosMajorVersion        Int?
   usedIosClient          Boolean   @default(false)
   usedAndroidClient      Boolean   @default(false)
   usedHarmonyClient      Boolean   @default(false)

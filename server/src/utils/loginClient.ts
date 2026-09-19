@@ -10,7 +10,7 @@ export interface LoginClientInfo {
 function normalizeClient(value: string | undefined | null): LoginClient | null {
   if (!value) return null;
   const v = value.trim().toLowerCase();
-  if (["ios", "iphone", "ipad"].includes(v)) return "ios";
+  if (["ios", "ios-app", "iphone", "ipad"].includes(v)) return "ios";
   if (["android", "android-app"].includes(v)) return "android";
   if (["harmony", "harmony-app", "harmonyos", "ohos"].includes(v)) return "harmony";
   if (["desktop", "electron"].includes(v)) return "desktop";
@@ -24,6 +24,7 @@ export function detectLoginClient(req: Request): LoginClientInfo {
   if (explicit) return toInfo(explicit);
 
   const ua = (req.get("user-agent") ?? "").toLowerCase();
+  if (ua.includes("cpuwebiosapp") || ua.includes("cputimenative")) return toInfo("ios");
   if (ua.includes("cpuwebharmonyapp")) return toInfo("harmony");
   if (ua.includes("cpuwebscheduleapp")) return toInfo("android");
   if (ua.includes("electron")) return toInfo("desktop");

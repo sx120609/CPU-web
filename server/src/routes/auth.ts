@@ -9,6 +9,7 @@ import { beginLogin, submitLogin } from "../services/jwxtTransport";
 import { releaseExpiredMutes } from "../services/userModeration";
 import { isDev } from "../config";
 import { detectLoginClient } from "../utils/loginClient";
+import { detectIosMajorVersion } from "../utils/iosVersion";
 import { buildSelfUser } from "../utils/publicUser";
 import { recordAdminDailyLogin } from "../services/adminStats";
 import { isCookieAuthRequest, issueBrowserSession, revokeBrowserSession } from "../services/browserSession";
@@ -53,12 +54,14 @@ authRouter.post("/login", validate(loginSchema), async (req, res, next) => {
     if (!ok2) throw Errors.badRequest("用户名或密码错误");
     if (user.status === "banned") throw Errors.forbidden("账号已被封禁");
     const client = detectLoginClient(req);
+    const iosMajorVersion = client.client === "ios" ? detectIosMajorVersion(req) : null;
     const logged = await prisma.user.update({
       where: { id: user.id },
       data: {
         lastSeenAt: new Date(),
         lastLoginAt: new Date(),
         lastLoginClient: client.client,
+        iosMajorVersion: client.client === "ios" && iosMajorVersion !== null ? iosMajorVersion : undefined,
         usedIosClient: client.client === "ios" ? true : undefined,
         usedAndroidClient: client.client === "android" ? true : undefined,
         usedHarmonyClient: client.client === "harmony" ? true : undefined,
@@ -96,6 +99,7 @@ authRouter.post("/register", validate(registerSchema), async (req, res, next) =>
     if (exists) throw Errors.conflict("该用户名已被占用");
     const passwordHash = await hashPassword(password);
     const client = detectLoginClient(req);
+    const iosMajorVersion = client.client === "ios" ? detectIosMajorVersion(req) : null;
     const user = await prisma.user.create({
       data: {
         username,
@@ -110,6 +114,7 @@ authRouter.post("/register", validate(registerSchema), async (req, res, next) =>
         lastSeenAt: new Date(),
         lastLoginAt: new Date(),
         lastLoginClient: client.client,
+        iosMajorVersion,
         usedIosClient: client.client === "ios",
         usedAndroidClient: client.client === "android",
         usedHarmonyClient: client.client === "harmony",
@@ -223,12 +228,14 @@ authRouter.post(
       if (user.status === "banned") throw Errors.forbidden("账号已被封禁");
 
       const client = detectLoginClient(req);
+      const iosMajorVersion = client.client === "ios" ? detectIosMajorVersion(req) : null;
       user = await prisma.user.update({
         where: { id: user.id },
         data: {
           lastSeenAt: new Date(),
           lastLoginAt: new Date(),
           lastLoginClient: client.client,
+          iosMajorVersion: client.client === "ios" && iosMajorVersion !== null ? iosMajorVersion : undefined,
           usedIosClient: client.client === "ios" ? true : undefined,
           usedAndroidClient: client.client === "android" ? true : undefined,
           usedHarmonyClient: client.client === "harmony" ? true : undefined,

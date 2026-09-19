@@ -108,6 +108,24 @@ export type SiteConfig = {
   assistantDailyQuotas: Array<{ level: number; quota: number }>;
 };
 
+export type ApnsPushStats = {
+  iosUsers: number;
+  channelPushUsers: number;
+  gradualPushUsers: number;
+};
+
+export type ApnsConfig = {
+  keyPath: string;
+  keyID: string;
+  teamID: string;
+  bundleID: string;
+  tickSeconds: number;
+  channels: Record<string, string>;
+  configured: boolean;
+  updatedAt: string | null;
+  iosPushStats: ApnsPushStats;
+};
+
 export type LearningPlatformAvailability = Record<
   "chaoxing" | "zhihuishu" | "icve" | "zjy" | "icourse" | "yuketang" | "weban",
   boolean
@@ -946,6 +964,9 @@ export type AdminDeploymentStatus = {
 };
 
 export const adminApi = {
+  apnsConfig: (options?: RequestOptions) => request.get<ApnsConfig>("/admin/apns-config", undefined, options),
+  updateApnsConfig: (payload: Omit<ApnsConfig, "configured" | "updatedAt" | "iosPushStats">) =>
+    request.patch<ApnsConfig>("/admin/apns-config", payload),
   // 概览
   overview: (options?: RequestOptions) => request.get<AdminOverview>("/admin/overview", undefined, options),
   deploymentStatus: (options?: RequestOptions) =>
