@@ -13,6 +13,14 @@ final class LiveActivityPushService: ObservableObject {
     private static let deviceIDKey = "cpu.liveActivity.deviceID"
     private static let channelIDKey = "cpu.liveActivity.channelID"
     private static let digestKey = "cpu.liveActivity.planDigest"
+    private static let pendingStartTokenKey = "cpu.liveActivity.pendingStartToken"
+    private static let pendingActivitiesKey = "cpu.liveActivity.pendingActivities"
+
+    private struct PendingActivityRegistration: Codable {
+        let activityID: String
+        let updateToken: String
+        let expiresAt: Int
+    }
 
     typealias APIRequest = NativeLiveActivityController.APIRequest
     private var apiRequest: APIRequest?
@@ -48,6 +56,7 @@ final class LiveActivityPushService: ObservableObject {
         if enabled {
             observeStartToken()
             NativeLiveActivityController.shared.replanForPush()
+            Task { await registerDevice(startToken: nil) }
         } else {
             startTask?.cancel()
             startTask = nil
@@ -64,6 +73,7 @@ final class LiveActivityPushService: ObservableObject {
         startTask = Task { @MainActor [weak self] in
             for await data in Activity<ScheduleLiveActivityAttributes>.pushToStartTokenUpdates {
                 guard let self, !Task.isCancelled else { return }
+                self.defaults.set(Self.hex(data), forKey: Self.pendingStartTokenKey)
                 await self.registerDevice(startToken: Self.hex(data))
             }
         }
@@ -93,17 +103,21 @@ final class LiveActivityPushService: ObservableObject {
     }
 
     private func registerDevice(startToken: String?) async {
-        guard isEnabled, let apiRequest else { return }
+        guard isEnabled, apiRequest != nil else { return }
+        let tokenForRequest = startToken ?? defaults.string(forKey: Self.pendingStartTokenKey)
         var body: [String: Any] = [
             "environment": Self.environment,
             "bundleID": Bundle.main.bundleIdentifier ?? "cn.cputime.mobile",
             "timeZone": "Asia/Shanghai",
         ]
         if #available(iOS 26.0, *) { body["supportsBroadcast"] = true }
-        if let startToken { body["startToken"] = startToken }
+        if let tokenForRequest, !tokenForRequest.isEmpty { body["startToken"] = tokenForRequest }
         if let deviceID { body["deviceID"] = deviceID }
         do {
-            let result = try await decode(try await apiRequest("/api/live-activities/devices", "POST", body))
+            let result = try await retryRequest { [self] in
+                guard let apiRequest else { throw CancellationError() }
+                return try await decode(apiRequest("/api/live-activities/devices", "POST", body))
+            }
             if let id = result["deviceID"] as? String { defaults.set(id, forKey: Self.deviceIDKey) }
             if let channel = result["channelID"] as? String, !channel.isEmpty {
                 defaults.set(channel, forKey: Self.channelIDKey)
@@ -112,11 +126,13 @@ final class LiveActivityPushService: ObservableObject {
                 defaults.removeObject(forKey: Self.channelIDKey)
                 NativeLiveActivityController.shared.broadcastChannelID = nil
             }
+            if let tokenForRequest, defaults.string(forKey: Self.pendingStartTokenKey) == tokenForRequest {
+                defaults.removeObject(forKey: Self.pendingStartTokenKey)
+            }
             defaults.removeObject(forKey: Self.digestKey)
             NativeLiveActivityController.shared.replanForPush()
-        } catch {
-            // Token streams and the next plan upload retry registration.
-        }
+            await flushPendingActivities()
+        } catch { /* Keep tokens persisted for the next activation/retry. */ }
     }
 
     func submit(_ plan: [NativeLiveActivityController.PlannedPush]) {
@@ -138,18 +154,66 @@ final class LiveActivityPushService: ObservableObject {
     }
 
     private func registerActivity(_ activity: Activity<ScheduleLiveActivityAttributes>, token: String) async {
-        guard isEnabled, let deviceID, let apiRequest, !token.isEmpty else { return }
-        let expires = activity.content.state.endDate.addingTimeInterval(6 * 3600)
-        _ = try? await apiRequest("/api/live-activities/devices/\(deviceID)/activities", "POST", [
-            "activityID": activity.id,
-            "updateToken": token,
-            "expiresAt": Int(expires.timeIntervalSince1970),
-        ])
+        guard isEnabled, !token.isEmpty else { return }
+        let expires = max(activity.content.state.endDate.addingTimeInterval(48 * 3600), Date().addingTimeInterval(48 * 3600))
+        let pending = PendingActivityRegistration(activityID: activity.id, updateToken: token, expiresAt: Int(expires.timeIntervalSince1970))
+        savePendingActivity(pending)
+        await sendPendingActivity(pending)
+    }
+
+    private func flushPendingActivities() async {
+        for pending in loadPendingActivities() { await sendPendingActivity(pending) }
+    }
+
+    private func sendPendingActivity(_ pending: PendingActivityRegistration) async {
+        guard isEnabled, let deviceID, apiRequest != nil else { return }
+        do {
+            _ = try await retryRequest { [self] in
+                guard let apiRequest else { throw CancellationError() }
+                return try await decode(apiRequest("/api/live-activities/devices/\(deviceID)/activities", "POST", [
+                    "activityID": pending.activityID,
+                    "updateToken": pending.updateToken,
+                    "expiresAt": pending.expiresAt,
+                ]))
+            }
+            removePendingActivity(pending.activityID, token: pending.updateToken)
+        } catch { /* Keep the latest token queued for a later retry. */ }
     }
 
     private func forgetActivity(_ activityID: String) async {
+        removePendingActivity(activityID)
         guard let deviceID else { return }
         _ = try? await request(path: "/api/live-activities/devices/\(deviceID)/activities/\(activityID)", method: "DELETE")
+    }
+
+    private func loadPendingActivities() -> [PendingActivityRegistration] {
+        guard let data = defaults.data(forKey: Self.pendingActivitiesKey),
+              let values = try? JSONDecoder().decode([PendingActivityRegistration].self, from: data) else { return [] }
+        return values
+    }
+
+    private func savePendingActivity(_ pending: PendingActivityRegistration) {
+        var values = loadPendingActivities().filter { $0.activityID != pending.activityID }
+        values.append(pending)
+        if let data = try? JSONEncoder().encode(values) { defaults.set(data, forKey: Self.pendingActivitiesKey) }
+    }
+
+    private func removePendingActivity(_ activityID: String, token: String? = nil) {
+        let values = loadPendingActivities().filter { $0.activityID != activityID || (token != nil && $0.updateToken != token) }
+        if values.isEmpty { defaults.removeObject(forKey: Self.pendingActivitiesKey) }
+        else if let data = try? JSONEncoder().encode(values) { defaults.set(data, forKey: Self.pendingActivitiesKey) }
+    }
+
+    private func retryRequest<T>(_ operation: () async throws -> T) async throws -> T {
+        var lastError: Error?
+        for attempt in 0..<3 {
+            do { return try await operation() }
+            catch {
+                lastError = error
+                if attempt < 2 { try await Task.sleep(nanoseconds: UInt64((1 << attempt) * 500_000_000)) }
+            }
+        }
+        throw lastError ?? CancellationError()
     }
 
     private func refreshStatus() async {

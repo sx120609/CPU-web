@@ -737,13 +737,17 @@ model LiveActivityPlan {
   state     String   @default("pending")
   detail    String   @default("")
   sentAt    DateTime?
+  revision  Int      @default(0)
+  attempts  Int      @default(0)
+  nextAttemptAt DateTime @default(now())
+  claimedUntil DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   device LiveActivityDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
 
   @@unique([deviceId, itemID])
-  @@index([state, fireAt])
+  @@index([state, fireAt, nextAttemptAt])
   @@index([deviceId, state, fireAt])
 }
 
@@ -778,11 +782,14 @@ model LiveActivityBroadcastEvent {
   state     String   @default("pending")
   detail    String   @default("")
   sentAt    DateTime?
+  attempts  Int      @default(0)
+  nextAttemptAt DateTime @default(now())
+  claimedUntil DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@unique([channelID, eventID])
-  @@index([state, fireAt])
+  @@index([state, fireAt, nextAttemptAt])
 }
 
 // iOS Scriptable 小组件只读 token。

@@ -4,6 +4,7 @@ import { decryptJwxtSensitiveJson, encryptJwxtSensitiveJson } from "./jwxtSessio
 import { appleReferenceSeconds, sendLiveActivityBroadcast, sendLiveActivityPayload, unixSecondsFromActivityDate } from "./apnsClient";
 import { getApnsConfig } from "./apnsConfig";
 import { listScheduleTermConfigs } from "./scheduleTermConfig";
+import { adjustmentForDate, isMovedSourceDate } from "../shared/scheduleAdjustments";
 
 const PUSH_PURPOSE = "live-activity-apns-token";
 const START_PUSH_PURPOSE = "live-activity-start-token";
@@ -13,6 +14,9 @@ const MAX_PLAN_ITEMS = 240;
 const MAX_PLAN_HORIZON_MS = 45 * 24 * 60 * 60 * 1000;
 const MAX_PLAN_ITEM_BYTES = 3200;
 const CPU_SCHOOL_ID = "cpu";
+const CLAIM_MS = 30_000;
+const RETRY_BASE_MS = 5_000;
+const RETRY_MAX_MS = 300_000;
 let lastBroadcastMaterializedAt = 0;
 
 type ActivityJSON = Record<string, unknown>;
@@ -162,12 +166,15 @@ export async function replaceLiveActivityPlan(userId: number, deviceID: string, 
   }
   const digest = crypto.createHash("sha256").update(JSON.stringify(items.map((item) => ({ ...item, fireAt: item.fireAt.toISOString(), expiresAt: item.expiresAt.toISOString() })))).digest("hex");
   await db.$transaction(async (tx: any) => {
+    const latest = await tx.liveActivityPlan.aggregate({ where: { deviceId: deviceID }, _max: { revision: true } });
+    const revision = Number(latest?._max?.revision || 0) + 1;
+    const nextAttemptAt = new Date();
     await tx.liveActivityPlan.deleteMany({ where: { deviceId: deviceID, state: "pending" } });
     for (const item of items) {
       await tx.liveActivityPlan.upsert({
         where: { deviceId_itemID: { deviceId: deviceID, itemID: item.id } },
-        create: { deviceId: deviceID, itemID: item.id, fireAt: item.fireAt, expiresAt: item.expiresAt, event: item.event, payload: item.payload },
-        update: { fireAt: item.fireAt, expiresAt: item.expiresAt, event: item.event, payload: item.payload, state: "pending", detail: "", sentAt: null },
+        create: { deviceId: deviceID, itemID: item.id, fireAt: item.fireAt, expiresAt: item.expiresAt, event: item.event, payload: item.payload, revision, nextAttemptAt },
+        update: { fireAt: item.fireAt, expiresAt: item.expiresAt, event: item.event, payload: item.payload, state: "pending", detail: "", sentAt: null, revision, attempts: 0, nextAttemptAt, claimedUntil: null },
       });
     }
     await tx.liveActivityDevice.update({ where: { id: deviceID }, data: { planDigest: digest, lastError: null } });
@@ -266,8 +273,38 @@ async function pushRegistration(row: any, payload: Record<string, unknown>) {
   }
 }
 
-async function finishPlan(id: string, state: string, detail = "") {
-  await db.liveActivityPlan.update({ where: { id }, data: { state, detail: detail.slice(0, 500), sentAt: state === "sent" ? new Date() : undefined } }).catch(() => undefined);
+async function finishPlan(id: string, state: string, detail = "", revision?: number) {
+  const where: Record<string, unknown> = { id };
+  if (revision !== undefined) where.revision = revision;
+  await db.liveActivityPlan.updateMany({
+    where,
+    data: { state, detail: detail.slice(0, 500), sentAt: state === "sent" ? new Date() : null, claimedUntil: null },
+  }).catch(() => undefined);
+}
+
+function retryableError(error: any) {
+  const status = Number(error?.status || 0);
+  return status === 0 || status === 408 || status === 429 || (status >= 500 && status < 600);
+}
+
+function retryDelayMs(attempts: number) {
+  return Math.min(RETRY_MAX_MS, RETRY_BASE_MS * (2 ** Math.min(Math.max(0, attempts - 1), 6)));
+}
+
+async function retryPlan(row: any, now: number, detail: string) {
+  const attempts = Number(row.attempts || 0) + 1;
+  await db.liveActivityPlan.updateMany({
+    where: { id: row.id, revision: Number(row.revision || 0), state: "pending" },
+    data: { attempts, nextAttemptAt: new Date(now * 1000 + retryDelayMs(attempts)), claimedUntil: null, detail: detail.slice(0, 500) },
+  }).catch(() => undefined);
+}
+
+async function retryBroadcast(row: any, now: number, detail: string) {
+  const attempts = Number(row.attempts || 0) + 1;
+  await db.liveActivityBroadcastEvent.updateMany({
+    where: { id: row.id, state: "pending" },
+    data: { attempts, nextAttemptAt: new Date(now * 1000 + retryDelayMs(attempts)), claimedUntil: null, detail: detail.slice(0, 500) },
+  }).catch(() => undefined);
 }
 
 function dateKeyAt(date: Date) {
@@ -334,9 +371,11 @@ async function ensureBroadcastEvents(now: number) {
       const day = addDays(startOfToday, offset);
       if (day < termStart || day >= termEnd) continue;
       const weekday = day.getUTCDay();
-      if (weekday === 0 || weekday === 6) continue;
       const dateKey = day.toISOString().slice(0, 10);
-      if (term.adjustments.some((item) => item.date === dateKey && item.kind === "off")) continue;
+      const adjustment = adjustmentForDate(term.adjustments, dateKey);
+      // Weekends are normally idle, but a swap can make one a teaching day.
+      if ((weekday === 0 || weekday === 6) && adjustment?.kind !== "swap") continue;
+      if (adjustment?.kind === "off" || isMovedSourceDate(term.adjustments, dateKey)) continue;
       for (const period of term.periods) {
         for (const [phase, clock] of [["started", period.start], ["ended", period.end]] as const) {
           const instant = new Date(`${dateKey}T${clock}:00+08:00`);
@@ -355,10 +394,17 @@ async function ensureBroadcastEvents(now: number) {
     }
   }
   for (const row of rows) {
+    const existing = await db.liveActivityBroadcastEvent.findUnique({ where: { channelID_eventID: { channelID: row.channelID, eventID: row.eventID } } });
     await db.liveActivityBroadcastEvent.upsert({
       where: { channelID_eventID: { channelID: row.channelID, eventID: row.eventID } },
       create: row,
-      update: { fireAt: row.fireAt, expiresAt: row.expiresAt, event: row.event, payload: row.payload },
+      update: {
+        fireAt: row.fireAt,
+        expiresAt: row.expiresAt,
+        event: row.event,
+        payload: row.payload,
+        ...(existing && existing.payload !== row.payload ? { state: "pending", detail: "", sentAt: null, attempts: 0, nextAttemptAt: new Date(), claimedUntil: null } : {}),
+      },
     });
   }
   await db.liveActivityBroadcastEvent.deleteMany({ where: { state: { not: "pending" }, fireAt: { lt: new Date((now - 3 * 86400) * 1000) } } });
@@ -370,32 +416,55 @@ async function tickBroadcastEvents() {
   if (!config.configured) return;
   const now = Date.now() / 1000;
   await ensureBroadcastEvents(now);
-  const rows = await db.liveActivityBroadcastEvent.findMany({ where: { state: "pending", fireAt: { lte: new Date(now * 1000) } }, orderBy: { fireAt: "asc" }, take: 200 });
+  const rows = await db.liveActivityBroadcastEvent.findMany({
+    where: {
+      state: "pending",
+      fireAt: { lte: new Date(now * 1000) },
+      nextAttemptAt: { lte: new Date(now * 1000) },
+      OR: [{ claimedUntil: null }, { claimedUntil: { lte: new Date(now * 1000) } }],
+    },
+    orderBy: { fireAt: "asc" },
+    take: 200,
+  });
   for (const row of rows) {
+    const claimed = await db.liveActivityBroadcastEvent.updateMany({
+      where: { id: row.id, state: "pending", OR: [{ claimedUntil: null }, { claimedUntil: { lte: new Date(now * 1000) } }] },
+      data: { claimedUntil: new Date(now * 1000 + CLAIM_MS) },
+    });
+    if (!claimed.count) continue;
+    const current = await db.liveActivityBroadcastEvent.findUnique({ where: { id: row.id }, select: { state: true, payload: true } }).catch(() => null);
+    if (!current || current.state !== "pending" || current.payload !== row.payload) {
+      await db.liveActivityBroadcastEvent.updateMany({ where: { id: row.id, state: "pending" }, data: { claimedUntil: null } });
+      continue;
+    }
     if (row.expiresAt.getTime() / 1000 < now) {
-      await db.liveActivityBroadcastEvent.update({ where: { id: row.id }, data: { state: "skipped", detail: "广播事件已过期" } });
+      await db.liveActivityBroadcastEvent.updateMany({ where: { id: row.id, state: "pending" }, data: { state: "skipped", detail: "广播事件已过期", claimedUntil: null } });
       continue;
     }
     try {
       await sendLiveActivityBroadcast({ environment: row.environment, bundleID: row.bundleID, channelID: row.channelID, payload: JSON.parse(row.payload), expiration: 0, collapseID: `cpu-${row.eventID}` });
-      await db.liveActivityBroadcastEvent.update({ where: { id: row.id }, data: { state: "sent", sentAt: new Date(), detail: "" } });
+      await db.liveActivityBroadcastEvent.updateMany({ where: { id: row.id, state: "pending" }, data: { state: "sent", sentAt: new Date(), detail: "", claimedUntil: null } });
     } catch (error: any) {
-      await db.liveActivityBroadcastEvent.update({ where: { id: row.id }, data: { state: "failed", detail: String(error?.message || error).slice(0, 500) } });
+      const detail = String(error?.message || error);
+      if (retryableError(error) && row.expiresAt.getTime() / 1000 >= now) await retryBroadcast(row, now, detail);
+      else await db.liveActivityBroadcastEvent.updateMany({ where: { id: row.id, state: "pending" }, data: { state: "failed", detail: detail.slice(0, 500), claimedUntil: null } });
     }
   }
 }
 
 async function dispatchPlannedItem(row: any, now: number) {
+  const current = await db.liveActivityPlan.findUnique({ where: { id: row.id }, select: { revision: true, state: true } }).catch(() => null);
+  if (!current || current.state !== "pending" || Number(current.revision || 0) !== Number(row.revision || 0)) return;
   if (row.expiresAt.getTime() / 1000 < now && row.event !== "end") {
-    await finishPlan(row.id, "skipped", "已过期，未迟发历史课程");
+    await finishPlan(row.id, "skipped", "已过期，未迟发历史课程", Number(row.revision || 0));
     return;
   }
   if (!row.device?.enabled) {
-    await finishPlan(row.id, "skipped", "设备已停用");
+    await finishPlan(row.id, "skipped", "设备已停用", Number(row.revision || 0));
     return;
   }
   if (row.device.broadcastEnabled) {
-    await finishPlan(row.id, "skipped", "设备使用学校广播频道");
+    await finishPlan(row.id, "skipped", "设备使用学校广播频道", Number(row.revision || 0));
     return;
   }
   const event = String(row.event);
@@ -405,7 +474,7 @@ async function dispatchPlannedItem(row: any, now: number) {
   try {
     if (event === "start") {
       if (!row.device.startTokenCiphertext || !row.device.startTokenHash) {
-        await finishPlan(row.id, "failed", "设备尚未提供 push-to-start token");
+        await retryPlan(row, now, "设备尚未提供 push-to-start token");
         return;
       }
       tokenHash = row.device.startTokenHash;
@@ -413,16 +482,17 @@ async function dispatchPlannedItem(row: any, now: number) {
     } else {
       activityRows = await db.liveActivityDeviceActivity.findMany({ where: { deviceId: row.deviceId, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] }, orderBy: { updatedAt: "desc" } });
       if (!activityRows.length) {
-        await finishPlan(row.id, "failed", "尚未收到 Activity update token");
+        await retryPlan(row, now, "尚未收到 Activity update token");
         return;
       }
     }
     if (event === "start") {
       await sendLiveActivityPayload({ token: token!, environment: row.device.environment, bundleID: row.device.bundleID, payload: planPayload(event, row.payload, now) });
-      await finishPlan(row.id, "sent");
+      await finishPlan(row.id, "sent", "", Number(row.revision || 0));
     } else {
       let sent = false;
       let lastError = "";
+      let hasRetryableError = false;
       for (const activityRow of activityRows) {
         try {
           const activityToken = decryptJwxtSensitiveJson<{ token: string }>(PUSH_PURPOSE, activityRow.updateTokenHash, activityRow.updateTokenCiphertext).value.token;
@@ -430,17 +500,23 @@ async function dispatchPlannedItem(row: any, now: number) {
           sent = true;
         } catch (error: any) {
           lastError = String(error?.apnsReason || error?.message || error);
+          hasRetryableError = hasRetryableError || retryableError(error);
           const gone = error?.apnsReason === "BadDeviceToken" || error?.apnsReason === "Unregistered" || Number(error?.status) === 404 || Number(error?.status) === 410;
           if (gone) await db.liveActivityDeviceActivity.delete({ where: { id: activityRow.id } }).catch(() => undefined);
         }
       }
-      if (sent) await finishPlan(row.id, "sent");
-      else await finishPlan(row.id, "failed", lastError || "所有 Activity update token 均发送失败");
+      if (sent) await finishPlan(row.id, "sent", "", Number(row.revision || 0));
+      else if (hasRetryableError && row.expiresAt.getTime() / 1000 >= now) await retryPlan(row, now, lastError || "所有 Activity update token 均发送失败");
+      else await finishPlan(row.id, "failed", lastError || "所有 Activity update token 均发送失败", Number(row.revision || 0));
     }
   } catch (error: any) {
     const reason = String(error?.apnsReason || error?.message || error);
     const gone = error?.apnsReason === "BadDeviceToken" || error?.apnsReason === "Unregistered" || Number(error?.status) === 404 || Number(error?.status) === 410;
-    await finishPlan(row.id, gone ? "failed" : "failed", reason);
+    if (!gone && retryableError(error) && row.expiresAt.getTime() / 1000 >= now) {
+      await retryPlan(row, now, reason);
+      return;
+    }
+    await finishPlan(row.id, "failed", reason, Number(row.revision || 0));
     if (gone) {
       if (event === "start" && tokenHash) await db.liveActivityDevice.update({ where: { id: row.deviceId }, data: { startTokenHash: null, startTokenCiphertext: null, lastError: reason } }).catch(() => undefined);
       for (const activityRow of activityRows) await db.liveActivityDeviceActivity.delete({ where: { id: activityRow.id } }).catch(() => undefined);
@@ -456,12 +532,23 @@ async function tickPlannedLiveActivities() {
   if (!config.configured) return;
   const now = Date.now() / 1000;
   const rows = await db.liveActivityPlan.findMany({
-    where: { state: "pending", fireAt: { lte: new Date(now * 1000) } },
+    where: {
+      state: "pending",
+      fireAt: { lte: new Date(now * 1000) },
+      nextAttemptAt: { lte: new Date(now * 1000) },
+      OR: [{ claimedUntil: null }, { claimedUntil: { lte: new Date(now * 1000) } }],
+    },
     include: { device: true },
     orderBy: { fireAt: "asc" },
     take: 200,
   });
-  for (const row of rows) await dispatchPlannedItem(row, now);
+  for (const row of rows) {
+    const claimed = await db.liveActivityPlan.updateMany({
+      where: { id: row.id, state: "pending", revision: Number(row.revision || 0), OR: [{ claimedUntil: null }, { claimedUntil: { lte: new Date(now * 1000) } }] },
+      data: { claimedUntil: new Date(now * 1000 + CLAIM_MS) },
+    });
+    if (claimed.count) await dispatchPlannedItem(row, now);
+  }
   await db.liveActivityPlan.deleteMany({ where: { state: { not: "pending" }, fireAt: { lt: new Date((now - 3 * 86400) * 1000) } } }).catch(() => undefined);
 }
 
