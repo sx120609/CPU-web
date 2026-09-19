@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyScheduleTermConfig, normalizeScheduleTermConfig } from "../src/services/scheduleTermConfig";
+import { applyScheduleTermConfig, mergeScheduleAdjustments, normalizeScheduleTermConfig } from "../src/services/scheduleTermConfig";
 
 const base = {
   semester: "2026-2027-1",
@@ -48,4 +48,12 @@ test("term config supplies authoritative weeks and keeps adjustments in the cale
   assert.equal(result.weeks[0].monday, "2026-09-14");
   assert.equal(result.adjustments?.[0].date, "2026-09-20");
   assert.equal(result.periods?.[0].start, "08:00");
+});
+
+test("manual term adjustments override public holiday defaults", () => {
+  const result = mergeScheduleAdjustments(
+    [{ date: "2026-10-01", kind: "off", note: "公开节假日" }],
+    [{ date: "2026-10-01", kind: "swap", source: "2026-09-28", note: "学校调课" }],
+  );
+  assert.deepEqual(result, [{ date: "2026-10-01", kind: "swap", source: "2026-09-28", note: "学校调课" }]);
 });

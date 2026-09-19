@@ -37,9 +37,10 @@ export async function loadScheduleWidgetData(
   const sourceWeeks = new Set<number>();
   for (const adjustment of current.calendar.adjustments ?? []) {
     if (adjustment.kind !== "swap" || !adjustment.source) continue;
+    const sourceDate = adjustment.source;
     const targetWeek = current.calendar.weeks.find((item) => item.days.includes(adjustment.date))?.week;
     if (!targetWeek || !targetWeeks.has(Number(targetWeek))) continue;
-    const sourceWeek = current.calendar.weeks.find((item) => item.days.includes(adjustment.source))?.week;
+    const sourceWeek = current.calendar.weeks.find((item) => item.days.includes(sourceDate))?.week;
     if (sourceWeek && Number(sourceWeek) !== Number(targetWeek)) sourceWeeks.add(Number(sourceWeek));
   }
   const fetchWeeks = [...new Set([...previewWeeks, ...sourceWeeks])];

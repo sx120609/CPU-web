@@ -157,8 +157,16 @@ export async function saveScheduleTermConfig(input: unknown) {
   return scheduleTermConfigFromRow(row);
 }
 
-export function applyScheduleTermConfig(calendar: CalendarResult, config: ScheduleTermConfigValue | null, now = new Date()): CalendarResult {
-  if (!config) return calendar;
+export function applyScheduleTermConfig(
+  calendar: CalendarResult,
+  config: ScheduleTermConfigValue | null,
+  now = new Date(),
+  publicAdjustments: readonly ScheduleAdjustment[] = [],
+): CalendarResult {
+  if (!config) {
+    if (!publicAdjustments.length) return calendar;
+    return { ...calendar, adjustments: mergeScheduleAdjustments(publicAdjustments, calendar.adjustments ?? []) } as CalendarResult;
+  }
   const weeks = Array.from({ length: config.weekCount }, (_, index) => {
     const monday = addDays(config.semesterStartMonday, index * 7);
     const days = Array.from({ length: 7 }, (_, day) => addDays(monday, day));
@@ -174,9 +182,20 @@ export function applyScheduleTermConfig(calendar: CalendarResult, config: Schedu
     weeks,
     currentWeek: weeks.find((item) => item.days.includes(today))?.week ?? 0,
     periods: config.periods,
-    adjustments: config.adjustments,
+    adjustments: mergeScheduleAdjustments(publicAdjustments, config.adjustments),
     termConfig: config,
   } as CalendarResult;
+}
+
+export function mergeScheduleAdjustments(
+  publicAdjustments: readonly ScheduleAdjustment[],
+  manualAdjustments: readonly ScheduleAdjustment[],
+) {
+  const manualDates = new Set(manualAdjustments.map((item) => item.date));
+  return [
+    ...publicAdjustments.filter((item) => !manualDates.has(item.date)),
+    ...manualAdjustments,
+  ].sort((a, b) => a.date.localeCompare(b.date));
 }
 
 function addDays(value: string, count: number) {

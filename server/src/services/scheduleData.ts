@@ -4,6 +4,7 @@ import * as transport from "./jwxtTransport";
 import { normalizeCalendarWeekDays } from "./jwxtParser";
 import { Errors } from "../utils/response";
 import { applyScheduleTermConfig, getScheduleTermConfig } from "./scheduleTermConfig";
+import { fetchPublicHolidayAdjustments } from "./publicHolidayCalendar";
 
 const SCHEDULE_DATA_CACHE_REVISION = "schedule-data-v2";
 const SCHEDULE_TTL_MS = 5 * 60_000;
@@ -56,7 +57,14 @@ export function createScheduleDataService(dependencies: Partial<Dependencies> = 
     );
     const upstreamCalendar = calendarAtDate(snapshot.parsed, deps.now());
     const config = await getScheduleTermConfig(upstreamCalendar.currentSemester || semester);
-    const parsed = applyScheduleTermConfig(upstreamCalendar, config, deps.now());
+    const calendarStart = config?.semesterStartMonday || upstreamCalendar.semesterStart;
+    const calendarEnd = config
+      ? addDays(calendarStart, config.weekCount * 7 - 1)
+      : upstreamCalendar.semesterEnd;
+    const publicAdjustments = process.env.DATABASE_URL
+      ? await fetchPublicHolidayAdjustments(calendarStart, calendarEnd)
+      : [];
+    const parsed = applyScheduleTermConfig(upstreamCalendar, config, deps.now(), publicAdjustments);
     if (semester && parsed.currentWeek > 0) {
       await deps.cache("jwxt-calendar", currentKey, CALENDAR_TTL_MS, async () => snapshot, { refresh: true });
     }
@@ -112,6 +120,13 @@ export function createScheduleDataService(dependencies: Partial<Dependencies> = 
   }
 
   return { readSchedule, readCalendar };
+}
+
+function addDays(value: string, count: number) {
+  const date = new Date(`${value}T00:00:00Z`);
+  if (!Number.isFinite(date.getTime())) return value;
+  date.setUTCDate(date.getUTCDate() + count);
+  return date.toISOString().slice(0, 10);
 }
 
 export type ScheduleDataService = ReturnType<typeof createScheduleDataService>;

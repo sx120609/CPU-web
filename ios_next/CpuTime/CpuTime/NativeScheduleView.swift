@@ -1315,9 +1315,10 @@ struct NativeScheduleView: View {
            targetWeek.days.indices.contains(day - 1),
            let adjustment = calendar.adjustments.first(where: { $0.date == targetWeek.days[day - 1] }) {
             if adjustment.kind == "off" { return [] }
-            if adjustment.kind == "swap", let source = adjustment.source,
-               let sourceWeekInfo = calendar.weeks.first(where: { $0.days.contains(source) }),
-               let sourceIndex = sourceWeekInfo.days.firstIndex(of: source) {
+            if adjustment.kind == "swap" {
+                guard let source = adjustment.source,
+                      let sourceWeekInfo = calendar.weeks.first(where: { $0.days.contains(source) }),
+                      let sourceIndex = sourceWeekInfo.days.firstIndex(of: source) else { return [] }
                 sourceWeek = sourceWeekInfo.week
                 sourceDay = sourceIndex + 1
             }
