@@ -187,6 +187,7 @@ export const router = createRouter({
         { path: "announcements", name: "announcements", component: () => import("@/views/announcements/Index.vue"), meta: { title: "校园公告", public: true } },
         { path: "jwxt", name: "jwxt", component: loadJwxtView, meta: { title: "教务数据", public: true } },
         { path: "schedule", name: "schedule", component: loadScheduleView, meta: { title: "课表", public: true, hideChrome: true } },
+        { path: "schedule/share/:code", name: "schedule-share", component: () => import("@/views/ScheduleShare.vue"), meta: { title: "共享课表", public: true } },
         { path: "download", name: "download", component: () => import("@/views/Download.vue"), meta: { title: "客户端下载", public: true } },
         { path: "downloads", redirect: "/download" },
         {

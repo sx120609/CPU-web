@@ -33,10 +33,12 @@ import { accountVerificationRouter } from "./accountVerification";
 import { yaodaFlightRouter } from "./yaodaFlight";
 import { privacyRouter } from "./privacy";
 import { revokedCredentialGate } from "../middleware/revokedCredential";
+import { scheduleShareRouter } from "./scheduleShares";
 import { liveActivityRouter } from "./liveActivities";
 
 export const router = Router();
 router.use("/privacy", privacyRouter);
+router.use("/schedule-shares", scheduleShareRouter);
 router.use("/live-activities", liveActivityRouter);
 
 // 公开路径

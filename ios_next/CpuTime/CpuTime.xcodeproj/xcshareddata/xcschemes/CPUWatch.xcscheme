@@ -45,7 +45,6 @@
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "A20000000000000000000010"
             BuildableName = "CPUWatch.app"
-            BlueprintName = "CPUWatch"
             ReferencedContainer = "container:CpuTime.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>

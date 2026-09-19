@@ -65,6 +65,16 @@
           <el-icon><Refresh /></el-icon>
         </button>
         <button
+          v-if="parsed && calendar"
+          type="button"
+          class="icon-btn"
+          aria-label="分享课表"
+          title="分享课表"
+          @click="openShareDialog"
+        >
+          <el-icon><Share /></el-icon>
+        </button>
+        <button
           v-if="installPromptRef && (installPromptRef as any).canShow"
           type="button"
           class="icon-btn install-btn"
@@ -640,6 +650,32 @@
       </template>
     </el-dialog>
 
+    <el-dialog
+      v-model="shareDialogOpen"
+      title="共享课表"
+      :width="420"
+      align-center
+      append-to-body
+      class="schedule-themed-dialog"
+      :style="pageStyle"
+    >
+      <template v-if="!shareResult">
+        <p class="share-dialog-copy">分享会保存当前学期的课程、日期、节次和调休安排。读取方无需登录教务系统。</p>
+        <div class="share-preview-line"><span>学期</span><strong>{{ semester || parsed?.currentSemester }}</strong></div>
+        <div class="share-preview-line"><span>课程</span><strong>{{ sharedCourseCount }} 门</strong></div>
+      </template>
+      <template v-else>
+        <p class="share-dialog-copy">分享已生成。链接包含发布时的校历快照，管理员后续修改不会影响这条链接。</p>
+        <div class="share-code">{{ shareResult.code }}</div>
+        <el-input :model-value="shareUrl" readonly />
+      </template>
+      <template #footer>
+        <el-button data-cpu-button-theme="schedule" @click="shareDialogOpen = false">关闭</el-button>
+        <el-button v-if="shareResult" data-cpu-button-theme="schedule" type="primary" @click="copyShareUrl">复制链接</el-button>
+        <el-button v-else data-cpu-button-theme="schedule" type="primary" :loading="shareCreating" @click="createShare">生成分享链接</el-button>
+      </template>
+    </el-dialog>
+
     <Teleport to="body">
       <Transition name="course-editor">
         <div v-if="editDialogOpen" class="course-editor-overlay" :style="pageStyle" @click.self="closeCourseEditor">
@@ -751,8 +787,9 @@ import ScheduleCourseStatus from "@/components/jwxt/ScheduleCourseStatus.vue";
 import { computed, h, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { Aim, ArrowLeft, ArrowRight, Download, InfoFilled, Iphone, Lock, Moon, MoreFilled, Picture, QuestionFilled, Refresh, Tools } from "@element-plus/icons-vue";
+import { Aim, ArrowLeft, ArrowRight, Download, InfoFilled, Iphone, Lock, Moon, MoreFilled, Picture, QuestionFilled, Refresh, Share, Tools } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
+import { scheduleShareApi, type ScheduleShare } from "@/api/scheduleShares";
 import { useAuthStore } from "@/stores/auth";
 import { useAppearanceStore } from "@/stores/appearance";
 import { useJwxtStore } from "@/stores/jwxt";
@@ -787,6 +824,7 @@ import {
 import {
   courseEditKey,
   emptyScheduleEdits,
+  applyScheduleEditsToCells,
   normalizeScheduleEditsState,
   keepScheduleCourseAsCustom,
   type ScheduleEditState,
@@ -893,6 +931,9 @@ const editingCourseKey = ref("");
 const editingWeekValue = ref("");
 const courseEditAction = ref<CourseEditAction>("");
 const courseEditBusy = computed(() => courseEditAction.value !== "");
+const shareDialogOpen = ref(false);
+const shareCreating = ref(false);
+const shareResult = ref<ScheduleShare | null>(null);
 const widgetCurrentWeekIntentPending = ref(false);
 let scheduleMounted = false;
 let widgetCurrentCalendarPromise: Promise<void> | null = null;
@@ -1628,6 +1669,8 @@ const semesters = computed(() => parsed.value?.semesters ?? []);
 const weeks = computed(() => parsed.value?.weeks ?? []);
 const currentWeekInfo = computed(() => weekInfoFor(currentWeekValue()));
 const currentWeekRange = computed(() => weekRangeFor(currentWeekValue()));
+const sharedCourseCount = computed(() => (parsed.value?.cells ?? []).reduce((sum, cell) => sum + cell.courses.length, 0));
+const shareUrl = computed(() => shareResult.value ? `${window.location.origin}/schedule/share/${shareResult.value.code}` : "");
 const dayTabs = computed(() => dayTabsForWeek(currentWeekValue()));
 const activeDayLabel = computed(() => dayTabs.value.find((d) => d.day === activeDay.value)?.label ?? "今日");
 const activeWeekNumber = computed(() => {
@@ -1868,6 +1911,50 @@ async function manualRefreshSchedule() {
   } catch {
     ElMessage.warning("课表刷新失败，请检查网络连接后重试。");
   }
+}
+
+function openShareDialog() {
+  shareResult.value = null;
+  shareDialogOpen.value = true;
+}
+
+async function createShare() {
+  if (!parsed.value || !calendar.value || shareCreating.value) return;
+  shareCreating.value = true;
+  try {
+    await loadScheduleEdits();
+    let source = parsed.value;
+    // The normal page request is weekly for fast navigation. A share must be
+    // semester-complete so the reader can move through every teaching week.
+    if (scheduleSource.value === "jwxt" && source.scope !== "semester") {
+      const all = await jwxt.withSessionRetry(() => jwxtApi.schedule(
+        { semester: semester.value || source.currentSemester, week: "all" },
+        { silent: true },
+      ));
+      source = all.parsed;
+    }
+    const schedule: ScheduleResult = {
+      ...source,
+      cells: applyScheduleEditsToCells(source.cells, scheduleEdits.value),
+    };
+    shareResult.value = await scheduleShareApi.create({
+      semester: semester.value || parsed.value.currentSemester,
+      schedule,
+      calendar: calendar.value,
+    });
+    await copyText(`${window.location.origin}/schedule/share/${shareResult.value.code}`);
+    ElMessage.success("分享链接已生成并复制");
+  } catch {
+    ElMessage.warning("分享课表失败，请稍后重试");
+  } finally {
+    shareCreating.value = false;
+  }
+}
+
+async function copyShareUrl() {
+  if (!shareUrl.value) return;
+  await copyText(shareUrl.value);
+  ElMessage.success("分享链接已复制");
 }
 
 async function loadSchedule(force = false, background = false) {
@@ -2986,6 +3073,9 @@ function prewarmScheduleCacheForWeek(wk: string) {
 }
 </script>
 
+<style scoped>
+.share-dialog-copy{margin:0 0 16px;color:var(--schedule-text-secondary);line-height:1.6;font-size:13px}.share-preview-line{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--schedule-border);font-size:13px}.share-preview-line span{color:var(--schedule-text-muted)}.share-code{margin:12px 0;text-align:center;color:var(--schedule-course-text);font:700 28px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:2px}
+</style>
 <style scoped lang="scss" src="./schedule/styles/schedule-shell.scss"></style>
 <style scoped lang="scss" src="./schedule/styles/schedule-layout.scss"></style>
 <style scoped lang="scss" src="./schedule/styles/schedule-grid.scss"></style>

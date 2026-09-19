@@ -56,6 +56,7 @@ export function normalizeScheduleTermConfig(input: unknown): Omit<ScheduleTermCo
   const rawAdjustments = Array.isArray(value.adjustments) ? value.adjustments : [];
   if (rawAdjustments.length > 200) throw new Error("一个学期最多配置 200 条调休");
   const seen = new Set<string>();
+  const seenSources = new Set<string>();
   const adjustments = rawAdjustments.map((item) => {
     const row = (item && typeof item === "object" ? item : {}) as Record<string, unknown>;
     const date = String(row.date ?? "").trim();
@@ -68,6 +69,9 @@ export function normalizeScheduleTermConfig(input: unknown): Omit<ScheduleTermCo
     if (kind === "swap" && (!DATE_PATTERN.test(source) || !isValidDate(source))) {
       throw new Error(`${date} 是调课，必须填写上哪一天的课`);
     }
+    if (kind === "swap" && source === date) throw new Error(`${date} 不能调到自己当天`);
+    if (kind === "swap" && seenSources.has(source)) throw new Error(`${source} 只能被调到一个日期`);
+    if (kind === "swap") seenSources.add(source);
     return {
       date,
       kind,

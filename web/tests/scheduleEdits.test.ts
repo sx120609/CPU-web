@@ -168,6 +168,39 @@ test("source validation happens before week filtering and supports moved edits",
   assert.equal(cells[0].courses[0].orphaned, false);
 });
 
+test("calendar swaps move a cross-week course and hide the original source date", () => {
+  const course = {
+    name: "调休课程", weeks: "1-2周", weekList: [1, 2],
+    startSlot: 1, endSlot: 2,
+  };
+  const weekOne: ScheduleResult = {
+    currentSemester: "2026-2027-1", currentWeek: "1", weeks: [], semesters: [],
+    cells: [{ day: 3, bigSlot: 1, courses: [course] }],
+  };
+  const weekTwo: ScheduleResult = {
+    currentSemester: "2026-2027-1", currentWeek: "2", weeks: [], semesters: [],
+    cells: [{ day: 1, bigSlot: 1, courses: [{ ...course, name: "第二周课程", weekList: [2], weeks: "第2周" }] }],
+  };
+  const calendar = {
+    currentWeek: 2,
+    semesterStart: "2026-09-07",
+    semesterEnd: "2026-09-20",
+    weeks: [
+      { week: 1, monday: "2026-09-07", sunday: "2026-09-13", days: ["2026-09-07", "2026-09-08", "2026-09-09", "2026-09-10", "2026-09-11", "2026-09-12", "2026-09-13"] },
+      { week: 2, monday: "2026-09-14", sunday: "2026-09-20", days: ["2026-09-14", "2026-09-15", "2026-09-16", "2026-09-17", "2026-09-18", "2026-09-19", "2026-09-20"] },
+    ],
+    adjustments: [{ date: "2026-09-19", kind: "swap" as const, source: "2026-09-09" }],
+  };
+  const helpers = createScheduleViewModelHelpers({
+    parsed: () => weekTwo, calendar: () => calendar, weeks: () => [{ value: 1 }, { value: 2 }],
+    scheduleEdits: () => ({ hidden: [], custom: [] }), activeDay: () => 6, currentWeekValue: () => "2",
+    scheduleForWeek: (value) => Number(value) === 1 ? weekOne : weekTwo,
+    allKnownScheduleSources: () => [weekTwo, weekOne],
+  });
+  assert.equal(helpers.cellsForWeek(2, weekTwo).find((cell) => cell.day === 6)?.courses[0]?.name, "调休课程");
+  assert.equal(helpers.cellsForWeek(1, weekOne).some((cell) => cell.day === 3), false);
+});
+
 test("a source reappearing on refresh clears the derived warning", () => {
   const { source, edits } = fixture();
   assert.equal(applyScheduleEditsToCells([], edits)[0].courses[0].orphaned, true);

@@ -1,4 +1,5 @@
 import { applyScheduleEditsToCells, courseEditKey, scheduleCourseEditLabel, type ScheduleEditState } from "@/utils/scheduleEdits";
+import { isMovedSourceDate } from "@/utils/scheduleAdjustments";
 import { courseMatchesWeek } from "@/utils/scheduleWeeks";
 import {
   buildGraduateFallbackCalendar,
@@ -12,6 +13,7 @@ import type {
   CalendarResult,
   FlatCourse,
   ScheduleCourse,
+  ScheduleCell,
   SchedulePageModel,
   ScheduleResult,
   WeekCourseBlock,
@@ -61,11 +63,53 @@ export function createScheduleViewModelHelpers(context: ScheduleViewModelContext
   }
 
   function cellsForWeek(wk: number, source: ScheduleResult | null = context.parsed()) {
-    return applyScheduleEditsToCells(source?.cells ?? null, context.scheduleEdits())
-      .map((cell) => ({
-        ...cell,
-        courses: wk ? cell.courses.filter((course) => courseMatchesWeek(course, wk)) : cell.courses,
-      }))
+    const calendar = context.calendar();
+    const week = calendarWeekForNumber(calendar, wk);
+    const adjustments = calendar?.adjustments ?? [];
+    const sourceCandidates = [source, ...context.allKnownScheduleSources()]
+      .filter((item, index, items): item is ScheduleResult => Boolean(item) && items.indexOf(item) === index);
+    const editedSources = sourceCandidates.map((item) => applyScheduleEditsToCells(item.cells, context.scheduleEdits()));
+    const courseCells = (sourceWeek: number, sourceDay: number) => {
+      for (const edited of editedSources) {
+        const cells = edited
+          .filter((cell) => cell.day === sourceDay)
+          .map((cell) => ({
+            ...cell,
+            courses: sourceWeek ? cell.courses.filter((course) => courseMatchesWeek(course, sourceWeek)) : cell.courses,
+          }))
+          .filter((cell) => cell.courses.length);
+        if (cells.length) return cells;
+      }
+      return [];
+    };
+
+    // 调休按真实日期覆盖，而不是把课程永久挪到周六/周日。swap 允许跨周，
+    // 因此先从来源日期解析教学周，再把来源课程放回目标日期。
+    if (wk > 0 && week?.days?.length === 7 && adjustments.length) {
+      const result: ScheduleCell[] = [];
+      for (let day = 1; day <= 7; day += 1) {
+        const date = normalizeCalendarWeekDays(week.days)[day - 1] || "";
+        const adjustment = date ? adjustments.find((item) => item.date === date) : undefined;
+        if (adjustment?.kind === "off") continue;
+        if (date && isMovedSourceDate(adjustments, date)) continue;
+        let sourceWeek = wk;
+        let sourceDay = day;
+        if (adjustment?.kind === "swap" && adjustment.source) {
+          const sourceDate = adjustment.source;
+          const sourceIndex = calendar?.weeks.find((candidate) => candidate.days.includes(sourceDate));
+          if (!sourceIndex) continue;
+          sourceWeek = sourceIndex.week;
+          sourceDay = normalizeCalendarWeekDays(sourceIndex.days).indexOf(sourceDate) + 1;
+        }
+        for (const cell of courseCells(sourceWeek, sourceDay)) {
+          result.push({ ...cell, day });
+        }
+      }
+      return result.filter((cell) => cell.courses.length);
+    }
+    const edited = editedSources[0] ?? applyScheduleEditsToCells(source?.cells ?? null, context.scheduleEdits());
+    return edited
+      .map((cell) => ({ ...cell, courses: wk ? cell.courses.filter((course) => courseMatchesWeek(course, wk)) : cell.courses }))
       .filter((cell) => cell.courses.length);
   }
 

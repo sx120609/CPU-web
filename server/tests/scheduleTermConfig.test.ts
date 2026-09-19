@@ -24,6 +24,10 @@ test("term config normalizes periods and rejects incomplete swap entries", () =>
     () => normalizeScheduleTermConfig({ ...base, adjustments: [{ date: "2026-10-11", kind: "swap" }] }),
     /必须填写上哪一天的课/,
   );
+  assert.throws(
+    () => normalizeScheduleTermConfig({ ...base, adjustments: [{ date: "2026-10-11", kind: "swap", source: "2026-10-11" }] }),
+    /不能调到自己当天/,
+  );
 });
 
 test("term config supplies authoritative weeks and keeps adjustments in the calendar", () => {

@@ -594,37 +594,55 @@ private final class NativeScheduleCalendarImporter {
         var activeKeys = Set<String>()
         var count = 0
 
-        for cell in data.cells where (1...7).contains(cell.day) {
-            for course in cell.courses {
-                let range = NativeSchedulePeriod.normalizedRange(
-                    bigSlot: cell.bigSlot,
-                    startSlot: course.startSlot,
-                    endSlot: course.endSlot,
-                    periods: periods
-                )
-                guard let startPeriod = periods.first(where: { $0.number == range.start }),
-                      let endPeriod = periods.first(where: { $0.number == range.end }) else { continue }
-                for week in weeks where courseApplies(course, to: week.week) {
-                    guard let start = date(for: cell.day, week: week, time: startPeriod.startTime),
-                          let end = date(for: cell.day, week: week, time: endPeriod.endTime), end > start else { continue }
-                    let key = eventKey(semester: data.currentSemester, week: week.week, day: cell.day, range: range, course: course)
-                    activeKeys.insert(key)
-                    let event: EKEvent
-                    if let identifier = eventMap[key], let existing = eventStore.event(withIdentifier: identifier) {
-                        event = existing
-                    } else {
-                        event = EKEvent(eventStore: eventStore)
-                        event.calendar = targetCalendar
+        for week in weeks {
+            for targetDay in 1...7 {
+                guard week.days.indices.contains(targetDay - 1) else { continue }
+                let targetDate = week.days[targetDay - 1]
+                let adjustment = calendar.adjustments.first(where: { $0.date == targetDate })
+                if adjustment?.kind == "off" { continue }
+                if adjustment == nil,
+                   calendar.adjustments.contains(where: { $0.kind == "swap" && $0.source == targetDate }) { continue }
+
+                var sourceDay = targetDay
+                var sourceWeek = week.week
+                if adjustment?.kind == "swap", let source = adjustment?.source,
+                   let sourceWeekInfo = calendar.weeks.first(where: { $0.days.contains(source) }),
+                   let sourceIndex = sourceWeekInfo.days.firstIndex(of: source) {
+                    sourceDay = sourceIndex + 1
+                    sourceWeek = sourceWeekInfo.week
+                }
+
+                for cell in data.cells where cell.day == sourceDay {
+                    for course in cell.courses where courseApplies(course, to: sourceWeek) {
+                        let range = NativeSchedulePeriod.normalizedRange(
+                            bigSlot: cell.bigSlot,
+                            startSlot: course.startSlot,
+                            endSlot: course.endSlot,
+                            periods: periods
+                        )
+                        guard let startPeriod = periods.first(where: { $0.number == range.start }),
+                              let endPeriod = periods.first(where: { $0.number == range.end }),
+                              let start = date(for: targetDay, week: week, time: startPeriod.startTime),
+                              let end = date(for: targetDay, week: week, time: endPeriod.endTime), end > start else { continue }
+                        let key = eventKey(semester: data.currentSemester, week: week.week, day: targetDay, range: range, course: course)
+                        activeKeys.insert(key)
+                        let event: EKEvent
+                        if let identifier = eventMap[key], let existing = eventStore.event(withIdentifier: identifier) {
+                            event = existing
+                        } else {
+                            event = EKEvent(eventStore: eventStore)
+                            event.calendar = targetCalendar
+                        }
+                        event.title = course.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "课程" : course.name
+                        event.startDate = start
+                        event.endDate = end
+                        event.location = course.location?.trimmingCharacters(in: .whitespacesAndNewlines)
+                        event.notes = notes(for: course, week: week.week, semester: data.currentSemester)
+                        event.alarms = remindersEnabled ? [EKAlarm(relativeOffset: -15 * 60)] : []
+                        try eventStore.save(event, span: .thisEvent, commit: false)
+                        eventMap[key] = event.eventIdentifier
+                        count += 1
                     }
-                    event.title = course.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "课程" : course.name
-                    event.startDate = start
-                    event.endDate = end
-                    event.location = course.location?.trimmingCharacters(in: .whitespacesAndNewlines)
-                    event.notes = notes(for: course, week: week.week, semester: data.currentSemester)
-                    event.alarms = remindersEnabled ? [EKAlarm(relativeOffset: -15 * 60)] : []
-                    try eventStore.save(event, span: .thisEvent, commit: false)
-                    eventMap[key] = event.eventIdentifier
-                    count += 1
                 }
             }
         }

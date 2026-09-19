@@ -1,5 +1,6 @@
 import { normalizeCalendarWeekDays } from "./jwxtParser";
 import { courseMatchesWeek, normalizedCourseWeekList } from "../shared/scheduleWeeks";
+import { adjustmentForDate, isMovedSourceDate, type ScheduleAdjustmentLike } from "../shared/scheduleAdjustments";
 export { parseWeekText as parseScheduleWidgetWeeks } from "../shared/scheduleWeeks";
 
 export const SCHEDULE_WIDGET_PAYLOAD_VERSION = 11;
@@ -234,17 +235,42 @@ function dedupeWidgetCourses(courses: WidgetCourse[]) {
   return [...seen.values()];
 }
 
-function coursesForWeek(parsed: any, week: number, calendarDays: string[]) {
+function coursesForWeek(
+  parsed: any,
+  week: number,
+  calendarDays: string[],
+  adjustments: readonly ScheduleAdjustmentLike[] = [],
+  calendar: any | null = null,
+  schedulesByWeek: Record<number, any> = {},
+) {
   if (week <= 0) return [] as WidgetCourse[];
-  return dedupeWidgetCourses((parsed?.cells ?? [])
-    .flatMap((cell: any) => (cell.courses ?? [])
-      .filter((course: any) => courseMatchesWeek(course, week))
-      .map((course: any) => {
+  const courses: WidgetCourse[] = [];
+  for (let targetDay = 1; targetDay <= 7; targetDay += 1) {
+    const targetDate = calendarDays[targetDay - 1] || "";
+    const adjustment = adjustmentForDate(adjustments, targetDate);
+    if (adjustment?.kind === "off" || isMovedSourceDate(adjustments, targetDate)) continue;
+    let sourceWeek = week;
+    let sourceDay = targetDay;
+    let sourceSchedule = parsed;
+    if (adjustment?.kind === "swap" && adjustment.source) {
+      const sourceInfo = calendarWeekForDate(calendar, adjustment.source);
+      if (!sourceInfo.week || !sourceInfo.day) continue;
+      sourceWeek = sourceInfo.week;
+      sourceDay = sourceInfo.day;
+      sourceSchedule = sourceWeek === week || parsed?.scope === "semester"
+        ? parsed
+        : schedulesByWeek[sourceWeek];
+      if (!sourceSchedule) continue;
+    }
+    for (const cell of sourceSchedule?.cells ?? []) {
+      if (Number(cell.day) !== sourceDay) continue;
+      for (const course of cell.courses ?? []) {
+        if (!courseMatchesWeek(course, sourceWeek)) continue;
         const range = normalizeSlotRange(cell.bigSlot, course);
-        return {
-          day: Number(cell.day),
-          dayLabel: dayLabel(Number(cell.day)),
-          date: calendarDays[Number(cell.day) - 1] || "",
+        courses.push({
+          day: targetDay,
+          dayLabel: dayLabel(targetDay),
+          date: targetDate,
           startSlot: range.start,
           endSlot: range.end,
           startTime: SMALL_SLOTS[range.start - 1]?.start ?? "",
@@ -254,9 +280,11 @@ function coursesForWeek(parsed: any, week: number, calendarDays: string[]) {
           location: course.location || "",
           note: course.slotNote || course.weeks || "",
           custom: Boolean(course.custom),
-        } satisfies WidgetCourse;
-      }))
-    .sort((a: WidgetCourse, b: WidgetCourse) => a.day - b.day || a.startSlot - b.startSlot || a.endSlot - b.endSlot));
+        });
+      }
+    }
+  }
+  return dedupeWidgetCourses(courses.sort((a, b) => a.day - b.day || a.startSlot - b.startSlot || a.endSlot - b.endSlot));
 }
 
 export function buildScheduleWidgetPayload(
@@ -284,7 +312,10 @@ export function buildScheduleWidgetPayload(
     : currentCalendarWeekDays(today.ymd, todayDay);
   const canExposeCourses = week > 0 && (explicitWeek || teachingWeekActive);
 
-  const allCourses = canExposeCourses ? coursesForWeek(parsed, week, calendarDays) : [];
+  const adjustments = effectiveCalendar?.adjustments ?? [];
+  const allCourses = canExposeCourses
+    ? coursesForWeek(parsed, week, calendarDays, adjustments, effectiveCalendar, schedulesByWeek)
+    : [];
 
   const nowMinutes = chinaMinutes(now);
   const visibleCourses = allCourses.filter((course) => (
@@ -316,7 +347,7 @@ export function buildScheduleWidgetPayload(
         : currentCalendarWeekDays(date, targetDay);
       const targetSchedule = schedulesByWeek[targetWeek] ?? parsed;
       const targetCourses = targetWeek > 0
-        ? coursesForWeek(targetSchedule, targetWeek, targetDays).filter((course) => course.day === targetDay)
+        ? coursesForWeek(targetSchedule, targetWeek, targetDays, adjustments, effectiveCalendar, schedulesByWeek).filter((course) => course.day === targetDay)
         : [];
       days.push({
         day: targetDay,
@@ -332,7 +363,7 @@ export function buildScheduleWidgetPayload(
       const weekNumber = Number(previewWeek);
       const dates = normalizeCalendarWeekDays((effectiveCalendar?.weeks ?? []).find((item: any) => Number(item.week) === weekNumber)?.days ?? []);
       if (dates.length !== 7 || dates.some((date) => !date)) continue;
-      const courses = coursesForWeek(previewSchedule, weekNumber, dates);
+      const courses = coursesForWeek(previewSchedule, weekNumber, dates, adjustments, effectiveCalendar, schedulesByWeek);
       dates.forEach((date, index) => {
         if (!days.some((day) => day.date === date)) days.push({
           day: index + 1, label: dayLabel(index + 1), date, week: weekNumber, isToday: false,
@@ -351,7 +382,7 @@ export function buildScheduleWidgetPayload(
     ? parsed
     : (schedulesByWeek[displayWeek] ?? parsed);
   const displayCourses = displayWeek > 0
-    ? coursesForWeek(displaySchedule, displayWeek, displayCalendarDays)
+    ? coursesForWeek(displaySchedule, displayWeek, displayCalendarDays, adjustments, effectiveCalendar, schedulesByWeek)
     : [];
   const weekDays = Array.from({ length: 7 }, (_, index) => {
     const day = index + 1;

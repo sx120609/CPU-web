@@ -31,9 +31,21 @@ export async function loadScheduleWidgetData(
   }
   const semester = current.parsed.currentSemester;
   const previewWeeks = resolveScheduleWidgetPreviewWeeks(current.calendar, requestedWeek, now);
+  const targetWeeks = new Set<number>([
+    ...(requestedWeek ? [Number(requestedWeek)] : [Number(current.calendar.currentWeek), ...previewWeeks]),
+  ].filter((week) => Number.isFinite(week) && week > 0));
+  const sourceWeeks = new Set<number>();
+  for (const adjustment of current.calendar.adjustments ?? []) {
+    if (adjustment.kind !== "swap" || !adjustment.source) continue;
+    const targetWeek = current.calendar.weeks.find((item) => item.days.includes(adjustment.date))?.week;
+    if (!targetWeek || !targetWeeks.has(Number(targetWeek))) continue;
+    const sourceWeek = current.calendar.weeks.find((item) => item.days.includes(adjustment.source))?.week;
+    if (sourceWeek && Number(sourceWeek) !== Number(targetWeek)) sourceWeeks.add(Number(sourceWeek));
+  }
+  const fetchWeeks = [...new Set([...previewWeeks, ...sourceWeeks])];
   const [applyEdits, previews] = await Promise.all([
     prepareSchedule(semester),
-    Promise.all(previewWeeks.map(async (week) => ({
+    Promise.all(fetchWeeks.map(async (week) => ({
       week,
       data: await service.readSchedule(token, { semester, week: String(week) }),
     }))),

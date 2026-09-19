@@ -250,6 +250,22 @@ test("schedule widget includes the next seven days so an empty day can advance t
   assert.deepEqual(payload.upcoming.map((item) => item.name), ["下周课程"]);
 });
 
+test("schedule widget applies swaps to weekends and does not duplicate the source day", () => {
+  const days = ["2026-07-20", "2026-07-21", "2026-07-22", "2026-07-23", "2026-07-24", "2026-07-25", "2026-07-26"];
+  const calendar = {
+    currentSemester: "2025-2026-2", currentWeek: 3, weeks: [{ week: 3, days }],
+    adjustments: [{ date: "2026-07-26", kind: "swap" as const, source: "2026-07-22" }],
+  };
+  const payload = buildScheduleWidgetPayload(
+    { currentSemester: "2025-2026-2", cells: [{ day: 3, bigSlot: 1, courses: [course("周三调休课", "3周", "甲", 1, 2)] }] },
+    calendar,
+    "3",
+    WEDNESDAY_1302_CHINA,
+  );
+  assert.deepEqual(payload.weekDays[2].courses, []);
+  assert.deepEqual(payload.weekDays[6].courses.map((item) => item.name), ["周三调休课"]);
+});
+
 test("widget dates require the matching school calendar and never infer the first teaching week", () => {
   const parsed = { currentSemester: "2026-2027-1", cells: [] };
   assert.equal(resolveScheduleWidgetCalendar(null, parsed), null);

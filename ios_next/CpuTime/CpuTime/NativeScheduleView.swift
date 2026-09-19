@@ -1307,12 +1307,33 @@ struct NativeScheduleView: View {
     }
 
     private func blocks(for day: Int, week: Int?, result: NativeScheduleResult) -> [NativeScheduleCourseBlock] {
+        var sourceDay = day
+        var sourceWeek = week
+        if let week,
+           let calendar = store.calendar,
+           let targetWeek = calendar.weeks.first(where: { $0.week == week }),
+           targetWeek.days.indices.contains(day - 1),
+           let adjustment = calendar.adjustments.first(where: { $0.date == targetWeek.days[day - 1] }) {
+            if adjustment.kind == "off" { return [] }
+            if adjustment.kind == "swap", let source = adjustment.source,
+               let sourceWeekInfo = calendar.weeks.first(where: { $0.days.contains(source) }),
+               let sourceIndex = sourceWeekInfo.days.firstIndex(of: source) {
+                sourceWeek = sourceWeekInfo.week
+                sourceDay = sourceIndex + 1
+            }
+        } else if let week,
+                  let calendar = store.calendar,
+                  let targetWeek = calendar.weeks.first(where: { $0.week == week }),
+                  targetWeek.days.indices.contains(day - 1),
+                  calendar.adjustments.contains(where: { $0.kind == "swap" && $0.source == targetWeek.days[day - 1] }) {
+            return []
+        }
         let rawBlocks = result.cells
-            .filter { $0.day == day }
+            .filter { $0.day == sourceDay }
             .flatMap { cell in
                 cell.courses.enumerated().compactMap { index, course -> NativeScheduleCourseBlockRecord? in
                     let courseWeeks = nativeCourseWeekList(course)
-                    if let week, !courseWeeks.isEmpty, !courseWeeks.contains(week) {
+                    if let sourceWeek, !courseWeeks.isEmpty, !courseWeeks.contains(sourceWeek) {
                         return nil
                     }
                     let fallbackStart = cell.bigSlot * 2 - 1
