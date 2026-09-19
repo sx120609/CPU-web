@@ -431,6 +431,8 @@ export const request = {
       return value;
     });
   },
+  put: <T = unknown>(url: string, data?: unknown, options?: RequestOptions) =>
+    instance.put<unknown, T>(url, data, options).then((value) => { markResponseCacheStale(); return value; }),
   patch: <T = unknown>(url: string, data?: unknown, options?: RequestOptions) =>
     instance.patch<unknown, T>(url, data, options).then((value) => { markResponseCacheStale(); return value; }),
   delete: <T = unknown>(url: string, options?: RequestOptions) =>

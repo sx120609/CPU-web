@@ -501,6 +501,8 @@ Content-Type: application/json
 补充说明：
 
 - AI 文本审核、图片审核、匿名信誉阈值、站点域名等配置现在主要保存在数据库 `site_settings` 中，通过管理后台维护。
+- APNs 实时活动推送配置（`.p8` 路径、Key ID、Team ID、Bundle ID、调度间隔和可选频道映射）在“管理后台 → APNs 推送”维护；保存后数据库配置优先，旧的 `NAPTABLE_APNS_*` 环境变量仍可作为后备。
+- APNs 实时活动采用“设备 + 计划 + 活动 token”链路：iOS 监听 `pushToStartTokenUpdates`，按课表渲染未来 7 天的 `start/update/end` 计划并整体替换上传；服务端只负责幂等存储、过期跳过和 Apple HTTP/2 `liveactivity` 转发，Activity 启动后再登记独立的 update token。iOS 26+ 设备在配置 `production:cpu`/`sandbox:cpu` 频道后，改用学校级 Broadcast Push：频道只发送日期、节次和边界阶段，Widget 用 App Group 本地课表还原个人课程内容；iOS 18–25 继续使用逐设备 push。旧版 `/api/live-activities/register` 仍兼容。生产环境必须给 App ID 开启 Live Activities/Push Notifications，上传对应 Team 的 `.p8` Auth Key，并在后台填写服务器可读的绝对路径、Key ID、Team ID 与主 App Bundle ID；Debug 包使用 sandbox，Release 包使用 production。数据库迁移需包含 `20260919100000_add_live_activity_registrations` 和 `20260919120000_add_live_activity_push_plan`。APNs 是精确计时主路径，`BGTaskScheduler` 只用于 App 挂起时的过期活动清理兜底。
 - 生产部署时无需额外 Nginx 才能跑起来；构建后的前端静态资源会直接由 Express 提供。
 - 世纪互联版 OneDrive / SharePoint 媒体存储现在支持直接在管理后台配置：填写 Azure 应用 ID、密钥、SharePoint 站点地址后，点击“登录授权”完成回调授权，再选择文档库即可。
 - 管理后台支持按媒体类型分别切换后端，例如“图片走本地、视频走世纪互联”。切换后会立刻影响后续新上传文件；历史远端文件仍可继续读取，不会因切换而失效。

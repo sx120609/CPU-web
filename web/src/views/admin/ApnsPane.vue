@@ -3,7 +3,7 @@
     <div class="pane-head">
       <div>
         <h2>APNs 推送</h2>
-        <p>配置实时活动的服务端推送凭据和学校广播频道，保存后供推送服务读取。</p>
+        <p>配置实时活动的服务端推送凭据；已注册的 iOS 设备会在课程边界收到后台更新。</p>
       </div>
       <el-tag :type="form.configured ? 'success' : 'info'">{{ form.configured ? "已配置" : "未配置" }}</el-tag>
     </div>
@@ -27,8 +27,8 @@
       <el-form-item label="Bundle ID"><el-input v-model="form.bundleID" placeholder="例如 me.example.cputime" /></el-form-item>
       <el-form-item label="调度间隔（秒）"><el-input-number v-model="form.tickSeconds" :min="0.5" :max="3600" :step="0.5" /></el-form-item>
     </el-form>
-    <div class="channel-head"><strong>广播频道</strong><el-button size="small" @click="addChannel">添加频道</el-button></div>
-    <p class="hint">频道键使用 production:学校ID 或 sandbox:学校ID，频道 ID 由 Apple Broadcast Push API 返回。</p>
+    <div class="channel-head"><strong>广播频道（可选）</strong><el-button size="small" @click="addChannel">添加频道</el-button></div>
+    <p class="hint">CPU 统一使用频道键 <code>production:cpu</code>（Debug 包另配 <code>sandbox:cpu</code>）；iOS 26+ 会使用 Broadcast Push，旧系统继续走设备 token。</p>
     <div v-if="channels.length" class="channels">
       <div v-for="(channel, index) in channels" :key="channel.id" class="channel-row">
         <el-input v-model="channel.key" placeholder="production:nju" />

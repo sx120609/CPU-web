@@ -83,6 +83,11 @@ struct ContentView: View {
                 }
             }
             .onAppear {
+#if os(iOS)
+                if #available(iOS 17.0, *) {
+                    LiveActivityBackgroundRefresh.shared.register()
+                }
+#endif
 #if DEBUG
                 let env = ProcessInfo.processInfo.environment
                 if let raw = env["CPU_DEBUG_TAB"], let tab = ShellTab(rawValue: raw) {

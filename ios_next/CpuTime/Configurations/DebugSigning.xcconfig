@@ -1,2 +1,3 @@
 #include "SharedSigning.xcconfig"
 #include? "Signing.local.xcconfig"
+APS_ENVIRONMENT = development

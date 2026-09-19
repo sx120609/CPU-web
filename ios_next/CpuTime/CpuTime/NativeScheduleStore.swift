@@ -294,6 +294,41 @@ public struct NativeSchedulePeriod: Codable, Equatable, Sendable {
         self.startTime = startTime
         self.endTime = endTime
     }
+
+    private enum CodingKeys: String, CodingKey { case number, id, startTime, endTime, start, end }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            number: try values.decodeFlexibleInt(forKey: .number)
+                ?? values.decodeFlexibleInt(forKey: .id) ?? 0,
+            startTime: try values.decodeFlexibleString(forKey: .startTime)
+                ?? values.decodeFlexibleString(forKey: .start) ?? "",
+            endTime: try values.decodeFlexibleString(forKey: .endTime)
+                ?? values.decodeFlexibleString(forKey: .end) ?? ""
+        )
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(number, forKey: .number)
+        try values.encode(startTime, forKey: .startTime)
+        try values.encode(endTime, forKey: .endTime)
+    }
+}
+
+public struct NativeScheduleAdjustment: Codable, Equatable, Sendable {
+    public let date: String
+    public let kind: String
+    public let source: String?
+    public let note: String?
+
+    public init(date: String, kind: String, source: String? = nil, note: String? = nil) {
+        self.date = date
+        self.kind = kind
+        self.source = source
+        self.note = note
+    }
 }
 
 /// The same edit payload used by the Web timetable. Keeping this contract in
@@ -404,6 +439,8 @@ public struct NativeScheduleCalendar: Codable, Equatable, Sendable {
     public let semesterStart: String
     public let semesterEnd: String
     public let weeks: [NativeCalendarWeek]
+    public let periods: [NativeSchedulePeriod]
+    public let adjustments: [NativeScheduleAdjustment]
 
     public init(
         source: NativeScheduleSource? = nil,
@@ -412,7 +449,9 @@ public struct NativeScheduleCalendar: Codable, Equatable, Sendable {
         currentWeek: Int = 0,
         semesterStart: String = "",
         semesterEnd: String = "",
-        weeks: [NativeCalendarWeek] = []
+        weeks: [NativeCalendarWeek] = [],
+        periods: [NativeSchedulePeriod] = [],
+        adjustments: [NativeScheduleAdjustment] = []
     ) {
         self.source = source
         self.semesters = semesters
@@ -421,10 +460,12 @@ public struct NativeScheduleCalendar: Codable, Equatable, Sendable {
         self.semesterStart = semesterStart
         self.semesterEnd = semesterEnd
         self.weeks = weeks
+        self.periods = periods
+        self.adjustments = adjustments
     }
 
     private enum CodingKeys: String, CodingKey {
-        case source, semesters, currentSemester, currentWeek, semesterStart, semesterEnd, weeks
+        case source, semesters, currentSemester, currentWeek, semesterStart, semesterEnd, weeks, periods, adjustments
     }
 
     public init(from decoder: Decoder) throws {
@@ -446,7 +487,9 @@ public struct NativeScheduleCalendar: Codable, Equatable, Sendable {
             currentWeek: currentWeek,
             semesterStart: try values.decodeIfPresent(String.self, forKey: .semesterStart) ?? "",
             semesterEnd: try values.decodeIfPresent(String.self, forKey: .semesterEnd) ?? "",
-            weeks: decodedWeeks
+            weeks: decodedWeeks,
+            periods: try values.decodeIfPresent([NativeSchedulePeriod].self, forKey: .periods) ?? [],
+            adjustments: try values.decodeIfPresent([NativeScheduleAdjustment].self, forKey: .adjustments) ?? []
         )
     }
 }

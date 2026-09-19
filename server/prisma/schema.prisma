@@ -91,6 +91,9 @@ model User {
   userCourses                  UserCourse[]
   scheduleEdits                UserScheduleEdit[]
   scheduleWidgetTokens         ScheduleWidgetToken[]
+  liveActivityRegistrations    LiveActivityRegistration[]
+  liveActivityDevices           LiveActivityDevice[]
+  scheduleSharesOwned          ScheduleShare[]              @relation("ScheduleShareOwner")
   toolPermissions              ToolPermission[]
   createdQuestionnaires        Questionnaire[]               @relation("QuestionnaireCreatedBy")
   questionnaireResponses       QuestionnaireResponse[]
@@ -635,6 +638,151 @@ model UserScheduleEdit {
 
   @@unique([userId, semester])
   @@index([userId, updatedAt])
+}
+
+// 管理员维护的学期校历。periods / adjustments 保持 JSON 是为了兼容不同
+// 教务入口的节次数量，并让一次修改能原子覆盖完整学期配置。
+model ScheduleTermConfig {
+  id                  Int      @id @default(autoincrement())
+  semester            String   @unique
+  semesterStartMonday String
+  weekCount           Int
+  periods             String
+  adjustments         String
+  timezone            String   @default("Asia/Shanghai")
+  note                String   @default("")
+  version             Int      @default(1)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([updatedAt])
+}
+
+// 分享课表保存发布时的完整快照，后续校历修正不会静默改变已发出的链接。
+model ScheduleShare {
+  code           String    @id
+  writeTokenHash String    @unique
+  ownerId        Int
+  ownerName      String
+  semester       String
+  payload        String
+  termSnapshot   String
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  revokedAt      DateTime?
+
+  owner User @relation("ScheduleShareOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId, updatedAt])
+  @@index([revokedAt])
+}
+
+// iOS Live Activity 的远程更新注册。APNs token 使用服务端加密信封保存，
+// attributes/contentState 保留最近一次客户端声明的活动状态，供边界调度器更新。
+model LiveActivityRegistration {
+  id              String    @id @default(cuid())
+  userId          Int
+  tokenHash       String    @unique
+  tokenCiphertext String
+  environment     String    @default("production")
+  bundleID        String
+  attributes      String
+  contentState    String
+  active          Boolean   @default(true)
+  lastPushedAt    DateTime?
+  lastError       String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, active])
+  @@index([active, updatedAt])
+}
+
+// Push-to-start 设备凭据。一个设备可以在 App 被挂起时由 APNs 启动新的活动。
+model LiveActivityDevice {
+  id                  String   @id @default(cuid())
+  userId              Int
+  startTokenHash      String?  @unique
+  startTokenCiphertext String?
+  environment         String   @default("production")
+  bundleID            String
+  timeZone            String   @default("Asia/Shanghai")
+  broadcastEnabled    Boolean  @default(false)
+  channelID           String?
+  enabled             Boolean  @default(true)
+  planDigest          String?
+  lastError           String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  user       User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan       LiveActivityPlan[]
+  activities LiveActivityDeviceActivity[]
+
+  @@index([userId, enabled])
+  @@index([enabled, updatedAt])
+  @@index([broadcastEnabled, channelID])
+}
+
+model LiveActivityPlan {
+  id        String   @id @default(cuid())
+  deviceId  String
+  itemID    String
+  fireAt    DateTime
+  expiresAt DateTime
+  event     String
+  payload   String
+  state     String   @default("pending")
+  detail    String   @default("")
+  sentAt    DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  device LiveActivityDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@unique([deviceId, itemID])
+  @@index([state, fireAt])
+  @@index([deviceId, state, fireAt])
+}
+
+model LiveActivityDeviceActivity {
+  id                  String   @id @default(cuid())
+  deviceId            String
+  activityID           String
+  updateTokenHash      String
+  updateTokenCiphertext String
+  expiresAt            DateTime?
+  lastError            String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  device LiveActivityDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@unique([deviceId, activityID])
+  @@unique([updateTokenHash])
+  @@index([deviceId, expiresAt])
+}
+
+model LiveActivityBroadcastEvent {
+  id        String   @id @default(cuid())
+  channelID String
+  eventID   String
+  environment String
+  bundleID  String
+  fireAt    DateTime
+  expiresAt DateTime
+  event     String
+  payload   String
+  state     String   @default("pending")
+  detail    String   @default("")
+  sentAt    DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([channelID, eventID])
+  @@index([state, fireAt])
 }
 
 // iOS Scriptable 小组件只读 token。

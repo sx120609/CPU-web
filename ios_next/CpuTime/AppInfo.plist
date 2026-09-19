@@ -2,14 +2,6 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>CPUAppURL</key>
-	<string>$(CPU_APP_URL)</string>
-	<key>CPUAppGroupIdentifier</key>
-	<string>$(CPU_APP_GROUP_IDENTIFIER)</string>
-	<key>NSCalendarsFullAccessUsageDescription</key>
-	<string>用于将课表课程同步到 Apple 日历。</string>
-	<key>NSSupportsLiveActivities</key>
-	<true/>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -20,6 +12,14 @@
 				<string>cputime-next</string>
 			</array>
 		</dict>
+	</array>
+	<key>CPUAppGroupIdentifier</key>
+	<string>$(CPU_APP_GROUP_IDENTIFIER)</string>
+	<key>CPUAppURL</key>
+	<string>$(CPU_APP_URL)</string>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>cn.cputime.ios.next.liveactivity.refresh</string>
 	</array>
 </dict>
 </plist>

@@ -1058,6 +1058,13 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
         return try JSONSerialization.data(withJSONObject: payload)
     }
 
+    /// Shares the authenticated WKWebView cookie/CSRF transport with native
+    /// Live Activity registration. The APNs token never leaves this session
+    /// through an unauthenticated URLSession request.
+    func liveActivityAPIRequest(path: String, method: String, body: [String: Any]?) async throws -> Data {
+        try await nativeAssistantAPIRequest(path: path, method: method, body: body)
+    }
+
     private func methodJSONHeader(_ method: String) -> String {
         method == "GET" ? "false" : "true"
     }

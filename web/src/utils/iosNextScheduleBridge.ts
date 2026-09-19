@@ -688,10 +688,16 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
     }
     return [...grouped.values()].sort((left, right) => left.bigSlot - right.bigSlot || left.day - right.day);
   };
-  const periods = smallSlots.map(slot => ({ number: slot.no, startTime: slot.start, endTime: slot.end }));
+  const bundledPeriods = smallSlots.map(slot => ({ number: slot.no, startTime: slot.start, endTime: slot.end }));
+  const periodsForCalendar = (calendar: CalendarResult | null) => {
+    const configured = (calendar?.periods ?? [])
+      .filter(period => Number.isInteger(period.id) && period.id > 0 && period.start && period.end)
+      .map(period => ({ number: period.id, startTime: period.start, endTime: period.end }));
+    return configured.length ? configured : bundledPeriods;
+  };
   const snapshot = (entry: SemesterEntry, data: ScheduleResult, week?: string) => ({
     version: 1, source: "jwxt", completeSemester: Boolean(entry.complete), fetchedAt: entry.createdAt,
-    periods,
+    periods: periodsForCalendar(entry.calendar),
     data: { ...edited(entry, entry.complete ?? data), currentWeek: week || (entry.calendar?.currentWeek
       ? String(entry.calendar.currentWeek) : data.currentWeek) },
     calendar: entry.calendar, auth: { authenticated: true, identity: "undergraduate", account: accountKey() },
@@ -795,7 +801,7 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
         if (generation !== epoch || !jwxt.isLoggedIn) return unauthorized();
         const calendar = buildGraduateFallbackCalendar(data);
         const expanded = extendScheduleWeeksToCalendar(data, calendar) ?? data;
-        return { version: 1, source: "graduate", completeSemester: true, fetchedAt: Date.now(), periods,
+        return { version: 1, source: "graduate", completeSemester: true, fetchedAt: Date.now(), periods: periodsForCalendar(calendar),
           data: { ...expanded, currentWeek: week || (calendar?.currentWeek ? String(calendar.currentWeek) : data.currentWeek),
             cells: nativeCells(data.currentSemester, expanded.cells) }, calendar,
           auth: { authenticated: true, identity: "graduate", account: accountKey() } };

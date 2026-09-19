@@ -371,6 +371,9 @@ private struct LiveActivitySettingsSection: View {
                 set: { value in
                     enabled = value
                     NativeLiveActivityController.shared.setEnabled(value)
+                    if #available(iOS 17.2, *) {
+                        LiveActivityPushService.shared.setEnabled(value)
+                    }
                 }
             ))
             if enabled, ActivityAuthorizationInfo().areActivitiesEnabled {

@@ -963,6 +963,18 @@ export type AdminDeploymentStatus = {
   logs: string[];
 };
 
+export type ScheduleTermConfig = {
+  semester: string;
+  semesterStartMonday: string;
+  weekCount: number;
+  periods: Array<{ id: number; name: string; start: string; end: string }>;
+  adjustments: Array<{ date: string; kind: "off" | "swap"; source?: string; note?: string }>;
+  timezone: string;
+  note: string;
+  version: number;
+  updatedAt?: string;
+};
+
 export const adminApi = {
   apnsConfig: (options?: RequestOptions) => request.get<ApnsConfig>("/admin/apns-config", undefined, options),
   updateApnsConfig: (payload: Omit<ApnsConfig, "configured" | "updatedAt" | "iosPushStats">) =>
@@ -987,6 +999,10 @@ export const adminApi = {
     request.post<JwxtAgentsAdminConfig>(`/admin/jwxt-agents/${encodeURIComponent(agentId)}/reset-identity`, {}),
   updateJwxtAgent: (agentId: string) =>
     request.post<JwxtAgentUpdateResult>(`/admin/jwxt-agents/${encodeURIComponent(agentId)}/update`, {}),
+  scheduleTerms: (options?: RequestOptions) =>
+    request.get<ScheduleTermConfig[]>('/admin/schedule-terms', undefined, options),
+  saveScheduleTerm: (semester: string, payload: Omit<ScheduleTermConfig, 'semester' | 'version' | 'updatedAt'>) =>
+    request.put<ScheduleTermConfig>(`/admin/schedule-terms/${encodeURIComponent(semester)}`, payload),
   // 数据库备份
   databaseStatus: (options?: RequestOptions) => request.get<DatabaseBackupStatus>("/admin/database/status", undefined, options),
   downloadDatabaseBackup: () =>

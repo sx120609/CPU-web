@@ -46,6 +46,9 @@ export interface CalendarResult {
   semesterStart: string;
   semesterEnd: string;
   weeks: CalendarWeek[];
+  periods?: Array<{ id: number; name: string; start: string; end: string }>;
+  adjustments?: Array<{ date: string; kind: "off" | "swap"; source?: string; note?: string }>;
+  termConfig?: unknown;
 }
 
 export interface SemesterDescriptor {

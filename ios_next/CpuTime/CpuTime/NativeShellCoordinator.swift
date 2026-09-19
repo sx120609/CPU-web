@@ -40,6 +40,17 @@ final class NativeShellCoordinator: ObservableObject {
         guard !isConnected else { return }
         self.webSession = webSession
         self.scheduleStore = scheduleStore
+        NativeLiveActivityController.shared.setAPIRequest { [weak webSession] path, method, body in
+            guard let webSession else { throw NativeAssistantError.unavailable }
+            return try await webSession.liveActivityAPIRequest(path: path, method: method, body: body)
+        }
+        if #available(iOS 17.2, *) {
+            LiveActivityPushService.shared.setAPIRequest { [weak webSession] path, method, body in
+                guard let webSession else { throw NativeAssistantError.unavailable }
+                return try await webSession.liveActivityAPIRequest(path: path, method: method, body: body)
+            }
+            LiveActivityPushService.shared.activate()
+        }
 
         // The web app owns its router for the web tabs. It reports route intents
         // here so a web link to /schedule can select the native tab instead of

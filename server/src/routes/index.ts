@@ -33,9 +33,11 @@ import { accountVerificationRouter } from "./accountVerification";
 import { yaodaFlightRouter } from "./yaodaFlight";
 import { privacyRouter } from "./privacy";
 import { revokedCredentialGate } from "../middleware/revokedCredential";
+import { liveActivityRouter } from "./liveActivities";
 
 export const router = Router();
 router.use("/privacy", privacyRouter);
+router.use("/live-activities", liveActivityRouter);
 
 // 公开路径
 router.use("/auth", authRouter);

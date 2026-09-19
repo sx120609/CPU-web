@@ -1,0 +1,122 @@
+<template>
+  <section class="schedule-terms-pane" v-loading="loading">
+    <div class="pane-head">
+      <div>
+        <h2>课表校历与调休</h2>
+        <p>按教务学期维护第一周、总周数、节次时间和放假/补班日期。配置会随课表接口下发。</p>
+      </div>
+      <el-button type="primary" @click="addTerm">新增学期</el-button>
+    </div>
+
+    <div class="term-layout">
+      <aside class="term-list">
+        <button
+          v-for="item in terms"
+          :key="item.semester"
+          type="button"
+          :class="{ active: item.semester === selectedSemester }"
+          @click="selectTerm(item.semester)"
+        >
+          <strong>{{ item.semester }}</strong>
+          <small>v{{ item.version }} · {{ item.weekCount }} 周</small>
+        </button>
+        <el-empty v-if="!terms.length && !loading" description="还没有配置学期" />
+      </aside>
+
+      <div v-if="draft" class="term-editor">
+        <div class="form-grid">
+          <label><span>学期 ID</span><el-input v-model="draft.semester" :disabled="Boolean(existingTerm)" placeholder="例如 2026-2027-1" /></label>
+          <label><span>第一周周一</span><el-date-picker v-model="draft.semesterStartMonday" type="date" value-format="YYYY-MM-DD" /></label>
+          <label><span>总周数</span><el-input-number v-model="draft.weekCount" :min="1" :max="64" /></label>
+          <label><span>时区</span><el-input v-model="draft.timezone" /></label>
+          <label class="wide"><span>备注</span><el-input v-model="draft.note" maxlength="500" /></label>
+        </div>
+
+        <div class="section-head"><h3>节次时间</h3><el-button size="small" @click="addPeriod">增加节次</el-button></div>
+        <div class="period-grid">
+          <div v-for="(period, index) in draft.periods" :key="period.id" class="period-row">
+            <b>第{{ index + 1 }}节</b>
+            <el-time-picker v-model="period.start" format="HH:mm" value-format="HH:mm" placeholder="开始" />
+            <el-time-picker v-model="period.end" format="HH:mm" value-format="HH:mm" placeholder="结束" />
+            <el-button text type="danger" @click="draft.periods.splice(index, 1)">删除</el-button>
+          </div>
+        </div>
+
+        <div class="section-head"><h3>调休 / 放假</h3><el-button size="small" @click="addAdjustment">增加日期</el-button></div>
+        <div class="adjustment-list">
+          <div v-for="(item, index) in draft.adjustments" :key="`${item.date}-${index}`" class="adjustment-row">
+            <el-date-picker v-model="item.date" type="date" value-format="YYYY-MM-DD" />
+            <el-select v-model="item.kind" class="kind-select"><el-option label="放假" value="off" /><el-option label="调课" value="swap" /></el-select>
+            <el-date-picker v-if="item.kind === 'swap'" v-model="item.source" type="date" value-format="YYYY-MM-DD" placeholder="上哪天的课" />
+            <el-input v-model="item.note" maxlength="80" placeholder="例如 国庆节" />
+            <el-button text type="danger" @click="draft.adjustments.splice(index, 1)">删除</el-button>
+          </div>
+          <el-empty v-if="!draft.adjustments.length" description="暂无调休日期" :image-size="52" />
+        </div>
+
+        <div class="save-bar"><span v-if="existingTerm">当前版本 v{{ existingTerm.version }}</span><span v-else>新学期配置</span><el-button type="primary" :loading="saving" @click="save">保存配置</el-button></div>
+      </div>
+      <el-empty v-else description="选择一个学期开始编辑" />
+    </div>
+  </section>
+</template>
+
+<script setup lang="ts">
+import { computed, onMounted, ref } from "vue";
+import { ElMessage } from "element-plus";
+import { adminApi, type ScheduleTermConfig } from "@/api/admin";
+
+type Draft = Omit<ScheduleTermConfig, "version" | "updatedAt">;
+const terms = ref<ScheduleTermConfig[]>([]);
+const selectedSemester = ref("");
+const draft = ref<Draft | null>(null);
+const loading = ref(false);
+const saving = ref(false);
+const existingTerm = computed(() => terms.value.find((item) => item.semester === selectedSemester.value) || null);
+
+function clone(item: ScheduleTermConfig): Draft {
+  return JSON.parse(JSON.stringify({ ...item, version: undefined, updatedAt: undefined }));
+}
+function defaultDraft(semester = "") : Draft {
+  return { semester, semesterStartMonday: "", weekCount: 18, timezone: "Asia/Shanghai", note: "", periods: Array.from({ length: 11 }, (_, index) => ({ id: index + 1, name: `第${index + 1}节`, start: "08:00", end: "08:45" })), adjustments: [] };
+}
+async function load() {
+  loading.value = true;
+  try {
+    terms.value = await adminApi.scheduleTerms({ cacheTtlMs: 0 });
+    if (!selectedSemester.value && terms.value[0]) selectTerm(terms.value[0].semester);
+  } catch { /* request layer shows the error */ } finally { loading.value = false; }
+}
+function selectTerm(value: string) {
+  selectedSemester.value = value;
+  const item = terms.value.find((term) => term.semester === value);
+  draft.value = item ? clone(item) : defaultDraft(value);
+}
+function addTerm() { selectedSemester.value = ""; draft.value = defaultDraft(); }
+function addPeriod() {
+  if (!draft.value) return;
+  const last = draft.value.periods.at(-1);
+  draft.value.periods.push({ id: draft.value.periods.length + 1, name: `第${draft.value.periods.length + 1}节`, start: last?.end || "08:00", end: "08:45" });
+}
+function addAdjustment() { draft.value?.adjustments.push({ date: draft.value.semesterStartMonday, kind: "off", note: "" }); }
+async function save() {
+  if (!draft.value) return;
+  if (!draft.value.semester.trim()) return ElMessage.warning("请填写学期 ID");
+  if (!draft.value.semesterStartMonday) return ElMessage.warning("请填写第一周周一");
+  saving.value = true;
+  try {
+    const { semester: _semester, ...payload } = draft.value;
+    const saved = await adminApi.saveScheduleTerm(draft.value.semester.trim(), payload);
+    const index = terms.value.findIndex((item) => item.semester === saved.semester);
+    if (index >= 0) terms.value[index] = saved; else terms.value.unshift(saved);
+    selectedSemester.value = saved.semester;
+    draft.value = clone(saved);
+    ElMessage.success(`已保存 ${saved.semester}，当前版本 v${saved.version}`);
+  } catch { /* request layer shows the error */ } finally { saving.value = false; }
+}
+onMounted(load);
+</script>
+
+<style scoped>
+.schedule-terms-pane{display:flex;flex-direction:column;gap:18px}.pane-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.pane-head h2{margin:0;font-size:20px}.pane-head p{margin:6px 0 0;color:var(--cpu-text-secondary);font-size:13px}.term-layout{display:grid;grid-template-columns:220px minmax(0,1fr);gap:18px}.term-list{display:flex;flex-direction:column;gap:6px}.term-list button{display:flex;flex-direction:column;align-items:flex-start;gap:3px;padding:12px;border:1px solid var(--cpu-border-soft);border-radius:8px;background:var(--cpu-card);color:inherit;text-align:left;cursor:pointer}.term-list button.active{border-color:var(--cpu-primary);box-shadow:0 0 0 2px color-mix(in srgb,var(--cpu-primary) 12%,transparent)}.term-list small{color:var(--cpu-text-muted)}.term-editor{min-width:0}.form-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.form-grid label{display:flex;flex-direction:column;gap:6px}.form-grid label>span{font-size:12px;color:var(--cpu-text-secondary)}.form-grid .wide{grid-column:span 2}.section-head{display:flex;align-items:center;justify-content:space-between;margin:24px 0 10px}.section-head h3{margin:0;font-size:15px}.period-grid,.adjustment-list{display:flex;flex-direction:column;gap:8px}.period-row,.adjustment-row{display:grid;grid-template-columns:72px 150px 150px minmax(120px,1fr) auto;align-items:center;gap:8px}.adjustment-row{grid-template-columns:150px 100px 150px minmax(120px,1fr) auto}.period-row b{font-size:13px}.save-bar{display:flex;align-items:center;justify-content:space-between;margin-top:24px;padding-top:14px;border-top:1px solid var(--cpu-border-soft);color:var(--cpu-text-secondary);font-size:12px}@media(max-width:800px){.term-layout{grid-template-columns:1fr}.form-grid{grid-template-columns:1fr 1fr}.form-grid .wide{grid-column:span 2}.period-row,.adjustment-row{grid-template-columns:1fr 1fr}.period-row b{grid-column:1/-1}.period-row .el-button,.adjustment-row .el-button{justify-self:end}}@media(max-width:520px){.form-grid{grid-template-columns:1fr}.form-grid .wide{grid-column:auto}.adjustment-row{grid-template-columns:1fr}.adjustment-row .el-button{justify-self:start}}
+</style>

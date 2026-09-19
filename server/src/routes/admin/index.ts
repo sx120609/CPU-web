@@ -141,6 +141,7 @@ import {
   getAdminDeploymentStatus,
   startAdminDeploymentUpdate,
 } from "../../services/deployment";
+import { listScheduleTermConfigs, saveScheduleTermConfig } from "../../services/scheduleTermConfig";
 import { getApnsConfig, normalizeApnsConfig, saveApnsConfig } from "../../services/apnsConfig";
 
 export const adminRouter = Router();
@@ -2076,6 +2077,39 @@ adminRouter.get("/overview", modOrAbove, async (_req, res, next) => {
 
 adminRouter.get("/site-config", adminOnly, (_req, res) => {
   ok(res, getSiteConfig());
+});
+
+// ============ 课表校历 / 调休 ============
+
+const scheduleTermPatchSchema = z.object({
+  semesterStartMonday: z.string().trim(),
+  weekCount: z.number().int(),
+  periods: z.array(z.object({
+    id: z.number().int().optional(),
+    name: z.string().trim().max(24).optional(),
+    start: z.string().trim(),
+    end: z.string().trim(),
+  })).max(30),
+  adjustments: z.array(z.object({
+    date: z.string().trim(),
+    kind: z.enum(["off", "swap"]),
+    source: z.string().trim().optional(),
+    note: z.string().trim().max(80).optional(),
+  })).max(200),
+  timezone: z.string().trim().optional(),
+  note: z.string().trim().max(500).optional(),
+}).strict();
+
+adminRouter.get("/schedule-terms", adminOnly, async (_req, res, next) => {
+  try { ok(res, await listScheduleTermConfigs()); } catch (error) { next(error); }
+});
+
+adminRouter.put("/schedule-terms/:semester", adminOnly, validate(scheduleTermPatchSchema), async (req, res, next) => {
+  try {
+    ok(res, await saveScheduleTermConfig({ ...req.body, semester: String(req.params.semester || "") }));
+  } catch (error) {
+    next(Errors.badRequest(error instanceof Error ? error.message : "学期校历配置无效"));
+  }
 });
 
 adminRouter.get("/site-config/prompt-defaults", adminOnly, (_req, res) => {

@@ -4,6 +4,33 @@ import Foundation
 /// Shared wire model for the iPhone Live Activity and its WidgetKit view.
 /// This file is compiled into both the app and the widget extension.
 public struct ScheduleLiveActivityAttributes: ActivityAttributes, Equatable {
+    public static let broadcastCoursesKey = "cpu.liveActivity.broadcastCourses"
+
+    public struct LocalCourse: Codable, Hashable {
+        public let dateKey: String
+        public let period: Int
+        public let name: String
+        public let teacher: String
+        public let location: String
+        public let periodLabel: String?
+        public let startDate: Date
+        public let endDate: Date
+        public let weekRangeLabel: String?
+
+        public init(dateKey: String, period: Int, name: String, teacher: String, location: String,
+                    periodLabel: String?, startDate: Date, endDate: Date, weekRangeLabel: String?) {
+            self.dateKey = dateKey
+            self.period = period
+            self.name = name
+            self.teacher = teacher
+            self.location = location
+            self.periodLabel = periodLabel
+            self.startDate = startDate
+            self.endDate = endDate
+            self.weekRangeLabel = weekRangeLabel
+        }
+    }
+
     public struct ContentState: Codable, Hashable {
         public enum Phase: String, Codable, Hashable {
             case upcoming
@@ -33,6 +60,13 @@ public struct ScheduleLiveActivityAttributes: ActivityAttributes, Equatable {
         public let nextCourseStart: Date?
         public let nextCourseEnd: Date?
         public let updatedAt: Date
+        /// Compact school-channel boundary marker. The widget resolves the
+        /// student's actual course from the App Group snapshot instead of
+        /// receiving personal course data in a broadcast payload.
+        public let broadcastDateKey: String?
+        public let broadcastPeriod: Int?
+        public let broadcastPhase: String?
+        public let broadcastTimestamp: Date?
 
         public init(
             phase: Phase,
@@ -52,7 +86,11 @@ public struct ScheduleLiveActivityAttributes: ActivityAttributes, Equatable {
             nextCourseLocation: String? = nil,
             nextCourseStart: Date? = nil,
             nextCourseEnd: Date? = nil,
-            updatedAt: Date = .now
+            updatedAt: Date = .now,
+            broadcastDateKey: String? = nil,
+            broadcastPeriod: Int? = nil,
+            broadcastPhase: String? = nil,
+            broadcastTimestamp: Date? = nil
         ) {
             self.phase = phase
             self.courseName = courseName
@@ -72,6 +110,37 @@ public struct ScheduleLiveActivityAttributes: ActivityAttributes, Equatable {
             self.nextCourseStart = nextCourseStart
             self.nextCourseEnd = nextCourseEnd
             self.updatedAt = updatedAt
+            self.broadcastDateKey = broadcastDateKey
+            self.broadcastPeriod = broadcastPeriod
+            self.broadcastPhase = broadcastPhase
+            self.broadcastTimestamp = broadcastTimestamp
+        }
+
+        /// Rehydrate a broadcast boundary with this user's private local
+        /// timetable. Broadcast payloads intentionally carry no course text.
+        public func resolvedForBroadcast() -> Self {
+            let group = ((Bundle.main.object(forInfoDictionaryKey: "CPUAppGroupIdentifier") as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 } ?? "group.cn.cputime.mobile"
+            guard let dateKey = broadcastDateKey, let period = broadcastPeriod,
+                  let data = UserDefaults(suiteName: group)?.data(forKey: ScheduleLiveActivityAttributes.broadcastCoursesKey),
+                  let courses = try? JSONDecoder().decode([ScheduleLiveActivityAttributes.LocalCourse].self, from: data) else { return self }
+            let sameDay = courses.filter { $0.dateKey == dateKey }
+            let course = broadcastPhase == "ended"
+                ? sameDay.first(where: { $0.period > period }) ?? sameDay.first(where: { $0.period == period })
+                : sameDay.first(where: { $0.period == period })
+            guard let course else { return self }
+            let phase: Phase = broadcastPhase == "started" || broadcastPhase == "inProgress" ? .inProgress : .upcoming
+            return Self(
+                phase: phase,
+                courseName: course.name,
+                teacher: course.teacher,
+                location: course.location,
+                periodLabel: course.periodLabel,
+                dateLabel: dateKey,
+                weekRangeLabel: course.weekRangeLabel,
+                startDate: course.startDate,
+                endDate: course.endDate,
+                updatedAt: broadcastTimestamp ?? .now
+            )
         }
     }
 

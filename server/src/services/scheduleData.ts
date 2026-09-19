@@ -3,6 +3,7 @@ import { withCache } from "./cache";
 import * as transport from "./jwxtTransport";
 import { normalizeCalendarWeekDays } from "./jwxtParser";
 import { Errors } from "../utils/response";
+import { applyScheduleTermConfig, getScheduleTermConfig } from "./scheduleTermConfig";
 
 const SCHEDULE_DATA_CACHE_REVISION = "schedule-data-v2";
 const SCHEDULE_TTL_MS = 5 * 60_000;
@@ -53,7 +54,9 @@ export function createScheduleDataService(dependencies: Partial<Dependencies> = 
       },
       { refresh: query.refresh },
     );
-    const parsed = calendarAtDate(snapshot.parsed, deps.now());
+    const upstreamCalendar = calendarAtDate(snapshot.parsed, deps.now());
+    const config = await getScheduleTermConfig(upstreamCalendar.currentSemester || semester);
+    const parsed = applyScheduleTermConfig(upstreamCalendar, config, deps.now());
     if (semester && parsed.currentWeek > 0) {
       await deps.cache("jwxt-calendar", currentKey, CALENDAR_TTL_MS, async () => snapshot, { refresh: true });
     }

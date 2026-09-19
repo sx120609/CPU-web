@@ -37,24 +37,26 @@ private struct ScheduleLiveActivityModernWidget: Widget {
 private struct ScheduleLiveActivityWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: ScheduleLiveActivityAttributes.self) { context in
+            let state = context.state.resolvedForBroadcast()
             Group {
                 if #available(iOS 18.0, *) {
-                    ScheduleLiveActivityAdaptiveContent(state: context.state)
+                    ScheduleLiveActivityAdaptiveContent(state: state)
                 } else {
-                    ScheduleLiveActivityLockScreen(state: context.state)
+                    ScheduleLiveActivityLockScreen(state: state)
                 }
             }
             .activityBackgroundTint(ScheduleLiveActivityPalette.surface)
             .activitySystemActionForegroundColor(.white)
         } dynamicIsland: { context in
-            DynamicIsland {
+            let state = context.state.resolvedForBroadcast()
+            return DynamicIsland {
                 // The camera owns the centre of the expanded island. Put the
                 // title in the full-width bottom region rather than squeezing
                 // it between the logo, camera and a growing timer.
                 DynamicIslandExpandedRegion(.leading, priority: 1) {
                     HStack(spacing: 5) {
                         ScheduleLiveActivityLogo(size: 24)
-                        Text(context.state.phaseTitle)
+                        Text(state.phaseTitle)
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(ScheduleLiveActivityPalette.accent)
                             .lineLimit(1)
@@ -64,19 +66,19 @@ private struct ScheduleLiveActivityWidget: Widget {
                     .padding(.leading, 4)
                 }
                 DynamicIslandExpandedRegion(.trailing, priority: 1) {
-                    ScheduleLiveActivityCountdown(state: context.state, compact: true, centered: true)
+                    ScheduleLiveActivityCountdown(state: state, compact: true, centered: true)
                         .frame(maxWidth: .infinity, minHeight: 40, alignment: .trailing)
                         .padding(.trailing, 4)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    ScheduleLiveActivityExpandedDetails(state: context.state)
+                    ScheduleLiveActivityExpandedDetails(state: state)
                         .padding(.top, 5)
                 }
             } compactLeading: {
                 ScheduleLiveActivityLogo(size: 21)
                     .accessibilityLabel("药大拾间课表")
             } compactTrailing: {
-                ScheduleLiveActivityTimer(state: context.state)
+                ScheduleLiveActivityTimer(state: state)
                     .font(.system(size: 14, weight: .semibold, design: .rounded).monospacedDigit())
                     .foregroundStyle(ScheduleLiveActivityPalette.accent)
                     .frame(width: 46, alignment: .trailing)

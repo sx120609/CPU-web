@@ -1043,6 +1043,7 @@ export interface CalendarWeek {
 }
 
 export interface CalendarResult {
+  source?: "modern" | "legacy";
   calendarSource?: "teaching-calendar" | "schedule-dates";
   semesters: SemesterOption[];
   currentSemester: string;
@@ -1051,6 +1052,9 @@ export interface CalendarResult {
   weeks: CalendarWeek[];
   currentWeek: number;
   today: string;
+  periods?: Array<{ id: number; name: string; start: string; end: string }>;
+  adjustments?: Array<{ date: string; kind: "off" | "swap"; source?: string; note?: string }>;
+  termConfig?: unknown;
 }
 
 function dayOfWeekForCalendarYmd(ymd: string) {
