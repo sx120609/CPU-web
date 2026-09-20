@@ -75,6 +75,21 @@ export function isStale(savedAt: number, ttl = SCHEDULE_CACHE_TTL) {
   return !savedAt || Date.now() - savedAt > ttl;
 }
 
+/** Invalidate a semester only after a refresh succeeds, preserving offline data on failure. */
+export function clearSemesterScheduleCache<T>(completeKey: string, memory: Map<string, T>) {
+  if (!completeKey.endsWith(":all")) return;
+  const prefix = completeKey.slice(0, -3);
+  for (const key of memory.keys()) {
+    if (key.startsWith(prefix)) memory.delete(key);
+  }
+  try {
+    for (let index = localStorage.length - 1; index >= 0; index--) {
+      const key = localStorage.key(index);
+      if (key?.startsWith(prefix)) localStorage.removeItem(key);
+    }
+  } catch { /* Memory remains usable when storage is unavailable. */ }
+}
+
 export function readStoredLastState(key: string): LastState | null {
   if (!key) return null;
   try {

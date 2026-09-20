@@ -831,6 +831,7 @@ import {
 } from "@/utils/scheduleEdits";
 import {
   buildScheduleCacheKey,
+  clearSemesterScheduleCache,
   isStale,
   readCache,
   readLatestScheduleCache,
@@ -877,6 +878,7 @@ import {
   MAX_SMALL_SLOT,
   smallSlots,
 } from "@/views/schedule/slots";
+import { createSemesterScheduleLoader, type ScheduleResponse } from "@/views/schedule/semesterLoader";
 import { useScheduleBackground } from "@/views/schedule/useScheduleBackground";
 import { createScheduleViewModelHelpers } from "@/views/schedule/viewModels";
 import { DEFAULT_SCHEDULE_VIEW_MODE, resolveScheduleViewMode } from "@/views/schedule/types";
@@ -916,8 +918,22 @@ const compactViewport = ref(false);
 const THEME_KEY = "cpu-schedule-theme-v2";
 const GRAD_DEBUG_URL = "http://ygl.cpu.edu.cn/gmis5/oauthLogin/zgyk";
 const GRAD_DEBUG_FIXTURE_PATH = "server/.debug/grad-schedule.html";
-const scheduleCacheStore = new Map<string, CacheEnvelope<ScheduleResult>>();
-const prewarmingScheduleKeys = new Set<string>();
+const scheduleCacheStore = reactive(new Map<string, CacheEnvelope<ScheduleResult>>());
+const semesterLoader = createSemesterScheduleLoader(
+  params => jwxt.withSessionRetry(() => jwxtApi.schedule(params, { silent: true })) as Promise<ScheduleResponse>,
+  (response, targetWeek, reset) => {
+    if (disposed) return;
+    const key = scheduleCacheKey(response.parsed.currentSemester, targetWeek);
+    const previous = scheduleCacheStore.get(key) ?? readCache<ScheduleResult>(key);
+    notifyOfficialScheduleChange(previous?.data, response.parsed);
+    if (reset) clearSemesterScheduleCache(scheduleCacheKey(response.parsed.currentSemester, "all"), scheduleCacheStore);
+    writeScheduleCache(key, response.parsed);
+  },
+);
+watch(() => auth.sessionVersion, () => {
+  semesterLoader.clear();
+  scheduleCacheStore.clear();
+}, { flush: "sync" });
 const isNativeScheduleApp = ["android", "harmony", "ios"].includes(detectClientPlatform());
 const isAndroidScheduleApp = isAndroidNativeApp() && !isFlutterNativeShell();
 const isDev = computed(() => import.meta.env.DEV);
@@ -1016,11 +1032,10 @@ function selectWeek(v: string | number) {
   syncGraduateActiveDayForWeek(next);
   saveLastState();
   weekDialogOpen.value = false;
-  const key = scheduleCacheKey(semester.value || parsed.value?.currentSemester, next);
+  const key = availableScheduleCacheKey(semester.value || parsed.value?.currentSemester, next);
   const cached = scheduleCacheStore.get(key) ?? readCache<ScheduleResult>(key);
   if (cached?.data) {
-    applyScheduleCache(key);
-    void refreshScheduleForCurrentSource({ background: true });
+    applyScheduleCache(key, false);
     return;
   }
   void refreshScheduleForCurrentSource();
@@ -1646,6 +1661,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   disposed = true;
+  semesterLoader.clear();
   scheduleMounted = false;
   scheduleRequestSeq += 1;
   foregroundScheduleRequestSeq = scheduleRequestSeq;
@@ -1959,9 +1975,8 @@ async function copyShareUrl() {
 
 async function loadSchedule(force = false, background = false) {
   if (disposed) return;
-  if (loading.value && !background) return;
   const hadCache = !force && restoreScheduleCache();
-  if (background) loading.value = true;
+  if (hadCache && parsed.value?.scope === "semester" && !isStale(scheduleSavedAt.value)) return;
   const canFallbackToVisibleSchedule = Boolean(parsed.value) && (
     !semester.value
     || !parsed.value?.currentSemester
@@ -1985,20 +2000,16 @@ async function loadSchedule(force = false, background = false) {
     loading.value = !parsed.value || force || !hadCache;
   }
   try {
-    const r: any = await jwxt.withSessionRetry(() => jwxtApi.schedule(
-      { semester: semester.value, week: week.value, refresh: force ? "1" : undefined },
-      { silent: background || hadCache || (offlineMode.value && canFallbackToVisibleSchedule) },
-    ));
+    const r = await semesterLoader.load(requestedSemester, requestedWeek, force);
     if (disposed) return;
     if (!isCurrentScheduleRequest(requestSeq, requestedSemester, requestedWeek)) {
-      if (r?.parsed) writeScheduleCache(scheduleCacheKey(r.parsed.currentSemester || requestedSemester, requestedWeek), r.parsed);
       return;
     }
     scheduleSource.value = "jwxt";
     graduateSourceMeta.value = null;
     parsed.value = r.parsed;
     if (r.calendar) {
-      calendar.value = hydrateCalendar(r.calendar);
+      calendar.value = hydrateCalendar(r.calendar as CalendarResult);
       writeCache(calendarCacheKey(r.parsed.currentSemester), calendar.value);
     }
     if (!semester.value) semester.value = parsed.value?.currentSemester ?? "";
@@ -2007,7 +2018,6 @@ async function loadSchedule(force = false, background = false) {
     scheduleSavedAt.value = Date.parse(r.syncedAt || "") || Date.now();
     saveScheduleCache();
     saveLastState();
-    prewarmAdjacentWeekCaches();
   } catch (error) {
     if (!isCurrentScheduleRequest(requestSeq, requestedSemester, requestedWeek)) return;
     if (!hadCache && !canFallbackToVisibleSchedule) throw error;
@@ -2037,15 +2047,13 @@ async function changeWeek(delta: number) {
   week.value = next;
   syncGraduateActiveDayForWeek(next);
   saveLastState();
-  const key = scheduleCacheKey(semester.value || parsed.value?.currentSemester, next);
+  const key = availableScheduleCacheKey(semester.value || parsed.value?.currentSemester, next);
   const cached = scheduleCacheStore.get(key) ?? readCache<ScheduleResult>(key);
   if (cached?.data) {
-    applyScheduleCache(key);
-    void refreshScheduleForCurrentSource({ background: true });
+    applyScheduleCache(key, false);
     return;
   }
   await refreshScheduleForCurrentSource();
-  prewarmAdjacentWeekCaches();
 }
 
 const canJumpToCurrentWeek = computed(() => {
@@ -2092,11 +2100,10 @@ async function jumpToScheduleWeek(cur: number, targetSemester = semester.value) 
   week.value = String(cur);
   activeDay.value = today;
   saveLastState();
-  const key = scheduleCacheKey(semester.value || parsed.value?.currentSemester, week.value);
+  const key = availableScheduleCacheKey(semester.value || parsed.value?.currentSemester, week.value);
   const cached = scheduleCacheStore.get(key) ?? readCache<ScheduleResult>(key);
   if (cached?.data) {
-    applyScheduleCache(key);
-    void refreshScheduleForCurrentSource({ background: true });
+    applyScheduleCache(key, false);
     return;
   }
   await refreshScheduleForCurrentSource();
@@ -2557,13 +2564,14 @@ function syncNetworkStatus() {
 
 function scheduleForWeek(weekValue: string | number) {
   const requested = String(weekValue || "");
-  if (requested && requested === currentWeekValue() && parsed.value) return parsed.value;
+  if (parsed.value && parsed.value.currentSemester === semester.value
+    && (parsed.value.scope === "semester" || scheduleStorageScope() === "graduate")) return parsed.value;
   const cached = cachedScheduleEnvelopeForWeek(requested);
-  return cached?.data ?? (requested === currentWeekValue() ? parsed.value : null);
+  return cached?.data ?? (requested === parsed.value?.currentWeek ? parsed.value : null);
 }
 
 function cachedScheduleEnvelopeForWeek(weekValue: string | number) {
-  const key = scheduleCacheKey(semester.value || parsed.value?.currentSemester, String(weekValue || ""));
+  const key = availableScheduleCacheKey(semester.value || parsed.value?.currentSemester, String(weekValue || ""));
   return scheduleCacheStore.get(key) ?? readCache<ScheduleResult>(key);
 }
 
@@ -2997,15 +3005,23 @@ function restoreLastScheduleCache() {
   return applyScheduleCache(fallback.key);
 }
 
+function availableScheduleCacheKey(sem = semester.value, wk = week.value) {
+  const completeKey = scheduleCacheKey(sem, "all");
+  const complete = scheduleCacheStore.get(completeKey) ?? readCache<ScheduleResult>(completeKey);
+  if (complete?.data?.scope === "semester" && complete.data.currentSemester === sem) return completeKey;
+  return scheduleCacheKey(sem, wk);
+}
+
 function restoreScheduleCache() {
-  const key = scheduleCacheKey();
+  const key = availableScheduleCacheKey();
   return applyScheduleCache(key) || (!parsed.value && restoreLastScheduleCache());
 }
 
-function applyScheduleCache(key: string) {
+function applyScheduleCache(key: string, reloadEdits = true) {
   if (!key) return false;
-  const cached = readCache<ScheduleResult>(key);
+  const cached = scheduleCacheStore.get(key) ?? readCache<ScheduleResult>(key);
   if (!cached?.data) return false;
+  const semesterChanged = parsed.value?.currentSemester !== cached.data.currentSemester;
   rememberScheduleCache(key, cached);
   parsed.value = cached.data;
   if (scheduleStorageScope() === "graduate") {
@@ -3023,14 +3039,14 @@ function applyScheduleCache(key: string) {
       : String(cached.data.currentWeek || "");
   }
   syncGraduateActiveDayForWeek(week.value);
-  loadScheduleEdits();
-  prewarmAdjacentWeekCaches();
+  semesterLoader.select(cached.data.currentSemester, week.value);
+  if (reloadEdits || semesterChanged) loadScheduleEdits();
   return true;
 }
 
 function saveScheduleCache() {
   if (!parsed.value) return;
-  const key = scheduleCacheKey(parsed.value.currentSemester || semester.value, week.value || parsed.value.currentWeek);
+  const key = scheduleCacheKey(parsed.value.currentSemester || semester.value, parsed.value.scope === "semester" ? "all" : week.value || parsed.value.currentWeek);
   if (scheduleStorageScope() === "undergraduate") {
     const previous = scheduleCacheStore.get(key) ?? readCache<ScheduleResult>(key);
     notifyOfficialScheduleChange(previous?.data, parsed.value);
@@ -3040,37 +3056,7 @@ function saveScheduleCache() {
   writeStoredLastScheduleCacheKey(lastKey, key);
 }
 
-function prewarmAdjacentWeekCaches() {
-  if (scheduleStorageScope() === "graduate") return;
-  if (!parsed.value || !semester.value) return;
-  const current = currentWeekValue();
-  [nextWeekValueFrom(current, -1), nextWeekValueFrom(current, 1)]
-    .filter(Boolean)
-    .forEach((wk) => prewarmScheduleCacheForWeek(wk));
-}
 
-function prewarmScheduleCacheForWeek(wk: string) {
-  if (scheduleStorageScope() === "graduate") return;
-  const key = scheduleCacheKey(parsed.value?.currentSemester || semester.value, wk);
-  if (!key) return;
-  const cached = scheduleCacheStore.get(key) ?? readCache<ScheduleResult>(key);
-  if (cached?.data && !isStale(cached.savedAt)) {
-    if (!scheduleCacheStore.has(key)) rememberScheduleCache(key, cached);
-    return;
-  }
-  if (prewarmingScheduleKeys.has(key)) return;
-  prewarmingScheduleKeys.add(key);
-  void jwxt.withSessionRetry(() => jwxtApi.schedule(
-    { semester: semester.value, week: wk },
-    { silent: true },
-  ))
-    .then((r: any) => {
-      if (r?.parsed) writeScheduleCache(key, r.parsed);
-    })
-    .finally(() => {
-      prewarmingScheduleKeys.delete(key);
-    });
-}
 </script>
 
 <style scoped>

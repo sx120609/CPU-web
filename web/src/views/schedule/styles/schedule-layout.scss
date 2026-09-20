@@ -140,6 +140,8 @@
   margin: 0 auto;
 }
 .content {
+  isolation: isolate;
+  contain: paint;
   flex: 1 1 auto;
   width: 100%;
   display: flex;
@@ -250,7 +252,8 @@
   transform: translate3d(-33.333333%, 0, 0);
   will-change: transform;
   backface-visibility: hidden;
-  transform-style: preserve-3d;
+  /* A flat pager avoids WebKit sorting filtered cards above the header/tint. */
+  transform-style: flat;
 }
 .content.dragging .carousel-track {
   transition: none;
