@@ -267,6 +267,15 @@ const handleLogout = () => {
   position: relative;
 }
 
+/* Existing iOS home-screen installs can retain their translucent launch mode.
+   Reserve its reported inset for every public page; the dashboard already
+   reserves this space in its own header and sidebar. */
+@media (display-mode: standalone) {
+  body:not(.voicehub-admin-viewport) .app {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+}
+
 /* 主要内容 */
 .main-content {
   flex: 1;

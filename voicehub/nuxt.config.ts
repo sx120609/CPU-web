@@ -90,9 +90,9 @@ export default defineNuxtConfig({
             process.env.NUXT_PUBLIC_SITE_DESCRIPTION || '中国药科大学广播站点歌与播出平台'
         },
         // 移动端优化
-        { name: 'theme-color', content: '#111111' },
+        { name: 'theme-color', content: '#f6f8f2' },
         { name: 'apple-mobile-web-app-capable', content: 'yes' },
-        { name: 'apple-mobile-web-app-status-bar-style', content: 'black-translucent' },
+        { name: 'apple-mobile-web-app-status-bar-style', content: 'default' },
         { name: 'apple-mobile-web-app-title', content: '药苑之声' },
         { name: 'mobile-web-app-capable', content: 'yes' },
         { name: 'format-detection', content: 'telephone=no' }

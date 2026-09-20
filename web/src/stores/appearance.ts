@@ -6,8 +6,8 @@ export type ResolvedAppearance = "light" | "dark";
 const STORAGE_KEY = "cpu-appearance-mode-v1";
 const DARK_QUERY = "(prefers-color-scheme: dark)";
 const THEME_COLORS: Record<ResolvedAppearance, string> = {
-  light: "#168776",
-  dark: "#0f766e",
+  light: "#f8fafc",
+  dark: "#101c19",
 };
 
 let mediaQuery: MediaQueryList | null = null;

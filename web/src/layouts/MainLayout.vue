@@ -71,6 +71,11 @@
         </nav>
 
         <div class="top-right">
+          <el-tooltip content="刷新页面">
+            <el-button text class="page-refresh-btn" aria-label="刷新页面" @click="reloadPage">
+              <el-icon size="20"><Refresh /></el-icon>
+            </el-button>
+          </el-tooltip>
           <el-dropdown trigger="click" @command="setAppearanceMode">
             <button data-cpu-button="icon" type="button" class="appearance-cycle-btn" :aria-label="`外观：${appearance.modeLabel}`">
               <el-icon size="20"><component :is="appearanceIcon" /></el-icon>
@@ -127,6 +132,9 @@
         </div>
 
         <div class="mobile-actions cpu-button-row">
+          <el-button text class="touch-icon-btn" aria-label="刷新页面" @click="reloadPage">
+            <el-icon><Refresh /></el-icon>
+          </el-button>
           <el-button
             v-if="auth.isLoggedIn"
             text
@@ -394,6 +402,7 @@ import {
   Goods,
   Service,
   Message,
+  Refresh,
   Tools,
   Sunny,
   Moon,
@@ -584,6 +593,10 @@ const nicknameHint = computed(() => {
 const desktopNavItems = computed(() => {
   return site.topNavigation.filter(navigationItemVisible);
 });
+
+function reloadPage() {
+  window.location.reload();
+}
 
 const desktopPrimaryNavItems = computed(() => {
   return desktopNavItems.value.filter((item) => item.primary);
@@ -1146,6 +1159,11 @@ function releaseRoutePage(element: Element) {
   gap: 6px;
   margin-left: auto;
   flex-shrink: 0;
+}
+
+.page-refresh-btn {
+  min-width: 44px;
+  min-height: 44px;
 }
 
 .appearance-cycle-btn {

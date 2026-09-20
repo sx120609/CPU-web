@@ -13,7 +13,7 @@
   root.classList.toggle("dark", resolved === "dark");
   root.style.colorScheme = resolved;
   const themeColor = document.querySelector("meta[name='theme-color']");
-  if (themeColor) themeColor.setAttribute("content", resolved === "dark" ? "#0f766e" : "#168776");
+  if (themeColor) themeColor.setAttribute("content", resolved === "dark" ? "#101c19" : "#f8fafc");
 
   const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent)
     || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
