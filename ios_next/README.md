@@ -14,7 +14,7 @@
 - 沿用 Web 的 HttpOnly 会话、教务自动恢复、本科／研究生识别、校历、单双周解析及本科课程修改记录。原生不保存学校密码。
 - 课表在内存中保留 12 小时，并可将最近成功快照写入 Application Support 以支持冷启动；磁盘快照同时校验站点会话指纹和账号指纹。退出、换号或过期时立即清除。
 
-本阶段未迁移课程编辑器、课表背景／主题、分享与导出等扩展功能。原有 `ios/` 包装客户端独立保留。
+原生课表已支持课程编辑、配色、自定义背景与分享导出。背景可从课表“更多 → 背景自定义”直接设置，也可从设备设置进入；与 Web 一致使用居中铺满、22%～88% 背景显现（默认 76%）和 0～18 柔化程度。预览显示当前课表并即时应用调节，周／日视图共用背景与浅深色遮罩。图片原件仅保存在本机，显示时降采样以限制大照片的内存占用；清除背景与恢复默认都会删除本地图片。旧版绝对文件路径在升级后会按当前容器恢复。原有 `ios/` 包装客户端独立保留。
 
 ## Web 配套改动
 
@@ -54,11 +54,15 @@ swiftc ios_next/CpuTime/CpuTime/NativeScheduleStore.swift ios_next/tests/NativeS
 /tmp/cpu-next-store-checks
 swiftc ios_next/CpuTime/CpuTime/ShellTab.swift ios_next/CpuTime/CpuTime/NativeShellCoordinator.swift ios_next/tests/NativeTabSelectionChecks.swift -o /tmp/cpu-next-tab-checks
 /tmp/cpu-next-tab-checks
+xcrun --sdk iphonesimulator swiftc -target arm64-apple-ios17.0-simulator ios_next/CpuTime/CpuTime/NativeSchedulePreferences.swift ios_next/tests/NativeScheduleBackgroundChecks.swift -o /tmp/cpu-schedule-background-checks
+xcrun simctl spawn booted /tmp/cpu-schedule-background-checks /tmp/cpu-schedule-background-fixtures
 xcodebuild -project ios_next/CpuTime/CpuTime.xcodeproj -scheme CpuTime -destination 'generic/platform=iOS' -configuration Debug CODE_SIGNING_ALLOWED=NO build
 xcodebuild -project ios_next/CpuTime/CpuTime.xcodeproj -scheme CPUWatch -destination 'generic/platform=watchOS' -configuration Debug CODE_SIGNING_ALLOWED=NO build
 ```
 
 修改共享课表桥或 `ios_next/bridge` 后重新运行 `build-web-bridge.mjs`，将更新后的 JS 资源随 iOS 包一起构建。
+
+背景验证脚本在已启动的 Apple Silicon iOS 模拟器中检查实际 UIKit 解码、原图保存、大图降采样、替换失败保护、冷启动恢复、旧容器路径迁移、数值边界与清除／重置，并输出三种比例的本地图片用于可视验证。`CPU_DEBUG_MOCK_SCHEDULE=1` 的调试课表独立于学校会话；可再加 `CPU_DEBUG_BACKGROUND_EDITOR=1` 直接打开背景预览。Xcode 未设为当前开发目录时，命令前加 `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`。
 
 底栏选择由原生用户操作或当前可见网页的显式导航请求驱动。网页 history／加载完成通知不反向改写底栏；连续切换会作废旧跳转及其失败回退，视图挂载也不改变选中项。原生触发的整页切换按标签切换处理，不播放网页的交叉淡入：否则旧页面会带着切换前的滚动位置冻结在新页面上继续显示约 300ms。页面在路由过渡期间把刘海间距交给正在进入的页面，避免新页面先顶到状态栏再跳下来。
 

@@ -10,6 +10,7 @@ struct NativeScheduleView: View {
     @ObservedObject private var preferences = NativeSchedulePreferences.shared
     private let onDeviceSettings: () -> Void
     private let onLogin: () -> Void
+    private let isBackgroundPreview: Bool
 
     @State private var selectedDay = 1
     @State private var didInitializeDay = false
@@ -20,6 +21,7 @@ struct NativeScheduleView: View {
     @State private var courseEditorPresentation: CourseEditorPresentation?
     @State private var weekPickerPresented = false
     @State private var scheduleToolsPresented = false
+    @State private var backgroundEditorPresented = false
     @State private var scheduleToolsContentHeight: CGFloat = 0
     @State private var sharePayload: NativeScheduleSharePayload?
     // Native pagers own the horizontal pan and keep the current page under the
@@ -36,11 +38,13 @@ struct NativeScheduleView: View {
     init(
         store: NativeScheduleStore,
         onLogin: @escaping () -> Void = {},
-        onDeviceSettings: @escaping () -> Void = {}
+        onDeviceSettings: @escaping () -> Void = {},
+        isBackgroundPreview: Bool = false
     ) {
         _store = ObservedObject(wrappedValue: store)
         self.onDeviceSettings = onDeviceSettings
         self.onLogin = onLogin
+        self.isBackgroundPreview = isBackgroundPreview
     }
 
     var body: some View {
@@ -52,7 +56,13 @@ struct NativeScheduleView: View {
                     .padding(.horizontal, Self.contentInset)
                     .padding(.top, 8)
                     .padding(.bottom, 8)
-                    .background(Color(uiColor: .systemGroupedBackground).opacity(preferences.backgroundImage == nil ? 1 : 0.86))
+                    .background {
+                        if preferences.backgroundImage != nil {
+                            NativeScheduleBackgroundSurface().ignoresSafeArea(edges: .top)
+                        } else {
+                            Color(uiColor: .systemGroupedBackground)
+                        }
+                    }
                     .overlay(alignment: .bottom) { Divider() }
             }
 
@@ -87,29 +97,27 @@ struct NativeScheduleView: View {
                 .padding(.top, 8)
                 .padding(.bottom, 8)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
-                .background(Color(uiColor: .systemGroupedBackground).opacity(preferences.backgroundImage == nil ? 1 : 0.86).ignoresSafeArea(.container, edges: [.horizontal, .bottom]))
             }
             .scrollIndicators(.hidden)
             .scrollBounceBehavior(.basedOnSize, axes: .vertical)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background {
-            ZStack {
-                Color(uiColor: .systemGroupedBackground)
-                if let image = preferences.backgroundImage {
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFill()
-                        .opacity(preferences.backgroundOpacity)
-                        .ignoresSafeArea()
-                        .allowsHitTesting(false)
-                }
-            }
-            .ignoresSafeArea()
+            NativeScheduleBackground(image: preferences.backgroundImage,
+                                     visibility: preferences.backgroundVisibility,
+                                     blur: preferences.backgroundBlur)
+                .ignoresSafeArea()
         }
+        .environment(\.scheduleHasBackground, preferences.backgroundImage != nil)
         .task {
             viewMode = preferences.defaultView == "day" ? .day : .week
             adoptSelectionIfNeeded()
+#if DEBUG
+            if !isBackgroundPreview,
+               ProcessInfo.processInfo.environment["CPU_DEBUG_BACKGROUND_EDITOR"] == "1" {
+                backgroundEditorPresented = true
+            }
+#endif
         }
         .onChange(of: store.result?.currentSemester) { _, _ in
             adoptSelectionIfNeeded()
@@ -151,6 +159,12 @@ struct NativeScheduleView: View {
         .sheet(isPresented: $weekPickerPresented) {
             weekPicker
                 .presentationDetents([.medium, .large])
+        }
+        .sheet(isPresented: $backgroundEditorPresented) {
+            NavigationStack {
+                NativeScheduleBackgroundEditor(preferences: preferences, scheduleStore: store)
+            }
+            .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $scheduleToolsPresented) {
             Group {
@@ -362,6 +376,10 @@ struct NativeScheduleView: View {
                 }
 
                 scheduleToolsSection("设备与设置") {
+                    scheduleToolRow("背景自定义", systemImage: "photo") {
+                        scheduleToolsPresented = false
+                        DispatchQueue.main.async { backgroundEditorPresented = true }
+                    }
                     scheduleToolRow("课表、设备与小组件", systemImage: "slider.horizontal.3") {
                         scheduleToolsPresented = false
                         DispatchQueue.main.async { onDeviceSettings() }
@@ -811,6 +829,11 @@ struct NativeScheduleView: View {
                             .frame(width: 0.5)
                     }
                 }
+            }
+        }
+        .background {
+            if preferences.backgroundImage != nil {
+                NativeScheduleBackgroundSurface()
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -1594,6 +1617,7 @@ private struct ScheduleSlot {
 }
 
 private struct NativeScheduleDayColumn: View {
+    @Environment(\.scheduleHasBackground) private var hasBackground
     // Web's compact mobile grid uses 44px rows. Keeping that rhythm here
     // gives the week view enough breathing room while all eleven rows still
     // fit above the native tab bar.
@@ -1697,6 +1721,10 @@ private struct NativeScheduleDayColumn: View {
                             border: Color.cpuBrand.opacity(0.22)
                         )
                             .padding(.horizontal, 2)
+                            .padding(.vertical, 3)
+                    } else if hasBackground {
+                        NativeScheduleBackgroundSurface()
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                             .padding(.vertical, 3)
                     }
                 }
@@ -1890,6 +1918,7 @@ private struct ScheduleGlassControl: ViewModifier {
 
 private struct ScheduleGlassBackground: View {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.scheduleHasBackground) private var hasBackground
     let cornerRadius: CGFloat
     var colors: [Color] = [.clear, .clear]
     var border: Color = Color(uiColor: .separator).opacity(0.12)
@@ -1897,8 +1926,9 @@ private struct ScheduleGlassBackground: View {
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-        shape
-            .fill(Color(uiColor: .secondarySystemGroupedBackground).opacity(0.86))
+        NativeScheduleBackgroundSurface(strength: .cell)
+            .opacity(hasBackground ? 1 : 0.86)
+            .clipShape(shape)
             .overlay {
                 shape.fill(LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing))
             }

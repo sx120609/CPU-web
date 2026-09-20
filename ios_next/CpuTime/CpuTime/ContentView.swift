@@ -47,7 +47,7 @@ struct ContentView: View {
     var body: some View {
         rootView
             .task(id: scheduleStore.lastUpdatedAt) {
-                guard scheduleStore.result != nil else { return }
+                guard !debugMockSchedule, scheduleStore.result != nil else { return }
                 await webSession.ensureScheduleWidgetConfigured()
             }
             .onOpenURL { url in
@@ -120,7 +120,7 @@ struct ContentView: View {
 #endif
             }
             .task(id: hasSeenWelcome) {
-                guard hasSeenWelcome else { return }
+                guard !debugMockSchedule, hasSeenWelcome else { return }
                 // Let SwiftUI commit the waiting page before constructing
                 // WKWebView. Creating a WebKit process is synchronous on the
                 // main actor and can otherwise leave a cold launch blank.

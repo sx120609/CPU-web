@@ -1,7 +1,6 @@
 import SwiftUI
 import EventKit
 import ActivityKit
-import PhotosUI
 
 /// Native companion settings are intentionally split by product surface. The
 /// entry page stays short; each destination owns the controls for one thing.
@@ -20,7 +19,7 @@ struct NativeDeviceSettingsView: View {
                         detail: "显示内容、排版和背景",
                         systemImage: "calendar"
                     ) {
-                        NativeScheduleSettingsView(preferences: .shared)
+                        NativeScheduleSettingsView(preferences: .shared, scheduleStore: scheduleStore)
                     }
                     SettingsDestinationRow(
                         title: "iPhone 小组件",
@@ -201,9 +200,8 @@ private struct ScheduleSettingsSection: View {
 
 private struct NativeScheduleSettingsView: View {
     @ObservedObject var preferences: NativeSchedulePreferences
+    var scheduleStore: NativeScheduleStore? = nil
     @Environment(\.dismiss) private var dismiss
-    @State private var selectedBackground: PhotosPickerItem?
-    @State private var backgroundBusy = false
     @State private var backgroundError = ""
 
     private let palettes = [
@@ -267,30 +265,23 @@ private struct NativeScheduleSettingsView: View {
             }
 
             Section {
-                PhotosPicker(selection: $selectedBackground, matching: .images) {
-                    Label(backgroundBusy ? "正在读取背景" : "从照片选择背景", systemImage: "photo.on.rectangle")
-                }
-                .disabled(backgroundBusy)
-
-                if let image = preferences.backgroundImage {
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 92)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    HStack {
-                        Text("背景强度")
-                        Slider(value: $preferences.backgroundOpacity, in: 0.05...0.5, step: 0.01)
-                        Text("\(Int(preferences.backgroundOpacity * 100))%")
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                            .frame(width: 38, alignment: .trailing)
+                NavigationLink {
+                    NativeScheduleBackgroundEditor(preferences: preferences, scheduleStore: scheduleStore)
+                } label: {
+                    HStack(spacing: 12) {
+                        NativeScheduleBackground(image: preferences.backgroundImage,
+                                                 visibility: preferences.backgroundVisibility,
+                                                 blur: preferences.backgroundBlur)
+                            .frame(width: 52, height: 52)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("背景自定义")
+                            Text(preferences.backgroundImage == nil ? "选择图片、调整显现与柔化" : "已设置 · 点按预览和调整")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 0)
                     }
-                    Button("移除背景图片", role: .destructive) {
-                        try? preferences.setBackgroundData(nil)
-                    }
-                    .disabled(backgroundBusy)
                 }
             } header: {
                 Text("课表背景")
@@ -300,7 +291,8 @@ private struct NativeScheduleSettingsView: View {
 
             Section {
                 Button("恢复默认设置", role: .destructive) {
-                    preferences.reset()
+                    do { try preferences.reset() }
+                    catch { backgroundError = "恢复默认设置失败，请重试。" }
                 }
             }
         }
@@ -309,20 +301,6 @@ private struct NativeScheduleSettingsView: View {
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button("完成") { dismiss() }
-            }
-        }
-        .onChange(of: selectedBackground) { _, item in
-            guard let item else { return }
-            backgroundBusy = true
-            Task {
-                do {
-                    guard let data = try await item.loadTransferable(type: Data.self) else { throw BackgroundError.invalidData }
-                    try preferences.setBackgroundData(data)
-                } catch {
-                    backgroundError = "背景读取失败，请换一张图片重试。"
-                }
-                backgroundBusy = false
-                selectedBackground = nil
             }
         }
         .alert("课表背景", isPresented: Binding(
@@ -351,7 +329,6 @@ private struct NativeScheduleSettingsView: View {
         return LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing)
     }
 
-    private enum BackgroundError: Error { case invalidData }
 }
 
 @available(iOS 16.1, *)

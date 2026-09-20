@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import ImageIO
 import UIKit
 
 /// Display-only timetable preferences shared by the native schedule and its
@@ -16,11 +17,13 @@ final class NativeSchedulePreferences: ObservableObject {
     @Published var defaultView: String { didSet { persist() } }
     @Published var palette: String { didSet { persist() } }
     @Published var density: String { didSet { persist() } }
-    @Published var backgroundPath: String { didSet { loadBackgroundImage(); persist() } }
-    @Published var backgroundOpacity: Double { didSet { persist() } }
+    @Published private(set) var backgroundPath: String
+    @Published var backgroundVisibility: Double { didSet { persist() } }
+    @Published var backgroundBlur: Double { didSet { persist() } }
     @Published private(set) var backgroundImage: UIImage?
 
     private let defaults: UserDefaults
+    private let imageURL: URL
     private var ready = false
 
     private enum Key {
@@ -33,11 +36,13 @@ final class NativeSchedulePreferences: ObservableObject {
         static let palette = "nativeSchedule.palette"
         static let density = "nativeSchedule.density"
         static let backgroundPath = "nativeSchedule.backgroundPath"
-        static let backgroundOpacity = "nativeSchedule.backgroundOpacity"
+        static let backgroundVisibility = "nativeSchedule.backgroundVisibility"
+        static let backgroundBlur = "nativeSchedule.backgroundBlur"
     }
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, imageURL: URL = NativeSchedulePreferences.backgroundFileURL) {
         self.defaults = defaults
+        self.imageURL = imageURL
         showLocation = defaults.object(forKey: Key.showLocation) as? Bool ?? true
         showTeacher = defaults.object(forKey: Key.showTeacher) as? Bool ?? true
         showPeriod = defaults.object(forKey: Key.showPeriod) as? Bool ?? true
@@ -49,11 +54,14 @@ final class NativeSchedulePreferences: ObservableObject {
         let savedDensity = defaults.string(forKey: Key.density) ?? "comfortable"
         density = savedDensity == "compact" ? "compact" : "comfortable"
         backgroundPath = defaults.string(forKey: Key.backgroundPath) ?? ""
-        let opacity = defaults.object(forKey: Key.backgroundOpacity) as? Double ?? 0.18
-        backgroundOpacity = min(0.5, max(0.05, opacity))
+        // The previous image-opacity value was multiplied by an opaque page
+        // surface. Start existing photos at Web's default when migrating.
+        backgroundVisibility = Self.normalizedVisibility(defaults.object(forKey: Key.backgroundVisibility) as? Double ?? 0.76)
+        backgroundBlur = Self.normalizedBlur(defaults.object(forKey: Key.backgroundBlur) as? Double ?? 0)
         backgroundImage = nil
         loadBackgroundImage()
         ready = true
+        persist()
     }
 
     static let paletteOptions = ["color-glass", "green", "blue", "teal", "indigo", "violet", "orange", "rose", "slate"]
@@ -65,7 +73,16 @@ final class NativeSchedulePreferences: ObservableObject {
         return directory.appendingPathComponent("schedule-background.jpg")
     }
 
-    func reset() {
+    static func normalizedVisibility(_ value: Double) -> Double {
+        value.isFinite ? min(0.88, max(0.22, value)) : 0.76
+    }
+
+    static func normalizedBlur(_ value: Double) -> Double {
+        value.isFinite ? min(18, max(0, value.rounded())) : 0
+    }
+
+    func reset() throws {
+        try setBackgroundData(nil)
         showLocation = true
         showTeacher = true
         showPeriod = true
@@ -74,21 +91,31 @@ final class NativeSchedulePreferences: ObservableObject {
         defaultView = "week"
         palette = "color-glass"
         density = "comfortable"
-        backgroundPath = ""
-        backgroundOpacity = 0.18
-        backgroundImage = nil
     }
 
     func setBackgroundData(_ data: Data?) throws {
-        let url = Self.backgroundFileURL
         if let data {
-            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try data.write(to: url, options: .atomic)
-            backgroundPath = url.path
+            guard let image = Self.previewImage(data: data) else { throw BackgroundError.invalidData }
+            try FileManager.default.createDirectory(at: imageURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            // Keep the original asset; downsample only the in-memory rendering
+            // so a large photo cannot allocate its full-resolution bitmap.
+            try data.write(to: imageURL, options: .atomic)
+            var excludedURL = imageURL
+            var resourceValues = URLResourceValues()
+            resourceValues.isExcludedFromBackup = true
+            try? excludedURL.setResourceValues(resourceValues)
+            backgroundImage = image
+            backgroundPath = imageURL.lastPathComponent
         } else {
-            try? FileManager.default.removeItem(at: url)
+            if FileManager.default.fileExists(atPath: imageURL.path) {
+                try FileManager.default.removeItem(at: imageURL)
+            }
             backgroundPath = ""
+            backgroundImage = nil
+            backgroundVisibility = 0.76
+            backgroundBlur = 0
         }
+        persist()
     }
 
     private func loadBackgroundImage() {
@@ -96,7 +123,25 @@ final class NativeSchedulePreferences: ObservableObject {
             backgroundImage = nil
             return
         }
-        backgroundImage = UIImage(contentsOfFile: backgroundPath)
+        // App container paths change after an update/restore. The asset always
+        // lives in Application Support; an old absolute preference is a marker.
+        if let data = try? Data(contentsOf: imageURL) {
+            backgroundImage = Self.previewImage(data: data)
+        } else {
+            backgroundImage = nil
+        }
+        backgroundPath = backgroundImage == nil ? "" : imageURL.lastPathComponent
+    }
+
+    private static func previewImage(data: Data) -> UIImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceShouldCacheImmediately: true,
+                kCGImageSourceThumbnailMaxPixelSize: 2560,
+              ] as CFDictionary) else { return nil }
+        return UIImage(cgImage: image)
     }
 
     private func persist() {
@@ -110,6 +155,9 @@ final class NativeSchedulePreferences: ObservableObject {
         defaults.set(Self.paletteOptions.contains(palette) ? palette : "color-glass", forKey: Key.palette)
         defaults.set(Self.densityOptions.contains(density) ? density : "comfortable", forKey: Key.density)
         defaults.set(backgroundPath, forKey: Key.backgroundPath)
-        defaults.set(min(0.5, max(0.05, backgroundOpacity)), forKey: Key.backgroundOpacity)
+        defaults.set(Self.normalizedVisibility(backgroundVisibility), forKey: Key.backgroundVisibility)
+        defaults.set(Self.normalizedBlur(backgroundBlur), forKey: Key.backgroundBlur)
     }
+
+    private enum BackgroundError: Error { case invalidData }
 }
