@@ -30,6 +30,18 @@ export type ScheduleTermConfigValue = {
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/u;
 const TIME_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d$/u;
 
+export function normalizeSchedulePeriods(input: unknown): SchedulePeriod[] {
+  const raw = Array.isArray(input) ? input : [];
+  if (!raw.length || raw.length > 30) throw new Error("节次数量必须是 1-30");
+  return raw.map((item, index) => {
+    const row = (item && typeof item === "object" ? item : {}) as Record<string, unknown>;
+    const start = String(row.start ?? "").trim();
+    const end = String(row.end ?? "").trim();
+    if (!TIME_PATTERN.test(start) || !TIME_PATTERN.test(end) || start >= end) throw new Error(`第 ${index + 1} 节时间无效`);
+    return { id: index + 1, name: String(row.name || `第${index + 1}节`).trim().slice(0, 24) || `第${index + 1}节`, start, end };
+  });
+}
+
 export function normalizeScheduleTermConfig(input: unknown): Omit<ScheduleTermConfigValue, "version" | "updatedAt"> {
   const value = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
   const semester = String(value.semester ?? "").trim();
@@ -43,15 +55,7 @@ export function normalizeScheduleTermConfig(input: unknown): Omit<ScheduleTermCo
   if (!Number.isInteger(weekCount) || weekCount < 1 || weekCount > 64) throw new Error("总周数必须是 1-64 的整数");
   if (timezone !== "Asia/Shanghai") throw new Error("当前服务只支持 Asia/Shanghai");
 
-  const rawPeriods = Array.isArray(value.periods) ? value.periods : [];
-  if (!rawPeriods.length || rawPeriods.length > 30) throw new Error("节次数量必须是 1-30");
-  const periods = rawPeriods.map((item, index) => {
-    const row = (item && typeof item === "object" ? item : {}) as Record<string, unknown>;
-    const start = String(row.start ?? "").trim();
-    const end = String(row.end ?? "").trim();
-    if (!TIME_PATTERN.test(start) || !TIME_PATTERN.test(end) || start >= end) throw new Error(`第 ${index + 1} 节时间无效`);
-    return { id: index + 1, name: String(row.name || `第${index + 1}节`).trim().slice(0, 24) || `第${index + 1}节`, start, end };
-  });
+  const periods = normalizeSchedulePeriods(value.periods);
 
   const rawAdjustments = Array.isArray(value.adjustments) ? value.adjustments : [];
   if (rawAdjustments.length > 200) throw new Error("一个学期最多配置 200 条调休");
@@ -95,18 +99,17 @@ export function scheduleTermConfigFromRow(row: {
   semester: string;
   semesterStartMonday: string;
   weekCount: number;
-  periods: string;
   adjustments: string;
   timezone: string;
   note: string;
   version: number;
   updatedAt: Date;
-}): ScheduleTermConfigValue {
+}, periods: SchedulePeriod[]): ScheduleTermConfigValue {
   return {
     semester: row.semester,
     semesterStartMonday: row.semesterStartMonday,
     weekCount: row.weekCount,
-    periods: JSON.parse(row.periods),
+    periods,
     adjustments: JSON.parse(row.adjustments),
     timezone: row.timezone,
     note: row.note,
@@ -118,8 +121,11 @@ export function scheduleTermConfigFromRow(row: {
 export async function getScheduleTermConfig(semester: string): Promise<ScheduleTermConfigValue | null> {
   if (!process.env.DATABASE_URL || !semester) return null;
   try {
-    const row = await prisma.scheduleTermConfig.findUnique({ where: { semester } });
-    return row ? scheduleTermConfigFromRow(row) : null;
+    const [row, periods] = await Promise.all([
+      prisma.scheduleTermConfig.findUnique({ where: { semester } }),
+      getSchedulePeriods(),
+    ]);
+    return row ? scheduleTermConfigFromRow(row, periods) : null;
   } catch {
     // A partially migrated development database should not make the upstream
     // timetable unavailable. The admin endpoint still surfaces write errors.
@@ -129,32 +135,63 @@ export async function getScheduleTermConfig(semester: string): Promise<ScheduleT
 
 export async function listScheduleTermConfigs() {
   if (!process.env.DATABASE_URL) return [];
-  const rows = await prisma.scheduleTermConfig.findMany({ orderBy: { semester: "desc" } });
-  return rows.map(scheduleTermConfigFromRow);
+  const [rows, periods] = await Promise.all([
+    prisma.scheduleTermConfig.findMany({ orderBy: { semester: "desc" } }),
+    getSchedulePeriods(),
+  ]);
+  return rows.map((row) => scheduleTermConfigFromRow(row, periods));
+}
+
+/// 节次时间全校统一，存在单行的 SchedulePeriodConfig 里。
+export async function getSchedulePeriods(): Promise<SchedulePeriod[]> {
+  if (!process.env.DATABASE_URL) return [];
+  try {
+    const row = await prisma.schedulePeriodConfig.findUnique({ where: { id: 1 }, select: { periods: true } });
+    return row ? (JSON.parse(row.periods) as SchedulePeriod[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+/// 只写节次时间，不碰任何学期。
+export async function saveSchedulePeriods(input: unknown): Promise<SchedulePeriod[]> {
+  const periods = normalizeSchedulePeriods(input);
+  const encoded = JSON.stringify(periods);
+  const current = await prisma.schedulePeriodConfig.findUnique({ where: { id: 1 }, select: { version: true } });
+  const row = await prisma.schedulePeriodConfig.upsert({
+    where: { id: 1 },
+    create: { id: 1, periods: encoded, version: 1 },
+    update: { periods: encoded, version: (current?.version ?? 0) + 1 },
+  });
+  return JSON.parse(row.periods) as SchedulePeriod[];
 }
 
 export async function saveScheduleTermConfig(input: unknown) {
   const value = normalizeScheduleTermConfig(input);
   const current = await prisma.scheduleTermConfig.findUnique({ where: { semester: value.semester }, select: { version: true } });
+  // 节次时间跟着这次保存一起更新，但落在全校那一行上，而不是这个学期里。
+  const periods = await saveSchedulePeriods(value.periods);
   const row = await prisma.scheduleTermConfig.upsert({
     where: { semester: value.semester },
     create: {
-      ...value,
-      periods: JSON.stringify(value.periods),
+      semester: value.semester,
+      semesterStartMonday: value.semesterStartMonday,
+      weekCount: value.weekCount,
       adjustments: JSON.stringify(value.adjustments),
+      timezone: value.timezone,
+      note: value.note,
       version: 1,
     },
     update: {
       semesterStartMonday: value.semesterStartMonday,
       weekCount: value.weekCount,
-      periods: JSON.stringify(value.periods),
       adjustments: JSON.stringify(value.adjustments),
       timezone: value.timezone,
       note: value.note,
       version: (current?.version ?? 0) + 1,
     },
   });
-  return scheduleTermConfigFromRow(row);
+  return scheduleTermConfigFromRow(row, periods);
 }
 
 export function applyScheduleTermConfig(

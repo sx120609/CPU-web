@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyScheduleTermConfig, mergeScheduleAdjustments, normalizeScheduleTermConfig } from "../src/services/scheduleTermConfig";
+import { applyScheduleTermConfig, mergeScheduleAdjustments, normalizeSchedulePeriods, normalizeScheduleTermConfig } from "../src/services/scheduleTermConfig";
 
 const base = {
   semester: "2026-2027-1",
@@ -56,4 +56,16 @@ test("manual term adjustments override public holiday defaults", () => {
     [{ date: "2026-10-01", kind: "swap", source: "2026-09-28", note: "学校调课" }],
   );
   assert.deepEqual(result, [{ date: "2026-10-01", kind: "swap", source: "2026-09-28", note: "学校调课" }]);
+});
+
+test("school-wide periods are validated on their own", () => {
+  const periods = normalizeSchedulePeriods([
+    { start: "08:00", end: "08:45" },
+    { name: "第2节", start: "08:55", end: "09:40" },
+  ]);
+  assert.deepEqual(periods.map((item) => item.id), [1, 2]);
+  assert.equal(periods[0].name, "第1节");
+  assert.throws(() => normalizeSchedulePeriods([]), /节次数量必须是 1-30/);
+  assert.throws(() => normalizeSchedulePeriods([{ start: "09:00", end: "08:00" }]), /第 1 节时间无效/);
+  assert.throws(() => normalizeSchedulePeriods([{ start: "25:00", end: "26:00" }]), /第 1 节时间无效/);
 });

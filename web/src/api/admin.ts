@@ -108,24 +108,6 @@ export type SiteConfig = {
   assistantDailyQuotas: Array<{ level: number; quota: number }>;
 };
 
-export type ApnsPushStats = {
-  iosUsers: number;
-  channelPushUsers: number;
-  gradualPushUsers: number;
-};
-
-export type ApnsConfig = {
-  keyPath: string;
-  keyID: string;
-  teamID: string;
-  bundleID: string;
-  tickSeconds: number;
-  channels: Record<string, string>;
-  configured: boolean;
-  updatedAt: string | null;
-  iosPushStats: ApnsPushStats;
-};
-
 export type LearningPlatformAvailability = Record<
   "chaoxing" | "zhihuishu" | "icve" | "zjy" | "icourse" | "yuketang" | "weban",
   boolean
@@ -976,9 +958,6 @@ export type ScheduleTermConfig = {
 };
 
 export const adminApi = {
-  apnsConfig: (options?: RequestOptions) => request.get<ApnsConfig>("/admin/apns-config", undefined, options),
-  updateApnsConfig: (payload: Omit<ApnsConfig, "configured" | "updatedAt" | "iosPushStats">) =>
-    request.patch<ApnsConfig>("/admin/apns-config", payload),
   // 概览
   overview: (options?: RequestOptions) => request.get<AdminOverview>("/admin/overview", undefined, options),
   deploymentStatus: (options?: RequestOptions) =>
@@ -1001,6 +980,10 @@ export const adminApi = {
     request.post<JwxtAgentUpdateResult>(`/admin/jwxt-agents/${encodeURIComponent(agentId)}/update`, {}),
   scheduleTerms: (options?: RequestOptions) =>
     request.get<ScheduleTermConfig[]>('/admin/schedule-terms', undefined, options),
+  schedulePeriods: (options?: RequestOptions) =>
+    request.get<ScheduleTermConfig['periods']>('/admin/schedule-periods', undefined, options),
+  saveSchedulePeriods: (periods: ScheduleTermConfig['periods']) =>
+    request.put<ScheduleTermConfig['periods']>('/admin/schedule-periods', { periods }),
   saveScheduleTerm: (semester: string, payload: Omit<ScheduleTermConfig, 'semester' | 'version' | 'updatedAt'>) =>
     request.put<ScheduleTermConfig>(`/admin/schedule-terms/${encodeURIComponent(semester)}`, payload),
   // 数据库备份

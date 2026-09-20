@@ -141,8 +141,7 @@ import {
   getAdminDeploymentStatus,
   startAdminDeploymentUpdate,
 } from "../../services/deployment";
-import { listScheduleTermConfigs, saveScheduleTermConfig } from "../../services/scheduleTermConfig";
-import { getApnsConfig, normalizeApnsConfig, saveApnsConfig } from "../../services/apnsConfig";
+import { getSchedulePeriods, listScheduleTermConfigs, saveSchedulePeriods, saveScheduleTermConfig } from "../../services/scheduleTermConfig";
 
 export const adminRouter = Router();
 adminRouter.use("/forum-ads", forumAdsAdminRouter);
@@ -207,29 +206,6 @@ function requestOrigin(req: any) {
 
 adminRouter.use("/qqbot", adminOnly, qqBotAdminRouter);
 adminRouter.use("/wechat", adminOnly, wechatAdminRouter);
-
-const apnsConfigSchema = z.object({
-  keyPath: z.string().trim().max(500),
-  keyID: z.string().trim().max(120),
-  teamID: z.string().trim().max(120),
-  bundleID: z.string().trim().max(200),
-  tickSeconds: z.number().min(0.5).max(3600),
-  channels: z.record(z.string().max(256)),
-}).strict();
-
-adminRouter.get("/apns-config", adminOnly, async (_req, res, next) => {
-  try { ok(res, await getApnsConfig()); } catch (error) { next(error); }
-});
-
-adminRouter.patch("/apns-config", adminOnly, validate(apnsConfigSchema), async (req, res, next) => {
-  try {
-    // Run the same semantic checks used by the persistence layer before writing.
-    normalizeApnsConfig(req.body);
-    ok(res, await saveApnsConfig(req.body));
-  } catch (error) {
-    next(Errors.badRequest(error instanceof Error ? error.message : "APNs 配置无效"));
-  }
-});
 
 const jwxtAgentConfigSchema = z.object({
   localJwxtEnabled: z.boolean(),
@@ -2081,15 +2057,19 @@ adminRouter.get("/site-config", adminOnly, (_req, res) => {
 
 // ============ 课表校历 / 调休 ============
 
+const schedulePeriodSchema = z.object({
+  id: z.number().int().optional(),
+  name: z.string().trim().max(24).optional(),
+  start: z.string().trim(),
+  end: z.string().trim(),
+});
+
+const schedulePeriodsSchema = z.object({ periods: z.array(schedulePeriodSchema).max(30) }).strict();
+
 const scheduleTermPatchSchema = z.object({
   semesterStartMonday: z.string().trim(),
   weekCount: z.number().int(),
-  periods: z.array(z.object({
-    id: z.number().int().optional(),
-    name: z.string().trim().max(24).optional(),
-    start: z.string().trim(),
-    end: z.string().trim(),
-  })).max(30),
+  periods: z.array(schedulePeriodSchema).max(30),
   adjustments: z.array(z.object({
     date: z.string().trim(),
     kind: z.enum(["off", "swap"]),
@@ -2102,6 +2082,19 @@ const scheduleTermPatchSchema = z.object({
 
 adminRouter.get("/schedule-terms", adminOnly, async (_req, res, next) => {
   try { ok(res, await listScheduleTermConfigs()); } catch (error) { next(error); }
+});
+
+/// 全校统一的节次时间，和学期分开读写。
+adminRouter.get("/schedule-periods", adminOnly, async (_req, res, next) => {
+  try { ok(res, await getSchedulePeriods()); } catch (error) { next(error); }
+});
+
+adminRouter.put("/schedule-periods", adminOnly, validate(schedulePeriodsSchema), async (req, res, next) => {
+  try {
+    ok(res, await saveSchedulePeriods(req.body.periods));
+  } catch (error) {
+    next(Errors.badRequest(error instanceof Error ? error.message : "节次时间无效"));
+  }
 });
 
 adminRouter.put("/schedule-terms/:semester", adminOnly, validate(scheduleTermPatchSchema), async (req, res, next) => {

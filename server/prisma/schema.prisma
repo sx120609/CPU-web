@@ -43,7 +43,6 @@ model User {
   lastSeenAt             DateTime  @default(now())
   lastLoginAt            DateTime?
   lastLoginClient        String?
-  iosMajorVersion        Int?
   usedIosClient          Boolean   @default(false)
   usedAndroidClient      Boolean   @default(false)
   usedHarmonyClient      Boolean   @default(false)
@@ -640,14 +639,23 @@ model UserScheduleEdit {
   @@index([userId, updatedAt])
 }
 
-// 管理员维护的学期校历。periods / adjustments 保持 JSON 是为了兼容不同
-// 教务入口的节次数量，并让一次修改能原子覆盖完整学期配置。
+// 节次时间全校统一，不随学期变化，所以单独一行存放，学期表不再各存一份。
+// JSON 是为了兼容不同教务入口的节次数量，并让一次修改原子生效。
+model SchedulePeriodConfig {
+  id        Int      @id @default(1)
+  periods   String   @default("[]")
+  version   Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// 管理员维护的学期校历。adjustments 保持 JSON 是为了让一次修改能原子覆盖
+// 完整学期配置；节次时间见 SchedulePeriodConfig。
 model ScheduleTermConfig {
   id                  Int      @id @default(autoincrement())
   semester            String   @unique
   semesterStartMonday String
   weekCount           Int
-  periods             String
   adjustments         String
   timezone            String   @default("Asia/Shanghai")
   note                String   @default("")
