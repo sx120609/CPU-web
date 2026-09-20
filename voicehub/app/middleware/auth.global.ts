@@ -1,7 +1,7 @@
 import { useAuth } from '~/composables/useAuth'
 import { navigateToCpuWeb } from '~/utils/cpuWebNavigation'
 
-export default defineNuxtRouteMiddleware(async (to, from) => {
+export default defineNuxtRouteMiddleware(async (to) => {
   const { isAuthenticated, initAuth, user } = useAuth()
   const cpuManagedAccountRoutes = ['/login', '/register', '/forgot-password', '/change-password', '/account']
   const publicRoutes = ['/', '/auth/error']
@@ -17,10 +17,6 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
   // 公共页面跳过认证
   if (import.meta.client && (!isAuthenticated.value || !user.value)) {
     await initAuth()
-  }
-
-  if (import.meta.client && user.value?.voiceHubOnly && to.path !== '/dashboard') {
-    return navigateTo('/dashboard')
   }
 
   if (publicRoutes.includes(to.path) || to.path.startsWith('/api/auth')) {

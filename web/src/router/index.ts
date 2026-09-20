@@ -249,17 +249,7 @@ router.beforeEach(async (to) => {
   // HttpOnly Cookie 无法由前端直接读取；首次导航静默探测一次真实会话。
   // 游客的 401 不提示、不跳转，避免公开页面被错误抢到登录页。
   if (!auth.ready) await auth.fetchMe({ probe: true });
-  if (
-    auth.user?.role === "voicehub_admin"
-    || (
-      auth.user?.role === "user"
-      && auth.user?.voiceHubRole === "admin"
-      && !auth.user?.lostFoundRole
-    )
-  ) {
-    window.location.replace("/voicehub/dashboard");
-    return false;
-  }
+  // 模块管理权限不限制主站导航；后台权限由对应路由和接口检查。
   const requestedManageTool = firstRouteValue(to.query.tool);
   if (to.name === "service-tools-manage" && requestedManageTool === "file_collect") {
     return { name: "service-filestore" };

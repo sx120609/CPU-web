@@ -197,11 +197,6 @@ export async function resolveCpuWebAuth(event: H3Event) {
     requirePasswordChange: false,
     passwordChangedAt: null,
     has2FA: false,
-    cpuWebUserId: cpuUser.id,
-    voiceHubOnly: cpuUser.role === 'voicehub_admin' || (
-      cpuUser.role === 'user'
-      && cpuUser.voiceHubRole === 'admin'
-      && !cpuUser.lostFoundRole
-    )
+    cpuWebUserId: cpuUser.id
   }
 }
