@@ -4147,4 +4147,16 @@ if (
     gap: 0.4rem;
   }
 }
+/* Match the main site's iOS home-screen navigation fallback: fixed backdrop
+   layers can leave a blurred strip at the old paint position on first load. */
+@supports (-webkit-touch-callout: none) {
+  @media (display-mode: standalone) {
+    .home .tabs-row,
+    .home .login-options .login-btn {
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
+      background: #fbfdf8;
+    }
+  }
+}
 </style>

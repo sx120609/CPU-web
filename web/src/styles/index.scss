@@ -98,6 +98,19 @@ body[data-cpu-top-safe-area="1"] {
   --cpu-safe-area-inset-top: env(safe-area-inset-top, 0px);
 }
 
+/* iOS standalone: keep navigation surfaces out of WebKit's backdrop cache,
+   including the header removed when navigating into the full-screen timetable. */
+@supports (-webkit-touch-callout: none) {
+  @media (display-mode: standalone) {
+    #app .topbar,
+    #app .mobile-actions {
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
+      background: var(--cpu-card);
+    }
+  }
+}
+
 html[data-theme="dark"] {
   --cpu-primary: #36d0b7;
   --cpu-primary-light: #5ee4cc;

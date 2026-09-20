@@ -319,4 +319,17 @@ html[data-theme="dark"] .glass-tab-content > span { text-shadow: 0 1px 1px #000b
   .glass-base { background: #f7f7f7; }
   html[data-theme="dark"] .glass-base { background: #242424; }
 }
+
+/* Do not create a moving backdrop-sampling layer in iOS home-screen apps.
+   WebKit can retain its first paint over the page until the next interaction. */
+@supports (-webkit-touch-callout: none) {
+  @media (display-mode: standalone) {
+    .glass-base {
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
+      background: #f7f7f7;
+    }
+    html[data-theme="dark"] .glass-base { background: #242424; }
+  }
+}
 </style>
