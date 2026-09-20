@@ -1193,11 +1193,9 @@ async function loadGraduateSchedule(
 ) {
   if (disposed) return;
   const background = Boolean(options?.background);
-  if (background) loading.value = true;
   if (!jwxt.isLoggedIn) {
     const ready = await jwxt.ensureSession();
     if (!ready || disposed) {
-      if (!disposed && background) loading.value = false;
       return;
     }
   }
@@ -1234,7 +1232,7 @@ async function loadGraduateSchedule(
     saveScheduleCache();
     saveLastState();
   } finally {
-    if (!disposed && requestSeq === scheduleRequestSeq && (background || requestSeq === foregroundScheduleRequestSeq)) {
+    if (!disposed && !background && requestSeq === foregroundScheduleRequestSeq) {
       loading.value = false;
     }
   }
@@ -1622,8 +1620,8 @@ onMounted(() => {
   }
 
   // 后台静默恢复：缓存保持可见，同时用本机加密保存的信息续回学校会话。
-  const hadInitialSchedule = Boolean(parsed.value);
-  if (hadInitialSchedule) loading.value = true;
+  // Restored data is already interactive. Session repair must not acquire the
+  // foreground loading lock used by toolbar controls and swipe handlers.
   void (async () => {
     try {
       if (!auth.ready) await auth.fetchMe({ probe: true }).catch(() => undefined);
@@ -1653,7 +1651,6 @@ onMounted(() => {
     } finally {
       if (!disposed) {
         sessionChecking.value = false;
-        if (hadInitialSchedule) loading.value = false;
       }
     }
   })();
@@ -1988,7 +1985,6 @@ async function loadSchedule(force = false, background = false) {
   if (!jwxt.isLoggedIn) {
     const ready = await jwxt.ensureSession();
     if (!ready || disposed) {
-      if (!disposed && background) loading.value = false;
       return;
     }
   }
@@ -2002,7 +1998,7 @@ async function loadSchedule(force = false, background = false) {
   try {
     const r = await semesterLoader.load(requestedSemester, requestedWeek, force);
     if (disposed) return;
-    if (!isCurrentScheduleRequest(requestSeq, requestedSemester, requestedWeek)) {
+    if (!isCurrentScheduleRequest(requestSeq, requestedSemester, r.parsed.scope === "semester" ? "" : requestedWeek)) {
       return;
     }
     scheduleSource.value = "jwxt";
@@ -2022,7 +2018,7 @@ async function loadSchedule(force = false, background = false) {
     if (!isCurrentScheduleRequest(requestSeq, requestedSemester, requestedWeek)) return;
     if (!hadCache && !canFallbackToVisibleSchedule) throw error;
   } finally {
-    if (!disposed && requestSeq === scheduleRequestSeq && (background || requestSeq === foregroundScheduleRequestSeq)) {
+    if (!disposed && !background && requestSeq === foregroundScheduleRequestSeq) {
       loading.value = false;
     }
   }
