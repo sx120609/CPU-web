@@ -16,9 +16,12 @@ public struct ScheduleLiveActivityAttributes: ActivityAttributes, Equatable {
         public let startDate: Date
         public let endDate: Date
         public let weekRangeLabel: String?
+        /// 这一天的调休说明。可选，旧快照解出来就是 nil。
+        public let adjustmentNote: String?
 
         public init(dateKey: String, period: Int, name: String, teacher: String, location: String,
-                    periodLabel: String?, startDate: Date, endDate: Date, weekRangeLabel: String?) {
+                    periodLabel: String?, startDate: Date, endDate: Date, weekRangeLabel: String?,
+                    adjustmentNote: String? = nil) {
             self.dateKey = dateKey
             self.period = period
             self.name = name
@@ -28,6 +31,7 @@ public struct ScheduleLiveActivityAttributes: ActivityAttributes, Equatable {
             self.startDate = startDate
             self.endDate = endDate
             self.weekRangeLabel = weekRangeLabel
+            self.adjustmentNote = adjustmentNote
         }
     }
 
@@ -59,6 +63,10 @@ public struct ScheduleLiveActivityAttributes: ActivityAttributes, Equatable {
         public let nextCourseLocation: String?
         public let nextCourseStart: Date?
         public let nextCourseEnd: Date?
+        /// 调休说明，例如「国庆节放假」或「上 9.16 周三的课」。空表示照常上课。
+        /// Optional so an activity started before this field existed still
+        /// decodes.
+        public let adjustmentNote: String?
         public let updatedAt: Date
         /// Compact school-channel boundary marker. The widget resolves the
         /// student's actual course from the App Group snapshot instead of
@@ -86,6 +94,7 @@ public struct ScheduleLiveActivityAttributes: ActivityAttributes, Equatable {
             nextCourseLocation: String? = nil,
             nextCourseStart: Date? = nil,
             nextCourseEnd: Date? = nil,
+            adjustmentNote: String? = nil,
             updatedAt: Date = .now,
             broadcastDateKey: String? = nil,
             broadcastPeriod: Int? = nil,
@@ -109,11 +118,19 @@ public struct ScheduleLiveActivityAttributes: ActivityAttributes, Equatable {
             self.nextCourseLocation = nextCourseLocation
             self.nextCourseStart = nextCourseStart
             self.nextCourseEnd = nextCourseEnd
+            self.adjustmentNote = adjustmentNote?.trimmingCharacters(in: .whitespacesAndNewlines)
             self.updatedAt = updatedAt
             self.broadcastDateKey = broadcastDateKey
             self.broadcastPeriod = broadcastPeriod
             self.broadcastPhase = broadcastPhase
             self.broadcastTimestamp = broadcastTimestamp
+        }
+
+        /// 调休说明，去掉空白后为空就当没有。
+        public var normalizedAdjustmentNote: String? {
+            guard let value = adjustmentNote?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !value.isEmpty else { return nil }
+            return value
         }
 
         /// Rehydrate a broadcast boundary with this user's private local
@@ -139,6 +156,7 @@ public struct ScheduleLiveActivityAttributes: ActivityAttributes, Equatable {
                 weekRangeLabel: course.weekRangeLabel,
                 startDate: course.startDate,
                 endDate: course.endDate,
+                adjustmentNote: course.adjustmentNote,
                 updatedAt: broadcastTimestamp ?? .now
             )
         }

@@ -9,7 +9,6 @@ import Foundation
 @available(iOS 17.0, *)
 @MainActor
 final class NativeLiveActivityController: ObservableObject {
-    typealias APIRequest = @MainActor (_ path: String, _ method: String, _ body: [String: Any]?) async throws -> Data
     enum Status: Equatable {
         case disabled
         case waiting
@@ -47,9 +46,6 @@ final class NativeLiveActivityController: ObservableObject {
 
     private var refreshTask: Task<Void, Never>?
     private var previewEndTask: Task<Void, Never>?
-    private var pushTokenTasks: [String: Task<Void, Never>] = [:]
-    private var activityTokens: [String: String] = [:]
-    private var apiRequest: APIRequest?
     private var lastSnapshot: NativeScheduleSnapshot?
     private let now: () -> Date
     /// Set by the push service before an Activity is requested. A push token
@@ -57,6 +53,9 @@ final class NativeLiveActivityController: ObservableObject {
     var wantsPushToken = false
     /// Called whenever the rendered future plan changes.
     var planDidChange: (([PlannedPush]) -> Void)?
+    /// Injected by the push service so this controller remains independently
+    /// testable on iOS versions where the push API is unavailable.
+    var resetPushService: (() -> Void)?
     var currentScheduleMetadata: NativeScheduleSnapshot? { lastSnapshot }
     var scheduleBackgroundWakeup: ((Date) -> Void)?
     /// School channel returned by APNs configuration. iOS 26 uses it for
@@ -89,10 +88,6 @@ final class NativeLiveActivityController: ObservableObject {
         }
     }
 
-    func setAPIRequest(_ request: APIRequest?) {
-        apiRequest = request
-    }
-
     func replanForPush() {
         guard let lastSnapshot else { return }
         planDidChange?(pushPlan(from: lastSnapshot))
@@ -105,6 +100,11 @@ final class NativeLiveActivityController: ObservableObject {
 
     func setEnabled(_ enabled: Bool) {
         UserDefaults(suiteName: NextWidgetConfiguration.appGroup)?.set(enabled, forKey: Self.enabledKey)
+        // Server push has no switch of its own: registering here is what lets
+        // the activity appear while the app is suspended.
+        #if os(iOS)
+        if #available(iOS 17.2, *) { LiveActivityPushService.shared.enabledDidChange(enabled) }
+        #endif
         if enabled, let lastSnapshot {
             status = .waiting
             accept(lastSnapshot)
@@ -157,7 +157,7 @@ final class NativeLiveActivityController: ObservableObject {
     func reset() {
         lastSnapshot = nil
         UserDefaults(suiteName: NextWidgetConfiguration.appGroup)?.removeObject(forKey: ScheduleLiveActivityAttributes.broadcastCoursesKey)
-        unregisterActivities()
+        resetPushService?()
         end()
         status = isEnabled ? .waiting : .disabled
     }
@@ -215,12 +215,11 @@ final class NativeLiveActivityController: ObservableObject {
             await endActivities()
             guard isPreviewActive, isEnabled else { return }
             do {
-                let activity = try Activity<ScheduleLiveActivityAttributes>.request(
+                _ = try Activity<ScheduleLiveActivityAttributes>.request(
                     attributes: attributes,
                     content: content,
                     pushType: wantsPushToken ? .token : nil
                 )
-                observePushToken(for: activity)
                 status = .active
                 previewEndTask = Task { @MainActor [weak self] in
                     let seconds = max(1, end.timeIntervalSinceNow)
@@ -260,7 +259,6 @@ final class NativeLiveActivityController: ObservableObject {
         isPreviewActive = false
         if !isEnabled { status = .disabled }
         let activities = Activity<ScheduleLiveActivityAttributes>.activities
-        unregisterActivities()
         guard !activities.isEmpty else { return }
         Task { @MainActor in
             for activity in activities {
@@ -319,8 +317,6 @@ final class NativeLiveActivityController: ObservableObject {
         if let activity = currentActivity,
            activity.attributes == attributes {
             await activity.update(content)
-            observePushToken(for: activity)
-            await register(activity)
             guard !Task.isCancelled else { return nil }
             status = .active
             scheduleBackgroundWakeup?(occurrence.end)
@@ -330,13 +326,11 @@ final class NativeLiveActivityController: ObservableObject {
         // A newer snapshot, logout or preview may take over across the await.
         guard !Task.isCancelled, isEnabled, !isPreviewActive else { return nil }
         do {
-            let activity = try Activity<ScheduleLiveActivityAttributes>.request(
+            _ = try Activity<ScheduleLiveActivityAttributes>.request(
                 attributes: attributes,
                 content: content,
                 pushType: wantsPushToken ? .token : nil
             )
-            observePushToken(for: activity)
-            await register(activity)
             status = .active
             scheduleBackgroundWakeup?(occurrence.end)
             return refreshDelay(for: occurrence)
@@ -411,7 +405,6 @@ final class NativeLiveActivityController: ObservableObject {
     }
 
     private func endActivities() async {
-        unregisterActivities()
         for activity in Activity<ScheduleLiveActivityAttributes>.activities {
             await activity.end(nil, dismissalPolicy: .immediate)
         }
@@ -424,64 +417,6 @@ final class NativeLiveActivityController: ObservableObject {
                 await activity.end(nil, dismissalPolicy: .immediate)
             }
         }
-    }
-
-    private func observePushToken(for activity: Activity<ScheduleLiveActivityAttributes>) {
-        let id = activity.id
-        guard pushTokenTasks[id] == nil else { return }
-        pushTokenTasks[id] = Task { @MainActor [weak self] in
-            guard let self else { return }
-            for await tokenData in activity.pushTokenUpdates {
-                guard !Task.isCancelled else { return }
-                let token = tokenData.map { String(format: "%02x", $0) }.joined()
-                guard !token.isEmpty else { continue }
-                self.activityTokens[id] = token
-                await self.register(activity)
-            }
-        }
-    }
-
-    private func register(_ activity: Activity<ScheduleLiveActivityAttributes>) async {
-        guard let apiRequest, let token = activityTokens[activity.id] else { return }
-        do {
-            let attributes = try jsonObject(activity.attributes)
-            let contentState = try jsonObject(activity.content.state)
-            #if DEBUG
-            let environment = "sandbox"
-            #else
-            let environment = "production"
-            #endif
-            _ = try await apiRequest("/api/live-activities/register", "POST", [
-                "token": token,
-                "environment": environment,
-                "bundleID": Bundle.main.bundleIdentifier ?? "cn.cputime.mobile",
-                "attributes": attributes,
-                "contentState": contentState,
-            ])
-        } catch {
-            // Registration retries on the next token update or local state update.
-        }
-    }
-
-    private func unregisterActivities() {
-        guard let apiRequest else { return }
-        let tokens = Array(activityTokens.values)
-        pushTokenTasks.values.forEach { $0.cancel() }
-        pushTokenTasks.removeAll()
-        activityTokens.removeAll()
-        for token in tokens {
-            Task { @MainActor in
-                _ = try? await apiRequest("/api/live-activities/register", "DELETE", ["token": token])
-            }
-        }
-    }
-
-    private func jsonObject<T: Encodable>(_ value: T) throws -> [String: Any] {
-        let data = try JSONEncoder().encode(value)
-        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw NSError(domain: "LiveActivity", code: 1, userInfo: [NSLocalizedDescriptionKey: "Activity 状态编码失败"])
-        }
-        return object
     }
 
     private func contentState(
@@ -506,6 +441,7 @@ final class NativeLiveActivityController: ObservableObject {
             nextCourseLocation: occurrence.next?.location,
             nextCourseStart: occurrence.next?.start,
             nextCourseEnd: occurrence.next?.end,
+            adjustmentNote: occurrence.adjustmentNote.trimmedNonEmpty,
             updatedAt: phase == .inProgress ? occurrence.start : now()
         )
     }
@@ -523,7 +459,8 @@ final class NativeLiveActivityController: ObservableObject {
                 periodLabel: occurrence.periodLabel,
                 startDate: occurrence.start,
                 endDate: occurrence.end,
-                weekRangeLabel: occurrence.weekRangeLabel
+                weekRangeLabel: occurrence.weekRangeLabel,
+                adjustmentNote: occurrence.adjustmentNote.trimmedNonEmpty
             )
         }
         guard let data = try? JSONEncoder().encode(Array(records)) else { return }
@@ -611,6 +548,53 @@ final class NativeLiveActivityController: ObservableObject {
         let isInProgress: Bool
         let next: NextCourse?
         let weekRangeLabel: String
+        /// 这一天的调休说明。补课那天要说清楚上的是哪天的课，否则锁屏上是
+        /// 一节看起来不该存在的课。
+        let adjustmentNote: String
+    }
+
+    /// 调休：放假那天没有课要提醒，补课那天提醒的是另一天的课，被调走的那天
+    /// 也不再上课。返回 nil 表示这天一节课都没有。
+    ///
+    /// 和 `NativeScheduleView.blocks(for:week:result:)` 的规则保持一致，否则
+    /// 网格里和锁屏上会是两张课表。
+    private static func resolvedDay(
+        date: String,
+        day: Int,
+        week: Int,
+        calendar: NativeScheduleCalendar
+    ) -> (day: Int, week: Int, note: String)? {
+        if let adjustment = calendar.adjustments.first(where: { $0.date == date }) {
+            let note = adjustment.note?.trimmedNonEmpty
+            if adjustment.kind == "off" { return nil }
+            if adjustment.kind == "swap" {
+                guard let source = adjustment.source,
+                      let sourceWeek = calendar.weeks.first(where: { $0.days.contains(source) }),
+                      let index = sourceWeek.days.firstIndex(of: source) else { return nil }
+                return (index + 1, sourceWeek.week, note ?? "上 \(Self.shortDate(source)) \(Self.weekdayName(source))的课")
+            }
+            return (day, week, note ?? "")
+        }
+        // 这天的课被调到别处去了，本身就不再上课。
+        if calendar.adjustments.contains(where: { $0.kind == "swap" && $0.source == date }) { return nil }
+        return (day, week, "")
+    }
+
+    private static func shortDate(_ value: String) -> String {
+        let pieces = value.split(separator: "-")
+        guard pieces.count >= 3 else { return value }
+        return "\(pieces[pieces.count - 2]).\(pieces[pieces.count - 1])"
+    }
+
+    private static func weekdayName(_ value: String) -> String {
+        let parts = value.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3 else { return "" }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Shanghai")!
+        guard let date = calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2])) else { return "" }
+        let labels = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"]
+        let index = calendar.component(.weekday, from: date) - 1
+        return labels.indices.contains(index) ? labels[index] : ""
     }
 
     private func allOccurrences(in snapshot: NativeScheduleSnapshot) -> [Occurrence] {
@@ -619,11 +603,13 @@ final class NativeLiveActivityController: ObservableObject {
         dateCalendar.timeZone = TimeZone(identifier: "Asia/Shanghai")!
         let periods = snapshot.periods.isEmpty ? NativeSchedulePeriod.bundledTimetable : snapshot.periods
         let periodByNumber = Dictionary(uniqueKeysWithValues: periods.map { ($0.number, $0) })
-        return calendar.weeks.flatMap { week in
-            week.days.enumerated().flatMap { dayIndex, day in
-                data.cells.filter { $0.day == dayIndex + 1 }.flatMap { cell in
+        return calendar.weeks.flatMap { week -> [Occurrence] in
+            week.days.enumerated().flatMap { dayIndex, day -> [Occurrence] in
+                guard let resolved = Self.resolvedDay(
+                    date: day, day: dayIndex + 1, week: week.week, calendar: calendar) else { return [] }
+                return data.cells.filter { $0.day == resolved.day }.flatMap { cell in
                     cell.courses.compactMap { course -> Occurrence? in
-                        guard course.weekList.isEmpty || course.weekList.contains(week.week) else { return nil }
+                        guard course.weekList.isEmpty || course.weekList.contains(resolved.week) else { return nil }
                         let range = NativeSchedulePeriod.normalizedRange(bigSlot: cell.bigSlot, startSlot: course.startSlot, endSlot: course.endSlot, periods: periods)
                         guard let startPeriod = periodByNumber[range.start], let endPeriod = periodByNumber[range.end],
                               let start = date(day, time: startPeriod.startTime, calendar: dateCalendar),
@@ -633,7 +619,7 @@ final class NativeLiveActivityController: ObservableObject {
                             teacher: course.teacher?.trimmedNonEmpty ?? "", location: course.location?.trimmedNonEmpty ?? "",
                             periodLabel: Self.periodLabel(start: range.start, end: range.end), dateLabel: Self.dateLabel(day: day, week: week.week),
                             start: start, end: end, dateKey: day, week: week.week, isInProgress: false, next: nil,
-                            weekRangeLabel: course.weeks.trimmedNonEmpty ?? "")
+                            weekRangeLabel: course.weeks.trimmedNonEmpty ?? "", adjustmentNote: resolved.note)
                     }
                 }
             }
@@ -650,12 +636,14 @@ final class NativeLiveActivityController: ObservableObject {
         // visible grid is only one week. Build occurrences for every dated
         // week so a no-class day still gets the next scheduled course.
         let events = calendar.weeks.flatMap { week -> [Occurrence] in
-            week.days.enumerated().flatMap { dayIndex, day in
-                data.cells
-                    .filter { $0.day == dayIndex + 1 }
+            week.days.enumerated().flatMap { dayIndex, day -> [Occurrence] in
+                guard let resolved = Self.resolvedDay(
+                    date: day, day: dayIndex + 1, week: week.week, calendar: calendar) else { return [] }
+                return data.cells
+                    .filter { $0.day == resolved.day }
                     .flatMap { cell in
                         cell.courses.compactMap { course -> Occurrence? in
-                            guard course.weekList.isEmpty || course.weekList.contains(week.week) else { return nil }
+                            guard course.weekList.isEmpty || course.weekList.contains(resolved.week) else { return nil }
                             let range = NativeSchedulePeriod.normalizedRange(
                                 bigSlot: cell.bigSlot,
                                 startSlot: course.startSlot,
@@ -683,7 +671,8 @@ final class NativeLiveActivityController: ObservableObject {
                                 week: week.week,
                                 isInProgress: false,
                                 next: nil,
-                                weekRangeLabel: course.weeks.trimmedNonEmpty ?? ""
+                                weekRangeLabel: course.weeks.trimmedNonEmpty ?? "",
+                                adjustmentNote: resolved.note
                             )
                         }
                     }
@@ -718,7 +707,8 @@ final class NativeLiveActivityController: ObservableObject {
                         weekRangeLabel: $0.weekRangeLabel
                     )
                 },
-                weekRangeLabel: current.weekRangeLabel
+                weekRangeLabel: current.weekRangeLabel,
+                adjustmentNote: current.adjustmentNote
             )
         }
         let upcoming = events[0]
@@ -746,7 +736,8 @@ final class NativeLiveActivityController: ObservableObject {
             week: upcoming.week,
             isInProgress: false,
             next: next,
-            weekRangeLabel: upcoming.weekRangeLabel
+            weekRangeLabel: upcoming.weekRangeLabel,
+            adjustmentNote: upcoming.adjustmentNote
         )
     }
 

@@ -16,9 +16,32 @@ public struct ActivityContent<State> {
     }
 }
 
+public enum ActivityStyle { case standard, transient }
+
+public struct LocalizedStringResource: ExpressibleByStringLiteral {
+    public let value: String
+    public init(stringLiteral value: String) { self.value = value }
+}
+
+public struct AlertConfiguration {
+    public let title: LocalizedStringResource
+    public let body: LocalizedStringResource
+    public init(title: LocalizedStringResource, body: LocalizedStringResource, sound: AlertSound) {
+        self.title = title
+        self.body = body
+    }
+    public struct AlertSound {
+        public static let `default` = AlertSound()
+        public init() {}
+    }
+}
+
 public enum ActivityState { case active, stale, ended, dismissed }
 public enum ActivityUIDismissalPolicy { case immediate }
-public enum PushType { case token }
+public enum PushType {
+    case token
+    case channel(String)
+}
 
 public enum TestActivityKit {
     public static var activitiesEnabled = true
@@ -60,6 +83,17 @@ public final class Activity<Attributes: ActivityAttributes> {
         TestActivityKit.activities.append(activity)
         TestActivityKit.events.append("request")
         return activity
+    }
+
+    public static func request(
+        attributes: Attributes,
+        content: ActivityContent<Attributes.ContentState>,
+        pushType: PushType?,
+        style: ActivityStyle,
+        alertConfiguration: AlertConfiguration,
+        start: Date
+    ) throws -> Activity<Attributes> {
+        try request(attributes: attributes, content: content, pushType: pushType)
     }
 
     public func update(_ content: ActivityContent<Attributes.ContentState>) async {

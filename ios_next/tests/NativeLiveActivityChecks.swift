@@ -123,7 +123,27 @@ struct NativeLiveActivityChecks {
         precondition(activeActivities.isEmpty, "The running loop must dismiss at class end")
         controller.reset()
 
-        print("Live Activity checks passed: lead window, create, cache update, start, end, retry, settings, permission and logout")
+        // 调休：放假那天一条都不推，补课那天推的是被调走那天的课，并带上说明。
+        controller.setEnabled(true)
+        let planClock = ISO8601DateFormatter().date(from: "2026-09-14T00:00:00+08:00")!
+        let plainPlan = controller.pushPlan(from: fixture(), now: planClock)
+        precondition(plainPlan.contains { $0.attributes.dateKey == "2026-09-16" },
+                     "Without an adjustment the Wednesday class is planned as usual")
+        precondition(plainPlan.allSatisfy { $0.state.normalizedAdjustmentNote == nil },
+                     "An ordinary day carries no adjustment note")
+
+        let adjustedPlan = controller.pushPlan(from: adjustedFixture(), now: planClock)
+        precondition(adjustedPlan.allSatisfy { $0.attributes.dateKey != "2026-09-16" },
+                     "A holiday must not keep a single push on the plan")
+        let makeUp = adjustedPlan.filter { $0.attributes.dateKey == "2026-09-19" }
+        precondition(!makeUp.isEmpty, "The make-up day runs the classes that were moved off the holiday")
+        precondition(makeUp.allSatisfy { $0.state.courseName == "药理学实验" },
+                     "The make-up day shows the moved day's courses")
+        precondition(makeUp.allSatisfy { $0.state.normalizedAdjustmentNote == "上 09.16 周三的课" },
+                     "Every make-up frame says which day's classes it is showing")
+        controller.reset()
+
+        print("Live Activity checks passed: lead window, create, cache update, start, end, retry, settings, permission, logout and 调休")
     }
 
     @MainActor
@@ -135,6 +155,27 @@ struct NativeLiveActivityChecks {
 
     private static func settle() async {
         try? await Task.sleep(for: .milliseconds(20))
+    }
+
+    /// 周三放假，周六补这天的课：计划必须跟着挪，而且说清楚挪的是哪天。
+    private static func adjustedFixture() -> NativeScheduleSnapshot {
+        let base = fixture()
+        return NativeScheduleSnapshot(
+            completeSemester: true,
+            source: .cache,
+            periods: base.periods,
+            data: base.data,
+            calendar: NativeScheduleCalendar(
+                currentSemester: "2026-2027-1",
+                currentWeek: 3,
+                weeks: base.calendar?.weeks ?? [],
+                adjustments: [
+                    NativeScheduleAdjustment(date: "2026-09-16", kind: "off", source: nil, note: "国庆节放假"),
+                    NativeScheduleAdjustment(date: "2026-09-19", kind: "swap", source: "2026-09-16", note: nil),
+                ]
+            ),
+            auth: NativeScheduleAuth(authenticated: true)
+        )
     }
 
     private static func fixture(authenticated: Bool = true) -> NativeScheduleSnapshot {

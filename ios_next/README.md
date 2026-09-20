@@ -70,7 +70,7 @@ xcodebuild -project ios_next/CpuTime/CpuTime.xcodeproj -scheme CPUWatch -destina
 
 以上本地检查只验证开发改动，不是生产部署产物；生产发布仍遵循 `docs/production-requirements.md`。
 
-实时活动回归脚本在 macOS 编译并执行实际控制器，以内存 ActivityKit 边界验证创建、课程开始/结束、缓存重复到达、权限变化、重试与退出登录，不依赖 XCTest 或学校账号。模拟器通过 `CPU_DEBUG_MOCK_SCHEDULE=1` 启动 Debug App 可生成一节当前正在进行的课程，用于检查系统实际呈现。当前实时活动采用本地 ActivityKit 更新：前台在课程边界更新，回到前台立即补同步。App 被系统挂起后的准时远程更新/结束需要 APNs 服务端支持；`Activity.update/end` 的 `timestamp` 只用于事件排序，不能用来预约未来执行。
+实时活动回归脚本在 macOS 编译并执行实际控制器，以内存 ActivityKit 边界验证创建、课程开始/结束、缓存重复到达、权限变化、重试与退出登录，不依赖 XCTest 或学校账号。模拟器通过 `CPU_DEBUG_MOCK_SCHEDULE=1` 启动 Debug App 可生成一节当前正在进行的课程，用于检查系统实际呈现。当前实时活动采用本地 ActivityKit 更新：前台在课程边界更新，回到前台立即补同步。App 被系统挂起后的准时远程更新/结束通过共享 NapTable 服务端完成；CPU 客户端以 `cpu` 学校注册设备、上传计划并使用 NapTable 返回的设备密钥。默认服务地址为 `https://naptable.cputime.cn`，Debug 可在 `UserDefaults` 中用 `cpu.naptable.serverURL` 覆盖为本地 HTTPS/loopback 服务。`Activity.update/end` 的 `timestamp` 只用于事件排序，不能用来预约未来执行。实时活动与课表网格走同一套调休规则：放假那天不提醒，补课那天提醒的是被调走那天的课，锁屏和灵动岛上会用一行说明写清楚上的是哪天的课。
 
 ## iOS 小组件
 

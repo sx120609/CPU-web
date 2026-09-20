@@ -137,6 +137,9 @@ private struct ScheduleLiveActivityLockScreen: View {
                 ScheduleLiveActivityCountdown(state: state)
             }
 
+            if let note = state.normalizedAdjustmentNote {
+                ScheduleLiveActivityAdjustmentChip(note: note)
+            }
             ScheduleLiveActivityCourseDetails(state: state)
             ScheduleLiveActivityProgress(state: state)
 
@@ -178,6 +181,9 @@ private struct ScheduleLiveActivityExpandedDetails: View {
                     .foregroundStyle(ScheduleLiveActivityPalette.secondaryText)
                     .fixedSize()
             }
+            if let note = state.normalizedAdjustmentNote {
+                ScheduleLiveActivityAdjustmentChip(note: note)
+            }
             ScheduleLiveActivityCourseDetails(state: state)
             ScheduleLiveActivityProgress(state: state)
         }
@@ -185,6 +191,28 @@ private struct ScheduleLiveActivityExpandedDetails: View {
         // The bottom region is clipped by Dynamic Island's own capsule. Keep
         // the progress track and the metadata away from its lower corners.
         .padding(.bottom, 2)
+    }
+}
+
+/// 调休那天锁屏上多一行说明。补课日显示的是另一天的课，不说清楚就是一节
+/// 看起来不该存在的课。
+@available(iOS 16.1, *)
+private struct ScheduleLiveActivityAdjustmentChip: View {
+    let note: String
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "calendar.badge.exclamationmark")
+                .font(.system(size: 10, weight: .semibold))
+            Text(note)
+                .font(.system(size: 11, weight: .medium))
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+        .foregroundStyle(ScheduleLiveActivityPalette.brand)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 2)
+        .background(ScheduleLiveActivityPalette.brand.opacity(0.16), in: Capsule())
     }
 }
 
