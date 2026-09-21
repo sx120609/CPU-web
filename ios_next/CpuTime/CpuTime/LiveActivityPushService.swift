@@ -8,6 +8,12 @@ import Foundation
 @MainActor
 final class LiveActivityPushService: ObservableObject {
     static let shared = LiveActivityPushService()
+    private let localScheduling: Bool
+    init(localScheduling: Bool? = nil) {
+        if let localScheduling { self.localScheduling = localScheduling }
+        else if #available(iOS 26.0, *) { self.localScheduling = true }
+        else { self.localScheduling = false }
+    }
     private typealias Request = (String, String, [String: Any]?) async throws -> Data
     private var apiRequest: Request?
     private var startTask: Task<Void, Never>?
@@ -29,6 +35,14 @@ final class LiveActivityPushService: ObservableObject {
         controller.resetPushService = { [weak self] in self?.resetForLogout() }
         controller.planDidChange = { [weak self] in self?.scheduleSync() }
         guard controller.isEnabled else { flushRevocations(); return }
+        if localScheduling {
+            controller.remoteStartsEnabled = false
+            startTask?.cancel()
+            startTask = nil
+            queueRevocation()
+            scheduleSync()
+            return
+        }
         guard #available(iOS 18.0, *) else {
             controller.broadcastStatus = "此系统版本仅支持前台本地实时活动；远程启动与广播需要 iOS 18。"
             return
@@ -68,6 +82,21 @@ final class LiveActivityPushService: ObservableObject {
                 do {
                     try await flushRevocations(using: request)
                     let controller = NativeLiveActivityController.shared
+                    if localScheduling {
+                        guard controller.isEnabled else { return }
+                        let bundle = Bundle.main.bundleIdentifier ?? "cn.cputime.mobile"
+                        let path = "/api/live-activities/broadcast-config?mode=day&environment=\(Self.environment)&bundleID=\(bundle)"
+                        let result = try Self.decode(try await request(path, "GET", nil))
+                        guard epoch == generation, !Task.isCancelled, controller.isEnabled else { return }
+                        let encoded = try JSONSerialization.data(withJSONObject: result["windows"] ?? [])
+                        let windows = try JSONDecoder().decode([NativeLiveActivityController.BroadcastWindow].self, from: encoded)
+                        controller.broadcastWindows = windows
+                        controller.broadcastStatus = windows.contains(where: { $0.channelID != nil })
+                            ? "学校日期频道已连接，课程提醒在本机预约。"
+                            : "学校日期频道尚未就绪，请稍后重试。"
+                        if version == revision { return }
+                        continue
+                    }
                     guard controller.isEnabled, controller.remoteStartsEnabled else { return }
                     guard let token else {
                         controller.broadcastStatus = "等待系统提供远程启动凭据，请保持联网。"

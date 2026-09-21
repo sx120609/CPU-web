@@ -18,7 +18,7 @@ liveActivityRouter.put("/remote-start", async (req, res, next) => {
 });
 liveActivityRouter.get("/broadcast-config", async (req, res, next) => {
   try {
-    ok(res, await liveActivityBroadcastConfig(String(req.query.environment || "production"), String(req.query.bundleID || "")));
+    ok(res, await liveActivityBroadcastConfig(String(req.query.environment || "production"), String(req.query.bundleID || ""), req.query.mode === "day"));
   } catch (error) {
     next(Errors.badRequest(error instanceof Error ? error.message : "广播配置读取失败"));
   }

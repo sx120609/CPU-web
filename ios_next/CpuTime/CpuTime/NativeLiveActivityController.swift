@@ -41,7 +41,9 @@ final class NativeLiveActivityController: ObservableObject {
     /// showing a class that is hours away.
     static let leadMinutesKey = "scheduleLiveActivityLeadMinutes"
     var leadMinutes: Int {
-        let value = UserDefaults(suiteName: NextWidgetConfiguration.appGroup)?.object(forKey: Self.leadMinutesKey) as? Int ?? 15
+        let defaultMinutes: Int
+        if #available(iOS 26.0, *) { defaultMinutes = 60 } else { defaultMinutes = 15 }
+        let value = UserDefaults(suiteName: NextWidgetConfiguration.appGroup)?.object(forKey: Self.leadMinutesKey) as? Int ?? defaultMinutes
         return min(60, max(0, value))
     }
     var leadTime: TimeInterval { TimeInterval(leadMinutes * 60) }
@@ -281,8 +283,13 @@ final class NativeLiveActivityController: ObservableObject {
         if remoteStartsEnabled {
             // Server owns starts. Never create a second local/scheduled activity
             // while a remote start may be in flight.
+            let remainingWindows = remoteStartWindows()
             for activity in Activity<ScheduleLiveActivityAttributes>.activities {
-                var obsolete = activity.attributes.broadcastWindow == nil
+                // School boundaries keep arriving after this student's last
+                // course. Keep only windows with courses still remaining.
+                var obsolete = !remainingWindows.contains {
+                    $0.dateKey == activity.attributes.dateKey && $0.window == activity.attributes.broadcastWindow
+                }
                 if #available(iOS 26.0, *) { obsolete = obsolete || activity.activityState == .pending }
                 if obsolete { await activity.end(nil, dismissalPolicy: .immediate) }
             }
@@ -415,39 +422,25 @@ final class NativeLiveActivityController: ObservableObject {
         let channelID: String
     }
 
-    /// Reserve only today's windows. Tomorrow's activity must not subscribe to
-    /// today's end broadcast. ActivityKit does not offer recurring starts.
+    /// Each lesson has a local alert and shares its school's date channel.
+    /// A two-day horizon bounds reservations; ActivityKit can still reject them.
     func localReservations(from snapshot: NativeScheduleSnapshot) -> [LocalReservation] {
         guard isEnabled, snapshot.auth.authenticated else { return [] }
         let current = now()
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "Asia/Shanghai")!
-        let periods = snapshot.periods.isEmpty ? NativeSchedulePeriod.bundledTimetable : snapshot.periods
-        let events = allOccurrences(in: snapshot).filter { calendar.isDate($0.start, inSameDayAs: current) && $0.end > current }
-        return broadcastWindows.compactMap { window in
-            guard let channel = window.channelID, !channel.isEmpty else { return nil }
-            let courses = events.filter {
-                let hour = calendar.component(.hour, from: $0.start)
-                return hour >= window.startHour && hour < window.endHour
-            }
-            guard let first = courses.first else { return nil }
-            let clocks = periods.filter {
-                let hour = Int($0.startTime.prefix(2)) ?? -1
-                return hour >= window.startHour && hour < window.endHour
-            }.compactMap { date(first.dateKey, time: $0.endTime, calendar: calendar) }
-            guard let end = clocks.max(), end > current else { return nil }
-            let start = max(first.start.addingTimeInterval(-leadTime), current.addingTimeInterval(1))
-            // Respect ActivityKit's maximum active duration, including custom
-            // school timetables that would make a window too long.
-            guard end.timeIntervalSince(start) < 8 * 3600 else { return nil }
-            let attrs = ScheduleLiveActivityAttributes(
-                semester: snapshot.data?.currentSemester ?? "", dateKey: first.dateKey,
-                week: first.week, broadcastWindow: window.id, broadcastChannel: channel,
-                reservationStart: first.start, reservationEnd: end
+        let events = allOccurrences(in: snapshot).filter { $0.end > current && $0.start < current.addingTimeInterval(2 * 86400) }
+        return events.compactMap { course in
+            guard let window = broadcastWindows.first(where: { $0.id == course.dateKey }),
+                  let channel = window.channelID, !channel.isEmpty else { return nil }
+            let reminder = course.start.addingTimeInterval(-leadTime)
+            let start = max(reminder, current.addingTimeInterval(1))
+            let attributes = ScheduleLiveActivityAttributes(
+                semester: snapshot.data?.currentSemester ?? "", dateKey: course.dateKey,
+                week: course.week, broadcastWindow: course.dateKey, broadcastChannel: channel,
+                reservationStart: course.start, reservationEnd: course.end, reminderDate: reminder
             )
-            let state = contentState(for: first, phase: first.start <= current ? .inProgress : .upcoming)
-            return LocalReservation(attributes: attrs, state: state, start: start, end: end, channelID: channel)
-        }
+            let state = contentState(for: course, phase: course.start <= current ? .inProgress : .upcoming)
+            return LocalReservation(attributes: attributes, state: state, start: start, end: course.end, channelID: channel)
+        }.sorted { $0.start < $1.start }
     }
 
     @available(iOS 26.0, *)
@@ -462,6 +455,10 @@ final class NativeLiveActivityController: ObservableObject {
         guard !Task.isCancelled, isEnabled, !isPreviewActive else { return nil }
         for reservation in reservations {
             guard !Task.isCancelled, isEnabled, !isPreviewActive else { return nil }
+            guard reservation.end.timeIntervalSince(reservation.start) < 8 * 3600 else {
+                status = .failed("课程及提前提醒超过实时活动的 8 小时上限。")
+                return nil
+            }
             let existing = Activity<ScheduleLiveActivityAttributes>.activities.first {
                 $0.attributes == reservation.attributes && $0.activityState != .ended && $0.activityState != .dismissed
             }

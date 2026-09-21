@@ -4,6 +4,7 @@ import { getApnsConfig } from "./apnsConfig";
 import { listScheduleTermConfigs, type ScheduleTermConfigValue } from "./scheduleTermConfig";
 import { adjustmentForDate, isMovedSourceDate } from "../shared/scheduleAdjustments";
 import { LIVE_ACTIVITY_WINDOWS } from "./liveActivityWindows";
+import { dayChannelDates, ensureDayChannels } from "./apnsChannels";
 
 import { tickRemoteStarts } from "./liveActivityRemoteStart";
 
@@ -17,10 +18,15 @@ let materializedDigest = "";
 
 // The client receives only public school timing/channel metadata. No device
 // token, personal timetable, activity state or future personal plan is stored.
-export async function liveActivityBroadcastConfig(environment: string, bundleID: string) {
+export async function liveActivityBroadcastConfig(environment: string, bundleID: string, daily = false) {
   const config = await getApnsConfig();
   if (!["production", "sandbox"].includes(environment)) throw new Error("APNs 环境无效");
   if (config.configured && bundleID !== config.bundleID) throw new Error("Bundle ID 与 CPU APNs 配置不一致");
+  if (daily) return {
+    mode: "local-scheduled", minimumIOSVersion: 26,
+    windows: dayChannelDates().map(date => ({ id: date, startHour: 0, endHour: 24,
+      channelID: config.configured ? config.channels[`${environment}:cpu-day:${date}`] || null : null })),
+  };
   return {
     mode: "broadcast", minimumIOSVersion: 18,
     windows: LIVE_ACTIVITY_WINDOWS.map(window => ({
@@ -44,7 +50,7 @@ export function broadcastPayload(dateKey: string, timestamp: number, ended = fal
 }
 
 /** Build school-wide signals for one date, independent of registered users. */
-export function schoolBroadcastEvents(term: ScheduleTermConfigValue, dateKey: string) {
+export function schoolBroadcastEvents(term: ScheduleTermConfigValue, dateKey: string, daily = false) {
   const day = new Date(`${dateKey}T00:00:00Z`);
   const termEnd = new Date(`${term.semesterStartMonday}T00:00:00Z`);
   termEnd.setUTCDate(termEnd.getUTCDate() + term.weekCount * 7);
@@ -53,17 +59,18 @@ export function schoolBroadcastEvents(term: ScheduleTermConfigValue, dateKey: st
   if (adjustment?.kind === "off" || isMovedSourceDate(term.adjustments, dateKey)) return [];
   // Weekend classes can exist in the local timetable; an empty day is filtered
   // on the phone, never inferred from the weekday by the broadcast server.
-  return LIVE_ACTIVITY_WINDOWS.flatMap(window => {
+  const windows = daily ? [{ id: `day:${dateKey}`, startHour: 0, endHour: 24 }] : LIVE_ACTIVITY_WINDOWS;
+  return windows.flatMap(window => {
     const periods = term.periods.filter(p => Number(p.start.slice(0, 2)) >= window.startHour && Number(p.start.slice(0, 2)) < window.endHour);
     if (!periods.length) return [];
     const seconds = (clock: string) => new Date(`${dateKey}T${clock}:00+08:00`).getTime() / 1000;
     const end = Math.max(...periods.map(p => seconds(p.end)));
-    const boundaries = new Set(periods.flatMap(p => [seconds(p.start) - 900, seconds(p.start), seconds(p.end)]));
+    const boundaries = new Set(periods.flatMap(p => daily ? [seconds(p.start), seconds(p.end)] : [seconds(p.start) - 900, seconds(p.start), seconds(p.end)]));
     return [...boundaries].sort((a, b) => a - b).map(fireAt => ({
       windowID: window.id, eventID: `broadcast-v2-${dateKey}-${window.id}-${fireAt}`,
       fireAt: new Date(fireAt * 1000), expiresAt: new Date((fireAt + 60) * 1000),
-      payload: JSON.stringify(broadcastPayload(dateKey, fireAt, fireAt === end)),
-      event: fireAt === end ? "end" : "update",
+      payload: JSON.stringify(broadcastPayload(dateKey, fireAt, !daily && fireAt === end)),
+      event: !daily && fireAt === end ? "end" : "update",
     }));
   });
 }
@@ -78,7 +85,7 @@ async function ensureBroadcastEvents(now: number) {
   if (digest === materializedDigest) { lastBroadcastMaterializedAt = now; return; }
   // Only today's school signals are materialized. Existing sent IDs dedupe
   // restarts; no seven-day, per-user schedule is involved.
-  const events = terms.flatMap(term => schoolBroadcastEvents(term, dateKey));
+  const events = terms.flatMap(term => [...schoolBroadcastEvents(term, dateKey), ...schoolBroadcastEvents(term, dateKey, true)]);
   const rows = events.flatMap(({ windowID, ...event }) => ["production", "sandbox"].flatMap(environment => {
     const channelID = config.channels[`${environment}:cpu-${windowID}`];
     return channelID ? [{ ...event, environment, channelID, bundleID: config.bundleID }] : [];
@@ -118,6 +125,7 @@ async function retryBroadcast(row: any, now: number, detail: string) {
 
 export async function tickBroadcastEvents() {
   if (!db.liveActivityBroadcastEvent) return;
+  await ensureDayChannels();
   const config = await getApnsConfig();
   if (!config.configured) return;
   const now = Date.now() / 1000;
@@ -148,7 +156,15 @@ export async function tickBroadcastEvents() {
       continue;
     }
     try {
-      await sendLiveActivityBroadcast({ environment: row.environment === "sandbox" ? "sandbox" : "production", bundleID: row.bundleID, channelID: row.channelID, payload: JSON.parse(row.payload), expiration: 0, collapseID: `cpu-${row.eventID}` });
+      const payload = JSON.parse(row.payload);
+      const dayChannel = Object.entries(config.channels).some(([key, channel]) =>
+        key.startsWith(`${row.environment}:cpu-day:`) && channel === row.channelID,
+      );
+      if (dayChannel) {
+        payload.aps.event = "update";
+        delete payload.aps["dismissal-date"];
+      }
+      await sendLiveActivityBroadcast({ environment: row.environment === "sandbox" ? "sandbox" : "production", bundleID: row.bundleID, channelID: row.channelID, payload, expiration: 0, collapseID: `cpu-${row.eventID}` });
       await db.liveActivityBroadcastEvent.updateMany({ where: { id: row.id, state: "pending" }, data: { state: "sent", sentAt: new Date(), detail: "", claimedUntil: null } });
     } catch (error: any) {
       const detail = String(error?.message || error);

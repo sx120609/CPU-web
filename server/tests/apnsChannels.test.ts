@@ -30,7 +30,7 @@ test("channel provisioning preserves partial success, retries missing channels a
     },
   };
   (globalThis as any).prisma = db;
-  const { ensureApnsChannels } = await import("../src/services/apnsChannels");
+  const { ensureApnsChannels, ensureDayChannels, dayChannelDates } = await import("../src/services/apnsChannels");
   const { saveApnsConfig } = await import("../src/services/apnsConfig");
   let sandboxFails = true;
   let omitChannelHeader = false;
@@ -43,11 +43,11 @@ test("channel provisioning preserves partial success, retries missing channels a
       request.setEncoding = () => {};
       request.end = (body: string) => {
         const sandbox = origin.includes("sandbox");
-        calls.push({ origin, headers, body: JSON.parse(body) });
+        calls.push({ origin, headers, body: body ? JSON.parse(body) : null });
         const callNumber = calls.length;
         queueMicrotask(() => {
           const failed = sandbox && sandboxFails;
-          request.emit("response", { ":status": failed ? 403 : 201, ...(!omitChannelHeader ? { "apns-channel-id": `apple-${sandbox ? "dev" : "prod"}-${callNumber}` } : {}) });
+          request.emit("response", { ":status": failed ? 403 : headers[":method"] === "DELETE" ? 204 : 201, ...(!omitChannelHeader ? { "apns-channel-id": `apple-${sandbox ? "dev" : "prod"}-${callNumber}` } : {}) });
           if (failed) request.emit("data", '{"reason":"TopicDisallowed"}');
           request.emit("end");
         });
@@ -94,4 +94,24 @@ test("channel provisioning preserves partial success, retries missing channels a
   const count = calls.length;
   await ensureApnsChannels();
   assert.equal(calls.length, count, "disabled APNs must not contact Apple");
+
+  settings.set("apns.keyPath", keyPath);
+  settings.set("apns.channels", JSON.stringify({ "production:cpu-morning": "legacy" }));
+  omitChannelHeader = false;
+  const now = Date.parse("2026-09-21T00:00:00Z");
+  await Promise.all([ensureDayChannels(now), ensureDayChannels(now)]);
+  const daily = JSON.parse(settings.get("apns.channels")!);
+  assert.equal(Object.keys(daily).length, 5, "two dates per environment plus untouched legacy channel");
+  assert.equal(daily["production:cpu-morning"], "legacy");
+  assert.notEqual(daily["production:cpu-day:2026-09-21"], daily["production:cpu-day:2026-09-22"]);
+  assert.equal(calls.length, count + 4, "concurrent refresh provisions each date only once");
+  const later = now + 3 * 86400_000;
+  await ensureDayChannels(later);
+  const cleaned = JSON.parse(settings.get("apns.channels")!);
+  assert.equal(Object.keys(cleaned).length, 5);
+  assert.equal(cleaned["production:cpu-morning"], "legacy");
+  assert.ok(dayChannelDates(later).every(date => cleaned[`production:cpu-day:${date}`]));
+  const deletes = calls.filter(call => call.headers[":method"] === "DELETE");
+  assert.equal(deletes.length, 4);
+  assert.ok(deletes.every(call => call.headers["apns-channel-id"] !== "legacy"));
 });

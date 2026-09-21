@@ -11,6 +11,7 @@ struct NativeLiveActivityChecks {
     @MainActor
     static func main() async throws {
         let defaults = UserDefaults(suiteName: NextWidgetConfiguration.appGroup)!
+        defaults.set(15, forKey: NativeLiveActivityController.leadMinutesKey)
         defer { defaults.removePersistentDomain(forName: NextWidgetConfiguration.appGroup) }
         let start = ISO8601DateFormatter().date(from: "2026-09-16T00:00:00Z")!
         let end = start.addingTimeInterval(45 * 60)
@@ -125,7 +126,7 @@ struct NativeLiveActivityChecks {
 
         // Local reservations respect holidays and make-up days without an upload.
         controller.setEnabled(true)
-        controller.broadcastWindows = [.init(id: "morning", startHour: 0, endHour: 12, channelID: "am")]
+        controller.broadcastWindows = [.init(id: "2026-09-16", startHour: 0, endHour: 24, channelID: "day-16")]
         clock = start.addingTimeInterval(-3600)
         let ordinary = controller.localReservations(from: fixture())
         precondition(ordinary.count == 1)
@@ -133,6 +134,7 @@ struct NativeLiveActivityChecks {
         precondition(ordinary[0].end == end)
         precondition(controller.localReservations(from: adjustedFixture()).isEmpty)
         clock = ISO8601DateFormatter().date(from: "2026-09-19T07:00:00+08:00")!
+        controller.broadcastWindows = [.init(id: "2026-09-19", startHour: 0, endHour: 24, channelID: "day-19")]
         let makeUp = controller.localReservations(from: adjustedFixture())
         precondition(makeUp.count == 1)
         precondition(makeUp[0].state.normalizedAdjustmentNote == "上 09.16 周三的课")
@@ -145,15 +147,20 @@ struct NativeLiveActivityChecks {
         // Execute actual scheduled ActivityKit requests, including cancellation.
         clock = start.addingTimeInterval(-3600)
         controller.setEnabled(true)
-        controller.broadcastWindows = [.init(id: "morning", startHour: 0, endHour: 12, channelID: "am")]
+        controller.broadcastWindows = [.init(id: "2026-09-16", startHour: 0, endHour: 24, channelID: "day-16")]
         controller.accept(fixture())
         await settle()
         let reserved = Activity<ScheduleLiveActivityAttributes>.activities.filter { $0.activityState == .pending }
         precondition(reserved.count == 1)
+        precondition(reserved[0].scheduledStart == start.addingTimeInterval(-900))
+        precondition(reserved[0].scheduledAlert?.body.value == reserved[0].content.state.courseName)
+        guard case .channel("day-16")? = reserved[0].requestedPushType else {
+            preconditionFailure("Local requests must subscribe to the school date channel")
+        }
         controller.foreground()
         await settle()
         precondition(Activity<ScheduleLiveActivityAttributes>.activities.filter { $0.activityState == .pending }.map(\.id) == reserved.map(\.id), "Foreground must not duplicate reservations")
-        controller.broadcastWindows = [.init(id: "morning", startHour: 0, endHour: 12, channelID: "new-am")]
+        controller.broadcastWindows = [.init(id: "2026-09-16", startHour: 0, endHour: 24, channelID: "new-day-16")]
         await settle()
         precondition(reserved[0].activityState == .ended, "Channel changes must cancel old reservations")
         precondition(Activity<ScheduleLiveActivityAttributes>.activities.filter { $0.activityState == .pending }.count == 1)
@@ -179,6 +186,9 @@ struct NativeLiveActivityChecks {
         controller.accept(fixture())
         precondition(controller.leadMinutes == 30)
         precondition(controller.localReservations(from: fixture())[0].start == start.addingTimeInterval(-1800))
+        await settle()
+        let customReservation = Activity<ScheduleLiveActivityAttributes>.activities.first { $0.activityState == .pending }
+        precondition(customReservation?.scheduledStart == start.addingTimeInterval(-1800), "Personal lead must reach ActivityKit, not only the plan")
         let remote = controller.remoteStartWindows()
         precondition(remote.count == 1 && remote[0].start == Int(start.timeIntervalSince1970))
         let wire = String(data: try JSONEncoder().encode(remote), encoding: .utf8)!
@@ -207,6 +217,16 @@ struct NativeLiveActivityChecks {
         await settle()
         precondition(activeActivities.count == 1 && activeActivities[0].id == remoteActivity.id,
                      "Foreground must preserve remote channel activities")
+        // An empty school boundary must not keep a completed window alive.
+        clock = end
+        await remoteActivity.update(.init(state: .init(
+            phase: .upcoming, courseName: "", startDate: end, endDate: end,
+            broadcastDateKey: "2026-09-16", broadcastTimestamp: end
+        ), staleDate: nil))
+        controller.foreground()
+        await settle()
+        precondition(remoteActivity.activityState == .ended,
+                     "Remote activities must be dismissed after the student's final class")
         controller.reset()
         controller.remoteStartsEnabled = false
         await settle()
@@ -226,16 +246,44 @@ struct NativeLiveActivityChecks {
         precondition(resolved.courseName == "药理学" && resolved.phase == .inProgress)
         precondition(signal.resolvedForBroadcast(attributes: attrs, now: start.addingTimeInterval(-900), cachedCourses: [course]).phase == .upcoming)
         precondition(signal.resolvedForBroadcast(attributes: attrs, now: course.endDate, cachedCourses: [course]).phase == .idle)
+        let finished = signal.resolvedForBroadcast(now: course.endDate, cachedCourses: [course])
+        precondition(finished.phase == .idle && !finished.courseName.isEmpty,
+                     "A late broadcast without window attributes must show a finished state, never an empty countdown")
         precondition(signal.resolvedForBroadcast(attributes: attrs, now: start, cachedCourses: []).phase == .idle)
         let afternoon = ScheduleLiveActivityAttributes(semester: "2026-1", dateKey: "2026-09-16", broadcastWindow: "afternoon")
         precondition(signal.resolvedForBroadcast(attributes: afternoon, now: start, cachedCourses: [course]).phase == .idle)
         let tomorrow = ScheduleLiveActivityAttributes(semester: "2026-1", dateKey: "2026-09-17", broadcastWindow: "morning")
         precondition(signal.resolvedForBroadcast(attributes: tomorrow, now: start, cachedCourses: [course]).phase == .idle)
 
+        // Multiple lessons share one date channel but keep independent content.
+        let later = ScheduleLiveActivityAttributes.LocalCourse(
+            dateKey: course.dateKey, period: 3, name: "Second lesson", teacher: "", location: "",
+            periodLabel: nil, startDate: start.addingTimeInterval(120 * 60),
+            endDate: start.addingTimeInterval(165 * 60), weekRangeLabel: nil
+        )
+        let lessons = [course, later]
+        let daily = lessons.map {
+            ScheduleLiveActivityAttributes(semester: "2026-1", dateKey: $0.dateKey,
+                broadcastWindow: $0.dateKey, broadcastChannel: "day-16",
+                reservationStart: $0.startDate, reservationEnd: $0.endDate)
+        }
+        let firstState = signal.resolvedForBroadcast(attributes: daily[0], now: start, cachedCourses: lessons)
+        precondition(firstState.phase == .inProgress && firstState.endDate == course.endDate)
+        let secondState = signal.resolvedForBroadcast(attributes: daily[1], now: start, cachedCourses: lessons)
+        precondition(secondState.phase == .upcoming && secondState.courseName == later.name)
+        precondition(signal.resolvedForBroadcast(attributes: daily[0], now: later.startDate, cachedCourses: lessons).phase == .idle,
+                     "An ended lesson must not adopt another lesson from the shared channel")
+        let boundary = signal.resolvedForBroadcast(attributes: daily[1], now: later.startDate, cachedCourses: lessons)
+        precondition(boundary.phase == .inProgress && boundary.endDate == later.endDate)
+        precondition(boundary == signal.resolvedForBroadcast(attributes: daily[1], now: later.startDate, cachedCourses: lessons),
+                     "Repeated boundary updates must be idempotent")
+        precondition(signal.resolvedForBroadcast(attributes: daily[1], now: later.endDate, cachedCourses: lessons).phase == .idle,
+                     "Final update resolves to idle without an APNs end")
+
         // Exercise the real network coordinator, including a logout while a
         // plan save is in flight. Late success must be revoked, not resurrected.
         let shared = NativeLiveActivityController.shared
-        let push = LiveActivityPushService.shared
+        let push = LiveActivityPushService(localScheduling: false)
         var calls: [(String, String, [String: Any]?)] = []
         var held: CheckedContinuation<Data, Error>?
         var holdNext = false
@@ -274,7 +322,26 @@ struct NativeLiveActivityChecks {
         precondition((UserDefaults.standard.stringArray(forKey: "cpu.liveActivity.remote.pendingRevokes") ?? []).isEmpty)
         shared.setLeadMinutes(15)
 
-        print("Live Activity checks passed: lead window, create, cache update, start, end, retry, settings, permission, logout and 调休")
+        let localPush = LiveActivityPushService(localScheduling: true)
+        calls.removeAll()
+        UserDefaults.standard.set("legacy-device", forKey: "cpu.liveActivity.remote.revoke")
+        localPush.setAPIRequest { path, method, body in
+            calls.append((path, method, body))
+            return Data("{\"data\":{\"windows\":[{\"id\":\"2026-09-16\",\"startHour\":0,\"endHour\":24,\"channelID\":\"school-day\"}]}}".utf8)
+        }
+        shared.accept(fixture())
+        localPush.activate()
+        await settle()
+        precondition(!shared.remoteStartsEnabled)
+        precondition(calls.first?.0 == "/api/live-activities/remote-start/revoke", "Upgrade must revoke old starts before local reservations")
+        precondition(calls.contains { $0.0.contains("broadcast-config?mode=day") && $0.1 == "GET" && $0.2 == nil })
+        precondition(!calls.contains { $0.1 == "PUT" }, "iOS 26 must not upload personal plans")
+        precondition(shared.broadcastWindows.first?.channelID == "school-day")
+        localPush.resetForLogout()
+        shared.reset()
+        await settle()
+
+        print("Live Activity checks passed: legacy flow, local date reservations, reminders, upgrade revocation, no iOS 26 plan upload, broadcast resolution and lifecycle")
     }
 
     @MainActor

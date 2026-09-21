@@ -147,9 +147,10 @@ public struct ScheduleLiveActivityAttributes: ActivityAttributes, Equatable {
             let window = attributes?.broadcastWindow
             let sameDay = courses.filter {
                 let hour = calendar.component(.hour, from: $0.startDate)
-                let matchesWindow = window == nil || (window == "morning" && hour < 12)
+                let matchesWindow = window == nil || window == dateKey || (window == "morning" && hour < 12)
                     || (window == "afternoon" && hour >= 12 && hour < 18) || (window == "evening" && hour >= 18)
-                return $0.dateKey == dateKey && matchesWindow && $0.endDate > now
+                let matchesLesson = window != dateKey || attributes?.reservationStart == $0.startDate
+                return $0.dateKey == dateKey && matchesWindow && matchesLesson && $0.endDate > now
             }.sorted { $0.startDate < $1.startDate }
             // Use actual time, not the period's first slot: a multi-slot course
             // remains in progress through its intermediate school boundaries.
@@ -178,8 +179,9 @@ public struct ScheduleLiveActivityAttributes: ActivityAttributes, Equatable {
     public let broadcastChannel: String?
     public let reservationStart: Date?
     public let reservationEnd: Date?
+    public let reminderDate: Date?
 
-    public init(semester: String, dateKey: String, week: Int = 0, broadcastWindow: String? = nil, broadcastChannel: String? = nil, reservationStart: Date? = nil, reservationEnd: Date? = nil) {
+    public init(semester: String, dateKey: String, week: Int = 0, broadcastWindow: String? = nil, broadcastChannel: String? = nil, reservationStart: Date? = nil, reservationEnd: Date? = nil, reminderDate: Date? = nil) {
         self.semester = semester
         self.dateKey = dateKey
         self.week = week
@@ -187,6 +189,7 @@ public struct ScheduleLiveActivityAttributes: ActivityAttributes, Equatable {
         self.broadcastChannel = broadcastChannel
         self.reservationStart = reservationStart
         self.reservationEnd = reservationEnd
+        self.reminderDate = reminderDate
     }
 
     /// The activity should open the exact timetable context represented by the

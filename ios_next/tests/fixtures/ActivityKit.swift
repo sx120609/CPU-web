@@ -60,6 +60,9 @@ public final class Activity<Attributes: ActivityAttributes> {
     public let attributes: Attributes
     public private(set) var content: ActivityContent<Attributes.ContentState>
     public private(set) var activityState: ActivityState = .active
+    public private(set) var scheduledStart: Date?
+    public private(set) var scheduledAlert: AlertConfiguration?
+    public private(set) var requestedPushType: PushType?
 
     public static var pushToStartToken: Data? { Data(repeating: 0xab, count: 32) }
     public static var pushToStartTokenUpdates: AsyncStream<Data> { AsyncStream { $0.finish() } }
@@ -83,6 +86,7 @@ public final class Activity<Attributes: ActivityAttributes> {
             throw NSError(domain: "ActivityKit", code: 1)
         }
         let activity = Activity(attributes: attributes, content: content)
+        activity.requestedPushType = pushType
         TestActivityKit.activities.append(activity)
         TestActivityKit.events.append("request")
         return activity
@@ -98,6 +102,8 @@ public final class Activity<Attributes: ActivityAttributes> {
     ) throws -> Activity<Attributes> {
         let activity = try request(attributes: attributes, content: content, pushType: pushType)
         activity.activityState = .pending
+        activity.scheduledStart = start
+        activity.scheduledAlert = alertConfiguration
         return activity
     }
 

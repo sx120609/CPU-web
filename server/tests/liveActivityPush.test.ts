@@ -10,7 +10,9 @@ import type { ScheduleTermConfigValue } from "../src/services/scheduleTermConfig
 
 const unexpected = async () => { throw new Error("Personal data must not be read or written"); };
 const db = {
-  siteSetting: { findMany: unexpected },
+  $transaction: async (fn: any) => fn(db),
+  $queryRaw: async () => [],
+  siteSetting: { findMany: unexpected, upsert: async () => ({}) },
   liveActivityDevice: { findMany: unexpected },
   liveActivityPlan: { findMany: unexpected, upsert: unexpected },
   liveActivityRegistration: { findMany: unexpected },
@@ -91,13 +93,36 @@ test("coincident boundaries are deduplicated and period ordering does not determ
   assert.equal(events.at(-1)?.fireAt.toISOString(), "2026-09-16T01:40:00.000Z");
 });
 
+test("iOS 26 uses one date channel and broadcasts bell boundaries without ending activities", async t => {
+  mockConfig(t);
+  const config = await service.liveActivityBroadcastConfig("production", "cn.cputime.mobile", true);
+  assert.equal(config.minimumIOSVersion, 26);
+  assert.equal(config.windows.length, 2);
+  assert.ok(config.windows.every(w => /^\d{4}-\d{2}-\d{2}$/.test(w.id)));
+  const events = service.schoolBroadcastEvents(term, "2026-09-16", true);
+  assert.equal(events.length, 8);
+  assert.deepEqual([...new Set(events.map(e => e.windowID))], ["day:2026-09-16"]);
+  assert.equal(events.filter(e => e.event === "end").length, 0);
+  assert.equal(events.at(-1)?.event, "update");
+  assert.equal(events[0].fireAt.toISOString(), "2026-09-16T00:00:00.000Z");
+  for (const event of events) {
+    const aps = JSON.parse(event.payload).aps;
+    assert.equal(aps.alert, undefined);
+    assert.equal(aps.event, "update");
+    assert.equal(aps["dismissal-date"], undefined);
+  }
+  assert.notEqual(events[0].windowID, service.schoolBroadcastEvents(term, "2026-09-17", true)[0].windowID);
+});
+
 test("broadcast worker skips expired events, retries transport errors and never reads personal tables", async t => {
   const directory = await mkdtemp(join(tmpdir(), "cpu-broadcast-test-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const keyPath = join(directory, "key.p8");
   const { privateKey } = crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" });
   await writeFile(keyPath, privateKey.export({ format: "pem", type: "pkcs8" }));
-  const values = { keyPath, keyID: "KEY", teamID: "TEAM", bundleID: "cn.cputime.mobile", channels: JSON.stringify({ "production:cpu-morning": "am" }) };
+  const { dayChannelDates } = await import("../src/services/apnsChannels");
+  const daily = Object.fromEntries(dayChannelDates().flatMap(date => ["production", "sandbox"].map(env => [`${env}:cpu-day:${date}`, `${env}-${date}`])));
+  const values = { keyPath, keyID: "KEY", teamID: "TEAM", bundleID: "cn.cputime.mobile", channels: JSON.stringify({ "production:cpu-morning": "am", ...daily }) };
   t.mock.method(db.siteSetting, "findMany", async () => Object.entries(values).map(([key, value]) => ({ key: `apns.${key}`, value, updatedAt: new Date() })));
   const row = { id: "event", state: "pending", channelID: "am", environment: "production", bundleID: "cn.cputime.mobile", eventID: "broadcast-v2-test", attempts: 0, payload: JSON.stringify(service.broadcastPayload("2026-09-16", Date.now() / 1000)), expiresAt: new Date(Date.now() - 1000) };
   const writes: any[] = [];

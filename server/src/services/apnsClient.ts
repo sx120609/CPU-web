@@ -189,6 +189,17 @@ export async function sendLiveActivityBroadcast(input: {
 }
 
 /** Channels are created by Apple and scoped to this exact App ID/environment. */
+export async function deleteLiveActivityChannel(config: ApnsConfig, environment: ApnsEnvironment, channelID: string) {
+  const authorization = await makeProviderToken(config.keyPath, config.keyID, config.teamID);
+  const origin = environment === "sandbox"
+    ? "https://api-manage-broadcast.sandbox.push.apple.com:2195"
+    : "https://api-manage-broadcast.push.apple.com:2196";
+  const response = await postHttp2(environment, `/1/apps/${encodeURIComponent(config.bundleID)}/channels`, {
+    authorization: `bearer ${authorization}`, "apns-channel-id": channelID,
+  }, "", "DELETE", origin);
+  if (response.status !== 204 && response.status !== 404) throw new Error(`Apple channel deletion failed: ${response.status}`);
+}
+
 export async function createLiveActivityChannel(config: ApnsConfig, environment: ApnsEnvironment): Promise<string> {
   if (!config.configured) throw new Error("请先保存完整的 APNs 凭据");
   const authorization = await makeProviderToken(config.keyPath, config.keyID, config.teamID);
