@@ -63,3 +63,38 @@ export async function fetchPublicHolidayAdjustments(
 export function clearPublicHolidayCache() {
   cache.clear();
 }
+
+/** Explicit admin preview only; no writes and no partial results on upstream failure. */
+export async function previewPublicHolidays(startDate: string, weekCount: number, fetchImpl: typeof fetch = fetch) {
+  const start = new Date(`${startDate}T00:00:00Z`);
+  if (!DATE_PATTERN.test(startDate) || !Number.isFinite(start.getTime()) || start.toISOString().slice(0, 10) !== startDate || start.getUTCDay() !== 1 || !Number.isInteger(weekCount) || weekCount < 1 || weekCount > 64) {
+    throw new Error("请填写有效的第一周周一和总周数（1-64）");
+  }
+  const end = new Date(start);
+  end.setUTCDate(end.getUTCDate() + weekCount * 7 - 1);
+  const endDate = end.toISOString().slice(0, 10);
+  const adjustments: ScheduleAdjustment[] = [];
+  const sources: string[] = [];
+  for (let year = start.getUTCFullYear(); year <= end.getUTCFullYear(); year++) {
+    const url = `${API_BASE}/${year}`;
+    sources.push(url);
+    let raw: unknown;
+    try {
+      const response = await fetchImpl(url, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8_000) });
+      if (!response.ok) throw new Error();
+      raw = await response.json();
+    } catch { throw new Error(`${year} 年公开节假日数据获取失败，请稍后重试`); }
+    if (!raw || typeof raw !== "object" || Array.isArray(raw) || !Object.keys(raw).length) throw new Error(`${year} 年公开节假日数据尚未发布或格式异常`);
+    for (const [key, value] of Object.entries(raw)) {
+      const row = value as PublicHolidayRecord | null;
+      if (!row || typeof row.date !== "string" || row.date !== key || !DATE_PATTERN.test(row.date) || !row.date.startsWith(`${year}-`) || !Number.isFinite(Date.parse(`${row.date}T00:00:00Z`)) || new Date(`${row.date}T00:00:00Z`).toISOString().slice(0, 10) !== row.date || typeof row.isOffDay !== "boolean" || typeof row.name !== "string") throw new Error(`${year} 年公开节假日数据格式异常`);
+      if (row.date < startDate || row.date > endDate) continue;
+      // This provider also lists observances (e.g. 小年). Only statutory-holiday
+      // weekend workdays represent makeup-day candidates, never every false row.
+      const weekday = new Date(`${row.date}T00:00:00Z`).getUTCDay();
+      if (!row.isOffDay && (!/^(元旦|春节|清明节|劳动节|端午节|中秋节|国庆节)$/u.test(row.name) || (weekday !== 0 && weekday !== 6))) continue;
+      adjustments.push({ date: row.date, kind: row.isOffDay ? "off" : "swap", note: `${row.name}（公开节假日）`.slice(0, 80) });
+    }
+  }
+  return { startDate, endDate, sources, adjustments: adjustments.sort((a, b) => a.date.localeCompare(b.date)) };
+}

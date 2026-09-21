@@ -1,3 +1,4 @@
+import { previewPublicHolidays } from "../../services/publicHolidayCalendar";
 import { ensureApnsChannels } from "../../services/apnsChannels";
 import { getApnsConfig, normalizeApnsConfig, saveApnsConfig } from "../../services/apnsConfig";
 import { Router } from "express";
@@ -2110,6 +2111,14 @@ const scheduleTermPatchSchema = z.object({
   timezone: z.string().trim().optional(),
   note: z.string().trim().max(500).optional(),
 }).strict();
+
+adminRouter.post("/schedule-terms/holiday-preview", adminOnly, validate(z.object({
+  semesterStartMonday: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u),
+  weekCount: z.number().int().min(1).max(64),
+}).strict()), async (req, res, next) => {
+  try { ok(res, await previewPublicHolidays(req.body.semesterStartMonday, req.body.weekCount)); }
+  catch (error) { next(Errors.badGateway(error instanceof Error ? error.message : "公开节假日获取失败")); }
+});
 
 adminRouter.get("/schedule-terms", adminOnly, async (_req, res, next) => {
   try { ok(res, await listScheduleTermConfigs()); } catch (error) { next(error); }
