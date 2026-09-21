@@ -64,6 +64,50 @@ export function clearPublicHolidayCache() {
   cache.clear();
 }
 
+type ValidHolidayRecord = { date: string; name: string; isOffDay: boolean };
+
+function parseHolidayRecords(raw: unknown, year: number, format: "api" | "holiday-cn"): ValidHolidayRecord[] {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("数据格式异常");
+  let entries: [string, unknown][];
+  if (format === "holiday-cn") {
+    const data = raw as { year?: unknown; days?: unknown };
+    if (data.year !== year || !Array.isArray(data.days)) throw new Error("年份或数据格式异常");
+    entries = data.days.map((row) => [row?.date, row]);
+  } else {
+    entries = Object.entries(raw);
+  }
+  if (!entries.length) throw new Error("数据尚未发布");
+  const seen = new Set<string>();
+  return entries.map(([key, value]) => {
+    const row = value as PublicHolidayRecord | null;
+    if (!row || typeof row.date !== "string" || row.date !== key || !DATE_PATTERN.test(row.date) || !row.date.startsWith(`${year}-`) || !Number.isFinite(Date.parse(`${row.date}T00:00:00Z`)) || new Date(`${row.date}T00:00:00Z`).toISOString().slice(0, 10) !== row.date || typeof row.isOffDay !== "boolean" || typeof row.name !== "string" || !row.name.trim() || seen.has(row.date)) throw new Error("日期或数据格式异常");
+    seen.add(row.date);
+    return { date: row.date, name: row.name, isOffDay: row.isOffDay };
+  });
+}
+
+async function fetchHolidayYear(year: number, fetchImpl: typeof fetch) {
+  const providers = [
+    { url: `${API_BASE}/${year}`, format: "api" as const },
+    { url: `https://cdn.jsdelivr.net/gh/NateScarlet/holiday-cn@master/${year}.json`, format: "holiday-cn" as const },
+    { url: `https://raw.githubusercontent.com/NateScarlet/holiday-cn/master/${year}.json`, format: "holiday-cn" as const },
+  ];
+  for (const provider of providers) {
+    try {
+      const response = await fetchImpl(provider.url, {
+        headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const records = parseHolidayRecords(await response.json(), year, provider.format);
+      return { source: provider.url, records };
+    } catch (error) {
+      console.warn("[public-holidays] source failed", provider.url, error instanceof Error ? error.message : "unknown error");
+    }
+  }
+  throw new Error(`${year} 年公开节假日数据获取失败（已尝试主接口及两个备用源，数据可能尚未发布或格式异常），请稍后重试`);
+}
+
 /** Explicit admin preview only; no writes and no partial results on upstream failure. */
 export async function previewPublicHolidays(startDate: string, weekCount: number, fetchImpl: typeof fetch = fetch) {
   const start = new Date(`${startDate}T00:00:00Z`);
@@ -73,28 +117,19 @@ export async function previewPublicHolidays(startDate: string, weekCount: number
   const end = new Date(start);
   end.setUTCDate(end.getUTCDate() + weekCount * 7 - 1);
   const endDate = end.toISOString().slice(0, 10);
+  const years = Array.from({ length: end.getUTCFullYear() - start.getUTCFullYear() + 1 }, (_, index) => start.getUTCFullYear() + index);
+  // Fetch years concurrently so even a 64-week term with source failover fits
+  // within the admin request timeout. Reject rather than import a partial term.
+  const results = await Promise.all(years.map((year) => fetchHolidayYear(year, fetchImpl)));
   const adjustments: ScheduleAdjustment[] = [];
-  const sources: string[] = [];
-  for (let year = start.getUTCFullYear(); year <= end.getUTCFullYear(); year++) {
-    const url = `${API_BASE}/${year}`;
-    sources.push(url);
-    let raw: unknown;
-    try {
-      const response = await fetchImpl(url, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8_000) });
-      if (!response.ok) throw new Error();
-      raw = await response.json();
-    } catch { throw new Error(`${year} 年公开节假日数据获取失败，请稍后重试`); }
-    if (!raw || typeof raw !== "object" || Array.isArray(raw) || !Object.keys(raw).length) throw new Error(`${year} 年公开节假日数据尚未发布或格式异常`);
-    for (const [key, value] of Object.entries(raw)) {
-      const row = value as PublicHolidayRecord | null;
-      if (!row || typeof row.date !== "string" || row.date !== key || !DATE_PATTERN.test(row.date) || !row.date.startsWith(`${year}-`) || !Number.isFinite(Date.parse(`${row.date}T00:00:00Z`)) || new Date(`${row.date}T00:00:00Z`).toISOString().slice(0, 10) !== row.date || typeof row.isOffDay !== "boolean" || typeof row.name !== "string") throw new Error(`${year} 年公开节假日数据格式异常`);
+  for (const { records } of results) {
+    for (const row of records) {
       if (row.date < startDate || row.date > endDate) continue;
-      // This provider also lists observances (e.g. 小年). Only statutory-holiday
-      // weekend workdays represent makeup-day candidates, never every false row.
+      // jiejiariapi also includes observances such as 小年, not makeup days.
       const weekday = new Date(`${row.date}T00:00:00Z`).getUTCDay();
       if (!row.isOffDay && (!/^(元旦|春节|清明节|劳动节|端午节|中秋节|国庆节)$/u.test(row.name) || (weekday !== 0 && weekday !== 6))) continue;
       adjustments.push({ date: row.date, kind: row.isOffDay ? "off" : "swap", note: `${row.name}（公开节假日）`.slice(0, 80) });
     }
   }
-  return { startDate, endDate, sources, adjustments: adjustments.sort((a, b) => a.date.localeCompare(b.date)) };
+  return { startDate, endDate, sources: results.map((result) => result.source), adjustments: adjustments.sort((a, b) => a.date.localeCompare(b.date)) };
 }

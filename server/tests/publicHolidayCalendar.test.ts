@@ -70,9 +70,46 @@ test("cross-year preview never returns a partial import on failure", async () =>
   const calls: string[] = [];
   const fetchImpl = (async (url: unknown) => {
     calls.push(String(url));
-    if (String(url).endsWith("2027")) return { ok: false } as Response;
+    if (String(url).includes("2027")) return { ok: false } as Response;
     return { ok: true, json: async () => ({ "2026-12-31": { date: "2026-12-31", name: "元旦", isOffDay: true } }) } as Response;
   }) as typeof fetch;
   await assert.rejects(previewPublicHolidays("2026-12-28", 2, fetchImpl), /2027.*获取失败/);
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 4);
+});
+
+
+test("preview falls back on timeout, HTTP failure and invalid primary data", async () => {
+  for (const mode of ["timeout", "http", "invalid"]) {
+    const calls: string[] = [];
+    const fetchImpl = (async (url: unknown) => {
+      calls.push(String(url));
+      if (String(url).includes("jiejiariapi")) {
+        if (mode === "timeout") throw new Error("timeout");
+        return { ok: mode !== "http", status: 503, json: async () => ({ error: "unavailable" }) } as Response;
+      }
+      return { ok: true, json: async () => ({ year: 2026, days: [
+        { date: "2026-02-14", name: "春节", isOffDay: false },
+        { date: "2026-02-15", name: "春节", isOffDay: true },
+      ] }) } as Response;
+    }) as typeof fetch;
+    const result = await previewPublicHolidays("2026-02-09", 3, fetchImpl);
+    assert.equal(calls.length, 2);
+    assert.deepEqual(result.sources, [calls[1]]);
+    assert.deepEqual(result.adjustments.map((row) => row.kind), ["swap", "off"]);
+    assert.equal(result.adjustments[0].source, undefined);
+  }
+});
+
+test("preview rejects a wrong-year mirror and uses the final source", async () => {
+  const calls: string[] = [];
+  const fetchImpl = (async (url: unknown) => {
+    calls.push(String(url));
+    return { ok: true, json: async () => ({ year: calls.length === 3 ? 2026 : 2025, days: [
+      { date: "2026-02-15", name: "春节", isOffDay: true },
+    ] }) } as Response;
+  }) as typeof fetch;
+  const result = await previewPublicHolidays("2026-02-09", 3, fetchImpl);
+  assert.equal(calls.length, 3);
+  assert.deepEqual(result.sources, [calls[2]]);
+  assert.equal(result.adjustments.length, 1);
 });
