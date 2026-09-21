@@ -43,6 +43,8 @@ model User {
   lastSeenAt             DateTime  @default(now())
   lastLoginAt            DateTime?
   lastLoginClient        String?
+  // Retained until all pre-NapTable releases have drained; no longer used by this release.
+  iosMajorVersion        Int?
   usedIosClient          Boolean   @default(false)
   usedAndroidClient      Boolean   @default(false)
   usedHarmonyClient      Boolean   @default(false)
@@ -656,6 +658,8 @@ model ScheduleTermConfig {
   semester            String   @unique
   semesterStartMonday String
   weekCount           Int
+  // Legacy column retained for old instances during blue-green deployment.
+  periods             String   @default("[]")
   adjustments         String
   timezone            String   @default("Asia/Shanghai")
   note                String   @default("")

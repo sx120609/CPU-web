@@ -1,5 +1,5 @@
 -- 节次时间从每个学期一份收敛为全校一份。先建表并把现有值搬过去，
--- 再删掉 ScheduleTermConfig.periods 列。
+-- 保留 ScheduleTermConfig.periods，兼容蓝绿切换期间仍在线的旧实例。
 CREATE TABLE IF NOT EXISTS "SchedulePeriodConfig" (
     "id" INTEGER NOT NULL DEFAULT 1,
     "periods" TEXT NOT NULL DEFAULT '[]',
@@ -33,5 +33,6 @@ INSERT INTO "SchedulePeriodConfig" ("id", "periods")
 VALUES (1, '[]')
 ON CONFLICT ("id") DO NOTHING;
 
--- 显式删列：留给 `prisma db push` 的话它会因为数据丢失风险拒绝执行。
-ALTER TABLE IF EXISTS "ScheduleTermConfig" DROP COLUMN IF EXISTS "periods";
+-- 新代码不再依赖这一列；旧实例排空前不能删除。
+ALTER TABLE IF EXISTS "ScheduleTermConfig" ADD COLUMN IF NOT EXISTS "periods" TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE IF EXISTS "ScheduleTermConfig" ALTER COLUMN "periods" SET DEFAULT '[]';
