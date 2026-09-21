@@ -501,7 +501,7 @@ Content-Type: application/json
 补充说明：
 
 - AI 文本审核、图片审核、匿名信誉阈值、站点域名等配置现在主要保存在数据库 `site_settings` 中，通过管理后台维护。
-- APNs 实况活动统一由 `../NapTable/server` 承载。CPU iOS 客户端将自己标识为共享服务中的 `cpu` 学校，通过 NapTable 的 `/v1/live-activity` 设备、计划和活动 token 接口完成推送；CPU-web 服务端不再提供 APNs 配置或推送路由。APNs 密钥、频道和调度间隔只在 NapTable 管理台维护，`production:cpu` / `sandbox:cpu` 频道用于 iOS 26+ Broadcast Push。
+- APNs 实况活动由 CPU-web 独立提供：iOS 使用站点登录会话调用 `/api/live-activities` 的设备、计划和活动 token 接口。管理员在「APNs 推送」填写服务器 `.p8` 路径、Key ID、Team ID、CPU Bundle ID（正式版 `cn.cputime.mobile`）和调度间隔。保存凭据后自动向 Apple 创建属于 CPU App ID 的 `production:cpu` / `sandbox:cpu` 频道，失败可重试，未配置频道时使用逐设备推送；不能复用 `me.mom0ka27.naptable` 的频道。详见 [APNs 配置与验收](docs/apns.md)。
 - 生产部署时无需额外 Nginx 才能跑起来；构建后的前端静态资源会直接由 Express 提供。
 - 世纪互联版 OneDrive / SharePoint 媒体存储现在支持直接在管理后台配置：填写 Azure 应用 ID、密钥、SharePoint 站点地址后，点击“登录授权”完成回调授权，再选择文档库即可。
 - 管理后台支持按媒体类型分别切换后端，例如“图片走本地、视频走世纪互联”。切换后会立刻影响后续新上传文件；历史远端文件仍可继续读取，不会因切换而失效。

@@ -1058,6 +1058,40 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
         return try JSONSerialization.data(withJSONObject: payload)
     }
 
+    func liveActivityAPIRequest(path: String, method: String, body: [String: Any]?) async throws -> Data {
+        guard path.hasPrefix("/api/live-activities/"),
+              let url = IOSNextWebConfiguration.routeURL(path) else { throw NativeAssistantError.unavailable }
+        let host = url.host?.lowercased() ?? ""
+        let cookies = await assistantCookies().filter { cookie in
+            let domain = cookie.domain.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "."))
+            return (host == domain || host.hasSuffix("." + domain))
+                && url.path.hasPrefix(cookie.path)
+                && (cookie.expiresDate == nil || cookie.expiresDate! > Date())
+                && (!cookie.isSecure || url.scheme == "https")
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.timeoutInterval = 20
+        request.httpShouldHandleCookies = false
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("cookie", forHTTPHeaderField: "X-CPU-Auth-Mode")
+        request.setValue("ios", forHTTPHeaderField: "X-CPU-Client")
+        if let header = HTTPCookie.requestHeaderFields(with: cookies)["Cookie"] {
+            request.setValue(header, forHTTPHeaderField: "Cookie")
+        }
+        if let csrf = cookies.first(where: { $0.name == "__Host-cpu-csrf" || $0.name == "cpu-csrf" })?.value {
+            request.setValue(csrf.removingPercentEncoding ?? csrf, forHTTPHeaderField: "X-CSRF-Token")
+        }
+        if let body { request.httpBody = try JSONSerialization.data(withJSONObject: body) }
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let payload = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+              payload?["code"] as? Int == 0 else {
+            throw NativeAssistantError.requestFailed(payload?["message"] as? String ?? "实况活动服务请求失败")
+        }
+        return data
+    }
+
     private func methodJSONHeader(_ method: String) -> String {
         method == "GET" ? "false" : "true"
     }

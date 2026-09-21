@@ -41,6 +41,10 @@ final class NativeShellCoordinator: ObservableObject {
         self.webSession = webSession
         self.scheduleStore = scheduleStore
         if #available(iOS 17.2, *) {
+            LiveActivityPushService.shared.setAPIRequest { [weak webSession] path, method, body in
+                guard let webSession else { throw NativeAssistantError.unavailable }
+                return try await webSession.liveActivityAPIRequest(path: path, method: method, body: body)
+            }
             LiveActivityPushService.shared.activate()
         }
 
@@ -172,6 +176,7 @@ final class NativeShellCoordinator: ObservableObject {
         let accountChanged = accountKey != normalized
         accountKey = normalized
         scheduleStore?.handleAuthChanged(account: normalized)
+        if accountChanged, #available(iOS 17.2, *) { LiveActivityPushService.shared.activate() }
         // Only a login that follows the gate moves the shell to the home tab.
         // The launch report keeps the existing default tab (the timetable).
         applyAuthenticated(navigateToHome: requiresLogin)

@@ -4,18 +4,17 @@ import Foundation
 
 /// Owns the device-level push-to-start token and the update token of each
 /// running Activity. The controller renders the plan; this class uploads the
-/// rendered plan directly to the shared NapTable service.
+/// rendered plan to the authenticated CPU-web API.
 @available(iOS 17.2, *)
 @MainActor
 final class LiveActivityPushService: ObservableObject {
     static let shared = LiveActivityPushService()
     static let enabledKey = NativeLiveActivityController.enabledKey
-    private static let deviceIDKey = "cpu.liveActivity.deviceID"
-    private static let secretKey = "cpu.liveActivity.deviceSecret"
-    private static let channelIDKey = "cpu.liveActivity.channelID"
-    private static let digestKey = "cpu.liveActivity.planDigest"
-    private static let pendingStartTokenKey = "cpu.liveActivity.pendingStartToken"
-    private static let pendingActivitiesKey = "cpu.liveActivity.pendingActivities"
+    private static let deviceIDKey = "cpu.liveActivity.independent.deviceID"
+    private static let channelIDKey = "cpu.liveActivity.independent.channelID"
+    private static let digestKey = "cpu.liveActivity.independent.planDigest"
+    private static let pendingStartTokenKey = "cpu.liveActivity.independent.pendingStartToken"
+    private static let pendingActivitiesKey = "cpu.liveActivity.independent.pendingActivities"
 
     private struct PendingActivityRegistration: Codable {
         let activityID: String
@@ -23,6 +22,14 @@ final class LiveActivityPushService: ObservableObject {
         let expiresAt: Int
     }
 
+    private var apiRequest: ((String, String, [String: Any]?) async throws -> Data)?
+
+    func setAPIRequest(_ request: @escaping (String, String, [String: Any]?) async throws -> Data) {
+        apiRequest = request
+    }
+
+    private var generation = 0
+    private var registering = false
     private var startTask: Task<Void, Never>?
     private var activityTask: Task<Void, Never>?
     private var tokenTasks: [String: Task<Void, Never>] = [:]
@@ -59,28 +66,33 @@ final class LiveActivityPushService: ObservableObject {
             NativeLiveActivityController.shared.replanForPush()
             Task { await registerDevice(startToken: nil) }
         } else {
+            generation += 1
+            planTask?.cancel()
             startTask?.cancel()
             startTask = nil
             defaults.removeObject(forKey: Self.digestKey)
-            if let id = deviceID { Task { _ = try? await request(path: "/v1/live-activity/devices/\(id)", method: "DELETE") } }
+            if let id = deviceID { Task { _ = try? await request(path: "/api/live-activities/devices/\(id)", method: "DELETE") } }
             defaults.removeObject(forKey: Self.deviceIDKey)
             defaults.removeObject(forKey: Self.channelIDKey)
             NativeLiveActivityController.shared.broadcastChannelID = nil
         }
     }
 
-    /// Remove the shared-service device credential when the site account is
+    /// Remove the CPU-web device registration when the site account is
     /// logged out. A later account must never reuse the previous device row.
     func resetForLogout() {
         if let id = deviceID {
             Task { [weak self] in
                 guard let self else { return }
-                _ = try? await self.request(path: "/v1/live-activity/devices/\(id)", method: "DELETE")
-                self.clearDeviceCredentials()
+                _ = try? await self.request(path: "/api/live-activities/devices/\(id)", method: "DELETE")
             }
-        } else {
-            clearDeviceCredentials()
         }
+        generation += 1
+        clearDeviceCredentials()
+        planTask?.cancel()
+        planTask = nil
+        for task in tokenTasks.values { task.cancel() }
+        tokenTasks.removeAll()
         startTask?.cancel()
         startTask = nil
         activityTask?.cancel()
@@ -90,7 +102,6 @@ final class LiveActivityPushService: ObservableObject {
 
     private func clearDeviceCredentials() {
         defaults.removeObject(forKey: Self.deviceIDKey)
-        defaults.removeObject(forKey: Self.secretKey)
         defaults.removeObject(forKey: Self.channelIDKey)
         defaults.removeObject(forKey: Self.digestKey)
         defaults.removeObject(forKey: Self.pendingStartTokenKey)
@@ -132,26 +143,31 @@ final class LiveActivityPushService: ObservableObject {
     }
 
     private func registerDevice(startToken: String?) async {
-        guard isEnabled else { return }
+        guard isEnabled, !registering else { return }
+        registering = true
+        let requestGeneration = generation
         let tokenForRequest = startToken ?? defaults.string(forKey: Self.pendingStartTokenKey)
+        defer {
+            registering = false
+            if requestGeneration == generation, isEnabled,
+               let pending = defaults.string(forKey: Self.pendingStartTokenKey), pending != tokenForRequest {
+                Task { await registerDevice(startToken: pending) }
+            }
+        }
         var body: [String: Any] = [
             "environment": Self.environment,
             "bundleID": Bundle.main.bundleIdentifier ?? "cn.cputime.mobile",
             "timeZone": "Asia/Shanghai",
-            "schoolID": "cpu",
         ]
         if #available(iOS 26.0, *) { body["supportsBroadcast"] = true }
-        if let snapshot = NativeLiveActivityController.shared.currentScheduleMetadata {
-            body["termID"] = snapshot.data?.currentSemester ?? ""
-        }
         if let tokenForRequest, !tokenForRequest.isEmpty { body["startToken"] = tokenForRequest }
         if let deviceID { body["deviceID"] = deviceID }
         do {
             let result = try await retryRequest { [self] in
-                return try await request(path: "/v1/live-activity/devices", method: "POST", body: body)
+                return try await request(path: "/api/live-activities/devices", method: "POST", body: body)
             }
+            guard requestGeneration == generation, isEnabled else { return }
             if let id = result["deviceID"] as? String { defaults.set(id, forKey: Self.deviceIDKey) }
-            if let secret = result["secret"] as? String { defaults.set(secret, forKey: Self.secretKey) }
             if let channel = result["channelID"] as? String, !channel.isEmpty {
                 defaults.set(channel, forKey: Self.channelIDKey)
                 NativeLiveActivityController.shared.broadcastChannelID = channel
@@ -177,7 +193,7 @@ final class LiveActivityPushService: ObservableObject {
         planTask = Task { @MainActor [weak self] in
             guard let self else { return }
             do {
-                _ = try await self.request(path: "/v1/live-activity/devices/\(deviceID)/plan", method: "PUT", body: ["items": items])
+                _ = try await self.request(path: "/api/live-activities/devices/\(deviceID)/plan", method: "PUT", body: ["items": items])
                 self.defaults.set(digest, forKey: Self.digestKey)
             } catch {
                 self.defaults.removeObject(forKey: Self.digestKey)
@@ -201,7 +217,7 @@ final class LiveActivityPushService: ObservableObject {
         guard isEnabled, let deviceID else { return }
         do {
             _ = try await retryRequest { [self] in
-                return try await request(path: "/v1/live-activity/devices/\(deviceID)/activities", method: "POST", body: [
+                return try await request(path: "/api/live-activities/devices/\(deviceID)/activities", method: "POST", body: [
                     "activityID": pending.activityID,
                     "updateToken": pending.updateToken,
                     "expiresAt": pending.expiresAt,
@@ -214,7 +230,7 @@ final class LiveActivityPushService: ObservableObject {
     private func forgetActivity(_ activityID: String) async {
         removePendingActivity(activityID)
         guard let deviceID else { return }
-        _ = try? await request(path: "/v1/live-activity/devices/\(deviceID)/activities/\(activityID)", method: "DELETE")
+        _ = try? await request(path: "/api/live-activities/devices/\(deviceID)/activities/\(activityID)", method: "DELETE")
     }
 
     private func loadPendingActivities() -> [PendingActivityRegistration] {
@@ -249,46 +265,15 @@ final class LiveActivityPushService: ObservableObject {
 
     private func refreshStatus() async {
         guard let deviceID else { return }
-        _ = try? await request(path: "/v1/live-activity/devices/\(deviceID)", method: "GET")
+        _ = try? await request(path: "/api/live-activities/devices/\(deviceID)", method: "GET")
     }
 
     @discardableResult
     private func request(path: String, method: String, body: [String: Any]? = nil) async throws -> [String: Any] {
-        guard let base = Self.serverURL,
-              let url = URL(string: path, relativeTo: base) else { throw transportError("NapTable 服务地址无效") }
-        var request = URLRequest(url: url)
-        request.httpMethod = method
-        request.timeoutInterval = 20
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        if let secret = defaults.string(forKey: Self.secretKey) {
-            request.setValue(secret, forHTTPHeaderField: "X-Device-Secret")
-        }
-        if let body { request.httpBody = try JSONSerialization.data(withJSONObject: body) }
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse else { throw transportError("NapTable 服务返回格式错误") }
-        let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
-        guard (200..<300).contains(http.statusCode) else {
-            if http.statusCode == 403 {
-                defaults.removeObject(forKey: Self.deviceIDKey)
-                defaults.removeObject(forKey: Self.secretKey)
-            }
-            throw transportError(object["error"] as? String ?? "HTTP \(http.statusCode)")
-        }
-        return object
-    }
-
-    private func transportError(_ message: String) -> NSError {
-        NSError(domain: "NapTableLiveActivity", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
-    }
-
-    private static var serverURL: URL? {
-        let configured = UserDefaults.standard.string(forKey: "cpu.naptable.serverURL")
-            ?? (Bundle.main.object(forInfoDictionaryKey: "NapTableServerURL") as? String)
-            ?? "https://naptable.cputime.cn"
-        guard let url = URL(string: configured.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: "/"))),
-              let scheme = url.scheme?.lowercased(), let host = url.host?.lowercased() else { return nil }
-        if scheme == "https" { return url }
-        return scheme == "http" && ["localhost", "127.0.0.1", "::1"].contains(host) ? url : nil
+        guard let apiRequest else { throw CancellationError() }
+        let data = try await apiRequest(path, method, body)
+        let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
+        return (object["data"] as? [String: Any]) ?? object
     }
 
     private static let environment: String = {

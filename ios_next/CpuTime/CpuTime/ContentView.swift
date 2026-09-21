@@ -134,6 +134,7 @@ struct ContentView: View {
                 if phase == .active {
                     watchSchedule.foreground()
                     NativeLiveActivityController.shared.foreground()
+                    if #available(iOS 17.2, *) { LiveActivityPushService.shared.activate() }
                 }
             }
     }

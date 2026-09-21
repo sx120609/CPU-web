@@ -84,6 +84,7 @@
       <el-tab-pane name="feeds" v-if="auth.isAdmin"><template #label><AppIcon name="sync" /> 同步源</template><FeedsPane v-if="tab === 'feeds'" /></el-tab-pane>
       <el-tab-pane name="jwxt-agents" v-if="auth.isAdmin"><template #label><AppIcon name="school" /> 教务节点</template><JwxtAgentsPane v-if="tab === 'jwxt-agents'" /></el-tab-pane>
       <el-tab-pane name="schedule-terms" v-if="auth.isAdmin"><template #label><AppIcon name="calendar" /> 课表校历</template><ScheduleTermsPane v-if="tab === 'schedule-terms'" /></el-tab-pane>
+      <el-tab-pane name="apns" v-if="auth.isAdmin"><template #label><AppIcon name="service" /> APNs 推送</template><ApnsPane v-if="tab === 'apns'" /></el-tab-pane>
       <el-tab-pane name="announcements" v-if="auth.isAdmin"><template #label><AppIcon name="announcement" /> 公告</template><AnnouncementsPane v-if="tab === 'announcements'" /></el-tab-pane>
       <el-tab-pane name="forum-ads" v-if="auth.isAdmin"><template #label><AppIcon name="promotion" /> 论坛广告</template><ForumAdsPane v-if="tab === 'forum-ads'" /></el-tab-pane>
       <el-tab-pane name="vip-gift-codes" v-if="auth.isAdmin"><template #label><AppIcon name="gift" /> VIP 礼品码</template><VipGiftCodesPane v-if="tab === 'vip-gift-codes'" /></el-tab-pane>
@@ -122,6 +123,7 @@ const NavigationPane = defineAsyncComponent(() => import("./NavigationPane.vue")
 const FeedsPane = defineAsyncComponent(() => import("./FeedsPane.vue"));
 const JwxtAgentsPane = defineAsyncComponent(() => import("./JwxtAgentsPane.vue"));
 const ScheduleTermsPane = defineAsyncComponent(() => import("./ScheduleTermsPane.vue"));
+const ApnsPane = defineAsyncComponent(() => import("./ApnsPane.vue"));
 const AnnouncementsPane = defineAsyncComponent(() => import("./AnnouncementsPane.vue"));
 const ForumAdsPane = defineAsyncComponent(() => import("./ForumAdsPane.vue"));
 const VipGiftCodesPane = defineAsyncComponent(() => import("./VipGiftCodesPane.vue"));
@@ -164,6 +166,7 @@ function allowedAdminTab(value: string) {
   if (value === "forum-ads") return auth.isAdmin;
   if (value === "vip-gift-codes") return auth.isAdmin;
   if (value === "schedule-terms") return auth.isAdmin;
+  if (value === "apns") return auth.isAdmin;
   return isCoreStaff.value;
 }
 

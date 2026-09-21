@@ -38,6 +38,7 @@ import { isRedisConfigured, readRedisString } from "./services/redis";
 import { createDeploymentRelay } from "./utils/deploymentRelay";
 import { remoteGateway } from "./services/jwxtGatewayTransport";
 import { getQqBotDeploymentStatus } from "./services/qqbot/connection";
+import { startLiveActivityPushScheduler } from "./services/liveActivityPush";
 
 export function startAppWorkers() {
   startForumImageModerationPoller();
@@ -49,6 +50,7 @@ export function startAppWorkers() {
   startQqNotificationPoller();
   startWechatNotificationPoller();
   startSponsorOrderExpiryPoller();
+  startLiveActivityPushScheduler();
 }
 
 export function createApp(options: { workers?: boolean } = {}) {
@@ -89,7 +91,7 @@ export function createApp(options: { workers?: boolean } = {}) {
     receiveCspReport,
   );
   app.use("/api", browserSessionMiddleware, requestOriginAndCsrfProtection);
-  app.use(["/api/auth", "/api/user", "/api/jwxt", "/api/admin", "/api/courses/sync"], (_req, res, next) => {
+  app.use(["/api/auth", "/api/user", "/api/jwxt", "/api/admin", "/api/courses/sync", "/api/live-activities"], (_req, res, next) => {
     res.setHeader("Cache-Control", "no-store");
     res.setHeader("Pragma", "no-cache");
     next();

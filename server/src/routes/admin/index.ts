@@ -1,3 +1,5 @@
+import { ensureApnsChannels } from "../../services/apnsChannels";
+import { getApnsConfig, normalizeApnsConfig, saveApnsConfig } from "../../services/apnsConfig";
 import { Router } from "express";
 import multer from "multer";
 import { randomUUID } from "node:crypto";
@@ -206,6 +208,35 @@ function requestOrigin(req: any) {
 
 adminRouter.use("/qqbot", adminOnly, qqBotAdminRouter);
 adminRouter.use("/wechat", adminOnly, wechatAdminRouter);
+
+const apnsConfigSchema = z.object({
+  keyPath: z.string().trim().max(500),
+  keyID: z.string().trim().max(120),
+  teamID: z.string().trim().max(120),
+  bundleID: z.string().trim().max(200),
+  tickSeconds: z.number().min(0.5).max(3600),
+  channels: z.record(z.string()).optional(),
+}).strict();
+
+adminRouter.get("/apns-config", adminOnly, async (_req, res, next) => {
+  try { ok(res, await getApnsConfig()); } catch (error) { next(error); }
+});
+
+adminRouter.patch("/apns-config", adminOnly, validate(apnsConfigSchema), async (req, res, next) => {
+  try {
+    // Run the same semantic checks used by the persistence layer before writing.
+    normalizeApnsConfig(req.body);
+    await saveApnsConfig(req.body);
+    ok(res, await ensureApnsChannels());
+  } catch (error) {
+    next(Errors.badRequest(error instanceof Error ? error.message : "APNs 配置无效"));
+  }
+});
+
+adminRouter.post("/apns-config/channels", adminOnly, async (_req, res, next) => {
+  try { ok(res, await ensureApnsChannels()); }
+  catch (error) { next(Errors.badRequest(error instanceof Error ? error.message : "频道创建失败")); }
+});
 
 const jwxtAgentConfigSchema = z.object({
   localJwxtEnabled: z.boolean(),
