@@ -1,3 +1,4 @@
+import { reviewContentKeywords } from "./contentKeywordReview";
 import crypto from "node:crypto";
 import { prisma } from "../prisma";
 import { Errors } from "../utils/response";
@@ -87,6 +88,7 @@ import {
   generateTopicAiTags,
   notifyTopicAiBlocked,
   reviewTopicContent,
+  notifyKeywordManualReview,
   shouldBypassAiReviewForUser,
   shouldRunAiReview,
   syncTopicAiTags,
@@ -2429,8 +2431,9 @@ async function createTopicFromQq(input: {
     },
   };
   const now = new Date();
+  const keywordReview = reviewContentKeywords({ title: input.title, content: input.content });
   const bypassAiReview = await shouldBypassAiReviewForUser(userId, input.user.role);
-  const shouldReview = shouldRunAiReview() && !bypassAiReview;
+  const shouldReview = Boolean(keywordReview) || (shouldRunAiReview() && !bypassAiReview);
   const aiResult = shouldReview
     ? await reviewTopicContent({
         title: input.title,
@@ -2440,7 +2443,7 @@ async function createTopicFromQq(input: {
         metadata,
       })
     : null;
-  const hiddenByAi = aiResult?.status === "blocked_ai";
+  const hiddenByAi = Boolean(aiResult && aiResult.status !== "auto_passed");
   const topic = await prisma.$transaction(async (tx) => {
     const created = await tx.topic.create({
       data: {
@@ -2476,7 +2479,9 @@ async function createTopicFromQq(input: {
   })
     .then((aiTags) => syncTopicAiTags(topic.id, aiTags))
     .catch(() => undefined);
-  if (hiddenByAi && aiResult) {
+  if (aiResult?.status === "manual_requested") {
+    await notifyKeywordManualReview({ kind: "topic", id: topic.id, topicId: topic.id, userId, preview: input.title, reason: aiResult.reason });
+  } else if (hiddenByAi && aiResult) {
     await notifyTopicAiBlocked({
       topicId: topic.id,
       userId,

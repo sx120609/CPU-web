@@ -1,3 +1,4 @@
+import { reviewContentKeywords, applyKeywordReview, isKeywordManualReview } from "./contentKeywordReview";
 import { createHash } from "node:crypto";
 import { prisma } from "../prisma";
 import { Errors } from "../utils/response";
@@ -113,14 +114,8 @@ export async function ensureUserCanSubmitTopic(userId: number) {
 }
 
 export function shouldRunAiReview() {
-  const config = getSiteConfig();
-  const providers = resolveAiServiceCandidatesForScene(config, "text-review");
-  return Boolean(config.aiReviewEnabled && providers.some((provider) => isAiProviderReady({
-    provider: provider.provider,
-    apiUrl: provider.apiUrl,
-    apiKey: provider.apiKey,
-    model: config.aiReviewModel,
-  })));
+  // Enabled but unavailable must remain queued, never silently publish without review.
+  return Boolean(getSiteConfig().aiReviewEnabled);
 }
 
 type AiReviewLogContext = {
@@ -336,7 +331,7 @@ function buildAiReviewUnavailableResult(
     status: "blocked_ai",
     riskLevel: "medium",
     riskScore: Math.max(1, Number(config.aiReviewThreshold || 70)),
-    reason: "AI 审核服务暂不可用，已转人工复核",
+    reason: "AI 审核服务暂不可用，内容暂不发布，请稍后重试",
     detail: JSON.stringify({
       unavailable: true,
       scope,
@@ -354,13 +349,10 @@ export async function reviewTopicContent(input: {
   boardType?: string | null;
   metadata?: Record<string, any> | null;
 }): Promise<TopicAiReviewResult> {
+  const keywordResult = reviewContentKeywords(input);
   const config = getSiteConfig();
-  if (!config.aiReviewEnabled || !isAiProviderReady({
-    provider: config.aiReviewProvider,
-    apiUrl: config.aiReviewApiUrl,
-    apiKey: config.aiReviewApiKey,
-    model: config.aiReviewModel,
-  })) {
+  if (!config.aiReviewEnabled) {
+    if (keywordResult) return keywordResult;
     return {
       status: "auto_passed",
       riskLevel: "low",
@@ -409,7 +401,7 @@ export async function reviewTopicContent(input: {
     return buildAiReviewUnavailableResult(config, "topic", error, model);
   }
   const { riskScore, riskLevel, decision, politicalRiskScore } = resolveTextReviewPolicy(parsed, config.aiReviewThreshold);
-  return {
+  return applyKeywordReview(keywordResult, {
     status: decision === "auto_pass" ? "auto_passed" : "blocked_ai",
     riskLevel,
     riskScore,
@@ -422,7 +414,7 @@ export async function reviewTopicContent(input: {
       detail: String(parsed.detail || "").slice(0, 1000),
     }),
     model,
-  };
+  });
 }
 
 export function isMarketSelfContactReply(input: { boardType?: string | null; content: string }) {
@@ -443,8 +435,9 @@ export async function reviewReplyContent(input: {
   content: string;
   parentContent?: string | null;
 }): Promise<TopicAiReviewResult> {
+  const keywordResult = reviewContentKeywords(input);
   const config = getSiteConfig();
-  if (isMarketSelfContactReply(input)) {
+  if (!keywordResult && isMarketSelfContactReply(input)) {
     return {
       status: "auto_passed",
       riskLevel: "low",
@@ -454,12 +447,8 @@ export async function reviewReplyContent(input: {
       model: "local-market-contact",
     };
   }
-  if (!config.aiReviewEnabled || !isAiProviderReady({
-    provider: config.aiReviewProvider,
-    apiUrl: config.aiReviewApiUrl,
-    apiKey: config.aiReviewApiKey,
-    model: config.aiReviewModel,
-  })) {
+  if (!config.aiReviewEnabled) {
+    if (keywordResult) return keywordResult;
     return {
       status: "auto_passed",
       riskLevel: "low",
@@ -508,7 +497,7 @@ export async function reviewReplyContent(input: {
     return buildAiReviewUnavailableResult(config, "reply", error, model);
   }
   const { riskScore, riskLevel, decision, politicalRiskScore } = resolveTextReviewPolicy(parsed, config.aiReviewThreshold);
-  return {
+  return applyKeywordReview(keywordResult, {
     status: decision === "auto_pass" ? "auto_passed" : "blocked_ai",
     riskLevel,
     riskScore,
@@ -521,7 +510,7 @@ export async function reviewReplyContent(input: {
       detail: String(parsed.detail || "").slice(0, 1000),
     }),
     model,
-  };
+  });
 }
 
 export async function evaluateTopicEditSimilarity(input: {
@@ -580,17 +569,27 @@ export async function evaluateTopicEditSimilarity(input: {
   };
 }
 
+export function validateTextReviewResponse(parsed: DeepSeekReviewResponse) {
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)
+    || typeof parsed.risk_score !== "number" || !Number.isFinite(parsed.risk_score)
+    || parsed.risk_score < 0 || parsed.risk_score > 100
+    || !["auto_pass", "block", "manual_review"].includes(String(parsed.decision || "").trim().toLowerCase())) {
+    throw Errors.server("AI 文字审核返回缺少有效判定");
+  }
+  return parsed;
+}
+
 function parseReviewJson(content: string): DeepSeekReviewResponse {
   if (!content || typeof content !== "string") {
     throw Errors.server("AI 审核返回为空");
   }
   try {
-    return JSON.parse(content);
+    return validateTextReviewResponse(JSON.parse(content));
   } catch {
     const match = content.match(/\{[\s\S]*\}/);
     if (match) {
       try {
-        return JSON.parse(match[0]);
+        return validateTextReviewResponse(JSON.parse(match[0]));
       } catch {
         /* ignore */
       }
@@ -625,8 +624,8 @@ function clampScore(value: unknown) {
 }
 
 function normalizeRiskLevel(value: unknown, score: number): TopicAiRiskLevel {
-  if (value === "low" || value === "medium" || value === "high") return value;
   if (score >= 70) return "high";
+  if (value === "low" || value === "medium" || value === "high") return value;
   if (score >= 25) return "medium";
   return "low";
 }
@@ -636,6 +635,7 @@ function decideByThreshold(score: number, threshold: number) {
 }
 
 export function resolveTextReviewPolicy(parsed: DeepSeekReviewResponse, threshold: number) {
+  validateTextReviewResponse(parsed);
   const safeThreshold = Math.max(1, Math.min(100, Math.round(Number(threshold) || 70)));
   const categories = parsed.categories && typeof parsed.categories === "object" ? parsed.categories : {};
   const politicalRiskScore = Math.max(0, ...POLITICAL_RISK_CATEGORIES.map((key) => clampScore(categories[key] ?? 0)));
@@ -646,6 +646,8 @@ export function resolveTextReviewPolicy(parsed: DeepSeekReviewResponse, threshol
   // 普通政策、历史、新闻和学术讨论只要分类分低，仍按原阈值正常放行。
   if (politicalRiskScore >= 85) riskScore = Math.max(riskScore, 90, safeThreshold);
   else if (politicalRiskScore >= 60) riskScore = Math.max(riskScore, safeThreshold);
+  const explicitRiskScore = Math.max(0, ...["porn_explicit", "violence", "fraud", "privacy", "abuse"].map(key => clampScore(categories[key] ?? 0)));
+  if (explicitRiskScore >= 85) riskScore = Math.max(riskScore, explicitRiskScore, safeThreshold);
   if (modelDecision === "block" || modelDecision === "manual_review") {
     riskScore = Math.max(riskScore, safeThreshold);
   }
@@ -991,7 +993,7 @@ export async function refreshTopicSubmissionLock(userId: number) {
   });
   const hasBlockingManualReview = pending.some((item) => (
     item.aiReviewStatus === "manual_reviewing"
-    || !isAutomaticManualReviewRetry(item.aiReviewDetail)
+    || (!isAutomaticManualReviewRetry(item.aiReviewDetail) && !isKeywordManualReview(item.aiReviewDetail))
   ));
   await prisma.user.update({
     where: { id: userId },
@@ -1172,6 +1174,33 @@ export async function notifyTopicAiBlocked(input: {
       }),
     },
   }).catch(() => {});
+}
+
+export async function notifyKeywordManualReview(input: {
+  kind: "topic" | "reply";
+  id: number;
+  topicId: number;
+  userId: number;
+  preview: string;
+  reason: string;
+}) {
+  const target = input.kind === "topic" ? "稿件" : "回复";
+  const payload = { topicId: input.topicId, ...(input.kind === "reply" ? { replyId: input.id } : {}) };
+  const link = `/forum/topic/${input.topicId}${input.kind === "reply" ? `#reply-${input.id}` : ""}`;
+  await prisma.notification.create({ data: {
+    userId: input.userId, category: "system", level: "normal", source: "AI 审核", link,
+    title: `${target}命中关键词，已提交复核`, content: input.reason,
+    payload: JSON.stringify({ ...payload, type: `${input.kind}-manual-review-pending` }),
+  } }).catch(() => {});
+  const reviewers = await prisma.user.findMany({
+    where: { role: { in: ["admin", "mod"] }, status: "active" }, select: { id: true },
+  }).catch(() => []);
+  if (!reviewers.length) return;
+  await prisma.notification.createMany({ data: reviewers.map(reviewer => ({
+    userId: reviewer.id, category: "system", level: "normal", source: "AI 审核", link,
+    title: `有新的${target}待人工审核`, content: `${input.preview.slice(0, 80)}：关键词命中待确认，请结合上下文判断。`,
+    payload: JSON.stringify({ ...payload, type: `${input.kind}-manual-review-admin`, keywordReview: true }),
+  })) }).catch(() => {});
 }
 
 async function createAiReviewNotifications(topicId: number, userId: number) {

@@ -1,3 +1,4 @@
+import { reviewContentKeywords } from "../services/contentKeywordReview";
 import { Router } from "express";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
@@ -11,6 +12,7 @@ import {
   ensureUserCanSubmitTopic,
   notifyTopicAiBlocked,
   reviewTopicContent,
+  notifyKeywordManualReview,
   shouldBypassAiReviewForUser,
   shouldRunAiReview,
 } from "../services/topicAiReview";
@@ -404,11 +406,12 @@ lostFoundRouter.post("/items", authRequired, validate(itemInputSchema), async (r
       remark: input.remark,
       images: input.images,
     };
+    const keywordReview = reviewContentKeywords({ title: input.itemName, content, metadata });
     const bypass = await shouldBypassAiReviewForUser(userId, req.user!.role);
-    const review = shouldRunAiReview() && !bypass
+    const review = keywordReview || (shouldRunAiReview() && !bypass)
       ? await reviewTopicContent({ title: `${input.kind === "found" ? "捡到" : "寻找"}｜${input.itemName}`, content, boardName: board.name, boardType: board.type, metadata })
       : null;
-    const hiddenByReview = review?.status === "blocked_ai";
+    const hiddenByReview = Boolean(review && review.status !== "auto_passed");
     const item = await prisma.$transaction(async (tx) => {
       const topic = await tx.topic.create({
         data: {
@@ -457,7 +460,9 @@ lostFoundRouter.post("/items", authRequired, validate(itemInputSchema), async (r
       return created;
     });
     await ensureForumImageAssetsForContent(imageContent(input.images), userId).catch(() => null);
-    if (hiddenByReview && review) {
+    if (review?.status === "manual_requested") {
+      await notifyKeywordManualReview({ kind: "topic", id: item.topicId, topicId: item.topicId, userId, preview: item.itemName, reason: review.reason });
+    } else if (hiddenByReview && review) {
       await notifyTopicAiBlocked({ topicId: item.topicId, userId, title: item.itemName, reason: review.reason, riskScore: review.riskScore });
     }
     await invalidateForumCaches();
@@ -645,7 +650,8 @@ lostFoundRouter.post("/admin/import", authRequired, validate(bulkImportSchema), 
           continue;
         }
         seenKeys.add(key);
-        const publicStatus = item.status === "active" || item.status === "claimed";
+        const keywordReview = reviewContentKeywords({ title: item.itemName, content: itemContent(item), metadata: item });
+        const publicStatus = !keywordReview && (item.status === "active" || item.status === "claimed");
         const topic = await tx.topic.create({
           data: {
             boardId: board.id,
@@ -665,9 +671,12 @@ lostFoundRouter.post("/admin/import", authRequired, validate(bulkImportSchema), 
               claimDeadline: item.claimDeadline?.toISOString() || null,
               remark: item.remark,
             }),
-            aiReviewStatus: "approved_manual",
-            aiRiskLevel: "low",
-            aiRiskScore: 0,
+            aiReviewStatus: keywordReview ? "manual_requested" : "approved_manual",
+            aiReviewReason: keywordReview?.reason || "",
+            aiReviewDetail: keywordReview?.detail || "",
+            aiRiskLevel: keywordReview?.riskLevel || "low",
+            aiRiskScore: keywordReview?.riskScore || 0,
+            aiModel: keywordReview?.model || null,
             hidden: !publicStatus,
             locked: item.status !== "active",
             createdAt: item.publishedAt,
@@ -691,7 +700,7 @@ lostFoundRouter.post("/admin/import", authRequired, validate(bulkImportSchema), 
             claimDeadline: item.claimDeadline,
             remark: item.remark,
             contact: item.contact,
-            status: item.status,
+            status: keywordReview ? "reviewing" : item.status,
             claimedAt: item.status === "claimed" ? item.publishedAt : null,
             createdAt: item.publishedAt,
           },

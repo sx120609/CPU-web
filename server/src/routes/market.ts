@@ -1,3 +1,4 @@
+import { reviewContentKeywords } from "../services/contentKeywordReview";
 import crypto from "node:crypto";
 import { Router } from "express";
 import { z } from "zod";
@@ -11,6 +12,7 @@ import { ensureUserCanSpeak } from "../services/userModeration";
 import {
   ensureUserCanSubmitTopic,
   reviewTopicContent,
+  notifyKeywordManualReview,
   shouldBypassAiReviewForUser,
   shouldRunAiReview,
 } from "../services/topicAiReview";
@@ -471,11 +473,12 @@ marketRouter.post("/items", authRequired, validate(itemInputSchema), async (req,
       location: input.location,
       images: input.images,
     };
+    const keywordReview = reviewContentKeywords({ title: input.title, content: input.description, metadata });
     const bypass = await shouldBypassAiReviewForUser(userId, req.user!.role);
-    const review = shouldRunAiReview() && !bypass
+    const review = keywordReview || (shouldRunAiReview() && !bypass)
       ? await reviewTopicContent({ title: input.title, content: input.description, boardName: board.name, boardType: "market", metadata })
       : null;
-    const hiddenByReview = review?.status === "blocked_ai";
+    const hiddenByReview = Boolean(review && review.status !== "auto_passed");
     const item = await prisma.$transaction(async (tx) => {
       const topic = await tx.topic.create({
         data: {
@@ -524,6 +527,7 @@ marketRouter.post("/items", authRequired, validate(itemInputSchema), async (req,
       }
       return created;
     });
+    if (review?.status === "manual_requested" && !input.draft && item.topicId) await notifyKeywordManualReview({ kind: "topic", id: item.topicId, topicId: item.topicId, userId, preview: input.title, reason: review.reason });
     await registerMarketImages(input.images, userId);
     ok(res, { ...serializeItem(item, userId), review: review ? { status: review.status, reason: review.reason } : null });
   } catch (error) { next(error); }
@@ -598,11 +602,12 @@ marketRouter.patch("/items/:id", authRequired, validate(itemPatchSchema), async 
       location: input.location ?? current.location,
       images: finalImages,
     };
+    const keywordReview = reviewContentKeywords({ title: finalTitle, content: finalDescription, metadata });
     let review: any = null;
-    const publicationAttempt = !staff && desiredStatus === "active" && (contentChanged || current.status === "draft");
+    const publicationAttempt = desiredStatus === "active" && (Boolean(keywordReview) || (!staff && (contentChanged || current.status === "draft")));
     if (publicationAttempt) {
       const bypass = await shouldBypassAiReviewForUser(req.user!.userId, req.user!.role);
-      review = shouldRunAiReview() && !bypass
+      review = keywordReview || (shouldRunAiReview() && !bypass)
         ? await reviewTopicContent({
           title: finalTitle,
           content: finalDescription,
@@ -611,7 +616,7 @@ marketRouter.patch("/items/:id", authRequired, validate(itemPatchSchema), async 
           metadata,
         })
         : null;
-      desiredStatus = review?.status === "blocked_ai" ? "reviewing" : "active";
+      desiredStatus = review && review.status !== "auto_passed" ? "reviewing" : "active";
     }
     data.status = desiredStatus;
     if (desiredStatus === "sold") data.soldAt = current.soldAt || new Date();
@@ -655,6 +660,7 @@ marketRouter.patch("/items/:id", authRequired, validate(itemPatchSchema), async 
       }
       return tx.marketItem.update({ where: { id }, data, include: itemInclude });
     });
+    if (review?.status === "manual_requested" && current.topicId) await notifyKeywordManualReview({ kind: "topic", id: current.topicId, topicId: current.topicId, userId: current.sellerId, preview: finalTitle, reason: review.reason });
     if (input.images) await registerMarketImages(input.images, current.sellerId);
     ok(res, {
       ...serializeItem(updated, req.user!.userId),

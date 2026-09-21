@@ -30,3 +30,19 @@ test("an explicit model manual-review decision is honored even with a low total 
   assert.equal(result.decision, "block");
   assert.equal(result.riskScore, 70);
 });
+
+test("invalid or incomplete AI output can never become an automatic pass", () => {
+  for (const output of [{}, null, [], { risk_score: 0 }, { decision: "auto_pass" },
+    { risk_score: null, decision: "auto_pass" }, { risk_score: "0", decision: "auto_pass" },
+    { risk_score: -1, decision: "auto_pass" }, { risk_score: 0, decision: "unknown" }]) {
+    assert.throws(() => resolveTextReviewPolicy(output as any, 70), /缺少有效判定/);
+  }
+});
+
+test("explicit sexual and illegal risk cannot hide behind a low total", () => {
+  for (const category of ["porn_explicit", "violence", "fraud", "privacy"]) {
+    const result = resolveTextReviewPolicy({ risk_score: 5, risk_level: "low", decision: "auto_pass", categories: { [category]: 95 } }, 70);
+    assert.equal(result.decision, "block");
+    assert.equal(result.riskLevel, "high");
+  }
+});

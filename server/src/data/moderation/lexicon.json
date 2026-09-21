@@ -1,0 +1,38 @@
+{
+  "source": "https://github.com/konsheng/Sensitive-lexicon",
+  "commit": "d967c30b053fa40b06c5a0dddf0be493f2dfae46",
+  "license": "MIT License\n\nCopyright (c) 2024~2099 Konsheng\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n",
+  "adult": [
+    "成人色情",
+    "色情电影",
+    "色情影片",
+    "色情图片",
+    "色情小说",
+    "色情服务",
+    "色情表演",
+    "性交视频",
+    "性交图片",
+    "淫荡视频",
+    "淫荡照片",
+    "裸聊网",
+    "换妻俱乐部"
+  ],
+  "weapons": [
+    "出售雷管",
+    "出售炸药",
+    "出售手枪",
+    "出售步枪",
+    "出售狙击枪",
+    "供应军用手枪",
+    "买卖军用枪支",
+    "手把手教你做炸弹",
+    "自制炸药配方",
+    "自制炸药方法"
+  ],
+  "drugs": [
+    "摇头丸",
+    "迷奸药",
+    "迷奸粉",
+    "乖乖粉"
+  ]
+}

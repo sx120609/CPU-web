@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { forumReviewRetryDelayMs, forumReviewRetryDue } from "../src/services/forumSubmissionReview";
+import { assertForumReviewAvailable, forumReviewRetryDelayMs, forumReviewRetryDue } from "../src/services/forumSubmissionReview";
 
 const submissionReviewSource = readFileSync(new URL("../src/services/forumSubmissionReview.ts", import.meta.url), "utf8");
 const manualReviewSource = readFileSync(new URL("../src/services/topicAiReview.ts", import.meta.url), "utf8");
@@ -11,7 +11,16 @@ test("AI 审核故障按半小时窗口退避重试", () => {
   assert.equal(forumReviewRetryDelayMs(1), 30_000);
   assert.equal(forumReviewRetryDelayMs(2), 60_000);
   assert.equal(forumReviewRetryDelayMs(6), 15 * 60_000);
-  assert.equal(forumReviewRetryDelayMs(99), 15 * 60_000);
+  assert.equal(forumReviewRetryDelayMs(99), 30 * 60_000);
+});
+
+test("service outages retry automatically instead of becoming content rejections", () => {
+  assert.throws(() => assertForumReviewAvailable({ detail: '{"unavailable":true}', reason: "服务超时" }), /服务超时/);
+  assert.doesNotThrow(() => assertForumReviewAvailable({ detail: '{"decision":"block"}', reason: "违规" }));
+  const now = Date.now();
+  assert.equal(forumReviewRetryDue("[attempt:7] timeout", new Date(now), false, now + 29 * 60_000), false);
+  assert.equal(forumReviewRetryDue("[attempt:7] timeout", new Date(now), false, now + 30 * 60_000), true);
+  assert.doesNotMatch(submissionReviewSource, /aiReviewStatus: "manual_requested",\s*aiReviewReason/);
 });
 
 test("自动转人工后仍以较低频率继续 AI 审核", () => {

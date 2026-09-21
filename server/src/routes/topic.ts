@@ -1,3 +1,4 @@
+import { reviewContentKeywords } from "../services/contentKeywordReview";
 import { isAuthorBlocked, blockedAuthorWhere } from "../services/userBlock";
 import { Router, type NextFunction, type Request, type Response } from "express";
 import multer from "multer";
@@ -557,9 +558,10 @@ topicRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
       throw Errors.forbidden("该板块暂不支持匿名发布");
     }
 
+    const keywordReview = reviewContentKeywords({ title, content, metadata: { ...effectiveMetadata, tags } });
     const now = new Date();
     const bypassAiReview = await shouldBypassAiReviewForUser(userId, req.user!.role);
-    const shouldReview = shouldRunAiReview() && !bypassAiReview;
+    const shouldReview = Boolean(keywordReview) || (shouldRunAiReview() && !bypassAiReview);
     const anonymousAlias = anonymous ? createAnonymousAlias() : null;
     let topic;
     try {
@@ -808,7 +810,11 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
       )
     );
 
-    if (isOwner && hasEditedContent) {
+    const keywordReview = hasEditedContent || data.hidden === false
+      ? reviewContentKeywords({ title: nextTitle, content: nextContent, metadata: nextMetadata })
+      : null;
+
+    if ((isOwner && hasEditedContent) || keywordReview) {
       await ensureUserCanSpeak(req.user!.userId);
       await ensureUserCanSubmitTopic(req.user!.userId);
       if (t.aiReviewStatus === "checking") {
@@ -820,7 +826,7 @@ topicRouter.patch("/:id", authRequired, async (req, res, next) => {
         select: { name: true, type: true },
       });
       const metadata = nextMetadata;
-      queuedForReview = shouldRunAiReview() && !bypassAiReview;
+      queuedForReview = Boolean(keywordReview) || (shouldRunAiReview() && !bypassAiReview);
       const similarityThreshold = getSiteConfig().aiEditSimilarityThreshold ?? 0;
       Object.assign(data, queuedForReview
         ? {

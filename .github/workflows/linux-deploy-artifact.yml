@@ -68,8 +68,8 @@ jobs:
       - name: Test file submission authentication
         run: node --import ./server/node_modules/tsx/dist/loader.mjs --test web/tests/filestoreUpload.test.ts server/tests/browserSecurity.integration.test.ts
 
-      - name: Test profile AI review
-        run: node --import ./server/node_modules/tsx/dist/loader.mjs --test server/tests/profileReview.test.ts server/tests/textReviewPolicy.test.ts
+      - name: Test text and profile moderation
+        run: npm --prefix server run test:moderation
 
       - name: Test Agent deployment and version reporting
         run: |

@@ -1,3 +1,4 @@
+import { reviewContentKeywords } from "../services/contentKeywordReview";
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../prisma";
@@ -6,10 +7,10 @@ import { authRequired } from "../middleware/auth";
 import { validate } from "../middleware/validate";
 import { featureClosedMessage, isBoardTypeEnabled } from "../services/siteSettings";
 import { ensureCanReadBoardType, ensureForumAccessEnabled } from "../services/forumAccess";
-import { requestManualReplyReview, shouldBypassAiReviewForUser, shouldRunAiReview } from "../services/topicAiReview";
+import { notifyKeywordManualReview, reviewReplyContent, requestManualReplyReview, shouldBypassAiReviewForUser, shouldRunAiReview } from "../services/topicAiReview";
 import { ensureUserCanSpeak } from "../services/userModeration";
 import { containsForumModerationPlaceholder } from "../services/forumContentEditing";
-import { refreshUserReplyCount } from "../services/forumStats";
+import { refreshTopicReplyStats, refreshUserReplyCount } from "../services/forumStats";
 import { consumeAnonymousCredit, createAnonymousAlias, refreshAnonymousCreditsIfNeeded } from "../services/userTrust";
 import { invalidateForumCaches } from "../services/cacheInvalidation";
 import { decodeReplyForViewer, decodeReplyForViewerWithImages, forumAuthorReputationSelect } from "../services/forumPresentation";
@@ -143,6 +144,7 @@ replyRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
       throw Errors.badRequest("引用的回复不存在");
     }
 
+    const keywordReview = reviewContentKeywords({ content, parentContent: parentReply?.content });
     const bypassAiReview = await shouldBypassAiReviewForUser(userId, req.user!.role);
     const existingAnonymousReply = anonymous
       ? await prisma.reply.findFirst({
@@ -171,7 +173,7 @@ replyRouter.post("/", authRequired, validate(createSchema), async (req, res, nex
             : (existingAnonymousReply?.anonymousAlias || createAnonymousAlias())
         )
       : null;
-    const shouldReview = shouldRunAiReview() && !bypassAiReview;
+    const shouldReview = Boolean(keywordReview) || (shouldRunAiReview() && !bypassAiReview);
     if (shouldReview) {
       let pendingReply;
       try {
@@ -339,10 +341,11 @@ replyRouter.patch("/:id", authRequired, validate(updateSchema), async (req, res,
         topic: {
           select: {
             id: true,
+            title: true,
             locked: true,
             hidden: true,
             metadata: true,
-            board: { select: { slug: true, type: true } },
+            board: { select: { slug: true, type: true, name: true } },
           },
         },
         author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true, verificationType: true, verificationLabel: true, verificationVerifiedAt: true, verificationExpiresAt: true, ...forumAuthorReputationSelect } },
@@ -365,6 +368,40 @@ replyRouter.patch("/:id", authRequired, validate(updateSchema), async (req, res,
     }
     if (containsForumModerationPlaceholder(req.body.content)) {
       throw Errors.badRequest("回复包含审核占位符，请刷新页面后重新编辑，原始媒体不会被覆盖");
+    }
+    const parent = reply.parentReplyId
+      ? await prisma.reply.findUnique({ where: { id: reply.parentReplyId }, select: { content: true } })
+      : null;
+    const keywordReview = reviewContentKeywords({ content: req.body.content, parentContent: parent?.content });
+    let manualReview: Awaited<ReturnType<typeof reviewReplyContent>> | null = null;
+    // Keep the old public reply until the replacement has passed automatic review.
+    if (req.body.content !== reply.content && (keywordReview || (shouldRunAiReview()
+      && !await shouldBypassAiReviewForUser(req.user!.userId, req.user!.role)))) {
+      const review = await reviewReplyContent({
+        content: req.body.content, topicTitle: reply.topic.title,
+        boardName: reply.topic.board.name, boardType: reply.topic.board.type,
+        parentContent: parent?.content,
+      });
+      if (review.status === "manual_requested") manualReview = review;
+      else if (review.status !== "auto_passed") throw Errors.badRequest(review.reason);
+    }
+    if (manualReview) {
+      const pending = await prisma.$transaction(async tx => {
+        const updated = await tx.reply.update({
+          where: { id },
+          data: { content: req.body.content, hidden: true, aiReviewStatus: "manual_requested",
+            aiReviewReason: manualReview!.reason, aiReviewDetail: manualReview!.detail,
+            aiRiskLevel: manualReview!.riskLevel, aiRiskScore: manualReview!.riskScore,
+            aiModel: manualReview!.model, aiReviewedAt: new Date() },
+          include: replySubmissionInclude,
+        });
+        await refreshTopicReplyStats(reply.topicId, tx);
+        await refreshUserReplyCount(reply.authorId, tx);
+        return updated;
+      });
+      await notifyKeywordManualReview({ kind: "reply", id, topicId: reply.topicId, userId: reply.authorId, preview: req.body.content, reason: manualReview.reason });
+      await invalidateForumCaches();
+      return ok(res.status(202), await presentReplySubmission(pending, req.user));
     }
     const updated = await prisma.reply.update({
       where: { id },
