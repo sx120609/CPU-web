@@ -143,3 +143,35 @@ test("academic year explicitly reports missing next-year data without discarding
   await assert.rejects(previewAcademicYearHolidays(2026, responseFor({})), /数据未获取/);
   await assert.rejects(previewAcademicYearHolidays(2026.5, fetchImpl), /整数/);
 });
+
+import { holidayPreviewSchema, previewRequestedHolidays } from "../src/services/publicHolidayCalendar";
+
+test("holiday preview accepts legacy semester parameters and preserves their range", async () => {
+  const input = holidayPreviewSchema.parse({ semesterStartMonday: "2026-09-28", weekCount: 1 });
+  const result = await previewRequestedHolidays(input, responseFor({
+    "2026-10-01": { date: "2026-10-01", name: "国庆节", isOffDay: true },
+    "2026-10-07": { date: "2026-10-07", name: "国庆节", isOffDay: true },
+  }));
+  assert.equal(result.startDate, "2026-09-28");
+  assert.equal(result.endDate, "2026-10-04");
+  assert.deepEqual(result.adjustments.map(row => row.date), ["2026-10-01"]);
+});
+
+test("holiday preview accepts academic-year requests across years", async () => {
+  const input = holidayPreviewSchema.parse({ academicYear: 2026 });
+  const result = await previewRequestedHolidays(input, (async (url) => {
+    const date = String(url).includes("2027") ? "2027-01-01" : "2026-10-01";
+    return { ok: true, json: async () => ({ [date]: { date, name: "元旦", isOffDay: true } }) } as Response;
+  }) as typeof fetch);
+  assert.equal(result.startDate, "2026-09-01");
+  assert.equal(result.endDate, "2027-07-31");
+  assert.equal(result.adjustments.length, 2);
+});
+
+test("holiday preview rejects incomplete, mixed, and out-of-range requests", () => {
+  for (const input of [{}, { weekCount: 18 }, { academicYear: 1999 },
+    { semesterStartMonday: "2026-09-28", weekCount: 65 },
+    { academicYear: 2026, semesterStartMonday: "2026-09-28", weekCount: 1 }]) {
+    assert.equal(holidayPreviewSchema.safeParse(input).success, false);
+  }
+});

@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { ScheduleAdjustment } from "./scheduleTermConfig";
 
 type PublicHolidayRecord = {
@@ -151,4 +152,16 @@ async function previewHolidayRange(startDate: string, endDate: string, fetchImpl
     }
   }
   return { startDate, endDate, warnings, sources: results.map((result) => result.source), adjustments: adjustments.sort((a, b) => a.date.localeCompare(b.date)) };
+}
+
+// Cached admin clients may still send a semester range instead of an academic year.
+export const holidayPreviewSchema = z.union([
+  z.object({ academicYear: z.number().int().min(2000).max(2100) }).strict(),
+  z.object({ semesterStartMonday: z.string().trim(), weekCount: z.number().int().min(1).max(64) }).strict(),
+]);
+
+export async function previewRequestedHolidays(input: z.infer<typeof holidayPreviewSchema>, fetchImpl: typeof fetch = fetch) {
+  return "academicYear" in input
+    ? previewAcademicYearHolidays(input.academicYear, fetchImpl)
+    : previewPublicHolidays(input.semesterStartMonday, input.weekCount, fetchImpl);
 }

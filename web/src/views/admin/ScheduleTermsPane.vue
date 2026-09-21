@@ -2,13 +2,64 @@
   <section class="schedule-terms-pane" v-loading="loading">
     <div class="pane-head">
       <div>
-        <h2>课表校历与调休</h2>
-        <p>节次时间全校统一，只配置一次；第一周、总周数和放假/补班日期按教务学期维护。可一键获取公开放假/补班数据，管理员确认并保存后生效；学校具体调课安排以教务通知为准。</p>
+        <span class="eyebrow">教学安排管理</span><h2>课表校历</h2>
+        <p>维护学期周历与放假调课安排，让每一天的课表准确同步。</p>
       </div>
       <el-button type="primary" @click="addTerm">新增学期</el-button>
     </div>
 
-    <section class="shared-periods">
+
+    <div class="term-layout">
+      <aside class="term-list">
+        <div class="list-heading">学期列表 <span>{{ terms.length }}</span></div>
+        <button
+          v-for="item in terms"
+          :key="item.semester"
+          type="button"
+          :class="{ active: item.semester === selectedSemester }"
+          :aria-pressed="item.semester === selectedSemester"
+          @click="selectTerm(item.semester)"
+        >
+          <strong>{{ item.semester }}</strong>
+          <small>{{ item.semesterStartMonday }} 开始 · {{ item.weekCount }} 周</small>
+        </button>
+        <el-empty v-if="!terms.length && !loading" description="还没有配置学期" />
+      </aside>
+
+      <div v-if="draft" class="term-editor">
+        <section class="editor-card">
+        <div class="section-head"><div><h3>学期设置</h3><small>设置教学周的起点与范围</small></div><el-tag type="info" effect="plain">{{ existingTerm ? `已发布 · v${existingTerm.version}` : "新学期" }}</el-tag></div>
+        <div class="form-grid">
+          <label><span>学期 ID</span><el-input v-model="draft.semester" :disabled="Boolean(existingTerm)" placeholder="例如 2026-2027-1" /></label>
+          <label><span>第一周周一</span><el-date-picker v-model="draft.semesterStartMonday" type="date" value-format="YYYY-MM-DD" /></label>
+          <label><span>总周数</span><el-input-number v-model="draft.weekCount" :min="1" :max="64" /></label>
+          <label><span>时区</span><el-input v-model="draft.timezone" /></label>
+          <label class="wide"><span>备注</span><el-input v-model="draft.note" maxlength="500" /></label>
+        </div>
+
+        </section>
+        <section class="editor-card">
+        <div class="section-head"><div><h3>放假与调课 <el-tag size="small" type="info">{{ draft.adjustments.length }} 条</el-tag></h3><small>学校具体调课安排以教务通知为准</small></div><el-button @click="addAdjustment">手动添加日期</el-button></div>
+        <div class="import-box"><div class="import-title">公开假期导入</div>
+        <div class="academic-year-picker"><span>导入学年</span><el-input-number v-model="academicYear" :min="2000" :max="2100" :precision="0" aria-label="学年起始年份" /><span>{{ academicYear }} 年 9 月 ～ {{ academicYear + 1 }} 年 7 月</span><el-button type="primary" :loading="importing" @click="previewHolidays">获取并预览</el-button></div>
+        <p class="import-hint">一次获取整学年数据，确认后加入当前配置草稿，保存后生效。同日期已有配置会保留；缺失年份可稍后重新导入补齐。</p></div>
+        <div class="adjustment-list">
+          <div v-for="(item, index) in draft.adjustments" :key="index" class="adjustment-row">
+            <label><span>生效日期</span><el-date-picker v-model="item.date" type="date" value-format="YYYY-MM-DD" placeholder="选择日期" /></label>
+            <label><span>当天安排</span><el-select v-model="item.kind" class="kind-select"><el-option label="放假" value="off" /><el-option label="调课" value="swap" /></el-select></label>
+            <label><span>课程来源</span><el-date-picker v-if="item.kind === 'swap'" v-model="item.source" type="date" value-format="YYYY-MM-DD" placeholder="上哪天的课" /><span v-else class="off-label">当天停课</span></label>
+            <label><span>备注</span><el-input v-model="item.note" maxlength="80" placeholder="例如 国庆节" /></label>
+            <el-button text type="danger" @click="draft.adjustments.splice(index, 1)">删除</el-button>
+          </div>
+          <el-empty v-if="!draft.adjustments.length" description="暂无特殊安排，可导入公开假期或手动添加" :image-size="52" />
+        </div>
+
+        </section>
+        <div class="save-bar"><span v-if="existingTerm">当前版本 v{{ existingTerm.version }}</span><span v-else>新学期配置</span><el-button type="primary" :loading="saving" @click="save">保存并生效</el-button></div>
+      </div>
+      <el-empty v-else description="选择一个学期开始编辑" />
+    </div>
+    <details class="shared-periods"><summary><span>全校节次时间 <small>{{ periods.length }} 节 · 所有学期共用</small></span><span class="summary-action">展开 / 收起</span></summary>
       <div class="section-head">
         <div><h3>节次时间</h3><small>全校统一，改一次对所有学期生效</small></div>
         <div class="period-actions">
@@ -25,50 +76,8 @@
         </div>
       </div>
       <p class="hint">节次时间单独保存，对所有学期立即生效；保存学期配置时也会一并写入。</p>
-    </section>
+    </details>
 
-    <div class="term-layout">
-      <aside class="term-list">
-        <button
-          v-for="item in terms"
-          :key="item.semester"
-          type="button"
-          :class="{ active: item.semester === selectedSemester }"
-          @click="selectTerm(item.semester)"
-        >
-          <strong>{{ item.semester }}</strong>
-          <small>v{{ item.version }} · {{ item.weekCount }} 周</small>
-        </button>
-        <el-empty v-if="!terms.length && !loading" description="还没有配置学期" />
-      </aside>
-
-      <div v-if="draft" class="term-editor">
-        <div class="form-grid">
-          <label><span>学期 ID</span><el-input v-model="draft.semester" :disabled="Boolean(existingTerm)" placeholder="例如 2026-2027-1" /></label>
-          <label><span>第一周周一</span><el-date-picker v-model="draft.semesterStartMonday" type="date" value-format="YYYY-MM-DD" /></label>
-          <label><span>总周数</span><el-input-number v-model="draft.weekCount" :min="1" :max="64" /></label>
-          <label><span>时区</span><el-input v-model="draft.timezone" /></label>
-          <label class="wide"><span>备注</span><el-input v-model="draft.note" maxlength="500" /></label>
-        </div>
-
-        <div class="section-head"><h3>调休 / 放假</h3><div class="period-actions"><el-button size="small" type="primary" plain :loading="importing" @click="previewHolidays">一键导入整学年假期</el-button><el-button size="small" @click="addAdjustment">增加日期</el-button></div></div>
-        <div class="academic-year-picker"><span>导入学年</span><el-input-number v-model="academicYear" :min="2000" :max="2100" :precision="0" aria-label="学年起始年份" /><span>{{ academicYear }} 年 9 月 ～ {{ academicYear + 1 }} 年 7 月</span></div>
-        <p class="import-hint">一次获取整学年数据，确认后加入当前配置草稿，保存后生效。同日期已有配置会保留；缺失年份可稍后重新导入补齐。</p>
-        <div class="adjustment-list">
-          <div v-for="(item, index) in draft.adjustments" :key="`${item.date}-${index}`" class="adjustment-row">
-            <el-date-picker v-model="item.date" type="date" value-format="YYYY-MM-DD" />
-            <el-select v-model="item.kind" class="kind-select"><el-option label="放假" value="off" /><el-option label="调课" value="swap" /></el-select>
-            <el-date-picker v-if="item.kind === 'swap'" v-model="item.source" type="date" value-format="YYYY-MM-DD" placeholder="上哪天的课" />
-            <el-input v-model="item.note" maxlength="80" placeholder="例如 国庆节" />
-            <el-button text type="danger" @click="draft.adjustments.splice(index, 1)">删除</el-button>
-          </div>
-          <el-empty v-if="!draft.adjustments.length" description="暂无调休日期" :image-size="52" />
-        </div>
-
-        <div class="save-bar"><span v-if="existingTerm">当前版本 v{{ existingTerm.version }}</span><span v-else>新学期配置</span><el-button type="primary" :loading="saving" @click="save">保存配置</el-button></div>
-      </div>
-      <el-empty v-else description="选择一个学期开始编辑" />
-    </div>
     <el-dialog v-model="previewVisible" title="确认公开放假 / 调休数据" width="min(960px, 95vw)" :close-on-click-modal="false">
       <p>{{ previewRange }} · 已选 {{ selectedImports.length }} 条</p>
       <el-alert v-for="warning in previewWarnings" :key="warning" :title="warning" type="warning" :closable="false" show-icon />
@@ -85,7 +94,7 @@
           <el-date-picker v-else-if="row.kind === 'swap'" v-model="row.source" type="date" value-format="YYYY-MM-DD" placeholder="必填：上哪天的课" />
           <span v-else>当天停课</span>
         </template></el-table-column>
-        <template #empty>该学期范围内暂无公开放假 / 补班数据</template>
+        <template #empty>该学年范围内暂无公开放假 / 补班数据</template>
       </el-table>
       <template #footer><el-button @click="previewVisible = false">取消</el-button><el-button type="primary" :disabled="!selectedImports.length || (previewWarnings.length > 0 && !acknowledgeMissingYears)" @click="confirmImport">确认加入草稿</el-button></template>
     </el-dialog>
@@ -116,8 +125,10 @@ const previewWarnings = ref<string[]>([]);
 const acknowledgeMissingYears = ref(false);
 const now = new Date();
 const academicYear = ref(now.getFullYear() - (now.getMonth() < 8 ? 1 : 0));
-watch(() => draft.value?.semesterStartMonday, (date) => {
-  if (date) academicYear.value = Number(date.slice(0, 4)) - (Number(date.slice(5, 7)) < 9 ? 1 : 0);
+watch(() => [draft.value?.semesterStartMonday, draft.value?.semester] as const, ([date]) => {
+  const semesterYear = Number(draft.value?.semester.match(/^(\d{4})-\d{4}-[12]$/)?.[1]);
+  if (semesterYear) academicYear.value = semesterYear;
+  else if (date) academicYear.value = Number(date.slice(0, 4)) - (Number(date.slice(5, 7)) < 8 ? 1 : 0);
 });
 const importRows = ref<ImportRow[]>([]);
 const selectedImports = computed(() => importRows.value.filter((row) => row.selected && !row.conflict));
@@ -228,9 +239,16 @@ onMounted(load);
 </script>
 
 <style scoped>
-.academic-year-picker{display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:13px}
-
-.import-hint{font-size:13px;color:var(--cpu-text-secondary);line-height:1.7;overflow-wrap:anywhere}.import-hint a{color:var(--cpu-primary);margin-right:8px}.section-head{gap:10px;flex-wrap:wrap}.period-actions{flex-wrap:wrap}
-
-.schedule-terms-pane{display:flex;flex-direction:column;gap:18px}.shared-periods{padding:16px;border:1px solid var(--cpu-border-soft);border-radius:8px;background:var(--cpu-card)}.shared-periods .section-head{margin:0 0 12px}.shared-periods small{color:var(--cpu-text-muted);font-size:12px}.period-actions{display:flex;gap:8px}.shared-periods .hint{margin:12px 0 0;color:var(--cpu-text-secondary);font-size:12px}.pane-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.pane-head h2{margin:0;font-size:20px}.pane-head p{margin:6px 0 0;color:var(--cpu-text-secondary);font-size:13px}.term-layout{display:grid;grid-template-columns:220px minmax(0,1fr);gap:18px}.term-list{display:flex;flex-direction:column;gap:6px}.term-list button{display:flex;flex-direction:column;align-items:flex-start;gap:3px;padding:12px;border:1px solid var(--cpu-border-soft);border-radius:8px;background:var(--cpu-card);color:inherit;text-align:left;cursor:pointer}.term-list button.active{border-color:var(--cpu-primary);box-shadow:0 0 0 2px color-mix(in srgb,var(--cpu-primary) 12%,transparent)}.term-list small{color:var(--cpu-text-muted)}.term-editor{min-width:0}.form-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.form-grid label{display:flex;flex-direction:column;gap:6px}.form-grid label>span{font-size:12px;color:var(--cpu-text-secondary)}.form-grid .wide{grid-column:span 2}.section-head{display:flex;align-items:center;justify-content:space-between;margin:24px 0 10px}.section-head h3{margin:0;font-size:15px}.period-grid,.adjustment-list{display:flex;flex-direction:column;gap:8px}.period-row,.adjustment-row{display:grid;grid-template-columns:72px 150px 150px minmax(120px,1fr) auto;align-items:center;gap:8px}.adjustment-row{grid-template-columns:150px 100px 150px minmax(120px,1fr) auto}.period-row b{font-size:13px}.save-bar{display:flex;align-items:center;justify-content:space-between;margin-top:24px;padding-top:14px;border-top:1px solid var(--cpu-border-soft);color:var(--cpu-text-secondary);font-size:12px}@media(max-width:800px){.term-layout{grid-template-columns:1fr}.form-grid{grid-template-columns:1fr 1fr}.form-grid .wide{grid-column:span 2}.period-row,.adjustment-row{grid-template-columns:1fr 1fr}.period-row b{grid-column:1/-1}.period-row .el-button,.adjustment-row .el-button{justify-self:end}}@media(max-width:520px){.form-grid{grid-template-columns:1fr}.form-grid .wide{grid-column:auto}.adjustment-row{grid-template-columns:1fr}.adjustment-row .el-button{justify-self:start}}
+.schedule-terms-pane{display:flex;flex-direction:column;gap:24px;color:var(--cpu-text-primary)}
+.pane-head,.section-head,.save-bar,summary{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.pane-head{padding:8px 0 4px}.eyebrow{font-size:12px;color:var(--cpu-primary);font-weight:600;letter-spacing:2px}.pane-head h2{margin:8px 0;font-size:26px;letter-spacing:-.6px}.pane-head p,.hint,.import-hint{font-size:13px;line-height:1.8;color:var(--cpu-text-secondary);margin:8px 0 0}
+.term-layout{display:grid;grid-template-columns:220px minmax(0,1fr);gap:24px;align-items:start}.term-list{display:flex;flex-direction:column;gap:10px}.list-heading{display:flex;justify-content:space-between;padding:4px 4px 8px;font-size:13px;color:var(--cpu-text-secondary)}
+.term-list button{display:flex;flex-direction:column;gap:10px;text-align:left;padding:18px 16px;border:1px solid var(--cpu-border-soft);border-radius:12px;background:var(--cpu-card);color:inherit;cursor:pointer;transition:background .15s,border-color .15s}.term-list button:hover{border-color:var(--cpu-primary)}.term-list button.active{border-color:var(--cpu-primary);background:color-mix(in srgb,var(--cpu-primary) 7%,var(--cpu-card))}.term-list button:focus-visible,summary:focus-visible{outline:2px solid var(--cpu-primary);outline-offset:3px}.term-list strong{font-size:15px}.term-list small,.section-head small,summary small{font-size:12px;color:var(--cpu-text-secondary);line-height:1.7}
+.term-editor{min-width:0;display:flex;flex-direction:column;gap:18px}.editor-card,.shared-periods{padding:24px;border:1px solid var(--cpu-border-soft);border-radius:16px;background:var(--cpu-card)}.section-head{margin:0 0 20px;flex-wrap:wrap}.section-head h3{font-size:16px;margin:0 0 5px}.section-head h3 .el-tag{margin-left:6px}.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}.form-grid label,.adjustment-row label{display:flex;flex-direction:column;gap:8px;min-width:0}.form-grid label>span,.adjustment-row label>span{font-size:12px;color:var(--cpu-text-secondary)}.form-grid .wide{grid-column:1/-1}
+.form-grid :deep(.el-date-editor),.form-grid :deep(.el-input-number),.adjustment-row :deep(.el-date-editor),.period-row :deep(.el-date-editor){width:100%;min-width:0}.import-box{padding:18px;border:1px solid color-mix(in srgb,var(--cpu-primary) 18%,var(--cpu-border-soft));border-radius:12px;background:color-mix(in srgb,var(--cpu-primary) 4%,var(--cpu-card));margin-bottom:20px}.import-title{font-size:14px;font-weight:600;margin-bottom:12px}.academic-year-picker{display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:13px}.academic-year-picker>.el-button{margin-left:auto}.import-hint{overflow-wrap:anywhere}.import-hint a{color:var(--cpu-primary);margin-right:8px}
+.adjustment-list{display:flex;flex-direction:column;gap:12px}.adjustment-row{display:grid;grid-template-columns:minmax(130px,1fr) 100px minmax(130px,1fr) minmax(100px,1fr) auto;gap:12px;align-items:end;border-bottom:1px solid var(--cpu-border-soft);padding-bottom:14px}.off-label{display:flex;align-items:center;height:32px}.save-bar{padding:16px 20px;background:var(--cpu-card);border:1px solid var(--cpu-border-soft);border-radius:12px;font-size:12px;color:var(--cpu-text-secondary)}
+summary{cursor:pointer;list-style:none;font-size:15px;font-weight:600}summary::-webkit-details-marker{display:none}summary small{margin-left:12px;font-weight:400}.summary-action{font-size:12px;color:var(--cpu-primary);white-space:nowrap}.shared-periods[open] summary{padding-bottom:20px;margin-bottom:20px;border-bottom:1px solid var(--cpu-border-soft)}.period-actions{display:flex;gap:8px;flex-wrap:wrap}.period-actions .el-button+.el-button{margin-left:0}.period-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.period-row{display:grid;grid-template-columns:52px minmax(0,1fr) minmax(0,1fr) auto;align-items:center;gap:8px;padding:10px;background:var(--cpu-bg);border-radius:8px}.period-row b{font-size:12px}
+@media(max-width:1200px){.adjustment-row{grid-template-columns:repeat(2,minmax(0,1fr))}.adjustment-row>.el-button{justify-self:end;grid-column:1/-1}}
+@media(max-width:800px){.term-layout{grid-template-columns:1fr}.term-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.list-heading{grid-column:1/-1}.period-grid{grid-template-columns:1fr}.editor-card,.shared-periods{padding:18px}.pane-head h2{font-size:23px}}
+@media(max-width:520px){.form-grid{grid-template-columns:1fr}.term-list{grid-template-columns:1fr}.adjustment-row{grid-template-columns:1fr}.academic-year-picker>.el-button{margin-left:0;width:100%}.pane-head{align-items:flex-start}.pane-head>.el-button{margin-top:24px}.period-row{grid-template-columns:44px minmax(0,1fr) minmax(0,1fr)}.period-row>.el-button{grid-column:1/-1;justify-self:end}summary small{display:block;margin:4px 0 0}}
 </style>
