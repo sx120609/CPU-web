@@ -1,5 +1,5 @@
 -- CreateTable
-CREATE TABLE "LiveActivityRegistration" (
+CREATE TABLE IF NOT EXISTS "LiveActivityRegistration" (
     "id" TEXT NOT NULL,
     "userId" INTEGER NOT NULL,
     "tokenHash" TEXT NOT NULL,
@@ -18,9 +18,17 @@ CREATE TABLE "LiveActivityRegistration" (
 );
 
 -- CreateIndex
-CREATE UNIQUE INDEX "LiveActivityRegistration_tokenHash_key" ON "LiveActivityRegistration"("tokenHash");
-CREATE INDEX "LiveActivityRegistration_userId_active_idx" ON "LiveActivityRegistration"("userId", "active");
-CREATE INDEX "LiveActivityRegistration_active_updatedAt_idx" ON "LiveActivityRegistration"("active", "updatedAt");
+CREATE UNIQUE INDEX IF NOT EXISTS "LiveActivityRegistration_tokenHash_key" ON "LiveActivityRegistration"("tokenHash");
+CREATE INDEX IF NOT EXISTS "LiveActivityRegistration_userId_active_idx" ON "LiveActivityRegistration"("userId", "active");
+CREATE INDEX IF NOT EXISTS "LiveActivityRegistration_active_updatedAt_idx" ON "LiveActivityRegistration"("active", "updatedAt");
 
 -- AddForeignKey
-ALTER TABLE "LiveActivityRegistration" ADD CONSTRAINT "LiveActivityRegistration_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'LiveActivityRegistration_userId_fkey' AND conrelid = '"LiveActivityRegistration"'::regclass
+  ) THEN
+    ALTER TABLE "LiveActivityRegistration" ADD CONSTRAINT "LiveActivityRegistration_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END $$;
