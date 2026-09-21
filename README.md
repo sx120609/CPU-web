@@ -501,7 +501,7 @@ Content-Type: application/json
 补充说明：
 
 - AI 文本审核、图片审核、匿名信誉阈值、站点域名等配置现在主要保存在数据库 `site_settings` 中，通过管理后台维护。
-- APNs 实况活动由 CPU-web 独立提供：iOS 使用站点登录会话调用 `/api/live-activities` 的设备、计划和活动 token 接口。管理员在「APNs 推送」填写服务器 `.p8` 路径、Key ID、Team ID、CPU Bundle ID（正式版 `cn.cputime.mobile`）和调度间隔。保存凭据后自动向 Apple 创建属于 CPU App ID 的 `production:cpu` / `sandbox:cpu` 频道，失败可重试，未配置频道时使用逐设备推送；不能复用 `me.mom0ka27.naptable` 的频道。详见 [APNs 配置与验收](docs/apns.md)。
+- APNs 实况活动采用逐设备远程启动 + 学校统一广播更新：iOS 18 及以上同步已加载学期的最小启动时间计划，无需每天打开 App；课前提前量可设为 0–60 分钟，默认 15 分钟。课程详情保存在本机，启动 token 在服务端加密。后台「APNs 推送」自动创建六个生产/沙盒时段频道。详见 [APNs 配置与验收](docs/apns.md)。
 - 生产部署时无需额外 Nginx 才能跑起来；构建后的前端静态资源会直接由 Express 提供。
 - 世纪互联版 OneDrive / SharePoint 媒体存储现在支持直接在管理后台配置：填写 Azure 应用 ID、密钥、SharePoint 站点地址后，点击“登录授权”完成回调授权，再选择文档库即可。
 - 管理后台支持按媒体类型分别切换后端，例如“图片走本地、视频走世纪互联”。切换后会立刻影响后续新上传文件；历史远端文件仍可继续读取，不会因切换而失效。

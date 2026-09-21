@@ -39,7 +39,19 @@ final class NativeLiveActivityController: ObservableObject {
     /// A timetable Live Activity is useful only when the next class is close
     /// enough to act on. The regular widgets remain the right surface for
     /// showing a class that is hours away.
-    static let leadTime: TimeInterval = 15 * 60
+    static let leadMinutesKey = "scheduleLiveActivityLeadMinutes"
+    var leadMinutes: Int {
+        let value = UserDefaults(suiteName: NextWidgetConfiguration.appGroup)?.object(forKey: Self.leadMinutesKey) as? Int ?? 15
+        return min(60, max(0, value))
+    }
+    var leadTime: TimeInterval { TimeInterval(leadMinutes * 60) }
+    func setLeadMinutes(_ value: Int) {
+        UserDefaults(suiteName: NextWidgetConfiguration.appGroup)?.set(min(60, max(0, value)), forKey: Self.leadMinutesKey)
+        if let lastSnapshot { accept(lastSnapshot) }
+        objectWillChange.send()
+    }
+    var remoteStartsEnabled = false
+    var planDidChange: (() -> Void)?
 
     @Published private(set) var status: Status = .waiting
     @Published private(set) var isPreviewActive = false
@@ -48,27 +60,20 @@ final class NativeLiveActivityController: ObservableObject {
     private var previewEndTask: Task<Void, Never>?
     private var lastSnapshot: NativeScheduleSnapshot?
     private let now: () -> Date
-    /// Set by the push service before an Activity is requested. A push token
-    /// is required for both push-to-start and remote updates.
-    var wantsPushToken = false
-    /// Called whenever the rendered future plan changes.
-    var planDidChange: (([PlannedPush]) -> Void)?
-    /// Injected by the push service so this controller remains independently
-    /// testable on iOS versions where the push API is unavailable.
     var resetPushService: (() -> Void)?
     var currentScheduleMetadata: NativeScheduleSnapshot? { lastSnapshot }
     var scheduleBackgroundWakeup: ((Date) -> Void)?
-    /// School channel returned by APNs configuration. iOS 26 uses it for
-    /// locally scheduled activities plus compact school boundary broadcasts.
-    var broadcastChannelID: String? {
+    @Published var broadcastStatus = "远程启动需要 iOS 18 和学校广播；课程详情仅保存在本机。"
+    struct BroadcastWindow: Codable, Equatable {
+        let id: String
+        let startHour: Int
+        let endHour: Int
+        let channelID: String?
+    }
+    var broadcastWindows: [BroadcastWindow] = [] {
         didSet {
-            guard oldValue != broadcastChannelID, let snapshot = lastSnapshot, !isPreviewActive else { return }
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                await self.endActivities()
-                guard self.isEnabled, !self.isPreviewActive else { return }
-                self.accept(snapshot)
-            }
+            guard oldValue != broadcastWindows, let snapshot = lastSnapshot, !isPreviewActive else { return }
+            accept(snapshot)
         }
     }
     private var currentActivity: Activity<ScheduleLiveActivityAttributes>? {
@@ -88,11 +93,6 @@ final class NativeLiveActivityController: ObservableObject {
         }
     }
 
-    func replanForPush() {
-        guard let lastSnapshot else { return }
-        planDidChange?(pushPlan(from: lastSnapshot))
-    }
-
     var isEnabled: Bool {
         UserDefaults(suiteName: NextWidgetConfiguration.appGroup)?
             .object(forKey: Self.enabledKey) as? Bool ?? true
@@ -100,8 +100,7 @@ final class NativeLiveActivityController: ObservableObject {
 
     func setEnabled(_ enabled: Bool) {
         UserDefaults(suiteName: NextWidgetConfiguration.appGroup)?.set(enabled, forKey: Self.enabledKey)
-        // Server push has no switch of its own: registering here is what lets
-        // the activity appear while the app is suspended.
+        // Refresh channel metadata when the user enables local reservations.
         #if os(iOS)
         if #available(iOS 17.2, *) { LiveActivityPushService.shared.enabledDidChange(enabled) }
         #endif
@@ -120,7 +119,7 @@ final class NativeLiveActivityController: ObservableObject {
         lastSnapshot = snapshot
         if isPreviewActive { return }
         saveBroadcastCourses(from: snapshot)
-        planDidChange?(pushPlan(from: snapshot))
+        planDidChange?()
         refreshTask?.cancel()
         guard isEnabled else {
             status = .disabled
@@ -218,7 +217,7 @@ final class NativeLiveActivityController: ObservableObject {
                 _ = try Activity<ScheduleLiveActivityAttributes>.request(
                     attributes: attributes,
                     content: content,
-                    pushType: wantsPushToken ? .token : nil
+                    pushType: nil
                 )
                 status = .active
                 previewEndTask = Task { @MainActor [weak self] in
@@ -279,8 +278,19 @@ final class NativeLiveActivityController: ObservableObject {
             await endActivities()
             return nil
         }
-        if #available(iOS 26.0, *), let channel = broadcastChannelID, !channel.isEmpty {
-            return await synchronizeScheduled(snapshot, channelID: channel)
+        if remoteStartsEnabled {
+            // Server owns starts. Never create a second local/scheduled activity
+            // while a remote start may be in flight.
+            for activity in Activity<ScheduleLiveActivityAttributes>.activities {
+                var obsolete = activity.attributes.broadcastWindow == nil
+                if #available(iOS 26.0, *) { obsolete = obsolete || activity.activityState == .pending }
+                if obsolete { await activity.end(nil, dismissalPolicy: .immediate) }
+            }
+            status = currentActivity == nil ? .waiting : .active
+            return 60
+        }
+        if #available(iOS 26.0, *), broadcastWindows.contains(where: { $0.channelID != nil }) {
+            return await synchronizeScheduled(snapshot)
         }
         let currentDate = now()
         guard let occurrence = nextOccurrence(in: snapshot, at: currentDate) else {
@@ -293,7 +303,7 @@ final class NativeLiveActivityController: ObservableObject {
         // refresh loop stays alive so it can start automatically as the class
         // enters the lead window.
         if !occurrence.isInProgress,
-           occurrence.start.timeIntervalSince(currentDate) > Self.leadTime {
+           occurrence.start.timeIntervalSince(currentDate) > leadTime {
             status = .waiting
             await endActivities()
             return refreshDelay(for: occurrence)
@@ -329,7 +339,7 @@ final class NativeLiveActivityController: ObservableObject {
             _ = try Activity<ScheduleLiveActivityAttributes>.request(
                 attributes: attributes,
                 content: content,
-                pushType: wantsPushToken ? .token : nil
+                pushType: nil
             )
             status = .active
             scheduleBackgroundWakeup?(occurrence.end)
@@ -352,48 +362,124 @@ final class NativeLiveActivityController: ObservableObject {
             return max(1, min(15, occurrence.end.timeIntervalSince(now)))
         }
 
-        let untilLeadWindow = occurrence.start.timeIntervalSince(now) - Self.leadTime
+        let untilLeadWindow = occurrence.start.timeIntervalSince(now) - leadTime
         if untilLeadWindow > 0 {
             return max(5, min(60, untilLeadWindow))
         }
         return max(1, min(15, occurrence.start.timeIntervalSince(now)))
     }
 
-    @available(iOS 26.0, *)
-    private func synchronizeScheduled(_ snapshot: NativeScheduleSnapshot, channelID: String) async -> TimeInterval? {
-        let currentDate = now()
-        let events = allOccurrences(in: snapshot)
-            .filter { $0.end > currentDate && $0.start < currentDate.addingTimeInterval(2 * 24 * 3600) }
-            .sorted { $0.start < $1.start }
-        guard !events.isEmpty else {
-            status = .unavailable("今天和明天没有可显示的课程。")
-            await endActivities()
-            return nil
+    struct RemoteStartWindow: Codable, Equatable {
+        let dateKey: String
+        let window: String
+        let start: Int
+        let end: Int
+    }
+
+    /// One small record per day/window for the loaded semester, never course text.
+    func remoteStartWindows() -> [RemoteStartWindow] {
+        guard isEnabled, let snapshot = lastSnapshot, snapshot.auth.authenticated,
+              ActivityAuthorizationInfo().areActivitiesEnabled else { return [] }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Shanghai")!
+        let periods = snapshot.periods.isEmpty ? NativeSchedulePeriod.bundledTimetable : snapshot.periods
+        let current = now()
+        let horizon = current.addingTimeInterval(370 * 86400)
+        // Pick the first remaining course. Server identities are date/window,
+        // so reopening mid-session does not restart a previously sent activity.
+        let events = allOccurrences(in: snapshot).filter { $0.end > current && $0.start <= horizon }
+        let grouped = Dictionary(grouping: events) { occurrence in
+            let hour = calendar.component(.hour, from: occurrence.start)
+            return occurrence.dateKey + ":" + (hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening")
         }
-        let grouped = Dictionary(grouping: events, by: \.dateKey)
-        for dateKey in grouped.keys.sorted().prefix(2) {
-            guard let dayEvents = grouped[dateKey], let first = dayEvents.first, let last = dayEvents.last else { continue }
-            let attributes = ScheduleLiveActivityAttributes(
-                semester: snapshot.data?.currentSemester ?? "",
-                dateKey: first.dateKey,
-                week: first.week
+        return grouped.values.compactMap { courses -> RemoteStartWindow? in
+            guard let first = courses.first else { return nil }
+            let hour = calendar.component(.hour, from: first.start)
+            let window = hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening"
+            let clocks = periods.filter {
+                let h = Int($0.startTime.prefix(2)) ?? -1
+                return window == "morning" ? h < 12 : window == "afternoon" ? h >= 12 && h < 18 : h >= 18
+            }.compactMap { date(first.dateKey, time: $0.endTime, calendar: calendar) }
+            guard let end = clocks.max(), end > current,
+                  end.timeIntervalSince(first.start.addingTimeInterval(-leadTime)) < 8 * 3600 else { return nil }
+            return RemoteStartWindow(dateKey: first.dateKey, window: window,
+                                     start: Int(first.start.timeIntervalSince1970), end: Int(end.timeIntervalSince1970))
+        }.sorted { $0.start < $1.start }
+    }
+
+    struct LocalReservation {
+        let attributes: ScheduleLiveActivityAttributes
+        let state: ScheduleLiveActivityAttributes.ContentState
+        let start: Date
+        let end: Date
+        let channelID: String
+    }
+
+    /// Reserve only today's windows. Tomorrow's activity must not subscribe to
+    /// today's end broadcast. ActivityKit does not offer recurring starts.
+    func localReservations(from snapshot: NativeScheduleSnapshot) -> [LocalReservation] {
+        guard isEnabled, snapshot.auth.authenticated else { return [] }
+        let current = now()
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Shanghai")!
+        let periods = snapshot.periods.isEmpty ? NativeSchedulePeriod.bundledTimetable : snapshot.periods
+        let events = allOccurrences(in: snapshot).filter { calendar.isDate($0.start, inSameDayAs: current) && $0.end > current }
+        return broadcastWindows.compactMap { window in
+            guard let channel = window.channelID, !channel.isEmpty else { return nil }
+            let courses = events.filter {
+                let hour = calendar.component(.hour, from: $0.start)
+                return hour >= window.startHour && hour < window.endHour
+            }
+            guard let first = courses.first else { return nil }
+            let clocks = periods.filter {
+                let hour = Int($0.startTime.prefix(2)) ?? -1
+                return hour >= window.startHour && hour < window.endHour
+            }.compactMap { date(first.dateKey, time: $0.endTime, calendar: calendar) }
+            guard let end = clocks.max(), end > current else { return nil }
+            let start = max(first.start.addingTimeInterval(-leadTime), current.addingTimeInterval(1))
+            // Respect ActivityKit's maximum active duration, including custom
+            // school timetables that would make a window too long.
+            guard end.timeIntervalSince(start) < 8 * 3600 else { return nil }
+            let attrs = ScheduleLiveActivityAttributes(
+                semester: snapshot.data?.currentSemester ?? "", dateKey: first.dateKey,
+                week: first.week, broadcastWindow: window.id, broadcastChannel: channel,
+                reservationStart: first.start, reservationEnd: end
             )
-            guard !Activity<ScheduleLiveActivityAttributes>.activities.contains(where: { $0.attributes == attributes }) else { continue }
-            let start = max(first.start.addingTimeInterval(-Self.leadTime), currentDate.addingTimeInterval(1))
-            let state = contentState(for: first, phase: first.start <= currentDate ? .inProgress : .upcoming)
-            let alert = AlertConfiguration(
-                title: "课程提醒",
-                body: LocalizedStringResource(stringLiteral: first.name),
-                sound: .default
-            )
+            let state = contentState(for: first, phase: first.start <= current ? .inProgress : .upcoming)
+            return LocalReservation(attributes: attrs, state: state, start: start, end: end, channelID: channel)
+        }
+    }
+
+    @available(iOS 26.0, *)
+    private func synchronizeScheduled(_ snapshot: NativeScheduleSnapshot) async -> TimeInterval? {
+        let reservations = localReservations(from: snapshot)
+        let desired = reservations.map(\.attributes)
+        for activity in Activity<ScheduleLiveActivityAttributes>.activities {
+            if !desired.contains(activity.attributes) {
+                await activity.end(nil, dismissalPolicy: .immediate)
+            }
+        }
+        guard !Task.isCancelled, isEnabled, !isPreviewActive else { return nil }
+        for reservation in reservations {
+            guard !Task.isCancelled, isEnabled, !isPreviewActive else { return nil }
+            let existing = Activity<ScheduleLiveActivityAttributes>.activities.first {
+                $0.attributes == reservation.attributes && $0.activityState != .ended && $0.activityState != .dismissed
+            }
+            if let existing {
+                // Course details are always resolved from the fresh App Group
+                // cache. Avoid recreating a pending reservation on every tick.
+                if existing.activityState == .active || existing.activityState == .stale {
+                    await existing.update(ActivityContent(state: reservation.state, staleDate: reservation.end))
+                }
+                continue
+            }
             do {
                 _ = try Activity<ScheduleLiveActivityAttributes>.request(
-                    attributes: attributes,
-                    content: ActivityContent(state: state, staleDate: last.end),
-                    pushType: .channel(channelID),
-                    style: .standard,
-                    alertConfiguration: alert,
-                    start: start
+                    attributes: reservation.attributes,
+                    content: ActivityContent(state: reservation.state, staleDate: reservation.end),
+                    pushType: .channel(reservation.channelID), style: .standard,
+                    alertConfiguration: AlertConfiguration(title: "课程提醒", body: LocalizedStringResource(stringLiteral: reservation.state.courseName), sound: .default),
+                    start: reservation.start
                 )
             } catch {
                 status = .failed(error.localizedDescription)
@@ -413,7 +499,7 @@ final class NativeLiveActivityController: ObservableObject {
     func reconcileInBackground() async {
         let current = now()
         for activity in Activity<ScheduleLiveActivityAttributes>.activities {
-            if activity.content.state.endDate <= current {
+            if (activity.content.staleDate ?? activity.content.state.endDate) <= current {
                 await activity.end(nil, dismissalPolicy: .immediate)
             }
         }
@@ -447,7 +533,7 @@ final class NativeLiveActivityController: ObservableObject {
     }
 
     private func saveBroadcastCourses(from snapshot: NativeScheduleSnapshot) {
-        let records = allOccurrences(in: snapshot).prefix(1200).compactMap { occurrence -> ScheduleLiveActivityAttributes.LocalCourse? in
+        let records = (snapshot.auth.authenticated ? allOccurrences(in: snapshot) : []).filter { $0.end > now() && $0.start <= now().addingTimeInterval(370 * 86400) }.compactMap { occurrence -> ScheduleLiveActivityAttributes.LocalCourse? in
             let period = occurrence.periodLabel.split(whereSeparator: { !$0.isNumber }).compactMap { Int($0) }.first ?? 0
             guard period > 0 else { return nil }
             return ScheduleLiveActivityAttributes.LocalCourse(
@@ -465,63 +551,6 @@ final class NativeLiveActivityController: ObservableObject {
         }
         guard let data = try? JSONEncoder().encode(Array(records)) else { return }
         UserDefaults(suiteName: NextWidgetConfiguration.appGroup)?.set(data, forKey: ScheduleLiveActivityAttributes.broadcastCoursesKey)
-    }
-
-    struct PlannedPush: Equatable {
-        enum Event: String { case start, update, end }
-        let id: String
-        let event: Event
-        let fireAt: Date
-        let expiresAt: Date
-        let state: ScheduleLiveActivityAttributes.ContentState
-        let attributes: ScheduleLiveActivityAttributes
-        let staleDate: Date
-    }
-
-    nonisolated static let planHorizon: TimeInterval = 7 * 24 * 3600
-    nonisolated static let planItemLimit = 200
-
-    /// Render a week of fully encoded states. The server only relays these
-    /// frames, which keeps its scheduling logic independent from timetable
-    /// parsing and iOS presentation rules.
-    func pushPlan(from snapshot: NativeScheduleSnapshot, now current: Date? = nil) -> [PlannedPush] {
-        let currentDate = current ?? now()
-        guard isEnabled, snapshot.auth.authenticated else { return [] }
-        let deadline = currentDate.addingTimeInterval(Self.planHorizon)
-        let events = allOccurrences(in: snapshot)
-            .filter { $0.end > currentDate && $0.start < deadline }
-            .sorted { $0.start < $1.start }
-        guard !events.isEmpty else { return [] }
-        var pushes: [PlannedPush] = []
-        for (index, event) in events.enumerated() {
-            let next = index + 1 < events.count ? events[index + 1] : nil
-            let attrs = ScheduleLiveActivityAttributes(
-                semester: snapshot.data?.currentSemester ?? "",
-                dateKey: event.dateKey,
-                week: event.week
-            )
-            let upcoming = contentState(for: event, phase: .upcoming)
-            let inProgress = contentState(for: event, phase: .inProgress)
-            let start = max(currentDate, event.start.addingTimeInterval(-Self.leadTime))
-            let startID = "\(Int(event.start.timeIntervalSince1970))-start"
-            if start > currentDate {
-                pushes.append(PlannedPush(id: startID, event: .start, fireAt: start,
-                    expiresAt: event.start.addingTimeInterval(3600), state: upcoming, attributes: attrs, staleDate: event.end))
-            }
-            if event.start > currentDate {
-                pushes.append(PlannedPush(id: "\(Int(event.start.timeIntervalSince1970))-update", event: .update,
-                    fireAt: event.start, expiresAt: event.end, state: inProgress, attributes: attrs, staleDate: event.end))
-            }
-            if event.start <= currentDate && event.end > currentDate {
-                pushes.append(PlannedPush(id: "\(Int(event.start.timeIntervalSince1970))-start", event: .start,
-                    fireAt: currentDate, expiresAt: event.start.addingTimeInterval(3600), state: inProgress, attributes: attrs, staleDate: event.end))
-            }
-            pushes.append(PlannedPush(id: "\(Int(event.end.timeIntervalSince1970))-end", event: .end,
-                fireAt: event.end, expiresAt: event.end.addingTimeInterval(6 * 3600), state: inProgress,
-                attributes: attrs, staleDate: event.end))
-            _ = next
-        }
-        return Array(pushes.filter { $0.fireAt >= currentDate }.sorted { $0.fireAt < $1.fireAt }.prefix(Self.planItemLimit))
     }
 
     private struct Occurrence {

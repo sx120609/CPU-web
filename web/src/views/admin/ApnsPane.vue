@@ -3,21 +3,9 @@
     <div class="pane-head">
       <div>
         <h2>APNs 推送</h2>
-        <p>配置实时活动的服务端推送凭据；已注册的 iOS 设备会在课程边界收到后台更新。</p>
+        <p>按用户设置的提前量远程启动，再按学校作息广播更新；iPhone 从本地课表读取课程详情。</p>
       </div>
       <el-tag :type="form.configured ? 'success' : 'info'">{{ form.configured ? "已配置" : "未配置" }}</el-tag>
-    </div>
-    <div class="push-stats" aria-label="iOS 推送统计">
-      <div class="push-stat">
-        <span>已启用广播的用户</span>
-        <strong>{{ form.iosPushStats?.channelPushUsers ?? "--" }}</strong>
-        <small>按已注册且启用的设备用户去重</small>
-      </div>
-      <div class="push-stat push-stat--gradual">
-        <span>使用逐设备推送的用户</span>
-        <strong>{{ form.iosPushStats?.gradualPushUsers ?? "--" }}</strong>
-        <small>未启用广播频道的注册用户</small>
-      </div>
     </div>
     <el-alert v-if="error" type="error" :closable="false" show-icon :title="error" class="mb" />
     <el-form label-width="150px" class="config-form">
@@ -28,12 +16,14 @@
       <el-form-item label="调度间隔（秒）"><el-input-number v-model="form.tickSeconds" :min="0.5" :max="3600" :step="0.5" /></el-form-item>
     </el-form>
     <div class="channel-head"><strong>广播频道</strong><el-button size="small" :loading="syncing" :disabled="saving || loading || !form.configured" @click="syncChannels">创建缺失频道</el-button></div>
-    <p class="hint">保存凭据后自动为当前 App 创建生产和沙盒频道。CPU App ID 需在 Apple Developer 开通广播能力；创建失败时会显示原因，未配置频道的设备继续使用逐设备推送。</p>
+    <p class="hint">保存后自动创建上午、下午、晚间的生产和沙盒频道。CPU App ID 需开通广播能力。iOS 18 及以上支持远程启动并订阅频道，无需每天打开 App。启动凭据与最小时间计划由客户端同步，频道缺失的时段暂不启动。</p>
     <div class="channels">
-      <div v-for="environment in ['production', 'sandbox']" :key="environment" class="channel-row">
-        <strong>{{ environment === 'production' ? '生产频道' : '沙盒频道' }}</strong>
-        <el-input :model-value="form.channels[`${environment}:cpu`] || ''" readonly placeholder="尚未创建" />
-      </div>
+      <template v-for="environment in ['production', 'sandbox']" :key="environment">
+        <div v-for="window in windows" :key="`${environment}-${window.id}`" class="channel-row">
+          <strong>{{ environment === 'production' ? '生产' : '沙盒' }} · {{ window.label }}</strong>
+          <el-input :model-value="form.channels[`${environment}:cpu-${window.id}`] || ''" readonly placeholder="尚未创建" />
+        </div>
+      </template>
     </div>
     <div class="actions"><el-button type="primary" :loading="saving" :disabled="loading || syncing" @click="save">保存 APNs 配置</el-button></div>
   </section>
@@ -42,13 +32,14 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from "vue";
 import { ElMessage } from "element-plus";
-import { adminApi, type ApnsConfig, type ApnsPushStats } from "@/api/admin";
+import { adminApi, type ApnsConfig } from "@/api/admin";
 
+const windows = [{ id: "morning", label: "上午" }, { id: "afternoon", label: "下午" }, { id: "evening", label: "晚间" }];
 const loading = ref(false);
 const saving = ref(false);
 const syncing = ref(false);
 const error = ref("");
-const form = reactive<Omit<ApnsConfig, "iosPushStats"> & { iosPushStats: ApnsPushStats | null }>({ keyPath: "", keyID: "", teamID: "", bundleID: "", tickSeconds: 5, channels: {}, configured: false, updatedAt: null, iosPushStats: null });
+const form = reactive<ApnsConfig>({ keyPath: "", keyID: "", teamID: "", bundleID: "", tickSeconds: 5, channels: {}, configured: false, updatedAt: null });
 
 function apply(value: ApnsConfig) {
   Object.assign(form, value);

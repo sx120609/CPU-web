@@ -37,6 +37,7 @@ public struct ScheduleLiveActivityAttributes: ActivityAttributes, Equatable {
 
     public struct ContentState: Codable, Hashable {
         public enum Phase: String, Codable, Hashable {
+            case idle
             case upcoming
             case inProgress
         }
@@ -135,29 +136,37 @@ public struct ScheduleLiveActivityAttributes: ActivityAttributes, Equatable {
 
         /// Rehydrate a broadcast boundary with this user's private local
         /// timetable. Broadcast payloads intentionally carry no course text.
-        public func resolvedForBroadcast() -> Self {
+        public func resolvedForBroadcast(attributes: ScheduleLiveActivityAttributes? = nil, now: Date = .now, cachedCourses: [ScheduleLiveActivityAttributes.LocalCourse]? = nil) -> Self {
+            guard broadcastDateKey != nil || attributes?.broadcastWindow != nil else { return self }
+            let dateKey = attributes?.dateKey ?? broadcastDateKey ?? ""
             let group = ((Bundle.main.object(forInfoDictionaryKey: "CPUAppGroupIdentifier") as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 } ?? "group.cn.cputime.mobile"
-            guard let dateKey = broadcastDateKey, let period = broadcastPeriod,
-                  let data = UserDefaults(suiteName: group)?.data(forKey: ScheduleLiveActivityAttributes.broadcastCoursesKey),
-                  let courses = try? JSONDecoder().decode([ScheduleLiveActivityAttributes.LocalCourse].self, from: data) else { return self }
-            let sameDay = courses.filter { $0.dateKey == dateKey }
-            let course = broadcastPhase == "ended"
-                ? sameDay.first(where: { $0.period > period }) ?? sameDay.first(where: { $0.period == period })
-                : sameDay.first(where: { $0.period == period })
-            guard let course else { return self }
-            let phase: Phase = broadcastPhase == "started" || broadcastPhase == "inProgress" ? .inProgress : .upcoming
+            let courses = cachedCourses ?? UserDefaults(suiteName: group)?.data(forKey: ScheduleLiveActivityAttributes.broadcastCoursesKey)
+                .flatMap { try? JSONDecoder().decode([ScheduleLiveActivityAttributes.LocalCourse].self, from: $0) } ?? []
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.timeZone = TimeZone(identifier: "Asia/Shanghai")!
+            let window = attributes?.broadcastWindow
+            let sameDay = courses.filter {
+                let hour = calendar.component(.hour, from: $0.startDate)
+                let matchesWindow = window == nil || (window == "morning" && hour < 12)
+                    || (window == "afternoon" && hour >= 12 && hour < 18) || (window == "evening" && hour >= 18)
+                return $0.dateKey == dateKey && matchesWindow && $0.endDate > now
+            }.sorted { $0.startDate < $1.startDate }
+            // Use actual time, not the period's first slot: a multi-slot course
+            // remains in progress through its intermediate school boundaries.
+            guard let course = sameDay.first(where: { $0.startDate <= now }) ?? sameDay.first else {
+                return Self(phase: .idle, courseName: "本时段课程已结束", startDate: now, endDate: now, updatedAt: now)
+            }
+            let next = sameDay.first { $0.startDate > course.startDate }
             return Self(
-                phase: phase,
-                courseName: course.name,
-                teacher: course.teacher,
-                location: course.location,
-                periodLabel: course.periodLabel,
-                dateLabel: dateKey,
-                weekRangeLabel: course.weekRangeLabel,
-                startDate: course.startDate,
-                endDate: course.endDate,
-                adjustmentNote: course.adjustmentNote,
-                updatedAt: broadcastTimestamp ?? .now
+                phase: course.startDate <= now ? .inProgress : .upcoming,
+                courseName: course.name, teacher: course.teacher, location: course.location,
+                periodLabel: course.periodLabel, dateLabel: dateKey, weekRangeLabel: course.weekRangeLabel,
+                startDate: course.startDate, endDate: course.endDate,
+                nextCourseName: next?.name, nextCoursePeriod: next?.periodLabel,
+                nextCourseDateLabel: next?.dateKey, nextCourseWeekRangeLabel: next?.weekRangeLabel,
+                nextCourseTeacher: next?.teacher, nextCourseLocation: next?.location,
+                nextCourseStart: next?.startDate, nextCourseEnd: next?.endDate,
+                adjustmentNote: course.adjustmentNote, updatedAt: now
             )
         }
     }
@@ -165,11 +174,19 @@ public struct ScheduleLiveActivityAttributes: ActivityAttributes, Equatable {
     public let semester: String
     public let dateKey: String
     public let week: Int
+    public let broadcastWindow: String?
+    public let broadcastChannel: String?
+    public let reservationStart: Date?
+    public let reservationEnd: Date?
 
-    public init(semester: String, dateKey: String, week: Int = 0) {
+    public init(semester: String, dateKey: String, week: Int = 0, broadcastWindow: String? = nil, broadcastChannel: String? = nil, reservationStart: Date? = nil, reservationEnd: Date? = nil) {
         self.semester = semester
         self.dateKey = dateKey
         self.week = week
+        self.broadcastWindow = broadcastWindow
+        self.broadcastChannel = broadcastChannel
+        self.reservationStart = reservationStart
+        self.reservationEnd = reservationEnd
     }
 
     /// The activity should open the exact timetable context represented by the

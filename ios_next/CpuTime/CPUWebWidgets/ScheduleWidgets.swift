@@ -37,7 +37,7 @@ private struct ScheduleLiveActivityModernWidget: Widget {
 private struct ScheduleLiveActivityWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: ScheduleLiveActivityAttributes.self) { context in
-            let state = context.state.resolvedForBroadcast()
+            let state = context.state.resolvedForBroadcast(attributes: context.attributes)
             Group {
                 if #available(iOS 18.0, *) {
                     ScheduleLiveActivityAdaptiveContent(state: state)
@@ -48,7 +48,7 @@ private struct ScheduleLiveActivityWidget: Widget {
             .activityBackgroundTint(ScheduleLiveActivityPalette.surface)
             .activitySystemActionForegroundColor(.white)
         } dynamicIsland: { context in
-            let state = context.state.resolvedForBroadcast()
+            let state = context.state.resolvedForBroadcast(attributes: context.attributes)
             return DynamicIsland {
                 // The camera owns the centre of the expanded island. Put the
                 // title in the full-width bottom region rather than squeezing
@@ -258,7 +258,7 @@ private struct ScheduleLiveActivityCountdown: View {
 
     var body: some View {
         VStack(alignment: centered ? .center : .trailing, spacing: compact ? 1 : 3) {
-            Text(state.phase == .inProgress ? "距下课" : "距上课")
+            Text(state.phase == .idle ? "课间" : state.phase == .inProgress ? "距下课" : "距上课")
                 .font(.system(size: compact ? 10 : 11, weight: .medium))
                 .foregroundStyle(ScheduleLiveActivityPalette.accent)
             ScheduleLiveActivityTimer(state: state)
@@ -413,10 +413,14 @@ private struct ScheduleLiveActivityTimer: View {
         let end = state.phase == .inProgress ? state.endDate : state.startDate
         // Use the content's stable origin, not Date.now. A stale render must
         // never create a reversed ClosedRange after the deadline has passed.
+        if state.phase == .idle {
+            Text("—")
+        } else {
         Text(timerInterval: min(state.updatedAt, end)...end, countsDown: true, showsHours: false)
             .lineLimit(1)
             .minimumScaleFactor(0.8)
             .multilineTextAlignment(.trailing)
+        }
     }
 }
 
@@ -463,7 +467,7 @@ private enum ScheduleLiveActivityFormatting {
 }
 
 private extension ScheduleLiveActivityAttributes.ContentState {
-    var phaseTitle: String { phase == .inProgress ? "正在上课" : "即将上课" }
+    var phaseTitle: String { phase == .idle ? "暂无课程" : phase == .inProgress ? "正在上课" : "即将上课" }
 
     var hasNextCourse: Bool {
         !(nextCourseName?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)

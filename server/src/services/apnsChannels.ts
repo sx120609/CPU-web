@@ -1,3 +1,4 @@
+import { LIVE_ACTIVITY_WINDOWS } from "./liveActivityWindows";
 import { createLiveActivityChannel } from "./apnsClient";
 import { getApnsConfig, withApnsConfigLock } from "./apnsConfig";
 
@@ -7,15 +8,15 @@ export async function ensureApnsChannels() {
     const config = await getApnsConfig(db);
     const errors: Array<{ environment: string; message: string }> = [];
     if (!config.configured) return { ...config, channelErrors: errors };
-    for (const environment of ["production", "sandbox"] as const) {
-      const key = `${environment}:cpu`;
-      if (config.channels[key]) continue;
+    await Promise.all(["production", "sandbox"].flatMap(environment => LIVE_ACTIVITY_WINDOWS.map(async window => {
+      const key = `${environment}:cpu-${window.id}`;
+      if (config.channels[key]) return;
       try {
-        config.channels[key] = await createLiveActivityChannel(config, environment);
+        config.channels[key] = await createLiveActivityChannel(config, environment as "production" | "sandbox");
       } catch (error) {
-        errors.push({ environment, message: error instanceof Error ? error.message : String(error) });
+        errors.push({ environment, message: `${key}: ${error instanceof Error ? error.message : String(error)}` });
       }
-    }
+    })));
     const value = JSON.stringify(config.channels);
     await db.siteSetting.upsert({ where: { key: "apns.channels" }, create: { key: "apns.channels", value }, update: { value } });
     return { ...await getApnsConfig(db), channelErrors: errors };

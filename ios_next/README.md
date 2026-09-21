@@ -70,7 +70,7 @@ xcodebuild -project ios_next/CpuTime/CpuTime.xcodeproj -scheme CPUWatch -destina
 
 以上本地检查只验证开发改动，不是生产部署产物；生产发布仍遵循 `docs/production-requirements.md`。
 
-实时活动回归脚本在 macOS 编译并执行实际控制器，以内存 ActivityKit 边界验证创建、课程开始/结束、缓存重复到达、权限变化、重试与退出登录，不依赖 XCTest 或学校账号。模拟器通过 `CPU_DEBUG_MOCK_SCHEDULE=1` 启动 Debug App 可生成一节当前正在进行的课程，用于检查系统实际呈现。当前实时活动采用本地 ActivityKit 更新：前台在课程边界更新，回到前台立即补同步。App 被系统挂起后的远程启动、更新和结束通过 CPU-web 独立 APNs 服务完成；客户端使用站点登录 Cookie 和 CSRF 凭据，直接访问当前站点 `/api/live-activities`，不再连接 NapTable。服务端凭据在 CPU-web 管理后台「APNs 推送」配置，Bundle ID 为 `cn.cputime.mobile`。后台保存凭据后自动创建 CPU 广播频道，创建失败或未配置时使用逐设备推送。`Activity.update/end` 的 `timestamp` 只用于事件排序，不能用来预约未来执行。实时活动与课表网格走同一套调休规则：放假那天不提醒，补课那天提醒的是被调走那天的课，锁屏和灵动岛上会用一行说明写清楚上的是哪天的课。
+实时活动回归脚本在 macOS 编译执行实际控制器与网络协调器，验证提前量、远程计划、调休、权限、退出及迟到响应撤销。iOS 18 及以上上传启动 token 与已加载学期的最小时间计划，远程启动直接订阅学校时段频道，无需每天打开 App；提前量可自定义 0–60 分钟，默认 15 分钟。课程详情从本地课表读取，不上传教师、地点或课程名称。iOS 17 仅提供前台本地活动。服务端凭据在后台「APNs 推送」配置，正式 Bundle ID 为 `cn.cputime.mobile`。模拟器可用 `CPU_DEBUG_MOCK_SCHEDULE=1` 检查本地呈现，APNs 仍需真机验证。详情见 [APNs 配置与验收](../docs/apns.md)。
 
 ## iOS 小组件
 

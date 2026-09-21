@@ -21,25 +21,9 @@ export type ApnsConfig = {
   channels: Record<string, string>;
   configured: boolean;
   updatedAt: string | null;
-  iosPushStats: ApnsPushStats;
 };
 
-export type ApnsPushStats = {
-  iosUsers: number;
-  channelPushUsers: number;
-  gradualPushUsers: number;
-};
-
-export async function getApnsPushStats(db: Prisma.TransactionClient = prisma): Promise<ApnsPushStats> {
-  const devices = await db.liveActivityDevice.findMany({
-    where: { enabled: true }, select: { userId: true, broadcastEnabled: true },
-  });
-  const users = new Set(devices.map((device) => device.userId));
-  const channelUsers = new Set(devices.filter((device) => device.broadcastEnabled).map((device) => device.userId));
-  return { iosUsers: users.size, channelPushUsers: channelUsers.size, gradualPushUsers: users.size - channelUsers.size };
-}
-
-function envFallback(): Omit<ApnsConfig, "iosPushStats"> {
+function envFallback(): ApnsConfig {
   const channels = (() => {
     try {
       const value = JSON.parse(process.env.CPU_APNS_CHANNELS_JSON || "{}");
@@ -64,7 +48,7 @@ function envFallback(): Omit<ApnsConfig, "iosPushStats"> {
 
 export async function getApnsConfig(db: Prisma.TransactionClient = prisma): Promise<ApnsConfig> {
   const rows = await db.siteSetting.findMany({ where: { key: { in: Object.values(KEYS) } } });
-  if (!rows.length) return { ...envFallback(), iosPushStats: await getApnsPushStats(db) };
+  if (!rows.length) return envFallback();
   const values = new Map(rows.map((row) => [row.key, row.value]));
   const keyPath = String(values.get(KEYS.keyPath) || "").trim();
   const keyID = String(values.get(KEYS.keyID) || "").trim();
@@ -88,7 +72,6 @@ export async function getApnsConfig(db: Prisma.TransactionClient = prisma): Prom
     channels,
     configured: Boolean(keyPath && keyID && teamID && bundleID),
     updatedAt: updatedAt?.toISOString() || null,
-    iosPushStats: await getApnsPushStats(db),
   };
 }
 

@@ -15,6 +15,7 @@ swiftc -swift-version 5 -I "$check_dir" -L "$check_dir" -lActivityKit \
     "$repo_dir/ios_next/CpuTime/CpuTime/NativeScheduleStore.swift" \
     "$repo_dir/ios_next/CpuTime/CPUWebWidgets/ScheduleLiveActivityAttributes.swift" \
     "$repo_dir/ios_next/CpuTime/CpuTime/NativeLiveActivityController.swift" \
+    "$repo_dir/ios_next/CpuTime/CpuTime/LiveActivityPushService.swift" \
     "$repo_dir/ios_next/tests/NativeLiveActivityChecks.swift" \
     -o "$check_dir/checks"
 "$check_dir/checks"

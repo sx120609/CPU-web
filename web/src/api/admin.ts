@@ -108,12 +108,6 @@ export type SiteConfig = {
   assistantDailyQuotas: Array<{ level: number; quota: number }>;
 };
 
-export type ApnsPushStats = {
-  iosUsers: number;
-  channelPushUsers: number;
-  gradualPushUsers: number;
-};
-
 export type ApnsConfig = {
   keyPath: string;
   keyID: string;
@@ -123,7 +117,6 @@ export type ApnsConfig = {
   channels: Record<string, string>;
   configured: boolean;
   updatedAt: string | null;
-  iosPushStats: ApnsPushStats;
   channelErrors?: Array<{ environment: string; message: string }>;
 };
 

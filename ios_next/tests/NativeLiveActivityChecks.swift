@@ -123,25 +123,156 @@ struct NativeLiveActivityChecks {
         precondition(activeActivities.isEmpty, "The running loop must dismiss at class end")
         controller.reset()
 
-        // 调休：放假那天一条都不推，补课那天推的是被调走那天的课，并带上说明。
+        // Local reservations respect holidays and make-up days without an upload.
         controller.setEnabled(true)
-        let planClock = ISO8601DateFormatter().date(from: "2026-09-14T00:00:00+08:00")!
-        let plainPlan = controller.pushPlan(from: fixture(), now: planClock)
-        precondition(plainPlan.contains { $0.attributes.dateKey == "2026-09-16" },
-                     "Without an adjustment the Wednesday class is planned as usual")
-        precondition(plainPlan.allSatisfy { $0.state.normalizedAdjustmentNote == nil },
-                     "An ordinary day carries no adjustment note")
-
-        let adjustedPlan = controller.pushPlan(from: adjustedFixture(), now: planClock)
-        precondition(adjustedPlan.allSatisfy { $0.attributes.dateKey != "2026-09-16" },
-                     "A holiday must not keep a single push on the plan")
-        let makeUp = adjustedPlan.filter { $0.attributes.dateKey == "2026-09-19" }
-        precondition(!makeUp.isEmpty, "The make-up day runs the classes that were moved off the holiday")
-        precondition(makeUp.allSatisfy { $0.state.courseName == "药理学实验" },
-                     "The make-up day shows the moved day's courses")
-        precondition(makeUp.allSatisfy { $0.state.normalizedAdjustmentNote == "上 09.16 周三的课" },
-                     "Every make-up frame says which day's classes it is showing")
+        controller.broadcastWindows = [.init(id: "morning", startHour: 0, endHour: 12, channelID: "am")]
+        clock = start.addingTimeInterval(-3600)
+        let ordinary = controller.localReservations(from: fixture())
+        precondition(ordinary.count == 1)
+        precondition(ordinary[0].start == start.addingTimeInterval(-900))
+        precondition(ordinary[0].end == end)
+        precondition(controller.localReservations(from: adjustedFixture()).isEmpty)
+        clock = ISO8601DateFormatter().date(from: "2026-09-19T07:00:00+08:00")!
+        let makeUp = controller.localReservations(from: adjustedFixture())
+        precondition(makeUp.count == 1)
+        precondition(makeUp[0].state.normalizedAdjustmentNote == "上 09.16 周三的课")
+        precondition(controller.localReservations(from: fixture(authenticated: false)).isEmpty)
+        controller.setEnabled(false)
+        precondition(controller.localReservations(from: adjustedFixture()).isEmpty)
         controller.reset()
+        await settle()
+
+        // Execute actual scheduled ActivityKit requests, including cancellation.
+        clock = start.addingTimeInterval(-3600)
+        controller.setEnabled(true)
+        controller.broadcastWindows = [.init(id: "morning", startHour: 0, endHour: 12, channelID: "am")]
+        controller.accept(fixture())
+        await settle()
+        let reserved = Activity<ScheduleLiveActivityAttributes>.activities.filter { $0.activityState == .pending }
+        precondition(reserved.count == 1)
+        controller.foreground()
+        await settle()
+        precondition(Activity<ScheduleLiveActivityAttributes>.activities.filter { $0.activityState == .pending }.map(\.id) == reserved.map(\.id), "Foreground must not duplicate reservations")
+        controller.broadcastWindows = [.init(id: "morning", startHour: 0, endHour: 12, channelID: "new-am")]
+        await settle()
+        precondition(reserved[0].activityState == .ended, "Channel changes must cancel old reservations")
+        precondition(Activity<ScheduleLiveActivityAttributes>.activities.filter { $0.activityState == .pending }.count == 1)
+        controller.accept(adjustedFixture())
+        await settle()
+        precondition(Activity<ScheduleLiveActivityAttributes>.activities.filter { $0.activityState == .pending }.isEmpty, "Holiday edits cancel an already scheduled activity")
+        controller.accept(fixture())
+        await settle()
+        TestActivityKit.activitiesEnabled = false
+        controller.foreground()
+        await settle()
+        precondition(Activity<ScheduleLiveActivityAttributes>.activities.filter { $0.activityState == .pending }.isEmpty)
+        TestActivityKit.activitiesEnabled = true
+        controller.foreground()
+        await settle()
+        controller.reset()
+        await settle()
+        precondition(Activity<ScheduleLiveActivityAttributes>.activities.filter { $0.activityState == .pending }.isEmpty, "Logout cancels scheduled starts too")
+
+        // Custom lead applies to local reservations and semester remote plans.
+        clock = start.addingTimeInterval(-3600)
+        controller.setLeadMinutes(30)
+        controller.accept(fixture())
+        precondition(controller.leadMinutes == 30)
+        precondition(controller.localReservations(from: fixture())[0].start == start.addingTimeInterval(-1800))
+        let remote = controller.remoteStartWindows()
+        precondition(remote.count == 1 && remote[0].start == Int(start.timeIntervalSince1970))
+        let wire = String(data: try JSONEncoder().encode(remote), encoding: .utf8)!
+        precondition(!wire.contains("药") && !wire.contains("teacher") && !wire.contains("location"))
+        controller.setLeadMinutes(0)
+        precondition(controller.localReservations(from: fixture())[0].start == start)
+        controller.setLeadMinutes(100)
+        precondition(controller.leadMinutes == 60)
+        controller.setLeadMinutes(15)
+        controller.accept(adjustedFixture())
+        let moved = controller.remoteStartWindows()
+        precondition(moved.count == 1 && moved[0].dateKey == "2026-09-19", "Remote plan includes future make-up day without reopening")
+        TestActivityKit.activitiesEnabled = false
+        precondition(controller.remoteStartWindows().isEmpty)
+        TestActivityKit.activitiesEnabled = true
+        controller.remoteStartsEnabled = true
+        controller.accept(fixture())
+        await settle()
+        precondition(activeActivities.isEmpty && Activity<ScheduleLiveActivityAttributes>.activities.filter { $0.activityState == .pending }.isEmpty,
+                     "Remote mode must not also create local/scheduled activities")
+        let remoteActivity = try Activity<ScheduleLiveActivityAttributes>.request(
+            attributes: .init(semester: "", dateKey: "2026-09-16", broadcastWindow: "morning"),
+            content: .init(state: .init(phase: .upcoming, courseName: "课程", startDate: start, endDate: end), staleDate: end),
+            pushType: .channel("am"))
+        controller.foreground()
+        await settle()
+        precondition(activeActivities.count == 1 && activeActivities[0].id == remoteActivity.id,
+                     "Foreground must preserve remote channel activities")
+        controller.reset()
+        controller.remoteStartsEnabled = false
+        await settle()
+
+        // Broadcasts carry only time. Resolve multi-period courses using their
+        // real interval, never merely the first period number.
+        let course = ScheduleLiveActivityAttributes.LocalCourse(
+            dateKey: "2026-09-16", period: 1, name: "药理学", teacher: "老师", location: "302",
+            periodLabel: "第 1–2 节", startDate: start, endDate: start.addingTimeInterval(100 * 60), weekRangeLabel: "3周"
+        )
+        let signal = ScheduleLiveActivityAttributes.ContentState(
+            phase: .upcoming, courseName: "", startDate: start, endDate: start,
+            broadcastDateKey: "2026-09-16", broadcastTimestamp: start
+        )
+        let attrs = ScheduleLiveActivityAttributes(semester: "2026-1", dateKey: "2026-09-16", broadcastWindow: "morning")
+        let resolved = signal.resolvedForBroadcast(attributes: attrs, now: start.addingTimeInterval(55 * 60), cachedCourses: [course])
+        precondition(resolved.courseName == "药理学" && resolved.phase == .inProgress)
+        precondition(signal.resolvedForBroadcast(attributes: attrs, now: start.addingTimeInterval(-900), cachedCourses: [course]).phase == .upcoming)
+        precondition(signal.resolvedForBroadcast(attributes: attrs, now: course.endDate, cachedCourses: [course]).phase == .idle)
+        precondition(signal.resolvedForBroadcast(attributes: attrs, now: start, cachedCourses: []).phase == .idle)
+        let afternoon = ScheduleLiveActivityAttributes(semester: "2026-1", dateKey: "2026-09-16", broadcastWindow: "afternoon")
+        precondition(signal.resolvedForBroadcast(attributes: afternoon, now: start, cachedCourses: [course]).phase == .idle)
+        let tomorrow = ScheduleLiveActivityAttributes(semester: "2026-1", dateKey: "2026-09-17", broadcastWindow: "morning")
+        precondition(signal.resolvedForBroadcast(attributes: tomorrow, now: start, cachedCourses: [course]).phase == .idle)
+
+        // Exercise the real network coordinator, including a logout while a
+        // plan save is in flight. Late success must be revoked, not resurrected.
+        let shared = NativeLiveActivityController.shared
+        let push = LiveActivityPushService.shared
+        var calls: [(String, String, [String: Any]?)] = []
+        var held: CheckedContinuation<Data, Error>?
+        var holdNext = false
+        let response = Data("{\"data\":{\"revoke\":\"test-capability\",\"scheduledThrough\":\"2027-01-01\",\"missingWindows\":[]}}".utf8)
+        defer {
+            for key in ["cpu.liveActivity.remote.revoke", "cpu.liveActivity.remote.pendingRevokes"] {
+                UserDefaults.standard.removeObject(forKey: key)
+            }
+        }
+        push.setAPIRequest { path, method, body in
+            calls.append((path, method, body))
+            if method == "PUT", holdNext {
+                holdNext = false
+                return try await withCheckedThrowingContinuation { held = $0 }
+            }
+            return response
+        }
+        shared.accept(fixture())
+        push.activate()
+        await settle()
+        precondition(calls.filter { $0.1 == "PUT" }.count == 1)
+        shared.setLeadMinutes(25)
+        await settle()
+        precondition(calls.last?.2?["leadMinutes"] as? Int == 25)
+        precondition(calls.last?.2?["replaces"] as? String == "test-capability")
+        holdNext = true
+        shared.setLeadMinutes(35)
+        await settle()
+        precondition(held != nil)
+        shared.reset()
+        held?.resume(returning: response)
+        held = nil
+        await settle()
+        precondition(calls.last?.0 == "/api/live-activities/remote-start/revoke")
+        precondition(UserDefaults.standard.string(forKey: "cpu.liveActivity.remote.revoke") == nil)
+        precondition((UserDefaults.standard.stringArray(forKey: "cpu.liveActivity.remote.pendingRevokes") ?? []).isEmpty)
+        shared.setLeadMinutes(15)
 
         print("Live Activity checks passed: lead window, create, cache update, start, end, retry, settings, permission, logout and 调休")
     }

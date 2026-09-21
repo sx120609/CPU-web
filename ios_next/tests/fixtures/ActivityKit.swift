@@ -36,7 +36,7 @@ public struct AlertConfiguration {
     }
 }
 
-public enum ActivityState { case active, stale, ended, dismissed }
+public enum ActivityState { case pending, active, stale, ended, dismissed }
 public enum ActivityUIDismissalPolicy { case immediate }
 public enum PushType {
     case token
@@ -60,6 +60,9 @@ public final class Activity<Attributes: ActivityAttributes> {
     public let attributes: Attributes
     public private(set) var content: ActivityContent<Attributes.ContentState>
     public private(set) var activityState: ActivityState = .active
+
+    public static var pushToStartToken: Data? { Data(repeating: 0xab, count: 32) }
+    public static var pushToStartTokenUpdates: AsyncStream<Data> { AsyncStream { $0.finish() } }
 
     public static var activities: [Activity<Attributes>] {
         TestActivityKit.activities.compactMap { $0 as? Activity<Attributes> }
@@ -93,7 +96,9 @@ public final class Activity<Attributes: ActivityAttributes> {
         alertConfiguration: AlertConfiguration,
         start: Date
     ) throws -> Activity<Attributes> {
-        try request(attributes: attributes, content: content, pushType: pushType)
+        let activity = try request(attributes: attributes, content: content, pushType: pushType)
+        activity.activityState = .pending
+        return activity
     }
 
     public func update(_ content: ActivityContent<Attributes.ContentState>) async {

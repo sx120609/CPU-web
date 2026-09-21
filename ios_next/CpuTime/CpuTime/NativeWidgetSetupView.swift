@@ -350,6 +350,12 @@ private struct LiveActivitySettingsSection: View {
                     NativeLiveActivityController.shared.setEnabled(value)
                 }
             ))
+            if enabled {
+                Stepper("课前提前 \(controller.leadMinutes) 分钟", value: Binding(
+                    get: { controller.leadMinutes },
+                    set: { controller.setLeadMinutes($0) }
+                ), in: 0...60)
+            }
             if enabled, ActivityAuthorizationInfo().areActivitiesEnabled {
                 Button {
                     if controller.isPreviewActive {
@@ -396,7 +402,8 @@ private struct LiveActivitySettingsSection: View {
         } header: {
             Label("灵动岛", systemImage: "rectangle.topthird.inset.filled")
         } footer: {
-            Text("正在上课时立即显示；下一节课会在上课前 15 分钟出现。课程结束后自动收起，较早的课程由小组件展示。测试按钮只显示本地演示课程，不会修改课表。")
+            Text("iOS 18 及以上可按设置的提前量远程启动，每个有课时段启动一次，无需每天打开 App。课程详情从本机课表读取，时段结束统一收起；修改课表后请联网同步。0 分钟表示上课时出现。测试按钮只显示本地演示课程。")
+            Text(controller.broadcastStatus)
         }
     }
 

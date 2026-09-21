@@ -38,28 +38,57 @@ function hostFor(environment: ApnsEnvironment) {
   return environment === "sandbox" ? "api.sandbox.push.apple.com" : "api.push.apple.com";
 }
 
+const sessions = new Map<string, http2.ClientHttp2Session>();
+function connection(origin: string) {
+  const existing = sessions.get(origin);
+  if (existing && !existing.closed && !existing.destroyed) return existing;
+  const client = http2.connect(origin);
+  sessions.set(origin, client);
+  client.setMaxListeners(32);
+  const remove = () => { if (sessions.get(origin) === client) sessions.delete(origin); };
+  client.on("error", () => { remove(); client.destroy(); });
+  client.on("goaway", () => { remove(); client.close(); });
+  client.on("close", remove);
+  client.setTimeout?.(60000, () => { remove(); client.close(); });
+  client.unref?.();
+  return client;
+}
+
 function postHttp2(environment: ApnsEnvironment, path: string, headers: Record<string, string>, body: string, method = "POST", origin = `https://${hostFor(environment)}`): Promise<ApnsResponse> {
   return new Promise((resolve, reject) => {
-    const client = http2.connect(origin);
+    const client = connection(origin);
     let settled = false;
+    let request: http2.ClientHttp2Stream | undefined;
     const finish = (error?: Error, response?: ApnsResponse) => {
       if (settled) return;
       settled = true;
       clearTimeout(timeout);
-      client.destroy();
+      client.off("error", onError);
+      client.off("close", onClose);
       if (error) reject(error);
       else resolve(response!);
     };
-    const timeout = setTimeout(() => finish(new Error("APNs 请求超时")), 15000);
+    const timeout = setTimeout(() => {
+      finish(new Error("APNs 请求超时"));
+      request?.close?.(http2.constants.NGHTTP2_CANCEL);
+    }, 15000);
     timeout.unref();
-    client.once("error", (error) => finish(error));
-    const request = client.request({
+    const onError = (error: Error) => finish(error);
+    const onClose = () => finish(new Error("APNs 连接关闭，送达状态未知"));
+    client.once("error", onError);
+    client.once("close", onClose);
+    try {
+      request = client.request({
       ":method": method,
       ":path": path,
       "content-type": "application/json",
       "content-length": String(Buffer.byteLength(body)),
       ...headers,
-    });
+      });
+    } catch (error) {
+      finish(error instanceof Error ? error : new Error(String(error)));
+      return;
+    }
     let responseBody = "";
     let status = 0;
     let receivedHeaders: http2.IncomingHttpHeaders = {};
@@ -97,8 +126,9 @@ export async function sendLiveActivityPayload(input: {
   environment: ApnsEnvironment;
   bundleID: string;
   payload: Record<string, unknown>;
+  config?: ApnsConfig;
 }) {
-  const config = await getApnsConfig();
+  const config = input.config ?? await getApnsConfig();
   if (!config.configured) throw new Error("APNs 尚未配置完整");
   if (input.bundleID !== config.bundleID) throw new Error("Bundle ID 与 CPU APNs 配置不一致");
   const token = input.token.replace(/[^a-fA-F0-9]/g, "").toLowerCase();
@@ -122,7 +152,7 @@ export async function sendLiveActivityPayload(input: {
   return response;
 }
 
-/** Send a school-channel Live Activity broadcast (iOS 26+). */
+/** Send a school-channel Live Activity broadcast (iOS 18+). */
 export async function sendLiveActivityBroadcast(input: {
   environment: ApnsEnvironment;
   bundleID: string;

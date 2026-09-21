@@ -21,10 +21,12 @@ test("APNs signs ES256 and sends isolated CPU topics on HTTP/2, preserving rejec
   const { sendLiveActivityPayload, sendLiveActivityBroadcast } = await import("../src/services/apnsClient");
   const calls: any[] = [];
   let status = 200;
+  let failRequest = false;
   t.mock.method(http2, "connect", ((host: string) => {
     const client = new EventEmitter() as any;
     client.destroy = () => {};
     client.request = (headers: any) => {
+      if (failRequest) throw new Error("HTTP/2 session closed");
       const request = new EventEmitter() as any;
       request.setEncoding = () => {};
       request.end = (body: string) => {
@@ -55,4 +57,6 @@ test("APNs signs ES256 and sends isolated CPU topics on HTTP/2, preserving rejec
   assert.equal(calls.length, 2);
   status = 400;
   await assert.rejects(sendLiveActivityPayload(input), (error: any) => error.status === 400 && error.apnsReason === "BadDeviceToken");
+  failRequest = true;
+  await assert.rejects(sendLiveActivityPayload(input), /HTTP\/2 session closed/);
 });

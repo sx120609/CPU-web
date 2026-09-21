@@ -44,9 +44,10 @@ test("channel provisioning preserves partial success, retries missing channels a
       request.end = (body: string) => {
         const sandbox = origin.includes("sandbox");
         calls.push({ origin, headers, body: JSON.parse(body) });
+        const callNumber = calls.length;
         queueMicrotask(() => {
           const failed = sandbox && sandboxFails;
-          request.emit("response", { ":status": failed ? 403 : 201, ...(!omitChannelHeader ? { "apns-channel-id": `apple-${sandbox ? "dev" : "prod"}-${calls.length}` } : {}) });
+          request.emit("response", { ":status": failed ? 403 : 201, ...(!omitChannelHeader ? { "apns-channel-id": `apple-${sandbox ? "dev" : "prod"}-${callNumber}` } : {}) });
           if (failed) request.emit("data", '{"reason":"TopicDisallowed"}');
           request.emit("end");
         });
@@ -57,36 +58,36 @@ test("channel provisioning preserves partial success, retries missing channels a
   }) as any);
 
   const partial = await ensureApnsChannels();
-  assert.equal(partial.channels["production:cpu"], "apple-prod-1");
-  assert.equal(partial.channels["sandbox:cpu"], undefined);
+  assert.match(partial.channels["production:cpu-morning"], /^apple-prod-/);
+  assert.equal(partial.channels["sandbox:cpu-morning"], undefined);
   assert.match(partial.channelErrors[0].message, /TopicDisallowed/);
-  assert.equal(calls[0].origin, "https://api-manage-broadcast.push.apple.com:2196");
-  assert.equal(calls[1].origin, "https://api-manage-broadcast.sandbox.push.apple.com:2195");
+  assert.ok(calls.some(call => call.origin === "https://api-manage-broadcast.push.apple.com:2196"));
+  assert.ok(calls.some(call => call.origin === "https://api-manage-broadcast.sandbox.push.apple.com:2195"));
   assert.equal(calls[0].headers[":path"], "/1/apps/cn.cputime.mobile/channels");
   assert.equal(calls[0].headers[":method"], "POST");
   assert.deepEqual(calls[0].body, { "message-storage-policy": 0, "push-type": "LiveActivity" });
 
   sandboxFails = false;
   const [ready] = await Promise.all([ensureApnsChannels(), ensureApnsChannels()]);
-  assert.equal(calls.length, 3, "concurrent retries must not create duplicate channels");
+  assert.equal(calls.length, 9, "concurrent retries must not create duplicate channels");
   assert.deepEqual(ready.channelErrors, []);
-  assert.equal(ready.channels["production:cpu"], partial.channels["production:cpu"]);
-  assert.equal(ready.channels["sandbox:cpu"], "apple-dev-3");
+  assert.equal(ready.channels["production:cpu-morning"], partial.channels["production:cpu-morning"]);
+  assert.match(ready.channels["sandbox:cpu-morning"], /^apple-dev-/);
 
   const credentials = { keyPath, keyID: "KEY", teamID: "TEAM", bundleID: "cn.cputime.mobile", tickSeconds: 5 };
-  const saved = await saveApnsConfig({ ...credentials, channels: { "production:cpu": "forged" } });
+  const saved = await saveApnsConfig({ ...credentials, channels: { "production:cpu-morning": "forged" } });
   assert.deepEqual(saved.channels, ready.channels, "saving a form must not replace server-owned IDs");
   const changed = await saveApnsConfig({ ...credentials, bundleID: "cn.cputime.mobile.debug" });
   assert.deepEqual(changed.channels, {}, "changing App ID must detach old channels");
   await ensureApnsChannels();
-  assert.equal(calls[3].headers[":path"], "/1/apps/cn.cputime.mobile.debug/channels");
+  assert.equal(calls[9].headers[":path"], "/1/apps/cn.cputime.mobile.debug/channels");
   assert.ok(locks >= 6);
 
   settings.set("apns.channels", "{}");
   omitChannelHeader = true;
   const missingHeader = await ensureApnsChannels();
   assert.deepEqual(missingHeader.channels, {});
-  assert.equal(missingHeader.channelErrors.length, 2);
+  assert.equal(missingHeader.channelErrors.length, 6);
   assert.match(missingHeader.channelErrors[0].message, /apns-channel-id/);
 
   settings.set("apns.keyPath", "");
