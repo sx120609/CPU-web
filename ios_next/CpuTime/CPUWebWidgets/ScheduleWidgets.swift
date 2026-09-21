@@ -62,17 +62,19 @@ private struct ScheduleLiveActivityWidget: Widget {
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
                     }
-                    .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
-                    .padding(.leading, 4)
+                    .frame(maxWidth: .infinity, minHeight: 24, alignment: .topLeading)
+                    .padding(.top, -8)
+                    .dynamicIsland(verticalPlacement: .belowIfTooWide)
                 }
                 DynamicIslandExpandedRegion(.trailing, priority: 1) {
                     ScheduleLiveActivityCountdown(state: state, compact: true, centered: true)
-                        .frame(maxWidth: .infinity, minHeight: 40, alignment: .trailing)
-                        .padding(.trailing, 4)
+                        .frame(maxWidth: .infinity, minHeight: 24, alignment: .topTrailing)
+                        .padding(.top, -8)
+                        .dynamicIsland(verticalPlacement: .belowIfTooWide)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     ScheduleLiveActivityExpandedDetails(state: state)
-                        .padding(.top, 5)
+                        .padding(.top, 1)
                 }
             } compactLeading: {
                 ScheduleLiveActivityLogo(size: 21)
@@ -86,12 +88,8 @@ private struct ScheduleLiveActivityWidget: Widget {
                 ScheduleLiveActivityLogo(size: 21)
                     .accessibilityLabel("药大拾间课表")
             }
-            // ActivityKit negotiates the island's actual width on each device.
-            // One symmetric inset applies to all regions, with equal-sized
-            // upper columns centred on either side of the camera cutout.
-            .contentMargins(.horizontal, 18, for: .expanded)
-            .contentMargins(.top, 8, for: .expanded)
-            .contentMargins(.bottom, 10, for: .expanded)
+            // Keep the system's side and bottom insets clear of the capsule corners.
+            .contentMargins(.top, 0, for: .expanded)
             .widgetURL(context.attributes.deepLinkURL)
             .keylineTint(ScheduleLiveActivityPalette.brand)
         }
@@ -190,7 +188,8 @@ private struct ScheduleLiveActivityExpandedDetails: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         // The bottom region is clipped by Dynamic Island's own capsule. Keep
         // the progress track and the metadata away from its lower corners.
-        .padding(.bottom, 2)
+        .padding(.horizontal, 6)
+        .padding(.bottom, 8)
     }
 }
 
@@ -261,7 +260,7 @@ private struct ScheduleLiveActivityCountdown: View {
             Text(state.phase == .idle ? "课间" : state.phase == .inProgress ? "距下课" : "距上课")
                 .font(.system(size: compact ? 10 : 11, weight: .medium))
                 .foregroundStyle(ScheduleLiveActivityPalette.accent)
-            ScheduleLiveActivityTimer(state: state)
+            ScheduleLiveActivityTimer(state: state, alignment: centered ? .center : .trailing)
                 .font(.system(size: compact ? 19 : 25, weight: .semibold, design: .rounded).monospacedDigit())
                 .foregroundStyle(ScheduleLiveActivityPalette.accent)
         }
@@ -269,7 +268,8 @@ private struct ScheduleLiveActivityCountdown: View {
         // its column prevents it from stealing the title's width or centring
         // the digits in an unrelated part of the activity.
         .multilineTextAlignment(centered ? .center : .trailing)
-        .frame(width: compact ? 69 : 88, alignment: centered ? .center : .trailing)
+        .frame(width: compact ? nil : 88, alignment: centered ? .center : .trailing)
+        .frame(maxWidth: compact ? 69 : nil, alignment: centered ? .center : .trailing)
         .accessibilityElement(children: .combine)
     }
 }
@@ -408,6 +408,7 @@ private struct ScheduleLiveActivityProgress: View {
 @available(iOS 16.1, *)
 private struct ScheduleLiveActivityTimer: View {
     let state: ScheduleLiveActivityAttributes.ContentState
+    var alignment: TextAlignment = .trailing
 
     var body: some View {
         let end = state.phase == .inProgress ? state.endDate : state.startDate
@@ -416,10 +417,14 @@ private struct ScheduleLiveActivityTimer: View {
         if state.phase == .idle {
             Text("—")
         } else {
-        Text(timerInterval: min(state.updatedAt, end)...end, countsDown: true, showsHours: false)
+        Text(
+            timerInterval: min(state.updatedAt, end)...end,
+            countsDown: true,
+            showsHours: false
+        )
             .lineLimit(1)
             .minimumScaleFactor(0.8)
-            .multilineTextAlignment(.trailing)
+            .multilineTextAlignment(alignment)
         }
     }
 }
