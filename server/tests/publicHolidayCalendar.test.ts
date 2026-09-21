@@ -113,3 +113,33 @@ test("preview rejects a wrong-year mirror and uses the final source", async () =
   assert.deepEqual(result.sources, [calls[2]]);
   assert.equal(result.adjustments.length, 1);
 });
+
+import { previewAcademicYearHolidays } from "../src/services/publicHolidayCalendar";
+
+test("academic year includes September through next July regardless of term weeks", async () => {
+  const calls: string[] = [];
+  const fetchImpl = (async (url: unknown) => {
+    calls.push(String(url));
+    const dates = String(url).endsWith("2026") ? ["2026-08-31", "2026-09-01"] : ["2027-07-31", "2027-08-01"];
+    return { ok: true, json: async () => Object.fromEntries(dates.map(date => [date, { date, name: "节假日", isOffDay: true }])) } as Response;
+  }) as typeof fetch;
+  const result = await previewAcademicYearHolidays(2026, fetchImpl);
+  assert.equal(result.startDate, "2026-09-01");
+  assert.equal(result.endDate, "2027-07-31");
+  assert.deepEqual(result.adjustments.map(row => row.date), ["2026-09-01", "2027-07-31"]);
+  assert.deepEqual(result.warnings, []);
+  assert.equal(calls.length, 2);
+});
+
+test("academic year explicitly reports missing next-year data without discarding available dates", async () => {
+  const fetchImpl = (async (url: unknown) => {
+    if (String(url).includes("2027")) return { ok: false, status: 404 } as Response;
+    return { ok: true, json: async () => ({ "2026-10-01": { date: "2026-10-01", name: "国庆节", isOffDay: true } }) } as Response;
+  }) as typeof fetch;
+  const result = await previewAcademicYearHolidays(2026, fetchImpl);
+  assert.equal(result.adjustments.length, 1);
+  assert.equal(result.sources.length, 1);
+  assert.match(result.warnings[0], /2027.*不包含该年/);
+  await assert.rejects(previewAcademicYearHolidays(2026, responseFor({})), /数据未获取/);
+  await assert.rejects(previewAcademicYearHolidays(2026.5, fetchImpl), /整数/);
+});

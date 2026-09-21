@@ -995,8 +995,8 @@ export const adminApi = {
     request.post<JwxtAgentsAdminConfig>(`/admin/jwxt-agents/${encodeURIComponent(agentId)}/reset-identity`, {}),
   updateJwxtAgent: (agentId: string) =>
     request.post<JwxtAgentUpdateResult>(`/admin/jwxt-agents/${encodeURIComponent(agentId)}/update`, {}),
-  previewScheduleHolidays: (semesterStartMonday: string, weekCount: number) =>
-    request.post<{ startDate: string; endDate: string; sources: string[]; adjustments: ScheduleTermConfig['adjustments'] }>('/admin/schedule-terms/holiday-preview', { semesterStartMonday, weekCount }, { timeout: 30000 }),
+  previewScheduleHolidays: (academicYear: number) =>
+    request.post<{ startDate: string; endDate: string; sources: string[]; warnings: string[]; adjustments: ScheduleTermConfig['adjustments'] }>('/admin/schedule-terms/holiday-preview', { academicYear }, { timeout: 30000 }),
   scheduleTerms: (options?: RequestOptions) =>
     request.get<ScheduleTermConfig[]>('/admin/schedule-terms', undefined, options),
   schedulePeriods: (options?: RequestOptions) =>

@@ -117,10 +117,29 @@ export async function previewPublicHolidays(startDate: string, weekCount: number
   const end = new Date(start);
   end.setUTCDate(end.getUTCDate() + weekCount * 7 - 1);
   const endDate = end.toISOString().slice(0, 10);
-  const years = Array.from({ length: end.getUTCFullYear() - start.getUTCFullYear() + 1 }, (_, index) => start.getUTCFullYear() + index);
-  // Fetch years concurrently so even a 64-week term with source failover fits
-  // within the admin request timeout. Reject rather than import a partial term.
-  const results = await Promise.all(years.map((year) => fetchHolidayYear(year, fetchImpl)));
+  return previewHolidayRange(startDate, endDate, fetchImpl);
+}
+
+export async function previewAcademicYearHolidays(academicYear: number, fetchImpl: typeof fetch = fetch) {
+  if (!Number.isInteger(academicYear) || academicYear < 2000 || academicYear > 2100) throw new Error("学年起始年份必须是 2000-2100 的整数");
+  return previewHolidayRange(`${academicYear}-09-01`, `${academicYear + 1}-07-31`, fetchImpl, true);
+}
+
+async function previewHolidayRange(startDate: string, endDate: string, fetchImpl: typeof fetch, allowMissingYears = false) {
+  const startYear = Number(startDate.slice(0, 4));
+  const endYear = Number(endDate.slice(0, 4));
+  const years = Array.from({ length: endYear - startYear + 1 }, (_, index) => startYear + index);
+  const outcomes = await Promise.allSettled(years.map((year) => fetchHolidayYear(year, fetchImpl)));
+  const results: Awaited<ReturnType<typeof fetchHolidayYear>>[] = [];
+  const warnings: string[] = [];
+  outcomes.forEach((outcome, index) => {
+    if (outcome.status === "fulfilled") results.push(outcome.value);
+    else {
+      if (!allowMissingYears) throw outcome.reason;
+      warnings.push(`${years[index]} 年数据未获取（可能尚未发布或数据源不可用），当前预览不包含该年，请稍后重新导入补齐。`);
+    }
+  });
+  if (!results.length) throw new Error(warnings.join(" "));
   const adjustments: ScheduleAdjustment[] = [];
   for (const { records } of results) {
     for (const row of records) {
@@ -131,5 +150,5 @@ export async function previewPublicHolidays(startDate: string, weekCount: number
       adjustments.push({ date: row.date, kind: row.isOffDay ? "off" : "swap", note: `${row.name}（公开节假日）`.slice(0, 80) });
     }
   }
-  return { startDate, endDate, sources: results.map((result) => result.source), adjustments: adjustments.sort((a, b) => a.date.localeCompare(b.date)) };
+  return { startDate, endDate, warnings, sources: results.map((result) => result.source), adjustments: adjustments.sort((a, b) => a.date.localeCompare(b.date)) };
 }
