@@ -16,30 +16,40 @@
       <el-form-item label="调度间隔（秒）"><el-input-number v-model="form.tickSeconds" :min="0.5" :max="3600" :step="0.5" /></el-form-item>
     </el-form>
     <div class="channel-head"><strong>广播频道</strong><el-button size="small" :loading="syncing" :disabled="saving || loading || !form.configured" @click="syncChannels">创建缺失频道</el-button></div>
-    <p class="hint">保存后自动创建上午、下午、晚间的生产和沙盒频道。CPU App ID 需开通广播能力。iOS 18 及以上支持远程启动并订阅频道，无需每天打开 App。启动凭据与最小时间计划由客户端同步，频道缺失的时段暂不启动。</p>
-    <div class="channels">
-      <template v-for="environment in ['production', 'sandbox']" :key="environment">
-        <div v-for="window in windows" :key="`${environment}-${window.id}`" class="channel-row">
-          <strong>{{ environment === 'production' ? '生产' : '沙盒' }} · {{ window.label }}</strong>
-          <el-input :model-value="form.channels[`${environment}:cpu-${window.id}`] || ''" readonly placeholder="尚未创建" />
-        </div>
-      </template>
+    <p class="hint">频道按学校日期滚动：只保留今天和明天，早于昨天的自动回收，所以这里的列表每天都会变。每天每个环境一个 iOS 26 日期频道，外加每个课节块一个频道（课节块由节次表推导，课间短休相连的节次算一块）。CPU App ID 需开通广播能力。iOS 18 及以上支持远程启动并订阅频道，无需每天打开 App。启动凭据与最小时间计划由客户端同步，频道缺失的课节块暂不启动。</p>
+    <div v-if="!channelRows.length" class="hint">尚未创建任何频道。配置凭据并保存后会自动创建；节次表为空时只会创建日期频道。</div>
+    <div v-else class="channels">
+      <div v-for="row in channelRows" :key="row.key" class="channel-row">
+        <strong>{{ row.label }}</strong>
+        <el-input :model-value="row.value" readonly />
+      </div>
     </div>
     <div class="actions"><el-button type="primary" :loading="saving" :disabled="loading || syncing" @click="save">保存 APNs 配置</el-button></div>
   </section>
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { ElMessage } from "element-plus";
 import { adminApi, type ApnsConfig } from "@/api/admin";
 
-const windows = [{ id: "morning", label: "上午" }, { id: "afternoon", label: "下午" }, { id: "evening", label: "晚间" }];
 const loading = ref(false);
 const saving = ref(false);
 const syncing = ref(false);
 const error = ref("");
 const form = reactive<ApnsConfig>({ keyPath: "", keyID: "", teamID: "", bundleID: "", tickSeconds: 5, channels: {}, configured: false, updatedAt: null });
+
+// Channel keys rotate daily, so the pane renders whatever the server owns
+// rather than a fixed list that would silently rot after a naming change.
+const CHANNEL_KEY = /^(production|sandbox):cpu-(day|block):(\d{4}-\d{2}-\d{2})(?::(\d{4}))?$/;
+const channelRows = computed(() => Object.entries(form.channels).map(([key, value]) => {
+  const match = CHANNEL_KEY.exec(key);
+  // A leftover key from an older naming scheme stays visible instead of vanishing.
+  if (!match) return { key, sort: `z${key}`, label: `其他 · ${key}`, value };
+  const environment = match[1] === "production" ? "生产" : "沙盒";
+  const kind = match[2] === "day" ? "日期频道" : `课节块 ${match[4]!.slice(0, 2)}:${match[4]!.slice(2)}`;
+  return { key, sort: `${match[3]}${match[1]}${match[4] ?? ""}`, label: `${environment} · ${match[3]} · ${kind}`, value };
+}).sort((a, b) => a.sort.localeCompare(b.sort)));
 
 function apply(value: ApnsConfig) {
   Object.assign(form, value);
