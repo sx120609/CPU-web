@@ -26,8 +26,8 @@ const sample = () => ({
   weeks: [{ value: '1', label: '第 1 周', current: true }], currentSemester: '2025-2026-2', currentWeek: '1',
   cells: [{ day: 1, bigSlot: 1, courses: [{ name: '药理学', weeks: '1-8周(单)', weekList: [], teacher: '张老师' }] }],
 });
-function setup({ ready = true, loggedIn = true } = {}) {
-  const context = vm.createContext({ Error, setTimeout: (fn, ms) => setTimeout(fn, Math.min(ms, 5)), native: true, window: { CPUTimeNative: { authChanged() {} } },
+function setup({ ready = true, loggedIn = true, storage = new Map() } = {}) {
+  const context = vm.createContext({ localStorage: { getItem: k => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v) }, Error, setTimeout: (fn, ms) => setTimeout(fn, Math.min(ms, 5)), native: true, window: { CPUTimeNative: { authChanged() {} } },
     auth: { ready, user: loggedIn ? { id: 1 } : null, academicIdentity: 'undergraduate', isLoggedIn: loggedIn },
     jwxt: { isLoggedIn: true, hydrate() {}, async ensureSession() { return this.isLoggedIn; }, withSessionRetry: fn => fn() },
     api: { async schedule() { return { parsed: sample() }; }, async calendar() { return { parsed: null }; },
@@ -156,9 +156,9 @@ test('native payload uses real schedule, custom courses and normalized odd weeks
   assert.equal(result.periods[0].startTime, '08:00');
   assert.equal(result.periods[0].endTime, '08:45');
   assert.deepEqual(Array.from(result.data.cells[0].courses[0].weekList), [1, 3, 5, 7]);
-  assert.match(result.data.cells[0].courses[0].nativeId, /^official\|2025-2026-2\|1\|1\|/);
+  assert.match(result.data.cells[0].courses[0].nativeId, /^[a-f0-9-]{36}$/);
   assert.equal(result.data.cells[1].courses[0].name, '自习');
-  assert.equal(result.data.cells[1].courses[0].nativeId, 'custom:extra');
+  assert.match(result.data.cells[1].courses[0].nativeId, /^[a-f0-9-]{36}$/);
 });
 
 test('native payload keeps bracketed parity markers separate for week filtering', async () => {
@@ -264,10 +264,11 @@ test('legacy grid and flat course lists become native cells', async () => {
 });
 
 test('native course identity stays stable when teacher or room changes', async () => {
-  const first = setup();
+  const storage = new Map();
+  const first = setup({ storage });
   const firstResult = await first.window.CPUTimeNativeScheduleFetch('2025-2026-2', '1', false);
 
-  const second = setup();
+  const second = setup({ storage });
   second.api.schedule = async () => {
     const changed = sample();
     changed.cells[0].courses[0].teacher = '李老师';
@@ -333,7 +334,7 @@ test('undergraduate semester fetch includes future weeks and deduplicates repeat
   assert.equal(result.data.cells[0].courses.length, 2);
 });
 
-test('2025-2026-2 collapses duplicate records in one timetable position without hiding distinct classes', async () => {
+test('parallel source records remain distinct for explicit conflict selection', async () => {
   const ctx = setup();
   ctx.api.schedule = async () => ({ parsed: {
     ...sample(),
@@ -354,12 +355,12 @@ test('2025-2026-2 collapses duplicate records in one timetable position without 
   } });
   const result = await ctx.window.CPUTimeNativeScheduleFetch('2025-2026-2', '1');
   const courses = result.data.cells.find(cell => cell.day === 3 && cell.bigSlot === 2).courses;
-  assert.equal(courses.length, 3);
+  assert.equal(courses.length, 7);
   assert.deepEqual(Array.from(courses.find(course => course.teacher === '张老师').weekList), [1,2,3,4,5,6,7,8]);
   assert.equal(courses.some(course => course.teacher === '李老师'), true);
 });
 
-test('2025-2026-2 collapses the same occurrence when bad source rows use different big slots', async () => {
+test('ambiguous rows with different source records remain available for selection', async () => {
   const ctx = setup();
   ctx.api.schedule = async () => ({ parsed: {
     ...sample(),
@@ -371,11 +372,11 @@ test('2025-2026-2 collapses the same occurrence when bad source rows use differe
   } });
   const result = await ctx.window.CPUTimeNativeScheduleFetch('2025-2026-2', '1');
   const courses = result.data.cells.flatMap(cell => cell.day === 3 ? cell.courses : []);
-  assert.equal(courses.length, 1);
+  assert.equal(courses.length, 2);
   assert.deepEqual(Array.from(courses[0].weekList), [1,2,3,4,5,6,7,8]);
 });
 
-test('2025-2026-2 collapses explicit source ids when one row is only a week subset', async () => {
+test('different explicit source ids never merge based on a week subset', async () => {
   const ctx = setup();
   ctx.api.schedule = async () => ({ parsed: {
     ...sample(),
@@ -387,7 +388,7 @@ test('2025-2026-2 collapses explicit source ids when one row is only a week subs
   } });
   const result = await ctx.window.CPUTimeNativeScheduleFetch('2025-2026-2', '1');
   const courses = result.data.cells.flatMap(cell => cell.day === 3 ? cell.courses : []);
-  assert.equal(courses.length, 1);
+  assert.equal(courses.length, 2);
   assert.deepEqual(Array.from(courses[0].weekList), [1,2,3,4,5,6,7,8]);
 });
 

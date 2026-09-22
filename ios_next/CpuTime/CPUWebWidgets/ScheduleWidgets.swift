@@ -472,7 +472,7 @@ private enum ScheduleLiveActivityFormatting {
 }
 
 private extension ScheduleLiveActivityAttributes.ContentState {
-    var phaseTitle: String { phase == .idle ? "暂无课程" : phase == .inProgress ? "正在上课" : "即将上课" }
+    var phaseTitle: String { phase == .idle ? "已结束或暂不可用" : phase == .inProgress ? "正在上课" : phase == .intermission ? "课间休息" : "即将上课" }
 
     var hasNextCourse: Bool {
         !(nextCourseName?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)

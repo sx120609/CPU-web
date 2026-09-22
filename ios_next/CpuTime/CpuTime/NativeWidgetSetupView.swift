@@ -351,10 +351,23 @@ private struct LiveActivitySettingsSection: View {
                 }
             ))
             if enabled {
-                Stepper("课前提前 \(controller.leadMinutes) 分钟", value: Binding(
-                    get: { controller.leadMinutes },
-                    set: { controller.setLeadMinutes($0) }
-                ), in: 0...60)
+                Picker("课前提醒", selection: Binding(get: { controller.leadMinutes }, set: { controller.setLeadMinutes($0) })) {
+                    Text("15 分钟").tag(15)
+                    Text("30 分钟").tag(30)
+                    Text("1 小时").tag(60)
+                }
+                Picker("连堂课计时", selection: Binding(get: { controller.timingMode }, set: { controller.setTimingMode($0) })) {
+                    Text("整堂计时").tag(ScheduleLiveActivityAttributes.TimingMode.whole)
+                    Text("分节计时").tag(ScheduleLiveActivityAttributes.TimingMode.segmented)
+                }
+                if #available(iOS 26.0, *) { Text(controller.coverageStatus).font(.footnote).foregroundStyle(.secondary) }
+                ForEach(controller.conflicts) { conflict in
+                    Picker("\(conflict.dateKey) 第 \(conflict.period) 节", selection: Binding(
+                        get: { conflict.selectedSource ?? "" }, set: { controller.selectCourse($0, for: conflict) })) {
+                        Text("请选择课程").tag("")
+                        ForEach(conflict.options) { option in Text(option.name).tag(option.id) }
+                    }
+                }
             }
             if enabled, ActivityAuthorizationInfo().areActivitiesEnabled {
                 Button {
@@ -402,7 +415,7 @@ private struct LiveActivitySettingsSection: View {
         } header: {
             Label("灵动岛", systemImage: "rectangle.topthird.inset.filled")
         } footer: {
-            Text("iOS 18 及以上可按设置的提前量远程启动，每个有课时段启动一次，无需每天打开 App。课程详情从本机课表读取，时段结束统一收起；修改课表后请联网同步。0 分钟表示上课时出现。测试按钮只显示本地演示课程。")
+            Text("iOS 26 及以上每次打开 App 安排未来 7 天课程；iOS 18–25 使用远程启动。每次课程独立计时，在最后一节下课时收起。手动移除后，下次打开 App 可恢复尚未结束的课程。")
             Text(controller.broadcastStatus)
         }
     }

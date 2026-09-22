@@ -2,191 +2,542 @@ import ActivityKit
 import Combine
 import Foundation
 
-/// Keeps one schedule Live Activity in sync with the currently visible native
-/// timetable. The widget renders the countdown locally, while this controller
-/// only needs to refresh when the course crosses a boundary or the schedule
-/// changes.
 @available(iOS 17.0, *)
 @MainActor
 final class NativeLiveActivityController: ObservableObject {
+    typealias Attributes = ScheduleLiveActivityAttributes
+    typealias State = Attributes.ContentState
     enum Status: Equatable {
-        case disabled
-        case waiting
-        case active
-        case unavailable(String)
-        case failed(String)
-
+        case disabled, waiting, active, unavailable(String), failed(String)
         var title: String {
             switch self {
             case .disabled: return "已关闭"
             case .waiting: return "等待下一节课"
             case .active: return "实时活动已显示"
             case .unavailable: return "暂时没有可显示的课程"
-            case .failed: return "启动失败"
+            case .failed: return "安排未完成"
             }
         }
-
         var detail: String? {
-            switch self {
-            case .unavailable(let message), .failed(let message): return message
-            default: return nil
-            }
+            switch self { case .unavailable(let s), .failed(let s): return s; default: return nil }
         }
     }
-
     static let shared = NativeLiveActivityController()
     static let enabledKey = "scheduleLiveActivityEnabled"
-    /// A timetable Live Activity is useful only when the next class is close
-    /// enough to act on. The regular widgets remain the right surface for
-    /// showing a class that is hours away.
     static let leadMinutesKey = "scheduleLiveActivityLeadMinutes"
-    var leadMinutes: Int {
-        let defaultMinutes: Int
-        if #available(iOS 26.0, *) { defaultMinutes = 60 } else { defaultMinutes = 15 }
-        let value = UserDefaults(suiteName: NextWidgetConfiguration.appGroup)?.object(forKey: Self.leadMinutesKey) as? Int ?? defaultMinutes
-        return min(60, max(0, value))
+    private var defaults: UserDefaults { UserDefaults(suiteName: NextWidgetConfiguration.appGroup)! }
+    static func normalizedLead(_ value: Int?) -> Int {
+        guard let value, (0...60).contains(value) else { return 15 }
+        return value <= 15 ? 15 : value <= 30 ? 30 : 60
     }
+    var leadMinutes: Int { Self.normalizedLead(defaults.object(forKey: Self.leadMinutesKey) as? Int) }
     var leadTime: TimeInterval { TimeInterval(leadMinutes * 60) }
-    func setLeadMinutes(_ value: Int) {
-        UserDefaults(suiteName: NextWidgetConfiguration.appGroup)?.set(min(60, max(0, value)), forKey: Self.leadMinutesKey)
-        if let lastSnapshot { accept(lastSnapshot) }
-        objectWillChange.send()
-    }
-    var remoteStartsEnabled = false
-    var planDidChange: (() -> Void)?
-
+    var timingMode: Attributes.TimingMode { Attributes.TimingMode(rawValue: defaults.string(forKey: "cpu.liveActivity.mode") ?? "whole") ?? .whole }
+    func setLeadMinutes(_ value: Int) { defaults.set(Self.normalizedLead(value), forKey: Self.leadMinutesKey); reconfigure() }
+    func setTimingMode(_ value: Attributes.TimingMode) { defaults.set(value.rawValue, forKey: "cpu.liveActivity.mode"); reconfigure() }
+    var isEnabled: Bool { defaults.object(forKey: Self.enabledKey) as? Bool ?? true }
     @Published private(set) var status: Status = .waiting
     @Published private(set) var isPreviewActive = false
-
+    @Published var broadcastStatus = "等待学校作息及频道。"
+    @Published private(set) var coverageStatus = "等待加载课表"
+    @Published private(set) var conflicts: [Conflict] = []
+    var remoteStartsEnabled = false
+    var localHandoffComplete = false
+    var recoverRemote: ((String) async throws -> String?)?
+    var planDidChange: (() -> Void)?
+    var resetPushService: (() -> Void)?
+    var scheduleBackgroundWakeup: ((Date) -> Void)?
     private var refreshTask: Task<Void, Never>?
     private var previewEndTask: Task<Void, Never>?
     private var lastSnapshot: NativeScheduleSnapshot?
-    private let now: () -> Date
-    var resetPushService: (() -> Void)?
     var currentScheduleMetadata: NativeScheduleSnapshot? { lastSnapshot }
-    var scheduleBackgroundWakeup: ((Date) -> Void)?
-    @Published var broadcastStatus = "远程启动需要 iOS 18 和学校广播；课程详情仅保存在本机。"
-    struct BroadcastWindow: Codable, Equatable {
+    private let now: () -> Date
+    private var generation = 0
+    private var session = UUID().uuidString
+    private var foregroundRecovery = true
+    private var reconciling = false
+    private var occurrences: [Occurrence] = []
+    private var ledger: [String: LedgerEntry] = [:]
+    private var identityRecords: [String: [IdentityRecord]] = [:]
+    private var choices: [String: String] = [:]
+    private var loadedAccount: String?
+    private var committedRemote = Set<String>()
+    func installHandoffRecords(_ records: [[String: Any]]) {
+        committedRemote = Set(records.compactMap { $0["occurrenceId"] as? String })
+        for row in records where row["state"] as? String == "terminal" {
+            if let id = row["occurrenceId"] as? String, let c = occurrences.first(where: { $0.id == id }) { record(c, state: "terminal") }
+        }
+    }
+    struct BusyInterval: Codable { let startAt: Double; let endAt: Double }
+    private(set) var busyIntervals: [BusyInterval] = []
+    private var unsupported: [String] = []
+    private var failures: [String: String] = [:]
+    struct BroadcastWindow: Codable, Equatable { let id: String; let startHour: Int; let endHour: Int; let channelID: String? }
+    var broadcastWindows: [BroadcastWindow] = []
+    struct TimingConfig: Codable, Equatable {
+        struct Period: Codable, Equatable { let id: Int; let name: String; let start: String; let end: String }
+        let protocolVersion: Int
+        let scheduleId: String
+        let scheduleVersion: String
+        let timezone: String
+        let periods: [Period]
+        let issuedAt: Double
+        let usableUntil: Double
+        let broadcastUntil: Double
+        let windows: [BroadcastWindow]
+    }
+    private(set) var timing: TimingConfig?
+    func installTiming(_ value: TimingConfig) {
+        guard value.protocolVersion == 2, TimeZone(identifier: value.timezone) != nil else { return }
+        timing = value
+        broadcastWindows = value.windows
+        if let data = try? JSONEncoder().encode(value) { defaults.set(data, forKey: "cpu.liveActivity.timing.v2") }
+        reconfigure()
+    }
+    struct LedgerEntry: Codable {
+        var state: String
+        var activityID: String?
+        var generation: Int
+        var plannedStart: Date
+        var session: String
+        var cancellation: String?
+        var signature: String
+    }
+    struct IdentityRecord: Codable { var id: String; var periods: [Int]; var supersedes: [String] }
+    struct Conflict: Identifiable {
+        struct Option: Identifiable { let id: String; let name: String }
         let id: String
-        let startHour: Int
-        let endHour: Int
-        let channelID: String?
+        let dateKey: String
+        let period: Int
+        let options: [Option]
+        let selectedSource: String?
     }
-    var broadcastWindows: [BroadcastWindow] = [] {
-        didSet {
-            guard oldValue != broadcastWindows, let snapshot = lastSnapshot, !isPreviewActive else { return }
-            accept(snapshot)
-        }
+    func selectCourse(_ source: String, for conflict: Conflict) {
+        choices[conflict.id] = source
+        persist()
+        reconfigure()
     }
-    /// 一个课节块 = 课间短休相连的一串节次，由服务端按全校节次表推导下发。
-    /// 客户端不再自己猜时段边界，也不需要频道 ID：服务端发送时才解析频道。
-    struct ScheduleBlock: Codable, Equatable {
+    struct Occurrence {
         let id: String
-        let startClock: String
-        let endClock: String
-
-        var startSeconds: Int { ScheduleBlock.seconds(startClock) }
-        var endSeconds: Int { ScheduleBlock.seconds(endClock) }
-
-        static func seconds(_ clock: String) -> Int {
-            let parts = clock.split(separator: ":")
-            guard parts.count == 2, let hour = Int(parts[0]), let minute = Int(parts[1]) else { return -1 }
-            return hour * 3600 + minute * 60
-        }
+        let supersedes: [String]
+        let name: String
+        let teacher: String
+        let location: String
+        let periodLabel: String
+        let dateKey: String
+        let week: Int
+        let weekRangeLabel: String
+        let adjustmentNote: String
+        let segments: [Attributes.Segment]
+        var plannedStart: Date
+        var start: Date { segments.first!.startAt }
+        var end: Date { segments.last!.endAt }
+        var endPeriod: Int { segments.last!.period }
+        var signature: String { segments.map { "\($0.period):\($0.startAt.timeIntervalSince1970):\($0.endAt.timeIntervalSince1970)" }.joined(separator: ",") }
     }
-    var scheduleBlocks: [ScheduleBlock] = [] {
-        didSet {
-            guard oldValue != scheduleBlocks, let snapshot = lastSnapshot, !isPreviewActive else { return }
-            accept(snapshot)
-        }
-    }
-    private var currentActivity: Activity<ScheduleLiveActivityAttributes>? {
-        Activity<ScheduleLiveActivityAttributes>.activities.first {
-            $0.activityState == .active || $0.activityState == .stale
-        }
-    }
-
+    private var currentActivity: Activity<Attributes>? { Activity<Attributes>.activities.first { $0.activityState == .active || $0.activityState == .stale } }
     init(now: @escaping () -> Date = { .now }) {
         self.now = now
-        if !isEnabled {
-            status = .disabled
-        } else if !ActivityAuthorizationInfo().areActivitiesEnabled {
-            status = .unavailable("请在系统设置中允许“实时活动”。")
-        } else if currentActivity != nil {
-            status = .active
+        if let data = defaults.data(forKey: "cpu.liveActivity.timing.v2") { timing = try? JSONDecoder().decode(TimingConfig.self, from: data); broadcastWindows = timing?.windows ?? [] }
+        if !isEnabled { status = .disabled }
+    }
+    private func persist() {
+        guard let loadedAccount else { return }
+        for (key, data) in [("ledger", try? JSONEncoder().encode(ledger)), ("identities", try? JSONEncoder().encode(identityRecords)), ("choices", try? JSONEncoder().encode(choices))] {
+            if let data { defaults.set(data, forKey: "cpu.liveActivity.v2.\(loadedAccount).\(key)") }
         }
     }
-
-    var isEnabled: Bool {
-        UserDefaults(suiteName: NextWidgetConfiguration.appGroup)?
-            .object(forKey: Self.enabledKey) as? Bool ?? true
+    private func loadAccount(_ account: String) {
+        guard loadedAccount != account else { return }
+        localHandoffComplete = false
+        loadedAccount = account
+        ledger = defaults.data(forKey: "cpu.liveActivity.v2.\(account).ledger").flatMap { try? JSONDecoder().decode([String: LedgerEntry].self, from: $0) } ?? [:]
+        identityRecords = defaults.data(forKey: "cpu.liveActivity.v2.\(account).identities").flatMap { try? JSONDecoder().decode([String: [IdentityRecord]].self, from: $0) } ?? [:]
+        choices = defaults.data(forKey: "cpu.liveActivity.v2.\(account).choices").flatMap { try? JSONDecoder().decode([String: String].self, from: $0) } ?? [:]
+        defaults.set(account, forKey: "cpu.liveActivity.account")
     }
-
-    func setEnabled(_ enabled: Bool) {
-        UserDefaults(suiteName: NextWidgetConfiguration.appGroup)?.set(enabled, forKey: Self.enabledKey)
-        // Refresh channel metadata when the user enables local reservations.
+    func setEnabled(_ value: Bool) {
+        defaults.set(value, forKey: Self.enabledKey)
+        generation += 1
+        if value { session = UUID().uuidString; foregroundRecovery = true; reconfigure() }
+        else { end(); status = .disabled }
         #if os(iOS)
-        if #available(iOS 17.2, *) { LiveActivityPushService.shared.enabledDidChange(enabled) }
+        if #available(iOS 17.2, *) { LiveActivityPushService.shared.enabledDidChange(value) }
         #endif
-        if enabled, let lastSnapshot {
-            status = .waiting
-            accept(lastSnapshot)
-        } else if !enabled {
-            status = .disabled
-            end()
-        } else {
-            status = .waiting
-        }
     }
-
+    private func reconfigure() { if let lastSnapshot { accept(lastSnapshot) }; objectWillChange.send() }
     func accept(_ snapshot: NativeScheduleSnapshot) {
         lastSnapshot = snapshot
-        if isPreviewActive { return }
-        saveBroadcastCourses(from: snapshot)
+        generation += 1
+        guard !isPreviewActive else { return }
+        if let account = snapshot.auth.account, snapshot.auth.authenticated {
+            loadAccount(account)
+            occurrences = expand(snapshot)
+            saveBroadcastCourses()
+        } else { occurrences = []; conflicts = [] }
         planDidChange?()
+        startLoop()
+    }
+    private func startLoop() {
         refreshTask?.cancel()
-        guard isEnabled else {
-            status = .disabled
-            end()
-            return
-        }
-        status = currentActivity == nil ? .waiting : .active
+        let epoch = generation
         refreshTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            while !Task.isCancelled {
-                guard let delay = await self.synchronize(snapshot) else { return }
-                do {
-                    try await Task.sleep(for: .seconds(delay))
-                } catch {
-                    return
+            while !Task.isCancelled, epoch == generation {
+                if !reconciling {
+                    reconciling = true
+                    await reconcile(epoch)
+                    reconciling = false
+                }
+                do { try await Task.sleep(for: .seconds(5)) } catch { return }
+            }
+        }
+    }
+    func foreground() {
+        session = UUID().uuidString
+        foregroundRecovery = true
+        if isPreviewActive { if (currentActivity?.content.state.endDate ?? .distantPast) <= now() { endPreview() }; return }
+        reconfigure()
+    }
+    func reset() {
+        generation += 1
+        end()
+        resetPushService?()
+        lastSnapshot = nil
+        occurrences = []
+        loadedAccount = nil
+        ledger = [:]
+        defaults.removeObject(forKey: Attributes.broadcastCoursesKey)
+        defaults.removeObject(forKey: "cpu.liveActivity.account")
+        localHandoffComplete = false
+    }
+    func end() {
+        generation += 1
+        refreshTask?.cancel(); refreshTask = nil
+        previewEndTask?.cancel(); previewEndTask = nil
+        isPreviewActive = false
+        let activities = Activity<Attributes>.activities
+        for a in activities { mark(a.attributes.occurrenceId, state: "missing", reason: "disabled") }
+        Task { for a in activities { await a.end(nil, dismissalPolicy: .immediate) } }
+    }
+    private func endActivities() async { for a in Activity<Attributes>.activities { await a.end(nil, dismissalPolicy: .immediate) } }
+    func reconcileInBackground() async {
+        for a in Activity<Attributes>.activities where !isEnabled || (a.attributes.reservationEnd ?? a.content.state.endDate) <= now() {
+            await a.end(nil, dismissalPolicy: .immediate)
+        }
+    }
+    private func valid(_ epoch: Int) -> Bool { epoch == generation && isEnabled && !isPreviewActive && lastSnapshot?.auth.authenticated == true && !Task.isCancelled }
+    private func mark(_ id: String?, state: String, reason: String? = nil) {
+        guard let id, var entry = ledger[id] else { return }
+        entry.state = state; entry.cancellation = reason; entry.session = session
+        ledger[id] = entry; persist()
+    }
+    private func record(_ c: Occurrence, state: String, activityID: String? = nil) {
+        ledger[c.id] = LedgerEntry(state: state, activityID: activityID, generation: generation,
+            plannedStart: c.plannedStart, session: session, signature: c.signature + (timing?.scheduleVersion ?? ""))
+        persist()
+    }
+    private func state(_ c: Occurrence) -> State {
+        let timeline = Attributes.resolveTimeline(c.segments, mode: timingMode, now: now())!
+        let phase: State.Phase = timeline.phase == .finished ? .idle : timeline.phase == .upcoming ? .upcoming : timeline.phase == .intermission ? .intermission : .inProgress
+        return State(phase: phase, courseName: c.name, teacher: c.teacher, location: c.location, periodLabel: c.periodLabel,
+            dateLabel: Self.dateLabel(day: c.dateKey, week: c.week), weekRangeLabel: c.weekRangeLabel,
+            startDate: phase == .inProgress ? timeline.start : timeline.target, endDate: timeline.target,
+            adjustmentNote: c.adjustmentNote, updatedAt: now())
+    }
+    private func attributes(_ c: Occurrence, channel: String?) -> Attributes {
+        var a = Attributes(semester: lastSnapshot?.data?.currentSemester ?? "", dateKey: c.dateKey, week: c.week,
+            broadcastWindow: String(c.endPeriod), broadcastChannel: channel, reservationStart: c.start, reservationEnd: c.end, reminderDate: c.plannedStart)
+        a.occurrenceId = c.id; a.accountScope = loadedAccount; a.scheduleId = timing?.scheduleId; a.scheduleVersion = timing?.scheduleVersion
+        return a
+    }
+    private func channel(_ c: Occurrence) -> String? {
+        guard let timing, c.start.timeIntervalSince1970 < timing.usableUntil, c.end.timeIntervalSince1970 <= timing.broadcastUntil else { return nil }
+        return timing.windows.first { $0.id == String(c.endPeriod) }?.channelID
+    }
+    private func reconcile(_ epoch: Int) async {
+        guard valid(epoch), ActivityAuthorizationInfo().areActivitiesEnabled else {
+            await endActivities(); status = isEnabled ? .unavailable("请登录并允许实时活动。") : .disabled; return
+        }
+        let current = now()
+        var seen = Set<String>()
+        for a in Activity<Attributes>.activities {
+            guard valid(epoch) else { return }
+            guard a.activityState != .ended && a.activityState != .dismissed else {
+                if let id = a.attributes.occurrenceId, ledger[id]?.activityID == a.id, ledger[id]?.cancellation == nil {
+                    let next = (a.attributes.reservationEnd ?? current) <= current ? "terminal" : a.activityState == .dismissed ? "dismissed" : "missing"
+                    if ledger[id]?.state != next {
+                        if ledger[id]?.session != session {
+                            ledger[id]?.state = next; persist()
+                        } else { mark(id, state: next) }
+                    }
+                }
+                continue
+            }
+            let id = a.attributes.occurrenceId ?? ""
+            let c = occurrences.first { $0.id == id }
+            let active = a.activityState == .active || a.activityState == .stale
+            let changed = c.map { a.attributes.reservationStart != $0.start || a.attributes.reservationEnd != $0.end || a.attributes.scheduleVersion != timing?.scheduleVersion || ledger[id]?.signature != nil && ledger[id]?.signature != $0.signature + (timing?.scheduleVersion ?? "") } ?? true
+            if active, ledger[id] == nil {
+                if let c { record(c, state: "active", activityID: a.id) }
+                else if !id.isEmpty {
+                    ledger[id] = LedgerEntry(state: "active", activityID: a.id, generation: generation, plannedStart: a.attributes.reminderDate ?? current, session: session, signature: "")
+                    persist()
+                }
+            }
+            if a.attributes.accountScope != loadedAccount || c == nil || c!.end <= current || ledger[id]?.state == "terminal" || active && changed {
+                if active {
+                    if let c, ledger[id] == nil { record(c, state: "active", activityID: a.id) }
+                    mark(id, state: "terminal", reason: "courseChanged")
+                }
+                else { mark(id, state: "missing", reason: "reconfigure") }
+                await a.end(nil, dismissalPolicy: .immediate)
+                continue
+            }
+            guard let c else { continue }
+            if seen.contains(id) { await a.end(nil, dismissalPolicy: .immediate); continue }
+            if !active && (changed || a.attributes.reminderDate != c.plannedStart || a.attributes.broadcastChannel != channel(c)) {
+                mark(id, state: "missing", reason: "reconfigure")
+                // State is rechecked immediately before cancelling a reservation.
+                if a.activityState == .active || a.activityState == .stale { continue }
+                await a.end(nil, dismissalPolicy: .immediate)
+                continue
+            }
+            seen.insert(id)
+            record(c, state: active ? "active" : "pending", activityID: a.id)
+            if active { await a.update(ActivityContent(state: state(c), staleDate: c.end)) }
+        }
+        guard valid(epoch) else { return }
+        for c in occurrences where c.end <= current {
+            if ledger[c.id] != nil { mark(c.id, state: "terminal", reason: "finished") }
+        }
+        let targets = occurrences.filter { $0.end > current && $0.start < current.addingTimeInterval(7 * 86400) }
+        failures = [:]
+        var arranged = 0
+        for c in targets {
+            guard valid(epoch) else { return }
+            if seen.contains(c.id) { arranged += 1; continue }
+            if ledger[c.id]?.state == "terminal" || c.supersedes.contains(where: { committedRemote.contains($0) || ["terminal", "active"].contains(ledger[$0]?.state ?? "") }) { record(c, state: "terminal"); failures[c.id] = "本次课程变更后已终止"; continue }
+            if let entry = ledger[c.id], ["active", "pending", "requesting"].contains(entry.state), entry.cancellation == nil, c.plannedStart <= current {
+                // System absence is not proof of dismissal. Suppress within this
+                // session; a new foreground session is allowed to recover.
+                if entry.session == session { mark(c.id, state: "missing") }
+            }
+            if let entry = ledger[c.id], ["dismissed", "missing"].contains(entry.state), entry.session == session, entry.cancellation == nil {
+                failures[c.id] = "下次打开 App 时恢复"; continue
+            }
+            guard c.end.timeIntervalSince(c.plannedStart) < 8 * 3600, c.plannedStart < c.end else { failures[c.id] = "课程及提醒达到 8 小时上限"; continue }
+            if committedRemote.contains(c.id), c.plannedStart > current { failures[c.id] = "已有远程提交记录，等待核对"; continue }
+            var channelID = channel(c)
+            var scheduled = false
+            if #available(iOS 26.0, *) {
+                guard localHandoffComplete else { failures[c.id] = "等待完成启动方式切换"; continue }
+                guard channelID != nil else { failures[c.id] = "频道缺失或映射已过期"; continue }
+                scheduled = true
+            } else if remoteStartsEnabled {
+                guard c.plannedStart <= current else { continue }
+                guard foregroundRecovery, let recoverRemote else { continue }
+                do { channelID = try await recoverRemote(c.id) }
+                catch { failures[c.id] = "等待联网协调前台恢复"; continue }
+                guard valid(epoch) else { return }
+                guard channelID != nil else { failures[c.id] = "结束频道未就绪"; continue }
+            } else {
+                guard c.plannedStart <= current else { continue }
+                if #available(iOS 18.0, *) { failures[c.id] = "等待启动配置"; continue }
+            }
+            guard c.end > now().addingTimeInterval(scheduled ? 1 : 0) else { continue }
+            do {
+                try request(c, channel: channelID, scheduled: scheduled)
+                arranged += 1
+            } catch {
+                failures[c.id] = error.localizedDescription
+                mark(c.id, state: "retryableFailure")
+                if isCapacityError(error), #available(iOS 26.0, *) {
+                    // Replace at most one strictly later pending reservation.
+                    let candidates = Activity<Attributes>.activities.filter { a in
+                        a.activityState == .pending && a.attributes.accountScope == loadedAccount && (a.attributes.reminderDate ?? .distantPast) > c.plannedStart
+                    }.sorted { ($0.attributes.reminderDate ?? .distantPast) > ($1.attributes.reminderDate ?? .distantPast) }
+                    guard let victim = candidates.first, let old = occurrences.first(where: { $0.id == victim.attributes.occurrenceId }) else { break }
+                    mark(old.id, state: "missing", reason: "capacityRebalance")
+                    guard valid(epoch), victim.activityState == .pending else { break }
+                    await victim.end(nil, dismissalPolicy: .immediate)
+                    guard valid(epoch) else { return }
+                    failures[old.id] = "名额优先用于近期课程"
+                    do { try request(c, channel: channelID, scheduled: true); arranged += 1; failures[c.id] = nil }
+                    catch {
+                        failures[c.id] = error.localizedDescription
+                        mark(c.id, state: "retryableFailure")
+                        if !isCapacityError(error) {
+                            do { try request(old, channel: channel(old), scheduled: true) }
+                            catch { mark(old.id, state: "retryableFailure", reason: "capacityRebalance") }
+                        }
+                        break
+                    }
                 }
             }
         }
+        guard valid(epoch) else { return }
+        let successful = Set(Activity<Attributes>.activities.filter { $0.activityState != .ended && $0.activityState != .dismissed && $0.attributes.accountScope == loadedAccount }.compactMap { $0.attributes.occurrenceId })
+        arranged = targets.filter { successful.contains($0.id) }.count
+        coverageStatus = "未来 7 天共 \(targets.count + unsupported.count) 次，已安排 \(arranged) 次"
+        if let first = unsupported.first { coverageStatus += "；\(first)" }
+        if let missing = targets.first(where: { !successful.contains($0.id) }) { coverageStatus += "；\(missing.dateKey) \(missing.name)：\(failures[missing.id] ?? "等待安排")" }
+        let unresolvedCount = conflicts.filter { $0.selectedSource == nil }.count
+        if unresolvedCount > 0 { coverageStatus += "；\(unresolvedCount) 个节次冲突待选择" }
+        status = currentActivity == nil ? .waiting : .active
     }
-
-    /// App suspension pauses the local boundary task. Reconcile immediately
-    /// on return, including after the user changes Live Activity permission.
-    func foreground() {
-        if isPreviewActive {
-            if (currentActivity?.content.state.endDate ?? .distantPast) <= now() {
-                endPreview()
-            }
-        } else if let lastSnapshot {
-            accept(lastSnapshot)
+    private func isCapacityError(_ error: Error) -> Bool {
+        // ActivityKit exposes a named error, never infer quota from arbitrary text.
+        #if os(iOS)
+        guard let error = error as? ActivityAuthorizationError else { return false }
+        return error == .globalMaximumExceeded || error == .targetMaximumExceeded
+        #else
+        return (error as NSError).domain == "ActivityKit.capacity"
+        #endif
+    }
+    private func request(_ c: Occurrence, channel: String?, scheduled: Bool) throws {
+        record(c, state: "requesting")
+        let content = ActivityContent(state: state(c), staleDate: c.end)
+        let activity: Activity<Attributes>
+        if #available(iOS 26.0, *), scheduled, let channel {
+            activity = try Activity.request(attributes: attributes(c, channel: channel), content: content,
+                pushType: .channel(channel), style: .standard,
+                alertConfiguration: AlertConfiguration(title: "课程提醒", body: LocalizedStringResource(stringLiteral: c.name), sound: .default),
+                start: max(c.plannedStart, now().addingTimeInterval(1)))
+        } else if #available(iOS 18.0, *), let channel {
+            activity = try Activity.request(attributes: attributes(c, channel: channel), content: content, pushType: .channel(channel))
+        } else { activity = try Activity.request(attributes: attributes(c, channel: nil), content: content, pushType: nil) }
+        record(c, state: scheduled ? "pending" : "active", activityID: activity.id)
+    }
+    struct RemoteStartWindow: Codable, Equatable {
+        let occurrenceId: String; let supersedes: [String]; let dateKey: String; let startPeriod: Int; let endPeriod: Int
+    }
+    func remoteStartWindows() -> [RemoteStartWindow] {
+        guard isEnabled, ActivityAuthorizationInfo().areActivitiesEnabled else { return [] }
+        return occurrences.filter { $0.end > now() && $0.start < now().addingTimeInterval(370 * 86400) }.map {
+            RemoteStartWindow(occurrenceId: $0.id, supersedes: $0.supersedes, dateKey: $0.dateKey, startPeriod: $0.segments[0].period, endPeriod: $0.endPeriod)
         }
     }
-
-    /// A logged-out account must not recreate its last activity on resume.
-    func reset() {
-        lastSnapshot = nil
-        UserDefaults(suiteName: NextWidgetConfiguration.appGroup)?.removeObject(forKey: ScheduleLiveActivityAttributes.broadcastCoursesKey)
-        resetPushService?()
-        end()
-        status = isEnabled ? .waiting : .disabled
+    private func saveBroadcastCourses() {
+        let existing = defaults.data(forKey: Attributes.broadcastCoursesKey).flatMap { try? JSONDecoder().decode([Attributes.LocalCourse].self, from: $0) } ?? []
+        let referenced = Set(Activity<Attributes>.activities.compactMap { $0.attributes.occurrenceId })
+        var records = existing.filter { record in record.accountScope == loadedAccount && referenced.contains(record.occurrenceId ?? "") && !occurrences.contains(where: { c in c.id == record.occurrenceId }) }
+        records += occurrences.map { c in
+            var r = Attributes.LocalCourse(dateKey: c.dateKey, period: c.segments[0].period, name: c.name, teacher: c.teacher, location: c.location,
+                periodLabel: c.periodLabel, startDate: c.start, endDate: c.end, weekRangeLabel: c.weekRangeLabel, adjustmentNote: c.adjustmentNote)
+            r.occurrenceId = c.id; r.accountScope = loadedAccount; r.segments = c.segments; r.mode = timingMode; r.contentVersion = c.signature
+            return r
+        }
+        if let data = try? JSONEncoder().encode(records) { defaults.set(data, forKey: Attributes.broadcastCoursesKey) }
     }
-
-    /// Starts a local, self-contained activity so users can inspect the lock
-    /// screen and Dynamic Island layout without waiting for a real class.
+    private func expand(_ snapshot: NativeScheduleSnapshot) -> [Occurrence] {
+        guard let data = snapshot.data, let calendar = snapshot.calendar else { return [] }
+        var dateCalendar = Calendar(identifier: .gregorian)
+        dateCalendar.timeZone = TimeZone(identifier: timing?.timezone ?? "Asia/Shanghai")!
+        let periods = timing?.periods.map { NativeSchedulePeriod(number: $0.id, startTime: $0.start, endTime: $0.end) } ?? snapshot.periods
+        guard !periods.isEmpty else { coverageStatus = "缺少学校作息表"; return [] }
+        let byNumber = Dictionary(uniqueKeysWithValues: periods.map { ($0.number, $0) })
+        var result: [Occurrence] = []
+        unsupported = []
+        busyIntervals = []
+        var unresolved: [Conflict] = []
+        for week in calendar.weeks {
+            for (dayIndex, day) in week.days.enumerated() {
+                guard let resolved = Self.resolvedDay(date: day, day: dayIndex + 1, week: week.week, calendar: calendar) else { continue }
+                var candidates: [Int: [String: NativeScheduleCourse]] = [:]
+                for cell in data.cells where cell.day == resolved.day {
+                    for course in cell.courses where course.weekList.isEmpty || course.weekList.contains(resolved.week) {
+                        if course.customStartTime != nil || course.customEndTime != nil {
+                            if let startClock = course.customStartTime, let endClock = course.customEndTime,
+                               let start = date(day, time: startClock, calendar: dateCalendar), let end = date(day, time: endClock, calendar: dateCalendar), start < end {
+                                busyIntervals.append(BusyInterval(startAt: start.timeIntervalSince1970, endAt: end.timeIntervalSince1970))
+                                if end > now(), start < now().addingTimeInterval(7 * 86400) { unsupported.append("\(day) \(course.name)：自定义时间暂不支持自动活动") }
+                            } else { unsupported.append("\(day) \(course.name)：自定义时间无效") }
+                            continue
+                        }
+                        let source = course.nativeId ?? course.sourceKey ?? course.customId.map { "custom:\($0)" } ?? course.id
+                        if let start = course.startSlot, let end = course.endSlot,
+                           (byNumber[start] == nil || byNumber[end] == nil || start > end) {
+                            if let midnight = date(day, time: "00:00", calendar: dateCalendar),
+                               midnight.addingTimeInterval(86400) > now(), midnight < now().addingTimeInterval(7 * 86400) {
+                                unsupported.append("\(day) \(course.name)：自定义时间或节次无法对应学校作息")
+                            }
+                            continue
+                        }
+                        let range = NativeSchedulePeriod.normalizedRange(bigSlot: cell.bigSlot, startSlot: course.startSlot, endSlot: course.endSlot, periods: periods)
+                        guard range.start <= range.end else { continue }
+                        for period in range.start...range.end { candidates[period, default: [:]][source] = course }
+                    }
+                }
+                var selected: [(Int, String, NativeScheduleCourse)] = []
+                var blocked = Set<String>()
+                for period in candidates.keys.sorted() {
+                    let options = candidates[period]!
+                    let key = "\(data.currentSemester):\(day):\(period)"
+                    let chosen = options.count == 1 ? options.keys.first : choices[key].flatMap { options[$0] != nil ? $0 : nil }
+                    if options.count > 1 {
+                        unresolved.append(Conflict(id: key, dateKey: day, period: period,
+                            options: options.keys.sorted().map { Conflict.Option(id: $0, name: options[$0]!.name) }, selectedSource: chosen))
+                    }
+                    if let chosen, let course = options[chosen] { selected.append((period, chosen, course)) }
+                    else { blocked.formUnion(options.keys) }
+                }
+                selected.removeAll { blocked.contains($0.1) }
+                var runs: [[(Int, String, NativeScheduleCourse)]] = []
+                for item in selected {
+                    if let previous = runs.last?.last, previous.1 == item.1, previous.0 + 1 == item.0 { runs[runs.count - 1].append(item) }
+                    else { runs.append([item]) }
+                }
+                let grouped = Dictionary(grouping: runs, by: { $0[0].1 })
+                for (source, sourceRuns) in grouped {
+                    let key = "\(data.currentSemester):\(day):\(source)"
+                    let old = identityRecords[key] ?? []
+                    let unchanged = old.count == sourceRuns.count
+                    var records: [IdentityRecord] = []
+                    for (index, run) in sourceRuns.enumerated() {
+                        let numbers = run.map { $0.0 }
+                        // A boundary edit keeps identity; a split/merge records all
+                        // replaced identities, preventing already-started fragments from restarting.
+                        let record: IdentityRecord
+                        if unchanged { record = IdentityRecord(id: old[index].id, periods: numbers, supersedes: old[index].supersedes) }
+                        else { record = IdentityRecord(id: UUID().uuidString, periods: numbers, supersedes: old.map(\.id)) }
+                        records.append(record)
+                        let segments = numbers.compactMap { p -> Attributes.Segment? in
+                            guard let period = byNumber[p], let start = date(day, time: period.startTime, calendar: dateCalendar), let end = date(day, time: period.endTime, calendar: dateCalendar) else { return nil }
+                            return Attributes.Segment(period: p, startAt: start, endAt: end)
+                        }
+                        guard segments.count == numbers.count, let first = segments.first else { continue }
+                        let course = run[0].2
+                        result.append(Occurrence(id: record.id, supersedes: record.supersedes, name: course.name, teacher: course.teacher ?? "", location: course.location ?? "",
+                            periodLabel: Self.periodLabel(start: numbers[0], end: numbers.last!), dateKey: day, week: week.week,
+                            weekRangeLabel: course.weeks, adjustmentNote: resolved.note, segments: segments, plannedStart: first.startAt.addingTimeInterval(-leadTime)))
+                    }
+                    identityRecords[key] = records
+                }
+            }
+        }
+        result.sort { ($0.start, $0.id) < ($1.start, $1.id) }
+        var previousEnd = Date.distantPast
+        for index in result.indices {
+            let busyEnd = busyIntervals.filter { $0.startAt < result[index].start.timeIntervalSince1970 }.map { Date(timeIntervalSince1970: $0.endAt) }.max() ?? .distantPast
+            result[index].plannedStart = max(result[index].plannedStart, previousEnd, busyEnd)
+            previousEnd = max(previousEnd, result[index].end)
+        }
+        var protectedIDs = Set(ledger.filter { $0.value.state == "terminal" || $0.value.state == "active" }.map(\.key)).union(committedRemote)
+        var changed = true
+        while changed {
+            changed = false
+            for records in identityRecords.values {
+                for record in records where record.supersedes.contains(where: { protectedIDs.contains($0) }) {
+                    if protectedIDs.insert(record.id).inserted { changed = true }
+                }
+            }
+        }
+        for c in result where protectedIDs.contains(c.id) && !committedRemote.contains(c.id) && ledger[c.id] == nil { record(c, state: "terminal") }
+        conflicts = unresolved
+        persist()
+        return result
+    }
     func startPreview() {
         guard isEnabled else {
             status = .disabled
@@ -274,342 +625,6 @@ final class NativeLiveActivityController: ObservableObject {
         }
     }
 
-    func end() {
-        refreshTask?.cancel()
-        refreshTask = nil
-        previewEndTask?.cancel()
-        previewEndTask = nil
-        isPreviewActive = false
-        if !isEnabled { status = .disabled }
-        let activities = Activity<ScheduleLiveActivityAttributes>.activities
-        guard !activities.isEmpty else { return }
-        Task { @MainActor in
-            for activity in activities {
-                await activity.end(nil, dismissalPolicy: .immediate)
-            }
-        }
-    }
-
-    private func synchronize(_ snapshot: NativeScheduleSnapshot) async -> TimeInterval? {
-        guard !Task.isCancelled, !isPreviewActive else { return nil }
-        guard ActivityAuthorizationInfo().areActivitiesEnabled else {
-            status = .unavailable("请在系统设置中允许“实时活动”。")
-            await endActivities()
-            return nil
-        }
-        guard snapshot.auth.authenticated else {
-            status = .unavailable("完成登录并加载课表后会自动显示。")
-            await endActivities()
-            return nil
-        }
-        if remoteStartsEnabled {
-            // Server owns starts. Never create a second local/scheduled activity
-            // while a remote start may be in flight.
-            let remainingWindows = remoteStartWindows()
-            for activity in Activity<ScheduleLiveActivityAttributes>.activities {
-                // School boundaries keep arriving after this student's last
-                // course. Keep only windows with courses still remaining.
-                var obsolete = !remainingWindows.contains {
-                    $0.dateKey == activity.attributes.dateKey && $0.window == activity.attributes.broadcastWindow
-                }
-                if #available(iOS 26.0, *) { obsolete = obsolete || activity.activityState == .pending }
-                if obsolete { await activity.end(nil, dismissalPolicy: .immediate) }
-            }
-            status = currentActivity == nil ? .waiting : .active
-            return 60
-        }
-        if #available(iOS 26.0, *), broadcastWindows.contains(where: { $0.channelID != nil }) {
-            return await synchronizeScheduled(snapshot)
-        }
-        let currentDate = now()
-        guard let occurrence = nextOccurrence(in: snapshot, at: currentDate) else {
-            status = .unavailable("今天和接下来没有可显示的课程。")
-            await endActivities()
-            return nil
-        }
-
-        // Keep the island quiet while the next class is still far away. The
-        // refresh loop stays alive so it can start automatically as the class
-        // enters the lead window.
-        if !occurrence.isInProgress,
-           occurrence.start.timeIntervalSince(currentDate) > leadTime {
-            status = .waiting
-            await endActivities()
-            return refreshDelay(for: occurrence)
-        }
-
-        let attributes = ScheduleLiveActivityAttributes(
-            semester: snapshot.data?.currentSemester ?? "",
-            dateKey: occurrence.dateKey,
-            week: occurrence.week
-        )
-        let state = contentState(for: occurrence, phase: occurrence.isInProgress ? .inProgress : .upcoming)
-        // The system should consider the activity stale as soon as this
-        // occurrence ends. The controller wakes at the same boundary and
-        // either advances to a nearby class or dismisses the activity.
-        let content = ActivityContent(state: state, staleDate: occurrence.end)
-        // ActivityKit's timestamp is an event ordering timestamp, NOT a
-        // scheduled execution date. In particular, calling end with a future
-        // timestamp ends the activity immediately. Only reconcile boundaries
-        // that have actually passed; foreground() also does this on resume.
-
-        if let activity = currentActivity,
-           activity.attributes == attributes {
-            await activity.update(content)
-            guard !Task.isCancelled else { return nil }
-            status = .active
-            scheduleBackgroundWakeup?(occurrence.end)
-            return refreshDelay(for: occurrence)
-        }
-        await endActivities()
-        // A newer snapshot, logout or preview may take over across the await.
-        guard !Task.isCancelled, isEnabled, !isPreviewActive else { return nil }
-        do {
-            _ = try Activity<ScheduleLiveActivityAttributes>.request(
-                attributes: attributes,
-                content: content,
-                pushType: nil
-            )
-            status = .active
-            scheduleBackgroundWakeup?(occurrence.end)
-            return refreshDelay(for: occurrence)
-        } catch {
-            status = .failed(error.localizedDescription)
-            // A background request or transient ActivityKit failure must not
-            // permanently stop automatic activities until another fetch.
-            return 30
-        }
-    }
-
-    /// Wake at the next meaningful boundary instead of polling on a fixed
-    /// cadence. This keeps a finished class from lingering on the lock screen
-    /// while still starting the activity as the next class enters the lead
-    /// window.
-    private func refreshDelay(for occurrence: Occurrence) -> TimeInterval {
-        let now = now()
-        if occurrence.isInProgress {
-            return max(1, min(15, occurrence.end.timeIntervalSince(now)))
-        }
-
-        let untilLeadWindow = occurrence.start.timeIntervalSince(now) - leadTime
-        if untilLeadWindow > 0 {
-            return max(5, min(60, untilLeadWindow))
-        }
-        return max(1, min(15, occurrence.start.timeIntervalSince(now)))
-    }
-
-    struct RemoteStartWindow: Codable, Equatable {
-        let dateKey: String
-        let window: String
-        let start: Int
-        let end: Int
-    }
-
-    /// One small record per day/block for the loaded semester, never course text.
-    func remoteStartWindows() -> [RemoteStartWindow] {
-        guard isEnabled, let snapshot = lastSnapshot, snapshot.auth.authenticated,
-              ActivityAuthorizationInfo().areActivitiesEnabled, !scheduleBlocks.isEmpty else { return [] }
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "Asia/Shanghai")!
-        let current = now()
-        let horizon = current.addingTimeInterval(370 * 86400)
-        // Pick the first remaining course of each block. Server identities are
-        // date/block, so reopening mid-session does not restart a sent activity.
-        let events = allOccurrences(in: snapshot)
-            .filter { $0.end > current && $0.start <= horizon }
-            .compactMap { occurrence -> (block: ScheduleBlock, occurrence: Occurrence)? in
-                guard let block = block(containing: occurrence.start, calendar: calendar) else { return nil }
-                return (block, occurrence)
-            }
-        let grouped = Dictionary(grouping: events) { $0.occurrence.dateKey + ":" + $0.block.id }
-        return grouped.values.compactMap { courses -> RemoteStartWindow? in
-            guard let block = courses.first?.block,
-                  let first = courses.map(\.occurrence).min(by: { $0.start < $1.start }) else { return nil }
-            // The end is the school block end, which is what the server validates
-            // the plan against and what the block channel will broadcast `end` at.
-            guard let end = date(first.dateKey, time: block.endClock, calendar: calendar), end > current,
-                  end.timeIntervalSince(first.start.addingTimeInterval(-leadTime)) < 8 * 3600 else { return nil }
-            return RemoteStartWindow(dateKey: first.dateKey, window: block.id,
-                                     start: Int(first.start.timeIntervalSince1970), end: Int(end.timeIntervalSince1970))
-        }.sorted { $0.start < $1.start }
-    }
-
-    private func block(containing date: Date, calendar: Calendar) -> ScheduleBlock? {
-        let parts = calendar.dateComponents([.hour, .minute], from: date)
-        let seconds = (parts.hour ?? 0) * 3600 + (parts.minute ?? 0) * 60
-        return scheduleBlocks.first { $0.startSeconds <= seconds && seconds < $0.endSeconds }
-    }
-
-    struct LocalReservation {
-        let attributes: ScheduleLiveActivityAttributes
-        let state: ScheduleLiveActivityAttributes.ContentState
-        let start: Date
-        let end: Date
-        let channelID: String
-    }
-
-    /// Each lesson has a local alert and shares its school's date channel.
-    /// A two-day horizon bounds reservations; ActivityKit can still reject them.
-    func localReservations(from snapshot: NativeScheduleSnapshot) -> [LocalReservation] {
-        guard isEnabled, snapshot.auth.authenticated else { return [] }
-        let current = now()
-        let events = allOccurrences(in: snapshot).filter { $0.end > current && $0.start < current.addingTimeInterval(2 * 86400) }
-        return events.compactMap { course in
-            guard let window = broadcastWindows.first(where: { $0.id == course.dateKey }),
-                  let channel = window.channelID, !channel.isEmpty else { return nil }
-            let reminder = course.start.addingTimeInterval(-leadTime)
-            let start = max(reminder, current.addingTimeInterval(1))
-            let attributes = ScheduleLiveActivityAttributes(
-                semester: snapshot.data?.currentSemester ?? "", dateKey: course.dateKey,
-                week: course.week, broadcastWindow: course.dateKey, broadcastChannel: channel,
-                reservationStart: course.start, reservationEnd: course.end, reminderDate: reminder
-            )
-            let state = contentState(for: course, phase: course.start <= current ? .inProgress : .upcoming)
-            return LocalReservation(attributes: attributes, state: state, start: start, end: course.end, channelID: channel)
-        }.sorted { $0.start < $1.start }
-    }
-
-    @available(iOS 26.0, *)
-    private func synchronizeScheduled(_ snapshot: NativeScheduleSnapshot) async -> TimeInterval? {
-        let reservations = localReservations(from: snapshot)
-        let desired = reservations.map(\.attributes)
-        for activity in Activity<ScheduleLiveActivityAttributes>.activities {
-            if !desired.contains(activity.attributes) {
-                await activity.end(nil, dismissalPolicy: .immediate)
-            }
-        }
-        guard !Task.isCancelled, isEnabled, !isPreviewActive else { return nil }
-        for reservation in reservations {
-            guard !Task.isCancelled, isEnabled, !isPreviewActive else { return nil }
-            guard reservation.end.timeIntervalSince(reservation.start) < 8 * 3600 else {
-                status = .failed("课程及提前提醒超过实时活动的 8 小时上限。")
-                return nil
-            }
-            let existing = Activity<ScheduleLiveActivityAttributes>.activities.first {
-                $0.attributes == reservation.attributes && $0.activityState != .ended && $0.activityState != .dismissed
-            }
-            if let existing {
-                // Course details are always resolved from the fresh App Group
-                // cache. Avoid recreating a pending reservation on every tick.
-                if existing.activityState == .active || existing.activityState == .stale {
-                    await existing.update(ActivityContent(state: reservation.state, staleDate: reservation.end))
-                }
-                continue
-            }
-            do {
-                _ = try Activity<ScheduleLiveActivityAttributes>.request(
-                    attributes: reservation.attributes,
-                    content: ActivityContent(state: reservation.state, staleDate: reservation.end),
-                    pushType: .channel(reservation.channelID), style: .standard,
-                    alertConfiguration: AlertConfiguration(title: "课程提醒", body: LocalizedStringResource(stringLiteral: reservation.state.courseName), sound: .default),
-                    start: reservation.start
-                )
-            } catch {
-                status = .failed(error.localizedDescription)
-                return 30
-            }
-        }
-        status = currentActivity == nil ? .waiting : .active
-        return 60
-    }
-
-    private func endActivities() async {
-        for activity in Activity<ScheduleLiveActivityAttributes>.activities {
-            await activity.end(nil, dismissalPolicy: .immediate)
-        }
-    }
-
-    func reconcileInBackground() async {
-        let current = now()
-        for activity in Activity<ScheduleLiveActivityAttributes>.activities {
-            if (activity.content.staleDate ?? activity.content.state.endDate) <= current {
-                await activity.end(nil, dismissalPolicy: .immediate)
-            }
-        }
-    }
-
-    private func contentState(
-        for occurrence: Occurrence,
-        phase: ScheduleLiveActivityAttributes.ContentState.Phase
-    ) -> ScheduleLiveActivityAttributes.ContentState {
-        ScheduleLiveActivityAttributes.ContentState(
-            phase: phase,
-            courseName: occurrence.name,
-            teacher: occurrence.teacher,
-            location: occurrence.location,
-            periodLabel: occurrence.periodLabel,
-            dateLabel: occurrence.dateLabel,
-            weekRangeLabel: occurrence.weekRangeLabel,
-            startDate: occurrence.start,
-            endDate: occurrence.end,
-            nextCourseName: occurrence.next?.name,
-            nextCoursePeriod: occurrence.next?.periodLabel,
-            nextCourseDateLabel: occurrence.next?.dateLabel,
-            nextCourseWeekRangeLabel: occurrence.next?.weekRangeLabel,
-            nextCourseTeacher: occurrence.next?.teacher,
-            nextCourseLocation: occurrence.next?.location,
-            nextCourseStart: occurrence.next?.start,
-            nextCourseEnd: occurrence.next?.end,
-            adjustmentNote: occurrence.adjustmentNote.trimmedNonEmpty,
-            updatedAt: phase == .inProgress ? occurrence.start : now()
-        )
-    }
-
-    private func saveBroadcastCourses(from snapshot: NativeScheduleSnapshot) {
-        let records = (snapshot.auth.authenticated ? allOccurrences(in: snapshot) : []).filter { $0.end > now() && $0.start <= now().addingTimeInterval(370 * 86400) }.compactMap { occurrence -> ScheduleLiveActivityAttributes.LocalCourse? in
-            let period = occurrence.periodLabel.split(whereSeparator: { !$0.isNumber }).compactMap { Int($0) }.first ?? 0
-            guard period > 0 else { return nil }
-            return ScheduleLiveActivityAttributes.LocalCourse(
-                dateKey: occurrence.dateKey,
-                period: period,
-                name: occurrence.name,
-                teacher: occurrence.teacher,
-                location: occurrence.location,
-                periodLabel: occurrence.periodLabel,
-                startDate: occurrence.start,
-                endDate: occurrence.end,
-                weekRangeLabel: occurrence.weekRangeLabel,
-                adjustmentNote: occurrence.adjustmentNote.trimmedNonEmpty
-            )
-        }
-        guard let data = try? JSONEncoder().encode(Array(records)) else { return }
-        UserDefaults(suiteName: NextWidgetConfiguration.appGroup)?.set(data, forKey: ScheduleLiveActivityAttributes.broadcastCoursesKey)
-    }
-
-    private struct Occurrence {
-        struct NextCourse {
-            let name: String
-            let teacher: String
-            let location: String
-            let start: Date
-            let end: Date
-            let periodLabel: String
-            let dateLabel: String
-            let weekRangeLabel: String
-        }
-
-        let name: String
-        let teacher: String
-        let location: String
-        let periodLabel: String
-        let dateLabel: String
-        let start: Date
-        let end: Date
-        let dateKey: String
-        let week: Int
-        let isInProgress: Bool
-        let next: NextCourse?
-        let weekRangeLabel: String
-        /// 这一天的调休说明。补课那天要说清楚上的是哪天的课，否则锁屏上是
-        /// 一节看起来不该存在的课。
-        let adjustmentNote: String
-    }
-
-    /// 调休：放假那天没有课要提醒，补课那天提醒的是来源日的课，来源日照常上课。
-    /// 返回 nil 表示这天一节课都没有。
-    ///
-    /// 和 `NativeScheduleView.blocks(for:week:result:)` 的规则保持一致，否则
-    /// 网格里和锁屏上会是两张课表。
     private static func resolvedDay(
         date: String,
         day: Int,
@@ -647,150 +662,6 @@ final class NativeLiveActivityController: ObservableObject {
         return labels.indices.contains(index) ? labels[index] : ""
     }
 
-    private func allOccurrences(in snapshot: NativeScheduleSnapshot) -> [Occurrence] {
-        guard let data = snapshot.data, let calendar = snapshot.calendar else { return [] }
-        var dateCalendar = Calendar(identifier: .gregorian)
-        dateCalendar.timeZone = TimeZone(identifier: "Asia/Shanghai")!
-        let periods = snapshot.periods.isEmpty ? NativeSchedulePeriod.bundledTimetable : snapshot.periods
-        let periodByNumber = Dictionary(uniqueKeysWithValues: periods.map { ($0.number, $0) })
-        return calendar.weeks.flatMap { week -> [Occurrence] in
-            week.days.enumerated().flatMap { dayIndex, day -> [Occurrence] in
-                guard let resolved = Self.resolvedDay(
-                    date: day, day: dayIndex + 1, week: week.week, calendar: calendar) else { return [] }
-                return data.cells.filter { $0.day == resolved.day }.flatMap { cell in
-                    cell.courses.compactMap { course -> Occurrence? in
-                        guard course.weekList.isEmpty || course.weekList.contains(resolved.week) else { return nil }
-                        let range = NativeSchedulePeriod.normalizedRange(bigSlot: cell.bigSlot, startSlot: course.startSlot, endSlot: course.endSlot, periods: periods)
-                        guard let startPeriod = periodByNumber[range.start], let endPeriod = periodByNumber[range.end],
-                              let start = date(day, time: startPeriod.startTime, calendar: dateCalendar),
-                              let end = date(day, time: endPeriod.endTime, calendar: dateCalendar), end > start else { return nil }
-                        return Occurrence(
-                            name: course.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "课程" : course.name,
-                            teacher: course.teacher?.trimmedNonEmpty ?? "", location: course.location?.trimmedNonEmpty ?? "",
-                            periodLabel: Self.periodLabel(start: range.start, end: range.end), dateLabel: Self.dateLabel(day: day, week: week.week),
-                            start: start, end: end, dateKey: day, week: week.week, isInProgress: false, next: nil,
-                            weekRangeLabel: course.weeks.trimmedNonEmpty ?? "", adjustmentNote: resolved.note)
-                    }
-                }
-            }
-        }.sorted { ($0.start, $0.end, $0.name) < ($1.start, $1.end, $1.name) }
-    }
-
-    private func nextOccurrence(in snapshot: NativeScheduleSnapshot, at now: Date) -> Occurrence? {
-        guard let data = snapshot.data, let calendar = snapshot.calendar else { return nil }
-        var dateCalendar = Calendar(identifier: .gregorian)
-        dateCalendar.timeZone = TimeZone(identifier: "Asia/Shanghai")!
-        let periods = snapshot.periods.isEmpty ? NativeSchedulePeriod.bundledTimetable : snapshot.periods
-        let periodByNumber = Dictionary(uniqueKeysWithValues: periods.map { ($0.number, $0) })
-        // The timetable payload can contain the whole semester while the
-        // visible grid is only one week. Build occurrences for every dated
-        // week so a no-class day still gets the next scheduled course.
-        let events = calendar.weeks.flatMap { week -> [Occurrence] in
-            week.days.enumerated().flatMap { dayIndex, day -> [Occurrence] in
-                guard let resolved = Self.resolvedDay(
-                    date: day, day: dayIndex + 1, week: week.week, calendar: calendar) else { return [] }
-                return data.cells
-                    .filter { $0.day == resolved.day }
-                    .flatMap { cell in
-                        cell.courses.compactMap { course -> Occurrence? in
-                            guard course.weekList.isEmpty || course.weekList.contains(resolved.week) else { return nil }
-                            let range = NativeSchedulePeriod.normalizedRange(
-                                bigSlot: cell.bigSlot,
-                                startSlot: course.startSlot,
-                                endSlot: course.endSlot,
-                                periods: periods
-                            )
-                            guard let startPeriod = periodByNumber[range.start],
-                                  let endPeriod = periodByNumber[range.end] else {
-                                return nil
-                            }
-                            guard let start = date(day, time: startPeriod.startTime, calendar: dateCalendar),
-                                  let end = date(day, time: endPeriod.endTime, calendar: dateCalendar),
-                                  end > start else {
-                                return nil
-                            }
-                            return Occurrence(
-                                name: course.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "课程" : course.name,
-                                teacher: course.teacher?.trimmedNonEmpty ?? "",
-                                location: course.location?.trimmedNonEmpty ?? "",
-                                periodLabel: Self.periodLabel(start: range.start, end: range.end),
-                                dateLabel: Self.dateLabel(day: day, week: week.week),
-                                start: start,
-                                end: end,
-                                dateKey: day,
-                                week: week.week,
-                                isInProgress: false,
-                                next: nil,
-                                weekRangeLabel: course.weeks.trimmedNonEmpty ?? "",
-                                adjustmentNote: resolved.note
-                            )
-                        }
-                    }
-            }
-        }
-        .filter { $0.end > now }
-        .sorted { $0.start < $1.start }
-        guard !events.isEmpty else { return nil }
-
-        if let index = events.firstIndex(where: { $0.start <= now && now < $0.end }) {
-            let current = events[index]
-            return Occurrence(
-                name: current.name,
-                teacher: current.teacher,
-                location: current.location,
-                periodLabel: current.periodLabel,
-                dateLabel: current.dateLabel,
-                start: current.start,
-                end: current.end,
-                dateKey: current.dateKey,
-                week: current.week,
-                isInProgress: true,
-                next: events.dropFirst(index + 1).first.map {
-                    Occurrence.NextCourse(
-                        name: $0.name,
-                        teacher: $0.teacher,
-                        location: $0.location,
-                        start: $0.start,
-                        end: $0.end,
-                        periodLabel: $0.periodLabel,
-                        dateLabel: $0.dateLabel,
-                        weekRangeLabel: $0.weekRangeLabel
-                    )
-                },
-                weekRangeLabel: current.weekRangeLabel,
-                adjustmentNote: current.adjustmentNote
-            )
-        }
-        let upcoming = events[0]
-        let next = events.dropFirst().first.map {
-            Occurrence.NextCourse(
-                name: $0.name,
-                teacher: $0.teacher,
-                location: $0.location,
-                start: $0.start,
-                end: $0.end,
-                periodLabel: $0.periodLabel,
-                dateLabel: $0.dateLabel,
-                weekRangeLabel: $0.weekRangeLabel
-            )
-        }
-        return Occurrence(
-            name: upcoming.name,
-            teacher: upcoming.teacher,
-            location: upcoming.location,
-            periodLabel: upcoming.periodLabel,
-            dateLabel: upcoming.dateLabel,
-            start: upcoming.start,
-            end: upcoming.end,
-            dateKey: upcoming.dateKey,
-            week: upcoming.week,
-            isInProgress: false,
-            next: next,
-            weekRangeLabel: upcoming.weekRangeLabel,
-            adjustmentNote: upcoming.adjustmentNote
-        )
-    }
-
     private static func periodLabel(start: Int, end: Int) -> String {
         start == end ? "第 " + String(start) + " 节" : "第 " + String(start) + "-" + String(end) + " 节"
     }
@@ -810,7 +681,7 @@ final class NativeLiveActivityController: ObservableObject {
 
     private func date(_ day: String, time: String, calendar: Calendar) -> Date? {
         let parts = time.split(separator: ":").compactMap { Int($0) }
-        guard parts.count >= 2 else { return nil }
+        guard parts.count == 2, (0...23).contains(parts[0]), (0...59).contains(parts[1]) else { return nil }
         let dateParts = day.split(separator: "-").compactMap { Int($0) }
         guard dateParts.count == 3 else { return nil }
         var components = DateComponents()

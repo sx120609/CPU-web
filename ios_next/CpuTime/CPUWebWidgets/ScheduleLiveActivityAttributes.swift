@@ -6,7 +6,38 @@ import Foundation
 public struct ScheduleLiveActivityAttributes: ActivityAttributes, Equatable {
     public static let broadcastCoursesKey = "cpu.liveActivity.broadcastCourses"
 
+    public enum TimingMode: String, Codable { case whole, segmented }
+    public struct Segment: Codable, Hashable {
+        public let period: Int
+        public let startAt: Date
+        public let endAt: Date
+    }
+    public struct Timeline: Equatable {
+        public enum Phase { case upcoming, inClass, intermission, finished }
+        public let phase: Phase
+        public let index: Int
+        public let start: Date
+        public let target: Date
+        public let finalEnd: Date
+    }
+    public static func resolveTimeline(_ segments: [Segment], mode: TimingMode, now: Date) -> Timeline? {
+        guard let first = segments.first, let last = segments.last else { return nil }
+        if now >= last.endAt { return Timeline(phase: .finished, index: segments.count - 1, start: last.endAt, target: last.endAt, finalEnd: last.endAt) }
+        if now < first.startAt { return Timeline(phase: .upcoming, index: 0, start: now, target: first.startAt, finalEnd: last.endAt) }
+        guard let index = segments.firstIndex(where: { now < $0.endAt }) else { return nil }
+        let segment = segments[index]
+        let inBreak = now < segment.startAt
+        return Timeline(phase: mode == .segmented && inBreak ? .intermission : .inClass, index: index,
+            start: mode == .whole ? first.startAt : inBreak ? segments[index - 1].endAt : segment.startAt,
+            target: mode == .whole ? last.endAt : inBreak ? segment.startAt : segment.endAt, finalEnd: last.endAt)
+    }
+
     public struct LocalCourse: Codable, Hashable {
+        public var occurrenceId: String?
+        public var accountScope: String?
+        public var segments: [Segment]?
+        public var mode: TimingMode?
+        public var contentVersion: String?
         public let dateKey: String
         public let period: Int
         public let name: String
@@ -40,8 +71,15 @@ public struct ScheduleLiveActivityAttributes: ActivityAttributes, Equatable {
             case idle
             case upcoming
             case inProgress
+            case intermission
         }
 
+        // Missing only when enumerating retired activities for cleanup. New content always encodes 2.
+        public let protocolVersion: Int?
+        public var scheduleId: String?
+        public var scheduleVersion: String?
+        public var eventType: String?
+        public var eventTime: Date?
         public let phase: Phase
         public let courseName: String
         public let teacher: String
@@ -102,6 +140,7 @@ public struct ScheduleLiveActivityAttributes: ActivityAttributes, Equatable {
             broadcastPhase: String? = nil,
             broadcastTimestamp: Date? = nil
         ) {
+            self.protocolVersion = 2
             self.phase = phase
             self.courseName = courseName
             self.teacher = teacher
@@ -137,42 +176,33 @@ public struct ScheduleLiveActivityAttributes: ActivityAttributes, Equatable {
         /// Rehydrate a broadcast boundary with this user's private local
         /// timetable. Broadcast payloads intentionally carry no course text.
         public func resolvedForBroadcast(attributes: ScheduleLiveActivityAttributes? = nil, now: Date = .now, cachedCourses: [ScheduleLiveActivityAttributes.LocalCourse]? = nil) -> Self {
-            guard broadcastDateKey != nil || attributes?.broadcastWindow != nil else { return self }
-            let dateKey = attributes?.dateKey ?? broadcastDateKey ?? ""
+            guard let attributes, attributes.semester != "__preview__" else { return self }
             let group = ((Bundle.main.object(forInfoDictionaryKey: "CPUAppGroupIdentifier") as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 } ?? "group.cn.cputime.mobile"
-            let courses = cachedCourses ?? UserDefaults(suiteName: group)?.data(forKey: ScheduleLiveActivityAttributes.broadcastCoursesKey)
-                .flatMap { try? JSONDecoder().decode([ScheduleLiveActivityAttributes.LocalCourse].self, from: $0) } ?? []
-            // iOS 26 reserves one activity per lesson, tagged with the date key
-            // itself. The broadcast path reserves one per school block and carries
-            // that block's end in reservationEnd. Neither needs an hour boundary.
-            let window = attributes?.broadcastWindow
-            let sameDay = courses.filter {
-                guard $0.dateKey == dateKey, $0.endDate > now else { return false }
-                if window != nil, window == dateKey { return attributes?.reservationStart == $0.startDate }
-                guard let blockStart = attributes?.reservationStart,
-                      let blockEnd = attributes?.reservationEnd else { return true }
-                return $0.startDate >= blockStart && $0.startDate < blockEnd
-            }.sorted { $0.startDate < $1.startDate }
-            // Use actual time, not the period's first slot: a multi-slot course
-            // remains in progress through its intermediate school boundaries.
-            guard let course = sameDay.first(where: { $0.startDate <= now }) ?? sameDay.first else {
-                return Self(phase: .idle, courseName: "本时段课程已结束", startDate: now, endDate: now, updatedAt: now)
+            let defaults = UserDefaults(suiteName: group)
+            let courses = cachedCourses ?? defaults?.data(forKey: ScheduleLiveActivityAttributes.broadcastCoursesKey)
+                .flatMap { try? JSONDecoder().decode([LocalCourse].self, from: $0) } ?? []
+            let finalEnd = attributes.reservationEnd ?? now
+            guard let identity = attributes.occurrenceId, let account = attributes.accountScope,
+                  (cachedCourses != nil || defaults?.string(forKey: "cpu.liveActivity.account") == account),
+                  let course = courses.first(where: { $0.occurrenceId == identity && $0.accountScope == account }),
+                  let segments = course.segments,
+                  let timeline = ScheduleLiveActivityAttributes.resolveTimeline(segments, mode: course.mode ?? .whole, now: now) else {
+                return Self(phase: .idle, courseName: now >= finalEnd ? "课程已结束" : "课程信息暂不可用", startDate: now, endDate: finalEnd, updatedAt: now)
             }
-            let next = sameDay.first { $0.startDate > course.startDate }
-            return Self(
-                phase: course.startDate <= now ? .inProgress : .upcoming,
-                courseName: course.name, teacher: course.teacher, location: course.location,
-                periodLabel: course.periodLabel, dateLabel: dateKey, weekRangeLabel: course.weekRangeLabel,
-                startDate: course.startDate, endDate: course.endDate,
-                nextCourseName: next?.name, nextCoursePeriod: next?.periodLabel,
-                nextCourseDateLabel: next?.dateKey, nextCourseWeekRangeLabel: next?.weekRangeLabel,
-                nextCourseTeacher: next?.teacher, nextCourseLocation: next?.location,
-                nextCourseStart: next?.startDate, nextCourseEnd: next?.endDate,
-                adjustmentNote: course.adjustmentNote, updatedAt: now
-            )
+            if timeline.phase == .finished { return Self(phase: .idle, courseName: "课程已结束", startDate: finalEnd, endDate: finalEnd, updatedAt: now) }
+            let phase: Phase = timeline.phase == .upcoming ? .upcoming : timeline.phase == .intermission ? .intermission : .inProgress
+            return Self(phase: phase, courseName: course.name, teacher: course.teacher, location: course.location,
+                periodLabel: course.periodLabel, dateLabel: attributes.dateKey, weekRangeLabel: course.weekRangeLabel,
+                startDate: phase == .inProgress ? timeline.start : timeline.target, endDate: timeline.target,
+                adjustmentNote: course.adjustmentNote, updatedAt: now)
+
         }
     }
 
+    public var occurrenceId: String?
+    public var accountScope: String?
+    public var scheduleId: String?
+    public var scheduleVersion: String?
     public let semester: String
     public let dateKey: String
     public let week: Int

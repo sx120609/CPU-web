@@ -1,5 +1,5 @@
-import { scheduleBlocks } from "./liveActivityBlocks";
-import { getSchedulePeriods } from "./scheduleTermConfig";
+import { currentTiming, endChannelKey } from "./liveActivitySchedule";
+import { prisma } from "../prisma";
 import { createLiveActivityChannel, deleteLiveActivityChannel } from "./apnsClient";
 import { getApnsConfig, withApnsConfigLock } from "./apnsConfig";
 
@@ -14,32 +14,9 @@ export function schoolDate(now = Date.now()) {
   return new Date(now + 8 * 3600_000).toISOString().slice(0, 10);
 }
 
-export function dayChannelDates(now = Date.now()) {
-  return [schoolDate(now), schoolDate(now + 86400_000)];
-}
-
-// Channel identity describes an audience, never a calendar date. Dates remain
-// in event IDs/payloads. Block channels isolate end signals; day only gets ticks.
 export async function requiredChannelSuffixes(_now = Date.now()) {
-  const blocks = scheduleBlocks(await getSchedulePeriods());
-  return ["cpu-day", ...blocks.map(block => `cpu-block:${block.id}`)];
-}
-
-export function channelKey(environment: string, kind: "day" | "block", blockID?: string) {
-  return `${environment}:cpu-${kind}${kind === "block" ? `:${blockID}` : ""}`;
-}
-
-// Dated IDs stay usable during migration, including already scheduled iOS 26 activities.
-export function channelForDate(channels: Record<string, string>, environment: string,
-  kind: "day" | "block", date: string, blockID?: string) {
-  return channels[channelKey(environment, kind, blockID)]
-    || channels[`${environment}:cpu-${kind}:${date}${kind === "block" ? `:${blockID}` : ""}`];
-}
-
-export function broadcastChannelIDs(channels: Record<string, string>, environment: string, windowID: string) {
-  const [kind, , blockID] = windowID.split(":");
-  return [...new Set([channels[channelKey(environment, kind as "day" | "block", blockID)],
-    channels[`${environment}:cpu-${windowID}`]].filter((id): id is string => Boolean(id)))];
+  const timing = await currentTiming();
+  return timing.periods.map(p => endChannelKey("production", timing.id, p.id).slice("production:".length));
 }
 
 type ChannelError = { environment: string; message: string };
@@ -51,10 +28,15 @@ async function provisionChannels(db: Parameters<Parameters<typeof withApnsConfig
   const previousChannels = JSON.stringify(config.channels);
   if (prune) {
     const oldest = schoolDate(now - 86400_000);
+    const current = await currentTiming();
+    const expired = await prisma.liveActivityScheduleVersion.findMany({ where: { id: { not: current.id }, broadcastUntil: { lt: new Date(now - 60000) } } });
+    const expiredIds = new Set(expired.map(v => v.id));
     for (const [key, channel] of Object.entries(config.channels)) {
       const dated = DATED_CHANNEL.exec(key);
       const legacy = LEGACY_CHANNEL.exec(key);
-      const match = legacy ?? (dated && dated[2] < oldest ? dated : null);
+      const versioned = /^(production|sandbox):main-campus:([a-f0-9]+):end-period-\d+$/.exec(key);
+      const retired = /^(production|sandbox):cpu-(?:day|block(?::\d+)?)$/.exec(key);
+      const match = legacy ?? retired ?? (dated && dated[2] < oldest ? dated : null) ?? (versioned && expiredIds.has(versioned[2]) ? versioned : null);
       if (!match) continue;
       try {
         await deleteLiveActivityChannel(config, match[1] as "production" | "sandbox", channel);

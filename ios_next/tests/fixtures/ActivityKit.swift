@@ -46,6 +46,7 @@ public enum PushType {
 public enum TestActivityKit {
     public static var activitiesEnabled = true
     public static var failNextRequest = false
+    public static var maximumActivities = Int.max
     public static var events: [String] = []
     fileprivate static var activities: [AnyObject] = []
 }
@@ -81,6 +82,9 @@ public final class Activity<Attributes: ActivityAttributes> {
         content: ActivityContent<Attributes.ContentState>,
         pushType: PushType?
     ) throws -> Activity<Attributes> {
+        if activities.filter({ $0.activityState != .ended && $0.activityState != .dismissed }).count >= TestActivityKit.maximumActivities {
+            throw NSError(domain: "ActivityKit.capacity", code: 1)
+        }
         if TestActivityKit.failNextRequest {
             TestActivityKit.failNextRequest = false
             throw NSError(domain: "ActivityKit", code: 1)
@@ -106,6 +110,8 @@ public final class Activity<Attributes: ActivityAttributes> {
         activity.scheduledAlert = alertConfiguration
         return activity
     }
+
+    public func testSetState(_ state: ActivityState) { activityState = state }
 
     public func update(_ content: ActivityContent<Attributes.ContentState>) async {
         self.content = content

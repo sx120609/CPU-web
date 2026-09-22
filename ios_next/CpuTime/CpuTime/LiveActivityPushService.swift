@@ -2,8 +2,6 @@ import ActivityKit
 import Combine
 import Foundation
 
-/// Uploads only the push-to-start credential and semester window times.
-/// All updates use school channels; course details stay in the App Group.
 @available(iOS 17.2, *)
 @MainActor
 final class LiveActivityPushService: ObservableObject {
@@ -19,179 +17,181 @@ final class LiveActivityPushService: ObservableObject {
     private var startTask: Task<Void, Never>?
     private var syncTask: Task<Void, Never>?
     private var generation = 0
-    private var revision = 0
+    private var dirty = false
+    private var configurationRevision = 0
     private var token: String?
-    private var lastDigest: Data?
     private let defaults = UserDefaults.standard
-    private static let revokeKey = "cpu.liveActivity.remote.revoke"
-    private static let pendingRevokeKey = "cpu.liveActivity.remote.pendingRevokes"
-
-    func setAPIRequest(_ request: @escaping (String, String, [String: Any]?) async throws -> Data) {
-        apiRequest = request
+    private var account: String? { NativeLiveActivityController.shared.currentScheduleMetadata?.auth.account }
+    private var installationId: String {
+        if let value = defaults.string(forKey: "cpu.liveActivity.installation.v2") { return value }
+        let value = UUID().uuidString
+        defaults.set(value, forKey: "cpu.liveActivity.installation.v2")
+        return value
     }
-
+    private func key(_ kind: String, _ account: String) -> String { "cpu.liveActivity.v2.\(installationId).\(account).\(kind)" }
+    func setAPIRequest(_ request: @escaping (String, String, [String: Any]?) async throws -> Data) { apiRequest = request }
     func activate() {
         let controller = NativeLiveActivityController.shared
         controller.resetPushService = { [weak self] in self?.resetForLogout() }
         controller.planDidChange = { [weak self] in self?.scheduleSync() }
-        guard controller.isEnabled else { flushRevocations(); return }
+        controller.recoverRemote = { [weak self] id in try await self?.recover(id) }
+        guard controller.isEnabled else { scheduleSync(); return }
         if localScheduling {
             controller.remoteStartsEnabled = false
-            startTask?.cancel()
-            startTask = nil
-            queueRevocation()
-            scheduleSync()
-            return
-        }
-        guard #available(iOS 18.0, *) else {
-            controller.broadcastStatus = "此系统版本仅支持前台本地实时活动；远程启动与广播需要 iOS 18。"
-            return
-        }
-        controller.remoteStartsEnabled = true
-        guard apiRequest != nil else { return }
-        if let data = Activity<ScheduleLiveActivityAttributes>.pushToStartToken {
-            token = data.map { String(format: "%02x", $0) }.joined()
-        }
-        if startTask == nil {
-            startTask = Task { [weak self] in
-                for await data in Activity<ScheduleLiveActivityAttributes>.pushToStartTokenUpdates {
-                    guard let self, !Task.isCancelled else { return }
-                    let next = data.map { String(format: "%02x", $0) }.joined()
-                    token = next
-                    lastDigest = nil
-                    scheduleSync()
+            startTask?.cancel(); startTask = nil
+            if let account { controller.localHandoffComplete = defaults.bool(forKey: key("handoffComplete", account)) }
+        } else if #available(iOS 18.0, *) {
+            controller.remoteStartsEnabled = true
+            if let data = Activity<ScheduleLiveActivityAttributes>.pushToStartToken { token = data.map { String(format: "%02x", $0) }.joined() }
+            if startTask == nil {
+                startTask = Task { [weak self] in
+                    for await data in Activity<ScheduleLiveActivityAttributes>.pushToStartTokenUpdates {
+                        guard let self, !Task.isCancelled else { return }
+                        token = data.map { String(format: "%02x", $0) }.joined(); scheduleSync()
+                    }
                 }
             }
         }
         scheduleSync()
     }
-
+    private func deviceBody(_ account: String) -> [String: Any] {
+        ["installationId": installationId, "accountScope": account, "environment": Self.environment,
+         "bundleID": Bundle.main.bundleIdentifier ?? "cn.cputime.mobile"]
+    }
     private func scheduleSync() {
-        revision += 1
+        dirty = true
+        configurationRevision += 1
         guard syncTask == nil, let request = apiRequest else { return }
         let epoch = generation
         syncTask = Task { [weak self] in
             guard let self else { return }
-            defer {
-                syncTask = nil
-                if epoch != generation { scheduleSync() }
-            }
-            var failures = 0
-            while !Task.isCancelled, epoch == generation {
-                let version = revision
+            defer { syncTask = nil; if dirty || epoch != generation { scheduleSync() } }
+            var attempts = 0
+            while dirty, epoch == generation, !Task.isCancelled {
+                dirty = false
                 do {
-                    try await flushRevocations(using: request)
+                    try await flushRevocations(request)
                     let controller = NativeLiveActivityController.shared
+                    guard controller.isEnabled, let account,
+                          let snapshot = controller.currentScheduleMetadata, snapshot.auth.authenticated else { return }
+                    lastAccount = account
                     if localScheduling {
-                        guard controller.isEnabled else { return }
-                        let bundle = Bundle.main.bundleIdentifier ?? "cn.cputime.mobile"
-                        let path = "/api/live-activities/broadcast-config?mode=day&environment=\(Self.environment)&bundleID=\(bundle)"
-                        let result = try Self.decode(try await request(path, "GET", nil))
-                        guard epoch == generation, !Task.isCancelled, controller.isEnabled else { return }
-                        let encoded = try JSONSerialization.data(withJSONObject: result["windows"] ?? [])
-                        let windows = try JSONDecoder().decode([NativeLiveActivityController.BroadcastWindow].self, from: encoded)
-                        controller.broadcastWindows = windows
-                        controller.broadcastStatus = windows.contains(where: { $0.channelID != nil })
-                            ? "学校日期频道已连接，课程提醒在本机预约。"
-                            : "学校日期频道尚未就绪，请稍后重试。"
-                        if version == revision { return }
-                        continue
+                        controller.localHandoffComplete = defaults.bool(forKey: key("handoffComplete", account))
+                        controller.installHandoffRecords(defaults.array(forKey: key("handoffRecords", account)) as? [[String: Any]] ?? [])
                     }
-                    guard controller.isEnabled, controller.remoteStartsEnabled else { return }
-                    guard let token else {
-                        controller.broadcastStatus = "等待系统提供远程启动凭据，请保持联网。"
-                        return
+                    let stillValid = { epoch == self.generation && self.account == account && controller.isEnabled && !Task.isCancelled }
+                    if localScheduling && !defaults.bool(forKey: key("handoffComplete", account)) {
+                        let handoffId = defaults.string(forKey: key("handoffId", account)) ?? UUID().uuidString
+                        defaults.set(handoffId, forKey: key("handoffId", account))
+                        controller.broadcastStatus = "等待完成启动方式切换"
+                        var body = deviceBody(account); body["handoffId"] = handoffId
+                        let result = try Self.decode(try await request("/api/live-activities/local-handoff", "POST", body))
+                        if let revoke = result["revoke"] as? String {
+                            if !stillValid() { queueRevoke(revoke); return }
+                            defaults.set(revoke, forKey: key("revoke", account))
+                        }
+                        guard stillValid() else { return }
+                        defaults.set(true, forKey: key("handoffComplete", account))
+                        defaults.set(result["records"] as? [[String: Any]] ?? [], forKey: key("handoffRecords", account))
+                        controller.installHandoffRecords(result["records"] as? [[String: Any]] ?? [])
+                        controller.localHandoffComplete = true
                     }
-                    guard let snapshot = controller.currentScheduleMetadata,
-                          snapshot.auth.authenticated, snapshot.data != nil, snapshot.calendar != nil else { return }
-                    // Block boundaries come from the school period table, never
-                    // from hardcoded hours, so a period edit reshapes the plan.
+                    // Cached mappings remain usable offline; fetching never extends
+                    // their lease unless the server actually issues a new mapping.
                     let bundle = Bundle.main.bundleIdentifier ?? "cn.cputime.mobile"
-                    let blockPath = "/api/live-activities/broadcast-config?environment=\(Self.environment)&bundleID=\(bundle)"
-                    let blockResult = try Self.decode(try await request(blockPath, "GET", nil))
-                    guard epoch == generation, !Task.isCancelled, controller.isEnabled, controller.remoteStartsEnabled else { return }
-                    let blockData = try JSONSerialization.data(withJSONObject: blockResult["windows"] ?? [])
-                    let blocks = try JSONDecoder().decode([NativeLiveActivityController.ScheduleBlock].self, from: blockData)
-                    guard !blocks.isEmpty else {
-                        controller.broadcastStatus = "学校节次尚未配置，无法安排远程启动。"
+                    let data = try await request("/api/live-activities/broadcast-config?mode=local&environment=\(Self.environment)&bundleID=\(bundle)", "GET", nil)
+                    let result = try Self.decode(data)
+                    let config = try JSONDecoder().decode(NativeLiveActivityController.TimingConfig.self, from: JSONSerialization.data(withJSONObject: result))
+                    guard stillValid() else { return }
+                    if controller.timing != config { controller.installTiming(config) }
+                    if localScheduling {
+                        controller.localHandoffComplete = true
+                        controller.broadcastStatus = "每次打开 App 滚动安排未来 7 天，结束由学校节次频道处理。"
+                        // installTiming triggers planDidChange; it needs no second fetch.
+                        dirty = false
                         return
                     }
-                    controller.scheduleBlocks = blocks
+                    guard controller.remoteStartsEnabled, let token else { controller.broadcastStatus = "等待系统提供远程启动凭据"; return }
                     let items = controller.remoteStartWindows()
-                    let encoded = try JSONEncoder().encode(items)
-                    let lead = controller.leadMinutes
-                    var digest = encoded
-                    digest.append(Data("\(lead):\(token)".utf8))
-                    if digest != lastDigest {
-                        var body: [String: Any] = [
-                            "token": token, "environment": Self.environment,
-                            "bundleID": Bundle.main.bundleIdentifier ?? "cn.cputime.mobile",
-                            "leadMinutes": lead, "items": try JSONSerialization.jsonObject(with: encoded),
-                        ]
-                        if let replaces = defaults.string(forKey: Self.revokeKey) { body["replaces"] = replaces }
+                    let dates = controller.currentScheduleMetadata?.calendar?.weeks.flatMap(\.days).sorted() ?? []
+                    guard let first = dates.first, let last = dates.last else { return }
+                    let dateFormatter = DateFormatter(); dateFormatter.dateFormat = "yyyy-MM-dd"; dateFormatter.timeZone = TimeZone(identifier: config.timezone)
+                    guard let lastDate = dateFormatter.date(from: last) else { return }
+                    var body = deviceBody(account)
+                    body.merge(["protocolVersion": 2, "scheduleId": config.scheduleId, "scheduleVersion": config.scheduleVersion,
+                        "coverageStart": first, "coverageEndExclusive": dateFormatter.string(from: lastDate.addingTimeInterval(86400)),
+                        "leadMinutes": controller.leadMinutes, "token": token,
+                        "busyIntervals": try JSONSerialization.jsonObject(with: JSONEncoder().encode(controller.busyIntervals)),
+                        "items": try JSONSerialization.jsonObject(with: JSONEncoder().encode(items))]) { _, b in b }
+                    let sentRevision = configurationRevision
+                    let digest = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
+                    if defaults.data(forKey: key("acceptedDigest", account)) != digest {
+                        let pendingDigest = defaults.data(forKey: key("pendingDigest", account))
+                        var planRevision = defaults.integer(forKey: key("revision", account))
+                        if pendingDigest != digest {
+                            let state = try Self.decode(try await request("/api/live-activities/device-state", "POST", deviceBody(account)))
+                            guard stillValid() else { return }
+                            if configurationRevision != sentRevision { dirty = true; continue }
+                            planRevision = max(planRevision, state["planRevision"] as? Int ?? 0) + 1; defaults.set(planRevision, forKey: key("revision", account)); defaults.set(digest, forKey: key("pendingDigest", account)) }
+                        body["planRevision"] = planRevision
                         let result = try Self.decode(try await request("/api/live-activities/remote-start", "PUT", body))
                         if let revoke = result["revoke"] as? String {
-                            if epoch != generation || Task.isCancelled {
-                                appendPendingRevoke(revoke)
-                                flushRevocations()
-                                return
-                            }
-                            defaults.set(revoke, forKey: Self.revokeKey)
+                            if !stillValid() { queueRevoke(revoke); return }
+                            defaults.set(revoke, forKey: key("revoke", account))
                         }
-                        guard epoch == generation, !Task.isCancelled else { return }
-                        lastDigest = digest
-                        let through = result["scheduledThrough"] as? String
-                        let missing = result["missingWindows"] as? [String] ?? []
-                        controller.broadcastStatus = !missing.isEmpty ? "启动计划已保存，但部分学校频道未就绪，请联系管理员。" : through.map { "远程启动已同步至 \($0)，提前 \(lead) 分钟；无需每天打开 App。" } ?? "当前没有待启动的有课时间。"
+                        guard stillValid() else { return }
+                        defaults.set(digest, forKey: key("acceptedDigest", account))
+                        controller.broadcastStatus = "已同步整学期课程计划，提前 \(controller.leadMinutes) 分钟。"
                     }
-                    failures = 0
-                    if version == revision { return }
+                    dirty = configurationRevision != sentRevision
+                    attempts = 0
                 } catch {
-                    guard epoch == generation, !Task.isCancelled else { return }
-                    NativeLiveActivityController.shared.broadcastStatus = "远程计划同步失败，旧计划可能仍生效；联网后将重试。"
-                    failures += 1
-                    if failures >= 4 { return }
-                    do { try await Task.sleep(for: .seconds(min(30, 2 << failures))) }
-                    catch { return }
+                    guard epoch == generation else { return }
+                    if error.localizedDescription.contains("计划版本冲突"), let account { defaults.removeObject(forKey: key("pendingDigest", account)) }
+                    NativeLiveActivityController.shared.broadcastStatus = localScheduling ? "联网配置失败；已有有效频道缓存可继续使用，未完成交接时等待联网。" : "远程计划同步失败，旧计划可能仍生效；联网后重试。"
+                    attempts += 1
+                    guard attempts < 4 else { dirty = false; return }
+                    dirty = true
+                    do { try await Task.sleep(for: .seconds(min(30, 2 << attempts))) } catch { return }
                 }
             }
         }
     }
-
-    func enabledDidChange(_ enabled: Bool) {
-        if enabled { activate() } else { resetForLogout() }
+    private func recover(_ occurrence: String) async throws -> String? {
+        guard let apiRequest, let account else { return nil }
+        let epoch = generation
+        var body = deviceBody(account)
+        body["occurrenceId"] = occurrence
+        body["planRevision"] = defaults.integer(forKey: key("revision", account))
+        body["scheduleVersion"] = NativeLiveActivityController.shared.timing?.scheduleVersion
+        let result = try Self.decode(try await apiRequest("/api/live-activities/foreground-recovery", "POST", body))
+        guard epoch == generation, self.account == account, NativeLiveActivityController.shared.isEnabled else { return nil }
+        return result["channelID"] as? String
     }
-
-    private func appendPendingRevoke(_ value: String) {
-        var pending = defaults.stringArray(forKey: Self.pendingRevokeKey) ?? []
+    func enabledDidChange(_ enabled: Bool) { if enabled { activate() } else { resetForLogout() } }
+    private func queueRevoke(_ value: String) {
+        var pending = defaults.stringArray(forKey: "cpu.liveActivity.v2.pendingRevokes") ?? []
         if !pending.contains(value) { pending.append(value) }
-        defaults.set(pending, forKey: Self.pendingRevokeKey)
+        defaults.set(pending, forKey: "cpu.liveActivity.v2.pendingRevokes")
     }
-    private func queueRevocation() {
-        if let revoke = defaults.string(forKey: Self.revokeKey) { appendPendingRevoke(revoke) }
-        defaults.removeObject(forKey: Self.revokeKey)
-    }
-    private func flushRevocations(using request: Request) async throws {
-        for revoke in defaults.stringArray(forKey: Self.pendingRevokeKey) ?? [] {
+    private func flushRevocations(_ request: Request) async throws {
+        for revoke in defaults.stringArray(forKey: "cpu.liveActivity.v2.pendingRevokes") ?? [] {
             _ = try await request("/api/live-activities/remote-start/revoke", "POST", ["revoke": revoke])
-            let remaining = (defaults.stringArray(forKey: Self.pendingRevokeKey) ?? []).filter { $0 != revoke }
-            defaults.set(remaining, forKey: Self.pendingRevokeKey)
+            defaults.set((defaults.stringArray(forKey: "cpu.liveActivity.v2.pendingRevokes") ?? []).filter { $0 != revoke }, forKey: "cpu.liveActivity.v2.pendingRevokes")
         }
     }
-    private func flushRevocations() { scheduleSync() }
+    private var lastAccount: String?
     func resetForLogout() {
         generation += 1
-        queueRevocation()
-        // Let an in-flight save finish and revoke its returned capability too.
-        startTask?.cancel()
-        startTask = nil
-        lastDigest = nil
-        token = nil
+        if let account = account ?? lastAccount, let revoke = defaults.string(forKey: key("revoke", account)) {
+            queueRevoke(revoke)
+            defaults.removeObject(forKey: key("acceptedDigest", account))
+            defaults.removeObject(forKey: key("pendingDigest", account))
+        }
+        startTask?.cancel(); startTask = nil; token = nil
         let controller = NativeLiveActivityController.shared
-        controller.remoteStartsEnabled = false
-        controller.broadcastWindows = []
-        controller.scheduleBlocks = []
-        flushRevocations()
+        controller.remoteStartsEnabled = false; controller.localHandoffComplete = false
+        scheduleSync()
     }
     private static func decode(_ data: Data) throws -> [String: Any] {
         let envelope = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]

@@ -218,6 +218,8 @@ public struct NativeScheduleCourse: Codable, Identifiable, Equatable, Sendable {
     /// Stable occurrence identity supplied by the trusted schedule bridge. It
     /// excludes mutable presentation fields such as room and teacher.
     public let nativeId: String?
+    public let customStartTime: String?
+    public let customEndTime: String?
     public let name: String
     public let teacher: String?
     public let weeks: String
@@ -241,6 +243,8 @@ public struct NativeScheduleCourse: Codable, Identifiable, Equatable, Sendable {
 
     public init(
         nativeId: String? = nil,
+        customStartTime: String? = nil,
+        customEndTime: String? = nil,
         name: String,
         teacher: String? = nil,
         weeks: String = "",
@@ -254,6 +258,8 @@ public struct NativeScheduleCourse: Codable, Identifiable, Equatable, Sendable {
         custom: Bool = false,
         orphaned: Bool = false
     ) {
+        self.customStartTime = customStartTime
+        self.customEndTime = customEndTime
         self.nativeId = nativeId?.trimmedNonEmpty
         self.name = name
         self.teacher = teacher?.trimmedNonEmpty
@@ -270,6 +276,7 @@ public struct NativeScheduleCourse: Codable, Identifiable, Equatable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
+        case customStartTime, customEndTime
         case nativeId, name, teacher, weeks, weekList, location, slotNote, startSlot, endSlot
         case sourceKey, customId, custom, orphaned
     }
@@ -282,6 +289,8 @@ public struct NativeScheduleCourse: Codable, Identifiable, Equatable, Sendable {
         }
         self.init(
             nativeId: try values.decodeFlexibleString(forKey: .nativeId),
+            customStartTime: try values.decodeFlexibleString(forKey: .customStartTime),
+            customEndTime: try values.decodeFlexibleString(forKey: .customEndTime),
             name: try values.decodeFlexibleString(forKey: .name) ?? "课程",
             teacher: try values.decodeFlexibleString(forKey: .teacher),
             weeks: try values.decodeFlexibleString(forKey: .weeks) ?? "",
@@ -738,6 +747,8 @@ public enum NativeScheduleCourseBlockMerger {
             return aCustom == bCustom && rangesOverlap(left, right)
         }
         if a.customId != nil || b.customId != nil { return false }
+        if let leftID = a.nativeId, let rightID = b.nativeId, leftID != rightID { return false }
+        if let leftID = a.sourceKey, let rightID = b.sourceKey, leftID != rightID { return false }
         let sameName = identityPart(a.name) == identityPart(b.name)
         let compatibleTeacher = compatibleTeacher(a.teacher, b.teacher)
         let compatibleLocation = locationCompatible(a.location, b.location)
@@ -885,6 +896,8 @@ public enum NativeScheduleCourseBlockMerger {
             : "\(String(format: "%02d", startSlot))-\(String(format: "%02d", endSlot))节"
         return NativeScheduleCourse(
             nativeId: course.nativeId ?? next?.nativeId,
+            customStartTime: course.customStartTime,
+            customEndTime: course.customEndTime,
             name: course.name,
             teacher: course.teacher ?? next?.teacher,
             weeks: weeks,

@@ -33,13 +33,17 @@ const TIME_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d$/u;
 export function normalizeSchedulePeriods(input: unknown): SchedulePeriod[] {
   const raw = Array.isArray(input) ? input : [];
   if (!raw.length || raw.length > 30) throw new Error("节次数量必须是 1-30");
-  return raw.map((item, index) => {
+  const periods = raw.map((item, index) => {
     const row = (item && typeof item === "object" ? item : {}) as Record<string, unknown>;
     const start = String(row.start ?? "").trim();
     const end = String(row.end ?? "").trim();
     if (!TIME_PATTERN.test(start) || !TIME_PATTERN.test(end) || start >= end) throw new Error(`第 ${index + 1} 节时间无效`);
     return { id: index + 1, name: String(row.name || `第${index + 1}节`).trim().slice(0, 24) || `第${index + 1}节`, start, end };
   });
+  for (let index = 1; index < periods.length; index++) {
+    if (periods[index].start < periods[index - 1].end) throw new Error("节次必须按时间有序且互不重叠");
+  }
+  return periods;
 }
 
 export function normalizeScheduleTermConfig(input: unknown): Omit<ScheduleTermConfigValue, "version" | "updatedAt"> {

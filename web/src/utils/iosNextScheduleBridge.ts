@@ -4,7 +4,7 @@ import { useAuthStore } from "@/stores/auth";
 import { useJwxtStore } from "@/stores/jwxt";
 import type { Router } from "vue-router";
 import { isNativeScheduleShell } from "./clientInfo";
-import { applyScheduleEditsToCells, normalizeScheduleEditsState } from "./scheduleEdits";
+import { applyScheduleEditsToCells, normalizeScheduleEditsState, courseEditKey } from "./scheduleEdits";
 import { normalizedCourseWeekList } from "./scheduleWeeks";
 import { buildGraduateFallbackCalendar, extendScheduleWeeksToCalendar, hydrateCalendar } from "@/views/schedule/calendar";
 import type { CalendarResult, ScheduleResult } from "@/views/schedule/types";
@@ -255,15 +255,23 @@ function normalizeScheduleResponse(response: unknown): ScheduleResult {
 /** A stable, non-reversible account fingerprint. The native shell keeps the last
  * timetable on disk under this key and drops it as soon as the key changes, so a
  * relaunch can show that timetable immediately without ever crossing accounts. */
+const accountScopes = new Map<string, string>();
+function opaqueIdentity() {
+  return globalThis.crypto?.randomUUID?.() ?? 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const n = Math.floor(Math.random() * 16); return (c === 'x' ? n : (n & 3) | 8).toString(16);
+  });
+}
 export function nativeScheduleAccountKey() {
   const auth = useAuthStore();
   const id = auth?.user?.id;
   if (!id || !auth.isLoggedIn) return "";
-  let hash = 0x811c9dc5;
-  for (const character of `${id}:${auth.academicIdentity}`) {
-    hash = Math.imul(hash ^ character.codePointAt(0)!, 0x01000193) >>> 0;
-  }
-  return hash.toString(16).padStart(8, "0");
+  const key = `cpu-native-account-v2:${id}:${auth.academicIdentity}`;
+  let value = accountScopes.get(key);
+  try { value = localStorage.getItem(key) || value; } catch { /* isolated memory fallback */ }
+  if (!value) value = opaqueIdentity();
+  accountScopes.set(key, value);
+  try { localStorage.setItem(key, value); } catch { /* isolated memory fallback */ }
+  return value;
 }
 
 /** The native shell uses the same module-admin capability as the Web router. */
@@ -580,6 +588,8 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
     leftRange: { start: number; end: number },
     rightRange: { start: number; end: number },
   ) => {
+    const source = (course: typeof left) => course.nativeId;
+    if (source(left) !== source(right)) return false;
     if (left.customId || right.customId) return left.customId === right.customId;
     // A source/native identity is the only reliable way to distinguish two
     // parallel sections that happen to share the same title, room and slot.
@@ -625,7 +635,31 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
     ranges.push(start === end ? String(start) : `${start}-${end}`);
     return `${ranges.join("、")}周`;
   };
+  type SourceIdentity = { id: string; aliases: string[]; structure: string };
+  const identityMemory = new Map<string, SourceIdentity[]>();
   const nativeCells = (semester: string, cells: ScheduleResult["cells"]) => {
+    const storageKey = `cpu-course-identities-v2:${accountKey()}:${semester}`;
+    let registry = identityMemory.get(storageKey) ?? [];
+    try { registry = JSON.parse(localStorage.getItem(storageKey) || "null") ?? registry; } catch { /* native bridge memory remains usable */ }
+    const previous = [...registry];
+    const used = new Set<string>();
+    const sourceIdentity = (day: number, bigSlot: number, course: ScheduleResult["cells"][number]["courses"][number]) => {
+      const alias = course.sourceKey || course.nativeId || (course.customId ? `custom:${course.customId}` : courseEditKey(day, bigSlot, course));
+      const range = normalizeSlotRange(bigSlot, course);
+      const structure = JSON.stringify([day, range.start, range.end, normalizeText(course.name), normalizedCourseWeekList(course)]);
+      let record = registry.find(r => r.aliases.includes(alias));
+      if (!record && !course.sourceKey && !course.customId) {
+        const matches = previous.filter(r => r.structure === structure && !used.has(r.id));
+        if (matches.length === 1) record = matches[0];
+      }
+      if (!record) {
+        const id = opaqueIdentity();
+        record = { id, aliases: [], structure }; registry.push(record);
+      }
+      if (!record.aliases.includes(alias)) record.aliases.push(alias);
+      used.add(record.id);
+      return record.id;
+    };
     type NativeEntry = {
       day: number;
       bigSlot: number;
@@ -641,16 +675,17 @@ export function installIosNextScheduleBridge(router?: Router, options: { fastRef
     for (const cell of cells) {
       for (const course of cell.courses) {
         const range = normalizeSlotRange(cell.bigSlot, course);
-        const fallback = ["official", semester, cell.day, range.start, normalizeText(course.name)].join("|");
         const normalized = {
           ...course,
-          nativeId: course.customId ? `custom:${course.customId}` : course.sourceKey ? `source:${course.sourceKey}` : fallback,
+          nativeId: sourceIdentity(cell.day, cell.bigSlot, course),
           weekList: normalizedCourseWeekList(course),
         };
         entries.push({ day: cell.day, bigSlot: cell.bigSlot, course: normalized, range });
       }
     }
 
+    identityMemory.set(storageKey, registry);
+    try { localStorage.setItem(storageKey, JSON.stringify(registry)); } catch { /* preserve memory for this session */ }
     const merged: NativeEntry[] = [];
     for (const entry of entries.sort((left, right) =>
       left.day - right.day || left.range.start - right.range.start || left.range.end - right.range.end)) {

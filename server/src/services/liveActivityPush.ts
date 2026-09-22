@@ -1,12 +1,11 @@
+import { currentTiming, retainTiming, timingVersion, endChannelKey } from "./liveActivitySchedule";
 import { prisma } from "../prisma";
 import { appleReferenceSeconds, sendLiveActivityBroadcast } from "./apnsClient";
-import { getApnsConfig } from "./apnsConfig";
-import { getSchedulePeriods, listScheduleTermConfigs, type ScheduleTermConfigValue } from "./scheduleTermConfig";
-import { adjustmentForDate } from "../shared/scheduleAdjustments";
-import { scheduleBlocks } from "./liveActivityBlocks";
-import { dayChannelDates, maintainApnsChannels, channelForDate, broadcastChannelIDs } from "./apnsChannels";
+import { getApnsConfig, withApnsConfigLock } from "./apnsConfig";
+import { type ScheduleTermConfigValue } from "./scheduleTermConfig";
+import { maintainApnsChannels } from "./apnsChannels";
 
-import { tickRemoteStarts } from "./liveActivityRemoteStart";
+import { tickRemoteStarts, START_BATCH_SIZE } from "./liveActivityRemoteStart";
 
 const db = prisma;
 const TICK_MS = 5_000;
@@ -18,30 +17,30 @@ let materializedDigest = "";
 
 // The client receives only public school timing/channel metadata. No device
 // token, personal timetable, activity state or future personal plan is stored.
-export async function liveActivityBroadcastConfig(environment: string, bundleID: string, daily = false) {
-  const config = await getApnsConfig();
+export async function liveActivityBroadcastConfig(environment: string, bundleID: string, local = false) {
   if (!["production", "sandbox"].includes(environment)) throw new Error("APNs 环境无效");
+  return withApnsConfigLock(async db => {
+  const config = await getApnsConfig(db);
   if (config.configured && bundleID !== config.bundleID) throw new Error("Bundle ID 与 CPU APNs 配置不一致");
-  if (daily) return {
-    mode: "local-scheduled", minimumIOSVersion: 26,
-    windows: dayChannelDates().map(date => ({ id: date, startHour: 0, endHour: 24,
-      channelID: config.configured ? channelForDate(config.channels, environment, "day", date) || null : null })),
-  };
-  // Blocks are school-wide clock ranges with reusable channels. The client only
-  // groups its own courses, and the server resolves the channel when it sends.
-  const blocks = scheduleBlocks(await getSchedulePeriods());
-  return {
-    mode: "broadcast", minimumIOSVersion: 18,
-    windows: blocks.map(block => ({ id: block.id, startClock: block.startClock, endClock: block.endClock })),
-  };
+  const timing = await currentTiming();
+  const issuedAt = Date.now() / 1000;
+  if (local) await retainTiming(timing.id, new Date((issuedAt + 8 * 86400) * 1000));
+  return { protocolVersion: 2, scheduleId: timing.scheduleId, scheduleVersion: timing.id,
+    timezone: timing.timezone, periods: timing.periods, issuedAt,
+    usableUntil: issuedAt + 7 * 86400, broadcastUntil: issuedAt + 8 * 86400,
+    windows: local ? timing.periods.map(p => ({ id: String(p.id), startHour: 0, endHour: 24,
+      channelID: config.configured ? config.channels[endChannelKey(environment, timing.id, p.id)] || null : null })) : [] };
+  });
 }
 
-export function broadcastPayload(dateKey: string, timestamp: number, ended = false) {
+export function broadcastPayload(dateKey: string, timestamp: number, ended = false, scheduleVersion = "") {
   return { aps: {
     timestamp: Math.floor(timestamp), event: ended ? "end" : "update",
     ...(ended ? { "dismissal-date": Math.floor(timestamp) } : {}),
     "content-state": {
-      phase: "upcoming", courseName: "", teacher: "", location: "",
+      protocolVersion: 2, scheduleId: "main-campus", scheduleVersion,
+      eventType: ended ? "end" : "update", eventTime: appleReferenceSeconds(timestamp),
+      phase: ended ? "idle" : "upcoming", courseName: "", teacher: "", location: "",
       startDate: appleReferenceSeconds(timestamp), endDate: appleReferenceSeconds(timestamp),
       updatedAt: appleReferenceSeconds(timestamp), broadcastDateKey: dateKey,
       broadcastTimestamp: appleReferenceSeconds(timestamp),
@@ -49,33 +48,18 @@ export function broadcastPayload(dateKey: string, timestamp: number, ended = fal
   } };
 }
 
-/** Build school-wide signals for one date, independent of registered users. */
-export function schoolBroadcastEvents(term: ScheduleTermConfigValue, dateKey: string, daily = false) {
-  const day = new Date(`${dateKey}T00:00:00Z`);
-  const termEnd = new Date(`${term.semesterStartMonday}T00:00:00Z`);
-  termEnd.setUTCDate(termEnd.getUTCDate() + term.weekCount * 7);
-  if (dateKey < term.semesterStartMonday || day >= termEnd) return [];
-  const adjustment = adjustmentForDate(term.adjustments, dateKey);
-  if (adjustment?.kind === "off") return [];
-  // Weekend classes can exist in the local timetable; an empty day is filtered
-  // on the phone, never inferred from the weekday by the broadcast server.
-  // iOS 26 takes the whole day on one tick-only channel; iOS 18-25 takes one
-  // channel per block so the block end dismisses exactly its own activities.
-  const windows = daily
-    ? [{ id: `day:${dateKey}`, periods: term.periods }]
-    : scheduleBlocks(term.periods).map(block => ({ id: `block:${dateKey}:${block.id}`, periods: block.periods }));
-  return windows.flatMap(window => {
-    const periods = window.periods;
-    if (!periods.length) return [];
+/** Every held timing version broadcasts every day, including holidays. */
+export function schoolBroadcastEvents(term: Pick<ScheduleTermConfigValue, "periods">, dateKey: string, _daily = false, version = timingVersion(term.periods)) {
+  return term.periods.flatMap((final, index) => {
     const seconds = (clock: string) => new Date(`${dateKey}T${clock}:00+08:00`).getTime() / 1000;
-    const end = Math.max(...periods.map(p => seconds(p.end)));
-    const boundaries = new Set(periods.flatMap(p => daily ? [seconds(p.start), seconds(p.end)] : [seconds(p.start) - 900, seconds(p.start), seconds(p.end)]));
-    return [...boundaries].sort((a, b) => a - b).map(fireAt => ({
-      windowID: window.id, eventID: `broadcast-v2-${dateKey}-${window.id}-${fireAt}`,
-      fireAt: new Date(fireAt * 1000), expiresAt: new Date((fireAt + 60) * 1000),
-      payload: JSON.stringify(broadcastPayload(dateKey, fireAt, !daily && fireAt === end)),
-      event: !daily && fireAt === end ? "end" : "update",
-    }));
+    const end = seconds(final.end);
+    return [...new Set(term.periods.slice(0, index + 1).flatMap(p => [seconds(p.start), seconds(p.end)]))]
+      .sort((a, b) => a - b).map(fireAt => ({
+        windowID: `${version}:${final.id}`, eventID: `v2-${version}-${dateKey}-${final.id}-${fireAt}`,
+        fireAt: new Date(fireAt * 1000), expiresAt: new Date((fireAt + 60) * 1000),
+        payload: JSON.stringify(broadcastPayload(dateKey, fireAt, fireAt === end, version)),
+        event: fireAt === end ? "end" : "update",
+      }));
   });
 }
 
@@ -84,15 +68,15 @@ async function ensureBroadcastEvents(now: number) {
   const config = await getApnsConfig();
   if (!config.configured) return;
   const dateKey = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(now * 1000));
-  const terms = await listScheduleTermConfigs();
-  const digest = JSON.stringify([dateKey, config.bundleID, config.channels, terms]);
+  const current = await currentTiming();
+  const versions = await db.liveActivityScheduleVersion.findMany({ where: { OR: [{ id: current.id }, { broadcastUntil: { gte: new Date(now * 1000) } }] } });
+  const digest = JSON.stringify([dateKey, config.bundleID, config.channels, versions]);
   if (digest === materializedDigest) { lastBroadcastMaterializedAt = now; return; }
-  // Only today's school signals are materialized. Existing sent IDs dedupe
-  // restarts; no seven-day, per-user schedule is involved.
-  const events = terms.flatMap(term => [...schoolBroadcastEvents(term, dateKey), ...schoolBroadcastEvents(term, dateKey, true)]);
+  const events = versions.flatMap(v => schoolBroadcastEvents({ periods: JSON.parse(v.periods) }, dateKey, false, v.id));
   const rows = events.flatMap(({ windowID, ...event }) => ["production", "sandbox"].flatMap(environment => {
-    return broadcastChannelIDs(config.channels, environment, windowID)
-      .map(channelID => ({ ...event, environment, channelID, bundleID: config.bundleID }));
+    const [version, period] = windowID.split(":");
+    const channelID = config.channels[endChannelKey(environment, version, Number(period))];
+    return channelID ? [{ ...event, environment, channelID, bundleID: config.bundleID }] : [];
   }));
   // Retire old protocol events and obsolete times after timetable edits.
   await db.liveActivityBroadcastEvent.updateMany({
@@ -134,6 +118,8 @@ export async function tickBroadcastEvents() {
   if (!config.configured) return;
   const now = Date.now() / 1000;
   await ensureBroadcastEvents(now);
+  await db.liveActivityBroadcastEvent.updateMany({ where: { state: "pending", expiresAt: { lte: new Date() } },
+    data: { state: "skipped", detail: "广播已过有效期", claimedUntil: null } });
   const rows = await db.liveActivityBroadcastEvent.findMany({
     where: {
       state: "pending",
@@ -145,9 +131,23 @@ export async function tickBroadcastEvents() {
     take: 200,
   });
   for (const row of rows) {
-    const claimed = await db.liveActivityBroadcastEvent.updateMany({
-      where: { id: row.id, state: "pending", OR: [{ claimedUntil: null }, { claimedUntil: { lte: new Date(now * 1000) } }] },
-      data: { claimedUntil: new Date(now * 1000 + CLAIM_MS) },
+    const claimed = await db.$transaction(async tx => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${row.channelID}, 7420))::text`;
+      const newer = await tx.liveActivityBroadcastEvent.findFirst({ where: {
+        channelID: row.channelID, fireAt: { gt: row.fireAt }, OR: [{ state: "sent" }, { claimedUntil: { not: null } }],
+      } });
+      if (newer) {
+        await tx.liveActivityBroadcastEvent.updateMany({ where: { id: row.id, state: "pending" }, data: { state: "skipped", detail: "已有更新的边界" } });
+        return { count: 0 };
+      }
+      const inFlight = await tx.liveActivityBroadcastEvent.findFirst({ where: {
+        channelID: row.channelID, id: { not: row.id }, state: "pending", claimedUntil: { gt: new Date() },
+      } });
+      if (inFlight) return { count: 0 };
+      return tx.liveActivityBroadcastEvent.updateMany({
+        where: { id: row.id, state: "pending", OR: [{ claimedUntil: null }, { claimedUntil: { lte: new Date(now * 1000) } }] },
+        data: { claimedUntil: new Date(now * 1000 + CLAIM_MS) },
+      });
     });
     if (!claimed.count) continue;
     const current = await db.liveActivityBroadcastEvent.findUnique({ where: { id: row.id }, select: { state: true, payload: true } }).catch(() => null);
@@ -155,19 +155,21 @@ export async function tickBroadcastEvents() {
       await db.liveActivityBroadcastEvent.updateMany({ where: { id: row.id, state: "pending" }, data: { claimedUntil: null } });
       continue;
     }
-    if (row.bundleID !== config.bundleID || !Object.values(config.channels).includes(row.channelID) || row.expiresAt.getTime() / 1000 < now) {
+    if (row.bundleID !== config.bundleID || !Object.values(config.channels).includes(row.channelID) || row.expiresAt.getTime() <= Date.now()) {
       await db.liveActivityBroadcastEvent.updateMany({ where: { id: row.id, state: "pending" }, data: { state: "skipped", detail: "广播事件已过期", claimedUntil: null } });
       continue;
     }
     try {
       const payload = JSON.parse(row.payload);
-      const dayChannel = Object.entries(config.channels).some(([key, channel]) =>
-        (key === `${row.environment}:cpu-day` || key.startsWith(`${row.environment}:cpu-day:`)) && channel === row.channelID,
-      );
-      if (dayChannel) {
-        payload.aps.event = "update";
-        delete payload.aps["dismissal-date"];
+      // A later submitted boundary suppresses delayed older updates.
+      const newer = await db.liveActivityBroadcastEvent.findFirst({ where: {
+        channelID: row.channelID, fireAt: { gt: row.fireAt }, state: { in: ["sent", "submitting"] },
+      } });
+      if (newer) {
+        await db.liveActivityBroadcastEvent.update({ where: { id: row.id }, data: { state: "skipped", detail: "已有更新的边界", claimedUntil: null } });
+        continue;
       }
+      console.info("[apns] broadcast-boundary", JSON.stringify({ event: row.event, queueDelayMs: Date.now() - row.fireAt.getTime(), attempts: row.attempts }));
       await sendLiveActivityBroadcast({ environment: row.environment === "sandbox" ? "sandbox" : "production", bundleID: row.bundleID, channelID: row.channelID, payload, expiration: 0, collapseID: `cpu-${row.eventID}` });
       await db.liveActivityBroadcastEvent.updateMany({ where: { id: row.id, state: "pending" }, data: { state: "sent", sentAt: new Date(), detail: "", claimedUntil: null } });
     } catch (error: any) {
@@ -178,24 +180,18 @@ export async function tickBroadcastEvents() {
   }
 }
 
-let timer: ReturnType<typeof setTimeout> | undefined;
-let running = false;
+// Independent loops: slow per-device starts cannot delay public end events.
+let started = false;
 export function startLiveActivityPushScheduler() {
-  if (timer || running) return;
-  const tick = async () => {
-    if (running) return;
-    running = true;
-    let delay = TICK_MS;
-    try {
-      await tickBroadcastEvents();
-      const starts = await tickRemoteStarts();
-      delay = starts === 200 ? 500 : (await getApnsConfig()).tickSeconds * 1000;
-    } catch (error: any) { console.warn("[apns] 调度失败:", error?.message || error); }
-    finally {
-      running = false;
-      timer = setTimeout(tick, Math.max(500, Math.min(3600000, delay)));
-      timer.unref?.();
-    }
-  };
-  void tick();
+  if (started) return;
+  started = true;
+  for (const work of [tickBroadcastEvents, tickRemoteStarts]) {
+    const tick = async () => {
+      let backlog = false;
+      try { backlog = work === tickRemoteStarts && (await work()) === START_BATCH_SIZE; if (work !== tickRemoteStarts) await work(); } catch (error: any) { console.warn("[apns] 调度失败:", error?.message || error); }
+      const delay = backlog ? 500 : await getApnsConfig().then(c => c.tickSeconds * 1000).catch(() => TICK_MS);
+      setTimeout(tick, Math.max(500, delay)).unref?.();
+    };
+    void tick();
+  }
 }

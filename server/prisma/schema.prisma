@@ -724,6 +724,14 @@ model LiveActivityDevice {
   broadcastEnabled    Boolean  @default(false)
   channelID           String?
   enabled             Boolean  @default(true)
+  installationId      String?
+  accountScope        String?
+  launchMode          String   @default("remote")
+  modeRevision        Int      @default(0)
+  handoffId           String?
+  handoffResult       String?
+  planRevision        Int      @default(0)
+  planSnapshot        String?
   planDigest          String?
   lastError           String?
   createdAt           DateTime @default(now())
@@ -733,6 +741,7 @@ model LiveActivityDevice {
   plan       LiveActivityPlan[]
   activities LiveActivityDeviceActivity[]
 
+  @@unique([userId, installationId])
   @@index([userId, enabled])
   @@index([enabled, updatedAt])
   @@index([broadcastEnabled, channelID])
@@ -2256,4 +2265,14 @@ model OAuthAccessToken {
 
   @@index([userId, expiresAt])
   @@index([clientId, expiresAt])
+}
+
+// Immutable school timing retained for all issued mapping leases and in-flight starts.
+model LiveActivityScheduleVersion {
+  id             String   @id
+  scheduleId     String
+  timezone       String
+  periods        String
+  broadcastUntil DateTime @default(now())
+  createdAt      DateTime @default(now())
 }

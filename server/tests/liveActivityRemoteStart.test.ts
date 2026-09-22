@@ -1,219 +1,136 @@
-import test, { before, after } from "node:test";
-import assert from "node:assert/strict";
-import crypto from "node:crypto";
-import http2 from "node:http2";
-import { EventEmitter } from "node:events";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-
-let service: typeof import("../src/services/liveActivityRemoteStart");
-process.env.DATABASE_URL ||= "postgres://schedule-blocks-test";
-/// 上午四节连堂、下午四节连堂、晚上两节：真实节次表切出三个课节块。
-const PERIODS = [
-  { id: 1, name: "1", start: "08:00", end: "08:45" }, { id: 2, name: "2", start: "08:55", end: "09:40" },
-  { id: 3, name: "3", start: "10:00", end: "10:45" }, { id: 4, name: "4", start: "10:55", end: "11:40" },
-  { id: 5, name: "5", start: "14:00", end: "14:45" }, { id: 6, name: "6", start: "14:55", end: "15:40" },
-  { id: 7, name: "7", start: "16:00", end: "16:45" }, { id: 8, name: "8", start: "16:55", end: "17:40" },
-  { id: 9, name: "9", start: "19:00", end: "19:45" }, { id: 10, name: "10", start: "19:55", end: "20:40" },
-];
-let directory: string;
-const devices = new Map<string, any>();
-const plans = new Map<string, any>();
-let sequence = 0;
-let status = 200;
-const pushes: any[] = [];
-let config: Record<string, string>;
-const match = (row: any, where: any) => Object.entries(where).every(([k, v]) => row[k] === v);
-const db: any = {
-  siteSetting: { findMany: async () => Object.entries(config).map(([key, value]) => ({ key: `apns.${key}`, value, updatedAt: new Date() })) },
-  schedulePeriodConfig: { findUnique: async () => ({ periods: JSON.stringify(PERIODS) }) },
-  $queryRaw: async () => [],
-  $transaction: async (fn: any) => fn(db),
-  liveActivityDevice: {
-    findUnique: async ({ where }: any) => [...devices.values()].find(d => match(d, where)),
-    findFirst: async ({ where }: any) => [...devices.values()].find(d => match(d, where)),
-    upsert: async ({ where, create, update }: any) => {
-      let d = [...devices.values()].find(d => match(d, where));
-      if (d) Object.assign(d, update);
-      else { d = { id: `d${++sequence}`, enabled: true, ...create }; devices.set(d.id, d); }
-      return d;
-    },
-    update: async ({ where, data }: any) => Object.assign(devices.get(where.id), data),
-    delete: async ({ where }: any) => {
-      devices.delete(where.id);
-      for (const [id, row] of plans) if (row.deviceId === where.id) plans.delete(id);
-    },
-    deleteMany: async ({ where }: any) => {
-      for (const row of [...devices.values()]) if (match(row, where)) await db.liveActivityDevice.delete({ where: { id: row.id } });
-    },
-  },
-  liveActivityPlan: {
-    deleteMany: async ({ where }: any) => {
-      for (const [id, row] of plans) if (match(row, where)) plans.delete(id);
-    },
-    createMany: async ({ data }: any) => {
-      for (const row of data) {
-        if ([...plans.values()].some(p => p.deviceId === row.deviceId && p.itemID === row.itemID)) continue;
-        const id = `p${++sequence}`;
-        plans.set(id, { id, state: "pending", nextAttemptAt: new Date(0), attempts: 0, ...row });
-      }
-    },
-    findMany: async ({ where, take }: any) => {
-      assert.equal(where.event, "hybrid-start-v1", "never execute legacy per-course plans");
-      return [...plans.values()].filter(p => p.state === where.state && p.fireAt <= where.fireAt.lte && p.nextAttemptAt <= where.nextAttemptAt.lte && devices.get(p.deviceId)?.enabled)
-        .slice(0, take).map(p => ({ id: p.id, device: devices.get(p.deviceId) }));
-    },
-    findUnique: async ({ where }: any) => {
-      const p = plans.get(where.id); return p && { ...p, device: devices.get(p.deviceId) };
-    },
-    update: async ({ where, data }: any) => {
-      const p = plans.get(where.id);
-      const attempts = typeof data.attempts === "object" ? p.attempts + data.attempts.increment : p.attempts;
-      Object.assign(p, data, { attempts }); return p;
-    },
-  },
-};
-before(async () => {
-  directory = await mkdtemp(join(tmpdir(), "cpu-remote-start-"));
-  const keyPath = join(directory, "key.p8");
-  const { privateKey } = crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" });
-  await writeFile(keyPath, privateKey.export({ format: "pem", type: "pkcs8" }));
-  config = { keyPath, keyID: "KEY", teamID: "TEAM", bundleID: "cn.cputime.mobile", channels: JSON.stringify({ "production:cpu-block:0800": "am" }) };
-  (globalThis as any).prisma = db;
-  service = await import("../src/services/liveActivityRemoteStart");
-  blocks = (await import("../src/services/liveActivityBlocks")).scheduleBlocks(PERIODS);
-});
-let blocks: import("../src/services/liveActivityBlocks").ScheduleBlock[];
-after(async () => rm(directory, { recursive: true, force: true }));
-const now = Date.parse("2026-09-21T00:00:00Z") / 1000;
-// 08:00 Beijing. The block runs to 11:40, which is the only end the server accepts.
-const window = { dateKey: "2026-09-21", window: "0800", start: now + 1800, end: now + 3600 * 3 + 2400 };
-function input(leadMinutes = 15) {
-  return { token: "ab".repeat(32), environment: "production", bundleID: "cn.cputime.mobile", leadMinutes, items: [window] };
+import test, { before } from 'node:test';
+import assert from 'node:assert/strict';
+const periods = [{ id: 1, name: '1', start: '08:00', end: '08:45' }, { id: 2, name: '2', start: '08:55', end: '09:40' }];
+const devices: any[] = [], plans: any[] = [], versions: any[] = [];
+let seq = 0;
+function matches(row: any, where: any): boolean {
+  return Object.entries(where || {}).every(([k, v]: [string, any]) => {
+    if (k === 'OR') return v.some((w: any) => matches(row, w));
+    if (k === 'NOT') return !matches(row, v);
+    if (k === 'userId_installationId' || k === 'deviceId_itemID') return matches(row, v);
+    if (k === 'device') return matches(devices.find(d => d.id === row.deviceId), v);
+    const a = row?.[k];
+    if (v && typeof v === 'object' && !(v instanceof Date)) return Object.entries(v).every(([op, b]: [string, any]) => {
+      if (op === 'in') return b.includes(a);
+      if (op === 'not') return a !== b;
+      if (op === 'lt') return a < b;
+      if (op === 'lte') return a <= b;
+      if (op === 'gt') return a > b;
+      if (op === 'gte') return a >= b;
+      throw Error(op);
+    });
+    return a === v;
+  });
 }
-test("custom lead accepts 0–60 minutes, strips course text and rejects malformed/oversized schedules", () => {
-  for (const lead of [0, 1, 15, 30, 60]) assert.deepEqual(service.parseStartWindows([{ ...window, courseName: "private" }], lead, blocks, now), [window]);
-  for (const lead of [-1, 61, 1.5, "15", null]) assert.throws(() => service.parseStartWindows([window], lead, blocks, now));
-  assert.throws(() => service.parseStartWindows([window, window], 15, blocks, now));
-  assert.throws(() => service.parseStartWindows([window], 15, [], now), /节次未配置/);
-  // A morning start may not claim the afternoon block, and the end must be the
-  // school block end: anything else would address a channel that does not exist.
-  assert.throws(() => service.parseStartWindows([{ ...window, window: "1400" }], 15, blocks, now));
-  assert.throws(() => service.parseStartWindows([{ ...window, window: "0900" }], 15, blocks, now));
-  assert.throws(() => service.parseStartWindows([{ ...window, end: window.end - 60 }], 15, blocks, now));
-  assert.throws(() => service.parseStartWindows([{ ...window, end: window.start + 8 * 3600 }], 0, blocks, now));
-  assert.throws(() => service.parseStartWindows(Array(371 * blocks.length).fill(window), 15, blocks, now));
-  const future = { dateKey: "2027-01-01", window: "1900", start: Date.parse("2027-01-01T19:00:00+08:00") / 1000, end: Date.parse("2027-01-01T20:40:00+08:00") / 1000 };
-  assert.equal(service.parseStartWindows([future], 60, blocks, now).length, 1, "semester support extends beyond 7/45 days");
+function assign(row: any, data: any) {
+  for (const [k, v] of Object.entries(data) as [string, any][]) row[k] = v && typeof v === 'object' && 'increment' in v ? (row[k] || 0) + v.increment : v;
+  row.updatedAt = new Date(); return row;
+}
+function model(rows: any[]) {
+  return {
+    async findUnique({ where, include }: any) { const r = rows.find(r => matches(r, where)); return r && include?.device ? { ...r, device: devices.find(d => d.id === r.deviceId) } : r; },
+    async findMany({ where, take, include }: any) { return rows.filter(r => matches(r, where)).slice(0, take).map(r => include?.device ? { ...r, device: devices.find(d => d.id === r.deviceId) } : r); },
+    async upsert({ where, create, update }: any) {
+      let row = rows.find(r => matches(r, where));
+      if (!row) { row = { id: String(++seq), enabled: true, launchMode: 'remote', modeRevision: 0, planRevision: 0, state: 'pending', attempts: 0, broadcastUntil: new Date(0), ...create }; rows.push(row); return assign(row, {}); }
+      return assign(row, update);
+    },
+    async update({ where, data }: any) { const row = rows.find(r => matches(r, where)); assert.ok(row); return assign(row, data); },
+    async updateMany({ where, data }: any) { const found = rows.filter(r => matches(r, where)); found.forEach(r => assign(r, data)); return { count: found.length }; },
+  };
+}
+const db: any = {
+  $queryRaw: async () => [], $transaction: async (fn: any) => fn(db),
+  siteSetting: { findMany: async () => Object.entries({ keyPath: '/test.p8', keyID: 'KEY', teamID: 'TEAM', bundleID: 'cn.cputime.mobile', channels: JSON.stringify({ [`production:main-campus:${version}:end-period-2`]: 'test-end-2' }) }).map(([key, value]) => ({ key: `apns.${key}`, value, updatedAt: new Date() })) },
+  schedulePeriodConfig: { findUnique: async () => ({ periods: JSON.stringify(periods) }) },
+  liveActivityDevice: model(devices), liveActivityPlan: model(plans), liveActivityScheduleVersion: model(versions),
+};
+process.env.DATABASE_URL ||= 'postgres://live-activity-test';
+(globalThis as any).prisma = db;
+let service: typeof import('../src/services/liveActivityRemoteStart');
+let version: string;
+before(async () => {
+  service = await import('../src/services/liveActivityRemoteStart');
+  version = (await import('../src/services/liveActivitySchedule')).timingVersion(periods);
 });
-
-test("blocks merge across the short break and split at lunch and dinner", () => {
-  assert.deepEqual(blocks.map(block => [block.id, block.startClock, block.endClock]), [
-    ["0800", "08:00", "11:40"], ["1400", "14:00", "17:40"], ["1900", "19:00", "20:40"],
-  ]);
-});
-
-test("start payload subscribes directly to channel and contains no personal course fields", () => {
-  const { aps } = service.remoteStartPayload(window, "am", now);
-  assert.equal(aps.event, "start");
-  assert.equal(aps["input-push-channel"], "am");
-  assert.equal(aps.attributes.dateKey, window.dateKey);
-  assert.equal(aps.attributes.reservationStart, window.start - 978307200);
-  assert.equal(aps["stale-date"], window.end);
-  assert.ok(aps.alert);
-  assert.ok(Buffer.byteLength(JSON.stringify({ aps })) < 4096);
-});
-
-test("semester sync replaces pending starts, preserves sent identities and isolates account revocation", async t => {
-  t.mock.method(Date, "now", () => now * 1000);
+const now = Date.parse('2026-09-22T07:45:00+08:00');
+function input(planRevision = 1, installationId = 'installation-0001') {
+  return { installationId, accountScope: 'account-scope-0001', token: 'ab'.repeat(32), environment: 'production', bundleID: 'cn.cputime.mobile',
+    protocolVersion: 2, scheduleId: 'main-campus', scheduleVersion: version, planRevision, leadMinutes: 15,
+    coverageStart: '2026-09-22', coverageEndExclusive: '2026-12-01', busyIntervals: [],
+    items: [{ occurrenceId: 'course-a', supersedes: [] as string[], dateKey: '2026-09-22', startPeriod: 1, endPeriod: 2 }] };
+}
+test('monotonic full replacement, token rotation, revoke and re-enable retain submitted identities', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now });
   const first = await service.syncRemoteStarts(1, input());
-  let row = [...plans.values()][0];
-  assert.equal(row.fireAt.getTime() / 1000, window.start - 900);
-  assert.ok(!devices.get(first.deviceID).startTokenCiphertext.includes(input().token));
-  await service.syncRemoteStarts(1, input(30));
-  row = [...plans.values()][0];
-  assert.equal(row.fireAt.getTime() / 1000, window.start - 1800);
-  row.state = "sent";
-  await service.syncRemoteStarts(1, input(0));
-  assert.equal(plans.size, 1);
-  assert.equal([...plans.values()][0].state, "sent", "lead edits must not create another activity");
-  const rotated = await service.syncRemoteStarts(1, { ...input(0), token: "cd".repeat(32), replaces: first.revoke });
-  assert.equal(rotated.deviceID, first.deviceID);
-  assert.equal([...plans.values()][0].state, "sent", "token rotation retains sent identities");
+  assert.equal(plans.length, 1); assert.equal(plans[0].fireAt.getTime(), now);
+  await service.syncRemoteStarts(1, input()); assert.equal(plans.length, 1);
+  await assert.rejects(service.syncRemoteStarts(1, { ...input(), leadMinutes: 30 }), /版本冲突/);
+  plans[0].state = 'submitted';
+  await service.syncRemoteStarts(1, { ...input(2), token: 'cd'.repeat(32), items: [] });
+  assert.equal(plans[0].state, 'submitted');
   await service.revokeRemoteStarts(first.revoke);
-  assert.ok(devices.has(rotated.deviceID), "outdated token capability cannot revoke rotated device");
-  await service.revokeRemoteStarts(rotated.revoke);
-  const transferred = await service.syncRemoteStarts(1, input());
-  const second = await service.syncRemoteStarts(2, input());
-  assert.notEqual(first.deviceID, second.deviceID);
-  await service.revokeRemoteStarts(transferred.revoke);
-  assert.ok(devices.has(second.deviceID));
-  await assert.rejects(service.revokeRemoteStarts(second.revoke.replace(/ciphertext/, "broken")));
-  await service.revokeRemoteStarts(second.revoke);
-  assert.equal(plans.size, 0);
-  assert.equal(devices.size, 0);
+  assert.equal(devices[0].enabled, false); assert.equal(plans[0].state, 'submitted');
+  await service.syncRemoteStarts(1, input(3)); assert.equal(plans[0].state, 'submitted');
+});
+test('handoff is idempotent, retains ambiguous history and rejects stale remote requests', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now });
+  const body = input(1, 'installation-0002'); body.token = 'ef'.repeat(32);
+  const registered = await service.syncRemoteStarts(2, body);
+  const row = plans.find(p => p.deviceId === registered.deviceID); row.state = 'submissionUnknown';
+  const handoff = await service.switchToLocal(2, { ...body, handoffId: 'handoff-1' });
+  assert.equal(handoff.records[0].state, 'submissionUnknown');
+  assert.deepEqual(await service.switchToLocal(2, { ...body, handoffId: 'handoff-1' }), handoff);
+  await assert.rejects(service.syncRemoteStarts(2, { ...body, planRevision: 2 }), /已切换/);
+  assert.equal(row.state, 'submissionUnknown');
+});
+test('splits retain submission protection and empty snapshots cancel all pending jobs', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now });
+  const body = input(4); body.items[0] = { ...body.items[0], occurrenceId: 'split-a', supersedes: ['course-a'] };
+  await service.syncRemoteStarts(1, body);
+  assert.equal(plans.find(p => p.itemID === 'split-a').state, 'terminal');
+  const fresh = input(1, 'installation-0004'); fresh.token = '34'.repeat(32);
+  const result = await service.syncRemoteStarts(4, fresh);
+  await service.syncRemoteStarts(4, { ...fresh, planRevision: 2, items: [] });
+  assert.equal(plans.find(p => p.deviceId === result.deviceID).state, 'cancelled');
+});
+test('v2 payload binds identity, account, timing version, final channel and stale date', () => {
+  const c = service.parseCoursePlan(input(), periods, now / 1000)[0];
+  const aps = service.remoteStartPayload(c, 'end-2', now / 1000, 'account-scope-0001', version).aps;
+  assert.equal(aps.attributes.occurrenceId, 'course-a'); assert.equal(aps.attributes.broadcastWindow, '2');
+  assert.equal(aps['stale-date'], c.end); assert.equal(aps['content-state'].protocolVersion, 2); assert.equal(aps['content-state'].courseName, '');
 });
 
-test("first registration mid-class starts now, while an empty replacement cancels future starts", async t => {
-  const late = window.start + 600;
-  t.mock.method(Date, "now", () => late * 1000);
-  const registration = await service.syncRemoteStarts(1, input());
-  const row = [...plans.values()][0];
-  assert.equal(row.fireAt.getTime() / 1000, late);
-  assert.ok(row.expiresAt.getTime() / 1000 > late);
-  await service.syncRemoteStarts(1, { ...input(), items: [] });
-  assert.equal(plans.size, 0);
-  await service.revokeRemoteStarts(registration.revoke);
+test('committed send intent survives unknown results and configuration changes never resend it', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now });
+  const body = input(1, 'installation-0005'); body.token = '56'.repeat(32);
+  const registered = await service.syncRemoteStarts(5, body);
+  const row = plans.find(p => p.deviceId === registered.deviceID);
+  let sends = 0;
+  const send = async () => {
+    sends++;
+    assert.equal(row.state, 'submitting', 'intent must be durable before external I/O');
+    throw new Error('connection lost after request');
+  };
+  await service.tickRemoteStarts(send);
+  assert.equal(row.state, 'submissionUnknown'); assert.equal(sends, 1);
+  await service.syncRemoteStarts(5, { ...body, planRevision: 2, leadMinutes: 30 });
+  await service.tickRemoteStarts(send);
+  assert.equal(sends, 1); assert.equal(row.state, 'submissionUnknown');
 });
 
-test("worker sends due starts, retries APNs 503, disables invalid tokens, and skips expired starts", async t => {
-  t.mock.method(Date, "now", () => now * 1000);
-  let connections = 0;
-  t.mock.method(http2, "connect", (() => {
-    connections++;
-    const client = new EventEmitter() as any;
-    client.destroy = () => {};
-    client.request = (headers: any) => {
-      const request = new EventEmitter() as any;
-      request.setEncoding = () => {};
-      request.end = (body: string) => {
-        pushes.push({ headers, body: JSON.parse(body) });
-        queueMicrotask(() => {
-          request.emit("response", { ":status": status });
-          if (status !== 200) request.emit("data", JSON.stringify({ reason: status === 410 ? "Unregistered" : "ServiceUnavailable" }));
-          request.emit("end");
-        });
-      };
-      return request;
-    };
-    return client;
-  }) as any);
-  const registered = await service.syncRemoteStarts(1, input(30));
-  const row = [...plans.values()][0];
-  status = 503;
-  await service.tickRemoteStarts();
-  assert.equal(row.state, "pending");
-  assert.equal(row.attempts, 1);
-  assert.ok(row.nextAttemptAt.getTime() > now * 1000);
-  row.nextAttemptAt = new Date(0);
-  status = 200;
-  await service.tickRemoteStarts();
-  assert.equal(row.state, "sent");
-  assert.equal(connections, 1, "reuse HTTP/2 connection across starts/retries");
-  assert.equal(pushes.at(-1).body.aps["input-push-channel"], "am");
-  assert.equal(pushes.at(-1).headers["apns-topic"], "cn.cputime.mobile.push-type.liveactivity");
-  row.state = "pending";
-  row.expiresAt = new Date((now - 1) * 1000);
-  const count = pushes.length;
-  await service.tickRemoteStarts();
-  assert.equal(row.state, "skipped");
-  assert.equal(pushes.length, count);
-  row.state = "pending";
-  row.expiresAt = new Date((now + 60) * 1000);
-  status = 410;
-  await service.tickRemoteStarts();
-  assert.equal(row.state, "failed");
-  assert.equal(devices.get(registered.deviceID).enabled, false);
-  await service.revokeRemoteStarts(registered.revoke);
+test('explicit transient rejection retries within expiry; accepted results retain identity', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now });
+  const body = input(1, 'installation-0006'); body.token = '78'.repeat(32);
+  const registered = await service.syncRemoteStarts(6, body);
+  const row = plans.find(p => p.deviceId === registered.deviceID);
+  let sends = 0;
+  await service.tickRemoteStarts(async () => { sends++; throw Object.assign(new Error('busy'), { status: 503 }); });
+  assert.equal(row.state, 'pending'); assert.equal(row.attempts, 1);
+  assert.ok(row.nextAttemptAt.getTime() > now);
+  t.mock.timers.tick(5000);
+  await service.tickRemoteStarts(async () => { sends++; return { status: 200, body: '' }; });
+  assert.equal(row.state, 'submitted'); assert.equal(sends, 2);
+  await service.syncRemoteStarts(6, { ...body, planRevision: 2, leadMinutes: 30 });
+  assert.equal(row.state, 'submitted');
 });
