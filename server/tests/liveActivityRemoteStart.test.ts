@@ -8,6 +8,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 let service: typeof import("../src/services/liveActivityRemoteStart");
+process.env.DATABASE_URL ||= "postgres://schedule-blocks-test";
+/// 上午四节连堂、下午四节连堂、晚上两节：真实节次表切出三个课节块。
+const PERIODS = [
+  { id: 1, name: "1", start: "08:00", end: "08:45" }, { id: 2, name: "2", start: "08:55", end: "09:40" },
+  { id: 3, name: "3", start: "10:00", end: "10:45" }, { id: 4, name: "4", start: "10:55", end: "11:40" },
+  { id: 5, name: "5", start: "14:00", end: "14:45" }, { id: 6, name: "6", start: "14:55", end: "15:40" },
+  { id: 7, name: "7", start: "16:00", end: "16:45" }, { id: 8, name: "8", start: "16:55", end: "17:40" },
+  { id: 9, name: "9", start: "19:00", end: "19:45" }, { id: 10, name: "10", start: "19:55", end: "20:40" },
+];
 let directory: string;
 const devices = new Map<string, any>();
 const plans = new Map<string, any>();
@@ -18,6 +27,7 @@ let config: Record<string, string>;
 const match = (row: any, where: any) => Object.entries(where).every(([k, v]) => row[k] === v);
 const db: any = {
   siteSetting: { findMany: async () => Object.entries(config).map(([key, value]) => ({ key: `apns.${key}`, value, updatedAt: new Date() })) },
+  schedulePeriodConfig: { findUnique: async () => ({ periods: JSON.stringify(PERIODS) }) },
   $queryRaw: async () => [],
   $transaction: async (fn: any) => fn(db),
   liveActivityDevice: {
@@ -69,25 +79,39 @@ before(async () => {
   const keyPath = join(directory, "key.p8");
   const { privateKey } = crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" });
   await writeFile(keyPath, privateKey.export({ format: "pem", type: "pkcs8" }));
-  config = { keyPath, keyID: "KEY", teamID: "TEAM", bundleID: "cn.cputime.mobile", channels: JSON.stringify({ "production:cpu-morning": "am" }) };
+  config = { keyPath, keyID: "KEY", teamID: "TEAM", bundleID: "cn.cputime.mobile", channels: JSON.stringify({ "production:cpu-block:2026-09-21:0800": "am" }) };
   (globalThis as any).prisma = db;
   service = await import("../src/services/liveActivityRemoteStart");
+  blocks = (await import("../src/services/liveActivityBlocks")).scheduleBlocks(PERIODS);
 });
+let blocks: import("../src/services/liveActivityBlocks").ScheduleBlock[];
 after(async () => rm(directory, { recursive: true, force: true }));
 const now = Date.parse("2026-09-21T00:00:00Z") / 1000;
-const window = { dateKey: "2026-09-21", window: "morning", start: now + 1800, end: now + 7200 };
+// 08:00 Beijing. The block runs to 11:40, which is the only end the server accepts.
+const window = { dateKey: "2026-09-21", window: "0800", start: now + 1800, end: now + 3600 * 3 + 2400 };
 function input(leadMinutes = 15) {
   return { token: "ab".repeat(32), environment: "production", bundleID: "cn.cputime.mobile", leadMinutes, items: [window] };
 }
 test("custom lead accepts 0–60 minutes, strips course text and rejects malformed/oversized schedules", () => {
-  for (const lead of [0, 1, 15, 30, 60]) assert.deepEqual(service.parseStartWindows([{ ...window, courseName: "private" }], lead, now), [window]);
-  for (const lead of [-1, 61, 1.5, "15", null]) assert.throws(() => service.parseStartWindows([window], lead, now));
-  assert.throws(() => service.parseStartWindows([window, window], 15, now));
-  assert.throws(() => service.parseStartWindows([{ ...window, window: "afternoon" }], 15, now));
-  assert.throws(() => service.parseStartWindows([{ ...window, end: window.start + 8 * 3600 }], 0, now));
-  assert.throws(() => service.parseStartWindows(Array(1111).fill(window), 15, now));
-  const future = { ...window, dateKey: "2027-01-01", start: Date.parse("2027-01-01T08:00:00+08:00") / 1000, end: Date.parse("2027-01-01T11:00:00+08:00") / 1000 };
-  assert.equal(service.parseStartWindows([future], 60, now).length, 1, "semester support extends beyond 7/45 days");
+  for (const lead of [0, 1, 15, 30, 60]) assert.deepEqual(service.parseStartWindows([{ ...window, courseName: "private" }], lead, blocks, now), [window]);
+  for (const lead of [-1, 61, 1.5, "15", null]) assert.throws(() => service.parseStartWindows([window], lead, blocks, now));
+  assert.throws(() => service.parseStartWindows([window, window], 15, blocks, now));
+  assert.throws(() => service.parseStartWindows([window], 15, [], now), /节次未配置/);
+  // A morning start may not claim the afternoon block, and the end must be the
+  // school block end: anything else would address a channel that does not exist.
+  assert.throws(() => service.parseStartWindows([{ ...window, window: "1400" }], 15, blocks, now));
+  assert.throws(() => service.parseStartWindows([{ ...window, window: "0900" }], 15, blocks, now));
+  assert.throws(() => service.parseStartWindows([{ ...window, end: window.end - 60 }], 15, blocks, now));
+  assert.throws(() => service.parseStartWindows([{ ...window, end: window.start + 8 * 3600 }], 0, blocks, now));
+  assert.throws(() => service.parseStartWindows(Array(371 * blocks.length).fill(window), 15, blocks, now));
+  const future = { dateKey: "2027-01-01", window: "1900", start: Date.parse("2027-01-01T19:00:00+08:00") / 1000, end: Date.parse("2027-01-01T20:40:00+08:00") / 1000 };
+  assert.equal(service.parseStartWindows([future], 60, blocks, now).length, 1, "semester support extends beyond 7/45 days");
+});
+
+test("blocks merge across the short break and split at lunch and dinner", () => {
+  assert.deepEqual(blocks.map(block => [block.id, block.startClock, block.endClock]), [
+    ["0800", "08:00", "11:40"], ["1400", "14:00", "17:40"], ["1900", "19:00", "20:40"],
+  ]);
 });
 
 test("start payload subscribes directly to channel and contains no personal course fields", () => {

@@ -9,6 +9,13 @@ import { join } from "node:path";
 import type { ScheduleTermConfigValue } from "../src/services/scheduleTermConfig";
 
 const unexpected = async () => { throw new Error("Personal data must not be read or written"); };
+process.env.DATABASE_URL ||= "postgres://schedule-blocks-test";
+const PERIODS = [
+  { id: 1, name: "1", start: "08:00", end: "08:45" },
+  { id: 2, name: "2", start: "08:55", end: "09:40" },
+  { id: 3, name: "3", start: "14:00", end: "14:45" },
+  { id: 4, name: "4", start: "19:00", end: "19:45" },
+];
 const db = {
   $transaction: async (fn: any) => fn(db),
   $queryRaw: async () => [],
@@ -17,7 +24,7 @@ const db = {
   liveActivityPlan: { findMany: unexpected, upsert: unexpected },
   liveActivityRegistration: { findMany: unexpected },
   scheduleTermConfig: { findMany: async () => [] },
-  schedulePeriodConfig: { findUnique: async () => null },
+  schedulePeriodConfig: { findUnique: async () => ({ periods: JSON.stringify(PERIODS) }) },
   liveActivityBroadcastEvent: { updateMany: unexpected, upsert: unexpected, findMany: unexpected, findUnique: unexpected, deleteMany: unexpected },
 };
 let service: typeof import("../src/services/liveActivityPush");
@@ -28,23 +35,22 @@ before(async () => {
 const term: ScheduleTermConfigValue = {
   semester: "2026-1", semesterStartMonday: "2026-09-14", weekCount: 16,
   timezone: "Asia/Shanghai", version: 1, note: "", adjustments: [],
-  periods: [
-    { id: 1, name: "1", start: "08:00", end: "08:45" },
-    { id: 2, name: "2", start: "08:55", end: "09:40" },
-    { id: 3, name: "3", start: "14:00", end: "14:45" },
-    { id: 4, name: "4", start: "19:00", end: "19:45" },
-  ],
+  periods: PERIODS,
 };
 function mockConfig(t: any, configured = true) {
-  const values = { keyPath: configured ? "/test.p8" : "", keyID: "KEY", teamID: "TEAM", bundleID: "cn.cputime.mobile", tickSeconds: "5", channels: JSON.stringify({ "production:cpu-morning": "prod-am", "sandbox:cpu-morning": "dev-am" }) };
+  const values = { keyPath: configured ? "/test.p8" : "", keyID: "KEY", teamID: "TEAM", bundleID: "cn.cputime.mobile", tickSeconds: "5", channels: JSON.stringify({ "production:cpu-block:2026-09-16:0800": "prod-am", "sandbox:cpu-block:2026-09-16:0800": "dev-am" }) };
   t.mock.method(db.siteSetting, "findMany", async () => Object.entries(values).map(([key, value]) => ({ key: `apns.${key}`, value, updatedAt: new Date() })));
 }
 
-test("configuration selects environment without reading devices, tokens or personal plans", async t => {
+test("blocks follow the real period table and carry no channel IDs, devices, tokens or personal plans", async t => {
   mockConfig(t);
   const config = await service.liveActivityBroadcastConfig("sandbox", "cn.cputime.mobile");
-  assert.equal(config.windows[0].channelID, "dev-am");
-  assert.equal(config.windows[1].channelID, null);
+  // Adjacent periods merge across the 10-minute break; lunch and dinner split.
+  assert.deepEqual(config.windows, [
+    { id: "0800", startClock: "08:00", endClock: "09:40" },
+    { id: "1400", startClock: "14:00", endClock: "14:45" },
+    { id: "1900", startClock: "19:00", endClock: "19:45" },
+  ]);
   assert.equal(config.minimumIOSVersion, 18);
   await assert.rejects(service.liveActivityBroadcastConfig("production", "other.app"), /Bundle ID/);
   await assert.rejects(service.liveActivityBroadcastConfig("invalid", "cn.cputime.mobile"), /环境/);
@@ -52,14 +58,14 @@ test("configuration selects environment without reading devices, tokens or perso
 
 test("disabled APNs does not hand out stale channel subscriptions", async t => {
   mockConfig(t, false);
-  const config = await service.liveActivityBroadcastConfig("production", "cn.cputime.mobile");
+  const config = await service.liveActivityBroadcastConfig("production", "cn.cputime.mobile", true);
   assert.ok(config.windows.every(w => w.channelID === null));
 });
 
-test("school broadcasts cover lead/start/end boundaries and end each window separately", () => {
+test("school broadcasts cover lead/start/end boundaries and end each block separately", () => {
   const events = service.schoolBroadcastEvents(term, "2026-09-16");
   assert.equal(events.length, 12);
-  const morning = events.filter(e => e.windowID === "morning");
+  const morning = events.filter(e => e.windowID === "block:2026-09-16:0800");
   assert.equal(morning[0].fireAt.toISOString(), "2026-09-15T23:45:00.000Z");
   assert.equal(morning.at(-1)?.fireAt.toISOString(), "2026-09-16T01:40:00.000Z");
   assert.equal(events.filter(e => e.event === "end").length, 3);
@@ -121,8 +127,15 @@ test("broadcast worker skips expired events, retries transport errors and never 
   const { privateKey } = crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" });
   await writeFile(keyPath, privateKey.export({ format: "pem", type: "pkcs8" }));
   const { dayChannelDates } = await import("../src/services/apnsChannels");
-  const daily = Object.fromEntries(dayChannelDates().flatMap(date => ["production", "sandbox"].map(env => [`${env}:cpu-day:${date}`, `${env}-${date}`])));
-  const values = { keyPath, keyID: "KEY", teamID: "TEAM", bundleID: "cn.cputime.mobile", channels: JSON.stringify({ "production:cpu-morning": "am", ...daily }) };
+  const { scheduleBlocks } = await import("../src/services/liveActivityBlocks");
+  // Pre-provision every channel the worker would otherwise create, so the test
+  // observes only the broadcast sends it is about.
+  const provisioned = Object.fromEntries(dayChannelDates().flatMap(date => ["production", "sandbox"].flatMap(env => [
+    [`${env}:cpu-day:${date}`, `${env}-${date}`],
+    ...scheduleBlocks(PERIODS).map(block => [`${env}:cpu-block:${date}:${block.id}`, `${env}-${date}-${block.id}`]),
+  ])));
+  provisioned[`production:cpu-block:${dayChannelDates()[0]}:0800`] = "am";
+  const values = { keyPath, keyID: "KEY", teamID: "TEAM", bundleID: "cn.cputime.mobile", channels: JSON.stringify(provisioned) };
   t.mock.method(db.siteSetting, "findMany", async () => Object.entries(values).map(([key, value]) => ({ key: `apns.${key}`, value, updatedAt: new Date() })));
   const row = { id: "event", state: "pending", channelID: "am", environment: "production", bundleID: "cn.cputime.mobile", eventID: "broadcast-v2-test", attempts: 0, payload: JSON.stringify(service.broadcastPayload("2026-09-16", Date.now() / 1000)), expiresAt: new Date(Date.now() - 1000) };
   const writes: any[] = [];

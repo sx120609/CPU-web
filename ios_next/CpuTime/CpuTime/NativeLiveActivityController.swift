@@ -78,6 +78,28 @@ final class NativeLiveActivityController: ObservableObject {
             accept(snapshot)
         }
     }
+    /// 一个课节块 = 课间短休相连的一串节次，由服务端按全校节次表推导下发。
+    /// 客户端不再自己猜时段边界，也不需要频道 ID：服务端发送时才解析频道。
+    struct ScheduleBlock: Codable, Equatable {
+        let id: String
+        let startClock: String
+        let endClock: String
+
+        var startSeconds: Int { ScheduleBlock.seconds(startClock) }
+        var endSeconds: Int { ScheduleBlock.seconds(endClock) }
+
+        static func seconds(_ clock: String) -> Int {
+            let parts = clock.split(separator: ":")
+            guard parts.count == 2, let hour = Int(parts[0]), let minute = Int(parts[1]) else { return -1 }
+            return hour * 3600 + minute * 60
+        }
+    }
+    var scheduleBlocks: [ScheduleBlock] = [] {
+        didSet {
+            guard oldValue != scheduleBlocks, let snapshot = lastSnapshot, !isPreviewActive else { return }
+            accept(snapshot)
+        }
+    }
     private var currentActivity: Activity<ScheduleLiveActivityAttributes>? {
         Activity<ScheduleLiveActivityAttributes>.activities.first {
             $0.activityState == .active || $0.activityState == .stale
@@ -383,35 +405,39 @@ final class NativeLiveActivityController: ObservableObject {
         let end: Int
     }
 
-    /// One small record per day/window for the loaded semester, never course text.
+    /// One small record per day/block for the loaded semester, never course text.
     func remoteStartWindows() -> [RemoteStartWindow] {
         guard isEnabled, let snapshot = lastSnapshot, snapshot.auth.authenticated,
-              ActivityAuthorizationInfo().areActivitiesEnabled else { return [] }
+              ActivityAuthorizationInfo().areActivitiesEnabled, !scheduleBlocks.isEmpty else { return [] }
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "Asia/Shanghai")!
-        let periods = snapshot.periods.isEmpty ? NativeSchedulePeriod.bundledTimetable : snapshot.periods
         let current = now()
         let horizon = current.addingTimeInterval(370 * 86400)
-        // Pick the first remaining course. Server identities are date/window,
-        // so reopening mid-session does not restart a previously sent activity.
-        let events = allOccurrences(in: snapshot).filter { $0.end > current && $0.start <= horizon }
-        let grouped = Dictionary(grouping: events) { occurrence in
-            let hour = calendar.component(.hour, from: occurrence.start)
-            return occurrence.dateKey + ":" + (hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening")
-        }
+        // Pick the first remaining course of each block. Server identities are
+        // date/block, so reopening mid-session does not restart a sent activity.
+        let events = allOccurrences(in: snapshot)
+            .filter { $0.end > current && $0.start <= horizon }
+            .compactMap { occurrence -> (block: ScheduleBlock, occurrence: Occurrence)? in
+                guard let block = block(containing: occurrence.start, calendar: calendar) else { return nil }
+                return (block, occurrence)
+            }
+        let grouped = Dictionary(grouping: events) { $0.occurrence.dateKey + ":" + $0.block.id }
         return grouped.values.compactMap { courses -> RemoteStartWindow? in
-            guard let first = courses.first else { return nil }
-            let hour = calendar.component(.hour, from: first.start)
-            let window = hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening"
-            let clocks = periods.filter {
-                let h = Int($0.startTime.prefix(2)) ?? -1
-                return window == "morning" ? h < 12 : window == "afternoon" ? h >= 12 && h < 18 : h >= 18
-            }.compactMap { date(first.dateKey, time: $0.endTime, calendar: calendar) }
-            guard let end = clocks.max(), end > current,
+            guard let block = courses.first?.block,
+                  let first = courses.map(\.occurrence).min(by: { $0.start < $1.start }) else { return nil }
+            // The end is the school block end, which is what the server validates
+            // the plan against and what the block channel will broadcast `end` at.
+            guard let end = date(first.dateKey, time: block.endClock, calendar: calendar), end > current,
                   end.timeIntervalSince(first.start.addingTimeInterval(-leadTime)) < 8 * 3600 else { return nil }
-            return RemoteStartWindow(dateKey: first.dateKey, window: window,
+            return RemoteStartWindow(dateKey: first.dateKey, window: block.id,
                                      start: Int(first.start.timeIntervalSince1970), end: Int(end.timeIntervalSince1970))
         }.sorted { $0.start < $1.start }
+    }
+
+    private func block(containing date: Date, calendar: Calendar) -> ScheduleBlock? {
+        let parts = calendar.dateComponents([.hour, .minute], from: date)
+        let seconds = (parts.hour ?? 0) * 3600 + (parts.minute ?? 0) * 60
+        return scheduleBlocks.first { $0.startSeconds <= seconds && seconds < $0.endSeconds }
     }
 
     struct LocalReservation {

@@ -104,6 +104,19 @@ final class LiveActivityPushService: ObservableObject {
                     }
                     guard let snapshot = controller.currentScheduleMetadata,
                           snapshot.auth.authenticated, snapshot.data != nil, snapshot.calendar != nil else { return }
+                    // Block boundaries come from the school period table, never
+                    // from hardcoded hours, so a period edit reshapes the plan.
+                    let bundle = Bundle.main.bundleIdentifier ?? "cn.cputime.mobile"
+                    let blockPath = "/api/live-activities/broadcast-config?environment=\(Self.environment)&bundleID=\(bundle)"
+                    let blockResult = try Self.decode(try await request(blockPath, "GET", nil))
+                    guard epoch == generation, !Task.isCancelled, controller.isEnabled, controller.remoteStartsEnabled else { return }
+                    let blockData = try JSONSerialization.data(withJSONObject: blockResult["windows"] ?? [])
+                    let blocks = try JSONDecoder().decode([NativeLiveActivityController.ScheduleBlock].self, from: blockData)
+                    guard !blocks.isEmpty else {
+                        controller.broadcastStatus = "学校节次尚未配置，无法安排远程启动。"
+                        return
+                    }
+                    controller.scheduleBlocks = blocks
                     let items = controller.remoteStartWindows()
                     let encoded = try JSONEncoder().encode(items)
                     let lead = controller.leadMinutes
@@ -129,7 +142,7 @@ final class LiveActivityPushService: ObservableObject {
                         lastDigest = digest
                         let through = result["scheduledThrough"] as? String
                         let missing = result["missingWindows"] as? [String] ?? []
-                        controller.broadcastStatus = !missing.isEmpty ? "启动计划已保存，但部分学校频道未就绪，请联系管理员。" : through.map { "远程启动已同步至 \($0)，提前 \(lead) 分钟；无需每天打开 App。" } ?? "当前没有待启动的有课时段。"
+                        controller.broadcastStatus = !missing.isEmpty ? "启动计划已保存，但部分学校频道未就绪，请联系管理员。" : through.map { "远程启动已同步至 \($0)，提前 \(lead) 分钟；无需每天打开 App。" } ?? "当前没有待启动的有课时间。"
                     }
                     failures = 0
                     if version == revision { return }
@@ -177,6 +190,7 @@ final class LiveActivityPushService: ObservableObject {
         let controller = NativeLiveActivityController.shared
         controller.remoteStartsEnabled = false
         controller.broadcastWindows = []
+        controller.scheduleBlocks = []
         flushRevocations()
     }
     private static func decode(_ data: Data) throws -> [String: Any] {

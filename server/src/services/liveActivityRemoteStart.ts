@@ -4,7 +4,9 @@ import { prisma } from "../prisma";
 import { decryptJwxtSensitiveJson, encryptJwxtSensitiveJson } from "./jwxtSessionCrypto";
 import { getApnsConfig } from "./apnsConfig";
 import { appleReferenceSeconds, sendLiveActivityPayload } from "./apnsClient";
-import { LIVE_ACTIVITY_WINDOWS } from "./liveActivityWindows";
+import { clockSeconds, scheduleBlocks, type ScheduleBlock } from "./liveActivityBlocks";
+import { getSchedulePeriods } from "./scheduleTermConfig";
+import { schoolDate } from "./apnsChannels";
 
 const PURPOSE = "live-activity-start-token";
 const EVENT = "hybrid-start-v1";
@@ -14,23 +16,29 @@ function tokenHash(token: unknown) {
   if (typeof token !== "string" || !/^(?:[a-fA-F0-9]{2}){16,256}$/.test(token)) throw new Error("启动 token 无效");
   return crypto.createHash("sha256").update(token.toLowerCase()).digest("hex");
 }
-export function parseStartWindows(raw: unknown, lead: unknown, now = Date.now() / 1000) {
+export function parseStartWindows(raw: unknown, lead: unknown, blocks: ScheduleBlock[], now = Date.now() / 1000) {
   if (!Number.isInteger(lead) || Number(lead) < 0 || Number(lead) > 60) throw new Error("提前量必须为 0–60 分钟的整数");
-  if (!Array.isArray(raw) || raw.length > 1110) throw new Error("启动计划最多包含 370 天的三个时段");
+  if (!blocks.length) throw new Error("学校节次未配置，无法安排启动");
+  const limit = Math.min(370 * blocks.length, 2000);
+  if (!Array.isArray(raw) || raw.length > limit) throw new Error(`启动计划最多包含 ${limit} 个课节块`);
   const seen = new Set<string>();
   return raw.map((item): StartWindow => {
-    if (!item || typeof item !== "object") throw new Error("启动时段无效");
+    if (!item || typeof item !== "object") throw new Error("课节块无效");
     const { dateKey, window, start, end } = item;
-    const definition = LIVE_ACTIVITY_WINDOWS.find(w => w.id === window);
-    if (typeof dateKey !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(dateKey) || !definition
-      || !Number.isFinite(start) || !Number.isFinite(end)) throw new Error("启动时段无效");
+    const block = blocks.find(b => b.id === window);
+    if (typeof dateKey !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(dateKey) || !block
+      || !Number.isFinite(start) || !Number.isFinite(end)) throw new Error("课节块无效");
     const midnight = Date.parse(`${dateKey}T00:00:00+08:00`) / 1000;
-    const hour = (start - midnight) / 3600;
-    if (!Number.isFinite(midnight) || new Date((midnight + 8 * 3600) * 1000).toISOString().slice(0, 10) !== dateKey || hour < definition.startHour || hour >= definition.endHour
+    // The end must be the school block end exactly: a stale client definition
+    // would otherwise point at a channel that no longer exists. Resyncing after
+    // a period edit is cheap; silently broadcasting into the wrong block is not.
+    if (!Number.isFinite(midnight) || new Date((midnight + 8 * 3600) * 1000).toISOString().slice(0, 10) !== dateKey
+      || start < midnight + clockSeconds(block.startClock) || start >= midnight + clockSeconds(block.endClock)
+      || end !== midnight + clockSeconds(block.endClock)
       || start < now - DAY || start > now + 370 * DAY || end <= start
-      || end > midnight + DAY || end - (start - Number(lead) * 60) >= 8 * 3600) throw new Error("时段日期、时间或活动时长无效");
+      || end - (start - Number(lead) * 60) >= 8 * 3600) throw new Error("课节块日期、时间或活动时长无效");
     const key = `${dateKey}:${window}`;
-    if (seen.has(key)) throw new Error("同一天同一时段只能启动一次");
+    if (seen.has(key)) throw new Error("同一天同一课节块只能启动一次");
     seen.add(key);
     // Whitelist fields: no course names, arbitrary APNs payloads or channel IDs.
     return { dateKey, window, start, end };
@@ -44,7 +52,8 @@ export async function syncRemoteStarts(userId: number, input: any) {
   if (!["sandbox", "production"].includes(input.environment)) throw new Error("APNs 环境无效");
   const config = await getApnsConfig();
   if (!config.configured || input.bundleID !== config.bundleID) throw new Error("APNs 未配置或 Bundle ID 不匹配");
-  const windows = parseStartWindows(input.items, input.leadMinutes);
+  const blocks = scheduleBlocks(await getSchedulePeriods());
+  const windows = parseStartWindows(input.items, input.leadMinutes, blocks);
   const digest = crypto.createHash("sha256").update(JSON.stringify([input.leadMinutes, windows, input.environment, input.bundleID])).digest("hex");
   let replacement: { id: string; userId: number; hash: string } | undefined;
   if (input.replaces) {
@@ -80,7 +89,8 @@ export async function syncRemoteStarts(userId: number, input: any) {
     // Revocation also works after the website login cookie has been cleared.
     const revoke = encryptJwxtSensitiveJson("live-activity-revoke", "v1", { id: device.id, userId, hash });
     return { deviceID: device.id, revoke, scheduledThrough: windows.at(-1)?.dateKey ?? null,
-      missingWindows: LIVE_ACTIVITY_WINDOWS.filter(w => !config.channels[`${input.environment}:cpu-${w.id}`]).map(w => w.id) };
+      // Only today's channels prove readiness; later dates are provisioned two days ahead.
+      missingWindows: blocks.filter(b => !config.channels[`${input.environment}:cpu-block:${schoolDate()}:${b.id}`]).map(b => b.id) };
   }, { timeout: 20000 });
 }
 export async function revokeRemoteStarts(capability: unknown) {
@@ -125,9 +135,9 @@ export async function tickRemoteStarts() {
         const finish = (state: string, detail = "") => tx.liveActivityPlan.update({ where: { id: row.id }, data: { state, detail, ...(state === "sent" ? { sentAt: new Date() } : {}) } });
         if (row.expiresAt.getTime() <= Date.now() || row.device.bundleID !== config.bundleID) { await finish("skipped", "启动已过期或配置已改变"); return; }
         const window = JSON.parse(row.payload) as StartWindow;
-        const channel = config.channels[`${row.device.environment}:cpu-${window.window}`];
+        const channel = config.channels[`${row.device.environment}:cpu-block:${window.dateKey}:${window.window}`];
         if (!channel) {
-          await tx.liveActivityPlan.update({ where: { id: row.id }, data: { nextAttemptAt: new Date(Date.now() + 30000), detail: "等待时段频道" } });
+          await tx.liveActivityPlan.update({ where: { id: row.id }, data: { nextAttemptAt: new Date(Date.now() + 30000), detail: "等待课节块频道" } });
           return;
         }
         try {

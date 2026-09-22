@@ -1,9 +1,9 @@
 import { prisma } from "../prisma";
 import { appleReferenceSeconds, sendLiveActivityBroadcast } from "./apnsClient";
 import { getApnsConfig } from "./apnsConfig";
-import { listScheduleTermConfigs, type ScheduleTermConfigValue } from "./scheduleTermConfig";
+import { getSchedulePeriods, listScheduleTermConfigs, type ScheduleTermConfigValue } from "./scheduleTermConfig";
 import { adjustmentForDate, isMovedSourceDate } from "../shared/scheduleAdjustments";
-import { LIVE_ACTIVITY_WINDOWS } from "./liveActivityWindows";
+import { scheduleBlocks } from "./liveActivityBlocks";
 import { dayChannelDates, ensureDayChannels } from "./apnsChannels";
 
 import { tickRemoteStarts } from "./liveActivityRemoteStart";
@@ -27,12 +27,13 @@ export async function liveActivityBroadcastConfig(environment: string, bundleID:
     windows: dayChannelDates().map(date => ({ id: date, startHour: 0, endHour: 24,
       channelID: config.configured ? config.channels[`${environment}:cpu-day:${date}`] || null : null })),
   };
+  // Blocks are school-wide clock ranges. Their channels are per school date and
+  // provisioned two days ahead, so the client never needs a channel ID: it only
+  // groups its own courses, and the server resolves the channel when it sends.
+  const blocks = scheduleBlocks(await getSchedulePeriods());
   return {
     mode: "broadcast", minimumIOSVersion: 18,
-    windows: LIVE_ACTIVITY_WINDOWS.map(window => ({
-      ...window,
-      channelID: config.configured ? config.channels[`${environment}:cpu-${window.id}`] || null : null,
-    })),
+    windows: blocks.map(block => ({ id: block.id, startClock: block.startClock, endClock: block.endClock })),
   };
 }
 
@@ -59,9 +60,13 @@ export function schoolBroadcastEvents(term: ScheduleTermConfigValue, dateKey: st
   if (adjustment?.kind === "off" || isMovedSourceDate(term.adjustments, dateKey)) return [];
   // Weekend classes can exist in the local timetable; an empty day is filtered
   // on the phone, never inferred from the weekday by the broadcast server.
-  const windows = daily ? [{ id: `day:${dateKey}`, startHour: 0, endHour: 24 }] : LIVE_ACTIVITY_WINDOWS;
+  // iOS 26 takes the whole day on one tick-only channel; iOS 18-25 takes one
+  // channel per block so the block end dismisses exactly its own activities.
+  const windows = daily
+    ? [{ id: `day:${dateKey}`, periods: term.periods }]
+    : scheduleBlocks(term.periods).map(block => ({ id: `block:${dateKey}:${block.id}`, periods: block.periods }));
   return windows.flatMap(window => {
-    const periods = term.periods.filter(p => Number(p.start.slice(0, 2)) >= window.startHour && Number(p.start.slice(0, 2)) < window.endHour);
+    const periods = window.periods;
     if (!periods.length) return [];
     const seconds = (clock: string) => new Date(`${dateKey}T${clock}:00+08:00`).getTime() / 1000;
     const end = Math.max(...periods.map(p => seconds(p.end)));

@@ -189,8 +189,14 @@ struct NativeLiveActivityChecks {
         await settle()
         let customReservation = Activity<ScheduleLiveActivityAttributes>.activities.first { $0.activityState == .pending }
         precondition(customReservation?.scheduledStart == start.addingTimeInterval(-1800), "Personal lead must reach ActivityKit, not only the plan")
+        // Block definitions come from the server's period table; without them the
+        // client refuses to guess a plan rather than fall back to fixed hours.
+        precondition(controller.remoteStartWindows().isEmpty, "No school blocks means no remote plan")
+        controller.scheduleBlocks = [.init(id: "0800", startClock: "08:00", endClock: "08:45")]
         let remote = controller.remoteStartWindows()
         precondition(remote.count == 1 && remote[0].start == Int(start.timeIntervalSince1970))
+        precondition(remote[0].window == "0800" && remote[0].end == Int(end.timeIntervalSince1970),
+                     "The plan ends at the school block end, which is where the block channel broadcasts end")
         let wire = String(data: try JSONEncoder().encode(remote), encoding: .utf8)!
         precondition(!wire.contains("药") && !wire.contains("teacher") && !wire.contains("location"))
         controller.setLeadMinutes(0)
@@ -210,7 +216,7 @@ struct NativeLiveActivityChecks {
         precondition(activeActivities.isEmpty && Activity<ScheduleLiveActivityAttributes>.activities.filter { $0.activityState == .pending }.isEmpty,
                      "Remote mode must not also create local/scheduled activities")
         let remoteActivity = try Activity<ScheduleLiveActivityAttributes>.request(
-            attributes: .init(semester: "", dateKey: "2026-09-16", broadcastWindow: "morning"),
+            attributes: .init(semester: "", dateKey: "2026-09-16", broadcastWindow: "0800"),
             content: .init(state: .init(phase: .upcoming, courseName: "课程", startDate: start, endDate: end), staleDate: end),
             pushType: .channel("am"))
         controller.foreground()
@@ -241,7 +247,8 @@ struct NativeLiveActivityChecks {
             phase: .upcoming, courseName: "", startDate: start, endDate: start,
             broadcastDateKey: "2026-09-16", broadcastTimestamp: start
         )
-        let attrs = ScheduleLiveActivityAttributes(semester: "2026-1", dateKey: "2026-09-16", broadcastWindow: "morning")
+        let attrs = ScheduleLiveActivityAttributes(semester: "2026-1", dateKey: "2026-09-16", broadcastWindow: "0800",
+            reservationStart: start, reservationEnd: start.addingTimeInterval(105 * 60))
         let resolved = signal.resolvedForBroadcast(attributes: attrs, now: start.addingTimeInterval(55 * 60), cachedCourses: [course])
         precondition(resolved.courseName == "药理学" && resolved.phase == .inProgress)
         precondition(signal.resolvedForBroadcast(attributes: attrs, now: start.addingTimeInterval(-900), cachedCourses: [course]).phase == .upcoming)
@@ -250,9 +257,13 @@ struct NativeLiveActivityChecks {
         precondition(finished.phase == .idle && !finished.courseName.isEmpty,
                      "A late broadcast without window attributes must show a finished state, never an empty countdown")
         precondition(signal.resolvedForBroadcast(attributes: attrs, now: start, cachedCourses: []).phase == .idle)
-        let afternoon = ScheduleLiveActivityAttributes(semester: "2026-1", dateKey: "2026-09-16", broadcastWindow: "afternoon")
+        // A later block must never adopt this block's lesson: that is exactly the
+        // cross-window dismissal the old morning/afternoon/evening split papered over.
+        let afternoon = ScheduleLiveActivityAttributes(semester: "2026-1", dateKey: "2026-09-16", broadcastWindow: "1400",
+            reservationStart: start.addingTimeInterval(6 * 3600), reservationEnd: start.addingTimeInterval(9 * 3600))
         precondition(signal.resolvedForBroadcast(attributes: afternoon, now: start, cachedCourses: [course]).phase == .idle)
-        let tomorrow = ScheduleLiveActivityAttributes(semester: "2026-1", dateKey: "2026-09-17", broadcastWindow: "morning")
+        let tomorrow = ScheduleLiveActivityAttributes(semester: "2026-1", dateKey: "2026-09-17", broadcastWindow: "0800",
+            reservationStart: start, reservationEnd: start.addingTimeInterval(105 * 60))
         precondition(signal.resolvedForBroadcast(attributes: tomorrow, now: start, cachedCourses: [course]).phase == .idle)
 
         // Multiple lessons share one date channel but keep independent content.
@@ -293,8 +304,12 @@ struct NativeLiveActivityChecks {
                 UserDefaults.standard.removeObject(forKey: key)
             }
         }
+        let blockResponse = Data("{\"data\":{\"windows\":[{\"id\":\"0800\",\"startClock\":\"08:00\",\"endClock\":\"08:45\"}]}}".utf8)
         push.setAPIRequest { path, method, body in
             calls.append((path, method, body))
+            // The plan is rebuilt from the school block table on every pass, so a
+            // period edit reshapes it without the student reopening the app.
+            if method == "GET" { return blockResponse }
             if method == "PUT", holdNext {
                 holdNext = false
                 return try await withCheckedThrowingContinuation { held = $0 }

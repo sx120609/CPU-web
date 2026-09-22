@@ -142,15 +142,16 @@ public struct ScheduleLiveActivityAttributes: ActivityAttributes, Equatable {
             let group = ((Bundle.main.object(forInfoDictionaryKey: "CPUAppGroupIdentifier") as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 } ?? "group.cn.cputime.mobile"
             let courses = cachedCourses ?? UserDefaults(suiteName: group)?.data(forKey: ScheduleLiveActivityAttributes.broadcastCoursesKey)
                 .flatMap { try? JSONDecoder().decode([ScheduleLiveActivityAttributes.LocalCourse].self, from: $0) } ?? []
-            var calendar = Calendar(identifier: .gregorian)
-            calendar.timeZone = TimeZone(identifier: "Asia/Shanghai")!
+            // iOS 26 reserves one activity per lesson, tagged with the date key
+            // itself. The broadcast path reserves one per school block and carries
+            // that block's end in reservationEnd. Neither needs an hour boundary.
             let window = attributes?.broadcastWindow
             let sameDay = courses.filter {
-                let hour = calendar.component(.hour, from: $0.startDate)
-                let matchesWindow = window == nil || window == dateKey || (window == "morning" && hour < 12)
-                    || (window == "afternoon" && hour >= 12 && hour < 18) || (window == "evening" && hour >= 18)
-                let matchesLesson = window != dateKey || attributes?.reservationStart == $0.startDate
-                return $0.dateKey == dateKey && matchesWindow && matchesLesson && $0.endDate > now
+                guard $0.dateKey == dateKey, $0.endDate > now else { return false }
+                if window != nil, window == dateKey { return attributes?.reservationStart == $0.startDate }
+                guard let blockStart = attributes?.reservationStart,
+                      let blockEnd = attributes?.reservationEnd else { return true }
+                return $0.startDate >= blockStart && $0.startDate < blockEnd
             }.sorted { $0.startDate < $1.startDate }
             // Use actual time, not the period's first slot: a multi-slot course
             // remains in progress through its intermediate school boundaries.
