@@ -133,6 +133,8 @@ struct NativeLiveActivityChecks {
         precondition(ordinary[0].start == start.addingTimeInterval(-900))
         precondition(ordinary[0].end == end)
         precondition(controller.localReservations(from: adjustedFixture()).isEmpty)
+        precondition(controller.localReservations(from: adjustedFixture(sourceOff: false)).count == 1,
+                     "Using a source date must preserve its original classes")
         clock = ISO8601DateFormatter().date(from: "2026-09-19T07:00:00+08:00")!
         controller.broadcastWindows = [.init(id: "2026-09-19", startHour: 0, endHour: 24, channelID: "day-19")]
         let makeUp = controller.localReservations(from: adjustedFixture())
@@ -371,7 +373,7 @@ struct NativeLiveActivityChecks {
     }
 
     /// 周三放假，周六补这天的课：计划必须跟着挪，而且说清楚挪的是哪天。
-    private static func adjustedFixture() -> NativeScheduleSnapshot {
+    private static func adjustedFixture(sourceOff: Bool = true) -> NativeScheduleSnapshot {
         let base = fixture()
         return NativeScheduleSnapshot(
             completeSemester: true,
@@ -382,8 +384,7 @@ struct NativeLiveActivityChecks {
                 currentSemester: "2026-2027-1",
                 currentWeek: 3,
                 weeks: base.calendar?.weeks ?? [],
-                adjustments: [
-                    NativeScheduleAdjustment(date: "2026-09-16", kind: "off", source: nil, note: "国庆节放假"),
+                adjustments: (sourceOff ? [NativeScheduleAdjustment(date: "2026-09-16", kind: "off", source: nil, note: "国庆节放假")] : []) + [
                     NativeScheduleAdjustment(date: "2026-09-19", kind: "swap", source: "2026-09-16", note: nil),
                 ]
             ),

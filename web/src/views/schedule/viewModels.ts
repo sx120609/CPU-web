@@ -1,5 +1,4 @@
 import { applyScheduleEditsToCells, courseEditKey, scheduleCourseEditLabel, type ScheduleEditState } from "@/utils/scheduleEdits";
-import { isMovedSourceDate } from "@/utils/scheduleAdjustments";
 import { courseMatchesWeek } from "@/utils/scheduleWeeks";
 import {
   buildGraduateFallbackCalendar,
@@ -91,7 +90,6 @@ export function createScheduleViewModelHelpers(context: ScheduleViewModelContext
         const date = normalizeCalendarWeekDays(week.days)[day - 1] || "";
         const adjustment = date ? adjustments.find((item) => item.date === date) : undefined;
         if (adjustment?.kind === "off") continue;
-        if (date && isMovedSourceDate(adjustments, date)) continue;
         let sourceWeek = wk;
         let sourceDay = day;
         if (adjustment?.kind === "swap" && adjustment.source) {

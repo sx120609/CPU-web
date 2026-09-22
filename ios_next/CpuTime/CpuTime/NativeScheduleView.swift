@@ -1345,12 +1345,6 @@ struct NativeScheduleView: View {
                 sourceWeek = sourceWeekInfo.week
                 sourceDay = sourceIndex + 1
             }
-        } else if let week,
-                  let calendar = store.calendar,
-                  let targetWeek = calendar.weeks.first(where: { $0.week == week }),
-                  targetWeek.days.indices.contains(day - 1),
-                  calendar.adjustments.contains(where: { $0.kind == "swap" && $0.source == targetWeek.days[day - 1] }) {
-            return []
         }
         let rawBlocks = result.cells
             .filter { $0.day == sourceDay }

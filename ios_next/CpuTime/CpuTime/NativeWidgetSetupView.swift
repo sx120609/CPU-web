@@ -585,8 +585,6 @@ private final class NativeScheduleCalendarImporter {
                 let targetDate = week.days[targetDay - 1]
                 let adjustment = calendar.adjustments.first(where: { $0.date == targetDate })
                 if adjustment?.kind == "off" { continue }
-                if adjustment == nil,
-                   calendar.adjustments.contains(where: { $0.kind == "swap" && $0.source == targetDate }) { continue }
 
                 var sourceDay = targetDay
                 var sourceWeek = week.week

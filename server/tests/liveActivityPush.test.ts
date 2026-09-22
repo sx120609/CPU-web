@@ -79,13 +79,15 @@ test("school broadcasts cover lead/start/end boundaries and end each block separ
   }
 });
 
-test("holidays and moved dates are silent, make-up days and weekend classes receive signals", () => {
+test("holidays are silent, source days, make-up days and weekend classes receive signals", () => {
   const adjusted = { ...term, adjustments: [
     { date: "2026-09-16", kind: "off" as const },
     { date: "2026-09-19", kind: "swap" as const, source: "2026-09-16" },
   ] };
   assert.equal(service.schoolBroadcastEvents(adjusted, "2026-09-16").length, 0);
   assert.equal(service.schoolBroadcastEvents(adjusted, "2026-09-19").length, 12);
+  const sourceWorking = { ...adjusted, adjustments: adjusted.adjustments.filter((item) => item.kind !== "off") };
+  assert.equal(service.schoolBroadcastEvents(sourceWorking, "2026-09-16").length, 12);
   assert.equal(service.schoolBroadcastEvents(term, "2026-09-20").length, 12);
   assert.equal(service.schoolBroadcastEvents(term, "2026-09-13").length, 0);
   assert.equal(service.schoolBroadcastEvents(term, "2027-09-20").length, 0);

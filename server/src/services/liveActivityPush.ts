@@ -2,7 +2,7 @@ import { prisma } from "../prisma";
 import { appleReferenceSeconds, sendLiveActivityBroadcast } from "./apnsClient";
 import { getApnsConfig } from "./apnsConfig";
 import { getSchedulePeriods, listScheduleTermConfigs, type ScheduleTermConfigValue } from "./scheduleTermConfig";
-import { adjustmentForDate, isMovedSourceDate } from "../shared/scheduleAdjustments";
+import { adjustmentForDate } from "../shared/scheduleAdjustments";
 import { scheduleBlocks } from "./liveActivityBlocks";
 import { dayChannelDates, ensureDayChannels } from "./apnsChannels";
 
@@ -57,7 +57,7 @@ export function schoolBroadcastEvents(term: ScheduleTermConfigValue, dateKey: st
   termEnd.setUTCDate(termEnd.getUTCDate() + term.weekCount * 7);
   if (dateKey < term.semesterStartMonday || day >= termEnd) return [];
   const adjustment = adjustmentForDate(term.adjustments, dateKey);
-  if (adjustment?.kind === "off" || isMovedSourceDate(term.adjustments, dateKey)) return [];
+  if (adjustment?.kind === "off") return [];
   // Weekend classes can exist in the local timetable; an empty day is filtered
   // on the phone, never inferred from the weekday by the broadcast server.
   // iOS 26 takes the whole day on one tick-only channel; iOS 18-25 takes one

@@ -1,6 +1,6 @@
 import { normalizeCalendarWeekDays } from "./jwxtParser";
 import { courseMatchesWeek, normalizedCourseWeekList } from "../shared/scheduleWeeks";
-import { adjustmentForDate, isMovedSourceDate, type ScheduleAdjustmentLike } from "../shared/scheduleAdjustments";
+import { adjustmentForDate, type ScheduleAdjustmentLike } from "../shared/scheduleAdjustments";
 export { parseWeekText as parseScheduleWidgetWeeks } from "../shared/scheduleWeeks";
 
 export const SCHEDULE_WIDGET_PAYLOAD_VERSION = 11;
@@ -248,7 +248,7 @@ function coursesForWeek(
   for (let targetDay = 1; targetDay <= 7; targetDay += 1) {
     const targetDate = calendarDays[targetDay - 1] || "";
     const adjustment = adjustmentForDate(adjustments, targetDate);
-    if (adjustment?.kind === "off" || isMovedSourceDate(adjustments, targetDate)) continue;
+    if (adjustment?.kind === "off") continue;
     let sourceWeek = week;
     let sourceDay = targetDay;
     let sourceSchedule = parsed;

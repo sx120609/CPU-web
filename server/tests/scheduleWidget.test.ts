@@ -250,7 +250,7 @@ test("schedule widget includes the next seven days so an empty day can advance t
   assert.deepEqual(payload.upcoming.map((item) => item.name), ["下周课程"]);
 });
 
-test("schedule widget applies swaps to weekends and does not duplicate the source day", () => {
+test("schedule widget applies swaps to weekends and preserves the source day", () => {
   const days = ["2026-07-20", "2026-07-21", "2026-07-22", "2026-07-23", "2026-07-24", "2026-07-25", "2026-07-26"];
   const calendar = {
     currentSemester: "2025-2026-2", currentWeek: 3, weeks: [{ week: 3, days }],
@@ -262,7 +262,7 @@ test("schedule widget applies swaps to weekends and does not duplicate the sourc
     "3",
     WEDNESDAY_1302_CHINA,
   );
-  assert.deepEqual(payload.weekDays[2].courses, []);
+  assert.deepEqual(payload.weekDays[2].courses.map((item) => item.name), ["周三调休课"]);
   assert.deepEqual(payload.weekDays[6].courses.map((item) => item.name), ["周三调休课"]);
 });
 

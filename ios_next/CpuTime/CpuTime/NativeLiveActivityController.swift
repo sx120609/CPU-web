@@ -605,8 +605,8 @@ final class NativeLiveActivityController: ObservableObject {
         let adjustmentNote: String
     }
 
-    /// 调休：放假那天没有课要提醒，补课那天提醒的是另一天的课，被调走的那天
-    /// 也不再上课。返回 nil 表示这天一节课都没有。
+    /// 调休：放假那天没有课要提醒，补课那天提醒的是来源日的课，来源日照常上课。
+    /// 返回 nil 表示这天一节课都没有。
     ///
     /// 和 `NativeScheduleView.blocks(for:week:result:)` 的规则保持一致，否则
     /// 网格里和锁屏上会是两张课表。
@@ -627,8 +627,6 @@ final class NativeLiveActivityController: ObservableObject {
             }
             return (day, week, note ?? "")
         }
-        // 这天的课被调到别处去了，本身就不再上课。
-        if calendar.adjustments.contains(where: { $0.kind == "swap" && $0.source == date }) { return nil }
         return (day, week, "")
     }
 

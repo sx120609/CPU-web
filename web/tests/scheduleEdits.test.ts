@@ -16,7 +16,7 @@ import {
   saveCustomCourseEdit,
 } from "../src/views/schedule/courseEditor";
 import { createScheduleViewModelHelpers } from "../src/views/schedule/viewModels";
-import type { ScheduleResult, WeekCourseBlock } from "../src/views/schedule/types";
+import type { CalendarResult, ScheduleResult, WeekCourseBlock } from "../src/views/schedule/types";
 
 function fixture() {
   const course = {
@@ -168,7 +168,7 @@ test("source validation happens before week filtering and supports moved edits",
   assert.equal(cells[0].courses[0].orphaned, false);
 });
 
-test("calendar swaps move a cross-week course and hide the original source date", () => {
+test("calendar swaps copy a cross-week course and preserve the source unless explicitly off", () => {
   const course = {
     name: "调休课程", weeks: "1-2周", weekList: [1, 2],
     startSlot: 1, endSlot: 2,
@@ -181,7 +181,7 @@ test("calendar swaps move a cross-week course and hide the original source date"
     currentSemester: "2026-2027-1", currentWeek: "2", weeks: [], semesters: [],
     cells: [{ day: 1, bigSlot: 1, courses: [{ ...course, name: "第二周课程", weekList: [2], weeks: "第2周" }] }],
   };
-  const calendar = {
+  const calendar: CalendarResult = {
     currentWeek: 2,
     semesterStart: "2026-09-07",
     semesterEnd: "2026-09-20",
@@ -198,7 +198,10 @@ test("calendar swaps move a cross-week course and hide the original source date"
     allKnownScheduleSources: () => [weekTwo, weekOne],
   });
   assert.equal(helpers.cellsForWeek(2, weekTwo).find((cell) => cell.day === 6)?.courses[0]?.name, "调休课程");
+  assert.equal(helpers.cellsForWeek(1, weekOne).some((cell) => cell.day === 3), true);
+  calendar.adjustments!.push({ date: "2026-09-09", kind: "off" });
   assert.equal(helpers.cellsForWeek(1, weekOne).some((cell) => cell.day === 3), false);
+  assert.equal(helpers.cellsForWeek(2, weekTwo).find((cell) => cell.day === 6)?.courses[0]?.name, "调休课程");
 });
 
 test("a source reappearing on refresh clears the derived warning", () => {
