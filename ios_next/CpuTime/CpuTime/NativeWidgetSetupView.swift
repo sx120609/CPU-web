@@ -571,6 +571,10 @@ private final class NativeScheduleCalendarImporter {
         let weeks = importWeeks(for: snapshot, data: data, calendar: calendar)
         guard !weeks.isEmpty else { throw ImportError.invalidSchedule }
         let periods = snapshot.periods.isEmpty ? NativeSchedulePeriod.bundledTimetable : snapshot.periods
+        let semesterDisplayName = NativeScheduleSemester.calendarDisplayName(
+            for: data.currentSemester,
+            options: data.semesters + calendar.semesters
+        )
         var eventMap = loadMap(for: data.currentSemester)
         var activeKeys = Set<String>()
         var count = 0
@@ -619,7 +623,7 @@ private final class NativeScheduleCalendarImporter {
                         event.startDate = start
                         event.endDate = end
                         event.location = course.location?.trimmingCharacters(in: .whitespacesAndNewlines)
-                        event.notes = notes(for: course, week: week.week, semester: data.currentSemester)
+                        event.notes = notes(for: course, week: week.week, semester: semesterDisplayName)
                         event.alarms = remindersEnabled ? [EKAlarm(relativeOffset: -15 * 60)] : []
                         try eventStore.save(event, span: .thisEvent, commit: false)
                         eventMap[key] = event.eventIdentifier

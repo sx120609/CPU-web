@@ -128,6 +128,54 @@ public struct NativeScheduleSemester: Codable, Identifiable, Equatable, Sendable
         let value = (try? single.decode(String.self)) ?? (try? String(single.decode(Int.self))) ?? ""
         self.init(value: value, label: value)
     }
+
+    /// Calendar notes run through Apple's data detectors. A raw semester ID
+    /// such as `2025-2026-2` is otherwise presented as a tappable phone number.
+    public static func calendarDisplayName(
+        for value: String,
+        options: [NativeScheduleSemester] = []
+    ) -> String {
+        let semester = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        let matchingLabels = options
+            .filter { $0.value.trimmingCharacters(in: .whitespacesAndNewlines) == semester }
+            .map { $0.label.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        let source = matchingLabels.first(where: { $0 != semester })
+            ?? matchingLabels.first
+            ?? semester
+
+        let normalized = source
+            .replacingOccurrences(of: "–", with: "-")
+            .replacingOccurrences(of: "—", with: "-")
+            .replacingOccurrences(of: "－", with: "-")
+        let compact = normalized.replacingOccurrences(of: " ", with: "")
+        let parts = compact.split(separator: "-", omittingEmptySubsequences: false)
+        if parts.count >= 3,
+           parts[0].count == 4, parts[1].count == 4,
+           parts[0].allSatisfy(\.isNumber), parts[1].allSatisfy(\.isNumber),
+           let term = Int(parts[2]), (1...9).contains(term) {
+            let termName: String
+            switch term {
+            case 1: termName = "第一学期"
+            case 2: termName = "第二学期"
+            case 3: termName = "第三学期"
+            default: termName = "第 \(term) 学期"
+            }
+            let batch = parts.dropFirst(3).filter { !$0.isEmpty }.joined(separator: "-")
+            let batchLabel = batch.isEmpty ? "" : "（教务批次 \(batch)）"
+            return "\(parts[0]) 至 \(parts[1]) 学年 \(termName)\(batchLabel)"
+        }
+
+        guard let academicYear = try? NSRegularExpression(
+            pattern: #"(?<!\d)(\d{4})\s*-\s*(\d{4})(?!\d)"#
+        ) else { return source }
+        let range = NSRange(source.startIndex..<source.endIndex, in: source)
+        return academicYear.stringByReplacingMatches(
+            in: source,
+            range: range,
+            withTemplate: "$1 至 $2"
+        )
+    }
 }
 
 public struct NativeScheduleWeek: Codable, Identifiable, Equatable, Sendable {

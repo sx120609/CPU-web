@@ -66,6 +66,32 @@ private final class MockBackgroundTask: WatchBackgroundTaskCompleting {
 
 @MainActor
 final class WatchScheduleCoreTests: XCTestCase {
+    func testCalendarSemesterDisplayNameAvoidsPhoneNumberDetection() {
+        XCTAssertEqual(
+            NativeScheduleSemester.calendarDisplayName(for: "2025-2026-2"),
+            "2025 至 2026 学年 第二学期"
+        )
+        XCTAssertEqual(
+            NativeScheduleSemester.calendarDisplayName(
+                for: "2025-2026-2",
+                options: [NativeScheduleSemester(
+                    value: "2025-2026-2",
+                    label: "2025-2026 学年第二学期",
+                    current: true
+                )]
+            ),
+            "2025 至 2026 学年第二学期"
+        )
+        XCTAssertEqual(
+            NativeScheduleSemester.calendarDisplayName(for: "2025-2026-2-1"),
+            "2025 至 2026 学年 第二学期（教务批次 1）"
+        )
+        XCTAssertEqual(
+            NativeScheduleSemester.calendarDisplayName(for: "spring"),
+            "spring"
+        )
+    }
+
     private func nativeSnapshot(days: [String], courses: [NativeScheduleCourse] = []) -> NativeScheduleSnapshot {
         NativeScheduleSnapshot(
             completeSemester: true, source: .jwxt,
