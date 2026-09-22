@@ -4,7 +4,7 @@ import { createLiveActivityChannel, deleteLiveActivityChannel } from "./apnsClie
 import { getApnsConfig, withApnsConfigLock } from "./apnsConfig";
 
 const MAX_CHANNELS_PER_ENVIRONMENT = 9000;
-/// 所有频道都按学校日期作用域，昨天之前的一律回收。
+// Only retired date-scoped channels rotate out; permanent channels are reused.
 const DATED_CHANNEL = /^(production|sandbox):cpu-(?:day|block):(\d{4}-\d{2}-\d{2})(?::\d{4})?$/;
 /// 时段频道时代留下的常驻键。逐个列出而不是"没有日期就算旧的"，这样以后新增
 /// 键形状不会被静默删掉。回收后订阅它们的旧版本活动收不到 end，会挂到系统上限。
@@ -18,14 +18,28 @@ export function dayChannelDates(now = Date.now()) {
   return [schoolDate(now), schoolDate(now + 86400_000)];
 }
 
-/// iOS 26 每天一个频道（只发 tick，本机负责结束）；iOS 18–25 每个课节块一个频道
-/// （tick + end，end 的范围正好是这一块）。两者都随日期轮转，跨日残留不可能发生。
-export async function requiredChannelSuffixes(now = Date.now()) {
+// Channel identity describes an audience, never a calendar date. Dates remain
+// in event IDs/payloads. Block channels isolate end signals; day only gets ticks.
+export async function requiredChannelSuffixes(_now = Date.now()) {
   const blocks = scheduleBlocks(await getSchedulePeriods());
-  return dayChannelDates(now).flatMap(date => [
-    `cpu-day:${date}`,
-    ...blocks.map(block => `cpu-block:${date}:${block.id}`),
-  ]);
+  return ["cpu-day", ...blocks.map(block => `cpu-block:${block.id}`)];
+}
+
+export function channelKey(environment: string, kind: "day" | "block", blockID?: string) {
+  return `${environment}:cpu-${kind}${kind === "block" ? `:${blockID}` : ""}`;
+}
+
+// Dated IDs stay usable during migration, including already scheduled iOS 26 activities.
+export function channelForDate(channels: Record<string, string>, environment: string,
+  kind: "day" | "block", date: string, blockID?: string) {
+  return channels[channelKey(environment, kind, blockID)]
+    || channels[`${environment}:cpu-${kind}:${date}${kind === "block" ? `:${blockID}` : ""}`];
+}
+
+export function broadcastChannelIDs(channels: Record<string, string>, environment: string, windowID: string) {
+  const [kind, , blockID] = windowID.split(":");
+  return [...new Set([channels[channelKey(environment, kind as "day" | "block", blockID)],
+    channels[`${environment}:cpu-${windowID}`]].filter((id): id is string => Boolean(id)))];
 }
 
 type ChannelError = { environment: string; message: string };
@@ -34,6 +48,7 @@ async function provisionChannels(db: Parameters<Parameters<typeof withApnsConfig
   const config = await getApnsConfig(db);
   const errors: ChannelError[] = [];
   if (!config.configured) return { errors, configured: false };
+  const previousChannels = JSON.stringify(config.channels);
   if (prune) {
     const oldest = schoolDate(now - 86400_000);
     for (const [key, channel] of Object.entries(config.channels)) {
@@ -45,7 +60,7 @@ async function provisionChannels(db: Parameters<Parameters<typeof withApnsConfig
         await deleteLiveActivityChannel(config, match[1] as "production" | "sandbox", channel);
         delete config.channels[key];
         if (legacy) console.warn(`[apns] reclaimed legacy window channel ${key}`);
-      } catch (error) { console.warn("[apns] channel cleanup", error); }
+      } catch (error) { errors.push({ environment: match[1], message: `${key}: 回收失败: ${error instanceof Error ? error.message : String(error)}` }); }
     }
   }
   const suffixes = await requiredChannelSuffixes(now);
@@ -53,7 +68,10 @@ async function provisionChannels(db: Parameters<Parameters<typeof withApnsConfig
     for (const suffix of suffixes) {
       const key = `${environment}:${suffix}`;
       if (config.channels[key]) continue;
-      if (Object.keys(config.channels).filter(k => k.startsWith(`${environment}:`)).length >= MAX_CHANNELS_PER_ENVIRONMENT) continue;
+      if (Object.keys(config.channels).filter(k => k.startsWith(`${environment}:`)).length >= MAX_CHANNELS_PER_ENVIRONMENT) {
+        errors.push({ environment, message: `${key}: 频道数量已达到上限` });
+        continue;
+      }
       try {
         config.channels[key] = await createLiveActivityChannel(config, environment);
       } catch (error) {
@@ -62,19 +80,21 @@ async function provisionChannels(db: Parameters<Parameters<typeof withApnsConfig
     }
   }
   const value = JSON.stringify(config.channels);
-  await db.siteSetting.upsert({ where: { key: "apns.channels" }, create: { key: "apns.channels", value }, update: { value } });
+  if (value !== previousChannels) {
+    await db.siteSetting.upsert({ where: { key: "apns.channels" }, create: { key: "apns.channels", value }, update: { value } });
+  }
   return { errors, configured: true };
 }
 
-let lastDayCheck = 0;
-export async function ensureDayChannels(now = Date.now()) {
-  if (now - lastDayCheck < 60_000) return;
+let lastChannelCheck = 0;
+export async function maintainApnsChannels(now = Date.now()) {
+  if (now - lastChannelCheck < 60_000) return;
   await withApnsConfigLock(async db => {
-    if (now - lastDayCheck < 60_000) return;
+    if (now - lastChannelCheck < 60_000) return;
     const { errors, configured } = await provisionChannels(db, now, true);
     if (!configured) return;
     for (const error of errors) console.warn("[apns] channel provisioning", error.message);
-    lastDayCheck = now;
+    lastChannelCheck = now;
   });
 }
 

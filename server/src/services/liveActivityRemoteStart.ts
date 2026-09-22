@@ -6,7 +6,7 @@ import { getApnsConfig } from "./apnsConfig";
 import { appleReferenceSeconds, sendLiveActivityPayload } from "./apnsClient";
 import { clockSeconds, scheduleBlocks, type ScheduleBlock } from "./liveActivityBlocks";
 import { getSchedulePeriods } from "./scheduleTermConfig";
-import { schoolDate } from "./apnsChannels";
+import { schoolDate, channelForDate } from "./apnsChannels";
 
 const PURPOSE = "live-activity-start-token";
 const EVENT = "hybrid-start-v1";
@@ -89,8 +89,8 @@ export async function syncRemoteStarts(userId: number, input: any) {
     // Revocation also works after the website login cookie has been cleared.
     const revoke = encryptJwxtSensitiveJson("live-activity-revoke", "v1", { id: device.id, userId, hash });
     return { deviceID: device.id, revoke, scheduledThrough: windows.at(-1)?.dateKey ?? null,
-      // Only today's channels prove readiness; later dates are provisioned two days ahead.
-      missingWindows: blocks.filter(b => !config.channels[`${input.environment}:cpu-block:${schoolDate()}:${b.id}`]).map(b => b.id) };
+      // Permanent block channels are ready for the entire synced plan.
+      missingWindows: blocks.filter(b => !channelForDate(config.channels, input.environment, "block", schoolDate(), b.id)).map(b => b.id) };
   }, { timeout: 20000 });
 }
 export async function revokeRemoteStarts(capability: unknown) {
@@ -135,7 +135,7 @@ export async function tickRemoteStarts() {
         const finish = (state: string, detail = "") => tx.liveActivityPlan.update({ where: { id: row.id }, data: { state, detail, ...(state === "sent" ? { sentAt: new Date() } : {}) } });
         if (row.expiresAt.getTime() <= Date.now() || row.device.bundleID !== config.bundleID) { await finish("skipped", "启动已过期或配置已改变"); return; }
         const window = JSON.parse(row.payload) as StartWindow;
-        const channel = config.channels[`${row.device.environment}:cpu-block:${window.dateKey}:${window.window}`];
+        const channel = channelForDate(config.channels, row.device.environment, "block", window.dateKey, window.window);
         if (!channel) {
           await tx.liveActivityPlan.update({ where: { id: row.id }, data: { nextAttemptAt: new Date(Date.now() + 30000), detail: "等待课节块频道" } });
           return;

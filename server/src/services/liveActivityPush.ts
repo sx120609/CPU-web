@@ -4,7 +4,7 @@ import { getApnsConfig } from "./apnsConfig";
 import { getSchedulePeriods, listScheduleTermConfigs, type ScheduleTermConfigValue } from "./scheduleTermConfig";
 import { adjustmentForDate } from "../shared/scheduleAdjustments";
 import { scheduleBlocks } from "./liveActivityBlocks";
-import { dayChannelDates, ensureDayChannels } from "./apnsChannels";
+import { dayChannelDates, maintainApnsChannels, channelForDate, broadcastChannelIDs } from "./apnsChannels";
 
 import { tickRemoteStarts } from "./liveActivityRemoteStart";
 
@@ -25,10 +25,9 @@ export async function liveActivityBroadcastConfig(environment: string, bundleID:
   if (daily) return {
     mode: "local-scheduled", minimumIOSVersion: 26,
     windows: dayChannelDates().map(date => ({ id: date, startHour: 0, endHour: 24,
-      channelID: config.configured ? config.channels[`${environment}:cpu-day:${date}`] || null : null })),
+      channelID: config.configured ? channelForDate(config.channels, environment, "day", date) || null : null })),
   };
-  // Blocks are school-wide clock ranges. Their channels are per school date and
-  // provisioned two days ahead, so the client never needs a channel ID: it only
+  // Blocks are school-wide clock ranges with reusable channels. The client only
   // groups its own courses, and the server resolves the channel when it sends.
   const blocks = scheduleBlocks(await getSchedulePeriods());
   return {
@@ -92,8 +91,8 @@ async function ensureBroadcastEvents(now: number) {
   // restarts; no seven-day, per-user schedule is involved.
   const events = terms.flatMap(term => [...schoolBroadcastEvents(term, dateKey), ...schoolBroadcastEvents(term, dateKey, true)]);
   const rows = events.flatMap(({ windowID, ...event }) => ["production", "sandbox"].flatMap(environment => {
-    const channelID = config.channels[`${environment}:cpu-${windowID}`];
-    return channelID ? [{ ...event, environment, channelID, bundleID: config.bundleID }] : [];
+    return broadcastChannelIDs(config.channels, environment, windowID)
+      .map(channelID => ({ ...event, environment, channelID, bundleID: config.bundleID }));
   }));
   // Retire old protocol events and obsolete times after timetable edits.
   await db.liveActivityBroadcastEvent.updateMany({
@@ -130,7 +129,7 @@ async function retryBroadcast(row: any, now: number, detail: string) {
 
 export async function tickBroadcastEvents() {
   if (!db.liveActivityBroadcastEvent) return;
-  await ensureDayChannels();
+  await maintainApnsChannels();
   const config = await getApnsConfig();
   if (!config.configured) return;
   const now = Date.now() / 1000;
@@ -163,7 +162,7 @@ export async function tickBroadcastEvents() {
     try {
       const payload = JSON.parse(row.payload);
       const dayChannel = Object.entries(config.channels).some(([key, channel]) =>
-        key.startsWith(`${row.environment}:cpu-day:`) && channel === row.channelID,
+        (key === `${row.environment}:cpu-day` || key.startsWith(`${row.environment}:cpu-day:`)) && channel === row.channelID,
       );
       if (dayChannel) {
         payload.aps.event = "update";

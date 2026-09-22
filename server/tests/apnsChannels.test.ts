@@ -8,15 +8,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 process.env.DATABASE_URL ||= "postgres://schedule-blocks-test";
-/// 三个课节块 + 每天一个 iOS 26 日期频道 = 每个环境每天四个频道。
+// Three block channels plus one tick channel per environment.
 const PERIODS = [
   { id: 1, name: "1", start: "08:00", end: "08:45" }, { id: 2, name: "2", start: "08:55", end: "09:40" },
   { id: 3, name: "3", start: "14:00", end: "14:45" },
   { id: 4, name: "4", start: "19:00", end: "19:45" },
 ];
 const NOW = Date.parse("2026-09-21T00:00:00Z");
-const KEYS = ["cpu-day:2026-09-21", "cpu-block:2026-09-21:0800", "cpu-block:2026-09-21:1400", "cpu-block:2026-09-21:1900",
-  "cpu-day:2026-09-22", "cpu-block:2026-09-22:0800", "cpu-block:2026-09-22:1400", "cpu-block:2026-09-22:1900"];
+const KEYS = ["cpu-day", "cpu-block:0800", "cpu-block:1400", "cpu-block:1900"];
 
 test("channel provisioning preserves partial success, retries missing channels and isolates App IDs", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "cpu-channels-"));
@@ -42,7 +41,7 @@ test("channel provisioning preserves partial success, retries missing channels a
     },
   };
   (globalThis as any).prisma = db;
-  const { ensureApnsChannels, ensureDayChannels, dayChannelDates } = await import("../src/services/apnsChannels");
+  const { ensureApnsChannels, maintainApnsChannels, dayChannelDates } = await import("../src/services/apnsChannels");
   const { saveApnsConfig } = await import("../src/services/apnsConfig");
   let sandboxFails = true;
   let omitChannelHeader = false;
@@ -71,9 +70,9 @@ test("channel provisioning preserves partial success, retries missing channels a
 
   const partial = await ensureApnsChannels(NOW);
   assert.deepEqual(Object.keys(partial.channels), KEYS.map(key => `production:${key}`),
-    "every channel is scoped to one school date and one block of adjacent periods");
+    "channels describe stable audiences independent of dates");
   assert.ok(KEYS.every(key => /^apple-prod-/.test(partial.channels[`production:${key}`])));
-  assert.equal(partial.channels["sandbox:cpu-block:2026-09-21:0800"], undefined);
+  assert.equal(partial.channels["sandbox:cpu-block:0800"], undefined);
   assert.equal(partial.channelErrors.length, KEYS.length);
   assert.match(partial.channelErrors[0].message, /TopicDisallowed/);
   assert.ok(calls.some(call => call.origin === "https://api-manage-broadcast.push.apple.com:2196"));
@@ -86,11 +85,11 @@ test("channel provisioning preserves partial success, retries missing channels a
   const [ready] = await Promise.all([ensureApnsChannels(NOW), ensureApnsChannels(NOW)]);
   assert.equal(calls.length, 3 * KEYS.length, "concurrent retries must not create duplicate channels");
   assert.deepEqual(ready.channelErrors, []);
-  assert.equal(ready.channels["production:cpu-block:2026-09-21:0800"], partial.channels["production:cpu-block:2026-09-21:0800"]);
-  assert.match(ready.channels["sandbox:cpu-block:2026-09-21:0800"], /^apple-dev-/);
+  assert.equal(ready.channels["production:cpu-block:0800"], partial.channels["production:cpu-block:0800"]);
+  assert.match(ready.channels["sandbox:cpu-block:0800"], /^apple-dev-/);
 
   const credentials = { keyPath, keyID: "KEY", teamID: "TEAM", bundleID: "cn.cputime.mobile", tickSeconds: 5 };
-  const saved = await saveApnsConfig({ ...credentials, channels: { "production:cpu-block:2026-09-21:0800": "forged" } });
+  const saved = await saveApnsConfig({ ...credentials, channels: { "production:cpu-block:0800": "forged" } });
   assert.deepEqual(saved.channels, ready.channels, "saving a form must not replace server-owned IDs");
   const changed = await saveApnsConfig({ ...credentials, bundleID: "cn.cputime.mobile.debug" });
   assert.deepEqual(changed.channels, {}, "changing App ID must detach old channels");
@@ -117,23 +116,45 @@ test("channel provisioning preserves partial success, retries missing channels a
   const legacy = { "production:cpu-morning": "legacy-am", "sandbox:cpu-evening": "legacy-pm", "production:cpu": "legacy-v1", "production:other": "keep" };
   settings.set("apns.channels", JSON.stringify(legacy));
   omitChannelHeader = false;
-  await Promise.all([ensureDayChannels(NOW), ensureDayChannels(NOW)]);
+  await Promise.all([maintainApnsChannels(NOW), maintainApnsChannels(NOW)]);
   const daily = JSON.parse(settings.get("apns.channels")!);
-  assert.equal(Object.keys(daily).length, 2 * KEYS.length + 1, "two dates per environment plus the unrelated key");
+  assert.equal(Object.keys(daily).length, 2 * KEYS.length + 1, "fixed channels plus the unrelated key");
   assert.deepEqual(Object.keys(legacy).filter(key => daily[key]), ["production:other"]);
-  assert.notEqual(daily["production:cpu-day:2026-09-21"], daily["production:cpu-day:2026-09-22"]);
-  assert.notEqual(daily["production:cpu-block:2026-09-21:0800"], daily["production:cpu-block:2026-09-21:1400"]);
+  assert.ok(daily["production:cpu-day"]);
+  assert.notEqual(daily["production:cpu-block:0800"], daily["production:cpu-block:1400"]);
   assert.equal(calls.length, count + 2 * KEYS.length + 3, "concurrent refresh provisions each channel once and reclaims each legacy channel once");
   const reclaimed = calls.filter(call => call.headers[":method"] === "DELETE").map(call => call.headers["apns-channel-id"]);
   assert.deepEqual(reclaimed.sort(), ["legacy-am", "legacy-pm", "legacy-v1"]);
   assert.ok(reclaimed.every(id => id !== "keep"), "only the documented window-era keys are deleted");
+  const beforeRollover = calls.length;
+  await maintainApnsChannels(NOW + 86400_000);
+  assert.equal(calls.length, beforeRollover, "midnight must not create or delete channels");
+  assert.deepEqual(JSON.parse(settings.get("apns.channels")!), daily);
+  settings.set("apns.channels", JSON.stringify({ ...daily,
+    "production:cpu-day:2026-09-21": "dated-day",
+    "production:cpu-block:2026-09-21:0800": "dated-block",
+    "production:cpu-day:2026-09-25": "future-day",
+  }));
   const later = NOW + 3 * 86400_000;
-  await ensureDayChannels(later);
+  await maintainApnsChannels(later);
   const cleaned = JSON.parse(settings.get("apns.channels")!);
-  assert.equal(Object.keys(cleaned).length, 2 * KEYS.length + 1);
+  assert.equal(Object.keys(cleaned).length, 2 * KEYS.length + 2);
   assert.equal(cleaned["production:other"], "keep");
-  assert.ok(dayChannelDates(later).every(date => cleaned[`production:cpu-day:${date}`] && cleaned[`production:cpu-block:${date}:0800`]));
+  assert.ok(KEYS.every(key => cleaned[`production:${key}`] === daily[`production:${key}`]));
+  assert.equal(cleaned["production:cpu-day:2026-09-25"], "future-day");
   const deletes = calls.filter(call => call.headers[":method"] === "DELETE");
-  assert.equal(deletes.length, 3 + 2 * KEYS.length, "every channel older than yesterday is reclaimed");
+  assert.equal(deletes.length, 5, "only expired dated channels are reclaimed");
   assert.ok(deletes.every(call => call.headers["apns-channel-id"] !== "keep"));
+});
+
+
+test("migration prefers stable subscriptions and broadcasts to both generations", async () => {
+  const { channelForDate, broadcastChannelIDs } = await import("../src/services/apnsChannels");
+  const channels = { "production:cpu-block:0800": "fixed", "production:cpu-block:2026-09-21:0800": "old",
+    "production:cpu-day": "tick", "production:cpu-day:2026-09-21": "old-tick" };
+  assert.equal(channelForDate(channels, "production", "block", "2027-01-01", "0800"), "fixed");
+  assert.deepEqual(broadcastChannelIDs(channels, "production", "block:2026-09-21:0800"), ["fixed", "old"]);
+  assert.deepEqual(broadcastChannelIDs(channels, "production", "day:2026-09-21"), ["tick", "old-tick"]);
+  assert.deepEqual(broadcastChannelIDs(channels, "sandbox", "day:2026-09-21"), []);
+  assert.deepEqual(broadcastChannelIDs(channels, "production", "block:2026-09-21:1400"), []);
 });

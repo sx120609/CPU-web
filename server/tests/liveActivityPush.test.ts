@@ -38,7 +38,7 @@ const term: ScheduleTermConfigValue = {
   periods: PERIODS,
 };
 function mockConfig(t: any, configured = true) {
-  const values = { keyPath: configured ? "/test.p8" : "", keyID: "KEY", teamID: "TEAM", bundleID: "cn.cputime.mobile", tickSeconds: "5", channels: JSON.stringify({ "production:cpu-block:2026-09-16:0800": "prod-am", "sandbox:cpu-block:2026-09-16:0800": "dev-am" }) };
+  const values = { keyPath: configured ? "/test.p8" : "", keyID: "KEY", teamID: "TEAM", bundleID: "cn.cputime.mobile", tickSeconds: "5", channels: JSON.stringify({ "production:cpu-block:2026-09-16:0800": "prod-am", "sandbox:cpu-block:2026-09-16:0800": "dev-am", "production:cpu-day": "fixed-day" }) };
   t.mock.method(db.siteSetting, "findMany", async () => Object.entries(values).map(([key, value]) => ({ key: `apns.${key}`, value, updatedAt: new Date() })));
 }
 
@@ -106,6 +106,7 @@ test("iOS 26 uses one date channel and broadcasts bell boundaries without ending
   const config = await service.liveActivityBroadcastConfig("production", "cn.cputime.mobile", true);
   assert.equal(config.minimumIOSVersion, 26);
   assert.equal(config.windows.length, 2);
+  assert.ok(config.windows.every(w => w.channelID === "fixed-day"), "both dates subscribe to the same fixed channel");
   assert.ok(config.windows.every(w => /^\d{4}-\d{2}-\d{2}$/.test(w.id)));
   const events = service.schoolBroadcastEvents(term, "2026-09-16", true);
   assert.equal(events.length, 8);
@@ -132,11 +133,11 @@ test("broadcast worker skips expired events, retries transport errors and never 
   const { scheduleBlocks } = await import("../src/services/liveActivityBlocks");
   // Pre-provision every channel the worker would otherwise create, so the test
   // observes only the broadcast sends it is about.
-  const provisioned = Object.fromEntries(dayChannelDates().flatMap(date => ["production", "sandbox"].flatMap(env => [
-    [`${env}:cpu-day:${date}`, `${env}-${date}`],
-    ...scheduleBlocks(PERIODS).map(block => [`${env}:cpu-block:${date}:${block.id}`, `${env}-${date}-${block.id}`]),
-  ])));
-  provisioned[`production:cpu-block:${dayChannelDates()[0]}:0800`] = "am";
+  const provisioned = Object.fromEntries(["production", "sandbox"].flatMap(env => [
+    [`${env}:cpu-day`, `${env}-day`],
+    ...scheduleBlocks(PERIODS).map(block => [`${env}:cpu-block:${block.id}`, `${env}-${block.id}`]),
+  ]));
+  provisioned["production:cpu-block:0800"] = "am";
   const values = { keyPath, keyID: "KEY", teamID: "TEAM", bundleID: "cn.cputime.mobile", channels: JSON.stringify(provisioned) };
   t.mock.method(db.siteSetting, "findMany", async () => Object.entries(values).map(([key, value]) => ({ key: `apns.${key}`, value, updatedAt: new Date() })));
   const row = { id: "event", state: "pending", channelID: "am", environment: "production", bundleID: "cn.cputime.mobile", eventID: "broadcast-v2-test", attempts: 0, payload: JSON.stringify(service.broadcastPayload("2026-09-16", Date.now() / 1000)), expiresAt: new Date(Date.now() - 1000) };

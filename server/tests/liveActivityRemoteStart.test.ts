@@ -79,7 +79,7 @@ before(async () => {
   const keyPath = join(directory, "key.p8");
   const { privateKey } = crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" });
   await writeFile(keyPath, privateKey.export({ format: "pem", type: "pkcs8" }));
-  config = { keyPath, keyID: "KEY", teamID: "TEAM", bundleID: "cn.cputime.mobile", channels: JSON.stringify({ "production:cpu-block:2026-09-21:0800": "am" }) };
+  config = { keyPath, keyID: "KEY", teamID: "TEAM", bundleID: "cn.cputime.mobile", channels: JSON.stringify({ "production:cpu-block:0800": "am" }) };
   (globalThis as any).prisma = db;
   service = await import("../src/services/liveActivityRemoteStart");
   blocks = (await import("../src/services/liveActivityBlocks")).scheduleBlocks(PERIODS);
