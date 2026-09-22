@@ -2,6 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>cn.cputime.ios.next.liveactivity.refresh</string>
+	</array>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -17,9 +21,5 @@
 	<string>$(CPU_APP_GROUP_IDENTIFIER)</string>
 	<key>CPUAppURL</key>
 	<string>$(CPU_APP_URL)</string>
-	<key>BGTaskSchedulerPermittedIdentifiers</key>
-	<array>
-		<string>cn.cputime.ios.next.liveactivity.refresh</string>
-	</array>
 </dict>
 </plist>
