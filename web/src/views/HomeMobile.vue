@@ -68,6 +68,7 @@ import ForumFeedCard from "@/components/forum/ForumFeedCard.vue";
 import SiteSearchBar from "@/components/search/SiteSearchBar.vue";
 import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
+import { isNativeForumIntranetOnlyAccount } from "@/utils/clientInfo";
 import { forumCacheScope, readForumLatestFeed, writeForumLatestFeed } from "@/utils/forumCache";
 import { clearForumListRestoreState, readForumListRestoreState, writeForumListRestoreState } from "@/utils/forumListRestore";
 import { readHomeSummaryCache, writeHomeSummaryCache } from "@/utils/homeCache";
@@ -112,8 +113,10 @@ const feedStates = reactive<Record<MobileHomeFeedStream, HomeFeedState>>({
 });
 const feedPageSize = 10;
 const loadMoreSentinelRef = ref<HTMLElement | null>(null);
-const showForumContent = computed(() => site.features.forum && auth.canAccessForum);
-const marketFeedEnabled = computed(() => site.features.market && auth.canAccessForum);
+const showForumContent = computed(() => site.features.forum
+  && auth.canAccessForum
+  && !isNativeForumIntranetOnlyAccount(auth.user?.username));
+const marketFeedEnabled = computed(() => site.features.market && showForumContent.value);
 const hotPreview = computed(() => (summary.value?.hotTopics || []).slice(0, 3) as Topic[]);
 const activeFeed = computed(() => feedStates[activeFeedStream.value]);
 const latestTopics = computed(() => activeFeed.value.list);
@@ -125,13 +128,13 @@ const activeFeedLinkLabel = computed(() => activeFeedStream.value === "market" ?
 const quickEntries = computed(() => [
   showForumContent.value ? { icon: ChatDotRound, label: "论坛", to: "/forum" } : null,
   { icon: Notification, label: "公告", to: "/announcements" },
-  site.features.market && auth.canAccessForum ? { icon: Sell, label: "二手", to: "/forum?channel=market" } : null,
+  site.features.market && showForumContent.value ? { icon: Sell, label: "二手", to: "/forum?channel=market" } : null,
   { icon: Service, label: "服务", to: "/services" },
   site.features.assistantEntry ? { icon: MagicStick, label: "拾间AI", to: "/search" } : null,
 ].filter(Boolean) as Array<{ icon: Component; label: string; to: string }>);
 const homeCacheScope = computed(() => {
   const identity = auth.user?.id ? `user-${auth.user.id}` : "guest";
-  return `${identity}:forum-${auth.canAccessForum ? "on" : "off"}`;
+  return `${identity}:forum-${showForumContent.value ? "on" : "off"}`;
 });
 let loadSequence = 0;
 const feedSequences: Record<MobileHomeFeedStream, number> = { forum: 0, market: 0 };
@@ -232,6 +235,10 @@ async function loadHomeScope() {
 }
 
 async function loadAds() {
+  if (!showForumContent.value) {
+    mobileHomeAds.value = [];
+    return;
+  }
   const sequence = ++adSequence;
   try {
     const mobileHome = await forumAdsApi.list("home-mobile-top").catch(() => []);

@@ -31,9 +31,7 @@ export function isServerHandledRedirect(value: string) {
 export function resolveLoginRedirect(value: unknown, user: LoginRedirectUser) {
   const requestedRedirect = resolveSafeRedirect(value, "");
   if (isOAuthAuthorizationRedirect(requestedRedirect)) return requestedRedirect;
-  if (user?.role === "voicehub_admin") return "/voicehub/dashboard";
   if (user?.voiceHubRole === "super_admin" || user?.lostFoundRole === "super_admin") return "/admin?tab=users";
   if (user?.lostFoundRole) return "/admin?tab=lost-found";
-  if (user?.voiceHubRole === "admin") return "/voicehub/dashboard";
   return requestedRedirect || DEFAULT_REDIRECT;
 }

@@ -11,7 +11,7 @@
             <span class="action-label-full">{{ forumActionLabel }}</span>
             <span class="action-label-short">论坛</span>
           </el-button>
-          <el-button v-if="site.features.market && auth.canAccessForum" size="large" @click="$router.push('/market')">
+          <el-button v-if="site.features.market && showForumContent" size="large" @click="$router.push('/market')">
             <AppIcon name="market" />
             <span class="action-label-full">二手交流</span>
             <span class="action-label-short">二手</span>
@@ -25,7 +25,7 @@
             <span class="action-label-full">{{ loginActionText }}</span>
             <span class="action-label-short">登录</span>
           </el-button>
-          <el-button v-else-if="site.features.forum && auth.canAccessForum" size="large" @click="$router.push('/post')">
+          <el-button v-else-if="showForumContent" size="large" @click="$router.push('/post')">
             <el-icon><Edit /></el-icon>
             <span class="action-label-full">发布内容</span>
             <span class="action-label-short">发布</span>
@@ -126,7 +126,7 @@
           <el-empty v-else description="暂无公告，稍后再来看看" />
         </section>
 
-        <section class="block" v-if="site.features.market && auth.canAccessForum">
+        <section class="block" v-if="site.features.market && showForumContent">
           <div class="block-head">
             <h3><AppIcon name="market" /> 二手交流</h3>
             <router-link to="/market" class="more">进入板块 →</router-link>
@@ -179,7 +179,7 @@
     </div>
 
     <router-link
-      v-if="auth.isLoggedIn && site.features.forum && auth.canAccessForum"
+      v-if="auth.isLoggedIn && showForumContent"
       to="/post"
       class="home-publish-fab"
       aria-label="发布内容"
@@ -206,6 +206,7 @@ import { homeApi, type HomeSummary } from "@/api/home";
 import { forumAdsApi, type ForumAd } from "@/api/forumAds";
 import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
+import { isNativeForumIntranetOnlyAccount } from "@/utils/clientInfo";
 import { fmtRelative } from "@/utils/format";
 import {
   readHomeSummaryCache,
@@ -225,9 +226,13 @@ const hotPreview = computed(() => (summary.value?.hotTopics ?? []).slice(0, 3));
 const visibleServices = computed(() => summary.value?.services ?? []);
 const showElectricEntry = computed(() => auth.isLoggedIn && site.features.electric);
 const hasServiceEntries = computed(() => showElectricEntry.value || visibleServices.value.length > 0);
+const showForumContent = computed(() => site.features.forum
+  && auth.canAccessForum
+  && !isNativeForumIntranetOnlyAccount(auth.user?.username));
+const nativeForumRestricted = computed(() => isNativeForumIntranetOnlyAccount(auth.user?.username));
 const homeCacheScope = computed(() => {
   const identity = auth.user?.id ? `user-${auth.user.id}` : "guest";
-  return `${identity}:forum-${auth.canAccessForum ? "on" : "off"}`;
+  return `${identity}:forum-${showForumContent.value ? "on" : "off"}`;
 });
 let loadSeq = 0;
 let adsLoadSeq = 0;
@@ -235,15 +240,14 @@ let mounted = false;
 
 const enabledFeatureLabels = computed(() => {
   const labels = ["公告聚合", "教务数据", "常用校园服务"];
-  if (site.features.coursereview && auth.canAccessForum) labels.splice(2, 0, "课程点评");
-  if (site.features.market && auth.canAccessForum) labels.splice(labels.length - 1, 0, "二手交流");
+  if (site.features.coursereview && showForumContent.value) labels.splice(2, 0, "课程点评");
+  if (site.features.market && showForumContent.value) labels.splice(labels.length - 1, 0, "二手交流");
   if (site.features.electric) labels.push("宿舍电费查询");
-  if (site.features.forum && auth.canAccessForum) labels.unshift("校园讨论");
+  if (showForumContent.value) labels.unshift("校园讨论");
   return labels;
 });
-const showForumContent = computed(() => site.features.forum && auth.canAccessForum);
 const forumActionLabel = computed(() => {
-  if (!site.features.forum) return "看校园公告";
+  if (!site.features.forum || nativeForumRestricted.value) return "看校园公告";
   if (auth.canAccessForum) return "进入论坛";
   return auth.isLoggedIn ? "开启论坛功能" : "论坛入口";
 });
@@ -276,6 +280,11 @@ async function loadHomeScope() {
 }
 
 async function loadAds() {
+  if (!showForumContent.value) {
+    pinnedAds.value = [];
+    hotAds.value = [];
+    return;
+  }
   const seq = ++adsLoadSeq;
   try {
     const [pinned, hot] = await Promise.all([

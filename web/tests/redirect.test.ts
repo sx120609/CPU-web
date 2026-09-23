@@ -13,8 +13,9 @@ test("OAuth 授权回跳优先于用户角色默认页面", () => {
   assert.equal(isOAuthAuthorizationRedirect(target), true);
 });
 
-test("普通登录继续使用角色默认页面和安全站内回跳", () => {
-  assert.equal(resolveLoginRedirect(undefined, { voiceHubRole: "admin" }), "/voicehub/dashboard");
+test("普通登录回到首页，明确的站内回跳仍然优先", () => {
+  assert.equal(resolveLoginRedirect(undefined, { voiceHubRole: "admin" }), "/home");
+  assert.equal(resolveLoginRedirect(undefined, { role: "voicehub_admin" }), "/home");
   assert.equal(resolveLoginRedirect("/courses?tab=mine", null), "/courses?tab=mine");
   assert.equal(resolveLoginRedirect("https://example.com", null), "/home");
   assert.equal(resolveSafeRedirect("//example.com"), "/home");
