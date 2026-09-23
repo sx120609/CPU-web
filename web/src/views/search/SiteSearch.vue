@@ -2,16 +2,16 @@
   <div class="site-search-page">
     <header class="search-head">
       <div>
-        <h1>站内搜索</h1>
-        <p>按关键词查找帖子、课程与校园服务。</p>
+        <h1>{{ servicesOnly ? "校园服务搜索" : "站内搜索" }}</h1>
+        <p>{{ servicesOnly ? "按名称、说明或负责单位查找校园服务。" : "按关键词查找帖子、课程与校园服务。" }}</p>
       </div>
       <form class="search-form" role="search" @submit.prevent="submitSearch">
         <el-input
           v-model="searchInput"
           clearable
           maxlength="100"
-          aria-label="搜索站内内容"
-          placeholder="输入帖子标题、正文、课程或服务关键词"
+          :aria-label="servicesOnly ? '搜索校园服务' : '搜索站内内容'"
+          :placeholder="servicesOnly ? '输入服务名称或关键词' : '输入帖子标题、正文、课程或服务关键词'"
         >
           <template #prefix><el-icon><Search /></el-icon></template>
         </el-input>
@@ -35,7 +35,7 @@
         <span v-else-if="result">“{{ query }}”共找到 {{ resultCount }} 条结果</span>
       </div>
 
-      <section v-if="result?.topics.length" class="cpu-card result-block">
+      <section v-if="!servicesOnly && result?.topics.length" class="cpu-card result-block">
         <div class="result-head">
           <div>
             <h2>帖子</h2>
@@ -46,7 +46,7 @@
         <TopicListItem v-for="topic in result.topics" :key="topic.id" :topic="topic" variant="simple" />
       </section>
 
-      <section v-if="result?.courses.length" class="cpu-card result-block">
+      <section v-if="!servicesOnly && result?.courses.length" class="cpu-card result-block">
         <div class="result-head">
           <div>
             <h2>课程</h2>
@@ -70,16 +70,16 @@
         </button>
       </section>
 
-      <section v-if="result?.services.length" class="cpu-card result-block">
+      <section v-if="displayedServices.length" class="cpu-card result-block">
         <div class="result-head">
           <div>
             <h2>校园服务</h2>
             <span>服务名称、说明与负责单位</span>
           </div>
-          <strong>{{ result.services.length }}</strong>
+          <strong>{{ displayedServices.length }}</strong>
         </div>
         <button data-cpu-button="surface"
-          v-for="service in result.services"
+          v-for="service in displayedServices"
           :key="service.id || service.url"
           type="button"
           class="result-row"
@@ -111,9 +111,12 @@ import { Right, Search } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 import TopicListItem from "@/components/forum/TopicListItem.vue";
 import { searchApi, type SearchResult } from "@/api/search";
+import { useAuthStore } from "@/stores/auth";
+import { isNativeForumIntranetOnlyAccount, shouldHideNativeYaodaCanFly } from "@/utils/clientInfo";
 
 const route = useRoute();
 const router = useRouter();
+const auth = useAuthStore();
 const searchInput = ref("");
 const result = ref<SearchResult | null>(null);
 const loading = ref(false);
@@ -121,12 +124,19 @@ const error = ref("");
 let searchSeq = 0;
 
 const query = computed(() => String(route.query.q ?? "").trim().slice(0, 100));
+const servicesOnly = computed(() => route.query.scope === "services"
+  || isNativeForumIntranetOnlyAccount(auth.user?.username));
+const displayedServices = computed(() => (result.value?.services || []).filter((service) => !(
+  shouldHideNativeYaodaCanFly(auth.isLoggedIn, auth.user?.username)
+  && String(service?.url || "").includes("/services/tools/yaoda-can-fly")
+)));
 const resultCount = computed(() => {
   if (!result.value) return 0;
-  return result.value.topics.length + result.value.courses.length + result.value.services.length;
+  if (servicesOnly.value) return displayedServices.value.length;
+  return result.value.topics.length + result.value.courses.length + displayedServices.value.length;
 });
 
-watch(query, async (keyword) => {
+watch([query, servicesOnly], async ([keyword]) => {
   searchInput.value = keyword;
   await reload();
 }, { immediate: true });
@@ -138,7 +148,10 @@ async function submitSearch() {
     await reload();
     return;
   }
-  await router.push({ name: "site-search", query: { q: keyword } });
+  await router.push({
+    name: "site-search",
+    query: servicesOnly.value ? { q: keyword, scope: "services" } : { q: keyword },
+  });
 }
 
 async function reload() {
@@ -154,7 +167,11 @@ async function reload() {
   loading.value = true;
   error.value = "";
   try {
-    const next = await searchApi.search(keyword, { suppressErrorMessage: true });
+    const next = await searchApi.search(
+      keyword,
+      servicesOnly.value ? { scope: "services" } : undefined,
+      { suppressErrorMessage: true },
+    );
     if (seq === searchSeq) result.value = next;
   } catch (searchError) {
     if (seq === searchSeq) {

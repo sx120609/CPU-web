@@ -101,7 +101,7 @@
 
       <!-- 右：公告 + 服务 -->
       <div class="col-right">
-        <section class="block">
+        <section v-if="!nativeForumRestricted" class="block">
           <div class="block-head">
             <h3><AppIcon name="announcement" /> 校园公告</h3>
             <span class="cpu-muted">学校公开信息</span>
@@ -206,7 +206,7 @@ import { homeApi, type HomeSummary } from "@/api/home";
 import { forumAdsApi, type ForumAd } from "@/api/forumAds";
 import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
-import { isNativeForumIntranetOnlyAccount } from "@/utils/clientInfo";
+import { isNativeForumIntranetOnlyAccount, shouldHideNativeYaodaCanFly } from "@/utils/clientInfo";
 import { fmtRelative } from "@/utils/format";
 import {
   readHomeSummaryCache,
@@ -223,7 +223,10 @@ const electricOpen = ref(false);
 const pinnedAds = ref<ForumAd[]>([]);
 const hotAds = ref<ForumAd[]>([]);
 const hotPreview = computed(() => (summary.value?.hotTopics ?? []).slice(0, 3));
-const visibleServices = computed(() => summary.value?.services ?? []);
+const visibleServices = computed(() => (summary.value?.services ?? []).filter((service) => !(
+  shouldHideNativeYaodaCanFly(auth.isLoggedIn, auth.user?.username)
+  && String(service?.url || "").includes("/services/tools/yaoda-can-fly")
+)));
 const showElectricEntry = computed(() => auth.isLoggedIn && site.features.electric);
 const hasServiceEntries = computed(() => showElectricEntry.value || visibleServices.value.length > 0);
 const showForumContent = computed(() => site.features.forum

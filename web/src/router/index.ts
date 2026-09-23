@@ -155,6 +155,7 @@ export const router = createRouter({
       redirect: "/home",
       children: [
         { path: "home", name: "home", component: loadHomeView, meta: { title: "首页", public: true } },
+        { path: "home/services", name: "native-restricted-home", component: loadHomeView, meta: { title: "首页", public: true } },
         { path: "forum", name: "forum", component: () => import("@/views/forum/Index.vue"), meta: { title: "论坛", public: true } },
         { path: "forum/hot", name: "forum-hot", component: () => import("@/views/forum/Feed.vue"), beforeEnter: mobileForumFeedRedirect("hot"), meta: { title: "热榜", public: true } },
         { path: "forum/latest", name: "forum-latest", component: () => import("@/views/forum/Feed.vue"), beforeEnter: mobileForumFeedRedirect(), meta: { title: "最新内容", public: true } },
@@ -256,6 +257,14 @@ router.beforeEach(async (to) => {
   // 游客的 401 不提示、不跳转，避免公开页面被错误抢到登录页。
   if (!auth.ready) await auth.fetchMe({ probe: true });
 
+  const nativeForumRestricted = isNativeForumIntranetOnlyAccount(auth.user?.username);
+  if (to.name === "home" && nativeForumRestricted) {
+    return { name: "native-restricted-home", replace: true };
+  }
+  if (to.name === "native-restricted-home" && !nativeForumRestricted) {
+    return { name: "home", replace: true };
+  }
+
   if (
     to.name === "service-yaoda-can-fly"
     && shouldHideNativeYaodaCanFly(Boolean(auth.user), auth.user?.username)
@@ -265,7 +274,7 @@ router.beforeEach(async (to) => {
 
   if (
     /^\/(?:forum|market|post|coursereview)(?:\/|$)/.test(to.path)
-    && isNativeForumIntranetOnlyAccount(auth.user?.username)
+    && nativeForumRestricted
   ) {
     ElMessage.info("该功能仅限连接内网使用");
     return { name: "home", replace: true };

@@ -1871,9 +1871,31 @@ html[data-theme="dark"] .assistant-widget {
 
 .footer--compact .footer-main,
 .footer--compact .footer-bottom,
+:global(html[data-cpu-ios-next] .footer--app .footer-main),
+:global(html[data-cpu-ios-next] .footer--app .footer-bottom),
 :global(html[data-cpu-harmony-native] .footer--app .footer-main),
 :global(html[data-cpu-harmony-native] .footer--app .footer-bottom) {
   display: none;
+}
+
+:global(html[data-cpu-ios-next] .layout-root > .footer.footer--app) {
+  padding: 6px 20px calc(10px + var(--cpu-ios-bottom-clearance, 96px));
+  border-top: 0;
+  background: transparent;
+}
+
+:global(html[data-cpu-ios-next] .footer--app::before),
+:global(html[data-cpu-ios-next] .footer--app::after) {
+  display: none;
+}
+
+:global(html[data-cpu-ios-next] .footer--app .footer-app-filing) {
+  margin-top: 0;
+  font-size: 10px;
+}
+
+:global(html[data-cpu-ios-next] .footer--app .footer-app-filing a) {
+  min-height: 36px;
 }
 
 /* Installed Harmony shells hide the old footer; keep the app filing reachable. */

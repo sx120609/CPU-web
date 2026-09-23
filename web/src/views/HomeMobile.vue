@@ -1,13 +1,20 @@
 <template>
   <div class="home-stream">
     <section class="home-entry" aria-label="首页快捷入口">
-      <SiteSearchBar :placeholder="auth.canAccessForum ? '搜索帖子或校园服务' : '搜索校园服务'" />
-      <nav class="quick-grid">
+      <SiteSearchBar
+        :placeholder="showForumContent ? '搜索帖子或校园服务' : '搜索校园服务'"
+        :scope="showForumContent ? 'all' : 'services'"
+      />
+      <nav class="quick-grid" :class="{ 'quick-grid--services': !showForumContent }">
         <button data-cpu-button="surface" v-for="entry in quickEntries" :key="entry.label" type="button" @click="openQuickEntry(entry.to)">
           <span class="quick-icon" aria-hidden="true"><el-icon><component :is="entry.icon" /></el-icon></span>
           <span>{{ entry.label }}</span>
         </button>
       </nav>
+      <p v-if="nativeForumRestricted" class="forum-access-note">
+        <el-icon aria-hidden="true"><Lock /></el-icon>
+        <span>论坛仅限连接内网后使用</span>
+      </p>
     </section>
 
     <ForumAdCarousel v-if="showForumContent && mobileHomeAds.length" :ads="mobileHomeAds" compact />
@@ -21,7 +28,42 @@
       </button>
     </section>
 
-    <section v-if="homeError && !summary" class="home-state">
+    <section v-if="!showForumContent" class="campus-services" v-loading="loading && !summary">
+      <header class="service-section-head">
+        <div>
+          <h1>常用校园服务</h1>
+          <p>快速打开常用入口</p>
+        </div>
+        <router-link to="/services">全部 <el-icon><Right /></el-icon></router-link>
+      </header>
+      <div v-if="visibleServices.length" class="service-list">
+        <button
+          data-cpu-button="surface"
+          v-for="service in visibleServices"
+          :key="service.id || service.url"
+          type="button"
+          class="service-row"
+          @click="openService(service)"
+        >
+          <span class="service-icon" aria-hidden="true"><AppIcon :legacy="service.icon" name="link" /></span>
+          <span class="service-copy">
+            <b>{{ service.name }}</b>
+            <small>{{ [service.owner, service.description].filter(Boolean).join(" · ") || "校园服务" }}</small>
+          </span>
+          <el-icon class="service-arrow"><Right /></el-icon>
+        </button>
+      </div>
+      <div v-else-if="homeError" class="service-state">
+        <span>{{ homeError }}</span>
+        <el-button text type="primary" @click="loadSummary()">重试</el-button>
+      </div>
+      <div v-else-if="!loading" class="service-state">
+        <span>暂时没有可用服务</span>
+        <router-link to="/services">查看全部</router-link>
+      </div>
+    </section>
+
+    <section v-else-if="homeError && !summary" class="home-state">
       <el-empty :description="homeError"><el-button type="primary" @click="loadSummary()">重试</el-button></el-empty>
     </section>
 
@@ -57,18 +99,20 @@
 </template>
 
 <script setup lang="ts">
-import { ChatDotRound, MagicStick, Notification, Sell, Service } from "@element-plus/icons-vue";
+import { ChatDotRound, Lock, MagicStick, Notification, Right, School, Search, Sell, Service } from "@element-plus/icons-vue";
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch, type Component } from "vue";
 import { onBeforeRouteLeave, useRoute, useRouter } from "vue-router";
+import { ElMessage } from "element-plus";
 import type { Topic } from "@/api/topic";
 import { homeApi, type HomeFeedStream, type HomeSummary } from "@/api/home";
 import { forumAdsApi, type ForumAd } from "@/api/forumAds";
+import AppIcon from "@/components/common/AppIcon.vue";
 import ForumAdCarousel from "@/components/forum/ForumAdCarousel.vue";
 import ForumFeedCard from "@/components/forum/ForumFeedCard.vue";
 import SiteSearchBar from "@/components/search/SiteSearchBar.vue";
 import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
-import { isNativeForumIntranetOnlyAccount } from "@/utils/clientInfo";
+import { isNativeForumIntranetOnlyAccount, shouldHideNativeYaodaCanFly } from "@/utils/clientInfo";
 import { forumCacheScope, readForumLatestFeed, writeForumLatestFeed } from "@/utils/forumCache";
 import { clearForumListRestoreState, readForumListRestoreState, writeForumListRestoreState } from "@/utils/forumListRestore";
 import { readHomeSummaryCache, writeHomeSummaryCache } from "@/utils/homeCache";
@@ -125,13 +169,30 @@ const activeFeedDescription = computed(() => activeFeedStream.value === "market"
 const activeFeedEmptyText = computed(() => activeFeedStream.value === "market" ? "暂时还没有二手信息" : "校园里暂时还没有新动态");
 const activeFeedLink = computed(() => activeFeedStream.value === "market" ? "/forum?channel=market" : "/forum");
 const activeFeedLinkLabel = computed(() => activeFeedStream.value === "market" ? "进入二手" : "进入论坛");
-const quickEntries = computed(() => [
-  showForumContent.value ? { icon: ChatDotRound, label: "论坛", to: "/forum" } : null,
-  { icon: Notification, label: "公告", to: "/announcements" },
-  site.features.market && showForumContent.value ? { icon: Sell, label: "二手", to: "/forum?channel=market" } : null,
-  { icon: Service, label: "服务", to: "/services" },
-  site.features.assistantEntry ? { icon: MagicStick, label: "拾间AI", to: "/search" } : null,
-].filter(Boolean) as Array<{ icon: Component; label: string; to: string }>);
+const nativeForumRestricted = computed(() => isNativeForumIntranetOnlyAccount(auth.user?.username));
+const visibleServices = computed(() => (summary.value?.services || [])
+  .filter((service) => !(
+    shouldHideNativeYaodaCanFly(auth.isLoggedIn, auth.user?.username)
+    && String(service?.url || "").includes("/services/tools/yaoda-can-fly")
+  ))
+  .slice(0, 4));
+const quickEntries = computed(() => {
+  if (!showForumContent.value) {
+    return [
+      { icon: Notification, label: "公告", to: "/announcements" },
+      { icon: Search, label: "失物", to: "/lost-found" },
+      { icon: School, label: "教务", to: "/jwxt" },
+      { icon: Service, label: "服务", to: "/services" },
+    ];
+  }
+  return [
+    { icon: ChatDotRound, label: "论坛", to: "/forum" },
+    { icon: Notification, label: "公告", to: "/announcements" },
+    site.features.market ? { icon: Sell, label: "二手", to: "/forum?channel=market" } : null,
+    { icon: Service, label: "服务", to: "/services" },
+    site.features.assistantEntry ? { icon: MagicStick, label: "拾间AI", to: "/search" } : null,
+  ].filter(Boolean) as Array<{ icon: Component; label: string; to: string }>;
+});
 const homeCacheScope = computed(() => {
   const identity = auth.user?.id ? `user-${auth.user.id}` : "guest";
   return `${identity}:forum-${showForumContent.value ? "on" : "off"}`;
@@ -421,6 +482,26 @@ function selectFeedStream(stream: MobileHomeFeedStream) {
 
 function openQuickEntry(to: string) { void router.push(to); }
 function openTopic(id: number) { void router.push(`/forum/topic/${id}`); }
+function openService(service: any) {
+  const target = typeof service?.url === "string" ? service.url.trim() : "";
+  if (!target) {
+    ElMessage.warning("该服务暂未配置链接");
+    return;
+  }
+  if (target.startsWith("/")) {
+    void router.push(target);
+    return;
+  }
+  if (target.startsWith("tel:") || target.startsWith("mailto:")) {
+    window.location.href = target;
+    return;
+  }
+  if (/^https?:\/\//i.test(target)) {
+    window.open(target, "_blank", "noopener,noreferrer");
+    return;
+  }
+  ElMessage.warning("该服务链接格式暂不支持");
+}
 function requestMessage(requestError: unknown) {
   return (requestError as { response?: { data?: { message?: string } } })?.response?.data?.message || "";
 }
@@ -430,11 +511,31 @@ function requestMessage(requestError: unknown) {
 .home-stream { display: flex; max-width: 860px; margin: 0 auto; flex-direction: column; gap: 13px; }
 .home-entry { padding: 12px; border: 1px solid var(--cpu-border-soft); border-radius: 15px; background: var(--cpu-card); box-shadow: var(--cpu-shadow-sm); }
 .quick-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 7px; margin-top: 10px; }
+.quick-grid--services { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .quick-grid button { display: flex; min-width: 0; min-height: 66px; flex-direction: column; align-items: center; justify-content: center; gap: 5px; padding: 7px 4px; border: 1px solid var(--cpu-border-soft); border-radius: 11px; background: var(--cpu-surface-soft); color: var(--cpu-text-secondary); font-size: 11px; font-weight: 650; cursor: pointer; }
 .quick-grid button:hover { border-color: var(--cpu-primary); color: var(--cpu-primary); }
 .quick-grid button:focus-visible { outline: 2px solid var(--cpu-primary); outline-offset: 2px; }
 .quick-icon { display: grid; width: 24px; height: 24px; place-items: center; color: var(--cpu-primary); line-height: 1; }
 .quick-icon :deep(.el-icon) { width: 22px; height: 22px; font-size: 22px; }
+.forum-access-note { display: flex; min-height: 34px; align-items: center; gap: 7px; margin: 9px 2px 0; padding: 7px 9px; border-radius: 8px; background: color-mix(in srgb, var(--cpu-warning, #b97920) 10%, var(--cpu-surface-soft)); color: var(--cpu-text-secondary); font-size: 11px; line-height: 1.45; }
+.forum-access-note .el-icon { flex: 0 0 auto; color: var(--cpu-warning, #b97920); font-size: 14px; }
+.campus-services { padding: 3px 2px 0; }
+.service-section-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; padding: 0 3px 10px; }
+.service-section-head h1 { margin: 0; color: var(--cpu-text); font-size: 17px; line-height: 1.35; }
+.service-section-head p { margin: 3px 0 0; color: var(--cpu-text-muted); font-size: 11px; }
+.service-section-head a { display: inline-flex; min-height: 32px; align-items: center; gap: 2px; color: var(--cpu-primary); font-size: 12px; text-decoration: none; }
+.service-list { overflow: hidden; border: 1px solid var(--cpu-border-soft); border-radius: 12px; background: var(--cpu-card); box-shadow: var(--cpu-shadow-sm); }
+.service-row { display: grid; width: 100%; min-height: 58px; grid-template-columns: 36px minmax(0, 1fr) 18px; align-items: center; gap: 10px; padding: 9px 12px; border: 0; border-bottom: 1px solid var(--cpu-border-soft); background: transparent; color: inherit; text-align: left; cursor: pointer; font: inherit; }
+.service-row:last-child { border-bottom: 0; }
+.service-row:hover { background: var(--cpu-surface-soft); }
+.service-row:focus-visible { outline: 2px solid var(--cpu-primary); outline-offset: -2px; }
+.service-icon { display: grid; width: 36px; height: 36px; place-items: center; border-radius: 9px; background: var(--cpu-surface-soft); color: var(--cpu-primary); font-size: 19px; }
+.service-copy { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
+.service-copy b { overflow: hidden; color: var(--cpu-text); font-size: 13px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.service-copy small { overflow: hidden; color: var(--cpu-text-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.service-arrow { color: var(--cpu-text-muted); font-size: 14px; }
+.service-state { display: flex; min-height: 84px; align-items: center; justify-content: center; gap: 8px; border: 1px solid var(--cpu-border-soft); border-radius: 12px; background: var(--cpu-card); color: var(--cpu-text-muted); font-size: 12px; }
+.service-state a { color: var(--cpu-primary); text-decoration: none; }
 .hot-strip { padding: 10px 12px; border: 1px solid var(--cpu-border-soft); border-radius: 12px; background: var(--cpu-card); }
 .hot-strip header, .section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .hot-strip header { margin-bottom: 4px; }
@@ -472,6 +573,7 @@ function requestMessage(requestError: unknown) {
 }
 @media (max-width: 420px) {
   .quick-grid { grid-template-columns: repeat(5, minmax(54px, 1fr)); overflow-x: auto; scrollbar-width: none; }
+  .quick-grid--services { grid-template-columns: repeat(4, minmax(0, 1fr)); overflow: visible; }
   .quick-grid::-webkit-scrollbar { display: none; }
 }
 </style>

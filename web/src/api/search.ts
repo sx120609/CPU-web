@@ -83,7 +83,8 @@ export interface CampusAssistantStreamOptions {
 }
 
 export const searchApi = {
-  search: (q: string, options?: RequestOptions) => request.get<SearchResult>("/search", { q }, options),
+  search: (q: string, params?: { scope?: "services" }, options?: RequestOptions) =>
+    request.get<SearchResult>("/search", { q, ...params }, options),
   askAssistant: (message: string, history: CampusAssistantMessage[], options?: RequestOptions) =>
     request.post<CampusAssistantResponse>("/search/assistant", { message, history }, options),
   assistantQuota: (options?: RequestOptions) =>

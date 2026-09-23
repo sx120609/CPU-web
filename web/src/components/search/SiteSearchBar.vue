@@ -4,7 +4,7 @@
       v-model="keyword"
       clearable
       maxlength="100"
-      aria-label="搜索站内内容"
+      :aria-label="scope === 'services' ? '搜索校园服务' : '搜索站内内容'"
       :placeholder="placeholder"
     >
       <template #prefix><el-icon><Search /></el-icon></template>
@@ -18,8 +18,12 @@ import { ref } from "vue";
 import { useRouter } from "vue-router";
 import { Search } from "@element-plus/icons-vue";
 
-withDefaults(defineProps<{ placeholder?: string }>(), {
+const props = withDefaults(defineProps<{
+  placeholder?: string;
+  scope?: "all" | "services";
+}>(), {
   placeholder: "搜索帖子标题、正文、课程或校园服务",
+  scope: "all",
 });
 
 const router = useRouter();
@@ -28,7 +32,10 @@ const keyword = ref("");
 function submitSearch() {
   const query = keyword.value.trim().slice(0, 100);
   if (!query) return;
-  router.push({ name: "site-search", query: { q: query } });
+  router.push({
+    name: "site-search",
+    query: props.scope === "services" ? { q: query, scope: "services" } : { q: query },
+  });
 }
 </script>
 

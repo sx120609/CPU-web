@@ -80,6 +80,7 @@ searchRouter.get("/", async (req, res, next) => {
   try {
     const q = String(req.query.q ?? "").trim().slice(0, 100);
     if (!q) return ok(res, { topics: [], courses: [], services: [] });
+    const servicesOnly = req.query.scope === "services";
     const userId = req.user?.userId ?? null;
     const role = req.user?.role ?? null;
     const forumAccessEnabled = await resolveForumAccess(userId, role);
@@ -89,14 +90,15 @@ searchRouter.get("/", async (req, res, next) => {
       forumAccessEnabled,
       loggedIn: Boolean(userId),
     };
-    const searchableBoardTypes = ["announce"];
-    if (forumAccessEnabled && features.forum) searchableBoardTypes.push("normal", "question");
-    if (forumAccessEnabled && features.market) searchableBoardTypes.push("market");
-    if (forumAccessEnabled && features.coursereview) searchableBoardTypes.push("coursereview");
+    const searchableBoardTypes = servicesOnly ? [] : ["announce"];
+    if (!servicesOnly && forumAccessEnabled && features.forum) searchableBoardTypes.push("normal", "question");
+    if (!servicesOnly && forumAccessEnabled && features.market) searchableBoardTypes.push("market");
+    if (!servicesOnly && forumAccessEnabled && features.coursereview) searchableBoardTypes.push("coursereview");
 
     const cacheParts = [
       "retired-boards-v1",
       q,
+      servicesOnly ? "services-only" : "all-content",
       forumAccessEnabled ? "forum-enabled" : "announce-only",
       features.forum ? "forum-on" : "forum-off",
       features.market ? "market-on" : "market-off",
@@ -105,7 +107,7 @@ searchRouter.get("/", async (req, res, next) => {
     ];
     const { topics, courses, services } = await withCache("search", cacheParts, 60_000, async () => {
       const [topics, courses, services] = await Promise.all([
-        prisma.topic.findMany({
+        servicesOnly ? Promise.resolve([]) : prisma.topic.findMany({
           where: {
             hidden: false,
             board: { type: { in: searchableBoardTypes }, ...visibleBoardSlugFilter() },
@@ -119,7 +121,7 @@ searchRouter.get("/", async (req, res, next) => {
             tags: { include: { tag: true } },
           },
         }),
-        forumAccessEnabled && features.coursereview ? prisma.course.findMany({
+        !servicesOnly && forumAccessEnabled && features.coursereview ? prisma.course.findMany({
           where: {
             OR: [
               { name: { contains: q } },
