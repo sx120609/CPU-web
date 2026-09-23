@@ -135,6 +135,7 @@ import DormElectricDialog from "@/components/services/DormElectricDialog.vue";
 import AppIcon from "@/components/common/AppIcon.vue";
 import { serviceTools, type ServiceTool } from "@/data/serviceTools";
 import { detectVenueLaunchMode, openVenueReservationWithoutReferrer } from "@/utils/venueReservation";
+import { shouldHideNativeYaodaCanFly } from "@/utils/clientInfo";
 import { toolsApi, type ToolMeta } from "@/api/tools";
 
 const jwxt = useJwxtStore();
@@ -151,7 +152,10 @@ let disposed = false;
 const toolsCacheKey = computed(() => `cpu-services-tools-v1:${auth.user?.id ? `user-${auth.user.id}` : "guest"}`);
 const academicDataUnavailable = computed(() => Boolean(auth.user?.studentSso && auth.academicIdentityUnavailable));
 const toolAccessMap = computed(() => Object.fromEntries(toolMetas.value.map((item) => [item.code, item])));
-const visibleTools = computed(() => serviceTools.filter((tool) => toolAccessMap.value[tool.slug]?.isVisible !== false));
+const visibleTools = computed(() => serviceTools.filter((tool) => (
+  toolAccessMap.value[tool.slug]?.isVisible !== false
+  && !(tool.slug === "yaoda_can_fly" && shouldHideNativeYaodaCanFly(auth.isLoggedIn, auth.user?.username))
+)));
 
 watch(
   [() => route.query.open, () => site.features.electric],

@@ -69,14 +69,20 @@ import { useRouter } from "vue-router";
 import { getToken } from "@/api/request";
 import { toolsApi, type ServiceToolCode, type ToolMeta } from "@/api/tools";
 import { serviceTools, toolHubIntro, type ServiceTool } from "@/data/serviceTools";
+import { useAuthStore } from "@/stores/auth";
+import { shouldHideNativeYaodaCanFly } from "@/utils/clientInfo";
 import { detectVenueLaunchMode, openVenueReservationWithoutReferrer } from "@/utils/venueReservation";
 
 const router = useRouter();
+const auth = useAuthStore();
 const manageable = ref<ServiceToolCode[]>([]);
 const toolMetas = ref<ToolMeta[]>([]);
 const canManageAny = computed(() => manageable.value.length > 0 || toolMetas.value.some((item) => item.canManage));
 const toolAccessMap = computed(() => Object.fromEntries(toolMetas.value.map((item) => [item.code, item])));
-const visibleTools = computed(() => serviceTools.filter((tool) => toolAccessMap.value[tool.slug]?.isVisible !== false));
+const visibleTools = computed(() => serviceTools.filter((tool) => (
+  toolAccessMap.value[tool.slug]?.isVisible !== false
+  && !(tool.slug === "yaoda_can_fly" && shouldHideNativeYaodaCanFly(auth.isLoggedIn, auth.user?.username))
+)));
 
 onMounted(async () => {
   try {

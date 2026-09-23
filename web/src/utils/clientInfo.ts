@@ -17,6 +17,7 @@ export const ANDROID_WIDGET_MIN_VERSION_CODE = 5;
 export const ANDROID_IN_APP_UPDATE_MIN_VERSION_CODE = 14;
 const CLIENT_OVERRIDE_KEY = "cpu-client-override";
 const FLUTTER_SHELL_KEY = "cpu-flutter-shell";
+const NATIVE_FORUM_INTRANET_ONLY_USERNAME = "2020240384";
 
 export function detectClientPlatform(ua = navigator.userAgent): ClientPlatform {
   const source = (ua || "").toLowerCase();
@@ -79,6 +80,24 @@ export function isIosNativeApp(ua = navigator.userAgent) {
 
 export function hidesNativeCommerce(ua = navigator.userAgent) {
   return isIosNativeApp(ua) || isHarmonyNativeApp(ua);
+}
+
+export function isIosOrHarmonyNativeApp(ua = navigator.userAgent) {
+  return isIosNativeApp(ua) || isHarmonyNativeApp(ua);
+}
+
+export function isNativeForumIntranetOnlyAccount(username?: string | null, ua = navigator.userAgent) {
+  return isIosOrHarmonyNativeApp(ua)
+    && String(username || "").trim() === NATIVE_FORUM_INTRANET_ONLY_USERNAME;
+}
+
+export function shouldHideNativeYaodaCanFly(
+  isLoggedIn: boolean,
+  username?: string | null,
+  ua = navigator.userAgent,
+) {
+  return isIosOrHarmonyNativeApp(ua)
+    && (!isLoggedIn || String(username || "").trim() === NATIVE_FORUM_INTRANET_ONLY_USERNAME);
 }
 
 /** Native schedule shells own top-level navigation; legacy platform wrappers do not. */

@@ -7,7 +7,13 @@ import { useSiteStore } from "@/stores/site";
 import type { FeatureKey } from "@/api/site";
 import { boardApi } from "@/api/board";
 import { topicApi } from "@/api/topic";
-import { isNativeScheduleShell, isLikelyIosDevice, hidesNativeCommerce } from "@/utils/clientInfo";
+import {
+  hidesNativeCommerce,
+  isLikelyIosDevice,
+  isNativeForumIntranetOnlyAccount,
+  isNativeScheduleShell,
+  shouldHideNativeYaodaCanFly,
+} from "@/utils/clientInfo";
 import { preloadScheduleBackgroundAsset } from "@/utils/scheduleBackgroundStorage";
 import { readForumListRestoreState } from "@/utils/forumListRestore";
 
@@ -249,6 +255,22 @@ router.beforeEach(async (to) => {
   // HttpOnly Cookie 无法由前端直接读取；首次导航静默探测一次真实会话。
   // 游客的 401 不提示、不跳转，避免公开页面被错误抢到登录页。
   if (!auth.ready) await auth.fetchMe({ probe: true });
+
+  if (
+    to.name === "service-yaoda-can-fly"
+    && shouldHideNativeYaodaCanFly(Boolean(auth.user), auth.user?.username)
+  ) {
+    return { name: "services", replace: true };
+  }
+
+  if (
+    /^\/(?:forum|market|post|coursereview)(?:\/|$)/.test(to.path)
+    && isNativeForumIntranetOnlyAccount(auth.user?.username)
+  ) {
+    ElMessage.info("该功能仅限连接内网使用");
+    return { name: "home", replace: true };
+  }
+
   // 模块管理权限不限制主站导航；后台权限由对应路由和接口检查。
   const requestedManageTool = firstRouteValue(to.query.tool);
   if (to.name === "service-tools-manage" && requestedManageTool === "file_collect") {
