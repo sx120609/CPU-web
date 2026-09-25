@@ -18,18 +18,23 @@ public struct ScheduleLiveActivityAttributes: ActivityAttributes, Equatable {
         public let index: Int
         public let start: Date
         public let target: Date
+        /// End of the segment represented by the current state. During a
+        /// segmented break this is the upcoming segment's end, while target
+        /// remains its start for the countdown.
+        public let courseEnd: Date
         public let finalEnd: Date
     }
     public static func resolveTimeline(_ segments: [Segment], mode: TimingMode, now: Date) -> Timeline? {
         guard let first = segments.first, let last = segments.last else { return nil }
-        if now >= last.endAt { return Timeline(phase: .finished, index: segments.count - 1, start: last.endAt, target: last.endAt, finalEnd: last.endAt) }
-        if now < first.startAt { return Timeline(phase: .upcoming, index: 0, start: now, target: first.startAt, finalEnd: last.endAt) }
+        if now >= last.endAt { return Timeline(phase: .finished, index: segments.count - 1, start: last.endAt, target: last.endAt, courseEnd: last.endAt, finalEnd: last.endAt) }
+        if now < first.startAt { return Timeline(phase: .upcoming, index: 0, start: now, target: first.startAt, courseEnd: last.endAt, finalEnd: last.endAt) }
         guard let index = segments.firstIndex(where: { now < $0.endAt }) else { return nil }
         let segment = segments[index]
         let inBreak = now < segment.startAt
         return Timeline(phase: mode == .segmented && inBreak ? .intermission : .inClass, index: index,
             start: mode == .whole ? first.startAt : inBreak ? segments[index - 1].endAt : segment.startAt,
-            target: mode == .whole ? last.endAt : inBreak ? segment.startAt : segment.endAt, finalEnd: last.endAt)
+            target: mode == .whole ? last.endAt : inBreak ? segment.startAt : segment.endAt,
+            courseEnd: mode == .whole ? last.endAt : segment.endAt, finalEnd: last.endAt)
     }
 
     public struct LocalCourse: Codable, Hashable {
@@ -193,7 +198,8 @@ public struct ScheduleLiveActivityAttributes: ActivityAttributes, Equatable {
             let phase: Phase = timeline.phase == .upcoming ? .upcoming : timeline.phase == .intermission ? .intermission : .inProgress
             return Self(phase: phase, courseName: course.name, teacher: course.teacher, location: course.location,
                 periodLabel: course.periodLabel, dateLabel: attributes.dateKey, weekRangeLabel: course.weekRangeLabel,
-                startDate: phase == .inProgress ? timeline.start : timeline.target, endDate: timeline.target,
+                startDate: phase == .inProgress ? timeline.start : timeline.target,
+                endDate: phase == .upcoming ? timeline.finalEnd : timeline.courseEnd,
                 adjustmentNote: course.adjustmentNote, updatedAt: now)
 
         }

@@ -10,10 +10,26 @@ extension Color {
 
 @main
 struct CpuTimeApp: App {
+    @UIApplicationDelegateAdaptor(CpuTimeAppDelegate.self) private var appDelegate
+
     var body: some Scene {
         WindowGroup {
             ContentView()
         }
+    }
+}
+
+final class CpuTimeAppDelegate: NSObject, UIApplicationDelegate {
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        // BGTaskScheduler raises if a handler is registered after launch
+        // finishes; SwiftUI's first onAppear is too late on iOS 18.
+        if #available(iOS 17.0, *) {
+            LiveActivityBackgroundRefresh.shared.register()
+        }
+        return true
     }
 }
 
@@ -80,11 +96,6 @@ struct ContentView: View {
                 }
             }
             .onAppear {
-#if os(iOS)
-                if #available(iOS 17.0, *) {
-                    LiveActivityBackgroundRefresh.shared.register()
-                }
-#endif
 #if DEBUG
                 let env = ProcessInfo.processInfo.environment
                 if let raw = env["CPU_DEBUG_TAB"], let tab = ShellTab(rawValue: raw) {
