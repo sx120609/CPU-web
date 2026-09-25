@@ -1227,7 +1227,7 @@ private struct TwoDayScheduleView: View {
                 tableName: payload.widgetTableName
             )
             Divider()
-            // 右边不是明天时标上「后天的课」「3 天后的课」。
+            // 右边不是明天时标上「后天的课」「10/2 的课」。
             DayColumn(
                 day: right,
                 nowMinutes: nil,
@@ -1502,7 +1502,7 @@ private struct WidgetDateHeader: View {
     }
 }
 
-/// 选了「最近有课的一天」、小组件换到别的日子时，日期栏上的标注：「明天的课」「3 天后的课」。
+/// 选了「最近有课的一天」、小组件换到别的日子时，日期栏上的标注：「明天的课」「10/2 的课」。
 private struct OtherDayChip: View {
     let title: String
     @Environment(\.scheduleWidgetTheme) private var theme
@@ -1541,9 +1541,14 @@ private enum OtherDay {
         }
     }
 
-    /// 日期栏上的「明天的课」。
+    /// 日期栏上的「明天的课」「后天的课」；再往后直接写日期：「10/2 的课」。
     static func hint(for day: ScheduleDay, now: Date = .now) -> String? {
-        label(for: day, now: now).map { "\($0)的课" }
+        guard let days = offset(of: day, now: now) else { return nil }
+        switch days {
+        case 1: return "明天的课"
+        case 2: return "后天的课"
+        default: return "\(day.compactDate.replacingOccurrences(of: ".", with: "/")) 的课"
+        }
     }
 }
 
