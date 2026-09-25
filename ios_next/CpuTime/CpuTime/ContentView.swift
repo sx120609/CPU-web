@@ -60,6 +60,7 @@ struct ContentView: View {
                     guard !Task.isCancelled else { return }
                     shell.connect(webSession: webSession, scheduleStore: scheduleStore)
                     watchSchedule.connect(to: scheduleStore)
+                    NativeWidgetLocalSchedule.connect(to: scheduleStore)
                     guard url.scheme == "cputime-next", url.host == "schedule" else { return }
                     guard !shell.requiresLogin else { return }
                     shell.userSelected(.schedule)
@@ -128,6 +129,7 @@ struct ContentView: View {
                 guard !Task.isCancelled else { return }
                 shell.connect(webSession: webSession, scheduleStore: scheduleStore)
                 watchSchedule.connect(to: scheduleStore)
+                NativeWidgetLocalSchedule.connect(to: scheduleStore)
                 await shell.resolveInitialAuth(webSession: webSession)
             }
             .onChange(of: scenePhase) { _, phase in

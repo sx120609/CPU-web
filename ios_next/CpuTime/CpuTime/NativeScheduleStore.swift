@@ -1059,8 +1059,15 @@ public final class NativeScheduleStore: ObservableObject {
     @Published public private(set) var scheduleChangeNotice: NativeScheduleChangeNotice?
     /// The most recent authenticated snapshot, including prefetched weeks,
     /// published to the phone-to-Watch transport.
-    public private(set) var latestSnapshot: NativeScheduleSnapshot?
+    public private(set) var latestSnapshot: NativeScheduleSnapshot? {
+        didSet {
+            guard latestSnapshot != oldValue else { return }
+            onLatestSnapshotChange?(latestSnapshot)
+        }
+    }
     public var onWatchSnapshot: ((NativeScheduleSnapshot) -> Void)?
+    /// 最新快照变了（包括退出登录时清空成 `nil`）。小组件的本地课表跟着它写。
+    public var onLatestSnapshotChange: ((NativeScheduleSnapshot?) -> Void)?
     public var onWatchReset: (() -> Void)?
 
     public let cacheLifetime: TimeInterval

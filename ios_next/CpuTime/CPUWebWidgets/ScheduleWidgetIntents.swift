@@ -43,13 +43,14 @@ enum UpcomingCourseCountOption: Int, AppEnum {
 enum TwoDayStartOption: String, AppEnum {
     /// 固定今天和明天。
     case today
-    /// 今天还有课就从今天起，否则从最近一个有课的日期起，连着两天。
+    /// 左边照旧是今天，右边是今天之后最近一个有课的日期（三周之内，没有就是明天）。
+    /// rawValue 沿用旧名，已经放好的小组件不用重新设置。
     case nextCourseDay
 
     static let typeDisplayRepresentation: TypeDisplayRepresentation = "显示哪两天"
     static let caseDisplayRepresentations: [Self: DisplayRepresentation] = [
         .today: "今天和明天",
-        .nextCourseDay: "从最近有课的一天起",
+        .nextCourseDay: "今天和最近有课的一天",
     ]
 }
 
@@ -103,7 +104,7 @@ struct TwoDayScheduleWidgetIntent: ScheduleWidgetIntent {
     static let title: LocalizedStringResource = "两日课表"
     static let description = IntentDescription("选择两日课表显示哪两天。")
 
-    // 默认值保持原来的行为：今天上完就从最近有课的一天起。
+    // 默认值：右边是最近有课的一天。
     @Parameter(title: "显示哪两天", default: .nextCourseDay)
     var start: TwoDayStartOption
 

@@ -11,6 +11,8 @@ enum AppWidgetConfiguration {
     static let endpointFileName = "schedule-widget-endpoint.txt"
     /// 小组件自己上一次从服务器拿到的课表，课程边界上的刷新直接用它。
     static let cacheFileName = "schedule-widget-cache.json"
+    /// App 按日期展开写好的本地课表，只用来补接口没下发的日子。
+    static let localDaysFileName = "schedule-widget-local-days.json"
     static let themeKey = "scheduleWidgetTheme"
     static let displayOptionsKey = "scheduleWidgetDisplayOptions"
     static let appURL = URL(string: "cputime-next://schedule?source=widget&week=current")!
@@ -142,7 +144,7 @@ enum ScheduleWidgetAfterClassStyle: String, Codable, CaseIterable, Sendable {
     case tomorrow
     /// 最近的一段法定假期。
     case holiday
-    /// 整个小组件换成最近一个有课的日期（一周之内），照常显示那天的课；一周内都没课时退回最近的节假日。
+    /// 换成最近一个有课的日期（三周之内）的课：日期栏照旧是今天，标上「x 天后的课」，课程压暗；三周内都没课时退回最近的节假日。
     case nextCourseDay
 }
 
@@ -271,6 +273,10 @@ struct ScheduleCourseWindow {
 }
 
 struct SchedulePayload: Decodable {
+    /// 「最近有课的一天」往后找几天。一周跨不过中秋接国庆这样的长假，三周连寒暑假前后的空档也够用。
+    /// 接口只下发两周（服务端 `SCHEDULE_WIDGET_LOOKAHEAD_DAYS`），再往后靠 App 写的本地课表。
+    static let lookaheadDays = 21
+
     let title: String?
     let generatedAt: String?
     let cachedAt: String?
@@ -283,6 +289,13 @@ struct SchedulePayload: Decodable {
     let today: ScheduleDay?
     let days: [ScheduleDay]?
     let weekDays: [ScheduleDay]?
+    /// App 写的本地课表（整学期展开后的若干天）。接口只给两周，「最近有课的一天」
+    /// 往后看三周时靠它补；接口里有的日子一律以接口为准。不从接口解码。
+    var localDays: [ScheduleDay]? = nil
+
+    private enum CodingKeys: String, CodingKey {
+        case title, generatedAt, cachedAt, semester, week, currentWeek, displayWeek, strictDate, stale, today, days, weekDays
+    }
 
     func day(for date: String, fallbackOffset: Int) -> ScheduleDay {
         if fallbackOffset == 0, today?.date == date, let today { return today }
@@ -300,6 +313,7 @@ struct SchedulePayload: Decodable {
     func fullDay(for date: String, fallbackOffset: Int) -> ScheduleDay {
         if let exact = (weekDays ?? []).first(where: { $0.date == date }) { return exact }
         if let exact = (days ?? []).first(where: { $0.date == date }) { return exact }
+        if today?.date != date, let local = localDay(for: date) { return local }
         return day(for: date, fallbackOffset: fallbackOffset)
     }
 
@@ -308,7 +322,12 @@ struct SchedulePayload: Decodable {
         if let exact = (weekDays ?? []).first(where: { $0.date == date }) { return exact }
         if let exact = (days ?? []).first(where: { $0.date == date }) { return exact }
         if today?.date == date { return today }
-        return nil
+        return localDay(for: date)
+    }
+
+    /// 接口没覆盖到的日子才看 App 写的本地课表。
+    func localDay(for date: String) -> ScheduleDay? {
+        (localDays ?? []).first(where: { $0.date == date })
     }
 
     /// 明天那一天；不在服务端给的范围里就返回 `nil`。
@@ -330,9 +349,9 @@ struct SchedulePayload: Decodable {
         }
     }
 
-    /// 今天之后一周之内第一个有课的日期；找不到就是 `nil`。
+    /// 今天之后三周之内第一个有课的日期；找不到就是 `nil`。
     func nextCourseDay(after now: Date = .now) -> (day: ScheduleDay, offset: Int)? {
-        for offset in 1...7 {
+        for offset in 1...Self.lookaheadDays {
             let date = Calendar.current.date(byAdding: .day, value: offset, to: now) ?? now
             let candidate = fullDay(for: Self.dateString(date), fallbackOffset: offset)
             if !candidate.courseList.isEmpty { return (candidate, offset) }
@@ -353,7 +372,7 @@ struct SchedulePayload: Decodable {
         }
         if hasRemaining { return (today, 0) }
 
-        for offset in 1...7 {
+        for offset in 1...Self.lookaheadDays {
             let date = Calendar.current.date(byAdding: .day, value: offset, to: now) ?? now
             let candidate = fullDay(for: Self.dateString(date), fallbackOffset: offset)
             if !candidate.courseList.isEmpty { return (candidate, offset) }
@@ -383,7 +402,7 @@ struct SchedulePayload: Decodable {
         } else {
             courses = selected.day.courseList
         }
-        // 一周内都没课：别停在明天的日期上说今天的事，退回今天，交给课后区域。
+        // 三周内都没课：别停在明天的日期上说今天的事，退回今天，交给课后区域。
         guard !courses.isEmpty else { return (currentDay(now: now), []) }
         return (selected.day, Array(courses.prefix(2)))
     }
@@ -454,15 +473,18 @@ enum ScheduleWidgetClient {
         guard let stored = storedEndpoint(), !stored.isEmpty else {
             throw ScheduleWidgetError.unconfigured
         }
-        if let cached = ScheduleWidgetCache.read(endpoint: stored, now: now) {
+        if var cached = ScheduleWidgetCache.read(endpoint: stored, now: now) {
+            cached.localDays = ScheduleLocalDays.read()
             return cached
         }
 
         var lastError: Error = ScheduleWidgetError.invalidResponse
         for endpoint in candidates(stored) {
             do {
-                let (payload, data) = try await fetch(endpoint)
+                let (fetched, data) = try await fetch(endpoint)
                 ScheduleWidgetCache.write(data, endpoint: stored, fetchedAt: now)
+                var payload = fetched
+                payload.localDays = ScheduleLocalDays.read()
                 return payload
             } catch let error as ScheduleWidgetError {
                 if case .unauthorized = error {
@@ -474,6 +496,8 @@ enum ScheduleWidgetClient {
                 lastError = error
             }
         }
+        // 没网、服务器出错：退回 App 写的本地课表，别让小组件整块报错。授权失效上面已经直接抛了。
+        if let local = ScheduleLocalDays.payload(now: now) { return local }
         throw lastError
     }
 
@@ -577,6 +601,48 @@ private enum ScheduleWidgetCache {
     static func clear() {
         guard let url else { return }
         try? FileManager.default.removeItem(at: url)
+    }
+}
+
+/// App 写的本地课表（`NativeWidgetLocalSchedule`）。App 退出登录时会删掉这份文件。
+private enum ScheduleLocalDays {
+    private struct Record: Decodable {
+        let semester: String?
+        let days: [ScheduleDay]
+    }
+
+    static func read() -> [ScheduleDay]? {
+        record()?.days
+    }
+
+    /// 接口请求失败时，只靠本地课表拼一份。本地没有今天（很久没开 App）就算了。
+    static func payload(now: Date) -> SchedulePayload? {
+        guard let record = record(),
+              let today = record.days.first(where: { $0.date == SchedulePayload.dateString(now) }) else { return nil }
+        let week = today.week
+        return SchedulePayload(
+            title: nil,
+            generatedAt: nil,
+            cachedAt: nil,
+            semester: record.semester,
+            week: week,
+            currentWeek: week,
+            displayWeek: week,
+            strictDate: true,
+            stale: true,
+            today: today,
+            days: nil,
+            weekDays: week.map { week in record.days.filter { $0.week == week } },
+            localDays: record.days
+        )
+    }
+
+    private static func record() -> Record? {
+        guard let url = FileManager.default
+            .containerURL(forSecurityApplicationGroupIdentifier: AppWidgetConfiguration.appGroup)?
+            .appendingPathComponent(AppWidgetConfiguration.localDaysFileName),
+              let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(Record.self, from: data)
     }
 }
 
