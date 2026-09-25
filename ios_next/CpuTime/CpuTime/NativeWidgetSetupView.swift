@@ -801,6 +801,11 @@ private struct WidgetSettingsSection: View {
             Toggle("老师", isOn: optionBinding(\.showTeacher))
             Toggle("上课时间", isOn: optionBinding(\.showTime))
 
+            Toggle("农历日期", isOn: optionBinding(\.showLunarDate))
+            Toggle("节假日提示", isOn: optionBinding(\.showHoliday))
+            Toggle("最近节假日常驻", isOn: optionBinding(\.holidayAlwaysVisible))
+                .disabled(!options.showHoliday)
+
             Picker("颜色主题", selection: $theme) {
                 ForEach(themes, id: \.0) { value in
                     Text(value.1).tag(value.0)
@@ -837,7 +842,7 @@ private struct WidgetSettingsSection: View {
         } header: {
             Label("iPhone 小组件", systemImage: "square.grid.2x2")
         } footer: {
-            Text("选择要显示的信息后，打开桌面添加“临近课程”“今日课表”或“两日课表”。课表会自动同步，今天无课时会显示最近有课的日期。")
+            Text("选择要显示的信息后，打开桌面添加“临近课程”“今日课表”或“两日课表”。课表会自动同步。节假日只标法定假日和传统节日。今天的课上完后显示什么、两日课表显示哪两天，长按小组件选“编辑小组件”设置。")
         }
     }
 

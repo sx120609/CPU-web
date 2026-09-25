@@ -11,6 +11,7 @@
 		A20000000000000000000001 /* CPUWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* CPUWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		B20000000000000000000001 /* CPUWatchWidgets.appex in Embed Watch Extensions */ = {isa = PBXBuildFile; fileRef = B20000000000000000000002 /* CPUWatchWidgets.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		C20000000000000000000001 /* CPUWebWidgets/ScheduleLiveActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000002 /* CPUWebWidgets/ScheduleLiveActivityAttributes.swift */; };
+		C20000000000000000000003 /* CpuTime/ChineseCalendar.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000004 /* CpuTime/ChineseCalendar.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -73,6 +74,7 @@
 		A20000000000000000000002 /* CPUWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CPUWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B20000000000000000000002 /* CPUWatchWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = CPUWatchWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		C20000000000000000000002 /* CPUWebWidgets/ScheduleLiveActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CPUWebWidgets/ScheduleLiveActivityAttributes.swift; sourceTree = "<group>"; };
+		C20000000000000000000004 /* CpuTime/ChineseCalendar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CpuTime/ChineseCalendar.swift; sourceTree = "<group>"; };
 		D20000000000000000000001 /* SharedSigning.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = SharedSigning.xcconfig; sourceTree = "<group>"; };
 		D20000000000000000000002 /* Signing.local.xcconfig.example */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.local.xcconfig.example; sourceTree = "<group>"; };
 		D20000000000000000000004 /* DebugSigning.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = DebugSigning.xcconfig; sourceTree = "<group>"; };
@@ -189,6 +191,7 @@
 				A20000000000000000000007 /* CPUWatch */,
 				B20000000000000000000005 /* CPUWatchWidgets */,
 				C20000000000000000000002 /* CPUWebWidgets/ScheduleLiveActivityAttributes.swift */,
+				C20000000000000000000004 /* CpuTime/ChineseCalendar.swift */,
 				000000000000000000000020 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -380,6 +383,7 @@
 		000000000000000220000000 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			files = (
+				C20000000000000000000003 /* CpuTime/ChineseCalendar.swift in Sources */,
 			);
 		};
 		A20000000000000000000012 /* Sources */ = {
