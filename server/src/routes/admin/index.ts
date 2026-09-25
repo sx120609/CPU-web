@@ -115,6 +115,7 @@ import {
   WebStaticProviderNotReadyError,
 } from "../../services/webStaticSwitch";
 import { getCloudUsageSummary, type CloudUsageRange } from "../../services/cloudUsage";
+import { getIosClientDiagnostic, getIosClientStats, parseIosClientStatsRange } from "../../services/iosClientStats";
 import { migrateLegacyDataAvatars } from "../../services/userAvatarStorage";
 import { qqBotAdminRouter } from "./qqbot";
 import { backfillAdminDailyLoginsFromLastLogin, getChinaDayRange, listAdminDailyLoginSeries } from "../../services/adminStats";
@@ -2316,6 +2317,24 @@ adminRouter.get("/cloud-usage", adminOnly, async (req, res, next) => {
     const range: CloudUsageRange = rawRange === "7d" || rawRange === "30d" ? rawRange : "today";
     const forceRefresh = req.query.refresh === "1" || req.query.refresh === "true";
     ok(res, await getCloudUsageSummary(range, forceRefresh));
+  } catch (e) {
+    next(e);
+  }
+});
+
+adminRouter.get("/ios-clients", adminOnly, async (req, res, next) => {
+  try {
+    ok(res, await getIosClientStats(parseIosClientStatsRange(req.query.range)));
+  } catch (e) {
+    next(e);
+  }
+});
+
+adminRouter.get("/ios-clients/diagnostics/:id", adminOnly, async (req, res, next) => {
+  try {
+    const row = await getIosClientDiagnostic(String(req.params.id));
+    if (!row) return next(Errors.notFound("诊断记录不存在"));
+    ok(res, row);
   } catch (e) {
     next(e);
   }

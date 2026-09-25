@@ -39,6 +39,7 @@ import { createDeploymentRelay } from "./utils/deploymentRelay";
 import { remoteGateway } from "./services/jwxtGatewayTransport";
 import { getQqBotDeploymentStatus } from "./services/qqbot/connection";
 import { startLiveActivityPushScheduler } from "./services/liveActivityPush";
+import { startIosClientStatsPrunePoller } from "./services/iosClientStats";
 
 export function startAppWorkers() {
   startForumImageModerationPoller();
@@ -51,6 +52,7 @@ export function startAppWorkers() {
   startWechatNotificationPoller();
   startSponsorOrderExpiryPoller();
   startLiveActivityPushScheduler();
+  startIosClientStatsPrunePoller();
 }
 
 export function createApp(options: { workers?: boolean } = {}) {

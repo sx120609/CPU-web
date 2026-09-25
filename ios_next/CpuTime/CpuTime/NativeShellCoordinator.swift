@@ -40,6 +40,10 @@ final class NativeShellCoordinator: ObservableObject {
         guard !isConnected else { return }
         self.webSession = webSession
         self.scheduleStore = scheduleStore
+        IosClientHeartbeat.shared.setAPIRequest { [weak webSession] path, method, body in
+            guard let webSession else { throw NativeAssistantError.unavailable }
+            return try await webSession.liveActivityAPIRequest(path: path, method: method, body: body)
+        }
         if #available(iOS 17.2, *) {
             LiveActivityPushService.shared.setAPIRequest { [weak webSession] path, method, body in
                 guard let webSession else { throw NativeAssistantError.unavailable }
@@ -312,6 +316,8 @@ final class NativeShellCoordinator: ObservableObject {
         requiresLogin = false
         isAuthResolved = true
         guard isConnected else { return }
+        // Links this install to the signed-in account in the admin statistics.
+        IosClientHeartbeat.shared.report(force: true)
         webSession?.blocksInternalNavigation = false
         webSession?.setBackForwardNavigationGesturesEnabled(true)
         guard navigateToHome else { return }

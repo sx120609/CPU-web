@@ -94,6 +94,7 @@ model User {
   scheduleWidgetTokens         ScheduleWidgetToken[]
   liveActivityRegistrations    LiveActivityRegistration[]
   liveActivityDevices           LiveActivityDevice[]
+  iosClientInstalls            IosClientInstall[]
   scheduleSharesOwned          ScheduleShare[]              @relation("ScheduleShareOwner")
   toolPermissions              ToolPermission[]
   createdQuestionnaires        Questionnaire[]               @relation("QuestionnaireCreatedBy")
@@ -811,6 +812,98 @@ model LiveActivityBroadcastEvent {
 
   @@unique([channelID, eventID])
   @@index([state, fireAt, nextAttemptAt])
+}
+
+// 原生 iOS 客户端（ios_next）安装统计。installId 是 App 本地生成的随机 UUID，
+// 不是 IDFA/IDFV；只记录设备型号、系统版本与客户端版本，供后台查看分布。
+model IosClientInstall {
+  id            String   @id @default(cuid())
+  installId     String   @unique
+  userId        Int?
+  deviceModel   String
+  systemVersion String
+  appVersion    String
+  appBuild      String
+  firstSeenAt   DateTime @default(now())
+  lastSeenAt    DateTime @default(now())
+  // 以下为最近一次上报的功能状态；null 表示客户端未上报或系统暂不可读。
+  // widgets 为 JSON 数组：[{ kind, family }]
+  widgets                   String?
+  liveActivitySystemEnabled Boolean?
+  liveActivityAppEnabled    Boolean?
+  notificationStatus        String?
+  watchPaired               Boolean?
+  watchAppInstalled         Boolean?
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([lastSeenAt])
+  @@index([userId])
+  @@index([firstSeenAt])
+}
+
+// 每台安装每天一行（按北京时间日期），用于日活趋势与版本升级进度。
+model IosClientDailyActive {
+  date       String
+  installId  String
+  appVersion String
+  appBuild   String
+  createdAt  DateTime @default(now())
+
+  @@id([date, installId])
+  @@index([date])
+}
+
+// MetricKit 每日性能报告（客户端已汇总直方图）。
+model IosClientMetricReport {
+  id                  String   @id @default(cuid())
+  installId           String
+  appVersion          String
+  appBuild            String
+  deviceModel         String
+  systemVersion       String
+  periodStart         DateTime
+  periodEnd           DateTime
+  launchCount         Int      @default(0)
+  launchMsAvg         Float?
+  resumeCount         Int      @default(0)
+  resumeMsAvg         Float?
+  hangCount           Int      @default(0)
+  hangMsAvg           Float?
+  foregroundNormalExits   Int  @default(0)
+  foregroundAbnormalExits Int  @default(0)
+  backgroundNormalExits   Int  @default(0)
+  backgroundAbnormalExits Int  @default(0)
+  // JSON：{ foreground: { reason: count }, background: { reason: count } }
+  exitDetail          String   @default("{}")
+  createdAt           DateTime @default(now())
+
+  @@unique([installId, periodEnd])
+  @@index([periodEnd])
+  @@index([appVersion])
+}
+
+// MetricKit 崩溃 / 卡顿诊断。调用栈未符号化，需配合对应版本 dSYM 用 atos 解析。
+model IosClientDiagnostic {
+  id             String    @id @default(cuid())
+  fingerprint    String    @unique
+  installId      String
+  kind           String
+  appVersion     String
+  appBuild       String
+  deviceModel    String
+  systemVersion  String
+  signature      String
+  summary        String
+  topFrames      String    @default("[]")
+  callStack      String
+  hangDurationMs Int?
+  occurredAt     DateTime
+  createdAt      DateTime  @default(now())
+
+  @@index([kind, occurredAt])
+  @@index([signature])
+  @@index([appVersion])
 }
 
 // iOS Scriptable 小组件只读 token。
