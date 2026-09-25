@@ -35,11 +35,13 @@ import { privacyRouter } from "./privacy";
 import { revokedCredentialGate } from "../middleware/revokedCredential";
 import { scheduleShareRouter } from "./scheduleShares";
 import { liveActivityRouter } from "./liveActivities";
+import { appClientRouter } from "./appClients";
 
 export const router = Router();
 router.use("/privacy", privacyRouter);
 router.use("/schedule-shares", scheduleShareRouter);
 router.use("/live-activities", liveActivityRouter);
+router.use("/app-clients", authOptional, appClientRouter);
 
 // 公开路径
 router.use("/auth", authRouter);

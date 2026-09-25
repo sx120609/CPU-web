@@ -246,6 +246,97 @@ export type WebStaticSwitchStatus = {
   backends: Record<WebStaticProvider, WebStaticBackendStatus>;
 };
 
+export type IosClientStatsRange = "1d" | "7d" | "30d" | "90d" | "all";
+
+export type IosClientFlagCounts = { yes: number; no: number; unknown: number };
+
+export type IosClientStackFrame = { binaryName: string; offset: number };
+
+export type IosClientVersionStability = {
+  version: string;
+  launches: number;
+  launchMsAvg: number | null;
+  resumeMsAvg: number | null;
+  hangEvents: number;
+  foregroundExits: number;
+  foregroundAbnormalExits: number;
+  foregroundAbnormalRate: number | null;
+  backgroundAbnormalExits: number;
+  crashes: number;
+  crashInstalls: number;
+  hangReports: number;
+};
+
+export type IosClientDiagnosticGroup = {
+  signature: string;
+  kind: "crash" | "hang";
+  count: number;
+  installs: number;
+  versions: string[];
+  lastSeenAt: string | null;
+  summary: string;
+  topFrames: IosClientStackFrame[];
+  sampleId: string | null;
+};
+
+export type IosClientDiagnosticDetail = {
+  id: string;
+  kind: "crash" | "hang";
+  appVersion: string;
+  appBuild: string;
+  deviceModel: string;
+  deviceName: string;
+  systemVersion: string;
+  summary: string;
+  hangDurationMs: number | null;
+  occurredAt: string;
+  callStack: string;
+  topFrames: IosClientStackFrame[];
+};
+
+export type IosClientStats = {
+  range: IosClientStatsRange;
+  totals: { allTime: number; active1d: number; active7d: number; active30d: number };
+  installs: number;
+  signedInUsers: number;
+  byDeviceModel: { deviceModel: string; name: string; count: number }[];
+  byAppVersion: { version: string; count: number }[];
+  bySystemVersion: { version: string; count: number }[];
+  features: {
+    widgets: {
+      reported: number;
+      installsWithWidget: number;
+      byKind: { kind: string; name: string; installs: number; count: number }[];
+      byFamily: { family: string; name: string; count: number }[];
+    };
+    liveActivitySystemEnabled: IosClientFlagCounts;
+    liveActivityAppEnabled: IosClientFlagCounts;
+    notificationStatus: { status: string; count: number }[];
+    watchPaired: IosClientFlagCounts;
+    watchAppInstalled: IosClientFlagCounts;
+  };
+  trend: {
+    dates: string[];
+    active: number[];
+    newInstalls: number[];
+    versions: { version: string; counts: number[] }[];
+  };
+  stability: {
+    byVersion: IosClientVersionStability[];
+    groups: IosClientDiagnosticGroup[];
+  };
+  recent: {
+    deviceModel: string;
+    deviceName: string;
+    systemVersion: string;
+    appVersion: string;
+    appBuild: string;
+    firstSeenAt: string;
+    lastSeenAt: string;
+    user: { id: number; nickname: string; username: string } | null;
+  }[];
+};
+
 export type CloudUsageRange = "today" | "7d" | "30d";
 
 export type CloudUsagePoint = {
@@ -1080,6 +1171,10 @@ export const adminApi = {
     request.get<WebStaticSwitchStatus>("/admin/media-storage/web-static", undefined, { timeout: 120000, ...options }),
   switchWebStaticProvider: (provider: WebStaticProvider) =>
     request.post<WebStaticSwitchStatus>("/admin/media-storage/web-static/switch", { provider }, { timeout: 120000 }),
+  iosClientStats: (range: IosClientStatsRange, options?: RequestOptions) =>
+    request.get<IosClientStats>("/admin/ios-clients", { range }, { cacheTtlMs: 0, ...options }),
+  iosClientDiagnostic: (id: string) =>
+    request.get<IosClientDiagnosticDetail>(`/admin/ios-clients/diagnostics/${encodeURIComponent(id)}`, undefined, { cacheTtlMs: 0 }),
   cloudUsage: (range: CloudUsageRange, refresh = false, options?: RequestOptions) =>
     request.get<CloudUsageSummary>("/admin/cloud-usage", { range, refresh: refresh ? "1" : "0" }, { timeout: 120000, cacheTtlMs: 0, ...options }),
   updateMediaStorageConfig: (patch: {

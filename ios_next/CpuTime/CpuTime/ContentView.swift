@@ -29,6 +29,8 @@ final class CpuTimeAppDelegate: NSObject, UIApplicationDelegate {
         if #available(iOS 17.0, *) {
             LiveActivityBackgroundRefresh.shared.register()
         }
+        // Subscribe early: MetricKit delivers pending crash reports at launch.
+        ClientDiagnosticsCollector.shared.start()
         return true
     }
 }
@@ -138,10 +140,12 @@ struct ContentView: View {
                 watchSchedule.connect(to: scheduleStore)
                 NativeWidgetLocalSchedule.connect(to: scheduleStore)
                 await shell.resolveInitialAuth(webSession: webSession)
+                IosClientHeartbeat.shared.report()
             }
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active {
                     watchSchedule.foreground()
+                    IosClientHeartbeat.shared.report()
                     NativeLiveActivityController.shared.foreground()
                     if #available(iOS 17.2, *) { LiveActivityPushService.shared.activate() }
                 }

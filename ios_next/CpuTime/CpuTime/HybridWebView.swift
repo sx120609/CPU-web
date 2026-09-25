@@ -1016,7 +1016,7 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
     }
 
     func liveActivityAPIRequest(path: String, method: String, body: [String: Any]?) async throws -> Data {
-        guard path.hasPrefix("/api/live-activities/"),
+        guard path.hasPrefix("/api/live-activities/") || path.hasPrefix("/api/app-clients/"),
               let url = IOSNextWebConfiguration.routeURL(path) else { throw NativeAssistantError.unavailable }
         let host = url.host?.lowercased() ?? ""
         let cookies = await assistantCookies().filter { cookie in
