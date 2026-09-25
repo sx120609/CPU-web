@@ -18,6 +18,12 @@ struct NativeScheduleBackgroundChecks {
         let preferences = NativeSchedulePreferences(defaults: defaults, imageURL: imageURL)
         precondition(preferences.backgroundImage == nil)
         precondition(preferences.backgroundVisibility == 0.76 && preferences.backgroundBlur == 0)
+        precondition(preferences.showWeekend && preferences.visibleDays(adjustedDays: []) == Array(1...7))
+        preferences.showWeekend = false
+        preferences.defaultView = "month"
+        precondition(preferences.visibleDays(adjustedDays: []) == Array(1...5))
+        precondition(preferences.visibleDays(adjustedDays: [6]) == [1, 2, 3, 4, 5, 6])
+        precondition(preferences.visibleDays(adjustedDays: [7]) == [1, 2, 3, 4, 5, 7])
 
         let portrait = makeImage(size: CGSize(width: 900, height: 1600))
         try preferences.setBackgroundData(portrait)
@@ -30,6 +36,7 @@ struct NativeScheduleBackgroundChecks {
         let restored = NativeSchedulePreferences(defaults: defaults, imageURL: imageURL)
         precondition(restored.backgroundImage != nil)
         precondition(restored.backgroundVisibility == 0.57 && restored.backgroundBlur == 8)
+        precondition(!restored.showWeekend && restored.defaultView == "month")
 
         // An update may move the app container. The old absolute path must not
         // make a still-present background disappear after installing the update.
@@ -73,6 +80,7 @@ struct NativeScheduleBackgroundChecks {
         preferences.showTeacher = false
         try preferences.reset()
         precondition(preferences.palette == "color-glass" && preferences.showTeacher)
+        precondition(preferences.showWeekend && preferences.defaultView == "week")
         precondition(!FileManager.default.fileExists(atPath: imageURL.path), "Reset must actually remove the photo")
 
         if CommandLine.arguments.count > 1 {

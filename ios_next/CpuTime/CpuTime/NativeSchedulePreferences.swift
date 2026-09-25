@@ -13,6 +13,7 @@ final class NativeSchedulePreferences: ObservableObject {
     @Published var showTeacher: Bool { didSet { persist() } }
     @Published var showPeriod: Bool { didSet { persist() } }
     @Published var showWeeks: Bool { didSet { persist() } }
+    @Published var showWeekend: Bool { didSet { persist() } }
     @Published var showDateHeader: Bool { didSet { persist() } }
     @Published var defaultView: String { didSet { persist() } }
     @Published var palette: String { didSet { persist() } }
@@ -31,6 +32,7 @@ final class NativeSchedulePreferences: ObservableObject {
         static let showTeacher = "nativeSchedule.showTeacher"
         static let showPeriod = "nativeSchedule.showPeriod"
         static let showWeeks = "nativeSchedule.showWeeks"
+        static let showWeekend = "nativeSchedule.showWeekend"
         static let showDateHeader = "nativeSchedule.showDateHeader"
         static let defaultView = "nativeSchedule.defaultView"
         static let palette = "nativeSchedule.palette"
@@ -47,8 +49,10 @@ final class NativeSchedulePreferences: ObservableObject {
         showTeacher = defaults.object(forKey: Key.showTeacher) as? Bool ?? true
         showPeriod = defaults.object(forKey: Key.showPeriod) as? Bool ?? true
         showWeeks = defaults.object(forKey: Key.showWeeks) as? Bool ?? true
+        showWeekend = defaults.object(forKey: Key.showWeekend) as? Bool ?? true
         showDateHeader = defaults.object(forKey: Key.showDateHeader) as? Bool ?? true
-        defaultView = defaults.string(forKey: Key.defaultView) == "day" ? "day" : "week"
+        let savedView = defaults.string(forKey: Key.defaultView) ?? "week"
+        defaultView = Self.viewOptions.contains(savedView) ? savedView : "week"
         let savedPalette = defaults.string(forKey: Key.palette) ?? "color-glass"
         palette = Self.paletteOptions.contains(savedPalette) ? savedPalette : "color-glass"
         let savedDensity = defaults.string(forKey: Key.density) ?? "comfortable"
@@ -65,7 +69,12 @@ final class NativeSchedulePreferences: ObservableObject {
     }
 
     static let paletteOptions = ["color-glass", "green", "blue", "teal", "indigo", "violet", "orange", "rose", "slate"]
+    static let viewOptions = ["week", "day", "month"]
     static let densityOptions = ["comfortable", "compact"]
+
+    func visibleDays(adjustedDays: Set<Int>) -> [Int] {
+        (1...7).filter { showWeekend || $0 <= 5 || adjustedDays.contains($0) }
+    }
 
     static var backgroundFileURL: URL {
         let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -87,6 +96,7 @@ final class NativeSchedulePreferences: ObservableObject {
         showTeacher = true
         showPeriod = true
         showWeeks = true
+        showWeekend = true
         showDateHeader = true
         defaultView = "week"
         palette = "color-glass"
@@ -150,8 +160,9 @@ final class NativeSchedulePreferences: ObservableObject {
         defaults.set(showTeacher, forKey: Key.showTeacher)
         defaults.set(showPeriod, forKey: Key.showPeriod)
         defaults.set(showWeeks, forKey: Key.showWeeks)
+        defaults.set(showWeekend, forKey: Key.showWeekend)
         defaults.set(showDateHeader, forKey: Key.showDateHeader)
-        defaults.set(defaultView == "day" ? "day" : "week", forKey: Key.defaultView)
+        defaults.set(Self.viewOptions.contains(defaultView) ? defaultView : "week", forKey: Key.defaultView)
         defaults.set(Self.paletteOptions.contains(palette) ? palette : "color-glass", forKey: Key.palette)
         defaults.set(Self.densityOptions.contains(density) ? density : "comfortable", forKey: Key.density)
         defaults.set(backgroundPath, forKey: Key.backgroundPath)

@@ -171,12 +171,14 @@ private struct ScheduleSettingsSection: View {
             Picker("默认视图", selection: $preferences.defaultView) {
                 Text("周课表").tag("week")
                 Text("日课表").tag("day")
+                Text("月历").tag("month")
             }
             Picker("排版密度", selection: $preferences.density) {
                 Text("舒适").tag("comfortable")
                 Text("紧凑").tag("compact")
             }
             Toggle("显示日期栏", isOn: $preferences.showDateHeader)
+            Toggle("显示周末", isOn: $preferences.showWeekend)
         } header: {
             Label("视图与排版", systemImage: "rectangle.grid.1x2")
         }
@@ -227,12 +229,14 @@ private struct NativeScheduleSettingsView: View {
                 Picker("默认视图", selection: $preferences.defaultView) {
                     Text("周课表").tag("week")
                     Text("日课表").tag("day")
+                    Text("月历").tag("month")
                 }
                 Picker("排版密度", selection: $preferences.density) {
                     Text("舒适").tag("comfortable")
                     Text("紧凑").tag("compact")
                 }
                 Toggle("显示日期栏", isOn: $preferences.showDateHeader)
+                Toggle("显示周末", isOn: $preferences.showWeekend)
                 VStack(alignment: .leading, spacing: 10) {
                     Text("课程配色")
                         .font(.subheadline.weight(.medium))
