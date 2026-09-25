@@ -57,6 +57,8 @@ export function buildSelfUser(u: any) {
     lastLoginAt: u.lastLoginAt,
     lastLoginClient: u.lastLoginClient,
     usedIosClient: u.usedIosClient,
+    usedIosNativeClient: u.usedIosNativeClient,
+    usedIosPwaClient: u.usedIosPwaClient,
     usedAndroidClient: u.usedAndroidClient,
     usedHarmonyClient: u.usedHarmonyClient,
     usedDesktopClient: u.usedDesktopClient,

@@ -691,10 +691,15 @@ export type AdminOverview = {
   hiddenTopics: number;
   replies: number;
   iosClients: number;
+  iosNativeClients: number;
+  iosPwaClients: number;
+  iosUnclassifiedClients: number;
   androidClients: number;
   harmonyClients: number;
   desktopClients: number;
   todayDesktopLogins: number;
+  todayIosNativeLogins: number;
+  todayIosPwaLogins: number;
   feeds: number;
   boards: number;
   dailyActiveSeries: Array<{

@@ -13,6 +13,9 @@ export const ANDROID_NEW_ARCH_MIN_VERSION_CODE = 21;
 export const HARMONY_APP_LATEST_VERSION_CODE = 18;
 export const HARMONY_APP_LATEST_VERSION_NAME = "2.0.9";
 export const ANDROID_APP_DOWNLOAD_URL = "/api/site/downloads/android-app";
+export const IOS_APP_STORE_URL = "https://apps.apple.com/cn/app/id6811073406";
+/** Matches the App Store listing: iOS / iPadOS 17.0 or later. */
+export const IOS_APP_MIN_MAJOR_VERSION = 17;
 export const ANDROID_WIDGET_MIN_VERSION_CODE = 5;
 export const ANDROID_IN_APP_UPDATE_MIN_VERSION_CODE = 14;
 const CLIENT_OVERRIDE_KEY = "cpu-client-override";
@@ -41,6 +44,33 @@ export function detectClientPlatform(ua = navigator.userAgent): ClientPlatform {
 export function isStandaloneMode() {
   return window.matchMedia?.("(display-mode: standalone)").matches
     || (navigator as any).standalone === true;
+}
+
+/** Keep announcement/platform targeting stable while reporting the installation type. */
+export function detectAnalyticsClient(ua = navigator.userAgent) {
+  if (isIosNativeApp(ua)) return "ios-native";
+  if (isIosStandalone(ua)) return "ios-pwa";
+  return detectClientPlatform(ua);
+}
+
+export function shouldRecommendIosApp(ua = navigator.userAgent) {
+  if (!isLikelyIosDevice(ua) || isIosNativeApp(ua) || isFlutterNativeShell(ua)) return false;
+  if (!canInstallIosNativeApp(ua)) return false;
+  return isIosStandalone(ua)
+    || (/Version\/.*Safari\//i.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS|MicroMessenger|MQQBrowser|QQ\//i.test(ua));
+}
+
+/** iPhone UAs carry the OS version; desktop-class iPad Safari only exposes Version/. */
+export function iosMajorVersion(ua = navigator.userAgent) {
+  const match = (ua || "").match(/\bOS (\d+)(?:[_.]\d+)* like Mac OS X/i)
+    || (ua || "").match(/\bVersion\/(\d+)(?:\.\d+)*/i);
+  return match ? Number(match[1]) : null;
+}
+
+/** Unknown versions (for example desktop-class iPad home-screen apps) are left to the App Store page. */
+export function canInstallIosNativeApp(ua = navigator.userAgent) {
+  const major = iosMajorVersion(ua);
+  return major === null || major >= IOS_APP_MIN_MAJOR_VERSION;
 }
 
 export function isIosStandalone(ua = navigator.userAgent) {
@@ -75,6 +105,7 @@ export function isIosNativeApp(ua = navigator.userAgent) {
   const source = (ua || "").toLowerCase();
   const bridge = typeof window === "undefined" ? null : (window as any).CPUIOS;
   return source.includes("cpuwebiosapp")
+    || (source.includes("cputimenative/") && !source.includes("cpuwebharmonyapp"))
     || (typeof bridge?.supportsScheduleWidget === "function" && bridge.supportsScheduleWidget() === true);
 }
 

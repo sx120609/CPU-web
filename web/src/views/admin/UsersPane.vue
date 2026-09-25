@@ -14,7 +14,9 @@
           <el-option label="muted" value="muted" />
         </el-select>
         <el-select v-model="usedClient" clearable placeholder="客户端" class="filter-select" @change="applyFilters">
-          <el-option label="iOS 客户端" value="ios" />
+          <el-option label="iOS（全部）" value="ios" />
+          <el-option label="iOS 原生 App" value="ios-native" />
+          <el-option label="Safari 主屏幕版" value="ios-pwa" />
           <el-option label="安卓客户端" value="android" />
           <el-option label="鸿蒙客户端" value="harmony" />
           <el-option label="PC 客户端" value="desktop" />
@@ -103,7 +105,9 @@
               <span class="login-time">{{ row.lastLoginAt ? fmtDate(row.lastLoginAt) : "未登录" }}</span>
             </div>
             <div class="login-flags">
-              <el-tag v-if="row.usedIosClient" type="info" size="small" effect="plain">iOS</el-tag>
+              <el-tag v-if="row.usedIosNativeClient" type="success" size="small" effect="plain">iOS 原生</el-tag>
+              <el-tag v-if="row.usedIosPwaClient" type="info" size="small" effect="plain">Safari 主屏幕</el-tag>
+              <el-tag v-if="row.usedIosClient && !row.usedIosNativeClient && !row.usedIosPwaClient" type="info" size="small" effect="plain">iOS（未区分）</el-tag>
               <el-tag v-if="row.usedAndroidClient" type="success" size="small" effect="plain">安卓</el-tag>
               <el-tag v-if="row.usedHarmonyClient" type="warning" size="small" effect="plain">鸿蒙</el-tag>
               <el-tag v-if="row.usedDesktopClient" type="primary" size="small" effect="plain">PC</el-tag>
@@ -190,7 +194,9 @@
           <el-tag :type="clientTagType(row.lastLoginClient)" size="small" effect="plain">
             {{ clientLabel(row.lastLoginClient) }}
           </el-tag>
-          <el-tag v-if="row.usedIosClient" type="info" size="small" effect="plain">iOS</el-tag>
+          <el-tag v-if="row.usedIosNativeClient" type="success" size="small" effect="plain">iOS 原生</el-tag>
+          <el-tag v-if="row.usedIosPwaClient" type="info" size="small" effect="plain">Safari 主屏幕</el-tag>
+          <el-tag v-if="row.usedIosClient && !row.usedIosNativeClient && !row.usedIosPwaClient" type="info" size="small" effect="plain">iOS（未区分）</el-tag>
           <el-tag v-if="row.usedAndroidClient" type="success" size="small" effect="plain">安卓</el-tag>
           <el-tag v-if="row.usedHarmonyClient" type="warning" size="small" effect="plain">鸿蒙</el-tag>
           <el-tag v-if="row.usedDesktopClient" type="primary" size="small" effect="plain">PC</el-tag>
@@ -581,7 +587,9 @@ function roleLabel(r: string) {
 }
 
 function clientLabel(client?: string | null) {
-  if (client === "ios") return "iOS 客户端";
+  if (client === "ios-native") return "iOS 原生 App";
+  if (client === "ios-pwa") return "Safari 主屏幕版";
+  if (client === "ios") return "iOS（未区分）";
   if (client === "android") return "安卓客户端";
   if (client === "harmony") return "鸿蒙客户端";
   if (client === "desktop") return "PC 客户端";
@@ -591,7 +599,7 @@ function clientLabel(client?: string | null) {
 }
 
 function clientTagType(client?: string | null): "success" | "warning" | "info" | "danger" | "primary" {
-  if (client === "ios") return "success";
+  if (client === "ios" || client === "ios-native" || client === "ios-pwa") return "success";
   if (client === "android") return "warning";
   if (client === "harmony") return "success";
   if (client === "desktop") return "primary";

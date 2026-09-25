@@ -16,6 +16,7 @@ import { isVipActive, VIP_PROFILE_FRAMES, VIP_PROFILE_THEMES } from "../services
 import { submitProfileReview } from "../services/profileReview";
 import { isAuthorBlocked } from "../services/userBlock";
 import { userBlockRouter } from "./userBlock";
+import { detectLoginClient, loginClientUsage } from "../utils/loginClient";
 
 export const userRouter = Router();
 userRouter.use("/blocks", userBlockRouter);
@@ -23,8 +24,13 @@ userRouter.use("/blocks", userBlockRouter);
 userRouter.get("/me", authRequired, async (req, res, next) => {
   try {
     await releaseExpiredMutes();
-    const user = await prisma.user.findUnique({ where: { id: req.user!.userId } });
+    let user = await prisma.user.findUnique({ where: { id: req.user!.userId } });
     if (!user) throw Errors.notFound("用户不存在");
+    // Existing cookie sessions also count as client usage, without fabricating a login.
+    const usage = loginClientUsage(detectLoginClient(req));
+    if (Object.entries(usage).some(([key, value]) => value === true && !user![key as keyof typeof usage])) {
+      user = await prisma.user.update({ where: { id: user.id }, data: usage });
+    }
     ok(res, buildSelfUser(user));
   } catch (e) { next(e); }
 });

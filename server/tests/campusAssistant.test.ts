@@ -1438,8 +1438,10 @@ test("campus assistant knowledge covers every active action and carries freshnes
   assert.match(combined, /玄武门校区位于南京市鼓楼区童家巷 24 号/);
   assert.match(combined, /旧的“CPU 网络连接助手”已停止作为独立产品宣传/);
   assert.match(combined, /桌面客户端内置校园网自动联网工具/);
-  assert.match(combined, /点击分享按钮，选择“添加到主屏幕”/);
-  assert.match(combined, /不要对 iOS 用户说“没有客户端”/);
+  assert.match(combined, /App Store 免费下载药大拾间 iOS 原生客户端/);
+  assert.match(combined, /需要 iOS \/ iPadOS 17\.0 或更高版本/);
+  assert.match(combined, /系统低于 iOS 17 或暂不安装时，Safari 添加到主屏幕仍可作为兼容方式继续使用/);
+  assert.match(combined, /https:\/\/apps\.apple\.com\/cn\/app\/id6811073406/);
   assert.doesNotMatch(combined, /只有尚无原生客户端的 iPhone\/iPad/);
   assert.match(combined, /应优先给出对应的移动端客户端或桌面客户端/);
   assert.match(combined, /桌面设备不推荐 PWA/);
@@ -1859,8 +1861,8 @@ test("拾间AI优先推荐可用的原生客户端，不用网页版弱化客户
 
   assert.match(prompt, /Windows\/macOS 推荐药大拾间桌面客户端/);
   assert.match(prompt, /Android 推荐 Android 客户端/);
-  assert.match(prompt, /Safari 打开 https:\/\/cputime\.cn 后通过“分享→添加到主屏幕”/);
-  assert.match(prompt, /不要对 iOS 用户说“没有客户端”或“没有 iOS 客户端”/);
+  assert.match(prompt, /App Store 原生客户端 https:\/\/apps\.apple\.com\/cn\/app\/id6811073406（需要 iOS \/ iPadOS 17\.0 或更高版本）/);
+  assert.match(prompt, /Safari 主屏幕版作为兼容方式仍可使用/);
   assert.match(prompt, /内置校园网自动联网工具/);
 });
 

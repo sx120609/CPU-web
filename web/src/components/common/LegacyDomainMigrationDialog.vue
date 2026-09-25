@@ -105,7 +105,7 @@ const instructions: MigrationInstruction[] = [
     id: "ios",
     badge: "iOS",
     title: "iPhone / iPad",
-    description: "用 Safari 打开 https://cputime.cn/download → 点“打开课表并安装” → 在课表顶部点向下箭头的“添加到桌面” → 按教程选择“查看更多”→“添加到主屏幕”。",
+    description: "打开 https://cputime.cn/download → 点“在 App Store 下载”，安装药大拾间 iOS 原生客户端；Safari 主屏幕版仍可继续使用。",
   },
   {
     id: "desktop-app",

@@ -5,7 +5,7 @@ import {
   request,
   type RequestOptions,
 } from "./request";
-import { detectClientPlatform } from "@/utils/clientInfo";
+import { detectAnalyticsClient } from "@/utils/clientInfo";
 
 export interface SearchResult {
   topics: any[];
@@ -124,7 +124,7 @@ async function streamAssistant(
     "Content-Type": "application/json",
     Accept: "text/event-stream",
     "X-CPU-Auth-Mode": "cookie",
-    "X-CPU-Client": detectClientPlatform(),
+    "X-CPU-Client": detectAnalyticsClient(),
   };
   const token = getToken();
   if (token && token !== COOKIE_SESSION_MARKER) headers.Authorization = `Bearer ${token}`;

@@ -66,7 +66,7 @@
           </li>
           <li>
             <span class="num">3</span>
-            <span class="step-text">根据页面提示，把课表添加到主屏幕</span>
+            <span class="step-text">根据页面提示从 App Store 下载 iOS 原生版，或把课表添加到主屏幕</span>
           </li>
         </ol>
         <div class="copy-card">
@@ -75,7 +75,7 @@
             复制课表页链接
           </el-button>
         </div>
-        <p class="muted">iOS 必须使用 Safari；微信 / QQ 内置浏览器不支持添加到主屏幕。</p>
+        <p class="muted">请在 Safari 中继续；微信 / QQ 内置浏览器不支持添加到主屏幕，也可能拦截 App Store 跳转。</p>
       </template>
 
       <p class="support-note">

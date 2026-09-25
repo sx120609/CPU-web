@@ -119,6 +119,7 @@ import { getIosClientDiagnostic, getIosClientStats, parseIosClientStatsRange } f
 import { migrateLegacyDataAvatars } from "../../services/userAvatarStorage";
 import { qqBotAdminRouter } from "./qqbot";
 import { backfillAdminDailyLoginsFromLastLogin, getChinaDayRange, listAdminDailyLoginSeries } from "../../services/adminStats";
+import { IOS_ANALYTICS_CLIENTS } from "../../utils/loginClient";
 import { config } from "../../config";
 import {
   generateJwxtAgentToken,
@@ -417,9 +418,13 @@ adminRouter.get("/users", userDirectoryAccess, async (req, res, next) => {
     if (status) where.status = status;
     if (loginClient && loginClient !== "all") {
       if (loginClient === "none") where.lastLoginAt = null;
-      else if (["ios", "android", "harmony", "desktop", "web", "unknown"].includes(loginClient)) where.lastLoginClient = loginClient;
+      // "ios" keeps meaning every iOS login, including the native and Safari home-screen variants.
+      else if (loginClient === "ios") where.lastLoginClient = { in: [...IOS_ANALYTICS_CLIENTS] };
+      else if (["ios-native", "ios-pwa", "android", "harmony", "desktop", "web", "unknown"].includes(loginClient)) where.lastLoginClient = loginClient;
     }
     if (usedClient === "ios") where.usedIosClient = true;
+    if (usedClient === "ios-native") where.usedIosNativeClient = true;
+    if (usedClient === "ios-pwa") where.usedIosPwaClient = true;
     if (usedClient === "android") where.usedAndroidClient = true;
     if (usedClient === "harmony") where.usedHarmonyClient = true;
     if (usedClient === "desktop") where.usedDesktopClient = true;
@@ -466,7 +471,7 @@ adminRouter.get("/users", userDirectoryAccess, async (req, res, next) => {
           profileTheme: true, profileFrame: true,
           aiReviewWhitelisted: true,
           lastSeenAt: true, lastLoginAt: true, lastLoginClient: true,
-          usedIosClient: true, usedAndroidClient: true, usedHarmonyClient: true, usedDesktopClient: true,
+          usedIosClient: true, usedIosNativeClient: true, usedIosPwaClient: true, usedAndroidClient: true, usedHarmonyClient: true, usedDesktopClient: true,
           createdAt: true,
         },
       }),
@@ -2033,10 +2038,15 @@ adminRouter.get("/overview", modOrAbove, async (_req, res, next) => {
       feeds,
       boards,
       iosClients,
+      iosNativeClients,
+      iosPwaClients,
+      iosUnclassifiedClients,
       androidClients,
       harmonyClients,
       desktopClients,
       todayDesktopLogins,
+      todayIosNativeLogins,
+      todayIosPwaLogins,
       todayLogins,
       dailyActiveSeries,
     ] = await Promise.all([
@@ -2051,10 +2061,15 @@ adminRouter.get("/overview", modOrAbove, async (_req, res, next) => {
       prisma.schoolFeedSource.count({ where: { enabled: true } }),
       prisma.board.count(),
       prisma.user.count({ where: { usedIosClient: true } }),
+      prisma.user.count({ where: { usedIosNativeClient: true } }),
+      prisma.user.count({ where: { usedIosPwaClient: true } }),
+      prisma.user.count({ where: { usedIosClient: true, usedIosNativeClient: false, usedIosPwaClient: false } }),
       prisma.user.count({ where: { usedAndroidClient: true } }),
       prisma.user.count({ where: { usedHarmonyClient: true } }),
       prisma.user.count({ where: { usedDesktopClient: true } }),
       prisma.adminDailyLogin.count({ where: { dateKey: todayDateKey, client: "desktop" } }),
+      prisma.adminDailyLogin.count({ where: { dateKey: todayDateKey, client: "ios-native" } }),
+      prisma.adminDailyLogin.count({ where: { dateKey: todayDateKey, client: "ios-pwa" } }),
       prisma.user.count({ where: { lastLoginAt: { gte: todayStart, lt: todayEnd } } }),
       listAdminDailyLoginSeries(30),
     ]);
@@ -2072,10 +2087,15 @@ adminRouter.get("/overview", modOrAbove, async (_req, res, next) => {
       feeds,
       boards,
       iosClients,
+      iosNativeClients,
+      iosPwaClients,
+      iosUnclassifiedClients,
       androidClients,
       harmonyClients,
       desktopClients,
       todayDesktopLogins,
+      todayIosNativeLogins,
+      todayIosPwaLogins,
       todayLogins,
       dailyActiveSeries,
     });

@@ -1,7 +1,7 @@
 import axios, { AxiosError, type AxiosInstance, type AxiosRequestConfig } from "axios";
 import { ElMessage } from "element-plus";
 import { reactive } from "vue";
-import { detectClientPlatform } from "@/utils/clientInfo";
+import { detectAnalyticsClient } from "@/utils/clientInfo";
 
 export interface ApiResponse<T> {
   code: number;
@@ -350,7 +350,7 @@ instance.interceptors.request.use(async (config) => {
   config.headers["X-CPU-Auth-Mode"] = "cookie";
   const csrf = getCsrfToken();
   if (csrf) config.headers["X-CSRF-Token"] = csrf;
-  config.headers["X-CPU-Client"] = detectClientPlatform();
+  config.headers["X-CPU-Client"] = detectAnalyticsClient();
   return config;
 });
 

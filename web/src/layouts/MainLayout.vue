@@ -165,6 +165,7 @@
         'main--mobile-topic': mobileTopicChrome,
       }"
     >
+      <IosAppRecommendation v-if="route.name === 'home'" />
       <router-view v-slot="{ Component }">
         <transition name="page-route" :css="!useIosRouteTransition || (iosRouteTransitionEnabled && !useIosNextShell)"
           @before-leave="freezeRoutePage" @after-leave="releaseRoutePage" @leave-cancelled="releaseRoutePage">
@@ -382,6 +383,7 @@
 </template>
 
 <script setup lang="ts">
+import IosAppRecommendation from "@/components/install/IosAppRecommendation.vue";
 import { ref, computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import LiquidGlassTabbar from "../components/common/LiquidGlassTabbar.vue";

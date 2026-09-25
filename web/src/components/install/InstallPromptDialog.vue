@@ -38,28 +38,41 @@
       <p class="muted">如果系统提示“未知来源”，需要允许当前浏览器安装应用。</p>
     </div>
 
-    <!-- iOS Safari：必须手动通过分享菜单 -->
+    <!-- iOS 优先推荐原生客户端，保留主屏幕兼容版入口；系统过旧时直接给出主屏幕步骤。 -->
     <div v-else-if="platform === 'ios'" class="content">
-      <p>iOS 的"添加到主屏幕"必须手动操作，三步即可：</p>
-      <ol class="steps">
-        <li>
-          <span class="num">1</span>
-          点击右下角 <strong>三个点</strong>，再点 <strong>共享按钮</strong>
-          <svg class="ic" viewBox="0 0 16 16" aria-hidden="true">
-            <path d="M8 1.5l3 3-1 1-1.3-1.3V10H7.3V4.2L6 5.5l-1-1z" fill="currentColor"/>
-            <path d="M3 7h2v6h6V7h2v8H3z" fill="currentColor"/>
-          </svg>
-        </li>
-        <li>
-          <span class="num">2</span>
-          选择 <strong>「查看更多」</strong>
-        </li>
-        <li>
-          <span class="num">3</span>
-          选择 <strong>「添加到主屏幕」</strong>
-        </li>
-      </ol>
-      <p class="muted">必须使用 Safari 浏览器；微信/QQ 等内置浏览器不支持。</p>
+      <template v-if="iosAppInstallable">
+        <p><b>药大拾间 iOS 原生版已上线</b>，推荐前往 App Store 下载。</p>
+        <p class="muted">登录原有账号即可使用；需要 iOS / iPadOS {{ IOS_APP_MIN_MAJOR_VERSION }}.0 或更高版本。</p>
+      </template>
+      <p v-else class="muted">iOS 原生版需要 iOS / iPadOS {{ IOS_APP_MIN_MAJOR_VERSION }}.0 或更高版本，当前系统可继续使用 Safari 主屏幕版。</p>
+      <details class="home-screen-steps" :open="!iosAppInstallable">
+        <summary>
+          {{ iosAppInstallable ? "继续使用 Safari 主屏幕版" : "添加 Safari 主屏幕版" }}
+          <AppIcon name="arrow-down" />
+        </summary>
+        <p>{{ iosAppInstallable ? "也可" : "" }}通过 Safari 分享菜单添加到主屏幕：</p>
+        <ol class="steps">
+          <li>
+            <span class="num">1</span>
+            <span class="step-text">
+              点击右下角 <strong>三个点</strong>，再点 <strong>共享按钮</strong>
+              <svg class="ic" viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M8 1.5l3 3-1 1-1.3-1.3V10H7.3V4.2L6 5.5l-1-1z" fill="currentColor"/>
+                <path d="M3 7h2v6h6V7h2v8H3z" fill="currentColor"/>
+              </svg>
+            </span>
+          </li>
+          <li>
+            <span class="num">2</span>
+            <span class="step-text">选择 <strong>「查看更多」</strong></span>
+          </li>
+          <li>
+            <span class="num">3</span>
+            <span class="step-text">选择 <strong>「添加到主屏幕」</strong></span>
+          </li>
+        </ol>
+        <p class="muted">请使用 Safari 浏览器；微信/QQ 等内置浏览器不支持添加到主屏幕。</p>
+      </details>
     </div>
 
     <!-- 桌面浏览器：只提供原生桌面客户端，不再展示 PWA，避免用户选错。 -->
@@ -82,6 +95,7 @@
 
     <template #footer>
       <div class="footer cpu-button-row">
+        <a v-if="platform === 'ios' && iosAppInstallable && !isNativeApp && !inAppBrowser.isInApp" data-cpu-button="primary" class="ios-store-link" :href="IOS_APP_STORE_URL" target="_blank" rel="noopener noreferrer" @click="dismissDialog">在 App Store 下载</a>
         <el-button
           v-if="canDownloadAndroidApk"
           :type="deferredPrompt && platform !== 'android' ? 'default' : 'primary'"
@@ -108,11 +122,15 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import AppIcon from "@/components/common/AppIcon.vue";
 import DesktopClientDownloadCard from "@/components/install/DesktopClientDownloadCard.vue";
 import { detectInAppBrowser } from "@/utils/inAppBrowser";
 import { USER_QQ_GROUP, openUserGroup } from "@/utils/userGroup";
 import {
   ANDROID_APP_DOWNLOAD_URL,
+  IOS_APP_MIN_MAJOR_VERSION,
+  IOS_APP_STORE_URL,
+  canInstallIosNativeApp,
   isDesktopNativeApp,
   isFlutterNativeShell,
   isIosNativeApp,
@@ -150,10 +168,12 @@ const desktopDownloadPlatform = computed<"windows" | "macos" | null>(() => {
   return null;
 });
 
+const iosAppInstallable = computed(() => canInstallIosNativeApp());
+
 const title = computed(() => {
   if (inAppBrowser.value.isInApp) return "建议使用外部浏览器打开";
   if (platform.value === "android") return "安装 Android 版课表";
-  if (platform.value === "ios") return "添加到主屏幕";
+  if (platform.value === "ios") return iosAppInstallable.value ? "下载 iOS 原生客户端" : "添加到主屏幕";
   if (desktopDownloadPlatform.value === "macos") return "下载 macOS 桌面客户端";
   if (desktopDownloadPlatform.value === "windows") return "下载 Windows 桌面客户端";
   return "桌面客户端";
@@ -282,7 +302,7 @@ function autoPromptIfEligible() {
   detectNativeApp();
   if (isStandalone.value || isNativeApp.value) return;
   if (inAppBrowser.value.isInApp) return;
-  if (platform.value === "desktop") return;
+  if (platform.value === "desktop" || platform.value === "ios") return;
   open.value = true;
 }
 
@@ -292,6 +312,17 @@ defineExpose({ openDialog, requestInstall, autoPromptIfEligible, canShow, platfo
 </script>
 
 <style scoped>
+.ios-store-link { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; font-weight: 600; }
+.ios-store-link:focus-visible { outline: 2px solid var(--cpu-button-primary); outline-offset: 2px; }
+.home-screen-steps summary { display: flex; min-height: 44px; align-items: center; justify-content: space-between; gap: 8px; color: var(--cpu-text); font-weight: 600; cursor: pointer; list-style: none; }
+.home-screen-steps summary::-webkit-details-marker { display: none; }
+.home-screen-steps summary .cpu-app-icon { flex: none; color: var(--cpu-text-secondary); transition: transform 150ms ease; }
+.home-screen-steps[open] summary .cpu-app-icon { transform: rotate(180deg); }
+.home-screen-steps summary:focus-visible { outline: 2px solid var(--cpu-button-primary); outline-offset: 2px; border-radius: 6px; }
+.steps .step-text { min-width: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .home-screen-steps summary .cpu-app-icon { transition: none; }
+}
 .content { font-size: 14px; line-height: 1.7; color: var(--cpu-text); }
 .content p { margin: 0 0 10px; }
 .content .muted { color: var(--cpu-text-secondary); font-size: 12px; line-height: 1.6; }

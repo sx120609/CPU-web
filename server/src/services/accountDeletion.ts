@@ -143,7 +143,7 @@ async function eraseAccountData(tx: Prisma.TransactionClient, userId: number, pa
     role: "user", voiceHubRole: null, lostFoundRole: null, studentSso: false, status: "deleted", mutedUntil: null,
     pendingNickname: null, nicknameReviewStatus: "none", nicknameReviewReason: null, nicknameReviewDetail: null, nicknameReviewModel: null, nicknameReviewRequestedAt: null, nicknameReviewedAt: null,
     pendingProfile: null, profileReviewStatus: "none", profileReviewReason: null, aiConsentVersion: null, aiConsentAgreedAt: null,
-    postCount: 0, replyCount: 0, reputation: 0, lastLoginAt: null, lastLoginClient: null, usedIosClient: false, usedAndroidClient: false, usedHarmonyClient: false, usedDesktopClient: false,
+    postCount: 0, replyCount: 0, reputation: 0, lastLoginAt: null, lastLoginClient: null, usedIosClient: false, usedIosNativeClient: false, usedIosPwaClient: false, usedAndroidClient: false, usedHarmonyClient: false, usedDesktopClient: false,
     topicSubmissionLocked: true, aiReviewWhitelisted: false, dataAuthAgreedAt: null, forumEnabled: false, forumEnabledAt: null, anonymousCredits: 0, anonymousWeekKey: null, anonymousCreditsFrozen: true,
     sponsorTotalCents: 0, isVip: false, vipLevel: 0, vipExpiresAt: null, profileTheme: null, profileFrame: null, verificationType: null, verificationLabel: null, verificationVerifiedAt: null, verificationExpiresAt: null, verificationApplicationId: null, assistantPoints: 0,
   } });

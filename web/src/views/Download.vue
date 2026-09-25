@@ -118,7 +118,7 @@
             </footer>
 
             <details class="desktop-install-steps">
-              <summary>{{ card.key === "ios" ? "查看添加教程" : "查看安装步骤" }}<AppIcon name="arrow-down" /></summary>
+              <summary>查看安装步骤<AppIcon name="arrow-down" /></summary>
             <ol>
               <li v-for="step in card.steps" :key="step">{{ step }}</li>
             </ol>
@@ -178,7 +178,7 @@
           <AppIcon name="arrow-right" />
         </router-link>
         <details class="mobile-install-steps">
-          <summary>{{ recommendedCard.key === "ios" ? "如何添加到主屏幕" : "安装时需要注意什么" }}<AppIcon name="arrow-down" /></summary>
+          <summary>{{ recommendedCard.key === "ios" ? (iosNativeUnavailable ? "如何添加到主屏幕" : "如何安装 iOS 原生版") : "安装时需要注意什么" }}<AppIcon name="arrow-down" /></summary>
           <ol><li v-for="step in recommendedCard.steps" :key="step">{{ step }}</li></ol>
         </details>
       </section>
@@ -241,7 +241,10 @@ import {
 } from "@/api/site";
 import {
   ANDROID_APP_DOWNLOAD_URL,
+  IOS_APP_MIN_MAJOR_VERSION,
+  IOS_APP_STORE_URL,
   ANDROID_APP_LATEST_VERSION_NAME,
+  canInstallIosNativeApp,
   isLikelyAndroidDevice,
   isLikelyIosDevice,
   isAndroidNativeApp,
@@ -308,6 +311,47 @@ function desktopVersionLabel(info: DesktopDownloadInfo) {
   return info.version ? `v${info.version}` : "最新版";
 }
 
+// The App Store build needs iOS 17; older iPhones and iPads keep the Safari home-screen path.
+const iosNativeUnavailable = isLikelyIosDevice() && !canInstallIosNativeApp();
+
+const iosCard: PlatformCard = iosNativeUnavailable ? {
+  key: "ios",
+  symbol: "iOS",
+  name: "iPhone / iPad",
+  support: `低于 iOS ${IOS_APP_MIN_MAJOR_VERSION} · Safari 主屏幕版`,
+  summary: `原生版需要 iOS / iPadOS ${IOS_APP_MIN_MAJOR_VERSION}.0 或更高版本。当前系统可用 Safari 把课表添加到主屏幕，升级系统后再从 App Store 安装。`,
+  features: ["顶部下载按钮内置完整教程", "Safari 添加到主屏幕", "支持 iOS 课表小组件"],
+  steps: [
+    "必须使用 Safari 打开本页，再点击“打开课表并添加到主屏幕”；微信、QQ 等内置浏览器不支持添加到主屏幕。",
+    "进入课表后，在页面顶部操作栏找到向下箭头形状的下载按钮，点击即可打开安装教程。",
+    "根据 Safari 版本，点击底部的“…”后再点共享按钮，或直接点击分享按钮，然后选择“查看更多”→“添加到主屏幕”。",
+    "确认名称并点击“添加”，之后即可从桌面图标进入药大拾间课表。",
+  ],
+  actionLabel: "打开课表并添加到主屏幕",
+  actionHint: "进入后点击页面顶部的下载按钮",
+  versionLabel: "Web App",
+  loading: false,
+  route: "/schedule",
+} : {
+  key: "ios",
+  symbol: "iOS",
+  name: "iPhone / iPad",
+  support: `iOS / iPadOS ${IOS_APP_MIN_MAJOR_VERSION}.0 及以上 · App Store`,
+  summary: "iOS 原生客户端现已开放下载，可在 App Store 免费安装并自动更新；Safari 主屏幕版仍可继续使用。",
+  features: ["原生课表体验", "App Store 安装与更新", "支持 iOS 课表小组件"],
+  steps: [
+    "点击“在 App Store 下载”，打开药大拾间的 App Store 页面。",
+    "点击“获取”并按系统提示完成安装。",
+    "打开药大拾间，登录原有账号后使用。Safari 主屏幕版可继续保留。",
+    `系统低于 iOS ${IOS_APP_MIN_MAJOR_VERSION} 时，可用 Safari 打开课表，通过分享菜单“添加到主屏幕”继续使用。`,
+  ],
+  actionLabel: "在 App Store 下载",
+  actionHint: `需要 iOS / iPadOS ${IOS_APP_MIN_MAJOR_VERSION}.0 或更高版本`,
+  versionLabel: "原生 App",
+  loading: false,
+  downloadUrl: IOS_APP_STORE_URL,
+};
+
 const platformCards = computed<PlatformCard[]>(() => [
   {
     key: "android",
@@ -327,25 +371,7 @@ const platformCards = computed<PlatformCard[]>(() => [
     loading: false,
     downloadUrl: ANDROID_APP_DOWNLOAD_URL,
   },
-  {
-    key: "ios",
-    symbol: "iOS",
-    name: "iPhone / iPad",
-    support: "iOS 与 iPadOS · Safari",
-    summary: "使用 Web App 方式，无需描述文件或 IPA；进入课表后，页面顶部的下载按钮会打开完整安装教程。",
-    features: ["顶部下载按钮内置完整教程", "Safari 添加到主屏幕", "支持 iOS 课表小组件"],
-    steps: [
-      "必须使用 Safari 打开本页，再点击“打开课表并安装”；微信、QQ 等内置浏览器不支持添加到主屏幕。",
-      "进入课表后，在页面顶部操作栏找到向下箭头形状的下载按钮，点击即可打开安装教程。",
-      "根据 Safari 版本，点击底部的“…”后再点共享按钮，或直接点击分享按钮，然后选择“查看更多”→“添加到主屏幕”。",
-      "确认名称并点击“添加”，之后即可从桌面图标进入药大拾间课表。",
-    ],
-    actionLabel: "打开课表并安装",
-    actionHint: "进入后点击页面顶部的下载按钮",
-    versionLabel: "Web App",
-    loading: false,
-    route: "/schedule",
-  },
+  iosCard,
   {
     key: "windows",
     symbol: "Win",

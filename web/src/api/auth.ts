@@ -48,6 +48,8 @@ export interface UserInfo {
   lastLoginAt?: string | null;
   lastLoginClient?: string | null;
   usedIosClient?: boolean;
+  usedIosNativeClient?: boolean;
+  usedIosPwaClient?: boolean;
   usedAndroidClient?: boolean;
   usedHarmonyClient?: boolean;
   usedDesktopClient?: boolean;

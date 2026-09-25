@@ -8,7 +8,7 @@ import { validate } from "../middleware/validate";
 import { beginLogin, submitLogin } from "../services/jwxtTransport";
 import { releaseExpiredMutes } from "../services/userModeration";
 import { isDev } from "../config";
-import { detectLoginClient } from "../utils/loginClient";
+import { detectLoginClient, loginClientUsage } from "../utils/loginClient";
 import { buildSelfUser } from "../utils/publicUser";
 import { recordAdminDailyLogin } from "../services/adminStats";
 import { isCookieAuthRequest, issueBrowserSession, revokeBrowserSession } from "../services/browserSession";
@@ -58,11 +58,8 @@ authRouter.post("/login", validate(loginSchema), async (req, res, next) => {
       data: {
         lastSeenAt: new Date(),
         lastLoginAt: new Date(),
-        lastLoginClient: client.client,
-        usedIosClient: client.client === "ios" ? true : undefined,
-        usedAndroidClient: client.client === "android" ? true : undefined,
-        usedHarmonyClient: client.client === "harmony" ? true : undefined,
-        usedDesktopClient: client.client === "desktop" ? true : undefined,
+        lastLoginClient: client.analyticsClient,
+        ...loginClientUsage(client),
       },
     });
 
@@ -74,7 +71,7 @@ authRouter.post("/login", validate(loginSchema), async (req, res, next) => {
       voiceHubRole: user.voiceHubRole,
       lostFoundRole: user.lostFoundRole,
     });
-    await recordAdminDailyLogin(logged.id, logged.lastLoginAt ?? new Date(), client.client).catch((error) => {
+    await recordAdminDailyLogin(logged.id, logged.lastLoginAt ?? new Date(), client.analyticsClient).catch((error) => {
       console.warn("[admin-stats] failed to record login", error);
     });
     if (isCookieAuthRequest(req)) {
@@ -109,11 +106,8 @@ authRouter.post("/register", validate(registerSchema), async (req, res, next) =>
         enrollYear,
         lastSeenAt: new Date(),
         lastLoginAt: new Date(),
-        lastLoginClient: client.client,
-        usedIosClient: client.client === "ios",
-        usedAndroidClient: client.client === "android",
-        usedHarmonyClient: client.client === "harmony",
-        usedDesktopClient: client.client === "desktop",
+        lastLoginClient: client.analyticsClient,
+        ...loginClientUsage(client),
       },
     });
     await prisma.messageSetting.create({ data: { userId: user.id } });
@@ -126,7 +120,7 @@ authRouter.post("/register", validate(registerSchema), async (req, res, next) =>
       lostFoundRole: user.lostFoundRole,
     });
     scheduleNicknameReview(user.id);
-    await recordAdminDailyLogin(user.id, user.lastLoginAt ?? new Date(), client.client).catch((error) => {
+    await recordAdminDailyLogin(user.id, user.lastLoginAt ?? new Date(), client.analyticsClient).catch((error) => {
       console.warn("[admin-stats] failed to record register login", error);
     });
     if (isCookieAuthRequest(req)) {
@@ -228,11 +222,8 @@ authRouter.post(
         data: {
           lastSeenAt: new Date(),
           lastLoginAt: new Date(),
-          lastLoginClient: client.client,
-          usedIosClient: client.client === "ios" ? true : undefined,
-          usedAndroidClient: client.client === "android" ? true : undefined,
-          usedHarmonyClient: client.client === "harmony" ? true : undefined,
-          usedDesktopClient: client.client === "desktop" ? true : undefined,
+          lastLoginClient: client.analyticsClient,
+          ...loginClientUsage(client),
         },
       });
 
@@ -244,7 +235,7 @@ authRouter.post(
         voiceHubRole: user.voiceHubRole,
         lostFoundRole: user.lostFoundRole,
       });
-      await recordAdminDailyLogin(user.id, user.lastLoginAt ?? new Date(), client.client).catch((error) => {
+      await recordAdminDailyLogin(user.id, user.lastLoginAt ?? new Date(), client.analyticsClient).catch((error) => {
         console.warn("[admin-stats] failed to record sso login", error);
       });
       await scheduleWidgetSessions.recordLogin(user.id, studentId, r.token).catch(() => {

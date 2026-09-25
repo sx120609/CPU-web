@@ -6,7 +6,7 @@
  */
 import axios from "axios";
 import { ElMessage } from "element-plus";
-import { detectClientPlatform } from "@/utils/clientInfo";
+import { detectAnalyticsClient } from "@/utils/clientInfo";
 import { COOKIE_SESSION_MARKER, getToken } from "./request";
 
 const JWXT_TOKEN_KEY = "cpu-jwxt-token";
@@ -87,7 +87,7 @@ inst.interceptors.request.use((cfg) => {
   cfg.headers["X-CPU-Auth-Mode"] = "cookie";
   const csrf = cookieValue("__Host-cpu-csrf") || cookieValue("cpu-csrf");
   if (csrf) cfg.headers["X-CSRF-Token"] = csrf;
-  cfg.headers["X-CPU-Client"] = detectClientPlatform();
+  cfg.headers["X-CPU-Client"] = detectAnalyticsClient();
   // 站内登录 token 也带上，便于后端识别用户
   const siteToken = getToken();
   if (siteToken && siteToken !== COOKIE_SESSION_MARKER) cfg.headers.Authorization = `Bearer ${siteToken}`;

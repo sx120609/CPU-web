@@ -44,7 +44,13 @@
       </div>
       <div class="ov-card">
         <div class="ov-num">{{ overview.iosClients }} / {{ overview.androidClients }} / {{ overview.harmonyClients }}</div>
-        <div class="ov-lbl">iOS / 安卓 / 鸿蒙</div>
+        <div class="ov-lbl">iOS / 安卓 / 鸿蒙（使用人数）</div>
+      </div>
+      <div class="ov-card" title="使用人数按账号去重；同一账号用过两类客户端时会分别计入，两类人数不能直接相加。历史 iOS 记录无法区分安装方式，单独列为“未区分”。原生 App 的安装量、设备日活和版本分布见「iOS 客户端」页。">
+        <div class="ov-num">{{ overview.iosNativeClients }} / {{ overview.iosPwaClients }}</div>
+        <div class="ov-lbl">iOS 原生 / Safari 主屏幕版</div>
+        <div class="ov-sub">{{ overview.todayIosNativeLogins }} / {{ overview.todayIosPwaLogins }} 今日登录</div>
+        <div class="ov-sub">历史未区分 {{ overview.iosUnclassifiedClients }} 人 · 两类可重叠</div>
       </div>
       <div class="ov-card">
         <div class="ov-num">{{ overview.desktopClients }}</div>

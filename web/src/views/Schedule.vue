@@ -13,6 +13,7 @@
   }"
   :style="pageStyle"
 >
+    <IosAppRecommendation style="--ios-app-recommendation-max-width: 720px" />
     <header class="top">
       <el-select
         v-if="parsed"
@@ -809,6 +810,7 @@ import { USER_QQ_GROUP, copyText, openUserGroup } from "@/utils/userGroup";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
 import AcademicDataSourceBadge from "@/components/jwxt/AcademicDataSourceBadge.vue";
 import InstallPromptDialog from "@/components/install/InstallPromptDialog.vue";
+import IosAppRecommendation from "@/components/install/IosAppRecommendation.vue";
 import OpenBrowserPromptDialog from "@/components/install/OpenBrowserPromptDialog.vue";
 import {
   DEFAULT_SCHEDULE_THEME,
