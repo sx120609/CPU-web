@@ -88,3 +88,6 @@ desktop/build/.header.tmp.html
 # Developer-local Apple signing overrides. Never commit team/account values.
 ios/Configurations/Signing.local.xcconfig
 ios_next/CpuTime/Configurations/Signing.local.xcconfig
+
+# Xcode 打开 Package.swift 时生成的本地配置
+ios_next/.swiftpm/
