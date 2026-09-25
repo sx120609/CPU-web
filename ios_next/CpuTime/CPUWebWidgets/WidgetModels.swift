@@ -7,11 +7,7 @@ enum AppWidgetConfiguration {
         let value = configured?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return value.isEmpty ? "group.cn.cputime.mobile" : value
     }
-    static let endpointKey = "scheduleWidgetEndpoint"
-    static let endpointFileName = "schedule-widget-endpoint.txt"
-    /// 小组件自己上一次从服务器拿到的课表，课程边界上的刷新直接用它。
-    static let cacheFileName = "schedule-widget-cache.json"
-    /// App 按日期展开写好的本地课表，只用来补接口没下发的日子。
+    /// App 按日期展开写好的本地课表（`NativeWidgetLocalSchedule`），小组件只读这一份。
     static let localDaysFileName = "schedule-widget-local-days.json"
     static let themeKey = "scheduleWidgetTheme"
     static let displayOptionsKey = "scheduleWidgetDisplayOptions"
@@ -144,7 +140,7 @@ enum ScheduleWidgetAfterClassStyle: String, Codable, CaseIterable, Sendable {
     case tomorrow
     /// 最近的一段法定假期。
     case holiday
-    /// 换成最近一个有课的日期（三周之内）的课：日期栏照旧是今天，标上「x 天后的课」，课程压暗；三周内都没课时退回最近的节假日。
+    /// 换成最近一个有课的日期（三周之内）的课：日期栏照旧是今天，标上「明天的课」「10.2 的课」，课程压暗；三周内都没课时退回最近的节假日。
     case nextCourseDay
 }
 
@@ -239,7 +235,7 @@ struct ScheduleDay: Decodable, Identifiable {
     }
     var shortLabel: String { displayLabel.isEmpty ? compactDate : displayLabel }
 
-    /// 调休说明。服务端的小组件接口还不下发这一句，先不显示。
+    /// 调休说明。App 写的本地课表还没带这一句，先不显示。
     var normalizedNote: String? { nil }
 
     var compactDate: String {
@@ -274,7 +270,6 @@ struct ScheduleCourseWindow {
 
 struct SchedulePayload: Decodable {
     /// 「最近有课的一天」往后找几天。一周跨不过中秋接国庆这样的长假，三周连寒暑假前后的空档也够用。
-    /// 接口只下发两周（服务端 `SCHEDULE_WIDGET_LOOKAHEAD_DAYS`），再往后靠 App 写的本地课表。
     static let lookaheadDays = 21
 
     let title: String?
@@ -289,8 +284,7 @@ struct SchedulePayload: Decodable {
     let today: ScheduleDay?
     let days: [ScheduleDay]?
     let weekDays: [ScheduleDay]?
-    /// App 写的本地课表（整学期展开后的若干天）。接口只给两周，「最近有课的一天」
-    /// 往后看三周时靠它补；接口里有的日子一律以接口为准。不从接口解码。
+    /// App 写的本地课表里的所有日子（整学期），`weekDays` 之外的日子在这里找。
     var localDays: [ScheduleDay]? = nil
 
     private enum CodingKeys: String, CodingKey {
@@ -317,7 +311,7 @@ struct SchedulePayload: Decodable {
         return day(for: date, fallbackOffset: fallbackOffset)
     }
 
-    /// 只在确实有这一天的数据时返回，`nil` 表示这一天不在服务端给的范围里。
+    /// 只在确实有这一天的数据时返回，`nil` 表示本地课表里没有这一天。
     func knownDay(for date: String) -> ScheduleDay? {
         if let exact = (weekDays ?? []).first(where: { $0.date == date }) { return exact }
         if let exact = (days ?? []).first(where: { $0.date == date }) { return exact }
@@ -325,18 +319,18 @@ struct SchedulePayload: Decodable {
         return localDay(for: date)
     }
 
-    /// 接口没覆盖到的日子才看 App 写的本地课表。
+    /// `weekDays` 之外的日子。
     func localDay(for date: String) -> ScheduleDay? {
         (localDays ?? []).first(where: { $0.date == date })
     }
 
-    /// 明天那一天；不在服务端给的范围里就返回 `nil`。
+    /// 明天那一天；本地课表里没有就返回 `nil`。
     func tomorrow(now: Date = .now) -> ScheduleDay? {
         guard let date = Calendar.current.date(byAdding: .day, value: 1, to: now) else { return nil }
         return knownDay(for: Self.dateString(date))
     }
 
-    /// 今天这一天。服务端的 `today` 会滤掉已经下课的课，`weekDays` 里才是完整的一天。
+    /// 今天这一天（完整的一天，包括已经下课的课）。
     func currentDay(now: Date = .now) -> ScheduleDay {
         fullDay(for: Self.dateString(now), fallbackOffset: 0)
     }
@@ -438,169 +432,22 @@ private extension ScheduleDay {
     }
 }
 
-private struct ScheduleResponse: Decodable {
-    let code: Int
-    let message: String?
-    let data: SchedulePayload?
-}
-
 enum ScheduleWidgetError: LocalizedError {
     case unconfigured
-    case unauthorized(String)
-    case server(String)
-    case invalidResponse
 
     var errorDescription: String? {
-        switch self {
-        case .unconfigured:
-            return "请先打开 App 配置课表小组件"
-        case .unauthorized(let message):
-            return message.isEmpty ? "教务授权已失效，请打开 App 重新登录" : message
-        case .server(let message):
-            return message.isEmpty ? "课表服务暂时不可用" : message
-        case .invalidResponse:
-            return "课表数据无法读取"
-        }
+        "请先打开 App 登录并同步一次课表"
     }
 }
 
+/// 小组件只读 App 写的本地课表，不再请求服务端。课表跟着 App 更新，
+/// 课程边界上的刷新只是重新读一遍这份文件。
 enum ScheduleWidgetClient {
-    /// 服务器上的课表每半小时才拉一次。课程开始、下课时的那几次刷新只是换个显示
-    /// （划掉已经下课的课、放学后换内容），课表本身没变，直接用本地缓存的那份。
-    static let cacheLifetime: TimeInterval = 30 * 60
-
     static func load(now: Date = .now) async throws -> SchedulePayload {
-        guard let stored = storedEndpoint(), !stored.isEmpty else {
+        guard let payload = ScheduleLocalDays.payload(now: now) else {
             throw ScheduleWidgetError.unconfigured
         }
-        if var cached = ScheduleWidgetCache.read(endpoint: stored, now: now) {
-            cached.localDays = ScheduleLocalDays.read()
-            return cached
-        }
-
-        var lastError: Error = ScheduleWidgetError.invalidResponse
-        for endpoint in candidates(stored) {
-            do {
-                let (fetched, data) = try await fetch(endpoint)
-                ScheduleWidgetCache.write(data, endpoint: stored, fetchedAt: now)
-                var payload = fetched
-                payload.localDays = ScheduleLocalDays.read()
-                return payload
-            } catch let error as ScheduleWidgetError {
-                if case .unauthorized = error {
-                    ScheduleWidgetCache.clear()
-                    throw error
-                }
-                lastError = error
-            } catch {
-                lastError = error
-            }
-        }
-        // 没网、服务器出错：退回 App 写的本地课表，别让小组件整块报错。授权失效上面已经直接抛了。
-        if let local = ScheduleLocalDays.payload(now: now) { return local }
-        throw lastError
-    }
-
-    fileprivate static func decode(_ data: Data) throws -> SchedulePayload? {
-        try JSONDecoder().decode(ScheduleResponse.self, from: data).data
-    }
-
-    private static func storedEndpoint() -> String? {
-        if let containerURL = FileManager.default.containerURL(
-            forSecurityApplicationGroupIdentifier: AppWidgetConfiguration.appGroup
-        ) {
-            let endpointFile = containerURL.appendingPathComponent(AppWidgetConfiguration.endpointFileName)
-            if let value = try? String(contentsOf: endpointFile, encoding: .utf8) {
-                let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !normalized.isEmpty { return normalized }
-            }
-        }
-
-        let value = UserDefaults(suiteName: AppWidgetConfiguration.appGroup)?
-            .string(forKey: AppWidgetConfiguration.endpointKey)?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return value?.isEmpty == false ? value : nil
-    }
-
-    private static func fetch(_ endpoint: URL) async throws -> (SchedulePayload, Data) {
-        guard var components = URLComponents(url: endpoint, resolvingAgainstBaseURL: false) else {
-            throw ScheduleWidgetError.invalidResponse
-        }
-        var query = components.queryItems ?? []
-        query.append(URLQueryItem(name: "_widgetRefresh", value: String(Int(Date.now.timeIntervalSince1970 * 1000))))
-        components.queryItems = query
-        guard let url = components.url else { throw ScheduleWidgetError.invalidResponse }
-
-        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 20)
-        request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse else { throw ScheduleWidgetError.invalidResponse }
-        let wrapper = try JSONDecoder().decode(ScheduleResponse.self, from: data)
-        if http.statusCode == 401 || http.statusCode == 403 || wrapper.code == 401 {
-            throw ScheduleWidgetError.unauthorized(wrapper.message ?? "")
-        }
-        guard (200..<300).contains(http.statusCode), wrapper.code == 0, let payload = wrapper.data else {
-            throw ScheduleWidgetError.server(wrapper.message ?? "")
-        }
-        return (payload, data)
-    }
-
-    private static func candidates(_ value: String) -> [URL] {
-        guard var components = URLComponents(string: value), let host = components.host?.lowercased() else {
-            return URL(string: value).map { [$0] } ?? []
-        }
-        guard host == "cputime.cn" || host == "cpu.lizmt.cn" else {
-            return components.url.map { [$0] } ?? []
-        }
-        components.scheme = "https"
-        components.host = "cputime.cn"
-        var urls = components.url.map { [$0] } ?? []
-        components.host = "cpu.lizmt.cn"
-        if let legacy = components.url, !urls.contains(legacy) { urls.append(legacy) }
-        return urls
-    }
-}
-
-/// 小组件上一次成功拉到的原始响应，存在 App Group 里。只在同一个配置地址、
-/// 同一天、半小时之内用；换了地址、过了零点或者超时都重新请求。
-private enum ScheduleWidgetCache {
-    private struct Record: Codable {
-        let endpoint: String
-        let fetchedAt: Date
-        let body: Data
-    }
-
-    private static var url: URL? {
-        FileManager.default
-            .containerURL(forSecurityApplicationGroupIdentifier: AppWidgetConfiguration.appGroup)?
-            .appendingPathComponent(AppWidgetConfiguration.cacheFileName)
-    }
-
-    static func read(endpoint: String, now: Date) -> SchedulePayload? {
-        guard let url, let data = try? Data(contentsOf: url),
-              let record = try? JSONDecoder().decode(Record.self, from: data),
-              record.endpoint == endpoint,
-              record.fetchedAt <= now,
-              now.timeIntervalSince(record.fetchedAt) < ScheduleWidgetClient.cacheLifetime,
-              SchedulePayload.dateString(record.fetchedAt) == SchedulePayload.dateString(now) else {
-            return nil
-        }
-        return (try? ScheduleWidgetClient.decode(record.body)) ?? nil
-    }
-
-    static func write(_ body: Data, endpoint: String, fetchedAt: Date) {
-        guard let url,
-              let data = try? JSONEncoder().encode(Record(endpoint: endpoint, fetchedAt: fetchedAt, body: body)) else { return }
-        try? data.write(to: url, options: .atomic)
-        try? FileManager.default.setAttributes(
-            [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
-            ofItemAtPath: url.path
-        )
-    }
-
-    static func clear() {
-        guard let url else { return }
-        try? FileManager.default.removeItem(at: url)
+        return payload
     }
 }
 
@@ -611,14 +458,11 @@ private enum ScheduleLocalDays {
         let days: [ScheduleDay]
     }
 
-    static func read() -> [ScheduleDay]? {
-        record()?.days
-    }
-
-    /// 接口请求失败时，只靠本地课表拼一份。本地没有今天（很久没开 App）就算了。
+    /// 拼出小组件用的课表。今天不在学期里（假期）时给一个空的今天，照样显示「今天没有课」和节假日。
     static func payload(now: Date) -> SchedulePayload? {
-        guard let record = record(),
-              let today = record.days.first(where: { $0.date == SchedulePayload.dateString(now) }) else { return nil }
+        guard let record = record() else { return nil }
+        let todayDate = SchedulePayload.dateString(now)
+        let today = record.days.first(where: { $0.date == todayDate }) ?? .empty(date: todayDate, offset: 0)
         let week = today.week
         return SchedulePayload(
             title: nil,
@@ -718,7 +562,7 @@ enum ScheduleTimeline {
         }
         let periodic = Calendar.current.date(byAdding: .minute, value: 30, to: now) ?? now.addingTimeInterval(1800)
         // 上课、下课那一刻就该换内容（划掉已结束的课、放学后切到明天），别等下一个半小时。
-        // 这几次刷新读的是本地缓存，不会多请求服务器。
+        // 这几次刷新只是重新读一遍本地课表。
         let refresh = payload.flatMap { nextBoundary(in: $0, now: now) }.map { min($0, periodic) } ?? periodic
         return Timeline(entries: [entry], policy: .after(refresh))
     }

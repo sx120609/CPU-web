@@ -46,10 +46,6 @@ struct ContentView: View {
 
     var body: some View {
         rootView
-            .task(id: scheduleStore.lastUpdatedAt) {
-                guard !debugMockSchedule, scheduleStore.result != nil else { return }
-                await webSession.ensureScheduleWidgetConfigured()
-            }
             .onOpenURL { url in
                 // A deep link can arrive before the first SwiftUI frame. Keep
                 // WebKit startup on the next run-loop turn so it cannot block

@@ -1,14 +1,11 @@
 import Foundation
 import WidgetKit
 
-/// App 里已经拿到的整学期课表，按日期展开后写进 App Group，给小组件补上服务端
-/// 小组件接口没下发的日子（接口只给今天往后两周，「最近有课的一天」要看三周）。
-/// 小组件仍以接口数据为准，这里只填接口没覆盖到的日期。
+/// App 里拿到的课表按日期展开后写进 App Group，iPhone 小组件只读这一份，不再请求服务端。
+/// 整学期的快照整份覆盖；只按周取的快照（翻到别的周、研究生课表）只替换那一周的日子。
 @MainActor
 enum NativeWidgetLocalSchedule {
     static let fileName = "schedule-widget-local-days.json"
-    /// 从今天往前留一天（跨零点时小组件可能还按昨天算），往后写多少天。
-    static let daysAhead = 42
 
     /// 和小组件那边 `ScheduleDay` / `ScheduleCourse` 的字段一一对应。
     struct Day: Codable, Equatable {
@@ -37,6 +34,7 @@ enum NativeWidgetLocalSchedule {
     }
 
     static func connect(to store: NativeScheduleStore) {
+        removeLegacyEndpoint()
         store.onLatestSnapshotChange = { snapshot in accept(snapshot) }
         accept(store.latestSnapshot)
     }
@@ -47,23 +45,29 @@ enum NativeWidgetLocalSchedule {
             write(nil)
             return
         }
-        // 只按周取的快照（翻到别的周、研究生课表）缺别的周的课，留着上一份整学期的。
-        guard snapshot.completeSemester, snapshot.auth.authenticated, snapshot.error == nil,
-              let record = record(from: snapshot) else { return }
+        guard snapshot.auth.authenticated, snapshot.error == nil,
+              let record = record(from: snapshot, merging: read()) else { return }
         write(record)
     }
 
-    static func record(from snapshot: NativeScheduleSnapshot, now: Date = .now) -> Record? {
-        guard let data = snapshot.data, let calendar = snapshot.calendar else { return nil }
+    /// `existing` 是上一次写的那份：只按周取的快照缺别的周的课，同一学期时保留那些日子。
+    static func record(from snapshot: NativeScheduleSnapshot, merging existing: Record? = nil) -> Record? {
+        guard let data = snapshot.data, let calendar = snapshot.calendar,
+              !data.currentSemester.isEmpty else { return nil }
+        let coveredWeeks: Set<Int>
+        if snapshot.completeSemester {
+            coveredWeeks = Set(calendar.weeks.map(\.week))
+        } else if let week = Int(data.currentWeek) {
+            coveredWeeks = [week]
+        } else {
+            return nil
+        }
         let periods = snapshot.periods
         let byNumber = Dictionary(periods.map { ($0.number, $0) }, uniquingKeysWith: { first, _ in first })
-        let today = dateString(now)
-        let first = dateString(now.addingTimeInterval(-86_400))
-        let last = dateString(now.addingTimeInterval(TimeInterval(daysAhead) * 86_400))
 
         var days: [Day] = []
-        for week in calendar.weeks {
-            for date in week.days where date >= first && date <= last {
+        for week in calendar.weeks where coveredWeeks.contains(week.week) {
+            for date in week.days {
                 // 星期按日期本身算：教务的周历有的从周日排起，下标不一定是星期几。
                 guard let day = weekday(of: date) else { continue }
                 guard let resolved = resolvedDay(date: date, day: day, week: week.week, calendar: calendar) else {
@@ -103,10 +107,14 @@ enum NativeWidgetLocalSchedule {
                 days.append(Day(day: day, label: dayLabel(day), date: date, week: week.week, courses: courses))
             }
         }
-        guard days.contains(where: { $0.date >= today }) else { return nil }
+        guard !days.isEmpty else { return nil }
+        var byDate = Dictionary(days.map { ($0.date, $0) }, uniquingKeysWith: { first, _ in first })
+        if !snapshot.completeSemester, let existing, existing.semester == data.currentSemester {
+            for day in existing.days where byDate[day.date] == nil { byDate[day.date] = day }
+        }
         return Record(
             semester: data.currentSemester,
-            days: days.sorted { $0.date < $1.date }
+            days: byDate.values.sorted { $0.date < $1.date }
         )
     }
 
@@ -132,6 +140,23 @@ enum NativeWidgetLocalSchedule {
         FileManager.default
             .containerURL(forSecurityApplicationGroupIdentifier: NextWidgetConfiguration.appGroup)?
             .appendingPathComponent(fileName)
+    }
+
+    private static func read() -> Record? {
+        guard let url, let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(Record.self, from: data)
+    }
+
+    /// 以前小组件自己请求服务端，App 会写一份带 token 的接口地址；现在用不上了，别留在共享容器里。
+    private static func removeLegacyEndpoint() {
+        UserDefaults(suiteName: NextWidgetConfiguration.appGroup)?
+            .removeObject(forKey: NextWidgetConfiguration.legacyWidgetEndpointKey)
+        guard let container = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: NextWidgetConfiguration.appGroup
+        ) else { return }
+        for name in NextWidgetConfiguration.legacyWidgetFileNames {
+            try? FileManager.default.removeItem(at: container.appendingPathComponent(name))
+        }
     }
 
     private static func write(_ record: Record?) {
@@ -169,10 +194,6 @@ enum NativeWidgetLocalSchedule {
         guard let value = formatter.date(from: date), formatter.string(from: value) == date else { return nil }
         let weekday = formatter.calendar.component(.weekday, from: value)
         return weekday == 1 ? 7 : weekday - 1
-    }
-
-    private static func dateString(_ date: Date) -> String {
-        formatter.string(from: date)
     }
 
     private static let formatter: DateFormatter = {

@@ -327,9 +327,6 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
     private var coordinator: HybridWebViewCoordinator?
     private weak var mountedHost: UIView?
     private var activeTab: ShellTab = .schedule
-    private var automaticWidgetSetupAttempted = false
-    private var widgetConfigurationInFlight = false
-    private var widgetAuthGeneration = 0
     private var navigationGeneration = 0
     private var navigationTask: Task<Void, Never>?
     private(set) var bridgeReady = false
@@ -524,46 +521,6 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
             }
             guard !Task.isCancelled, generation == self.navigationGeneration else { return }
             if webView.url?.absoluteString != url.absoluteString { webView.load(URLRequest(url: url)) }
-        }
-    }
-
-    func ensureScheduleWidgetConfigured() async {
-        guard !widgetSettings.isConfigured, !automaticWidgetSetupAttempted, bridgeReady else { return }
-        automaticWidgetSetupAttempted = true
-        let theme = UserDefaults(suiteName: NextWidgetConfiguration.appGroup)?.string(forKey: NextWidgetConfiguration.widgetThemeKey) ?? "color-glass"
-        do { try await configureScheduleWidget(theme: theme) }
-        catch { widgetSettings.status = error.localizedDescription }
-    }
-
-    func configureScheduleWidget(theme: String) async throws {
-        guard !widgetConfigurationInFlight else { return }
-        widgetConfigurationInFlight = true
-        defer { widgetConfigurationInFlight = false }
-        let view = makeWebView()
-        guard let url = view.url, IOSNextWebConfiguration.isTrusted(url), bridgeReady else {
-            throw NativeScheduleStoreError.bridgeUnavailable
-        }
-        let generation = widgetAuthGeneration
-        let script = """
-        const cookie = (name) => {
-          const part = document.cookie.split(';').map(v => v.trim()).find(v => v.startsWith(name + '='));
-          return part ? decodeURIComponent(part.slice(name.length + 1)) : '';
-        };
-        const response = await fetch('/api/jwxt/schedule-widget-tokens', {
-          method: 'POST', credentials: 'same-origin',
-          headers: {'Content-Type': 'application/json', 'X-CPU-Auth-Mode': 'cookie',
-            'X-CPU-Client': 'ios-app', 'X-CSRF-Token': cookie('__Host-cpu-csrf') || cookie('cpu-csrf')},
-          body: JSON.stringify({name: 'iOS Next 小组件'})
-        });
-        const body = await response.json();
-        if (!response.ok || body.code !== 0) throw new Error(body.message || '配置失败，请先完成教务授权');
-        return JSON.stringify({endpoint: body.data.endpoint, theme});
-        """
-        let payload = try await view.callAsyncJavaScript(script, arguments: ["theme": theme], in: nil, contentWorld: .page)
-        guard generation == widgetAuthGeneration else { throw NativeScheduleStoreError.unauthorized("账号已变化，请重新配置小组件") }
-        guard let payload = payload as? String else { throw NativeScheduleStoreError.invalidResponse }
-        guard widgetSettings.installScheduleWidget(payload: payload) else {
-            throw NativeScheduleStoreError.server(widgetSettings.status ?? "无法保存小组件配置")
         }
     }
 
@@ -1318,8 +1275,6 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
                   let data = try? JSONSerialization.data(withJSONObject: value),
                   let snapshot = try? JSONDecoder().decode(NativeScheduleSnapshot.self, from: data) else { return }
             onSchedulePrefetched?(snapshot)
-        case "installScheduleWidget":
-            widgetSettings.installScheduleWidget(payload: body["payload"] as? String)
         case "setScheduleWidgetTheme":
             widgetSettings.setScheduleWidgetTheme(body["theme"] as? String)
         case "appearance":
@@ -1358,8 +1313,6 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
             }
             onRoute?(path, source)
         case "authChanged":
-            automaticWidgetSetupAttempted = false
-            widgetAuthGeneration += 1
             let auth = Self.nativeAuthState(from: body)
             authState = auth
             isLoggedIn = auth.authenticated
@@ -1877,8 +1830,7 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
           }
           window.CPUIOS = {
             ...(window.CPUIOS || {}),
-            supportsScheduleWidget: () => true,
-            installScheduleWidget: (payload) => post({type: 'installScheduleWidget', payload: String(payload ?? '')}),
+            supportsScheduleWidget: () => false,
             setScheduleWidgetTheme: (theme) => post({type: 'setScheduleWidgetTheme', theme: String(theme ?? '')})
           };
 
