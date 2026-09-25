@@ -23,7 +23,7 @@ struct NativeDeviceSettingsView: View {
                     }
                     SettingsDestinationRow(
                         title: "iPhone 小组件",
-                        detail: session.widgetSettings.isConfigured ? "已配置，可在主屏幕添加" : "尚未配置",
+                        detail: session.widgetSettings.isConfigured ? "课表已同步，可在主屏幕添加" : "等待课表同步",
                         systemImage: "square.grid.2x2"
                     ) {
                         NativeWidgetSettingsPage(session: session)
@@ -171,12 +171,14 @@ private struct ScheduleSettingsSection: View {
             Picker("默认视图", selection: $preferences.defaultView) {
                 Text("周课表").tag("week")
                 Text("日课表").tag("day")
+                Text("月历").tag("month")
             }
             Picker("排版密度", selection: $preferences.density) {
                 Text("舒适").tag("comfortable")
                 Text("紧凑").tag("compact")
             }
             Toggle("显示日期栏", isOn: $preferences.showDateHeader)
+            Toggle("显示周末", isOn: $preferences.showWeekend)
         } header: {
             Label("视图与排版", systemImage: "rectangle.grid.1x2")
         }
@@ -227,12 +229,14 @@ private struct NativeScheduleSettingsView: View {
                 Picker("默认视图", selection: $preferences.defaultView) {
                     Text("周课表").tag("week")
                     Text("日课表").tag("day")
+                    Text("月历").tag("month")
                 }
                 Picker("排版密度", selection: $preferences.density) {
                     Text("舒适").tag("comfortable")
                     Text("紧凑").tag("compact")
                 }
                 Toggle("显示日期栏", isOn: $preferences.showDateHeader)
+                Toggle("显示周末", isOn: $preferences.showWeekend)
                 VStack(alignment: .leading, spacing: 10) {
                     Text("课程配色")
                         .font(.subheadline.weight(.medium))
@@ -774,8 +778,6 @@ struct NativeWidgetSetupView: View {
 
 private struct WidgetSettingsSection: View {
     @ObservedObject var session: HybridWebViewStore
-    @State private var installing = false
-    @State private var message: String?
     @State private var theme: String
     @State private var options: WidgetDisplayOptions
 
@@ -794,12 +796,17 @@ private struct WidgetSettingsSection: View {
 
     var body: some View {
         Section {
-            LabeledContent("状态", value: session.widgetSettings.isConfigured ? "已配置" : "等待配置")
+            LabeledContent("状态", value: session.widgetSettings.isConfigured ? "课表已同步" : "等待课表同步")
 
             Toggle("课程名称", isOn: optionBinding(\.showCourseName))
             Toggle("教室", isOn: optionBinding(\.showRoom))
             Toggle("老师", isOn: optionBinding(\.showTeacher))
             Toggle("上课时间", isOn: optionBinding(\.showTime))
+
+            Toggle("农历日期", isOn: optionBinding(\.showLunarDate))
+            Toggle("节假日提示", isOn: optionBinding(\.showHoliday))
+            Toggle("最近节假日常驻", isOn: optionBinding(\.holidayAlwaysVisible))
+                .disabled(!options.showHoliday)
 
             Picker("颜色主题", selection: $theme) {
                 ForEach(themes, id: \.0) { value in
@@ -809,35 +816,10 @@ private struct WidgetSettingsSection: View {
             .onChange(of: theme) { _, value in
                 session.widgetSettings.setScheduleWidgetTheme(value)
             }
-
-            Button {
-                installing = true
-                Task { @MainActor in
-                    do {
-                        try await session.configureScheduleWidget(theme: theme)
-                        message = session.widgetSettings.status
-                    } catch {
-                        message = error.localizedDescription
-                    }
-                    installing = false
-                }
-            } label: {
-                Label(
-                    installing ? "正在同步配置…" : "同步小组件配置",
-                    systemImage: installing ? "arrow.triangle.2.circlepath" : "square.and.arrow.down"
-                )
-            }
-            .disabled(installing || !session.bridgeReady)
-
-            if let message {
-                statusLabel(message)
-            } else if let status = session.widgetSettings.status {
-                statusLabel(status)
-            }
         } header: {
             Label("iPhone 小组件", systemImage: "square.grid.2x2")
         } footer: {
-            Text("选择要显示的信息后，打开桌面添加“临近课程”“今日课表”或“两日课表”。课表会自动同步，今天无课时会显示最近有课的日期。")
+            Text("选择要显示的信息后，打开桌面添加“临近课程”“今日课表”或“两日课表”。小组件直接用 App 里的课表，打开 App 同步课表后自动更新。节假日只标法定假日和传统节日。今天的课上完后显示什么、两日课表显示哪两天，长按小组件选“编辑小组件”设置。")
         }
     }
 
@@ -849,11 +831,5 @@ private struct WidgetSettingsSection: View {
                 session.widgetSettings.setScheduleWidgetDisplayOptions(options)
             }
         )
-    }
-
-    private func statusLabel(_ message: String) -> some View {
-        Label(message, systemImage: message.contains("失败") ? "exclamationmark.triangle" : "checkmark.circle.fill")
-            .font(.footnote)
-            .foregroundStyle(message.contains("失败") ? .orange : Color.cpuBrand)
     }
 }

@@ -7,8 +7,8 @@ enum AppWidgetConfiguration {
         let value = configured?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return value.isEmpty ? "group.cn.cputime.mobile" : value
     }
-    static let endpointKey = "scheduleWidgetEndpoint"
-    static let endpointFileName = "schedule-widget-endpoint.txt"
+    /// App 按日期展开写好的本地课表（`NativeWidgetLocalSchedule`），小组件只读这一份。
+    static let localDaysFileName = "schedule-widget-local-days.json"
     static let themeKey = "scheduleWidgetTheme"
     static let displayOptionsKey = "scheduleWidgetDisplayOptions"
     static let appURL = URL(string: "cputime-next://schedule?source=widget&week=current")!
@@ -49,6 +49,15 @@ struct ScheduleWidgetDisplayOptions: Codable, Equatable {
     var showRoom: Bool
     var showTeacher: Bool
     var showTime: Bool
+    /// 日期栏里的农历日期。
+    var showLunarDate: Bool
+    /// 节日与法定假期提示。
+    var showHoliday: Bool
+    /// 最近的节假日常驻在日期栏右侧，而不是只在今天课上完之后才出现。
+    var holidayAlwaysVisible: Bool
+    /// 今天的课上完之后显示什么。不在 App 里存，每个小组件在「编辑小组件」里各选各的，
+    /// 渲染时由 `ScheduleWidgetRoot` 填进来。
+    var afterClass: ScheduleWidgetAfterClassStyle
 
     static let `default` = ScheduleWidgetDisplayOptions(
         showCourseName: true,
@@ -56,6 +65,47 @@ struct ScheduleWidgetDisplayOptions: Codable, Equatable {
         showTeacher: true,
         showTime: true
     )
+
+    init(
+        showCourseName: Bool,
+        showRoom: Bool,
+        showTeacher: Bool,
+        showTime: Bool,
+        showLunarDate: Bool = true,
+        showHoliday: Bool = true,
+        holidayAlwaysVisible: Bool = true,
+        afterClass: ScheduleWidgetAfterClassStyle = .tomorrow
+    ) {
+        self.showCourseName = showCourseName
+        self.showRoom = showRoom
+        self.showTeacher = showTeacher
+        self.showTime = showTime
+        self.showLunarDate = showLunarDate
+        self.showHoliday = showHoliday
+        self.holidayAlwaysVisible = holidayAlwaysVisible
+        self.afterClass = afterClass
+    }
+
+    /// 旧版本写进 App Group 的 JSON 没有农历和节假日字段。缺字段时按默认值补齐，
+    /// 否则整份显示设置会解码失败、把用户已经关掉的开关又打开。
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            showCourseName: try values.decodeIfPresent(Bool.self, forKey: .showCourseName) ?? true,
+            showRoom: try values.decodeIfPresent(Bool.self, forKey: .showRoom) ?? true,
+            showTeacher: try values.decodeIfPresent(Bool.self, forKey: .showTeacher) ?? true,
+            showTime: try values.decodeIfPresent(Bool.self, forKey: .showTime) ?? true,
+            showLunarDate: try values.decodeIfPresent(Bool.self, forKey: .showLunarDate) ?? true,
+            showHoliday: try values.decodeIfPresent(Bool.self, forKey: .showHoliday) ?? true,
+            holidayAlwaysVisible: try values.decodeIfPresent(Bool.self, forKey: .holidayAlwaysVisible) ?? true
+        )
+    }
+
+    /// 今天没有未结束的课程时，`.none` 之外的选项会接管那块空间。
+    var showsAfterClassPreview: Bool { afterClass != .none }
+
+    /// 日期栏右侧是否常驻显示最近的节假日。关掉节假日提示时一并关掉。
+    var showsResidentHoliday: Bool { showHoliday && holidayAlwaysVisible }
 
     static func load(defaults: UserDefaults?) -> Self {
         guard let data = defaults?.data(forKey: AppWidgetConfiguration.displayOptionsKey),
@@ -79,6 +129,19 @@ struct ScheduleWidgetDisplayOptions: Codable, Equatable {
         if showTime { return course.timeRange }
         return nil
     }
+}
+
+/// 今天的课上完之后小组件显示什么。在每个小组件的「编辑小组件」里单独选；
+/// 两日课表本来就带明天，不受这个设置影响。
+enum ScheduleWidgetAfterClassStyle: String, Codable, CaseIterable, Sendable {
+    /// 保持原来的「今天没有课程」。
+    case none
+    /// 明天的课程，灰色显示；明天也没课时退回最近的节假日。
+    case tomorrow
+    /// 最近的一段法定假期。
+    case holiday
+    /// 换成最近一个有课的日期（三周之内）的课：日期栏照旧是今天，标上「明天的课」「10/2 的课」，课程压暗；三周内都没课时退回最近的节假日。
+    case nextCourseDay
 }
 
 enum ScheduleWidgetTheme: String {
@@ -172,6 +235,9 @@ struct ScheduleDay: Decodable, Identifiable {
     }
     var shortLabel: String { displayLabel.isEmpty ? compactDate : displayLabel }
 
+    /// 调休说明。App 写的本地课表还没带这一句，先不显示。
+    var normalizedNote: String? { nil }
+
     var compactDate: String {
         guard let date, date.count >= 10 else { return "课表" }
         let month = Int(date.dropFirst(5).prefix(2)) ?? 0
@@ -203,6 +269,9 @@ struct ScheduleCourseWindow {
 }
 
 struct SchedulePayload: Decodable {
+    /// 「最近有课的一天」往后找几天。一周跨不过中秋接国庆这样的长假，三周连寒暑假前后的空档也够用。
+    static let lookaheadDays = 21
+
     let title: String?
     let generatedAt: String?
     let cachedAt: String?
@@ -215,6 +284,12 @@ struct SchedulePayload: Decodable {
     let today: ScheduleDay?
     let days: [ScheduleDay]?
     let weekDays: [ScheduleDay]?
+    /// App 写的本地课表里的所有日子（整学期），`weekDays` 之外的日子在这里找。
+    var localDays: [ScheduleDay]? = nil
+
+    private enum CodingKeys: String, CodingKey {
+        case title, generatedAt, cachedAt, semester, week, currentWeek, displayWeek, strictDate, stale, today, days, weekDays
+    }
 
     func day(for date: String, fallbackOffset: Int) -> ScheduleDay {
         if fallbackOffset == 0, today?.date == date, let today { return today }
@@ -232,7 +307,50 @@ struct SchedulePayload: Decodable {
     func fullDay(for date: String, fallbackOffset: Int) -> ScheduleDay {
         if let exact = (weekDays ?? []).first(where: { $0.date == date }) { return exact }
         if let exact = (days ?? []).first(where: { $0.date == date }) { return exact }
+        if today?.date != date, let local = localDay(for: date) { return local }
         return day(for: date, fallbackOffset: fallbackOffset)
+    }
+
+    /// 只在确实有这一天的数据时返回，`nil` 表示本地课表里没有这一天。
+    func knownDay(for date: String) -> ScheduleDay? {
+        if let exact = (weekDays ?? []).first(where: { $0.date == date }) { return exact }
+        if let exact = (days ?? []).first(where: { $0.date == date }) { return exact }
+        if today?.date == date { return today }
+        return localDay(for: date)
+    }
+
+    /// `weekDays` 之外的日子。
+    func localDay(for date: String) -> ScheduleDay? {
+        (localDays ?? []).first(where: { $0.date == date })
+    }
+
+    /// 明天那一天；本地课表里没有就返回 `nil`。
+    func tomorrow(now: Date = .now) -> ScheduleDay? {
+        guard let date = Calendar.current.date(byAdding: .day, value: 1, to: now) else { return nil }
+        return knownDay(for: Self.dateString(date))
+    }
+
+    /// 今天这一天（完整的一天，包括已经下课的课）。
+    func currentDay(now: Date = .now) -> ScheduleDay {
+        fullDay(for: Self.dateString(now), fallbackOffset: 0)
+    }
+
+    /// 今天还没上完的课（包括没有具体时间、没法判断的）。
+    func remainingCourses(in day: ScheduleDay, now: Date = .now) -> [ScheduleCourse] {
+        let minutes = Self.minutesSinceMidnight(now)
+        return day.courseList.filter {
+            $0.endMinutes >= minutes || (!$0.hasUsableStartTime && $0.endMinutes <= 0)
+        }
+    }
+
+    /// 今天之后三周之内第一个有课的日期；找不到就是 `nil`。
+    func nextCourseDay(after now: Date = .now) -> (day: ScheduleDay, offset: Int)? {
+        for offset in 1...Self.lookaheadDays {
+            let date = Calendar.current.date(byAdding: .day, value: offset, to: now) ?? now
+            let candidate = fullDay(for: Self.dateString(date), fallbackOffset: offset)
+            if !candidate.courseList.isEmpty { return (candidate, offset) }
+        }
+        return nil
     }
 
     /// Mirrors the Web/Scriptable widget rule: keep today's remaining classes,
@@ -248,7 +366,7 @@ struct SchedulePayload: Decodable {
         }
         if hasRemaining { return (today, 0) }
 
-        for offset in 1...7 {
+        for offset in 1...Self.lookaheadDays {
             let date = Calendar.current.date(byAdding: .day, value: offset, to: now) ?? now
             let candidate = fullDay(for: Self.dateString(date), fallbackOffset: offset)
             if !candidate.courseList.isEmpty { return (candidate, offset) }
@@ -258,7 +376,16 @@ struct SchedulePayload: Decodable {
         return (fullDay(for: Self.dateString(tomorrow), fallbackOffset: 1), 1)
     }
 
-    func upcoming(now: Date = .now) -> (ScheduleDay, [ScheduleCourse]) {
+    /// `.nextCourseDay` 是原来的行为：今天上完就往后找最近有课的一天。
+    /// 其他选项停在今天，空出来的位置交给课后区域。
+    func upcoming(
+        now: Date = .now,
+        afterClass: ScheduleWidgetAfterClassStyle = .nextCourseDay
+    ) -> (ScheduleDay, [ScheduleCourse]) {
+        guard afterClass == .nextCourseDay else {
+            let today = currentDay(now: now)
+            return (today, Array(remainingCourses(in: today, now: now).prefix(2)))
+        }
         let selected = preferredCourseDay(now: now)
         let courses: [ScheduleCourse]
         if selected.offset == 0 {
@@ -269,6 +396,8 @@ struct SchedulePayload: Decodable {
         } else {
             courses = selected.day.courseList
         }
+        // 三周内都没课：别停在明天的日期上说今天的事，退回今天，交给课后区域。
+        guard !courses.isEmpty else { return (currentDay(now: now), []) }
         return (selected.day, Array(courses.prefix(2)))
     }
 
@@ -303,105 +432,61 @@ private extension ScheduleDay {
     }
 }
 
-private struct ScheduleResponse: Decodable {
-    let code: Int
-    let message: String?
-    let data: SchedulePayload?
-}
-
 enum ScheduleWidgetError: LocalizedError {
     case unconfigured
-    case unauthorized(String)
-    case server(String)
-    case invalidResponse
 
     var errorDescription: String? {
-        switch self {
-        case .unconfigured:
-            return "请先打开 App 配置课表小组件"
-        case .unauthorized(let message):
-            return message.isEmpty ? "教务授权已失效，请打开 App 重新登录" : message
-        case .server(let message):
-            return message.isEmpty ? "课表服务暂时不可用" : message
-        case .invalidResponse:
-            return "课表数据无法读取"
-        }
+        "请先打开 App 登录并同步一次课表"
     }
 }
 
+/// 小组件只读 App 写的本地课表，不再请求服务端。课表跟着 App 更新，
+/// 课程边界上的刷新只是重新读一遍这份文件。
 enum ScheduleWidgetClient {
-    static func load() async throws -> SchedulePayload {
-        guard let stored = storedEndpoint(), !stored.isEmpty else {
+    static func load(now: Date = .now) async throws -> SchedulePayload {
+        guard let payload = ScheduleLocalDays.payload(now: now) else {
             throw ScheduleWidgetError.unconfigured
-        }
-
-        var lastError: Error = ScheduleWidgetError.invalidResponse
-        for endpoint in candidates(stored) {
-            do {
-                return try await fetch(endpoint)
-            } catch let error as ScheduleWidgetError {
-                if case .unauthorized = error { throw error }
-                lastError = error
-            } catch {
-                lastError = error
-            }
-        }
-        throw lastError
-    }
-
-    private static func storedEndpoint() -> String? {
-        if let containerURL = FileManager.default.containerURL(
-            forSecurityApplicationGroupIdentifier: AppWidgetConfiguration.appGroup
-        ) {
-            let endpointFile = containerURL.appendingPathComponent(AppWidgetConfiguration.endpointFileName)
-            if let value = try? String(contentsOf: endpointFile, encoding: .utf8) {
-                let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !normalized.isEmpty { return normalized }
-            }
-        }
-
-        let value = UserDefaults(suiteName: AppWidgetConfiguration.appGroup)?
-            .string(forKey: AppWidgetConfiguration.endpointKey)?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return value?.isEmpty == false ? value : nil
-    }
-
-    private static func fetch(_ endpoint: URL) async throws -> SchedulePayload {
-        guard var components = URLComponents(url: endpoint, resolvingAgainstBaseURL: false) else {
-            throw ScheduleWidgetError.invalidResponse
-        }
-        var query = components.queryItems ?? []
-        query.append(URLQueryItem(name: "_widgetRefresh", value: String(Int(Date.now.timeIntervalSince1970 * 1000))))
-        components.queryItems = query
-        guard let url = components.url else { throw ScheduleWidgetError.invalidResponse }
-
-        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 20)
-        request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse else { throw ScheduleWidgetError.invalidResponse }
-        let wrapper = try JSONDecoder().decode(ScheduleResponse.self, from: data)
-        if http.statusCode == 401 || http.statusCode == 403 || wrapper.code == 401 {
-            throw ScheduleWidgetError.unauthorized(wrapper.message ?? "")
-        }
-        guard (200..<300).contains(http.statusCode), wrapper.code == 0, let payload = wrapper.data else {
-            throw ScheduleWidgetError.server(wrapper.message ?? "")
         }
         return payload
     }
+}
 
-    private static func candidates(_ value: String) -> [URL] {
-        guard var components = URLComponents(string: value), let host = components.host?.lowercased() else {
-            return URL(string: value).map { [$0] } ?? []
-        }
-        guard host == "cputime.cn" || host == "cpu.lizmt.cn" else {
-            return components.url.map { [$0] } ?? []
-        }
-        components.scheme = "https"
-        components.host = "cputime.cn"
-        var urls = components.url.map { [$0] } ?? []
-        components.host = "cpu.lizmt.cn"
-        if let legacy = components.url, !urls.contains(legacy) { urls.append(legacy) }
-        return urls
+/// App 写的本地课表（`NativeWidgetLocalSchedule`）。App 退出登录时会删掉这份文件。
+private enum ScheduleLocalDays {
+    private struct Record: Decodable {
+        let semester: String?
+        let days: [ScheduleDay]
+    }
+
+    /// 拼出小组件用的课表。今天不在学期里（假期）时给一个空的今天，照样显示「今天没有课」和节假日。
+    static func payload(now: Date) -> SchedulePayload? {
+        guard let record = record() else { return nil }
+        let todayDate = SchedulePayload.dateString(now)
+        let today = record.days.first(where: { $0.date == todayDate }) ?? .empty(date: todayDate, offset: 0)
+        let week = today.week
+        return SchedulePayload(
+            title: nil,
+            generatedAt: nil,
+            cachedAt: nil,
+            semester: record.semester,
+            week: week,
+            currentWeek: week,
+            displayWeek: week,
+            strictDate: true,
+            stale: true,
+            today: today,
+            days: nil,
+            weekDays: week.map { week in record.days.filter { $0.week == week } },
+            localDays: record.days
+        )
+    }
+
+    private static func record() -> Record? {
+        guard let url = FileManager.default
+            .containerURL(forSecurityApplicationGroupIdentifier: AppWidgetConfiguration.appGroup)?
+            .appendingPathComponent(AppWidgetConfiguration.localDaysFileName),
+              let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(Record.self, from: data)
     }
 }
 
@@ -414,6 +499,7 @@ enum ScheduleEntryState {
 struct ScheduleEntry: TimelineEntry {
     let date: Date
     let state: ScheduleEntryState
+    var configuration = ScheduleWidgetConfiguration()
 
     var appURL: URL {
         guard case .loaded(let payload) = state else { return AppWidgetConfiguration.appURL }
@@ -460,25 +546,46 @@ struct ScheduleEntry: TimelineEntry {
     )
 }
 
-struct ScheduleTimelineProvider: TimelineProvider {
-    func placeholder(in context: Context) -> ScheduleEntry { .placeholder }
-
-    func getSnapshot(in context: Context, completion: @escaping (ScheduleEntry) -> Void) {
-        completion(.placeholder)
+/// 生成时间线；各个小组件的配置由 `ScheduleIntentTimelineProvider` 再套上。
+enum ScheduleTimeline {
+    static func make(now: Date) async -> Timeline<ScheduleEntry> {
+        let entry: ScheduleEntry
+        var payload: SchedulePayload?
+        do {
+            let loaded = try await ScheduleWidgetClient.load(now: now)
+            payload = loaded
+            entry = ScheduleEntry(date: now, state: .loaded(loaded))
+        } catch ScheduleWidgetError.unconfigured {
+            entry = ScheduleEntry(date: now, state: .unconfigured)
+        } catch {
+            entry = ScheduleEntry(date: now, state: .failed(error.localizedDescription))
+        }
+        let periodic = Calendar.current.date(byAdding: .minute, value: 30, to: now) ?? now.addingTimeInterval(1800)
+        // 上课、下课那一刻就该换内容（划掉已结束的课、放学后切到明天），别等下一个半小时。
+        // 这几次刷新只是重新读一遍本地课表。
+        let refresh = payload.flatMap { nextBoundary(in: $0, now: now) }.map { min($0, periodic) } ?? periodic
+        return Timeline(entries: [entry], policy: .after(refresh))
     }
 
-    func getTimeline(in context: Context, completion: @escaping (Timeline<ScheduleEntry>) -> Void) {
-        Task {
-            let entry: ScheduleEntry
-            do {
-                entry = ScheduleEntry(date: .now, state: .loaded(try await ScheduleWidgetClient.load()))
-            } catch ScheduleWidgetError.unconfigured {
-                entry = ScheduleEntry(date: .now, state: .unconfigured)
-            } catch {
-                entry = ScheduleEntry(date: .now, state: .failed(error.localizedDescription))
-            }
-            let refresh = Calendar.current.date(byAdding: .minute, value: 30, to: .now) ?? .now.addingTimeInterval(1800)
-            completion(Timeline(entries: [entry], policy: .after(refresh)))
-        }
+    /// 今天剩下的课程边界里最近的一个（开始或结束），没有就返回 nil。
+    private static func nextBoundary(in payload: SchedulePayload, now: Date) -> Date? {
+        let today = payload.currentDay(now: now)
+        let nowMinutes = SchedulePayload.minutesSinceMidnight(now)
+        let startOfDay = Calendar.current.startOfDay(for: now)
+        let minutes = today.courseList
+            .flatMap { [Self.minutes($0.startTime), $0.endMinutes > 0 ? $0.endMinutes : nil] }
+            .compactMap { $0 }
+            .filter { $0 > nowMinutes }
+            .min()
+        guard let minutes else { return nil }
+        // 边界后一分钟再刷新，免得刚好卡在同一分钟上还算成「没结束」。
+        return startOfDay.addingTimeInterval(TimeInterval((minutes + 1) * 60))
+    }
+
+    private static func minutes(_ value: String?) -> Int? {
+        guard let value, value.count >= 5 else { return nil }
+        let pieces = value.prefix(5).split(separator: ":")
+        guard pieces.count == 2, let hour = Int(pieces[0]), let minute = Int(pieces[1]) else { return nil }
+        return hour * 60 + minute
     }
 }

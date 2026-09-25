@@ -17,9 +17,42 @@ struct NativeLiveActivityChecks {
         }
         precondition(ScheduleLiveActivityAttributes.resolveTimeline(segments, mode: .segmented, now: start)!.target == start.addingTimeInterval(2700))
         precondition(ScheduleLiveActivityAttributes.resolveTimeline(segments, mode: .segmented, now: start.addingTimeInterval(2700))!.phase == .intermission)
+        let breakTimeline = ScheduleLiveActivityAttributes.resolveTimeline(segments, mode: .segmented, now: start.addingTimeInterval(2700))!
+        precondition(breakTimeline.target == start.addingTimeInterval(3300))
+        precondition(breakTimeline.courseEnd == start.addingTimeInterval(6000), "break displays the upcoming segment's full time range")
         precondition(ScheduleLiveActivityAttributes.resolveTimeline(segments, mode: .whole, now: start.addingTimeInterval(2700))!.target == start.addingTimeInterval(6000))
         precondition(ScheduleLiveActivityAttributes.resolveTimeline(segments, mode: .segmented, now: start.addingTimeInterval(3300))!.index == 1)
         precondition(ScheduleLiveActivityAttributes.resolveTimeline(segments, mode: .whole, now: start.addingTimeInterval(6000))!.phase == .finished)
+        // A scheduled wake-up before 08:00 must display the entire 08:00–11:35
+        // course, while the upcoming timer still counts down to startDate.
+        let morningEnd = start.addingTimeInterval(12900)
+        let morningSegments = segments + [
+            .init(period: 3, startAt: start.addingTimeInterval(6900), endAt: start.addingTimeInterval(9600)),
+            .init(period: 4, startAt: start.addingTimeInterval(10200), endAt: morningEnd)
+        ]
+        var morningAttributes = ScheduleLiveActivityAttributes(semester: "s", dateKey: "2026-09-16", reservationEnd: morningEnd)
+        morningAttributes.occurrenceId = "morning-course"
+        morningAttributes.accountScope = "test-account-scope"
+        var morningCourse = ScheduleLiveActivityAttributes.LocalCourse(dateKey: "2026-09-16", period: 1,
+            name: "上午课程", teacher: "", location: "", periodLabel: "1–4节",
+            startDate: start, endDate: morningEnd, weekRangeLabel: nil)
+        morningCourse.occurrenceId = morningAttributes.occurrenceId
+        morningCourse.accountScope = morningAttributes.accountScope
+        morningCourse.segments = morningSegments
+        let marker = ScheduleLiveActivityAttributes.ContentState(phase: .idle, courseName: "", startDate: start, endDate: start)
+        for mode in [ScheduleLiveActivityAttributes.TimingMode.whole, .segmented] {
+            morningCourse.mode = mode
+            for lead in [15, 30, 60] {
+                let state = marker.resolvedForBroadcast(attributes: morningAttributes,
+                    now: start.addingTimeInterval(Double(-lead * 60)), cachedCourses: [morningCourse])
+                precondition(state.phase == .upcoming)
+                precondition(state.startDate == start, "upcoming countdown targets 08:00")
+                precondition(state.endDate == morningEnd, "course time range ends at 11:35, not 08:00")
+            }
+            let inClass = marker.resolvedForBroadcast(attributes: morningAttributes, now: start, cachedCourses: [morningCourse])
+            precondition(inClass.phase == .inProgress && inClass.startDate == start)
+            precondition(inClass.endDate == (mode == .whole ? morningEnd : segments[0].endAt))
+        }
         for (raw, expected) in [(0, 15), (16, 30), (31, 60), (61, 15), (-1, 15)] { precondition(NativeLiveActivityController.normalizedLead(raw) == expected) }
         let controller = NativeLiveActivityController(now: { clock })
         controller.accept(fixture())
@@ -38,6 +71,8 @@ struct NativeLiveActivityChecks {
         let first = live.first { $0.attributes.occurrenceId == firstPlan[0].occurrenceId }!
         let second = live.first { $0.attributes.occurrenceId == firstPlan[1].occurrenceId }!
         precondition(first.attributes.broadcastWindow == "2")
+        precondition(first.content.state.phase == .upcoming && first.content.state.startDate == start)
+        precondition(first.content.state.endDate == start.addingTimeInterval(6000), "reservation preserves the course end before wake-up")
         controller.setLeadMinutes(60)
         await settle()
         let revisedSecond = live.first { $0.attributes.occurrenceId == second.attributes.occurrenceId }!

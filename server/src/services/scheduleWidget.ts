@@ -184,11 +184,17 @@ export function resolveScheduleWidgetCalendar(calendar: any | null, parsed: any)
   return calendar;
 }
 
+/**
+ * 小组件往后看几天。「最近有课的一天」要能跨过中秋接国庆这样的长假，一周不够。
+ * 预览周按这个范围取，所以每多一周就多读一次教务课表。
+ */
+export const SCHEDULE_WIDGET_LOOKAHEAD_DAYS = 14;
+
 export function resolveScheduleWidgetPreviewWeeks(calendar: any | null, queryWeek = "", now = new Date()) {
   if (Number(queryWeek) > 0) return [] as number[];
   const today = chinaDateParts(now);
   const currentWeek = calendarWeekForDate(calendar, today.ymd).week;
-  return [...new Set(Array.from({ length: 7 }, (_, index) => index + 1)
+  return [...new Set(Array.from({ length: SCHEDULE_WIDGET_LOOKAHEAD_DAYS }, (_, index) => index + 1)
     .map((offset) => calendarWeekForDate(calendar, addDaysToYmd(today.ymd, offset)).week)
     .filter((week) => week > 0 && week !== currentWeek))];
 }
@@ -336,7 +342,7 @@ export function buildScheduleWidgetPayload(
   });
 
   if (!explicitWeek) {
-    for (const offset of Array.from({ length: 7 }, (_, index) => index + 1)) {
+    for (const offset of Array.from({ length: SCHEDULE_WIDGET_LOOKAHEAD_DAYS }, (_, index) => index + 1)) {
       const date = addDaysToYmd(today.ymd, offset);
       if (days.some((day) => day.date === date)) continue;
       const targetCalendar = calendarWeekForDate(effectiveCalendar, date);

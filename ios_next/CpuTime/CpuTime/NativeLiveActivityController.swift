@@ -242,7 +242,8 @@ final class NativeLiveActivityController: ObservableObject {
         let phase: State.Phase = timeline.phase == .finished ? .idle : timeline.phase == .upcoming ? .upcoming : timeline.phase == .intermission ? .intermission : .inProgress
         return State(phase: phase, courseName: c.name, teacher: c.teacher, location: c.location, periodLabel: c.periodLabel,
             dateLabel: Self.dateLabel(day: c.dateKey, week: c.week), weekRangeLabel: c.weekRangeLabel,
-            startDate: phase == .inProgress ? timeline.start : timeline.target, endDate: timeline.target,
+            startDate: phase == .inProgress ? timeline.start : timeline.target,
+            endDate: phase == .upcoming ? timeline.finalEnd : timeline.courseEnd,
             adjustmentNote: c.adjustmentNote, updatedAt: now())
     }
     private func attributes(_ c: Occurrence, channel: String?) -> Attributes {

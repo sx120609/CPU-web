@@ -10,10 +10,26 @@ extension Color {
 
 @main
 struct CpuTimeApp: App {
+    @UIApplicationDelegateAdaptor(CpuTimeAppDelegate.self) private var appDelegate
+
     var body: some Scene {
         WindowGroup {
             ContentView()
         }
+    }
+}
+
+final class CpuTimeAppDelegate: NSObject, UIApplicationDelegate {
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        // BGTaskScheduler raises if a handler is registered after launch
+        // finishes; SwiftUI's first onAppear is too late on iOS 18.
+        if #available(iOS 17.0, *) {
+            LiveActivityBackgroundRefresh.shared.register()
+        }
+        return true
     }
 }
 
@@ -46,10 +62,6 @@ struct ContentView: View {
 
     var body: some View {
         rootView
-            .task(id: scheduleStore.lastUpdatedAt) {
-                guard !debugMockSchedule, scheduleStore.result != nil else { return }
-                await webSession.ensureScheduleWidgetConfigured()
-            }
             .onOpenURL { url in
                 // A deep link can arrive before the first SwiftUI frame. Keep
                 // WebKit startup on the next run-loop turn so it cannot block
@@ -60,6 +72,7 @@ struct ContentView: View {
                     guard !Task.isCancelled else { return }
                     shell.connect(webSession: webSession, scheduleStore: scheduleStore)
                     watchSchedule.connect(to: scheduleStore)
+                    NativeWidgetLocalSchedule.connect(to: scheduleStore)
                     guard url.scheme == "cputime-next", url.host == "schedule" else { return }
                     guard !shell.requiresLogin else { return }
                     shell.userSelected(.schedule)
@@ -83,11 +96,6 @@ struct ContentView: View {
                 }
             }
             .onAppear {
-#if os(iOS)
-                if #available(iOS 17.0, *) {
-                    LiveActivityBackgroundRefresh.shared.register()
-                }
-#endif
 #if DEBUG
                 let env = ProcessInfo.processInfo.environment
                 if let raw = env["CPU_DEBUG_TAB"], let tab = ShellTab(rawValue: raw) {
@@ -128,6 +136,7 @@ struct ContentView: View {
                 guard !Task.isCancelled else { return }
                 shell.connect(webSession: webSession, scheduleStore: scheduleStore)
                 watchSchedule.connect(to: scheduleStore)
+                NativeWidgetLocalSchedule.connect(to: scheduleStore)
                 await shell.resolveInitialAuth(webSession: webSession)
             }
             .onChange(of: scenePhase) { _, phase in

@@ -11,6 +11,7 @@
 		A20000000000000000000001 /* CPUWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* CPUWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		B20000000000000000000001 /* CPUWatchWidgets.appex in Embed Watch Extensions */ = {isa = PBXBuildFile; fileRef = B20000000000000000000002 /* CPUWatchWidgets.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		C20000000000000000000001 /* CPUWebWidgets/ScheduleLiveActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000002 /* CPUWebWidgets/ScheduleLiveActivityAttributes.swift */; };
+		C20000000000000000000003 /* CpuTime/ChineseCalendar.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000004 /* CpuTime/ChineseCalendar.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -73,6 +74,7 @@
 		A20000000000000000000002 /* CPUWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CPUWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B20000000000000000000002 /* CPUWatchWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = CPUWatchWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		C20000000000000000000002 /* CPUWebWidgets/ScheduleLiveActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CPUWebWidgets/ScheduleLiveActivityAttributes.swift; sourceTree = "<group>"; };
+		C20000000000000000000004 /* CpuTime/ChineseCalendar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CpuTime/ChineseCalendar.swift; sourceTree = "<group>"; };
 		D20000000000000000000001 /* SharedSigning.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = SharedSigning.xcconfig; sourceTree = "<group>"; };
 		D20000000000000000000002 /* Signing.local.xcconfig.example */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.local.xcconfig.example; sourceTree = "<group>"; };
 		D20000000000000000000004 /* DebugSigning.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = DebugSigning.xcconfig; sourceTree = "<group>"; };
@@ -189,6 +191,7 @@
 				A20000000000000000000007 /* CPUWatch */,
 				B20000000000000000000005 /* CPUWatchWidgets */,
 				C20000000000000000000002 /* CPUWebWidgets/ScheduleLiveActivityAttributes.swift */,
+				C20000000000000000000004 /* CpuTime/ChineseCalendar.swift */,
 				000000000000000000000020 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -380,6 +383,7 @@
 		000000000000000220000000 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			files = (
+				C20000000000000000000003 /* CpuTime/ChineseCalendar.swift in Sources */,
 			);
 		};
 		A20000000000000000000012 /* Sources */ = {
@@ -556,7 +560,7 @@
 				CODE_SIGN_ENTITLEMENTS = CpuTime/CpuTime.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 57;
+				CURRENT_PROJECT_VERSION = 62;
 				DEVELOPMENT_TEAM = "$(CPU_DEVELOPMENT_TEAM)";
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_PREVIEWS = YES;
@@ -584,7 +588,7 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
-				MARKETING_VERSION = 4.6;
+				MARKETING_VERSION = 4.9;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(CPU_APP_BUNDLE_IDENTIFIER)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -609,7 +613,7 @@
 				CODE_SIGN_ENTITLEMENTS = CpuTime/CpuTime.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 57;
+				CURRENT_PROJECT_VERSION = 62;
 				DEVELOPMENT_TEAM = 34T668D87P;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_PREVIEWS = YES;
@@ -637,7 +641,7 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
-				MARKETING_VERSION = 4.6;
+				MARKETING_VERSION = 4.9;
 				PRODUCT_BUNDLE_IDENTIFIER = cn.cputime.mobile;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -662,7 +666,7 @@
 				CODE_SIGN_ENTITLEMENTS = CPUWebWidgets/CPUWebWidgets.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 57;
+				CURRENT_PROJECT_VERSION = 62;
 				DEVELOPMENT_TEAM = "$(CPU_DEVELOPMENT_TEAM)";
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = CPUWebWidgets/Info.plist;
@@ -672,7 +676,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 4.6;
+				MARKETING_VERSION = 4.9;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(CPU_APP_BUNDLE_IDENTIFIER).widgets";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -697,7 +701,7 @@
 				CODE_SIGN_ENTITLEMENTS = CPUWebWidgets/CPUWebWidgets.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 57;
+				CURRENT_PROJECT_VERSION = 62;
 				DEVELOPMENT_TEAM = 34T668D87P;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = CPUWebWidgets/Info.plist;
@@ -707,7 +711,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 4.6;
+				MARKETING_VERSION = 4.9;
 				PRODUCT_BUNDLE_IDENTIFIER = cn.cputime.mobile.widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -731,7 +735,7 @@
 				CODE_SIGN_ENTITLEMENTS = CPUWatch/CPUWatch.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 57;
+				CURRENT_PROJECT_VERSION = 62;
 				DEVELOPMENT_TEAM = "$(CPU_DEVELOPMENT_TEAM)";
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = CPUWatch/Info.plist;
@@ -739,7 +743,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 4.6;
+				MARKETING_VERSION = 4.9;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(CPU_APP_BUNDLE_IDENTIFIER).watchkitapp";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -761,7 +765,7 @@
 				CODE_SIGN_ENTITLEMENTS = CPUWatch/CPUWatch.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 57;
+				CURRENT_PROJECT_VERSION = 62;
 				DEVELOPMENT_TEAM = "$(CPU_DEVELOPMENT_TEAM)";
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = CPUWatch/Info.plist;
@@ -769,7 +773,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 4.6;
+				MARKETING_VERSION = 4.9;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(CPU_APP_BUNDLE_IDENTIFIER).watchkitapp";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -793,7 +797,7 @@
 				CODE_SIGN_ENTITLEMENTS = CPUWatchWidgets/CPUWatchWidgets.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 57;
+				CURRENT_PROJECT_VERSION = 62;
 				DEVELOPMENT_TEAM = "$(CPU_DEVELOPMENT_TEAM)";
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = CPUWatchWidgets/Info.plist;
@@ -802,7 +806,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 4.6;
+				MARKETING_VERSION = 4.9;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(CPU_APP_BUNDLE_IDENTIFIER).watchkitapp.widgets";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -827,7 +831,7 @@
 				CODE_SIGN_ENTITLEMENTS = CPUWatchWidgets/CPUWatchWidgets.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 57;
+				CURRENT_PROJECT_VERSION = 62;
 				DEVELOPMENT_TEAM = "$(CPU_DEVELOPMENT_TEAM)";
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = CPUWatchWidgets/Info.plist;
@@ -836,7 +840,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 4.6;
+				MARKETING_VERSION = 4.9;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(CPU_APP_BUNDLE_IDENTIFIER).watchkitapp.widgets";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";

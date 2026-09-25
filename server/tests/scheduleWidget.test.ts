@@ -250,6 +250,33 @@ test("schedule widget includes the next seven days so an empty day can advance t
   assert.deepEqual(payload.upcoming.map((item) => item.name), ["下周课程"]);
 });
 
+test("schedule widget looks two weeks ahead so a long holiday still reaches the next course day", () => {
+  const week = (number: number, monday: string) => ({
+    week: number,
+    days: Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(`${monday}T00:00:00Z`);
+      date.setUTCDate(date.getUTCDate() + index);
+      return date.toISOString().slice(0, 10);
+    }),
+  });
+  const calendar = {
+    currentSemester: "2025-2026-2",
+    currentWeek: 3,
+    weeks: [week(3, "2026-07-20"), week(4, "2026-07-27"), week(5, "2026-08-03")],
+    adjustments: ["2026-07-27", "2026-07-28", "2026-07-29", "2026-07-30", "2026-07-31"]
+      .map((date) => ({ date, kind: "off" as const })),
+  };
+  const empty = { currentSemester: "2025-2026-2", cells: [] };
+  const later = {
+    currentSemester: "2025-2026-2",
+    cells: [{ day: 3, bigSlot: 1, courses: [course("假期后的课", "5周", "甲", 1, 2)] }],
+  };
+  assert.deepEqual(resolveScheduleWidgetPreviewWeeks(calendar, "", WEDNESDAY_1302_CHINA), [4, 5]);
+  const payload = buildScheduleWidgetPayload(empty, calendar, "", WEDNESDAY_1302_CHINA, { 4: empty, 5: later });
+  assert.equal(payload.days.find((day) => day.date === "2026-08-05")?.courses[0]?.name, "假期后的课");
+  assert.deepEqual(payload.upcoming.map((item) => item.name), ["假期后的课"]);
+});
+
 test("schedule widget applies swaps to weekends and preserves the source day", () => {
   const days = ["2026-07-20", "2026-07-21", "2026-07-22", "2026-07-23", "2026-07-24", "2026-07-25", "2026-07-26"];
   const calendar = {
