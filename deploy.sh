@@ -82,6 +82,8 @@ DEPLOY_ARTIFACT_GIT_SOURCE="${DEPLOY_ARTIFACT_GIT_SOURCE:-refs/heads/deploy-arti
 DEPLOY_ARTIFACT_GIT_REF="${DEPLOY_ARTIFACT_GIT_REF:-refs/remotes/origin/deploy-artifacts}"
 DEPLOY_ARTIFACT_READY=0
 DEPLOY_ARTIFACT_DIR=""
+# 解压后的制品缓存在 .git/cpu-web-deploy-artifacts/<sha>/（每个约 50 MiB），只保留最近使用的几个。
+DEPLOY_ARTIFACT_CACHE_KEEP="${DEPLOY_ARTIFACT_CACHE_KEEP:-3}"
 DEPLOY_BUILD_CAPACITY_CHECKED=0
 DEPLOY_CI_SERVER_SWAPPED=0
 DEPLOY_CI_WEB_SWAPPED=0
@@ -1426,6 +1428,30 @@ artifact_cache_root() {
   printf '%s/cpu-web-deploy-artifacts' "$git_dir"
 }
 
+# 按最近使用时间保留 DEPLOY_ARTIFACT_CACHE_KEEP 个制品；本次使用的制品和上次成功部署的制品永不删除。
+prune_ci_artifact_cache() {
+  local cache_root="$1"
+  local active_commit="$2"
+  local keep="$DEPLOY_ARTIFACT_CACHE_KEEP" deployed_commit="" state_file name index=0
+  [[ "$keep" =~ ^[1-9][0-9]*$ ]] || keep=3
+  [ -d "$cache_root/$active_commit" ] && touch "$cache_root/$active_commit" 2>/dev/null || true
+  state_file="$(deployment_state_file)" || state_file=""
+  if [ -n "$state_file" ] && [ -r "$state_file" ]; then
+    deployed_commit="$(tr -d '\r\n' < "$state_file")"
+    deployed_commit="${deployed_commit,,}"
+  fi
+  while IFS= read -r name; do
+    [[ "$name" =~ ^[0-9a-f]{40}$ ]] && [ -d "$cache_root/$name" ] || continue
+    index=$((index + 1))
+    if [ "$index" -le "$keep" ] || [ "$name" = "$active_commit" ] || [ "$name" = "$deployed_commit" ]; then
+      continue
+    fi
+    rm -rf "${cache_root:?}/$name" || warn "无法清理旧的 CI 制品缓存：$cache_root/$name"
+  done < <(ls -1t "$cache_root" 2>/dev/null)
+  # 中断的下载会留下 .incoming-*；下载每次重试都会重建该目录，一天未更新的已不在使用。
+  find "$cache_root" -mindepth 1 -maxdepth 1 -type d -name '.incoming-*' -mmin +1440 -exec rm -rf {} + 2>/dev/null || true
+}
+
 verify_ci_artifact_directory() {
   local commit="$1"
   local directory="$2"
@@ -1461,6 +1487,7 @@ download_ci_artifact() {
 
   mkdir -p "$cache_root"
   if [ -d "$target_dir" ] && verify_ci_artifact_directory "$commit" "$target_dir" >/dev/null 2>&1; then
+    prune_ci_artifact_cache "$cache_root" "$commit"
     DEPLOY_ARTIFACT_DIR="$target_dir"
     DEPLOY_ARTIFACT_READY=1
     log "Using cached CI deployment artifact for ${commit:0:12}"
@@ -1498,6 +1525,7 @@ download_ci_artifact() {
       && verify_ci_artifact_directory "$commit" "$extract_dir"; then
         mv "$extract_dir" "$target_dir"
         rm -rf "$incoming_dir"
+        prune_ci_artifact_cache "$cache_root" "$commit"
         DEPLOY_ARTIFACT_DIR="$target_dir"
         DEPLOY_ARTIFACT_READY=1
         log "CI deployment artifact is ready for ${commit:0:12}"
@@ -1519,16 +1547,11 @@ select_deploy_build_source() {
     local)
       log "Build source: protected local compilation"
       ;;
-    ci)
+    ci|auto)
+      # auto 与 ci 相同：生产只使用精确 SHA 的 GitHub 制品，缺失时失败关闭，不再静默回退到本机编译。
       download_ci_artifact "$DEPLOY_TARGET_COMMIT" \
-        || err "未取得与 ${DEPLOY_TARGET_COMMIT:0:12} 完全匹配的 CI 制品，已禁止生产机编译"
-      ;;
-    auto)
-      if download_ci_artifact "$DEPLOY_TARGET_COMMIT"; then
-        log "Build source: verified CI artifact"
-      else
-        warn "CI 制品不可用，回退到受资源保护的本机编译"
-      fi
+        || err "未取得与 ${DEPLOY_TARGET_COMMIT:0:12} 完全匹配的 CI 制品，已禁止生产机编译；仅在明确授权的应急维护更新中才可设置 DEPLOY_BUILD_MODE=local"
+      log "Build source: verified CI artifact"
       ;;
     *) err "DEPLOY_BUILD_MODE 仅支持 auto、ci 或 local" ;;
   esac

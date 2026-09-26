@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
@@ -71,6 +71,11 @@ test('Agent installs a real verified bundle and preserves the running files on a
     await installAgentArtifact(repo)
     assert.equal(readFileSync(path.join(repo, 'server/dist/jwxtAgent.js'), 'utf8'), 'new-agent')
     assert.equal(readFileSync(path.join(repo, 'server/dist/deployment-commit.txt'), 'utf8'), commit)
+    const backups = () => readdirSync(path.join(repo, 'server')).filter(name => name.startsWith('dist.previous-'))
+    assert.equal(backups().length, 1)
+    await installAgentArtifact(repo)
+    assert.equal(backups().length, 1, 'repeated installs keep only the newest replaced dist')
+    assert.equal(readFileSync(path.join(repo, 'server', backups()[0], 'jwxtAgent.js'), 'utf8'), 'new-agent')
   } finally {
     assert.ok(path.resolve(root).startsWith(path.resolve(os.tmpdir()) + path.sep + 'cpu-agent-artifact-test-'))
     rmSync(root, { recursive: true, force: true })

@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, renameSync, rmSync } from 'node:fs'
+import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, renameSync, rmSync } from 'node:fs'
 import path from 'node:path'
 import { readArtifactManifest, verifyArtifactManifest } from './artifact-manifest.mjs'
 
@@ -18,6 +18,18 @@ export function validateArchiveEntries(names, details, component = false) {
   }
   if (details.trim().split(/\r?\n/).some(line => !/^[d-]/.test(line))) throw new Error('Archive links are not allowed')
   if (component && !entries.includes('dist/jwxtAgent.js')) throw new Error('Missing Agent entry')
+}
+
+// Every install moves the replaced dist to dist.previous-incoming-*; keep only the newest backup.
+function pruneAgentBackups(server, keep) {
+  for (const name of readdirSync(server)) {
+    if (!name.startsWith('dist.previous-incoming-') || name === keep) continue
+    try {
+      rmSync(path.join(server, name), { recursive: true, force: true, maxRetries: 2 })
+    } catch (error) {
+      console.warn(`[deploy-agent] Could not remove old server backup ${name}: ${error.message}`)
+    }
+  }
 }
 
 export async function installAgentArtifact(repositoryRoot) {
@@ -55,6 +67,7 @@ export async function installAgentArtifact(repositoryRoot) {
       if (existsSync(previous)) renameSync(previous, live)
       throw error
     }
+    pruneAgentBackups(server, path.basename(previous))
     console.log(`[deploy-agent] Published verified GitHub server artifact: ${commit}`)
   } finally {
     rmSync(incoming, { recursive: true, force: true })

@@ -74,7 +74,7 @@ DEPLOY_ALLOW_SCHEMA_EXPAND=1 bash deploy.sh update
 
 该开关是迁移兼容性的人工确认，不是自动验证证明。删除/重命名字段、收紧约束、重写数据等需要分阶段发布或安排维护窗口。数据库写入不随文件回退自动撤销。
 
-`DEPLOY_UPDATE_MODE=maintenance` 仅保留给尚未接管蓝绿的旧安装，明确允许短暂中断；已有蓝绿状态时拒绝混用旧式运行目录更新。
+`DEPLOY_UPDATE_MODE=maintenance` 仅保留给尚未接管蓝绿的旧安装，明确允许短暂中断；已有蓝绿状态时拒绝混用旧式运行目录更新。维护更新同样只发布精确 SHA 的 GitHub 制品，制品缺失时失败关闭；只有明确授权的应急场景显式设置 `DEPLOY_BUILD_MODE=local` 才会在生产机编译。
 
 ## 验证范围
 
