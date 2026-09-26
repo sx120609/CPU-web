@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { createError, getRequestHeader, type H3Event } from 'h3'
 import { and, eq, sql } from 'drizzle-orm'
 import { db, userIdentities, users } from '~/drizzle/db'
@@ -5,6 +6,13 @@ import { normalizeRoleOrDefault } from '~~/server/utils/role'
 
 const CPU_WEB_PROVIDER = 'cpu-web'
 const DEFAULT_CPU_WEB_ORIGIN = 'http://127.0.0.1:3000'
+
+// 每个 /api 请求都会解析本站身份：按 Cookie 摘要做短时缓存并合并并发解析，
+// 避免重复请求主站 /api/user/me 以及加锁同步影子用户的事务占满连接池。
+const AUTH_CACHE_USER_TTL_MS = 30_000
+const AUTH_CACHE_GUEST_TTL_MS = 10_000
+const AUTH_CACHE_MAX_ENTRIES = 5000
+const AUTH_CACHE_SWEEP_INTERVAL_MS = 60_000
 
 interface CpuWebUser {
   id: number
@@ -180,7 +188,7 @@ async function syncShadowUser(cpuUser: CpuWebUser) {
   })
 }
 
-export async function resolveCpuWebAuth(event: H3Event) {
+async function resolveCpuWebAuthUncached(event: H3Event) {
   const cpuUser = await fetchCpuWebUser(event)
   if (!cpuUser) return null
   const shadow = await syncShadowUser(cpuUser)
@@ -199,4 +207,81 @@ export async function resolveCpuWebAuth(event: H3Event) {
     has2FA: false,
     cpuWebUserId: cpuUser.id
   }
+}
+
+type CpuWebAuthResult = Awaited<ReturnType<typeof resolveCpuWebAuthUncached>>
+
+const authCache = new Map<string, { value: CpuWebAuthResult; expiresAt: number }>()
+const pendingAuth = new Map<string, Promise<CpuWebAuthResult>>()
+let authCacheGeneration = 0
+let lastAuthCacheSweepAt = 0
+
+// 调用方可能修改 event.context.user，缓存中的对象只以副本形式返回（字段均为原始值）
+const copyAuthResult = (value: CpuWebAuthResult): CpuWebAuthResult => (value ? { ...value } : null)
+
+function storeAuthResult(key: string, value: CpuWebAuthResult) {
+  const now = Date.now()
+  if (now - lastAuthCacheSweepAt >= AUTH_CACHE_SWEEP_INTERVAL_MS) {
+    lastAuthCacheSweepAt = now
+    for (const [cachedKey, entry] of authCache) {
+      if (entry.expiresAt <= now) authCache.delete(cachedKey)
+    }
+  }
+
+  authCache.delete(key)
+  authCache.set(key, {
+    value,
+    expiresAt: now + (value ? AUTH_CACHE_USER_TTL_MS : AUTH_CACHE_GUEST_TTL_MS)
+  })
+
+  // Map 按插入顺序迭代，超出上限时淘汰最早写入的条目
+  while (authCache.size > AUTH_CACHE_MAX_ENTRIES) {
+    const oldestKey = authCache.keys().next().value
+    if (oldestKey === undefined) break
+    authCache.delete(oldestKey)
+  }
+}
+
+/** 使已缓存的身份失效；传入本站用户 ID 时只清除该用户，否则全部清除。 */
+export function invalidateCpuWebAuthCache(cpuWebUserId?: number) {
+  // 进行中的解析结果不再写入缓存也不再被复用，避免失效前发起的请求把旧身份写回
+  authCacheGeneration++
+  pendingAuth.clear()
+  if (cpuWebUserId === undefined) {
+    authCache.clear()
+    return
+  }
+  for (const [key, entry] of authCache) {
+    if (entry.value?.cpuWebUserId === cpuWebUserId) authCache.delete(key)
+  }
+}
+
+export async function resolveCpuWebAuth(event: H3Event) {
+  const cookie = getRequestHeader(event, 'cookie') || ''
+  if (!cookie) return null
+
+  const key = createHash('sha256').update(cookie).digest('hex')
+  const cached = authCache.get(key)
+  if (cached) {
+    if (cached.expiresAt > Date.now()) return copyAuthResult(cached.value)
+    authCache.delete(key)
+  }
+
+  let pending = pendingAuth.get(key)
+  if (!pending) {
+    const generation = authCacheGeneration
+    // 只缓存成功结果（含未登录）；异常不缓存，下一次请求会重新解析
+    const resolution: Promise<CpuWebAuthResult> = resolveCpuWebAuthUncached(event)
+      .then((value) => {
+        if (generation === authCacheGeneration) storeAuthResult(key, value)
+        return value
+      })
+      .finally(() => {
+        if (pendingAuth.get(key) === resolution) pendingAuth.delete(key)
+      })
+    pending = resolution
+    pendingAuth.set(key, resolution)
+  }
+
+  return copyAuthResult(await pending)
 }

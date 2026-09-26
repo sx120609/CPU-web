@@ -1,5 +1,5 @@
 import { executeRedisCommand, isRedisReady } from './redis'
-import { cacheService } from '../services/cacheService'
+import { cacheService, deleteKeysByPattern } from '../services/cacheService'
 
 // 缓存策略：永久缓存，数据修改时主动失效
 
@@ -145,10 +145,7 @@ export class CacheHelper {
             async () => {
               const client = (await import('./redis')).getRedisClient()
               if (!client) return false
-              const keys = await client.keys(pattern)
-              if (keys.length > 0) {
-                await client.del(...keys)
-              }
+              await deleteKeysByPattern(client, pattern)
               return true
             },
             async () => false

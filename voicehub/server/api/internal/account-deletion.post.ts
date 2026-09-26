@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { and, eq, inArray, or, sql } from 'drizzle-orm'
 import { db } from '~/drizzle/db'
 import * as s from '~/drizzle/schema'
-import { cpuWebOrigin } from '~~/server/utils/cpu-web-auth'
+import { cpuWebOrigin, invalidateCpuWebAuthCache } from '~~/server/utils/cpu-web-auth'
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
@@ -50,6 +50,8 @@ export default defineEventHandler(async (event) => {
     await tx.delete(s.userIdentities).where(and(eq(s.userIdentities.userId, id), sql`${s.userIdentities.provider} <> 'cpu-web'`))
     await tx.update(s.userIdentities).set({ providerUsername: null }).where(eq(s.userIdentities.userId, id))
   })
+  // 已缓存的会话身份立即失效，不必等缓存过期
+  invalidateCpuWebAuthCache(subject.userId)
   setHeader(event, 'Cache-Control', 'no-store')
   return { deleted: true }
 })

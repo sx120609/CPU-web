@@ -67,13 +67,14 @@ export default defineEventHandler(async (event) => {
     const scope = (query.scope as string) || '' // 'mine' 或为空
     const sortBy = (query.sortBy as string) || 'createdAt'
     const sortOrder = (query.sortOrder as string) || 'desc'
-    const bypassCache = query.bypass_cache === 'true'
 
     // 获取用户身份
     const user = event.context.user || null
     const userId = user ? Number(user.id) : null
     const hasValidUserId = Number.isInteger(userId) && (userId as number) > 0
     const isAdmin = user && ['ADMIN', 'SUPER_ADMIN', 'SONG_ADMIN'].includes(user.role)
+    // 仅管理员可以绕过缓存，避免访客借此反复穿透到数据库
+    const bypassCache = query.bypass_cache === 'true' && Boolean(isAdmin)
     console.log('[Songs API] 用户认证状态:', {
       hasUser: !!user,
       userId: user?.id,
@@ -260,32 +261,35 @@ export default defineEventHandler(async (event) => {
               : desc(songs.createdAt)
       )
 
-    // 获取每首歌的投票数
-    const voteCountsQuery = await db
-      .select({
-        songId: votes.songId,
-        count: count(votes.id)
-      })
-      .from(votes)
-      .groupBy(votes.songId)
+    const songIds = songsData.map((s) => s.id)
+
+    // 获取每首歌的投票数（有筛选条件时只统计本次返回的歌曲）
+    const voteCountsQuery =
+      songIds.length === 0
+        ? []
+        : await db
+            .select({
+              songId: votes.songId,
+              count: count(votes.id)
+            })
+            .from(votes)
+            .where(whereCondition ? inArray(votes.songId, songIds) : undefined)
+            .groupBy(votes.songId)
 
     const voteCounts = new Map(voteCountsQuery.map((v) => [v.songId, v.count]))
 
-    // 获取每首歌的投票详情（用于检查用户是否已投票）
-    const songVotesQuery = await db
-      .select({
-        songId: votes.songId,
-        userId: votes.userId
-      })
-      .from(votes)
+    // 只查询当前用户自己的投票，用于标记是否已投票（访客无需查询）
+    const userVotedSongIds = new Set<number>()
+    if (hasValidUserId) {
+      const userVotesQuery = await db
+        .select({
+          songId: votes.songId
+        })
+        .from(votes)
+        .where(eq(votes.userId, userId as number))
 
-    const songVotes = new Map()
-    songVotesQuery.forEach((vote) => {
-      if (!songVotes.has(vote.songId)) {
-        songVotes.set(vote.songId, [])
-      }
-      songVotes.get(vote.songId).push(vote.userId)
-    })
+      userVotesQuery.forEach((vote) => userVotedSongIds.add(vote.songId))
+    }
 
     // 获取每首歌的排期状态和日期
     // 只查询已发布的排期，草稿不算作已排期
@@ -310,7 +314,6 @@ export default defineEventHandler(async (event) => {
     )
 
     // 获取每首歌的重播状态（全局，不分用户，统计 PENDING + FULFILLED）
-    const songIds = songsData.map((s) => s.id)
     const adjustedVoteCounts = await buildAdjustedVoteCountMap(songIds, voteCounts)
     let replayRequestCounts = new Map()
     const replayRequestersMap = new Map()
@@ -496,8 +499,7 @@ export default defineEventHandler(async (event) => {
 
       // 如果用户已登录，添加投票状态
       if (hasValidUserId) {
-        const userVotes = songVotes.get(song.id) || []
-        songObject.voted = userVotes.map((voteUserId: any) => Number(voteUserId)).includes(userId as number)
+        songObject.voted = userVotedSongIds.has(song.id)
       }
 
       // 添加期望播放时段相关字段

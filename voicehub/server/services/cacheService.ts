@@ -25,6 +25,26 @@ const CACHE_TTL = {
 // 缓存刷新锁，防止缓存击穿
 const refreshLocks = new Map<string, Promise<any>>()
 
+// SCAN 每批建议扫描的键数量
+const SCAN_BATCH_COUNT = 500
+
+// 用 SCAN 分批匹配并删除键，避免 KEYS 在与主站共用的 Redis 上阻塞整个实例
+export async function deleteKeysByPattern(client: any, pattern: string): Promise<number> {
+  // 不含通配符时就是单个键，直接删除即可
+  if (!/[*?[\]\\]/.test(pattern)) {
+    return Number(await client.del(pattern)) || 0
+  }
+
+  let deleted = 0
+  for await (const batch of client.scanIterator({ MATCH: pattern, COUNT: SCAN_BATCH_COUNT })) {
+    const keys = (Array.isArray(batch) ? batch : [batch]).filter(Boolean)
+    if (keys.length > 0) {
+      deleted += Number(await client.del(keys)) || 0
+    }
+  }
+  return deleted
+}
+
 // 缓存服务类
 class CacheService {
   // 单例实例
@@ -469,18 +489,16 @@ class CacheService {
       const client = (await import('../utils/redis')).getRedisClient()
       if (!client) return
 
-      const keys = await client.keys('admin_stats:*')
-      const realtimeKeys = await client.keys('realtime_stats')
-      const activeUserKeys = await client.keys('active_users:*')
-
-      const allKeys = [...keys, ...realtimeKeys, ...activeUserKeys]
-      if (allKeys.length > 0) {
-        try {
-          await client.del(allKeys)
-          console.log(`[Cache] 已清除 ${allKeys.length} 个统计缓存键`)
-        } catch (delError) {
-          console.error(`[Cache] 删除统计缓存键失败:`, delError)
+      try {
+        let deletedCount = 0
+        for (const pattern of ['admin_stats:*', 'realtime_stats', 'active_users:*']) {
+          deletedCount += await deleteKeysByPattern(client, pattern)
         }
+        if (deletedCount > 0) {
+          console.log(`[Cache] 已清除 ${deletedCount} 个统计缓存键`)
+        }
+      } catch (delError) {
+        console.error(`[Cache] 删除统计缓存键失败:`, delError)
       }
     })
   }
@@ -876,10 +894,7 @@ class CacheService {
           const client = (await import('../utils/redis')).getRedisClient()
           if (!client) return false
 
-          const keys = await client.keys(pattern)
-          if (keys.length > 0) {
-            await client.del(...keys)
-          }
+          await deleteKeysByPattern(client, pattern)
           return true
         },
         async () => false
@@ -987,10 +1002,9 @@ class CacheService {
 
       try {
         // 清除所有 public_schedules 相关的缓存键
-        const keys = await client.keys('public_schedules:*')
-        if (keys.length > 0) {
-          await client.del(keys)
-          console.log(`[Cache] 已清除 ${keys.length} 个 public_schedules 缓存键`)
+        const deletedCount = await deleteKeysByPattern(client, 'public_schedules:*')
+        if (deletedCount > 0) {
+          console.log(`[Cache] 已清除 ${deletedCount} 个 public_schedules 缓存键`)
         } else {
           console.log('[Cache] 未找到 public_schedules 缓存键')
         }

@@ -21,6 +21,10 @@ import { getPublicUserDisplayName } from '~~/server/utils/user-display'
 
 import { verifyUserAuth } from '../../utils/auth'
 
+// public_schedules:* 键的过期时间（秒），与 cacheService 中排期缓存 CACHE_TTL.SCHEDULES 一致；
+// 排期变更时仍会主动清除
+const PUBLIC_SCHEDULES_CACHE_TTL = 600
+
 export default defineEventHandler(async (event) => {
   try {
     await autoArchivePastSchedules({ source: 'api/songs/public' })
@@ -28,12 +32,13 @@ export default defineEventHandler(async (event) => {
     // 获取查询参数
     const query = getQuery(event)
     const semester = query.semester as string
-    const bypassCache = query.bypass_cache === 'true'
 
     // 检查用户是否已登录并获取角色
     const authResult = await verifyUserAuth(event)
     const isLoggedIn = authResult.success
     const isAdmin = isLoggedIn && ['ADMIN', 'SUPER_ADMIN', 'SONG_ADMIN'].includes(authResult.user?.role)
+    // 仅管理员可以绕过缓存，避免访客借此反复穿透到数据库
+    const bypassCache = query.bypass_cache === 'true' && Boolean(isAdmin)
 
     // 获取系统设置
     const systemSettingsData = await db
@@ -156,7 +161,7 @@ export default defineEventHandler(async (event) => {
           const client = (await import('../../utils/redis')).getRedisClient()
           if (!client) return
 
-          await client.set(cacheKey, JSON.stringify(filteredSchedules))
+          await client.setEx(cacheKey, PUBLIC_SCHEDULES_CACHE_TTL, JSON.stringify(filteredSchedules))
           console.log(
             `[Cache] 排期数据设置Redis缓存: ${cacheKey}，数量: ${filteredSchedules.length}`
           )
@@ -215,19 +220,25 @@ export default defineEventHandler(async (event) => {
       .where(eq(schedules.isDraft, false)) // 只查询已发布的排期
       .orderBy(schedules.playDate)
 
-    // 获取每首歌的投票数
-    const voteCountsQuery = await db
-      .select({
-        songId: votes.songId,
-        count: count(votes.id)
-      })
-      .from(votes)
-      .groupBy(votes.songId)
+    const songIds = schedulesData.map((s) => s.song.id)
+    const uniqueSongIds = [...new Set(songIds)]
+
+    // 获取每首歌的投票数（只统计已排期的歌曲）
+    const voteCountsQuery =
+      uniqueSongIds.length === 0
+        ? []
+        : await db
+            .select({
+              songId: votes.songId,
+              count: count(votes.id)
+            })
+            .from(votes)
+            .where(inArray(votes.songId, uniqueSongIds))
+            .groupBy(votes.songId)
 
     const voteCounts = new Map(voteCountsQuery.map((v) => [v.songId, v.count]))
 
     // 获取重播申请信息
-    const songIds = schedulesData.map((s) => s.song.id)
     const adjustedVoteCounts = await buildAdjustedVoteCountMap(songIds, voteCounts)
     const replayRequestCountsMap = new Map()
     const replayRequestersMap = new Map()
@@ -396,7 +407,7 @@ export default defineEventHandler(async (event) => {
         const client = (await import('../../utils/redis')).getRedisClient()
         if (!client) return
 
-        await client.set(cacheKey, JSON.stringify(finalResult))
+        await client.setEx(cacheKey, PUBLIC_SCHEDULES_CACHE_TTL, JSON.stringify(finalResult))
         console.log(`[Cache] 排期数据设置Redis缓存: ${cacheKey}，数量: ${finalResult.length}`)
       })
     }
