@@ -53,22 +53,28 @@ messageRouter.get("/", async (req, res, next) => {
     const userId = req.user!.userId;
     const category = req.query.category ? String(req.query.category) : undefined;
     const client = detectLoginClient(req).client;
-    const [list, reads] = await Promise.all([
-      prisma.notification.findMany({
-        where: {
-          AND: [
-            { OR: [{ userId }, { userId: null }] },
-            category ? { category } : {},
-          ],
-        },
-        orderBy: { createdAt: "desc" },
-        take: 100,
-      }),
-      prisma.notificationRead.findMany({ where: { userId } }),
-    ]);
+    const list = await prisma.notification.findMany({
+      where: {
+        AND: [
+          { OR: [{ userId }, { userId: null }] },
+          category ? { category } : {},
+        ],
+      },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+    });
+    const visible = list.filter((n) => notificationVisibleToClient(n, client));
+    // 只有全局通知的已读状态记录在 NotificationRead，且只查询本次返回的这些通知。
+    const globalIds = visible.filter((n) => n.userId === null).map((n) => n.id);
+    const reads = globalIds.length
+      ? await prisma.notificationRead.findMany({
+          where: { userId, notificationId: { in: globalIds } },
+          select: { notificationId: true, readAt: true },
+        })
+      : [];
     const readSet = new Map<number, Date>();
     reads.forEach((r) => readSet.set(r.notificationId, r.readAt));
-    ok(res, list.filter((n) => notificationVisibleToClient(n, client)).map((n) => ({
+    ok(res, visible.map((n) => ({
       ...n,
       payload: safeJson((n as any).payload),
       readAt: n.userId === null ? readSet.get(n.id) ?? null : n.readAt,

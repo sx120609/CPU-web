@@ -46,7 +46,7 @@ import { ensureUserCanSpeak, releaseExpiredMutes } from "../services/userModerat
 import { containsForumModerationPlaceholder } from "../services/forumContentEditing";
 import { consumeAnonymousCredit, createAnonymousAlias } from "../services/userTrust";
 import { allowsCampusLifeCampaignAnonymousPost } from "../services/forumAds";
-import { decodeReplyForViewer, decodeReplyForViewerWithImages, decodeTopicForViewer, decodeTopicForViewerWithImages, decodeTopicsForViewerForList, forumAuthorReputationSelect, forumReplyPreviewInclude } from "../services/forumPresentation";
+import { decodeReplyForViewer, decodeRepliesForViewerWithImages, decodeTopicForViewer, decodeTopicForViewerWithImages, decodeTopicsForViewerForList, forumAuthorReputationSelect, forumReplyPreviewInclude } from "../services/forumPresentation";
 import { ensureForumImageAssetsForContent, summarizeForumImageModerationForContent } from "../services/imageModeration";
 import { ensureForumVideoAssetsForContent, summarizeForumVideoModerationForContent } from "../services/videoModeration";
 import { invalidateCourseCaches, invalidateForumCaches } from "../services/cacheInvalidation";
@@ -58,6 +58,7 @@ import {
   forumSubmissionResultForReview,
   isForumSubmissionUniqueConflict,
   normalizeForumSubmissionId,
+  resolveForumListViewerId,
   scheduleForumBackgroundTask,
 } from "../services/forumSubmission";
 import { scheduleTopicSubmissionReview } from "../services/forumSubmissionReview";
@@ -209,7 +210,12 @@ topicRouter.get("/", async (req, res, next) => {
       if (!forumAccessEnabled) throw Errors.forbidden("请先登录后浏览论坛");
     }
 
-    const where: any = { ...forumContentVisibilityWhere(requesterId) };
+    // 大多数登录用户没有仅自己可见的审核中帖子，此时与游客共用公开查询和缓存。
+    const listViewerId = await resolveForumListViewerId(
+      requesterId,
+      (selfVisibleWhere) => prisma.topic.findFirst({ where: selfVisibleWhere, select: { id: true } }),
+    );
+    const where: any = { ...forumContentVisibilityWhere(listViewerId) };
     if (boardId) where.boardId = boardId;
     else where.board = { type: { in: enabledBoardTypes() }, ...visibleBoardSlugFilter() };
     if (pinnedMode === "only") where.pinned = true;
@@ -251,7 +257,7 @@ topicRouter.get("/", async (req, res, next) => {
       "forum-list",
       [
         "topic-list-v7",
-        requesterId ? `viewer-${requesterId}` : "public",
+        listViewerId ? `viewer-${listViewerId}` : "public",
         boardSlug || "all",
         page,
         size,
@@ -979,7 +985,7 @@ topicRouter.get("/:id/replies", async (req, res, next) => {
         author: { select: { id: true, username: true, nickname: true, avatar: true, role: true, status: true, mutedUntil: true, isVip: true, profileTheme: true, profileFrame: true, verificationType: true, verificationLabel: true, verificationVerifiedAt: true, verificationExpiresAt: true, ...forumAuthorReputationSelect } },
       },
     });
-    ok(res, await Promise.all(list.map((item) => decodeReplyForViewerWithImages(item, req.user))));
+    ok(res, await decodeRepliesForViewerWithImages(list, req.user));
   } catch (e) { next(e); }
 });
 function parseJsonSafe(s: string | null | undefined) {

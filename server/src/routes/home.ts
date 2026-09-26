@@ -9,7 +9,7 @@ import { resolveForumAccess } from "../services/forumAccess";
 import { decodeTopicForViewer, decodeTopicsForViewerForList, forumAuthorReputationSelect, forumReplyPreviewInclude } from "../services/forumPresentation";
 import { buildUserTrustSnapshot } from "../services/userTrust";
 import { visibleBoardSlugFilter } from "../services/retiredBoards";
-import { FORUM_SELF_VISIBLE_REVIEW_STATUSES, forumContentVisibilityWhere } from "../services/forumSubmission";
+import { FORUM_SELF_VISIBLE_REVIEW_STATUSES, forumContentVisibilityWhere, resolveForumListViewerId } from "../services/forumSubmission";
 import { compactTopicAuthors, publicAvatarValue } from "../utils/publicAvatar";
 import { parseHomeFeedStream, selectHomeFeedBoardTypes, type HomeFeedStream } from "../services/homeFeed";
 import {
@@ -36,10 +36,27 @@ homeRouter.get("/summary", async (req, res, next) => {
     const userId = req.user?.userId ?? null;
     const role = req.user?.role ?? null;
 
-    const [user, personalUnread, globalReads, globalCount] = await Promise.all([
-      userId ? prisma.user.findUnique({ where: { id: userId } }) : Promise.resolve(null),
+    const [user, personalUnread, globalReadCount, globalCount] = await Promise.all([
+      userId ? prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          nickname: true,
+          avatar: true,
+          college: true,
+          role: true,
+          createdAt: true,
+          postCount: true,
+          replyCount: true,
+          forumEnabled: true,
+          forumEnabledAt: true,
+          anonymousCredits: true,
+          anonymousWeekKey: true,
+          anonymousCreditsFrozen: true,
+        },
+      }) : Promise.resolve(null),
       userId ? prisma.notification.count({ where: { userId, readAt: null } }) : Promise.resolve(0),
-      userId ? prisma.notificationRead.findMany({ where: { userId }, select: { notificationId: true } }) : Promise.resolve([]),
+      userId ? prisma.notificationRead.count({ where: { userId } }) : Promise.resolve(0),
       userId ? prisma.notification.count({ where: { userId: null } }) : Promise.resolve(0),
     ]);
     const forumAccessEnabled = await resolveForumAccess(userId, role);
@@ -100,7 +117,7 @@ homeRouter.get("/summary", async (req, res, next) => {
       .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       .slice(0, 10);
 
-    const unreadCount = personalUnread + (globalCount - (globalReads as any[]).length);
+    const unreadCount = personalUnread + (globalCount - globalReadCount);
 
     ok(res, {
       identity: user ? {
@@ -159,11 +176,16 @@ homeRouter.get("/latest-feed", async (req, res, next) => {
     const stream = parseHomeFeedStream(req.query.stream);
     const contentBoardTypes = homeFeedBoardTypes(stream);
     const globalPinnedIds = getGlobalPinnedTopicIds();
+    // 没有仅自己可见的审核中帖子时与游客共用公开查询和缓存。
+    const listViewerId = await resolveForumListViewerId(
+      userId,
+      (selfVisibleWhere) => prisma.topic.findFirst({ where: selfVisibleWhere, select: { id: true } }),
+    );
     const where = {
-      ...forumContentVisibilityWhere(userId),
+      ...forumContentVisibilityWhere(listViewerId),
       board: { type: { in: contentBoardTypes }, ...visibleBoardSlugFilter() },
     };
-    const cached = await withCache("home", ["latest-feed-v7", stream, userId ? `viewer-${userId}` : "public", page, size], 60_000, async () => {
+    const cached = await withCache("home", ["latest-feed-v7", stream, listViewerId ? `viewer-${listViewerId}` : "public", page, size], 60_000, async () => {
       const [pins, list, total] = await Promise.all([
         listGlobalPinnedTopics(globalPinnedIds, contentBoardTypes, 20),
         prisma.topic.findMany({

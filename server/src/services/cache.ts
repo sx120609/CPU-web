@@ -42,7 +42,15 @@ const VALUE_PREFIX = "cache-value";
 const LOCK_PREFIX = "lock";
 const JWXT_PENDING_PREFIX = buildRedisKey("jwxt", "pending");
 const JWXT_SESSION_PREFIX = buildRedisKey("jwxt", "session");
-const localCacheValues = new Map<string, { value: string; expiresAt: number }>();
+const CACHE_ENTRY_KEY_PREFIX = `${buildRedisKey(VALUE_PREFIX)}:`;
+type LocalCacheValue = { value: string; expiresAt: number };
+// 会话、待确认登录、日志标记等临时值（Redis 不可用时才落到进程内），只按过期时间清理，不参与淘汰。
+const localCacheValues = new Map<string, LocalCacheValue>();
+// withCache 的 L1 热缓存：Map 迭代顺序即最近使用顺序，超出条数或近似字节上限时淘汰最久未用的条目。
+const localCacheEntries = new Map<string, LocalCacheValue>();
+const localCacheLimits = { maxEntries: 2_000, maxBytes: 64 * 1024 * 1024 };
+let localCacheEntryBytes = 0;
+const LOCAL_CACHE_SWEEP_INTERVAL_MS = 60_000;
 const localCacheVersions = new Map<string, number>();
 const localCacheVersionCheckedAt = new Map<string, number>();
 const localLocks = new Map<string, { token: string; expiresAt: number }>();
@@ -149,21 +157,85 @@ function normalizeCachePart(input: string | number | boolean | null | undefined)
   return encodeURIComponent(value);
 }
 
+function localStoreFor(key: string) {
+  return key.startsWith(CACHE_ENTRY_KEY_PREFIX) ? localCacheEntries : localCacheValues;
+}
+
+function localEntryBytes(key: string, value: string) {
+  // 按 UTF-16 粗略估算字符串占用的内存。
+  return (key.length + value.length) * 2;
+}
+
+function deleteLocalValue(key: string) {
+  const store = localStoreFor(key);
+  const cached = store.get(key);
+  if (!cached) return;
+  store.delete(key);
+  if (store === localCacheEntries) localCacheEntryBytes -= localEntryBytes(key, cached.value);
+}
+
+function evictLocalCacheEntries() {
+  for (const [key, cached] of localCacheEntries) {
+    if (localCacheEntries.size <= localCacheLimits.maxEntries && localCacheEntryBytes <= localCacheLimits.maxBytes) break;
+    localCacheEntries.delete(key);
+    localCacheEntryBytes -= localEntryBytes(key, cached.value);
+  }
+}
+
 function readLocalValue(key: string) {
-  const cached = localCacheValues.get(key);
+  const store = localStoreFor(key);
+  const cached = store.get(key);
   if (!cached) return null;
   if (cached.expiresAt <= Date.now()) {
-    localCacheValues.delete(key);
+    deleteLocalValue(key);
     return null;
+  }
+  if (store === localCacheEntries) {
+    // 命中后移到队尾，维持 LRU 顺序。
+    store.delete(key);
+    store.set(key, cached);
   }
   return cached.value;
 }
 
 function writeLocalValue(key: string, value: string, ttlMs: number) {
-  localCacheValues.set(key, {
+  const entry = {
     value,
     expiresAt: Date.now() + Math.max(1, ttlMs),
-  });
+  };
+  if (localStoreFor(key) !== localCacheEntries) {
+    localCacheValues.set(key, entry);
+    return;
+  }
+  deleteLocalValue(key);
+  localCacheEntries.set(key, entry);
+  localCacheEntryBytes += localEntryBytes(key, value);
+  evictLocalCacheEntries();
+}
+
+// 版本号切换后旧 key 不会再被读取，定期清理所有已过期的进程内条目，避免它们一直占用内存。
+export function sweepExpiredLocalCacheValues(now = Date.now()) {
+  let removed = 0;
+  for (const store of [localCacheValues, localCacheEntries]) {
+    for (const [key, cached] of store) {
+      if (cached.expiresAt > now) continue;
+      deleteLocalValue(key);
+      removed += 1;
+    }
+  }
+  return removed;
+}
+
+const localCacheSweepTimer = setInterval(() => {
+  sweepExpiredLocalCacheValues();
+}, LOCAL_CACHE_SWEEP_INTERVAL_MS);
+localCacheSweepTimer.unref?.();
+
+export function setLocalCacheLimitsForTests(limits: Partial<typeof localCacheLimits>) {
+  const previous = { ...localCacheLimits };
+  Object.assign(localCacheLimits, limits);
+  evictLocalCacheEntries();
+  return previous;
 }
 
 function getLocalVersion(domain: string) {
@@ -318,7 +390,7 @@ export async function setCachedJson(key: string, value: unknown, ttlMs: number) 
 export async function deleteCachedKeys(...keys: string[]) {
   const deleted = await deleteRedisKeys(...keys);
   if (!deleted) {
-    keys.forEach((key) => localCacheValues.delete(key));
+    keys.forEach((key) => deleteLocalValue(key));
   }
 }
 
@@ -364,8 +436,8 @@ export async function setEphemeralValue(key: string, value: string, ttlMs: numbe
 
 export async function deleteSubjectCacheEntries(subjectHash: string) {
   await deleteRedisSubjectCacheEntries(subjectHash);
-  for (const key of localCacheValues.keys()) {
-    if (key.startsWith(buildRedisKey("cache-value")) && key.split(":").includes(subjectHash)) localCacheValues.delete(key);
+  for (const key of localCacheEntries.keys()) {
+    if (key.split(":").includes(subjectHash)) deleteLocalValue(key);
   }
 }
 
@@ -389,7 +461,7 @@ export async function getEphemeralValue(key: string) {
 export async function deleteEphemeralValue(key: string) {
   await deleteRedisKeys(key);
   if (isDurableEphemeralKey(key)) await deleteDurableEphemeralValue(key);
-  localCacheValues.delete(key);
+  deleteLocalValue(key);
 }
 
 export async function touchEphemeralValue(key: string, ttlMs: number) {
@@ -398,7 +470,7 @@ export async function touchEphemeralValue(key: string, ttlMs: number) {
     ? await touchDurableEphemeralValue(key, ttlMs)
     : false;
   if (!extended && !durableExtended) {
-    const cached = localCacheValues.get(key);
+    const cached = localStoreFor(key).get(key);
     if (cached) cached.expiresAt = Date.now() + ttlMs;
   }
 }
@@ -415,10 +487,10 @@ export async function countEphemeralKeys(prefix: string) {
     }
   }
   let total = 0;
-  for (const [key, value] of localCacheValues.entries()) {
+  for (const [key, value] of localStoreFor(prefix).entries()) {
     if (!key.startsWith(prefix)) continue;
     if (value.expiresAt <= Date.now()) {
-      localCacheValues.delete(key);
+      deleteLocalValue(key);
       continue;
     }
     total += 1;

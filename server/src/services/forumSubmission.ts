@@ -22,18 +22,32 @@ export const FORUM_SELF_VISIBLE_REVIEW_STATUSES = [
   "rejected_manual",
 ] as const;
 
+export function forumSelfVisibleContentWhere(viewerId: number) {
+  return {
+    hidden: true,
+    authorId: viewerId,
+    aiReviewStatus: { in: [...FORUM_SELF_VISIBLE_REVIEW_STATUSES] },
+  };
+}
+
 export function forumContentVisibilityWhere(viewerId?: number | null) {
   if (!viewerId) return { hidden: false };
   return {
     OR: [
       { hidden: false },
-      {
-        hidden: true,
-        authorId: viewerId,
-        aiReviewStatus: { in: [...FORUM_SELF_VISIBLE_REVIEW_STATUSES] },
-      },
+      forumSelfVisibleContentWhere(viewerId),
     ],
   };
+}
+
+// 列表查询与缓存使用的可见性身份：没有仅自己可见的审核中内容时，登录用户与游客的结果完全相同，
+// 返回 null 以共用公开查询和公开缓存；否则保留本人身份。
+export async function resolveForumListViewerId(
+  viewerId: number | null | undefined,
+  findSelfVisibleContent: (where: ReturnType<typeof forumSelfVisibleContentWhere>) => Promise<unknown>,
+) {
+  if (!viewerId) return null;
+  return await findSelfVisibleContent(forumSelfVisibleContentWhere(viewerId)) ? viewerId : null;
 }
 
 export function normalizeForumSubmissionId(value: unknown, kind: "topic" | "reply") {

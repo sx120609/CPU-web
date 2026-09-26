@@ -88,6 +88,13 @@ export type ForumVideoModerationSummary = {
   manualReviewCount: number;
 };
 
+export type ForumVideoAssetStates = Map<string, {
+  url: string;
+  status: string;
+  reason: string | null;
+  lastError: string | null;
+}>;
+
 export type ForumVideoSweepSummary = {
   reviewEnabled: boolean;
   scannedTopics: number;
@@ -284,7 +291,42 @@ export async function moderatePendingForumVideos(limit = getVideoReviewDispatchC
   return { processed: list.length };
 }
 
-export async function summarizeForumVideoModerationForContent(content: string): Promise<ForumVideoModerationSummary> {
+// 批量读取视频审核状态，缺失的记录会补登记；同一请求内的多条内容可共用这份结果。
+export async function loadForumVideoAssetStates(urls: string[]): Promise<ForumVideoAssetStates> {
+  const rowMap: ForumVideoAssetStates = new Map();
+  if (!urls.length) return rowMap;
+  const rows = await prisma.forumVideoAsset.findMany({
+    where: { url: { in: urls } },
+    select: { url: true, status: true, reason: true, lastError: true },
+  });
+  rows.forEach((row) => rowMap.set(row.url, row));
+  const missing = urls.filter((url) => !rowMap.has(url));
+  if (missing.length) {
+    const created = await Promise.all(missing.map((url) => registerForumVideoAsset({ url })));
+    missing.forEach((url, index) => {
+      const row = created[index];
+      rowMap.set(url, {
+        url,
+        status: row?.status || (shouldRunVideoReview() ? "pending" : "approved"),
+        reason: row?.reason || null,
+        lastError: row?.lastError || null,
+      });
+    });
+  }
+  return rowMap;
+}
+
+export function collectForumVideoUrls(contents: string[]) {
+  return Array.from(new Set(contents.flatMap((content) => extractForumVideoUrls(content))));
+}
+
+function resolveForumVideoAssetStates(urls: string[], states?: ForumVideoAssetStates) {
+  // 预取结果覆盖全部地址时直接复用，否则按原逻辑单独查询。
+  if (states && urls.every((url) => states.has(url))) return Promise.resolve(states);
+  return loadForumVideoAssetStates(urls);
+}
+
+export async function summarizeForumVideoModerationForContent(content: string, states?: ForumVideoAssetStates): Promise<ForumVideoModerationSummary> {
   const urls = extractForumVideoUrls(content);
   if (!urls.length) {
     return {
@@ -296,23 +338,7 @@ export async function summarizeForumVideoModerationForContent(content: string): 
       manualReviewCount: 0,
     };
   }
-  const rows = await prisma.forumVideoAsset.findMany({
-    where: { url: { in: urls } },
-    select: { url: true, status: true, reason: true, lastError: true },
-  });
-  const rowMap = new Map(rows.map((row) => [row.url, row]));
-  const missing = urls.filter((url) => !rowMap.has(url));
-  if (missing.length) {
-    const created = await Promise.all(missing.map((url) => registerForumVideoAsset({ url })));
-    created.forEach((item, index) => {
-      rowMap.set(missing[index], {
-        url: missing[index],
-        status: item?.status || (shouldRunVideoReview() ? "pending" : "approved"),
-        reason: item?.reason || null,
-        lastError: item?.lastError || null,
-      });
-    });
-  }
+  const rowMap = await resolveForumVideoAssetStates(urls, states);
   let pendingCount = 0;
   let rejectedCount = 0;
   let approvedCount = 0;
@@ -476,31 +502,14 @@ export async function applyManualForumVideoReview(input: {
   });
 }
 
-export async function renderModeratedVideoContent(content: string, _viewer?: Viewer) {
+export async function renderModeratedVideoContent(content: string, _viewer?: Viewer, states?: ForumVideoAssetStates) {
   const normalizedContent = repairLegacyEscapedQqVideoBlocks(content);
   const matches = collectVideoMatches(normalizedContent);
   if (!matches.length) return normalizedContent;
   const localUrls = Array.from(new Set(matches.map((item) => normalizeForumVideoUrl(item.url)).filter(Boolean) as string[]));
   if (!localUrls.length) return normalizedContent;
 
-  const rows = await prisma.forumVideoAsset.findMany({
-    where: { url: { in: localUrls } },
-    select: { url: true, status: true, reason: true, lastError: true },
-  });
-  const rowMap = new Map(rows.map((row) => [row.url, row]));
-  const missing = localUrls.filter((url) => !rowMap.has(url));
-  if (missing.length) {
-    const created = await Promise.all(missing.map((url) => registerForumVideoAsset({ url })));
-    missing.forEach((url, index) => {
-      const row = created[index];
-      rowMap.set(url, {
-        url,
-        status: row?.status || (shouldRunVideoReview() ? "pending" : "approved"),
-        reason: row?.reason || null,
-        lastError: row?.lastError || null,
-      } as any);
-    });
-  }
+  const rowMap = await resolveForumVideoAssetStates(localUrls, states);
 
   const visibleUrls = localUrls.filter((url) => {
     const normalized = normalizeForumVideoAssetState(rowMap.get(url));

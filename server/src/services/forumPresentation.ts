@@ -1,9 +1,22 @@
 import { buildUserPreview } from "../utils/publicUser";
 import { editableForumContentForViewer } from "./forumContentEditing";
-import { renderModeratedContent, renderModeratedContents, summarizeForumImageModerationForContent } from "./imageModeration";
+import {
+  collectForumImageUrls,
+  loadForumImageAssetStates,
+  renderModeratedContent,
+  renderModeratedContents,
+  summarizeForumImageModerationForContent,
+  type ForumImageAssetStates,
+} from "./imageModeration";
 import { sanitizeLostFoundTopicFields } from "./lostFoundPrivacy";
 import { isGlobalPinnedTopic } from "./siteSettings";
-import { renderModeratedVideoContent, summarizeForumVideoModerationForContent } from "./videoModeration";
+import {
+  collectForumVideoUrls,
+  loadForumVideoAssetStates,
+  renderModeratedVideoContent,
+  summarizeForumVideoModerationForContent,
+  type ForumVideoAssetStates,
+} from "./videoModeration";
 import { presentAnonymousAlias } from "./userTrust";
 import { presentQuestionMetadata } from "./questionBounty";
 import { isAuthorBlocked } from "./userBlock";
@@ -129,21 +142,27 @@ export async function decodeTopicForViewerWithImages(topic: any, viewer?: Viewer
 
 export async function decodeTopicsForViewerForList(topics: any[], viewer?: Viewer) {
   const decoded = topics.filter((topic) => !isAuthorBlocked(topic.authorId, viewer)).map((topic) => decodeTopicForViewer(topic, viewer));
-  const videoRendered = await Promise.all(decoded.map((topic) => renderModeratedVideoContent(String(topic.content || ""), viewer)));
+  const contents = decoded.map((topic) => String(topic.content || ""));
+  const videos = await loadForumVideoAssetStates(collectForumVideoUrls(contents));
+  const videoRendered = await Promise.all(contents.map((content) => renderModeratedVideoContent(content, viewer, videos)));
   const rendered = await renderModeratedContents(videoRendered, viewer);
   return decoded.map((topic, index) => ({ ...topic, content: rendered[index] }));
 }
 
-export async function decodeReplyForViewerWithImages(reply: any, viewer?: Viewer) {
+export async function decodeReplyForViewerWithImages(
+  reply: any,
+  viewer?: Viewer,
+  states?: { images?: ForumImageAssetStates; videos?: ForumVideoAssetStates },
+) {
   const decoded = decodeReplyForViewer(reply, viewer);
   const sourceContent = String(decoded.content || "");
   const editableContent = editableForumContentForViewer(sourceContent, reply.authorId, viewer);
   const [imageReview, videoReview, videoRenderedContent] = await Promise.all([
-    summarizeForumImageModerationForContent(sourceContent),
-    summarizeForumVideoModerationForContent(sourceContent),
-    renderModeratedVideoContent(sourceContent, viewer),
+    summarizeForumImageModerationForContent(sourceContent, states?.images),
+    summarizeForumVideoModerationForContent(sourceContent, states?.videos),
+    renderModeratedVideoContent(sourceContent, viewer, states?.videos),
   ]);
-  const content = await renderModeratedContent(videoRenderedContent, viewer);
+  const content = await renderModeratedContent(videoRenderedContent, viewer, states?.images);
   return {
     ...decoded,
     imageReview,
@@ -151,4 +170,14 @@ export async function decodeReplyForViewerWithImages(reply: any, viewer?: Viewer
     content,
     ...(editableContent !== undefined ? { editableContent } : {}),
   };
+}
+
+// 回复列表先一次性取回所有图片/视频的审核状态，再逐条按原逻辑渲染，输出与逐条调用完全一致。
+export async function decodeRepliesForViewerWithImages(replies: any[], viewer?: Viewer) {
+  const contents = replies.map((reply) => String(reply?.content || ""));
+  const [images, videos] = await Promise.all([
+    loadForumImageAssetStates(collectForumImageUrls(contents)),
+    loadForumVideoAssetStates(collectForumVideoUrls(contents)),
+  ]);
+  return Promise.all(replies.map((reply) => decodeReplyForViewerWithImages(reply, viewer, { images, videos })));
 }

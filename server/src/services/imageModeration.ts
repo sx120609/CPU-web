@@ -69,6 +69,13 @@ export type ForumImageModerationSummary = {
   approvedCount: number;
 };
 
+export type ForumImageAssetStates = Map<string, {
+  url: string;
+  status: string;
+  reason: string | null;
+  lastError: string | null;
+}>;
+
 export type ForumImageSweepSummary = {
   reviewEnabled: boolean;
   scannedTopics: number;
@@ -251,7 +258,42 @@ export async function decorateReplyForViewerWithImageModeration(reply: any, view
   };
 }
 
-export async function summarizeForumImageModerationForContent(content: string): Promise<ForumImageModerationSummary> {
+// 批量读取图片审核状态，缺失的记录会补登记；同一请求内的多条内容可共用这份结果。
+export async function loadForumImageAssetStates(urls: string[]): Promise<ForumImageAssetStates> {
+  const rowMap: ForumImageAssetStates = new Map();
+  if (!urls.length) return rowMap;
+  const rows = await prisma.forumImageAsset.findMany({
+    where: { url: { in: urls } },
+    select: { url: true, status: true, reason: true, lastError: true },
+  });
+  rows.forEach((row) => rowMap.set(row.url, row));
+  const missing = urls.filter((url) => !rowMap.has(url));
+  if (missing.length) {
+    const created = await Promise.all(missing.map((url) => registerForumImageAsset({ url })));
+    missing.forEach((url, index) => {
+      const row = created[index];
+      rowMap.set(url, {
+        url,
+        status: row?.status || (shouldRunImageReview() ? "pending" : "approved"),
+        reason: row?.reason || null,
+        lastError: row?.lastError || null,
+      });
+    });
+  }
+  return rowMap;
+}
+
+export function collectForumImageUrls(contents: string[]) {
+  return Array.from(new Set(contents.flatMap((content) => extractForumImageUrls(String(content || "")))));
+}
+
+function resolveForumImageAssetStates(urls: string[], states?: ForumImageAssetStates) {
+  // 预取结果覆盖全部地址时直接复用，否则按原逻辑单独查询。
+  if (states && urls.every((url) => states.has(url))) return Promise.resolve(states);
+  return loadForumImageAssetStates(urls);
+}
+
+export async function summarizeForumImageModerationForContent(content: string, states?: ForumImageAssetStates): Promise<ForumImageModerationSummary> {
   const urls = extractForumImageUrls(content);
   if (!urls.length) {
     return {
@@ -262,23 +304,7 @@ export async function summarizeForumImageModerationForContent(content: string): 
       approvedCount: 0,
     };
   }
-  const rows = await prisma.forumImageAsset.findMany({
-    where: { url: { in: urls } },
-    select: { url: true, status: true, reason: true, lastError: true },
-  });
-  const rowMap = new Map(rows.map((row) => [row.url, row]));
-  const missing = urls.filter((url) => !rowMap.has(url));
-  if (missing.length) {
-    const created = await Promise.all(missing.map((url) => registerForumImageAsset({ url })));
-    created.forEach((item, index) => {
-      rowMap.set(missing[index], {
-        url: missing[index],
-        status: item?.status || (shouldRunImageReview() ? "pending" : "approved"),
-        reason: item?.reason || null,
-        lastError: item?.lastError || null,
-      });
-    });
-  }
+  const rowMap = await resolveForumImageAssetStates(urls, states);
   let pendingCount = 0;
   let rejectedCount = 0;
   let approvedCount = 0;
@@ -415,11 +441,11 @@ export async function applyManualForumImageReview(input: {
   });
 }
 
-export async function renderModeratedContent(content: string, _viewer?: Viewer) {
-  return (await renderModeratedContents([content], _viewer))[0] || "";
+export async function renderModeratedContent(content: string, _viewer?: Viewer, states?: ForumImageAssetStates) {
+  return (await renderModeratedContents([content], _viewer, states))[0] || "";
 }
 
-export async function renderModeratedContents(contents: string[], _viewer?: Viewer) {
+export async function renderModeratedContents(contents: string[], _viewer?: Viewer, states?: ForumImageAssetStates) {
   const sourceContents = contents.map((content) => String(content || ""));
   const matchesByContent = sourceContents.map(collectImageMatches);
   const localUrls = Array.from(new Set(
@@ -428,24 +454,7 @@ export async function renderModeratedContents(contents: string[], _viewer?: View
   ));
   if (!localUrls.length) return Promise.all(sourceContents.map(rewriteUploadMediaAttributes));
 
-  const rows = await prisma.forumImageAsset.findMany({
-    where: { url: { in: localUrls } },
-    select: { url: true, status: true, reason: true, lastError: true },
-  });
-  const rowMap = new Map(rows.map((row) => [row.url, row]));
-  const missing = localUrls.filter((url) => !rowMap.has(url));
-  if (missing.length) {
-    const created = await Promise.all(missing.map((url) => registerForumImageAsset({ url })));
-    missing.forEach((url, index) => {
-      const row = created[index];
-      rowMap.set(url, {
-        url,
-        status: row?.status || (shouldRunImageReview() ? "pending" : "approved"),
-        reason: row?.reason || null,
-        lastError: row?.lastError || null,
-      } as any);
-    });
-  }
+  const rowMap = await resolveForumImageAssetStates(localUrls, states);
 
   const visibleUrls = localUrls.filter((url) => {
     const normalized = normalizeForumImageAssetState(rowMap.get(url));
