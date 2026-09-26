@@ -45,7 +45,6 @@ import { useRouter } from "vue-router";
 import { Search, Upload } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import dayjs from "dayjs";
-import * as XLSX from "xlsx";
 import { lostFoundApi, type LostFoundInput, type LostFoundItem, type LostFoundStatus } from "@/api/lostFound";
 
 const router = useRouter();
@@ -88,6 +87,8 @@ async function readImportFile(event: Event) {
   if (!file) return;
   if (file.size > 5 * 1024 * 1024) return ElMessage.warning("表格文件不能超过 5MB");
   try {
+    // xlsx 体积较大，只在真正导入表格时加载。
+    const XLSX = await import("xlsx");
     const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true });
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
     if (!sheet) throw new Error("未找到工作表");

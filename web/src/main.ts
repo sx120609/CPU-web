@@ -21,16 +21,16 @@ import { installOverlayViewport } from "./utils/overlayViewport";
 import { authApi } from "./api/auth";
 import { hideWechatToolbarBestEffort, isWechatBrowser } from "./utils/wechatBridge";
 import { buildEntryModuleSignature } from "./utils/entryModuleSignature";
+import { pruneForumViewCache } from "./utils/forumCache";
+import { sweepPageViewCaches } from "./utils/viewCache";
 
 import "element-plus/dist/index.css";
 import "element-plus/theme-chalk/dark/css-vars.css";
-import "photoswipe/style.css";
 import "@fontsource-variable/inter/standard.css";
 import "@fontsource/jetbrains-mono";
 import "./styles/harmonyos-sans.css";
 import "./styles/index.scss";
 import "./styles/buttons.scss";
-import "./styles/image-viewer.scss";
 
 const SCHEDULE_OFFLINE_WARMUP_MESSAGE = "cpu-schedule-offline-warmup";
 const SCHEDULE_OFFLINE_STATIC_URLS = [
@@ -372,7 +372,8 @@ function installJwxtSessionBootstrapTriggers() {
 }
 
 function scheduleEducationViewPreload() {
-  // 教务页组件较大；首屏挂载后的下一帧立即预取，避免用户点击底栏后才开始下载解析。
+  // 教务页组件较大；首屏路由就绪后的下一帧立即预取，避免用户点击底栏后才开始下载解析。
+  // 各页面按路由单独分包，需等当前页面的 chunk 加载完成再预取，避免与首屏抢带宽。
   window.requestAnimationFrame(() => {
     void preloadEducationViews();
   });
@@ -386,6 +387,22 @@ function scheduleEducationViewPreload() {
     requestIdleCallback(run, { timeout: 1000 });
   } else {
     globalThis.setTimeout(run, 200);
+  }
+}
+
+function scheduleViewCacheSweep() {
+  // 论坛 / 页面视图缓存只在再次读取时才淘汰；启动后空闲时统一清掉过期条目，避免挤占课表离线缓存的配额。
+  const run = () => {
+    pruneForumViewCache();
+    sweepPageViewCaches();
+  };
+  const requestIdleCallback = (window as Window & {
+    requestIdleCallback?: (callback: () => void, options?: { timeout?: number }) => number;
+  }).requestIdleCallback;
+  if (typeof requestIdleCallback === "function") {
+    requestIdleCallback(run, { timeout: 10_000 });
+  } else {
+    globalThis.setTimeout(run, 3000);
   }
 }
 
@@ -443,7 +460,7 @@ useSiteStore().fetch();
 app.use(router);
 app.mount("#app");
 hideWechatToolbarBestEffort();
-scheduleEducationViewPreload();
+scheduleViewCacheSweep();
 
 router.afterEach((to) => {
   hideWechatToolbarBestEffort();
@@ -458,6 +475,7 @@ router.isReady().finally(() => {
     void serviceWorkerReady.then((registration) => warmScheduleOfflineCache(registration));
   }
   if (isEducationRoute()) scheduleJwxtSessionBootstrap({ force: true, immediate: true });
+  scheduleEducationViewPreload();
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       document.body.dataset.cpuAppReady = "1";

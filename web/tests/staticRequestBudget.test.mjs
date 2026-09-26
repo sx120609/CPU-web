@@ -6,8 +6,12 @@ import path from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { runInNewContext } from 'node:vm'
+import { gzipSync } from 'node:zlib'
 
 const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+// 首屏由 index.html 直接引用的 JS（入口 + modulepreload）与 CSS 的 gzip 总量。
+// 2026-09 按路由拆包后实测约 245.5 KiB，预留约 15% 余量；超出时先检查是否有页面或大依赖被拉进了入口。
+const INITIAL_GZIP_BUDGET_BYTES = 283 * 1024
 
 test('public image URLs stay on the page origin when built modules move to a CDN', async (t) => {
   const { build, loadConfigFromFile } = await import('vite')
@@ -152,4 +156,22 @@ test('production output keeps CSS assets relative and the initial bundle request
   for (const name of readdirSync(path.join(distRoot, 'assets')).filter((value) => value.endsWith('.css'))) {
     assert.doesNotMatch(readFileSync(path.join(distRoot, 'assets', name), 'utf8'), /url\(\/?assets\//u, name)
   }
+})
+
+test('production output keeps the initial JS and CSS within the gzip byte budget', () => {
+  const distRoot = path.join(webRoot, 'dist')
+  const indexHtml = readFileSync(path.join(distRoot, 'index.html'), 'utf8')
+  const initialFiles = [...indexHtml.matchAll(
+    /<(?:script\b[^>]*\bsrc|link\b[^>]*\brel="(?:modulepreload|stylesheet)"[^>]*\bhref)="\.\/(assets\/[^"]+\.(?:js|css))"/gu,
+  )].map((match) => match[1])
+  assert.ok(initialFiles.some((file) => file.endsWith('.js')), 'expected an entry script in index.html')
+  assert.ok(initialFiles.some((file) => file.endsWith('.css')), 'expected initial stylesheets in index.html')
+
+  const sizes = initialFiles.map((file) => [file, gzipSync(readFileSync(path.join(distRoot, file))).length])
+  const total = sizes.reduce((sum, [, size]) => sum + size, 0)
+  assert.ok(
+    total <= INITIAL_GZIP_BUDGET_BYTES,
+    `initial JS+CSS is ${(total / 1024).toFixed(1)} KiB gzip, budget ${(INITIAL_GZIP_BUDGET_BYTES / 1024).toFixed(1)} KiB: `
+      + sizes.map(([file, size]) => `${file} ${(size / 1024).toFixed(1)} KiB`).join(', '),
+  )
 })

@@ -1,5 +1,8 @@
 import PhotoSwipe from "photoswipe";
 import type { SlideData } from "photoswipe";
+// 查看器样式只作用于 PhotoSwipe 界面，随本模块按需加载；自定义样式须排在 PhotoSwipe 默认样式之后。
+import "photoswipe/style.css";
+import "@/styles/image-viewer.scss";
 
 export type ImageViewerItem = {
   src: string;

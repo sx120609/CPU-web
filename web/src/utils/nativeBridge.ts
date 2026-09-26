@@ -1,5 +1,3 @@
-import { openImageGallery } from "@/utils/imageViewer";
-
 export type NativeAppBridge = {
   getVersionCode?: () => number;
   getVersionName?: () => string;
@@ -124,12 +122,16 @@ function showIosImagePreview(items: NativeImagePreviewItem[], startIndex: number
     .filter((item) => item.src);
   if (!images.length) return false;
 
-  return openImageGallery(images, startIndex, {
-    className: "cpu-native-image-viewer",
-    onDownload: async ({ src, fileName }) => {
-      await shareIosImageUrl(src, fileName);
-    },
-  });
+  // PhotoSwipe 只在 iOS 网页预览时用到；按需加载，避免把它打进所有页面的入口包。
+  void import("@/utils/imageViewer").then(({ openImageGallery }) => {
+    openImageGallery(images, startIndex, {
+      className: "cpu-native-image-viewer",
+      onDownload: async ({ src, fileName }) => {
+        await shareIosImageUrl(src, fileName);
+      },
+    });
+  }).catch(() => undefined);
+  return true;
 }
 
 function isAndroidNativePreviewFallback() {

@@ -155,7 +155,13 @@ import DOMPurify from "dompurify";
 import { uploadApi } from "@/api/topic";
 import { normalizeImageUploadError, prepareForumImageUpload } from "@/utils/imageUpload";
 import { isAndroidNativeApp } from "@/utils/clientInfo";
-import { normalizeSafeBlankTargets, renderMarkdown } from "@/utils/markdown";
+import {
+  ensureMarkdownMathStyles,
+  loadMarkdownMath,
+  markdownNeedsMathLoading,
+  normalizeSafeBlankTargets,
+  renderMarkdown,
+} from "@/utils/markdown";
 type Alignment = "left" | "center" | "right";
 type MobileToolbarKey = "heading" | "format" | "tools" | "align" | "image";
 
@@ -223,6 +229,7 @@ let pendingDraftKey = "";
 let pendingDraftContent = "";
 let uploadCleanupTimer = 0;
 let editorDisposed = false;
+let hydrateSeq = 0;
 let mobileViewportQuery: MediaQueryList | null = null;
 let topbarResizeObserver: ResizeObserver | null = null;
 
@@ -426,9 +433,20 @@ watch(() => props.draftKey, () => {
   hydrateEditor((props.restoreDraft ? readDraft() : "") || props.modelValue);
 });
 
-function hydrateEditor(value: string) {
+function hydrateEditor(value: string, waitForMath = true) {
   if (!editorRef.value) return;
-  editorRef.value.innerHTML = contentLooksLikeHtml(value) ? sanitizeEditorHtml(value) : renderMarkdown(value);
+  const seq = ++hydrateSeq;
+  const isHtml = contentLooksLikeHtml(value);
+  if (waitForMath && !isHtml && markdownNeedsMathLoading(value)) {
+    // Markdown 转换结果会回写到内容里，公式必须由 KaTeX 排版；先等按需加载完成再转换。
+    void loadMarkdownMath().then(() => {
+      if (seq === hydrateSeq && !editorDisposed) hydrateEditor(value, false);
+    });
+    return;
+  }
+  const html = isHtml ? sanitizeEditorHtml(value) : renderMarkdown(value);
+  if (isHtml) ensureMarkdownMathStyles(html);
+  editorRef.value.innerHTML = html;
   normalizeEditorStructure(editorRef.value);
   clearSelectedImage();
   syncEditorContent();

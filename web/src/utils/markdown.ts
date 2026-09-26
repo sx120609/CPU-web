@@ -1,8 +1,40 @@
+import { shallowRef } from "vue";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
-import katex from "katex";
-import "katex/dist/katex.min.css";
 import { normalizeAdjacentStrongDelimiters, normalizeBareUrlBoundaries } from "./markdownNormalize";
+
+type KatexRenderer = typeof import("katex").default;
+
+// KaTeX 及其样式体积较大，只在内容真正出现公式时才按需加载。
+// katexReady 是响应式标记：公式渲染时读取它，加载完成后依赖该结果的 computed / 模板会自动重新渲染。
+let katex: KatexRenderer | null = null;
+const katexReady = shallowRef(false);
+let katexLoading: Promise<boolean> | null = null;
+
+export function loadMarkdownMath(): Promise<boolean> {
+  if (katex) return Promise.resolve(true);
+  katexLoading ??= import("./markdownMath")
+    .then((module) => {
+      katex = module.default;
+      katexReady.value = true;
+      return true;
+    })
+    .catch(() => {
+      katexLoading = null;
+      return false;
+    });
+  return katexLoading;
+}
+
+/** 转换结果是否仍依赖尚未加载的 KaTeX；需要一次拿到最终 HTML 的调用方应先等待 loadMarkdownMath()。 */
+export function markdownNeedsMathLoading(md: string) {
+  return !katex && prepareMarkdown(md).includes("$");
+}
+
+/** 已保存的 HTML 可能带有 KaTeX 排版结果，显示前需要加载 KaTeX 样式。 */
+export function ensureMarkdownMathStyles(html: string) {
+  if (!katex && /\bclass="[^"]*\bkatex\b/.test(html)) void loadMarkdownMath();
+}
 
 marked.setOptions({ breaks: true, gfm: true });
 marked.use({
@@ -18,8 +50,8 @@ marked.use({
         if (!match) return undefined;
         return { type: "mathBlock", raw: match[0], text: match[1].trim() };
       },
-      renderer(token: { text: string }) {
-        return renderKatex(token.text, true);
+      renderer(token: { text: string; raw: string }) {
+        return renderKatex(token.text, true, token.raw);
       },
     },
     {
@@ -33,16 +65,19 @@ marked.use({
         if (!match) return undefined;
         return { type: "mathInline", raw: match[0], text: match[1].trim() };
       },
-      renderer(token: { text: string }) {
-        return renderKatex(token.text, false);
+      renderer(token: { text: string; raw: string }) {
+        return renderKatex(token.text, false, token.raw);
       },
     },
   ],
 } as any);
 
+function prepareMarkdown(md: string) {
+  return autoFormatBareFormulaLines(normalizeAdjacentStrongDelimiters(normalizeBareUrlBoundaries(md)));
+}
+
 export function renderMarkdown(md: string): string {
-  const normalizedMarkdown = normalizeAdjacentStrongDelimiters(normalizeBareUrlBoundaries(md));
-  const raw = marked.parse(autoFormatBareFormulaLines(normalizedMarkdown), { async: false }) as string;
+  const raw = marked.parse(prepareMarkdown(md), { async: false }) as string;
   const sanitized = DOMPurify.sanitize(raw, {
     ADD_ATTR: [
       "class",
@@ -67,10 +102,17 @@ export function renderMarkdown(md: string): string {
     // 允许学校公告中常见的表格相关标签
     ADD_TAGS: ["table", "thead", "tbody", "tfoot", "tr", "td", "th", "caption", "colgroup", "col", "sub", "sup", "video", "source"],
   });
+  ensureMarkdownMathStyles(sanitized);
   return normalizeRenderedMarkup(sanitized);
 }
 
-function renderKatex(expression: string, displayMode: boolean) {
+function renderKatex(expression: string, displayMode: boolean, source: string) {
+  if (!katexReady.value || !katex) {
+    // KaTeX 加载完成前先显示公式原文，加载后自动替换为排版结果。
+    void loadMarkdownMath();
+    const text = escapeHtml(source.trim());
+    return displayMode ? `<p>${text}</p>` : text;
+  }
   return katex.renderToString(expression, {
     displayMode,
     throwOnError: false,
@@ -78,6 +120,14 @@ function renderKatex(expression: string, displayMode: boolean) {
     trust: false,
     output: "htmlAndMathml",
   });
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 function autoFormatBareFormulaLines(markdown: string) {
