@@ -532,7 +532,7 @@ onMounted(async () => {
   checkMobile()
   window.addEventListener('resize', checkMobile)
 
-  await fetchSongCommentCounts(displayedSongs.value.map((song) => song.id))
+  await fetchSongCommentCounts(paginatedSongs.value.map((song) => song.id))
   startCommentCountPolling()
 })
 
@@ -1032,8 +1032,10 @@ const fetchSongCommentCounts = async (songIds = []) => {
 const startCommentCountPolling = () => {
   if (commentCountPollTimer) return
 
+  // 只刷新当前页展示的歌曲；页面在后台时跳过
   commentCountPollTimer = setInterval(() => {
-    fetchSongCommentCounts(displayedSongs.value.map((song) => song.id))
+    if (document.hidden) return
+    fetchSongCommentCounts(paginatedSongs.value.map((song) => song.id))
   }, 15000)
 }
 
@@ -1078,6 +1080,7 @@ const startCommentsDialogPolling = (songId) => {
   }
 
   commentsDialogPollTimer = setInterval(() => {
+    if (document.hidden) return
     if (songCommentsDialog.value.show && songCommentsDialog.value.song?.id === songId) {
       loadSongComments(songId, true)
       fetchSongCommentCounts([songId])
@@ -1227,11 +1230,12 @@ const deleteSongComment = async (comment) => {
   }
 }
 
+// 只为当前页实际渲染的歌曲拉取评论数（翻页或筛选变化时刷新）
 watch(
-  () => displayedSongs.value.map((song) => song.id).join(','),
+  () => paginatedSongs.value.map((song) => song.id).join(','),
   (idKey) => {
     if (!idKey) return
-    fetchSongCommentCounts(displayedSongs.value.map((song) => song.id))
+    fetchSongCommentCounts(paginatedSongs.value.map((song) => song.id))
   },
   { immediate: true }
 )

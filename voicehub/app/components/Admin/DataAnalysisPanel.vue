@@ -600,7 +600,7 @@
 </template>
 
 <script setup>
-import { onMounted, ref, computed } from 'vue'
+import { onMounted, onUnmounted, ref, computed } from 'vue'
 import {
   TrendingUp,
   Users,
@@ -1002,6 +1002,10 @@ const loadChartData = async () => {
   ])
 }
 
+// 实时数据定时刷新；组件卸载后必须停止
+let realtimeStatsTimer = null
+let isUnmounted = false
+
 // 组件挂载时初始化
 onMounted(async () => {
   try {
@@ -1019,16 +1023,26 @@ onMounted(async () => {
 
     hasInitialData.value = true
 
-    // 设置定时刷新实时数据（每30秒）
-    setInterval(() => {
-      loadRealtimeStats()
-    }, 30000)
+    // 设置定时刷新实时数据（每30秒）；初始化期间已切走则不再启动
+    if (!isUnmounted) {
+      realtimeStatsTimer = setInterval(() => {
+        loadRealtimeStats()
+      }, 30000)
+    }
   } catch (err) {
     console.error('初始化数据分析面板失败:', err)
     error.value = '初始化失败，请刷新页面重试'
     if (window.$showNotification) {
       window.$showNotification('数据初始化失败', 'error')
     }
+  }
+})
+
+onUnmounted(() => {
+  isUnmounted = true
+  if (realtimeStatsTimer) {
+    clearInterval(realtimeStatsTimer)
+    realtimeStatsTimer = null
   }
 })
 

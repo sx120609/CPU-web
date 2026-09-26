@@ -505,7 +505,6 @@ import {
   Trash2,
   Clock
 } from 'lucide-vue-next'
-import { createMp3Encoder } from 'wasm-media-encoders'
 
 const props = defineProps({
   show: {
@@ -1039,7 +1038,8 @@ const encodeToMp3 = async (buffer) => {
   try {
     processingStatus.value = '正在初始化 MP3 编码器...'
     
-    // 创建 WASM 编码器
+    // 创建 WASM 编码器（按需加载，避免把内联 wasm 打进后台首屏代码）
+    const { createMp3Encoder } = await import('~/utils/audio/mp3Encoder')
     const encoder = await createMp3Encoder()
     
     // 获取实际声道数
