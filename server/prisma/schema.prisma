@@ -913,6 +913,34 @@ model IosClientDiagnostic {
   @@index([appVersion])
 }
 
+// Windows 桌面端安装器的匿名安装结果：失败，以及需要重试或管理员权限才成功的安装。
+// 不记录账号、IP 或安装 ID；message / fileName 入库前已去除用户目录路径。保留 180 天。
+model DesktopInstallReport {
+  id              String   @id @default(cuid())
+  appVersion      String
+  previousVersion String?
+  osRelease       String
+  arch            String
+  mode            String
+  elevated        Boolean  @default(false)
+  // failed | retried | elevated
+  outcome         String
+  stage           String
+  errorCode       String?
+  fileName        String?
+  message         String?
+  // JSON 字符串数组：检测到的安全软件名称
+  antivirus       String   @default("[]")
+  retries         Int      @default(0)
+  durationMs      Int      @default(0)
+  createdAt       DateTime @default(now())
+
+  @@index([outcome, createdAt])
+  @@index([createdAt])
+  @@index([errorCode])
+  @@index([appVersion])
+}
+
 // iOS Scriptable 小组件只读 token。
 // 注意：这里保存的是服务端教务会话 token 和最近一次成功的小组件课表缓存，不保存学校账号密码。
 model ScheduleWidgetToken {

@@ -304,7 +304,7 @@ function bump(map: Map<string, number>, key: string, by = 1) {
   map.set(key, (map.get(key) ?? 0) + by);
 }
 
-function compareVersions(a: string, b: string) {
+export function compareVersions(a: string, b: string) {
   const pa = a.split(/[.\s()]+/).filter(Boolean).map((part) => Number(part) || 0);
   const pb = b.split(/[.\s()]+/).filter(Boolean).map((part) => Number(part) || 0);
   for (let i = 0; i < Math.max(pa.length, pb.length); i += 1) {
@@ -399,7 +399,7 @@ export function summarizeIosClientInstalls(rows: IosClientInstallRow[]) {
   };
 }
 
-function dateKeys(days: number, now: Date) {
+export function dateKeys(days: number, now: Date) {
   return Array.from({ length: days }, (_, index) => getChinaDayRange(new Date(now.getTime() - (days - 1 - index) * DAY_MS)).dateKey);
 }
 

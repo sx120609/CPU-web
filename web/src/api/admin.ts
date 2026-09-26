@@ -337,6 +337,45 @@ export type IosClientStats = {
   }[];
 };
 
+export type DesktopInstallOutcome = "failed" | "retried" | "elevated";
+
+/** `failed` is the subset of `count` the installer could not recover from. */
+export type DesktopInstallGroupCount = { key: string; count: number; failed: number };
+
+export type DesktopInstallReportItem = {
+  id: string;
+  appVersion: string;
+  previousVersion: string | null;
+  osRelease: string;
+  windows: string;
+  arch: "x64" | "arm64" | "ia32";
+  mode: "install" | "upgrade" | "auto-update";
+  elevated: boolean;
+  outcome: DesktopInstallOutcome;
+  stage: string;
+  errorCode: string | null;
+  fileName: string | null;
+  message: string | null;
+  antivirus: string[];
+  retries: number;
+  durationMs: number;
+  createdAt: string;
+};
+
+export type DesktopInstallReports = {
+  range: IosClientStatsRange;
+  totals: { allTime: number };
+  reports: number;
+  byOutcome: Record<DesktopInstallOutcome, number>;
+  byErrorCode: DesktopInstallGroupCount[];
+  byStage: DesktopInstallGroupCount[];
+  byAntivirus: DesktopInstallGroupCount[];
+  byAppVersion: DesktopInstallGroupCount[];
+  byWindows: DesktopInstallGroupCount[];
+  trend: { dates: string[]; failed: number[]; recovered: number[] };
+  recent: DesktopInstallReportItem[];
+};
+
 export type CloudUsageRange = "today" | "7d" | "30d";
 
 export type CloudUsagePoint = {
@@ -1180,6 +1219,8 @@ export const adminApi = {
     request.get<IosClientStats>("/admin/ios-clients", { range }, { cacheTtlMs: 0, ...options }),
   iosClientDiagnostic: (id: string) =>
     request.get<IosClientDiagnosticDetail>(`/admin/ios-clients/diagnostics/${encodeURIComponent(id)}`, undefined, { cacheTtlMs: 0 }),
+  desktopInstallReports: (range: IosClientStatsRange, options?: RequestOptions) =>
+    request.get<DesktopInstallReports>("/admin/desktop-install-reports", { range }, { cacheTtlMs: 0, ...options }),
   cloudUsage: (range: CloudUsageRange, refresh = false, options?: RequestOptions) =>
     request.get<CloudUsageSummary>("/admin/cloud-usage", { range, refresh: refresh ? "1" : "0" }, { timeout: 120000, cacheTtlMs: 0, ...options }),
   updateMediaStorageConfig: (patch: {
