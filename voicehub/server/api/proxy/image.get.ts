@@ -1,31 +1,48 @@
+import {
+  OutboundRequestError,
+  assertSafeOutboundUrl,
+  safeFetch,
+  type SafeFetchResponse
+} from '~~/server/utils/safe-fetch'
+
+// 图片大小上限，超出即中止读取
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024
+
 // 重试函数
-const fetchWithRetry = async (url: string, options: any, maxRetries = 3): Promise<Response> => {
+const fetchWithRetry = async (
+  url: string,
+  options: any,
+  maxRetries = 3
+): Promise<SafeFetchResponse> => {
   let lastError: Error
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       console.log(`尝试获取图片 (${attempt}/${maxRetries}): ${url}`)
 
-      // 创建AbortController用于超时控制
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 10000) // 10秒超时
-
-      const response = await fetch(url, {
+      // 10秒内需收到响应头；目标地址与每次重定向都会校验，禁止访问内网
+      const response = await safeFetch(url, {
         ...options,
-        signal: controller.signal
+        timeoutMs: 10000,
+        bodyTimeoutMs: 30000,
+        maxBytes: MAX_IMAGE_BYTES
       })
-
-      clearTimeout(timeoutId)
 
       if (response.ok) {
         console.log(`图片获取成功 (尝试 ${attempt})`)
         return response
       } else {
+        response.discard()
         throw new Error(`HTTP ${response.status}: ${response.statusText}`)
       }
     } catch (error: any) {
       lastError = error
       console.warn(`图片获取失败 (尝试 ${attempt}/${maxRetries}):`, error.message)
+
+      // 地址被拒绝属于确定性错误，无需重试
+      if (error instanceof OutboundRequestError) {
+        throw error
+      }
 
       // 如果不是最后一次尝试，等待一段时间后重试
       if (attempt < maxRetries) {
@@ -52,11 +69,8 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    // 验证URL是否为有效的图片URL
-    const url = new URL(imageUrl)
-    if (!url.protocol.startsWith('http')) {
-      throw new Error('Invalid protocol')
-    }
+    // 验证URL是否为有效的图片URL（仅 http/https，拒绝内网地址）
+    const url = assertSafeOutboundUrl(imageUrl)
 
     // 确定 Referer
     let referer = url.origin
@@ -86,11 +100,12 @@ export default defineEventHandler(async (event) => {
     // 检查内容类型
     const contentType = response.headers.get('content-type')
     if (!contentType || !contentType.startsWith('image/')) {
+      response.discard()
       throw new Error('Response is not an image')
     }
 
-    // 获取图片数据
-    const imageBuffer = await response.arrayBuffer()
+    // 获取图片数据（超过大小上限会中止）
+    const imageBuffer = await response.buffer()
 
     // 设置响应头
     setHeader(event, 'Content-Type', contentType)
@@ -108,6 +123,14 @@ export default defineEventHandler(async (event) => {
       code: error.code,
       cause: error.cause
     })
+
+    // 地址不合法、指向内网或图片过大
+    if (error instanceof OutboundRequestError) {
+      throw createError({
+        statusCode: error.statusCode,
+        statusMessage: error.message
+      })
+    }
 
     // 提供更详细的错误信息
     let errorMessage = 'Failed to fetch image'

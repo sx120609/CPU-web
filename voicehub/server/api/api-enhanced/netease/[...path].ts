@@ -2,10 +2,44 @@ const neteaseEnhancedApiPromise = import('@neteasecloudmusicapienhanced/api').th
   return (mod.default || {}) as Record<string, (params: Record<string, any>) => Promise<any>>
 })
 
+// 前端（音源检索、详情、播放地址、歌词、播客）实际调用的只读接口，访客可用
+const PUBLIC_ACTIONS = new Set([
+  'cloudsearch',
+  'search',
+  'song_detail',
+  'song_url_v1',
+  'lyric',
+  'lyric_new',
+  'lyric_ttml',
+  'dj_program'
+])
+
+// 涉及网易云账号或登录凭证的接口（扫码登录、歌单、最近播放、云盘上传），仅限已登录本站的用户
+const ACCOUNT_ACTIONS = new Set([
+  'login_qr_key',
+  'login_qr_create',
+  'login_qr_check',
+  'login_status',
+  'user_playlist',
+  'playlist_create',
+  'playlist_delete',
+  'playlist_tracks',
+  'playlist_track_all',
+  'record_recent_song',
+  'cloud_upload_token',
+  'cloud_upload_complete'
+])
+
+// 控制出站网络行为的参数（代理、伪造来源 IP、改写请求域名、解锁模块路径）不允许调用方指定
+const BLOCKED_PARAMS = new Set(['proxy', 'realip', 'randomcnip', 'ip', 'domain', 'source'])
+
 const normalizeParams = (input: Record<string, any>) => {
   const output: Record<string, any> = {}
   for (const [key, value] of Object.entries(input || {})) {
     if (value === undefined || value === null || value === '') {
+      continue
+    }
+    if (BLOCKED_PARAMS.has(key.toLowerCase())) {
       continue
     }
     output[key] = Array.isArray(value) ? value[value.length - 1] : value
@@ -25,8 +59,24 @@ export default defineEventHandler(async (event) => {
   }
 
   const action = endpointPath.replace(/\//g, '_').replace(/-/g, '_')
+  const requiresLogin = ACCOUNT_ACTIONS.has(action)
+
+  if (!requiresLogin && !PUBLIC_ACTIONS.has(action)) {
+    throw createError({
+      statusCode: 404,
+      message: `未找到接口: ${endpointPath}`
+    })
+  }
+
+  if (requiresLogin && !event.context.user) {
+    throw createError({
+      statusCode: 401,
+      message: '请先登录药大拾间'
+    })
+  }
+
   const api = await neteaseEnhancedApiPromise
-  const handler = api[action]
+  const handler = Object.prototype.hasOwnProperty.call(api, action) ? api[action] : undefined
 
   if (typeof handler !== 'function') {
     throw createError({

@@ -1,3 +1,6 @@
+import { Readable } from 'node:stream'
+import { safeFetch, type SafeFetchResponse } from '~~/server/utils/safe-fetch'
+
 const ALLOWED_HOST_PATTERNS = [
   /\.qq\.com$/i,
   /\.music\.126\.net$/i,
@@ -31,12 +34,13 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 403, message: '目标域名不在允许列表' })
   }
 
-  let upstream: Response
+  // 重定向目标可能不在允许列表内（CDN 跳转），但每一跳都会校验不得指向内网地址
+  let upstream: SafeFetchResponse
   try {
-    upstream = await fetch(target.toString(), {
+    upstream = await safeFetch(target, {
       method: 'GET',
-      redirect: 'follow',
-      signal: AbortSignal.timeout(20000),
+      timeoutMs: 20000,
+      maxBytes: 0, // 流式转发，不在内存中缓存
       headers: {
         'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -47,7 +51,8 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 502, message: '上游请求失败' })
   }
 
-  if (!upstream.ok || !upstream.body) {
+  if (!upstream.ok) {
+    upstream.discard()
     throw createError({ statusCode: 502, message: '上游服务不可用' })
   }
 
@@ -59,7 +64,7 @@ export default defineEventHandler(async (event) => {
   if (contentLength) headers.set('content-length', contentLength)
   headers.set('cache-control', 'no-store')
 
-  return new Response(upstream.body, {
+  return new Response(Readable.toWeb(upstream.body) as ReadableStream, {
     status: 200,
     headers
   })

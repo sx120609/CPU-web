@@ -1,3 +1,5 @@
+import { safeFetch, type SafeFetchResponse } from '~~/server/utils/safe-fetch'
+
 const SOURCE_BASE_URL_MAP: Record<string, string> = {
   'netease-backup-1': 'https://api.voicehub.lao-shui.top:443',
   'vkeys-v3': 'https://api.vkeys.cn/music',
@@ -40,12 +42,12 @@ export default defineEventHandler(async (event) => {
 
   const targetUrl = `${baseUrl}${path}${q ? `?${q}` : ''}`
 
-  let upstream: Response
+  // 重定向逐跳校验并限制响应大小，避免被上游跳转到内网或拖垮内存
+  let upstream: SafeFetchResponse
   try {
-    upstream = await fetch(targetUrl, {
+    upstream = await safeFetch(targetUrl, {
       method: 'GET',
-      redirect: 'follow',
-      signal: AbortSignal.timeout(timeout),
+      timeoutMs: timeout,
       headers: {
         'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -60,6 +62,7 @@ export default defineEventHandler(async (event) => {
   }
 
   if (!upstream.ok) {
+    upstream.discard()
     throw createError({
       statusCode: 502,
       message: '上游服务不可用'
@@ -67,14 +70,24 @@ export default defineEventHandler(async (event) => {
   }
 
   if (responseType === 'resolve') {
+    upstream.discard()
     return { url: upstream.url, status: upstream.status }
   }
 
-  if (responseType === 'text') {
-    return await upstream.text()
+  let rawText: string
+  try {
+    rawText = await upstream.text()
+  } catch {
+    throw createError({
+      statusCode: 502,
+      message: '上游请求失败'
+    })
   }
 
-  const rawText = await upstream.text()
+  if (responseType === 'text') {
+    return rawText
+  }
+
   try {
     return JSON.parse(rawText)
   } catch {
