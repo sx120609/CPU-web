@@ -108,7 +108,7 @@ CPU-web/
 
 ### 环境要求
 
-- Node.js `>= 18`
+- Node.js `>= 22`
 - npm `>= 9`
 - PostgreSQL `>= 14`
 - 建议本地和生产统一使用 Node 22+；部署脚本会按 Node 22 处理
@@ -116,14 +116,10 @@ CPU-web/
 ### 1. 安装依赖
 
 ```bash
-npm install
-```
-
-根目录 `postinstall` 会自动安装 `server/`、`web/` 和 `voicehub/` 的依赖；如需手动执行：
-
-```bash
 npm run install:all
 ```
+
+该命令按各目录已提交的 lockfile 依次对根目录、`server/`、`web/` 和 `voicehub/` 执行 `npm ci`，不会改写 lockfile。根目录的 `npm install` 只安装根目录工具，不再自动安装子项目。
 
 ### 2. 创建后端环境变量
 
@@ -408,7 +404,9 @@ Content-Type: application/json
 
 | 命令 | 说明 |
 |---|---|
-| `npm run install:all` | 安装根目录、后端和前端依赖 |
+| `npm run install:all` | 按 lockfile（`npm ci`）安装根目录、Server、Web 与 VoiceHub 依赖 |
+| `npm test` | 运行 `server/tests` 与 `web/tests` 的 Node.js 测试（`tools/run-node-tests.mjs`，可追加文件名过滤；与 CI 一致使用 Node.js 24） |
+| `npm run harmony:generate` | 重新生成 HarmonyOS 课表桥接与原生主题配色文件 |
 | `npm run dev` | 同时启动前后端 |
 | `npm run dev:server` | 只启动后端 |
 | `npm run dev:web` | 只启动前端 |
@@ -663,7 +661,7 @@ chmod +x deploy.sh
 
 低配生产机应先执行一次 `./deploy.sh swap-init 6`。该命令只使用固定路径 `/swapfile-cpu-web`，创建并持久启用 6 GiB Swap，同时设置 `vm.swappiness=10`；已启用时可重复执行。所有本机 `npm ci` 与生产构建都会经过资源护栏：低 CPU/IO 优先级、默认 2304 MiB Node heap、2 GiB 磁盘余量检查，并在低内存机器没有至少 2 GiB Swap 时拒绝冒险编译。可用 `./deploy.sh build-status` 查看实时资源状态。
 
-GitHub Actions 是正式生产制品的权威构建来源，本地构建只用于按需开发验证，不是强制推送门禁或正式制品；详细门禁与完成判定见 [`docs/production-requirements.md`](docs/production-requirements.md)。`main` 的每次推送（包括仅修改文档或工作流）都会触发 `Linux deployment artifact` GitHub Actions。工作流在 Ubuntu/Node 24 上构建 `server/dist`、`web/dist` 与 `voicehub/.output`，生成绑定完整提交 SHA 的清单和三个 SHA-256 校验值，同时上传短期 Actions 审计制品、强制更新仅含当前制品的 `deploy-artifacts` Git 传输分支，并更新同名预发布资产用于审计和手动取回。`./deploy.sh update` 默认使用 `DEPLOY_BUILD_MODE=auto`：只经仓库当前 `origin`（可为已配置的 GitHub 镜像）取得制品，等待并验证它与当前 `HEAD` 完全匹配后再暂存、原子发布和健康检查；CI 制品不可用时才回退到受保护的本机编译。只有显式设置 `DEPLOY_ARTIFACT_URL` 时才会启用额外的 HTTP 下载备用源，默认不会绕过 `origin` 直连 GitHub。正式生产发布应设置 `DEPLOY_BUILD_MODE=ci`，在精确 SHA 的 GitHub 制品缺失时失败关闭，禁止回退到生产机编译；设置为 `local` 仅用于明确授权的应急场景。`./deploy.sh artifact-check [完整提交 SHA]` 只下载、校验并缓存制品，不发布文件。
+GitHub Actions 是正式生产制品的权威构建来源，本地构建只用于按需开发验证，不是强制推送门禁或正式制品；详细门禁与完成判定见 [`docs/production-requirements.md`](docs/production-requirements.md)。`main` 的每次推送（包括仅修改文档或工作流）都会触发 `Linux deployment artifact` GitHub Actions。工作流在 Ubuntu/Node 24 上构建 `server/dist`、`web/dist` 与 `voicehub/.output`，生成绑定完整提交 SHA 的清单和三个 SHA-256 校验值，并上传短期 Actions 审计制品 `cpu-web-linux-<SHA>`；每个 SHA 的构建都会完整运行，不会因后续推送被取消。随后的发布任务只在该 SHA 仍是 `main` 最新提交时，才强制更新仅含当前制品的 `deploy-artifacts` Git 传输分支和同名预发布资产（用于审计和手动取回），较旧的运行不会覆盖较新的制品。`./deploy.sh update`（包括 `DEPLOY_UPDATE_MODE=maintenance`）只经仓库当前 `origin`（可为已配置的 GitHub 镜像）取得制品，等待并验证它与当前 `HEAD` 完全匹配后再暂存、原子发布和健康检查。只有显式设置 `DEPLOY_ARTIFACT_URL` 时才会启用额外的 HTTP 下载备用源，默认不会绕过 `origin` 直连 GitHub。正式生产发布应使用 `DEPLOY_BUILD_MODE=ci`；默认的 `auto` 与 `ci` 相同，精确 SHA 的 GitHub 制品缺失时失败关闭，不会回退到生产机编译。只有在明确授权的应急维护更新中显式设置 `DEPLOY_BUILD_MODE=local` 才会在本机编译，蓝绿更新始终拒绝 `local`。`./deploy.sh artifact-check [完整提交 SHA]` 只下载、校验并缓存制品，不发布文件。解压后的制品缓存在 `.git/cpu-web-deploy-artifacts/`，默认只保留最近使用的 3 个（可用 `DEPLOY_ARTIFACT_CACHE_KEEP` 调整），本次使用的制品和上次成功部署的制品不会被清理。
 
 `./deploy.sh redis-init` 会优先启用发行版自带的 `redis-server` systemd 服务。若日志明确出现 `libjemalloc.so.2: failed to map segment`，且原服务启用了 `MemoryDenyWriteExecute`，脚本只为该服务写入最小 drop-in 兼容覆盖并重新验证；切换失败时会恢复临时 daemon，避免部署期间直接丢失 Redis。
 
@@ -697,8 +695,8 @@ GitHub Actions 是正式生产制品的权威构建来源，本地构建只用�
 
 - `/schedule` 已配置 PWA，可离线打开最近一次课表缓存。
 - Android 壳内置 `CPUAndroid` Bridge，并提供课表桌面小组件。
-- Harmony 壳注入 `CPUHarmony` 与 `CPUAndroid` 兼容桥接。
-- 后端提供 `/api/site/downloads/android-app`，会自动跳转到 `web/public/downloads/` 中版本号最高的 APK。
+- Harmony 壳注入 `CPUHarmony` 与 `CPUAndroid` 兼容桥接。桥接脚本 `NativeWebCompatibility.js` 和原生配色 `SchedulePalettes.ets` 由 `harmony/bridge/` 及其引用的 `web/src` 课表与主题代码生成：修改相关代码后在根目录运行 `npm run harmony:generate` 并一起提交，否则 CI 的“Verify HarmonyOS schedule bridges”步骤会失败。
+- 后端提供 `/api/site/downloads/android-app`，会跳转到 `server/src/releases/android.json` 指定的企业盘 APK；`web/public/downloads/` 只保留当前版本，供 CI 校验签名与版本。
 
 ## 开发注意事项
 
@@ -708,7 +706,7 @@ GitHub Actions 是正式生产制品的权威构建来源，本地构建只用�
 - 学校 SSO 的教务 token 与站内 JWT 是两套独立会话。
 - 课表编辑上云与部分客户端能力要求 Android / iOS / Harmony 容器环境。
 - Windows 下如果 Prisma 的 DLL 被占用，`prisma generate` 或 `server` 构建可能失败；先停止正在运行的 Node 后端进程再试。
-- 当前仓库没有统一的根级自动化测试脚本；日常校验主要依赖后端构建、前端类型检查与前端构建。
+- 根目录 `npm test` 运行 `server/tests` 与 `web/tests` 中除需要 PostgreSQL 或 `web/dist` 的少数文件外的全部 Node.js 测试，CI 在 Node.js 24 上执行同一命令（部分引用 `server/src` 的 Web 测试在 Node 22 上会因 tsx 的 CommonJS/ESM 互操作失败）；此外日常校验依赖后端构建、前端类型检查与前端构建。
 
 ## 安全与边界
 

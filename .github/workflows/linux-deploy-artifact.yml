@@ -7,18 +7,22 @@ on:
       - main
 
 permissions:
-  contents: write
-  actions: read
+  contents: read
 
-concurrency:
-  group: linux-deployment-artifact
-  cancel-in-progress: true
+# No workflow-level concurrency group: every pushed SHA must build to completion and keep its
+# cpu-web-linux-<sha> artifact. The publish job only moves the shared transports while its SHA is
+# still the tip of main, so an older run can never overwrite a newer artifact.
 
 jobs:
   build:
     name: Build verified Linux bundle
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+    env:
+      PLAYWRIGHT_VERSION: "1.62.1"
 
     steps:
       - name: Checkout exact commit
@@ -38,55 +42,64 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npm ci --prefix server --include=dev --no-audit --no-fund
-          npm ci --prefix web --include=dev --no-audit --no-fund
-          npm ci --prefix voicehub --include=dev --no-audit --no-fund
+          logs="$RUNNER_TEMP/npm-ci"
+          mkdir -p "$logs"
+          declare -A pids=()
+          for project in server web voicehub; do
+            npm ci --prefix "$project" --include=dev --no-audit --no-fund > "$logs/$project.log" 2>&1 &
+            pids[$project]=$!
+          done
+          failed=0
+          for project in server web voicehub; do
+            status=ok
+            wait "${pids[$project]}" || { status=failed; failed=1; }
+            echo "::group::npm ci --prefix $project ($status)"
+            cat "$logs/$project.log"
+            echo "::endgroup::"
+            if [ "$status" != ok ]; then echo "::error::npm ci --prefix $project failed"; fi
+          done
+          exit "$failed"
 
-      - name: Test media and Android release policies
-        run: |
-          node --import ./server/node_modules/tsx/dist/loader.mjs --test \
-            server/tests/mediaImageUrl.test.ts server/tests/androidRelease.test.ts \
-            server/tests/androidDownload.test.ts server/tests/pdsShare.test.ts server/tests/webStaticCos.test.ts \
-            web/tests/cdnMedia.test.ts web/tests/avatarPreview.test.ts web/tests/androidUpdateState.test.ts web/tests/androidUpdatePolicy.test.ts \
-            web/tests/overlayViewport.test.ts web/tests/liquidGlass.test.ts
-
-      - name: Test schedule edit source recovery
-        env:
-          TSX_TSCONFIG_PATH: web/tsconfig.json
-        run: node --import ./server/node_modules/tsx/dist/loader.mjs --test web/tests/scheduleEdits.test.ts web/tests/scheduleChanges.test.ts web/tests/scheduleCalendar.test.ts web/tests/semesterLoader.test.mjs
+      - name: Run server and web unit tests
+        run: node tools/run-node-tests.mjs
 
       - name: Verify HarmonyOS schedule bridges and shared visual tokens
+        shell: bash
         run: |
-          node harmony/scripts/build-web-bridge.mjs
-          node harmony/scripts/build-native-theme.mjs
-          git diff --exit-code -- harmony/entry/src/main/resources/rawfile/NativeWebCompatibility.js harmony/entry/src/main/ets/schedule/SchedulePalettes.ets
+          set -euo pipefail
+          npm run harmony:generate
+          if ! git diff --stat --exit-code -- harmony/entry/src/main/resources/rawfile/NativeWebCompatibility.js harmony/entry/src/main/ets/schedule/SchedulePalettes.ets; then
+            echo "::error title=Stale HarmonyOS generated files::Run 'npm run harmony:generate' at the repository root and commit NativeWebCompatibility.js and SchedulePalettes.ets."
+            exit 1
+          fi
           node --test harmony/tests/*.test.mjs ios_next/tests/web-schedule-bridge.test.mjs
 
-      - name: Test shared schedule data and widget date coverage
-        run: node --import ./server/node_modules/tsx/dist/loader.mjs --test server/tests/scheduleCalendarSource.test.ts server/tests/scheduleData.test.ts server/tests/scheduleWidget.test.ts server/tests/scheduleWidgetSession.test.ts server/tests/scheduleWidgetRefresh.test.ts server/tests/scheduleWidgetRoute.test.ts server/tests/cache.test.ts web/tests/scriptableWidget.test.ts
-
-      - name: Test file submission authentication
-        run: node --import ./server/node_modules/tsx/dist/loader.mjs --test web/tests/filestoreUpload.test.ts server/tests/browserSecurity.integration.test.ts
-
-      - name: Test text and profile moderation
-        run: npm --prefix server run test:moderation
-
-      - name: Test Agent deployment and version reporting
+      - name: Test deployment scripts and Agent artifact installation
+        shell: bash
         run: |
-          node --import ./server/node_modules/tsx/dist/loader.mjs --test server/tests/jwxtAgent.integration.test.ts server/tests/jwxtGatewayTransport.test.ts
-          node --test ops/deploy/agent-update.test.mjs
+          set -euo pipefail
+          bash -n deploy.sh
+          node --test \
+            ops/deploy/agent-update.test.mjs ops/deploy/ci-artifact.test.mjs \
+            ops/deploy/blue-green.test.mjs ops/deploy/agent-gateway.test.mjs ops/deploy/qqbot-handoff.test.mjs
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ms-playwright-${{ runner.os }}-${{ runner.arch }}-${{ env.PLAYWRIGHT_VERSION }}-chromium
 
       - name: Verify blue-green deployment and nginx draining
+        shell: bash
         run: |
+          set -euo pipefail
           sudo apt-get update -qq
           sudo apt-get install -y nginx
           export DEPLOY_TEST_PLAYWRIGHT_ROOT="$RUNNER_TEMP/cpu-deploy-browser"
-          npm install --prefix "$DEPLOY_TEST_PLAYWRIGHT_ROOT" --no-audit --no-fund playwright@1.62.1
+          npm install --prefix "$DEPLOY_TEST_PLAYWRIGHT_ROOT" --no-audit --no-fund "playwright@$PLAYWRIGHT_VERSION"
+          # System packages are always installed; the browser download is skipped when the cache hit.
           "$DEPLOY_TEST_PLAYWRIGHT_ROOT/node_modules/.bin/playwright" install --with-deps chromium
-          bash -n deploy.sh
-          node --test ops/deploy/blue-green.test.mjs ops/deploy/agent-gateway.test.mjs ops/deploy/qqbot-handoff.test.mjs
           REQUIRE_NGINX_TEST=1 node --test ops/deploy/blue-green-nginx.test.mjs
-          node --import ./server/node_modules/tsx/dist/loader.mjs --test server/tests/deploymentWorkers.test.ts server/tests/deploymentRelay.test.ts server/tests/webStaticCos.test.ts server/tests/qqbotDeploymentDrain.test.ts server/tests/qqbotConnection.test.ts
 
       - name: Verify published Android package and enterprise delivery
         env:
@@ -119,9 +132,7 @@ jobs:
           node --test \
             ops/deploy/artifact-manifest.test.mjs \
             ops/nginx/nginx-http-redirect.test.mjs \
-            web/tests/staticRequestBudget.test.mjs \
-            web/tests/transportBootstrap.test.mjs
-          bash -n deploy.sh
+            web/tests/staticRequestBudget.test.mjs
           tar -C deploy-bundle -czf cpu-web-linux-deploy.tar.gz \
             manifest.json server-dist.tar.gz web-dist.tar.gz voicehub-output.tar.gz
           sha256sum cpu-web-linux-deploy.tar.gz > cpu-web-linux-deploy.tar.gz.sha256
@@ -138,8 +149,48 @@ jobs:
           retention-days: 14
           if-no-files-found: error
 
+  publish:
+    name: Publish deployment transports
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    # Deliberately no concurrency group: a cancelled job would mark this SHA's run as cancelled.
+
+    steps:
+      - name: Checkout exact commit
+        uses: actions/checkout@v4
+
+      - name: Check that this commit is still the tip of main
+        id: tip
+        shell: bash
+        run: |
+          set -euo pipefail
+          main_tip="$(git ls-remote origin refs/heads/main | awk '$2 == "refs/heads/main" { print $1 }')"
+          if [ "$main_tip" = "$GITHUB_SHA" ]; then
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "current=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Deployment transports left unchanged::main is at ${main_tip:-unknown}, not $GITHUB_SHA; the newer commit's run publishes them. The artifact cpu-web-linux-$GITHUB_SHA is still available."
+          fi
+
+      - name: Download verified workflow artifact
+        if: steps.tip.outputs.current == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: cpu-web-linux-${{ github.sha }}
+          path: deploy-artifact
+
+      - name: Verify downloaded bundle checksum
+        if: steps.tip.outputs.current == 'true'
+        working-directory: deploy-artifact
+        run: sha256sum -c cpu-web-linux-deploy.tar.gz.sha256
+
       - name: Publish fast Git deployment transport
-        if: github.ref == 'refs/heads/main'
+        if: steps.tip.outputs.current == 'true'
+        working-directory: deploy-artifact
         shell: bash
         run: |
           set -euo pipefail
@@ -155,15 +206,38 @@ jobs:
                   -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
                   commit-tree "$transport_tree"
           )"
-          git push --force origin "$transport_commit:refs/heads/deploy-artifacts"
+          remote_ref() { git ls-remote origin "$1" | awk -v ref="$1" '$2 == ref { print $1 }'; }
+          for attempt in 1 2 3; do
+            main_tip="$(remote_ref refs/heads/main)"
+            if [ "$main_tip" != "$GITHUB_SHA" ]; then
+              echo "::notice title=Git deployment transport left unchanged::main moved to ${main_tip:-unknown} before $GITHUB_SHA was published."
+              exit 0
+            fi
+            published="$(remote_ref refs/heads/deploy-artifacts)"
+            # The lease rejects the push if another run moved the transport after this re-check.
+            if git push --force-with-lease="refs/heads/deploy-artifacts:$published" origin "$transport_commit:refs/heads/deploy-artifacts"; then
+              exit 0
+            fi
+            echo "::warning::refs/heads/deploy-artifacts changed or the push failed (attempt $attempt); checking main again"
+            sleep 5
+          done
+          echo "::error::Could not publish refs/heads/deploy-artifacts"
+          exit 1
 
       - name: Publish stable deployment transport
-        if: github.ref == 'refs/heads/main'
+        if: steps.tip.outputs.current == 'true'
+        working-directory: deploy-artifact
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          remote_ref() { git ls-remote origin "$1" | awk -v ref="$1" '$2 == ref { print $1 }'; }
+          main_tip="$(remote_ref refs/heads/main)"
+          if [ "$main_tip" != "$GITHUB_SHA" ]; then
+            echo "::notice title=Release deployment transport left unchanged::main moved to ${main_tip:-unknown} before $GITHUB_SHA was published."
+            exit 0
+          fi
           if ! gh release view deploy-artifacts --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release create deploy-artifacts \
               --repo "$GITHUB_REPOSITORY" \
@@ -171,6 +245,11 @@ jobs:
               --prerelease \
               --title "Automated Linux deployment artifacts" \
               --notes "Machine-generated, commit-bound Linux deployment bundle. The production deploy script verifies the embedded commit and SHA-256 hashes before publishing files."
+          fi
+          main_tip="$(remote_ref refs/heads/main)"
+          if [ "$main_tip" != "$GITHUB_SHA" ]; then
+            echo "::notice title=Release deployment transport left unchanged::main moved to ${main_tip:-unknown} before $GITHUB_SHA was published."
+            exit 0
           fi
           gh release upload deploy-artifacts \
             cpu-web-linux-deploy.tar.gz \

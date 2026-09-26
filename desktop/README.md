@@ -366,7 +366,7 @@ desktop/
 
 ## 与主仓的关系
 
-本子项目**不参与主仓的部署链路**：根目录的 `install:all`、`postinstall`、`build`、`deploy.sh` 都不会触及 `desktop/`。这是刻意为之 —— 校园服务器上部署主站时没有理由下载 200 MB 的 Electron 二进制。
+本子项目**不参与主仓的部署链路**：根目录的 `install:all`、`build`、`deploy.sh` 都不会触及 `desktop/`。这是刻意为之 —— 校园服务器上部署主站时没有理由下载 200 MB 的 Electron 二进制。
 
 根目录提供了独立入口：
 

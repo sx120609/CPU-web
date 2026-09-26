@@ -4,8 +4,7 @@
   "private": true,
   "description": "中国药科大学学生便捷服务站点 — Web 前台 + 最小可用后端的 MVP 原型",
   "scripts": {
-    "install:all": "npm install && npm install --prefix server && npm install --prefix web && npm install --prefix voicehub",
-    "postinstall": "npm install --prefix server && npm install --prefix web && npm install --prefix voicehub",
+    "install:all": "npm ci && npm ci --prefix server && npm ci --prefix web && npm ci --prefix voicehub",
     "db:setup": "npm run db:migrate --prefix server && npm run db:seed --prefix server && npm run db:migrate:cpu --prefix voicehub",
     "db:voicehub": "npm run db:migrate:cpu --prefix voicehub",
     "db:reset": "npm run db:reset --prefix server",
@@ -15,6 +14,9 @@
     "dev:voicehub": "npm run dev:cpu --prefix voicehub",
     "build": "npm run build --prefix server && npm run build --prefix web && npm run build:cpu --prefix voicehub",
     "typecheck": "npm run build --prefix server && npm run type-check --prefix web",
+    "test": "node tools/run-node-tests.mjs",
+    "test:node": "node tools/run-node-tests.mjs",
+    "harmony:generate": "node harmony/scripts/build-web-bridge.mjs && node harmony/scripts/build-native-theme.mjs",
     "start": "concurrently -k -n server,voicehub -c blue,magenta \"npm run start --prefix server\" \"npm run start:cpu --prefix voicehub\"",
     "start:server": "npm run start --prefix server",
     "desktop:install": "npm install --prefix desktop",
@@ -27,6 +29,6 @@
     "concurrently": "^9.0.1"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   }
 }
