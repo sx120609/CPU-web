@@ -17,8 +17,8 @@ BEGIN
            SELECT 1 FROM information_schema.columns
            WHERE table_name = 'ScheduleTermConfig' AND column_name = 'periods'
        ) THEN
-        INSERT INTO "SchedulePeriodConfig" ("id", "periods", "version")
-        SELECT 1, "periods", 1
+        INSERT INTO "SchedulePeriodConfig" ("id", "periods", "version", "updatedAt")
+        SELECT 1, "periods", 1, CURRENT_TIMESTAMP
         FROM "ScheduleTermConfig"
         WHERE "periods" IS NOT NULL AND "periods" <> '' AND "periods" <> '[]'
         ORDER BY "updatedAt" DESC
@@ -29,8 +29,10 @@ END
 $$;
 
 -- 没有任何学期时也要有这一行，读取端不必处理缺行。
-INSERT INTO "SchedulePeriodConfig" ("id", "periods")
-VALUES (1, '[]')
+-- prisma db push 会去掉 @updatedAt 列的数据库默认值，而 NOT NULL 先于 ON CONFLICT 检查，
+-- 所以重复执行时必须显式写入 updatedAt。
+INSERT INTO "SchedulePeriodConfig" ("id", "periods", "updatedAt")
+VALUES (1, '[]', CURRENT_TIMESTAMP)
 ON CONFLICT ("id") DO NOTHING;
 
 -- 新代码不再依赖这一列；旧实例排空前不能删除。
