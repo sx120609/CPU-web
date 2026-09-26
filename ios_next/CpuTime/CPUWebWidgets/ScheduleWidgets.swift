@@ -1490,7 +1490,7 @@ private struct WidgetDateHeader: View {
         return calendarDay?.isStatutoryHoliday == true ? .pink : WidgetPalette.accent(for: theme)
     }
 
-    /// 今天不是节日时提示最近的一段法定假期。开了「常驻」就一直显示（看未来 120 天），
+    /// 今天不是节日时提示最近的一段年度假期。开了「常驻」就一直显示（看未来 120 天），
     /// 否则只有今日课表的日期栏会带上它，并且只看未来一个月。
     private var holidayCountdown: ChineseHolidayCountdown? {
         let resident = options.showsResidentHoliday
@@ -1660,7 +1660,7 @@ private struct EmptyCoursesView: View {
     }
 }
 
-/// 今天的课上完之后显示什么：明天的课程（灰显）或最近的一段法定假期。
+/// 今天的课上完之后显示什么：明天的课程（灰显）或最近的一段年度假期。
 /// 设置见「小组件」页的「今天课程结束后」。
 private struct AfterClassView: View {
     let payload: SchedulePayload

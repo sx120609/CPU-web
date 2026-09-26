@@ -61,8 +61,8 @@ nonisolated struct LunarDate: Equatable, Sendable {
     var yearLabel: String { ganZhi + zodiac + "年" }
 }
 
-/// 一段法定假期（只含《全国年节及纪念日放假办法》规定的法定假日，不含各年度国务院
-/// 通知里的调休连休安排）。
+/// 一段年度放假安排。优先使用国务院当年公布的连休区间；没有内置年度安排时，
+/// 才退回《全国年节及纪念日放假办法》的法定日期，避免把法定天数误当成实际连休。
 nonisolated struct ChineseHolidayWindow: Equatable, Sendable {
     let name: String
     /// `yyyy-MM-dd`
@@ -104,7 +104,7 @@ nonisolated struct ChineseHolidayCountdown: Equatable, Sendable {
         return "\(leading) \(amount) \(trailing)"
     }
 
-    /// 「9.25 周五」，连休则是「10.1 - 10.3 · 休 3 天」。
+    /// 「9.25 周五」，连休则是「10.1 - 10.7 · 休 7 天」。
     var dateLabel: String {
         let start = ChineseCalendarInfo.monthDayLabel(window.start)
         guard window.end != window.start else {
@@ -124,16 +124,22 @@ nonisolated struct ChineseCalendarDay: Equatable, Sendable {
     let festivals: [String]
     /// 目前只计算清明，其余节气不在本表内。
     let solarTerm: String?
-    /// 当天属于哪个法定假期；`nil` 表示不放假。
+    /// 当天属于哪个年度放假安排；`nil` 表示不放假。
     let holiday: String?
 
     var isStatutoryHoliday: Bool { holiday != nil }
 
-    /// 小组件与日历格里那一行小字：法定假日 > 节日 > 节气 > 农历日期。
+    /// 小组件与日历格里那一行小字：放假安排 > 节日 > 节气 > 农历日期。
     var displayLabel: String { badge ?? lunar.shortLabel }
 
     /// 只有节日/假期时才有值，用来决定要不要显示提示徽标。
     var badge: String? { holiday ?? festivals.first ?? solarTerm }
+}
+
+/// One year's published holiday windows and weekend makeup workdays.
+fileprivate struct ChineseAnnualHolidayPlan: Sendable {
+    let holidays: [ChineseHolidayWindow]
+    let adjustedWorkdays: Set<String>
 }
 
 nonisolated enum ChineseCalendarInfo {
@@ -154,13 +160,19 @@ nonisolated enum ChineseCalendarInfo {
         cache.year(year).holidays
     }
 
-    /// 下一段法定假期的倒计时文案。
+    /// 国务院安排的补班日不是周末休息日。课表没有课程时也不能对这些日期说「周末快乐」。
+    static func isAdjustedWorkday(forDate date: String) -> Bool {
+        guard let year = gregorianYear(of: date) else { return false }
+        return cache.year(year).adjustedWorkdays.contains(date)
+    }
+
+    /// 下一段年度假期的倒计时文案。
     static func countdown(from date: Date, withinDays limit: Int = 60) -> ChineseHolidayCountdown? {
         guard let next = nextHoliday(from: date, withinDays: limit) else { return nil }
         return ChineseHolidayCountdown(window: next.window, daysAway: next.daysAway)
     }
 
-    /// 今天不上课时那句问候：法定假日说「中秋快乐～」，周末说「周末快乐～」。
+    /// 今天不上课时那句问候：假期说「中秋快乐～」，周末说「周末快乐～」。
     /// 普通工作日返回 `nil`，调用方改说「今天的课程全部结束了～」。
     ///
     /// `hasCourses` 是今天排没排课。调休把周六当工作日用的时候照样道「周末快乐」
@@ -173,7 +185,7 @@ nonisolated enum ChineseCalendarInfo {
         if let holiday = info(forDate: date)?.holiday {
             return holidayGreetings[holiday] ?? "\(holiday)快乐～"
         }
-        guard !hasCourses, let value = self.date(fromDate: date) else { return nil }
+        guard !hasCourses, !isAdjustedWorkday(forDate: date), let value = self.date(fromDate: date) else { return nil }
         let weekday = gregorian.component(.weekday, from: value)
         return weekday == 1 || weekday == 7 ? "周末快乐～" : nil
     }
@@ -205,7 +217,7 @@ nonisolated enum ChineseCalendarInfo {
         return labels.indices.contains(weekday - 1) ? labels[weekday - 1] : nil
     }
 
-    /// 下一段法定假期（含今天开始的假期），用于「距国庆节 12 天」这类提示。
+    /// 下一段年度假期（含今天开始的假期），用于「距国庆节 12 天」这类提示。
     static func nextHoliday(from date: Date, withinDays limit: Int = 60) -> (window: ChineseHolidayWindow, daysAway: Int)? {
         let today = dateString(date)
         guard let year = gregorianYear(of: today) else { return nil }
@@ -257,6 +269,26 @@ nonisolated enum ChineseCalendarInfo {
     }()
 
     private static let cache = YearCache()
+
+    /// The State Council's 2026 arrangement (published in November 2025;
+    /// https://www.gov.cn/zhengce/zhengceku/202511/content_7047091.htm).
+    /// Keep this offline because WidgetKit can render while the app and WebView
+    /// are not running. Years without an announced plan use the statutory fallback
+    /// below and are replaced when a newer app ships the corresponding plan.
+    fileprivate static let annualHolidayPlans: [Int: ChineseAnnualHolidayPlan] = [
+        2026: ChineseAnnualHolidayPlan(
+            holidays: [
+                ChineseHolidayWindow(name: "元旦", start: "2026-01-01", end: "2026-01-03"),
+                ChineseHolidayWindow(name: "春节", start: "2026-02-15", end: "2026-02-23"),
+                ChineseHolidayWindow(name: "清明节", start: "2026-04-04", end: "2026-04-06"),
+                ChineseHolidayWindow(name: "劳动节", start: "2026-05-01", end: "2026-05-05"),
+                ChineseHolidayWindow(name: "端午节", start: "2026-06-19", end: "2026-06-21"),
+                ChineseHolidayWindow(name: "中秋节", start: "2026-09-25", end: "2026-09-27"),
+                ChineseHolidayWindow(name: "国庆节", start: "2026-10-01", end: "2026-10-07"),
+            ],
+            adjustedWorkdays: ["2026-01-04", "2026-02-14", "2026-02-28", "2026-05-09", "2026-09-20", "2026-10-10"]
+        ),
+    ]
 
     private static func gregorianYear(of date: String) -> Int? {
         Int(date.prefix(4))
@@ -312,6 +344,7 @@ private final class YearCache: @unchecked Sendable {
     struct YearData {
         var days: [String: ChineseCalendarDay] = [:]
         var holidays: [ChineseHolidayWindow] = []
+        var adjustedWorkdays: Set<String> = []
     }
 
     private let lock = NSLock()
@@ -392,24 +425,27 @@ private final class YearCache: @unchecked Sendable {
             }
         }
 
-        var holidays: [ChineseHolidayWindow] = [
+        var statutoryHolidays: [ChineseHolidayWindow] = [
             ChineseHolidayWindow(name: "元旦", start: "\(year)-01-01", end: "\(year)-01-01")
         ]
         if let springFestival {
             // 2024 年修订后的《全国年节及纪念日放假办法》：春节自除夕起放假 4 天。
             let start = newYearEve ?? springFestival
             let end = lunarDate(month: 1, day: 3) ?? springFestival
-            holidays.append(ChineseHolidayWindow(name: "春节", start: start, end: end))
+            statutoryHolidays.append(ChineseHolidayWindow(name: "春节", start: start, end: end))
         }
-        holidays.append(ChineseHolidayWindow(name: "清明节", start: qingming, end: qingming))
-        holidays.append(ChineseHolidayWindow(name: "劳动节", start: "\(year)-05-01", end: "\(year)-05-02"))
+        statutoryHolidays.append(ChineseHolidayWindow(name: "清明节", start: qingming, end: qingming))
+        statutoryHolidays.append(ChineseHolidayWindow(name: "劳动节", start: "\(year)-05-01", end: "\(year)-05-02"))
         if let dragonBoat = lunarDate(month: 5, day: 5) {
-            holidays.append(ChineseHolidayWindow(name: "端午节", start: dragonBoat, end: dragonBoat))
+            statutoryHolidays.append(ChineseHolidayWindow(name: "端午节", start: dragonBoat, end: dragonBoat))
         }
         if let midAutumn = lunarDate(month: 8, day: 15) {
-            holidays.append(ChineseHolidayWindow(name: "中秋节", start: midAutumn, end: midAutumn))
+            statutoryHolidays.append(ChineseHolidayWindow(name: "中秋节", start: midAutumn, end: midAutumn))
         }
-        holidays.append(ChineseHolidayWindow(name: "国庆节", start: "\(year)-10-01", end: "\(year)-10-03"))
+        statutoryHolidays.append(ChineseHolidayWindow(name: "国庆节", start: "\(year)-10-01", end: "\(year)-10-03"))
+        let annualPlan = ChineseCalendarInfo.annualHolidayPlans[year]
+        var holidays = annualPlan?.holidays ?? statutoryHolidays
+        let adjustedWorkdays = annualPlan?.adjustedWorkdays ?? []
         holidays.sort { $0.start < $1.start }
 
         var holidayByDate: [String: String] = [:]
@@ -425,6 +461,7 @@ private final class YearCache: @unchecked Sendable {
 
         var data = YearData()
         data.holidays = holidays
+        data.adjustedWorkdays = adjustedWorkdays
         for key in dates {
             guard let lunar = lunarByDate[key] else { continue }
             data.days[key] = ChineseCalendarDay(
