@@ -292,7 +292,12 @@ onMounted(async () => {
   disposed = false;
   await loadConversationList();
   await applyRouteTarget();
-  refreshTimer = window.setInterval(() => void refreshVisibleConversation(), 7000);
+  if (disposed) return;
+  // 页面在后台时不轮询，回到前台立即刷新一次。
+  refreshTimer = window.setInterval(() => {
+    if (!document.hidden) void refreshVisibleConversation();
+  }, 7000);
+  document.addEventListener("visibilitychange", handleVisibilityChange);
 });
 
 onBeforeUnmount(() => {
@@ -300,8 +305,13 @@ onBeforeUnmount(() => {
   routeSeq += 1;
   messageSeq += 1;
   if (refreshTimer) window.clearInterval(refreshTimer);
+  document.removeEventListener("visibilitychange", handleVisibilityChange);
   flushComposerDraft();
 });
+
+function handleVisibilityChange() {
+  if (!document.hidden) void refreshVisibleConversation();
+}
 
 watch(
   () => [route.query.tab, route.query.user, route.query.conversation, route.query.forumKind, route.query.forumId],

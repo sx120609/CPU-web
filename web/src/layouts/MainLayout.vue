@@ -455,12 +455,15 @@ const isMobileViewport = ref(false);
 const KEYBOARD_INSET_THRESHOLD = 96;
 const KEYBOARD_FOCUS_GRACE_MS = 1200;
 const KEYBOARD_GEOMETRY_CLOSE_DELAY_MS = 240;
+const NICKNAME_REVIEW_POLL_MIN_MS = 5_000;
+const NICKNAME_REVIEW_POLL_MAX_MS = 60_000;
 const viewportBaseHeights = new Map<string, number>();
 let viewportBaselineOrientation = "";
 let focusOutTimer = 0;
 let focusKeyboardGraceTimer = 0;
 let keyboardGeometryCloseTimer = 0;
 let nicknameReviewPollTimer = 0;
+let nicknameReviewPollDelay = NICKNAME_REVIEW_POLL_MIN_MS;
 let focusKeyboardGraceUntil = 0;
 let disposed = false;
 
@@ -681,13 +684,33 @@ async function saveNickname() {
   } finally { savingNickname.value = false; }
 }
 
-watch(() => auth.user?.nicknameReview?.status, (status) => {
-  window.clearInterval(nicknameReviewPollTimer);
+function stopNicknameReviewPoll() {
+  window.clearTimeout(nicknameReviewPollTimer);
   nicknameReviewPollTimer = 0;
+}
+
+// 昵称审核通常很快完成；轮询间隔逐步拉长，页面在后台时不发请求，回到前台再立即补查。
+function scheduleNicknameReviewPoll() {
+  stopNicknameReviewPoll();
+  nicknameReviewPollTimer = window.setTimeout(() => {
+    nicknameReviewPollTimer = 0;
+    if (!document.hidden) void auth.refreshSelfSilently();
+    nicknameReviewPollDelay = Math.min(nicknameReviewPollDelay * 2, NICKNAME_REVIEW_POLL_MAX_MS);
+    scheduleNicknameReviewPoll();
+  }, nicknameReviewPollDelay);
+}
+
+function handleNicknameReviewVisibilityChange() {
+  if (document.hidden || auth.user?.nicknameReview?.status !== "checking") return;
+  void auth.refreshSelfSilently();
+  scheduleNicknameReviewPoll();
+}
+
+watch(() => auth.user?.nicknameReview?.status, (status) => {
+  stopNicknameReviewPoll();
   if (status === "checking") {
-    nicknameReviewPollTimer = window.setInterval(() => {
-      void auth.refreshSelfSilently();
-    }, 5_000);
+    nicknameReviewPollDelay = NICKNAME_REVIEW_POLL_MIN_MS;
+    scheduleNicknameReviewPoll();
   }
 }, { immediate: true });
 
@@ -704,6 +727,7 @@ onMounted(async () => {
     getVirtualKeyboard()?.addEventListener("geometrychange", handleViewportMetricsChange);
     document.addEventListener("focusin", handleFocusIn);
     document.addEventListener("focusout", handleFocusOut);
+    document.addEventListener("visibilitychange", handleNicknameReviewVisibilityChange);
   }
 });
 
@@ -712,7 +736,7 @@ onBeforeUnmount(() => {
   window.clearTimeout(focusOutTimer);
   window.clearTimeout(focusKeyboardGraceTimer);
   window.clearTimeout(keyboardGeometryCloseTimer);
-  window.clearInterval(nicknameReviewPollTimer);
+  stopNicknameReviewPoll();
   if (typeof window !== "undefined") {
     window.removeEventListener("resize", handleViewportMetricsChange);
     window.visualViewport?.removeEventListener("resize", handleViewportMetricsChange);
@@ -720,6 +744,7 @@ onBeforeUnmount(() => {
     getVirtualKeyboard()?.removeEventListener("geometrychange", handleViewportMetricsChange);
     document.removeEventListener("focusin", handleFocusIn);
     document.removeEventListener("focusout", handleFocusOut);
+    document.removeEventListener("visibilitychange", handleNicknameReviewVisibilityChange);
   }
 });
 
