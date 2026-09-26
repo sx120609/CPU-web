@@ -73,13 +73,28 @@ let accessTokenCache: { fingerprint: string; token: string; expiresAt: number } 
 let jsapiTicketCache: { fingerprint: string; ticket: string; expiresAt: number } | null = null;
 let notificationPollerStarted = false;
 let notificationDispatchWakeTimer: NodeJS.Timeout | null = null;
+// 回调、通知派发等热路径都会读取配置；短时进程内缓存，本进程写入时立即失效。
+const CONFIG_CACHE_TTL_MS = 5_000;
+let configCache: { config: Awaited<ReturnType<typeof loadWechatServiceConfig>>; expiresAt: number } | null = null;
+let configCacheGeneration = 0;
 
 export async function getWechatServiceConfigRaw() {
-  return prisma.wechatServiceConfig.upsert({
-    where: { id: CONFIG_ID },
-    create: { id: CONFIG_ID },
-    update: {},
-  });
+  const cached = configCache;
+  if (cached && cached.expiresAt > Date.now()) return { ...cached.config };
+  const generation = configCacheGeneration;
+  const config = await loadWechatServiceConfig();
+  // 读取期间本进程更新过配置时不回填，避免旧值覆盖新值。
+  if (generation === configCacheGeneration) configCache = { config, expiresAt: Date.now() + CONFIG_CACHE_TTL_MS };
+  return { ...config };
+}
+
+async function loadWechatServiceConfig() {
+  return await prisma.wechatServiceConfig.findUnique({ where: { id: CONFIG_ID } })
+    ?? prisma.wechatServiceConfig.upsert({
+      where: { id: CONFIG_ID },
+      create: { id: CONFIG_ID },
+      update: {},
+    });
 }
 
 export function formatWechatServiceConfig(config: WechatConfigRow) {
@@ -146,7 +161,7 @@ export async function updateWechatServiceConfig(input: {
   subscriptionTimeField?: string;
   subscriptionRemarkField?: string;
 }) {
-  const current = await getWechatServiceConfigRaw();
+  const current = await loadWechatServiceConfig();
   const data: Record<string, unknown> = {};
   if (input.accountName !== undefined) data.accountName = input.accountName.trim().slice(0, 80);
   if (input.wechatId !== undefined) data.wechatId = input.wechatId.trim().slice(0, 80);
@@ -191,6 +206,8 @@ export async function updateWechatServiceConfig(input: {
     where: { id: current.id },
     data,
   });
+  configCacheGeneration += 1;
+  configCache = null;
   accessTokenCache = null;
   jsapiTicketCache = null;
   return formatWechatServiceConfig(updated);

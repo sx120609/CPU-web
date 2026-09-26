@@ -1,6 +1,5 @@
-import mammoth from "mammoth";
-import JSZip from "jszip";
-import { PDFParse } from "pdf-parse";
+// 文档解析库只在处理附件时按需加载，不拖慢服务启动。
+import type JSZip from "jszip";
 import { Errors } from "../utils/response";
 import { normalizeAiImageDataUrl } from "./aiImageValidation";
 import type { AiJsonMessage, AiJsonMessagePart, AiProviderCandidate } from "./aiJsonApi";
@@ -449,6 +448,7 @@ export function normalizeSmartPostFiles(files: SmartPostSourceFile[]) {
 
 export async function extractSmartPostFileText(file: SmartPostSourceFile) {
   if (file.mimetype === "application/pdf") {
+    const { PDFParse } = await import("pdf-parse");
     const parser = new PDFParse({ data: file.buffer });
     try {
       const result = await parser.getText();
@@ -478,6 +478,7 @@ export async function extractSmartPostFileText(file: SmartPostSourceFile) {
     return (await extractPptxMaterial(file, 0)).text;
   }
 
+  const mammoth = await import("mammoth");
   try {
     const result = await mammoth.extractRawText({ buffer: file.buffer });
     const text = normalizeExtractedText(result.value);
@@ -539,9 +540,10 @@ async function prepareSmartPostFiles(files: SmartPostSourceFile[]) {
 }
 
 async function extractPptxMaterial(file: SmartPostSourceFile, imageLimit: number) {
+  const { default: jszip } = await import("jszip");
   let zip: JSZip;
   try {
-    zip = await JSZip.loadAsync(file.buffer);
+    zip = await jszip.loadAsync(file.buffer);
   } catch {
     throw Errors.badRequest(`${file.originalname} 不是有效的 PPTX 文件`);
   }
@@ -572,7 +574,8 @@ async function extractPptxMaterial(file: SmartPostSourceFile, imageLimit: number
 }
 
 async function extractOfficeMedia(file: SmartPostSourceFile, prefix: string, imageLimit: number) {
-  const zip = await JSZip.loadAsync(file.buffer);
+  const { default: jszip } = await import("jszip");
+  const zip = await jszip.loadAsync(file.buffer);
   assertOfficeArchiveSafe(zip, file.originalname);
   return extractOfficeMediaFromZip(zip, prefix, imageLimit, file.originalname);
 }

@@ -322,7 +322,11 @@ const DEFAULT_MEMBER_WELCOME_MESSAGE = "欢迎加入本群，请先查看群公�
 const QQ_GROUP_AD_VERIFICATION_TTL_MS = 10 * 60_000;
 const QQ_GROUP_AD_WHITELIST_TTL_MS = 30 * 24 * 60 * 60_000;
 const QQ_GROUP_AD_REPORT_TTL_MS = 12 * 60 * 60_000;
+// 每个入站 WebSocket 帧和出站消息都会读取配置；短时进程内缓存，本进程写入时立即失效。
+const CONFIG_CACHE_TTL_MS = 5_000;
 let pollerStarted = false;
+let configCache: { config: Awaited<ReturnType<typeof loadQqBotConfigRaw>>; expiresAt: number } | null = null;
+let configCacheGeneration = 0;
 
 const {
   renderConversationCommandHelp,
@@ -341,11 +345,27 @@ configureQqBotConnection({
 });
 
 export async function getQqBotConfigRaw() {
-  const config = await prisma.qqBotConfig.upsert({
-    where: { id: CONFIG_ID },
-    create: { id: CONFIG_ID },
-    update: {},
-  });
+  const cached = configCache;
+  if (cached && cached.expiresAt > Date.now()) return { ...cached.config };
+  const generation = configCacheGeneration;
+  const config = await loadQqBotConfigRaw();
+  // 读取期间本进程更新过配置时不回填，避免旧值覆盖新值。
+  if (generation === configCacheGeneration) configCache = { config, expiresAt: Date.now() + CONFIG_CACHE_TTL_MS };
+  return { ...config };
+}
+
+function invalidateQqBotConfigCache() {
+  configCacheGeneration += 1;
+  configCache = null;
+}
+
+async function loadQqBotConfigRaw() {
+  const config = await prisma.qqBotConfig.findUnique({ where: { id: CONFIG_ID } })
+    ?? await prisma.qqBotConfig.upsert({
+      where: { id: CONFIG_ID },
+      create: { id: CONFIG_ID },
+      update: {},
+    });
   const backfilledCategories = backfillLegacyPersonalNotifyCategories(config.notifyCategories);
   if (!backfilledCategories) return config;
   return prisma.qqBotConfig.update({
@@ -498,7 +518,7 @@ export async function updateQqBotConfig(input: {
   notifyCategories?: string[];
   superAdminQqIds?: string[];
 }) {
-  const current = await getQqBotConfigRaw();
+  const current = await loadQqBotConfigRaw();
   const nextConnectionMode = normalizeQqBotConnectionMode(input.connectionMode ?? current.connectionMode);
   const nextAccessToken = input.clearAccessToken
     ? ""
@@ -535,6 +555,7 @@ export async function updateQqBotConfig(input: {
     create: { id: CONFIG_ID, ...data },
     update: data,
   });
+  invalidateQqBotConfigCache();
   resetQqBotWebSocket();
   setTimeout(() => connectQqBotWebSocket().catch(() => undefined), 300);
   return formatQqBotConfig(updated);
@@ -654,7 +675,10 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
     return handleQqBotNoticeEvent(event, config);
   }
   if (event.post_type !== "message") {
-    await logQqBotMessage({ direction: "inbound", eventType: event.post_type || "event", status: "ignored", rawPayload: event });
+    // OneBot 心跳/生命周期帧每隔几十秒就有一条，不写入日志表，避免表无限膨胀。
+    if (event.post_type !== "meta_event") {
+      await logQqBotMessage({ direction: "inbound", eventType: event.post_type || "event", status: "ignored", rawPayload: event });
+    }
     return { ignored: true };
   }
 

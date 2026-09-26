@@ -1,4 +1,5 @@
 import { prisma } from "../prisma";
+import { runWithDistributedLock } from "./cache";
 import { directCounterpartId, directParticipantAlias } from "./directMessagePolicy";
 import {
   directMessageModerationFailure,
@@ -12,25 +13,36 @@ const POLL_BATCH_SIZE = 20;
 const MAX_CONCURRENT_REVIEWS = 2;
 const RETRY_DELAYS_MS = [30_000, 60_000, 2 * 60_000, 5 * 60_000, 10 * 60_000, 15 * 60_000] as const;
 const MAX_REVIEW_ATTEMPTS = RETRY_DELAYS_MS.length + 1;
-const activeReviews = new Set<number>();
+// 高于一次扫描加上 AI 审核（单次上游最长约 2 分钟）的耗时；持锁期间会自动续期。
+const POLL_LOCK_TTL_MS = 3 * 60_000;
+// 值为进行中的审核，轮询在分布式锁内等待它们结束。
+const activeReviews = new Map<number, Promise<void>>();
 let pollerStarted = false;
 
 export function scheduleDirectMessageSubmissionReview(messageId: number) {
   if (!Number.isInteger(messageId) || messageId <= 0 || activeReviews.has(messageId) || activeReviews.size >= MAX_CONCURRENT_REVIEWS) return;
-  activeReviews.add(messageId);
-  setTimeout(() => {
-    void processDirectMessageSubmissionReview(messageId)
-      .catch((error) => failDirectMessageSubmissionReview(messageId, error))
-      .catch((error) => console.warn(`[direct-message-review] ${messageId} failure handler failed`, error instanceof Error ? error.message : error))
-      .finally(() => activeReviews.delete(messageId));
-  }, 0).unref?.();
+  activeReviews.set(messageId, new Promise<void>((resolve) => {
+    setTimeout(() => {
+      void processDirectMessageSubmissionReview(messageId)
+        .catch((error) => failDirectMessageSubmissionReview(messageId, error))
+        .catch((error) => console.warn(`[direct-message-review] ${messageId} failure handler failed`, error instanceof Error ? error.message : error))
+        .finally(() => {
+          activeReviews.delete(messageId);
+          resolve();
+        });
+    }, 0).unref?.();
+  }));
 }
 
 export function startDirectMessageSubmissionReviewPoller() {
   if (pollerStarted) return;
   pollerStarted = true;
   const scan = () => {
-    void recoverPendingDirectMessages().catch((error) => {
+    // 蓝绿发布重叠期间只允许一个进程扫描，并在锁内等本进程的审核结束，避免重复调用 AI。
+    void runWithDistributedLock("direct-message-review:poll", POLL_LOCK_TTL_MS, async () => {
+      await recoverPendingDirectMessages();
+      await Promise.all([...activeReviews.values()]);
+    }).catch((error) => {
       console.warn("[direct-message-review] pending scan failed", error instanceof Error ? error.message : error);
     });
   };

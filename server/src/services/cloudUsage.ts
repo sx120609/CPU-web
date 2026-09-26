@@ -1,12 +1,5 @@
-import { cdn } from "tencentcloud-sdk-nodejs-cdn";
-import EsaClient, {
-  DescribeSiteTimeSeriesDataRequest,
-  DescribeSiteTimeSeriesDataRequestFields,
-  ListSitesRequest,
-  ListUserRatePlanInstancesRequest,
-} from "@alicloud/esa20240910";
-import BssClient, { QueryResourcePackageInstancesRequest } from "@alicloud/bssopenapi20171214";
-import CmsClient, { DescribeMetricListRequest } from "@alicloud/cms20190101";
+// 云厂商 SDK 体积大、加载慢，只在后台用量面板真正查询时按需加载。
+import type CmsClient from "@alicloud/cms20190101";
 import { getMediaStorageRuntimeConfig, loadStorageConfig } from "./storageConfig";
 import { getAliyunOssBucketStats } from "./aliyunOss";
 
@@ -276,6 +269,7 @@ async function collectTencentUsage(runtime: Awaited<ReturnType<typeof getMediaSt
     return result;
   }
 
+  const { cdn } = await import("tencentcloud-sdk-nodejs-cdn");
   const client = new cdn.v20180606.Client({
     credential: { secretId, secretKey },
     region: "",
@@ -370,6 +364,21 @@ async function collectAliyunUsage(runtime: Awaited<ReturnType<typeof getMediaSto
     return result;
   }
 
+  const [
+    {
+      default: EsaClient,
+      DescribeSiteTimeSeriesDataRequest,
+      DescribeSiteTimeSeriesDataRequestFields,
+      ListSitesRequest,
+      ListUserRatePlanInstancesRequest,
+    },
+    { default: BssClient, QueryResourcePackageInstancesRequest },
+    { default: CmsClient },
+  ] = await Promise.all([
+    import("@alicloud/esa20240910"),
+    import("@alicloud/bssopenapi20171214"),
+    import("@alicloud/cms20190101"),
+  ]);
   const clientConfig = {
     accessKeyId,
     accessKeySecret,
@@ -530,6 +539,7 @@ async function queryAliyunOssMonthlyMetric(
   window: Pick<UsageWindow, "start" | "end">,
 ) {
   if (!bucket) throw new Error("OSS 存储桶尚未配置");
+  const { DescribeMetricListRequest } = await import("@alicloud/cms20190101");
   const response = await client.describeMetricList(new DescribeMetricListRequest({
     namespace: "acs_oss_dashboard",
     metricName,

@@ -1,5 +1,6 @@
 import { isKeywordManualReview } from "./contentKeywordReview";
 import { prisma } from "../prisma";
+import { runWithDistributedLock } from "./cache";
 import { invalidateForumCaches } from "./cacheInvalidation";
 import { ensureForumImageAssetsForContent } from "./imageModeration";
 import { ensureForumVideoAssetsForContent } from "./videoModeration";
@@ -29,9 +30,13 @@ const MAX_CONCURRENT_REVIEWS = 2;
 const RETRY_DELAYS_MS = [30_000, 60_000, 2 * 60_000, 5 * 60_000, 10 * 60_000, 15 * 60_000] as const;
 const MAX_REVIEW_ATTEMPTS = RETRY_DELAYS_MS.length + 1;
 const AUTO_MANUAL_RETRY_DELAY_MS = 30 * 60_000;
-const activeTopicReviews = new Set<number>();
-const activeReplyReviews = new Set<number>();
+// 高于一次扫描加上 AI 审核（单次上游最长约 2 分钟）的耗时；持锁期间会自动续期。
+const POLL_LOCK_TTL_MS = 3 * 60_000;
+// 值为进行中的审核，轮询在分布式锁内等待它们结束。
+const activeTopicReviews = new Map<number, Promise<void>>();
+const activeReplyReviews = new Map<number, Promise<void>>();
 let pollerStarted = false;
+let retiredConsentMarkerRecovered = false;
 
 export function scheduleTopicSubmissionReview(topicId: number) {
   if (
@@ -40,12 +45,16 @@ export function scheduleTopicSubmissionReview(topicId: number) {
     || activeTopicReviews.has(topicId)
     || activeTopicReviews.size + activeReplyReviews.size >= MAX_CONCURRENT_REVIEWS
   ) return;
-  activeTopicReviews.add(topicId);
-  setTimeout(() => {
-    void processTopicSubmissionReview(topicId)
-      .catch((error) => console.warn(`[forum-review] topic ${topicId} processing failed`, error instanceof Error ? error.message : error))
-      .finally(() => activeTopicReviews.delete(topicId));
-  }, 0).unref?.();
+  activeTopicReviews.set(topicId, new Promise<void>((resolve) => {
+    setTimeout(() => {
+      void processTopicSubmissionReview(topicId)
+        .catch((error) => console.warn(`[forum-review] topic ${topicId} processing failed`, error instanceof Error ? error.message : error))
+        .finally(() => {
+          activeTopicReviews.delete(topicId);
+          resolve();
+        });
+    }, 0).unref?.();
+  }));
 }
 
 export function scheduleReplySubmissionReview(replyId: number) {
@@ -55,20 +64,28 @@ export function scheduleReplySubmissionReview(replyId: number) {
     || activeReplyReviews.has(replyId)
     || activeTopicReviews.size + activeReplyReviews.size >= MAX_CONCURRENT_REVIEWS
   ) return;
-  activeReplyReviews.add(replyId);
-  setTimeout(() => {
-    void processReplySubmissionReview(replyId)
-      .catch((error) => failReplySubmissionReview(replyId, error))
-      .catch((error) => console.warn(`[forum-review] reply ${replyId} failure handler failed`, error instanceof Error ? error.message : error))
-      .finally(() => activeReplyReviews.delete(replyId));
-  }, 0).unref?.();
+  activeReplyReviews.set(replyId, new Promise<void>((resolve) => {
+    setTimeout(() => {
+      void processReplySubmissionReview(replyId)
+        .catch((error) => failReplySubmissionReview(replyId, error))
+        .catch((error) => console.warn(`[forum-review] reply ${replyId} failure handler failed`, error instanceof Error ? error.message : error))
+        .finally(() => {
+          activeReplyReviews.delete(replyId);
+          resolve();
+        });
+    }, 0).unref?.();
+  }));
 }
 
 export function startForumSubmissionReviewPoller() {
   if (pollerStarted) return;
   pollerStarted = true;
   const scan = () => {
-    void recoverPendingForumSubmissions().catch((error) => {
+    // 蓝绿发布重叠期间只允许一个进程扫描，并在锁内等本进程的审核结束，避免重复调用 AI。
+    void runWithDistributedLock("forum-review:poll", POLL_LOCK_TTL_MS, async () => {
+      await recoverPendingForumSubmissions();
+      await Promise.all([...activeTopicReviews.values(), ...activeReplyReviews.values()]);
+    }).catch((error) => {
       console.warn("[forum-review] pending submission scan failed", error instanceof Error ? error.message : error);
     });
   };
@@ -78,12 +95,16 @@ export function startForumSubmissionReviewPoller() {
 
 export async function recoverPendingForumSubmissions() {
   // Only recover the retired consent gate's exact marker; preserve requested human reviews.
-  const consentBlocked = { hidden: true, aiReviewStatus: "manual_requested", aiReviewDetail: "AI consent unavailable; manual review required" };
-  const restartReview = { aiReviewStatus: "checking", aiReviewReason: null, aiReviewDetail: null, aiReviewedAt: null };
-  await Promise.all([
-    prisma.topic.updateMany({ where: consentBlocked, data: restartReview }),
-    prisma.reply.updateMany({ where: consentBlocked, data: restartReview }),
-  ]);
+  // 该标记已不再产生，每个进程成功修复一次即可，无需每轮扫描都执行。
+  if (!retiredConsentMarkerRecovered) {
+    const consentBlocked = { hidden: true, aiReviewStatus: "manual_requested", aiReviewDetail: "AI consent unavailable; manual review required" };
+    const restartReview = { aiReviewStatus: "checking", aiReviewReason: null, aiReviewDetail: null, aiReviewedAt: null };
+    await Promise.all([
+      prisma.topic.updateMany({ where: consentBlocked, data: restartReview }),
+      prisma.reply.updateMany({ where: consentBlocked, data: restartReview }),
+    ]);
+    retiredConsentMarkerRecovered = true;
+  }
   const now = Date.now();
   const retryBefore = new Date(now - RETRY_DELAYS_MS[0]);
   const automaticManualRetryBefore = new Date(now - AUTO_MANUAL_RETRY_DELAY_MS);

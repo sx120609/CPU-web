@@ -161,6 +161,8 @@ model User {
   blocksReceived              UserBlock[] @relation("BlockTarget")
 
   @@index([nicknameReviewStatus, nicknameReviewedAt])
+  @@index([profileReviewStatus, updatedAt])
+  @@index([status, mutedUntil])
 }
 
 model UserBlock {
@@ -413,6 +415,9 @@ model Reply {
 
   @@index([topicId, floor])
   @@index([topicId, hidden, floor])
+  @@index([aiReviewStatus, hidden, aiReviewedAt])
+  @@index([authorId, hidden])
+  @@index([parentReplyId])
   @@unique([authorId, submissionId])
 }
 

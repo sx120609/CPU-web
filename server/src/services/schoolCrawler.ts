@@ -150,14 +150,17 @@ export function startScheduler() {
     await runWithDistributedLock("school-crawler:tick", 55_000, async () => {
       const sources = await prisma.schoolFeedSource.findMany({ where: { enabled: true } });
       const now = Date.now();
+      const runs: Promise<void>[] = [];
       for (const s of sources) {
         const last = lastRun.get(s.id) ?? 0;
         if (now - last < s.cronMinutes * 60_000) continue;
         lastRun.set(s.id, now);
-        runOnce(s.id).then((r) => {
+        runs.push(runOnce(s.id).then((r) => {
           if (r.newCount && r.newCount > 0) console.log(`  [crawler:${s.slug}] +${r.newCount} new`);
-        });
+        }).catch((e) => console.warn(`[crawler:${s.slug}] run failed:`, e)));
       }
+      // 在锁内等待抓取结束，避免多进程并发抓取同一源；单个源失败不会变成未处理的 rejection。
+      await Promise.all(runs);
     });
   };
 

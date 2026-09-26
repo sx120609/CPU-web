@@ -40,6 +40,7 @@ import { remoteGateway } from "./services/jwxtGatewayTransport";
 import { getQqBotDeploymentStatus } from "./services/qqbot/connection";
 import { startLiveActivityPushScheduler } from "./services/liveActivityPush";
 import { startIosClientStatsPrunePoller } from "./services/iosClientStats";
+import { startLogRetentionSweeper } from "./services/logRetention";
 
 export function startAppWorkers() {
   startForumImageModerationPoller();
@@ -53,6 +54,7 @@ export function startAppWorkers() {
   startSponsorOrderExpiryPoller();
   startLiveActivityPushScheduler();
   startIosClientStatsPrunePoller();
+  startLogRetentionSweeper();
 }
 
 export function createApp(options: { workers?: boolean } = {}) {
@@ -84,6 +86,8 @@ export function createApp(options: { workers?: boolean } = {}) {
     },
     filestoreHandler,
   );
+  // 未登录的认证入口只接收账号、验证码和加密凭据，先用小上限解析；已解析的请求会被全局解析器跳过。
+  app.use("/api/auth", express.json({ limit: "1mb" }));
   // 桌面端截图保持原始 PNG（最大 8MB）；Base64 与 JSON 封装后会略高于 10MB。
   app.use(express.json({ limit: "12mb" }));
   app.use(express.urlencoded({ extended: false }));

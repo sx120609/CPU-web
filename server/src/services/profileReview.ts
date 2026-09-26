@@ -85,6 +85,8 @@ export async function recoverPendingProfileReviews(now = Date.now()) {
         status: { notIn: ["deleting", "deleted"] }, updatedAt: { lte: new Date(now - 60_000) },
       },
       orderBy: { updatedAt: "asc" }, take: 2,
+      // 只取审核需要的字段，避免每 5 秒读取整行用户资料。
+      select: { id: true, pendingProfile: true, updatedAt: true, avatar: true },
     });
     await Promise.all(users.map((user) => processProfileReview(user)));
   });

@@ -1,4 +1,3 @@
-import { cdn } from 'tencentcloud-sdk-nodejs-cdn';
 import { setTimeout as delay } from 'node:timers/promises';
 import { getMediaStorageRuntimeConfig } from './storageConfig';
 import { resolveTencentCosPublicUrl } from './tencentCos';
@@ -11,6 +10,8 @@ export async function purgeAccountMediaCaches(paths: string[]) {
   const secretId = runtime.tencentCosSecretId.trim() || runtime.legacyTencentCosSecretId.trim();
   const secretKey = runtime.tencentCosSecretKey.trim() || runtime.legacyTencentCosSecretKey.trim();
   if (!secretId || !secretKey) throw new Error('CDN purge credentials unavailable');
+  // 仅在注销账号需要刷新 CDN 时才加载腾讯云 SDK，避免拖慢每个进程的启动。
+  const { cdn } = await import('tencentcloud-sdk-nodejs-cdn');
   const client = new cdn.v20180606.Client({
     credential: { secretId, secretKey }, region: '',
     profile: { signMethod: 'TC3-HMAC-SHA256', httpProfile: { endpoint: 'cdn.tencentcloudapi.com', reqMethod: 'POST', reqTimeout: 20 } },
