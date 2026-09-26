@@ -53,11 +53,15 @@
             <span class="bang">!</span>
             <div class="oops-body">
               <strong id="oops-text">安装失败</strong>
+              <p class="hint" id="oops-hint" hidden></p>
               <!-- 技术细节默认折起来：正常用户看不懂，但排查时又必须留着 -->
               <details id="oops-more" hidden><summary>详细信息</summary><p id="oops-detail"></p></details>
             </div>
           </div>
-          <button class="retry" id="retry" type="button">重试</button>
+          <div class="oops-actions">
+            <button class="retry" id="retry" type="button">重试</button>
+            <button class="retry elevate" id="elevate" type="button" hidden>以管理员身份重试</button>
+          </div>
         </div>
       </section>
     </main>

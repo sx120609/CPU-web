@@ -23,7 +23,14 @@ import { onCampusLog, pruneCampusLogs, readCampusLogs } from "./campus-net/log";
 import { checkForUpdate, openUpdateDownload } from "./updater";
 import { checkAndDownload, getUpdateState, onUpdateState, restorePendingUpdate, runPendingUpdate, UpdateState } from "./auto-update";
 import { CHROME_HEIGHT, TabKind, TabManager } from "./tabs";
-import { isInstallLaunch, openInstallerWindow, runUninstall, sweepReplacedFiles } from "./self-install";
+import {
+  isElevatedInstallLaunch,
+  isInstallLaunch,
+  openInstallerWindow,
+  runElevatedInstall,
+  runUninstall,
+  sweepReplacedFiles
+} from "./self-install";
 import {
   branding,
   chaoxingLoginHost,
@@ -1371,6 +1378,11 @@ if (installMode || uninstallMode) {
     if (uninstallMode) {
       await runUninstall();
       app.exit(0);
+      return;
+    }
+    // 安装页点了「以管理员身份重试」：提权进程不开窗口，写完文件就退，由安装页收尾
+    if (isElevatedInstallLaunch()) {
+      app.exit(await runElevatedInstall());
       return;
     }
     await openInstallerWindow();

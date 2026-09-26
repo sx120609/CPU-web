@@ -28,7 +28,11 @@ assert.match(selfInstall, /旧版本仍在运行，暂时无法安全更新/, "�
 assert.match(selfInstall, /acquireInstallLock\(to\)/, "安装前必须取得跨进程目录锁");
 assert.match(selfInstall, /if \(!installPromise\)/, "同一安装窗口内的重复触发必须复用进行中的任务");
 assert.match(installerRenderer, /if \(installInFlight\) return/, "渲染侧必须忽略重复安装点击");
-assert.match(selfInstall, /\\\.old-\[a-z0-9-\]\+\$/, "下次启动必须识别并清理新版安装器留下的旧文件");
+assert.match(selfInstall, /\\\.\(old\|installing\)-\[a-z0-9-\]\+\$/, "下次启动必须识别并清理安装器留下的旧文件与暂存文件");
+assert.match(selfInstall, /originalFs\.promises\.readdir/, "启动清理必须绕开 asar 补丁，而不是切换全局 noAsar");
+assert.match(selfInstall, /-Verb RunAs/, "失败页必须能以管理员身份重试");
+assert.match(selfInstall, /launchInstalled\(exePath\);[\s\S]{0,200}app\.exit\(0\)/, "提权安装后必须由普通身份的安装页启动正式版");
+assert.match(installerRenderer, /installElevated\(\)/, "渲染侧必须接上管理员重试按钮");
 
 assert.match(
   selfInstall,

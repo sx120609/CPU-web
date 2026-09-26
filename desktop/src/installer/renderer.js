@@ -8,42 +8,51 @@ const el = (id) => document.querySelector(`#${id}`);
 
 const show = (name) => {
   for (const id of ["ready", "busy", "done", "oops"]) el(id).hidden = id !== name;
+  // 出错时收起功能介绍，把位置让给提示和按钮 —— 否则展开详细信息会把按钮挤出窗口
+  document.body.classList.toggle("failed", name === "oops");
 };
 
 const renderProgress = (p) => {
   // 后端按字节报进度，但"复制完最后一个字节"离"能用"还有建快捷方式等几步，
   // 所以留 4% 给收尾，不让进度条卡在 100% 上不动。
-  const pct = Math.max(0, Math.min(100, Math.round(p.percent ?? 0)));
-  el("fill").style.width = `${pct}%`;
-  el("busy-pct").textContent = `${pct}%`;
+  // 负数表示只换文案、进度不动（比如正在等安全软件检查）
+  if ((p.percent ?? 0) >= 0) {
+    const pct = Math.max(0, Math.min(100, Math.round(p.percent ?? 0)));
+    el("fill").style.width = `${pct}%`;
+    el("busy-pct").textContent = `${pct}%`;
+  }
   if (p.text) el("busy-text").textContent = p.text;
   if (p.detail) el("busy-sub").textContent = p.detail;
 };
 
-const fail = (message, detail) => {
+const fail = ({ message, hint, detail, canElevate } = {}) => {
   show("oops");
   el("oops-text").textContent = message || "安装失败，请重试。";
+  el("oops-hint").hidden = !hint;
+  el("oops-hint").textContent = hint || "";
   el("oops-more").hidden = !detail;
+  el("oops-more").open = false;
   el("oops-detail").textContent = detail || "";
+  el("elevate").hidden = !canElevate || !bridge.installElevated;
 };
 
-const install = async () => {
+const install = async (elevated = false) => {
   if (installInFlight) return;
   installInFlight = true;
   el("go").disabled = true;
   show("busy");
-  renderProgress({ percent: 0, text: "正在准备" });
+  renderProgress({ percent: 0, text: elevated ? "正在请求管理员权限" : "正在准备" });
   try {
-    const result = await bridge.install();
+    const result = elevated ? await bridge.installElevated() : await bridge.install();
     if (!result?.ok) {
-      fail(result?.message, result?.detail);
+      fail(result);
       return;
     }
     show("done");
     // 主进程会在启动正式版后自己退出，这里不用做别的
   } catch (error) {
     // 走到这里说明 IPC 本身炸了，不是安装逻辑返回的失败
-    fail("安装程序出错了。", error instanceof Error ? error.message : String(error));
+    fail({ message: "安装程序出错了。", detail: error instanceof Error ? error.message : String(error), canElevate: true });
   } finally {
     installInFlight = false;
   }
@@ -53,6 +62,7 @@ const boot = async () => {
   el("close").addEventListener("click", () => void bridge.close());
   el("go").addEventListener("click", () => void install());
   el("retry").addEventListener("click", () => void install());
+  el("elevate").addEventListener("click", () => void install(true));
 
   bridge.onProgress(renderProgress);
   // 自动更新拉起来的：用户在旧版里已经点过更新，这里不该再等一次点击

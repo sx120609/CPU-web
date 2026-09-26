@@ -6,6 +6,8 @@ import { contextBridge, ipcRenderer } from "electron";
 contextBridge.exposeInMainWorld("cpuInstaller", {
   getInfo: () => ipcRenderer.invoke("install:info"),
   install: () => ipcRenderer.invoke("install:run"),
+  // 失败页的「以管理员身份重试」：主进程弹 UAC、提权跑一遍安装，再以普通身份启动应用
+  installElevated: () => ipcRenderer.invoke("install:run-elevated"),
   close: () => ipcRenderer.invoke("install:close"),
   onProgress: (callback: (payload: unknown) => void) => {
     ipcRenderer.on("install:progress", (_event, payload) => callback(payload));
