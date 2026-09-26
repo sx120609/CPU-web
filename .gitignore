@@ -73,6 +73,10 @@ __pycache__/
 .deploy/
 coverage/
 .nyc_output/
+# 本地生成的报告、校验记录和临时目录；已提交的 output/pdf 文档仍保持跟踪。
+/output/
+/.codex-tmp/
+/.hvigor/
 desktop/release/药大刷课助手 Setup 0.1.0.exe
 desktop/release/win-unpacked/药大刷课助手.exe
 
