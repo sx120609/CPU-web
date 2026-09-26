@@ -11,6 +11,7 @@ import { resolveNicknameReviewPolicy } from "../src/services/topicAiReview";
 
 const workerSource = readFileSync(new URL("../src/services/nicknameReview.ts", import.meta.url), "utf8");
 const routeSource = readFileSync(new URL("../src/routes/user.ts", import.meta.url), "utf8");
+const authRouteSource = readFileSync(new URL("../src/routes/auth.ts", import.meta.url), "utf8");
 const adminRouteSource = readFileSync(new URL("../src/routes/admin/index.ts", import.meta.url), "utf8");
 
 test("昵称提交会规范化长度并拒绝不可见控制字符", () => {
@@ -45,7 +46,10 @@ test("昵称审核故障使用有界退避并保持异步", () => {
   assert.equal(nicknameReviewRetryDelayMs(99), 15 * 60_000);
   assert.equal(nicknameReviewRetryDue("[attempt:2] timeout", reviewedAt, reviewedAt.getTime() + 59_000), false);
   assert.equal(nicknameReviewRetryDue("[attempt:2] timeout", reviewedAt, reviewedAt.getTime() + 60_000), true);
-  assert.match(routeSource, /scheduleNicknameReview\(u\.id\)/);
+  // 注册时把昵称审核排入后台；资料修改中的昵称随异步资料审核处理。路由都不等待 AI 结果。
+  assert.match(authRouteSource, /^\s*scheduleNicknameReview\(user\.id\);/m);
+  assert.match(routeSource, /submitProfileReview\(req\.user!\.userId, body\)/);
+  assert.doesNotMatch(`${authRouteSource}\n${routeSource}`, /await (scheduleNicknameReview|reviewNicknameContent)\(/);
 });
 
 test("审核结果按昵称和提交时间快照提交，旧结果不能覆盖新昵称", () => {

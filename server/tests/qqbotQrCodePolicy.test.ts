@@ -84,12 +84,17 @@ test("QQBot 只把本站持久化的 image2 结果转换为图片消息", () => 
   assert.equal(buildQqBotGeneratedImageMessage("/uploads/../secret.png", "https://cputime.cn"), "");
 });
 
-test("总开关关闭时安全教育帮助不再附带二维码图片", () => {
-  const message = buildSafetyPlatformGuideBlockLines().join("\n");
+test("安全教育帮助改为私聊账号密码流程，无论二维码开关如何都不附带二维码图片", () => {
+  for (const qrCodeSendingEnabled of [false, true]) {
+    const message = buildSafetyPlatformGuideBlockLines(qrCodeSendingEnabled).join("\n");
 
-  assert.doesNotMatch(message, /safety-platform-qrcode|\[CQ:image/iu);
-  assert.match(message, /已关闭二维码发送/iu);
-  assert.match(message, /704825850/u);
+    assert.doesNotMatch(message, /safety-platform-qrcode|\[CQ:image/iu);
+    assert.match(message, /学校 ID 已固定为：\d{19}/u);
+    assert.match(message, /私聊发送“刷课”/u);
+    assert.match(message, /<用户名> <密码>/u);
+    assert.match(message, /不会保存/u);
+    assert.match(message, /请不要在群聊中发送账号密码/u);
+  }
 });
 
 test("总开关关闭时拾间 AI 不创建二维码入口，并把功能入口改为文字链接", async () => {

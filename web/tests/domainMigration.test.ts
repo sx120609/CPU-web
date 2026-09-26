@@ -86,11 +86,12 @@ test("迁移文案与站点现有客户端入口名称保持一致", () => {
   assert.match(notice, /“下载 Android 客户端”/);
   assert.match(notice, /“更新安卓客户端”或“检查客户端更新”/);
   assert.match(notice, /页面底部“关于”/);
-  assert.match(notice, /“查看更多”→“添加到主屏幕”/);
+  assert.match(notice, /点“在 App Store 下载”/);
   assert.match(schedule, />下载 Android 客户端</);
   assert.match(schedule, /"更新安卓客户端" : "检查客户端更新"/);
-  assert.match(downloads, /actionLabel: "打开课表并安装"/);
+  assert.match(downloads, /actionLabel: "在 App Store 下载"/);
   assert.match(downloads, /“查看更多”→“添加到主屏幕”/);
+  assert.doesNotMatch(notice, /“打开课表并安装”/);
   assert.match(desktopShell, /id="about-check-update"[^>]*>检查客户端更新</);
   assert.doesNotMatch(notice, /选择“客户端更新”/);
   assert.doesNotMatch(notice, /“检查客户端更新”或“更新”/);

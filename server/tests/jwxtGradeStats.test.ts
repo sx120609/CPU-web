@@ -32,24 +32,25 @@ test("成绩单统计优先保留补考后的通过记录，并把重复课程�
   assert.equal(collapsed.length, 2);
   assert.equal(stats.rows.length, 2);
   assert.equal(stats.credits, 3.25);
-  assert.equal(stats.gpa, (2.3 * 3 + 4.6 * 0.25) / 3.25);
+  // 补考成绩无论分数高低都按 1.0 绩点计入（与 web/tests/jwxtGradeStats.test.ts 的补考口径一致）。
+  assert.equal(transcriptGradePoint(rows[1]), 1);
+  assert.equal(stats.gpa, (1 * 3 + 4.6 * 0.25) / 3.25);
 });
 
-test("成绩单汇总把等级成绩与导出样本隔离验证", () => {
-  // “良=3.5”与方法页一致；“优=2.5”只是当前第一账号导出结果的兼容证据，
-  // 方法页没有把单字符“优”单独列出，不能据此反推学校明文规则。
+test("成绩单汇总按教务详情口径换算等级成绩", () => {
+  // 等级成绩与教务详情、电子成绩单一致：优 = 4.5，良 = 3.5。
   const good = row({ courseCode: "GOOD", courseName: "等级良样本", score: "良", scoreNum: null, credits: 1 });
   assert.equal(isTranscriptPassing(good), true);
   assert.equal(transcriptGradePoint(good), 3.5);
 
   const military = row({ courseCode: "MILITARY", courseName: "军事技能", score: "优", scoreNum: null, credits: 2 });
   assert.equal(isTranscriptPassing(military), true);
-  assert.equal(transcriptGradePoint(military), 2.5);
+  assert.equal(transcriptGradePoint(military), 4.5);
 
   const stats = transcriptGradeStats([
     military,
     row({ courseCode: "PASS", score: "70", scoreNum: 70, credits: 3 }),
   ]);
   assert.equal(stats.credits, 5);
-  assert.equal(stats.gpa, (2.5 * 2 + 2 * 3) / 5);
+  assert.equal(stats.gpa, (4.5 * 2 + 2 * 3) / 5);
 });

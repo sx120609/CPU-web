@@ -43,6 +43,7 @@ test("forum list, feed, topic, and reply surfaces render the author level badge"
 test("mobile reply editor is a compact bottom sheet with an explicit return to the post", () => {
   assert.doesNotMatch(topicPageSource, /:fullscreen="isMobileLayout"/);
   assert.match(topicPageSource, /class="reply-original-peek" @click="peekOriginalPost"/);
-  assert.match(topicResponsiveSource, /\.reply-dialog-overlay \.reply-dialog[\s\S]*?max-height:\s*min\(68dvh, 560px\)/);
+  // 底部弹层最高 560px，并按键盘弹出后的可视区域高度收缩（见 web/src/utils/overlayViewport.ts）。
+  assert.match(topicResponsiveSource, /\.reply-dialog-overlay \.reply-dialog\)[\s\S]*?max-height:\s*min\(560px, calc\(var\(--cpu-overlay-viewport-height, 100dvh\) - 16px - env\(safe-area-inset-bottom\)\)\)/);
   assert.match(topicResponsiveSource, /\.editor-surface\)[\s\S]*?min-height:\s*118px[\s\S]*?max-height:\s*min\(28dvh, 240px\)/);
 });
