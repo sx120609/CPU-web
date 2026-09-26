@@ -1,4 +1,4 @@
-import {bigint, boolean, integer, pgEnum, pgTable, serial, text, timestamp, uuid, varchar, unique} from 'drizzle-orm/pg-core';
+import {bigint, boolean, index, integer, pgEnum, pgTable, serial, text, timestamp, uuid, varchar, unique, uniqueIndex} from 'drizzle-orm/pg-core';
 import {relations} from 'drizzle-orm';
 
 // 枚举定义
@@ -30,7 +30,9 @@ export const users = pgTable('User', {
   status: userStatusEnum('status').default('active').notNull(),
   statusChangedAt: timestamp('statusChangedAt').defaultNow(),
   statusChangedBy: integer('statusChangedBy'),
-});
+}, (t) => ({
+  statusIdx: index('idx_user_status').on(t.status),
+}));
 
 // 播出时段表
 export const playTimes = pgTable('PlayTime', {
@@ -61,7 +63,10 @@ export const songs = pgTable('Song', {
   musicPlatform: text('musicPlatform'),
   musicId: text('musicId'),
   hitRequestId: integer(),
-});
+}, (t) => ({
+  requesterIdIdx: index('Song_requesterId_idx').on(t.requesterId),
+  semesterIdx: index('Song_semester_idx').on(t.semester),
+}));
 
 // 投票表
 export const votes = pgTable('Vote', {
@@ -69,7 +74,11 @@ export const votes = pgTable('Vote', {
   createdAt: timestamp('createdAt').defaultNow().notNull(),
   songId: integer('songId').notNull(),
   userId: integer('userId').notNull(),
-});
+}, (t) => ({
+  // 同一用户对同一首歌只能投一票（并发重复提交由唯一索引兜底）
+  songUserUnique: uniqueIndex('Vote_songId_userId_unique').on(t.songId, t.userId),
+  userIdIdx: index('Vote_userId_idx').on(t.userId),
+}));
 
 // 歌曲投票偏移量表（用于后台隐式调整展示票数）
 export const songVoteOffsets = pgTable('song_vote_offsets', {
@@ -95,7 +104,9 @@ export const schedules = pgTable('Schedule', {
   // 草稿支持字段
   isDraft: boolean('isDraft').default(false).notNull(),
   publishedAt: timestamp('publishedAt'),
-});
+}, (t) => ({
+  songIdIdx: index('Schedule_songId_idx').on(t.songId),
+}));
 
 // 通知表
 export const notifications = pgTable('Notification', {
@@ -107,7 +118,9 @@ export const notifications = pgTable('Notification', {
   read: boolean('read').default(false).notNull(),
   userId: integer('userId').notNull(),
   songId: integer('songId'),
-});
+}, (t) => ({
+  userIdIdx: index('Notification_userId_idx').on(t.userId),
+}));
 
 // 通知设置表
 export const notificationSettings = pgTable('NotificationSettings', {
@@ -232,7 +245,10 @@ export const userStatusLogs = pgTable('user_status_logs', {
   reason: text('reason'),
   operatorId: integer('operator_id'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+}, (t) => ({
+  userIdIdx: index('idx_user_status_logs_user_id').on(t.userId),
+  createdAtIdx: index('idx_user_status_logs_created_at').on(t.createdAt.desc().nullsFirst()),
+}));
 
 export const requestTimes = pgTable("RequestTime", {
   id: serial().primaryKey().notNull(),
@@ -280,6 +296,7 @@ export const songReplayRequests = pgTable('song_replay_requests', {
   status: replayRequestStatusEnum('status').default('PENDING').notNull(),
 }, (t) => ({
   unq: unique().on(t.songId, t.userId),
+  userIdIdx: index('song_replay_requests_user_id_idx').on(t.userId),
 }));
 
 // 歌曲评论表
@@ -291,7 +308,11 @@ export const songComments = pgTable('song_comments', {
   userId: integer('user_id').notNull(),
   parentCommentId: integer('parent_comment_id'),
   content: text('content').notNull(),
-})
+}, (t) => ({
+  songIdIdx: index('song_comments_song_id_idx').on(t.songId),
+  createdAtIdx: index('song_comments_created_at_idx').on(t.createdAt),
+  parentCommentIdIdx: index('song_comments_parent_comment_id_idx').on(t.parentCommentId),
+}))
 
 // 第三方身份关联表
 export const userIdentities = pgTable('UserIdentity', {
@@ -303,6 +324,7 @@ export const userIdentities = pgTable('UserIdentity', {
   createdAt: timestamp('createdAt').defaultNow().notNull(),
 }, (t) => ({
   unq: unique().on(t.provider, t.providerUserId),
+  userIdIdx: index('UserIdentity_userId_idx').on(t.userId),
 }));
 
 // 关系定义

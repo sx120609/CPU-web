@@ -181,7 +181,7 @@ export default defineEventHandler(async (event) => {
         })
         changed = true
       } catch (insertError: any) {
-        if (insertError?.code === '23505') {
+        if (insertError?.code === '23505' || insertError?.cause?.code === '23505') {
           const replayRequestCount = await fetchReplayRequestCount(songId)
           return {
             success: true,

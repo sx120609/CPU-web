@@ -168,8 +168,8 @@ export default defineEventHandler(async (event) => {
         userId
       })
     } catch (insertError: any) {
-      // 并发情况下唯一索引冲突，按已投票处理
-      if (insertError?.code === '23505') {
+      // 并发情况下唯一索引冲突，按已投票处理（drizzle 会把驱动错误包装在 cause 中）
+      if (insertError?.code === '23505' || insertError?.cause?.code === '23505') {
         const voteCount = await fetchVoteCount(songId)
         return {
           success: true,

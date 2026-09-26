@@ -134,6 +134,13 @@
       "when": 1783915200000,
       "tag": "20260713120000_repair_user_auth_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1790357919671,
+      "tag": "20260925173839_vote_unique_and_hot_indexes",
+      "breakpoints": true
     }
   ]
 }
