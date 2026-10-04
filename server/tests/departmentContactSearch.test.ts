@@ -60,7 +60,12 @@ test("AI search routes categories then selects real scoped IDs, with no full dir
       assert.ok(candidates.every((c: any) => categories.includes(getDepartmentContact(c.id)!.category)));
     }
     categories = [getDepartmentContact("CPU-0022")!.category];
-    for (const campus of ["江北", "无锡"]) assert.equal((await searchDepartmentContactsWithAi({ q: "食堂", campus })).total, 0);
+    for (const campus of ["江北", "无锡"]) {
+      assert.equal((await searchDepartmentContactsWithAi({ q: "食堂", campus })).total, 0);
+      const inferred = await searchDepartmentContactsWithAi({ q: `${campus}校区食堂` });
+      assert.equal(inferred.campus, campus);
+      assert.equal(inferred.total, 0);
+    }
     result = { contactIds: [], clarification: null };
     assert.equal((await searchDepartmentContactsWithAi({ q: "食堂 报销凭证" })).total, 0);
     assert.equal((await searchDepartmentContactsWithAi({ q: "不存在的外星人办公室" })).total, 0);

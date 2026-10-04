@@ -3,8 +3,26 @@ import data from "../data/departmentContacts.json";
 export type ContactRecord = typeof data.contacts[number];
 export type ContactSource = typeof data.sources[number];
 export function isDepartmentContactCampus(value: string) {
-  return !value || data.contacts.some((record) => record.campus === value);
+  return !value || departmentContactCampuses().includes(value);
 }
+/** Read on every query so directory changes cannot leave a stale campus vocabulary. */
+function departmentContactCampuses(records: readonly ContactRecord[] = data.contacts) {
+  return [...new Set(records.map((record) => record.campus).filter(Boolean))];
+}
+
+export function detectDepartmentContactCampus(text: string) {
+  const normalized = normalizeContactText(text);
+  return departmentContactCampuses().sort((a, b) => b.length - a.length)
+    .find((campus) => normalized.includes(normalizeContactText(campus))) || "";
+}
+
+function stripContactCampuses(text: string, replacement: string) {
+  for (const campus of departmentContactCampuses().map(normalizeContactText).sort((a, b) => b.length - a.length)) {
+    text = text.replaceAll(campus, replacement);
+  }
+  return text;
+}
+
 export type ContactQuery = {
   q?: string;
   category?: string;
@@ -101,14 +119,13 @@ export function queryDepartmentContacts(input: ContactQuery = {}) {
   const rawQuery = String(input.q || "").slice(0, 160);
   const q = normalizeContactText(String(input.q || "").slice(0, 160));
   const intent = queryIntent(q);
-  const campus = input.campus || [...new Set(data.contacts.map((r) => r.campus).filter(Boolean))]
-    .sort((a, b) => b.length - a.length).find((value) => q.includes(value)) || "";
+  const campus = input.campus || detectDepartmentContactCampus(q);
   const academicTopic = ["学籍", "成绩单", "毕业证明", "教材"].find((topic) => q.includes(topic));
   const studentTypeKnown = /本科|研究生/u.test(q);
   const genericAcademic = intent?.id === "academic" && !academicTopic;
-  let core = q.replace(/(?:请问|请帮我|帮我|我想|我要|怎么联系|联系谁|联系方式|咨询电话|电话号码|电话|联系|部门|找谁|查询|搜索|江宁|玄武门|江北)/gu, "");
+  let core = stripContactCampuses(q, "").replace(/(?:请问|请帮我|帮我|我想|我要|怎么联系|联系谁|联系方式|咨询电话|电话号码|电话|联系|部门|找谁|查询|搜索)/gu, "");
   for (const [alias, department] of Object.entries(DEPARTMENT_ALIASES).sort(([a], [b]) => b.length - a.length)) core = core.replaceAll(alias, department);
-  let words = rawQuery.replace(/(?:请问|请帮我|我想(?:问|咨询|了解)?|想问|咨询一下|怎么联系|联系谁|联系方式|查询电话|电话号码|电话|联系|多少|找谁|咨询|补办|办理|校区|江宁|玄武门|江北|该找|哪里|哪个|什么|呢|吗|那|的)/gu, " ");
+  let words = stripContactCampuses(rawQuery.normalize("NFKC").toLowerCase(), " ").replace(/(?:请问|请帮我|我想(?:问|咨询|了解)?|想问|咨询一下|怎么联系|联系谁|联系方式|查询电话|电话号码|电话|联系|多少|找谁|咨询|补办|办理|校区|该找|哪里|哪个|什么|呢|吗|那|的)/gu, " ");
   for (const [alias, department] of Object.entries(DEPARTMENT_ALIASES).sort(([a], [b]) => b.length - a.length)) words = words.replaceAll(alias, department);
   const namedTerms = [...new Set(data.contacts.flatMap((record) => [record.department, record.office]))]
     .map(normalizeContactText).filter((term) => term.length >= 3 && !["办公室", "服务中心", "招生", "教务处"].includes(term)
@@ -149,7 +166,11 @@ export function queryDepartmentContacts(input: ContactQuery = {}) {
   const limit = Math.max(1, Math.min(50, Math.floor(input.limit || 20)));
   const offset = Math.max(0, Math.floor(input.offset || 0));
   let clarification: string | null = null;
-  if (intent?.campusRequired && !campus) clarification = "你在江宁、玄武门还是江北校区？";
+  if (intent?.campusRequired && !campus) {
+    const eligibleCampuses = new Set(departmentContactCampuses(eligible));
+    const candidates = departmentContactCampuses().filter((value) => eligibleCampuses.has(value));
+    clarification = candidates.length ? `请确认办理校区：${candidates.join("、")}？` : "请确认你需要办理业务的校区。";
+  }
   else if (intent?.id === "academic" && academicTopic && !studentTypeKnown) clarification = "你是本科生还是研究生？请先确认学生类型，再查询这项教务业务的公开窗口。";
   else if (genericAcademic) clarification = "你是本科生还是研究生？需要办理选课、学生证、四六级报名，还是学籍、成绩或毕业事务？当前资料只覆盖部分窗口。";
   else if (q && !intent && new Set(eligible.map((record) => record.department)).size > 1 && /招生|学生|办公室/u.test(core)) {
@@ -168,7 +189,7 @@ export function queryDepartmentContacts(input: ContactQuery = {}) {
     contacts: eligible.slice(offset, offset + limit).map((record) => ({ ...presentContact(record), relevanceScore: relevance(record) })),
     gaps,
     categories: [...new Set(data.contacts.map((record) => record.category))],
-    campuses: [...new Set(data.contacts.map((record) => record.campus).filter(Boolean))],
+    campuses: departmentContactCampuses(),
     meta: { ...data.meta, actualRecordCount: data.contacts.length, actualSourceCount: data.sources.length,
       actualGapCount: data.gaps.length },
   };

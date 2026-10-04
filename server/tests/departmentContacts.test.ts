@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import express from "express";
 import data from "../src/data/departmentContacts.json";
 import { departmentContactsTool, getDepartmentContact, queryDepartmentContacts,
-  contactTelephoneUrl, safeContactUrl } from "../src/services/departmentContacts";
+  isDepartmentContactCampus, detectDepartmentContactCampus, contactTelephoneUrl, safeContactUrl } from "../src/services/departmentContacts";
 
 import { departmentContactsRouter } from "../src/routes/departmentContacts";
 
@@ -103,4 +103,49 @@ test("HTTP public read-only API validates input and returns the shared query res
     assert.equal((await fetch(`${url}?q=${"a".repeat(161)}`)).status, 400);
     assert.equal((await fetch(url, { method: "POST" })).status, 404);
   } finally { server.closeAllConnections(); await new Promise<void>((resolve) => server.close(() => resolve())); }
+});
+
+
+test("campus cleaning and identification follow directory additions and removals literally", () => {
+  const original = [...data.contacts];
+  try {
+    const template = data.contacts.find((record) => record.suggestedDefaultDisplay && record.campus)!;
+    for (const campus of ["江北", "无锡", "新城(东)+", "新城"]) {
+      data.contacts.push({ ...template, id: `fixture-${campus}`, campus,
+        department: "测试业务部门", office: "专属窗口", purpose: "测试业务" });
+      assert.equal(isDepartmentContactCampus(campus), true);
+      assert.equal(detectDepartmentContactCampus(`${campus}校区测试业务电话`), campus);
+      for (const q of [`${campus}校区测试业务电话`, `${campus}测试业务部门电话`]) {
+        const result = queryDepartmentContacts({ q });
+        assert.equal(result.campus, campus);
+        assert.deepEqual(result.contacts.map((record) => record.id), [`fixture-${campus}`]);
+      }
+    }
+    data.contacts.splice(0, data.contacts.length, ...data.contacts.filter((record) => record.campus !== "新城(东)+"));
+    assert.equal(isDepartmentContactCampus("新城(东)+"), false);
+    assert.ok(!queryDepartmentContacts().campuses.includes("新城(东)+"));
+    assert.equal(queryDepartmentContacts({ q: "新城(东)+测试业务电话" }).total, 0);
+  } finally { data.contacts.splice(0, data.contacts.length, ...original); }
+});
+
+test("campus clarification follows eligible business candidates before pagination", () => {
+  const original = [...data.contacts];
+  try {
+    const card = data.contacts.find((record) => record.office.includes("校园卡部") && record.suggestedDefaultDisplay)!;
+    data.contacts.splice(0, data.contacts.length, ...data.contacts.filter((record) =>
+      !/校园卡部|卡务中心/u.test(record.department + record.office + record.purpose)));
+    for (const campus of ["江北", "无锡"]) data.contacts.push({ ...card, id: `card-${campus}`, campus });
+    data.contacts.push({ ...card, id: "hidden-card", campus: "隐藏校区", suggestedDefaultDisplay: false });
+    data.contacts.push({ ...card, id: "private-card", campus: "未公开校区", contactFieldsPubliclyPublished: false });
+    const choices = queryDepartmentContacts().campuses.filter((campus) => ["江北", "无锡"].includes(campus));
+    assert.equal(queryDepartmentContacts({ q: "补办校园卡", limit: 1 }).clarification, `请确认办理校区：${choices.join("、")}？`);
+    assert.equal(queryDepartmentContacts({ q: "江北补办校园卡" }).clarification, null);
+    assert.equal(queryDepartmentContacts({ q: "无锡补办校园卡" }).contacts[0].id, "card-无锡");
+    assert.equal(queryDepartmentContacts({ q: "补办校园卡", includeSpecial: true }).clarification,
+      `请确认办理校区：${[...choices, "隐藏校区"].join("、")}？`);
+    data.contacts.splice(0, data.contacts.length, ...data.contacts.filter((record) => record.campus !== "江北"));
+    assert.equal(queryDepartmentContacts({ q: "补办校园卡" }).clarification, "请确认办理校区：无锡？");
+    data.contacts.splice(0, data.contacts.length);
+    assert.equal(queryDepartmentContacts({ q: "补办校园卡" }).clarification, "请确认你需要办理业务的校区。");
+  } finally { data.contacts.splice(0, data.contacts.length, ...original); }
 });
