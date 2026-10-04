@@ -1,9 +1,9 @@
 import { z } from "zod";
-import { departmentContactsTool, queryDepartmentContacts } from "./departmentContacts";
+import { departmentContactsTool, isDepartmentContactCampus, queryDepartmentContacts } from "./departmentContacts";
 import type { CampusAssistantResponse } from "./campusAssistant";
 
 const querySchema = z.object({ q: z.string().trim().min(1).max(160),
-  campus: z.enum(["", "江宁", "玄武门", "江北"]).optional(),
+  campus: z.string().max(30).refine(isDepartmentContactCampus).optional(),
   category: z.string().trim().max(80).optional(), includeSpecial: z.boolean().optional() }).strict();
 export type DepartmentContactToolQuery = z.infer<typeof querySchema>;
 export type DepartmentContactToolContext = { queries: DepartmentContactToolQuery[]; results: ReturnType<typeof queryDepartmentContacts>[]; citationRepair?: boolean };

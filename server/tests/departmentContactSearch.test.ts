@@ -5,10 +5,17 @@ import express from "express";
 import { prisma } from "../src/prisma";
 import { loadFeatures } from "../src/services/siteSettings";
 import { searchDepartmentContactsWithAi } from "../src/services/departmentContactSearch";
-import { isExactDepartmentContactQuery, getDepartmentContact, queryDepartmentContacts } from "../src/services/departmentContacts";
+import { isDepartmentContactCampus, isExactDepartmentContactQuery, getDepartmentContact, queryDepartmentContacts } from "../src/services/departmentContacts";
+import { readDepartmentContactToolQueries } from "../src/services/departmentContactsAssistant";
 import { searchRouter } from "../src/routes/search";
 
 test("only exact directory names and numbers bypass the model", () => {
+  for (const campus of queryDepartmentContacts().campuses) {
+    assert.equal(isDepartmentContactCampus(campus), true);
+    assert.doesNotThrow(() => readDepartmentContactToolQueries({ departmentContactQueries: [{ q: "联系部门", campus }] }));
+  }
+  assert.equal(isDepartmentContactCampus("镇江"), false);
+  assert.throws(() => readDepartmentContactToolQueries({ departmentContactQueries: [{ q: "联系部门", campus: "不存在的校区" }] }));
   for (const q of ["饮食服务中心", "025-86185042", "CPU-0022", "教务处"]) assert.equal(isExactDepartmentContactQuery(q), true);
   for (const q of ["食堂", "吃饭找谁", "饮食服务中心 报销", "图书馆借书", "<script>alert(1)</script>"]) assert.equal(isExactDepartmentContactQuery(q), false);
   assert.equal(queryDepartmentContacts({ q: "CPU-0022" }).contacts[0].id, "CPU-0022");
@@ -53,6 +60,7 @@ test("AI search routes categories then selects real scoped IDs, with no full dir
       assert.ok(candidates.every((c: any) => categories.includes(getDepartmentContact(c.id)!.category)));
     }
     categories = [getDepartmentContact("CPU-0022")!.category];
+    for (const campus of ["江北", "无锡"]) assert.equal((await searchDepartmentContactsWithAi({ q: "食堂", campus })).total, 0);
     result = { contactIds: [], clarification: null };
     assert.equal((await searchDepartmentContactsWithAi({ q: "食堂 报销凭证" })).total, 0);
     assert.equal((await searchDepartmentContactsWithAi({ q: "不存在的外星人办公室" })).total, 0);

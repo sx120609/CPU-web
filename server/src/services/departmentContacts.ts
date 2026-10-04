@@ -2,6 +2,9 @@ import data from "../data/departmentContacts.json";
 
 export type ContactRecord = typeof data.contacts[number];
 export type ContactSource = typeof data.sources[number];
+export function isDepartmentContactCampus(value: string) {
+  return !value || data.contacts.some((record) => record.campus === value);
+}
 export type ContactQuery = {
   q?: string;
   category?: string;
@@ -98,7 +101,8 @@ export function queryDepartmentContacts(input: ContactQuery = {}) {
   const rawQuery = String(input.q || "").slice(0, 160);
   const q = normalizeContactText(String(input.q || "").slice(0, 160));
   const intent = queryIntent(q);
-  const campus = input.campus || ["玄武门", "江宁", "江北"].find((value) => q.includes(value)) || "";
+  const campus = input.campus || [...new Set(data.contacts.map((r) => r.campus).filter(Boolean))]
+    .sort((a, b) => b.length - a.length).find((value) => q.includes(value)) || "";
   const academicTopic = ["学籍", "成绩单", "毕业证明", "教材"].find((topic) => q.includes(topic));
   const studentTypeKnown = /本科|研究生/u.test(q);
   const genericAcademic = intent?.id === "academic" && !academicTopic;
