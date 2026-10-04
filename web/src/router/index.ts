@@ -189,6 +189,7 @@ export const router = createRouter({
         { path: "services/tools/filestore-beta", redirect: "/services/tools/filestore" },
         { path: "services/tools/filestore-beta/submit/:slug", redirect: (to) => ({ name: "service-filestore-submit", params: { slug: to.params.slug } }) },
         { path: "services/tools/filestore-beta/status/:slug", redirect: (to) => ({ name: "service-filestore-status", params: { slug: to.params.slug } }) },
+        { path: "services/tools/department_contacts", name: "service-department-contacts", component: () => import("@/views/services/DepartmentContacts.vue"), meta: { title: "部门联系", public: true } },
         { path: "services/tools/:slug", name: "service-tool-detail", component: () => import("@/views/services/ToolDetail.vue"), meta: { title: "校园小工具", public: true } },
         { path: "services/tools/questionnaires/:slug", name: "questionnaire-fill", component: () => import("@/views/services/QuestionnaireFill.vue"), meta: { title: "填写问卷", public: true } },
         { path: "services/tools/grade-checks/:slug", name: "grade-check-lookup", component: () => import("@/views/services/GradeCheckLookup.vue"), meta: { title: "成绩核对" } },

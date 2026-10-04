@@ -1,4 +1,5 @@
 import type { FeatureKey } from "./siteSettings";
+import { answerDepartmentContactRequest } from "./departmentContactsAssistant";
 import {
   getSiteConfig,
   isAiProviderReady,
@@ -174,6 +175,16 @@ const CAMPUS_ASSISTANT_ROUTES: CampusAssistantRoute[] = [
     owner: "药大拾间",
     requireLogin: false,
     keywords: ["校园服务", "服务", "办事", "校园入口"],
+  },
+  {
+    id: "department-contacts",
+    label: "部门联系",
+    description: "按部门、校区或办事需求查询公开联系资料与来源",
+    url: "/services/tools/department_contacts",
+    icon: "phone",
+    owner: "校园小工具",
+    requireLogin: false,
+    keywords: ["部门联系", "通讯录", "部门电话", "补办校园卡", "宿舍报修", "教务咨询"],
   },
   {
     id: "service-tools",
@@ -910,6 +921,8 @@ export async function askCampusAssistant(input: {
   if (isCampusAssistantPublicTopicRestricted(message, input.history)) {
     return cloneRestrictedPublicTopicReply();
   }
+  const contactReply = answerDepartmentContactRequest(message, input.history);
+  if (contactReply) return contactReply;
   const availableActions = listCampusAssistantActions(input.context);
   const deterministicActions = searchCampusAssistantActions(message, input.context, 3);
   const webSearchRequested = shouldUseCampusAssistantWebSearch(message);
@@ -1194,6 +1207,11 @@ export async function streamCampusAssistant(input: {
   const message = input.message.trim();
   if (isCampusAssistantPublicTopicRestricted(message, input.history)) {
     return cloneRestrictedPublicTopicReply();
+  }
+  const contactReply = answerDepartmentContactRequest(message, input.history);
+  if (contactReply) {
+    if (contactReply.answer) await onAnswerDelta(contactReply.answer);
+    return contactReply;
   }
   if (shouldUseCampusAssistantWebSearch(message)) {
     const response = await askCampusAssistant({
