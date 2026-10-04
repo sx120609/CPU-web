@@ -32,6 +32,7 @@ import {
 import { detectLoginClient } from "../utils/loginClient";
 import { isCampusAssistantDestination, shouldHideHarmonyAssistant } from "../utils/nativeAssistantAccess";
 import { searchDepartmentContactsWithAi } from "../services/departmentContactSearch";
+import { isDepartmentContactCampus } from "../services/departmentContacts";
 
 export const searchRouter = Router();
 
@@ -246,7 +247,7 @@ searchRouter.delete("/assistant/conversations/:id", async (req, res, next) => {
 
 searchRouter.post("/assistant/department-contacts",
   securityRateLimit("campus-assistant", 20, 60_000),
-  validate(z.object({ q: z.string().trim().min(1).max(160), campus: z.enum(["", "江宁", "玄武门", "镇江"]).optional(),
+  validate(z.object({ q: z.string().trim().min(1).max(160), campus: z.string().max(30).refine(isDepartmentContactCampus).optional(),
     category: z.string().max(80).optional(), includeSpecial: z.boolean().optional() }).strict()),
   async (req, res, next) => {
     let reservation: CampusAssistantQuotaReservation | null = null;
@@ -263,7 +264,7 @@ searchRouter.post("/assistant/department-contacts",
     } catch (error) {
       if (reservation) await refundCampusAssistantQuota(req.user!.userId, reservation).catch(() => {});
       if (!controller.signal.aborted) next(error instanceof Error && /^(DEPARTMENT_SEARCH_|\[|Unexpected|Invalid)/u.test(error.message)
-        ? Errors.badGateway("拾间AI暂时未能返回可核验结果，请稍后重试；本次额度已退回。") : error);
+        ? Errors.badGateway("拾间AI暂时未能返回可核验结果，请稍后重试。") : error);
     } finally { req.off("aborted", abort); res.off("close", abort); }
   });
 
