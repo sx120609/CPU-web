@@ -48,7 +48,7 @@ export function buildDepartmentContactModelInstruction(context?: DepartmentConta
   const rules = [
     `你有公开部门联系查询工具 query_department_contacts：${meta.actualRecordCount}条记录、${meta.actualSourceCount}个来源，研究快照${meta.asOf}，非官方认证且未拨测。它不保证覆盖所有部门的当前号码。`,
     "结合提供的对话历史理解意图、纠正和省略指代，例如‘那宿舍呢’‘不是这个部门’；不要按关键词硬切换回答。闲聊、投诉、询问是否掌握通讯录时，正常解释资料范围或自然询问部门，不把整句拿去搜索，不编造‘查过了但没有资料’。",
-    "需要具体联系窗口时，在原有JSON中用departmentContactQueries请求工具。q填语义提取的部门/业务关键词，不填完整对话句子；校区已知时填campus，不明确时不要猜。最多3个查询，每轮最多8条记录；includeSpecial仅在用户明确询问历史/冲突/专项信息时启用。",
+    "需要具体联系窗口时，在原有JSON中用departmentContactQueries请求工具。q填语义提取的部门/业务关键词，并保留对话中已知的本科生/研究生类型，不填完整对话句子；校区已知时填campus，不明确时不要猜。最多3个查询，每轮最多8条记录；includeSpecial仅在用户明确询问历史/冲突/专项信息时启用。",
     "departmentContactQueries放在JSON第一个字段。不需要查询时填[]并正常填写answer。请求查询时answer填空字符串、generateImage=false，不先猜号码；服务端会执行工具并让你继续回答。",
     '查询例：{"departmentContactQueries":[{"q":"校园卡补办","campus":"江宁"}],"answer":"","generateImage":false,"imagePrompt":"","actionIds":[],"suggestions":[]}',
     "本轮工具是公开联系查询，不是私人课表/成绩查询。电话号码只能来自本轮可引用记录，不可用模型记忆或历史回复补全。最终JSON用contactIds列出实际引用的记录ID，服务端附真实来源及详情；未引用填[]。",
@@ -58,7 +58,8 @@ export function buildDepartmentContactModelInstruction(context?: DepartmentConta
     clarification: result.clarification, hiddenSpecialCount: result.hiddenSpecialCount,
     contacts: result.contacts.map((contact) => ({ id: contact.id, department: contact.department, office: contact.office,
       campus: contact.campus, purpose: contact.purpose.slice(0, 400),
-      phones: canQuotePhone(contact) ? contact.phones.map((phone) => phone.number) : [], numberConflict: !canQuotePhone(contact),
+      phones: !result.clarification && canQuotePhone(contact) ? contact.phones.map((phone) => phone.number) : [],
+      requiresClarification: Boolean(result.clarification), numberConflict: !canQuotePhone(contact),
       status: contact.status, warnings: contact.warnings, recordType: contact.recordType, note: contact.note.slice(0, 250),
       sourceDate: contact.sourceDate, checkedAt: contact.checkedAt, detailUrl: contact.detailUrl,
       sources: contact.sources.filter((source) => source.url).slice(0, 2).map((source) => ({ title: source.title.slice(0, 100), url: source.url })),
@@ -78,7 +79,8 @@ function phoneMentions(answer: string) { return answer.match(/(?:0\d{2,3}[-\s]?\
 export function groundDepartmentContactResponse(response: CampusAssistantResponse, payload: unknown, context?: DepartmentContactToolContext): CampusAssistantResponse {
   const contacts = context?.results.flatMap((result) => result.contacts) || [];
   const byId = new Map(contacts.map((contact) => [contact.id, contact]));
-  const allowed = new Set(contacts.filter(canQuotePhone).flatMap((contact) => contact.phones.map((phone) => phoneKey(phone.number))));
+  const quotable = context?.results.filter((result) => !result.clarification).flatMap((result) => result.contacts).filter(canQuotePhone) || [];
+  const allowed = new Set(quotable.flatMap((contact) => contact.phones.map((phone) => phoneKey(phone.number))));
   const mentions = phoneMentions(response.answer).filter((phone) => context || /^025/u.test(phone));
   if (mentions.some((phone) => !allowed.has(phoneKey(phone)))) throw new Error("DEPARTMENT_CONTACT_UNGROUNDED_PHONE");
   if (context) {

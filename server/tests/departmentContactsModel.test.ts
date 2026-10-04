@@ -21,6 +21,8 @@ test("natural language search ranks named units and rejects literal hostile inpu
   }
   assert.equal(queryDepartmentContacts({ q: "财务处" }).total, 0); // Only dated special-purpose finance evidence exists.
   assert.equal(queryDepartmentContacts({ q: "财务处", includeSpecial: true }).total, 5);
+  assert.equal(queryDepartmentContacts({ q: "财务处报销", includeSpecial: true }).total, 1);
+  assert.equal(queryDepartmentContacts({ q: "图书馆借阅" }).total, 0); // Card service phones must not become borrowing service phones.
   assert.equal(queryDepartmentContacts({ q: "<script>alert(1)</script>" }).total, 0);
 });
 
@@ -53,6 +55,10 @@ test("phone and reference validation uses returned facts; conflicts cannot suppl
   assert.throws(() => groundDepartmentContactResponse(response("电话025-12345678"), {}, context), /UNGROUNDED_PHONE/);
   assert.throws(() => groundDepartmentContactResponse(response("热线9955"), {}, context), /UNGROUNDED_PHONE/);
   assert.throws(() => groundDepartmentContactResponse(response("来源：https://invented.example/contact"), {}, context), /UNKNOWN_SOURCE/);
+  const ambiguous = executeDepartmentContactToolQueries([{ q: "补办校园卡" }]);
+  assert.throws(() => groundDepartmentContactResponse(response("025-86185446"), {}, ambiguous), /UNGROUNDED_PHONE/);
+  const ambiguousFacts = JSON.parse(buildDepartmentContactModelInstruction(ambiguous).split("department_contact_tool_results=")[1]);
+  assert.ok(ambiguousFacts[0].contacts.every((item: any) => item.requiresClarification && item.phones.length === 0));
   assert.throws(() => groundDepartmentContactResponse(response("电话025-86185446"), {}), /UNGROUNDED_PHONE/);
   assert.throws(() => groundDepartmentContactResponse(response("查询结果"), payload("", [], ["CPU-9999"]), context), /UNKNOWN_REFERENCE/);
   const conflict = data.contacts.find((item) => item.recordType === "official_conflict")!;
@@ -136,6 +142,13 @@ test("ordinary and streaming transports send history to provider, query facts an
         assert.match(result.answer.answer, /025-83271470/);
         assert.ok(result.answer.sources?.length);
       }
+      decide = (body) => body.messages[0].content.includes("department_contact_tool_results=")
+        ? payload("需要确认校区：你在江宁、玄武门还是江北？") : payload("", [{ q: "补办校园卡" }]);
+      const clarification = await run("补办校园卡找谁");
+      assert.equal(clarification.answer.fallback, false);
+      assert.match(clarification.answer.answer, /校区/);
+      assert.doesNotMatch(clarification.answer.answer, /025-/);
+      assert.equal(requests.length, 2);
       decide = (body) => body.messages[0].content.includes("department_contact_tool_results=")
         ? payload("这次没检索到该办公室，请补充正式部门名称。") : payload("", [{ q: "宇宙办公室" }]);
       assert.equal((await run("宇宙办公室怎么联系")).answer.fallback, false);

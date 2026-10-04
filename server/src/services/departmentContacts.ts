@@ -100,10 +100,12 @@ export function queryDepartmentContacts(input: ContactQuery = {}) {
   for (const [alias, department] of Object.entries(DEPARTMENT_ALIASES).sort(([a], [b]) => b.length - a.length)) core = core.replaceAll(alias, department);
   let words = rawQuery.replace(/(?:请问|请帮我|我想(?:问|咨询|了解)?|想问|咨询一下|怎么联系|联系谁|联系方式|查询电话|电话号码|电话|联系|多少|找谁|咨询|补办|办理|校区|江宁|玄武门|江北|该找|哪里|哪个|什么|呢|吗|那|的)/gu, " ");
   for (const [alias, department] of Object.entries(DEPARTMENT_ALIASES).sort(([a], [b]) => b.length - a.length)) words = words.replaceAll(alias, department);
-  const tokens = words.split(/[\s,，。?？\/|、+]+/u).map(normalizeContactText).filter(Boolean);
   const namedTerms = [...new Set(data.contacts.flatMap((record) => [record.department, record.office]))]
     .map(normalizeContactText).filter((term) => term.length >= 3 && !["办公室", "服务中心", "招生", "教务处"].includes(term)
       && core.includes(term));
+  for (const term of [...namedTerms].sort((a, b) => b.length - a.length)) words = words.replaceAll(term, ` ${term} `);
+  const tokens = words.split(/[\s,，。?？\/|、+]+/u).map(normalizeContactText).filter(Boolean);
+  const businessTokens = tokens.filter((token) => !namedTerms.includes(token));
   const terms = [...new Set([...tokens, ...namedTerms])];
   const relevance = (record: ContactRecord) => terms.reduce((score, term) => {
     const department = normalizeContactText(record.department), office = normalizeContactText(record.office);
@@ -126,7 +128,7 @@ export function queryDepartmentContacts(input: ContactQuery = {}) {
         && normalizeContactText(record.office + record.purpose).includes(academicTopic);
       return intent.terms.some((term) => text.includes(normalizeContactText(term)));
     }
-    return namedTerms.length ? namedTerms.some((term) => text.includes(term))
+    return namedTerms.length ? namedTerms.some((term) => text.includes(term)) && businessTokens.every((token) => text.includes(token))
       : tokens.length > 0 && tokens.every((token) => text.includes(token));
   });
   const eligible = matches.filter((record) => input.includeSpecial || usableDefault(record));
