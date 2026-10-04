@@ -1,5 +1,9 @@
 import type { FeatureKey } from "./siteSettings";
-import { answerDepartmentContactRequest } from "./departmentContactsAssistant";
+import {
+  buildDepartmentContactModelInstruction, groundDepartmentContactResponse,
+  resolveDepartmentContactModelRound, canStreamWithoutDepartmentTool, safeDepartmentFreeStreamPrefix,
+  type DepartmentContactToolContext,
+} from "./departmentContactsAssistant";
 import {
   getSiteConfig,
   isAiProviderReady,
@@ -921,8 +925,6 @@ export async function askCampusAssistant(input: {
   if (isCampusAssistantPublicTopicRestricted(message, input.history)) {
     return cloneRestrictedPublicTopicReply();
   }
-  const contactReply = answerDepartmentContactRequest(message, input.history);
-  if (contactReply) return contactReply;
   const availableActions = listCampusAssistantActions(input.context);
   const deterministicActions = searchCampusAssistantActions(message, input.context, 3);
   const webSearchRequested = shouldUseCampusAssistantWebSearch(message);
@@ -940,7 +942,7 @@ export async function askCampusAssistant(input: {
     apiKey: candidate.apiKey,
     model: assistantModel,
   }))) {
-    return fallbackAssistantResponse(deterministicActions, false);
+    return fallbackAssistantResponse(deterministicActions, true);
   }
 
   const endpoint = normalizeAiJsonApiUrl(provider.apiUrl, DEFAULT_REVIEW_API_URL);
@@ -962,7 +964,8 @@ export async function askCampusAssistant(input: {
       await finishAiReviewLogSuccess(logId, response.answer);
       return response;
     }
-    const result = await requestAiJson((model, activeProvider) => buildAssistantMessages(
+    let directoryContext: DepartmentContactToolContext | undefined;
+    const generate = (toolContext?: DepartmentContactToolContext) => requestAiJson((model, activeProvider) => buildAssistantMessages(
       message,
       input.history,
       availableActions,
@@ -971,6 +974,7 @@ export async function askCampusAssistant(input: {
       deterministicActions,
       resolveAiServiceAssistantContext(activeProvider),
       input.images,
+      toolContext,
     ), {
       promptCacheScope: webSearchRequested ? "campus-assistant-web" : "campus-assistant",
       model: assistantModel,
@@ -985,9 +989,17 @@ export async function askCampusAssistant(input: {
       webSearch: webSearchRequested,
       signal: input.signal,
     });
+    let result = await generate();
     let parsed: unknown;
     try {
-      parsed = parseAssistantJson(result.content, { allowPlainText: isQwenAssistantModel(assistantModel) });
+      const completed = await resolveDepartmentContactModelRound(result,
+        (content) => parseAssistantJson(content, { allowPlainText: isQwenAssistantModel(assistantModel) }), (context) => {
+          directoryContext = context;
+          return generate(context);
+        });
+      result = completed.result;
+      parsed = completed.parsed;
+      directoryContext = completed.context;
     } catch (error) {
       if (!isQwenAssistantModel(assistantModel)) throw error;
       const repaired = await repairCampusAssistantResponse({
@@ -1002,6 +1014,7 @@ export async function askCampusAssistant(input: {
         reason: "format",
         webSearch: webSearchRequested,
         images: input.images,
+        directoryContext,
         signal: input.signal,
       });
       if (!repaired) {
@@ -1030,6 +1043,7 @@ export async function askCampusAssistant(input: {
     let response = guardCampusAssistantResponse(filterUnavailableDataSuggestions(
       normalizeAssistantResponse(parsed, availableActions, deterministicActions),
     ));
+    response = groundDepartmentContactResponse(response, parsed, directoryContext);
     response = attachCampusAssistantWebSources(response, result.webSearchApplied, result.webSearchSources);
     const completionTruncated = result.completion?.finishReason === "length"
       || result.completion?.doneReason === "length";
@@ -1057,6 +1071,7 @@ export async function askCampusAssistant(input: {
         reason: "truncated",
         webSearch: webSearchRequested,
         images: input.images,
+        directoryContext,
         signal: input.signal,
       });
       if (!repaired) {
@@ -1100,6 +1115,7 @@ async function repairCampusAssistantResponse(input: {
   availableActions: CampusAssistantAction[];
   deterministicActions: CampusAssistantAction[];
   reason: "format" | "truncated";
+  directoryContext?: DepartmentContactToolContext;
   webSearch: boolean;
   images?: CampusAssistantImageInput[];
   signal?: AbortSignal;
@@ -1116,7 +1132,7 @@ async function repairCampusAssistantResponse(input: {
   let lastError: unknown = null;
   for (let attempt = 0; attempt < repairInstructions.length; attempt += 1) {
     try {
-      const result = await requestAiJson((model, activeProvider) => [
+      const generate = (directoryContext = input.directoryContext) => requestAiJson((model, activeProvider) => [
         ...buildAssistantMessages(
           input.message,
           input.history,
@@ -1126,6 +1142,7 @@ async function repairCampusAssistantResponse(input: {
           input.deterministicActions,
           resolveAiServiceAssistantContext(activeProvider),
           input.images,
+          directoryContext,
         ),
         { role: "user" as const, content: repairInstructions[attempt] },
       ], {
@@ -1142,10 +1159,13 @@ async function repairCampusAssistantResponse(input: {
         webSearch: input.webSearch,
         signal: input.signal,
       });
-      const parsed = parseAssistantJson(result.content, { allowPlainText: isQwenAssistantModel(input.model) });
-      const response = guardCampusAssistantResponse(filterUnavailableDataSuggestions(
+      const completed = await resolveDepartmentContactModelRound(await generate(),
+        (content) => parseAssistantJson(content, { allowPlainText: isQwenAssistantModel(input.model) }), generate, input.directoryContext);
+      const result = completed.result;
+      const parsed = completed.parsed;
+      const response = groundDepartmentContactResponse(guardCampusAssistantResponse(filterUnavailableDataSuggestions(
         normalizeAssistantResponse(parsed, input.availableActions, input.deterministicActions),
-      ));
+      )), parsed, completed.context);
       if (!isLikelyTruncatedCampusAssistantAnswer(response.answer)) {
         return attachCampusAssistantWebSources(response, result.webSearchApplied, result.webSearchSources);
       }
@@ -1208,11 +1228,6 @@ export async function streamCampusAssistant(input: {
   if (isCampusAssistantPublicTopicRestricted(message, input.history)) {
     return cloneRestrictedPublicTopicReply();
   }
-  const contactReply = answerDepartmentContactRequest(message, input.history);
-  if (contactReply) {
-    if (contactReply.answer) await onAnswerDelta(contactReply.answer);
-    return contactReply;
-  }
   if (shouldUseCampusAssistantWebSearch(message)) {
     const response = await askCampusAssistant({
       message,
@@ -1250,7 +1265,7 @@ export async function streamCampusAssistant(input: {
     apiKey: candidate.apiKey,
     model: config.assistantModel,
   }))) {
-    return fallbackAssistantResponse(deterministicActions, false);
+    return fallbackAssistantResponse(deterministicActions, true);
   }
 
   const endpoint = normalizeAiJsonApiUrl(provider.apiUrl, DEFAULT_REVIEW_API_URL);
@@ -1282,72 +1297,76 @@ export async function streamCampusAssistant(input: {
     );
     const systemPrompt = typeof messages[0]?.content === "string" ? messages[0].content : "";
     try {
-      const result = await sendAiJsonRequestWithProviderFallback({
-        providers,
-        fallbackEndpoint: DEFAULT_REVIEW_API_URL,
-        model,
-        temperature: 0.1,
-        maxTokens: CAMPUS_ASSISTANT_MAX_OUTPUT_TOKENS,
-        messages: (activeProvider, activeModel) => buildAssistantMessages(
-          message,
-          input.history,
-          availableActions,
-          input.context.loggedIn,
-          activeModel,
-          deterministicActions,
-          resolveAiServiceAssistantContext(activeProvider),
-        ),
-        promptCacheKey: buildAiPromptCacheKey("campus-assistant", [model, systemPrompt]),
-        enablePromptCacheRetention: true,
-        stream: true,
-        signal: input.signal,
-      });
-      if (!result.response.ok) {
-        const errorText = result.errorText || await result.response.text().catch(() => "");
-        if (index < candidates.length - 1 && shouldFallbackToNextModel(result.response.status, errorText)) {
-          lastError = new Error(`模型 ${model} 暂时不可用`);
-          continue;
-        }
-        throw new Error(`AI 请求失败：${result.response.status}${errorText ? ` ${errorText.slice(0, 120)}` : ""}`);
-      }
-
-      let rawContent = "";
-      let emittedAnswer = "";
-      let restrictedOutput = false;
-      let completionMetadata: AiJsonCompletionMetadata | null = null;
-      const content = await readAiJsonTextStream(result.response, result.mode, async (delta) => {
-        rawContent += delta;
-        if (modelIdentityRequested) return;
-        const visible = extractPartialJsonStringValue(rawContent, "answer") || "";
-        if (containsRestrictedPublicTopic(visible)) {
-          restrictedOutput = true;
-          return;
-        }
-        if (restrictedOutput) return;
-        if (visible.startsWith(emittedAnswer) && visible.length > emittedAnswer.length) {
-          await onAnswerDelta(visible.slice(emittedAnswer.length));
-          emittedAnswer = visible;
-        }
-      }, (metadata) => {
-        completionMetadata = metadata;
-      });
-      const streamCompletionMetadata = completionMetadata as AiJsonCompletionMetadata | null;
-      if (streamCompletionMetadata) {
-        console.info("[ai-json] stream completion", JSON.stringify({
-          provider: result.provider.provider,
+      const generate = async (directoryContext?: DepartmentContactToolContext) => {
+        const result = await sendAiJsonRequestWithProviderFallback({
+          providers,
+          fallbackEndpoint: DEFAULT_REVIEW_API_URL,
           model,
-          finishReason: streamCompletionMetadata.finishReason,
-          doneReason: streamCompletionMetadata.doneReason,
-          done: streamCompletionMetadata.done,
-          promptEvalCount: streamCompletionMetadata.promptEvalCount,
-          evalCount: streamCompletionMetadata.evalCount,
-          totalDurationMs: streamCompletionMetadata.totalDurationMs,
-          loadDurationMs: streamCompletionMetadata.loadDurationMs,
-          promptEvalDurationMs: streamCompletionMetadata.promptEvalDurationMs,
-          evalDurationMs: streamCompletionMetadata.evalDurationMs,
-          retryCount: result.retryCount,
-        }));
-      }
+          temperature: 0.1,
+          maxTokens: CAMPUS_ASSISTANT_MAX_OUTPUT_TOKENS,
+          messages: (activeProvider, activeModel) => buildAssistantMessages(
+            message,
+            input.history,
+            availableActions,
+            input.context.loggedIn,
+            activeModel,
+            deterministicActions,
+            resolveAiServiceAssistantContext(activeProvider),
+            [],
+            directoryContext,
+          ),
+          promptCacheKey: buildAiPromptCacheKey("campus-assistant", [model, systemPrompt]),
+          enablePromptCacheRetention: true,
+          stream: true,
+          signal: input.signal,
+        });
+        if (!result.response.ok) {
+          const errorText = result.errorText || await result.response.text().catch(() => "");
+          throw new Error(`AI 请求失败：${result.response.status}${errorText ? ` ${errorText.slice(0, 120)}` : ""}`);
+        }
+
+        let rawContent = "";
+        let emittedAnswer = "";
+        let restrictedOutput = false;
+        let completionMetadata: AiJsonCompletionMetadata | null = null;
+        const content = await readAiJsonTextStream(result.response, result.mode, async (delta) => {
+          rawContent += delta;
+          if (modelIdentityRequested || !canStreamWithoutDepartmentTool(rawContent, directoryContext)) return;
+          const visible = safeDepartmentFreeStreamPrefix(extractPartialJsonStringValue(rawContent, "answer") || "");
+          if (containsRestrictedPublicTopic(visible)) {
+            restrictedOutput = true;
+            return;
+          }
+          if (restrictedOutput) return;
+          if (visible.startsWith(emittedAnswer) && visible.length > emittedAnswer.length) {
+            await onAnswerDelta(visible.slice(emittedAnswer.length));
+            emittedAnswer = visible;
+          }
+        }, (metadata) => {
+          completionMetadata = metadata;
+        });
+        const streamCompletionMetadata = completionMetadata as AiJsonCompletionMetadata | null;
+        if (streamCompletionMetadata) {
+          console.info("[ai-json] stream completion", JSON.stringify({
+            provider: result.provider.provider,
+            model,
+            finishReason: streamCompletionMetadata.finishReason,
+            doneReason: streamCompletionMetadata.doneReason,
+            done: streamCompletionMetadata.done,
+            promptEvalCount: streamCompletionMetadata.promptEvalCount,
+            evalCount: streamCompletionMetadata.evalCount,
+            totalDurationMs: streamCompletionMetadata.totalDurationMs,
+            loadDurationMs: streamCompletionMetadata.loadDurationMs,
+            promptEvalDurationMs: streamCompletionMetadata.promptEvalDurationMs,
+            evalDurationMs: streamCompletionMetadata.evalDurationMs,
+            retryCount: result.retryCount,
+          }));
+        }
+        return { content, emittedAnswer, restrictedOutput, result };
+      };
+      const completed = await resolveDepartmentContactModelRound(await generate(),
+        (content) => parseAssistantJson(content, { allowPlainText: isQwenAssistantModel(model) }), generate);
+      const { emittedAnswer, restrictedOutput } = completed.result;
       if (restrictedOutput) {
         const response = cloneRestrictedPublicTopicReply();
         await finishAiReviewLogSuccess(logId, response.answer);
@@ -1358,10 +1377,14 @@ export async function streamCampusAssistant(input: {
         await finishAiReviewLogSuccess(logId, response.answer);
         return response;
       }
-      const parsed = parseAssistantJson(content, { allowPlainText: isQwenAssistantModel(model) });
+      const parsed = completed.parsed;
       let response = guardCampusAssistantResponse(filterUnavailableDataSuggestions(
         normalizeAssistantResponse(parsed, availableActions, deterministicActions),
       ));
+      response = groundDepartmentContactResponse(response, parsed, completed.context);
+      if (response.answer.startsWith(emittedAnswer) && response.answer.length > emittedAnswer.length) {
+        await onAnswerDelta(response.answer.slice(emittedAnswer.length));
+      }
       const imagePrompt = await resolveCampusAssistantImagePromptWithAi(
         parsed,
         message,
@@ -1973,7 +1996,7 @@ export function buildSystemPrompt(
     `用户当前${loggedIn ? "已登录" : "未登录"}。带 requireLogin=true 的入口可以推荐，但要提醒未登录用户先登录。`,
     "你只能从下面的 catalog 中选择 actionIds，绝不能生成 catalog 之外的链接或 action id。",
     "只输出一个合法 JSON 对象，不要使用 Markdown 代码块、不要输出思维过程或 JSON 之外的文字。answer 内的换行、双引号和反斜杠必须按 JSON 规则转义；输出前检查对象和字符串已经闭合。格式：",
-    '{"answer":"清晰、完整的中文答复","generateImage":false,"imagePrompt":"仅 generateImage=true 时填写完整描述，否则为空字符串","actionIds":["最多3个catalog id"],"suggestions":["最多3个简短追问建议"]}',
+    '{"departmentContactQueries":[],"contactIds":[],"answer":"清晰、完整的中文答复","generateImage":false,"imagePrompt":"仅 generateImage=true 时填写完整描述，否则为空字符串","actionIds":["最多3个catalog id"],"suggestions":["最多3个简短追问建议"]}',
     `knowledge=${JSON.stringify(knowledge)}`,
     `catalog=${JSON.stringify(catalog)}`,
   ].join("\n");
@@ -1988,6 +2011,7 @@ export function buildAssistantMessages(
   prioritizedActions: CampusAssistantAction[] = [],
   contextConfig: AiServiceAssistantContextConfig = DEFAULT_CAMPUS_ASSISTANT_CONTEXT,
   images: CampusAssistantImageInput[] = [],
+  directoryContext?: DepartmentContactToolContext,
 ) {
   const promptActions = selectAssistantPromptActions(availableActions, message, prioritizedActions);
   const catalog = promptActions.map((item) => ({
@@ -2014,7 +2038,7 @@ export function buildAssistantMessages(
   return [
     {
       role: "system" as const,
-      content: buildSystemPrompt(catalog, loggedIn, modelName, contextConfig),
+      content: buildSystemPrompt(catalog, loggedIn, modelName, contextConfig) + "\n" + buildDepartmentContactModelInstruction(directoryContext),
     },
     ...selectedHistory.map((item) => ({
       role: item.role,
