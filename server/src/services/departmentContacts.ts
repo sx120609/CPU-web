@@ -49,7 +49,7 @@ function queryIntent(q: string) {
 }
 
 function searchText(record: ContactRecord) {
-  return normalizeContactText([record.department, record.office, record.purpose, record.category,
+  return normalizeContactText([record.id, record.department, record.office, record.purpose, record.category,
     record.address, record.contactName, ...record.phones, ...record.emails].join(" "));
 }
 
@@ -88,6 +88,12 @@ export function getDepartmentContact(id: string) {
   return record ? presentContact(record) : null;
 }
 
+export function isExactDepartmentContactQuery(q: string) {
+  const value = normalizeContactText(q);
+  return Boolean(value) && data.contacts.some((r) => [r.department, r.office, ...r.phones, r.id]
+    .some((text) => normalizeContactText(text) === value));
+}
+
 export function queryDepartmentContacts(input: ContactQuery = {}) {
   const rawQuery = String(input.q || "").slice(0, 160);
   const q = normalizeContactText(String(input.q || "").slice(0, 160));
@@ -119,6 +125,7 @@ export function queryDepartmentContacts(input: ContactQuery = {}) {
     if (!q) return true;
     const text = searchText(record);
     if (intent) {
+      if (namedTerms.length && !namedTerms.some((term) => text.includes(term))) return false;
       if (/研究生/u.test(q) && ["academic", "course-selection", "student-card"].includes(intent.id)) {
         const scope = normalizeContactText(record.office + record.purpose);
         const topic = academicTopic || (intent.id === "course-selection" ? "选课" : intent.id === "student-card" ? "学生证" : "教务");
@@ -144,13 +151,14 @@ export function queryDepartmentContacts(input: ContactQuery = {}) {
   else if (q && !intent && new Set(eligible.map((record) => record.department)).size > 1 && /招生|学生|办公室/u.test(core)) {
     clarification = "请补充具体部门、学生类型或业务，避免把不同窗口的号码混用。";
   }
-  const gapTerms = intent?.id === "academic" ? ["教务处", "研究生院"] : intent?.terms ?? tokens;
+  const gapTerms = [...(intent?.id === "academic" ? ["教务处", "研究生院"] : intent?.terms ?? tokens),
+    ...Object.keys(DEPARTMENT_ALIASES).filter((alias) => q.includes(alias))];
   const gaps = q ? data.gaps.filter((gap) => gapTerms.some((term) =>
     normalizeContactText(gap.unit).includes(normalizeContactText(term))
     || normalizeContactText(term).includes(normalizeContactText(gap.unit))))
     .map((gap) => ({ ...gap, url: safeContactUrl(gap.url) })) : [];
   return {
-    query: input.q || "", intent: intent?.id || null, campus, clarification,
+    query: input.q || "", intent: (intent?.id || null) as string | null, campus, clarification,
     total: eligible.length, offset, limit,
     hiddenSpecialCount: matches.length - eligible.length,
     contacts: eligible.slice(offset, offset + limit).map((record) => ({ ...presentContact(record), relevanceScore: relevance(record) })),

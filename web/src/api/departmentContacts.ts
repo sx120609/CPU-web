@@ -1,4 +1,4 @@
-import { request } from "./request";
+import { request, type RequestOptions } from "./request";
 
 export interface DepartmentSource {
   sourceId: string; title: string; url: string | null; publishedDate: string; checkedAt: string; note: string;
@@ -12,6 +12,7 @@ export interface DepartmentContact {
   sources: DepartmentSource[]; suggestedDefaultDisplay: boolean; lastLiveTestedAt: string | null;
 }
 export interface DepartmentQueryResult {
+  exactMatch?: boolean; searchMode?: "ai";
   query: string; intent: string | null; campus: string; clarification: string | null;
   total: number; offset: number; limit: number; hiddenSpecialCount: number;
   contacts: DepartmentContact[]; categories: string[]; campuses: string[];
@@ -20,8 +21,11 @@ export interface DepartmentQueryResult {
     scope: string; limits: string; defaultDisplayWarning: string; suggestedDefaultDisplayCount: number };
 }
 export const departmentContactsApi = {
-  query: (params: { q?: string; campus?: string; category?: string; includeSpecial?: "0" | "1"; offset?: number }) =>
-    request.get<DepartmentQueryResult>("/tools/department-contacts", params, { suppressErrorMessage: true, cacheTtlMs: 0 }),
+  query: (params: { q?: string; campus?: string; category?: string; includeSpecial?: "0" | "1"; offset?: number }, options?: RequestOptions) =>
+    request.get<DepartmentQueryResult>("/tools/department-contacts", params, { suppressErrorMessage: true, cacheTtlMs: 0, ...options }),
+  semantic: (params: { q: string; campus?: string; category?: string; includeSpecial?: boolean }, options?: RequestOptions) =>
+    request.post<DepartmentQueryResult>("/search/assistant/department-contacts", params,
+      { timeout: 120000, suppressErrorMessage: true, suppressAuthRedirect: true, suppressAuthMessage: true, ...options }),
   detail: (id: string) => request.get<DepartmentContact>(`/tools/department-contacts/${encodeURIComponent(id)}`,
     undefined, { suppressErrorMessage: true }),
 };

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { departmentContactsTool, getDepartmentContact } from "../services/departmentContacts";
+import { departmentContactsTool, getDepartmentContact, isExactDepartmentContactQuery } from "../services/departmentContacts";
 import { Errors, ok } from "../utils/response";
 
 export const departmentContactsRouter = Router();
@@ -20,7 +20,8 @@ departmentContactsRouter.get("/", (req, res, next) => {
     const parsed = querySchema.safeParse(req.query);
     if (!parsed.success) throw Errors.badRequest("查询参数无效，关键词最多160字");
     res.setHeader("Cache-Control", "public, max-age=60");
-    ok(res, departmentContactsTool.execute({ ...parsed.data, includeSpecial: parsed.data.includeSpecial === "1" }));
+    ok(res, { ...departmentContactsTool.execute({ ...parsed.data, includeSpecial: parsed.data.includeSpecial === "1" }),
+      exactMatch: isExactDepartmentContactQuery(parsed.data.q || "") });
   } catch (error) { next(error); }
 });
 

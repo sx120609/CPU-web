@@ -31,6 +31,7 @@ import {
 } from "../services/campusAssistantQuota";
 import { detectLoginClient } from "../utils/loginClient";
 import { isCampusAssistantDestination, shouldHideHarmonyAssistant } from "../utils/nativeAssistantAccess";
+import { searchDepartmentContactsWithAi } from "../services/departmentContactSearch";
 
 export const searchRouter = Router();
 
@@ -242,6 +243,29 @@ searchRouter.delete("/assistant/conversations/:id", async (req, res, next) => {
     next(error);
   }
 });
+
+searchRouter.post("/assistant/department-contacts",
+  securityRateLimit("campus-assistant", 20, 60_000),
+  validate(z.object({ q: z.string().trim().min(1).max(160), campus: z.enum(["", "江宁", "玄武门", "镇江"]).optional(),
+    category: z.string().max(80).optional(), includeSpecial: z.boolean().optional() }).strict()),
+  async (req, res, next) => {
+    let reservation: CampusAssistantQuotaReservation | null = null;
+    const controller = new AbortController();
+    const abort = () => { if (!res.writableEnded) controller.abort(new Error("AI_SEARCH_ABORTED")); };
+    req.on("aborted", abort); res.on("close", abort);
+    try {
+      reservation = (await consumeCampusAssistantQuota(req.user!.userId)).reservation;
+      if (controller.signal.aborted) throw new Error("AI_SEARCH_ABORTED");
+      const result = await searchDepartmentContactsWithAi({ ...req.body, signal: controller.signal,
+        usage: { createdById: req.user!.userId, pointCost: reservation?.source === "points" ? 1 : 0 } });
+      if (controller.signal.aborted) throw new Error("AI_SEARCH_ABORTED");
+      ok(res, result);
+    } catch (error) {
+      if (reservation) await refundCampusAssistantQuota(req.user!.userId, reservation).catch(() => {});
+      if (!controller.signal.aborted) next(error instanceof Error && /^(DEPARTMENT_SEARCH_|\[|Unexpected|Invalid)/u.test(error.message)
+        ? Errors.badGateway("拾间AI暂时未能返回可核验结果，请稍后重试；本次额度已退回。") : error);
+    } finally { req.off("aborted", abort); res.off("close", abort); }
+  });
 
 searchRouter.post(
   "/assistant",
