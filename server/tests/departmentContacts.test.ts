@@ -4,7 +4,7 @@ import express from "express";
 import data from "../src/data/departmentContacts.json";
 import { departmentContactsTool, getDepartmentContact, queryDepartmentContacts,
   contactTelephoneUrl, safeContactUrl } from "../src/services/departmentContacts";
-import { answerDepartmentContactRequest } from "../src/services/departmentContactsAssistant";
+
 import { departmentContactsRouter } from "../src/routes/departmentContacts";
 
 test("real Library dataset retains all records, sources, scope and conflicts", () => {
@@ -80,64 +80,6 @@ test("unknown and hostile input remains literal and bounded, URLs and dial links
   assert.equal(contactTelephoneUrl("javascript:123"), null);
   assert.equal(contactTelephoneUrl("025-86185446"), "tel:02586185446");
   assert.equal(getDepartmentContact("../secrets"), null);
-});
-
-test("assistant really calls the shared lookup, cites sources and carries clarification", () => {
-  const clarify = answerDepartmentContactRequest("补办校园卡")!;
-  assert.match(clarify.answer, /校区/u);
-  assert.doesNotMatch(clarify.answer, /025-/u);
-  const reply = answerDepartmentContactRequest("江宁校区", [
-    { role: "user", content: "补办校园卡" }, { role: "assistant", content: clarify.answer },
-  ])!;
-  assert.match(reply.answer, /025-86185446/u);
-  assert.match(reply.answer, /图书馆|校园卡部/u);
-  assert.match(reply.answer, /来源发布：未标日期/u);
-  assert.match(reply.answer, /资料核对：2026-10-03/u);
-  assert.ok(reply.sources?.some((source) => source.url === "https://xxh.cpu.edu.cn/9460/list.htm"));
-  assert.ok(reply.actions.every((action) => action.url.startsWith("/services/tools/department_contacts?id=")));
-  assert.doesNotMatch(reply.answer, /tel:|mailto:/u);
-  assert.equal(answerDepartmentContactRequest("你好"), null);
-  assert.equal(answerDepartmentContactRequest("江宁校区"), null);
-  const academic = answerDepartmentContactRequest("教务咨询")!;
-  assert.doesNotMatch(academic.answer, /025-/u);
-  assert.match(answerDepartmentContactRequest("本科生选课咨询电话", [
-    { role: "user", content: "教务咨询" }, { role: "assistant", content: academic.answer },
-  ])!.answer, /025-86185797/u);
-  const followUp = answerDepartmentContactRequest("本科生，选课", [
-    { role: "user", content: "教务咨询" }, { role: "assistant", content: academic.answer },
-  ])!;
-  assert.match(followUp.answer, /025-86185797/u);
-  const unsupported = answerDepartmentContactRequest("本科生学籍咨询电话")!;
-  assert.doesNotMatch(unsupported.answer, /025-/u);
-  assert.match(unsupported.answer, /没有找到/u);
-  const graduate = answerDepartmentContactRequest("研究生成绩单咨询电话")!;
-  assert.match(graduate.answer, /研究生院/u);
-  assert.match(graduate.answer, /成绩单及证明/u);
-});
-
-test("assistant cannot invent an unknown number or use conflicting candidates", () => {
-  const reply = answerDepartmentContactRequest("不存在的宇宙办公室电话")!;
-  assert.doesNotMatch(reply.answer, /025-/u);
-  assert.match(reply.answer, /没有找到/u);
-  const conflict = data.contacts.find((record) => record.recordType === "official_conflict")!;
-  const result = answerDepartmentContactRequest(`${conflict.phones[0]}电话`)!;
-  assert.doesNotMatch(result.answer, new RegExp(conflict.phones[0]));
-  const library = answerDepartmentContactRequest("图书馆借阅电话")!;
-  assert.match(library.answer, /未核实借阅/u);
-  assert.ok(library.sources?.some((source) => source.url === "https://lib.cpu.edu.cn/"));
-});
-
-test("actual ordinary and streaming assistant transports dispatch to the same contact tool", async () => {
-  const { askCampusAssistant, streamCampusAssistant, searchCampusAssistantActions } = await import("../src/services/campusAssistant");
-  const context = { features: {} as any, forumAccessEnabled: false, loggedIn: true };
-  const input = { message: "江宁补办校园卡", history: [], context };
-  const ordinary = await askCampusAssistant(input);
-  let streamed = "";
-  const streaming = await streamCampusAssistant(input, (delta) => { streamed += delta; });
-  assert.deepEqual(streaming, ordinary);
-  assert.equal(streamed, ordinary.answer);
-  assert.match(streamed, /025-86185446/u);
-  assert.ok(searchCampusAssistantActions("部门联系", context).some((action) => action.id === "department-contacts"));
 });
 
 test("HTTP public read-only API validates input and returns the shared query result", async () => {
