@@ -20,7 +20,7 @@
             <el-icon aria-hidden="true"><Search /></el-icon>
             <input id="contact-query" v-model="form.q" type="search" maxlength="160" placeholder="部门、关键词或办事需求" />
           </div>
-          <button class="primary-button" type="submit">查询</button>
+          <button class="primary-button" type="submit" :disabled="loading && form.q.trim() === text(route.query.q).trim()">查询</button>
         </div>
         <div class="query-toolbar">
           <div class="quick-queries" role="group" aria-label="常见办事需求">
@@ -37,6 +37,7 @@
           <button class="reset-button" type="button" @click="reset">清空筛选</button>
         </div>
       </form>
+      <p class="search-help">口语需求由拾间AI理解，需登录并使用现有AI额度；精确部门名或号码直接查询。</p>
     </section>
     <details class="notice">
       <summary><el-icon aria-hidden="true"><InfoFilled /></el-icon>公开资料汇编，未认证、未拨测<el-icon class="notice-arrow" aria-hidden="true"><Right /></el-icon></summary>
@@ -69,7 +70,7 @@
       <button type="button" @click="copyDetailLink">复制详情链接</button>
     </section>
     <p v-if="detailError" role="alert" class="error">{{ detailError }} <button type="button" @click="closeDetail">关闭</button></p>
-    <p v-if="loading" role="status">正在查询部门联系资料…</p>
+    <p v-if="loading" role="status">{{ aiLoading ? "拾间AI正在理解需求并查找实际窗口…" : "正在查询部门联系资料…" }} <button type="button" @click="cancelSearch">取消</button></p>
     <section v-else-if="error" class="empty-panel" role="alert"><h2>联系资料暂时未能加载</h2><p>{{ error }}</p><button type="button" @click="load">重试</button></section>
     <template v-else-if="result">
       <aside v-if="result.clarification" class="clarification"><strong>请确认适用窗口</strong><p>{{ result.clarification }}</p><p>下面是候选窗口，请核对业务和校区再联系。</p></aside>
@@ -103,11 +104,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, reactive, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ArrowLeft, CopyDocument, Filter, InfoFilled, Phone, Right, Search } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 import { departmentContactsApi, type DepartmentContact, type DepartmentQueryResult } from "@/api/departmentContacts";
+import { getToken } from "@/api/request";
 const route = useRoute();
 const router = useRouter();
 const form = reactive({ q: "", category: "", campus: "", includeSpecial: false });
@@ -116,33 +118,54 @@ const detail = ref<DepartmentContact | null>(null);
 const error = ref("");
 const detailError = ref("");
 const loading = ref(false);
+const aiLoading = ref(false);
 const detailPanel = ref<HTMLElement | null>(null);
 const showFilters = ref(false);
 const activeFilterCount = computed(() => Number(Boolean(form.category)) + Number(Boolean(form.campus)) + Number(form.includeSpecial));
 let requestVersion = 0;
+let controller: AbortController | undefined;
+let inFlightKey = "";
+let semanticCache: { key: string; value: DepartmentQueryResult } | undefined;
 function text(value: unknown) { return typeof value === "string" ? value : ""; }
 function errorText(value: unknown) { return (value as { response?: { data?: { message?: string } } })?.response?.data?.message || "请检查网络后重试。"; }
 async function load() {
+  const key = JSON.stringify([text(route.query.q).trim(), text(route.query.category), text(route.query.campus), route.query.includeSpecial === "1"]);
+  if (loading.value && key === inFlightKey && !route.query.id) return;
+  controller?.abort(); controller = new AbortController();
+  const signal = controller.signal;
+  inFlightKey = key;
   const version = ++requestVersion;
   form.q = text(route.query.q).slice(0, 160); form.category = text(route.query.category); form.campus = text(route.query.campus); form.includeSpecial = route.query.includeSpecial === "1";
   if (form.category || form.campus || form.includeSpecial) showFilters.value = true;
-  loading.value = true; error.value = ""; detailError.value = ""; detail.value = null;
+  loading.value = true; aiLoading.value = false; error.value = ""; detailError.value = ""; detail.value = null; result.value = null;
   const id = text(route.query.id);
   const rawOffset = Number(text(route.query.offset));
   const offset = Number.isInteger(rawOffset) && rawOffset >= 0 && rawOffset <= 10000 ? rawOffset : 0;
   const [list, selected] = await Promise.allSettled([
-    departmentContactsApi.query({ q: form.q, category: form.category, campus: form.campus, includeSpecial: form.includeSpecial ? "1" : "0", offset }),
+    (async () => {
+      if (semanticCache?.key === key) return semanticCache.value;
+      const direct = await departmentContactsApi.query({ q: form.q, category: form.category, campus: form.campus, includeSpecial: form.includeSpecial ? "1" : "0", offset }, { signal });
+      if (!form.q.trim() || direct.exactMatch) return direct;
+      if (!getToken()) throw new Error("请登录后使用拾间AI理解口语需求；也可以输入完整部门名或号码直接查询。");
+      if (version !== requestVersion || signal.aborted) throw new Error("已取消");
+      aiLoading.value = true;
+      const semantic = await departmentContactsApi.semantic({ q: form.q, category: form.category || undefined, campus: form.campus || undefined, includeSpecial: form.includeSpecial }, { signal });
+      if (version === requestVersion) semanticCache = { key, value: semantic };
+      return semantic;
+    })(),
     id ? departmentContactsApi.detail(id) : Promise.resolve(null),
   ]);
   if (version !== requestVersion) return;
   if (list.status === "fulfilled") result.value = list.value;
-  else { result.value = null; error.value = errorText(list.reason); }
+  else { result.value = null; error.value = list.reason instanceof Error && !('response' in list.reason) ? list.reason.message : errorText(list.reason); }
   if (selected.status === "fulfilled") detail.value = selected.value;
   else detailError.value = errorText(selected.reason);
-  loading.value = false;
+  loading.value = false; aiLoading.value = false; inFlightKey = "";
   if (detail.value) { await nextTick(); detailPanel.value?.focus(); }
 }
 watch(() => route.query, load, { immediate: true });
+function cancelSearch() { requestVersion++; controller?.abort(); loading.value = false; aiLoading.value = false; inFlightKey = ""; result.value = null; error.value = "已取消查询，可修改需求后重新查询。"; }
+onBeforeUnmount(() => { requestVersion++; controller?.abort(); });
 function search() {
   const query = { q: form.q.trim() || undefined, category: form.category || undefined, campus: form.campus || undefined, includeSpecial: form.includeSpecial ? "1" : undefined };
   if (route.query.q === query.q && route.query.category === query.category && route.query.campus === query.campus && route.query.includeSpecial === query.includeSpecial && !route.query.offset && !route.query.id) void load();
@@ -167,6 +190,7 @@ function copyDetailLink() { if (detail.value) void copy(new URL(detail.value.det
 </script>
 
 <style scoped>
+.search-help { margin-top: 8px; color: var(--cpu-text-muted); font-size: 11px; line-height: 1.5; }
 .contacts-page { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; width: 100%; min-width: 0; max-width: 1080px; margin: 0 auto; color: var(--cpu-text); padding-bottom: max(24px, env(safe-area-inset-bottom)); font-size: 14px; line-height: 1.5; }
 .contacts-page > * { min-width: 0; }
 h1, h2, h3, h4, p { margin: 0; }

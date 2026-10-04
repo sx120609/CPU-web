@@ -1,4 +1,5 @@
 import type { FeatureKey } from "./siteSettings";
+import { executeAssistantDepartmentQueries } from "./departmentContactSearch";
 import {
   buildDepartmentContactModelInstruction, groundDepartmentContactResponse,
   resolveDepartmentContactModelRound, canStreamWithoutDepartmentTool, safeDepartmentFreeStreamPrefix,
@@ -996,7 +997,11 @@ export async function askCampusAssistant(input: {
         (content) => parseAssistantJson(content, { allowPlainText: isQwenAssistantModel(assistantModel) }), (context) => {
           directoryContext = context;
           return generate(context);
-        });
+        }, undefined, (_result, value, toolContext) => {
+          groundDepartmentContactResponse(guardCampusAssistantResponse(filterUnavailableDataSuggestions(
+            normalizeAssistantResponse(value, availableActions, deterministicActions),
+          )), value, toolContext);
+        }, (queries) => executeAssistantDepartmentQueries(queries, { signal: input.signal, createdById: input.usage?.createdById, message }));
       result = completed.result;
       parsed = completed.parsed;
       directoryContext = completed.context;
@@ -1160,7 +1165,12 @@ async function repairCampusAssistantResponse(input: {
         signal: input.signal,
       });
       const completed = await resolveDepartmentContactModelRound(await generate(),
-        (content) => parseAssistantJson(content, { allowPlainText: isQwenAssistantModel(input.model) }), generate, input.directoryContext);
+        (content) => parseAssistantJson(content, { allowPlainText: isQwenAssistantModel(input.model) }), generate, input.directoryContext,
+        (_result, value, toolContext) => {
+          groundDepartmentContactResponse(guardCampusAssistantResponse(filterUnavailableDataSuggestions(
+            normalizeAssistantResponse(value, input.availableActions, input.deterministicActions),
+          )), value, toolContext);
+        }, (queries) => executeAssistantDepartmentQueries(queries, { signal: input.signal, message: input.message }));
       const result = completed.result;
       const parsed = completed.parsed;
       const response = groundDepartmentContactResponse(guardCampusAssistantResponse(filterUnavailableDataSuggestions(
@@ -1365,7 +1375,12 @@ export async function streamCampusAssistant(input: {
         return { content, emittedAnswer, restrictedOutput, result };
       };
       const completed = await resolveDepartmentContactModelRound(await generate(),
-        (content) => parseAssistantJson(content, { allowPlainText: isQwenAssistantModel(model) }), generate);
+        (content) => parseAssistantJson(content, { allowPlainText: isQwenAssistantModel(model) }), generate, undefined,
+        (_result, value, toolContext) => {
+          groundDepartmentContactResponse(guardCampusAssistantResponse(filterUnavailableDataSuggestions(
+            normalizeAssistantResponse(value, availableActions, deterministicActions),
+          )), value, toolContext);
+        }, (queries) => executeAssistantDepartmentQueries(queries, { signal: input.signal, createdById: input.usage?.createdById, message }));
       const { emittedAnswer, restrictedOutput } = completed.result;
       if (restrictedOutput) {
         const response = cloneRestrictedPublicTopicReply();
