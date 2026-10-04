@@ -1,4 +1,4 @@
-import { Calendar, ChatDotRound, Compass, DataLine, Document, DocumentChecked, FolderOpened, Microphone, Monitor, OfficeBuilding, Promotion, Tools } from "@element-plus/icons-vue";
+import { Calendar, ChatDotRound, Compass, DataLine, Document, DocumentChecked, FolderOpened, Microphone, Monitor, OfficeBuilding, Phone, Promotion, Tools } from "@element-plus/icons-vue";
 import type { Component } from "vue";
 
 export type ServiceToolStatus = "ready" | "planned";
@@ -12,7 +12,7 @@ export interface ServiceTool {
   status: ServiceToolStatus;
   category: string;
   routeName: string;
-  componentKey: "feedback" | "questionnaire" | "grade_check" | "file_collect" | "pdf_tools" | "school_calendar" | "venue_reservation" | "lost_found" | "voicehub" | "yaoda_can_fly" | "assessment_form";
+  componentKey: "department_contacts" | "feedback" | "questionnaire" | "grade_check" | "file_collect" | "pdf_tools" | "school_calendar" | "venue_reservation" | "lost_found" | "voicehub" | "yaoda_can_fly" | "assessment_form";
   accent: string;
   iconComponent: Component;
   badge?: string;
@@ -21,6 +21,21 @@ export interface ServiceTool {
 }
 
 export const serviceTools: ServiceTool[] = [
+  {
+    slug: "department_contacts",
+    name: "部门联系",
+    summary: "按部门、校区或办事需求查找公开联系方式",
+    description: "保留公开来源、业务范围及待核实说明，与拾间AI共用查询层。",
+    icon: "phone",
+    status: "ready",
+    category: "校园指南",
+    routeName: "service-department-contacts",
+    componentKey: "department_contacts",
+    accent: "#0f766e",
+    iconComponent: Phone,
+    badge: "公开资料",
+    badgeType: "info",
+  },
   {
     slug: "feedback",
     name: "需求反馈",
