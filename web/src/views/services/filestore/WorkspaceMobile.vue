@@ -116,7 +116,7 @@
       </template>
     </template>
 
-    <el-drawer v-model="moreOpen" direction="btt" size="auto" title="更多操作" class="fs-m-sheet" append-to-body>
+    <el-drawer v-model="moreOpen" direction="btt" size="auto" title="更多操作" class="fs-m-sheet cpu-sheet-above-native-bar" append-to-body>
       <div class="fs-m-sheet-list">
         <button v-for="item in moreActions" :key="item.key" data-cpu-button="surface" type="button" :disabled="item.disabled" @click="runMore(item.run)">
           <el-icon aria-hidden="true"><component :is="item.icon" /></el-icon>

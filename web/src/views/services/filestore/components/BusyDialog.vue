@@ -3,6 +3,7 @@
     :model-value="busy.visible"
     width="380px"
     class="fs-busy-dialog"
+    modal-class="cpu-overlay-above-native-bar"
     append-to-body
     align-center
     :show-close="false"

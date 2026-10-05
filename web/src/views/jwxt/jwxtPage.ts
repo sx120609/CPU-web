@@ -368,7 +368,7 @@ export function useJwxtPage(layout: "desktop" | "mobile") {
 
   async function onLogout() {
     if (logoutBusy.value || forgetBusy.value) return;
-    const confirmed = await ElMessageBox.confirm("断开当前教务连接？\n如果勾选了“记住登录信息”，下次打开时仍可快速登录。", "确认", { type: "warning" })
+    const confirmed = await ElMessageBox.confirm("断开当前教务连接？\n如果勾选了“记住登录信息”，下次打开时仍可快速登录。", "确认", { type: "warning", modalClass: "cpu-overlay-above-native-bar" })
       .then(() => true)
       .catch(() => false);
     if (!confirmed) return;
@@ -390,7 +390,7 @@ export function useJwxtPage(layout: "desktop" | "mobile") {
 
   async function onForget() {
     if (forgetBusy.value || logoutBusy.value) return;
-    const confirmed = await ElMessageBox.confirm("清除已保存的账号？之后将不再自动登录。", "确认", { type: "warning" })
+    const confirmed = await ElMessageBox.confirm("清除已保存的账号？之后将不再自动登录。", "确认", { type: "warning", modalClass: "cpu-overlay-above-native-bar" })
       .then(() => true)
       .catch(() => false);
     if (!confirmed) return;

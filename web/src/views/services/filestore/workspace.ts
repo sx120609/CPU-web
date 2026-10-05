@@ -311,6 +311,7 @@ export function useFilestoreWorkspace(options: { autoSelectFirst: Ref<boolean> }
       cancelButtonText: "取消",
       type: danger ? "warning" : "info",
       confirmButtonClass: danger ? "el-button--danger" : undefined,
+      modalClass: "cpu-overlay-above-native-bar",
     }).then(() => true).catch(() => false);
   }
 
@@ -319,6 +320,7 @@ export function useFilestoreWorkspace(options: { autoSelectFirst: Ref<boolean> }
       confirmButtonText: okText,
       cancelButtonText: "取消",
       inputValue: value,
+      modalClass: "cpu-overlay-above-native-bar",
     }).then(({ value: input }) => String(input || "").trim()).catch(() => null);
   }
 

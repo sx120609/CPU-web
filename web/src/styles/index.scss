@@ -328,6 +328,22 @@ canvas {
   min-width: 0;
 }
 
+/*
+ * iOS 原生壳的悬浮标签栏叠在 WebView 底部，--cpu-ios-bottom-clearance 是它占用的高度（推入页为 0）。
+ * 底部弹层加 cpu-sheet-above-native-bar、弹窗的 modal-class 设为 cpu-overlay-above-native-bar，
+ * 就会停在标签栏上方。鸿蒙壳在弹层打开时会隐藏原生标签栏，安卓的标签栏在 WebView 之外，都不需要让位。
+ */
+html[data-cpu-ios-next] .el-drawer.btt.cpu-sheet-above-native-bar {
+  bottom: var(--cpu-ios-bottom-clearance, 96px) !important;
+  max-height: calc(92dvh - var(--cpu-ios-bottom-clearance, 96px)) !important;
+  border-radius: 18px 18px 0 0;
+}
+
+html[data-cpu-ios-next] .cpu-overlay-above-native-bar .el-overlay-dialog,
+html[data-cpu-ios-next] .cpu-overlay-above-native-bar .el-overlay-message-box {
+  height: calc(var(--cpu-overlay-viewport-height, 100dvh) - var(--cpu-ios-bottom-clearance, 96px));
+}
+
 .el-dialog__header,
 .el-message-box__header {
   flex: 0 0 auto;

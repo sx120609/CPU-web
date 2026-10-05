@@ -239,7 +239,7 @@
       </div>
     </template>
 
-    <el-dialog v-model="successOpen" width="420px" class="fs-s-dialog" append-to-body align-center :show-close="false">
+    <el-dialog v-model="successOpen" width="420px" class="fs-s-dialog" modal-class="cpu-overlay-above-native-bar" append-to-body align-center :show-close="false">
       <div class="fs-s-success">
         <svg class="fs-s-check" viewBox="0 0 64 64" aria-hidden="true">
           <circle cx="32" cy="32" r="28" />
@@ -262,6 +262,7 @@
       title="发现已有提交"
       width="440px"
       class="fs-s-dialog"
+      modal-class="cpu-overlay-above-native-bar"
       append-to-body
       align-center
       @close="resolveOverwrite(false)"
