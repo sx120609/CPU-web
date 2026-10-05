@@ -1,10 +1,11 @@
 # iOS 原生客户端上架适配
 
-更新日期：2026-09-25。
+更新日期：2026-10-05。
 
-- App Store 入口：https://apps.apple.com/cn/app/id6811073406。商店页面要求 iOS / iPadOS 17.0 或更高版本（与 `ios_next` 的部署目标一致），前端常量为 `IOS_APP_MIN_MAJOR_VERSION`。
-- 下载页、课表安装引导和拾间 AI 优先推荐 App Store 原生版，并写明系统要求；系统低于 iOS 17 时，安装引导直接展示 Safari 添加到主屏幕的步骤，不显示 App Store 按钮。
-- 首页和课表为 iPhone/iPad Safari、Safari 主屏幕版展示非模态下载推荐。关闭或点击“在 App Store 下载”后 7 天内不再提示。原生客户端、桌面 Safari、微信/QQ 等内置浏览器、Chrome 等第三方浏览器以及低于 iOS 17 的设备不展示。桌面模式 iPad 的主屏幕版无法读取系统版本，仍会展示，由商店页面判断兼容性。
+- App Store 入口：https://apps.apple.com/cn/app/id6811073406。当前商店版本 4.13 要求 iOS / iPadOS 15.0 或更高版本（与 `ios_next` 主 App 的部署目标一致），前端常量为 `IOS_APP_MIN_MAJOR_VERSION`。iOS 15–16 使用网页兼容界面，iOS 17 及以上提供原生界面与课表小组件；实时活动等功能仍遵循各自系统版本要求。
+- 下载页、课表安装引导和拾间 AI 优先推荐 App Store 客户端，并写明系统要求；系统低于 iOS 15 时，安装引导直接展示 Safari 添加到主屏幕的步骤，不显示 App Store 按钮。
+- 下载页在 iOS 客户端中使用当前窗口请求下载链接，让下载接口的 HTTP 跳转进入系统浏览器。不能用同站新窗口链接，否则已发布客户端会通过 Vue 路由打开 `/api/site/downloads/*` 并显示网页 404。普通浏览器与 Android／Harmony 客户端保留新窗口下载行为；Android 应用内更新仍沿用原有流程。
+- 首页和课表为 iPhone/iPad Safari、Safari 主屏幕版展示非模态下载推荐。关闭或点击“在 App Store 下载”后 7 天内不再提示。原生客户端、桌面 Safari、微信/QQ 等内置浏览器、Chrome 等第三方浏览器以及低于 iOS 15 的设备不展示。桌面模式 iPad 的主屏幕版无法读取系统版本，仍会展示，由商店页面判断兼容性。
 - `X-CPU-Client` 新增 `ios-native` / `ios-pwa`，服务端仍映射到 `ios` 平台用于公告投放、iOS 商务限制等业务。原生 UA 优先于旧 Web 包的请求头；鸿蒙的共享 `CPUTimeNative` 标记不会误归到 iOS。
 - 用户足迹保留 `usedIosClient` 汇总，新增 `usedIosNativeClient` / `usedIosPwaClient`。登录和已登录会话的 `/user/me` 都会累计使用足迹；恢复会话不会伪造登录时间。
 - 后台概览新增 iOS 原生 / Safari 主屏幕版使用人数和今日登录数，用户列表新增对应筛选及标签。使用过两类客户端的用户在两类中分别计数，不能简单相加。历史数据无法可靠拆分，保持“未区分”，不回填为原生安装量。

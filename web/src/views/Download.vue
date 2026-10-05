@@ -16,6 +16,9 @@
       @download="openDownloadGuide"
     />
 
+    <p v-if="detectedPlatform === 'ios'" class="download-note">
+      Android 和电脑安装包需在对应设备安装，可将本页链接发送到对应设备后下载。
+    </p>
     <p class="download-note">
       药大拾间是学生自主开发维护的校园互助平台，并非学校官方应用，仅供学习研究与校园公益使用，严禁未经授权的商业用途。
       安装包请只从本页、项目官方发布页或本页链接的应用商店获取。
@@ -105,7 +108,7 @@ function desktopVersionLabel(info: DesktopDownloadInfo) {
   return info.version ? `v${info.version}` : "最新版";
 }
 
-// The App Store build needs iOS 17; older iPhones and iPads keep the Safari home-screen path.
+// The App Store build supports iOS 15+; older devices keep the Safari home-screen path.
 const iosNativeUnavailable = isLikelyIosDevice() && !canInstallIosNativeApp();
 
 const iosCard: PlatformCard = iosNativeUnavailable ? {
@@ -114,8 +117,8 @@ const iosCard: PlatformCard = iosNativeUnavailable ? {
   tone: "#64748b",
   name: "iPhone / iPad",
   support: `低于 iOS ${IOS_APP_MIN_MAJOR_VERSION} · Safari 主屏幕版`,
-  summary: `原生版需要 iOS / iPadOS ${IOS_APP_MIN_MAJOR_VERSION}.0 或更高版本。当前系统可用 Safari 把课表添加到主屏幕，升级系统后再从 App Store 安装。`,
-  features: ["顶部下载按钮内置完整教程", "Safari 添加到主屏幕", "支持 iOS 课表小组件"],
+  summary: `App Store 客户端需要 iOS / iPadOS ${IOS_APP_MIN_MAJOR_VERSION}.0 或更高版本。当前系统可用 Safari 把课表添加到主屏幕，升级系统后再从 App Store 安装。`,
+  features: ["顶部下载按钮内置完整教程", "Safari 添加到主屏幕", "无需安装 App"],
   steps: [
     "必须使用 Safari 打开本页，再点击“打开课表并添加到主屏幕”；微信、QQ 等内置浏览器不支持添加到主屏幕。",
     "进入课表后，在页面顶部操作栏找到向下箭头形状的下载按钮，点击即可打开安装教程。",
@@ -133,8 +136,8 @@ const iosCard: PlatformCard = iosNativeUnavailable ? {
   tone: "#64748b",
   name: "iPhone / iPad",
   support: `iOS / iPadOS ${IOS_APP_MIN_MAJOR_VERSION}.0 及以上 · App Store`,
-  summary: "iOS 原生客户端现已开放下载，可在 App Store 免费安装并自动更新；Safari 主屏幕版仍可继续使用。",
-  features: ["原生课表体验", "App Store 安装与更新", "支持 iOS 课表小组件"],
+  summary: "可在 App Store 免费安装并自动更新。iOS / iPadOS 15–16 使用网页兼容界面，17 及以上支持原生课表与小组件；Safari 主屏幕版仍可继续使用。",
+  features: ["App Store 免费安装与更新", "iOS 15–16 网页兼容界面", "iOS 17 及以上原生课表与小组件"],
   steps: [
     "点击“在 App Store 下载”，打开药大拾间的 App Store 页面。",
     "点击“获取”并按系统提示完成安装。",
@@ -153,17 +156,19 @@ const platformCards = computed<PlatformCard[]>(() => [
     key: "android",
     group: "mobile",
     tone: "#16a34a",
-    name: "Android",
-    support: "安卓手机、平板",
-    summary: "Android 客户端承载完整站点，并提供更适合手机的下载、通知和课表能力。",
-    features: ["课表与桌面小组件", "站内通知与文件下载", "跟随网站持续更新"],
+    name: "Android 原生版",
+    support: "Android 7.0 及以上 · 手机、平板",
+    summary: "Android 原生客户端提供原生导航、周／日课表、课程编辑与离线课表，支持桌面小组件、主题背景和站内消息；教务、服务等栏目与网站同步。",
+    features: ["原生课表 · 编辑与离线查看", "桌面小组件 · 主题与背景自定义", "文本分享与日历导出 · 应用内更新"],
     steps: [
       "点击下载 APK，并等待浏览器完成下载。",
       "打开安装包；若系统询问，请允许当前浏览器安装未知来源应用。",
-      "安装完成后从桌面打开药大拾间。",
+      "打开药大拾间，登录原有账号后使用原生课表；可编辑课程、自定义主题和背景，分享文本或导出日历。",
+      "在课表“更多 → 桌面课表小组件”中预览、选择主题并添加小组件。",
+      "后续可通过应用内检查客户端更新获取新版本，按系统提示完成安装；已有新版客户端可直接覆盖安装。",
     ],
     actionLabel: "下载 Android 客户端",
-    actionHint: "APK 安装包",
+    actionHint: "Android 7.0 及以上 · APK 安装包",
     versionLabel: `v${ANDROID_APP_LATEST_VERSION_NAME}`,
     loading: false,
     downloadUrl: ANDROID_APP_DOWNLOAD_URL,

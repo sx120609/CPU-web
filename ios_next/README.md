@@ -10,7 +10,7 @@
 - App 与 iOS 小组件显式弱链接 ActivityKit。Xcode 26.6 SDK 将 `ActivityStyle` 标成 iOS 16.1 可用，但 iOS 17.0 实际缺少 `ActivityStyle.standard` 符号；仅靠调用处的 `#available` 不能阻止 dyld 在启动时解析强引用。弱链接与运行时版本分支必须同时保留。
 - iOS 15.0–15.3 的网页使用随包兼容脚本补齐 `Object.hasOwn` 与 `Array.prototype.at`。不依赖网站先部署更新。
 
-回归方式与实际测试范围见 [系统兼容测试记录](docs/ios-compatibility-qa.md)。网站下载页的最低版本仍描述当前 App Store 已发布版本；发布支持 iOS 15 的新版后需同步更新 `web/src/utils/clientInfo.ts` 的商店版本说明。
+回归方式与实际测试范围见 [系统兼容测试记录](docs/ios-compatibility-qa.md)。App Store 已发布的 4.13 最低支持 iOS 15；网站下载页和 `web/src/utils/clientInfo.ts` 已同步这一要求，并注明 iOS 15–16 的网页兼容界面与 iOS 17 及以上的原生功能边界。
 
 ## 当前范围
 

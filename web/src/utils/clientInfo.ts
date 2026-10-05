@@ -16,8 +16,8 @@ export const HARMONY_APP_LATEST_VERSION_NAME = "2.0.9";
 export const ANDROID_APP_DOWNLOAD_URL = "/api/site/downloads/android-app";
 export const IOS_APP_STORE_URL = "https://apps.apple.com/cn/app/id6811073406";
 export const HARMONY_APP_STORE_URL = "https://appgallery.huawei.com/app/detail?id=cn.lizmt.cpuweb";
-/** Matches the App Store listing: iOS / iPadOS 17.0 or later. */
-export const IOS_APP_MIN_MAJOR_VERSION = 17;
+/** App Store minimum: iOS / iPadOS 15.0; iOS 15–16 use the web compatibility interface. */
+export const IOS_APP_MIN_MAJOR_VERSION = 15;
 export const ANDROID_WIDGET_MIN_VERSION_CODE = 5;
 export const ANDROID_IN_APP_UPDATE_MIN_VERSION_CODE = 14;
 const CLIENT_OVERRIDE_KEY = "cpu-client-override";

@@ -65,16 +65,22 @@ test("web image bridge is not treated as a native app; a native widget bridge is
 });
 
 test("devices below the App Store minimum keep the Safari home-screen path", () => {
-  const ios16 = iphone.replace("OS 18_0", "OS 16_7").replace("Version/18.0", "Version/16.6");
-  assert.equal(client(ios16).iosMajorVersion(), 16);
-  assert.equal(client(ios16).canInstallIosNativeApp(), false);
-  assert.equal(client(ios16).shouldRecommendIosApp(), false);
-  assert.equal(client(ios16, { standalone: true }).shouldRecommendIosApp(), false);
-  assert.equal(client(ios16, { standalone: true }).detectAnalyticsClient(), "ios-pwa");
-  assert.equal(client(iphone.replace("OS 18_0", "OS 17_0").replace("Version/18.0", "Version/17.0")).shouldRecommendIosApp(), true);
+  const ios14 = iphone.replace("OS 18_0", "OS 14_8").replace("Version/18.0", "Version/14.1");
+  assert.equal(client(ios14).iosMajorVersion(), 14);
+  assert.equal(client(ios14).canInstallIosNativeApp(), false);
+  assert.equal(client(ios14).shouldRecommendIosApp(), false);
+  assert.equal(client(ios14, { standalone: true }).shouldRecommendIosApp(), false);
+  assert.equal(client(ios14, { standalone: true }).detectAnalyticsClient(), "ios-pwa");
+  for (const major of [15, 16, 17]) {
+    const ua = iphone.replace("OS 18_0", `OS ${major}_0`).replace("Version/18.0", `Version/${major}.0`);
+    assert.equal(client(ua).canInstallIosNativeApp(), true, `iOS ${major}`);
+    assert.equal(client(ua).shouldRecommendIosApp(), true, `iOS ${major} Safari`);
+    assert.equal(client(ua, { standalone: true }).shouldRecommendIosApp(), true, `iOS ${major} home-screen app`);
+    assert.equal(client(ipad.replace("Version/18.0", `Version/${major}.0`), { touch: 5 }).shouldRecommendIosApp(), true, `iPadOS ${major}`);
+  }
   // iOS 26 freezes the OS token at 18_6; the major version still clears the minimum.
   assert.equal(client(iphone.replace("OS 18_0", "OS 18_6").replace("Version/18.0", "Version/26.0")).shouldRecommendIosApp(), true);
-  assert.equal(client(ipad.replace("Version/18.0", "Version/16.6"), { touch: 5 }).shouldRecommendIosApp(), false);
+  assert.equal(client(ipad.replace("Version/18.0", "Version/14.1"), { touch: 5 }).shouldRecommendIosApp(), false);
   // Desktop-class iPad home-screen apps expose no version; the App Store page decides.
   assert.equal(client(ipad.replace(/ Version\/[^ ]+| Safari\/[^ ]+/g, ""), { touch: 5, standalone: true }).shouldRecommendIosApp(), true);
 });

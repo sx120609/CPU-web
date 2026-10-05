@@ -37,11 +37,12 @@
 
     <!-- Android 普通浏览器：优先提供 APK -->
     <div v-else-if="platform === 'android'" class="content">
-      <p>建议安装 <b>药大拾间</b> Android 版，下次可从桌面图标直接打开。</p>
+      <p>建议安装 <b>药大拾间 Android 原生客户端</b>，支持 Android 7.0 及以上的手机、平板。</p>
       <p class="migration-note">若手机里还保留 2.x 旧版，确认新版可用后可手动卸载旧版。</p>
       <ul class="bullets">
-        <li>安装包很小，只是课表页的轻量 App 壳</li>
-        <li>网站正常访问时，App 内容会同步更新</li>
+        <li>原生周／日课表，支持课程编辑、离线查看和桌面小组件</li>
+        <li>可自定义主题与背景、分享课表文本或导出日历</li>
+        <li>教务、服务等栏目与网站同步，支持站内消息和应用内更新</li>
         <li>下载完成后打开 APK，按系统提示安装</li>
       </ul>
       <p class="muted">如果系统提示“未知来源”，需要允许当前浏览器安装应用。</p>
@@ -52,6 +53,7 @@
       <template v-if="iosAppInstallable">
         <p><b>药大拾间 iOS 原生版已上线</b>，推荐前往 App Store 下载。</p>
         <p class="muted">登录原有账号即可使用；需要 iOS / iPadOS {{ IOS_APP_MIN_MAJOR_VERSION }}.0 或更高版本。</p>
+        <p class="muted">iOS 15–16 使用网页兼容界面，原生课表与小组件需 iOS 17 或更高版本。</p>
       </template>
       <p v-else class="muted">iOS 原生版需要 iOS / iPadOS {{ IOS_APP_MIN_MAJOR_VERSION }}.0 或更高版本，当前系统可继续使用 Safari 主屏幕版。</p>
       <details class="home-screen-steps" :open="!iosAppInstallable">
@@ -186,7 +188,7 @@ const iosAppInstallable = computed(() => canInstallIosNativeApp());
 const title = computed(() => {
   if (inAppBrowser.value.isInApp) return "建议使用外部浏览器打开";
   if (platform.value === "harmony") return "下载鸿蒙原生客户端";
-  if (platform.value === "android") return "安装 Android 版课表";
+  if (platform.value === "android") return "下载 Android 原生客户端";
   if (platform.value === "ios") return iosAppInstallable.value ? "下载 iOS 原生客户端" : "添加到主屏幕";
   if (desktopDownloadPlatform.value === "macos") return "下载 macOS 桌面客户端";
   if (desktopDownloadPlatform.value === "windows") return "下载 Windows 桌面客户端";
