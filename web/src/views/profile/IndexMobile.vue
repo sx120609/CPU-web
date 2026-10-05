@@ -313,7 +313,7 @@
       <p><a href="/privacy.html">隐私政策</a> · <a href="/terms.html">用户协议</a></p>
     </footer>
 
-    <el-drawer v-model="avatarSheetOpen" direction="btt" size="auto" title="头像" class="me-m-sheet" append-to-body>
+    <el-drawer v-model="avatarSheetOpen" direction="btt" size="auto" title="头像" class="me-m-sheet cpu-sheet-above-native-bar" append-to-body>
       <p class="me-m-sheet-copy">新头像会先提交审核，通过后公开显示。</p>
       <div class="me-m-sheet-actions">
         <el-button type="primary" size="large" :loading="avatarSaving" :disabled="avatarSaving" @click="chooseAvatar">上传头像</el-button>
@@ -322,7 +322,7 @@
       </div>
     </el-drawer>
 
-    <el-drawer v-if="user && !auth.forumHidden" v-model="trustSheetOpen" direction="btt" size="auto" title="信誉与匿名" class="me-m-sheet" append-to-body>
+    <el-drawer v-if="user && !auth.forumHidden" v-model="trustSheetOpen" direction="btt" size="auto" title="信誉与匿名" class="me-m-sheet cpu-sheet-above-native-bar" append-to-body>
       <div class="me-m-trust">
         <div class="me-m-trust-head">
           <div>
@@ -362,6 +362,7 @@
       title="确认赞助"
       width="420px"
       class="sponsor-confirm-dialog"
+      modal-class="cpu-overlay-above-native-bar"
       append-to-body
       :close-on-click-modal="!sponsorSubmitting"
       :close-on-press-escape="!sponsorSubmitting"
@@ -409,7 +410,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="editing" title="编辑资料" width="420" :close-on-click-modal="!saving" :close-on-press-escape="!saving" :show-close="!saving" append-to-body>
+    <el-dialog v-model="editing" title="编辑资料" width="420" :close-on-click-modal="!saving" :close-on-press-escape="!saving" :show-close="!saving" modal-class="cpu-overlay-above-native-bar" append-to-body>
       <el-form label-position="top" :model="editForm">
         <el-form-item label="昵称（AI 异步审核）">
           <el-input v-model="editForm.nickname" maxlength="20" show-word-limit :disabled="saving" />
@@ -431,7 +432,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="passwordDialog" title="修改密码" width="420" :close-on-click-modal="false" :close-on-press-escape="!savingPw" :show-close="!savingPw" append-to-body>
+    <el-dialog v-model="passwordDialog" title="修改密码" width="420" :close-on-click-modal="false" :close-on-press-escape="!savingPw" :show-close="!savingPw" modal-class="cpu-overlay-above-native-bar" append-to-body>
       <el-form label-position="top" :model="pwForm" @keyup.enter="savePassword">
         <el-form-item label="原密码" required>
           <el-input v-model="pwForm.oldPassword" type="password" show-password autocomplete="current-password" :disabled="savingPw" />

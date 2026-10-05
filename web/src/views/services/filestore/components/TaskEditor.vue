@@ -6,7 +6,7 @@
     :with-header="false"
     :close-on-click-modal="!saving"
     :close-on-press-escape="!saving"
-    class="fs-editor"
+    :class="['fs-editor', { 'cpu-sheet-above-native-bar': isMobileLayout }]"
     append-to-body
   >
     <div class="fs-ed">

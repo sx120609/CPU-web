@@ -4,6 +4,7 @@
     :fullscreen="isMobileLayout"
     width="760px"
     class="fs-files-dialog"
+    modal-class="cpu-overlay-above-native-bar"
     append-to-body
     :align-center="!isMobileLayout"
   >

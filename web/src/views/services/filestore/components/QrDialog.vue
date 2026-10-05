@@ -1,5 +1,5 @@
 <template>
-  <el-dialog v-model="qrVisible" title="提交二维码" width="360px" class="fs-qr-dialog" append-to-body align-center>
+  <el-dialog v-model="qrVisible" title="提交二维码" width="360px" class="fs-qr-dialog" modal-class="cpu-overlay-above-native-bar" append-to-body align-center>
     <div class="fs-qr">
       <img v-if="qrImageUrl" :src="qrImageUrl" alt="提交二维码" width="220" height="220">
       <b>{{ detail?.title }}</b>

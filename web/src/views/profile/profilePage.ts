@@ -474,7 +474,7 @@ export function useProfilePage() {
 
   async function onLogout() {
     if (logoutBusy.value) return;
-    const confirmed = await ElMessageBox.confirm("确认退出登录？", "提示")
+    const confirmed = await ElMessageBox.confirm("确认退出登录？", "提示", { modalClass: "cpu-overlay-above-native-bar" })
       .then(() => true)
       .catch(() => false);
     if (!confirmed) return;

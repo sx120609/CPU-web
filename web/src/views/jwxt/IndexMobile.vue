@@ -190,7 +190,7 @@
       </p>
     </template>
 
-    <el-drawer v-model="sessionSheetOpen" direction="btt" size="auto" title="教务连接" class="edu-m-sheet" append-to-body>
+    <el-drawer v-model="sessionSheetOpen" direction="btt" size="auto" title="教务连接" class="edu-m-sheet cpu-sheet-above-native-bar" append-to-body>
       <div class="edu-m-sheet-status" :class="{ 'is-cache': !jwxt.isLoggedIn }">
         <el-icon aria-hidden="true"><component :is="jwxt.isLoggedIn ? CircleCheckFilled : Clock" /></el-icon>
         <div>
