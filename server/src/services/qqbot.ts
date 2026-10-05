@@ -42,6 +42,7 @@ import {
   isMyPostsCommand,
   parseQqGroupAdminCommand,
   isPrivatePlainCommand,
+  isSelfMuteCommand,
   isStatusCommand,
   isUnbindCommand,
   normalizeInboundCommandText,
@@ -661,6 +662,12 @@ export async function handleQqBotWebhook(event: OneBotEvent, secret?: string | n
   if (!qqId) {
     await logQqBotMessage({ direction: "inbound", eventType: "message", status: "ignored", qqId, groupId, rawPayload: event });
     return { ignored: true };
+  }
+
+  // This easter egg also works without @bot and during an active posting conversation.
+  if (isSelfMuteCommand(commandText)) {
+    await handleQqBotSelfMuteCommand(context);
+    return { ok: true };
   }
 
   const verificationHandled = await maybeHandleQqGroupAdVerification({
@@ -3448,6 +3455,54 @@ export function hasExplicitQqGroupPostIntent(text: string) {
     || /(?:投稿到|发布到|提交到|发到|投到|发去|发在|放到)\s*(?:论坛|站内|板块|版块|分区|社区|树洞)?/iu.test(normalized)
     || /(?:把|将|这条|这段|上面|该消息).{0,20}(?:投稿|投递|发帖|发文|发布|提交)/iu.test(normalized)
     || /(?:论坛|站内|板块|版块|分区|社区|树洞).{0,16}(?:投稿|投递|发帖|发文|发布|提交)/iu.test(normalized);
+}
+
+async function handleQqBotSelfMuteCommand(input: {
+  config: Awaited<ReturnType<typeof getQqBotConfigRaw>>;
+  event: OneBotEvent;
+  qqId: string;
+  groupId?: string;
+  messageText: string;
+}) {
+  const replyAndLog = async (message: string, result: string, status: "ok" | "ignored" | "error" = "ok") => {
+    await logQqBotMessage({
+      direction: "inbound",
+      eventType: "self-mute-command",
+      status,
+      qqId: input.qqId,
+      groupId: input.groupId,
+      messageId: input.event.message_id ? String(input.event.message_id) : undefined,
+      command: "banme",
+      content: input.messageText.slice(0, 500),
+      result,
+      rawPayload: input.event,
+    });
+    await replyToEvent(input, message).catch(() => undefined);
+  };
+
+  if (input.event.message_type !== "group" || !input.groupId) {
+    return replyAndLog("这个彩蛋只能在群聊里使用：发送 /banme，让自己安静 1 分钟。", "group-only", "ignored");
+  }
+
+  try {
+    const group = await prisma.qqBotGroup.findUnique({ where: { groupId: input.groupId } });
+    if (!group?.enabled || !group.allowMute) {
+      return replyAndLog("当前群未开启禁言功能。", "mute-disabled", "ignored");
+    }
+    ensureModerationTargetAllowed(input.qqId, input.config, input.event);
+    await callQqBotAction("set_group_ban", {
+      group_id: Number(input.groupId) || input.groupId,
+      user_id: Number(input.qqId) || input.qqId,
+      duration: 60,
+    });
+  } catch (error) {
+    return replyAndLog(
+      `自助禁言失败：${getQqBotUserFacingErrorMessage(error, "请确认机器人有群管理权限后再试。")}`,
+      getQqBotActionErrorMessage(error).slice(0, 500),
+      "error",
+    );
+  }
+  return replyAndLog("好，休息一下～已将你禁言 1 分钟。", "assistant:banme");
 }
 
 async function handleQqBotGroupAdminCommand(input: {

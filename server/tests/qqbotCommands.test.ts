@@ -1,7 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { normalizeInboundCommandText, parseQqGroupAdminCommand } from "../src/services/qqbot/commands";
+import { isSelfMuteCommand, normalizeInboundCommandText, parseQqGroupAdminCommand } from "../src/services/qqbot/commands";
 import { parseMessageBindToken } from "../src/services/bindToken";
+
+test("自助禁言彩蛋只接受完整的斜杠命令，不接受目标或自定义时长", () => {
+  for (const text of ["/banme", " /BANME ", "／banme", normalizeInboundCommandText("@拾间BOT /banme")]) {
+    assert.equal(isSelfMuteCommand(text), true, text);
+  }
+  for (const text of ["banme", "/banme 123456789", "/banme 10m", "/banmeplease", "请发送 /banme", "/banme\n其他内容"]) {
+    assert.equal(isSelfMuteCommand(text), false, text);
+  }
+});
 
 test("群管理员可通过 @成员命令移出广告过滤白名单", () => {
   assert.deepEqual(parseQqGroupAdminCommand("移出白名单 [CQ:at,qq=123456789]"), {

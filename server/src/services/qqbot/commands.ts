@@ -14,6 +14,10 @@ export function isStatusCommand(text: string) {
   return /^(?:[/／])?状态$/i.test(normalizeCommandKeywordText(text));
 }
 
+export function isSelfMuteCommand(text: string) {
+  return /^[/／]banme$/i.test(text.trim());
+}
+
 export function isConversationStatusCommand(text: string) {
   return /^(?:[/／])?(状态|进度)$/i.test(normalizeCommandKeywordText(text));
 }
