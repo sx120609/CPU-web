@@ -2,6 +2,7 @@ import { useAuthStore, useJwxtStore } from './adapters';
 import { courseEditKey, normalizeScheduleEditsState } from '../../web/src/utils/scheduleEdits';
 import { buildCustomCourseItem, saveCustomCourseEdit, deleteCourseEdit, restoreOriginalCourseEdit } from '../../web/src/views/schedule/courseEditor';
 import { buildCourseFamilyKey } from '../../web/src/views/schedule/viewModels';
+import { MAX_SMALL_SLOT } from '../../web/src/views/schedule/slots';
 
 export function installAndroidEditor() {
   const host = window as any;
@@ -62,7 +63,7 @@ export function installAndroidEditor() {
         const form=payload.form;
         if (!form?.name?.trim() || form.name.trim().length>120) throw Error('请填写不超过 120 字的课程名称');
         if (!Number.isInteger(form.day) || form.day<1 || form.day>7 || !Number.isInteger(form.startSlot) ||
-          !Number.isInteger(form.endSlot) || form.startSlot<1 || form.endSlot>11 || form.endSlot<form.startSlot) throw Error('请检查星期和节次范围');
+          !Number.isInteger(form.endSlot) || form.startSlot<1 || form.endSlot>MAX_SMALL_SLOT || form.endSlot<form.startSlot) throw Error('请检查星期和节次范围');
         const weekList = [...new Set<number>((form.weekList || []).map(Number))].sort((a,b)=>a-b);
         if (!weekList.length || weekList.some(n=>!Number.isInteger(n)||n<1||n>64)) throw Error('请选择有效教学周');
         const existing=block?.course.customId ? current.custom.find(item=>item.id===block.course.customId) : null;

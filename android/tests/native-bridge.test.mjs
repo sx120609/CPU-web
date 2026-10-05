@@ -180,3 +180,28 @@ test('the course editor protocol is exposed under the Android name with the Andr
   assert.equal(writes[0].headers['X-CSRF-Token'], 'csrf-token');
   assert.equal(edits.custom[0].course.name, '新增课程');
 });
+
+test('the course editor accepts the evening twelfth period offered by the native picker', async () => {
+  const { stores } = legacyStores();
+  let edits = { hidden: [], custom: [] };
+  const writes = [];
+  const p = page({ stores, fetch: async (url, options) => {
+    if (options.method === 'PUT') { writes.push(options); edits = JSON.parse(options.body).edits; }
+    return { ok: true, json: async () => ({ code: 0, data: { edits } }) };
+  } });
+  vm.runInContext(bootstrap, p.context);
+  vm.runInContext(compatibility, p.context);
+  const form = { name: '晚课', teacher: '', location: '', note: '', day: 7, startSlot: 12, endSlot: 12, weekList: [13, 15] };
+  let opened = await p.window.CPUAndroidEditor({ action: 'open', semester: 'fall' });
+  const saved = await p.window.CPUAndroidEditor({ action: 'save', session: opened.session, cells: [], form });
+  assert.equal(saved.error, undefined);
+  assert.equal(saved.saved, true);
+  assert.equal(edits.custom[0].day, 7);
+  assert.equal(edits.custom[0].course.startSlot, 12);
+  assert.equal(edits.custom[0].course.endSlot, 12);
+  opened = await p.window.CPUAndroidEditor({ action: 'open', semester: 'fall' });
+  const rejected = await p.window.CPUAndroidEditor({ action: 'save', session: opened.session, cells: [],
+    form: { ...form, endSlot: 13 } });
+  assert.match(rejected.error, /节次/);
+  assert.equal(writes.length, 1);
+});
