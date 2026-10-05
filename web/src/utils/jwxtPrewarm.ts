@@ -146,7 +146,7 @@ async function prewarmUndergraduateData(jwxt: ReturnType<typeof useJwxtStore>, i
 
   const jobs: Array<[JwxtDataTab, () => Promise<any>]> = [
     ["grades", () => jwxt.withSessionRetry(() => jwxtApi.grades(undefined, { silent: true }))],
-    // 期中功能暂时停用；恢复时同步启用 views/jwxt/Index.vue 中的入口。
+    // 期中功能暂时停用；恢复时同步启用 views/jwxt/jwxtPage.ts 与教务页两个视图中的入口。
     // ["midterm", () => jwxt.withSessionRetry(() => jwxtApi.midtermGrades(undefined, { silent: true }))],
     ["progress", () => jwxt.withSessionRetry(() => jwxtApi.progress({ silent: true }))],
     ["pyfa", () => jwxt.withSessionRetry(() => jwxtApi.pyfa({ silent: true }))],

@@ -14,7 +14,8 @@ import { accountVerificationApplicationIssue } from "../../web/src/utils/account
 
 const routeSource = readFileSync(new URL("../src/routes/accountVerification.ts", import.meta.url), "utf8");
 const adminPaneSource = readFileSync(new URL("../../web/src/views/admin/AccountVerificationsPane.vue", import.meta.url), "utf8");
-const profileSource = readFileSync(new URL("../../web/src/views/profile/Index.vue", import.meta.url), "utf8");
+const profileSource = readFileSync(new URL("../../web/src/views/profile/IndexDesktop.vue", import.meta.url), "utf8");
+const mobileProfileSource = readFileSync(new URL("../../web/src/views/profile/IndexMobile.vue", import.meta.url), "utf8");
 const verificationPageSource = readFileSync(new URL("../../web/src/views/profile/Verification.vue", import.meta.url), "utf8");
 
 test("personal and organization accounts can use the verification workflow", () => {
@@ -70,10 +71,13 @@ test("builds active public personal and organization verifications", () => {
   });
 });
 
-test("mobile profile keeps the nickname and verification mark separate from secondary tags", () => {
+test("profile keeps the nickname and verification mark separate from secondary tags", () => {
   assert.match(profileSource, /<span class="name-primary">\s*<DisplayNickname[\s\S]*?<UserVerificationBadge/);
   assert.match(profileSource, /<span class="identity-tags">[\s\S]*?vip-tag[\s\S]*?管理员[\s\S]*?reputationLevel/);
-  assert.match(profileSource, /@media \(max-width: 640px\)[\s\S]*?\.name\s*{[\s\S]*?flex-direction:\s*column/);
+  assert.match(mobileProfileSource, /<span class="name-primary">\s*<DisplayNickname[\s\S]*?<UserVerificationBadge/);
+  assert.match(mobileProfileSource, /<\/h1>[\s\S]*?<span v-if="identityTags\.length" class="identity-tags">/);
+  assert.match(mobileProfileSource, /const identityTags = computed[\s\S]*?"VIP"[\s\S]*?"管理员"[\s\S]*?reputationLevel/);
+  assert.match(mobileProfileSource, /\.name-primary :deep\(\.display-nickname\) \{[^}]*overflow-wrap: anywhere/);
 });
 
 test("hides incomplete, unsupported, or expired verification data", () => {
