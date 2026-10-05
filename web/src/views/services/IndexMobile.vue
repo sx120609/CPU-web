@@ -75,22 +75,14 @@
       </div>
 
       <div v-else class="svc-m-rows">
-        <button
+        <ToolRowMobile
           v-for="tool in matchedTools"
           :key="tool.slug"
-          data-cpu-button="surface"
-          type="button"
-          class="svc-m-row"
-          :style="{ '--tone': tool.accent }"
+          :tool="tool"
+          :badge="toolBadge(tool)"
+          :login-required="isLoginRequired(tool.slug)"
           @click="openTool(tool)"
-        >
-          <span class="svc-m-tile" aria-hidden="true"><el-icon><component :is="tool.iconComponent" /></el-icon></span>
-          <span class="svc-m-row-copy">
-            <b>{{ tool.name }}<em v-if="toolBadge(tool)">{{ toolBadge(tool) }}</em></b>
-            <small>{{ tool.summary }}</small>
-          </span>
-          <el-icon class="svc-m-row-arrow" aria-hidden="true"><ArrowRight /></el-icon>
-        </button>
+        />
       </div>
     </section>
 
@@ -157,6 +149,7 @@ import AppIcon from "@/components/common/AppIcon.vue";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
 import IServiceMobilePane from "@/components/jwxt/IServiceMobilePane.vue";
 import DormElectricDialog from "@/components/services/DormElectricDialog.vue";
+import ToolRowMobile from "./components/ToolRowMobile.vue";
 import { publicServiceLinks, useServicesPage } from "./servicesPage";
 
 const router = useRouter();
@@ -441,39 +434,6 @@ function searchSite() {
 .svc-m-tool:active { transform: scale(.96); }
 
 .svc-m-rows { overflow: hidden; }
-.svc-m-row {
-  display: flex;
-  width: 100%;
-  min-height: 60px;
-  align-items: center;
-  gap: 11px;
-  padding: 10px 12px;
-  border: 0;
-  border-bottom: 1px solid var(--cpu-border-soft);
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-.svc-m-row:last-child { border-bottom: 0; }
-.svc-m-row:active { background: var(--cpu-surface-soft); }
-.svc-m-row .svc-m-tile { width: 38px; height: 38px; border-radius: 11px; font-size: 20px; }
-.svc-m-row-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 2px; }
-.svc-m-row-copy b { display: flex; min-width: 0; align-items: center; gap: 7px; font-size: 14px; font-weight: 600; line-height: 1.35; }
-.svc-m-row-copy em {
-  flex: 0 0 auto;
-  padding: 1px 6px;
-  border-radius: 999px;
-  background: var(--cpu-surface-subtle);
-  color: var(--cpu-text-secondary);
-  font-size: 10px;
-  font-style: normal;
-  font-weight: 500;
-}
-.svc-m-row-copy small { color: var(--cpu-text-muted); font-size: 11px; line-height: 1.45; }
-.svc-m-row-arrow { flex: 0 0 auto; color: var(--cpu-text-muted); font-size: 14px; }
-
 .svc-m-card { padding: 14px; }
 .svc-m-card b { font-size: 15px; font-weight: 650; line-height: 1.4; }
 .svc-m-card p { margin: 3px 0 0; color: var(--cpu-text-secondary); font-size: 12px; line-height: 1.65; }

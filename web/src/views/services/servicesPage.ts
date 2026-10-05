@@ -1,7 +1,8 @@
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch, type Ref } from "vue";
 import { ElMessage } from "element-plus";
 import { useRoute, useRouter } from "vue-router";
-import { toolsApi, type ToolMeta } from "@/api/tools";
+import { getToken } from "@/api/request";
+import { toolsApi, type ServiceToolCode, type ToolMeta } from "@/api/tools";
 import { serviceTools, type ServiceTool } from "@/data/serviceTools";
 import { useAuthStore } from "@/stores/auth";
 import { useJwxtStore } from "@/stores/jwxt";
@@ -10,48 +11,26 @@ import { shouldHideNativeYaodaCanFly } from "@/utils/clientInfo";
 import { detectVenueLaunchMode, openVenueReservationWithoutReferrer } from "@/utils/venueReservation";
 import { readViewCache, writeViewCache } from "@/utils/viewCache";
 
-// 桌面端与移动端服务页共用的数据与入口行为；两套页面只负责各自的排版。
-export function useServicesPage() {
-  const jwxt = useJwxtStore();
+// 校园小工具的可见性、登录要求与打开方式；服务页和“全部小工具”页共用。
+export function useServiceTools() {
   const auth = useAuthStore();
   const router = useRouter();
-  const route = useRoute();
-  const site = useSiteStore();
-  const electricOpen = ref(false);
   const toolMetas = ref<ToolMeta[]>([]);
   const toolsLoading = ref(false);
   const toolsError = ref("");
   let toolsLoadSeq = 0;
   let disposed = false;
   const toolsCacheKey = computed(() => `cpu-services-tools-v1:${auth.user?.id ? `user-${auth.user.id}` : "guest"}`);
-  const academicDataUnavailable = computed(() => Boolean(auth.user?.studentSso && auth.academicIdentityUnavailable));
   const toolAccessMap = computed(() => Object.fromEntries(toolMetas.value.map((item) => [item.code, item])));
   const visibleTools = computed(() => serviceTools.filter((tool) => (
     toolAccessMap.value[tool.slug]?.isVisible !== false
     && !(tool.slug === "yaoda_can_fly" && shouldHideNativeYaodaCanFly(auth.isLoggedIn, auth.user?.username))
   )));
-  const electricAvailable = computed(() => auth.isLoggedIn && site.features.electric);
 
-  watch(
-    [() => route.query.open, () => site.features.electric],
-    ([quickOpen, electricEnabled]) => {
-      if (quickOpen === "electric" && electricEnabled) electricOpen.value = true;
-      if (quickOpen === "network" || quickOpen === "desktop") void router.push("/download");
-    },
-    { immediate: true },
-  );
-
-  onMounted(async () => {
+  onMounted(() => {
     disposed = false;
     restoreToolMetasCache();
     void loadToolMetas();
-    jwxt.hydrate();
-    try {
-      // 服务页只探测现有教务会话，不自动提交已保存的学校凭据。
-      await jwxt.refreshStatus();
-    } catch {
-      if (!disposed) ElMessage.warning("教务登录状态暂时无法刷新，基础服务仍可继续使用");
-    }
   });
 
   onBeforeUnmount(() => {
@@ -118,19 +97,94 @@ export function useServicesPage() {
   }
 
   return {
-    jwxt,
     auth,
-    electricOpen,
-    electricAvailable,
+    toolMetas,
     toolsLoading,
     toolsError,
     visibleTools,
-    academicDataUnavailable,
     loadToolMetas,
     isLoginRequired,
     toolBadge,
     openTool,
   };
+}
+
+// 桌面端与移动端服务页共用的数据与入口行为；两套页面只负责各自的排版。
+export function useServicesPage() {
+  const tools = useServiceTools();
+  const { auth } = tools;
+  const jwxt = useJwxtStore();
+  const router = useRouter();
+  const route = useRoute();
+  const site = useSiteStore();
+  const electricOpen = ref(false);
+  let disposed = false;
+  const academicDataUnavailable = computed(() => Boolean(auth.user?.studentSso && auth.academicIdentityUnavailable));
+  const electricAvailable = computed(() => auth.isLoggedIn && site.features.electric);
+
+  watch(
+    [() => route.query.open, () => site.features.electric],
+    ([quickOpen, electricEnabled]) => {
+      if (quickOpen === "electric" && electricEnabled) electricOpen.value = true;
+      if (quickOpen === "network" || quickOpen === "desktop") void router.push("/download");
+    },
+    { immediate: true },
+  );
+
+  onMounted(async () => {
+    disposed = false;
+    jwxt.hydrate();
+    try {
+      // 服务页只探测现有教务会话，不自动提交已保存的学校凭据。
+      await jwxt.refreshStatus();
+    } catch {
+      if (!disposed) ElMessage.warning("教务登录状态暂时无法刷新，基础服务仍可继续使用");
+    }
+  });
+
+  onBeforeUnmount(() => {
+    disposed = true;
+  });
+
+  return {
+    ...tools,
+    jwxt,
+    electricOpen,
+    electricAvailable,
+    academicDataUnavailable,
+  };
+}
+
+// “全部小工具”页的管理入口：工具配置里可管理的，加上账号被单独授权的。
+export function useToolManageEntry(toolMetas: Ref<ToolMeta[]>) {
+  const router = useRouter();
+  const permitted = ref<ServiceToolCode[]>([]);
+  const manageable = computed(() => Array.from(new Set([
+    ...toolMetas.value.filter((item) => item.canManage).map((item) => item.code),
+    ...permitted.value,
+  ])));
+  const canManageAny = computed(() => manageable.value.length > 0);
+
+  onMounted(async () => {
+    if (!getToken()) return;
+    try {
+      const perms = await toolsApi.myPermissions({ suppressErrorMessage: true });
+      permitted.value = [...perms.toolCodes, ...(perms.adminToolCodes ?? [])];
+    } catch {
+      /* 没拿到授权信息时只按工具配置判断 */
+    }
+  });
+
+  function openManage() {
+    const target = manageable.value[0] ?? "questionnaire";
+    if (target === "file_collect") {
+      router.push("/services/tools/filestore");
+      return;
+    }
+    router.push({ path: "/services/tools/manage", query: { tool: target } });
+  }
+
+  return { canManageAny, openManage };
 }
 
 // 游客与未登录教务时的兜底公开入口。
