@@ -138,10 +138,17 @@ test('Harmony guests and the restricted account cannot open assistant routes dir
   }
 });
 
+function findFunction(node, name) {
+  if (ts.isFunctionDeclaration(node) && node.name?.text === name) return node;
+  return ts.forEachChild(node, child => findFunction(child, name));
+}
+
+// 处理函数可能写在页面的 <script setup> 里，也可能写在页面共用的组合式函数里。
 function submitHandler(file, name, globals) {
-  const source = readFileSync(new URL(file, import.meta.url), 'utf8').match(/<script setup[^>]*>([\s\S]*?)<\/script>/)[1];
+  const raw = readFileSync(new URL(file, import.meta.url), 'utf8');
+  const source = file.endsWith('.vue') ? raw.match(/<script setup[^>]*>([\s\S]*?)<\/script>/)[1] : raw;
   const parsed = ts.createSourceFile('view.ts', source, ts.ScriptTarget.Latest, true);
-  const method = parsed.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === name);
+  const method = findFunction(parsed, name);
   assert.ok(method);
   const context = vm.createContext(globals);
   vm.runInContext(transformSync(`${method.getText(parsed)}; globalThis.submit = ${name};`, { loader: 'ts' }).code, context);
@@ -151,7 +158,7 @@ function submitHandler(file, name, globals) {
 for (const [file, name] of [
   ['../../web/src/views/Login.vue', 'onSubmit'],
   ['../../web/src/views/Login.vue', 'onDevSubmit'],
-  ['../../web/src/views/jwxt/Index.vue', 'onSubmit'],
+  ['../../web/src/views/jwxt/jwxtPage.ts', 'onSubmit'],
 ]) {
   test(`${file} ${name}: unchecked consent prevents even programmatic submission`, async () => {
     const warnings = [];
