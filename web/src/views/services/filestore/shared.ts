@@ -1,18 +1,16 @@
 import type {
+  FilestoreCreator,
   FilestoreField,
   FilestoreRules,
   FilestoreStatus,
+  FilestoreSubmission,
+  FilestoreSurveyAnswer,
   FilestoreSurveyField,
+  FilestoreTask,
   FilestoreTaskPayload,
   FilestoreTemplate,
 } from "@/api/filestore";
 import type { QuestionnaireFieldType } from "@/api/tools";
-import { onBeforeUnmount, onMounted } from "vue";
-import filestoreCss from "./filestore.css?raw";
-
-const scopedFilestorePageClass = "filestore-page";
-const scopedFilestoreGlobalStyleId = "filestore-global-shell-style";
-let scopedFilestoreMounts = 0;
 
 export interface FilestoreDraft {
   title: string;
@@ -292,17 +290,20 @@ export function normalizeFieldKey(value: string) {
 }
 
 export function statusText(status: FilestoreStatus) {
-  return status === "open" ? "开放中" : "已关闭";
-}
-
-export function statusTagType(status: FilestoreStatus) {
-  return status === "open" ? "success" : "info";
+  return status === "open" ? "开放提交" : "停止提交";
 }
 
 export function formatDateTime(value: string) {
   if (!value) return "-";
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "-" : date.toLocaleString();
+  return Number.isNaN(date.getTime()) ? "-" : date.toLocaleString("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
 }
 
 export function formatDateForInput(value: string) {
@@ -386,115 +387,62 @@ export function requestErrorMessage(error: unknown, fallback = "操作失败") {
   return fallback;
 }
 
-export function useScopedFilestoreCss(scopeClass = "filestore-app") {
-  const styleId = `${scopeClass}-style`;
-  onMounted(() => {
-    scopedFilestoreMounts += 1;
-    document.body.classList.add(scopedFilestorePageClass);
-    if (!document.getElementById(scopedFilestoreGlobalStyleId)) {
-      const globalStyle = document.createElement("style");
-      globalStyle.id = scopedFilestoreGlobalStyleId;
-      globalStyle.textContent = `
-body.${scopedFilestorePageClass} .main {
-  width: 100% !important;
-  max-width: none !important;
-  margin: 0 !important;
-  padding: 0 !important;
-}
-body.${scopedFilestorePageClass} .main > * {
-  width: 100%;
-  max-width: none;
-  min-width: 0;
-}
-body.${scopedFilestorePageClass} .filestore-app {
-  width: 100%;
-  max-width: none;
-  min-width: 0;
-}
-`;
-      document.head.appendChild(globalStyle);
-    }
-    if (document.getElementById(styleId)) return;
-    const style = document.createElement("style");
-    style.id = styleId;
-    style.textContent = scopeFilestoreCss(filestoreCss, scopeClass);
-    document.head.appendChild(style);
-  });
-  onBeforeUnmount(() => {
-    scopedFilestoreMounts = Math.max(0, scopedFilestoreMounts - 1);
-    if (scopedFilestoreMounts === 0) {
-      document.body.classList.remove(scopedFilestorePageClass);
-      document.getElementById(scopedFilestoreGlobalStyleId)?.remove();
-    }
-    document.getElementById(styleId)?.remove();
-  });
+export function formatDateOnly(value?: string | null) {
+  if (!value) return "";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString("zh-CN");
 }
 
-function scopeFilestoreCss(css: string, scopeClass: string) {
-  return scopeCssBlocks(css.replace(/\/\*[\s\S]*?\*\//g, ""), `.${scopeClass}`);
+export function formatCreator(user?: FilestoreCreator | null) {
+  if (!user) return "未绑定";
+  return `${user.displayName || user.username || "未命名"}（${user.username || user.userId}）`;
 }
 
-function scopeCssBlocks(css: string, scope: string): string {
-  let output = "";
-  let index = 0;
-  while (index < css.length) {
-    const open = css.indexOf("{", index);
-    if (open < 0) {
-      output += css.slice(index);
-      break;
-    }
-    const selector = css.slice(index, open).trim();
-    const close = findMatchingBrace(css, open);
-    if (close < 0) {
-      output += css.slice(index);
-      break;
-    }
-    const body = css.slice(open + 1, close);
-    if (selector.startsWith("@media") || selector.startsWith("@supports") || selector.startsWith("@container")) {
-      output += `${selector} {\n${scopeCssBlocks(body, scope)}\n}`;
-    } else if (selector.startsWith("@keyframes") || selector.startsWith("@font-face") || selector.startsWith("@property")) {
-      output += `${selector} {${body}}`;
-    } else if (selector.startsWith("@")) {
-      output += `${selector} {${body}}`;
-    } else {
-      output += `${prefixSelectorList(selector, scope)} {${body}}`;
-    }
-    index = close + 1;
-  }
-  return output;
+export function formatSurveyAnswer(value: FilestoreSurveyAnswer | undefined) {
+  return Array.isArray(value) ? value.join("、") : String(value || "");
 }
 
-function findMatchingBrace(css: string, open: number) {
-  let depth = 0;
-  for (let index = open; index < css.length; index += 1) {
-    const char = css[index];
-    if (char === "{") depth += 1;
-    if (char === "}") {
-      depth -= 1;
-      if (depth === 0) return index;
-    }
-  }
-  return -1;
+export function unexpectedLabel(item: { id: number; name: string; identity: string }) {
+  return item.identity || item.name || `#${item.id}`;
 }
 
-function prefixSelectorList(selector: string, scope: string) {
-  return selector
-    .split(",")
-    .map((item) => prefixSelector(item.trim(), scope))
-    .join(",\n");
+export function fileTotal(task: Pick<FilestoreTask, "submissions">) {
+  return (task.submissions || []).reduce((sum, submission) => sum + submission.files.length, 0);
 }
 
-function prefixSelector(selector: string, scope: string) {
-  if (!selector) return selector;
-  if (selector === ":root" || selector === "html" || selector === "body") return scope;
-  const htmlCondition = selector.match(/^html((?:\[[^\]]+\]|:[\w-]+|\.[\w-]+)+)(.*)$/);
-  if (htmlCondition) {
-    return `html${htmlCondition[1]} ${scope}${htmlCondition[2] || ""}`;
-  }
-  if (selector.startsWith("body.")) return `${scope}${selector.slice("body".length)}`;
-  if (selector.startsWith("html.")) return `${scope}${selector.slice("html".length)}`;
-  if (selector === "*") return `${scope} *`;
-  if (selector.startsWith("*")) return `${scope} ${selector}`;
-  return `${scope} ${selector}`;
+export function submitPath(slug: string) {
+  return `/services/tools/filestore/submit/${slug}`;
 }
 
+export function statusPath(slug: string) {
+  return `/services/tools/filestore/status/${slug}`;
+}
+
+export function absoluteUrl(path: string) {
+  return new URL(path, window.location.origin).toString();
+}
+
+// 提交人展示名：优先姓名，其次第一个身份字段，最后用提交编号兜底。
+export function submissionOwner(task: Pick<FilestoreTask, "fields">, submission: FilestoreSubmission) {
+  return submission.data.name || submission.data[task.fields[0]?.key || ""] || `#${submission.id}`;
+}
+
+export function submissionIdentifier(task: Pick<FilestoreTask, "fields">, submission: FilestoreSubmission) {
+  const owner = submissionOwner(task, submission);
+  return submission.data.student_id || task.fields.map((field) => submission.data[field.key]).find((value) => value && value !== owner) || "";
+}
+
+export function fileExt(fileName: string) {
+  return fileName.includes(".") ? fileName.split(".").pop()!.trim().toLowerCase().replace(/^\.+/, "") : "";
+}
+
+export function fileKind(fileName: string) {
+  const ext = fileExt(fileName);
+  if (["jpg", "jpeg", "png", "webp", "gif", "heic", "bmp"].includes(ext)) return "image";
+  if (ext === "pdf") return "pdf";
+  if (["doc", "docx", "wps", "rtf", "txt", "md"].includes(ext)) return "doc";
+  if (["xls", "xlsx", "csv"].includes(ext)) return "sheet";
+  if (["ppt", "pptx", "key"].includes(ext)) return "slide";
+  if (["zip", "rar", "7z", "tar", "gz"].includes(ext)) return "archive";
+  return "file";
+}
