@@ -1,0 +1,149 @@
+/* 下载页桌面版与移动版共用的基础元素。 */
+.download-page {
+  --dl-tile-fill: 11%;
+  --dl-tile-ink: 100%;
+}
+
+html[data-theme="dark"] .download-page {
+  --dl-tile-fill: 20%;
+  --dl-tile-ink: 46%;
+}
+
+.dl-tile {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--tone, var(--cpu-primary)) var(--dl-tile-fill), var(--cpu-card));
+  color: color-mix(in srgb, var(--tone, var(--cpu-primary)) var(--dl-tile-ink), var(--cpu-text));
+  font-size: 21px;
+}
+
+.dl-tile--lg {
+  width: 52px;
+  height: 52px;
+  border-radius: 15px;
+  font-size: 26px;
+}
+
+.dl-version {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--cpu-surface-subtle);
+  color: var(--cpu-text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.dl-version.is-loading {
+  opacity: 0.6;
+}
+
+.dl-action {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.dl-action .cpu-app-icon {
+  flex: 0 0 auto;
+  font-size: 16px;
+}
+
+.dl-action.dl-action--plain {
+  --cpu-button-fill: color-mix(in srgb, var(--cpu-button-primary) 9%, var(--cpu-card));
+  --cpu-button-ink: var(--cpu-button-primary);
+  --cpu-button-hover-fill: color-mix(in srgb, var(--cpu-button-primary) 16%, var(--cpu-card));
+  --cpu-button-hover-ink: var(--cpu-button-primary);
+}
+
+.dl-action:disabled {
+  cursor: default;
+}
+
+.dl-steps {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  counter-reset: dl-step;
+  list-style: none;
+}
+
+.dl-steps li {
+  position: relative;
+  min-height: 22px;
+  padding-left: 32px;
+  color: var(--cpu-text-secondary);
+  font-size: 13px;
+  line-height: 1.65;
+  counter-increment: dl-step;
+}
+
+.dl-steps li::before {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--cpu-primary-soft);
+  color: var(--cpu-primary);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  content: counter(dl-step);
+}
+
+.dl-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dl-checks li {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--cpu-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.dl-checks .cpu-app-icon {
+  flex: 0 0 auto;
+  color: var(--cpu-primary);
+  font-size: 14px;
+}
+
+.dl-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--cpu-success);
+}
+
+.dl-dot.is-unknown {
+  background: var(--cpu-text-muted);
+}
