@@ -222,7 +222,7 @@
 
     <p class="download-note">
       药大拾间是学生自主开发维护的校园互助平台，并非学校官方应用，仅供学习研究与校园公益使用，严禁未经授权的商业用途。
-      安装包请只从本页或项目官方发布页获取。
+      安装包请只从本页、项目官方发布页或本页链接的应用商店获取。
     </p>
 
     <DownloadSafetyGuideDialog
@@ -244,10 +244,12 @@ import {
   ANDROID_APP_DOWNLOAD_URL,
   IOS_APP_MIN_MAJOR_VERSION,
   IOS_APP_STORE_URL,
+  HARMONY_APP_STORE_URL,
   ANDROID_APP_LATEST_VERSION_NAME,
   canInstallIosNativeApp,
   isLikelyAndroidDevice,
   isLikelyIosDevice,
+  isLikelyHarmonyDevice,
   isAndroidNativeApp,
 } from "@/utils/clientInfo";
 import { requestAndroidUpdatePrompt } from "@/utils/androidUpdatePrompt";
@@ -260,7 +262,7 @@ function checkRequestedUpdate() {
 }
 watch(() => route.query.checkUpdate, checkRequestedUpdate, { flush: "post" });
 
-type DownloadPlatform = "android" | "ios" | "windows" | "macos";
+type DownloadPlatform = "android" | "harmony" | "ios" | "windows" | "macos";
 
 type PlatformCard = {
   key: DownloadPlatform;
@@ -291,6 +293,7 @@ const desktopDownloadsLoading = ref(true);
 
 const detectedPlatform = computed<DownloadPlatform | null>(() => {
   if (typeof navigator === "undefined") return null;
+  if (isLikelyHarmonyDevice()) return "harmony";
   if (isLikelyIosDevice()) return "ios";
   if (isLikelyAndroidDevice()) return "android";
   const source = navigator.userAgent.toLowerCase();
@@ -301,7 +304,8 @@ const detectedPlatform = computed<DownloadPlatform | null>(() => {
 
 const detectedLabel = computed(() => {
   const labels: Record<DownloadPlatform, string> = {
-    android: "已识别为安卓/鸿蒙设备",
+    android: "已识别为安卓设备",
+    harmony: "已识别为鸿蒙设备",
     ios: "已识别为 iPhone / iPad",
     windows: "已识别为 Windows 设备",
     macos: "已识别为 Mac 设备",
@@ -362,20 +366,38 @@ const platformCards = computed<PlatformCard[]>(() => [
   {
     key: "android",
     symbol: "A",
-    name: "安卓/鸿蒙卓易通",
-    support: "安卓与鸿蒙手机、平板",
-    summary: "卓易通原生客户端承载完整站点，并提供更适合手机的下载、通知和课表能力。",
+    name: "Android",
+    support: "安卓手机、平板",
+    summary: "Android 客户端承载完整站点，并提供更适合手机的下载、通知和课表能力。",
     features: ["课表与桌面小组件", "站内通知与文件下载", "跟随网站持续更新"],
     steps: [
       "点击下载 APK，并等待浏览器完成下载。",
       "打开安装包；若系统询问，请允许当前浏览器安装未知来源应用。",
       "安装完成后从桌面打开药大拾间。",
     ],
-    actionLabel: "下载安卓/鸿蒙卓易通",
+    actionLabel: "下载 Android 客户端",
     actionHint: "APK 安装包",
     versionLabel: `v${ANDROID_APP_LATEST_VERSION_NAME}`,
     loading: false,
     downloadUrl: ANDROID_APP_DOWNLOAD_URL,
+  },
+  {
+    key: "harmony",
+    symbol: "H",
+    name: "鸿蒙原生版",
+    support: "鸿蒙手机、平板 · 华为应用市场",
+    summary: "鸿蒙原生客户端已上线，可前往华为应用市场安装并获取更新。",
+    features: ["原生课表体验", "华为应用市场安装与更新", "登录原有账号"],
+    steps: [
+      "点击“在华为应用市场下载”，打开药大拾间的应用详情页。",
+      "按应用市场提示完成安装；支持的系统版本以应用详情页为准。",
+      "安装完成后打开药大拾间，登录原有账号即可使用。",
+    ],
+    actionLabel: "在华为应用市场下载",
+    actionHint: "系统兼容性以应用市场为准",
+    versionLabel: "原生 App",
+    loading: false,
+    downloadUrl: HARMONY_APP_STORE_URL,
   },
   iosCard,
   {
@@ -427,7 +449,7 @@ const mobilePlatformCards = computed(() => (
 ));
 
 function platformIconName(platform: DownloadPlatform) {
-  return platform === "android" || platform === "ios" ? "mobile" : "desktop";
+  return platform === "android" || platform === "harmony" || platform === "ios" ? "mobile" : "desktop";
 }
 
 type DownloadGuidePlatform = "android" | "windows";
@@ -621,7 +643,8 @@ onMounted(async () => {
   color: #fff;
 }
 
-.platform-icon--android {
+.platform-icon--android,
+.platform-icon--harmony {
   background: color-mix(in srgb, #35b86d 12%, var(--cpu-surface-soft));
   color: #229254;
 }

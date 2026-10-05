@@ -26,6 +26,15 @@
       </ul>
     </div>
 
+    <div v-else-if="platform === 'harmony'" class="content">
+      <p>建议前往华为应用市场安装 <b>药大拾间鸿蒙原生版</b>。</p>
+      <ul class="bullets">
+        <li>打开应用详情页，按应用市场提示完成安装</li>
+        <li>登录原有账号即可使用，后续通过应用市场更新</li>
+      </ul>
+      <p class="muted">支持的系统版本以华为应用市场详情页为准。</p>
+    </div>
+
     <!-- Android 普通浏览器：优先提供 APK -->
     <div v-else-if="platform === 'android'" class="content">
       <p>建议安装 <b>药大拾间</b> Android 版，下次可从桌面图标直接打开。</p>
@@ -95,6 +104,7 @@
 
     <template #footer>
       <div class="footer cpu-button-row">
+        <a v-if="platform === 'harmony' && !isNativeApp && !inAppBrowser.isInApp" data-cpu-button="primary" class="ios-store-link" :href="HARMONY_APP_STORE_URL" target="_blank" rel="noopener noreferrer" @click="dismissDialog">在华为应用市场下载</a>
         <a v-if="platform === 'ios' && iosAppInstallable && !isNativeApp && !inAppBrowser.isInApp" data-cpu-button="primary" class="ios-store-link" :href="IOS_APP_STORE_URL" target="_blank" rel="noopener noreferrer" @click="dismissDialog">在 App Store 下载</a>
         <el-button
           v-if="canDownloadAndroidApk"
@@ -105,7 +115,7 @@
           下载 Android 客户端
         </el-button>
         <el-button
-          v-else-if="deferredPrompt && platform !== 'desktop'"
+          v-else-if="deferredPrompt && platform !== 'desktop' && platform !== 'harmony'"
           type="primary"
           size="default"
           @click="installNow"
@@ -113,7 +123,7 @@
           添加到主屏幕
         </el-button>
         <el-button size="default" @click="dismissDialog">
-          {{ deferredPrompt && platform !== "desktop" ? "稍后" : "我知道了" }}
+          {{ deferredPrompt && platform !== "desktop" && platform !== "harmony" ? "稍后" : "我知道了" }}
         </el-button>
       </div>
     </template>
@@ -130,11 +140,13 @@ import {
   ANDROID_APP_DOWNLOAD_URL,
   IOS_APP_MIN_MAJOR_VERSION,
   IOS_APP_STORE_URL,
+  HARMONY_APP_STORE_URL,
   canInstallIosNativeApp,
   isDesktopNativeApp,
   isFlutterNativeShell,
   isIosNativeApp,
   isLikelyAndroidDevice,
+  isLikelyHarmonyDevice,
 } from "@/utils/clientInfo";
 
 interface BeforeInstallPromptEvent extends Event {
@@ -151,7 +163,8 @@ const isNativeApp = ref(false);
 const inAppBrowser = computed(() => detectInAppBrowser());
 let disposed = false;
 
-const platform = computed<"ios" | "android" | "desktop">(() => {
+const platform = computed<"ios" | "android" | "harmony" | "desktop">(() => {
+  if (isLikelyHarmonyDevice()) return "harmony";
   const ua = navigator.userAgent.toLowerCase();
   // iPadOS 13+ 在桌面模式下 UA 是 macOS；但 maxTouchPoints > 1 可判
   if (/iphone|ipod/.test(ua) || (/ipad/.test(ua)) || (ua.includes("mac") && navigator.maxTouchPoints > 1)) {
@@ -172,6 +185,7 @@ const iosAppInstallable = computed(() => canInstallIosNativeApp());
 
 const title = computed(() => {
   if (inAppBrowser.value.isInApp) return "建议使用外部浏览器打开";
+  if (platform.value === "harmony") return "下载鸿蒙原生客户端";
   if (platform.value === "android") return "安装 Android 版课表";
   if (platform.value === "ios") return iosAppInstallable.value ? "下载 iOS 原生客户端" : "添加到主屏幕";
   if (desktopDownloadPlatform.value === "macos") return "下载 macOS 桌面客户端";
@@ -273,12 +287,12 @@ function openDialog() {
   open.value = true;
 }
 
-/** 父组件主动调用：用户点安装按钮时，安卓显示 APK 下载提示，其他平台走系统安装/手动引导 */
+/** 父组件主动调用：安卓和鸿蒙显示对应客户端下载提示，其他平台走系统安装/手动引导 */
 async function requestInstall() {
   if (disposed) return;
   detectNativeApp();
   if (isStandalone.value || isNativeApp.value) return;
-  if (platform.value === "android") {
+  if (platform.value === "android" || platform.value === "harmony") {
     open.value = true;
     return;
   }

@@ -1,7 +1,7 @@
 <template>
   <el-dialog
     :model-value="modelValue"
-    :title="platform === 'windows' ? 'Windows 下载提示' : '安卓/鸿蒙下载提示'"
+    :title="platform === 'windows' ? 'Windows 下载提示' : 'Android 下载提示'"
     width="min(680px, calc(100vw - 32px))"
     append-to-body
     class="download-guide-dialog"
@@ -86,12 +86,12 @@
 
     <div v-else class="download-guide-content">
       <p>
-        安卓/鸿蒙卓易通下载的是 APK 安装包，浏览器和系统可能会提示“未知来源”或进行安全检查。
+        Android 客户端下载的是 APK 安装包，浏览器和系统可能会提示“未知来源”或进行安全检查。
       </p>
       <ol>
         <li>下载完成后打开 APK；若系统禁止安装，点击“设置”，只为当前浏览器开启“允许安装未知来源应用”。</li>
         <li>返回安装界面继续；若出现“仍要安装”或“继续”，先确认文件来自药大拾间官网，再按提示确认。</li>
-        <li>鸿蒙设备按系统提示完成安全检查即可；安装完成后可关闭刚才授予的“允许此来源”权限。</li>
+        <li>安装完成后可关闭刚才授予的“允许此来源”权限。</li>
       </ol>
       <p class="download-guide-note">
         只从 <code>cputime.cn</code> 下载并核对应用名称。无需关闭系统安全功能，也不要为陌生应用授予安装权限。

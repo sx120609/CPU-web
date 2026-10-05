@@ -15,6 +15,7 @@ export const HARMONY_APP_LATEST_VERSION_CODE = 18;
 export const HARMONY_APP_LATEST_VERSION_NAME = "2.0.9";
 export const ANDROID_APP_DOWNLOAD_URL = "/api/site/downloads/android-app";
 export const IOS_APP_STORE_URL = "https://apps.apple.com/cn/app/id6811073406";
+export const HARMONY_APP_STORE_URL = "https://appgallery.huawei.com/app/detail?id=cn.lizmt.cpuweb";
 /** Matches the App Store listing: iOS / iPadOS 17.0 or later. */
 export const IOS_APP_MIN_MAJOR_VERSION = 17;
 export const ANDROID_WIDGET_MIN_VERSION_CODE = 5;
@@ -81,6 +82,11 @@ export function isIosStandalone(ua = navigator.userAgent) {
 
 export function isLikelyIosDevice(ua = navigator.userAgent) {
   return looksLikeIosUserAgent((ua || "").toLowerCase());
+}
+
+export function isLikelyHarmonyDevice(ua = navigator.userAgent) {
+  const uaDataPlatform = String((navigator as any).userAgentData?.platform ?? "");
+  return isHarmonyNativeApp(ua) || /HarmonyOS|OpenHarmony/i.test(`${ua} ${uaDataPlatform}`);
 }
 
 export function isLikelyAndroidDevice(ua = navigator.userAgent) {
