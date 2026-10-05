@@ -246,49 +246,11 @@
       </el-icon>
     </button>
 
-    <footer
+    <SiteFooter
       v-if="!hideChrome && !fullHeightContent && !mobileTopicChrome && (!useFlutterShell || showAppFiling)"
-      class="footer"
-      :class="{ 'footer--app': showAppFiling, 'footer--compact': useFlutterShell }"
-    >
-      <div class="footer-inner">
-        <div class="footer-main">
-          <div class="footer-company">
-            <div class="footer-brand-row">
-              <img
-                class="footer-brand-mark"
-                :src="'/favicon.svg?v=20260830'"
-                alt=""
-                aria-hidden="true"
-                decoding="async"
-              />
-              <router-link class="footer-brand" to="/home">药大拾间</router-link>
-            </div>
-            <p>球谐信息技术（深圳）有限公司</p>
-            <a class="footer-about" href="/about.html">了解我们 <span aria-hidden="true">↗</span></a>
-          </div>
-          <address class="footer-contact">
-            <p class="footer-contact-label"><span class="footer-label-line" aria-hidden="true"></span>联系与地址</p>
-            <p class="footer-address">深圳市南山区高新南九道51号航空航天大厦1号楼2302</p>
-            <div class="footer-contact-links">
-              <a href="tel:19984839722" aria-label="联系电话 19984839722">19984839722</a>
-              <a href="mailto:admin@lizmt.cn">admin@lizmt.cn</a>
-            </div>
-          </address>
-        </div>
-        <div class="footer-bottom">
-          <span>© 2026 药大拾间<span class="footer-separator footer-disclaimer" aria-hidden="true"> · </span><span class="footer-disclaimer">非学校官方站点</span></span>
-          <nav class="footer-links" aria-label="网站信息">
-            <router-link to="/download">客户端下载</router-link>
-            <a href="https://github.com/sx120609/CPU-web" target="_blank" rel="noopener noreferrer">GitHub</a>
-            <a v-if="site.siteFilingNumber" href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">{{ site.siteFilingNumber }}</a>
-          </nav>
-        </div>
-        <div v-if="showAppFiling" class="footer-app-filing">
-          <a :href="APP_FILING_URL" target="_blank" rel="noopener noreferrer">APP 备案号：{{ APP_FILING_NUMBER }}</a>
-        </div>
-      </div>
-    </footer>
+      :app-filing="showAppFiling"
+      :compact="useFlutterShell"
+    />
 
     <LiquidGlassTabbar
       v-if="!useNativeShell && !mobileTopicChrome"
@@ -387,6 +349,7 @@ import IosAppRecommendation from "@/components/install/IosAppRecommendation.vue"
 import { ref, computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import LiquidGlassTabbar from "../components/common/LiquidGlassTabbar.vue";
+import SiteFooter from "../components/common/SiteFooter.vue";
 import { ElMessage } from "element-plus";
 import {
   Search,
@@ -425,7 +388,7 @@ import { useAppearanceStore, type AppearanceMode } from "@/stores/appearance";
 import { iosRouteTransitionEnabled } from "@/router";
 import { freezeLeavingPage, releaseLeavingPage } from "@/utils/routeTransition";
 import { isAndroidNativeApp, isCampusAssistantDestination, isDesktopNativeApp, isFlutterNativeShell, isIosNextNativeShell, isLikelyIosDevice, hidesNativeCommerce, shouldHideHarmonyAssistant } from "@/utils/clientInfo";
-import { APP_FILING_NUMBER, APP_FILING_URL, isRegisteredMobileApp } from "../../../shared/appFiling";
+import { isRegisteredMobileApp } from "../../../shared/appFiling";
 
 const ShijianAssistant = defineAsyncComponent(() => import("@/views/search/Result.vue"));
 const DesktopToolsPanel = defineAsyncComponent(() => import("@/components/common/DesktopToolsPanel.vue"));
@@ -1672,10 +1635,11 @@ html[data-theme="dark"] .assistant-widget {
   height: auto;
 }
 
+/* 页脚本身在 SiteFooter.vue；布局只通过 --footer-clearance 告诉它底部要为标签栏或原生壳留多少空间。 */
 .layout-root--ios-next .footer {
   /* The native tab bar floats over the WebView edge, so the footer itself
      needs enough scrollable tail to remain reachable. */
-  padding-bottom: calc(18px + var(--cpu-ios-bottom-clearance, 96px));
+  --footer-clearance: var(--cpu-ios-bottom-clearance, 96px);
 }
 /* The standalone notice is already covered by the native app's legal pages.
    Keeping it out of the compact iOS shell prevents a wrapped line from
@@ -1703,245 +1667,6 @@ html[data-theme="dark"] .assistant-widget {
 }
 :global(html[data-cpu-ios-next] .course-editor-scroll) {
   padding-bottom: calc(12px + env(safe-area-inset-bottom) + var(--cpu-ios-bottom-clearance, 96px)) !important;
-}
-
-.footer {
-  position: relative;
-  overflow: hidden;
-  background: color-mix(in srgb, var(--cpu-surface) 94%, var(--cpu-bg));
-  border-top: 1px solid var(--cpu-border-soft);
-  padding: clamp(22px, 3vw, 32px) 20px 16px;
-  font-size: 13px;
-  line-height: 1.65;
-  color: var(--cpu-text-secondary);
-}
-
-.footer::before {
-  position: absolute;
-  inset: 0 0 auto;
-  height: 2px;
-  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--cpu-primary) 75%, transparent) 24%, color-mix(in srgb, var(--cpu-gold) 70%, transparent) 76%, transparent);
-  content: "";
-  opacity: 0.75;
-}
-
-.footer::after {
-  position: absolute;
-  top: -140px;
-  right: 8%;
-  width: 360px;
-  height: 260px;
-  border-radius: 50%;
-  background: radial-gradient(circle, color-mix(in srgb, var(--cpu-primary) 9%, transparent), transparent 68%);
-  content: "";
-  pointer-events: none;
-}
-
-.footer-inner {
-  max-width: 1240px;
-  margin: 0 auto;
-}
-
-.footer a {
-  color: inherit;
-  text-decoration: none;
-}
-
-.footer a:hover {
-  color: var(--cpu-primary);
-  text-decoration: underline;
-  text-underline-offset: 4px;
-}
-
-.footer a:focus-visible {
-  outline: 2px solid var(--cpu-primary);
-  outline-offset: 4px;
-  border-radius: 2px;
-}
-
-.footer-main {
-  display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
-  gap: clamp(18px, 4vw, 56px);
-  align-items: start;
-  padding-bottom: clamp(18px, 2.4vw, 24px);
-}
-
-.footer-company,
-.footer-contact {
-  min-width: 0;
-}
-
-.footer-company {
-  font-size: 13px;
-}
-
-.footer-brand-row {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.footer a.footer-brand {
-  color: var(--cpu-text);
-  font-size: 18px;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-}
-
-.footer-brand-mark {
-  display: block;
-  width: 32px;
-  height: 32px;
-  border-radius: 9px;
-  object-fit: contain;
-  flex: 0 0 32px;
-}
-
-.footer-company p {
-  margin: 8px 0 6px;
-  color: var(--cpu-text-secondary);
-}
-
-.footer-about {
-  display: inline-flex;
-  min-height: 32px;
-  align-items: center;
-  gap: 6px;
-  color: var(--cpu-primary) !important;
-  font-weight: 600;
-}
-
-.footer-contact {
-  font-style: normal;
-  font-size: 13px;
-}
-
-.footer-contact p {
-  margin: 0;
-}
-
-.footer-contact-label {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  color: var(--cpu-text);
-  font-weight: 700;
-  letter-spacing: 0.01em;
-}
-
-.footer-label-line {
-  width: 18px;
-  height: 3px;
-  border-radius: 99px;
-  background: linear-gradient(90deg, var(--cpu-primary), var(--cpu-gold));
-}
-
-.footer-contact .footer-address {
-  margin-top: 8px;
-  overflow-wrap: anywhere;
-}
-
-.footer-contact-links {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 8px;
-  font-variant-numeric: tabular-nums;
-}
-
-.footer-contact-links a {
-  display: inline-flex;
-  min-height: 30px;
-  align-items: center;
-  padding: 2px 0;
-  transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease;
-}
-
-.footer-contact-links a:hover {
-  text-decoration: none;
-}
-
-.footer-bottom {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px 24px;
-  padding-top: 12px;
-  border-top: 1px solid var(--cpu-border-soft);
-}
-
-.footer-links {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.footer-links a {
-  display: inline-flex;
-  min-height: 30px;
-  align-items: center;
-  padding: 2px 8px;
-  border-radius: 7px;
-  color: var(--cpu-text-secondary);
-  transition: background-color 160ms ease, color 160ms ease;
-}
-
-.footer-links a:hover {
-  background: color-mix(in srgb, var(--cpu-primary) 10%, transparent);
-  text-decoration: none;
-}
-
-.footer-app-filing {
-  margin-top: 8px;
-  font-size: 12px;
-  text-align: center;
-}
-
-.footer-app-filing a {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 48px;
-  max-width: 100%;
-  overflow-wrap: anywhere;
-}
-
-.footer--compact .footer-main,
-.footer--compact .footer-bottom,
-:global(html[data-cpu-ios-next] .footer--app .footer-main),
-:global(html[data-cpu-ios-next] .footer--app .footer-bottom),
-:global(html[data-cpu-harmony-native] .footer--app .footer-main),
-:global(html[data-cpu-harmony-native] .footer--app .footer-bottom) {
-  display: none;
-}
-
-:global(html[data-cpu-ios-next] .layout-root > .footer.footer--app) {
-  padding: 6px 20px calc(10px + var(--cpu-ios-bottom-clearance, 96px));
-  border-top: 0;
-  background: transparent;
-}
-
-:global(html[data-cpu-ios-next] .footer--app::before),
-:global(html[data-cpu-ios-next] .footer--app::after) {
-  display: none;
-}
-
-:global(html[data-cpu-ios-next] .footer--app .footer-app-filing) {
-  margin-top: 0;
-  font-size: 10px;
-}
-
-:global(html[data-cpu-ios-next] .footer--app .footer-app-filing a) {
-  min-height: 36px;
-}
-
-/* Installed Harmony shells hide the old footer; keep the app filing reachable. */
-:global(html[data-cpu-harmony-native] .layout-root > .footer.footer--app) {
-  display: block !important;
-  padding-bottom: calc(16px + var(--cpu-harmony-bottom-clearance, 96px));
 }
 
 .mobile-tabbar {
@@ -1991,7 +1716,7 @@ html[data-theme="dark"] .assistant-widget {
 }
 
 .layout-root--tabbar-fallback .footer {
-  padding-bottom: calc(var(--liquid-tabbar-reserve) + 12px);
+  --footer-clearance: var(--liquid-tabbar-reserve);
 }
 
 .layout-root--tabbar-fallback .mobile-tabbar { display: block; }
@@ -2314,8 +2039,7 @@ html[data-theme="dark"] .assistant-widget {
   }
 
   .footer {
-    padding: 20px max(16px, env(safe-area-inset-right, 0px)) calc(var(--liquid-tabbar-reserve) + 14px) max(16px, env(safe-area-inset-left, 0px));
-    font-size: 12px;
+    --footer-clearance: var(--liquid-tabbar-reserve);
   }
 
   .layout-root--native-shell .main {
@@ -2328,7 +2052,7 @@ html[data-theme="dark"] .assistant-widget {
   }
 
   .layout-root--native-shell .footer {
-    padding-bottom: 12px;
+    --footer-clearance: 0px;
   }
 
   .mobile-tabbar { display: block; }
@@ -2371,7 +2095,7 @@ html[data-theme="dark"] .assistant-widget {
   }
 
   .footer {
-    padding-bottom: calc(var(--liquid-tabbar-reserve) + 12px);
+    --footer-clearance: var(--liquid-tabbar-reserve);
   }
 
   .layout-root--native-shell .main {
@@ -2384,7 +2108,7 @@ html[data-theme="dark"] .assistant-widget {
   }
 
   .layout-root--native-shell .footer {
-    padding-bottom: 16px;
+    --footer-clearance: 0px;
   }
 
   .mobile-tabbar { display: block; }
@@ -2441,98 +2165,5 @@ html[data-theme="dark"] .assistant-widget {
 
 @media (prefers-reduced-motion: reduce) {
   .mobile-tabbar.mobile-tabbar { transition: none; }
-}
-
-/* 移动端只保留品牌、联系方式和版权信息。 */
-@media (max-width: 768px) {
-  .footer {
-    padding: 14px max(16px, env(safe-area-inset-right, 0px)) calc(var(--liquid-tabbar-reserve) + 10px) max(16px, env(safe-area-inset-left, 0px));
-  }
-
-  .footer::after {
-    display: none;
-  }
-
-  .footer-main {
-    display: block;
-    padding-bottom: 9px;
-  }
-
-  .footer-company {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-  }
-
-  .footer-brand-row {
-    gap: 6px;
-  }
-
-  .footer-brand-mark {
-    width: 26px;
-    height: 26px;
-    flex-basis: 26px;
-    border-radius: 7px;
-  }
-
-  .footer a.footer-brand {
-    font-size: 16px;
-  }
-
-  .footer-company p {
-    display: none;
-  }
-
-  .footer-about {
-    min-height: 24px;
-    font-size: 11px;
-    white-space: nowrap;
-  }
-
-  .footer-contact {
-    display: block;
-    margin-top: 8px;
-  }
-
-  .footer-contact-label {
-    display: none;
-  }
-
-  .footer-contact .footer-address {
-    display: none;
-  }
-
-  .footer-contact-links {
-    gap: 14px;
-    margin-top: 0;
-  }
-
-  .footer-contact-links a {
-    min-height: 23px;
-    font-size: 11px;
-  }
-
-  .footer-bottom {
-    display: block;
-    align-items: center;
-    padding-top: 8px;
-  }
-
-  .footer-bottom > span {
-    min-width: 0;
-    overflow: hidden;
-    font-size: 10px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .footer-links {
-    display: none;
-  }
-
-  .footer-disclaimer {
-    display: none;
-  }
 }
 </style>
