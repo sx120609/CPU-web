@@ -2,7 +2,6 @@
   <div class="forum-hub">
     <header class="forum-hub-head">
       <div>
-        <span class="eyebrow">CAMPUS FEED</span>
         <h1>校园动态</h1>
         <p>{{ activeChannel.description }}</p>
       </div>
@@ -364,47 +363,40 @@ function requestMessage(requestError: unknown) {
 </script>
 
 <style scoped>
-.forum-hub { display: flex; flex-direction: column; gap: 14px; max-width: 860px; margin: 0 auto; }
-.forum-hub-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; }
-.eyebrow { color: var(--cpu-primary); font-size: 10px; font-weight: 800; letter-spacing: .14em; }
-.forum-hub-head h1 { margin: 3px 0 0; color: var(--cpu-text); font-size: 24px; }
-.forum-hub-head p { margin: 5px 0 0; color: var(--cpu-text-secondary); font-size: 12px; }
+.forum-hub { display: flex; max-width: 860px; margin: 0 auto; flex-direction: column; gap: 12px; color: var(--cpu-text); font-size: var(--cpu-fs-m); line-height: 1.6; }
+.forum-hub-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin: 0 4px; }
+.forum-hub-head h1 { margin: 0; font-size: var(--cpu-fs-xxl); font-weight: 700; line-height: 1.3; }
+.forum-hub-head p { margin: 2px 0 0; color: var(--cpu-text-muted); font-size: var(--cpu-fs-s); }
 .boards-button { flex: 0 0 auto; }
-.channel-tabs { display: flex; gap: 7px; padding-bottom: 2px; overflow-x: auto; scrollbar-width: none; }
+.channel-tabs { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
 .channel-tabs::-webkit-scrollbar { display: none; }
-.channel-tabs button { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 4px; min-height: 35px; padding: 0 13px; border: 1px solid var(--cpu-border-soft); border-radius: 999px; background: var(--cpu-card); color: var(--cpu-text-secondary); font-size: 12px; font-weight: 650; cursor: pointer; }
-.channel-tabs button:hover, .channel-tabs button.active { border-color: var(--cpu-primary); background: var(--cpu-primary); color: #fff; }
-.channel-tabs .all-boards-tab { border-style: dashed; }
-.feed-panel { padding: 14px; border: 1px solid var(--cpu-border-soft); border-radius: 15px; background: color-mix(in srgb, var(--cpu-surface-soft) 58%, var(--cpu-card)); }
-.feed-panel-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; padding: 0 2px 11px; }
-.feed-panel-head h2 { margin: 0; color: var(--cpu-text); font-size: 17px; }
-.feed-panel-head span { display: block; margin-top: 3px; color: var(--cpu-text-muted); font-size: 10px; }
-.feed-panel-head strong { color: var(--cpu-primary); font-size: 13px; }
-.feed-list { display: flex; min-height: 120px; flex-direction: column; gap: 9px; }
-.feed-state, .board-state { padding: 22px 10px; }
-.feed-more { padding-top: 10px; }
-.load-sentinel { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; border-radius: 10px; color: var(--cpu-text-muted); font-size: 11px; }
-.load-sentinel.is-error { color: #b91c1c; }
-.board-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; min-height: 120px; }
-.board-choice { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: 10px; min-width: 0; padding: 11px; border: 1px solid var(--cpu-border-soft); border-radius: 11px; background: var(--cpu-card); color: var(--cpu-text); text-align: left; cursor: pointer; }
-.board-choice:hover { border-color: var(--cpu-primary); background: var(--cpu-surface-soft); }
+.channel-tabs button { display: inline-flex; min-height: 36px; flex: 0 0 auto; align-items: center; gap: 5px; padding: 0 12px; font-size: var(--cpu-fs-m); cursor: pointer; }
+.feed-panel { display: flex; flex-direction: column; gap: 12px; }
+.feed-panel-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin: 12px 4px 0; }
+.feed-panel-head h2 { margin: 0; font-size: var(--cpu-fs-xl); font-weight: 700; line-height: 1.3; }
+.feed-panel-head span { display: block; margin-top: 2px; color: var(--cpu-text-muted); font-size: var(--cpu-fs-s); }
+.feed-panel-head strong { color: var(--cpu-text-muted); font-size: var(--cpu-fs-s); font-weight: 500; font-variant-numeric: tabular-nums; }
+/* 信息流是一整块分组，帖子和插在中间的推广之间都用细线分隔 */
+.feed-list { display: flex; min-height: 120px; flex-direction: column; overflow: hidden; border-radius: var(--cpu-radius-l); background: var(--cpu-card); }
+.feed-list :deep(.feed-card), .feed-list :deep(.forum-ad-card) { border-radius: 0; }
+.feed-list > :deep(* + *) { box-shadow: inset 0 1px 0 var(--cpu-border-soft); }
+.feed-state { padding: 22px 10px; border-radius: var(--cpu-radius-l); background: var(--cpu-card); }
+.board-state { padding: 22px 10px; }
+.load-sentinel { display: flex; min-height: 44px; align-items: center; justify-content: center; gap: 8px; color: var(--cpu-text-muted); font-size: var(--cpu-fs-s); }
+.load-sentinel.is-error { color: var(--cpu-danger); }
+.board-grid { display: grid; min-height: 120px; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.board-choice { display: grid; min-width: 0; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 10px 12px; border: 0; border-radius: var(--cpu-radius-m); background: var(--cpu-surface-soft); color: var(--cpu-text); font: inherit; text-align: left; cursor: pointer; }
+.board-choice:hover { background: var(--cpu-surface-subtle); }
 .board-choice:focus-visible { outline: 2px solid var(--cpu-primary); outline-offset: 2px; }
-.board-icon { height: 40px; display: grid; place-items: center; border-radius: 11px; color: #fff; font-size: 19px; }
+.board-icon { display: grid; height: 40px; place-items: center; border-radius: var(--cpu-radius-m); color: #fff; font-size: 19px; }
 .board-copy { min-width: 0; }
 .board-copy b, .board-copy small { display: block; }
-.board-copy b { font-size: 13px; }
-.board-copy small { margin-top: 3px; overflow: hidden; color: var(--cpu-text-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.board-count { color: var(--cpu-text-muted); font-size: 10px; }
-.announcement-link { color: var(--cpu-primary); font-size: 12px; text-decoration: none; }
+.board-copy b { font-size: var(--cpu-fs-m); font-weight: 500; }
+.board-copy small { overflow: hidden; color: var(--cpu-text-muted); font-size: var(--cpu-fs-s); text-overflow: ellipsis; white-space: nowrap; }
+.board-count { color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); font-variant-numeric: tabular-nums; }
+.announcement-link { color: var(--cpu-primary); font-size: var(--cpu-fs-s); text-decoration: none; }
 @media (max-width: 640px) {
-  .forum-hub { gap: 11px; }
-  .forum-hub-head h1 { font-size: 20px; }
-  .forum-hub-head p { display: none; }
   .boards-button { display: none; }
-  .channel-tabs { margin-inline: -2px; }
-  .channel-tabs button { min-height: 33px; padding: 0 11px; }
-  .feed-panel { margin-inline: -4px; padding: 10px 8px; border-radius: 12px; }
-  .feed-list { gap: 7px; }
   .board-grid { grid-template-columns: 1fr; }
 }
 </style>

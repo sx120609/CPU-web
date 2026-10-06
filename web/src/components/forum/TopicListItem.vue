@@ -13,7 +13,7 @@
       <UserAvatar :size="36" class="avatar" :src="topic.author?.avatar" :name="topic.author?.nickname" :seed="topic.author?.id ?? topic.anonymousAlias ?? topic.id" :profile-frame="topic.author?.profileFrame" alt="作者头像" />
       <div class="simple-main">
         <div class="simple-heading" :class="{ 'has-price': metaPriceLabel }">
-          <span v-if="rank" class="simple-rank" :class="{ 'simple-rank--top3': rank <= 3 }">#{{ rank }}</span>
+          <span v-if="rank" class="simple-rank" :class="{ 'simple-rank--top3': rank <= 3 }">{{ rank }}</span>
           <span class="simple-title"><b v-if="topic.globalPinned || topic.pinned">置顶</b>{{ displayTitle }}</span>
           <strong v-if="metaPriceLabel" class="simple-price">{{ metaPriceLabel }}</strong>
         </div>
@@ -75,9 +75,9 @@
     <UserAvatar :size="36" class="avatar" :src="topic.author?.avatar" :name="topic.author?.nickname" :seed="topic.author?.id ?? topic.anonymousAlias ?? topic.id" :profile-frame="topic.author?.profileFrame" alt="作者头像" />
     <div class="main">
       <div class="line1" :class="{ 'has-inline-price': metaPriceLabel, 'has-ai-tags': aiTags.length }">
-        <el-tag v-if="topic.globalPinned" size="small" type="warning" effect="dark" class="tag">全局置顶</el-tag>
-        <el-tag v-if="topic.pinned" size="small" type="danger" effect="plain" class="tag">板块置顶</el-tag>
-        <el-tag v-if="topic.board && showBoardTag" size="small" :style="{ background: topic.board.color || '#168776', color: '#fff', border: 'none' }" class="tag">
+        <el-tag v-if="topic.globalPinned" size="small" class="tag pin-tag">全局置顶</el-tag>
+        <el-tag v-if="topic.pinned" size="small" class="tag pin-tag">板块置顶</el-tag>
+        <el-tag v-if="topic.board && showBoardTag" size="small" class="tag">
           {{ boardDisplayName }}
         </el-tag>
         <el-tag v-if="marketKindLabel" size="small" effect="plain" :type="marketKindType" class="tag market-kind-tag">
@@ -102,7 +102,7 @@
           {{ tag.name }}
         </el-tag>
         <el-tag v-if="topic.locked" size="small" type="info" class="tag"><AppIcon name="lock" /></el-tag>
-        <el-tag v-if="metaSolved" size="small" type="success" class="tag">已解决</el-tag>
+        <el-tag v-if="metaSolved" size="small" class="tag solved-tag">已解决</el-tag>
         <el-tag v-if="metaBounty && !metaSolved" size="small" type="warning" class="tag">悬赏 {{ metaBounty }} AI 点</el-tag>
       </div>
       <div class="line2">
@@ -324,331 +324,81 @@ function openTopic() {
 </script>
 
 <style scoped>
-.topic-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
-  cursor: pointer;
-  border-radius: 8px;
-  min-width: 0;
-  overflow: hidden;
-  transition: background 0.15s;
-}
+/* 列表里的一行帖子。三种形态（默认、simple、二手卡片）共用同一套字号、标签和次要信息的写法。 */
+.topic-row { display: flex; min-width: 0; align-items: flex-start; gap: 12px; padding: 12px 16px; overflow: hidden; color: var(--cpu-text); font-size: var(--cpu-fs-m); line-height: 1.5; cursor: pointer; }
 .topic-row:hover { background: var(--cpu-surface-soft); }
-.topic-row:focus-visible {
-  outline: 2px solid var(--cpu-primary);
-  outline-offset: 2px;
-}
+.topic-row:focus-visible { outline: 2px solid var(--cpu-primary); outline-offset: -2px; }
+.topic-row + .topic-row { box-shadow: inset 0 1px 0 var(--cpu-border-soft); }
+.avatar { flex-shrink: 0; }
+.main, .simple-main { min-width: 0; flex: 1; }
 
-.avatar { background: var(--cpu-primary); color: #fff; font-weight: 600; flex-shrink: 0; }
+/* 标签：全站一种小标签，18px 高、6px 圆角；只有置顶用琥珀色 */
+.tag, .simple-ai-tag, .simple-tag, .vip-badge, .line2 .anon, .simple-title b {
+  display: inline-flex; height: 18px; flex-shrink: 0; align-items: center; padding: 0 5px; border: 0; border-radius: var(--cpu-radius-s);
+  background: none; color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); font-weight: 500; line-height: 18px; letter-spacing: 0; box-shadow: inset 0 0 0 1px var(--cpu-border);
+}
+.tag.pin-tag, .simple-title b { background: var(--cpu-accent-soft); color: var(--cpu-accent); box-shadow: none; }
+.simple-title b { margin-right: 6px; vertical-align: 2px; }
+.simple-ai-tag, .simple-tag, .ai-tag { max-width: 132px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.simple-review, .review-tag { color: var(--cpu-accent); box-shadow: inset 0 0 0 1px var(--cpu-accent); }
+.tag.solved-tag { color: var(--cpu-primary); box-shadow: inset 0 0 0 1px var(--cpu-primary); }
 
-.main { flex: 1; min-width: 0; }
-
-.line1 { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
-.tag { flex-shrink: 0; }
-.ai-tag {
-  --el-tag-bg-color: var(--cpu-surface-soft);
-  --el-tag-border-color: var(--cpu-border-soft);
-  --el-tag-text-color: var(--cpu-text-muted);
-  height: 20px;
-  padding: 0 6px;
-  border-radius: 4px;
-  font-size: 10px;
-  font-weight: 500;
-}
-.market-kind-tag { font-weight: 600; }
-.review-tag { font-weight: 600; }
-.title { flex: 1 1 240px; font-size: 15px; color: var(--cpu-text); font-weight: 500; min-width: 0; overflow-wrap: anywhere; }
-.title.say-content { font-weight: 400; line-height: 1.55; }
-
-.line2 {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  font-size: 12px;
-  color: var(--cpu-text-secondary);
-  margin-top: 6px;
-  min-width: 0;
-}
-.row-byline,
-.row-stats {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-}
-.row-byline { flex: 1; gap: 7px; overflow: hidden; white-space: nowrap; }
-.row-stats { flex: 0 0 auto; gap: 12px; white-space: nowrap; }
-.row-byline > span,
-.row-stats > span { display: inline-flex; align-items: center; gap: 3px; }
-.line2 .author {
-  min-width: 24px;
-  max-width: clamp(96px, 20vw, 220px);
-  overflow: hidden;
-  color: var(--cpu-primary);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.row-time { flex: 0 0 auto; }
-.vip-badge { color: #a16207; background: linear-gradient(135deg, #fef3c7, #fcd34d); border: 1px solid #f59e0b; border-radius: 999px; padding: 0 5px; font-size: 10px; font-weight: 800; letter-spacing: .04em; }
-.line2 .anon { color: #7c3aed; font-weight: 600; }
-.line2 .bot { color: #ef4444; }
-.line2 .edited { flex: 0 0 auto; color: #b45309; }
-.line2 .heat { color: #0f766e; font-weight: 600; }
-.meta-separator { color: var(--cpu-border); }
-
-.line1.has-inline-price .title,
-.line1.has-ai-tags .title { flex: 0 1 auto; }
-.inline-price {
-  flex: 0 0 auto;
-  color: color-mix(in srgb, #ef4444 82%, var(--cpu-text));
-  font-size: 15px;
-  line-height: 1.5;
-  white-space: nowrap;
-}
+/* 默认形态 */
+.line1 { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 6px; }
+.title { min-width: 0; flex: 1 1 240px; font-weight: 500; overflow-wrap: anywhere; }
+.title.say-content { font-weight: 400; line-height: 1.6; }
+.line1.has-inline-price .title, .line1.has-ai-tags .title { flex: 0 1 auto; }
+.inline-price, .simple-price { flex: 0 0 auto; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.line2, .simple-footer { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 16px; margin-top: 4px; color: var(--cpu-text-muted); font-size: var(--cpu-fs-s); }
+.row-byline, .row-stats, .simple-byline, .simple-stats { display: flex; min-width: 0; align-items: center; white-space: nowrap; }
+.row-byline, .simple-byline { flex: 1; gap: 6px; overflow: hidden; }
+.row-stats, .simple-stats { flex: 0 0 auto; gap: 14px; font-variant-numeric: tabular-nums; }
+.row-byline > span, .row-stats > span, .simple-stats span { display: inline-flex; align-items: center; gap: 4px; }
+.line2 .author, .simple-author { min-width: 24px; max-width: clamp(96px, 20vw, 220px); overflow: hidden; color: var(--cpu-text-secondary); text-overflow: ellipsis; white-space: nowrap; }
+.row-time, .simple-time, .simple-edited, .line2 .edited { flex: 0 0 auto; }
+.meta-separator { color: var(--cpu-text-muted); }
 .rating { flex: 0 0 auto; white-space: nowrap; }
 
-.topic-row--simple {
-  align-items: flex-start;
-  padding: 13px 8px;
-  border-bottom: 1px solid var(--cpu-border-soft);
-  border-radius: 0;
-}
-.topic-row--simple:last-child { border-bottom: 0; }
-.simple-main { flex: 1; min-width: 0; }
-.simple-heading { display: flex; align-items: flex-start; gap: 12px; min-width: 0; }
+/* simple 形态：标题最多两行，名次是数字 */
+.simple-heading { display: flex; min-width: 0; align-items: flex-start; gap: 10px; }
 .simple-heading.has-price .simple-title { flex: 0 1 auto; }
-.simple-title {
-  display: -webkit-box;
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  color: var(--cpu-text);
-  font-size: 15px;
-  font-weight: 500;
-  line-height: 1.5;
-  overflow-wrap: anywhere;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-.simple-title b { margin-right: 6px; color: #b45309; font-size: 12px; }
-.simple-rank { flex: 0 0 auto; min-width: 27px; padding: 2px 6px; border-radius: 999px; background: var(--cpu-surface-soft); color: var(--cpu-text-muted); font-size: 11px; font-weight: 800; line-height: 1.5; text-align: center; }
-.simple-rank--top3 { background: color-mix(in srgb, #ef4444 10%, var(--cpu-card)); color: #dc2626; }
-.simple-price { flex: 0 0 auto; color: color-mix(in srgb, #ef4444 82%, var(--cpu-text)); font-size: 15px; line-height: 1.5; }
-.simple-context {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-  min-width: 0;
-  margin-top: 5px;
-  overflow: visible;
-}
-.simple-context-text,
-.simple-ai-tags {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-}
-.simple-context-text {
-  overflow: hidden;
-  color: var(--cpu-text-muted);
-  font-size: 11px;
-  line-height: 1.5;
-  white-space: nowrap;
-}
-.simple-context-text span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.simple-context-text span + span::before { content: "·"; margin: 0 7px; color: var(--cpu-border); }
-.simple-board { color: var(--cpu-primary); font-weight: 650; }
-.simple-ai-tags { flex: 0 0 auto; flex-wrap: wrap; gap: 4px; }
-.simple-ai-tag,
-.simple-tag {
-  display: inline-flex;
-  align-items: center;
-  max-width: 132px;
-  height: 20px;
-  padding: 0 6px;
-  overflow: hidden;
-  border: 1px solid var(--cpu-border);
-  border-radius: 4px;
-  color: var(--cpu-text-secondary);
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 18px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.simple-ai-tag {
-  border-color: var(--cpu-border-soft);
-  background: var(--cpu-surface-soft);
-  color: var(--cpu-text-muted);
-  font-weight: 500;
-}
-.simple-review { border-color: rgba(245, 158, 11, .48); background: rgba(245, 158, 11, .09); color: var(--cpu-warn); }
-.simple-footer {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-  margin-top: 5px;
-  color: var(--cpu-text-muted);
-  font-size: 12px;
-}
-.simple-byline,
-.simple-stats {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-  white-space: nowrap;
-}
-.simple-byline { gap: 7px; overflow: hidden; }
-.simple-byline > span + span:not(.simple-edited):not(.account-verification-badge):not(.reputation-badge)::before { content: "·"; margin-right: 7px; color: var(--cpu-border); }
+.simple-title { display: -webkit-box; min-width: 0; flex: 1; overflow: hidden; font-weight: 500; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2; text-wrap: pretty; }
+.simple-rank { flex: 0 0 auto; min-width: 14px; color: var(--cpu-text-muted); font-size: var(--cpu-fs-l); font-weight: 800; line-height: 1.3; text-align: center; font-variant-numeric: tabular-nums; }
+.simple-rank--top3 { color: var(--cpu-rank-top); }
+.simple-context { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 3px; }
+.simple-context-text, .simple-ai-tags { display: flex; min-width: 0; align-items: center; }
+.simple-context-text { overflow: hidden; color: var(--cpu-text-muted); font-size: var(--cpu-fs-s); white-space: nowrap; }
+.simple-context-text span { overflow: hidden; text-overflow: ellipsis; }
+.simple-context-text span + span::before, .simple-edited::before { content: "·"; margin: 0 6px; }
+.simple-byline > span + span:not(.simple-edited):not(.account-verification-badge):not(.reputation-badge)::before { content: "·"; margin-right: 6px; }
 .simple-byline > .vip-badge + .simple-author::before { content: none; }
-.simple-author {
-  min-width: 24px;
-  max-width: clamp(90px, 18vw, 190px);
-  overflow: hidden;
-  color: var(--cpu-primary);
-  font-weight: 600;
-  text-overflow: ellipsis;
-}
-.simple-time,
-.simple-edited { flex: 0 0 auto; }
-.simple-edited { color: #b45309; }
-.simple-edited::before { content: "·"; margin-right: 7px; color: var(--cpu-border); }
-.simple-stats { gap: 11px; }
-.simple-stats span { display: inline-flex; align-items: center; gap: 3px; }
-.simple-stats .heat { color: #0f766e; font-weight: 600; }
+.simple-ai-tags { flex: 0 0 auto; flex-wrap: wrap; gap: 4px; }
 
-.topic-row--card {
-  display: block;
-  width: 100%;
-  margin: 0 0 12px;
-  padding: 0;
-  break-inside: avoid;
-  border: 1px solid var(--cpu-border-soft);
-  border-radius: 13px;
-  background: var(--cpu-card);
-  box-shadow: var(--cpu-shadow-sm);
-}
-.topic-row--card:hover { background: var(--cpu-card); border-color: color-mix(in srgb, var(--cpu-primary) 36%, var(--cpu-border)); }
+/* 二手卡片 */
+.topic-row--card { display: block; width: 100%; margin: 0 0 12px; padding: 0; break-inside: avoid; border-radius: var(--cpu-radius-l); background: var(--cpu-card); box-shadow: none; }
+.topic-row--card:hover { background: var(--cpu-card); }
 .market-card-image { display: block; width: 100%; max-height: 220px; object-fit: cover; background: var(--cpu-surface-subtle); }
-.market-card-body { padding: 12px; }
-.market-card-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; }
-.market-card-body h3 {
-  margin: 0;
-  color: var(--cpu-text);
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.55;
-  overflow-wrap: anywhere;
-}
-.market-card-excerpt {
-  display: -webkit-box;
-  margin: 6px 0 0;
-  overflow: hidden;
-  color: var(--cpu-text-secondary);
-  font-size: 12px;
-  line-height: 1.55;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-}
-.market-card-price { display: block; margin-top: 10px; color: color-mix(in srgb, #ef4444 82%, var(--cpu-text)); font-size: 17px; }
-.market-card-facts { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
-.market-card-facts span { padding: 3px 7px; border-radius: 999px; background: var(--cpu-surface-subtle); color: var(--cpu-text-secondary); font-size: 10px; line-height: 1.4; }
-.market-card-meta {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  min-width: 0;
-  margin-top: 11px;
-  padding-top: 9px;
-  border-top: 1px solid var(--cpu-border-soft);
-  color: var(--cpu-text-muted);
-  font-size: 11px;
-}
-.market-card-author { flex: 1; min-width: 0; overflow: hidden; color: var(--cpu-primary); text-overflow: ellipsis; white-space: nowrap; }
-.market-card-stat { display: inline-flex; align-items: center; gap: 2px; white-space: nowrap; }
+.market-card-body { padding: 12px 14px 14px; }
+.market-card-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.market-card-body h3 { margin: 0; font-size: var(--cpu-fs-m); font-weight: 500; line-height: 1.5; overflow-wrap: anywhere; }
+.market-card-excerpt { display: -webkit-box; margin: 4px 0 0; overflow: hidden; color: var(--cpu-text-secondary); font-size: var(--cpu-fs-s); line-height: 1.6; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+.market-card-price { display: block; margin-top: 8px; font-size: var(--cpu-fs-l); font-variant-numeric: tabular-nums; }
+.market-card-facts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.market-card-facts span { padding: 1px 6px; border-radius: var(--cpu-radius-s); background: var(--cpu-surface-soft); color: var(--cpu-text-secondary); font-size: var(--cpu-fs-xs); }
+.market-card-meta { display: flex; min-width: 0; align-items: center; gap: 6px; margin-top: 10px; padding-top: 10px; box-shadow: inset 0 1px 0 var(--cpu-border-soft); color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); }
+.market-card-author { min-width: 0; flex: 1; overflow: hidden; color: var(--cpu-text-secondary); text-overflow: ellipsis; white-space: nowrap; }
+.market-card-stat { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
 
 @media (max-width: 640px) {
-  .topic-row {
-    display: grid;
-    grid-template-columns: 32px minmax(0, 1fr);
-    align-items: flex-start;
-    gap: 10px;
-    padding: 12px 8px;
-  }
-
-  .avatar {
-    grid-column: 1;
-    width: 32px !important;
-    height: 32px !important;
-    font-size: 13px;
-  }
-
-  .topic-row--card { display: block; padding: 0; }
+  .topic-row { gap: 10px; padding: 12px; }
+  .avatar { width: 32px !important; height: 32px !important; }
+  .topic-row--card { padding: 0; }
   .topic-row--card .avatar { width: 26px !important; height: 26px !important; }
   .market-card-image { max-height: 180px; }
-  .market-card-body { padding: 10px; }
-  .market-card-meta { gap: 5px; }
-
-  .main { grid-column: 2; }
-
-  .topic-row--simple {
-    grid-template-columns: 32px minmax(0, 1fr);
-    align-items: flex-start;
-    padding: 12px 6px;
-  }
-
-  .topic-row--simple .simple-main { grid-column: 2; }
-  .topic-row--simple .simple-title { font-size: 14px; line-height: 1.45; }
-  .topic-row--simple .simple-price { font-size: 14px; }
-  .topic-row--simple .simple-context { gap: 4px; }
-  .topic-row--simple .simple-footer {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 5px;
-  }
-  .topic-row--simple .simple-author { max-width: min(42vw, 150px); }
-  .topic-row--simple .simple-stats { gap: 13px; }
-
-  .line1 {
-    gap: 5px;
-  }
-
-  .title {
-    width: 100%;
-    font-size: 14px;
-    line-height: 1.45;
-  }
-
-  .line1.has-inline-price .title {
-    width: auto;
-    max-width: calc(100% - 66px);
-  }
-
-  .inline-price { font-size: 14px; }
-
-  .line2 {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    gap: 5px;
-    line-height: 1.45;
-  }
-  .row-byline { gap: 6px; }
-  .line2 .author { max-width: min(42vw, 160px); }
-  .row-stats { gap: 13px; }
-  .line2 .edited { font-size: 11px; }
-
-  .rating {
-    grid-column: 2;
-    margin-left: 0;
-    align-self: flex-start;
-    font-size: 15px;
-  }
+  .title { width: 100%; }
+  .line1.has-inline-price .title { width: auto; max-width: calc(100% - 66px); }
+  .line2, .simple-footer { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .line2 .author, .simple-author { max-width: min(42vw, 160px); }
+  .rating { align-self: flex-start; }
 }
 </style>

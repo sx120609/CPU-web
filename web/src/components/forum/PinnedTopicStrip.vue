@@ -113,15 +113,15 @@ function openTopic(id: number) {
 </script>
 
 <style scoped>
-.pinned-strip { padding: 10px 12px; border: 1px solid color-mix(in srgb, #f59e0b 24%, var(--cpu-border-soft)); border-radius: 12px; background: color-mix(in srgb, #f59e0b 5%, var(--cpu-card)); }
-.pinned-strip-head { display: flex; align-items: center; gap: 8px; margin-bottom: 3px; }
-.pinned-label { padding: 2px 7px; border-radius: 999px; background: #f59e0b; color: #fff; font-size: 10px; font-weight: 800; }
-.pinned-count { color: var(--cpu-text-muted); font-size: 11px; }
-.pinned-topic { display: grid; width: 100%; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 7px 2px; border: 0; border-top: 1px dashed var(--cpu-border-soft); background: transparent; color: inherit; text-align: left; cursor: pointer; }
-.pinned-topic:first-of-type { border-top: 0; }
-.pinned-topic:hover .pinned-title { color: var(--cpu-primary); }
-.pinned-topic:focus-visible { outline: 2px solid var(--cpu-primary); outline-offset: 2px; }
-.pinned-index { color: #b45309; font-size: 11px; font-weight: 800; text-align: center; }
-.pinned-title { overflow: hidden; color: var(--cpu-text); font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.pinned-board { max-width: 90px; overflow: hidden; color: var(--cpu-text-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.pinned-strip { padding: 4px 0; overflow: hidden; border-radius: var(--cpu-radius-l); background: var(--cpu-card); color: var(--cpu-text); font-size: var(--cpu-fs-m); }
+.pinned-strip-head { display: flex; align-items: center; gap: 8px; padding: 10px 16px 4px; }
+.pinned-label { height: 18px; padding: 0 5px; border-radius: var(--cpu-radius-s); background: var(--cpu-accent-soft); color: var(--cpu-accent); font-size: var(--cpu-fs-xs); font-weight: 500; line-height: 18px; }
+.pinned-count { color: var(--cpu-text-muted); font-size: var(--cpu-fs-s); }
+.pinned-topic { display: grid; width: 100%; min-height: 44px; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 0 16px; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.pinned-topic + .pinned-topic { box-shadow: inset 0 1px 0 var(--cpu-border-soft); }
+.pinned-topic:hover { background: var(--cpu-surface-soft); }
+.pinned-topic:focus-visible { outline: 2px solid var(--cpu-primary); outline-offset: -2px; }
+.pinned-index { color: var(--cpu-text-muted); font-size: var(--cpu-fs-s); font-weight: 500; text-align: center; font-variant-numeric: tabular-nums; }
+.pinned-title { overflow: hidden; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.pinned-board { max-width: 90px; overflow: hidden; color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); text-overflow: ellipsis; white-space: nowrap; }
 </style>
