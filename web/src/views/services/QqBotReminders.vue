@@ -1,22 +1,15 @@
 <template>
-  <div class="qqbot-reminder-page">
-    <section class="reminder-head">
-      <div>
-        <div class="kicker">通知设置</div>
-        <h2>小工具提醒规则</h2>
-        <p>按问卷、收集任务和成绩核对表分别设置通知事件与触发时间。</p>
+  <div class="pk-page qqbot-reminder-page">
+    <header class="pk-head">
+      <router-link class="pk-back" to="/messages?tab=settings"><el-icon aria-hidden="true"><ArrowLeft /></el-icon>通知设置</router-link>
+      <div class="pk-title">
+        <span class="pk-tile" aria-hidden="true"><el-icon><Bell /></el-icon></span>
+        <div class="pk-title-copy">
+          <h1>小工具提醒规则</h1>
+          <p>按问卷、收集任务和成绩核对表分别设置通知事件与触发时间。</p>
+        </div>
       </div>
-      <div class="head-actions cpu-button-row">
-        <el-button plain @click="router.push('/messages?tab=settings')">
-          <el-icon><ArrowLeft /></el-icon>
-          返回通知设置
-        </el-button>
-        <el-button plain type="primary" @click="router.push('/messages?tab=settings')">
-          <el-icon><Bell /></el-icon>
-          消息渠道
-        </el-button>
-      </div>
-    </section>
+    </header>
 
     <section class="reminder-panel" v-loading="loading">
       <el-alert
@@ -148,6 +141,7 @@
 </template>
 
 <script setup lang="ts">
+import "@/styles/page-kit.css";
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
@@ -278,49 +272,11 @@ function requestMessage(error: unknown) {
 </script>
 
 <style scoped>
-.qqbot-reminder-page {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-
-.reminder-head,
 .reminder-panel {
   background: var(--cpu-card);
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 12px;
-  box-shadow: 0 2px 12px rgba(15, 23, 42, 0.04);
-}
-
-.reminder-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 22px 24px;
-}
-
-.kicker {
-  color: var(--cpu-primary);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.reminder-head h2 {
-  margin: 4px 0 6px;
-  font-size: 24px;
-  color: var(--cpu-text);
-}
-
-.reminder-head p {
-  margin: 0;
-  color: var(--cpu-text-secondary);
-}
-
-.head-actions {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
+  border-radius: 16px;
+  box-shadow: var(--cpu-shadow-sm);
 }
 
 .reminder-panel {
@@ -451,7 +407,6 @@ function requestMessage(error: unknown) {
 }
 
 @media (max-width: 720px) {
-  .reminder-head,
   .item-head,
   .binding-strip {
     align-items: stretch;
@@ -462,12 +417,10 @@ function requestMessage(error: unknown) {
     grid-template-columns: 1fr;
   }
 
-  .head-actions,
   .item-actions {
     justify-content: stretch;
   }
 
-  .head-actions .el-button,
   .item-actions .el-button {
     flex: 1;
   }

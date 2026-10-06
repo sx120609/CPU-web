@@ -228,20 +228,20 @@ function normalizeSearchError(searchError: unknown) {
 </script>
 
 <style scoped>
-.site-search-page { display: flex; flex-direction: column; gap: 16px; }
+.site-search-page { display: flex; max-width: 1080px; margin: 0 auto; flex-direction: column; gap: 16px; }
 .search-head {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(340px, 520px);
   align-items: end;
   gap: 24px;
 }
-.search-head h1 { margin: 0; color: var(--cpu-text); font-size: 22px; }
+.search-head h1 { margin: 0; color: var(--cpu-text); font-size: 24px; font-weight: 700; letter-spacing: -.01em; }
 .search-head p { margin: 6px 0 0; color: var(--cpu-text-secondary); font-size: 13px; line-height: 1.6; }
 .search-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
 .result-summary { min-height: 20px; color: var(--cpu-text-secondary); font-size: 13px; }
 .cpu-card {
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 12px;
+  border-radius: 16px;
   background: var(--cpu-card);
   box-shadow: var(--cpu-shadow-sm);
 }
@@ -274,7 +274,17 @@ function normalizeSearchError(searchError: unknown) {
 .result-row:last-child { border-bottom: 0; }
 .result-row:hover { background: var(--cpu-surface-subtle); }
 .result-row:focus-visible { outline: 2px solid var(--cpu-primary); outline-offset: -2px; }
-.result-icon { flex: 0 0 auto; font-size: 22px; }
+.result-icon {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 11px;
+  background: var(--cpu-primary-soft);
+  color: var(--cpu-primary);
+  font-size: 19px;
+}
 .result-copy { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 4px; }
 .result-copy b { overflow: hidden; color: var(--cpu-text); font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
 .result-copy small { overflow: hidden; color: var(--cpu-text-secondary); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
@@ -284,7 +294,7 @@ function normalizeSearchError(searchError: unknown) {
 
 @media (max-width: 768px) {
   .search-head { grid-template-columns: 1fr; gap: 14px; }
-  .search-head h1 { font-size: 20px; }
+  .search-head h1 { font-size: 22px; }
   .search-form { grid-template-columns: minmax(0, 1fr) auto; }
   .result-block { padding: 12px 10px; }
   .result-head { padding-inline: 6px; }

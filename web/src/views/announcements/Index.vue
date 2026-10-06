@@ -1,39 +1,39 @@
 <template>
-  <div class="announce-page">
-    <header class="page-head">
-      <h1 class="title"><AppIcon name="announcement" /> 校园公告</h1>
-      <p class="sub">整理学校公开渠道的公告入口</p>
+  <div class="pk-page pk-page--narrow announce-page" :aria-busy="loading">
+    <header class="pk-head">
+      <div class="pk-title">
+        <span class="pk-tile" style="--tone: #1d4d8a" aria-hidden="true"><AppIcon name="announcement" /></span>
+        <div class="pk-title-copy">
+          <h1>校园公告</h1>
+          <p>整理学校公开渠道的公告入口</p>
+        </div>
+      </div>
     </header>
 
-    <div v-loading="loading" class="cluster">
-      <!-- 错误态：网络失败 / 后端 5xx -->
-      <el-empty v-if="!loading && error" :description="error">
-        <el-button type="primary" @click="reload">重试</el-button>
-      </el-empty>
-      <!-- 空态 -->
-      <el-empty v-else-if="!loading && !boards.length" description="暂无公告来源" />
-      <!-- 列表：router-link 直接跳转，避免 div+click 在移动端偶尔不响应 -->
-      <router-link
-        v-for="b in boards"
-        :key="b.slug"
-        :to="`/forum/b/${b.slug}`"
-        class="board-card"
-      >
-        <div class="icon" :style="{ background: b.color || '#1d4d8a' }"><AppIcon :legacy="b.icon" name="announcement" /></div>
-        <div class="body">
-          <div class="name-row">
-            <span class="name">{{ b.name }}</span>
-            <span class="count">{{ b.topicCount }} 条</span>
-          </div>
-          <div class="desc" v-if="b.description">{{ b.description }}</div>
-          <div class="meta">
-            <span v-if="b.feedSource?.homepage">同步自 {{ shortHost(b.feedSource.homepage) }}</span>
-            <span v-if="b.feedSource?.lastRunAt" class="time">· 最近更新 {{ fmtRelative(b.feedSource.lastRunAt) }}</span>
-          </div>
-        </div>
-        <el-icon class="arrow"><Right /></el-icon>
-      </router-link>
-    </div>
+    <!-- 错误态：网络失败 / 后端 5xx -->
+    <section v-if="!loading && error" class="pk-card">
+      <el-empty :description="error"><el-button type="primary" @click="reload">重试</el-button></el-empty>
+    </section>
+    <section v-else-if="loading && !boards.length" class="pk-card"><div class="pk-empty" role="status">正在加载公告来源…</div></section>
+    <!-- 空态 -->
+    <section v-else-if="!boards.length" class="pk-card"><el-empty description="暂无公告来源" /></section>
+    <!-- 列表：router-link 直接跳转，避免 div+click 在移动端偶尔不响应 -->
+    <ul v-else class="pk-card pk-card--flush pk-rows">
+      <li v-for="b in boards" :key="b.slug">
+        <router-link :to="`/forum/b/${b.slug}`" class="pk-row announce-row">
+          <span class="pk-tile" :style="{ '--tone': b.color || '#1d4d8a' }" aria-hidden="true"><AppIcon :legacy="b.icon" name="announcement" /></span>
+          <span class="pk-row-copy">
+            <b>{{ b.name }}<em class="pk-badge">{{ b.topicCount }} 条</em></b>
+            <small v-if="b.description" class="announce-desc">{{ b.description }}</small>
+            <small v-if="b.feedSource?.homepage || b.feedSource?.lastRunAt">
+              <template v-if="b.feedSource?.homepage">同步自 {{ shortHost(b.feedSource.homepage) }}</template>
+              <template v-if="b.feedSource?.lastRunAt"> · 最近更新 {{ fmtRelative(b.feedSource.lastRunAt) }}</template>
+            </small>
+          </span>
+          <el-icon class="pk-row-end" aria-hidden="true"><Right /></el-icon>
+        </router-link>
+      </li>
+    </ul>
   </div>
 </template>
 
@@ -43,6 +43,7 @@ import { Right } from "@element-plus/icons-vue";
 import { boardApi, type Board } from "@/api/board";
 import { fmtRelative } from "@/utils/format";
 import AppIcon from "@/components/common/AppIcon.vue";
+import "@/styles/page-kit.css";
 
 const all = ref<Board[]>([]);
 const loading = ref(false);
@@ -93,87 +94,10 @@ function normalizeAnnouncementsError(error_: unknown) {
 </script>
 
 <style scoped>
-.announce-page { display: flex; flex-direction: column; gap: 18px; }
-.page-head { display: flex; flex-direction: column; gap: 4px; }
-.title { margin: 0; font-size: 22px; color: var(--cpu-text); }
-.sub { margin: 0; font-size: 12px; color: var(--cpu-text-secondary); }
-
-.cluster { display: flex; flex-direction: column; gap: 10px; }
-
-.board-card {
-  background: linear-gradient(135deg, var(--cpu-card) 0%, var(--cpu-surface-soft) 100%);
-  border: 1px solid var(--cpu-border-soft);
-  border-radius: 12px;
-  padding: 14px 16px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
-  color: inherit;
-  text-decoration: none;
-}
-.board-card:hover {
-  border-color: var(--cpu-primary);
-  box-shadow: 0 4px 14px rgba(22, 135, 118, 0.08);
-}
-.board-card:active { transform: scale(0.99); }
-
-.icon {
-  width: 46px;
-  height: 46px;
-  border-radius: 12px;
-  display: grid;
-  place-items: center;
-  font-size: 22px;
-  flex-shrink: 0;
-  color: #fff;
-}
-
-.body { flex: 1; min-width: 0; }
-.name-row {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-}
-.name { font-size: 15px; font-weight: 600; color: var(--cpu-text); }
-.count { font-size: 12px; color: var(--cpu-text-secondary); }
-.desc {
-  font-size: 12px;
-  color: var(--cpu-text-secondary);
-  margin-top: 2px;
-  line-height: 1.5;
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-}
-.meta {
-  font-size: 11px;
-  color: var(--cpu-text-muted);
-  margin-top: 4px;
-  display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
-}
-.meta .time { color: var(--cpu-text-muted); }
-
-.arrow { color: var(--cpu-text-muted); flex-shrink: 0; font-size: 16px; }
-
-@media (max-width: 640px) {
-  .announce-page { gap: 12px; margin: -4px -2px 0; }
-  .page-head { padding: 4px 2px 2px; }
-  .title { font-size: 19px; }
-  .sub { font-size: 11px; }
-  .cluster { gap: 8px; }
-  .board-card {
-    padding: 12px;
-    border-radius: 12px;
-    background: var(--cpu-card);
-    box-shadow: 0 2px 8px rgba(20, 50, 70, 0.05);
-  }
-  .icon { width: 40px; height: 40px; font-size: 20px; border-radius: 10px; }
-  .name { font-size: 14px; }
-  .desc { font-size: 11px; }
+.announce-row { min-height: 72px; padding-block: 12px; }
+.announce-row b { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 15px; }
+.announce-desc { color: var(--cpu-text-secondary); }
+@media (hover: hover) {
+  .announce-row:hover { background: var(--cpu-surface-soft); }
 }
 </style>
