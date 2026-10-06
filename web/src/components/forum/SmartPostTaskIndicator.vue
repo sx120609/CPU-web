@@ -114,18 +114,18 @@ function isCompactViewport() {
   z-index: 4800;
   width: min(390px, calc(100vw - 28px));
   padding: 16px;
-  border: 1px solid var(--el-border-color);
+  border: 1px solid color-mix(in srgb, var(--el-color-primary) 28%, var(--el-border-color));
   border-radius: var(--cpu-radius-l);
   background: var(--el-bg-color-overlay);
   box-shadow: 0 14px 44px rgba(15, 23, 42, 0.22);
 }
 
 .smart-post-task-card.is-completed {
-  border-color: var(--el-border-color);
+  border-color: color-mix(in srgb, var(--el-color-success) 42%, var(--el-border-color));
 }
 
 .smart-post-task-card.is-failed {
-  border-color: var(--cpu-danger);
+  border-color: color-mix(in srgb, var(--el-color-danger) 42%, var(--el-border-color));
 }
 
 .smart-post-task-card.is-collapsed {
@@ -169,7 +169,7 @@ function isCompactViewport() {
   height: 9px;
   border-radius: 50%;
   background: var(--el-color-primary);
-  box-shadow: 0 0 0 4px transparent;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--el-color-primary) 14%, transparent);
 }
 
 .is-running .smart-post-task-dot,

@@ -1286,9 +1286,9 @@ function normalizeMessageSettings(value: any) {
   display: grid;
   gap: 10px;
   padding: 12px;
-  border: 1px solid var(--cpu-border-soft);
+  border: 1px solid color-mix(in srgb, #07c160 28%, var(--cpu-border-soft));
   border-radius: var(--cpu-radius-m);
-  background: var(--cpu-card);
+  background: color-mix(in srgb, #07c160 6%, var(--cpu-card));
 }
 .wechat-subscribe-card > div:first-child { display: grid; gap: 4px; }
 .wechat-subscribe-card b { color: var(--cpu-text); font-size: var(--cpu-fs-m); }
@@ -1999,7 +1999,7 @@ function normalizeMessageSettings(value: any) {
     place-items: center;
     padding: 0 4px;
     border-radius: var(--cpu-radius-pill);
-    background: transparent;
+    background: color-mix(in srgb, currentColor 16%, transparent);
     font-size: var(--cpu-fs-xs);
     line-height: 1;
   }

@@ -60,8 +60,8 @@ withDefaults(defineProps<{
   flex: 0 0 auto;
   place-items: center;
   border-radius: var(--cpu-radius-m);
-  background: var(--tone) var(--me-row-m-fill);
-  color: var(--tone) var(--me-row-m-ink);
+  background: color-mix(in srgb, var(--tone) var(--me-row-m-fill), var(--cpu-card));
+  color: color-mix(in srgb, var(--tone) var(--me-row-m-ink), var(--cpu-text));
   font-size: var(--cpu-fs-l);
 }
 

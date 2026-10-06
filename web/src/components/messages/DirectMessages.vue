@@ -1087,7 +1087,7 @@ function errorMessage(error: unknown, fallback: string) {
   height: 13px;
 }
 .dm-spinner--light {
-  border-color: transparent;
+  border-color: color-mix(in srgb, currentColor 30%, transparent);
   border-top-color: currentColor;
 }
 .dm-empty-icon {

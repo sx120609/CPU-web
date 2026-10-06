@@ -660,8 +660,8 @@ async function dropAvatar() {
   flex: 0 0 auto;
   place-items: center;
   border-radius: var(--cpu-radius-m);
-  background: var(--tone, var(--cpu-primary)) var(--me-m-tile-fill);
-  color: var(--tone, var(--cpu-primary)) var(--me-m-tile-ink);
+  background: color-mix(in srgb, var(--tone, var(--cpu-primary)) var(--me-m-tile-fill), var(--cpu-card));
+  color: color-mix(in srgb, var(--tone, var(--cpu-primary)) var(--me-m-tile-ink), var(--cpu-text));
   font-size: var(--cpu-fs-xl);
 }
 .me-m-arrow { flex: 0 0 auto; color: var(--cpu-text-muted); font-size: var(--cpu-fs-s); }
@@ -697,7 +697,7 @@ async function dropAvatar() {
 .me-m-hero {
   --me-theme: var(--cpu-primary);
   padding: 16px 14px 12px;
-  background: var(--cpu-card);
+  background: linear-gradient(165deg, color-mix(in srgb, var(--me-theme) 13%, var(--cpu-card)), var(--cpu-card) 62%);
 }
 .me-m-hero.profile-theme-mint { --me-theme: #10b981; }
 .me-m-hero.profile-theme-sunset { --me-theme: #f97316; }
@@ -738,8 +738,8 @@ async function dropAvatar() {
   --tag: var(--cpu-primary);
   padding: 1px 7px;
   border-radius: var(--cpu-radius-pill);
-  background: var(--cpu-card);
-  color: var(--tag);
+  background: color-mix(in srgb, var(--tag) 13%, var(--cpu-card));
+  color: color-mix(in srgb, var(--tag) 82%, var(--cpu-text));
   font-size: var(--cpu-fs-xs);
   font-style: normal;
   font-weight: 500;
@@ -870,9 +870,9 @@ async function dropAvatar() {
 .vip-theme-ocean { --vip-theme-accent: #1d4ed8; --vip-theme-ring: rgba(29, 78, 216, .16); }
 .vip-theme-lavender { --vip-theme-accent: #6d28d9; --vip-theme-ring: rgba(109, 40, 217, .16); }
 .me-m-chips button[class*="vip-theme-"] {
-  border-color: var(--cpu-card);
-  background: var(--cpu-card);
-  color: var(--vip-theme-accent);
+  border-color: color-mix(in srgb, var(--vip-theme-accent) 30%, var(--cpu-card));
+  background: color-mix(in srgb, var(--vip-theme-accent) 9%, var(--cpu-card));
+  color: color-mix(in srgb, var(--vip-theme-accent) 88%, var(--cpu-text));
 }
 .vip-frame-gold { --vip-theme-accent: #d4a017; }
 .vip-frame-neon { --vip-theme-accent: #8b5cf6; }
@@ -1040,8 +1040,8 @@ async function dropAvatar() {
 .me-m-topic-meta i {
   padding: 0 6px;
   border-radius: var(--cpu-radius-s);
-  background: var(--cpu-card);
-  color: var(--board);
+  background: color-mix(in srgb, var(--board) 14%, var(--cpu-card));
+  color: color-mix(in srgb, var(--board) 85%, var(--cpu-text));
   font-style: normal;
   font-weight: 500;
   line-height: 18px;

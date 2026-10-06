@@ -134,9 +134,9 @@ function categoryIcon(category?: string | null) {
 .message-icon-system { background: var(--cpu-surface-soft); color: var(--cpu-text-secondary); }
 .message-icon-school,
 .message-icon-school-feed { background: var(--cpu-primary-soft); color: var(--cpu-primary); }
-.message-icon-service-tool { background: var(--cpu-card); color: var(--cpu-text-secondary); }
+.message-icon-service-tool { background: color-mix(in srgb, #0ea5e9 10%, var(--cpu-card)); color: var(--cpu-text-secondary); }
 .message-icon-lost-found,
-.message-icon-direct-message { background: var(--cpu-card); color: #0f9f8f; }
+.message-icon-direct-message { background: color-mix(in srgb, #14b8a6 11%, var(--cpu-card)); color: #0f9f8f; }
 .row {
   display: flex;
   align-items: center;

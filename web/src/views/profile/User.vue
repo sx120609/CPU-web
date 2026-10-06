@@ -248,7 +248,7 @@ function normalizeUserLoadError(loadError: unknown) {
 .name :deep(.display-nickname) { min-width: 0; overflow-wrap: anywhere; }
 .vip-tag { letter-spacing: .08em; font-weight: 700; }
 .verification-copy { display: flex; align-items: center; gap: 7px; margin: 5px 0 8px; color: #0969da; font-size: var(--cpu-fs-xs); }
-.verification-copy b { padding: 2px 6px; border-radius: var(--cpu-radius-pill); background: var(--cpu-card); font-size: var(--cpu-fs-xs); }
+.verification-copy b { padding: 2px 6px; border-radius: var(--cpu-radius-pill); background: color-mix(in srgb, #1d9bf0 10%, var(--cpu-card)); font-size: var(--cpu-fs-xs); }
 .user-remark { display: flex; align-items: center; gap: 7px; margin: 6px 0; color: var(--cpu-text-secondary); font-size: var(--cpu-fs-xs); }
 .user-remark span { padding: 2px 6px; border-radius: var(--cpu-radius-pill); background: var(--cpu-primary-soft); color: var(--cpu-primary); font-size: var(--cpu-fs-xs); }
 .user-remark b { color: var(--cpu-text); font-size: var(--cpu-fs-s); }
