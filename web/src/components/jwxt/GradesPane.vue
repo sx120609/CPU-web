@@ -1,5 +1,12 @@
 <template>
   <div class="grades-pane">
+    <!-- 桌面端把统计口径做成一排卡片；移动端仍用筛选栏里的紧凑统计。 -->
+    <dl v-if="parsed" class="grade-summary">
+      <div><dt>显示课程</dt><dd>{{ filteredList.length }}<small>/ {{ parsed.list.length }} 门</small></dd></div>
+      <div><dt>计入统计</dt><dd>{{ statList.length }}<small>门</small></dd></div>
+      <div><dt>统计学分</dt><dd>{{ statCredits ? statCredits.toFixed(1) : "—" }}</dd></div>
+      <div class="is-accent"><dt>加权 GPA</dt><dd>{{ statList.length && statCredits ? statGpa.toFixed(2) : "—" }}<small>/ 5.0</small></dd></div>
+    </dl>
     <div class="ctrl-bar" v-if="parsed">
       <div class="ctrl-left">
         <label class="filter-field compact">
@@ -622,6 +629,23 @@ function requestMessage(error: unknown) {
 .stat { font-size: 13px; color: var(--cpu-text-secondary); }
 .stat b { color: var(--cpu-primary); font-size: 15px; }
 .mobile-stat { display: none; }
+.desktop-stat { display: none; }
+.grade-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 0 0 16px; }
+.grade-summary > div {
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 12px;
+  background: var(--cpu-surface-soft);
+}
+.grade-summary dt { color: var(--cpu-text-secondary); font-size: 12px; }
+.grade-summary dd { display: flex; align-items: baseline; gap: 5px; margin: 4px 0 0; color: var(--cpu-text); font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.grade-summary small { color: var(--cpu-text-muted); font-size: 12px; font-weight: 500; }
+.grade-summary .is-accent { border-color: color-mix(in srgb, var(--cpu-primary) 26%, var(--cpu-border-soft)); background: var(--cpu-primary-soft); }
+.grade-summary .is-accent dd { color: var(--cpu-primary); }
+@media (max-width: 768px) {
+  .grade-summary { display: none; }
+}
 .hint-icon { color: var(--cpu-text-secondary); cursor: help; margin-left: 4px; font-size: 14px; }
 code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: 3px; }
 
