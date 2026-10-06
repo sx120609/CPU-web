@@ -1,12 +1,17 @@
 <template>
-  <div class="jwxt-page">
-    <div class="page-head" :class="{ centered: !showDataShell }">
-      <h2><AppIcon name="school" /> 教务数据</h2>
-      <p class="hint">
-        {{ pageHintText }}
-        学号 / 工号仅用于关联站内账号；勾选保持登录后，<b>学校密码会加密保存在当前浏览器</b>，验证码不会保存。
-      </p>
-    </div>
+  <div class="pk-page pk-page--wide jwxt-page" :class="{ 'jwxt-page--login': !showDataShell }">
+    <header class="pk-head">
+      <div class="pk-title">
+        <span class="pk-tile" style="--tone: #2563eb" aria-hidden="true"><AppIcon name="school" /></span>
+        <div class="pk-title-copy">
+          <h1>教务数据</h1>
+          <p>
+            {{ pageHintText }}
+            学号 / 工号仅用于关联站内账号；勾选保持登录后，<b>学校密码会加密保存在当前浏览器</b>，验证码不会保存。
+          </p>
+        </div>
+      </div>
+    </header>
 
     <!-- 适用范围提示（未授权时显示，避免对已登录的本科生造成视觉噪音） -->
     <el-alert
@@ -41,7 +46,7 @@
     <!-- 未登录：显示登录卡片 -->
     <div v-if="!showDataShell" class="cpu-card login-card">
       <div class="login-head">
-        <el-icon class="lock-icon"><Lock /></el-icon>
+        <span class="pk-tile" aria-hidden="true"><el-icon><Lock /></el-icon></span>
         <div>
           <h3>授权读取教务数据</h3>
           <p>{{ loginCardHintText }}</p>
@@ -228,6 +233,7 @@
 </template>
 
 <script setup lang="ts">
+import "@/styles/page-kit.css";
 import AppIcon from "@/components/common/AppIcon.vue";
 import { defineAsyncComponent } from "vue";
 import { Lock, User, Refresh, CircleCheckFilled, CircleClose, InfoFilled } from "@element-plus/icons-vue";
@@ -288,29 +294,9 @@ const {
 </script>
 
 <style scoped lang="scss">
-.jwxt-page {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-
-.page-head {
-  width: 100%;
-}
-
-.page-head.centered {
-  max-width: 760px;
-  margin: 0 auto;
-  text-align: center;
-}
-
-.page-head h2 { margin: 0; font-size: 22px; }
-.page-head .hint { font-size: 13px; color: var(--cpu-text-secondary); margin: 6px 0 0; line-height: 1.7; }
-.page-head .hint b { color: #b45309; }
-.scope-tip {
-  max-width: 760px;
-  margin: 0 auto;
-}
+.jwxt-page--login { max-width: 620px; }
+.pk-title p b { color: color-mix(in srgb, var(--cpu-gold) 72%, var(--cpu-text)); font-weight: 600; }
+.scope-tip { border-radius: 12px; }
 .jwxt-shell {
   display: flex;
   flex-direction: column;
@@ -320,25 +306,14 @@ const {
 .cpu-card {
   background: var(--cpu-card);
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 12px;
+  border-radius: 16px;
   padding: 20px 24px;
   box-shadow: var(--cpu-shadow-sm);
 }
 
-.login-card {
-  width: min(100%, 620px);
-  margin: 0 auto;
-  padding: 24px 28px;
-}
+.login-card { padding: 24px 28px; }
 
 .login-head { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
-.lock-icon {
-  font-size: 32px;
-  background: linear-gradient(135deg, var(--cpu-primary), var(--cpu-primary-dark));
-  color: #fff;
-  padding: 12px;
-  border-radius: 12px;
-}
 .login-head h3 { margin: 0; font-size: 17px; }
 .login-head p { margin: 2px 0 0; font-size: 12px; color: var(--cpu-text-secondary); }
 .login-head b { color: var(--cpu-primary); }
@@ -416,30 +391,11 @@ const {
   align-items: center;
   justify-content: space-between;
   gap: 14px;
+  --session-tone: var(--cpu-success);
+  padding: 12px 16px;
   font-size: 13px;
-  color: #166534;
-  background: #ecfdf5 !important;
-  border: 1px solid #cdecdc;
 }
-.session-info.is-cache-only {
-  color: #92400e;
-  background: #fffbeb !important;
-  border-color: #fde68a;
-}
-.session-info.is-cache-only .session-ok,
-.session-info.is-cache-only .session-title {
-  color: #b45309;
-}
-:global(html[data-theme="dark"]) .session-info {
-  color: #bbf7d0;
-  background: rgba(20, 83, 45, 0.22) !important;
-  border-color: rgba(34, 197, 94, 0.28);
-}
-:global(html[data-theme="dark"]) .session-info.is-cache-only {
-  color: #fde68a;
-  background: rgba(120, 53, 15, 0.22) !important;
-  border-color: rgba(245, 158, 11, 0.32);
-}
+.session-info.is-cache-only { --session-tone: var(--cpu-gold); }
 .session-main {
   display: flex;
   align-items: center;
@@ -447,25 +403,28 @@ const {
   min-width: 0;
 }
 .session-ok {
-  color: #16a34a;
-  font-size: 20px;
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--session-tone) 13%, var(--cpu-card));
+  color: color-mix(in srgb, var(--session-tone) 82%, var(--cpu-text));
+  font-size: 18px;
   flex-shrink: 0;
 }
 .session-copy {
   min-width: 0;
 }
 .session-title {
-  font-weight: 600;
-  color: #14532d;
+  font-weight: 650;
+  color: var(--cpu-text);
 }
 .session-title-row {
   display: flex;
   align-items: center;
   gap: 8px;
   min-width: 0;
-}
-:global(html[data-theme="dark"]) .session-title {
-  color: #dcfce7;
 }
 .session-sub {
   margin-top: 2px;
@@ -503,6 +462,32 @@ const {
   margin-right: 0;
 }
 .hint-icon { color: var(--cpu-text-secondary); cursor: help; margin-left: 4px; }
+
+/* 标签页改成分段样式，内容区不再带下划线。 */
+.jwxt-tabs { padding: 14px 20px 20px; }
+.jwxt-tabs :deep(.el-tabs__header) { margin-bottom: 16px; }
+.jwxt-tabs :deep(.el-tabs__nav-wrap::after),
+.jwxt-tabs :deep(.el-tabs__active-bar) { display: none; }
+.jwxt-tabs :deep(.el-tabs__nav) {
+  gap: 4px;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--cpu-surface-subtle);
+}
+.jwxt-tabs :deep(.el-tabs__item) {
+  height: 36px;
+  gap: 6px;
+  padding: 0 16px !important;
+  border-radius: 9px;
+  color: var(--cpu-text-secondary);
+  font-size: 14px;
+  font-weight: 550;
+}
+.jwxt-tabs :deep(.el-tabs__item.is-active) {
+  background: var(--cpu-card);
+  box-shadow: var(--cpu-shadow-sm);
+  color: var(--cpu-primary);
+}
 
 .debug-pane { padding: 8px 0; }
 .probe-row {
