@@ -5,7 +5,7 @@
   padding: 14px 18px 20px;
   overflow-x: clip;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 16px;
+  border-radius: var(--cpu-radius-l);
   background: var(--cpu-card);
   box-shadow: var(--cpu-shadow-sm);
 }
@@ -16,15 +16,15 @@
 .manage-tool-tabs :deep(.el-tabs__nav) {
   gap: 4px;
   padding: 4px;
-  border-radius: 12px;
+  border-radius: var(--cpu-radius-l);
   background: var(--cpu-surface-subtle);
 }
 .manage-tool-tabs :deep(.el-tabs__item) {
   height: 36px;
   padding: 0 16px !important;
-  border-radius: 9px;
+  border-radius: var(--cpu-radius-m);
   color: var(--cpu-text-secondary);
-  font-weight: 550;
+  font-weight: 500;
 }
 .manage-tool-tabs :deep(.el-tabs__item.is-active) {
   background: var(--cpu-card);
@@ -63,7 +63,6 @@
   margin: 0;
   border-bottom: 1px solid var(--builder-border);
   background: var(--cpu-card);
-  box-shadow: 0 1px 10px rgba(17, 24, 39, 0.04);
 }
 :global(.questionnaire-builder-dialog .el-dialog__body) {
   padding: 0;
@@ -93,15 +92,15 @@
   flex-direction: column;
   gap: 3px;
 }
-.builder-titlebar b { color: var(--cpu-text); font-size: 17px; }
-.builder-titlebar span { color: var(--cpu-text-secondary); font-size: 12px; }
+.builder-titlebar b { color: var(--cpu-text); font-size: var(--cpu-fs-l); }
+.builder-titlebar span { color: var(--cpu-text-secondary); font-size: var(--cpu-fs-xs); }
 .builder-back {
   width: 36px;
   height: 36px;
   display: grid;
   place-items: center;
   border: 1px solid var(--builder-border);
-  border-radius: 8px;
+  border-radius: var(--cpu-radius-m);
   color: var(--cpu-text-secondary);
   background: var(--cpu-card);
   cursor: pointer;
@@ -109,7 +108,7 @@
 }
 .builder-back:hover {
   color: var(--builder-primary);
-  border-color: color-mix(in srgb, var(--cpu-primary) 36%, var(--cpu-border-soft));
+  border-color: var(--cpu-border-soft);
   background: var(--builder-primary-soft);
 }
 .builder-top-actions {
@@ -120,7 +119,7 @@
 }
 .builder-top-actions :deep(.el-button) {
   height: 34px;
-  border-radius: 6px;
+  border-radius: var(--cpu-radius-s);
 }
 .builder-top-actions :deep(.el-button--primary) {
   --el-button-bg-color: var(--builder-primary);
@@ -130,7 +129,7 @@
 }
 .builder-top-actions :deep(.el-button--primary.is-plain) {
   --el-button-bg-color: var(--cpu-card);
-  --el-button-border-color: color-mix(in srgb, var(--cpu-primary) 36%, var(--cpu-border-soft));
+  --el-button-border-color: var(--cpu-border-soft);
   --el-button-text-color: var(--builder-primary);
   --el-button-hover-bg-color: var(--builder-primary-soft);
   --el-button-hover-border-color: var(--builder-primary);

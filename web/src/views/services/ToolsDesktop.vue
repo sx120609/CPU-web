@@ -53,6 +53,6 @@ const feedbackTool = computed(() => visibleTools.value.find((tool) => tool.slug 
 .tools-d-warning { align-items: center; justify-content: space-between; }
 .tools-d-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: 12px; }
 .tools-d-grid[aria-busy="true"] { opacity: .72; }
-.tools-d-foot { margin: 4px 0 0; color: var(--cpu-text-muted); font-size: 13px; text-align: center; }
+.tools-d-foot { margin: 4px 0 0; color: var(--cpu-text-muted); font-size: var(--cpu-fs-s); text-align: center; }
 .tools-d-foot button { padding: 0; border: 0; background: none; font: inherit; cursor: pointer; }
 </style>

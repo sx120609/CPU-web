@@ -268,21 +268,21 @@ function onMore(command: "owner" | "repair" | "repair-remote") {
 
 <style scoped>
 .fs-d { display: flex; min-width: 0; flex-direction: column; gap: 18px; color: var(--cpu-text); }
-.fs-d-card { border: 1px solid var(--cpu-border-soft); border-radius: 16px; background: var(--cpu-card); box-shadow: var(--cpu-shadow-sm); }
+.fs-d-card { border: 1px solid var(--cpu-border-soft); border-radius: var(--cpu-radius-l); background: var(--cpu-card); box-shadow: var(--cpu-shadow-sm); }
 .fs-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 .fs-d-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
-.fs-d-back { display: inline-flex; min-height: 26px; align-items: center; gap: 3px; color: var(--cpu-text-secondary); font-size: 13px; text-decoration: none; }
+.fs-d-back { display: inline-flex; min-height: 26px; align-items: center; gap: 3px; color: var(--cpu-text-secondary); font-size: var(--cpu-fs-s); text-decoration: none; }
 .fs-d-back:hover { color: var(--cpu-primary); }
-.fs-d-head h1 { margin: 2px 0 0; font-size: 26px; font-weight: 750; letter-spacing: -.01em; }
-.fs-d-head p { margin: 4px 0 0; color: var(--cpu-text-secondary); font-size: 14px; }
+.fs-d-head h1 { margin: 2px 0 0; font-size: 26px; font-weight: 700; letter-spacing: -.01em; }
+.fs-d-head p { margin: 4px 0 0; color: var(--cpu-text-secondary); font-size: var(--cpu-fs-m); }
 .fs-d-head .el-button { flex: 0 0 auto; }
 
 .fs-d-state { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 56px 24px; text-align: center; }
-.fs-d-state-icon { display: grid; width: 56px; height: 56px; margin-bottom: 6px; place-items: center; border-radius: 18px; background: var(--cpu-primary-soft); color: var(--cpu-primary); font-size: 26px; }
-.fs-d-state-icon.is-warn { background: color-mix(in srgb, var(--cpu-warn) 13%, var(--cpu-card)); color: var(--cpu-warn); }
-.fs-d-state b { font-size: 17px; font-weight: 700; }
-.fs-d-state p { max-width: 460px; margin: 0 0 8px; color: var(--cpu-text-secondary); font-size: 13px; line-height: 1.7; }
+.fs-d-state-icon { display: grid; width: 56px; height: 56px; margin-bottom: 6px; place-items: center; border-radius: var(--cpu-radius-l); background: var(--cpu-primary-soft); color: var(--cpu-primary); font-size: 26px; }
+.fs-d-state-icon.is-warn { background: var(--cpu-accent-soft); color: var(--cpu-warn); }
+.fs-d-state b { font-size: var(--cpu-fs-l); font-weight: 700; }
+.fs-d-state p { max-width: 460px; margin: 0 0 8px; color: var(--cpu-text-secondary); font-size: var(--cpu-fs-s); line-height: 1.7; }
 
 .fs-d-grid { display: grid; grid-template-columns: 272px minmax(0, 1fr); align-items: start; gap: 18px; }
 .fs-d-side {
@@ -294,13 +294,13 @@ function onMore(command: "owner" | "repair" | "repair-remote") {
   gap: 10px;
   padding: 14px 10px 10px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 16px;
+  border-radius: var(--cpu-radius-l);
   background: var(--cpu-card);
   box-shadow: var(--cpu-shadow-sm);
 }
 .fs-d-side-head { display: flex; align-items: center; justify-content: space-between; padding: 0 4px; }
-.fs-d-side-head b { font-size: 14px; font-weight: 700; }
-.fs-d-side-head span { padding: 0 8px; border-radius: 999px; background: var(--cpu-surface-subtle); color: var(--cpu-text-secondary); font-size: 12px; line-height: 20px; }
+.fs-d-side-head b { font-size: var(--cpu-fs-m); font-weight: 700; }
+.fs-d-side-head span { padding: 0 8px; border-radius: var(--cpu-radius-pill); background: var(--cpu-surface-subtle); color: var(--cpu-text-secondary); font-size: var(--cpu-fs-xs); line-height: 20px; }
 .fs-d-task-list { display: flex; min-height: 0; flex-direction: column; gap: 2px; margin: 0 -2px; padding: 0 2px; overflow-y: auto; }
 .fs-d-task {
   display: flex;
@@ -309,7 +309,7 @@ function onMore(command: "owner" | "repair" | "repair-remote") {
   gap: 10px;
   padding: 10px;
   border: 0;
-  border-radius: 11px;
+  border-radius: var(--cpu-radius-m);
   background: transparent;
   color: inherit;
   font: inherit;
@@ -321,11 +321,11 @@ function onMore(command: "owner" | "repair" | "repair-remote") {
 .fs-d-task.active b { color: var(--cpu-primary); }
 .fs-d-task .fs-dot { margin-top: 6px; }
 .fs-d-task-copy { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
-.fs-d-task-copy b { display: -webkit-box; overflow: hidden; font-size: 14px; font-weight: 600; line-height: 1.45; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-.fs-d-task-copy small { overflow: hidden; color: var(--cpu-text-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-.fs-d-task-empty { margin: 0; padding: 18px 8px; color: var(--cpu-text-muted); font-size: 12px; text-align: center; }
+.fs-d-task-copy b { display: -webkit-box; overflow: hidden; font-size: var(--cpu-fs-m); font-weight: 500; line-height: 1.45; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.fs-d-task-copy small { overflow: hidden; color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); text-overflow: ellipsis; white-space: nowrap; }
+.fs-d-task-empty { margin: 0; padding: 18px 8px; color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); text-align: center; }
 
-.fs-dot { display: inline-block; width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; background: var(--cpu-success); box-shadow: 0 0 0 3px color-mix(in srgb, var(--cpu-success) 18%, transparent); }
+.fs-dot { display: inline-block; width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; background: var(--cpu-success); box-shadow: 0 0 0 3px var(--cpu-primary-soft); }
 .fs-dot.closed { background: var(--cpu-text-muted); box-shadow: 0 0 0 3px color-mix(in srgb, var(--cpu-text-muted) 18%, transparent); }
 
 .fs-d-main { display: flex; min-width: 0; flex-direction: column; gap: 14px; }
@@ -337,18 +337,18 @@ function onMore(command: "owner" | "repair" | "repair-remote") {
   align-items: center;
   gap: 7px;
   padding: 2px 10px 2px 8px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--cpu-success) 12%, var(--cpu-card));
-  color: color-mix(in srgb, var(--cpu-success) 75%, var(--cpu-text));
-  font-size: 12px;
-  font-weight: 600;
+  border-radius: var(--cpu-radius-pill);
+  background: var(--cpu-primary-soft);
+  color: var(--cpu-primary);
+  font-size: var(--cpu-fs-xs);
+  font-weight: 500;
   line-height: 22px;
 }
 .fs-status.closed { background: var(--cpu-surface-subtle); color: var(--cpu-text-secondary); }
 .fs-status .fs-dot { width: 6px; height: 6px; box-shadow: none; }
-.fs-d-hero h2 { margin: 8px 0 0; font-size: 22px; font-weight: 750; line-height: 1.35; overflow-wrap: anywhere; }
-.fs-d-hero-copy > p { margin: 6px 0 0; color: var(--cpu-text-secondary); font-size: 13px; line-height: 1.7; white-space: pre-line; }
-.fs-d-meta { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 10px 0 0; padding: 0; color: var(--cpu-text-secondary); font-size: 13px; list-style: none; }
+.fs-d-hero h2 { margin: 8px 0 0; font-size: var(--cpu-fs-xl); font-weight: 700; line-height: 1.35; overflow-wrap: anywhere; }
+.fs-d-hero-copy > p { margin: 6px 0 0; color: var(--cpu-text-secondary); font-size: var(--cpu-fs-s); line-height: 1.7; white-space: pre-line; }
+.fs-d-meta { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 10px 0 0; padding: 0; color: var(--cpu-text-secondary); font-size: var(--cpu-fs-s); list-style: none; }
 .fs-d-meta li { display: inline-flex; align-items: center; gap: 5px; }
 .fs-d-meta .el-icon { color: var(--cpu-text-muted); }
 .fs-d-hero-actions { display: flex; flex: 0 0 auto; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
@@ -356,10 +356,10 @@ function onMore(command: "owner" | "repair" | "repair-remote") {
 
 .fs-d-panel { overflow: hidden; }
 .fs-d-panel-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--cpu-border-soft); }
-.fs-tabs { display: flex; gap: 4px; padding: 3px; border-radius: 12px; background: var(--cpu-surface-soft); }
-.fs-tabs button { --cpu-button-radius: 9px; display: inline-flex; min-height: 34px; align-items: center; gap: 6px; padding: 0 14px; font: inherit; font-size: 13px; cursor: pointer; }
-.fs-tabs button.active { --cpu-button-fill: var(--cpu-card); font-weight: 650; }
-.fs-tabs em { min-width: 18px; padding: 0 5px; border-radius: 999px; background: var(--cpu-surface-subtle); color: var(--cpu-text-secondary); font-size: 11px; font-style: normal; font-weight: 600; line-height: 18px; text-align: center; }
+.fs-tabs { display: flex; gap: 4px; padding: 3px; border-radius: var(--cpu-radius-l); background: var(--cpu-surface-soft); }
+.fs-tabs button { --cpu-button-radius: 9px; display: inline-flex; min-height: 34px; align-items: center; gap: 6px; padding: 0 14px; font: inherit; font-size: var(--cpu-fs-s); cursor: pointer; }
+.fs-tabs button.active { --cpu-button-fill: var(--cpu-card); font-weight: 500; }
+.fs-tabs em { min-width: 18px; padding: 0 5px; border-radius: var(--cpu-radius-pill); background: var(--cpu-surface-subtle); color: var(--cpu-text-secondary); font-size: var(--cpu-fs-xs); font-style: normal; font-weight: 500; line-height: 18px; text-align: center; }
 .fs-tabs button.active em { background: var(--cpu-primary-soft); color: var(--cpu-primary); }
 .fs-d-panel-tools { display: flex; align-items: center; gap: 8px; }
 .fs-d-panel-tools .el-input { width: 240px; }
@@ -367,17 +367,17 @@ function onMore(command: "owner" | "repair" | "repair-remote") {
 .fs-d-panel > .fs-check,
 .fs-d-panel > .fs-rules { padding: 16px; }
 
-.fs-d-records-empty { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 48px 16px; color: var(--cpu-text-muted); font-size: 13px; }
-.fs-d-records-empty b { color: var(--cpu-text); font-size: 15px; }
+.fs-d-records-empty { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 48px 16px; color: var(--cpu-text-muted); font-size: var(--cpu-fs-s); }
+.fs-d-records-empty b { color: var(--cpu-text); font-size: var(--cpu-fs-m); }
 .fs-d-table-wrap { overflow-x: auto; }
-.fs-d-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.fs-d-table { width: 100%; border-collapse: collapse; font-size: var(--cpu-fs-s); }
 .fs-d-table th {
   padding: 10px 14px;
   border-bottom: 1px solid var(--cpu-border-soft);
   background: var(--cpu-surface-soft);
   color: var(--cpu-text-secondary);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--cpu-fs-xs);
+  font-weight: 500;
   text-align: left;
   white-space: nowrap;
 }
@@ -385,17 +385,17 @@ function onMore(command: "owner" | "repair" | "repair-remote") {
 .fs-d-table tbody tr:last-child td { border-bottom: 0; }
 .fs-d-table tbody tr:hover td { background: color-mix(in srgb, var(--cpu-surface-soft) 60%, transparent); }
 .fs-d-person { display: flex; align-items: center; gap: 9px; white-space: nowrap; }
-.fs-d-avatar { display: grid; width: 30px; height: 30px; flex: 0 0 auto; place-items: center; border-radius: 50%; background: var(--cpu-primary-soft); color: var(--cpu-primary); font-size: 13px; font-weight: 700; }
-.fs-d-person b { display: block; font-weight: 650; }
-.fs-d-person small { color: var(--cpu-text-muted); font-size: 11px; }
-.fs-d-mono { font-family: var(--cpu-font-mono); font-size: 12px; white-space: nowrap; }
+.fs-d-avatar { display: grid; width: 30px; height: 30px; flex: 0 0 auto; place-items: center; border-radius: 50%; background: var(--cpu-primary-soft); color: var(--cpu-primary); font-size: var(--cpu-fs-s); font-weight: 700; }
+.fs-d-person b { display: block; font-weight: 500; }
+.fs-d-person small { color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); }
+.fs-d-mono { font-family: var(--cpu-font-mono); font-size: var(--cpu-fs-xs); white-space: nowrap; }
 .fs-d-time { color: var(--cpu-text-secondary); white-space: nowrap; }
 .fs-d-files { min-width: 300px; }
 .fs-d-file { display: flex; align-items: center; gap: 9px; }
 .fs-d-file + .fs-d-file { margin-top: 8px; }
 .fs-d-file-copy { display: flex; min-width: 0; max-width: 300px; flex: 1; flex-direction: column; }
-.fs-d-file-copy b { overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.fs-d-file-copy small { overflow: hidden; color: var(--cpu-text-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.fs-d-file-copy b { overflow: hidden; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.fs-d-file-copy small { overflow: hidden; color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); text-overflow: ellipsis; white-space: nowrap; }
 .fs-d-file-actions { display: flex; flex: 0 0 auto; }
 .fs-d-file-actions .el-button,
 .fs-d-table td > .el-button { width: 30px; min-width: 30px; min-height: 30px; margin: 0; padding: 0; }

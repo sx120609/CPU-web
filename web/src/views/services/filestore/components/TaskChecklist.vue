@@ -42,11 +42,11 @@ const unexpected = computed(() => stats.value?.unexpected || []);
 
 <style scoped>
 .fs-check { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
-.fs-check-block { display: flex; min-width: 0; flex-direction: column; gap: 12px; padding: 14px; border: 1px solid var(--cpu-border-soft); border-radius: 14px; background: var(--cpu-surface-soft); }
+.fs-check-block { display: flex; min-width: 0; flex-direction: column; gap: 12px; padding: 14px; border: 1px solid var(--cpu-border-soft); border-radius: var(--cpu-radius-l); background: var(--cpu-surface-soft); }
 .fs-check-block header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .fs-check-block header > div { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
-.fs-check-block header b { font-size: 14px; font-weight: 650; }
-.fs-check-block header span { color: var(--cpu-text-muted); font-size: 12px; line-height: 1.5; }
+.fs-check-block header b { font-size: var(--cpu-fs-m); font-weight: 500; }
+.fs-check-block header span { color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); line-height: 1.5; }
 .fs-check-block header .el-button { flex: 0 0 auto; margin: 0; }
 .fs-check-chips { --tone: var(--cpu-warn); display: flex; flex-wrap: wrap; gap: 6px; }
 .fs-check-chips.is-info { --tone: #0284c7; }
@@ -55,20 +55,20 @@ const unexpected = computed(() => stats.value?.unexpected || []);
   align-items: baseline;
   gap: 5px;
   padding: 3px 9px;
-  border-radius: 999px;
+  border-radius: var(--cpu-radius-pill);
   background: color-mix(in srgb, var(--tone) 12%, var(--cpu-card));
   color: color-mix(in srgb, var(--tone) 85%, var(--cpu-text));
   font-family: var(--cpu-font-mono);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--cpu-fs-xs);
+  font-weight: 500;
 }
-.fs-check-chips small { color: var(--cpu-text-secondary); font-family: var(--cpu-font-sans); font-size: 11px; font-weight: 500; }
-.fs-check-empty { margin: 0; color: var(--cpu-text-muted); font-size: 12px; line-height: 1.6; }
+.fs-check-chips small { color: var(--cpu-text-secondary); font-family: var(--cpu-font-sans); font-size: var(--cpu-fs-xs); font-weight: 500; }
+.fs-check-empty { margin: 0; color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); line-height: 1.6; }
 
 @media (max-width: 960px) {
   .fs-check { grid-template-columns: minmax(0, 1fr); gap: 10px; }
 }
 @media (max-width: 768px) {
-  .fs-check-block { border-radius: 16px; background: var(--cpu-card); box-shadow: var(--cpu-shadow-sm); }
+  .fs-check-block { border-radius: var(--cpu-radius-l); background: var(--cpu-card); box-shadow: var(--cpu-shadow-sm); }
 }
 </style>

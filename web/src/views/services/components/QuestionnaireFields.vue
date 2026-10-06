@@ -122,14 +122,14 @@ function ratingRange(field: QuestionnaireField) {
   border-radius: 50%;
   background: var(--cpu-primary-soft);
   color: var(--cpu-primary);
-  font-size: 11px;
+  font-size: var(--cpu-fs-xs);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 .q-field-head div { min-width: 0; }
-.q-field-head b { color: var(--cpu-text); font-size: 14px; font-weight: 600; line-height: 1.6; overflow-wrap: anywhere; }
+.q-field-head b { color: var(--cpu-text); font-size: var(--cpu-fs-m); font-weight: 500; line-height: 1.6; overflow-wrap: anywhere; }
 .q-field-head em { margin-left: 3px; color: var(--cpu-danger); font-style: normal; }
-.q-field-head p { margin: 3px 0 0; color: var(--cpu-text-secondary); font-size: 12px; line-height: 1.6; }
+.q-field-head p { margin: 3px 0 0; color: var(--cpu-text-secondary); font-size: var(--cpu-fs-xs); line-height: 1.6; }
 
 .q-options { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
 .q-options :deep(.el-radio),
@@ -140,14 +140,14 @@ function ratingRange(field: QuestionnaireField) {
   width: 40px;
   height: 40px;
   border: 1px solid var(--cpu-border);
-  border-radius: 10px;
+  border-radius: var(--cpu-radius-m);
   background: var(--cpu-card);
   color: var(--cpu-text-secondary);
   font: inherit;
-  font-weight: 650;
+  font-weight: 500;
   cursor: pointer;
 }
 .q-rating button.active { border-color: transparent; background: var(--cpu-button-primary); color: var(--cpu-button-on-primary); }
 .q-rating button:disabled { opacity: .6; cursor: not-allowed; }
-.q-rating span { margin-left: 4px; color: var(--cpu-text-muted); font-size: 12px; }
+.q-rating span { margin-left: 4px; color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); }
 </style>

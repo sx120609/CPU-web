@@ -140,7 +140,7 @@ const {
   gap: 14px;
   padding: 14px 16px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 16px;
+  border-radius: var(--cpu-radius-l);
   background: var(--cpu-card);
   box-shadow: var(--cpu-shadow-sm);
   color: inherit;
@@ -150,8 +150,8 @@ const {
   transition: border-color .15s ease;
 }
 .svc-d-shortcut > span:nth-child(2) { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 2px; }
-.svc-d-shortcut b { font-size: 15px; font-weight: 650; }
-.svc-d-shortcut small { color: var(--cpu-text-secondary); font-size: 12px; line-height: 1.5; }
+.svc-d-shortcut b { font-size: var(--cpu-fs-m); font-weight: 500; }
+.svc-d-shortcut small { color: var(--cpu-text-secondary); font-size: var(--cpu-fs-xs); line-height: 1.5; }
 .svc-d-shortcut > .el-icon { flex: 0 0 auto; color: var(--cpu-text-muted); }
 @media (hover: hover) {
   .svc-d-shortcut:hover { border-color: color-mix(in srgb, var(--tone) 46%, var(--cpu-border-soft)); }
@@ -159,15 +159,15 @@ const {
 
 .svc-d-section { display: flex; min-width: 0; flex-direction: column; gap: 12px; }
 .svc-d-section-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; padding: 0 2px; }
-.svc-d-section-head .pk-h2 { font-size: 18px; }
+.svc-d-section-head .pk-h2 { font-size: var(--cpu-fs-l); }
 .svc-d-warning { align-items: center; justify-content: space-between; }
 .svc-d-tools { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 270px), 1fr)); gap: 12px; }
 .svc-d-tools[aria-busy="true"] { opacity: .72; }
 
 .svc-d-gate { display: flex; align-items: center; gap: 16px; }
 .svc-d-gate > div { min-width: 0; flex: 1; }
-.svc-d-gate h3 { margin: 0; font-size: 16px; font-weight: 650; }
-.svc-d-gate p { margin: 4px 0 0; color: var(--cpu-text-secondary); font-size: 13px; line-height: 1.7; }
+.svc-d-gate h3 { margin: 0; font-size: var(--cpu-fs-l); font-weight: 500; }
+.svc-d-gate p { margin: 4px 0 0; color: var(--cpu-text-secondary); font-size: var(--cpu-fs-s); line-height: 1.7; }
 .svc-d-gate > .el-button { flex: 0 0 auto; }
 
 .svc-d-links { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
@@ -179,14 +179,14 @@ const {
   gap: 8px;
   padding: 0 14px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 12px;
+  border-radius: var(--cpu-radius-l);
   background: var(--cpu-card);
   color: var(--cpu-text);
-  font-size: 14px;
+  font-size: var(--cpu-fs-m);
   text-decoration: none;
   transition: border-color .15s ease;
 }
 .svc-d-links a:hover { border-color: var(--cpu-primary); }
-.svc-d-links .cpu-app-icon { color: var(--cpu-primary); font-size: 18px; }
+.svc-d-links .cpu-app-icon { color: var(--cpu-primary); font-size: var(--cpu-fs-l); }
 .svc-d-links span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>

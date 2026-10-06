@@ -8,7 +8,7 @@
 }
 .admin-section {
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 10px;
+  border-radius: var(--cpu-radius-m);
   padding: 16px;
   background: var(--cpu-card);
 }
@@ -20,8 +20,8 @@
   gap: 12px;
   margin-bottom: 14px;
 }
-.section-head h3 { margin: 0; color: var(--cpu-text); font-size: 16px; }
-.section-head p { margin: 5px 0 0; color: var(--cpu-text-secondary); font-size: 13px; line-height: 1.6; }
+.section-head h3 { margin: 0; color: var(--cpu-text); font-size: var(--cpu-fs-l); }
+.section-head p { margin: 5px 0 0; color: var(--cpu-text-secondary); font-size: var(--cpu-fs-s); line-height: 1.6; }
 .questionnaire-summary {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -31,11 +31,11 @@
 .questionnaire-summary div {
   padding: 10px 12px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 8px;
+  border-radius: var(--cpu-radius-m);
   background: var(--cpu-surface-soft);
 }
-.questionnaire-summary b { display: block; color: var(--cpu-text); font-size: 20px; }
-.questionnaire-summary span { color: var(--cpu-text-secondary); font-size: 12px; }
+.questionnaire-summary b { display: block; color: var(--cpu-text); font-size: var(--cpu-fs-xl); }
+.questionnaire-summary span { color: var(--cpu-text-secondary); font-size: var(--cpu-fs-xs); }
 .grade-upload-panel {
   position: relative;
   display: flex;
@@ -43,19 +43,19 @@
   gap: 14px;
   padding: 16px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 10px;
+  border-radius: var(--cpu-radius-m);
   background: var(--cpu-surface-soft);
   margin-bottom: 14px;
 }
 .upload-copy h4 {
   margin: 0;
   color: var(--cpu-text);
-  font-size: 15px;
+  font-size: var(--cpu-fs-m);
 }
 .upload-copy p {
   margin: 5px 0 0;
   color: var(--cpu-text-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   line-height: 1.6;
 }
 .template-actions {
@@ -65,7 +65,7 @@
 }
 .template-actions :deep(.el-button) {
   height: 32px;
-  border-radius: 6px;
+  border-radius: var(--cpu-radius-s);
 }
 .field-rule-list {
   display: grid;
@@ -77,7 +77,7 @@
   min-width: 0;
   padding: 11px 12px;
   border: 1px solid var(--cpu-primary-soft);
-  border-radius: 8px;
+  border-radius: var(--cpu-radius-m);
   background: var(--cpu-card);
 }
 .field-rule-list b,
@@ -87,7 +87,7 @@
 }
 .field-rule-list b {
   color: var(--cpu-primary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   margin-bottom: 5px;
 }
 .field-rule-list span {
@@ -98,7 +98,7 @@
 .field-rule-list small {
   margin-top: 5px;
   color: var(--cpu-text-secondary);
-  font-size: 11px;
+  font-size: var(--cpu-fs-xs);
   line-height: 1.5;
 }
 .grade-form-grid {
@@ -111,7 +111,7 @@
 }
 .grade-uploader :deep(.el-upload-dragger) {
   padding: 24px 16px;
-  border-radius: 10px;
+  border-radius: var(--cpu-radius-m);
   background: var(--cpu-card);
 }
 .grade-uploader :deep(.el-icon) {
@@ -119,7 +119,7 @@
 }
 .grade-preview-box {
   border: 1px solid var(--cpu-primary-soft);
-  border-radius: 10px;
+  border-radius: var(--cpu-radius-m);
   padding: 12px;
   background: var(--cpu-card);
 }
@@ -144,7 +144,7 @@
 }
 .grade-preview-head span {
   color: var(--cpu-text-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
 }
 .grade-columns {
   display: flex;
@@ -156,13 +156,13 @@
   width: 100%;
   overflow-x: auto;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 8px;
+  border-radius: var(--cpu-radius-m);
 }
 .grade-preview-table {
   width: 100%;
   min-width: 620px;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
 }
 .grade-preview-table th,
 .grade-preview-table td {
@@ -175,7 +175,7 @@
 .grade-preview-table th {
   color: var(--cpu-text-secondary);
   background: var(--cpu-surface-soft);
-  font-weight: 650;
+  font-weight: 500;
 }
 .questionnaire-list-cards {
   display: flex;
@@ -190,7 +190,7 @@
   align-items: center;
   padding: 14px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 10px;
+  border-radius: var(--cpu-radius-m);
   background: var(--cpu-card);
   min-width: 0;
   overflow: hidden;
@@ -202,8 +202,8 @@
   gap: 8px;
 }
 .q-title-cell { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.q-title-cell b { color: var(--cpu-text); font-size: 15px; overflow-wrap: anywhere; line-height: 1.45; }
-.q-title-cell span { color: var(--cpu-text-muted); font-size: 12px; word-break: break-all; }
+.q-title-cell b { color: var(--cpu-text); font-size: var(--cpu-fs-m); overflow-wrap: anywhere; line-height: 1.45; }
+.q-title-cell span { color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); word-break: break-all; }
 .q-row-tags,
 .q-row-meta,
 .q-row-actions {
@@ -215,7 +215,7 @@
 }
 .q-row-meta {
   color: var(--cpu-text-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
 }
 .q-row-meta span {
   display: inline-flex;
@@ -237,11 +237,11 @@
 }
 
 /* 列表区：统计卡、问卷卡片和空状态的统一样式。 */
-.admin-section { border-radius: 14px; }
+.admin-section { border-radius: var(--cpu-radius-l); }
 .questionnaire-summary { gap: 10px; }
-.questionnaire-summary div { padding: 12px 14px; border-radius: 12px; }
-.questionnaire-summary b { font-size: 22px; font-variant-numeric: tabular-nums; line-height: 1.2; }
-.questionnaire-row-card { border-radius: 14px; transition: border-color .15s ease; }
-.questionnaire-row-card:hover { border-color: color-mix(in srgb, var(--cpu-primary) 34%, var(--cpu-border-soft)); }
-.q-title-cell span { font-family: var(--cpu-font-mono); font-size: 11px; }
-.empty-panel { border-radius: 12px; }
+.questionnaire-summary div { padding: 12px 14px; border-radius: var(--cpu-radius-l); }
+.questionnaire-summary b { font-size: var(--cpu-fs-xl); font-variant-numeric: tabular-nums; line-height: 1.2; }
+.questionnaire-row-card { border-radius: var(--cpu-radius-l); transition: border-color .15s ease; }
+.questionnaire-row-card:hover { border-color: var(--cpu-border-soft); }
+.q-title-cell span { font-family: var(--cpu-font-mono); font-size: var(--cpu-fs-xs); }
+.empty-panel { border-radius: var(--cpu-radius-l); }

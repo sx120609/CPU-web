@@ -230,7 +230,7 @@ onMounted(async () => {
   gap: 10px;
 
   .el-icon {
-    font-size: 20px;
+    font-size: var(--cpu-fs-xl);
     color: var(--cpu-primary);
   }
 
@@ -242,7 +242,7 @@ onMounted(async () => {
 
   small {
     color: var(--cpu-text-secondary);
-    font-size: 12px;
+    font-size: var(--cpu-fs-xs);
   }
 }
 
@@ -296,7 +296,7 @@ onMounted(async () => {
   flex: none;
   width: 34px;
   height: 34px;
-  border-radius: 10px;
+  border-radius: var(--cpu-radius-m);
   color: var(--cpu-primary);
   background: var(--cpu-primary-soft);
 }
@@ -307,7 +307,7 @@ onMounted(async () => {
   gap: 5px;
   padding: 5px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 13px;
+  border-radius: var(--cpu-radius-l);
   background: var(--cpu-surface-soft);
 
   button {
@@ -319,7 +319,7 @@ onMounted(async () => {
     min-height: 58px;
     padding: 9px 10px;
     border: 1px solid transparent;
-    border-radius: 9px;
+    border-radius: var(--cpu-radius-m);
     background: transparent;
     color: var(--cpu-text-secondary);
     cursor: pointer;
@@ -334,27 +334,26 @@ onMounted(async () => {
 
     strong {
       color: inherit;
-      font-size: 13.5px;
+      font-size: var(--cpu-fs-s);
     }
 
     small {
       overflow: hidden;
       color: var(--cpu-text-muted);
-      font-size: 10.5px;
+      font-size: var(--cpu-fs-xs);
       line-height: 1.35;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
 
     &.active {
-      border-color: color-mix(in srgb, var(--cpu-primary) 22%, var(--cpu-border-soft));
+      border-color: var(--cpu-border-soft);
       background: var(--cpu-surface);
       color: var(--cpu-primary-dark);
-      box-shadow: 0 3px 10px rgba(29, 55, 49, 0.06);
     }
 
     &:focus-visible {
-      outline: 2px solid color-mix(in srgb, var(--cpu-primary) 55%, transparent);
+      outline: 2px solid var(--cpu-primary-soft);
       outline-offset: 1px;
     }
   }
@@ -366,10 +365,10 @@ onMounted(async () => {
   flex: none;
   width: 32px;
   height: 32px;
-  border-radius: 9px;
+  border-radius: var(--cpu-radius-m);
   background: color-mix(in srgb, currentColor 10%, transparent);
-  font-size: 10px;
-  font-weight: 800;
+  font-size: var(--cpu-fs-xs);
+  font-weight: 700;
   letter-spacing: -0.3px;
 }
 
@@ -378,7 +377,7 @@ onMounted(async () => {
   gap: 13px;
   padding: 15px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 14px;
+  border-radius: var(--cpu-radius-l);
   background: var(--cpu-surface);
 }
 
@@ -396,30 +395,30 @@ onMounted(async () => {
 
   small {
     color: var(--cpu-primary);
-    font-size: 10px;
-    font-weight: 800;
+    font-size: var(--cpu-fs-xs);
+    font-weight: 700;
     letter-spacing: 0.08em;
   }
 
   strong {
     color: var(--cpu-text);
-    font-size: 16px;
+    font-size: var(--cpu-fs-l);
   }
 
   span {
     color: var(--cpu-text-secondary);
-    font-size: 12px;
+    font-size: var(--cpu-fs-xs);
     line-height: 1.55;
   }
 
   > code {
     flex: none;
     padding: 4px 7px;
-    border-radius: 999px;
+    border-radius: var(--cpu-radius-pill);
     background: var(--cpu-primary-soft);
     color: var(--cpu-primary-dark);
     font-family: var(--cpu-font-mono);
-    font-size: 10.5px;
+    font-size: var(--cpu-fs-xs);
     font-weight: 700;
   }
 }
@@ -436,9 +435,9 @@ onMounted(async () => {
   gap: 10px;
   padding: 9px 12px;
   border: 1px dashed var(--cpu-border);
-  border-radius: 10px;
+  border-radius: var(--cpu-radius-m);
   background: var(--cpu-surface-soft);
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
 
   > span {
     color: var(--cpu-text-secondary);
@@ -446,7 +445,7 @@ onMounted(async () => {
 
   code {
     font-family: var(--cpu-font-mono);
-    font-size: 15px;
+    font-size: var(--cpu-fs-m);
     font-weight: 700;
     letter-spacing: 2px;
     color: var(--cpu-primary-dark);
@@ -455,9 +454,9 @@ onMounted(async () => {
 
 .install-guide {
   padding: 12px 13px;
-  border: 1px solid color-mix(in srgb, var(--cpu-primary) 24%, var(--cpu-border-soft));
-  border-radius: 11px;
-  background: color-mix(in srgb, var(--cpu-primary) 5%, var(--cpu-surface));
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: var(--cpu-radius-m);
+  background: var(--cpu-primary-soft);
 
   .guide-title {
     display: flex;
@@ -467,11 +466,11 @@ onMounted(async () => {
     span {
       flex: none;
       padding: 3px 6px;
-      border-radius: 6px;
+      border-radius: var(--cpu-radius-s);
       background: var(--cpu-primary);
       color: #fff;
-      font-size: 10px;
-      font-weight: 800;
+      font-size: var(--cpu-fs-xs);
+      font-weight: 700;
       line-height: 1.35;
       white-space: nowrap;
     }
@@ -479,7 +478,7 @@ onMounted(async () => {
     strong {
       min-width: 0;
       color: var(--cpu-text);
-      font-size: 13px;
+      font-size: var(--cpu-fs-s);
       line-height: 1.45;
       overflow-wrap: anywhere;
     }
@@ -489,14 +488,14 @@ onMounted(async () => {
     margin: 9px 0 0;
     padding-left: 20px;
     color: var(--cpu-text-secondary);
-    font-size: 12px;
+    font-size: var(--cpu-fs-xs);
     line-height: 1.65;
   }
 
   p {
     margin: 7px 0 0;
     color: var(--cpu-text-muted);
-    font-size: 11.5px;
+    font-size: var(--cpu-fs-xs);
     line-height: 1.6;
   }
 }
@@ -504,7 +503,7 @@ onMounted(async () => {
 .platform-foot {
   margin: 0;
   color: var(--cpu-text-muted);
-  font-size: 11px;
+  font-size: var(--cpu-fs-xs);
   line-height: 1.5;
 }
 

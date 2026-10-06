@@ -12,7 +12,7 @@
 .inspector-card,
 .mobile-publish-card {
   border: 1px solid var(--builder-border);
-  border-radius: 8px;
+  border-radius: var(--cpu-radius-m);
   background: var(--cpu-card);
 }
 .type-palette {
@@ -38,13 +38,13 @@
 }
 .palette-title span {
   color: var(--cpu-text-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
 }
 .type-palette h4,
 .fields-head h4 {
   margin: 0;
   color: var(--cpu-text);
-  font-size: 16px;
+  font-size: var(--cpu-fs-l);
 }
 .type-palette button {
   display: flex;
@@ -54,7 +54,7 @@
   min-height: 58px;
   padding: 10px 11px;
   border: 1px solid var(--builder-border);
-  border-radius: 8px;
+  border-radius: var(--cpu-radius-m);
   background: var(--cpu-surface-soft);
   color: var(--cpu-text);
   cursor: pointer;
@@ -64,10 +64,9 @@
 }
 .type-palette button:hover {
   transform: translateY(-1px);
-  border-color: color-mix(in srgb, var(--cpu-primary) 36%, var(--cpu-border-soft));
+  border-color: var(--cpu-border-soft);
   color: var(--builder-primary);
   background: var(--builder-primary-soft);
-  box-shadow: 0 6px 16px rgba(38, 125, 255, 0.12);
 }
 .type-palette .el-icon {
   width: 30px;
@@ -75,10 +74,10 @@
   display: grid;
   place-items: center;
   flex: 0 0 auto;
-  border-radius: 7px;
+  border-radius: var(--cpu-radius-s);
   color: var(--builder-primary);
   background: var(--cpu-primary-soft);
-  font-size: 17px;
+  font-size: var(--cpu-fs-l);
 }
 .type-palette button span {
   display: flex;
@@ -86,8 +85,8 @@
   gap: 2px;
   min-width: 0;
 }
-.type-palette b { font-size: 13px; }
-.type-palette small { color: var(--cpu-text-muted); font-size: 11px; line-height: 1.35; }
+.type-palette b { font-size: var(--cpu-fs-s); }
+.type-palette small { color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); line-height: 1.35; }
 .mobile-publish-card {
   gap: 12px;
   padding: 14px;
@@ -108,16 +107,16 @@
 }
 .mobile-publish-head b {
   color: var(--cpu-text);
-  font-size: 15px;
+  font-size: var(--cpu-fs-m);
 }
 .mobile-publish-head span {
   color: var(--cpu-text-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
 }
 .mobile-publish-head strong {
   flex: 0 0 auto;
   color: var(--cpu-primary);
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
 }
 .mobile-publish-grid {
   display: grid;
@@ -162,11 +161,10 @@
   align-self: center;
   padding: 30px 34px 28px;
   border-top: 4px solid var(--builder-primary);
-  box-shadow: 0 12px 32px rgba(17, 24, 39, 0.08);
 }
 .cover-kicker {
   color: var(--builder-primary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   font-weight: 700;
   letter-spacing: 0;
   margin-bottom: 12px;
@@ -176,7 +174,7 @@
 .field-editor :deep(.el-form-item__label),
 .inspector-card :deep(.el-form-item__label) {
   color: var(--cpu-text-secondary);
-  font-weight: 600;
+  font-weight: 500;
 }
 .title-field :deep(.el-input__wrapper) {
   min-height: 48px;
@@ -190,12 +188,12 @@
 .title-field :deep(.el-input__inner) {
   height: 48px;
   color: var(--cpu-text);
-  font-size: 22px;
+  font-size: var(--cpu-fs-xl);
   font-weight: 700;
 }
 .editor-card :deep(.el-textarea__inner) {
   min-height: 86px !important;
-  border-radius: 8px;
+  border-radius: var(--cpu-radius-m);
   box-shadow: 0 0 0 1px var(--cpu-border-soft) inset;
 }
 .title-field { min-width: 0; }
@@ -213,7 +211,7 @@
 .fields-head > div { display: flex; gap: 8px; }
 .fields-head :deep(.el-button--primary.is-plain) {
   --el-button-bg-color: var(--cpu-card);
-  --el-button-border-color: color-mix(in srgb, var(--cpu-primary) 36%, var(--cpu-border-soft));
+  --el-button-border-color: var(--cpu-border-soft);
   --el-button-text-color: var(--builder-primary);
   --el-button-hover-bg-color: var(--builder-primary-soft);
   --el-button-hover-border-color: var(--builder-primary);
@@ -234,14 +232,12 @@
   padding: 20px 22px;
   background: var(--cpu-card);
   border-left: 4px solid transparent;
-  box-shadow: 0 8px 24px rgba(17, 24, 39, 0.055);
   transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
 }
 .field-editor:hover {
   transform: translateY(-1px);
-  border-color: color-mix(in srgb, var(--cpu-primary) 36%, var(--cpu-border-soft));
+  border-color: var(--cpu-border-soft);
   border-left-color: var(--builder-primary);
-  box-shadow: 0 12px 30px rgba(38, 125, 255, 0.13);
 }
 .field-editor.is-required {
   border-left-color: var(--builder-primary);
@@ -251,11 +247,11 @@
   height: 28px;
   display: grid;
   place-items: center;
-  border: 1px solid color-mix(in srgb, var(--cpu-primary) 36%, var(--cpu-border-soft));
-  border-radius: 999px;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: var(--cpu-radius-pill);
   color: var(--builder-primary);
   background: var(--builder-primary-soft);
-  font-size: 11px;
+  font-size: var(--cpu-fs-xs);
   font-weight: 700;
 }
 .field-editor-body { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
@@ -264,7 +260,7 @@
   align-items: center;
   gap: 8px;
   color: var(--cpu-text-muted);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
 }
 .field-meta-line span {
   color: var(--builder-primary);
@@ -272,10 +268,10 @@
 }
 .field-meta-line b {
   padding: 1px 7px;
-  border-radius: 999px;
+  border-radius: var(--cpu-radius-pill);
   color: var(--cpu-danger);
-  background: color-mix(in srgb, var(--cpu-danger) 9%, var(--cpu-card));
-  font-size: 11px;
+  background: var(--cpu-danger-soft);
+  font-size: var(--cpu-fs-xs);
 }
 .field-editor-main {
   display: grid;
@@ -286,7 +282,7 @@
 .field-editor :deep(.el-input__wrapper),
 .field-editor :deep(.el-select__wrapper),
 .inspector-card :deep(.el-select__wrapper) {
-  border-radius: 7px;
+  border-radius: var(--cpu-radius-s);
   box-shadow: 0 0 0 1px var(--cpu-border-soft) inset;
 }
 .field-editor :deep(.el-input__wrapper.is-focus),
@@ -314,7 +310,7 @@
   gap: 10px;
   padding: 12px;
   border: 1px solid var(--cpu-primary-soft);
-  border-radius: 8px;
+  border-radius: var(--cpu-radius-m);
   background: var(--cpu-surface-soft);
 }
 .branch-head {
@@ -325,13 +321,13 @@
 }
 .branch-head b {
   color: var(--cpu-primary-dark);
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
 }
 .branch-head span,
 .branch-editor p {
   margin: 0;
   color: var(--cpu-text-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   line-height: 1.5;
 }
 .branch-rule-list {
@@ -347,8 +343,8 @@
 .branch-rule-row > span {
   min-width: 0;
   color: var(--cpu-text);
-  font-size: 13px;
-  font-weight: 650;
+  font-size: var(--cpu-fs-s);
+  font-weight: 500;
   overflow-wrap: anywhere;
 }
 .branch-rule-row :deep(.el-select) {
@@ -369,23 +365,23 @@
   height: 28px;
   padding: 0 9px;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: var(--cpu-radius-s);
   color: var(--cpu-text-secondary);
   background: transparent;
   cursor: pointer;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   transition: all 0.16s ease;
 }
 .field-actions button:hover:not(:disabled) {
   color: var(--builder-primary);
-  border-color: color-mix(in srgb, var(--cpu-primary) 36%, var(--cpu-border-soft));
+  border-color: var(--cpu-border-soft);
   background: var(--builder-primary-soft);
 }
 .field-actions button.danger:hover:not(:disabled) {
   color: var(--cpu-danger);
-  border-color: color-mix(in srgb, var(--cpu-danger) 30%, var(--cpu-card));
-  background: color-mix(in srgb, var(--cpu-danger) 9%, var(--cpu-card));
+  border-color: var(--cpu-danger-soft);
+  background: var(--cpu-danger-soft);
 }
 .field-actions button:disabled {
   color: var(--cpu-border);
@@ -409,7 +405,7 @@
 .inspector-card h4 {
   margin: 0 0 14px;
   color: var(--cpu-text);
-  font-size: 16px;
+  font-size: var(--cpu-fs-l);
 }
 .inspector-card :deep(.el-select) { width: 100%; }
 .inspector-checks {
@@ -425,12 +421,12 @@
   padding: 10px 0;
   border-bottom: 1px solid var(--cpu-border-soft);
   color: var(--cpu-text-secondary);
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
 }
-.check-row b { color: var(--builder-primary); font-size: 18px; }
+.check-row b { color: var(--builder-primary); font-size: var(--cpu-fs-l); }
 .inspector-card p {
   margin: 12px 0 0;
   color: var(--cpu-text-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   line-height: 1.7;
 }

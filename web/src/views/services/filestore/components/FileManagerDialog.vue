@@ -85,25 +85,25 @@ function onRepair(command: "local" | "remote") {
 
 <style scoped>
 .fs-files-head { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
-.fs-files-head b { font-size: 17px; font-weight: 700; }
-.fs-files-head span { overflow: hidden; color: var(--cpu-text-secondary); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.fs-files-head b { font-size: var(--cpu-fs-l); font-weight: 700; }
+.fs-files-head span { overflow: hidden; color: var(--cpu-text-secondary); font-size: var(--cpu-fs-xs); text-overflow: ellipsis; white-space: nowrap; }
 .fs-files-tools { display: flex; gap: 8px; margin-bottom: 12px; }
 .fs-files-tools .el-input { flex: 1; }
 .fs-files-list {
   max-height: min(60vh, 560px);
   overflow-y: auto;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 12px;
+  border-radius: var(--cpu-radius-l);
 }
 .fs-files-row { display: flex; align-items: center; gap: 11px; padding: 10px 8px 10px 12px; border-bottom: 1px solid var(--cpu-border-soft); }
 .fs-files-row:last-child { border-bottom: 0; }
 .fs-files-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 2px; }
-.fs-files-copy b { overflow: hidden; font-size: 14px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.fs-files-copy span { overflow: hidden; color: var(--cpu-text-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.fs-files-copy b { overflow: hidden; font-size: var(--cpu-fs-m); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.fs-files-copy span { overflow: hidden; color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); text-overflow: ellipsis; white-space: nowrap; }
 .fs-files-actions { display: flex; flex: 0 0 auto; gap: 2px; }
 .fs-files-actions .el-button { width: 34px; min-width: 34px; margin: 0; padding: 0; }
-.fs-files-empty { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 36px 16px; color: var(--cpu-text-muted); font-size: 12px; }
-.fs-files-empty b { color: var(--cpu-text); font-size: 14px; }
+.fs-files-empty { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 36px 16px; color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); }
+.fs-files-empty b { color: var(--cpu-text); font-size: var(--cpu-fs-m); }
 :global(.fs-files-dialog.is-fullscreen .fs-files-list) { max-height: none; }
 :global(.fs-files-dialog.is-fullscreen .el-dialog__body) { padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
 

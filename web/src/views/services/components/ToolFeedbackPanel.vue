@@ -105,10 +105,10 @@ aside ul { display: grid; gap: 8px; margin: 14px 0 0; padding: 0; list-style: no
 aside li {
   padding: 8px 12px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 10px;
+  border-radius: var(--cpu-radius-m);
   background: var(--cpu-card);
   color: var(--cpu-text-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
 }
 @media (max-width: 860px) {
   .feedback-panel { grid-template-columns: minmax(0, 1fr); gap: 12px; }

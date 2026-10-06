@@ -27,7 +27,7 @@ defineProps<{ tool: ServiceTool; badge?: string; loginRequired?: boolean }>();
   gap: 12px;
   padding: 14px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 14px;
+  border-radius: var(--cpu-radius-l);
   background: var(--cpu-card);
   color: inherit;
   font: inherit;
@@ -44,9 +44,9 @@ defineProps<{ tool: ServiceTool; badge?: string; loginRequired?: boolean }>();
   }
 }
 .tool-card-d-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 4px; }
-.tool-card-d-copy b { display: flex; min-width: 0; align-items: center; gap: 8px; font-size: 15px; font-weight: 650; line-height: 1.4; }
+.tool-card-d-copy b { display: flex; min-width: 0; align-items: center; gap: 8px; font-size: var(--cpu-fs-m); font-weight: 500; line-height: 1.4; }
 .tool-card-d-copy b > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tool-card-d-copy small { color: var(--cpu-text-secondary); font-size: 12px; line-height: 1.55; }
+.tool-card-d-copy small { color: var(--cpu-text-secondary); font-size: var(--cpu-fs-xs); line-height: 1.55; }
 @media (prefers-reduced-motion: reduce) {
   .tool-card-d { transition: none; }
 }

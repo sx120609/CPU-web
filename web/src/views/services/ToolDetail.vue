@@ -135,7 +135,7 @@ onMounted(async () => {
 <style scoped>
 .tool-entry-rows { margin: 0 -4px; }
 .tool-entry-rows .pk-row { padding-inline: 4px; }
-.pk-row-end { display: inline-flex; align-items: center; gap: 2px; color: var(--cpu-primary); font-weight: 600; }
+.pk-row-end { display: inline-flex; align-items: center; gap: 2px; color: var(--cpu-primary); font-weight: 500; }
 .pk-empty { display: flex; flex-direction: column; align-items: center; gap: 6px; }
 
 @media (max-width: 560px) {

@@ -996,7 +996,7 @@ function errorMessage(error: unknown, fallback: string) {
 
 /* ---------- 外框 ---------- */
 .dm {
-  --dm-hover: transparent;
+  --dm-hover: color-mix(in srgb, var(--cpu-text) 5%, transparent);
   --dm-theirs: var(--cpu-surface-subtle);
   --dm-mine: var(--cpu-button-primary);
   --dm-mine-ink: var(--cpu-button-on-primary);

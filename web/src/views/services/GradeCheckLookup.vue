@@ -280,7 +280,7 @@ async function submitFeedback() {
 .record-panel,
 .feedback-panel {
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 12px;
+  border-radius: var(--cpu-radius-l);
   background: var(--cpu-card);
   overflow: hidden;
   box-shadow: var(--cpu-shadow-sm);
@@ -300,11 +300,11 @@ async function submitFeedback() {
 .panel-head h3 {
   margin: 0;
   color: var(--cpu-text);
-  font-size: 16px;
+  font-size: var(--cpu-fs-l);
 }
 .panel-head span {
   color: var(--cpu-text-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
 }
 .record-list {
   display: flex;
@@ -327,16 +327,16 @@ async function submitFeedback() {
 }
 .record-row span {
   color: var(--cpu-text-secondary);
-  font-size: 14px;
+  font-size: var(--cpu-fs-m);
   line-height: 1.6;
 }
 .record-row b {
   color: var(--cpu-text);
-  font-size: 16px;
+  font-size: var(--cpu-fs-l);
   text-align: right;
   word-break: break-word;
   line-height: 1.65;
-  font-weight: 650;
+  font-weight: 500;
 }
 .feedback-body {
   padding: 18px;
@@ -348,7 +348,7 @@ async function submitFeedback() {
 }
 .feedback-form :deep(.el-form-item__label) {
   color: var(--cpu-text);
-  font-weight: 650;
+  font-weight: 500;
 }
 .feedback-form :deep(.el-radio__label),
 .feedback-form :deep(.el-checkbox__label) {
@@ -356,7 +356,7 @@ async function submitFeedback() {
 }
 .feedback-form :deep(.el-input__wrapper),
 .feedback-form :deep(.el-textarea__inner) {
-  border-radius: 8px;
+  border-radius: var(--cpu-radius-m);
   box-shadow: 0 0 0 1px var(--cpu-border) inset;
 }
 .feedback-form :deep(.el-input__wrapper.is-focus),
@@ -381,12 +381,12 @@ async function submitFeedback() {
 }
 .feedback-actions :deep(.el-button) {
   min-width: 126px;
-  border-radius: 8px;
+  border-radius: var(--cpu-radius-m);
 }
 .feedback-loading {
   padding: 18px;
   color: var(--cpu-text-secondary);
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
 }
 .feedback-state {
   display: flex;
@@ -395,7 +395,7 @@ async function submitFeedback() {
   gap: 12px;
   padding: 18px;
   color: var(--cpu-text-secondary);
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
 }
 .feedback-state.error {
   color: var(--cpu-danger);

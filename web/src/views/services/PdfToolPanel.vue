@@ -668,33 +668,33 @@ function formatBytes(bytes: number) {
   grid-template-columns: 48px minmax(0, 1fr) auto;
   gap: 14px;
   align-items: center;
-  border: 1px solid #dbeafe;
-  background: #f8fbff;
-  border-radius: 10px;
+  border: 1px solid var(--cpu-surface-subtle);
+  background: var(--cpu-surface-soft);
+  border-radius: var(--cpu-radius-m);
   padding: 16px;
 }
 
 .pdf-login-panel > .el-icon {
   width: 48px;
   height: 48px;
-  border-radius: 12px;
+  border-radius: var(--cpu-radius-l);
   display: grid;
   place-items: center;
-  color: #2563eb;
-  background: #eff6ff;
-  font-size: 24px;
+  color: var(--cpu-text-secondary);
+  background: var(--cpu-surface-soft);
+  font-size: var(--cpu-fs-xl);
 }
 
 .pdf-login-panel h3 {
   margin: 0;
-  color: #111827;
-  font-size: 16px;
+  color: var(--cpu-text);
+  font-size: var(--cpu-fs-l);
 }
 
 .pdf-login-panel p {
   margin: 4px 0 0;
-  color: #64748b;
-  font-size: 13px;
+  color: var(--cpu-text-muted);
+  font-size: var(--cpu-fs-s);
 }
 
 .pdf-toolbar {
@@ -710,10 +710,10 @@ function formatBytes(bytes: number) {
   grid-template-rows: auto auto;
   gap: 4px 8px;
   align-items: center;
-  border: 1px solid #e5eaf3;
-  border-radius: 8px;
-  background: #fff;
-  color: #334155;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: var(--cpu-radius-m);
+  background: var(--cpu-card);
+  color: var(--cpu-text-secondary);
   cursor: pointer;
   font: inherit;
   text-align: left;
@@ -723,36 +723,35 @@ function formatBytes(bytes: number) {
 
 .mode-button:hover,
 .mode-button.active {
-  border-color: #0f766e;
-  box-shadow: 0 8px 20px rgba(15, 118, 110, 0.1);
+  border-color: var(--cpu-primary);
 }
 
 .mode-button.active {
-  background: #f0fdfa;
+  background: var(--cpu-primary-soft);
 }
 
 .mode-button .el-icon {
   grid-row: 1 / span 2;
   width: 28px;
   height: 28px;
-  border-radius: 8px;
+  border-radius: var(--cpu-radius-m);
   display: grid;
   place-items: center;
-  background: #f8fafc;
-  color: #0f766e;
-  font-size: 17px;
+  background: var(--cpu-surface-soft);
+  color: var(--cpu-primary);
+  font-size: var(--cpu-fs-l);
 }
 
 .mode-button span {
-  color: #0f172a;
-  font-size: 13px;
+  color: var(--cpu-text);
+  font-size: var(--cpu-fs-s);
   font-weight: 700;
   min-width: 0;
 }
 
 .mode-button small {
-  color: #94a3b8;
-  font-size: 11px;
+  color: var(--cpu-text-muted);
+  font-size: var(--cpu-fs-xs);
 }
 
 .pdf-workbench {
@@ -764,9 +763,9 @@ function formatBytes(bytes: number) {
 
 .upload-panel,
 .settings-panel {
-  border: 1px solid #e5eaf3;
-  border-radius: 10px;
-  background: #fff;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: var(--cpu-radius-m);
+  background: var(--cpu-card);
   padding: 14px;
 }
 
@@ -784,33 +783,33 @@ function formatBytes(bytes: number) {
   display: grid;
   place-items: center;
   gap: 7px;
-  border: 1px dashed #b7c7d8;
-  border-radius: 10px;
-  background: #f8fafc;
-  color: #475569;
+  border: 1px dashed var(--cpu-border);
+  border-radius: var(--cpu-radius-m);
+  background: var(--cpu-surface-soft);
+  color: var(--cpu-text-secondary);
   cursor: pointer;
   font: inherit;
   padding: 18px;
 }
 
 .drop-zone.dragging {
-  border-color: #0f766e;
-  background: #f0fdfa;
+  border-color: var(--cpu-primary);
+  background: var(--cpu-primary-soft);
 }
 
 .drop-zone .el-icon {
-  color: #0f766e;
+  color: var(--cpu-primary);
   font-size: 28px;
 }
 
 .drop-zone strong {
-  color: #0f172a;
-  font-size: 15px;
+  color: var(--cpu-text);
+  font-size: var(--cpu-fs-m);
 }
 
 .drop-zone span {
-  color: #64748b;
-  font-size: 12px;
+  color: var(--cpu-text-muted);
+  font-size: var(--cpu-fs-xs);
 }
 
 .file-list {
@@ -822,15 +821,15 @@ function formatBytes(bytes: number) {
 }
 
 .file-list.empty {
-  border: 1px dashed #e5eaf3;
-  border-radius: 8px;
+  border: 1px dashed var(--cpu-border-soft);
+  border-radius: var(--cpu-radius-m);
 }
 
 .file-empty {
   padding: 22px;
-  color: #94a3b8;
+  color: var(--cpu-text-muted);
   text-align: center;
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
 }
 
 .file-row {
@@ -840,9 +839,9 @@ function formatBytes(bytes: number) {
   align-items: center;
   min-height: 62px;
   padding: 9px;
-  border: 1px solid #edf2f7;
-  border-radius: 8px;
-  background: #fff;
+  border: 1px solid var(--cpu-surface-soft);
+  border-radius: var(--cpu-radius-m);
+  background: var(--cpu-card);
 }
 
 .file-kind {
@@ -850,16 +849,16 @@ function formatBytes(bytes: number) {
   height: 36px;
   display: grid;
   place-items: center;
-  border-radius: 8px;
-  color: #0f766e;
-  background: #ccfbf1;
-  font-size: 11px;
-  font-weight: 800;
+  border-radius: var(--cpu-radius-m);
+  color: var(--cpu-primary);
+  background: var(--cpu-primary-soft);
+  font-size: var(--cpu-fs-xs);
+  font-weight: 700;
 }
 
 .file-kind.image {
-  color: #92400e;
-  background: #fef3c7;
+  color: var(--cpu-accent);
+  background: var(--cpu-accent-soft);
 }
 
 .file-main {
@@ -869,16 +868,16 @@ function formatBytes(bytes: number) {
 }
 
 .file-main b {
-  color: #0f172a;
-  font-size: 13px;
+  color: var(--cpu-text);
+  font-size: var(--cpu-fs-s);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .file-main small {
-  color: #64748b;
-  font-size: 12px;
+  color: var(--cpu-text-muted);
+  font-size: var(--cpu-fs-xs);
 }
 
 .file-actions {
@@ -889,10 +888,10 @@ function formatBytes(bytes: number) {
 .file-actions button {
   width: 30px;
   height: 30px;
-  border: 1px solid #e5eaf3;
-  border-radius: 8px;
-  background: #fff;
-  color: #64748b;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: var(--cpu-radius-m);
+  background: var(--cpu-card);
+  color: var(--cpu-text-muted);
   cursor: pointer;
 }
 
@@ -912,29 +911,29 @@ function formatBytes(bytes: number) {
   gap: 12px;
   align-items: flex-start;
   padding-bottom: 12px;
-  border-bottom: 1px solid #eef2f7;
+  border-bottom: 1px solid var(--cpu-surface-soft);
 }
 
 .panel-heading h3 {
   margin: 0;
-  color: #0f172a;
-  font-size: 17px;
+  color: var(--cpu-text);
+  font-size: var(--cpu-fs-l);
 }
 
 .panel-heading p {
   margin: 5px 0 0;
-  color: #64748b;
-  font-size: 13px;
+  color: var(--cpu-text-muted);
+  font-size: var(--cpu-fs-s);
   line-height: 1.6;
 }
 
 .panel-heading > span {
   flex: 0 0 auto;
-  border-radius: 999px;
-  background: #fffbeb;
-  color: #b45309;
+  border-radius: var(--cpu-radius-pill);
+  background: var(--cpu-accent-soft);
+  color: var(--cpu-accent);
   padding: 5px 9px;
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   font-weight: 700;
 }
 
@@ -950,19 +949,19 @@ function formatBytes(bytes: number) {
 .control-grid label {
   display: grid;
   gap: 6px;
-  color: #334155;
-  font-size: 13px;
-  font-weight: 650;
+  color: var(--cpu-text-secondary);
+  font-size: var(--cpu-fs-s);
+  font-weight: 500;
 }
 
 .control-grid input,
 .control-grid select {
   width: 100%;
   min-height: 40px;
-  border: 1px solid #dbe3ed;
-  border-radius: 8px;
-  background: #fff;
-  color: #0f172a;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: var(--cpu-radius-m);
+  background: var(--cpu-card);
+  color: var(--cpu-text);
   font: inherit;
   padding: 8px 10px;
   outline: none;
@@ -970,8 +969,8 @@ function formatBytes(bytes: number) {
 
 .control-grid input:focus,
 .control-grid select:focus {
-  border-color: #0f766e;
-  box-shadow: 0 0 0 2px rgba(15, 118, 110, 0.11);
+  border-color: var(--cpu-primary);
+  box-shadow: 0 0 0 2px var(--cpu-primary-soft);
 }
 
 .run-button {
@@ -980,13 +979,13 @@ function formatBytes(bytes: number) {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  border: 1px solid #0f766e;
-  border-radius: 8px;
-  background: #0f766e;
+  border: 1px solid var(--cpu-primary);
+  border-radius: var(--cpu-radius-m);
+  background: var(--cpu-primary);
   color: #fff;
   cursor: pointer;
   font: inherit;
-  font-weight: 750;
+  font-weight: 700;
 }
 
 .run-button:disabled {
@@ -999,16 +998,16 @@ function formatBytes(bytes: number) {
   display: flex;
   gap: 8px;
   align-items: center;
-  border-radius: 8px;
-  background: #f8fafc;
-  color: #64748b;
+  border-radius: var(--cpu-radius-m);
+  background: var(--cpu-surface-soft);
+  color: var(--cpu-text-muted);
   padding: 10px 12px;
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
 }
 
 .result-strip.active {
-  color: #0f766e;
-  background: #f0fdfa;
+  color: var(--cpu-primary);
+  background: var(--cpu-primary-soft);
 }
 
 @media (max-width: 900px) {

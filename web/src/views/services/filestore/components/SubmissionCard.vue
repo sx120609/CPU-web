@@ -74,16 +74,16 @@ function onFileAction(action: string, file: FilestoreFile) {
 </script>
 
 <style scoped>
-.fs-sub { display: flex; flex-direction: column; gap: 10px; padding: 12px 12px 10px; border: 1px solid var(--cpu-border-soft); border-radius: 16px; background: var(--cpu-card); box-shadow: var(--cpu-shadow-sm); }
+.fs-sub { display: flex; flex-direction: column; gap: 10px; padding: 12px 12px 10px; border: 1px solid var(--cpu-border-soft); border-radius: var(--cpu-radius-l); background: var(--cpu-card); box-shadow: var(--cpu-shadow-sm); }
 .fs-sub header { display: flex; align-items: center; gap: 10px; }
-.fs-sub-avatar { display: grid; width: 34px; height: 34px; flex: 0 0 auto; place-items: center; border-radius: 50%; background: var(--cpu-primary-soft); color: var(--cpu-primary); font-size: 14px; font-weight: 700; }
+.fs-sub-avatar { display: grid; width: 34px; height: 34px; flex: 0 0 auto; place-items: center; border-radius: 50%; background: var(--cpu-primary-soft); color: var(--cpu-primary); font-size: var(--cpu-fs-m); font-weight: 700; }
 .fs-sub-who { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 1px; }
-.fs-sub-who b { overflow: hidden; font-size: 15px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
-.fs-sub-who span { overflow: hidden; color: var(--cpu-text-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.fs-sub-who b { overflow: hidden; font-size: var(--cpu-fs-m); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.fs-sub-who span { overflow: hidden; color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); text-overflow: ellipsis; white-space: nowrap; }
 .fs-sub header .el-button { width: 34px; margin: 0; padding: 0; }
 
-.fs-sub-fields { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 8px 10px; border-radius: 10px; background: var(--cpu-surface-soft); }
-.fs-sub-fields > div { display: flex; gap: 10px; font-size: 12px; line-height: 1.55; }
+.fs-sub-fields { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 8px 10px; border-radius: var(--cpu-radius-m); background: var(--cpu-surface-soft); }
+.fs-sub-fields > div { display: flex; gap: 10px; font-size: var(--cpu-fs-xs); line-height: 1.55; }
 .fs-sub-fields dt { width: 84px; flex: 0 0 auto; color: var(--cpu-text-muted); }
 .fs-sub-fields dd { min-width: 0; margin: 0; color: var(--cpu-text); overflow-wrap: anywhere; }
 
@@ -91,9 +91,9 @@ function onFileAction(action: string, file: FilestoreFile) {
 .fs-sub-files li { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
 .fs-sub-files li + li { border-top: 1px solid var(--cpu-border-soft); }
 .fs-sub-file-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 1px; }
-.fs-sub-file-copy b { overflow: hidden; font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.fs-sub-file-copy span { overflow: hidden; color: var(--cpu-text-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.fs-sub-file-copy b { overflow: hidden; font-size: var(--cpu-fs-s); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.fs-sub-file-copy span { overflow: hidden; color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); text-overflow: ellipsis; white-space: nowrap; }
 .fs-sub-files .el-button { width: 34px; margin: 0; padding: 0; }
-.fs-sub-ip { margin: 0; color: var(--cpu-text-muted); font-size: 11px; text-align: right; }
+.fs-sub-ip { margin: 0; color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); text-align: right; }
 :global(.fs-danger-item) { color: var(--cpu-danger) !important; }
 </style>

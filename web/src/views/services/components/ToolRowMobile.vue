@@ -52,31 +52,31 @@ const badgeTone = computed(() => toolBadgeTone(props.tool, Boolean(props.loginRe
   height: 38px;
   flex: 0 0 auto;
   place-items: center;
-  border-radius: 11px;
+  border-radius: var(--cpu-radius-m);
   background: color-mix(in srgb, var(--tone, var(--cpu-primary)) var(--tool-row-m-fill), var(--cpu-card));
   color: color-mix(in srgb, var(--tone, var(--cpu-primary)) var(--tool-row-m-ink), var(--cpu-text));
-  font-size: 20px;
+  font-size: var(--cpu-fs-xl);
 }
 
 .tool-row-m-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 2px; }
-.tool-row-m-copy b { display: flex; min-width: 0; align-items: center; gap: 7px; color: var(--cpu-text); font-size: 14px; font-weight: 600; line-height: 1.35; }
+.tool-row-m-copy b { display: flex; min-width: 0; align-items: center; gap: 7px; color: var(--cpu-text); font-size: var(--cpu-fs-m); font-weight: 500; line-height: 1.35; }
 .tool-row-m-copy b > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tool-row-m-copy em {
   --badge: var(--cpu-text-secondary);
   flex: 0 0 auto;
   padding: 1px 6px;
-  border-radius: 999px;
+  border-radius: var(--cpu-radius-pill);
   background: color-mix(in srgb, var(--badge) 12%, var(--cpu-card));
   color: color-mix(in srgb, var(--badge) 78%, var(--cpu-text));
-  font-size: 10px;
+  font-size: var(--cpu-fs-xs);
   font-style: normal;
-  font-weight: 550;
+  font-weight: 500;
 }
 .tool-row-m-copy em.is-open { --badge: var(--cpu-success); }
 .tool-row-m-copy em.is-login { --badge: var(--cpu-gold); }
 .tool-row-m-copy em.is-info { --badge: #0284c7; }
-.tool-row-m-copy small { color: var(--cpu-text-muted); font-size: 11px; line-height: 1.45; }
-.tool-row-m-arrow { flex: 0 0 auto; color: var(--cpu-text-muted); font-size: 14px; }
+.tool-row-m-copy small { color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); line-height: 1.45; }
+.tool-row-m-arrow { flex: 0 0 auto; color: var(--cpu-text-muted); font-size: var(--cpu-fs-m); }
 
 :global(html[data-theme="dark"] .tool-row-m) {
   --tool-row-m-fill: 20%;

@@ -21,10 +21,10 @@ const { detail, viewer } = useInjectedFilestoreWorkspace();
 
 <style scoped>
 .fs-rules { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 24px; margin: 0; }
-.fs-rules > div { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 12px; padding: 10px 2px; border-bottom: 1px dashed var(--cpu-border-soft); font-size: 13px; }
+.fs-rules > div { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 12px; padding: 10px 2px; border-bottom: 1px dashed var(--cpu-border-soft); font-size: var(--cpu-fs-s); }
 .fs-rules dt { color: var(--cpu-text-muted); }
 .fs-rules dd { display: flex; min-width: 0; align-items: center; gap: 6px; margin: 0; color: var(--cpu-text); overflow-wrap: anywhere; }
-.fs-rules code { padding: 1px 6px; border-radius: 6px; background: var(--cpu-surface-soft); font-family: var(--cpu-font-mono); font-size: 12px; }
+.fs-rules code { padding: 1px 6px; border-radius: var(--cpu-radius-s); background: var(--cpu-surface-soft); font-family: var(--cpu-font-mono); font-size: var(--cpu-fs-xs); }
 .fs-rules-dot { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; background: var(--cpu-success); }
 .fs-rules-dot.closed { background: var(--cpu-text-muted); }
 

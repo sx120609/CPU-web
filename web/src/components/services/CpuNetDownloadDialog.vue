@@ -133,15 +133,15 @@ onMounted(async () => {
   width: 44px;
   height: 44px;
   flex: 0 0 auto;
-  border-radius: 13px;
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.16), rgba(20, 184, 166, 0.12));
-  font-size: 24px;
+  border-radius: var(--cpu-radius-l);
+  background: var(--cpu-primary-soft);
+  font-size: var(--cpu-fs-xl);
 }
 
 .dialog-heading strong {
   display: block;
   color: var(--cpu-text);
-  font-size: 17px;
+  font-size: var(--cpu-fs-l);
   line-height: 1.35;
 }
 
@@ -155,11 +155,11 @@ onMounted(async () => {
 .dialog-badges span {
   padding: 2px 7px;
   border: 1px solid rgba(59, 130, 246, 0.24);
-  border-radius: 999px;
+  border-radius: var(--cpu-radius-pill);
   background: rgba(59, 130, 246, 0.08);
-  color: #2563eb;
-  font-size: 11px;
-  font-weight: 600;
+  color: var(--cpu-text-secondary);
+  font-size: var(--cpu-fs-xs);
+  font-weight: 500;
 }
 
 .download-intro {
@@ -171,7 +171,7 @@ onMounted(async () => {
 .download-intro p {
   margin: 0;
   color: var(--cpu-text-secondary);
-  font-size: 14px;
+  font-size: var(--cpu-fs-m);
   line-height: 1.7;
 }
 
@@ -181,7 +181,7 @@ onMounted(async () => {
   gap: 6px;
   padding: 5px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 12px;
+  border-radius: var(--cpu-radius-l);
   background: var(--cpu-surface-soft);
 }
 
@@ -192,7 +192,7 @@ onMounted(async () => {
   min-width: 0;
   padding: 10px 12px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: var(--cpu-radius-m);
   background: transparent;
   color: var(--cpu-text-secondary);
   cursor: pointer;
@@ -201,10 +201,9 @@ onMounted(async () => {
 }
 
 .platform-picker button.active {
-  border-color: color-mix(in srgb, var(--cpu-primary) 24%, var(--cpu-border-soft));
+  border-color: var(--cpu-border-soft);
   background: var(--cpu-surface);
   color: var(--cpu-primary-dark);
-  box-shadow: 0 2px 8px rgba(29, 55, 49, 0.06);
 }
 
 .platform-picker strong,
@@ -215,12 +214,12 @@ onMounted(async () => {
 }
 
 .platform-picker strong {
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
 }
 
 .platform-picker small {
   color: var(--cpu-text-muted);
-  font-size: 10.5px;
+  font-size: var(--cpu-fs-xs);
 }
 
 .package-card {
@@ -229,7 +228,7 @@ onMounted(async () => {
   gap: 12px;
   padding: 14px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 12px;
+  border-radius: var(--cpu-radius-l);
   background: var(--cpu-surface-soft);
 }
 
@@ -239,10 +238,10 @@ onMounted(async () => {
   width: 38px;
   height: 38px;
   flex: none;
-  border-radius: 10px;
+  border-radius: var(--cpu-radius-m);
   background: var(--cpu-primary-soft);
   color: var(--cpu-primary-dark);
-  font-size: 20px;
+  font-size: var(--cpu-fs-xl);
 }
 
 .package-card div {
@@ -257,27 +256,27 @@ onMounted(async () => {
 .package-card strong {
   overflow-wrap: anywhere;
   color: var(--cpu-text);
-  font-size: 14px;
+  font-size: var(--cpu-fs-m);
 }
 
 .package-card small {
   margin-top: 4px;
   color: var(--cpu-text-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
 }
 
 .platform-notice {
   padding: 11px 12px;
   border: 1px solid rgba(245, 158, 11, 0.25);
-  border-radius: 10px;
+  border-radius: var(--cpu-radius-m);
   background: rgba(245, 158, 11, 0.1);
-  color: #92400e;
-  font-size: 12px;
+  color: var(--cpu-accent);
+  font-size: var(--cpu-fs-xs);
   line-height: 1.65;
 }
 
 .project-note {
-  font-size: 12px !important;
+  font-size: var(--cpu-fs-xs) !important;
 }
 
 .dialog-actions {

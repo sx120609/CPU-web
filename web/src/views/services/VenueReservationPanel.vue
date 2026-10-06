@@ -172,7 +172,7 @@ async function shareVenueLink() {
 .venue-guide,
 .venue-qr-card {
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 12px;
+  border-radius: var(--cpu-radius-l);
   background: var(--cpu-card);
 }
 
@@ -182,8 +182,8 @@ async function shareVenueLink() {
 
 .guide-kicker {
   margin-bottom: 8px;
-  color: #0284c7;
-  font-size: 12px;
+  color: var(--cpu-text-secondary);
+  font-size: var(--cpu-fs-xs);
   font-weight: 700;
   letter-spacing: 0.04em;
 }
@@ -191,14 +191,14 @@ async function shareVenueLink() {
 .venue-guide h3 {
   margin: 0;
   color: var(--cpu-text);
-  font-size: 20px;
+  font-size: var(--cpu-fs-xl);
 }
 
 .venue-guide > p {
   max-width: 620px;
   margin: 10px 0 0;
   color: var(--cpu-text-secondary);
-  font-size: 14px;
+  font-size: var(--cpu-fs-m);
   line-height: 1.8;
 }
 
@@ -215,17 +215,17 @@ async function shareVenueLink() {
   gap: 8px;
   margin-top: 16px;
   padding: 12px 14px;
-  border-radius: 10px;
-  background: color-mix(in srgb, #0284c7 9%, var(--cpu-card));
+  border-radius: var(--cpu-radius-m);
+  background: var(--cpu-surface-soft);
   color: var(--cpu-text-secondary);
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
   line-height: 1.65;
 }
 
 .launch-tip .el-icon {
   flex: 0 0 auto;
   margin-top: 3px;
-  color: #0284c7;
+  color: var(--cpu-text-secondary);
 }
 
 .venue-link-row {
@@ -235,7 +235,7 @@ async function shareVenueLink() {
   margin-top: 18px;
   padding-top: 16px;
   border-top: 1px solid var(--cpu-border-soft);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
 }
 
 .venue-link-row span {
@@ -245,7 +245,7 @@ async function shareVenueLink() {
 .venue-link-row a {
   width: fit-content;
   max-width: 100%;
-  color: #0284c7;
+  color: var(--cpu-text-secondary);
   overflow-wrap: anywhere;
 }
 
@@ -265,8 +265,8 @@ async function shareVenueLink() {
   place-items: center;
   padding: 10px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 14px;
-  background: #fff;
+  border-radius: var(--cpu-radius-l);
+  background: var(--cpu-card);
 }
 
 .qr-frame img {
@@ -277,28 +277,28 @@ async function shareVenueLink() {
 }
 
 .qr-loading {
-  color: #0284c7;
+  color: var(--cpu-text-secondary);
   font-size: 28px;
   animation: venue-spin 0.9s linear infinite;
 }
 
 .qr-error {
   padding: 18px;
-  color: #64748b;
-  font-size: 13px;
+  color: var(--cpu-text-muted);
+  font-size: var(--cpu-fs-s);
   line-height: 1.6;
 }
 
 .venue-qr-card strong {
   margin-top: 14px;
   color: var(--cpu-text);
-  font-size: 15px;
+  font-size: var(--cpu-fs-m);
 }
 
 .venue-qr-card > span {
   margin-top: 5px;
   color: var(--cpu-text-muted);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
 }
 
 @keyframes venue-spin {

@@ -68,13 +68,13 @@ const feedbackTool = computed(() => visibleTools.value.find((tool) => tool.slug 
   align-items: center;
   gap: 3px;
   color: var(--cpu-text-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   text-decoration: none;
 }
 .tools-m-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .tools-m-title > div { min-width: 0; }
-.tools-m-title h1 { margin: 0; font-size: 22px; font-weight: 700; line-height: 1.3; letter-spacing: -.01em; }
-.tools-m-title p { margin: 3px 0 0; color: var(--cpu-text-muted); font-size: 12px; }
+.tools-m-title h1 { margin: 0; font-size: var(--cpu-fs-xl); font-weight: 700; line-height: 1.3; letter-spacing: -.01em; }
+.tools-m-title p { margin: 3px 0 0; color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); }
 .tools-m-manage {
   display: inline-flex;
   min-height: 36px;
@@ -83,12 +83,12 @@ const feedbackTool = computed(() => visibleTools.value.find((tool) => tool.slug 
   gap: 5px;
   padding: 0 13px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 999px;
+  border-radius: var(--cpu-radius-pill);
   background: var(--cpu-card);
   color: var(--cpu-primary);
   font: inherit;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--cpu-fs-s);
+  font-weight: 500;
   cursor: pointer;
 }
 .tools-m-manage:active { background: var(--cpu-surface-soft); }
@@ -100,11 +100,11 @@ const feedbackTool = computed(() => visibleTools.value.find((tool) => tool.slug 
   gap: 10px;
   margin: 0;
   padding: 8px 8px 8px 12px;
-  border: 1px solid color-mix(in srgb, var(--cpu-gold) 34%, transparent);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--cpu-gold) 12%, var(--cpu-card));
+  border: 1px solid var(--cpu-accent-soft);
+  border-radius: var(--cpu-radius-m);
+  background: var(--cpu-accent-soft);
   color: var(--cpu-text-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   line-height: 1.5;
 }
 .tools-m-warning button,
@@ -113,20 +113,20 @@ const feedbackTool = computed(() => visibleTools.value.find((tool) => tool.slug 
   background: transparent;
   color: var(--cpu-primary);
   font: inherit;
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
 }
-.tools-m-warning button { min-height: 30px; flex: 0 0 auto; padding: 0 10px; border-radius: 8px; }
+.tools-m-warning button { min-height: 30px; flex: 0 0 auto; padding: 0 10px; border-radius: var(--cpu-radius-m); }
 
 .tools-m-list {
   overflow: hidden;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 16px;
+  border-radius: var(--cpu-radius-l);
   background: var(--cpu-card);
   box-shadow: var(--cpu-shadow-sm);
 }
 .tools-m-list[aria-busy="true"] { opacity: .72; }
 
-.tools-m-foot { margin: 2px 0 0; color: var(--cpu-text-muted); font-size: 12px; text-align: center; }
+.tools-m-foot { margin: 2px 0 0; color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); text-align: center; }
 .tools-m-foot button { min-height: 32px; padding: 0 2px; }
 </style>

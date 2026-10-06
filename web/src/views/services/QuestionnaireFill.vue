@@ -184,7 +184,7 @@ async function submit() {
 .q-fill-form > .el-button { align-self: flex-start; min-width: 160px; }
 .q-fill-progress { display: flex; align-items: center; gap: 12px; }
 .q-fill-progress .el-progress { flex: 1; }
-.q-fill-progress span { flex: 0 0 auto; color: var(--cpu-text-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.q-fill-progress span { flex: 0 0 auto; color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); font-variant-numeric: tabular-nums; }
 @media (max-width: 560px) {
   .q-fill-form > .el-button { align-self: stretch; }
 }

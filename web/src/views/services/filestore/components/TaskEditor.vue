@@ -317,8 +317,8 @@ function go(step: number) {
   padding: calc(14px + var(--cpu-safe-area-inset-top, 0px)) 16px 10px 20px;
   background: var(--cpu-card);
 }
-.fs-ed-head small { color: var(--cpu-primary); font-size: 12px; font-weight: 600; }
-.fs-ed-head h2 { margin: 1px 0 0; font-size: 19px; font-weight: 700; }
+.fs-ed-head small { color: var(--cpu-primary); font-size: var(--cpu-fs-xs); font-weight: 500; }
+.fs-ed-head h2 { margin: 1px 0 0; font-size: var(--cpu-fs-xl); font-weight: 700; }
 
 .fs-ed-steps {
   display: grid;
@@ -335,15 +335,15 @@ function go(step: number) {
   gap: 7px;
   padding: 7px 8px;
   border: 0;
-  border-radius: 10px;
+  border-radius: var(--cpu-radius-m);
   background: transparent;
   color: var(--cpu-text-muted);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
   cursor: pointer;
 }
 .fs-ed-steps button:hover { background: var(--cpu-surface-soft); }
-.fs-ed-steps button.active { background: var(--cpu-primary-soft); color: var(--cpu-primary); font-weight: 650; }
+.fs-ed-steps button.active { background: var(--cpu-primary-soft); color: var(--cpu-primary); font-weight: 500; }
 .fs-ed-steps button.done { color: var(--cpu-text-secondary); }
 .fs-ed-step-num {
   display: grid;
@@ -353,7 +353,7 @@ function go(step: number) {
   place-items: center;
   border: 1.5px solid currentColor;
   border-radius: 50%;
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   font-weight: 700;
 }
 .fs-ed-steps button.active .fs-ed-step-num { border-color: var(--cpu-primary); background: var(--cpu-primary); color: #fff; }
@@ -362,11 +362,11 @@ function go(step: number) {
 
 .fs-ed-body { min-height: 0; flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 18px 20px 24px; }
 .fs-ed-section { display: flex; flex-direction: column; gap: 14px; }
-.fs-ed-guide { margin: 0; padding: 10px 12px; border-radius: 10px; background: var(--cpu-primary-soft); color: color-mix(in srgb, var(--cpu-primary) 70%, var(--cpu-text)); font-size: 13px; line-height: 1.6; }
+.fs-ed-guide { margin: 0; padding: 10px 12px; border-radius: var(--cpu-radius-m); background: var(--cpu-primary-soft); color: var(--cpu-primary); font-size: var(--cpu-fs-s); line-height: 1.6; }
 .fs-ed-field { display: flex; min-width: 0; flex-direction: column; gap: 6px; }
-.fs-ed-field > span { color: var(--cpu-text-secondary); font-size: 13px; font-weight: 600; }
+.fs-ed-field > span { color: var(--cpu-text-secondary); font-size: var(--cpu-fs-s); font-weight: 500; }
 .fs-ed-field > span em { margin-left: 2px; color: var(--cpu-danger); font-style: normal; }
-.fs-ed-field > span em.fs-ed-count { margin-left: 8px; padding: 1px 7px; border-radius: 999px; background: var(--cpu-primary-soft); color: var(--cpu-primary); font-size: 11px; }
+.fs-ed-field > span em.fs-ed-count { margin-left: 8px; padding: 1px 7px; border-radius: var(--cpu-radius-pill); background: var(--cpu-primary-soft); color: var(--cpu-primary); font-size: var(--cpu-fs-xs); }
 .fs-ed-field :deep(.el-date-editor),
 .fs-ed-field :deep(.el-input-number),
 .fs-ed-field :deep(.el-select) { width: 100%; }
@@ -387,38 +387,38 @@ function go(step: number) {
   gap: 12px;
   padding: 14px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 14px;
+  border-radius: var(--cpu-radius-l);
   background: var(--cpu-card);
   box-shadow: var(--cpu-shadow-sm);
 }
 .fs-ed-card > header,
 .fs-ed-card > footer { display: flex; align-items: center; gap: 8px; }
-.fs-ed-card > header b { font-size: 14px; font-weight: 650; }
-.fs-ed-card > header code { padding: 1px 6px; border-radius: 6px; background: var(--cpu-surface-soft); color: var(--cpu-text-secondary); font-family: var(--cpu-font-mono); font-size: 11px; }
+.fs-ed-card > header b { font-size: var(--cpu-fs-m); font-weight: 500; }
+.fs-ed-card > header code { padding: 1px 6px; border-radius: var(--cpu-radius-s); background: var(--cpu-surface-soft); color: var(--cpu-text-secondary); font-family: var(--cpu-font-mono); font-size: var(--cpu-fs-xs); }
 .fs-ed-card > header .el-button,
 .fs-ed-card > footer .el-button { margin: 0; }
 .fs-ed-spacer { flex: 1; }
 .fs-ed-add { align-self: flex-start; }
-.fs-ed-empty { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 26px 16px; border: 1px dashed var(--cpu-border); border-radius: 14px; color: var(--cpu-text-muted); font-size: 12px; }
-.fs-ed-empty b { color: var(--cpu-text); font-size: 14px; }
+.fs-ed-empty { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 26px 16px; border: 1px dashed var(--cpu-border); border-radius: var(--cpu-radius-l); color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); }
+.fs-ed-empty b { color: var(--cpu-text); font-size: var(--cpu-fs-m); }
 
 .fs-ed-tokens { display: flex; flex-wrap: wrap; gap: 6px; }
 .fs-ed-tokens button {
   min-height: 28px;
   padding: 0 10px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 999px;
+  border-radius: var(--cpu-radius-pill);
   background: var(--cpu-surface-soft);
   color: var(--cpu-text);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   cursor: pointer;
 }
 .fs-ed-tokens button:hover { border-color: var(--cpu-primary); color: var(--cpu-primary); }
 .fs-ed-tokens button.is-reset { border-style: dashed; color: var(--cpu-text-secondary); }
-.fs-ed-preview { margin: 0; padding: 8px 10px; border-radius: 8px; background: var(--cpu-surface-soft); color: var(--cpu-text); font-family: var(--cpu-font-mono); font-size: 12px; overflow-wrap: anywhere; }
+.fs-ed-preview { margin: 0; padding: 8px 10px; border-radius: var(--cpu-radius-m); background: var(--cpu-surface-soft); color: var(--cpu-text); font-family: var(--cpu-font-mono); font-size: var(--cpu-fs-xs); overflow-wrap: anywhere; }
 .fs-ed-preview span { margin-right: 8px; color: var(--cpu-text-muted); font-family: var(--cpu-font-sans); }
-.fs-ed-note { margin: 0; color: var(--cpu-text-muted); font-size: 12px; }
+.fs-ed-note { margin: 0; color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); }
 .fs-ed-note code { font-family: var(--cpu-font-mono); }
 
 .fs-ed-foot {
@@ -453,6 +453,6 @@ function go(step: number) {
   .fs-ed-foot-extra { justify-content: center; }
   /* 16px 以下 iOS 会在聚焦时放大页面 */
   .fs-ed-body :deep(.el-input__inner),
-  .fs-ed-body :deep(.el-textarea__inner) { font-size: 16px; }
+  .fs-ed-body :deep(.el-textarea__inner) { font-size: var(--cpu-fs-l); }
 }
 </style>

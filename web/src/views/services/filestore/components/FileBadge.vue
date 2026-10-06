@@ -23,7 +23,7 @@ const label = computed(() => (fileExt(props.name).slice(0, 4) || "FILE").toUpper
   background: color-mix(in srgb, var(--tone) 13%, var(--cpu-card));
   color: color-mix(in srgb, var(--tone) 88%, var(--cpu-text));
   font-size: calc(var(--size) * .27);
-  font-weight: 750;
+  font-weight: 700;
   letter-spacing: .02em;
   line-height: 1;
 }

@@ -71,7 +71,7 @@ const usernameModel = computed({
 <style scoped lang="scss">
 .admin-section {
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 10px;
+  border-radius: var(--cpu-radius-m);
   padding: 16px;
   background: var(--cpu-card);
 }
@@ -87,13 +87,13 @@ const usernameModel = computed({
 .section-head h3 {
   margin: 0;
   color: var(--cpu-text);
-  font-size: 16px;
+  font-size: var(--cpu-fs-l);
 }
 
 .section-head p {
   margin: 5px 0 0;
   color: var(--cpu-text-secondary);
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
   line-height: 1.6;
 }
 
@@ -116,7 +116,7 @@ const usernameModel = computed({
   gap: 10px;
   padding: 10px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 8px;
+  border-radius: var(--cpu-radius-m);
   background: var(--cpu-surface-subtle);
 }
 
@@ -134,7 +134,7 @@ const usernameModel = computed({
 
 .manager-row span {
   color: var(--cpu-text-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
 }
 
 @media (max-width: 760px) {

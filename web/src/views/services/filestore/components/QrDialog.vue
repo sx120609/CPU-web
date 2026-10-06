@@ -22,18 +22,18 @@ const { qrVisible, qrImageUrl, detail, submitUrl, copyLink } = useInjectedFilest
 
 <style scoped>
 .fs-qr { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
-.fs-qr img { width: 220px; height: 220px; margin-bottom: 6px; padding: 8px; border: 1px solid var(--cpu-border-soft); border-radius: 14px; background: #fff; }
-.fs-qr b { font-size: 15px; font-weight: 700; }
-.fs-qr p { margin: 0; color: var(--cpu-text-secondary); font-size: 12px; }
+.fs-qr img { width: 220px; height: 220px; margin-bottom: 6px; padding: 8px; border: 1px solid var(--cpu-border-soft); border-radius: var(--cpu-radius-l); background: var(--cpu-card); }
+.fs-qr b { font-size: var(--cpu-fs-m); font-weight: 700; }
+.fs-qr p { margin: 0; color: var(--cpu-text-secondary); font-size: var(--cpu-fs-xs); }
 .fs-qr code {
   max-width: 100%;
   margin-top: 4px;
   padding: 6px 10px;
-  border-radius: 8px;
+  border-radius: var(--cpu-radius-m);
   background: var(--cpu-surface-soft);
   color: var(--cpu-text-secondary);
   font-family: var(--cpu-font-mono);
-  font-size: 11px;
+  font-size: var(--cpu-fs-xs);
   overflow-wrap: anywhere;
 }
 </style>

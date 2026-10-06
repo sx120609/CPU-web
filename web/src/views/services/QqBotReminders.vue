@@ -275,7 +275,7 @@ function requestMessage(error: unknown) {
 .reminder-panel {
   background: var(--cpu-card);
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 16px;
+  border-radius: var(--cpu-radius-l);
   box-shadow: var(--cpu-shadow-sm);
 }
 
@@ -294,7 +294,7 @@ function requestMessage(error: unknown) {
   justify-content: space-between;
   gap: 12px;
   padding: 14px 16px;
-  border-radius: 8px;
+  border-radius: var(--cpu-radius-m);
   background: rgba(16, 185, 129, 0.14);
   border: 1px solid rgba(16, 185, 129, 0.28);
   color: var(--cpu-text);
@@ -314,7 +314,7 @@ function requestMessage(error: unknown) {
 }
 
 .binding-strip span {
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
   color: var(--cpu-text-secondary);
 }
 
@@ -326,7 +326,7 @@ function requestMessage(error: unknown) {
 
 .reminder-item {
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 8px;
+  border-radius: var(--cpu-radius-m);
   padding: 16px;
   background: var(--cpu-card);
 }
@@ -347,16 +347,16 @@ function requestMessage(error: unknown) {
   align-items: center;
   height: 24px;
   padding: 0 8px;
-  border-radius: 6px;
+  border-radius: var(--cpu-radius-s);
   background: rgba(37, 99, 235, 0.12);
-  color: #2563eb;
-  font-size: 12px;
+  color: var(--cpu-text-secondary);
+  font-size: var(--cpu-fs-xs);
   font-weight: 700;
 }
 
 .item-title h3 {
   margin: 8px 0 6px;
-  font-size: 18px;
+  font-size: var(--cpu-fs-l);
   line-height: 1.35;
   color: var(--cpu-text);
 }
@@ -366,7 +366,7 @@ function requestMessage(error: unknown) {
   flex-wrap: wrap;
   gap: 8px;
   color: var(--cpu-text-secondary);
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
 }
 
 .setting-grid {
@@ -385,7 +385,7 @@ function requestMessage(error: unknown) {
 
 .setting-block > span {
   color: var(--cpu-text-secondary);
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
   font-weight: 700;
 }
 

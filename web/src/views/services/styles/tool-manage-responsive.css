@@ -50,10 +50,10 @@
     white-space: nowrap;
   }
   .builder-titlebar b {
-    font-size: 16px;
+    font-size: var(--cpu-fs-l);
   }
   .builder-titlebar span {
-    font-size: 11px;
+    font-size: var(--cpu-fs-xs);
   }
   .builder-back {
     width: 40px;
@@ -98,7 +98,6 @@
     border-bottom: 1px solid var(--cpu-border-soft);
     border-radius: 0;
     background: rgba(246, 248, 251, 0.96);
-    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
     scrollbar-width: none;
   }
   .type-palette::-webkit-scrollbar {
@@ -110,7 +109,7 @@
     min-height: 48px;
     gap: 7px;
     padding: 8px;
-    border-radius: 8px;
+    border-radius: var(--cpu-radius-m);
   }
   .type-palette button:hover {
     transform: none;
@@ -119,10 +118,10 @@
   .type-palette .el-icon {
     width: 28px;
     height: 28px;
-    font-size: 16px;
+    font-size: var(--cpu-fs-l);
   }
   .type-palette b {
-    font-size: 12px;
+    font-size: var(--cpu-fs-xs);
   }
   .type-palette small {
     display: none;
@@ -157,7 +156,7 @@
   }
   .title-field :deep(.el-input__inner) {
     height: 42px;
-    font-size: 18px;
+    font-size: var(--cpu-fs-l);
   }
   .fields-head {
     margin-top: 0;
@@ -211,7 +210,7 @@
     gap: 6px;
     padding: 8px;
     border: 1px solid var(--cpu-border-soft);
-    border-radius: 8px;
+    border-radius: var(--cpu-radius-m);
     background: var(--cpu-card);
   }
   .field-actions {
@@ -241,8 +240,8 @@
   .builder-mobile-savebar :deep(.el-button) {
     height: 42px;
     margin-left: 0;
-    border-radius: 8px;
-    font-weight: 650;
+    border-radius: var(--cpu-radius-m);
+    font-weight: 500;
   }
 }
 @media (max-width: 700px) {

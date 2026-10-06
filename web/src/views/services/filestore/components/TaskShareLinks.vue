@@ -34,7 +34,7 @@ const links = computed(() => [
   gap: 4px;
   padding: 8px 14px 12px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 16px;
+  border-radius: var(--cpu-radius-l);
   background: var(--cpu-card);
   box-shadow: var(--cpu-shadow-sm);
 }
@@ -46,16 +46,16 @@ const links = computed(() => [
   height: 34px;
   flex: 0 0 auto;
   place-items: center;
-  border-radius: 10px;
+  border-radius: var(--cpu-radius-m);
   background: color-mix(in srgb, var(--tone) var(--fs-tile-fill), var(--cpu-card));
   color: color-mix(in srgb, var(--tone) var(--fs-tile-ink), var(--cpu-text));
-  font-size: 17px;
+  font-size: var(--cpu-fs-l);
 }
 .fs-share-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 1px; }
-.fs-share-copy b { font-size: 13px; font-weight: 650; }
-.fs-share-copy a { overflow: hidden; color: var(--cpu-text-secondary); font-family: var(--cpu-font-mono); font-size: 12px; text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
+.fs-share-copy b { font-size: var(--cpu-fs-s); font-weight: 500; }
+.fs-share-copy a { overflow: hidden; color: var(--cpu-text-secondary); font-family: var(--cpu-font-mono); font-size: var(--cpu-fs-xs); text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
 .fs-share-copy a:hover { color: var(--cpu-primary); text-decoration: underline; }
 .fs-share-row .el-button { flex: 0 0 auto; margin: 0; }
-.fs-share-note { margin: 4px 0 0; color: var(--cpu-text-muted); font-size: 11px; line-height: 1.6; }
+.fs-share-note { margin: 4px 0 0; color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); line-height: 1.6; }
 :global(html[data-theme="dark"] .fs-share) { --fs-tile-fill: 20%; --fs-tile-ink: 46%; }
 </style>
