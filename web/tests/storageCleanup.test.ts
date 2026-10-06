@@ -2,8 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { isJwxtDataCacheKey } from "../src/utils/jwxtCache";
 import {
+  clearNativeStorage,
   formatBytes,
+  hasNativeStorageBridge,
   isPageCacheKey,
+  measureNativeStorage,
   parseNativeStorageUsage,
   removeStorageKeys,
   storageBytes,
@@ -78,6 +81,40 @@ test("removing a category leaves every other key in place", () => {
   assert.equal(removeStorageKeys(storage, isPageCacheKey), 2);
   assert.equal(removeStorageKeys(storage, isJwxtDataCacheKey), 1);
   assert.deepEqual(storage.keys().sort(), [...KEPT_KEYS].sort());
+});
+
+test("the Android string bridge and the Harmony promise bridge are both awaited", async () => {
+  const usage = { categories: [{ id: "network", bytes: 1 }, { id: "temp", bytes: 2 }], totalBytes: 3 };
+  const cleared = { categories: [{ id: "network", bytes: 0 }, { id: "temp", bytes: 2 }], totalBytes: 2 };
+  const host = globalThis as unknown as { window?: Record<string, unknown> };
+  const previous = host.window;
+  try {
+    const calls: string[] = [];
+    host.window = { CPUAndroid: {
+      getStorageUsage: () => JSON.stringify(usage),
+      clearStorage: (categories: string) => { calls.push(categories); return JSON.stringify(cleared); },
+    } };
+    assert.equal(hasNativeStorageBridge(), true);
+    assert.deepEqual(await measureNativeStorage(), usage);
+    assert.deepEqual(await clearNativeStorage(["network"]), cleared);
+    assert.deepEqual(calls, ['["network"]']);
+
+    host.window = { CPUHarmony: {
+      getStorageUsage: async () => JSON.stringify(usage),
+      clearStorage: async () => JSON.stringify(cleared),
+    } };
+    assert.deepEqual(await measureNativeStorage(), usage);
+    assert.deepEqual(await clearNativeStorage(["network", "temp"]), cleared);
+
+    host.window = { CPUHarmony: { getStorageUsage: async () => { throw new Error("gone"); }, clearStorage: async () => "" } };
+    assert.equal(await measureNativeStorage(), null);
+    assert.equal(await clearNativeStorage(["temp"]), null);
+
+    host.window = { CPUHarmony: { getVersionName: () => "3.0.2" } };
+    assert.equal(hasNativeStorageBridge(), false);
+  } finally {
+    host.window = previous;
+  }
 });
 
 test("native usage accepts the Android JSON string and the iOS reply object", () => {

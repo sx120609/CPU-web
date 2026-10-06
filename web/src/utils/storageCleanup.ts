@@ -125,15 +125,15 @@ export async function clearWebStorage(id: WebStorageCategoryId): Promise<void> {
   if (session) safely(() => removeStorageKeys(session, isSessionCacheKey), 0);
 }
 
-type SyncStorageBridge = {
-  getStorageUsage?: () => string;
-  clearStorage?: (categories: string) => string;
+type ObjectStorageBridge = {
+  getStorageUsage?: () => string | Promise<string>;
+  clearStorage?: (categories: string) => string | Promise<string>;
 };
 type IosStorageHandler = { postMessage: (message: unknown) => Promise<unknown> };
 
-// 安卓的 JavascriptInterface 是同步调用；鸿蒙以后接入时用同样的两个方法即可。
-function syncStorageBridge(): SyncStorageBridge | null {
-  const host = window as unknown as { CPUAndroid?: SyncStorageBridge; CPUHarmony?: SyncStorageBridge };
+// 安卓的 JavascriptInterface 同步返回字符串，鸿蒙返回 Promise；两边用同样的两个方法。
+function objectStorageBridge(): ObjectStorageBridge | null {
+  const host = window as unknown as { CPUAndroid?: ObjectStorageBridge; CPUHarmony?: ObjectStorageBridge };
   const bridge = host.CPUHarmony ?? host.CPUAndroid;
   return typeof bridge?.getStorageUsage === "function" && typeof bridge.clearStorage === "function" ? bridge : null;
 }
@@ -148,7 +148,7 @@ function iosStorageHandler(): IosStorageHandler | null {
 /** 当前客户端是否带有存储清理的原生桥；旧版客户端和浏览器只显示网页端分类。 */
 export function hasNativeStorageBridge() {
   if (typeof window === "undefined") return false;
-  return Boolean(iosStorageHandler() ?? syncStorageBridge());
+  return Boolean(iosStorageHandler() ?? objectStorageBridge());
 }
 
 const NATIVE_CATEGORY_IDS: NativeStorageCategoryId[] = ["network", "temp"];
@@ -182,9 +182,9 @@ async function callNative(action: "usage" | "clear", categories: NativeStorageCa
   try {
     const ios = iosStorageHandler();
     if (ios) return parseNativeStorageUsage(await ios.postMessage({ action, categories }));
-    const bridge = syncStorageBridge();
+    const bridge = objectStorageBridge();
     if (!bridge) return null;
-    return parseNativeStorageUsage(action === "usage" ? bridge.getStorageUsage!() : bridge.clearStorage!(JSON.stringify(categories)));
+    return parseNativeStorageUsage(await (action === "usage" ? bridge.getStorageUsage!() : bridge.clearStorage!(JSON.stringify(categories))));
   } catch {
     return null;
   }

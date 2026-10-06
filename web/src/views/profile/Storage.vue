@@ -240,6 +240,11 @@ async function clearSelected() {
     if (nativeTargets.length) {
       nativeUsage = await clearNativeStorage(nativeTargets);
       if (!nativeUsage) failed = true;
+      // WebView 的磁盘缓存是异步删除的；刚清完还有剩余时稍等再统计一次。
+      else if (nativeUsage.categories.some((item) => nativeTargets.includes(item.id) && item.bytes > 0)) {
+        await new Promise((resolve) => window.setTimeout(resolve, 900));
+        nativeUsage = undefined;
+      }
     }
     await measure(nativeUsage);
   } finally {
