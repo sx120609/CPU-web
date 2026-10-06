@@ -21,6 +21,9 @@ import android.widget.Toast;
 import org.json.JSONObject;
 
 import java.io.OutputStream;
+import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 public final class CpuAndroidBridge {
     private final MainActivity activity;
@@ -125,6 +128,46 @@ public final class CpuAndroidBridge {
     @JavascriptInterface
     public boolean downloadAndInstallApk(String url, String fileName) {
         return updates.start(url, fileName);
+    }
+
+    /** 网页“存储与缓存”页：WebView 网络缓存和临时文件的占用，格式见 StorageCleaner。 */
+    @JavascriptInterface
+    public String getStorageUsage() {
+        return StorageCleaner.usageJson(activity);
+    }
+
+    /** 清理选中的分类（JSON 数组，如 ["network","temp"]），返回清理后的占用。 */
+    @JavascriptInterface
+    public String clearStorage(String categories) {
+        Set<String> targets = StorageCleaner.parseCategories(categories);
+        if (targets.contains(StorageCleaner.TEMP)) {
+            StorageCleaner.clearTemp(activity.getCacheDir(), activity.getExternalCacheDir());
+        }
+        if (targets.contains(StorageCleaner.NETWORK)) clearWebViewCache();
+        return StorageCleaner.usageJson(activity);
+    }
+
+    /** WebView 只能在主线程操作；磁盘缓存由 Chromium 异步删除，稍等它删完再统计。 */
+    private void clearWebViewCache() {
+        long before = StorageCleaner.networkBytes(activity.getCacheDir());
+        CountDownLatch cleared = new CountDownLatch(1);
+        activity.runOnUiThread(() -> {
+            try {
+                activity.getWeb().getWebView().clearCache(true);
+            } catch (Exception ignored) {
+                // WebView 正在重建时跳过这次清理，占用照实返回。
+            } finally {
+                cleared.countDown();
+            }
+        });
+        try {
+            if (!cleared.await(2, TimeUnit.SECONDS)) return;
+            for (int attempt = 0; attempt < 15 && StorageCleaner.networkBytes(activity.getCacheDir()) > before / 2; attempt++) {
+                Thread.sleep(100);
+            }
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     /** The Web gallery hands previews to the native viewer when this returns true. */
