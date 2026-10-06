@@ -17,6 +17,12 @@ import {
   scheduleWidgetFallbackPayload,
 } from "../services/scheduleWidget";
 import { applyScheduleEditsToCells, normalizeScheduleEditsState } from "../shared/scheduleEdits";
+import {
+  MAX_SCHEDULE_PRIORITIES,
+  MAX_SCHEDULE_PRIORITY,
+  normalizeSchedulePriority,
+  resolveSavedSchedulePriority,
+} from "../shared/schedulePriority";
 import { scheduleData } from "../services/scheduleData";
 import { loadScheduleWidgetData } from "../services/scheduleWidgetData";
 import { scheduleWidgetSessions } from "../services/scheduleWidgetSession";
@@ -325,6 +331,10 @@ const scheduleEditItemSchema = z.object({
 const scheduleEditStateSchema = z.object({
   hidden: z.array(z.string().trim().min(1).max(180)).max(1200),
   custom: z.array(scheduleEditItemSchema).max(1200),
+  // 重叠课程的显示优先级，见 shared/schedulePriority.ts。旧客户端不带这个字段。
+  priority: z.record(z.string().trim().min(1).max(80), z.number().int().min(1).max(MAX_SCHEDULE_PRIORITY))
+    .refine((value) => Object.keys(value).length <= MAX_SCHEDULE_PRIORITIES, "优先级条目过多")
+    .optional(),
 });
 
 const scheduleWidgetTokenSchema = z.object({
@@ -336,7 +346,9 @@ function emptyScheduleEdits() {
 }
 
 function normalizeScheduleEdits(input: unknown) {
-  return normalizeScheduleEditsState(scheduleEditStateSchema.parse(input));
+  const parsed = scheduleEditStateSchema.parse(input);
+  const priority = normalizeSchedulePriority(parsed.priority);
+  return { ...normalizeScheduleEditsState(parsed), ...(priority ? { priority } : {}) };
 }
 
 function ensureEditClient(req: any) {
@@ -887,9 +899,15 @@ jwxtRouter.put(
     try {
       ensureEditClient(req);
       const semester = String(req.body.semester || "").trim() || "current";
-      const edits = normalizeScheduleEdits(req.body.edits);
+      const where = { userId_semester: { userId: req.user.userId, semester } };
+      const { priority: incomingPriority, ...state } = normalizeScheduleEdits(req.body.edits);
+      const stored = incomingPriority ? null : await prisma.userScheduleEdit.findUnique({ where, select: { payload: true } });
+      let storedPriority: unknown;
+      try { storedPriority = stored?.payload ? JSON.parse(stored.payload)?.priority : undefined; } catch { storedPriority = undefined; }
+      const priority = resolveSavedSchedulePriority(incomingPriority, storedPriority);
+      const edits = priority ? { ...state, priority } : state;
       await prisma.userScheduleEdit.upsert({
-        where: { userId_semester: { userId: req.user.userId, semester } },
+        where,
         create: {
           userId: req.user.userId,
           semester,

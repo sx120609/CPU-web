@@ -703,7 +703,7 @@
         <div class="share-preview-line"><span>课程</span><strong>{{ sharedCourseCount }} 门</strong></div>
       </template>
       <template v-else>
-        <p class="share-dialog-copy">分享已生成。链接包含发布时的校历快照，管理员后续修改不会影响这条链接。</p>
+        <p class="share-dialog-copy">分享已生成。链接包含发布时的课表和校历快照；课表有变化时再生成一次，链接不变、内容更新。</p>
         <div class="share-code">{{ shareResult.code }}</div>
         <el-input :model-value="shareUrl" readonly />
       </template>
@@ -2215,7 +2215,12 @@ async function createShare() {
       calendar: calendar.value,
     });
     await copyText(`${window.location.origin}/schedule/share/${shareResult.value.code}`);
-    ElMessage.success("分享链接已生成并复制");
+    // 每个学期只有一个分享码：再次生成是更新它的内容，链接不变。
+    ElMessage.success(
+      shareResult.value.created === false
+        ? (shareResult.value.changed ? "课表已更新，分享链接不变，已复制" : "分享内容已是最新，链接已复制")
+        : "分享链接已生成并复制",
+    );
   } catch {
     ElMessage.warning("分享课表失败，请稍后重试");
   } finally {

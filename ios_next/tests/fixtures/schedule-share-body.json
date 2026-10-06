@@ -1,0 +1,74 @@
+{
+  "calendar" : {
+    "adjustments" : [
+      {
+        "date" : "2026-09-12",
+        "kind" : "off"
+      }
+    ],
+    "currentSemester" : "2026-2027-1",
+    "currentWeek" : 1,
+    "periods" : [
+      {
+        "end" : "08:45",
+        "id" : 1,
+        "name" : "第1节",
+        "start" : "08:00"
+      }
+    ],
+    "semesterEnd" : "2026-09-20",
+    "semesterStart" : "2026-09-07",
+    "weeks" : [
+      {
+        "days" : [
+          "2026-09-07",
+          "2026-09-08",
+          "2026-09-09",
+          "2026-09-10",
+          "2026-09-11",
+          "2026-09-12",
+          "2026-09-13"
+        ],
+        "monday" : "2026-09-07",
+        "sunday" : "2026-09-13",
+        "week" : 1
+      }
+    ]
+  },
+  "ownerName" : "阿青",
+  "schedule" : {
+    "cells" : [
+      {
+        "bigSlot" : 1,
+        "courses" : [
+          {
+            "endSlot" : 2,
+            "name" : "药理学",
+            "startSlot" : 1,
+            "teacher" : "王老师",
+            "weekList" : [
+              1,
+              2
+            ],
+            "weeks" : "1-2周"
+          }
+        ],
+        "day" : 1
+      }
+    ],
+    "currentSemester" : "2026-2027-1",
+    "currentWeek" : "1",
+    "scope" : "semester",
+    "semesters" : [
+
+    ],
+    "weeks" : [
+      {
+        "current" : false,
+        "label" : "第 1 周",
+        "value" : "1"
+      }
+    ]
+  },
+  "semester" : "2026-2027-1"
+}
