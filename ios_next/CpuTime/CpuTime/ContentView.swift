@@ -191,8 +191,30 @@ struct ContentView: View {
         }
         NativeScheduleSharingService.shared.connect(to: scheduleStore)
     }
+
+    /// The sample timetable on its own, or with `CPU_DEBUG_MOCK_TABS=1` inside
+    /// the same tab bar as the signed-in shell, so a screenshot of it looks
+    /// like the app does. The other tabs are web pages and stay empty here.
+    @ViewBuilder
+    private var debugMockScheduleView: some View {
+        if ProcessInfo.processInfo.environment["CPU_DEBUG_MOCK_TABS"] == "1" {
+            TabView(selection: .constant(ShellTab.schedule)) {
+                ForEach([ShellTab.home, .academic, .schedule, .services, .profile], id: \.self) { tab in
+                    Group {
+                        if tab == .schedule { NativeScheduleView(store: scheduleStore) } else { Color.clear }
+                    }
+                    .tabItem { Label(tab.label, systemImage: tab.systemImage) }
+                    .tag(tab)
+                }
+            }
+            .tint(.cpuBrand)
+        } else {
+            NativeScheduleView(store: scheduleStore)
+        }
+    }
 #else
     private func connectDebugShareAPI() {}
+    private var debugMockScheduleView: some View { NativeScheduleView(store: scheduleStore) }
 #endif
 
     /// The login gate is a root-view swap, not a hidden tab bar: while it is
@@ -209,7 +231,7 @@ struct ContentView: View {
                     await webSession.assistantModel.loadHistory(using: webSession)
                 }
         } else if debugMockSchedule {
-            NativeScheduleView(store: scheduleStore)
+            debugMockScheduleView
                 .task {
                     guard scheduleStore.result == nil else { return }
                     connectDebugShareAPI()

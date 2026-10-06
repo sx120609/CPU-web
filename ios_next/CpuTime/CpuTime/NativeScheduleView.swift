@@ -159,7 +159,7 @@ struct NativeScheduleView: View {
             }
             // `CPU_DEBUG_SCHEDULE_ACTION` runs one action once the timetable has
             // loaded, so its result can be checked without tapping through:
-            // `share-image`, `calendar-file`, `course-sheet`, `course-editor`,
+            // `share-image`, `calendar-file`, `course-sheet`, `course-editor`, `style-picker`,
             // `sharing` (the share-code page with sample state), `shared-view`
             // (a sample shared timetable, read-only), or against a real server
             // (see `connectDebugShareAPI`) `share-open`, `share-publish`, and
@@ -201,6 +201,8 @@ struct NativeScheduleView: View {
                             )]
                         )
                         if action == "sharing" { sharingPresented = true } else { viewedShare = sample }
+                    case "style-picker":
+                        stylePickerPresented = true
                     case "share-open":
                         sharingPresented = true
                     case "share-publish":

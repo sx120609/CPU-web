@@ -316,7 +316,7 @@ struct NativeScheduleMonthView: View {
         let values = [
             showLocation ? block.course.location?.trimmingCharacters(in: .whitespacesAndNewlines) : nil,
             showTeacher ? block.course.teacher?.trimmingCharacters(in: .whitespacesAndNewlines) : nil,
-            "第 \(block.startSlot)-\(block.endSlot) 节",
+            block.startSlot == block.endSlot ? "第 \(block.startSlot) 节" : "第 \(block.startSlot)-\(block.endSlot) 节",
         ].compactMap { $0 }.filter { !$0.isEmpty }
         return values.joined(separator: " · ")
     }
