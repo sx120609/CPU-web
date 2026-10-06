@@ -45,6 +45,9 @@
   --cpu-accent-soft: #fdf0d8;
   --cpu-rank-top: #b87400;
   --cpu-scrim: rgba(0, 0, 0, 0.5);
+  --cpu-danger-soft: #fdecea;
+  // 只给悬浮在内容上方的元素（底部输入条、弹出面板）用
+  --cpu-shadow-float: 0 4px 16px rgba(0, 0, 0, 0.12);
   // 板块色：入口、图标底色使用，成对出现（底色 + 同色相的深色字）
   --cpu-hue-brand-bg: #d9f1ed;
   --cpu-hue-brand-ink: #0a6b5f;
@@ -179,6 +182,8 @@ html[data-theme="dark"] {
   --cpu-accent-soft: #3a2a10;
   --cpu-rank-top: #ffc83d;
   --cpu-scrim: rgba(0, 0, 0, 0.6);
+  --cpu-danger-soft: #3d1a18;
+  --cpu-shadow-float: 0 4px 16px rgba(0, 0, 0, 0.4);
   --cpu-hue-brand-bg: #12362f;
   --cpu-hue-brand-ink: #5ad6c3;
   --cpu-hue-blue-bg: #172a4d;
@@ -312,7 +317,7 @@ canvas {
   content: "";
   width: 4px;
   height: 18px;
-  background: linear-gradient(180deg, var(--cpu-primary-light), var(--cpu-primary));
+  background: var(--cpu-primary);
   border-radius: 4px;
   box-shadow: 0 2px 4px rgba(20, 143, 123, 0.2);
 }

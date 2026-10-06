@@ -1,14 +1,10 @@
 .reply-target-bar {
   margin-bottom: 12px;
   padding: 10px 12px;
-  border-radius: 12px;
-  border: 1px solid color-mix(in srgb, #60a5fa 34%, var(--cpu-border));
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, #60a5fa 14%, var(--cpu-card)) 0%,
-    color-mix(in srgb, #60a5fa 5%, var(--cpu-card)) 100%
-  );
-  color: color-mix(in srgb, #2563eb 88%, var(--cpu-text));
+  border-radius: var(--cpu-radius-l);
+  border: 1px solid var(--cpu-border-soft);
+  background: var(--cpu-surface-soft);
+  color: var(--cpu-text-secondary);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -25,15 +21,15 @@
 
 .topic-image-review-copy {
   margin: 0 0 14px;
-  color: #6b7280;
-  font-size: 13px;
+  color: var(--cpu-text-muted);
+  font-size: var(--cpu-fs-s);
   line-height: 1.6;
 }
 
 .topic-video-review-copy {
   margin: 0 0 14px;
-  color: #6b7280;
-  font-size: 13px;
+  color: var(--cpu-text-muted);
+  font-size: var(--cpu-fs-s);
   line-height: 1.6;
 }
 
@@ -52,8 +48,8 @@
   grid-template-columns: minmax(180px, 240px) 1fr;
   gap: 16px;
   padding: 14px;
-  border: 1px solid #e5e7eb;
-  border-radius: 14px;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: var(--cpu-radius-l);
   background: #fff;
 }
 
@@ -62,8 +58,8 @@
   grid-template-columns: minmax(220px, 300px) 1fr;
   gap: 16px;
   padding: 14px;
-  border: 1px solid #e5e7eb;
-  border-radius: 14px;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: var(--cpu-radius-l);
   background: #fff;
 }
 
@@ -72,10 +68,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 10px;
+  border-radius: var(--cpu-radius-m);
   overflow: hidden;
-  background: #f8fafc;
-  border: 1px solid #e5e7eb;
+  background: var(--cpu-surface-soft);
+  border: 1px solid var(--cpu-border-soft);
   padding: 10px;
   min-height: 220px;
   cursor: zoom-in;
@@ -85,10 +81,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 10px;
+  border-radius: var(--cpu-radius-m);
   overflow: hidden;
   background: #020617;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--cpu-border-soft);
   min-height: 220px;
 }
 
@@ -150,38 +146,38 @@
 
 .topic-image-review-auditor,
 .topic-image-review-time {
-  color: #6b7280;
-  font-size: 12px;
+  color: var(--cpu-text-muted);
+  font-size: var(--cpu-fs-xs);
 }
 
 .topic-video-review-auditor,
 .topic-video-review-time {
-  color: #6b7280;
-  font-size: 12px;
+  color: var(--cpu-text-muted);
+  font-size: var(--cpu-fs-xs);
 }
 
 .topic-image-review-line {
   margin: 0;
-  color: #111827;
-  font-size: 13px;
+  color: var(--cpu-text);
+  font-size: var(--cpu-fs-s);
   line-height: 1.6;
   word-break: break-word;
 }
 
 .topic-video-review-line {
   margin: 0;
-  color: #111827;
-  font-size: 13px;
+  color: var(--cpu-text);
+  font-size: var(--cpu-fs-s);
   line-height: 1.6;
   word-break: break-word;
 }
 
 .topic-image-review-error {
-  color: #b45309;
+  color: var(--cpu-accent);
 }
 
 .topic-video-review-error {
-  color: #b45309;
+  color: var(--cpu-accent);
 }
 
 .topic-image-review-actions {
@@ -218,13 +214,9 @@
   align-items: flex-start;
   gap: 12px;
   padding: 12px 14px;
-  border: 1px solid color-mix(in srgb, #8b5cf6 26%, var(--cpu-border));
-  border-radius: 12px;
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, #8b5cf6 10%, var(--cpu-card)) 0%,
-    color-mix(in srgb, #8b5cf6 3%, var(--cpu-card)) 100%
-  );
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: var(--cpu-radius-l);
+  background: var(--cpu-surface-soft);
   margin-bottom: 14px;
 }
 
@@ -238,15 +230,15 @@
 
 .reply-anonymous-copy b {
   display: block;
-  font-size: 14px;
-  color: color-mix(in srgb, #7c3aed 78%, var(--cpu-text));
+  font-size: var(--cpu-fs-m);
+  color: var(--cpu-text-secondary);
   margin-bottom: 4px;
 }
 
 .reply-anonymous-copy p {
   margin: 0;
   color: var(--cpu-text-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   line-height: 1.6;
 }
 
@@ -278,7 +270,7 @@
 }
 
 :deep(.reply-dialog .rich-editor.toolbar-static) {
-  border-radius: 20px;
+  border-radius: var(--cpu-radius-l);
   box-shadow: none;
   border-color: var(--cpu-border-soft);
 }
