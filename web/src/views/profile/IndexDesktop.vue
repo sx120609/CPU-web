@@ -46,6 +46,7 @@
       <div class="profile-actions cpu-button-row">
         <el-button type="primary" plain :disabled="saving || logoutBusy" @click="editing = true">编辑资料</el-button>
         <el-button plain @click="router.push('/profile/privacy')">账号与隐私</el-button>
+        <el-button plain @click="router.push('/profile/storage')">存储与缓存</el-button>
         <el-button plain :disabled="saving || logoutBusy" @click="router.push('/profile/verification')">拾间认证</el-button>
         <el-button v-if="!commerceHidden" type="warning" plain :disabled="saving || logoutBusy" @click="router.push('/vip')">VIP 中心</el-button>
         <el-button v-if="!user?.studentSso" plain :disabled="savingPw || logoutBusy" @click="passwordDialog = true">修改密码</el-button>

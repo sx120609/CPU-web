@@ -303,6 +303,7 @@
       <h2 id="me-m-more-title" class="me-m-section-title">更多</h2>
       <div class="me-m-card me-m-list">
         <ProfileRowMobile v-if="auth.canAccessModuleAdmin" :icon="Tools" title="管理后台" tone="#dc2626" @click="router.push('/admin')" />
+        <ProfileRowMobile :icon="Coin" title="存储与缓存" tone="#0891b2" @click="router.push('/profile/storage')" />
         <ProfileRowMobile :icon="Download" title="客户端下载" tone="#2563eb" @click="router.push('/download')" />
       </div>
     </section>
@@ -468,6 +469,7 @@ import {
   Bell,
   Camera,
   CircleCheck,
+  Coin,
   Download,
   EditPen,
   Key,

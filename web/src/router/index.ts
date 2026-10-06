@@ -218,6 +218,7 @@ export const router = createRouter({
         { path: "messages/qqbot-reminders", name: "message-qqbot-reminders", component: () => import("@/views/services/QqBotReminders.vue"), meta: { title: "小工具提醒规则" } },
         { path: "profile", name: "profile", component: loadProfileView, meta: { title: "我的" } },
         { path: "profile/privacy", name: "privacy", component: () => import("@/views/profile/Privacy.vue"), meta: { title: "账号与隐私", public: true } },
+        { path: "profile/storage", name: "storage", component: () => import("@/views/profile/Storage.vue"), meta: { title: "存储与缓存", public: true } },
         { path: "profile/verification", name: "profile-verification", component: () => import("@/views/profile/Verification.vue"), meta: { title: "拾间认证" } },
         { path: "vip", name: "vip", component: () => import("@/views/profile/Vip.vue"), meta: { title: "VIP 中心" } },
         { path: "sponsor", name: "sponsor", component: () => import("@/views/profile/SponsorWall.vue"), meta: { title: "支持药大拾间", public: true } },

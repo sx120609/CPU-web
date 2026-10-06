@@ -51,12 +51,17 @@ export function jwxtScopedStorageKey(base: string, ...parts: Array<string | numb
   return [base, scope, ...suffix].join(":");
 }
 
+/** 课表、教务数据缓存的键；不含保存的教务账号和课表自定义内容。 */
+export function isJwxtDataCacheKey(key: string) {
+  return DATA_CACHE_KEYS.includes(key) || DATA_CACHE_PREFIXES.some((prefix) => key.startsWith(prefix));
+}
+
 export function clearJwxtDataCaches() {
   try {
     for (let i = localStorage.length - 1; i >= 0; i -= 1) {
       const key = localStorage.key(i);
       if (!key) continue;
-      if (DATA_CACHE_KEYS.includes(key) || DATA_CACHE_PREFIXES.some((prefix) => key.startsWith(prefix))) {
+      if (isJwxtDataCacheKey(key)) {
         localStorage.removeItem(key);
       }
     }
