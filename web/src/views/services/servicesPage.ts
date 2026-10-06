@@ -155,7 +155,7 @@ export function useServicesPage() {
   };
 }
 
-// “全部小工具”页的管理入口：工具配置里可管理的，加上账号被单独授权的。
+// 小工具的管理入口：工具配置里可管理的，加上账号被单独授权的。
 export function useToolManageEntry(toolMetas: Ref<ToolMeta[]>) {
   const router = useRouter();
   const permitted = ref<ServiceToolCode[]>([]);
@@ -168,23 +168,40 @@ export function useToolManageEntry(toolMetas: Ref<ToolMeta[]>) {
   onMounted(async () => {
     if (!getToken()) return;
     try {
-      const perms = await toolsApi.myPermissions({ suppressErrorMessage: true });
+      const perms = await toolsApi.myPermissions({
+        suppressAuthRedirect: true,
+        suppressAuthMessage: true,
+        suppressErrorMessage: true,
+      });
       permitted.value = [...perms.toolCodes, ...(perms.adminToolCodes ?? [])];
     } catch {
       /* 没拿到授权信息时只按工具配置判断 */
     }
   });
 
-  function openManage() {
-    const target = manageable.value[0] ?? "questionnaire";
-    if (target === "file_collect") {
+  function canManageTool(code: string) {
+    return manageable.value.includes(code as ServiceToolCode);
+  }
+
+  function openToolManage(code: ServiceToolCode) {
+    if (code === "file_collect") {
       router.push("/services/tools/filestore");
       return;
     }
-    router.push({ path: "/services/tools/manage", query: { tool: target } });
+    router.push({ path: "/services/tools/manage", query: { tool: code } });
   }
 
-  return { canManageAny, openManage };
+  function openManage() {
+    openToolManage(manageable.value[0] ?? "questionnaire");
+  }
+
+  return { canManageAny, canManageTool, openToolManage, openManage };
+}
+
+// 自定义标签沿用工具配置的色调；默认标签按是否需要登录区分。
+export function toolBadgeTone(tool: ServiceTool, loginRequired: boolean) {
+  if (tool.badge) return tool.badgeType === "success" ? "open" : "info";
+  return loginRequired ? "login" : "open";
 }
 
 // 游客与未登录教务时的兜底公开入口。

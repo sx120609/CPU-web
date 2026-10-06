@@ -1,23 +1,19 @@
 <template>
-  <div class="grade-lookup-page">
+  <div class="pk-page grade-lookup-page" :aria-busy="loading">
+    <router-link class="pk-back" to="/services/tools/grade_check"><el-icon aria-hidden="true"><ArrowLeft /></el-icon>成绩表核对</router-link>
     <section class="grade-sheet" v-loading="loading">
-      <button data-cpu-button="text" type="button" class="back-btn" @click="$router.push('/services/tools/grade_check')">
-        <el-icon><ArrowLeft /></el-icon>
-        <span>成绩表核对</span>
-      </button>
-
       <el-empty v-if="loadError && !loading" :description="loadError">
         <el-button type="primary" :loading="loading" @click="load">重新查询</el-button>
       </el-empty>
 
       <template v-else-if="lookup">
-        <header class="lookup-head">
-          <div class="head-copy">
-            <span>成绩核对单</span>
-            <h2>{{ lookup.table.title }}</h2>
+        <header class="pk-title lookup-head">
+          <span class="pk-tile" style="--tone: #2563eb" aria-hidden="true"><el-icon><DataLine /></el-icon></span>
+          <div class="pk-title-copy">
+            <h1>{{ lookup.table.title }}<em class="pk-badge is-primary">成绩核对单</em></h1>
             <p>{{ lookup.table.description || "请核对下方项目。若存在问题，请在底部提交反馈。" }}</p>
-            <el-button v-if="lookup.canManage" class="manage-link" plain @click="openManage">进入管理</el-button>
           </div>
+          <button v-if="lookup.canManage" data-cpu-button="surface" type="button" class="pk-pill" @click="openManage">进入管理</button>
         </header>
 
         <template v-if="lookup.row">
@@ -112,7 +108,8 @@
 <script setup lang="ts">
 import { reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ArrowLeft } from "@element-plus/icons-vue";
+import { ArrowLeft, DataLine } from "@element-plus/icons-vue";
+import "@/styles/page-kit.css";
 import { ElMessage } from "element-plus";
 import { getToken } from "@/api/request";
 import { toolsApi, type GradeCheckLookup, type Questionnaire } from "@/api/tools";
@@ -278,81 +275,8 @@ async function submitFeedback() {
 </script>
 
 <style scoped>
-.grade-lookup-page {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  min-height: calc(100dvh - 150px);
-  padding: 18px 0 34px;
-  background: var(--cpu-bg);
-}
-.grade-sheet {
-  max-width: 1040px;
-  width: 100%;
-  margin: 0 auto;
-  padding: 24px;
-  border: 1px solid var(--cpu-border-soft);
-  border-radius: 14px;
-  background: var(--cpu-card);
-  box-shadow: var(--cpu-shadow-md);
-}
-.back-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: 34px;
-  padding: 0 10px;
-  border: 1px solid var(--cpu-border);
-  border-radius: 8px;
-  background: var(--cpu-surface);
-  color: var(--cpu-text-secondary);
-  cursor: pointer;
-  font: inherit;
-  font-size: 13px;
-  margin-bottom: 20px;
-  transition: border-color 0.16s, color 0.16s, background 0.16s;
-}
-.back-btn:hover {
-  color: var(--cpu-primary);
-  border-color: var(--cpu-primary);
-  background: var(--cpu-surface-soft);
-}
-.lookup-head {
-  display: flex;
-  align-items: flex-start;
-  padding: 4px 2px 22px;
-  border-bottom: 1px solid var(--cpu-border-soft);
-  margin-bottom: 18px;
-}
-.head-copy {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-}
-.head-copy > span {
-  width: fit-content;
-  margin-bottom: 10px;
-  padding: 3px 9px;
-  border: 1px solid color-mix(in srgb, var(--cpu-primary) 38%, transparent);
-  border-radius: 999px;
-  color: var(--cpu-primary);
-  background: var(--cpu-primary-soft);
-  font-size: 12px;
-  font-weight: 650;
-}
-.lookup-head h2 {
-  margin: 0;
-  color: var(--cpu-text);
-  font-size: 28px;
-  line-height: 1.25;
-}
-.lookup-head p {
-  margin: 8px 0 0;
-  color: var(--cpu-text-secondary);
-  font-size: 14px;
-  line-height: 1.7;
-}
+.grade-sheet { display: flex; min-height: 160px; flex-direction: column; gap: 16px; }
+.lookup-head { padding: 0 2px; }
 .record-panel,
 .feedback-panel {
   border: 1px solid var(--cpu-border-soft);
@@ -476,32 +400,8 @@ async function submitFeedback() {
 .feedback-state.error {
   color: var(--cpu-danger);
 }
-.manage-link {
-  width: fit-content;
-  margin-top: 14px;
-  border-radius: 8px;
-}
 @media (max-width: 700px) {
-  .grade-lookup-page {
-    padding: 0;
-    background: var(--cpu-bg);
-  }
-  .grade-sheet {
-    padding: 16px;
-    border-radius: 0;
-    border-left: 0;
-    border-right: 0;
-    box-shadow: none;
-  }
-  .lookup-head {
-    gap: 14px;
-  }
-  .lookup-head h2 {
-    font-size: 22px;
-  }
-  .manage-link {
-    width: 100%;
-  }
+  .lookup-head { flex-wrap: wrap; }
   .record-row,
   .feedback-form {
     grid-template-columns: 1fr;

@@ -16,14 +16,11 @@
 import { computed } from "vue";
 import { ArrowRight } from "@element-plus/icons-vue";
 import type { ServiceTool } from "@/data/serviceTools";
+import { toolBadgeTone } from "../servicesPage";
 
 const props = defineProps<{ tool: ServiceTool; badge?: string; loginRequired?: boolean }>();
 
-// 自定义标签沿用工具配置的色调；默认标签按是否需要登录区分。
-const badgeTone = computed(() => {
-  if (props.tool.badge) return props.tool.badgeType === "success" ? "open" : "info";
-  return props.loginRequired ? "login" : "open";
-});
+const badgeTone = computed(() => toolBadgeTone(props.tool, Boolean(props.loginRequired)));
 </script>
 
 <style scoped>

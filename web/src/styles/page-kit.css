@@ -1,0 +1,305 @@
+/* 内容页共用的页头、卡片、标签和列表行。按需在页面里 import，不进首屏样式。 */
+.pk-page {
+  --pk-tile-fill: 11%;
+  --pk-tile-ink: 100%;
+  display: flex;
+  min-width: 0;
+  max-width: 1080px;
+  margin: 0 auto;
+  flex-direction: column;
+  gap: 16px;
+  color: var(--cpu-text);
+}
+
+html[data-theme="dark"] .pk-page {
+  --pk-tile-fill: 20%;
+  --pk-tile-ink: 46%;
+}
+
+.pk-page--narrow { max-width: 760px; }
+.pk-page--wide { max-width: 1240px; }
+
+.pk-page :is(a, button, summary):focus-visible {
+  outline: 2px solid var(--cpu-primary);
+  outline-offset: 2px;
+}
+
+.pk-head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 2px;
+}
+
+.pk-back {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  align-self: flex-start;
+  gap: 3px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--cpu-text-secondary);
+  font: inherit;
+  font-size: 12px;
+  text-decoration: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pk-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pk-title-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.pk-title h1 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+}
+
+.pk-title p {
+  margin: 4px 0 0;
+  color: var(--cpu-text-secondary);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.pk-title-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.pk-tile {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--tone, var(--cpu-primary)) var(--pk-tile-fill), var(--cpu-card));
+  color: color-mix(in srgb, var(--tone, var(--cpu-primary)) var(--pk-tile-ink), var(--cpu-text));
+  font-size: 22px;
+}
+
+.pk-tile--sm {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  font-size: 18px;
+}
+
+.pk-card {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 16px;
+  background: var(--cpu-card);
+  box-shadow: var(--cpu-shadow-sm);
+}
+
+.pk-card--flush {
+  padding: 0;
+  overflow: hidden;
+}
+
+.pk-card--soft {
+  background: var(--cpu-surface-soft);
+  box-shadow: none;
+}
+
+.pk-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.pk-card-head > div { min-width: 0; }
+
+.pk-h2 {
+  margin: 0;
+  color: var(--cpu-text);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.pk-muted {
+  margin: 4px 0 0;
+  color: var(--cpu-text-secondary);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.pk-badge {
+  --badge: var(--cpu-text-secondary);
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--badge) 12%, var(--cpu-card));
+  color: color-mix(in srgb, var(--badge) 78%, var(--cpu-text));
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 550;
+  line-height: 1.7;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.pk-badge.is-open { --badge: var(--cpu-success); }
+.pk-badge.is-login { --badge: var(--cpu-gold); }
+.pk-badge.is-info { --badge: #0284c7; }
+.pk-badge.is-primary { --badge: var(--cpu-primary); }
+.pk-badge.is-danger { --badge: var(--cpu-danger); }
+
+.pk-empty {
+  padding: 22px 16px;
+  border: 1px dashed var(--cpu-border);
+  border-radius: 12px;
+  color: var(--cpu-text-secondary);
+  font-size: 13px;
+  line-height: 1.7;
+  text-align: center;
+}
+
+.pk-empty > p { margin: 0; }
+
+.pk-pill {
+  display: inline-flex;
+  min-height: 36px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 14px;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 999px;
+  background: var(--cpu-card);
+  color: var(--cpu-primary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pk-pill:active { background: var(--cpu-surface-soft); }
+
+.pk-link {
+  color: var(--cpu-primary);
+  font-weight: 550;
+  text-decoration: none;
+}
+
+.pk-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pk-row {
+  display: flex;
+  width: 100%;
+  min-height: 60px;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 0;
+  border-bottom: 1px solid var(--cpu-border-soft);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+}
+
+.pk-rows > :last-child,
+.pk-rows > :last-child > .pk-row,
+.pk-row:last-child { border-bottom: 0; }
+
+button.pk-row,
+a.pk-row {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button.pk-row:active,
+a.pk-row:active { background: var(--cpu-surface-soft); }
+
+.pk-row-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pk-row-copy b {
+  color: var(--cpu-text);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.pk-row-copy small {
+  color: var(--cpu-text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.pk-row-end {
+  flex: 0 0 auto;
+  color: var(--cpu-text-muted);
+  font-size: 13px;
+}
+
+.pk-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--cpu-gold) 34%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--cpu-gold) 11%, var(--cpu-card));
+  color: var(--cpu-text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.pk-notice.is-danger {
+  border-color: color-mix(in srgb, var(--cpu-danger) 34%, transparent);
+  background: color-mix(in srgb, var(--cpu-danger) 9%, var(--cpu-card));
+}
+
+@media (max-width: 768px) {
+  .pk-page { gap: 12px; }
+  .pk-title h1 { font-size: 22px; }
+  .pk-card { padding: 14px; }
+  .pk-card--flush { padding: 0; }
+  .pk-row { padding: 10px 12px; }
+}
