@@ -27,12 +27,18 @@ import {
 } from '../common/HarmonyBridge';
 import { restoreNativeScheduleCache } from '../schedule/NativeScheduleCache';
 import { NativeWebHeader, NativeWebHeaderState } from '../common/NativeWebHeader';
+import { NativeLoginGate, NativeLoginResponse } from '../common/NativeLoginGate';
 import { NativeSchedulePage } from '../schedule/NativeSchedulePage';
 import { NativeCourseBlock, NativeScheduleCell, NativeScheduleRequest, NativeScheduleSnapshot, NativeScheduleStore } from '../schedule/NativeScheduleStore';
 import { CourseEditorRequest, NativeCourseEditor, NativeCourseEditorModel } from '../schedule/NativeCourseEditor';
 import { setNativeScheduleHostCallbacks, clearNativeScheduleHostCallbacks } from '../schedule/NativeScheduleHost';
 import { ScheduleCardView } from '../schedulewidget/ScheduleCardView';
 import { ScheduleWidgetBinding, initialScheduleWidgetBinding, readScheduleWidgetPreview, saveScheduleWidgetTheme, refreshAllScheduleForms, clearScheduleWidgetAccount, readScheduleWidgetSettings, saveLocalScheduleSnapshot } from '../common/ScheduleWidgetService';
+
+interface NativeLoginPending {
+  resolve: (response: NativeLoginResponse) => void;
+  timeoutId: number;
+}
 
 @Entry
 @Component
@@ -44,11 +50,16 @@ struct Index {
   @State private nativeScheduleVisible: boolean = false;
   @State private scheduleLayerVisible: boolean = false;
   private scheduleRetireTimer: number = -1;
+  @State private requiresLogin: boolean = false;
+  private authGateTimer: number = -1;
+  private initialShellDecided: boolean = false;
   private appearanceMode: string = 'system';
   private appliedAppearanceMode: string = '';
   private controller: webview.WebviewController = new webview.WebviewController();
   private bridge: HarmonyBridge = new HarmonyBridge();
   private webProxy: HarmonyJavaScriptProxy = new HarmonyJavaScriptProxy();
+  private nativeLoginRequestSequence: number = 0;
+  private pendingNativeLoginRequests: Map<string, NativeLoginPending> = new Map();
   @State private scheduleStore: NativeScheduleStore = new NativeScheduleStore();
   @State private editorModel: NativeCourseEditorModel = new NativeCourseEditorModel();
   @State private scheduleStyleVisible: boolean = false;
@@ -89,8 +100,8 @@ struct Index {
 
   aboutToAppear(): void {
     this.scheduleMounted = this.selectedTab === 2;
-    this.nativeScheduleVisible = this.selectedTab === 2;
-    this.scheduleLayerVisible = this.nativeScheduleVisible;
+    this.nativeScheduleVisible = false;
+    this.scheduleLayerVisible = false;
     webview.WebviewController.setWebDebuggingAccess(BuildProfile.DEBUG);
     const contextForResources = AppStorage.get<common.UIAbilityContext>('abilityContext');
     if (contextForResources) {
@@ -115,6 +126,7 @@ struct Index {
     this.bridge.setPreviewRequestHandler((images: NativePreviewImage[], index: number) => {
       this.openImagePreview(images, index);
     });
+    this.bridge.setWebCacheClearer(() => this.controller.removeCache(true));
     this.bridge.setWidgetConfigurationHandler((configured: boolean) => {
       this.widgetConfigured = configured;
       if (this.widgetPanelVisible) void this.loadWidgetPreview();
@@ -169,6 +181,8 @@ struct Index {
     setNativeScheduleHostCallbacks({
       onReady: () => this.scheduleStore.markBridgeReady(),
       onAuthChanged: (scope: string) => {
+        if (scope.trim()) this.resolveAuthenticated(false);
+        else if (this.webHeader.contentReady && !this.webHeader.authenticated) this.scheduleLoginGate();
         if (!this.scheduleStore.handleAuthChanged(scope)) return;
         this.editorModel.cancel();
         this.widgetPreviewRevision += 1;
@@ -193,11 +207,13 @@ struct Index {
       onWebOverlayChanged: (visible: boolean) => this.webOverlayVisible = visible,
       onHeaderChanged: (payload: string) => {
         try {
-          this.webHeader = JSON.parse(payload) as NativeWebHeaderState;
-          if (this.webHeader.contentReady) this.finishStartup();
-          if (!this.nativeScheduleVisible && !this.pendingWebNavigation) {
-            const rootIndex = ['/home', '/jwxt', '/schedule', '/services', '/profile'].indexOf(this.webHeader.path);
-            if (rootIndex >= 0 && rootIndex !== 2) this.selectedTab = rootIndex;
+           this.webHeader = JSON.parse(payload) as NativeWebHeaderState;
+           if (this.webHeader.contentReady) this.finishStartup();
+           if (this.webHeader.authenticated) this.resolveAuthenticated(false);
+           else if (this.webHeader.contentReady) this.scheduleLoginGate();
+           if (this.initialShellDecided && !this.nativeScheduleVisible && !this.pendingWebNavigation && !this.requiresLogin) {
+             const rootIndex = ['/home', '/jwxt', '/schedule', '/services', '/profile'].indexOf(this.webHeader.path);
+             if (rootIndex >= 0 && rootIndex !== 2) this.selectedTab = rootIndex;
           }
         } catch (_) {}
       },
@@ -208,7 +224,8 @@ struct Index {
         promptAction.showToast({ message: message || '卡片配置失败' });
       },
       onAppearanceChanged: (mode: string) => this.applyAppearance(mode, false),
-      onEditorResult: (id: string, payload: string) => this.editorModel.accept(id, payload)
+      onEditorResult: (id: string, payload: string) => this.editorModel.accept(id, payload),
+      onNativeLoginResult: (id: string, payload: string) => this.acceptNativeLoginResult(id, payload)
     });
   }
 
@@ -221,6 +238,8 @@ struct Index {
       'copyText',
       'openExternalUrl',
       'downloadAndInstallApk',
+      'getStorageUsage',
+      'clearStorage',
       'previewImages',
       'saveImage',
       'saveImageUrl',
@@ -232,6 +251,7 @@ struct Index {
       'navigationReady',
       'headerChanged',
       'scheduleResult',
+      'nativeLoginResult',
       'schedulePrefetched',
       'scheduleWeekPrefetched',
       'widgetSetupFailed',
@@ -338,7 +358,9 @@ struct Index {
           document.head.appendChild(style);
         }
         style.textContent = [
-          'html[data-cpu-harmony-native] { --cpu-harmony-bottom-clearance: ${this.bottomContentClearance()}px; --cpu-safe-area-inset-top: 0px; }',
+          'html[data-cpu-harmony-native] { --cpu-harmony-bottom-clearance: ${this.bottomContentClearance()}px; --cpu-safe-area-inset-top: 0px; height: auto; min-height: 100%; overflow-x: hidden; overflow-y: auto; }',
+          'html[data-cpu-harmony-native] body { height: auto; min-height: 100%; overflow-x: hidden; overflow-y: auto; }',
+          'html[data-cpu-harmony-native] #app { height: auto; min-height: 100%; overflow: visible; }',
           'html[data-cpu-harmony-native] .layout-root > .mobile-tabbar,',
           'html[data-cpu-harmony-native] .layout-root > .topbar,',
           'html[data-cpu-harmony-native] .layout-root > .footer { display: none !important; }',
@@ -390,13 +412,218 @@ struct Index {
 
           ${this.compatibilityScript}
 
+          // Older deployed Web bundles can install the timetable bridge while
+          // omitting the login entry points. Keep the native surface usable by
+          // filling only missing functions with the same Pinia auth actions.
+          const nativeAuthStore = () => document.getElementById('app')?.__vue_app__?.config?.globalProperties?.$pinia?._s?.get('auth');
+          const nativeLoginResult = (auth, ok, error = '') => ({
+            ok,
+            error: error || String(auth?.ssoError || ''),
+            needCaptcha: Boolean(auth?.ssoNeedCaptcha),
+            captchaImage: String(auth?.ssoCaptchaImage || ''),
+            account: '',
+            canAccessAdmin: false
+          });
+          if (typeof bridge.nativeLoginBegin !== 'function') {
+            bridge.nativeLoginBegin = async () => {
+              const auth = nativeAuthStore();
+              if (!auth || typeof auth.ssoBegin !== 'function') {
+                return nativeLoginResult(auth, false, '登录服务尚未就绪，请稍候重试');
+              }
+              try {
+                await auth.ssoBegin({ silent: true });
+                return nativeLoginResult(auth, true);
+              } catch (error) {
+                return nativeLoginResult(auth, false, error?.message || '统一认证暂时不可用，请稍后再试');
+              }
+            };
+          }
+          if (typeof bridge.nativeSsoLogin !== 'function') {
+            bridge.nativeSsoLogin = async (username, password, captcha, remember) => {
+              const auth = nativeAuthStore();
+              if (!auth || typeof auth.ssoLogin !== 'function') {
+                return nativeLoginResult(auth, false, '登录服务尚未就绪，请稍候重试');
+              }
+              try {
+                const ok = await auth.ssoLogin(String(username || ''), String(password || ''),
+                  String(captcha || '') || undefined, Boolean(remember));
+                return nativeLoginResult(auth, Boolean(ok));
+              } catch (error) {
+                return nativeLoginResult(auth, false, error?.message || '登录暂时失败，请稍后再试');
+              }
+            };
+          }
+          if (typeof bridge.nativeAccountLogin !== 'function') {
+            bridge.nativeAccountLogin = async (username, password) => {
+              const auth = nativeAuthStore();
+              if (!auth || typeof auth.login !== 'function') {
+                return nativeLoginResult(auth, false, '登录服务尚未就绪，请稍候重试');
+              }
+              try {
+                await auth.login(String(username || ''), String(password || ''));
+                return nativeLoginResult(auth, true);
+              } catch (error) {
+                return nativeLoginResult(auth, false, error?.message || '登录暂时失败，请稍后再试');
+              }
+            };
+          }
+
         }
       })();
     `;
     void this.controller.runJavaScript(script).catch(() => this.scheduleStore.markBridgeUnavailable('课表服务尚未就绪，请重试'));
   }
 
+  private clearAuthGateTimer(): void {
+    clearTimeout(this.authGateTimer);
+    this.authGateTimer = -1;
+  }
+
+  private scheduleLoginGate(): void {
+    if (this.requiresLogin || this.webHeader.authenticated) return;
+    this.clearAuthGateTimer();
+    this.authGateTimer = setTimeout(() => {
+      this.authGateTimer = -1;
+      if (!this.webHeader.authenticated && this.webHeader.contentReady) this.activateLoginGate();
+    }, 800);
+  }
+
+  private activateLoginGate(): void {
+    this.initialShellDecided = true;
+    this.requiresLogin = true;
+    this.nativeScheduleVisible = false;
+    this.scheduleLayerVisible = false;
+    this.pendingWebNavigation = 0;
+  }
+
+  private resolveAuthenticated(navigateHome: boolean): void {
+    this.clearAuthGateTimer();
+    const wasLoginGate = this.requiresLogin;
+    this.initialShellDecided = true;
+    this.requiresLogin = false;
+    if (wasLoginGate && navigateHome) {
+      this.selectTab(0, '/home');
+      return;
+    }
+    if (this.selectedTab === 2) {
+      this.scheduleMounted = true;
+      this.nativeScheduleVisible = true;
+      this.scheduleLayerVisible = true;
+      this.scheduleStore.load(false);
+    }
+  }
+
+  private emptyNativeLoginResponse(error: string): NativeLoginResponse {
+    return { ok: false, needCaptcha: false, captchaImage: '', error, account: '', canAccessAdmin: false };
+  }
+
+  private parseNativeLoginResponse(raw: string): NativeLoginResponse {
+    try {
+      // ArkWeb can serialize a JavaScript string result once more before it
+      // reaches runJavaScript(). Native login intentionally returns JSON so
+      // unwrap that transport layer before reading its fields.
+      let decoded = JSON.parse(String(raw || '{}')) as string | NativeLoginResponse;
+      if (typeof decoded === 'string') {
+        decoded = JSON.parse(decoded) as NativeLoginResponse;
+      }
+      const value = decoded as NativeLoginResponse;
+      return {
+        ok: value?.ok === true,
+        needCaptcha: value?.needCaptcha === true,
+        captchaImage: value?.captchaImage || '',
+        error: value?.error || '',
+        account: value?.account || '',
+        canAccessAdmin: value?.canAccessAdmin === true
+      };
+    } catch (_) {
+      return this.emptyNativeLoginResponse('登录服务返回了无法识别的结果，请重试');
+    }
+  }
+
+  private acceptNativeLoginResult(id: string, payload: string): void {
+    const pending = this.pendingNativeLoginRequests.get(id);
+    if (!pending) return;
+    clearTimeout(pending.timeoutId);
+    this.pendingNativeLoginRequests.delete(id);
+    pending.resolve(this.parseNativeLoginResponse(payload));
+  }
+
+  private clearPendingNativeLoginRequests(): void {
+    for (const pending of this.pendingNativeLoginRequests.values()) {
+      clearTimeout(pending.timeoutId);
+      pending.resolve(this.emptyNativeLoginResponse('登录页面已关闭，请重试'));
+    }
+    this.pendingNativeLoginRequests.clear();
+  }
+
+  private runNativeLogin(expression: string): Promise<NativeLoginResponse> {
+    const id = `native-login-${++this.nativeLoginRequestSequence}`;
+    const requestId = JSON.stringify(id);
+    return new Promise<NativeLoginResponse>((resolve) => {
+      const timeoutId = setTimeout(() => {
+        this.acceptNativeLoginResult(id, '{"ok":false,"error":"登录服务响应超时，请重试"}');
+      }, 15000);
+      this.pendingNativeLoginRequests.set(id, { resolve, timeoutId });
+      const script = `
+        (() => {
+          const finish = (value) => {
+            let payload = '{}';
+            try { payload = JSON.stringify(value || {}); } catch (_) {}
+            window.CPUHarmony?.nativeLoginResult?.(${requestId}, payload);
+          };
+          try {
+            Promise.resolve(${expression})
+              .then(finish)
+              .catch(error => finish({ ok: false, error: error?.message || '登录暂时失败，请稍后再试' }));
+          } catch (error) {
+            finish({ ok: false, error: error?.message || '登录暂时失败，请稍后再试' });
+          }
+        })();
+      `;
+      void this.controller.runJavaScript(script).catch(() => {
+        this.acceptNativeLoginResult(id, '{"ok":false,"error":"登录服务尚未就绪，请稍候重试"}');
+      });
+    });
+  }
+
+  private nativeLoginBegin(): Promise<NativeLoginResponse> {
+    return this.runNativeLogin(`typeof window.CPUTimeNative?.nativeLoginBegin === 'function'
+      ? window.CPUTimeNative.nativeLoginBegin()
+      : { ok: false, error: '登录服务尚未就绪，请稍候重试' }`);
+  }
+
+  private nativeSsoLogin(username: string, password: string, captcha: string, remember: boolean): Promise<NativeLoginResponse> {
+    const user = JSON.stringify(username);
+    const secret = JSON.stringify(password);
+    const code = JSON.stringify(captcha);
+    const keep = remember ? 'true' : 'false';
+    return this.runNativeLogin(`typeof window.CPUTimeNative?.nativeSsoLogin === 'function'
+      ? window.CPUTimeNative.nativeSsoLogin(${user}, ${secret}, ${code}, ${keep})
+      : { ok: false, error: '登录服务尚未就绪，请稍候重试' }`).then((response: NativeLoginResponse) => {
+      if (response.ok) {
+        this.webHeader.authenticated = true;
+        this.resolveAuthenticated(true);
+      }
+      return response;
+    });
+  }
+
+  private nativeAccountLogin(username: string, password: string): Promise<NativeLoginResponse> {
+    const user = JSON.stringify(username);
+    const secret = JSON.stringify(password);
+    return this.runNativeLogin(`typeof window.CPUTimeNative?.nativeAccountLogin === 'function'
+      ? window.CPUTimeNative.nativeAccountLogin(${user}, ${secret})
+      : { ok: false, error: '登录服务尚未就绪，请稍候重试' }`).then((response: NativeLoginResponse) => {
+      if (response.ok) {
+        this.webHeader.authenticated = true;
+        this.resolveAuthenticated(true);
+      }
+      return response;
+    });
+  }
+
   private handleNativeNavigation(path: string): void {
+    if (this.requiresLogin) return;
     if (path === '/schedule' || path.startsWith('/schedule?')) {
       this.navigationRevision += 1;
       this.pendingWebNavigation = 0;
@@ -463,6 +690,7 @@ struct Index {
 
   private selectTab(index: number, destination?: string): void {
     if (index < 0 || index > 4) return;
+    if (this.requiresLogin) return;
     const routes: string[] = ['/home', '/jwxt', '/schedule', '/services', '/profile'];
     if (index === this.selectedTab && !destination && (index === 2 || this.webHeader?.path === routes[index])) return;
     const revision = ++this.navigationRevision;
@@ -564,9 +792,9 @@ struct Index {
       Column() {
         Stack() {
           Column() {
-          NativeWebHeader({ state: this.webHeader, blocked: this.webOverlayVisible || this.loading,
+          NativeWebHeader({ state: this.webHeader, blocked: this.requiresLogin || this.webOverlayVisible || this.loading,
             onAction: (action: string) => this.handleHeaderAction(action) })
-            .visibility(this.webHeader.visible ? Visibility.Visible : Visibility.None)
+            .visibility(this.webHeader.visible && !this.requiresLogin ? Visibility.Visible : Visibility.None)
           Web({
             src: this.launchUrl,
             controller: this.controller,
@@ -574,8 +802,8 @@ struct Index {
           })
         .width('100%')
         .layoutWeight(1)
-        .accessibilityLevel(this.nativeScheduleVisible ? 'no-hide-descendants' : 'auto')
-        .hitTestBehavior(this.nativeScheduleVisible ? HitTestMode.None : HitTestMode.Default)
+        .accessibilityLevel(this.nativeScheduleVisible || this.requiresLogin ? 'no-hide-descendants' : 'auto')
+        .hitTestBehavior(this.nativeScheduleVisible || this.requiresLogin ? HitTestMode.None : HitTestMode.Default)
         .javaScriptAccess(true)
         .javaScriptOnDocumentStart([{ script: NATIVE_STARTUP_POLICY, scriptRules: ['*'] }])
         .domStorageAccess(true)
@@ -658,12 +886,12 @@ struct Index {
               .translate({ y: this.nativeScheduleVisible ? 0 : 8 })
               .animation({ duration: 220, curve: Curve.EaseOut })
               .visibility(this.scheduleLayerVisible ? Visibility.Visible : Visibility.Hidden)
-              .enabled(this.nativeScheduleVisible)
-              .accessibilityLevel(this.nativeScheduleVisible ? 'auto' : 'no-hide-descendants')
-              .hitTestBehavior(this.nativeScheduleVisible ? HitTestMode.Default : HitTestMode.None)
+              .enabled(this.nativeScheduleVisible && !this.requiresLogin)
+              .accessibilityLevel(this.nativeScheduleVisible && !this.requiresLogin ? 'auto' : 'no-hide-descendants')
+              .hitTestBehavior(this.nativeScheduleVisible && !this.requiresLogin ? HitTestMode.Default : HitTestMode.None)
           }
 
-      if (!this.startupFinished && !this.failed && !this.nativeScheduleVisible) {
+      if (!this.startupFinished && !this.failed && !this.nativeScheduleVisible && !this.requiresLogin) {
         Column({ space: 16 }) {
           LoadingProgress().width(28).height(28).color($r('app.color.app_accent'))
           Text('正在打开校园服务')
@@ -677,7 +905,7 @@ struct Index {
         .backgroundColor($r('app.color.start_window_background'))
       }
 
-      if (this.failed && !this.nativeScheduleVisible) {
+      if (this.failed && !this.nativeScheduleVisible && !this.requiresLogin) {
         Column({ space: 16 }) {
           Text('页面暂时无法打开')
             .fontSize(20)
@@ -702,6 +930,15 @@ struct Index {
         .alignItems(HorizontalAlign.Center)
         .backgroundColor($r('app.color.app_background'))
       }
+
+      if (this.requiresLogin) {
+        NativeLoginGate({
+          onBegin: () => this.nativeLoginBegin(),
+          onSsoLogin: (username: string, password: string, captcha: string, remember: boolean) => this.nativeSsoLogin(username, password, captcha, remember),
+          onAccountLogin: (username: string, password: string) => this.nativeAccountLogin(username, password),
+          onOpenPolicy: (path: string) => this.bridge.openExternalUrl(`https://cputime.cn${path}`)
+        })
+      }
         }
         .width('100%')
         .layoutWeight(1)
@@ -715,7 +952,7 @@ struct Index {
         this.bottomNavigation()
       }.width('100%').height(NATIVE_TAB_BAR_HEIGHT + this.bottomBarInset()).align(Alignment.Bottom)
         .padding({ bottom: this.bottomBarInset() })
-        .visibility(this.nativeScheduleVisible || this.pendingWebNavigation > 0 || (this.startupFinished && this.webHeader.visible && !this.webOverlayVisible) ? Visibility.Visible : Visibility.Hidden)
+        .visibility(!this.requiresLogin && (this.nativeScheduleVisible || this.pendingWebNavigation > 0 || (this.startupFinished && this.webHeader.visible && !this.webOverlayVisible)) ? Visibility.Visible : Visibility.Hidden)
         .hitTestBehavior(HitTestMode.Default)
 
       if (this.imagePreviewVisible && this.previewImages.length > 0) {
@@ -1189,7 +1426,6 @@ struct Index {
     Row() {
       NativeTabBar({ selected: this.selectedTab, dark: this.scheduleStore.dark,
         onSelect: (index: number) => this.selectTab(index) })
-        .constraintSize({ maxWidth: 640 })
     }.width('100%').padding({ left: 16, right: 16 }).justifyContent(FlexAlign.Center)
   }
   private bottomBarInset(): number {
@@ -1475,6 +1711,7 @@ struct Index {
   aboutToDisappear(): void {
     clearTimeout(this.scheduleRetireTimer);
     clearTimeout(this.startupTimer);
+    this.clearPendingNativeLoginRequests();
     this.scheduleStore.markBridgeUnavailable();
     clearNativeScheduleHostCallbacks();
     setActiveHarmonyBridge(undefined);

@@ -39,6 +39,42 @@ test('opening schedule before Web ready resumes when the bridge appears', () => 
   h.store.markBridgeReady(); assert.equal(h.requests.length, 1);
   h.accept(h.snapshot()); assert.equal(h.store.status, 'loaded');
 });
+
+test('configured twelve periods override the legacy bridge list and survive previews and cache restoration', () => {
+  const h = harness(); h.store.markBridgeReady();
+  const payload = h.snapshot('fall', '2', true);
+  const periods = Array.from({ length: 12 }, (_, i) => ({ id: i + 1, start: `${String(i + 8).padStart(2, '0')}:00`, end: `${String(i + 8).padStart(2, '0')}:45` }));
+  payload.periods = [{ number: 1, startTime: '07:00', endTime: '07:45' }];
+  payload.calendar = { periods, weeks: [] };
+  payload.data.cells = [{ day: 2, bigSlot: 6, courses: [{ name: '晚间课程', weekList: [2], startSlot: 9, endSlot: 12 }] },
+    { day: 6, bigSlot: 6, courses: [{ name: '最后一节', weekList: [2], startSlot: 12, endSlot: 12 }] }];
+  h.store.handleAuthChanged('test-account');
+  let saved; h.store.attachPersistence(raw => saved = raw);
+  h.accept(payload);
+  assert.equal(h.store.slotCount(), 12);
+  assert.equal(h.store.slots().at(-1), 12);
+  assert.equal(h.store.slotStart(12), '19:00');
+  assert.equal(h.store.slotEnd(12), '19:45');
+  assert.equal(h.store.blocksForDay(2)[0].endSlot, 12);
+  assert.equal(h.store.blocksForDay(6)[0].startSlot, 12);
+  assert.equal(h.store.previewWeek('2').slotCount(), 12);
+  assert.equal(h.store.previewWeek('3').slotEnd(12), '19:45');
+  const restored = harness(); restored.store.restoreCache(saved);
+  assert.equal(restored.store.slotCount(), 12);
+  assert.equal(restored.store.blocksForDay(6)[0].endSlot, 12);
+});
+
+test('snapshot period metadata supports configured counts without calendar metadata', () => {
+  const h = harness(); h.store.markBridgeReady();
+  const payload = h.snapshot();
+  payload.periods = Array.from({ length: 12 }, (_, i) => ({ number: i + 1, startTime: '18:00', endTime: '18:45' }));
+  payload.data.cells[0].courses[0].startSlot = 11;
+  payload.data.cells[0].courses[0].endSlot = 12;
+  h.accept(payload);
+  assert.equal(h.store.slotCount(), 12);
+  assert.equal(h.store.blocksForDay(1)[0].endSlot, 12);
+  assert.equal(h.store.slotEnd(13), '');
+});
 test('repeated selection joins one request, complete semester filters locally', () => {
   const h = harness(); h.store.markBridgeReady(); h.store.load(false); h.store.load(false);
   assert.equal(h.requests.length, 1); h.accept(h.snapshot('fall','2',true));
@@ -152,6 +188,53 @@ test('unsupported schema and wrong semester fail visibly', () => {
   const h = harness(); h.store.markBridgeReady(); h.accept({ ...h.snapshot(), version: 2 });
   assert.equal(h.store.status, 'failed'); h.store.selectSemester('spring'); h.accept(h.snapshot('fall'));
   assert.match(h.store.errorMessage, /其他学期/);
+});
+
+test('historic responses cannot expand trusted semester choices and failures allow recovery', () => {
+  const h = harness(); h.store.markBridgeReady();
+  const initial = h.snapshot('fall', '2', true);
+  initial.data.semesters = [
+    { value: 'fall', label: '秋', current: true },
+    { value: 'spring', label: '春', current: false },
+    { value: 'summer', label: '夏', current: false },
+    { value: 'fall', label: '秋', current: true },
+  ];
+  h.accept(initial);
+  assert.deepEqual([...h.store.semesterOptions().map(item => item.value)], ['fall', 'spring', 'summer']);
+  h.store.selectSemester('spring');
+  const historic = h.snapshot('spring', '2', true);
+  historic.data.semesters = [
+    { value: 'spring', label: '春', current: true },
+    ...Array.from({ length: 12 }, (_, index) => ({ value: `unexpected-${index}`, label: `异常${index}`, current: false })),
+  ];
+  h.accept(historic);
+  assert.equal(h.store.status, 'loaded');
+  assert.deepEqual([...h.store.semesterOptions().map(item => item.value)], ['fall', 'spring', 'summer']);
+  h.store.selectSemester('summer');
+  h.accept({ version: 1, auth: { authenticated: true }, error: '历史课表暂不可用' });
+  assert.equal(h.store.status, 'failed');
+  assert.deepEqual([...h.store.semesterOptions().map(item => item.value)], ['fall', 'spring', 'summer']);
+  h.store.selectSemester('fall');
+  assert.equal(h.store.selectedSemester, 'fall');
+  assert.equal(h.store.status, 'loaded');
+});
+
+test('a mismatched historic response leaves the semester picker usable', () => {
+  const h = harness(); h.store.markBridgeReady();
+  const initial = h.snapshot('fall', '2', true);
+  initial.data.semesters = [
+    { value: 'fall', label: '秋', current: true },
+    { value: 'spring', label: '春', current: false },
+  ];
+  h.accept(initial);
+  h.store.selectSemester('spring');
+  h.accept(h.snapshot('fall', '2', true));
+  assert.equal(h.store.status, 'failed');
+  assert.match(h.store.errorMessage, /其他学期/);
+  assert.deepEqual([...h.store.semesterOptions().map(item => item.value)], ['fall', 'spring']);
+  h.store.selectSemester('fall');
+  assert.equal(h.store.status, 'loaded');
+  assert.equal(h.store.selectedSemester, 'fall');
 });
 test('request timeout leaves retryable failure, late response cannot overwrite', () => {
   const h = harness(); h.store.markBridgeReady(); const request = h.requests.at(-1);

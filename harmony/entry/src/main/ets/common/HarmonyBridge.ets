@@ -13,6 +13,8 @@ import {
   saveScheduleWidgetTheme
 } from './ScheduleWidgetService';
 import { NativeScheduleHost } from '../schedule/NativeScheduleHost';
+import { STORAGE_NETWORK, STORAGE_TEMP, StorageDirectories, parseStorageCategories } from './StorageCleaner';
+import { clearTemporaryStorage, measureStorage } from './StorageTasks';
 
 export interface NativePreviewImage {
   url: string;
@@ -36,6 +38,7 @@ export class HarmonyBridge {
   private saveRequestHandler?: (dataUrl: string, fileName: string) => void;
   private previewRequestHandler?: (images: NativePreviewImage[], index: number) => void;
   private widgetConfigurationHandler?: (configured: boolean) => void;
+  private webCacheClearer?: () => void;
   private readonly imageSaveTimeoutMs: number = 15000;
 
   attachContext(context: common.UIAbilityContext): void {
@@ -52,6 +55,11 @@ export class HarmonyBridge {
 
   setWidgetConfigurationHandler(handler: (configured: boolean) => void): void {
     this.widgetConfigurationHandler = handler;
+  }
+
+  /** ArkWeb 的缓存只能由持有 WebviewController 的页面来清。 */
+  setWebCacheClearer(handler: () => void): void {
+    this.webCacheClearer = handler;
   }
 
   getVersionCode(): number {
@@ -98,6 +106,49 @@ export class HarmonyBridge {
     this.openExternalUrl(url);
     this.toast('已交由系统浏览器下载');
     return true;
+  }
+
+  /** 网页“存储与缓存”页：ArkWeb 网络缓存和临时文件的占用，格式见 StorageCleaner。网页端 await 这个结果。 */
+  async getStorageUsage(): Promise<string> {
+    const directories = this.storageDirectories();
+    if (!directories) return '';
+    try {
+      return await measureStorage(directories);
+    } catch (_) {
+      return '';
+    }
+  }
+
+  /** 清理选中的分类（JSON 数组，如 ["network","temp"]），返回清理后的占用。 */
+  async clearStorage(categories: string): Promise<string> {
+    const directories = this.storageDirectories();
+    if (!directories) return '';
+    const targets = parseStorageCategories(categories);
+    if (targets.indexOf(STORAGE_TEMP) >= 0) {
+      try {
+        await clearTemporaryStorage(directories);
+      } catch (_) {
+        // 清不掉的文件留到下次，占用照实返回。
+      }
+    }
+    if (targets.indexOf(STORAGE_NETWORK) >= 0) {
+      try {
+        this.webCacheClearer?.();
+      } catch (_) {
+        // Web 组件正在重建时跳过这次清理，占用照实返回。
+      }
+    }
+    return this.getStorageUsage();
+  }
+
+  private storageDirectories(): StorageDirectories | undefined {
+    if (!this.context) return undefined;
+    const app = this.context.getApplicationContext();
+    return {
+      cacheDir: app.cacheDir,
+      tempDirs: [app.tempDir, this.context.tempDir, this.context.cacheDir],
+      dataDirs: [app.cacheDir.substring(0, app.cacheDir.lastIndexOf('/')), app.databaseDir]
+    };
   }
 
   previewImages(payload: string): boolean {
@@ -397,6 +448,14 @@ export class HarmonyJavaScriptProxy {
     return activeHarmonyBridge?.downloadAndInstallApk(url, fileName) ?? false;
   }
 
+  getStorageUsage(): Promise<string> {
+    return activeHarmonyBridge?.getStorageUsage() ?? Promise.resolve('');
+  }
+
+  clearStorage(categories: string): Promise<string> {
+    return activeHarmonyBridge?.clearStorage(categories) ?? Promise.resolve('');
+  }
+
   previewImages(payload: string): boolean {
     return activeHarmonyBridge?.previewImages(payload) ?? false;
   }
@@ -446,6 +505,10 @@ export class HarmonyJavaScriptProxy {
 
   scheduleResult(id: string, payload: string): void {
     this.nativeScheduleHost.scheduleResult(id, payload);
+  }
+
+  nativeLoginResult(id: string, payload: string): void {
+    this.nativeScheduleHost.nativeLoginResult(id, payload);
   }
 
   schedulePrefetched(payload: string): void {

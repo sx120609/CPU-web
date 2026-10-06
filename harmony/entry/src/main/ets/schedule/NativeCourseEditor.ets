@@ -41,6 +41,7 @@ export class NativeCourseEditorModel {
   original?: NativeCourseBlock;
   semester: string = '';
   cells: NativeScheduleCell[] = [];
+  slots: number[] = [];
   private requestId: string = '';
   private requestSequence: number = 0;
   private timer: number = -1;
@@ -56,6 +57,7 @@ export class NativeCourseEditorModel {
     this.original = block;
     this.semester = store.selectedSemester;
     this.cells = store.result?.cells ?? [];
+    this.slots = store.slots();
     this.name = block?.course.name ?? '';
     this.day = block?.day ?? store.selectedDay;
     this.startSlot = block?.startSlot ?? 1;
@@ -205,7 +207,7 @@ export struct NativeCourseEditor {
       .backgroundColor($r('app.color.app_surface'))
   }
   private slotOptions(): SelectOption[] {
-    return [1,2,3,4,5,6,7,8,9,10,11].map((slot: number): SelectOption => ({value:`第${slot}节`}));
+    return this.model.slots.map((slot: number): SelectOption => ({value:`第${slot}节`}));
   }
   private confirmDelete(): void {
     AlertDialog.show({ title: this.model.original?.course.customId ? '删除个人课程' : '隐藏课程',

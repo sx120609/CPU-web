@@ -49,7 +49,8 @@ const course = { startSlot: 1, endSlot: 2, course: { name: '药学;讲座,及实
 const sampleStore = () => ({
   selectedWeek: '2', selectedSemester: '2026-2027-1',
   calendar: { weeks: [{ week: 2, days: ['2026-09-07','2026-09-08','2026-09-09','2026-09-10','2026-09-11','2026-09-12','2026-09-13'] }] },
-  blocksForDay: day => day === 1 ? [course] : [], dayDate: () => '09-07'
+  blocksForDay: day => day === 1 ? [course] : [], dayDate: () => '09-07',
+  slotStart: slot => slot === 1 ? '08:00' : '', slotEnd: slot => slot === 2 ? '09:40' : ''
 });
 test('calendar export uses real dates, China timezone, escaped and byte-folded text', () => {
   const ics = exporter.scheduleCalendar(sampleStore());
@@ -67,6 +68,15 @@ test('text share is the selected week and contains no subscription or login secr
   const text = exporter.scheduleText(sampleStore());
   assert.match(text, /第 2 周/); assert.match(text, /08:00–09:40/); assert.match(text, /B311/);
   assert.doesNotMatch(text, /token|Cookie|https:/i);
+});
+
+test('text and calendar exports use configured twelfth-period times', () => {
+  const store = { ...sampleStore(), blocksForDay: day => day === 1 ? [{ ...course, startSlot: 12, endSlot: 12 }] : [],
+    slotStart: slot => slot === 12 ? '21:10' : '', slotEnd: slot => slot === 12 ? '21:55' : '' };
+  assert.match(exporter.scheduleText(store), /21:10–21:55/);
+  const ics = exporter.scheduleCalendar(store);
+  assert.match(ics, /DTSTART:20260907T131000Z/);
+  assert.match(ics, /DTEND:20260907T135500Z/);
 });
 
 function widgetHarness() {

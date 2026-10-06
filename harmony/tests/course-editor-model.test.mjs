@@ -15,7 +15,7 @@ function harness() {
   vm.runInContext(transformSync(source,{loader:'ts',format:'cjs'}).code,context);
   const model = new context.module.exports.NativeCourseEditorModel();
   model.attach((id,request)=>requests.push({id,request}),()=>saved++);
-  const store={selectedSemester:'fall',selectedWeek:'2',selectedDay:2,result:{cells:[]},weekOptions:()=>[1,2,3].map(value=>({value:String(value)}))};
+  const store={selectedSemester:'fall',selectedWeek:'2',selectedDay:2,result:{cells:[]},weekOptions:()=>[1,2,3].map(value=>({value:String(value)})),slots:()=>Array.from({length:12},(_,i)=>i+1)};
   return {model,store,requests,timers,get saved(){return saved;}};
 }
 test('reopening within one millisecond rejects the previous editor reply',()=>{
@@ -38,4 +38,14 @@ test('invalid fields never submit, timeout permits retry without accepting an ol
   assert.equal(h.model.busy,true); [...h.timers.values()].forEach(callback=>callback());
   assert.equal(h.model.busy,false); assert.match(h.model.error,/超时/);
   h.model.accept(id,JSON.stringify({saved:true})); assert.equal(h.saved,0);
+});
+
+test('editor exposes the configured final period and submits a twelfth-period course unchanged', () => {
+  const h = harness(); h.model.open(h.store);
+  h.model.accept(h.requests.at(-1).id, JSON.stringify({ session: 'current' }));
+  assert.equal(h.model.slots.at(-1), 12);
+  h.model.name = '第十二节课程'; h.model.startSlot = 12; h.model.endSlot = 12;
+  h.model.submit('save');
+  assert.equal(h.requests.at(-1).request.form.startSlot, 12);
+  assert.equal(h.requests.at(-1).request.form.endSlot, 12);
 });

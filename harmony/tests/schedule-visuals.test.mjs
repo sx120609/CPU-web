@@ -17,6 +17,7 @@ const web = compile('../../web/src/components/jwxt/scheduleTheme.ts');
 const palettes = compile('../entry/src/main/ets/schedule/SchedulePalettes.ets');
 const native = compile('../entry/src/main/ets/schedule/ScheduleVisuals.ets', { './SchedulePalettes': palettes });
 const design = compile('../entry/src/main/ets/schedule/ScheduleDesign.ets', { './ScheduleVisuals': native });
+const layout = compile('../entry/src/main/ets/schedule/ScheduleLayout.ets', { './ScheduleVisuals': native });
 
 function contrast(first, second) {
   const luminance = hex => {
@@ -49,14 +50,61 @@ function composite(hex, base) {
   return '#' + fg.map((v, i) => Math.round(v * alpha + bg[i] * (1 - alpha)).toString(16).padStart(2, '0')).join('');
 }
 
-test('flat native timetable cards preserve text contrast over the underlying cells', () => {
+test('native timetable cards preserve text contrast over cells in both appearances', () => {
   for (const { key } of palettes.SCHEDULE_PALETTES) {
     for (const dark of [false, true]) {
       for (const name of ['药物设计学', '药物化学', '药物分析', '天然药物化学实验', '人工智能药学', '药剂学',
         ...Array.from({ length: 360 }, (_, index) => `课程${index}`)]) {
         const tone = native.scheduleCardTone(name, key, dark);
-        const background = composite(dark ? tone.bottom : tone.top, dark ? '#18211E' : '#F1F6F3');
-        assert.ok(contrast(composite(tone.text, background), background) >= 4.5, `${key} ${dark}: ${JSON.stringify(tone)}`);
+        const cell = composite(layout.scheduleCell(dark), dark ? '#101C19' : '#EDF4FF');
+        for (const fill of [tone.top, tone.bottom]) {
+          const background = composite(fill, cell);
+          assert.ok(contrast(composite(tone.text, background), background) >= 4.5, `${key} ${dark}: ${JSON.stringify(tone)}`);
+        }
+      }
+    }
+  }
+});
+
+test('timetable card backgrounds and borders use the web algorithm rather than a separate hue table', () => {
+  for (const { key } of palettes.SCHEDULE_PALETTES) {
+    for (const dark of [false, true]) {
+      for (const name of ['药物设计学', '药物化学', '药物分析', '  药物  化学  ']) {
+        const card = native.scheduleCardTone(name, key, dark);
+        const webTone = native.scheduleCourseTone(name, key, dark);
+        for (const role of ['bottom', 'border']) assert.equal(card[role], webTone[role]);
+        if (!dark || key !== 'color-glass') assert.equal(card.top, webTone.top);
+      }
+    }
+  }
+});
+
+test('phone grid breakpoints preserve row sizes and merged-course positions in short and tall viewports', () => {
+  for (const width of [320, 360, 375, 390, 391, 430, 760, 761]) {
+    for (const height of [320, 540, 900]) {
+      for (const count of [11, 12, 14]) {
+        const metrics = layout.scheduleGridMetrics(width, height, count);
+        assert.equal(metrics.axis, width <= 390 ? 36 : width <= 760 ? 38 : 44);
+        assert.equal(metrics.gap, width <= 390 ? 2 : width <= 760 ? 4 : 5);
+        assert.equal(metrics.header, 36);
+        // Course names stay readable, and four characters fit on a line from 360 vp up.
+        assert.ok(metrics.nameSize >= 9 && metrics.nameSize <= 11 && metrics.locationSize === metrics.nameSize - 1);
+        const column = (Math.min(width, 720) - 2 * metrics.inset - metrics.axis - 7 * metrics.gap) / 7;
+        // Leave a couple of vp spare: a one-line name that only just fits is cut to an ellipsis.
+        if (width >= 360) assert.ok(4 * metrics.nameSize <= column - 6);
+        assert.ok(metrics.weekRow >= (width <= 390 ? 38 : width <= 760 ? 42 : 48));
+        assert.ok(metrics.dayRow >= (width <= 390 ? 48 : width <= 760 ? 52 : 58));
+        for (const [row, gap] of [[metrics.weekRow, metrics.gap], [metrics.dayRow, metrics.dayGap]]) {
+          const stride = row + gap;
+          const gridHeight = count * stride - gap;
+          for (const [start, end] of [[1, 1], [1, 4], [5, 8], [9, count], [count, count]]) {
+            const top = (start - 1) * stride + 1;
+            const courseHeight = (end - start + 1) * stride - gap - 2;
+            assert.ok(courseHeight > 0);
+            assert.ok(top + courseHeight < gridHeight);
+            assert.ok(Math.abs(top + courseHeight - (end * stride - gap - 1)) < 1e-8);
+          }
+        }
       }
     }
   }

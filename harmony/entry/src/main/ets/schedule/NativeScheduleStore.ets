@@ -56,7 +56,31 @@ export interface NativeSchedulePeriod {
   endTime: string;
 }
 
+export interface NativeCalendarPeriod {
+  id: number;
+  name?: string;
+  start: string;
+  end: string;
+}
+
+// Compatibility for old servers without period configuration. Configured periods
+// take precedence; their count and times drive the grid, editor and exports.
+const BUNDLED_PERIODS: NativeSchedulePeriod[] = [
+  { number: 1, startTime: '08:00', endTime: '08:45' },
+  { number: 2, startTime: '08:55', endTime: '09:40' },
+  { number: 3, startTime: '09:55', endTime: '10:40' },
+  { number: 4, startTime: '10:50', endTime: '11:35' },
+  { number: 5, startTime: '13:30', endTime: '14:15' },
+  { number: 6, startTime: '14:25', endTime: '15:10' },
+  { number: 7, startTime: '15:25', endTime: '16:10' },
+  { number: 8, startTime: '16:20', endTime: '17:05' },
+  { number: 9, startTime: '18:30', endTime: '19:15' },
+  { number: 10, startTime: '19:25', endTime: '20:10' },
+  { number: 11, startTime: '20:20', endTime: '21:05' }
+];
+
 export interface NativeScheduleCalendar {
+  periods?: NativeCalendarPeriod[];
   source?: string;
   semesters?: NativeScheduleSemester[];
   currentSemester?: string;
@@ -137,6 +161,7 @@ export class NativeScheduleStore {
   status: NativeScheduleStatus = 'idle';
   result?: NativeScheduleResult;
   calendar?: NativeScheduleCalendar;
+  periods: NativeSchedulePeriod[] = BUNDLED_PERIODS.slice();
   selectedSemester: string = '';
   selectedWeek: string = '';
   selectedDay: number = (new Date().getDay() || 7);
@@ -156,6 +181,7 @@ export class NativeScheduleStore {
   private requester?: NativeScheduleRequester;
   private listener?: NativeScheduleChangeListener;
   private cache: Map<string, NativeScheduleCacheEntry> = new Map<string, NativeScheduleCacheEntry>();
+  private navigationSemesters: NativeScheduleSemester[] = [];
   private navigationWeeks: NativeScheduleWeek[] = [];
   private activeRequestId: string = '';
   private requestGeneration: number = 0;
@@ -404,6 +430,7 @@ export class NativeScheduleStore {
     this.refreshBarrier = Date.now();
     this.cache.clear();
     this.result = undefined;
+    this.navigationSemesters = [];
     this.navigationWeeks = [];
     this.calendar = undefined;
     this.detailVisible = false;
@@ -454,12 +481,13 @@ export class NativeScheduleStore {
 
   private mergedBlocks(cells: NativeScheduleCell[], day: number): NativeCourseBlock[] {
     const blocks: NativeCourseBlock[] = [];
+    const maxSlot = this.slotCount();
     cells.filter((cell: NativeScheduleCell) => cell.day === day).forEach((cell: NativeScheduleCell) => {
       cell.courses.forEach((course: NativeScheduleCourse) => {
-        const fallbackStart = Math.max(1, Math.min(11, cell.bigSlot * 2 - 1));
-        const fallbackEnd = Math.max(fallbackStart, Math.min(11, cell.bigSlot * 2));
-        let startSlot = Math.max(1, Math.min(11, Number(course.startSlot) || fallbackStart));
-        let endSlot = Math.max(startSlot, Math.min(11, Number(course.endSlot) || fallbackEnd));
+        const fallbackStart = Math.max(1, Math.min(maxSlot, cell.bigSlot * 2 - 1));
+        const fallbackEnd = Math.max(fallbackStart, Math.min(maxSlot, cell.bigSlot * 2));
+        const startSlot = Math.max(1, Math.min(maxSlot, Number(course.startSlot) || fallbackStart));
+        const endSlot = Math.max(startSlot, Math.min(maxSlot, Number(course.endSlot) || fallbackEnd));
         const block: NativeCourseBlock = { day, bigSlot: cell.bigSlot, startSlot, endSlot, course };
         const index = blocks.findIndex((candidate: NativeCourseBlock) => this.canMergeBlocks(candidate, block));
         if (index < 0) {
@@ -567,8 +595,7 @@ export class NativeScheduleStore {
   }
 
   semesterOptions(): NativeScheduleSemester[] {
-    if (this.calendar?.semesters?.length) return this.calendar.semesters;
-    return this.result?.semesters ?? [];
+    return this.navigationSemesters;
   }
 
   weekOptions(): NativeScheduleWeek[] {
@@ -583,6 +610,7 @@ export class NativeScheduleStore {
     preview.selectedDay = this.selectedDay;
     preview.viewMode = this.viewMode;
     preview.calendar = this.calendar;
+    preview.periods = this.periods;
     preview.source = this.source;
     // Adjacent pages may only display a matching cached week or a complete term.
     const cached = this.freshCache(this.selectedSemester, week);
@@ -632,11 +660,40 @@ export class NativeScheduleStore {
     return current?.value ?? this.result?.currentWeek ?? '';
   }
 
+  slotCount(): number {
+    return this.periods.reduce((count: number, period: NativeSchedulePeriod) => Math.max(count, period.number), 1);
+  }
+
+  slots(): number[] {
+    const slots: number[] = [];
+    for (let number = 1; number <= this.slotCount(); number++) slots.push(number);
+    return slots;
+  }
+
+  slotStart(number: number): string {
+    return this.periods.find((period: NativeSchedulePeriod) => period.number === number)?.startTime ?? '';
+  }
+
+  slotEnd(number: number): string {
+    return this.periods.find((period: NativeSchedulePeriod) => period.number === number)?.endTime ?? '';
+  }
+
+  private snapshotPeriods(snapshot: NativeScheduleSnapshot): NativeSchedulePeriod[] {
+    const configured = snapshot.calendar?.periods?.map((period: NativeCalendarPeriod): NativeSchedulePeriod =>
+      ({ number: period.id, startTime: period.start, endTime: period.end }));
+    const valid = (configured?.length ? configured : snapshot.periods ?? [])
+      .filter((period: NativeSchedulePeriod) => Number.isInteger(period.number) && period.number >= 1 && period.number <= 30)
+      .sort((left: NativeSchedulePeriod, right: NativeSchedulePeriod) => left.number - right.number);
+    return valid.length ? valid : BUNDLED_PERIODS.slice();
+  }
+
   private applySnapshot(snapshot: NativeScheduleSnapshot, fromCache: boolean): void {
     if (!snapshot.data) return;
+    this.rememberNavigationSemesters(snapshot);
     this.result = snapshot.data;
     this.navigationWeeks = snapshot.data.weeks;
     this.calendar = snapshot.calendar;
+    this.periods = this.snapshotPeriods(snapshot);
     if (!this.selectedSemester) this.selectedSemester = snapshot.data.currentSemester;
     if (!this.selectedWeek) {
       this.selectedWeek = snapshot.data.currentWeek || (snapshot.calendar?.currentWeek ? String(snapshot.calendar.currentWeek) : '');
@@ -647,6 +704,38 @@ export class NativeScheduleStore {
     this.status = 'loaded';
     if (!fromCache && this.selectedDay < 1) this.selectedDay = 1;
     this.notify();
+  }
+
+  private rememberNavigationSemesters(snapshot: NativeScheduleSnapshot): void {
+    const canonical = this.uniqueSemesters(snapshot.calendar?.semesters?.length
+      ? snapshot.calendar.semesters
+      : snapshot.data?.semesters);
+    // A term selected from the picker is a data request, not a new authority
+    // for the picker. Older JWXT pages sometimes echo course/history filters as
+    // bogus term options. Keep the last verified option set while switching,
+    // otherwise one broken historic response can turn five real terms into a
+    // long, unusable list. A fresh automatic/current-term load is allowed to
+    // replace it so the list can advance naturally when a new term begins.
+    if (!this.navigationSemesters.length || !this.selectedSemester) {
+      this.navigationSemesters = canonical;
+    }
+  }
+
+  private uniqueSemesters(items?: NativeScheduleSemester[]): NativeScheduleSemester[] {
+    const values: NativeScheduleSemester[] = [];
+    const indexByValue: Map<string, number> = new Map<string, number>();
+    items?.forEach((item: NativeScheduleSemester) => {
+      const value = item.value.trim();
+      if (!value) return;
+      const index = indexByValue.get(value);
+      if (index === undefined) {
+        indexByValue.set(value, values.length);
+        values.push({ value, label: item.label || value, current: item.current });
+      } else if (item.current) {
+        values[index].current = true;
+      }
+    });
+    return values;
   }
 
   private fail(message: string): void {
