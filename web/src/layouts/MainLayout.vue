@@ -1721,50 +1721,55 @@ html[data-theme="dark"] .assistant-widget {
 
 .layout-root--tabbar-fallback .mobile-tabbar { display: block; }
 
+/* 快捷入口用和服务页一致的图标宫格。 */
 .drawer-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  grid-auto-rows: 62px;
-  align-items: stretch;
-  gap: 8px;
+  align-items: start;
+  gap: 4px 0;
 }
 
 .drawer-link {
-  border: 1px solid var(--cpu-border-soft);
-  background: var(--cpu-surface);
-  border-radius: 10px;
-  height: 62px;
-  min-height: 62px;
-  padding: 8px 6px;
-  color: var(--cpu-text-secondary);
   display: flex;
+  min-width: 0;
+  min-height: 80px;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 4px;
-  line-height: 1;
+  gap: 7px;
+  padding: 8px 2px 6px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--cpu-text);
   font: inherit;
-  overflow: hidden;
+  line-height: 1;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform .12s ease;
 }
 
+.drawer-link:active { transform: scale(.96); }
+
 .drawer-link .el-icon {
-  font-size: 20px;
-  width: 22px;
-  height: 22px;
   display: inline-flex;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
   align-items: center;
   justify-content: center;
-  flex: 0 0 22px;
+  border-radius: 13px;
+  background: var(--cpu-primary-soft);
   color: var(--cpu-primary);
+  font-size: 21px;
 }
 
 .drawer-link span {
   max-width: 100%;
-  font-size: 11px;
-  line-height: 1.2;
-  white-space: nowrap;
   overflow: hidden;
+  font-size: 12px;
+  font-weight: 550;
+  line-height: 1.3;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .drawer-account {
@@ -2116,10 +2121,6 @@ html[data-theme="dark"] .assistant-widget {
 }
 
 @media (max-width: 420px) {
-  .drawer-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-
   .mobile-actions {
     --mobile-header-control-size: 36px;
   }
@@ -2143,23 +2144,11 @@ html[data-theme="dark"] .assistant-widget {
     --mobile-header-control-size: 34px;
   }
 
-  .drawer-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    grid-auto-rows: 58px;
-    gap: 7px;
-  }
-
-  .drawer-link {
-    height: 58px;
-    min-height: 58px;
-    padding: 7px 5px;
-  }
-
   .drawer-link .el-icon {
+    width: 40px;
+    height: 40px;
+    flex-basis: 40px;
     font-size: 19px;
-    width: 21px;
-    height: 21px;
-    flex-basis: 21px;
   }
 }
 
