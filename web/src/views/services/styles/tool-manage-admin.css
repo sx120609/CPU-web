@@ -42,9 +42,9 @@
   flex-direction: column;
   gap: 14px;
   padding: 16px;
-  border: 1px solid #e5eaf3;
+  border: 1px solid var(--cpu-border-soft);
   border-radius: 10px;
-  background: #f8fbff;
+  background: var(--cpu-surface-soft);
   margin-bottom: 14px;
 }
 .upload-copy h4 {
@@ -76,7 +76,7 @@
 .field-rule-list div {
   min-width: 0;
   padding: 11px 12px;
-  border: 1px solid #dbeafe;
+  border: 1px solid var(--cpu-primary-soft);
   border-radius: 8px;
   background: var(--cpu-card);
 }
@@ -86,7 +86,7 @@
   display: block;
 }
 .field-rule-list b {
-  color: #2563eb;
+  color: var(--cpu-primary);
   font-size: 12px;
   margin-bottom: 5px;
 }
@@ -115,10 +115,10 @@
   background: var(--cpu-card);
 }
 .grade-uploader :deep(.el-icon) {
-  color: #2563eb;
+  color: var(--cpu-primary);
 }
 .grade-preview-box {
-  border: 1px solid #dbeafe;
+  border: 1px solid var(--cpu-primary-soft);
   border-radius: 10px;
   padding: 12px;
   background: var(--cpu-card);
@@ -230,8 +230,18 @@
   width: 3px;
   height: 3px;
   border-radius: 50%;
-  background: #c4cdd8;
+  background: var(--cpu-border);
 }
 .q-row-actions {
   justify-content: flex-end;
 }
+
+/* 列表区：统计卡、问卷卡片和空状态的统一样式。 */
+.admin-section { border-radius: 14px; }
+.questionnaire-summary { gap: 10px; }
+.questionnaire-summary div { padding: 12px 14px; border-radius: 12px; }
+.questionnaire-summary b { font-size: 22px; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.questionnaire-row-card { border-radius: 14px; transition: border-color .15s ease; }
+.questionnaire-row-card:hover { border-color: color-mix(in srgb, var(--cpu-primary) 34%, var(--cpu-border-soft)); }
+.q-title-cell span { font-family: var(--cpu-font-mono); font-size: 11px; }
+.empty-panel { border-radius: 12px; }

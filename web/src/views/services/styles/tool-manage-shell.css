@@ -32,11 +32,11 @@
   color: var(--cpu-primary);
 }
 :global(.questionnaire-builder-dialog.el-dialog) {
-  --builder-primary: #267dff;
-  --builder-primary-dark: #1765d8;
-  --builder-primary-soft: #eef5ff;
-  --builder-border: #e5eaf3;
-  --builder-muted: #6b7280;
+  --builder-primary: var(--cpu-primary);
+  --builder-primary-dark: var(--cpu-primary-dark);
+  --builder-primary-soft: var(--cpu-primary-soft);
+  --builder-border: var(--cpu-border-soft);
+  --builder-muted: var(--cpu-text-secondary);
   width: 100dvw !important;
   height: 100dvh !important;
   max-height: none !important;
@@ -45,12 +45,12 @@
   margin: 0 !important;
   padding: 0 !important;
   border-radius: 0;
-  background: #f3f6fb;
+  background: var(--cpu-bg);
   box-shadow: none;
   transform: none !important;
 }
 :global(.questionnaire-builder-overlay) {
-  background: #f3f6fb !important;
+  background: var(--cpu-bg) !important;
 }
 :global(.questionnaire-builder-overlay .el-overlay-dialog) {
   align-items: stretch !important;
@@ -62,7 +62,7 @@
   padding: 0;
   margin: 0;
   border-bottom: 1px solid var(--builder-border);
-  background: #fff;
+  background: var(--cpu-card);
   box-shadow: 0 1px 10px rgba(17, 24, 39, 0.04);
 }
 :global(.questionnaire-builder-dialog .el-dialog__body) {
@@ -93,8 +93,8 @@
   flex-direction: column;
   gap: 3px;
 }
-.builder-titlebar b { color: #111827; font-size: 17px; }
-.builder-titlebar span { color: #6b7280; font-size: 12px; }
+.builder-titlebar b { color: var(--cpu-text); font-size: 17px; }
+.builder-titlebar span { color: var(--cpu-text-secondary); font-size: 12px; }
 .builder-back {
   width: 36px;
   height: 36px;
@@ -102,14 +102,14 @@
   place-items: center;
   border: 1px solid var(--builder-border);
   border-radius: 8px;
-  color: #4b5563;
-  background: #fff;
+  color: var(--cpu-text-secondary);
+  background: var(--cpu-card);
   cursor: pointer;
   transition: all 0.18s ease;
 }
 .builder-back:hover {
   color: var(--builder-primary);
-  border-color: #b8d7ff;
+  border-color: color-mix(in srgb, var(--cpu-primary) 36%, var(--cpu-border-soft));
   background: var(--builder-primary-soft);
 }
 .builder-top-actions {
@@ -129,8 +129,8 @@
   --el-button-hover-border-color: var(--builder-primary-dark);
 }
 .builder-top-actions :deep(.el-button--primary.is-plain) {
-  --el-button-bg-color: #fff;
-  --el-button-border-color: #b8d7ff;
+  --el-button-bg-color: var(--cpu-card);
+  --el-button-border-color: color-mix(in srgb, var(--cpu-primary) 36%, var(--cpu-border-soft));
   --el-button-text-color: var(--builder-primary);
   --el-button-hover-bg-color: var(--builder-primary-soft);
   --el-button-hover-border-color: var(--builder-primary);
