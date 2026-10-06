@@ -252,7 +252,7 @@
       :compact="useFlutterShell"
     />
 
-    <LiquidGlassTabbar
+    <MobileTabbar
       v-if="!useNativeShell && !mobileTopicChrome"
       class="mobile-tabbar"
       :hidden="keyboardOpen"
@@ -348,7 +348,7 @@
 import IosAppRecommendation from "@/components/install/IosAppRecommendation.vue";
 import { ref, computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import LiquidGlassTabbar from "../components/common/LiquidGlassTabbar.vue";
+import MobileTabbar from "../components/common/MobileTabbar.vue";
 import SiteFooter from "../components/common/SiteFooter.vue";
 import { ElMessage } from "element-plus";
 import {
@@ -1011,8 +1011,8 @@ function releaseRoutePage(element: Element) {
 
 <style scoped lang="scss">
 .layout-root {
-  --liquid-tabbar-bottom: max(8px, calc(env(safe-area-inset-bottom) - 14px));
-  --liquid-tabbar-reserve: calc(64px + var(--liquid-tabbar-bottom));
+  /* 底栏贴底、通栏：56px 加上系统手势条的安全区 */
+  --liquid-tabbar-reserve: calc(56px + env(safe-area-inset-bottom, 0px));
   --layout-mobile-tabbar-reserve: 0px;
   min-height: 100dvh;
   min-height: var(--layout-viewport-height, 100dvh);
@@ -1035,16 +1035,12 @@ function releaseRoutePage(element: Element) {
 }
 
 .topbar {
-  background: var(--cpu-glass-bg);
-  backdrop-filter: var(--cpu-glass-blur);
-  -webkit-backdrop-filter: var(--cpu-glass-blur);
-  border-bottom: 1px solid var(--cpu-border-soft);
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.02), 0 4px 16px -4px rgba(0, 0, 0, 0.02);
+  background: var(--cpu-card);
+  box-shadow: inset 0 -1px 0 var(--cpu-border-soft);
   position: sticky;
   top: 0;
   z-index: 100;
   padding-top: var(--cpu-safe-area-inset-top, 0px);
-  transition: all 0.3s ease;
 }
 
 .topbar-inner {
@@ -1069,11 +1065,10 @@ function releaseRoutePage(element: Element) {
 }
 
 .brand-logo {
-  width: 38px;
-  height: 38px;
+  width: 32px;
+  height: 32px;
   flex: 0 0 auto;
   display: block;
-  border-radius: 11px;
   object-fit: contain;
 }
 
@@ -1085,21 +1080,21 @@ function releaseRoutePage(element: Element) {
 }
 
 .brand-name {
-  font-size: 18px;
+  font-size: var(--cpu-fs-l);
   font-weight: 700;
-  color: var(--cpu-primary);
+  color: var(--cpu-text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .brand-sub {
-  font-size: 10.5px;
+  margin-top: 2px;
+  font-size: var(--cpu-fs-xs);
   color: var(--cpu-text-muted);
-  letter-spacing: 0.8px;
 }
 
-/* 主导航是一组胶囊：当前页抬起成白底，其余只在悬停时变色。 */
+/* 主导航是一排文字链接：当前页有一块浅灰底，其余只在悬停时变色。 */
 .top-nav {
   display: flex;
   gap: 2px;
@@ -1108,26 +1103,25 @@ function releaseRoutePage(element: Element) {
   overflow-x: visible;
   overflow-y: hidden;
   align-items: center;
-  padding: 4px;
-  border-radius: 999px;
-  background: var(--cpu-surface-subtle);
 }
 
 .top-nav a {
+  display: inline-flex;
+  height: 36px;
   flex: 0 0 auto;
-  padding: 9px 14px;
-  border-radius: 999px;
+  align-items: center;
+  padding: 0 12px;
+  border-radius: 8px;
   color: var(--cpu-text-secondary);
   text-decoration: none;
-  font-size: 14px;
+  font-size: var(--cpu-fs-m);
   font-weight: 500;
   line-height: 1;
   white-space: nowrap;
-  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
 }
 
 .top-nav a:hover { color: var(--cpu-text); }
-.top-nav a.router-link-active { color: var(--cpu-primary); font-weight: 600; background: var(--cpu-card); box-shadow: var(--cpu-shadow-sm); }
+.top-nav a.router-link-active { color: var(--cpu-text); background: var(--cpu-bg); }
 .top-nav a:focus-visible { outline: 2px solid var(--cpu-primary); outline-offset: 1px; }
 .top-nav:not(:has(*)) { display: none; }
 
@@ -1137,17 +1131,18 @@ function releaseRoutePage(element: Element) {
 
 .top-nav-more-btn {
   display: inline-flex;
-  height: 32px;
+  height: 36px;
   align-items: center;
   justify-content: center;
   gap: 4px;
   border: 0;
-  border-radius: 999px;
+  border-radius: 8px;
   background: transparent;
   color: var(--cpu-text-secondary);
   cursor: pointer;
   font: inherit;
-  font-size: 14px;
+  font-size: var(--cpu-fs-m);
+  font-weight: 500;
   line-height: 1;
   padding: 0 12px;
   white-space: nowrap;
@@ -1155,8 +1150,8 @@ function releaseRoutePage(element: Element) {
 
 .top-nav-more-btn:hover,
 .top-nav-more-btn:focus-visible {
-  color: var(--cpu-primary);
-  background: var(--cpu-surface-subtle);
+  color: var(--cpu-text);
+  background: var(--cpu-bg);
   outline: none;
 }
 
@@ -1205,8 +1200,8 @@ function releaseRoutePage(element: Element) {
 
 :global(.el-dropdown-menu__item.is-current-appearance) {
   color: var(--cpu-primary);
-  background: rgba(20, 143, 123, 0.1);
-  font-weight: 650;
+  background: var(--cpu-primary-soft);
+  font-weight: 500;
 }
 
 :global(.el-dropdown-menu__item.is-current-appearance .el-icon) {
@@ -1214,25 +1209,11 @@ function releaseRoutePage(element: Element) {
 }
 
 .mobile-actions {
-  --mobile-header-control-size: 38px;
+  --mobile-header-control-size: 44px;
   display: none;
-  height: 42px;
   align-items: center;
-  gap: 2px;
   margin-left: auto;
-  padding: 2px;
-  border: 1px solid color-mix(in srgb, var(--cpu-border-soft) 50%, transparent);
-  border-radius: 999px;
-  background: #ffffff66;
-  -webkit-backdrop-filter: blur(4px) saturate(1.5);
-  backdrop-filter: blur(4px) saturate(1.5);
-  box-shadow: 0 0 10px #0000001a, inset 0 1px 1px #ffffff66;
   flex-wrap: nowrap;
-}
-
-html[data-theme="dark"] .mobile-actions {
-  background: #24242466;
-  box-shadow: 0 0 10px #0003, inset 0 1px 1px #ffffff40;
 }
 
 .touch-icon-btn {
@@ -1250,7 +1231,7 @@ html[data-theme="dark"] .mobile-actions {
   align-items: center;
   justify-content: center;
   line-height: 1;
-  -webkit-tap-highlight-color: rgba(22, 135, 118, 0.18);
+  -webkit-tap-highlight-color: transparent;
 }
 
 .mobile-actions :deep(.el-button + .el-button) {
@@ -1267,7 +1248,7 @@ html[data-theme="dark"] .mobile-actions {
 }
 
 .touch-icon-btn:active {
-  background: var(--cpu-card);
+  background: var(--cpu-bg);
 }
 
 .touch-icon-btn :deep(.el-icon) {
@@ -1357,26 +1338,19 @@ html[data-theme="dark"] .mobile-actions {
   height: 58px;
   place-items: center;
   padding: 0;
-  border: 1px solid color-mix(in srgb, var(--cpu-primary) 26%, var(--cpu-border));
+  border: 0;
   border-radius: 50%;
   cursor: pointer;
   color: var(--cpu-primary);
   background: var(--cpu-card);
-  box-shadow:
-    0 14px 32px color-mix(in srgb, var(--cpu-primary-dark) 16%, transparent),
-    0 3px 10px rgba(15, 23, 42, 0.08);
-  transition: transform 0.18s ease, box-shadow 0.18s ease, color 0.18s ease;
+  box-shadow: inset 0 0 0 1px var(--cpu-border);
 
   .el-icon {
     font-size: 24px;
   }
 
   &:hover {
-    transform: translateY(-2px);
-    color: var(--cpu-primary-dark);
-    box-shadow:
-      0 18px 40px color-mix(in srgb, var(--cpu-primary-dark) 22%, transparent),
-      0 4px 12px rgba(15, 23, 42, 0.1);
+    background: var(--cpu-surface-soft);
   }
 }
 
@@ -1390,16 +1364,12 @@ html[data-theme="dark"] .mobile-actions {
   height: 58px;
   place-items: center;
   padding: 0;
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  border: 0;
   border-radius: 50%;
-  color: #fff;
-  background: linear-gradient(145deg, var(--cpu-primary), var(--cpu-primary-dark));
-  box-shadow:
-    0 16px 36px color-mix(in srgb, var(--cpu-primary-dark) 34%, transparent),
-    0 4px 12px rgba(0, 0, 0, 0.12);
+  color: var(--cpu-on-primary);
+  background: var(--cpu-primary);
   cursor: pointer;
   font: inherit;
-  transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
 }
 
 .assistant-fab .el-icon {
@@ -1407,10 +1377,7 @@ html[data-theme="dark"] .mobile-actions {
 }
 
 .assistant-fab:hover {
-  transform: translateY(-2px) scale(1.04);
-  box-shadow:
-    0 20px 42px color-mix(in srgb, var(--cpu-primary-dark) 42%, transparent),
-    0 5px 14px rgba(0, 0, 0, 0.14);
+  background: var(--cpu-primary-dark);
 }
 
 .assistant-fab:active {
@@ -1486,15 +1453,14 @@ html[data-theme="dark"] .mobile-actions {
   border: 0;
   border-radius: 50%;
   background: var(--cpu-primary);
-  color: #fff;
-  box-shadow: 0 14px 30px color-mix(in srgb, var(--cpu-primary-dark) 28%, transparent);
+  color: var(--cpu-on-primary);
   font: inherit;
-  font-weight: 700;
+  font-weight: 500;
   cursor: pointer;
 }
 .forum-post-fab .el-icon { font-size: 23px; }
 .forum-post-fab span { display: none; }
-.forum-post-fab:hover { background: var(--cpu-primary-dark); transform: translateY(-1px); }
+.forum-post-fab:hover { background: var(--cpu-primary-dark); }
 .forum-post-fab:focus-visible { outline: 3px solid color-mix(in srgb, var(--cpu-primary) 28%, transparent); outline-offset: 3px; }
 
 html[data-theme="dark"] .assistant-widget {
@@ -1519,14 +1485,11 @@ html[data-theme="dark"] .assistant-widget {
   gap: 8px;
   margin-left: 8px;
   cursor: pointer;
-  padding: 4px 10px 4px 4px;
-  border: 1px solid var(--cpu-border-soft);
-  border-radius: 999px;
-  background: var(--cpu-card);
-  transition: border-color 0.15s;
+  padding: 4px 8px 4px 4px;
+  border-radius: 8px;
 }
 
-.user-info:hover { border-color: var(--cpu-border); background: var(--cpu-surface-soft); }
+.user-info:hover { background: var(--cpu-bg); }
 
 .user-avatar {
   background: var(--cpu-primary);
@@ -1535,8 +1498,9 @@ html[data-theme="dark"] .assistant-widget {
 }
 
 .user-name {
-  font-size: 13px;
-  color: var(--cpu-text-secondary);
+  font-size: var(--cpu-fs-m);
+  font-weight: 500;
+  color: var(--cpu-text);
   max-width: 96px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1684,12 +1648,12 @@ html[data-theme="dark"] .assistant-widget {
 
 .mobile-tabbar {
   position: fixed;
-  left: max(24px, env(safe-area-inset-left));
-  right: max(24px, env(safe-area-inset-right));
-  bottom: var(--liquid-tabbar-bottom);
+  left: 0;
+  right: 0;
+  bottom: 0;
   z-index: 1100;
   display: none;
-  height: 64px;
+  height: var(--liquid-tabbar-reserve);
   pointer-events: auto;
   transition: opacity 160ms, transform 200ms, visibility 200ms;
 }
@@ -1697,11 +1661,11 @@ html[data-theme="dark"] .assistant-widget {
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
-  transform: translateY(calc(100% + var(--liquid-tabbar-bottom)));
+  transform: translateY(100%);
 }
 .layout-root--android-insets {
   /* The Android host has already removed system navigation insets from the WebView. */
-  --liquid-tabbar-bottom: 8px;
+  --liquid-tabbar-reserve: 56px;
 }
 .layout-root--tabbar-fallback {
   --layout-mobile-tabbar-reserve: var(--liquid-tabbar-reserve);
@@ -1833,39 +1797,35 @@ html[data-theme="dark"] .assistant-widget {
 .appearance-segmented {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
-  padding: 4px;
-  border: 1px solid var(--cpu-border-soft);
-  border-radius: 12px;
-  background: var(--cpu-surface-soft);
+  padding: 2px;
+  border-radius: var(--cpu-radius-m);
+  background: var(--cpu-track);
 }
 
 .appearance-segmented button {
   display: inline-flex;
   min-width: 0;
-  min-height: 34px;
+  min-height: 36px;
   align-items: center;
   justify-content: center;
   gap: 5px;
   border: 0;
-  border-radius: 9px;
+  border-radius: 8px;
   background: transparent;
   color: var(--cpu-text-secondary);
   cursor: pointer;
   font: inherit;
-  font-size: 12px;
-  font-weight: 650;
+  font-size: var(--cpu-fs-s);
+  font-weight: 500;
 }
 
 .appearance-segmented button.active {
-  color: #05201c;
-  background: var(--cpu-primary);
-  box-shadow: 0 6px 16px rgba(20, 143, 123, 0.18);
+  color: var(--cpu-text);
+  background: var(--cpu-card);
 }
 
 .appearance-segmented button:not(.active):hover {
-  color: var(--cpu-primary);
-  background: rgba(20, 143, 123, 0.1);
+  color: var(--cpu-text);
 }
 
 .page-route-enter-active, .page-route-leave-active {
@@ -1951,21 +1911,14 @@ html[data-theme="dark"] .assistant-widget {
     right: 14px;
     bottom: calc(var(--layout-mobile-tabbar-reserve) + 12px);
     width: auto;
-    height: 46px;
-    min-height: 46px;
-    padding: 0 14px;
-    border: 1px solid color-mix(in srgb, var(--cpu-primary) 24%, var(--cpu-border));
-    border-radius: 23px;
-    background: color-mix(in srgb, var(--cpu-card) 94%, transparent);
-    color: var(--cpu-primary);
-    box-shadow: 0 8px 22px rgba(15, 23, 42, .12);
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
+    height: 48px;
+    min-height: 48px;
+    padding: 0 18px 0 16px;
+    border-radius: var(--cpu-radius-pill);
   }
 
-  .forum-post-fab .el-icon { font-size: 21px; }
-  .forum-post-fab span { display: inline; font-size: 13px; }
-  .forum-post-fab:hover { background: var(--cpu-card); color: var(--cpu-primary-dark); }
+  .forum-post-fab .el-icon { font-size: 18px; }
+  .forum-post-fab span { display: inline; font-size: var(--cpu-fs-m); }
 
   .layout-root.keyboard-open .main--bare {
     padding-bottom: 0 !important;
@@ -1975,14 +1928,9 @@ html[data-theme="dark"] .assistant-widget {
     padding: 0;
   }
 
-  .topbar {
-    box-shadow: 0 1px 10px rgba(15, 23, 42, 0.05);
-  }
-
   .topbar-inner {
-    height: auto;
-    min-height: 58px;
-    padding: 8px 12px 10px;
+    height: 52px;
+    padding: 0 4px 0 16px;
     gap: 8px;
     flex-wrap: nowrap;
   }
@@ -1992,13 +1940,8 @@ html[data-theme="dark"] .assistant-widget {
   }
 
   .brand-logo {
-    width: 38px;
-    height: 38px;
-    border-radius: 10px;
-  }
-
-  .brand-name {
-    font-size: 17px;
+    width: 28px;
+    height: 28px;
   }
 
   .brand-sub {
@@ -2012,18 +1955,6 @@ html[data-theme="dark"] .assistant-widget {
   .mobile-actions {
     display: flex;
     flex: 0 0 auto;
-  }
-
-  :global(html[data-cpu-platform="android"] .mobile-actions) {
-    --mobile-header-control-size: 34px;
-    gap: 0;
-    padding: 1px 2px;
-  }
-
-  :global(html[data-cpu-platform="android"] .touch-icon-btn .el-icon) {
-    width: 20px;
-    height: 20px;
-    font-size: 20px;
   }
 
   .main {
@@ -2133,28 +2064,13 @@ html[data-theme="dark"] .assistant-widget {
 
 }
 
-@media (max-width: 420px) {
-  .mobile-actions {
-    --mobile-header-control-size: 36px;
-  }
-}
-
 @media (max-width: 360px) {
   .topbar-inner {
     padding-inline: 10px;
   }
 
-  .brand-logo {
-    width: 32px;
-    height: 32px;
-  }
-
-  .brand-name {
-    font-size: 15px;
-  }
-
   .mobile-actions {
-    --mobile-header-control-size: 34px;
+    --mobile-header-control-size: 40px;
   }
 
   .drawer-link .el-icon {
