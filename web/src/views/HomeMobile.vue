@@ -6,7 +6,7 @@
         :scope="showForumContent ? 'all' : 'services'"
       />
       <nav class="quick-grid" :class="{ 'quick-grid--services': !showForumContent }">
-        <button data-cpu-button="surface" v-for="entry in quickEntries" :key="entry.label" type="button" @click="openQuickEntry(entry.to)">
+        <button data-cpu-button="surface" v-for="entry in quickEntries" :key="entry.label" type="button" :data-hue="entry.hue" @click="openQuickEntry(entry.to)">
           <span class="quick-icon" aria-hidden="true"><el-icon><component :is="entry.icon" /></el-icon></span>
           <span>{{ entry.label }}</span>
         </button>
@@ -20,21 +20,24 @@
     <ForumAdCarousel v-if="showForumContent && mobileHomeAds.length" :ads="mobileHomeAds" compact />
 
     <section v-if="showForumContent && hotPreview.length" class="hot-strip" aria-label="热榜">
-      <header><b>热榜</b><router-link to="/forum?channel=hot">查看全部 →</router-link></header>
+      <header><b><AppIcon name="hot" />热榜</b><router-link to="/forum?channel=hot">查看全部<el-icon><ArrowRight /></el-icon></router-link></header>
       <button data-cpu-button="surface" v-for="(topic, index) in hotPreview" :key="topic.id" type="button" @click="openTopic(topic.id)">
-        <span :class="{ top: index < 3 }">{{ index + 1 }}</span>
-        <b>{{ topic.title }}</b>
-        <small>{{ topic.board?.name }}</small>
+        <span class="hot-rank" :class="{ top: index === 0 }">{{ index + 1 }}</span>
+        <span class="hot-copy">
+          <b>{{ topic.title }}</b>
+          <small>{{ topic.board?.name }}</small>
+        </span>
+        <el-icon class="hot-arrow" aria-hidden="true"><ArrowRight /></el-icon>
       </button>
     </section>
 
     <section v-if="!showForumContent" class="campus-services" v-loading="loading && !summary">
-      <header class="service-section-head">
+      <header class="section-caption">
         <div>
           <h1>常用校园服务</h1>
           <p>快速打开常用入口</p>
         </div>
-        <router-link to="/services">全部 <el-icon><Right /></el-icon></router-link>
+        <router-link to="/services">全部<el-icon><ArrowRight /></el-icon></router-link>
       </header>
       <div v-if="visibleServices.length" class="service-list">
         <button
@@ -50,7 +53,7 @@
             <b>{{ service.name }}</b>
             <small>{{ [service.owner, service.description].filter(Boolean).join(" · ") || "校园服务" }}</small>
           </span>
-          <el-icon class="service-arrow"><Right /></el-icon>
+          <el-icon class="service-arrow"><ArrowRight /></el-icon>
         </button>
       </div>
       <div v-else-if="homeError" class="service-state">
@@ -68,17 +71,13 @@
     </section>
 
     <section v-else-if="showForumContent" class="home-feed" v-loading="loading && !summary">
-      <header class="section-head">
+      <header class="section-caption">
         <div><h1>校园动态</h1><p>{{ activeFeedDescription }}</p></div>
-        <router-link :to="activeFeedLink">{{ activeFeedLinkLabel }} →</router-link>
+        <router-link :to="activeFeedLink">{{ activeFeedLinkLabel }}<el-icon><ArrowRight /></el-icon></router-link>
       </header>
       <nav class="feed-tabs" role="tablist" aria-label="校园动态分流">
-        <button data-cpu-button="option" type="button" role="tab" :aria-selected="activeFeedStream === 'forum'" :class="{ active: activeFeedStream === 'forum' }" @click="selectFeedStream('forum')">
-          <el-icon><ChatDotRound /></el-icon>论坛
-        </button>
-        <button data-cpu-button="option" v-if="marketFeedEnabled" type="button" role="tab" :aria-selected="activeFeedStream === 'market'" :class="{ active: activeFeedStream === 'market' }" @click="selectFeedStream('market')">
-          <el-icon><Sell /></el-icon>二手
-        </button>
+        <button data-cpu-button="surface" type="button" role="tab" :aria-selected="activeFeedStream === 'forum'" :class="{ active: activeFeedStream === 'forum' }" @click="selectFeedStream('forum')">论坛</button>
+        <button data-cpu-button="surface" v-if="marketFeedEnabled" type="button" role="tab" :aria-selected="activeFeedStream === 'market'" :class="{ active: activeFeedStream === 'market' }" @click="selectFeedStream('market')">二手</button>
       </nav>
       <div v-if="activeFeed.error && !latestTopics.length" class="feed-state">
         <el-empty :description="activeFeed.error"><el-button type="primary" @click="loadFeedPages(activeFeedStream)">重试</el-button></el-empty>
@@ -99,7 +98,7 @@
 </template>
 
 <script setup lang="ts">
-import { ChatDotRound, Lock, MagicStick, Notification, Right, School, Search, Sell, Service } from "@element-plus/icons-vue";
+import { ArrowRight, ChatDotRound, Lock, MagicStick, Notification, School, Search, Sell, Service } from "@element-plus/icons-vue";
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch, type Component } from "vue";
 import { onBeforeRouteLeave, useRoute, useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
@@ -184,20 +183,20 @@ const visibleServices = computed(() => (summary.value?.services || [])
 const quickEntries = computed(() => {
   if (!showForumContent.value) {
     return [
-      ...(auth.forumHidden ? [{ icon: Search, label: "搜索", to: "/search/results?scope=services" }]
-        : [{ icon: Notification, label: "公告", to: "/announcements" }]),
-      { icon: Search, label: "失物", to: "/lost-found" },
-      { icon: School, label: "教务", to: "/jwxt" },
-      { icon: Service, label: "服务", to: "/services" },
+      ...(auth.forumHidden ? [{ icon: Search, label: "搜索", to: "/search/results?scope=services", hue: "blue" }]
+        : [{ icon: Notification, label: "公告", to: "/announcements", hue: "blue" }]),
+      { icon: Search, label: "失物", to: "/lost-found", hue: "amber" },
+      { icon: School, label: "教务", to: "/jwxt", hue: "brand" },
+      { icon: Service, label: "服务", to: "/services", hue: "green" },
     ];
   }
   return [
-    { icon: ChatDotRound, label: "论坛", to: "/forum" },
-    { icon: Notification, label: "公告", to: "/announcements" },
-    site.features.market ? { icon: Sell, label: "二手", to: "/forum?channel=market" } : null,
-    { icon: Service, label: "服务", to: "/services" },
-    assistantEntryVisible.value ? { icon: MagicStick, label: "拾间AI", to: "/search" } : null,
-  ].filter(Boolean) as Array<{ icon: Component; label: string; to: string }>;
+    { icon: ChatDotRound, label: "论坛", to: "/forum", hue: "brand" },
+    { icon: Notification, label: "公告", to: "/announcements", hue: "blue" },
+    site.features.market ? { icon: Sell, label: "二手", to: "/forum?channel=market", hue: "amber" } : null,
+    { icon: Service, label: "服务", to: "/services", hue: "green" },
+    assistantEntryVisible.value ? { icon: MagicStick, label: "拾间AI", to: "/search", hue: "violet" } : null,
+  ].filter(Boolean) as Array<{ icon: Component; label: string; to: string; hue: string }>;
 });
 const homeCacheScope = computed(() => {
   const identity = auth.user?.id ? `user-${auth.user.id}` : "guest";
@@ -514,72 +513,61 @@ function requestMessage(requestError: unknown) {
 </script>
 
 <style scoped>
-.home-stream { display: flex; max-width: 860px; margin: 0 auto; flex-direction: column; gap: 13px; }
-.home-entry { padding: 12px; border: 1px solid var(--cpu-border-soft); border-radius: 15px; background: var(--cpu-card); box-shadow: var(--cpu-shadow-sm); }
-.quick-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 7px; margin-top: 10px; }
+/* 冷灰页面上的白色分组：入口色块、热榜、信息流共用一套分组、细线和字号。 */
+.home-stream { display: flex; max-width: 860px; margin: 0 auto; flex-direction: column; gap: 12px; color: var(--cpu-text); font-size: var(--cpu-fs-m); line-height: 1.6; }
+.home-entry { display: flex; flex-direction: column; gap: 12px; }
+
+.quick-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
 .quick-grid--services { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.quick-grid button { display: flex; min-width: 0; min-height: 66px; flex-direction: column; align-items: center; justify-content: center; gap: 5px; padding: 7px 4px; border: 1px solid var(--cpu-border-soft); border-radius: 11px; background: var(--cpu-surface-soft); color: var(--cpu-text-secondary); font-size: 11px; font-weight: 650; cursor: pointer; }
-.quick-grid button:hover { border-color: var(--cpu-primary); color: var(--cpu-primary); }
-.quick-grid button:focus-visible { outline: 2px solid var(--cpu-primary); outline-offset: 2px; }
-.quick-icon { display: grid; width: 24px; height: 24px; place-items: center; color: var(--cpu-primary); line-height: 1; }
-.quick-icon :deep(.el-icon) { width: 22px; height: 22px; font-size: 22px; }
-.forum-access-note { display: flex; min-height: 34px; align-items: center; gap: 7px; margin: 9px 2px 0; padding: 7px 9px; border-radius: 8px; background: color-mix(in srgb, var(--cpu-warning, #b97920) 10%, var(--cpu-surface-soft)); color: var(--cpu-text-secondary); font-size: 11px; line-height: 1.45; }
-.forum-access-note .el-icon { flex: 0 0 auto; color: var(--cpu-warning, #b97920); font-size: 14px; }
-.campus-services { padding: 3px 2px 0; }
-.service-section-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; padding: 0 3px 10px; }
-.service-section-head h1 { margin: 0; color: var(--cpu-text); font-size: 17px; line-height: 1.35; }
-.service-section-head p { margin: 3px 0 0; color: var(--cpu-text-muted); font-size: 11px; }
-.service-section-head a { display: inline-flex; min-height: 32px; align-items: center; gap: 2px; color: var(--cpu-primary); font-size: 12px; text-decoration: none; }
-.service-list { overflow: hidden; border: 1px solid var(--cpu-border-soft); border-radius: 12px; background: var(--cpu-card); box-shadow: var(--cpu-shadow-sm); }
-.service-row { display: grid; width: 100%; min-height: 58px; grid-template-columns: 36px minmax(0, 1fr) 18px; align-items: center; gap: 10px; padding: 9px 12px; border: 0; border-bottom: 1px solid var(--cpu-border-soft); background: transparent; color: inherit; text-align: left; cursor: pointer; font: inherit; }
-.service-row:last-child { border-bottom: 0; }
-.service-row:hover { background: var(--cpu-surface-soft); }
-.service-row:focus-visible { outline: 2px solid var(--cpu-primary); outline-offset: -2px; }
-.service-icon { display: grid; width: 36px; height: 36px; place-items: center; border-radius: 9px; background: var(--cpu-surface-soft); color: var(--cpu-primary); font-size: 19px; }
-.service-copy { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
-.service-copy b { overflow: hidden; color: var(--cpu-text); font-size: 13px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
-.service-copy small { overflow: hidden; color: var(--cpu-text-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.service-arrow { color: var(--cpu-text-muted); font-size: 14px; }
-.service-state { display: flex; min-height: 84px; align-items: center; justify-content: center; gap: 8px; border: 1px solid var(--cpu-border-soft); border-radius: 12px; background: var(--cpu-card); color: var(--cpu-text-muted); font-size: 12px; }
+.quick-grid button { display: flex; min-width: 0; flex-direction: column; align-items: center; gap: 5px; padding: 12px 0 9px; border: 0; border-radius: var(--cpu-radius-l); background: var(--cpu-hue-bg); color: var(--cpu-hue-ink); font: inherit; font-size: var(--cpu-fs-s); font-weight: 500; line-height: 1.4; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.quick-grid button:focus-visible, .hot-strip button:focus-visible, .service-row:focus-visible, .feed-tabs button:focus-visible { outline: 2px solid var(--cpu-primary); outline-offset: 2px; }
+.quick-icon { display: inline-flex; font-size: 24px; line-height: 1; }
+.forum-access-note { display: flex; align-items: center; gap: 8px; margin: 0; padding: 10px 12px; border-radius: var(--cpu-radius-m); background: var(--cpu-accent-soft); color: var(--cpu-accent); font-size: var(--cpu-fs-s); line-height: 1.5; }
+.forum-access-note .el-icon { flex: none; font-size: 16px; }
+
+/* 热榜：白色分组，标题在分组内，名次用大号数字 */
+.hot-strip { padding: 12px 12px 2px 16px; border-radius: var(--cpu-radius-l); background: var(--cpu-card); }
+.hot-strip header { display: flex; min-height: 32px; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 2px; }
+.hot-strip header b { display: inline-flex; align-items: center; gap: 6px; font-size: var(--cpu-fs-l); font-weight: 700; }
+.hot-strip header b :deep(.cpu-app-icon) { color: var(--cpu-rank-top); font-size: 18px; }
+.hot-strip a, .section-caption a { display: inline-flex; flex: none; min-height: 32px; align-items: center; gap: 1px; color: var(--cpu-primary); font-size: var(--cpu-fs-s); text-decoration: none; white-space: nowrap; }
+.hot-strip button { display: flex; width: 100%; align-items: center; gap: 14px; padding: 11px 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.hot-strip button + button { box-shadow: inset 0 1px 0 var(--cpu-border-soft); }
+.hot-rank { flex: none; width: 24px; color: var(--cpu-text-muted); font-size: var(--cpu-fs-xxl); font-weight: 800; line-height: 1; letter-spacing: -0.02em; text-align: center; font-variant-numeric: tabular-nums; }
+.hot-rank.top { color: var(--cpu-rank-top); }
+.hot-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; }
+.hot-copy b { display: -webkit-box; overflow: hidden; font-weight: 500; line-height: 1.45; -webkit-box-orient: vertical; -webkit-line-clamp: 2; text-wrap: pretty; }
+.hot-copy small { margin-top: 1px; color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); }
+.hot-arrow, .service-arrow { flex: none; color: var(--cpu-border); font-size: 16px; }
+
+/* 分组标题 */
+.section-caption { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin: 12px 4px 0; }
+.section-caption h1 { margin: 0; font-size: var(--cpu-fs-xl); font-weight: 700; line-height: 1.3; }
+.section-caption p { margin: 2px 0 0; color: var(--cpu-text-muted); font-size: var(--cpu-fs-s); }
+.section-caption a { font-size: var(--cpu-fs-m); }
+
+.campus-services, .home-feed { display: flex; flex-direction: column; gap: 12px; }
+.service-list { overflow: hidden; border-radius: var(--cpu-radius-l); background: var(--cpu-card); }
+.service-row { display: flex; width: 100%; min-height: 60px; align-items: center; gap: 12px; padding: 10px 12px 10px 16px; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.service-row + .service-row { box-shadow: inset 0 1px 0 var(--cpu-border-soft); }
+.service-icon { display: inline-flex; flex: none; color: var(--cpu-primary); font-size: 22px; }
+.service-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; }
+.service-copy b { overflow: hidden; font-weight: 500; line-height: 1.45; text-overflow: ellipsis; white-space: nowrap; }
+.service-copy small { overflow: hidden; color: var(--cpu-text-muted); font-size: var(--cpu-fs-s); text-overflow: ellipsis; white-space: nowrap; }
+.service-state { display: flex; min-height: 84px; align-items: center; justify-content: center; gap: 8px; border-radius: var(--cpu-radius-l); background: var(--cpu-card); color: var(--cpu-text-muted); font-size: var(--cpu-fs-s); }
 .service-state a { color: var(--cpu-primary); text-decoration: none; }
-.hot-strip { padding: 10px 12px; border: 1px solid var(--cpu-border-soft); border-radius: 12px; background: var(--cpu-card); }
-.hot-strip header, .section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.hot-strip header { margin-bottom: 4px; }
-.hot-strip header b { display: inline-flex; align-items: center; gap: 5px; color: var(--cpu-text); font-size: 13px; }
-.hot-strip a, .section-head a { color: var(--cpu-primary); font-size: 11px; text-decoration: none; }
-.hot-strip button { display: grid; width: 100%; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; gap: 7px; padding: 6px 1px; border: 0; border-top: 1px dashed var(--cpu-border-soft); background: transparent; color: inherit; text-align: left; cursor: pointer; }
-.hot-strip button > span { color: var(--cpu-text-muted); font-size: 10px; font-weight: 800; text-align: center; }
-.hot-strip button > span.top { color: #dc2626; }
-.hot-strip button b { overflow: hidden; color: var(--cpu-text); font-size: 12px; font-weight: 580; text-overflow: ellipsis; white-space: nowrap; }
-.hot-strip button small { max-width: 90px; overflow: hidden; color: var(--cpu-text-muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
-.home-feed { padding: 14px; border: 1px solid var(--cpu-border-soft); border-radius: 15px; background: color-mix(in srgb, var(--cpu-surface-soft) 58%, var(--cpu-card)); }
-.section-head { align-items: flex-end; padding: 0 2px 11px; }
-.section-head h1 { margin: 0; color: var(--cpu-text); font-size: 18px; }
-.section-head p { margin: 3px 0 0; color: var(--cpu-text-muted); font-size: 10px; }
-.feed-tabs { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 5px; margin-bottom: 10px; padding: 4px; border: 1px solid var(--cpu-border-soft); border-radius: 11px; background: var(--cpu-card); }
-.feed-tabs button { display: inline-flex; min-width: 0; min-height: 36px; align-items: center; justify-content: center; gap: 5px; border: 0; border-radius: 8px; background: transparent; color: var(--cpu-text-secondary); font-size: 13px; font-weight: 700; cursor: pointer; }
-.feed-tabs button:hover { color: var(--cpu-primary); }
-.feed-tabs button.active { background: var(--cpu-primary); box-shadow: 0 4px 12px color-mix(in srgb, var(--cpu-primary) 20%, transparent); color: #fff; }
-.feed-tabs button:focus-visible { outline: 2px solid var(--cpu-primary); outline-offset: 2px; }
-.home-feed-list { display: flex; min-height: 140px; flex-direction: column; gap: 8px; }
-.feed-state { min-height: 140px; }
-.feed-load-sentinel, .feed-load-error { display: flex; min-height: 42px; align-items: center; justify-content: center; gap: 6px; color: var(--cpu-text-muted); font-size: 11px; }
+
+/* 分段控件 */
+.feed-tabs { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; padding: 2px; border-radius: var(--cpu-radius-m); background: var(--cpu-track); }
+.feed-tabs button { height: 40px; border: 0; border-radius: 8px; background: none; color: var(--cpu-text-secondary); font: inherit; font-weight: 500; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.feed-tabs button.active { background: var(--cpu-card); color: var(--cpu-text); }
+
+/* 信息流是一整块分组，帖子之间用细线分隔 */
+.home-feed-list { display: flex; min-height: 140px; flex-direction: column; overflow: hidden; border-radius: var(--cpu-radius-l); background: var(--cpu-card); }
+.home-feed-list :deep(.feed-card) { border-radius: 0; }
+.home-feed-list :deep(.feed-card + .feed-card) { box-shadow: inset 0 1px 0 var(--cpu-border-soft); }
+.feed-state { min-height: 140px; border-radius: var(--cpu-radius-l); background: var(--cpu-card); }
+.feed-load-sentinel, .feed-load-error { display: flex; min-height: 44px; align-items: center; justify-content: center; gap: 6px; color: var(--cpu-text-muted); font-size: var(--cpu-fs-s); }
 .feed-load-error { color: var(--cpu-danger); }
-.home-state { padding: 28px 12px; border-radius: 14px; background: var(--cpu-card); }
-@media (max-width: 640px) {
-  .home-stream { gap: 10px; }
-  .home-entry { padding: 9px; border-radius: 13px; }
-  .quick-grid { gap: 5px; }
-  .quick-grid button { min-height: 58px; border-radius: 9px; }
-  .quick-icon { width: 22px; height: 22px; }
-  .quick-icon :deep(.el-icon) { width: 20px; height: 20px; font-size: 20px; }
-  .hot-strip { padding: 9px 10px; }
-  .home-feed { margin-inline: -4px; padding: 10px 8px; border-radius: 12px; }
-  .home-feed-list { gap: 7px; }
-}
-@media (max-width: 420px) {
-  .quick-grid { grid-template-columns: repeat(5, minmax(54px, 1fr)); overflow-x: auto; scrollbar-width: none; }
-  .quick-grid--services { grid-template-columns: repeat(4, minmax(0, 1fr)); overflow: visible; }
-  .quick-grid::-webkit-scrollbar { display: none; }
-}
+.home-state { padding: 28px 12px; border-radius: var(--cpu-radius-l); background: var(--cpu-card); }
 </style>

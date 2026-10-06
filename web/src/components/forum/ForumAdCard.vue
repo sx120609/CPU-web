@@ -106,10 +106,8 @@ function trackClick() {
 <style scoped>
 .forum-ad-card {
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--cpu-primary) 15%, var(--cpu-border-soft));
-  border-radius: 16px;
+  border-radius: var(--cpu-radius-l);
   background: var(--cpu-card);
-  box-shadow: 0 7px 20px rgba(15, 23, 42, 0.045);
 }
 .forum-ad-link {
   position: relative;

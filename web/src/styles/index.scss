@@ -7,7 +7,7 @@
   --cpu-primary: #{$cpu-primary};
   --cpu-primary-light: #{$cpu-primary-light};
   --cpu-primary-dark: #{$cpu-primary-dark};
-  --cpu-primary-soft: rgba(22, 135, 118, 0.1);
+  --cpu-primary-soft: #e2f3f0;
   --cpu-gold: #{$cpu-gold};
   --cpu-warn: #{$cpu-warn};
   --cpu-danger: #{$cpu-danger};
@@ -21,13 +21,43 @@
   --cpu-shadow-lg: #{$cpu-shadow-lg};
   --cpu-shadow-hover: #{$cpu-shadow-hover};
   --cpu-surface: #ffffff;
-  --cpu-surface-soft: #f8fafc;
-  --cpu-surface-subtle: #f1f5f9;
-  --cpu-border: #e5e7eb;
-  --cpu-border-soft: #eef0f4;
-  --cpu-text: #0f172a;           // Slate 900
-  --cpu-text-secondary: #64748b; // Slate 500
-  --cpu-text-muted: #94a3b8;
+  --cpu-surface-soft: #f5f6f8;
+  --cpu-surface-subtle: #eceef1;
+  --cpu-border: #d5d9df;
+  --cpu-border-soft: #e4e6ea;
+  --cpu-text: #16191d;
+  --cpu-text-secondary: #4e5661;
+  --cpu-text-muted: #666e7a;
+  // 设计规范：6 个字号、4 个圆角，新页面只用这些
+  --cpu-fs-xs: 12px;
+  --cpu-fs-s: 13px;
+  --cpu-fs-m: 15px;
+  --cpu-fs-l: 17px;
+  --cpu-fs-xl: 20px;
+  --cpu-fs-xxl: 30px;
+  --cpu-radius-s: 6px;
+  --cpu-radius-m: 10px;
+  --cpu-radius-l: 14px;
+  --cpu-radius-pill: 999px;
+  --cpu-track: #e4e6ea;
+  --cpu-on-primary: #ffffff;
+  --cpu-accent: #9a4b00;
+  --cpu-accent-soft: #fdf0d8;
+  --cpu-rank-top: #b87400;
+  --cpu-scrim: rgba(0, 0, 0, 0.5);
+  // 板块色：入口、图标底色使用，成对出现（底色 + 同色相的深色字）
+  --cpu-hue-brand-bg: #d9f1ed;
+  --cpu-hue-brand-ink: #0a6b5f;
+  --cpu-hue-blue-bg: #dfe9ff;
+  --cpu-hue-blue-ink: #1d4fbf;
+  --cpu-hue-amber-bg: #ffefc4;
+  --cpu-hue-amber-ink: #7d5200;
+  --cpu-hue-green-bg: #ddf2e3;
+  --cpu-hue-green-ink: #17663a;
+  --cpu-hue-violet-bg: #ebe3ff;
+  --cpu-hue-violet-ink: #5b35c4;
+  --cpu-hue-orange-bg: #ffe4d2;
+  --cpu-hue-orange-ink: #a63f0c;
   --cpu-dialog-radius: 12px;
   --cpu-dialog-width: 420px;
   --cpu-dialog-max-width: 560px;
@@ -45,6 +75,14 @@
   --el-font-family: var(--cpu-font-sans);
   color-scheme: light;
 }
+
+// 板块色的取用方式：元素写 data-hue，样式里用 --cpu-hue-bg / --cpu-hue-ink。
+[data-hue="brand"] { --cpu-hue-bg: var(--cpu-hue-brand-bg); --cpu-hue-ink: var(--cpu-hue-brand-ink); }
+[data-hue="blue"] { --cpu-hue-bg: var(--cpu-hue-blue-bg); --cpu-hue-ink: var(--cpu-hue-blue-ink); }
+[data-hue="amber"] { --cpu-hue-bg: var(--cpu-hue-amber-bg); --cpu-hue-ink: var(--cpu-hue-amber-ink); }
+[data-hue="green"] { --cpu-hue-bg: var(--cpu-hue-green-bg); --cpu-hue-ink: var(--cpu-hue-green-ink); }
+[data-hue="violet"] { --cpu-hue-bg: var(--cpu-hue-violet-bg); --cpu-hue-ink: var(--cpu-hue-violet-ink); }
+[data-hue="orange"] { --cpu-hue-bg: var(--cpu-hue-orange-bg); --cpu-hue-ink: var(--cpu-hue-orange-ink); }
 
 // iOS / iPadOS 使用系统原生排版，不加载 Inter 或 HarmonyOS Sans。
 html[data-cpu-platform="ios"] {
@@ -134,7 +172,25 @@ html[data-theme="dark"] {
   --cpu-shadow-hover: 0 28px 76px rgba(0, 0, 0, 0.40);
   --cpu-text: #eef8f5;
   --cpu-text-secondary: #abc5be;
-  --cpu-text-muted: #819d95;
+  --cpu-text-muted: #8aa69e;
+  --cpu-track: #20312c;
+  --cpu-on-primary: #04302a;
+  --cpu-accent: #f3b45a;
+  --cpu-accent-soft: #3a2a10;
+  --cpu-rank-top: #ffc83d;
+  --cpu-scrim: rgba(0, 0, 0, 0.6);
+  --cpu-hue-brand-bg: #12362f;
+  --cpu-hue-brand-ink: #5ad6c3;
+  --cpu-hue-blue-bg: #172a4d;
+  --cpu-hue-blue-ink: #93b6ff;
+  --cpu-hue-amber-bg: #3a2c08;
+  --cpu-hue-amber-ink: #ffd466;
+  --cpu-hue-green-bg: #173a25;
+  --cpu-hue-green-ink: #7fdca0;
+  --cpu-hue-violet-bg: #2a2050;
+  --cpu-hue-violet-ink: #c2adff;
+  --cpu-hue-orange-bg: #40200f;
+  --cpu-hue-orange-ink: #ffab7a;
   --el-bg-color: var(--cpu-surface);
   --el-bg-color-page: var(--cpu-bg);
   --el-bg-color-overlay: #1f302b;

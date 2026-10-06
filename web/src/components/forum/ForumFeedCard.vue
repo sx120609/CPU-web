@@ -29,7 +29,7 @@
         <div class="feed-context">
           <span>{{ fmtRelative(displayedTime) }}</span>
           <span class="feed-dot">·</span>
-          <span class="board-badge" :style="boardBadgeStyle">{{ topic.board?.name || "校园动态" }}</span>
+          <span class="board-badge">{{ topic.board?.name || "校园动态" }}</span>
         </div>
       </div>
       <span v-if="rank" class="rank-badge" :class="{ 'is-top': rank <= 3 }">#{{ rank }}</span>
@@ -37,7 +37,7 @@
     </header>
 
     <div class="feed-card-body">
-      <div class="feed-title-line">
+      <div class="feed-title-line" :class="{ 'is-say': isSayTopic }">
         <span v-if="topic.globalPinned || topic.pinned" class="pin-badge">置顶</span>
         <h3>{{ displayTitle }}</h3>
       </div>
@@ -70,7 +70,6 @@
 
     <footer class="feed-card-foot">
       <span v-if="reviewLabel" class="review-state">{{ reviewLabel }}</span>
-      <span v-else class="feed-hint">{{ topic.board?.type === "market" ? "校内交流" : "校园分享" }}</span>
       <span class="feed-stat"><el-icon><View /></el-icon>{{ topic.viewCount || 0 }}</span>
       <span class="feed-stat"><el-icon><ChatLineRound /></el-icon>{{ topic.replyCount || "回复" }}</span>
       <span class="feed-stat"><el-icon><Star /></el-icon>{{ topic.likeCount || "点赞" }}</span>
@@ -112,10 +111,6 @@ const previewImages = computed(() => images.value.slice(0, 3).map((original) => 
   src: cdnImageUrl(original, { width: 720, quality: 80 }),
   srcset: cdnImageSrcset(original, [320, 480, 720, 960], 80),
 })));
-const boardBadgeStyle = computed(() => ({
-  color: props.topic.board?.color || "var(--cpu-primary)",
-  borderColor: `color-mix(in srgb, ${props.topic.board?.color || "var(--cpu-primary)"} 26%, var(--cpu-border-soft))`,
-}));
 const marketKind = computed(() => {
   if (props.topic.board?.type !== "market") return "";
   const raw = props.topic.metadata?.marketKind || props.topic.metadata?.listingType;
@@ -214,61 +209,50 @@ function openTopic() {
 </script>
 
 <style scoped>
-.feed-card { padding: 15px 16px 12px; border: 1px solid var(--cpu-border-soft); border-radius: 14px; background: var(--cpu-card); box-shadow: var(--cpu-shadow-sm); cursor: pointer; transition: border-color .16s ease, transform .16s ease, box-shadow .16s ease; }
-.feed-card:hover { transform: translateY(-1px); border-color: color-mix(in srgb, var(--cpu-primary) 28%, var(--cpu-border)); box-shadow: var(--cpu-shadow-md); }
-.feed-card:focus-visible { outline: 2px solid var(--cpu-primary); outline-offset: 2px; }
+/* 一种卡片：白色分组、无描边无阴影。列表页把它们叠成一整块时由父级去掉圆角并加细线。 */
+.feed-card { padding: 16px; border-radius: var(--cpu-radius-l); background: var(--cpu-card); color: var(--cpu-text); font-size: var(--cpu-fs-m); line-height: 1.6; cursor: pointer; }
+.feed-card:focus-visible { outline: 2px solid var(--cpu-primary); outline-offset: -2px; }
 .feed-card-head { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .feed-avatar { flex: 0 0 auto; }
 .feed-author { flex: 1; min-width: 0; }
 .feed-author-line, .feed-context, .feed-card-foot, .feed-stat { display: flex; align-items: center; }
-.feed-author-line { gap: 6px; min-width: 0; }
-.feed-author-name { overflow: hidden; color: var(--cpu-text); font-size: 14px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
-.feed-context { gap: 5px; margin-top: 3px; color: var(--cpu-text-muted); font-size: 11px; }
-.feed-dot { color: var(--cpu-border); }
-.board-badge { max-width: 130px; padding: 1px 6px; overflow: hidden; border: 1px solid; border-radius: 999px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.vip-badge, .anonymous-badge { flex: 0 0 auto; padding: 0 5px; border-radius: 999px; font-size: 9px; font-weight: 800; line-height: 17px; }
-.vip-badge { border: 1px solid #f59e0b; background: #fef3c7; color: #a16207; }
-.anonymous-badge { background: color-mix(in srgb, #8b5cf6 10%, var(--cpu-card)); color: #7c3aed; }
-.rank-badge { flex: 0 0 auto; padding: 3px 8px; border-radius: 999px; background: var(--cpu-surface-soft); color: var(--cpu-text-muted); font-size: 11px; font-weight: 800; }
-.rank-badge.is-top { background: color-mix(in srgb, #ef4444 10%, var(--cpu-card)); color: #dc2626; }
-.market-price { flex: 0 0 auto; color: #dc2626; font-size: 14px; }
-.feed-card-body { margin: 11px 0 0 48px; }
-.feed-title-line { display: flex; align-items: flex-start; gap: 7px; }
-.feed-title-line h3 { margin: 0; color: var(--cpu-text); font-size: 15px; font-weight: 620; line-height: 1.55; overflow-wrap: anywhere; }
-.pin-badge { flex: 0 0 auto; margin-top: 2px; padding: 1px 5px; border-radius: 4px; background: color-mix(in srgb, #f59e0b 13%, var(--cpu-card)); color: #b45309; font-size: 10px; font-weight: 700; line-height: 18px; }
-.feed-excerpt { display: -webkit-box; margin: 6px 0 0; overflow: hidden; color: var(--cpu-text-secondary); font-size: 13px; line-height: 1.65; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
-.feed-media { position: relative; display: grid; gap: 5px; max-width: 560px; margin-top: 10px; overflow: hidden; border-radius: 10px; }
-.feed-media--1 { grid-template-columns: minmax(0, 320px); }
+.feed-author-line { gap: 6px; min-width: 0; line-height: 1.4; }
+.feed-author-name { overflow: hidden; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.feed-context { gap: 5px; margin-top: 1px; color: var(--cpu-text-muted); font-size: var(--cpu-fs-s); line-height: 1.4; }
+.board-badge { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vip-badge, .anonymous-badge, .pin-badge { flex: 0 0 auto; height: 18px; padding: 0 5px; border-radius: var(--cpu-radius-s); font-size: var(--cpu-fs-xs); font-weight: 500; line-height: 18px; }
+.vip-badge, .anonymous-badge { color: var(--cpu-text-muted); box-shadow: inset 0 0 0 1px var(--cpu-border); }
+.pin-badge { margin-top: 3px; background: var(--cpu-accent-soft); color: var(--cpu-accent); }
+.rank-badge { flex: 0 0 auto; color: var(--cpu-text-muted); font-size: var(--cpu-fs-s); font-weight: 600; font-variant-numeric: tabular-nums; }
+.rank-badge.is-top { color: var(--cpu-rank-top); }
+.market-price { flex: 0 0 auto; font-size: var(--cpu-fs-l); font-variant-numeric: tabular-nums; }
+.feed-card-body { margin-top: 10px; }
+.feed-title-line { display: flex; align-items: flex-start; gap: 6px; }
+.feed-title-line h3 { display: -webkit-box; margin: 0; overflow: hidden; font-size: var(--cpu-fs-l); font-weight: 700; line-height: 1.4; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 3; text-wrap: pretty; }
+/* 没有标题的“说说”直接显示正文，用正文的字号字重 */
+.feed-title-line.is-say h3 { font-size: var(--cpu-fs-m); font-weight: 400; line-height: 1.6; -webkit-line-clamp: 5; }
+.feed-excerpt { display: -webkit-box; margin: 4px 0 0; overflow: hidden; color: var(--cpu-text-secondary); -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+.feed-media { position: relative; display: grid; gap: 3px; max-width: 560px; margin-top: 10px; overflow: hidden; border-radius: var(--cpu-radius-m); }
+.feed-media--1 { grid-template-columns: minmax(0, 66%); border-radius: 0; }
 .feed-media--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .feed-media--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.feed-media-cell { display: contents; }
-.feed-media img { width: 100%; height: 150px; object-fit: cover; background: var(--cpu-surface-subtle); }
-.feed-media--1 img { height: auto; max-height: 330px; object-fit: contain; }
-.media-count { position: absolute; right: 7px; bottom: 7px; padding: 3px 7px; border-radius: 999px; background: rgba(15, 23, 42, .7); color: #fff; font-size: 10px; }
-.market-facts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
-.market-facts span { padding: 3px 7px; border-radius: 999px; background: var(--cpu-surface-subtle); color: var(--cpu-text-secondary); font-size: 10px; }
-.reply-previews { display: grid; gap: 4px; margin: 10px 0 0 48px; padding: 8px 10px; border-radius: 8px; background: var(--cpu-surface-soft); }
-.reply-previews p { display: flex; min-width: 0; gap: 2px; margin: 0; color: var(--cpu-text-secondary); font-size: 11px; line-height: 1.45; }
+.feed-media-cell { display: block; min-width: 0; aspect-ratio: 1; overflow: hidden; background: var(--cpu-surface-subtle); }
+.feed-media--1 .feed-media-cell { aspect-ratio: 4 / 3; border-radius: var(--cpu-radius-m); }
+.feed-media img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.media-count { position: absolute; right: 6px; bottom: 6px; padding: 2px 6px; border-radius: var(--cpu-radius-s); background: var(--cpu-scrim); color: #fff; font-size: var(--cpu-fs-xs); line-height: 1.4; }
+.market-facts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.market-facts span { padding: 1px 6px; border-radius: var(--cpu-radius-s); background: var(--cpu-surface-soft); color: var(--cpu-text-secondary); font-size: var(--cpu-fs-xs); }
+.reply-previews { display: grid; gap: 2px; margin-top: 12px; padding: 10px 12px; border-radius: var(--cpu-radius-m); background: var(--cpu-surface-soft); }
+.reply-previews p { display: flex; min-width: 0; gap: 2px; margin: 0; color: var(--cpu-text-secondary); font-size: var(--cpu-fs-s); line-height: 1.7; }
 .reply-previews .reply-author { display: inline-flex; max-width: 38%; flex: 0 0 auto; align-items: center; overflow: visible; }
-.reply-previews strong { min-width: 0; overflow: hidden; color: var(--cpu-text); font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.reply-previews strong { min-width: 0; overflow: hidden; color: var(--cpu-text); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .reply-previews .reply-author :deep(.account-verification-badge) { width: 15px; height: 15px; flex-basis: 15px; margin-left: 2px; }
-.reply-previews .reply-author b { flex: 0 0 auto; font-weight: 650; }
+.reply-previews .reply-author b { flex: 0 0 auto; color: var(--cpu-text); font-weight: 500; }
 .reply-previews span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.reply-previews .reply-more { justify-self: start; margin-top: 1px; color: var(--cpu-primary); font-size: 11px; font-weight: 650; }
-.reply-more b { font-size: 15px; line-height: 10px; vertical-align: -1px; }
-.feed-card-foot { justify-content: flex-end; gap: 16px; margin: 11px 0 0 48px; color: var(--cpu-text-muted); font-size: 12px; }
-.feed-hint, .review-state { margin-right: auto; }
-.review-state { color: #b45309; font-weight: 600; }
-.feed-stat { gap: 4px; }
-@media (max-width: 768px) {
-  .feed-card { padding: 13px 12px 10px; border-radius: 11px; box-shadow: none; }
-  .feed-card-body, .reply-previews, .feed-card-foot { margin-left: 0; }
-  .feed-card-body { margin-top: 10px; }
-  .feed-card-foot { margin-top: 10px; }
-  .feed-media-cell { display: block; min-width: 0; aspect-ratio: 1; overflow: hidden; border-radius: 8px; background: var(--cpu-surface-subtle); }
-  .feed-media--1 { grid-template-columns: minmax(0, 220px); }
-  .feed-media--1 .feed-media-cell { aspect-ratio: 4 / 3; }
-  .feed-media img, .feed-media--1 img { width: 100%; height: 100%; max-height: none; object-fit: cover; }
-  .feed-title-line h3 { font-size: 14px; }
-}
+.reply-previews .reply-more { justify-self: start; color: var(--cpu-primary); font-size: var(--cpu-fs-s); }
+.reply-more b { font-weight: 400; }
+.feed-card-foot { gap: 20px; margin-top: 12px; color: var(--cpu-text-muted); font-size: var(--cpu-fs-s); font-variant-numeric: tabular-nums; }
+.review-state { order: 1; margin-left: auto; color: var(--cpu-accent); font-weight: 500; }
+.feed-stat { gap: 5px; }
+.feed-stat .el-icon { font-size: 16px; }
 </style>

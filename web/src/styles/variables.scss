@@ -1,23 +1,23 @@
 // 「药大拾间」主题色与全局 UI 变量
-// 使用更通透的青绿色和暖黄，搭配现代化的玻璃拟态和阴影体系
+// 冷灰页面上放白色分组，结构靠分组、细线和留白；青绿只用于可点元素和选中状态
 
 // 核心色彩
-$cpu-primary: #148f7b;       // 主色：更清脆通透的青绿
-$cpu-primary-light: #34b39e;
-$cpu-primary-dark: #0d6e5e;
+$cpu-primary: #086f63;       // 主色：白字与浅底上都满足 4.5:1 的青绿
+$cpu-primary-light: #2a9d8c;
+$cpu-primary-dark: #065a50;
 $cpu-gold: #f59e0b;          // 强调色：更明亮的暖黄 (Amber)
 $cpu-warn: #ea580c;          // 警告色 (Orange)
 $cpu-danger: #ef4444;        // 危险色 (Red)
 $cpu-success: #10b981;       // 成功色 (Emerald)
 
 // 灰度与背景色彩
-$cpu-bg: #f8fafc;            // 更冷调清爽的背景色 (Slate 50)
+$cpu-bg: #f2f3f5;            // 冷灰页面底色，白色分组不靠阴影也能分开
 $cpu-card: #ffffff;          // 卡片背景
 
 // 高级玻璃拟态与阴影效果
 $cpu-glass-bg: rgba(255, 255, 255, 0.75); // 玻璃拟态背景
 $cpu-glass-blur: blur(16px);              // 玻璃模糊度
-$cpu-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+$cpu-shadow-sm: 0 0 0 0 rgba(0, 0, 0, 0); // 卡片不再带阴影；保留变量名以兼容旧页面
 $cpu-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
 $cpu-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.05);
 $cpu-shadow-hover: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05);

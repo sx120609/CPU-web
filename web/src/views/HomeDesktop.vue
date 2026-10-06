@@ -1,112 +1,110 @@
 <template>
   <div class="home">
-    <!-- Hero / 介绍 -->
-    <section class="hero" aria-label="首页功能入口">
-      <div class="hero-text">
+    <section class="intro" aria-label="首页功能入口">
+      <div class="intro-copy">
         <h1>药大拾间</h1>
         <p>{{ heroIntro }}</p>
-        <div class="hero-actions cpu-button-row">
-          <el-button v-if="showForumContent" type="primary" size="large" @click="$router.push('/forum')">
-            <el-icon><ChatLineRound /></el-icon>
-            <span class="action-label-full">{{ forumActionLabel }}</span>
-            <span class="action-label-short">论坛</span>
-          </el-button>
-          <el-button v-if="site.features.market && showForumContent" size="large" @click="$router.push('/market')">
-            <AppIcon name="market" />
-            <span class="action-label-full">二手交流</span>
-            <span class="action-label-short">二手</span>
-          </el-button>
-          <el-button v-else-if="!auth.forumHidden" type="primary" size="large" @click="$router.push('/announcements')">
-            <el-icon><Bell /></el-icon>
-            <span class="action-label-full">看校园公告</span>
-            <span class="action-label-short">公告</span>
-          </el-button>
-          <el-button v-if="!auth.isLoggedIn" size="large" @click="$router.push('/login')">
-            <span class="action-label-full">{{ loginActionText }}</span>
-            <span class="action-label-short">登录</span>
-          </el-button>
-          <el-button v-else-if="showForumContent" size="large" @click="$router.push('/post')">
-            <el-icon><Edit /></el-icon>
-            <span class="action-label-full">发布内容</span>
-            <span class="action-label-short">发布</span>
-          </el-button>
-          <el-button v-if="assistantEntryVisible" size="large" @click="$router.push('/search')">
-            <el-icon><ChatDotRound /></el-icon> 拾间AI
-          </el-button>
-        </div>
+      </div>
+      <div class="intro-actions cpu-button-row">
+        <el-button v-if="showForumContent" type="primary" @click="$router.push('/forum')">
+          <el-icon><ChatLineRound /></el-icon>{{ forumActionLabel }}
+        </el-button>
+        <el-button v-if="site.features.market && showForumContent" @click="$router.push('/market')">
+          <AppIcon name="market" />二手交流
+        </el-button>
+        <el-button v-else-if="!auth.forumHidden" type="primary" @click="$router.push('/announcements')">
+          <el-icon><Bell /></el-icon>看校园公告
+        </el-button>
+        <el-button v-if="!auth.isLoggedIn" @click="$router.push('/login')">{{ loginActionText }}</el-button>
+        <el-button v-else-if="showForumContent" @click="$router.push('/post')">
+          <el-icon><Edit /></el-icon>发布内容
+        </el-button>
+        <el-button v-if="assistantEntryVisible" text type="primary" @click="$router.push('/search')">
+          <el-icon><ChatDotRound /></el-icon>拾间AI
+        </el-button>
       </div>
     </section>
 
-    <p class="independent-service-note">独立校园工具，非中国药科大学官方应用；学校名称仅用于说明适用用户和数据来源。</p>
+    <p class="independent-service-note"><el-icon aria-hidden="true"><InfoFilled /></el-icon>独立校园工具，非中国药科大学官方应用；学校名称仅用于说明适用用户和数据来源。</p>
 
     <section v-if="showForumContent" class="home-search-top" aria-label="站内搜索">
       <SiteSearchBar placeholder="搜索帖子或校园服务" />
     </section>
 
-    <section v-if="homeError && !loading" class="block home-error">
+    <section v-if="homeError && !loading" class="group home-error">
       <el-empty :description="homeError">
         <el-button type="primary" @click="loadSummary()">重试</el-button>
       </el-empty>
     </section>
 
     <div v-else class="grid" :class="{ 'single-col': !showForumContent }" v-loading="loading && !summary">
-      <!-- 左：热帖 + 最新 -->
+      <!-- 左：置顶、热议、最新、二手 -->
       <div class="col-left" v-if="showForumContent">
         <section class="block" v-if="summary?.pinnedTopics?.length">
           <div class="block-head">
-            <h3><AppIcon name="pin" /> 全局置顶</h3>
-            <span class="cpu-muted">重要内容</span>
+            <h3>全局置顶</h3>
+            <span class="block-note">重要内容</span>
           </div>
-          <ForumAdCarousel v-if="pinnedAds.length" :ads="pinnedAds" compact />
-          <TopicListItem v-for="t in summary.pinnedTopics" :key="'pin-' + t.id" :topic="t" />
+          <div class="group">
+            <ForumAdCarousel v-if="pinnedAds.length" class="block-ad" :ads="pinnedAds" compact />
+            <TopicListItem v-for="t in summary.pinnedTopics" :key="'pin-' + t.id" :topic="t" />
+          </div>
         </section>
 
         <section class="block">
-          <div class="block-head latest-head">
-            <div>
-              <h3><AppIcon name="hot" /> 热议</h3>
-              <span class="block-summary">全站互动热度 Top 3</span>
-            </div>
-            <router-link to="/forum/hot" class="more">查看前十 →</router-link>
+          <div class="block-head">
+            <h3>热议 Top 3</h3>
+            <router-link to="/forum/hot" class="more">查看前十<el-icon><ArrowRight /></el-icon></router-link>
           </div>
-          <ForumAdCarousel v-if="hotAds.length" :ads="hotAds" compact />
-          <TopicListItem
-            v-for="t in hotPreview"
-            :key="'hot-' + t.id"
-            :topic="t"
-            :rank="t.rank"
-            :score="t.hotScore"
-            variant="simple"
-            time-mode="published"
-          />
-          <div v-if="hotPreview.length" class="hot-foot">
-            <span class="cpu-muted">新帖优先 · 综合互动热度</span>
-            <router-link to="/forum/hot" class="more more-strong">进入热榜 Top 10 →</router-link>
+          <div class="group">
+            <ForumAdCarousel v-if="hotAds.length" class="block-ad" :ads="hotAds" compact />
+            <TopicListItem
+              v-for="t in hotPreview"
+              :key="'hot-' + t.id"
+              :topic="t"
+              :rank="t.rank"
+              :score="t.hotScore"
+              variant="simple"
+              time-mode="published"
+            />
+            <el-empty v-if="!hotPreview.length" description="暂无内容" />
           </div>
-          <el-empty v-if="!hotPreview.length" description="暂无内容" />
         </section>
 
         <section class="block">
-          <div class="block-head latest-head">
-            <div>
-              <h3><AppIcon name="new" /> 最新</h3>
-              <span class="block-summary">全站最近发布</span>
-            </div>
-            <router-link to="/forum/latest" class="more">查看全部 →</router-link>
+          <div class="block-head">
+            <h3>最新</h3>
+            <router-link to="/forum/latest" class="more">查看全部<el-icon><ArrowRight /></el-icon></router-link>
           </div>
-          <TopicListItem v-for="t in summary?.latestTopics ?? []" :key="'new-' + t.id" :topic="t" variant="simple" time-mode="published" />
-          <el-empty v-if="!summary?.latestTopics?.length" description="暂无内容" />
+          <div class="group">
+            <TopicListItem v-for="t in summary?.latestTopics ?? []" :key="'new-' + t.id" :topic="t" variant="simple" time-mode="published" />
+            <el-empty v-if="!summary?.latestTopics?.length" description="暂无内容" />
+          </div>
+        </section>
+
+        <section class="block" v-if="site.features.market">
+          <div class="block-head">
+            <h3>二手交流</h3>
+            <router-link to="/market" class="more">进入板块<el-icon><ArrowRight /></el-icon></router-link>
+          </div>
+          <div class="group second-hand">
+            <p>校内闲置与求购，按论坛帖子发布和交流。</p>
+            <nav class="second-hand-actions" aria-label="发布二手内容">
+              <router-link to="/post?board=market&kind=sell">发布闲置</router-link>
+              <router-link to="/post?board=market&kind=wanted">发布求购</router-link>
+            </nav>
+          </div>
         </section>
       </div>
 
-      <!-- 右：公告 + 服务 -->
+      <!-- 右：公告、服务 -->
       <div class="col-right">
         <section v-if="!nativeForumRestricted" class="block">
           <div class="block-head">
-            <h3><AppIcon name="announcement" /> 校园公告</h3>
-            <span class="cpu-muted">学校公开信息</span>
+            <h3>校园公告</h3>
+            <span class="block-note">学校公开信息</span>
           </div>
-          <ul v-if="summary?.announce?.length" class="announce-list">
+          <ul v-if="summary?.announce?.length" class="group announce-list">
             <li
               v-for="t in summary.announce"
               :key="'ann-' + t.id"
@@ -119,35 +117,24 @@
               <div class="ann-title">{{ t.title }}</div>
               <div class="ann-meta">
                 <span class="ann-source">{{ t.board?.name }}</span>
+                <span aria-hidden="true">·</span>
                 <span>{{ fmtRelative(t.createdAt) }}</span>
               </div>
             </li>
           </ul>
-          <el-empty v-else description="暂无公告，稍后再来看看" />
-        </section>
-
-        <section class="block" v-if="site.features.market && showForumContent">
-          <div class="block-head">
-            <h3><AppIcon name="market" /> 二手交流</h3>
-            <router-link to="/market" class="more">进入板块 →</router-link>
-          </div>
-          <p class="second-hand-note">校内闲置与求购，按论坛帖子发布和交流。</p>
-          <nav class="second-hand-actions" aria-label="发布二手内容">
-            <router-link to="/post?board=market&kind=sell">＋ 发布闲置</router-link>
-            <span aria-hidden="true"></span>
-            <router-link to="/post?board=market&kind=wanted">＋ 发布求购</router-link>
-          </nav>
+          <div v-else class="group"><el-empty description="暂无公告，稍后再来看看" /></div>
         </section>
 
         <section class="block">
           <div class="block-head">
-            <h3><AppIcon name="service" /> 校园服务</h3>
-            <router-link to="/services" class="more">全部 →</router-link>
+            <h3>校园服务</h3>
+            <router-link to="/services" class="more">全部<el-icon><ArrowRight /></el-icon></router-link>
           </div>
-          <div v-if="hasServiceEntries" class="service-grid">
+          <div v-if="hasServiceEntries" class="group service-list">
             <div
               v-if="showElectricEntry"
-              class="svc svc-special"
+              class="svc"
+              data-hue="amber"
               role="button"
               tabindex="0"
               @click="electricOpen = true"
@@ -159,9 +146,10 @@
               <div class="svc-tag svc-tag-fresh">站内查</div>
             </div>
             <div
-              v-for="s in visibleServices"
+              v-for="(s, index) in visibleServices"
               :key="s.id"
               class="svc"
+              :data-hue="serviceHues[index % serviceHues.length]"
               role="button"
               tabindex="0"
               @click="openUrl(s.url, s.name)"
@@ -173,20 +161,10 @@
               <div class="svc-tag" v-if="s.needSso">需登录</div>
             </div>
           </div>
-          <el-empty v-else description="暂无可用服务" />
+          <div v-else class="group"><el-empty description="暂无可用服务" /></div>
         </section>
       </div>
     </div>
-
-    <router-link
-      v-if="auth.isLoggedIn && showForumContent"
-      to="/post"
-      class="home-publish-fab"
-      aria-label="发布内容"
-    >
-      <el-icon><Edit /></el-icon>
-      <span>发布</span>
-    </router-link>
 
     <DormElectricDialog v-model="electricOpen" />
   </div>
@@ -195,7 +173,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from "vue";
 import { useRouter } from "vue-router";
-import { ChatLineRound, ChatDotRound, Edit, Bell } from "@element-plus/icons-vue";
+import { ArrowRight, ChatLineRound, ChatDotRound, Edit, Bell, InfoFilled } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import TopicListItem from "@/components/forum/TopicListItem.vue";
 import ForumAdCarousel from "@/components/forum/ForumAdCarousel.vue";
@@ -223,6 +201,8 @@ const homeError = ref("");
 const electricOpen = ref(false);
 const pinnedAds = ref<ForumAd[]>([]);
 const hotAds = ref<ForumAd[]>([]);
+// 服务入口没有固定板块，按顺序轮流取色
+const serviceHues = ["brand", "blue", "green", "violet", "orange"];
 const hotPreview = computed(() => (summary.value?.hotTopics ?? []).slice(0, 3));
 const visibleServices = computed(() => (summary.value?.services ?? [])
   .filter((service) => !auth.forumHidden || !isForumDestination(String(service?.url || "")))
@@ -384,435 +364,61 @@ function normalizeHomeError(error: unknown) {
 }
 </script>
 
-<style scoped lang="scss">
-.independent-service-note {
-  margin: -12px 4px 0;
-  color: var(--cpu-text-secondary);
-  font-size: 13px;
-  line-height: 1.6;
-}
+<style scoped>
+/* 桌面首页：简短的站点介绍，下面两栏白色分组。分组标题在分组外，像设置页的小标题。 */
+.home { display: flex; max-width: 1120px; margin: 0 auto; flex-direction: column; color: var(--cpu-text); font-size: var(--cpu-fs-m); line-height: 1.6; }
 
-.home {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-}
+.intro { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; }
+.intro h1 { margin: 0; font-size: var(--cpu-fs-xxl); font-weight: 700; line-height: 1.3; }
+.intro p { margin: 2px 0 0; color: var(--cpu-text-secondary); }
+.intro-actions { display: flex; flex: none; flex-wrap: wrap; gap: 8px; }
+.intro-actions .el-button { height: 40px; margin: 0; padding: 0 14px; font-size: var(--cpu-fs-m); }
+.intro-actions .el-button :deep(> span) { display: inline-flex; align-items: center; gap: 6px; }
+.independent-service-note { display: flex; align-items: center; gap: 6px; margin: 12px 0 0; color: var(--cpu-text-muted); font-size: var(--cpu-fs-s); }
+.independent-service-note .el-icon { flex: none; font-size: 15px; }
+.home-search-top { margin-top: 20px; }
 
-.hero {
-  background: linear-gradient(135deg, #168776 0%, #2da391 60%, #0f6557 100%);
-  color: #fff;
-  border-radius: 16px;
-  padding: 32px 36px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  position: relative;
-  overflow: hidden;
+.grid { display: grid; grid-template-columns: minmax(0, 1fr) 368px; align-items: start; gap: 0 32px; }
+.grid.single-col { grid-template-columns: minmax(0, 1fr); }
+.col-left, .col-right { display: flex; min-width: 0; flex-direction: column; }
 
-  &::after {
-    content: "";
-    position: absolute;
-    right: -80px;
-    top: -80px;
-    width: 280px;
-    height: 280px;
-    border-radius: 50%;
-    background: radial-gradient(circle at 40% 40%, rgba(232, 163, 23, 0.45), transparent 60%);
-    pointer-events: none;
-  }
-}
+.group { overflow: hidden; border-radius: var(--cpu-radius-l); background: var(--cpu-card); }
+.home-error { margin-top: 24px; padding: 28px 16px; }
+.block-head { display: flex; min-height: 32px; align-items: center; justify-content: space-between; gap: 12px; margin: 24px 4px 6px; }
+.block-head h3 { margin: 0; color: var(--cpu-text-secondary); font-size: var(--cpu-fs-s); font-weight: 500; }
+.block-note { color: var(--cpu-text-muted); font-size: var(--cpu-fs-s); }
+.more { display: inline-flex; flex: none; min-height: 32px; align-items: center; gap: 1px; color: var(--cpu-primary); font-size: var(--cpu-fs-s); text-decoration: none; white-space: nowrap; }
+.block-ad { padding: 12px 12px 0; }
+.block-ad :deep(.forum-ad-card) { border-radius: var(--cpu-radius-m); background: var(--cpu-surface-soft); }
 
-.hero-text { flex: 1; z-index: 1; }
-.hero h1 { margin: 0 0 6px; font-size: 32px; }
-.hero p { margin: 0 0 16px; opacity: 0.9; font-size: 15px; }
-.hero-actions { display: flex; flex-wrap: wrap; gap: 10px; }
-.action-label-short { display: none; }
-.hero-actions .el-button { background: rgba(255,255,255,0.9); border: none; color: #168776; }
-.hero-actions .el-button:hover { background: #fff; }
-.hero-actions .el-button--primary { background: #fff; color: #168776; }
+/* 列表项沿用论坛的组件，这里只把它放进分组并统一左右留白 */
+.group :deep(.topic-row) { padding-right: 16px; padding-left: 16px; border-radius: 0; }
 
-:global(html[data-theme="dark"] .hero-actions .el-button) {
-  background: rgba(255, 255, 255, 0.10);
-  border: 1px solid rgba(238, 248, 245, 0.22);
-  color: #eef8f5;
-}
-:global(html[data-theme="dark"] .hero-actions .el-button:hover) {
-  background: rgba(255, 255, 255, 0.18);
-  border-color: rgba(238, 248, 245, 0.34);
-  color: #ffffff;
-}
-:global(html[data-theme="dark"] .hero-actions .el-button--primary) {
-  background: rgba(45, 212, 191, 0.95);
-  border-color: rgba(45, 212, 191, 0.95);
-  color: #05201c;
-}
-:global(html[data-theme="dark"] .hero-actions .el-button--primary:hover) {
-  background: #5eead4;
-  border-color: #5eead4;
-  color: #04201c;
-}
+.second-hand { padding: 14px 16px 16px; color: var(--cpu-text-secondary); }
+.second-hand p { margin: 0; }
+.second-hand-actions { display: flex; gap: 8px; margin-top: 12px; }
+.second-hand-actions a { display: inline-flex; height: 40px; flex: 1; align-items: center; justify-content: center; border-radius: var(--cpu-radius-m); background: var(--cpu-surface-soft); color: var(--cpu-text); font-weight: 500; text-decoration: none; }
+.second-hand-actions a:hover { background: var(--cpu-surface-subtle); }
 
-.grid {
-  display: grid;
-  grid-template-columns: 2fr 1fr;
-  gap: 16px;
-}
-.grid.single-col {
-  grid-template-columns: 1fr;
-}
-@media (max-width: 1100px) {
-  .grid { grid-template-columns: 1fr; }
-}
+.announce-list { margin: 0; padding: 0; list-style: none; }
+.announce-list li { padding: 12px 16px; cursor: pointer; }
+.announce-list li + li, .svc + .svc { box-shadow: inset 0 1px 0 var(--cpu-border-soft); }
+.announce-list li:hover, .svc:hover { background: var(--cpu-surface-soft); }
+.announce-list li:focus-visible, .svc:focus-visible, .second-hand-actions a:focus-visible { outline: 2px solid var(--cpu-primary); outline-offset: -2px; }
+.ann-title { display: -webkit-box; overflow: hidden; font-weight: 500; line-height: 1.5; -webkit-box-orient: vertical; -webkit-line-clamp: 2; text-wrap: pretty; }
+.ann-meta { display: flex; gap: 5px; margin-top: 2px; color: var(--cpu-text-muted); font-size: var(--cpu-fs-s); }
+.ann-source { color: var(--cpu-text-secondary); }
 
-.col-left, .col-right { display: flex; flex-direction: column; gap: 16px; }
+.svc { display: flex; min-height: 52px; align-items: center; gap: 12px; padding: 0 16px; cursor: pointer; }
+.svc-icon { display: inline-flex; width: 32px; height: 32px; flex: none; align-items: center; justify-content: center; border-radius: var(--cpu-radius-m); background: var(--cpu-hue-bg); color: var(--cpu-hue-ink); font-size: 18px; }
+.svc-name { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.svc-tag { flex: none; height: 18px; padding: 0 5px; border-radius: var(--cpu-radius-s); color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); font-weight: 500; line-height: 18px; box-shadow: inset 0 0 0 1px var(--cpu-border); }
+.svc-tag-fresh { background: var(--cpu-primary-soft); color: var(--cpu-primary); box-shadow: none; }
 
-.block {
-  background: var(--cpu-card);
-  border: 1px solid var(--cpu-border-soft);
-  border-radius: 12px;
-  padding: 16px 20px 12px;
-  box-shadow: var(--cpu-shadow-sm);
-}
-.home-error {
-  padding: 24px 16px;
-}
-
-.block-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  margin-bottom: 10px;
-}
-.block-head h3 { margin: 0; font-size: 16px; color: var(--cpu-text); font-weight: 600; }
-.latest-head > div { min-width: 0; }
-.block-summary { display: block; margin-top: 3px; color: var(--cpu-text-muted); font-size: 11px; }
-.more { font-size: 12px; color: var(--cpu-primary); text-decoration: none; }
-.home-search-top {
-  padding: 12px 14px;
-  background: var(--cpu-card);
-  border: 1px solid var(--cpu-border-soft);
-  border-radius: 12px;
-  box-shadow: var(--cpu-shadow-sm);
-}
-
-.announce-list { list-style: none; padding: 0; margin: 0; }
-.announce-list li {
-  padding: 10px 4px;
-  border-bottom: 1px dashed var(--cpu-border-soft);
-  cursor: pointer;
-  transition: background 0.15s;
-  border-radius: 6px;
-}
-.announce-list li:hover { background: var(--cpu-surface-soft); }
-.announce-list li:focus-visible {
-  outline: 2px solid var(--cpu-primary);
-  outline-offset: 2px;
-}
-.announce-list li:last-child { border-bottom: none; }
-.ann-title {
-  font-size: 14px;
-  color: var(--cpu-text);
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 1;
-  -webkit-box-orient: vertical;
-}
-.ann-meta {
-  font-size: 12px;
-  color: var(--cpu-text-muted);
-  margin-top: 2px;
-  display: flex;
-  gap: 8px;
-}
-.ann-source { color: var(--cpu-primary); }
-
-.hot-foot {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-  padding-top: 12px;
-}
-.more-strong {
-  font-weight: 600;
-}
-
-.service-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
-}
-.wall-card {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  padding: 12px;
-  border: 1px solid var(--cpu-border-soft);
-  border-radius: 12px;
-  background: var(--cpu-surface-soft);
-  cursor: pointer;
-}
-.wall-card:hover {
-  border-color: #93c5fd;
-}
-.wall-card:focus-visible {
-  outline: 2px solid var(--cpu-primary);
-  outline-offset: 2px;
-}
-.wall-icon {
-  width: 42px;
-  height: 42px;
-  border-radius: 12px;
-  display: grid;
-  place-items: center;
-  font-size: 22px;
-  background: var(--cpu-surface-subtle);
-  flex-shrink: 0;
-}
-.wall-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--cpu-text);
-}
-.wall-desc {
-  margin-top: 4px;
-  font-size: 12px;
-  line-height: 1.6;
-  color: var(--cpu-text-secondary);
-}
-.second-hand-note {
-  margin: -2px 0 8px;
-  color: var(--cpu-text-secondary);
-  font-size: 12px;
-  line-height: 1.55;
-}
-.second-hand-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--cpu-border-soft);
-  font-size: 12px;
-}
-.second-hand-actions a { color: var(--cpu-primary); font-weight: 600; text-decoration: none; }
-.second-hand-actions a:hover { text-decoration: underline; }
-.second-hand-actions span { width: 1px; height: 12px; background: var(--cpu-border); }
-.svc {
-  padding: 10px;
-  border: 1px solid var(--cpu-border-soft);
-  border-radius: 10px;
-  background: var(--cpu-surface);
-  cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
-  position: relative;
-}
-.svc:hover { border-color: var(--cpu-primary); background: var(--cpu-surface-soft); }
-.svc:focus-visible {
-  outline: 2px solid var(--cpu-primary);
-  outline-offset: 2px;
-}
-.svc-icon { font-size: 22px; }
-.svc-name { font-size: 12px; color: var(--cpu-text-secondary); margin-top: 4px; line-height: 1.3; }
-.svc-tag {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  background: rgba(245, 158, 11, 0.16);
-  color: #b45309;
-  font-size: 10px;
-  padding: 1px 5px;
-  border-radius: 4px;
-}
-.svc-special {
-  background: linear-gradient(135deg, rgba(245, 158, 11, 0.14) 0%, rgba(251, 191, 36, 0.1) 100%);
-  border-color: rgba(245, 158, 11, 0.32);
-}
-.svc-special:hover {
-  border-color: #f59e0b;
-  background: linear-gradient(135deg, rgba(245, 158, 11, 0.18) 0%, rgba(251, 191, 36, 0.14) 100%);
-}
-.svc-tag-fresh { background: rgba(251, 191, 36, 0.85); color: #78350f; font-weight: 500; }
-.cpu-muted { font-size: 12px; color: var(--cpu-text-muted); }
-.home-publish-fab { display: none; }
-
-@media (max-width: 768px) {
-  .home {
-    gap: 14px;
-  }
-
-  .hero {
-    display: block;
-    padding: 7px;
-    border: 1px solid var(--cpu-border-soft);
-    border-radius: 16px;
-    background: color-mix(in srgb, var(--cpu-card) 92%, transparent);
-    box-shadow: var(--cpu-shadow-sm);
-    backdrop-filter: blur(18px) saturate(140%);
-  }
-
-  .hero::before,
-  .hero::after {
-    content: none;
-  }
-
-  .hero h1,
-  .hero p {
-    display: none;
-  }
-
-  .hero-actions {
-    display: flex;
-    width: 100%;
-    max-width: 100%;
-    flex-wrap: nowrap;
-    gap: 6px;
-    overflow-x: hidden;
-    padding: 0;
-  }
-
-  .hero-actions .el-button {
-    flex: 1 1 0;
-    width: 0;
-    min-width: 0;
-    height: 40px;
-    min-height: 40px;
-    margin-left: 0;
-    justify-content: center;
-    overflow: hidden;
-    padding: 0 5px;
-    border: 1px solid var(--cpu-border-soft);
-    border-radius: 999px;
-    background: var(--cpu-surface-soft);
-    color: var(--cpu-text-secondary);
-    box-shadow: none;
-    font-size: 12px;
-    font-weight: 600;
-    white-space: nowrap;
-  }
-
-  .hero-actions :deep(.el-button > span) {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-  }
-
-  .action-label-full {
-    display: none;
-  }
-
-  .action-label-short {
-    display: inline;
-  }
-
-  .hero-actions .el-button--primary {
-    border-color: color-mix(in srgb, var(--cpu-primary) 72%, transparent);
-    background: var(--cpu-primary);
-    color: #fff;
-  }
-
-  .hero-actions .el-button:hover,
-  .hero-actions .el-button:focus-visible {
-    border-color: color-mix(in srgb, var(--cpu-primary) 35%, var(--cpu-border-soft));
-    background: var(--cpu-surface-subtle);
-    color: var(--cpu-primary);
-  }
-
-  .hero-actions .el-button--primary:hover,
-  .hero-actions .el-button--primary:focus-visible {
-    border-color: var(--cpu-primary);
-    background: var(--cpu-primary);
-    color: #fff;
-  }
-
-  .grid {
-    gap: 14px;
-  }
-
-  .home-search-top {
-    margin: 0;
-    padding: 8px;
-    border-radius: 12px;
-    box-shadow: var(--cpu-shadow-sm);
-  }
-
-  .home-search-top :deep(.site-search-bar) {
-    grid-template-columns: minmax(0, 1fr) 56px;
-    gap: 6px;
-  }
-
-  .home-search-top :deep(.el-input) {
-    min-width: 0;
-  }
-
-  .home-search-top :deep(.el-input__wrapper) {
-    min-height: 40px;
-    border-radius: 9px;
-  }
-
-  .home-search-top :deep(.el-button) {
-    width: 56px;
-    min-width: 56px;
-    min-height: 40px;
-    padding: 0 8px;
-    border-radius: 9px;
-    font-weight: 600;
-  }
-
-  .col-left,
-  .col-right {
-    gap: 14px;
-  }
-
-  .block {
-    border-radius: 10px;
-    padding: 14px 12px 10px;
-  }
-
-  .block-head {
-    align-items: center;
-  }
-
-  .service-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .svc {
-    min-height: 82px;
-    padding: 9px 7px;
-  }
-
-  .svc-icon {
-    font-size: 20px;
-  }
-
-  .home-publish-fab {
-    position: fixed;
-    right: 16px;
-    bottom: calc(78px + env(safe-area-inset-bottom));
-    z-index: 20;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    min-height: 42px;
-    padding: 0 16px;
-    border-radius: 999px;
-    background: var(--cpu-primary);
-    box-shadow: 0 8px 22px color-mix(in srgb, var(--cpu-primary) 28%, transparent);
-    color: #fff;
-    font-size: 14px;
-    font-weight: 600;
-    text-decoration: none;
-  }
-
-  .home-publish-fab:focus-visible {
-    outline: 2px solid var(--cpu-card);
-    outline-offset: 2px;
-  }
-}
-
-@media (max-width: 420px) {
-  .service-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+@media (max-width: 1023px) {
+  .grid { grid-template-columns: minmax(0, 1fr); }
+  .intro { flex-direction: column; align-items: flex-start; gap: 16px; }
+  .service-list { display: grid; grid-template-columns: 1fr 1fr; }
+  .service-list .svc:nth-child(2) { box-shadow: none; }
 }
 </style>
