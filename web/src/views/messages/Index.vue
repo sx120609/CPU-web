@@ -1916,4 +1916,97 @@ function normalizeMessageSettings(value: any) {
     display: none;
   }
 }
+
+/* 桌面端和移动端用同一套导航：先选私聊 / 通知 / 设置，通知再按分类筛选；不再露出一排原生标签页。 */
+@media (min-width: 769px) {
+  .msg-page { width: 100%; max-width: 1080px; margin: 0 auto; gap: 14px; }
+  .page-head { flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 0 2px; }
+  .page-title { font-size: 24px; font-weight: 700; letter-spacing: -.01em; }
+  .page-head-actions { order: 3; }
+  .cpu-card { border-radius: 16px; box-shadow: var(--cpu-shadow-sm); }
+  .messages-tabs :deep(.el-tabs__header) { display: none; }
+
+  .mobile-message-modes {
+    display: inline-flex;
+    order: 2;
+    gap: 4px;
+    margin-left: auto;
+    padding: 4px;
+    border-radius: 12px;
+    background: var(--cpu-surface-subtle);
+  }
+  .mobile-message-modes button {
+    --cpu-button-fill: transparent;
+    --cpu-button-ink: var(--cpu-text-secondary);
+    --cpu-button-hover-fill: transparent;
+    --cpu-button-hover-ink: var(--cpu-text);
+    --cpu-button-radius: 9px;
+    position: relative;
+    display: inline-flex;
+    height: 36px;
+    align-items: center;
+    gap: 6px;
+    padding: 0 14px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  .mobile-message-modes button.active {
+    --cpu-button-fill: var(--cpu-card);
+    --cpu-button-ink: var(--cpu-primary);
+    --cpu-button-hover-fill: var(--cpu-card);
+    --cpu-button-hover-ink: var(--cpu-primary);
+    box-shadow: var(--cpu-shadow-sm) !important;
+  }
+  .mode-icon { display: inline-flex; font-size: 16px; }
+  .mode-copy b { font-weight: 550; }
+  .mode-copy small { display: none; }
+  .mode-count {
+    display: inline-grid;
+    min-width: 18px;
+    height: 18px;
+    place-items: center;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: var(--cpu-danger);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .mobile-notice-filters { display: flex; flex-wrap: wrap; gap: 8px; }
+  .mobile-notice-filters button {
+    --cpu-button-fill: var(--cpu-card);
+    --cpu-button-ink: var(--cpu-text-secondary);
+    --cpu-button-hover-fill: var(--cpu-surface-soft);
+    --cpu-button-hover-ink: var(--cpu-text);
+    --cpu-button-radius: 999px;
+    display: inline-flex;
+    min-height: 34px;
+    align-items: center;
+    gap: 6px;
+    padding: 0 14px;
+    border-color: var(--cpu-border-soft) !important;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .mobile-notice-filters button.active {
+    --cpu-button-fill: var(--cpu-button-primary);
+    --cpu-button-ink: var(--cpu-button-on-primary);
+    --cpu-button-hover-fill: var(--cpu-button-primary);
+    --cpu-button-hover-ink: var(--cpu-button-on-primary);
+    border-color: transparent !important;
+  }
+  .mobile-notice-filters small {
+    display: inline-grid;
+    min-width: 16px;
+    height: 16px;
+    place-items: center;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: color-mix(in srgb, currentColor 16%, transparent);
+    font-size: 10px;
+    line-height: 1;
+  }
+}
 </style>

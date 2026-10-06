@@ -119,7 +119,24 @@ function categoryIcon(category?: string | null) {
 .empty-state {
   padding: 18px 0;
 }
-.message-icon { display: none; }
+.message-icon {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--cpu-primary) 11%, var(--cpu-card));
+  color: var(--cpu-primary);
+  font-size: 19px;
+}
+.message-icon-like { background: color-mix(in srgb, #ef4444 10%, var(--cpu-card)); color: #ef4444; }
+.message-icon-system { background: color-mix(in srgb, #8b5cf6 11%, var(--cpu-card)); color: #8b5cf6; }
+.message-icon-school,
+.message-icon-school-feed { background: color-mix(in srgb, #22c55e 10%, var(--cpu-card)); color: #16a34a; }
+.message-icon-service-tool { background: color-mix(in srgb, #0ea5e9 10%, var(--cpu-card)); color: #0284c7; }
+.message-icon-lost-found,
+.message-icon-direct-message { background: color-mix(in srgb, #14b8a6 11%, var(--cpu-card)); color: #0f9f8f; }
 .row {
   display: flex;
   align-items: center;
@@ -259,25 +276,6 @@ function categoryIcon(category?: string | null) {
     transform: none;
     box-shadow: none;
   }
-
-  .message-icon {
-    display: grid;
-    width: 40px;
-    height: 40px;
-    place-items: center;
-    border-radius: 11px;
-    background: color-mix(in srgb, var(--cpu-primary) 11%, var(--cpu-card));
-    color: var(--cpu-primary);
-    font-size: 19px;
-  }
-
-  .message-icon-like { background: color-mix(in srgb, #ef4444 10%, var(--cpu-card)); color: #ef4444; }
-  .message-icon-system { background: color-mix(in srgb, #8b5cf6 11%, var(--cpu-card)); color: #8b5cf6; }
-  .message-icon-school,
-  .message-icon-school-feed { background: color-mix(in srgb, #22c55e 10%, var(--cpu-card)); color: #16a34a; }
-  .message-icon-service-tool { background: color-mix(in srgb, #0ea5e9 10%, var(--cpu-card)); color: #0284c7; }
-  .message-icon-lost-found,
-  .message-icon-direct-message { background: color-mix(in srgb, #14b8a6 11%, var(--cpu-card)); color: #0f9f8f; }
 
   .info {
     padding-top: 1px;
