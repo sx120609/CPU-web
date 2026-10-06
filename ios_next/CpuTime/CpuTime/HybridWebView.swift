@@ -419,6 +419,9 @@ final class HybridWebViewStore: NSObject, ObservableObject, WKScriptMessageHandl
         let coordinator = HybridWebViewCoordinator(store: self)
         self.coordinator = coordinator
         contentController.add(self, name: Self.handlerName)
+        contentController.addScriptMessageHandler(
+            NativeStorageCleaner.shared, contentWorld: .page, name: NativeStorageCleaner.handlerName
+        )
         webView.navigationDelegate = coordinator
         webView.uiDelegate = coordinator
         self.webView = webView

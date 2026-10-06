@@ -72,6 +72,10 @@ private final class LegacyWebSession: NSObject, ObservableObject, WKNavigationDe
                 source: source, injectionTime: .atDocumentStart, forMainFrameOnly: true
             ))
         }
+        // The Web "存储与缓存" page works the same in the legacy wrapper.
+        configuration.userContentController.addScriptMessageHandler(
+            NativeStorageCleaner.shared, contentWorld: .page, name: NativeStorageCleaner.handlerName
+        )
         webView = WKWebView(frame: .zero, configuration: configuration)
         super.init()
         webView.navigationDelegate = self
