@@ -1,27 +1,9 @@
 <template>
-  <div class="auth-wrap">
-    <div class="auth-card">
-      <div class="auth-nav">
-        <el-button text class="nav-btn" @click="goHome">
-          <el-icon><ArrowLeft /></el-icon>
-          返回首页
-        </el-button>
-      </div>
-
-      <div class="brand">
-        <div class="brand-logo">药</div>
-        <div>
-          <h1>药大拾间</h1>
-          <p>面向药大师生的独立校园工具 · 非学校官方应用</p>
-        </div>
-      </div>
-
-      <p class="welcome">使用 <strong>学校统一认证</strong> 登录</p>
-      <p class="hint">{{ loginHint }}</p>
-
-      <el-alert type="warning" :closable="false" show-icon class="safety">
-        学号 / 工号仅用于识别身份并关联账号；勾选保持登录后，<b>学校密码会加密保存在当前浏览器</b>，验证码不会保存。
-      </el-alert>
+  <AuthShell title="使用学校统一认证登录" :subtitle="loginHint" @home="goHome">
+      <p class="auth-notice">
+        <el-icon aria-hidden="true"><InfoFilled /></el-icon>
+        <span>学号 / 工号仅用于识别身份并关联账号；勾选保持登录后，<b>学校密码会加密保存在当前浏览器</b>，验证码不会保存。</span>
+      </p>
 
       <el-form
         ref="formRef"
@@ -98,16 +80,15 @@
         <span>·</span>
         <span class="muted-note">多数同学可直接使用统一认证登录</span>
       </div>
-    </div>
-
-  </div>
+  </AuthShell>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { ElMessage, type FormInstance, type FormRules } from "element-plus";
-import { User, Lock, Refresh, ArrowLeft } from "@element-plus/icons-vue";
+import { InfoFilled, Lock, Refresh, User } from "@element-plus/icons-vue";
+import AuthShell from "@/components/common/AuthShell.vue";
 import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
 import { loadCreds } from "@/utils/credCrypto";
@@ -266,70 +247,20 @@ async function onDevSubmit() {
 </script>
 
 <style scoped lang="scss">
-.auth-wrap {
-  min-height: 100vh;
-  min-height: 100dvh;
-  display: grid;
-  place-items: center;
-  background:
-    radial-gradient(circle at top right, rgba(20, 184, 166, 0.16), transparent 34%),
-    linear-gradient(135deg, var(--cpu-bg), var(--cpu-surface));
-  padding: 20px;
-}
-
-.auth-card {
-  width: 440px;
-  max-width: 100%;
-  background: var(--cpu-card);
-  border: 1px solid var(--cpu-border-soft);
-  border-radius: 16px;
-  padding: 32px 36px 24px;
-  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.1);
-}
-
-.auth-nav {
+.auth-notice {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin: -12px -10px 18px;
-}
-
-.nav-btn {
-  min-height: 34px;
-  padding: 0 10px;
-  color: var(--cpu-primary);
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 20px;
-}
-
-.brand-logo {
-  width: 44px;
-  height: 44px;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 0 16px;
+  padding: 10px 12px;
   border-radius: 12px;
-  background: linear-gradient(135deg, #168776, #0f6557);
-  color: #e8a317;
-  display: grid;
-  place-items: center;
-  font-family: var(--cpu-font-sans);
-  font-size: 24px;
-  font-weight: 700;
+  background: color-mix(in srgb, var(--cpu-gold) 11%, var(--cpu-card));
+  color: var(--cpu-text-secondary);
+  font-size: 12px;
+  line-height: 1.65;
 }
-
-.brand h1 { margin: 0; font-size: 20px; color: #168776; }
-.brand p { margin: 2px 0 0; font-size: 12px; color: var(--cpu-text-secondary); }
-
-.welcome { font-size: 18px; color: var(--cpu-text); margin: 6px 0 4px; font-weight: 600; }
-.welcome strong { color: var(--cpu-primary); }
-.hint { font-size: 13px; color: var(--cpu-text-secondary); margin: 0 0 14px; line-height: 1.6; }
-.identity-picker { margin-bottom: 14px; }
-
-.safety { margin-bottom: 14px; font-size: 12px; }
-.safety b { color: #b45309; }
+.auth-notice .el-icon { flex: 0 0 auto; margin-top: 2px; color: var(--cpu-gold); font-size: 15px; }
+.auth-notice b { color: color-mix(in srgb, var(--cpu-gold) 70%, var(--cpu-text)); font-weight: 600; }
 
 .btn-submit { width: 100%; letter-spacing: 4px; }
 
@@ -365,19 +296,24 @@ async function onDevSubmit() {
 }
 
 .dev-fallback {
-  margin-top: 18px;
-  padding: 10px 14px;
-  background: var(--cpu-surface-subtle);
-  border-radius: 8px;
-  border: 1px dashed var(--cpu-border);
+  margin-top: 16px;
+  padding: 0 14px;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 12px;
+  background: var(--cpu-surface-soft);
 }
 .dev-fallback summary {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  gap: 6px;
+  color: var(--cpu-text-secondary);
+  font-size: 13px;
   cursor: pointer;
-  font-size: 12px;
-  color: #9ca3af;
   user-select: none;
 }
-.dev-tip { font-size: 11px; color: #b45309; margin: 8px 0; }
+.dev-fallback[open] { padding-bottom: 14px; }
+.dev-tip { margin: 0 0 8px; color: var(--cpu-text-muted); font-size: 12px; line-height: 1.6; }
 .dev-form { display: flex; gap: 6px; flex-direction: column; margin-top: 8px; }
 .dev-accounts {
   font-size: 11px;
@@ -408,7 +344,7 @@ async function onDevSubmit() {
   justify-content: center;
   gap: 8px;
   margin-top: 14px;
-  color: #cbd5e1;
+  color: var(--cpu-text-muted);
   font-size: 12px;
 }
 
@@ -422,41 +358,10 @@ async function onDevSubmit() {
 }
 
 .alt-actions .muted-note {
-  color: #9ca3af;
+  color: var(--cpu-text-muted);
 }
 
 @media (max-width: 640px) {
-  .auth-wrap {
-    min-height: 100dvh;
-    align-items: start;
-    padding: calc(18px + var(--cpu-safe-area-inset-top, 0px)) 12px 18px;
-  }
-
-  .auth-card {
-    width: 100%;
-    border-radius: 14px;
-    padding: 22px 18px 18px;
-  }
-
-  .brand {
-    margin-bottom: 16px;
-  }
-
-  .auth-nav {
-    margin: -8px -8px 16px;
-  }
-
-  .brand-logo {
-    width: 40px;
-    height: 40px;
-    border-radius: 10px;
-    font-size: 22px;
-  }
-
-  .welcome {
-    font-size: 17px;
-  }
-
   .vcode-row {
     gap: 6px;
   }
@@ -464,6 +369,5 @@ async function onDevSubmit() {
   .vcode-img {
     max-width: 108px;
   }
-
 }
 </style>

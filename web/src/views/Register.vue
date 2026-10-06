@@ -1,21 +1,6 @@
 <template>
-  <div class="auth-wrap">
-    <div class="auth-card">
-      <div class="auth-nav cpu-button-row">
-        <el-button text class="nav-btn" @click="goHome">
-          <el-icon><ArrowLeft /></el-icon>
-          返回首页
-        </el-button>
-        <el-button text class="nav-btn" @click="goLogin">直接登录</el-button>
-      </div>
-
-      <div class="brand">
-        <div class="brand-logo">药</div>
-        <div>
-          <h1>注册药大拾间</h1>
-          <p>暂不开放公开注册</p>
-        </div>
-      </div>
+  <AuthShell title="注册药大拾间" subtitle="暂不开放公开注册" @home="goHome">
+    <template #nav><button data-cpu-button="surface" type="button" @click="goLogin">直接登录</button></template>
 
       <!-- 生产模式：公开注册已关闭 -->
       <template v-if="!isDev">
@@ -65,7 +50,6 @@
         </div>
         <PrivacyPolicyNotice />
       </template>
-    </div>
 
     <el-dialog v-model="showTerms" title="药大拾间 用户协议" width="500">
       <p>药大拾间是面向校内同学的交流与服务平台。</p>
@@ -81,14 +65,14 @@
         <el-button type="primary" @click="agree = true; showTerms = false">我同意</el-button>
       </template>
     </el-dialog>
-  </div>
+  </AuthShell>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage, type FormInstance, type FormRules } from "element-plus";
-import { ArrowLeft } from "@element-plus/icons-vue";
+import AuthShell from "@/components/common/AuthShell.vue";
 import { useAuthStore } from "@/stores/auth";
 import { resolveSafeRedirect } from "@/utils/redirect";
 import PrivacyPolicyNotice from "@/components/common/PrivacyPolicyNotice.vue";
@@ -156,60 +140,6 @@ async function submit() {
 </script>
 
 <style scoped lang="scss">
-.auth-wrap {
-  min-height: 100vh;
-  min-height: 100dvh;
-  display: grid;
-  place-items: center;
-  background: linear-gradient(135deg, #f4f6f8, #e0f2ef);
-  padding: 20px;
-}
-
-.auth-card {
-  width: 460px;
-  max-width: 100%;
-  background: #fff;
-  border-radius: 16px;
-  padding: 32px 36px 24px;
-  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.1);
-}
-
-.auth-nav {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin: -12px -10px 18px;
-}
-
-.nav-btn {
-  min-height: 34px;
-  padding: 0 10px;
-  color: var(--cpu-primary);
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 20px;
-}
-
-.brand-logo {
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, #168776, #0f6557);
-  color: #e8a317;
-  display: grid;
-  place-items: center;
-  font-family: var(--cpu-font-sans);
-  font-size: 24px;
-  font-weight: 700;
-}
-
-.brand h1 { margin: 0; font-size: 20px; color: #168776; }
-.brand p { margin: 2px 0 0; font-size: 12px; color: #6b7280; }
-
 .btn-submit { width: 100%; letter-spacing: 4px; }
 
 .inline-link {
@@ -230,7 +160,7 @@ async function submit() {
 .alt {
   text-align: center;
   font-size: 13px;
-  color: #6b7280;
+  color: var(--cpu-text-secondary);
   margin-top: 8px;
   button {
     border: none;
@@ -243,36 +173,7 @@ async function submit() {
   }
 }
 
-ol { padding-left: 20px; line-height: 1.8; color: #4b5563; font-size: 13px; }
+ol { padding-left: 20px; line-height: 1.8; color: var(--cpu-text-secondary); font-size: 13px; }
 .closed-tip { font-size: 13px; line-height: 1.6; }
 .closed-tip a { color: var(--cpu-primary); text-decoration: underline; }
-
-@media (max-width: 640px) {
-  .auth-wrap {
-    min-height: 100dvh;
-    align-items: start;
-    padding: calc(18px + var(--cpu-safe-area-inset-top, 0px)) 12px 18px;
-  }
-
-  .auth-card {
-    width: 100%;
-    border-radius: 14px;
-    padding: 22px 18px 18px;
-  }
-
-  .brand {
-    margin-bottom: 16px;
-  }
-
-  .auth-nav {
-    margin: -8px -8px 16px;
-  }
-
-  .brand-logo {
-    width: 40px;
-    height: 40px;
-    border-radius: 10px;
-    font-size: 22px;
-  }
-}
 </style>
