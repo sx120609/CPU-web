@@ -86,23 +86,23 @@ function go(to: string) {
 </script>
 
 <style scoped>
-.compose-intro { margin: -8px 0 14px; color: var(--cpu-text-secondary); font-size: 12px; line-height: 1.6; }
+.compose-intro { margin: -8px 0 14px; color: var(--cpu-text-secondary); font-size: var(--cpu-fs-xs); line-height: 1.6; }
 .campaign-section { margin-bottom: 14px; }
 .campaign-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 9px; }
-.campaign-action { background: color-mix(in srgb, var(--cpu-primary) 5%, var(--cpu-surface-soft)); }
-.campaign-welcome { margin: 8px 2px 0; color: var(--cpu-text-secondary); font-size: 11px; line-height: 1.55; }
-.compose-divider { display: flex; align-items: center; gap: 10px; margin: 4px 0 10px; color: var(--cpu-text-muted); font-size: 10px; }
+.campaign-action { background: var(--cpu-primary-soft); }
+.campaign-welcome { margin: 8px 2px 0; color: var(--cpu-text-secondary); font-size: var(--cpu-fs-xs); line-height: 1.55; }
+.compose-divider { display: flex; align-items: center; gap: 10px; margin: 4px 0 10px; color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); }
 .compose-divider::before, .compose-divider::after { height: 1px; flex: 1; background: var(--cpu-border-soft); content: ""; }
 .compose-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
-.compose-action { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 13px 12px; border: 1px solid var(--cpu-border-soft); border-radius: 12px; background: var(--cpu-surface-soft); color: var(--cpu-text); text-align: left; cursor: pointer; }
+.compose-action { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 13px 12px; border: 1px solid var(--cpu-border-soft); border-radius: var(--cpu-radius-l); background: var(--cpu-surface-soft); color: var(--cpu-text); text-align: left; cursor: pointer; }
 .compose-grid > .compose-action:last-child { grid-column: 1 / -1; }
-.compose-action:hover { border-color: var(--cpu-primary); background: color-mix(in srgb, var(--cpu-primary) 7%, var(--cpu-card)); }
+.compose-action:hover { border-color: var(--cpu-primary); background: var(--cpu-primary-soft); }
 .compose-action:focus-visible { outline: 2px solid var(--cpu-primary); outline-offset: 2px; }
-.compose-icon { flex: 0 0 34px; height: 34px; display: grid; place-items: center; border-radius: 10px; background: var(--cpu-card); font-size: 19px; }
+.compose-icon { flex: 0 0 34px; height: 34px; display: grid; place-items: center; border-radius: var(--cpu-radius-m); background: var(--cpu-card); font-size: var(--cpu-fs-xl); }
 .compose-action span:last-child { min-width: 0; }
 .compose-action b, .compose-action small { display: block; }
-.compose-action b { font-size: 13px; }
-.compose-action small { margin-top: 3px; overflow: hidden; color: var(--cpu-text-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.compose-action b { font-size: var(--cpu-fs-s); }
+.compose-action small { margin-top: 3px; overflow: hidden; color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); text-overflow: ellipsis; white-space: nowrap; }
 :global(.compose-action-drawer) { max-width: 620px; margin: 0 auto; border-radius: 18px 18px 0 0; }
 :global(.compose-action-drawer .el-drawer__header) { margin-bottom: 8px; }
 @media (max-width: 480px) {

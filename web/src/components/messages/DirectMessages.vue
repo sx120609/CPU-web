@@ -990,13 +990,13 @@ function errorMessage(error: unknown, fallback: string) {
   cursor: default;
 }
 .dm :where(button:focus-visible) {
-  outline: 2px solid color-mix(in srgb, var(--cpu-primary) 60%, transparent);
+  outline: 2px solid var(--cpu-primary);
   outline-offset: 2px;
 }
 
 /* ---------- 外框 ---------- */
 .dm {
-  --dm-hover: color-mix(in srgb, var(--cpu-text) 5%, transparent);
+  --dm-hover: transparent;
   --dm-theirs: var(--cpu-surface-subtle);
   --dm-mine: var(--cpu-button-primary);
   --dm-mine-ink: var(--cpu-button-on-primary);
@@ -1010,7 +1010,7 @@ function errorMessage(error: unknown, fallback: string) {
   color: var(--cpu-text);
   background: var(--cpu-card);
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 18px;
+  border-radius: var(--cpu-radius-l);
 }
 :global(html[data-theme="dark"]) .dm {
   --dm-warn-ink: var(--cpu-warn);
@@ -1023,21 +1023,21 @@ function errorMessage(error: unknown, fallback: string) {
   flex: 0 0 auto;
   place-items: center;
   padding: 0 5px;
-  border-radius: 999px;
+  border-radius: var(--cpu-radius-pill);
   color: #fff;
-  background: #ef4444;
-  font-size: 10.5px;
-  font-weight: 650;
+  background: var(--cpu-danger);
+  font-size: var(--cpu-fs-xs);
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
   line-height: 1;
   box-sizing: border-box;
 }
 .dm-text-btn {
   padding: 4px 8px;
-  border-radius: 8px;
+  border-radius: var(--cpu-radius-m);
   color: var(--cpu-primary);
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--cpu-fs-s);
+  font-weight: 500;
 }
 .dm-text-btn:hover {
   background: var(--dm-hover);
@@ -1048,14 +1048,14 @@ function errorMessage(error: unknown, fallback: string) {
   gap: 6px;
   padding: 6px 14px;
   border: 1px solid var(--cpu-border);
-  border-radius: 999px;
+  border-radius: var(--cpu-radius-pill);
   color: var(--cpu-text-secondary);
   background: var(--cpu-card);
-  font-size: 12.5px;
+  font-size: var(--cpu-fs-s);
   transition: color 0.15s ease, border-color 0.15s ease;
 }
 .dm-pill-btn:not(:disabled):hover {
-  border-color: color-mix(in srgb, var(--cpu-primary) 50%, var(--cpu-border));
+  border-color: var(--cpu-border-soft);
   color: var(--cpu-primary);
 }
 .dm-icon-btn {
@@ -1064,9 +1064,9 @@ function errorMessage(error: unknown, fallback: string) {
   height: 36px;
   flex: 0 0 auto;
   place-items: center;
-  border-radius: 10px;
+  border-radius: var(--cpu-radius-m);
   color: var(--cpu-text-secondary);
-  font-size: 18px;
+  font-size: var(--cpu-fs-l);
   transition: background-color 0.15s ease, color 0.15s ease;
 }
 .dm-icon-btn:hover {
@@ -1077,7 +1077,7 @@ function errorMessage(error: unknown, fallback: string) {
   width: 18px;
   height: 18px;
   flex: 0 0 auto;
-  border: 2px solid color-mix(in srgb, var(--cpu-primary) 22%, transparent);
+  border: 2px solid var(--cpu-primary-soft);
   border-top-color: var(--cpu-primary);
   border-radius: 50%;
   animation: dm-spin 0.8s linear infinite;
@@ -1087,7 +1087,7 @@ function errorMessage(error: unknown, fallback: string) {
   height: 13px;
 }
 .dm-spinner--light {
-  border-color: color-mix(in srgb, currentColor 30%, transparent);
+  border-color: transparent;
   border-top-color: currentColor;
 }
 .dm-empty-icon {
@@ -1095,15 +1095,15 @@ function errorMessage(error: unknown, fallback: string) {
   width: 44px;
   height: 44px;
   place-items: center;
-  border-radius: 14px;
+  border-radius: var(--cpu-radius-l);
   color: var(--cpu-primary);
   background: var(--cpu-primary-soft);
-  font-size: 21px;
+  font-size: var(--cpu-fs-xl);
 }
 .dm-empty-icon--lg {
   width: 56px;
   height: 56px;
-  border-radius: 18px;
+  border-radius: var(--cpu-radius-l);
   font-size: 26px;
 }
 .dm-remark {
@@ -1136,8 +1136,8 @@ function errorMessage(error: unknown, fallback: string) {
 }
 .dm-side-title h3 {
   margin: 0;
-  font-size: 16px;
-  font-weight: 650;
+  font-size: var(--cpu-fs-l);
+  font-weight: 500;
 }
 .dm-notice-link {
   display: none;
@@ -1151,13 +1151,13 @@ function errorMessage(error: unknown, fallback: string) {
   margin: 0 12px 8px;
   padding: 0 12px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 10px;
+  border-radius: var(--cpu-radius-m);
   color: var(--cpu-text-muted);
   background: var(--cpu-card);
   transition: border-color 0.15s ease;
 }
 .dm-search:focus-within {
-  border-color: color-mix(in srgb, var(--cpu-primary) 50%, var(--cpu-border));
+  border-color: var(--cpu-border-soft);
 }
 .dm-search input {
   flex: 1;
@@ -1167,7 +1167,7 @@ function errorMessage(error: unknown, fallback: string) {
   color: var(--cpu-text);
   background: transparent;
   font: inherit;
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
 }
 .dm-search input::placeholder {
   color: var(--cpu-text-muted);
@@ -1187,7 +1187,7 @@ function errorMessage(error: unknown, fallback: string) {
   width: 100%;
   min-width: 0;
   padding: 10px;
-  border-radius: 12px;
+  border-radius: var(--cpu-radius-l);
   text-align: left;
   transition: background-color 0.12s ease;
   touch-action: manipulation;
@@ -1218,22 +1218,22 @@ function errorMessage(error: unknown, fallback: string) {
 .dm-row-line b {
   min-width: 0;
   overflow: hidden;
-  font-size: 14px;
-  font-weight: 600;
+  font-size: var(--cpu-fs-m);
+  font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .dm-row-line time {
   flex: 0 0 auto;
   color: var(--cpu-text-muted);
-  font-size: 11px;
+  font-size: var(--cpu-fs-xs);
   font-variant-numeric: tabular-nums;
 }
 .dm-row-preview {
   min-width: 0;
   overflow: hidden;
   color: var(--cpu-text-muted);
-  font-size: 12.5px;
+  font-size: var(--cpu-fs-s);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1243,7 +1243,7 @@ function errorMessage(error: unknown, fallback: string) {
 .dm-list-empty {
   margin: 24px 12px;
   color: var(--cpu-text-muted);
-  font-size: 12.5px;
+  font-size: var(--cpu-fs-s);
   text-align: center;
 }
 .dm-side-state,
@@ -1258,7 +1258,7 @@ function errorMessage(error: unknown, fallback: string) {
   min-height: 0;
   padding: 24px;
   color: var(--cpu-text-muted);
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
   line-height: 1.6;
   text-align: center;
 }
@@ -1266,8 +1266,8 @@ function errorMessage(error: unknown, fallback: string) {
 .dm-chat-state b {
   margin-top: 4px;
   color: var(--cpu-text);
-  font-size: 15px;
-  font-weight: 600;
+  font-size: var(--cpu-fs-m);
+  font-weight: 500;
 }
 
 /* ---------- 聊天区 ---------- */
@@ -1282,7 +1282,7 @@ function errorMessage(error: unknown, fallback: string) {
 }
 .dm-chat-state b {
   margin-top: 8px;
-  font-size: 16px;
+  font-size: var(--cpu-fs-l);
 }
 .dm-chat-state .dm-pill-btn {
   margin-top: 8px;
@@ -1306,7 +1306,7 @@ function errorMessage(error: unknown, fallback: string) {
   gap: 10px;
   min-width: 0;
   padding: 4px 8px 4px 4px;
-  border-radius: 12px;
+  border-radius: var(--cpu-radius-l);
   text-align: left;
   transition: background-color 0.12s ease;
 }
@@ -1323,8 +1323,8 @@ function errorMessage(error: unknown, fallback: string) {
   display: block;
   min-width: 0;
   overflow: hidden;
-  font-size: 15px;
-  font-weight: 650;
+  font-size: var(--cpu-fs-m);
+  font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1337,7 +1337,7 @@ function errorMessage(error: unknown, fallback: string) {
 .dm-peer-copy small {
   overflow: hidden;
   color: var(--cpu-text-muted);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1385,14 +1385,14 @@ function errorMessage(error: unknown, fallback: string) {
 .dm-intro b {
   max-width: 420px;
   margin-top: 6px;
-  font-size: 16px;
-  font-weight: 650;
+  font-size: var(--cpu-fs-l);
+  font-weight: 500;
   overflow-wrap: anywhere;
 }
 .dm-intro > span {
   max-width: 320px;
   color: var(--cpu-text-muted);
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
   line-height: 1.6;
 }
 
@@ -1403,10 +1403,10 @@ function errorMessage(error: unknown, fallback: string) {
 }
 .dm-day span {
   padding: 2px 10px;
-  border-radius: 999px;
+  border-radius: var(--cpu-radius-pill);
   color: var(--cpu-text-muted);
   background: var(--cpu-surface-soft);
-  font-size: 11.5px;
+  font-size: var(--cpu-fs-xs);
 }
 .dm-msg {
   display: flex;
@@ -1433,7 +1433,7 @@ function errorMessage(error: unknown, fallback: string) {
   border-radius: 6px 18px 18px 6px;
   color: var(--cpu-text);
   background: var(--dm-theirs);
-  font-size: 14.5px;
+  font-size: var(--cpu-fs-m);
   line-height: 1.55;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -1450,7 +1450,7 @@ function errorMessage(error: unknown, fallback: string) {
 .dm-msg.is-rejected .dm-bubble {
   color: var(--cpu-text-secondary);
   background: transparent;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cpu-danger) 45%, var(--cpu-border));
+  box-shadow: inset 0 0 0 1px var(--cpu-border-soft);
 }
 .dm-msg-report {
   display: grid;
@@ -1458,9 +1458,9 @@ function errorMessage(error: unknown, fallback: string) {
   height: 28px;
   flex: 0 0 auto;
   place-items: center;
-  border-radius: 8px;
+  border-radius: var(--cpu-radius-m);
   color: var(--cpu-text-muted);
-  font-size: 14px;
+  font-size: var(--cpu-fs-m);
   opacity: 0;
   transition: opacity 0.12s ease, color 0.12s ease, background-color 0.12s ease;
 }
@@ -1470,7 +1470,7 @@ function errorMessage(error: unknown, fallback: string) {
 }
 .dm-msg-report:hover {
   color: var(--cpu-danger);
-  background: color-mix(in srgb, var(--cpu-danger) 10%, transparent);
+  background: var(--cpu-danger-soft);
 }
 @media (hover: none) {
   /* 触屏上逐条按钮太挤，举报统一走顶部“更多 → 举报” */
@@ -1484,7 +1484,7 @@ function errorMessage(error: unknown, fallback: string) {
   gap: 6px;
   margin: 4px 4px 0;
   color: var(--cpu-text-muted);
-  font-size: 11px;
+  font-size: var(--cpu-fs-xs);
   font-variant-numeric: tabular-nums;
 }
 .dm-status.is-warn {
@@ -1511,15 +1511,15 @@ function errorMessage(error: unknown, fallback: string) {
   gap: 7px;
   margin-bottom: 8px;
   padding: 8px 12px;
-  border-radius: 12px;
+  border-radius: var(--cpu-radius-l);
   color: var(--cpu-text-secondary);
   background: var(--cpu-surface-soft);
-  font-size: 12.5px;
+  font-size: var(--cpu-fs-s);
 }
 .dm-notice .el-icon {
   flex: 0 0 auto;
   color: var(--cpu-primary);
-  font-size: 15px;
+  font-size: var(--cpu-fs-m);
 }
 .dm-composer {
   display: flex;
@@ -1527,14 +1527,14 @@ function errorMessage(error: unknown, fallback: string) {
   gap: 8px;
   padding: 6px 6px 6px 16px;
   border: 1px solid var(--cpu-border);
-  border-radius: 24px;
+  border-radius: var(--cpu-radius-l);
   background: var(--cpu-surface);
   cursor: text;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 .dm-composer:focus-within {
-  border-color: color-mix(in srgb, var(--cpu-primary) 55%, var(--cpu-border));
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--cpu-primary) 12%, transparent);
+  border-color: var(--cpu-border-soft);
+  box-shadow: 0 0 0 4px var(--cpu-primary-soft);
 }
 .dm-composer.is-disabled {
   cursor: not-allowed;
@@ -1552,7 +1552,7 @@ function errorMessage(error: unknown, fallback: string) {
   color: var(--cpu-text);
   background: transparent;
   font: inherit;
-  font-size: 14.5px;
+  font-size: var(--cpu-fs-m);
   line-height: 22px;
   resize: none;
   -webkit-appearance: none;
@@ -1567,7 +1567,7 @@ function errorMessage(error: unknown, fallback: string) {
 .dm-counter {
   align-self: center;
   color: var(--cpu-text-muted);
-  font-size: 11.5px;
+  font-size: var(--cpu-fs-xs);
   font-variant-numeric: tabular-nums;
 }
 .dm-send {
@@ -1579,7 +1579,7 @@ function errorMessage(error: unknown, fallback: string) {
   border-radius: 50%;
   color: var(--cpu-button-on-primary);
   background: var(--cpu-button-primary);
-  font-size: 18px;
+  font-size: var(--cpu-fs-l);
   transition: transform 0.12s ease, filter 0.15s ease;
 }
 .dm-send:not(:disabled):hover {
@@ -1596,7 +1596,7 @@ function errorMessage(error: unknown, fallback: string) {
   margin: 6px 0 0;
   overflow: hidden;
   color: var(--cpu-text-muted);
-  font-size: 11.5px;
+  font-size: var(--cpu-fs-xs);
   text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1620,28 +1620,28 @@ function errorMessage(error: unknown, fallback: string) {
   gap: 2px;
   padding: 10px 12px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 12px;
+  border-radius: var(--cpu-radius-l);
   color: var(--cpu-text);
   background: var(--cpu-surface);
   text-align: left;
   transition: border-color 0.15s ease;
 }
 .dm-report-option:hover {
-  border-color: color-mix(in srgb, var(--cpu-danger) 45%, var(--cpu-border));
+  border-color: var(--cpu-border-soft);
 }
 .dm-report-option time {
   color: var(--cpu-text-muted);
-  font-size: 11.5px;
+  font-size: var(--cpu-fs-xs);
 }
 .dm-report-option span {
   overflow-wrap: anywhere;
-  font-size: 13.5px;
+  font-size: var(--cpu-fs-s);
   line-height: 1.5;
 }
 .dm-report-foot {
   margin: 14px 0 0;
   color: var(--cpu-text-muted);
-  font-size: 12.5px;
+  font-size: var(--cpu-fs-s);
   line-height: 1.6;
 }
 
@@ -1667,7 +1667,7 @@ function errorMessage(error: unknown, fallback: string) {
     height: 100%;
     min-height: 0;
     border: 0;
-    border-radius: 14px;
+    border-radius: var(--cpu-radius-l);
     box-sizing: border-box;
   }
   .dm-side {
@@ -1702,7 +1702,7 @@ function errorMessage(error: unknown, fallback: string) {
     display: grid;
     margin-right: -4px;
     color: var(--cpu-primary);
-    font-size: 20px;
+    font-size: var(--cpu-fs-xl);
   }
   .dm-chat-head {
     height: 56px;
@@ -1723,16 +1723,16 @@ function errorMessage(error: unknown, fallback: string) {
   }
   .dm-composer {
     padding: 4px 4px 4px 14px;
-    border-radius: 22px;
+    border-radius: var(--cpu-radius-l);
   }
   .dm-composer textarea {
     /* 16px 以下 iOS 会在聚焦时自动放大页面 */
-    font-size: 16px;
+    font-size: var(--cpu-fs-l);
     max-height: 112px;
   }
   .dm-hint {
     margin-top: 5px;
-    font-size: 10.5px;
+    font-size: var(--cpu-fs-xs);
   }
 }
 

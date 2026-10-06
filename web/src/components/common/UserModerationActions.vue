@@ -290,14 +290,14 @@ async function submitMute() {
 }
 
 .dialog-user {
-  font-size: 13px;
-  color: #374151;
+  font-size: var(--cpu-fs-s);
+  color: var(--cpu-text-secondary);
 }
 
 .dialog-tip {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   line-height: 1.6;
-  color: #6b7280;
+  color: var(--cpu-text-muted);
 }
 </style>

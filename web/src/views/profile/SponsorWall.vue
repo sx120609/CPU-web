@@ -178,15 +178,13 @@ function normalizeSponsorWallError(error_: unknown) {
   position: relative;
   overflow: hidden;
   min-height: 260px;
-  border-radius: 12px;
+  border-radius: var(--cpu-radius-l);
   padding: 28px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 280px;
   gap: 24px;
   align-items: end;
-  background:
-    radial-gradient(circle at 88% 18%, rgba(22, 135, 118, 0.18), transparent 30%),
-    linear-gradient(135deg, var(--cpu-surface-soft) 0%, rgba(16, 185, 129, 0.12) 48%, rgba(245, 158, 11, 0.12) 100%);
+  background: var(--cpu-card);
   border: 1px solid var(--cpu-border-soft);
 }
 
@@ -200,9 +198,9 @@ function normalizeSponsorWallError(error_: unknown) {
 
 .eyebrow {
   margin: 0 0 8px;
-  color: #0f766e;
-  font-size: 12px;
-  font-weight: 800;
+  color: var(--cpu-primary);
+  font-size: var(--cpu-fs-xs);
+  font-weight: 700;
   letter-spacing: 0;
   text-transform: uppercase;
 }
@@ -217,7 +215,7 @@ function normalizeSponsorWallError(error_: unknown) {
 .hero-desc {
   margin: 12px 0 0;
   color: var(--cpu-text-secondary);
-  font-size: 15px;
+  font-size: var(--cpu-fs-m);
   line-height: 1.8;
 }
 
@@ -234,28 +232,27 @@ function normalizeSponsorWallError(error_: unknown) {
 }
 
 .hero-stats div {
-  border-radius: 8px;
+  border-radius: var(--cpu-radius-m);
   padding: 16px;
-  background: color-mix(in srgb, var(--cpu-card) 78%, transparent);
+  background: var(--cpu-card);
   border: 1px solid var(--cpu-border-soft);
-  backdrop-filter: blur(10px);
 }
 
 .hero-stats span {
   display: block;
   color: var(--cpu-text-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   margin-bottom: 8px;
 }
 
 .hero-stats b {
-  color: #b45309;
+  color: var(--cpu-accent);
   font-size: 28px;
 }
 
 .wall-loading {
   padding: 20px;
-  border-radius: 12px;
+  border-radius: var(--cpu-radius-l);
   background: var(--cpu-card);
 }
 
@@ -278,14 +275,13 @@ function normalizeSponsorWallError(error_: unknown) {
   min-height: 260px;
   padding: 18px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 12px;
+  border-radius: var(--cpu-radius-l);
   background: var(--cpu-card);
-  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.05);
 }
 
 .campaign-card.featured {
-  border-color: color-mix(in srgb, var(--cpu-primary) 46%, var(--cpu-border-soft));
-  background: linear-gradient(145deg, color-mix(in srgb, var(--cpu-primary) 7%, var(--cpu-card)), var(--cpu-card));
+  border-color: var(--cpu-border-soft);
+  background: var(--cpu-primary-soft);
 }
 
 .campaign-card-head,
@@ -303,21 +299,21 @@ function normalizeSponsorWallError(error_: unknown) {
 .campaign-card h3 {
   margin: 2px 0 0;
   color: var(--cpu-text);
-  font-size: 18px;
+  font-size: var(--cpu-fs-l);
 }
 
 .campaign-card > p {
   flex: 1;
   margin: 0;
   color: var(--cpu-text-secondary);
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
   line-height: 1.7;
 }
 
 .campaign-kicker {
   color: var(--cpu-primary);
-  font-size: 11px;
-  font-weight: 800;
+  font-size: var(--cpu-fs-xs);
+  font-weight: 700;
 }
 
 .campaign-progress-copy {
@@ -325,20 +321,20 @@ function normalizeSponsorWallError(error_: unknown) {
 }
 
 .campaign-progress-copy b {
-  color: #b45309;
-  font-size: 23px;
+  color: var(--cpu-accent);
+  font-size: var(--cpu-fs-xl);
 }
 
 .campaign-progress-copy span,
 .campaign-meta {
   color: var(--cpu-text-muted);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
 }
 
 .campaign-progress {
   height: 7px;
   overflow: hidden;
-  border-radius: 999px;
+  border-radius: var(--cpu-radius-pill);
   background: var(--cpu-border-soft);
 }
 
@@ -346,7 +342,7 @@ function normalizeSponsorWallError(error_: unknown) {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, var(--cpu-primary), #f59e0b);
+  background: var(--cpu-primary);
 }
 
 .campaign-meta {
@@ -369,13 +365,13 @@ function normalizeSponsorWallError(error_: unknown) {
 .section-head h2 {
   margin: 0;
   color: var(--cpu-text);
-  font-size: 20px;
+  font-size: var(--cpu-fs-xl);
 }
 
 .section-head p {
   margin: 4px 0 0;
   color: var(--cpu-text-secondary);
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
 }
 
 .wall-grid {
@@ -386,11 +382,10 @@ function normalizeSponsorWallError(error_: unknown) {
 
 .wall-item {
   min-height: 170px;
-  border-radius: 8px;
+  border-radius: var(--cpu-radius-m);
   padding: 16px;
   background: var(--cpu-card);
   border: 1px solid var(--cpu-border-soft);
-  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.05);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -411,7 +406,7 @@ function normalizeSponsorWallError(error_: unknown) {
 .item-user strong {
   display: block;
   color: var(--cpu-text);
-  font-size: 15px;
+  font-size: var(--cpu-fs-m);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -421,14 +416,14 @@ function normalizeSponsorWallError(error_: unknown) {
   display: block;
   margin-top: 2px;
   color: var(--cpu-text-muted);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
 }
 
 .item-amount {
   flex-shrink: 0;
-  color: #b45309;
-  font-size: 18px;
-  font-weight: 800;
+  color: var(--cpu-accent);
+  font-size: var(--cpu-fs-l);
+  font-weight: 700;
 }
 
 .item-message {
@@ -436,7 +431,7 @@ function normalizeSponsorWallError(error_: unknown) {
   margin: 0;
   color: var(--cpu-text-secondary);
   line-height: 1.7;
-  font-size: 14px;
+  font-size: var(--cpu-fs-m);
   overflow-wrap: anywhere;
 }
 
@@ -453,8 +448,8 @@ function normalizeSponsorWallError(error_: unknown) {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: #0f766e;
-  font-size: 12px;
+  color: var(--cpu-primary);
+  font-size: var(--cpu-fs-xs);
   font-weight: 700;
 }
 

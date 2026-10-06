@@ -1165,10 +1165,10 @@ function normalizeMessageSettings(value: any) {
   flex-direction: column;
   gap: 4px;
 }
-.page-title { margin: 0; font-size: 22px; }
+.page-title { margin: 0; font-size: var(--cpu-fs-xl); }
 .page-sub {
   color: var(--cpu-text-secondary);
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
 }
 .settings-page-sub { display: none; }
 .page-head-actions {
@@ -1183,10 +1183,8 @@ function normalizeMessageSettings(value: any) {
 }
 .cpu-card {
   background: var(--cpu-card);
-  border: 1px solid var(--cpu-border-soft);
-  border-radius: 12px;
+  border-radius: var(--cpu-radius-l);
   padding: 16px 20px;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.04);
 }
 .page-error {
   padding: 24px 16px;
@@ -1206,27 +1204,27 @@ function normalizeMessageSettings(value: any) {
 }
 .notice-title {
   margin: 0;
-  font-size: 18px;
+  font-size: var(--cpu-fs-l);
   line-height: 1.45;
   color: var(--cpu-text);
   overflow-wrap: anywhere;
 }
 .notice-meta {
-  font-size: 12px;
-  color: #94a3b8;
+  font-size: var(--cpu-fs-xs);
+  color: var(--cpu-text-muted);
   line-height: 1.5;
   word-break: break-word;
 }
 .notice-content { margin: 0; color: var(--cpu-text-secondary); line-height: 1.75; white-space: pre-wrap; }
-.review-state { font-size: 13px; color: #166534; background: #ecfdf5; border: 1px solid #bbf7d0; border-radius: 8px; padding: 10px 12px; }
+.review-state { font-size: var(--cpu-fs-s); color: var(--cpu-primary); background: var(--cpu-primary-soft); border: 1px solid var(--cpu-primary-soft); border-radius: var(--cpu-radius-m); padding: 10px 12px; }
 .review-state.done { color: var(--cpu-text-secondary); background: var(--cpu-surface-subtle); border-color: var(--cpu-border-soft); }
-.notice-risk { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: #92400e; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.34); border-radius: 8px; padding: 10px 12px; }
-.notice-draft { border: 1px solid var(--cpu-border); border-radius: 8px; background: var(--cpu-surface-subtle); padding: 12px; }
-.draft-title { font-size: 14px; font-weight: 600; color: var(--cpu-text); }
-.draft-note { margin-top: 8px; font-size: 13px; color: var(--cpu-text-secondary); }
+.notice-risk { display: flex; flex-direction: column; gap: 6px; font-size: var(--cpu-fs-s); color: var(--cpu-accent); background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.34); border-radius: var(--cpu-radius-m); padding: 10px 12px; }
+.notice-draft { border: 1px solid var(--cpu-border); border-radius: var(--cpu-radius-m); background: var(--cpu-surface-subtle); padding: 12px; }
+.draft-title { font-size: var(--cpu-fs-m); font-weight: 500; color: var(--cpu-text); }
+.draft-note { margin-top: 8px; font-size: var(--cpu-fs-s); color: var(--cpu-text-secondary); }
 
 .settings h4 { margin: 8px 0 6px; color: var(--cpu-text); }
-.hint { font-size: 12px; color: var(--cpu-text-secondary); margin: 0 0 10px; }
+.hint { font-size: var(--cpu-fs-xs); color: var(--cpu-text-secondary); margin: 0 0 10px; }
 .qq-bind-guide {
   display: flex;
   align-items: center;
@@ -1234,9 +1232,9 @@ function normalizeMessageSettings(value: any) {
   gap: 16px;
   margin-bottom: 16px;
   padding: 14px;
-  border: 1px solid color-mix(in srgb, var(--cpu-primary) 28%, var(--cpu-border-soft));
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--cpu-primary) 8%, var(--cpu-card));
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: var(--cpu-radius-m);
+  background: var(--cpu-primary-soft);
 }
 .private-tab-label {
   display: inline-flex;
@@ -1249,10 +1247,10 @@ function normalizeMessageSettings(value: any) {
   padding: 0 5px;
   display: inline-grid;
   place-items: center;
-  border-radius: 999px;
-  background: #ef4444;
+  border-radius: var(--cpu-radius-pill);
+  background: var(--cpu-danger);
   color: #fff;
-  font-size: 10px;
+  font-size: var(--cpu-fs-xs);
   font-weight: 700;
   line-height: 1;
   box-sizing: border-box;
@@ -1265,12 +1263,12 @@ function normalizeMessageSettings(value: any) {
 }
 .qq-bind-guide-copy b {
   color: var(--cpu-text);
-  font-size: 14px;
+  font-size: var(--cpu-fs-m);
   line-height: 1.4;
 }
 .qq-bind-guide-copy span {
   color: var(--cpu-text-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   line-height: 1.6;
 }
 .qq-channel-card {
@@ -1279,7 +1277,7 @@ function normalizeMessageSettings(value: any) {
   gap: 12px;
   padding: 14px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 8px;
+  border-radius: var(--cpu-radius-m);
   background: var(--cpu-card);
 }
 .wechat-channel-card { margin-bottom: 12px; }
@@ -1288,14 +1286,14 @@ function normalizeMessageSettings(value: any) {
   display: grid;
   gap: 10px;
   padding: 12px;
-  border: 1px solid color-mix(in srgb, #07c160 28%, var(--cpu-border-soft));
-  border-radius: 8px;
-  background: color-mix(in srgb, #07c160 6%, var(--cpu-card));
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: var(--cpu-radius-m);
+  background: var(--cpu-card);
 }
 .wechat-subscribe-card > div:first-child { display: grid; gap: 4px; }
-.wechat-subscribe-card b { color: var(--cpu-text); font-size: 14px; }
+.wechat-subscribe-card b { color: var(--cpu-text); font-size: var(--cpu-fs-m); }
 .wechat-subscribe-card span,
-.wechat-subscribe-card small { color: var(--cpu-text-secondary); font-size: 12px; line-height: 1.5; }
+.wechat-subscribe-card small { color: var(--cpu-text-secondary); font-size: var(--cpu-fs-xs); line-height: 1.5; }
 .wechat-subscribe-button-host { min-height: 42px; }
 .channel-qr-box {
   display: flex;
@@ -1303,7 +1301,7 @@ function normalizeMessageSettings(value: any) {
   gap: 14px;
   padding: 12px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 8px;
+  border-radius: var(--cpu-radius-m);
   background: var(--cpu-bg-soft);
 }
 .channel-qr-box > img,
@@ -1311,14 +1309,14 @@ function normalizeMessageSettings(value: any) {
   display: block;
   width: 116px;
   height: 116px;
-  border-radius: 6px;
-  background: #fff;
+  border-radius: var(--cpu-radius-s);
+  background: var(--cpu-card);
   object-fit: contain;
 }
 .channel-qr-box > div { display: grid; gap: 5px; min-width: 0; }
-.channel-qr-box b { color: var(--cpu-text); font-size: 14px; }
-.channel-qr-box span { color: var(--cpu-text-secondary); font-size: 12px; line-height: 1.5; }
-.channel-qr-link { color: var(--cpu-primary); font-size: 12px; text-decoration: none; }
+.channel-qr-box b { color: var(--cpu-text); font-size: var(--cpu-fs-m); }
+.channel-qr-box span { color: var(--cpu-text-secondary); font-size: var(--cpu-fs-xs); line-height: 1.5; }
+.channel-qr-link { color: var(--cpu-primary); font-size: var(--cpu-fs-xs); text-decoration: none; }
 .qq-channel-head {
   display: flex;
   align-items: flex-start;
@@ -1333,13 +1331,13 @@ function normalizeMessageSettings(value: any) {
 }
 .qq-channel-head b {
   color: var(--cpu-text);
-  font-size: 14px;
+  font-size: var(--cpu-fs-m);
   line-height: 1.35;
 }
 .qq-channel-head span,
 .qq-channel-hint {
   color: var(--cpu-text-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   line-height: 1.55;
 }
 .qq-channel-hint {
@@ -1357,19 +1355,19 @@ function normalizeMessageSettings(value: any) {
   min-width: 0;
   padding: 10px 12px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 8px;
+  border-radius: var(--cpu-radius-m);
   background: var(--cpu-surface-soft);
 }
 .qq-channel-grid span {
   display: block;
   margin-bottom: 5px;
   color: var(--cpu-text-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
 }
 .qq-channel-grid b {
   display: block;
   color: var(--cpu-text);
-  font-size: 14px;
+  font-size: var(--cpu-fs-m);
   line-height: 1.35;
   overflow-wrap: anywhere;
 }
@@ -1378,18 +1376,18 @@ function normalizeMessageSettings(value: any) {
   gap: 5px;
   padding: 12px;
   border: 1px dashed rgba(20, 143, 123, 0.35);
-  border-radius: 8px;
+  border-radius: var(--cpu-radius-m);
   background: rgba(20, 143, 123, 0.08);
 }
 .qq-token-box strong {
   color: var(--cpu-primary);
-  font-size: 22px;
+  font-size: var(--cpu-fs-xl);
   line-height: 1.2;
   letter-spacing: 1px;
 }
 .qq-token-box span {
   color: var(--cpu-text-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   line-height: 1.5;
 }
 .qq-channel-actions {
@@ -1408,7 +1406,7 @@ function normalizeMessageSettings(value: any) {
   gap: 12px;
   padding: 12px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 8px;
+  border-radius: var(--cpu-radius-m);
   background: var(--cpu-surface-soft);
 }
 .qq-channel-toggle > span {
@@ -1419,12 +1417,12 @@ function normalizeMessageSettings(value: any) {
 }
 .qq-channel-toggle b {
   color: var(--cpu-text);
-  font-size: 14px;
+  font-size: var(--cpu-fs-m);
   line-height: 1.35;
 }
 .qq-channel-toggle small {
   color: var(--cpu-text-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   line-height: 1.45;
 }
 .switches { display: flex; flex-direction: column; gap: 12px; }
@@ -1435,10 +1433,10 @@ function normalizeMessageSettings(value: any) {
   gap: 12px;
   padding: 12px 14px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 12px;
+  border-radius: var(--cpu-radius-l);
   background: var(--cpu-surface-soft);
   color: var(--cpu-text);
-  font-size: 14px;
+  font-size: var(--cpu-fs-m);
 }
 .settings-action-row {
   display: flex;
@@ -1448,7 +1446,7 @@ function normalizeMessageSettings(value: any) {
   min-height: 62px;
   padding: 12px 14px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 8px;
+  border-radius: var(--cpu-radius-m);
   background: var(--cpu-card);
   color: inherit;
   cursor: pointer;
@@ -1458,7 +1456,6 @@ function normalizeMessageSettings(value: any) {
 .settings-action-row:hover {
   border-color: rgba(20, 143, 123, 0.35);
   background: rgba(20, 143, 123, 0.08);
-  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.05);
 }
 .settings-action-icon {
   display: inline-flex;
@@ -1467,7 +1464,7 @@ function normalizeMessageSettings(value: any) {
   flex: 0 0 34px;
   width: 34px;
   height: 34px;
-  border-radius: 8px;
+  border-radius: var(--cpu-radius-m);
   background: rgba(20, 143, 123, 0.1);
   color: var(--cpu-primary);
 }
@@ -1480,12 +1477,12 @@ function normalizeMessageSettings(value: any) {
 }
 .settings-action-copy b {
   color: var(--cpu-text);
-  font-size: 14px;
+  font-size: var(--cpu-fs-m);
   line-height: 1.35;
 }
 .settings-action-copy span {
   color: var(--cpu-text-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
@@ -1522,13 +1519,13 @@ function normalizeMessageSettings(value: any) {
     gap: 12px;
     padding: 14px;
     border: 1px solid var(--cpu-border-soft);
-    border-radius: 15px;
+    border-radius: var(--cpu-radius-l);
     background: var(--cpu-card);
     box-shadow: var(--cpu-shadow-sm);
   }
 
   .page-title {
-    font-size: 18px;
+    font-size: var(--cpu-fs-l);
     line-height: 1.25;
   }
 
@@ -1548,11 +1545,11 @@ function normalizeMessageSettings(value: any) {
     width: auto;
     margin-left: 0;
     padding-inline: 4px;
-    font-size: 12px;
+    font-size: var(--cpu-fs-xs);
   }
 
   .cpu-card {
-    border-radius: 15px;
+    border-radius: var(--cpu-radius-l);
     padding: 14px;
   }
 
@@ -1561,7 +1558,7 @@ function normalizeMessageSettings(value: any) {
     padding: 10px;
     min-width: 0;
     overflow: hidden;
-    background: color-mix(in srgb, var(--cpu-surface-soft) 58%, var(--cpu-card));
+    background: var(--cpu-surface-soft);
   }
 
   .messages-tabs :deep(.el-tabs__header) {
@@ -1576,7 +1573,7 @@ function normalizeMessageSettings(value: any) {
     margin-top: 2px;
     padding: 4px;
     border: 1px solid var(--cpu-border-soft);
-    border-radius: 11px;
+    border-radius: var(--cpu-radius-m);
     background: var(--cpu-surface-soft);
   }
 
@@ -1590,19 +1587,17 @@ function normalizeMessageSettings(value: any) {
     gap: 6px;
     padding: 6px 8px;
     border: 0;
-    border-radius: 8px;
+    border-radius: var(--cpu-radius-m);
     background: var(--cpu-card);
     color: var(--cpu-text-secondary);
     text-align: left;
     cursor: pointer;
-    box-shadow: 0 2px 7px rgba(15, 23, 42, .03);
     touch-action: manipulation;
   }
 
   .mobile-message-modes button.active {
     background: var(--cpu-primary);
     color: #fff;
-    box-shadow: 0 4px 12px color-mix(in srgb, var(--cpu-primary) 20%, transparent);
   }
 
   .mobile-message-modes button:focus-visible,
@@ -1616,7 +1611,7 @@ function normalizeMessageSettings(value: any) {
     width: 24px;
     height: 24px;
     place-items: center;
-    font-size: 18px;
+    font-size: var(--cpu-fs-l);
   }
 
   .mode-copy {
@@ -1628,14 +1623,14 @@ function normalizeMessageSettings(value: any) {
 
   .mode-copy b {
     color: inherit;
-    font-size: 12px;
+    font-size: var(--cpu-fs-xs);
     line-height: 1.3;
   }
 
   .mode-copy small {
     overflow: hidden;
     color: inherit;
-    font-size: 9px;
+    font-size: var(--cpu-fs-xs);
     line-height: 1.35;
     opacity: .72;
     text-overflow: ellipsis;
@@ -1652,11 +1647,11 @@ function normalizeMessageSettings(value: any) {
     display: grid;
     place-items: center;
     border: 2px solid var(--cpu-card);
-    border-radius: 999px;
-    background: #ef4444;
+    border-radius: var(--cpu-radius-pill);
+    background: var(--cpu-danger);
     color: #fff;
-    font-size: 9px;
-    font-weight: 750;
+    font-size: var(--cpu-fs-xs);
+    font-weight: 700;
     line-height: 1;
     box-sizing: border-box;
   }
@@ -1671,7 +1666,7 @@ function normalizeMessageSettings(value: any) {
     gap: 5px;
     padding: 4px;
     border: 1px solid var(--cpu-border-soft);
-    border-radius: 11px;
+    border-radius: var(--cpu-radius-m);
     background: var(--cpu-card);
     overflow-x: auto;
     overscroll-behavior-inline: contain;
@@ -1692,11 +1687,11 @@ function normalizeMessageSettings(value: any) {
     gap: 5px;
     padding: 0 12px;
     border: 0;
-    border-radius: 8px;
+    border-radius: var(--cpu-radius-m);
     background: transparent;
     color: var(--cpu-text-secondary);
-    font-size: 12px;
-    font-weight: 650;
+    font-size: var(--cpu-fs-xs);
+    font-weight: 500;
     cursor: pointer;
     scroll-snap-align: start;
     touch-action: manipulation;
@@ -1713,10 +1708,10 @@ function normalizeMessageSettings(value: any) {
     padding: 0 4px;
     display: grid;
     place-items: center;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--cpu-primary) 13%, var(--cpu-card));
+    border-radius: var(--cpu-radius-pill);
+    background: var(--cpu-primary-soft);
     color: var(--cpu-primary);
-    font-size: 9px;
+    font-size: var(--cpu-fs-xs);
     line-height: 1;
   }
 
@@ -1755,7 +1750,7 @@ function normalizeMessageSettings(value: any) {
 
   .settings h4 {
     margin: 6px 2px 9px;
-    font-size: 16px;
+    font-size: var(--cpu-fs-l);
   }
 
   .settings :deep(.el-divider) {
@@ -1765,7 +1760,7 @@ function normalizeMessageSettings(value: any) {
   .qq-channel-card,
   .switch-item,
   .settings-action-row {
-    border-radius: 11px;
+    border-radius: var(--cpu-radius-m);
   }
 
   .qq-channel-card {
@@ -1782,7 +1777,7 @@ function normalizeMessageSettings(value: any) {
   }
 
   .notice-title {
-    font-size: 17px;
+    font-size: var(--cpu-fs-l);
   }
 
   :deep(.notice-dialog) {
@@ -1792,7 +1787,7 @@ function normalizeMessageSettings(value: any) {
   }
 
   :deep(.notice-dialog .el-dialog) {
-    border-radius: 16px;
+    border-radius: var(--cpu-radius-l);
     overflow: hidden;
   }
 
@@ -1840,7 +1835,7 @@ function normalizeMessageSettings(value: any) {
     display: flex;
     flex: 0 0 auto;
     padding: 8px;
-    border-radius: 13px;
+    border-radius: var(--cpu-radius-l);
   }
 
   .msg-page.is-private .page-head-main,
@@ -1859,7 +1854,7 @@ function normalizeMessageSettings(value: any) {
     flex-direction: column;
     margin: 0;
     padding: 0;
-    border-radius: 14px;
+    border-radius: var(--cpu-radius-l);
     overflow: hidden;
   }
 
@@ -1921,9 +1916,9 @@ function normalizeMessageSettings(value: any) {
 @media (min-width: 769px) {
   .msg-page { width: 100%; max-width: 1080px; margin: 0 auto; gap: 14px; }
   .page-head { flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 0 2px; }
-  .page-title { font-size: 24px; font-weight: 700; letter-spacing: -.01em; }
+  .page-title { font-size: var(--cpu-fs-xl); font-weight: 700; letter-spacing: -.01em; }
   .page-head-actions { order: 3; }
-  .cpu-card { border-radius: 16px; box-shadow: var(--cpu-shadow-sm); }
+  .cpu-card { border-radius: var(--cpu-radius-l); }
   .messages-tabs :deep(.el-tabs__header) { display: none; }
 
   .mobile-message-modes {
@@ -1932,7 +1927,7 @@ function normalizeMessageSettings(value: any) {
     gap: 4px;
     margin-left: auto;
     padding: 4px;
-    border-radius: 12px;
+    border-radius: var(--cpu-radius-l);
     background: var(--cpu-surface-subtle);
   }
   .mobile-message-modes button {
@@ -1947,7 +1942,7 @@ function normalizeMessageSettings(value: any) {
     align-items: center;
     gap: 6px;
     padding: 0 14px;
-    font-size: 14px;
+    font-size: var(--cpu-fs-m);
     cursor: pointer;
   }
   .mobile-message-modes button.active {
@@ -1957,8 +1952,8 @@ function normalizeMessageSettings(value: any) {
     --cpu-button-hover-ink: var(--cpu-primary);
     box-shadow: var(--cpu-shadow-sm) !important;
   }
-  .mode-icon { display: inline-flex; font-size: 16px; }
-  .mode-copy b { font-weight: 550; }
+  .mode-icon { display: inline-flex; font-size: var(--cpu-fs-l); }
+  .mode-copy b { font-weight: 500; }
   .mode-copy small { display: none; }
   .mode-count {
     display: inline-grid;
@@ -1966,10 +1961,10 @@ function normalizeMessageSettings(value: any) {
     height: 18px;
     place-items: center;
     padding: 0 5px;
-    border-radius: 999px;
+    border-radius: var(--cpu-radius-pill);
     background: var(--cpu-danger);
     color: #fff;
-    font-size: 10px;
+    font-size: var(--cpu-fs-xs);
     font-weight: 700;
     line-height: 1;
   }
@@ -1987,7 +1982,7 @@ function normalizeMessageSettings(value: any) {
     gap: 6px;
     padding: 0 14px;
     border-color: var(--cpu-border-soft) !important;
-    font-size: 13px;
+    font-size: var(--cpu-fs-s);
     cursor: pointer;
   }
   .mobile-notice-filters button.active {
@@ -2003,9 +1998,9 @@ function normalizeMessageSettings(value: any) {
     height: 16px;
     place-items: center;
     padding: 0 4px;
-    border-radius: 999px;
-    background: color-mix(in srgb, currentColor 16%, transparent);
-    font-size: 10px;
+    border-radius: var(--cpu-radius-pill);
+    background: transparent;
+    font-size: var(--cpu-fs-xs);
     line-height: 1;
   }
 }

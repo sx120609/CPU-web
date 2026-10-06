@@ -59,22 +59,22 @@ withDefaults(defineProps<{
   height: 32px;
   flex: 0 0 auto;
   place-items: center;
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--tone) var(--me-row-m-fill), var(--cpu-card));
-  color: color-mix(in srgb, var(--tone) var(--me-row-m-ink), var(--cpu-text));
-  font-size: 17px;
+  border-radius: var(--cpu-radius-m);
+  background: var(--tone) var(--me-row-m-fill);
+  color: var(--tone) var(--me-row-m-ink);
+  font-size: var(--cpu-fs-l);
 }
 
 .me-row-m-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 1px; }
-.me-row-m-copy b { overflow: hidden; color: var(--cpu-text); font-size: 14px; font-weight: 550; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
-.me-row-m-copy small { color: var(--cpu-text-muted); font-size: 11px; line-height: 1.45; }
+.me-row-m-copy b { overflow: hidden; color: var(--cpu-text); font-size: var(--cpu-fs-m); font-weight: 500; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
+.me-row-m-copy small { color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); line-height: 1.45; }
 
 .me-row-m-value {
   max-width: 46%;
   flex: 0 1 auto;
   overflow: hidden;
   color: var(--cpu-text-muted);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -84,15 +84,15 @@ withDefaults(defineProps<{
   height: 18px;
   flex: 0 0 auto;
   padding: 0 5px;
-  border-radius: 999px;
+  border-radius: var(--cpu-radius-pill);
   background: var(--cpu-danger);
   color: #fff;
-  font-size: 11px;
-  font-weight: 650;
+  font-size: var(--cpu-fs-xs);
+  font-weight: 500;
   line-height: 18px;
   text-align: center;
 }
-.me-row-m-arrow { flex: 0 0 auto; margin-left: -4px; color: var(--cpu-text-muted); font-size: 13px; }
+.me-row-m-arrow { flex: 0 0 auto; margin-left: -4px; color: var(--cpu-text-muted); font-size: var(--cpu-fs-s); }
 
 :global(html[data-theme="dark"] .me-row-m) {
   --me-row-m-fill: 20%;

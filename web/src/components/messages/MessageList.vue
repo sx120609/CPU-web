@@ -125,18 +125,18 @@ function categoryIcon(category?: string | null) {
   height: 40px;
   flex: 0 0 auto;
   place-items: center;
-  border-radius: 11px;
-  background: color-mix(in srgb, var(--cpu-primary) 11%, var(--cpu-card));
+  border-radius: var(--cpu-radius-m);
+  background: var(--cpu-primary-soft);
   color: var(--cpu-primary);
-  font-size: 19px;
+  font-size: var(--cpu-fs-xl);
 }
-.message-icon-like { background: color-mix(in srgb, #ef4444 10%, var(--cpu-card)); color: #ef4444; }
-.message-icon-system { background: color-mix(in srgb, #8b5cf6 11%, var(--cpu-card)); color: #8b5cf6; }
+.message-icon-like { background: var(--cpu-danger-soft); color: var(--cpu-danger); }
+.message-icon-system { background: var(--cpu-surface-soft); color: var(--cpu-text-secondary); }
 .message-icon-school,
-.message-icon-school-feed { background: color-mix(in srgb, #22c55e 10%, var(--cpu-card)); color: #16a34a; }
-.message-icon-service-tool { background: color-mix(in srgb, #0ea5e9 10%, var(--cpu-card)); color: #0284c7; }
+.message-icon-school-feed { background: var(--cpu-primary-soft); color: var(--cpu-primary); }
+.message-icon-service-tool { background: var(--cpu-card); color: var(--cpu-text-secondary); }
 .message-icon-lost-found,
-.message-icon-direct-message { background: color-mix(in srgb, #14b8a6 11%, var(--cpu-card)); color: #0f9f8f; }
+.message-icon-direct-message { background: var(--cpu-card); color: #0f9f8f; }
 .row {
   display: flex;
   align-items: center;
@@ -145,7 +145,7 @@ function categoryIcon(category?: string | null) {
   border: 1px solid var(--cpu-border-soft);
   background: var(--cpu-card);
   cursor: pointer;
-  border-radius: 14px;
+  border-radius: var(--cpu-radius-l);
   appearance: none;
   color: inherit;
   font: inherit;
@@ -157,11 +157,10 @@ function categoryIcon(category?: string | null) {
 .row:hover {
   background: var(--cpu-surface-soft);
   border-color: var(--cpu-border);
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.05);
 }
 .row.unread {
   border-color: rgba(59, 130, 246, 0.35);
-  background: linear-gradient(180deg, rgba(59, 130, 246, 0.1) 0%, var(--cpu-card) 100%);
+  background: var(--cpu-primary-soft);
 }
 .row:focus-visible {
   outline: 2px solid var(--cpu-primary);
@@ -172,8 +171,8 @@ function categoryIcon(category?: string | null) {
   min-width: 46px;
   height: 24px;
   padding: 0 8px;
-  font-size: 11px;
-  border-radius: 999px;
+  font-size: var(--cpu-fs-xs);
+  border-radius: var(--cpu-radius-pill);
   text-align: center;
   line-height: 24px;
   flex-shrink: 0;
@@ -181,17 +180,17 @@ function categoryIcon(category?: string | null) {
 .tag-target {
   min-width: 0;
 }
-.tag-reply { background: rgba(59, 130, 246, 0.14); color: #60a5fa; }
+.tag-reply { background: rgba(59, 130, 246, 0.14); color: var(--cpu-text-secondary); }
 .tag-like { background: rgba(239, 68, 68, 0.14); color: #f87171; }
-.tag-system { background: rgba(124, 58, 237, 0.14); color: #a78bfa; }
+.tag-system { background: rgba(124, 58, 237, 0.14); color: var(--cpu-text-secondary); }
 .tag-school { background: rgba(34, 197, 94, 0.14); color: #4ade80; }
 .tag-service-tool { background: rgba(14, 165, 233, 0.14); color: #38bdf8; }
 .tag-lost-found { background: rgba(16, 185, 129, 0.14); color: #34d399; }
 .tag-direct-message { background: rgba(20, 184, 166, 0.14); color: #2dd4bf; }
 .tag-事务 { background: rgba(239, 68, 68, 0.14); color: #f87171; }
-.tag-通知 { background: rgba(59, 130, 246, 0.14); color: #60a5fa; }
+.tag-通知 { background: rgba(59, 130, 246, 0.14); color: var(--cpu-text-secondary); }
 .tag-服务 { background: rgba(34, 197, 94, 0.14); color: #4ade80; }
-.tag-资讯 { background: rgba(124, 58, 237, 0.14); color: #a78bfa; }
+.tag-资讯 { background: rgba(124, 58, 237, 0.14); color: var(--cpu-text-secondary); }
 .tag-strong {
   background: rgba(245, 158, 11, 0.14);
   color: #fb923c;
@@ -219,28 +218,28 @@ function categoryIcon(category?: string | null) {
 }
 .time {
   flex-shrink: 0;
-  color: #94a3b8;
-  font-size: 11px;
+  color: var(--cpu-text-muted);
+  font-size: var(--cpu-fs-xs);
 }
 .title {
   margin-top: 8px;
-  font-size: 14px;
+  font-size: var(--cpu-fs-m);
   color: var(--cpu-text);
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
-.unread .title { font-weight: 600; }
+.unread .title { font-weight: 500; }
 .unread .title::after {
   content: "";
   display: inline-block;
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #ef4444;
+  background: var(--cpu-danger);
   margin-left: 6px;
 }
 .content {
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   color: var(--cpu-text-secondary);
   margin-top: 4px;
   overflow: hidden;
@@ -250,11 +249,11 @@ function categoryIcon(category?: string | null) {
   line-height: 1.55;
   overflow-wrap: anywhere;
 }
-.meta { font-size: 11px; color: #94a3b8; margin-top: 6px; overflow-wrap: anywhere; }
+.meta { font-size: var(--cpu-fs-xs); color: var(--cpu-text-muted); margin-top: 6px; overflow-wrap: anywhere; }
 .arrow {
   color: #cbd5e1;
   flex-shrink: 0;
-  font-size: 16px;
+  font-size: var(--cpu-fs-l);
 }
 
 @media (max-width: 768px) {
@@ -268,7 +267,7 @@ function categoryIcon(category?: string | null) {
     align-items: start;
     gap: 10px;
     padding: 13px 12px 12px;
-    border-radius: 11px;
+    border-radius: var(--cpu-radius-m);
     box-shadow: none;
   }
 
@@ -299,21 +298,21 @@ function categoryIcon(category?: string | null) {
 
   .time {
     margin-left: auto;
-    font-size: 10px;
+    font-size: var(--cpu-fs-xs);
   }
 
   .tag {
     min-width: 0;
     height: 20px;
     padding: 0 6px;
-    font-size: 10px;
+    font-size: var(--cpu-fs-xs);
     line-height: 20px;
   }
 
   .title {
     margin-top: 6px;
-    font-size: 14px;
-    font-weight: 620;
+    font-size: var(--cpu-fs-m);
+    font-weight: 500;
   }
 
   .meta {
@@ -330,8 +329,8 @@ function categoryIcon(category?: string | null) {
   .message-icon {
     width: 36px;
     height: 36px;
-    border-radius: 10px;
-    font-size: 17px;
+    border-radius: var(--cpu-radius-m);
+    font-size: var(--cpu-fs-l);
   }
 
   .title {

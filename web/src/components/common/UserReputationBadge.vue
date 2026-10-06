@@ -41,19 +41,19 @@ const visibleLevel = computed(() => {
   max-width: 132px;
   padding: 1px 6px;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, #8b5cf6 24%, var(--cpu-border-soft));
-  border-radius: 999px;
-  background: color-mix(in srgb, #8b5cf6 9%, var(--cpu-card));
-  color: color-mix(in srgb, #7c3aed 86%, var(--cpu-text));
-  font-size: 10px;
-  font-weight: 650;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: var(--cpu-radius-pill);
+  background: var(--cpu-surface-soft);
+  color: var(--cpu-text-secondary);
+  font-size: var(--cpu-fs-xs);
+  font-weight: 500;
   line-height: 16px;
   vertical-align: middle;
   white-space: nowrap;
 }
 
 .reputation-badge b {
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .reputation-name {

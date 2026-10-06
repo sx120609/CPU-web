@@ -114,25 +114,25 @@ function isCompactViewport() {
   z-index: 4800;
   width: min(390px, calc(100vw - 28px));
   padding: 16px;
-  border: 1px solid color-mix(in srgb, var(--el-color-primary) 28%, var(--el-border-color));
-  border-radius: 14px;
+  border: 1px solid var(--el-border-color);
+  border-radius: var(--cpu-radius-l);
   background: var(--el-bg-color-overlay);
   box-shadow: 0 14px 44px rgba(15, 23, 42, 0.22);
 }
 
 .smart-post-task-card.is-completed {
-  border-color: color-mix(in srgb, var(--el-color-success) 42%, var(--el-border-color));
+  border-color: var(--el-border-color);
 }
 
 .smart-post-task-card.is-failed {
-  border-color: color-mix(in srgb, var(--el-color-danger) 42%, var(--el-border-color));
+  border-color: var(--cpu-danger);
 }
 
 .smart-post-task-card.is-collapsed {
   width: min(218px, calc(100vw - 28px));
   padding: 0;
   overflow: hidden;
-  border-radius: 999px;
+  border-radius: var(--cpu-radius-pill);
   box-shadow: 0 8px 26px rgba(15, 23, 42, 0.18);
 }
 
@@ -159,7 +159,7 @@ function isCompactViewport() {
 
 .smart-post-task-pill-copy strong {
   overflow: hidden;
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -169,7 +169,7 @@ function isCompactViewport() {
   height: 9px;
   border-radius: 50%;
   background: var(--el-color-primary);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--el-color-primary) 14%, transparent);
+  box-shadow: 0 0 0 4px transparent;
 }
 
 .is-running .smart-post-task-dot,
@@ -184,7 +184,7 @@ function isCompactViewport() {
   width: 100%;
   height: 4px;
   overflow: hidden;
-  border-radius: 999px;
+  border-radius: var(--cpu-radius-pill);
   background: var(--el-fill-color-dark);
 }
 
@@ -198,8 +198,8 @@ function isCompactViewport() {
 
 .smart-post-task-pill-action {
   color: var(--el-color-primary);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--cpu-fs-xs);
+  font-weight: 500;
 }
 
 .smart-post-task-head,
@@ -224,19 +224,19 @@ function isCompactViewport() {
 
 .smart-post-task-head strong {
   color: var(--el-text-color-primary);
-  font-size: 15px;
+  font-size: var(--cpu-fs-m);
 }
 
 .smart-post-task-head span,
 .smart-post-task-hint {
   color: var(--el-text-color-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
 }
 
 .smart-post-task-message {
   margin: 14px 0 10px;
   color: var(--el-text-color-primary);
-  font-size: 14px;
+  font-size: var(--cpu-fs-m);
   line-height: 1.55;
 }
 
@@ -249,14 +249,14 @@ function isCompactViewport() {
 
 .smart-post-task-result {
   color: var(--el-color-success-dark-2);
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
 }
 
 .smart-post-task-error {
   max-height: 104px;
   overflow: auto;
   color: var(--el-color-danger);
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
   white-space: pre-wrap;
 }
 

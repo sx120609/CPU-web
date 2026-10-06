@@ -90,8 +90,8 @@ function handleConfirm() {
 
 <style scoped>
 .manual-review-confirm {
-  color: #374151;
-  font-size: 14px;
+  color: var(--cpu-text-secondary);
+  font-size: var(--cpu-fs-m);
   line-height: 1.75;
 }
 
@@ -104,7 +104,7 @@ function handleConfirm() {
 }
 
 .cpu-muted {
-  font-size: 12px;
-  color: #9ca3af;
+  font-size: var(--cpu-fs-xs);
+  color: var(--cpu-text-muted);
 }
 </style>
