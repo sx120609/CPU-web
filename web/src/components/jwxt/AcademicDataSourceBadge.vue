@@ -45,11 +45,11 @@ const meta = computed(() => {
   min-height: 24px;
   padding: 3px 9px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 999px;
+  border-radius: var(--cpu-radius-pill);
   background: var(--cpu-surface-subtle);
   color: var(--cpu-text-secondary);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--cpu-fs-xs);
+  font-weight: 500;
   line-height: 1;
   white-space: nowrap;
   box-sizing: border-box;
@@ -64,14 +64,14 @@ const meta = computed(() => {
 }
 
 .academic-data-source-badge.is-modern {
-  border-color: color-mix(in srgb, var(--cpu-primary) 22%, var(--cpu-border-soft));
-  background: color-mix(in srgb, var(--cpu-primary) 7%, var(--cpu-card));
+  border-color: var(--cpu-border-soft);
+  background: var(--cpu-primary-soft);
   color: var(--cpu-primary);
 }
 
 .academic-data-source-badge.is-legacy {
-  border-color: color-mix(in srgb, #d97706 24%, var(--cpu-border-soft));
-  background: color-mix(in srgb, #f59e0b 8%, var(--cpu-card));
-  color: #b45309;
+  border-color: var(--cpu-border-soft);
+  background: var(--cpu-accent-soft);
+  color: var(--cpu-accent);
 }
 </style>

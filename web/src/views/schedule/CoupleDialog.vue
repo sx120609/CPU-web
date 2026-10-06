@@ -251,26 +251,26 @@ onBeforeUnmount(onClosed);
 .couple-loading { padding: 8px 0; }
 .pair { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; margin: 0 0 14px; }
 .person { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; }
-.person b { max-width: 100%; overflow: hidden; color: var(--schedule-text); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
-.pair-center { display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--schedule-text-secondary); font-size: 12px; }
-.pair-center b { color: var(--couple-accent, #e2568a); font-size: 18px; }
+.person b { max-width: 100%; overflow: hidden; color: var(--schedule-text); font-size: var(--cpu-fs-s); text-overflow: ellipsis; white-space: nowrap; }
+.pair-center { display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--schedule-text-secondary); font-size: var(--cpu-fs-xs); }
+.pair-center b { color: var(--couple-accent, #e2568a); font-size: var(--cpu-fs-l); }
 .heart { width: 26px; height: 26px; color: var(--couple-accent, #e2568a); }
-.line { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 40px; padding: 6px 0; border-bottom: 1px solid var(--schedule-border); font-size: 13px; }
+.line { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 40px; padding: 6px 0; border-bottom: 1px solid var(--schedule-border); font-size: var(--cpu-fs-s); }
 .line span { flex: 0 0 auto; color: var(--schedule-text-muted); }
 .line strong { min-width: 0; color: var(--schedule-text); font-weight: 600; text-align: right; }
 .colors { display: flex; align-items: center; gap: 6px; }
-.swatch { display: inline-flex; align-items: center; justify-content: center; min-width: 34px; height: 22px; padding: 0 8px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+.swatch { display: inline-flex; align-items: center; justify-content: center; min-width: 34px; height: 22px; padding: 0 8px; border-radius: var(--cpu-radius-pill); font-size: 11px; font-weight: 700; }
 .swatch.blue { background: hsl(214 88% 92%); color: hsl(214 58% 30%); box-shadow: inset 0 0 0 1px hsl(214 72% 76%); }
 .swatch.pink { background: hsl(338 88% 93%); color: hsl(338 58% 30%); box-shadow: inset 0 0 0 1px hsl(338 72% 78%); }
 .line :deep(.anniversary-picker.el-date-editor) { --el-date-editor-width: 150px; flex: 0 0 150px; width: 150px; }
-.note { margin: 12px 0 0; color: var(--schedule-text-secondary); font-size: 12px; line-height: 1.6; }
-.note.lead { margin: 0 0 6px; font-size: 13px; }
+.note { margin: 12px 0 0; color: var(--schedule-text-secondary); font-size: var(--cpu-fs-xs); line-height: 1.6; }
+.note.lead { margin: 0 0 6px; font-size: var(--cpu-fs-s); }
 .note.center { margin-top: 4px; text-align: center; }
 .block { padding: 12px 0; border-bottom: 1px solid var(--schedule-border); }
 .block:last-child { border-bottom: 0; padding-bottom: 0; }
-.block h3 { margin: 0; color: var(--schedule-text); font-size: 14px; }
+.block h3 { margin: 0; color: var(--schedule-text); font-size: var(--cpu-fs-m); }
 .invite-code { margin: 10px 0 0; color: var(--schedule-course-text, var(--schedule-text)); font: 700 30px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, "Roboto Mono", monospace; letter-spacing: 6px; text-align: center; }
-.waiting { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 8px; color: var(--schedule-text-muted); font-size: 12px; }
+.waiting { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 8px; color: var(--schedule-text-muted); font-size: var(--cpu-fs-xs); }
 .waiting i { width: 7px; height: 7px; border-radius: 50%; background: var(--couple-accent, #e2568a); animation: couple-pulse 1.6s ease-in-out infinite; }
 @keyframes couple-pulse { 50% { opacity: .25; } }
 @media (prefers-reduced-motion: reduce) { .waiting i { animation: none; } }
@@ -281,7 +281,7 @@ onBeforeUnmount(onClosed);
   height: 36px;
   padding: 0 12px;
   border: 1px solid var(--schedule-border);
-  border-radius: 10px;
+  border-radius: var(--cpu-radius-m);
   background: var(--schedule-surface-bg-soft, transparent);
   color: var(--schedule-text);
   font: 600 16px ui-monospace, SFMono-Regular, Menlo, Consolas, "Roboto Mono", monospace;

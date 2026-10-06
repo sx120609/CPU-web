@@ -295,8 +295,8 @@ const {
 
 <style scoped lang="scss">
 .jwxt-page--login { max-width: 620px; }
-.pk-title p b { color: color-mix(in srgb, var(--cpu-gold) 72%, var(--cpu-text)); font-weight: 600; }
-.scope-tip { border-radius: 12px; }
+.pk-title p b { color: var(--cpu-accent); font-weight: 500; }
+.scope-tip { border-radius: var(--cpu-radius-l); }
 .jwxt-shell {
   display: flex;
   flex-direction: column;
@@ -306,7 +306,7 @@ const {
 .cpu-card {
   background: var(--cpu-card);
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 16px;
+  border-radius: var(--cpu-radius-l);
   padding: 20px 24px;
   box-shadow: var(--cpu-shadow-sm);
 }
@@ -314,12 +314,12 @@ const {
 .login-card { padding: 24px 28px; }
 
 .login-head { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
-.login-head h3 { margin: 0; font-size: 17px; }
-.login-head p { margin: 2px 0 0; font-size: 12px; color: var(--cpu-text-secondary); }
+.login-head h3 { margin: 0; font-size: var(--cpu-fs-l); }
+.login-head p { margin: 2px 0 0; font-size: var(--cpu-fs-xs); color: var(--cpu-text-secondary); }
 .login-head b { color: var(--cpu-primary); }
 
-.safety { padding-left: 20px; margin: 4px 0 0; line-height: 1.7; font-size: 12px; }
-.safety li b { color: #b45309; }
+.safety { padding-left: 20px; margin: 4px 0 0; line-height: 1.7; font-size: var(--cpu-fs-xs); }
+.safety li b { color: var(--cpu-accent); }
 
 .form { margin-top: 16px; }
 .btn-submit { width: 100%; letter-spacing: 4px; }
@@ -356,7 +356,7 @@ const {
   justify-content: center;
   padding: 0;
   border: 0;
-  border-radius: 4px;
+  border-radius: var(--cpu-radius-s);
   background: transparent;
   cursor: pointer;
 }
@@ -370,7 +370,7 @@ const {
 }
 .vcode-img {
   height: 36px;
-  border-radius: 4px;
+  border-radius: var(--cpu-radius-s);
   border: 1px solid var(--cpu-border-soft);
   display: block;
 }
@@ -381,7 +381,7 @@ const {
 .alt-link {
   margin-top: 12px;
   text-align: center;
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   color: var(--cpu-text-muted);
 }
 .alt-link a { color: var(--cpu-primary); margin-left: 4px; }
@@ -393,7 +393,7 @@ const {
   gap: 14px;
   --session-tone: var(--cpu-success);
   padding: 12px 16px;
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
 }
 .session-info.is-cache-only { --session-tone: var(--cpu-gold); }
 .session-main {
@@ -407,17 +407,17 @@ const {
   width: 34px;
   height: 34px;
   place-items: center;
-  border-radius: 10px;
+  border-radius: var(--cpu-radius-m);
   background: color-mix(in srgb, var(--session-tone) 13%, var(--cpu-card));
   color: color-mix(in srgb, var(--session-tone) 82%, var(--cpu-text));
-  font-size: 18px;
+  font-size: var(--cpu-fs-l);
   flex-shrink: 0;
 }
 .session-copy {
   min-width: 0;
 }
 .session-title {
-  font-weight: 650;
+  font-weight: 500;
   color: var(--cpu-text);
 }
 .session-title-row {
@@ -429,7 +429,7 @@ const {
 .session-sub {
   margin-top: 2px;
   color: var(--cpu-text-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   line-height: 1.6;
 }
 .session-mode {
@@ -449,7 +449,7 @@ const {
 }
 .academic-empty-desc {
   color: var(--cpu-text-secondary);
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
   line-height: 1.7;
 }
 .academic-empty-desc p {
@@ -471,17 +471,17 @@ const {
 .jwxt-tabs :deep(.el-tabs__nav) {
   gap: 4px;
   padding: 4px;
-  border-radius: 12px;
+  border-radius: var(--cpu-radius-l);
   background: var(--cpu-surface-subtle);
 }
 .jwxt-tabs :deep(.el-tabs__item) {
   height: 36px;
   gap: 6px;
   padding: 0 16px !important;
-  border-radius: 9px;
+  border-radius: var(--cpu-radius-m);
   color: var(--cpu-text-secondary);
-  font-size: 14px;
-  font-weight: 550;
+  font-size: var(--cpu-fs-m);
+  font-weight: 500;
 }
 .jwxt-tabs :deep(.el-tabs__item.is-active) {
   background: var(--cpu-card);
@@ -494,7 +494,7 @@ const {
   display: flex;
   gap: 8px;
 }
-.snap-list { font-size: 12px; color: var(--cpu-text-secondary); list-style: none; padding: 0; margin: 10px 0; }
+.snap-list { font-size: var(--cpu-fs-xs); color: var(--cpu-text-secondary); list-style: none; padding: 0; margin: 10px 0; }
 .snap-list li { padding: 2px 0; font-family: var(--cpu-font-mono); }
-.cpu-muted { font-size: 12px; color: var(--cpu-text-muted); }
+.cpu-muted { font-size: var(--cpu-fs-xs); color: var(--cpu-text-muted); }
 </style>

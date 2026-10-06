@@ -88,22 +88,22 @@
   }
 
   .day-slot-cell {
-    border-radius: 10px;
+    border-radius: var(--cpu-radius-m);
   }
 
   .day-course-block {
-    border-radius: 12px;
+    border-radius: var(--cpu-radius-l);
     padding: 10px 12px;
     gap: 5px;
   }
 
   .day-course-name {
-    font-size: 16px;
+    font-size: var(--cpu-fs-l);
     -webkit-line-clamp: 3;
   }
 
   .day-course-meta {
-    font-size: 12px;
+    font-size: var(--cpu-fs-xs);
   }
 
   .day-course-note {
@@ -118,11 +118,11 @@
 
   .week-day-head {
     height: 42px;
-    border-radius: 8px;
+    border-radius: var(--cpu-radius-m);
   }
 
   .week-day-head span {
-    font-size: 12px;
+    font-size: var(--cpu-fs-xs);
   }
 
   .week-day-head b {
@@ -134,7 +134,7 @@
   }
 
   .slot-axis b {
-    font-size: 12px;
+    font-size: var(--cpu-fs-xs);
   }
 
   .slot-axis span {
@@ -142,11 +142,11 @@
   }
 
   .week-slot-cell {
-    border-radius: 8px;
+    border-radius: var(--cpu-radius-m);
   }
 
   .week-course {
-    border-radius: 7px;
+    border-radius: var(--cpu-radius-s);
     padding: 4px 2px;
   }
 
@@ -169,7 +169,7 @@
   }
 
   .day-pill {
-    border-radius: 10px;
+    border-radius: var(--cpu-radius-m);
     padding: 7px 1px;
     gap: 1px;
   }
@@ -188,7 +188,7 @@
   }
 
   .week-btn {
-    font-size: 12px;
+    font-size: var(--cpu-fs-xs);
   }
 
   .view-switch {
@@ -197,7 +197,7 @@
   }
 
   .view-switch button {
-    font-size: 12px;
+    font-size: var(--cpu-fs-xs);
   }
 
   .icon-btn {
@@ -222,7 +222,7 @@
   }
 
   .day-course-name {
-    font-size: 15px;
+    font-size: var(--cpu-fs-m);
   }
 
   .day-course-meta {

@@ -136,11 +136,11 @@ const {
 .ctrl-left :deep(.el-radio-button__inner) {
   white-space: nowrap;
 }
-.stat { font-size: 13px; color: var(--cpu-primary); font-weight: 500; }
+.stat { font-size: var(--cpu-fs-s); color: var(--cpu-primary); font-weight: 500; }
 .retry-card,
 .error-card {
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 12px;
+  border-radius: var(--cpu-radius-l);
   background: var(--cpu-card);
 }
 .retry-card {
@@ -150,7 +150,7 @@ const {
   gap: 8px;
   padding: 18px 14px;
   color: var(--cpu-text-secondary);
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
 }
 .retry-card .is-loading {
   color: var(--cpu-primary);
@@ -165,13 +165,13 @@ const {
 }
 .error-card h3 {
   margin: 0 0 4px;
-  font-size: 15px;
+  font-size: var(--cpu-fs-m);
   color: var(--cpu-text);
 }
 .error-card p {
   margin: 0;
   color: var(--cpu-text-secondary);
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
   line-height: 1.6;
 }
 @keyframes spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
@@ -198,7 +198,7 @@ const {
   position: relative;
   background: var(--cpu-card);
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 12px;
+  border-radius: var(--cpu-radius-l);
   padding: 16px 10px 12px;
   text-align: center;
   cursor: pointer;
@@ -211,7 +211,6 @@ const {
 }
 .app-card:hover {
   border-color: var(--cpu-primary);
-  box-shadow: 0 6px 20px rgba(22, 135, 118, 0.12);
   transform: translateY(-2px);
 }
 .app-card:focus-visible {
@@ -219,8 +218,8 @@ const {
   outline-offset: 2px;
 }
 .app-card.fav {
-  border-color: #fcd34d;
-  background: linear-gradient(180deg, rgba(251, 191, 36, 0.16) 0%, var(--cpu-card) 34%);
+  border-color: var(--cpu-accent-soft);
+  background: var(--cpu-card);
 }
 
 .iservice-logo {
@@ -230,7 +229,7 @@ const {
   place-items: center;
   background: var(--cpu-surface-subtle);
   border: 1px solid transparent;
-  border-radius: 12px;
+  border-radius: var(--cpu-radius-l);
   overflow: hidden;
 }
 .iservice-logo img {
@@ -239,9 +238,9 @@ const {
   object-fit: contain;
 }
 .icon-fallback {
-  font-size: 20px;
+  font-size: var(--cpu-fs-xl);
   color: var(--cpu-primary);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .iservice-logo-dark {
@@ -249,7 +248,7 @@ const {
 }
 
 .app-name {
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
   color: var(--cpu-text);
   font-weight: 500;
   line-height: 1.3;
@@ -267,10 +266,10 @@ const {
   flex-wrap: wrap;
 }
 .type-pill {
-  font-size: 10px;
+  font-size: var(--cpu-fs-xs);
   color: var(--cpu-text-secondary);
   background: var(--cpu-surface-subtle);
-  border-radius: 4px;
+  border-radius: var(--cpu-radius-s);
   padding: 1px 5px;
 }
 
@@ -281,8 +280,8 @@ const {
   width: 30px;
   height: 30px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--cpu-card) 92%, transparent);
+  border-radius: var(--cpu-radius-pill);
+  background: var(--cpu-card);
   color: var(--cpu-text-muted);
   display: inline-flex;
   align-items: center;
@@ -292,17 +291,17 @@ const {
   touch-action: manipulation;
 }
 .fav-btn:hover {
-  border-color: #f59e0b;
-  color: #d97706;
+  border-color: var(--cpu-gold);
+  color: var(--cpu-accent);
   background: rgba(251, 191, 36, 0.14);
 }
 .fav-btn.active {
-  border-color: #fcd34d;
-  color: #f59e0b;
+  border-color: var(--cpu-accent-soft);
+  color: var(--cpu-accent);
   background: rgba(251, 191, 36, 0.16);
 }
 .fav-btn :deep(.el-icon) {
-  font-size: 15px;
+  font-size: var(--cpu-fs-m);
 }
 
 :global(html[data-theme="dark"] .iservice-logo) {
@@ -410,14 +409,14 @@ const {
 
   .app-card {
     min-height: 118px;
-    border-radius: 10px;
+    border-radius: var(--cpu-radius-m);
     padding: 14px 8px 10px;
   }
 
   .iservice-logo {
     width: 42px;
     height: 42px;
-    border-radius: 10px;
+    border-radius: var(--cpu-radius-m);
   }
 
   .iservice-logo img {
@@ -426,7 +425,7 @@ const {
   }
 
   .app-name {
-    font-size: 12px;
+    font-size: var(--cpu-fs-xs);
   }
 
   .fav-btn {

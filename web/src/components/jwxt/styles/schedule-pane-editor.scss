@@ -7,10 +7,10 @@
 .week-cell {
   border: 1px solid var(--schedule-border);
   background: var(--schedule-surface-bg);
-  border-radius: 10px;
+  border-radius: var(--cpu-radius-m);
   padding: 10px 4px;
   font: inherit;
-  font-size: 14px;
+  font-size: var(--cpu-fs-m);
   color: var(--schedule-text-secondary);
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s, color 0.15s;
@@ -53,7 +53,7 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border-radius: 22px;
+  border-radius: var(--cpu-radius-l);
   box-shadow: 0 12px 36px rgba(15, 23, 42, 0.16);
 }
 
@@ -90,7 +90,7 @@
 .course-editor-nav h2 {
   margin: 0;
   text-align: center;
-  font-size: 17px;
+  font-size: var(--cpu-fs-l);
   line-height: 1.2;
   font-weight: 650;
   color: var(--schedule-text);
@@ -98,13 +98,13 @@
 
 .course-editor-nav button {
   border: 0;
-  border-radius: 15px;
+  border-radius: var(--cpu-radius-l);
   background: var(--schedule-surface-bg);
   color: var(--schedule-text);
   min-height: 36px;
   padding: 0 10px;
   font: inherit;
-  font-size: 14px;
+  font-size: var(--cpu-fs-m);
   font-weight: 560;
   box-shadow: none;
 }
@@ -131,7 +131,7 @@
 
 .editor-card {
   overflow: hidden;
-  border-radius: 16px;
+  border-radius: var(--cpu-radius-l);
   background: var(--schedule-surface-bg);
   box-shadow: 0 1px 0 rgba(15, 23, 42, 0.02);
 }
@@ -153,7 +153,7 @@
 .editor-row span,
 .editor-card-title,
 .editor-section-title span {
-  font-size: 17px;
+  font-size: var(--cpu-fs-l);
   font-weight: 560;
   color: var(--schedule-text);
 }
@@ -167,7 +167,7 @@
   background: transparent;
   color: var(--schedule-text);
   font: inherit;
-  font-size: 17px;
+  font-size: var(--cpu-fs-l);
   font-weight: 500;
   text-align: right;
 }
@@ -205,7 +205,7 @@
 .slot-range-input b {
   font-style: normal;
   color: var(--schedule-text);
-  font-size: 17px;
+  font-size: var(--cpu-fs-l);
   font-weight: 500;
 }
 
@@ -227,7 +227,7 @@
   background: transparent;
   color: #0f766e;
   font: inherit;
-  font-size: 15px;
+  font-size: var(--cpu-fs-m);
   font-weight: 650;
 }
 
@@ -246,7 +246,7 @@
 }
 
 .editor-week-picker > span {
-  font-size: 16px;
+  font-size: var(--cpu-fs-l);
   font-weight: 650;
   color: var(--schedule-text);
   padding-top: 5px;
@@ -265,11 +265,11 @@
   min-width: 0;
   min-height: 30px;
   border: 1px solid var(--schedule-border);
-  border-radius: 9px;
+  border-radius: var(--cpu-radius-m);
   background: var(--schedule-surface-bg);
   color: var(--schedule-text-secondary);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
   font-weight: 500;
 }
 
@@ -290,12 +290,12 @@
 
 .hidden-restore-card .hidden-list button {
   border: 1px solid var(--schedule-border);
-  border-radius: 999px;
+  border-radius: var(--cpu-radius-pill);
   background: var(--schedule-surface-bg);
   color: var(--schedule-text-secondary);
   padding: 7px 10px;
   font: inherit;
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
 }
 
 @media (min-width: 761px) {
@@ -307,7 +307,7 @@
   .course-editor-panel {
     height: auto;
     max-height: min(760px, 90dvh);
-    border-radius: 24px;
+    border-radius: var(--cpu-radius-l);
   }
 }
 
@@ -365,12 +365,12 @@
 }
 
 .edit-section-head b {
-  font-size: 14px;
+  font-size: var(--cpu-fs-m);
   color: var(--schedule-text);
 }
 
 .edit-section-head span {
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   color: var(--schedule-text-muted);
 }
 
@@ -388,7 +388,7 @@
   align-items: center;
   padding: 10px 12px;
   border: 1px solid var(--schedule-border);
-  border-radius: 8px;
+  border-radius: var(--cpu-radius-m);
   background: var(--schedule-surface-bg);
 }
 
@@ -400,7 +400,7 @@
 
 .edit-course-row b {
   color: var(--schedule-text);
-  font-size: 14px;
+  font-size: var(--cpu-fs-m);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -409,7 +409,7 @@
 .edit-course-row span,
 .edit-course-row em {
   color: var(--schedule-text-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   font-style: normal;
   overflow: hidden;
   text-overflow: ellipsis;

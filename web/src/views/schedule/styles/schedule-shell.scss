@@ -105,7 +105,7 @@
 /* 把 el-select 撑成 38px 高（默认 size=small 是 28-32px，太矮），跟 icon-btn 对齐 */
 .sem-select :deep(.el-select__wrapper) {
   min-height: 38px;
-  border-radius: 10px;
+  border-radius: var(--cpu-radius-m);
   border: 1px solid var(--schedule-border);
   box-shadow: none;
   background: var(--schedule-surface-bg-soft);
@@ -120,7 +120,7 @@
 }
 .sem-select :deep(.el-select__placeholder),
 .sem-select :deep(.el-select__selected-item) {
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
   color: var(--schedule-text);
 }
 .top-actions {
@@ -132,7 +132,7 @@
   height: 38px;
   padding: 3px;
   border: 1px solid var(--schedule-border);
-  border-radius: 10px;
+  border-radius: var(--cpu-radius-m);
   background: var(--schedule-surface-bg-soft);
   display: inline-grid;
   grid-template-columns: repeat(2, 34px);
@@ -140,11 +140,11 @@
 }
 .view-switch button {
   border: 0;
-  border-radius: 7px;
+  border-radius: var(--cpu-radius-s);
   background: transparent;
   color: var(--schedule-text-secondary);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
   font-weight: 700;
   cursor: pointer;
   touch-action: manipulation;
@@ -162,7 +162,7 @@
   width: 38px;
   height: 38px;
   border: 1px solid var(--schedule-border);
-  border-radius: 10px;
+  border-radius: var(--cpu-radius-m);
   background: var(--schedule-surface-bg-soft);
   color: var(--schedule-text);
   display: grid;
@@ -188,7 +188,7 @@
   padding: 0 10px;
   display: inline-flex;
   gap: 4px;
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
   font-weight: 700;
 }
 .schedule-exit-btn span {
@@ -264,7 +264,7 @@
   animation: spin 0.9s linear infinite;
 }
 .icon-btn .el-icon {
-  font-size: 18px;
+  font-size: var(--cpu-fs-l);
 }
 .more-panel {
   display: flex;
@@ -284,12 +284,12 @@
   display: grid;
   gap: 6px;
   padding: 12px 14px;
-  border-radius: 14px;
+  border-radius: var(--cpu-radius-l);
   border: 1px solid rgba(148, 163, 184, 0.22);
   background: var(--schedule-surface-bg-soft);
 }
 .grad-debug-target span {
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   font-weight: 700;
   color: var(--schedule-text-secondary);
 }
@@ -306,7 +306,7 @@
   display: grid;
   gap: 8px;
   padding: 12px 14px;
-  border-radius: 16px;
+  border-radius: var(--cpu-radius-l);
   border: 1px solid rgba(148, 163, 184, 0.18);
   background: var(--schedule-surface-bg);
   color: var(--schedule-text-secondary);
@@ -327,7 +327,7 @@
   gap: 10px;
   flex-wrap: wrap;
   color: var(--schedule-text-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
 }
 .grad-debug-foot-actions {
   display: flex;
@@ -341,7 +341,7 @@
 .background-preview {
   min-height: 118px;
   border: 1px solid var(--schedule-border);
-  border-radius: 12px;
+  border-radius: var(--cpu-radius-l);
   background:
     linear-gradient(180deg, var(--schedule-bg-overlay) 0%, var(--schedule-bg-overlay) 100%),
     var(--schedule-page-bg);
@@ -351,7 +351,7 @@
   display: grid;
   place-items: center;
   color: var(--schedule-text-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   text-align: center;
   padding: 12px;
   overflow: hidden;
@@ -362,7 +362,7 @@
 .background-note {
   margin: 0;
   color: var(--schedule-text-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   line-height: 1.6;
 }
 .background-actions {
@@ -373,11 +373,11 @@
   flex: 1;
   min-height: 38px;
   border: 1px solid var(--schedule-border);
-  border-radius: 10px;
+  border-radius: var(--cpu-radius-m);
   background: var(--schedule-surface-bg-soft);
   color: var(--schedule-text);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
   font-weight: 700;
   cursor: pointer;
 }
@@ -405,7 +405,7 @@
 }
 .background-control-head b,
 .background-control-head em {
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   line-height: 1.3;
   font-style: normal;
 }
@@ -427,11 +427,11 @@
 .more-theme-choice {
   min-width: 0;
   border: 1px solid transparent;
-  border-radius: 9px;
+  border-radius: var(--cpu-radius-m);
   background: transparent;
   color: var(--schedule-text-secondary);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   font-weight: 700;
   line-height: 1.2;
   padding: 8px 5px;
@@ -480,11 +480,11 @@
   gap: 5px;
   padding: 6px 4px;
   border: 1px solid var(--schedule-border);
-  border-radius: 10px;
+  border-radius: var(--cpu-radius-m);
   background: var(--schedule-surface-bg);
   color: var(--schedule-text);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   font-weight: 700;
   cursor: pointer;
 }
@@ -497,7 +497,7 @@
 }
 .more-quick .el-icon {
   color: var(--schedule-accent);
-  font-size: 18px;
+  font-size: var(--cpu-fs-l);
 }
 .more-quick .couple-quick .el-icon {
   color: var(--couple-accent, #e2568a);
@@ -506,7 +506,7 @@
   width: 100%;
   min-height: 42px;
   border: 1px solid var(--schedule-border);
-  border-radius: 10px;
+  border-radius: var(--cpu-radius-m);
   background: var(--schedule-surface-bg);
   color: var(--schedule-text);
   display: grid;
@@ -515,7 +515,7 @@
   gap: 8px;
   padding: 0 10px;
   font: inherit;
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
   font-weight: 700;
   cursor: pointer;
 }
@@ -531,12 +531,12 @@
 }
 .more-chevron {
   color: #98a2b3 !important;
-  font-size: 14px;
+  font-size: var(--cpu-fs-m);
 }
 .more-back {
   min-height: 34px;
   border: 0;
-  border-radius: 9px;
+  border-radius: var(--cpu-radius-m);
   background: transparent;
   color: var(--schedule-text);
   display: inline-flex;
@@ -544,7 +544,7 @@
   gap: 6px;
   padding: 0 4px;
   font: inherit;
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
   font-weight: 750;
   cursor: pointer;
 }
@@ -557,7 +557,7 @@
 :global(.schedule-more-popover.el-popper) {
   z-index: 4200 !important;
   padding: 8px;
-  border-radius: 13px;
+  border-radius: var(--cpu-radius-l);
   border-color: var(--schedule-border, var(--cpu-border-soft)) !important;
   background: var(--schedule-surface-bg, var(--cpu-card)) !important;
   color: var(--schedule-text, var(--cpu-text));

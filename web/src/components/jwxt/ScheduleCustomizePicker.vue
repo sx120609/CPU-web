@@ -127,7 +127,7 @@ onBeforeUnmount(() => {
   width: 38px;
   height: 38px;
   border: 1px solid var(--schedule-border, var(--cpu-border-soft));
-  border-radius: 10px;
+  border-radius: var(--cpu-radius-m);
   background: var(--schedule-surface-bg, var(--cpu-card));
   color: var(--schedule-text, var(--cpu-text));
   display: grid;
@@ -160,7 +160,7 @@ onBeforeUnmount(() => {
 }
 
 .icon-trigger .el-icon {
-  font-size: 18px;
+  font-size: var(--cpu-fs-l);
 }
 
 .theme-panel {
@@ -171,7 +171,7 @@ onBeforeUnmount(() => {
   overscroll-behavior: contain;
   padding: 8px;
   border: 1px solid var(--schedule-border, var(--cpu-border-soft));
-  border-radius: 12px;
+  border-radius: var(--cpu-radius-l);
   background: var(--schedule-surface-bg, var(--cpu-card));
   box-shadow: 0 18px 44px rgba(24, 34, 51, 0.18);
   display: grid;
@@ -182,11 +182,11 @@ onBeforeUnmount(() => {
 .theme-choice {
   min-width: 0;
   border: 1px solid transparent;
-  border-radius: 9px;
+  border-radius: var(--cpu-radius-m);
   background: transparent;
   color: var(--schedule-text-secondary, var(--cpu-text-secondary));
   font: inherit;
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   font-weight: 700;
   line-height: 1.2;
   padding: 8px 6px;

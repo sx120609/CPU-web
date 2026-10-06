@@ -310,9 +310,9 @@ function requestMessage(error: unknown) {
 .filter-field :deep(.el-input .el-input__wrapper) {
   min-height: 36px;
 }
-.lbl { font-size: 12px; color: var(--cpu-text-secondary); }
-.stat { font-size: 13px; color: var(--cpu-text-secondary); }
-.stat b { color: var(--cpu-primary); font-size: 15px; }
+.lbl { font-size: var(--cpu-fs-xs); color: var(--cpu-text-secondary); }
+.stat { font-size: var(--cpu-fs-s); color: var(--cpu-text-secondary); }
+.stat b { color: var(--cpu-primary); font-size: var(--cpu-fs-m); }
 .scope-tip { margin-top: -2px; }
 .scope-tip :deep(.el-alert__title) { line-height: 1.55; }
 .pane-alert {
@@ -335,8 +335,8 @@ function requestMessage(error: unknown) {
   gap: 8px;
   margin: 0 0 8px;
 }
-.sem-head h3 { margin: 0; font-size: 15px; color: var(--cpu-primary); font-weight: 600; }
-.sem-sum { font-size: 12px; color: var(--cpu-text-muted); }
+.sem-head h3 { margin: 0; font-size: var(--cpu-fs-m); color: var(--cpu-primary); font-weight: 500; }
+.sem-sum { font-size: var(--cpu-fs-xs); color: var(--cpu-text-muted); }
 .table-scroll {
   width: 100%;
   overflow-x: auto;
@@ -350,10 +350,9 @@ function requestMessage(error: unknown) {
 .grade-card {
   position: relative;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 14px;
+  border-radius: var(--cpu-radius-l);
   padding: 14px;
   background: var(--cpu-card);
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
 .grade-main {
@@ -362,8 +361,8 @@ function requestMessage(error: unknown) {
 
 .course-title {
   line-height: 1.45;
-  font-size: 15px;
-  font-weight: 600;
+  font-size: var(--cpu-fs-m);
+  font-weight: 500;
   color: var(--cpu-text);
 }
 
@@ -374,7 +373,7 @@ function requestMessage(error: unknown) {
   gap: 6px 10px;
   margin-top: 8px;
   color: var(--cpu-text-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   line-height: 1.4;
 }
 
@@ -390,9 +389,9 @@ function requestMessage(error: unknown) {
   align-items: center;
   justify-content: center;
   padding: 7px 8px;
-  border-radius: 8px;
+  border-radius: var(--cpu-radius-m);
   background: var(--cpu-surface-subtle);
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
   font-weight: 700;
 }
 
@@ -417,7 +416,7 @@ function requestMessage(error: unknown) {
     display: inline-flex;
     align-items: center;
     padding: 6px 10px;
-    border-radius: 999px;
+    border-radius: var(--cpu-radius-pill);
     background: var(--cpu-surface-subtle);
     white-space: nowrap;
   }

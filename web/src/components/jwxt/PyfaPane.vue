@@ -171,10 +171,10 @@ function attrTagType(attr?: string): "success" | "warning" | "info" | "primary" 
   gap: 10px;
   flex-wrap: wrap;
   border: 1px solid rgba(245, 158, 11, 0.34);
-  border-radius: 8px;
+  border-radius: var(--cpu-radius-m);
   background: rgba(245, 158, 11, 0.12);
   color: var(--cpu-warn);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   line-height: 1.6;
   padding: 10px 12px;
 }
@@ -202,8 +202,8 @@ function attrTagType(attr?: string): "success" | "warning" | "info" | "primary" 
 .filter-field :deep(.el-input .el-input__wrapper) {
   min-height: 36px;
 }
-.lbl { font-size: 12px; color: var(--cpu-text-secondary); }
-.stat { font-size: 13px; color: var(--cpu-primary); font-weight: 500; }
+.lbl { font-size: var(--cpu-fs-xs); color: var(--cpu-text-secondary); }
+.stat { font-size: var(--cpu-fs-s); color: var(--cpu-primary); font-weight: 500; }
 
 .sem-stats {
   display: grid;
@@ -218,14 +218,14 @@ function attrTagType(attr?: string): "success" | "warning" | "info" | "primary" 
   gap: 8px;
   padding: 6px 12px;
   background: var(--cpu-surface-subtle);
-  border-radius: 6px;
-  font-size: 12px;
+  border-radius: var(--cpu-radius-s);
+  font-size: var(--cpu-fs-xs);
 }
 .sem-name { font-weight: 500; color: var(--cpu-text); }
-.sem-bar-wrap { background: var(--cpu-border-soft); height: 6px; border-radius: 3px; overflow: hidden; }
+.sem-bar-wrap { background: var(--cpu-border-soft); height: 6px; border-radius: var(--cpu-radius-s); overflow: hidden; }
 .sem-bar {
   height: 100%;
-  background: linear-gradient(90deg, var(--cpu-primary), var(--cpu-primary-light));
+  background: var(--cpu-primary);
   transition: width 0.3s;
 }
 .sem-val { color: var(--cpu-text-secondary); white-space: nowrap; }
@@ -242,7 +242,7 @@ function attrTagType(attr?: string): "success" | "warning" | "info" | "primary" 
 .pyfa-card {
   padding: 12px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 10px;
+  border-radius: var(--cpu-radius-m);
   background: var(--cpu-card);
 }
 
@@ -256,7 +256,7 @@ function attrTagType(attr?: string): "success" | "warning" | "info" | "primary" 
 .pyfa-card-head b {
   display: block;
   color: var(--cpu-text);
-  font-size: 14px;
+  font-size: var(--cpu-fs-m);
   line-height: 1.45;
 }
 
@@ -264,7 +264,7 @@ function attrTagType(attr?: string): "success" | "warning" | "info" | "primary" 
   display: block;
   margin-top: 3px;
   color: var(--cpu-text-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
 }
 
 .pyfa-card-head :deep(.el-tag) {
@@ -278,7 +278,7 @@ function attrTagType(attr?: string): "success" | "warning" | "info" | "primary" 
   gap: 6px 10px;
   margin-top: 10px;
   color: var(--cpu-text-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   line-height: 1.4;
 }
 

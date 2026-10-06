@@ -625,9 +625,9 @@ function requestMessage(error: unknown) {
 .filter-field :deep(.el-input .el-input__wrapper) {
   min-height: 36px;
 }
-.lbl { font-size: 12px; color: var(--cpu-text-secondary); }
-.stat { font-size: 13px; color: var(--cpu-text-secondary); }
-.stat b { color: var(--cpu-primary); font-size: 15px; }
+.lbl { font-size: var(--cpu-fs-xs); color: var(--cpu-text-secondary); }
+.stat { font-size: var(--cpu-fs-s); color: var(--cpu-text-secondary); }
+.stat b { color: var(--cpu-primary); font-size: var(--cpu-fs-m); }
 .mobile-stat { display: none; }
 .desktop-stat { display: none; }
 .grade-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 0 0 16px; }
@@ -635,19 +635,19 @@ function requestMessage(error: unknown) {
   min-width: 0;
   padding: 12px 14px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 12px;
+  border-radius: var(--cpu-radius-l);
   background: var(--cpu-surface-soft);
 }
-.grade-summary dt { color: var(--cpu-text-secondary); font-size: 12px; }
-.grade-summary dd { display: flex; align-items: baseline; gap: 5px; margin: 4px 0 0; color: var(--cpu-text); font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.2; }
-.grade-summary small { color: var(--cpu-text-muted); font-size: 12px; font-weight: 500; }
-.grade-summary .is-accent { border-color: color-mix(in srgb, var(--cpu-primary) 26%, var(--cpu-border-soft)); background: var(--cpu-primary-soft); }
+.grade-summary dt { color: var(--cpu-text-secondary); font-size: var(--cpu-fs-xs); }
+.grade-summary dd { display: flex; align-items: baseline; gap: 5px; margin: 4px 0 0; color: var(--cpu-text); font-size: var(--cpu-fs-xl); font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.grade-summary small { color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); font-weight: 500; }
+.grade-summary .is-accent { border-color: var(--cpu-border-soft); background: var(--cpu-primary-soft); }
 .grade-summary .is-accent dd { color: var(--cpu-primary); }
 @media (max-width: 768px) {
   .grade-summary { display: none; }
 }
-.hint-icon { color: var(--cpu-text-secondary); cursor: help; margin-left: 4px; font-size: 14px; }
-code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: 3px; }
+.hint-icon { color: var(--cpu-text-secondary); cursor: help; margin-left: 4px; font-size: var(--cpu-fs-m); }
+code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: var(--cpu-radius-s); }
 
 .gpa-tool {
   display: flex;
@@ -655,7 +655,7 @@ code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: 3px;
   gap: 10px;
   padding: 12px 14px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 8px;
+  border-radius: var(--cpu-radius-m);
   background: var(--cpu-card);
 }
 
@@ -675,12 +675,12 @@ code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: 3px;
 
 .calc-title b {
   color: var(--cpu-text);
-  font-size: 14px;
+  font-size: var(--cpu-fs-m);
 }
 
 .calc-title span {
   color: var(--cpu-text-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
 }
 
 .calc-mode-switch {
@@ -690,7 +690,7 @@ code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: 3px;
   flex: 0 0 auto;
   padding: 3px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 8px;
+  border-radius: var(--cpu-radius-m);
   background: var(--cpu-surface-subtle);
 }
 
@@ -698,12 +698,12 @@ code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: 3px;
   min-width: 0;
   height: 30px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--cpu-radius-s);
   background: transparent;
   color: var(--cpu-text-secondary);
   font: inherit;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--cpu-fs-s);
+  font-weight: 500;
   line-height: 1;
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
@@ -716,11 +716,10 @@ code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: 3px;
 .calc-mode-btn.active {
   background: var(--cpu-card);
   color: var(--cpu-primary);
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
 }
 
 .calc-mode-btn:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--cpu-primary) 45%, transparent);
+  outline: 2px solid var(--cpu-primary-soft);
   outline-offset: 2px;
 }
 
@@ -766,7 +765,7 @@ code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: 3px;
 .course-option small {
   flex: 0 0 auto;
   color: var(--cpu-text-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   white-space: nowrap;
 }
 
@@ -777,7 +776,7 @@ code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: 3px;
   gap: 14px;
   padding: 12px 14px;
   border: 1px solid rgba(20, 143, 123, 0.26);
-  border-radius: 8px;
+  border-radius: var(--cpu-radius-m);
   background: rgba(20, 143, 123, 0.08);
 }
 
@@ -785,30 +784,30 @@ code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: 3px;
   display: block;
   margin-top: 2px;
   color: var(--cpu-text);
-  font-size: 14px;
+  font-size: var(--cpu-fs-m);
 }
 
 .service-reco p {
   margin: 3px 0 0;
   color: var(--cpu-text-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   line-height: 1.5;
 }
 
 .reco-kicker {
   color: var(--cpu-primary);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--cpu-fs-xs);
+  font-weight: 500;
 }
 
 .reco-link {
   flex: 0 0 auto;
   border: 1px solid var(--cpu-primary);
-  border-radius: 8px;
+  border-radius: var(--cpu-radius-m);
   padding: 7px 12px;
   color: var(--cpu-primary);
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--cpu-fs-s);
+  font-weight: 500;
   text-decoration: none;
   white-space: nowrap;
   transition: background 0.15s, color 0.15s;
@@ -840,8 +839,8 @@ code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: 3px;
   justify-content: space-between;
   margin: 0 0 8px;
 }
-.sem-head h3 { margin: 0; font-size: 15px; color: var(--cpu-primary); font-weight: 600; }
-.sem-sum { font-size: 12px; color: var(--cpu-text-muted); }
+.sem-head h3 { margin: 0; font-size: var(--cpu-fs-m); color: var(--cpu-primary); font-weight: 500; }
+.sem-sum { font-size: var(--cpu-fs-xs); color: var(--cpu-text-muted); }
 .table-scroll {
   width: 100%;
   overflow-x: auto;
@@ -856,9 +855,8 @@ code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: 3px;
   position: relative;
   padding: 14px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 14px;
+  border-radius: var(--cpu-radius-l);
   background: var(--cpu-card);
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
 .grade-main {
@@ -879,13 +877,13 @@ code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: 3px;
 
 .grade-card-top :deep(.el-checkbox__label) {
   color: var(--cpu-text-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
 }
 
 .course-title {
   color: var(--cpu-text);
-  font-size: 14px;
-  font-weight: 600;
+  font-size: var(--cpu-fs-m);
+  font-weight: 500;
   line-height: 1.45;
 }
 
@@ -896,7 +894,7 @@ code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: 3px;
   gap: 6px 10px;
   margin-top: 7px;
   color: var(--cpu-text-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   line-height: 1.4;
 }
 
@@ -908,11 +906,11 @@ code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: 3px;
 }
 
 .score-pill {
-  border-radius: 6px;
+  border-radius: var(--cpu-radius-s);
   background: var(--cpu-surface-subtle);
   padding: 7px 8px;
   text-align: center;
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
   font-weight: 700;
 }
 
@@ -994,7 +992,7 @@ code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: 3px;
   .calc-mode-btn {
     height: 34px;
     padding-inline: 4px;
-    font-size: 13px;
+    font-size: var(--cpu-fs-s);
   }
 
   .quick-actions {
@@ -1010,7 +1008,7 @@ code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: 3px;
     padding: 9px 11px;
     align-items: center;
     flex-direction: row;
-    border-radius: 10px;
+    border-radius: var(--cpu-radius-m);
   }
 
   .service-reco .reco-kicker,
@@ -1020,7 +1018,7 @@ code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: 3px;
 
   .service-reco b {
     margin: 0;
-    font-size: 13px;
+    font-size: var(--cpu-fs-s);
   }
 
   .reco-link {
@@ -1051,7 +1049,7 @@ code { background: rgba(255,255,255,0.12); padding: 1px 4px; border-radius: 3px;
 @media (max-width: 430px) {
   .grade-card {
     padding: 12px;
-    border-radius: 10px;
+    border-radius: var(--cpu-radius-m);
   }
 }
 

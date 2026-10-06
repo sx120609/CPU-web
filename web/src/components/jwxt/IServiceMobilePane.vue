@@ -167,18 +167,18 @@ function appMeta(a: IServiceApp) {
   gap: 5px;
   padding: 0 12px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 999px;
+  border-radius: var(--cpu-radius-pill);
   background: var(--cpu-card);
   color: var(--cpu-text-secondary);
   font: inherit;
-  font-size: 13px;
-  font-weight: 550;
+  font-size: var(--cpu-fs-s);
+  font-weight: 500;
   white-space: nowrap;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
-.iapps-m-chip span { color: var(--cpu-text-muted); font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums; }
-.iapps-m-chip--fav .el-icon { color: #f59e0b; font-size: 14px; }
+.iapps-m-chip span { color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); font-weight: 500; font-variant-numeric: tabular-nums; }
+.iapps-m-chip--fav .el-icon { color: var(--cpu-accent); font-size: var(--cpu-fs-m); }
 .iapps-m-chip.active { border-color: transparent; background: var(--cpu-button-primary); color: var(--cpu-button-on-primary); }
 .iapps-m-chip.active span,
 .iapps-m-chip.active .el-icon { color: inherit; opacity: .82; }
@@ -189,7 +189,7 @@ function appMeta(a: IServiceApp) {
   padding: 0;
   overflow: hidden;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 14px;
+  border-radius: var(--cpu-radius-l);
   background: var(--cpu-card);
   box-shadow: var(--cpu-shadow-sm);
   list-style: none;
@@ -225,19 +225,19 @@ function appMeta(a: IServiceApp) {
   place-items: center;
   overflow: hidden;
   border: 1px solid transparent;
-  border-radius: 10px;
+  border-radius: var(--cpu-radius-m);
   background: var(--cpu-surface-subtle);
 }
 .iapps-m-logo img { width: 30px; height: 30px; object-fit: contain; }
-.iapps-m-logo-letter { color: var(--cpu-primary); font-size: 17px; font-weight: 650; }
+.iapps-m-logo-letter { color: var(--cpu-primary); font-size: var(--cpu-fs-l); font-weight: 500; }
 .iapps-m-logo-dark { display: none; }
 
 .iapps-m-copy { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
 .iapps-m-copy b {
   overflow: hidden;
   color: var(--cpu-text);
-  font-size: 14px;
-  font-weight: 600;
+  font-size: var(--cpu-fs-m);
+  font-weight: 500;
   line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -245,7 +245,7 @@ function appMeta(a: IServiceApp) {
 .iapps-m-copy small {
   overflow: hidden;
   color: var(--cpu-text-muted);
-  font-size: 11px;
+  font-size: var(--cpu-fs-xs);
   line-height: 1.4;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -259,11 +259,11 @@ function appMeta(a: IServiceApp) {
   border: 0;
   background: transparent;
   color: var(--cpu-text-muted);
-  font-size: 18px;
+  font-size: var(--cpu-fs-l);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
-.iapps-m-fav.active { color: #f59e0b; }
+.iapps-m-fav.active { color: var(--cpu-accent); }
 .iapps-m-fav:active { background: var(--cpu-surface-soft); }
 
 .iapps-m-more {
@@ -273,21 +273,21 @@ function appMeta(a: IServiceApp) {
   justify-content: center;
   gap: 5px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 12px;
+  border-radius: var(--cpu-radius-l);
   background: var(--cpu-card);
   color: var(--cpu-text-secondary);
   font: inherit;
-  font-size: 13px;
-  font-weight: 550;
+  font-size: var(--cpu-fs-s);
+  font-weight: 500;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
 .iapps-m-more:active { background: var(--cpu-surface-soft); }
 
 .iapps-m-row--skeleton { min-height: 58px; align-items: center; gap: 11px; padding: 9px 12px; }
-.iapps-m-row--skeleton > i { width: 38px; height: 38px; flex: 0 0 auto; border-radius: 10px; background: var(--cpu-surface-subtle); }
+.iapps-m-row--skeleton > i { width: 38px; height: 38px; flex: 0 0 auto; border-radius: var(--cpu-radius-m); background: var(--cpu-surface-subtle); }
 .iapps-m-row--skeleton > span { display: flex; flex: 1; flex-direction: column; gap: 7px; }
-.iapps-m-row--skeleton > span i { height: 10px; border-radius: 5px; background: var(--cpu-surface-subtle); }
+.iapps-m-row--skeleton > span i { height: 10px; border-radius: var(--cpu-radius-s); background: var(--cpu-surface-subtle); }
 .iapps-m-row--skeleton > span i:first-child { width: 46%; }
 .iapps-m-row--skeleton > span i:last-child { width: 28%; }
 .iapps-m-row--skeleton i { animation: iapps-m-pulse 1.3s ease-in-out infinite; }
@@ -300,12 +300,12 @@ function appMeta(a: IServiceApp) {
   gap: 8px;
   padding: 20px 16px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 14px;
+  border-radius: var(--cpu-radius-l);
   background: var(--cpu-card);
   text-align: center;
 }
-.iapps-m-state b { color: var(--cpu-text); font-size: 14px; }
-.iapps-m-state p { margin: 0; color: var(--cpu-text-secondary); font-size: 12px; line-height: 1.6; }
+.iapps-m-state b { color: var(--cpu-text); font-size: var(--cpu-fs-m); }
+.iapps-m-state p { margin: 0; color: var(--cpu-text-secondary); font-size: var(--cpu-fs-xs); line-height: 1.6; }
 
 /* 学校提供的应用图标多为浅色底图，暗色下改用按业务归类的线性图标。 */
 :global(html[data-theme="dark"] .iapps-m-logo) {
@@ -316,7 +316,7 @@ function appMeta(a: IServiceApp) {
 :global(html[data-theme="dark"] .iapps-m-logo-dark) {
   display: inline-flex;
   color: var(--iapps-m-tone, var(--cpu-primary-light));
-  font-size: 21px;
+  font-size: var(--cpu-fs-xl);
 }
 :global(html[data-theme="dark"] .iapps-m-logo--teal) { --iapps-m-tone: #5eead4; }
 :global(html[data-theme="dark"] .iapps-m-logo--blue) { --iapps-m-tone: #93c5fd; }

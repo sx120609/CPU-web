@@ -18,7 +18,7 @@
   display: flex;
   align-items: center;
   color: var(--schedule-text-secondary);
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
 }
 
 .sem-select {
@@ -29,7 +29,7 @@
 
 .sem-select :deep(.el-select__wrapper) {
   min-height: 38px;
-  border-radius: 10px;
+  border-radius: var(--cpu-radius-m);
   border: 1px solid var(--schedule-border);
   box-shadow: none;
   background: var(--schedule-surface-bg);
@@ -47,7 +47,7 @@
 
 .sem-select :deep(.el-select__placeholder),
 .sem-select :deep(.el-select__selected-item) {
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
   color: var(--schedule-text);
 }
 
@@ -61,7 +61,7 @@
   height: 38px;
   padding: 3px;
   border: 1px solid var(--schedule-border);
-  border-radius: 10px;
+  border-radius: var(--cpu-radius-m);
   background: var(--schedule-surface-bg);
   display: inline-grid;
   grid-template-columns: repeat(2, 34px);
@@ -70,11 +70,11 @@
 
 .view-switch button {
   border: 0;
-  border-radius: 7px;
+  border-radius: var(--cpu-radius-s);
   background: transparent;
   color: var(--schedule-text-secondary);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
   font-weight: 700;
   cursor: pointer;
   touch-action: manipulation;
@@ -95,7 +95,7 @@
   width: 38px;
   height: 38px;
   border: 1px solid var(--schedule-border);
-  border-radius: 10px;
+  border-radius: var(--cpu-radius-m);
   background: var(--schedule-surface-bg);
   color: var(--schedule-text);
   display: grid;
@@ -124,7 +124,7 @@
 }
 
 .icon-btn .el-icon {
-  font-size: 18px;
+  font-size: var(--cpu-fs-l);
 }
 
 @keyframes spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
@@ -141,14 +141,14 @@
 .week-btn {
   height: 42px;
   border: 1px solid var(--schedule-border);
-  border-radius: 13px;
+  border-radius: var(--cpu-radius-l);
   background: var(--schedule-surface-bg);
   color: var(--schedule-text);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 4px;
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
   touch-action: manipulation;
 }
 
@@ -161,7 +161,7 @@
   min-width: 0;
   height: 42px;
   border: none;
-  border-radius: 13px;
+  border-radius: var(--cpu-radius-l);
   background: var(--schedule-accent-pale);
   color: var(--schedule-accent-strong);
   display: flex;
@@ -191,7 +191,7 @@
 }
 
 .week-title b {
-  font-size: 15px;
+  font-size: var(--cpu-fs-m);
 }
 
 .week-title span {
@@ -210,7 +210,7 @@
 .day-pill {
   min-width: 0;
   border: 1px solid var(--schedule-border);
-  border-radius: 13px;
+  border-radius: var(--cpu-radius-l);
   background: var(--schedule-surface-bg);
   padding: 8px 3px;
   color: var(--schedule-text-secondary);
@@ -222,13 +222,13 @@
 }
 
 .day-pill span {
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   line-height: 1.15;
   white-space: nowrap;
 }
 
 .day-pill b {
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
   line-height: 1.15;
   white-space: nowrap;
 }

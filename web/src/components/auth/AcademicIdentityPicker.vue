@@ -77,14 +77,14 @@ function updateValue(value: AcademicIdentity) {
 }
 
 .identity-copy b {
-  font-size: 13px;
-  color: #172033;
+  font-size: var(--cpu-fs-s);
+  color: var(--cpu-text);
   letter-spacing: 0.02em;
 }
 
 .identity-copy span {
-  font-size: 12px;
-  color: #667085;
+  font-size: var(--cpu-fs-xs);
+  color: var(--cpu-text-muted);
   line-height: 1.65;
 }
 
@@ -94,8 +94,8 @@ function updateValue(value: AcademicIdentity) {
   gap: 8px;
   padding: 6px;
   border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 18px;
-  background: linear-gradient(180deg, rgba(247, 250, 248, 0.98), rgba(241, 245, 249, 0.92));
+  border-radius: var(--cpu-radius-l);
+  background: var(--cpu-surface-soft);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
@@ -105,7 +105,7 @@ function updateValue(value: AcademicIdentity) {
   width: fit-content;
   gap: 4px;
   padding: 4px;
-  border-radius: 999px;
+  border-radius: var(--cpu-radius-pill);
   background: rgba(255, 255, 255, 0.72);
 }
 
@@ -113,9 +113,9 @@ function updateValue(value: AcademicIdentity) {
   min-width: 0;
   min-height: 76px;
   border: 1px solid transparent;
-  border-radius: 14px;
+  border-radius: var(--cpu-radius-l);
   background: rgba(255, 255, 255, 0.92);
-  color: #475467;
+  color: var(--cpu-text-secondary);
   padding: 13px 14px 12px;
   display: grid;
   gap: 4px;
@@ -134,24 +134,24 @@ function updateValue(value: AcademicIdentity) {
   padding: 0 16px;
   place-items: center;
   text-align: center;
-  border-radius: 999px;
+  border-radius: var(--cpu-radius-pill);
   background: transparent;
   box-shadow: none;
 }
 
 .identity-option strong {
-  font-size: 14px;
+  font-size: var(--cpu-fs-m);
   color: inherit;
   line-height: 1.2;
 }
 
 .identity-picker.compact .identity-option strong {
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
   line-height: 1;
 }
 
 .identity-option small {
-  font-size: 11px;
+  font-size: var(--cpu-fs-xs);
   line-height: 1.55;
   color: inherit;
   opacity: 0.9;
@@ -159,22 +159,19 @@ function updateValue(value: AcademicIdentity) {
 
 .identity-option:hover:not(:disabled) {
   border-color: rgba(22, 135, 118, 0.22);
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
   transform: translateY(-1px);
 }
 
 .identity-option.active {
   border-color: rgba(22, 135, 118, 0.26);
-  background: linear-gradient(135deg, rgba(22, 135, 118, 0.16), rgba(232, 163, 23, 0.08));
-  color: #0f5f52;
-  box-shadow: 0 12px 24px rgba(22, 135, 118, 0.1);
+  background: var(--cpu-primary-soft);
+  color: var(--cpu-primary);
   transform: translateY(-1px);
 }
 
 .identity-picker.compact .identity-option.active {
   border-color: transparent;
-  background: linear-gradient(135deg, rgba(22, 135, 118, 0.18), rgba(232, 163, 23, 0.1));
-  box-shadow: 0 6px 14px rgba(22, 135, 118, 0.14);
+  background: var(--cpu-primary-soft);
   transform: none;
 }
 
@@ -186,7 +183,7 @@ function updateValue(value: AcademicIdentity) {
 @media (max-width: 520px) {
   .identity-switch {
     padding: 5px;
-    border-radius: 16px;
+    border-radius: var(--cpu-radius-l);
   }
 
   .identity-option {

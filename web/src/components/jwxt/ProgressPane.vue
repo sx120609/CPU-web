@@ -306,10 +306,10 @@ function scoreColor(s: string) {
   gap: 10px;
   flex-wrap: wrap;
   border: 1px solid rgba(245, 158, 11, 0.34);
-  border-radius: 8px;
+  border-radius: var(--cpu-radius-m);
   background: rgba(245, 158, 11, 0.12);
   color: var(--cpu-warn);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   line-height: 1.6;
   padding: 10px 12px;
 }
@@ -320,8 +320,8 @@ function scoreColor(s: string) {
   display: flex;
   gap: 24px;
   padding: 24px 28px;
-  border-radius: 16px;
-  background: linear-gradient(135deg, #168776 0%, #2da391 60%, #0f6557 100%);
+  border-radius: var(--cpu-radius-l);
+  background: var(--cpu-primary-dark);
   color: #fff;
   position: relative;
   overflow: hidden;
@@ -334,7 +334,7 @@ function scoreColor(s: string) {
   width: 200px;
   height: 200px;
   border-radius: 50%;
-  background: radial-gradient(circle at 40% 40%, rgba(232, 163, 23, 0.45), transparent 60%);
+  background: none;
   pointer-events: none;
 }
 .overall-main {
@@ -345,17 +345,17 @@ function scoreColor(s: string) {
   z-index: 1;
 }
 .big-num { font-size: 40px; font-weight: 700; line-height: 1; }
-.big-lbl { font-size: 13px; opacity: 0.85; margin-top: 6px; }
+.big-lbl { font-size: var(--cpu-fs-s); opacity: 0.85; margin-top: 6px; }
 
 .overall-bar-wrap { flex: 1; min-width: 0; z-index: 1; display: flex; flex-direction: column; gap: 8px; justify-content: center; }
 .overall-bar-info {
   display: flex;
   gap: 18px;
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
   align-items: baseline;
   flex-wrap: wrap;
 }
-.overall-bar-info b { font-size: 16px; font-weight: 600; margin: 0 2px; }
+.overall-bar-info b { font-size: var(--cpu-fs-l); font-weight: 500; margin: 0 2px; }
 .overall-bar-info .warn { color: #fef3c7; }
 .overall-bar-info .warn b { color: #fde68a; }
 
@@ -363,9 +363,9 @@ function scoreColor(s: string) {
 .dim-pill {
   background: rgba(255,255,255,0.15);
   border: 1px solid rgba(255,255,255,0.25);
-  border-radius: 14px;
+  border-radius: var(--cpu-radius-l);
   padding: 3px 12px;
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
 }
 .dim-pill.warn-pill {
   background: rgba(232, 163, 23, 0.25);
@@ -382,34 +382,34 @@ function scoreColor(s: string) {
 .summary-card {
   background: var(--cpu-card);
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 12px;
+  border-radius: var(--cpu-radius-l);
   padding: 14px 16px;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
-.summary-card:hover { border-color: var(--cpu-primary); box-shadow: 0 4px 12px rgba(22, 135, 118, 0.08); }
+.summary-card:hover { border-color: var(--cpu-primary); }
 
-.card-title { font-size: 13px; color: var(--cpu-text-secondary); font-weight: 500; }
+.card-title { font-size: var(--cpu-fs-s); color: var(--cpu-text-secondary); font-weight: 500; }
 .card-stat {
   margin: 8px 0 10px;
   display: flex;
   align-items: baseline;
   gap: 4px;
 }
-.big { font-size: 24px; font-weight: 700; color: var(--cpu-primary); line-height: 1; }
-.sep { font-size: 16px; color: var(--cpu-text-muted); margin: 0 2px; }
-.goal { font-size: 16px; color: var(--cpu-text-secondary); }
-.lbl { font-size: 12px; color: var(--cpu-text-muted); margin-left: 2px; }
-.card-note { font-size: 11px; color: var(--cpu-text-muted); padding: 4px 0; font-style: italic; }
+.big { font-size: var(--cpu-fs-xl); font-weight: 700; color: var(--cpu-primary); line-height: 1; }
+.sep { font-size: var(--cpu-fs-l); color: var(--cpu-text-muted); margin: 0 2px; }
+.goal { font-size: var(--cpu-fs-l); color: var(--cpu-text-secondary); }
+.lbl { font-size: var(--cpu-fs-xs); color: var(--cpu-text-muted); margin-left: 2px; }
+.card-note { font-size: var(--cpu-fs-xs); color: var(--cpu-text-muted); padding: 4px 0; font-style: italic; }
 .card-done {
-  font-size: 12px;
-  color: #16a34a;
+  font-size: var(--cpu-fs-xs);
+  color: var(--cpu-primary);
   padding: 4px 0;
   font-weight: 500;
 }
 
 .card-detail {
   margin-top: 8px;
-  font-size: 11px;
+  font-size: var(--cpu-fs-xs);
   color: var(--cpu-text-secondary);
   display: flex;
   gap: 8px;
@@ -419,15 +419,15 @@ function scoreColor(s: string) {
   color: var(--cpu-warn);
   background: rgba(245, 158, 11, 0.16);
   padding: 1px 6px;
-  border-radius: 4px;
+  border-radius: var(--cpu-radius-s);
 }
 
-.block { border-radius: 12px; border: 1px solid var(--cpu-border-soft); }
+.block { border-radius: var(--cpu-radius-l); border: 1px solid var(--cpu-border-soft); }
 .block-head { display: flex; justify-content: space-between; align-items: baseline; }
-.title { margin: 0; font-size: 15px; font-weight: 600; }
-.title.warn { color: #b45309; }
-.title.ok { color: #16a34a; }
-.cnt { font-size: 12px; color: var(--cpu-text-muted); }
+.title { margin: 0; font-size: var(--cpu-fs-m); font-weight: 500; }
+.title.warn { color: var(--cpu-accent); }
+.title.ok { color: var(--cpu-primary); }
+.cnt { font-size: var(--cpu-fs-xs); color: var(--cpu-text-muted); }
 .cpu-muted { color: var(--cpu-text-muted); }
 .table-scroll {
   width: 100%;
@@ -441,7 +441,7 @@ function scoreColor(s: string) {
 
 .course-card {
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 12px;
+  border-radius: var(--cpu-radius-l);
   background: var(--cpu-card);
   padding: 12px;
 }
@@ -456,7 +456,7 @@ function scoreColor(s: string) {
 .course-card-head b {
   display: block;
   color: var(--cpu-text);
-  font-size: 14px;
+  font-size: var(--cpu-fs-m);
   line-height: 1.45;
 }
 
@@ -464,12 +464,12 @@ function scoreColor(s: string) {
   display: block;
   margin-top: 3px;
   color: var(--cpu-text-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
 }
 
 .course-card-head strong {
   flex-shrink: 0;
-  font-size: 15px;
+  font-size: var(--cpu-fs-m);
 }
 
 .course-card-meta {
@@ -478,7 +478,7 @@ function scoreColor(s: string) {
   gap: 6px 10px;
   margin-top: 10px;
   color: var(--cpu-text-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
 }
 
 @media (max-width: 760px) {
@@ -487,7 +487,7 @@ function scoreColor(s: string) {
   }
 
   .overall {
-    border-radius: 12px;
+    border-radius: var(--cpu-radius-l);
     padding: 18px 16px;
     flex-direction: column;
     gap: 14px;

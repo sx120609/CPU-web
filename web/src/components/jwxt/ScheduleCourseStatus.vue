@@ -27,7 +27,7 @@ const label = computed(() => scheduleCourseEditLabel(props.course));
   flex: none;
   align-self: flex-start;
   max-width: 100%;
-  border-radius: 3px;
+  border-radius: var(--cpu-radius-s);
   padding: 1px 2px;
   font-size: 9px;
   line-height: 1.2;
@@ -43,9 +43,9 @@ const label = computed(() => scheduleCourseEditLabel(props.course));
 }
 .detail {
   margin-bottom: 12px;
-  border-radius: 12px;
+  border-radius: var(--cpu-radius-l);
   padding: 12px;
-  font-size: 14px;
+  font-size: var(--cpu-fs-m);
   line-height: 1.5;
   white-space: normal;
 }
@@ -56,7 +56,7 @@ const label = computed(() => scheduleCourseEditLabel(props.course));
   min-height: 36px;
   padding: 5px 12px;
   border: 1px solid currentColor;
-  border-radius: 8px;
+  border-radius: var(--cpu-radius-m);
   color: inherit;
   background: transparent;
   font: inherit;

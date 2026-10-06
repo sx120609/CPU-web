@@ -171,8 +171,8 @@ function requestMessage(error: unknown) {
 .filter-field :deep(.el-input .el-input__wrapper) {
   min-height: 36px;
 }
-.lbl { font-size: 12px; color: var(--cpu-text-secondary); }
-.stat { font-size: 13px; color: var(--cpu-primary); font-weight: 500; }
+.lbl { font-size: var(--cpu-fs-xs); color: var(--cpu-text-secondary); }
+.stat { font-size: var(--cpu-fs-s); color: var(--cpu-primary); font-weight: 500; }
 
 .pane-alert {
   margin-bottom: 12px;
@@ -193,34 +193,34 @@ function requestMessage(error: unknown) {
   gap: 16px;
   padding: 14px 16px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 10px;
+  border-radius: var(--cpu-radius-m);
   background: var(--cpu-card);
   align-items: center;
 }
-.cname { font-size: 15px; font-weight: 600; color: var(--cpu-text); }
-.meta { font-size: 12px; color: var(--cpu-text-secondary); margin-top: 2px; display: flex; gap: 6px; }
+.cname { font-size: var(--cpu-fs-m); font-weight: 500; color: var(--cpu-text); }
+.meta { font-size: var(--cpu-fs-xs); color: var(--cpu-text-secondary); margin-top: 2px; display: flex; gap: 6px; }
 .left { flex: 1; min-width: 0; }
-.middle { font-size: 13px; color: var(--cpu-text-secondary); text-align: right; }
-.time { font-weight: 500; color: #b45309; }
+.middle { font-size: var(--cpu-fs-s); color: var(--cpu-text-secondary); text-align: right; }
+.time { font-weight: 500; color: var(--cpu-accent); }
 .loc { margin-top: 3px; }
-.seat { font-size: 12px; color: var(--cpu-text-muted); margin-top: 3px; }
+.seat { font-size: var(--cpu-fs-xs); color: var(--cpu-text-muted); margin-top: 3px; }
 
 .empty-card {
   background: var(--cpu-surface-subtle);
   border: 1px dashed var(--cpu-border-soft);
-  border-radius: 12px;
+  border-radius: var(--cpu-radius-l);
   padding: 32px 24px;
   text-align: center;
   color: var(--cpu-text-secondary);
 }
-.empty-card h3 { margin: 12px 0 6px; font-size: 16px; color: var(--cpu-text); }
-.empty-card p { margin: 0 0 8px; font-size: 13px; }
+.empty-card h3 { margin: 12px 0 6px; font-size: var(--cpu-fs-l); color: var(--cpu-text); }
+.empty-card p { margin: 0 0 8px; font-size: var(--cpu-fs-s); }
 .empty-card ul {
   text-align: left;
   display: inline-block;
   margin: 0 auto;
   padding-left: 20px;
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
   line-height: 1.8;
 }
 .empty-card ul b { color: var(--cpu-primary); }
