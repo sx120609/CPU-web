@@ -185,7 +185,7 @@ defineExpose({ openDialog, autoPromptIfEligible });
 <style scoped>
 .content {
   color: var(--cpu-text);
-  font-size: 14px;
+  font-size: var(--cpu-fs-m);
   line-height: 1.7;
   max-width: 100%;
   overflow-wrap: anywhere;
@@ -211,12 +211,12 @@ defineExpose({ openDialog, autoPromptIfEligible });
 .platform-picker button {
   appearance: none;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 8px;
+  border-radius: var(--cpu-radius-m);
   background: var(--cpu-surface-soft);
   color: var(--cpu-text-secondary);
   cursor: pointer;
   font: inherit;
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
   font-weight: 700;
   min-height: 38px;
   padding: 8px 10px;
@@ -259,16 +259,16 @@ defineExpose({ openDialog, autoPromptIfEligible });
   justify-content: center;
   width: 22px;
   height: 22px;
-  border-radius: 999px;
+  border-radius: var(--cpu-radius-pill);
   background: var(--el-color-primary-light-9);
   color: var(--cpu-primary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   font-weight: 700;
 }
 
 .muted {
   color: var(--cpu-text-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
 }
 
 .copy-card {
@@ -279,7 +279,7 @@ defineExpose({ openDialog, autoPromptIfEligible });
   margin: 12px 0;
   padding: 10px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 8px;
+  border-radius: var(--cpu-radius-m);
   background: var(--cpu-surface-soft);
 }
 
@@ -287,7 +287,7 @@ defineExpose({ openDialog, autoPromptIfEligible });
   display: block;
   min-width: 0;
   color: var(--cpu-text-secondary);
-  font-size: 11px;
+  font-size: var(--cpu-fs-xs);
   line-height: 1.5;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -296,7 +296,7 @@ defineExpose({ openDialog, autoPromptIfEligible });
 
 .support-note {
   color: var(--cpu-text-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   line-height: 1.6;
 }
 
@@ -306,7 +306,7 @@ defineExpose({ openDialog, autoPromptIfEligible });
   background: transparent;
   color: var(--cpu-primary);
   font: inherit;
-  font-weight: 650;
+  font-weight: 500;
   padding: 0;
   cursor: pointer;
 }

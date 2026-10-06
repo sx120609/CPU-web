@@ -122,23 +122,23 @@ const emit = defineEmits<{ (event: "update:modelValue", value: boolean): void }>
   display: grid;
   gap: 16px;
   color: var(--cpu-text-secondary);
-  font-size: 14px;
+  font-size: var(--cpu-fs-m);
   line-height: 1.75;
 }
 
 .download-guide-content p,
 .download-guide-content ol { margin: 0; }
 .download-guide-content ol { display: grid; gap: 9px; padding-left: 22px; }
-.download-guide-content li::marker { color: var(--cpu-primary); font-weight: 800; }
+.download-guide-content li::marker { color: var(--cpu-primary); font-weight: 700; }
 .download-guide-content strong { color: var(--cpu-text); }
 
 .edge-stage {
   display: grid;
   gap: 11px;
   padding: 14px;
-  border: 1px solid color-mix(in srgb, var(--cpu-primary) 28%, var(--cpu-border-soft));
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--cpu-primary) 6%, var(--cpu-surface));
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: var(--cpu-radius-l);
+  background: var(--cpu-primary-soft);
 }
 
 .edge-stage-heading {
@@ -154,7 +154,7 @@ const emit = defineEmits<{ (event: "update:modelValue", value: boolean): void }>
 
 .edge-stage-heading small {
   color: var(--cpu-text-muted);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
 }
 
 .edge-stage-number {
@@ -163,10 +163,10 @@ const emit = defineEmits<{ (event: "update:modelValue", value: boolean): void }>
   flex: 0 0 auto;
   width: 28px;
   height: 28px;
-  border-radius: 9px;
+  border-radius: var(--cpu-radius-m);
   background: var(--cpu-primary);
   color: var(--cpu-on-primary, #fff);
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .edge-warning-mock {
@@ -177,7 +177,7 @@ const emit = defineEmits<{ (event: "update:modelValue", value: boolean): void }>
   min-height: 62px;
   padding: 10px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 11px;
+  border-radius: var(--cpu-radius-m);
   background: var(--cpu-surface);
 }
 
@@ -187,11 +187,11 @@ const emit = defineEmits<{ (event: "update:modelValue", value: boolean): void }>
   place-items: center;
   width: 32px;
   height: 32px;
-  border-radius: 9px;
+  border-radius: var(--cpu-radius-m);
   background: var(--cpu-surface-soft);
   color: var(--cpu-primary);
-  font-size: 18px;
-  font-weight: 800;
+  font-size: var(--cpu-fs-l);
+  font-weight: 700;
 }
 
 .edge-warning-mark {
@@ -212,7 +212,7 @@ const emit = defineEmits<{ (event: "update:modelValue", value: boolean): void }>
 
 .edge-warning-copy small {
   color: var(--cpu-text-muted);
-  font-size: 11px;
+  font-size: var(--cpu-fs-xs);
 }
 
 .edge-more-button {
@@ -221,19 +221,19 @@ const emit = defineEmits<{ (event: "update:modelValue", value: boolean): void }>
   width: 34px;
   height: 34px;
   border: 1px solid var(--cpu-border);
-  border-radius: 9px;
+  border-radius: var(--cpu-radius-m);
   background: var(--cpu-surface-soft);
   color: var(--cpu-text);
-  font-size: 20px;
-  font-weight: 800;
+  font-size: var(--cpu-fs-xl);
+  font-weight: 700;
 }
 
 .edge-action-tip {
   padding: 9px 11px;
-  border-radius: 9px;
+  border-radius: var(--cpu-radius-m);
   background: var(--cpu-surface-soft);
   color: var(--cpu-text-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
 }
 
 .edge-action-tip b {
@@ -242,10 +242,10 @@ const emit = defineEmits<{ (event: "update:modelValue", value: boolean): void }>
   min-width: 26px;
   margin: 0 2px;
   border: 1px solid var(--cpu-border);
-  border-radius: 6px;
+  border-radius: var(--cpu-radius-s);
   background: var(--cpu-surface);
   color: var(--cpu-text);
-  font-size: 16px;
+  font-size: var(--cpu-fs-l);
 }
 
 .edge-stage-connector {
@@ -254,11 +254,11 @@ const emit = defineEmits<{ (event: "update:modelValue", value: boolean): void }>
   justify-content: center;
   gap: 8px;
   color: var(--cpu-primary-dark);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
 }
 
 .edge-stage-connector span {
-  font-size: 20px;
+  font-size: var(--cpu-fs-xl);
   line-height: 1;
 }
 
@@ -270,7 +270,7 @@ const emit = defineEmits<{ (event: "update:modelValue", value: boolean): void }>
   min-height: 54px;
   padding: 9px 10px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 11px;
+  border-radius: var(--cpu-radius-m);
   background: var(--cpu-surface);
 }
 
@@ -278,7 +278,7 @@ const emit = defineEmits<{ (event: "update:modelValue", value: boolean): void }>
   min-width: 0;
   overflow: hidden;
   color: var(--cpu-text);
-  font-weight: 650;
+  font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -289,7 +289,7 @@ const emit = defineEmits<{ (event: "update:modelValue", value: boolean): void }>
   align-items: stretch;
   overflow: hidden;
   border: 1px solid var(--cpu-border);
-  border-radius: 9px;
+  border-radius: var(--cpu-radius-m);
   background: var(--cpu-surface-soft);
   color: var(--cpu-text-secondary);
 }
@@ -304,9 +304,9 @@ const emit = defineEmits<{ (event: "update:modelValue", value: boolean): void }>
 .edge-delete-button > span { padding: 0 12px; }
 .edge-delete-button > b {
   border-left: 1px solid var(--cpu-primary);
-  background: color-mix(in srgb, var(--cpu-primary) 14%, var(--cpu-surface));
+  background: var(--cpu-primary-soft);
   color: var(--cpu-primary-dark);
-  font-size: 22px;
+  font-size: var(--cpu-fs-xl);
 }
 
 .edge-arrow-tip {
@@ -315,10 +315,10 @@ const emit = defineEmits<{ (event: "update:modelValue", value: boolean): void }>
   gap: 7px;
   padding-right: 2px;
   color: var(--cpu-primary-dark);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
 }
 
-.edge-arrow-tip > span { font-size: 20px; line-height: 1; }
+.edge-arrow-tip > span { font-size: var(--cpu-fs-xl); line-height: 1; }
 
 .edge-keep-path {
   display: flex;
@@ -330,11 +330,11 @@ const emit = defineEmits<{ (event: "update:modelValue", value: boolean): void }>
 
 .edge-keep-path span {
   padding: 4px 9px;
-  border-radius: 999px;
+  border-radius: var(--cpu-radius-pill);
   background: var(--cpu-primary);
   color: var(--cpu-on-primary, #fff);
-  font-size: 12px;
-  font-weight: 750;
+  font-size: var(--cpu-fs-xs);
+  font-weight: 700;
 }
 
 .edge-keep-path i { color: var(--cpu-text-muted); font-style: normal; }
@@ -343,26 +343,26 @@ kbd {
   padding: 1px 5px;
   border: 1px solid var(--cpu-border);
   border-bottom-width: 2px;
-  border-radius: 5px;
+  border-radius: var(--cpu-radius-s);
   background: var(--cpu-surface-soft);
   color: var(--cpu-text);
   font-family: var(--cpu-font-mono);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
 }
 
 .download-guide-note {
   padding: 11px 13px;
-  border: 1px solid color-mix(in srgb, var(--cpu-primary) 22%, var(--cpu-border-soft));
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--cpu-primary) 7%, var(--cpu-surface));
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: var(--cpu-radius-m);
+  background: var(--cpu-primary-soft);
   color: var(--cpu-text-muted);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   line-height: 1.65;
 }
 
 .download-guide-note code {
   padding: 1px 5px;
-  border-radius: 5px;
+  border-radius: var(--cpu-radius-s);
   background: var(--cpu-surface-soft);
   color: var(--cpu-primary-dark);
   font-family: var(--cpu-font-mono);

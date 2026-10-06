@@ -182,7 +182,7 @@ function normalizeCourseListError(error: unknown) {
   justify-content: space-between;
   align-items: center;
 }
-.head h2 { margin: 0; font-size: 22px; }
+.head h2 { margin: 0; font-size: var(--cpu-fs-xl); }
 .head-right { display: flex; gap: 8px; }
 
 .filter-bar {
@@ -193,20 +193,19 @@ function normalizeCourseListError(error: unknown) {
 }
 
 .empty-mine {
-  background: linear-gradient(135deg, #ecfdf5, #d1fae5);
-  border-radius: 12px;
+  background: var(--cpu-primary-soft);
+  border-radius: var(--cpu-radius-l);
   padding: 32px 24px;
   text-align: center;
-  color: #4b5563;
+  color: var(--cpu-text-secondary);
 }
 .empty-mine p { margin: 0 0 10px; }
-.empty-mine .sub { font-size: 12px; color: #6b7280; margin-top: 14px; }
+.empty-mine .sub { font-size: var(--cpu-fs-xs); color: var(--cpu-text-muted); margin-top: 14px; }
 
 .list-error {
-  background: #fff;
-  border-radius: 12px;
+  background: var(--cpu-card);
+  border-radius: var(--cpu-radius-l);
   padding: 24px 16px;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.04);
 }
 
 .course-grid {
@@ -215,39 +214,39 @@ function normalizeCourseListError(error: unknown) {
   gap: 14px;
 }
 .course {
-  background: #fff;
-  border: 1px solid #eef0f4;
-  border-radius: 12px;
+  background: var(--cpu-card);
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: var(--cpu-radius-l);
   padding: 16px;
   cursor: pointer;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
-.course:hover { border-color: var(--cpu-primary); box-shadow: 0 4px 12px rgba(22,135,118,0.08); }
+.course:hover { border-color: var(--cpu-primary); }
 .course:focus-visible {
   outline: 2px solid var(--cpu-primary);
   outline-offset: 2px;
 }
 
 .c-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
-.code { font-size: 11px; color: #9ca3af; }
-.name { font-size: 16px; color: #1f2937; font-weight: 600; margin-top: 2px; }
-.teacher { font-size: 12px; color: #6b7280; margin-top: 2px; }
+.code { font-size: var(--cpu-fs-xs); color: var(--cpu-text-muted); }
+.name { font-size: var(--cpu-fs-l); color: var(--cpu-text); font-weight: 500; margin-top: 2px; }
+.teacher { font-size: var(--cpu-fs-xs); color: var(--cpu-text-muted); margin-top: 2px; }
 
 .score-block { text-align: right; }
 .score { font-size: 28px; font-weight: 700; color: var(--cpu-primary); line-height: 1; }
-.sub { font-size: 11px; color: #9ca3af; }
-.no-rate { font-size: 12px; color: #9ca3af; padding: 6px 0; }
+.sub { font-size: var(--cpu-fs-xs); color: var(--cpu-text-muted); }
+.no-rate { font-size: var(--cpu-fs-xs); color: var(--cpu-text-muted); padding: 6px 0; }
 
 .bars { margin: 10px 0; }
-.bar { display: flex; gap: 8px; align-items: center; font-size: 11px; color: #6b7280; }
+.bar { display: flex; gap: 8px; align-items: center; font-size: var(--cpu-fs-xs); color: var(--cpu-text-muted); }
 .bar span { width: 28px; }
 
 .c-foot {
   display: flex;
   gap: 12px;
-  font-size: 11px;
-  color: #9ca3af;
-  border-top: 1px dashed #f1f5f9;
+  font-size: var(--cpu-fs-xs);
+  color: var(--cpu-text-muted);
+  border-top: 1px dashed var(--cpu-border-soft);
   padding-top: 8px;
 }
 
@@ -259,7 +258,7 @@ function normalizeCourseListError(error: unknown) {
   }
 
   .head h2 {
-    font-size: 20px;
+    font-size: var(--cpu-fs-xl);
   }
 
   .head-right {
@@ -287,7 +286,7 @@ function normalizeCourseListError(error: unknown) {
   }
 
   .course {
-    border-radius: 10px;
+    border-radius: var(--cpu-radius-m);
     padding: 14px;
   }
 

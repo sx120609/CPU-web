@@ -26,12 +26,12 @@ function openPolicy(document: 'privacy' | 'terms') {
 </script>
 
 <style scoped>
-.privacy-consent { margin: 16px 0; font-size: 13px; line-height: 24px; color: var(--cpu-text-secondary); }
+.privacy-consent { margin: 16px 0; font-size: var(--cpu-fs-s); line-height: 24px; color: var(--cpu-text-secondary); }
 .consent-line { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 6px; align-items: start; }
 .privacy-consent :deep(.el-checkbox) { height: 24px; margin: 0; }
 .consent-copy { min-width: 0; }
 .policy-link { appearance: none; display: inline; margin: 0; padding: 0; border: 0; background: none; color: var(--cpu-primary); font: inherit; line-height: inherit; cursor: pointer; }
 .policy-link:hover { text-decoration: underline; text-underline-offset: 3px; }
-.policy-link:focus-visible { outline: 2px solid var(--cpu-primary); outline-offset: 3px; border-radius: 2px; }
-.privacy-consent .consent-hint { margin: 4px 0 0 26px; font-size: 12px; line-height: 1.7; }
+.policy-link:focus-visible { outline: 2px solid var(--cpu-primary); outline-offset: 3px; border-radius: var(--cpu-radius-s); }
+.privacy-consent .consent-hint { margin: 4px 0 0 26px; font-size: var(--cpu-fs-xs); line-height: 1.7; }
 </style>

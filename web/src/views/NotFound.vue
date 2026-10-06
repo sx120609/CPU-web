@@ -20,8 +20,8 @@
 .content { text-align: center; }
 .logo {
   font-size: 96px;
-  font-weight: 800;
-  color: #1d4d8a;
+  font-weight: 700;
+  color: var(--cpu-text);
   letter-spacing: 4px;
   margin-bottom: 12px;
 }

@@ -50,9 +50,7 @@ const emit = defineEmits<{ home: [] }>();
   min-height: 100dvh;
   place-items: center;
   padding: 24px;
-  background:
-    radial-gradient(circle at 88% 0%, color-mix(in srgb, var(--cpu-primary) 13%, transparent), transparent 38%),
-    var(--cpu-bg);
+  background: var(--cpu-bg);
 }
 
 .auth-shell {
@@ -61,7 +59,7 @@ const emit = defineEmits<{ home: [] }>();
   grid-template-columns: minmax(0, .85fr) minmax(0, 1fr);
   overflow: hidden;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 22px;
+  border-radius: var(--cpu-radius-l);
   background: var(--cpu-card);
   box-shadow: var(--cpu-shadow-lg);
 }
@@ -72,24 +70,24 @@ const emit = defineEmits<{ home: [] }>();
   flex-direction: column;
   gap: 18px;
   padding: 36px 32px;
-  background: linear-gradient(160deg, #148f7b, #0d6e5e);
+  background: var(--cpu-primary-dark);
   color: #fff;
 }
-.auth-aside-brand { display: flex; align-items: center; gap: 10px; font-size: 19px; font-weight: 700; }
-.auth-aside-brand img { width: 36px; height: 36px; border-radius: 10px; background: #fff; }
-.auth-aside h2 { margin: 18px 0 0; font-size: 24px; font-weight: 700; line-height: 1.45; letter-spacing: -.01em; }
+.auth-aside-brand { display: flex; align-items: center; gap: 10px; font-size: var(--cpu-fs-xl); font-weight: 700; }
+.auth-aside-brand img { width: 36px; height: 36px; border-radius: var(--cpu-radius-m); background: var(--cpu-card); }
+.auth-aside h2 { margin: 18px 0 0; font-size: var(--cpu-fs-xl); font-weight: 700; line-height: 1.45; letter-spacing: -.01em; }
 .auth-aside ul { display: grid; gap: 12px; margin: 4px 0 0; padding: 0; list-style: none; }
-.auth-aside li { display: flex; align-items: center; gap: 10px; color: rgba(255, 255, 255, .9); font-size: 14px; }
+.auth-aside li { display: flex; align-items: center; gap: 10px; color: rgba(255, 255, 255, .9); font-size: var(--cpu-fs-m); }
 .auth-aside li .el-icon {
   display: grid;
   width: 32px;
   height: 32px;
   place-items: center;
-  border-radius: 9px;
+  border-radius: var(--cpu-radius-m);
   background: rgba(255, 255, 255, .14);
-  font-size: 17px;
+  font-size: var(--cpu-fs-l);
 }
-.auth-aside p { margin: auto 0 0; padding-top: 24px; color: rgba(255, 255, 255, .72); font-size: 12px; line-height: 1.6; }
+.auth-aside p { margin: auto 0 0; padding-top: 24px; color: rgba(255, 255, 255, .72); font-size: var(--cpu-fs-xs); line-height: 1.6; }
 
 .auth-main { min-width: 0; padding: 26px 36px 28px; }
 .auth-nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 -6px 18px; }
@@ -101,11 +99,11 @@ const emit = defineEmits<{ home: [] }>();
   gap: 3px;
   padding: 0 6px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--cpu-radius-m);
   background: none;
   color: var(--cpu-text-secondary);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
   cursor: pointer;
 }
 .auth-nav :deep(button:hover),
@@ -114,17 +112,17 @@ const emit = defineEmits<{ home: [] }>();
 .auth-nav button:focus-visible { outline: 2px solid var(--cpu-primary); outline-offset: 2px; }
 
 .auth-head { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
-.auth-head img { display: none; width: 40px; height: 40px; flex: 0 0 auto; border-radius: 11px; }
-.auth-head h1 { margin: 0; color: var(--cpu-text); font-size: 22px; font-weight: 700; line-height: 1.35; }
-.auth-head p { margin: 4px 0 0; color: var(--cpu-text-secondary); font-size: 13px; line-height: 1.6; }
+.auth-head img { display: none; width: 40px; height: 40px; flex: 0 0 auto; border-radius: var(--cpu-radius-m); }
+.auth-head h1 { margin: 0; color: var(--cpu-text); font-size: var(--cpu-fs-xl); font-weight: 700; line-height: 1.35; }
+.auth-head p { margin: 4px 0 0; color: var(--cpu-text-secondary); font-size: var(--cpu-fs-s); line-height: 1.6; }
 
 @media (max-width: 820px) {
   .auth-wrap { align-items: start; padding: calc(16px + var(--cpu-safe-area-inset-top, 0px)) 12px 18px; }
-  .auth-shell { width: min(480px, 100%); grid-template-columns: minmax(0, 1fr); border-radius: 18px; box-shadow: var(--cpu-shadow-md); }
+  .auth-shell { width: min(480px, 100%); grid-template-columns: minmax(0, 1fr); border-radius: var(--cpu-radius-l); box-shadow: var(--cpu-shadow-md); }
   .auth-aside { display: none; }
   .auth-main { padding: 14px 18px 20px; }
   .auth-nav { margin-bottom: 12px; }
   .auth-head img { display: block; }
-  .auth-head h1 { font-size: 20px; }
+  .auth-head h1 { font-size: var(--cpu-fs-xl); }
 }
 </style>

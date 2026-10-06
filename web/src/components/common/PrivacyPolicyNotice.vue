@@ -37,7 +37,7 @@ withDefaults(defineProps<{
 <style scoped lang="scss">
 .privacy-policy-notice {
   margin: 12px 0 0;
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   line-height: 1.7;
 }
 
@@ -59,7 +59,7 @@ withDefaults(defineProps<{
 
 .privacy-policy-notice.compact {
   margin-top: 8px;
-  font-size: 11px;
+  font-size: var(--cpu-fs-xs);
 }
 
 .privacy-policy-notice .policy-link {

@@ -28,15 +28,15 @@ defineProps<{ title: string; subtitle?: string }>();
 }
 .page-title h2 {
   margin: 0;
-  font-size: 22px;
-  font-weight: 600;
-  color: #111827;
+  font-size: var(--cpu-fs-xl);
+  font-weight: 500;
+  color: var(--cpu-text);
   overflow-wrap: anywhere;
 }
 .page-subtitle {
   margin: 4px 0 0;
-  font-size: 13px;
-  color: #6b7280;
+  font-size: var(--cpu-fs-s);
+  color: var(--cpu-text-muted);
   overflow-wrap: anywhere;
 }
 .page-extra {
@@ -51,7 +51,7 @@ defineProps<{ title: string; subtitle?: string }>();
   }
 
   .page-title h2 {
-    font-size: 20px;
+    font-size: var(--cpu-fs-xl);
   }
 }
 </style>

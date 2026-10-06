@@ -328,38 +328,38 @@ defineExpose({ openDialog, requestInstall, autoPromptIfEligible, canShow, platfo
 </script>
 
 <style scoped>
-.ios-store-link { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; font-weight: 600; }
+.ios-store-link { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; font-weight: 500; }
 .ios-store-link:focus-visible { outline: 2px solid var(--cpu-button-primary); outline-offset: 2px; }
-.home-screen-steps summary { display: flex; min-height: 44px; align-items: center; justify-content: space-between; gap: 8px; color: var(--cpu-text); font-weight: 600; cursor: pointer; list-style: none; }
+.home-screen-steps summary { display: flex; min-height: 44px; align-items: center; justify-content: space-between; gap: 8px; color: var(--cpu-text); font-weight: 500; cursor: pointer; list-style: none; }
 .home-screen-steps summary::-webkit-details-marker { display: none; }
 .home-screen-steps summary .cpu-app-icon { flex: none; color: var(--cpu-text-secondary); transition: transform 150ms ease; }
 .home-screen-steps[open] summary .cpu-app-icon { transform: rotate(180deg); }
-.home-screen-steps summary:focus-visible { outline: 2px solid var(--cpu-button-primary); outline-offset: 2px; border-radius: 6px; }
+.home-screen-steps summary:focus-visible { outline: 2px solid var(--cpu-button-primary); outline-offset: 2px; border-radius: var(--cpu-radius-s); }
 .steps .step-text { min-width: 0; }
 @media (prefers-reduced-motion: reduce) {
   .home-screen-steps summary .cpu-app-icon { transition: none; }
 }
-.content { font-size: 14px; line-height: 1.7; color: var(--cpu-text); }
+.content { font-size: var(--cpu-fs-m); line-height: 1.7; color: var(--cpu-text); }
 .content p { margin: 0 0 10px; }
-.content .muted { color: var(--cpu-text-secondary); font-size: 12px; line-height: 1.6; }
+.content .muted { color: var(--cpu-text-secondary); font-size: var(--cpu-fs-xs); line-height: 1.6; }
 .content b { color: var(--cpu-primary); }
 .desktop-unsupported {
   display: grid;
   gap: 5px;
   padding: 14px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 10px;
+  border-radius: var(--cpu-radius-m);
   background: var(--cpu-surface-soft);
 }
-.desktop-unsupported strong { color: var(--cpu-text); font-size: 13px; }
-.desktop-unsupported p { margin: 0; color: var(--cpu-text-secondary); font-size: 12px; }
+.desktop-unsupported strong { color: var(--cpu-text); font-size: var(--cpu-fs-s); }
+.desktop-unsupported p { margin: 0; color: var(--cpu-text-secondary); font-size: var(--cpu-fs-xs); }
 .migration-note {
   padding: 10px 12px;
-  border: 1px solid color-mix(in srgb, var(--cpu-primary) 26%, transparent);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--cpu-primary) 10%, transparent);
+  border: 1px solid var(--cpu-primary-soft);
+  border-radius: var(--cpu-radius-m);
+  background: var(--cpu-primary-soft);
   color: var(--cpu-primary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   line-height: 1.6;
 }
 
@@ -367,7 +367,7 @@ defineExpose({ openDialog, requestInstall, autoPromptIfEligible, canShow, platfo
   list-style: none;
   padding: 0;
   margin: 8px 0 0;
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
   color: var(--cpu-text-secondary);
 }
 .bullets li {
@@ -400,7 +400,7 @@ defineExpose({ openDialog, requestInstall, autoPromptIfEligible, canShow, platfo
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
   color: var(--cpu-text);
   line-height: 1.5;
 }
@@ -413,8 +413,8 @@ defineExpose({ openDialog, requestInstall, autoPromptIfEligible, canShow, platfo
   color: #ffffff;
   display: grid;
   place-items: center;
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--cpu-fs-xs);
+  font-weight: 500;
 }
 .steps strong { color: var(--cpu-primary); }
 .ic {
@@ -435,7 +435,7 @@ defineExpose({ openDialog, requestInstall, autoPromptIfEligible, canShow, platfo
 .support-note {
   margin: 12px 0 0;
   color: var(--cpu-text-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   line-height: 1.6;
 }
 
@@ -445,7 +445,7 @@ defineExpose({ openDialog, requestInstall, autoPromptIfEligible, canShow, platfo
   background: transparent;
   color: var(--cpu-primary);
   font: inherit;
-  font-weight: 650;
+  font-weight: 500;
   padding: 0;
   cursor: pointer;
 }

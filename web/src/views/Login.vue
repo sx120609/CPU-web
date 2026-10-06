@@ -253,14 +253,14 @@ async function onDevSubmit() {
   gap: 8px;
   margin: 0 0 16px;
   padding: 10px 12px;
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--cpu-gold) 11%, var(--cpu-card));
+  border-radius: var(--cpu-radius-l);
+  background: var(--cpu-accent-soft);
   color: var(--cpu-text-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   line-height: 1.65;
 }
-.auth-notice .el-icon { flex: 0 0 auto; margin-top: 2px; color: var(--cpu-gold); font-size: 15px; }
-.auth-notice b { color: color-mix(in srgb, var(--cpu-gold) 70%, var(--cpu-text)); font-weight: 600; }
+.auth-notice .el-icon { flex: 0 0 auto; margin-top: 2px; color: var(--cpu-gold); font-size: var(--cpu-fs-m); }
+.auth-notice b { color: var(--cpu-accent); font-weight: 500; }
 
 .btn-submit { width: 100%; letter-spacing: 4px; }
 
@@ -269,7 +269,7 @@ async function onDevSubmit() {
   height: 38px;
   min-width: 112px;
   border: 1px solid var(--cpu-border);
-  border-radius: 5px;
+  border-radius: var(--cpu-radius-s);
   background: var(--cpu-card);
   display: grid;
   place-items: center;
@@ -299,7 +299,7 @@ async function onDevSubmit() {
   margin-top: 16px;
   padding: 0 14px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 12px;
+  border-radius: var(--cpu-radius-l);
   background: var(--cpu-surface-soft);
 }
 .dev-fallback summary {
@@ -308,15 +308,15 @@ async function onDevSubmit() {
   align-items: center;
   gap: 6px;
   color: var(--cpu-text-secondary);
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
   cursor: pointer;
   user-select: none;
 }
 .dev-fallback[open] { padding-bottom: 14px; }
-.dev-tip { margin: 0 0 8px; color: var(--cpu-text-muted); font-size: 12px; line-height: 1.6; }
+.dev-tip { margin: 0 0 8px; color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); line-height: 1.6; }
 .dev-form { display: flex; gap: 6px; flex-direction: column; margin-top: 8px; }
 .dev-accounts {
-  font-size: 11px;
+  font-size: var(--cpu-fs-xs);
   color: var(--cpu-primary);
   display: flex;
   gap: 8px;
@@ -336,7 +336,7 @@ async function onDevSubmit() {
 .dev-accounts button:focus-visible {
   outline: 2px solid var(--cpu-primary);
   outline-offset: 2px;
-  border-radius: 4px;
+  border-radius: var(--cpu-radius-s);
 }
 
 .alt-actions {
@@ -345,7 +345,7 @@ async function onDevSubmit() {
   gap: 8px;
   margin-top: 14px;
   color: var(--cpu-text-muted);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
 }
 
 .alt-actions button {

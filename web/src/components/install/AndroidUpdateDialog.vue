@@ -384,7 +384,7 @@ async function copyDownloadUrl(url: string, bridge: AndroidBridge | null) {
 <style scoped>
 .android-update-panel {
   color: var(--cpu-text);
-  font-size: 14px;
+  font-size: var(--cpu-fs-m);
   line-height: 1.75;
 }
 
@@ -403,14 +403,14 @@ async function copyDownloadUrl(url: string, bridge: AndroidBridge | null) {
 .migration-note,
 .muted {
   padding: 10px 12px;
-  border-radius: 10px;
-  font-size: 12px;
+  border-radius: var(--cpu-radius-m);
+  font-size: var(--cpu-fs-xs);
   line-height: 1.6;
 }
 
 .migration-note {
-  border: 1px solid color-mix(in srgb, var(--cpu-primary) 26%, transparent);
-  background: color-mix(in srgb, var(--cpu-primary) 10%, transparent);
+  border: 1px solid var(--cpu-primary-soft);
+  background: var(--cpu-primary-soft);
   color: var(--cpu-primary);
 }
 

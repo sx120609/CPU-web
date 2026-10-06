@@ -62,9 +62,9 @@ onMounted(async () => {
   display: grid;
   gap: 10px;
   padding: 12px;
-  border: 1px solid color-mix(in srgb, var(--cpu-primary) 28%, var(--cpu-border-soft));
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--cpu-primary) 7%, var(--cpu-surface));
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: var(--cpu-radius-m);
+  background: var(--cpu-primary-soft);
 }
 
 .desktop-client-copy {
@@ -74,13 +74,13 @@ onMounted(async () => {
 
 .desktop-client-copy strong {
   color: var(--cpu-text);
-  font-size: 14px;
+  font-size: var(--cpu-fs-m);
 }
 
 .desktop-client-copy span,
 .desktop-client-status {
   color: var(--cpu-text-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   line-height: 1.6;
 }
 
@@ -97,9 +97,9 @@ onMounted(async () => {
   min-height: 34px;
   padding: 6px 11px;
   border: 1px solid var(--cpu-primary);
-  border-radius: 8px;
+  border-radius: var(--cpu-radius-m);
   color: var(--cpu-primary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   font-weight: 700;
   line-height: 1.3;
   text-decoration: none;

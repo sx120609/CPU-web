@@ -14,10 +14,10 @@ defineProps<{ text: string }>();
 .empty-state {
   padding: 36px 0;
   text-align: center;
-  color: #94a3b8;
+  color: var(--cpu-text-muted);
 }
 .empty-state p {
   margin-top: 8px;
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
 }
 </style>

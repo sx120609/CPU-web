@@ -15,16 +15,16 @@ html[data-theme="dark"] .download-page {
   height: 42px;
   flex: 0 0 auto;
   place-items: center;
-  border-radius: 12px;
+  border-radius: var(--cpu-radius-l);
   background: color-mix(in srgb, var(--tone, var(--cpu-primary)) var(--dl-tile-fill), var(--cpu-card));
   color: color-mix(in srgb, var(--tone, var(--cpu-primary)) var(--dl-tile-ink), var(--cpu-text));
-  font-size: 21px;
+  font-size: var(--cpu-fs-xl);
 }
 
 .dl-tile--lg {
   width: 52px;
   height: 52px;
-  border-radius: 15px;
+  border-radius: var(--cpu-radius-l);
   font-size: 26px;
 }
 
@@ -33,11 +33,11 @@ html[data-theme="dark"] .download-page {
   flex: 0 0 auto;
   align-items: center;
   padding: 3px 9px;
-  border-radius: 999px;
+  border-radius: var(--cpu-radius-pill);
   background: var(--cpu-surface-subtle);
   color: var(--cpu-text-secondary);
-  font-size: 11px;
-  font-weight: 600;
+  font-size: var(--cpu-fs-xs);
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
   line-height: 1.5;
   white-space: nowrap;
@@ -53,8 +53,8 @@ html[data-theme="dark"] .download-page {
   align-items: center;
   justify-content: center;
   gap: 7px;
-  font-size: 14px;
-  font-weight: 600;
+  font-size: var(--cpu-fs-m);
+  font-weight: 500;
   text-align: center;
   text-decoration: none;
   cursor: pointer;
@@ -62,13 +62,13 @@ html[data-theme="dark"] .download-page {
 
 .dl-action .cpu-app-icon {
   flex: 0 0 auto;
-  font-size: 16px;
+  font-size: var(--cpu-fs-l);
 }
 
 .dl-action.dl-action--plain {
-  --cpu-button-fill: color-mix(in srgb, var(--cpu-button-primary) 9%, var(--cpu-card));
+  --cpu-button-fill: var(--cpu-primary-soft);
   --cpu-button-ink: var(--cpu-button-primary);
-  --cpu-button-hover-fill: color-mix(in srgb, var(--cpu-button-primary) 16%, var(--cpu-card));
+  --cpu-button-hover-fill: var(--cpu-primary-soft);
   --cpu-button-hover-ink: var(--cpu-button-primary);
 }
 
@@ -90,7 +90,7 @@ html[data-theme="dark"] .download-page {
   min-height: 22px;
   padding-left: 32px;
   color: var(--cpu-text-secondary);
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
   line-height: 1.65;
   counter-increment: dl-step;
 }
@@ -106,7 +106,7 @@ html[data-theme="dark"] .download-page {
   border-radius: 50%;
   background: var(--cpu-primary-soft);
   color: var(--cpu-primary);
-  font-size: 11px;
+  font-size: var(--cpu-fs-xs);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   content: counter(dl-step);
@@ -126,14 +126,14 @@ html[data-theme="dark"] .download-page {
   align-items: center;
   gap: 5px;
   color: var(--cpu-text-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   line-height: 1.5;
 }
 
 .dl-checks .cpu-app-icon {
   flex: 0 0 auto;
   color: var(--cpu-primary);
-  font-size: 14px;
+  font-size: var(--cpu-fs-m);
 }
 
 .dl-dot {

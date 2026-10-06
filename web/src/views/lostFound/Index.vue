@@ -392,12 +392,12 @@ function claimTagType(status: LostFoundClaimStatus) { return status === "accepte
 </script>
 
 <style scoped>
-.lost-found-page{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:18px}.hero{position:relative;min-height:280px;padding:42px 46px;border-radius:24px;overflow:hidden;color:#fff;background:linear-gradient(125deg,#087f70 0%,#13a38c 62%,#79cfb4 100%);box-shadow:0 20px 45px rgba(8,127,112,.22)}.hero::after{content:"";position:absolute;right:-70px;top:-110px;width:380px;height:380px;border-radius:88px;background:linear-gradient(135deg,rgba(255,255,255,.13),rgba(255,255,255,.02));transform:rotate(18deg)}.hero-copy{position:relative;z-index:2;max-width:680px}.eyebrow{font-size:12px;letter-spacing:.14em;opacity:.82}.hero h1{margin:12px 0 10px;font-size:46px;letter-spacing:-.04em}.hero p{max-width:620px;margin:0;line-height:1.8;color:rgba(255,255,255,.88)}.hero-actions{display:flex;gap:10px;margin-top:26px;flex-wrap:wrap}.hero-actions :deep(.el-button--primary){color:#087f70;background:#fff;border-color:#fff}.hero-actions :deep(.el-button.is-text){color:#fff}.hero-visual{position:absolute;z-index:1;right:44px;top:48px;width:250px;display:flex;flex-direction:column;align-items:center;gap:8px}.visual-card{width:220px;padding:14px 16px;border:1px solid rgba(255,255,255,.28);border-radius:16px;background:rgba(255,255,255,.13);box-shadow:0 12px 28px rgba(6,78,68,.12);backdrop-filter:blur(9px)}.visual-card strong,.visual-card small{display:flex;align-items:center}.visual-card strong{gap:7px;margin:3px 0 5px;font-size:14px}.visual-card small{color:rgba(255,255,255,.76);font-size:10px}.visual-kicker{font-size:8px;font-weight:700;letter-spacing:.18em;opacity:.72}.found-card{transform:translateX(-18px)}.lost-card{transform:translateX(18px)}.visual-link{width:120px;display:flex;align-items:center;gap:9px;color:rgba(255,255,255,.84)}.visual-link span{height:1px;flex:1;background:rgba(255,255,255,.36)}.filter-card{padding:16px 18px}.quick-types{display:flex;gap:8px;margin-bottom:14px}.quick-types button{padding:8px 15px;border:0;border-radius:999px;color:var(--cpu-text-secondary);background:var(--cpu-surface-subtle);cursor:pointer}.quick-types button.active{color:#fff;background:var(--cpu-primary)}.filters{display:grid;grid-template-columns:1.5fr .9fr 1fr 1.35fr .8fr auto;gap:10px}.list-head{display:flex;align-items:center;justify-content:space-between}.list-head strong{font-size:22px;color:var(--cpu-primary)}.list-head small{margin-left:12px;color:var(--cpu-text-muted)}.items-grid{min-height:300px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.items-grid>.el-empty{grid-column:1/-1}.item-card{overflow:hidden;border:1px solid var(--cpu-border-soft);border-radius:16px;background:var(--cpu-card);box-shadow:var(--cpu-shadow-sm);cursor:pointer;transition:.2s ease}.item-card:hover{transform:translateY(-3px);border-color:color-mix(in srgb,var(--cpu-primary) 45%,var(--cpu-border-soft));box-shadow:0 14px 30px rgba(15,23,42,.1)}.item-card.claimed{opacity:.66}.item-card.pinned{border-color:rgba(225,82,65,.4)}.cover{position:relative;height:190px;overflow:hidden;background:linear-gradient(135deg,#dff8ee,#eef7f5)}.cover img{width:100%;height:100%;object-fit:cover}.cover-placeholder{height:100%;display:grid;place-items:center;color:#0f8f7b;font:700 70px/1 serif}.kind,.pin{position:absolute;top:12px;padding:5px 10px;border-radius:999px;color:#fff;font-size:11px;font-weight:700;backdrop-filter:blur(8px)}.kind{left:12px}.kind.found{background:rgba(8,127,112,.88)}.kind.lost{background:rgba(217,119,6,.9)}.pin{right:12px;background:rgba(220,38,38,.86)}.claimed-mark{position:absolute;right:12px;bottom:12px;padding:8px 13px;border-radius:8px;color:#fff;background:rgba(30,41,59,.82);font-weight:700}.card-body{padding:16px}.card-body h2{margin:0 0 8px;font-size:19px}.card-body>p{height:42px;margin:0 0 12px;overflow:hidden;color:var(--cpu-text-secondary);font-size:13px;line-height:1.65}.facts{display:flex;flex-direction:column;gap:7px;color:var(--cpu-text-secondary);font-size:12px}.facts span{display:flex;align-items:center;gap:6px}.card-body footer{display:flex;justify-content:space-between;gap:8px;margin-top:14px;padding-top:12px;border-top:1px solid var(--cpu-border-soft);color:var(--cpu-text-muted);font-size:11px}.el-pagination{align-self:center}.two-cols,.three-cols{display:grid;gap:14px}.two-cols{grid-template-columns:1fr 1.4fr}.three-cols{grid-template-columns:1fr 1.15fr 1.2fr}.two-cols>*,.three-cols>*{min-width:0}.choice-tabs{width:100%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:3px;padding:3px;border-radius:9px;background:var(--cpu-surface-subtle)}.choice-tabs button{min-width:0;padding:7px 8px;border:0;border-radius:7px;color:var(--cpu-text-secondary);background:transparent;font-size:13px;white-space:nowrap;cursor:pointer;transition:.16s}.choice-tabs button.active{color:#fff;background:var(--cpu-primary);box-shadow:0 3px 8px color-mix(in srgb,var(--cpu-primary) 24%,transparent)}.campus-tabs button{font-size:12px}.field-note{margin:5px 0 0;color:var(--cpu-text-muted);font-size:11px}.image-grid{width:100%;display:grid;grid-template-columns:repeat(6,1fr);gap:8px}.image-cell,.upload-cell{position:relative;aspect-ratio:1;border-radius:10px;overflow:hidden;background:var(--cpu-surface-subtle)}.image-cell img{width:100%;height:100%;object-fit:cover}.image-cell button{position:absolute;right:4px;top:4px;width:23px;height:23px;border:0;border-radius:50%;color:#fff;background:rgba(15,23,42,.7);cursor:pointer}.upload-cell{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:5px;border:1px dashed var(--cpu-border);color:var(--cpu-text-secondary);cursor:pointer}.upload-cell input{display:none}.upload-cell span{font-size:10px}.drawer-title{display:flex;flex-direction:column;gap:3px}.drawer-title span{color:var(--cpu-primary);font-size:11px}.drawer-title strong{font-size:20px}.detail{padding:0 6px 30px}.detail :deep(.el-carousel__item){border-radius:14px;background:var(--cpu-surface-subtle)}.detail :deep(.el-carousel__item img){width:100%;height:100%;object-fit:contain}.detail-tags{display:flex;gap:7px;margin-top:16px}.detail h2{margin:12px 0 16px;font-size:28px}.detail dl{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.detail dl div{padding:12px;border-radius:10px;background:var(--cpu-surface-subtle)}.detail dt{color:var(--cpu-text-muted);font-size:10px}.detail dd{margin:5px 0 0;font-size:13px}.description{padding:16px 0;white-space:pre-wrap;line-height:1.8}.private-contact{display:flex;flex-direction:column;gap:5px;padding:13px;border-radius:10px;background:rgba(8,127,112,.09)}.private-contact small{color:var(--cpu-text-muted)}.detail-actions{display:flex;gap:8px;margin:18px 0;flex-wrap:wrap}.claims,.my-claim{margin-top:22px;padding-top:18px;border-top:1px solid var(--cpu-border-soft)}.claims h3,.my-claim h3{margin:0 0 12px}.claims article{padding:14px;margin-bottom:10px;border:1px solid var(--cpu-border-soft);border-radius:12px}.claims article>div{display:flex;justify-content:space-between}.claims p,.my-claim p{color:var(--cpu-text-secondary);font-size:13px;line-height:1.7}.claim-contact{padding:8px;border-radius:8px;background:var(--cpu-surface-subtle)}.claim-form{margin-top:16px}.mine-list{display:flex;flex-direction:column;gap:8px}.mine-list button{display:grid;grid-template-columns:56px 1fr auto;align-items:center;gap:10px;padding:13px;border:1px solid var(--cpu-border-soft);border-radius:10px;color:var(--cpu-text);background:var(--cpu-card);text-align:left;cursor:pointer}.mine-list button span{color:var(--cpu-primary);font-size:11px}.mine-list button small{color:var(--cpu-text-muted)}
-.hero{min-height:0;padding:22px 28px;border-radius:16px;background:linear-gradient(120deg,#087f70,#10a38d);box-shadow:0 10px 26px rgba(8,127,112,.16)}.hero::after{display:none}.hero-copy{max-width:none;display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"eyebrow actions" "title actions" "description actions";align-items:center;column-gap:28px}.eyebrow{grid-area:eyebrow;font-size:10px}.hero h1{grid-area:title;margin:4px 0;font-size:30px;letter-spacing:-.03em}.hero p{grid-area:description;max-width:680px;font-size:13px;line-height:1.6}.hero-actions{grid-area:actions;margin:0;justify-content:flex-end}.hero-actions :deep(.el-button){min-width:96px;margin:0;color:#087f70;background:#fff;border-color:#fff;border-radius:8px;font-weight:600}.hero-actions :deep(.el-button:hover),.hero-actions :deep(.el-button:focus){color:#066c60;background:#eefbf7;border-color:#eefbf7}.campus-tabs button{padding:8px 16px;font-size:13px}.location-time-row{grid-template-columns:1fr 1fr}
+.lost-found-page{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:18px}.hero{position:relative;min-height:280px;padding:42px 46px;border-radius: var(--cpu-radius-l);overflow:hidden;color:#fff;background:var(--cpu-primary-dark)}.hero::after{content:"";position:absolute;right:-70px;top:-110px;width:380px;height:380px;border-radius: var(--cpu-radius-l);background:linear-gradient(135deg,rgba(255,255,255,.13),rgba(255,255,255,.02));transform:rotate(18deg)}.hero-copy{position:relative;z-index:2;max-width:680px}.eyebrow{font-size: var(--cpu-fs-xs);letter-spacing:.14em;opacity:.82}.hero h1{margin:12px 0 10px;font-size:46px;letter-spacing:-.04em}.hero p{max-width:620px;margin:0;line-height:1.8;color:rgba(255,255,255,.88)}.hero-actions{display:flex;gap:10px;margin-top:26px;flex-wrap:wrap}.hero-actions :deep(.el-button--primary){color:var(--cpu-primary);background:var(--cpu-card);border-color:#fff}.hero-actions :deep(.el-button.is-text){color:#fff}.hero-visual{position:absolute;z-index:1;right:44px;top:48px;width:250px;display:flex;flex-direction:column;align-items:center;gap:8px}.visual-card{width:220px;padding:14px 16px;border:1px solid rgba(255,255,255,.28);border-radius: var(--cpu-radius-l);background:rgba(255,255,255,.13);box-shadow:0 12px 28px rgba(6,78,68,.12);backdrop-filter:blur(9px)}.visual-card strong,.visual-card small{display:flex;align-items:center}.visual-card strong{gap:7px;margin:3px 0 5px;font-size: var(--cpu-fs-m)}.visual-card small{color:rgba(255,255,255,.76);font-size: var(--cpu-fs-xs)}.visual-kicker{font-size: var(--cpu-fs-xs);font-weight: 700;letter-spacing:.18em;opacity:.72}.found-card{transform:translateX(-18px)}.lost-card{transform:translateX(18px)}.visual-link{width:120px;display:flex;align-items:center;gap:9px;color:rgba(255,255,255,.84)}.visual-link span{height:1px;flex:1;background:rgba(255,255,255,.36)}.filter-card{padding:16px 18px}.quick-types{display:flex;gap:8px;margin-bottom:14px}.quick-types button{padding:8px 15px;border:0;border-radius: var(--cpu-radius-pill);color:var(--cpu-text-secondary);background:var(--cpu-surface-subtle);cursor:pointer}.quick-types button.active{color:#fff;background:var(--cpu-primary)}.filters{display:grid;grid-template-columns:1.5fr .9fr 1fr 1.35fr .8fr auto;gap:10px}.list-head{display:flex;align-items:center;justify-content:space-between}.list-head strong{font-size: var(--cpu-fs-xl);color:var(--cpu-primary)}.list-head small{margin-left:12px;color:var(--cpu-text-muted)}.items-grid{min-height:300px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.items-grid>.el-empty{grid-column:1/-1}.item-card{overflow:hidden;border:1px solid var(--cpu-border-soft);border-radius: var(--cpu-radius-l);background:var(--cpu-card);box-shadow:var(--cpu-shadow-sm);cursor:pointer;transition:.2s ease}.item-card:hover{transform:translateY(-3px);border-color:var(--cpu-border-soft);box-shadow:0 14px 30px rgba(15,23,42,.1)}.item-card.claimed{opacity:.66}.item-card.pinned{border-color:rgba(225,82,65,.4)}.cover{position:relative;height:190px;overflow:hidden;background:var(--cpu-primary-soft)}.cover img{width:100%;height:100%;object-fit:cover}.cover-placeholder{height:100%;display:grid;place-items:center;color:var(--cpu-primary);font:700 70px/1 serif}.kind,.pin{position:absolute;top:12px;padding:5px 10px;border-radius: var(--cpu-radius-pill);color:#fff;font-size: var(--cpu-fs-xs);font-weight: 700;backdrop-filter:blur(8px)}.kind{left:12px}.kind.found{background:rgba(8,127,112,.88)}.kind.lost{background:rgba(217,119,6,.9)}.pin{right:12px;background:rgba(220,38,38,.86)}.claimed-mark{position:absolute;right:12px;bottom:12px;padding:8px 13px;border-radius: var(--cpu-radius-m);color:#fff;background:rgba(30,41,59,.82);font-weight: 700}.card-body{padding:16px}.card-body h2{margin:0 0 8px;font-size: var(--cpu-fs-xl)}.card-body>p{height:42px;margin:0 0 12px;overflow:hidden;color:var(--cpu-text-secondary);font-size: var(--cpu-fs-s);line-height:1.65}.facts{display:flex;flex-direction:column;gap:7px;color:var(--cpu-text-secondary);font-size: var(--cpu-fs-xs)}.facts span{display:flex;align-items:center;gap:6px}.card-body footer{display:flex;justify-content:space-between;gap:8px;margin-top:14px;padding-top:12px;border-top:1px solid var(--cpu-border-soft);color:var(--cpu-text-muted);font-size: var(--cpu-fs-xs)}.el-pagination{align-self:center}.two-cols,.three-cols{display:grid;gap:14px}.two-cols{grid-template-columns:1fr 1.4fr}.three-cols{grid-template-columns:1fr 1.15fr 1.2fr}.two-cols>*,.three-cols>*{min-width:0}.choice-tabs{width:100%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:3px;padding:3px;border-radius: var(--cpu-radius-m);background:var(--cpu-surface-subtle)}.choice-tabs button{min-width:0;padding:7px 8px;border:0;border-radius: var(--cpu-radius-s);color:var(--cpu-text-secondary);background:transparent;font-size: var(--cpu-fs-s);white-space:nowrap;cursor:pointer;transition:.16s}.choice-tabs button.active{color:#fff;background:var(--cpu-primary);box-shadow:0 3px 8px var(--cpu-primary-soft)}.campus-tabs button{font-size: var(--cpu-fs-xs)}.field-note{margin:5px 0 0;color:var(--cpu-text-muted);font-size: var(--cpu-fs-xs)}.image-grid{width:100%;display:grid;grid-template-columns:repeat(6,1fr);gap:8px}.image-cell,.upload-cell{position:relative;aspect-ratio:1;border-radius: var(--cpu-radius-m);overflow:hidden;background:var(--cpu-surface-subtle)}.image-cell img{width:100%;height:100%;object-fit:cover}.image-cell button{position:absolute;right:4px;top:4px;width:23px;height:23px;border:0;border-radius:50%;color:#fff;background:rgba(15,23,42,.7);cursor:pointer}.upload-cell{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:5px;border:1px dashed var(--cpu-border);color:var(--cpu-text-secondary);cursor:pointer}.upload-cell input{display:none}.upload-cell span{font-size: var(--cpu-fs-xs)}.drawer-title{display:flex;flex-direction:column;gap:3px}.drawer-title span{color:var(--cpu-primary);font-size: var(--cpu-fs-xs)}.drawer-title strong{font-size: var(--cpu-fs-xl)}.detail{padding:0 6px 30px}.detail :deep(.el-carousel__item){border-radius: var(--cpu-radius-l);background:var(--cpu-surface-subtle)}.detail :deep(.el-carousel__item img){width:100%;height:100%;object-fit:contain}.detail-tags{display:flex;gap:7px;margin-top:16px}.detail h2{margin:12px 0 16px;font-size:28px}.detail dl{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.detail dl div{padding:12px;border-radius: var(--cpu-radius-m);background:var(--cpu-surface-subtle)}.detail dt{color:var(--cpu-text-muted);font-size: var(--cpu-fs-xs)}.detail dd{margin:5px 0 0;font-size: var(--cpu-fs-s)}.description{padding:16px 0;white-space:pre-wrap;line-height:1.8}.private-contact{display:flex;flex-direction:column;gap:5px;padding:13px;border-radius: var(--cpu-radius-m);background:rgba(8,127,112,.09)}.private-contact small{color:var(--cpu-text-muted)}.detail-actions{display:flex;gap:8px;margin:18px 0;flex-wrap:wrap}.claims,.my-claim{margin-top:22px;padding-top:18px;border-top:1px solid var(--cpu-border-soft)}.claims h3,.my-claim h3{margin:0 0 12px}.claims article{padding:14px;margin-bottom:10px;border:1px solid var(--cpu-border-soft);border-radius: var(--cpu-radius-l)}.claims article>div{display:flex;justify-content:space-between}.claims p,.my-claim p{color:var(--cpu-text-secondary);font-size: var(--cpu-fs-s);line-height:1.7}.claim-contact{padding:8px;border-radius: var(--cpu-radius-m);background:var(--cpu-surface-subtle)}.claim-form{margin-top:16px}.mine-list{display:flex;flex-direction:column;gap:8px}.mine-list button{display:grid;grid-template-columns:56px 1fr auto;align-items:center;gap:10px;padding:13px;border:1px solid var(--cpu-border-soft);border-radius: var(--cpu-radius-m);color:var(--cpu-text);background:var(--cpu-card);text-align:left;cursor:pointer}.mine-list button span{color:var(--cpu-primary);font-size: var(--cpu-fs-xs)}.mine-list button small{color:var(--cpu-text-muted)}
+.hero{min-height:0;padding:22px 28px;border-radius: var(--cpu-radius-l);background:var(--cpu-primary-dark)}.hero::after{display:none}.hero-copy{max-width:none;display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"eyebrow actions" "title actions" "description actions";align-items:center;column-gap:28px}.eyebrow{grid-area:eyebrow;font-size: var(--cpu-fs-xs)}.hero h1{grid-area:title;margin:4px 0;font-size:30px;letter-spacing:-.03em}.hero p{grid-area:description;max-width:680px;font-size: var(--cpu-fs-s);line-height:1.6}.hero-actions{grid-area:actions;margin:0;justify-content:flex-end}.hero-actions :deep(.el-button){min-width:96px;margin:0;color:var(--cpu-primary);background:var(--cpu-card);border-color:#fff;border-radius: var(--cpu-radius-m);font-weight: 500}.hero-actions :deep(.el-button:hover),.hero-actions :deep(.el-button:focus){color:var(--cpu-primary);background:var(--cpu-primary-soft);border-color:var(--cpu-primary-soft)}.campus-tabs button{padding:8px 16px;font-size: var(--cpu-fs-s)}.location-time-row{grid-template-columns:1fr 1fr}
 @media(max-width:980px){.filters{grid-template-columns:1fr 1fr 1fr}.items-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.hero-copy{max-width:none}}
 @media(max-width:820px){.hero-copy{grid-template-columns:1fr;grid-template-areas:"eyebrow" "title" "description" "actions"}.hero-actions{justify-content:flex-start;margin-top:14px}}
-@media(max-width:650px){.lost-found-page{gap:12px}.hero{min-height:auto;padding:20px;border-radius:14px}.hero h1{font-size:28px}.hero-actions{display:grid;grid-template-columns:1fr 1fr}.hero-actions .el-button{margin:0}.hero-actions .el-button:last-child{grid-column:1/-1}.filter-card{padding:12px}.filters{grid-template-columns:1fr 1fr}.filters>*:first-child,.filters :deep(.el-date-editor){grid-column:1/-1;width:100%}.list-head small{display:block;margin:2px 0 0}.items-grid{grid-template-columns:1fr}.cover{height:210px}.two-cols,.three-cols{grid-template-columns:1fr}.image-grid{grid-template-columns:repeat(3,1fr)}.detail dl{grid-template-columns:1fr}.detail h2{font-size:24px}.detail-actions .el-button{margin:0;flex:1 1 calc(50% - 8px)}.mine-list button{grid-template-columns:48px 1fr}.mine-list button small{grid-column:2}}
-.import-details{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:14px}.import-details div{display:flex;flex-direction:column;gap:4px;padding:10px 12px;border-radius:8px;background:var(--cpu-surface-subtle)}.import-details small{color:var(--cpu-text-muted);font-size:10px}.import-details strong{font-size:12px;line-height:1.5;white-space:pre-wrap}
+@media(max-width:650px){.lost-found-page{gap:12px}.hero{min-height:auto;padding:20px;border-radius: var(--cpu-radius-l)}.hero h1{font-size:28px}.hero-actions{display:grid;grid-template-columns:1fr 1fr}.hero-actions .el-button{margin:0}.hero-actions .el-button:last-child{grid-column:1/-1}.filter-card{padding:12px}.filters{grid-template-columns:1fr 1fr}.filters>*:first-child,.filters :deep(.el-date-editor){grid-column:1/-1;width:100%}.list-head small{display:block;margin:2px 0 0}.items-grid{grid-template-columns:1fr}.cover{height:210px}.two-cols,.three-cols{grid-template-columns:1fr}.image-grid{grid-template-columns:repeat(3,1fr)}.detail dl{grid-template-columns:1fr}.detail h2{font-size: var(--cpu-fs-xl)}.detail-actions .el-button{margin:0;flex:1 1 calc(50% - 8px)}.mine-list button{grid-template-columns:48px 1fr}.mine-list button small{grid-column:2}}
+.import-details{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:14px}.import-details div{display:flex;flex-direction:column;gap:4px;padding:10px 12px;border-radius: var(--cpu-radius-m);background:var(--cpu-surface-subtle)}.import-details small{color:var(--cpu-text-muted);font-size: var(--cpu-fs-xs)}.import-details strong{font-size: var(--cpu-fs-xs);line-height:1.5;white-space:pre-wrap}
 @media(max-width:600px){.import-details{grid-template-columns:1fr}}
 .image-cell img,.detail :deep(.el-carousel__item img){cursor:zoom-in}
 </style>
@@ -415,7 +415,7 @@ function claimTagType(status: LostFoundClaimStatus) { return status === "accepte
   grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
   gap: 18px;
   padding: 18px;
-  border-radius: 15px;
+  border-radius: var(--cpu-radius-l);
   box-shadow: var(--cpu-shadow-sm);
 }
 
@@ -425,8 +425,8 @@ function claimTagType(status: LostFoundClaimStatus) { return status === "accepte
 
 .mobile-lost-kicker {
   color: var(--cpu-primary);
-  font-size: 11px;
-  font-weight: 800;
+  font-size: var(--cpu-fs-xs);
+  font-weight: 700;
   letter-spacing: .12em;
 }
 
@@ -441,7 +441,7 @@ function claimTagType(status: LostFoundClaimStatus) { return status === "accepte
   max-width: 500px;
   margin: 0;
   color: var(--cpu-text-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   line-height: 1.65;
 }
 
@@ -459,7 +459,7 @@ function claimTagType(status: LostFoundClaimStatus) { return status === "accepte
   gap: 9px;
   padding: 9px 10px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 11px;
+  border-radius: var(--cpu-radius-m);
   background: var(--cpu-surface-soft);
   color: var(--cpu-text);
   cursor: pointer;
@@ -469,7 +469,7 @@ function claimTagType(status: LostFoundClaimStatus) { return status === "accepte
 
 .mobile-lost-actions > button:hover,
 .mobile-lost-actions > button:focus-visible {
-  border-color: color-mix(in srgb, var(--cpu-primary) 42%, var(--cpu-border-soft));
+  border-color: var(--cpu-border-soft);
   outline: 0;
 }
 
@@ -479,15 +479,15 @@ function claimTagType(status: LostFoundClaimStatus) { return status === "accepte
   height: 34px;
   flex: 0 0 auto;
   place-items: center;
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--cpu-primary) 13%, var(--cpu-card));
+  border-radius: var(--cpu-radius-m);
+  background: var(--cpu-primary-soft);
   color: var(--cpu-primary);
-  font-size: 18px;
+  font-size: var(--cpu-fs-l);
 }
 
 .mobile-action-icon.is-lost {
-  background: color-mix(in srgb, #f59e0b 13%, var(--cpu-card));
-  color: #b45309;
+  background: var(--cpu-accent-soft);
+  color: var(--cpu-accent);
 }
 
 .mobile-lost-actions b,
@@ -496,13 +496,13 @@ function claimTagType(status: LostFoundClaimStatus) { return status === "accepte
 }
 
 .mobile-lost-actions b {
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
 }
 
 .mobile-lost-actions small {
   margin-top: 2px;
   color: var(--cpu-text-muted);
-  font-size: 10px;
+  font-size: var(--cpu-fs-xs);
 }
 
 .mobile-lost-actions > .mobile-mine-action {
@@ -512,14 +512,14 @@ function claimTagType(status: LostFoundClaimStatus) { return status === "accepte
   padding: 7px 10px;
   background: transparent;
   color: var(--cpu-primary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   font-weight: 700;
   text-align: center;
 }
 
 .mobile-lost-search {
   padding: 11px;
-  border-radius: 14px;
+  border-radius: var(--cpu-radius-l);
   box-shadow: var(--cpu-shadow-sm);
 }
 
@@ -531,7 +531,7 @@ function claimTagType(status: LostFoundClaimStatus) { return status === "accepte
 
 .mobile-search-row :deep(.el-input__wrapper) {
   min-height: 42px;
-  border-radius: 10px;
+  border-radius: var(--cpu-radius-m);
   background: var(--cpu-surface-soft);
   box-shadow: 0 0 0 1px var(--cpu-border-soft) inset;
 }
@@ -543,11 +543,11 @@ function claimTagType(status: LostFoundClaimStatus) { return status === "accepte
   height: 42px;
   place-items: center;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 10px;
+  border-radius: var(--cpu-radius-m);
   background: var(--cpu-surface-soft);
   color: var(--cpu-primary);
   cursor: pointer;
-  font-size: 17px;
+  font-size: var(--cpu-fs-l);
 }
 
 .mobile-filter-button span {
@@ -560,11 +560,11 @@ function claimTagType(status: LostFoundClaimStatus) { return status === "accepte
   padding: 0 4px;
   place-items: center;
   border: 2px solid var(--cpu-card);
-  border-radius: 999px;
+  border-radius: var(--cpu-radius-pill);
   background: var(--cpu-primary);
   color: #fff;
-  font-size: 9px;
-  font-weight: 800;
+  font-size: var(--cpu-fs-xs);
+  font-weight: 700;
 }
 
 .mobile-kind-tabs {
@@ -574,32 +574,31 @@ function claimTagType(status: LostFoundClaimStatus) { return status === "accepte
   margin-top: 8px;
   padding: 4px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 11px;
+  border-radius: var(--cpu-radius-m);
   background: var(--cpu-surface-soft);
 }
 
 .mobile-kind-tabs button {
   min-height: 34px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--cpu-radius-m);
   background: transparent;
   color: var(--cpu-text-secondary);
   cursor: pointer;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   font-weight: 700;
 }
 
 .mobile-kind-tabs button.active {
   background: var(--cpu-primary);
-  box-shadow: 0 4px 12px color-mix(in srgb, var(--cpu-primary) 20%, transparent);
   color: #fff;
 }
 
 .mobile-lost-feed {
   padding: 13px;
-  border-radius: 15px;
-  background: color-mix(in srgb, var(--cpu-surface-soft) 58%, var(--cpu-card));
+  border-radius: var(--cpu-radius-l);
+  background: var(--cpu-surface-soft);
 }
 
 .mobile-list-head {
@@ -613,13 +612,13 @@ function claimTagType(status: LostFoundClaimStatus) { return status === "accepte
 .mobile-list-head h2 {
   margin: 0;
   color: var(--cpu-text);
-  font-size: 18px;
+  font-size: var(--cpu-fs-l);
 }
 
 .mobile-list-head p {
   margin: 3px 0 0;
   color: var(--cpu-text-muted);
-  font-size: 10px;
+  font-size: var(--cpu-fs-xs);
 }
 
 .mobile-list-head > button {
@@ -629,7 +628,7 @@ function claimTagType(status: LostFoundClaimStatus) { return status === "accepte
   color: var(--cpu-primary);
   cursor: pointer;
   font: inherit;
-  font-size: 11px;
+  font-size: var(--cpu-fs-xs);
 }
 
 .mobile-list-head > button:disabled {
@@ -646,7 +645,7 @@ function claimTagType(status: LostFoundClaimStatus) { return status === "accepte
 .mobile-item-card {
   padding: 13px 12px 10px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 11px;
+  border-radius: var(--cpu-radius-m);
   background: var(--cpu-card);
   color: var(--cpu-text);
   cursor: pointer;
@@ -654,7 +653,7 @@ function claimTagType(status: LostFoundClaimStatus) { return status === "accepte
 
 .mobile-item-card:focus-visible {
   border-color: var(--cpu-primary);
-  outline: 2px solid color-mix(in srgb, var(--cpu-primary) 32%, transparent);
+  outline: 2px solid var(--cpu-primary-soft);
   outline-offset: 1px;
 }
 
@@ -663,7 +662,7 @@ function claimTagType(status: LostFoundClaimStatus) { return status === "accepte
 }
 
 .mobile-item-card.pinned {
-  border-color: color-mix(in srgb, #ef4444 28%, var(--cpu-border-soft));
+  border-color: var(--cpu-border-soft);
 }
 
 .mobile-item-author {
@@ -687,30 +686,30 @@ function claimTagType(status: LostFoundClaimStatus) { return status === "accepte
 }
 
 .mobile-item-author b {
-  font-size: 13px;
-  font-weight: 650;
+  font-size: var(--cpu-fs-s);
+  font-weight: 500;
 }
 
 .mobile-item-author small {
   margin-top: 2px;
   color: var(--cpu-text-muted);
-  font-size: 10px;
+  font-size: var(--cpu-fs-xs);
 }
 
 .mobile-item-author em {
   flex: 0 0 auto;
   padding: 3px 7px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--cpu-primary) 11%, var(--cpu-card));
+  border-radius: var(--cpu-radius-pill);
+  background: var(--cpu-primary-soft);
   color: var(--cpu-primary);
-  font-size: 10px;
+  font-size: var(--cpu-fs-xs);
   font-style: normal;
-  font-weight: 750;
+  font-weight: 700;
 }
 
 .mobile-item-author em.lost {
-  background: color-mix(in srgb, #f59e0b 12%, var(--cpu-card));
-  color: #b45309;
+  background: var(--cpu-accent-soft);
+  color: var(--cpu-accent);
 }
 
 .mobile-item-content {
@@ -731,8 +730,8 @@ function claimTagType(status: LostFoundClaimStatus) { return status === "accepte
 .mobile-item-copy h3 {
   margin: 0;
   color: var(--cpu-text);
-  font-size: 15px;
-  font-weight: 650;
+  font-size: var(--cpu-fs-m);
+  font-weight: 500;
   line-height: 1.45;
 }
 
@@ -741,7 +740,7 @@ function claimTagType(status: LostFoundClaimStatus) { return status === "accepte
   margin: 5px 0 0;
   overflow: hidden;
   color: var(--cpu-text-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   line-height: 1.55;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -750,7 +749,7 @@ function claimTagType(status: LostFoundClaimStatus) { return status === "accepte
 .mobile-item-content > img {
   width: 82px;
   height: 82px;
-  border-radius: 9px;
+  border-radius: var(--cpu-radius-m);
   background: var(--cpu-surface-subtle);
   object-fit: cover;
 }
@@ -760,7 +759,7 @@ function claimTagType(status: LostFoundClaimStatus) { return status === "accepte
   gap: 4px;
   margin-top: 8px;
   color: var(--cpu-text-muted);
-  font-size: 10px;
+  font-size: var(--cpu-fs-xs);
 }
 
 .mobile-item-facts span {
@@ -781,7 +780,7 @@ function claimTagType(status: LostFoundClaimStatus) { return status === "accepte
   padding-top: 8px;
   border-top: 1px solid var(--cpu-border-soft);
   color: var(--cpu-text-muted);
-  font-size: 10px;
+  font-size: var(--cpu-fs-xs);
 }
 
 .mobile-item-card footer > .el-icon {
@@ -792,17 +791,17 @@ function claimTagType(status: LostFoundClaimStatus) { return status === "accepte
 .mobile-status {
   flex: 0 0 auto;
   padding: 2px 6px;
-  border-radius: 999px;
+  border-radius: var(--cpu-radius-pill);
   font-weight: 700;
 }
 
 .mobile-pin {
-  background: color-mix(in srgb, #ef4444 10%, var(--cpu-card));
-  color: #dc2626;
+  background: var(--cpu-danger-soft);
+  color: var(--cpu-danger);
 }
 
 .mobile-status {
-  background: color-mix(in srgb, var(--cpu-primary) 10%, var(--cpu-card));
+  background: var(--cpu-primary-soft);
   color: var(--cpu-primary);
 }
 
@@ -848,22 +847,22 @@ function claimTagType(status: LostFoundClaimStatus) { return status === "accepte
     grid-template-columns: 1fr;
     gap: 12px;
     padding: 13px;
-    border-radius: 13px;
+    border-radius: var(--cpu-radius-l);
   }
 
   .mobile-lost-heading h1 {
-    font-size: 22px;
+    font-size: var(--cpu-fs-xl);
   }
 
   .mobile-lost-search {
     padding: 9px;
-    border-radius: 13px;
+    border-radius: var(--cpu-radius-l);
   }
 
   .mobile-lost-feed {
     margin-inline: -4px;
     padding: 10px 8px;
-    border-radius: 12px;
+    border-radius: var(--cpu-radius-l);
   }
 }
 </style>

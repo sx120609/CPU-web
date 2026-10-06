@@ -178,7 +178,7 @@ function normalizeCourseDetailError(error: unknown) {
 
 <style scoped>
 .course-detail { display: flex; flex-direction: column; gap: 16px; }
-.cpu-card { background: #fff; border-radius: 12px; padding: 20px 24px; box-shadow: 0 2px 12px rgba(0,0,0,0.04); }
+.cpu-card { background: var(--cpu-card); border-radius: var(--cpu-radius-l); padding: 20px 24px; }
 .detail-error,
 .loading-state {
   min-height: 180px;
@@ -186,7 +186,7 @@ function normalizeCourseDetailError(error: unknown) {
 .loading-state {
   display: grid;
   place-items: center;
-  color: #6b7280;
+  color: var(--cpu-text-muted);
 }
 
 .head {
@@ -195,34 +195,34 @@ function normalizeCourseDetailError(error: unknown) {
   align-items: flex-start;
   gap: 20px;
 }
-.code { font-size: 12px; color: #9ca3af; }
-.name { margin: 4px 0 6px; font-size: 24px; }
+.code { font-size: var(--cpu-fs-xs); color: var(--cpu-text-muted); }
+.name { margin: 4px 0 6px; font-size: var(--cpu-fs-xl); }
 .teacher-row {
   display: flex;
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
-  font-size: 14px;
-  color: #4b5563;
+  font-size: var(--cpu-fs-m);
+  color: var(--cpu-text-secondary);
   margin-bottom: 8px;
 }
-.teacher-label { color: #6b7280; }
+.teacher-label { color: var(--cpu-text-muted); }
 .teacher-tag { margin: 2px 0; }
 .add-teacher-btn { margin-left: 4px; }
-.muted { color: #9ca3af; font-size: 13px; }
+.muted { color: var(--cpu-text-muted); font-size: var(--cpu-fs-s); }
 .teacher-pill {
-  background: #eef6f4;
+  background: var(--cpu-primary-soft);
   color: var(--cpu-primary);
   padding: 1px 8px;
-  border-radius: 10px;
-  font-size: 11px;
+  border-radius: var(--cpu-radius-m);
+  font-size: var(--cpu-fs-xs);
 }
 .meta { display: flex; gap: 6px; flex-wrap: wrap; }
 
 .right { text-align: right; }
 .score { font-size: 48px; color: var(--cpu-primary); font-weight: 700; line-height: 1; }
-.sub { font-size: 12px; color: #6b7280; }
-.dim { margin-top: 10px; font-size: 13px; color: #4b5563; line-height: 1.8; }
+.sub { font-size: var(--cpu-fs-xs); color: var(--cpu-text-muted); }
+.dim { margin-top: 10px; font-size: var(--cpu-fs-s); color: var(--cpu-text-secondary); line-height: 1.8; }
 
 .head-row {
   display: flex;
@@ -230,34 +230,34 @@ function normalizeCourseDetailError(error: unknown) {
   align-items: center;
   margin-bottom: 12px;
 }
-.cpu-section-title { margin: 0; font-size: 16px; font-weight: 600; }
+.cpu-section-title { margin: 0; font-size: var(--cpu-fs-l); font-weight: 500; }
 
 .rating-item {
   padding: 12px 0;
-  border-bottom: 1px dashed #f1f5f9;
+  border-bottom: 1px dashed var(--cpu-border-soft);
   cursor: pointer;
 }
 .rating-item:last-child { border-bottom: none; }
-.rating-item:hover { background: #f9fafb; border-radius: 8px; }
+.rating-item:hover { background: var(--cpu-surface-soft); border-radius: var(--cpu-radius-m); }
 .rating-item:focus-visible {
   outline: 2px solid var(--cpu-primary);
   outline-offset: 2px;
-  border-radius: 8px;
+  border-radius: var(--cpu-radius-m);
 }
 
 .r-bars {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 8px;
-  font-size: 12px;
-  color: #6b7280;
+  font-size: var(--cpu-fs-xs);
+  color: var(--cpu-text-muted);
 }
 .r-bars > div { display: flex; align-items: center; gap: 4px; }
 @media (max-width: 700px) { .r-bars { grid-template-columns: 1fr 1fr; } }
 
 .r-meta {
-  font-size: 12px;
-  color: #9ca3af;
+  font-size: var(--cpu-fs-xs);
+  color: var(--cpu-text-muted);
   margin-top: 6px;
   display: flex;
   gap: 8px;
@@ -266,7 +266,7 @@ function normalizeCourseDetailError(error: unknown) {
 
 @media (max-width: 700px) {
   .cpu-card {
-    border-radius: 10px;
+    border-radius: var(--cpu-radius-m);
     padding: 14px;
   }
 
@@ -275,7 +275,7 @@ function normalizeCourseDetailError(error: unknown) {
   }
 
   .name {
-    font-size: 21px;
+    font-size: var(--cpu-fs-xl);
     line-height: 1.35;
   }
 
@@ -283,7 +283,7 @@ function normalizeCourseDetailError(error: unknown) {
     width: 100%;
     text-align: left;
     padding-top: 10px;
-    border-top: 1px dashed #eef0f4;
+    border-top: 1px dashed var(--cpu-border-soft);
   }
 
   .score {

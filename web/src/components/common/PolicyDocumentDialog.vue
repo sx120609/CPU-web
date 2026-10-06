@@ -90,16 +90,16 @@ onBeforeUnmount(() => request?.abort());
   overscroll-behavior: contain;
   padding: 4px 12px 4px 2px;
   color: var(--cpu-text);
-  font-size: 15px;
+  font-size: var(--cpu-fs-m);
   line-height: 1.85;
 }
 
-.policy-document-content :deep(h1) { margin: 0 0 12px; font-size: 22px; line-height: 1.4; }
-.policy-document-content :deep(h2) { margin: 24px 0 10px; font-size: 18px; line-height: 1.5; }
+.policy-document-content :deep(h1) { margin: 0 0 12px; font-size: var(--cpu-fs-xl); line-height: 1.4; }
+.policy-document-content :deep(h2) { margin: 24px 0 10px; font-size: var(--cpu-fs-l); line-height: 1.5; }
 .policy-document-content :deep(p) { margin: 0 0 14px; }
 .policy-document-content :deep(ul), .policy-document-content :deep(ol) { padding-left: 22px; }
 .policy-document-content :deep(li) { margin: 8px 0; }
-.policy-document-content :deep(.meta) { color: var(--cpu-text-secondary); font-size: 13px; }
+.policy-document-content :deep(.meta) { color: var(--cpu-text-secondary); font-size: var(--cpu-fs-s); }
 .policy-document-content :deep(a) { color: var(--cpu-primary); text-underline-offset: 3px; }
 .policy-document-content :deep(a:focus-visible) { outline: 2px solid var(--cpu-primary); outline-offset: 3px; }
 

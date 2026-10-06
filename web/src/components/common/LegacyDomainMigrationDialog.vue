@@ -180,7 +180,7 @@ onMounted(() => {
   margin: 16px;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--el-color-primary) 22%, var(--el-border-color-light));
-  border-radius: 22px;
+  border-radius: var(--cpu-radius-l);
   box-shadow: 0 24px 80px rgb(6 24 44 / 26%);
 }
 
@@ -208,36 +208,36 @@ onMounted(() => {
   width: 46px;
   height: 46px;
   place-items: center;
-  border-radius: 15px;
+  border-radius: var(--cpu-radius-l);
   color: #fff;
   background: linear-gradient(145deg, #119c83, #087864);
   font-size: 25px;
-  font-weight: 800;
+  font-weight: 700;
   box-shadow: 0 10px 24px rgb(17 156 131 / 24%);
 }
 
 .migration-kicker {
   margin-bottom: 3px;
   color: var(--el-color-primary);
-  font-size: 12px;
-  font-weight: 800;
+  font-size: var(--cpu-fs-xs);
+  font-weight: 700;
   letter-spacing: 0.08em;
 }
 
 .migration-heading h2 {
   margin: 0;
   color: var(--el-text-color-primary);
-  font-size: 24px;
+  font-size: var(--cpu-fs-xl);
   line-height: 1.25;
 }
 
 .audience-pill {
   margin-left: auto;
   padding: 6px 10px;
-  border-radius: 999px;
+  border-radius: var(--cpu-radius-pill);
   color: var(--el-color-primary);
   background: var(--el-color-primary-light-9);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   font-weight: 700;
   white-space: nowrap;
 }
@@ -245,13 +245,13 @@ onMounted(() => {
 .migration-intro {
   margin: 18px 0;
   color: var(--el-text-color-regular);
-  font-size: 14px;
+  font-size: var(--cpu-fs-m);
   line-height: 1.75;
 }
 
 .migration-intro code {
   padding: 2px 6px;
-  border-radius: 6px;
+  border-radius: var(--cpu-radius-s);
   color: var(--el-text-color-primary);
   background: var(--el-fill-color-light);
   font-family: inherit;
@@ -270,7 +270,7 @@ onMounted(() => {
   align-items: start;
   padding: 14px;
   border: 1px solid var(--el-border-color-lighter);
-  border-radius: 14px;
+  border-radius: var(--cpu-radius-l);
   border-color: color-mix(in srgb, var(--el-color-primary) 48%, var(--el-border-color));
   background: color-mix(in srgb, var(--el-color-primary) 6%, var(--el-bg-color));
   box-shadow: 0 8px 24px rgb(17 156 131 / 9%);
@@ -281,11 +281,11 @@ onMounted(() => {
   width: 42px;
   height: 42px;
   place-items: center;
-  border-radius: 13px;
+  border-radius: var(--cpu-radius-l);
   color: #087864;
   background: #dff5ee;
-  font-size: 14px;
-  font-weight: 900;
+  font-size: var(--cpu-fs-m);
+  font-weight: 700;
 }
 
 .platform-badge.is-ios {
@@ -307,50 +307,50 @@ onMounted(() => {
 .step-title-row h3 {
   margin: 1px 0 5px;
   color: var(--el-text-color-primary);
-  font-size: 15px;
+  font-size: var(--cpu-fs-m);
   line-height: 1.35;
 }
 
 .current-tag {
   padding: 2px 7px;
-  border-radius: 999px;
+  border-radius: var(--cpu-radius-pill);
   color: var(--el-color-primary);
   background: var(--el-color-primary-light-9);
-  font-size: 11px;
+  font-size: var(--cpu-fs-xs);
   font-weight: 700;
 }
 
 .migration-step p {
   margin: 0;
   color: var(--el-text-color-regular);
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
   line-height: 1.7;
 }
 
 .migration-generic {
   padding: 16px 18px;
   border: 1px solid var(--el-border-color-lighter);
-  border-radius: 14px;
+  border-radius: var(--cpu-radius-l);
   background: var(--el-fill-color-light);
 }
 
 .migration-generic h3 {
   margin: 0 0 7px;
   color: var(--el-text-color-primary);
-  font-size: 15px;
+  font-size: var(--cpu-fs-m);
 }
 
 .migration-generic p {
   margin: 0;
   color: var(--el-text-color-regular);
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
   line-height: 1.7;
 }
 
 .migration-note {
   margin: 12px 2px 0;
   color: var(--el-text-color-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   line-height: 1.65;
 }
 
@@ -362,7 +362,7 @@ onMounted(() => {
 
 .migration-actions .el-button {
   min-width: 132px;
-  border-radius: 12px;
+  border-radius: var(--cpu-radius-l);
   font-weight: 700;
 }
 
@@ -377,7 +377,7 @@ onMounted(() => {
     width: calc(100vw - 20px) !important;
     max-height: calc(100dvh - 20px);
     margin: 10px;
-    border-radius: 18px;
+    border-radius: var(--cpu-radius-l);
   }
 
   :global(.legacy-domain-dialog .el-dialog__body) {
@@ -397,11 +397,11 @@ onMounted(() => {
   .migration-mark {
     width: 42px;
     height: 42px;
-    border-radius: 13px;
+    border-radius: var(--cpu-radius-l);
   }
 
   .migration-heading h2 {
-    font-size: 20px;
+    font-size: var(--cpu-fs-xl);
   }
 
   .audience-pill {
@@ -422,8 +422,8 @@ onMounted(() => {
   .platform-badge {
     width: 36px;
     height: 36px;
-    border-radius: 11px;
-    font-size: 12px;
+    border-radius: var(--cpu-radius-m);
+    font-size: var(--cpu-fs-xs);
   }
 
   .migration-actions {

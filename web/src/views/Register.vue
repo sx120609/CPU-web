@@ -159,7 +159,7 @@ async function submit() {
 
 .alt {
   text-align: center;
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
   color: var(--cpu-text-secondary);
   margin-top: 8px;
   button {
@@ -173,7 +173,7 @@ async function submit() {
   }
 }
 
-ol { padding-left: 20px; line-height: 1.8; color: var(--cpu-text-secondary); font-size: 13px; }
-.closed-tip { font-size: 13px; line-height: 1.6; }
+ol { padding-left: 20px; line-height: 1.8; color: var(--cpu-text-secondary); font-size: var(--cpu-fs-s); }
+.closed-tip { font-size: var(--cpu-fs-s); line-height: 1.6; }
 .closed-tip a { color: var(--cpu-primary); text-decoration: underline; }
 </style>

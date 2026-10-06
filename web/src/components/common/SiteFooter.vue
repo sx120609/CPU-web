@@ -62,9 +62,9 @@ const site = useSiteStore();
 .footer {
   padding: 30px 20px calc(16px + var(--footer-clearance, 0px));
   border-top: 1px solid var(--cpu-border-soft);
-  background: color-mix(in srgb, var(--cpu-surface) 94%, var(--cpu-bg));
+  background: var(--cpu-surface);
   color: var(--cpu-text-secondary);
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
   line-height: 1.6;
 }
 
@@ -80,7 +80,7 @@ const site = useSiteStore();
 }
 
 .footer a:focus-visible {
-  border-radius: 3px;
+  border-radius: var(--cpu-radius-s);
   outline: 2px solid var(--cpu-primary);
   outline-offset: 3px;
 }
@@ -103,7 +103,7 @@ const site = useSiteStore();
   align-items: center;
   gap: 10px;
   color: var(--cpu-text);
-  font-size: 18px;
+  font-size: var(--cpu-fs-l);
   font-weight: 700;
   line-height: 1.3;
 }
@@ -113,14 +113,14 @@ const site = useSiteStore();
   width: 32px;
   height: 32px;
   flex: 0 0 auto;
-  border-radius: 9px;
+  border-radius: var(--cpu-radius-m);
   object-fit: contain;
 }
 
 .footer-tagline,
 .footer-company { margin: 0; }
 .footer-tagline { margin-top: 12px; }
-.footer-company { margin-top: 2px; color: var(--cpu-text-muted); font-size: 12px; }
+.footer-company { margin-top: 2px; color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); }
 
 .footer-col {
   display: flex;
@@ -133,8 +133,8 @@ const site = useSiteStore();
 .footer-col h2 {
   margin: 4px 0 8px;
   color: var(--cpu-text);
-  font-size: 13px;
-  font-weight: 650;
+  font-size: var(--cpu-fs-s);
+  font-weight: 500;
   line-height: 1.5;
 }
 
@@ -148,7 +148,7 @@ const site = useSiteStore();
 .footer-contact p {
   margin: 5px 0 0;
   color: var(--cpu-text-muted);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   line-height: 1.6;
   overflow-wrap: anywhere;
 }
@@ -162,7 +162,7 @@ const site = useSiteStore();
   padding-top: 14px;
   border-top: 1px solid var(--cpu-border-soft);
   color: var(--cpu-text-muted);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
 }
 
 .footer-bottom a {
@@ -173,7 +173,7 @@ const site = useSiteStore();
 
 .footer-app-filing {
   margin-top: 8px;
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   text-align: center;
 }
 
@@ -195,7 +195,7 @@ const site = useSiteStore();
 @media (max-width: 768px) {
   .footer {
     padding: 16px max(16px, env(safe-area-inset-right, 0px)) calc(10px + var(--footer-clearance, 0px)) max(16px, env(safe-area-inset-left, 0px));
-    font-size: 12px;
+    font-size: var(--cpu-fs-xs);
   }
 
   .footer-main {
@@ -205,8 +205,8 @@ const site = useSiteStore();
     padding-bottom: 8px;
   }
 
-  .footer a.footer-brand { gap: 8px; margin-bottom: 4px; font-size: 16px; }
-  .footer-brand-mark { width: 26px; height: 26px; border-radius: 7px; }
+  .footer a.footer-brand { gap: 8px; margin-bottom: 4px; font-size: var(--cpu-fs-l); }
+  .footer-brand-mark { width: 26px; height: 26px; border-radius: var(--cpu-radius-s); }
 
   .footer-tagline,
   .footer-company,
@@ -217,7 +217,7 @@ const site = useSiteStore();
   .footer-col { flex-flow: row wrap; gap: 0 18px; }
   .footer-col a { min-height: 28px; }
 
-  .footer-bottom { padding-top: 8px; font-size: 11px; }
+  .footer-bottom { padding-top: 8px; font-size: var(--cpu-fs-xs); }
   .footer-bottom a { min-height: 24px; }
 }
 
@@ -243,7 +243,7 @@ const site = useSiteStore();
 
 :global(html[data-cpu-ios-next] .footer--app .footer-app-filing) {
   margin-top: 0;
-  font-size: 10px;
+  font-size: var(--cpu-fs-xs);
 }
 
 :global(html[data-cpu-ios-next] .footer--app .footer-app-filing a) {
