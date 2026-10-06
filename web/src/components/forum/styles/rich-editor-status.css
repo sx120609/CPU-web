@@ -4,8 +4,7 @@
   gap: 12px;
   padding: 12px 14px;
   border-top: 1px solid var(--cpu-border-soft);
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--cpu-surface-subtle) 92%, transparent), color-mix(in srgb, var(--cpu-card) 96%, transparent));
+  background: var(--cpu-surface-soft);
 }
 
 .upload-progress-head {
@@ -14,14 +13,14 @@
   justify-content: space-between;
   gap: 12px;
   color: var(--cpu-text-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
 }
 
 .upload-progress-head strong {
   display: block;
   margin-bottom: 3px;
   color: var(--cpu-text);
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
 }
 
 .upload-progress-list {
@@ -32,17 +31,17 @@
 .upload-progress-item {
   padding: 10px 12px;
   border: 1px solid var(--cpu-border-soft);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--cpu-card) 92%, transparent);
+  border-radius: var(--cpu-radius-l);
+  background: var(--cpu-card);
 }
 
 .upload-progress-item.is-error {
-  border-color: rgba(220, 38, 38, 0.22);
-  background: rgba(254, 242, 242, 0.86);
+  border-color: var(--cpu-danger);
+  background: var(--cpu-danger-soft);
 }
 
 .upload-progress-item.is-done {
-  border-color: rgba(22, 135, 118, 0.18);
+  border-color: var(--cpu-primary);
 }
 
 .upload-progress-item__top,
@@ -60,32 +59,32 @@
 .upload-progress-item__meta {
   margin-top: 8px;
   color: var(--cpu-text-secondary);
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
 }
 
 .upload-progress-item__name {
   min-width: 0;
   color: var(--cpu-text);
-  font-size: 13px;
+  font-size: var(--cpu-fs-s);
   font-weight: 700;
   word-break: break-all;
 }
 
 .upload-progress-item__status {
   flex: 0 0 auto;
-  color: #0f766e;
-  font-size: 12px;
+  color: var(--cpu-primary);
+  font-size: var(--cpu-fs-xs);
   font-weight: 700;
 }
 
 .upload-progress-item.is-error .upload-progress-item__status,
 .upload-progress-item__error {
-  color: #dc2626;
+  color: var(--cpu-danger);
 }
 
 .upload-progress-item__error {
   margin: 8px 0 0;
-  font-size: 12px;
+  font-size: var(--cpu-fs-xs);
   line-height: 1.5;
 }
 
@@ -106,7 +105,7 @@
 }
 
 .editor-foot .warn {
-  color: #dc2626;
+  color: var(--cpu-danger);
   font-weight: 700;
 }
 
