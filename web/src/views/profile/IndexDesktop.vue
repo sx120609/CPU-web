@@ -6,6 +6,8 @@
       </el-empty>
     </div>
 
+    <div class="profile-layout">
+    <aside class="profile-side">
     <div class="cpu-card profile-card" :class="[profileThemeClass, profileFrameClass]">
       <UserAvatar :size="80" class="avatar" :src="avatarDisplayUrl" :name="user?.nickname" :seed="user?.id" :profile-frame="user?.profileFrame" alt="用户头像" />
       <div class="avatar-actions cpu-button-row">
@@ -49,8 +51,11 @@
         <el-button v-if="!user?.studentSso" plain :disabled="savingPw || logoutBusy" @click="passwordDialog = true">修改密码</el-button>
         <el-button type="danger" plain :loading="logoutBusy" :disabled="logoutBusy" @click="onLogout">退出登录</el-button>
       </div>
-      <p><a href="/privacy.html">隐私政策</a> · <a href="/terms.html">用户协议</a></p>
+      <p class="profile-legal"><a href="/privacy.html">隐私政策</a><span aria-hidden="true">·</span><a href="/terms.html">用户协议</a></p>
     </div>
+    </aside>
+
+    <div class="profile-main">
 
     <div v-if="user?.vipActive" id="vip-style" class="cpu-card vip-style-card">
       <div>
@@ -420,6 +425,8 @@
         </div>
       </template>
     </div>
+    </div>
+    </div>
 
     <el-dialog v-model="editing" title="编辑资料" width="420" :close-on-click-modal="!saving" :close-on-press-escape="!saving" :show-close="!saving" modal-class="cpu-overlay-above-native-bar">
       <el-form label-position="top" :model="editForm">
@@ -559,10 +566,21 @@ const {
 </script>
 
 <style scoped>
-.profile { display: flex; flex-direction: column; gap: 16px; }
-.cpu-card { background: var(--cpu-card); border: 1px solid var(--cpu-border-soft); border-radius: 12px; padding: 20px 24px; box-shadow: var(--cpu-shadow-sm); }
+.profile { display: flex; max-width: 1180px; margin: 0 auto; flex-direction: column; gap: 16px; }
+/* 左侧固定个人卡片，右侧是各项设置。 */
+.profile-layout { display: grid; grid-template-columns: 320px minmax(0, 1fr); align-items: start; gap: 20px; }
+.profile-side { position: sticky; top: 88px; min-width: 0; }
+.profile-main { display: flex; min-width: 0; flex-direction: column; gap: 16px; }
+.cpu-card { background: var(--cpu-card); border: 1px solid var(--cpu-border-soft); border-radius: 16px; padding: 20px 24px; box-shadow: var(--cpu-shadow-sm); }
+.profile-legal { display: flex; justify-content: center; gap: 8px; margin: 14px 0 0; color: var(--cpu-text-muted); font-size: 12px; }
+.profile-legal a { color: var(--cpu-text-secondary); text-decoration: none; }
+.profile-legal a:hover { color: var(--cpu-primary); }
+@media (max-width: 1000px) {
+  .profile-layout { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .profile-side { position: static; }
+}
 
-.profile-card { text-align: center; }
+.profile-card { padding: 24px 20px 18px; text-align: center; }
 .profile-card.profile-theme-mint { background: linear-gradient(135deg, #ecfdf5, #ffffff); }
 .profile-card.profile-theme-sunset { background: linear-gradient(135deg, #fff7ed, #ffffff); }
 .profile-card.profile-theme-ocean { background: linear-gradient(135deg, #eff6ff, #ffffff); }
@@ -575,8 +593,11 @@ const {
 .profile-card.profile-frame-neon { border: 2px solid #8b5cf6; box-shadow: 0 0 18px rgba(139, 92, 246, .24); }
 .profile-card.profile-frame-campus { border: 2px solid #168776; }
 .profile-load-error {
-  padding: 18px;
+  padding: 12px 18px;
 }
+.profile-load-error :deep(.el-empty) { padding: 4px 0; }
+.profile-load-error :deep(.el-empty__image) { display: none; }
+.profile-load-error :deep(.el-empty__description) { margin-top: 0; }
 .avatar { font-size: 28px; font-weight: 600; }
 .avatar-preview-note { color: var(--cpu-text-secondary); font-size: 12px; }
 .avatar-actions {
@@ -633,12 +654,12 @@ const {
 .sponsor-total { color: var(--cpu-warn) !important; }
 
 .profile-actions {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
-  justify-content: center;
-  flex-wrap: wrap;
 }
-.profile-actions .el-button { flex: 1 1 auto; min-width: 100px; margin-left: 0 !important; }
+.profile-actions .el-button { min-width: 0; margin-left: 0 !important; }
+.profile-actions .el-button:first-child:nth-last-child(odd) { grid-column: 1 / -1; }
 
 .vip-style-card { display: flex; flex-direction: column; gap: 14px; }
 .vip-style-copy { margin: 0; color: var(--cpu-text-secondary); font-size: 13px; }
