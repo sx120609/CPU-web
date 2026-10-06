@@ -15,7 +15,7 @@ All four targets (iPhone app, iPhone widgets, Watch app and Watch widgets) use v
 
 Two features need the server from `a9d92248`, which is on main but is deployed separately:
 
-- Shared timetables call `GET /api/schedule-shares/mine`, `GET /:code/meta` and revoke without a write token. Against the older server the list of one's own codes stays empty, saved shares are wrongly marked as revoked on refresh (the older server answers 404 for `/meta`), and revoking fails.
+- Shared timetables call `GET /api/schedule-shares/mine`, `GET /:code/meta` and revoke without a write token. Against the older server the list of one's own codes stays empty, every publish makes a new code, and revoking fails. Importing and reading a share still work: when `/meta` answers 404 the app asks for the share itself before calling it revoked.
 - Display priority is saved in a new `priority` field of the schedule edits. The older server drops the field, so the switch in the editor appears not to stick.
 
 The rest of 4.14 works against the older server. Deploy the server before this version reaches users.

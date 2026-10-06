@@ -192,9 +192,20 @@ final class NativeScheduleSharingService: ObservableObject {
                 next.refresh(newer)
                 commit(next)
             } catch let error as NativeScheduleAPIError where error.status == 404 {
-                var next = library
-                next.markRevoked(code)
-                commit(next)
+                // A server that predates the summary route answers 404 for
+                // every code. Only the share itself being gone means revoked.
+                do {
+                    let newer = try await download(code)
+                    var next = library
+                    next.refresh(newer)
+                    commit(next)
+                } catch ImportError.notFound {
+                    var next = library
+                    next.markRevoked(code)
+                    commit(next)
+                } catch {
+                    continue
+                }
             } catch {
                 continue
             }
