@@ -15,6 +15,9 @@ final class NativeSchedulePreferences: ObservableObject {
     @Published var showWeeks: Bool { didSet { persist() } }
     @Published var showWeekend: Bool { didSet { persist() } }
     @Published var showDateHeader: Bool { didSet { persist() } }
+    /// Marks the current time on today's column and the in-class / next-up
+    /// states of the day view.
+    @Published var showNowIndicator: Bool { didSet { persist() } }
     @Published var defaultView: String { didSet { persist() } }
     @Published var palette: String { didSet { persist() } }
     @Published var density: String { didSet { persist() } }
@@ -34,6 +37,7 @@ final class NativeSchedulePreferences: ObservableObject {
         static let showWeeks = "nativeSchedule.showWeeks"
         static let showWeekend = "nativeSchedule.showWeekend"
         static let showDateHeader = "nativeSchedule.showDateHeader"
+        static let showNowIndicator = "nativeSchedule.showNowIndicator"
         static let defaultView = "nativeSchedule.defaultView"
         static let palette = "nativeSchedule.palette"
         static let density = "nativeSchedule.density"
@@ -51,6 +55,7 @@ final class NativeSchedulePreferences: ObservableObject {
         showWeeks = defaults.object(forKey: Key.showWeeks) as? Bool ?? true
         showWeekend = defaults.object(forKey: Key.showWeekend) as? Bool ?? true
         showDateHeader = defaults.object(forKey: Key.showDateHeader) as? Bool ?? true
+        showNowIndicator = defaults.object(forKey: Key.showNowIndicator) as? Bool ?? true
         let savedView = defaults.string(forKey: Key.defaultView) ?? "week"
         defaultView = Self.viewOptions.contains(savedView) ? savedView : "week"
         let savedPalette = defaults.string(forKey: Key.palette) ?? "color-glass"
@@ -98,6 +103,7 @@ final class NativeSchedulePreferences: ObservableObject {
         showWeeks = true
         showWeekend = true
         showDateHeader = true
+        showNowIndicator = true
         defaultView = "week"
         palette = "color-glass"
         density = "comfortable"
@@ -162,6 +168,7 @@ final class NativeSchedulePreferences: ObservableObject {
         defaults.set(showWeeks, forKey: Key.showWeeks)
         defaults.set(showWeekend, forKey: Key.showWeekend)
         defaults.set(showDateHeader, forKey: Key.showDateHeader)
+        defaults.set(showNowIndicator, forKey: Key.showNowIndicator)
         defaults.set(Self.viewOptions.contains(defaultView) ? defaultView : "week", forKey: Key.defaultView)
         defaults.set(Self.paletteOptions.contains(palette) ? palette : "color-glass", forKey: Key.palette)
         defaults.set(Self.densityOptions.contains(density) ? density : "comfortable", forKey: Key.density)

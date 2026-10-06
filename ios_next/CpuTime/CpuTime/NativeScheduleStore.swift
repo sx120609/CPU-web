@@ -63,11 +63,16 @@ public enum NativeScheduleSource: String, Codable, Sendable {
     case jwxt
     case graduate
     case cache
+    /// Somebody else's timetable, opened from a share code. Never produced by
+    /// the web bridge.
+    case shared
     case unknown
 
     public init(from decoder: Decoder) throws {
         let value = try String(from: decoder).lowercased()
         switch value {
+        case "shared":
+            self = .shared
         case "modern", "legacy", "undergraduate", "jwxt":
             self = .jwxt
         case "graduate":
@@ -411,10 +416,26 @@ public struct NativeScheduleCustomItem: Codable, Equatable, Sendable {
 public struct NativeScheduleEditState: Codable, Equatable, Sendable {
     public var hidden: [String]
     public var custom: [NativeScheduleCustomItem]
+    /// Display priority by `NativeSchedulePriority.key`. Always sent on save, so
+    /// the server takes this client's map as it stands; a client that omits
+    /// the field leaves the saved one alone.
+    public var priority: [String: Int]
 
-    public init(hidden: [String] = [], custom: [NativeScheduleCustomItem] = []) {
+    public init(hidden: [String] = [], custom: [NativeScheduleCustomItem] = [], priority: [String: Int] = [:]) {
         self.hidden = hidden
         self.custom = custom
+        self.priority = priority
+    }
+
+    private enum CodingKeys: String, CodingKey { case hidden, custom, priority }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            hidden: try values.decodeIfPresent([String].self, forKey: .hidden) ?? [],
+            custom: try values.decodeIfPresent([NativeScheduleCustomItem].self, forKey: .custom) ?? [],
+            priority: ((try? values.decodeIfPresent([String: Int].self, forKey: .priority)) ?? nil) ?? [:]
+        )
     }
 }
 
@@ -944,6 +965,102 @@ public enum NativeScheduleCourseBlockMerger {
     }
 }
 
+// MARK: - Display priority
+
+/// Which course shows when several sit in the same periods.
+///
+/// A priority belongs to a course, not to one of its meetings, so it is keyed
+/// by the course name and saved with the schedule edits (`priority` in the edit
+/// payload; `server/src/shared/schedulePriority.ts` is the other side).
+public enum NativeSchedulePriority {
+    /// The saved key for a course name: trimmed, inner whitespace collapsed.
+    public static func key(_ name: String) -> String {
+        name.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    }
+
+    /// 0 means the course has no priority.
+    public static func value(of name: String, in priorities: [String: Int]) -> Int {
+        max(0, priorities[key(name)] ?? 0)
+    }
+
+    /// The value that puts a course in front of every other one.
+    public static func top(in priorities: [String: Int]) -> Int {
+        (priorities.values.max() ?? 0) + 1
+    }
+
+    /// One visible piece of a course on one day.
+    public struct Placed: Equatable, Sendable {
+        /// The block's own identifier, or one naming the piece when a course
+        /// in front covers part of it.
+        public var id: String
+        public var block: NativeScheduleCourseBlockRecord
+        public var startSlot: Int
+        public var endSlot: Int
+        public var lane: Int
+    }
+
+    /// Lays out one day's blocks, already filtered to the week on screen.
+    ///
+    /// A course with a strictly higher priority covers the periods it shares
+    /// with a lower one. The lower course keeps the runs of periods left
+    /// uncovered and disappears only when nothing is left. Courses of equal
+    /// priority, which includes every course when none is set, sit side by
+    /// side in lanes exactly as before. Nothing is removed from the timetable
+    /// itself: `block` is always the whole original.
+    public static func place(
+        _ blocks: [NativeScheduleCourseBlockRecord],
+        priorities: [String: Int]
+    ) -> [Placed] {
+        func priority(_ block: NativeScheduleCourseBlockRecord) -> Int {
+            value(of: block.course.name, in: priorities)
+        }
+        var pieces: [Placed] = []
+        for block in blocks {
+            let own = priority(block)
+            let covering = blocks.filter {
+                priority($0) > own && $0.startSlot <= block.endSlot && block.startSlot <= $0.endSlot
+            }
+            var start: Int?
+            func close(at end: Int) {
+                guard let from = start else { return }
+                let whole = from == block.startSlot && end == block.endSlot
+                pieces.append(Placed(
+                    id: whole ? block.id : "\(block.id)-segment-\(from)-\(end)",
+                    block: block, startSlot: from, endSlot: end, lane: 0
+                ))
+                start = nil
+            }
+            guard block.startSlot <= block.endSlot else { continue }
+            for slot in block.startSlot...block.endSlot {
+                if covering.contains(where: { $0.startSlot <= slot && slot <= $0.endSlot }) {
+                    close(at: slot - 1)
+                } else if start == nil {
+                    start = slot
+                }
+            }
+            close(at: block.endSlot)
+        }
+        pieces.sort { ($0.startSlot, $0.endSlot, $0.id) < ($1.startSlot, $1.endSlot, $1.id) }
+        var laneEnds: [Int] = []
+        return pieces.map { piece in
+            var placed = piece
+            let lane = laneEnds.firstIndex(where: { $0 < piece.startSlot }) ?? laneEnds.count
+            if lane == laneEnds.count { laneEnds.append(piece.endSlot) } else { laneEnds[lane] = piece.endSlot }
+            placed.lane = lane
+            return placed
+        }
+    }
+
+    /// Of several courses in one period, the one in front, when exactly one is.
+    /// `nil` leaves the choice to whoever asked.
+    public static func preferred(among names: [String: String], priorities: [String: Int]) -> String? {
+        let ranked = names.map { (source: $0.key, value: value(of: $0.value, in: priorities)) }
+        guard let best = ranked.map(\.value).max(), best > 0 else { return nil }
+        let winners = ranked.filter { $0.value == best }
+        return winners.count == 1 ? winners[0].source : nil
+    }
+}
+
 // MARK: - Cold-start archive
 
 /// The last displayed timetable, kept so a relaunch can show it before the web
@@ -1088,6 +1205,14 @@ public final class NativeScheduleStore: ObservableObject {
     /// 最新快照变了（包括退出登录时清空成 `nil`）。小组件的本地课表跟着它写。
     public var onLatestSnapshotChange: ((NativeScheduleSnapshot?) -> Void)?
     public var onWatchReset: (() -> Void)?
+    /// Display priority of overlapping courses, by semester and then by
+    /// `NativeSchedulePriority.key`. Read with the schedule edits, kept across
+    /// launches so the grid does not reshuffle once the edits arrive.
+    @Published public private(set) var prioritiesBySemester: [String: [String: Int]] = [:]
+    /// A store that shows somebody else's shared timetable. It never loads or
+    /// saves edits and never feeds the Watch, widgets, Live Activity or the
+    /// cold-start archive: those belong to the signed-in user's own timetable.
+    public let isReadOnly: Bool
 
     public let cacheLifetime: TimeInterval
 
@@ -1108,14 +1233,73 @@ public final class NativeScheduleStore: ObservableObject {
     /// from the shared WKWebView cookie store; injectable for checks.
     public var sessionFingerprint: (@MainActor () async -> String?)?
 
+    private static let prioritiesKey = "nativeSchedule.displayPriorities.v1"
+    private let priorityDefaults: UserDefaults?
+
     public init(
         loader: NativeScheduleLoader? = nil,
         cacheLifetime: TimeInterval = 12 * 60 * 60,
-        archive: NativeScheduleArchive? = NativeScheduleFileArchive()
+        archive: NativeScheduleArchive? = NativeScheduleFileArchive(),
+        priorityDefaults: UserDefaults? = .standard
     ) {
         self.loader = loader
         self.cacheLifetime = max(0, cacheLifetime)
         self.archive = archive
+        self.isReadOnly = false
+        self.priorityDefaults = priorityDefaults
+        if let data = priorityDefaults?.data(forKey: Self.prioritiesKey),
+           let saved = try? JSONDecoder().decode([String: [String: Int]].self, from: data) {
+            prioritiesBySemester = saved
+        }
+    }
+
+    /// A read-only store over one shared timetable. `snapshot` is called for
+    /// every request, so a refreshed share shows up on the next load.
+    public init(shared snapshot: @escaping @MainActor () -> NativeScheduleSnapshot) {
+        self.loader = { _ in snapshot() }
+        self.cacheLifetime = 0
+        self.archive = nil
+        self.isReadOnly = true
+        self.priorityDefaults = nil
+    }
+
+    /// The display priorities of the semester on screen.
+    public var displayPriorities: [String: Int] {
+        prioritiesBySemester[selectedSemester.trimmedNonEmpty ?? result?.currentSemester ?? ""] ?? [:]
+    }
+
+    /// Reads the saved priorities of the semester on screen. A failure keeps
+    /// what is known: the grid then simply shows overlapping courses side by side.
+    public func refreshDisplayPriorities() async {
+        guard !isReadOnly, webViewLoader != nil, result?.source != .graduate else { return }
+        let semester = selectedSemester.trimmedNonEmpty ?? result?.currentSemester.trimmedNonEmpty ?? ""
+        guard !semester.isEmpty, let edits = try? await loadScheduleEdits() else { return }
+        setPriorities(edits.priority, semester: semester)
+    }
+
+#if DEBUG
+    /// Sets the priorities of the semester on screen for a screenshot run.
+    public func installDebugPriorities(_ priorities: [String: Int]) {
+        prioritiesBySemester[selectedSemester.trimmedNonEmpty ?? result?.currentSemester ?? ""] = priorities
+    }
+#endif
+
+    private func setPriorities(_ priorities: [String: Int], semester: String) {
+        let cleaned = priorities.filter { $0.value > 0 }
+        guard (prioritiesBySemester[semester] ?? [:]) != cleaned else { return }
+        if cleaned.isEmpty { prioritiesBySemester[semester] = nil } else { prioritiesBySemester[semester] = cleaned }
+        if let data = try? JSONEncoder().encode(prioritiesBySemester) {
+            priorityDefaults?.set(data, forKey: Self.prioritiesKey)
+        }
+        publishPriorities()
+    }
+
+    private func publishPriorities() {
+        #if os(iOS) && canImport(ActivityKit)
+        if #available(iOS 17.0, *), !isReadOnly {
+            NativeLiveActivityController.shared.setDisplayPriorities(prioritiesBySemester)
+        }
+        #endif
     }
 
     /// Connects the store to the shell's authenticated WKWebView. Keeping the
@@ -1128,6 +1312,7 @@ public final class NativeScheduleStore: ObservableObject {
             try await bridge.load(request)
         }
         sessionFingerprint = { await bridge.sessionFingerprint() }
+        publishPriorities()
         // Learn the session early so an auth notification never has to guess.
         Task { @MainActor [weak self] in
             guard let self, self.sessionKey.isEmpty,
@@ -1269,6 +1454,7 @@ public final class NativeScheduleStore: ObservableObject {
     }
 
     public func loadScheduleEdits() async throws -> NativeScheduleEditState {
+        guard !isReadOnly else { throw NativeScheduleStoreError.server("共享课表只读") }
         guard let webViewLoader else { throw NativeScheduleStoreError.webViewUnavailable }
         let semester = selectedSemester.trimmedNonEmpty ?? result?.currentSemester.trimmedNonEmpty ?? ""
         guard !semester.isEmpty else { return NativeScheduleEditState() }
@@ -1276,14 +1462,38 @@ public final class NativeScheduleStore: ObservableObject {
     }
 
     public func saveScheduleEdits(_ edits: NativeScheduleEditState) async throws {
+        guard !isReadOnly else { throw NativeScheduleStoreError.server("共享课表只读") }
         guard let webViewLoader else { throw NativeScheduleStoreError.webViewUnavailable }
         let semester = selectedSemester.trimmedNonEmpty ?? result?.currentSemester.trimmedNonEmpty ?? ""
         guard !semester.isEmpty else { throw NativeScheduleStoreError.invalidResponse }
         let week = selectedWeek.trimmedNonEmpty ?? result?.currentWeek ?? ""
         let snapshot = try await webViewLoader.saveEdits(edits, semester: semester, week: week)
+        setPriorities(edits.priority, semester: semester)
         let key = CacheKey(semester: semester, week: week)
         try accept(snapshot, for: key, requestedSemester: semester, requestedWeek: week, notifyChange: false)
     }
+
+#if DEBUG
+    /// A debug run on the mock timetable has no web session. Set this to send
+    /// the site API requests somewhere else, such as a local server.
+    public var debugAPI: ((_ method: String, _ path: String, _ body: Data?) async throws -> Data)?
+#endif
+
+    /// One request to the site API as the signed-in user. See `NativeScheduleWebViewLoader.api`.
+    public func api(method: String, path: String, body: Data? = nil) async throws -> Data {
+#if DEBUG
+        if let debugAPI { return try await debugAPI(method, path, body) }
+#endif
+        guard let webViewLoader else { throw NativeScheduleStoreError.webViewUnavailable }
+        return try await webViewLoader.api(method: method, path: path, body: body)
+    }
+
+    public func sessionNickname() async -> String? {
+        await webViewLoader?.sessionNickname()
+    }
+
+    /// The account fingerprint of the timetable on screen, empty when unknown.
+    public var accountFingerprint: String { accountKey }
 
     /// A trusted bridge pushes each prefetched week, then the complete semester.
     /// Cache it without changing a newer selection or a foreground loading state.
@@ -1490,6 +1700,9 @@ public final class NativeScheduleStore: ObservableObject {
         selectedSemester = ""
         selectedWeek = ""
         state = .idle
+        guard !isReadOnly else { return }
+        prioritiesBySemester = [:]
+        priorityDefaults?.removeObject(forKey: Self.prioritiesKey)
         onWatchReset?()
         #if os(iOS) && canImport(ActivityKit)
         if #available(iOS 17.0, *) {
@@ -1610,6 +1823,7 @@ public final class NativeScheduleStore: ObservableObject {
         // has a chance to report a recoverable JWXT expiry.
         displayedKey = resolvedKey
         latestSnapshot = snapshot
+        guard !isReadOnly else { return }
         onWatchSnapshot?(snapshot)
         #if os(iOS) && canImport(ActivityKit)
         if #available(iOS 17.0, *) {
@@ -1937,12 +2151,14 @@ public final class NativeScheduleStore: ObservableObject {
             lastUpdatedAt = snapshot.fetchedAt
             displayedKey = key
             latestSnapshot = snapshot
-            onWatchSnapshot?(snapshot)
-            #if os(iOS) && canImport(ActivityKit)
-            if #available(iOS 17.0, *) {
-                NativeLiveActivityController.shared.accept(snapshot)
+            if !isReadOnly {
+                onWatchSnapshot?(snapshot)
+                #if os(iOS) && canImport(ActivityKit)
+                if #available(iOS 17.0, *) {
+                    NativeLiveActivityController.shared.accept(snapshot)
+                }
+                #endif
             }
-            #endif
         }
         self.state = state
         errorMessage = snapshot.error?.trimmedNonEmpty
@@ -2294,6 +2510,61 @@ public final class NativeScheduleWebViewLoader {
         return try JSONDecoder.nativeScheduleDecoder.decode(NativeScheduleSnapshot.self, from: snapshotData)
     }
 
+    /// One authenticated JSON request to the site API through the signed-in
+    /// web session, the same way the schedule edits travel. `path` starts
+    /// after `/api`. Returns the `data` member of the site's response envelope.
+    public func api(method: String, path: String, body: Data? = nil) async throws -> Data {
+        guard let webView else { throw NativeScheduleStoreError.webViewUnavailable }
+        let raw = try await webView.callAsyncJavaScript("""
+        try {
+          const cookie = (name) => {
+            const part = document.cookie.split(';').map(v => v.trim()).find(v => v.startsWith(name + '='));
+            return part ? decodeURIComponent(part.slice(name.length + 1)) : '';
+          };
+          const stores = document.getElementById('app')?.__vue_app__?.config?.globalProperties?.$pinia?._s;
+          const auth = stores?.get('auth');
+          const headers = {
+            'X-CPU-Auth-Mode': 'cookie', 'X-CPU-Client': 'ios',
+            'X-CSRF-Token': cookie('__Host-cpu-csrf') || cookie('cpu-csrf')
+          };
+          if (auth?.token && auth.token !== '__cpu_cookie_session__') headers.Authorization = 'Bearer ' + String(auth.token);
+          // Never from the HTTP cache: a share that was just updated or
+          // withdrawn must not come back as it was a minute ago.
+          const init = { method, credentials: 'same-origin', headers, cache: 'no-store' };
+          if (bodyJSON) { headers['Content-Type'] = 'application/json'; init.body = bodyJSON; }
+          const response = await fetch('/api' + path, init);
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok || (typeof payload.code === 'number' && payload.code !== 0)) {
+            return JSON.stringify({__cpuError: payload.message || '请求失败，请稍后再试', __cpuStatus: response.status});
+          }
+          return JSON.stringify((typeof payload.code === 'number' ? payload.data : payload) ?? {});
+        } catch (error) {
+          return JSON.stringify({__cpuError: error?.message || '网络请求失败', __cpuStatus: 0});
+        }
+        """, arguments: [
+            "method": method, "path": path,
+            "bodyJSON": body.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+        ], in: nil, contentWorld: .page)
+        guard let text = raw as? String, let data = text.data(using: .utf8) else {
+            throw NativeScheduleStoreError.invalidResponse
+        }
+        if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let message = (object["__cpuError"] as? String)?.trimmedNonEmpty {
+            throw NativeScheduleAPIError(status: (object["__cpuStatus"] as? NSNumber)?.intValue ?? 0, message: message)
+        }
+        return data
+    }
+
+    /// The signed-in user's site nickname, for naming a share they publish.
+    public func sessionNickname() async -> String? {
+        guard let webView else { return nil }
+        let raw = try? await webView.callAsyncJavaScript("""
+        const stores = document.getElementById('app')?.__vue_app__?.config?.globalProperties?.$pinia?._s;
+        return String(stores?.get('auth')?.user?.nickname || '');
+        """, arguments: [:], in: nil, contentWorld: .page)
+        return (raw as? String)?.trimmedNonEmpty
+    }
+
     private func bridgeData(from rawValue: Any?) throws -> Data {
         guard let raw = rawValue as? String, let data = raw.data(using: .utf8) else {
             throw NativeScheduleStoreError.invalidResponse
@@ -2305,6 +2576,20 @@ public final class NativeScheduleWebViewLoader {
         }
         return data
     }
+}
+
+/// A site API request that the server answered with an error. `status` is the
+/// HTTP status, or 0 when the request never got an answer.
+public struct NativeScheduleAPIError: LocalizedError, Equatable, Sendable {
+    public let status: Int
+    public let message: String
+
+    public init(status: Int, message: String) {
+        self.status = status
+        self.message = message
+    }
+
+    public var errorDescription: String? { message }
 }
 
 // MARK: - Codable compatibility helpers

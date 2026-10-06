@@ -122,6 +122,25 @@ final class NativeLiveActivityController: ObservableObject {
         persist()
         reconfigure()
     }
+    /// Display priority of overlapping courses, by semester. A course set to
+    /// show first also wins its periods here, so only overlaps nobody ranked
+    /// are left for the per-period choice.
+    private var displayPriorities: [String: [String: Int]] = [:]
+    /// A shared timetable the user cares about. Its classes join the user's
+    /// own, named after `companionLabel`.
+    private var companion: NativeScheduleSnapshot?
+    private var companionLabel: String?
+    func setCompanion(_ snapshot: NativeScheduleSnapshot?, label: String?) {
+        guard snapshot != companion || label != companionLabel else { return }
+        companion = snapshot
+        companionLabel = label
+        reconfigure()
+    }
+    func setDisplayPriorities(_ value: [String: [String: Int]]) {
+        guard value != displayPriorities else { return }
+        displayPriorities = value
+        reconfigure()
+    }
     struct Occurrence {
         let id: String
         let supersedes: [String]
@@ -225,6 +244,7 @@ final class NativeLiveActivityController: ObservableObject {
         resetPushService?()
         lastSnapshot = nil
         occurrences = []
+        displayPriorities = [:]
         loadedAccount = nil
         ledger = [:]
         defaults.removeObject(forKey: Attributes.broadcastCoursesKey)
@@ -481,83 +501,105 @@ final class NativeLiveActivityController: ObservableObject {
         guard !periods.isEmpty else { coverageStatus = "缺少学校作息表"; return [] }
         var byNumber: [Int: NativeSchedulePeriod] = [:]
         for period in periods { byNumber[period.number] = period }
-        var result: [Occurrence] = []
         unsupported = []
         busyIntervals = []
         var unresolved: [Conflict] = []
-        for week in calendar.weeks {
-            for (dayIndex, day) in week.days.enumerated() {
-                guard let resolved = Self.resolvedDay(date: day, day: dayIndex + 1, week: week.week, calendar: calendar) else { continue }
-                var candidates: [Int: [String: NativeScheduleCourse]] = [:]
-                for cell in data.cells where cell.day == resolved.day {
-                    for course in cell.courses where course.weekList.isEmpty || course.weekList.contains(resolved.week) {
-                        if course.customStartTime != nil || course.customEndTime != nil {
-                            if let startClock = course.customStartTime, let endClock = course.customEndTime,
-                               let start = date(day, time: startClock, calendar: dateCalendar), let end = date(day, time: endClock, calendar: dateCalendar), start < end {
-                                busyIntervals.append(BusyInterval(startAt: start.timeIntervalSince1970, endAt: end.timeIntervalSince1970))
-                                if end > now(), start < now().addingTimeInterval(7 * 86400) { unsupported.append("\(day) \(course.name)：自定义时间暂不支持自动活动") }
-                            } else { unsupported.append("\(day) \(course.name)：自定义时间无效") }
-                            continue
-                        }
-                        let source = course.nativeId ?? course.sourceKey ?? course.customId.map { "custom:\($0)" } ?? course.id
-                        if let start = course.startSlot, let end = course.endSlot,
-                           (byNumber[start] == nil || byNumber[end] == nil || start > end) {
-                            if let midnight = date(day, time: "00:00", calendar: dateCalendar),
-                               midnight.addingTimeInterval(86400) > now(), midnight < now().addingTimeInterval(7 * 86400) {
-                                unsupported.append("\(day) \(course.name)：自定义时间或节次无法对应学校作息")
+        // One timetable's classes. `label` names a timetable being cared about:
+        // its conflicts and unsupported times are its publisher's business, so
+        // they are skipped quietly instead of being reported to this user.
+        func collect(_ data: NativeScheduleResult, _ calendar: NativeScheduleCalendar, label: String?) -> [Occurrence] {
+            var result: [Occurrence] = []
+            for week in calendar.weeks {
+                for (dayIndex, day) in week.days.enumerated() {
+                    guard let resolved = Self.resolvedDay(date: day, day: dayIndex + 1, week: week.week, calendar: calendar) else { continue }
+                    var candidates: [Int: [String: NativeScheduleCourse]] = [:]
+                    for cell in data.cells where cell.day == resolved.day {
+                        for course in cell.courses where course.weekList.isEmpty || course.weekList.contains(resolved.week) {
+                            if course.customStartTime != nil || course.customEndTime != nil {
+                                if let startClock = course.customStartTime, let endClock = course.customEndTime,
+                                   let start = date(day, time: startClock, calendar: dateCalendar), let end = date(day, time: endClock, calendar: dateCalendar), start < end {
+                                    guard label == nil else { continue }
+                                    busyIntervals.append(BusyInterval(startAt: start.timeIntervalSince1970, endAt: end.timeIntervalSince1970))
+                                    if end > now(), start < now().addingTimeInterval(7 * 86400) { unsupported.append("\(day) \(course.name)：自定义时间暂不支持自动活动") }
+                                } else if label == nil { unsupported.append("\(day) \(course.name)：自定义时间无效") }
+                                continue
                             }
-                            continue
+                            let source = course.nativeId ?? course.sourceKey ?? course.customId.map { "custom:\($0)" } ?? course.id
+                            if let start = course.startSlot, let end = course.endSlot,
+                               (byNumber[start] == nil || byNumber[end] == nil || start > end) {
+                                if label == nil, let midnight = date(day, time: "00:00", calendar: dateCalendar),
+                                   midnight.addingTimeInterval(86400) > now(), midnight < now().addingTimeInterval(7 * 86400) {
+                                    unsupported.append("\(day) \(course.name)：自定义时间或节次无法对应学校作息")
+                                }
+                                continue
+                            }
+                            let range = NativeSchedulePeriod.normalizedRange(bigSlot: cell.bigSlot, startSlot: course.startSlot, endSlot: course.endSlot, periods: periods)
+                            guard range.start <= range.end else { continue }
+                            for period in range.start...range.end { candidates[period, default: [:]][source] = course }
                         }
-                        let range = NativeSchedulePeriod.normalizedRange(bigSlot: cell.bigSlot, startSlot: course.startSlot, endSlot: course.endSlot, periods: periods)
-                        guard range.start <= range.end else { continue }
-                        for period in range.start...range.end { candidates[period, default: [:]][source] = course }
                     }
-                }
-                var selected: [(Int, String, NativeScheduleCourse)] = []
-                var blocked = Set<String>()
-                for period in candidates.keys.sorted() {
-                    let options = candidates[period]!
-                    let key = "\(data.currentSemester):\(day):\(period)"
-                    let chosen = options.count == 1 ? options.keys.first : choices[key].flatMap { options[$0] != nil ? $0 : nil }
-                    if options.count > 1 {
-                        unresolved.append(Conflict(id: key, dateKey: day, period: period,
-                            options: options.keys.sorted().map { Conflict.Option(id: $0, name: options[$0]!.name) }, selectedSource: chosen))
-                    }
-                    if let chosen, let course = options[chosen] { selected.append((period, chosen, course)) }
-                    else { blocked.formUnion(options.keys) }
-                }
-                selected.removeAll { blocked.contains($0.1) }
-                var runs: [[(Int, String, NativeScheduleCourse)]] = []
-                for item in selected {
-                    if let previous = runs.last?.last, previous.1 == item.1, previous.0 + 1 == item.0 { runs[runs.count - 1].append(item) }
-                    else { runs.append([item]) }
-                }
-                let grouped = Dictionary(grouping: runs, by: { $0[0].1 })
-                for (source, sourceRuns) in grouped {
-                    let key = "\(data.currentSemester):\(day):\(source)"
-                    let old = identityRecords[key] ?? []
-                    let unchanged = old.count == sourceRuns.count
-                    var records: [IdentityRecord] = []
-                    for (index, run) in sourceRuns.enumerated() {
-                        let numbers = run.map { $0.0 }
-                        // A boundary edit keeps identity; a split/merge records all
-                        // replaced identities, preventing already-started fragments from restarting.
-                        let record: IdentityRecord
-                        if unchanged { record = IdentityRecord(id: old[index].id, periods: numbers, supersedes: old[index].supersedes) }
-                        else { record = IdentityRecord(id: UUID().uuidString, periods: numbers, supersedes: old.map(\.id)) }
-                        records.append(record)
-                        let segments = numbers.compactMap { p -> Attributes.Segment? in
-                            guard let period = byNumber[p], let start = date(day, time: period.startTime, calendar: dateCalendar), let end = date(day, time: period.endTime, calendar: dateCalendar) else { return nil }
-                            return Attributes.Segment(period: p, startAt: start, endAt: end)
+                    var selected: [(Int, String, NativeScheduleCourse)] = []
+                    var blocked = Set<String>()
+                    let priorities = label == nil ? displayPriorities[data.currentSemester] ?? [:] : [:]
+                    for period in candidates.keys.sorted() {
+                        let options = candidates[period]!
+                        let key = "\(data.currentSemester):\(day):\(period)"
+                        let preferred = options.count > 1
+                            ? NativeSchedulePriority.preferred(among: options.mapValues(\.name), priorities: priorities) : nil
+                        let chosen = options.count == 1 ? options.keys.first
+                            : preferred ?? choices[key].flatMap { options[$0] != nil ? $0 : nil }
+                        if options.count > 1, preferred == nil, label == nil {
+                            unresolved.append(Conflict(id: key, dateKey: day, period: period,
+                                options: options.keys.sorted().map { Conflict.Option(id: $0, name: options[$0]!.name) }, selectedSource: chosen))
                         }
-                        guard segments.count == numbers.count, let first = segments.first else { continue }
-                        let course = run[0].2
-                        result.append(Occurrence(id: record.id, supersedes: record.supersedes, name: course.name, teacher: course.teacher ?? "", location: course.location ?? "",
-                            periodLabel: Self.periodLabel(start: numbers[0], end: numbers.last!), dateKey: day, week: week.week,
-                            weekRangeLabel: course.weeks, adjustmentNote: resolved.note, segments: segments, plannedStart: first.startAt.addingTimeInterval(-leadTime)))
+                        if let chosen, let course = options[chosen] { selected.append((period, chosen, course)) }
+                        else { blocked.formUnion(options.keys) }
                     }
-                    identityRecords[key] = records
+                    selected.removeAll { blocked.contains($0.1) }
+                    var runs: [[(Int, String, NativeScheduleCourse)]] = []
+                    for item in selected {
+                        if let previous = runs.last?.last, previous.1 == item.1, previous.0 + 1 == item.0 { runs[runs.count - 1].append(item) }
+                        else { runs.append([item]) }
+                    }
+                    let grouped = Dictionary(grouping: runs, by: { $0[0].1 })
+                    for (source, sourceRuns) in grouped {
+                        let key = "\(data.currentSemester):\(day):\(source)"
+                        let old = identityRecords[key] ?? []
+                        let unchanged = old.count == sourceRuns.count
+                        var records: [IdentityRecord] = []
+                        for (index, run) in sourceRuns.enumerated() {
+                            let numbers = run.map { $0.0 }
+                            // A boundary edit keeps identity; a split/merge records all
+                            // replaced identities, preventing already-started fragments from restarting.
+                            let record: IdentityRecord
+                            if unchanged { record = IdentityRecord(id: old[index].id, periods: numbers, supersedes: old[index].supersedes) }
+                            else { record = IdentityRecord(id: UUID().uuidString, periods: numbers, supersedes: old.map(\.id)) }
+                            records.append(record)
+                            let segments = numbers.compactMap { p -> Attributes.Segment? in
+                                guard let period = byNumber[p], let start = date(day, time: period.startTime, calendar: dateCalendar), let end = date(day, time: period.endTime, calendar: dateCalendar) else { return nil }
+                                return Attributes.Segment(period: p, startAt: start, endAt: end)
+                            }
+                            guard segments.count == numbers.count, let first = segments.first else { continue }
+                            let course = run[0].2
+                            result.append(Occurrence(id: record.id, supersedes: record.supersedes,
+                                name: label.map { "\($0)：\(course.name)" } ?? course.name, teacher: course.teacher ?? "", location: course.location ?? "",
+                                periodLabel: Self.periodLabel(start: numbers[0], end: numbers.last!), dateKey: day, week: week.week,
+                                weekRangeLabel: course.weeks, adjustmentNote: resolved.note, segments: segments, plannedStart: first.startAt.addingTimeInterval(-leadTime)))
+                        }
+                        identityRecords[key] = records
+                    }
                 }
+            }
+            return result
+        }
+        var result = collect(data, calendar, label: nil)
+        if let companion, let label = companionLabel?.trimmedNonEmpty,
+           let theirData = companion.data, let theirCalendar = companion.calendar {
+            // The user's own class wins a clash: one activity shows at a time,
+            // and the server rejects a plan whose classes overlap.
+            let own = result
+            result += collect(theirData, theirCalendar, label: label).filter { theirs in
+                !own.contains { $0.start < theirs.end && theirs.start < $0.end }
             }
         }
         result.sort { ($0.start, $0.id) < ($1.start, $1.id) }

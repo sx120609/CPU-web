@@ -158,6 +158,7 @@ private struct NativeCalendarSettingsPage: View {
 @available(iOS 17.0, *)
 private struct ScheduleSettingsSection: View {
     @ObservedObject private var preferences = NativeSchedulePreferences.shared
+    @ObservedObject private var styleSettings = NativeScheduleStyleSettings.shared
 
     @ViewBuilder
     var body: some View {
@@ -184,8 +185,26 @@ private struct ScheduleSettingsSection: View {
             }
             Toggle("显示日期栏", isOn: $preferences.showDateHeader)
             Toggle("显示周末", isOn: $preferences.showWeekend)
+            Toggle("标出当前时间", isOn: $preferences.showNowIndicator)
         } header: {
             Label("视图与排版", systemImage: "rectangle.grid.1x2")
+        }
+
+        Section {
+            NavigationLink {
+                ScheduleStylePicker(palette: preferences.palette)
+            } label: {
+                Label("课表风格", systemImage: "square.grid.3x3")
+                Spacer(minLength: 8)
+                Text(styleSettings.style.title)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        } header: {
+            Label("课表风格", systemImage: "rectangle.3.group")
+        } footer: {
+            Text("风格决定课表的排版，课程配色和背景可以单独选择。")
         }
 
         Section {
@@ -243,6 +262,7 @@ private struct NativeScheduleSettingsView: View {
                 }
                 Toggle("显示日期栏", isOn: $preferences.showDateHeader)
                 Toggle("显示周末", isOn: $preferences.showWeekend)
+                Toggle("标出当前时间", isOn: $preferences.showNowIndicator)
                 VStack(alignment: .leading, spacing: 10) {
                     Text("课程配色")
                         .font(.subheadline.weight(.medium))

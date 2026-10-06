@@ -33,6 +33,7 @@ struct NativeScheduleMonthView: View {
     }
 
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.scheduleStyle) private var style
 
     private static let weekdayLabels = ["一", "二", "三", "四", "五", "六", "日"]
     private static let gutterWidth: CGFloat = 26
@@ -42,15 +43,46 @@ struct NativeScheduleMonthView: View {
     var body: some View {
         // 每月铺满整周；农历与课程数据只构建一次。
         let days = buildDays()
-        VStack(alignment: .leading, spacing: 12) {
-            GeometryReader { geometry in
-                let dayWidth = max(1, (geometry.size.width - 2 * Self.gridInset - Self.gutterWidth - 7 * Self.columnSpacing) / 7)
-                monthGrid(days, dayWidth: dayWidth)
+        if style == .classic {
+            VStack(alignment: .leading, spacing: 12) {
+                GeometryReader { geometry in
+                    let dayWidth = max(1, (geometry.size.width - 2 * Self.gridInset - Self.gutterWidth - 7 * Self.columnSpacing) / 7)
+                    monthGrid(days, dayWidth: dayWidth)
+                }
+                .frame(height: CGFloat(weeks(days).count) * 56 + 38)
+                selectedDayCard(days)
             }
-            .frame(height: CGFloat(weeks(days).count) * 56 + 38)
-            selectedDayCard(days)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            styledPage(days)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// The other styles draw the calendar and the selected day in one panel.
+    private func styledPage(_ days: [Day]) -> some View {
+        let courses = days.first { $0.date == selectedDate }?.courses ?? []
+        let emptyText: String? = {
+            if dateIndex[selectedDate] == nil { return "这一天不在当前学期的教学周内。" }
+            guard courses.isEmpty else { return nil }
+            return adjustments[selectedDate]?.kind == "off" ? "这一天放假，没有课程。" : "这一天没有课程。"
+        }()
+        return ScheduleStyledMonthPage(
+            days: days,
+            selectedDate: selectedDate,
+            todayDate: todayDate,
+            periods: periods,
+            showLocation: showLocation,
+            showTeacher: showTeacher,
+            selectedTitle: selectedTitle(days),
+            selectedSubtitle: selectedSubtitle,
+            emptyText: emptyText,
+            adjustmentText: adjustments[selectedDate].map(adjustmentText),
+            canOpenDay: canOpenDay(selectedDate),
+            accessibilityLabel: accessibilityLabel,
+            onSelect: onSelect,
+            onOpenDay: { onOpenDay(selectedDate) },
+            onCourseSelected: { onCourseSelected($0, selectedDate) }
+        )
     }
 
     // MARK: 月历
@@ -277,7 +309,7 @@ struct NativeScheduleMonthView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityHint(Text("查看或修改课程"))
+        .accessibilityHint(Text("查看课程详情"))
     }
 
     private func metadata(_ block: NativeScheduleCourseBlock) -> String {

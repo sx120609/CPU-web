@@ -83,6 +83,7 @@ struct ContentView: View {
                     shell.connect(webSession: webSession, scheduleStore: scheduleStore)
                     watchSchedule.connect(to: scheduleStore)
                     NativeWidgetLocalSchedule.connect(to: scheduleStore)
+                    NativeScheduleSharingService.shared.connect(to: scheduleStore)
                     guard url.scheme == "cputime-next", url.host == "schedule" else { return }
                     guard !shell.requiresLogin else { return }
                     shell.userSelected(.schedule)
@@ -147,6 +148,7 @@ struct ContentView: View {
                 shell.connect(webSession: webSession, scheduleStore: scheduleStore)
                 watchSchedule.connect(to: scheduleStore)
                 NativeWidgetLocalSchedule.connect(to: scheduleStore)
+                NativeScheduleSharingService.shared.connect(to: scheduleStore)
                 await shell.resolveInitialAuth(webSession: webSession)
                 IosClientHeartbeat.shared.report()
             }
@@ -155,10 +157,43 @@ struct ContentView: View {
                     watchSchedule.foreground()
                     IosClientHeartbeat.shared.report()
                     NativeLiveActivityController.shared.foreground()
+                    // A timetable somebody shared may have changed while the app was away.
+                    Task { await NativeScheduleSharingService.shared.refresh() }
                     if #available(iOS 17.2, *) { LiveActivityPushService.shared.activate() }
                 }
             }
     }
+
+#if DEBUG
+    /// The mock timetable has no web session. With `CPU_DEBUG_API_ORIGIN` and
+    /// `CPU_DEBUG_API_TOKEN` set, share codes go to that server instead, so the
+    /// sharing screens can be driven end to end against a local server.
+    private func connectDebugShareAPI() {
+        let environment = ProcessInfo.processInfo.environment
+        guard let origin = environment["CPU_DEBUG_API_ORIGIN"].flatMap(URL.init(string:)),
+              let token = environment["CPU_DEBUG_API_TOKEN"], !token.isEmpty else { return }
+        scheduleStore.debugAPI = { method, path, body in
+            guard let url = URL(string: "/api" + path, relativeTo: origin) else { throw NativeScheduleStoreError.invalidResponse }
+            var request = URLRequest(url: url)
+            request.cachePolicy = .reloadIgnoringLocalCacheData
+            request.httpMethod = method
+            request.httpBody = body
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            request.setValue("ios", forHTTPHeaderField: "X-CPU-Client")
+            if body != nil { request.setValue("application/json", forHTTPHeaderField: "Content-Type") }
+            let (data, response) = try await URLSession.shared.data(for: request)
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            let envelope = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            guard (200..<300).contains(status), (envelope?["code"] as? Int ?? 0) == 0 else {
+                throw NativeScheduleAPIError(status: status, message: envelope?["message"] as? String ?? "请求失败")
+            }
+            return try JSONSerialization.data(withJSONObject: envelope?["data"] ?? [String: Any]())
+        }
+        NativeScheduleSharingService.shared.connect(to: scheduleStore)
+    }
+#else
+    private func connectDebugShareAPI() {}
+#endif
 
     /// The login gate is a root-view swap, not a hidden tab bar: while it is
     /// up the native TabView is never built, so there is no tab to escape
@@ -177,6 +212,7 @@ struct ContentView: View {
             NativeScheduleView(store: scheduleStore)
                 .task {
                     guard scheduleStore.result == nil else { return }
+                    connectDebugShareAPI()
                     await scheduleStore.load(semester: "2026-2027-1", week: "1")
                 }
         } else if !hasSeenWelcome {
@@ -313,6 +349,15 @@ private enum NativeScheduleDebugFixture {
                     ),
                 ])
             }
+        }
+        if ProcessInfo.processInfo.environment["CPU_DEBUG_SCHEDULE_OVERLAP"] == "1" {
+            // One course across four Monday periods, on top of whatever is there.
+            cells.append(NativeScheduleCell(day: 1, bigSlot: 1, courses: [
+                NativeScheduleCourse(
+                    nativeId: "source:overlap", name: "形势与政策", teacher: "赵老师", weeks: "第 1 周", weekList: [1],
+                    location: "报告厅", startSlot: 1, endSlot: 4, sourceKey: "visual|overlap|形势与政策"
+                ),
+            ]))
         }
         let result = NativeScheduleResult(
             source: .jwxt,

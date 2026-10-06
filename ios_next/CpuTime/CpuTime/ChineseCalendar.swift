@@ -327,11 +327,15 @@ nonisolated enum ChineseCalendarInfo {
         )
     }
 
-    /// 清明在 21 世纪前中段按四年一轮的 4/4、4/4、4/5、4/5 排列。这里只用于
-    /// 2020—2043，之后交由天文历重新校正（超出范围时退回 4 月 5 日一侧）。
+    /// 清明是 4 月几号，按节气的通用「寿星公式」：`[Y × 0.2422 + C] − [Y / 4]`，
+    /// Y 是年份后两位，C 在 20 世纪是 5.59、21 世纪是 4.81。清明在 20、21 世纪都没有需要单独
+    /// 修正的年份（公式的已知例外都在别的节气上）。22 世纪起 C 会变，这里退回 21 世纪的常数，
+    /// 误差最多一天。
     fileprivate static func qingmingDay(year: Int) -> Int {
-        let remainder = ((year % 4) + 4) % 4
-        return remainder <= 1 ? 4 : 5
+        let y = ((year % 100) + 100) % 100
+        let c = (1901...2000).contains(year) && year != 2000 ? 5.59 : 4.81
+        // 2000 年按 21 世纪算：Y = 0，闰年数也是 0。
+        return Int((Double(y) * 0.2422 + c).rounded(.down)) - y / 4
     }
 
     /// 农历节日：(月, 日, 名称)。闰月不算节日。
@@ -362,6 +366,9 @@ private nonisolated final class YearCache: @unchecked Sendable {
     private let lock = NSLock()
     private var storage: [Int: YearData] = [:]
     private var publishedDays: [PublishedHoliday] = []
+    /// 每换一次放假安排加一。`year(_:)` 在锁外算，算完发现版本变了就不写回：
+    /// 那是按旧安排算的，写进去会把刚清掉的旧结果又留下来。
+    private var version = 0
 
     var published: [PublishedHoliday] {
         lock.lock()
@@ -375,6 +382,7 @@ private nonisolated final class YearCache: @unchecked Sendable {
         defer { lock.unlock() }
         guard sorted != publishedDays else { return }
         publishedDays = sorted
+        version += 1
         storage.removeAll()
     }
 
@@ -384,11 +392,17 @@ private nonisolated final class YearCache: @unchecked Sendable {
             lock.unlock()
             return cached
         }
+        let startVersion = version
         lock.unlock()
 
         let built = Self.build(year: year)
 
         lock.lock()
+        guard version == startVersion else {
+            // 算的过程中换了放假安排：这份结果照样返回给这次调用，但不进缓存。
+            lock.unlock()
+            return built
+        }
         storage[year] = built
         // 翻年浏览日历不该把内存留在旧年份上。
         if storage.count > 8, let oldest = storage.keys.sorted(by: { abs($0 - year) > abs($1 - year) }).first {
@@ -396,6 +410,15 @@ private nonisolated final class YearCache: @unchecked Sendable {
         }
         lock.unlock()
         return built
+    }
+
+    /// 两段假期重叠，或者相隔不到 30 天（服务端和本地推算的清明、中秋差一两天也算同一次）。
+    private static func isNear(_ lhs: ChineseHolidayWindow, _ rhs: ChineseHolidayWindow) -> Bool {
+        if lhs.start <= rhs.end && rhs.start <= lhs.end { return true }
+        let gap = lhs.end < rhs.start
+            ? ChineseCalendarInfo.dayGap(from: lhs.end, to: rhs.start)
+            : ChineseCalendarInfo.dayGap(from: rhs.end, to: lhs.start)
+        return (gap ?? .max) < 30
     }
 
     private static func build(year: Int) -> YearData {
@@ -475,8 +498,10 @@ private nonisolated final class YearCache: @unchecked Sendable {
         if !published.isEmpty {
             // 服务端给了哪个节日就用哪个：同名的、以及被连休盖住的法定假日都让位
             // （2025 年中秋落在国庆连休里，服务端只写一段「国庆节、中秋节」）。
+            // 同名的只让给同一次假期：跨年元旦（2026-12-31 ~ 2027-01-02）也是「2026-」开头，
+            // 只看名字会把本地推算的 2026-01-01 元旦删掉。日期差出一个月以上的就不是同一次。
             holidays.removeAll { window in
-                published.contains { $0.name == window.name && $0.start.hasPrefix("\(year)-") }
+                published.contains { $0.name == window.name && Self.isNear($0, window) }
                     || published.contains { $0.start <= window.end && window.start <= $0.end }
             }
             holidays += published

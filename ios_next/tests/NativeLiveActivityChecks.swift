@@ -204,6 +204,46 @@ struct NativeLiveActivityChecks {
             .init(number: 1, startTime: "09:00", endTime: "09:45"),
             .init(number: -1, startTime: "08:00", endTime: "08:45")])
         precondition(valid.count == 1 && valid[0].startTime == "08:00")
+        // A course set to show first settles an overlap without a per-period choice.
+        defaults.removeObject(forKey: "cpu.liveActivity.timing.v2")
+        let ranked = NativeLiveActivityController(now: { start.addingTimeInterval(-900) })
+        ranked.accept(fixture(conflict: true, account: "ranked"))
+        precondition(ranked.conflicts.count == 1)
+        ranked.setDisplayPriorities(["other-term": ["课程 B": 2]])
+        precondition(ranked.conflicts.count == 1, "another semester's priorities do not apply")
+        ranked.setDisplayPriorities(["s": ["课程 B": 2]])
+        precondition(ranked.conflicts.isEmpty, "a ranked overlap needs no per-period choice")
+        precondition(ranked.remoteStartWindows().map(\.startPeriod) == [1, 2, 3])
+        ranked.setDisplayPriorities(["s": ["课程 B": 2, "课程 A": 2]])
+        precondition(ranked.conflicts.count == 1, "a tie is still the user's to settle")
+        ranked.setDisplayPriorities(["s": ["课程 B": 2]])
+        // A timetable the user cares about adds its classes where the user has none.
+        func plannedNames() -> [String] {
+            let data = defaults.data(forKey: ScheduleLiveActivityAttributes.broadcastCoursesKey) ?? Data()
+            return ((try? JSONDecoder().decode([ScheduleLiveActivityAttributes.LocalCourse].self, from: data)) ?? []).map(\.name)
+        }
+        let theirs = NativeScheduleSnapshot(completeSemester: true, source: .shared,
+            data: NativeScheduleResult(currentSemester: "share:ABCD2345", currentWeek: "3", cells: [
+                NativeScheduleCell(day: 3, bigSlot: 1, courses: [NativeScheduleCourse(name: "撞上的课", weeks: "3周", weekList: [3], startSlot: 1, endSlot: 1)]),
+                NativeScheduleCell(day: 4, bigSlot: 1, courses: [
+                    NativeScheduleCourse(name: "体育", weeks: "3周", weekList: [3], startSlot: 2, endSlot: 2),
+                    NativeScheduleCourse(name: "对方自己撞课甲", weeks: "3周", weekList: [3], startSlot: 3, endSlot: 3),
+                    NativeScheduleCourse(name: "对方自己撞课乙", weeks: "3周", weekList: [3], startSlot: 3, endSlot: 3)]),
+                NativeScheduleCell(day: 5, bigSlot: 1, courses: [NativeScheduleCourse(name: "不在本周", weeks: "4周", weekList: [4], startSlot: 1, endSlot: 1)])]),
+            calendar: NativeScheduleCalendar(currentSemester: "share:ABCD2345", currentWeek: 3, weeks: [NativeCalendarWeek(week: 3, days: ["2026-09-14", "2026-09-15", "2026-09-16", "2026-09-17", "2026-09-18", "2026-09-19", "2026-09-20"])]),
+            auth: NativeScheduleAuth(authenticated: true))
+        ranked.setCompanion(theirs, label: "室友")
+        let together = ranked.remoteStartWindows()
+        precondition(together.count == 4 && together.filter { $0.dateKey == "2026-09-17" }.map(\.startPeriod) == [2], "only the cared class that clashes with nothing is added")
+        precondition(plannedNames().contains("室友：体育"), "a cared class is named after whose it is")
+        precondition(!plannedNames().contains { $0.contains("撞上的课") }, "the user's own class wins a clash")
+        precondition(!plannedNames().contains { $0.contains("对方自己撞课") }, "the publisher's own overlaps are left out")
+        precondition(ranked.conflicts.isEmpty, "someone else's overlaps are not the user's conflicts")
+        ranked.setCompanion(nil, label: nil)
+        precondition(ranked.remoteStartWindows().count == 3 && !plannedNames().contains("室友：体育"), "caring about nobody leaves the user's own classes")
+        ranked.reset()
+        await settle()
+        print("Display priority and cared-timetable merging passed")
         print("Upgrade cache recovery: invalid timezone, duplicate/invalid periods and missing App Group passed")
         print("Live Activity v2 timeline, identity, conflict, reservation, dismissal and privacy checks passed")
     }

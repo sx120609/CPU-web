@@ -73,6 +73,9 @@ enum NativeSchedulePalette {
         "slate": (RGBA(0xf8fafc), RGBA(0x64748b), RGBA(0x334155)),
     ]
 
+    /// The accent of a single-color palette; nil for the per-course palette.
+    static func brand(for palette: String) -> RGBA? { simple[palette]?.border }
+
     static func hsl(_ hue: Double, _ saturation: Double, _ lightness: Double, _ alpha: Double = 1) -> RGBA {
         let s = saturation / 100, l = lightness / 100
         let chroma = (1 - abs(2 * l - 1)) * s

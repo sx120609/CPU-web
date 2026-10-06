@@ -10,6 +10,7 @@ struct NativeScheduleView: View {
     @Environment(\.colorScheme) private var colorScheme
     @ObservedObject private var store: NativeScheduleStore
     @ObservedObject private var preferences = NativeSchedulePreferences.shared
+    @ObservedObject private var styleSettings = NativeScheduleStyleSettings.shared
     private let onDeviceSettings: () -> Void
     private let onLogin: () -> Void
     private let isBackgroundPreview: Bool
@@ -24,6 +25,9 @@ struct NativeScheduleView: View {
     @State private var weekPickerPresented = false
     @State private var scheduleToolsPresented = false
     @State private var backgroundEditorPresented = false
+    @State private var stylePickerPresented = false
+    @State private var sharingPresented = false
+    @State private var viewedShare: NativeSharedSchedule?
     @State private var scheduleToolsContentHeight: CGFloat = 0
     @State private var sharePayload: NativeScheduleSharePayload?
     // Native pagers own the horizontal pan and keep the current page under the
@@ -64,6 +68,8 @@ struct NativeScheduleView: View {
                     .background {
                         if preferences.backgroundImage != nil {
                             NativeScheduleBackgroundSurface().ignoresSafeArea(edges: .top)
+                        } else if let canvas = styleCanvas {
+                            canvas.ignoresSafeArea(edges: .top)
                         } else {
                             Color(uiColor: .systemGroupedBackground)
                         }
@@ -127,12 +133,21 @@ struct NativeScheduleView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background {
-            NativeScheduleBackground(image: preferences.backgroundImage,
-                                     visibility: preferences.backgroundVisibility,
-                                     blur: preferences.backgroundBlur)
-                .ignoresSafeArea()
+            // Paper and board bring their own page colour; a photo still wins.
+            if preferences.backgroundImage == nil, let canvas = styleCanvas {
+                canvas.ignoresSafeArea()
+            } else {
+                NativeScheduleBackground(image: preferences.backgroundImage,
+                                         visibility: preferences.backgroundVisibility,
+                                         blur: preferences.backgroundBlur)
+                    .ignoresSafeArea()
+            }
         }
         .environment(\.scheduleHasBackground, preferences.backgroundImage != nil)
+        .environment(\.scheduleBackgroundVisibility, preferences.backgroundVisibility)
+        .environment(\.scheduleStyle, style)
+        .environment(\.schedulePalette, preferences.palette)
+        .environment(\.scheduleThemeBrand, ScheduleStyle.themeBrand(palette: preferences.palette))
         .task {
             viewMode = ScheduleViewMode(rawValue: preferences.defaultView) ?? .week
             adoptSelectionIfNeeded()
@@ -142,7 +157,77 @@ struct NativeScheduleView: View {
                ProcessInfo.processInfo.environment["CPU_DEBUG_BACKGROUND_EDITOR"] == "1" {
                 backgroundEditorPresented = true
             }
+            // `CPU_DEBUG_SCHEDULE_ACTION` runs one action once the timetable has
+            // loaded, so its result can be checked without tapping through:
+            // `share-image`, `calendar-file`, `course-sheet`, `course-editor`,
+            // `sharing` (the share-code page with sample state), `shared-view`
+            // (a sample shared timetable, read-only), or against a real server
+            // (see `connectDebugShareAPI`) `share-open`, `share-publish`, and
+            // `share-import` or `share-import-view` with `CPU_DEBUG_SHARE_CODE`.
+            if !isBackgroundPreview, !isReadOnly,
+               let action = ProcessInfo.processInfo.environment["CPU_DEBUG_SCHEDULE_ACTION"] {
+                for _ in 0..<40 where store.result == nil {
+                    try? await Task.sleep(for: .milliseconds(100))
+                }
+                // `CPU_DEBUG_SCHEDULE_PRIORITY` names the courses to show first, in order.
+                if let names = ProcessInfo.processInfo.environment["CPU_DEBUG_SCHEDULE_PRIORITY"] {
+                    let ordered = names.split(separator: ",").map { NativeSchedulePriority.key(String($0)) }
+                    store.installDebugPriorities(Dictionary(
+                        uniqueKeysWithValues: ordered.reversed().enumerated().map { ($1, $0 + 1) }
+                    ))
+                }
+                if let result = store.result {
+                    switch action {
+                    case "share-image": exportScheduleImage(result)
+                    case "calendar-file": exportWeekCalendarFile(result)
+                    case "course-sheet", "course-editor":
+                        let week = weekNumber(store.selectedWeek)
+                        if let (day, block) = (1...7).lazy.compactMap({ day in
+                            blocks(for: day, week: week, result: result).first.map { (day, $0) }
+                        }).first {
+                            selectCourse(block, day: day, week: week, result: result)
+                            if action == "course-editor", case .preview(let selection) = courseEditorPresentation {
+                                courseEditorPresentation = .edit(selection)
+                            }
+                        }
+                    case "sharing", "shared-view":
+                        guard let sample = debugSharedSchedule(result) else { break }
+                        NativeScheduleSharingService.shared.installDebugState(
+                            library: NativeSharedScheduleLibrary(account: "debug", schedules: [sample], caredCode: sample.meta.code),
+                            mine: [NativeScheduleShareMeta(
+                                code: "K7QM4WPX", owner: "阿青", semester: result.currentSemester,
+                                courseCount: result.cells.reduce(0) { $0 + $1.courses.count },
+                                updatedAt: "2026-10-07T02:00:00.000Z"
+                            )]
+                        )
+                        if action == "sharing" { sharingPresented = true } else { viewedShare = sample }
+                    case "share-open":
+                        sharingPresented = true
+                    case "share-publish":
+                        // The real thing, against whatever `CPU_DEBUG_API_ORIGIN` names.
+                        do { try await NativeScheduleSharingService.shared.publish() } catch { print("share-publish failed: \(error.localizedDescription)") }
+                        sharingPresented = true
+                    case "share-import", "share-import-view":
+                        let service = NativeScheduleSharingService.shared
+                        do {
+                            let code = ProcessInfo.processInfo.environment["CPU_DEBUG_SHARE_CODE"] ?? ""
+                            let schedule = try await service.preview(code)
+                            service.save(schedule, remark: ProcessInfo.processInfo.environment["CPU_DEBUG_SHARE_REMARK"] ?? "")
+                            service.care(schedule.meta.code)
+                            try? await service.loadMine()
+                            if action == "share-import" { sharingPresented = true } else { viewedShare = service.library.schedules.first { $0.meta.code == schedule.meta.code } }
+                        } catch {
+                            print("share-import failed: \(error.localizedDescription)")
+                            sharingPresented = true
+                        }
+                    default: break
+                    }
+                }
+            }
 #endif
+        }
+        .task(id: store.selectedSemester) {
+            await store.refreshDisplayPriorities()
         }
         .onChange(of: store.result?.currentSemester) { _, _ in
             adoptSelectionIfNeeded()
@@ -176,8 +261,13 @@ struct NativeScheduleView: View {
         .sheet(item: $courseEditorPresentation) { presentation in
             Group {
                 switch presentation {
+                case .preview(let selection):
+                    NativeCourseQuickLookSheet(selection: selection, store: store)
+                        .environment(\.schedulePalette, preferences.palette)
+                        .environment(\.scheduleThemeBrand, ScheduleStyle.themeBrand(palette: preferences.palette))
                 case .edit(let selection):
                     NativeCourseEditorSheet(selection: selection, store: store)
+                        .presentationDetents([.large])
                 case .add(let context):
                     NativeCourseEditorSheet(
                         selection: nil,
@@ -186,9 +276,9 @@ struct NativeScheduleView: View {
                         defaultWeek: context.week,
                         defaultStartSlot: context.startSlot
                     )
+                    .presentationDetents([.large])
                 }
             }
-            .presentationDetents([.large])
             .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $weekPickerPresented) {
@@ -199,6 +289,19 @@ struct NativeScheduleView: View {
             NavigationStack {
                 NativeScheduleBackgroundEditor(preferences: preferences, scheduleStore: store)
             }
+            .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $stylePickerPresented) {
+            NavigationStack {
+                ScheduleStylePicker(palette: preferences.palette)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("完成") { stylePickerPresented = false }
+                        }
+                    }
+            }
+            .tint(.cpuBrand)
+            .presentationDetents([.large])
             .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $scheduleToolsPresented) {
@@ -223,7 +326,35 @@ struct NativeScheduleView: View {
             NativeActivityView(activityItems: payload.items)
                 .ignoresSafeArea()
         }
+        .sheet(isPresented: $sharingPresented) {
+            NativeScheduleSharingView(store: store) { schedule in
+                // Let the sheet finish closing before the cover goes up.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { viewedShare = schedule }
+            }
+            .presentationDragIndicator(.visible)
+        }
+        .fullScreenCover(item: $viewedShare) { schedule in
+            NativeSharedScheduleScreen(schedule: schedule)
+        }
     }
+
+    /// Somebody else's shared timetable: everything that would change it is off.
+    private var isReadOnly: Bool { store.isReadOnly }
+
+#if DEBUG
+    /// The timetable on screen dressed up as one a roommate shared.
+    private func debugSharedSchedule(_ result: NativeScheduleResult) -> NativeSharedSchedule? {
+        guard let calendar = store.calendar else { return nil }
+        return NativeSharedSchedule(
+            meta: NativeScheduleShareMeta(
+                code: "R8TN3HVC", owner: "小王", semester: result.currentSemester,
+                courseCount: result.cells.reduce(0) { $0 + $1.courses.count },
+                updatedAt: "2026-10-06T08:00:00.000Z"
+            ),
+            schedule: result, calendar: calendar, remark: "室友小王"
+        )
+    }
+#endif
 
     private var isLoading: Bool {
         store.state == .loading
@@ -237,6 +368,11 @@ struct NativeScheduleView: View {
         let value = store.errorMessage?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return value.isEmpty ? nil : value
     }
+
+    private var style: ScheduleStyle { styleSettings.style }
+
+    /// The page colour a style brings with it, if any.
+    private var styleCanvas: Color? { style.canvasColor(dark: colorScheme == .dark) }
 
     private var scheduleChangeNoticeBinding: Binding<NativeScheduleChangeNotice?> {
         Binding(
@@ -388,9 +524,11 @@ struct NativeScheduleView: View {
                 if let sourceWeek = effective.week, store.selectedWeek != String(sourceWeek) {
                     store.commitWeekSelection(String(sourceWeek))
                 }
-                courseEditorPresentation = .edit(SelectedCourse(
+                let block = block.whole
+                courseEditorPresentation = .preview(SelectedCourse(
                     id: block.id, course: block.course, day: effective.day,
-                    bigSlot: block.bigSlot, startSlot: block.startSlot, endSlot: block.endSlot
+                    bigSlot: block.bigSlot, startSlot: block.startSlot, endSlot: block.endSlot,
+                    schedule: scheduleText(block, day: slot.day)
                 ))
             }
         )
@@ -482,7 +620,26 @@ struct NativeScheduleView: View {
             && selectedDay == Self.chinaWeekday
     }
 
+    @ViewBuilder
     private func semesterMenu(_ result: NativeScheduleResult) -> some View {
+        if isReadOnly {
+            // One timetable, nothing to switch to.
+            Label(semesterTitle(result), systemImage: "person.2")
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 12)
+                .frame(minHeight: 34)
+                .modifier(ScheduleGlassControl(cornerRadius: 17))
+                .clipShape(Capsule())
+                .accessibilityLabel("共享课表：\(semesterTitle(result))")
+        } else {
+            ownSemesterMenu(result)
+        }
+    }
+
+    private func ownSemesterMenu(_ result: NativeScheduleResult) -> some View {
         Menu {
             ForEach(result.semesters, id: \.value) { semester in
                 Button {
@@ -536,7 +693,7 @@ struct NativeScheduleView: View {
                         scheduleToolsPresented = false
                         refresh()
                     }
-                    if result.source != .graduate {
+                    if result.source != .graduate, !isReadOnly {
                         scheduleToolRow("添加课程", systemImage: "plus") {
                             scheduleToolsPresented = false
                             presentAddCourse(
@@ -549,13 +706,19 @@ struct NativeScheduleView: View {
                 }
 
                 scheduleToolsSection("设备与设置") {
-                    scheduleToolRow("背景自定义", systemImage: "photo") {
+                    scheduleToolRow("课表风格", systemImage: "paintpalette") {
                         scheduleToolsPresented = false
-                        DispatchQueue.main.async { backgroundEditorPresented = true }
+                        DispatchQueue.main.async { stylePickerPresented = true }
                     }
-                    scheduleToolRow("课表、设备与小组件", systemImage: "slider.horizontal.3") {
-                        scheduleToolsPresented = false
-                        DispatchQueue.main.async { onDeviceSettings() }
+                    if !isReadOnly {
+                        scheduleToolRow("背景自定义", systemImage: "photo") {
+                            scheduleToolsPresented = false
+                            DispatchQueue.main.async { backgroundEditorPresented = true }
+                        }
+                        scheduleToolRow("课表、设备与小组件", systemImage: "slider.horizontal.3") {
+                            scheduleToolsPresented = false
+                            DispatchQueue.main.async { onDeviceSettings() }
+                        }
                     }
                 }
 
@@ -563,6 +726,16 @@ struct NativeScheduleView: View {
                     scheduleToolRow("分享本周课表", systemImage: "square.and.arrow.up") {
                         scheduleToolsPresented = false
                         exportScheduleImage(result)
+                    }
+                    scheduleToolRow("导出本周日历文件", systemImage: "calendar.badge.plus") {
+                        scheduleToolsPresented = false
+                        exportWeekCalendarFile(result)
+                    }
+                    if !isReadOnly {
+                        scheduleToolRow("共享课表", systemImage: "person.2") {
+                            scheduleToolsPresented = false
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { sharingPresented = true }
+                        }
                     }
                 }
             }
@@ -721,26 +894,115 @@ struct NativeScheduleView: View {
             GeometryReader { proxy in
                 weekPager(result: result, width: proxy.size.width) { week in
                     let days = visibleDays(week: week, result: result)
-                    let columnWidth = max(
-                        24,
-                        (proxy.size.width - 2 * Self.contentInset - Self.slotAxisWidth
-                            - CGFloat(days.count) * Self.columnGap) / CGFloat(days.count)
-                    )
-                    scheduleRows(
-                        result: result,
-                        week: week,
-                        days: days,
-                        columnWidth: columnWidth,
-                        compactCards: preferences.density == "compact",
-                        rowHeight: weekRowHeight,
-                        showsDateHeader: preferences.showDateHeader
-                    )
-                    .padding(.horizontal, Self.contentInset)
-                    .frame(width: proxy.size.width, alignment: .leading)
+                    if style == .classic {
+                        let columnWidth = max(
+                            24,
+                            (proxy.size.width - 2 * Self.contentInset - Self.slotAxisWidth
+                                - CGFloat(days.count) * Self.columnGap) / CGFloat(days.count)
+                        )
+                        scheduleRows(
+                            result: result,
+                            week: week,
+                            days: days,
+                            columnWidth: columnWidth,
+                            compactCards: preferences.density == "compact",
+                            rowHeight: weekRowHeight,
+                            showsDateHeader: preferences.showDateHeader
+                        )
+                        // Keep the date headers' top border clear of the
+                        // pager's clipping edge.
+                        .padding(.top, Self.weekGridTopInset)
+                        .padding(.horizontal, Self.contentInset)
+                        .frame(width: proxy.size.width, alignment: .leading)
+                    } else {
+                        styledWeekRows(
+                            result: result,
+                            week: week,
+                            days: days,
+                            contentWidth: proxy.size.width - 2 * Self.contentInset
+                        )
+                        .padding(.top, Self.weekGridTopInset)
+                        .padding(.horizontal, Self.contentInset)
+                        .frame(width: proxy.size.width, alignment: .leading)
+                    }
                 }
             }
-            .frame(height: Self.scheduleGridHeight(rowHeight: weekRowHeight))
+            .frame(height: weekGridHeight)
         }
+    }
+
+    /// The pager's fixed cross axis for the week view in the current style.
+    private var weekGridHeight: CGFloat {
+        style == .classic
+            // The rows end with 4pt of padding. Left out of the pager's height,
+            // the taller page was centred and lost its top 2pt.
+            ? Self.scheduleGridHeight(rowHeight: weekRowHeight, topInset: Self.weekGridTopInset) + 4
+            : ScheduleStyledWeekRows.height(rowHeight: weekRowHeight, slotCount: ScheduleSlot.all.count,
+                                            showsDateHeader: preferences.showDateHeader, style: style)
+                + Self.weekGridTopInset + 2
+    }
+
+    /// The week grid of every style except classic. Calendar resolution, lanes
+    /// and editing are the same as the classic grid; only the drawing differs.
+    private func styledWeekRows(
+        result: NativeScheduleResult,
+        week: Int?,
+        days: [Int],
+        contentWidth: CGFloat,
+        isStatic: Bool = false
+    ) -> some View {
+        ScheduleStyledWeekRows(
+            days: days.map { styledDay($0, week: week, result: result) },
+            columnWidth: ScheduleStyledWeekRows.columnWidth(contentWidth: contentWidth, dayCount: days.count, style: style),
+            rowHeight: weekRowHeight,
+            compactCards: !isStatic && preferences.density == "compact",
+            showsDateHeader: isStatic || preferences.showDateHeader,
+            showLocation: preferences.showLocation,
+            showsNow: !isStatic && preferences.showNowIndicator,
+            onCourseSelected: { day, block in selectCourse(block, day: day.day, week: week, result: result) },
+            onEmptySlot: { day, slot in
+                let effective = effectiveSlot(day: day.day, week: week, result: result)
+                presentAddCourse(day: effective.day, week: effective.week, startSlot: slot)
+            }
+        )
+    }
+
+    private func styledDay(_ day: Int, week: Int?, result: NativeScheduleResult) -> ScheduleStyledDay {
+        ScheduleStyledDay(
+            day: day,
+            dateText: dayDate(day, week: week, result: result),
+            rawDate: rawDayDate(day, week: week, result: result),
+            isToday: dayIsToday(day, week: week, result: result),
+            adjustmentKind: adjustment(day: day, week: week, result: result)?.kind,
+            blocks: blocks(for: day, week: week, result: result)
+        )
+    }
+
+    /// Opens the quick look for a course shown on `day`. The quick look names
+    /// the weekday it is shown on; editing from it uses the weekday the course
+    /// actually belongs to, which differs on a make-up day.
+    private func selectCourse(_ shown: NativeScheduleCourseBlock, day: Int, week: Int?, result: NativeScheduleResult) {
+        let effective = effectiveSlot(day: day, week: week, result: result)
+        // A piece left visible beside a course in front still opens the whole course.
+        let block = shown.whole
+        courseEditorPresentation = .preview(SelectedCourse(
+            id: block.id,
+            course: block.course,
+            day: effective.day,
+            bigSlot: block.bigSlot,
+            startSlot: block.startSlot,
+            endSlot: block.endSlot,
+            schedule: scheduleText(block, day: day)
+        ))
+    }
+
+    /// "周三 · 第 5–6 节 · 13:30–15:10"
+    private func scheduleText(_ block: NativeScheduleCourseBlock, day: Int) -> String {
+        let status = ScheduleStyledDayStatus(clocks: ScheduleSlot.all, now: nil, completedBefore: nil)
+        let slots = block.startSlot == block.endSlot
+            ? "第 \(block.startSlot) 节" : "第 \(block.startSlot)–\(block.endSlot) 节"
+        return [ScheduleStyleTime.weekday(day), slots, "\(status.start(block))–\(status.end(block))"]
+            .joined(separator: " · ")
     }
 
     private func dayGrid(_ result: NativeScheduleResult) -> some View {
@@ -748,28 +1010,98 @@ struct NativeScheduleView: View {
             GeometryReader { proxy in
                 let columnWidth = max(220, proxy.size.width - Self.slotAxisWidth - Self.columnGap)
                 dayPager(result: result, width: proxy.size.width) { page in
-                    scheduleRows(
-                        result: result,
-                        week: page.week.flatMap(Int.init),
-                        days: [page.day],
-                        columnWidth: columnWidth,
-                        compactCards: preferences.density == "compact",
-                        rowHeight: dayRowHeight,
-                        showsDateHeader: false
-                    )
-                    // TabView's page container can clip content that starts
-                    // exactly on its top edge during the native page
-                    // transition. Keep a small, day-only breathing room so
-                    // the first course card is never cut by that edge.
-                    .padding(.top, Self.dayGridTopInset)
-                    .frame(width: proxy.size.width, alignment: .leading)
+                    if style == .classic {
+                        scheduleRows(
+                            result: result,
+                            week: page.week.flatMap(Int.init),
+                            days: [page.day],
+                            columnWidth: columnWidth,
+                            compactCards: preferences.density == "compact",
+                            rowHeight: dayRowHeight,
+                            showsDateHeader: false
+                        )
+                        // TabView's page container can clip content that starts
+                        // exactly on its top edge during the native page
+                        // transition. Keep a small, day-only breathing room so
+                        // the first course card is never cut by that edge.
+                        .padding(.top, Self.dayGridTopInset)
+                        .frame(width: proxy.size.width, alignment: .leading)
+                    } else {
+                        styledDay(result: result, week: page.week.flatMap(Int.init), day: page.day)
+                            .padding(.vertical, Self.styledDayInset)
+                            .frame(width: proxy.size.width, height: dayGridHeight(result), alignment: .top)
+                    }
                 }
             }
-            .frame(height: Self.scheduleGridHeight(
+            .frame(height: dayGridHeight(result))
+        }
+    }
+
+    /// The day pager has a fixed cross axis, so it takes the tallest of the
+    /// three pages it can show.
+    private func dayGridHeight(_ result: NativeScheduleResult) -> CGFloat {
+        guard style != .classic else {
+            return Self.scheduleGridHeight(
                 rowHeight: dayRowHeight,
                 includesDateHeader: false,
                 topInset: Self.dayGridTopInset
-            ))
+            )
+        }
+        let pages = [
+            adjacentDayPage(-1, result: result),
+            NativeScheduleDayPage(week: store.selectedWeek.nilIfEmpty, day: selectedDay),
+            adjacentDayPage(1, result: result),
+        ].compactMap { $0 }
+        let tallest = pages.map { page in
+            ScheduleStyledDayView.height(
+                style: style,
+                blocks: blocks(for: page.day, week: page.week.flatMap(Int.init), result: result),
+                clocks: ScheduleSlot.all,
+                slotCount: ScheduleSlot.all.count,
+                cardHeight: styledDayCardHeight
+            )
+        }.max() ?? 0
+        return tallest + 2 * Self.styledDayInset
+    }
+
+    private var styledDayCardHeight: CGFloat {
+        ScheduleStyledDayView.standardCardHeight * (preferences.density == "compact" ? 0.9 : 1)
+    }
+
+    /// The day view of every style except classic. Today refreshes each minute
+    /// so the in-class and next-up states stay current.
+    private func styledDay(result: NativeScheduleResult, week: Int?, day: Int) -> some View {
+        let date = rawDayDate(day, week: week, result: result)
+        let isToday = dayIsToday(day, week: week, result: result)
+        let adjustment = adjustment(day: day, week: week, result: result)
+        func view(_ now: Date?) -> ScheduleStyledDayView {
+            ScheduleStyledDayView(
+                day: day,
+                blocks: blocks(for: day, week: week, result: result),
+                nowMinutes: preferences.showNowIndicator ? now.map { ScheduleStyleTime.minutes($0) } : nil,
+                completedBeforeMinutes: date.flatMap { date in
+                    guard let today = Self.todayDate else { return nil }
+                    if date < today { return 24 * 60 }
+                    return date == today ? ScheduleStyleTime.minutes(now ?? .now) : nil
+                },
+                cardHeight: styledDayCardHeight,
+                emptyNote: adjustment.map(adjustmentDetail),
+                holidayGreeting: date.flatMap { ChineseCalendarInfo.restGreeting(forDate: $0) },
+                showLocation: preferences.showLocation,
+                showTeacher: preferences.showTeacher,
+                onCourseSelected: { block in selectCourse(block, day: day, week: week, result: result) },
+                onEmptySlot: { slot in
+                    let effective = effectiveSlot(day: day, week: week, result: result)
+                    presentAddCourse(day: effective.day, week: effective.week, startSlot: slot)
+                }
+            )
+        }
+        return Group {
+            if isToday {
+                TimelineView(.everyMinute) { context in view(context.date) }
+            } else {
+                view(nil)
+            }
         }
     }
 
@@ -787,7 +1119,12 @@ struct NativeScheduleView: View {
     }
 
     private func visibleDays(week: Int?, result: NativeScheduleResult) -> [Int] {
-        let adjustedDays = Set((6...7).filter { adjustment(day: $0, week: week, result: result) != nil })
+        // With weekends hidden, a weekend day still shows when it is a make-up
+        // or holiday date, or when it has a course: hiding it would hide the course.
+        let adjustedDays = Set((6...7).filter {
+            adjustment(day: $0, week: week, result: result) != nil
+                || !blocks(for: $0, week: week, result: result).isEmpty
+        })
         return preferences.visibleDays(adjustedDays: adjustedDays)
     }
 
@@ -957,9 +1294,12 @@ struct NativeScheduleView: View {
         columnWidth: CGFloat,
         compactCards: Bool,
         rowHeight: CGFloat = NativeScheduleDayColumn.slotHeight,
-        showsDateHeader: Bool = true
+        showsDateHeader: Bool = true,
+        showsNow: Bool = true
     ) -> some View {
-        HStack(alignment: .top, spacing: Self.columnGap) {
+        let todayIndex = showsNow && preferences.showNowIndicator
+            ? days.firstIndex { dayIsToday($0, week: week, result: result) } : nil
+        return HStack(alignment: .top, spacing: Self.columnGap) {
             slotAxis(rowHeight: rowHeight, showsHeader: showsDateHeader)
 
             ForEach(days, id: \.self) { day in
@@ -981,22 +1321,41 @@ struct NativeScheduleView: View {
                     showWeeks: preferences.showWeeks,
                     onCourseSelected: { block in
                         // A cell tap can arrive in the same run loop as a
-                        // neighbouring empty-slot gesture. Clear the add
-                        // context first so selecting a real course always
-                        // presents the editor for that course.
-                        courseEditorPresentation = .edit(SelectedCourse(
-                            id: block.id,
-                            course: block.course,
-                            day: effective.day,
-                            bigSlot: block.bigSlot,
-                            startSlot: block.startSlot,
-                            endSlot: block.endSlot
-                        ))
+                        // neighbouring empty-slot gesture. Selecting a real
+                        // course always presents that course.
+                        selectCourse(block, day: day, week: week, result: result)
                     },
                     onEmptySlot: { slot in
                         presentAddCourse(day: effective.day, week: effective.week, startSlot: slot)
                     }
                 )
+            }
+        }
+        .overlay(alignment: .topLeading) {
+            if let todayIndex {
+                // The current time: a capsule on the period axis and a line
+                // across today's column, refreshed each minute.
+                TimelineView(.everyMinute) { context in
+                    let minutes = ScheduleStyleTime.minutes(context.date)
+                    let headerHeight = showsDateHeader ? NativeScheduleDayColumn.dateHeaderHeight : 0
+                    if let y = ScheduleStyledWeekRows.nowOffset(minutes, rows: ScheduleSlot.all, rowHeight: rowHeight) {
+                        ZStack(alignment: .topLeading) {
+                            // The day view's single wide card carries its title
+                            // where the line would run, so only the week draws it.
+                            if days.count > 1 {
+                                ScheduleNowLine(width: columnWidth)
+                                    .offset(x: Self.slotAxisWidth + Self.columnGap
+                                                + CGFloat(todayIndex) * (columnWidth + Self.columnGap),
+                                            y: headerHeight + y)
+                            }
+                            ScheduleNowBadge(minutes: minutes)
+                                .frame(width: Self.slotAxisWidth)
+                                .offset(y: headerHeight + y - ScheduleNowBadge.height / 2)
+                        }
+                    }
+                }
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
             }
         }
         .padding(.bottom, 4)
@@ -1246,6 +1605,14 @@ struct NativeScheduleView: View {
     }
 
     private func refresh() {
+        guard !isReadOnly else {
+            // A shared timetable is refreshed from its share, not from 教务.
+            Task {
+                await NativeScheduleSharingService.shared.refresh()
+                await store.load(force: true)
+            }
+            return
+        }
         requestLoad(force: true)
     }
 
@@ -1259,17 +1626,26 @@ struct NativeScheduleView: View {
         let canvasWidth: CGFloat = 980
         let gridWidth = canvasWidth - 48
         let columnWidth = max(72, (gridWidth - Self.slotAxisWidth - CGFloat(6) * Self.columnGap) / 7)
-        let grid = AnyView(
-            scheduleRows(
-                result: result,
-                week: week,
-                days: Array(1...7),
-                columnWidth: columnWidth,
-                compactCards: false,
-                rowHeight: weekRowHeight,
-                showsDateHeader: preferences.showDateHeader
+        let grid = style == .classic
+            ? AnyView(
+                scheduleRows(
+                    result: result,
+                    week: week,
+                    days: Array(1...7),
+                    columnWidth: columnWidth,
+                    compactCards: false,
+                    rowHeight: weekRowHeight,
+                    showsDateHeader: preferences.showDateHeader,
+                    showsNow: false
+                )
             )
-        )
+            // The styled grid follows the chosen style, palette and appearance,
+            // and is drawn static: no today, no "now", so the picture reads the
+            // same whenever it is opened.
+            : AnyView(
+                styledWeekRows(result: result, week: week, days: Array(1...7),
+                               contentWidth: gridWidth, isStatic: true)
+            )
 
         let content = VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .firstTextBaseline) {
@@ -1296,7 +1672,13 @@ struct NativeScheduleView: View {
         }
         .padding(24)
         .frame(width: canvasWidth, alignment: .leading)
-        .background(Color(uiColor: .systemGroupedBackground))
+        .background(styleCanvas ?? Color(uiColor: .systemGroupedBackground))
+        // ImageRenderer starts from a fresh environment.
+        .environment(\.scheduleStyle, style)
+        .environment(\.schedulePalette, preferences.palette)
+        .environment(\.scheduleThemeBrand, ScheduleStyle.themeBrand(palette: preferences.palette))
+        .environment(\.scheduleStaticRendering, true)
+        .environment(\.colorScheme, style == .classic ? .light : colorScheme)
 
         let renderer = ImageRenderer(content: content)
         renderer.scale = UIScreen.main.scale
@@ -1310,12 +1692,30 @@ struct NativeScheduleView: View {
         }
     }
 
+    /// Shares the viewed week as an `.ics` file. It carries the courses each
+    /// date actually runs: nothing on a day off, the swapped courses on a make-up day.
+    private func exportWeekCalendarFile(_ result: NativeScheduleResult) {
+        guard let week = Int(store.selectedWeek) ?? Int(result.currentWeek) else { return }
+        let days = (1...7).compactMap { day -> NativeScheduleICSExporter.Day? in
+            guard let date = rawDayDate(day, week: week, result: result) else { return nil }
+            return .init(date: date, blocks: blocks(for: day, week: week, result: result))
+        }
+        let ics = NativeScheduleICSExporter.make(week: week, days: days, clocks: ScheduleSlot.all)
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("药大拾间-第\(week)周课表.ics")
+        guard (try? Data(ics.utf8).write(to: url, options: .atomic)) != nil else { return }
+        Task { @MainActor in
+            // Let the More sheet finish its dismissal before presenting the share sheet.
+            try? await Task.sleep(for: .milliseconds(350))
+            sharePayload = NativeScheduleSharePayload(items: [url])
+        }
+    }
+
     private func presentAddCourse(day: Int, week: Int?, startSlot: Int) {
         // A course card and the slot grid are siblings in the same ZStack. On
         // older SwiftUI releases a delayed empty-slot callback can arrive
         // after the course callback; never let it replace an editor that is
         // already being presented.
-        guard courseEditorPresentation == nil else { return }
+        guard courseEditorPresentation == nil, !isReadOnly else { return }
         let context = AddCourseContext(
             day: min(max(day, 1), 7),
             week: week ?? Int(store.selectedWeek) ?? 1,
@@ -1632,24 +2032,22 @@ struct NativeScheduleView: View {
                 return lhs.endSlot < rhs.endSlot
             }
 
-        let merged = NativeScheduleCourseBlockMerger.merge(rawBlocks).map { block in
+        // A course set to show first covers the periods it shares with the
+        // others; without any priority this is the plain side-by-side layout.
+        return NativeSchedulePriority.place(
+            NativeScheduleCourseBlockMerger.merge(rawBlocks),
+            priorities: store.displayPriorities
+        ).map { placed in
             NativeScheduleCourseBlock(
-                id: block.id,
-                course: block.course,
-                bigSlot: block.bigSlot,
-                startSlot: block.startSlot,
-                endSlot: block.endSlot
+                id: placed.id,
+                course: placed.block.course,
+                bigSlot: placed.block.bigSlot,
+                startSlot: placed.startSlot,
+                endSlot: placed.endSlot,
+                lane: placed.lane,
+                courseStartSlot: placed.block.startSlot,
+                courseEndSlot: placed.block.endSlot
             )
-        }
-        var laneEnds: [Int] = []
-        return merged.sorted(by: { ($0.startSlot, $0.endSlot, $0.id) < ($1.startSlot, $1.endSlot, $1.id) }).map { block in
-            let lane = laneEnds.firstIndex(where: { $0 < block.startSlot }) ?? laneEnds.count
-            if lane == laneEnds.count {
-                laneEnds.append(block.endSlot)
-            } else {
-                laneEnds[lane] = block.endSlot
-            }
-            return block.withLane(lane)
         }
     }
 
@@ -1731,6 +2129,12 @@ struct NativeScheduleView: View {
     /// Eleven teaching slots plus the date header, sized to keep a complete
     /// day visible above the native tab bar on an iPhone-sized surface.
     private static let dayGridTopInset: CGFloat = 6
+    /// Room above the week grid inside the pager, so a date header's border is
+    /// not drawn on the page's clipping edge.
+    private static let weekGridTopInset: CGFloat = 2
+    /// Room above and below a styled day page, so the pager does not clip a
+    /// card's shadow or the first row's rule.
+    private static let styledDayInset: CGFloat = 12
 
     private static func scheduleGridHeight(
         rowHeight: CGFloat = NativeScheduleDayColumn.slotHeight,
@@ -1779,18 +2183,34 @@ struct NativeScheduleCourseBlock: Identifiable {
     let startSlot: Int
     let endSlot: Int
     let lane: Int
+    /// The periods the course really covers. They differ from `startSlot` and
+    /// `endSlot` only when a course shown in front hides part of this one.
+    let courseStartSlot: Int
+    let courseEndSlot: Int
 
-    init(id: String, course: NativeScheduleCourse, bigSlot: Int, startSlot: Int, endSlot: Int, lane: Int = 0) {
+    init(
+        id: String, course: NativeScheduleCourse, bigSlot: Int, startSlot: Int, endSlot: Int, lane: Int = 0,
+        courseStartSlot: Int? = nil, courseEndSlot: Int? = nil
+    ) {
         self.id = id
         self.course = course
         self.bigSlot = bigSlot
         self.startSlot = startSlot
         self.endSlot = endSlot
         self.lane = lane
+        self.courseStartSlot = courseStartSlot ?? startSlot
+        self.courseEndSlot = courseEndSlot ?? endSlot
     }
 
     func withLane(_ lane: Int) -> NativeScheduleCourseBlock {
-        NativeScheduleCourseBlock(id: id, course: course, bigSlot: bigSlot, startSlot: startSlot, endSlot: endSlot, lane: lane)
+        NativeScheduleCourseBlock(id: id, course: course, bigSlot: bigSlot, startSlot: startSlot, endSlot: endSlot,
+                                  lane: lane, courseStartSlot: courseStartSlot, courseEndSlot: courseEndSlot)
+    }
+
+    /// The whole course, for the quick look and the editor.
+    var whole: NativeScheduleCourseBlock {
+        NativeScheduleCourseBlock(id: id, course: course, bigSlot: bigSlot,
+                                  startSlot: courseStartSlot, endSlot: courseEndSlot, lane: lane)
     }
 }
 
@@ -1820,6 +2240,8 @@ private struct SelectedCourse: Identifiable {
     let bigSlot: Int
     let startSlot: Int
     let endSlot: Int
+    /// "周三 · 第 5–6 节 · 13:30–15:10", shown in the quick look.
+    var schedule: String? = nil
 }
 
 private struct AddCourseContext: Identifiable {
@@ -1830,11 +2252,14 @@ private struct AddCourseContext: Identifiable {
 }
 
 private enum CourseEditorPresentation: Identifiable {
+    /// The quick look; its edit button swaps the same sheet to the editor.
+    case preview(SelectedCourse)
     case edit(SelectedCourse)
     case add(AddCourseContext)
 
     var id: String {
         switch self {
+        case .preview(let selection): return "preview:\(selection.id)"
         case .edit(let selection): return selection.id
         case .add(let context): return "add:\(context.id.uuidString)"
         }
@@ -2303,6 +2728,46 @@ private struct NativeScheduleCourseCard: View {
     }
 }
 
+/// The course sheet opened by a tap: the quick look at its content height,
+/// then the editor at full height once "编辑" is pressed.
+@available(iOS 17.0, *)
+private struct NativeCourseQuickLookSheet: View {
+    let selection: SelectedCourse
+    @ObservedObject var store: NativeScheduleStore
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var editing = false
+    @State private var detent: PresentationDetent = .height(280)
+    @State private var previewHeight: CGFloat = 280
+
+    var body: some View {
+        Group {
+            if editing {
+                NativeCourseEditorSheet(selection: selection, store: store)
+            } else {
+                ScheduleCourseQuickLook(
+                    course: selection.course,
+                    schedule: selection.schedule,
+                    onEdit: store.isReadOnly ? nil : {
+                        withAnimation(reduceMotion ? nil : .snappy(duration: 0.3)) {
+                            detent = .large
+                            editing = true
+                        }
+                    },
+                    onHeightChange: { height in
+                        let height = min(560, max(180, ceil(height)))
+                        guard abs(height - previewHeight) > 1 else { return }
+                        previewHeight = height
+                        if !editing && detent != .large { detent = .height(height) }
+                    }
+                )
+            }
+        }
+        // Short content hugs its height and can be pulled to full; the editor is full height only.
+        .presentationDetents(editing ? [.large] : [.height(previewHeight), .large], selection: $detent)
+    }
+}
+
 @available(iOS 17.0, *)
 private struct NativeCourseEditorSheet: View {
     let selection: SelectedCourse?
@@ -2315,11 +2780,11 @@ private struct NativeCourseEditorSheet: View {
     @State private var teacher: String
     @State private var location: String
     @State private var note: String
-    @State private var day: Int
-    @State private var startSlot: Int
-    @State private var endSlot: Int
-    @State private var weekMode: String
-    @State private var selectedWeeks: Set<Int>
+    /// The "when it meets" groups. The first is the block being edited; more
+    /// can be added, and each may pick periods that are not consecutive.
+    @State private var arrangements: [ArrangementDraft]
+    /// Show this course in front of the ones it overlaps.
+    @State private var preferred: Bool
     @State private var saving = false
     @State private var errorMessage: String?
     @State private var hiddenCourses: [(String, String)] = []
@@ -2335,12 +2800,27 @@ private struct NativeCourseEditorSheet: View {
         _teacher = State(initialValue: course?.teacher ?? "")
         _location = State(initialValue: course?.location ?? "")
         _note = State(initialValue: course?.slotNote ?? "")
-        _day = State(initialValue: selection?.day ?? defaultDay)
-        _startSlot = State(initialValue: selection?.startSlot ?? defaultStartSlot)
-        _endSlot = State(initialValue: selection?.endSlot ?? min(defaultStartSlot + 1, ScheduleSlot.all.count))
+        _preferred = State(initialValue: course.map {
+            NativeSchedulePriority.value(of: $0.name, in: store.displayPriorities) > 0
+        } ?? false)
+        let start = selection?.startSlot ?? defaultStartSlot
+        let end = max(start, selection?.endSlot ?? min(defaultStartSlot + 1, ScheduleSlot.all.count))
         let list = course?.weekList ?? [defaultWeek]
-        _weekMode = State(initialValue: list.isEmpty ? "all" : (list == [defaultWeek] ? "current" : "custom"))
-        _selectedWeeks = State(initialValue: Set(list.isEmpty ? [defaultWeek] : list))
+        _arrangements = State(initialValue: [ArrangementDraft(
+            day: selection?.day ?? defaultDay,
+            slots: Set(start...end),
+            weekMode: list.isEmpty ? "all" : (list == [defaultWeek] ? "current" : "custom"),
+            selectedWeeks: Set(list.isEmpty ? [defaultWeek] : list)
+        )])
+    }
+
+    private struct ArrangementDraft: Identifiable {
+        let id = UUID()
+        var day: Int
+        var slots: Set<Int>
+        /// "current", "all" or "custom".
+        var weekMode: String
+        var selectedWeeks: Set<Int>
     }
 
     var body: some View {
@@ -2393,37 +2873,48 @@ private struct NativeCourseEditorSheet: View {
                     }
                     .padding(.horizontal, 4)
 
-                    editorCard {
-                        editorFieldRow("周数") {
-                            Picker("周次范围", selection: $weekMode) {
-                                Text("本周").tag("current")
-                                Text("全部周").tag("all")
-                                Text("指定周次").tag("custom")
+                    ForEach($arrangements) { $arrangement in
+                        arrangementCard($arrangement)
+                    }
+
+                    Button {
+                        withAnimation(.snappy(duration: 0.2)) {
+                            let last = arrangements.last
+                            arrangements.append(ArrangementDraft(
+                                day: last?.day ?? defaultDay,
+                                slots: [],
+                                weekMode: last?.weekMode ?? "all",
+                                selectedWeeks: last?.selectedWeeks ?? [defaultWeek]
+                            ))
+                        }
+                    } label: {
+                        Label("添加上课时间", systemImage: "plus.circle")
+                            .font(.body.weight(.medium))
+                            .frame(maxWidth: .infinity, minHeight: 48)
+                            .background(Color(uiColor: .secondarySystemGroupedBackground),
+                                        in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Color.cpuBrand)
+                    .disabled(saving)
+
+                    let overlapping = overlappingNames
+                    if !overlapping.isEmpty || preferred {
+                        editorCard {
+                            Toggle(isOn: $preferred) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text("优先显示这门课")
+                                    Text(overlapping.isEmpty
+                                         ? "和别的课重叠时，重叠的节次只显示这门课。"
+                                         : "和\(overlapping.map { "「\($0)」" }.joined())重叠的节次只显示这门课，其他课程仍保留在课表里。")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
                             }
-                            .labelsHidden()
-                            .pickerStyle(.menu)
+                            .tint(.cpuBrand)
+                            .disabled(saving)
                         }
-                        if weekMode == "custom" {
-                            weekChipPicker
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 10)
-                        } else {
-                            Text(weekMode == "all" ? "这门课会显示在全部周次" : "第 \(defaultWeek) 周")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 14)
-                                .padding(.bottom, 10)
-                        }
-                        editorFieldRow("星期") {
-                            Picker("星期", selection: $day) {
-                                ForEach(1...7, id: \.self) { Text(dayLabel($0)).tag($0) }
-                            }
-                            .labelsHidden()
-                            .pickerStyle(.menu)
-                        }
-                        editorStepperRow("开始第 \(startSlot) 节", value: $startSlot, range: 1...ScheduleSlot.all.count)
-                        editorStepperRow("结束第 \(endSlot) 节", value: $endSlot, range: startSlot...ScheduleSlot.all.count)
                     }
 
                     if !hiddenCourses.isEmpty {
@@ -2455,13 +2946,6 @@ private struct NativeCourseEditorSheet: View {
             .navigationTitle(selection == nil ? "添加课程" : "编辑课程")
             .navigationBarTitleDisplayMode(.inline)
             .task { await loadHiddenCourses() }
-            .onChange(of: weekMode) { _, mode in
-                if mode == "all" {
-                    selectedWeeks = Set(weekNumberOptions)
-                } else if mode == "current" {
-                    selectedWeeks = [defaultWeek]
-                }
-            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
@@ -2562,51 +3046,41 @@ private struct NativeCourseEditorSheet: View {
     private func saveCourse(keepAsCustom: Bool = false) {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty else { errorMessage = "请填写课程名称"; return }
-        let start = min(max(startSlot, 1), ScheduleSlot.all.count)
-        let end = min(max(endSlot, start), ScheduleSlot.all.count)
-        let weekList: [Int]
-        if weekMode == "all" {
-            weekList = []
-        } else if weekMode == "current" {
-            weekList = [defaultWeek]
-        } else {
-            weekList = selectedWeeks.sorted()
-            guard !weekList.isEmpty else {
-                errorMessage = "请选择至少一个周次"
-                return
+        var resolved: [NativeCourseArrangement] = []
+        for (index, draft) in arrangements.enumerated() {
+            let title = arrangements.count > 1 ? "上课时间 \(index + 1)：" : ""
+            let slots = draft.slots.filter { (1...ScheduleSlot.all.count).contains($0) }
+            guard !slots.isEmpty else { errorMessage = "\(title)请选择至少一节"; return }
+            let weekList: [Int]
+            switch draft.weekMode {
+            case "all": weekList = []
+            case "current": weekList = [defaultWeek]
+            default:
+                weekList = draft.selectedWeeks.sorted()
+                guard !weekList.isEmpty else { errorMessage = "\(title)请选择至少一个周次"; return }
             }
+            resolved.append(NativeCourseArrangement(day: draft.day, slots: slots, weekList: weekList))
         }
-        let weeks = weekList.isEmpty ? "全部周" : "第 \(weekList.map(String.init).joined(separator: ",")) 周"
+        guard let first = resolved.first, let firstRun = first.runs.first else { return }
         let source = selection?.course
         let editingSourceKey: String? = source.flatMap {
             // A pure custom course has no official source to hide or restore.
             if $0.customId != nil, $0.sourceKey == nil { return nil }
             return nativeCourseEditKey(
-                day: selection?.day ?? day,
-                bigSlot: selection?.bigSlot ?? Int(ceil(Double(start) / 2)),
+                day: selection?.day ?? first.day,
+                bigSlot: selection?.bigSlot ?? (firstRun.lowerBound + 1) / 2,
                 course: $0
             )
         }
         let savedSourceKey = keepAsCustom ? nil : editingSourceKey
-        let customID = source?.customId ?? "custom-\(UUID().uuidString.lowercased())"
-        let item = NativeScheduleCustomItem(
-            id: customID,
-            sourceKey: savedSourceKey,
-            day: day,
-            bigSlot: Int(ceil(Double(start) / 2)),
-            course: NativeScheduleCourse(
-                name: trimmedName,
-                teacher: teacher,
-                weeks: weeks,
-                weekList: weekList,
-                location: location,
-                slotNote: note.isEmpty ? "第 \(start)-\(end) 节" : note,
-                startSlot: start,
-                endSlot: end,
-                sourceKey: savedSourceKey,
-                customId: customID,
-                custom: true
-            )
+        // The first block keeps the identity of the course being edited; every
+        // further block is saved as a plain custom item of the same course.
+        let items = NativeCourseArrangement.customItems(
+            details: .init(name: trimmedName, teacher: teacher, location: location, note: note),
+            arrangements: resolved,
+            primaryID: source?.customId ?? "custom-\(UUID().uuidString.lowercased())",
+            primarySourceKey: savedSourceKey,
+            makeID: { "custom-\(UUID().uuidString.lowercased())" }
         )
         saving = true
         Task { @MainActor in
@@ -2624,8 +3098,17 @@ private struct NativeCourseEditorSheet: View {
                         }
                     }
                 }
-                edits.custom.removeAll { $0.id == item.id }
-                edits.custom.append(item)
+                let ids = Set(items.map(\.id))
+                edits.custom.removeAll { ids.contains($0.id) }
+                edits.custom.append(contentsOf: items)
+                let priorityKey = NativeSchedulePriority.key(trimmedName)
+                if !preferred {
+                    edits.priority[priorityKey] = nil
+                } else if (edits.priority[priorityKey] ?? 0) <= 0
+                            || edits.priority.contains(where: { $0.key != priorityKey && $0.value >= edits.priority[priorityKey] ?? 0 }) {
+                    // In front of every course that already has a priority.
+                    edits.priority[priorityKey] = NativeSchedulePriority.top(in: edits.priority)
+                }
                 try await store.saveScheduleEdits(edits)
                 dismiss()
             } catch {
@@ -2720,39 +3203,201 @@ private struct NativeCourseEditorSheet: View {
         return Array(1...maxWeek)
     }
 
-    private var weekChipPicker: some View {
+    /// One "when it meets" group: weeks, weekday and any set of periods.
+    private func arrangementCard(_ arrangement: Binding<ArrangementDraft>) -> some View {
+        let draft = arrangement.wrappedValue
+        let index = arrangements.firstIndex { $0.id == draft.id } ?? 0
+        let conflicts = conflictNames(draft)
+        return VStack(alignment: .leading, spacing: 6) {
+            if arrangements.count > 1 {
+                HStack {
+                    Text("上课时间 \(index + 1)")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 8)
+                    if index > 0 {
+                        Button("移除", role: .destructive) {
+                            withAnimation(.snappy(duration: 0.2)) {
+                                arrangements.removeAll { $0.id == draft.id }
+                            }
+                        }
+                        .font(.caption.weight(.semibold))
+                        .disabled(saving)
+                    }
+                }
+                .padding(.horizontal, 4)
+            }
+            editorCard {
+                editorFieldRow("周数") {
+                    Picker("周次范围", selection: Binding(
+                        get: { draft.weekMode },
+                        set: { mode in
+                            arrangement.wrappedValue.weekMode = mode
+                            if mode == "all" {
+                                arrangement.wrappedValue.selectedWeeks = Set(weekNumberOptions)
+                            } else if mode == "current" {
+                                arrangement.wrappedValue.selectedWeeks = [defaultWeek]
+                            }
+                        }
+                    )) {
+                        Text("本周").tag("current")
+                        Text("全部周").tag("all")
+                        Text("指定周次").tag("custom")
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                }
+                if draft.weekMode == "custom" {
+                    weekChipPicker(arrangement.selectedWeeks)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                } else {
+                    Text(draft.weekMode == "all" ? "这门课会显示在全部周次" : "第 \(defaultWeek) 周")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 14)
+                        .padding(.bottom, 10)
+                }
+                editorFieldRow("星期") {
+                    Picker("星期", selection: arrangement.day) {
+                        ForEach(1...7, id: \.self) { Text(dayLabel($0)).tag($0) }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                }
+                slotChipPicker(arrangement.slots)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+            }
+            if !conflicts.isEmpty {
+                // A hint only: overlapping courses can still be saved.
+                Label("与「\(conflicts.joined(separator: "」「"))」时间重叠", systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .padding(.horizontal, 4)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    /// Courses already on the timetable that this group would overlap, other
+    /// than the course being edited.
+    /// Every course some arrangement of this one sits on top of.
+    private var overlappingNames: [String] {
+        var names: [String] = []
+        let own = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        for draft in arrangements {
+            // A priority is per course name, so it cannot rank a course against itself.
+            for name in conflictNames(draft) where !names.contains(name) && name != own { names.append(name) }
+        }
+        return names
+    }
+
+    private func conflictNames(_ draft: ArrangementDraft) -> [String] {
+        guard let result = store.result else { return [] }
+        let weekList: [Int]
+        switch draft.weekMode {
+        case "all": weekList = []
+        case "current": weekList = [defaultWeek]
+        default: weekList = draft.selectedWeeks.sorted()
+        }
+        return NativeCourseArrangement(day: draft.day, slots: draft.slots, weekList: weekList)
+            .conflicts(in: result.cells, ignoring: Set([selection?.course.id].compactMap { $0 }))
+    }
+
+    /// "第 1–2、5 节 · 08:00–09:40、13:30–14:15"
+    private func slotSummary(_ slots: Set<Int>) -> String {
+        let runs = NativeCourseArrangement(day: 1, slots: slots).runs
+        guard !runs.isEmpty else { return "轻点选择上课的节次，可以不连续" }
+        let numbers = runs.map { $0.lowerBound == $0.upperBound ? "\($0.lowerBound)" : "\($0.lowerBound)–\($0.upperBound)" }
+        let times = runs.compactMap { run -> String? in
+            guard let start = ScheduleSlot.all.first(where: { $0.number == run.lowerBound })?.start,
+                  let end = ScheduleSlot.all.first(where: { $0.number == run.upperBound })?.end else { return nil }
+            return "\(start)–\(end)"
+        }
+        return "第 \(numbers.joined(separator: "、")) 节 · \(times.joined(separator: "、"))"
+    }
+
+    private func slotChipPicker(_ slots: Binding<Set<Int>>) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("指定周")
-                .font(.subheadline.weight(.semibold))
+            Text("节次")
+                .font(.body)
                 .foregroundStyle(.primary)
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(minimum: 30), spacing: 6), count: 6), spacing: 6) {
+                ForEach(ScheduleSlot.all, id: \.number) { slot in
+                    let selected = slots.wrappedValue.contains(slot.number)
+                    Button {
+                        if selected { slots.wrappedValue.remove(slot.number) } else { slots.wrappedValue.insert(slot.number) }
+                    } label: {
+                        editorChip("\(slot.number)", selected: selected)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(saving)
+                    .accessibilityLabel("第 \(slot.number) 节，\(slot.start) 至 \(slot.end)")
+                    .accessibilityAddTraits(selected ? .isSelected : [])
+                }
+            }
+            Text(slotSummary(slots.wrappedValue))
+                .font(.caption)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func editorChip(_ title: String, selected: Bool) -> some View {
+        Text(title)
+            .font(.caption.weight(.medium))
+            .frame(maxWidth: .infinity, minHeight: 30)
+            .foregroundStyle(selected ? Color.cpuBrand : .secondary)
+            .background {
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .fill(selected ? Color.cpuBrand.opacity(0.14) : Color(uiColor: .secondarySystemGroupedBackground))
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .stroke(selected ? Color.cpuBrand : Color(uiColor: .separator).opacity(0.45), lineWidth: 1)
+            }
+    }
+
+    private func weekChipPicker(_ selectedWeeks: Binding<Set<Int>>) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text("指定周")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                Spacer(minLength: 4)
+                // Shortcuts for the common patterns; the chips below still toggle one week at a time.
+                ForEach([("全部", 0), ("单周", 1), ("双周", 2), ("清空", 3)], id: \.1) { title, kind in
+                    Button(title) {
+                        switch kind {
+                        case 0: selectedWeeks.wrappedValue = Set(weekNumberOptions)
+                        case 1: selectedWeeks.wrappedValue = Set(weekNumberOptions.filter { $0 % 2 == 1 })
+                        case 2: selectedWeeks.wrappedValue = Set(weekNumberOptions.filter { $0 % 2 == 0 })
+                        default: selectedWeeks.wrappedValue = []
+                        }
+                    }
+                    .font(.caption.weight(.semibold))
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Color.cpuBrand)
+                    .disabled(saving)
+                }
+            }
 
             ScrollView(.vertical, showsIndicators: false) {
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(minimum: 30), spacing: 6), count: 6), spacing: 6) {
                     ForEach(weekNumberOptions, id: \.self) { week in
+                        let selected = selectedWeeks.wrappedValue.contains(week)
                         Button {
-                            if selectedWeeks.contains(week) {
-                                selectedWeeks.remove(week)
-                            } else {
-                                selectedWeeks.insert(week)
-                            }
+                            if selected { selectedWeeks.wrappedValue.remove(week) } else { selectedWeeks.wrappedValue.insert(week) }
                         } label: {
-                            Text("\(week)")
-                                .font(.caption.weight(.medium))
-                                .frame(maxWidth: .infinity, minHeight: 30)
-                                .foregroundStyle(selectedWeeks.contains(week) ? Color.cpuBrand : .secondary)
-                                .background {
-                                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                        .fill(selectedWeeks.contains(week) ? Color.cpuBrand.opacity(0.14) : Color(uiColor: .secondarySystemGroupedBackground))
-                                }
-                                .overlay {
-                                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                        .stroke(selectedWeeks.contains(week) ? Color.cpuBrand : Color(uiColor: .separator).opacity(0.45), lineWidth: 1)
-                                }
+                            editorChip("\(week)", selected: selected)
                         }
                         .buttonStyle(.plain)
                         .disabled(saving)
                         .accessibilityLabel("第 \(week) 周")
-                        .accessibilityAddTraits(selectedWeeks.contains(week) ? .isSelected : [])
+                        .accessibilityAddTraits(selected ? .isSelected : [])
                     }
                 }
                 .padding(.vertical, 2)
