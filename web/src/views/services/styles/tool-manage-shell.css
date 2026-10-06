@@ -1,54 +1,35 @@
-.tool-manage-page {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  min-width: 0;
-  overflow-x: clip;
-}
-.manage-head,
-.manage-panel {
-  background: #fff;
-  border: 1px solid #eef0f4;
-  border-radius: 12px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
-}
-.manage-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 22px 24px;
-}
-.manage-head-copy {
-  min-width: 0;
-  max-width: 720px;
-}
-.manage-head-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 10px;
-  flex: 0 0 auto;
-  margin-top: 2px;
-}
-.manage-head-actions .el-button {
-  min-width: 116px;
-  margin-left: 0;
-}
-.kicker {
-  color: var(--cpu-primary);
-  font-size: 12px;
-  font-weight: 650;
-  margin-bottom: 5px;
-}
-.manage-head h2 { margin: 0; font-size: 22px; color: #111827; }
-.manage-head p { margin: 6px 0 0; color: #6b7280; font-size: 13px; line-height: 1.7; }
 .manage-panel {
   min-width: 0;
   max-width: 100%;
-  overflow-x: clip;
-  padding: 16px 18px 20px;
   min-height: 240px;
+  padding: 14px 18px 20px;
+  overflow-x: clip;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 16px;
+  background: var(--cpu-card);
+  box-shadow: var(--cpu-shadow-sm);
+}
+/* 工具切换用分段样式。 */
+.manage-tool-tabs :deep(.el-tabs__header) { margin-bottom: 16px; }
+.manage-tool-tabs :deep(.el-tabs__nav-wrap::after),
+.manage-tool-tabs :deep(.el-tabs__active-bar) { display: none; }
+.manage-tool-tabs :deep(.el-tabs__nav) {
+  gap: 4px;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--cpu-surface-subtle);
+}
+.manage-tool-tabs :deep(.el-tabs__item) {
+  height: 36px;
+  padding: 0 16px !important;
+  border-radius: 9px;
+  color: var(--cpu-text-secondary);
+  font-weight: 550;
+}
+.manage-tool-tabs :deep(.el-tabs__item.is-active) {
+  background: var(--cpu-card);
+  box-shadow: var(--cpu-shadow-sm);
+  color: var(--cpu-primary);
 }
 :global(.questionnaire-builder-dialog.el-dialog) {
   --builder-primary: #267dff;

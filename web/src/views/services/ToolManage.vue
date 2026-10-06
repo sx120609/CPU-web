@@ -1,18 +1,15 @@
 <template>
-  <div class="tool-manage-page">
-    <section class="manage-head">
-      <div class="manage-head-copy">
-        <div class="kicker">校园小工具</div>
-        <h2>小工具管理</h2>
-        <p>管理器可维护工具设置和人员；开放管理入口后，登录用户可维护自己发起的内容。</p>
+  <div class="pk-page pk-page--wide tool-manage-page">
+    <header class="pk-head">
+      <router-link class="pk-back" to="/services/tools"><el-icon aria-hidden="true"><ArrowLeft /></el-icon>校园小工具</router-link>
+      <div class="pk-title">
+        <span class="pk-tile" aria-hidden="true"><el-icon><Setting /></el-icon></span>
+        <div class="pk-title-copy">
+          <h1>小工具管理</h1>
+          <p>管理器可维护工具设置和人员；开放管理入口后，登录用户可维护自己发起的内容。</p>
+        </div>
       </div>
-      <div class="manage-head-actions">
-        <el-button plain @click="$router.push('/services/tools')">
-          <el-icon><ArrowLeft /></el-icon>
-          小工具列表
-        </el-button>
-      </div>
-    </section>
+    </header>
 
     <section class="manage-panel" v-loading="loading">
       <el-empty v-if="!loading && !manageableTools.length" description="暂无可管理的小工具" />
@@ -70,7 +67,7 @@
         </div>
 
         <div v-else class="tool-admin-grid">
-          <section v-if="activeTool !== 'grade_check' && activeTool !== 'file_collect'" class="admin-section questionnaire-section">
+          <section v-if="activeTool !== 'grade_check'" class="admin-section questionnaire-section">
             <div class="section-head">
               <div>
                 <h3>问卷</h3>
@@ -156,311 +153,6 @@
                 </div>
               </article>
               <el-empty v-if="!questionnaires.length" :description="canAdminActiveTool ? '暂无问卷' : '你还没有发起问卷'" />
-            </div>
-          </section>
-
-          <section v-else-if="activeTool === 'file_collect'" class="admin-section questionnaire-section grade-check-section">
-            <div class="section-head">
-              <div>
-                <h3>文件收集</h3>
-                <p>{{ canAdminActiveTool ? "创建提交链接，集中收取作业、材料、照片等文件。" : "创建并管理你自己发起的文件收集任务。" }}</p>
-              </div>
-            </div>
-
-            <div class="questionnaire-summary">
-              <div>
-                <b>{{ fileCollections.length }}</b>
-                <span>收集任务</span>
-              </div>
-              <div>
-                <b>{{ fileOpenCount }}</b>
-                <span>开放中</span>
-              </div>
-              <div>
-                <b>{{ fileTotalSubmissions }}</b>
-                <span>提交记录</span>
-              </div>
-            </div>
-
-            <div class="grade-upload-panel">
-              <div class="upload-copy">
-                <h4>创建收集任务</h4>
-                <p>提交者通过链接填写字段并上传文件；使用相同学号或姓名再次提交时，会覆盖旧提交。</p>
-              </div>
-              <div class="file-template-bar">
-                <div>
-                  <b>任务模板</b>
-                  <span>{{ selectedFileTemplate?.description || "选择模板后可一键套用字段、文件规则和命名规则。" }}</span>
-                </div>
-                <el-select v-model="fileCollectTemplateKey" placeholder="选择模板" :disabled="fileCollectTemplateSaving">
-                  <el-option-group label="内置模板">
-                    <el-option
-                      v-for="item in builtInFileCollectTemplates"
-                      :key="item.key"
-                      :label="item.name"
-                      :value="item.key"
-                    />
-                  </el-option-group>
-                  <el-option-group v-if="fileCollectTemplates.length" label="我的模板">
-                    <el-option
-                      v-for="item in fileCollectTemplates"
-                      :key="item.id"
-                      :label="item.name"
-                      :value="`custom:${item.id}`"
-                    />
-                  </el-option-group>
-                </el-select>
-                <el-button plain :disabled="fileCollectTemplateSaving" @click="applySelectedFileTemplate">套用</el-button>
-                <el-button plain :loading="fileCollectTemplateSaving" :disabled="fileCollectTemplateSaving" @click="saveCurrentFileTemplate">保存为模板</el-button>
-                <el-button
-                  v-if="selectedFileTemplate?.customId"
-                  text
-                  type="danger"
-                  :loading="fileCollectTemplateSaving"
-                  :disabled="fileCollectTemplateSaving"
-                  @click="deleteSelectedFileTemplate"
-                >
-                  删除模板
-                </el-button>
-              </div>
-              <div class="grade-form-grid">
-                <el-input v-model="fileCollectForm.title" placeholder="任务标题，例如：2026 春季药理学作业收集" maxlength="120" />
-                <el-select v-model="fileCollectForm.status">
-                  <el-option label="开放提交" value="open" />
-                  <el-option label="保存草稿" value="draft" />
-                  <el-option label="暂时关闭" value="closed" />
-                </el-select>
-                <el-select v-model="fileCollectForm.visibility">
-                  <el-option label="公开链接提交" value="public" />
-                  <el-option label="登录后提交" value="login" />
-                </el-select>
-                <el-input v-model="fileCollectForm.description" class="grade-desc" type="textarea" :rows="2" placeholder="补充说明，例如提交要求、截止时间、命名说明等" maxlength="1000" />
-              </div>
-              <div class="file-field-editor">
-                <div class="file-field-head">
-                  <b>填写字段</b>
-                  <el-button size="small" plain @click="addFileCollectField">
-                    <el-icon><Plus /></el-icon>
-                    添加字段
-                  </el-button>
-                </div>
-                <div v-for="(field, index) in fileCollectForm.fields" :key="field.localKey" class="file-field-row">
-                  <label class="compact-field">
-                    <span>显示名称</span>
-                    <el-input v-model="field.label" placeholder="给提交者看的名称，如 姓名" />
-                  </label>
-                  <label class="compact-field">
-                    <span>变量名</span>
-                    <el-input v-model="field.id" placeholder="用于命名，如 student_id 或 考试号" />
-                  </label>
-                  <label class="compact-field">
-                    <span>填写提示</span>
-                    <el-input v-model="field.placeholder" placeholder="输入框提示，如 请输入学号" />
-                  </label>
-                  <el-checkbox v-model="field.required">必填</el-checkbox>
-                  <el-button text type="danger" :disabled="fileCollectForm.fields.length <= 1" @click="removeFileCollectField(index)">删除</el-button>
-                </div>
-              </div>
-              <div class="file-rule-grid">
-                <label class="config-field">
-                  <span>允许文件类型</span>
-                  <el-input v-model="fileCollectForm.allowedTypes" placeholder="例如 pdf,docx,jpg,png,zip" />
-                  <small>多个类型用英文逗号隔开；留空表示不限制扩展名。</small>
-                </label>
-                <label class="config-field">
-                  <span>单个文件大小</span>
-                  <el-input-number v-model="fileCollectForm.maxSizeMb" :min="1" :max="100" controls-position="right" />
-                  <small>单位 MB，最大 100。</small>
-                </label>
-                <label class="config-field">
-                  <span>每人最多文件数</span>
-                  <el-input-number v-model="fileCollectForm.maxCount" :min="1" :max="20" controls-position="right" />
-                  <small>多文件会自动追加序号。</small>
-                </label>
-              </div>
-
-              <div class="rename-builder">
-                <div class="rename-head">
-                  <div>
-                    <b>文件命名</b>
-                    <span>选择字段和取值方式后插入变量，不需要手写花括号。</span>
-                  </div>
-                  <el-input v-model="fileCollectForm.renameTemplate" placeholder="例如 {name}-{student_id|last:2}" />
-                </div>
-                <div class="rename-insert-grid">
-                  <label class="config-field">
-                    <span>字段</span>
-                    <el-select v-model="fileRenameInsert.fieldId" placeholder="选择字段">
-                      <el-option
-                        v-for="field in fileCollectVariableFields"
-                        :key="`rename-${field.id}`"
-                        :label="`${field.label}（${field.id}）`"
-                        :value="field.id"
-                      />
-                    </el-select>
-                  </label>
-                  <label class="config-field">
-                    <span>取值</span>
-                    <el-radio-group v-model="fileRenameInsert.mode">
-                      <el-radio-button label="whole">完整</el-radio-button>
-                      <el-radio-button label="last">后几位</el-radio-button>
-                      <el-radio-button label="first">前几位</el-radio-button>
-                    </el-radio-group>
-                  </label>
-                  <label class="config-field">
-                    <span>位数</span>
-                    <el-input-number v-model="fileRenameInsert.count" :min="1" :max="99" controls-position="right" :disabled="fileRenameInsert.mode === 'whole'" />
-                  </label>
-                  <el-button class="rename-insert-action" type="primary" @click="insertRenameVariable">
-                    <el-icon><Plus /></el-icon>
-                    插入变量
-                  </el-button>
-                </div>
-                <div class="rename-token-list">
-                  <span class="rename-token-label">快捷插入</span>
-                  <button data-cpu-button="action"
-                    v-for="item in fileRenameQuickTokens"
-                    :key="`${item.label}-${item.token}`"
-                    type="button"
-                    :class="['rename-token', `rename-token-${item.group}`]"
-                    @click="insertRenameToken(item.token)"
-                  >
-                    {{ item.label }}
-                  </button>
-                </div>
-                <small class="rename-example">
-                  例：字段选“考试号”，取值选“后几位”，位数填 2，会插入 {student_id|last:2}，保存为“张三-08.pdf”。
-                </small>
-              </div>
-
-              <div class="rename-builder">
-                <div class="rename-head">
-                  <div>
-                    <b>多文件文件夹</b>
-                    <span>同一次提交多个文件时，下载 ZIP 会按这个规则放进同一个文件夹。</span>
-                  </div>
-                  <el-input v-model="fileCollectForm.folderTemplate" placeholder="例如 {name}-{student_id}" />
-                </div>
-                <div class="rename-insert-grid">
-                  <label class="config-field">
-                    <span>字段</span>
-                    <el-select v-model="fileFolderInsert.fieldId" placeholder="选择字段">
-                      <el-option
-                        v-for="field in fileCollectVariableFields"
-                        :key="`folder-${field.id}`"
-                        :label="`${field.label}（${field.id}）`"
-                        :value="field.id"
-                      />
-                    </el-select>
-                  </label>
-                  <label class="config-field">
-                    <span>取值</span>
-                    <el-radio-group v-model="fileFolderInsert.mode">
-                      <el-radio-button label="whole">完整</el-radio-button>
-                      <el-radio-button label="last">后几位</el-radio-button>
-                      <el-radio-button label="first">前几位</el-radio-button>
-                    </el-radio-group>
-                  </label>
-                  <label class="config-field">
-                    <span>位数</span>
-                    <el-input-number v-model="fileFolderInsert.count" :min="1" :max="99" controls-position="right" :disabled="fileFolderInsert.mode === 'whole'" />
-                  </label>
-                  <el-button class="rename-insert-action" type="primary" @click="insertFolderVariable">
-                    <el-icon><Plus /></el-icon>
-                    插入变量
-                  </el-button>
-                </div>
-                <div class="rename-token-list">
-                  <span class="rename-token-label">快捷插入</span>
-                  <button data-cpu-button="action"
-                    v-for="item in fileFolderQuickTokens"
-                    :key="`folder-${item.label}-${item.token}`"
-                    type="button"
-                    :class="['rename-token', `rename-token-${item.group}`]"
-                    @click="insertFolderToken(item.token)"
-                  >
-                    {{ item.label }}
-                  </button>
-                </div>
-                <small class="rename-example">
-                  例：多文件提交会在 ZIP 中显示为“张三-08/张三-08-1.pdf、张三-08-2.jpg”。
-                </small>
-              </div>
-
-              <div class="expected-list-box">
-                <label class="config-field">
-                  <span>应提交名单</span>
-                  <el-input v-model="fileCollectForm.expectedEntries" type="textarea" :rows="3" placeholder="选填，一行一个学号、考试号或姓名，用于后续核对缺交" maxlength="20000" />
-                </label>
-              </div>
-              <div class="grade-preview-head">
-                <div>
-                  <b>命名变量</b>
-                  <span>字段变量支持完整值、前几位、后几位；文件名还可用 {original} 和 {index}。</span>
-                </div>
-                <el-button type="primary" :loading="fileCollectSaving" :disabled="fileCollectSaving" @click="createFileCollection">
-                  <el-icon><Plus /></el-icon>
-                  创建收集任务
-                </el-button>
-              </div>
-            </div>
-
-            <div class="questionnaire-list-cards">
-              <article v-for="row in fileCollections" :key="row.id" class="questionnaire-row-card file-collection-card">
-                <div class="q-row-main">
-                  <div class="q-title-cell">
-                    <b>{{ row.title }}</b>
-                    <span>{{ row.slug }}</span>
-                  </div>
-                  <div class="q-row-tags">
-                    <el-tag :type="statusTag(row.status)" size="small">{{ statusText(row.status) }}</el-tag>
-                    <el-tag size="small" effect="plain">{{ row.submissionCount }} 份提交</el-tag>
-                    <el-tag size="small" type="info" effect="plain">{{ row.fileCount }} 个文件</el-tag>
-                  </div>
-                  <div class="q-row-meta">
-                    <span>{{ row.visibility === "login" ? "登录提交" : "公开提交" }}</span>
-                    <span>更新 {{ fmtDate(row.updatedAt) }}</span>
-                    <span v-if="row.createdBy">发起人 {{ row.createdBy?.nickname || row.createdBy?.username }}</span>
-                  </div>
-                </div>
-                <div class="file-collection-actions">
-                  <el-button class="file-primary-action" type="primary" :loading="isFileCollectBusy(row)" :disabled="isFileCollectBusy(row)" @click="openFileSubmissions(row)">
-                    <el-icon><DataAnalysis /></el-icon>
-                    提交记录
-                  </el-button>
-                  <div class="file-secondary-actions cpu-button-row">
-                    <button data-cpu-button="action" type="button" class="file-tool-action" :disabled="isFileCollectBusy(row)" @click="copyFileCollectLink(row)">
-                      <el-icon><Link /></el-icon>
-                      <span>链接</span>
-                    </button>
-                    <button data-cpu-button="action" type="button" class="file-tool-action" :disabled="isFileCollectBusy(row)" @click="openFileManager(row)">
-                      <el-icon><View /></el-icon>
-                      <span>文件</span>
-                    </button>
-                    <button data-cpu-button="action" type="button" class="file-tool-action" :disabled="zipDownloading || isFileCollectBusy(row)" @click="downloadFileCollectionZip(row)">
-                      <el-icon><Download /></el-icon>
-                      <span>{{ zipDownloading ? "打包中" : "ZIP" }}</span>
-                    </button>
-                  </div>
-                  <el-dropdown trigger="click" class="file-more-dropdown" @command="handleFileCollectCommand($event, row)">
-                    <button data-cpu-button="action" type="button" class="file-menu-action" :disabled="isFileCollectBusy(row)">
-                      更多<el-icon><ArrowDown /></el-icon>
-                    </button>
-                    <template #dropdown>
-                      <el-dropdown-menu>
-                        <el-dropdown-item command="open" :disabled="isFileCollectBusy(row)">开放</el-dropdown-item>
-                        <el-dropdown-item command="close" :disabled="isFileCollectBusy(row)">关闭</el-dropdown-item>
-                        <el-dropdown-item command="draft" :disabled="isFileCollectBusy(row)">设为草稿</el-dropdown-item>
-                        <el-dropdown-item command="delete" divided :disabled="isFileCollectBusy(row)">
-                          <el-icon><Delete /></el-icon>
-                          删除
-                        </el-dropdown-item>
-                      </el-dropdown-menu>
-                    </template>
-                  </el-dropdown>
-                </div>
-              </article>
-              <el-empty v-if="!fileCollections.length" :description="canAdminActiveTool ? '暂无文件收集任务' : '你还没有发起文件收集任务'" />
             </div>
           </section>
 
@@ -1018,75 +710,6 @@
         </el-tab-pane>
       </el-tabs>
     </el-dialog>
-
-    <el-dialog v-model="fileSubmissionsOpen" width="min(920px, 96dvw)" class="responsive-tool-dialog">
-      <template #header>
-        <div class="responses-title">
-          <div>
-            <b>{{ fileSubmissionTask?.title || "提交记录" }}</b>
-            <span>{{ fileSubmissions.length }} 份提交</span>
-          </div>
-          <el-button v-if="fileSubmissionTask" size="small" plain @click="copyFileCollectLink(fileSubmissionTask)">
-            <el-icon><Link /></el-icon>
-            复制提交链接
-          </el-button>
-          <el-button v-if="fileSubmissionTask" size="small" plain :loading="fileNameRepairing" :disabled="fileNameRepairing" @click="repairFileCollectionFilenames(fileSubmissionTask)">
-            <el-icon><Refresh /></el-icon>
-            修复乱码文件名
-          </el-button>
-        </div>
-      </template>
-      <div v-loading="fileSubmissionLoading" class="responses-list">
-        <article v-for="item in fileSubmissions" :key="item.id" class="response-card">
-          <div class="response-head">
-            <div>
-              <b>{{ item.identity || `提交 #${item.id}` }}</b>
-              <span>{{ fmtDate(item.createdAt) }} · {{ item.files.length }} 个文件</span>
-            </div>
-            <el-button text type="danger" :loading="fileSubmissionDeletingId === item.id" :disabled="fileSubmissionDeletingId === item.id" @click="deleteFileSubmission(item.id)">删除</el-button>
-          </div>
-          <div class="answer-list">
-            <div v-for="field in fileSubmissionTask?.fields || []" :key="field.id" class="answer-row">
-              <span>{{ field.label }}</span>
-              <b>{{ item.data[field.id] || "-" }}</b>
-            </div>
-          </div>
-          <div class="file-download-list">
-            <button data-cpu-button="action"
-              v-for="file in item.files"
-              :key="file.id"
-              type="button"
-              :class="{ busy: isFileTransferBusy(file.id) }"
-              :disabled="isFileTransferBusy(file.id)"
-              :aria-busy="isFileTransferBusy(file.id)"
-              @click="downloadFileCollectFile(file.id, file.storedName)"
-            >
-              <el-icon><Download /></el-icon>
-              <span>{{ fileDownloadingId === file.id ? "下载中" : file.storedName }}</span>
-              <small>{{ formatBytes(file.size) }}</small>
-            </button>
-          </div>
-        </article>
-        <el-empty v-if="!fileSubmissions.length" description="暂无提交记录" />
-      </div>
-    </el-dialog>
-
-    <FileCollectFileManagerDialog
-      v-model="fileManagerOpen"
-      :task="fileManagerTask"
-      :submissions="fileManagerSubmissions"
-      :loading="fileSubmissionLoading"
-      :zip-downloading="zipDownloading"
-      :file-name-repairing="fileNameRepairing"
-      :deleting-id="fileDeletingId"
-      :downloading-id="fileDownloadingId"
-      :previewing-id="filePreviewingId"
-      @download-zip="downloadFileCollectionZip"
-      @repair-names="repairFileCollectionFilenames"
-      @preview-file="previewFileCollectFile"
-      @download-file="downloadFileCollectFile"
-      @delete-file="deleteFileCollectFile"
-    />
   </div>
 </template>
 
@@ -1109,18 +732,15 @@ import {
   Link,
   Plus,
   Rank,
-  Refresh,
+  Setting,
   Star,
   Tickets,
   UploadFilled,
   View,
 } from "@element-plus/icons-vue";
+import "@/styles/page-kit.css";
 import {
   toolsApi,
-  type FileCollectStatus,
-  type FileCollectSubmission,
-  type FileCollectTask,
-  type FileCollectTemplate,
   type GradeCheckStatus,
   type GradeCheckTable,
   type Questionnaire,
@@ -1134,39 +754,6 @@ import {
   type ToolMeta,
 } from "@/api/tools";
 import { fmtDate } from "@/utils/format";
-import {
-  fetchFileCollectAccess,
-  fetchFileCollectBlob,
-  openDirectFileAccess,
-  requestMessage,
-  saveBlob,
-} from "@/views/services/fileCollectFiles";
-import {
-  buildZip,
-  formatBytes,
-  uniqueZipPath,
-  zipEntryPath,
-  zipSafePathSegment,
-  type FileCollectZipEntry,
-} from "@/views/services/fileCollectExport";
-import {
-  applyFileTemplateToForm,
-  buildFieldVariableToken as buildFileCollectFieldVariableToken,
-  buildFileCollectionPayload,
-  buildFileCollectionTemplatePayload,
-  buildFileTemplateOptions,
-  builtInFileCollectTemplates,
-  createDefaultFileCollectForm,
-  fileCollectVariableFields as buildFileCollectVariableFields,
-  fileFolderQuickTokens,
-  fileRenameQuickTokens,
-  getFileCollectValidationMessage,
-  makeFileCollectField,
-  normalizeFileCollectFields as normalizeEditableFileCollectFields,
-  syncRenameInsertFields as syncFileRenameInsertFields,
-  type FileCollectTemplateDraft,
-  type RenameInsertState,
-} from "@/views/services/fileCollectManage";
 import {
   branchRuleAction,
   branchTargetOptions as buildBranchTargetOptions,
@@ -1190,7 +777,6 @@ import {
   type EditableField,
   type FieldStat,
 } from "@/views/services/questionnaireManage";
-import FileCollectFileManagerDialog from "@/views/services/components/FileCollectFileManagerDialog.vue";
 import ToolAccessSettings from "@/views/services/components/ToolAccessSettings.vue";
 import ToolManagerPanel from "@/views/services/components/ToolManagerPanel.vue";
 
@@ -1222,37 +808,7 @@ const gradeChecks = ref<GradeCheckTable[]>([]);
 const gradeCheckBusyId = ref<number | null>(null);
 const gradeSaving = ref(false);
 const gradeFileName = ref("");
-const fileCollections = ref<FileCollectTask[]>([]);
-const fileCollectBusyId = ref<number | null>(null);
-const fileCollectTemplates = ref<FileCollectTemplate[]>([]);
-const fileCollectTemplateKey = ref("builtin:student");
-const fileCollectSaving = ref(false);
-const fileCollectTemplateSaving = ref(false);
-const fileSubmissionLoading = ref(false);
-const fileSubmissionDeletingId = ref<number | null>(null);
-const fileSubmissionsOpen = ref(false);
-const fileSubmissionTask = ref<FileCollectTask | null>(null);
-const fileSubmissions = ref<FileCollectSubmission[]>([]);
-const fileManagerOpen = ref(false);
-const fileManagerTask = ref<FileCollectTask | null>(null);
-const fileManagerSubmissions = ref<FileCollectSubmission[]>([]);
-const fileDeletingId = ref<number | null>(null);
-const fileDownloadingId = ref<number | null>(null);
-const filePreviewingId = ref<number | null>(null);
-const fileNameRepairing = ref(false);
 let xlsxModule: typeof import("xlsx") | null = null;
-const zipDownloading = ref(false);
-const fileCollectForm = reactive(createDefaultFileCollectForm());
-const fileRenameInsert = reactive<RenameInsertState>({
-  fieldId: "name",
-  mode: "whole",
-  count: 2,
-});
-const fileFolderInsert = reactive<RenameInsertState>({
-  fieldId: "name",
-  mode: "whole",
-  count: 2,
-});
 const gradeForm = reactive({
   title: "",
   description: "",
@@ -1298,18 +854,6 @@ const openCount = computed(() => questionnaires.value.filter((item) => item.stat
 const totalResponses = computed(() => questionnaires.value.reduce((sum, item) => sum + (item.responseCount ?? 0), 0));
 const gradeOpenCount = computed(() => gradeChecks.value.filter((item) => item.status === "open").length);
 const gradeTotalRows = computed(() => gradeChecks.value.reduce((sum, item) => sum + item.rowCount, 0));
-const fileOpenCount = computed(() => fileCollections.value.filter((item) => item.status === "open").length);
-const fileTotalSubmissions = computed(() => fileCollections.value.reduce((sum, item) => sum + item.submissionCount, 0));
-const fileTemplateOptions = computed<FileCollectTemplateDraft[]>(() => buildFileTemplateOptions(fileCollectTemplates.value));
-const selectedFileTemplate = computed(() => fileTemplateOptions.value.find((item) => item.key === fileCollectTemplateKey.value));
-const fileCollectVariableFields = computed(() => buildFileCollectVariableFields(fileCollectForm.fields));
-function isFileTransferBusy(id: number) {
-  return zipDownloading.value || fileDownloadingId.value === id || filePreviewingId.value === id;
-}
-
-function isFileActionDisabled(id: number) {
-  return fileDeletingId.value !== null || isFileTransferBusy(id);
-}
 
 const editorTitle = computed(() => editorMode.value === "create" ? "新建问卷" : "编辑问卷");
 const requiredCount = computed(() => form.fields.filter((field) => field.required).length);
@@ -1380,30 +924,16 @@ async function reloadActive() {
   if (activeTool.value === "grade_check") {
     gradeChecks.value = await toolsApi.gradeChecks({ manage: "1" });
     questionnaires.value = [];
-    fileCollections.value = [];
-    return;
-  }
-  if (activeTool.value === "file_collect") {
-    const [tasks, templates] = await Promise.all([
-      toolsApi.fileCollections({ manage: "1" }),
-      toolsApi.fileCollectionTemplates(),
-    ]);
-    fileCollections.value = tasks;
-    fileCollectTemplates.value = templates;
-    questionnaires.value = [];
-    gradeChecks.value = [];
     return;
   }
   if (activeTool.value === "pdf_tools") {
     questionnaires.value = [];
     gradeChecks.value = [];
-    fileCollections.value = [];
     return;
   }
   const questionnaireList = await toolsApi.questionnaires({ toolCode: activeTool.value, manage: "1" });
   questionnaires.value = questionnaireList;
   gradeChecks.value = [];
-  fileCollections.value = [];
 }
 
 function openPdfTool() {
@@ -1787,357 +1317,6 @@ async function openGradeFeedback(row: GradeCheckTable) {
   });
 }
 
-function applyFileTemplate(template: FileCollectTemplateDraft, resetTitle = false) {
-  applyFileTemplateToForm(fileCollectForm, template, resetTitle);
-  syncRenameInsertFields();
-}
-
-function applySelectedFileTemplate() {
-  const template = selectedFileTemplate.value;
-  if (!template) return;
-  applyFileTemplate(template);
-  ElMessage.success("已套用模板");
-}
-
-function insertRenameToken(token: string) {
-  fileCollectForm.renameTemplate = `${fileCollectForm.renameTemplate || ""}${token}`;
-}
-
-function insertFolderToken(token: string) {
-  fileCollectForm.folderTemplate = `${fileCollectForm.folderTemplate || ""}${token}`;
-}
-
-function insertRenameVariable() {
-  const token = makeFieldVariableToken(fileRenameInsert);
-  if (token) insertRenameToken(token);
-}
-
-function insertFolderVariable() {
-  const token = makeFieldVariableToken(fileFolderInsert);
-  if (token) insertFolderToken(token);
-}
-
-function makeFieldVariableToken(state: RenameInsertState) {
-  const result = buildFileCollectFieldVariableToken(state, fileCollectVariableFields.value);
-  if (result.message) ElMessage.warning(result.message);
-  return result.token;
-}
-
-function syncRenameInsertFields() {
-  syncFileRenameInsertFields([fileRenameInsert, fileFolderInsert], fileCollectVariableFields.value);
-}
-
-async function saveCurrentFileTemplate() {
-  if (fileCollectTemplateSaving.value) return;
-  fileCollectTemplateSaving.value = true;
-  try {
-    const fields = normalizeFileCollectFields();
-    if (!fields.length || fields.some((field) => !field.id || !field.label)) {
-      ElMessage.warning("请先完善填写字段");
-      return;
-    }
-    const name = await ElMessageBox.prompt("给这个模板起个名字", "保存模板", {
-      inputValue: fileCollectForm.title.trim() || "我的文件收集模板",
-      inputPattern: /^.{1,60}$/,
-      inputErrorMessage: "模板名称需在 1-60 个字符内",
-    }).then((result) => result.value.trim()).catch(() => "");
-    if (!name) return;
-
-    const created = await toolsApi.createFileCollectionTemplate(buildFileCollectionTemplatePayload(name, fileCollectForm));
-    fileCollectTemplates.value = [created, ...fileCollectTemplates.value];
-    fileCollectTemplateKey.value = `custom:${created.id}`;
-    ElMessage.success("模板已保存");
-  } finally {
-    fileCollectTemplateSaving.value = false;
-  }
-}
-
-async function deleteSelectedFileTemplate() {
-  const template = selectedFileTemplate.value;
-  if (!template?.customId || fileCollectTemplateSaving.value) return;
-  fileCollectTemplateSaving.value = true;
-  try {
-    const ok = await ElMessageBox.confirm(`删除模板“${template.name}”？`, "确认删除", { type: "warning" })
-      .then(() => true).catch(() => false);
-    if (!ok) return;
-    await toolsApi.deleteFileCollectionTemplate(template.customId);
-    fileCollectTemplates.value = fileCollectTemplates.value.filter((item) => item.id !== template.customId);
-    fileCollectTemplateKey.value = "builtin:student";
-    ElMessage.success("模板已删除");
-  } finally {
-    fileCollectTemplateSaving.value = false;
-  }
-}
-
-function addFileCollectField() {
-  const field = makeFileCollectField(fileCollectForm.fields.length);
-  fileCollectForm.fields.push(field);
-  fileRenameInsert.fieldId = field.id;
-  fileFolderInsert.fieldId = field.id;
-}
-
-function removeFileCollectField(index: number) {
-  fileCollectForm.fields.splice(index, 1);
-  syncRenameInsertFields();
-}
-
-function normalizeFileCollectFields() {
-  return normalizeEditableFileCollectFields(fileCollectForm.fields);
-}
-
-function validateFileCollectForm() {
-  const message = getFileCollectValidationMessage(fileCollectForm);
-  if (message) {
-    ElMessage.warning(message);
-    return false;
-  }
-  return true;
-}
-
-async function createFileCollection() {
-  if (fileCollectSaving.value) return;
-  if (!validateFileCollectForm()) return;
-  fileCollectSaving.value = true;
-  try {
-    await toolsApi.createFileCollection(buildFileCollectionPayload(fileCollectForm));
-    ElMessage.success(fileCollectForm.status === "open" ? "收集任务已创建并开放" : "收集任务已创建");
-    resetFileCollectForm();
-    await reloadActive();
-  } finally {
-    fileCollectSaving.value = false;
-  }
-}
-
-function resetFileCollectForm() {
-  fileCollectTemplateKey.value = "builtin:student";
-  applyFileTemplate(builtInFileCollectTemplates[0], true);
-}
-
-function copyFileCollectLink(row: FileCollectTask) {
-  const link = `${window.location.origin}/services/tools/filestore/submit/${row.slug}`;
-  navigator.clipboard?.writeText(link).then(
-    () => ElMessage.success("链接已复制"),
-    () => ElMessage.info(link)
-  );
-}
-
-async function handleFileCollectCommand(command: string | number | object, row: FileCollectTask) {
-  const action = String(command);
-  if (fileCollectBusyId.value !== null) return;
-  if (action === "delete") {
-    await runFileCollectAction(row, async () => {
-      const ok = await ElMessageBox.confirm(`删除收集任务“${row.title}”？提交记录和文件也会一起删除。`, "确认删除", { type: "warning" })
-        .then(() => true).catch(() => false);
-      if (!ok) return;
-      await toolsApi.deleteFileCollection(row.id);
-      ElMessage.success("已删除");
-      await reloadActive();
-    });
-  } else {
-    await runFileCollectAction(row, async () => {
-      const status = action === "open" ? "open" : action === "close" ? "closed" : "draft";
-      await toolsApi.updateFileCollection(row.id, { status });
-      ElMessage.success("状态已更新");
-      await reloadActive();
-    });
-  }
-}
-
-function isFileCollectBusy(row: FileCollectTask) {
-  return fileCollectBusyId.value === row.id;
-}
-
-async function runFileCollectAction(row: FileCollectTask, action: () => Promise<void>) {
-  if (fileCollectBusyId.value !== null) return;
-  fileCollectBusyId.value = row.id;
-  try {
-    await action();
-  } finally {
-    fileCollectBusyId.value = null;
-  }
-}
-
-async function openFileSubmissions(row: FileCollectTask) {
-  if (fileSubmissionLoading.value) return;
-  fileSubmissionsOpen.value = true;
-  fileSubmissionLoading.value = true;
-  try {
-    const data = await loadFileCollectionSubmissions(row.id);
-    fileSubmissionTask.value = data.task;
-    fileSubmissions.value = data.list;
-  } finally {
-    fileSubmissionLoading.value = false;
-  }
-}
-
-async function loadFileCollectionSubmissions(id: number) {
-  return toolsApi.fileCollectionSubmissions(id);
-}
-
-async function deleteFileSubmission(id: number) {
-  if (fileSubmissionDeletingId.value !== null) return;
-  fileSubmissionDeletingId.value = id;
-  try {
-    const ok = await ElMessageBox.confirm("删除这条提交记录及其文件？", "确认删除", { type: "warning" })
-      .then(() => true).catch(() => false);
-    if (!ok) return;
-    await toolsApi.deleteFileCollectionSubmission(id);
-    fileSubmissions.value = fileSubmissions.value.filter((item) => item.id !== id);
-    ElMessage.success("已删除");
-    await reloadActive();
-  } finally {
-    fileSubmissionDeletingId.value = null;
-  }
-}
-
-async function openFileManager(row: FileCollectTask) {
-  if (fileSubmissionLoading.value) return;
-  fileManagerOpen.value = true;
-  fileSubmissionLoading.value = true;
-  try {
-    const data = await loadFileCollectionSubmissions(row.id);
-    fileManagerTask.value = data.task;
-    fileManagerSubmissions.value = data.list;
-  } finally {
-    fileSubmissionLoading.value = false;
-  }
-}
-
-async function refreshFileCollectionDetail(id: number) {
-  const data = await loadFileCollectionSubmissions(id);
-  if (fileSubmissionTask.value?.id === id) {
-    fileSubmissionTask.value = data.task;
-    fileSubmissions.value = data.list;
-  }
-  if (fileManagerTask.value?.id === id) {
-    fileManagerTask.value = data.task;
-    fileManagerSubmissions.value = data.list;
-  }
-}
-
-async function repairFileCollectionFilenames(row: FileCollectTask) {
-  if (fileNameRepairing.value) return;
-  const ok = await ElMessageBox.confirm(
-    "系统会尝试恢复由上传编码导致的历史乱码文件名，只更新可明确恢复的原始名和展示名，不移动实际文件。继续？",
-    "修复乱码文件名",
-    { type: "warning", confirmButtonText: "开始修复" },
-  ).then(() => true).catch(() => false);
-  if (!ok) return;
-  fileNameRepairing.value = true;
-  try {
-    const result = await toolsApi.repairFileCollectionFilenames(row.id);
-    await refreshFileCollectionDetail(row.id);
-    await reloadActive();
-    const lostText = result.unrecoverable ? `，${result.unrecoverable} 个已丢失编码信息无法自动恢复` : "";
-    ElMessage.success(result.updated ? `已恢复 ${result.updated} 个文件名${lostText}` : `没有发现可恢复的乱码文件名${lostText}`);
-  } catch (error) {
-    ElMessage.error(requestMessage(error) || "修复失败");
-  } finally {
-    fileNameRepairing.value = false;
-  }
-}
-
-async function deleteFileCollectFile(id: number) {
-  if (fileDeletingId.value !== null) return;
-  fileDeletingId.value = id;
-  try {
-    const ok = await ElMessageBox.confirm("删除这个文件？提交记录会保留，但该文件无法恢复。", "确认删除", { type: "warning" })
-      .then(() => true).catch(() => false);
-    if (!ok) return;
-    await toolsApi.deleteFileCollectionFile(id);
-    fileManagerSubmissions.value = fileManagerSubmissions.value.map((submission) => ({
-      ...submission,
-      files: submission.files.filter((file) => file.id !== id),
-    }));
-    fileSubmissions.value = fileSubmissions.value.map((submission) => ({
-      ...submission,
-      files: submission.files.filter((file) => file.id !== id),
-    }));
-    ElMessage.success("文件已删除");
-    await reloadActive();
-  } finally {
-    fileDeletingId.value = null;
-  }
-}
-
-async function downloadFileCollectFile(id: number, filename: string) {
-  if (isFileActionDisabled(id)) return;
-  fileDownloadingId.value = id;
-  try {
-    ElMessage.info("正在获取下载链接...");
-    const access = await fetchFileCollectAccess(id, "download");
-    if (access.backend === "onedrive-cn" && access.url) {
-      openDirectFileAccess(access.url, access.filename || filename, "download");
-      ElMessage.success("已向浏览器发起下载，请查看下载列表");
-      return;
-    }
-    const blob = await fetchFileCollectBlob(id, "download");
-    saveBlob(blob, filename);
-    ElMessage.success("已向浏览器发起下载，请查看下载列表");
-  } catch (error) {
-    ElMessage.error(requestMessage(error) || "下载失败");
-  } finally {
-    fileDownloadingId.value = null;
-  }
-}
-
-async function previewFileCollectFile(id: number, filename: string) {
-  if (isFileActionDisabled(id)) return;
-  filePreviewingId.value = id;
-  try {
-    const access = await fetchFileCollectAccess(id, "preview");
-    if (access.url) {
-      openDirectFileAccess(access.url, access.filename || filename, "preview");
-      return;
-    }
-    if (access.previewMessage) {
-      ElMessage.warning(access.previewMessage);
-      return;
-    }
-    const blob = await fetchFileCollectBlob(id, "preview");
-    const url = URL.createObjectURL(blob);
-    const opened = window.open(url, "_blank", "noopener,noreferrer");
-    if (!opened) ElMessage.info(filename);
-    setTimeout(() => URL.revokeObjectURL(url), 60_000);
-  } catch (error) {
-    ElMessage.error(requestMessage(error) || "预览失败");
-  } finally {
-    filePreviewingId.value = null;
-  }
-}
-
-async function downloadFileCollectionZip(row: FileCollectTask) {
-  if (zipDownloading.value) return;
-  zipDownloading.value = true;
-  try {
-    const data = await loadFileCollectionSubmissions(row.id);
-    const fileCount = data.list.reduce((sum, submission) => sum + submission.files.length, 0);
-    if (!fileCount) {
-      ElMessage.info("当前任务还没有可下载的文件");
-      return;
-    }
-    const entries: FileCollectZipEntry[] = [];
-    const usedPaths = new Set<string>();
-    let current = 0;
-    for (const submission of data.list) {
-      for (const file of submission.files) {
-        current += 1;
-        ElMessage.info(`正在读取文件 ${current}/${fileCount}`);
-        const blob = await fetchFileCollectBlob(file.id, "download");
-        entries.push({
-          path: uniqueZipPath(zipEntryPath(data.task, submission, file), usedPaths),
-          bytes: new Uint8Array(await blob.arrayBuffer()),
-          date: new Date(submission.createdAt || Date.now()),
-        });
-      }
-    }
-    saveBlob(buildZip(entries), `${zipSafePathSegment(data.task.title)}.zip`);
-    ElMessage.success("ZIP 已生成");
-  } finally {
-    zipDownloading.value = false;
-  }
-}
-
 function resetGradeForm() {
   gradeFileName.value = "";
   gradeForm.title = "";
@@ -2240,13 +1419,13 @@ function exportResponses() {
   URL.revokeObjectURL(url);
 }
 
-function statusText(status: QuestionnaireStatus | GradeCheckStatus | FileCollectStatus) {
+function statusText(status: QuestionnaireStatus | GradeCheckStatus) {
   if (status === "open") return "开放";
   if (status === "closed") return "关闭";
   return "草稿";
 }
 
-function statusTag(status: QuestionnaireStatus | GradeCheckStatus | FileCollectStatus): "success" | "info" | "warning" {
+function statusTag(status: QuestionnaireStatus | GradeCheckStatus): "success" | "info" | "warning" {
   if (status === "open") return "success";
   if (status === "closed") return "info";
   return "warning";
@@ -2261,5 +1440,4 @@ function fieldTypeText(type: QuestionnaireFieldType) {
 <style scoped src="./styles/tool-manage-admin.css"></style>
 <style scoped src="./styles/tool-manage-builder.css"></style>
 <style scoped src="./styles/tool-manage-results.css"></style>
-<style scoped src="./styles/tool-manage-files.css"></style>
 <style scoped src="./styles/tool-manage-responsive.css"></style>

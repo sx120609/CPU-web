@@ -1,11 +1,4 @@
 @media (max-width: 1100px) {
-  .file-template-bar {
-    grid-template-columns: minmax(0, 1fr) 220px;
-  }
-  .file-template-bar :deep(.el-button) {
-    min-width: 0;
-    margin-left: 0;
-  }
   .builder-layout {
     grid-template-columns: 190px minmax(0, 1fr);
   }
@@ -16,14 +9,8 @@
     overflow: visible;
   }
 }
-@media (max-width: 980px) {
-  .rename-insert-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
 @media (max-width: 900px) {
   .tool-admin-grid { grid-template-columns: 1fr; }
-  .managers-section { order: -1; }
 }
 @media (max-width: 760px) {
   :global(.questionnaire-builder-dialog.el-dialog) {
@@ -56,7 +43,7 @@
     gap: 10px;
   }
   .builder-titlebar b,
-  .builder-titlebar span {
+.builder-titlebar span {
     max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -79,7 +66,7 @@
     padding-bottom: 0;
   }
   .builder-top-actions .builder-desktop-action,
-  .builder-top-actions :deep(.builder-desktop-action) {
+.builder-top-actions :deep(.builder-desktop-action) {
     display: none;
   }
   .builder-top-actions :deep(.el-button) {
@@ -150,8 +137,8 @@
     background: transparent;
   }
   .editor-card,
-  .fields-head,
-  .field-editor-list {
+.fields-head,
+.field-editor-list {
     width: 100%;
     max-width: none;
     align-self: stretch;
@@ -205,10 +192,10 @@
     justify-self: start;
   }
   .field-editor-main,
-  .advanced-grid { grid-template-columns: 1fr; }
+.advanced-grid { grid-template-columns: 1fr; }
   .field-editor :deep(.el-select),
-  .field-editor :deep(.el-input-number),
-  .advanced-grid :deep(.el-input-number) {
+.field-editor :deep(.el-input-number),
+.advanced-grid :deep(.el-input-number) {
     width: 100%;
   }
   .branch-editor {
@@ -225,7 +212,7 @@
     padding: 8px;
     border: 1px solid #e5edf8;
     border-radius: 8px;
-    background: #fff;
+    background: var(--cpu-card);
   }
   .field-actions {
     display: grid;
@@ -248,7 +235,7 @@
     flex: 0 0 auto;
     padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
     border-top: 1px solid #e5eaf3;
-    background: #fff;
+    background: var(--cpu-card);
     box-shadow: 0 -10px 26px rgba(15, 23, 42, 0.1);
   }
   .builder-mobile-savebar :deep(.el-button) {
@@ -288,7 +275,7 @@
     min-width: 0;
   }
   .manage-panel,
-  .admin-section {
+.admin-section {
     min-width: 0;
     max-width: 100%;
     padding: 14px;
@@ -329,8 +316,8 @@
     padding: 0 16px;
   }
   .manage-tool-tabs :deep(.el-tabs__content),
-  .manage-tool-tabs :deep(.el-tab-pane),
-  .tool-admin-grid {
+.manage-tool-tabs :deep(.el-tab-pane),
+.tool-admin-grid {
     min-width: 0;
     max-width: 100%;
   }
@@ -354,61 +341,9 @@
     width: 100%;
   }
   .response-head,
-  .stat-head {
+.stat-head {
     align-items: flex-start;
     flex-direction: column;
-  }
-  .file-template-bar { grid-template-columns: 1fr; }
-  .file-rule-grid,
-  .rename-head,
-  .rename-insert-grid { grid-template-columns: 1fr; }
-  .file-field-row { flex-direction: column; align-items: stretch; }
-  .rename-insert-grid {
-    padding: 10px;
-  }
-  .rename-insert-action {
-    width: 100%;
-    justify-self: stretch;
-  }
-  .rename-insert-grid > .el-button,
-  .rename-token,
-  .file-download-list button {
-    min-height: 40px;
-  }
-  .rename-token {
-    flex: 1 1 112px;
-  }
-  .file-download-list {
-    display: grid;
-    grid-template-columns: 1fr;
-  }
-  .file-download-list button {
-    justify-content: center;
-  }
-  .file-collection-card {
-    background: #fff;
-  }
-  .file-collection-actions {
-    padding-left: 0;
-    padding-top: 10px;
-    border-left: 0;
-    border-top: 1px solid #e5edf8;
-  }
-  .file-primary-action {
-    min-height: 42px;
-  }
-  .file-secondary-actions {
-    grid-column: 1 / -1;
-  }
-  .file-tool-action,
-  .file-menu-action {
-    min-height: 40px;
-  }
-  .file-more-dropdown {
-    grid-column: 1 / -1;
-  }
-  .file-menu-action {
-    width: 100%;
   }
   .questionnaire-row-card {
     display: flex;
@@ -425,13 +360,13 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
   .q-row-actions .el-button,
-  .q-row-actions :deep(.el-dropdown),
-  .q-row-actions :deep(.el-dropdown .el-button) {
+.q-row-actions :deep(.el-dropdown),
+.q-row-actions :deep(.el-dropdown .el-button) {
     width: 100%;
     margin-left: 0;
   }
   .answer-row,
-  .choice-stat-row { grid-template-columns: 1fr; gap: 5px; }
+.choice-stat-row { grid-template-columns: 1fr; gap: 5px; }
   .choice-stat-row b { text-align: left; }
   .metric-grid { grid-template-columns: 1fr; }
 }
