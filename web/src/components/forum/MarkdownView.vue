@@ -1383,7 +1383,7 @@ onMounted(() => {
 :global(html[data-theme="dark"]) .md :deep(.md-image-shell.is-error .md-image-shell__placeholder) {
   background:
     linear-gradient(110deg, rgba(255, 255, 255, 0) 24%, rgba(154, 178, 172, 0.18) 48%, rgba(255, 255, 255, 0) 72%),
-    linear-gradient(135deg, #172522 0%, #0d1715 100%);
+    linear-gradient(135deg, #1e2226 0%, #15181b 100%);
 }
 
 :global(html[data-theme="dark"]) .md :deep(.md-image-shell__state) {
