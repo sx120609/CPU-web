@@ -127,7 +127,7 @@
             </el-dropdown>
           </template>
           <template v-else>
-            <el-button text @click="goAuth('login')">登录</el-button>
+            <el-button type="primary" round class="top-login-btn" @click="goAuth('login')">登录</el-button>
           </template>
         </div>
 
@@ -1050,11 +1050,11 @@ function releaseRoutePage(element: Element) {
 .topbar-inner {
   max-width: 1280px;
   margin: 0 auto;
-  height: 60px;
+  height: 64px;
   padding: 0 20px;
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 18px;
   min-width: 0;
 }
 
@@ -1099,30 +1099,37 @@ function releaseRoutePage(element: Element) {
   letter-spacing: 0.8px;
 }
 
+/* 主导航是一组胶囊：当前页抬起成白底，其余只在悬停时变色。 */
 .top-nav {
   display: flex;
-  gap: 4px;
+  gap: 2px;
   flex: 0 1 auto;
   min-width: 0;
   overflow-x: visible;
   overflow-y: hidden;
   align-items: center;
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--cpu-surface-subtle);
 }
 
 .top-nav a {
   flex: 0 0 auto;
-  padding: 8px 10px;
-  border-radius: 6px;
+  padding: 9px 14px;
+  border-radius: 999px;
   color: var(--cpu-text-secondary);
   text-decoration: none;
   font-size: 14px;
+  font-weight: 500;
   line-height: 1;
   white-space: nowrap;
-  transition: background 0.15s, color 0.15s;
+  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
 }
 
-.top-nav a:hover { background: var(--cpu-surface-subtle); color: var(--cpu-primary); }
-.top-nav a.router-link-active { color: var(--cpu-primary); font-weight: 600; background: rgba(20, 143, 123, 0.08); }
+.top-nav a:hover { color: var(--cpu-text); }
+.top-nav a.router-link-active { color: var(--cpu-primary); font-weight: 600; background: var(--cpu-card); box-shadow: var(--cpu-shadow-sm); }
+.top-nav a:focus-visible { outline: 2px solid var(--cpu-primary); outline-offset: 1px; }
+.top-nav:not(:has(*)) { display: none; }
 
 .top-nav-more {
   flex: 0 0 auto;
@@ -1135,14 +1142,14 @@ function releaseRoutePage(element: Element) {
   justify-content: center;
   gap: 4px;
   border: 0;
-  border-radius: 6px;
+  border-radius: 999px;
   background: transparent;
   color: var(--cpu-text-secondary);
   cursor: pointer;
   font: inherit;
   font-size: 14px;
   line-height: 1;
-  padding: 0 9px;
+  padding: 0 12px;
   white-space: nowrap;
 }
 
@@ -1156,10 +1163,12 @@ function releaseRoutePage(element: Element) {
 .top-right {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 2px;
   margin-left: auto;
   flex-shrink: 0;
 }
+
+.top-right .top-login-btn { margin-left: 8px; }
 
 .page-refresh-btn,
 .top-right .message-entry {
@@ -1508,12 +1517,16 @@ html[data-theme="dark"] .assistant-widget {
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-left: 8px;
   cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 6px;
+  padding: 4px 10px 4px 4px;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: 999px;
+  background: var(--cpu-card);
+  transition: border-color 0.15s;
 }
 
-.user-info:hover { background: var(--cpu-surface-subtle); }
+.user-info:hover { border-color: var(--cpu-border); background: var(--cpu-surface-soft); }
 
 .user-avatar {
   background: var(--cpu-primary);
