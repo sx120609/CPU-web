@@ -1,5 +1,6 @@
 import { ZodError } from "zod";
 import { HttpError } from "../utils/response";
+import { AgentErrorCode } from "./jwxtAgentErrors";
 import { dispatchJwxtAgentAction } from "./jwxtAgentDispatcher";
 import {
   JWXT_AGENT_PROTOCOL_VERSION,
@@ -13,6 +14,8 @@ import {
   decryptAgentLoginCredentials,
   encryptSessionSnapshotForRecipients,
   generateAgentReplicaIdentity,
+  reencryptSessionReplica,
+  type AgentEncryptedSessionReplica,
   type AgentReplicaIdentity,
   type AgentReplicaRecipient,
 } from "./jwxtAgentReplicaCrypto";
@@ -127,6 +130,7 @@ export function startJwxtAgentClient(options: JwxtAgentClientOptions): JwxtAgent
         replicaPublicKey: replicaIdentity.publicKey,
         buildCommit: options.buildCommit,
         platform: process.platform,
+        replicaBackfill: true,
       }));
       log(`[jwxt-agent] 已注册上线: ${String(message.agent?.name || options.agentId)}`);
       resolveReadyWaiters();
@@ -163,7 +167,7 @@ export function startJwxtAgentClient(options: JwxtAgentClientOptions): JwxtAgent
     if (activeRequests >= maxConcurrent) {
       sendResponse(originSocket, request.id, false, undefined, {
         status: 503,
-        code: 5000,
+        code: AgentErrorCode.busy,
         message: "Agent 当前繁忙",
       });
       return;
@@ -171,7 +175,9 @@ export function startJwxtAgentClient(options: JwxtAgentClientOptions): JwxtAgent
 
     activeRequests += 1;
     try {
-      const data = request.action === "session.import-encrypted-snapshot"
+      const data = request.action === "session.replicate-encrypted"
+        ? { replicas: reencryptSessionReplica((request.payload as { replica: AgentEncryptedSessionReplica }).replica, options.agentId, replicaIdentity, [...replicaRecipients.values()]) }
+        : request.action === "session.import-encrypted-snapshot"
         ? await importEncryptedSnapshot(request.payload)
         : request.action === "login.submit-handoff-encrypted" || request.action === "login.submit-legacy-encrypted"
           ? await submitEncryptedLogin(request.action, request.payload)

@@ -8,6 +8,7 @@ import axios from "axios";
 import { ElMessage } from "element-plus";
 import { detectAnalyticsClient } from "@/utils/clientInfo";
 import { COOKIE_SESSION_MARKER, getToken } from "./request";
+import { shouldRetryJwxtRead } from "@/utils/jwxtReadRetry";
 
 const JWXT_TOKEN_KEY = "cpu-jwxt-token";
 export const JWXT_COOKIE_SESSION_MARKER = "__cpu_jwxt_cookie_session__";
@@ -42,6 +43,12 @@ export function clearJwxtToken() {
 }
 
 const inst = axios.create({ baseURL: "/api/jwxt", timeout: 30000, withCredentials: true });
+let lastErrorToast = { message: "", at: 0 };
+function showJwxtError(message: string) {
+  if (lastErrorToast.message === message && Date.now() - lastErrorToast.at < 2000) return;
+  lastErrorToast = { message, at: Date.now() };
+  ElMessage.error(message);
+}
 
 function cookieValue(name: string) {
   const prefix = `${name}=`;
@@ -104,7 +111,7 @@ inst.interceptors.response.use(
         if (authExpired) {
           signalJwxtAuthExpired(resp.config);
         } else if (!shouldSuppressErrorMessage(resp.config)) {
-          ElMessage.error(message);
+          showJwxtError(message);
         }
         const normalized = new Error(message) as Error & { status?: number };
         normalized.status = authExpired ? 401 : undefined;
@@ -114,9 +121,18 @@ inst.interceptors.response.use(
     }
     return resp.data;
   },
-  (err) => {
+  async (err) => {
+    if (axios.isCancel(err)) return Promise.reject(err);
     const msg = normalizeJwxtError(err.response?.data?.message ?? err.message);
     const status = Number(err.response?.status || 0);
+    const cfg = err.config;
+    const retryCount = Number(cfg?.cpuJwxtRecoveryRetries || 0);
+    // Only read operations are replayed. Login, logout and updates are never retried here.
+    if (cfg && shouldRetryJwxtRead({ method: cfg.method, status, code: Number(err.response?.data?.code), message: msg, attempts: retryCount, aborted: cfg.signal?.aborted })) {
+      cfg.cpuJwxtRecoveryRetries = retryCount + 1;
+      await new Promise(resolve => setTimeout(resolve, 300 * (retryCount + 1)));
+      return inst.request(cfg);
+    }
     const authExpired = isJwxtAuthExpiredResponse(status, msg);
     if (authExpired) {
       // Session expiry is expected control flow: the JWXT store silently
@@ -124,7 +140,7 @@ inst.interceptors.response.use(
       signalJwxtAuthExpired(err.config);
     }
     if (!authExpired && !shouldSuppressErrorMessage(err.config)) {
-      ElMessage.error(msg);
+      showJwxtError(msg);
     }
     const normalized = new Error(msg) as Error & { status?: number; response?: unknown };
     normalized.status = status || undefined;

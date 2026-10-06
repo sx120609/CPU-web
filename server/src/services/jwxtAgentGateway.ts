@@ -13,7 +13,9 @@ import {
   type JwxtAgentResponseMessage,
 } from "./jwxtAgentProtocol";
 import { getJwxtAgentRuntimeConfig, onJwxtAgentConfigChange, pinJwxtAgentReplicaPublicKey } from "./jwxtAgentConfig";
-import { deleteJwxtSessionReplica, saveJwxtSessionReplica } from "./jwxtSessionReplica";
+import { deleteJwxtSessionReplica, loadJwxtSessionReplica, saveJwxtSessionReplica } from "./jwxtSessionReplica";
+import { AgentErrorCode } from "./jwxtAgentErrors";
+import { startJwxtReplicaBackfill } from "./jwxtReplicaBackfill";
 import {
   loadOrCreateAgentReplicaIdentity,
   validateReplicaEnvelope,
@@ -32,6 +34,7 @@ type PendingAgentRequest = {
   timer: NodeJS.Timeout;
   action: JwxtAgentAction;
   payload: unknown;
+  ownerEpoch?: number;
 };
 
 type AgentSession = {
@@ -44,9 +47,11 @@ type AgentSession = {
   replicaPublicKey: string;
   buildCommit?: string;
   platform?: string;
+  replicaBackfill?: boolean;
 };
 
 const sessions = new Map<string, AgentSession>();
+const queuedRequests = new Map<string, number>();
 let attachedServer: HttpServer | null = null;
 let heartbeatTimer: NodeJS.Timeout | null = null;
 let localReplicaIdentityCache: AgentReplicaIdentity | null = null;
@@ -64,8 +69,10 @@ export function getJwxtAgentReplicaRecipients(): AgentReplicaRecipient[] {
   if (getJwxtAgentRuntimeConfig().localJwxtEnabled) {
     recipients.push({ agentId: "local", publicKey: getLocalAgentReplicaIdentity().publicKey });
   }
-  for (const [agentId, session] of sessions) {
-    if (session.ready && session.replicaPublicKey) recipients.push({ agentId, publicKey: session.replicaPublicKey });
+  for (const agent of getJwxtAgentRuntimeConfig().agents) {
+    // Offline recipients still need backups so they can take over after reconnecting.
+    const publicKey = agent.replicaPublicKey || sessions.get(agent.id)?.replicaPublicKey;
+    if (agent.enabled && agent.jwxtEnabled && publicKey) recipients.push({ agentId: agent.id, publicKey });
   }
   return recipients;
 }
@@ -120,7 +127,9 @@ export function attachJwxtAgentGateway(server: HttpServer) {
   heartbeatTimer = setInterval(runHeartbeat, config.jwxtAgentHeartbeatMs);
   heartbeatTimer.unref?.();
   const unsubscribeConfig = onJwxtAgentConfigChange(reconcileAgentSessions);
+  const stopBackfill = startJwxtReplicaBackfill(() => getJwxtAgentReplicaRecipients(), (id) => getJwxtAgentState(id), requestJwxtAgent);
   server.once("close", () => {
+    stopBackfill();
     unsubscribeConfig();
     if (heartbeatTimer) clearInterval(heartbeatTimer);
     heartbeatTimer = null;
@@ -151,6 +160,7 @@ export function getJwxtAgentState(agentId: string) {
     lastPongAt: session?.lastPongAt ?? null,
     buildCommit: session?.buildCommit ?? "",
     platform: session?.platform ?? "",
+    replicaBackfill: Boolean(session?.replicaBackfill),
     jwxtEnabled: Boolean(agent?.enabled && agent.jwxtEnabled),
     crawlEnabled: Boolean(agent?.enabled && agent.crawlEnabled),
   };
@@ -178,11 +188,25 @@ export async function requestJwxtAgent<A extends JwxtAgentAction>(
 
   const session = sessions.get(agentId);
   if (!session || session.socket.readyState !== WebSocket.OPEN || !session.ready) {
-    throw new HttpError(503, 5000, `教务 Agent ${agent.name} 当前离线`);
+    throw new HttpError(503, AgentErrorCode.offline, `教务 Agent ${agent.name} 当前离线`);
   }
+  const token = jwxtActionSessionToken(action, payload);
+  const before = token ? await loadJwxtSessionReplica(token) : null;
+  const started = Date.now();
+  const deadline = started + Math.max(1, timeoutMs);
   if (session.pending.size >= agent.maxConcurrent) {
-    throw new HttpError(503, 5000, `教务 Agent ${agent.name} 当前繁忙`);
+    const count = queuedRequests.get(agentId) ?? 0;
+    if (count >= Math.max(16, agent.maxConcurrent * 8)) throw new HttpError(503, AgentErrorCode.busy, `教务 Agent ${agent.name} 当前繁忙`);
+    queuedRequests.set(agentId, count + 1);
+    try {
+      while (session.pending.size >= agent.maxConcurrent) {
+        if (Date.now() >= Math.min(deadline, started + 5000)) throw new HttpError(503, AgentErrorCode.busy, `教务 Agent ${agent.name} 当前繁忙，请稍后重试`);
+        await new Promise(resolve => setTimeout(resolve, 25));
+        if (sessions.get(agentId) !== session || session.socket.readyState !== WebSocket.OPEN || !session.ready) throw new HttpError(503, AgentErrorCode.offline, `教务 Agent ${agent.name} 已断开`);
+      }
+    } finally { queuedRequests.set(agentId, Math.max(0, (queuedRequests.get(agentId) ?? 1) - 1)); }
   }
+  if (sessions.get(agentId) !== session || session.socket.readyState !== WebSocket.OPEN || !session.ready) throw new HttpError(503, AgentErrorCode.offline, `教务 Agent ${agent.name} 已断开`);
 
   const requestId = crypto.randomUUID();
   const message = JSON.stringify({ type: "request", id: requestId, action, payload });
@@ -193,8 +217,8 @@ export async function requestJwxtAgent<A extends JwxtAgentAction>(
   return new Promise<JwxtAgentOutput<A>>((resolve, reject) => {
     const timer = setTimeout(() => {
       session.pending.delete(requestId);
-      reject(new HttpError(504, 5000, `教务 Agent ${agent.name} 请求超时`));
-    }, Math.max(1, timeoutMs));
+      reject(new HttpError(504, AgentErrorCode.timeout, `教务 Agent ${agent.name} 请求超时`));
+    }, Math.max(1, deadline - Date.now()));
 
     session.pending.set(requestId, {
       resolve: (value) => resolve(value as JwxtAgentOutput<A>),
@@ -202,6 +226,7 @@ export async function requestJwxtAgent<A extends JwxtAgentAction>(
       timer,
       action,
       payload,
+      ownerEpoch: before?.ownerEpoch,
     });
 
     session.socket.send(message, (error?: Error) => {
@@ -210,7 +235,7 @@ export async function requestJwxtAgent<A extends JwxtAgentAction>(
       if (!pending) return;
       clearTimeout(pending.timer);
       session.pending.delete(requestId);
-      pending.reject(new HttpError(502, 5000, `教务 Agent ${agent.name} 发送失败`));
+      pending.reject(new HttpError(502, AgentErrorCode.transport, `教务 Agent ${agent.name} 发送失败`));
     });
   });
 }
@@ -253,7 +278,7 @@ function registerAgentSocket(agent: JwxtAgentConfig, socket: any) {
   socket.on("close", () => {
     if (sessions.get(agent.id) === session) sessions.delete(agent.id);
     broadcastReplicaTargets();
-    rejectSessionRequests(session, new HttpError(503, 5000, `教务 Agent ${agent.name} 已断开`));
+    rejectSessionRequests(session, new HttpError(503, AgentErrorCode.offline, `教务 Agent ${agent.name} 已断开`));
     console.warn(`[jwxt-agent] ${agent.name} 已离线`);
   });
   socket.on("error", () => undefined);
@@ -304,6 +329,7 @@ async function handleAgentMessage(session: AgentSession, text: string) {
     session.buildCommit = typeof message.buildCommit === "string" && /^[a-f0-9]{40}$/.test(message.buildCommit)
       ? message.buildCommit : "";
     session.platform = ["linux", "win32", "darwin"].includes(message.platform) ? message.platform : "";
+    session.replicaBackfill = message.replicaBackfill === true;
     session.ready = true;
     broadcastReplicaTargets();
     return;
@@ -345,7 +371,13 @@ async function persistResponseSessionSnapshot(
         validateReplicaEnvelope(replica);
         if (!allowedRecipients.has(replica.recipientAgentId)) throw new Error("unknown replica recipient");
       }
-      await saveJwxtSessionReplica(token, session.config.id, response.encryptedSessionReplicas);
+      const takeover = pending.action === "session.import-encrypted-snapshot" && response.ok
+        ? (pending.payload as { takeover?: { ownerAgentId: string; ownerEpoch: number } }).takeover : undefined;
+      await saveJwxtSessionReplica(token, session.config.id, response.encryptedSessionReplicas, {
+        expectedOwnerEpoch: takeover?.ownerEpoch ?? pending.ownerEpoch,
+        expectedOwnerAgentId: takeover?.ownerAgentId,
+        takeover: Boolean(takeover),
+      });
     } else if (pending.action === "session.logout") {
       await deleteJwxtSessionReplica(token);
     }

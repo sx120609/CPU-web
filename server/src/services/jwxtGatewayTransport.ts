@@ -3,11 +3,13 @@ import express from "express";
 import { readFileSync } from "node:fs";
 import { HttpError } from "../utils/response";
 import type { AgentReplicaRecipient } from "./jwxtAgentReplicaCrypto";
+import { AgentErrorCode } from "./jwxtAgentErrors";
 
 export type GatewayState = {
   configured: boolean; online: boolean; ready: boolean; inFlight: number;
   maxConcurrent: number; connectedAt: number | null; lastPongAt: number | null;
   buildCommit: string; platform: string; jwxtEnabled: boolean; crawlEnabled: boolean;
+  replicaBackfill?: boolean;
 };
 export type GatewaySnapshot = {
   protocol: 1; instance: string;
@@ -87,7 +89,7 @@ export class GatewayClient {
   async request(agentId: string, action: string, payload: unknown, timeoutMs: number) {
     // No retry: the Agent may already have completed a login or mutation.
     try { return (await this.call("/request", { agentId, action, payload, timeoutMs }, timeoutMs + 3000)).data; }
-    catch (error) { if (error instanceof HttpError) throw error; throw new HttpError(503, 5000, "教务网关暂时不可用"); }
+    catch (error) { if (error instanceof HttpError) throw error; throw new HttpError(503, AgentErrorCode.gateway, "教务网关暂时不可用"); }
   }
 }
 

@@ -83,6 +83,9 @@ test("outbound JWXT Agent handles login, queries, dorm electricity, and crawler 
   const actionsB: Array<{ action: string; payload: any }> = [];
   const snapshotsA = new Map<string, any>();
   const snapshotsB = new Map<string, any>();
+  let importDelay = 0;
+  let iconDelay = 0;
+  let upstreamFailure = false;
   const client = startJwxtAgentClient({
     serverUrl: `ws://127.0.0.1:${address.port}/api/internal/jwxt-agent/connect`,
     agentId: "campus-agent-a",
@@ -120,6 +123,7 @@ test("outbound JWXT Agent handles login, queries, dorm electricity, and crawler 
       }
       if (action === "session.export-snapshot") return snapshotsA.get((payload as { token: string }).token) ?? null;
       if (action === "session.import-snapshot") {
+        if (importDelay) await new Promise(resolve => setTimeout(resolve, importDelay));
         const input = payload as { token: string; snapshot: any };
         snapshotsA.set(input.token, input.snapshot);
         return true;
@@ -129,7 +133,14 @@ test("outbound JWXT Agent handles login, queries, dorm electricity, and crawler 
         return active ? { active: true, since: Date.now(), username: "20260001" } : { active: false };
       }
       if (action === "jwxt.iapp-icon") {
+        if (iconDelay) await new Promise(resolve => setTimeout(resolve, iconDelay));
         return { contentType: "image/png", dataBase64: "iVBORw0KGgo=", byteLength: 8 };
+      }
+      if (action === "jwxt.grades") {
+        const { HttpError } = await import("../src/utils/response");
+        if (upstreamFailure) throw new HttpError(502, 5002, "school upstream unavailable");
+        if (!snapshotsA.has((payload as { token: string }).token)) throw new HttpError(401, 4001, "session missing");
+        return { items: [], semesters: [], source: "test-grades" };
       }
       if (action === "dorm-electric.query") {
         return {
@@ -296,6 +307,47 @@ test("outbound JWXT Agent handles login, queries, dorm electricity, and crawler 
   const recoveredAtOwnerReplica = await replica.loadJwxtSessionReplica("agent-query-token");
   assert.equal(recoveredAtOwnerReplica?.ownerAgentId, "campus-agent-a");
 
+  // Busy nodes queue reads without restoring or moving the user's session.
+  const beforeBusy = actions.filter(item => item.action === "session.import-snapshot").length;
+  iconDelay = 80;
+  await Promise.all(Array.from({ length: 10 }, () => gateway.requestJwxtAgent("campus-agent-a", "jwxt.iapp-icon", { path: "test" })));
+  iconDelay = 0;
+  assert.equal(actions.filter(item => item.action === "session.import-snapshot").length, beforeBusy);
+
+  // A school 502 must propagate without copying the cookie jar to another node.
+  upstreamFailure = true;
+  await assert.rejects(() => transport.getGrades(login.token!), (error: any) => error.status === 502);
+  upstreamFailure = false;
+  assert.equal(actions.filter(item => item.action === "session.import-snapshot").length, beforeBusy);
+
+  // Parallel, different read operations join one restore and receive their own results.
+  snapshotsA.clear(); importDelay = 120;
+  const concurrent = await Promise.all([transport.getStatus(login.token), transport.getGrades(login.token!)]);
+  importDelay = 0;
+  assert.equal(concurrent[0].active, true);
+  assert.equal((concurrent[1] as any).source, "test-grades");
+  assert.equal(actions.filter(item => item.action === "session.import-snapshot").length, beforeBusy + 1);
+
+  // A migration lock held by another API generation is awaited rather than exposed as 503.
+  let releaseOther!: () => void;
+  let enteredOther!: () => void;
+  const entered = new Promise<void>(resolve => { enteredOther = resolve; });
+  const held = replica.runWithJwxtSessionMigrationLock("agent-query-token", async () => {
+    enteredOther(); await new Promise<void>(resolve => { releaseOther = resolve; });
+  });
+  await entered;
+  snapshotsA.clear();
+  const waitingStatus = transport.getStatus(login.token);
+  await new Promise(resolve => setTimeout(resolve, 80));
+  releaseOther(); await held;
+  assert.equal((await waitingStatus).active, true);
+
+  // Background rewrapping only handles ciphertext, even with no resident session.
+  const sourceReplica = (await replica.loadJwxtSessionReplica("agent-query-token"))!.replicas.find(item => item.recipientAgentId === "campus-agent-a")!;
+  const rewrapped = await gateway.requestJwxtAgent("campus-agent-a", "session.replicate-encrypted", { replica: sourceReplica });
+  assert.equal(JSON.stringify(rewrapped).includes("private-cookie-value"), false);
+  assert.deepEqual(rewrapped.replicas.map(item => item.recipientAgentId).sort(), ["campus-agent-a", "campus-agent-b"]);
+
   client.stop();
   await waitFor(() => !gateway.getJwxtAgentState("campus-agent-a").online);
   const migratedStatus = await transport.getStatus(login.token);
@@ -304,6 +356,21 @@ test("outbound JWXT Agent handles login, queries, dorm electricity, and crawler 
   assert.ok(actionsB.some((item) => item.action === "session.status"));
   const migratedReplica = await replica.loadJwxtSessionReplica("agent-query-token");
   assert.equal(migratedReplica?.ownerAgentId, "campus-agent-b");
+  assert.equal(migratedReplica?.ownerEpoch, 2);
+  // Old responses are rejected even if their cookie timestamp is newer.
+  const oldResponse = sourceReplica;
+  const staleCopies = [oldResponse, ...migratedReplica!.replicas.filter(item => item.recipientAgentId !== oldResponse.recipientAgentId)].map(item => ({ ...item, capturedAt: Date.now() + 1000 }));
+  assert.equal(await replica.saveJwxtSessionReplica("agent-query-token", "campus-agent-a", staleCopies, { expectedOwnerEpoch: 1 }), false);
+  assert.equal((await replica.loadJwxtSessionReplica("agent-query-token"))?.ownerAgentId, "campus-agent-b");
+  assert.equal(await replica.saveJwxtSessionReplica("agent-query-token", "campus-agent-a", migratedReplica!.replicas, {
+    expectedOwnerEpoch: 2, expectedOwnerAgentId: "campus-agent-b", takeover: true,
+  }), true);
+  assert.equal((await replica.loadJwxtSessionReplica("agent-query-token"))?.ownerEpoch, 3);
+  assert.equal(await replica.saveJwxtSessionReplica("agent-query-token", "campus-agent-a", staleCopies, { expectedOwnerEpoch: 1 }), false);
+  assert.equal(await replica.saveJwxtSessionReplica("agent-query-token", "campus-agent-b", migratedReplica!.replicas, {
+    expectedOwnerEpoch: 3, expectedOwnerAgentId: "campus-agent-a", takeover: true,
+  }), true);
+  assert.ok(gateway.getJwxtAgentReplicaRecipients().some(item => item.agentId === "campus-agent-a"));
   assert.equal("snapshot" in (migratedReplica || {}), false);
 
   clientB.stop();

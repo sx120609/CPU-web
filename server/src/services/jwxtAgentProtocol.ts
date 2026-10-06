@@ -50,8 +50,12 @@ export type JwxtAgentActionMap = {
     output: boolean;
   };
   "session.import-encrypted-snapshot": {
-    input: { token: string; replica: AgentEncryptedSessionReplica };
+    input: { token: string; replica: AgentEncryptedSessionReplica; takeover?: { ownerAgentId: string; ownerEpoch: number } };
     output: boolean;
+  };
+  "session.replicate-encrypted": {
+    input: { replica: AgentEncryptedSessionReplica };
+    output: { replicas: AgentEncryptedSessionReplica[] };
   };
   "jwxt.schedule": {
     input: { token: string; semester?: string; week?: string };
@@ -123,6 +127,7 @@ export type JwxtAgentReadyMessage = {
   replicaPublicKey: string;
   buildCommit?: string;
   platform?: string;
+  replicaBackfill?: boolean;
 };
 
 export type JwxtAgentReplicaTargetsMessage = {

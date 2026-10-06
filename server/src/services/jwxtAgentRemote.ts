@@ -21,6 +21,7 @@ import {
   saveJwxtSessionReplica,
 } from "./jwxtSessionReplica";
 import { decryptSessionSnapshotReplica, encryptSessionSnapshotForRecipients, type AgentEncryptedLoginCredentials } from "./jwxtAgentReplicaCrypto";
+import { AgentErrorCode, sessionFailureReason } from "./jwxtAgentErrors";
 
 type SecureLoginArgs = Parameters<typeof local.submitLogin>[0] | {
   pendingId: string;
@@ -49,6 +50,7 @@ export const JWXT_TOKEN_ROUTE_MAX_AGE_MS = config.jwxtSessionIdleMs;
 const MAX_PENDING_ROUTE_AGE_MS = 10 * 60 * 1000;
 
 const runtimeById = new Map<string, QueryRuntime>();
+const sessionRecoveries = new Map<string, Promise<string>>();
 
 export function isJwxtAgentQueryMode() {
   return syncQueryRuntimes().length > 0;
@@ -286,129 +288,150 @@ async function requestWithToken<A extends JwxtAgentAction>(
   const replica = await loadJwxtSessionReplica(route.innerToken);
   const ownerAgentId = replica?.ownerAgentId ?? route.agentId;
   try {
-    const result = await callSticky(ownerAgentId, action, payload);
+    const recovering = sessionRecoveries.get(route.innerToken);
+    const result = await callSticky(recovering ? await recovering : ownerAgentId, action, payload);
     if (action === "session.status" && replica && !(result as { active?: boolean }).active) {
       throw Errors.unauthorized("当前节点未找到教务会话，尝试跨节点恢复");
     }
     return result;
   } catch (error) {
-    if (!replica || !isSessionFailoverError(error)) throw error;
-    return migrateSessionAndRetry(route.innerToken, ownerAgentId, action, payload, error);
+    let reason = sessionFailureReason(error);
+    if (error instanceof HttpError && error.code === AgentErrorCode.timeout) {
+      // A slow school request is not evidence that its Agent is dead. Probe independently.
+      try {
+        const status = await callSticky(ownerAgentId, "session.status", { token: route.innerToken }, Math.min(2000, config.proxyTimeoutMs));
+        if (!status.active) reason = "session_missing";
+      }
+      catch (probeError) {
+        if (sessionFailureReason(probeError) || (probeError instanceof HttpError && probeError.code === AgentErrorCode.timeout)) reason = "agent_unresponsive";
+      }
+    }
+    if (!reason) throw error;
+    if (!replica) {
+      recoveryLog(route.innerToken, { event: "unavailable", source: ownerAgentId, reason, detail: "missing_backup" });
+      throw error;
+    }
+    let recovery = sessionRecoveries.get(route.innerToken);
+    if (!recovery) {
+      recovery = recoverSessionOwner(route.innerToken, ownerAgentId, reason, error);
+      sessionRecoveries.set(route.innerToken, recovery);
+      const current = recovery;
+      void recovery.finally(() => { if (sessionRecoveries.get(route.innerToken) === current) sessionRecoveries.delete(route.innerToken); }).catch(() => undefined);
+    }
+    const owner = await recovery;
+    return callSticky(owner, action, payload);
   }
 }
 
-async function migrateSessionAndRetry<A extends JwxtAgentAction>(
+function recoveryLog(token: string, details: Record<string, unknown>) {
+  console.log(`[jwxt-agent] recovery ${JSON.stringify({ session: crypto.createHash("sha256").update(token).digest("hex").slice(0, 12), ...details })}`);
+}
+
+async function recoverSessionOwner(
   innerToken: string,
   failedAgentId: string,
-  action: A,
-  payload: JwxtAgentInput<A>,
+  reason: string,
   originalError: unknown,
-): Promise<JwxtAgentOutput<A>> {
-  const locked = await runWithJwxtSessionMigrationLock(innerToken, async () => {
+): Promise<string> {
+  const started = Date.now();
+  const deadline = started + Math.min(20000, Math.max(2000, config.proxyTimeoutMs));
+  while (true) {
+   const locked = await runWithJwxtSessionMigrationLock(innerToken, async () => {
     const latest = await loadJwxtSessionReplica(innerToken);
     if (!latest) throw originalError;
-
     let lastError: unknown = originalError;
-    let attempted = 0;
-    let unauthorized = 0;
-
-    // Agent 重启会清空进程内会话，但持久化私钥仍能解开写给自己的副本。
-    // 先在原节点原地恢复，可避免两个节点同时重连时把仍可恢复的手机会话判为失效。
     syncQueryRuntimes();
+    if (latest.ownerAgentId !== failedAgentId) return latest.ownerAgentId;
     const failedRuntime = runtimeById.get(failedAgentId);
     const selfReplica = latest.replicas.find((item) => item.recipientAgentId === failedAgentId);
-    if (failedRuntime && isRuntimeAvailable(failedRuntime) && selfReplica) {
-      attempted += 1;
+    recoveryLog(innerToken, { event: "start", source: failedAgentId, reason });
+    if (failedRuntime && isRuntimeReady(failedRuntime) && selfReplica && reason === "session_missing") {
       try {
-        await importSessionReplicaToRuntime(failedRuntime, innerToken, selfReplica);
-        const result = await callRuntime(failedRuntime, action, payload);
-        console.log(`[jwxt-agent] 教务会话已在重连节点 ${failedAgentId} 恢复`);
-        return result;
+        const status = await callRuntime(failedRuntime, "session.status", { token: innerToken });
+        if (!status.active) await importSessionReplicaToRuntime(failedRuntime, innerToken, selfReplica, latest);
+        recoveryLog(innerToken, { event: status.active ? "owner_available" : "restored", source: failedAgentId, target: failedAgentId, reason, elapsedMs: Date.now() - started });
+        return failedAgentId;
       } catch (error) {
         lastError = error;
-        if (error instanceof HttpError && error.status === 401) unauthorized += 1;
       }
     }
-
     const excluded = new Set<string>([failedAgentId]);
-
-    if (latest.ownerAgentId !== failedAgentId) {
-      try {
-        return await callSticky(latest.ownerAgentId, action, payload);
-      } catch (error) {
-        lastError = error;
-        excluded.add(latest.ownerAgentId);
-      }
-    }
-
     while (true) {
-      const runtime = selectQueryAgent(excluded);
+      const current = await loadJwxtSessionReplica(innerToken);
+      if (!current) throw originalError;
+      const runtime = syncQueryRuntimes().filter(item => !excluded.has(item.id) && isRuntimeReady(item)
+        && current.replicas.some(replica => replica.recipientAgentId === item.id))
+        .sort((a, b) => a.inFlight / a.weight - b.inFlight / b.weight)[0];
       if (!runtime) break;
       excluded.add(runtime.id);
-      const encryptedReplica = latest.replicas.find((item) => item.recipientAgentId === runtime.id);
-      if (!encryptedReplica) continue;
-      attempted += 1;
+      const encryptedReplica = current.replicas.find((item) => item.recipientAgentId === runtime.id)!;
       try {
-        await importSessionReplicaToRuntime(runtime, innerToken, encryptedReplica);
-        const result = await callRuntime(runtime, action, payload);
-        console.log(`[jwxt-agent] 教务会话已从 ${failedAgentId} 迁移到 ${runtime.id}`);
-        return result;
+        await importSessionReplicaToRuntime(runtime, innerToken, encryptedReplica, current);
+        const committed = await loadJwxtSessionReplica(innerToken);
+        if (committed?.ownerAgentId !== runtime.id) {
+          if (committed && committed.ownerAgentId !== failedAgentId) return committed.ownerAgentId;
+          throw new HttpError(503, AgentErrorCode.recovering, "教务会话恢复正在完成，请稍后重试");
+        }
+        recoveryLog(innerToken, { event: "migrated", source: failedAgentId, target: runtime.id, reason, elapsedMs: Date.now() - started });
+        return runtime.id;
       } catch (error) {
         lastError = error;
-        if (error instanceof HttpError && error.status === 401) unauthorized += 1;
+        recoveryLog(innerToken, { event: "target_failed", source: failedAgentId, target: runtime.id, reason, code: error instanceof HttpError ? error.code : 5000 });
       }
     }
-
-    if (attempted > 0 && unauthorized === attempted) await deleteJwxtSessionReplica(innerToken);
+    recoveryLog(innerToken, { event: "unavailable", source: failedAgentId, reason, detail: "no_usable_target", elapsedMs: Date.now() - started });
     throw lastError;
-  });
-
-  if (locked.acquired) return locked.result as JwxtAgentOutput<A>;
-  const latest = await loadJwxtSessionReplica(innerToken);
-  if (latest && latest.ownerAgentId !== failedAgentId) {
-    return callSticky(latest.ownerAgentId, action, payload);
+   });
+   if (locked.acquired) return locked.result!;
+   if (Date.now() >= deadline) throw new HttpError(503, AgentErrorCode.recovering, "教务会话恢复耗时较长，请稍后重试");
+   await new Promise(resolve => setTimeout(resolve, 100));
   }
-  throw new HttpError(503, 5000, "教务会话正在迁移，请稍后重试");
 }
 
 async function importSessionReplicaToRuntime(
   runtime: QueryRuntime,
   token: string,
   replica: Parameters<typeof decryptSessionSnapshotReplica>[0],
+  expected: NonNullable<Awaited<ReturnType<typeof loadJwxtSessionReplica>>>,
 ) {
   if (runtime.kind === "local") {
     const snapshot = decryptSessionSnapshotReplica(replica, token, "local", getLocalAgentReplicaIdentity());
     await dispatchJwxtAgentAction("session.import-snapshot", { token, snapshot });
+    await saveJwxtSessionReplica(token, runtime.id, encryptSessionSnapshotForRecipients(snapshot, token, getJwxtAgentReplicaRecipients()), {
+      expectedOwnerAgentId: expected.ownerAgentId, expectedOwnerEpoch: expected.ownerEpoch, takeover: true,
+    });
     return;
   }
-  await callRuntime(runtime, "session.import-encrypted-snapshot", { token, replica });
+  await callRuntime(runtime, "session.import-encrypted-snapshot", { token, replica, takeover: { ownerAgentId: expected.ownerAgentId, ownerEpoch: expected.ownerEpoch } }, Math.min(5000, config.proxyTimeoutMs));
 }
 
-function isSessionFailoverError(error: unknown) {
-  return error instanceof HttpError && (error.status === 401 || error.status >= 500);
+function isRuntimeReady(runtime: QueryRuntime) {
+  return runtime.kind === "local" || getJwxtAgentState(runtime.id).ready;
 }
 
 async function callSticky<A extends JwxtAgentAction>(
   agentId: string,
   action: A,
   payload: JwxtAgentInput<A>,
+  timeoutMs = config.proxyTimeoutMs,
 ): Promise<JwxtAgentOutput<A>> {
   syncQueryRuntimes();
   const runtime = runtimeById.get(agentId);
   if (!runtime) throw Errors.unauthorized("该教务会话所属 Agent 已移除，请重新登录");
-  return callRuntime(runtime, action, payload);
+  return callRuntime(runtime, action, payload, timeoutMs);
 }
 
 async function callRuntime<A extends JwxtAgentAction>(
   runtime: QueryRuntime,
   action: A,
   payload: JwxtAgentInput<A>,
+  timeoutMs = config.proxyTimeoutMs,
 ): Promise<JwxtAgentOutput<A>> {
   runtime.inFlight += 1;
   try {
     const result = runtime.kind === "local"
       ? await dispatchJwxtAgentAction(action, payload) as JwxtAgentOutput<A>
-      : await requestJwxtAgent(runtime.id, action, payload, config.proxyTimeoutMs);
+      : await requestJwxtAgent(runtime.id, action, payload, timeoutMs);
     if (runtime.kind === "local") await syncLocalSessionReplica(runtime, action, payload, result);
     markSuccess(runtime);
     return result;

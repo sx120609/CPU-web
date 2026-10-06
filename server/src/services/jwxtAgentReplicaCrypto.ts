@@ -78,11 +78,14 @@ export function encryptSessionSnapshotForRecipients(
   token: string,
   recipients: AgentReplicaRecipient[],
 ) {
+  return encryptSnapshotForHash(snapshot, hashToken(token), recipients);
+}
+
+function encryptSnapshotForHash(snapshot: JwxtSessionSnapshot, tokenHash: string, recipients: AgentReplicaRecipient[]) {
   const unique = new Map(recipients.map((item) => [item.agentId, item]));
   if (unique.size > 32) throw new Error("too many JWXT replica recipients");
   const plaintext = Buffer.from(JSON.stringify(snapshot), "utf8");
   if (plaintext.length > 1024 * 1024) throw new Error("JWXT session snapshot is too large");
-  const tokenHash = hashToken(token);
   return [...unique.values()].map((recipient): AgentEncryptedSessionReplica => {
     if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(recipient.agentId)) throw new Error("invalid replica recipient id");
     const publicKey = crypto.createPublicKey({ key: Buffer.from(recipient.publicKey, "base64"), type: "spki", format: "der" });
@@ -116,6 +119,13 @@ export function decryptSessionSnapshotReplica(
   if (replica.recipientAgentId !== agentId || replica.tokenHash !== tokenHash) {
     throw new Error("JWXT replica recipient or token binding mismatch");
   }
+  return decryptSnapshotForHash(replica, agentId, identity);
+}
+
+function decryptSnapshotForHash(replica: AgentEncryptedSessionReplica, agentId: string, identity: AgentReplicaIdentity) {
+  validateReplicaEnvelope(replica);
+  if (replica.recipientAgentId !== agentId) throw new Error("JWXT replica recipient mismatch");
+  const tokenHash = replica.tokenHash;
   const privateKey = crypto.createPrivateKey({ key: Buffer.from(identity.privateKey, "base64"), type: "pkcs8", format: "der" });
   const key = crypto.privateDecrypt({ key: privateKey, oaepHash: "sha256" }, Buffer.from(replica.encryptedKey, "base64url"));
   const decipher = crypto.createDecipheriv("aes-256-gcm", key, Buffer.from(replica.iv, "base64url"));
@@ -126,6 +136,13 @@ export function decryptSessionSnapshotReplica(
     decipher.final(),
   ]).toString("utf8");
   return JSON.parse(plaintext) as JwxtSessionSnapshot;
+}
+
+/** Rewrap authenticated ciphertext inside its recipient Agent, without exporting cookies or tokens. */
+export function reencryptSessionReplica(
+  replica: AgentEncryptedSessionReplica, agentId: string, identity: AgentReplicaIdentity, recipients: AgentReplicaRecipient[],
+) {
+  return encryptSnapshotForHash(decryptSnapshotForHash(replica, agentId, identity), replica.tokenHash, recipients);
 }
 
 export function decryptAgentLoginCredentials(
