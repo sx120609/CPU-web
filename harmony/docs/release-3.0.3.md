@@ -21,8 +21,8 @@
 
 | 检查 | 结果 |
 | --- | --- |
-| HarmonyOS 回归测试 | 137 项通过（含新增的存储清理 4 项） |
-| 共享课表桥回归测试 | 34 项通过，使用 `main` 的共享桥，未修改测试 |
+| HarmonyOS 回归测试 | 140 项通过（含新增的存储清理 4 项） |
+| 共享课表桥回归测试 | 31 项通过，使用 `main` 的共享桥，未修改测试 |
 | 发布构建 | DevEco 6.1.1 / SDK API 24，release `assembleApp` 成功 |
 | 签名校验 | HAP、APP 及从最终 APP 提取的 HAP 均通过华为 `verify-app`；内嵌 HAP 与独立验签文件逐字节一致 |
 | 包内信息 | `buildMode=release`、`debug=false`、版本 3.0.3 / 23；随包桥与源码一致，只有 `pages/Index` 一个页面 |
