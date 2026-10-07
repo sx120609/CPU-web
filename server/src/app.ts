@@ -168,6 +168,11 @@ export function createApp(options: { workers?: boolean } = {}) {
             res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
             return;
           }
+          // 条款等独立页面发布后要立刻生效：让浏览器和前置缓存按 ETag 校验，不按时长保留旧副本。
+          if (normalized.endsWith(".html")) {
+            res.setHeader("Cache-Control", "no-cache");
+            return;
+          }
           if (normalized.endsWith("/sw.js")) {
             res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
           }
