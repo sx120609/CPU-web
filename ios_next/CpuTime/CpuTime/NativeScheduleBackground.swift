@@ -27,7 +27,8 @@ struct NativeScheduleBackground: View {
             ZStack {
                 LinearGradient(
                     colors: colorScheme == .dark
-                        ? [NativeSchedulePalette.RGBA(0x101c19).color, NativeSchedulePalette.RGBA(0x0e1820).color]
+                        // Neutral, ending on the site's dark page colour (`--cpu-bg`).
+                        ? [NativeSchedulePalette.RGBA(0x15181c).color, NativeSchedulePalette.RGBA(0x0e1012).color]
                         : [NativeSchedulePalette.RGBA(0xedf4ff).color, NativeSchedulePalette.RGBA(0xf7fbff).color,
                            NativeSchedulePalette.RGBA(0xf8fafc).color],
                     startPoint: .top, endPoint: .bottom
@@ -78,10 +79,10 @@ struct NativeScheduleBackgroundSurface: View {
 
     var body: some View {
         if reduceTransparency {
-            NativeSchedulePalette.RGBA(colorScheme == .dark ? 0x20312c : 0xf8fafc).color
+            NativeSchedulePalette.RGBA(colorScheme == .dark ? 0x23272c : 0xf8fafc).color
         } else {
             NativeSchedulePalette.RGBA(
-                colorScheme == .dark ? (strength == .cell ? 0x1e302b : 0x263a34) : 0xffffff,
+                colorScheme == .dark ? (strength == .cell ? 0x1e2226 : 0x2a2f35) : 0xffffff,
                 alpha: strength == .cell ? (colorScheme == .dark ? 0.52 : 0.36)
                     : (hasBackground ? 0.72 : (colorScheme == .dark ? 0.68 : 0.56))
             ).color

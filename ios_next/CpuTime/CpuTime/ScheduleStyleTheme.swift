@@ -102,7 +102,7 @@ nonisolated struct ThemePalette: Equatable, Sendable {
         static func todayStrength(dark: Bool) -> Double { dark ? 0.15 : 0.08 }
         /// The page gradient drawn by `NativeScheduleBackground`, end stops.
         static func canvases(dark: Bool) -> [RGB] {
-            dark ? [RGB(hex: 0x101C19), RGB(hex: 0x0E1820)] : [RGB(hex: 0xEDF4FF), RGB(hex: 0xF8FAFC), .white]
+            dark ? [RGB(hex: 0x15181C), RGB(hex: 0x0E1012)] : [RGB(hex: 0xEDF4FF), RGB(hex: 0xF8FAFC), .white]
         }
     }
 

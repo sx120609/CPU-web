@@ -101,14 +101,16 @@ enum NativeScheduleThemeColor {
         let tone = NativeSchedulePalette.tone(name: name, palette: palette, dark: scheme == .dark)
         return scheme == .dark ? tone.border.color : tone.text.color
     }
+    // The dark values are the neutral greys of the site's dark theme
+    // (`--cpu-text`, `--cpu-text-secondary` in web/src/styles/index.scss).
     static func primary(_ scheme: ColorScheme) -> Color {
-        NativeSchedulePalette.RGBA(scheme == .dark ? 0xeef8f5 : 0x172033).color
+        NativeSchedulePalette.RGBA(scheme == .dark ? 0xeceef1 : 0x172033).color
     }
     static func secondary(_ scheme: ColorScheme) -> Color {
-        NativeSchedulePalette.RGBA(scheme == .dark ? 0xabc5be : 0x667085).color
+        NativeSchedulePalette.RGBA(scheme == .dark ? 0xb0b7c1 : 0x667085).color
     }
     static func cellBorder(_ scheme: ColorScheme) -> Color {
-        NativeSchedulePalette.RGBA(scheme == .dark ? 0xa3bab3 : 0xdae3ef,
+        NativeSchedulePalette.RGBA(scheme == .dark ? 0xb0b7c1 : 0xdae3ef,
                                    alpha: scheme == .dark ? 0.20 : 0.82).color
     }
 }

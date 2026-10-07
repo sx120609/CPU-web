@@ -1,6 +1,6 @@
-# iOS 4.14 (68)
+# iOS 4.14 (69)
 
-Release base: remote main `b42fbed3`. Compared with 4.13 (67), the iOS changes are in `1fc48c55`, with the server and Web side in `a9d92248`:
+Release base: remote main `f62f84ad`. Compared with 4.13 (67), the iOS changes are in `1fc48c55`, with the server and Web side in `a9d92248`:
 
 - Six timetable styles: classic (the look until now, still the default) plus minimal, grid, table, paper and board, across the week, day and month views and the share image. A now indicator, and weekend days with classes stay visible when weekends are hidden.
 - Tapping a course opens a quick look; its edit button opens the editor. Week export to an `.ics` file is back. Both had been removed in 4.13 (`f01c2cfc`) and are restored on purpose.
@@ -8,8 +8,10 @@ Release base: remote main `b42fbed3`. Compared with 4.13 (67), the iOS changes a
 - A course that overlaps others can be set to show first. The Live Activity takes the same answer.
 - Shared timetables (更多 → 共享课表): publish, update and revoke a share code; import a code after a preview; open it read-only; care about one so its classes join the Live Activity.
 - Qingming by formula and safer published-holiday matching; the clipped top edge of the date header is fixed.
+- The native timetable's dark appearance uses the neutral greys of the site's dark theme (`f62f84ad`) for the page, cells, borders and text, in place of the green-tinted ones. Course colours are unchanged: they stay on the palette shared with Web, Android and HarmonyOS, whose timetables still use the green-tinted dark background.
+- The month view's list writes a one-period course as 第 9 节 rather than 第 9-9 节.
 
-All four targets (iPhone app, iPhone widgets, Watch app and Watch widgets) use version 4.14, build 68. The minimum versions remain iOS 15 for the main app, iOS 17 for its widgets and watchOS 10 for Watch targets.
+All four targets (iPhone app, iPhone widgets, Watch app and Watch widgets) use version 4.14, build 69. Build 68 was uploaded on 2026-10-07 from `708a806f` and is superseded: it lacks the last two items above. The minimum versions remain iOS 15 for the main app, iOS 17 for its widgets and watchOS 10 for Watch targets.
 
 ## Server dependency
 
@@ -23,7 +25,7 @@ The rest of 4.14 works against the older server. Deploy the server before this v
 ## Validation on 2026-10-07
 
 - Signed generic iOS Release archive succeeded, including all four targets.
-- Archive code signature verified; all four bundles carry 4.14 (68). ActivityKit runtime import inspection: all 53 app imports and 7 widget imports are weak. Both calendar purpose strings are present.
+- Archive code signature verified; all four bundles carry 4.14 (69). ActivityKit runtime import inspection: all 53 app imports and 7 widget imports are weak. Both calendar purpose strings are present.
 - iOS Node suite: 53/53; Swift package: 24/24; server and Web Node suites: 822 passed, 4 skipped (the PostgreSQL integration tests).
 - Native schedule store, period, palette (32 comparisons), Chinese calendar, course arrangement, display priority, shared timetable and Live Activity checks passed. The Live Activity check covers priority and the cared timetable.
 - `scheduleSharing.integration.test.ts` passed against a local PostgreSQL 16.
