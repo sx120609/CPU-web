@@ -61,7 +61,7 @@ Debug 构建可用 scheme 环境变量临时查看：`CPU_DEBUG_SCHEDULE_STYLE=p
 
 服务端接口在 `/api/schedule-shares`：`POST /`（发布或更新，每账号每小时 30 次）、`GET /mine`、`GET /:code`、`GET /:code/meta`（只含更新时间等摘要，不缓存）、`DELETE /:code`（发布者本人登录即可，不再需要写入凭证）。情侣课表和它的接口没有改动。
 
-Debug 构建的 `CPU_DEBUG_SCHEDULE_ACTION` 还支持 `sharing`、`shared-view`（用示例数据打开共享课表页或只读课表页）；配合 `CPU_DEBUG_MOCK_SCHEDULE=1`、`CPU_DEBUG_API_ORIGIN`、`CPU_DEBUG_API_TOKEN` 可以让示例课表直连一台本机服务端，用 `share-open`、`share-publish`、`share-import`、`share-import-view`（配 `CPU_DEBUG_SHARE_CODE`、`CPU_DEBUG_SHARE_REMARK`）把发布、导入、刷新和撤销实际走一遍。`style-picker` 打开课表风格页；`CPU_DEBUG_MOCK_TABS=1` 给示例课表套上和登录后一样的底部标签栏（其余标签页是空的），用来截商店图。连本机服务端（`CPU_APP_URL`）拍课表以外的页面时，`CPU_DEBUG_LOGIN_USER`、`CPU_DEBUG_LOGIN_PASSWORD` 用种子数据里的示例账号自动登录，`CPU_DEBUG_TAB` 选标签页，`CPU_DEBUG_OPEN_PATH=/lost-found` 在首页标签里打开指定页面。`CPU_DEBUG_SCHEDULE_OVERLAP=1` 给示例课表加一门重叠的课，`CPU_DEBUG_SCHEDULE_PRIORITY=课名,课名` 按顺序指定优先显示的课。
+Debug 构建的 `CPU_DEBUG_SCHEDULE_ACTION` 还支持 `sharing`、`shared-view`（用示例数据打开共享课表页或只读课表页）；配合 `CPU_DEBUG_MOCK_SCHEDULE=1`、`CPU_DEBUG_API_ORIGIN`、`CPU_DEBUG_API_TOKEN` 可以让示例课表直连一台本机服务端，用 `share-open`、`share-publish`、`share-import`、`share-import-view`（配 `CPU_DEBUG_SHARE_CODE`、`CPU_DEBUG_SHARE_REMARK`）把发布、导入、刷新和撤销实际走一遍。`style-picker` 打开课表风格页，`live-activity` 启动设备设置里那节演示课的实时活动；`CPU_DEBUG_MOCK_TABS=1` 给示例课表套上和登录后一样的底部标签栏（其余标签页是空的），用来截商店图。连本机服务端（`CPU_APP_URL`）拍课表以外的页面时，`CPU_DEBUG_LOGIN_USER`、`CPU_DEBUG_LOGIN_PASSWORD` 用种子数据里的示例账号自动登录，`CPU_DEBUG_TAB` 选标签页，`CPU_DEBUG_OPEN_PATH=/lost-found` 在首页标签里打开指定页面。`CPU_DEBUG_SCHEDULE_OVERLAP=1` 给示例课表加一门重叠的课，`CPU_DEBUG_SCHEDULE_PRIORITY=课名,课名` 按顺序指定优先显示的课。
 
 课表主体沿用 Web／安卓的主题色与课程色规则：课名按规范化空白、UTF-16 和 32 位溢出计算颜色，日／周／月视图共用配色。单色主题使用固定底色、边框及文字色；深色彩色课程使用浅色文字。`check-schedule-palette.sh` 直接读取 Web 配色函数，与 Swift 结果做跨端对照。
 
