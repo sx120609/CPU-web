@@ -23,11 +23,8 @@
       <header><b><AppIcon name="hot" />热榜</b><router-link to="/forum?channel=hot">查看全部<el-icon><ArrowRight /></el-icon></router-link></header>
       <button data-cpu-button="surface" v-for="(topic, index) in hotPreview" :key="topic.id" type="button" @click="openTopic(topic.id)">
         <span class="hot-rank" :class="{ top: index === 0 }">{{ index + 1 }}</span>
-        <span class="hot-copy">
-          <b>{{ topic.title }}</b>
-          <small>{{ topic.board?.name }}</small>
-        </span>
-        <el-icon class="hot-arrow" aria-hidden="true"><ArrowRight /></el-icon>
+        <b>{{ topic.title }}</b>
+        <small v-if="topic.board?.name">{{ topic.board.name }}</small>
       </button>
     </section>
 
@@ -525,26 +522,24 @@ function requestMessage(requestError: unknown) {
 .forum-access-note { display: flex; align-items: center; gap: 8px; margin: 0; padding: 10px 12px; border-radius: var(--cpu-radius-m); background: var(--cpu-accent-soft); color: var(--cpu-accent); font-size: var(--cpu-fs-s); line-height: 1.5; }
 .forum-access-note .el-icon { flex: none; font-size: 16px; }
 
-/* 热榜：白色分组，标题在分组内，名次用大号数字 */
-.hot-strip { padding: 12px 12px 2px 16px; border-radius: var(--cpu-radius-l); background: var(--cpu-card); }
-.hot-strip header { display: flex; min-height: 32px; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 2px; }
-.hot-strip header b { display: inline-flex; align-items: center; gap: 6px; font-size: var(--cpu-fs-l); font-weight: 700; }
-.hot-strip header b :deep(.cpu-app-icon) { color: var(--cpu-rank-top); font-size: 18px; }
-.hot-strip a, .section-caption a { display: inline-flex; flex: none; min-height: 32px; align-items: center; gap: 1px; color: var(--cpu-primary); font-size: var(--cpu-fs-s); text-decoration: none; white-space: nowrap; }
-.hot-strip button { display: flex; width: 100%; align-items: center; gap: 14px; padding: 11px 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; -webkit-tap-highlight-color: transparent; }
-.hot-strip button + button { box-shadow: inset 0 1px 0 var(--cpu-border-soft); }
-.hot-rank { flex: none; width: 24px; color: var(--cpu-text-muted); font-size: var(--cpu-fs-xxl); font-weight: 800; line-height: 1; letter-spacing: -0.02em; text-align: center; font-variant-numeric: tabular-nums; }
+/* 热榜：白色分组里的三行，每行一句标题 */
+.hot-strip { padding: 8px 12px 4px 14px; border-radius: var(--cpu-radius-l); background: var(--cpu-card); }
+.hot-strip header { display: flex; min-height: 28px; align-items: center; justify-content: space-between; gap: 12px; }
+.hot-strip header b { display: inline-flex; align-items: center; gap: 5px; font-weight: 700; }
+.hot-strip header b :deep(.cpu-app-icon) { color: var(--cpu-rank-top); font-size: 15px; }
+.hot-strip a, .section-caption a { display: inline-flex; flex: none; min-height: 28px; align-items: center; gap: 1px; color: var(--cpu-primary); font-size: var(--cpu-fs-s); text-decoration: none; white-space: nowrap; }
+.hot-strip button { display: flex; width: 100%; min-height: 36px; align-items: center; gap: 8px; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.hot-strip button b { min-width: 0; flex: 1; overflow: hidden; font-weight: 400; text-overflow: ellipsis; white-space: nowrap; }
+.hot-strip button small { flex: none; color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); }
+.hot-rank { flex: none; width: 14px; color: var(--cpu-text-muted); font-weight: 700; text-align: center; font-variant-numeric: tabular-nums; }
 .hot-rank.top { color: var(--cpu-rank-top); }
-.hot-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; }
-.hot-copy b { display: -webkit-box; overflow: hidden; font-weight: 500; line-height: 1.45; -webkit-box-orient: vertical; -webkit-line-clamp: 2; text-wrap: pretty; }
-.hot-copy small { margin-top: 1px; color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); }
-.hot-arrow, .service-arrow { flex: none; color: var(--cpu-border); font-size: 16px; }
+.service-arrow { flex: none; color: var(--cpu-border); font-size: 16px; }
 
 /* 分组标题 */
 .section-caption { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin: 12px 4px 0; }
 .section-caption h1 { margin: 0; font-size: var(--cpu-fs-xl); font-weight: 700; line-height: 1.3; }
 .section-caption p { margin: 2px 0 0; color: var(--cpu-text-muted); font-size: var(--cpu-fs-s); }
-.section-caption a { font-size: var(--cpu-fs-m); }
+.section-caption a { min-height: 32px; font-size: var(--cpu-fs-m); }
 
 .campus-services, .home-feed { display: flex; flex-direction: column; gap: 12px; }
 .service-list { overflow: hidden; border-radius: var(--cpu-radius-l); background: var(--cpu-card); }

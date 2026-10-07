@@ -1605,7 +1605,7 @@ onBeforeUnmount(() => {
 .sj-thinking {
   display: inline-block;
   color: transparent;
-  background: var(--cpu-text-muted);
+  background: linear-gradient(90deg, var(--cpu-text-muted) 0%, var(--cpu-text) 45%, var(--cpu-text-muted) 90%);
   background-size: 220% 100%;
   -webkit-background-clip: text;
   background-clip: text;

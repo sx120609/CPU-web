@@ -2268,7 +2268,7 @@ function notifyVideoReviewState(summary?: {
   padding: 8px 11px;
   border-radius: var(--cpu-radius-m);
   border: 1px solid var(--cpu-border-soft);
-  background: var(--cpu-text-secondary);
+  background: var(--cpu-surface-soft);
 }
 
 .anonymous-form-item {

@@ -218,7 +218,7 @@ function openTopic() {
 .feed-author-line, .feed-context, .feed-card-foot, .feed-stat { display: flex; align-items: center; }
 .feed-author-line { gap: 6px; min-width: 0; line-height: 1.4; }
 .feed-author-name { overflow: hidden; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
-.feed-context { gap: 5px; margin-top: 1px; color: var(--cpu-text-muted); font-size: var(--cpu-fs-s); line-height: 1.4; }
+.feed-context { gap: 5px; margin-top: 1px; color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); line-height: 1.4; }
 .board-badge { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .vip-badge, .anonymous-badge, .pin-badge { flex: 0 0 auto; height: 18px; padding: 0 5px; border-radius: var(--cpu-radius-s); font-size: var(--cpu-fs-xs); font-weight: 500; line-height: 18px; }
 .vip-badge, .anonymous-badge { color: var(--cpu-text-muted); box-shadow: inset 0 0 0 1px var(--cpu-border); }
@@ -251,7 +251,7 @@ function openTopic() {
 .reply-previews span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .reply-previews .reply-more { justify-self: start; color: var(--cpu-primary); font-size: var(--cpu-fs-s); }
 .reply-more b { font-weight: 400; }
-.feed-card-foot { gap: 20px; margin-top: 12px; color: var(--cpu-text-muted); font-size: var(--cpu-fs-s); font-variant-numeric: tabular-nums; }
+.feed-card-foot { gap: 20px; margin-top: 10px; color: var(--cpu-text-muted); font-size: var(--cpu-fs-xs); font-variant-numeric: tabular-nums; }
 .review-state { order: 1; margin-left: auto; color: var(--cpu-accent); font-weight: 500; }
 .feed-stat { gap: 5px; }
 .feed-stat .el-icon { font-size: 16px; }

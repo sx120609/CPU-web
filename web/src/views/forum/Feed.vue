@@ -389,6 +389,7 @@ onBeforeRouteLeave((to) => {
 .auto-load-sentinel { width: 100%; padding: 10px; color: var(--cpu-text-muted); font-size: var(--cpu-fs-s); text-align: center; }
 .auto-load-sentinel.error { display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--cpu-danger); }
 @media (max-width: 700px) {
+  .title { font-size: var(--cpu-fs-xl); }
   .rank-row { grid-template-columns: 28px minmax(0, 1fr); }
   .rank-score { display: none; }
 }

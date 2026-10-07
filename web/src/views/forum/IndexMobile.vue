@@ -365,7 +365,7 @@ function requestMessage(requestError: unknown) {
 <style scoped>
 .forum-hub { display: flex; max-width: 860px; margin: 0 auto; flex-direction: column; gap: 12px; color: var(--cpu-text); font-size: var(--cpu-fs-m); line-height: 1.6; }
 .forum-hub-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin: 0 4px; }
-.forum-hub-head h1 { margin: 0; font-size: var(--cpu-fs-xxl); font-weight: 700; line-height: 1.3; }
+.forum-hub-head h1 { margin: 0; font-size: var(--cpu-fs-xl); font-weight: 700; line-height: 1.3; }
 .forum-hub-head p { margin: 2px 0 0; color: var(--cpu-text-muted); font-size: var(--cpu-fs-s); }
 .boards-button { flex: 0 0 auto; }
 .channel-tabs { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
@@ -373,7 +373,7 @@ function requestMessage(requestError: unknown) {
 .channel-tabs button { display: inline-flex; min-height: 36px; flex: 0 0 auto; align-items: center; gap: 5px; padding: 0 12px; font-size: var(--cpu-fs-m); cursor: pointer; }
 .feed-panel { display: flex; flex-direction: column; gap: 12px; }
 .feed-panel-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin: 12px 4px 0; }
-.feed-panel-head h2 { margin: 0; font-size: var(--cpu-fs-xl); font-weight: 700; line-height: 1.3; }
+.feed-panel-head h2 { margin: 0; font-size: var(--cpu-fs-l); font-weight: 700; line-height: 1.3; }
 .feed-panel-head span { display: block; margin-top: 2px; color: var(--cpu-text-muted); font-size: var(--cpu-fs-s); }
 .feed-panel-head strong { color: var(--cpu-text-muted); font-size: var(--cpu-fs-s); font-weight: 500; font-variant-numeric: tabular-nums; }
 /* 信息流是一整块分组，帖子和插在中间的推广之间都用细线分隔 */
