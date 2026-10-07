@@ -48,6 +48,17 @@ export type SponsorWallItem = {
   } | null;
 };
 
+/** 赞助榜的一条：同一个人的公开赞助合并；匿名赞助不带用户信息。 */
+export type SponsorRankingEntry = {
+  key: string;
+  anonymous: boolean;
+  user: { id: number; nickname: string; avatar?: string | null } | null;
+  amount: string;
+  amountCents: number;
+  orderCount: number;
+  lastPaidAt?: string | null;
+};
+
 export type EpaySubmit = {
   submitUrl: string;
   method: "POST";
@@ -85,6 +96,8 @@ export const paymentsApi = {
   sponsorOptions: (options?: RequestOptions) => request.get<SponsorOptions>("/payments/sponsor/options", undefined, options),
   sponsorWall: (options?: RequestOptions) =>
     request.get<{ enabled: boolean; total: number; totalAmount?: string; categories: SponsorCategory[]; list: SponsorWallItem[] }>("/payments/sponsor/wall", undefined, options),
+  sponsorRanking: (options?: RequestOptions) =>
+    request.get<{ enabled: boolean; total: number; totalAmount: string; list: SponsorRankingEntry[] }>("/payments/sponsor/ranking", undefined, options),
   sponsorOrders: (params?: { page?: number; size?: number; status?: "pending" | "paid" | "closed" }, options?: RequestOptions) =>
     request.get<{ page: number; size: number; total: number; list: any[] }>("/payments/sponsor/orders", params, options),
   createSponsorOrder: (payload: { amount: string | number; payType: PayType }) =>

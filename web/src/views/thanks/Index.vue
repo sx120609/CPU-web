@@ -1,180 +1,177 @@
 <template>
   <div class="thx-page" :class="{ 'thx-page--calm': calm }">
-    <ThanksSky ref="skyRef" class="thx-sky" :calm="calm" />
-    <div class="thx-aurora" aria-hidden="true"><i></i><i></i><i></i></div>
+    <ThanksFireworks ref="fireworksRef" class="thx-fireworks" />
 
-    <header class="thx-bar">
-      <button class="thx-back" type="button" @click="goBack">
-        <el-icon><ArrowLeft /></el-icon>
-        <span>返回</span>
-      </button>
+    <header class="thx-nav">
+      <div class="thx-nav-inner">
+        <button class="thx-nav-back" type="button" aria-label="返回" @click="goBack">
+          <el-icon><ArrowLeft /></el-icon>
+        </button>
+        <strong class="thx-nav-title">致谢</strong>
+        <nav class="thx-nav-links" aria-label="章节">
+          <a
+            v-for="section in sections"
+            :key="section.id"
+            :href="`#${section.id}`"
+            :class="{ 'is-on': activeSection === section.id }"
+            @click.prevent="jumpTo(section.id)"
+          >{{ section.label }}</a>
+        </nav>
+        <button class="thx-pill thx-pill--small" type="button" @click="shareSite">分享</button>
+      </div>
     </header>
 
-    <nav class="thx-dots" aria-label="章节">
-      <a
-        v-for="section in sections"
-        :key="section.id"
-        :href="`#${section.id}`"
-        :class="{ 'is-on': activeSection === section.id }"
-        @click.prevent="jumpTo(section.id)"
-      >
-        <span>{{ section.label }}</span>
-      </a>
-    </nav>
-
     <!-- 开场 -->
-    <section id="thx-hero" class="thx-hero" data-thx-section>
-      <span class="thx-hero-ghost" aria-hidden="true">{{ thanksHero.ghost }}</span>
-      <div class="thx-hero-body">
-        <p class="thx-eyebrow thx-rise">{{ thanksHero.eyebrow }} · 药大拾间</p>
-        <h1 class="thx-hero-title thx-rise" style="--thx-delay: 120ms">{{ thanksHero.title }}</h1>
-        <p class="thx-hero-lead thx-rise" style="--thx-delay: 260ms">{{ thanksHero.lead }}</p>
-        <ul class="thx-figures thx-rise" style="--thx-delay: 400ms">
-          <li v-for="(figure, index) in figureTargets" :key="figure.label">
-            <b>{{ shownFigures[index] }}<small v-if="figure.suffix">{{ figure.suffix }}</small></b>
-            <span>{{ figure.label }}</span>
+    <section id="thx-hero" class="thx-hero thx-tone-dark" data-thx-section>
+      <div ref="heroBodyEl" class="thx-hero-body">
+        <p class="thx-hero-eyebrow thx-rise">{{ thanksHero.eyebrow }}</p>
+        <h1 class="thx-hero-title">{{ thanksHero.title }}</h1>
+        <p class="thx-hero-lead thx-rise" style="--thx-delay: 240ms">{{ thanksHero.lead }}</p>
+        <div class="thx-actions thx-rise" style="--thx-delay: 380ms">
+          <button class="thx-pill" type="button" @click="shareSite">帮我们分享</button>
+          <a class="thx-link" href="#thx-lead" @click.prevent="jumpTo('thx-lead')">
+            看看都有谁<el-icon><ArrowRight /></el-icon>
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <!-- 实时数字 -->
+    <section class="thx-band thx-tone-dark">
+      <ul v-reveal class="thx-figures">
+        <li v-for="figure in figures" :key="figure.key">
+          <b>{{ formatCount(shownFigures[figure.key] ?? 0) }}</b>
+          <span>{{ figure.label }}</span>
+        </li>
+      </ul>
+      <p v-reveal class="thx-live"><i></i>数字实时更新</p>
+    </section>
+
+    <!-- 主创 -->
+    <section id="thx-lead" class="thx-lead thx-tone-dark" data-thx-section>
+      <p v-reveal class="thx-lead-role">{{ thanksLead.role }}</p>
+      <h2 v-reveal="1" class="thx-lead-name">{{ thanksLead.name }}</h2>
+      <p v-reveal="2" class="thx-lead-aliases">{{ thanksLead.aliases.join(" · ") }}</p>
+      <p v-reveal="3" class="thx-lead-note">{{ thanksLead.note }}</p>
+    </section>
+
+    <!-- 伙伴 -->
+    <section id="thx-people" class="thx-section thx-tone-light" data-thx-section>
+      <div class="thx-inner">
+        <header v-reveal class="thx-head">
+          <h2>还有他们。</h2>
+          <p>写代码的，出钱出力的，出主意的。</p>
+        </header>
+        <ul class="thx-bento">
+          <li v-for="(person, index) in thanksPeople" :key="person.name" v-reveal="index % 2" :style="{ '--thx-span': person.span }">
+            <article class="thx-tile" :data-tint="person.tint">
+              <el-icon class="thx-tile-icon"><component :is="ICONS[person.icon]" /></el-icon>
+              <p class="thx-tile-role">{{ person.role }}</p>
+              <h3>{{ person.name }}<small v-if="person.alias">{{ person.alias }}</small></h3>
+              <p class="thx-tile-note">{{ person.note }}</p>
+            </article>
           </li>
         </ul>
       </div>
-      <a class="thx-cue" href="#thx-core" @click.prevent="jumpTo('thx-core')">
-        <span>往下看</span>
-        <el-icon><ArrowDown /></el-icon>
-      </a>
     </section>
 
-    <!-- 核心团队 -->
-    <section id="thx-core" class="thx-section" data-thx-section>
-      <header v-reveal class="thx-head">
-        <p class="thx-kicker">01 — CORE TEAM</p>
-        <h2>把它做出来的人</h2>
-        <p>从第一行代码到每一次半夜上线。</p>
-      </header>
-      <ul class="thx-core">
-        <li v-for="(person, index) in thanksCore" :key="index" v-reveal="index">
-          <article class="thx-card" :data-hue="person.hue" @pointermove="tilt" @pointerleave="untilt">
-            <div class="thx-card-avatar">
-              <img v-if="person.avatar" :src="person.avatar" :alt="person.name" loading="lazy" />
-              <span v-else>{{ initialOf(person.name) }}</span>
-            </div>
-            <h3>{{ person.name }}</h3>
-            <p class="thx-card-role">{{ person.role }}</p>
-            <p v-if="person.note" class="thx-card-note">{{ person.note }}</p>
-          </article>
-        </li>
-      </ul>
-    </section>
-
-    <!-- 贡献者 -->
-    <section id="thx-crew" class="thx-section thx-section--wide" data-thx-section>
-      <header v-reveal class="thx-head">
-        <p class="thx-kicker">02 — CONTRIBUTORS</p>
-        <h2>一起添砖加瓦的人</h2>
-        <p>提交过代码、报过问题、给过建议的每一位。</p>
-      </header>
-      <div v-reveal class="thx-marquees">
-        <div
-          v-for="(row, rowIndex) in marqueeRows"
-          :key="rowIndex"
-          class="thx-marquee"
-          :class="{ 'thx-marquee--reverse': rowIndex % 2 === 1 }"
-          :style="{ '--thx-dur': `${row.length * 5}s` }"
-        >
-          <div class="thx-marquee-track">
-            <ul v-for="copy in 2" :key="copy" :aria-hidden="copy === 2 ? 'true' : undefined">
-              <li v-for="(name, index) in row" :key="index" :data-hue="HUES[(index + rowIndex) % HUES.length]">{{ name }}</li>
-            </ul>
+    <!-- 赞助榜：iOS / 鸿蒙原生壳内不展示 -->
+    <section v-if="showSponsors" id="thx-sponsors" class="thx-section thx-tone-dark" data-thx-section>
+      <div class="thx-inner">
+        <header v-reveal class="thx-head">
+          <h2>为服务器续命的人。</h2>
+          <p>每一笔赞助都变成了带宽、存储和又一个月的在线。</p>
+        </header>
+        <template v-if="ranking.length">
+          <div v-reveal class="thx-total">
+            <b>¥{{ formatMoney(totalAmount) }}</b>
+            <span><i></i>来自 {{ formatCount(sponsorTotal) }} 次赞助 · 按累计金额实时排序</span>
           </div>
+          <div v-reveal class="thx-board">
+            <TransitionGroup tag="ol" name="thx-rank">
+              <li v-for="(entry, index) in shownRanking" :key="entry.key" :class="{ 'is-top': index < 3 }">
+                <span class="thx-board-rank">{{ index + 1 }}</span>
+                <UserAvatar
+                  :size="index < 3 ? 40 : 32"
+                  :src="entry.user?.avatar"
+                  :name="entry.user?.nickname ?? '匿名同学'"
+                  :seed="entry.user?.id ?? entry.key"
+                  alt="赞助者头像"
+                />
+                <span class="thx-board-name">{{ entry.user?.nickname || "匿名同学" }}</span>
+                <span class="thx-board-count">{{ entry.orderCount }} 次</span>
+                <b class="thx-board-amount" :class="{ 'is-flash': flashKeys.has(entry.key) }">¥{{ entry.amount }}</b>
+              </li>
+            </TransitionGroup>
+          </div>
+        </template>
+        <p v-else v-reveal class="thx-empty">鸣谢墙上的名字会出现在这里。</p>
+        <div v-reveal class="thx-actions thx-actions--start">
+          <button v-if="ranking.length > BOARD_COLLAPSED" class="thx-link" type="button" @click="boardExpanded = !boardExpanded">
+            {{ boardExpanded ? "收起" : `显示全部 ${ranking.length} 位` }}
+          </button>
+          <router-link class="thx-link" to="/sponsor">查看鸣谢墙<el-icon><ArrowRight /></el-icon></router-link>
         </div>
       </div>
-      <ul class="thx-groups">
-        <li v-for="(group, index) in thanksGroups" :key="group.title" v-reveal="index">
-          <h3>{{ group.title }}</h3>
-          <p v-if="group.note" class="thx-group-note">{{ group.note }}</p>
-          <p class="thx-group-names">{{ group.names.join(" · ") }}</p>
-        </li>
-      </ul>
     </section>
 
-    <!-- 赞助者：iOS / 鸿蒙原生壳内不展示 -->
-    <section v-if="showSponsors" id="thx-sponsors" class="thx-section" data-thx-section>
-      <header v-reveal class="thx-head">
-        <p class="thx-kicker">03 — SPONSORS</p>
-        <h2>为服务器续命的人</h2>
-        <p>每一笔赞助都变成了带宽、存储和又一个月的在线。</p>
-      </header>
-      <ul v-if="sponsors.length" v-reveal class="thx-sponsors">
-        <li v-for="item in sponsors" :key="item.id" :title="item.message || undefined">
-          <UserAvatar
-            :size="28"
-            :src="item.anonymous ? null : item.user?.avatar"
-            :name="item.anonymous ? '匿名同学' : item.user?.nickname"
-            :seed="item.anonymous ? `sponsor-${item.id}` : item.user?.id ?? item.id"
-            alt="赞助者头像"
-          />
-          <span>{{ item.anonymous ? "匿名同学" : item.user?.nickname || "同学" }}</span>
-        </li>
-      </ul>
-      <p v-else v-reveal class="thx-empty">鸣谢墙上的名字会出现在这里。</p>
-      <div v-reveal class="thx-actions">
-        <router-link class="thx-button" to="/sponsor">查看完整鸣谢墙</router-link>
+    <!-- 工具与开源 -->
+    <section id="thx-tools" class="thx-section thx-tone-white" data-thx-section>
+      <div class="thx-inner">
+        <header v-reveal class="thx-head">
+          <h2>用它们做出来的。</h2>
+          <p>开发工具，和一路用到的开源项目。</p>
+        </header>
+        <ul class="thx-tools">
+          <li v-for="(tool, index) in thanksTools" :key="tool.name" v-reveal="index">
+            <span>{{ tool.note }}</span>
+            <b>{{ tool.name }}</b>
+          </li>
+        </ul>
+        <p v-reveal class="thx-subhead">开源项目</p>
+        <ul v-reveal class="thx-stack">
+          <li v-for="project in thanksOpenSource" :key="project.name">
+            <component
+              :is="project.url ? 'a' : 'div'"
+              class="thx-chip"
+              :href="project.url"
+              :target="project.url ? '_blank' : undefined"
+              :rel="project.url ? 'noopener noreferrer' : undefined"
+            >
+              <b>{{ project.name }}</b>
+              <span>{{ project.note }}</span>
+            </component>
+          </li>
+        </ul>
       </div>
-    </section>
-
-    <!-- 开源项目 -->
-    <section id="thx-stack" class="thx-section" data-thx-section>
-      <header v-reveal class="thx-head">
-        <p class="thx-kicker">{{ showSponsors ? "04" : "03" }} — OPEN SOURCE</p>
-        <h2>站在巨人的肩膀上</h2>
-        <p>没有这些开源项目，就没有拾间。</p>
-      </header>
-      <ul class="thx-stack">
-        <li v-for="(project, index) in thanksOpenSource" :key="project.name" v-reveal="index % 6">
-          <component
-            :is="project.url ? 'a' : 'div'"
-            class="thx-tile"
-            :href="project.url"
-            :target="project.url ? '_blank' : undefined"
-            :rel="project.url ? 'noopener noreferrer' : undefined"
-          >
-            <b>{{ project.name }}</b>
-            <span>{{ project.note }}</span>
-          </component>
-        </li>
-      </ul>
     </section>
 
     <!-- 时间线 -->
-    <section id="thx-road" class="thx-section thx-section--narrow" data-thx-section>
-      <header v-reveal class="thx-head">
-        <p class="thx-kicker">{{ showSponsors ? "05" : "04" }} — THE ROAD</p>
-        <h2>一路走来</h2>
-      </header>
-      <ol class="thx-road">
-        <li v-for="(step, index) in thanksMilestones" :key="index" v-reveal>
-          <time>{{ step.date }}</time>
-          <h3>{{ step.title }}</h3>
-          <p v-if="step.note">{{ step.note }}</p>
-        </li>
-      </ol>
+    <section id="thx-road" class="thx-section thx-tone-light" data-thx-section>
+      <div class="thx-inner thx-inner--narrow">
+        <header v-reveal class="thx-head">
+          <h2>一路走来。</h2>
+        </header>
+        <ol class="thx-road">
+          <li v-for="(step, index) in thanksMilestones" :key="index" v-reveal>
+            <time>{{ step.date }}</time>
+            <div>
+              <h3>{{ step.title }}</h3>
+              <p v-if="step.note">{{ step.note }}</p>
+            </div>
+          </li>
+        </ol>
+        <p class="thx-footnote">节点整理自项目的提交记录与各端的发布记录。</p>
+      </div>
     </section>
 
     <!-- 片尾 -->
-    <section id="thx-you" class="thx-section thx-finale" data-thx-section>
-      <p v-reveal class="thx-kicker">{{ thanksFinale.lead }}</p>
-      <h2 v-reveal="1" class="thx-you">还有，<em>{{ auth.nickname || thanksFinale.fallbackName }}</em></h2>
-      <p v-reveal="2" class="thx-finale-body">{{ thanksFinale.body }}</p>
-      <div v-reveal="3" class="thx-actions">
-        <button class="thx-button thx-button--glow" type="button" @click="celebrate">放一束烟花</button>
-      </div>
-      <div v-reveal class="thx-roll" aria-hidden="true">
-        <div class="thx-roll-track" :style="{ '--thx-dur': `${rollLineCount * 1.6}s` }">
-          <div v-for="copy in 2" :key="copy" class="thx-roll-copy">
-            <template v-for="group in rollGroups" :key="group.heading">
-              <p class="thx-roll-heading">{{ group.heading }}</p>
-              <p v-for="(line, index) in group.lines" :key="index">{{ line }}</p>
-            </template>
-          </div>
-        </div>
+    <section id="thx-you" class="thx-finale thx-tone-dark" data-thx-section>
+      <h2 v-reveal class="thx-you">还有你，<em>{{ auth.nickname || thanksFinale.fallbackName }}</em>。</h2>
+      <p v-reveal="1" class="thx-finale-body">{{ thanksFinale.body }}</p>
+      <div v-reveal="2" class="thx-actions">
+        <button class="thx-pill" type="button" @click="shareSite">帮我们分享</button>
+        <button class="thx-pill thx-pill--ghost" type="button" @click="celebrate">放一束烟花</button>
       </div>
       <p class="thx-sign">{{ thanksFinale.sign }}</p>
     </section>
@@ -182,39 +179,46 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, type Directive } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch, type Component, type Directive } from "vue";
 import { useRouter } from "vue-router";
-import { ArrowDown, ArrowLeft } from "@element-plus/icons-vue";
+import { ElMessage } from "element-plus";
+import { ArrowLeft, ArrowRight, Briefcase, Calendar, Coin, Opportunity, School, Watch } from "@element-plus/icons-vue";
 import UserAvatar from "@/components/common/UserAvatar.vue";
-import { paymentsApi, type SponsorWallItem } from "@/api/payments";
+import { paymentsApi, type SponsorRankingEntry } from "@/api/payments";
+import { siteApi } from "@/api/site";
 import { useAuthStore } from "@/stores/auth";
 import { hidesNativeCommerce } from "@/utils/clientInfo";
-import ThanksSky from "./ThanksSky.vue";
+import { copyText } from "@/utils/userGroup";
+import ThanksFireworks from "./ThanksFireworks.vue";
 import {
-  thanksContributors,
-  thanksCore,
   thanksFinale,
-  thanksGroups,
   thanksHero,
+  thanksLead,
   thanksMilestones,
   thanksOpenSource,
-  thanksStats,
-  type ThanksHue,
-  type ThanksStat,
+  thanksPeople,
+  thanksShare,
+  thanksTools,
+  type ThanksIcon,
 } from "./credits";
 
-const HUES: ThanksHue[] = ["teal", "blue", "violet", "amber", "rose"];
-const MARQUEE_ROWS = 3;
-const MARQUEE_MIN_PER_ROW = 10;
-const SPONSOR_LIMIT = 36;
+const ICONS: Record<ThanksIcon, Component> = {
+  calendar: Calendar,
+  watch: Watch,
+  coin: Coin,
+  school: School,
+  briefcase: Briefcase,
+  idea: Opportunity,
+};
+const REFRESH_MS = 20_000;
+const BOARD_COLLAPSED = 10;
 
 const router = useRouter();
 const auth = useAuthStore();
-const skyRef = ref<InstanceType<typeof ThanksSky> | null>(null);
+const fireworksRef = ref<InstanceType<typeof ThanksFireworks> | null>(null);
 
 const motionQuery = typeof window !== "undefined" ? window.matchMedia?.("(prefers-reduced-motion: reduce)") : undefined;
 const calm = ref(Boolean(motionQuery?.matches));
-const finePointer = typeof window !== "undefined" && Boolean(window.matchMedia?.("(hover: hover) and (pointer: fine)").matches);
 
 function onMotionChange(event: MediaQueryListEvent) {
   calm.value = event.matches;
@@ -225,116 +229,162 @@ function goBack() {
   else router.replace("/home");
 }
 
-// ---- 赞助者 ----
-const showSponsors = !hidesNativeCommerce();
-const sponsors = ref<SponsorWallItem[]>([]);
-const sponsorTotal = ref(0);
+function formatCount(value: number) {
+  return value.toLocaleString("en-US");
+}
 
-async function loadSponsors() {
-  if (!showSponsors) return;
+/** "3260.00" → "3,260.00" */
+function formatMoney(amount: string) {
+  const [whole, cents = "00"] = amount.split(".");
+  return `${formatCount(Number(whole) || 0)}.${cents}`;
+}
+
+// ---- 实时数据：社区数字和赞助榜，定时刷新 ----
+const showSponsors = !hidesNativeCommerce();
+const community = ref<{ users: number; topics: number; replies: number } | null>(null);
+const ranking = ref<SponsorRankingEntry[]>([]);
+const sponsorTotal = ref(0);
+const totalAmount = ref("0.00");
+const boardExpanded = ref(false);
+const flashKeys = reactive(new Set<string>());
+const shownRanking = computed(() => (boardExpanded.value ? ranking.value : ranking.value.slice(0, BOARD_COLLAPSED)));
+let refreshTimer = 0;
+let flashTimer = 0;
+let disposed = false;
+
+async function loadCommunity() {
   try {
-    const wall = await paymentsApi.sponsorWall({ suppressErrorMessage: true });
-    if (!wall.enabled) return;
-    sponsors.value = wall.list.slice(0, SPONSOR_LIMIT);
-    sponsorTotal.value = wall.total;
-    figureTargets.value = buildFigures();
-    countUp();
+    community.value = await siteApi.communityStats();
   } catch {
-    // 鸣谢墙取不到时这一节只显示占位文案
+    // 取不到时开场只显示天数
   }
 }
 
+async function loadRanking() {
+  if (!showSponsors) return;
+  try {
+    const next = await paymentsApi.sponsorRanking({ suppressErrorMessage: true });
+    if (disposed) return;
+    if (!next.enabled) {
+      ranking.value = [];
+      return;
+    }
+    // 金额涨了的条目闪一下；首次加载不算
+    if (ranking.value.length) {
+      const before = new Map(ranking.value.map((entry) => [entry.key, entry.amountCents]));
+      for (const entry of next.list) {
+        if ((before.get(entry.key) ?? 0) < entry.amountCents) flashKeys.add(entry.key);
+      }
+      window.clearTimeout(flashTimer);
+      flashTimer = window.setTimeout(() => flashKeys.clear(), 2400);
+    }
+    ranking.value = next.list;
+    sponsorTotal.value = next.total;
+    totalAmount.value = next.totalAmount;
+  } catch {
+    // 赞助榜取不到时这一节只显示占位文案
+  }
+}
+
+function refresh() {
+  if (document.hidden) return;
+  void loadCommunity();
+  void loadRanking();
+}
+
+// ---- 开场数字 ----
+const figures = computed(() => {
+  const days = Math.max(1, Math.floor((Date.now() - new Date(`${thanksHero.since}T00:00:00+08:00`).getTime()) / 86_400_000));
+  return [
+    { key: "days", label: "天的陪伴", value: days },
+    ...(community.value
+      ? [
+          { key: "users", label: "位同学", value: community.value.users },
+          { key: "posts", label: "篇帖子和回复", value: community.value.topics + community.value.replies },
+        ]
+      : []),
+    ...(showSponsors && sponsorTotal.value ? [{ key: "sponsors", label: "次赞助", value: sponsorTotal.value }] : []),
+  ];
+});
+const shownFigures = reactive<Record<string, number>>({});
+let countRaf = 0;
+
+function countUp() {
+  cancelAnimationFrame(countRaf);
+  const targets = figures.value;
+  const from = Object.fromEntries(targets.map((figure) => [figure.key, shownFigures[figure.key] ?? 0]));
+  if (calm.value) {
+    for (const figure of targets) shownFigures[figure.key] = figure.value;
+    return;
+  }
+  const startedAt = performance.now();
+  const step = (now: number) => {
+    const progress = Math.min((now - startedAt) / 1400, 1);
+    const eased = 1 - (1 - progress) ** 4;
+    for (const figure of targets) shownFigures[figure.key] = Math.round(from[figure.key] + (figure.value - from[figure.key]) * eased);
+    if (progress < 1) countRaf = requestAnimationFrame(step);
+  };
+  countRaf = requestAnimationFrame(step);
+}
+
+watch(figures, countUp);
+
 // ---- 章节导航 ----
 const sections = [
-  { id: "thx-hero", label: "开场" },
-  { id: "thx-core", label: "核心团队" },
-  { id: "thx-crew", label: "贡献者" },
-  ...(showSponsors ? [{ id: "thx-sponsors", label: "赞助者" }] : []),
-  { id: "thx-stack", label: "开源项目" },
-  { id: "thx-road", label: "时间线" },
-  { id: "thx-you", label: "还有你" },
+  { id: "thx-lead", label: "主创" },
+  { id: "thx-people", label: "伙伴" },
+  ...(showSponsors ? [{ id: "thx-sponsors", label: "赞助" }] : []),
+  { id: "thx-tools", label: "工具" },
+  { id: "thx-road", label: "历程" },
 ];
-const activeSection = ref(sections[0].id);
+const activeSection = ref("");
 let sectionObserver: IntersectionObserver | null = null;
 
 function jumpTo(id: string) {
   document.getElementById(id)?.scrollIntoView({ behavior: calm.value ? "auto" : "smooth", block: "start" });
 }
 
-// ---- 开场数字 ----
-function buildFigures(): ThanksStat[] {
-  const days = Math.max(1, Math.floor((Date.now() - new Date(`${thanksHero.since}T00:00:00+08:00`).getTime()) / 86_400_000));
-  return [
-    { label: "天的陪伴", value: days },
-    ...thanksStats,
-    ...(sponsorTotal.value ? [{ label: "次赞助支持", value: sponsorTotal.value }] : []),
-  ];
-}
-const figureTargets = ref(buildFigures());
-const shownFigures = reactive<number[]>([]);
-let countRaf = 0;
-
-function countUp() {
-  cancelAnimationFrame(countRaf);
-  const targets = figureTargets.value.map((figure) => figure.value);
-  const from = targets.map((_, index) => shownFigures[index] ?? 0);
-  if (calm.value) {
-    shownFigures.splice(0, shownFigures.length, ...targets);
-    return;
+// ---- 分享 ----
+async function shareSite() {
+  const url = new URL(thanksShare.path, window.location.origin).href;
+  if (typeof navigator.share === "function") {
+    try {
+      await navigator.share({ title: thanksShare.title, text: thanksShare.text, url });
+      return;
+    } catch (error) {
+      // 用户自己关掉分享面板不算失败；其他情况退回复制
+      if ((error as DOMException)?.name === "AbortError") return;
+    }
   }
-  const startedAt = performance.now();
-  const step = (now: number) => {
-    const progress = Math.min((now - startedAt) / 1600, 1);
-    const eased = 1 - (1 - progress) ** 4;
-    shownFigures.splice(0, shownFigures.length, ...targets.map((target, index) => Math.round(from[index] + (target - from[index]) * eased)));
-    if (progress < 1) countRaf = requestAnimationFrame(step);
-  };
-  countRaf = requestAnimationFrame(step);
-}
-
-// ---- 名单墙和片尾字幕 ----
-const marqueeRows = computed(() => {
-  const rows: string[][] = Array.from({ length: MARQUEE_ROWS }, () => []);
-  thanksContributors.forEach((name, index) => rows[index % MARQUEE_ROWS].push(name));
-  return rows.filter((row) => row.length).map((row) => {
-    const filled = [...row];
-    while (filled.length < MARQUEE_MIN_PER_ROW) filled.push(...row);
-    return filled;
-  });
-});
-
-const rollGroups = computed(() => [
-  { heading: "核心团队", lines: thanksCore.map((person) => `${person.name}　${person.role}`) },
-  { heading: "贡献者", lines: thanksContributors },
-  ...thanksGroups.map((group) => ({ heading: group.title, lines: group.names })),
-  { heading: "开源项目", lines: thanksOpenSource.map((project) => project.name) },
-]);
-const rollLineCount = computed(() => rollGroups.value.reduce((total, group) => total + group.lines.length + 2, 0));
-
-function initialOf(name: string) {
-  return Array.from(name.trim())[0]?.toUpperCase() ?? "?";
-}
-
-// ---- 动效 ----
-function tilt(event: PointerEvent) {
-  if (!finePointer || calm.value) return;
-  const card = event.currentTarget as HTMLElement;
-  const rect = card.getBoundingClientRect();
-  const x = (event.clientX - rect.left) / rect.width;
-  const y = (event.clientY - rect.top) / rect.height;
-  card.style.setProperty("--thx-mx", `${(x * 100).toFixed(1)}%`);
-  card.style.setProperty("--thx-my", `${(y * 100).toFixed(1)}%`);
-  card.style.setProperty("--thx-rx", `${((0.5 - y) * 12).toFixed(2)}deg`);
-  card.style.setProperty("--thx-ry", `${((x - 0.5) * 14).toFixed(2)}deg`);
-}
-
-function untilt(event: PointerEvent) {
-  const card = event.currentTarget as HTMLElement;
-  for (const name of ["--thx-mx", "--thx-my", "--thx-rx", "--thx-ry"]) card.style.removeProperty(name);
+  try {
+    await copyText(`${thanksShare.text} ${url}`);
+    ElMessage.success("推荐语和链接已复制，去粘贴给朋友吧");
+  } catch {
+    ElMessage.error("复制失败，请手动复制地址栏里的链接");
+  }
 }
 
 function celebrate() {
-  skyRef.value?.celebrate();
+  fireworksRef.value?.celebrate();
+}
+
+// ---- 跟随滚动：开场随滚动淡出 ----
+const heroBodyEl = ref<HTMLElement | null>(null);
+let scrollRaf = 0;
+
+function applyScroll() {
+  scrollRaf = 0;
+  const viewport = window.innerHeight;
+  if (calm.value) {
+    heroBodyEl.value?.style.removeProperty("--thx-p");
+    return;
+  }
+  const heroProgress = Math.min(Math.max(window.scrollY / (viewport * 0.7), 0), 1);
+  heroBodyEl.value?.style.setProperty("--thx-p", heroProgress.toFixed(3));
+}
+
+function onScroll() {
+  if (!scrollRaf) scrollRaf = requestAnimationFrame(applyScroll);
 }
 
 // 子元素的指令先于本组件的 onMounted 执行，所以观察器按需创建
@@ -357,7 +407,7 @@ function observeReveal(el: HTMLElement) {
 const vReveal: Directive<HTMLElement, number | undefined> = {
   mounted(el, binding) {
     el.classList.add("thx-reveal");
-    if (binding.value) el.style.setProperty("--thx-delay", `${binding.value * 80}ms`);
+    if (binding.value) el.style.setProperty("--thx-delay", `${binding.value * 90}ms`);
     observeReveal(el);
   },
   unmounted(el) {
@@ -368,7 +418,12 @@ const vReveal: Directive<HTMLElement, number | undefined> = {
 onMounted(() => {
   motionQuery?.addEventListener?.("change", onMotionChange);
   countUp();
-  void loadSponsors();
+  refresh();
+  refreshTimer = window.setInterval(refresh, REFRESH_MS);
+  document.addEventListener("visibilitychange", refresh);
+  window.addEventListener("scroll", onScroll, { passive: true });
+  window.addEventListener("resize", onScroll);
+  applyScroll();
   if (typeof IntersectionObserver !== "undefined") {
     sectionObserver = new IntersectionObserver((entries) => {
       for (const entry of entries) if (entry.isIntersecting) activeSection.value = entry.target.id;
@@ -378,45 +433,73 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  disposed = true;
   motionQuery?.removeEventListener?.("change", onMotionChange);
+  window.clearInterval(refreshTimer);
+  window.clearTimeout(flashTimer);
   cancelAnimationFrame(countRaf);
+  cancelAnimationFrame(scrollRaf);
+  document.removeEventListener("visibilitychange", refresh);
+  window.removeEventListener("scroll", onScroll);
+  window.removeEventListener("resize", onScroll);
   revealObserver?.disconnect();
   sectionObserver?.disconnect();
 });
 </script>
 
 <style scoped>
-/* 这一页自成一个世界：不跟随站点深浅色，始终是夜空。
+/* 这一页按 Apple 产品页的路子排：黑、浅灰、白三种底色分段交替，不跟随站点深浅色。
    类名一律带 thx- 前缀，避开 index.scss 深色主题里对 .block / .panel / .title 等通用类名的强制样式。 */
 .thx-page {
-  --thx-bg: #04060c;
-  --thx-ink: #eef3f8;
-  --thx-dim: rgba(238, 243, 248, 0.64);
-  --thx-faint: rgba(238, 243, 248, 0.4);
-  --thx-line: rgba(255, 255, 255, 0.1);
-  --thx-glass: rgba(255, 255, 255, 0.045);
-  --thx-teal: #2ee6c8;
-  --thx-blue: #5aa2ff;
-  --thx-violet: #a98bff;
-  --thx-amber: #ffc857;
-  --thx-rose: #ff7aa8;
-  --thx-rainbow: linear-gradient(100deg, var(--thx-teal), var(--thx-blue), var(--thx-violet), var(--thx-rose), var(--thx-amber), var(--thx-teal));
-  --thx-h: var(--thx-teal);
   position: relative;
-  isolation: isolate;
   min-height: 100dvh;
   overflow-x: clip;
-  color: var(--thx-ink);
-  background: var(--thx-bg);
-  font-size: var(--cpu-fs-m);
-  line-height: 1.7;
+  color: #f5f5f7;
+  background: #000;
+  font-family: var(--cpu-font-sans);
+  font-size: var(--cpu-fs-l);
+  line-height: 1.5;
+  /* 课表样式有一条深色主题规则落在了 html 上，给全站文字带上了阴影；这一页不要 */
+  text-shadow: none;
+  -webkit-font-smoothing: antialiased;
 }
 
-.thx-page [data-hue="teal"] { --thx-h: var(--thx-teal); }
-.thx-page [data-hue="blue"] { --thx-h: var(--thx-blue); }
-.thx-page [data-hue="violet"] { --thx-h: var(--thx-violet); }
-.thx-page [data-hue="amber"] { --thx-h: var(--thx-amber); }
-.thx-page [data-hue="rose"] { --thx-h: var(--thx-rose); }
+.thx-tone-dark {
+  --thx-bg: #000;
+  --thx-ink: #f5f5f7;
+  --thx-dim: #86868b;
+  --thx-card: #161617;
+  --thx-card-hover: #1d1d1f;
+  --thx-line: #2c2c2e;
+  --thx-link: #2997ff;
+}
+
+.thx-tone-light {
+  --thx-bg: #f5f5f7;
+  --thx-ink: #1d1d1f;
+  --thx-dim: #6e6e73;
+  --thx-card: #fff;
+  --thx-card-hover: #fff;
+  --thx-line: #d2d2d7;
+  --thx-link: #0066cc;
+}
+
+.thx-tone-white {
+  --thx-bg: #fff;
+  --thx-ink: #1d1d1f;
+  --thx-dim: #6e6e73;
+  --thx-card: #f5f5f7;
+  --thx-card-hover: #ececf0;
+  --thx-line: #d2d2d7;
+  --thx-link: #0066cc;
+}
+
+.thx-tone-dark,
+.thx-tone-light,
+.thx-tone-white {
+  color: var(--thx-ink);
+  background: var(--thx-bg);
+}
 
 /* 重置写在 :where 里，优先级不压过后面的章节样式 */
 .thx-page :where(ul, ol) {
@@ -429,155 +512,167 @@ onBeforeUnmount(() => {
   margin: 0;
 }
 
-/* 站点深色主题会把所有标题强制成它自己的文字色 */
+/* 站点深色主题会把所有标题强制成它自己的文字色；这里让标题跟随所在分段 */
 .thx-page :is(h1, h2, h3) {
-  color: var(--thx-ink) !important;
+  color: inherit !important;
 }
 
-/* 渐变字和描边字：深色主题下文字上会多出一层暗影，把渐变压暗，这里显式关掉 */
-.thx-hero-title,
-.thx-hero-ghost,
-.thx-you em {
-  text-shadow: none !important;
-}
-
-/* ---- 背景 ---- */
-.thx-sky,
-.thx-aurora {
+.thx-fireworks {
   position: fixed;
   inset: 0;
+  z-index: 5;
   width: 100%;
   height: 100%;
   pointer-events: none;
 }
 
-.thx-sky {
-  z-index: -1;
-}
-
-.thx-aurora {
-  z-index: -2;
-  overflow: hidden;
-}
-
-.thx-aurora i {
-  position: absolute;
-  width: 70vmax;
-  height: 70vmax;
-  border-radius: 50%;
-  opacity: 0.5;
-  animation: thx-drift 28s ease-in-out infinite alternate;
-}
-
-.thx-aurora i:nth-child(1) {
-  top: -30vmax;
-  left: -20vmax;
-  background: radial-gradient(closest-side, rgba(46, 230, 200, 0.34), transparent);
-}
-
-.thx-aurora i:nth-child(2) {
-  top: 10vmax;
-  right: -35vmax;
-  background: radial-gradient(closest-side, rgba(169, 139, 255, 0.3), transparent);
-  animation-duration: 36s;
-  animation-delay: -12s;
-}
-
-.thx-aurora i:nth-child(3) {
-  bottom: -40vmax;
-  left: 10vmax;
-  background: radial-gradient(closest-side, rgba(90, 162, 255, 0.26), transparent);
-  animation-duration: 44s;
-  animation-delay: -20s;
-}
-
-@keyframes thx-drift {
-  from { transform: translate3d(0, 0, 0) scale(1); }
-  to { transform: translate3d(12vmax, 8vmax, 0) scale(1.25); }
-}
-
-/* ---- 顶部返回和章节圆点 ---- */
-.thx-bar {
-  position: fixed;
+/* ---- 吸顶导航 ---- */
+.thx-nav {
+  position: sticky;
   top: 0;
-  left: 0;
-  z-index: 5;
-  padding: calc(env(safe-area-inset-top, 0px) + 12px) 16px 12px;
+  z-index: 6;
+  padding-top: env(safe-area-inset-top, 0px);
+  color: #f5f5f7;
+  background: rgba(22, 22, 23, 0.8);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: saturate(180%) blur(20px);
 }
 
-.thx-back {
-  display: inline-flex;
+.thx-nav-inner {
+  display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 12px;
+  max-width: 1012px;
+  height: 48px;
+  margin: 0 auto;
+  padding: 0 16px 0 8px;
+}
+
+.thx-nav-back {
+  display: grid;
+  place-items: center;
+  width: 32px;
   height: 32px;
-  padding: 0 12px 0 8px;
-  border: 1px solid var(--thx-line);
-  border-radius: 999px;
-  color: var(--thx-ink);
-  background: rgba(10, 14, 22, 0.6);
-  backdrop-filter: blur(12px);
-  font: inherit;
-  font-size: var(--cpu-fs-s);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: inherit;
+  background: none;
+  font-size: var(--cpu-fs-xl);
   cursor: pointer;
 }
 
-.thx-back:hover {
-  border-color: rgba(255, 255, 255, 0.28);
+.thx-nav-back:hover {
+  background: rgba(255, 255, 255, 0.1);
 }
 
-.thx-dots {
-  position: fixed;
-  top: 50%;
-  right: 20px;
-  z-index: 5;
+.thx-nav-title {
+  margin-right: auto;
+  font-size: var(--cpu-fs-xl);
+  font-weight: 600;
+}
+
+.thx-nav-links {
   display: flex;
-  flex-direction: column;
-  gap: 14px;
-  transform: translateY(-50%);
-}
-
-.thx-dots a {
-  position: relative;
-  display: block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.22);
-  transition: background 0.3s, box-shadow 0.3s, transform 0.3s;
-}
-
-.thx-dots a.is-on {
-  background: var(--thx-teal);
-  box-shadow: 0 0 12px var(--thx-teal);
-  transform: scale(1.3);
-}
-
-.thx-dots span {
-  position: absolute;
-  top: 50%;
-  right: 18px;
-  color: var(--thx-dim);
+  gap: 28px;
+  margin-right: 12px;
   font-size: var(--cpu-fs-xs);
-  white-space: nowrap;
-  opacity: 0;
-  transform: translate(6px, -50%);
-  transition: opacity 0.2s, transform 0.2s;
-  pointer-events: none;
 }
 
-.thx-dots a:hover span,
-.thx-dots a.is-on span {
-  opacity: 1;
-  transform: translate(0, -50%);
+.thx-nav-links a {
+  color: rgba(245, 245, 247, 0.72);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.thx-nav-links a:hover,
+.thx-nav-links a.is-on {
+  color: #fff;
+}
+
+/* ---- 按钮和链接 ---- */
+.thx-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 44px;
+  padding: 0 22px;
+  border: 1px solid #0071e3;
+  border-radius: 980px;
+  color: #fff;
+  background: #0071e3;
+  font: inherit;
+  font-size: var(--cpu-fs-l);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, color 0.2s, transform 0.2s;
+}
+
+.thx-pill:hover {
+  border-color: #0077ed;
+  background: #0077ed;
+}
+
+.thx-pill:active {
+  transform: scale(0.97);
+}
+
+.thx-pill--small {
+  height: 28px;
+  padding: 0 12px;
+  font-size: var(--cpu-fs-xs);
+}
+
+.thx-pill--ghost {
+  border-color: var(--thx-link);
+  color: var(--thx-link);
+  background: none;
+}
+
+.thx-pill--ghost:hover {
+  border-color: var(--thx-link);
+  color: #fff;
+  background: var(--thx-link);
+}
+
+.thx-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0;
+  border: 0;
+  color: var(--thx-link);
+  background: none;
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.thx-link:hover {
+  text-decoration: underline;
+}
+
+.thx-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 12px 28px;
+  margin-top: 32px;
+}
+
+.thx-actions--start {
+  justify-content: flex-start;
 }
 
 /* ---- 入场 ---- */
 .thx-reveal {
   opacity: 0;
-  transform: translateY(26px);
+  transform: translateY(28px);
   transition:
-    opacity 0.8s cubic-bezier(0.2, 0.7, 0.2, 1) var(--thx-delay, 0ms),
-    transform 0.8s cubic-bezier(0.2, 0.7, 0.2, 1) var(--thx-delay, 0ms);
+    opacity 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) var(--thx-delay, 0ms),
+    transform 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) var(--thx-delay, 0ms);
 }
 
 .thx-reveal.is-in {
@@ -587,654 +682,605 @@ onBeforeUnmount(() => {
 
 /* 首屏不等滚动观察器，挂载后直接入场 */
 .thx-rise {
-  animation: thx-rise 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) var(--thx-delay, 0ms) both;
+  animation: thx-rise 1s cubic-bezier(0.2, 0.7, 0.2, 1) var(--thx-delay, 0ms) both;
 }
 
 @keyframes thx-rise {
   from {
     opacity: 0;
-    transform: translateY(26px);
+    transform: translateY(24px);
+  }
+}
+
+@keyframes thx-title {
+  from {
+    opacity: 0;
+    filter: blur(16px);
+    transform: scale(1.16);
   }
 }
 
 /* ---- 开场 ---- */
 .thx-hero {
-  position: relative;
   display: grid;
   place-items: center;
-  min-height: 100dvh;
-  padding: 96px 24px;
-  overflow: hidden;
+  min-height: calc(100dvh - 49px - env(safe-area-inset-top, 0px));
+  padding: 48px 24px 72px;
   text-align: center;
 }
 
-.thx-hero-ghost {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  /* 不用 transparent：深色配色方案下全透明的填充会被画成一层深色，压暗前面的标题 */
-  color: rgba(255, 255, 255, 0.03);
-  font-size: clamp(120px, 27vw, 440px);
-  font-weight: 800;
-  letter-spacing: -0.04em;
-  line-height: 1;
-  white-space: nowrap;
-  transform: translate(-50%, -58%);
-  -webkit-text-stroke: 1px rgba(255, 255, 255, 0.07);
-  user-select: none;
-}
-
+/* --thx-p 是滚出首屏的进度（0–1），由脚本写入 */
 .thx-hero-body {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  max-width: 640px;
+  opacity: calc(1 - var(--thx-p, 0));
+  transform: translateY(calc(var(--thx-p, 0) * -40px)) scale(calc(1 - var(--thx-p, 0) * 0.08));
+  will-change: opacity, transform;
 }
 
-.thx-eyebrow,
-.thx-kicker {
-  color: var(--thx-teal);
-  font-family: var(--cpu-font-mono);
-  font-size: var(--cpu-fs-xs);
-  letter-spacing: 0.24em;
-  text-transform: uppercase;
+.thx-hero-eyebrow {
+  font-size: clamp(18px, 2.4vw, 24px);
+  font-weight: 600;
 }
 
 .thx-hero-title {
-  margin-top: 12px;
-  padding-left: 0.12em;
-  background: var(--thx-rainbow);
-  background-size: 300% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  font-size: clamp(88px, 22vw, 220px);
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  line-height: 1.05;
-  filter: drop-shadow(0 0 48px rgba(46, 230, 200, 0.32));
-  animation:
-    thx-rise 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) var(--thx-delay, 0ms) both,
-    thx-sheen 10s linear infinite;
-}
-
-@keyframes thx-sheen {
-  to { background-position: 300% 0; }
+  padding-left: 0.04em;
+  font-size: clamp(96px, 22vw, 240px);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.1;
+  animation: thx-title 1.4s cubic-bezier(0.2, 0.7, 0.2, 1) 80ms both;
 }
 
 .thx-hero-lead {
-  margin-top: 16px;
   color: var(--thx-dim);
-  font-size: var(--cpu-fs-l);
-  line-height: 1.9;
+  font-size: clamp(18px, 2.6vw, 28px);
+  font-weight: 600;
+}
+
+/* ---- 实时数字 ---- */
+.thx-band {
+  padding: 24px 24px 88px;
 }
 
 .thx-figures {
   display: flex;
-  flex-wrap: wrap;
   justify-content: center;
-  gap: 12px 40px;
-  margin-top: 36px;
+  max-width: 980px;
+  margin: 0 auto;
+}
+
+.thx-figures li {
+  flex: 1;
+  max-width: 260px;
+  padding: 4px 16px;
+  border-left: 1px solid var(--thx-line);
+  text-align: center;
+}
+
+.thx-figures li:first-child {
+  border-left: 0;
 }
 
 .thx-figures b {
   display: block;
-  font-size: 32px;
+  font-size: clamp(36px, 6vw, 72px);
   font-variant-numeric: tabular-nums;
-  line-height: 1.2;
-}
-
-.thx-figures small {
-  margin-left: 2px;
-  color: var(--thx-teal);
-  font-size: var(--cpu-fs-l);
+  line-height: 1.1;
 }
 
 .thx-figures span {
-  color: var(--thx-faint);
-  font-size: var(--cpu-fs-xs);
+  color: var(--thx-dim);
+  font-size: var(--cpu-fs-m);
 }
 
-.thx-cue {
-  position: absolute;
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 28px);
-  left: 50%;
+.thx-live {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 4px;
-  color: var(--thx-faint);
+  justify-content: center;
+  gap: 8px;
+  margin-top: 28px;
+  color: var(--thx-dim);
   font-size: var(--cpu-fs-xs);
-  letter-spacing: 0.2em;
-  text-decoration: none;
-  transform: translateX(-50%);
-  animation: thx-bob 2.2s ease-in-out infinite;
 }
 
-@keyframes thx-bob {
-  50% { transform: translate(-50%, 8px); }
+.thx-live i,
+.thx-total i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #30d158;
+  animation: thx-pulse 2s ease-in-out infinite;
+}
+
+@keyframes thx-pulse {
+  50% { opacity: 0.25; }
+}
+
+/* ---- 主创 ---- */
+.thx-lead {
+  padding: 40px 24px 160px;
+  text-align: center;
+}
+
+.thx-lead-role {
+  color: var(--thx-link);
+  font-size: clamp(16px, 2vw, 21px);
+  font-weight: 600;
+}
+
+.thx-lead-name {
+  margin-top: 4px;
+  font-size: clamp(72px, 13vw, 144px);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1.15;
+  padding-left: 0.06em;
+}
+
+.thx-lead-aliases {
+  color: var(--thx-dim);
+  font-size: clamp(18px, 2.6vw, 28px);
+  font-weight: 600;
+}
+
+.thx-lead-note {
+  max-width: 560px;
+  margin: 28px auto 0;
+  font-size: clamp(16px, 2vw, 21px);
+  line-height: 1.6;
 }
 
 /* ---- 章节通用 ---- */
 .thx-section {
-  max-width: 1080px;
+  padding: 120px 24px;
+}
+
+.thx-inner {
+  max-width: 980px;
   margin: 0 auto;
-  padding: 104px 24px;
 }
 
-.thx-section--narrow {
-  max-width: 640px;
-}
-
-.thx-section--wide {
-  max-width: none;
-  padding-inline: 0;
+.thx-inner--narrow {
+  max-width: 780px;
 }
 
 .thx-head {
-  max-width: 1080px;
-  margin: 0 auto 40px;
-  padding-inline: 24px;
-  text-align: center;
-}
-
-.thx-section:not(.thx-section--wide) .thx-head {
-  padding-inline: 0;
+  margin-bottom: 48px;
 }
 
 .thx-head h2 {
-  margin-top: 10px;
-  font-size: clamp(28px, 5vw, 44px);
-  font-weight: 800;
-  line-height: 1.25;
+  font-size: clamp(32px, 5.6vw, 56px);
+  font-weight: 700;
+  line-height: 1.15;
 }
 
 .thx-head h2 + p {
+  margin-top: 12px;
+  color: var(--thx-dim);
+  font-size: clamp(16px, 2vw, 21px);
+  font-weight: 600;
+}
+
+/* ---- 伙伴：拼贴卡片 ---- */
+.thx-bento {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.thx-bento > li {
+  grid-column: span var(--thx-span, 6);
+}
+
+.thx-tile {
+  --thx-tint: #0071e3;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 280px;
+  padding: 32px;
+  border-radius: 28px;
+  background: var(--thx-card);
+  transition: transform 0.5s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.thx-tile:hover {
+  transform: scale(1.015);
+}
+
+.thx-tile[data-tint="orange"] { --thx-tint: #f56300; }
+.thx-tile[data-tint="green"] { --thx-tint: #1aa33c; }
+.thx-tile[data-tint="purple"] { --thx-tint: #8944ab; }
+.thx-tile[data-tint="pink"] { --thx-tint: #e30b5d; }
+.thx-tile[data-tint="teal"] { --thx-tint: #0a84a8; }
+
+.thx-tile-icon {
+  margin-bottom: auto;
+  color: var(--thx-tint);
+  font-size: 44px;
+}
+
+.thx-tile-role {
+  margin-top: 32px;
+  color: var(--thx-tint);
+  font-size: var(--cpu-fs-m);
+  font-weight: 600;
+}
+
+.thx-tile h3 {
+  margin-top: 4px;
+  font-size: clamp(24px, 3.4vw, 36px);
+  font-weight: 700;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.thx-tile h3 small {
+  margin-left: 10px;
+  color: var(--thx-dim);
+  font-size: var(--cpu-fs-l);
+  font-weight: 400;
+}
+
+.thx-tile-note {
   margin-top: 8px;
   color: var(--thx-dim);
 }
 
-/* ---- 核心团队卡片 ---- */
-.thx-core {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 16px;
+/* ---- 赞助榜 ---- */
+.thx-total b {
+  display: block;
+  font-size: clamp(48px, 9vw, 96px);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
 }
 
-.thx-core > li {
-  perspective: 900px;
+.thx-total span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  color: var(--thx-dim);
+  font-size: var(--cpu-fs-m);
 }
 
-.thx-card {
+.thx-board {
+  max-width: 720px;
+  margin-top: 40px;
+  padding: 8px 28px;
+  border-radius: 28px;
+  background: var(--thx-card);
+}
+
+.thx-board ol {
   position: relative;
-  height: 100%;
-  padding: 24px 20px;
-  overflow: hidden;
-  border: 1px solid var(--thx-line);
-  border-radius: 20px;
-  background: var(--thx-glass);
-  transform: rotateX(var(--thx-rx, 0deg)) rotateY(var(--thx-ry, 0deg));
-  transition: transform 0.25s ease-out, border-color 0.3s;
-  will-change: transform;
 }
 
-/* 跟着指针走的光斑 */
-.thx-card::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(260px circle at var(--thx-mx, 50%) var(--thx-my, 0%), color-mix(in srgb, var(--thx-h) 30%, transparent), transparent 70%);
-  opacity: 0;
-  transition: opacity 0.3s;
-  pointer-events: none;
-}
-
-.thx-card:hover {
-  border-color: color-mix(in srgb, var(--thx-h) 55%, transparent);
-}
-
-.thx-card:hover::before {
-  opacity: 1;
-}
-
-.thx-card-avatar {
-  position: relative;
+.thx-board li {
   display: grid;
-  place-items: center;
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  color: var(--thx-bg);
-  background: linear-gradient(135deg, var(--thx-h), color-mix(in srgb, var(--thx-h) 40%, #fff));
-  box-shadow: 0 0 28px color-mix(in srgb, var(--thx-h) 45%, transparent);
-  font-size: var(--cpu-fs-xxl);
-  font-weight: 800;
-}
-
-.thx-card-avatar img {
+  grid-template-columns: 28px auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 14px;
   width: 100%;
-  height: 100%;
-  border-radius: inherit;
-  object-fit: cover;
+  min-height: 60px;
+  border-top: 1px solid var(--thx-line);
 }
 
-.thx-card h3 {
-  position: relative;
-  margin-top: 16px;
-  font-size: var(--cpu-fs-xl);
+.thx-board li:first-child {
+  border-top-color: transparent;
 }
 
-.thx-card-role {
-  position: relative;
-  margin-top: 2px;
-  color: var(--thx-h);
-  font-size: var(--cpu-fs-xs);
+.thx-board li.is-top {
+  min-height: 72px;
 }
 
-.thx-card-note {
-  position: relative;
-  margin-top: 12px;
+.thx-board-rank {
   color: var(--thx-dim);
-  font-size: var(--cpu-fs-s);
-}
-
-/* ---- 贡献者名单墙 ---- */
-.thx-marquees {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.thx-marquee {
-  overflow: hidden;
-  -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
-  mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
-}
-
-.thx-marquee-track {
-  display: flex;
-  width: max-content;
-  animation: thx-slide var(--thx-dur, 60s) linear infinite;
-}
-
-.thx-marquee--reverse .thx-marquee-track {
-  animation-direction: reverse;
-}
-
-.thx-marquee:hover .thx-marquee-track {
-  animation-play-state: paused;
-}
-
-.thx-marquee-track ul {
-  display: flex;
-  gap: 12px;
-  padding-right: 12px;
-}
-
-.thx-marquee-track li {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  height: 40px;
-  padding: 0 18px;
-  border: 1px solid var(--thx-line);
-  border-radius: 999px;
-  background: var(--thx-glass);
-  font-size: var(--cpu-fs-l);
-  white-space: nowrap;
-}
-
-.thx-marquee-track li::before {
-  content: "";
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--thx-h);
-  box-shadow: 0 0 10px var(--thx-h);
-}
-
-@keyframes thx-slide {
-  to { transform: translateX(-50%); }
-}
-
-.thx-groups {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 16px;
-  max-width: 1080px;
-  margin: 40px auto 0;
-  padding-inline: 24px;
-}
-
-.thx-groups > li {
-  padding: 20px;
-  border: 1px solid var(--thx-line);
-  border-radius: 16px;
-  background: var(--thx-glass);
-}
-
-.thx-groups h3 {
-  font-size: var(--cpu-fs-l);
-}
-
-.thx-group-note {
-  color: var(--thx-faint);
-  font-size: var(--cpu-fs-xs);
-}
-
-.thx-group-names {
-  margin-top: 12px;
-  color: var(--thx-dim);
-  line-height: 2;
-}
-
-/* ---- 赞助者 ---- */
-.thx-sponsors {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 10px;
-}
-
-.thx-sponsors li {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 14px 5px 5px;
-  border: 1px solid color-mix(in srgb, var(--thx-amber) 30%, transparent);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--thx-amber) 8%, transparent);
-  font-size: var(--cpu-fs-s);
-}
-
-.thx-empty {
-  color: var(--thx-faint);
+  font-size: var(--cpu-fs-m);
+  font-variant-numeric: tabular-nums;
   text-align: center;
 }
 
-.thx-actions {
-  display: flex;
-  justify-content: center;
-  margin-top: 28px;
-}
-
-.thx-button {
-  display: inline-flex;
-  align-items: center;
-  height: 40px;
-  padding: 0 22px;
-  border: 1px solid var(--thx-line);
-  border-radius: 999px;
+.thx-board li.is-top .thx-board-rank {
   color: var(--thx-ink);
-  background: var(--thx-glass);
-  font: inherit;
+  font-size: var(--cpu-fs-xl);
+  font-weight: 700;
+}
+
+.thx-board-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.thx-board li.is-top .thx-board-name {
+  font-size: var(--cpu-fs-xl);
   font-weight: 600;
-  text-decoration: none;
-  cursor: pointer;
-  transition: border-color 0.3s, box-shadow 0.3s, transform 0.2s;
 }
 
-.thx-button:hover {
-  border-color: rgba(255, 255, 255, 0.32);
+.thx-board-count {
+  color: var(--thx-dim);
+  font-size: var(--cpu-fs-xs);
 }
 
-.thx-button:active {
-  transform: scale(0.97);
+.thx-board-amount {
+  min-width: 88px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  transition: color 1.2s;
 }
 
-.thx-button--glow {
-  border-color: transparent;
-  color: var(--thx-bg);
-  background: var(--thx-rainbow);
-  background-size: 300% 100%;
-  box-shadow: 0 0 36px rgba(46, 230, 200, 0.35);
-  animation: thx-sheen 8s linear infinite;
+.thx-board-amount.is-flash {
+  color: #30d158;
+  transition-duration: 0.2s;
 }
 
-.thx-button--glow:hover {
-  box-shadow: 0 0 52px rgba(169, 139, 255, 0.55);
+/* 名次变化时整行滑到新位置 */
+.thx-rank-move {
+  transition: transform 0.8s cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 
-/* ---- 开源项目 ---- */
+.thx-rank-enter-active,
+.thx-rank-leave-active {
+  transition: opacity 0.5s, transform 0.5s;
+}
+
+.thx-rank-enter-from,
+.thx-rank-leave-to {
+  opacity: 0;
+  transform: translateY(12px);
+}
+
+.thx-rank-leave-active {
+  position: absolute;
+}
+
+.thx-empty {
+  color: var(--thx-dim);
+}
+
+/* ---- 工具与开源 ---- */
+.thx-tools {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.thx-tools li {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  min-height: 200px;
+  padding: 32px;
+  border-radius: 28px;
+  background: var(--thx-card);
+}
+
+.thx-tools span {
+  color: var(--thx-dim);
+  font-size: var(--cpu-fs-m);
+  font-weight: 600;
+}
+
+.thx-tools b {
+  font-size: clamp(28px, 4.6vw, 48px);
+  line-height: 1.2;
+}
+
+.thx-subhead {
+  margin: 56px 0 16px;
+  color: var(--thx-dim);
+  font-size: var(--cpu-fs-m);
+  font-weight: 600;
+}
+
 .thx-stack {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 12px;
 }
 
-.thx-tile {
+.thx-chip {
   display: flex;
   flex-direction: column;
-  gap: 2px;
   height: 100%;
-  padding: 16px;
-  border: 1px solid var(--thx-line);
-  border-radius: 14px;
+  padding: 16px 18px;
+  border-radius: 18px;
   color: inherit;
-  background: var(--thx-glass);
+  background: var(--thx-card);
   text-decoration: none;
-  transition: transform 0.25s, border-color 0.25s, background 0.25s;
+  transition: background 0.2s;
 }
 
-a.thx-tile:hover {
-  border-color: color-mix(in srgb, var(--thx-teal) 50%, transparent);
-  background: color-mix(in srgb, var(--thx-teal) 8%, transparent);
-  transform: translateY(-3px);
+a.thx-chip:hover {
+  background: var(--thx-card-hover);
 }
 
-.thx-tile b {
-  font-size: var(--cpu-fs-l);
+.thx-chip b {
+  font-weight: 600;
 }
 
-.thx-tile span {
-  color: var(--thx-faint);
+.thx-chip span {
+  color: var(--thx-dim);
   font-size: var(--cpu-fs-xs);
 }
 
 /* ---- 时间线 ---- */
-.thx-road {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 36px;
-  padding-left: 32px;
-}
-
-.thx-road::before {
-  content: "";
-  position: absolute;
-  top: 8px;
-  bottom: 8px;
-  left: 5px;
-  width: 2px;
-  border-radius: 2px;
-  background: linear-gradient(var(--thx-teal), var(--thx-blue), var(--thx-violet), transparent);
-}
-
 .thx-road li {
-  position: relative;
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 24px;
+  padding: 22px 0;
+  border-top: 1px solid var(--thx-line);
 }
 
-.thx-road li::before {
-  content: "";
-  position: absolute;
-  top: 6px;
-  left: -32px;
-  width: 12px;
-  height: 12px;
-  border: 2px solid var(--thx-teal);
-  border-radius: 50%;
-  background: var(--thx-bg);
-  box-shadow: 0 0 14px var(--thx-teal);
+.thx-road li:last-child {
+  border-bottom: 1px solid var(--thx-line);
 }
 
 .thx-road time {
-  color: var(--thx-teal);
-  font-family: var(--cpu-font-mono);
-  font-size: var(--cpu-fs-xs);
-  letter-spacing: 0.1em;
+  color: var(--thx-dim);
+  font-size: var(--cpu-fs-xl);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 .thx-road h3 {
   font-size: var(--cpu-fs-xl);
+  font-weight: 600;
 }
 
 .thx-road p {
   margin-top: 4px;
   color: var(--thx-dim);
+  font-size: var(--cpu-fs-m);
+}
+
+.thx-footnote {
+  margin-top: 20px;
+  color: var(--thx-dim);
+  font-size: var(--cpu-fs-xs);
 }
 
 /* ---- 片尾 ---- */
 .thx-finale {
-  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 72px);
+  padding: 160px 24px calc(env(safe-area-inset-bottom, 0px) + 72px);
   text-align: center;
 }
 
 .thx-you {
-  margin-top: 12px;
-  font-size: clamp(32px, 7vw, 72px);
-  font-weight: 800;
-  line-height: 1.25;
+  font-size: clamp(40px, 8vw, 96px);
+  font-weight: 700;
+  line-height: 1.15;
   overflow-wrap: anywhere;
 }
 
+/* 用 text-fill-color 而不是 color: transparent：标题颜色被上面的规则强制了 */
 .thx-you em {
-  background: var(--thx-rainbow);
-  background-size: 300% 100%;
+  background: linear-gradient(90deg, #2997ff, #bf5af2 55%, #ff375f);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
   font-style: normal;
-  animation: thx-sheen 10s linear infinite;
 }
 
 .thx-finale-body {
-  max-width: 520px;
-  margin: 16px auto 0;
+  max-width: 560px;
+  margin: 24px auto 0;
   color: var(--thx-dim);
-  font-size: var(--cpu-fs-l);
-  line-height: 1.9;
-}
-
-.thx-roll {
-  height: 300px;
-  margin-top: 72px;
-  overflow: hidden;
-  -webkit-mask-image: linear-gradient(transparent, #000 22%, #000 78%, transparent);
-  mask-image: linear-gradient(transparent, #000 22%, #000 78%, transparent);
-}
-
-.thx-roll-track {
-  animation: thx-roll var(--thx-dur, 60s) linear infinite;
-}
-
-.thx-roll-copy {
-  padding-bottom: 40px;
-}
-
-.thx-roll p {
-  margin-top: 8px;
-  color: var(--thx-dim);
-}
-
-.thx-roll .thx-roll-heading {
-  margin-top: 40px;
-  color: var(--thx-teal);
-  font-family: var(--cpu-font-mono);
-  font-size: var(--cpu-fs-xs);
-  letter-spacing: 0.3em;
-}
-
-.thx-roll .thx-roll-heading:first-child {
-  margin-top: 0;
-}
-
-@keyframes thx-roll {
-  to { transform: translateY(-50%); }
+  font-size: clamp(16px, 2vw, 21px);
 }
 
 .thx-sign {
-  margin-top: 48px;
-  color: var(--thx-faint);
-  font-family: var(--cpu-font-mono);
+  margin-top: 120px;
+  color: var(--thx-dim);
   font-size: var(--cpu-fs-xs);
-  letter-spacing: 0.3em;
 }
 
 /* ---- 窄屏 ---- */
-@media (max-width: 900px) {
-  .thx-dots {
+@media (max-width: 760px) {
+  .thx-nav-links {
     display: none;
+  }
+
+  .thx-bento > li {
+    grid-column: 1 / -1;
+  }
+
+  .thx-tile {
+    min-height: 220px;
+    padding: 24px;
+    border-radius: 22px;
   }
 }
 
 @media (max-width: 640px) {
   .thx-hero {
-    padding: 80px 20px;
+    padding: 32px 20px 56px;
   }
 
-  .thx-hero-lead,
-  .thx-finale-body {
-    font-size: var(--cpu-fs-m);
+  .thx-band {
+    padding: 8px 16px 64px;
   }
 
   .thx-figures {
-    gap: 12px 28px;
-    margin-top: 28px;
+    flex-wrap: wrap;
+    row-gap: 28px;
   }
 
-  .thx-figures b {
-    font-size: var(--cpu-fs-xxl);
+  .thx-figures li {
+    flex: 0 0 50%;
+    max-width: none;
+    padding: 0 8px;
+  }
+
+  .thx-figures li:nth-child(odd) {
+    border-left: 0;
+  }
+
+  .thx-lead {
+    padding: 24px 20px 104px;
   }
 
   .thx-section {
-    padding: 72px 16px;
-  }
-
-  .thx-section--wide {
-    padding-inline: 0;
+    padding: 80px 16px;
   }
 
   .thx-head {
-    margin-bottom: 28px;
-    padding-inline: 16px;
+    margin-bottom: 32px;
   }
 
-  .thx-core {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .thx-board {
+    margin-top: 28px;
+    padding: 4px 16px;
+    border-radius: 22px;
+  }
+
+  .thx-board li {
+    gap: 10px;
+  }
+
+  .thx-board-count {
+    display: none;
+  }
+
+  .thx-tools {
     gap: 12px;
   }
 
-  .thx-card {
-    padding: 16px 14px;
-    border-radius: 16px;
-  }
-
-  .thx-marquee-track li {
-    height: 34px;
-    padding: 0 14px;
-    font-size: var(--cpu-fs-m);
-  }
-
-  .thx-groups {
-    padding-inline: 16px;
+  .thx-tools li {
+    min-height: 140px;
+    padding: 20px;
+    border-radius: 22px;
   }
 
   .thx-stack {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .thx-road li {
+    grid-template-columns: 1fr;
+    gap: 2px;
+    padding: 18px 0;
+  }
+
+  .thx-road time {
+    font-size: var(--cpu-fs-m);
+  }
+
+  .thx-finale {
+    padding-top: 112px;
+  }
+
+  .thx-sign {
+    margin-top: 80px;
+  }
 }
 
 /* ---- 减弱动效 ---- */
-.thx-page--calm .thx-aurora i,
 .thx-page--calm .thx-rise,
 .thx-page--calm .thx-hero-title,
-.thx-page--calm .thx-you em,
-.thx-page--calm .thx-button--glow,
-.thx-page--calm .thx-cue,
-.thx-page--calm .thx-marquee-track,
-.thx-page--calm .thx-roll-track {
+.thx-page--calm .thx-live i,
+.thx-page--calm .thx-total i {
   animation: none;
 }
 
@@ -1244,7 +1290,8 @@ a.thx-tile:hover {
   transition: none;
 }
 
-.thx-page--calm .thx-marquee {
-  overflow-x: auto;
+.thx-page--calm .thx-tile,
+.thx-page--calm .thx-rank-move {
+  transition: none;
 }
 </style>

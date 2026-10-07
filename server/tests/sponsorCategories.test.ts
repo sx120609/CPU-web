@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildSponsorPaidUserUpdate,
+  buildSponsorRanking,
   buildSponsorCategoryStats,
   formatSponsorOrder,
   isSponsorCategoryAccepting,
@@ -112,4 +113,41 @@ test("formatted sponsor orders preserve category snapshots and legacy fallback",
   assert.equal(current.categoryTitle, "App Store 首年上架计划");
   assert.equal(legacy.categoryId, "general");
   assert.equal(legacy.categoryTitle, "支持药大拾间");
+});
+
+test("sponsor ranking sorts by total amount and keeps anonymous support apart", () => {
+  const users = new Map([
+    [1, { id: 1, nickname: "青柠", avatar: null }],
+    [2, { id: 2, nickname: "半夏", avatar: "/a.png" }],
+  ]);
+  const ranking = buildSponsorRanking([
+    { userId: 1, displayMode: "public", amountCents: 3000, orderCount: 2, firstOrderId: 4, lastPaidAt: null },
+    { userId: 1, displayMode: "anonymous", amountCents: 9000, orderCount: 1, firstOrderId: 9, lastPaidAt: null },
+    { userId: 2, displayMode: "public", amountCents: 5000, orderCount: 1, firstOrderId: 6, lastPaidAt: null },
+    { userId: 2, displayMode: "hidden", amountCents: 99000, orderCount: 1, firstOrderId: 7, lastPaidAt: null },
+    { userId: 3, displayMode: "public", amountCents: 8000, orderCount: 1, firstOrderId: 8, lastPaidAt: null },
+  ], users);
+
+  assert.deepEqual(ranking.map((entry) => [entry.key, entry.amount]), [
+    ["a9", "90.00"],
+    ["u2", "50.00"],
+    ["u1", "30.00"],
+  ]);
+  // 匿名条目不带用户，key 也不含用户 id
+  assert.equal(ranking[0].anonymous, true);
+  assert.equal(ranking[0].user, null);
+  assert.deepEqual(ranking[1].user, { id: 2, nickname: "半夏", avatar: "/a.png" });
+});
+
+test("sponsor ranking breaks ties by who sponsored first", () => {
+  const users = new Map([
+    [1, { id: 1, nickname: "甲", avatar: null }],
+    [2, { id: 2, nickname: "乙", avatar: null }],
+  ]);
+  const ranking = buildSponsorRanking([
+    { userId: 1, displayMode: "public", amountCents: 1000, orderCount: 1, firstOrderId: 12, lastPaidAt: null },
+    { userId: 2, displayMode: "public", amountCents: 1000, orderCount: 1, firstOrderId: 3, lastPaidAt: null },
+  ], users, 1);
+
+  assert.deepEqual(ranking.map((entry) => entry.key), ["u2"]);
 });

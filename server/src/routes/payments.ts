@@ -5,6 +5,7 @@ import { authRequired } from "../middleware/auth";
 import { validate } from "../middleware/validate";
 import { Errors, ok } from "../utils/response";
 import { isFeatureOn } from "../services/siteSettings";
+import { withCache } from "../services/cache";
 import {
   amountCentsToMoney,
   buildEpayCallbackUrls,
@@ -23,6 +24,7 @@ import {
   closeExpiredSponsorOrderIfNeeded,
   closeExpiredSponsorOrders,
   formatSponsorOrder,
+  buildSponsorRanking,
   formatSponsorWallOrder,
   getSponsorCategoriesWithStats,
   getSponsorConfig,
@@ -312,6 +314,47 @@ paymentsRouter.get("/sponsor/wall", async (_req, res, next) => {
       categories: categories.filter((category) => category.enabled),
       list: list.map(formatSponsorWallOrder),
     });
+  } catch (e) { next(e); }
+});
+
+/** 公开：按累计金额排序的赞助榜。致谢页轮询它来实时更新名次，所以结果缓存几秒。 */
+paymentsRouter.get("/sponsor/ranking", async (_req, res, next) => {
+  try {
+    const config = await getSponsorConfig();
+    if (!config.wallEnabled) return ok(res, { enabled: false, total: 0, totalAmount: "0.00", list: [] });
+    ok(res, await withCache("sponsor-ranking", ["v1"], 10_000, async () => {
+      const [groups, totals] = await Promise.all([
+        prisma.sponsorOrder.groupBy({
+          by: ["userId", "displayMode"],
+          where: { status: "paid", displayMode: { not: "hidden" } },
+          _sum: { amountCents: true },
+          _count: { _all: true },
+          _min: { id: true },
+          _max: { paidAt: true },
+        }),
+        prisma.sponsorOrder.aggregate({ where: { status: "paid" }, _sum: { amountCents: true }, _count: true }),
+      ]);
+      const publicUserIds = [...new Set(groups.filter((group) => group.displayMode !== "anonymous").map((group) => group.userId))];
+      const users = publicUserIds.length
+        ? await prisma.user.findMany({ where: { id: { in: publicUserIds } }, select: { id: true, nickname: true, avatar: true } })
+        : [];
+      return {
+        enabled: true,
+        total: totals._count,
+        totalAmount: amountCentsToMoney(totals._sum.amountCents ?? 0),
+        list: buildSponsorRanking(
+          groups.map((group) => ({
+            userId: group.userId,
+            displayMode: group.displayMode,
+            amountCents: group._sum.amountCents ?? 0,
+            orderCount: group._count._all,
+            firstOrderId: group._min.id ?? 0,
+            lastPaidAt: group._max.paidAt,
+          })),
+          new Map(users.map((user) => [user.id, user])),
+        ),
+      };
+    }));
   } catch (e) { next(e); }
 });
 

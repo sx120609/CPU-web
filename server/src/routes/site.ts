@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { config } from "../config";
+import { prisma } from "../prisma";
 import { Errors, ok } from "../utils/response";
 import { withCache } from "../services/cache";
 import { getFeatures, getLearningPlatformAvailability, getSiteConfig, getSiteFilingNumber, getSiteOrigin, getTopNavigation } from "../services/siteSettings";
@@ -42,6 +43,20 @@ siteRouter.get("/config", async (_req, res, next) => {
       siteOrigin: getSiteOrigin(),
       siteFilingNumber: getSiteFilingNumber(),
     })));
+  } catch (e) { next(e); }
+});
+
+/** 公开：致谢页开场的社区数字。只有汇总计数，不含任何个人信息。 */
+siteRouter.get("/community-stats", async (_req, res, next) => {
+  try {
+    ok(res, await withCache("site", ["community-stats"], 60_000, async () => {
+      const [users, topics, replies] = await Promise.all([
+        prisma.user.count(),
+        prisma.topic.count({ where: { hidden: false } }),
+        prisma.reply.count({ where: { hidden: false } }),
+      ]);
+      return { users, topics, replies };
+    }));
   } catch (e) { next(e); }
 });
 

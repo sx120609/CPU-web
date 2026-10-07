@@ -350,6 +350,47 @@ export function formatSponsorOrder(order: any) {
   };
 }
 
+export interface SponsorRankingGroup {
+  userId: number;
+  displayMode: string;
+  amountCents: number;
+  orderCount: number;
+  firstOrderId: number;
+  lastPaidAt: Date | string | null;
+}
+
+export interface SponsorRankingUser {
+  id: number;
+  nickname: string;
+  avatar: string | null;
+}
+
+/**
+ * 按累计金额排出赞助榜。同一个人的公开赞助合并成一条；匿名赞助另外合并成“匿名同学”，
+ * 不带用户信息，也不和本人的公开赞助相加，免得从金额反推出匿名的是谁。
+ */
+export function buildSponsorRanking(groups: SponsorRankingGroup[], users: Map<number, SponsorRankingUser>, limit = 100) {
+  return groups
+    .filter((group) => group.displayMode !== "hidden" && group.amountCents > 0)
+    .filter((group) => group.displayMode === "anonymous" || users.has(group.userId))
+    .sort((a, b) => b.amountCents - a.amountCents || a.firstOrderId - b.firstOrderId)
+    .slice(0, limit)
+    .map((group) => {
+      const anonymous = group.displayMode === "anonymous";
+      const user = anonymous ? null : users.get(group.userId)!;
+      return {
+        // 匿名条目的 key 取自订单号，不暴露用户 id
+        key: anonymous ? `a${group.firstOrderId}` : `u${group.userId}`,
+        anonymous,
+        user: user ? { id: user.id, nickname: user.nickname, avatar: user.avatar } : null,
+        amount: amountCentsToMoney(group.amountCents),
+        amountCents: group.amountCents,
+        orderCount: group.orderCount,
+        lastPaidAt: group.lastPaidAt,
+      };
+    });
+}
+
 export function formatSponsorWallOrder(order: any) {
   const anonymous = order.displayMode === "anonymous";
   return {

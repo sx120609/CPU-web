@@ -49,6 +49,7 @@ export type DesktopDownloadInfo = {
 export const siteApi = {
   features: () => request.get<FeatureMap>("/site/features"),
   config: () => request.get<PublicSiteConfig>("/site/config"),
+  communityStats: () => request.get<{ users: number; topics: number; replies: number }>("/site/community-stats", undefined, { suppressErrorMessage: true }),
   navigation: () => request.get<TopNavigationItem[]>("/site/navigation", undefined, { suppressErrorMessage: true }),
   desktopDownload: () => request.get<DesktopDownloadInfo>("/site/downloads/desktop", undefined, { suppressErrorMessage: true }),
   macDesktopDownload: () => request.get<DesktopDownloadInfo>("/site/downloads/desktop-mac", undefined, { suppressErrorMessage: true }),
