@@ -52,3 +52,17 @@ Not verified:
 - The simulator used for these runs was removed afterwards.
 
 The delivery report records the exported IPA, exact pushed SHA and GitHub artifact verification. Git push does not submit App Store review or deploy the website.
+
+## After build 70: course notes (source only)
+
+Changed on 2026-10-07 on a machine without a Swift toolchain. This is not in build 70 or any other build, and it has not been compiled.
+
+The timetable replaced a course's note with the period label of its merged block (「06-07节」). The quick look showed that label as 备注, the editor loaded it into the note field, and saving wrote it over the note the course had. The calendar import wrote it into the event notes as well.
+
+- `NativeScheduleCourse.sourceNote` keeps the note a course arrived with when `NativeScheduleCourseBlockMerger` replaces `slotNote` with the period label. It is not encoded, so caches, shared timetables and saved edits are unchanged.
+- `NativeScheduleCourse.editableNote` is the note a person wrote: neither the academic system's 「06-07节」 nor the 「第 6-7 节」 that a save with an empty note stores. The quick look, the editor's note field and the calendar import read it. The same rule as `noteFromCourse` on the Web, `editableNote` on Android and `scheduleCourseNote` on HarmonyOS.
+- The card on the timetable still shows the period label, and the ICS export still writes it into the description.
+
+A note that was already overwritten cannot be restored: the label is what was stored.
+
+To do on the Mac before this ships: build the app, and run `NativeScheduleStoreChecks`, which has new cases for the merged block, the generated labels and the encoded course.

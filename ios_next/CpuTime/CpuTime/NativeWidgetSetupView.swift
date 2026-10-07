@@ -766,7 +766,7 @@ private final class NativeScheduleCalendarImporter {
     private func notes(for course: NativeScheduleCourse, week: Int, semester: String) -> String {
         var lines = ["学期：\(semester)", "周次：第 \(week) 周"]
         if let teacher = course.teacher?.trimmingCharacters(in: .whitespacesAndNewlines), !teacher.isEmpty { lines.append("老师：\(teacher)") }
-        if let note = course.slotNote?.trimmingCharacters(in: .whitespacesAndNewlines), !note.isEmpty { lines.append("备注：\(note)") }
+        if let note = course.editableNote { lines.append("备注：\(note)") }
         return lines.joined(separator: "\n")
     }
 

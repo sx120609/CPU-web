@@ -524,6 +524,36 @@ struct NativeScheduleStoreChecks {
             "调整：药理学：时间 周一 1-2节 → 周二 3-4节；周次 1-8周(单) → 1-8周(双)；地点 A 教室 → B 教室；教师 张老师 → 李老师；备注 无 → 实验"
         ], "Course changes must include the changed fields")
 
-        print("Native schedule checks passed: decoding, selection, cache, auth, races, failed-week isolation, cold start, week paging")
+        // A merged block draws its periods and keeps the note the course arrived with.
+        let lab = { (note: String?) in
+            NativeScheduleCourse(name: "连续实验", teacher: "教师", weeks: "2周", weekList: [2], location: "B311", slotNote: note,
+                                 sourceKey: "jwxt-lab")
+        }
+        let mergedLab = NativeScheduleCourseBlockMerger.merge([
+            NativeScheduleCourseBlockRecord(id: "a", course: lab("01-02节"), bigSlot: 1, startSlot: 1, endSlot: 2),
+            NativeScheduleCourseBlockRecord(id: "b", course: lab("带实验报告"), bigSlot: 2, startSlot: 3, endSlot: 4),
+        ])
+        precondition(mergedLab.count == 1 && mergedLab[0].course.slotNote == "01-04节",
+                     "Adjacent rows of one official course merge into one block labelled with its periods")
+        precondition(mergedLab[0].course.sourceNote == "带实验报告" && mergedLab[0].course.editableNote == "带实验报告",
+                     "The half that carries a written note wins over the other half's period label")
+        for label in ["06-07节", "6节", "第 6-7 节", "第6节", " 第 6 - 7 节 "] {
+            precondition(NativeScheduleCourse(name: "x", slotNote: label).editableNote == nil,
+                         "A generated period label is not a note: \(label)")
+        }
+        for note in ["第 6-7 节在实验楼", "06-07节后答疑", "带书"] {
+            precondition(NativeScheduleCourse(name: "x", slotNote: note).editableNote == note,
+                         "A written note is kept: \(note)")
+        }
+        let plainBlock = NativeScheduleCourseBlockMerger.merge([
+            NativeScheduleCourseBlockRecord(id: "c", course: lab("第 5-6 节"), bigSlot: 3, startSlot: 5, endSlot: 6),
+        ])
+        precondition(plainBlock[0].course.slotNote == "05-06节" && plainBlock[0].course.editableNote == nil,
+                     "A course saved with an empty note has none after merging")
+        let stored = try JSONEncoder().encode(mergedLab[0].course)
+        precondition(!String(decoding: stored, as: UTF8.self).contains("sourceNote"),
+                     "The kept note stays out of the stored course")
+
+        print("Native schedule checks passed: decoding, selection, cache, auth, races, failed-week isolation, cold start, week paging, course notes")
     }
 }

@@ -237,6 +237,22 @@ public struct NativeScheduleCourse: Codable, Identifiable, Equatable, Sendable {
     public let customId: String?
     public let custom: Bool
     public let orphaned: Bool
+    /// The note the course arrived with. A merged block replaces `slotNote`
+    /// with its period label and keeps the original here. Not part of the
+    /// stored or transmitted course.
+    public let sourceNote: String?
+
+    /// The note a person wrote, without the period labels the academic system
+    /// and a save with an empty note generate (「06-07节」, 「第 6-7 节」). The
+    /// same rule as `noteFromCourse` on the Web.
+    public var editableNote: String? {
+        guard let note = (sourceNote ?? slotNote)?.trimmedNonEmpty else { return nil }
+        let generated = note.range(
+            of: #"^(?:第\s*\d+\s*(?:-\s*\d+)?\s*节|\d{1,2}(?:-\d{1,2})?节)$"#,
+            options: .regularExpression
+        ) != nil
+        return generated ? nil : note
+    }
 
     public var id: String {
         if let customId = customId?.trimmedNonEmpty { return "custom:\(customId)" }
@@ -261,7 +277,8 @@ public struct NativeScheduleCourse: Codable, Identifiable, Equatable, Sendable {
         sourceKey: String? = nil,
         customId: String? = nil,
         custom: Bool = false,
-        orphaned: Bool = false
+        orphaned: Bool = false,
+        sourceNote: String? = nil
     ) {
         self.customStartTime = customStartTime
         self.customEndTime = customEndTime
@@ -278,6 +295,7 @@ public struct NativeScheduleCourse: Codable, Identifiable, Equatable, Sendable {
         self.customId = customId?.trimmedNonEmpty
         self.custom = custom
         self.orphaned = orphaned
+        self.sourceNote = sourceNote?.trimmedNonEmpty
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -919,6 +937,17 @@ public enum NativeScheduleCourseBlockMerger {
         let slotNote = startSlot == endSlot
             ? "\(String(format: "%02d", startSlot))节"
             : "\(String(format: "%02d", startSlot))-\(String(format: "%02d", endSlot))节"
+        // A note someone wrote wins over the period label of the other half.
+        let ownNote = course.sourceNote ?? course.slotNote
+        let otherNote = next?.sourceNote ?? next?.slotNote
+        let sourceNote: String?
+        if course.editableNote != nil {
+            sourceNote = ownNote
+        } else if next?.editableNote != nil {
+            sourceNote = otherNote
+        } else {
+            sourceNote = ownNote ?? otherNote
+        }
         return NativeScheduleCourse(
             nativeId: course.nativeId ?? next?.nativeId,
             customStartTime: course.customStartTime,
@@ -934,7 +963,8 @@ public enum NativeScheduleCourseBlockMerger {
             sourceKey: course.sourceKey,
             customId: course.customId,
             custom: course.custom,
-            orphaned: course.orphaned
+            orphaned: course.orphaned,
+            sourceNote: sourceNote
         )
     }
 

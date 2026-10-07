@@ -2854,7 +2854,8 @@ private struct NativeCourseEditorSheet: View {
         _name = State(initialValue: course?.name ?? "")
         _teacher = State(initialValue: course?.teacher ?? "")
         _location = State(initialValue: course?.location ?? "")
-        _note = State(initialValue: course?.slotNote ?? "")
+        // The card shows the period label of a merged block; the field holds only what was written.
+        _note = State(initialValue: course?.editableNote ?? "")
         _preferred = State(initialValue: course.map {
             NativeSchedulePriority.value(of: $0.name, in: store.displayPriorities) > 0
         } ?? false)

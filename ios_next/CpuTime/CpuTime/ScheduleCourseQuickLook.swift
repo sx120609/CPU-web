@@ -32,7 +32,7 @@ struct ScheduleCourseQuickLook: View {
         [("教室", "mappin.and.ellipse", ScheduleStyleTime.location(course.location)),
          ("老师", "person", Self.clean(course.teacher)),
          ("周次", "calendar", Self.clean(course.weeks)),
-         ("备注", "text.alignleft", Self.clean(course.slotNote))]
+         ("备注", "text.alignleft", course.editableNote)]
             .compactMap { title, symbol, value in value.map { Detail(title: title, symbol: symbol, value: $0) } }
     }
 
