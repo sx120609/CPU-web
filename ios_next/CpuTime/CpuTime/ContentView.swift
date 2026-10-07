@@ -121,6 +121,14 @@ struct ContentView: View {
                         await webSession.debugDump("settled")
                     }
                 }
+                // `CPU_DEBUG_OPEN_PATH=/announcements` opens a web page in the home tab.
+                if let path = env["CPU_DEBUG_OPEN_PATH"], path.hasPrefix("/") {
+                    let delay = Double(env["CPU_DEBUG_TAB_DELAY"] ?? "") ?? 0
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .seconds(delay))
+                        shell.openWeb(path: path, tab: .home)
+                    }
+                }
                 if let list = env["CPU_DEBUG_TAB_CYCLE"] {
                     let tabs = list.split(separator: ",").compactMap { ShellTab(rawValue: String($0)) }
                     Task { @MainActor in
@@ -574,6 +582,19 @@ private struct LoginGateView: View {
             .scrollDismissesKeyboard(.interactively)
         }
         .task { await prepareSchoolLogin() }
+#if DEBUG
+        // A debug run against a local server signs in with one of its seeded
+        // accounts (`CPU_DEBUG_LOGIN_USER`, `CPU_DEBUG_LOGIN_PASSWORD`), so
+        // the signed-in shell can be reached without typing.
+        .task {
+            let environment = ProcessInfo.processInfo.environment
+            guard let user = environment["CPU_DEBUG_LOGIN_USER"], !user.isEmpty,
+                  let secret = environment["CPU_DEBUG_LOGIN_PASSWORD"], !secret.isEmpty else { return }
+            let response = await webSession.nativeAccountLogin(username: user, password: secret)
+            statusMessage = response.ok ? "登录成功，正在进入药大拾间…" : ""
+            if !response.ok { errorMessage = response.error }
+        }
+#endif
         .onChange(of: mode) { _, next in
             errorMessage = ""
             statusMessage = ""
