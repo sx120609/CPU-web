@@ -391,3 +391,16 @@ test('the saved library keeps remarks across updates, marks withdrawn shares and
   assert.equal(sharing.shareTimeLabel('2026-10-06T12:30:00.000Z'), '10 月 6 日 20:30');
   assert.equal(sharing.shareTimeLabel(''), '');
 });
+
+test('the board keeps its monospaced face for times and dates, and the day strip sets dates a size up', () => {
+  assert.equal(style.scheduleStyleFont('board'), 'monospace');
+  assert.notEqual(style.scheduleStyleTextFont('board'), 'monospace');
+  // Every other style sets its running text in the face of its dates.
+  for (const name of ['minimal', 'grid', 'table', 'paper']) assert.equal(style.scheduleStyleTextFont(name), style.scheduleStyleFont(name), name);
+  assert.equal(style.scheduleStyleDateText('board', '5'), '05');
+  assert.equal(style.scheduleStyleDateText('board', '15'), '15');
+  assert.equal(style.scheduleStyleDateText('board', '–'), '–');
+  assert.equal(style.scheduleStyleDateText('paper', '5'), '5');
+  assert.deepEqual(['grid', 'table', 'paper', 'board'].map(name => style.scheduleStyleDateSize(name, false)), [11, 11, 15, 11]);
+  assert.deepEqual(['grid', 'table', 'paper', 'board'].map(name => style.scheduleStyleDateSize(name, true)), [11, 15, 15, 15]);
+});

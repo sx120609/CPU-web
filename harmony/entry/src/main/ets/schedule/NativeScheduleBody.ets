@@ -4,16 +4,16 @@ import { scheduleAccent, scheduleCell, scheduleCellBorder, scheduleGridMetrics, 
   scheduleSecondaryText, scheduleSurface, scheduleText, scheduleTint } from './ScheduleLayout';
 import { PlacedCourseBlock, placeScheduleBlocks } from './SchedulePlacement';
 import { scheduleAdjustmentText } from './ScheduleMonth';
+import { ScheduleStyledDateHeader } from './ScheduleDateHeader';
 import { scheduleAlpha, scheduleCleanLocation, scheduleClockLabel, scheduleClockMinutes, scheduleCourseAccent,
   scheduleCourseBorder, scheduleCourseFill, scheduleCoursePhase, scheduleCourseStatusLabel, ScheduleDayStatus,
   scheduleMetaText, scheduleNowOffset, scheduleNumeral, scheduleSession, scheduleSlotText, scheduleStyleAccent,
   scheduleStyleCanvas, scheduleStyleCellBorder, scheduleStyleCellSurface, scheduleStyleColumnGap,
   scheduleStyleCourseColor, scheduleStyleFont, scheduleStyleFramesPanel, scheduleStyleInk, scheduleStyleLayout,
-  scheduleStylePanelSurface, scheduleThemeFill, scheduleThemeText, scheduleThemeTint, scheduleTodayDate,
-  scheduleWeekday } from './ScheduleStyle';
+  scheduleStylePanelSurface, scheduleStyleTextFont, scheduleThemeFill, scheduleThemeText, scheduleThemeTint,
+  scheduleTodayDate, scheduleWeekday, SCHEDULE_TABULAR_DIGITS } from './ScheduleStyle';
 
 const DAYS: string[] = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-const SHORT_DAYS: string[] = ['一', '二', '三', '四', '五', '六', '日'];
 // Row gap and date-header height of the styled grids, as on iOS.
 const STYLED_SLOT_GAP: number = 3;
 const STYLED_HEADER: number = 48;
@@ -366,7 +366,7 @@ export struct NativeScheduleBody {
         Stack({ alignContent: Alignment.TopEnd }) {
           this.styledDateHeader(day)
           if (this.store.visualStyle === 'minimal' && this.view.adjustment(day)) {
-            Column() { this.styledAdjustmentMark(day) }.margin({ right: 2 })
+            Column() { this.adjustmentBadge(day, 12) }.margin({ right: 2 })
           }
         }.width('100%').height(STYLED_HEADER)
           .accessibilityGroup(true)
@@ -391,53 +391,9 @@ export struct NativeScheduleBody {
   }
 
   @Builder
-  private styledAdjustmentMark(day: number) {
-    if (this.store.visualStyle === 'paper' || this.store.visualStyle === 'board') {
-      // A solid seal for a day off, an outlined one for a make-up day.
-      Text(this.view.adjustment(day)?.kind === 'off' ? '休' : '班').fontSize(9).fontWeight(FontWeight.Bold)
-        .fontFamily(scheduleStyleFont(this.store.visualStyle))
-        .fontColor(this.view.adjustment(day)?.kind === 'off' ? this.canvasOrWhite() : this.styleAccent())
-        .width(13).height(13).textAlign(TextAlign.Center)
-        .backgroundColor(this.view.adjustment(day)?.kind === 'off' ? this.styleAccent() : Color.Transparent)
-        .border({ width: 1, color: this.styleAccent() }).accessibilityLevel('no')
-    } else {
-      this.adjustmentBadge(day, 12)
-    }
-  }
-
-  @Builder
   private styledDateHeader(day: number) {
-    if (this.store.visualStyle === 'minimal') {
-      // The day of the month above, the weekday below; today takes the theme colour.
-      Column({ space: 3 }) {
-        Text(this.dayOfMonth(day)).fontSize(16).fontWeight(FontWeight.Bold).maxLines(1)
-          .fontColor(this.view.isToday(day) ? this.themeText() : this.ink())
-        Text(this.view.isToday(day) ? '今天' : scheduleWeekday(day)).fontSize(11).fontWeight(600).maxLines(1)
-          .fontColor(this.view.isToday(day) ? this.themeText() : scheduleMetaText(this.store.dark))
-      }.width('100%').height('100%').justifyContent(FlexAlign.Center).padding({ top: 6 })
-    } else {
-      Column({ space: 3 }) {
-        if (this.store.visualStyle === 'grid') {
-          Text(SHORT_DAYS[day - 1]).fontSize(16).fontWeight(FontWeight.Bold).fontColor(this.headerInk(day)).maxLines(1)
-        } else {
-          Text(this.view.isToday(day) ? (this.store.visualStyle === 'paper' ? '今日' : '今天') : scheduleWeekday(day))
-            .fontSize(11).fontWeight(600).fontColor(this.headerInk(day)).maxLines(1)
-            .fontFamily(scheduleStyleFont(this.store.visualStyle))
-        }
-        Row({ space: 2 }) {
-          Text(this.dayOfMonth(day)).fontSize(this.store.visualStyle === 'paper' ? 15 : 11).fontWeight(FontWeight.Medium)
-            .fontColor(this.headerInk(day)).maxLines(1).fontFamily(scheduleStyleFont(this.store.visualStyle))
-            .padding({ left: this.store.visualStyle === 'paper' ? 4 : 0, right: this.store.visualStyle === 'paper' ? 4 : 0 })
-            .borderRadius(10)
-            .border({ width: this.store.visualStyle === 'paper' && this.view.isToday(day) ? 1 : 0, color: this.styleAccent(), radius: 10 })
-          if (this.view.adjustment(day)) this.styledAdjustmentMark(day)
-        }.justifyContent(FlexAlign.Center)
-      }.width('100%').height('100%').justifyContent(FlexAlign.Center)
-        .backgroundColor(this.store.visualStyle === 'table' && this.view.isToday(day) ? scheduleThemeFill(this.store.palette) : Color.Transparent)
-        .border({ width: { bottom: this.store.visualStyle === 'board' && this.view.isToday(day) ? 3 : 0,
-          left: this.store.visualStyle === 'table' ? 0.6 : 0 },
-          color: { bottom: this.styleAccent(), left: scheduleStyleCellBorder(this.store.dark) } })
-    }
+    ScheduleStyledDateHeader({ visualStyle: this.store.visualStyle, dark: this.store.dark, palette: this.store.palette,
+      day: day, date: this.dayOfMonth(day), today: this.view.isToday(day), adjustment: this.view.adjustment(day)?.kind ?? '' })
   }
 
   // One empty period of a styled column, on the shared row pitch.
@@ -493,13 +449,13 @@ export struct NativeScheduleBody {
           }
         }
         Text(block.course.name).fontSize(this.tileNameSize(block, dayRow)).fontWeight(600)
-          .fontFamily(scheduleStyleFont(this.store.visualStyle)).fontColor(this.tileInk(block, day))
+          .fontFamily(scheduleStyleTextFont(this.store.visualStyle)).fontColor(this.tileInk(block, day))
           .maxLines(dayRow ? (this.tileShort(block, dayRow) ? 1 : 2) : this.tileTiny(block, dayRow) ? 1 : this.tileShort(block, dayRow) ? 2 : this.tileSmall(block, dayRow) ? 4 : 3)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .textAlign(this.tileCentered(dayRow) ? TextAlign.Center : TextAlign.Start).width('100%')
         if (scheduleCleanLocation(block.course.location)) {
           Text('@' + scheduleCleanLocation(block.course.location)).fontSize(dayRow ? 12 : this.tileSmall(block, dayRow) ? Math.min(9, this.tileNameSize(block, dayRow) - 1) : 11)
-            .fontWeight(FontWeight.Medium).fontFamily(scheduleStyleFont(this.store.visualStyle)).fontColor(this.tileInk(block, day))
+            .fontWeight(FontWeight.Medium).fontFamily(scheduleStyleTextFont(this.store.visualStyle)).fontColor(this.tileInk(block, day))
             .maxLines(this.tileShort(block, dayRow) || dayRow ? 1 : 2).textOverflow({ overflow: TextOverflow.Ellipsis })
             .textAlign(this.tileCentered(dayRow) ? TextAlign.Center : TextAlign.Start).width('100%')
         }
@@ -756,7 +712,7 @@ export struct NativeScheduleBody {
           Text('现在').fontSize(11).fontWeight(FontWeight.Bold).fontFamily('monospace').fontColor(scheduleAlpha(this.ink(), 0.72)).letterSpacing(2)
           Text(scheduleClockLabel(this.store.nowMinutes, true)).fontSize(16).fontWeight(FontWeight.Bold).fontFamily('monospace').fontColor(this.ink())
           Blank()
-          Text(this.boardRemaining()).fontSize(12).fontWeight(FontWeight.Medium).fontFamily('monospace').fontColor(scheduleAlpha(this.ink(), 0.72)).maxLines(1)
+          Text(this.boardRemaining()).fontSize(12).fontWeight(FontWeight.Medium).fontFeature(SCHEDULE_TABULAR_DIGITS).fontColor(scheduleAlpha(this.ink(), 0.72)).maxLines(1)
         }.width('100%').height(36).padding({ left: 12, right: 12 }).accessibilityGroup(true)
         ForEach(this.phaseBlocks('current'), (block: PlacedCourseBlock) => { this.boardHero(block) })
         if (this.phaseBlocks('upcoming').length) {
@@ -771,10 +727,10 @@ export struct NativeScheduleBody {
             // A finished course folds down to one quiet line.
             Row({ space: 12 }) {
               Text(this.blockStart(block)).fontSize(14).fontWeight(600).fontFamily('monospace').fontColor(scheduleAlpha(this.ink(), 0.62)).width(82)
-              Text(block.course.name).fontSize(14).fontFamily('monospace').fontColor(scheduleAlpha(this.ink(), 0.62)).maxLines(1)
+              Text(block.course.name).fontSize(14).fontColor(scheduleAlpha(this.ink(), 0.62)).maxLines(1)
                 .textOverflow({ overflow: TextOverflow.Ellipsis }).layoutWeight(1)
               if (scheduleCleanLocation(block.course.location)) {
-                Text(scheduleCleanLocation(block.course.location)).fontSize(12).fontFamily('monospace').fontColor(scheduleAlpha(this.ink(), 0.62)).maxLines(1)
+                Text(scheduleCleanLocation(block.course.location)).fontSize(12).fontColor(scheduleAlpha(this.ink(), 0.62)).maxLines(1)
               }
             }.width('100%').height(Math.max(34, this.cardHeight() * 0.34)).padding({ left: 12, right: 12 })
               .accessibilityGroup(true).accessibilityText(this.spokenLabel(block, this.view.selectedDay))
@@ -806,9 +762,9 @@ export struct NativeScheduleBody {
     Column() {
       Row({ space: 8 }) {
         Text(`正在上 · ${scheduleSlotText(block.startSlot, block.endSlot)}`).fontSize(11).fontWeight(FontWeight.Bold)
-          .fontFamily('monospace').fontColor(scheduleAlpha(this.canvasOrWhite(), 0.72)).maxLines(1)
+          .letterSpacing(1).fontColor(scheduleAlpha(this.canvasOrWhite(), 0.72)).maxLines(1)
         Blank()
-        Text(`还剩 ${this.blockRemaining(block)} 分`).fontSize(13).fontWeight(FontWeight.Bold).fontFamily('monospace')
+        Text(`还剩 ${this.blockRemaining(block)} 分`).fontSize(13).fontWeight(FontWeight.Bold).fontFeature(SCHEDULE_TABULAR_DIGITS)
           .fontColor(scheduleThemeText(this.store.palette, !this.store.dark)).maxLines(1)
       }.width('100%')
       Blank()
@@ -818,11 +774,11 @@ export struct NativeScheduleBody {
       Row({ space: 7 }) {
         Column().width(9).height(9).borderRadius(1.5)
           .backgroundColor(scheduleCourseAccent(scheduleStyleCourseColor(block.course.name, this.store.palette), !this.store.dark))
-        Text(block.course.name).fontSize(17).fontWeight(FontWeight.Bold).fontFamily('monospace').fontColor(this.canvasOrWhite())
+        Text(block.course.name).fontSize(17).fontWeight(FontWeight.Bold).fontColor(this.canvasOrWhite())
           .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).layoutWeight(1)
       }.width('100%')
       if (this.heroDetail(block)) {
-        Text(this.heroDetail(block)).fontSize(14).fontFamily('monospace').fontColor(scheduleAlpha(this.canvasOrWhite(), 0.72))
+        Text(this.heroDetail(block)).fontSize(14).fontColor(scheduleAlpha(this.canvasOrWhite(), 0.72))
           .maxLines(1).width('100%').margin({ top: 3 })
       }
       Blank()
@@ -837,23 +793,28 @@ export struct NativeScheduleBody {
       .onClick(() => this.onCourse(block.whole, this.view.selectedDay))
   }
 
-  // A course still to come, or any course in the plain timetable: the start time leads.
+  // A course still to come, or any course in the plain timetable: the start time leads, with the
+  // end time under it.
   @Builder
   private boardRow(block: PlacedCourseBlock, isNext: boolean, last: boolean) {
     Row({ space: 12 }) {
-      Text(this.blockStart(block)).fontSize(24).fontWeight(FontWeight.Bold).fontFamily('monospace').fontColor(this.ink()).width(82).maxLines(1)
+      Column({ space: 1 }) {
+        Text(this.blockStart(block)).fontSize(24).fontWeight(FontWeight.Bold).fontFamily('monospace').fontColor(this.ink()).maxLines(1)
+        Text(this.blockEnd(block)).fontSize(12).fontWeight(FontWeight.Medium).fontFamily('monospace')
+          .fontColor(scheduleAlpha(this.ink(), 0.72)).maxLines(1)
+      }.width(82).alignItems(HorizontalAlign.Start)
       Column({ space: 4 }) {
         Row({ space: 7 }) {
           Column().width(9).height(9).borderRadius(1.5).backgroundColor(this.courseAccent(block.course.name))
-          Text(block.course.name).fontSize(17).fontWeight(600).fontFamily('monospace').fontColor(this.ink())
+          Text(block.course.name).fontSize(17).fontWeight(600).fontColor(this.ink())
             .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).layoutWeight(1)
         }.width('100%')
         Text([scheduleCleanLocation(block.course.location), scheduleSlotText(block.startSlot, block.endSlot)]
-          .filter((value: string) => !!value).join(' · ')).fontSize(12).fontFamily('monospace')
+          .filter((value: string) => !!value).join(' · ')).fontSize(12)
           .fontColor(scheduleAlpha(this.ink(), 0.72)).maxLines(1).width('100%')
       }.layoutWeight(1)
       if (this.boardNote(block, isNext)) {
-        Text(this.boardNote(block, isNext)).fontSize(12).fontWeight(600).fontFamily('monospace').maxLines(1)
+        Text(this.boardNote(block, isNext)).fontSize(12).fontWeight(600).fontFeature(SCHEDULE_TABULAR_DIGITS).maxLines(1)
           .fontColor(isNext && this.blockPhase(block, this.view.selectedDay) !== 'completed' ? this.themeText() : scheduleAlpha(this.ink(), 0.72))
       }
     }.width('100%').height(Math.max(68, this.cardHeight() * 0.66)).padding({ left: 12, right: 12 })
@@ -985,8 +946,8 @@ export struct NativeScheduleBody {
     return remaining > 0 ? `今天还有 ${remaining} 门课` : '今天的课上完了';
   }
 
-  // The trailing edge of a board row: a countdown for the next course, the time of day for later
-  // ones, and 已结束 for a finished course in the plain timetable.
+  // The trailing edge of a board row: a countdown for the next course, and 已结束 for a finished
+  // course in the plain timetable. Every other row leaves it empty; the times already lead.
   private boardNote(block: PlacedCourseBlock, isNext: boolean): string {
     if (this.blockPhase(block, this.view.selectedDay) === 'completed') return '已结束';
     const start = scheduleClockMinutes(this.blockStart(block));
@@ -995,8 +956,7 @@ export struct NativeScheduleBody {
       const wait = start - now;
       return wait < 60 ? `${wait} 分钟后` : wait % 60 === 0 ? `${wait / 60} 小时后` : `${Math.floor(wait / 60)} 小时 ${wait % 60} 分后`;
     }
-    const session = scheduleSession(this.blockStart(block));
-    return session === '课程' ? '' : session;
+    return '';
   }
 
   private heroDetail(block: PlacedCourseBlock): string {
@@ -1196,10 +1156,6 @@ export struct NativeScheduleBody {
     // A weekend column is greyed in the table; one worked as a make-up day stays plain.
     if (this.store.visualStyle === 'table' && day >= 6 && this.view.adjustment(day)?.kind !== 'swap') return scheduleAlpha(this.ink(), 0.035);
     return '#00000000';
-  }
-  private headerInk(day: number): string {
-    if (this.store.visualStyle === 'table' && this.view.isToday(day)) return '#FFFFFF';
-    return this.view.isToday(day) ? this.styleAccent() : this.ink();
   }
   private ink(): string { return scheduleStyleInk(this.store.visualStyle, this.store.dark); }
   private themeText(): string { return scheduleThemeText(this.store.palette, this.store.dark); }

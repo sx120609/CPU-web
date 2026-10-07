@@ -141,7 +141,7 @@ export class NativeCourseEditorModel {
     this.name = block?.course.name ?? '';
     this.location = block?.course.location ?? '';
     this.teacher = block?.course.teacher ?? '';
-    this.note = block?.course.slotNote ?? '';
+    this.note = store.courseNote(block?.course);
     this.options = store.weekOptions().map(item => Number(item.value)).filter(value => value >= 1 && value <= 64);
     this.defaultWeek = Number(store.selectedWeek) || this.options[0] || 1;
     const lastSlot = this.slots.length ? this.slots[this.slots.length - 1] : 12;

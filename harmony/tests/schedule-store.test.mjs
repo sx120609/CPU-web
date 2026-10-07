@@ -327,3 +327,28 @@ test('logout, account switch and identity switch delete the restored disk cache'
     assert.equal(next.store.result, undefined); assert.equal(write, '');
   }
 });
+
+test('a merged block shows its periods and keeps the note the course arrived with', () => {
+  const h = harness(); h.store.markBridgeReady(); const data = h.snapshot();
+  const lab = { name: '连续实验', teacher: '教师', location: 'B311', weeks: '2周', weekList: [2] };
+  data.data.cells = [
+    { day: 1, bigSlot: 1, courses: [{ ...lab, slotNote: '01-02节' }] },
+    { day: 1, bigSlot: 2, courses: [{ ...lab, slotNote: '带实验报告' }] },
+    { day: 2, bigSlot: 3, courses: [{ name: '自习', weeks: '2周', weekList: [2], customId: 'c1', startSlot: 5, endSlot: 6, slotNote: '第 5-6 节' }] },
+    { day: 3, bigSlot: 1, courses: [{ name: '讲座', weeks: '2周', weekList: [2], customId: 'c2', startSlot: 1, endSlot: 2, slotNote: '第二教学楼报告厅，带学生证' }] },
+  ];
+  h.accept(data);
+  const merged = h.store.blocksForDay(1)[0];
+  assert.equal(merged.course.slotNote, '01-04节');
+  // The half that carries a written note wins over the other half's period label.
+  assert.equal(merged.course.sourceNote, '带实验报告');
+  assert.equal(h.store.courseNote(merged.course), '带实验报告');
+  // Generated labels are no note: the academic system's and the one a save with an empty note leaves.
+  assert.equal(h.store.courseNote(h.store.blocksForDay(2)[0].course), '');
+  assert.equal(h.store.courseNote(h.store.blocksForDay(3)[0].course), '第二教学楼报告厅，带学生证');
+  assert.equal(h.store.courseNote(undefined), '');
+  for (const label of ['06-07节', '6节', '第 6-7 节', '第6节', ' 第 6 - 7 节 ']) assert.equal(h.store.courseNote({ name: 'x', weeks: '', weekList: [], slotNote: label }), '', label);
+  for (const note of ['第 6-7 节在实验楼', '06-07节后答疑', '带书']) assert.equal(h.store.courseNote({ name: 'x', weeks: '', weekList: [], slotNote: note }), note);
+  // The cached cells are left as they came.
+  assert.equal(h.store.result.cells[0].courses[0].sourceNote, undefined);
+});

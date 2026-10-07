@@ -7,6 +7,11 @@ const require = createRequire(new URL('../../web/package.json', import.meta.url)
 const { transformSync } = require('esbuild');
 const source = readFileSync(new URL('../entry/src/main/ets/schedule/NativeCourseEditor.ets', import.meta.url), 'utf8')
   .split('@Component')[0].replace('@Observed', '');
+// The note filter of the real store, so the fake store below answers as the app does.
+const storeContext = vm.createContext({ module: { exports: {} }, setTimeout, clearTimeout });
+vm.runInContext(transformSync(readFileSync(new URL('../entry/src/main/ets/schedule/NativeScheduleStore.ets', import.meta.url), 'utf8')
+  .replace('@Observed', ''), { loader: 'ts', format: 'cjs' }).code, storeContext);
+const { scheduleCourseNote } = storeContext.module.exports;
 function harness() {
   const timers = new Map(); const requests = []; let saved = 0;
   class Clock extends Date { static now() { return 42; } }
@@ -18,7 +23,7 @@ function harness() {
   model.attach((id,request)=>requests.push({id,request}),()=>saved++,(semester,priority)=>priorities.push({semester,priority}));
   const store={selectedSemester:'fall',selectedWeek:'2',selectedDay:2,result:{cells:[]},weekOptions:()=>[1,2,3].map(value=>({value:String(value)})),
     slots:()=>Array.from({length:12},(_,i)=>i+1),slotStart:slot=>`${String(slot+7).padStart(2,'0')}:00`,slotEnd:slot=>`${String(slot+7).padStart(2,'0')}:45`,
-    displayPriorities:()=>({})};
+    displayPriorities:()=>({}),courseNote:course=>scheduleCourseNote(course?.sourceNote,course?.slotNote)};
   return {model,store,requests,timers,priorities,exports:context.module.exports,get saved(){return saved;}};
 }
 test('reopening within one millisecond rejects the previous editor reply',()=>{
@@ -111,4 +116,24 @@ test('conflicts name the other courses that share a period and a week, never the
   assert.equal(h.model.preferred, false);
   same(JSON.parse(JSON.stringify(h.priorities)), [{ semester: 'fall', priority: { '全周课': 3 } }]);
   same(h.exports.courseSlotRuns([9, 1, 2, 6, 5, 2]).map(run => [...run]), [[1, 2], [5, 6], [9, 9]]);
+});
+
+test('the note field holds what the person wrote, never the period label the timetable shows', () => {
+  const h = harness();
+  const open = course => { h.model.open(h.store, { day: 1, startSlot: 6, endSlot: 7, course: { name: '课程', weekList: [2], ...course } });
+    h.model.accept(h.requests.at(-1).id, JSON.stringify({ session: 'current' })); };
+  // A merged block: `slotNote` is the label drawn on the card, `sourceNote` what the course arrived with.
+  open({ slotNote: '06-07节', sourceNote: '带实验报告' });
+  assert.equal(h.model.note, '带实验报告');
+  h.model.submit('save');
+  assert.equal(h.requests.at(-1).request.form.note, '带实验报告');
+  // Saving a course that never had a note sends none, so the bridge writes its own period label again.
+  open({ slotNote: '06-07节', sourceNote: '06-07节' });
+  assert.equal(h.model.note, '');
+  h.model.submit('save');
+  assert.equal(h.requests.at(-1).request.form.note, '');
+  open({ slotNote: '06-07节', sourceNote: '第 6-7 节' });
+  assert.equal(h.model.note, '');
+  open({ slotNote: '06-07节' });
+  assert.equal(h.model.note, '');
 });

@@ -22,7 +22,8 @@ const calendarWeeks = weeks.map(({ value }) => {
 const courses = [
   [1, 1, 2, '药物设计学', '教学楼A101'],
   [1, 5, 8, '天然药物化学实验', '实验楼B203'],
-  [2, 1, 4, '药物化学', '教学楼B202'],
+  // The one course with a note someone wrote; the others carry the period label the academic system sends.
+  [2, 1, 4, '药物化学', '教学楼B202', '带实验报告'],
   [2, 9, 12, '人工智能药学', '机房C301'],
   [3, 3, 4, '药物分析', '教学楼A102'],
   [3, 5, 6, '药剂学', '教学楼A203'],
@@ -48,11 +49,11 @@ const snapshot = {
   data: {
     source: 'undergraduate', semesters: [{ value: semester, label: semester, current: true }],
     weeks, currentSemester: semester, currentWeek: '5',
-    cells: courses.map(([day, startSlot, endSlot, name, location], index) => ({
+    cells: courses.map(([day, startSlot, endSlot, name, location, note], index) => ({
       day, bigSlot: Math.ceil(startSlot / 2), courses: [{
         nativeId: `fixture-${index}`, name, location, teacher: '示例教师', weeks: '1-20周',
         weekList: weeks.map(({ value }) => Number(value)), startSlot, endSlot,
-        slotNote: `${startSlot}-${endSlot}节`,
+        slotNote: note || `${String(startSlot).padStart(2, '0')}-${String(endSlot).padStart(2, '0')}节`,
       }],
     })),
   },

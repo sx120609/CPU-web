@@ -6,8 +6,8 @@ import { buildScheduleMonth, scheduleAdjustmentText, ScheduleMonthDay, ScheduleM
   scheduleMonthSlotLabel, schedulePaperMonthTitle, scheduleSelectedDateTitle, scheduleShortCourseName } from './ScheduleMonth';
 import { scheduleAlpha, scheduleCleanLocation, scheduleCourseAccent, scheduleCourseFill, scheduleMetaText,
   scheduleStyleAccent, scheduleStyleCanvas, scheduleStyleCellBorder, scheduleStyleCellSurface, scheduleStyleCourseColor,
-  scheduleStyleFont, scheduleStyleInk, scheduleStyleLayout, scheduleStylePanelSurface, scheduleThemeFill,
-  scheduleThemeText, scheduleTodayDate } from './ScheduleStyle';
+  scheduleStyleFont, scheduleStyleInk, scheduleStyleLayout, scheduleStylePanelSurface, scheduleStyleTextFont,
+  scheduleThemeFill, scheduleThemeText, scheduleTodayDate } from './ScheduleStyle';
 import { calendarDayBadge, calendarDayLabel, ChineseCalendar, lunarFullLabel, OffDay,
   publishedHolidaysFromOffDays } from '../common/ChineseCalendar';
 import { systemLunarDate } from '../common/SystemLunarCalendar';
@@ -247,7 +247,7 @@ export struct ScheduleMonthView {
             .fontWeight(day.date === this.today() || day.date === this.store.selectedDate ? FontWeight.Bold : 600)
             .decoration({ type: day.date === this.today() ? TextDecorationType.Underline : TextDecorationType.None })
             .fontColor(day.date === this.store.selectedDate ? this.canvasOrWhite() : this.ink())
-          Text(day.courses.length ? `${day.courses.length} 门` : '—').fontSize(9).fontWeight(FontWeight.Medium).fontFamily('monospace').maxLines(1)
+          Text(day.courses.length ? `${day.courses.length} 门` : '—').fontSize(9).fontWeight(FontWeight.Medium).maxLines(1)
             .fontColor(day.date === this.store.selectedDate ? this.canvasOrWhite() : this.ink())
           Text(day.subtitle || ' ').fontSize(9).fontFamily('monospace').maxLines(1)
             .fontColor(day.date === this.store.selectedDate ? this.canvasOrWhite() : this.ink())
@@ -310,7 +310,7 @@ export struct ScheduleMonthView {
           Row({ space: 6 }) {
             Text(scheduleSelectedDateTitle(this.store.selectedDate)).fontSize(this.store.visualStyle === 'paper' ? 17 : 16)
               .fontWeight(this.store.visualStyle === 'board' ? FontWeight.Bold : 600)
-              .fontFamily(scheduleStyleFont(this.store.visualStyle)).fontColor(this.inkOrText())
+              .fontFamily(scheduleStyleTextFont(this.store.visualStyle)).fontColor(this.inkOrText())
             if (this.store.selectedDate === this.today()) {
               Text(this.store.visualStyle === 'paper' ? '今日' : '今天').fontSize(10).fontWeight(FontWeight.Bold)
                 .fontFamily(scheduleStyleFont(this.store.visualStyle))
@@ -321,7 +321,7 @@ export struct ScheduleMonthView {
                   : scheduleAlpha(this.summaryAccent(), 0.14))
             }
           }
-          Text(this.selectedSubtitle()).fontSize(11).fontFamily(scheduleStyleFont(this.store.visualStyle))
+          Text(this.selectedSubtitle()).fontSize(11).fontFamily(scheduleStyleTextFont(this.store.visualStyle))
             .fontColor(this.store.visualStyle === 'classic' ? this.secondary() : scheduleAlpha(this.ink(), 0.72))
         }.layoutWeight(1).alignItems(HorizontalAlign.Start)
         if (this.store.dateSlot(this.store.selectedDate)) {
@@ -333,12 +333,12 @@ export struct ScheduleMonthView {
         }
       }.width('100%').alignItems(VerticalAlign.Top)
       if (this.store.adjustmentOnDate(this.store.selectedDate)) {
-        Text(this.selectedAdjustmentText()).fontSize(11).fontFamily(scheduleStyleFont(this.store.visualStyle)).width('100%')
+        Text(this.selectedAdjustmentText()).fontSize(11).fontFamily(scheduleStyleTextFont(this.store.visualStyle)).width('100%')
           .fontColor(this.store.visualStyle === 'paper' || this.store.visualStyle === 'board' ? this.styleAccent()
             : this.store.adjustmentOnDate(this.store.selectedDate)?.kind === 'off' ? this.holiday() : SWAP_ORANGE)
       }
       if (this.emptyText()) {
-        Text(this.emptyText()).fontSize(13).fontFamily(scheduleStyleFont(this.store.visualStyle)).width('100%').padding({ top: 6, bottom: 6 })
+        Text(this.emptyText()).fontSize(13).fontFamily(scheduleStyleTextFont(this.store.visualStyle)).width('100%').padding({ top: 6, bottom: 6 })
           .fontColor(this.store.visualStyle === 'classic' ? this.secondary() : scheduleAlpha(this.ink(), 0.72))
       } else {
         Column({ space: this.store.visualStyle === 'paper' ? 4 : 6 }) {
@@ -400,9 +400,9 @@ export struct ScheduleMonthView {
           .backgroundColor(this.store.visualStyle === 'board' ? this.ink() : Color.Transparent)
         Column().width(this.store.visualStyle === 'paper' ? 2 : 3).height(30).backgroundColor(this.courseAccent(block.course.name))
         Column({ space: 4 }) {
-          Text(block.course.name).fontSize(16).fontWeight(600).fontFamily(scheduleStyleFont(this.store.visualStyle)).fontColor(this.ink())
+          Text(block.course.name).fontSize(16).fontWeight(600).fontFamily(scheduleStyleTextFont(this.store.visualStyle)).fontColor(this.ink())
             .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis }).width('100%')
-          Text(this.metadata(block)).fontSize(13).fontFamily(scheduleStyleFont(this.store.visualStyle)).fontColor(scheduleAlpha(this.ink(), 0.74))
+          Text(this.metadata(block)).fontSize(13).fontFamily(scheduleStyleTextFont(this.store.visualStyle)).fontColor(scheduleAlpha(this.ink(), 0.74))
             .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).width('100%')
         }.layoutWeight(1)
       }.width('100%').padding({ left: this.store.visualStyle === 'paper' ? 0 : 10, right: this.store.visualStyle === 'paper' ? 0 : 10, top: 10, bottom: 10 })

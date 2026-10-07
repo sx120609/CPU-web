@@ -18,6 +18,8 @@ export interface NativeScheduleCourse {
   weekList: number[];
   location?: string;
   slotNote?: string;
+  // The note the course arrived with; a merged block replaces `slotNote` with its period label.
+  sourceNote?: string;
   startSlot?: number;
   endSlot?: number;
   sourceKey?: string;
@@ -26,6 +28,19 @@ export interface NativeScheduleCourse {
   orphaned?: boolean;
   customStartTime?: string;
   customEndTime?: string;
+}
+
+// "06-07节" from the academic system and the merged blocks, "第 6-7 节" from a save with the note left empty.
+const AUTO_SLOT_NOTE: RegExp = /^(第\s*\d+\s*(-\s*\d+)?\s*节|\d{1,2}(-\d{1,2})?节)$/;
+
+/**
+ * The note a person wrote for a course, or '' when the field only holds a generated period label
+ * (Web `noteFromCourse`). `sourceNote` is the note the course arrived with; a merged block keeps its
+ * period label in `slotNote`.
+ */
+export function scheduleCourseNote(sourceNote?: string, slotNote?: string): string {
+  const note = (sourceNote ?? slotNote ?? '').trim();
+  return AUTO_SLOT_NOTE.test(note) ? '' : note;
 }
 
 export interface NativeScheduleCell {
@@ -771,6 +786,18 @@ export class NativeScheduleStore {
     return compact;
   }
 
+  // A note someone wrote wins over the period label of the other half of a merged block.
+  private sourceNote(course: NativeScheduleCourse, next?: NativeScheduleCourse): string | undefined {
+    const own = course.sourceNote ?? course.slotNote;
+    const other = next?.sourceNote ?? next?.slotNote;
+    return scheduleCourseNote(own) ? own : scheduleCourseNote(other) ? other : own ?? other;
+  }
+
+  /** What the editor and the course details show as the note. */
+  courseNote(course?: NativeScheduleCourse): string {
+    return scheduleCourseNote(course?.sourceNote, course?.slotNote);
+  }
+
   private slotLabel(start: number, end: number): string {
     const first = String(start).padStart(2, '0');
     return start === end ? `${first}节` : `${first}-${String(end).padStart(2, '0')}节`;
@@ -786,7 +813,8 @@ export class NativeScheduleStore {
     });
     weekList.sort((a: number, b: number) => a - b);
     return { name: course.name, nativeId: course.nativeId ?? next?.nativeId, teacher: course.teacher ?? next?.teacher, weeks: weekList.length ? this.weekText(weekList) : (course.weeks || next?.weeks || ''), weekList,
-      location: course.location ?? next?.location, slotNote: this.slotLabel(startSlot, endSlot), startSlot, endSlot,
+      location: course.location ?? next?.location, slotNote: this.slotLabel(startSlot, endSlot),
+      sourceNote: this.sourceNote(course, next), startSlot, endSlot,
       sourceKey: course.sourceKey, customId: course.customId, custom: course.custom, orphaned: course.orphaned,
       customStartTime: course.customStartTime ?? next?.customStartTime, customEndTime: course.customEndTime ?? next?.customEndTime };
   }

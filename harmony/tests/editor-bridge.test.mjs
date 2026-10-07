@@ -152,3 +152,20 @@ test('share codes go through the signed-in session with the site nickname and ne
   p.auth.isLoggedIn=false;const before=p.shareRequests.length;
   assert.equal((await p.shares({action:'mine'})).status,401);assert.equal(p.shareRequests.length,before);
 });
+
+test('an empty note is saved as the period label, and editing a course keeps the note it had',async()=>{
+  const p=page(); let opened=await p.run({action:'open',semester:'fall'});
+  await p.run({action:'save',session:opened.session,form:{...form,note:'带实验报告'},cells:[]});
+  assert.equal(p.edits.custom[0].course.slotNote,'带实验报告');
+  // The native timetable draws "03-04节" on the block; the editor sends back the note, not that label.
+  const saved=p.edits.custom[0];
+  const original={day:saved.day,bigSlot:saved.bigSlot,startSlot:3,endSlot:4,course:{...saved.course,customId:saved.id,custom:true,slotNote:'03-04节',sourceNote:'带实验报告'}};
+  opened=await p.run({action:'open',semester:'fall'});
+  await p.run({action:'save',session:opened.session,original,form:{...form,location:'B312',note:'带实验报告'},cells:[]});
+  assert.equal(p.edits.custom.length,1); assert.equal(p.edits.custom[0].course.location,'B312');
+  assert.equal(p.edits.custom[0].course.slotNote,'带实验报告');
+  // A note left empty is stored as the Web editor stores it, which every client reads as "no note".
+  opened=await p.run({action:'open',semester:'fall'});
+  await p.run({action:'save',session:opened.session,original,form:{...form,note:''},cells:[]});
+  assert.equal(p.edits.custom[0].course.slotNote,'第 3-4 节');
+});

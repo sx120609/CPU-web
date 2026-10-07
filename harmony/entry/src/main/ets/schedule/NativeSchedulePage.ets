@@ -6,10 +6,14 @@ import { scheduleCardTone } from './ScheduleVisuals';
 import { scheduleAccent, scheduleGridMetrics, scheduleSecondaryText, scheduleSoftSurface, scheduleSurface, scheduleText,
   scheduleTint } from './ScheduleLayout';
 import { scheduleAlpha, scheduleCleanLocation, scheduleCourseAccent, scheduleMetaText, scheduleMinutesNow,
-  scheduleSlotText, scheduleStyleCanvas, scheduleStyleCourseColor, scheduleThemeText, scheduleThemeTint,
-  scheduleWeekday } from './ScheduleStyle';
+  scheduleSlotText, scheduleStyleCanvas, scheduleStyleCellBorder, scheduleStyleColumnGap, scheduleStyleCourseColor,
+  scheduleStyleFont, scheduleStyleInk, scheduleStylePanelSurface, scheduleStyleTextFont, scheduleThemeText,
+  scheduleThemeTint, scheduleWeekday } from './ScheduleStyle';
+import { ScheduleStyledDateHeader } from './ScheduleDateHeader';
 
 const DAYS: string[] = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+// Height of the styled day strip: the date header of the styled week views, a little taller.
+const STYLED_STRIP: number = 50;
 
 @Component
 export struct NativeSchedulePage {
@@ -92,7 +96,8 @@ export struct NativeSchedulePage {
                 ForEach([1,2,3,4,5,6,7], (day: number) => {
                   Column() {
                     NativeScheduleBody({ store: this.store, view: this.dayPreview(day),
-                      contentHeight: Math.max(360, this.contentHeight - 44), pageWidth: this.pageWidth,
+                      contentHeight: Math.max(360, this.contentHeight - (this.store.visualStyle === 'classic' ? 44 : STYLED_STRIP + 2)),
+                      pageWidth: this.pageWidth,
                       showDayStrip: false,
                       onLogin: this.onLogin, onAddSlot: this.onAddSlot,
                       onCourse: (block: NativeCourseBlock, shownDay: number) => this.openDetail(block, shownDay) })
@@ -233,7 +238,7 @@ export struct NativeSchedulePage {
   private weekStepButton(delta: number) {
     Button() {
       SymbolGlyph(delta < 0 ? $r('sys.symbol.chevron_left') : $r('sys.symbol.chevron_right')).fontSize(16).fontWeight(FontWeight.Medium)
-        .fontColor([this.textColor()])
+        .fontColor([this.navigatorInk()])
     }.type(ButtonType.Circle).width(40).height(40).padding(0).backgroundColor(Color.Transparent)
       .enabled(this.store.canMoveWeek(delta)).opacity(this.store.canMoveWeek(delta) ? 1 : 0.32)
       // Icon-only controls carry ids so the emulator acceptance script can find them.
@@ -253,14 +258,14 @@ export struct NativeSchedulePage {
       Button() {
         Column({ space: 1 }) {
           Row({ space: 6 }) {
-            Text(this.weekLabel()).fontSize(14).fontWeight(600).fontColor(this.textColor())
+            Text(this.weekLabel()).fontSize(14).fontWeight(600).fontColor(this.navigatorInk()).fontFamily(this.navigatorTitleFont())
             if (this.isCurrentWeek()) {
               Text('本周').fontSize(10).fontWeight(FontWeight.Bold).fontColor(this.accentColor())
                 .padding({ left: 5, right: 5, top: 1, bottom: 1 }).borderRadius(6)
                 .backgroundColor(scheduleTint(this.accentColor(), 0.14))
             }
           }
-          Text(this.weekRange()).fontSize(10).fontColor(this.secondaryColor()).maxLines(1)
+          Text(this.weekRange()).fontSize(10).fontColor(this.navigatorSecondary()).maxLines(1).fontFamily(this.navigatorDateFont())
         }.width('100%').alignItems(HorizontalAlign.Center)
       }.type(ButtonType.Normal).layoutWeight(1).height(40).padding(0).backgroundColor(Color.Transparent).borderRadius(16)
         .accessibilityText('选择周次，' + this.weekLabel() + '，' + this.weekRange())
@@ -275,7 +280,7 @@ export struct NativeSchedulePage {
   private monthStepButton(delta: number) {
     Button() {
       SymbolGlyph(delta < 0 ? $r('sys.symbol.chevron_left') : $r('sys.symbol.chevron_right')).fontSize(16).fontWeight(FontWeight.Medium)
-        .fontColor([this.textColor()])
+        .fontColor([this.navigatorInk()])
     }.type(ButtonType.Circle).width(40).height(40).padding(0).backgroundColor(Color.Transparent)
       .id(delta < 0 ? 'schedule-previous-month' : 'schedule-next-month')
       .accessibilityText(delta < 0 ? '上个月' : '下个月')
@@ -286,15 +291,49 @@ export struct NativeSchedulePage {
   private monthSwitcher() {
     Row() {
       this.monthStepButton(-1)
-      Text(scheduleMonthTitle(this.store.monthAnchor)).fontSize(14).fontWeight(600).fontColor(this.textColor())
-        .layoutWeight(1).textAlign(TextAlign.Center)
+      Text(scheduleMonthTitle(this.store.monthAnchor)).fontSize(14).fontWeight(600).fontColor(this.navigatorInk())
+        .fontFamily(this.navigatorTitleFont()).layoutWeight(1).textAlign(TextAlign.Center)
       this.monthStepButton(1)
     }.width('100%').height(42).margin({ bottom: 2 }).borderRadius(18)
       .backgroundColor(this.store.backgroundPath ? this.surfaceColor() : Color.Transparent)
   }
 
+  // The day view's seven-day strip. Classic keeps its own; every other style draws it as the header
+  // row of its week view, see `ScheduleStyledDateHeader`.
   @Builder
   private dayStrip() {
+    if (this.store.visualStyle === 'classic') this.classicDayStrip()
+    else this.styledDayStrip()
+  }
+
+  @Builder
+  private styledDayStrip() {
+    // Same gaps as the week view: only minimal and grid keep space between days.
+    Row({ space: scheduleStyleColumnGap(this.store.visualStyle) }) {
+      ForEach(DAYS, (label: string, index: number) => {
+        Column() {
+          ScheduleStyledDateHeader({ visualStyle: this.store.visualStyle, dark: this.store.dark, palette: this.store.palette,
+            day: index + 1, date: this.dayNumber(index + 1), today: this.store.isToday(index + 1),
+            adjustment: this.store.adjustment(index + 1)?.kind ?? '',
+            selected: index + 1 === this.store.selectedDay ? 1 : 0, leading: index === 0 })
+        }.layoutWeight(1).height(STYLED_STRIP)
+          .id('schedule-day-' + (index + 1))
+          .accessibilityGroup(true).accessibilityRole(AccessibilityRoleType.BUTTON)
+          .accessibilityText(label + ' ' + this.dayDateLabel(index + 1) + this.dayAdjustmentLabel(index + 1) + '，' + this.dayCourseCount(index + 1))
+          .accessibilitySelected(index + 1 === this.store.selectedDay)
+          .onClick(() => {
+            this.store.selectDay(index + 1);
+            this.dayController.changeIndex(index, true);
+          })
+      })
+    }.width('100%').height(STYLED_STRIP).margin({ top: 2 })
+      .backgroundColor(this.store.visualStyle === 'table'
+        ? scheduleStylePanelSurface(!!this.store.backgroundPath, this.store.dark, this.store.backgroundOpacity) : Color.Transparent)
+      .border(this.stripBorder())
+  }
+
+  @Builder
+  private classicDayStrip() {
     Row({ space: 2 }) {
       ForEach(DAYS, (label: string, index: number) => {
         Button() {
@@ -339,6 +378,42 @@ export struct NativeSchedulePage {
   private dayDateLabel(day: number): string {
     const date = this.store.dayDate(day);
     return date ? date.replace('-', '.') : '—';
+  }
+
+  private dayNumber(day: number): string {
+    const date = this.store.rawDate(day);
+    return date.length >= 10 ? String(Number(date.substring(8, 10))) : '–';
+  }
+
+  private dayCourseCount(day: number): string {
+    const count = this.store.displayBlocks(day).length;
+    return count > 0 ? `${count} 门课` : '没有课';
+  }
+
+  // The table frames its strip like its week panel. The board has no panel to sit on, so its strip
+  // ends on the hairline it rules its rows with.
+  private stripBorder(): BorderOptions {
+    if (this.store.visualStyle === 'table') return { width: 0.6, color: scheduleStyleCellBorder(this.store.dark) };
+    const widths: EdgeWidths = { bottom: this.store.visualStyle === 'board' ? 0.5 : 0 };
+    return { width: widths, color: scheduleAlpha(scheduleStyleInk(this.store.visualStyle, this.store.dark), 0.15) };
+  }
+
+  // Paper and board have a page colour of their own: the navigator is set in their ink, and its
+  // second line in that ink, thinned, in place of the theme grey.
+  private ownsCanvas(): boolean { return !!scheduleStyleCanvas(this.store.visualStyle, this.store.dark) && !this.store.backgroundPath; }
+  private navigatorInk(): string {
+    return this.ownsCanvas() ? scheduleStyleInk(this.store.visualStyle, this.store.dark) : this.textColor();
+  }
+  private navigatorSecondary(): string {
+    return this.ownsCanvas() ? scheduleAlpha(scheduleStyleInk(this.store.visualStyle, this.store.dark), 0.62) : this.secondaryColor();
+  }
+  // The week and month titles follow the style's typeface; classic and minimal stay on the system face.
+  private navigatorTitleFont(): string {
+    return this.store.visualStyle === 'classic' ? 'HarmonyOS Sans' : scheduleStyleTextFont(this.store.visualStyle);
+  }
+  // The date range under the week title is all digits, so the board may keep its monospaced face there.
+  private navigatorDateFont(): string {
+    return this.store.visualStyle === 'classic' ? 'HarmonyOS Sans' : scheduleStyleFont(this.store.visualStyle);
   }
 
   private dayAdjustmentLabel(day: number): string {
@@ -483,7 +558,7 @@ export struct NativeSchedulePage {
     this.detailTeacher = (block.course.teacher ?? '').trim();
     this.detailLocation = scheduleCleanLocation(block.course.location);
     this.detailWeeks = (block.course.weeks ?? '').trim();
-    this.detailNote = (block.course.slotNote ?? '').trim();
+    this.detailNote = this.store.courseNote(block.course);
     this.detailCustom = block.course.custom === true || !!block.course.customId;
     this.detailOrphaned = block.course.orphaned === true;
     // "周三 · 第 5–6 节 · 13:30–15:10"

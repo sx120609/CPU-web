@@ -56,6 +56,28 @@ export function scheduleStyleFont(style: string): string {
   return 'HarmonyOS Sans';
 }
 
+/**
+ * The typeface of running text: course names, rooms, 「第 3–4 节」. The board keeps its monospaced face
+ * for times and dates only; set in it, the space between a character and a digit is a full digit wide
+ * and the line falls apart.
+ */
+export function scheduleStyleTextFont(style: string): string {
+  return style === 'board' ? 'HarmonyOS Sans' : scheduleStyleFont(style);
+}
+
+/** Digits of one width for counts and countdowns in the system face, so a ticking number does not shift the line. */
+export const SCHEDULE_TABULAR_DIGITS: string = '"tnum" on';
+
+/** The date in a styled date header. The day strip is a control, so its dates are set a size up from the week header's. */
+export function scheduleStyleDateSize(style: string, strip: boolean): number {
+  return style === 'paper' || (strip && style !== 'grid') ? 15 : 11;
+}
+
+/** 「05」 on the board, like the dates of its month view. */
+export function scheduleStyleDateText(style: string, date: string): string {
+  return style === 'board' && /^\d+$/.test(date) ? date.padStart(2, '0') : date;
+}
+
 function byte(value: number): string {
   return Math.round(Math.max(0, Math.min(255, value))).toString(16).padStart(2, '0');
 }

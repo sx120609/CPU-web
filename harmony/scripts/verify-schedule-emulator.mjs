@@ -111,15 +111,21 @@ assert.ok(dateLabel.bounds.match(/-?\d+/g).map(Number)[3] < firstPeriod.bounds.m
   'Date strip overlaps the first period');
 capture('day-light');
 await click('药物化学');
-await waitFor(nodes => hasPart(nodes, '周二', '第 1–4 节', '08:00–11:45') && has(nodes, '示例教师') && hasId(nodes, 'schedule-course-edit'),
+nodes = await waitFor(nodes => hasPart(nodes, '周二', '第 1–4 节', '08:00–11:45') && has(nodes, '示例教师') && hasId(nodes, 'schedule-course-edit'),
   'Course quick look did not open');
+assert.ok(has(nodes, '备注') && has(nodes, '带实验报告'), 'The note someone wrote is missing from the quick look');
 capture('course-detail');
 shell('uitest', 'uiInput', 'keyEvent', 'Back');
 await pause(400);
 await click('周一');
 await waitFor(nodes => has(nodes, '药物设计学') && !has(nodes, '药物化学'), 'Monday selection failed');
 capture('day-monday');
-pass('day mode, date selection, and the course quick look');
+await click('药物设计学');
+nodes = await waitFor(nodes => hasPart(nodes, '周一', '第 1–2 节') && hasId(nodes, 'schedule-course-edit'), 'Monday quick look did not open');
+assert.ok(!has(nodes, '备注') && !nodes.some(node => /^\d{1,2}-\d{1,2}节$/.test(node.text)), 'A generated period label is shown as the note');
+shell('uitest', 'uiInput', 'keyEvent', 'Back');
+await pause(400);
+pass('day mode, date selection, the course quick look and its note');
 
 await click('周日');
 await waitFor(nodes => has(nodes, '这一天没有课程'), 'Empty-day state missing');
@@ -178,8 +184,16 @@ for (const style of ['minimal', 'grid', 'table', 'paper', 'board']) {
   capture(`style-${style}-week`);
   await start({ style, mode: 'day', day: 2, dark: style === 'paper' });
   // The evening course may be below the fold where a style keeps a row for every period.
-  await waitFor(nodes => has(nodes, '药物化学') && !has(nodes, '药物设计学'), `${style} day failed`);
+  nodes = await waitFor(nodes => has(nodes, '药物化学') && !has(nodes, '药物设计学'), `${style} day failed`);
+  // The seven-day strip is the style's own date header: the selected day is marked apart from today.
+  assert.deepEqual(nodes.filter(node => /^schedule-day-\d$/.test(node.id)).map(node => node.selected),
+    ['false', 'true', 'false', 'false', 'false', 'false', 'false'], `${style} day strip does not mark Tuesday`);
+  assert.ok(rect(nodes.find(node => node.id === 'schedule-day-1'))[3] <= rect(nodes.find(node => node.text === '药物化学'))[1],
+    `${style} day strip overlaps the first course`);
   capture(`style-${style}-day`);
+  await click('#schedule-day-1');
+  nodes = await waitFor(nodes => has(nodes, '药物设计学') && !has(nodes, '药物化学'), `${style} day strip did not select Monday`);
+  assert.equal(nodes.find(node => node.id === 'schedule-day-1').selected, 'true', `${style} day strip did not move its mark`);
 }
 await start({ style: 'minimal', mode: 'day', day: 7 });
 await waitFor(nodes => has(nodes, '这天没有课程'), 'Rest card missing');
@@ -212,8 +226,13 @@ assert.ok(has(nodes, '周六') && !has(nodes, '周日'), 'A weekend day with cla
 capture('weekend-hidden-priority');
 pass('days off, make-up days, hidden weekends and display priority');
 
+await start({ panel: 'editor', day: 2 });
+nodes = await waitFor(nodes => has(nodes, '编辑课程') && has(nodes, '保存课程') && has(nodes, '节次'), 'Course editor did not open');
+assert.ok(has(nodes, '带实验报告'), 'The editor lost the note of the course');
 await start({ panel: 'editor', day: 1 });
-await waitFor(nodes => has(nodes, '编辑课程') && has(nodes, '保存课程') && has(nodes, '节次'), 'Course editor did not open');
+nodes = await waitFor(nodes => has(nodes, '编辑课程') && has(nodes, '保存课程') && has(nodes, '节次'), 'Course editor did not open');
+// The note field of a course without one stays empty: saving must not turn the period label into a note.
+assert.ok(!nodes.some(node => /^\d{1,2}-\d{1,2}节$/.test(node.text)), 'The editor offers a generated period label as the note');
 capture('editor');
 shell('uitest', 'uiInput', 'swipe', '540', '1700', '540', '700', '900');
 await click('＋ 添加上课时间');
