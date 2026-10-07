@@ -3,7 +3,7 @@
   <el-dialog
     :model-value="modelValue"
     :title="view === 'import' ? '用分享码导入' : '共享课表'"
-    :width="440"
+    :width="480"
     align-center
     append-to-body
     class="schedule-themed-dialog schedule-sharing-dialog"
@@ -15,7 +15,7 @@
     <div v-if="view === 'list'" class="sharing">
       <section class="sharing-section">
         <h3>分享我的课表</h3>
-        <div class="sharing-card">
+        <div class="sharing-card" :class="{ 'sharing-card-action': signedIn && !ownShare }">
           <template v-if="!signedIn">
             <p class="sharing-hint">登录站点账号后才能分享自己的课表；用分享码看别人的课表不需要登录。</p>
           </template>
@@ -61,7 +61,7 @@
 
       <section class="sharing-section">
         <h3>共享给我的课表</h3>
-        <div class="sharing-card">
+        <div class="sharing-card" :class="{ 'sharing-card-action': !sharing.library.value.schedules.length }">
           <div v-for="item in sharing.library.value.schedules" :key="item.meta.code" class="sharing-row">
             <button type="button" class="sharing-row-main" :aria-label="`打开 ${sharedScheduleName(item)} 的课表`" @click="open(item)">
               <span class="sharing-avatar"><el-icon><User /></el-icon></span>
@@ -130,8 +130,10 @@
     </div>
 
     <template #footer>
-      <el-button v-if="view === 'import'" data-cpu-button-theme="schedule" @click="view = 'list'">返回</el-button>
-      <el-button data-cpu-button-theme="schedule" type="primary" @click="emit('update:modelValue', false)">完成</el-button>
+      <div class="sharing-footer">
+        <el-button v-if="view === 'import'" data-cpu-button-theme="schedule" @click="view = 'list'">返回</el-button>
+        <el-button data-cpu-button-theme="schedule" @click="emit('update:modelValue', false)">完成</el-button>
+      </div>
     </template>
   </el-dialog>
 </template>
@@ -348,20 +350,52 @@ defineExpose({ importFrom });
 </script>
 
 <style scoped lang="scss">
-.sharing {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  max-height: min(64dvh, 620px);
-  margin: -6px -4px;
-  padding: 0 4px;
+:global(.el-overlay-dialog .schedule-sharing-dialog.el-dialog) {
+  background: var(--schedule-surface-bg, var(--cpu-card));
+  color: var(--schedule-text, var(--cpu-text));
+}
+:global(.schedule-sharing-dialog.el-dialog .el-dialog__title) {
+  color: var(--schedule-text, var(--cpu-text));
+}
+:global(.schedule-sharing-dialog .el-dialog__headerbtn) {
+  top: 6px;
+  right: 6px;
+  width: 44px;
+  height: 44px;
+}
+:global(.el-overlay-dialog .schedule-sharing-dialog .el-dialog__body) {
+  // The dialog body is the only scroll container, so the footer stays visible.
+  overflow-x: hidden;
   overflow-y: auto;
+  padding: 2px 4px 4px;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--schedule-border, var(--cpu-border)) transparent;
+}
+:global(.schedule-sharing-dialog .el-dialog__body::-webkit-scrollbar) {
+  width: 6px;
+}
+:global(.schedule-sharing-dialog .el-dialog__body::-webkit-scrollbar-thumb) {
+  background: var(--schedule-border, var(--cpu-border));
+  border-radius: 3px;
+}
+:global(.schedule-sharing-dialog .el-dialog__body::-webkit-scrollbar-track) {
+  background: transparent;
+}
+.sharing {
+  display: grid;
+  gap: 24px;
+  min-width: 0;
   color: var(--schedule-text);
 }
+.sharing-section {
+  min-width: 0;
+}
 .sharing-section h3 {
-  margin: 0 0 8px 4px;
-  color: var(--schedule-text-secondary);
-  font-size: var(--cpu-fs-s, 13px);
+  margin: 0 0 10px;
+  color: var(--schedule-text);
+  font-size: var(--cpu-fs-s, 14px);
   font-weight: 600;
 }
 .sharing-card {
@@ -373,12 +407,19 @@ defineExpose({ importFrom });
   flex-direction: column;
   gap: 10px;
 }
+.sharing-card-action {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
 .sharing-foot,
 .sharing-hint {
-  margin: 8px 4px 0;
-  color: var(--schedule-text-muted);
-  font-size: var(--cpu-fs-xs, 12px);
-  line-height: 1.6;
+  margin: 10px 0 0;
+  color: var(--schedule-text-secondary);
+  font-size: var(--cpu-fs-s, 13px);
+  font-weight: 400;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
 }
 .sharing-hint {
   margin: 0;
@@ -399,7 +440,7 @@ defineExpose({ importFrom });
   flex-direction: column;
 }
 .sharing-actions button {
-  min-height: 42px;
+  min-height: 44px;
   padding: 0;
   border: 0;
   border-top: 1px solid var(--schedule-border);
@@ -424,8 +465,10 @@ defineExpose({ importFrom });
   opacity: 0.55;
 }
 .sharing-primary {
-  min-height: 42px;
-  border: 0;
+  min-height: 44px;
+  min-width: 0;
+  padding: 10px 14px;
+  border: 1px solid transparent;
   border-radius: var(--cpu-radius-m, 10px);
   background: var(--schedule-accent);
   color: var(--schedule-accent-contrast);
@@ -439,8 +482,28 @@ defineExpose({ importFrom });
   cursor: pointer;
 }
 .sharing-primary.plain {
+  border-color: var(--schedule-accent-border);
   background: var(--schedule-accent-pale);
   color: var(--schedule-accent-strong);
+}
+.sharing-primary,
+.sharing-actions button,
+.sharing-link,
+.sharing-row-main {
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.sharing-primary:not(:disabled):active {
+  background: color-mix(in srgb, var(--schedule-accent) 82%, black);
+}
+.sharing-primary.plain:not(:disabled):active {
+  background: var(--schedule-accent-pale-hover);
+}
+.sharing-primary:focus-visible,
+.sharing-actions button:focus-visible,
+.sharing-link:focus-visible,
+.sharing-row-main:focus-visible {
+  outline: 2px solid var(--schedule-accent-strong);
+  outline-offset: 2px;
 }
 .sharing-status {
   margin: 0;
@@ -542,7 +605,56 @@ defineExpose({ importFrom });
   color: var(--schedule-text-muted);
 }
 .sharing-line b {
+  min-width: 0;
+  overflow-wrap: anywhere;
   font-weight: 500;
   text-align: right;
+}
+.sharing-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  width: 100%;
+}
+.sharing-footer .el-button {
+  --el-button-bg-color: var(--schedule-surface-bg-soft);
+  --el-button-border-color: var(--schedule-border);
+  --el-button-text-color: var(--schedule-text);
+  --el-button-hover-bg-color: var(--schedule-accent-pale);
+  --el-button-hover-border-color: var(--schedule-accent-border);
+  --el-button-hover-text-color: var(--schedule-accent-strong);
+  --el-button-active-bg-color: var(--schedule-accent-pale-hover);
+  --el-button-active-border-color: var(--schedule-accent-border);
+  --el-button-active-text-color: var(--schedule-accent-strong);
+  min-height: 44px;
+  padding: 10px 20px;
+  border-radius: var(--cpu-radius-m, 10px);
+}
+@media (hover: hover) {
+  .sharing-primary:not(:disabled):hover {
+    background: color-mix(in srgb, var(--schedule-accent) 90%, black);
+  }
+  .sharing-primary.plain:not(:disabled):hover {
+    background: var(--schedule-accent-pale-hover);
+  }
+  .sharing-actions button:not(:disabled):hover,
+  .sharing-link:not(:disabled):hover,
+  .sharing-row-main:hover {
+    background: var(--schedule-accent-pale);
+  }
+}
+@media (max-width: 480px) {
+  .sharing-footer .el-button {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sharing-primary,
+  .sharing-actions button,
+  .sharing-link,
+  .sharing-row-main {
+    transition: none;
+  }
 }
 </style>
