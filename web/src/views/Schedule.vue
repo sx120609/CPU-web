@@ -10,6 +10,9 @@
     'is-static-week-swipe': useStaticWeekSwipe,
     'view-day': viewMode === 'day',
     'view-week': viewMode === 'week',
+    'view-month': viewMode === 'month',
+    'has-style-canvas': hasStyleCanvas,
+    [`schedule-style-${scheduleStyle}`]: true,
   }"
   :style="pageStyle"
 >
@@ -41,6 +44,7 @@
         <div v-if="parsed" class="view-switch" aria-label="切换课表视图">
           <button type="button" :class="{ active: viewMode === 'day' }" :disabled="loading" @click="setViewMode('day')">日</button>
           <button type="button" :class="{ active: viewMode === 'week' }" :disabled="loading" @click="setViewMode('week')">周</button>
+          <button type="button" :class="{ active: viewMode === 'month' }" :disabled="loading" @click="setViewMode('month')">月</button>
         </div>
         <button
           v-if="parsed"
@@ -48,14 +52,13 @@
           class="icon-btn"
           :class="{ active: isViewingToday }"
           :disabled="loading"
-          :aria-label="viewMode === 'week' ? '回到本周' : '跳转到当日'"
-          :title="viewMode === 'week' ? '回到本周' : '跳转到当日'"
+          :aria-label="todayButtonLabel"
+          :title="todayButtonLabel"
           @click="jumpToToday"
         >
           <el-icon><Aim /></el-icon>
         </button>
         <el-popover
-          v-if="parsed || canShowAndroidClientDownload || canShowInstallAction || isDev"
           v-model:visible="moreMenuOpen"
           trigger="click"
           placement="bottom-end"
@@ -79,18 +82,26 @@
           </template>
           <div class="more-panel" :style="pageStyle">
             <template v-if="moreMenuView === 'menu'">
-              <div v-if="parsed || canShowInstallAction || isDev" class="more-quick">
+              <div class="more-quick">
                 <button v-if="parsed" type="button" :disabled="loading" @click="runMoreAction(manualRefreshSchedule)">
                   <el-icon><Refresh /></el-icon>
                   <span>刷新</span>
                 </button>
-                <button v-if="parsed && calendar" type="button" @click="runMoreAction(openShareDialog)">
+                <button v-if="parsed && canUseScheduleEdit()" type="button" @click="runMoreAction(() => openAddCourse())">
+                  <el-icon><Plus /></el-icon>
+                  <span>添加课程</span>
+                </button>
+                <button type="button" @click="runMoreAction(openSharingDialog)">
                   <el-icon><Share /></el-icon>
-                  <span>分享</span>
+                  <span>共享课表</span>
                 </button>
                 <button v-if="parsed" type="button" class="couple-quick" @click="openCoupleDialog()">
                   <el-icon><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 20.3l-1.3-1.2C6 14.9 3 12.2 3 8.9 3 6.2 5.1 4 7.8 4c1.5 0 3 .7 4.2 1.9C13.2 4.7 14.7 4 16.2 4 18.9 4 21 6.2 21 8.9c0 3.3-3 6-7.7 10.2L12 20.3z" /></svg></el-icon>
                   <span>情侣课表</span>
+                </button>
+                <button v-if="parsed && calendar && !isNativeScheduleApp" type="button" @click="runMoreAction(exportWeekCalendarFile)">
+                  <el-icon><Calendar /></el-icon>
+                  <span>导出日历</span>
                 </button>
                 <button v-if="canShowInstallAction" type="button" @click="runMoreAction(openInstallPrompt)">
                   <el-icon><Download /></el-icon>
@@ -101,6 +112,11 @@
                   <span>研究生调试</span>
                 </button>
               </div>
+              <button type="button" class="more-action" @click="moreMenuView = 'style'">
+                <el-icon><Brush /></el-icon>
+                <span>课表风格 · {{ currentStyleTitle }}</span>
+                <el-icon class="more-chevron"><ArrowRight /></el-icon>
+              </button>
               <button type="button" class="more-action" @click="moreMenuView = 'theme'">
                 <span class="more-theme-swatch current" :style="{ background: currentThemePreview }" />
                 <span>主题选择</span>
@@ -142,6 +158,19 @@
                 <span>{{ androidUpdateMenuLabel }}</span>
                 <el-icon class="more-chevron"><ArrowRight /></el-icon>
               </button>
+            </template>
+
+            <template v-else-if="moreMenuView === 'style'">
+              <button type="button" class="more-back" @click="moreMenuView = 'menu'">
+                <el-icon><ArrowLeft /></el-icon>
+                <span>课表风格</span>
+              </button>
+              <ScheduleStylePicker
+                :model-value="scheduleStyle"
+                :palette="scheduleTheme"
+                :dark="appearance.isDark"
+                @update:model-value="selectScheduleStyle"
+              />
             </template>
 
             <template v-else-if="moreMenuView === 'theme'">
@@ -246,7 +275,22 @@
       @change="onScheduleBackgroundPicked"
     />
 
-    <section v-if="parsed" class="week-switcher">
+    <section v-if="parsed && viewMode === 'month'" class="week-switcher">
+      <button type="button" class="week-btn" :disabled="!canChangeMonth(-1)" @click="changeMonth(-1)">
+        <el-icon><ArrowLeft /></el-icon>
+        上一月
+      </button>
+      <div class="week-title">
+        <b>{{ monthTitle }}</b>
+        <span v-if="monthWeekRange">{{ monthWeekRange }}</span>
+      </div>
+      <button type="button" class="week-btn" :disabled="!canChangeMonth(1)" @click="changeMonth(1)">
+        下一月
+        <el-icon><ArrowRight /></el-icon>
+      </button>
+    </section>
+
+    <section v-else-if="parsed" class="week-switcher">
       <button type="button" class="week-btn" :disabled="!canChangeWeek(-1)" @click="changeWeek(-1)">
         <el-icon><ArrowLeft /></el-icon>
         上一周
@@ -333,6 +377,26 @@
       <PrivacyPolicyNotice />
     </section>
 
+    <section v-else-if="parsed && viewMode === 'month'" class="content month-content">
+      <div class="schedule-body-scroll">
+        <ScheduleMonthView
+          :visual-style="scheduleStyle"
+          :palette="scheduleTheme"
+          :dark="appearance.isDark"
+          :has-background="hasScheduleBackground"
+          :days="monthDays"
+          :selected-date="monthSelectedDate"
+          :today-date="todayYmd"
+          :clocks="smallSlots"
+          :priorities="schedulePriority"
+          :can-open-day="canOpenMonthDay"
+          @select="onMonthSelect"
+          @open-day="openMonthDay"
+          @course="(block, date, source) => onMonthCourseClick(source, block, date)"
+        />
+      </div>
+    </section>
+
     <section
       v-else
       ref="contentRef"
@@ -360,7 +424,7 @@
             :aria-hidden="page.delta !== 0"
           >
             <div class="schedule-body-scroll">
-              <section v-if="viewMode === 'week'" class="week-overview" :class="{ 'couple-on': couple.active.value }" aria-label="整周课表">
+              <section v-if="viewMode === 'week' && scheduleStyle === 'classic'" class="week-overview" :class="{ 'couple-on': couple.active.value }" aria-label="整周课表">
                 <div class="week-grid-head">
                   <div class="time-head">节次</div>
                   <div
@@ -376,7 +440,7 @@
                 </div>
                 <div class="week-grid-body">
                   <template v-for="slot in smallSlots" :key="`axis-${page.key}-${slot.no}`">
-                    <div class="slot-axis" :style="{ gridRow: `${slot.no} / ${slot.no + 1}` }">
+                    <div class="slot-axis" :style="{ gridColumn: '1 / 2', gridRow: `${slot.no} / ${slot.no + 1}` }">
                       <b>{{ slot.no }}</b>
                       <span>{{ slot.start }}</span>
                       <span>{{ slot.end }}</span>
@@ -391,17 +455,17 @@
                     />
                   </template>
                   <article
-                    v-for="block in page.weekCourseBlocks"
-                    :key="`${page.weekValue}-${block.day}-${block.startSlot}-${block.endSlot}-${block.index}-${block.course.name}`"
+                    v-for="piece in piecesFor(page)"
+                    :key="`${page.weekValue}-${piece.id}`"
                     class="week-course"
-                    :class="{ 'couple-shared': isCoupleShared(page, block) }"
-                    :style="courseBlockStyle(block, 'me', isCoupleShared(page, block))"
-                    :title="courseTitle(block.course)"
-                    @click.stop="onCourseBlockClick($event, block, page.weekValue)"
+                    :class="{ 'couple-shared': isCoupleShared(page, piece.block) }"
+                    :style="courseBlockStyle(piece, 'me', isCoupleShared(page, piece.block))"
+                    :title="courseTitle(piece.block.course)"
+                    @click.stop="onCourseBlockClick($event, piece.block, page.weekValue)"
                   >
-                    <strong>{{ block.course.name }}</strong>
-                    <span v-if="block.course.location">@{{ block.course.location }}</span>
-                    <em>{{ block.course.slotNote || block.course.weeks }}</em>
+                    <strong>{{ piece.block.course.name }}</strong>
+                    <span v-if="piece.block.course.location">@{{ piece.block.course.location }}</span>
+                    <em>{{ piece.block.course.slotNote || piece.block.course.weeks }}</em>
                   </article>
                   <article
                     v-for="block in coupleDataFor(page).partnerBlocks"
@@ -414,8 +478,48 @@
                     <strong>{{ block.course.name }}</strong>
                     <span v-if="block.course.location">@{{ block.course.location }}</span>
                   </article>
+                  <!-- 「现在」：节次栏上的时间和今天那一列上的一条线。 -->
+                  <template v-if="classicNowFor(page)">
+                    <div class="classic-now-anchor" :style="{ gridColumn: 1, gridRow: classicNowFor(page)!.row + 1 }" aria-hidden="true">
+                      <span class="classic-now-badge" :style="classicNowFor(page)!.style">{{ nowClockText }}</span>
+                    </div>
+                    <div class="classic-now-anchor" :style="{ gridColumn: classicNowFor(page)!.column + 1, gridRow: classicNowFor(page)!.row + 1 }" aria-hidden="true">
+                      <span class="classic-now-line" :style="classicNowFor(page)!.style" />
+                    </div>
+                  </template>
                 </div>
               </section>
+
+              <StyledWeekGrid
+                v-else-if="viewMode === 'week'"
+                :visual-style="scheduleStyle"
+                :palette="scheduleTheme"
+                :dark="appearance.isDark"
+                :has-background="hasScheduleBackground"
+                :days="styledDaysFor(page)"
+                :clocks="smallSlots"
+                :now-minutes="nowMinutes"
+                :tone-resolver="coupleToneResolver"
+                @course="(block, owner, source) => onStyledCourseClick(source, block, owner, page.weekValue)"
+                @slot="(day, slot) => onStyledSlotClick(day, slot, page.weekValue)"
+                @day="(day) => page.delta === 0 && onDayClick(day)"
+              />
+
+              <StyledDayView
+                v-else-if="!usesClassicDay"
+                :visual-style="scheduleStyle"
+                :palette="scheduleTheme"
+                :dark="appearance.isDark"
+                :has-background="hasScheduleBackground"
+                :day="page.day"
+                :pieces="dayPiecesFor(page)"
+                :clocks="smallSlots"
+                :now-minutes="pageIsToday(page) ? nowMinutes : null"
+                :completed-before="pageIsPast(page) ? 24 * 60 : null"
+                :empty-note="dayEmptyNote(page)"
+                @course="(block, source) => onCourseBlockClick(source, block, page.weekValue)"
+                @slot="(slot) => onStyledSlotClick(page.day, slot, page.weekValue)"
+              />
 
               <div v-else class="day-pane" :class="{ 'couple-on': couple.active.value }">
                 <section v-if="page.dayCourseBlocks.length || coupleDataFor(page).partnerBlocks.length" class="day-timeline" aria-label="当日课表">
@@ -434,20 +538,20 @@
                       />
                     </template>
                     <article
-                      v-for="block in page.dayCourseBlocks"
-                      :key="`${page.weekValue}-${page.day}-${block.startSlot}-${block.endSlot}-${block.index}-${block.course.name}`"
+                      v-for="piece in dayPiecesFor(page)"
+                      :key="`${page.weekValue}-${page.day}-${piece.id}`"
                       class="day-course-block"
-                      :class="{ 'couple-shared': isCoupleShared(page, block) }"
-                      :style="dayCourseBlockStyle(block, 'me', isCoupleShared(page, block))"
-                      :title="courseTitle(block.course)"
-                      @click.stop="onCourseBlockClick($event, block, page.weekValue)"
+                      :class="{ 'couple-shared': isCoupleShared(page, piece.block) }"
+                      :style="dayCourseBlockStyle(piece, 'me', isCoupleShared(page, piece.block))"
+                      :title="courseTitle(piece.block.course)"
+                      @click.stop="onCourseBlockClick($event, piece.block, page.weekValue)"
                     >
-                      <div class="day-course-name">{{ block.course.name }}</div>
+                      <div class="day-course-name">{{ piece.block.course.name }}</div>
                       <div class="day-course-meta">
-                        <span v-if="block.course.location">@{{ block.course.location }}</span>
-                        <span v-if="block.course.teacher">{{ block.course.teacher }}</span>
+                        <span v-if="piece.block.course.location">@{{ piece.block.course.location }}</span>
+                        <span v-if="piece.block.course.teacher">{{ piece.block.course.teacher }}</span>
                       </div>
-                      <div class="day-course-note">{{ block.course.slotNote || block.course.weeks }}</div>
+                      <div class="day-course-note">{{ piece.block.course.slotNote || piece.block.course.weeks }}</div>
                     </article>
                     <article
                       v-for="block in coupleDataFor(page).partnerBlocks"
@@ -688,51 +792,29 @@
       </template>
     </el-dialog>
 
-    <el-dialog
-      v-model="shareDialogOpen"
-      title="共享课表"
-      :width="420"
-      align-center
-      append-to-body
-      class="schedule-themed-dialog"
-      :style="pageStyle"
-    >
-      <template v-if="!shareResult">
-        <p class="share-dialog-copy">分享会保存当前学期的课程、日期、节次和调休安排。读取方无需登录教务系统。</p>
-        <div class="share-preview-line"><span>学期</span><strong>{{ semester || parsed?.currentSemester }}</strong></div>
-        <div class="share-preview-line"><span>课程</span><strong>{{ sharedCourseCount }} 门</strong></div>
-      </template>
-      <template v-else>
-        <p class="share-dialog-copy">分享已生成。链接包含发布时的课表和校历快照；课表有变化时再生成一次，链接不变、内容更新。</p>
-        <div class="share-code">{{ shareResult.code }}</div>
-        <el-input :model-value="shareUrl" readonly />
-      </template>
-      <template #footer>
-        <el-button data-cpu-button-theme="schedule" @click="shareDialogOpen = false">关闭</el-button>
-        <el-button v-if="shareResult" data-cpu-button-theme="schedule" type="primary" @click="copyShareUrl">复制链接</el-button>
-        <el-button v-else data-cpu-button-theme="schedule" type="primary" :loading="shareCreating" @click="createShare">生成分享链接</el-button>
-      </template>
-    </el-dialog>
+    <ScheduleSharingDialog
+      v-model="sharingDialogOpen"
+      :semester="shareSemester"
+      :semester-label="shareSemesterLabel"
+      :signed-in="auth.isLoggedIn"
+      :can-publish="canPublishShare"
+      :build-body="buildShareBody"
+      :page-style="pageStyle"
+      @open="openSharedSchedule"
+    />
 
     <CoupleDialog :couple="couple" :page-style="pageStyle" :initial-code="coupleInviteCode" @changed="onCoupleStatusChanged" />
 
-    <el-dialog
-      v-model="partnerCourseOpen"
-      :title="partnerCourse?.course.name || 'TA 的课'"
-      :width="340"
-      align-center
-      append-to-body
-      class="schedule-themed-dialog"
-      :style="pageStyle"
-    >
-      <template v-if="partnerCourse">
-        <div class="share-preview-line"><span>谁的课</span><strong>{{ couple.status.value?.status === "active" ? couple.status.value.partner.nickname : "TA" }}</strong></div>
-        <div class="share-preview-line"><span>时间</span><strong>{{ partnerCourseTime }}</strong></div>
-        <div v-if="partnerCourse.course.location" class="share-preview-line"><span>地点</span><strong>{{ partnerCourse.course.location }}</strong></div>
-        <div v-if="partnerCourse.course.teacher" class="share-preview-line"><span>老师</span><strong>{{ partnerCourse.course.teacher }}</strong></div>
-        <div v-if="partnerCourse.course.weeks" class="share-preview-line"><span>周次</span><strong>{{ partnerCourse.course.weeks }}</strong></div>
-      </template>
-    </el-dialog>
+    <CourseQuickLook
+      :block="quickLook?.block ?? null"
+      :schedule-line="quickLookLine"
+      :accent="quickLookAccent"
+      :can-edit="quickLook?.canEdit ?? false"
+      :owner-label="quickLook?.ownerLabel ?? ''"
+      :page-style="pageStyle"
+      @close="quickLook = null"
+      @edit="editQuickLookCourse"
+    />
 
     <Teleport to="body">
       <Transition name="course-editor">
@@ -740,7 +822,7 @@
           <section class="course-editor-panel" role="dialog" aria-modal="true">
             <header class="course-editor-nav">
               <button type="button" :disabled="courseEditBusy" @click="closeCourseEditor">取消</button>
-              <h2>{{ editingCourseBlock ? "修改课程" : "添加课程" }}</h2>
+              <h2>{{ editingCourseBlock ? "编辑课程" : "添加课程" }}</h2>
               <button type="button" class="primary" :disabled="courseEditBusy" @click="saveCourseEdit()">
                 {{ courseEditAction === "save" ? "保存中" : "保存" }}
               </button>
@@ -783,45 +865,80 @@
                 </div>
               </div>
 
-              <section class="editor-card">
-                <label class="editor-row">
-                  <span>周数</span>
-                  <select v-model="customCourseForm.weekMode" :disabled="courseEditBusy">
-                    <option value="current">本周</option>
-                    <option value="all">全部周</option>
-                    <option value="custom">指定周次</option>
-                  </select>
-                </label>
-                <div v-if="customCourseForm.weekMode === 'custom'" class="editor-week-picker">
-                  <span>指定周</span>
-                  <div class="week-chip-grid">
-                    <button
-                      v-for="w in weekNumberOptions"
-                      :key="w"
-                      type="button"
-                      :class="{ active: customCourseForm.weekList.includes(w) }"
-                      :disabled="courseEditBusy"
-                      @click="toggleCustomWeek(w)"
-                    >
-                      {{ w }}
-                    </button>
-                  </div>
+              <template v-for="(arrangement, index) in editorArrangements" :key="arrangement.id">
+                <div v-if="editorArrangements.length > 1" class="editor-arrangement-head">
+                  <span>上课时间 {{ index + 1 }}</span>
+                  <button v-if="index > 0" type="button" class="danger" :disabled="courseEditBusy" @click="removeArrangement(arrangement.id)">移除</button>
                 </div>
-                <label class="editor-row">
-                  <span>星期</span>
-                  <select v-model.number="customCourseForm.day" :disabled="courseEditBusy">
-                    <option v-for="d in 7" :key="d" :value="d">{{ dayLabel(d) }}</option>
-                  </select>
-                </label>
-                <div class="editor-row">
-                  <span>时间</span>
-                  <div class="slot-range-input">
-                    <input v-model.number="customCourseForm.startSlot" type="number" min="1" :max="MAX_SMALL_SLOT" :disabled="courseEditBusy" />
-                    <em>-</em>
-                    <input v-model.number="customCourseForm.endSlot" type="number" :min="customCourseForm.startSlot" :max="MAX_SMALL_SLOT" :disabled="courseEditBusy" />
-                    <b>节</b>
+                <section class="editor-card">
+                  <label class="editor-row">
+                    <span>周数</span>
+                    <select v-model="arrangement.weekMode" :disabled="courseEditBusy" @change="onArrangementWeekModeChange(arrangement)">
+                      <option value="current">本周</option>
+                      <option value="all">全部周</option>
+                      <option value="custom">指定周次</option>
+                    </select>
+                  </label>
+                  <div v-if="arrangement.weekMode === 'custom'" class="editor-week-picker">
+                    <span>指定周</span>
+                    <div class="week-chip-grid">
+                      <button
+                        v-for="w in weekNumberOptions"
+                        :key="w"
+                        type="button"
+                        :class="{ active: arrangement.weekList.includes(w) }"
+                        :disabled="courseEditBusy"
+                        @click="toggleArrangementWeek(arrangement, w)"
+                      >
+                        {{ w }}
+                      </button>
+                    </div>
                   </div>
-                </div>
+                  <label class="editor-row">
+                    <span>星期</span>
+                    <select v-model.number="arrangement.day" :disabled="courseEditBusy">
+                      <option v-for="d in 7" :key="d" :value="d">{{ dayLabel(d) }}</option>
+                    </select>
+                  </label>
+                  <div class="editor-week-picker editor-slot-picker">
+                    <span>节次</span>
+                    <div>
+                      <div class="week-chip-grid">
+                        <button
+                          v-for="slot in smallSlots"
+                          :key="slot.no"
+                          type="button"
+                          :class="{ active: arrangement.slots.includes(slot.no) }"
+                          :disabled="courseEditBusy"
+                          :aria-label="`第 ${slot.no} 节，${slot.start} 至 ${slot.end}`"
+                          :aria-pressed="arrangement.slots.includes(slot.no)"
+                          @click="toggleArrangementSlot(arrangement, slot.no)"
+                        >
+                          {{ slot.no }}
+                        </button>
+                      </div>
+                      <p class="editor-slot-summary">{{ arrangementSlotSummary(arrangement.slots) }}</p>
+                    </div>
+                  </div>
+                </section>
+                <!-- 只是提示：时间重叠的课程照样可以保存。 -->
+                <p v-if="arrangementConflictNames(arrangement).length" class="editor-conflict">
+                  <el-icon><WarningFilled /></el-icon>与「{{ arrangementConflictNames(arrangement).join("」「") }}」时间重叠
+                </p>
+              </template>
+
+              <button type="button" class="editor-add-arrangement" :disabled="courseEditBusy" @click="addArrangement">
+                <el-icon><CirclePlus /></el-icon>添加上课时间
+              </button>
+
+              <section v-if="editorOverlappingNames.length || editorPreferred" class="editor-card editor-priority-card">
+                <label class="editor-switch-row">
+                  <span>
+                    <b>优先显示这门课</b>
+                    <small>{{ editorPriorityHint }}</small>
+                  </span>
+                  <el-switch v-model="editorPreferred" :disabled="courseEditBusy" />
+                </label>
               </section>
 
               <section v-if="hiddenCourseItems.length" class="editor-card hidden-restore-card">
@@ -845,9 +962,8 @@ import ScheduleCourseStatus from "@/components/jwxt/ScheduleCourseStatus.vue";
 import { computed, h, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { Aim, ArrowLeft, ArrowRight, Download, InfoFilled, Iphone, Lock, Moon, MoreFilled, Picture, QuestionFilled, Refresh, Share, Tools } from "@element-plus/icons-vue";
+import { Aim, ArrowLeft, ArrowRight, Brush, Calendar, CirclePlus, Download, InfoFilled, Iphone, Lock, Moon, MoreFilled, Picture, Plus, QuestionFilled, Refresh, Share, Tools, WarningFilled } from "@element-plus/icons-vue";
 import { jwxtApi } from "@/api/jwxt";
-import { scheduleShareApi, type ScheduleShare } from "@/api/scheduleShares";
 import { syncCoupleScheduleIfBound } from "@/views/schedule/coupleSync";
 import { coupleCourseTone } from "@/views/schedule/couple";
 import { useCoupleOverlay } from "@/views/schedule/useCoupleOverlay";
@@ -887,12 +1003,52 @@ import {
 } from "@/components/jwxt/scheduleTheme";
 import {
   courseEditKey,
+  createCustomCourseId,
   emptyScheduleEdits,
   applyScheduleEditsToCells,
   normalizeScheduleEditsState,
   keepScheduleCourseAsCustom,
   type ScheduleEditState,
 } from "@/utils/scheduleEdits";
+import CourseQuickLook from "@/views/schedule/CourseQuickLook.vue";
+import ScheduleMonthView from "@/views/schedule/ScheduleMonthView.vue";
+import ScheduleSharingDialog from "@/views/schedule/ScheduleSharingDialog.vue";
+import ScheduleStylePicker from "@/views/schedule/ScheduleStylePicker.vue";
+import StyledDayView from "@/views/schedule/StyledDayView.vue";
+import StyledWeekGrid from "@/views/schedule/StyledWeekGrid.vue";
+import {
+  arrangementConflicts,
+  arrangementCustomItems,
+  arrangementSlotSummary,
+  type CourseArrangement,
+} from "@/views/schedule/arrangements";
+import {
+  normalizeSchedulePriority,
+  placeCourseBlocks,
+  schedulePriorityValue,
+  withCoursePreferred,
+  type PlacedCourseBlock,
+  type SchedulePriorityMap,
+} from "@/views/schedule/displayPriority";
+import { buildWeekIcs, saveWeekIcs, weekIcsFileName } from "@/views/schedule/icsExport";
+import { buildDateIndex, buildMonthDays, calendarMonths, monthKeyOf } from "@/views/schedule/monthModel";
+import { blockScheduleLine, formatClock, nowRowPosition, shanghaiMinutes } from "@/views/schedule/nowIndicator";
+import {
+  DEFAULT_SCHEDULE_STYLE,
+  readStoredScheduleStyle,
+  rgbToCss,
+  scheduleStyleCanvas,
+  scheduleStyleCourseTone,
+  scheduleStyleCssVars,
+  scheduleStyleOptions,
+  writeStoredScheduleStyle,
+  type ScheduleStyleKey,
+} from "@/views/schedule/scheduleStyle";
+import { withOwnCourseNotes } from "@/views/schedule/ownNotes";
+import { SCHEDULE_THEME_STORAGE_KEY, scheduleSurfaceCssVars } from "@/views/schedule/pageVars";
+import { buildSharePublishBody } from "@/views/schedule/sharedSchedules";
+import type { StyledDay, TileOwner, TileToneResolver } from "@/views/schedule/styledTypes";
+import { useSharedSchedules } from "@/views/schedule/useSharedSchedules";
 import {
   buildScheduleCacheKey,
   clearSemesterScheduleCache,
@@ -909,9 +1065,7 @@ import {
   writeStoredLastState,
 } from "@/views/schedule/cache";
 import {
-  buildCustomCourseItem,
   createCustomCourseForm,
-  customCourseWeekList as resolveCustomCourseWeekList,
   deleteCourseEdit,
   fillFormForExistingCourse,
   fillFormForNewCourse,
@@ -919,7 +1073,6 @@ import {
   restoreHiddenCourseEdit,
   restoreOriginalCourseEdit,
   saveCustomCourseEdit,
-  toggleCustomCourseWeek as toggleCustomCourseWeekSelection,
   type CourseEditAction,
 } from "@/views/schedule/courseEditor";
 import {
@@ -932,6 +1085,7 @@ import {
   resolveGraduateActiveDay,
   resolveGraduateInitialWeek,
   resolveScheduleCurrentWeek,
+  todayKey,
 } from "@/views/schedule/calendar";
 import { buildScriptableWidgetScript } from "@/views/schedule/scriptableWidget";
 import { resolveSwipeIntent, type SwipeIntent } from "@/views/schedule/swipeGesture";
@@ -976,8 +1130,23 @@ const calendar = ref<CalendarResult | null>(null);
 const semester = ref("");
 const week = ref("");
 const activeDay = ref(dayOfWeek());
-const viewMode = ref<ViewMode>(DEFAULT_SCHEDULE_VIEW_MODE);
+// 日视图和周视图按节次画网格，月视图是一张日历；这一页自己记着第三种。
+type PageViewMode = ViewMode | "month";
+const viewMode = ref<PageViewMode>(DEFAULT_SCHEDULE_VIEW_MODE);
 const scheduleTheme = ref<ScheduleThemeKey>(DEFAULT_SCHEDULE_THEME);
+// 课表风格和课程配色、深浅色无关：切换它不动课程数据、所选周次或编辑权限。
+const scheduleStyle = ref<ScheduleStyleKey>(DEFAULT_SCHEDULE_STYLE);
+// 重叠课程的显示优先级，课程名 → 正整数，和课表编辑一起读取和保存。
+const schedulePriority = ref<SchedulePriorityMap>({});
+// 读到过服务端的优先级之后保存时才带上这个字段；没读到就不带，服务端会沿用已保存的。
+let schedulePriorityKnown = false;
+// 「现在」每隔一会儿更新一次，用来画当前时间线和上课状态。
+const nowMinutes = ref<number | null>(shanghaiMinutes());
+const todayYmd = ref(todayKey());
+let nowTimer = 0;
+// 月视图显示的月份（yyyy-MM）和选中的那一天。
+const monthKey = ref("");
+const monthSelectedDate = ref("");
 const loading = ref(false);
 const offlineMode = ref(typeof navigator !== "undefined" ? navigator.onLine === false : false);
 const scheduleSavedAt = ref(0);
@@ -987,7 +1156,7 @@ const viewportWidth = ref(0);
 const touchLikeViewport = ref(false);
 const compactViewport = ref(false);
 // v2 intentionally resets earlier saved choices once so everyone sees the new colorful default.
-const THEME_KEY = "cpu-schedule-theme-v2";
+const THEME_KEY = SCHEDULE_THEME_STORAGE_KEY;
 const GRAD_DEBUG_URL = "http://ygl.cpu.edu.cn/gmis5/oauthLogin/zgyk";
 const GRAD_DEBUG_FIXTURE_PATH = "server/.debug/grad-schedule.html";
 const scheduleCacheStore = reactive(new Map<string, CacheEnvelope<ScheduleResult>>());
@@ -1011,7 +1180,7 @@ const isAndroidScheduleApp = isAndroidNativeApp() && !isFlutterNativeShell();
 const isDev = computed(() => import.meta.env.DEV);
 let scheduleEditsSaveTimer = 0;
 let scheduleEditsLoadPromise: Promise<void> | null = null;
-let pendingScheduleEditsSave: { semester: string; edits: ScheduleEditState } | null = null;
+let pendingScheduleEditsSave: { semester: string; edits: ScheduleEditState & { priority?: SchedulePriorityMap } } | null = null;
 const editDialogOpen = ref(false);
 const customCourseForm = reactive(createCustomCourseForm(dayOfWeek()));
 const editingCourseBlock = ref<WeekCourseBlock | null>(null);
@@ -1019,9 +1188,9 @@ const editingCourseKey = ref("");
 const editingWeekValue = ref("");
 const courseEditAction = ref<CourseEditAction>("");
 const courseEditBusy = computed(() => courseEditAction.value !== "");
-const shareDialogOpen = ref(false);
-const shareCreating = ref(false);
-const shareResult = ref<ScheduleShare | null>(null);
+const sharing = useSharedSchedules();
+const sharingDialogOpen = ref(false);
+watch(() => auth.user?.id, (id) => sharing.adoptAccount(id), { immediate: true });
 const widgetCurrentWeekIntentPending = ref(false);
 let scheduleMounted = false;
 let widgetCurrentCalendarPromise: Promise<void> | null = null;
@@ -1136,7 +1305,7 @@ const graduateSourceMeta = ref<{
 } | null>(null);
 const scheduleSource = ref<"jwxt" | "graduate" | "graduate-debug">("jwxt");
 const moreMenuOpen = ref(false);
-const moreMenuView = ref<"menu" | "theme" | "background">("menu");
+const moreMenuView = ref<"menu" | "style" | "theme" | "background">("menu");
 const widgetConfigCopying = ref(false);
 const widgetConfigCopied = ref(false);
 const widgetInstalling = ref(false);
@@ -1746,6 +1915,10 @@ onMounted(() => {
   scheduleMounted = true;
   syncNetworkStatus();
   restoreScheduleTheme();
+  scheduleStyle.value = readStoredScheduleStyle();
+  tickNow();
+  nowTimer = window.setInterval(tickNow, 20000);
+  document.addEventListener("visibilitychange", tickNow);
 
   // 缓存恢复必须发生在图片、会话和网络工作之前，保证课表首帧不被任何异步步骤阻塞。
   restoreLastState();
@@ -1820,6 +1993,9 @@ onBeforeUnmount(() => {
   androidWidgetSyncTimer = 0;
   if (coupleSyncTimer) window.clearTimeout(coupleSyncTimer);
   coupleSyncTimer = 0;
+  if (nowTimer) window.clearInterval(nowTimer);
+  nowTimer = 0;
+  document.removeEventListener("visibilitychange", tickNow);
   semesterLoader.clear();
   scheduleMounted = false;
   scheduleRequestSeq += 1;
@@ -1844,8 +2020,6 @@ const semesters = computed(() => parsed.value?.semesters ?? []);
 const weeks = computed(() => parsed.value?.weeks ?? []);
 const currentWeekInfo = computed(() => weekInfoFor(currentWeekValue()));
 const currentWeekRange = computed(() => weekRangeFor(currentWeekValue()));
-const sharedCourseCount = computed(() => (parsed.value?.cells ?? []).reduce((sum, cell) => sum + cell.courses.length, 0));
-const shareUrl = computed(() => shareResult.value ? `${window.location.origin}/schedule/share/${shareResult.value.code}` : "");
 const dayTabs = computed(() => dayTabsForWeek(currentWeekValue()));
 const activeDayLabel = computed(() => dayTabs.value.find((d) => d.day === activeDay.value)?.label ?? "今日");
 const activeWeekNumber = computed(() => {
@@ -1856,6 +2030,7 @@ const currentThemePreview = computed(() => (
   scheduleThemeOptions.find((item) => item.key === scheduleTheme.value)?.preview ?? scheduleThemeOptions[0]?.preview ?? "#22c55e"
 ));
 const isViewingToday = computed(() => {
+  if (viewMode.value === "month") return monthSelectedDate.value === todayYmd.value;
   const cur = resolveScheduleCurrentWeek(calendar.value, parsed.value);
   if (!cur || String(cur) !== currentWeekValue()) return false;
   return viewMode.value === "week" || activeDay.value === dayOfWeek();
@@ -1868,34 +2043,23 @@ const scheduleHasBottomTabbar = computed(() => {
 const showScheduleExitButton = computed(() => !scheduleHasBottomTabbar.value);
 const pageStyle = computed(() => ({
   ...scheduleThemeCssVars(scheduleTheme.value),
-  ...(appearance.isDark ? {
-    ...scheduleThemeDarkCssVars(scheduleTheme.value),
-    "--schedule-page-bg": "linear-gradient(180deg, #12231f 0%, #162d27 48%, #101c19 100%)",
-    "--schedule-bg-overlay": hasScheduleBackground.value
-      ? `rgba(11, 27, 24, ${Math.max(0.22, scheduleBackground.overlayOpacity * 0.58)})`
-      : "rgba(11, 27, 24, 0.78)",
-    "--schedule-surface-bg": hasScheduleBackground.value ? "rgba(26, 41, 37, 0.62)" : "rgba(26, 41, 37, 0.94)",
-    "--schedule-surface-bg-soft": hasScheduleBackground.value ? "rgba(32, 49, 44, 0.68)" : "rgba(32, 49, 44, 0.88)",
-    "--schedule-text": "#eef8f5",
-    "--schedule-text-secondary": "#abc5be",
-    "--schedule-text-muted": "#819d95",
-    "--schedule-border": "rgba(163, 186, 179, 0.28)",
-    "--schedule-cell-bg": "rgba(30, 48, 43, 0.52)",
-    "--schedule-cell-bg-strong": "rgba(38, 58, 52, 0.68)",
-    "--schedule-cell-border": "rgba(163, 186, 179, 0.20)",
-    "--schedule-panel-shadow": "0 14px 34px rgba(0, 0, 0, 0.22)",
-  } : {
-    "--schedule-bg-overlay": `rgba(248, 251, 255, ${hasScheduleBackground.value ? scheduleBackground.overlayOpacity : 0.84})`,
-    "--schedule-surface-bg": hasScheduleBackground.value ? "rgba(255, 255, 255, 0.60)" : "#ffffff",
-    "--schedule-surface-bg-soft": hasScheduleBackground.value ? "rgba(255, 255, 255, 0.72)" : "#f9fafb",
-    "--schedule-text": "#172033",
-    "--schedule-text-secondary": "#667085",
-    "--schedule-text-muted": "#8a94a6",
-    "--schedule-border": "#dde4ee",
-    "--schedule-cell-bg": "rgba(255, 255, 255, 0.36)",
-    "--schedule-cell-bg-strong": "rgba(255, 255, 255, 0.56)",
-    "--schedule-cell-border": "rgba(218, 227, 239, 0.82)",
-    "--schedule-panel-shadow": "0 10px 24px rgba(24, 34, 51, 0.08)",
+  ...(appearance.isDark ? scheduleThemeDarkCssVars(scheduleTheme.value) : {}),
+  ...scheduleSurfaceCssVars({
+    dark: appearance.isDark,
+    hasBackground: hasScheduleBackground.value,
+    overlayOpacity: scheduleBackground.overlayOpacity,
+  }),
+  // 素笺和站牌自带页面色；设了背景图就让位给图片。
+  ...(styleCanvasCss.value ? {
+    "--schedule-page-bg": styleCanvasCss.value,
+    "--schedule-bg-overlay": styleCanvasCss.value,
+  } : {}),
+  ...scheduleStyleCssVars({
+    style: scheduleStyle.value,
+    palette: scheduleTheme.value,
+    dark: appearance.isDark,
+    hasBackground: hasScheduleBackground.value,
+    backgroundVisibility: backgroundVisibility.value / 100,
   }),
   "--schedule-bg-image": hasScheduleBackground.value ? `url("${scheduleBackground.imageDataUrl}")` : "none",
   "--schedule-bg-blur": `${scheduleBackground.blur}px`,
@@ -2000,13 +2164,23 @@ let scheduleRequestSeq = 0;
 let foregroundScheduleRequestSeq = 0;
 let disposed = false;
 const activePageScrollKey = computed(() => (
-  viewMode.value === "week"
-    ? `week:${currentWeekValue()}`
-    : `day:${currentWeekValue()}:${activeDay.value}`
+  viewMode.value === "month"
+    ? `month:${monthKey.value}`
+    : viewMode.value === "week"
+      ? `week:${currentWeekValue()}`
+      : `day:${currentWeekValue()}:${activeDay.value}`
 ));
 const carouselPages = computed<SchedulePageModel[]>(() => {
   const deltas = useStaticWeekSwipe.value ? [0] : [-1, 0, 1];
-  return deltas.map((delta) => (viewMode.value === "week" ? weekPageModel(delta) : dayPageModel(delta)));
+  return deltas.map((delta) => {
+    const page = viewMode.value === "week" ? weekPageModel(delta) : dayPageModel(delta);
+    // 合并连续节次时备注会被换成节次范围；把自己写的备注放回去，给速览和编辑器用。
+    return {
+      ...page,
+      weekCourseBlocks: withOwnCourseNotes(page.weekCourseBlocks, scheduleEdits.value),
+      dayCourseBlocks: withOwnCourseNotes(page.dayCourseBlocks, scheduleEdits.value),
+    };
+  });
 });
 
 // 情侣课表叠加层：TA 的课按日期对齐到当前网格，见 docs/couple-schedule.md。
@@ -2071,25 +2245,14 @@ const coupleBarText = computed(() => {
     case "done": return `${name} 今天的课都上完了`;
   }
 });
-const partnerCourseOpen = ref(false);
-const partnerCourse = ref<WeekCourseBlock | null>(null);
-const partnerCourseTime = computed(() => {
-  const block = partnerCourse.value;
-  if (!block) return "";
-  const first = smallSlots.find((slot) => slot.no === block.startSlot);
-  const last = smallSlots.find((slot) => slot.no === block.endSlot);
-  const time = block.course.customStartTime && block.course.customEndTime
-    ? `${block.course.customStartTime}-${block.course.customEndTime}`
-    : first && last ? `${first.start}-${last.end}` : "";
-  return [`${dayLabel(block.day)} ${block.startSlot}-${block.endSlot} 节`, time].filter(Boolean).join(" · ");
-});
-function onPartnerCourseClick(event: MouseEvent, block: WeekCourseBlock) {
+function onPartnerCourseClick(event: Event, block: WeekCourseBlock) {
   if (dragState.suppressClick || dragState.dragging || dragState.settling) {
     event.preventDefault();
     return;
   }
-  partnerCourse.value = block;
-  partnerCourseOpen.value = true;
+  const value = couple.status.value;
+  const name = value?.status === "active" ? value.partner.nickname || "TA" : "TA";
+  openQuickLook(block, currentWeekValue(), { ownerLabel: `${name} 的课`, canEdit: false });
 }
 function openCoupleDialog(code = "") {
   moreMenuOpen.value = false;
@@ -2189,43 +2352,40 @@ async function manualRefreshSchedule() {
   }
 }
 
-function openShareDialog() {
-  shareResult.value = null;
-  shareDialogOpen.value = true;
+const shareSemester = computed(() => semester.value || parsed.value?.currentSemester || "");
+const shareSemesterLabel = computed(() => (
+  semesters.value.find((item) => item.value === shareSemester.value)?.label?.trim() || shareSemester.value || "当前学期"
+));
+const canPublishShare = computed(() => Boolean(
+  parsed.value && calendar.value?.weeks?.length && scheduleSource.value !== "graduate-debug",
+));
+
+function openSharingDialog() {
+  sharing.adoptAccount(auth.user?.id);
+  sharingDialogOpen.value = true;
 }
 
-async function createShare() {
-  if (!parsed.value || !calendar.value || shareCreating.value) return;
-  shareCreating.value = true;
-  try {
-    await loadScheduleEdits();
-    let source = parsed.value;
-    // The normal page request is weekly for fast navigation. A share must be
-    // semester-complete so the reader can move through every teaching week.
-    if (scheduleSource.value === "jwxt" && source.scope !== "semester") {
-      source = await loadSemesterCompleteSchedule(semester.value || source.currentSemester);
-    }
-    const schedule: ScheduleResult = {
-      ...source,
-      cells: applyScheduleEditsToCells(source.cells, scheduleEdits.value),
-    };
-    shareResult.value = await scheduleShareApi.create({
-      semester: semester.value || parsed.value.currentSemester,
-      schedule,
-      calendar: calendar.value,
-    });
-    await copyText(`${window.location.origin}/schedule/share/${shareResult.value.code}`);
-    // 每个学期只有一个分享码：再次生成是更新它的内容，链接不变。
-    ElMessage.success(
-      shareResult.value.created === false
-        ? (shareResult.value.changed ? "课表已更新，分享链接不变，已复制" : "分享内容已是最新，链接已复制")
-        : "分享链接已生成并复制",
-    );
-  } catch {
-    ElMessage.warning("分享课表失败，请稍后重试");
-  } finally {
-    shareCreating.value = false;
+function openSharedSchedule(code: string) {
+  void router.push(`/schedule/share/${code}`);
+}
+
+async function buildShareBody() {
+  if (!parsed.value || !calendar.value) throw new Error("课表还没有加载完，请刷新课表后再试");
+  await loadScheduleEdits();
+  let source = parsed.value;
+  // The normal page request is weekly for fast navigation. A share must be
+  // semester-complete so the reader can move through every teaching week.
+  if (scheduleSource.value === "jwxt" && source.scope !== "semester") {
+    source = await loadSemesterCompleteSchedule(semester.value || source.currentSemester);
   }
+  const body = buildSharePublishBody({
+    semester: semester.value || parsed.value.currentSemester,
+    schedule: { ...source, cells: applyScheduleEditsToCells(source.cells, scheduleEdits.value) },
+    calendar: calendar.value,
+    ownerName: auth.user?.nickname,
+  });
+  if (!body.schedule.cells.length) throw new Error("这个学期没有课程，没有可以分享的内容");
+  return body;
 }
 
 async function loadSemesterCompleteSchedule(targetSemester: string) {
@@ -2234,12 +2394,6 @@ async function loadSemesterCompleteSchedule(targetSemester: string) {
     { silent: true },
   ));
   return all.parsed;
-}
-
-async function copyShareUrl() {
-  if (!shareUrl.value) return;
-  await copyText(shareUrl.value);
-  ElMessage.success("分享链接已复制");
 }
 
 async function loadSchedule(force = false, background = false) {
@@ -2330,6 +2484,10 @@ const canJumpToCurrentWeek = computed(() => {
 });
 
 async function jumpToToday() {
+  if (viewMode.value === "month") {
+    selectMonthDate(todayKey(), true);
+    return;
+  }
   if (viewMode.value === "week") {
     await jumpToCurrentWeek();
     return;
@@ -2407,12 +2565,22 @@ function onDayClick(day: number) {
   saveLastState();
 }
 
-function setViewMode(mode: ViewMode) {
+function setViewMode(mode: PageViewMode) {
+  if (mode === "month" && viewMode.value !== "month") enterMonthView();
+  // 从月视图回到日视图或周视图时，停在月历上选中的那一天所在的周。
+  const selected = mode !== "month" && viewMode.value === "month" ? dateIndex.value.get(monthSelectedDate.value) : undefined;
   viewMode.value = mode;
+  if (selected) {
+    activeDay.value = selected.day;
+    if (String(selected.week) !== week.value) {
+      selectWeek(selected.week);
+      activeDay.value = selected.day;
+    }
+  }
   saveLastState();
 }
 
-function onCourseBlockClick(event: MouseEvent, block: WeekCourseBlock, targetWeek = week.value) {
+function onCourseBlockClick(event: Event, block: WeekCourseBlock, targetWeek = week.value) {
   if (dragState.suppressClick || dragState.dragging || dragState.settling) {
     event.preventDefault();
     event.stopPropagation();
@@ -2423,8 +2591,7 @@ function onCourseBlockClick(event: MouseEvent, block: WeekCourseBlock, targetWee
     week.value = targetWeek;
     saveLastState();
   }
-  if (!ensureScheduleEditEnabled()) return;
-  openCourseEditor(block, targetWeek);
+  openQuickLook(block, targetWeek);
 }
 
 function onWeekSlotClick(event: MouseEvent, day: number, slot: number, targetWeek = week.value) {
@@ -2938,6 +3105,8 @@ async function openAddCourse(day = activeDay.value, slot = 1, targetWeek = curre
     activeWeekNumber: activeWeekNumber.value,
     currentWeek: week.value,
   });
+  resetEditorArrangements();
+  editorPreferred.value = false;
   editDialogOpen.value = true;
 }
 
@@ -2949,6 +3118,8 @@ async function openCourseEditor(block: WeekCourseBlock, targetWeek = currentWeek
   editingCourseKey.value = courseEditKey(block.day, block.bigSlot, block.course);
   editingWeekValue.value = String(targetWeek || currentWeekValue());
   fillFormForExistingCourse(customCourseForm, block, courseEditorWeekContext());
+  resetEditorArrangements();
+  editorPreferred.value = schedulePriorityValue(block.course.name, schedulePriority.value) > 0;
   editDialogOpen.value = true;
 }
 
@@ -2959,34 +3130,68 @@ function saveCourseEdit(keepAsCustom = false) {
     showEditorMessage("warning", "请填写课程名称");
     return;
   }
-  const weekList = customCourseWeekList();
-  if (customCourseForm.weekMode === "custom" && !weekList.length) {
-    showEditorMessage("warning", "请选择周次");
-    return;
+  const drafts = editorArrangements.value;
+  const resolved: CourseArrangement[] = [];
+  for (const [index, draft] of drafts.entries()) {
+    const title = drafts.length > 1 ? `上课时间 ${index + 1}：` : "";
+    const slots = draft.slots.filter((slot) => slot >= 1 && slot <= MAX_SMALL_SLOT);
+    if (!slots.length) {
+      showEditorMessage("warning", `${title}请选择至少一节`);
+      return;
+    }
+    const weekList = arrangementWeekList(draft);
+    if (draft.weekMode === "custom" && !weekList.length) {
+      showEditorMessage("warning", `${title}请选择周次`);
+      return;
+    }
+    resolved.push({ day: draft.day, slots, weekList });
   }
+  if (!resolved.length) return;
   courseEditAction.value = "save";
   try {
-    const existing = editingCourseBlock.value?.course.customId
-      ? scheduleEdits.value.custom.find((item) => item.id === editingCourseBlock.value?.course.customId)
-      : null;
-    const { item } = buildCustomCourseItem(customCourseForm, {
-      weekList,
-      existing,
-      editingCourseKey: editingCourseKey.value,
-    });
     const editingBlock = editingCourseBlock.value;
-    if (editingBlock && isOriginalCourseEditUnchanged(editingBlock, item, weekNumberOptions.value)) {
+    const existing = editingBlock?.course.customId
+      ? scheduleEdits.value.custom.find((item) => item.id === editingBlock.course.customId)
+      : null;
+    // 第一段保留正在编辑的那一块的身份；其余每一段都按同一门课存成普通的自定义条目，
+    // 所以其他客户端不用改就能读。
+    const [primary, ...extras] = arrangementCustomItems({
+      details: {
+        name,
+        teacher: customCourseForm.teacher,
+        location: customCourseForm.location,
+        note: customCourseForm.note,
+      },
+      arrangements: resolved,
+      primaryId: existing?.id || createCustomCourseId(),
+      primarySourceKey: existing ? existing.sourceKey : editingCourseKey.value,
+    });
+    const nextPriority = schedulePriorityKnown
+      ? withCoursePreferred(schedulePriority.value, name, editorPreferred.value)
+      : schedulePriority.value;
+    const priorityChanged = JSON.stringify(nextPriority) !== JSON.stringify(schedulePriority.value);
+    const unchanged = Boolean(editingBlock) && !extras.length
+      && isOriginalCourseEditUnchanged(editingBlock!, primary, weekNumberOptions.value);
+    if (unchanged && !priorityChanged) {
       editDialogOpen.value = false;
       showEditorMessage("success", "课程没有变化，无需保存");
       return;
     }
-    scheduleEdits.value = saveCustomCourseEdit(scheduleEdits.value, item, {
-      editingBlock,
-      editingCourseKey: editingCourseKey.value,
-      courseFamilyKey,
-      courseFamilySourceKeys,
-    });
-    if (keepAsCustom) scheduleEdits.value = keepScheduleCourseAsCustom(scheduleEdits.value, item.id);
+    if (!unchanged) {
+      let next = saveCustomCourseEdit(scheduleEdits.value, primary, {
+        editingBlock,
+        editingCourseKey: editingCourseKey.value,
+        courseFamilyKey,
+        courseFamilySourceKeys,
+      });
+      if (extras.length) {
+        const ids = new Set(extras.map((item) => item.id));
+        next = { ...next, custom: [...next.custom.filter((item) => !ids.has(item.id)), ...extras] };
+      }
+      if (keepAsCustom) next = keepScheduleCourseAsCustom(next, primary.id);
+      scheduleEdits.value = next;
+    }
+    schedulePriority.value = nextPriority;
     persistScheduleEdits();
     editDialogOpen.value = false;
     showEditorMessage("success", keepAsCustom ? "已保留为自定义课程" : editingCourseBlock.value ? "已保存课程" : "已添加到课表");
@@ -3056,15 +3261,6 @@ async function restoreOriginalCourse() {
   }
 }
 
-function customCourseWeekList() {
-  return resolveCustomCourseWeekList(customCourseForm, courseEditorWeekContext());
-}
-
-function toggleCustomWeek(weekNo: number) {
-  if (courseEditBusy.value) return;
-  toggleCustomCourseWeekSelection(customCourseForm, weekNo);
-}
-
 function courseEditorWeekContext() {
   return {
     editingWeekValue: editingWeekValue.value,
@@ -3078,6 +3274,8 @@ function loadScheduleEdits() {
   if (disposed) return Promise.resolve();
   if (!canUseScheduleEdit()) {
     scheduleEdits.value = emptyScheduleEdits();
+    schedulePriority.value = {};
+    schedulePriorityKnown = false;
     return Promise.resolve();
   }
   if (scheduleEditsLoadPromise) return scheduleEditsLoadPromise;
@@ -3087,9 +3285,13 @@ function loadScheduleEdits() {
       const r = await jwxtApi.getScheduleEdits(sem, { silent: true });
       if (disposed) return;
       scheduleEdits.value = normalizeScheduleEditsState(r.edits);
+      schedulePriority.value = normalizeSchedulePriority(r.edits.priority) ?? {};
+      schedulePriorityKnown = true;
     } catch {
       if (disposed) return;
       scheduleEdits.value = emptyScheduleEdits();
+      schedulePriority.value = {};
+      schedulePriorityKnown = false;
     } finally {
       scheduleEditsLoadPromise = null;
     }
@@ -3103,7 +3305,11 @@ function persistScheduleEdits() {
   scheduleEdits.value = normalizeScheduleEditsState(scheduleEdits.value);
   pendingScheduleEditsSave = {
     semester: sem,
-    edits: normalizeScheduleEditsState(scheduleEdits.value),
+    edits: {
+      ...normalizeScheduleEditsState(scheduleEdits.value),
+      // 课表编辑是整份覆盖的：读到过优先级才带上它，没读到就不带，服务端沿用已保存的。
+      ...(schedulePriorityKnown ? { priority: { ...schedulePriority.value } } : {}),
+    },
   };
   if (scheduleEditsSaveTimer) window.clearTimeout(scheduleEditsSaveTimer);
   scheduleEditsSaveTimer = window.setTimeout(() => {
@@ -3163,23 +3369,44 @@ function coupleTone(owner: "me" | "ta", name: string, shared: boolean) {
   return { ...mine, bg: `linear-gradient(120deg, ${mine.bg} 0%, ${mine.bg} 38%, ${theirs.bg} 62%, ${theirs.bg} 100%)` };
 }
 
-function courseBlockStyle(block: WeekCourseBlock, owner: "me" | "ta" = "me", shared = false) {
+type DrawnBlock = WeekCourseBlock | PlacedCourseBlock;
+
+function drawnBlockOf(item: DrawnBlock) {
+  return "block" in item ? item.block : item;
+}
+
+// 并排的重叠课程按所在的道分宽度。双人模式下左右两半已经分给了两个人，不再分道。
+function laneStyle(item: DrawnBlock) {
+  if (!("block" in item) || item.lanes <= 1 || couple.active.value) return {};
+  const share = 100 / item.lanes;
+  return {
+    justifySelf: "start",
+    width: `calc(${share}% - 2px)`,
+    marginLeft: `calc(${share * item.lane}% + 1px)`,
+  };
+}
+
+function courseBlockStyle(item: DrawnBlock, owner: "me" | "ta" = "me", shared = false) {
+  const block = drawnBlockOf(item);
   const colors = coupleTone(owner, block.course.name, shared);
   return {
     gridColumn: `${block.day + 1} / ${block.day + 2}`,
-    gridRow: `${block.startSlot} / ${block.endSlot + 1}`,
+    gridRow: `${item.startSlot} / ${item.endSlot + 1}`,
+    ...laneStyle(item),
     "--course-bg": colors.bg,
     "--course-border": colors.border,
     "--course-text": colors.text,
   };
 }
 
-function dayCourseBlockStyle(block: WeekCourseBlock, owner: "me" | "ta" = "me", shared = false) {
+function dayCourseBlockStyle(item: DrawnBlock, owner: "me" | "ta" = "me", shared = false) {
+  const block = drawnBlockOf(item);
   const colors = coupleTone(owner, block.course.name, shared);
   const coupled = couple.active.value;
   return {
     gridColumn: !coupled ? "2 / 3" : shared ? "2 / 4" : owner === "ta" ? "3 / 4" : "2 / 3",
-    gridRow: `${block.startSlot} / ${block.endSlot + 1}`,
+    gridRow: `${item.startSlot} / ${item.endSlot + 1}`,
+    ...laneStyle(item),
     "--course-bg": colors.bg,
     "--course-border": colors.border,
     "--course-text": colors.text,
@@ -3259,7 +3486,7 @@ function restoreLastState() {
     if (state.week) week.value = state.week;
   }
   if (state.activeDay >= 1 && state.activeDay <= 7) activeDay.value = state.activeDay;
-  viewMode.value = resolveScheduleViewMode(state.viewMode);
+  viewMode.value = (state.viewMode as string) === "month" ? "month" : resolveScheduleViewMode(state.viewMode);
 }
 
 function saveLastState() {
@@ -3267,7 +3494,8 @@ function saveLastState() {
     semester: semester.value,
     week: week.value,
     activeDay: activeDay.value,
-    viewMode: viewMode.value,
+    // 旧版本读到不认识的值会回到周视图。
+    viewMode: viewMode.value as ViewMode,
   });
 }
 
@@ -3336,7 +3564,440 @@ function saveScheduleCache() {
   writeStoredLastScheduleCacheKey(lastKey, key);
 }
 
+// MARK: 课表风格
 
+const currentStyleTitle = computed(() => (
+  scheduleStyleOptions.find((item) => item.key === scheduleStyle.value)?.title ?? "经典"
+));
+// 经典样式保留自己的画法。双人模式的日视图是「我 | TA」两列对照，也沿用经典的网格。
+const usesClassicDay = computed(() => scheduleStyle.value === "classic" || couple.active.value);
+const styleCanvasCss = computed(() => {
+  if (hasScheduleBackground.value) return "";
+  const canvas = scheduleStyleCanvas(scheduleStyle.value, appearance.isDark);
+  return canvas ? rgbToCss(canvas) : "";
+});
+const hasStyleCanvas = computed(() => Boolean(styleCanvasCss.value));
+
+function selectScheduleStyle(value: ScheduleStyleKey) {
+  scheduleStyle.value = value;
+  writeStoredScheduleStyle(value);
+}
+
+// MARK: 现在
+
+function tickNow() {
+  nowMinutes.value = shanghaiMinutes();
+  todayYmd.value = todayKey();
+}
+
+const nowClockText = computed(() => (nowMinutes.value === null ? "" : formatClock(nowMinutes.value)));
+
+/** 经典周视图里「现在」的位置：今天在这一页时才有。 */
+function classicNowFor(page: SchedulePageModel) {
+  if (nowMinutes.value === null) return null;
+  const today = page.dayTabs.find((tab) => tab.isToday);
+  if (!today) return null;
+  const position = nowRowPosition(nowMinutes.value, smallSlots);
+  if (!position) return null;
+  return {
+    column: today.day,
+    row: position.row,
+    style: { top: position.inGap ? "-2px" : `${position.fraction * 100}%` },
+  };
+}
+
+// MARK: 课程排布
+
+// 按显示优先级排好每一页的课程：优先级更高的课盖住它和别的课共用的节次，
+// 优先级相同的并排分道。
+const pagePieces = computed(() => {
+  const pieces = new Map<string, PlacedCourseBlock[]>();
+  for (const page of carouselPages.value) {
+    pieces.set(page.key, placeCourseBlocks(page.weekCourseBlocks, schedulePriority.value));
+  }
+  return pieces;
+});
+
+function piecesFor(page: SchedulePageModel) {
+  return pagePieces.value.get(page.key) ?? [];
+}
+
+function dayPiecesFor(page: SchedulePageModel) {
+  return piecesFor(page).filter((piece) => piece.block.day === page.day);
+}
+
+function pageDate(page: SchedulePageModel, day = page.day) {
+  const value = normalizeCalendarWeekDays(weekInfoFor(page.weekValue)?.days ?? [])[day - 1] ?? "";
+  return /^\d{4}-\d{2}-\d{2}$/u.test(value) ? value : "";
+}
+
+function pageIsToday(page: SchedulePageModel) {
+  return pageDate(page) === todayYmd.value;
+}
+
+function pageIsPast(page: SchedulePageModel) {
+  const date = pageDate(page);
+  return Boolean(date) && date < todayYmd.value;
+}
+
+/** 休息卡下面的说明：放假时写原因。 */
+function dayEmptyNote(page: SchedulePageModel) {
+  const date = pageDate(page);
+  const adjustment = date ? calendar.value?.adjustments?.find((item) => item.date === date) : undefined;
+  if (adjustment?.kind !== "off") return "";
+  return adjustment.note ? `放假：${adjustment.note}` : "这一天放假";
+}
+
+const styledPageDays = computed(() => {
+  const pages = new Map<string, StyledDay[]>();
+  if (scheduleStyle.value === "classic" || viewMode.value !== "week") return pages;
+  const adjustments = calendar.value?.adjustments ?? [];
+  const coupled = couple.active.value;
+  for (const page of carouselPages.value) {
+    const pieces = piecesFor(page);
+    const coupleData = coupleDataFor(page);
+    pages.set(page.key, page.dayTabs.map((tab) => {
+      const rawDate = pageDate(page, tab.day);
+      const adjustment = rawDate ? adjustments.find((item) => item.date === rawDate) : undefined;
+      const own = pieces.filter((piece) => piece.block.day === tab.day);
+      return {
+        day: tab.day,
+        dateText: tab.date,
+        rawDate,
+        isToday: tab.isToday,
+        adjustmentKind: adjustment?.kind ?? null,
+        pieces: own,
+        ...(coupled ? {
+          partnerPieces: placeCourseBlocks(coupleData.partnerBlocks.filter((block) => block.day === tab.day)),
+          sharedIds: new Set(own
+            .filter((piece) => coupleData.shared.has(coupleBlockKey(piece.block)))
+            .map((piece) => piece.id)),
+        } : {}),
+      };
+    }));
+  }
+  return pages;
+});
+
+function styledDaysFor(page: SchedulePageModel) {
+  return styledPageDays.value.get(page.key) ?? [];
+}
+
+// 双人模式按人配色，新样式的网格也用同一套。
+const coupleToneResolver: TileToneResolver = (block, owner, shared) => {
+  if (!couple.active.value || couple.status.value?.status !== "active") return null;
+  const tone = coupleTone(owner, block.course.name, shared);
+  return { accent: tone.text, fill: tone.bg, border: tone.border, accentInverse: tone.text };
+};
+
+function onStyledCourseClick(source: Event, block: WeekCourseBlock, owner: TileOwner, targetWeek: string) {
+  if (owner === "ta") {
+    onPartnerCourseClick(source, block);
+    return;
+  }
+  onCourseBlockClick(source, block, targetWeek);
+}
+
+function onStyledSlotClick(day: number, slot: number, targetWeek: string) {
+  if (dragState.suppressClick || dragState.dragging || dragState.settling) return;
+  if (viewMode.value === "week" && targetWeek && targetWeek !== week.value) {
+    week.value = targetWeek;
+    saveLastState();
+  }
+  if (!ensureScheduleEditEnabled()) return;
+  void openAddCourse(day, slot, targetWeek);
+}
+
+// MARK: 课程速览
+
+const quickLook = ref<{ block: WeekCourseBlock; weekValue: string; canEdit: boolean; ownerLabel: string } | null>(null);
+const quickLookLine = computed(() => (quickLook.value ? blockScheduleLine(quickLook.value.block, smallSlots) : ""));
+const quickLookAccent = computed(() => {
+  const name = quickLook.value?.block.course.name;
+  if (!name) return "var(--schedule-accent)";
+  if (scheduleStyle.value === "classic") {
+    const tone = toneFor(name);
+    return appearance.isDark ? tone.border : tone.text;
+  }
+  return scheduleStyleCourseTone(name, scheduleTheme.value, appearance.isDark).accent;
+});
+
+function openQuickLook(
+  block: WeekCourseBlock,
+  weekValue: string = currentWeekValue(),
+  options: { ownerLabel?: string; canEdit?: boolean } = {},
+) {
+  quickLook.value = {
+    block,
+    weekValue: String(weekValue || currentWeekValue()),
+    canEdit: options.canEdit ?? canUseScheduleEdit(),
+    ownerLabel: options.ownerLabel ?? "",
+  };
+}
+
+function editQuickLookCourse() {
+  const current = quickLook.value;
+  quickLook.value = null;
+  if (current) void openCourseEditor(current.block, current.weekValue);
+}
+
+// MARK: 月视图
+
+const dateIndex = computed(() => buildDateIndex(calendar.value));
+const availableMonths = computed(() => calendarMonths(calendar.value));
+const monthDays = computed(() => {
+  if (viewMode.value !== "month" || !monthKey.value) return [];
+  const byWeek = new Map<number, WeekCourseBlock[]>();
+  return buildMonthDays({
+    monthKey: monthKey.value,
+    calendar: calendar.value,
+    blocksFor: (weekNo, day) => {
+      let blocks = byWeek.get(weekNo);
+      if (!blocks) {
+        blocks = withOwnCourseNotes(weekCourseBlocksFor(weekNo, scheduleForWeek(weekNo)), scheduleEdits.value);
+        byWeek.set(weekNo, blocks);
+      }
+      return blocks.filter((block) => block.day === day);
+    },
+  });
+});
+const monthTitle = computed(() => {
+  const match = monthKey.value.match(/^(\d{4})-(\d{2})$/u);
+  return match ? `${match[1]} 年 ${Number(match[2])} 月` : "--";
+});
+const monthWeekRange = computed(() => {
+  const weekNumbers = monthDays.value.filter((item) => item.inMonth && item.slot).map((item) => item.slot!.week);
+  if (!weekNumbers.length) return "";
+  const first = Math.min(...weekNumbers);
+  const last = Math.max(...weekNumbers);
+  return first === last ? `第 ${first} 周` : `第 ${first}–${last} 周`;
+});
+const canOpenMonthDay = computed(() => dateIndex.value.has(monthSelectedDate.value));
+const todayButtonLabel = computed(() => (
+  viewMode.value === "month" ? "回到今天" : viewMode.value === "week" ? "回到本周" : "跳转到当日"
+));
+
+/** 校历覆盖不到的月份（假期）收回到离它最近的那个月。 */
+function clampMonth(key: string) {
+  const months = availableMonths.value;
+  if (!months.length || months.includes(key)) return key;
+  return key < months[0] ? months[0] : months[months.length - 1];
+}
+
+function selectMonthDate(date: string, follow = false) {
+  const key = monthKeyOf(date);
+  const target = clampMonth(key);
+  if (target !== key) {
+    // 今天不在这个学期里：停在离它最近的月份，不把日期选到学期外面去。
+    if (follow) monthKey.value = target;
+    return;
+  }
+  monthSelectedDate.value = date;
+  monthKey.value = key;
+}
+
+function enterMonthView() {
+  const dates = normalizeCalendarWeekDays(weekInfoFor(currentWeekValue())?.days ?? []);
+  const today = todayKey();
+  const shown = dates[activeDay.value - 1] ?? "";
+  // 从日视图和周视图正在看的那一天开始；正在看的就是本周时从今天开始。
+  const start = dates.includes(today) || !/^\d{4}-\d{2}-\d{2}$/u.test(shown) ? today : shown;
+  monthSelectedDate.value = start;
+  monthKey.value = clampMonth(monthKeyOf(start));
+}
+
+function canChangeMonth(delta: number) {
+  const months = availableMonths.value;
+  const index = months.indexOf(monthKey.value);
+  return index >= 0 && index + delta >= 0 && index + delta < months.length;
+}
+
+function changeMonth(delta: number) {
+  if (!canChangeMonth(delta)) return;
+  const months = availableMonths.value;
+  monthKey.value = months[months.indexOf(monthKey.value) + delta];
+}
+
+function onMonthSelect(date: string) {
+  selectMonthDate(date);
+}
+
+function openMonthDay(date: string) {
+  const slot = dateIndex.value.get(date);
+  if (!slot) return;
+  activeDay.value = slot.day;
+  viewMode.value = "day";
+  if (String(slot.week) === week.value) {
+    saveLastState();
+    return;
+  }
+  selectWeek(slot.week);
+  // 研究生课表在切周时会把日期挪到有课的那天；这里要的是用户点的那一天。
+  activeDay.value = slot.day;
+  saveLastState();
+}
+
+function onMonthCourseClick(_source: Event, block: WeekCourseBlock, date: string) {
+  const slot = dateIndex.value.get(date);
+  openQuickLook(block, slot ? String(slot.week) : currentWeekValue());
+}
+
+// 进到月视图时校历可能还没恢复，换学期后月份也会不在新校历里。
+watch([viewMode, availableMonths], () => {
+  if (viewMode.value !== "month") return;
+  const months = availableMonths.value;
+  if (!monthKey.value || (months.length && !months.includes(monthKey.value))) enterMonthView();
+}, { immediate: true });
+
+// MARK: 导出日历
+
+async function exportWeekCalendarFile() {
+  const weekValue = currentWeekValue();
+  const weekNo = Number(weekValue);
+  const dates = normalizeCalendarWeekDays(weekInfoFor(weekValue)?.days ?? []).slice(0, 7);
+  if (!weekNo || dates.filter((date) => /^\d{4}-\d{2}-\d{2}$/u.test(date)).length < 7) {
+    ElMessage.warning("这一周还没有日期，暂时不能导出");
+    return;
+  }
+  // 用的是课表已经按日期解析好的课程：放假那天没有课，补班那天是它实际上的课。
+  const weekBlocks = withOwnCourseNotes(weekCourseBlocksFor(weekNo, scheduleForWeek(weekValue)), scheduleEdits.value);
+  const blocks = placeCourseBlocks(weekBlocks, schedulePriority.value)
+    .map((piece) => ({ ...piece.block, startSlot: piece.startSlot, endSlot: piece.endSlot }));
+  if (!blocks.length) {
+    ElMessage.info("这一周没有课程，没有可以导出的内容");
+    return;
+  }
+  const content = buildWeekIcs({
+    week: weekNo,
+    days: dates.map((date, index) => ({ date, blocks: blocks.filter((block) => block.day === index + 1) })),
+    clocks: smallSlots,
+  });
+  const result = await saveWeekIcs(content, weekIcsFileName(weekNo));
+  if (result === "downloaded") ElMessage.success(`已导出第 ${weekNo} 周的日历文件，用日历应用打开即可导入`);
+}
+
+// MARK: 编辑器里的上课时间
+
+// 一门课可以有几个上课时间，每个都能选不连续的节次。第一个是正在编辑的那一块。
+interface ArrangementDraft {
+  id: number;
+  day: number;
+  slots: number[];
+  weekMode: "current" | "all" | "custom";
+  weekList: number[];
+}
+
+const editorArrangements = ref<ArrangementDraft[]>([]);
+// 和别的课重叠时把这门课显示在前面。
+const editorPreferred = ref(false);
+let arrangementSeq = 0;
+
+function resetEditorArrangements() {
+  const start = Math.min(customCourseForm.startSlot, customCourseForm.endSlot);
+  const end = Math.max(customCourseForm.startSlot, customCourseForm.endSlot);
+  editorArrangements.value = [{
+    id: arrangementSeq += 1,
+    day: customCourseForm.day,
+    slots: Array.from({ length: end - start + 1 }, (_, index) => start + index),
+    weekMode: customCourseForm.weekMode,
+    weekList: [...customCourseForm.weekList],
+  }];
+}
+
+function addArrangement() {
+  if (courseEditBusy.value) return;
+  const last = editorArrangements.value[editorArrangements.value.length - 1];
+  editorArrangements.value.push({
+    id: arrangementSeq += 1,
+    day: last?.day ?? customCourseForm.day,
+    slots: [],
+    weekMode: last?.weekMode ?? "all",
+    weekList: [...(last?.weekList ?? [])],
+  });
+}
+
+function removeArrangement(id: number) {
+  if (courseEditBusy.value) return;
+  editorArrangements.value = editorArrangements.value.filter((item) => item.id !== id);
+}
+
+function toggleNumber(list: number[], value: number) {
+  const set = new Set(list);
+  if (set.has(value)) set.delete(value);
+  else set.add(value);
+  return [...set].sort((a, b) => a - b);
+}
+
+function toggleArrangementSlot(arrangement: ArrangementDraft, slot: number) {
+  if (courseEditBusy.value) return;
+  arrangement.slots = toggleNumber(arrangement.slots, slot);
+}
+
+function toggleArrangementWeek(arrangement: ArrangementDraft, weekNo: number) {
+  if (courseEditBusy.value) return;
+  arrangement.weekList = toggleNumber(arrangement.weekList, weekNo);
+}
+
+function editorCurrentWeek() {
+  return Number(editingWeekValue.value || activeWeekNumber.value || week.value) || 1;
+}
+
+function onArrangementWeekModeChange(arrangement: ArrangementDraft) {
+  if (arrangement.weekMode === "all") arrangement.weekList = [...weekNumberOptions.value];
+  else if (arrangement.weekMode === "current") arrangement.weekList = [editorCurrentWeek()];
+}
+
+function arrangementWeekList(arrangement: ArrangementDraft) {
+  if (arrangement.weekMode === "all") return [...weekNumberOptions.value];
+  if (arrangement.weekMode === "custom") {
+    return [...new Set(arrangement.weekList.map(Number).filter(Boolean))].sort((a, b) => a - b);
+  }
+  return [editorCurrentWeek()];
+}
+
+// 用来找重叠的课：有整学期课表就用整学期的，否则用屏幕上这一周的。
+const editorConflictCells = computed<ScheduleCell[]>(() => {
+  if (!editDialogOpen.value) return [];
+  const complete = scheduleCacheStore.get(scheduleCacheKey(semester.value || parsed.value?.currentSemester, "all"))?.data;
+  const source = parsed.value?.scope === "semester"
+    ? parsed.value
+    : complete?.scope === "semester" ? complete : parsed.value;
+  return applyScheduleEditsToCells(source?.cells ?? null, scheduleEdits.value);
+});
+
+/** 这个上课时间会压在哪些课上；正在编辑的这门课不算和自己重叠。 */
+function arrangementConflictNames(arrangement: ArrangementDraft) {
+  const editing = editingCourseBlock.value;
+  const sameName = (value: string) => value.trim().replace(/\s+/gu, " ") === editing?.course.name.trim().replace(/\s+/gu, " ");
+  return arrangementConflicts(
+    // 「全部周」比较时算每周都上。
+    { day: arrangement.day, slots: arrangement.slots, weekList: arrangement.weekMode === "all" ? [] : arrangementWeekList(arrangement) },
+    editorConflictCells.value,
+    (course, cell) => {
+      if (!editing) return false;
+      if (editing.course.customId) return course.customId === editing.course.customId;
+      return !course.customId && cell.day === editing.day && sameName(course.name);
+    },
+  );
+}
+
+const editorOverlappingNames = computed(() => {
+  // 优先级按课程名记，所以没法让一门课排在它自己前面。
+  const own = customCourseForm.name.trim();
+  const names: string[] = [];
+  for (const arrangement of editorArrangements.value) {
+    for (const name of arrangementConflictNames(arrangement)) {
+      if (name !== own && !names.includes(name)) names.push(name);
+    }
+  }
+  return names;
+});
+
+const editorPriorityHint = computed(() => (
+  editorOverlappingNames.value.length
+    ? `和${editorOverlappingNames.value.map((name) => `「${name}」`).join("")}重叠的节次只显示这门课，其他课程仍保留在课表里。`
+    : "和别的课重叠时，重叠的节次只显示这门课。"
+));
 </script>
 
 <style scoped>

@@ -135,7 +135,7 @@
   border-radius: var(--cpu-radius-m);
   background: var(--schedule-surface-bg-soft);
   display: inline-grid;
-  grid-template-columns: repeat(2, 34px);
+  grid-template-columns: repeat(3, 32px);
   gap: 2px;
 }
 .view-switch button {

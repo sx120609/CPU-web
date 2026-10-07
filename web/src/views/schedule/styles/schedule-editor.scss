@@ -447,3 +447,94 @@
 }
 
 /* ===== 移动端：恢复显示 top（紧凑学期+刷新+视图切换） ===== */
+
+// 上课时间：一门课可以有几个，每个都能选不连续的节次。
+.editor-arrangement-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px 6px;
+  color: var(--schedule-text-secondary);
+  font-size: var(--cpu-fs-s);
+  font-weight: 600;
+}
+.editor-arrangement-head button {
+  border: 0;
+  background: transparent;
+  color: #f04455;
+  font: inherit;
+  font-weight: 650;
+}
+.editor-slot-picker {
+  border-bottom: 0;
+}
+.editor-slot-picker .week-chip-grid {
+  max-height: none;
+}
+.editor-slot-summary {
+  margin: 8px 0 0;
+  color: var(--schedule-text-muted);
+  font-size: var(--cpu-fs-xs);
+  line-height: 1.5;
+}
+.editor-conflict {
+  margin: 8px 14px 0;
+  color: #c2410c;
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  font-size: var(--cpu-fs-xs);
+  line-height: 1.5;
+}
+.editor-conflict .el-icon {
+  flex: 0 0 auto;
+  transform: translateY(3px);
+}
+.editor-add-arrangement {
+  width: 100%;
+  min-height: 48px;
+  margin-top: 12px;
+  border: 0;
+  border-radius: var(--cpu-radius-l);
+  background: var(--schedule-surface-bg);
+  color: #0f766e;
+  font: inherit;
+  font-size: var(--cpu-fs-l);
+  font-weight: 560;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.editor-add-arrangement:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.editor-priority-card {
+  margin-top: 12px;
+}
+.editor-switch-row {
+  min-height: 52px;
+  margin: 0 14px;
+  padding: 10px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.editor-switch-row > span {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.editor-switch-row b {
+  color: var(--schedule-text);
+  font-size: var(--cpu-fs-l);
+  font-weight: 560;
+}
+.editor-switch-row small {
+  color: var(--schedule-text-muted);
+  font-size: var(--cpu-fs-xs);
+  line-height: 1.5;
+}

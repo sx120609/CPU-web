@@ -180,6 +180,8 @@ export interface CloudScheduleEdits {
       endSlot?: number;
     };
   }>;
+  /** 重叠课程的显示优先级：课程名 → 正整数。保存时不带这个字段，服务端沿用已保存的。 */
+  priority?: Record<string, number>;
 }
 
 export interface ScheduleWidgetTokenResult {

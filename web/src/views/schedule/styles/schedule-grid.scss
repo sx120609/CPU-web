@@ -500,3 +500,53 @@
   font-size: 12px;
   line-height: 1.5;
 }
+
+// 经典周视图里的「现在」：节次栏上的时间，今天那一列上的一条线。
+.classic-now-anchor {
+  position: relative;
+  z-index: 3;
+  min-width: 0;
+  pointer-events: none;
+}
+.classic-now-badge {
+  position: absolute;
+  left: 50%;
+  height: 16px;
+  padding: 0 4px;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+  background: var(--ss-theme-fill);
+  color: var(--ss-theme-on-fill);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+  white-space: nowrap;
+}
+.classic-now-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1.5px;
+  transform: translateY(-50%);
+  background: var(--ss-theme-text);
+}
+.classic-now-line::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: -3.5px;
+  width: 7px;
+  height: 7px;
+  transform: translateY(-50%);
+  border-radius: 50%;
+  background: var(--ss-theme-fill);
+}
+
+// 月视图不在左右滑动的轨道里，自己占满内容区。
+.month-content {
+  display: flex;
+  flex-direction: column;
+}
+.month-content .schedule-body-scroll {
+  padding-bottom: var(--schedule-scroll-bottom-gap);
+}

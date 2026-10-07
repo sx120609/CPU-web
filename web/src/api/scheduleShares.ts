@@ -19,7 +19,7 @@ export type ScheduleShare = {
 export type ScheduleShareMeta = Omit<ScheduleShare, "schedule" | "calendar" | "created" | "changed" | "writeToken">;
 
 export const scheduleShareApi = {
-  create: (payload: { semester: string; schedule: ScheduleResult; calendar: CalendarResult }) =>
+  create: (payload: { semester: string; ownerName?: string; schedule: ScheduleResult; calendar: CalendarResult }) =>
     request.post<ScheduleShare>("/schedule-shares", payload),
   get: (code: string) => request.get<ScheduleShare>(`/schedule-shares/${encodeURIComponent(code)}`, undefined, { cacheTtlMs: 0 }),
   /** 当前账号发布过的分享码。每个学期只有一个，再次发布会更新它。 */
