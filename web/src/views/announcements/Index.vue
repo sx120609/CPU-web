@@ -153,7 +153,7 @@ async function loadMore() {
     );
     if (seq !== loadSeq) return;
     const known = new Set(items.value.map((t) => t.id));
-    const hidden = (t: Topic) => !slug && Boolean(t.board) && hiddenAnnouncementSlugs.has(t.board!.slug);
+    const hidden = (t: Topic) => !slug && Boolean(t.board) && !isVisibleSource({ ...t.board!, type: "announce" });
     items.value = [...items.value, ...result.list.filter((t) => !known.has(t.id) && !hidden(t))];
     total.value = result.total;
     page.value = nextPage;
