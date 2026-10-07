@@ -373,6 +373,8 @@ private enum NativeScheduleDebugFixture {
                         weeks: "第 1 周",
                         weekList: [1],
                         location: "教学楼 \(201 + index)",
+                        // `CPU_DEBUG_SCHEDULE_NOTE=带实验报告` gives the first course a written note.
+                        slotNote: index == 0 ? ProcessInfo.processInfo.environment["CPU_DEBUG_SCHEDULE_NOTE"] : nil,
                         startSlot: start,
                         endSlot: start + ([14, 16].contains(index) ? 0 : 1),
                         sourceKey: "visual|\(index)|\(name)"

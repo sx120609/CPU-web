@@ -1,4 +1,4 @@
-# iOS 4.14 (70)
+# iOS 4.14 (71)
 
 Release base: remote main `f62f84ad`. Compared with 4.13 (67), the iOS changes are in `1fc48c55`, with the server and Web side in `a9d92248`:
 
@@ -18,7 +18,7 @@ Build 70 adds, over build 69:
 - **The Live Activity refresh task can be scheduled.** `UIBackgroundModes` now lists `fetch`. Without it `BGTaskScheduler` rejected the request and the app swallowed the error, so the fallback that ends an expired Live Activity while the app is suspended never ran.
 - From NapTable `6f1c9ea`: the day view's seven-day strip is drawn by each style as the header row of its own week view, with separate marks for the selected day and today (classic keeps its strip); the week and month titles follow the style's typeface; the board keeps its monospaced face for times and dates only, and its day rows carry the end time under the start time.
 
-All four targets (iPhone app, iPhone widgets, Watch app and Watch widgets) use version 4.14, build 70. Build 68 (from `708a806f`) and build 69 (from `97a0b63c`, submitted for review on 2026-10-07 and withdrawn for this build) were uploaded the same day and are superseded. The minimum versions remain iOS 15 for the main app, iOS 17 for its widgets and watchOS 10 for Watch targets.
+All four targets (iPhone app, iPhone widgets, Watch app and Watch widgets) use version 4.14, build 71. Builds 68 (from `708a806f`), 69 (from `97a0b63c`) and 70 (from `234bf66d`) were uploaded on 2026-10-07 and are superseded; 69 and 70 were each submitted for review and withdrawn for the build after them. The minimum versions remain iOS 15 for the main app, iOS 17 for its widgets and watchOS 10 for Watch targets.
 
 ## Server dependency
 
@@ -53,9 +53,9 @@ Not verified:
 
 The delivery report records the exported IPA, exact pushed SHA and GitHub artifact verification. Git push does not submit App Store review or deploy the website.
 
-## After build 70: course notes (source only)
+## Build 71: course notes
 
-Changed on 2026-10-07 on a machine without a Swift toolchain. This is not in build 70 or any other build, and it has not been compiled.
+Build 71 adds one fix over build 70, from `b256dc1b`. That commit was written on a machine without a Swift toolchain; it compiled unchanged on the Mac.
 
 The timetable replaced a course's note with the period label of its merged block (「06-07节」). The quick look showed that label as 备注, the editor loaded it into the note field, and saving wrote it over the note the course had. The calendar import wrote it into the event notes as well.
 
@@ -65,4 +65,8 @@ The timetable replaced a course's note with the period label of its merged block
 
 A note that was already overwritten cannot be restored: the label is what was stored.
 
-To do on the Mac before this ships: build the app, and run `NativeScheduleStoreChecks`, which has new cases for the merged block, the generated labels and the encoded course.
+Validation of build 71 on 2026-10-07:
+
+- `NativeScheduleStoreChecks` passed with its new cases: a merged block keeps the note it arrived with, a generated label is not a note, and the encoded course carries no `sourceNote`. The period checks, the Swift package (24/24), the palette, calendar, arrangement, priority, shared timetable and Live Activity checks and the iOS Node suite (57/57) passed.
+- iOS 26.5 simulator, Debug build on the sample timetable: a course without a note shows no 备注 row in the quick look and an empty note field in the editor; with `CPU_DEBUG_SCHEDULE_NOTE=带实验报告` both show that note.
+- Not exercised: saving from the editor against a live server, the calendar import, and a physical device.
