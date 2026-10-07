@@ -14,8 +14,8 @@ import java.io.File
 import kotlin.math.max
 
 /**
- * Timetable palette and background, stored only on this device. Values follow
- * the Web and iOS editors: centered `cover` photo, 22%–88% visibility
+ * Timetable style, palette and background, stored only on this device. Values
+ * follow the Web and iOS editors: centered `cover` photo, 22%–88% visibility
  * (default 76%) and 0–18 softening.
  */
 class ScheduleStyleSettings(private val context: Context) {
@@ -30,9 +30,33 @@ class ScheduleStyleSettings(private val context: Context) {
         private set
     var background by mutableStateOf<ImageBitmap?>(null)
         private set
+    /** The visual style; classic until the user picks another one. */
+    var visualStyle by mutableStateOf(ScheduleVisualStyle.fromId(prefs.getString("visualStyle", null)))
+        private set
+    /** Saturday and Sunday columns; a weekend day with classes shows either way. */
+    var showWeekend by mutableStateOf(prefs.getBoolean("showWeekend", true))
+        private set
+    /** Marks the current time on today's column and the in-class / next-up states of the day view. */
+    var showNowIndicator by mutableStateOf(prefs.getBoolean("showNowIndicator", true))
+        private set
 
     init {
         if (file.exists()) background = decode(file)
+    }
+
+    fun selectVisualStyle(value: ScheduleVisualStyle) {
+        visualStyle = value
+        prefs.edit().putString("visualStyle", value.id).apply()
+    }
+
+    fun updateShowWeekend(value: Boolean) {
+        showWeekend = value
+        prefs.edit().putBoolean("showWeekend", value).apply()
+    }
+
+    fun updateShowNowIndicator(value: Boolean) {
+        showNowIndicator = value
+        prefs.edit().putBoolean("showNowIndicator", value).apply()
     }
 
     fun selectPalette(value: String) {

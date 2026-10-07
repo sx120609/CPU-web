@@ -205,3 +205,97 @@ test('the course editor accepts the evening twelfth period offered by the native
   assert.match(rejected.error, /节次/);
   assert.equal(writes.length, 1);
 });
+
+test('the course editor saves one item per run of periods and ranks the course in front', async () => {
+  const { stores } = legacyStores();
+  let edits = { hidden: [], custom: [], priority: { '体育': 2 } };
+  const writes = [];
+  const p = page({ stores, fetch: async (url, options) => {
+    if (options.method === 'PUT') { writes.push(options); edits = JSON.parse(options.body).edits; }
+    return { ok: true, json: async () => ({ code: 0, data: { edits } }) };
+  } });
+  vm.runInContext(bootstrap, p.context);
+  vm.runInContext(compatibility, p.context);
+  const editor = p.window.CPUAndroidEditor;
+  assert.deepEqual({ ...(await editor({ action: 'priority', semester: 'fall' })).priority }, { '体育': 2 });
+  let opened = await editor({ action: 'open', semester: 'fall' });
+  assert.deepEqual({ ...opened.priority }, { '体育': 2 });
+  const form = { name: '  药理  学 ', teacher: '', location: 'A1', note: '', preferred: true,
+    arrangements: [{ day: 1, slots: [5, 1, 2], weekList: [3, 1] }, { day: 4, slots: [9], weekList: [2] }] };
+  const saved = await editor({ action: 'save', session: opened.session, cells: [], form });
+  assert.equal(saved.error, undefined);
+  assert.equal(saved.saved, true);
+  // Periods that are not consecutive become one existing-format item per run.
+  assert.deepEqual(edits.custom.map(item => [item.day, item.course.startSlot, item.course.endSlot, item.course.weekList]),
+    [[1, 1, 2, [1, 3]], [1, 5, 5, [1, 3]], [4, 9, 9, [2]]]);
+  assert.equal(new Set(edits.custom.map(item => item.id)).size, 3);
+  assert.deepEqual(edits.priority, { '体育': 2, '药理 学': 3 });
+  assert.deepEqual({ ...saved.priority }, { '体育': 2, '药理 学': 3 });
+
+  // Turning the switch off removes only this course's rank.
+  opened = await editor({ action: 'open', semester: 'fall' });
+  const lowered = await editor({ action: 'save', session: opened.session, cells: [],
+    form: { ...form, preferred: false, arrangements: [{ day: 2, slots: [3, 4], weekList: [1] }] } });
+  assert.equal(lowered.saved, true);
+  assert.deepEqual(edits.priority, { '体育': 2 });
+  assert.equal(edits.custom.length, 4);
+
+  // An action that says nothing about the priority still sends the stored map, so it is never wiped.
+  opened = await editor({ action: 'open', semester: 'fall' });
+  edits.hidden.push('jwxt|1|1|1|2|旧课|||');
+  opened = await editor({ action: 'open', semester: 'fall' });
+  await editor({ action: 'restoreHidden', session: opened.session, key: 'jwxt|1|1|1|2|旧课|||' });
+  assert.deepEqual(edits, { hidden: [], custom: edits.custom, priority: { '体育': 2 } });
+
+  opened = await editor({ action: 'open', semester: 'fall' });
+  const empty = await editor({ action: 'save', session: opened.session, cells: [],
+    form: { ...form, arrangements: [form.arrangements[0], { day: 3, slots: [], weekList: [1] }] } });
+  assert.equal(empty.error, '上课时间 2：请检查星期和节次范围');
+  assert.equal(writes.length, 3);
+});
+
+test('share codes go through the signed-in session and carry the site nickname', async () => {
+  const { stores, auth } = legacyStores();
+  auth.user.nickname = ' 阿青 ';
+  const requests = [];
+  const p = page({ stores, fetch: async (url, options) => {
+    requests.push({ url: String(url), options });
+    if (String(url).includes('ZZZZ2222')) return { ok: false, status: 404, json: async () => ({ code: 404, message: '分享课表不存在或已撤销' }) };
+    return { ok: true, status: 200, json: async () => ({ code: 0, data: { code: 'ABCD2345' } }) };
+  } });
+  vm.runInContext(bootstrap, p.context);
+  vm.runInContext(compatibility, p.context);
+  const shares = p.window.CPUAndroidShares;
+
+  const published = await shares({ action: 'publish', body: { semester: 'fall', schedule: {}, calendar: {} } });
+  assert.equal(published.data.code, 'ABCD2345');
+  assert.equal(requests[0].url, '/api/schedule-shares');
+  assert.equal(requests[0].options.method, 'POST');
+  assert.equal(requests[0].options.headers['X-CSRF-Token'], 'csrf-token');
+  assert.equal(requests[0].options.headers['X-CPU-Client'], 'android-app');
+  assert.deepEqual(JSON.parse(requests[0].options.body), { semester: 'fall', schedule: {}, calendar: {}, ownerName: '阿青' });
+
+  await shares({ action: 'revoke', code: 'abcd2345' });
+  assert.equal(requests[1].url, '/api/schedule-shares/ABCD2345');
+  assert.equal(requests[1].options.method, 'DELETE');
+  assert.equal(requests[1].options.headers['X-CSRF-Token'], 'csrf-token');
+
+  await shares({ action: 'meta', code: 'ABCD2345' });
+  assert.equal(requests[2].url, '/api/schedule-shares/ABCD2345/meta');
+  assert.equal(requests[2].options.headers['X-CSRF-Token'], undefined);
+
+  const missing = await shares({ action: 'get', code: 'ZZZZ2222' });
+  assert.equal(missing.status, 404);
+  assert.equal(missing.error, '分享课表不存在或已撤销');
+
+  // Only a share code reaches the URL.
+  const invalid = await shares({ action: 'get', code: '../users/1' });
+  assert.equal(invalid.status, 400);
+  assert.equal(requests.length, 4);
+
+  // Reading a code needs no account; the user's own codes do.
+  auth.isLoggedIn = false;
+  assert.equal((await shares({ action: 'mine' })).status, 401);
+  assert.equal((await shares({ action: 'publish', body: {} })).status, 401);
+  assert.equal((await shares({ action: 'get', code: 'ABCD2345' })).data.code, 'ABCD2345');
+});

@@ -13,7 +13,7 @@ import java.util.TimeZone
  */
 object ScheduleExport {
     fun text(store: ScheduleStore): String {
-        val lines = mutableListOf("药大拾间 · ${store.selectedSemester} 第 ${store.selectedWeek} 周")
+        val lines = mutableListOf("药大拾间 · ${store.semesterTitle()} 第 ${store.selectedWeek} 周")
         for (day in 1..7) {
             val blocks = store.blocksForDay(day)
             if (blocks.isEmpty()) continue
@@ -55,7 +55,7 @@ object ScheduleExport {
         return lines.joinToString("\r\n") { fold(it) } + "\r\n"
     }
 
-    fun fileName(store: ScheduleStore) = "课表-${store.selectedSemester}-第${store.selectedWeek}周.ics"
+    fun fileName(store: ScheduleStore) = "课表-${store.semesterTitle().replace(Regex("[\\\\/:*?\"<>|]"), "-")}-第${store.selectedWeek}周.ics"
 
     private fun utcFormat() = SimpleDateFormat("yyyyMMdd'T'HHmmss'Z'", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
 
@@ -94,18 +94,17 @@ object ScheduleExport {
     }
 }
 
-fun shareSchedule(activity: MainActivity) {
-    if (activity.schedule.result == null) {
+fun shareSchedule(activity: MainActivity, store: ScheduleStore = activity.schedule) {
+    if (store.result == null) {
         activity.toast("请先加载课表")
         return
     }
-    val intent = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, ScheduleExport.text(activity.schedule))
+    val intent = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, ScheduleExport.text(store))
     runCatching { activity.startActivity(Intent.createChooser(intent, "分享课表")) }
         .onFailure { activity.toast("分享面板暂时不可用") }
 }
 
-fun exportSchedule(activity: MainActivity) {
-    val store = activity.schedule
+fun exportSchedule(activity: MainActivity, store: ScheduleStore = activity.schedule) {
     if (store.result == null) {
         activity.toast("请先加载课表")
         return

@@ -428,6 +428,24 @@ class WebSession(
         JSONObject().put("payload", payload), 60_000,
     )
 
+    /** The display priorities saved with the schedule edits of a semester; null when they could not be read. */
+    suspend fun loadSchedulePriorities(semester: String): Map<String, Int>? {
+        val raw = call(
+            "var edit=window.CPUAndroidEditor;if(typeof edit!=='function')return {error:'missing'};" +
+                "return await edit({action:'priority',semester:args.semester});",
+            JSONObject().put("semester", semester), 40_000,
+        ) ?: return null
+        val priority = runCatching { JSONObject(raw) }.getOrNull()?.optJSONObject("priority") ?: return null
+        return priority.keys().asSequence().associateWith { priority.optInt(it, 0) }.filter { it.value > 0 }
+    }
+
+    /** One share-code request (`CPUAndroidShares`): the reply is `{ data }` or `{ error, status }`. */
+    suspend fun shares(payload: JSONObject): String? = call(
+        "var run=window.CPUAndroidShares;if(typeof run!=='function')return {error:'共享课表尚未就绪，请稍后重试',status:0};" +
+            "return await run(args.payload);",
+        JSONObject().put("payload", payload), 45_000,
+    )
+
     suspend fun refreshAuthCapability(): NativeAuthState? {
         val value = call(
             "for(var attempt=0;attempt<20;attempt+=1){var refresh=window.CPUTimeNative&&window.CPUTimeNative.refreshAuth;" +

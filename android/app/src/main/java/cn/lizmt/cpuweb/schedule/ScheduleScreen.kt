@@ -32,9 +32,9 @@ import androidx.compose.material.icons.outlined.NearMe
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.ArrowDropDown
+import androidx.compose.material.icons.rounded.Group
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.MoreHoriz
-import androidx.compose.material.icons.rounded.MyLocation
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -42,7 +42,6 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -51,13 +50,16 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.contentDescription
@@ -71,27 +73,71 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
 import kotlin.math.max
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.drop
 
 /** Sheets presented over the timetable. */
 sealed interface ScheduleSheet {
-    data class Detail(val block: CourseBlock) : ScheduleSheet
+    data class QuickLook(val block: CourseBlock) : ScheduleSheet
     data class Overlap(val blocks: List<CourseBlock>) : ScheduleSheet
     data object WeekPicker : ScheduleSheet
     data object Style : ScheduleSheet
+    data object VisualStyle : ScheduleSheet
     data object Widgets : ScheduleSheet
     data object Editor : ScheduleSheet
     data object Appearance : ScheduleSheet
+    data object Sharing : ScheduleSheet
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** What the timetable bodies need besides the store: how to draw and where taps go. */
+private class ScheduleBodyContext(
+    val palette: String,
+    val translucent: Boolean,
+    /** Minutes since midnight while "now" is marked, else null. */
+    val now: Int?,
+    val showWeekend: Boolean,
+    val onLogin: () -> Unit,
+    val onCourse: (PlacedBlock, String) -> Unit,
+    val onAddSlot: (Int, Int) -> Unit,
+)
+
+/** The user's own timetable, with a shared one opened over it when asked. */
 @Composable
 fun NativeScheduleScreen(activity: MainActivity) {
     val store = activity.schedule
+    var shared by rememberSaveable { mutableStateOf(DebugScheduleFixture.openSharedCode) }
+    // A widget or link opening the timetable lands on the user's own grid.
+    val openRequests = store.openRequests
+    val handledOpen = remember { intArrayOf(openRequests) }
+    LaunchedEffect(openRequests) {
+        if (openRequests != handledOpen[0]) {
+            handledOpen[0] = openRequests
+            shared = null
+        }
+    }
+    Box(Modifier.fillMaxSize()) {
+        ScheduleSurface(activity, store, onOpenShared = { shared = it })
+        shared?.let { code -> SharedScheduleScreen(activity, code) { shared = null } }
+    }
+}
+
+/**
+ * One timetable: toolbar, week or month navigation and the pages. A read-only
+ * store (a shared timetable) gets the same views without editing, widgets or
+ * sharing of its own.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ScheduleSurface(activity: MainActivity, store: ScheduleStore, onOpenShared: ((String) -> Unit)?) {
     val style = activity.style
     val colors = LocalScheduleColors.current
-    var sheet by remember { mutableStateOf<ScheduleSheet?>(null) }
-    val editor = remember { CourseEditorModel(activity.web, activity.lifecycleScope) { store.load(true) } }
+    var sheet by remember { mutableStateOf<ScheduleSheet?>(if (store.readOnly) null else DebugScheduleFixture.initialSheet()) }
+    val editor = remember(store) {
+        CourseEditorModel({ activity.web.editCourse(it) }, activity.lifecycleScope) { semester, priorities ->
+            priorities?.let { store.setPriorities(semester, it) }
+            store.load(true)
+        }
+    }
     // A widget or link opening the timetable lands on the grid, not on a sheet left open.
     val openRequests = store.openRequests
     val handledOpen = remember { intArrayOf(openRequests) }
@@ -102,9 +148,31 @@ fun NativeScheduleScreen(activity: MainActivity) {
         }
     }
 
+    // The month on screen and the day picked in it; empty until the month view is first shown.
+    var monthAnchor by rememberSaveable { mutableStateOf("") }
+    var monthSelected by rememberSaveable { mutableStateOf("") }
+    val today = ScheduleStore.todayKey()
+    val browsingDate = store.calendarWeek()?.days?.getOrNull(store.selectedDay - 1)?.takeIf { it.length == 10 } ?: today
+    LaunchedEffect(store.viewMode, store.selectedSemester) {
+        if (store.viewMode == "month") {
+            monthSelected = browsingDate
+            monthAnchor = browsingDate
+        }
+    }
+    val selectedDate = monthSelected.ifEmpty { browsingDate }
+    val anchor = monthAnchor.ifEmpty { selectedDate }
+
+    val minute by produceState(ScheduleStyleTime.minutesNow()) {
+        while (true) {
+            delay(60_000 - System.currentTimeMillis() % 60_000 + 50)
+            value = ScheduleStyleTime.minutesNow()
+        }
+    }
+    val now = if (style.showNowIndicator) DebugScheduleFixture.pinnedNow ?: minute else null
+
     fun openEditor(block: CourseBlock?, day: Int? = null, slot: Int? = null) {
-        if (store.result == null || store.isGraduate) {
-            activity.toast("请先加载本科课表，研究生课表暂不支持个人修改")
+        if (store.result == null || !store.canEdit) {
+            activity.toast(if (store.readOnly) "共享课表只能查看" else "请先加载本科课表，研究生课表暂不支持个人修改")
             return
         }
         editor.open(store, block)
@@ -112,31 +180,59 @@ fun NativeScheduleScreen(activity: MainActivity) {
         sheet = ScheduleSheet.Editor
     }
 
-    fun openCourse(block: CourseBlock, week: String) {
-        val matches = store.overlapping(block, week)
-        sheet = if (matches.size <= 1) ScheduleSheet.Detail(block) else ScheduleSheet.Overlap(matches)
+    fun openCourse(placed: PlacedBlock, week: String) {
+        // Side-by-side courses are narrow in the week grid, so they are listed first.
+        val matches = if (store.viewMode == "week" && placed.lanes > 1) store.overlapping(placed.block, week) else emptyList()
+        sheet = if (matches.size > 1) ScheduleSheet.Overlap(matches) else ScheduleSheet.QuickLook(placed.block)
     }
+
+    val context = ScheduleBodyContext(
+        palette = style.palette,
+        translucent = style.background != null,
+        now = now,
+        showWeekend = style.showWeekend,
+        onLogin = { activity.openAcademicAuthorization() },
+        onCourse = ::openCourse,
+        onAddSlot = { day, slot -> if (store.canEdit) openEditor(null, day, slot) },
+    )
+    val styleScope = ScheduleStyleScope(
+        style = style.visualStyle, dark = colors.dark, palette = style.palette, primary = colors.text, secondary = colors.secondary,
+        hasBackground = style.background != null, backgroundVisibility = style.visibility,
+    )
 
     // Over a background photo, header text sits on frosted plates like the iOS glass.
     val glass = if (style.background != null) colors.surface.copy(alpha = if (colors.dark) 0.7f else 0.78f) else null
     Box(Modifier.fillMaxSize().consumesTouches().background(colors.page)) {
         ScheduleBackground(style)
-        CompositionLocalProvider(LocalScheduleGlass provides glass) {
+        CompositionLocalProvider(LocalScheduleGlass provides glass, LocalScheduleStyle provides styleScope) {
         Column(Modifier.fillMaxSize().padding(start = 10.dp, end = 10.dp, top = 4.dp)) {
             // A term that failed to load has no weeks, but its picker must stay
             // reachable so another term can be chosen.
             if (store.weekOptions().isNotEmpty() || store.semesterOptions().isNotEmpty()) {
                 ScheduleToolbar(
                     store = store,
-                    onRefresh = { store.load(true) },
-                    onStyle = { sheet = ScheduleSheet.Style },
-                    onTools = { openEditor(null) },
-                    onWidgets = { sheet = ScheduleSheet.Widgets },
-                    onShare = { shareSchedule(activity) },
-                    onExport = { exportSchedule(activity) },
-                    onAppearance = { sheet = ScheduleSheet.Appearance },
+                    onToday = {
+                        monthSelected = today
+                        monthAnchor = today
+                        store.returnToCurrentWeek()
+                    },
+                    actions = listOfNotNull(
+                        ("刷新课表" to { store.load(true) }).takeIf { !store.readOnly },
+                        ("添加课程" to { openEditor(null) }).takeIf { store.canEdit },
+                        "课表风格" to { sheet = ScheduleSheet.VisualStyle },
+                        ("课表配色与背景" to { sheet = ScheduleSheet.Style }).takeIf { !store.readOnly },
+                        ("桌面课表小组件" to { sheet = ScheduleSheet.Widgets }).takeIf { !store.readOnly },
+                        "分享所选周课表" to { shareSchedule(activity, store) },
+                        "导出所选周日历" to { exportSchedule(activity, store) },
+                        ("共享课表" to { sheet = ScheduleSheet.Sharing }).takeIf { !store.readOnly },
+                        ("应用外观" to { sheet = ScheduleSheet.Appearance }).takeIf { !store.readOnly },
+                    ),
                 )
-                if (store.weekOptions().isNotEmpty()) WeekSwitcher(store) { sheet = ScheduleSheet.WeekPicker }
+                if (store.viewMode == "month") {
+                    MonthSwitcher(anchor) { monthAnchor = ScheduleMonth.shift(anchor, it) }
+                } else if (store.weekOptions().isNotEmpty()) {
+                    WeekSwitcher(store) { sheet = ScheduleSheet.WeekPicker }
+                }
             }
             // The failure state card already carries the message.
             if (store.errorMessage.isNotEmpty() && !(store.result == null && store.status == ScheduleStatus.Failed)) {
@@ -154,14 +250,24 @@ fun NativeScheduleScreen(activity: MainActivity) {
                 onRefresh = { store.load(true) },
                 modifier = Modifier.weight(1f).fillMaxWidth(),
             ) {
-                SchedulePages(
-                    store = store,
-                    palette = style.palette,
-                    translucent = style.background != null,
-                    onLogin = { activity.openAcademicAuthorization() },
-                    onCourse = ::openCourse,
-                    onAddSlot = { day, slot -> if (!store.isGraduate) openEditor(null, day, slot) },
-                )
+                if (store.viewMode == "month" && store.result != null) {
+                    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 6.dp)) {
+                        ScheduleMonthView(
+                            store = store, anchor = anchor, selectedDate = selectedDate,
+                            onSelect = { date ->
+                                monthSelected = date
+                                if (!ScheduleMonth.sameMonth(date, anchor)) monthAnchor = date
+                                store.selectDate(date)
+                            },
+                            onOpenDay = { date ->
+                                if (store.selectDate(date)) store.selectViewMode("day")
+                            },
+                            onCourse = { placed, _ -> sheet = ScheduleSheet.QuickLook(placed.block) },
+                        )
+                    }
+                } else {
+                    SchedulePages(store, context)
+                }
             }
         }
         }
@@ -169,15 +275,19 @@ fun NativeScheduleScreen(activity: MainActivity) {
 
     when (val current = sheet) {
         null -> Unit
-        is ScheduleSheet.Detail -> CourseDetailSheet(store, current.block, onDismiss = { sheet = null }) {
-            sheet = null
-            openEditor(current.block)
-        }
+        is ScheduleSheet.QuickLook -> CourseQuickLookSheet(
+            store, current.block, style.palette, onDismiss = { sheet = null },
+            onEdit = if (store.canEdit) ({
+                sheet = null
+                openEditor(current.block)
+            }) else null,
+        )
         is ScheduleSheet.Overlap -> OverlapSheet(current.blocks, style.palette, onDismiss = { sheet = null }) {
-            sheet = ScheduleSheet.Detail(it)
+            sheet = ScheduleSheet.QuickLook(it)
         }
         ScheduleSheet.WeekPicker -> WeekPickerSheet(store, onDismiss = { sheet = null })
         ScheduleSheet.Style -> ScheduleStyleSheet(activity, onDismiss = { sheet = null })
+        ScheduleSheet.VisualStyle -> VisualStyleSheet(style, onDismiss = { sheet = null })
         ScheduleSheet.Widgets -> WidgetSettingsSheet(activity, onDismiss = { sheet = null })
         ScheduleSheet.Editor -> CourseEditorSheet(editor, onDismiss = {
             // The sheet may already be hidden (Back), so it always goes away; a
@@ -186,6 +296,7 @@ fun NativeScheduleScreen(activity: MainActivity) {
             sheet = null
         })
         ScheduleSheet.Appearance -> AppearanceSheet(activity.appearance, onDismiss = { sheet = null })
+        ScheduleSheet.Sharing -> ScheduleSharingSheet(activity, store, onDismiss = { sheet = null }) { code -> onOpenShared?.invoke(code) }
     }
     if (sheet == ScheduleSheet.Editor && !editor.visible) {
         LaunchedEffect(Unit) { sheet = null }
@@ -208,7 +319,7 @@ private fun ScheduleBackground(style: ScheduleStyleSettings) {
         val overlay = 1 - style.visibility
         Box(
             Modifier.fillMaxSize().background(
-                (if (colors.dark) Color(0xFF0B1B18) else Color(0xFFF8FBFF))
+                (if (colors.dark) Color(0xFF0E1012) else Color(0xFFF8FBFF))
                     .copy(alpha = if (colors.dark) max(0.22f, overlay * 0.58f) else overlay),
             ),
         )
@@ -216,28 +327,25 @@ private fun ScheduleBackground(style: ScheduleStyleSettings) {
 }
 
 @Composable
-private fun ScheduleToolbar(
-    store: ScheduleStore,
-    onRefresh: () -> Unit,
-    onStyle: () -> Unit,
-    onTools: () -> Unit,
-    onWidgets: () -> Unit,
-    onShare: () -> Unit,
-    onExport: () -> Unit,
-    onAppearance: () -> Unit,
-) {
+private fun ScheduleToolbar(store: ScheduleStore, onToday: () -> Unit, actions: List<Pair<String, () -> Unit>>) {
     val colors = LocalScheduleColors.current
     var semesterMenu by remember { mutableStateOf(false) }
     var moreMenu by remember { mutableStateOf(false) }
-    val canChooseSemester = store.semesterOptions().size > 1
+    val canChooseSemester = !store.readOnly && store.semesterOptions().size > 1
     Row(Modifier.fillMaxWidth().height(40.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.weight(1f).height(40.dp).clickable(enabled = canChooseSemester) { semesterMenu = true }) {
             Row(
                 Modifier.fillMaxWidth().height(32.dp).align(Alignment.Center).clip(RoundedCornerShape(16.dp)).background(colors.surface)
                     .padding(start = 12.dp, end = 6.dp)
-                    .semantics { contentDescription = "选择学期，当前 ${semesterLabel(store)}" },
+                    .semantics {
+                        contentDescription = if (store.readOnly) "共享课表：${semesterLabel(store)}" else "选择学期，当前 ${semesterLabel(store)}"
+                    },
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                // One shared timetable, nothing to switch to.
+                if (store.readOnly) {
+                    Icon(Icons.Rounded.Group, contentDescription = null, tint = colors.secondary, modifier = Modifier.padding(end = 6.dp).size(15.dp))
+                }
                 Text(
                     compactSemesterLabel(store), color = colors.text, fontSize = 12.sp, lineHeight = 16.sp, letterSpacing = 0.sp, fontWeight = FontWeight.SemiBold,
                     maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
@@ -258,15 +366,17 @@ private fun ScheduleToolbar(
         }
         Spacer(Modifier.width(6.dp))
         Row(
-            Modifier.width(76.dp).height(32.dp).clip(RoundedCornerShape(16.dp)).background(colors.softSurface).padding(2.dp),
+            Modifier.width(108.dp).height(32.dp).clip(RoundedCornerShape(16.dp)).background(colors.softSurface).padding(2.dp),
         ) {
-            ModeButton("日", store.viewMode == "day", Modifier.weight(1f)) { store.selectViewMode("day") }
-            ModeButton("周", store.viewMode == "week", Modifier.weight(1f)) { store.selectViewMode("week") }
+            // The day/week order of the Web; month follows them, as on iOS.
+            listOf("日" to "day", "周" to "week", "月" to "month").forEach { (label, mode) ->
+                ModeButton(label, store.viewMode == mode, Modifier.weight(1f)) { store.selectViewMode(mode) }
+            }
         }
         Spacer(Modifier.width(6.dp))
         Box(
-            Modifier.size(32.dp).clip(CircleShape).background(colors.surface).clickable { store.returnToCurrentWeek() }
-                .semantics { contentDescription = "回到本周今日" },
+            Modifier.size(32.dp).clip(CircleShape).background(colors.surface).clickable(onClick = onToday)
+                .semantics { contentDescription = if (store.viewMode == "month") "回到本月" else "回到本周今日" },
             contentAlignment = Alignment.Center,
         ) {
             Icon(Icons.Outlined.NearMe, contentDescription = null, tint = colors.text, modifier = Modifier.size(18.dp))
@@ -280,24 +390,15 @@ private fun ScheduleToolbar(
                 }
             }
             DropdownMenu(expanded = moreMenu, onDismissRequest = { moreMenu = false }) {
-                listOf(
-                    "刷新课表" to onRefresh,
-                    "课表配色与背景" to onStyle,
-                    "添加与恢复课程" to onTools,
-                    "桌面课表小组件" to onWidgets,
-                    "分享所选周课表" to onShare,
-                    "导出所选周日历" to onExport,
-                    "应用外观" to onAppearance,
-                ).forEach { (label, action) ->
-                    val enabled = when (label) {
-                        "刷新课表" -> store.status != ScheduleStatus.Loading
-                        "添加与恢复课程" -> !store.isGraduate
-                        else -> true
-                    }
-                    DropdownMenuItem(text = { Text(label) }, enabled = enabled, onClick = {
-                        moreMenu = false
-                        action()
-                    })
+                actions.forEach { (label, action) ->
+                    DropdownMenuItem(
+                        text = { Text(label) },
+                        enabled = label != "刷新课表" || store.status != ScheduleStatus.Loading,
+                        onClick = {
+                            moreMenu = false
+                            action()
+                        },
+                    )
                 }
             }
         }
@@ -339,33 +440,69 @@ private fun WeekSwitcher(store: ScheduleStore, onPick: () -> Unit) {
     val end = store.dayDate(7)
     val range = if (start.isNotEmpty() && end.isNotEmpty()) "${start.replace('-', '.')} - ${end.replace('-', '.')}" else "校历暂无日期"
     val current = store.isCurrentWeek()
+    SwitcherRow(
+        previous = "上一周", next = "下一周",
+        canPrevious = store.canMoveWeek(-1), canNext = store.canMoveWeek(1),
+        onPrevious = { store.moveWeek(-1) }, onNext = { store.moveWeek(1) },
+        description = "选择周次，$label，$range", onPick = onPick,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(label, fontSize = 14.sp, lineHeight = 18.sp, letterSpacing = 0.sp, fontWeight = FontWeight.SemiBold, color = colors.text)
+            if (current) {
+                Spacer(Modifier.width(6.dp))
+                Text("本周", fontSize = 10.sp, color = colors.accent, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(colors.accent.copy(alpha = 0.12f))
+                        .padding(horizontal = 5.dp, vertical = 1.dp))
+            }
+        }
+        Text(range, fontSize = 10.sp, lineHeight = 14.sp, letterSpacing = 0.sp, color = colors.secondary, maxLines = 1)
+    }
+}
+
+@Composable
+private fun MonthSwitcher(anchor: String, onMove: (Int) -> Unit) {
+    val colors = LocalScheduleColors.current
+    val title = ScheduleMonth.title(anchor)
+    SwitcherRow(
+        previous = "上一月", next = "下一月", canPrevious = true, canNext = true,
+        onPrevious = { onMove(-1) }, onNext = { onMove(1) }, description = title, onPick = null,
+    ) {
+        Text(title, fontSize = 14.sp, lineHeight = 18.sp, letterSpacing = 0.sp, fontWeight = FontWeight.SemiBold, color = colors.text)
+        Text(if (ScheduleMonth.sameMonth(anchor, ScheduleStore.todayKey())) "本月" else "月历", fontSize = 10.sp, lineHeight = 14.sp,
+            letterSpacing = 0.sp, color = colors.secondary, maxLines = 1)
+    }
+}
+
+@Composable
+private fun SwitcherRow(
+    previous: String,
+    next: String,
+    canPrevious: Boolean,
+    canNext: Boolean,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+    description: String,
+    onPick: (() -> Unit)?,
+    content: @Composable () -> Unit,
+) {
+    val colors = LocalScheduleColors.current
     val glass = LocalScheduleGlass.current
     Row(
         Modifier.fillMaxWidth().height(42.dp)
             .then(if (glass != null) Modifier.clip(RoundedCornerShape(18.dp)).background(glass) else Modifier),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconButton(onClick = { store.moveWeek(-1) }, enabled = store.canMoveWeek(-1)) {
-            Icon(Icons.AutoMirrored.Rounded.KeyboardArrowLeft, contentDescription = "上一周", tint = colors.text)
+        IconButton(onClick = onPrevious, enabled = canPrevious) {
+            Icon(Icons.AutoMirrored.Rounded.KeyboardArrowLeft, contentDescription = previous, tint = colors.text)
         }
         Column(
-            Modifier.weight(1f).clip(RoundedCornerShape(16.dp)).clickable(onClick = onPick).padding(vertical = 2.dp)
-                .semantics { contentDescription = "选择周次，$label，$range" },
+            Modifier.weight(1f).clip(RoundedCornerShape(16.dp))
+                .then(if (onPick != null) Modifier.clickable(onClick = onPick) else Modifier).padding(vertical = 2.dp)
+                .semantics { contentDescription = description },
             horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(label, fontSize = 14.sp, lineHeight = 18.sp, letterSpacing = 0.sp, fontWeight = FontWeight.SemiBold, color = colors.text)
-                if (current) {
-                    Spacer(Modifier.width(6.dp))
-                    Text("本周", fontSize = 10.sp, color = colors.accent, fontWeight = FontWeight.Bold,
-                        modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(colors.accent.copy(alpha = 0.12f))
-                            .padding(horizontal = 5.dp, vertical = 1.dp))
-                }
-            }
-            Text(range, fontSize = 10.sp, lineHeight = 14.sp, letterSpacing = 0.sp, color = colors.secondary, maxLines = 1)
-        }
-        IconButton(onClick = { store.moveWeek(1) }, enabled = store.canMoveWeek(1)) {
-            Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = "下一周", tint = colors.text)
+        ) { content() }
+        IconButton(onClick = onNext, enabled = canNext) {
+            Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = next, tint = colors.text)
         }
     }
     Spacer(Modifier.height(2.dp))
@@ -386,37 +523,37 @@ private fun Banner(message: String, action: String, onAction: () -> Unit) {
 }
 
 @Composable
-private fun SchedulePages(
-    store: ScheduleStore,
-    palette: String,
-    translucent: Boolean,
-    onLogin: () -> Unit,
-    onCourse: (CourseBlock, String) -> Unit,
-    onAddSlot: (Int, Int) -> Unit,
-) {
+private fun SchedulePages(store: ScheduleStore, context: ScheduleBodyContext) {
     val weeks = store.weekOptions()
     if (weeks.isEmpty()) {
-        ScheduleBody(store, store.selectedWeek, store.result, palette, translucent, onLogin, onCourse, onAddSlot)
+        ScheduleBody(store, store.selectedWeek, store.result, context)
         return
     }
-    // Keep the page model keyed by semester and mode so a new term rebuilds the pager.
-    key(store.selectedSemester, store.viewMode, weeks.size) {
-        if (store.viewMode == "day") {
-            val pager = rememberPagerState(initialPage = store.selectedDay - 1) { 7 }
+    if (store.viewMode == "day") {
+        // Weekends can be hidden; a weekend day with classes or a make-up day still shows.
+        val days = store.visibleDays(store.selectedWeek, context.showWeekend)
+        // Keep the page model keyed by semester and week so a new one rebuilds the pager.
+        key(store.selectedSemester, store.selectedWeek, days) {
+            val initial = days.indexOf(store.selectedDay).let { if (it < 0) days.lastIndex else it }.coerceAtLeast(0)
+            val pager = rememberPagerState(initialPage = initial) { days.size }
             LaunchedEffect(store.selectedDay) {
-                if (pager.currentPage != store.selectedDay - 1) pager.animateScrollToPage(store.selectedDay - 1)
+                val target = days.indexOf(store.selectedDay)
+                if (target >= 0 && pager.currentPage != target) pager.animateScrollToPage(target)
             }
             LaunchedEffect(pager) {
-                snapshotFlow { pager.settledPage }.collect { store.selectDay(it + 1) }
+                snapshotFlow { pager.settledPage }.collect { page -> days.getOrNull(page)?.let(store::selectDay) }
             }
             Column(Modifier.fillMaxSize()) {
-                DayStrip(store, store.selectedWeek) { store.selectDay(it) }
+                DayStrip(store, store.selectedWeek, days, days.getOrNull(pager.currentPage) ?: store.selectedDay) { store.selectDay(it) }
                 HorizontalPager(state = pager, modifier = Modifier.weight(1f).fillMaxWidth(), beyondViewportPageCount = 1) { page ->
                     val data = store.resultFor(store.selectedWeek)
-                    ScheduleBody(store, store.selectedWeek, data, palette, translucent, onLogin, onCourse, onAddSlot, day = page + 1)
+                    ScheduleBody(store, store.selectedWeek, data, context, day = days[page])
                 }
             }
-        } else {
+        }
+    } else {
+        // Keep the page model keyed by semester so a new term rebuilds the pager.
+        key(store.selectedSemester, weeks.size) {
             val index = store.selectedWeekIndex()
             val pager = rememberPagerState(initialPage = index) { weeks.size }
             LaunchedEffect(index) {
@@ -432,51 +569,88 @@ private fun SchedulePages(
                 // Reading the revision lets an adjacent page pick up a prefetched week.
                 val revision = store.dataRevision
                 val data = remember(week, revision, store.result) { store.resultFor(week) }
-                ScheduleBody(store, week, data, palette, translucent, onLogin, onCourse, onAddSlot)
+                ScheduleBody(store, week, data, context)
             }
         }
     }
 }
 
 @Composable
-private fun ScheduleBody(
-    store: ScheduleStore,
-    week: String,
-    data: ScheduleResult?,
-    palette: String,
-    translucent: Boolean,
-    onLogin: () -> Unit,
-    onCourse: (CourseBlock, String) -> Unit,
-    onAddSlot: (Int, Int) -> Unit,
-    day: Int? = null,
-) {
+private fun ScheduleBody(store: ScheduleStore, week: String, data: ScheduleResult?, context: ScheduleBodyContext, day: Int? = null) {
     val selected = week == store.selectedWeek
+    val scope = LocalScheduleStyle.current
+    val classic = scope.style == ScheduleVisualStyle.Classic
+    val periods = (1..SLOT_COUNT).map(store::periodTime)
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val height = maxHeight
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 6.dp)) {
             when {
                 data == null && selected && store.status == ScheduleStatus.Unauthorized -> StateCard(
-                    "教务授权已失效", "请重新登录并完成教务授权后读取课表", "去授权", onLogin,
+                    "教务授权已失效", "请重新登录并完成教务授权后读取课表", "去授权", context.onLogin,
                 )
                 data == null && selected && store.status == ScheduleStatus.Failed -> StateCard(
                     "课表暂时无法加载", store.errorMessage.ifEmpty { "请检查网络连接后重试" }, "重新加载",
                 ) { store.load(true) }
                 data == null -> LoadingCard(store.bridgeReady)
                 day != null -> {
-                    val blocks = store.blocksForDay(day, week, data)
+                    val blocks = store.placedBlocksForDay(day, week, data)
                     val adjustment = store.adjustment(day, week)
+                    val canAdd = store.canEdit
                     if (adjustment != null && blocks.isNotEmpty()) AdjustmentNotice(store, adjustment, day, week)
-                    if (blocks.isEmpty() && adjustment?.kind == "off") StateCard(
-                        "这一天放假，不上课", store.adjustmentDetail(adjustment), if (store.isGraduate) "" else "添加课程",
-                    ) { onAddSlot(day, 1) }
+                    if (!classic) {
+                        val date = store.calendarWeek(week)?.days?.getOrNull(day - 1).orEmpty()
+                        val isToday = store.isToday(day, week)
+                        val status = DayStatus(
+                            store::periodTime,
+                            now = if (isToday && !scope.static) context.now else null,
+                            // A past day: everything on it is finished.
+                            completedBefore = if (date.length == 10 && date < ScheduleStore.todayKey()) 24 * 60 else null,
+                        )
+                        StyledDayView(
+                            day = day, blocks = blocks, periods = periods, status = status,
+                            emptyNote = adjustment?.let { store.adjustmentDetail(it) }, emptyHeight = height - 12.dp, canAdd = canAdd,
+                            onCourse = { context.onCourse(it, week) }, onAddSlot = { context.onAddSlot(day, it) },
+                        )
+                    } else if (blocks.isEmpty() && adjustment?.kind == "off") StateCard(
+                        "这一天放假，不上课", store.adjustmentDetail(adjustment), if (canAdd) "添加课程" else "",
+                    ) { context.onAddSlot(day, 1) }
                     else if (blocks.isEmpty()) StateCard(
                         "这一天没有课程",
-                        adjustment?.let { store.adjustmentDetail(it) } ?: "可以切换日期，或添加个人课程",
-                        if (store.isGraduate) "" else "添加课程",
-                    ) { onAddSlot(day, 1) }
-                    else DayTimeline(store, day, week, blocks, palette, translucent, height, onCourse, onAddSlot)
+                        adjustment?.let { store.adjustmentDetail(it) } ?: if (canAdd) "可以切换日期，或添加个人课程" else "可以切换日期查看其他课程",
+                        if (canAdd) "添加课程" else "",
+                    ) { context.onAddSlot(day, 1) }
+                    else DayTimeline(store, day, week, blocks, context, height)
                 }
-                else -> WeekGrid(store, week, data, palette, translucent, height, onCourse, onAddSlot)
+                else -> {
+                    val revision = store.dataRevision
+                    val priorities = store.displayPriorities
+                    val calendar = store.calendar
+                    // Today is a key too: the column marked as today moves at midnight.
+                    val days = remember(week, data, revision, priorities, calendar, context.showWeekend, ScheduleStore.todayKey()) {
+                        store.visibleDays(week, context.showWeekend, data).map { weekday ->
+                            StyledWeekDay(
+                                day = weekday,
+                                date = store.calendarWeek(week)?.days?.getOrNull(weekday - 1).orEmpty(),
+                                today = store.isToday(weekday, week),
+                                adjustmentKind = store.adjustment(weekday, week)?.kind,
+                                blocks = store.placedBlocksForDay(weekday, week, data),
+                            )
+                        }
+                    }
+                    val openDay: (Int) -> Unit = {
+                        store.selectDay(it)
+                        store.selectViewMode("day")
+                    }
+                    if (classic) {
+                        WeekGrid(store, week, days, context, height, openDay)
+                    } else {
+                        StyledWeekGrid(
+                            days = days, periods = periods, rowHeight = styledWeekRowHeight(height.value, scope.style).dp,
+                            now = context.now, canAdd = store.canEdit,
+                            onCourse = { _, block -> context.onCourse(block, week) }, onAddSlot = context.onAddSlot, onDay = openDay,
+                        )
+                    }
+                }
             }
         }
     }
@@ -522,36 +696,37 @@ private fun DayHeaderCell(store: ScheduleStore, day: Int, week: String, highligh
 }
 
 @Composable
-private fun DayStrip(store: ScheduleStore, week: String, onSelect: (Int) -> Unit) {
+private fun DayStrip(store: ScheduleStore, week: String, days: List<Int>, current: Int, onSelect: (Int) -> Unit) {
     Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-        (1..7).forEach { day ->
+        days.forEach { day ->
             DayHeaderCell(
-                store, day, week, highlighted = day == store.selectedDay,
+                store, day, week, highlighted = day == current,
                 modifier = Modifier.weight(1f).clip(RoundedCornerShape(12.dp)).clickable { onSelect(day) }
                     .semantics {
                         contentDescription = WEEKDAY_LABELS[day - 1] + " " + store.dayDate(day, week) +
                             store.adjustment(day, week)?.let { if (it.kind == "off") "，休息" else "，补班" }.orEmpty()
-                        selected = day == store.selectedDay
+                        selected = day == current
                     },
             )
         }
     }
 }
 
+/** The classic week grid: glass cells and gradient cards, as this client has always drawn it. */
 @Composable
 private fun WeekGrid(
     store: ScheduleStore,
     week: String,
-    data: ScheduleResult,
-    palette: String,
-    translucent: Boolean,
+    days: List<StyledWeekDay>,
+    context: ScheduleBodyContext,
     height: Dp,
-    onCourse: (CourseBlock, String) -> Unit,
-    onAddSlot: (Int, Int) -> Unit,
+    onDay: (Int) -> Unit,
 ) {
     val colors = LocalScheduleColors.current
     val stride = compactWeekRowHeight(height.value).dp
-    val cellColor = if (translucent) colors.cell.copy(alpha = if (colors.dark) 0.52f else 0.36f) else colors.cell
+    val cellColor = if (context.translucent) colors.cell.copy(alpha = if (colors.dark) 0.52f else 0.36f) else colors.cell
+    val periods = (1..SLOT_COUNT).map(store::periodTime)
+    val nowY = if (days.any { it.today }) context.now?.let { nowPosition(it, periods, stride.value - 4f, 4f)?.first } else null
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             val glass = LocalScheduleGlass.current
@@ -559,69 +734,72 @@ private fun WeekGrid(
                 modifier = Modifier.width(38.dp).height(36.dp)
                     .then(if (glass != null) Modifier.clip(RoundedCornerShape(12.dp)).background(glass) else Modifier)
                     .padding(top = 10.dp))
-            (1..7).forEach { day ->
+            days.forEach { day ->
                 DayHeaderCell(
-                    store, day, week, highlighted = store.isToday(day, week),
-                    modifier = Modifier.weight(1f).clip(RoundedCornerShape(12.dp)).clickable {
-                        store.selectDay(day)
-                        store.selectViewMode("day")
-                    }.semantics {
-                        val note = store.adjustment(day, week)?.let { if (it.kind == "off") "，休息" else "，补班" }.orEmpty()
-                        contentDescription = WEEKDAY_LABELS[day - 1] + note + "，查看当天课程"
+                    store, day.day, week, highlighted = day.today,
+                    modifier = Modifier.weight(1f).clip(RoundedCornerShape(12.dp)).clickable { onDay(day.day) }.semantics {
+                        val note = day.adjustmentKind?.let { if (it == "off") "，休息" else "，补班" }.orEmpty()
+                        contentDescription = WEEKDAY_LABELS[day.day - 1] + note + "，查看当天课程"
                     },
                 )
             }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            Column(Modifier.width(38.dp)) { (1..SLOT_COUNT).forEach { SlotAxis(store, it, stride) } }
-            (1..7).forEach { day ->
-                val blocks = store.blocksForDay(day, week, data)
+            Box(Modifier.width(38.dp)) {
+                Column { (1..SLOT_COUNT).forEach { SlotAxis(store, it, stride) } }
+                if (nowY != null) {
+                    Box(Modifier.offset(y = nowY.dp - 8.dp).fillMaxWidth(), contentAlignment = Alignment.Center) { ScheduleNowBadge(context.now ?: 0) }
+                }
+            }
+            days.forEach { day ->
                 // Days off are drawn faded so the holiday reads at a glance.
-                val dayCell = if (store.adjustment(day, week)?.kind == "off") cellColor.copy(alpha = cellColor.alpha * 0.45f) else cellColor
-                Box(Modifier.weight(1f).height(stride * SLOT_COUNT)) {
+                val dayCell = if (day.adjustmentKind == "off") cellColor.copy(alpha = cellColor.alpha * 0.45f) else cellColor
+                BoxWithConstraints(Modifier.weight(1f).height(stride * SLOT_COUNT)) {
+                    val columnWidth = maxWidth
                     Column {
                         (1..SLOT_COUNT).forEach { slot ->
                             Box(
                                 Modifier.fillMaxWidth().height(stride - 4.dp).clip(RoundedCornerShape(8.dp)).background(dayCell)
                                     .border(0.5.dp, colors.divider.copy(alpha = if (colors.dark) 0.65f else 0.6f), RoundedCornerShape(8.dp))
-                                    .clickable { onAddSlot(day, slot) }
-                                    .semantics { contentDescription = WEEKDAY_LABELS[day - 1] + "第${slot}节，添加课程" },
+                                    .then(if (store.canEdit) Modifier.clickable { context.onAddSlot(day.day, slot) }
+                                        .semantics { contentDescription = WEEKDAY_LABELS[day.day - 1] + "第${slot}节，添加课程" } else Modifier),
                             )
                             Spacer(Modifier.height(4.dp))
                         }
                     }
-                    blocks.forEach { block ->
-                        val tone = scheduleCardTone(block.course.name, palette, colors.dark)
-                        val span = block.endSlot - block.startSlot + 1
-                        val overlaps = blocks.count { it.startSlot <= block.endSlot && it.endSlot >= block.startSlot }
+                    day.blocks.forEach { block ->
+                        val tone = scheduleCardTone(block.course.name, context.palette, colors.dark)
+                        // Courses of equal priority sit side by side and share the column.
+                        val laneWidth = columnWidth / block.lanes
+                        val narrow = block.lanes > 1
                         Column(
-                            Modifier.offset(y = stride * (block.startSlot - 1)).fillMaxWidth().height(stride * span - 4.dp)
+                            Modifier.offset(x = laneWidth * block.lane, y = stride * (block.startSlot - 1))
+                                .width(laneWidth).height(stride * block.span - 4.dp)
+                                .padding(end = if (narrow && block.lane < block.lanes - 1) 1.dp else 0.dp)
                                 .clip(RoundedCornerShape(9.dp)).background(colors.surface)
-                                .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(tone.highlight), Color(tone.fill))))
+                                .background(Brush.verticalGradient(listOf(Color(tone.highlight), Color(tone.fill))))
                                 .border(1.dp, Color(tone.border), RoundedCornerShape(9.dp))
-                                .clickable { onCourse(block, week) }
-                                .semantics { contentDescription = courseAccessibility(block) }
-                                .padding(horizontal = 2.dp, vertical = 3.dp),
+                                .clickable { context.onCourse(block, week) }
+                                .semantics { contentDescription = courseAccessibility(block.block) }
+                                .padding(horizontal = if (narrow) 1.dp else 2.dp, vertical = 3.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.Center,
                         ) {
                             Text(
-                                block.course.name, fontSize = 10.sp, lineHeight = 12.sp, letterSpacing = 0.sp, fontWeight = FontWeight.Medium,
-                                color = Color(tone.text), textAlign = TextAlign.Center,
-                                maxLines = if (span == 1) 2 else 6, overflow = TextOverflow.Ellipsis,
+                                block.course.name, fontSize = if (narrow) 9.sp else 10.sp, lineHeight = if (narrow) 11.sp else 12.sp, letterSpacing = 0.sp,
+                                fontWeight = FontWeight.Medium, color = Color(tone.text), textAlign = TextAlign.Center,
+                                maxLines = if (block.span == 1) 2 else 6, overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.weight(1f, fill = false),
                             )
-                            if (!block.course.location.isNullOrEmpty() && span > 1) {
+                            if (!block.course.location.isNullOrEmpty() && block.span > 1 && !narrow) {
                                 Spacer(Modifier.height(3.dp))
-                                Text(block.course.location, fontSize = 9.sp, lineHeight = 11.sp, letterSpacing = 0.sp, fontWeight = FontWeight.Normal,
+                                Text(block.course.location.orEmpty(), fontSize = 9.sp, lineHeight = 11.sp, letterSpacing = 0.sp, fontWeight = FontWeight.Normal,
                                     color = Color(tone.text).copy(alpha = 0.86f), textAlign = TextAlign.Center,
                                     maxLines = 2, overflow = TextOverflow.Ellipsis)
                             }
-                            if (overlaps > 1 && span > 1) {
-                                Text("+${overlaps - 1} 门", fontSize = 8.sp, lineHeight = 10.sp, color = Color(tone.text), maxLines = 1)
-                            }
                         }
                     }
+                    if (nowY != null && day.today) ScheduleNowLine(Modifier.offset(y = nowY.dp - 3.5.dp).fillMaxWidth())
                 }
             }
         }
@@ -646,49 +824,58 @@ private fun SlotAxis(store: ScheduleStore, slot: Int, stride: Dp) {
     }
 }
 
+/** The classic day view: the twelve periods as rows, courses over them. */
 @Composable
 private fun DayTimeline(
     store: ScheduleStore,
     day: Int,
     week: String,
-    blocks: List<CourseBlock>,
-    palette: String,
-    translucent: Boolean,
+    blocks: List<PlacedBlock>,
+    context: ScheduleBodyContext,
     height: Dp,
-    onCourse: (CourseBlock, String) -> Unit,
-    onAddSlot: (Int, Int) -> Unit,
 ) {
     val colors = LocalScheduleColors.current
     val stride = max(52f, (height.value - 12f) / SLOT_COUNT).dp
-    val cellColor = if (translucent) colors.cell.copy(alpha = if (colors.dark) 0.52f else 0.36f) else colors.cell
+    val cellColor = if (context.translucent) colors.cell.copy(alpha = if (colors.dark) 0.52f else 0.36f) else colors.cell
+    val periods = (1..SLOT_COUNT).map(store::periodTime)
+    val nowY = if (store.isToday(day, week)) context.now?.let { nowPosition(it, periods, stride.value - 4f, 4f)?.first } else null
     Row(Modifier.fillMaxWidth()) {
-        Column(Modifier.width(38.dp)) { (1..SLOT_COUNT).forEach { SlotAxis(store, it, stride) } }
+        Box(Modifier.width(38.dp)) {
+            Column { (1..SLOT_COUNT).forEach { SlotAxis(store, it, stride) } }
+            if (nowY != null) {
+                Box(Modifier.offset(y = nowY.dp - 8.dp).fillMaxWidth(), contentAlignment = Alignment.Center) { ScheduleNowBadge(context.now ?: 0) }
+            }
+        }
         Spacer(Modifier.width(10.dp))
-        Box(Modifier.weight(1f).height(stride * SLOT_COUNT)) {
+        BoxWithConstraints(Modifier.weight(1f).height(stride * SLOT_COUNT)) {
+            val columnWidth = maxWidth
             Column {
                 (1..SLOT_COUNT).forEach { slot ->
                     Box(
                         Modifier.fillMaxWidth().height(stride - 4.dp).clip(RoundedCornerShape(10.dp)).background(cellColor)
                             .border(0.5.dp, colors.divider, RoundedCornerShape(10.dp))
-                            .clickable { onAddSlot(day, slot) }
-                            .semantics { contentDescription = "第${slot}节，添加课程" },
+                            .then(if (store.canEdit) Modifier.clickable { context.onAddSlot(day, slot) }
+                                .semantics { contentDescription = "第${slot}节，添加课程" } else Modifier),
                     )
                     Spacer(Modifier.height(4.dp))
                 }
             }
             blocks.forEach { block ->
-                val tone = scheduleCardTone(block.course.name, palette, colors.dark)
-                val span = block.endSlot - block.startSlot + 1
-                val overlaps = blocks.count { it.startSlot <= block.endSlot && it.endSlot >= block.startSlot }
+                val tone = scheduleCardTone(block.course.name, context.palette, colors.dark)
+                val span = block.span
+                val laneWidth = columnWidth / block.lanes
+                val narrow = block.lanes > 1
                 val meta = listOfNotNull(block.course.location?.let { "@$it" }, block.course.teacher).joinToString(" · ")
                 Column(
-                    Modifier.offset(y = stride * (block.startSlot - 1)).fillMaxWidth().height(stride * span - 4.dp)
+                    Modifier.offset(x = laneWidth * block.lane, y = stride * (block.startSlot - 1))
+                        .width(laneWidth).height(stride * span - 4.dp)
+                        .padding(end = if (narrow && block.lane < block.lanes - 1) 4.dp else 0.dp)
                         .clip(RoundedCornerShape(12.dp)).background(colors.surface)
-                        .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(tone.highlight), Color(tone.fill))))
+                        .background(Brush.verticalGradient(listOf(Color(tone.highlight), Color(tone.fill))))
                         .border(1.dp, Color(tone.border), RoundedCornerShape(12.dp))
-                        .clickable { onCourse(block, week) }
-                        .semantics { contentDescription = courseAccessibility(block) }
-                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                        .clickable { context.onCourse(block, week) }
+                        .semantics { contentDescription = courseAccessibility(block.block) }
+                        .padding(horizontal = if (narrow) 10.dp else 16.dp, vertical = 6.dp),
                     verticalArrangement = Arrangement.Center,
                 ) {
                     Text(block.course.name, fontSize = if (span == 1) 13.sp else 16.sp, fontWeight = FontWeight.Medium,
@@ -696,14 +883,12 @@ private fun DayTimeline(
                     Spacer(Modifier.height(4.dp))
                     Text(meta.ifEmpty { "地点待确认" }, fontSize = 11.sp, color = Color(tone.text).copy(alpha = 0.82f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     if (span > 1) {
-                        Text("${block.course.slotNote ?: "第 ${block.startSlot}–${block.endSlot} 节"} · ${store.timeRange(block.startSlot, block.endSlot)}",
-                            fontSize = 11.sp, color = Color(tone.text), maxLines = 1)
-                    }
-                    if (overlaps > 1 && span > 1) {
-                        Text("$overlaps 门课程重叠，点击查看", fontSize = 10.sp, color = colors.secondary)
+                        Text("${ScheduleStyleTime.slotText(block.startSlot, block.endSlot)} · ${store.timeRange(block.startSlot, block.endSlot)}",
+                            fontSize = 11.sp, color = Color(tone.text), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }
+            if (nowY != null) ScheduleNowLine(Modifier.offset(y = nowY.dp - 3.5.dp).fillMaxWidth())
         }
     }
 }
@@ -747,5 +932,5 @@ internal fun courseAccessibility(block: CourseBlock): String =
     WEEKDAY_LABELS[block.day - 1] + "，" + block.course.name + "，第" + block.startSlot + "至" + block.endSlot + "节，" +
         block.course.location.orEmpty()
 
-/** A frosted plate colour while a background photo is shown, else null (see [NativeScheduleScreen]). */
+/** A frosted plate colour while a background photo is shown, else null (see [ScheduleSurface]). */
 internal val LocalScheduleGlass = staticCompositionLocalOf<Color?> { null }

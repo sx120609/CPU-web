@@ -39,17 +39,19 @@ private val LightSchedule = ScheduleColors(
     divider = Color(0xFFE2E4EA),
 )
 
+// The neutral greys of the site's dark theme, as on the iOS timetable, so the
+// timetable tab matches the Web tabs beside it.
 private val DarkSchedule = ScheduleColors(
     dark = true,
-    page = Color(0xFF101820),
-    surface = Color(0xFF202C36),
-    softSurface = Color(0xFF17232D),
-    cell = Color(0x662A3642),
-    text = Color(0xFFF5F5F7),
-    secondary = Color(0xFFA6A6B0),
+    page = Color(0xFF111316),
+    surface = Color(0xFF23272C),
+    softSurface = Color(0xFF1A1D21),
+    cell = Color(0x802A2F35),
+    text = Color(0xFFECEEF1),
+    secondary = Color(0xFFB0B7C1),
     accent = Color(0xFF8DADFF),
-    todayBorder = Color(0xFF484C5B),
-    divider = Color(0xFF34353C),
+    todayBorder = Color(0xFF454A52),
+    divider = Color(0xFF34383E),
 )
 
 val LocalScheduleColors = staticCompositionLocalOf { LightSchedule }

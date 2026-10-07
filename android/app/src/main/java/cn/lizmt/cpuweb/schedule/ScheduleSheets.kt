@@ -63,35 +63,6 @@ fun SheetTitle(text: String) {
 }
 
 @Composable
-fun CourseDetailSheet(store: ScheduleStore, block: CourseBlock, onDismiss: () -> Unit, onEdit: () -> Unit) {
-    ScheduleSheetContainer(onDismiss) {
-        SheetTitle("课程详情")
-        Text(block.course.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
-        Spacer(Modifier.height(14.dp))
-        DetailRow("星期", WEEKDAY_LABELS[block.day - 1])
-        DetailRow("节次", block.course.slotNote ?: "第 ${block.startSlot}-${block.endSlot} 节")
-        DetailRow("时间", store.timeRange(block.startSlot, block.endSlot))
-        DetailRow("周次", block.course.weeks)
-        block.course.teacher?.let { DetailRow("教师", it) }
-        block.course.location?.let { DetailRow("地点", it) }
-        block.course.editableNote.takeIf { it.isNotEmpty() }?.let { DetailRow("备注", it) }
-        if (block.course.customId != null) DetailRow("来源", "个人添加的课程")
-        if (!store.isGraduate) {
-            Spacer(Modifier.height(16.dp))
-            FilledTonalButton(onClick = onEdit, modifier = Modifier.fillMaxWidth().heightIn(min = 46.dp)) { Text("编辑个人课程") }
-        }
-    }
-}
-
-@Composable
-private fun DetailRow(label: String, value: String) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 5.dp)) {
-        Text(label, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(58.dp))
-        Text(value.ifEmpty { "—" }, fontSize = 13.sp, modifier = Modifier.weight(1f))
-    }
-}
-
-@Composable
 fun OverlapSheet(blocks: List<CourseBlock>, palette: String, onDismiss: () -> Unit, onSelect: (CourseBlock) -> Unit) {
     val colors = LocalScheduleColors.current
     ScheduleSheetContainer(onDismiss) {
@@ -197,7 +168,7 @@ fun PaletteChoices(selected: String, onSelect: (String) -> Unit) {
 fun ScheduleStyleSheet(activity: MainActivity, onDismiss: () -> Unit) {
     val style = activity.style
     ScheduleSheetContainer(onDismiss) {
-        SheetTitle("课表样式")
+        SheetTitle("课表配色与背景")
         Text("课程配色", style = MaterialTheme.typography.titleSmall)
         Spacer(Modifier.height(8.dp))
         PaletteChoices(style.palette) { style.selectPalette(it) }

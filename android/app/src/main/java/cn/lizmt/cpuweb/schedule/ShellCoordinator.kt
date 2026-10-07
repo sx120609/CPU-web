@@ -55,6 +55,7 @@ class ShellCoordinator(
         web.onSchedulePrefetched = { raw -> schedule.acceptPrefetched(raw) }
         schedule.loader = { request -> web.loadSchedule(request) }
         schedule.prioritizer = { semester, week -> web.prioritizeSchedule(semester, week) }
+        schedule.priorityLoader = { semester -> web.loadSchedulePriorities(semester) }
         schedule.restoreArchive()
         web.start()
         scope.launch { resolveInitialAuth() }

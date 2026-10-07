@@ -7,6 +7,7 @@ import { isNativeScheduleShell, liveApp, useAuthStore, useJwxtStore } from "./ad
 import { installAndroidEditor } from "./editor";
 import { installAndroidHeader } from "./header";
 import { installAndroidNavigation } from "./navigation";
+import { installAndroidShares } from "./shares";
 import { installAndroidShellObserver } from "./shell";
 
 // Runs after every main-frame load. The document-start script owned by Kotlin
@@ -86,6 +87,7 @@ if (isNativeScheduleShell() && (window as any).CPUTimeNative && !(window as any)
 
   installAndroidShellObserver();
   installAndroidEditor();
+  installAndroidShares();
   const install = () => {
     const router = liveApp()?.config.globalProperties.$router;
     if (router) {

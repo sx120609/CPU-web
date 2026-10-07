@@ -27,11 +27,17 @@ data class ScheduleRequest(val semester: String, val week: String, val force: Bo
  * - A timetable that is already on screen is never replaced by a status page:
  *   authorization expiry, bridge failures and refresh errors become a banner.
  * - Account changes clear the memory cache and the disk archive at once.
+ * - A read-only store shows somebody else's shared timetable. It has no
+ *   archive and no priorities, and nothing in it reaches the widgets.
  */
 class ScheduleStore(
     private val scope: CoroutineScope,
     private val archive: ScheduleArchive? = null,
     private val clock: () -> Long = System::currentTimeMillis,
+    val readOnly: Boolean = false,
+    /** The display priorities kept across launches, as handed to [savePriorities]. */
+    savedPriorities: String? = null,
+    private val savePriorities: (String) -> Unit = {},
 ) {
     var status by mutableStateOf(ScheduleStatus.Idle)
         private set
@@ -70,6 +76,16 @@ class ScheduleStore(
     var loader: (suspend (ScheduleRequest) -> String?)? = null
     var prioritizer: ((String, String) -> Unit)? = null
     var onLoaded: (() -> Unit)? = null
+    /** Reads the saved display priorities of a semester; null when they could not be read. */
+    var priorityLoader: (suspend (String) -> Map<String, Int>?)? = null
+
+    /**
+     * Display priority of overlapping courses, by semester and then by
+     * [SchedulePriority.key]. Read with the schedule edits and kept across
+     * launches, so the grid does not reshuffle once the edits arrive.
+     */
+    private var prioritiesBySemester by mutableStateOf(parsePriorities(savedPriorities))
+    private val prioritiesFetched = mutableSetOf<String>()
 
     private class CacheEntry(val snapshot: ScheduleSnapshot, val savedAt: Long, val stale: Boolean)
 
@@ -93,6 +109,13 @@ class ScheduleStore(
         private set
 
     val isGraduate: Boolean get() = source == "graduate"
+
+    /** Personal edits exist for the user's own undergraduate timetable only. */
+    val canEdit: Boolean get() = !readOnly && !isGraduate
+
+    /** The display priorities of the semester on screen. */
+    val displayPriorities: Map<String, Int>
+        get() = prioritiesBySemester[selectedSemester.ifEmpty { result?.currentSemester.orEmpty() }].orEmpty()
 
     // region Lifecycle
 
@@ -118,7 +141,7 @@ class ScheduleStore(
         selectedSemester = saved.semester
         selectedWeek = saved.week
         selectedDay = if (saved.day in 1..7) saved.day else todayWeekday()
-        viewMode = if (saved.viewMode == "day") "day" else "week"
+        viewMode = normalizedViewMode(saved.viewMode)
         applySnapshot(entry.snapshot)
         return true
     }
@@ -244,7 +267,39 @@ class ScheduleStore(
         if (refreshed) cache.keys.filter { it.startsWith(data.currentSemester + "|") }.forEach(cache::remove)
         remember(snapshot, stale = false)
         applySnapshot(snapshot)
+        refreshPriorities(force = refreshed)
         onLoaded?.invoke()
+    }
+
+    /**
+     * Reads the saved priorities of the semester on screen, once per semester
+     * unless forced. A failure keeps what is known: the grid then simply shows
+     * overlapping courses side by side.
+     */
+    fun refreshPriorities(force: Boolean = false) {
+        val loader = priorityLoader ?: return
+        val semester = selectedSemester.ifEmpty { result?.currentSemester.orEmpty() }
+        if (!canEdit || semester.isEmpty()) return
+        if (!prioritiesFetched.add(semester) && !force) return
+        val account = accountScope
+        scope.launch {
+            val loaded = loader(semester)
+            if (account != accountScope) return@launch
+            if (loaded == null) prioritiesFetched -= semester else setPriorities(semester, loaded)
+        }
+    }
+
+    /** The priorities an edit just saved, or the ones read with the edits. */
+    fun setPriorities(semester: String, priorities: Map<String, Int>) {
+        if (readOnly || semester.isEmpty()) return
+        val cleaned = priorities.filter { it.key.isNotEmpty() && it.value > 0 }
+        if (prioritiesBySemester[semester].orEmpty() == cleaned) return
+        prioritiesBySemester = if (cleaned.isEmpty()) prioritiesBySemester - semester else prioritiesBySemester + (semester to cleaned)
+        val json = org.json.JSONObject()
+        prioritiesBySemester.forEach { (key, values) ->
+            json.put(key, org.json.JSONObject().apply { values.forEach { (name, value) -> put(name, value) } })
+        }
+        savePriorities(json.toString())
     }
 
     /** Weeks prefetched by the Web bridge. They never switch the visible week. */
@@ -280,6 +335,11 @@ class ScheduleStore(
         cancelRequest()
         refreshBarrier = clock()
         cache.clear()
+        if (prioritiesBySemester.isNotEmpty()) {
+            prioritiesBySemester = emptyMap()
+            savePriorities("{}")
+        }
+        prioritiesFetched.clear()
         navigationWeeks = emptyList()
         knownSemesters = emptyList()
         clearFallback()
@@ -335,8 +395,16 @@ class ScheduleStore(
     }
 
     fun selectViewMode(mode: String) {
-        viewMode = if (mode == "day") "day" else "week"
+        viewMode = normalizedViewMode(mode)
         persist()
+    }
+
+    /** Jump to a dated day of the selected term, as the month view does. False when the term has no such date. */
+    fun selectDate(date: String): Boolean {
+        val week = calendar?.weeks?.firstOrNull { date in it.days } ?: return false
+        selectedDay = week.days.indexOf(date) + 1
+        if (week.week.toString() != selectedWeek) selectWeek(week.week.toString()) else persist()
+        return true
     }
 
     fun canMoveWeek(delta: Int): Boolean {
@@ -401,6 +469,10 @@ class ScheduleStore(
     // region Derived data
 
     fun semesterOptions(): List<ScheduleOption> = knownSemesters
+
+    /** The term as exports name it: its value, or the name of a shared timetable. */
+    fun semesterTitle(): String =
+        if (readOnly) knownSemesters.firstOrNull { it.value == selectedSemester }?.label ?: "共享课表" else selectedSemester
 
     fun weekOptions(): List<ScheduleOption> = result?.weeks?.takeIf { it.isNotEmpty() } ?: navigationWeeks
 
@@ -488,6 +560,22 @@ class ScheduleStore(
 
     fun overlapping(block: CourseBlock, week: String = selectedWeek): List<CourseBlock> =
         blocksForDay(block.day, week).filter { it.startSlot <= block.endSlot && it.endSlot >= block.startSlot }
+
+    /**
+     * One day's courses as they are drawn: a course set to show first covers
+     * the periods it shares with the others, and the rest sit side by side.
+     */
+    fun placedBlocksForDay(day: Int, week: String = selectedWeek, data: ScheduleResult? = resultFor(week)): List<PlacedBlock> =
+        SchedulePriority.place(blocksForDay(day, week, data), displayPriorities)
+
+    /** The whole selected semester when it is cached complete; publishing a share needs it. */
+    fun completeSnapshot(): ScheduleSnapshot? = cache[selectedSemester + "|*"]?.snapshot
+
+    /** The weekdays a week shows: weekends can be hidden unless a class or a make-up day falls on them. */
+    fun visibleDays(week: String, showWeekend: Boolean, data: ScheduleResult? = resultFor(week)): List<Int> =
+        (1..7).filter { day ->
+            showWeekend || day <= 5 || adjustment(day, week)?.kind == "swap" || blocksForDay(day, week, data).isNotEmpty()
+        }
 
     fun calendarWeek(week: String = selectedWeek): CalendarWeek? {
         val number = (week.ifEmpty { result?.currentWeek.orEmpty() }).toIntOrNull() ?: return null
@@ -786,6 +874,19 @@ class ScheduleStore(
         private val TEACHER_TITLE = Regex(
             "(?:其他正高级|其他副高级|正高级|副高级|主任医师|副主任医师|高级实验师|副研究员|实验师|研究员|副教授|教授|讲师|助教|未评级)$",
         )
+
+        fun normalizedViewMode(mode: String): String = if (mode == "day" || mode == "month") mode else "week"
+
+        private fun parsePriorities(raw: String?): Map<String, Map<String, Int>> {
+            val json = raw?.let { runCatching { org.json.JSONObject(it) }.getOrNull() } ?: return emptyMap()
+            val result = mutableMapOf<String, Map<String, Int>>()
+            for (semester in json.keys()) {
+                val item = json.optJSONObject(semester) ?: continue
+                val values = item.keys().asSequence().associateWith { item.optInt(it, 0) }.filter { it.value > 0 }
+                if (values.isNotEmpty()) result[semester] = values
+            }
+            return result
+        }
 
         fun todayWeekday(): Int {
             val day = Calendar.getInstance().get(Calendar.DAY_OF_WEEK)

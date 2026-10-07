@@ -44,6 +44,8 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         private set
     lateinit var widgets: WidgetSettings
         private set
+    lateinit var sharing: ScheduleSharing
+        private set
     private lateinit var legacyBridge: CpuAndroidBridge
     lateinit var nativeWebLayer: NativeWebLayer
         private set
@@ -104,7 +106,16 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         web = WebSession(this, lifecycleScope, this, legacyBridge)
         web.onAppearanceReported = { mode -> appearance.adoptWebMode(mode) }
         web.nativeAppearanceMode = { appearance.mode }
-        schedule = ScheduleStore(lifecycleScope, ScheduleArchive.create(this))
+        val debugFixture = BuildConfig.DEBUG && intent.getBooleanExtra(DebugScheduleFixture.EXTRA, false)
+        val priorities = getSharedPreferences(PRIORITY_PREFS, MODE_PRIVATE)
+        schedule = ScheduleStore(
+            lifecycleScope, ScheduleArchive.create(this),
+            savedPriorities = priorities.getString(KEY_PRIORITIES, null),
+            savePriorities = { priorities.edit().putString(KEY_PRIORITIES, it).apply() },
+        )
+        // Shared timetables are other people's data: they stay out of device backups.
+        sharing = if (debugFixture) ScheduleSharing(lifecycleScope, null, { DebugScheduleFixture.shares(it) })
+        else ScheduleSharing(lifecycleScope, java.io.File(noBackupFilesDir, "shared-schedules.json"), { web.shares(it) })
         shell = ShellCoordinator(lifecycleScope, web, schedule)
         shell.onAccountChanged = { account -> widgets.handleAccountChanged(account) }
         // Widgets read the timetable the app writes locally: follow every change of
@@ -112,13 +123,16 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         lifecycleScope.launch {
             snapshotFlow { listOf(schedule.result, schedule.calendar, schedule.dataRevision, web.authState.authenticated) }
                 .collectLatest {
+                    // The saved shared timetables belong to the account whose timetable is on screen.
+                    if (!debugFixture) sharing.adopt(schedule.accountScope)
                     delay(400)
                     widgets.syncLocalDays(schedule, web)
                 }
         }
-        if (BuildConfig.DEBUG && intent.getBooleanExtra(DebugScheduleFixture.EXTRA, false)) {
+        if (debugFixture) {
             welcomeSeen = true
             shell.connectDebugFixture()
+            DebugScheduleFixture.configure(this, intent)
         } else {
             shell.connect()
         }
@@ -327,6 +341,8 @@ class MainActivity : ComponentActivity(), WebSessionHost {
         const val EXTRA_SEMESTER = "cn.lizmt.cpuweb.SCHEDULE_SEMESTER"
         const val EXTRA_WEEK = "cn.lizmt.cpuweb.SCHEDULE_WEEK"
         private const val SHELL_PREFS = "native_shell"
+        private const val PRIORITY_PREFS = "native_schedule_priorities"
+        private const val KEY_PRIORITIES = "v1"
         private const val KEY_WELCOME_SEEN = "welcome_seen_v4"
         private const val REQUEST_WRITE_STORAGE = 2002
     }

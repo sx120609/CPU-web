@@ -1,5 +1,6 @@
 package cn.lizmt.cpuweb.schedule
 
+import android.content.Intent
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Calendar
@@ -9,10 +10,76 @@ import java.util.Locale
  * Debug-only timetable, the counterpart of iOS `CPU_DEBUG_MOCK_SCHEDULE`.
  * Start a debug build with `--ez debugMockSchedule true` to inspect the
  * native grid, overlaps and long room names without a school session.
+ *
+ * Further extras put the fixture in a given state for a screenshot (see the
+ * README): `debugStyle`, `debugView`, `debugDay`, `debugNow`,
+ * `debugPriority`, `debugSheet`, `debugPublished` and `debugShared`.
  */
 object DebugScheduleFixture {
     const val EXTRA = "debugMockSchedule"
     private const val SEMESTER = "2026-2027-1"
+    private const val FRIEND_CODE = "FRKEND23"
+    private const val OWN_CODE = "DEMQ2345"
+
+    /** "Now" pinned by `--es debugNow 10:20`, so a state of the day view can be looked at on demand. */
+    var pinnedNow: Int? = null
+        private set
+    /** The shared timetable to open at launch (`--ez debugShared true`). */
+    var openSharedCode: String? = null
+        private set
+    private var sheet = ""
+    private var published = false
+
+    fun initialSheet(): ScheduleSheet? = when (sheet) {
+        "visual" -> ScheduleSheet.VisualStyle
+        "style" -> ScheduleSheet.Style
+        "sharing" -> ScheduleSheet.Sharing
+        else -> null
+    }
+
+    /** Applies the screenshot extras of a debug launch. Nothing here runs in a release build. */
+    fun configure(activity: MainActivity, intent: Intent) {
+        intent.getStringExtra("debugStyle")?.let { activity.style.selectVisualStyle(ScheduleVisualStyle.fromId(it)) }
+        intent.getStringExtra("debugView")?.let { activity.schedule.selectViewMode(it) }
+        intent.getIntExtra("debugDay", 0).takeIf { it in 1..7 }?.let { activity.schedule.selectDay(it) }
+        pinnedNow = intent.getStringExtra("debugNow")?.let(ScheduleStyleTime::clockMinutes)
+        sheet = intent.getStringExtra("debugSheet").orEmpty()
+        // Names in display order: the first one is in front.
+        intent.getStringExtra("debugPriority")?.split(',')?.map { SchedulePriority.key(it) }?.filter { it.isNotEmpty() }?.let { names ->
+            activity.schedule.setPriorities(SEMESTER, names.mapIndexed { index, name -> name to names.size - index }.toMap())
+        }
+        published = intent.getBooleanExtra("debugPublished", false)
+        val friend = SharedSchedule.read(shareDocument(FRIEND_CODE, "小王"), System.currentTimeMillis()).copy(remark = "室友小王")
+        activity.sharing.installDebugState(
+            SharedScheduleLibrary(account = "debug", schedules = listOf(friend)),
+            if (published) listOf(ShareMeta(OWN_CODE, "我", SEMESTER, friend.courseCount, updatedAt = "2026-10-07T02:00:00.000Z")) else emptyList(),
+        )
+        openSharedCode = if (intent.getBooleanExtra("debugShared", false)) FRIEND_CODE else null
+    }
+
+    private fun shareDocument(code: String, owner: String): JSONObject {
+        val snapshot = JSONObject(snapshot())
+        val data = snapshot.getJSONObject("data")
+        return JSONObject().put("code", code).put("owner", owner).put("semester", SEMESTER).put("courseCount", 8)
+            .put("createdAt", "2026-10-01T02:00:00.000Z").put("updatedAt", "2026-10-07T02:00:00.000Z")
+            .put("schedule", JSONObject().put("cells", data.getJSONArray("cells")))
+            .put("calendar", snapshot.getJSONObject("calendar"))
+    }
+
+    /** A stand-in for `/api/schedule-shares`, so the sharing pages work without an account. */
+    fun shares(payload: JSONObject): String {
+        val code = payload.optString("code")
+        fun meta(value: String, owner: String) = shareDocument(value, owner).apply { remove("schedule"); remove("calendar") }
+        val data: JSONObject? = when (payload.optString("action")) {
+            "mine" -> JSONObject().put("shares", JSONArray().apply { if (published) put(meta(OWN_CODE, "我")) })
+            "publish" -> meta(OWN_CODE, "我").put("created", !published).put("changed", !published).also { published = true }
+            "revoke" -> JSONObject().put("ok", true).also { published = false }
+            "meta" -> if (code == FRIEND_CODE) meta(code, "小王") else null
+            "get" -> if (code == FRIEND_CODE) shareDocument(code, "小王") else null
+            else -> null
+        }
+        return (if (data == null) JSONObject().put("error", "分享课表不存在或已撤销").put("status", 404) else JSONObject().put("data", data)).toString()
+    }
 
     /** A complete term whose week 4 is the current week. */
     fun snapshot(): String {
