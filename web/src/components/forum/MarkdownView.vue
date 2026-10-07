@@ -1369,61 +1369,70 @@ onMounted(() => {
 }
 .md :deep(sub), .md :deep(sup) { font-size: 0.75em; }
 
-:global(html[data-theme="dark"]) .md {
+/* Not `:global(html[...]) .md`: scoped CSS reduces that to a bare `html[...]`. */
+html[data-theme="dark"] .md {
   color: var(--cpu-text);
 }
 
-:global(html[data-theme="dark"]) .md :deep(.md-image-album > .md-image-shell.is-full-ratio),
-:global(html[data-theme="dark"]) .md :deep(.md-video-thumb) {
+html[data-theme="dark"] .md :deep(.md-image-album > .md-image-shell.is-full-ratio),
+html[data-theme="dark"] .md :deep(.md-video-thumb) {
   background: var(--cpu-surface-soft);
 }
 
-:global(html[data-theme="dark"]) .md :deep(.md-image-shell__placeholder),
-:global(html[data-theme="dark"]) .md :deep(.md-video-thumb__fallback),
-:global(html[data-theme="dark"]) .md :deep(.md-image-shell.is-error .md-image-shell__placeholder) {
+html[data-theme="dark"] .md :deep(.md-image-shell__placeholder),
+html[data-theme="dark"] .md :deep(.md-video-thumb__fallback),
+html[data-theme="dark"] .md :deep(.md-image-shell.is-error .md-image-shell__placeholder) {
   background:
     linear-gradient(110deg, rgba(255, 255, 255, 0) 24%, rgba(154, 178, 172, 0.18) 48%, rgba(255, 255, 255, 0) 72%),
     linear-gradient(135deg, #1e2226 0%, #15181b 100%);
+  /* The shorthand above resets the size the shimmer animation needs. */
+  background-size: 220% 100%, 100% 100%;
 }
 
-:global(html[data-theme="dark"]) .md :deep(.md-image-shell__state) {
+html[data-theme="dark"] .md :deep(.md-image-shell__state) {
   color: var(--cpu-text-secondary);
   background: rgba(13, 23, 21, 0.9);
 }
 
-:global(html[data-theme="dark"]) .md :deep(.md-image-album > .md-image-shell.is-full-ratio img) {
+html[data-theme="dark"] .md :deep(.md-image-album > .md-image-shell.is-full-ratio img) {
   background: var(--cpu-surface-soft);
 }
 
-:global(html[data-theme="dark"]) .md :deep(.qq-share-card),
-:global(html[data-theme="dark"]) .md :deep(.qq-forward-card),
-:global(html[data-theme="dark"]) .md :deep(.qq-forward-entry) {
+/* `:where()` adds no specificity, so a linked card keeps its hover border. */
+:where(html[data-theme="dark"]) .md :deep(.qq-share-card),
+:where(html[data-theme="dark"]) .md :deep(.qq-forward-card),
+:where(html[data-theme="dark"]) .md :deep(.qq-forward-entry) {
   background: var(--cpu-surface-soft);
   border-color: var(--cpu-border-soft);
   color: var(--cpu-text);
   box-shadow: none;
 }
 
-:global(html[data-theme="dark"]) .md :deep(.qq-share-card__title),
-:global(html[data-theme="dark"]) .md :deep(.qq-forward-entry__name) {
+html[data-theme="dark"] .md :deep(.qq-share-card__title),
+html[data-theme="dark"] .md :deep(.qq-forward-entry__name) {
   color: var(--cpu-text);
 }
 
-:global(html[data-theme="dark"]) .md :deep(.qq-share-card__summary),
-:global(html[data-theme="dark"]) .md :deep(.qq-share-card__source),
-:global(html[data-theme="dark"]) .md :deep(.qq-share-card__host),
-:global(html[data-theme="dark"]) .md :deep(.qq-forward-placeholder) {
+/* The summary is a plain line of text: it takes the colour but not the chip fill,
+   which would show as a full-width band. */
+html[data-theme="dark"] .md :deep(.qq-share-card__summary) {
+  color: var(--cpu-text-secondary);
+}
+
+html[data-theme="dark"] .md :deep(.qq-share-card__source),
+html[data-theme="dark"] .md :deep(.qq-share-card__host),
+html[data-theme="dark"] .md :deep(.qq-forward-placeholder) {
   color: var(--cpu-text-secondary);
   background: var(--cpu-surface-subtle);
 }
 
-:global(html[data-theme="dark"]) .md :deep(th),
-:global(html[data-theme="dark"]) .md :deep(td) {
+html[data-theme="dark"] .md :deep(th),
+html[data-theme="dark"] .md :deep(td) {
   border-color: var(--cpu-border-soft);
 }
 
-:global(html[data-theme="dark"]) .md :deep(th),
-:global(html[data-theme="dark"]) .md :deep(tr:nth-child(even) td) {
+html[data-theme="dark"] .md :deep(th),
+html[data-theme="dark"] .md :deep(tr:nth-child(even) td) {
   background: var(--cpu-surface-soft);
 }
 

@@ -1873,12 +1873,15 @@ function normalizeMessageSettings(value: any) {
     overflow: hidden;
   }
 
-  :global(.layout-root.keyboard-open) .msg-page.is-private {
+  .layout-root.keyboard-open .msg-page.is-private {
     height: calc(100dvh - 84px);
     min-height: 300px;
   }
 
-  :global(.layout-root--native-shell) .msg-page.is-private {
+  /* The app shell draws no top bar or tab bar. The second selector outranks the
+     keyboard rule above, which would otherwise leave an 84px gap over the keyboard. */
+  .layout-root--native-shell .msg-page.is-private,
+  .layout-root--native-shell.keyboard-open .msg-page.is-private {
     height: 100dvh;
   }
 }

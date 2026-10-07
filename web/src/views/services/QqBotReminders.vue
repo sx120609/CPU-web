@@ -389,7 +389,7 @@ function requestMessage(error: unknown) {
   font-weight: 700;
 }
 
-:global(html[data-theme="dark"]) .tool-badge {
+html[data-theme="dark"] .tool-badge {
   color: #93c5fd;
 }
 

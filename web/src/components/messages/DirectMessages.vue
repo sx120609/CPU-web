@@ -1012,7 +1012,7 @@ function errorMessage(error: unknown, fallback: string) {
   border: 1px solid var(--cpu-border-soft);
   border-radius: var(--cpu-radius-l);
 }
-:global(html[data-theme="dark"]) .dm {
+html[data-theme="dark"] .dm {
   --dm-warn-ink: var(--cpu-warn);
 }
 

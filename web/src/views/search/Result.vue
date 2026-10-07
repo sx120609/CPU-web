@@ -1318,7 +1318,7 @@ onBeforeUnmount(() => {
   border: 1px solid var(--cpu-border-soft);
   border-radius: var(--sj-radius);
 }
-:global(html[data-theme="dark"]) .sj {
+html[data-theme="dark"] .sj {
   --sj-warn-ink: var(--cpu-warn);
   box-shadow: none;
 }
@@ -2025,7 +2025,8 @@ onBeforeUnmount(() => {
   cursor: not-allowed;
   background: var(--cpu-surface-soft);
 }
-:global(html[data-theme="dark"]) .sj-composer {
+/* `:where()` adds no specificity, so the focus ring above still shows in dark theme. */
+:where(html[data-theme="dark"]) .sj-composer {
   box-shadow: none;
 }
 .sj-composer textarea {
@@ -2132,7 +2133,7 @@ onBeforeUnmount(() => {
   inset: 0;
   background: rgba(15, 23, 42, 0.26);
 }
-:global(html[data-theme="dark"]) .sj-scrim {
+html[data-theme="dark"] .sj-scrim {
   background: rgba(0, 0, 0, 0.45);
 }
 .sj-history-head {

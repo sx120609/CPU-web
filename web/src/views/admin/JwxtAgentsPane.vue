@@ -511,10 +511,10 @@ code { color: var(--cpu-primary); font-family: var(--cpu-font-mono); overflow-wr
 .token-state { color: var(--cpu-text-muted); font-size: 12px; }
 .dialog-capabilities { display: flex; gap: 24px; }
 .env-block { margin: 16px 0 0; padding: 16px; overflow: auto; border-radius: 12px; background: #111827; color: #d1fae5; font: 13px/1.7 var(--cpu-font-mono); }
-:global(html[data-theme="dark"]) .agent-card {
+html[data-theme="dark"] .agent-card {
   box-shadow: 0 8px 24px rgba(0, 0, 0, .2);
 }
-:global(html[data-theme="dark"]) .capability-grid {
+html[data-theme="dark"] .capability-grid {
   background: color-mix(in srgb, var(--cpu-bg) 46%, var(--cpu-surface-soft));
 }
 @media (max-width: 900px) {
