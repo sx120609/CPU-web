@@ -91,21 +91,22 @@ internal fun Modifier.scheduleSurface(cornerRadius: Dp, panel: Boolean = false, 
     }
 }
 
-/** The 休 / 班 badge beside a date. */
+/** The 休 / 班 badge beside a date. `onInk`: it sits on an ink-filled block, so ink and canvas trade places. */
 @Composable
-internal fun ScheduleAdjustmentMark(kind: String) {
+internal fun ScheduleAdjustmentMark(kind: String, onInk: Boolean = false) {
     val scope = LocalScheduleStyle.current
     val style = scope.style
     val label = if (kind == "off") "休" else "班"
     if (style == ScheduleVisualStyle.Paper || style == ScheduleVisualStyle.Board) {
         // A solid seal for a day off, an outlined one for a make-up day.
-        val ink = scope.accent
+        val paper = scope.canvas ?: Color.White
+        val ink = if (onInk) paper else scope.accent
         Box(
             Modifier.size(13.dp).background(if (kind == "off") ink else Color.Transparent).border(1.dp, ink).clearAndSetSemantics {},
             contentAlignment = Alignment.Center,
         ) {
             Text(label, fontSize = 9.sp, lineHeight = 10.sp, fontWeight = FontWeight.Bold, fontFamily = scope.fontFamily,
-                color = if (kind == "off") scope.canvas ?: Color.White else ink)
+                color = if (kind == "off") (if (onInk) scope.ink else paper) else ink)
         }
     } else {
         // Opaque fills with white text, the same in both appearances.
@@ -119,12 +120,40 @@ internal fun ScheduleAdjustmentMark(kind: String) {
     }
 }
 
+/** How a date header marks its day. */
+internal enum class DateHeaderMark { None, ThemeFill, Ink, Tile, Wash }
+
+/**
+ * `selected` is null in the week header; the day strip passes whether this is
+ * its selected day. The table fills one whole cell: today in the week header,
+ * the selected day in the strip. The board inverts the selected day, as its
+ * month view does, the grid frames it like one of its course tiles, and paper
+ * washes it the way its week view washes today's column.
+ */
+internal fun dateHeaderMark(style: ScheduleVisualStyle, today: Boolean, selected: Boolean?): DateHeaderMark = when {
+    style == ScheduleVisualStyle.Table && (selected ?: today) -> DateHeaderMark.ThemeFill
+    selected != true -> DateHeaderMark.None
+    style == ScheduleVisualStyle.Board -> DateHeaderMark.Ink
+    style == ScheduleVisualStyle.Grid -> DateHeaderMark.Tile
+    else -> DateHeaderMark.Wash
+}
+
+/**
+ * The date header of a week column. With `selected` set it doubles as a day of
+ * the day strip: the same header becomes a button, and today and the selection
+ * each keep a mark of their own.
+ */
 @Composable
-private fun StyledDateHeader(day: Int, date: String, today: Boolean, adjustmentKind: String?, modifier: Modifier) {
+internal fun StyledDateHeader(day: Int, date: String, today: Boolean, adjustmentKind: String?, modifier: Modifier, selected: Boolean? = null) {
     val scope = LocalScheduleStyle.current
     val style = scope.style
-    val inverse = style == ScheduleVisualStyle.Table && today
-    val ink = if (inverse) scope.onFill else if (today) scope.accent else scope.ink
+    val mark = dateHeaderMark(style, today, selected)
+    val ink = when {
+        mark == DateHeaderMark.ThemeFill -> scope.onFill
+        mark == DateHeaderMark.Ink -> scope.canvas ?: Color.White
+        today -> scope.accent
+        else -> scope.ink
+    }
     if (style == ScheduleVisualStyle.Minimal) {
         // The day of the month above, the weekday below; today takes the theme colour.
         Box(modifier) {
@@ -138,9 +167,20 @@ private fun StyledDateHeader(day: Int, date: String, today: Boolean, adjustmentK
         }
         return
     }
+    val tile = RoundedCornerShape(style.cornerRadius.dp)
+    val marked = when (mark) {
+        DateHeaderMark.ThemeFill -> Modifier.background(scope.themeFill)
+        DateHeaderMark.Ink -> Modifier.background(scope.ink)
+        // A course tile of the grid: pale fill inside a border of the same colour.
+        DateHeaderMark.Tile -> Modifier.clip(tile).background(scope.themeTint(if (scope.dark) 0.2f else 0.1f))
+            .border(style.borderWidth.dp, scope.themeText, tile)
+        DateHeaderMark.Wash -> Modifier.background(scope.accent.copy(alpha = if (scope.dark) 0.16f else 0.08f))
+        DateHeaderMark.None -> Modifier
+    }
     Column(
-        modifier.then(if (inverse) Modifier.background(scope.themeFill) else Modifier).drawBehind {
-            if (style == ScheduleVisualStyle.Board && today) {
+        modifier.then(marked).drawBehind {
+            // Today's bar on the board; the selected day is inverted and needs none.
+            if (style == ScheduleVisualStyle.Board && today && selected != true) {
                 drawRect(scope.accent, topLeft = Offset(0f, size.height - 3.dp.toPx()), size = Size(size.width, 3.dp.toPx()))
             }
         },
@@ -157,12 +197,18 @@ private fun StyledDateHeader(day: Int, date: String, today: Boolean, adjustmentK
         Spacer(Modifier.height(2.dp))
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
             val paper = style == ScheduleVisualStyle.Paper
+            val board = style == ScheduleVisualStyle.Board
+            // The strip is a control, so its dates are set a size up from the week header's.
+            val large = selected != null && style != ScheduleVisualStyle.Grid
             Text(
-                date, fontSize = if (paper) 14.sp else 11.sp, lineHeight = if (paper) 16.sp else 14.sp, letterSpacing = 0.sp,
-                fontWeight = FontWeight.Medium, fontFamily = scope.fontFamily, color = ink, maxLines = 1,
+                // 「05」 on the board, like the dates of a departure board.
+                if (board) date.toIntOrNull()?.let { "%02d".format(it) } ?: date else date,
+                fontSize = if (large) 15.sp else if (paper) 14.sp else 11.sp, lineHeight = if (large) 18.sp else if (paper) 16.sp else 14.sp,
+                letterSpacing = 0.sp, fontWeight = if (board) FontWeight.Bold else FontWeight.Medium, fontFamily = scope.fontFamily,
+                color = ink, maxLines = 1,
                 modifier = if (paper && today) Modifier.border(1.dp, scope.accent, CircleShape).padding(horizontal = 4.dp) else Modifier,
             )
-            if (adjustmentKind != null) ScheduleAdjustmentMark(adjustmentKind)
+            if (adjustmentKind != null) ScheduleAdjustmentMark(adjustmentKind, onInk = mark == DateHeaderMark.Ink)
         }
     }
 }
@@ -238,7 +284,7 @@ internal fun StyledCourseTile(
             val nameSize = if (dayRow) 15.sp else if (small) 10.5.sp else 13.sp
             Text(
                 course.name, fontSize = nameSize, lineHeight = nameSize * 1.18f, letterSpacing = 0.sp, fontWeight = FontWeight.SemiBold,
-                fontFamily = scope.fontFamily, color = ink, textAlign = if (centered) TextAlign.Center else TextAlign.Start,
+                fontFamily = scope.textFamily, color = ink, textAlign = if (centered) TextAlign.Center else TextAlign.Start,
                 maxLines = if (dayRow) (if (short) 1 else 2) else if (short) 2 else if (!showLocation) 8 else if (compact) 4 else 3,
                 overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false),
             )
@@ -246,7 +292,7 @@ internal fun StyledCourseTile(
                 val size = if (dayRow) 12.sp else if (small) 9.sp else 11.sp
                 Text(
                     "@$location", fontSize = size, lineHeight = size * 1.2f, letterSpacing = 0.sp, fontWeight = FontWeight.Medium,
-                    fontFamily = scope.fontFamily, color = ink, textAlign = if (centered) TextAlign.Center else TextAlign.Start,
+                    fontFamily = scope.textFamily, color = ink, textAlign = if (centered) TextAlign.Center else TextAlign.Start,
                     maxLines = if (short || dayRow) 1 else 2, overflow = TextOverflow.Ellipsis,
                 )
             }

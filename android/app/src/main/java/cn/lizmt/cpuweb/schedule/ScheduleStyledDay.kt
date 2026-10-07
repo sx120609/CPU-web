@@ -45,6 +45,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -520,6 +521,9 @@ private fun DayPaperView(blocks: List<PlacedBlock>, status: DayStatus, onCourse:
 
 // region Board
 
+/** Counts and countdowns of the board: the system face with digits of one width, so a ticking number does not shift the line. */
+private val TabularDigits = TextStyle(fontFeatureSettings = "tnum")
+
 /**
  * The board's day view: what is on now, what comes next and how long is left.
  * Any other day, and a day with the "now" indicator off, has no "now" and
@@ -549,8 +553,9 @@ private fun DayBoardView(blocks: List<PlacedBlock>, status: DayStatus, onCourse:
         if (courses.isEmpty()) return
         heading(title)
         courses.forEachIndexed { index, block ->
-            // The trailing edge: a countdown for the next course, the time of day
-            // for later ones, and 已结束 for a finished course in the plain timetable.
+            // The trailing edge: a countdown for the next course, and 已结束 for a
+            // finished course in the plain timetable. Every other row leaves it
+            // empty; the times already lead.
             val start = ScheduleStyleTime.clockMinutes(status.start(block))
             val now = status.now
             val note: Pair<String, Boolean>? = when {
@@ -559,7 +564,7 @@ private fun DayBoardView(blocks: List<PlacedBlock>, status: DayStatus, onCourse:
                     val wait = start - now
                     (if (wait < 60) "$wait 分钟后" else if (wait % 60 == 0) "${wait / 60} 小时后" else "${wait / 60} 小时 ${wait % 60} 分后") to true
                 }
-                else -> ScheduleStyleTime.session(status.start(block)).takeIf { it != "课程" }?.let { it to false }
+                else -> null
             }
             Row(
                 Modifier.fillMaxWidth().height(rowHeight).courseAction(block, status, note?.first, onCourse).drawBehind {
@@ -568,21 +573,25 @@ private fun DayBoardView(blocks: List<PlacedBlock>, status: DayStatus, onCourse:
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text(status.start(block), fontSize = 24.sp, lineHeight = 28.sp, letterSpacing = 0.sp, fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace, color = ink, maxLines = 1, softWrap = false, modifier = Modifier.width(82.dp))
+                Column(Modifier.width(82.dp), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                    Text(status.start(block), fontSize = 24.sp, lineHeight = 28.sp, letterSpacing = 0.sp, fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace, color = ink, maxLines = 1, softWrap = false)
+                    Text(status.end(block), fontSize = 12.sp, lineHeight = 14.sp, letterSpacing = 0.sp, fontWeight = FontWeight.Medium,
+                        fontFamily = FontFamily.Monospace, color = ink.copy(alpha = 0.72f), maxLines = 1, softWrap = false)
+                }
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                         Box(Modifier.size(9.dp).clip(RoundedCornerShape(1.5.dp)).background(Color(scope.course(block.course.name).accent(scope.dark))))
-                        Text(block.course.name, fontSize = 16.sp, lineHeight = 21.sp, fontWeight = FontWeight.SemiBold, fontFamily = scope.fontFamily,
+                        Text(block.course.name, fontSize = 16.sp, lineHeight = 21.sp, fontWeight = FontWeight.SemiBold, fontFamily = scope.textFamily,
                             color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     Text(
                         listOfNotNull(ScheduleStyleTime.location(block.course.location), ScheduleStyleTime.slotText(block.startSlot, block.endSlot)).joinToString(" · "),
-                        fontSize = 12.sp, lineHeight = 15.sp, fontFamily = scope.fontFamily, color = ink.copy(alpha = 0.72f), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        fontSize = 12.sp, lineHeight = 15.sp, fontFamily = scope.textFamily, color = ink.copy(alpha = 0.72f), maxLines = 1, overflow = TextOverflow.Ellipsis,
                     )
                 }
                 if (note != null) {
-                    Text(note.first, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, fontFamily = scope.fontFamily, maxLines = 1, softWrap = false,
+                    Text(note.first, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, style = TabularDigits, maxLines = 1, softWrap = false,
                         color = if (note.second) scope.themeText else ink.copy(alpha = 0.72f))
                 }
             }
@@ -604,7 +613,7 @@ private fun DayBoardView(blocks: List<PlacedBlock>, status: DayStatus, onCourse:
             Spacer(Modifier.weight(1f))
             val remaining = current.size + upcoming.size
             Text(if (remaining > 0) "今天还有 $remaining 门课" else "今天的课上完了", fontSize = 12.sp, fontWeight = FontWeight.Medium,
-                fontFamily = FontFamily.Monospace, color = ink.copy(alpha = 0.72f), maxLines = 1)
+                style = TabularDigits, color = ink.copy(alpha = 0.72f), maxLines = 1)
         }
         current.forEach { block ->
             BoardHero(block, status, now, Modifier.fillMaxWidth().height(heroHeight).courseAction(block, status, "正在上", onCourse))
@@ -620,10 +629,10 @@ private fun DayBoardView(blocks: List<PlacedBlock>, status: DayStatus, onCourse:
                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(status.start(block), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Monospace, color = quiet,
                         maxLines = 1, modifier = Modifier.width(82.dp))
-                    Text(block.course.name, fontSize = 14.sp, fontFamily = scope.fontFamily, color = quiet, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    Text(block.course.name, fontSize = 14.sp, fontFamily = scope.textFamily, color = quiet, maxLines = 1, overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f))
                     ScheduleStyleTime.location(block.course.location)?.let {
-                        Text(it, fontSize = 12.sp, fontFamily = scope.fontFamily, color = quiet, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        Text(it, fontSize = 12.sp, fontFamily = scope.textFamily, color = quiet, maxLines = 1, overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.widthIn(max = 120.dp))
                     }
                 }
@@ -648,8 +657,8 @@ private fun BoardHero(block: PlacedBlock, status: DayStatus, now: Int, modifier:
     Column(modifier.background(scope.ink).padding(14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("正在上 · ${ScheduleStyleTime.slotText(block.startSlot, block.endSlot)}", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace, color = paper.copy(alpha = 0.72f), maxLines = 1, modifier = Modifier.weight(1f))
-            Text("还剩 $remaining 分", fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace, color = accent, maxLines = 1)
+                color = paper.copy(alpha = 0.72f), maxLines = 1, modifier = Modifier.weight(1f))
+            Text("还剩 $remaining 分", fontSize = 13.sp, fontWeight = FontWeight.Bold, style = TabularDigits, color = accent, maxLines = 1)
         }
         Spacer(Modifier.weight(1f))
         Text("${status.start(block)} — ${status.end(block)}", fontSize = 28.sp, lineHeight = 34.sp, letterSpacing = 0.sp, fontWeight = FontWeight.Bold,
@@ -657,11 +666,11 @@ private fun BoardHero(block: PlacedBlock, status: DayStatus, now: Int, modifier:
         Spacer(Modifier.weight(1f))
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
             Box(Modifier.size(9.dp).clip(RoundedCornerShape(1.5.dp)).background(Color(scope.course(block.course.name).accent(!scope.dark))))
-            Text(block.course.name, fontSize = 17.sp, lineHeight = 22.sp, fontWeight = FontWeight.Bold, fontFamily = scope.fontFamily, color = paper,
+            Text(block.course.name, fontSize = 17.sp, lineHeight = 22.sp, fontWeight = FontWeight.Bold, fontFamily = scope.textFamily, color = paper,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         if (detail.isNotEmpty()) {
-            Text(detail, fontSize = 14.sp, lineHeight = 18.sp, fontFamily = scope.fontFamily, color = paper.copy(alpha = 0.72f), maxLines = 1,
+            Text(detail, fontSize = 14.sp, lineHeight = 18.sp, fontFamily = scope.textFamily, color = paper.copy(alpha = 0.72f), maxLines = 1,
                 overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 3.dp))
         }
         Spacer(Modifier.height(8.dp))

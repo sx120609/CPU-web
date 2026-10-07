@@ -79,6 +79,13 @@ enum class ScheduleVisualStyle(
             StyleFont.Standard, StyleFont.Rounded -> FontFamily.Default
         }
 
+    /**
+     * The typeface of running text: course names, rooms, 「第 3–4 节」. The board
+     * keeps its monospaced face for times and dates only; set in it, the space
+     * between a character and a digit is a full digit wide and the line falls apart.
+     */
+    val textFamily: FontFamily get() = if (font == StyleFont.Monospaced) FontFamily.Default else fontFamily
+
     companion object {
         fun fromId(id: String?): ScheduleVisualStyle = entries.firstOrNull { it.id == id } ?: Classic
     }
@@ -356,6 +363,7 @@ data class ScheduleStyleScope(
     val accent: Color get() = style.accentColor(dark, themeText)
     val canvas: Color? get() = if (hasBackground) null else style.canvasColor(dark)
     val fontFamily: FontFamily get() = style.fontFamily
+    val textFamily: FontFamily get() = style.textFamily
 
     /** Secondary metadata grey for period times and the like: at least 4.5:1 on the canvas and the panel. */
     val meta: Color get() = Color(if (dark) 0xFF98989D else 0xFF6E6E73)

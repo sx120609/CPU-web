@@ -65,6 +65,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -447,7 +448,8 @@ private fun WeekSwitcher(store: ScheduleStore, onPick: () -> Unit) {
         description = "选择周次，$label，$range", onPick = onPick,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(label, fontSize = 14.sp, lineHeight = 18.sp, letterSpacing = 0.sp, fontWeight = FontWeight.SemiBold, color = colors.text)
+            Text(label, fontSize = 14.sp, lineHeight = 18.sp, letterSpacing = 0.sp, fontWeight = FontWeight.SemiBold, color = colors.text,
+                fontFamily = navigatorTitleFamily())
             if (current) {
                 Spacer(Modifier.width(6.dp))
                 Text("本周", fontSize = 10.sp, color = colors.accent, fontWeight = FontWeight.Bold,
@@ -455,9 +457,23 @@ private fun WeekSwitcher(store: ScheduleStore, onPick: () -> Unit) {
                         .padding(horizontal = 5.dp, vertical = 1.dp))
             }
         }
-        Text(range, fontSize = 10.sp, lineHeight = 14.sp, letterSpacing = 0.sp, color = colors.secondary, maxLines = 1)
+        // The date range is all digits, so the board may keep its monospaced face there.
+        Text(range, fontSize = 10.sp, lineHeight = 14.sp, letterSpacing = 0.sp, color = colors.secondary, maxLines = 1,
+            fontFamily = navigatorDateFamily())
     }
 }
+
+/** The week and month titles follow the style's typeface. Classic and minimal stay on the system face. */
+@Composable
+private fun navigatorTitleFamily(): FontFamily = LocalScheduleStyle.current.let { scope ->
+    if (scope.style == ScheduleVisualStyle.Classic || scope.style == ScheduleVisualStyle.Minimal) FontFamily.Default else scope.textFamily
+}
+
+@Composable
+private fun navigatorDateFamily(): FontFamily = LocalScheduleStyle.current.let { scope ->
+    if (scope.style == ScheduleVisualStyle.Classic || scope.style == ScheduleVisualStyle.Minimal) FontFamily.Default else scope.fontFamily
+}
+
 
 @Composable
 private fun MonthSwitcher(anchor: String, onMove: (Int) -> Unit) {
@@ -467,9 +483,10 @@ private fun MonthSwitcher(anchor: String, onMove: (Int) -> Unit) {
         previous = "上一月", next = "下一月", canPrevious = true, canNext = true,
         onPrevious = { onMove(-1) }, onNext = { onMove(1) }, description = title, onPick = null,
     ) {
-        Text(title, fontSize = 14.sp, lineHeight = 18.sp, letterSpacing = 0.sp, fontWeight = FontWeight.SemiBold, color = colors.text)
+        Text(title, fontSize = 14.sp, lineHeight = 18.sp, letterSpacing = 0.sp, fontWeight = FontWeight.SemiBold, color = colors.text,
+            fontFamily = navigatorTitleFamily())
         Text(if (ScheduleMonth.sameMonth(anchor, ScheduleStore.todayKey())) "本月" else "月历", fontSize = 10.sp, lineHeight = 14.sp,
-            letterSpacing = 0.sp, color = colors.secondary, maxLines = 1)
+            letterSpacing = 0.sp, color = colors.secondary, maxLines = 1, fontFamily = navigatorTitleFamily())
     }
 }
 
@@ -544,7 +561,12 @@ private fun SchedulePages(store: ScheduleStore, context: ScheduleBodyContext) {
                 snapshotFlow { pager.settledPage }.collect { page -> days.getOrNull(page)?.let(store::selectDay) }
             }
             Column(Modifier.fillMaxSize()) {
-                DayStrip(store, store.selectedWeek, days, days.getOrNull(pager.currentPage) ?: store.selectedDay) { store.selectDay(it) }
+                val shown = days.getOrNull(pager.currentPage) ?: store.selectedDay
+                if (LocalScheduleStyle.current.style == ScheduleVisualStyle.Classic) {
+                    DayStrip(store, store.selectedWeek, days, shown) { store.selectDay(it) }
+                } else {
+                    StyledDayStripRow(store, store.selectedWeek, days, shown) { store.selectDay(it) }
+                }
                 HorizontalPager(state = pager, modifier = Modifier.weight(1f).fillMaxWidth(), beyondViewportPageCount = 1) { page ->
                     val data = store.resultFor(store.selectedWeek)
                     ScheduleBody(store, store.selectedWeek, data, context, day = days[page])
@@ -710,6 +732,35 @@ private fun DayStrip(store: ScheduleStore, week: String, days: List<Int>, curren
             )
         }
     }
+}
+
+/** The day strip of every style except classic: each draws it as the header row of its own week view. */
+@Composable
+private fun StyledDayStripRow(store: ScheduleStore, week: String, days: List<Int>, current: Int, onSelect: (Int) -> Unit) {
+    val data = store.resultFor(week)
+    val revision = store.dataRevision
+    val calendar = store.calendar
+    // Today is a key too: the day marked as today moves at midnight.
+    val items = remember(week, days, data, revision, calendar, ScheduleStore.todayKey()) {
+        days.map { day ->
+            val adjustment = store.adjustment(day, week)
+            val count = store.blocksForDay(day, week, data).size
+            StyledStripDay(
+                day = day,
+                number = dayOfMonth(store.calendarWeek(week)?.days?.getOrNull(day - 1).orEmpty()),
+                today = store.isToday(day, week),
+                adjustmentKind = adjustment?.kind,
+                description = listOfNotNull(
+                    (WEEKDAY_LABELS[day - 1] + " " + store.dayDate(day, week).replace('-', '.')).trim(),
+                    adjustment?.let { store.adjustmentDetail(it) },
+                    if (count > 0) "$count 门课" else "没有课",
+                ).joinToString("，"),
+            )
+        }
+    }
+    // The board's strip ends on a hairline and runs straight into the day panel of the same colour.
+    val gap = if (LocalScheduleStyle.current.style == ScheduleVisualStyle.Board) 0.dp else 8.dp
+    StyledDayStrip(items, current, Modifier.padding(top = 2.dp, bottom = gap), onSelect)
 }
 
 /** The classic week grid: glass cells and gradient cards, as this client has always drawn it. */

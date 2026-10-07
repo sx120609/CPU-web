@@ -251,6 +251,32 @@ class ScheduleParityTest {
     }
 
     @Test
+    fun theDayStripMarksTheSelectedDayAndTodayApart() {
+        // The week header (no selection): only the table fills a cell, and it is today's.
+        for (style in ScheduleVisualStyle.entries) {
+            val expected = if (style == ScheduleVisualStyle.Table) DateHeaderMark.ThemeFill else DateHeaderMark.None
+            assertEquals(style.id, expected, dateHeaderMark(style, today = true, selected = null))
+            assertEquals(style.id, DateHeaderMark.None, dateHeaderMark(style, today = false, selected = null))
+        }
+        // The day strip: every style marks the selected day its own way, and today is never filled for it.
+        val selected = mapOf(
+            ScheduleVisualStyle.Table to DateHeaderMark.ThemeFill, ScheduleVisualStyle.Board to DateHeaderMark.Ink,
+            ScheduleVisualStyle.Grid to DateHeaderMark.Tile, ScheduleVisualStyle.Paper to DateHeaderMark.Wash,
+        )
+        for ((style, mark) in selected) {
+            for (today in listOf(false, true)) assertEquals(style.id, mark, dateHeaderMark(style, today, selected = true))
+            assertEquals(style.id, DateHeaderMark.None, dateHeaderMark(style, today = true, selected = false))
+        }
+    }
+
+    @Test
+    fun theBoardKeepsItsMonospacedFaceForTimesAndDatesOnly() {
+        assertEquals(androidx.compose.ui.text.font.FontFamily.Monospace, ScheduleVisualStyle.Board.fontFamily)
+        assertEquals(androidx.compose.ui.text.font.FontFamily.Default, ScheduleVisualStyle.Board.textFamily)
+        for (style in ScheduleVisualStyle.entries - ScheduleVisualStyle.Board) assertEquals(style.id, style.fontFamily, style.textFamily)
+    }
+
+    @Test
     fun themeTextClearsEverySurfaceForEveryPalette() {
         for (palette in SCHEDULE_THEME_ORDER) {
             val brand = scheduleThemeBrand(palette)

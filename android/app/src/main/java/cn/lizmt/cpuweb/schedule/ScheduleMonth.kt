@@ -210,7 +210,7 @@ internal fun ScheduleMonthView(
                     val parts = selectedDate.split('-').mapNotNull { it.toIntOrNull() }
                     Text(
                         if (parts.size == 3) "${parts[1]} 月 ${parts[2]} 日 · ${WEEKDAY_LABELS[ScheduleMonth.weekday(selectedDate) - 1]}" else selectedDate,
-                        fontSize = 17.sp, fontWeight = FontWeight.SemiBold, fontFamily = scope.fontFamily, color = colors.text,
+                        fontSize = 17.sp, fontWeight = FontWeight.SemiBold, fontFamily = scope.textFamily, color = colors.text,
                     )
                     val info = ChineseCalendarInfo.info(selectedDate)
                     Text(
@@ -260,14 +260,14 @@ private fun MonthAgendaRow(store: ScheduleStore, block: PlacedBlock, classic: Bo
     ) {
         Box(Modifier.size(width = 4.dp, height = 34.dp).clip(RoundedCornerShape(3.dp)).background(if (classic) Color(tone.border) else accent))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(course.name, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, fontFamily = scope.fontFamily, color = text, maxLines = 1,
+            Text(course.name, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, fontFamily = scope.textFamily, color = text, maxLines = 1,
                 overflow = TextOverflow.Ellipsis)
             Text(
                 listOfNotNull(
                     course.location?.trim()?.takeIf { it.isNotEmpty() }, course.teacher?.trim()?.takeIf { it.isNotEmpty() },
                     ScheduleStyleTime.slotText(block.startSlot, block.endSlot),
                 ).joinToString(" · "),
-                fontSize = 12.sp, fontFamily = scope.fontFamily, color = text.copy(alpha = 0.85f), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                fontSize = 12.sp, fontFamily = scope.textFamily, color = text.copy(alpha = 0.85f), maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
         }
         Text("${store.periodTime(block.startSlot).startTime}\n${store.periodTime(block.endSlot).endTime}", fontSize = 12.sp, lineHeight = 15.sp,
