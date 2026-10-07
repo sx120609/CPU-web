@@ -109,7 +109,7 @@
   padding: 3px 0;
   background: var(--schedule-surface-bg);
 }
-:global(body[data-cpu-native-app="1"]) .schedule-page .week-grid-head {
+body[data-cpu-native-app="1"] .schedule-page .week-grid-head {
   position: static;
   top: auto;
   z-index: auto;
@@ -239,20 +239,23 @@
   -webkit-backdrop-filter: blur(10px) saturate(130%);
 }
 
-:global(html[data-theme="dark"]) .theme-color-glass .day-course-block,
-:global(html[data-theme="dark"]) .theme-color-glass .week-course {
+/* Scoped CSS reduces `:global(X) Y` to a bare `X`, which put these declarations
+   on <html> for the whole site. `:where()` keeps the theme condition without
+   adding specificity, so the iOS drag override below still wins. */
+:where(html[data-theme="dark"]) .theme-color-glass .day-course-block,
+:where(html[data-theme="dark"]) .theme-color-glass .week-course {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.24),
     inset 0 -1px 0 rgba(0, 0, 0, 0.18),
     0 8px 18px rgba(0, 0, 0, 0.24);
 }
 
-:global(html[data-theme="dark"]) .theme-color-glass .week-course strong,
-:global(html[data-theme="dark"]) .theme-color-glass .week-course span,
-:global(html[data-theme="dark"]) .theme-color-glass .week-course em,
-:global(html[data-theme="dark"]) .theme-color-glass .day-course-name,
-:global(html[data-theme="dark"]) .theme-color-glass .day-course-meta,
-:global(html[data-theme="dark"]) .theme-color-glass .day-course-note {
+:where(html[data-theme="dark"]) .theme-color-glass .week-course strong,
+:where(html[data-theme="dark"]) .theme-color-glass .week-course span,
+:where(html[data-theme="dark"]) .theme-color-glass .week-course em,
+:where(html[data-theme="dark"]) .theme-color-glass .day-course-name,
+:where(html[data-theme="dark"]) .theme-color-glass .day-course-meta,
+:where(html[data-theme="dark"]) .theme-color-glass .day-course-note {
   color: var(--course-text);
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.48);
 }

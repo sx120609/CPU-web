@@ -1,4 +1,4 @@
-:global(.layout-root--tabbar-fallback) .schedule-page {
+.layout-root--tabbar-fallback .schedule-page {
   /* Keep the grid above the fixed tabbar, including its border/subpixel rounding. */
   --schedule-bottom-obscured-space: 48px;
 }

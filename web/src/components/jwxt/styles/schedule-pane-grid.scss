@@ -462,19 +462,20 @@
   display: none;
 }
 
-:global(html[data-theme="dark"]) .day-course-block,
-:global(html[data-theme="dark"]) .week-course {
+/* Not `:global(html[...]) .x`: scoped CSS reduces that to a bare `html[...]`. */
+html[data-theme="dark"] .day-course-block,
+html[data-theme="dark"] .week-course {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.20),
     0 8px 18px rgba(0, 0, 0, 0.22);
 }
 
-:global(html[data-theme="dark"]) .week-course strong,
-:global(html[data-theme="dark"]) .week-course span,
-:global(html[data-theme="dark"]) .week-course em,
-:global(html[data-theme="dark"]) .day-course-name,
-:global(html[data-theme="dark"]) .day-course-meta,
-:global(html[data-theme="dark"]) .day-course-note {
+html[data-theme="dark"] .week-course strong,
+html[data-theme="dark"] .week-course span,
+html[data-theme="dark"] .week-course em,
+html[data-theme="dark"] .day-course-name,
+html[data-theme="dark"] .day-course-meta,
+html[data-theme="dark"] .day-course-note {
   color: var(--course-text);
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.42);
 }
