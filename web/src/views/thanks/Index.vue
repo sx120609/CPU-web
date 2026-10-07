@@ -214,6 +214,8 @@ const ICONS: Record<ThanksIcon, Component> = {
   idea: Opportunity,
 };
 const REFRESH_MS = 20_000;
+// CI 构建时从 GitHub 查到的提交数；没有就用 credits.ts 里手动维护的数
+const COMMIT_COUNT = Number(import.meta.env.VITE_CPU_COMMIT_COUNT) || thanksHero.commitsFallback;
 const BOARD_COLLAPSED = 10;
 
 const router = useRouter();
@@ -299,15 +301,14 @@ function refresh() {
 // ---- 开场数字 ----
 const figures = computed(() => {
   const days = Math.max(1, Math.floor((Date.now() - new Date(`${thanksHero.since}T00:00:00+08:00`).getTime()) / 86_400_000));
+  const sponsored = showSponsors && sponsorTotal.value > 0;
   return [
     { key: "days", label: "天的陪伴", value: days },
-    ...(community.value
-      ? [
-          { key: "users", label: "位同学", value: community.value.users },
-          { key: "posts", label: "篇帖子和回复", value: community.value.topics + community.value.replies },
-        ]
-      : []),
-    ...(showSponsors && sponsorTotal.value ? [{ key: "sponsors", label: "次赞助", value: sponsorTotal.value }] : []),
+    { key: "commits", label: "次代码提交", value: COMMIT_COUNT },
+    ...(community.value ? [{ key: "users", label: "位同学", value: community.value.users }] : []),
+    // 第四个数：能看赞助的地方显示赞助次数，否则显示帖子数
+    ...(sponsored ? [{ key: "sponsors", label: "次赞助", value: sponsorTotal.value }] : []),
+    ...(!sponsored && community.value ? [{ key: "posts", label: "篇帖子和回复", value: community.value.topics + community.value.replies }] : []),
   ];
 });
 const shownFigures = reactive<Record<string, number>>({});

@@ -35,6 +35,9 @@ export const thanksHero = {
   lead: "感谢每一位让拾间走到今天的人。",
   // 「天的陪伴」从这一天算起：仓库的第一次提交
   since: "2026-05-14",
+  // 「次代码提交」平时由 CI 构建时从 GitHub 查出来填进去（VITE_CPU_COMMIT_COUNT）；
+  // 查不到时（比如本地开发）用这个数，想起来就手动改一下
+  commitsFallback: 1799,
 };
 
 export const thanksLead = {
@@ -47,7 +50,7 @@ export const thanksLead = {
 export const thanksPeople: ThanksPerson[] = [
   { role: "iOS 课表", name: "Mom0ka27", note: "参与了 iOS 课表的部分开发工作。", icon: "calendar", tint: "blue", span: 6 },
   { role: "Apple Watch", name: "SorriCant", note: "承担了 Apple Watch 的大部分开发工作。", icon: "watch", tint: "orange", span: 6 },
-  { role: "资金与设备", name: "坤哥 · 琨哥", alias: "frank zhang", note: "提供了重要的资金和设备支持。", icon: "coin", tint: "green", span: 7 },
+  { role: "资金与设备", name: "琨哥", alias: "frank zhang", note: "提供了重要的资金和设备支持。", icon: "coin", tint: "green", span: 7 },
   { role: "公司建立", name: "Weicheng.Wang", note: "在公司建立的过程中给予了关键而重要的支持与帮助。", icon: "briefcase", tint: "purple", span: 5 },
   { role: "学校支持", name: "信息处", note: "感谢信息处提供的相关协助。", icon: "school", tint: "teal", span: 5 },
   { role: "意见与支持", name: "Mushroom", note: "提供了扩展意见，也给了相关的支持。", icon: "idea", tint: "pink", span: 7 },

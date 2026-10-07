@@ -305,6 +305,7 @@
         <ProfileRowMobile v-if="auth.canAccessModuleAdmin" :icon="Tools" title="管理后台" tone="#dc2626" @click="router.push('/admin')" />
         <ProfileRowMobile :icon="Coin" title="存储与缓存" tone="#0891b2" @click="router.push('/profile/storage')" />
         <ProfileRowMobile :icon="Download" title="客户端下载" tone="#2563eb" @click="router.push('/download')" />
+        <ProfileRowMobile :icon="Medal" title="致谢" tone="#b45309" @click="router.push('/thanks')" />
       </div>
     </section>
 
