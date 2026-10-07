@@ -467,6 +467,16 @@ onBeforeUnmount(() => {
   -webkit-font-smoothing: antialiased;
 }
 
+/* iOS 和鸿蒙壳的原生标签栏叠在 WebView 底部，高度由壳写进各自的变量；
+   这一页不在 MainLayout 里，要自己在页尾让出这段。安卓的标签栏在 WebView 之外。 */
+html[data-cpu-ios-next] .thx-page {
+  --thx-bottom-clearance: var(--cpu-ios-bottom-clearance, 96px);
+}
+
+html[data-cpu-harmony-native] .thx-page {
+  --thx-bottom-clearance: var(--cpu-harmony-bottom-clearance, 0px);
+}
+
 .thx-tone-dark {
   --thx-bg: #000;
   --thx-ink: #f5f5f7;
@@ -612,9 +622,11 @@ onBeforeUnmount(() => {
   transition: background 0.2s, border-color 0.2s, color 0.2s, transform 0.2s;
 }
 
-.thx-pill:hover {
-  border-color: #0077ed;
-  background: #0077ed;
+@media (hover: hover) {
+  .thx-pill:hover {
+    border-color: #0077ed;
+    background: #0077ed;
+  }
 }
 
 .thx-pill:active {
@@ -633,10 +645,17 @@ onBeforeUnmount(() => {
   background: none;
 }
 
-.thx-pill--ghost:hover {
-  border-color: var(--thx-link);
-  color: #fff;
-  background: var(--thx-link);
+/* 触屏上 :hover 会在点过之后一直留着，描边按钮看起来就像被填满了 */
+@media (hover: hover) {
+  .thx-pill--ghost:hover {
+    border-color: var(--thx-link);
+    color: #fff;
+    background: var(--thx-link);
+  }
+}
+
+.thx-pill--ghost:active {
+  background: color-mix(in srgb, var(--thx-link) 18%, transparent);
 }
 
 .thx-link {
@@ -886,8 +905,10 @@ onBeforeUnmount(() => {
   transition: transform 0.5s cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 
-.thx-tile:hover {
-  transform: scale(1.015);
+@media (hover: hover) {
+  .thx-tile:hover {
+    transform: scale(1.015);
+  }
 }
 
 .thx-tile[data-tint="orange"] { --thx-tint: #f56300; }
@@ -1153,7 +1174,7 @@ a.thx-chip:hover {
 
 /* ---- 片尾 ---- */
 .thx-finale {
-  padding: 160px 24px calc(env(safe-area-inset-bottom, 0px) + 72px);
+  padding: 160px 24px calc(env(safe-area-inset-bottom, 0px) + 72px + var(--thx-bottom-clearance, 0px));
   text-align: center;
 }
 
