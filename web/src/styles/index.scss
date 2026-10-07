@@ -61,7 +61,7 @@
   --cpu-hue-violet-ink: #5b35c4;
   --cpu-hue-orange-bg: #ffe4d2;
   --cpu-hue-orange-ink: #a63f0c;
-  --cpu-dialog-radius: 12px;
+  --cpu-dialog-radius: 14px;
   --cpu-dialog-width: 420px;
   --cpu-dialog-max-width: 560px;
   --cpu-dialog-side-gap: 16px;
@@ -338,8 +338,30 @@ canvas {
   right: 18px !important;
   transform: none !important;
   max-width: min(420px, calc(100dvw - 32px));
-  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.12);
+  gap: 8px;
+  padding: 10px 14px;
+  border: 1px solid var(--cpu-border-soft);
+  border-radius: var(--cpu-radius-m);
+  background: var(--cpu-card);
+  box-shadow: var(--cpu-shadow-float);
 }
+
+// 提示条统一是白底深字，类型只体现在图标颜色上。
+.el-message .el-message__content {
+  color: var(--cpu-text);
+  font-size: var(--cpu-fs-m);
+  line-height: 1.5;
+}
+
+.el-message .el-message__icon {
+  margin-right: 0;
+  font-size: 16px;
+}
+
+.el-message--success .el-message__icon { color: var(--cpu-success); }
+.el-message--warning .el-message__icon { color: var(--cpu-accent); }
+.el-message--error .el-message__icon { color: var(--cpu-danger); }
+.el-message--info .el-message__icon { color: var(--cpu-text-muted); }
 
 .el-overlay-dialog,
 .el-overlay-message-box {
@@ -359,8 +381,11 @@ canvas {
 .el-overlay-message-box .el-message-box {
   margin: 0 auto !important;
   transform: none;
+  // 留白只由弹窗自身这一圈提供，头、正文、按钮区不再各加一层。
+  padding: 20px;
+  border: 0;
   border-radius: var(--cpu-dialog-radius);
-  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.2);
+  box-shadow: var(--cpu-shadow-float);
   overflow: hidden;
 }
 
@@ -403,14 +428,14 @@ html[data-cpu-ios-next] .cpu-overlay-above-native-bar .el-overlay-message-box {
 .el-message-box__header {
   flex: 0 0 auto;
   margin: 0;
-  padding: 18px 20px 12px;
+  padding: 0 32px 12px 0;
 }
 
 .el-dialog__title,
 .el-message-box__title {
   color: var(--cpu-text);
-  font-size: 16px;
-  font-weight: 650;
+  font-size: var(--cpu-fs-l);
+  font-weight: 700;
   line-height: 1.4;
   overflow-wrap: anywhere;
 }
@@ -421,6 +446,18 @@ html[data-cpu-ios-next] .cpu-overlay-above-native-bar .el-overlay-message-box {
   right: 14px;
   width: 32px;
   height: 32px;
+  border-radius: var(--cpu-radius-m);
+  font-size: 16px;
+}
+
+.el-dialog__headerbtn:hover,
+.el-message-box__headerbtn:hover {
+  background: var(--cpu-surface-soft);
+}
+
+.el-dialog__headerbtn .el-dialog__close,
+.el-message-box__headerbtn .el-message-box__close {
+  color: var(--cpu-text-muted);
 }
 
 .el-overlay-dialog .el-dialog__body,
@@ -429,16 +466,16 @@ html[data-cpu-ios-next] .cpu-overlay-above-native-bar .el-overlay-message-box {
   min-width: 0;
   min-height: 0;
   overflow: auto;
-  padding: 0 20px 16px;
-  color: var(--el-text-color-regular);
-  font-size: 14px;
+  padding: 0;
+  color: var(--cpu-text-secondary);
+  font-size: var(--cpu-fs-m);
   line-height: 1.7;
   overflow-wrap: anywhere;
   word-break: break-word;
 }
 
-.el-overlay-message-box .el-message-box__content {
-  padding-top: 2px;
+.el-message-box__status {
+  font-size: 20px;
 }
 
 .el-dialog__body p:first-child,
@@ -459,8 +496,7 @@ html[data-cpu-ios-next] .cpu-overlay-above-native-bar .el-overlay-message-box {
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
-  padding: 12px 20px 18px;
-  border-top: 1px solid var(--cpu-border-soft);
+  padding: 20px 0 0;
 }
 
 .el-dialog__footer .el-button + .el-button,
@@ -474,7 +510,7 @@ html[data-cpu-ios-next] .cpu-overlay-above-native-bar .el-overlay-message-box {
 }
 
 .el-message-box__message {
-  color: var(--el-text-color-regular);
+  color: var(--cpu-text-secondary);
   line-height: 1.7;
   overflow-wrap: anywhere;
   word-break: break-word;
@@ -482,6 +518,41 @@ html[data-cpu-ios-next] .cpu-overlay-above-native-bar .el-overlay-message-box {
 
 .el-message-box__input {
   padding-top: 10px;
+}
+
+// 底部抽屉和下拉菜单跟弹窗用同一套圆角、标题和浮层阴影。
+.el-drawer.btt {
+  border-radius: var(--cpu-radius-l) var(--cpu-radius-l) 0 0;
+}
+
+.el-drawer__header {
+  margin-bottom: 12px;
+  color: var(--cpu-text);
+}
+
+.el-drawer__title {
+  font-size: var(--cpu-fs-l);
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.el-popper.is-light,
+.el-dropdown__popper.el-popper {
+  border-color: var(--cpu-border-soft);
+  border-radius: var(--cpu-radius-m);
+  box-shadow: var(--cpu-shadow-float);
+}
+
+.el-dropdown-menu {
+  padding: 4px;
+  border-radius: var(--cpu-radius-m);
+}
+
+.el-dropdown-menu__item {
+  padding: 8px 12px;
+  border-radius: var(--cpu-radius-s);
+  font-size: var(--cpu-fs-m);
+  line-height: 1.4;
 }
 
 ::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -1195,7 +1266,7 @@ html[data-theme="dark"] {
   }
 
   :root {
-    --cpu-dialog-radius: 10px;
+    --cpu-dialog-radius: 14px;
     --cpu-dialog-side-gap: 12px;
     --cpu-dialog-viewport-width: calc(100dvw - 24px);
     --cpu-dialog-max-height: calc(var(--cpu-overlay-viewport-height, 100dvh) - 24px);
@@ -1211,9 +1282,9 @@ html[data-theme="dark"] {
     transform: none;
   }
 
-  .el-dialog__header,
-  .el-message-box__header {
-    padding: 16px 16px 10px;
+  .el-overlay-dialog .el-dialog,
+  .el-overlay-message-box .el-message-box {
+    padding: 16px;
   }
 
   .el-dialog__headerbtn,
@@ -1222,20 +1293,17 @@ html[data-theme="dark"] {
     right: 10px;
   }
 
-  .el-overlay-dialog .el-dialog__body,
-  .el-overlay-message-box .el-message-box__content {
-    padding: 0 16px 14px;
-    font-size: 13px;
-  }
-
   .el-dialog__footer,
   .el-message-box__btns {
-    padding: 10px 16px 16px;
+    padding-top: 16px;
   }
 
-  .el-dialog__footer .el-button,
-  .el-message-box__btns .el-button {
+  // 手机上按钮平分一行，好点。
+  .el-dialog__footer > .el-button,
+  .el-message-box__btns > .el-button {
     min-width: 0;
+    min-height: 44px;
+    flex: 1 1 0;
   }
 
   .el-message {

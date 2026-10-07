@@ -246,6 +246,7 @@
 }
 @media (max-width: 700px) {
   :global(.responsive-tool-dialog.el-dialog) {
+    padding: 0;
     width: 96dvw !important;
     margin-top: 10px !important;
   }

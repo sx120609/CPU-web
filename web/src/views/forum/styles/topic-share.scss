@@ -1,81 +1,29 @@
-.share-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  max-width: 340px;
-  margin: 0 auto;
-}
-
+.share-panel,
 .copy-share-panel,
 .share-card-panel {
   display: flex;
-  flex-direction: column;
-  gap: 14px;
-  max-width: 340px;
-  margin: 0 auto;
   width: 100%;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.share-copy {
-  margin: 0;
-  color: #667085;
-  font-size: 13px;
-  line-height: 1.6;
+.share-card-panel {
+  gap: 12px;
 }
 
 .share-actions {
   display: grid;
+  width: 100%;
   grid-template-columns: 1fr;
-  gap: 10px;
-  width: 100%;
+  gap: 8px;
 }
 
-.share-action-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 44px;
-  width: 100%;
-  border-radius: 14px;
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.share-card-image {
-  width: 100%;
-  border-radius: 22px;
-  border: 1px solid #e6edf5;
-  background: #fff;
-  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
-}
-
-.share-card-actions {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 10px;
-}
-
+.share-action-btn,
 .share-card-save-link {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 44px;
   width: 100%;
-  padding: 0 14px;
-  border: none;
-  border-radius: 14px;
-  background: var(--cpu-primary);
-  color: #fff;
-  font-size: 14px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.copy-share-panel .share-action-btn,
-.share-panel .share-action-btn,
-.share-card-actions .share-card-save-link {
-  box-sizing: border-box;
-  box-shadow: none;
+  min-height: 44px;
+  font-size: var(--cpu-fs-m);
+  font-weight: 500;
 }
 
 .share-actions :deep(.el-button),
@@ -83,29 +31,17 @@
   margin-left: 0 !important;
 }
 
-.share-panel .share-action-btn {
-  background: #f8fafc;
-  border-color: #dbe5ee;
-  color: #344054;
+.share-card-image {
+  width: 100%;
+  border-radius: var(--cpu-radius-l);
+  background: var(--cpu-surface-soft);
+  cursor: zoom-in;
 }
 
-.share-panel :deep(.el-button--primary.share-action-btn) {
-  background: var(--cpu-primary);
-  border-color: var(--cpu-primary);
-  color: #fff;
-}
-
-.share-panel :deep(.el-button--primary.is-plain.share-action-btn),
-.copy-share-panel :deep(.el-button--primary.is-plain.share-action-btn) {
-  background: #ecfdf5;
-  border-color: #cce9df;
-  color: #0f766e;
-}
-
-.copy-share-panel .share-action-btn {
-  background: #fff;
-  border-color: #dbe5ee;
-  color: #344054;
+.share-card-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
 }
 
 .share-card-save-link:disabled {
@@ -114,11 +50,13 @@
 }
 
 .share-card-loading {
-  min-height: 240px;
   display: grid;
+  min-height: 240px;
   place-items: center;
-  color: #667085;
-  font-size: 14px;
+  border-radius: var(--cpu-radius-l);
+  background: var(--cpu-surface-soft);
+  color: var(--cpu-text-muted);
+  font-size: var(--cpu-fs-s);
 }
 
 .share-card-load-error {
@@ -127,30 +65,19 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 14px;
+  gap: 12px;
   padding: 20px;
-  border: 1px dashed #dbe5ee;
-  border-radius: 18px;
-  color: #667085;
-  font-size: 13px;
+  border: 1px dashed var(--cpu-border);
+  border-radius: var(--cpu-radius-l);
+  color: var(--cpu-text-secondary);
+  font-size: var(--cpu-fs-s);
   text-align: center;
 }
 
 .share-card-tip {
   margin: 0;
-  color: #b45309;
-  font-size: 12px;
+  color: var(--cpu-accent);
+  font-size: var(--cpu-fs-xs);
   line-height: 1.6;
   text-align: center;
 }
-
-:deep(.share-dialog .el-dialog),
-:deep(.copy-share-dialog .el-dialog),
-:deep(.share-card-dialog .el-dialog) {
-  border-radius: 22px;
-}
-
-:deep(.share-card-dialog .el-dialog__body) {
-  padding-top: 14px;
-}
-

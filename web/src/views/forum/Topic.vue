@@ -512,7 +512,7 @@
       />
       <template #footer>
         <div class="reply-form-actions reply-dialog-actions">
-          <span class="cpu-muted reply-status-text">{{ replying ? replySubmissionProgress : "草稿自动保存" }}</span>
+          <span class="cpu-muted reply-status-text">{{ replying ? replySubmissionProgress : "" }}</span>
           <div class="reply-submit-actions cpu-button-row">
             <el-button v-if="editingReplyId" :disabled="replying" @click="cancelReplyEdit">取消编辑</el-button>
             <el-button type="primary" :loading="replying" :disabled="replying" @click="submitReply">
@@ -526,16 +526,15 @@
     <el-dialog
       v-model="shareDialogOpen"
       title="分享帖子"
-      width="420px"
+      width="360px"
       append-to-body
       class="share-dialog"
     >
       <div class="share-panel">
-        <p class="share-copy">分享这里收成两件事：要么复制链接，要么直接保存一张分享卡片。</p>
         <div class="share-actions cpu-button-row">
           <el-button v-if="canUseNativeShare" type="primary" class="share-action-btn" @click="shareViaSystem">系统分享</el-button>
+          <el-button :type="canUseNativeShare ? 'default' : 'primary'" class="share-action-btn" @click="openShareCard">生成分享卡片</el-button>
           <el-button class="share-action-btn" @click="copyShareDialogOpen = true">复制链接</el-button>
-          <el-button type="primary" plain class="share-action-btn" @click="openShareCard">保存分享卡片</el-button>
         </div>
       </div>
     </el-dialog>
@@ -543,13 +542,13 @@
     <el-dialog
       v-model="copyShareDialogOpen"
       title="分享链接"
-      width="380px"
+      width="360px"
       append-to-body
       class="copy-share-dialog"
     >
       <div class="copy-share-panel cpu-button-row">
+        <el-button type="primary" class="share-action-btn" @click="copyShareTitleAndLink">复制标题和链接</el-button>
         <el-button class="share-action-btn" @click="copyShareLinkOnly">只复制链接</el-button>
-        <el-button type="primary" plain class="share-action-btn" @click="copyShareTitleAndLink">复制标题和链接</el-button>
       </div>
     </el-dialog>
 

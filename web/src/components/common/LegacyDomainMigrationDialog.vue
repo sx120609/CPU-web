@@ -178,6 +178,7 @@ onMounted(() => {
 <style scoped>
 :global(.legacy-domain-dialog.el-dialog) {
   margin: 16px;
+  padding: 0;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--el-color-primary) 22%, var(--el-border-color-light));
   border-radius: var(--cpu-radius-l);
