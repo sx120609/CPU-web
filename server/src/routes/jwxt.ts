@@ -353,7 +353,9 @@ function normalizeScheduleEdits(input: unknown) {
 
 function ensureEditClient(req: any) {
   const client = detectLoginClient(req).client;
-  if (client !== "android" && client !== "ios" && client !== "harmony") throw Errors.forbidden("课表编辑仅客户端可用");
+  if (client !== "android" && client !== "ios" && client !== "harmony" && client !== "desktop") {
+    throw Errors.forbidden("课表编辑仅客户端可用");
+  }
 }
 
 function generateWidgetToken() {

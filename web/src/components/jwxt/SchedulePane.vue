@@ -477,6 +477,7 @@ watch(() => auth.sessionVersion, () => {
 }, { flush: "sync" });
 const isNativeScheduleApp = ["android", "harmony", "ios"].includes(detectClientPlatform());
 let scheduleEditsSaveTimer = 0;
+let scheduleEditsSaveSeq = 0;
 let scheduleEditsLoadPromise: Promise<void> | null = null;
 let pendingScheduleEditsSave: { semester: string; edits: ScheduleEditState } | null = null;
 const isGraduateSource = computed(() => props.source === "graduate");
@@ -1603,8 +1604,12 @@ function ensureScheduleEditEnabled() {
   return canUseScheduleEdit();
 }
 
-function showEditorMessage(type: "success" | "warning", message: string) {
-  ElMessage({ type, message, offset: 96 });
+let editorMessage: { close: () => void } | null = null;
+
+function showEditorMessage(type: "success" | "warning" | "error", message: string) {
+  // 保存失败的提示要顶掉刚弹出的“已保存”，两条不能并排挂着。
+  editorMessage?.close();
+  editorMessage = ElMessage({ type, message, offset: 96 });
 }
 
 function closeCourseEditor() {
@@ -1914,8 +1919,15 @@ function flushScheduleEditsSave() {
   const pending = pendingScheduleEditsSave;
   if (!pending) return;
   pendingScheduleEditsSave = null;
+  const seq = ++scheduleEditsSaveSeq;
   void jwxtApi.saveScheduleEdits({ semester: pending.semester, edits: pending.edits }, { silent: true })
-    .catch(() => null);
+    .catch(() => {
+      // 保存是整份覆盖的：后面还有一次保存在排队或在途时，由那一次的结果说了算。
+      if (pendingScheduleEditsSave || seq !== scheduleEditsSaveSeq) return;
+      showEditorMessage("error", "这次课表修改没有保存成功，请稍后重试");
+      // 界面上是先改后存的，存失败就换回云端实际保存的内容，不留一份看似已保存的修改。
+      void loadScheduleEdits();
+    });
 }
 
 function allKnownScheduleSources() {

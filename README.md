@@ -705,7 +705,7 @@ GitHub Actions 是正式生产制品的权威构建来源，本地构建只用�
 - `web/public/sw.js` 当前只重点缓存 `/schedule` 相关静态资源，不是整站离线。
 - 论坛、二手交流板块、课程点评、宿舍电费、赞助等能力都受站点功能开关控制。
 - 学校 SSO 的教务 token 与站内 JWT 是两套独立会话。
-- 课表编辑上云与部分客户端能力要求 Android / iOS / Harmony 容器环境。
+- 课表编辑上云要求 Android / iOS / Harmony / 桌面端容器环境，部分客户端能力只在对应容器内可用。
 - Windows 下如果 Prisma 的 DLL 被占用，`prisma generate` 或 `server` 构建可能失败；先停止正在运行的 Node 后端进程再试。
 - 根目录 `npm test` 运行 `server/tests` 与 `web/tests` 中除需要 PostgreSQL 或 `web/dist` 的少数文件外的全部 Node.js 测试，CI 在 Node.js 24 上执行同一命令（部分引用 `server/src` 的 Web 测试在 Node 22 上会因 tsx 的 CommonJS/ESM 互操作失败）；此外日常校验依赖后端构建、前端类型检查与前端构建。
 
