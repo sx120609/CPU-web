@@ -1,16 +1,19 @@
-# compose-store-screenshots.py <screens-dir> <out-dir>
-# Composes 1080 x 1920 (9:16) store images from capture-store-screenshots.mjs: a title, one line
-# beneath it and the whole phone screen. Needs Pillow and Noto Sans SC (shipped with Windows 11).
+# compose-store-screenshots.py <screens-dir | manifest.json> <out-dir>
+# Composes 1080 x 1920 (9:16) store images: a title, one line beneath it and the whole phone screen.
+# Given the directory written by capture-store-screenshots.mjs it uses the built-in timetable set;
+# given a JSON manifest, a list of {"image", "title", "subtitle", "dark"} with image paths relative
+# to the manifest, it composes that set instead. Needs Pillow and Noto Sans SC (shipped with Windows 11).
+import json
 import sys
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
-screens, out = Path(sys.argv[1]), Path(sys.argv[2])
+source, out = Path(sys.argv[1]), Path(sys.argv[2])
 out.mkdir(parents=True, exist_ok=True)
 FONT = r'C:\Windows\Fonts\NotoSansSC-VF.ttf'  # Noto Sans SC, SIL Open Font License
 W, H = 1080, 1920
 
-POSTERS = [
+TIMETABLE = [
     ('01-week-classic', '一眼看完这一周', '原生课表，全天节次一屏显示', False),
     ('02-week-minimal', '六种课表风格', '经典、简约、格子、表格、素笺、站牌', False),
     ('04-day-board', '现在上什么，下一节在哪', '日视图标出正在上和接下来的课', False),
@@ -19,6 +22,11 @@ POSTERS = [
     ('10-sharing', '和同学共享课表', '一个分享码，对方只读查看', False),
     ('11-week-grid-dark', '深色模式', '中性深灰，夜里看课表不刺眼', True),
 ]
+if source.suffix == '.json':
+    posters = [(source.parent / item['image'], item['title'], item['subtitle'], bool(item.get('dark')))
+               for item in json.loads(source.read_text(encoding='utf-8'))]
+else:
+    posters = [(source / f'{name}.png', title, subtitle, dark) for name, title, subtitle, dark in TIMETABLE]
 
 
 def font(size, weight):
@@ -36,14 +44,14 @@ def gradient(top, bottom):
     return image
 
 
-for index, (name, title, subtitle, dark) in enumerate(POSTERS, start=1):
+for index, (path, title, subtitle, dark) in enumerate(posters, start=1):
     canvas = gradient((21, 24, 28), (14, 16, 18)) if dark else gradient((226, 242, 237), (248, 251, 255))
     draw = ImageDraw.Draw(canvas)
     title_font, subtitle_font = font(70, 700), font(35, 400)
     draw.text((W / 2, 150), title, font=title_font, fill=(236, 238, 241) if dark else (18, 50, 44), anchor='mm')
     draw.text((W / 2, 244), subtitle, font=subtitle_font, fill=(176, 183, 193) if dark else (84, 104, 98), anchor='mm')
 
-    screen = Image.open(screens / f'{name}.png').convert('RGB')
+    screen = Image.open(path).convert('RGB')
     height = H - 330 - 70
     width = round(screen.width * height / screen.height)
     screen = screen.resize((width, height), Image.LANCZOS)
@@ -59,6 +67,7 @@ for index, (name, title, subtitle, dark) in enumerate(POSTERS, start=1):
     canvas.paste(screen, (left, top), mask)
     ImageDraw.Draw(canvas).rounded_rectangle([left, top, left + width - 1, top + height - 1], radius=radius,
                                              outline=(58, 62, 68) if dark else (206, 216, 222), width=2)
-    target = out / f'{index:02d}-{name[3:]}.png'
+    stem = path.stem
+    target = out / f'{index:02d}-{stem[3:] if stem[:2].isdigit() and stem[2] == "-" else stem}.png'
     canvas.save(target)
     print(target.name, canvas.size)

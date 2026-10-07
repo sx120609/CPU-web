@@ -34,23 +34,34 @@
 | 正式签名 HAP 手机验收 | 模拟器上由 3.0.3 覆盖安装成功；游客冷启动、热启动课表深链和冷启动课表深链均进入原生登录页 |
 | 手机课表交互 | 14 组通过：原有 9 组（12 节与底栏避让、切周、周次选择器、日视图与速览、空课／长名／重叠课程并排、第 12 节、深色、九套主题、三种异步状态），以及五种新风格的周／日视图、六种风格的月视图与跳转、调休与隐藏周末及优先显示、多个上课时间的编辑器、分享码的发布／预览／只读查看／保存 |
 
+| 真实外壳对接本机示例站点 | 通过：`Index.ets` 的完整外壳（原生顶栏、底栏、ArkWeb）经网页会话读取课表与优先显示，保存「优先显示」后课表随之重排，发布、查看、只读打开、保存、更新和撤销分享码 |
+
 课表交互使用隔离的验收包（`cn.lizmt.cpuweb.scheduleqa`，离线数据，实际原生课表组件），由 `harmony/scripts/prepare-schedule-acceptance.mjs` 与 `verify-schedule-emulator.mjs` 在版本提交的源码上完成；其中课程编辑和共享课表走的是脚手架里的替身，不经过网页会话和服务端。设备为手机模拟器，1080 × 2340，360 vp 宽，输入、布局读取和截图均通过 HDC / uitest。
 
-未验证：真实账号登录后的完整应用——教务读取，以及经网页会话读写优先显示、保存多个上课时间、发布／撤销／读取分享码（`Index.ets` 里的这部分接线只经过编译，没有在登录态下运行）；真机；360 vp 以外的屏宽；设置课表背景图时各风格的外观；后台卡片刷新和 AppGallery 平台审核。
+「真实外壳对接本机示例站点」是另一个隔离构建：把同一份源码的站点地址换成本机的 Vite 加假数据接口（`hdc rport` 转发），其余代码不变，所以随包课表桥、编辑器桥和共享课表桥都是真实运行的。假数据服务记录到的请求都带 `X-CPU-Client: harmony-app`，写操作带 CSRF 头；保存优先显示时发出的是 `priority: {"学生会例会": 1}`。它不是线上服务端：服务端对这些请求的校验、限流和真实教务数据没有覆盖。
+
+未验证：真实账号登录线上站点后的完整应用（教务读取、线上服务端对优先显示和分享码请求的处理）；在编辑器里保存多个上课时间（桥的这条路径只有单元测试）；已保存的共享课表在对方更新后的自动刷新；真机；360 vp 以外的屏宽；设置课表背景图时各风格的外观；后台卡片刷新和 AppGallery 平台审核。
+
+已知问题（3.0.3 起就有，本版未改）：课表把课程的备注显示成自动生成的节次（如「06-07节」），在编辑器里保存这门课会用它覆盖原来的备注。
 
 ## 商店截图
 
-仿照 iOS 截商店图的做法：用同一份示例课表（iOS 的 `NativeScheduleDebugFixture`，18 门课，学校作息时间），放在与登录后相同的底部标签栏里，不需要账号。脚手架的 `--ps data promo` 提供这份数据，`--ps clean true` 隐藏模拟器的系统状态栏，`--ps now 14:00` 固定当前时间。
+都不需要账号，数据全是示例：课表用 iOS 截商店图的那份示例课表（`NativeScheduleDebugFixture`，18 门课，学校作息时间）；成绩、学业进度、校园应用是虚构的；校园小工具和校历是站点公开的配置。按要求不含论坛相关的画面。
 
-```sh
-node harmony/scripts/capture-store-screenshots.mjs <hdc.exe> <device> <dir>/screens
-python harmony/scripts/compose-store-screenshots.py <dir>/screens <dir>/posters
-```
+- 课表画面来自验收包：`--ps data promo` 提供示例课表，`--ps clean true` 隐藏模拟器的系统状态栏，`--ps now 14:00` 固定当前时间。
 
-- `screens/`：12 张 1080 × 2340 的原始界面（周视图经典／简约／素笺、日视图站牌／简约、月视图经典／简约、课程速览、课程编辑、共享课表、深色格子与深色经典）。
-- `posters/`：7 张 1080 × 1920（9:16）的带标题图，字体为 Noto Sans SC（SIL OFL）。
+  ```sh
+  node harmony/scripts/capture-store-screenshots.mjs <hdc.exe> <device> <dir>/screens
+  ```
 
-截图来自验收包而不是签名包：界面组件相同，数据是示例，共享课表页显示的分享码是替身给的假码。AppGallery 对截图尺寸和张数的现行要求没有核对。
+- 成绩、学业进度、校园服务、校历来自上面那个对接本机示例站点的真实外壳，工具在 `output/harmony-3.0.5/store-screenshots/_tools/`（未入库）：`mock.mjs` 是假数据接口，`prepare-shell.mjs` 改写隔离构建目录里的站点地址，`build-shell.sh` 构建安装并转发端口，`ui.mjs` 按界面文字点击和截图。
+- 合成带标题的 1080 × 1920（9:16）图片，字体为 Noto Sans SC（SIL OFL）：
+
+  ```sh
+  python harmony/scripts/compose-store-screenshots.py <dir>/posters.json <dir>/posters
+  ```
+
+成品在 `output/harmony-3.0.5/store-screenshots/`：`screens/` 是 16 张 1080 × 2340 的原始界面；`posters/` 是 7 张功能图（课表周视图、成绩、学业进度、校园服务、校历与地图、课表风格、月视图）；`posters-timetable/` 是最初只含课表的 7 张。共享课表页显示的分享码是替身给的假码。AppGallery 对截图尺寸和张数的现行要求没有核对。
 
 ## 导出
 
