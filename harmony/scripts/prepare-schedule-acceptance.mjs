@@ -61,6 +61,30 @@ const snapshot = {
     adjustments: [{ date: calendarWeeks[5].days[0], kind: 'off', note: '校运动会' },
       { date: calendarWeeks[5].days[5], kind: 'swap', source: calendarWeeks[5].days[3] }] },
 };
+// `--ps data promo`: the sample timetable the iOS client uses for its store screenshots
+// (NativeScheduleDebugFixture with CPU_DEBUG_VISUAL_SCHEDULE), on the school's own bell times.
+const promoNames = ['高等数学', '大学英语', '有机化学', '药理学', '人体解剖生理学', '药物分析', '生物化学', '大学物理', '思想道德与法治',
+  '体育', '药剂学', '中药学', '微生物学与免疫学', '分析化学', '药理学实验与实践', '高等数学', '大学英语', '药事管理学'];
+const promoPeriods = [['08:00', '08:45'], ['08:55', '09:40'], ['09:55', '10:40'], ['10:50', '11:35'], ['13:30', '14:15'], ['14:25', '15:10'],
+  ['15:25', '16:10'], ['16:20', '17:05'], ['18:30', '19:15'], ['19:25', '20:10'], ['20:20', '21:05'], ['21:15', '22:00']]
+  .map(([start, end], index) => ({ id: index + 1, name: `第${index + 1}节`, start, end }));
+const promoSnapshot = {
+  version: 1, completeSemester: true, source: 'undergraduate',
+  auth: { authenticated: true, identity: 'offline-schedule-acceptance' },
+  data: {
+    source: 'undergraduate', semesters: [{ value: semester, label: semester, current: true }],
+    weeks, currentSemester: semester, currentWeek: '5',
+    cells: promoNames.map((name, index) => {
+      const startSlot = index === 16 ? 12 : index === 17 ? 11 : Math.floor(index / 6) * 4 + 1;
+      const endSlot = startSlot + ([14, 16].includes(index) ? 0 : 1);
+      return { day: index % 6 + 1, bigSlot: Math.ceil(startSlot / 2), courses: [{
+        nativeId: `promo-${index}`, name, location: `教学楼 ${201 + index}`, teacher: `${['李', '王', '张'][index % 3]}老师`, weeks: '1-20周',
+        weekList: weeks.map(({ value }) => Number(value)), startSlot, endSlot,
+      }] };
+    }),
+  },
+  calendar: { periods: promoPeriods, currentWeek: 5, semesterStart: '2026-09-07', semesterEnd: '2027-01-24', weeks: calendarWeeks },
+};
 // What the stand-in share server hands back for any code: the same timetable under another name.
 const shareDocument = { code: 'ABCD2345', owner: '阿青', semester, courseCount: courses.length,
   createdAt: '2026-10-01T08:00:00.000Z', updatedAt: '2026-10-06T12:30:00.000Z',
@@ -97,6 +121,9 @@ struct ScheduleAcceptance {
   @StorageProp('qaWeek') @Watch('syncOptions') private week: string = '';
   @StorageProp('qaDay') @Watch('syncOptions') private day: string = '';
   @StorageProp('qaPanel') @Watch('syncOptions') private panel: string = '';
+  @StorageProp('qaData') private data: string = '';
+  // Store screenshots: no system status bar, which on an emulator carries debugging icons.
+  @StorageProp('qaClean') private clean: boolean = false;
   private published: boolean = false;
   @StorageProp('systemTopInsetPx') private topInset: number = 0;
   @StorageProp('systemBottomInsetPx') private bottomInset: number = 0;
@@ -132,18 +159,23 @@ struct ScheduleAcceptance {
     const context = AppStorage.get<common.UIAbilityContext>('abilityContext');
     if (!context) return;
     context.getApplicationContext().setColorMode(this.store.dark ? ConfigurationConstant.ColorMode.COLOR_MODE_DARK : ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT);
-    void window.getLastWindow(context).then(main => main.setWindowSystemBarProperties({
+    void window.getLastWindow(context).then(main => {
+      if (this.clean) void main.setSpecificSystemBarEnabled('status', false).catch(() => undefined);
+      return main.setWindowSystemBarProperties({
       statusBarColor: '#00000000', statusBarContentColor: this.store.dark ? '#FFFFFF' : '#202722',
       navigationBarColor: '#00000000', navigationBarContentColor: this.store.dark ? '#FFFFFF' : '#172033'
-    })).catch(() => undefined);
+      });
+    }).catch(() => undefined);
   }
+  private topPadding(): number { return this.clean ? 16 : px2vp(this.topInset); }
   private toggleAppearance(): void {
     this.store.dark = !this.store.dark;
     this.applySystemAppearance();
   }
   aboutToAppear(): void {
     this.store.attach((request: NativeScheduleRequest) => {
-      this.store.acceptResult(request.id, ${JSON.stringify(JSON.stringify(snapshot))});
+      this.store.acceptResult(request.id, this.data === 'promo'
+        ? ${JSON.stringify(JSON.stringify(promoSnapshot))} : ${JSON.stringify(JSON.stringify(snapshot))});
     }, () => undefined);
     this.store.markBridgeReady();
     this.editor.attach((id: string, request: CourseEditorRequest) => {
@@ -163,7 +195,8 @@ struct ScheduleAcceptance {
     this.store.visualStyle = SCHEDULE_STYLES[(SCHEDULE_STYLES.indexOf(this.store.visualStyle) + 1) % SCHEDULE_STYLES.length];
   }
   private async shareApi(request: ShareApiRequest): Promise<ShareApiReply> {
-    const mine: ShareApiData = { code: 'WXYZ6789', owner: '我', semester: '${semester}', courseCount: ${courses.length},
+    const mine: ShareApiData = { code: 'WXYZ6789', owner: '我', semester: '${semester}',
+      courseCount: this.data === 'promo' ? ${new Set(promoNames).size} : ${courses.length},
       createdAt: '2026-10-01T08:00:00.000Z', updatedAt: '2026-10-07T01:00:00.000Z' };
     let data: ShareApiData = {};
     const missing: ShareApiReply = { ok: false, status: 404, error: '分享课表不存在或已撤销' };
@@ -220,14 +253,14 @@ struct ScheduleAcceptance {
         onEdit: (block: NativeCourseBlock) => this.openEditor(block), onTools: () => this.openEditor(),
         onAddSlot: (day: number, slot: number) => this.openEditor(undefined, day, slot),
         onSharing: () => this.sharing.open() })
-        .padding({ top: px2vp(this.topInset) })
+        .padding({ top: this.topPadding() })
       NativeTabBar({ selected: 2, dark: this.store.dark })
         .margin({ left: 12, right: 12, bottom: nativeNavigationBottomInset(px2vp(this.bottomInset)) })
       if (this.sharedVisible) {
         Column() {
           NativeSchedulePage({ store: this.sharedStore, bottomClearance: nativeNavigationBottomInset(px2vp(this.bottomInset)) + 8,
             pinnedNow: scheduleClockMinutes(this.now), onClose: () => { this.sharedVisible = false; this.sharing.visible = true; } })
-        }.width('100%').height('100%').padding({ top: px2vp(this.topInset) }).backgroundColor(scheduleSurface(this.store.dark))
+        }.width('100%').height('100%').padding({ top: this.topPadding() }).backgroundColor(scheduleSurface(this.store.dark))
       }
     }.width('100%').height('100%').backgroundColor(scheduleSurface(this.store.dark))
       .bindSheet(this.editor.visible || this.sharing.visible, this.panelSheet(), { height: SheetSize.LARGE, showClose: true, dragBar: true,
@@ -249,6 +282,8 @@ ability = ability.replace('const routedUrl =', `AppStorage.setOrCreate('qaTheme'
     AppStorage.setOrCreate('qaWeek', String(want.parameters?.week ?? ''));
     AppStorage.setOrCreate('qaDay', String(want.parameters?.day ?? ''));
     AppStorage.setOrCreate('qaPanel', String(want.parameters?.panel ?? ''));
+    AppStorage.setOrCreate('qaData', String(want.parameters?.data ?? ''));
+    AppStorage.setOrCreate('qaClean', String(want.parameters?.clean ?? 'false') === 'true');
     const routedUrl =`);
 put('entry/src/main/ets/entryability/EntryAbility.ets', ability);
 put('entry/src/main/resources/base/profile/main_pages.json', JSON.stringify({ src: ['pages/Index', 'pages/ScheduleAcceptance'] }, null, 2));
