@@ -224,6 +224,8 @@ export type SmartPostComposePayload = {
 export const topicApi = {
   list: (params: {
     board?: string;
+    /** 不指定板块时，只列公告类板块的帖子（未登录也可读）。 */
+    type?: "announce";
     page?: number;
     size?: number;
     sort?: "new" | "hot";

@@ -184,6 +184,8 @@ topicRouter.get("/", async (req, res, next) => {
     const marketKind = req.query.marketKind ? String(req.query.marketKind) : "";
     const marketCategory = req.query.category ? String(req.query.category) : "";
     const marketCampus = req.query.campus ? String(req.query.campus).trim().slice(0, 40) : "";
+    // type=announce 列出所有公告类板块的帖子；公告对未登录用户公开，所以不走论坛访问检查。
+    const boardType = req.query.type ? String(req.query.type) : "";
     const requesterId = req.user?.userId ?? null;
     const requesterRole = req.user?.role ?? null;
 
@@ -194,6 +196,8 @@ topicRouter.get("/", async (req, res, next) => {
     if ((marketKind || marketCategory || marketCampus) && boardSlug !== "market") {
       throw Errors.badRequest("二手筛选仅适用于二手交流板块");
     }
+    if (boardType && boardType !== "announce") throw Errors.badRequest("板块类型不合法");
+    if (boardType && boardSlug && boardSlug !== "all") throw Errors.badRequest("板块类型和板块不能同时指定");
 
     let boardId: number | undefined;
     if (boardSlug && boardSlug !== "all") {
@@ -205,7 +209,7 @@ topicRouter.get("/", async (req, res, next) => {
       boardId = b.id;
     }
 
-    if (!boardId) {
+    if (!boardId && !boardType) {
       const forumAccessEnabled = await resolveForumAccess(requesterId, requesterRole);
       if (!forumAccessEnabled) throw Errors.forbidden("请先登录后浏览论坛");
     }
@@ -217,6 +221,7 @@ topicRouter.get("/", async (req, res, next) => {
     );
     const where: any = { ...forumContentVisibilityWhere(listViewerId) };
     if (boardId) where.boardId = boardId;
+    else if (boardType) where.board = { type: boardType, ...visibleBoardSlugFilter() };
     else where.board = { type: { in: enabledBoardTypes() }, ...visibleBoardSlugFilter() };
     if (pinnedMode === "only") where.pinned = true;
     else if (pinnedMode === "exclude") where.pinned = false;
@@ -267,6 +272,7 @@ topicRouter.get("/", async (req, res, next) => {
         marketKind || "all-kinds",
         marketCategory || "all-categories",
         marketCampus || "all-campuses",
+        boardType || "all-types",
       ],
       60_000,
       async () => {
