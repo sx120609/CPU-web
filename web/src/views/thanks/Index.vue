@@ -464,8 +464,6 @@ onBeforeUnmount(() => {
   font-family: var(--cpu-font-sans);
   font-size: var(--cpu-fs-l);
   line-height: 1.5;
-  /* 课表样式有一条深色主题规则落在了 html 上，给全站文字带上了阴影；这一页不要 */
-  text-shadow: none;
   -webkit-font-smoothing: antialiased;
 }
 
