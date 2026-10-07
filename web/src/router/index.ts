@@ -151,6 +151,7 @@ export const router = createRouter({
   routes: [
     { path: "/login", name: "login", component: () => import("@/views/Login.vue"), meta: { public: true, title: "登录" } },
     { path: "/register", name: "register", component: () => import("@/views/Register.vue"), meta: { public: true, title: "注册" } },
+    { path: "/thanks", name: "thanks", component: () => import("@/views/thanks/Index.vue"), meta: { public: true, title: "致谢" } },
     {
       path: "/",
       component: MainLayout,
