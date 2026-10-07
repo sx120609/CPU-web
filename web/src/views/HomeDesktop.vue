@@ -40,7 +40,7 @@
     <div v-else class="grid" :class="{ 'single-col': !showForumContent }" v-loading="loading && !summary">
       <!-- 左：置顶、热议、最新、二手 -->
       <div class="col-left" v-if="showForumContent">
-        <section class="block" v-if="summary?.pinnedTopics?.length">
+        <section class="home-block" v-if="summary?.pinnedTopics?.length">
           <div class="block-head">
             <h3>全局置顶</h3>
             <span class="block-note">重要内容</span>
@@ -51,7 +51,7 @@
           </div>
         </section>
 
-        <section class="block">
+        <section class="home-block">
           <div class="block-head">
             <h3>热议 Top 3</h3>
             <router-link to="/forum/hot" class="more">查看前十<el-icon><ArrowRight /></el-icon></router-link>
@@ -71,7 +71,7 @@
           </div>
         </section>
 
-        <section class="block">
+        <section class="home-block">
           <div class="block-head">
             <h3>最新</h3>
             <router-link to="/forum/latest" class="more">查看全部<el-icon><ArrowRight /></el-icon></router-link>
@@ -82,7 +82,7 @@
           </div>
         </section>
 
-        <section class="block" v-if="site.features.market">
+        <section class="home-block" v-if="site.features.market">
           <div class="block-head">
             <h3>二手交流</h3>
             <router-link to="/market" class="more">进入板块<el-icon><ArrowRight /></el-icon></router-link>
@@ -99,7 +99,7 @@
 
       <!-- 右：公告、服务 -->
       <div class="col-right">
-        <section v-if="!nativeForumRestricted" class="block">
+        <section v-if="!nativeForumRestricted" class="home-block">
           <div class="block-head">
             <h3>校园公告</h3>
             <span class="block-note">学校公开信息</span>
@@ -125,7 +125,7 @@
           <div v-else class="group"><el-empty description="暂无公告，稍后再来看看" /></div>
         </section>
 
-        <section class="block">
+        <section class="home-block">
           <div class="block-head">
             <h3>校园服务</h3>
             <router-link to="/services" class="more">全部<el-icon><ArrowRight /></el-icon></router-link>
