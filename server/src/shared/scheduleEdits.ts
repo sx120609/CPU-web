@@ -103,6 +103,22 @@ export function noteFromCourse(course: EditableScheduleCourse) {
   return /^第\s*\d+\s*-\s*\d+\s*节$/.test(note) ? "" : note;
 }
 
+/**
+ * Whether two courses meet in at least one common week. A course without a week list meets every week.
+ *
+ * JWXT can list one course in the same periods as several rows with different week ranges
+ * (weeks 1-5 and 7-16, say). Hiding or editing the block on screen must leave the other rows alone.
+ */
+export function courseWeeksOverlap(
+  left: Pick<EditableScheduleCourse, "weeks" | "weekList">,
+  right: Pick<EditableScheduleCourse, "weeks" | "weekList">,
+) {
+  const leftWeeks = normalizedCourseWeekList(left);
+  const rightWeeks = normalizedCourseWeekList(right);
+  if (!leftWeeks.length || !rightWeeks.length) return true;
+  return rightWeeks.some((week) => leftWeeks.includes(week));
+}
+
 export function courseEditKey(day: number, bigSlot: number, course: EditableScheduleCourse) {
   if (course.customId) return `custom:${course.customId}`;
   return [
@@ -116,6 +132,22 @@ export function courseEditKey(day: number, bigSlot: number, course: EditableSche
     normalizeKeyPart(course.location),
     normalizeKeyPart(course.weeks),
   ].join("|");
+}
+
+/** The day, table cell and course fields a `jwxt|…` edit key was built from; null for any other key. */
+export function courseFromEditKey(key: string) {
+  const parts = key.split("|");
+  if (parts.length !== 9 || parts[0] !== "jwxt") return null;
+  const [, day, bigSlot, start, end, name, teacher, location, weeks] = parts;
+  return {
+    day: Number(day),
+    bigSlot: Number(bigSlot),
+    course: {
+      name, teacher, location, weeks, weekList: [] as number[],
+      startSlot: start ? Number(start) : undefined,
+      endSlot: end ? Number(end) : undefined,
+    },
+  };
 }
 
 export function applyScheduleEditsToCells<T extends EditableScheduleCell>(
@@ -205,19 +237,14 @@ function equivalentSourceKeys(
 ) {
   const exact = sources.filter((source) => source.key === key);
   if (exact.length) return exact.map((source) => source.key);
-  const parts = key.split("|");
-  if (parts.length !== 9 || parts[0] !== "jwxt") return [];
-  const [, day, bigSlot, start, end, name, teacher, location, weeks] = parts;
-  const original = {
-    name, teacher, location, weeks, weekList: [],
-    startSlot: start ? Number(start) : undefined,
-    endSlot: end ? Number(end) : undefined,
-  };
-  const range = courseSourceRange(Number(bigSlot), original);
+  const parsed = courseFromEditKey(key);
+  if (!parsed) return [];
+  const { day, course: original } = parsed;
+  const range = courseSourceRange(parsed.bigSlot, original);
   if (!Number.isInteger(range.start) || !Number.isInteger(range.end) || range.start < 1 || range.end < range.start) return [];
   const identity = courseSourceIdentity(original);
   const candidates = sources.filter((source) => (
-    source.day === Number(day) && source.identity === identity
+    source.day === day && source.identity === identity
     && source.range.start >= range.start && source.range.end <= range.end
   )).sort((a, b) => a.range.start - b.range.start);
   let coveredEnd = range.start - 1;

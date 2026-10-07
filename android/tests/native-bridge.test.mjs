@@ -254,6 +254,31 @@ test('the course editor saves one item per run of periods and ranks the course i
   assert.equal(writes.length, 3);
 });
 
+test('hiding or editing a block leaves the rows of the same course in other weeks alone', async () => {
+  // JWXT lists one course in the same periods as two rows: weeks 1-5 and weeks 7-16.
+  const row = (weeks, weekList) => ({ name: '物理化学', teacher: '张三', location: 'C201', weeks, weekList, startSlot: 3, endSlot: 4 });
+  const early = row('1-5周', [1, 2, 3, 4, 5]);
+  const cells = [{ day: 2, bigSlot: 2, courses: [early, row('7-16周', [7, 8, 9, 10, 11, 12, 13, 14, 15, 16])] }];
+  const original = { day: 2, bigSlot: 2, startSlot: 3, endSlot: 4, course: early };
+  for (const action of ['delete', 'save']) {
+    const { stores } = legacyStores();
+    let edits = { hidden: [], custom: [] };
+    const p = page({ stores, fetch: async (url, options) => {
+      if (options.method === 'PUT') edits = JSON.parse(options.body).edits;
+      return { ok: true, json: async () => ({ code: 0, data: { edits } }) };
+    } });
+    vm.runInContext(bootstrap, p.context);
+    vm.runInContext(compatibility, p.context);
+    const opened = await p.window.CPUAndroidEditor({ action: 'open', semester: 'fall' });
+    const result = await p.window.CPUAndroidEditor({ action, session: opened.session, original, cells,
+      form: { name: '物理化学', teacher: '张三', location: 'C305', note: '',
+        arrangements: [{ day: 2, slots: [3, 4], weekList: [1, 2, 3, 4, 5] }] } });
+    assert.equal(result.saved, true);
+    assert.deepEqual(edits.hidden, ['jwxt|2|2|3|4|物理化学|张三|C201|1-5周']);
+    assert.equal(edits.custom.length, action === 'save' ? 1 : 0);
+  }
+});
+
 test('share codes go through the signed-in session and carry the site nickname', async () => {
   const { stores, auth } = legacyStores();
   auth.user.nickname = ' 阿青 ';

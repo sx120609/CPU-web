@@ -75,6 +75,20 @@ test('native editor saves the twelfth period the Web timetable defines',async()=
   assert.equal((await p.run({action:'save',session:opened.session,form:{...form,startSlot:12,endSlot:12},cells:[]})).saved,true);
   assert.deepEqual([p.edits.custom[0].course.startSlot,p.edits.custom[0].course.endSlot],[12,12]);
 });
+test('hiding or editing a block leaves the rows of the same course in other weeks alone',async()=>{
+  // JWXT lists one course in the same periods as two rows: weeks 1-5 and weeks 7-16.
+  const row=(weeks,weekList)=>({name:'物理化学',teacher:'张三',location:'C201',weeks,weekList,startSlot:3,endSlot:4});
+  const early=row('1-5周',[1,2,3,4,5]);const cells=[{day:2,bigSlot:2,courses:[early,row('7-16周',[7,8,9,10,11,12,13,14,15,16])]}];
+  const original={day:2,bigSlot:2,startSlot:3,endSlot:4,course:early};
+  let p=page();let opened=await p.run({action:'open',semester:'fall'});
+  await p.run({action:'delete',session:opened.session,original,cells});
+  assert.deepEqual(p.edits.hidden,['jwxt|2|2|3|4|物理化学|张三|C201|1-5周']);
+  p=page();opened=await p.run({action:'open',semester:'fall'});
+  await p.run({action:'save',session:opened.session,original,cells,
+    form:{name:'物理化学',teacher:'张三',location:'C305',note:'',arrangements:[{day:2,slots:[3,4],weekList:[1,2,3,4,5]}]}});
+  assert.deepEqual(p.edits.hidden,['jwxt|2|2|3|4|物理化学|张三|C201|1-5周']);
+  assert.deepEqual(p.edits.custom.map(item=>item.course.weekList),[[1,2,3,4,5]]);
+});
 test('several meeting times are saved as one existing-format item per run of periods',async()=>{
   const p=page();const opened=await p.run({action:'open',semester:'fall'});
   const original={day:2,bigSlot:2,startSlot:3,endSlot:4,course:{name:'原课程',teacher:'教师',weekList:[2,4],weeks:'2,4',startSlot:3,endSlot:4}};

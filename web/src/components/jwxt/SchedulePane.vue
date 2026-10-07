@@ -365,6 +365,7 @@ import {
 import {
   applyScheduleEditsToCells,
   courseEditKey,
+  courseWeeksOverlap,
   createCustomCourseId,
   customCourseWeeksLabel,
   customCourseWeeksText,
@@ -379,7 +380,7 @@ import {
 } from "@/utils/scheduleEdits";
 import { courseMatchesWeek, normalizedCourseWeekList } from "@/utils/scheduleWeeks";
 import { smallSlots, MAX_SMALL_SLOT } from "@/views/schedule/slots";
-import { isOriginalCourseEditUnchanged } from "@/views/schedule/courseEditor";
+import { deleteCourseEdit, isOriginalCourseEditUnchanged, saveCustomCourseEdit } from "@/views/schedule/courseEditor";
 import {
   claimOfficialScheduleChangeNotice,
   detectOfficialScheduleChange,
@@ -1572,13 +1573,19 @@ function courseFamilyKey(day: number, bigSlot: number, course: ScheduleCourse) {
   ].join("|");
 }
 
-function courseFamilySourceKeys(day: number, bigSlot: number, course: ScheduleCourse) {
+function courseFamilySourceKeys(
+  day: number,
+  bigSlot: number,
+  course: ScheduleCourse,
+  options: { overlappingWeeksOnly?: boolean } = {},
+) {
   const targetFamilyKey = courseFamilyKey(day, bigSlot, course);
   const keys = new Set<string>();
   for (const source of allKnownScheduleSources()) {
     for (const cell of source.cells ?? []) {
       for (const sourceCourse of cell.courses ?? []) {
         if (courseFamilyKey(cell.day, cell.bigSlot, sourceCourse) !== targetFamilyKey) continue;
+        if (options.overlappingWeeksOnly && !courseWeeksOverlap(sourceCourse, course)) continue;
         keys.add(courseEditKey(cell.day, cell.bigSlot, sourceCourse));
       }
     }
@@ -1729,23 +1736,12 @@ function saveCourseEdit(keepAsCustom = false) {
       showEditorMessage("success", "课程没有变化，无需保存");
       return;
     }
-    const editingFamilyKey = editingBlock ? courseFamilyKey(editingBlock.day, editingBlock.bigSlot, editingBlock.course) : "";
-    const hiddenSourceKeys = new Set<string>();
-    if (editingBlock && !editingBlock.course.customId) {
-      for (const key of courseFamilySourceKeys(editingBlock.day, editingBlock.bigSlot, editingBlock.course)) {
-        hiddenSourceKeys.add(key);
-      }
-      if (item.sourceKey) hiddenSourceKeys.add(item.sourceKey);
-      if (editingCourseKey.value) hiddenSourceKeys.add(editingCourseKey.value);
-    }
-    const custom = scheduleEdits.value.custom.filter((entry) => {
-      if (entry.id === item.id) return false;
-      if (Boolean(item.sourceKey) && entry.sourceKey === item.sourceKey) return false;
-      if (editingFamilyKey && courseFamilyKey(entry.day, entry.bigSlot, entry.course) === editingFamilyKey) return false;
-      return true;
+    scheduleEdits.value = saveCustomCourseEdit(scheduleEdits.value, item, {
+      editingBlock,
+      editingCourseKey: editingCourseKey.value,
+      courseFamilyKey,
+      courseFamilySourceKeys,
     });
-    const hidden = [...new Set([...scheduleEdits.value.hidden, ...hiddenSourceKeys])];
-    scheduleEdits.value = { hidden, custom: [...custom, item] };
     if (keepAsCustom) scheduleEdits.value = keepScheduleCourseAsCustom(scheduleEdits.value, item.id);
     persistScheduleEdits();
     editDialogOpen.value = false;
@@ -1772,22 +1768,11 @@ async function deleteEditingCourse() {
       },
     ).then(() => true).catch(() => false);
     if (!confirmed) return;
-    let next = { ...scheduleEdits.value };
-    const targetFamilyKey = courseFamilyKey(block.day, block.bigSlot, block.course);
-    const hiddenKeysToRemove = courseFamilySourceKeys(block.day, block.bigSlot, block.course);
-    hiddenKeysToRemove.add(editingCourseKey.value || courseEditKey(block.day, block.bigSlot, block.course));
-    if (block.course.customId) {
-      next = {
-        ...next,
-        custom: next.custom.filter((item) => courseFamilyKey(item.day, item.bigSlot, item.course) !== targetFamilyKey),
-      };
-    } else {
-      next = {
-        hidden: [...new Set([...next.hidden, ...hiddenKeysToRemove])],
-        custom: next.custom.filter((item) => courseFamilyKey(item.day, item.bigSlot, item.course) !== targetFamilyKey),
-      };
-    }
-    scheduleEdits.value = next;
+    scheduleEdits.value = deleteCourseEdit(scheduleEdits.value, block, {
+      editingCourseKey: editingCourseKey.value,
+      courseFamilyKey,
+      courseFamilySourceKeys,
+    });
     persistScheduleEdits();
     editDialogOpen.value = false;
     showEditorMessage("success", block.course.customId ? "已删除课程" : "已从课表隐藏");

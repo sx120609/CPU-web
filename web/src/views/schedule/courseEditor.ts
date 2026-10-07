@@ -1,5 +1,7 @@
 import {
   courseEditKey,
+  courseFromEditKey,
+  courseWeeksOverlap,
   createCustomCourseId,
   customCourseWeeksLabel,
   customCourseWeeksText,
@@ -28,7 +30,17 @@ export type CustomCourseForm = {
 };
 
 export type CourseFamilyKeyResolver = (day: number, bigSlot: number, course: ScheduleCourse) => string;
-export type CourseFamilySourceKeysResolver = (day: number, bigSlot: number, course: ScheduleCourse) => Set<string>;
+/**
+ * 同一时段、同名同教师同地点的教务课程的编辑键。`overlappingWeeksOnly` 只留下和这门课
+ * 至少有一周同时上的那些：教务会把一门课按周次拆成几行，隐藏或编辑屏幕上这一块时不能
+ * 连带隐藏其余周次。恢复时不带这个选项，把旧版本连带隐藏的也一并放回来。
+ */
+export type CourseFamilySourceKeysResolver = (
+  day: number,
+  bigSlot: number,
+  course: ScheduleCourse,
+  options?: { overlappingWeeksOnly?: boolean },
+) => Set<string>;
 
 export function createCustomCourseForm(defaultDay: number): CustomCourseForm {
   return {
@@ -178,7 +190,7 @@ export function saveCustomCourseEdit(
   const editingFamilyKey = editingBlock ? input.courseFamilyKey(editingBlock.day, editingBlock.bigSlot, editingBlock.course) : "";
   const hiddenSourceKeys = new Set<string>();
   if (editingBlock && !editingBlock.course.customId) {
-    for (const key of input.courseFamilySourceKeys(editingBlock.day, editingBlock.bigSlot, editingBlock.course)) {
+    for (const key of input.courseFamilySourceKeys(editingBlock.day, editingBlock.bigSlot, editingBlock.course, { overlappingWeeksOnly: true })) {
       hiddenSourceKeys.add(key);
     }
     if (item.sourceKey) hiddenSourceKeys.add(item.sourceKey);
@@ -187,7 +199,7 @@ export function saveCustomCourseEdit(
   const custom = edits.custom.filter((entry) => {
     if (entry.id === item.id) return false;
     if (Boolean(item.sourceKey) && entry.sourceKey === item.sourceKey) return false;
-    if (editingFamilyKey && input.courseFamilyKey(entry.day, entry.bigSlot, entry.course) === editingFamilyKey) return false;
+    if (editingBlock && isSameBlockFamily(entry, editingBlock, editingFamilyKey, input.courseFamilyKey)) return false;
     return true;
   });
   const hidden = [...new Set([...edits.hidden, ...hiddenSourceKeys])];
@@ -204,18 +216,28 @@ export function deleteCourseEdit(
   },
 ): ScheduleEditState {
   const targetFamilyKey = input.courseFamilyKey(block.day, block.bigSlot, block.course);
-  const hiddenKeysToRemove = input.courseFamilySourceKeys(block.day, block.bigSlot, block.course);
+  const custom = edits.custom.filter((item) => (
+    item.id !== block.course.customId && !isSameBlockFamily(item, block, targetFamilyKey, input.courseFamilyKey)
+  ));
+  if (block.course.customId) return { ...edits, custom };
+  const hiddenKeysToRemove = input.courseFamilySourceKeys(block.day, block.bigSlot, block.course, { overlappingWeeksOnly: true });
   hiddenKeysToRemove.add(input.editingCourseKey || courseEditKey(block.day, block.bigSlot, block.course));
-  if (block.course.customId) {
-    return {
-      ...edits,
-      custom: edits.custom.filter((item) => input.courseFamilyKey(item.day, item.bigSlot, item.course) !== targetFamilyKey),
-    };
-  }
   return {
     hidden: [...new Set([...edits.hidden, ...hiddenKeysToRemove])],
-    custom: edits.custom.filter((item) => input.courseFamilyKey(item.day, item.bigSlot, item.course) !== targetFamilyKey),
+    custom,
   };
+}
+
+/** 和这一块同一时段、同名同教师同地点，并且至少有一周同时上的个人课程。 */
+function isSameBlockFamily(
+  item: CustomScheduleItem,
+  block: WeekCourseBlock,
+  blockFamilyKey: string,
+  courseFamilyKey: CourseFamilyKeyResolver,
+) {
+  return Boolean(blockFamilyKey)
+    && courseFamilyKey(item.day, item.bigSlot, item.course) === blockFamilyKey
+    && courseWeeksOverlap(item.course, block.course);
 }
 
 export function restoreOriginalCourseEdit(
@@ -230,6 +252,11 @@ export function restoreOriginalCourseEdit(
 ): ScheduleEditState {
   const keysToRestore = input.courseFamilySourceKeys(block.day, block.bigSlot, block.course);
   keysToRestore.add(input.sourceKey);
+  // 个人副本可能改过名称或地点，按被替换的教务课程再找一遍；旧版本连带隐藏的其他周次也一起放回来。
+  const origin = courseFromEditKey(input.sourceKey);
+  if (origin) {
+    for (const key of input.courseFamilySourceKeys(origin.day, origin.bigSlot, origin.course)) keysToRestore.add(key);
+  }
   const familyKey = input.courseFamilyKey(block.day, block.bigSlot, block.course);
   return {
     hidden: edits.hidden.filter((key) => !keysToRestore.has(key)),

@@ -1,6 +1,6 @@
 import { useAuthStore, useJwxtStore } from './adapters';
 import { siteRequest } from './site';
-import { courseEditKey, normalizeScheduleEditsState } from '../../web/src/utils/scheduleEdits';
+import { courseEditKey, courseWeeksOverlap, normalizeScheduleEditsState } from '../../web/src/utils/scheduleEdits';
 import { buildCustomCourseItem, saveCustomCourseEdit, deleteCourseEdit, restoreOriginalCourseEdit } from '../../web/src/views/schedule/courseEditor';
 import { buildCourseFamilyKey } from '../../web/src/views/schedule/viewModels';
 import { MAX_SMALL_SLOT } from '../../web/src/views/schedule/slots';
@@ -77,10 +77,13 @@ export function installAndroidEditor() {
       const block = payload.original ? {...payload.original,index:0} : null;
       const key = block ? courseEditKey(block.day,block.bigSlot,block.course) : '';
       const family = (day:number,bigSlot:number,course:any) => buildCourseFamilyKey(day,bigSlot,course);
-      const sourceKeys = (day:number,bigSlot:number,course:any) => {
+      // Hiding or editing a block leaves the rows of the same course that meet in other weeks alone.
+      const sourceKeys = (day:number,bigSlot:number,course:any,options:{overlappingWeeksOnly?:boolean}={}) => {
         const keys = new Set<string>(); const target=family(day,bigSlot,course);
         for(const cell of payload.cells || []) for(const item of cell.courses || []) {
-          if (family(cell.day,cell.bigSlot,item) === target) keys.add(item.sourceKey || courseEditKey(cell.day,cell.bigSlot,item));
+          if (family(cell.day,cell.bigSlot,item) !== target) continue;
+          if (options.overlappingWeeksOnly && !courseWeeksOverlap(item,course)) continue;
+          keys.add(item.sourceKey || courseEditKey(cell.day,cell.bigSlot,item));
         }
         if(course.sourceKey) keys.add(course.sourceKey);
         return keys;

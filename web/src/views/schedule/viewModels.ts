@@ -1,4 +1,10 @@
-import { applyScheduleEditsToCells, courseEditKey, scheduleCourseEditLabel, type ScheduleEditState } from "@/utils/scheduleEdits";
+import {
+  applyScheduleEditsToCells,
+  courseEditKey,
+  courseWeeksOverlap,
+  scheduleCourseEditLabel,
+  type ScheduleEditState,
+} from "@/utils/scheduleEdits";
 import { courseMatchesWeek } from "@/utils/scheduleWeeks";
 import {
   buildGraduateFallbackCalendar,
@@ -206,13 +212,19 @@ export function createScheduleViewModelHelpers(context: ScheduleViewModelContext
     return String(next);
   }
 
-  function courseFamilySourceKeys(day: number, bigSlot: number, course: ScheduleCourse) {
+  function courseFamilySourceKeys(
+    day: number,
+    bigSlot: number,
+    course: ScheduleCourse,
+    options: { overlappingWeeksOnly?: boolean } = {},
+  ) {
     const targetFamilyKey = buildCourseFamilyKey(day, bigSlot, course);
     const keys = new Set<string>();
     for (const source of context.allKnownScheduleSources()) {
       for (const cell of source.cells ?? []) {
         for (const sourceCourse of cell.courses ?? []) {
           if (buildCourseFamilyKey(cell.day, cell.bigSlot, sourceCourse) !== targetFamilyKey) continue;
+          if (options.overlappingWeeksOnly && !courseWeeksOverlap(sourceCourse, course)) continue;
           keys.add(courseEditKey(cell.day, cell.bigSlot, sourceCourse));
         }
       }
