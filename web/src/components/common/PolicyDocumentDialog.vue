@@ -100,6 +100,11 @@ onBeforeUnmount(() => request?.abort());
 .policy-document-content :deep(ul), .policy-document-content :deep(ol) { padding-left: 22px; }
 .policy-document-content :deep(li) { margin: 8px 0; }
 .policy-document-content :deep(.meta) { color: var(--cpu-text-secondary); font-size: var(--cpu-fs-s); }
+/* 与 public/legal.css 里的同名类对应：需要先读的说明、文末的相关文档。 */
+.policy-document-content :deep(.legal-note) { margin: 0 0 14px; padding: 12px 14px; border-radius: var(--cpu-radius-m); background: var(--cpu-surface-soft); }
+.policy-document-content :deep(.legal-note h2) { margin-top: 0; font-size: var(--cpu-fs-m); }
+.policy-document-content :deep(.legal-note > :last-child) { margin-bottom: 0; }
+.policy-document-content :deep(.legal-related) { margin-bottom: 0; color: var(--cpu-text-secondary); font-size: var(--cpu-fs-s); }
 .policy-document-content :deep(a) { color: var(--cpu-primary); text-underline-offset: 3px; }
 .policy-document-content :deep(a:focus-visible) { outline: 2px solid var(--cpu-primary); outline-offset: 3px; }
 

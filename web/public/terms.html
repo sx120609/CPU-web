@@ -3,24 +3,44 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f8fafc" />
     <title>药大拾间用户协议</title>
-    <link rel="stylesheet" href="/legal.css" />
-    <script src="/legal-navigation.js" defer></script>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <script src="/appearance-bootstrap.js?v=20261007"></script>
+    <link rel="stylesheet" href="/legal.css?v=20261007" />
+    <script src="/legal-navigation.js?v=20261007" defer></script>
   </head>
   <body>
-    <nav class="policy-nav" aria-label="页面导航"><div class="policy-nav-inner"><a id="policy-back-link" href="/login">← 返回</a><a href="/home">药大拾间首页</a></div></nav>
-    <main>
-      <h1>药大拾间用户协议</h1>
-      <p>药大拾间是独立运营的校园交流与服务平台，非中国药科大学官方应用，不代表学校，也不表示与学校存在官方授权、合作或隶属关系。</p>
-      <p>请阅读以下条款，在登录页面自行勾选同意后继续。复选框默认未选中，浏览页面不表示同意；你可选择暂不登录。</p>
-      <ol>
-        <li>不发布违法、违规、人身攻击内容。</li>
-        <li>所有发帖与回复内容版权归发布者本人。</li>
-        <li>学号 / 工号会用于创建或关联站内账号；统一认证页勾选保持登录后，会在当前浏览器加密保存账号密码。</li>
-        <li>站方有权根据情节删除违规内容、封禁账号。</li>
-        <li>请自行判断信息内容，重要事项以学校正式通知为准。</li>
-      </ol>
-      <p><a href="/privacy.html">隐私政策</a> · <a href="/home">返回首页</a></p>
-    </main>
+    <header class="legal-bar">
+      <div class="legal-bar-inner">
+        <a id="policy-back-link" class="legal-back" href="/login">返回</a>
+        <a class="legal-brand" href="/home"><img src="/favicon.svg" alt="" width="28" height="28" />药大拾间</a>
+      </div>
+    </header>
+    <div class="legal-shell">
+      <aside class="legal-side">
+        <nav class="legal-docs" aria-label="条款与说明">
+          <a href="/about.html">关于我们</a>
+          <a href="/terms.html" aria-current="page">用户协议</a>
+          <a href="/privacy.html">隐私政策</a>
+          <a href="/community-rules.html">社区治理规则</a>
+        </nav>
+      </aside>
+      <main class="legal-main">
+        <article class="legal-card">
+          <h1>药大拾间用户协议</h1>
+          <p class="legal-note">药大拾间是独立运营的校园交流与服务平台，非中国药科大学官方应用，不代表学校，也不表示与学校存在官方授权、合作或隶属关系。</p>
+          <p>请阅读以下条款，在登录页面自行勾选同意后继续。复选框默认未选中，浏览页面不表示同意；你可选择暂不登录。</p>
+          <ol class="legal-rules">
+            <li>不发布违法、违规、人身攻击内容。</li>
+            <li>所有发帖与回复内容版权归发布者本人。</li>
+            <li>学号 / 工号会用于创建或关联站内账号；统一认证页勾选保持登录后，会在当前浏览器加密保存账号密码。</li>
+            <li>站方有权根据情节删除违规内容、封禁账号。</li>
+            <li>请自行判断信息内容，重要事项以学校正式通知为准。</li>
+          </ol>
+          <p class="legal-related">另请阅读：<a href="/privacy.html">隐私政策</a></p>
+        </article>
+      </main>
+    </div>
   </body>
 </html>

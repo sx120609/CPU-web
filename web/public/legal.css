@@ -1,17 +1,507 @@
-:root { color-scheme: light dark; --text: #243044; --muted: #475569; --border: #e2e8f0; --accent: #117568; --bg: #f8fafc; --surface: #fff; }
+/* 关于我们、用户协议、隐私政策、社区治理规则共用的样式。
+   颜色、字号、圆角与 web/src/styles/index.scss 里的 --cpu-* 变量逐值对应；这些页面不经过打包，所以在这里单独写一份。
+   登录页的条款弹窗（PolicyDocumentDialog.vue）只取 <article> 里的内容，目录和导航要放在 <article> 外面。 */
+:root {
+  color-scheme: light;
+  --bg: #f2f3f5;
+  --surface: #ffffff;
+  --surface-soft: #f5f6f8;
+  --line: #e4e6ea;
+  --line-strong: #d5d9df;
+  --text: #16191d;
+  --text-2: #4e5661;
+  --text-3: #666e7a;
+  --brand: #086f63;
+  --brand-soft: #e2f3f0;
+  --fs-xs: 12px;
+  --fs-s: 13px;
+  --fs-m: 14px;
+  --fs-l: 16px;
+  --fs-xl: 18px;
+  --fs-xxl: 24px;
+  --r-s: 6px;
+  --r-m: 10px;
+  --r-l: 14px;
+  --r-pill: 999px;
+  --bar-height: 56px;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0e1012;
+  --surface: #1a1d21;
+  --surface-soft: #23272c;
+  --line: #2b3036;
+  --line-strong: #3a4048;
+  --text: #eceef1;
+  --text-2: #b0b7c1;
+  --text-3: #8e96a2;
+  --brand: #36d0b7;
+  --brand-soft: rgba(54, 208, 183, 0.12);
+}
+
+/* appearance-bootstrap.js 没有执行时，跟随系统外观。 */
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme]) {
+    color-scheme: dark;
+    --bg: #0e1012;
+    --surface: #1a1d21;
+    --surface-soft: #23272c;
+    --line: #2b3036;
+    --line-strong: #3a4048;
+    --text: #eceef1;
+    --text-2: #b0b7c1;
+    --text-3: #8e96a2;
+    --brand: #36d0b7;
+    --brand-soft: rgba(54, 208, 183, 0.12);
+  }
+}
+
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.85 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; }
-.policy-nav { position: sticky; top: 0; z-index: 1; background: var(--surface); border-bottom: 1px solid var(--border); }
-.policy-nav-inner { max-width: 800px; margin: 0 auto; padding: 6px 20px; display: flex; justify-content: space-between; align-items: center; gap: 20px; }
-.policy-nav a { min-height: 44px; display: inline-flex; align-items: center; text-decoration: none; }
-main { max-width: 800px; margin: 24px auto 40px; padding: 32px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
-h1 { margin: 0 0 12px; font-size: 28px; line-height: 1.4; }
-h2 { margin: 28px 0 12px; font-size: 20px; line-height: 1.5; }
-p { margin: 0 0 16px; }
-ul, ol { margin: 0 0 16px; padding-left: 24px; }
-li { margin: 8px 0; }
-.meta { color: var(--muted); font-size: 14px; }
-a { color: var(--accent); text-underline-offset: 3px; }
-a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
-@media (max-width: 640px) { main { margin: 12px 12px 24px; padding: 22px 20px; } h1 { font-size: 24px; } h2 { font-size: 18px; } }
-@media (prefers-color-scheme: dark) { :root { --text: #eef8f5; --muted: #b3c6bf; --border: #34453e; --accent: #75ddc7; --bg: #101c19; --surface: #15241f; } }
+
+html {
+  scroll-padding-top: calc(var(--bar-height) + 16px);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: var(--fs-m)/1.8 "Inter Variable", "HarmonyOS Sans SC", -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+a { color: var(--brand); text-decoration: none; }
+
+:is(a, summary):focus-visible {
+  border-radius: var(--r-s);
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+/* 顶栏 */
+.legal-bar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--surface);
+  box-shadow: inset 0 -1px 0 var(--line);
+}
+
+.legal-bar-inner {
+  display: flex;
+  max-width: 1008px;
+  height: var(--bar-height);
+  margin: 0 auto;
+  padding: 0 24px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.legal-back {
+  display: inline-flex;
+  min-height: 44px;
+  margin-left: -8px;
+  padding: 0 10px 0 6px;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-2);
+  font-size: var(--fs-m);
+}
+
+.legal-back::before {
+  width: 8px;
+  height: 8px;
+  margin-left: 4px;
+  border-bottom: 1.5px solid currentColor;
+  border-left: 1.5px solid currentColor;
+  content: "";
+  transform: rotate(45deg);
+}
+
+.legal-brand {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  font-size: var(--fs-l);
+  font-weight: 600;
+}
+
+.legal-brand img {
+  display: block;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-s);
+}
+
+/* 骨架：左侧文档列表和本页目录，右侧正文 */
+.legal-shell {
+  display: grid;
+  max-width: 1008px;
+  margin: 0 auto;
+  padding: 24px 24px 64px;
+  grid-template-columns: 208px minmax(0, 1fr);
+  align-items: start;
+  gap: 32px;
+}
+
+.legal-side {
+  position: sticky;
+  top: calc(var(--bar-height) + 24px);
+  display: flex;
+  max-height: calc(100vh - var(--bar-height) - 48px);
+  max-height: calc(100dvh - var(--bar-height) - 48px);
+  flex-direction: column;
+  gap: 20px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.legal-docs {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.legal-docs a {
+  display: flex;
+  min-height: 36px;
+  padding: 0 12px;
+  align-items: center;
+  border-radius: var(--r-m);
+  color: var(--text-2);
+  font-size: var(--fs-m);
+  white-space: nowrap;
+}
+
+.legal-docs a[aria-current="page"] {
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.legal-toc summary {
+  display: flex;
+  min-height: 32px;
+  padding: 0 12px;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  list-style: none;
+  cursor: default;
+}
+
+.legal-toc summary::-webkit-details-marker { display: none; }
+
+.legal-toc ol {
+  margin: 4px 0 0 12px;
+  padding: 0;
+  list-style: none;
+  box-shadow: inset 1px 0 0 var(--line-strong);
+}
+
+.legal-toc a {
+  display: block;
+  padding: 5px 12px;
+  color: var(--text-2);
+  font-size: var(--fs-s);
+  line-height: 1.5;
+}
+
+.legal-toc a[aria-current="true"] {
+  box-shadow: inset 2px 0 0 var(--brand);
+  color: var(--brand);
+  font-weight: 500;
+}
+
+@media (hover: hover) {
+  .legal-back:hover,
+  .legal-toc a:hover { color: var(--brand); }
+  .legal-docs a:not([aria-current="page"]):hover { background: var(--line); color: var(--text); }
+}
+
+/* 正文 */
+.legal-main { min-width: 0; }
+
+.legal-card {
+  padding: 32px 36px;
+  border-radius: var(--r-l);
+  background: var(--surface);
+}
+
+.legal-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.legal-stack .legal-card { padding: 24px 28px; }
+
+article h1 {
+  margin: 0 0 6px;
+  font-size: var(--fs-xxl);
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+article h2 {
+  margin: 28px 0 10px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+  color: var(--text);
+  font-size: var(--fs-l);
+  font-weight: 600;
+  line-height: 1.5;
+  scroll-margin-top: calc(var(--bar-height) + 16px);
+}
+
+article p,
+article li { color: var(--text-2); }
+
+article p { margin: 0 0 12px; }
+article b { color: var(--text); font-weight: 600; }
+
+article :is(ul, ol) {
+  margin: 0 0 12px;
+  padding-left: 20px;
+}
+
+article li { margin: 6px 0; }
+article li::marker { color: var(--text-3); }
+
+article :is(p, li, dd) a {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+article .meta {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+}
+
+article > :last-child,
+.legal-card > :last-child { margin-bottom: 0; }
+
+/* 需要先读的说明：独立运营声明、优先适用的补充条款 */
+.legal-note {
+  margin: 20px 0 0;
+  padding: 16px 18px;
+  border-radius: var(--r-m);
+  background: var(--surface-soft);
+}
+
+p.legal-note { margin-bottom: 16px; }
+
+.legal-note h2 {
+  margin: 0 0 8px;
+  padding: 0;
+  border: 0;
+  font-size: var(--fs-m);
+}
+
+.legal-note + h2 { padding-top: 0; border-top: 0; }
+
+/* 用户协议的条款：编号在左、逐条分隔 */
+.legal-rules {
+  padding: 0;
+  border-top: 1px solid var(--line);
+  list-style: none;
+  counter-reset: rule;
+}
+
+.legal-rules li {
+  display: flex;
+  margin: 0;
+  padding: 12px 0;
+  align-items: baseline;
+  gap: 14px;
+  border-bottom: 1px solid var(--line);
+  color: var(--text);
+  counter-increment: rule;
+}
+
+.legal-rules li::before {
+  flex: 0 0 auto;
+  min-width: 20px;
+  color: var(--text-3);
+  content: counter(rule, decimal-leading-zero);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.legal-related {
+  margin: 28px 0 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  font-size: var(--fs-s);
+}
+
+.legal-rules + .legal-related { margin-top: 16px; padding-top: 0; border-top: 0; }
+
+/* 关于我们 */
+.legal-hero {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.legal-hero img {
+  display: block;
+  width: 56px;
+  height: 56px;
+  flex: 0 0 auto;
+  border-radius: var(--r-l);
+}
+
+.legal-hero h1 { margin-bottom: 2px; }
+.legal-hero .meta { font-size: var(--fs-s); }
+
+.legal-stack h2 {
+  margin: 0 0 10px;
+  padding: 0;
+  border: 0;
+}
+
+.legal-rows {
+  margin: 0;
+  font-style: normal;
+}
+
+.legal-rows dl { margin: 0; }
+
+.legal-rows dl > div {
+  display: flex;
+  min-height: 48px;
+  padding: 10px 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  border-top: 1px solid var(--line);
+}
+
+.legal-rows dl > div:first-child { border-top: 0; }
+.legal-rows dl > div:last-child { padding-bottom: 0; }
+.legal-rows dt { flex: 0 0 auto; color: var(--text-2); }
+
+.legal-rows dd {
+  margin: 0;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.legal-rows dd a { text-decoration: none; }
+
+@media (max-width: 900px) {
+  :root { --bar-height: 48px; }
+
+  .legal-bar-inner { padding: 0 max(16px, env(safe-area-inset-right, 0px)) 0 max(16px, env(safe-area-inset-left, 0px)); }
+  .legal-brand { font-size: var(--fs-m); }
+  .legal-brand img { width: 24px; height: 24px; }
+
+  .legal-shell {
+    display: block;
+    padding: 12px max(12px, env(safe-area-inset-right, 0px)) calc(40px + env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px));
+  }
+
+  .legal-side {
+    position: static;
+    max-height: none;
+    margin-bottom: 12px;
+    gap: 10px;
+    overflow: visible;
+  }
+
+  /* 手机上文档列表是一行可横滑的胶囊 */
+  .legal-docs {
+    margin: 0 -12px;
+    padding: 0 12px;
+    flex-direction: row;
+    gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .legal-docs::-webkit-scrollbar { display: none; }
+
+  .legal-docs a {
+    min-height: 34px;
+    padding: 0 13px;
+    flex: 0 0 auto;
+    border-radius: var(--r-pill);
+    background: var(--surface);
+    font-size: var(--fs-s);
+  }
+
+  .legal-docs a[aria-current="page"] {
+    background: var(--brand-soft);
+    color: var(--brand);
+  }
+
+  /* 手机上目录默认收起 */
+  .legal-toc {
+    border-radius: var(--r-m);
+    background: var(--surface);
+  }
+
+  .legal-toc summary {
+    min-height: 44px;
+    padding: 0 14px;
+    color: var(--text);
+    font-size: var(--fs-s);
+    cursor: pointer;
+  }
+
+  .legal-toc summary::after {
+    width: 7px;
+    height: 7px;
+    margin-right: 3px;
+    border-right: 1.5px solid var(--text-3);
+    border-bottom: 1.5px solid var(--text-3);
+    content: "";
+    transform: translateY(-2px) rotate(45deg);
+  }
+
+  .legal-toc[open] summary::after { transform: translateY(2px) rotate(-135deg); }
+
+  .legal-toc ol {
+    margin: 0;
+    padding: 0 0 6px;
+    box-shadow: none;
+  }
+
+  .legal-toc a { padding: 8px 14px; }
+  .legal-toc a[aria-current="true"] { box-shadow: none; }
+
+  article h1 { font-size: var(--fs-xl); }
+  .legal-card { padding: 20px 16px; }
+  .legal-stack .legal-card { padding: 16px; }
+  .legal-note { padding: 14px; }
+
+  .legal-hero img { width: 48px; height: 48px; }
+
+  .legal-rows dl > div { gap: 16px; }
+}
+
+/* 窄屏上四个胶囊要排进一行 */
+@media (max-width: 379px) {
+  .legal-docs a { padding: 0 10px; }
+}
+
+@media print {
+  .legal-bar,
+  .legal-side { display: none; }
+  .legal-shell { display: block; padding: 0; }
+  .legal-card { padding: 0; }
+  body { background: #fff; }
+}
