@@ -267,6 +267,7 @@
     <!-- 按设备分流的安装引导：移动端安装/加主屏，桌面端下载原生客户端 -->
     <OpenBrowserPromptDialog ref="openBrowserPromptRef" />
     <InstallPromptDialog ref="installPromptRef" />
+    <ScheduleUsageNotice />
     <input
       ref="backgroundImageInputRef"
       type="file"
@@ -959,6 +960,7 @@
 
 <script setup lang="ts">
 import ScheduleCourseStatus from "@/components/jwxt/ScheduleCourseStatus.vue";
+import ScheduleUsageNotice from "@/components/jwxt/ScheduleUsageNotice.vue";
 import { computed, h, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";

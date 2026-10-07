@@ -190,6 +190,7 @@
         <el-tab-pane name="schedule" lazy>
           <template #label><AppIcon name="calendar" /> 课表</template>
           <SchedulePane :data="schedule" :loading="tabLoading" :source="isGraduateIdentity ? 'graduate' : 'jwxt'" />
+          <ScheduleUsageNotice v-if="tab === 'schedule'" />
         </el-tab-pane>
         <el-tab-pane v-if="!isGraduateIdentity" name="grades" lazy>
           <template #label><AppIcon name="chart" /> 成绩</template>
@@ -235,6 +236,7 @@
 <script setup lang="ts">
 import "@/styles/page-kit.css";
 import AppIcon from "@/components/common/AppIcon.vue";
+import ScheduleUsageNotice from "@/components/jwxt/ScheduleUsageNotice.vue";
 import { defineAsyncComponent } from "vue";
 import { Lock, User, Refresh, CircleCheckFilled, CircleClose, InfoFilled } from "@element-plus/icons-vue";
 import PrivacyConsent from "@/components/common/PrivacyConsent.vue";
