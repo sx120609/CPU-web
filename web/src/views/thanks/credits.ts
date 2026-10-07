@@ -50,7 +50,7 @@ export const thanksPeople: ThanksPerson[] = [
   { role: "资金与设备", name: "坤哥 · 琨哥", alias: "frank zhang", note: "提供了重要的资金和设备支持。", icon: "coin", tint: "green", span: 7 },
   { role: "公司建立", name: "Weicheng.Wang", note: "在公司建立的过程中给予了关键而重要的支持与帮助。", icon: "briefcase", tint: "purple", span: 5 },
   { role: "学校支持", name: "信息处", note: "感谢信息处提供的相关协助。", icon: "school", tint: "teal", span: 5 },
-  { role: "扩展意见", name: "Mushroom", note: "提供了相关的扩展意见。", icon: "idea", tint: "pink", span: 7 },
+  { role: "意见与支持", name: "Mushroom", note: "提供了扩展意见，也给了相关的支持。", icon: "idea", tint: "pink", span: 7 },
 ];
 
 export const thanksTools: ThanksProject[] = [
