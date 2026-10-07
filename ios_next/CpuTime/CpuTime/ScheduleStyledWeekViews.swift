@@ -82,13 +82,17 @@ struct ScheduleStyledAdjustmentMark: View {
     @Environment(\.scheduleStyle) private var style
     @Environment(\.colorScheme) private var scheme
     let kind: String
+    /// The mark sits on an ink-filled block, so ink and canvas trade places.
+    var onInk = false
 
     var body: some View {
         if style == .paper || style == .board {
             // A solid seal for a day off, an outlined one for a make-up day.
             let dark = scheme == .dark
-            let ink = style.styleAccent(dark: dark, fallback: .primary)
-            let canvas = style.canvasColor(dark: dark) ?? .white
+            let accent = style.styleAccent(dark: dark, fallback: .primary)
+            let paper = style.canvasColor(dark: dark) ?? .white
+            let ink = onInk ? paper : accent
+            let canvas = onInk ? style.inkColor(dark: dark) : paper
             Text(kind == "off" ? "休" : "班")
                 .font(.system(size: 9, weight: .bold, design: style.fontDesign))
                 .foregroundStyle(kind == "off" ? canvas : ink)
@@ -112,14 +116,30 @@ struct ScheduleStyledDateHeader: View {
     let date: String
     let isToday: Bool
     let adjustmentKind: String?
-    var selected = false
+    /// `nil` in the week header. The day strip passes whether this is its
+    /// selected day: the same header then doubles as a button, and today and
+    /// the selection each keep a mark of their own.
+    var selected: Bool? = nil
 
     private var today: Bool { isToday && !staticRendering }
+    private var picked: Bool { selected == true }
     private var dark: Bool { scheme == .dark }
     private var accent: Color { style.styleAccent(dark: dark, fallback: ThemePalette.of(brand).text(dark: dark)) }
-    private var inverse: Bool { style == .table && (today || selected) }
+    /// The table fills one whole cell: today in the week header, the selected day in the strip.
+    private var filled: Bool { style == .table && (selected ?? today) }
+    /// The board inverts the selected day, as its month view does.
+    private var inked: Bool { style == .board && picked }
     private var ink: Color {
-        inverse ? ThemePalette.of(brand).onFill(dark: dark) : (today ? accent : style.inkColor(dark: dark))
+        if filled { return ThemePalette.of(brand).onFill(dark: dark) }
+        if inked { return style.canvasColor(dark: dark) ?? .white }
+        return today ? accent : style.inkColor(dark: dark)
+    }
+    /// The strip is a control, so its dates are set a size up from the week header's.
+    private var dateSize: CGFloat { style == .paper || (selected != nil && style != .grid) ? 15 : 11 }
+    /// 「05」 on the board, like the dates of its month view.
+    private var dateText: String {
+        guard style == .board, let number = Int(date) else { return date }
+        return String(format: "%02d", number)
     }
 
     var body: some View {
@@ -132,12 +152,12 @@ struct ScheduleStyledDateHeader: View {
                     .font(.system(size: 11, weight: .semibold, design: style.fontDesign))
             }
             HStack(spacing: 2) {
-                Text(date)
-                    .font(.system(size: style == .paper ? 15 : 11, weight: .medium, design: style.fontDesign))
+                Text(dateText)
+                    .font(.system(size: dateSize, weight: style == .board ? .bold : .medium, design: style.fontDesign))
                     .monospacedDigit()
                     .padding(.horizontal, style == .paper ? 4 : 0)
                     .overlay { if style == .paper && today { Capsule().stroke(accent, lineWidth: 1) } }
-                if let adjustmentKind { ScheduleStyledAdjustmentMark(kind: adjustmentKind) }
+                if let adjustmentKind { ScheduleStyledAdjustmentMark(kind: adjustmentKind, onInk: inked) }
             }
         }
         .foregroundStyle(ink)
@@ -145,11 +165,22 @@ struct ScheduleStyledDateHeader: View {
         .minimumScaleFactor(0.6)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background {
-            if inverse { Rectangle().fill(.themeFill) }
-            else if selected { Rectangle().fill(accent.opacity(dark ? 0.16 : 0.08)) }
+            if filled {
+                Rectangle().fill(.themeFill)
+            } else if inked {
+                Rectangle().fill(style.inkColor(dark: dark))
+            } else if picked && style == .grid {
+                // A course tile of the grid: pale fill inside a border of the same colour.
+                let tile = RoundedRectangle(cornerRadius: style.layout.cornerRadius, style: .continuous)
+                tile.fill(.themeTint(dark ? 0.2 : 0.1))
+                    .overlay { tile.strokeBorder(.themeText, lineWidth: style.layout.borderWidth) }
+            } else if picked {
+                // Paper washes the selected day the way its week view washes today's column.
+                Rectangle().fill(accent.opacity(dark ? 0.16 : 0.08))
+            }
         }
         .overlay(alignment: .bottom) {
-            if style == .board && (today || selected) { Rectangle().fill(accent).frame(height: 3) }
+            if style == .board && today && !picked { Rectangle().fill(accent).frame(height: 3) }
         }
     }
 }
@@ -267,13 +298,13 @@ struct ScheduleStyledCourseTile: View {
                     }
                 }
                 Text(course.name)
-                    .font(.system(size: dayRow ? 15 : (small ? 11 : 13), weight: .semibold, design: style.fontDesign))
+                    .font(.system(size: dayRow ? 15 : (small ? 11 : 13), weight: .semibold, design: style.textDesign))
                     .lineLimit(dayRow ? (short ? 1 : 2) : (short ? 2 : (compact ? 4 : 3)))
                     .minimumScaleFactor(0.8)
                     .layoutPriority(1)
                 if showLocation, let location = ScheduleStyleTime.location(course.location) {
                     Text("@\(location)")
-                        .font(.system(size: dayRow ? 12 : (small ? 9 : 11), weight: .medium, design: style.fontDesign))
+                        .font(.system(size: dayRow ? 12 : (small ? 9 : 11), weight: .medium, design: style.textDesign))
                         .lineLimit(short || dayRow ? 1 : 2)
                         .minimumScaleFactor(0.8)
                 }

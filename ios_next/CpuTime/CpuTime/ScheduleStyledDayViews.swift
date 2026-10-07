@@ -861,8 +861,9 @@ private struct ScheduleBoardDayView: View {
             .scheduleCourseAction { onCourseSelected(block) }
     }
 
-    /// The trailing edge of a row: a countdown for the next course, the time
-    /// of day for later ones, and 已结束 for a finished course in the plain timetable.
+    /// The trailing edge of a row: a countdown for the next course, and 已结束
+    /// for a finished course in the plain timetable. Every other row leaves it
+    /// empty; the times already lead.
     private func note(_ block: NativeScheduleCourseBlock, isNext: Bool) -> ScheduleBoardRow.Note? {
         if status.phase(block) == .completed { return .init(text: "已结束", emphasized: false) }
         if isNext, let now = status.now, let start = scheduleClockMinutes(status.start(block)), start > now {
@@ -871,8 +872,7 @@ private struct ScheduleBoardDayView: View {
                 : (wait % 60 == 0 ? "\(wait / 60) 小时后" : "\(wait / 60) 小时 \(wait % 60) 分后")
             return .init(text: text, emphasized: true)
         }
-        let session = ScheduleStyleTime.session(status.start(block))
-        return session == "课程" ? nil : .init(text: session, emphasized: false)
+        return nil
     }
 }
 
@@ -891,7 +891,7 @@ private struct ScheduleBoardNowLine: View {
                 .font(.system(size: 16, weight: .bold, design: .monospaced))
             Spacer(minLength: 8)
             Text(remaining > 0 ? "今天还有 \(remaining) 门课" : "今天的课上完了")
-                .font(.system(size: 12, weight: .medium, design: .monospaced)).opacity(0.72)
+                .font(.system(size: 12, weight: .medium)).monospacedDigit().opacity(0.72)
         }
         .foregroundStyle(style.inkColor(dark: scheme == .dark))
         .lineLimit(1)
@@ -956,10 +956,10 @@ private struct ScheduleBoardHero: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text("正在上 · \(scheduleSlotText(block))")
-                    .font(.system(size: 11, weight: .bold, design: .monospaced)).tracking(1).opacity(0.72)
+                    .font(.system(size: 11, weight: .bold)).tracking(1).opacity(0.72)
                 Spacer(minLength: 8)
                 Text("还剩 \(remaining) 分")
-                    .font(.system(size: 13, weight: .bold, design: .monospaced)).foregroundStyle(accent)
+                    .font(.system(size: 13, weight: .bold)).monospacedDigit().foregroundStyle(accent)
             }
             Spacer(minLength: 4)
             Text("\(status.start(block)) — \(status.end(block))")
@@ -984,7 +984,6 @@ private struct ScheduleBoardHero: View {
                 }
         }
         .lineLimit(1)
-        .fontDesign(style.fontDesign)
         .foregroundStyle(paper)
         .padding(14)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -994,7 +993,8 @@ private struct ScheduleBoardHero: View {
     }
 }
 
-/// A course still to come, or any course in the plain timetable: the start time leads.
+/// A course still to come, or any course in the plain timetable: the start
+/// time leads, with the end time under it.
 @available(iOS 17.0, *)
 private struct ScheduleBoardRow: View {
     struct Note {
@@ -1015,9 +1015,12 @@ private struct ScheduleBoardRow: View {
     var body: some View {
         let ink = style.inkColor(dark: scheme == .dark)
         HStack(alignment: .center, spacing: 12) {
-            Text(status.start(block))
-                .font(.system(size: 24, weight: .bold, design: .monospaced)).minimumScaleFactor(0.7)
-                .frame(width: 82, alignment: .leading)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(status.start(block)).font(.system(size: 24, weight: .bold, design: .monospaced))
+                Text(status.end(block)).font(.system(size: 12, weight: .medium, design: .monospaced)).opacity(0.72)
+            }
+            .minimumScaleFactor(0.7)
+            .frame(width: 82, alignment: .leading)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 7) {
                     RoundedRectangle(cornerRadius: 1.5)
@@ -1032,13 +1035,12 @@ private struct ScheduleBoardRow: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             if let note {
-                Text(note.text).font(.caption.weight(.semibold))
+                Text(note.text).font(.caption.weight(.semibold)).monospacedDigit()
                     .foregroundStyle(note.emphasized ? AnyShapeStyle(.themeText) : AnyShapeStyle(ink.opacity(0.72)))
                     .fixedSize()
             }
         }
         .lineLimit(1)
-        .fontDesign(style.fontDesign)
         .foregroundStyle(ink)
         .padding(.horizontal, 12)
         .frame(maxHeight: .infinity)
@@ -1070,7 +1072,6 @@ private struct ScheduleBoardFinishedRow: View {
             }
         }
         .lineLimit(1)
-        .fontDesign(style.fontDesign)
         .foregroundStyle(style.inkColor(dark: scheme == .dark).opacity(0.62))
         .padding(.horizontal, 12)
         .frame(maxHeight: .infinity)

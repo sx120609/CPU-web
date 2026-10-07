@@ -291,6 +291,12 @@ extension ScheduleStyle {
         }
     }
 
+    /// The typeface of running text: course names, rooms, 「第 3–4 节」. The
+    /// board keeps its monospaced face for times and dates only; set in it, the
+    /// space between a character and a digit is a full digit wide and the line
+    /// falls apart.
+    var textDesign: Font.Design { layout.font == .monospaced ? .default : fontDesign }
+
     /// Paper and board bring their own page colour; the others keep the page
     /// background and any photo set on it.
     func canvasColor(dark: Bool) -> Color? {

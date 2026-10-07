@@ -1,4 +1,4 @@
-# iOS 4.14 (69)
+# iOS 4.14 (70)
 
 Release base: remote main `f62f84ad`. Compared with 4.13 (67), the iOS changes are in `1fc48c55`, with the server and Web side in `a9d92248`:
 
@@ -11,7 +11,14 @@ Release base: remote main `f62f84ad`. Compared with 4.13 (67), the iOS changes a
 - The native timetable's dark appearance uses the neutral greys of the site's dark theme (`f62f84ad`) for the page, cells, borders and text, in place of the green-tinted ones. Course colours are unchanged: they stay on the palette shared with Web, Android and HarmonyOS, whose timetables still use the green-tinted dark background.
 - The month view's list writes a one-period course as 第 9 节 rather than 第 9-9 节.
 
-All four targets (iPhone app, iPhone widgets, Watch app and Watch widgets) use version 4.14, build 69. Build 68 was uploaded on 2026-10-07 from `708a806f` and is superseded: it lacks the last two items above. The minimum versions remain iOS 15 for the main app, iOS 17 for its widgets and watchOS 10 for Watch targets.
+Build 70 adds, over build 69:
+
+- **Taking a photo no longer ends the app.** The app's Info.plist had no purpose string for the camera, the microphone or adding to Photos. None of the three is requested by Swift code, so nothing failed to build, but iOS terminates an app that reaches one without its string: a web file picker offers 拍照或录像, and the share sheet offers 存储图像 for the timetable image and for pictures a page shares. The earlier client (`ios/`) declared all three; they were lost in the rewrite. All three are declared again.
+- **Files a page saves are downloaded.** A link with a `download` attribute, a response the web view cannot display and an attachment response used to replace the app's page with the file or do nothing. They now become WKWebView downloads and end in the share sheet (`WebFileDownloader`), in the native shell and in the iOS 15–16 wrapper. Only the site's own addresses and the `blob:` / `data:` URLs its pages build are taken; a file on another host still opens in Safari.
+- **The Live Activity refresh task can be scheduled.** `UIBackgroundModes` now lists `fetch`. Without it `BGTaskScheduler` rejected the request and the app swallowed the error, so the fallback that ends an expired Live Activity while the app is suspended never ran.
+- From NapTable `6f1c9ea`: the day view's seven-day strip is drawn by each style as the header row of its own week view, with separate marks for the selected day and today (classic keeps its strip); the week and month titles follow the style's typeface; the board keeps its monospaced face for times and dates only, and its day rows carry the end time under the start time.
+
+All four targets (iPhone app, iPhone widgets, Watch app and Watch widgets) use version 4.14, build 70. Build 68 (from `708a806f`) and build 69 (from `97a0b63c`, submitted for review on 2026-10-07 and withdrawn for this build) were uploaded the same day and are superseded. The minimum versions remain iOS 15 for the main app, iOS 17 for its widgets and watchOS 10 for Watch targets.
 
 ## Server dependency
 
@@ -22,18 +29,24 @@ Two features need the server from `a9d92248`, which is on main but is deployed s
 
 The rest of 4.14 works against the older server. Deploy the server before this version reaches users.
 
+Three places on the site revoked a `blob:` URL in the same tick as the click that downloads it (the file collection's `saveBlob`, the questionnaire CSV export, the QQ bot admin export). WebKit has not read the blob by then and the download fails, which build 70 reports as 文件没有下载下来. They now revoke after 30 seconds; that fix reaches users with the next Web deployment, not with the app.
+
 ## Validation on 2026-10-07
 
 - Signed generic iOS Release archive succeeded, including all four targets.
 - Archive code signature verified; all four bundles carry 4.14 (69). ActivityKit runtime import inspection: all 53 app imports and 7 widget imports are weak. Both calendar purpose strings are present.
-- iOS Node suite: 53/53; Swift package: 24/24; server and Web Node suites: 822 passed, 4 skipped (the PostgreSQL integration tests).
+- iOS Node suite: 57/57; Swift package: 24/24; server and Web Node suites: 822 passed, 4 skipped (the PostgreSQL integration tests).
 - Native schedule store, period, palette (32 comparisons), Chinese calendar, course arrangement, display priority, shared timetable and Live Activity checks passed. The Live Activity check covers priority and the cared timetable.
 - `scheduleSharing.integration.test.ts` passed against a local PostgreSQL 16.
 - iOS 26.5 simulator, Debug build on the sample timetable: the six styles in the three views, light and dark; course quick look and editor; overlap priority; the sharing page and the read-only timetable.
 - The same build against a local server and PostgreSQL, driven by the debug launch actions rather than taps: publish a code, reject one's own code, import from a pasted link, open read-only, pick up the publisher's update, mark the publisher's revoke.
+- Build 70, iOS 26.5 simulator: the day strip in all six styles in light, and in the five new styles in dark with a day other than today selected; week views of board, table, paper and grid and the board month view.
+- Build 70, against the local server with a script injected by the dev server: a `blob:` download, a same-origin `<a download>` and a navigation to a ZIP each ended in the share sheet with the page left in place; a `blob:` URL revoked at once ended in the failure alert.
+- The built app's Info.plist carries the five purpose strings and `UIBackgroundModes = fetch`; `check-legacy-linkage.py` now requires them in the archive.
 
 Not verified:
 
+- The camera cannot be exercised in the simulator, which has none: that the app survives 拍照 rests on the purpose strings being in the built Info.plist. Whether iOS now runs the refresh task was not observed either.
 - No physical device run. Requests through the signed-in web session (`NativeScheduleWebViewLoader.api`, the same channel the schedule edits use), saving a priority from the editor, and the Live Activity as it appears on screen were not exercised.
 - No run on iOS 15–17 for this binary; see ios-compatibility-qa.md for the earlier scope.
 - The simulator used for these runs was removed afterwards.

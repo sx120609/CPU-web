@@ -118,7 +118,11 @@ private final class LegacyWebSession: NSObject, ObservableObject, WKNavigationDe
     }
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { record(error) }
     private func record(_ error: Error) {
-        guard (error as NSError).code != NSURLErrorCancelled else { return }
+        let failure = error as NSError
+        guard failure.code != NSURLErrorCancelled else { return }
+        // A response that became a download interrupts its page load; the
+        // page already on screen is still there.
+        guard !(failure.domain == "WebKitErrorDomain" && failure.code == 102) else { return }
         self.error = error.localizedDescription
         isLoading = false
     }
@@ -130,7 +134,9 @@ private final class LegacyWebSession: NSObject, ObservableObject, WKNavigationDe
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         guard let url = action.request.url else { decisionHandler(.cancel); return }
-        if IOSNextWebConfiguration.isTrusted(url) || url.scheme == "about" {
+        if WebFileDownloader.takes(action) {
+            decisionHandler(.download)
+        } else if IOSNextWebConfiguration.isTrusted(url) || url.scheme == "about" {
             decisionHandler(.allow)
         } else {
             decisionHandler(.cancel)
@@ -138,6 +144,21 @@ private final class LegacyWebSession: NSObject, ObservableObject, WKNavigationDe
                 UIApplication.shared.open(url)
             }
         }
+    }
+    func webView(_ webView: WKWebView, decidePolicyFor response: WKNavigationResponse,
+                 decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
+        if WebFileDownloader.takes(response) {
+            decisionHandler(.download)
+        } else {
+            // What WebKit does when the delegate does not answer.
+            decisionHandler(response.canShowMIMEType ? .allow : .cancel)
+        }
+    }
+    func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
+        WebFileDownloader.shared.adopt(download)
+    }
+    func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
+        WebFileDownloader.shared.adopt(download)
     }
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
                  for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {

@@ -1444,7 +1444,8 @@ function exportResponses() {
   link.href = url;
   link.download = `${sanitizeFilename(responsesTitle.value)}-答卷.csv`;
   link.click();
-  URL.revokeObjectURL(url);
+  // 立刻撤销的话，iOS 的 WebKit 可能还没开始读这个地址，下载会失败。
+  window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
 }
 
 function statusText(status: QuestionnaireStatus | GradeCheckStatus) {

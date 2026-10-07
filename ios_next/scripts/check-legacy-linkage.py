@@ -17,9 +17,19 @@ for bundle in [args.app, *args.app.glob('PlugIns/*.appex')]:
     if bundle == args.app and info.get('MinimumOSVersion') != '15.0':
         raise SystemExit(f'Unexpected minimum OS: {info.get("MinimumOSVersion")}')
     if bundle == args.app:
-        for key in ['NSCalendarsUsageDescription', 'NSCalendarsFullAccessUsageDescription']:
+        # iOS terminates the app when it reaches one of these without its
+        # purpose string: the web file picker's camera, video recording, and
+        # the share sheet's Save Image.
+        for key in ['NSCalendarsUsageDescription', 'NSCalendarsFullAccessUsageDescription',
+                    'NSCameraUsageDescription', 'NSMicrophoneUsageDescription',
+                    'NSPhotoLibraryAddUsageDescription']:
             if not info.get(key, '').strip():
-                raise SystemExit(f'Missing calendar purpose string: {key}')
+                raise SystemExit(f'Missing purpose string: {key}')
+    if bundle == args.app:
+        # BGTaskScheduler refuses an app-refresh request, with an error the app
+        # can only swallow, unless the app declares the fetch background mode.
+        if 'fetch' not in info.get('UIBackgroundModes', []):
+            raise SystemExit('Missing UIBackgroundModes fetch for the Live Activity refresh task')
     binary = bundle / info['CFBundleExecutable']
     # Archives may strip undefined entries from the symbol table; dyld's
     # import table is the authoritative source for runtime weak imports.

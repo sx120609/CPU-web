@@ -2002,6 +2002,14 @@ private final class HybridWebViewCoordinator: NSObject, WKNavigationDelegate, WK
             return
         }
 
+        // `<a download>` asks for a file, not a page. Allowing it as a
+        // navigation would replace the app's page with the file. The login
+        // gate keeps its say over everything below.
+        if store?.blocksInternalNavigation != true, WebFileDownloader.takes(navigationAction) {
+            decisionHandler(.download)
+            return
+        }
+
         let scheme = url.scheme?.lowercased() ?? ""
         if ["about", "blob", "data"].contains(scheme), navigationAction.targetFrame != nil {
             decisionHandler(.allow)
@@ -2048,6 +2056,12 @@ private final class HybridWebViewCoordinator: NSObject, WKNavigationDelegate, WK
             .value(forHTTPHeaderField: "Content-Disposition")?
             .lowercased() ?? ""
         if !navigationResponse.canShowMIMEType || disposition.contains("attachment") {
+            // The site's own files are fetched here, where the signed-in
+            // session is; Safari would ask for them without it.
+            if WebFileDownloader.takes(navigationResponse) {
+                decisionHandler(.download)
+                return
+            }
             if let url = navigationResponse.response.url {
                 store?.openExternal(url)
             }
@@ -2055,6 +2069,14 @@ private final class HybridWebViewCoordinator: NSObject, WKNavigationDelegate, WK
             return
         }
         decisionHandler(.allow)
+    }
+
+    func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
+        WebFileDownloader.shared.adopt(download)
+    }
+
+    func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
+        WebFileDownloader.shared.adopt(download)
     }
 
     func webView(

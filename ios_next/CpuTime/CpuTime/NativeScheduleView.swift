@@ -455,11 +455,13 @@ struct NativeScheduleView: View {
                     VStack(spacing: 2) {
                         Text(weekTitle(result))
                             .font(.headline)
+                            .fontDesign(navigatorTitleDesign)
                             .lineLimit(1)
                         if let range = weekRange(result), !range.isEmpty {
                             Text(range)
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .fontDesign(navigatorDateDesign)
+                                .foregroundStyle(navigatorSecondary)
                                 .lineLimit(1)
                         }
                     }
@@ -493,9 +495,10 @@ struct NativeScheduleView: View {
         HStack(spacing: 6) {
             weekStepButton(systemName: "chevron.left", label: "上一月", enabled: true) { moveMonth(-1) }
             VStack(spacing: 2) {
-                Text(monthTitle).font(.headline).lineLimit(1)
+                Text(monthTitle).font(.headline).fontDesign(navigatorTitleDesign).lineLimit(1)
                 if let lunar = ChineseCalendarInfo.info(forDate: monthAnchor)?.lunar.yearLabel {
-                    Text("农历\(lunar)").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    Text("农历\(lunar)").font(.caption).fontDesign(navigatorTitleDesign)
+                        .foregroundStyle(navigatorSecondary).lineLimit(1)
                 }
             }
             .frame(maxWidth: .infinity, minHeight: 42)
@@ -837,12 +840,65 @@ struct NativeScheduleView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .foregroundStyle(enabled ? .primary : .tertiary)
+        .foregroundStyle(enabled ? AnyShapeStyle(style.inkColor(dark: colorScheme == .dark)) : AnyShapeStyle(.tertiary))
         .disabled(!enabled)
         .accessibilityLabel(label)
     }
 
+    /// The week and month titles follow the style's typeface. Classic and
+    /// minimal stay on the system face.
+    private var navigatorTitleDesign: Font.Design? {
+        style == .classic || style == .minimal ? nil : style.textDesign
+    }
+    /// The date range under the week title is all digits, so the board may
+    /// keep its monospaced face there.
+    private var navigatorDateDesign: Font.Design? {
+        style == .classic || style == .minimal ? nil : style.fontDesign
+    }
+    /// Paper and board have a page colour of their own; the second line is
+    /// their ink, thinned, in place of the system grey.
+    private var navigatorSecondary: AnyShapeStyle {
+        style == .paper || style == .board
+            ? AnyShapeStyle(style.inkColor(dark: colorScheme == .dark).opacity(0.62)) : AnyShapeStyle(.secondary)
+    }
+
+    /// The day view's seven-day strip. Classic keeps its own; every other
+    /// style draws it its own way, see `ScheduleDayStrip`.
+    @ViewBuilder
     private func dayPicker(_ result: NativeScheduleResult) -> some View {
+        if style == .classic {
+            classicDayPicker(result)
+        } else {
+            let week = weekNumber(store.selectedWeek)
+            ScheduleDayStrip(
+                days: visibleDays.map { day in
+                    let dayAdjustment = adjustment(day: day, week: week, result: result)
+                    return .init(day: day, number: dayNumber(day, week: week, result: result),
+                                 date: dayDate(day, week: week, result: result),
+                                 isToday: dayIsToday(day, week: week, result: result),
+                                 adjustmentKind: dayAdjustment?.kind,
+                                 adjustmentDetail: dayAdjustment.map(adjustmentDetail),
+                                 courseCount: blocks(for: day, week: week, result: result).count)
+                },
+                selectedDay: selectedDay
+            ) { day in
+                selectDay(day, week: week, result: result)
+            }
+            .padding(.top, 2)
+        }
+    }
+
+    private func selectDay(_ day: Int, week: Int?, result: NativeScheduleResult) {
+        withAnimation(.snappy(duration: 0.2)) {
+            selectedDay = day
+            if let date = rawDayDate(day, week: week, result: result) {
+                selectedMonthDate = date
+                monthAnchor = date
+            }
+        }
+    }
+
+    private func classicDayPicker(_ result: NativeScheduleResult) -> some View {
         let week = weekNumber(store.selectedWeek)
         return HStack(spacing: 2) {
             ForEach(visibleDays, id: \.self) { day in
@@ -850,13 +906,7 @@ struct NativeScheduleView: View {
                 let isToday = dayIsToday(day, week: week, result: result)
                 let hasCourses = !blocks(for: day, week: week, result: result).isEmpty
                 Button {
-                    withAnimation(.snappy(duration: 0.2)) {
-                        selectedDay = day
-                        if let date = rawDayDate(day, week: week, result: result) {
-                            selectedMonthDate = date
-                            monthAnchor = date
-                        }
-                    }
+                    selectDay(day, week: week, result: result)
                 } label: {
                     VStack(spacing: 5) {
                         Text(dayShortLabel(day))

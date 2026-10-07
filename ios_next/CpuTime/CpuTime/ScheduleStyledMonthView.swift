@@ -291,7 +291,7 @@ struct ScheduleStyledMonthPage: View {
                     HStack(spacing: 2) {
                         Rectangle().fill(courseAccent(block)).frame(width: 2)
                         Text(Self.shortName(block))
-                            .font(.system(size: 9, weight: .semibold, design: style.fontDesign))
+                            .font(.system(size: 9, weight: .semibold, design: style.textDesign))
                             .lineLimit(1)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
@@ -347,7 +347,7 @@ struct ScheduleStyledMonthPage: View {
                     .font(.system(size: 17, weight: isToday || isSelected ? .bold : .semibold, design: .monospaced))
                     .underline(isToday)
                 Text(day.courses.isEmpty ? "—" : "\(day.courses.count) 门")
-                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                    .font(.system(size: 9, weight: .medium))
                     .lineLimit(1)
                 Text(day.subtitle.isEmpty ? " " : day.subtitle)
                     .font(.system(size: 9, design: .monospaced))
@@ -445,7 +445,7 @@ struct ScheduleStyledMonthPage: View {
                         Text(selectedTitle)
                             .font(.system(size: style == .paper ? 17 : 16,
                                           weight: style == .board ? .bold : .semibold,
-                                          design: style.fontDesign))
+                                          design: style.textDesign))
                         if selectedDate == todayDate {
                             Text(style == .paper ? "今日" : "今天")
                                 .font(.system(size: 10, weight: .bold, design: style.fontDesign))
@@ -462,14 +462,14 @@ struct ScheduleStyledMonthPage: View {
                         }
                     }
                     Text(selectedSubtitle)
-                        .font(.system(size: 11, design: style.fontDesign))
+                        .font(.system(size: 11, design: style.textDesign))
                         .foregroundStyle(ink.opacity(0.72))
                 }
                 Spacer(minLength: 8)
                 if canOpenDay {
                     Button(action: onOpenDay) {
                         Label("日视图", systemImage: "calendar.day.timeline.left")
-                            .font(.system(size: 11, weight: .semibold, design: style.fontDesign))
+                            .font(.system(size: 11, weight: .semibold, design: style.textDesign))
                             .labelStyle(.titleAndIcon)
                     }
                     .buttonStyle(.plain)
@@ -478,12 +478,12 @@ struct ScheduleStyledMonthPage: View {
             }
             if let adjustmentText {
                 Label(adjustmentText, systemImage: "calendar.badge.exclamationmark")
-                    .font(.system(size: 11, design: style.fontDesign))
+                    .font(.system(size: 11, design: style.textDesign))
                     .foregroundStyle(style == .paper || style == .board ? accent : holidayColor)
             }
             if let emptyText {
                 Text(emptyText)
-                    .font(.system(.footnote, design: style.fontDesign))
+                    .font(.system(.footnote, design: style.textDesign))
                     .foregroundStyle(ink.opacity(0.72))
                     .padding(.vertical, 6)
             } else {
@@ -559,10 +559,10 @@ struct ScheduleStyledMonthPage: View {
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(block.course.name)
-                        .font(.system(.body, design: style.fontDesign).weight(.semibold))
+                        .font(.system(.body, design: style.textDesign).weight(.semibold))
                         .lineLimit(2)
                     Text(metadata(block))
-                        .font(.system(.footnote, design: style.fontDesign))
+                        .font(.system(.footnote, design: style.textDesign))
                         .foregroundStyle(ink.opacity(contrast == .increased ? 0.9 : 0.74))
                         .lineLimit(1)
                 }

@@ -21,5 +21,9 @@
 	<string>$(CPU_APP_GROUP_IDENTIFIER)</string>
 	<key>CPUAppURL</key>
 	<string>$(CPU_APP_URL)</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+	</array>
 </dict>
 </plist>
