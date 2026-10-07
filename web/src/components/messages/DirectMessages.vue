@@ -247,7 +247,7 @@
       </div>
       <p v-else class="dm-report-lead">当前没有可举报的对方消息。</p>
       <el-button v-if="activeCounterpart && !activeCounterpart.anonymous && activeCounterpart.id > 0" @click="openCounterpartReport">举报用户资料</el-button>
-      <p class="dm-report-foot">其他投诉或无法选择消息时，可联系 <a href="mailto:admin@lizmt.cn">admin@lizmt.cn</a>，说明会话时间及问题；请勿提供密码或验证码。</p>
+      <p class="dm-report-foot">其他投诉或无法选择消息时，可联系 <a href="mailto:sl@qiuxieit.cn">sl@qiuxieit.cn</a>，说明会话时间及问题；请勿提供密码或验证码。</p>
       <template #footer><el-button @click="reportOverviewOpen = false">关闭</el-button></template>
     </el-dialog>
     <ContentReportDialog
